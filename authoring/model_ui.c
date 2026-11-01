@@ -193,6 +193,17 @@ void nova_model_ui_update(NovaModelUI *ui)
         }
         ui->overwrite = false;
     }
+    if (ui->check_export) {
+        ui->check_export = false;
+        if (nova_document_check_disk(&ui->target,ui->message,sizeof(ui->message))) {
+            if (ui->target.saved.info.st_ino) ui->decision=NOVA_MODEL_DECISION_EXPORT;
+            else ui->export_glb=true;
+        } else if (ui->target.has_conflict) {
+            ui->decision=NOVA_MODEL_DECISION_EXPORT_CONFLICT;
+            ui->inspected_export=false; ui->exported=false;
+        }
+        ui->summarized_decision=NOVA_MODEL_DECISION_NONE;
+    }
     if (ui->export_glb) {
         ui->export_glb = false;
         if (!export_model(ui) && ui->target.has_conflict) {
@@ -387,13 +398,15 @@ void nova_model_ui_draw(NovaModelUI *ui, Rectangle preview)
         for (int row=0;row<4;++row) {
             nova_ui_label(labels[row],x,y,central,muted); y+=23;
             for (int a=0;a<3;++a)
-                if (nova_ui_field((Rectangle){(float)x+a*112,(float)y,104,33},ui->fields[row*3+a],32,&ui->field_focus[row*3+a]))
+                if (nova_ui_field_checked((Rectangle){(float)x+a*112,(float)y,104,33},ui->fields[row*3+a],32,&ui->field_focus[row*3+a],
+                    ui->message,sizeof(ui->message)))
                     ui->values_dirty = true;
             y+=42;
         }
         if (p->shape==NOVA_SHAPE_CYLINDER) {
             nova_ui_label("Cylinder sides 3..32",x,y+8,190,muted);
-            if (nova_ui_field((Rectangle){(float)x+195,(float)y,104,33},ui->fields[12],32,&ui->field_focus[12]))
+            if (nova_ui_field_checked((Rectangle){(float)x+195,(float)y,104,33},ui->fields[12],32,&ui->field_focus[12],
+                ui->message,sizeof(ui->message)))
                 ui->values_dirty = true;
             y+=42;
         }
@@ -411,7 +424,8 @@ void nova_model_ui_draw(NovaModelUI *ui, Rectangle preview)
     } else nova_ui_label("Create a primitive or use the original RGB demo.",x,y,central,ink);
     y=height-219;
     nova_ui_label("Editable .nova-model source (project-relative)",x,y,central,accent); y+=25;
-    nova_ui_field((Rectangle){(float)x,(float)y,(float)central,33},ui->source_path,sizeof(ui->source_path),&ui->source_focus); y+=41;
+    nova_ui_field_checked((Rectangle){(float)x,(float)y,(float)central,33},ui->source_path,sizeof(ui->source_path),&ui->source_focus,
+        ui->message,sizeof(ui->message)); y+=41;
     if (nova_ui_button((Rectangle){(float)x,(float)y,155,33},"Open / new source",true)) {
         if (nova_document_dirty(&ui->source) || ui->values_dirty) ui->decision=NOVA_MODEL_DECISION_OPEN;
         else ui->reopen=true;
@@ -422,9 +436,7 @@ void nova_model_ui_draw(NovaModelUI *ui, Rectangle preview)
     snprintf(line,sizeof(line),"Active source: %s",ui->source.relative);
     nova_ui_label(line,x,y,central,muted);
     if (nova_ui_button((Rectangle){preview.x,65,164,33},"Export declared GLB",ui->model.count>0 && !ui->values_dirty)) {
-        ui->decision=ui->target.saved.info.st_ino ? NOVA_MODEL_DECISION_EXPORT : NOVA_MODEL_DECISION_NONE;
-        ui->summarized_decision=NOVA_MODEL_DECISION_NONE;
-        ui->export_glb=!ui->target.saved.info.st_ino;
+        ui->check_export=true;
     }
     if (nova_ui_button((Rectangle){preview.x+172,65,126,33},"Retry preview",ui->stale)) {
         ui->refresh=true;

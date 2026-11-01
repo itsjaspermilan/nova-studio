@@ -29,19 +29,18 @@ float nova_model_test_wheel(void) { return 0; }
 static void step(const char *capture)
 {
     nova_model_ui_update(ui);
+    NovaPresentationLayout layout;
+    if (ui->ready) {
+        int fw=GetRenderWidth(), fh=GetRenderHeight(), ww=GetScreenWidth(), wh=GetScreenHeight();
+        NovaFramebufferRect region = {(int)lroundf(preview.x*fw/ww),(int)lroundf(preview.y*fh/wh),
+            (int)lroundf(preview.width*fw/ww),(int)lroundf(preview.height*fh/wh)};
+        CHECK(nova_presentation_layout_region(ww,wh,fw,fh,region,false,&layout));
+        nova_presentation_world(&ui->view.presentation,&ui->view.frame,&ui->view.resources);
+    }
     BeginDrawing();
     ClearBackground((Color){19,27,39,255});
     if (ui->ready) {
-        NovaPresentationLayout layout;
-        int fw=GetRenderWidth(), fh=GetRenderHeight(), ww=GetScreenWidth(), wh=GetScreenHeight();
-        NovaFramebufferRect region = {(int)(preview.x*fw/ww),(int)(preview.y*fh/wh),
-            (int)(preview.width*fw/ww),(int)(preview.height*fh/wh)};
-        CHECK(nova_presentation_layout_region(ww,wh,fw,fh,region,false,&layout));
-        EndDrawing();
-        nova_presentation_world(&ui->view.presentation,&ui->view.frame,&ui->view.resources);
-        BeginDrawing();
-        ClearBackground((Color){19,27,39,255});
-        NovaCanvasState canvas=nova_begin_canvas(fw,fh);
+        NovaCanvasState canvas=nova_begin_canvas(GetRenderWidth(),GetRenderHeight());
         nova_presentation_composite(&ui->view.presentation,&ui->view.frame,&ui->view.resources,layout.viewport);
         nova_end_canvas(canvas);
     }
@@ -172,6 +171,10 @@ int main(int argc,char **argv)
     type_field(260,407,"0"); type_field(370,407,"0"); type_field(485,407,"255"); apply();
     type_field(455,450,"12"); apply();
     CHECK(ui->model.primitives[2].sides==12);
+    type_field(260,342,"0000000000000000000000000000000000000000000");
+    CHECK(strstr(ui->message,"Field byte budget exceeded") && ui->values_dirty);
+    click(615,492);
+    CHECK(!ui->values_dirty);
     type_field(260,342,"-1");
     key=KEY_ENTER; step(NULL);
     CHECK(ui->values_dirty && ui->model.primitives[2].scale[0]==1);
@@ -217,7 +220,7 @@ int main(int argc,char **argv)
     click(910,81); click(520,528);
     CHECK(ui->inspected_export && ui->exported_asset.primitives==3 && ui->exported_asset.vertices==198);
     write_file(glb,"external user GLB",17);
-    click(910,81); click(520,528);
+    click(910,81);
     CHECK(ui->decision==NOVA_MODEL_DECISION_EXPORT_CONFLICT && !ui->inspected_export);
     CHECK(ui->target.conflict.length==17 && !memcmp(ui->target.conflict.text,"external user GLB",17));
     click(290,528);
@@ -226,7 +229,7 @@ int main(int argc,char **argv)
     unsigned char *disk=nova_read_file(glb,65536,&disk_length,ui->message,sizeof(ui->message));
     CHECK(disk && disk_length==17 && !memcmp(disk,"external user GLB",17));
     free(disk);
-    click(910,81); click(520,528);
+    click(910,81);
     CHECK(ui->decision==NOVA_MODEL_DECISION_EXPORT_CONFLICT);
     write_file(glb,"second external",16);
     click(520,528);

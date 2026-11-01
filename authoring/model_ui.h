@@ -16,6 +16,7 @@ typedef struct {
     NovaModelDecision summarized_decision;
     char disk_summary[256];
     bool review_disk;
+    bool check_export;
     NovaTextEditor disk_editor;
     size_t selected;
     int scroll;

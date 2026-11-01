@@ -158,11 +158,12 @@ conflict rejection and failed dirty-project-switch preservation. Fixtures are
 private temporary files, removed afterward; no gameplay saves, audio playback,
 private keys or devices were used. Bounded frame runs are not performance tests.
 
-This is a source/project inspector, not a full IDE, modeller, persistent scene
-entity editor or hostile-file/process sandbox. Android is unchanged by the
+This editor checkpoint is a source/project inspector, not a full IDE, persistent
+scene entity editor or hostile-file/process sandbox. The separately completed
+static primitive modeller is described below. Android is unchanged by the
 desktop-only editor; an APK/device run was not performed for this milestone.
 
-## Next bounded work: static authoring and separate device validation
+## Completed static authoring and separate device-validation gate
 
 - [ ] Perform the separate consented Android device-validation track below,
   including the third launcher project and imported PNG/GLB visual output.
@@ -178,12 +179,11 @@ desktop-only editor; an APK/device run was not performed for this milestone.
 ### Recommended fresh-session kickoff
 
 > Read AGENTS.md, TODO.md and README.md in the assigned NovaStudio worktree.
-> The native project/source editor is implemented. Use its real document/widgets
-> and inspection v2/shared presentation/preflight seams for separately assigned
-> static modelling. Preserve direct scenes, old examples, native GPU rendering
-> and strict static/unlit imports.
-> The static modeller is a separate follow-on, not an excuse to add unsupported
-> materials or animated GLB. Device execution
+> The native project/source editor and bounded static primitive modeller are
+> implemented. Preserve their real document/widgets, inspection v2 and shared
+> presentation/preflight seams, direct scenes, old examples and strict static/
+> unlit imports. Broader authoring/materials/animated GLB require a separate
+> approved scope. Device execution
 > needs separate consent and an intended attached device; APK verification is
 > not device validation.
 

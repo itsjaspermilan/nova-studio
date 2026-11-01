@@ -639,6 +639,9 @@ int main(int argc, char **argv)
     }
     int frames = 0;
     while (!editor->quit) {
+        if (editor->close_after_modeller && editor->modeller.active &&
+            editor->modeller.decision == NOVA_MODEL_DECISION_NONE && !editor->modeller.close)
+            editor->close_after_modeller = false;
         if (smoke && !smoke_step(editor, frames)) {
             fprintf(stderr, "%s\n", editor->message); result = 1; break;
         }

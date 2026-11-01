@@ -1,6 +1,6 @@
 # Nova Studio
 
-A working **native runtime and bounded desktop source/project editor**, not a full game IDE. The native launcher opens editable Lua examples and versioned projects containing imported PNG sprites and static GLB models. The separate native editor edits actual project/Lua files and previews them through the same runtime. Everything lives here; GameStudio and Glow43 are unchanged and are not dependencies.
+A working **native runtime and bounded desktop source/project editor with original static primitive modelling**, not a full game IDE. The native launcher opens editable Lua examples and versioned projects containing imported PNG sprites and static GLB models. The separate native editor edits actual project/Lua files and primitive-source documents, exports the supported GLB subset, and previews them through the same runtime. Everything lives here; GameStudio and Glow43 are unchanged and are not dependencies.
 
 The provisional product name is Nova Studio. This foundation targets desktop authoring and standalone Android games, initially Retroid Pocket 6. It contains **no WebView, browser renderer, or screenshot-streaming gameplay**.
 
