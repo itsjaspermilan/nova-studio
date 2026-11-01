@@ -732,7 +732,9 @@ int main(int argc, char **argv)
                 " model_primitives=%zu model_vertices=%zu model_revision=%zu status=%s\n",
                 frames, editor->modeller.active ? "modeller" : editor->playing ? "running" : "stopped",
                 preview_presentation->world.texture.width, preview_presentation->world.texture.height, framebuffer_width, framebuffer_height,
-                live.count, live.frame ? live.frame->count : 0, dirty(editor) ? "dirty" : "clean",
+                live.count, live.frame ? live.frame->count : 0,
+                dirty(editor) || (editor->modeller.active && (nova_document_dirty(&editor->modeller.source) ||
+                    editor->modeller.values_dirty)) ? "dirty" : "clean",
                 model_live.count ? model_live.assets[0].primitives : 0, model_live.count ? model_live.assets[0].vertices : 0,
                 editor->modeller.view.revisions, result ? "error" : "ok");
             if (smoke) printf("NOVA_EDITOR_SMOKE draft-save-reload=ok lua-import-rollback=ok newer-conflict=ok dirty-switch=ok native-pixels=%s\n", result ? "error" : "ok");

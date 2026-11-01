@@ -125,13 +125,14 @@ Documentation-only changes need no builds.
 - No remote/push/PR is requested. Include this trailer on requested commits:
   `Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>`.
 
-The app registration remains folder-backed despite local Git on `main`; Git
-initialization is not automatic app conversion. Use sequential ownership here,
-or confirm repository registration AND isolated worktrees before parallel writers.
-Check cwd: `/Users/jasper/Developer/NovaStudio`, not the coordinating GameStudio.
+The original app registration was folder-backed; Git initialization is not
+automatic app conversion. These milestones use confirmed isolated NovaStudio
+repository worktrees. Always use the assigned worktree, never the main checkout
+or the coordinating GameStudio. Confirm isolation again before parallel writers
+in a fresh project/session.
 
 This is a native project/sample launcher and bounded desktop source/project
-editor, not a full IDE/modeller. Manifest v1
+editor with original static primitive modelling, not a full IDE/mesh modeller. Manifest v1
 and the bounded PNG/static GLB pipeline, native framebuffer HUD and bounded
 world presets are implemented; skeletal animation, full audio mixing/streaming
 and Glow compatibility are not.

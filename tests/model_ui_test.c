@@ -98,21 +98,22 @@ static void capture_colors(void)
     UnloadImage(image);
 }
 
-static void real_shell(const char *editor,const char *manifest)
+static void real_shell(const char *editor,const char *manifest,bool empty)
 {
+    const char *capture=empty ? NOVA_TEST_DIRECTORY "/modeller-draft.png" : NOVA_TEST_DIRECTORY "/modeller-shell.png";
+    const char *output=empty ? NOVA_TEST_DIRECTORY "/modeller-draft.log" : NOVA_TEST_DIRECTORY "/modeller-shell.log";
     posix_spawn_file_actions_t actions;
     CHECK(!posix_spawn_file_actions_init(&actions));
-    CHECK(!posix_spawn_file_actions_addopen(&actions,STDOUT_FILENO,
-        NOVA_TEST_DIRECTORY "/modeller-shell.log",O_CREAT|O_TRUNC|O_WRONLY,0600));
+    CHECK(!posix_spawn_file_actions_addopen(&actions,STDOUT_FILENO,output,O_CREAT|O_TRUNC|O_WRONLY,0600));
     CHECK(!posix_spawn_file_actions_adddup2(&actions,STDOUT_FILENO,STDERR_FILENO));
     char *args[]={(char *)editor,"--project",(char *)manifest,"--modeller","--frames","3",
-        "--capture",NOVA_TEST_DIRECTORY "/modeller-shell.png",NULL};
+        "--capture",(char *)capture,NULL};
     pid_t child;
     CHECK(!posix_spawn(&child,editor,&actions,NULL,args,environ));
     posix_spawn_file_actions_destroy(&actions);
     int status;
     CHECK(waitpid(child,&status,0)==child && WIFEXITED(status) && WEXITSTATUS(status)==0);
-    Image image=LoadImage(NOVA_TEST_DIRECTORY "/modeller-shell.png");
+    Image image=LoadImage(capture);
     CHECK(IsImageValid(image) && image.width>=1280 && image.height>=800);
     int colors[3]={0};
     for (int y=0;y<image.height;++y) for (int x=0;x<image.width;++x) {
@@ -120,11 +121,14 @@ static void real_shell(const char *editor,const char *manifest)
         unsigned char rgb[3]={c.r,c.g,c.b};
         for (int a=0;a<3;++a) if (rgb[a]==255 && !rgb[(a+1)%3] && !rgb[(a+2)%3]) ++colors[a];
     }
-    CHECK(colors[0]>100 && colors[1]>100 && colors[2]>100);
+    CHECK(empty ? !colors[0] && !colors[1] && !colors[2] : colors[0]>100 && colors[1]>100 && colors[2]>100);
     UnloadImage(image);
     int length;
-    unsigned char *log=nova_read_file(NOVA_TEST_DIRECTORY "/modeller-shell.log",65536,&length,ui->message,sizeof(ui->message));
-    CHECK(log && strstr((char *)log,"preview=modeller") && strstr((char *)log,"model_primitives=3 model_vertices=198 model_revision=1 status=ok"));
+    unsigned char *log=nova_read_file(output,65536,&length,ui->message,sizeof(ui->message));
+    CHECK(log && strstr((char *)log,"preview=modeller") && strstr((char *)log,"status=ok"));
+    CHECK(strstr((char *)log,empty ? "draft=dirty" : "draft=clean"));
+    CHECK(strstr((char *)log,empty ? "model_primitives=0 model_vertices=0" :
+        "model_primitives=3 model_vertices=198 model_revision=1"));
     free(log);
 }
 
@@ -270,8 +274,11 @@ int main(int argc,char **argv)
     click(520,528);
     CHECK(!ui->active);
     CloseWindow();
-    real_shell(argv[1],manifest);
-    CHECK(!unlink(source) && !unlink(glb) && !unlink(lua) && !unlink(manifest) && !rmdir(directory));
+    real_shell(argv[1],manifest,false);
+    CHECK(!unlink(source));
+    real_shell(argv[1],manifest,true);
+    CHECK(!FileExists(source));
+    CHECK(!unlink(glb) && !unlink(lua) && !unlink(manifest) && !rmdir(directory));
     puts("Native widgets create/select/delete/finite edits, stable IDs, source save/reopen, stale consent,"
         " GLB overwrite/cancel/native preflight, typed-value guards, shared GPU cache and real shell passed");
     free(ui);

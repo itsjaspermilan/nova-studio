@@ -4,6 +4,40 @@ Last checked: 2026-11-01. Read `README.md` for full commands and limitations,
 and `AGENTS.md` before making changes. This is a working native vertical slice,
 not a finished editor or a hardware-validated game engine.
 
+## Current integrated handoff
+
+The approved bounded software milestones are implemented and locally committed:
+manifest/native assets, inspection, runtime services, standalone export/signing
+tooling, native HUD, source/project editor and original static primitive modeller.
+No remote push, personal-key operation or device installation was performed.
+
+The combined 42-test desktop suite passed with GPU/audio enabled before the last
+integration correction to modeller dirty-state reporting. All 23 display-free
+tests passed afterward. The added real-shell missing-source/dirty-state regression
+and final graphical rerun remain blocked: GLFW stopped exposing a monitor and
+window initialization failed, including in the unchanged presentation control.
+With an active logged-in desktop, rerun the authoring selectors before declaring
+this final graphical check complete:
+
+```sh
+./scripts/with-toolchain.sh ctest --test-dir build --output-on-failure \
+  -R '^nova_(gpu_modeller_ui|gpu_editor.*|editor_cli_.*)$'
+```
+
+The final ordinary Android launcher rebuild/package verification passed.
+Current generated debug APK SHA-256:
+`e973c1683389fda3e4459cbc5108045bfa593ddb825b092c7567291097471475`.
+The standalone `build/exports/services-demo-v3/` export also built and passed exact
+package verification: manifest v2/audio, increasing versionCode 3, compiled
+`NOVA_STANDALONE=ON` and world preset `1920x1080`. Its generated unsigned release
+APK SHA-256 is
+`930c069390f598e4477102c8dd8c19a14925dddbf77b609bed3365e1a5bd3347`.
+It is not personally signed or an install-ready release deliverable.
+
+Beyond the desktop-display rerun, remaining work requires the user's personal-key/
+device participation, public-publishing authorization, or separately approved
+advanced engine/authoring scope. Historical milestone evidence follows.
+
 ## Verified completed foundation
 
 - [x] Independent source tree: no dependency on GameStudio or Glow43.
@@ -67,7 +101,7 @@ materials, animation, skins, compression or authoring UI.
 This is a bounded interchange contract, not general glTF compatibility.
 
 The new APK is generated in this worktree at the same relative path above.
-Current SHA-256:
+Manifest-milestone APK SHA-256 (historical):
 `9831fee2b5f49337f96c26bba13e6952613d780716aeb1fedd771a9b1edabd1e`.
 All 11 desktop CTests (including opt-in GPU/capture/lifetime checks) passed;
 targeted manifest/import/lifetime checks were rerun after the final parser changes.
@@ -250,10 +284,8 @@ future backend work must preserve the native desktop/Android path.
 
 ## Copilot folder/worktree coordination
 
-The app session was registered as a folder-backed project. Adding local `.git`
-does not by itself convert that app registration into a repository/worktree
-project. A fresh session may use this folder sequentially, but do not run parallel
-writers against it. For isolated sessions, register/open NovaStudio as a Git
-repository in Copilot and confirm that each session actually has its own checkout/
-worktree before parallel work. Verify the new session's cwd; do not default to
-the coordinating GameStudio repository. No remote is required for local work.
+The original app session was folder-backed. Adding local `.git` does not itself
+convert that registration, but these coordinated milestones now use confirmed
+isolated NovaStudio repository worktrees. Use the assigned worktree, not the main
+checkout or GameStudio. Confirm registration and checkout isolation again before
+parallel writers in a fresh project/session. No remote is required for local work.
