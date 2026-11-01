@@ -50,18 +50,26 @@ existing hand-authored projects directly in **Advanced**; they are not converted
 
 #### Beginner workflow: appearance -> object -> room -> Run
 
-Choose **2D** or **3D**, a project **Name**, and an existing **Location** in the
-native directory browser, then **New project**. Creation exclusively creates a
-new child directory; an existing destination is refused. A saved, runnable
+The dedicated **New Project** screen has local project **Name**, **2D / 3D** and
+**Location** controls plus an existing-folder browser. Choose **Create project**,
+or switch to **Open Project**, choose `game.nova-game` and explicitly **Open project**.
+The compact **Project...** menu returns to these screens; **Cancel** retains the
+current project and drafts. Setup fields never occupy the room toolbar.
+Creation exclusively creates a new child directory; an existing destination
+is refused. A saved, runnable
 starting room opens immediately with an original turquoise sprite or original
 untextured pyramid and a player object controlled by WASD/arrows. No manifest
 or Lua editing is needed. The two modes use the same resource/object/room model.
 The 3D starter retains its original `.nova-model` primitive source for the
 existing static modeller; arbitrary imported GLB is not reconstructed as primitives.
 
-**Add Sprite / Model** opens a native PNG/static-GLB file browser. Navigate with
-**Up / List location**, click a file, enter a unique **Name**, then explicitly
-**Import selected appearance**. Selection/navigation never saves. Import validates
+The left **Resources** panel groups **Sprites**, **Models**, **Objects** and
+**Rooms**. Each group's **+** opens its own local creation/import form; group
+headings collapse and the panel scrolls. A separate **Room instances** outline
+lists only instances in the current room and scrolls independently.
+The Sprites/Models **+** opens a PNG/static-GLB browser with its own **Name** and
+type controls. Navigate with **Up / Browse**, choose a file, then
+explicitly **Import appearance**. Selection/navigation never saves. Import validates
 through the shared decoder and guardedly copies into a fresh stable-ID filename;
 existing destinations are refused. It writes that asset copy, not the game
 document. Undo/deletion retain imported files rather than silently deleting
@@ -69,8 +77,9 @@ potentially useful data. PNG painting, animated GLB and textured primitive
 authoring are not implemented.
 
 Select the appearance in the left resource tree and choose **Create object using
-this**. The **Name** field names the new reusable object; the property Name field
-renames the selected resource without changing its stable ID or references.
+this...**. The local **Create Object** form suggests a unique name and lets you
+choose its appearance. Its **Name** names the new reusable object; the inspector
+Name field renames the selected resource without changing its stable ID or references.
 The right panel is a real bounded behavior editor, not an editable Lua template:
 
 | Event | Supported typed action | Meaning |
@@ -80,16 +89,20 @@ The right panel is a real bounded behavior editor, not an editable Lua template:
 | Step | Constant movement | XYZ units per second, added on every simulation tick |
 | Primary press | Move by offset | Typed XYZ displacement once per Space/action rising edge |
 
-Toggle each supported action explicitly and **Apply properties** to commit typed
-numbers to the draft; **Reset values** discards only those unapplied fields.
+Toggle each supported action explicitly and **Apply** to commit typed
+numbers to the draft; **Reset** discards only those unapplied fields. The
+contextual **Inspector** follows the resource/object/room/instance selection,
+groups appearance, transform and events, and scrolls expanded actions while
+keeping Apply/Reset visible.
 2D has no editable Z/depth; 3D uses model translation and uniform scale, with
 real room camera/look-at/FOV properties. There are no placeholder collision,
 physics, rotation, sound, sprite animation or full GameMaker compatibility actions.
 Existing Lua audio/save/timer APIs remain available to Advanced projects.
 
-Select a **Room** in the tree. Select an object to make it the placement palette,
-then return to **Open room Layout**. **Place object** repeats click-to-place;
-**Select / move** selects and drags one placed instance. **Grid / snap** is on by
+Select a **Room** in the tree. Selecting an object sets the placement palette
+and its inspector **without leaving the room**. Room tools are immediately
+above the canvas: **Place** repeats click-to-place; **Select** selects and drags
+one placed instance. **Grid** is on by
 default. The 2D layout is the actual shared native preview; the 3D layout has a
 shared native perspective preview plus a labelled XZ floor-plan diagram
 (-10..10), with Y height in instance properties. The diagram is not a second
@@ -101,10 +114,12 @@ explicit decision. Used appearances/objects, occupied rooms and the starting
 room cannot be deleted until dependencies are removed/reassigned. Remaining
 IDs and references are preserved; no guessed Lua rename rewriting occurs.
 
-**Add room** uses the toolbar Name and 2D/3D choice. Room instances have stable
-IDs, object references, names, position and scale. The toolbar dimension chooses
-new projects/rooms and import type; it does not convert existing room contents.
-**Make starting room** chooses
+The **Rooms +** form has its own **Name** and **2D / 3D** choice; it never
+converts existing room contents. **Room setup** selects the current room's
+inspector; the separate outline selects placed instances. **Resource**
+is an explicit tab for inspecting an appearance/object; **Room** returns to the
+same layout. Room instances have stable IDs, object references, names, position
+and scale. **Set as starting room** chooses
 what the game runs, independently of which room is currently being edited.
 **Run** explicitly saves/preflights and stages that whole generated project in
 the same native engine/presentation pipeline used by desktop and Android.
@@ -154,8 +169,8 @@ retained frame with an explicit failure label, not a successful current preview.
 Creation failures report the incomplete new directory and keep the previous
 project; they do not pretend to have rolled back multiple files.
 
-**Advanced** switches to the original manifest/Lua browser/editor without
-discarding visual drafts or editor context; **Objects / Rooms** returns without
+**Project... -> Advanced source editor** switches to the original manifest/Lua
+browser/editor without discarding visual drafts or editor context; **Objects / Rooms** returns without
 discarding Advanced drafts. Reopen visual source explicitly to adopt saved
 source repairs, with a dirty-discard decision. Saving Advanced generated-file
 edits does not authorize visual overwrites. Closing either workspace requires

@@ -62,6 +62,8 @@ static bool clean_values(NovaGameUI *ui)
 static void selection(NovaGameUI *ui, uint32_t id)
 {
     ui->selected = id;
+    ui->inspector_scroll = 0;
+    ui->resource_view = false;
     const NovaGameRoom *room = nova_game_room(&ui->project.data, id);
     if (room) { ui->room = id; ui->place_tool = false; }
     const NovaGameInstance *instance = nova_game_instance(&ui->project.data,id);
@@ -183,7 +185,7 @@ failed:
 
 bool nova_game_ui_open(NovaGameUI *ui, const char *location, char *error, size_t size)
 {
-    *ui = (NovaGameUI){.new_mode = NOVA_2D, .snap = true};
+    *ui = (NovaGameUI){.new_mode = NOVA_2D, .snap = true, .sheet = NOVA_GAME_SHEET_NEW};
     snprintf(ui->name, sizeof(ui->name), "MyGame");
     snprintf(ui->location, sizeof(ui->location), "%s", location);
     strcpy(ui->fixture, "/tmp/nova-game-preview-XXXXXX");
@@ -193,7 +195,7 @@ bool nova_game_ui_open(NovaGameUI *ui, const char *location, char *error, size_t
     strcpy(ui->fixture, canonical);
     if (!nova_presentation_configure(&ui->presentation, nova_world_resolution_default(), error, size)) return false;
     browse(ui);
-    message(ui, "Choose a location and New 2D/3D project, or open game.nova-game. Hand-authored projects are under Advanced.");
+    message(ui, "Welcome. Create a game or open an existing project.");
     return true;
 }
 
@@ -218,7 +220,9 @@ static void stop(NovaGameUI *ui)
 
 bool nova_game_ui_action(NovaGameUI *ui, NovaGameAction action)
 {
-    if (action == NOVA_GAME_STOP) { stop(ui); return true; }
+    ui->last_action = action;
+    ui->action_failed = true;
+    if (action == NOVA_GAME_STOP) { stop(ui); ui->action_failed = false; return true; }
     if (action != NOVA_GAME_APPLY && !clean_values(ui)) return false;
     bool ok = false;
     NovaGameProject *p = &ui->project;
@@ -229,7 +233,8 @@ bool nova_game_ui_action(NovaGameUI *ui, NovaGameAction action)
     case NOVA_GAME_NEW:
         ok = nova_game_new(p, ui->location, ui->name, ui->new_mode, ERROR);
         if (ok) { ui->staged.resources = NOVA_MAX_ASSETS+1; selection(ui, p->data.start); ui->room = p->data.start;
-            ui->palette = p->data.object[0].id; ui->advanced_path[0] = 0; }
+            ui->palette = p->data.object[0].id; ui->advanced_path[0] = 0;
+            message(ui,"Your game is ready. Run to try it, or add an appearance to create another object."); }
         break;
     case NOVA_GAME_OPEN:
         ok = nova_game_open(p, ui->path, ERROR);
@@ -250,8 +255,8 @@ bool nova_game_ui_action(NovaGameUI *ui, NovaGameAction action)
         }
         break;
     case NOVA_GAME_OBJECT:
-        ok = nova_game_add_object(p, ui->selected, ui->name, ERROR);
-        if (ok) { selection(ui, p->data.object[p->data.objects-1].id); message(ui, "Reusable object created. Add behaviors, then select a room and place it."); }
+        ok = nova_game_add_object(p, ui->object_appearance ? ui->object_appearance : ui->selected, ui->name, ERROR);
+        if (ok) { selection(ui, p->data.object[p->data.objects-1].id); message(ui, "Object created. Add behaviors in the Inspector, then choose Place above the room."); }
         break;
     case NOVA_GAME_ROOM:
         ok = nova_game_add_room(p, ui->new_mode, ui->name, ERROR);
@@ -297,11 +302,18 @@ bool nova_game_ui_action(NovaGameUI *ui, NovaGameAction action)
         }
         break;
     }
-    case NOVA_GAME_SELECT: selection(ui, ui->selected); return true;
+    case NOVA_GAME_SELECT: selection(ui, ui->selected); ui->action_failed = false; return true;
     case NOVA_GAME_STOP: return true;
+    }
+    if (ok && (action == NOVA_GAME_NEW || action == NOVA_GAME_OPEN || action == NOVA_GAME_IMPORT ||
+        action == NOVA_GAME_OBJECT || action == NOVA_GAME_ROOM)) {
+        ui->sheet = NOVA_GAME_SHEET_NONE;
+        ui->name_focus = ui->path_focus = ui->location_focus = false;
+        memset(ui->field_focus,0,sizeof(ui->field_focus));
     }
     if (ok && action != NOVA_GAME_RUN && action != NOVA_GAME_RESTART && p->authored.text)
         ok = nova_game_ui_stage(ui);
+    ui->action_failed = !ok;
     return ok;
 }
 
@@ -333,6 +345,7 @@ bool nova_game_ui_tick(NovaGameUI *ui, double dt, NovaInput input)
     if (!ok) {
         snprintf(ui->message, sizeof(ui->message), "Gameplay failed: %s", nova_error(ui->play_engine));
         ui->playing = false; ui->play_focus = false; ui->accumulator = 0;
+        ui->last_action = NOVA_GAME_RUN; ui->action_failed = true;
         nova_pause_services(&ui->play_resources, true);
     }
     return ok;
@@ -348,7 +361,7 @@ static NovaFrame authored_frame(NovaGameUI *ui)
     const NovaGameObject *selected_object = nova_game_object(g,ui->selected);
     uint32_t appearance = selected_object ? selected_object->resource :
         nova_game_resource(g,ui->selected) ? ui->selected : 0;
-    if (appearance) {
+    if (appearance && ui->resource_view) {
         for (size_t a = 0; a < g->resources; ++a) if (g->resource[a].id == appearance) {
             bool sprite = g->resource[a].type == NOVA_ASSET_SPRITE;
             float scale = selected_object ? selected_object->size : sprite ? 128 : 1;
@@ -383,6 +396,9 @@ static void request(NovaGameUI *ui, NovaGameAction action)
     if ((action == NOVA_GAME_NEW || action == NOVA_GAME_OPEN) && nova_game_dirty(&ui->project)) {
         ui->dialog = NOVA_GAME_DIALOG_DISCARD; ui->pending = action;
         snprintf(ui->pending_path, sizeof(ui->pending_path), "%s", ui->path);
+        message(ui,"Opening or creating another project would discard unsaved changes in this game.\n\n"
+            "Cancel to keep them. Return to the room and Save if you want to keep those changes on disk.\n"
+            "Nothing is saved or discarded by opening the project screen.");
         return;
     }
     nova_game_ui_action(ui, action);
@@ -390,64 +406,133 @@ static void request(NovaGameUI *ui, NovaGameAction action)
 
 static bool button(Rectangle rect, const char *label, bool enabled, NovaGameUI *ui, NovaGameAction action)
 {
+    if (!enabled && CheckCollisionPointRec(GetMousePosition(),rect)) {
+        snprintf(ui->hint,sizeof(ui->hint),"%s",ui->playing ? "Stop the game to edit or save your project." :
+            action == NOVA_GAME_UNDO_ACTION ? "No earlier change to undo." :
+            action == NOVA_GAME_REDO_ACTION ? "No undone change to redo." :
+            action == NOVA_GAME_APPLY ? "No unapplied properties. Edit a value first." : "Select an item before using this action.");
+    }
     if (!nova_ui_button(rect, label, enabled)) return false;
     request(ui, action); return true;
 }
 
-static void tree_row(NovaGameUI *ui, const char *name, uint32_t id, int *row, int maximum)
+static bool row_button(Rectangle box, const char *label, bool selected, bool enabled)
+{
+    bool hover = CheckCollisionPointRec(GetMousePosition(),box);
+    if (selected || (hover && enabled))
+        DrawRectangleRounded(box,0.12f,8,selected ? nova_ui_style()->accent : nova_ui_style()->hover);
+    nova_ui_label(label,(int)box.x+9,(int)box.y+5,(int)box.width-18,selected ? WHITE : enabled ? INK : MUTED);
+    return enabled && hover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+}
+
+static void default_name(NovaGameUI *ui, const char *prefix)
+{
+    snprintf(ui->name,sizeof(ui->name),"%s_%u",prefix,ui->project.data.next_id);
+}
+
+static void open_sheet(NovaGameUI *ui, NovaGameSheet sheet)
+{
+    if (!clean_values(ui) || ui->playing) return;
+    ui->sheet = sheet; ui->browser_scroll = ui->choice_scroll = 0;
+    ui->name_focus = ui->path_focus = ui->location_focus = false;
+    memset(ui->field_focus,0,sizeof(ui->field_focus));
+    ui->path[0] = 0;
+    const NovaGame *g = &ui->project.data;
+    const NovaGameRoom *room = nova_game_room(g,ui->room);
+    ui->new_mode = room ? room->mode : NOVA_2D;
+    if (sheet == NOVA_GAME_SHEET_NEW) snprintf(ui->name,sizeof(ui->name),"MyGame");
+    else if (sheet == NOVA_GAME_SHEET_ROOM) default_name(ui,"Room");
+    else if (sheet == NOVA_GAME_SHEET_OBJECT) {
+        default_name(ui,"Object");
+        const NovaGameResource *a = nova_game_resource(g,ui->selected);
+        ui->object_appearance = a ? a->id : g->resources ? g->resource[0].id : 0;
+    } else if (sheet == NOVA_GAME_SHEET_IMPORT) {
+        default_name(ui,ui->new_mode == NOVA_2D ? "Sprite" : "Model");
+        snprintf(ui->location,sizeof(ui->location),"%s",ui->project.authored.root);
+    }
+    if (sheet == NOVA_GAME_SHEET_NEW || sheet == NOVA_GAME_SHEET_OPEN || sheet == NOVA_GAME_SHEET_IMPORT) browse(ui);
+}
+
+static void resource_row(NovaGameUI *ui, const char *name, uint32_t id, int *row, int top, int maximum)
 {
     int n = (*row)++;
     if (n < ui->tree_scroll || n >= ui->tree_scroll+maximum) return;
-    if (nova_ui_select_button((Rectangle){12, (float)(114+(n-ui->tree_scroll)*28), 200, 25}, name,
-        ui->selected == id, !ui->playing) && clean_values(ui)) selection(ui, id);
-}
-
-static void tree_heading(NovaGameUI *ui, const char *name, int *row, int maximum)
-{
-    int n = (*row)++;
-    if (n >= ui->tree_scroll && n < ui->tree_scroll+maximum)
-        nova_ui_label(name, 14, 117+(n-ui->tree_scroll)*28, 194, nova_ui_style()->accent);
+    if (row_button((Rectangle){18,(float)(top+(n-ui->tree_scroll)*28),190,27},name,
+        ui->selected == id,!ui->playing) && clean_values(ui)) selection(ui,id);
 }
 
 static void tree(NovaGameUI *ui, int height)
 {
-    nova_ui_label("RESOURCES", 14, 75, 190, INK);
-    Rectangle box = {0,110,220,(float)(height-220)};
-    if (CheckCollisionPointRec(GetMousePosition(), box)) {
-        ui->tree_scroll -= (int)(GetMouseWheelMove()*3);
-        if (ui->tree_scroll < 0) ui->tree_scroll = 0;
-    }
-    int row = 0, max = (height-250)/28;
     const NovaGame *g = &ui->project.data;
-    tree_heading(ui, "Sprites / Models", &row, max);
-    for (size_t i = 0; i < g->resources; ++i) tree_row(ui, g->resource[i].name, g->resource[i].id, &row, max);
-    tree_heading(ui, "Objects", &row, max);
-    for (size_t i = 0; i < g->objects; ++i) tree_row(ui, g->object[i].name, g->object[i].id, &row, max);
-    tree_heading(ui, "Rooms", &row, max);
-    for (size_t i = 0; i < g->rooms; ++i) {
-        char label[64]; snprintf(label, sizeof(label), "%s%s", g->room[i].id == g->start ? "* " : "", g->room[i].name);
-        tree_row(ui, label, g->room[i].id, &row, max);
-        for (size_t j = 0; j < g->instances; ++j) if (g->instance[j].room == g->room[i].id) {
-            snprintf(label, sizeof(label), "  %s", g->instance[j].name);
-            tree_row(ui, label, g->instance[j].id, &row, max);
+    int split = height/2+30;
+    nova_ui_label("Resources",14,76,180,INK);
+    Rectangle box = {8,106,206,(float)split-118};
+    int maximum = (int)box.height/28, row = 0;
+    if (CheckCollisionPointRec(GetMousePosition(),box)) ui->tree_scroll -= (int)(GetMouseWheelMove()*3);
+    if (ui->tree_scroll < 0) ui->tree_scroll = 0;
+    const char *headings[] = {"Sprites","Models","Objects","Rooms"};
+    for (int group = 0; group < 4; ++group) {
+        int n = row++;
+        if (n >= ui->tree_scroll && n < ui->tree_scroll+maximum) {
+            int y = 106+(n-ui->tree_scroll)*28;
+            char label[64]; snprintf(label,sizeof(label),"%s %s",ui->collapsed[group] ? ">" : "v",headings[group]);
+            if (row_button((Rectangle){8,(float)y,157,27},label,false,!ui->playing)) ui->collapsed[group] = !ui->collapsed[group];
+            if (nova_ui_button((Rectangle){172,(float)y,35,25},"+",!ui->playing)) {
+                open_sheet(ui,group < 2 ? NOVA_GAME_SHEET_IMPORT : group == 2 ? NOVA_GAME_SHEET_OBJECT : NOVA_GAME_SHEET_ROOM);
+                if (group < 2) {
+                    ui->new_mode = group == 0 ? NOVA_2D : NOVA_3D;
+                    default_name(ui,group == 0 ? "Sprite" : "Model");
+                }
+            }
+        }
+        if (ui->collapsed[group]) continue;
+        if (group < 2) {
+            for (size_t i = 0; i < g->resources; ++i)
+                if (g->resource[i].type == (group == 0 ? NOVA_ASSET_SPRITE : NOVA_ASSET_MODEL))
+                    resource_row(ui,g->resource[i].name,g->resource[i].id,&row,106,maximum);
+        } else if (group == 2) {
+            for (size_t i = 0; i < g->objects; ++i) resource_row(ui,g->object[i].name,g->object[i].id,&row,106,maximum);
+        } else {
+            for (size_t i = 0; i < g->rooms; ++i) {
+                char label[64]; snprintf(label,sizeof(label),"%s%s",g->room[i].id == g->start ? "* " : "",g->room[i].name);
+                resource_row(ui,label,g->room[i].id,&row,106,maximum);
+            }
         }
     }
-    if (ui->tree_scroll > row-1) ui->tree_scroll = row > 0 ? row-1 : 0;
-    button((Rectangle){12,(float)height-132,95,30}, "Undo", g->rooms && !ui->playing, ui, NOVA_GAME_UNDO_ACTION);
-    button((Rectangle){116,(float)height-132,96,30}, "Redo", g->rooms && !ui->playing, ui, NOVA_GAME_REDO_ACTION);
-    if (nova_ui_button((Rectangle){12,(float)height-94,200,30}, "Delete selected...", ui->selected && !ui->playing) && clean_values(ui))
+    if (ui->tree_scroll > row-maximum) ui->tree_scroll = row > maximum ? row-maximum : 0;
+    DrawLine(0,split,220,split,nova_ui_style()->border);
+    nova_ui_label("Room instances",14,split+15,192,INK);
+    const NovaGameRoom *room = nova_game_room(g,ui->room);
+    if (row_button((Rectangle){8,(float)split+43,200,28},room ? room->name : "No room",ui->selected == ui->room,!ui->playing) && clean_values(ui))
+        selection(ui,ui->room);
+    Rectangle outline = {8,(float)split+76,200,(float)height-split-174};
+    if (CheckCollisionPointRec(GetMousePosition(),outline)) ui->outline_scroll -= (int)(GetMouseWheelMove()*3);
+    if (ui->outline_scroll < 0) ui->outline_scroll = 0;
+    int count = 0, visible = (int)outline.height/28;
+    for (size_t i = 0; i < g->instances; ++i) if (g->instance[i].room == ui->room) {
+        int index = count++;
+        if (index < ui->outline_scroll || index >= ui->outline_scroll+visible) continue;
+        char label[64]; snprintf(label,sizeof(label),"  %s",g->instance[i].name);
+        if (row_button((Rectangle){14,outline.y+(index-ui->outline_scroll)*28,194,27},label,
+            ui->selected == g->instance[i].id,!ui->playing) && clean_values(ui)) selection(ui,g->instance[i].id);
+    }
+    if (ui->outline_scroll > count-visible) ui->outline_scroll = count > visible ? count-visible : 0;
+    if (!count) nova_ui_label("No instances yet",20,(int)outline.y+6,186,MUTED);
+    if (nova_ui_button((Rectangle){12,(float)height-85,196,30},"Delete selected...",ui->selected && !ui->playing) && clean_values(ui))
         ui->dialog = NOVA_GAME_DIALOG_DELETE;
 }
 
 static void field(NovaGameUI *ui, int index, const char *label, int x, int y)
 {
-    nova_ui_label(label, x, y+6, 132, MUTED);
-    if (nova_ui_field_checked((Rectangle){(float)x+132,(float)y,145,28}, ui->fields[index],
+    if (y < ui->inspector_top || y+28 > ui->inspector_bottom) return;
+    nova_ui_label(label, x, y+6, 110, MUTED);
+    if (nova_ui_field_checked((Rectangle){(float)x+112,(float)y,160,28}, ui->fields[index],
         sizeof(ui->fields[index]), &ui->field_focus[index], ERROR)) ui->values_dirty = true;
 }
 
 static void toggle(NovaGameUI *ui, int event, const char *label, int x, int y)
 {
+    if (y < ui->inspector_top || y+28 > ui->inspector_bottom) return;
     const NovaGameObject *o = nova_game_object(&ui->project.data, ui->selected);
     if (!o) return;
     bool enabled = event == 0 ? o->create_position : event == 1 ? o->controls : event == 2 ? o->step_move : o->primary_move;
@@ -465,64 +550,109 @@ static void toggle(NovaGameUI *ui, int event, const char *label, int x, int y)
     }
 }
 
-static void properties(NovaGameUI *ui, int x)
+static void section(NovaGameUI *ui, const char *label, int x, int y)
+{
+    if (y < ui->inspector_top || y+22 > ui->inspector_bottom) return;
+    nova_ui_label(label,x,y,277,nova_ui_style()->accent);
+}
+
+static void properties(NovaGameUI *ui, int x, int height)
 {
     const NovaGame *g = &ui->project.data;
     const NovaGameInstance *n = nova_game_instance(g, ui->selected);
     const NovaGameObject *o = nova_game_object(g, ui->selected);
     const NovaGameRoom *r = nova_game_room(g, ui->selected);
     const NovaGameResource *a = nova_game_resource(g, ui->selected);
-    nova_ui_label(n ? "INSTANCE PROPERTIES" : o ? "OBJECT EVENTS / ACTIONS" : r ? "ROOM PROPERTIES" : a ? "APPEARANCE" : "Select a resource or instance",
-        x, 115, 280, INK);
+    nova_ui_label("Inspector",x,76,277,INK);
+    const char *name = n ? n->name : o ? o->name : r ? r->name : a ? a->name : "Nothing selected";
+    nova_ui_label(name,x,106,277,INK);
+    nova_ui_label(n ? "Room / Instance" : o ? "Resources / Object" : r ? "Resources / Room" :
+        a ? a->type == NOVA_ASSET_SPRITE ? "Resources / Sprite" : "Resources / Model" : "Select a resource or instance",
+        x,132,277,MUTED);
     if (!n && !o && !r && !a) return;
-    field(ui, 0, "Name", x, 145);
-    int y = 181;
-    if (n) {
-        const char *labels[] = {"X", "Y / height", "Z (3D)", "Instance scale"};
-        const NovaGameRoom *owner_room = nova_game_room(g,n->room);
-        for (int i = 0; i < 4; ++i) {
-            if (i == 2 && owner_room && owner_room->mode == NOVA_2D)
-                nova_ui_label("Z: 3D rooms only",x,y+i*32+6,277,MUTED);
-            else field(ui, i+1, labels[i], x, y+i*32);
-        }
-        y += 140;
-        const NovaGameObject *owner = nova_game_object(g,n->object);
-        nova_ui_label(owner ? TextFormat("Object: %s",owner->name) : "Missing object", x,y,277,MUTED);
-        if (nova_ui_button((Rectangle){(float)x,(float)y+28,277,30}, "Edit reusable object", true) && clean_values(ui))
-            selection(ui,n->object);
-        y += 66;
-    } else if (o) {
-        const char *labels[] = {"Draw size / scale", "Controls speed", "Create X", "Create Y", "Create Z",
-            "Step move X/sec", "Step move Y/sec", "Step move Z/sec", "Primary offset X", "Primary offset Y", "Primary offset Z"};
+    int content = n ? 356 : r && r->mode == NOVA_3D ? 444 : 180;
+    if (o) {
         const NovaGameResource *appearance = nova_game_resource(g,o->resource);
-        for (int i = 0; i < 11; ++i) {
-            if (appearance && appearance->type == NOVA_ASSET_SPRITE && (i == 4 || i == 7 || i == 10))
-                nova_ui_label("Z: model objects only",x,y+i*29+6,277,MUTED);
-            else field(ui,i+1,labels[i],x,y+i*29);
+        bool is3d = appearance && appearance->type == NOVA_ASSET_MODEL;
+        content = 367+(o->controls ? 34 : 0)+(o->step_move ? is3d ? 102 : 68 : 0)+
+            (o->create_position ? is3d ? 102 : 68 : 0)+(o->primary_move ? is3d ? 102 : 68 : 0);
+    }
+    ui->inspector_top = 171; ui->inspector_bottom = height-130;
+    Rectangle scroll = {(float)x,171,278,(float)ui->inspector_bottom-171};
+    if (CheckCollisionPointRec(GetMousePosition(),scroll)) ui->inspector_scroll -= (int)(GetMouseWheelMove()*44);
+    int maximum = content-(ui->inspector_bottom-ui->inspector_top);
+    if (maximum < 0) maximum = 0;
+    if (ui->inspector_scroll > maximum) ui->inspector_scroll = maximum;
+    if (ui->inspector_scroll < 0) ui->inspector_scroll = 0;
+    field(ui,0,"Name",x,177-ui->inspector_scroll);
+    int y = 220-ui->inspector_scroll;
+    if (n) {
+        const NovaGameRoom *owner_room = nova_game_room(g,n->room);
+        bool is3d = owner_room && owner_room->mode == NOVA_3D;
+        section(ui,"Transform",x,y); y += 30;
+        field(ui,1,"Position X",x,y); y += 34;
+        field(ui,2,is3d ? "Height Y" : "Position Y",x,y); y += 34;
+        if (is3d) { field(ui,3,"Position Z",x,y); y += 34; }
+        field(ui,4,"Scale",x,y); y += 46;
+        const NovaGameObject *owner = nova_game_object(g,n->object);
+        section(ui,owner ? TextFormat("Object: %s",owner->name) : "Missing object",x,y);
+        if (y+62 <= ui->inspector_bottom && y+30 >= ui->inspector_top &&
+            nova_ui_button((Rectangle){(float)x,(float)y+30,277,30},"Edit object behaviors",true) && clean_values(ui))
+            selection(ui,n->object);
+    } else if (o) {
+        const NovaGameResource *appearance = nova_game_resource(g,o->resource);
+        bool is3d = appearance && appearance->type == NOVA_ASSET_MODEL;
+        section(ui,appearance ? TextFormat("Appearance / %s",appearance->name) : "Appearance",x,y); y += 30;
+        field(ui,1,is3d ? "Model scale" : "Sprite size",x,y); y += 44;
+        section(ui,"Step / movement",x,y); y += 28;
+        toggle(ui,1,"Move with controls",x,y); y += 34;
+        if (o->controls) { field(ui,2,"Speed / sec",x,y); y += 34; }
+        toggle(ui,2,"Constant movement",x,y); y += 34;
+        if (o->step_move) {
+            field(ui,6,"X / sec",x,y); y += 34;
+            field(ui,7,is3d ? "Height / sec" : "Y / sec",x,y); y += 34;
+            if (is3d) { field(ui,8,"Z / sec",x,y); y += 34; }
         }
-        y += 326;
-        toggle(ui,0,"Create: set position",x,y);
-        toggle(ui,1,"Step: move with controls",x,y+31);
-        toggle(ui,2,"Step: constant movement",x,y+62);
-        toggle(ui,3,"Primary press: move by offset",x,y+93);
-        y += 130;
+        y += 12; section(ui,"Create / initial position",x,y); y += 28;
+        toggle(ui,0,"Override placed position",x,y); y += 34;
+        if (o->create_position) {
+            field(ui,3,"Position X",x,y); y += 34;
+            field(ui,4,is3d ? "Height Y" : "Position Y",x,y); y += 34;
+            if (is3d) { field(ui,5,"Position Z",x,y); y += 34; }
+        }
+        y += 12; section(ui,"Primary press / Space",x,y); y += 28;
+        toggle(ui,3,"Move by offset",x,y); y += 34;
+        if (o->primary_move) {
+            field(ui,9,"Offset X",x,y); y += 34;
+            field(ui,10,is3d ? "Height offset" : "Offset Y",x,y); y += 34;
+            if (is3d) field(ui,11,"Offset Z",x,y);
+        }
     } else if (r) {
-        const char *labels[] = {"Grid snap", "Camera X", "Camera Y", "Camera Z", "Look at X", "Look at Y", "Look at Z", "Field of view"};
-        int count = r->mode == NOVA_2D ? 1 : 8;
-        for (int i = 0; i < count; ++i) field(ui,i+1,labels[i],x,y+i*31);
-        y += count*31+8;
-        nova_ui_label(r->mode == NOVA_2D ? "2D room: logical 960 x 540" : "3D room: XZ floor, Y height", x,y,277,MUTED);
-        if (nova_ui_button((Rectangle){(float)x,(float)y+30,277,30}, g->start == r->id ? "Designated starting room" : "Make starting room", true) && clean_values(ui)) {
+        section(ui,r->mode == NOVA_2D ? "2D room / 960 x 540" : "3D room / XZ floor",x,y); y += 30;
+        field(ui,1,"Snap step",x,y); y += 44;
+        if (r->mode == NOVA_3D) {
+            section(ui,"Camera",x,y); y += 28;
+            const char *labels[] = {"Position X","Position Y","Position Z","Look at X","Look at Y","Look at Z","Field of view"};
+            for (int i = 0; i < 7; ++i) { field(ui,i+2,labels[i],x,y); y += 34; }
+            y += 12;
+        }
+        if (y >= ui->inspector_top && y+32 <= ui->inspector_bottom &&
+            nova_ui_button((Rectangle){(float)x,(float)y,277,32},g->start == r->id ? "Starting room" : "Set as starting room",g->start != r->id) && clean_values(ui)) {
             NovaGame candidate = *g; candidate.start = r->id;
             nova_game_commit(&ui->project,&candidate,ERROR);
+            message(ui,"Starting room changed. Run will begin here.");
         }
-        y += 76;
     } else if (a) {
-        nova_ui_label(a->type == NOVA_ASSET_SPRITE ? "Validated PNG sprite" : "Validated static GLB model",x,y,277,MUTED);
-        nova_ui_label(a->path,x,y+27,277,MUTED);
-        if (nova_ui_button((Rectangle){(float)x,(float)y+60,277,34}, "Create object using this", true))
-            request(ui,NOVA_GAME_OBJECT);
-        if (a->type == NOVA_ASSET_MODEL && nova_ui_button((Rectangle){(float)x,(float)y+104,277,34}, "Original static modeller", true) && clean_values(ui)) {
+        section(ui,a->type == NOVA_ASSET_SPRITE ? "PNG sprite / appearance" : "Static model / appearance",x,y); y += 34;
+        if (y >= ui->inspector_top && y+34 <= ui->inspector_bottom &&
+            nova_ui_button((Rectangle){(float)x,(float)y,277,34},"Create object using this...",true)) open_sheet(ui,NOVA_GAME_SHEET_OBJECT);
+        y += 46;
+        if (y >= ui->inspector_top && y+32 <= ui->inspector_bottom &&
+            nova_ui_button((Rectangle){(float)x,(float)y,277,32},ui->resource_view ? "Return to room" : "Preview appearance",true) && clean_values(ui))
+            ui->resource_view = !ui->resource_view;
+        y += 44;
+        if (a->type == NOVA_ASSET_MODEL && y >= ui->inspector_top && y+32 <= ui->inspector_bottom &&
+            nova_ui_button((Rectangle){(float)x,(float)y,277,32},"Edit in static modeller",true) && clean_values(ui)) {
             char manifest[NOVA_NATIVE_PATH_CAPACITY];
             NovaProject saved;
             bool declared = false;
@@ -534,10 +664,15 @@ static void properties(NovaGameUI *ui, int x)
                     nova_model_ui_open(&ui->modeller,manifest,ui->project.authored.root,a->path,ERROR);
             }
         }
-        y += 155;
     }
-    button((Rectangle){(float)x,(float)y,134,31},"Apply properties",true,ui,NOVA_GAME_APPLY);
-    if (nova_ui_button((Rectangle){(float)x+143,(float)y,134,31},"Reset values",true)) values(ui);
+    if (maximum) {
+        DrawRectangle(x+280,ui->inspector_top,3,ui->inspector_bottom-ui->inspector_top,nova_ui_style()->border);
+        int track = ui->inspector_bottom-ui->inspector_top;
+        DrawRectangle(x+280,ui->inspector_top+ui->inspector_scroll*track/(maximum+track),3,track*track/(maximum+track),nova_ui_style()->muted);
+    }
+    nova_ui_label(ui->values_dirty ? "Unapplied changes" : "Properties up to date",x,height-112,277,MUTED);
+    button((Rectangle){(float)x,(float)height-84,132,32},"Apply",ui->values_dirty,ui,NOVA_GAME_APPLY);
+    if (nova_ui_button((Rectangle){(float)x+141,(float)height-84,132,32},"Reset",ui->values_dirty)) values(ui);
 }
 
 static Vector2 plane_point(const NovaGameRoom *r, Rectangle box, NovaVec3 p)
@@ -619,55 +754,152 @@ static void layout(NovaGameUI *ui, Rectangle box)
     }
 }
 
-static void browser(NovaGameUI *ui, int width, int height)
+static void dimensions(NovaGameUI *ui, int x, int y, bool appearance)
 {
-    nova_ui_label(ui->browser_import ? "ADD APPEARANCE / choose PNG or static GLB" :
-        "New Project -> Appearance -> Object -> Room -> Run",240,114,width-570,INK);
-    nova_ui_label("Location (existing directory)",240,154,220,MUTED);
-    nova_ui_field_checked((Rectangle){240,180,(float)width-575,33},ui->location,sizeof(ui->location),&ui->location_focus,ERROR);
-    if (nova_ui_button((Rectangle){240,225,95,32},"Up",true)) {
-        snprintf(ui->location,sizeof(ui->location),"%s",GetPrevDirectoryPath(ui->location)); browse(ui);
+    if (nova_ui_select_button((Rectangle){(float)x,(float)y,148,34},appearance ? "Sprite / PNG" :
+        ui->sheet == NOVA_GAME_SHEET_ROOM ? "2D room" : "2D game",ui->new_mode == NOVA_2D,true)) {
+        ui->new_mode = NOVA_2D;
+        if (appearance) ui->path[0] = 0;
     }
-    if (nova_ui_button((Rectangle){344,225,155,32},"List location",true)) browse(ui);
-    nova_ui_label("Project / new resource name is in the Name field above.",240,280,width-575,MUTED);
-    if (!ui->browser_import) button((Rectangle){240,351,132,34},"New project",true,ui,NOVA_GAME_NEW);
-    nova_ui_label(ui->browser_import ? "Choose a file below, enter a unique Name, then Import selected." :
-        "New opens a runnable starting room with an original player.",240,397,width-575,MUTED);
-    int shown = 0, row = 0, max = (height-530)/32;
-    Rectangle region = {240,440,(float)width-575,(float)height-530};
-    if (CheckCollisionPointRec(GetMousePosition(),region)) {
-        ui->browser_scroll -= (int)(GetMouseWheelMove()*3);
-        if (ui->browser_scroll < 0) ui->browser_scroll = 0;
+    if (nova_ui_select_button((Rectangle){(float)x+158,(float)y,148,34},appearance ? "Model / GLB" :
+        ui->sheet == NOVA_GAME_SHEET_ROOM ? "3D room" : "3D game",ui->new_mode == NOVA_3D,true)) {
+        ui->new_mode = NOVA_3D;
+        if (appearance) ui->path[0] = 0;
     }
+}
+
+static void file_browser(NovaGameUI *ui, Rectangle box, bool importing)
+{
+    int x = (int)box.x, y = (int)box.y, width = (int)box.width;
+    bool creating = ui->sheet == NOVA_GAME_SHEET_NEW;
+    nova_ui_label(importing ? "Choose an appearance file" : creating ?
+        "Project location / choose an existing folder" : "Project folder / select game.nova-game",x,y,width,MUTED);
+    if (nova_ui_field_checked((Rectangle){(float)x,(float)y+27,(float)width-153,32},ui->location,
+        sizeof(ui->location),&ui->location_focus,ERROR)) ui->path[0] = 0;
+    if (nova_ui_button((Rectangle){(float)x+width-144,(float)y+27,62,32},"Up",true)) {
+        snprintf(ui->location,sizeof(ui->location),"%s",GetPrevDirectoryPath(ui->location)); browse(ui); ui->path[0] = 0;
+    }
+    if (nova_ui_button((Rectangle){(float)x+width-73,(float)y+27,73,32},"Browse",true) ||
+        (ui->location_focus && IsKeyPressed(KEY_ENTER))) { browse(ui); ui->path[0] = 0; }
+    Rectangle list = {(float)x,(float)y+70,(float)width,box.height-70};
+    DrawRectangleRounded(list,0.03f,8,nova_ui_style()->field);
+    int max = (int)(list.height-8)/30;
+    int total = 0, shown = 0;
+    if (CheckCollisionPointRec(GetMousePosition(),list)) ui->browser_scroll -= (int)(GetMouseWheelMove()*3);
+    if (ui->browser_scroll < 0) ui->browser_scroll = 0;
     for (unsigned i = 0; i < ui->files.count; ++i) {
         const char *path = ui->files.paths[i];
         bool dir = DirectoryExists(path);
         bool game = !strcmp(GetFileName(path),NOVA_GAME_FILE);
-        bool sprite = IsFileExtension(path,".png"), model = IsFileExtension(path,".glb");
-        if (!dir && !game && !sprite && !model) continue;
-        if (row++ < ui->browser_scroll || shown >= max) continue;
-        char label[256]; snprintf(label,sizeof(label),"%s%s",dir ? "> " : "",GetFileName(path));
-        if (nova_ui_button((Rectangle){240,(float)(440+shown*32),(float)width-575,29},label,true)) {
+        bool asset = IsFileExtension(path,ui->new_mode == NOVA_2D ? ".png" : ".glb");
+        if (!dir && !(importing ? asset : !creating && game)) continue;
+        if (total++ < ui->browser_scroll || shown >= max) continue;
+        char label[300];
+        snprintf(label,sizeof(label),"%s%s",dir ? "> " : "",GetFileName(path));
+        if (row_button((Rectangle){list.x+4,list.y+4+shown*30,list.width-8,28},label,!strcmp(path,ui->path),true)) {
             if (strlen(path) >= sizeof(ui->path)) message(ui,"Path exceeds budget");
-            else if (dir) { strcpy(ui->location,path); browse(ui); return; }
-            else {
-                strcpy(ui->path,path);
-                if (game) request(ui,NOVA_GAME_OPEN);
-                else {
-                    ui->new_mode = sprite ? NOVA_2D : NOVA_3D;
-                    message(ui,"Appearance selected. Enter a unique Name, then Import selected; the original is never changed.");
-                }
-            }
+            else if (dir) { strcpy(ui->location,path); ui->path[0] = 0; browse(ui); return; }
+            else { strcpy(ui->path,path); message(ui,importing ? "File selected. Import will copy it; the original stays unchanged." : "Project selected. Open when ready."); }
         }
         ++shown;
     }
-    if (ui->project.authored.text) {
-        button((Rectangle){(float)width-310,300,277,34},"Import selected appearance",true,ui,NOVA_GAME_IMPORT);
-        if (nova_ui_button((Rectangle){(float)width-310,344,277,34},"Return to room / cancel picker",true) && clean_values(ui)) {
-            selection(ui,nova_game_room(&ui->project.data,ui->browser_room) ? ui->browser_room : ui->project.data.start);
-            ui->browser_import = false;
-        }
+    if (ui->browser_scroll > total-max) ui->browser_scroll = total > max ? total-max : 0;
+    if (!total) nova_ui_label(importing ? "No matching files here. Browse another folder." :
+        creating ? "No subfolders here. This location can still hold your new project." :
+        "No folders or projects here.",x+12,(int)list.y+12,width-24,MUTED);
+}
+
+static void project_screen(NovaGameUI *ui, int width, int height)
+{
+    int x = (width-880)/2;
+    nova_ui_label("Nova Studio",x,65,880,INK);
+    nova_ui_label("Make a game. Start with a room, add objects, and press Run.",x,98,880,MUTED);
+    bool creating = ui->sheet != NOVA_GAME_SHEET_OPEN;
+    if (nova_ui_select_button((Rectangle){(float)x,146,180,38},"New project",creating,true)) open_sheet(ui,NOVA_GAME_SHEET_NEW);
+    if (nova_ui_select_button((Rectangle){(float)x+190,146,180,38},"Open project",!creating,true)) open_sheet(ui,NOVA_GAME_SHEET_OPEN);
+    DrawRectangleRounded((Rectangle){(float)x,201,880,(float)height-285},0.025f,8,nova_ui_style()->panel);
+    if (creating) {
+        nova_ui_label("Project name",x+22,221,380,MUTED);
+        nova_ui_field_checked((Rectangle){(float)x+22,247,394,34},ui->name,sizeof(ui->name),&ui->name_focus,ERROR);
+        nova_ui_label("Game dimension",x+450,221,380,MUTED);
+        dimensions(ui,x+450,247,false);
+        nova_ui_label("A new folder will be created here. Existing folders are never replaced.",x+22,300,830,MUTED);
+    } else {
+        nova_ui_label("Open your project folder, then select game.nova-game.",x+22,225,830,INK);
+        nova_ui_label("Hand-authored manifest / Lua projects are available in Advanced.",x+22,258,830,MUTED);
     }
+    file_browser(ui,(Rectangle){(float)x+22,335,836,(float)height-515},false);
+    int footer = height-126;
+    nova_ui_label(creating ? !nova_game_name(ui->name) ? "Name: use 1..31 letters, numbers or underscores (no spaces)." :
+        "Creates a ready-to-play room with a controllable player." :
+        *ui->path ? GetFileName(GetDirectoryPath(ui->path)) : "Select a project to enable Open.",x+22,footer-36,590,MUTED);
+    bool can_open = *ui->path && !strcmp(GetFileName(ui->path),NOVA_GAME_FILE);
+    if (nova_ui_button((Rectangle){(float)x+640,(float)footer,218,36},creating ? "Create project" : "Open project",
+        creating ? nova_game_name(ui->name) : can_open)) request(ui,creating ? NOVA_GAME_NEW : NOVA_GAME_OPEN);
+    if (ui->project.authored.text && nova_ui_button((Rectangle){(float)x+22,(float)footer,170,36},"Cancel / return",true))
+        ui->sheet = NOVA_GAME_SHEET_NONE;
+    if (nova_ui_button((Rectangle){(float)x+204,(float)footer,150,36},"Advanced...",true)) ui->advanced = true;
+}
+
+static void creation_sheet(NovaGameUI *ui, int width, int height)
+{
+    DrawRectangle(0,0,width,height,(Color){0,0,0,90});
+    bool importing = ui->sheet == NOVA_GAME_SHEET_IMPORT;
+    bool object = ui->sheet == NOVA_GAME_SHEET_OBJECT;
+    bool project = ui->sheet == NOVA_GAME_SHEET_PROJECT;
+    Rectangle box = {(float)width/2-390,(float)height/2-305,780,610};
+    int x = (int)box.x+24, y = (int)box.y+24;
+    DrawRectangleRounded(box,0.025f,8,nova_ui_style()->panel);
+    const char *title = project ? "Project" : importing ? "Add an appearance" : object ? "Create an object" : "Add a room";
+    nova_ui_label(title,x,y,732,INK);
+    if (project) {
+        nova_ui_label("Project setup and source tools",x,y+40,732,MUTED);
+        if (nova_ui_button((Rectangle){(float)x,(float)y+88,350,40},"New project...",true)) open_sheet(ui,NOVA_GAME_SHEET_NEW);
+        if (nova_ui_button((Rectangle){(float)x,(float)y+140,350,40},"Open project...",true)) open_sheet(ui,NOVA_GAME_SHEET_OPEN);
+        if (nova_ui_button((Rectangle){(float)x,(float)y+220,350,40},"Advanced source editor...",true)) {
+            ui->sheet = NOVA_GAME_SHEET_NONE; ui->advanced = true;
+        }
+        nova_ui_label("Advanced drafts stay separate. Opening this menu never saves.",x,y+282,732,MUTED);
+    } else {
+        nova_ui_label(importing ? "Import a sprite or static model, then use it to create an object." :
+            object ? "Objects share an appearance and behaviors. Place copies in rooms." :
+            "Rooms hold placed instances. Choose the room's dimension here.",x,y+33,732,MUTED);
+        nova_ui_label(importing ? "Appearance name" : object ? "Object name" : "Room name",x,y+72,400,MUTED);
+        nova_ui_field_checked((Rectangle){(float)x,(float)y+98,350,34},ui->name,sizeof(ui->name),&ui->name_focus,ERROR);
+        if (!object) dimensions(ui,x+384,y+98,importing);
+        if (importing) {
+            file_browser(ui,(Rectangle){(float)x,(float)y+154,732,304},true);
+            nova_ui_label(*ui->path ? TextFormat("Selected: %s",GetFileName(ui->path)) : "Select a file, then choose Import.",x,y+475,732,MUTED);
+        } else if (object) {
+            nova_ui_label("Appearance",x,y+156,732,nova_ui_style()->accent);
+            int row = 0, count = 0, maximum = 8;
+            Rectangle list = {(float)x,(float)y+187,732,248};
+            DrawRectangleRounded(list,0.02f,8,nova_ui_style()->field);
+            if (CheckCollisionPointRec(GetMousePosition(),list)) ui->choice_scroll -= (int)(GetMouseWheelMove()*3);
+            if (ui->choice_scroll < 0) ui->choice_scroll = 0;
+            for (size_t i = 0; i < ui->project.data.resources; ++i) {
+                const NovaGameResource *a = &ui->project.data.resource[i];
+                int n = count++;
+                if (n < ui->choice_scroll || row >= maximum) continue;
+                char label[96]; snprintf(label,sizeof(label),"%s   /   %s",a->name,a->type == NOVA_ASSET_SPRITE ? "Sprite" : "Model");
+                if (row_button((Rectangle){list.x+4,list.y+4+row*30,list.width-8,28},label,ui->object_appearance == a->id,true))
+                    ui->object_appearance = a->id;
+                ++row;
+            }
+            if (ui->choice_scroll > count-maximum) ui->choice_scroll = count > maximum ? count-maximum : 0;
+            if (!count) nova_ui_label("Add a sprite or model first, then create an object.",x+14,y+201,690,MUTED);
+        } else {
+            nova_ui_label("2D: sprite instances on an XY canvas.",x,y+188,732,MUTED);
+            nova_ui_label("3D: model instances on an XZ floor, with height and a camera.",x,y+220,732,MUTED);
+            nova_ui_label("Adding a room does not change the designated starting room.",x,y+276,732,MUTED);
+        }
+        bool enabled = nova_game_name(ui->name) && (importing ? *ui->path != 0 : !object || ui->object_appearance != 0);
+        if (!nova_game_name(ui->name))
+            nova_ui_label("Name: use 1..31 letters, numbers or underscores (no spaces).",x,y+502,732,MUTED);
+        if (nova_ui_button((Rectangle){box.x+540,box.y+550,216,36},importing ? "Import appearance" : object ? "Create object" : "Create room",enabled))
+            request(ui,importing ? NOVA_GAME_IMPORT : object ? NOVA_GAME_OBJECT : NOVA_GAME_ROOM);
+    }
+    if (nova_ui_button((Rectangle){box.x+24,box.y+550,140,36},"Cancel",true)) ui->sheet = NOVA_GAME_SHEET_NONE;
 }
 
 static void dialog(NovaGameUI *ui, int width, int height)
@@ -681,6 +913,9 @@ static void dialog(NovaGameUI *ui, int width, int height)
     nova_ui_label(title,(int)box.x+20,(int)box.y+18,740,INK);
     const char *body = ui->dialog == NOVA_GAME_DIALOG_CONFLICT && ui->project.authored.has_conflict ?
         ui->project.authored.conflict.text : ui->message;
+    if (ui->dialog == NOVA_GAME_DIALOG_DELETE)
+        body = TextFormat("Delete %s from this game's draft?\n\nUndo can restore it. Imported files are kept.\n"
+            "Items used by objects or room instances cannot be deleted.\nThe starting room cannot be deleted.",ui->fields[0]);
     NovaDocument text = {.text = (char *)body, .length = strlen(body)};
     nova_ui_text(&ui->details,&text,(Rectangle){box.x+20,box.y+58,740,310},false,ERROR);
     if (nova_ui_button((Rectangle){box.x+20,box.y+400,120,34},"Cancel / close",true)) {
@@ -692,6 +927,7 @@ static void dialog(NovaGameUI *ui, int width, int height)
         nova_ui_button((Rectangle){box.x+154,box.y+400,240,34},"Overwrite observed source only",true)) {
         ui->dialog = NOVA_GAME_DIALOG_NONE;
         bool saved = nova_game_save(&ui->project,true,ERROR);
+        ui->last_action = NOVA_GAME_SAVE; ui->action_failed = !saved;
         if (!saved && ui->project.authored.has_conflict) ui->dialog = NOVA_GAME_DIALOG_CONFLICT;
         else if (saved) message(ui,"Source and generated files saved. Run requires a separate explicit Run action.");
     } else if ((ui->dialog == NOVA_GAME_DIALOG_CLOSE || ui->dialog == NOVA_GAME_DIALOG_DISCARD) &&
@@ -717,7 +953,12 @@ bool nova_game_ui_draw(NovaGameUI *ui, bool bounded)
 {
     int width = GetScreenWidth(), height = GetScreenHeight();
     int fw = GetRenderWidth(), fh = GetRenderHeight();
+    ui->hint[0] = 0;
     bool modal = ui->dialog != NOVA_GAME_DIALOG_NONE;
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        memset(ui->field_focus,0,sizeof(ui->field_focus));
+        ui->name_focus = ui->path_focus = ui->location_focus = false;
+    }
     if (ui->close_after_modeller && ui->modeller.active && ui->modeller.decision == NOVA_MODEL_DECISION_NONE &&
         !ui->modeller.close) ui->close_after_modeller = false;
     nova_model_ui_update(&ui->modeller);
@@ -731,8 +972,13 @@ bool nova_game_ui_draw(NovaGameUI *ui, bool bounded)
         message(ui,"Model exported separately. Preview restaged; Run remains explicit and guarded.");
     }
     const NovaGameRoom *r = nova_game_room(&ui->project.data,ui->room);
-    bool context = nova_game_resource(&ui->project.data,ui->selected) || nova_game_object(&ui->project.data,ui->selected);
-    Rectangle preview = {240,151,(float)width-575, r && r->mode == NOVA_3D && !ui->playing && !context ? 285 : (float)height-330};
+    bool setup = ui->sheet == NOVA_GAME_SHEET_NEW || ui->sheet == NOVA_GAME_SHEET_OPEN || !ui->project.authored.text;
+    bool sheet = ui->sheet != NOVA_GAME_SHEET_NONE;
+    bool context = ui->resource_view && (nova_game_resource(&ui->project.data,ui->selected) || nova_game_object(&ui->project.data,ui->selected));
+    int center_width = width-556;
+    int canvas_height = height-228;
+    Rectangle preview = {236,176,(float)center_width,r && r->mode == NOVA_3D && !ui->playing && !context ? canvas_height*0.57f : (float)canvas_height};
+    ui->preview_bounds = preview;
     if (ui->modeller.active) preview = (Rectangle){(float)width-450,106,436,245};
     NovaFramebufferRect region = {(int)lroundf(preview.x*fw/width),(int)lroundf(preview.y*fh/height),
         (int)lroundf(preview.width*fw/width),(int)lroundf(preview.height*fh/height)};
@@ -749,10 +995,10 @@ bool nova_game_ui_draw(NovaGameUI *ui, bool bounded)
         frame = ui->modeller.ready ? &ui->modeller.view.frame : NULL;
         presentation = &ui->modeller.view.presentation; resources = &ui->modeller.view.resources;
     }
-    if (!nova_presentation_layout_region(width,height,fw,fh,region,frame && frame->mode == NOVA_2D,&present)) {
+    if (!nova_presentation_layout_region(width,height,fw,fh,region,false,&present)) {
         message(ui,"Invalid native game panel dimensions"); return false;
     }
-    bool active = ui->playing && !modal && !ui->modeller.active && !IsWindowMinimized() && (IsWindowFocused() || bounded);
+    bool active = ui->playing && !modal && !sheet && !ui->modeller.active && !IsWindowMinimized() && (IsWindowFocused() || bounded);
     nova_pause_services(&ui->play_resources,!active);
     if (!active) { ui->accumulator = 0; ui->play_focus = false; }
     if (active) {
@@ -774,70 +1020,79 @@ bool nova_game_ui_draw(NovaGameUI *ui, bool bounded)
     BeginDrawing();
     ClearBackground(nova_ui_style()->background);
     DrawRectangle(0,0,width,58,nova_ui_style()->panel);
-    DrawRectangle(0,62,222,height-110,nova_ui_style()->panel);
-    DrawRectangle(width-312,105,312,height-153,nova_ui_style()->panel);
-    if (frame && ui->project.authored.text) {
+    if (!setup) {
+        DrawRectangle(0,62,220,height-104,nova_ui_style()->panel);
+        DrawRectangle(width-304,62,304,height-104,nova_ui_style()->panel);
+        DrawLine(220,62,220,height-42,nova_ui_style()->border);
+        DrawLine(width-304,62,width-304,height-42,nova_ui_style()->border);
+    }
+    if (frame && ui->project.authored.text && !setup) {
         NovaCanvasState canvas = nova_begin_canvas(fw,fh);
         nova_presentation_composite(presentation,frame,resources,present.viewport);
         nova_end_canvas(canvas);
     }
     if (ui->modeller.active) {
         nova_model_ui_draw(&ui->modeller,preview);
-    } else if (!modal) {
-        nova_ui_label("Nova Studio / Objects and Rooms",14,18,285,INK);
-        button((Rectangle){306,10,110,35},nova_game_dirty(&ui->project) ? "Save *" : "Save",ui->project.authored.text && !ui->playing,ui,NOVA_GAME_SAVE);
-        button((Rectangle){425,10,83,35},"Run",ui->project.authored.text && !ui->playing,ui,NOVA_GAME_RUN);
-        button((Rectangle){516,10,83,35},"Stop",ui->playing,ui,NOVA_GAME_STOP);
-        button((Rectangle){607,10,90,35},"Restart",ui->playing,ui,NOVA_GAME_RESTART);
-        if (nova_ui_button((Rectangle){705,10,100,35},"Advanced",!ui->playing) && clean_values(ui)) {
-            ui->advanced = true; message(ui,"Advanced preserves visual drafts. Generated edits are not adopted or overwritten by visual Save.");
+    } else if (setup) {
+        if (!modal) project_screen(ui,width,height);
+    } else if (!modal && !sheet) {
+        if (nova_ui_button((Rectangle){12,11,96,34},"Project...",!ui->playing)) open_sheet(ui,NOVA_GAME_SHEET_PROJECT);
+        const char *root_name = GetFileName(ui->project.authored.root);
+        nova_ui_label(TextFormat("%s%s",root_name,nova_game_dirty(&ui->project) ? "  /  Unsaved" : ""),124,19,width-660,INK);
+        button((Rectangle){(float)width-518,11,72,34},"Undo",!ui->playing && ui->project.undo_count,ui,NOVA_GAME_UNDO_ACTION);
+        button((Rectangle){(float)width-438,11,72,34},"Redo",!ui->playing && ui->project.redo_count,ui,NOVA_GAME_REDO_ACTION);
+        button((Rectangle){(float)width-346,11,92,34},"Save",!ui->playing,ui,NOVA_GAME_SAVE);
+        if (ui->playing) {
+            button((Rectangle){(float)width-242,11,106,34},"Stop",true,ui,NOVA_GAME_STOP);
+            button((Rectangle){(float)width-126,11,112,34},"Restart",true,ui,NOVA_GAME_RESTART);
+        } else {
+            if (nova_ui_select_button((Rectangle){(float)width-242,11,228,34},"Run game",false,true))
+                request(ui,NOVA_GAME_RUN);
         }
-        if (nova_ui_button((Rectangle){814,10,115,35},"Projects / New",!ui->playing) && clean_values(ui)) {
-            ui->browser_room = ui->room; ui->room = 0; ui->browser_import = false;
-        }
-        if (nova_ui_select_button((Rectangle){240,70,74,31},"2D",ui->new_mode == NOVA_2D,!ui->playing)) ui->new_mode = NOVA_2D;
-        if (nova_ui_select_button((Rectangle){321,70,74,31},"3D",ui->new_mode == NOVA_3D,!ui->playing)) ui->new_mode = NOVA_3D;
-        nova_ui_label("Name",404,77,45,MUTED);
-        nova_ui_field_checked((Rectangle){451,70,220,31},ui->name,sizeof(ui->name),&ui->name_focus,ERROR);
-        nova_ui_label("File",680,77,33,MUTED);
-        nova_ui_field_checked((Rectangle){722,70,(float)width-859,31},ui->path,sizeof(ui->path),&ui->path_focus,ERROR);
-        button((Rectangle){(float)width-127,70,113,31},"Open game",!ui->playing,ui,NOVA_GAME_OPEN);
         tree(ui,height);
-        if (!ui->room) browser(ui,width,height);
-        else {
-            nova_ui_label(ui->playing ? "GAME / designated starting room" : context ? "APPEARANCE / reusable object preview" :
-                r && r->mode == NOVA_3D ? "ROOM LAYOUT / native 3D" : "ROOM LAYOUT / native 2D",
-                240,116,width-575,INK);
-            if (!ui->playing) {
-                Rectangle plane = r && r->mode == NOVA_3D ?
-                    (Rectangle){240,450,(float)width-575,(float)height-635} :
-                    (Rectangle){present.viewport.x*width/fw,present.viewport.y*height/fh,
-                        present.viewport.width*width/fw,present.viewport.height*height/fh};
-                if (!context) layout(ui,plane);
-                else if (nova_ui_button((Rectangle){240,450,200,32},"Open room Layout",true) && clean_values(ui))
-                    selection(ui,ui->room);
-                if (nova_ui_select_button((Rectangle){240,(float)height-174,130,30},"Select / move",!ui->place_tool,true))
-                    ui->place_tool = false;
-                if (nova_ui_select_button((Rectangle){379,(float)height-174,130,30},"Place object",ui->place_tool,true))
-                    ui->place_tool = true;
-                if (nova_ui_select_button((Rectangle){518,(float)height-174,110,30},"Grid / snap",ui->snap,true))
-                    ui->snap = !ui->snap;
-                const NovaGameObject *o = nova_game_object(&ui->project.data,ui->palette);
-                nova_ui_label(o ? TextFormat("Place: %s (select an object in the tree)",o->name) : "Select an object in the tree to place",
-                    240,height-136,width-575,MUTED);
-                if (nova_ui_button((Rectangle){240,(float)height-104,145,31},"Add Sprite / Model",true) && clean_values(ui)) {
-                    ui->browser_room = ui->room; ui->room = 0; ui->browser_import = true;
-                    snprintf(ui->location,sizeof(ui->location),"%s",ui->project.authored.root); browse(ui);
-                    message(ui,"Choose a PNG/static GLB in the native file browser, then Import selected. No files saved by switching views.");
-                }
-                button((Rectangle){394,(float)height-104,135,31},"Add room",true,ui,NOVA_GAME_ROOM);
-                if (ui->stale) nova_ui_label("FAILED / retained preview",240,137,width-575,RED);
+        char title[128];
+        snprintf(title,sizeof(title),"%s   /   %s",r ? r->name : "Room",r && r->mode == NOVA_3D ? "3D" : "2D");
+        if (context) {
+            const NovaGameResource *a = nova_game_resource(&ui->project.data,ui->selected);
+            const NovaGameObject *o = nova_game_object(&ui->project.data,ui->selected);
+            if (a || o) snprintf(title,sizeof(title),"%s   /   %s",a ? a->name : o->name,
+                a ? a->type == NOVA_ASSET_SPRITE ? "Sprite" : "Model" : "Object");
+        }
+        nova_ui_label(ui->playing ? "Game / starting room" : title,236,76,center_width-196,INK);
+        if (!ui->playing) {
+            bool appearance = nova_game_resource(&ui->project.data,ui->selected) || nova_game_object(&ui->project.data,ui->selected);
+            if (nova_ui_select_button((Rectangle){(float)width-508,69,82,30},"Room",!context,true)) ui->resource_view = false;
+            if (nova_ui_select_button((Rectangle){(float)width-418,69,98,30},"Resource",context,appearance)) ui->resource_view = true;
+            if (nova_ui_select_button((Rectangle){236,110,95,30},"Select",!ui->place_tool,true)) {
+                ui->place_tool = false; ui->resource_view = false;
             }
-            if (!ui->playing) properties(ui,width-298);
+            const NovaGameObject *palette = nova_game_object(&ui->project.data,ui->palette);
+            const NovaGameResource *asset = palette ? nova_game_resource(&ui->project.data,palette->resource) : NULL;
+            bool compatible = asset && r && (r->mode == NOVA_2D ? asset->type == NOVA_ASSET_SPRITE : asset->type == NOVA_ASSET_MODEL);
+            if (nova_ui_select_button((Rectangle){340,110,95,30},"Place",ui->place_tool,compatible)) {
+                ui->place_tool = true; ui->resource_view = false;
+            }
+            if (nova_ui_select_button((Rectangle){444,110,110,30},"Grid / snap",ui->snap,true)) ui->snap = !ui->snap;
+            if (nova_ui_button((Rectangle){563,110,103,30},"Room setup",true) && clean_values(ui)) selection(ui,ui->room);
+            nova_ui_label(context ? "Appearance preview / use Room to return to layout" :
+                compatible ? TextFormat("Place: %s  /  Click to place, or Select to move instances",palette->name) :
+                "Choose a matching object in Resources to enable Place.",236,149,center_width,MUTED);
+            Rectangle plane = r && r->mode == NOVA_3D ?
+                (Rectangle){236,preview.y+preview.height+32,(float)center_width,(float)canvas_height-preview.height-32} :
+                (Rectangle){present.viewport.x*width/fw,present.viewport.y*height/fh,
+                    present.viewport.width*width/fw,present.viewport.height*height/fh};
+            ui->plane_bounds = plane;
+            if (!context) layout(ui,plane);
+            if (ui->stale) nova_ui_label("Preview failed / previous frame retained. Details below.",244,184,center_width-16,RED);
+            properties(ui,width-290,height);
+        } else {
+            nova_ui_label("Click the game to control it. WASD / arrows move; Space acts.",236,119,center_width,MUTED);
+            nova_ui_label("Game is running",width-290,76,277,INK);
+            nova_ui_label("Stop to return to your room.",width-290,112,277,MUTED);
         }
         bool typing = ui->name_focus || ui->path_focus || ui->location_focus;
         for (int i = 0; i < 16; ++i) typing |= ui->field_focus[i];
-        if (!typing && !ui->playing) {
+        if (!typing && !ui->playing && ui->sheet == NOVA_GAME_SHEET_NONE) {
             if (nova_ui_command() && IsKeyPressed(KEY_S)) request(ui,NOVA_GAME_SAVE);
             if (nova_ui_command() && IsKeyPressed(KEY_Z)) request(ui,IsKeyDown(KEY_LEFT_SHIFT)||IsKeyDown(KEY_RIGHT_SHIFT) ? NOVA_GAME_REDO_ACTION : NOVA_GAME_UNDO_ACTION);
             if (IsKeyPressed(KEY_DELETE) || IsKeyPressed(KEY_BACKSPACE)) ui->dialog = NOVA_GAME_DIALOG_DELETE;
@@ -854,10 +1109,22 @@ bool nova_game_ui_draw(NovaGameUI *ui, bool bounded)
             }
         }
     }
+    if (!setup && ui->sheet != NOVA_GAME_SHEET_NONE && !modal) creation_sheet(ui,width,height);
     if (modal) dialog(ui,width,height);
-    DrawRectangle(0,height-46,width,46,nova_ui_style()->panel);
-    nova_ui_label(ui->message,12,height-38,width-130,MUTED);
-    if (!modal && nova_ui_button((Rectangle){(float)width-108,(float)height-39,94,30},"Details",true)) {
+    DrawRectangle(0,height-42,width,42,nova_ui_style()->panel);
+    const char *summary = ui->message;
+    if (strstr(summary,"PARTIAL SAVE")) summary = "Save incomplete. Some files were written; Run was cancelled. Open Details before retrying.";
+    else if (strstr(summary,"preflight failed")) summary = "The saved game could not be validated. Run was cancelled; your previous game is retained. Details";
+    else if (ui->stale) summary = "Preview could not refresh. Your draft and previous preview are retained. Open Details.";
+    else if (ui->action_failed) summary = ui->last_action == NOVA_GAME_RUN || ui->last_action == NOVA_GAME_RESTART ?
+        "Run could not start. Your draft and previous game are retained. Open Details." :
+        ui->last_action == NOVA_GAME_SAVE ? "Save did not finish. Your changes are retained. Open Details." :
+        ui->last_action == NOVA_GAME_OPEN ? "Project could not open. Your current project is retained. Open Details." :
+        "Could not complete the action. Open Details for the reason; your changes are retained.";
+    else if (strlen(summary) > 140) summary = ui->playing ? "Running. Stop returns to your unchanged room." : "Action needs attention. Open Details for the full diagnostic.";
+    if (*ui->hint) summary = ui->hint;
+    nova_ui_label(summary,12,height-31,width-130,MUTED);
+    if (!modal && nova_ui_button((Rectangle){(float)width-108,(float)height-35,94,28},"Details",true)) {
         ui->dialog = NOVA_GAME_DIALOG_DETAILS; nova_ui_text_reset(&ui->details);
     }
     if (bounded && ui->quit) message(ui,"Bounded run ended");

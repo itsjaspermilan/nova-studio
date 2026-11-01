@@ -12,6 +12,9 @@ typedef enum {
 } NovaGameAction;
 typedef enum { NOVA_GAME_DIALOG_NONE, NOVA_GAME_DIALOG_DISCARD, NOVA_GAME_DIALOG_DELETE,
     NOVA_GAME_DIALOG_CONFLICT, NOVA_GAME_DIALOG_DETAILS, NOVA_GAME_DIALOG_CLOSE } NovaGameDialog;
+typedef enum { NOVA_GAME_SHEET_NONE, NOVA_GAME_SHEET_NEW, NOVA_GAME_SHEET_OPEN,
+    NOVA_GAME_SHEET_IMPORT, NOVA_GAME_SHEET_OBJECT, NOVA_GAME_SHEET_ROOM,
+    NOVA_GAME_SHEET_PROJECT } NovaGameSheet;
 typedef struct {
     NovaGameProject project;
     NovaEngine *preview_engine, *play_engine;
@@ -22,6 +25,14 @@ typedef struct {
     NovaModelUI modeller;
     NovaGameDialog dialog;
     NovaGameAction pending;
+    NovaGameAction last_action;
+    bool action_failed;
+    NovaGameSheet sheet;
+    uint32_t object_appearance;
+    bool resource_view, collapsed[4];
+    int inspector_scroll, outline_scroll, choice_scroll;
+    int inspector_top, inspector_bottom;
+    Rectangle preview_bounds, plane_bounds;
     uint32_t selected, room, palette, browser_room;
     NovaMode new_mode;
     bool playing, play_focus, stale, ready, place_tool, snap, values_dirty, dragging, quit, advanced;
@@ -31,6 +42,7 @@ typedef struct {
     char name[32], path[NOVA_NATIVE_PATH_CAPACITY], location[NOVA_NATIVE_PATH_CAPACITY];
     char fields[16][64], message[1024], preview_error[1024], pending_path[NOVA_NATIVE_PATH_CAPACITY];
     char advanced_path[NOVA_NATIVE_PATH_CAPACITY];
+    char hint[192];
     int tree_scroll, browser_scroll;
     FilePathList files;
     char fixture[NOVA_NATIVE_PATH_CAPACITY];

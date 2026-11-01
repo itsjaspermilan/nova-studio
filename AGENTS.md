@@ -52,7 +52,12 @@ before changing contracts; roadmap entries are not implemented features.
   `authoring/game_ui.{c,h}` is the default native beginner workspace for BOTH
   dimensions, with a native import browser, appearance/object bridge, actual
   typed behavior actions, room selection/snap/per-drag undo and starting-room
-  Run/Stop. Private previews use shared staging/presentation, retain prior live
+  Run/Stop. Keep setup/local creation sheets separate from the room workspace,
+  grouped resources separate from the current-room outline, and object selection
+  in the room unless the explicit Resource preview tab is chosen. Inspector
+  actions scroll independently with fixed Apply/Reset. Native UI tests must
+  exercise actual form typing, hit targets and scrolling, not only backend
+  action dispatch. Private previews use shared staging/presentation, retain prior live
   resources/frame on failure and clean their own fixtures. 3D floor plans are
   labelled editing diagrams, not a replacement gameplay renderer. Advanced and
   visual drafts are retained independently; unknown data/edited generated

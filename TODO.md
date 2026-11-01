@@ -9,10 +9,16 @@ not a finished editor or a hardware-validated game engine.
 The approved bounded software milestones are implemented and locally committed:
 manifest/native assets, inspection, runtime services, standalone export/signing
 tooling, native HUD, source/project editor, original static primitive modeller,
-and beginner 2D/3D Objects and Rooms authoring.
+and beginner 2D/3D Objects and Rooms with the substantive native UX follow-up.
 No remote push, personal-key operation or device installation was performed.
 
-The combined 42-test desktop suite passed with GPU/audio enabled before the last
+The implementation child's 45-test suite passed, including real native both-dimension form/
+typing/scroll workflows, game frames/pixels, source/modeller/export regressions
+and guarded save-failure tests. The ordinary debug Android launcher also builds
+and passes exact APK verification. Screenshots cover minimum 1200x780 logical
+layout and high-DPI framebuffer output; these are not device/performance claims.
+
+Earlier foundation evidence: the combined 42-test desktop suite passed with GPU/audio enabled before the last
 integration correction to modeller dirty-state reporting. All 23 display-free
 tests passed afterward. After the usable macOS desktop returned, all six final
 authoring CLI/GPU selectors also passed, including the real-shell missing-source/
@@ -76,6 +82,9 @@ Integrated as `92bf971`. All 46 configured desktop CTests passed in the
 coordinator's worktree, including native action/pixel workflows for both
 dimensions and existing runtime/editor/modeller regressions. The ordinary debug
 Android APK also rebuilt and passed package verification here.
+The subsequent contextual UX revision also passed all 12 focused integrated
+authoring checks, including both dimensions' real native form/typing/scroll/
+placement/play paths and existing Advanced editor/modeller regressions.
 This is bounded native room/object authoring, not a GameMaker compatibility
 layer. Full IDE, arbitrary mesh editing and animated GLB remain outside scope.
 
@@ -317,6 +326,16 @@ desktop-only editor; an APK/device run was not performed for this milestone.
   Ordinary DEBUG Android launcher and complete sample/notices/native/signature
   inventory built/verified; no personal keys, device installation or performance
   claims. Device behavior remains unvalidated.
+- [x] Substantive native UX follow-up: dedicated New/Open Project screens;
+  local import/object/room forms; grouped resource tree and independent room
+  outline; persistent room/palette when selecting objects; adjacent Select/
+  Place/Grid tools; explicit Resource preview; contextual scrolling inspector
+  with fixed Apply/Reset; compact project title/Save/Run/Stop/Restart header.
+  Raw paths remain in setup/import/Advanced, not the ordinary room workspace.
+  Native hit/typing/scroll tests cover both dimensions, minimum 1200x780 layout,
+  high-DPI framebuffer output, expanded actual movement actions, and retained
+  authoring state through Save/Open/Run/Stop. Captures are functional UX evidence,
+  not performance measurements or Android device validation.
 
 All 45 configured native CTests passed, including both real standalone generated
 projects and the original editor/modeller/runtime/export regressions. The new
