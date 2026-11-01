@@ -75,6 +75,33 @@ This is a new authoring milestone, not an already implemented room editor or
 GameMaker compatibility layer. Full IDE, arbitrary mesh editing and animated
 GLB remain outside the approved bounded workflow.
 
+## Approved following milestone: easy 3D modelling and basic textures
+
+User decision: deliver this after Objects and Rooms, not as an expansion of the
+current implementation. Beginner workflow: Models -> New Model -> assemble
+parts -> assign colours/textures -> Save -> Create Object -> place in a 3D Room
+-> Run. Build play areas by arranging objects/environment pieces in rooms,
+without requiring an entire level to be authored as one mesh.
+
+- [ ] Make the original primitive modeller approachable for static characters,
+  props and environment pieces: named/selectable parts, clear positioning/
+  scaling and colour controls, with the model-to-object bridge and guarded
+  source/export/save/reopen workflow integrated into the default editor.
+- [ ] Add bounded PNG colour textures with automatic primitive UV mapping and
+  straightforward material assignment. Extend the actual native GLB import/
+  export, GPU rendering and resource ownership contracts; the current opaque
+  unlit importer deliberately rejects textured models. Preserve old untextured
+  projects and explicit format/path/budget errors; no placeholder texture UI.
+- [ ] Verify real textured primitive output, source/export/reopen round trips,
+  object/room usage, failed-import/reload retention and texture/resource cleanup
+  on desktop, plus debug Android build/package integrity. Device visual output
+  still needs separately consented testing.
+
+These features are planned, not delivered. Initial characters are static
+assembled models; rigging/skeletal animation, detailed UV/vertex editing,
+arbitrary mesh authoring and broader PBR materials remain separately scoped
+later work. No new asset/dependency downloads or personal signing are implied.
+
 ## Verified completed foundation
 
 - [x] Independent source tree: no dependency on GameStudio or Glow43.
