@@ -73,6 +73,40 @@ GPU tests need a logged-in graphical desktop and are opt-in for headless CI. Lin
 
 ## Shared engine and project layout
 
+### Static model backend checkpoint
+
+`authoring/model.{c,h}` implements original bounded box, pyramid and cylinder
+geometry without another importer or rendering engine. The editable source is
+strict non-executable ASCII `nova-model 1`, separate from the exported GLB:
+
+```text
+nova-model 1
+next 2
+primitive 1 cylinder 8 0 0 0 0 0 0 1 1 1 80 190 230
+```
+
+`next` is the monotonically increasing next unused numeric ID. Each primitive
+line contains ID, shape, sides, position XYZ, Euler rotation XYZ in degrees,
+scale XYZ and integer RGB. Box/pyramid sides must be zero; cylinder sides are
+3..32. Scale defines the full unit-shape extent (cylinder diameter/height).
+Shapes are centered at the origin, Y-up; rotations apply right-handed X, Y,
+then Z after scaling and before translation. Up to 64 primitives, positive
+scale 0.01..1000, position +/-10000, rotation +/-360, opaque RGB 0..255 and
+32767 source bytes are accepted. Unknown directives, duplicate/stale IDs,
+nonfinite numbers and unsupported shapes fail explicitly. Blank lines are
+allowed, comments are not. IDs survive reordering/deletion; they are not array
+indices. Empty documents are editable but cannot export an empty GLB.
+
+Memory parse/serialization/export APIs replace their outputs only on success.
+GLB exports bake authored transforms into float32 triangle positions, preserving
+outward winding and per-primitive `KHR_materials_unlit` opaque colors in one
+embedded BIN and one scene. Maximum generated geometry is 24576 expanded
+vertices (8192 triangles), with a 512 KiB GLB ceiling. Every returned export
+passes the exact native `nova_decode_glb` importer first; headless tests also
+run `nova_validate_project` and verify real counts/bounds. Arbitrary imported
+GLB meshes are never presented as recoverable primitive-source documents.
+This checkpoint is a backend, not yet the integrated desktop modeller UI.
+
 | Path | Purpose |
 | --- | --- |
 | `engine/` | C11 engine, Lua API, input contract, camera/draw command data, native collision, logical viewport |
