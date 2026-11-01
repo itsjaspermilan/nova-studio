@@ -1,6 +1,6 @@
 # Nova Studio
 
-A working **native vertical slice**, not a finished game editor. A small native Studio launcher opens editable Lua examples: a fixed-coordinate 2D playground and a native 3D mesh world with a 2D overlay. Everything lives here; GameStudio and Glow43 are unchanged and are not dependencies.
+A working **native runtime slice**, not a finished game editor. The native launcher opens editable Lua examples and a versioned project containing an imported PNG sprite and static GLB model. Everything lives here; GameStudio and Glow43 are unchanged and are not dependencies.
 
 The provisional product name is Nova Studio. This foundation targets desktop authoring and standalone Android games, initially Retroid Pocket 6. It contains **no WebView, browser renderer, or screenshot-streaming gameplay**.
 
@@ -19,13 +19,14 @@ From `/Users/jasper/Developer/NovaStudio`:
 ./build/nova_studio
 ```
 
-Click an example, press **1 / 2**, or use gamepad **A / B**. Move with **WASD, arrow keys, D-pad, or left stick**. In the 3D example, **Space / A** makes the model bounce. **F1 / Start** returns to the launcher, **R** reloads the active script, and **Esc / Android Back** exits.
+Click an example, press **1 / 2 / 3**, or use gamepad **A / B / X**. Move with **WASD, arrow keys, D-pad, or left stick**. In the 3D example, **Space / A** makes the model bounce; in the asset project it lifts the imported gem. **F1 / Start** returns to the launcher, **R** reloads the active script or whole project, and **Esc / Android Back** exits.
 
 Edit the source examples with your preferred text editor, then rebuild to synchronize them into `build/examples`. Asset synchronization runs even when no C source changed. Alternatively, play a source script directly and use R after saving:
 
 ```sh
 ./build/nova_studio --scene "$PWD/examples/2d/main.lua"
 ./build/nova_studio --scene "$PWD/examples/mixed/main.lua"
+./build/nova_studio --project "$PWD/examples/assets/nova.project"
 ```
 
 The executable resolves its bundled examples relative to its own directory, not the shell's current directory. To move the desktop build, keep `nova_studio`, `examples/`, and `licenses/` together. There is no `.app` bundle, installer, notarization, or integrated script editor yet.
@@ -42,7 +43,7 @@ On the development machine, the Debug build and focused tests passed. Real GPU r
 
 The smoke run switches from 2D to mixed at its midpoint and supplies deterministic movement/action input. Each bounded run prints `NOVA_RUN ... status=ok` and exits nonzero on scene/capture errors or an interrupted run. Capture files are real 960x540 native render-target images. `--frames` uses a fixed timestep rather than measuring performance.
 
-Core tests require no display: they cover example movement, mixed-scene mesh/overlay commands, native AABB collision, logical viewport sizing, Lua errors, invalid values, instruction/memory/command limits, and reloading after failure. Additional tests cover CLI validation and the pinned Android lifecycle source patch. To include the actual GPU runs in CTest:
+Default tests require no display: they cover example movement, mixed-scene commands, native AABB collision, viewport sizing, Lua errors/limits, manifest validation, asset handles, root/symlink containment, PNG/GLB decoding, hierarchical transforms, mirrored winding, 32-bit indices above 65535, CLI validation and the pinned Android lifecycle patch. Opt-in GPU tests also cover whole-project replacement, shared-path caching, cleanup after partial import/Lua failures, and exact sprite/transparency/model-color pixels from a real runtime capture. To include the GPU runs:
 
 ```sh
 ./scripts/with-toolchain.sh cmake -S . -B build -DNOVA_GPU_TESTS=ON
@@ -58,8 +59,11 @@ GPU tests need a logged-in graphical desktop and are opt-in for headless CI. Lin
 | --- | --- |
 | `engine/` | C11 engine, Lua API, input contract, camera/draw command data, native collision, logical viewport |
 | `runtime/main.c` | Shared desktop/Android native game loop, GPU mesh rendering, overlay, input and launcher |
+| `engine/project.{c,h}` | Versioned manifest declarations, stable IDs and lexical path validation |
+| `runtime/assets.{c,h}` | Native path resolution, PNG/GLB decoding, resource cache and transactional scene replacement |
 | `examples/2d/main.lua` | Editable 2D gameplay, moving target and native contact detection |
 | `examples/mixed/main.lua` | Editable 3D gameplay, camera, generated mesh models and HUD |
+| `examples/assets/` | Editable manifest project, original CC0 PNG/GLB fixtures and provenance notice |
 | `android/` | Gradle application, Android NativeActivity manifest, pinned wrapper |
 | `tests/` | Focused shared-engine and build-integration tests |
 | `licenses/` | Dependency licenses; builds also preserve embedded upstream notices |
@@ -96,19 +100,118 @@ end
 | `nova.text` | `text, x, y, fontSize, r, g, b` |
 | `nova.camera` | `x, y, z, targetX, targetY, targetZ, verticalFovDegrees` |
 | `nova.cube` | `centerX, centerY, centerZ, width, height, depth, r, g, b` |
+| `nova.asset` | `declaredID`; returns an opaque, scene-local sprite/model handle |
+| `nova.sprite` | `handle, x, y, width, height`; whole image, white tint, alpha blending, nearest filtering |
+| `nova.model` | `handle, x, y, z, uniformScale`; static model at position, positive scale, no extra rotation |
 | `nova.overlap` | `ax, ay, aw, ah, bx, by, bw, bh`; returns boolean, edge-touching is not overlap |
 
 Rectangles and text are drawn after the depth-tested 3D models, as an overlay. Cube commands instance a GPU-uploaded unit-cube mesh model, not software-rendered shapes. Camera up is +Y and its direction may not be parallel to that axis. Color channels are integer 0..255. Sizes must be positive; numeric arguments must be finite and within +/-1,000,000. Text is limited to 191 bytes and the bundled font has limited glyph coverage.
 
 Each update rebuilds the draw-command buffer (maximum 512); Lua gameplay state persists until reload. Both loading and each update have a 200,000-instruction budget and the Lua allocator has a 16 MiB limit. Script errors stop that scene, appear in the native error screen and log, and can be fixed/reloaded. Only base/math/string/table libraries are exposed; filesystem/process/package libraries are absent. These are stability limits for local authoring, **not a hardened security sandbox for hostile scripts**.
 
+### Version 1 project and native asset contract
+
+Run `--project path/to/nova.project`, or choose launcher card **3**. `--project`
+and direct `--scene` are mutually exclusive; `--smoke` keeps its original two-scene
+behavior. Direct scripts have no declared assets, and cannot acquire asset handles.
+Both old examples and 2D/3D/mixed modes retain the same engine and frame format.
+
+The manifest is strict, non-executable ASCII text. Its containing directory is
+the project root (the canonical manifest location on desktop); there is no separate
+root override. Version 1 is:
+
+```text
+nova-project 1
+entry main.lua
+sprite badge assets/badge.png
+model gem assets/gem.glb
+```
+
+The header must be the first non-comment directive. Exactly one `.lua` entry is
+required, with up to 32 assets. IDs are case-sensitive, unique, 1..63 ASCII letters,
+digits, underscores or hyphens. Paths are the rest of each line, may contain
+internal spaces, and are limited to 511 bytes; no quoting or inline comments.
+Blank lines and whole-line `#` comments are allowed; LF/CRLF work. Unknown versions,
+directives, duplicates, wrong extensions, NUL, and manifests over 16 KiB fail with
+line-specific errors. Absolute paths, `.`/`..` segments, empty segments, backslashes,
+colons and `#` in paths are forbidden. Every referenced file must exist; desktop
+canonicalization also rejects symlinks escaping the root and non-regular files.
+Android resolves the same relative paths in bundled APK assets, not user storage.
+
+Lua acquires handles by ID, never by filename:
+
+```lua
+nova.scene("mixed")
+local badge = nova.asset("badge")
+local gem = nova.asset("gem")
+function update(dt, input)
+    nova.sprite(badge, 24, 100, 96, 96)
+    nova.model(gem, 0, 0, 0, 1.5)
+end
+```
+
+Handles are protected userdata, typed and valid only in their owning Lua state.
+Sprites join the rectangle/text overlay in command order; imported models join
+depth-tested cubes in world command order, and require 3D/mixed mode.
+Native code reads/decodes/uploads at project load, never in the per-frame draw
+path. IDs sharing the same declared path/type share one native resource and unload
+it once. R stages a fresh registry and Lua state, validates the initial update,
+then swaps both together and releases the previous project. A failed load/reload
+releases all staged resources, retains the previous registry/state internally,
+and stops presentation on the actionable native error screen until retry or
+return to launcher. Successful reload resets gameplay state and invalidates old
+handles. Launcher return and exit release owned resources. There is no cross-project
+cache, filesystem watcher, incremental reload or GPU-context reconstruction.
+
+**Supported import subset:**
+
+- **PNG:** 8-bit RGB/RGBA, noninterlaced, 1..2048 pixels per dimension. Palette,
+  grayscale, 16-bit and other image formats are rejected. Alpha is preserved.
+- **GLB:** glTF 2.0, exactly one embedded BIN buffer and one scene, with all nodes
+  belonging to that scene. Static triangle primitives use float32 `POSITION` and
+  optional float32 `NORMAL`; normals have no lighting effect in this unlit slice.
+  Non-indexed and unsigned 8/16/32-bit indices work, including indices above 65535:
+  triangles are expanded rather than truncated. Parent/local translation, normalized
+  quaternion rotation, scale and affine matrices are baked into vertices; mirrored
+  transforms correct winding. Repeated mesh nodes become separate mesh instances.
+  Materialless geometry is opaque white; declared materials must use
+  `KHR_materials_unlit` with an opaque base-color factor. Raylib's default shader
+  renders those colors without PBR lighting.
+- **Explicitly rejected:** all buffer/image URIs (external and data), textures,
+  UVs, vertex colors/tangents, animation, skins, morph targets, compression,
+  multiple scenes, imported cameras/lights, double-sided/transparent/emissive
+  materials, lit/PBR materials and extensions other than `KHR_materials_unlit`.
+  Unsupported or malformed data never reports successful fallback geometry.
+
+Bounds: 16 MiB per asset/entry file, 64 MiB total unique asset input, 16 million
+total sprite pixels, 256 GLB nodes, 128 node-instanced primitives per model,
+65535 expanded vertices per primitive, and 262144 expanded vertices across the
+project's unique models. Accessors are nonsparse, component-aligned with strides
+up to 252 bytes. Local matrices and transformed positions must be finite and
+within +/-1,000,000. Native import is for trusted local authoring, not a hostile-file
+security sandbox.
+
+No importer dependency was added: Nova uses cgltf already embedded in pinned
+raylib 5.5, but performs strict validation/conversion instead of calling raylib's
+permissive `LoadModel` path (which ignores scenes/features, truncates some indices
+and may supply fallback geometry). Its embedded upstream notice is already packaged.
+The original sample sprite/model have a CC0 provenance notice and can be reproduced
+with an installed Python 3 via `scripts/generate-sample-assets.py`.
+
+Desktop builds synchronize the entire `examples/` tree, including the project.
+Android's existing Gradle Sync task packages that identical tree before asset
+merging. APK verification byte-compares every sample manifest/script/asset/provenance
+file, in addition to the old examples, native activity exports and dependency notices.
+Custom projects can run directly on desktop; arbitrary project selection/export to
+APK is not implemented. The Android launcher includes the bundled sample project.
+
 ## Android APK scaffold
 
-The Android application packages the **same C engine, runtime and editable example scripts** into a standalone arm64 APK. The host is Android's built-in NativeActivity, so no custom Java/Kotlin UI or WebView is needed for this slice. No storage/network permissions are requested. The sample launcher is included; a per-game exporter that chooses one project is not implemented yet.
+The Android application packages the **same C engine, runtime, editable scripts and manifest project assets** into a standalone arm64 APK. The host is Android's built-in NativeActivity, so no custom Java/Kotlin UI or WebView is needed for this slice. No storage/network permissions are requested. The sample launcher is included; a per-game exporter that chooses one project is not implemented yet.
 
 Pinned build configuration: **JDK 17**, **Gradle 8.11.1**, **Android Gradle Plugin 8.9.2**, **NDK 27.2.12479018**, **SDK platform/build-tools 35**, **CMake 3.22.1**, `arm64-v8a`, minimum Android 8/API 26, target Android 13/API 33. Target API 33 is intentional for initial Android 13 development, not a current Play Store publishing configuration. NDK flexible-page-size support is enabled.
 
-**Verified development-machine state:** setup completed using Temurin **17.0.21+9**, Homebrew CMake CLI **4.4.4**, Ninja **1.13.2**, Bash **5.3.20**, and the required Google SDK packages. The debug APK was built successfully at `android/app/build/outputs/apk/debug/app-debug.apk`. Its signature, ARM64 native library/activity entry points, bundled Lua examples and license notices passed verification. No Android device was connected, so execution/performance/lifecycle behavior on Retroid remains unvalidated.
+**Verified development-machine state:** setup completed using Temurin **17.0.21+9**, Homebrew CMake CLI **4.4.4**, Ninja **1.13.2**, Bash **5.3.20**, and the required Google SDK packages. The debug APK was rebuilt with the manifest/PNG/GLB project at `android/app/build/outputs/apk/debug/app-debug.apk`. Its signature, ARM64 native activity entry points, old Lua examples, every bundled project file and license notices passed verification. No Android device was exercised, so execution/performance/lifecycle behavior on Retroid remains unvalidated.
 
 Run the read-only prerequisite check:
 
@@ -130,7 +233,7 @@ From the Nova Studio root:
 ./scripts/build-android.sh
 ```
 
-The build command also runs `scripts/verify-apk.sh`; a valid signature alone is not enough. Verification explicitly requires exported `ANativeActivity_onCreate`, `android_main` and `nova_tick` symbols in the AArch64 runtime, matching example scripts, and packaged license notices. This caught and corrected the initial missing native-activity linker entry point. Run the checks again without rebuilding using `./scripts/verify-apk.sh`.
+The build command also runs `scripts/verify-apk.sh`; a valid signature alone is not enough. Verification explicitly requires exported `ANativeActivity_onCreate`, `android_main` and `nova_tick` symbols in the AArch64 runtime, matching example scripts and every sample project file (manifest, script, PNG, GLB and provenance), and packaged license notices. This caught and corrected the initial missing native-activity linker entry point. Run the checks again without rebuilding using `./scripts/verify-apk.sh`.
 
 Run installation in a terminal. First-time SDK bootstrap links the [Android SDK License Agreement](https://developer.android.com/studio/terms) and requires typing `ACCEPT`. The subsequent `sdkmanager` package installation presents its own relevant license agreements and asks for your answers. **Download permission does not accept licenses. No `yes` pipeline, blanket acceptance, or manually forged license files are used.** Declining or reaching EOF stops with a nonzero status; successfully installed native tools remain available for a later retry.
 
@@ -193,9 +296,9 @@ Run those from the Nova Studio root; choose a specific device using `adb -s SERI
 
 ## Deliberately outside this slice
 
-No original asset modeller, extrusion, skeletal animation, GLB import UI, texture/sprite pipeline, lighting/shadows, physics world, scene inspector, project browser, release signing/export wizard, audio API, persistent saves, or user-script module loader yet. The 3D example uses native generated static meshes. Timers currently use `dt` in Lua; audio/save services will share the same scene runtime when added. No existing saves are read or changed, and no Glow compatibility is implied.
+No original asset modeller, extrusion, skeletal animation, importer UI, full textured/PBR model pipeline, lighting/shadows, physics world, scene inspector, project browser, release signing/export wizard, audio API, persistent saves, or user-script module loader yet. The original 3D example uses generated meshes; the third launcher project imports a real static GLB and PNG. Timers currently use `dt` in Lua; audio/save services will share the same scene runtime when added. No existing saves are read or changed, and no Glow compatibility is implied.
 
-**Recommended next slice:** install and validate the produced APK on Retroid Pocket 6 with the user's consent, including controller/lifecycle/render-resolution checks. Then add a shared project manifest and asset registry, GLB/static mesh and sprite imports, and an editor inspector backed by those real assets. Build the original primitive/transform modeller on that working asset pipeline rather than on a separate preview engine.
+**Next work:** stabilize the versioned manifest/import/handle interfaces with real projects and validate the APK on Retroid Pocket 6 with the user's consent, including imported assets, controller/lifecycle/render-resolution checks. Defer the full editor and original primitive/transform modeller until those interfaces are stable; any later authoring UI must use this native pipeline, not a separate preview engine.
 
 ## Local source history
 

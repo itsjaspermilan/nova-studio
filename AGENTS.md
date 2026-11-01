@@ -11,15 +11,23 @@ before changing contracts; roadmap entries are not implemented features.
   Do not introduce WebView gameplay or streamed/software preview rendering.
 - `engine/nova.c` implements the Lua API, validation/budgets and native overlap;
   `engine/nova.h` defines frame/draw/input/viewport contracts without raylib types.
-  Current draw commands are rectangles, text and generated cubes, not imported
-  sprite/model assets. Lua exposes base/math/string/table, not filesystem/process
+  Draw commands include rectangles, text, generated cubes and validated
+  sprite/static-model handles. `engine/project.{c,h}` owns manifest v1 syntax.
+  Lua exposes base/math/string/table, not filesystem/process
   or package libraries; stability limits are not a hostile-script sandbox.
 - `runtime/main.c` owns native resources, launcher, scene file loading, input,
   fixed-step loop and presentation. Scene modes share one engine/format.
   World and overlay currently share a 960x540 target; simulation is 60 Hz.
+- `runtime/assets.{c,h}` resolves project roots, validates/decodes PNG and embedded
+  static GLB using raylib's pinned cgltf, and stages resource/Lua replacement.
+  Declared path/type aliases share resources; failed staging unloads only candidates.
+  Keep the documented import subset and reject unsupported features explicitly.
 - `examples/{2d,mixed}/main.lua` are editable scenes. Desktop builds synchronize
   them next to the executable; direct `--scene` permits source-script reload.
   Android resolves the same relative paths through bundled assets.
+- `examples/assets/nova.project` and its Lua/CC0 PNG/GLB are the third launcher
+  sample. Desktop and Android synchronize the full examples tree; APK verification
+  compares every project file as well as old scripts and dependency notices.
 - `CMakeLists.txt` pins native archives/hashes and declares targets/tests/assets.
   `cmake/DependencyNotices.cmake` collects upstream notices;
   `cmake/RaylibAndroid.cmake` applies the checked/idempotent destruction patch.
@@ -30,6 +38,9 @@ before changing contracts; roadmap entries are not implemented features.
   native notices must run before Android asset merging.
 - `tests/core_test.c` covers engine behavior/errors/limits; the CMake lifecycle
   patch test and CLI test run by default. GPU tests are opt-in.
+  `tests/project_test.c` covers manifest/handle contracts; `tests/assets_test.c`
+  covers native paths/imports and opt-in reload/alias/partial-failure cleanup.
+  `tests/render_test.c` checks exact pixels from the real native project capture.
   `tests/toolchain_test.sh` uses isolated fake tools, not the real SDK.
 
 ## Commands from this repository root
@@ -83,7 +94,8 @@ initialization is not automatic app conversion. Use sequential ownership here,
 or confirm repository registration AND isolated worktrees before parallel writers.
 Check cwd: `/Users/jasper/Developer/NovaStudio`, not the coordinating GameStudio.
 
-This is a native sample launcher, not a full editor/modeller. No manifest or asset
-pipeline, native-resolution HUD, audio/save/animation APIs or Glow compatibility
-yet. Android package verification passes, but device behavior remains unvalidated.
+This is a native project/sample launcher, not a full editor/modeller. Manifest v1
+and the bounded PNG/static GLB pipeline are implemented; native-resolution HUD,
+audio/save/animation APIs and Glow compatibility are not. Android package
+verification passes, but device behavior remains unvalidated.
 State these boundaries when reporting results; see TODO for actual prerequisites.

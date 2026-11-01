@@ -29,68 +29,78 @@ not a finished editor or a hardware-validated game engine.
   private configuration and signing material are ignored; wrapper JAR is tracked.
 
 APK: `android/app/build/outputs/apk/debug/app-debug.apk` (generated, not committed).
-SHA-256: `263c9faeda7af198fdc9f18d4c1efdd42d179c7e653e125e0d79c85a49c1301d`.
+Foundation APK SHA-256 (historical):
+`263c9faeda7af198fdc9f18d4c1efdd42d179c7e653e125e0d79c85a49c1301d`.
 Signature v2, AArch64 ELF/activity exports, byte-identical example scripts and
 license notices pass `./scripts/verify-apk.sh`. This is debug signing and package
 verification, not device execution or release readiness.
 
-## Next bounded implementation: manifest and native asset pipeline
+## Completed bounded slice: manifest and native asset pipeline
 
-These items are pending. Implement them in prerequisite order as one focused
-slice, before building a full editor or modeller:
+- [x] Strict non-executable `nova.project` v1 text manifest, rooted at its containing
+  directory, with one Lua entry and stable typed asset IDs. Line-specific format
+  errors, duplicate IDs, missing files, lexical/root/symlink escapes and non-regular
+  desktop files are rejected. `--scene` and the two original examples remain.
+- [x] Native registry, declared-path/type cache and explicit ownership. Lua gets
+  protected typed handles through `nova.asset`, not filesystem access. R stages
+  resources plus a new Lua state and initial update, then replaces both atomically.
+  Failed staging frees candidate resources and shows an error; previous state is
+  retained internally but not presented as a successful reload.
+- [x] Native `nova.sprite` and `nova.model` commands through the shared frame/runtime.
+  PNG supports noninterlaced 8-bit RGB/RGBA. GLB supports embedded static triangles,
+  hierarchical affine transforms, mirrored winding and opaque unlit base colors.
+  Unsigned 8/16/32-bit indices are expanded, not truncated. Unsupported features
+  fail explicitly. Reuses cgltf inside pinned raylib 5.5; no new dependency.
+- [x] Original CC0 sprite and octahedron with reproducible generator/provenance in
+  `examples/assets/`, accessible as launcher card 3 or via `--project`.
+  Desktop and Android package the same project. Verification now byte-compares
+  every sample project file, not only the previous scripts.
+- [x] Default manifest/handle/path/import tests and opt-in native GPU project,
+  exact capture-pixel and reload/cache/partial-failure lifetime checks. Desktop
+  builds and both old GPU scenes remain working. Android debug APK rebuild and
+  signature/AArch64/activity-export/project-asset verification passed.
 
-1. [ ] Define and validate a versioned project manifest: project root, entry Lua
-   scene and declared assets with stable identifiers. Keep 2D/3D/mixed in the
-   shared scene format. Resolve project-relative paths consistently and reject
-   malformed manifests, duplicate identifiers, missing files and root escapes
-   with actionable errors. Preserve existing direct `--scene` and launcher use.
-2. [ ] After the manifest contract, add native asset registration/loading and
-   explicit resource ownership. Keep file decoding, GPU upload, caching and
-   unload/reload in native code; Lua should reference validated asset handles,
-   not gain arbitrary filesystem access. Reuse the current core/frame/runtime
-   boundary rather than introducing a separate engine for each scene mode.
-3. [ ] After registration/lifetime handling, support a small documented sprite
-   image subset and static GLB mesh import, with Lua draw commands for each.
-   Demonstrate one real imported sprite and one static model with the existing
-   camera/overlay. Investigate raylib's pinned import support before adding
-   another dependency. Use original or appropriately licensed test assets.
-   Explicitly report unsupported model/material features, not silent success.
-4. [ ] With those imports working, wire identical project/assets into desktop
-   and Android packaging. Add focused manifest/path/error/lifetime tests and
-   bounded native render checks; rebuild and structurally verify the APK with
-   the new assets. Update verification beyond its current example-only checks.
-   Retain both existing example scenes and their behavior.
+Approved initial contract: text v1 manifest, `--project <manifest>`, typed scene-local
+handles and whole-project R replacement; PNG and embedded-only static unlit GLB.
+See README for exact syntax, limits and exclusions. No URIs/textured or lit/PBR
+materials, animation, skins, compression, authoring UI or per-game exporter.
+This is a bounded interchange contract, not general glTF compatibility.
 
-Acceptance: a project folder containing an editable script, manifest, sprite
-and static GLB can run through the shared native path on desktop and be packaged
-into the Android APK. Failures are visible; assets are not decoded/uploaded every
-frame; resources are released/replaced correctly. APK success alone does not
-claim Android rendering was exercised. No asset authoring UI, full importer UI,
-animation, full PBR renderer, audio/saves or release exporter in this slice.
+The new APK is generated in this worktree at the same relative path above.
+Current SHA-256:
+`9831fee2b5f49337f96c26bba13e6952613d780716aeb1fedd771a9b1edabd1e`.
+All 11 desktop CTests (including opt-in GPU/capture/lifetime checks) passed;
+targeted manifest/import/lifetime checks were rerun after the final parser changes.
+Android rendering and lifecycle behavior have still not been exercised on a device.
 
-Open design choices for that session: manifest filename/schema and versioning,
-minimal image/material/GLB feature subset (including external URI policy),
-asset-handle and reload semantics, and project selection/CLI shape. These are
-not existing APIs or irrevocably selected formats. State the supported subset;
-ask the user before making significant compatibility/product decisions.
+## Next bounded work: interface stabilization, not the full editor
+
+- [ ] Exercise the v1 project/import/handle contract with additional original
+  projects, including 2D-only sprites, multiple static primitives and authoring
+  reload errors. Keep expanded support explicitly versioned and tested; do not
+  silently accept unsupported materials.
+- [ ] Perform the separate consented Android device-validation track below,
+  including the third launcher project and imported PNG/GLB visual output.
+- [ ] Agree on stable scene/asset inspector interfaces before implementing
+  a full editor or modeller. Neither authoring application is delivered here.
 
 ### Recommended fresh-session kickoff
 
-> Work only in NovaStudio. Read AGENTS.md, TODO.md and README.md, then implement
-> the bounded "manifest and native asset pipeline" slice in TODO.md: validated
-> project manifest, native resource registry/lifetime, sprite and static GLB
-> imports, and desktop/Android asset packaging with focused tests. Preserve the
-> current examples and shared 2D/3D/mixed runtime. Do not build the full editor
-> or modeller, add unrelated services, or claim device validation. Surface
-> significant open design choices; do not perform large new installs or accept
-> SDK licenses silently.
+> Read AGENTS.md, TODO.md and README.md in the assigned NovaStudio worktree.
+> Stabilize the implemented manifest v1/native PNG/static GLB interfaces with
+> focused original-project fixtures and regression coverage. Preserve direct
+> scenes, desktop and Android packaging. Do not start the full editor/modeller
+> or broaden import compatibility without a confirmed contract. Device execution
+> needs separate consent and an intended attached device; APK verification is
+> not device validation.
 
 ## Separate device-validation track
 
 No Android hardware was connected during the completed build. With the user's
 consent and intended device attached:
 
-- [ ] Install/launch the APK and verify both scenes, controller axes/buttons,
+- [ ] Install/launch the APK and verify all three samples (including imported
+  sprite/model output), controller axes/buttons,
   Back/Start, resizing/display scaling and visual output.
 - [ ] Exercise pause/resume, activity destruction/recreation, OS process death
   and GPU context loss. Full GPU context reconstruction and persisted gameplay
@@ -104,8 +114,8 @@ ADB installation is an explicit device-modifying action; see README commands.
 
 ## Later work and actual prerequisites
 
-- [ ] Project browser/scene inspector/editor: after the manifest and native asset
-  APIs, build authoring UI backed by those real contracts, not a decorative mock.
+- [ ] Project browser/scene inspector/editor: after the implemented manifest/native
+  asset APIs stabilize, build authoring UI backed by those real contracts, not a mock.
 - [ ] Original simplified low-poly modeller: after asset interchange is usable;
   start with static primitives/transforms/materials. Skeletal authoring and
   animation require their own later engine/import contracts. Do not copy Blender.

@@ -15,6 +15,8 @@ struct NovaEngine {
     bool loaded;
     int remaining_instructions;
     size_t memory_used;
+    size_t asset_count;
+    NovaAsset assets[NOVA_MAX_ASSETS];
 };
 
 static void *lua_memory(void *context, void *pointer, size_t old_size, size_t new_size)
@@ -136,6 +138,55 @@ static int text(lua_State *lua)
     return 0;
 }
 
+static int asset(lua_State *lua)
+{
+    size_t length;
+    const char *id = luaL_checklstring(lua, 1, &length);
+    NovaEngine *engine = get_engine(lua);
+    for (size_t i = 0; i < engine->asset_count; ++i) {
+        if (strlen(engine->assets[i].id) == length && !memcmp(id, engine->assets[i].id, length)) {
+            size_t *handle = lua_newuserdatauv(lua, sizeof(*handle), 0);
+            *handle = i;
+            luaL_setmetatable(lua, "nova.asset");
+            return 1;
+        }
+    }
+    return luaL_error(lua, "undeclared asset '%s'; check the project manifest", id);
+}
+
+static size_t asset_handle(lua_State *lua, NovaAssetType type)
+{
+    size_t index = *(size_t *)luaL_checkudata(lua, 1, "nova.asset");
+    NovaEngine *engine = get_engine(lua);
+    luaL_argcheck(lua, index < engine->asset_count && engine->assets[index].type == type,
+        1, "asset handle has the wrong type");
+    return index;
+}
+
+static int sprite(lua_State *lua)
+{
+    size_t index = asset_handle(lua, NOVA_ASSET_SPRITE);
+    NovaCommand *draw = command(lua, NOVA_SPRITE);
+    draw->asset = index;
+    draw->position = (NovaVec3){number(lua, 2), number(lua, 3), 0};
+    draw->size = (NovaVec3){positive(lua, 4), positive(lua, 5), 0};
+    draw->color = (NovaColor){255, 255, 255, 255};
+    return 0;
+}
+
+static int model(lua_State *lua)
+{
+    size_t index = asset_handle(lua, NOVA_ASSET_MODEL);
+    if (get_engine(lua)->frame.mode == NOVA_2D) return luaL_error(lua, "model requires a 3d or mixed scene");
+    NovaCommand *draw = command(lua, NOVA_MODEL);
+    draw->asset = index;
+    draw->position = (NovaVec3){number(lua, 2), number(lua, 3), number(lua, 4)};
+    float scale = positive(lua, 5);
+    draw->size = (NovaVec3){scale, scale, scale};
+    draw->color = (NovaColor){255, 255, 255, 255};
+    return 0;
+}
+
 static int camera(lua_State *lua)
 {
     NovaFrame *frame = &get_engine(lua)->frame;
@@ -187,11 +238,18 @@ static bool failure(NovaEngine *engine)
 
 bool nova_load(NovaEngine *engine, const char *source, size_t length, const char *name)
 {
+    return nova_load_with_assets(engine, source, length, name, NULL, 0);
+}
+
+bool nova_load_with_assets(NovaEngine *engine, const char *source, size_t length,
+    const char *name, const NovaAsset *assets, size_t count)
+{
     if (!engine) return false;
     if (engine->lua) lua_close(engine->lua);
     engine->lua = lua_newstate(lua_memory, engine);
     engine->loaded = false;
     engine->error[0] = '\0';
+    engine->asset_count = 0;
     engine->frame = (NovaFrame){
         .mode = NOVA_2D, .background = {20, 24, 36, 255},
         .camera_position = {7, 6, 9}, .camera_target = {0, 0, 0}, .camera_fov = 50
@@ -200,6 +258,25 @@ bool nova_load(NovaEngine *engine, const char *source, size_t length, const char
         snprintf(engine->error, sizeof(engine->error), "could not allocate Lua state");
         return false;
     }
+    if (count > NOVA_MAX_ASSETS || (count && !assets)) {
+        snprintf(engine->error, sizeof(engine->error), "invalid native asset registry");
+        return false;
+    }
+    for (size_t i = 0; i < count; ++i) {
+        if (!memchr(assets[i].id, '\0', sizeof(assets[i].id)) || !nova_asset_id_valid(assets[i].id) ||
+            (assets[i].type != NOVA_ASSET_SPRITE && assets[i].type != NOVA_ASSET_MODEL)) {
+            snprintf(engine->error, sizeof(engine->error), "invalid native asset declaration");
+            return false;
+        }
+        for (size_t j = 0; j < i; ++j) {
+            if (!strcmp(assets[i].id, assets[j].id)) {
+                snprintf(engine->error, sizeof(engine->error), "duplicate native asset ID: %s", assets[i].id);
+                return false;
+            }
+        }
+    }
+    if (count) memcpy(engine->assets, assets, count * sizeof(*assets));
+    engine->asset_count = count;
     *(NovaEngine **)lua_getextraspace(engine->lua) = engine;
     // Deliberately expose only gameplay libraries, not filesystem or process access.
     const struct { const char *name; lua_CFunction open; } libraries[] = {
@@ -216,7 +293,14 @@ bool nova_load(NovaEngine *engine, const char *source, size_t length, const char
         {"scene", scene}, {"background", background}, {"rectangle", rectangle},
         {"cube", cube}, {"text", text}, {"camera", camera}, {"overlap", overlap}, {NULL, NULL}
     };
+    luaL_newmetatable(engine->lua, "nova.asset");
+    lua_pushliteral(engine->lua, "protected asset handle");
+    lua_setfield(engine->lua, -2, "__metatable");
+    lua_pop(engine->lua, 1);
     luaL_newlib(engine->lua, api);
+    lua_pushcfunction(engine->lua, asset); lua_setfield(engine->lua, -2, "asset");
+    lua_pushcfunction(engine->lua, sprite); lua_setfield(engine->lua, -2, "sprite");
+    lua_pushcfunction(engine->lua, model); lua_setfield(engine->lua, -2, "model");
     lua_pushinteger(engine->lua, NOVA_WIDTH); lua_setfield(engine->lua, -2, "width");
     lua_pushinteger(engine->lua, NOVA_HEIGHT); lua_setfield(engine->lua, -2, "height");
     lua_setglobal(engine->lua, "nova");

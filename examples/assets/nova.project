@@ -1,0 +1,4 @@
+nova-project 1
+entry main.lua
+sprite badge assets/badge.png
+model gem assets/gem.glb

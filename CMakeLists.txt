@@ -23,7 +23,7 @@ target_include_directories(nova_lua PUBLIC "${lua_SOURCE_DIR}/src")
 target_compile_definitions(nova_lua PRIVATE LUA_USE_POSIX)
 target_link_libraries(nova_lua PUBLIC m)
 
-add_library(nova_core STATIC engine/nova.c)
+add_library(nova_core STATIC engine/nova.c engine/project.c)
 target_include_directories(nova_core PUBLIC engine)
 target_link_libraries(nova_core PUBLIC nova_lua)
 target_compile_options(nova_core PRIVATE -Wall -Wextra -Wpedantic -Werror)
@@ -44,6 +44,11 @@ include(cmake/DependencyNotices.cmake)
 if(ANDROID)
     include(cmake/RaylibAndroid.cmake)
 endif()
+
+add_library(nova_assets STATIC runtime/assets.c)
+target_include_directories(nova_assets PUBLIC runtime PRIVATE "${raylib_SOURCE_DIR}/src/external")
+target_link_libraries(nova_assets PUBLIC nova_core raylib)
+target_compile_options(nova_assets PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 if(ANDROID)
     add_library(nova_runtime SHARED runtime/main.c)
@@ -66,8 +71,21 @@ else()
         target_compile_definitions(nova_tests PRIVATE NOVA_EXAMPLES="${CMAKE_CURRENT_SOURCE_DIR}/examples")
         target_compile_options(nova_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
         add_test(NAME nova_core COMMAND nova_tests)
+        add_executable(nova_project_tests tests/project_test.c)
+        target_link_libraries(nova_project_tests PRIVATE nova_core)
+        target_compile_options(nova_project_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+        add_test(NAME nova_project COMMAND nova_project_tests)
+        add_executable(nova_asset_tests tests/assets_test.c)
+        target_link_libraries(nova_asset_tests PRIVATE nova_assets)
+        target_compile_definitions(nova_asset_tests PRIVATE
+            NOVA_EXAMPLES="${CMAKE_CURRENT_SOURCE_DIR}/examples"
+            NOVA_TEST_DIRECTORY="${CMAKE_BINARY_DIR}")
+        target_compile_options(nova_asset_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+        add_test(NAME nova_assets COMMAND nova_asset_tests)
         add_test(NAME nova_cli_invalid COMMAND nova_studio --invalid-option)
         set_tests_properties(nova_cli_invalid PROPERTIES WILL_FAIL TRUE)
+        add_test(NAME nova_cli_conflicting_project COMMAND nova_studio --scene main.lua --project nova.project)
+        set_tests_properties(nova_cli_conflicting_project PROPERTIES WILL_FAIL TRUE)
         add_test(NAME nova_android_lifecycle_patch COMMAND ${CMAKE_COMMAND}
             "-DNOVA_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DNOVA_RAYLIB_SOURCE=${raylib_SOURCE_DIR}"
@@ -75,6 +93,9 @@ else()
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/android_patch_test.cmake")
         option(NOVA_GPU_TESTS "Run native GPU smoke tests (requires a desktop session)" OFF)
         if(NOVA_GPU_TESTS)
+            add_executable(nova_render_tests tests/render_test.c)
+            target_link_libraries(nova_render_tests PRIVATE raylib)
+            target_compile_options(nova_render_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
             add_test(NAME nova_gpu_2d COMMAND nova_studio
                 --scene "${CMAKE_CURRENT_SOURCE_DIR}/examples/2d/main.lua"
                 --frames 120 --capture "${CMAKE_BINARY_DIR}/2d.png")
@@ -82,8 +103,17 @@ else()
                 --smoke --frames 120 --capture "${CMAKE_BINARY_DIR}/mixed.png")
             set_tests_properties(nova_gpu_2d nova_gpu_mixed PROPERTIES
                 TIMEOUT 30 RUN_SERIAL TRUE PASS_REGULAR_EXPRESSION "NOVA_RUN frames=120.*status=ok")
+            add_test(NAME nova_gpu_project COMMAND nova_studio
+                --project "${CMAKE_CURRENT_SOURCE_DIR}/examples/assets/nova.project"
+                --frames 120 --capture "${CMAKE_BINARY_DIR}/assets.png")
+            set_tests_properties(nova_gpu_project PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE
+                PASS_REGULAR_EXPRESSION "NOVA_RUN frames=120.*status=ok" FIXTURES_SETUP nova_asset_capture)
+            add_test(NAME nova_gpu_project_pixels COMMAND nova_render_tests "${CMAKE_BINARY_DIR}/assets.png")
+            set_tests_properties(nova_gpu_project_pixels PROPERTIES FIXTURES_REQUIRED nova_asset_capture)
+            add_test(NAME nova_gpu_asset_lifetime COMMAND nova_asset_tests --gpu)
+            set_tests_properties(nova_gpu_asset_lifetime PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
         endif()
     endif()
 endif()
-target_link_libraries(${NOVA_APP} PRIVATE nova_core raylib)
+target_link_libraries(${NOVA_APP} PRIVATE nova_assets)
 target_compile_options(${NOVA_APP} PRIVATE -Wall -Wextra -Wpedantic -Werror)

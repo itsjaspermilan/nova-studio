@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include "project.h"
 
 #define NOVA_WIDTH 960
 #define NOVA_HEIGHT 540
@@ -14,11 +15,12 @@ typedef struct NovaEngine NovaEngine;
 typedef struct { float x, y, z; } NovaVec3;
 typedef struct { unsigned char r, g, b, a; } NovaColor;
 typedef enum { NOVA_2D, NOVA_3D, NOVA_MIXED } NovaMode;
-typedef enum { NOVA_RECTANGLE, NOVA_CUBE, NOVA_TEXT } NovaCommandType;
+typedef enum { NOVA_RECTANGLE, NOVA_CUBE, NOVA_TEXT, NOVA_SPRITE, NOVA_MODEL } NovaCommandType;
 typedef struct {
     NovaCommandType type;
     NovaVec3 position, size;
     NovaColor color;
+    size_t asset;
     char text[NOVA_TEXT_CAPACITY];
 } NovaCommand;
 typedef struct {
@@ -35,6 +37,8 @@ typedef struct { float x, y, width, height, scale; } NovaViewport;
 NovaEngine *nova_create(void);
 void nova_destroy(NovaEngine *engine);
 bool nova_load(NovaEngine *engine, const char *source, size_t length, const char *name);
+bool nova_load_with_assets(NovaEngine *engine, const char *source, size_t length,
+    const char *name, const NovaAsset *assets, size_t count);
 bool nova_tick(NovaEngine *engine, double dt, NovaInput input);
 const NovaFrame *nova_frame(const NovaEngine *engine);
 const char *nova_error(const NovaEngine *engine);

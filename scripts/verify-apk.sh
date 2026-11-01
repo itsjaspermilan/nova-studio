@@ -24,15 +24,21 @@ for symbol in ANativeActivity_onCreate android_main nova_tick; do
     printf '%s\n' "$symbols" | grep -Eq "[[:space:]]${symbol}$" ||
         { nova_fail "APK runtime lacks required exported symbol: $symbol"; exit 1; }
 done
+find "$NOVA_ROOT/examples/assets" -type f | while IFS= read -r file; do
+    relative=${file#"$NOVA_ROOT/"}
+    unzip -p "$APK" "assets/$relative" > "$TEMP"
+    cmp "$file" "$TEMP" ||
+        { nova_fail "APK project file does not match source: $relative"; exit 1; }
+done
 for example in 2d mixed; do
     unzip -p "$APK" "assets/examples/$example/main.lua" > "$TEMP"
     cmp "$NOVA_ROOT/examples/$example/main.lua" "$TEMP" ||
         { nova_fail "APK example does not match source: $example"; exit 1; }
 done
-for notice in lua.txt raylib.txt Apache-2.0.txt; do
+for notice in lua.txt raylib.txt Apache-2.0.txt CC0-1.0.txt README.txt; do
     unzip -p "$APK" "assets/licenses/$notice" > "$TEMP"
     cmp "$NOVA_ROOT/licenses/$notice" "$TEMP" ||
         { nova_fail "APK license does not match source: $notice"; exit 1; }
 done
-printf 'APK verified: signing, ARM64 activity entry points, Lua examples and license notices.\n'
+printf 'APK verified: signing, ARM64 activity entry points, Lua examples, project manifest/assets and license notices.\n'
 printf 'Hardware execution and lifecycle behavior are not validated by this check.\n'

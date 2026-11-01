@@ -9,6 +9,10 @@ desktop executable, and into Android assets. Keep that directory when distributi
 Sources fetched by CMake remain unaltered except for the documented, narrowly
 scoped raylib Android destruction-loop patch in cmake/RaylibAndroid.cmake.
 
-No external artwork, game assets, Blender code, or GameStudio code is included.
+No third-party artwork/game assets, Blender code, or GameStudio code is included.
+The original badge.png and gem.glb fixtures in examples/assets/assets are CC0;
+their provenance is examples/assets/NOTICE.txt and their reproducible source is
+scripts/generate-sample-assets.py. Raylib's bundled cgltf is reused for GLB parsing;
+its embedded notice is preserved with the other raylib headers.
 Project code is newly authored. No project-code license has been selected yet;
 the product owner should choose one before publishing this foundation.
