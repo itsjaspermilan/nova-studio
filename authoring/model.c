@@ -2,11 +2,15 @@
 #include "assets.h"
 
 #include <errno.h>
+#include <float.h>
 #include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+_Static_assert(sizeof(float) == 4 && FLT_RADIX == 2 && FLT_MANT_DIG == 24,
+    "GLB export requires IEEE-754 float32");
 
 static bool invalid(char *error, size_t size, const char *message)
 {
@@ -109,7 +113,7 @@ static bool number(const char *token, float *value)
     char *end;
     errno = 0;
     float n = strtof(token, &end);
-    if (end == token || *end || errno || !isfinite(n)) return false;
+    if (end == token || *end || (errno && !(errno == ERANGE && n != 0)) || !isfinite(n)) return false;
     *value = n;
     return true;
 }
@@ -241,6 +245,14 @@ static void put32(unsigned char *bytes, uint32_t value)
     for (int i = 0; i < 4; ++i) bytes[i] = (unsigned char)(value >> (i * 8));
 }
 
+static double color_factor(unsigned char channel)
+{
+    float factor = (float)channel / 255.0f;
+    /* Native import truncates factor*255; select the adjacent float when needed. */
+    if ((unsigned)(factor * 255.0f) < channel) factor = nextafterf(factor, 1.0f);
+    return factor;
+}
+
 bool nova_model_glb(const NovaModelDocument *d, unsigned char **bytes, size_t *length,
     char *error, size_t size)
 {
@@ -278,7 +290,7 @@ bool nova_model_glb(const NovaModelDocument *d, unsigned char **bytes, size_t *l
         const unsigned char *c = d->primitives[i].color;
         append(&json, "%s{\"extensions\":{\"KHR_materials_unlit\":{}},\"pbrMetallicRoughness\":"
             "{\"baseColorFactor\":[%.9g,%.9g,%.9g,1]}}", i ? "," : "",
-            (double)c[0]/255, (double)c[1]/255, (double)c[2]/255);
+            color_factor(c[0]), color_factor(c[1]), color_factor(c[2]));
     }
     append(&json, "],\"meshes\":[");
     for (size_t i = 0; i < d->count; ++i)
