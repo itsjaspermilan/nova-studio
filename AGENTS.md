@@ -44,6 +44,19 @@ before changing contracts; roadmap entries are not implemented features.
   source/project editor. Preserve explicit dirty/conflict decisions and use
   shared inspection/presentation/runtime for its real preview, not another renderer.
   Save is per file; whole-project runtime reload is transactional separately.
+- `authoring/game.{c,h}` owns strict nova-game v1 resources/objects/actions/
+  rooms/stable instances and bounded undo. `game.nova-game` is authored source;
+  `game.project` / `game.generated.lua` are exact verified generated ownership,
+  never a reconstruction of hand-authored projects. Save is three guarded
+  single-file writes with explicit partial outcomes, not a filesystem transaction.
+  `authoring/game_ui.{c,h}` is the default native beginner workspace for BOTH
+  dimensions, with a native import browser, appearance/object bridge, actual
+  typed behavior actions, room selection/snap/per-drag undo and starting-room
+  Run/Stop. Private previews use shared staging/presentation, retain prior live
+  resources/frame on failure and clean their own fixtures. 3D floor plans are
+  labelled editing diagrams, not a replacement gameplay renderer. Advanced and
+  visual drafts are retained independently; unknown data/edited generated
+  outputs must not be silently migrated or overwritten.
 - `authoring/style.{c,h}` owns authoring-only system typography and light/dark
   palette. macOS uses Core Text at physical framebuffer density, with a bounded
   GPU text cache and system interface/monospace fonts; never bundle Apple fonts.
@@ -81,6 +94,13 @@ before changing contracts; roadmap entries are not implemented features.
   placement, sprite alpha/filtering and capture shapes; its partial-allocation
   test redirects only allocation/free calls in a separate test build.
   `tests/toolchain_test.sh` uses isolated fake tools, not the real SDK.
+- `tests/game_test.c` covers both-mode source/reference/behavior/generation/
+  guarded reopen/conflict/import/no-clobber contracts. `game_failure_test.c`
+  redirects only the save call in a separate test build to check honest partial
+  writes/draft retention. `game_ui_test.c` exercises real native controls/action
+  paths, both-dimensional rooms/per-drag undo/save/reopen/Run/Stop, exact native
+  framebuffer pixels and actual retained engines/resources on staging failure.
+  Test-local input functions never synthesize OS events into another app.
 
 ## Commands from this repository root
 
@@ -136,8 +156,9 @@ repository worktrees. Always use the assigned worktree, never the main checkout
 or the coordinating GameStudio. Confirm isolation again before parallel writers
 in a fresh project/session.
 
-This is a native project/sample launcher and bounded desktop source/project
-editor with original static primitive modelling, not a full IDE/mesh modeller. Manifest v1
+This is a native project/sample launcher and bounded desktop beginner object/
+room editor for both 2D and 3D, with separate Advanced source/project editing and
+original static primitive modelling, not a full IDE/mesh modeller. Manifest v1
 and the bounded PNG/static GLB pipeline, native framebuffer HUD and bounded
 world presets are implemented; skeletal animation, full audio mixing/streaming
 and Glow compatibility are not.
@@ -145,3 +166,5 @@ Timers/sprite frames/numeric tweens, PCM WAV and explicit project saves are boun
 native services, not automatic lifecycle persistence. Android package
 verification passes, but device behavior remains unvalidated.
 State these boundaries when reporting results; see TODO for actual prerequisites.
+The next approved modelling/texture milestone is separate: keep this workflow's
+primitive model authoring untextured and do not add placeholder texture controls.

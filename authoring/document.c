@@ -343,7 +343,8 @@ bool nova_authoring_open(NovaAuthoringProject *project, const char *manifest, ch
         return io_fail(error, size, "resolve authoring manifest");
     const char *name = strrchr(candidate.manifest, '/') + 1;
     NovaProject parsed;
-    if (!nova_document_open(&candidate.declaration, root, name, NOVA_MANIFEST_LIMIT, error, size)) {
+    size_t limit = !strcmp(name, "game.nova-game") ? 65536 : NOVA_MANIFEST_LIMIT;
+    if (!nova_document_open(&candidate.declaration, root, name, limit, error, size)) {
         nova_authoring_close(&candidate);
         return false;
     }

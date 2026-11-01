@@ -288,11 +288,57 @@ desktop-only editor; an APK/device run was not performed for this milestone.
   exercise, and existing text/edit/save/reload/conflict/modeller GPU workflows.
   Gameplay bitmap text, original scene output and sprite filtering stay separate.
 
+### Completed beginner Objects and Rooms workflow
+
+- [x] Native beginner workspace is the default, with one coherent 2D/3D
+  appearance -> reusable object -> placed room instance -> Run model.
+  New creates an exclusively named project directory and saved runnable starter;
+  native resource/location browser, validated no-clobber PNG/static-GLB import
+  and explicit appearance -> Create object using this bridge.
+- [x] Strict separately authored nova-game v1 resources, stable object/room/
+  instance references, names/transforms/camera and designated starting room.
+  Explicit actual Create/Step/primary-press typed movement actions; no pretend
+  collision/physics/rotation/audio library or full GameMaker compatibility.
+- [x] Native room layouts: shared runtime 2D/3D presentation, separate labelled
+  XZ floor-plan editing diagram for 3D, selection/movement/snap/nudge, typed
+  properties, per-drag undo, bounded redo and explicit dependency-aware deletion.
+- [x] Explicit Save/preflight/Run/Stop/Restart, preserving authoring room,
+  selection/drafts and actual prior live resources on failure. Guarded single-file
+  authored/Lua/manifest writes report partial outcomes honestly; generated edits
+  are not overwritten/adopted, unknown source stays repairable in Advanced.
+  Visual and Advanced drafts remain separate; no save-first switching/autosave.
+- [x] Both-dimension headless parser/reference/behavior/conflict/no-clobber
+  tests, injected per-file failures and hidden real-native action/framebuffer
+  evidence, with original source/modeller/presentation/export regressions.
+  Ordinary DEBUG Android launcher and complete sample/notices/native/signature
+  inventory built/verified; no personal keys, device installation or performance
+  claims. Device behavior remains unvalidated.
+
+All 45 configured native CTests passed, including both real standalone generated
+projects and the original editor/modeller/runtime/export regressions. The new
+headless authoring/save-failure tests also passed ASan/UBSan; isolated toolchain
+tests and the ordinary debug APK inventory/signature check passed.
+
+This is bounded beginner authoring, not full GameMaker compatibility, a full IDE,
+sprite painter, arbitrary mesh editor, physics engine or animated GLB pipeline.
+The supported catalog and ownership/recovery boundaries are explicit in README.
+Textured primitive authoring is not included in this completed slice.
+
+### Next approved separate modelling milestone
+
+- [ ] Approachable static character/prop/environment modelling, basic PNG
+  textures and automatic primitive UV mapping, AFTER Objects and Rooms.
+  Preserve the shared room/object model and existing original primitive source/
+  supported GLB importer. This is a separately scoped follow-up, not delivered
+  functionality and not authorization for placeholder texture controls here.
+
 ### Recommended fresh-session kickoff
 
 > Read AGENTS.md, TODO.md and README.md in the assigned NovaStudio worktree.
-> The native project/source editor and bounded static primitive modeller are
-> implemented. Preserve their real document/widgets, inspection v2 and shared
+> The native beginner object/room workflow for both dimensions, Advanced
+> project/source editor and bounded static primitive modeller are implemented.
+> Preserve generated ownership/no-clobber/partial-save contracts, real
+> document/widgets, inspection v2 and shared
 > presentation/preflight seams, direct scenes, old examples and strict static/
 > unlit imports. Broader authoring/materials/animated GLB require a separate
 > approved scope. Device execution

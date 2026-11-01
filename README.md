@@ -1,6 +1,6 @@
 # Nova Studio
 
-A working **native runtime and bounded desktop source/project editor with original static primitive modelling**, not a full game IDE. The native launcher opens editable Lua examples and versioned projects containing imported PNG sprites and static GLB models. The separate native editor edits actual project/Lua files and primitive-source documents, exports the supported GLB subset, and previews them through the same runtime. Everything lives here; GameStudio and Glow43 are unchanged and are not dependencies.
+A working **native runtime and bounded beginner object/room editor for both 2D and 3D**, with Advanced source editing and original static primitive modelling, not a full game IDE. The native launcher opens editable Lua examples and versioned projects containing imported PNG sprites and static GLB models. The separate native editor creates reusable objects, authors real behaviors, places room instances and generates standalone runtime projects without requiring Lua/manifest edits. Everything lives here; GameStudio and Glow43 are unchanged and are not dependencies.
 
 The provisional product name is Nova Studio. This foundation targets desktop authoring and standalone Android games, initially Retroid Pocket 6. It contains **no WebView, browser renderer, or screenshot-streaming gameplay**.
 
@@ -38,12 +38,152 @@ The executables resolve bundled examples relative to their own directory, not th
 ```sh
 ./build/nova_editor
 ./build/nova_editor --browse "$PWD/examples"
+./build/nova_editor --game "/path/to/MyGame/game.nova-game"
+./build/nova_editor --advanced
 ./build/nova_editor --project "$PWD/examples/assets/nova.project"
 ```
 
 `nova_editor` is a separate desktop-only raylib executable. The ordinary
 `nova_studio` launcher, direct scenes, Android runtime and standalone startup
-are unchanged. The browser lists real directories and `.project` files;
+are unchanged. It opens **Objects and Rooms** by default. `--project` opens
+existing hand-authored projects directly in **Advanced**; they are not converted.
+
+#### Beginner workflow: appearance -> object -> room -> Run
+
+Choose **2D** or **3D**, a project **Name**, and an existing **Location** in the
+native directory browser, then **New project**. Creation exclusively creates a
+new child directory; an existing destination is refused. A saved, runnable
+starting room opens immediately with an original turquoise sprite or original
+untextured pyramid and a player object controlled by WASD/arrows. No manifest
+or Lua editing is needed. The two modes use the same resource/object/room model.
+The 3D starter retains its original `.nova-model` primitive source for the
+existing static modeller; arbitrary imported GLB is not reconstructed as primitives.
+
+**Add Sprite / Model** opens a native PNG/static-GLB file browser. Navigate with
+**Up / List location**, click a file, enter a unique **Name**, then explicitly
+**Import selected appearance**. Selection/navigation never saves. Import validates
+through the shared decoder and guardedly copies into a fresh stable-ID filename;
+existing destinations are refused. It writes that asset copy, not the game
+document. Undo/deletion retain imported files rather than silently deleting
+potentially useful data. PNG painting, animated GLB and textured primitive
+authoring are not implemented.
+
+Select the appearance in the left resource tree and choose **Create object using
+this**. The **Name** field names the new reusable object; the property Name field
+renames the selected resource without changing its stable ID or references.
+The right panel is a real bounded behavior editor, not an editable Lua template:
+
+| Event | Supported typed action | Meaning |
+|---|---|---|
+| Create | Set position | Optional absolute initial XYZ, overriding placed position on Run |
+| Step | Move with controls | Horizontal/vertical input times speed: XY for sprites, XZ for models |
+| Step | Constant movement | XYZ units per second, added on every simulation tick |
+| Primary press | Move by offset | Typed XYZ displacement once per Space/action rising edge |
+
+Toggle each supported action explicitly and **Apply properties** to commit typed
+numbers to the draft; **Reset values** discards only those unapplied fields.
+2D has no editable Z/depth; 3D uses model translation and uniform scale, with
+real room camera/look-at/FOV properties. There are no placeholder collision,
+physics, rotation, sound, sprite animation or full GameMaker compatibility actions.
+Existing Lua audio/save/timer APIs remain available to Advanced projects.
+
+Select a **Room** in the tree. Select an object to make it the placement palette,
+then return to **Open room Layout**. **Place object** repeats click-to-place;
+**Select / move** selects and drags one placed instance. **Grid / snap** is on by
+default. The 2D layout is the actual shared native preview; the 3D layout has a
+shared native perspective preview plus a labelled XZ floor-plan diagram
+(-10..10), with Y height in instance properties. The diagram is not a second
+gameplay renderer. Arrow keys nudge a selected instance by one snap step when
+no text field owns focus. Each completed drag/property edit is one undo step;
+Escape/blur cancels an in-progress drag. **Undo / Redo** retains the last 16
+authored changes, not filesystem writes. **Delete selected...** requires an
+explicit decision. Used appearances/objects, occupied rooms and the starting
+room cannot be deleted until dependencies are removed/reassigned. Remaining
+IDs and references are preserved; no guessed Lua rename rewriting occurs.
+
+**Add room** uses the toolbar Name and 2D/3D choice. Room instances have stable
+IDs, object references, names, position and scale. The toolbar dimension chooses
+new projects/rooms and import type; it does not convert existing room contents.
+**Make starting room** chooses
+what the game runs, independently of which room is currently being edited.
+**Run** explicitly saves/preflights and stages that whole generated project in
+the same native engine/presentation pipeline used by desktop and Android.
+**Stop / Restart** are explicit; Stop restores authoring with room, selection,
+properties and drafts retained. Only the clicked/focused game preview consumes
+gameplay keys; blur, minimization and modal decisions suspend simulation/services
+and clear preview keyboard focus. Deterministic frame runs are not performance
+or device-validation claims.
+
+#### Authored source, generated ownership and safe saving
+
+`game.nova-game` is strict **nova-game v1** authored data: resources (32),
+reusable objects (32), rooms (8), instances (128), global stable IDs and the
+designated start. Names are unique within each category and use 1..31 ASCII
+letters/digits/underscore. Positions are bounded to +/-10000, velocities/offsets
+to +/-1000, speed to 0..1000, object size to 0.01..1000 and instance scale to
+0.01..100 (combined size <=1000). Snap is 0.01..128. Parsing rejects unknown
+versions/directives, invalid references, mode/appearance mismatches, duplicate
+IDs/names and nonfinite values; failed open preserves the current draft.
+The source is bounded to 64 KiB and has a separate in-memory undo/context state.
+IDs are not reused after undo/deletion; undoing creation can leave the next-ID
+counter dirty even when the visible resource has been removed.
+
+`game.project` and `game.generated.lua` are explicitly generated and owned.
+They are ordinary runtime v1 manifest/Lua output; run them with
+`nova_studio --project /path/to/MyGame/game.project` or use existing standalone
+export tooling with this manifest. Visual reopen verifies both generated files
+against generation of the saved authored source. **Edited/missing generated
+outputs block visual Save/Run** rather than clobbering them or silently adopting
+hand-authored behavior. Keep an independent copy for Advanced customization.
+Malformed/future `.nova-game` source opens in Advanced for text repair; it is
+never partially parsed and reconstructed by visual Save.
+
+**Save** writes authored source, generated Lua, then generated manifest, using
+three separate `NovaDocument` exact-snapshot guarded saves. It is **not an atomic
+multi-file transaction**. All generated disk snapshots are checked before any
+write; a source conflict offers the full exact observed text and explicit
+overwrite consent for that version only. Newer edits invalidate consent.
+Partial writes report the number of files written; pending generated drafts
+remain dirty, and Run aborts. Retry in the same session after fixing the cause.
+If a partial save is closed before retry, inconsistent outputs remain blocked
+on reopen and require explicit Advanced repair/preservation, not an automatic
+overwrite. If all files were saved but preflight fails, that outcome is reported
+separately. Failed save/import/runtime replacement keeps authored drafts and
+the previous live engine/resources; failed private preview staging shows the
+retained frame with an explicit failure label, not a successful current preview.
+Creation failures report the incomplete new directory and keep the previous
+project; they do not pretend to have rolled back multiple files.
+
+**Advanced** switches to the original manifest/Lua browser/editor without
+discarding visual drafts or editor context; **Objects / Rooms** returns without
+discarding Advanced drafts. Reopen visual source explicitly to adopt saved
+source repairs, with a dirty-discard decision. Saving Advanced generated-file
+edits does not authorize visual overwrites. Closing either workspace requires
+an explicit discard decision for outstanding drafts. There is no autosave on
+view/project switching.
+
+Focused evidence uses isolated private fixtures and native action paths, never
+OS keyboard/mouse injection into another editor:
+
+```sh
+./scripts/with-toolchain.sh ctest --test-dir build \
+  -R 'nova_game_authoring|nova_game_save_failures|nova_gpu_objects_rooms' --output-on-failure
+```
+
+The native workflow test exercises both creation/import pickers, the
+appearance/object bridge and behavior toggle, room placement, drag-level undo,
+typed edits, save/reopen, designated-start Run/Stop/Restart and exact native
+framebuffer colors. Failed preflight/staging retains real prior engines/GPU
+resources. Both generated projects also reopen in the real editor executable
+and run/capture through the ordinary runtime executable. All 45 configured
+desktop CTests passed; the new headless authoring/save-failure tests also passed
+AddressSanitizer/UndefinedBehaviorSanitizer. The ordinary debug Android launcher was rebuilt and its complete
+sample/notices/native/signature inventory verified; no device was installed
+or validated and personal release signing remains deferred.
+
+#### Advanced source/project editor
+
+The Advanced browser lists real directories, `.project` files and `game.nova-game`;
 use **Up**, **List directory**, wheel scrolling or the top absolute/relative
 manifest-path field and **Open**. Work on a copy of a sample if you want to
 preserve it: the editor writes the files it opened, not cosmetic editor state.

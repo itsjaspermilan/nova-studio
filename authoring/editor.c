@@ -2,6 +2,7 @@
 #include "widgets.h"
 #include "presentation.h"
 #include "model_ui.h"
+#include "game_ui.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -31,6 +32,8 @@ typedef struct {
     bool close_after_modeller;
     Decision decision;
     double accumulator;
+    NovaGameUI beginner;
+    bool advanced, beginner_ready;
 } Editor;
 
 #define ink (nova_ui_style()->ink)
@@ -201,7 +204,7 @@ static void browser_panel(Editor *editor, int height)
     for (unsigned i = 0; i < editor->files.count; ++i) {
         const char *path = editor->files.paths[i];
         bool directory = DirectoryExists(path);
-        if (!directory && !IsFileExtension(path, ".project")) continue;
+        if (!directory && !IsFileExtension(path, ".project") && strcmp(GetFileName(path), NOVA_GAME_FILE)) continue;
         if (row++ < editor->browser_scroll) continue;
         if (shown >= maximum) continue;
         char label[256];
@@ -345,11 +348,16 @@ static void ui(Editor *editor, Rectangle preview)
     bool modal = editor->decision != DECISION_NONE;
     /* Underlying controls cannot consume input while a decision is displayed. */
     if (modal) {
-        nova_ui_label("Nova Studio / Project Editor", 16, 18, 310, ink);
+        nova_ui_label("Nova Studio / Advanced", 16, 18, 310, ink);
         decision(editor, width, height);
         return;
     }
-    nova_ui_label("Nova Studio / Project Editor", 16, 18, 310, ink);
+    if (nova_ui_button((Rectangle){12,10,206,35}, "Objects / Rooms", editor->beginner_ready)) {
+        editor->advanced = false;
+        editor->preview_focus = false;
+        nova_pause_services(&editor->resources, true);
+        status(editor,"Advanced drafts retained. Reopen visual source explicitly to adopt saved edits.");
+    }
     nova_ui_field_checked((Rectangle){334, 10, (float)(width - 440), 35}, editor->open_path, sizeof(editor->open_path), &editor->path_focus,
         editor->message, sizeof(editor->message));
     if (nova_ui_button((Rectangle){(float)width - 98, 10, 85, 35}, "Open", true) ||
@@ -596,8 +604,8 @@ static bool smoke_cleanup(const char *root)
 
 int main(int argc, char **argv)
 {
-    const char *project = NULL, *directory = NULL, *capture = NULL;
-    bool smoke = false, modeller = false;
+    const char *project = NULL, *directory = NULL, *capture = NULL, *game = NULL;
+    bool smoke = false, modeller = false, advanced = false;
     int limit = 0;
     for (int i = 1; i < argc; ++i) {
         if (!strcmp(argv[i], "--smoke")) smoke = true;
@@ -605,6 +613,8 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--browse") && i + 1 < argc) directory = argv[++i];
         else if (!strcmp(argv[i], "--capture") && i + 1 < argc) capture = argv[++i];
         else if (!strcmp(argv[i], "--modeller")) modeller = true;
+        else if (!strcmp(argv[i], "--advanced")) advanced = true;
+        else if (!strcmp(argv[i], "--game") && i + 1 < argc) game = argv[++i];
         else if (!strcmp(argv[i], "--frames") && i + 1 < argc) {
             char *end;
             long count = strtol(argv[++i], &end, 10);
@@ -612,7 +622,8 @@ int main(int argc, char **argv)
             limit = (int)count;
         } else goto usage;
     }
-    if ((capture && !limit) || (smoke && (project || modeller || limit < 90)) || (modeller && !project)) goto usage;
+    if ((capture && !limit) || (smoke && (project || game || modeller || limit < 90)) ||
+        (modeller && !project) || (game && (project || advanced || modeller))) goto usage;
     char fixture_root[NOVA_NATIVE_PATH_CAPACITY] = {0}, fixture_manifest[NOVA_NATIVE_PATH_CAPACITY];
     Editor *editor = calloc(1, sizeof(*editor));
     if (!editor) { fprintf(stderr, "Nova editor: out of memory\n"); return 1; }
@@ -630,6 +641,18 @@ int main(int argc, char **argv)
     }
     snprintf(editor->browse, sizeof(editor->browse), "%s", directory ? directory : TextFormat("%s/examples", GetApplicationDirectory()));
     browse(editor);
+    editor->advanced = advanced || project || smoke || modeller;
+    editor->beginner_ready = nova_game_ui_open(&editor->beginner, directory ? directory : GetWorkingDirectory(),
+        editor->message, sizeof(editor->message));
+    if (!editor->beginner_ready) { fprintf(stderr, "Nova beginner editor: %s\n",editor->message); result = 1; goto cleanup; }
+    if (game) {
+        snprintf(editor->beginner.path,sizeof(editor->beginner.path),"%s",game);
+        if (!nova_game_ui_action(&editor->beginner,NOVA_GAME_OPEN)) {
+            fprintf(stderr,"Nova game: %s\n",editor->beginner.message);
+            /* Unsupported visual source remains directly repairable in Advanced. */
+            editor->advanced = true; project = game;
+        }
+    }
     if (smoke) {
         if (!smoke_fixture(fixture_root, fixture_manifest, editor->message, sizeof(editor->message))) {
             fprintf(stderr, "Nova editor: %s\n", editor->message);
@@ -644,6 +667,41 @@ int main(int argc, char **argv)
     }
     int frames = 0;
     while (!editor->quit) {
+        if (!editor->advanced) {
+            if (WindowShouldClose()) {
+                if (dirty(editor)) {
+                    editor->advanced = true; editor->decision = DECISION_CLOSE;
+                    continue;
+                }
+                nova_game_ui_request_close(&editor->beginner);
+            }
+            nova_ui_style_update();
+            if (limit && frames+1 >= limit && capture)
+                snprintf(editor->beginner.capture,sizeof(editor->beginner.capture),"%s",capture);
+            if (!nova_game_ui_draw(&editor->beginner,limit != 0)) { result = 1; break; }
+            if (editor->beginner.quit) break;
+            if (editor->beginner.advanced) {
+                editor->beginner.advanced = false; editor->advanced = true;
+                char path[NOVA_NATIVE_PATH_CAPACITY] = {0};
+                if (*editor->beginner.advanced_path)
+                    snprintf(path,sizeof(path),"%s",editor->beginner.advanced_path);
+                else if (editor->beginner.project.authored.text)
+                    nova_project_resolve(editor->beginner.project.authored.root,NOVA_GAME_MANIFEST,path,
+                        editor->message,sizeof(editor->message));
+                if (*path && strcmp(path,editor->project.manifest)) {
+                    request_open(editor,path);
+                }
+                status(editor,"Advanced source editor. Visual drafts/selection retained; generated edits block visual Save/Run, never silently overwritten.");
+            }
+            ++frames;
+            if (limit && frames >= limit) {
+                if (editor->beginner.stale || (editor->beginner.project.authored.text && !editor->beginner.ready)) result = 1;
+                printf("NOVA_GAME_EDITOR frames=%d instances=%zu preview=%s status=%s\n",frames,
+                    editor->beginner.project.data.instances,editor->beginner.playing ? "running" : "layout",result ? "error" : "ok");
+                break;
+            }
+            continue;
+        }
         if (editor->close_after_modeller && editor->modeller.active &&
             editor->modeller.decision == NOVA_MODEL_DECISION_NONE && !editor->modeller.close)
             editor->close_after_modeller = false;
@@ -655,7 +713,12 @@ int main(int argc, char **argv)
                 editor->close_after_modeller = true;
                 nova_model_ui_request_close(&editor->modeller);
             } else {
-                if (!dirty(editor)) break;
+                if (!dirty(editor)) {
+                    if (nova_game_dirty(&editor->beginner.project) || editor->beginner.values_dirty) {
+                        editor->advanced = false; nova_game_ui_request_close(&editor->beginner); continue;
+                    }
+                    break;
+                }
                 if (editor->decision == DECISION_NONE) editor->decision = DECISION_CLOSE;
             }
         }
@@ -754,6 +817,7 @@ int main(int argc, char **argv)
         }
     }
 cleanup:
+    nova_game_ui_close(&editor->beginner);
     nova_model_ui_close(&editor->modeller);
     nova_destroy(editor->engine);
     nova_unload_resources(&editor->resources);
@@ -768,6 +832,6 @@ cleanup:
     if (!smoke_cleanup(fixture_root)) result = 1;
     return result;
 usage:
-    fprintf(stderr, "Usage: nova_editor [--project nova.project [--modeller]] [--browse directory] [--frames 1..100000 [--capture native.png]] [--smoke --frames N>=90]\n");
+    fprintf(stderr, "Usage: nova_editor [--game game.nova-game | --advanced | --project nova.project [--modeller]] [--browse directory] [--frames 1..100000 [--capture native.png]] [--smoke --frames N>=90]\n");
     return 2;
 }
