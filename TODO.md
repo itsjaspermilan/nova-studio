@@ -33,9 +33,47 @@ APK SHA-256 is
 `930c069390f598e4477102c8dd8c19a14925dddbf77b609bed3365e1a5bd3347`.
 It is not personally signed or an install-ready release deliverable.
 
-Remaining work requires the user's personal-key/device participation,
-public-publishing authorization, or separately approved advanced engine/authoring
-scope. Historical milestone evidence follows.
+Current user decision: defer personal release signing and use the existing
+debug-signed launcher APK at
+`android/app/build/outputs/apk/debug/app-debug.apk` for development/device testing.
+Debug signing is not release readiness; standalone release exports remain
+unsigned until the separate personal-signing task is completed.
+
+The user approved the beginner object/room authoring milestone below after
+testing the source-oriented editor. Other remaining work requires personal-key/
+device participation, public-publishing authorization, or separately approved
+advanced engine/authoring scope. Historical milestone evidence follows.
+
+## Next approved milestone: beginner 2D and 3D game authoring
+
+User direction: follow GameMaker 7's simple resource/object/room workflow,
+building equivalent 2D and 3D workflows together. Use GameStudio's comparable
+functionality as a read-only interaction reference, not copied implementation,
+assets or a runtime dependency. Preserve the native renderer and system-style UI.
+
+- [x] Research GameStudio's implemented project/resource/object/event/room and
+  Run workflows. Transfer resource -> reusable object -> placed instance -> Run,
+  layout-first opening, the appearance-to-object shortcut and contextual room
+  selection/snap/undo patterns. GameStudio object behavior remains Lua-authored;
+  Nova's beginner event/actions interface is new work, not copied functionality.
+  Reference evidence is source-observed, not a live-app UX verification.
+- [ ] Add real versioned object/room authoring data with stable resource and
+  instance references, validation and guarded save/reopen behavior. Preserve
+  existing manifest/Lua projects and desktop/Android runtime contracts.
+- [ ] Make New Project -> Add Sprite/Model -> Create Object -> Place in Room ->
+  Run work for both 2D and 3D without requiring manifest or Lua edits.
+- [ ] Organize the default native editor around a resource tree, contextual
+  object/event/room editing and properties. Keep source/manifest controls under
+  Advanced; preserve dirty/conflict/error decisions without exposing routine
+  asset-export/reload mechanics as beginner tasks. Keep the original modeller.
+- [ ] Prove both real native workflows, including resource/object/instance
+  edits, save/reopen, play/stop, failure retention and old-project regressions;
+  preserve debug Android build/package verification. Device execution still
+  requires separate consent; personal signing remains deferred.
+
+This is a new authoring milestone, not an already implemented room editor or
+GameMaker compatibility layer. Full IDE, arbitrary mesh editing and animated
+GLB remain outside the approved bounded workflow.
 
 ## Verified completed foundation
 
@@ -282,6 +320,14 @@ ADB installation is an explicit device-modifying action; see README commands.
 - [x] Personal non-debug release-signing tooling: reusable external keystore,
   interactive apksigner prompts, certificate pin, stable IDs/increasing codes,
   and structural APK checks. Actual user's key creation/unlock remains local.
+- [ ] Personal release signing: deferred at the user's request; use debug
+  signing for now. Later, create or reuse the user's external signing keystore,
+  store its identity/password in macOS Keychain, back up the encrypted keystore
+  to iCloud Drive with a separately recoverable password and independent backup,
+  and interactively sign/verify a standalone release with its certificate pin.
+  Login Keychain import does not automatically sync the signing identity to
+  iCloud Keychain. Preserve the same certificate/application ID and increase
+  versionCode for updates; never treat a debug certificate as a personal release.
 - [x] MIT license for Nova-authored source, packaged with distributions while
   preserving original upstream notices and CC0 sample artwork provenance.
   Export/signing milestone verification: eight default CTests (including 19
