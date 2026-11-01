@@ -128,13 +128,44 @@ Android debug APK build/signature/ARM64 native-entry/sample-tree/notices checks
 passed; this is not device execution or GPU-context reconstruction evidence.
 No exporter/service/editor/modeller changes belong to this isolated milestone.
 
-## Next bounded work: native desktop authoring, not the full editor
+## Completed bounded slice: native desktop project/source editor
+
+- [x] Separate desktop `nova_editor` target: real directory/project browser,
+  manifest/Lua editing, existing entry/identity/asset-path properties, and real
+  saved/live inspection v2 declarations/aliases/import metadata. Malformed
+  manifests remain editable; imported bounds/counts are read-only.
+- [x] Bounded UTF-8 text mutation/selection and one-step undo; independent
+  draft/saved-snapshot/live state, full diagnostics and explicit native dirty
+  switch/close/reread/entry and exact observed external-edit decisions.
+- [x] Contained single-link/no-symlink documents, exact bytes/stat snapshots,
+  same-directory atomic/fsynced saves and newer-conflict rejection. Save is
+  per document; whole-project engine/resource reload is transactional separately.
+  A small length-based text/binary output seam supports later authored exports.
+- [x] Genuine GPU project panel through shared presentation/inspection/runtime
+  contracts, 60 Hz ticks with post-success services, pause/error/hidden/unfocused
+  suspension, retained prior engine/resources on failed candidate replacement.
+- [x] Display-free document/property/path/conflict/budget/NUL/CRLF/error/undo
+  tests, isolated original native save/reload/Lua/import rollback smoke and exact
+  framebuffer preview/chrome pixels. Default runtime/old projects remain intact.
+
+All 37 desktop CTests passed, including native GPU tests, on Apple M4. Display-free
+document and text-editing tests also passed AddressSanitizer/UndefinedBehaviorSanitizer. Editor
+capture measured 2560x1600 native pixels for a 1280x800-point window with the
+960x540 default world target. The 90-frame original v1 authoring fixture checks
+green `(77,225,201)` preview pixels after saving/reloading, exact prior engine/
+texture preservation on failed Lua/import reload, aliases, newer external
+conflict rejection and failed dirty-project-switch preservation. Fixtures are
+private temporary files, removed afterward; no gameplay saves, audio playback,
+private keys or devices were used. Bounded frame runs are not performance tests.
+
+This is a source/project inspector, not a full IDE, modeller, persistent scene
+entity editor or hostile-file/process sandbox. Android is unchanged by the
+desktop-only editor; an APK/device run was not performed for this milestone.
+
+## Next bounded work: static authoring and separate device validation
 
 - [ ] Perform the separate consented Android device-validation track below,
   including the third launcher project and imported PNG/GLB visual output.
-- [ ] Build a bounded native desktop project browser and scene/asset inspector
-  against the implemented inspection v1 contract; add Lua editing with explicit
-  save/whole-project reload. No authoring UI has been implemented in this slice.
 - [ ] Build an original static primitive/transform modeller exporting only the
   supported unlit GLB subset. This needs its own bounded authoring assignment;
   do not broaden materials or animated GLB compatibility implicitly.
@@ -142,9 +173,10 @@ No exporter/service/editor/modeller changes belong to this isolated milestone.
 ### Recommended fresh-session kickoff
 
 > Read AGENTS.md, TODO.md and README.md in the assigned NovaStudio worktree.
-> Use the stabilized inspection v1/shared preflight contracts for a bounded native
-> desktop browser/inspector and explicit Lua save/reload. Preserve direct scenes,
-> old examples, native GPU rendering and strict static/unlit imports.
+> The native project/source editor is implemented. Use its real document/widgets
+> and inspection v2/shared presentation/preflight seams for separately assigned
+> static modelling. Preserve direct scenes, old examples, native GPU rendering
+> and strict static/unlit imports.
 > The static modeller is a separate follow-on, not an excuse to add unsupported
 > materials or animated GLB. Device execution
 > needs separate consent and an intended attached device; APK verification is
@@ -170,8 +202,8 @@ ADB installation is an explicit device-modifying action; see README commands.
 
 ## Later work and actual prerequisites
 
-- [ ] Project browser/scene inspector/editor: after the implemented manifest/native
-  asset APIs stabilize, build authoring UI backed by those real contracts, not a mock.
+- [x] Bounded native desktop project browser/source editor and saved/live scene/
+  asset inspector; see completed editor slice above. Full IDE features are deferred.
 - [ ] Original simplified low-poly modeller: after asset interchange is usable;
   start with static primitives/transforms/materials. Skeletal authoring and
   animation require their own later engine/import contracts. Do not copy Blender.

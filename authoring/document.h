@@ -23,6 +23,7 @@ typedef struct {
 
 typedef struct {
     char manifest[NOVA_NATIVE_PATH_CAPACITY];
+    char source_error[1024];
     NovaDocument declaration, source;
 } NovaAuthoringProject;
 
@@ -34,6 +35,8 @@ bool nova_document_open(NovaDocument *document, const char *root, const char *re
 bool nova_document_open_output(NovaDocument *document, const char *root, const char *relative,
     size_t limit, bool binary, char *error, size_t error_size);
 bool nova_document_dirty(const NovaDocument *document);
+/* Refresh observed disk conflict without replacing the draft or saved snapshot. */
+bool nova_document_check_disk(NovaDocument *document, char *error, size_t error_size);
 bool nova_document_replace(NovaDocument *document, size_t start, size_t end,
     const char *text, size_t length, char *error, size_t error_size);
 /* Overwrite consent applies only to the exact conflict snapshot currently displayed. */
@@ -41,7 +44,9 @@ bool nova_document_save(NovaDocument *document, bool overwrite_conflict,
     char *error, size_t error_size);
 bool nova_document_reread(NovaDocument *document, char *error, size_t error_size);
 void nova_authoring_close(NovaAuthoringProject *project);
-/* Copy-on-success. Opening another project never destroys the caller's drafts. */
+/* Copy-on-success opening the manifest. Broken declarations/missing entry remain
+ * editable and are reported through source_error; the source document is empty.
+ * The caller must obtain a dirty-discard decision before opening another project. */
 bool nova_authoring_open(NovaAuthoringProject *project, const char *manifest,
     char *error, size_t error_size);
 /* Parse actual draft declarations; imported geometry is not editable document state. */

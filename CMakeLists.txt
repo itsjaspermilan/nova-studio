@@ -117,6 +117,11 @@ else()
         target_compile_definitions(nova_model_tests PRIVATE NOVA_TEST_DIRECTORY="${CMAKE_BINARY_DIR}")
         target_compile_options(nova_model_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
         add_test(NAME nova_model COMMAND nova_model_tests)
+        add_executable(nova_widget_tests tests/widgets_test.c authoring/widgets.c)
+        target_link_libraries(nova_widget_tests PRIVATE nova_authoring)
+        target_compile_definitions(nova_widget_tests PRIVATE NOVA_TEST_DIRECTORY="${CMAKE_BINARY_DIR}")
+        target_compile_options(nova_widget_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+        add_test(NAME nova_text_editing COMMAND nova_widget_tests)
         add_test(NAME nova_editor_cli_invalid COMMAND nova_editor --invalid-option)
         set_tests_properties(nova_editor_cli_invalid PROPERTIES WILL_FAIL TRUE)
         add_test(NAME nova_editor_cli_unbounded_capture COMMAND nova_editor --capture native.png)
@@ -190,6 +195,10 @@ else()
         if(NOVA_GPU_TESTS)
             add_test(NAME nova_gpu_model COMMAND nova_model_tests --gpu)
             set_tests_properties(nova_gpu_model PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
+            add_test(NAME nova_gpu_editor_authoring COMMAND nova_editor --smoke
+                --frames 90 --capture "${CMAKE_BINARY_DIR}/editor-authored.png")
+            set_tests_properties(nova_gpu_editor_authoring PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE
+                PASS_REGULAR_EXPRESSION "NOVA_EDITOR_SMOKE.*native-pixels=ok")
             add_test(NAME nova_gpu_editor COMMAND nova_editor
                 --project "${CMAKE_CURRENT_SOURCE_DIR}/examples/assets/nova.project"
                 --frames 60 --capture "${CMAKE_BINARY_DIR}/editor.png")

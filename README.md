@@ -1,6 +1,6 @@
 # Nova Studio
 
-A working **native runtime slice**, not a finished game editor. The native launcher opens editable Lua examples and a versioned project containing an imported PNG sprite and static GLB model. Everything lives here; GameStudio and Glow43 are unchanged and are not dependencies.
+A working **native runtime and bounded desktop source/project editor**, not a full game IDE. The native launcher opens editable Lua examples and versioned projects containing imported PNG sprites and static GLB models. The separate native editor edits actual project/Lua files and previews them through the same runtime. Everything lives here; GameStudio and Glow43 are unchanged and are not dependencies.
 
 The provisional product name is Nova Studio. This foundation targets desktop authoring and standalone Android games, initially Retroid Pocket 6. It contains **no WebView, browser renderer, or screenshot-streaming gameplay**.
 
@@ -31,7 +31,104 @@ Edit the source examples with your preferred text editor, then rebuild to synchr
 ./build/nova_studio --project "$PWD/examples/static/nova.project"
 ```
 
-The executable resolves its bundled examples relative to its own directory, not the shell's current directory. To move the desktop build, keep `nova_studio`, `examples/`, and `licenses/` (including Nova's MIT LICENSE) together. There is no `.app` bundle, installer, notarization, or integrated script editor yet.
+The executables resolve bundled examples relative to their own directory, not the shell's current directory. To move the desktop build, keep `nova_studio`, optional `nova_editor`, `examples/`, and `licenses/` (including Nova's MIT LICENSE) together. There is no `.app` bundle, installer or notarization.
+
+### Native desktop project editor
+
+```sh
+./build/nova_editor
+./build/nova_editor --browse "$PWD/examples"
+./build/nova_editor --project "$PWD/examples/assets/nova.project"
+```
+
+`nova_editor` is a separate desktop-only raylib executable. The ordinary
+`nova_studio` launcher, direct scenes, Android runtime and standalone startup
+are unchanged. The browser lists real directories and `.project` files;
+use **Up**, **List directory**, wheel scrolling or the top absolute/relative
+manifest-path field and **Open**. Work on a copy of a sample if you want to
+preserve it: the editor writes the files it opened, not cosmetic editor state.
+
+**Manifest / Lua** edit the actual source bytes, with click/drag selection,
+UTF-8 insertion/paste, Shift-arrow selection, arrows/Home/End, vertical and
+horizontal wheel scrolling, Ctrl/Cmd-A/C/X/V and one-step Ctrl/Cmd-Z undo/redo.
+Enter inserts a newline; Tab inserts four spaces. The bitmap font's existing
+glyph coverage still applies. Manifest drafts are bounded to 16 KiB and Lua
+editing to 256 KiB; larger runtime scenes remain runnable but are explicitly
+rejected by this bounded editor. Single-line path/property fields append text;
+Backspace removes a character and Ctrl/Cmd-A clears the field before replacement.
+
+**Save active / Ctrl/Cmd-S** atomically saves only the selected document.
+Save manifest and Lua separately when changing both; there is no multi-file
+filesystem transaction or automatic save. **Reload saved / Ctrl/Cmd-R** stages
+the actual disk project through `nova_open_scene`, then replaces engine/resources
+only on success. Reload does not save drafts. **Open saved entry** opens the
+current disk manifest's Lua entry, requiring a discard decision if the old source
+is dirty. A malformed manifest or unavailable entry still opens the manifest for
+repair, with an explicit diagnostic; fix/save it, then open its entry and reload.
+
+The asset inspector's **Live metadata** comes from `nova_inspect_scene`;
+**Saved metadata / Preflight saved** comes from side-effect-free
+`nova_validate_project`. Declaration order, alias resource indices, input bytes,
+dimensions, primitive/vertex counts, baked bounds and PCM information are real
+runtime/import results and **read-only**. Previous/next select declarations.
+**Copy path to field / Apply draft path** changes a real asset path in the
+manifest draft, preserving other lines/comments/CRLF. **Draft entry / identity**
+edit those existing directives (identity requires v2). Add/remove/rename IDs,
+change declaration types or upgrade the header in Manifest text; all existing
+parser/import exclusions remain enforced on preflight/reload. There are no
+invented persistent scene entities, transform gizmos or imported mesh editing.
+
+**Draft, disk snapshot and live state are separate.** Asterisks mark unsaved
+documents; the panel shows disk conflicts and transient local save/live counters,
+not serialized scene IDs. Disk view shows the last saved/opening snapshot or
+the exact observed external-conflict text. Reload checks disk snapshots without
+discarding drafts and reports when the running disk candidate differs from them.
+Failed import/Lua replacement retains the old engine and resource ownership;
+its last frame remains visibly labelled **failed / retained / paused**, not a
+successful preview. The actual live source path is shown independently of the
+open document. **Details** opens the full error/status diagnostic.
+
+Dirty project switching, closing, rereading and changing Lua entry require an
+explicit native **cancel / discard** decision. Saving checks exact bytes plus
+file identity/size/mode/timestamps, locks the containing directory for cooperating
+Nova writers, stages/fsyncs a same-directory temporary, rechecks disk immediately
+before atomic replacement and fsyncs the directory. External changes are refused;
+the UI retains draft and observed disk text and offers review, reread or explicit
+overwrite of **that exact observed version**. A newer edit requires another
+decision. Files/parent directories reached through symlinks, hard-linked files,
+replaced project roots, NUL text and oversized input are rejected for authoring;
+the runtime's unchanged read-only import rules are separate. This is optimistic
+local-file coordination, not a hostile-process filesystem sandbox.
+
+Click the genuine native preview for WASD/arrows and Space gameplay input.
+Editing controls do not send gameplay keys. **Pause / Resume**, unfocused or
+minimized windows and decision dialogs pause simulation/services. The preview
+uses shared `NovaFrame`, `NovaResources`, the 60 Hz engine/services loop and
+`runtime/presentation.h`'s caller-provided physical framebuffer rectangle and
+matching pointer conversion; it does not copy a renderer or run another engine
+format. The validated CMake world preset also applies to the editor.
+V2 live previews use the same project-owned save/audio services as ordinary
+gameplay; headless preflight never plays audio or reads/writes live saves.
+
+Bounded native evidence (requires a logged-in desktop):
+
+```sh
+./build/nova_editor --project ./examples/assets/nova.project \
+  --frames 60 --capture ./build/editor.png
+./build/nova_editor --smoke --frames 90 --capture ./build/editor-authored.png
+./scripts/with-toolchain.sh ctest --test-dir build \
+  -R 'nova_documents|nova_text_editing|nova_gpu_editor' --output-on-failure
+```
+
+`--capture` here captures the **native editor framebuffer**, not the runtime's
+logical compatibility capture. `--smoke` requires at least 90 frames and refuses
+`--project`: it creates/removes a private temporary v1 fixture using original
+CC0 sample PNG/GLB and an original Lua scene. It exercises the same text mutation
+and UI action paths for draft/save/reload, Lua/import rollback, newer external
+conflicts and dirty-switch decisions, then checks exact preview/chrome pixels.
+It does not synthesize OS keyboard events or access gameplay saves/audio/signing.
+Ordinary `--project --frames` still runs normal live project service effects;
+use headless preflight or this v1 smoke for side-effect-free authoring checks.
 
 ### Native rendering evidence and repeatable checks
 
@@ -116,6 +213,8 @@ This checkpoint is a backend, not yet the integrated desktop modeller UI.
 | `runtime/assets.{c,h}` | Native path resolution, PNG/GLB decoding, resource cache and transactional scene replacement |
 | `runtime/inspect.h` | Read-only loaded scene/resource views and shared headless project preflight v2 |
 | `runtime/saves.{c,h}` | Project-owned, hex-encoded bounded save keys and atomic versioned file replacement |
+| `authoring/document.{c,h}` | Bounded real file drafts, disk snapshots, contained atomic/conflict-guarded text/binary output |
+| `authoring/editor.c`, `authoring/widgets.{c,h}` | Native project browser, source/property editing, decisions and shared-runtime preview |
 | `examples/2d/main.lua` | Editable 2D gameplay, moving target and native contact detection |
 | `examples/mixed/main.lua` | Editable 3D gameplay, camera, generated mesh models and HUD |
 | `examples/assets/` | Editable manifest project, original CC0 PNG/GLB fixtures and provenance notice |
@@ -164,7 +263,7 @@ reload/inspection lifetimes.
 `nova_world_resolution_parse()` accepts only the three exact preset strings.
 `nova_presentation_layout()` computes layout in physical framebuffer pixels,
 not window points. `nova_presentation_layout_region()` does the same inside a
-caller-provided `NovaFramebufferRect` (for a later editor preview panel), rejecting
+caller-provided `NovaFramebufferRect` (also used by the desktop editor), rejecting
 empty/out-of-framebuffer regions without mutating the output. Returned
 `NovaPresentationLayout` includes window and framebuffer dimensions, the requested
 pixel rectangle and the actual letterbox `NovaViewport`.
@@ -182,7 +281,7 @@ These non-nested scopes restore matrices and the full active-target viewport;
 do not nest them inside an existing camera/scissor scope. Compositing does not
 clear the caller's framebuffer or draw in panel letterboxes, so the host owns
 its surrounding UI/background. Launcher/error UI uses the same logical overlay
-scope, not world rendering. No editor UI is added here.
+scope, not world rendering. Editor controls are owned separately by `authoring/`.
 
 The compatibility capture uses a separately allocated 960x540 GPU target and
 the same compositor, with logical-size HUD drawing; it is not a resize of the
@@ -773,9 +872,9 @@ execution, lifecycle/context-loss or Retroid performance validation**.
 
 ## Deliberately outside this slice
 
-No original asset modeller, extrusion, skeletal animation, importer UI, full textured/PBR model pipeline, lighting/shadows, physics world, scene inspector UI, project browser, release signing/export wizard, audio API, persistent saves, or user-script module loader yet. Local CLI export/signing and read-only inspection contracts are implemented, not a full editor. The original 3D example uses generated meshes; the third launcher project imports a real static GLB and PNG. Timers currently use `dt` in Lua; audio/save services will share the same scene runtime when added. No existing saves are read or changed, and no Glow compatibility is implied.
+No original asset modeller, extrusion, skeletal animation, full textured/PBR model pipeline, lighting/shadows, physics world, full IDE/debugger, release-signing GUI or user-script module loader is delivered by this editor slice. The bounded native project/source inspector, shared runtime timers/tweens/sprite frames, PCM audio, explicit project saves and local CLI export/signing are implemented. Live previews share those normal gameplay services; automated authoring evidence uses isolated v1 fixtures. The original 3D example uses generated meshes; imported projects use the strict static GLB/PNG subset. No Glow compatibility is implied.
 
-**Next work:** stabilize the versioned manifest/import/handle interfaces with real projects and validate the APK on Retroid Pocket 6 with the user's consent, including imported assets, controller/lifecycle/render-resolution checks. Defer the full editor and original primitive/transform modeller until those interfaces are stable; any later authoring UI must use this native pipeline, not a separate preview engine.
+**Next work:** the separately bounded original static primitive/transform modeller can reuse the document/widget/presentation seams; skeletal/animated GLB require future contracts. Validate the APK on Retroid Pocket 6 only with the user's intended device and consent, including imported assets and controller/lifecycle/render-resolution checks. Desktop authoring and package checks are not Android device evidence.
 
 ## Local source history
 

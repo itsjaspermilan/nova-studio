@@ -29,7 +29,8 @@ void nova_ui_label(const char *text, int x, int y, int width, Color color)
     EndScissorMode();
 }
 
-bool nova_ui_field(Rectangle box, char *text, size_t capacity, bool *focused)
+bool nova_ui_field_checked(Rectangle box, char *text, size_t capacity, bool *focused,
+    char *error, size_t error_size)
 {
     bool changed = false;
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
@@ -49,6 +50,9 @@ bool nova_ui_field(Rectangle box, char *text, size_t capacity, bool *focused)
             size_t length = strlen(text), extra = paste ? strlen(paste) : 0;
             if (extra && length + extra < capacity && !strchr(paste, '\n') && !strchr(paste, '\r')) {
                 memcpy(text + length, paste, extra + 1); changed = true;
+            } else if (extra) {
+                if (error_size) snprintf(error, error_size, "Field paste rejected: value exceeds its byte budget or contains line breaks");
+                else TraceLog(LOG_WARNING, "NOVA UI: Field paste rejected (byte budget or line breaks)");
             }
         }
         int code;
@@ -60,11 +64,19 @@ bool nova_ui_field(Rectangle box, char *text, size_t capacity, bool *focused)
             if (length + (size_t)count < capacity) {
                 memcpy(text + length, bytes, (size_t)count);
                 text[length + (size_t)count] = 0; changed = true;
+            } else {
+                if (error_size) snprintf(error, error_size, "Field byte budget exceeded");
+                else TraceLog(LOG_WARNING, "NOVA UI: Field byte budget exceeded");
             }
         }
     }
     nova_ui_label(text, (int)box.x + 6, (int)box.y + 8, (int)box.width - 12, ink);
     return changed;
+}
+
+bool nova_ui_field(Rectangle box, char *text, size_t capacity, bool *focused)
+{
+    return nova_ui_field_checked(box, text, capacity, focused, NULL, 0);
 }
 
 static size_t previous(const char *text, size_t at)
@@ -108,9 +120,12 @@ void nova_ui_text_reset(NovaTextEditor *editor)
     *editor = (NovaTextEditor){0};
 }
 
-static bool edit(NovaTextEditor *editor, NovaDocument *doc, const char *text, size_t length,
+bool nova_ui_text_insert(NovaTextEditor *editor, NovaDocument *doc, const char *text, size_t length,
     char *error, size_t size)
 {
+    if (!doc->text || editor->cursor > doc->length || editor->anchor > doc->length) {
+        snprintf(error, size, "text editor selection is outside the open document"); return false;
+    }
     char *undo = malloc(doc->length + 1);
     if (!undo) { snprintf(error, size, "out of memory storing one-step undo"); return false; }
     memcpy(undo, doc->text, doc->length + 1);
@@ -123,6 +138,22 @@ static bool edit(NovaTextEditor *editor, NovaDocument *doc, const char *text, si
     editor->undo_length = old_length;
     editor->undo_cursor = editor->cursor; editor->undo_anchor = editor->anchor;
     editor->anchor = editor->cursor = start + length;
+    return true;
+}
+
+bool nova_ui_text_undo(NovaTextEditor *editor, NovaDocument *doc, char *error, size_t size)
+{
+    if (!doc->text || !editor->undo) { snprintf(error, size, "no one-step text undo is available"); return false; }
+    char *old = malloc(doc->length + 1);
+    if (!old) { snprintf(error, size, "out of memory restoring undo"); return false; }
+    memcpy(old, doc->text, doc->length + 1);
+    size_t length = doc->length, cursor = editor->cursor, anchor = editor->anchor;
+    if (!nova_document_replace(doc, 0, doc->length, editor->undo, editor->undo_length, error, size)) {
+        free(old); return false;
+    }
+    editor->cursor = editor->undo_cursor; editor->anchor = editor->undo_anchor;
+    free(editor->undo); editor->undo = old; editor->undo_length = length;
+    editor->undo_cursor = cursor; editor->undo_anchor = anchor;
     return true;
 }
 
@@ -175,25 +206,16 @@ void nova_ui_text(NovaTextEditor *editor, NovaDocument *doc, Rectangle box,
                 if (copy) {
                     memcpy(copy, doc->text + start, end - start); copy[end - start] = 0;
                     SetClipboardText(copy); free(copy);
-                    if (IsKeyPressed(KEY_X)) move = edit(editor, doc, "", 0, error, size);
+                    if (IsKeyPressed(KEY_X)) move = nova_ui_text_insert(editor, doc, "", 0, error, size);
                 } else snprintf(error, size, "out of memory copying selection");
             }
         }
         if (editable && command && IsKeyPressed(KEY_Z) && editor->undo) {
-            char *old = malloc(doc->length + 1);
-            if (old) {
-                memcpy(old, doc->text, doc->length + 1);
-                size_t length = doc->length, cursor = editor->cursor, anchor = editor->anchor;
-                if (nova_document_replace(doc, 0, doc->length, editor->undo, editor->undo_length, error, size)) {
-                    editor->cursor = editor->undo_cursor; editor->anchor = editor->undo_anchor;
-                    free(editor->undo); editor->undo = old; editor->undo_length = length;
-                    editor->undo_cursor = cursor; editor->undo_anchor = anchor; move = true;
-                } else free(old);
-            } else snprintf(error, size, "out of memory restoring undo");
+            move = nova_ui_text_undo(editor, doc, error, size);
         }
         if (editable && command && IsKeyPressed(KEY_V)) {
             const char *paste = GetClipboardText();
-            if (paste) move = edit(editor, doc, paste, strlen(paste), error, size);
+            if (paste) move = nova_ui_text_insert(editor, doc, paste, strlen(paste), error, size);
         }
         size_t cursor = editor->cursor;
         if (pressed(KEY_LEFT)) { cursor = previous(doc->text, cursor); move = true; }
@@ -206,20 +228,20 @@ void nova_ui_text(NovaTextEditor *editor, NovaDocument *doc, Rectangle box,
         if (editable && !command) {
             if (pressed(KEY_BACKSPACE)) {
                 if (editor->cursor == editor->anchor) editor->anchor = previous(doc->text, editor->cursor);
-                move = edit(editor, doc, "", 0, error, size);
+                move = nova_ui_text_insert(editor, doc, "", 0, error, size);
             }
             if (pressed(KEY_DELETE)) {
                 if (editor->cursor == editor->anchor) editor->anchor = next(doc->text, doc->length, editor->cursor);
-                move = edit(editor, doc, "", 0, error, size);
+                move = nova_ui_text_insert(editor, doc, "", 0, error, size);
             }
-            if (IsKeyPressed(KEY_ENTER)) move = edit(editor, doc, "\n", 1, error, size);
-            if (IsKeyPressed(KEY_TAB)) move = edit(editor, doc, "    ", 4, error, size);
+            if (IsKeyPressed(KEY_ENTER)) move = nova_ui_text_insert(editor, doc, "\n", 1, error, size);
+            if (IsKeyPressed(KEY_TAB)) move = nova_ui_text_insert(editor, doc, "    ", 4, error, size);
             int code;
             while ((code = GetCharPressed())) {
                 if (code < 32) continue;
                 int count;
                 const char *bytes = CodepointToUTF8(code, &count);
-                move = edit(editor, doc, bytes, (size_t)count, error, size);
+                move = nova_ui_text_insert(editor, doc, bytes, (size_t)count, error, size);
             }
         }
     }

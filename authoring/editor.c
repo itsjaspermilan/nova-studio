@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 typedef enum { DECISION_NONE, DECISION_SWITCH, DECISION_CLOSE, DECISION_REREAD, DECISION_ENTRY, DECISION_CONFLICT, DECISION_DETAILS } Decision;
 typedef struct {
@@ -78,7 +80,13 @@ static bool reload(Editor *editor)
     if (editor->playing) {
         editor->running_generation = editor->saved_generation;
         validate(editor);
-        status(editor, dirty(editor) ? "Reloaded SAVED files; unsaved drafts remain untouched" : "Saved project is running; gameplay restarted");
+        char detail[1024];
+        bool declaration_matches = nova_document_check_disk(&editor->project.declaration, detail, sizeof(detail));
+        bool source_matches = !editor->project.source.text ||
+            nova_document_check_disk(&editor->project.source, detail, sizeof(detail));
+        if (!declaration_matches || !source_matches)
+            status(editor, "Reloaded DISK files, but editor snapshots differ or could not be checked. Review Disk view / explicitly reread; drafts retained.");
+        else status(editor, dirty(editor) ? "Reloaded SAVED files; unsaved drafts remain untouched" : "Saved project is running; gameplay restarted");
     } else status(editor, editor->reload_error);
     return editor->playing;
 }
@@ -93,7 +101,10 @@ static bool open_project(Editor *editor, const char *path)
     editor->property[0] = 0; editor->property_focus = false;
     editor->saved_generation++;
     snprintf(editor->open_path, sizeof(editor->open_path), "%s", editor->project.manifest);
-    return reload(editor);
+    bool running = reload(editor);
+    if (*editor->project.source_error)
+        snprintf(editor->message, sizeof(editor->message), "Manifest opened; Lua editing unavailable: %.960s", editor->project.source_error);
+    return running;
 }
 
 static void request_open(Editor *editor, const char *path)
@@ -117,20 +128,38 @@ static void save(Editor *editor, bool overwrite)
 static void open_entry(Editor *editor)
 {
     NovaProject parsed;
-    if (!nova_project_parse(&parsed, editor->project.declaration.saved.text,
-        editor->project.declaration.saved.length, editor->message, sizeof(editor->message))) return;
+    NovaDocument *manifest = &editor->project.declaration;
+    if (!nova_document_check_disk(manifest, editor->message, sizeof(editor->message)) && !manifest->has_conflict) return;
+    const NovaDiskText *disk = manifest->has_conflict ? &manifest->conflict : &manifest->saved;
+    if (!nova_project_parse(&parsed, disk->text, disk->length, editor->message, sizeof(editor->message))) return;
     if (nova_document_open(&editor->project.source, editor->project.declaration.root, parsed.entry,
         NOVA_SOURCE_EDIT_LIMIT, editor->message, sizeof(editor->message))) {
         nova_ui_text_reset(&editor->text[1]);
+        editor->project.source_error[0] = 0;
         editor->tab = editor->selected_document = 1;
         status(editor, "Opened entry from saved manifest; preview is unchanged");
+    }
+}
+
+static void resolve(Editor *editor, Decision selected)
+{
+    editor->decision = DECISION_NONE;
+    if (selected == DECISION_SWITCH) open_project(editor, editor->pending);
+    else if (selected == DECISION_CLOSE) editor->quit = true;
+    else if (selected == DECISION_ENTRY) open_entry(editor);
+    else if (selected == DECISION_CONFLICT) save(editor, true);
+    else if (selected == DECISION_REREAD &&
+        nova_document_reread(document(editor), editor->message, sizeof(editor->message))) {
+        nova_ui_text_reset(&editor->text[editor->selected_document]);
+        status(editor, "Reread disk into active document; preview unchanged");
     }
 }
 
 static void browser_panel(Editor *editor, int height)
 {
     nova_ui_label("PROJECT BROWSER", 12, 67, 202, accent);
-    nova_ui_field((Rectangle){12, 94, 206, 34}, editor->browse, sizeof(editor->browse), &editor->browse_focus);
+    nova_ui_field_checked((Rectangle){12, 94, 206, 34}, editor->browse, sizeof(editor->browse), &editor->browse_focus,
+        editor->message, sizeof(editor->message));
     if (nova_ui_button((Rectangle){12, 135, 62, 33}, "Up", true)) {
         const char *parent = GetPrevDirectoryPath(editor->browse);
         snprintf(editor->browse, sizeof(editor->browse), "%s", parent);
@@ -217,7 +246,8 @@ static void inspector(Editor *editor, int x, int y, int width, int height)
         y += 35;
     } else { nova_ui_label("No inspected assets in this view", x, y, width, muted); y += 30; }
     if (y + 38 < height - 72)
-        nova_ui_field((Rectangle){(float)x, (float)y, (float)width, 34}, editor->property, sizeof(editor->property), &editor->property_focus);
+        nova_ui_field_checked((Rectangle){(float)x, (float)y, (float)width, 34}, editor->property, sizeof(editor->property), &editor->property_focus,
+            editor->message, sizeof(editor->message));
     y += 39;
     if (y + 31 < height - 72) {
         if (nova_ui_button((Rectangle){(float)x, (float)y, 123, 31}, "Draft entry", *editor->property != 0)) {
@@ -252,7 +282,7 @@ static void decision(Editor *editor, int width, int height)
             if (*text == '\n') ++text;
         }
         if (nova_ui_button((Rectangle){(float)x + 20, (float)y + 386, 160, 35}, "Close diagnostic", true))
-            editor->decision = DECISION_NONE;
+            resolve(editor, DECISION_NONE);
         return;
     }
     int x = (width - 760) / 2, y = (height - 240) / 2;
@@ -274,16 +304,7 @@ static void decision(Editor *editor, int width, int height)
         return;
     }
     if (nova_ui_button((Rectangle){(float)x + 355, (float)y + 154, 183, 38}, action, true)) {
-        Decision selected = editor->decision;
-        editor->decision = DECISION_NONE;
-        if (selected == DECISION_SWITCH) open_project(editor, editor->pending);
-        else if (selected == DECISION_CLOSE) editor->quit = true;
-        else if (selected == DECISION_ENTRY) open_entry(editor);
-        else if (selected == DECISION_CONFLICT) save(editor, true);
-        else if (nova_document_reread(document(editor), editor->message, sizeof(editor->message))) {
-            nova_ui_text_reset(&editor->text[editor->selected_document]);
-            status(editor, "Reread disk into active document; preview unchanged");
-        }
+        resolve(editor, editor->decision);
         return;
     }
     if (conflict && nova_ui_button((Rectangle){(float)x + 552, (float)y + 154, 182, 38}, "Discard + reread", true)) {
@@ -303,14 +324,15 @@ static void ui(Editor *editor, Rectangle preview)
         return;
     }
     DrawText("NOVA / native project editor", 16, 18, 18, accent);
-    nova_ui_field((Rectangle){334, 10, (float)(width - 440), 35}, editor->open_path, sizeof(editor->open_path), &editor->path_focus);
+    nova_ui_field_checked((Rectangle){334, 10, (float)(width - 440), 35}, editor->open_path, sizeof(editor->open_path), &editor->path_focus,
+        editor->message, sizeof(editor->message));
     if (nova_ui_button((Rectangle){(float)width - 98, 10, 85, 35}, "Open", true) ||
         (editor->path_focus && IsKeyPressed(KEY_ENTER))) request_open(editor, editor->open_path);
     browser_panel(editor, height);
     bool loaded = editor->project.declaration.text != NULL;
     if (nova_ui_button((Rectangle){236, 65, 107, 33}, nova_document_dirty(&editor->project.declaration) ? "Manifest *" : "Manifest", loaded))
         editor->tab = editor->selected_document = 0;
-    if (nova_ui_button((Rectangle){351, 65, 87, 33}, nova_document_dirty(&editor->project.source) ? "Lua *" : "Lua", loaded))
+    if (nova_ui_button((Rectangle){351, 65, 87, 33}, nova_document_dirty(&editor->project.source) ? "Lua *" : "Lua", editor->project.source.text != NULL))
         editor->tab = editor->selected_document = 1;
     if (nova_ui_button((Rectangle){446, 65, 91, 33}, "Disk view", loaded)) {
         editor->tab = 2; nova_ui_text_reset(&editor->disk_text);
@@ -347,8 +369,10 @@ static void ui(Editor *editor, Rectangle preview)
     char line[1024];
     snprintf(line, sizeof(line), "Live: %s", live.source ? live.source : "(none)");
     nova_ui_label(line, (int)preview.x, (int)(preview.y + preview.height + 8), (int)preview.width, muted);
-    snprintf(line, sizeof(line), "Draft=%s  saved revision=%lu live revision=%lu",
-        dirty(editor) ? "UNSAVED" : "clean", editor->saved_generation, editor->running_generation);
+    snprintf(line, sizeof(line), "Draft=%s disk=%s local save/live=%lu/%lu",
+        dirty(editor) ? "UNSAVED" : "clean",
+        editor->project.declaration.has_conflict || editor->project.source.has_conflict ? "CONFLICT" : "snapshot",
+        editor->saved_generation, editor->running_generation);
     nova_ui_label(line, (int)preview.x, (int)(preview.y + preview.height + 33), (int)preview.width, ink);
     inspector(editor, (int)preview.x, (int)(preview.y + preview.height + 63), (int)preview.width, height);
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
@@ -373,12 +397,182 @@ static NovaInput input(const Editor *editor)
     };
 }
 
+static const char *smoke_source(bool green)
+{
+    return green ?
+        "-- Original native editor authoring evidence (MIT)\n"
+        "nova.scene('mixed')\nlocal badge=nova.asset('badge')\nlocal alias=nova.asset('alias')\nlocal gem=nova.asset('gem')\n"
+        "function update(dt,input)\n nova.background(18,24,41)\n nova.camera(0,2,6,0,0,0,55)\n"
+        " nova.model(gem,0,0,0,1)\n nova.sprite(badge,24,64,48,48)\n nova.sprite(alias,80,64,48,48)\n"
+        " nova.rectangle(250,210,100,80,77,225,201)\nend\n" :
+        "-- Original native editor authoring evidence (MIT)\n"
+        "nova.scene('mixed')\nlocal badge=nova.asset('badge')\nlocal alias=nova.asset('alias')\nlocal gem=nova.asset('gem')\n"
+        "function update(dt,input)\n nova.background(18,24,41)\n nova.camera(0,2,6,0,0,0,55)\n"
+        " nova.model(gem,0,0,0,1)\n nova.sprite(badge,24,64,48,48)\n nova.sprite(alias,80,64,48,48)\n"
+        " nova.rectangle(250,210,100,80,80,120,220)\nend\n";
+}
+
+static bool fixture_write(const char *root, const char *relative, const char *bytes, size_t length,
+    bool binary, char *error, size_t size)
+{
+    NovaDocument output = {0};
+    bool ok = nova_document_open_output(&output, root, relative, NOVA_ASSET_FILE_LIMIT, binary, error, size) &&
+        nova_document_replace(&output, 0, output.length, bytes, length, error, size) &&
+        nova_document_save(&output, false, error, size);
+    nova_document_close(&output);
+    return ok;
+}
+
+static bool smoke_fixture(char *root, char *manifest, char *error, size_t size)
+{
+    strcpy(root, "/tmp/nova-editor-XXXXXX");
+    if (!mkdtemp(root)) { snprintf(error, size, "Could not create isolated editor fixture"); return false; }
+    char assets[NOVA_NATIVE_PATH_CAPACITY];
+    snprintf(assets, sizeof(assets), "%s/assets", root);
+    if (mkdir(assets, 0700)) { snprintf(error, size, "Could not create fixture assets directory"); return false; }
+    const char *names[] = {"badge.png", "gem.glb"};
+    for (size_t i = 0; i < 2; ++i) {
+        char source[NOVA_NATIVE_PATH_CAPACITY], relative[64];
+        snprintf(source, sizeof(source), "%s/examples/assets/assets/%s", GetApplicationDirectory(), names[i]);
+        snprintf(relative, sizeof(relative), "assets/%s", names[i]);
+        int length;
+        unsigned char *bytes = nova_read_file(source, NOVA_ASSET_FILE_LIMIT, &length, error, size);
+        if (!bytes) return false;
+        bool ok = fixture_write(root, relative, (const char *)bytes, (size_t)length, true, error, size);
+        free(bytes);
+        if (!ok) return false;
+    }
+    const char *declarations = "nova-project 1\nentry main.lua\nsprite badge assets/badge.png\nsprite alias assets/badge.png\nmodel gem assets/gem.glb\n";
+    if (!fixture_write(root, "nova.project", declarations, strlen(declarations), false, error, size) ||
+        !fixture_write(root, "main.lua", smoke_source(false), strlen(smoke_source(false)), false, error, size)) return false;
+    snprintf(manifest, NOVA_NATIVE_PATH_CAPACITY, "%s/nova.project", root);
+    return true;
+}
+
+static bool smoke_edit(Editor *editor, const char *text)
+{
+    editor->selected_document = editor->tab = 1;
+    editor->text[1].anchor = 0; editor->text[1].cursor = editor->project.source.length;
+    return nova_ui_text_insert(&editor->text[1], &editor->project.source, text, strlen(text),
+        editor->message, sizeof(editor->message));
+}
+
+static bool smoke_step(Editor *editor, int frame)
+{
+#define VERIFY(condition) do { if (!(condition)) { \
+    snprintf(editor->message, sizeof(editor->message), "Editor smoke failed at frame %d: %s", frame, #condition); \
+    return false; } } while (0)
+    static NovaEngine *retained;
+    static unsigned texture;
+    NovaSceneInspection inspection = nova_inspect_scene(editor->engine, &editor->resources);
+    if (frame == 3) {
+        VERIFY(inspection.loaded && inspection.count == 3 && inspection.assets[0].resource_index == inspection.assets[1].resource_index);
+        VERIFY(smoke_edit(editor, smoke_source(true)) && dirty(editor));
+        VERIFY(nova_frame(editor->engine)->commands[3].color.b == 220);
+        retained = editor->engine;
+    } else if (frame == 5) {
+        request_open(editor, "/missing/editor-smoke/nova.project");
+        VERIFY(editor->decision == DECISION_SWITCH && dirty(editor));
+        resolve(editor, DECISION_NONE);
+        VERIFY(editor->engine == retained && dirty(editor));
+    } else if (frame == 8) {
+        save(editor, false);
+        VERIFY(!dirty(editor) && editor->engine == retained && nova_frame(editor->engine)->commands[3].color.b == 220);
+    } else if (frame == 12) {
+        VERIFY(reload(editor) && nova_frame(editor->engine)->commands[3].color.g == 225);
+        retained = editor->engine; texture = editor->resources.resources[0].texture.id;
+    } else if (frame == 18) {
+        VERIFY(smoke_edit(editor, "not valid Lua!"));
+        save(editor, false);
+        VERIFY(!dirty(editor) && !reload(editor));
+        VERIFY(editor->engine == retained && editor->resources.resources[0].texture.id == texture);
+        VERIFY(!editor->playing && *editor->reload_error);
+    } else if (frame == 25) {
+        VERIFY(smoke_edit(editor, smoke_source(true)));
+        save(editor, false);
+        VERIFY(reload(editor) && !*editor->reload_error);
+    } else if (frame == 32) {
+        editor->text[1].anchor = editor->text[1].cursor = editor->project.source.length;
+        VERIFY(nova_ui_text_insert(&editor->text[1], &editor->project.source, "-- kept draft\n", 14,
+            editor->message, sizeof(editor->message)));
+        VERIFY(fixture_write(editor->project.source.root, "main.lua", "-- external version\n", 20, false,
+            editor->message, sizeof(editor->message)));
+        save(editor, false);
+        VERIFY(editor->decision == DECISION_CONFLICT && dirty(editor) && editor->project.source.has_conflict);
+    } else if (frame == 35) {
+        editor->decision = DECISION_NONE; editor->tab = 2;
+    } else if (frame == 40) {
+        VERIFY(fixture_write(editor->project.source.root, "main.lua", "-- newer external\n", 18, false,
+            editor->message, sizeof(editor->message)));
+        resolve(editor, DECISION_CONFLICT);
+        VERIFY(editor->decision == DECISION_CONFLICT && dirty(editor) &&
+            !strcmp(editor->project.source.conflict.text, "-- newer external\n"));
+    } else if (frame == 43) {
+        resolve(editor, DECISION_CONFLICT);
+        VERIFY(!dirty(editor) && !editor->project.source.has_conflict);
+    } else if (frame == 46) {
+        VERIFY(reload(editor));
+    } else if (frame == 52) {
+        editor->text[1].anchor = editor->text[1].cursor = editor->project.source.length;
+        VERIFY(nova_ui_text_insert(&editor->text[1], &editor->project.source, "-- preserved\n", 13,
+            editor->message, sizeof(editor->message)));
+        retained = editor->engine;
+        request_open(editor, "/missing/editor-smoke/nova.project");
+        resolve(editor, DECISION_SWITCH);
+        VERIFY(dirty(editor) && editor->engine == retained && strstr(editor->project.source.text, "-- preserved"));
+    } else if (frame == 56) {
+        resolve(editor, DECISION_REREAD);
+        VERIFY(!dirty(editor));
+    } else if (frame == 62) {
+        editor->selected_document = editor->tab = 0;
+        VERIFY(!nova_authoring_property(&editor->project, "entry", NULL, "../escape.lua", editor->message, sizeof(editor->message)));
+        VERIFY(nova_authoring_property(&editor->project, "sprite", "badge", "assets/missing.png", editor->message, sizeof(editor->message)));
+        save(editor, false);
+        retained = editor->engine; texture = editor->resources.resources[0].texture.id;
+        VERIFY(!reload(editor) && editor->engine == retained && editor->resources.resources[0].texture.id == texture);
+    } else if (frame == 68) {
+        VERIFY(nova_authoring_property(&editor->project, "sprite", "badge", "assets/badge.png", editor->message, sizeof(editor->message)));
+        save(editor, false);
+        VERIFY(reload(editor) && !dirty(editor));
+        editor->selected_document = editor->tab = 1;
+        status(editor, "Native smoke: draft/save/reload, Lua/import rollback, newer disk conflict and dirty-switch guards verified");
+    }
+    return true;
+#undef VERIFY
+}
+
+static bool smoke_pixels(const NovaPresentationLayout *layout)
+{
+    Image image = LoadImageFromScreen();
+    if (!IsImageValid(image)) return false;
+    int x = (int)(layout->viewport.x + 300 * layout->viewport.scale);
+    int y = (int)(layout->viewport.y + 250 * layout->viewport.scale);
+    Color scene = GetImageColor(image, x, y), chrome = GetImageColor(image, 4, 4);
+    bool ok = image.width == layout->framebuffer_width && image.height == layout->framebuffer_height &&
+        scene.r == 77 && scene.g == 225 && scene.b == 201 && chrome.r == 19 && chrome.g == 27 && chrome.b == 39;
+    UnloadImage(image);
+    return ok;
+}
+
+static bool smoke_cleanup(const char *root)
+{
+    if (!*root) return true;
+    const char *files[] = {"assets/badge.png", "assets/gem.glb", "main.lua", "nova.project"};
+    char path[NOVA_NATIVE_PATH_CAPACITY];
+    for (size_t i = 0; i < 4; ++i) { snprintf(path, sizeof(path), "%s/%s", root, files[i]); unlink(path); }
+    snprintf(path, sizeof(path), "%s/assets", root); rmdir(path);
+    if (rmdir(root)) { fprintf(stderr, "Editor fixture cleanup failed; preserved directory: %s\n", root); return false; }
+    return true;
+}
+
 int main(int argc, char **argv)
 {
     const char *project = NULL, *directory = NULL, *capture = NULL;
+    bool smoke = false;
     int limit = 0;
     for (int i = 1; i < argc; ++i) {
-        if (!strcmp(argv[i], "--project") && i + 1 < argc) project = argv[++i];
+        if (!strcmp(argv[i], "--smoke")) smoke = true;
+        else if (!strcmp(argv[i], "--project") && i + 1 < argc) project = argv[++i];
         else if (!strcmp(argv[i], "--browse") && i + 1 < argc) directory = argv[++i];
         else if (!strcmp(argv[i], "--capture") && i + 1 < argc) capture = argv[++i];
         else if (!strcmp(argv[i], "--frames") && i + 1 < argc) {
@@ -388,7 +582,8 @@ int main(int argc, char **argv)
             limit = (int)count;
         } else goto usage;
     }
-    if (capture && !limit) goto usage;
+    if ((capture && !limit) || (smoke && (project || limit < 90))) goto usage;
+    char fixture_root[NOVA_NATIVE_PATH_CAPACITY] = {0}, fixture_manifest[NOVA_NATIVE_PATH_CAPACITY];
     Editor *editor = calloc(1, sizeof(*editor));
     if (!editor) { fprintf(stderr, "Nova editor: out of memory\n"); return 1; }
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
@@ -404,9 +599,19 @@ int main(int argc, char **argv)
     }
     snprintf(editor->browse, sizeof(editor->browse), "%s", directory ? directory : TextFormat("%s/examples", GetApplicationDirectory()));
     browse(editor);
+    if (smoke) {
+        if (!smoke_fixture(fixture_root, fixture_manifest, editor->message, sizeof(editor->message))) {
+            fprintf(stderr, "Nova editor: %s\n", editor->message);
+            result = 1; goto cleanup;
+        }
+        project = fixture_manifest;
+    }
     if (project && !open_project(editor, project)) result = 1;
     int frames = 0;
     while (!editor->quit) {
+        if (smoke && !smoke_step(editor, frames)) {
+            fprintf(stderr, "%s\n", editor->message); result = 1; break;
+        }
         if (WindowShouldClose()) {
             if (!dirty(editor)) break;
             if (editor->decision == DECISION_NONE) editor->decision = DECISION_CLOSE;
@@ -457,6 +662,9 @@ int main(int argc, char **argv)
             nova_ui_label(coordinates, (int)preview.x + 8, (int)(preview.y + preview.height - 24), (int)preview.width - 16, ink);
         }
         ++frames;
+        if (smoke && frames >= limit && !smoke_pixels(&layout)) {
+            fprintf(stderr, "Editor smoke: exact native preview/chrome pixels failed\n"); result = 1;
+        }
         if (limit && frames >= limit && capture && !nova_capture_native(capture, framebuffer_width, framebuffer_height)) result = 1;
         EndDrawing();
         if (limit && frames >= limit) {
@@ -465,6 +673,7 @@ int main(int argc, char **argv)
                 frames, editor->playing ? "running" : "stopped", editor->presentation.world.texture.width,
                 editor->presentation.world.texture.height, framebuffer_width, framebuffer_height,
                 live.count, live.frame ? live.frame->count : 0, dirty(editor) ? "dirty" : "clean", result ? "error" : "ok");
+            if (smoke) printf("NOVA_EDITOR_SMOKE draft-save-reload=ok lua-import-rollback=ok newer-conflict=ok dirty-switch=ok native-pixels=%s\n", result ? "error" : "ok");
             break;
         }
     }
@@ -478,8 +687,9 @@ cleanup:
     UnloadDirectoryFiles(editor->files);
     CloseWindow();
     free(editor);
+    if (!smoke_cleanup(fixture_root)) result = 1;
     return result;
 usage:
-    fprintf(stderr, "Usage: nova_editor [--project nova.project] [--browse directory] [--frames 1..100000 [--capture native.png]]\n");
+    fprintf(stderr, "Usage: nova_editor [--project nova.project] [--browse directory] [--frames 1..100000 [--capture native.png]] [--smoke --frames N>=90]\n");
     return 2;
 }

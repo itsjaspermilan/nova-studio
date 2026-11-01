@@ -38,6 +38,12 @@ before changing contracts; roadmap entries are not implemented features.
   preflight. Use real declaration-order/alias metadata and `NovaFrame`, not invented
   scene entities. Preserve documented borrowed-view lifetimes and transactional
   failed reload/validation behavior; headless preflight must not upload GPU data.
+- `authoring/document.{c,h}` owns bounded manifest/Lua drafts and exact disk
+  snapshots with contained atomic/conflict-guarded text/binary output.
+  `authoring/editor.c` and `widgets.{c,h}` implement the separate desktop-only
+  source/project editor. Preserve explicit dirty/conflict decisions and use
+  shared inspection/presentation/runtime for its real preview, not another renderer.
+  Save is per file; whole-project runtime reload is transactional separately.
 - `runtime/saves.{c,h}` owns bounded save v1 atomic files in Nova-owned OS app-data.
   Identities/keys are lowercase hex of ASCII bytes to preserve case distinction.
   Never pass Lua paths or touch other applications' saves. Headless preflight
@@ -124,11 +130,12 @@ initialization is not automatic app conversion. Use sequential ownership here,
 or confirm repository registration AND isolated worktrees before parallel writers.
 Check cwd: `/Users/jasper/Developer/NovaStudio`, not the coordinating GameStudio.
 
-This is a native project/sample launcher, not a full editor/modeller. Manifest v1
+This is a native project/sample launcher and bounded desktop source/project
+editor, not a full IDE/modeller. Manifest v1
 and the bounded PNG/static GLB pipeline, native framebuffer HUD and bounded
 world presets are implemented; skeletal animation, full audio mixing/streaming
 and Glow compatibility are not.
 Timers/sprite frames/numeric tweens, PCM WAV and explicit project saves are bounded
-native services, not an editor or automatic lifecycle persistence. Android package
+native services, not automatic lifecycle persistence. Android package
 verification passes, but device behavior remains unvalidated.
 State these boundaries when reporting results; see TODO for actual prerequisites.

@@ -186,6 +186,28 @@ bool nova_document_dirty(const NovaDocument *document)
         memcmp(document->text, document->saved.text, document->length));
 }
 
+bool nova_document_check_disk(NovaDocument *document, char *error, size_t size)
+{
+    if (!document->text) return fail(error, size, "no authoring document is open");
+    char name[NOVA_PROJECT_PATH_CAPACITY];
+    int dir = directory(document, name, error, size);
+    if (dir < 0) return false;
+    NovaDiskText current = {0};
+    bool ok = disk_read(dir, name, document, &current, error, size);
+    close(dir);
+    if (!ok) return false;
+    if (!same_disk(&document->saved, &current)) {
+        disk_free(&document->conflict);
+        document->conflict = current;
+        document->has_conflict = true;
+        return fail(error, size, "Disk differs from the editor snapshot; draft retained. Review Disk view or explicitly reread.");
+    }
+    disk_free(&current);
+    disk_free(&document->conflict);
+    document->has_conflict = false;
+    return true;
+}
+
 bool nova_document_replace(NovaDocument *document, size_t start, size_t end,
     const char *text, size_t length, char *error, size_t size)
 {
@@ -236,6 +258,9 @@ bool nova_document_save(NovaDocument *document, bool overwrite, char *error, siz
         document->has_conflict = true;
         fail(error, size, "external edit detected: review Disk conflict; cancel, reread, or explicitly overwrite this version");
         goto done;
+    }
+    if (current.info.st_ino && faccessat(dir, name, W_OK, 0)) {
+        io_fail(error, size, "document is not writable; refusing atomic replacement"); goto done;
     }
     static unsigned sequence;
     for (int attempt = 0; attempt < 8; ++attempt) {
@@ -310,19 +335,21 @@ bool nova_authoring_open(NovaAuthoringProject *project, const char *manifest, ch
     NovaAuthoringProject candidate = {0};
     char root[NOVA_NATIVE_PATH_CAPACITY];
     struct stat info;
-    if (!manifest || lstat(manifest, &info)) return io_fail(error, size, "inspect project manifest");
+    if (!manifest) return fail(error, size, "no project manifest path supplied");
+    if (lstat(manifest, &info)) return io_fail(error, size, "inspect project manifest");
     if (!S_ISREG(info.st_mode) || info.st_nlink != 1)
         return fail(error, size, "authoring manifest must be a regular single-link file, not a symlink");
     if (!realpath(manifest, candidate.manifest) || !nova_project_root(manifest, root, error, size))
         return io_fail(error, size, "resolve authoring manifest");
     const char *name = strrchr(candidate.manifest, '/') + 1;
     NovaProject parsed;
-    if (!nova_document_open(&candidate.declaration, root, name, NOVA_MANIFEST_LIMIT, error, size) ||
-        !nova_authoring_parse(&candidate, &parsed, error, size) ||
-        !nova_document_open(&candidate.source, root, parsed.entry, NOVA_SOURCE_EDIT_LIMIT, error, size)) {
+    if (!nova_document_open(&candidate.declaration, root, name, NOVA_MANIFEST_LIMIT, error, size)) {
         nova_authoring_close(&candidate);
         return false;
     }
+    if (nova_authoring_parse(&candidate, &parsed, candidate.source_error, sizeof(candidate.source_error)))
+        nova_document_open(&candidate.source, root, parsed.entry, NOVA_SOURCE_EDIT_LIMIT,
+            candidate.source_error, sizeof(candidate.source_error));
     nova_authoring_close(project);
     *project = candidate;
     return true;
@@ -332,6 +359,7 @@ bool nova_authoring_property(NovaAuthoringProject *project, const char *directiv
     const char *id, const char *value, char *error, size_t size)
 {
     NovaProject parsed;
+    if (!directive) return fail(error, size, "no property directive supplied");
     if (!nova_authoring_parse(project, &parsed, error, size)) return false;
     bool entry = !strcmp(directive, "entry"), identity = !strcmp(directive, "identity");
     bool asset = !strcmp(directive, "sprite") || !strcmp(directive, "model") || !strcmp(directive, "audio");
