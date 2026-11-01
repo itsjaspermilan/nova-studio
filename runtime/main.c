@@ -1,5 +1,6 @@
 #include "nova.h"
 #include "assets.h"
+#include "presentation.h"
 #include <raylib.h>
 #include <math.h>
 #include <stdio.h>
@@ -10,49 +11,11 @@ typedef struct {
     const char *scene;
     const char *project;
     const char *capture;
+    const char *capture_native;
+    NovaWorldResolution world_resolution;
     int frames;
     bool smoke;
 } Options;
-
-static Color ray_color(NovaColor value) { return (Color){value.r, value.g, value.b, value.a}; }
-static Vector3 ray_vector(NovaVec3 value) { return (Vector3){value.x, value.y, value.z}; }
-
-static void draw_frame(const NovaFrame *frame, Model cube, const NovaResources *resources)
-{
-    ClearBackground(ray_color(frame->background));
-    if (frame->mode != NOVA_2D) {
-        Camera3D camera = {
-            .position = ray_vector(frame->camera_position), .target = ray_vector(frame->camera_target),
-            .up = {0, 1, 0}, .fovy = frame->camera_fov, .projection = CAMERA_PERSPECTIVE
-        };
-        BeginMode3D(camera);
-        for (size_t i = 0; i < frame->count; ++i) {
-            const NovaCommand *draw = &frame->commands[i];
-            if (draw->type == NOVA_CUBE) {
-                DrawModelEx(cube, ray_vector(draw->position), (Vector3){0, 1, 0},
-                    0, ray_vector(draw->size), ray_color(draw->color));
-                DrawCubeWiresV(ray_vector(draw->position), ray_vector(draw->size), (Color){18, 24, 41, 255});
-            } else if (draw->type == NOVA_MODEL) {
-                DrawModelEx(resources->resources[draw->asset].model, ray_vector(draw->position),
-                    (Vector3){0, 1, 0}, 0, ray_vector(draw->size), WHITE);
-            }
-        }
-        EndMode3D();
-    }
-    for (size_t i = 0; i < frame->count; ++i) {
-        const NovaCommand *draw = &frame->commands[i];
-        if (draw->type == NOVA_RECTANGLE) {
-            DrawRectangleRec((Rectangle){draw->position.x, draw->position.y, draw->size.x, draw->size.y}, ray_color(draw->color));
-        } else if (draw->type == NOVA_TEXT) {
-            DrawText(draw->text, (int)draw->position.x, (int)draw->position.y, (int)draw->size.x, ray_color(draw->color));
-        } else if (draw->type == NOVA_SPRITE) {
-            Texture2D texture = resources->resources[draw->asset].texture;
-            DrawTexturePro(texture, (Rectangle){0, 0, (float)texture.width, (float)texture.height},
-                (Rectangle){draw->position.x, draw->position.y, draw->size.x, draw->size.y},
-                (Vector2){0, 0}, 0, WHITE);
-        }
-    }
-}
 
 static NovaInput read_input(void)
 {
@@ -75,15 +38,14 @@ static NovaInput read_input(void)
     return input;
 }
 
-static Vector2 logical_pointer(NovaViewport viewport)
+static Vector2 logical_pointer(const NovaPresentationLayout *layout)
 {
     Vector2 point = GetMousePosition();
     if (GetTouchPointCount() > 0) point = GetTouchPosition(0);
-    if (viewport.scale > 0) {
-        point.x = (point.x - viewport.x) / viewport.scale;
-        point.y = (point.y - viewport.y) / viewport.scale;
-    }
-    return point;
+    Vector2 logical = {-1, -1};
+    if (!nova_presentation_pointer(layout, point, &logical))
+        TraceLog(LOG_ERROR, "NOVA: Invalid pointer/presentation layout");
+    return logical;
 }
 
 static int launcher(Vector2 pointer, bool clicked)
@@ -91,7 +53,7 @@ static int launcher(Vector2 pointer, bool clicked)
     const Rectangle cards[3] = {{60, 190, 270, 190}, {345, 190, 270, 190}, {630, 190, 270, 190}};
     const char *titles[3] = {"1 / 2D playground", "2 / Mixed world", "3 / Asset project"};
     const char *details[3] = {"Movement + collision", "Generated cube meshes", "PNG sprite + static GLB"};
-    ClearBackground((Color){18, 24, 41, 255});
+    DrawRectangle(0, 0, NOVA_WIDTH, NOVA_HEIGHT, (Color){18, 24, 41, 255});
     DrawText("NOVA STUDIO", 60, 55, 44, (Color){235, 243, 255, 255});
     DrawText("Native vertical slice / editable Lua examples", 60, 117, 24, (Color){175, 191, 219, 255});
     int selected = -1;
@@ -109,7 +71,7 @@ static int launcher(Vector2 pointer, bool clicked)
 
 static void draw_error(const char *error)
 {
-    ClearBackground((Color){38, 22, 32, 255});
+    DrawRectangle(0, 0, NOVA_WIDTH, NOVA_HEIGHT, (Color){38, 22, 32, 255});
     DrawText("SCENE ERROR", 28, 28, 32, (Color){255, 120, 120, 255});
     for (int row = 0; *error && row < 16; ++row) {
         char line[97];
@@ -135,6 +97,10 @@ static bool parse_options(int argc, char **argv, Options *options)
         else if (strcmp(argv[i], "--scene") == 0 && i + 1 < argc) options->scene = argv[++i];
         else if (strcmp(argv[i], "--project") == 0 && i + 1 < argc) options->project = argv[++i];
         else if (strcmp(argv[i], "--capture") == 0 && i + 1 < argc) options->capture = argv[++i];
+        else if (strcmp(argv[i], "--capture-native") == 0 && i + 1 < argc) options->capture_native = argv[++i];
+        else if (strcmp(argv[i], "--world-resolution") == 0 && i + 1 < argc) {
+            if (!nova_world_resolution_parse(argv[++i], &options->world_resolution)) return false;
+        }
         else if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
             char *end;
             long count = strtol(argv[++i], &end, 10);
@@ -142,7 +108,9 @@ static bool parse_options(int argc, char **argv, Options *options)
             options->frames = (int)count;
         } else return false;
     }
-    return (!options->capture || options->frames > 0) && (!options->smoke || options->frames >= 2) &&
+    return (!(options->capture || options->capture_native) || options->frames > 0) &&
+        !(options->capture && options->capture_native && !strcmp(options->capture, options->capture_native)) &&
+        (!options->smoke || options->frames >= 2) &&
         !(options->scene && options->project) && !(options->smoke && (options->scene || options->project));
 }
 
@@ -152,7 +120,7 @@ const char nova_standalone_project[] = "game/nova.project";
 
 int main(int argc, char **argv)
 {
-    Options options = {0};
+    Options options = {.world_resolution = nova_world_resolution_default()};
 #ifdef NOVA_STANDALONE
     const bool standalone = true;
     options.project = nova_standalone_project;
@@ -164,10 +132,10 @@ int main(int argc, char **argv)
     const bool standalone = false;
 #endif
     if (!parse_options(argc, argv, &options)) {
-        fprintf(stderr, "Usage: nova_studio [--scene script.lua | --project nova.project] [--frames 1..100000] [--capture image.png] [--smoke --frames N>=2]\n");
+        fprintf(stderr, "Usage: nova_studio [--scene script.lua | --project nova.project] [--world-resolution 960x540|1280x720|1920x1080] [--frames 1..100000] [--capture image.png] [--capture-native native.png] [--smoke --frames N>=2]\n");
         return 2;
     }
-    SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT | FLAG_WINDOW_HIGHDPI);
     InitWindow(NOVA_WIDTH, NOVA_HEIGHT, "Nova Studio - native foundation");
     if (!IsWindowReady()) {
         fprintf(stderr, "Nova: GPU window initialization failed\n");
@@ -177,18 +145,19 @@ int main(int argc, char **argv)
     SetWindowMinSize(480, 270);
 #endif
     SetTargetFPS(60);
-    RenderTexture2D target = LoadRenderTexture(NOVA_WIDTH, NOVA_HEIGHT);
-    Model cube = LoadModelFromMesh(GenMeshCube(1, 1, 1));
+    NovaPresentation presentation = {0};
+    RenderTexture2D capture_target = {0};
+    char error[1024] = {0};
     NovaEngine *engine = nova_create();
-    if (!engine || !IsRenderTextureValid(target) || !IsModelValid(cube)) {
-        TraceLog(LOG_ERROR, "NOVA: Native resource allocation failed");
+    if (!engine || !nova_presentation_configure(&presentation, options.world_resolution, error, sizeof(error)) ||
+        (options.capture && !nova_capture_target(&capture_target, error, sizeof(error)))) {
+        TraceLog(LOG_ERROR, "NOVA: Native resource allocation failed: %s", engine ? error : nova_error(engine));
         nova_destroy(engine);
-        UnloadModel(cube);
-        UnloadRenderTexture(target);
+        nova_presentation_destroy(&presentation);
+        UnloadRenderTexture(capture_target);
         CloseWindow();
         return 1;
     }
-    SetTextureFilter(target.texture, TEXTURE_FILTER_POINT);
     NovaResources resources = {0};
     char examples[3][4096];
 #ifdef __ANDROID__
@@ -203,10 +172,10 @@ int main(int argc, char **argv)
     const char *active_path = options.project ? options.project : options.scene;
     bool active_project = options.project != NULL;
     bool playing = false;
-    char error[1024] = {0};
     int exit_code = 0;
     int frames = 0;
     double accumulator = 0;
+    int pending_selection = -1;
     if (options.smoke) active_path = examples[0];
     if (active_path) {
         playing = nova_open_scene(&engine, &resources, active_path, active_project, error, sizeof(error));
@@ -232,8 +201,10 @@ int main(int argc, char **argv)
             playing = false;
             error[0] = '\0';
             accumulator = 0;
+            pending_selection = -1;
         }
-        int selected = -1;
+        int selected = standalone ? -1 : pending_selection;
+        pending_selection = -1;
         if (!standalone && !playing && !error[0]) {
             if (IsKeyPressed(KEY_ONE) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_DOWN))) selected = 0;
             if (IsKeyPressed(KEY_TWO) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_RIGHT))) selected = 1;
@@ -268,45 +239,54 @@ int main(int argc, char **argv)
                 accumulator -= 1.0 / 60;
             }
         } else accumulator = 0;
-        NovaViewport viewport = nova_viewport(GetScreenWidth(), GetScreenHeight(),
-            playing && nova_frame(engine)->mode == NOVA_2D);
-        BeginTextureMode(target);
-        if (playing) draw_frame(nova_frame(engine), cube, &resources);
-        else if (error[0]) draw_error(error);
+        NovaPresentationLayout layout;
+        if (!nova_presentation_layout(GetScreenWidth(), GetScreenHeight(),
+            GetRenderWidth(), GetRenderHeight(), playing && nova_frame(engine)->mode == NOVA_2D, &layout)) {
+            TraceLog(LOG_ERROR, "NOVA: Native framebuffer/window dimensions are invalid");
+            exit_code = 1;
+            break;
+        }
+        if (playing) nova_presentation_world(&presentation, nova_frame(engine), &resources);
+        BeginDrawing();
+        NovaCanvasState canvas = nova_begin_canvas(layout.framebuffer_width, layout.framebuffer_height);
+        ClearBackground(BLACK);
+        if (playing) nova_presentation_composite(&presentation, nova_frame(engine), &resources, layout.viewport);
         else {
-            int clicked = launcher(logical_pointer(viewport), IsMouseButtonPressed(MOUSE_BUTTON_LEFT));
+            Matrix overlay = nova_begin_overlay(layout.viewport);
+            int clicked = -1;
+            if (error[0]) draw_error(error);
+            else if (!standalone) clicked = launcher(logical_pointer(&layout), IsMouseButtonPressed(MOUSE_BUTTON_LEFT));
+            else draw_error("Game stopped. R retries the project.");
+            nova_end_overlay(overlay);
             if (clicked >= 0) {
-                active_path = examples[clicked];
-                active_project = clicked == 2;
-                playing = nova_open_scene(&engine, &resources, active_path, active_project, error, sizeof(error));
-                if (!playing) {
-                    exit_code = 1;
-                }
+                pending_selection = clicked;
                 if (options.frames > 0 && frames < options.frames) {
                     TraceLog(LOG_ERROR, "NOVA: Run interrupted after %d of %d required frames", frames, options.frames);
                     exit_code = 1;
                 }
             }
         }
-        EndTextureMode();
-        SetTextureFilter(target.texture, playing && nova_frame(engine)->mode == NOVA_2D ?
-            TEXTURE_FILTER_POINT : TEXTURE_FILTER_BILINEAR);
-        BeginDrawing();
-        ClearBackground(BLACK);
-        DrawTexturePro(target.texture, (Rectangle){0, 0, NOVA_WIDTH, -NOVA_HEIGHT},
-            (Rectangle){viewport.x, viewport.y, viewport.width, viewport.height}, (Vector2){0, 0}, 0, WHITE);
+        if (options.capture_native && frames + 1 >= options.frames &&
+            !nova_capture_native(options.capture_native, layout.framebuffer_width, layout.framebuffer_height))
+            exit_code = 1;
+        nova_end_canvas(canvas);
         EndDrawing();
         frames++;
         if (options.frames > 0 && frames >= options.frames) {
             if (options.capture) {
-                Image image = LoadImageFromTexture(target.texture);
-                ImageFlipVertical(&image);
-                if (!ExportImage(image, options.capture)) {
-                    TraceLog(LOG_ERROR, "NOVA: Could not export capture: %s", options.capture);
-                    exit_code = 1;
-                }
-                UnloadImage(image);
+                BeginTextureMode(capture_target);
+                if (playing) nova_presentation_composite(&presentation, nova_frame(engine), &resources,
+                    nova_viewport(NOVA_WIDTH, NOVA_HEIGHT, false));
+                else if (error[0]) draw_error(error);
+                else if (!standalone) launcher((Vector2){-1, -1}, false);
+                else draw_error("Game stopped. R retries the project.");
+                EndTextureMode();
+                if (!nova_capture_export(capture_target.texture, options.capture)) exit_code = 1;
             }
+            printf("NOVA_PRESENT world=%dx%d overlay=%dx%d overlay_target=native-framebuffer window=%dx%d logical=%dx%d\n",
+                presentation.world.texture.width, presentation.world.texture.height,
+                layout.framebuffer_width, layout.framebuffer_height, layout.window_width, layout.window_height,
+                NOVA_WIDTH, NOVA_HEIGHT);
             printf("NOVA_RUN frames=%d mode=%d commands=%zu status=%s\n", frames,
                 nova_frame(engine)->mode, nova_frame(engine)->count, exit_code ? "error" : "ok");
             break;
@@ -315,8 +295,8 @@ int main(int argc, char **argv)
     nova_destroy(engine);
     nova_unload_resources(&resources);
     nova_shutdown_audio();
-    UnloadModel(cube);
-    UnloadRenderTexture(target);
+    nova_presentation_destroy(&presentation);
+    UnloadRenderTexture(capture_target);
     CloseWindow();
     return exit_code;
 }

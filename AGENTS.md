@@ -20,8 +20,16 @@ before changing contracts; roadmap entries are not implemented features.
   Lua exposes base/math/string/table, not filesystem/process
   or package libraries; stability limits are not a hostile-script sandbox.
 - `runtime/main.c` owns native resources, launcher, scene file loading, input,
-  fixed-step loop and presentation. Scene modes share one engine/format.
-  World and overlay currently share a 960x540 target; simulation is 60 Hz.
+  fixed-step loop and presentation options. Scene modes share one engine/format;
+  simulation is 60 Hz with a fixed logical 960x540 canvas.
+- `runtime/presentation.{c,h}` owns bounded 960x540/1280x720/1920x1080 GPU
+  world targets and cube meshes, then composites the world with a separate HUD
+  drawn directly into the actual native framebuffer. Layout and pointer helpers
+  accept physical preview-panel rectangles as well as full windows. Preserve
+  `--capture` as composite logical 960x540; `--capture-native` is a separate
+  native-framebuffer output. `NOVA_WORLD_RESOLUTION` supplies a validated
+  desktop/Android CMake default. Never confuse window points or logical offscreen
+  buffers with native framebuffer pixels.
 - `runtime/assets.{c,h}` resolves project roots, validates/decodes PNG and embedded
   static GLB using raylib's pinned cgltf, and stages resource/Lua replacement.
   Declared path/type aliases share resources; failed staging unloads only candidates.
@@ -58,6 +66,9 @@ before changing contracts; roadmap entries are not implemented features.
   `tests/project_test.c` covers manifest/handle contracts; `tests/assets_test.c`
   covers native paths/imports and opt-in reload/alias/partial-failure cleanup.
   `tests/render_test.c` checks exact pixels from the real native project capture.
+  `tests/presentation_test.c` checks real world/HUD targets, DPI/resize/panel
+  placement, sprite alpha/filtering and capture shapes; its partial-allocation
+  test redirects only allocation/free calls in a separate test build.
   `tests/toolchain_test.sh` uses isolated fake tools, not the real SDK.
 
 ## Commands from this repository root
@@ -69,6 +80,7 @@ before changing contracts; roadmap entries are not implemented features.
 ./build/nova_studio
 ./build/nova_studio --scene "$PWD/examples/2d/main.lua"
 ./build/nova_studio --smoke --frames 120 --capture ./build/mixed.png
+./build/nova_studio --world-resolution 1280x720 --frames 2 --capture-native ./build/native.png
 bash tests/toolchain_test.sh
 ./scripts/android-doctor.sh
 ./scripts/build-android.sh
@@ -113,8 +125,9 @@ or confirm repository registration AND isolated worktrees before parallel writer
 Check cwd: `/Users/jasper/Developer/NovaStudio`, not the coordinating GameStudio.
 
 This is a native project/sample launcher, not a full editor/modeller. Manifest v1
-and the bounded PNG/static GLB pipeline are implemented; native-resolution HUD,
-skeletal animation, full audio mixing/streaming and Glow compatibility are not.
+and the bounded PNG/static GLB pipeline, native framebuffer HUD and bounded
+world presets are implemented; skeletal animation, full audio mixing/streaming
+and Glow compatibility are not.
 Timers/sprite frames/numeric tweens, PCM WAV and explicit project saves are bounded
 native services, not an editor or automatic lifecycle persistence. Android package
 verification passes, but device behavior remains unvalidated.

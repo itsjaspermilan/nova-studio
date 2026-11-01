@@ -1,6 +1,15 @@
 cmake_minimum_required(VERSION 3.22)
 project(NovaStudio VERSION 0.1.0 LANGUAGES C)
 
+set(NOVA_WORLD_RESOLUTION "960x540" CACHE STRING "World GPU resolution (HUD uses the native framebuffer)")
+set_property(CACHE NOVA_WORLD_RESOLUTION PROPERTY STRINGS "960x540" "1280x720" "1920x1080")
+if(NOT NOVA_WORLD_RESOLUTION MATCHES "^(960x540|1280x720|1920x1080)$")
+    message(FATAL_ERROR "NOVA_WORLD_RESOLUTION must be 960x540, 1280x720 or 1920x1080")
+endif()
+string(REPLACE "x" ";" NOVA_WORLD_DIMENSIONS "${NOVA_WORLD_RESOLUTION}")
+list(GET NOVA_WORLD_DIMENSIONS 0 NOVA_WORLD_WIDTH)
+list(GET NOVA_WORLD_DIMENSIONS 1 NOVA_WORLD_HEIGHT)
+
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -56,6 +65,12 @@ target_compile_options(nova_assets PRIVATE -Wall -Wextra -Wpedantic -Werror)
 if(ANDROID)
     target_include_directories(nova_assets SYSTEM PRIVATE "${ANDROID_NDK}/sources/android/native_app_glue")
 endif()
+
+add_library(nova_presentation STATIC runtime/presentation.c)
+target_link_libraries(nova_presentation PUBLIC nova_assets)
+target_compile_definitions(nova_presentation PRIVATE
+    NOVA_DEFAULT_WORLD_WIDTH=${NOVA_WORLD_WIDTH} NOVA_DEFAULT_WORLD_HEIGHT=${NOVA_WORLD_HEIGHT})
+target_compile_options(nova_presentation PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 if(ANDROID)
     add_library(nova_runtime SHARED runtime/main.c)
@@ -117,6 +132,25 @@ else()
             add_test(NAME nova_audio_lifetime COMMAND nova_service_tests --audio)
             set_tests_properties(nova_audio_lifetime PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
         endif()
+        add_executable(nova_presentation_tests tests/presentation_test.c)
+        target_link_libraries(nova_presentation_tests PRIVATE nova_presentation)
+        target_compile_definitions(nova_presentation_tests PRIVATE
+            NOVA_TEST_DIRECTORY="${CMAKE_BINARY_DIR}")
+        target_compile_options(nova_presentation_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+        add_test(NAME nova_presentation COMMAND nova_presentation_tests)
+        add_test(NAME nova_cmake_world_resolution COMMAND ${CMAKE_COMMAND}
+            "-DNOVA_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
+            "-DNOVA_TEST_DIRECTORY=${CMAKE_BINARY_DIR}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/world_resolution_test.cmake")
+        foreach(value "640x360" "1280X720" "1920x1080junk" "")
+            string(MAKE_C_IDENTIFIER "nova_cli_world_${value}" test_name)
+            add_test(NAME ${test_name} COMMAND nova_studio --world-resolution "${value}")
+            set_tests_properties(${test_name} PROPERTIES WILL_FAIL TRUE)
+        endforeach()
+        add_test(NAME nova_cli_native_unbounded COMMAND nova_studio --capture-native native.png)
+        add_test(NAME nova_cli_capture_same_path COMMAND nova_studio
+            --frames 1 --capture same.png --capture-native same.png)
+        set_tests_properties(nova_cli_native_unbounded nova_cli_capture_same_path PROPERTIES WILL_FAIL TRUE)
         add_test(NAME nova_cli_invalid COMMAND nova_studio --invalid-option)
         set_tests_properties(nova_cli_invalid PROPERTIES WILL_FAIL TRUE)
         add_test(NAME nova_cli_conflicting_project COMMAND nova_studio --scene main.lua --project nova.project)
@@ -128,9 +162,25 @@ else()
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/android_patch_test.cmake")
         option(NOVA_GPU_TESTS "Run native GPU smoke tests (requires a desktop session)" OFF)
         if(NOVA_GPU_TESTS)
+            add_executable(nova_presentation_failure_tests tests/presentation_failure_test.c runtime/presentation.c)
+            target_link_libraries(nova_presentation_failure_tests PRIVATE nova_assets)
+            target_compile_definitions(nova_presentation_failure_tests PRIVATE
+                NOVA_DEFAULT_WORLD_WIDTH=${NOVA_WORLD_WIDTH} NOVA_DEFAULT_WORLD_HEIGHT=${NOVA_WORLD_HEIGHT}
+                LoadRenderTexture=nova_test_load_render_texture
+                UnloadRenderTexture=nova_test_unload_render_texture)
+            target_compile_options(nova_presentation_failure_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+            add_test(NAME nova_gpu_presentation_allocation COMMAND nova_presentation_failure_tests)
+            set_tests_properties(nova_gpu_presentation_allocation PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
+            add_test(NAME nova_gpu_presentation COMMAND nova_presentation_tests --gpu)
+            set_tests_properties(nova_gpu_presentation PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
             add_executable(nova_render_tests tests/render_test.c)
             target_link_libraries(nova_render_tests PRIVATE raylib)
             target_compile_options(nova_render_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+            add_test(NAME nova_gpu_presentation_cli COMMAND ${CMAKE_COMMAND}
+                "-DNOVA_RUNTIME=$<TARGET_FILE:nova_studio>" "-DNOVA_RENDER_CHECK=$<TARGET_FILE:nova_render_tests>"
+                "-DNOVA_ROOT=${CMAKE_CURRENT_SOURCE_DIR}" "-DNOVA_TEST_DIRECTORY=${CMAKE_BINARY_DIR}"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/presentation_cli_test.cmake")
+            set_tests_properties(nova_gpu_presentation_cli PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
             add_test(NAME nova_gpu_2d COMMAND nova_studio
                 --scene "${CMAKE_CURRENT_SOURCE_DIR}/examples/2d/main.lua"
                 --frames 120 --capture "${CMAKE_BINARY_DIR}/2d.png")
@@ -138,6 +188,12 @@ else()
                 --smoke --frames 120 --capture "${CMAKE_BINARY_DIR}/mixed.png")
             set_tests_properties(nova_gpu_2d nova_gpu_mixed PROPERTIES
                 TIMEOUT 30 RUN_SERIAL TRUE PASS_REGULAR_EXPRESSION "NOVA_RUN frames=120.*status=ok")
+            foreach(fixture 2d mixed)
+                set_tests_properties(nova_gpu_${fixture} PROPERTIES FIXTURES_SETUP nova_${fixture}_capture)
+                add_test(NAME nova_gpu_${fixture}_pixels COMMAND nova_render_tests
+                    "${CMAKE_BINARY_DIR}/${fixture}.png" "${fixture}")
+                set_tests_properties(nova_gpu_${fixture}_pixels PROPERTIES FIXTURES_REQUIRED nova_${fixture}_capture)
+            endforeach()
             add_test(NAME nova_gpu_project COMMAND nova_studio
                 --project "${CMAKE_CURRENT_SOURCE_DIR}/examples/assets/nova.project"
                 --frames 120 --capture "${CMAKE_BINARY_DIR}/assets.png")
@@ -162,5 +218,5 @@ else()
         endif()
     endif()
 endif()
-target_link_libraries(${NOVA_APP} PRIVATE nova_assets)
+target_link_libraries(${NOVA_APP} PRIVATE nova_presentation)
 target_compile_options(${NOVA_APP} PRIVATE -Wall -Wextra -Wpedantic -Werror)

@@ -43,7 +43,23 @@ On the development machine, the Debug build and focused tests passed. Real GPU r
 ./build/nova_studio --frames 2 --capture ./build/studio.png
 ```
 
-The smoke run switches from 2D to mixed at its midpoint and supplies deterministic movement/action input. Each bounded run prints `NOVA_RUN ... status=ok` and exits nonzero on scene/capture errors or an interrupted run. Capture files are real 960x540 native render-target images. `--frames` uses a fixed timestep rather than measuring performance.
+The smoke run switches from 2D to mixed at its midpoint and supplies deterministic movement/action input. Each bounded run prints `NOVA_RUN ... status=ok` and exits nonzero on scene/capture errors or an interrupted run. `--capture` remains a real GPU-rendered **960x540 composite with the HUD**, independently of world/window resolution. `--capture-native` is a separate explicit output of the actual native framebuffer, including letterboxes; it also requires `--frames`. Both outputs can be requested with distinct paths. `--frames` uses a fixed timestep rather than measuring performance.
+
+```sh
+./build/nova_studio --project ./examples/assets/nova.project --world-resolution 1280x720 \
+  --frames 120 --capture ./build/logical.png --capture-native ./build/native.png
+```
+
+`NOVA_PRESENT` reports the allocated world texture size, native overlay/framebuffer
+pixel dimensions, window-point dimensions and fixed logical canvas size.
+On the Apple M4 desktop, focused checks measured 960x540, 1280x720 and 1920x1080
+world color/depth targets against the same 1920x1080 native HUD framebuffer
+(960x540 window points at 2x DPI). A half-logical-pixel HUD rectangle occupied
+exactly one native pixel, with unchanged neighboring background pixels: the HUD
+is not an enlarged 960x540 offscreen overlay. Resizing to 1200x800 window points
+produced a 2400x1600 framebuffer and a 2D integer viewport at (240,260), 1920x1080;
+the world target did not resize. These are functional rendering measurements,
+not frame-pacing/performance measurements or Android device evidence.
 
 Default tests require no display: they cover example movement, mixed-scene commands, native AABB collision, viewport sizing, Lua errors/limits, manifest validation, asset handles, root/symlink containment, PNG/GLB decoding, hierarchical transforms, mirrored winding, 32-bit indices above 65535, CLI validation and the pinned Android lifecycle patch. Opt-in GPU tests also cover whole-project replacement, shared-path caching, cleanup after partial import/Lua failures, and exact sprite/transparency/model-color pixels from a real runtime capture. To include the GPU runs:
 
@@ -60,7 +76,8 @@ GPU tests need a logged-in graphical desktop and are opt-in for headless CI. Lin
 | Path | Purpose |
 | --- | --- |
 | `engine/` | C11 engine, Lua API, input contract, camera/draw command data, native collision, logical viewport |
-| `runtime/main.c` | Shared desktop/Android native game loop, GPU mesh rendering, overlay, input and launcher |
+| `runtime/main.c` | Shared desktop/Android native game loop, input, launcher and capture options |
+| `runtime/presentation.{c,h}` | Shared GPU world ownership, framebuffer/panel layout, native HUD drawing and composite captures |
 | `engine/project.{c,h}` | Versioned manifest declarations, stable IDs and lexical path validation |
 | `runtime/assets.{c,h}` | Native path resolution, PNG/GLB decoding, resource cache and transactional scene replacement |
 | `runtime/inspect.h` | Read-only loaded scene/resource views and shared headless project preflight v2 |
@@ -75,7 +92,73 @@ GPU tests need a logged-in graphical desktop and are opt-in for headless CI. Lin
 
 **Rendering choice:** raylib 5.5 uses GLFW/Cocoa and OpenGL on macOS, and EGL/OpenGL ES 2 with Android NativeActivity. Lua 5.4.8 has no JIT requirement. Native C owns rendering, meshes, resources, collision and frame scheduling; Lua controls lightweight gameplay. macOS OpenGL is deprecated, so this is a practical first-slice backend, not a commitment to use OpenGL indefinitely.
 
-**Coordinates and timing:** all scenes share a 960x540 logical canvas and 60 Hz fixed simulation. A 2D scene uses nearest-neighbor, integer letterboxing when the window can fit at least one logical canvas; smaller windows use fractional downscaling. 3D/mixed scenes use aspect-preserving fractional scaling with bilinear presentation. Resizing never changes game coordinates. HUDs currently use the same render target as the world; separately sharper HUDs, 720p/1080p settings, and interpolation are future work.
+**Coordinates and timing:** all scenes share a 960x540 logical canvas and 60 Hz fixed simulation. A 2D scene uses nearest-neighbor, integer letterboxing when the **native framebuffer** can fit at least one logical canvas; smaller framebuffers use fractional downscaling. 3D/mixed worlds use aspect-preserving fractional scaling with bilinear presentation. Resizing and display DPI never change gameplay coordinates.
+
+**Separate world and HUD:** the GPU world/background target has exactly three
+bounded 16:9 choices: `960x540` (default), `1280x720`, or `1920x1080`.
+Use `--world-resolution` on desktop, or set the validated CMake cache setting
+`-DNOVA_WORLD_RESOLUTION=1280x720` for a compiled default on desktop/Android.
+CLI selection overrides that default. Invalid values fail explicitly before
+window creation/dependency fetch respectively; failed GPU allocation does not
+fall back to another resolution or destroy a previous presentation target.
+
+Only depth-tested cubes/static models and the background use that world target.
+Existing rectangle/text/sprite commands remain ordered overlay commands in every
+scene mode, drawn **directly into the actual native framebuffer**, after world
+presentation. In a sprite-only/2D scene, all geometry is therefore native overlay;
+the world preset affects its background only, not a newly invented 2D world layer.
+HUD logical positions/sizes are scaled into the same letterbox viewport; commands
+outside it are clipped, and sprite alpha blending/nearest texture filtering are
+retained. The existing bundled bitmap font/glyph limits remain; there is no new
+font importer or vector-font rasterizer. No native-sized overlay texture is
+allocated, and resize/DPI changes do not recreate scene assets or the world target.
+Interpolation and GPU-context reconstruction are still absent.
+
+### Reusable native presentation host contract
+
+`runtime/presentation.h` is a raylib-aware **host** helper, not a second engine,
+and adds no raylib types to `NovaFrame` or `engine/nova.h`. Zero-initialized
+`NovaPresentation` owns its world color/depth target and unit-cube model until
+`nova_presentation_destroy`, called before closing the GPU context. Configure
+outside drawing scopes; a failed replacement frees only its candidate and
+returns/logs an actionable error. Successful replacement retains the cube and
+releases the previous target; repeated same-preset configuration is a no-op.
+Resources and the frame are borrowed for drawing and retain their existing
+reload/inspection lifetimes.
+
+`nova_world_resolution_default()` returns the validated build preset.
+`nova_world_resolution_parse()` accepts only the three exact preset strings.
+`nova_presentation_layout()` computes layout in physical framebuffer pixels,
+not window points. `nova_presentation_layout_region()` does the same inside a
+caller-provided `NovaFramebufferRect` (for a later editor preview panel), rejecting
+empty/out-of-framebuffer regions without mutating the output. Returned
+`NovaPresentationLayout` includes window and framebuffer dimensions, the requested
+pixel rectangle and the actual letterbox `NovaViewport`.
+`nova_presentation_pointer()` maps window/touch points through the framebuffer
+ratio and that same offset viewport to fixed logical coordinates. Letterbox/outside
+points remain outside the logical canvas rather than being clamped into controls.
+Reacquire layout after resize/DPI changes; invalid/zero dimensions return failure.
+
+Call `nova_presentation_world()` once for the current frame outside host drawing.
+Within the host's `BeginDrawing` or `BeginTextureMode`, use
+`nova_begin_canvas(actual_target_width, actual_target_height)`, then
+`nova_presentation_composite(..., layout.viewport)` for the identical world/HUD
+path in a full framebuffer or panel, and finally `nova_end_canvas(saved_state)`.
+These non-nested scopes restore matrices and the full active-target viewport;
+do not nest them inside an existing camera/scissor scope. Compositing does not
+clear the caller's framebuffer or draw in panel letterboxes, so the host owns
+its surrounding UI/background. Launcher/error UI uses the same logical overlay
+scope, not world rendering. No editor UI is added here.
+
+The compatibility capture uses a separately allocated 960x540 GPU target and
+the same compositor, with logical-size HUD drawing; it is not a resize of the
+native screenshot and never becomes a world-only capture. Native capture reads
+the active default framebuffer before buffer swap and rejects mismatched target
+dimensions. Capture/read/export failures return a nonzero bounded-run status.
+Focused tests cover pixel-space panel placement/clipping, high-DPI pointer
+mapping, zero/invalid sizes, all world/depth sizes, single-native-pixel HUD detail,
+partial-alpha/nearest sprites, allocation rollback/retry/cleanup, both decoded
+capture shapes and exact default direct-scene/project regression pixels.
 
 **Lifecycle:** desktop simulation pauses while unfocused and discards accumulated inactive time. Android event polling is provided by raylib's NativeActivity backend, which blocks while unfocused and detaches/rebinds its EGL surface. Delta time is capped to five simulation steps, preventing long catch-up after suspension. Nova applies a small checked/idempotent raylib Android patch to leave its blocking event loop when activity destruction is requested. Native resources are released on exit. Activity recreation starts a fresh scene; unsaved gameplay state is not persisted.
 

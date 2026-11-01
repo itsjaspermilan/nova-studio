@@ -97,6 +97,37 @@ the source tree. Android uses the existing full-tree sync, but this milestone di
 not rebuild an APK or exercise a device; integration/package verification is a
 separate coordination step. No editor/modeller or runtime service was added.
 
+## Completed bounded slice: separate native HUD and world presentation
+
+- [x] Shared native GPU presentation helper with a validated 960x540 default and
+  bounded 1280x720/1920x1080 world color/depth presets. Desktop CLI overrides
+  `--world-resolution`; CMake `NOVA_WORLD_RESOLUTION` supplies the desktop/Android
+  build default without requiring Android arguments.
+- [x] Rectangle/text/sprite HUD commands draw directly into the actual native
+  framebuffer, separate from world rendering, with fixed logical coordinates,
+  nearest sprite filtering/alpha, native-pixel integer 2D letterboxing and
+  aspect-preserving mixed/3D presentation. Resize/DPI do not reload world/assets.
+- [x] Existing `--capture` remains composite logical 960x540 including the HUD.
+  Explicit bounded `--capture-native` exports native framebuffer dimensions
+  and letterboxes instead; metadata reports real world/native/window dimensions.
+- [x] Reusable caller-provided framebuffer preview rectangles with matching
+  high-DPI pointer/layout mapping, without editor UI or another preview engine.
+- [x] Focused headless layout/CLI/config errors, native color/depth target sizes,
+  single-native-pixel HUD evidence, panel clipping, partial sprite alpha/nearest
+  filtering, GPU partial-allocation rollback/cleanup/retry and default regression
+  pixels. Android shared presentation compiles and APK integrity checks pass.
+
+On Apple M4, all 28 desktop CTests passed, including original scenes/projects
+and native GPU/capture/lifetime checks. World targets were measured at
+960x540, 1280x720 and 1920x1080; the native overlay was 1920x1080 at 2x display DPI.
+A half-logical-pixel HUD line occupied exactly one native pixel. A 1200x800-point
+window resize yielded 2400x1600 native pixels with a 1920x1080 integer viewport
+at (240,260), retaining its 960x540 world target. CLI captures decode to logical
+960x540 and separately measured native dimensions for every world preset.
+Android debug APK build/signature/ARM64 native-entry/sample-tree/notices checks
+passed; this is not device execution or GPU-context reconstruction evidence.
+No exporter/service/editor/modeller changes belong to this isolated milestone.
+
 ## Next bounded work: native desktop authoring, not the full editor
 
 - [ ] Perform the separate consented Android device-validation track below,
@@ -144,8 +175,8 @@ ADB installation is an explicit device-modifying action; see README commands.
 - [ ] Original simplified low-poly modeller: after asset interchange is usable;
   start with static primitives/transforms/materials. Skeletal authoring and
   animation require their own later engine/import contracts. Do not copy Blender.
-- [ ] Separate native-resolution HUD and configurable world rendering: current
-  world AND overlay use the same 960x540 target; sharper HUDs are not delivered.
+- [x] Separate native-resolution HUD and bounded configurable world rendering;
+  see completed presentation slice above and README for the reusable host contract.
 - [x] Bounded shared runtime services: explicit manifest v2 identity/PCM WAV,
   native cached playback, project-owned atomic save v1, deterministic timers,
   timed sprite frames and numeric transform tweens. V1/static GLB remain unchanged;

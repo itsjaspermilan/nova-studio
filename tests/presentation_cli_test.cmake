@@ -1,0 +1,31 @@
+foreach(resolution "960x540" "1280x720" "1920x1080")
+    set(logical "${NOVA_TEST_DIRECTORY}/cli-${resolution}-logical.png")
+    set(native "${NOVA_TEST_DIRECTORY}/cli-${resolution}-native.png")
+    execute_process(COMMAND "${NOVA_RUNTIME}" --project "${NOVA_ROOT}/examples/assets/nova.project"
+        --world-resolution "${resolution}" --frames 2 --capture "${logical}" --capture-native "${native}"
+        RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error)
+    if(NOT result EQUAL 0 OR NOT output MATCHES "NOVA_RUN frames=2.*status=ok")
+        message(FATAL_ERROR "Resolution/capture run failed: ${output}\n${error}")
+    endif()
+    if(NOT output MATCHES "NOVA_PRESENT world=${resolution} overlay=([0-9]+)x([0-9]+) overlay_target=native-framebuffer")
+        message(FATAL_ERROR "Missing actual world/native framebuffer metadata: ${output}")
+    endif()
+    set(width "${CMAKE_MATCH_1}")
+    set(height "${CMAKE_MATCH_2}")
+    execute_process(COMMAND "${NOVA_RENDER_CHECK}" "${native}" size "${width}" "${height}"
+        RESULT_VARIABLE result)
+    if(NOT result EQUAL 0)
+        message(FATAL_ERROR "Native capture did not have the measured framebuffer shape")
+    endif()
+    execute_process(COMMAND "${NOVA_RENDER_CHECK}" "${logical}" RESULT_VARIABLE result)
+    if(NOT result EQUAL 0)
+        message(FATAL_ERROR "Logical composite capture shape or PNG/GLB/HUD pixels regressed")
+    endif()
+    message(STATUS "Verified CLI world=${resolution}, native=${width}x${height}, logical=960x540 composite")
+endforeach()
+execute_process(COMMAND "${NOVA_RUNTIME}" --frames 1
+    --capture-native "${NOVA_TEST_DIRECTORY}/nonexistent-directory/native.png"
+    RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error)
+if(result EQUAL 0 OR NOT output MATCHES "Could not read/export capture" OR NOT output MATCHES "status=error")
+    message(FATAL_ERROR "Native capture export failure was not surfaced: ${output}\n${error}")
+endif()
