@@ -13,11 +13,10 @@ No remote push, personal-key operation or device installation was performed.
 
 The combined 42-test desktop suite passed with GPU/audio enabled before the last
 integration correction to modeller dirty-state reporting. All 23 display-free
-tests passed afterward. The added real-shell missing-source/dirty-state regression
-and final graphical rerun remain blocked: GLFW stopped exposing a monitor and
-window initialization failed, including in the unchanged presentation control.
-With an active logged-in desktop, rerun the authoring selectors before declaring
-this final graphical check complete:
+tests passed afterward. After the usable macOS desktop returned, all six final
+authoring CLI/GPU selectors also passed, including the real-shell missing-source/
+dirty-state regression. The temporary GLFW/no-monitor blocker is resolved.
+Repeat the focused authoring checks with an active logged-in desktop:
 
 ```sh
 ./scripts/with-toolchain.sh ctest --test-dir build --output-on-failure \
@@ -34,9 +33,9 @@ APK SHA-256 is
 `930c069390f598e4477102c8dd8c19a14925dddbf77b609bed3365e1a5bd3347`.
 It is not personally signed or an install-ready release deliverable.
 
-Beyond the desktop-display rerun, remaining work requires the user's personal-key/
-device participation, public-publishing authorization, or separately approved
-advanced engine/authoring scope. Historical milestone evidence follows.
+Remaining work requires the user's personal-key/device participation,
+public-publishing authorization, or separately approved advanced engine/authoring
+scope. Historical milestone evidence follows.
 
 ## Verified completed foundation
 
