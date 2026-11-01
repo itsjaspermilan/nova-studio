@@ -1,0 +1,13 @@
+awake.png, blink.png and chime.wav are original procedural fixtures authored
+for Nova Studio, without third-party artwork, recordings or samples.
+Reproduce them using /usr/bin/python3 scripts/generate-service-assets.py from
+the repository root; --check verifies the existing bytes without writing files.
+
+The two geometric sprites and synthesized PCM chime are dedicated to the
+public domain under CC0 1.0 Universal; see licenses/CC0-1.0.txt in distributions.
+This dedication applies to these three assets, not the Nova source-code license.
+The scene and generator source follow the Nova source-code license.
+
+WAV contract: mono signed PCM16, 16000 Hz, 2560 frames (0.16 seconds), exactly
+RIFF/WAVE fmt(16) then data, generated from a faded 440/660 Hz sine pair.
+There are no metadata chunks, external files or decoder dependencies.

@@ -1,0 +1,9 @@
+{
+  "format": "nova-export",
+  "version": 1,
+  "applicationId": "studio.nova.games.services_demo",
+  "displayName": "Nova Services Demo",
+  "versionCode": 1,
+  "versionName": "0.1.0",
+  "provenance": ["NOTICE.txt"]
+}

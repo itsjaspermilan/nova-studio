@@ -361,6 +361,29 @@ Skeletal/animated-GLB import/playback, animation editor, audio mixing/streaming,
 save migration/cloud sync, automatic lifecycle saves and filesystem module loading
 are not implemented.
 
+#### Original self-contained services demo
+
+Run `./build/nova_studio --project "$PWD/examples/services/nova.project"`.
+Its original two-frame geometric sprite moves with a smooth numeric tween, and a
+repeating timer updates the HUD. Press **Space / gamepad A** to increment the
+project-owned saved count and play a quiet original synthesized chime; holding the
+button does not repeat. R resets the timer/motion but keeps the saved count.
+No save writes or playback occur without a button press. Invalid saved counter
+data is an explicit error, not silently reset.
+
+The stable identity is `nova-demo-services-v1`. Separate `nova.export.json` uses
+the `nova-export` v1 schema and Android applicationId
+`studio.nova.games.services_demo`; it is not a manifest directive or save identity.
+The project is self-contained, not another launcher card.
+
+Reproduce only this demo's CC0 PNG/WAV assets with
+`/usr/bin/python3 scripts/generate-service-assets.py`, or verify byte-for-byte
+without writing via `--check`. `examples/services/NOTICE.txt` records provenance
+and the bounded PCM WAV format. Existing sample assets are not rewritten.
+Default `nova_services` preflight/scene regressions simulate idle/button/held/reload
+behavior using an isolated save root and a nonplaying audio-effect recorder,
+without audible playback or actual user save access.
+
 ### Native read-only inspection v2
 
 `runtime/inspect.h` defines `NOVA_INSPECTION_VERSION == 2` without raylib types.

@@ -107,7 +107,9 @@ else()
         add_test(NAME nova_assets COMMAND nova_asset_tests)
         add_executable(nova_service_tests tests/services_test.c)
         target_link_libraries(nova_service_tests PRIVATE nova_assets)
-        target_compile_definitions(nova_service_tests PRIVATE NOVA_TEST_DIRECTORY="${CMAKE_BINARY_DIR}")
+        target_compile_definitions(nova_service_tests PRIVATE
+            NOVA_TEST_DIRECTORY="${CMAKE_BINARY_DIR}"
+            NOVA_EXAMPLES="${CMAKE_CURRENT_SOURCE_DIR}/examples")
         target_compile_options(nova_service_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
         add_test(NAME nova_services COMMAND nova_service_tests)
         option(NOVA_AUDIO_TESTS "Run native audio lifetime tests (requires an audio device)" OFF)

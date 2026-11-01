@@ -152,6 +152,10 @@ ADB installation is an explicit device-modifying action; see README commands.
   headless preflight validates effects without audio or live save reads/writes.
   Default deterministic service regressions and opt-in native audio lifetime
   tests cover errors, budgets, reload and isolated persistence.
+  The self-contained `examples/services/` v2 demo includes original reproducible
+  CC0 sprites/PCM chime, timer/tween/frame playback, edge-triggered audio/saves and
+  separate `nova.export.json` metadata. Automated demo checks are headless with
+  isolated saves and recorded (not played) audio effects.
 - [ ] Skeletal/animated-GLB playback/import, audio mixing/streaming, automatic
   lifecycle saves and filesystem module loader: deferred, not delivered here.
 - [x] Local per-game standalone native APK export with separate nova-export v1

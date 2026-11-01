@@ -1,0 +1,6 @@
+nova-project 2
+identity nova-demo-services-v1
+entry main.lua
+sprite awake assets/awake.png
+sprite blink assets/blink.png
+audio chime assets/chime.wav

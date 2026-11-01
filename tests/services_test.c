@@ -404,6 +404,95 @@ static void project_services(bool audio)
     CHECK(!unlink(manifest) && !unlink(script) && !unlink(wav) && !rmdir(base));
 }
 
+typedef struct {
+    NovaSaveStore store;
+    unsigned plays, writes;
+} DemoHost;
+
+static bool demo_read(void *context, const char *key, unsigned char *data, size_t *length,
+    bool *found, char *error, size_t error_size)
+{
+    DemoHost *host = context;
+    return nova_save_read(&host->store, key, data, length, found, error, error_size);
+}
+
+static bool demo_effect(void *context, const NovaEffect *effect, char *error, size_t error_size)
+{
+    DemoHost *host = context;
+    if (effect->type == NOVA_WRITE_SAVE) {
+        host->writes++;
+        return nova_save_write(&host->store, effect->key, effect->data, effect->length, error, error_size);
+    }
+    CHECK(effect->type == NOVA_PLAY_AUDIO && effect->asset == 2 && effect->volume == 0.2f && !effect->loop);
+    host->plays++;
+    return true;
+}
+
+static void services_demo(void)
+{
+    char error[1024];
+    NovaProjectValidation validation;
+    CHECK(!IsAudioDeviceReady());
+    CHECK(nova_validate_project(NOVA_EXAMPLES "/services/nova.project", &validation, error, sizeof(error)));
+    CHECK(validation.project.version == 2 && !strcmp(validation.project.identity, "nova-demo-services-v1"));
+    CHECK(validation.project.count == 3 && validation.assets[0].width == 24 && validation.assets[1].height == 24);
+    CHECK(validation.assets[2].declaration.type == NOVA_ASSET_AUDIO &&
+        validation.assets[2].sample_rate == 16000 && validation.assets[2].sample_frames == 2560);
+    CHECK(!IsAudioDeviceReady());
+    int script_size;
+    unsigned char *script = nova_read_file(NOVA_EXAMPLES "/services/main.lua",
+        NOVA_ASSET_FILE_LIMIT, &script_size, error, sizeof(error));
+    CHECK(script);
+    char directory[] = NOVA_TEST_DIRECTORY "/services-demo.XXXXXX";
+    CHECK(mkdtemp(directory));
+    DemoHost host = {0};
+    CHECK(nova_save_store_init(&host.store, directory, validation.project.identity, error, sizeof(error)));
+    NovaEngine *engine = nova_create();
+    CHECK(engine);
+    nova_set_service_host(engine, (NovaServiceHost){&host, true, demo_read, demo_effect});
+    CHECK(nova_load_with_assets(engine, (const char *)script, (size_t)script_size,
+        "services-demo.lua", validation.project.assets, validation.project.count));
+    CHECK(nova_tick(engine, 0, (NovaInput){0}) && nova_dispatch_effects(engine));
+    bool seen[2] = {false, false};
+    for (int i = 0; i < 240; ++i) {
+        CHECK(nova_tick(engine, 1.0 / 60, (NovaInput){0}) && nova_dispatch_effects(engine));
+        const NovaFrame *frame = nova_frame(engine);
+        CHECK(frame->commands[3].type == NOVA_SPRITE && frame->commands[3].asset < 2);
+        seen[frame->commands[3].asset] = true;
+    }
+    CHECK(seen[0] && seen[1] && host.plays == 0 && host.writes == 0);
+    CHECK(strstr(nova_frame(engine)->commands[4].text, "Timer: 4 seconds / Saved actions: 0"));
+    CHECK(nova_frame(engine)->commands[3].position.x > 64 && nova_frame(engine)->commands[3].position.x < 800);
+    char path[NOVA_SAVE_ROOT_CAPACITY];
+    snprintf(path, sizeof(path), "%s/NovaStudio", directory);
+    CHECK(access(path, F_OK) != 0);
+    for (int i = 0; i < 10; ++i)
+        CHECK(nova_tick(engine, 1.0 / 60, (NovaInput){.action = true}) && nova_dispatch_effects(engine));
+    CHECK(host.plays == 1 && host.writes == 1);
+    CHECK(nova_tick(engine, 1.0 / 60, (NovaInput){0}) && nova_dispatch_effects(engine));
+    CHECK(nova_tick(engine, 1.0 / 60, (NovaInput){.action = true}) && nova_dispatch_effects(engine));
+    CHECK(host.plays == 2 && host.writes == 2);
+    CHECK(nova_load_with_assets(engine, (const char *)script, (size_t)script_size,
+        "services-demo-reload.lua", validation.project.assets, validation.project.count));
+    CHECK(nova_tick(engine, 0, (NovaInput){0}) && nova_dispatch_effects(engine));
+    CHECK(host.plays == 2 && host.writes == 2);
+    CHECK(strstr(nova_frame(engine)->commands[4].text, "Timer: 0 seconds / Saved actions: 2"));
+    CHECK(nova_frame(engine)->commands[3].position.x == 64);
+    CHECK(nova_save_write(&host.store, "activations", (const unsigned char *)"invalid", 7, error, sizeof(error)));
+    CHECK(!nova_load_with_assets(engine, (const char *)script, (size_t)script_size,
+        "services-demo-corrupt.lua", validation.project.assets, validation.project.count));
+    CHECK(strstr(nova_error(engine), "demo activation save"));
+    nova_destroy(engine);
+    UnloadFileData(script);
+    snprintf(path, sizeof(path), "%s/NovaStudio/projects/%s/61637469766174696f6e73.sav", directory, host.store.identity);
+    CHECK(!unlink(path));
+    snprintf(path, sizeof(path), "%s/NovaStudio/projects/%s", directory, host.store.identity); CHECK(!rmdir(path));
+    snprintf(path, sizeof(path), "%s/NovaStudio/projects", directory); CHECK(!rmdir(path));
+    snprintf(path, sizeof(path), "%s/NovaStudio", directory); CHECK(!rmdir(path));
+    CHECK(!rmdir(directory));
+    CHECK(!IsAudioDeviceReady());
+}
+
 int main(int argc, char **argv)
 {
     bool audio = argc == 2 && !strcmp(argv[1], "--audio");
@@ -412,6 +501,7 @@ int main(int argc, char **argv)
     save_tests();
     wav_tests();
     project_services(audio);
+    services_demo();
     puts("Nova bounded timers/playback, native WAV and isolated atomic saves passed.");
     return 0;
 }
