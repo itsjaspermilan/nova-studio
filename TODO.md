@@ -8,7 +8,8 @@ not a finished editor or a hardware-validated game engine.
 
 The approved bounded software milestones are implemented and locally committed:
 manifest/native assets, inspection, runtime services, standalone export/signing
-tooling, native HUD, source/project editor and original static primitive modeller.
+tooling, native HUD, source/project editor, original static primitive modeller,
+and beginner 2D/3D Objects and Rooms authoring.
 No remote push, personal-key operation or device installation was performed.
 
 The combined 42-test desktop suite passed with GPU/audio enabled before the last
@@ -44,7 +45,7 @@ testing the source-oriented editor. Other remaining work requires personal-key/
 device participation, public-publishing authorization, or separately approved
 advanced engine/authoring scope. Historical milestone evidence follows.
 
-## Next approved milestone: beginner 2D and 3D game authoring
+## Completed milestone: beginner 2D and 3D game authoring
 
 User direction: follow GameMaker 7's simple resource/object/room workflow,
 building equivalent 2D and 3D workflows together. Use GameStudio's comparable
@@ -57,23 +58,26 @@ assets or a runtime dependency. Preserve the native renderer and system-style UI
   selection/snap/undo patterns. GameStudio object behavior remains Lua-authored;
   Nova's beginner event/actions interface is new work, not copied functionality.
   Reference evidence is source-observed, not a live-app UX verification.
-- [ ] Add real versioned object/room authoring data with stable resource and
+- [x] Add real versioned object/room authoring data with stable resource and
   instance references, validation and guarded save/reopen behavior. Preserve
   existing manifest/Lua projects and desktop/Android runtime contracts.
-- [ ] Make New Project -> Add Sprite/Model -> Create Object -> Place in Room ->
+- [x] Make New Project -> Add Sprite/Model -> Create Object -> Place in Room ->
   Run work for both 2D and 3D without requiring manifest or Lua edits.
-- [ ] Organize the default native editor around a resource tree, contextual
+- [x] Organize the default native editor around a resource tree, contextual
   object/event/room editing and properties. Keep source/manifest controls under
   Advanced; preserve dirty/conflict/error decisions without exposing routine
   asset-export/reload mechanics as beginner tasks. Keep the original modeller.
-- [ ] Prove both real native workflows, including resource/object/instance
+- [x] Prove both real native workflows, including resource/object/instance
   edits, save/reopen, play/stop, failure retention and old-project regressions;
   preserve debug Android build/package verification. Device execution still
   requires separate consent; personal signing remains deferred.
 
-This is a new authoring milestone, not an already implemented room editor or
-GameMaker compatibility layer. Full IDE, arbitrary mesh editing and animated
-GLB remain outside the approved bounded workflow.
+Integrated as `92bf971`. All 46 configured desktop CTests passed in the
+coordinator's worktree, including native action/pixel workflows for both
+dimensions and existing runtime/editor/modeller regressions. The ordinary debug
+Android APK also rebuilt and passed package verification here.
+This is bounded native room/object authoring, not a GameMaker compatibility
+layer. Full IDE, arbitrary mesh editing and animated GLB remain outside scope.
 
 ## Approved following milestone: easy 3D modelling and basic textures
 
