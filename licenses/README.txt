@@ -14,5 +14,6 @@ The original badge.png and gem.glb fixtures in examples/assets/assets are CC0;
 their provenance is examples/assets/NOTICE.txt and their reproducible source is
 scripts/generate-sample-assets.py. Raylib's bundled cgltf is reused for GLB parsing;
 its embedded notice is preserved with the other raylib headers.
-Project code is newly authored. No project-code license has been selected yet;
-the product owner should choose one before publishing this foundation.
+Nova-authored source and documentation are MIT licensed; see the packaged LICENSE
+(Copyright (c) 2026 Nova Studio contributors). This does not relicense vendored
+dependencies or the separately CC0 sample artwork. Preserve their notices.

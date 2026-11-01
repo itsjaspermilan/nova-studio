@@ -2,6 +2,17 @@ plugins {
     id "com.android.application"
 }
 
+def exportPath = providers.gradleProperty("novaExportDirectory").orNull
+def exportDirectory = exportPath == null ? null : file(exportPath)
+def exportConfig = null
+if (exportDirectory != null) {
+    exportConfig = new groovy.json.JsonSlurper().parse(new File(exportDirectory, "export.json"))
+    if (exportConfig.format != "nova-export-stage" || exportConfig.version != 1) {
+        throw new GradleException("Unsupported Nova export stage; use scripts/export-apk.py stage")
+    }
+    layout.buildDirectory.set(new File(exportDirectory, "android-build"))
+}
+
 android {
     namespace "studio.nova.runtime"
     compileSdk 35
@@ -9,11 +20,12 @@ android {
     ndkVersion "27.2.12479018"
 
     defaultConfig {
-        applicationId "studio.nova.runtime"
+        applicationId exportConfig == null ? "studio.nova.runtime" : exportConfig.config.applicationId
         minSdk 26
         targetSdk 33
-        versionCode 1
-        versionName "0.1.0"
+        versionCode exportConfig == null ? 1 : exportConfig.config.versionCode
+        versionName exportConfig == null ? "0.1.0" : exportConfig.config.versionName
+        resValue "string", "nova_app_name", exportConfig == null ? "Nova Studio" : exportConfig.config.displayName
         ndk {
             abiFilters "arm64-v8a"
         }
@@ -21,7 +33,8 @@ android {
             cmake {
                 arguments "-DBUILD_TESTING=OFF",
                     "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON",
-                    "-DNOVA_LICENSE_DIRECTORY=${file('build/generated/novaAssets/licenses').absolutePath}"
+                    "-DNOVA_LICENSE_DIRECTORY=${layout.buildDirectory.dir('generated/novaAssets/licenses').get().asFile.absolutePath}",
+                    "-DNOVA_STANDALONE=${exportConfig == null ? 'OFF' : 'ON'}"
                 targets "nova_runtime"
             }
         }
@@ -30,11 +43,15 @@ android {
         cmake {
             path file("../../CMakeLists.txt")
             version "3.22.1"
+            if (exportDirectory != null) {
+                buildStagingDirectory new File(exportDirectory, "native-build")
+            }
         }
     }
     sourceSets {
         main {
-            assets.srcDirs = ["build/generated/novaExamples", "build/generated/novaAssets"]
+            assets.srcDirs = [layout.buildDirectory.dir("generated/novaExamples"),
+                layout.buildDirectory.dir("generated/novaAssets")]
         }
     }
     buildTypes {
@@ -45,12 +62,22 @@ android {
 }
 
 tasks.register("prepareNovaExamples", Sync) {
-    from("../../examples")
-    into(layout.buildDirectory.dir("generated/novaExamples/examples"))
+    if (exportDirectory == null) {
+        from("../../examples") { into("examples") }
+    } else {
+        from(new File(exportDirectory, "assets/game")) { into("game") }
+    }
+    into(layout.buildDirectory.dir("generated/novaExamples"))
 }
 
 // Dependency notices are emitted by CMake and must exist before assets are packaged.
 tasks.configureEach {
     if (name == "mergeDebugAssets") dependsOn("prepareNovaExamples", "externalNativeBuildDebug")
     if (name == "mergeReleaseAssets") dependsOn("prepareNovaExamples", "externalNativeBuildRelease")
+    if (name.toLowerCase().contains("lint") && name.contains("Release")) {
+        dependsOn("prepareNovaExamples", "externalNativeBuildRelease")
+    }
+    if (name.toLowerCase().contains("lint") && name.contains("Debug")) {
+        dependsOn("prepareNovaExamples", "externalNativeBuildDebug")
+    }
 }

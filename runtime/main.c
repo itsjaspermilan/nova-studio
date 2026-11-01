@@ -121,7 +121,11 @@ static void draw_error(const char *error)
         error += length;
         if (*error == '\n') error++;
     }
+#ifdef NOVA_STANDALONE
+    DrawText("R retries the game. Esc / Back exits.", 28, 495, 20, RAYWHITE);
+#else
     DrawText("Fix the scene/project, then R to retry. F1 / Start opens the launcher.", 28, 495, 20, RAYWHITE);
+#endif
 }
 
 static bool parse_options(int argc, char **argv, Options *options)
@@ -142,9 +146,23 @@ static bool parse_options(int argc, char **argv, Options *options)
         !(options->scene && options->project) && !(options->smoke && (options->scene || options->project));
 }
 
+#ifdef NOVA_STANDALONE
+const char nova_standalone_project[] = "game/nova.project";
+#endif
+
 int main(int argc, char **argv)
 {
     Options options = {0};
+#ifdef NOVA_STANDALONE
+    const bool standalone = true;
+    options.project = nova_standalone_project;
+    if (argc != 1) {
+        fprintf(stderr, "Nova: standalone games do not accept launcher options\n");
+        return 2;
+    }
+#else
+    const bool standalone = false;
+#endif
     if (!parse_options(argc, argv, &options)) {
         fprintf(stderr, "Usage: nova_studio [--scene script.lua | --project nova.project] [--frames 1..100000] [--capture image.png] [--smoke --frames N>=2]\n");
         return 2;
@@ -201,7 +219,7 @@ int main(int argc, char **argv)
         if (IsKeyPressed(KEY_BACK) || IsKeyPressed(KEY_ESCAPE)) break;
 #endif
         bool start = IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_MIDDLE_RIGHT);
-        if (IsKeyPressed(KEY_F1) || start) {
+        if (!standalone && (IsKeyPressed(KEY_F1) || start)) {
             nova_unload_resources(&resources);
             nova_destroy(engine);
             engine = nova_create();
@@ -216,7 +234,7 @@ int main(int argc, char **argv)
             accumulator = 0;
         }
         int selected = -1;
-        if (!playing && !error[0]) {
+        if (!standalone && !playing && !error[0]) {
             if (IsKeyPressed(KEY_ONE) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_DOWN))) selected = 0;
             if (IsKeyPressed(KEY_TWO) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_RIGHT))) selected = 1;
             if (IsKeyPressed(KEY_THREE) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_LEFT))) selected = 2;

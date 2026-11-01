@@ -31,7 +31,7 @@ Edit the source examples with your preferred text editor, then rebuild to synchr
 ./build/nova_studio --project "$PWD/examples/static/nova.project"
 ```
 
-The executable resolves its bundled examples relative to its own directory, not the shell's current directory. To move the desktop build, keep `nova_studio`, `examples/`, and `licenses/` together. There is no `.app` bundle, installer, notarization, or integrated script editor yet.
+The executable resolves its bundled examples relative to its own directory, not the shell's current directory. To move the desktop build, keep `nova_studio`, `examples/`, and `licenses/` (including Nova's MIT LICENSE) together. There is no `.app` bundle, installer, notarization, or integrated script editor yet.
 
 ### Native rendering evidence and repeatable checks
 
@@ -206,8 +206,8 @@ Desktop builds synchronize the entire `examples/` tree, including the project.
 Android's existing Gradle Sync task packages that identical tree before asset
 merging. APK verification byte-compares every sample manifest/script/asset/provenance
 file, in addition to the old examples, native activity exports and dependency notices.
-Custom projects can run directly on desktop; arbitrary project selection/export to
-APK is not implemented. The Android launcher includes the bundled sample project.
+Custom projects can run directly on desktop or use the separate local APK export
+workflow below. The ordinary Android debug launcher still includes all samples.
 
 Two additional original v1 projects exercise the same subset without new importer
 features. `examples/sprites/` is a sprite-only 2D scene with RGB checker tiles,
@@ -273,7 +273,7 @@ GPU upload, later-update behavior, rendering or Android device compatibility.
 
 ## Android APK scaffold
 
-The Android application packages the **same C engine, runtime, editable scripts and manifest project assets** into a standalone arm64 APK. The host is Android's built-in NativeActivity, so no custom Java/Kotlin UI or WebView is needed for this slice. No storage/network permissions are requested. The sample launcher is included; a per-game exporter that chooses one project is not implemented yet.
+The Android application packages the **same C engine, runtime, editable scripts and manifest project assets** into an arm64 APK. The host is Android's built-in NativeActivity, so no custom Java/Kotlin UI or WebView is needed for this slice. No storage/network permissions are requested. The ordinary debug build includes the sample launcher; per-game release exports start directly in one selected project.
 
 Pinned build configuration: **JDK 17**, **Gradle 8.11.1**, **Android Gradle Plugin 8.9.2**, **NDK 27.2.12479018**, **SDK platform/build-tools 35**, **CMake 3.22.1**, `arm64-v8a`, minimum Android 8/API 26, target Android 13/API 33. Target API 33 is intentional for initial Android 13 development, not a current Play Store publishing configuration. NDK flexible-page-size support is enabled.
 
@@ -360,9 +360,130 @@ After enabling USB debugging and connecting the intended device, installation/la
 
 Run those from the Nova Studio root; choose a specific device using `adb -s SERIAL` when multiple devices are attached. Installation is an explicit user action, not something this foundation runs automatically. Test 2D/mixed scenes, controls, Back/Start, pause/resume and recreation before trusting a device build.
 
+## Local per-game APK export and personal release signing
+
+This is a local command-line exporter, not an editor/export wizard or a store
+publishing service. It preserves `nova.project` v1 unchanged. The separate strict
+JSON **nova-export version 1** configuration contains exactly these fields:
+
+```json
+{
+  "format": "nova-export",
+  "version": 1,
+  "applicationId": "studio.nova.games.my_game",
+  "displayName": "My Game",
+  "versionCode": 1,
+  "versionName": "0.1.0",
+  "provenance": ["NOTICE.txt"]
+}
+```
+
+`applicationId` is a stable dotted lowercase Android identity (letters, digits,
+underscores; each segment starts with a letter), distinct from the debug
+launcher's `studio.nova.runtime`. Display/version names are 1..64 ASCII
+letters/digits/spaces/dots/underscores/hyphens, starting with a letter/digit.
+`versionCode` is an integer 1..2100000000. `provenance` explicitly names 1..32
+unique project-relative license/provenance files using the same contained-path
+syntax as manifest v1. Include the licenses/attribution for **all** game content;
+the exporter cannot determine your legal rights from file bytes. Unknown or
+duplicate JSON fields are errors. `examples/assets/nova.export.json` is a sample.
+Neither this configuration nor the manifest contains signing credentials.
+
+Use an existing configured toolchain and `/usr/bin/python3` 3.9+ with only its
+standard library (no SDK/key/package installation is performed):
+
+```sh
+./scripts/export-apk.sh stage \
+  --project examples/assets/nova.project \
+  --config examples/assets/nova.export.json \
+  --output build/exports/asset-demo-v1
+./scripts/export-apk.sh build --export build/exports/asset-demo-v1
+```
+
+Staging runs `nova_export_validate`, a thin headless consumer of
+`nova_validate_project`, so the actual manifest, native PNG/GLB imports,
+aggregate limits, Lua source and initial update/instruction budgets must pass.
+It copies and revalidates **only** the manifest (renamed `game/nova.project`),
+declared entry/assets and explicitly selected provenance, together with Nova's
+MIT LICENSE and the full upstream dependency/native-glue notices. It does not
+copy unrelated project files, other games, source configuration or private keys.
+The new output directory must be outside the game project root. Stages have an
+exact file inventory and SHA-256 receipt; changed files require restaging, not
+an in-place edit. The receipt is local build metadata, not a signed attestation.
+
+`build` uses the committed Gradle wrapper and
+`-PnovaExportDirectory=<absolute-stage>` with separate Android/native outputs.
+It builds `assembleRelease` with `NOVA_STANDALONE=ON`, no debug signing fallback
+and no debuggable flag. Startup opens `game/nova.project`; F1/Start cannot enter
+the sample launcher. R can retry a failed load; Esc/Back exits. The ordinary
+desktop, `--scene`/`--project`, sample-launcher and `build-android.sh` debug paths
+are unchanged. The **unsigned**, structurally verified APK is:
+
+```text
+<export>/android-build/outputs/apk/release/app-release-unsigned.apk
+```
+
+### One-time local key setup and repeat updates
+
+Key creation/unlock is deliberately a **local interactive user step**, never
+performed by the exporter or an unattended agent. Keep a reusable personal
+keystore outside **every Git repository** and export directory, for example
+`$HOME/.nova/keys/personal-games.jks`. With your JDK's `keytool`, generate a
+long-lived RSA signing key interactively (`-genkeypair -keyalg RSA -keysize 3072
+-validity 10000 -alias personal-games -keystore <external-file>`); do not pass
+password flags. Obtain its certificate SHA-256 using interactive
+`keytool -list -v -keystore <external-file> -alias personal-games`. Back up the
+key/password securely outside Git; losing the key prevents normal updates.
+One personal key may sign multiple games, each with a different application ID.
+MIT source licensing does not require publishing your private signing key.
+
+From your local terminal, with an **existing** key and its public certificate
+fingerprint:
+
+```sh
+./scripts/export-apk.sh sign --export build/exports/asset-demo-v1 \
+  --keystore "$HOME/.nova/keys/personal-games.jks" --alias personal-games \
+  --certificate-sha256 <64-hex-digit-SHA256>
+./scripts/export-apk.sh verify --export build/exports/asset-demo-v1 \
+  --apk build/exports/asset-demo-v1/studio.nova.games.asset_demo-1-release.apk \
+  --certificate-sha256 <64-hex-digit-SHA256>
+```
+
+`sign` refuses noninteractive input, in-repository keystores, output overwrites,
+changed stages, debug certificates and a mismatched pinned certificate.
+`apksigner` owns its hidden terminal prompts; the scripts accept **no password
+arguments, password files or password environment variables**. The APK is
+16-KiB-page aligned and v2-signed, then verified before the final file is exposed.
+Failed/cancelled signing never yields a debug-signed or success-shaped release.
+Actual personal-key signing has not been exercised unattended; isolated-tool
+tests cover that path without creating or opening any real personal key.
+
+For updates on both Retroids, retain the **same applicationId and signing
+certificate**, increment `versionCode` (display `versionName` alone is not enough),
+restage/build/sign, then install the same resulting APK on each device.
+Local `build/exports/version-history.json` rejects changed exports/APK bytes with
+a reused or lower code and rejects certificate changes after a personal release.
+Identical stage/APK bytes can be rebuilt; runtime/toolchain changes may also
+require a code increment. Keep your configuration/version record when
+cleaning generated builds; Android's installed version is authoritative.
+Across clean checkouts, pass `--previous-export <prior-stage>` to both `stage`
+and `build` to require the same identity and a strictly higher code. Retain the
+public certificate pin independently; the local history is not global and
+cannot replace Android's update checks.
+
+A debug-signed installation **cannot** be updated with a personal release
+certificate under the same ID. Use a different game ID (the normal export case),
+or explicitly uninstall the old debug app before the first release install;
+uninstalling removes its app data. No automatic uninstall/install is performed.
+The verification checks exact selected-game/notices bytes and inventory, ARM64
+native activity exports/standalone build marker, SDK/application/display/version
+metadata, no extra activities/services/permissions, non-debug release flags and
+the pinned v2 signing certificate. These are package checks, **not device
+execution, lifecycle/context-loss or Retroid performance validation**.
+
 ## Deliberately outside this slice
 
-No original asset modeller, extrusion, skeletal animation, importer UI, full textured/PBR model pipeline, lighting/shadows, physics world, scene inspector, project browser, release signing/export wizard, audio API, persistent saves, or user-script module loader yet. The original 3D example uses generated meshes; the third launcher project imports a real static GLB and PNG. Timers currently use `dt` in Lua; audio/save services will share the same scene runtime when added. No existing saves are read or changed, and no Glow compatibility is implied.
+No original asset modeller, extrusion, skeletal animation, importer UI, full textured/PBR model pipeline, lighting/shadows, physics world, scene inspector UI, project browser, release signing/export wizard, audio API, persistent saves, or user-script module loader yet. Local CLI export/signing and read-only inspection contracts are implemented, not a full editor. The original 3D example uses generated meshes; the third launcher project imports a real static GLB and PNG. Timers currently use `dt` in Lua; audio/save services will share the same scene runtime when added. No existing saves are read or changed, and no Glow compatibility is implied.
 
 **Next work:** stabilize the versioned manifest/import/handle interfaces with real projects and validate the APK on Retroid Pocket 6 with the user's consent, including imported assets, controller/lifecycle/render-resolution checks. Defer the full editor and original primitive/transform modeller until those interfaces are stable; any later authoring UI must use this native pipeline, not a separate preview engine.
 
@@ -370,4 +491,4 @@ No original asset modeller, extrusion, skeletal animation, importer UI, full tex
 
 Nova Studio has a local Git repository on `main`; no remote/GitHub repository is configured. Source, tests, dependency notices and the intentional Gradle wrapper JAR are tracked. Builds, SDK/toolchain caches, local SDK paths and signing/private machine files are excluded by `.gitignore`. The SDK and asdf installations remain outside the source repository.
 
-Before publishing, select a license for Nova's newly authored project code. Keep the dependency notices shipped beside desktop builds and inside APK assets; they include full original single-header sources where notices are embedded, intentionally favoring preservation over compact packaging in this prototype.
+Nova-authored source/documentation are **MIT licensed** (Copyright (c) 2026 Nova Studio contributors); see `LICENSE`. Vendored Lua/raylib/GLFW/native-glue/Gradle code retains its upstream licenses, and original sample PNG/GLB artwork retains CC0 provenance. Keep the LICENSE and dependency notices shipped beside desktop builds and inside APK assets; they include full original single-header sources where notices are embedded, intentionally favoring preservation over compact packaging in this prototype. No public publishing, remote push or store release is performed by these local tools.

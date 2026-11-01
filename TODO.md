@@ -63,7 +63,7 @@ verification, not device execution or release readiness.
 Approved initial contract: text v1 manifest, `--project <manifest>`, typed scene-local
 handles and whole-project R replacement; PNG and embedded-only static unlit GLB.
 See README for exact syntax, limits and exclusions. No URIs/textured or lit/PBR
-materials, animation, skins, compression, authoring UI or per-game exporter.
+materials, animation, skins, compression or authoring UI.
 This is a bounded interchange contract, not general glTF compatibility.
 
 The new APK is generated in this worktree at the same relative path above.
@@ -148,10 +148,21 @@ ADB installation is an explicit device-modifying action; see README commands.
   world AND overlay use the same 960x540 target; sharper HUDs are not delivered.
 - [ ] Shared audio, persistent saves and animation services: absent today.
   Lua can accumulate `dt`; there is no dedicated timer service/module loader.
-- [ ] Per-game export, production signing/distribution and broader platform
-  validation: current APK bundles the sample launcher, not one selected project.
-- [ ] Select a license for newly authored Nova code before public distribution;
-  dependency licenses do not select the project's own license.
+- [x] Local per-game standalone native APK export with separate nova-export v1
+  metadata/provenance, native headless validation and exact-file staging.
+  Ordinary launcher/debug and desktop builds remain.
+- [x] Personal non-debug release-signing tooling: reusable external keystore,
+  interactive apksigner prompts, certificate pin, stable IDs/increasing codes,
+  and structural APK checks. Actual user's key creation/unlock remains local.
+- [x] MIT license for Nova-authored source, packaged with distributions while
+  preserving original upstream notices and CC0 sample artwork provenance.
+  Export/signing milestone verification: eight default CTests (including 18
+  isolated/native exporter tests), isolated toolchain tests, desktop build,
+  real per-game unsigned release build and ordinary launcher debug rebuild
+  passed. Real apksigner rejects the existing debug certificate as a release.
+  No personal signing key was created/unlocked and no device was modified.
+- [ ] Production/store distribution and broader platform validation. No public
+  publishing or actual personal-key/device installation has been performed.
 
 No Glow compatibility is implemented or promised. Mac OpenGL is deprecated;
 future backend work must preserve the native desktop/Android path.

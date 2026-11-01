@@ -89,7 +89,8 @@ Documentation-only changes need no builds.
   to make a build pass. Stop and investigate any new security warning.
 - Preserve dependency hashes, wrapper JAR and notices in `licenses/` and
   generated desktop/APK assets. Check licenses before adding dependencies/assets.
-  The newly authored project's license is still an open distribution decision.
+  Nova-authored source is MIT; preserve LICENSE in distributions without
+  relabeling dependencies or the CC0 sample artwork.
 - No dependencies on, edits to, or save-data access in GameStudio/Glow43.
   Preserve unrelated changes, local configuration and private signing material.
   Generated outputs/toolchains stay ignored; never commit secrets.

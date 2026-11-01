@@ -27,3 +27,5 @@ key.properties
 keystore.properties
 signing.properties
 *.pem
+__pycache__/
+*.idsig

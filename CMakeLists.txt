@@ -52,11 +52,18 @@ target_compile_options(nova_assets PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 if(ANDROID)
     add_library(nova_runtime SHARED runtime/main.c)
+    option(NOVA_STANDALONE "Start the packaged game without the sample launcher" OFF)
+    if(NOVA_STANDALONE)
+        target_compile_definitions(nova_runtime PRIVATE NOVA_STANDALONE)
+    endif()
     # NativeActivity loads this by name; retain native_app_glue from the static archive.
     target_link_options(nova_runtime PRIVATE "LINKER:-u,ANativeActivity_onCreate")
     set(NOVA_APP nova_runtime)
 else()
     add_executable(nova_studio runtime/main.c)
+    add_executable(nova_export_validate runtime/export_validate.c)
+    target_link_libraries(nova_export_validate PRIVATE nova_assets)
+    target_compile_options(nova_export_validate PRIVATE -Wall -Wextra -Wpedantic -Werror)
     set(NOVA_APP nova_studio)
     add_custom_target(nova_desktop_assets ALL
         COMMAND ${CMAKE_COMMAND} -E copy_directory
@@ -66,6 +73,15 @@ else()
     add_dependencies(nova_studio nova_desktop_assets)
     include(CTest)
     if(BUILD_TESTING)
+        add_test(NAME nova_export_preflight COMMAND nova_export_validate
+            "${CMAKE_CURRENT_SOURCE_DIR}/examples/assets/nova.project")
+        find_program(NOVA_PYTHON_EXECUTABLE python3 PATHS /usr/bin NO_DEFAULT_PATH)
+        if(NOVA_PYTHON_EXECUTABLE)
+            add_test(NAME nova_export_tooling COMMAND "${NOVA_PYTHON_EXECUTABLE}" -B
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/export_test.py")
+            set_tests_properties(nova_export_tooling PROPERTIES
+                ENVIRONMENT "NOVA_EXPORT_VALIDATOR=$<TARGET_FILE:nova_export_validate>")
+        endif()
         add_executable(nova_tests tests/core_test.c)
         target_link_libraries(nova_tests PRIVATE nova_core)
         target_compile_definitions(nova_tests PRIVATE NOVA_EXAMPLES="${CMAKE_CURRENT_SOURCE_DIR}/examples")

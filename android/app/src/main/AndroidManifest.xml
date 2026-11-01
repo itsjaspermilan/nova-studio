@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-feature android:glEsVersion="0x00020000" android:required="true" />
     <application
-        android:label="Nova Studio"
+        android:label="@string/nova_app_name"
         android:allowBackup="false"
         android:hasCode="false"
         android:theme="@android:style/Theme.Material.NoActionBar.Fullscreen">
