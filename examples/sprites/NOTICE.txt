@@ -1,0 +1,4 @@
+token.png and tile.png are original geometric sprite fixtures authored for
+Nova Studio, not copied from third-party assets. Their reproducible source is
+scripts/generate-sample-assets.py. These two generated files are dedicated
+to the public domain under CC0 1.0 Universal; see licenses/CC0-1.0.txt.

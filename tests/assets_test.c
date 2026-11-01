@@ -120,6 +120,107 @@ static void wide_indices(void)
     free(bytes);
 }
 
+static void project_fixtures(void)
+{
+    char error[1024];
+    NovaProjectValidation sprites, assembly;
+    CHECK(nova_validate_project(NOVA_EXAMPLES "/sprites/nova.project", &sprites, error, sizeof(error)));
+    CHECK(sprites.project.count == 3 && !strcmp(sprites.project.entry, "main.lua"));
+    CHECK(sprites.assets[0].width == 16 && sprites.assets[0].height == 16 &&
+        sprites.assets[0].primitives == 0 && sprites.assets[0].vertices == 0 &&
+        sprites.assets[0].resource_index == 0 && sprites.assets[1].resource_index == 1 &&
+        sprites.assets[2].resource_index == 0 &&
+        sprites.assets[2].input_bytes == sprites.assets[0].input_bytes &&
+        !strcmp(sprites.assets[2].declaration.id, "token-copy") &&
+        !strcmp(sprites.assets[2].declaration.path, "assets/token.png"));
+    CHECK(nova_validate_project(NOVA_EXAMPLES "/static/nova.project", &assembly, error, sizeof(error)));
+    CHECK(assembly.project.count == 2 && assembly.assets[0].primitives == 6 &&
+        assembly.assets[0].vertices == 162 && assembly.assets[0].width == 0 &&
+        assembly.assets[0].height == 0 && assembly.assets[1].resource_index == 0);
+    NovaAssetInspection *info = &assembly.assets[0];
+    CHECK(fabsf(info->bounds_min.x + 2.5f) < 0.001f && fabsf(info->bounds_max.x - 3.5f) < 0.001f &&
+        fabsf(info->bounds_min.y) < 0.001f && fabsf(info->bounds_max.y - 1.5f) < 0.001f &&
+        fabsf(info->bounds_min.z + 0.5f) < 0.001f && fabsf(info->bounds_max.z - 0.5f) < 0.001f);
+    int length;
+    unsigned char *bytes = nova_read_file(NOVA_EXAMPLES "/static/assets/assembly.glb",
+        NOVA_ASSET_FILE_LIMIT, &length, error, sizeof(error));
+    CHECK(bytes && (size_t)length == info->input_bytes);
+    Model model;
+    CHECK(nova_decode_glb(bytes, length, &model, error, sizeof(error)));
+    CHECK(model.meshCount == 6);
+    for (int i = 0; i < 6; ++i) {
+        CHECK(model.meshes[i].vertexCount == (i % 2 ? 18 : 36));
+        CHECK(model.meshes[i].colors[0] == (i % 2 ? 255 : 63) &&
+            model.meshes[i].colors[1] == 127 && model.meshes[i].colors[2] == (i % 2 ? 63 : 255));
+    }
+    CHECK(fabsf(model.meshes[0].vertices[0] + 2.5f) < 0.001f &&
+        fabsf(model.meshes[0].vertices[1]) < 0.001f);
+    CHECK(fabsf(model.meshes[2].vertices[0] - 1.25f) < 0.001f &&
+        fabsf(model.meshes[2].vertices[1] - 0.25f) < 0.001f);
+    CHECK(fabsf(model.meshes[4].vertices[0] - 3.5f) < 0.001f &&
+        fabsf(model.meshes[4].vertices[3] - 2.5f) < 0.001f &&
+        fabsf(model.meshes[4].vertices[4]) < 0.001f);
+    free_cpu(model);
+    reject_variant(bytes, length, "\"material\":1", "\"material\":1,\"targets\":[{\"POSITION\":2}]");
+    reject_variant(bytes, length, "\"matrix\":[-1,0,0,0", "\"matrix\":[-1,0,0,1");
+    reject_variant(bytes, length, "\"children\":[1,2,3]", "\"children\":[1,2]");
+    reject_variant(bytes, length, "\"POSITION\":2", "\"POSITION\":2,\"TEXCOORD_0\":2");
+    reject_variant(bytes, length, "\"baseColorFactor\":[1,0.5,0.25,1]",
+        "\"baseColorFactor\":[1,0.5,0.25,0.5]");
+    reject_variant(bytes, length, "\"KHR_materials_unlit\":{}", "\"KHR_materials_unlit\":{},\"KHR_materials_clearcoat\":{}");
+    UnloadFileData(bytes);
+}
+
+static void authoring_preflight(void)
+{
+    char directory[] = NOVA_TEST_DIRECTORY "/preflight.XXXXXX";
+    CHECK(mkdtemp(directory));
+    char manifest[NOVA_NATIVE_PATH_CAPACITY], script[NOVA_NATIVE_PATH_CAPACITY];
+    char sprite[NOVA_NATIVE_PATH_CAPACITY], error[1024];
+    snprintf(manifest, sizeof(manifest), "%s/nova.project", directory);
+    snprintf(script, sizeof(script), "%s/main.lua", directory);
+    snprintf(sprite, sizeof(sprite), "%s/token.png", directory);
+    char declarations[] = "nova-project 1\nentry main.lua\nsprite token token.png\nsprite alias token.png\n";
+    char valid[] = "local s=nova.asset('alias'); function update() nova.sprite(s,0,0,16,16) end";
+    CHECK(SaveFileText(manifest, declarations) && SaveFileText(script, valid));
+    copy_fixture(NOVA_EXAMPLES "/sprites/assets/token.png", sprite);
+    NovaProjectValidation validation;
+    CHECK(nova_validate_project(manifest, &validation, error, sizeof(error)));
+    CHECK(validation.project.count == 2 && validation.assets[1].resource_index == 0);
+    NovaProjectValidation retained = validation;
+    const struct { const char *source, *error; } failures[] = {
+        {"function update(", "near <eof>"},
+        {"local s=nova.asset('missing'); function update() end", "undeclared asset"},
+        {"local s=nova.asset('token'); function update() nova.model(s,0,0,0,1) end", "wrong type"},
+        {"function update() error('authoring update rejected') end", "authoring update rejected"},
+        {"while true do end; function update() end", "instruction budget"},
+        {"function update() while true do end end", "instruction budget"},
+        {"local s=string.rep('x', 20*1024*1024); function update() end", "memory"},
+    };
+    for (size_t i = 0; i < sizeof(failures) / sizeof(*failures); ++i) {
+        CHECK(SaveFileText(script, (char *)failures[i].source));
+        CHECK(!nova_validate_project(manifest, &validation, error, sizeof(error)));
+        CHECK(strstr(error, failures[i].error) && !memcmp(&validation, &retained, sizeof(validation)));
+    }
+    CHECK(SaveFileText(script, valid));
+    char duplicate[] = "nova-project 1\nentry main.lua\nsprite token token.png\nsprite token token.png\n";
+    CHECK(SaveFileText(manifest, duplicate));
+    CHECK(!nova_validate_project(manifest, &validation, error, sizeof(error)) && strstr(error, "manifest line 4"));
+    CHECK(!memcmp(&validation, &retained, sizeof(validation)));
+    CHECK(SaveFileText(manifest, declarations));
+    char corrupt[] = "not a PNG";
+    CHECK(SaveFileText(sprite, corrupt));
+    CHECK(!nova_validate_project(manifest, &validation, error, sizeof(error)) && strstr(error, "asset 'token'"));
+    CHECK(!memcmp(&validation, &retained, sizeof(validation)));
+    CHECK(unlink(sprite) == 0);
+    CHECK(!nova_validate_project(manifest, &validation, error, sizeof(error)) && strstr(error, "missing"));
+    CHECK(!memcmp(&validation, &retained, sizeof(validation)));
+    copy_fixture(NOVA_EXAMPLES "/assets/assets/badge.png", sprite);
+    CHECK(nova_validate_project(manifest, &validation, error, sizeof(error)) && !*error);
+    CHECK(validation.assets[0].width == 32 && validation.assets[1].width == 32);
+    CHECK(unlink(manifest) == 0 && unlink(script) == 0 && unlink(sprite) == 0 && rmdir(directory) == 0);
+}
+
 static void partial_failure(NovaEngine **engine, NovaResources *resources)
 {
     char directory[] = NOVA_TEST_DIRECTORY "/asset-reload.XXXXXX";
@@ -138,23 +239,91 @@ static void partial_failure(NovaEngine **engine, NovaResources *resources)
     copy_fixture(NOVA_EXAMPLES "/assets/assets/badge.png", model);
     NovaEngine *retained = *engine;
     unsigned int texture = resources->resources[0].texture.id;
+    NovaAssetInspection old_metadata[NOVA_MAX_ASSETS];
+    memcpy(old_metadata, resources->inspection, sizeof(old_metadata));
+    NovaFrame old_frame = *nova_frame(*engine);
+    char duplicate[] = "nova-project 1\nentry main.lua\nsprite badge badge.png\nsprite badge badge.png\n";
+    CHECK(SaveFileText(manifest, duplicate));
+    CHECK(!nova_open_scene(engine, resources, manifest, true, error, sizeof(error)) &&
+        strstr(error, "manifest line 4") && *engine == retained);
+    CHECK(!memcmp(old_metadata, resources->inspection, sizeof(old_metadata)) &&
+        !memcmp(&old_frame, nova_frame(*engine), sizeof(old_frame)));
+    CHECK(SaveFileText(manifest, declarations));
     CHECK(!nova_open_scene(engine, resources, manifest, true, error, sizeof(error)));
     CHECK(strstr(error, "asset 'gem'") && *engine == retained &&
         resources->resources[0].texture.id == texture);
+    NovaSceneInspection inspection = nova_inspect_scene(*engine, resources);
+    CHECK(inspection.loaded && inspection.project && strstr(inspection.load_error, "asset 'gem'") &&
+        !memcmp(old_metadata, inspection.assets, sizeof(old_metadata)) &&
+        !memcmp(&old_frame, inspection.frame, sizeof(old_frame)));
     copy_fixture(NOVA_EXAMPLES "/assets/assets/gem.glb", model);
     CHECK(!nova_open_scene(engine, resources, manifest, true, error, sizeof(error)));
     CHECK(strstr(error, "reload rejected") && *engine == retained &&
         resources->resources[0].texture.id == texture);
+    CHECK(!memcmp(old_metadata, resources->inspection, sizeof(old_metadata)) &&
+        !memcmp(&old_frame, nova_frame(*engine), sizeof(old_frame)) &&
+        strstr(nova_inspect_scene(*engine, resources).load_error, "reload rejected"));
     CHECK(nova_tick(*engine, 0, (NovaInput){0}));
+    char reordered[] = "nova-project 1\nentry main.lua\nmodel gem gem.glb\n"
+        "sprite badge badge.png\nsprite alias badge.png\n";
+    CHECK(SaveFileText(manifest, reordered));
     char valid[] = "local badge=nova.asset('alias'); function update() nova.sprite(badge,0,0,32,32) end";
     CHECK(SaveFileText(script, valid));
     CHECK(nova_open_scene(engine, resources, manifest, true, error, sizeof(error)));
     CHECK(*engine != retained && resources->count == 3 &&
-        resources->resources[0].texture.id == resources->resources[1].texture.id &&
-        resources->resources[0].owned && !resources->resources[1].owned &&
-        resources->resources[0].texture.id != texture);
+        resources->resources[1].texture.id == resources->resources[2].texture.id &&
+        resources->resources[1].owned && !resources->resources[2].owned &&
+        resources->resources[1].texture.id != texture);
+    inspection = nova_inspect_scene(*engine, resources);
+    CHECK(inspection.count == 3 && !*inspection.load_error &&
+        !strcmp(inspection.source, manifest) && !strcmp(inspection.relative_entry, "main.lua") &&
+        !strcmp(inspection.entry, script) && !strcmp(inspection.root, directory) &&
+        inspection.assets[2].resource_index == 1 && inspection.assets[2].width == 32 &&
+        inspection.frame->commands[0].asset == 2);
+    char later_error[] = "local badge=nova.asset('alias'); function update(dt) "
+        "if dt>0 then error('later update rejected') end nova.sprite(badge,0,0,32,32) end";
+    CHECK(SaveFileText(script, later_error));
+    CHECK(nova_open_scene(engine, resources, manifest, true, error, sizeof(error)));
+    CHECK(!nova_tick(*engine, 0.01, (NovaInput){0}));
+    inspection = nova_inspect_scene(*engine, resources);
+    CHECK(inspection.loaded && inspection.count == 3 && inspection.frame->count == 0 &&
+        strstr(inspection.scene_error, "later update rejected") && !*inspection.load_error);
+    CHECK(SaveFileText(script, valid));
+    CHECK(nova_open_scene(engine, resources, manifest, true, error, sizeof(error)));
+    CHECK(!*nova_inspect_scene(*engine, resources).scene_error && nova_frame(*engine)->count == 1);
     CHECK(unlink(manifest) == 0 && unlink(script) == 0 && unlink(sprite) == 0 &&
         unlink(model) == 0 && rmdir(directory) == 0);
+}
+
+static void inspection_projects(NovaEngine **engine, NovaResources *resources)
+{
+    char error[1024];
+    CHECK(nova_open_scene(engine, resources, NOVA_EXAMPLES "/sprites/nova.project", true, error, sizeof(error)));
+    NovaSceneInspection info = nova_inspect_scene(*engine, resources);
+    CHECK(info.loaded && info.project && info.count == 3 && info.frame->mode == NOVA_2D &&
+        info.frame->count == 62 && info.frame->commands[60].asset == 2 &&
+        info.frame->commands[61].asset == 0 && info.assets[2].resource_index == 0);
+    CHECK(resources->resources[0].owned && !resources->resources[2].owned &&
+        resources->resources[0].texture.id == resources->resources[2].texture.id);
+    for (size_t i = 0; i < info.frame->count; ++i) CHECK(info.frame->commands[i].type == NOVA_SPRITE);
+    NovaFrame frame = *info.frame;
+    unsigned int texture = resources->resources[0].texture.id;
+    NovaProjectValidation validation;
+    CHECK(nova_validate_project(NOVA_EXAMPLES "/static/nova.project", &validation, error, sizeof(error)));
+    CHECK(texture == resources->resources[0].texture.id &&
+        !memcmp(&frame, nova_frame(*engine), sizeof(frame)) && resources->count == 3);
+    CHECK(!nova_validate_project(NOVA_EXAMPLES "/static/missing.project", &validation, error, sizeof(error)));
+    CHECK(texture == resources->resources[0].texture.id &&
+        !memcmp(&frame, nova_frame(*engine), sizeof(frame)) && !*info.load_error);
+    CHECK(nova_tick(*engine, 0.05, (NovaInput){1, 0, false}));
+    CHECK(info.frame->commands[61].position.x == 249 && frame.commands[61].position.x == 240);
+    CHECK(nova_open_scene(engine, resources, NOVA_EXAMPLES "/static/nova.project", true, error, sizeof(error)));
+    info = nova_inspect_scene(*engine, resources);
+    CHECK(info.count == 2 && info.assets[0].primitives == 6 && info.assets[0].vertices == 162 &&
+        !memcmp(info.assets, validation.assets, info.count * sizeof(*info.assets)) &&
+        info.frame->mode == NOVA_MIXED && info.frame->commands[0].asset == 0 &&
+        info.frame->commands[1].asset == 1 && !resources->resources[1].owned &&
+        resources->resources[0].model.meshes == resources->resources[1].model.meshes);
 }
 
 int main(int argc, char **argv)
@@ -174,6 +343,8 @@ int main(int argc, char **argv)
     CHECK(!nova_project_resolve(temp, "outside.lua", path, error, sizeof(error)));
     CHECK(strstr(error, "escapes root"));
     CHECK(unlink(link) == 0 && rmdir(temp) == 0);
+    project_fixtures();
+    authoring_preflight();
     int length;
     NovaProjectValidation validation = {0};
     CHECK(nova_validate_project(NOVA_EXAMPLES "/assets/nova.project", &validation, error, sizeof(error)));
@@ -241,6 +412,9 @@ int main(int argc, char **argv)
         CHECK(IsWindowReady());
         NovaEngine *engine = nova_create();
         NovaResources resources = {0};
+        NovaSceneInspection empty = nova_inspect_scene(engine, &resources);
+        CHECK(!empty.loaded && !empty.frame && !empty.assets && empty.count == 0);
+        inspection_projects(&engine, &resources);
         for (int i = 0; i < 4; ++i) {
             CHECK(nova_open_scene(&engine, &resources, NOVA_EXAMPLES "/assets/nova.project", true, error, sizeof(error)));
             CHECK(resources.count == 2 && IsTextureValid(resources.resources[0].texture) &&
@@ -253,8 +427,14 @@ int main(int argc, char **argv)
             if (i == 0) partial_failure(&engine, &resources);
             CHECK(nova_open_scene(&engine, &resources, NOVA_EXAMPLES "/2d/main.lua", false, error, sizeof(error)));
             CHECK(resources.count == 0 && nova_frame(engine)->mode == NOVA_2D);
+            NovaSceneInspection direct = nova_inspect_scene(engine, &resources);
+            CHECK(direct.loaded && !direct.project && !direct.count && !*direct.root &&
+                !*direct.relative_entry && !*direct.load_error &&
+                !strcmp(direct.entry, NOVA_EXAMPLES "/2d/main.lua"));
         }
         nova_unload_resources(&resources);
+        empty = nova_inspect_scene(engine, &resources);
+        CHECK(!empty.loaded && !empty.frame && !empty.assets && !*empty.source);
         nova_unload_resources(&resources);
         nova_destroy(engine);
         CloseWindow();

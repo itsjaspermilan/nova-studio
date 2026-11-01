@@ -22,12 +22,19 @@ before changing contracts; roadmap entries are not implemented features.
   static GLB using raylib's pinned cgltf, and stages resource/Lua replacement.
   Declared path/type aliases share resources; failed staging unloads only candidates.
   Keep the documented import subset and reject unsupported features explicitly.
+- `runtime/inspect.h` defines read-only inspection v1 and shared headless project
+  preflight. Use real declaration-order/alias metadata and `NovaFrame`, not invented
+  scene entities. Preserve documented borrowed-view lifetimes and transactional
+  failed reload/validation behavior; headless preflight must not upload GPU data.
 - `examples/{2d,mixed}/main.lua` are editable scenes. Desktop builds synchronize
   them next to the executable; direct `--scene` permits source-script reload.
   Android resolves the same relative paths through bundled assets.
 - `examples/assets/nova.project` and its Lua/CC0 PNG/GLB are the third launcher
   sample. Desktop and Android synchronize the full examples tree; APK verification
   compares every project file as well as old scripts and dependency notices.
+- `examples/{sprites,static}/` add original v1 sprite-only and multi-primitive/
+  static node-instance projects, runnable by `--project` with the same full-tree
+  packaging. The three-card launcher is unchanged; these do not expand imports.
 - `CMakeLists.txt` pins native archives/hashes and declares targets/tests/assets.
   `cmake/DependencyNotices.cmake` collects upstream notices;
   `cmake/RaylibAndroid.cmake` applies the checked/idempotent destruction patch.

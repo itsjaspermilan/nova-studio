@@ -112,6 +112,18 @@ else()
             set_tests_properties(nova_gpu_project_pixels PROPERTIES FIXTURES_REQUIRED nova_asset_capture)
             add_test(NAME nova_gpu_asset_lifetime COMMAND nova_asset_tests --gpu)
             set_tests_properties(nova_gpu_asset_lifetime PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
+            foreach(fixture sprites static)
+                add_test(NAME nova_gpu_${fixture} COMMAND nova_studio
+                    --project "${CMAKE_CURRENT_SOURCE_DIR}/examples/${fixture}/nova.project"
+                    --frames 120 --capture "${CMAKE_BINARY_DIR}/${fixture}.png")
+                set_tests_properties(nova_gpu_${fixture} PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE
+                    PASS_REGULAR_EXPRESSION "NOVA_RUN frames=120.*status=ok"
+                    FIXTURES_SETUP nova_${fixture}_capture)
+                add_test(NAME nova_gpu_${fixture}_pixels COMMAND nova_render_tests
+                    "${CMAKE_BINARY_DIR}/${fixture}.png" "${fixture}")
+                set_tests_properties(nova_gpu_${fixture}_pixels PROPERTIES
+                    FIXTURES_REQUIRED nova_${fixture}_capture)
+            endforeach()
         endif()
     endif()
 endif()

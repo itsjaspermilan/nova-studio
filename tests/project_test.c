@@ -52,6 +52,19 @@ int main(void)
     }
     CHECK(!parse(&project, declarations, error));
     CHECK(strstr(error, "at most 32"));
+    char *last = strstr(declarations, "sprite a32 ");
+    CHECK(last);
+    *last = '\0';
+    CHECK(parse(&project, declarations, error) && project.count == NOVA_MAX_ASSETS);
+    CHECK(parse(&project, "nova-project 1\nentry main.lua\nsprite Badge a.png\nsprite badge a.png", error));
+    CHECK(project.count == 2 && strcmp(project.assets[0].id, project.assets[1].id));
+    char id[NOVA_ASSET_ID_CAPACITY + 1];
+    memset(id, 'a', sizeof(id));
+    id[NOVA_ASSET_ID_CAPACITY - 1] = '\0';
+    CHECK(nova_asset_id_valid(id));
+    id[NOVA_ASSET_ID_CAPACITY - 1] = 'a';
+    id[NOVA_ASSET_ID_CAPACITY] = '\0';
+    CHECK(!nova_asset_id_valid(id));
     CHECK(nova_project_relative_path("folder with spaces/asset.png"));
     CHECK(!nova_project_relative_path("folder/"));
     CHECK(!nova_project_relative_path("https://example/image.png"));
@@ -59,6 +72,7 @@ int main(void)
     NovaEngine *engine = nova_create();
     CHECK(engine);
     const char *scene = "nova.scene('mixed'); local s=nova.asset('badge'); local m=nova.asset('gem');"
+        "assert(getmetatable(s)=='protected asset handle');"
         "function update() nova.sprite(s,1,2,3,4); nova.model(m,5,6,7,2) end";
     CHECK(nova_load_with_assets(engine, scene, strlen(scene), "assets.lua", retained.assets, retained.count));
     CHECK(nova_tick(engine, 0, (NovaInput){0}));
@@ -71,6 +85,8 @@ int main(void)
         "function update() nova.sprite(1,0,0,1,1) end",
         "local m=nova.asset('gem'); function update() nova.model(m,0,0,0,1) end",
         "local s=nova.asset('badge'); function update() nova.sprite(s,0,0,-1,1) end",
+        "local s=nova.asset('badge'); function update() nova.model(s,0,0,0,1) end",
+        "local m=nova.asset('gem'); nova.scene('3d'); function update() nova.model(m,0,0,0,0) end",
     };
     for (size_t i = 0; i < sizeof(wrong) / sizeof(*wrong); ++i) {
         CHECK(nova_load_with_assets(engine, wrong[i], strlen(wrong[i]), "wrong.lua", retained.assets, retained.count));
@@ -84,6 +100,13 @@ int main(void)
     const char *clean = "assert(old == nil); function update() end";
     CHECK(nova_load_with_assets(engine, clean, strlen(clean), "reload.lua", retained.assets, retained.count));
     CHECK(nova_tick(engine, 0, (NovaInput){0}));
+    NovaAsset reordered[] = {retained.assets[1], retained.assets[0]};
+    CHECK(nova_load_with_assets(engine, scene, strlen(scene), "reordered.lua", reordered, 2));
+    CHECK(nova_tick(engine, 0, (NovaInput){0}));
+    CHECK(nova_frame(engine)->commands[0].asset == 1 && nova_frame(engine)->commands[1].asset == 0);
+    const char *nul_id = "nova.asset('badge\\0other'); function update() end";
+    CHECK(!nova_load_with_assets(engine, nul_id, strlen(nul_id), "nul-id.lua", retained.assets, 2));
+    CHECK(strstr(nova_error(engine), "undeclared asset"));
     nova_destroy(engine);
     puts("Nova manifest and Lua asset handles passed.");
     return 0;

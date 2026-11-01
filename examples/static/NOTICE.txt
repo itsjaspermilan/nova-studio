@@ -1,0 +1,8 @@
+assembly.glb is an original cube/pyramid fixture authored for Nova Studio,
+not copied from third-party geometry. Its reproducible source is
+scripts/generate-sample-assets.py. The generated file is dedicated to the
+public domain under CC0 1.0 Universal; see licenses/CC0-1.0.txt.
+It has two unlit opaque triangle primitives (16-bit indexed cube and
+non-indexed pyramid), repeated by three static nodes beneath a translated
+parent. Local translation, quaternion/scale and mirrored affine matrix
+transforms are deliberate fixture coverage, not new importer features.

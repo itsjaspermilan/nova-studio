@@ -73,24 +73,49 @@ All 11 desktop CTests (including opt-in GPU/capture/lifetime checks) passed;
 targeted manifest/import/lifetime checks were rerun after the final parser changes.
 Android rendering and lifecycle behavior have still not been exercised on a device.
 
-## Next bounded work: interface stabilization, not the full editor
+## Completed bounded slice: interface stabilization
 
-- [ ] Exercise the v1 project/import/handle contract with additional original
-  projects, including 2D-only sprites, multiple static primitives and authoring
-  reload errors. Keep expanded support explicitly versioned and tested; do not
-  silently accept unsupported materials.
+- [x] Exercise the v1 project/import/handle contract with original sprite-only
+  RGB/RGBA and multi-primitive/static node-instance projects. Reproducible CC0
+  assets use the existing full examples-tree sync; the launcher remains unchanged.
+  No material/import compatibility was broadened.
+- [x] Stable native read-only inspection v1 in `runtime/inspect.h`: real loaded
+  declarations, alias indices, input bytes, dimensions, decoded primitive/vertex
+  counts/baked bounds and actual frame/errors. README specifies borrowed metadata
+  lifetimes and successful/failed reload behavior; no mock editor entities.
+- [x] Shared headless project preflight using the same import/path/Lua staging
+  path without GPU uploads. Copied output is committed only after initial update
+  validity/budgets pass, and failed validation cannot mutate an active scene.
+- [x] Focused declaration/handle/import/preflight regressions, authoring reload
+  rollback/reordering, runtime errors and native alias ownership checks. Opt-in
+  GPU captures check exact pixels from both original projects, not mock rendering.
+
+All 15 desktop CTests, including both old scenes and the new exact-pixel GPU
+captures, passed. Headless core/project/asset tests also passed ASan/UBSan.
+Regeneration is byte-identical, and the synchronized desktop examples tree matches
+the source tree. Android uses the existing full-tree sync, but this milestone did
+not rebuild an APK or exercise a device; integration/package verification is a
+separate coordination step. No editor/modeller or runtime service was added.
+
+## Next bounded work: native desktop authoring, not the full editor
+
 - [ ] Perform the separate consented Android device-validation track below,
   including the third launcher project and imported PNG/GLB visual output.
-- [ ] Agree on stable scene/asset inspector interfaces before implementing
-  a full editor or modeller. Neither authoring application is delivered here.
+- [ ] Build a bounded native desktop project browser and scene/asset inspector
+  against the implemented inspection v1 contract; add Lua editing with explicit
+  save/whole-project reload. No authoring UI has been implemented in this slice.
+- [ ] Build an original static primitive/transform modeller exporting only the
+  supported unlit GLB subset. This needs its own bounded authoring assignment;
+  do not broaden materials or animated GLB compatibility implicitly.
 
 ### Recommended fresh-session kickoff
 
 > Read AGENTS.md, TODO.md and README.md in the assigned NovaStudio worktree.
-> Stabilize the implemented manifest v1/native PNG/static GLB interfaces with
-> focused original-project fixtures and regression coverage. Preserve direct
-> scenes, desktop and Android packaging. Do not start the full editor/modeller
-> or broaden import compatibility without a confirmed contract. Device execution
+> Use the stabilized inspection v1/shared preflight contracts for a bounded native
+> desktop browser/inspector and explicit Lua save/reload. Preserve direct scenes,
+> old examples, native GPU rendering and strict static/unlit imports.
+> The static modeller is a separate follow-on, not an excuse to add unsupported
+> materials or animated GLB. Device execution
 > needs separate consent and an intended attached device; APK verification is
 > not device validation.
 

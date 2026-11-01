@@ -221,6 +221,20 @@ fail:
     return error_message(error, error_size, reason);
 }
 
+static void unload_cpu_model(Model *model)
+{
+    if (model->meshes) {
+        for (int i = 0; i < model->meshCount; ++i) {
+            MemFree(model->meshes[i].vertices);
+            MemFree(model->meshes[i].colors);
+        }
+    }
+    MemFree(model->meshes);
+    MemFree(model->materials);
+    MemFree(model->meshMaterial);
+    *model = (Model){0};
+}
+
 bool nova_decode_glb(const unsigned char *bytes, int length, Model *model,
     char *error, size_t error_size)
 {
@@ -316,18 +330,7 @@ bool nova_decode_glb(const unsigned char *bytes, int length, Model *model,
 fail:
     error_message(error, error_size, reason);
 done:
-    if (!success) {
-        if (model->meshes) {
-            for (int i = 0; i < model->meshCount; ++i) {
-                MemFree(model->meshes[i].vertices);
-                MemFree(model->meshes[i].colors);
-            }
-        }
-        MemFree(model->meshes);
-        MemFree(model->materials);
-        MemFree(model->meshMaterial);
-        *model = (Model){0};
-    }
+    if (!success) unload_cpu_model(model);
     cgltf_free(data);
     return success;
 }
@@ -379,18 +382,6 @@ static void inspect_model(NovaAssetInspection *info, const Model *model)
             }
         }
     }
-}
-
-static void unload_cpu_model(Model *model)
-{
-    for (int i = 0; i < model->meshCount; ++i) {
-        MemFree(model->meshes[i].vertices);
-        MemFree(model->meshes[i].colors);
-    }
-    MemFree(model->meshes);
-    MemFree(model->materials);
-    MemFree(model->meshMaterial);
-    *model = (Model){0};
 }
 
 static bool upload_model(Model *model, char *error, size_t error_size)

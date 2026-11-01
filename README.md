@@ -27,6 +27,8 @@ Edit the source examples with your preferred text editor, then rebuild to synchr
 ./build/nova_studio --scene "$PWD/examples/2d/main.lua"
 ./build/nova_studio --scene "$PWD/examples/mixed/main.lua"
 ./build/nova_studio --project "$PWD/examples/assets/nova.project"
+./build/nova_studio --project "$PWD/examples/sprites/nova.project"
+./build/nova_studio --project "$PWD/examples/static/nova.project"
 ```
 
 The executable resolves its bundled examples relative to its own directory, not the shell's current directory. To move the desktop build, keep `nova_studio`, `examples/`, and `licenses/` together. There is no `.app` bundle, installer, notarization, or integrated script editor yet.
@@ -61,9 +63,11 @@ GPU tests need a logged-in graphical desktop and are opt-in for headless CI. Lin
 | `runtime/main.c` | Shared desktop/Android native game loop, GPU mesh rendering, overlay, input and launcher |
 | `engine/project.{c,h}` | Versioned manifest declarations, stable IDs and lexical path validation |
 | `runtime/assets.{c,h}` | Native path resolution, PNG/GLB decoding, resource cache and transactional scene replacement |
+| `runtime/inspect.h` | Read-only loaded scene/resource views and shared headless project preflight v1 |
 | `examples/2d/main.lua` | Editable 2D gameplay, moving target and native contact detection |
 | `examples/mixed/main.lua` | Editable 3D gameplay, camera, generated mesh models and HUD |
 | `examples/assets/` | Editable manifest project, original CC0 PNG/GLB fixtures and provenance notice |
+| `examples/sprites/`, `examples/static/` | Original sprite-only and multi-primitive/static node-instance regression projects |
 | `android/` | Gradle application, Android NativeActivity manifest, pinned wrapper |
 | `tests/` | Focused shared-engine and build-integration tests |
 | `licenses/` | Dependency licenses; builds also preserve embedded upstream notices |
@@ -205,6 +209,19 @@ file, in addition to the old examples, native activity exports and dependency no
 Custom projects can run directly on desktop; arbitrary project selection/export to
 APK is not implemented. The Android launcher includes the bundled sample project.
 
+Two additional original v1 projects exercise the same subset without new importer
+features. `examples/sprites/` is a sprite-only 2D scene with RGB checker tiles,
+an RGBA token and a second declaration aliasing that token. `examples/static/`
+contains an indexed cube and non-indexed pyramid as two unlit primitives in one
+mesh, repeated under three static nodes with parent translation, quaternion/scale
+and mirrored affine matrix transforms. It decodes to six primitives/162 expanded
+vertices and local baked bounds `(-2.5, 0, -0.5)`..`(3.5, 1.5, 0.5)`.
+Both projects include CC0 provenance and are reproduced by the same generator.
+They are runnable through `--project` and included by the full desktop/Android
+examples-tree sync; the existing three-card launcher is unchanged. GPU CTests
+capture both projects and verify exact sprite transparency/RGB and primitive-color
+pixels; headless tests check declarations, aliases, bounds and authoring errors.
+
 ### Native read-only inspection v1
 
 `runtime/inspect.h` defines `NOVA_INSPECTION_VERSION == 1` without raylib types.
@@ -213,8 +230,9 @@ for the matching engine/resources pair owned by the native host. It reports the
 last successfully opened scene, not editor entities: requested source path,
 project root, resolved entry path, manifest-relative entry, declaration-order
 asset IDs/types/paths, and the actual `NovaFrame` (mode, camera, background and
-ordered draw commands). Direct `--scene` loads have no project root, relative
-entry or assets. Before first successful open, or after resource unloading,
+ordered draw commands). For direct `--scene` loads, entry/source preserve the
+supplied path; they have no project root, relative entry or assets.
+Before first successful open, or after resource unloading,
 `loaded` is false and frame/assets are NULL. Both arguments must be a matching
 host pair; resources must be non-NULL. This is not a cross-thread snapshot API.
 

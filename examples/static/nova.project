@@ -1,0 +1,5 @@
+# One two-primitive mesh repeated by three static hierarchy nodes.
+nova-project 1
+entry main.lua
+model assembly assets/assembly.glb
+model assembly-copy assets/assembly.glb

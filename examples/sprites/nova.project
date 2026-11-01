@@ -1,0 +1,6 @@
+# Original sprite-only 2D project; aliases share a native texture.
+nova-project 1
+entry main.lua
+sprite token assets/token.png
+sprite tile assets/tile.png
+sprite token-copy assets/token.png
