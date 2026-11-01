@@ -10,6 +10,10 @@
 #define NOVA_MAX_COMMANDS 512
 #define NOVA_TEXT_CAPACITY 192
 #define NOVA_LUA_MEMORY_LIMIT (16 * 1024 * 1024)
+#define NOVA_MAX_TRACKS 64
+#define NOVA_MAX_EFFECTS 16
+#define NOVA_MAX_SAVE_READS 16
+#define NOVA_SAVE_DATA_LIMIT 4096
 
 typedef struct NovaEngine NovaEngine;
 typedef struct { float x, y, z; } NovaVec3;
@@ -33,9 +37,27 @@ typedef struct {
 } NovaFrame;
 typedef struct { float horizontal, vertical; bool action; } NovaInput;
 typedef struct { float x, y, width, height, scale; } NovaViewport;
+typedef enum { NOVA_PLAY_AUDIO, NOVA_STOP_AUDIO, NOVA_WRITE_SAVE } NovaEffectType;
+typedef struct {
+    NovaEffectType type;
+    size_t asset, length;
+    float volume;
+    bool loop;
+    char key[NOVA_ASSET_ID_CAPACITY];
+    unsigned char data[NOVA_SAVE_DATA_LIMIT];
+} NovaEffect;
+typedef struct {
+    void *context;
+    bool saves;
+    bool (*read_save)(void *context, const char *key, unsigned char *data, size_t *length,
+        bool *found, char *error, size_t error_size);
+    bool (*effect)(void *context, const NovaEffect *effect, char *error, size_t error_size);
+} NovaServiceHost;
 
 NovaEngine *nova_create(void);
 void nova_destroy(NovaEngine *engine);
+void nova_set_service_host(NovaEngine *engine, NovaServiceHost host);
+bool nova_dispatch_effects(NovaEngine *engine);
 bool nova_load(NovaEngine *engine, const char *source, size_t length, const char *name);
 bool nova_load_with_assets(NovaEngine *engine, const char *source, size_t length,
     const char *name, const NovaAsset *assets, size_t count);

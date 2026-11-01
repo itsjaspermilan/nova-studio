@@ -63,7 +63,8 @@ GPU tests need a logged-in graphical desktop and are opt-in for headless CI. Lin
 | `runtime/main.c` | Shared desktop/Android native game loop, GPU mesh rendering, overlay, input and launcher |
 | `engine/project.{c,h}` | Versioned manifest declarations, stable IDs and lexical path validation |
 | `runtime/assets.{c,h}` | Native path resolution, PNG/GLB decoding, resource cache and transactional scene replacement |
-| `runtime/inspect.h` | Read-only loaded scene/resource views and shared headless project preflight v1 |
+| `runtime/inspect.h` | Read-only loaded scene/resource views and shared headless project preflight v2 |
+| `runtime/saves.{c,h}` | Project-owned, hex-encoded bounded save keys and atomic versioned file replacement |
 | `examples/2d/main.lua` | Editable 2D gameplay, moving target and native contact detection |
 | `examples/mixed/main.lua` | Editable 3D gameplay, camera, generated mesh models and HUD |
 | `examples/assets/` | Editable manifest project, original CC0 PNG/GLB fixtures and provenance notice |
@@ -104,8 +105,8 @@ end
 | `nova.text` | `text, x, y, fontSize, r, g, b` |
 | `nova.camera` | `x, y, z, targetX, targetY, targetZ, verticalFovDegrees` |
 | `nova.cube` | `centerX, centerY, centerZ, width, height, depth, r, g, b` |
-| `nova.asset` | `declaredID`; returns an opaque, scene-local sprite/model handle |
-| `nova.sprite` | `handle, x, y, width, height`; whole image, white tint, alpha blending, nearest filtering |
+| `nova.asset` | `declaredID`; returns an opaque, scene-local sprite/model/audio handle |
+| `nova.sprite` | `spriteHandle or framePlayback, x, y, width, height`; whole image, white tint, alpha blending, nearest filtering |
 | `nova.model` | `handle, x, y, z, uniformScale`; static model at position, positive scale, no extra rotation |
 | `nova.overlap` | `ax, ay, aw, ah, bx, by, bw, bh`; returns boolean, edge-touching is not overlap |
 
@@ -222,14 +223,152 @@ examples-tree sync; the existing three-card launcher is unchanged. GPU CTests
 capture both projects and verify exact sprite transparency/RGB and primitive-color
 pixels; headless tests check declarations, aliases, bounds and authoring errors.
 
-### Native read-only inspection v1
+### Version 2 projects and native gameplay services
 
-`runtime/inspect.h` defines `NOVA_INSPECTION_VERSION == 1` without raylib types.
+Version 1 syntax and static PNG/GLB support are unchanged. Version 2 adds a
+required persistent identity and optional audio declarations, under the same
+manifest/path/32-asset budgets:
+
+```text
+nova-project 2
+identity my-original-game
+entry main.lua
+sprite idle art/idle.png
+sprite step art/step.png
+audio click audio/click.wav
+```
+
+`identity` occurs exactly once and is a case-sensitive 1..63 ASCII identifier
+(letters, digits, underscores, hyphens). It is **not** an Android applicationId,
+manifest location, title or automatically derived hash. Keep it stable when moving
+or exporting a project; change it for a separate game's saves. Identical identities
+intentionally share saves inside the same OS app-data namespace. Distinct Android
+packages have separate internal storage, even when their project identity matches.
+Version 1 and direct scenes have no persistent identity and reject save calls.
+Timers/numeric tweens work in direct scenes too; frame playback needs sprite assets.
+
+| Lua function | Contract |
+| --- | --- |
+| `nova.play` | `audioHandle, volume[, loop]`; volume 0..1, optional boolean loop defaults false |
+| `nova.stop` | `audioHandle`; stop the shared sound and cancel its loop |
+| `nova.save_get` | `key`; stored binary Lua string or nil for a missing key; I/O/corruption is an error |
+| `nova.save_set` | `key, binaryString`; queue an atomic replacement; no automatic table serialization |
+| `nova.timer` | `seconds[, repeat]`; opaque timer; optional boolean repeat defaults false |
+| `nova.timer_poll` | `timer`; consume and return all expirations since the last poll |
+| `nova.tween` | `from, to, seconds[, easing]`; numeric endpoints within +/-1,000,000; `"linear"` or `"smooth"` |
+| `nova.tween_value` | `tween`; return current number and completion boolean |
+| `nova.frames` | `denseArrayOfSpriteHandles, secondsPerFrame[, loop]`; 1..32 frames, optional boolean loop |
+| `nova.cancel` | `timerOrPlayback`; release it; subsequent use is an explicit cancelled-handle error |
+
+New service calls enforce exact argument counts and types (numeric strings are not
+numbers). Durations are finite 1/60..3600 seconds. Each scene has at most 64 live
+timer/tween/frame-playback handles; cancellation or Lua garbage collection reclaims
+a slot without making an old handle valid again. Finished handles retain their
+result until cancelled/collected. Timers retain at most 1,000,000 unpolled expirations.
+The handles are protected userdata, not editable tables.
+At most 16 native save reads are allowed per Lua loading/update call; reads
+satisfied by that call's queued writes do not perform I/O or consume that budget.
+
+Playback advances **before** `update`, only by the engine's validated simulation
+`dt`; creation starts at zero, zero-dt staging never advances time, and a handle
+created during an update first advances on the next tick. One-shot timers expire
+once; repeating timers preserve remainder and count skipped periods. Tweens clamp
+to the endpoint; smooth easing is smoothstep. Nonlooped sprite sequences hold their
+last image; looped ones wrap to the first. Compose numeric tweens for x/y/z/scale
+transforms and pass frame playback directly to `nova.sprite`:
+
+```lua
+local steps = nova.frames({nova.asset("idle"), nova.asset("step")}, 0.15, true)
+local x = nova.tween(20, 300, 2, "smooth")
+local timer = nova.timer(1, true)
+local click = nova.asset("click")
+local score = tonumber(nova.save_get("score") or "0")
+function update(dt, input)
+    if nova.timer_poll(timer) > 0 then
+        score = score + 1
+        nova.save_set("score", tostring(score))
+        nova.play(click, 0.3)
+    end
+    nova.sprite(steps, nova.tween_value(x), 120, 32, 32)
+end
+```
+
+**Audio subset/lifetime:** WAV must be little-endian RIFF PCM with exactly a
+16-byte `fmt ` chunk followed by `data`: mono/stereo unsigned PCM8 or signed PCM16,
+8000..48000 Hz, nonempty, at most 60 seconds per sound and 120 seconds across unique
+project sounds. Chunk lengths, alignment, byte rate, optional zero RIFF padding and
+file length must match exactly. Float/compressed WAV, metadata/extra chunks, MP3,
+OGG and streaming music are explicitly rejected. Decoding uses pinned raylib's
+existing decoder; no dependency is added. Decode/upload happens only at load.
+Audio input shares the existing per-file/project input budgets; total duration also
+bounds backend resampling storage.
+
+The native audio device initializes lazily for an audio project and closes on
+runtime shutdown. Each unique audio path has one sound/voice, at most 32; aliases
+share playback, volume and stop state. Playing restarts that voice; this milestone
+does not provide overlapping voices, pitch, spatial audio or sample-accurate/gapless
+loops. Loop replay is checked at simulation ticks, so there may be a tick-sized gap.
+Desktop focus suspension pauses/resumes sounds with simulation. Android activity
+suspension/audio routing still requires device validation.
+
+Default `nova_services` tests need no device and use isolated temporary save roots,
+including partial-write failures, case distinctions, corrupt files, symlink escapes,
+audio budgets and live-save-independent preflight. Enable
+`-DNOVA_AUDIO_TESTS=ON` and run `ctest --test-dir build -R nova_audio_lifetime`
+through `scripts/with-toolchain.sh` for real native device/resource/play/stop/
+pause/reload/alias cleanup checks; it uses generated silence, not a listening test.
+
+**Save containment/format:** keys use the same 1..63 ASCII identifier grammar and
+are case-sensitive; values are binary strings of 0..4096 bytes. A project may
+persist at most 32 keys. Identity directories and key filenames are lowercase hex
+of the original ASCII bytes, never raw names: `Case` and `case`, or `Key` and `key`,
+stay distinct on case-insensitive macOS filesystems. Locations are:
+
+- macOS: `$HOME/Library/Application Support/NovaStudio/projects/<hex-identity>/<hex-key>.sav`.
+- Android: `<NativeActivity internalDataPath>/NovaStudio/projects/<hex-identity>/<hex-key>.sav`.
+- Other POSIX desktops: `$XDG_DATA_HOME/NovaStudio/projects/...`, or
+  `$HOME/.local/share/NovaStudio/projects/...` when XDG is unset.
+
+The OS app-data base must already exist and resolve to a directory; errors are
+explicit. Nova-owned child directories are created lazily on a write, with private
+permissions. Lua cannot choose a base/path, enumerate files, load filesystem modules
+or access another application's saves. Nova-owned directory/file symlinks and
+nonregular/multiply-linked save files are rejected. Save v1 is eight bytes
+`NOVASV1\n`, a four-byte unsigned little-endian payload length, then exactly that
+many payload bytes; unknown versions/truncation/trailing data fail rather than
+silently becoming a missing save.
+
+Writers serialize with a project-directory lock. A private exclusive same-directory
+candidate is fully written, file-synced and closed before atomic rename. Any
+pre-commit failure preserves the previous save and removes the owned candidate.
+Rename is the commit point; a subsequent directory-sync failure explicitly reports
+that the value committed but crash durability could not be confirmed. Saves are
+per-key atomic, not a multi-key transaction, and no gameplay state is auto-saved.
+
+**Effects and reload:** audio/save writes share a maximum of 16 queued effects
+across top-level loading and the initial update, then 16 per dispatched tick.
+Reads see the newest queued write to the same key before dispatch. Native runtime
+dispatch runs only after Lua loading/update succeeds; a Lua error discards that
+call's queued effects. Native I/O/device failures stop the scene and log/show an
+explicit error. Already committed earlier effects are not rolled back if a later
+effect fails. Successful whole-project reload stops old sounds, resets all
+timers/tweens/frames/Lua state and preserves explicit saved data. Failed staging
+never plays candidate sounds or writes candidate saves; failed native dispatch
+retains the old engine/resources but can have earlier per-key commits as above.
+Return to launcher/exit releases sounds and all scene-local handles.
+
+Skeletal/animated-GLB import/playback, animation editor, audio mixing/streaming,
+save migration/cloud sync, automatic lifecycle saves and filesystem module loading
+are not implemented.
+
+### Native read-only inspection v2
+
+`runtime/inspect.h` defines `NOVA_INSPECTION_VERSION == 2` without raylib types.
 `nova_inspect_scene(engine, resources)` returns a borrowed `NovaSceneInspection`
 for the matching engine/resources pair owned by the native host. It reports the
 last successfully opened scene, not editor entities: requested source path,
 project root, resolved entry path, manifest-relative entry, declaration-order
-asset IDs/types/paths, and the actual `NovaFrame` (mode, camera, background and
+asset IDs/types/paths, manifest version/explicit identity, and the actual `NovaFrame` (mode, camera, background and
 ordered draw commands). For direct `--scene` loads, entry/source preserve the
 supplied path; they have no project root, relative entry or assets.
 Before first successful open, or after resource unloading,
@@ -237,7 +376,7 @@ Before first successful open, or after resource unloading,
 host pair; resources must be non-NULL. This is not a cross-thread snapshot API.
 
 Each `NovaAssetInspection` includes the input file byte count, sprite dimensions,
-or model node-instanced primitive count, expanded vertex count and AABB after
+audio sample rate/channel/sample-frame count, or model node-instanced primitive count, expanded vertex count and AABB after
 baked GLB hierarchy transforms, before Lua positioning/scaling. Type-inapplicable
 fields are zero. `resource_index` points to the first declaration sharing the
 same path/type; `NovaCommand.asset` indexes declarations, not that unique resource.
@@ -259,7 +398,7 @@ A successful open clears `load_error`; unloading clears the registry entirely.
 Do not retain a view's scalar counts/status across replacement.
 
 `nova_validate_project(path, &validation, error, error_size)` is the same
-manifest/path/import/Lua staging path with GPU upload disabled. It needs no window
+manifest/path/import/Lua staging path with GPU/audio upload disabled. It needs no window or audio device
 and returns a copied `NovaProjectValidation`: manifest entry/relative required
 asset paths, resolved root/entry, and the same per-declaration CPU metadata.
 Success requires all import budgets, Lua loading and a zero-dt initial update
@@ -268,7 +407,11 @@ Candidate CPU resources and Lua state are always released, without touching an
 active scene. The returned value has no borrowed pointers and remains valid
 independently of later validation/reloads. It describes files read during that
 call, not an atomic filesystem snapshot or assurance against subsequent edits;
-exporters must validate their staged copy. Headless success does not establish
+exporters must validate their staged copy. Preflight never resolves/reads/writes live
+save storage: each unqueued key is deterministically missing (nil), and queued
+save writes are visible only to subsequent Lua reads in that same preflight call.
+Audio effects and save-write arguments/budgets are validated but never dispatched.
+Headless success does not establish
 GPU upload, later-update behavior, rendering or Android device compatibility.
 
 ## Android APK scaffold

@@ -252,14 +252,16 @@ int main(int argc, char **argv)
             }
         }
         bool focused = IsWindowFocused();
+        nova_pause_services(&resources, !playing || (!focused && options.frames == 0));
         if (playing && (focused || options.frames > 0)) {
             accumulator += options.frames > 0 ? 1.0 / 60 : fmin(GetFrameTime(), 5.0 / 60);
             NovaInput input = options.smoke ? (NovaInput){0.7f, 0.2f, true} : read_input();
             while (accumulator >= 1.0 / 60) {
-                if (!nova_tick(engine, 1.0 / 60, input)) {
+                if (!nova_tick(engine, 1.0 / 60, input) || !nova_tick_services(engine, &resources)) {
                     snprintf(error, sizeof(error), "%s", nova_error(engine));
                     TraceLog(LOG_ERROR, "NOVA: %s", error);
                     playing = false;
+                    nova_pause_services(&resources, true);
                     exit_code = 1;
                     break;
                 }
@@ -312,6 +314,7 @@ int main(int argc, char **argv)
     }
     nova_destroy(engine);
     nova_unload_resources(&resources);
+    nova_shutdown_audio();
     UnloadModel(cube);
     UnloadRenderTexture(target);
     CloseWindow();

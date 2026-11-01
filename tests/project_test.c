@@ -18,6 +18,7 @@ int main(void)
         "sprite badge art/badge.png\nmodel gem models/gem.glb\n", error));
     CHECK(project.count == 2 && !strcmp(project.entry, "scripts/main scene.lua"));
     CHECK(project.assets[0].type == NOVA_ASSET_SPRITE && project.assets[1].type == NOVA_ASSET_MODEL);
+    CHECK(project.version == 1 && !*project.identity);
     NovaProject retained = project;
     const char *invalid[] = {
         "", "nova-project 2\nentry main.lua", "entry main.lua",
@@ -32,6 +33,13 @@ int main(void)
         "nova-project 1\nentry main.lua\nunknown a a.png",
         "nova-project 1 extra\nentry main.lua",
         "nova-project 1\nentry main.txt",
+        "nova-project 1\nentry main.lua\nidentity Sample",
+        "nova-project 1\nentry main.lua\naudio tone tone.wav",
+        "nova-project 2\nidentity A\nidentity B\nentry main.lua",
+        "nova-project 2\nidentity ../A\nentry main.lua",
+        "nova-project 2\nidentity A extra\nentry main.lua",
+        "nova-project 2\nidentity A\nentry main.lua\naudio tone tone.mp3",
+        "nova-project 2\nidentity A\nentry main.lua\naudio tone tone.wav\nsprite tone image.png",
         "# \xc3\xa9\nnova-project 1\nentry main.lua",
     };
     for (size_t i = 0; i < sizeof(invalid) / sizeof(*invalid); ++i) {
@@ -69,6 +77,11 @@ int main(void)
     CHECK(!nova_project_relative_path("folder/"));
     CHECK(!nova_project_relative_path("https://example/image.png"));
     CHECK(!nova_project_relative_path("folder/\x01.png"));
+    NovaProject services;
+    CHECK(parse(&services, "nova-project 2\nidentity CaseSensitive\nentry main.lua\n"
+        "audio Tone sound/tone.wav\nsprite Image image.png\nmodel Model model.glb\n", error));
+    CHECK(services.version == 2 && services.count == 3 && !strcmp(services.identity, "CaseSensitive") &&
+        services.assets[0].type == NOVA_ASSET_AUDIO);
     NovaEngine *engine = nova_create();
     CHECK(engine);
     const char *scene = "nova.scene('mixed'); local s=nova.asset('badge'); local m=nova.asset('gem');"

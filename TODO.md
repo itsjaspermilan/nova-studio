@@ -146,8 +146,14 @@ ADB installation is an explicit device-modifying action; see README commands.
   animation require their own later engine/import contracts. Do not copy Blender.
 - [ ] Separate native-resolution HUD and configurable world rendering: current
   world AND overlay use the same 960x540 target; sharper HUDs are not delivered.
-- [ ] Shared audio, persistent saves and animation services: absent today.
-  Lua can accumulate `dt`; there is no dedicated timer service/module loader.
+- [x] Bounded shared runtime services: explicit manifest v2 identity/PCM WAV,
+  native cached playback, project-owned atomic save v1, deterministic timers,
+  timed sprite frames and numeric transform tweens. V1/static GLB remain unchanged;
+  headless preflight validates effects without audio or live save reads/writes.
+  Default deterministic service regressions and opt-in native audio lifetime
+  tests cover errors, budgets, reload and isolated persistence.
+- [ ] Skeletal/animated-GLB playback/import, audio mixing/streaming, automatic
+  lifecycle saves and filesystem module loader: deferred, not delivered here.
 - [x] Local per-game standalone native APK export with separate nova-export v1
   metadata/provenance, native headless validation and exact-file staging.
   Ordinary launcher/debug and desktop builds remain.

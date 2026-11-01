@@ -8,6 +8,16 @@
 #include <stdlib.h>
 #include <string.h>
 
+typedef enum { TRACK_TIMER, TRACK_TWEEN, TRACK_FRAMES } TrackType;
+typedef struct {
+    bool used, loop, smooth, done;
+    unsigned generation, pending;
+    TrackType type;
+    double elapsed, duration, from, to;
+    size_t count, frames[NOVA_MAX_ASSETS];
+} NovaTrack;
+typedef struct { size_t index; unsigned generation; } TrackHandle;
+
 struct NovaEngine {
     lua_State *lua;
     NovaFrame frame;
@@ -17,6 +27,11 @@ struct NovaEngine {
     size_t memory_used;
     size_t asset_count;
     NovaAsset assets[NOVA_MAX_ASSETS];
+    NovaServiceHost host;
+    size_t effect_count;
+    size_t save_reads;
+    NovaEffect effects[NOVA_MAX_EFFECTS];
+    NovaTrack tracks[NOVA_MAX_TRACKS];
 };
 
 static void *lua_memory(void *context, void *pointer, size_t old_size, size_t new_size)
@@ -163,9 +178,28 @@ static size_t asset_handle(lua_State *lua, NovaAssetType type)
     return index;
 }
 
+static NovaTrack *track_handle(lua_State *lua, int index)
+{
+    TrackHandle *handle = luaL_checkudata(lua, index, "nova.track");
+    NovaEngine *engine = get_engine(lua);
+    luaL_argcheck(lua, handle->index < NOVA_MAX_TRACKS, index, "invalid playback handle");
+    NovaTrack *track = &engine->tracks[handle->index];
+    luaL_argcheck(lua, track->used && track->generation == handle->generation,
+        index, "cancelled playback handle");
+    return track;
+}
+
 static int sprite(lua_State *lua)
 {
-    size_t index = asset_handle(lua, NOVA_ASSET_SPRITE);
+    size_t index;
+    if (luaL_testudata(lua, 1, "nova.track")) {
+        NovaTrack *track = track_handle(lua, 1);
+        luaL_argcheck(lua, track->type == TRACK_FRAMES, 1, "expected sprite-frame playback");
+        size_t frame = track->done ? track->count - 1 :
+            (size_t)floor((track->elapsed + 1e-10) / (track->duration / (double)track->count));
+        if (frame >= track->count) frame = track->count - 1;
+        index = track->frames[frame];
+    } else index = asset_handle(lua, NOVA_ASSET_SPRITE);
     NovaCommand *draw = command(lua, NOVA_SPRITE);
     draw->asset = index;
     draw->position = (NovaVec3){number(lua, 2), number(lua, 3), 0};
@@ -214,6 +248,237 @@ static int overlap(lua_State *lua)
     return 1;
 }
 
+static void arguments(lua_State *lua, int minimum, int maximum)
+{
+    if (lua_gettop(lua) < minimum || lua_gettop(lua) > maximum)
+        luaL_error(lua, "expected %d..%d arguments", minimum, maximum);
+}
+
+static double service_number(lua_State *lua, int index)
+{
+    luaL_checktype(lua, index, LUA_TNUMBER);
+    double value = lua_tonumber(lua, index);
+    luaL_argcheck(lua, isfinite(value) && fabs(value) <= 1000000, index, "expected finite number within +/-1000000");
+    return value;
+}
+
+static double duration(lua_State *lua, int index)
+{
+    double value = service_number(lua, index);
+    luaL_argcheck(lua, value >= 1.0 / 60 && value <= 3600, index, "duration must be 1/60..3600 seconds");
+    return value;
+}
+
+static bool optional_loop(lua_State *lua, int index)
+{
+    if (lua_gettop(lua) < index) return false;
+    luaL_checktype(lua, index, LUA_TBOOLEAN);
+    return lua_toboolean(lua, index);
+}
+
+static NovaTrack *new_track(lua_State *lua, TrackType type)
+{
+    NovaEngine *engine = get_engine(lua);
+    for (size_t i = 0; i < NOVA_MAX_TRACKS; ++i) {
+        NovaTrack *track = &engine->tracks[i];
+        if (track->used) continue;
+        unsigned generation = track->generation + 1;
+        *track = (NovaTrack){.used = true, .type = type, .generation = generation};
+        TrackHandle *handle = lua_newuserdatauv(lua, sizeof(*handle), 0);
+        *handle = (TrackHandle){i, generation};
+        luaL_setmetatable(lua, "nova.track");
+        return track;
+    }
+    luaL_error(lua, "scene exceeds %d live timer/playback handles", NOVA_MAX_TRACKS);
+    return NULL;
+}
+
+static int timer(lua_State *lua)
+{
+    arguments(lua, 1, 2);
+    double seconds = duration(lua, 1);
+    bool loop = optional_loop(lua, 2);
+    NovaTrack *track = new_track(lua, TRACK_TIMER);
+    track->duration = seconds;
+    track->loop = loop;
+    return 1;
+}
+
+static int timer_poll(lua_State *lua)
+{
+    arguments(lua, 1, 1);
+    NovaTrack *track = track_handle(lua, 1);
+    luaL_argcheck(lua, track->type == TRACK_TIMER, 1, "expected timer handle");
+    lua_pushinteger(lua, track->pending);
+    track->pending = 0;
+    return 1;
+}
+
+static int cancel(lua_State *lua)
+{
+    arguments(lua, 1, 1);
+    track_handle(lua, 1)->used = false;
+    return 0;
+}
+
+static int track_gc(lua_State *lua)
+{
+    TrackHandle *handle = luaL_checkudata(lua, 1, "nova.track");
+    NovaEngine *engine = get_engine(lua);
+    if (handle->index < NOVA_MAX_TRACKS) {
+        NovaTrack *track = &engine->tracks[handle->index];
+        if (track->generation == handle->generation) track->used = false;
+    }
+    return 0;
+}
+
+static int tween(lua_State *lua)
+{
+    arguments(lua, 3, 4);
+    double from = service_number(lua, 1), to = service_number(lua, 2), seconds = duration(lua, 3);
+    bool smooth = false;
+    if (lua_gettop(lua) == 4) {
+        luaL_checktype(lua, 4, LUA_TSTRING);
+        size_t length;
+        const char *easing = lua_tolstring(lua, 4, &length);
+        luaL_argcheck(lua, length == 6 && (!memcmp(easing, "linear", 6) || !memcmp(easing, "smooth", 6)),
+            4, "easing must be linear or smooth");
+        smooth = !strcmp(easing, "smooth");
+    }
+    NovaTrack *track = new_track(lua, TRACK_TWEEN);
+    track->from = from; track->to = to; track->duration = seconds; track->smooth = smooth;
+    return 1;
+}
+
+static int tween_value(lua_State *lua)
+{
+    arguments(lua, 1, 1);
+    NovaTrack *track = track_handle(lua, 1);
+    luaL_argcheck(lua, track->type == TRACK_TWEEN, 1, "expected numeric tween handle");
+    double t = fmin(1, track->elapsed / track->duration);
+    if (track->smooth) t = t * t * (3 - 2 * t);
+    lua_pushnumber(lua, track->from + (track->to - track->from) * t);
+    lua_pushboolean(lua, track->done);
+    return 2;
+}
+
+static int frames(lua_State *lua)
+{
+    arguments(lua, 2, 3);
+    luaL_checktype(lua, 1, LUA_TTABLE);
+    size_t count = lua_rawlen(lua, 1), indices[NOVA_MAX_ASSETS];
+    luaL_argcheck(lua, count > 0 && count <= NOVA_MAX_ASSETS, 1, "expected 1..32 sprite handles");
+    size_t keys = 0;
+    lua_pushnil(lua);
+    while (lua_next(lua, 1)) {
+        bool valid = lua_isinteger(lua, -2) && lua_tointeger(lua, -2) >= 1 &&
+            (size_t)lua_tointeger(lua, -2) <= count;
+        luaL_argcheck(lua, valid, 1, "frames must be a dense array");
+        keys++;
+        lua_pop(lua, 1);
+    }
+    luaL_argcheck(lua, keys == count, 1, "frames must be a dense array");
+    for (size_t i = 0; i < count; ++i) {
+        lua_rawgeti(lua, 1, (lua_Integer)i + 1);
+        size_t index = *(size_t *)luaL_checkudata(lua, -1, "nova.asset");
+        NovaEngine *engine = get_engine(lua);
+        luaL_argcheck(lua, index < engine->asset_count && engine->assets[index].type == NOVA_ASSET_SPRITE,
+            1, "frames require sprite assets");
+        indices[i] = index;
+        lua_pop(lua, 1);
+    }
+    double seconds = duration(lua, 2);
+    bool loop = optional_loop(lua, 3);
+    NovaTrack *track = new_track(lua, TRACK_FRAMES);
+    track->count = count; track->duration = seconds * (double)count; track->loop = loop;
+    memcpy(track->frames, indices, count * sizeof(*indices));
+    return 1;
+}
+
+static NovaEffect *effect(lua_State *lua, NovaEffectType type)
+{
+    NovaEngine *engine = get_engine(lua);
+    if (engine->effect_count == NOVA_MAX_EFFECTS)
+        luaL_error(lua, "scene exceeds %d pending service effects; dispatch each tick", NOVA_MAX_EFFECTS);
+    NovaEffect *event = &engine->effects[engine->effect_count++];
+    *event = (NovaEffect){.type = type};
+    return event;
+}
+
+static int play(lua_State *lua)
+{
+    arguments(lua, 2, 3);
+    size_t index = asset_handle(lua, NOVA_ASSET_AUDIO);
+    double volume = service_number(lua, 2);
+    luaL_argcheck(lua, volume >= 0 && volume <= 1, 2, "volume must be 0..1");
+    bool loop = optional_loop(lua, 3);
+    NovaEffect *event = effect(lua, NOVA_PLAY_AUDIO);
+    event->asset = index; event->volume = (float)volume; event->loop = loop;
+    return 0;
+}
+
+static int stop(lua_State *lua)
+{
+    arguments(lua, 1, 1);
+    size_t index = asset_handle(lua, NOVA_ASSET_AUDIO);
+    effect(lua, NOVA_STOP_AUDIO)->asset = index;
+    return 0;
+}
+
+static const char *save_key(lua_State *lua)
+{
+    luaL_checktype(lua, 1, LUA_TSTRING);
+    size_t length;
+    const char *key = lua_tolstring(lua, 1, &length);
+    luaL_argcheck(lua, length < NOVA_ASSET_ID_CAPACITY && !memchr(key, 0, length) && nova_asset_id_valid(key),
+        1, "save key must be a 1..63 ASCII identifier");
+    if (!get_engine(lua)->host.saves) luaL_error(lua, "saves require a v2 project identity");
+    return key;
+}
+
+static int save_set(lua_State *lua)
+{
+    arguments(lua, 2, 2);
+    const char *key = save_key(lua);
+    luaL_checktype(lua, 2, LUA_TSTRING);
+    size_t length;
+    const char *data = lua_tolstring(lua, 2, &length);
+    luaL_argcheck(lua, length <= NOVA_SAVE_DATA_LIMIT, 2, "save value exceeds 4096 bytes");
+    NovaEffect *event = effect(lua, NOVA_WRITE_SAVE);
+    memcpy(event->key, key, strlen(key) + 1);
+    event->length = length;
+    memcpy(event->data, data, length);
+    return 0;
+}
+
+static int save_get(lua_State *lua)
+{
+    arguments(lua, 1, 1);
+    const char *key = save_key(lua);
+    NovaEngine *engine = get_engine(lua);
+    for (size_t i = engine->effect_count; i > 0; --i) {
+        const NovaEffect *event = &engine->effects[i - 1];
+        if (event->type == NOVA_WRITE_SAVE && !strcmp(event->key, key)) {
+            lua_pushlstring(lua, (const char *)event->data, event->length);
+            return 1;
+        }
+    }
+    unsigned char data[NOVA_SAVE_DATA_LIMIT];
+    size_t length = 0;
+    bool found = false;
+    if (engine->save_reads == NOVA_MAX_SAVE_READS)
+        return luaL_error(lua, "scene exceeds %d native save reads per Lua call", NOVA_MAX_SAVE_READS);
+    engine->save_reads++;
+    char error[1024] = {0};
+    if (!engine->host.read_save || !engine->host.read_save(engine->host.context, key, data, &length,
+        &found, error, sizeof(error))) return luaL_error(lua, "save read failed: %s",
+            engine->host.read_save ? error : "native save host unavailable");
+    if (length > sizeof(data)) return luaL_error(lua, "invalid native save length");
+    if (found) lua_pushlstring(lua, (const char *)data, length);
+    else lua_pushnil(lua);
+    return 1;
+}
+
 NovaEngine *nova_create(void)
 {
     return calloc(1, sizeof(NovaEngine));
@@ -233,6 +498,7 @@ static bool failure(NovaEngine *engine)
     lua_settop(engine->lua, 0);
     engine->loaded = false;
     engine->frame.count = 0;
+    engine->effect_count = 0;
     return false;
 }
 
@@ -250,6 +516,9 @@ bool nova_load_with_assets(NovaEngine *engine, const char *source, size_t length
     engine->loaded = false;
     engine->error[0] = '\0';
     engine->asset_count = 0;
+    engine->effect_count = 0;
+    memset(engine->tracks, 0, sizeof(engine->tracks));
+    engine->save_reads = 0;
     engine->frame = (NovaFrame){
         .mode = NOVA_2D, .background = {20, 24, 36, 255},
         .camera_position = {7, 6, 9}, .camera_target = {0, 0, 0}, .camera_fov = 50
@@ -264,7 +533,8 @@ bool nova_load_with_assets(NovaEngine *engine, const char *source, size_t length
     }
     for (size_t i = 0; i < count; ++i) {
         if (!memchr(assets[i].id, '\0', sizeof(assets[i].id)) || !nova_asset_id_valid(assets[i].id) ||
-            (assets[i].type != NOVA_ASSET_SPRITE && assets[i].type != NOVA_ASSET_MODEL)) {
+            (assets[i].type != NOVA_ASSET_SPRITE && assets[i].type != NOVA_ASSET_MODEL &&
+             assets[i].type != NOVA_ASSET_AUDIO)) {
             snprintf(engine->error, sizeof(engine->error), "invalid native asset declaration");
             return false;
         }
@@ -291,11 +561,19 @@ bool nova_load_with_assets(NovaEngine *engine, const char *source, size_t length
     lua_pushnil(engine->lua); lua_setglobal(engine->lua, "loadfile");
     const luaL_Reg api[] = {
         {"scene", scene}, {"background", background}, {"rectangle", rectangle},
-        {"cube", cube}, {"text", text}, {"camera", camera}, {"overlap", overlap}, {NULL, NULL}
+        {"cube", cube}, {"text", text}, {"camera", camera}, {"overlap", overlap},
+        {"timer", timer}, {"timer_poll", timer_poll}, {"cancel", cancel},
+        {"tween", tween}, {"tween_value", tween_value}, {"frames", frames},
+        {"play", play}, {"stop", stop}, {"save_get", save_get}, {"save_set", save_set}, {NULL, NULL}
     };
     luaL_newmetatable(engine->lua, "nova.asset");
     lua_pushliteral(engine->lua, "protected asset handle");
     lua_setfield(engine->lua, -2, "__metatable");
+    lua_pop(engine->lua, 1);
+    luaL_newmetatable(engine->lua, "nova.track");
+    lua_pushliteral(engine->lua, "protected timer/playback handle");
+    lua_setfield(engine->lua, -2, "__metatable");
+    lua_pushcfunction(engine->lua, track_gc); lua_setfield(engine->lua, -2, "__gc");
     lua_pop(engine->lua, 1);
     luaL_newlib(engine->lua, api);
     lua_pushcfunction(engine->lua, asset); lua_setfield(engine->lua, -2, "asset");
@@ -330,9 +608,29 @@ bool nova_tick(NovaEngine *engine, double dt, NovaInput input)
         snprintf(engine->error, sizeof(engine->error), "invalid timestep or input: dt must be 0..0.05, axes -1..1");
         engine->loaded = false;
         engine->frame.count = 0;
+        engine->effect_count = 0;
         return false;
     }
+    for (size_t i = 0; i < NOVA_MAX_TRACKS; ++i) {
+        NovaTrack *track = &engine->tracks[i];
+        if (!track->used || track->done || dt == 0) continue;
+        track->elapsed += dt;
+        if (track->elapsed + 1e-10 >= track->duration) {
+            unsigned periods = track->loop ? (unsigned)floor((track->elapsed + 1e-10) / track->duration) : 1;
+            if (track->type == TRACK_TIMER) {
+                if (track->pending > 1000000 - periods) {
+                    snprintf(engine->error, sizeof(engine->error), "timer exceeds 1000000 unpolled expirations");
+                    engine->loaded = false; engine->frame.count = 0; engine->effect_count = 0;
+                    return false;
+                }
+                track->pending += periods;
+            }
+            if (track->loop) track->elapsed = fmax(0, track->elapsed - periods * track->duration);
+            else { track->elapsed = track->duration; track->done = true; }
+        }
+    }
     engine->frame.count = 0;
+    engine->save_reads = 0;
     lua_State *lua = engine->lua;
     begin_call(engine);
     lua_getglobal(lua, "update");
@@ -342,6 +640,28 @@ bool nova_tick(NovaEngine *engine, double dt, NovaInput input)
     lua_pushnumber(lua, input.vertical); lua_setfield(lua, -2, "vertical");
     lua_pushboolean(lua, input.action); lua_setfield(lua, -2, "action");
     if (lua_pcall(lua, 2, 0, 0) != LUA_OK) return failure(engine);
+    return true;
+}
+
+void nova_set_service_host(NovaEngine *engine, NovaServiceHost host)
+{
+    if (engine) engine->host = host;
+}
+
+bool nova_dispatch_effects(NovaEngine *engine)
+{
+    if (!engine || !engine->loaded) return false;
+    for (size_t i = 0; i < engine->effect_count; ++i) {
+        char error[1024] = {0};
+        if (!engine->host.effect || !engine->host.effect(engine->host.context,
+            &engine->effects[i], error, sizeof(error))) {
+            snprintf(engine->error, sizeof(engine->error), "native service effect failed: %.950s",
+                engine->host.effect ? error : "native service host unavailable");
+            engine->loaded = false; engine->frame.count = 0; engine->effect_count = 0;
+            return false;
+        }
+    }
+    engine->effect_count = 0;
     return true;
 }
 

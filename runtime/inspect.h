@@ -3,7 +3,7 @@
 
 #include "nova.h"
 
-#define NOVA_INSPECTION_VERSION 1
+#define NOVA_INSPECTION_VERSION 2
 #define NOVA_NATIVE_PATH_CAPACITY 4096
 
 typedef struct NovaResources NovaResources;
@@ -14,12 +14,15 @@ typedef struct {
     size_t input_bytes;
     int width, height;
     size_t primitives, vertices;
+    unsigned sample_rate, channels, sample_frames;
     NovaVec3 bounds_min, bounds_max;
 } NovaAssetInspection;
 
 /* Borrowed read-only views; see README for reload, frame and ownership lifetimes. */
 typedef struct {
     bool loaded, project;
+    unsigned manifest_version;
+    const char *identity;
     const char *source, *root, *entry, *relative_entry;
     size_t count;
     const NovaAssetInspection *assets;

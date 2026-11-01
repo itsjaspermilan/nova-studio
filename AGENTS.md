@@ -10,9 +10,13 @@ before changing contracts; roadmap entries are not implemented features.
   uses macOS GLFW/Cocoa/OpenGL and Android NativeActivity/EGL/OpenGL ES 2.
   Do not introduce WebView gameplay or streamed/software preview rendering.
 - `engine/nova.c` implements the Lua API, validation/budgets and native overlap;
-  `engine/nova.h` defines frame/draw/input/viewport contracts without raylib types.
+  `engine/nova.h` defines frame/draw/input/viewport/service-effect contracts without raylib types.
   Draw commands include rectangles, text, generated cubes and validated
-  sprite/static-model handles. `engine/project.{c,h}` owns manifest v1 syntax.
+  sprite/static-model handles; audio handles produce service effects.
+  `engine/project.{c,h}` preserves v1 and owns
+  explicit v2 identity/audio declarations.
+  Timers/numeric tweens/sprite frames advance on validated simulation ticks;
+  native audio/save effects dispatch after successful Lua calls.
   Lua exposes base/math/string/table, not filesystem/process
   or package libraries; stability limits are not a hostile-script sandbox.
 - `runtime/main.c` owns native resources, launcher, scene file loading, input,
@@ -22,10 +26,14 @@ before changing contracts; roadmap entries are not implemented features.
   static GLB using raylib's pinned cgltf, and stages resource/Lua replacement.
   Declared path/type aliases share resources; failed staging unloads only candidates.
   Keep the documented import subset and reject unsupported features explicitly.
-- `runtime/inspect.h` defines read-only inspection v1 and shared headless project
+- `runtime/inspect.h` defines read-only inspection v2 and shared headless project
   preflight. Use real declaration-order/alias metadata and `NovaFrame`, not invented
   scene entities. Preserve documented borrowed-view lifetimes and transactional
   failed reload/validation behavior; headless preflight must not upload GPU data.
+- `runtime/saves.{c,h}` owns bounded save v1 atomic files in Nova-owned OS app-data.
+  Identities/keys are lowercase hex of ASCII bytes to preserve case distinction.
+  Never pass Lua paths or touch other applications' saves. Headless preflight
+  uses deterministic missing-save reads and never dispatches audio/save effects.
 - `examples/{2d,mixed}/main.lua` are editable scenes. Desktop builds synchronize
   them next to the executable; direct `--scene` permits source-script reload.
   Android resolves the same relative paths through bundled assets.
@@ -45,6 +53,8 @@ before changing contracts; roadmap entries are not implemented features.
   native notices must run before Android asset merging.
 - `tests/core_test.c` covers engine behavior/errors/limits; the CMake lifecycle
   patch test and CLI test run by default. GPU tests are opt-in.
+  `tests/services_test.c` covers deterministic playback, WAV validation/budgets,
+  isolated atomic-save failures/containment and opt-in native audio lifetime.
   `tests/project_test.c` covers manifest/handle contracts; `tests/assets_test.c`
   covers native paths/imports and opt-in reload/alias/partial-failure cleanup.
   `tests/render_test.c` checks exact pixels from the real native project capture.
@@ -104,6 +114,8 @@ Check cwd: `/Users/jasper/Developer/NovaStudio`, not the coordinating GameStudio
 
 This is a native project/sample launcher, not a full editor/modeller. Manifest v1
 and the bounded PNG/static GLB pipeline are implemented; native-resolution HUD,
-audio/save/animation APIs and Glow compatibility are not. Android package
+skeletal animation, full audio mixing/streaming and Glow compatibility are not.
+Timers/sprite frames/numeric tweens, PCM WAV and explicit project saves are bounded
+native services, not an editor or automatic lifecycle persistence. Android package
 verification passes, but device behavior remains unvalidated.
 State these boundaries when reporting results; see TODO for actual prerequisites.

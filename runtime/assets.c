@@ -6,6 +6,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef __ANDROID__
+#include <android_native_app_glue.h>
+extern struct android_app *GetAndroidApp(void);
+#endif
 #ifndef __ANDROID__
 #include <sys/stat.h>
 #endif
@@ -15,6 +19,132 @@ static bool error_message(char *error, size_t size, const char *message)
     snprintf(error, size, "%s", message);
     return false;
 }
+
+static uint32_t wav_u32(const unsigned char *bytes)
+{
+    return (uint32_t)bytes[0] | ((uint32_t)bytes[1] << 8) |
+        ((uint32_t)bytes[2] << 16) | ((uint32_t)bytes[3] << 24);
+}
+
+static unsigned wav_u16(const unsigned char *bytes) { return bytes[0] | ((unsigned)bytes[1] << 8); }
+
+bool nova_decode_wav(const unsigned char *bytes, int length, Wave *wave,
+    char *error, size_t error_size)
+{
+    *wave = (Wave){0};
+    if (!bytes || length < 44 || length > NOVA_ASSET_FILE_LIMIT ||
+        memcmp(bytes, "RIFF", 4) || wav_u32(bytes + 4) != (uint32_t)length - 8 ||
+        memcmp(bytes + 8, "WAVEfmt ", 8) || wav_u32(bytes + 16) != 16 ||
+        wav_u16(bytes + 20) != 1 || memcmp(bytes + 36, "data", 4))
+        return error_message(error, error_size, "WAV requires RIFF PCM with exactly fmt(16) then data; no extra chunks");
+    unsigned channels = wav_u16(bytes + 22), rate = wav_u32(bytes + 24), bits = wav_u16(bytes + 34);
+    unsigned align = channels * (bits / 8);
+    uint32_t size = wav_u32(bytes + 40);
+    if ((channels != 1 && channels != 2) || rate < 8000 || rate > 48000 ||
+        (bits != 8 && bits != 16) || wav_u16(bytes + 32) != align ||
+        wav_u32(bytes + 28) != rate * align || !size || size % align ||
+        size > 60 * rate * align || (size_t)length != 44 + (size_t)size + (size & 1u) ||
+        ((size & 1u) && bytes[length - 1] != 0))
+        return error_message(error, error_size, "WAV must be nonempty, at most 60s, mono/stereo PCM8/PCM16 at 8000..48000 Hz with valid sizes");
+    *wave = LoadWaveFromMemory(".wav", bytes, length);
+    if (!IsWaveValid(*wave) || wave->frameCount != size / align || wave->channels != channels || wave->sampleRate != rate) {
+        UnloadWave(*wave); *wave = (Wave){0};
+        return error_message(error, error_size, "native WAV decoding failed");
+    }
+    return true;
+}
+
+static bool save_store(NovaServices *services, char *error, size_t error_size)
+{
+    if (services->initialized) return true;
+    char base[NOVA_SAVE_ROOT_CAPACITY];
+#ifdef __ANDROID__
+    struct android_app *app = GetAndroidApp();
+    if (!app || !app->activity || !app->activity->internalDataPath)
+        return error_message(error, error_size, "Android internal app-data location unavailable");
+    snprintf(base, sizeof(base), "%s", app->activity->internalDataPath);
+#else
+    const char *home = getenv("HOME");
+    if (!home || home[0] != '/') return error_message(error, error_size, "absolute HOME app-data location unavailable");
+#ifdef __APPLE__
+    int size = snprintf(base, sizeof(base), "%s/Library/Application Support", home);
+#else
+    const char *xdg = getenv("XDG_DATA_HOME");
+    int size = xdg && *xdg ? snprintf(base, sizeof(base), "%s", xdg) :
+        snprintf(base, sizeof(base), "%s/.local/share", home);
+#endif
+    if (size < 0 || (size_t)size >= sizeof(base))
+        return error_message(error, error_size, "OS app-data location is too long");
+#endif
+    if (!nova_save_store_init(&services->saves, base, services->identity, error, error_size)) return false;
+    services->initialized = true;
+    return true;
+}
+
+static bool service_read(void *context, const char *key, unsigned char *data, size_t *length,
+    bool *found, char *error, size_t error_size)
+{
+    NovaServices *services = context;
+    if (services->preflight) { *length = 0; *found = false; return true; }
+    return save_store(services, error, error_size) &&
+        nova_save_read(&services->saves, key, data, length, found, error, error_size);
+}
+
+static bool service_effect(void *context, const NovaEffect *effect, char *error, size_t error_size)
+{
+    NovaServices *services = context;
+    if (services->preflight) return error_message(error, error_size, "preflight cannot dispatch native effects");
+    if (effect->type == NOVA_WRITE_SAVE)
+        return save_store(services, error, error_size) && nova_save_write(&services->saves,
+            effect->key, effect->data, effect->length, error, error_size);
+    if (effect->type != NOVA_PLAY_AUDIO && effect->type != NOVA_STOP_AUDIO)
+        return error_message(error, error_size, "unknown native service effect");
+    if (effect->asset >= services->count)
+        return error_message(error, error_size, "invalid native audio asset");
+    size_t index = services->indices[effect->asset];
+    Sound sound = services->sounds[index];
+    if (!IsAudioDeviceReady() || !IsSoundValid(sound))
+        return error_message(error, error_size, "native audio device/resource unavailable");
+    StopSound(sound);
+    services->resume[index] = false;
+    services->looping[index] = effect->type == NOVA_PLAY_AUDIO && effect->loop;
+    if (effect->type == NOVA_PLAY_AUDIO) {
+        SetSoundVolume(sound, effect->volume);
+        PlaySound(sound);
+    }
+    return true;
+}
+
+bool nova_tick_services(NovaEngine *engine, NovaResources *resources)
+{
+    if (!nova_dispatch_effects(engine)) return false;
+    NovaServices *services = resources->services;
+    if (services && !services->paused) {
+        for (size_t i = 0; i < services->count; ++i) {
+            if (services->indices[i] == i && services->looping[i] && !IsSoundPlaying(services->sounds[i]))
+                PlaySound(services->sounds[i]);
+        }
+    }
+    return true;
+}
+
+void nova_pause_services(NovaResources *resources, bool paused)
+{
+    NovaServices *services = resources->services;
+    if (!services || services->paused == paused) return;
+    services->paused = paused;
+    for (size_t i = 0; i < services->count; ++i) {
+        if (services->indices[i] != i || !IsSoundValid(services->sounds[i])) continue;
+        if (paused) {
+            services->resume[i] = IsSoundPlaying(services->sounds[i]);
+            if (services->resume[i]) PauseSound(services->sounds[i]);
+        } else if (services->resume[i]) {
+            ResumeSound(services->sounds[i]); services->resume[i] = false;
+        }
+    }
+}
+
+void nova_shutdown_audio(void) { if (IsAudioDeviceReady()) CloseAudioDevice(); }
 
 bool nova_project_root(const char *manifest, char *root, char *error, size_t error_size)
 {
@@ -341,8 +471,10 @@ void nova_unload_resources(NovaResources *resources)
         NovaResource *r = &resources->resources[i];
         if (!r->owned) continue;
         if (r->type == NOVA_ASSET_SPRITE) UnloadTexture(r->texture);
-        else UnloadModel(r->model);
+        else if (r->type == NOVA_ASSET_MODEL) UnloadModel(r->model);
+        else if (IsSoundValid(r->sound)) { StopSound(r->sound); UnloadSound(r->sound); }
     }
+    free(resources->services);
     *resources = (NovaResources){0};
 }
 
@@ -351,6 +483,7 @@ NovaSceneInspection nova_inspect_scene(const NovaEngine *engine, const NovaResou
     bool loaded = engine && resources->source[0];
     return (NovaSceneInspection){
         .loaded = loaded, .project = loaded && resources->project,
+        .manifest_version = resources->manifest_version, .identity = resources->identity,
         .source = resources->source, .root = resources->root, .entry = resources->entry,
         .relative_entry = resources->relative_entry,
         .count = loaded ? resources->count : 0,
@@ -409,6 +542,7 @@ static bool stage_scene(NovaEngine **engine, NovaResources *resources,
     int length = 0;
     bool success = false;
     size_t total_bytes = 0, total_vertices = 0, total_pixels = 0;
+    double total_audio_seconds = 0;
     if (strlen(path) >= sizeof(pending.source)) {
         error_message(detail, sizeof(detail), "scene path is too long"); goto done;
     }
@@ -462,7 +596,7 @@ static bool stage_scene(NovaEngine **engine, NovaResources *resources,
                     goto asset_error;
                 }
                 if (gpu) SetTextureFilter(r->texture, TEXTURE_FILTER_POINT);
-            } else {
+            } else if (r->type == NOVA_ASSET_MODEL) {
                 if (!nova_decode_glb(bytes, length, &r->model, detail, sizeof(detail))) goto asset_error;
                 inspect_model(info, &r->model);
                 total_vertices += info->vertices;
@@ -472,10 +606,29 @@ static bool stage_scene(NovaEngine **engine, NovaResources *resources,
                     goto asset_error;
                 }
                 if (gpu && !upload_model(&r->model, detail, sizeof(detail))) goto asset_error;
+            } else {
+                Wave wave = {0};
+                if (!nova_decode_wav(bytes, length, &wave, detail, sizeof(detail))) goto asset_error;
+                info->sample_rate = wave.sampleRate; info->channels = wave.channels; info->sample_frames = wave.frameCount;
+                total_audio_seconds += (double)wave.frameCount / wave.sampleRate;
+                if (total_audio_seconds > NOVA_AUDIO_SECONDS_LIMIT) {
+                    UnloadWave(wave);
+                    error_message(detail, sizeof(detail), "project exceeds 120 seconds of unique decoded audio");
+                    goto asset_error;
+                }
+                if (gpu) {
+                    if (!IsAudioDeviceReady()) InitAudioDevice();
+                    if (IsAudioDeviceReady()) r->sound = LoadSoundFromWave(wave);
+                }
+                UnloadWave(wave);
+                if (gpu && (!IsAudioDeviceReady() || !IsSoundValid(r->sound))) {
+                    error_message(detail, sizeof(detail), "native audio device initialization or sound upload failed");
+                    goto asset_error;
+                }
             }
             UnloadFileData(bytes); bytes = NULL;
             TraceLog(LOG_INFO, "NOVA_ASSET %s id=%s type=%s", gpu ? "loaded" : "validated", asset->id,
-                asset->type == NOVA_ASSET_SPRITE ? "sprite" : "model");
+                asset->type == NOVA_ASSET_SPRITE ? "sprite" : asset->type == NOVA_ASSET_MODEL ? "model" : "audio");
             continue;
 asset_error: {
                 char message[1024];
@@ -494,6 +647,21 @@ asset_error: {
         error_message(detail, sizeof(detail), "entry Lua scene contains NUL"); goto done;
     }
     candidate = nova_create();
+    pending.services = calloc(1, sizeof(*pending.services));
+    if (!candidate || !pending.services) { error_message(detail, sizeof(detail), "native service allocation failed"); goto done; }
+    pending.manifest_version = manifest.version;
+    snprintf(pending.identity, sizeof(pending.identity), "%s", manifest.identity);
+    NovaServices *services = pending.services;
+    services->preflight = !gpu; services->count = pending.count;
+    snprintf(services->identity, sizeof(services->identity), "%s", manifest.identity);
+    for (size_t i = 0; i < pending.count; ++i) {
+        services->indices[i] = pending.inspection[i].resource_index;
+        services->sounds[i] = pending.resources[i].sound;
+    }
+    nova_set_service_host(candidate, (NovaServiceHost){
+        .context = services, .saves = manifest.version == 2,
+        .read_save = service_read, .effect = service_effect
+    });
     if (!nova_load_with_assets(candidate, (const char *)bytes, (size_t)length, resolved,
         manifest.assets, manifest.count) || !nova_tick(candidate, 0, (NovaInput){0})) {
         snprintf(detail, sizeof(detail), "%s", nova_error(candidate)); goto done;
@@ -531,6 +699,14 @@ bool nova_open_scene(NovaEngine **engine, NovaResources *resources,
         snprintf(error, error_size, "%s", detail);
         return false;
     }
+    if (!nova_tick_services(candidate, &pending)) {
+        snprintf(detail, sizeof(detail), "%s", nova_error(candidate));
+        nova_destroy(candidate); nova_unload_resources(&pending);
+        snprintf(resources->load_error, sizeof(resources->load_error), "%s", detail);
+        snprintf(error, error_size, "%s", detail);
+        TraceLog(LOG_ERROR, "NOVA: %s", detail);
+        return false;
+    }
     nova_destroy(*engine);
     nova_unload_resources(resources);
     *engine = candidate;
@@ -547,6 +723,8 @@ bool nova_validate_project(const char *path, NovaProjectValidation *validation,
     if (!stage_scene(&engine, &pending, path, true, false, error, error_size)) return false;
     *validation = (NovaProjectValidation){0};
     validation->project.count = pending.count;
+    validation->project.version = pending.manifest_version;
+    snprintf(validation->project.identity, sizeof(validation->project.identity), "%s", pending.identity);
     snprintf(validation->project.entry, sizeof(validation->project.entry), "%s", pending.relative_entry);
     snprintf(validation->root, sizeof(validation->root), "%s", pending.root);
     snprintf(validation->entry, sizeof(validation->entry), "%s", pending.entry);

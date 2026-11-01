@@ -75,14 +75,21 @@ bool nova_project_parse(NovaProject *project, const char *source, size_t length,
         char *directive = token(&cursor);
         if (!*directive || *directive == '#') continue;
         if (!header) {
-            reason = "first directive must be 'nova-project 1' (unsupported version or header)";
+            reason = "first directive must be 'nova-project 1' or 'nova-project 2'";
             char *version = token(&cursor);
-            if (strcmp(directive, "nova-project") || strcmp(version, "1") || *token(&cursor)) goto fail;
+            if (strcmp(directive, "nova-project") ||
+                (strcmp(version, "1") && strcmp(version, "2")) || *token(&cursor)) goto fail;
+            parsed.version = !strcmp(version, "1") ? 1 : 2;
             header = true;
             continue;
         }
         while (*cursor == ' ' || *cursor == '\t') cursor++;
-        if (!strcmp(directive, "entry")) {
+        if (!strcmp(directive, "identity") && parsed.version == 2) {
+            char *id = token(&cursor);
+            reason = "v2 identity must occur once and be a 1..63 ASCII identifier";
+            if (*parsed.identity || !nova_asset_id_valid(id) || *token(&cursor)) goto fail;
+            memcpy(parsed.identity, id, strlen(id) + 1);
+        } else if (!strcmp(directive, "entry")) {
             reason = "entry must occur once and use a contained project-relative .lua path";
             if (*parsed.entry || !nova_project_relative_path(cursor)) goto fail;
             size_t path_size = strlen(cursor);
@@ -93,6 +100,7 @@ bool nova_project_parse(NovaProject *project, const char *source, size_t length,
             const char *extension;
             if (!strcmp(directive, "sprite")) { type = NOVA_ASSET_SPRITE; extension = ".png"; }
             else if (!strcmp(directive, "model")) { type = NOVA_ASSET_MODEL; extension = ".glb"; }
+            else if (!strcmp(directive, "audio") && parsed.version == 2) { type = NOVA_ASSET_AUDIO; extension = ".wav"; }
             else { reason = "unknown directive; expected entry, sprite or model"; goto fail; }
             reason = "at most 32 assets may be declared";
             if (parsed.count == NOVA_MAX_ASSETS) goto fail;
@@ -103,7 +111,7 @@ bool nova_project_parse(NovaProject *project, const char *source, size_t length,
             reason = "duplicate asset identifier";
             for (size_t i = 0; i < parsed.count; ++i)
                 if (!strcmp(parsed.assets[i].id, id)) goto fail;
-            reason = "asset path must be contained and end in .png (sprite) or .glb (model)";
+            reason = "asset path must be contained and have the declared .png/.glb/.wav extension";
             if (!nova_project_relative_path(cursor)) goto fail;
             size_t path_size = strlen(cursor);
             if (path_size < 4 || strcmp(cursor + path_size - 4, extension)) goto fail;
@@ -113,8 +121,9 @@ bool nova_project_parse(NovaProject *project, const char *source, size_t length,
             memcpy(asset->path, cursor, path_size + 1);
         }
     }
-    reason = "manifest requires 'nova-project 1' and exactly one entry";
+    reason = "manifest requires a supported header, exactly one entry, and identity for v2";
     if (!header || !*parsed.entry) goto fail;
+    if (parsed.version == 2 && !*parsed.identity) goto fail;
     *project = parsed;
     if (error_size) error[0] = '\0';
     return true;
