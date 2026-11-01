@@ -156,7 +156,7 @@ ADB installation is an explicit device-modifying action; see README commands.
   and structural APK checks. Actual user's key creation/unlock remains local.
 - [x] MIT license for Nova-authored source, packaged with distributions while
   preserving original upstream notices and CC0 sample artwork provenance.
-  Export/signing milestone verification: eight default CTests (including 18
+  Export/signing milestone verification: eight default CTests (including 19
   isolated/native exporter tests), isolated toolchain tests, desktop build,
   real per-game unsigned release build and ordinary launcher debug rebuild
   passed. Real apksigner rejects the existing debug certificate as a release.

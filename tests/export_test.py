@@ -146,6 +146,17 @@ class ExportTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Duplicate JSON"):
             export.read_json(self.config)
 
+    def test_world_resolution_optional_default_and_bounded_values(self):
+        export.validate_config(CONFIG)
+        for value in ("960x540", "1280x720", "1920x1080"):
+            export.validate_config(dict(CONFIG, worldResolution=value))
+        for value in ("640x360", "1920x1200", "", None, 720, ["1280x720"]):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "worldResolution"):
+                export.validate_config(dict(CONFIG, worldResolution=value))
+        export.write_json(self.config, dict(CONFIG, worldResolution="1280x720"))
+        self.make_stage()
+        self.assertEqual(export.load_stage(self.output)["config"]["worldResolution"], "1280x720")
+
     def test_stage_copies_exact_required_files_and_notices(self):
         self.make_stage()
         stage = export.load_stage(self.output)

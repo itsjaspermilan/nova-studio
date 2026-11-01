@@ -67,8 +67,9 @@ def contained_file(root, relative):
 def validate_config(config):
     fields = {"format", "version", "applicationId", "displayName", "versionCode",
               "versionName", "provenance"}
-    if not isinstance(config, dict) or set(config) != fields:
-        fail("Export config requires exactly: " + ", ".join(sorted(fields)))
+    if (not isinstance(config, dict) or not fields.issubset(config) or
+            set(config) - fields - {"worldResolution"}):
+        fail("Export config requires: " + ", ".join(sorted(fields)) + "; optional: worldResolution")
     if config["format"] != "nova-export" or type(config["version"]) is not int or config["version"] != 1:
         fail("Unsupported export config; expected nova-export version 1")
     app = config["applicationId"]
@@ -83,6 +84,9 @@ def validate_config(config):
             fail(field + " must be 1..64 ASCII letters/digits/spaces/dots/underscores/hyphens")
     if type(config["versionCode"]) is not int or not 1 <= config["versionCode"] <= 2100000000:
         fail("versionCode must be an integer in 1..2100000000")
+    resolution = config.get("worldResolution", "960x540")
+    if not isinstance(resolution, str) or resolution not in ("960x540", "1280x720", "1920x1080"):
+        fail("worldResolution must be 960x540, 1280x720 or 1920x1080")
     notices = config["provenance"]
     if (not isinstance(notices, list) or not 1 <= len(notices) <= 32 or
             any(not relative_path(p) for p in notices) or len(set(notices)) != len(notices)):

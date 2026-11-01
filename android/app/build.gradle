@@ -34,7 +34,8 @@ android {
                 arguments "-DBUILD_TESTING=OFF",
                     "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON",
                     "-DNOVA_LICENSE_DIRECTORY=${layout.buildDirectory.dir('generated/novaAssets/licenses').get().asFile.absolutePath}",
-                    "-DNOVA_STANDALONE=${exportConfig == null ? 'OFF' : 'ON'}"
+                    "-DNOVA_STANDALONE=${exportConfig == null ? 'OFF' : 'ON'}",
+                    "-DNOVA_WORLD_RESOLUTION=${exportConfig == null ? '960x540' : exportConfig.config.get('worldResolution', '960x540')}"
                 targets "nova_runtime"
             }
         }

@@ -364,7 +364,7 @@ Run those from the Nova Studio root; choose a specific device using `adb -s SERI
 
 This is a local command-line exporter, not an editor/export wizard or a store
 publishing service. It preserves `nova.project` v1 unchanged. The separate strict
-JSON **nova-export version 1** configuration contains exactly these fields:
+JSON **nova-export version 1** configuration requires these fields:
 
 ```json
 {
@@ -388,6 +388,13 @@ syntax as manifest v1. Include the licenses/attribution for **all** game content
 the exporter cannot determine your legal rights from file bytes. Unknown or
 duplicate JSON fields are errors. `examples/assets/nova.export.json` is a sample.
 Neither this configuration nor the manifest contains signing credentials.
+The only optional field is `worldResolution`: exactly `"960x540"` (default),
+`"1280x720"` or `"1920x1080"`. It is passed as the standalone Android
+`NOVA_WORLD_RESOLUTION` CMake default for the shared native renderer, separate
+from application identity and manifest syntax. Higher world resolution does not
+change gameplay coordinates or select a software/streamed renderer. Runtime
+support for this setting is supplied by the separate native-resolution HUD
+milestone; it does not itself establish device performance.
 
 Use an existing configured toolchain and `/usr/bin/python3` 3.9+ with only its
 standard library (no SDK/key/package installation is performed):
