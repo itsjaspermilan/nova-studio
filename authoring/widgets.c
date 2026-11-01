@@ -4,7 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const Color ink = {226, 234, 246, 255}, muted = {153, 170, 195, 255};
+#define ink (nova_ui_style()->ink)
+#define muted (nova_ui_style()->muted)
 
 bool nova_ui_command(void)
 {
@@ -14,10 +15,19 @@ bool nova_ui_command(void)
 
 bool nova_ui_button(Rectangle box, const char *label, bool enabled)
 {
+    return nova_ui_select_button(box, label, false, enabled);
+}
+
+bool nova_ui_select_button(Rectangle box, const char *label, bool selected, bool enabled)
+{
     bool hovered = CheckCollisionPointRec(GetMousePosition(), box);
-    DrawRectangleRec(box, enabled ? (hovered ? (Color){52, 80, 94, 255} : (Color){34, 49, 66, 255}) :
-        (Color){26, 32, 43, 255});
-    nova_ui_label(label, (int)box.x + 8, (int)box.y + 8, (int)box.width - 16, enabled ? ink : muted);
+    const NovaUIStyle *style = nova_ui_style();
+    float radius = fminf(1, 12 / fminf(box.width, box.height));
+    Color fill = selected ? style->accent : hovered && enabled ? style->hover : style->button;
+    DrawRectangleRounded(box, radius, 16, enabled ? fill : ColorAlpha(fill, 0.45f));
+    DrawRectangleRoundedLinesEx(box, radius, 16, 1, selected ? style->accent : style->button_border);
+    nova_ui_label(label, (int)box.x + 11, (int)(box.y + (box.height - 18) / 2),
+        (int)box.width - 22, selected ? WHITE : enabled ? ink : ColorAlpha(ink, 0.45f));
     return enabled && hovered && IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
 }
 
@@ -25,7 +35,7 @@ void nova_ui_label(const char *text, int x, int y, int width, Color color)
 {
     if (width <= 0) return;
     BeginScissorMode(x, y, width, 22);
-    DrawText(text, x, y, 16, color);
+    nova_ui_draw_text(text, (float)x, (float)y, (float)width, false, color);
     EndScissorMode();
 }
 
@@ -35,7 +45,10 @@ bool nova_ui_field_checked(Rectangle box, char *text, size_t capacity, bool *foc
     bool changed = false;
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
         *focused = CheckCollisionPointRec(GetMousePosition(), box);
-    DrawRectangleRec(box, *focused ? (Color){45, 59, 74, 255} : (Color){22, 31, 44, 255});
+    float radius = fminf(1, 12 / fminf(box.width, box.height));
+    DrawRectangleRounded(box, radius, 16, nova_ui_style()->field);
+    DrawRectangleRoundedLinesEx(box, radius, 16, *focused ? 2 : 1,
+        *focused ? nova_ui_style()->accent : nova_ui_style()->border);
     if (*focused) {
         if (nova_ui_command() && IsKeyPressed(KEY_A)) { text[0] = 0; changed = true; }
         if (IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) {
@@ -166,7 +179,8 @@ void nova_ui_text(NovaTextEditor *editor, NovaDocument *doc, Rectangle box,
     if (editor->cursor > doc->length) editor->cursor = doc->length;
     if (editor->anchor > doc->length) editor->anchor = doc->length;
     bool hover = CheckCollisionPointRec(GetMousePosition(), box);
-    const int cell = 9, height = 21;
+    const float cell = nova_ui_code_cell();
+    const int height = 21;
     int rows = (int)(box.height - 12) / height, columns = (int)(box.width - 12) / cell;
     if (rows < 1 || columns < 1) return;
     bool move = false;
@@ -252,7 +266,8 @@ void nova_ui_text(NovaTextEditor *editor, NovaDocument *doc, Rectangle box,
         if (column < editor->column) editor->column = column;
         if (column >= editor->column + columns) editor->column = column - columns + 1;
     }
-    DrawRectangleRec(box, (Color){15, 22, 33, 255});
+    DrawRectangleRec(box, nova_ui_style()->surface);
+    DrawRectangleLinesEx(box, 1, nova_ui_style()->border);
     BeginScissorMode((int)box.x, (int)box.y, (int)box.width, (int)box.height);
     size_t at = position(doc->text, doc->length, editor->row, 0);
     size_t low = editor->cursor < editor->anchor ? editor->cursor : editor->anchor;
@@ -264,19 +279,24 @@ void nova_ui_text(NovaTextEditor *editor, NovaDocument *doc, Rectangle box,
         int count;
         int code = GetCodepointNext(doc->text + at, &count);
         if (count < 1 || (size_t)count > doc->length - at) count = 1;
-        if (at >= low && at < high) DrawRectangle((int)x, (int)y, byte == '\t' ? cell * 4 : cell, height, (Color){38, 71, 95, 255});
+        if (at >= low && at < high) DrawRectangleRec((Rectangle){x,y,byte == '\t' ? cell * 4 : cell,(float)height}, nova_ui_style()->selection);
         if (byte == '\n') { ++r; c = 0; }
         else if (byte == '\t') c += 4;
         else if (byte != '\r') {
-            if (c >= editor->column && c < editor->column + columns)
-                DrawTextCodepoint(GetFontDefault(), code, (Vector2){x, y}, 16, ink);
+            if (c >= editor->column && c < editor->column + columns) {
+                int encoded;
+                const char *utf8 = CodepointToUTF8(code, &encoded);
+                char glyph[8] = {0};
+                if (encoded > 0 && encoded < (int)sizeof(glyph)) memcpy(glyph, utf8, (size_t)encoded);
+                nova_ui_draw_text(glyph, x - 1, y, cell + 2, true, ink);
+            }
             ++c;
         }
         at += (size_t)count;
     }
     if (editor->focused && row >= editor->row && row < editor->row + rows) {
         DrawRectangle((int)box.x + 6 + (column - editor->column) * cell,
-            (int)box.y + 6 + (row - editor->row) * height, 2, height, editable ? (Color){77, 225, 201, 255} : muted);
+            (int)box.y + 6 + (row - editor->row) * height, 1, height, editable ? nova_ui_style()->accent : muted);
     }
     EndScissorMode();
 }

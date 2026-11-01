@@ -48,11 +48,23 @@ use **Up**, **List directory**, wheel scrolling or the top absolute/relative
 manifest-path field and **Open**. Work on a copy of a sample if you want to
 preserve it: the editor writes the files it opened, not cosmetic editor state.
 
+The authoring UI uses smooth system typography and restrained platform-style
+surfaces, inspired by GameStudio's visual direction without using its renderer,
+code or assets. On macOS, Core Text resolves the system interface font and Menlo
+for source text at 13 logical points, rasterized at the actual framebuffer density.
+Rounded controls, blue focus/selection and neutral panels follow the system
+light/dark preference. These remain native GPU-drawn controls, not AppKit widgets
+or a WebView. Apple font files are never copied or bundled. Other desktop builds
+use an installed system sans/monospace pair (DejaVu/Liberation where available)
+and report missing fonts explicitly rather than falling back to pixel text.
+Gameplay HUD fonts, pixel-art filtering and native scene presentation are unchanged.
+
 **Manifest / Lua** edit the actual source bytes, with click/drag selection,
 UTF-8 insertion/paste, Shift-arrow selection, arrows/Home/End, vertical and
 horizontal wheel scrolling, Ctrl/Cmd-A/C/X/V and one-step Ctrl/Cmd-Z undo/redo.
-Enter inserts a newline; Tab inserts four spaces. The bitmap font's existing
-glyph coverage still applies. Manifest drafts are bounded to 16 KiB and Lua
+Enter inserts a newline; Tab inserts four spaces. Source selection is a
+codepoint-based monospace grid, not a full bidirectional/IME text system.
+Manifest drafts are bounded to 16 KiB and Lua
 editing to 256 KiB; larger runtime scenes remain runnable but are explicitly
 rejected by this bounded editor. Single-line path/property fields append text;
 Backspace removes a character and Ctrl/Cmd-A clears the field before replacement.
@@ -283,6 +295,7 @@ device validation or performance measurements.
 | `runtime/saves.{c,h}` | Project-owned, hex-encoded bounded save keys and atomic versioned file replacement |
 | `authoring/document.{c,h}` | Bounded real file drafts, disk snapshots, contained atomic/conflict-guarded text/binary output |
 | `authoring/editor.c`, `authoring/widgets.{c,h}` | Native project browser, source/property editing, decisions and shared-runtime preview |
+| `authoring/style.{c,h}` | System typography, framebuffer-density text cache and platform-style authoring palette |
 | `examples/2d/main.lua` | Editable 2D gameplay, moving target and native contact detection |
 | `examples/mixed/main.lua` | Editable 3D gameplay, camera, generated mesh models and HUD |
 | `examples/assets/` | Editable manifest project, original CC0 PNG/GLB fixtures and provenance notice |

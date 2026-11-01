@@ -33,7 +33,9 @@ typedef struct {
     double accumulator;
 } Editor;
 
-static const Color ink = {226, 234, 246, 255}, muted = {153, 170, 195, 255}, accent = {77, 225, 201, 255};
+#define ink (nova_ui_style()->ink)
+#define muted (nova_ui_style()->muted)
+#define accent (nova_ui_style()->accent)
 
 static bool dirty(const Editor *editor)
 {
@@ -292,7 +294,7 @@ static void decision(Editor *editor, int width, int height)
     DrawRectangle(0, 0, width, height, (Color){0, 0, 0, 190});
     if (editor->decision == DECISION_DETAILS) {
         int x = (width - 800) / 2, y = (height - 440) / 2;
-        DrawRectangle(x, y, 800, 440, (Color){31, 43, 59, 255});
+        DrawRectangleRounded((Rectangle){(float)x,(float)y,800,440}, 0.055f, 16, nova_ui_style()->panel);
         nova_ui_label("STATUS / full diagnostic", x + 20, y + 18, 760, accent);
         const char *text = editor->message;
         for (int row = 0; *text && row < 15; ++row) {
@@ -309,7 +311,7 @@ static void decision(Editor *editor, int width, int height)
         return;
     }
     int x = (width - 760) / 2, y = (height - 240) / 2;
-    DrawRectangle(x, y, 760, 240, (Color){31, 43, 59, 255});
+    DrawRectangleRounded((Rectangle){(float)x,(float)y,760,240}, 0.1f, 16, nova_ui_style()->panel);
     bool conflict = editor->decision == DECISION_CONFLICT;
     nova_ui_label(conflict ? "EXTERNAL EDIT / explicit disk-version decision" : "UNSAVED DRAFTS / explicit discard decision", x + 20, y + 20, 720, accent);
     nova_ui_label(conflict ? "Your draft and the observed disk version are both retained." :
@@ -343,22 +345,22 @@ static void ui(Editor *editor, Rectangle preview)
     bool modal = editor->decision != DECISION_NONE;
     /* Underlying controls cannot consume input while a decision is displayed. */
     if (modal) {
-        DrawText("NOVA / native project editor", 16, 18, 18, ink);
+        nova_ui_label("Nova Studio / Project Editor", 16, 18, 310, ink);
         decision(editor, width, height);
         return;
     }
-    DrawText("NOVA / native project editor", 16, 18, 18, accent);
+    nova_ui_label("Nova Studio / Project Editor", 16, 18, 310, ink);
     nova_ui_field_checked((Rectangle){334, 10, (float)(width - 440), 35}, editor->open_path, sizeof(editor->open_path), &editor->path_focus,
         editor->message, sizeof(editor->message));
     if (nova_ui_button((Rectangle){(float)width - 98, 10, 85, 35}, "Open", true) ||
         (editor->path_focus && IsKeyPressed(KEY_ENTER))) request_open(editor, editor->open_path);
     browser_panel(editor, height);
     bool loaded = editor->project.declaration.text != NULL;
-    if (nova_ui_button((Rectangle){236, 65, 107, 33}, nova_document_dirty(&editor->project.declaration) ? "Manifest *" : "Manifest", loaded))
+    if (nova_ui_select_button((Rectangle){236, 65, 107, 33}, nova_document_dirty(&editor->project.declaration) ? "Manifest *" : "Manifest", editor->tab == 0, loaded))
         editor->tab = editor->selected_document = 0;
-    if (nova_ui_button((Rectangle){351, 65, 87, 33}, nova_document_dirty(&editor->project.source) ? "Lua *" : "Lua", editor->project.source.text != NULL))
+    if (nova_ui_select_button((Rectangle){351, 65, 87, 33}, nova_document_dirty(&editor->project.source) ? "Lua *" : "Lua", editor->tab == 1, editor->project.source.text != NULL))
         editor->tab = editor->selected_document = 1;
-    if (nova_ui_button((Rectangle){446, 65, 91, 33}, "Disk view", loaded)) {
+    if (nova_ui_select_button((Rectangle){446, 65, 91, 33}, "Disk view", editor->tab == 2, loaded)) {
         editor->tab = 2; nova_ui_text_reset(&editor->disk_text);
     }
     if (nova_ui_button((Rectangle){545, 65, 102, 33}, "Save active", loaded)) save(editor, false);
@@ -387,7 +389,7 @@ static void ui(Editor *editor, Rectangle preview)
     if (nova_ui_button((Rectangle){preview.x + 253, 65, 115, 33}, "Modeller", loaded)) open_modeller(editor);
     NovaSceneInspection live = nova_inspect_scene(editor->engine, &editor->resources);
     DrawRectangleLinesEx(preview, 1, editor->preview_focus ? accent : muted);
-    DrawRectangle((int)preview.x + 2, (int)preview.y + 2, (int)preview.width - 4, 28, (Color){19, 27, 39, 245});
+    DrawRectangle((int)preview.x + 2, (int)preview.y + 2, (int)preview.width - 4, 28, nova_ui_style()->panel);
     nova_ui_label(!live.loaded ? "NO LIVE PROJECT" : !editor->playing ? "RELOAD/SCENE FAILED: prior frame retained, paused" :
         editor->paused ? "PAUSED / saved live frame" : "RUNNING / click preview for gameplay input", (int)preview.x + 8, (int)preview.y + 8, (int)preview.width - 16,
         editor->playing ? accent : (Color){255, 140, 140, 255});
@@ -573,8 +575,10 @@ static bool smoke_pixels(const NovaPresentationLayout *layout)
     int x = (int)(layout->viewport.x + 300 * layout->viewport.scale);
     int y = (int)(layout->viewport.y + 250 * layout->viewport.scale);
     Color scene = GetImageColor(image, x, y), chrome = GetImageColor(image, 4, 4);
+    Color panel = nova_ui_style()->panel;
     bool ok = image.width == layout->framebuffer_width && image.height == layout->framebuffer_height &&
-        scene.r == 77 && scene.g == 225 && scene.b == 201 && chrome.r == 19 && chrome.g == 27 && chrome.b == 39;
+        scene.r == 77 && scene.g == 225 && scene.b == 201 &&
+        chrome.r == panel.r && chrome.g == panel.g && chrome.b == panel.b;
     UnloadImage(image);
     return ok;
 }
@@ -618,7 +622,8 @@ int main(int argc, char **argv)
     SetExitKey(KEY_NULL);
     SetTargetFPS(60);
     int result = 0;
-    if (!IsWindowReady() || !nova_presentation_configure(&editor->presentation, nova_world_resolution_default(),
+    if (!IsWindowReady() || !nova_ui_style_open(editor->message, sizeof(editor->message)) ||
+        !nova_presentation_configure(&editor->presentation, nova_world_resolution_default(),
         editor->message, sizeof(editor->message))) {
         fprintf(stderr, "Nova editor: %s\n", editor->message);
         result = 1; goto cleanup;
@@ -667,6 +672,7 @@ int main(int argc, char **argv)
             else break;
         }
         int width = GetScreenWidth(), height = GetScreenHeight();
+        nova_ui_style_update();
         int framebuffer_width = GetRenderWidth(), framebuffer_height = GetRenderHeight();
         Rectangle preview = {(float)width - 450, 106, 436, 245};
         NovaFramebufferRect region = {
@@ -705,7 +711,12 @@ int main(int argc, char **argv)
             &editor->modeller.view.resources : &editor->resources;
         if (preview_frame) nova_presentation_world(preview_presentation, preview_frame, preview_resources);
         BeginDrawing();
-        ClearBackground((Color){19, 27, 39, 255});
+        ClearBackground(nova_ui_style()->background);
+        DrawRectangle(0, 0, width, 54, nova_ui_style()->panel);
+        DrawRectangle(0, 60, 222, height - 98, nova_ui_style()->panel);
+        DrawLine(222, 60, 222, height - 38, nova_ui_style()->border);
+        DrawRectangle(0, height - 38, width, 38, nova_ui_style()->panel);
+        DrawLine(0, height - 38, width, height - 38, nova_ui_style()->border);
         NovaCanvasState canvas = nova_begin_canvas(framebuffer_width, framebuffer_height);
         if (preview_frame) nova_presentation_composite(preview_presentation, preview_frame, preview_resources, layout.viewport);
         nova_end_canvas(canvas);
@@ -724,6 +735,7 @@ int main(int argc, char **argv)
         }
         if (limit && frames >= limit && capture && !nova_capture_native(capture, framebuffer_width, framebuffer_height)) result = 1;
         EndDrawing();
+        if (nova_ui_style_error()[0]) { result = 1; break; }
         if (limit && frames >= limit) {
             live = nova_inspect_scene(editor->engine, &editor->resources);
             NovaSceneInspection model_live = nova_inspect_scene(editor->modeller.view.engine, &editor->modeller.view.resources);
@@ -750,6 +762,7 @@ cleanup:
     nova_authoring_close(&editor->project);
     nova_ui_text_reset(&editor->text[0]); nova_ui_text_reset(&editor->text[1]); nova_ui_text_reset(&editor->disk_text);
     UnloadDirectoryFiles(editor->files);
+    nova_ui_style_close();
     CloseWindow();
     free(editor);
     if (!smoke_cleanup(fixture_root)) result = 1;

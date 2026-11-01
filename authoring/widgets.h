@@ -2,6 +2,7 @@
 #define NOVA_WIDGETS_H
 
 #include "document.h"
+#include "style.h"
 #include <raylib.h>
 
 typedef struct {
@@ -13,6 +14,7 @@ typedef struct {
 } NovaTextEditor;
 
 bool nova_ui_button(Rectangle bounds, const char *label, bool enabled);
+bool nova_ui_select_button(Rectangle bounds, const char *label, bool selected, bool enabled);
 void nova_ui_label(const char *text, int x, int y, int width, Color color);
 bool nova_ui_field(Rectangle bounds, char *text, size_t capacity, bool *focused);
 bool nova_ui_field_checked(Rectangle bounds, char *text, size_t capacity, bool *focused,

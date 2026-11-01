@@ -44,6 +44,11 @@ before changing contracts; roadmap entries are not implemented features.
   source/project editor. Preserve explicit dirty/conflict decisions and use
   shared inspection/presentation/runtime for its real preview, not another renderer.
   Save is per file; whole-project runtime reload is transactional separately.
+- `authoring/style.{c,h}` owns authoring-only system typography and light/dark
+  palette. macOS uses Core Text at physical framebuffer density, with a bounded
+  GPU text cache and system interface/monospace fonts; never bundle Apple fonts.
+  Preserve font-cache cleanup and source grid/selection metrics. Gameplay/HUD
+  bitmap fonts and pixel-art filtering remain separate and unchanged.
 - `runtime/saves.{c,h}` owns bounded save v1 atomic files in Nova-owned OS app-data.
   Identities/keys are lowercase hex of ASCII bytes to preserve case distinction.
   Never pass Lua paths or touch other applications' saves. Headless preflight

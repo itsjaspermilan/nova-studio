@@ -158,6 +158,7 @@ int main(int argc,char **argv)
     SetConfigFlags(FLAG_WINDOW_HIGHDPI);
     InitWindow(1280,800,"Nova modeller native widget workflow");
     CHECK(IsWindowReady());
+    CHECK(nova_ui_style_open(ui->message,sizeof(ui->message)));
     CHECK(nova_model_ui_open(ui,manifest,directory,"model.glb",ui->message,sizeof(ui->message)));
     step(NULL);
     CHECK(ui->active && ui->ready && ui->model.count==0 && nova_document_dirty(&ui->source));
@@ -273,6 +274,7 @@ int main(int argc,char **argv)
     CHECK(ui->decision==NOVA_MODEL_DECISION_EXIT);
     click(520,528);
     CHECK(!ui->active);
+    nova_ui_style_close();
     CloseWindow();
     real_shell(argv[1],manifest,false);
     CHECK(!unlink(source));

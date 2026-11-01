@@ -209,6 +209,20 @@ desktop-only editor; an APK/device run was not performed for this milestone.
   private fixtures. Headless model/document tests and opt-in native widget,
   exact RGB/transform/cache and real-shell captures pass. See README workflow.
 
+### Completed system-style authoring UI
+
+- [x] Smooth macOS system interface typography and Menlo source text instead of
+  the editor/modeller's bitmap font; framebuffer-density rasterization with a
+  bounded, cleaned native GPU cache. Apple fonts are resolved from the OS, not
+  copied into the repository or distributions.
+- [x] GameStudio-inspired neutral light/dark panels, rounded controls, blue
+  focus/selection and native window chrome, retaining the existing native UI
+  layout and runtime preview. No WebView, GameStudio dependency or changes to
+  its source/assets/save data.
+- [x] Native glyph antialiasing and upright orientation evidence, cache eviction
+  exercise, and existing text/edit/save/reload/conflict/modeller GPU workflows.
+  Gameplay bitmap text, original scene output and sprite filtering stay separate.
+
 ### Recommended fresh-session kickoff
 
 > Read AGENTS.md, TODO.md and README.md in the assigned NovaStudio worktree.

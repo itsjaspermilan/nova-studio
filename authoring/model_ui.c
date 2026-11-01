@@ -7,7 +7,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const Color ink = {226,234,246,255}, muted = {153,170,195,255}, accent = {77,225,201,255};
+#define ink (nova_ui_style()->ink)
+#define muted (nova_ui_style()->muted)
+#define accent (nova_ui_style()->accent)
 
 static const char *shape(NovaModelShape value)
 {
@@ -245,7 +247,7 @@ static bool parse_fields(NovaModelUI *ui)
 static void modal(NovaModelUI *ui, int width, int height)
 {
     if (ui->review_disk) {
-        DrawRectangle(0,0,width,height,(Color){19,27,39,255});
+        DrawRectangle(0,0,width,height,nova_ui_style()->background);
         nova_ui_label("READ ONLY / exact observed disk source; scroll to review",20,20,width-40,accent);
         NovaDocument disk = {.text=ui->source.conflict.text,.length=ui->source.conflict.length};
         nova_ui_text(&ui->disk_editor,&disk,(Rectangle){20,60,(float)width-40,(float)height-130},
@@ -255,7 +257,7 @@ static void modal(NovaModelUI *ui, int width, int height)
     }
     int x = (width-820)/2, y = (height-340)/2;
     DrawRectangle(0,0,width,height,(Color){0,0,0,190});
-    DrawRectangle(x,y,820,340,(Color){31,43,59,255});
+    DrawRectangleRounded((Rectangle){(float)x,(float)y,820,340},0.07f,16,nova_ui_style()->panel);
     bool conflict = ui->decision == NOVA_MODEL_DECISION_SAVE_CONFLICT ||
         ui->decision == NOVA_MODEL_DECISION_EXPORT_CONFLICT;
     bool binary = ui->decision == NOVA_MODEL_DECISION_EXPORT || ui->decision == NOVA_MODEL_DECISION_EXPORT_CONFLICT;
@@ -358,7 +360,7 @@ static void zoom(NovaModelUI *ui, float factor)
 void nova_model_ui_draw(NovaModelUI *ui, Rectangle preview)
 {
     int width = GetScreenWidth(), height = GetScreenHeight(), right = (int)preview.x;
-    DrawText("NOVA / original static low-poly modeller",16,18,18,accent);
+    nova_ui_label("Nova Studio / Static Modeller",16,18,width-32,ink);
     if (ui->decision != NOVA_MODEL_DECISION_NONE) { modal(ui,width,height); return; }
     if (nova_ui_button((Rectangle){12,65,206,33},"Return to project",true)) nova_model_ui_request_close(ui);
     nova_ui_label("AUTHORED PRIMITIVES",12,113,206,accent);
@@ -376,7 +378,7 @@ void nova_model_ui_draw(NovaModelUI *ui, Rectangle preview)
         float y = list.y + (float)(i-(size_t)ui->scroll)*34;
         if (y+31 > list.y+list.height) break;
         snprintf(line,sizeof(line),"%s #%u %s",ui->selected == i ? ">" : "",ui->model.primitives[i].id,shape(ui->model.primitives[i].shape));
-        if (nova_ui_button((Rectangle){12,y,206,29},line,true)) {
+        if (nova_ui_select_button((Rectangle){12,y,206,29},line,ui->selected == i,true)) {
             if (ui->values_dirty) message(ui,"Apply or Reset the typed values before changing selection");
             else { ui->selected=i; fields(ui); }
         }
@@ -443,7 +445,7 @@ void nova_model_ui_draw(NovaModelUI *ui, Rectangle preview)
         if (!*ui->view.directory) ui->view_attempted=false;
     }
     DrawRectangleLinesEx(preview,1,ui->stale ? RED : muted);
-    DrawRectangle((int)preview.x+2,(int)preview.y+2,(int)preview.width-4,28,(Color){19,27,39,245});
+    DrawRectangle((int)preview.x+2,(int)preview.y+2,(int)preview.width-4,28,nova_ui_style()->panel);
     nova_ui_label(ui->stale ? "PREVIEW FAILED / prior revision retained" :
         !ui->ready || ui->refresh ? "PENDING native staging" : "NATIVE MODEL PREVIEW / auto-fit draw instance",
         (int)preview.x+8,(int)preview.y+8,(int)preview.width-16,ui->stale ? RED : accent);
