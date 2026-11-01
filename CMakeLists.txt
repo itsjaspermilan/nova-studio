@@ -91,12 +91,12 @@ else()
     target_include_directories(nova_model PUBLIC authoring)
     target_link_libraries(nova_model PUBLIC nova_assets)
     target_compile_options(nova_model PRIVATE -Wall -Wextra -Wpedantic -Werror)
-    add_executable(nova_editor authoring/editor.c authoring/widgets.c)
-    target_link_libraries(nova_editor PRIVATE nova_authoring nova_presentation)
-    target_compile_options(nova_editor PRIVATE -Wall -Wextra -Wpedantic -Werror)
     add_library(nova_model_view STATIC authoring/model_view.c)
     target_link_libraries(nova_model_view PUBLIC nova_model nova_authoring nova_presentation)
     target_compile_options(nova_model_view PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    add_executable(nova_editor authoring/editor.c authoring/widgets.c authoring/model_ui.c)
+    target_link_libraries(nova_editor PRIVATE nova_authoring nova_presentation nova_model_view)
+    target_compile_options(nova_editor PRIVATE -Wall -Wextra -Wpedantic -Werror)
     add_executable(nova_export_validate runtime/export_validate.c)
     target_link_libraries(nova_export_validate PRIVATE nova_assets)
     target_compile_options(nova_export_validate PRIVATE -Wall -Wextra -Wpedantic -Werror)
@@ -129,6 +129,8 @@ else()
         set_tests_properties(nova_editor_cli_invalid PROPERTIES WILL_FAIL TRUE)
         add_test(NAME nova_editor_cli_unbounded_capture COMMAND nova_editor --capture native.png)
         set_tests_properties(nova_editor_cli_unbounded_capture PROPERTIES WILL_FAIL TRUE)
+        add_test(NAME nova_editor_cli_modeller_without_project COMMAND nova_editor --modeller)
+        set_tests_properties(nova_editor_cli_modeller_without_project PROPERTIES WILL_FAIL TRUE)
         add_test(NAME nova_export_preflight COMMAND nova_export_validate
             "${CMAKE_CURRENT_SOURCE_DIR}/examples/assets/nova.project")
         find_program(NOVA_PYTHON_EXECUTABLE python3 PATHS /usr/bin NO_DEFAULT_PATH)
@@ -202,6 +204,17 @@ else()
                 --frames 90 --capture "${CMAKE_BINARY_DIR}/editor-authored.png")
             set_tests_properties(nova_gpu_editor_authoring PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE
                 PASS_REGULAR_EXPRESSION "NOVA_EDITOR_SMOKE.*native-pixels=ok")
+            add_executable(nova_model_ui_tests tests/model_ui_test.c authoring/model_ui.c authoring/widgets.c)
+            target_link_libraries(nova_model_ui_tests PRIVATE nova_model_view)
+            target_compile_definitions(nova_model_ui_tests PRIVATE
+                NOVA_TEST_DIRECTORY="${CMAKE_BINARY_DIR}"
+                GetMousePosition=nova_model_test_mouse IsMouseButtonPressed=nova_model_test_click
+                IsKeyPressed=nova_model_test_key IsKeyPressedRepeat=nova_model_test_repeat
+                IsKeyDown=nova_model_test_down GetCharPressed=nova_model_test_char
+                GetMouseWheelMove=nova_model_test_wheel)
+            target_compile_options(nova_model_ui_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+            add_test(NAME nova_gpu_modeller_ui COMMAND nova_model_ui_tests "$<TARGET_FILE:nova_editor>")
+            set_tests_properties(nova_gpu_modeller_ui PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
             add_test(NAME nova_gpu_editor COMMAND nova_editor
                 --project "${CMAKE_CURRENT_SOURCE_DIR}/examples/assets/nova.project"
                 --frames 60 --capture "${CMAKE_BINARY_DIR}/editor.png")

@@ -1,6 +1,7 @@
 #include "document.h"
 #include "widgets.h"
 #include "presentation.h"
+#include "model_ui.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -26,6 +27,8 @@ typedef struct {
     int browser_scroll, tab, selected_document, selected_asset;
     bool saved_inspector;
     NovaTextEditor text[2], disk_text;
+    NovaModelUI modeller;
+    bool close_after_modeller;
     Decision decision;
     double accumulator;
 } Editor;
@@ -152,6 +155,26 @@ static void resolve(Editor *editor, Decision selected)
         nova_document_reread(document(editor), editor->message, sizeof(editor->message))) {
         nova_ui_text_reset(&editor->text[editor->selected_document]);
         status(editor, "Reread disk into active document; preview unchanged");
+    }
+}
+
+static void open_modeller(Editor *editor)
+{
+    NovaProject parsed;
+    if (!nova_project_parse(&parsed, editor->project.declaration.saved.text,
+        editor->project.declaration.saved.length, editor->message, sizeof(editor->message))) return;
+    size_t selected = parsed.count;
+    if (editor->selected_asset >= 0 && (size_t)editor->selected_asset < parsed.count &&
+        parsed.assets[editor->selected_asset].type == NOVA_ASSET_MODEL)
+        selected = (size_t)editor->selected_asset;
+    else for (size_t i = 0; i < parsed.count; ++i)
+        if (parsed.assets[i].type == NOVA_ASSET_MODEL) { selected = i; break; }
+    if (selected == parsed.count) { status(editor, "Saved project has no declared static model destination"); return; }
+    if (nova_model_ui_open(&editor->modeller, editor->project.manifest, editor->project.declaration.root,
+        parsed.assets[selected].path, editor->message, sizeof(editor->message))) {
+        editor->preview_focus = false;
+        editor->text[0].focused = editor->text[1].focused = editor->disk_text.focused = false;
+        editor->path_focus = editor->browse_focus = editor->property_focus = false;
     }
 }
 
@@ -314,6 +337,7 @@ static void decision(Editor *editor, int width, int height)
 
 static void ui(Editor *editor, Rectangle preview)
 {
+    if (editor->modeller.active) { nova_model_ui_draw(&editor->modeller, preview); return; }
     int width = GetScreenWidth(), height = GetScreenHeight();
     int right = (int)preview.x;
     bool modal = editor->decision != DECISION_NONE;
@@ -360,6 +384,7 @@ static void ui(Editor *editor, Rectangle preview)
     if (nova_ui_button((Rectangle){preview.x, 65, 130, 33}, "Reload saved", loaded)) reload(editor);
     if (nova_ui_button((Rectangle){preview.x + 138, 65, 107, 33}, editor->paused ? "Resume" : "Pause", editor->playing))
         editor->paused = !editor->paused;
+    if (nova_ui_button((Rectangle){preview.x + 253, 65, 115, 33}, "Modeller", loaded)) open_modeller(editor);
     NovaSceneInspection live = nova_inspect_scene(editor->engine, &editor->resources);
     DrawRectangleLinesEx(preview, 1, editor->preview_focus ? accent : muted);
     DrawRectangle((int)preview.x + 2, (int)preview.y + 2, (int)preview.width - 4, 28, (Color){19, 27, 39, 245});
@@ -568,13 +593,14 @@ static bool smoke_cleanup(const char *root)
 int main(int argc, char **argv)
 {
     const char *project = NULL, *directory = NULL, *capture = NULL;
-    bool smoke = false;
+    bool smoke = false, modeller = false;
     int limit = 0;
     for (int i = 1; i < argc; ++i) {
         if (!strcmp(argv[i], "--smoke")) smoke = true;
         else if (!strcmp(argv[i], "--project") && i + 1 < argc) project = argv[++i];
         else if (!strcmp(argv[i], "--browse") && i + 1 < argc) directory = argv[++i];
         else if (!strcmp(argv[i], "--capture") && i + 1 < argc) capture = argv[++i];
+        else if (!strcmp(argv[i], "--modeller")) modeller = true;
         else if (!strcmp(argv[i], "--frames") && i + 1 < argc) {
             char *end;
             long count = strtol(argv[++i], &end, 10);
@@ -582,7 +608,7 @@ int main(int argc, char **argv)
             limit = (int)count;
         } else goto usage;
     }
-    if ((capture && !limit) || (smoke && (project || limit < 90))) goto usage;
+    if ((capture && !limit) || (smoke && (project || modeller || limit < 90)) || (modeller && !project)) goto usage;
     char fixture_root[NOVA_NATIVE_PATH_CAPACITY] = {0}, fixture_manifest[NOVA_NATIVE_PATH_CAPACITY];
     Editor *editor = calloc(1, sizeof(*editor));
     if (!editor) { fprintf(stderr, "Nova editor: out of memory\n"); return 1; }
@@ -607,14 +633,35 @@ int main(int argc, char **argv)
         project = fixture_manifest;
     }
     if (project && !open_project(editor, project)) result = 1;
+    if (modeller && editor->project.declaration.text) {
+        open_modeller(editor);
+        if (!editor->modeller.active) result = 1;
+    }
     int frames = 0;
     while (!editor->quit) {
         if (smoke && !smoke_step(editor, frames)) {
             fprintf(stderr, "%s\n", editor->message); result = 1; break;
         }
         if (WindowShouldClose()) {
-            if (!dirty(editor)) break;
-            if (editor->decision == DECISION_NONE) editor->decision = DECISION_CLOSE;
+            if (editor->modeller.active) {
+                editor->close_after_modeller = true;
+                nova_model_ui_request_close(&editor->modeller);
+            } else {
+                if (!dirty(editor)) break;
+                if (editor->decision == DECISION_NONE) editor->decision = DECISION_CLOSE;
+            }
+        }
+        nova_model_ui_update(&editor->modeller);
+        if (editor->modeller.exported) {
+            editor->saved_generation++;
+            editor->validated = false;
+            editor->modeller.exported = false;
+            status(editor, "Model asset exported. Reload saved applies it to gameplay; source drafts remain separate.");
+        }
+        if (editor->close_after_modeller && !editor->modeller.active) {
+            editor->close_after_modeller = false;
+            if (dirty(editor)) editor->decision = DECISION_CLOSE;
+            else break;
         }
         int width = GetScreenWidth(), height = GetScreenHeight();
         int framebuffer_width = GetRenderWidth(), framebuffer_height = GetRenderHeight();
@@ -628,11 +675,11 @@ int main(int argc, char **argv)
         NovaPresentationLayout layout;
         NovaSceneInspection live = nova_inspect_scene(editor->engine, &editor->resources);
         if (!nova_presentation_layout_region(width, height, framebuffer_width, framebuffer_height, region,
-            live.frame && live.frame->mode == NOVA_2D, &layout)) {
+            !editor->modeller.active && live.frame && live.frame->mode == NOVA_2D, &layout)) {
             status(editor, "Invalid native preview framebuffer dimensions"); result = 1; break;
         }
         bool active = editor->playing && !editor->paused && !IsWindowMinimized() &&
-            (IsWindowFocused() || limit) && editor->decision == DECISION_NONE;
+            (IsWindowFocused() || limit) && editor->decision == DECISION_NONE && !editor->modeller.active;
         nova_pause_services(&editor->resources, !active);
         if (active) {
             editor->accumulator += limit ? 1.0 / 60 : fmin(GetFrameTime(), 5.0 / 60);
@@ -647,16 +694,23 @@ int main(int argc, char **argv)
             }
         } else editor->accumulator = 0;
         live = nova_inspect_scene(editor->engine, &editor->resources);
-        if (live.loaded) nova_presentation_world(&editor->presentation, live.frame, &editor->resources);
+        const NovaFrame *preview_frame = editor->modeller.active ?
+            (editor->modeller.ready ? &editor->modeller.view.frame : NULL) : live.frame;
+        NovaPresentation *preview_presentation = editor->modeller.active ?
+            &editor->modeller.view.presentation : &editor->presentation;
+        const NovaResources *preview_resources = editor->modeller.active ?
+            &editor->modeller.view.resources : &editor->resources;
+        if (preview_frame) nova_presentation_world(preview_presentation, preview_frame, preview_resources);
         BeginDrawing();
         ClearBackground((Color){19, 27, 39, 255});
         NovaCanvasState canvas = nova_begin_canvas(framebuffer_width, framebuffer_height);
-        if (live.loaded) nova_presentation_composite(&editor->presentation, live.frame, &editor->resources, layout.viewport);
+        if (preview_frame) nova_presentation_composite(preview_presentation, preview_frame, preview_resources, layout.viewport);
         nova_end_canvas(canvas);
         ui(editor, preview);
         Vector2 pointer;
         if (CheckCollisionPointRec(GetMousePosition(), preview) &&
-            nova_presentation_pointer(&layout, GetMousePosition(), &pointer) && editor->decision == DECISION_NONE) {
+            nova_presentation_pointer(&layout, GetMousePosition(), &pointer) && editor->decision == DECISION_NONE &&
+            (!editor->modeller.active || editor->modeller.decision == NOVA_MODEL_DECISION_NONE)) {
             char coordinates[128];
             snprintf(coordinates, sizeof(coordinates), "Logical pointer %.0f, %.0f", pointer.x, pointer.y);
             nova_ui_label(coordinates, (int)preview.x + 8, (int)(preview.y + preview.height - 24), (int)preview.width - 16, ink);
@@ -669,15 +723,21 @@ int main(int argc, char **argv)
         EndDrawing();
         if (limit && frames >= limit) {
             live = nova_inspect_scene(editor->engine, &editor->resources);
-            printf("NOVA_EDITOR frames=%d preview=%s world=%dx%d native=%dx%d declarations=%zu commands=%zu draft=%s status=%s\n",
-                frames, editor->playing ? "running" : "stopped", editor->presentation.world.texture.width,
-                editor->presentation.world.texture.height, framebuffer_width, framebuffer_height,
-                live.count, live.frame ? live.frame->count : 0, dirty(editor) ? "dirty" : "clean", result ? "error" : "ok");
+            NovaSceneInspection model_live = nova_inspect_scene(editor->modeller.view.engine, &editor->modeller.view.resources);
+            if (editor->modeller.active && (editor->modeller.stale || !editor->modeller.ready)) result = 1;
+            printf("NOVA_EDITOR frames=%d preview=%s world=%dx%d native=%dx%d declarations=%zu commands=%zu draft=%s"
+                " model_primitives=%zu model_vertices=%zu model_revision=%zu status=%s\n",
+                frames, editor->modeller.active ? "modeller" : editor->playing ? "running" : "stopped",
+                preview_presentation->world.texture.width, preview_presentation->world.texture.height, framebuffer_width, framebuffer_height,
+                live.count, live.frame ? live.frame->count : 0, dirty(editor) ? "dirty" : "clean",
+                model_live.count ? model_live.assets[0].primitives : 0, model_live.count ? model_live.assets[0].vertices : 0,
+                editor->modeller.view.revisions, result ? "error" : "ok");
             if (smoke) printf("NOVA_EDITOR_SMOKE draft-save-reload=ok lua-import-rollback=ok newer-conflict=ok dirty-switch=ok native-pixels=%s\n", result ? "error" : "ok");
             break;
         }
     }
 cleanup:
+    nova_model_ui_close(&editor->modeller);
     nova_destroy(editor->engine);
     nova_unload_resources(&editor->resources);
     nova_shutdown_audio();
@@ -690,6 +750,6 @@ cleanup:
     if (!smoke_cleanup(fixture_root)) result = 1;
     return result;
 usage:
-    fprintf(stderr, "Usage: nova_editor [--project nova.project] [--browse directory] [--frames 1..100000 [--capture native.png]] [--smoke --frames N>=90]\n");
+    fprintf(stderr, "Usage: nova_editor [--project nova.project [--modeller]] [--browse directory] [--frames 1..100000 [--capture native.png]] [--smoke --frames N>=90]\n");
     return 2;
 }

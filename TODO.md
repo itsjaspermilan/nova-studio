@@ -166,9 +166,14 @@ desktop-only editor; an APK/device run was not performed for this milestone.
 
 - [ ] Perform the separate consented Android device-validation track below,
   including the third launcher project and imported PNG/GLB visual output.
-- [ ] Build an original static primitive/transform modeller exporting only the
-  supported unlit GLB subset. This needs its own bounded authoring assignment;
-  do not broaden materials or animated GLB compatibility implicitly.
+- [x] Build an original bounded static primitive/transform modeller exporting
+  only supported opaque unlit GLB. Strict editable `.nova-model` source is
+  separate from exported geometry; the real desktop editor shell supports
+  create/select/delete, transform/color/sides, guarded save/reopen/overwrite
+  decisions and actual native import/preflight inspection. Shared GPU previews
+  stage/cache only on edits, retain old live resources on failure and clean
+  private fixtures. Headless model/document tests and opt-in native widget,
+  exact RGB/transform/cache and real-shell captures pass. See README workflow.
 
 ### Recommended fresh-session kickoff
 
@@ -204,9 +209,12 @@ ADB installation is an explicit device-modifying action; see README commands.
 
 - [x] Bounded native desktop project browser/source editor and saved/live scene/
   asset inspector; see completed editor slice above. Full IDE features are deferred.
-- [ ] Original simplified low-poly modeller: after asset interchange is usable;
-  start with static primitives/transforms/materials. Skeletal authoring and
-  animation require their own later engine/import contracts. Do not copy Blender.
+- [x] Original simplified low-poly modeller: bounded box/pyramid/cylinder,
+  static transforms and opaque unlit RGB, with separate stable-ID source and
+  validated GLB export integrated into the native desktop authoring shell.
+  Arbitrary imported meshes are not reconstructed as authored primitives.
+  Skeletal authoring/animation, vertex/face modelling and broader import remain
+  deferred; this is not a Blender replacement or Android device evidence.
 - [x] Separate native-resolution HUD and bounded configurable world rendering;
   see completed presentation slice above and README for the reusable host contract.
 - [x] Bounded shared runtime services: explicit manifest v2 identity/PCM WAV,
