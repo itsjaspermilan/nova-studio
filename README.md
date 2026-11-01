@@ -205,6 +205,54 @@ file, in addition to the old examples, native activity exports and dependency no
 Custom projects can run directly on desktop; arbitrary project selection/export to
 APK is not implemented. The Android launcher includes the bundled sample project.
 
+### Native read-only inspection v1
+
+`runtime/inspect.h` defines `NOVA_INSPECTION_VERSION == 1` without raylib types.
+`nova_inspect_scene(engine, resources)` returns a borrowed `NovaSceneInspection`
+for the matching engine/resources pair owned by the native host. It reports the
+last successfully opened scene, not editor entities: requested source path,
+project root, resolved entry path, manifest-relative entry, declaration-order
+asset IDs/types/paths, and the actual `NovaFrame` (mode, camera, background and
+ordered draw commands). Direct `--scene` loads have no project root, relative
+entry or assets. Before first successful open, or after resource unloading,
+`loaded` is false and frame/assets are NULL. Both arguments must be a matching
+host pair; resources must be non-NULL. This is not a cross-thread snapshot API.
+
+Each `NovaAssetInspection` includes the input file byte count, sprite dimensions,
+or model node-instanced primitive count, expanded vertex count and AABB after
+baked GLB hierarchy transforms, before Lua positioning/scaling. Type-inapplicable
+fields are zero. `resource_index` points to the first declaration sharing the
+same path/type; `NovaCommand.asset` indexes declarations, not that unique resource.
+Aliases keep their own IDs/paths and share metadata. No GPU object IDs, mutable
+resource pointers, imported node identities or synthetic persistent scene objects
+are exposed. Counts/bounds describe decoded geometry, not glTF accessor hints.
+
+Strings/assets are borrowed from the host registry. They remain valid until the
+next successful `nova_open_scene`, `nova_unload_resources` or owner destruction;
+successful replacement resets Lua state and all views must be reacquired even
+if their addresses appear unchanged. The frame is borrowed from the engine and
+changes at every `nova_tick`; copy it before another tick if a snapshot is needed.
+Scene errors clear commands through the existing engine contract.
+`scene_error` is the engine's current error; `load_error` records the last failed
+open attempt and may change on any open attempt. A failed reload preserves all
+previous declarations/resource metadata and the previous engine/frame, but the
+runtime presents its error screen rather than rendering that retained frame.
+A successful open clears `load_error`; unloading clears the registry entirely.
+Do not retain a view's scalar counts/status across replacement.
+
+`nova_validate_project(path, &validation, error, error_size)` is the same
+manifest/path/import/Lua staging path with GPU upload disabled. It needs no window
+and returns a copied `NovaProjectValidation`: manifest entry/relative required
+asset paths, resolved root/entry, and the same per-declaration CPU metadata.
+Success requires all import budgets, Lua loading and a zero-dt initial update
+to pass; failures leave the output unchanged and return/log an actionable error.
+Candidate CPU resources and Lua state are always released, without touching an
+active scene. The returned value has no borrowed pointers and remains valid
+independently of later validation/reloads. It describes files read during that
+call, not an atomic filesystem snapshot or assurance against subsequent edits;
+exporters must validate their staged copy. Headless success does not establish
+GPU upload, later-update behavior, rendering or Android device compatibility.
+
 ## Android APK scaffold
 
 The Android application packages the **same C engine, runtime, editable scripts and manifest project assets** into a standalone arm64 APK. The host is Android's built-in NativeActivity, so no custom Java/Kotlin UI or WebView is needed for this slice. No storage/network permissions are requested. The sample launcher is included; a per-game exporter that chooses one project is not implemented yet.

@@ -343,10 +343,58 @@ void nova_unload_resources(NovaResources *resources)
     *resources = (NovaResources){0};
 }
 
-static bool upload_model(const unsigned char *bytes, int length, Model *model,
-    char *error, size_t error_size)
+NovaSceneInspection nova_inspect_scene(const NovaEngine *engine, const NovaResources *resources)
 {
-    if (!nova_decode_glb(bytes, length, model, error, error_size)) return false;
+    bool loaded = engine && resources->source[0];
+    return (NovaSceneInspection){
+        .loaded = loaded, .project = loaded && resources->project,
+        .source = resources->source, .root = resources->root, .entry = resources->entry,
+        .relative_entry = resources->relative_entry,
+        .count = loaded ? resources->count : 0,
+        .assets = loaded ? resources->inspection : NULL,
+        .frame = loaded ? nova_frame(engine) : NULL,
+        .scene_error = nova_error(engine), .load_error = resources->load_error
+    };
+}
+
+static void inspect_model(NovaAssetInspection *info, const Model *model)
+{
+    info->primitives = (size_t)model->meshCount;
+    bool first = true;
+    for (int i = 0; i < model->meshCount; ++i) {
+        const Mesh *mesh = &model->meshes[i];
+        info->vertices += (size_t)mesh->vertexCount;
+        for (int j = 0; j < mesh->vertexCount; ++j) {
+            const float *v = mesh->vertices + j * 3;
+            if (first) {
+                info->bounds_min = info->bounds_max = (NovaVec3){v[0], v[1], v[2]};
+                first = false;
+            } else {
+                info->bounds_min.x = fminf(info->bounds_min.x, v[0]);
+                info->bounds_min.y = fminf(info->bounds_min.y, v[1]);
+                info->bounds_min.z = fminf(info->bounds_min.z, v[2]);
+                info->bounds_max.x = fmaxf(info->bounds_max.x, v[0]);
+                info->bounds_max.y = fmaxf(info->bounds_max.y, v[1]);
+                info->bounds_max.z = fmaxf(info->bounds_max.z, v[2]);
+            }
+        }
+    }
+}
+
+static void unload_cpu_model(Model *model)
+{
+    for (int i = 0; i < model->meshCount; ++i) {
+        MemFree(model->meshes[i].vertices);
+        MemFree(model->meshes[i].colors);
+    }
+    MemFree(model->meshes);
+    MemFree(model->materials);
+    MemFree(model->meshMaterial);
+    *model = (Model){0};
+}
+
+static bool upload_model(Model *model, char *error, size_t error_size)
+{
     bool valid = true;
     for (int i = 0; i < model->meshCount; ++i) {
         model->materials[i] = LoadMaterialDefault();
@@ -358,8 +406,8 @@ static bool upload_model(const unsigned char *bytes, int length, Model *model,
     return true;
 }
 
-bool nova_open_scene(NovaEngine **engine, NovaResources *resources,
-    const char *path, bool project, char *error, size_t error_size)
+static bool stage_scene(NovaEngine **engine, NovaResources *resources,
+    const char *path, bool project, bool gpu, char *error, size_t error_size)
 {
     NovaProject manifest = {0};
     NovaResources pending = {0};
@@ -370,10 +418,15 @@ bool nova_open_scene(NovaEngine **engine, NovaResources *resources,
     int length = 0;
     bool success = false;
     size_t total_bytes = 0, total_vertices = 0, total_pixels = 0;
+    if (strlen(path) >= sizeof(pending.source)) {
+        error_message(detail, sizeof(detail), "scene path is too long"); goto done;
+    }
     if (project) {
         if (!nova_project_root(path, root, detail, sizeof(detail))) goto done;
+        snprintf(pending.root, sizeof(pending.root), "%s", root);
         bytes = nova_read_file(path, NOVA_MANIFEST_LIMIT, &length, detail, sizeof(detail));
         if (!bytes || !nova_project_parse(&manifest, (const char *)bytes, (size_t)length, detail, sizeof(detail))) goto done;
+        snprintf(pending.relative_entry, sizeof(pending.relative_entry), "%s", manifest.entry);
         UnloadFileData(bytes); bytes = NULL;
         for (size_t i = 0; i < manifest.count; ++i) {
             NovaAsset *asset = &manifest.assets[i];
@@ -382,6 +435,8 @@ bool nova_open_scene(NovaEngine **engine, NovaResources *resources,
             for (size_t j = 0; j < i; ++j) {
                 if (asset->type == manifest.assets[j].type && !strcmp(asset->path, manifest.assets[j].path)) {
                     pending.resources[pending.count] = pending.resources[j];
+                    pending.inspection[pending.count] = pending.inspection[j];
+                    pending.inspection[pending.count].declaration = *asset;
                     pending.resources[pending.count++].owned = false;
                     cached = true;
                     TraceLog(LOG_INFO, "NOVA_ASSET cached id=%s", asset->id);
@@ -397,30 +452,38 @@ bool nova_open_scene(NovaEngine **engine, NovaResources *resources,
                 goto done;
             }
             NovaResource *r = &pending.resources[pending.count++];
+            NovaAssetInspection *info = &pending.inspection[pending.count - 1];
+            info->declaration = *asset;
+            info->resource_index = pending.count - 1;
+            info->input_bytes = (size_t)length;
             r->type = asset->type;
-            r->owned = true;
+            r->owned = gpu;
             if (r->type == NOVA_ASSET_SPRITE) {
                 Image image = {0};
                 if (!nova_decode_sprite(bytes, length, &image, detail, sizeof(detail))) goto asset_error;
+                info->width = image.width;
+                info->height = image.height;
                 total_pixels += (size_t)image.width * (size_t)image.height;
-                if (total_pixels <= NOVA_SPRITE_PIXEL_LIMIT) r->texture = LoadTextureFromImage(image);
+                if (gpu && total_pixels <= NOVA_SPRITE_PIXEL_LIMIT) r->texture = LoadTextureFromImage(image);
                 UnloadImage(image);
-                if (!IsTextureValid(r->texture)) {
+                if (total_pixels > NOVA_SPRITE_PIXEL_LIMIT || (gpu && !IsTextureValid(r->texture))) {
                     error_message(detail, sizeof(detail), "sprite GPU upload failed or project exceeds 16 million sprite pixels");
                     goto asset_error;
                 }
-                SetTextureFilter(r->texture, TEXTURE_FILTER_POINT);
+                if (gpu) SetTextureFilter(r->texture, TEXTURE_FILTER_POINT);
             } else {
-                if (!upload_model(bytes, length, &r->model, detail, sizeof(detail))) goto asset_error;
-                for (int k = 0; k < r->model.meshCount; ++k)
-                    total_vertices += (size_t)r->model.meshes[k].vertexCount;
+                if (!nova_decode_glb(bytes, length, &r->model, detail, sizeof(detail))) goto asset_error;
+                inspect_model(info, &r->model);
+                total_vertices += info->vertices;
+                if (!gpu) unload_cpu_model(&r->model);
                 if (total_vertices > NOVA_MODEL_VERTEX_LIMIT) {
                     error_message(detail, sizeof(detail), "project exceeds 262144 expanded model vertices");
                     goto asset_error;
                 }
+                if (gpu && !upload_model(&r->model, detail, sizeof(detail))) goto asset_error;
             }
             UnloadFileData(bytes); bytes = NULL;
-            TraceLog(LOG_INFO, "NOVA_ASSET loaded id=%s type=%s", asset->id,
+            TraceLog(LOG_INFO, "NOVA_ASSET %s id=%s type=%s", gpu ? "loaded" : "validated", asset->id,
                 asset->type == NOVA_ASSET_SPRITE ? "sprite" : "model");
             continue;
 asset_error: {
@@ -432,9 +495,6 @@ asset_error: {
         }
         if (!nova_project_resolve(root, manifest.entry, resolved, detail, sizeof(detail))) goto done;
     } else {
-        if (strlen(path) >= sizeof(resolved)) {
-            error_message(detail, sizeof(detail), "scene path is too long"); goto done;
-        }
         snprintf(resolved, sizeof(resolved), "%s", path);
     }
     bytes = nova_read_file(resolved, NOVA_ASSET_FILE_LIMIT, &length, detail, sizeof(detail));
@@ -447,8 +507,9 @@ asset_error: {
         manifest.assets, manifest.count) || !nova_tick(candidate, 0, (NovaInput){0})) {
         snprintf(detail, sizeof(detail), "%s", nova_error(candidate)); goto done;
     }
-    nova_destroy(*engine);
-    nova_unload_resources(resources);
+    pending.project = project;
+    snprintf(pending.source, sizeof(pending.source), "%s", path);
+    snprintf(pending.entry, sizeof(pending.entry), "%s", resolved);
     *engine = candidate;
     *resources = pending;
     candidate = NULL;
@@ -460,8 +521,50 @@ done:
     nova_destroy(candidate);
     nova_unload_resources(&pending);
     if (!success) {
-        snprintf(error, error_size, "%.300s: %.700s", path, detail);
+        char message[1024];
+        snprintf(message, sizeof(message), "%.300s: %.700s", path, detail);
+        snprintf(error, error_size, "%s", message);
         TraceLog(LOG_ERROR, "NOVA: %s", error);
     }
     return success;
+}
+
+bool nova_open_scene(NovaEngine **engine, NovaResources *resources,
+    const char *path, bool project, char *error, size_t error_size)
+{
+    NovaEngine *candidate = NULL;
+    NovaResources pending = {0};
+    char detail[1024];
+    if (!stage_scene(&candidate, &pending, path, project, true, detail, sizeof(detail))) {
+        snprintf(resources->load_error, sizeof(resources->load_error), "%s", detail);
+        snprintf(error, error_size, "%s", detail);
+        return false;
+    }
+    nova_destroy(*engine);
+    nova_unload_resources(resources);
+    *engine = candidate;
+    *resources = pending;
+    error[0] = '\0';
+    return true;
+}
+
+bool nova_validate_project(const char *path, NovaProjectValidation *validation,
+    char *error, size_t error_size)
+{
+    NovaEngine *engine = NULL;
+    NovaResources pending = {0};
+    if (!stage_scene(&engine, &pending, path, true, false, error, error_size)) return false;
+    *validation = (NovaProjectValidation){0};
+    validation->project.count = pending.count;
+    snprintf(validation->project.entry, sizeof(validation->project.entry), "%s", pending.relative_entry);
+    snprintf(validation->root, sizeof(validation->root), "%s", pending.root);
+    snprintf(validation->entry, sizeof(validation->entry), "%s", pending.entry);
+    for (size_t i = 0; i < pending.count; ++i) {
+        validation->project.assets[i] = pending.inspection[i].declaration;
+        validation->assets[i] = pending.inspection[i];
+    }
+    nova_destroy(engine);
+    nova_unload_resources(&pending);
+    error[0] = '\0';
+    return true;
 }

@@ -1,10 +1,9 @@
 #ifndef NOVA_ASSETS_H
 #define NOVA_ASSETS_H
 
-#include "nova.h"
+#include "inspect.h"
 #include <raylib.h>
 
-#define NOVA_NATIVE_PATH_CAPACITY 4096
 #define NOVA_ASSET_FILE_LIMIT (16 * 1024 * 1024)
 #define NOVA_PROJECT_BYTE_LIMIT (64 * 1024 * 1024)
 #define NOVA_MODEL_VERTEX_LIMIT 262144
@@ -16,10 +15,17 @@ typedef struct {
     Texture2D texture;
     Model model;
 } NovaResource;
-typedef struct {
+struct NovaResources {
     size_t count;
     NovaResource resources[NOVA_MAX_ASSETS];
-} NovaResources;
+    NovaAssetInspection inspection[NOVA_MAX_ASSETS];
+    bool project;
+    char source[NOVA_NATIVE_PATH_CAPACITY];
+    char root[NOVA_NATIVE_PATH_CAPACITY];
+    char entry[NOVA_NATIVE_PATH_CAPACITY];
+    char relative_entry[NOVA_PROJECT_PATH_CAPACITY];
+    char load_error[1024];
+};
 
 bool nova_project_root(const char *manifest, char *root, char *error, size_t error_size);
 bool nova_project_resolve(const char *root, const char *relative, char *path,

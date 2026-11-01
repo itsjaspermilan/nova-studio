@@ -175,6 +175,16 @@ int main(int argc, char **argv)
     CHECK(strstr(error, "escapes root"));
     CHECK(unlink(link) == 0 && rmdir(temp) == 0);
     int length;
+    NovaProjectValidation validation = {0};
+    CHECK(nova_validate_project(NOVA_EXAMPLES "/assets/nova.project", &validation, error, sizeof(error)));
+    CHECK(!*error && validation.project.count == 2 &&
+        !strcmp(validation.project.entry, "main.lua") &&
+        validation.assets[0].width == 32 && validation.assets[0].height == 32 &&
+        validation.assets[1].primitives == 1 && validation.assets[1].vertices == 24 &&
+        fabsf(validation.assets[1].bounds_max.y - 2.25f) < 0.001f);
+    NovaProjectValidation retained_validation = validation;
+    CHECK(!nova_validate_project(NOVA_EXAMPLES "/assets/missing.project", &validation, error, sizeof(error)));
+    CHECK(*error && !memcmp(&validation, &retained_validation, sizeof(validation)));
     unsigned char *sprite = nova_read_file(NOVA_EXAMPLES "/assets/assets/badge.png",
         NOVA_ASSET_FILE_LIMIT, &length, error, sizeof(error));
     CHECK(sprite);
