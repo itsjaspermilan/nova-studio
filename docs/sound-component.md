@@ -61,6 +61,14 @@ under AddressSanitizer/UndefinedBehaviorSanitizer. LeakSanitizer is disabled on
 macOS; this is not an LSan or whole-Qt-internals claim. The existing DSP,
 transport, allocation-failure/balance and C++ contract tests also pass.
 
+When `NOVA_QT_STUDIO` is also enabled, `nova_qt_sound_host` uses this component's
+actual codec/compiler with `ProjectDocument` and the Qt-selected native runtime.
+It covers default PCM24 and float32 publication, native preflight, exact
+participant/revision/digest acknowledgements, source-only retention of the old
+WAV/metadata, stale-output Run readiness and reopened component identity.
+No native audio device is opened. This is a persistence consumer, not a claim
+that the actual Studio shell or native input is integrated.
+
 `build-sound/sound-evidence/` contains actual **offscreen QWidget captures**:
 1000x540 central content, 900x480 compact content in both palettes, and embedding
 in a 1280x720 test shell with a project dock. The captures were inspected; host

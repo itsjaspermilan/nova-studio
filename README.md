@@ -67,7 +67,10 @@ All three authoring components can be built alongside the Qt application with
 `-DNOVA_QT_SPRITE=ON -DNOVA_MESH_AUTHORING=ON -DNOVA_QT_SOUND=ON`. Enabling them
 does not yet add Sprite/Model/Sound tabs. The mesh checks include a CPU-only
 consumer linked to the Qt-selected runtime, keeping the ordinary GLFW renderer
-out of that host.
+out of that host. With Sound enabled, `nova_qt_sound_host` exercises actual
+editable Sound sources and PCM24/float32 outputs through guarded project
+publication, source-only retention and reopen, without opening an audio device.
+That persistence consumer is not the finished Sound workspace integration.
 
 In the sample launcher, click an example, press **1 / 2 / 3**, or use gamepad **A / B / X**. Move with **WASD, arrow keys, D-pad, or left stick**. In the 3D example, **Space / A** makes the model bounce; in the asset project it lifts the imported gem. **F1 / Start** returns to the launcher, **R** reloads the active script or whole project, and **Esc / Android Back** exits.
 

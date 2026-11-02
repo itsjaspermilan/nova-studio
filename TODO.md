@@ -56,10 +56,10 @@ Confirmed product requirements:
 | Authoring/document foundation | UI decision + baseline | Unified documents/selection, full undo/redo, safe coherent writes, recovery, conflict handling and native preview. | Scene/Code foundation and asset persistence API implemented; real component embedding/undo routing still need integration |
 | Lua-first creation loop | Authoring foundation | Project creation/open/save, visual scenes and script/property binding, useful code tools, diagnostics and Run/Stop without overwriting authored code. | First 2D/3D creation slice implemented; complete studio remains in progress |
 | Scene orientation/navigation | Authoring foundation + shared renderer | Coherent authored/runtime 3D rotation, native transform gizmos, snapping/undo/cancel and separate editor camera. | Bounded implementation complete; unlocked-focus and other-host qualification remain |
-| Sprite workspace | Authoring foundation + runtime animation | Real drawing/layers/frames, source preservation, reversible editing and matching scene/runtime updates. | Embeddable document/canvas component implemented; guarded host/runtime integration pending |
-| Model workspace | Authoring foundation + existing GLB pipeline | Mesh/transform/material/UV basics, reversible editing and faithful supported model round trips. | Independent [editable-mesh component](docs/mesh-authoring.md) implemented; Qt workspace/save/preview integration pending |
+| Sprite workspace | Authoring foundation + runtime animation | Real drawing/layers/frames, source preservation, reversible editing and matching scene/runtime updates. | Responsive document/canvas component integrated; actual host lifecycle in progress; variable-duration runtime metadata remains |
+| Model workspace | Authoring foundation + existing GLB pipeline | Mesh/transform/material/UV basics, reversible editing and faithful supported model round trips. | Independent [editable-mesh component](docs/mesh-authoring.md) integrated; Qt workspace/shared-viewport owner active; host saving remains |
 | Audio engine | Existing native services | Sample-clock processing, float mixing, quality instruments/DSP, streams/buses, device handling and offline rendering. | C11 DSP/offline, shared-device controls, bounded disk streams and opt-in production inserts/sends/automation implemented; runtime music binding and hardware/lifecycle qualification remain |
-| Recording and SFX | Authoring foundation + audio engine | Nondestructive waveform editing, explicit recording, layered SFX, safe audition and persistent sources. | Embeddable short-SFX document/waveform component implemented; recording and guarded host integration pending |
+| Recording and SFX | Authoring foundation + audio engine | Nondestructive waveform editing, explicit recording, layered SFX, safe audition and persistent sources. | Short-SFX component and actual-codec persistence consumer integrated; actual shell owner active; recording remains |
 | Music composition | Recording/SFX foundations | Arrangement, piano roll, patterns/drums, synth/sampler, MIDI, loops and document persistence. | Pending |
 | Sound production | Music composition | Mixer, sends/buses, effects, automation, lossless masters, aligned stems/loops and runtime-profile audition. | Bounded shared DSP/routing/automation backend available; authoring controls and remaining production workflow pending |
 | Application and game delivery | Completed authoring pipelines | An unambiguous studio application entry point and real selected-project desktop/Android outputs with preflight. | Development Nova Studio.app exists; portable Qt deployment and integrated export UI remain |
@@ -253,8 +253,8 @@ on an unlocked desktop. Earlier child GUI evidence is not substituted for
 that combined-state qualification; no focus assertion or OS setting changed.
 
 The Sprite and Mesh components and true long-form disk audio are now integrated
-on the coordinating branch; they are not yet full shared workspaces. Parallel
-bounded work continues on guarded asset-document transactions, 3D scene tools,
+on the coordinating branch; they are not yet full shared workspaces. Subsequent
+checkpoints below integrate guarded asset-document transactions, 3D scene tools,
 Sprite host-layout refinements and Sound documents/SFX. Authored sources
 need separate limits from 16 MiB runtime assets: confirmed Sprite/Mesh source
 envelopes fit 65 MiB, and complete Sprite exports can exceed 130 MiB across
@@ -313,10 +313,10 @@ without base64 expansion, plus all derived files; a second fixture exercises
 the full composite-pixel delivery budget. Model/canvas/workspace code performs
 no filesystem writes and does not change manifests, scenes or engine APIs.
 
-The current Qt journal handles only three text documents. Integration must
-extend it for blob-backed sprite source/outputs, track source-only/stale-derived
-saves explicitly, protect existing assets, preflight shared project budgets and
-coordinate scene placement/native animation. The native `nova.frames` API
+The guarded blob-backed Qt journal now supports sprite source/outputs,
+source-only/stale-derived saves, existing-asset ownership and shared project
+preflight. Actual host integration must still connect component lifecycle,
+scene placement and native animation. The native `nova.frames` API
 still has one uniform duration; it does not consume this component's metadata.
 The full Cocoa active/key-window control check remains an explicit gate on an
 unlocked desktop; offscreen control and exposed-layout captures do not replace
@@ -326,7 +326,7 @@ pass. The layered animated marker fixture is not the final 3D rally game.
 
 ### Combined component integration
 
-The coordinating branch now contains the Mesh component and host-neutral
+The earlier `625bc6a` checkpoint contains the Mesh component and host-neutral
 linkage correction, Qt Sprite component and native-input deferral record, and
 A2 disk streaming. The combined build passes all **30 focused checks** in both
 Debug and ASan/UBSan, including the actual Qt-selected host's textured mesh/
@@ -342,10 +342,10 @@ no-window QWidget teardown regression pass; the latter also passes with
 ASan/UBSan. The updated C11 Android build and exact APK verification pass,
 without introducing Qt into the game.
 
-This verifies component/host compatibility, not the finished Sprite/Model/
-Sound workflows. Responsive Sprite embedding, asset transactions, Scene tools
-and Sound authoring remain active, and full native-focus qualification is
-still deferred rather than weakened.
+This verified component/host compatibility, not the finished Sprite/Model/
+Sound workflows. Later checkpoints below cover responsive Sprite embedding,
+asset transactions, Scene tools and Sound authoring. Full native-focus
+qualification is still deferred rather than weakened.
 
 ### Scene orientation and navigation handoff
 
@@ -458,8 +458,9 @@ A focused LLDB-protected native widget case verifies that refusal before and
 after reopen, then successful Run after publishing a real PNG. This is not
 an active-window/input qualification or completed component embedding.
 
-The persistence owner is extending canonical WAV participation and explicit
-path ownership against all manifest runtime files before general host wiring.
+Canonical WAV participation and explicit path ownership against all manifest
+runtime files have since landed as `1314a22`. The persistence owner is adding
+bounded per-participant reset with lossless unmanaged-binding provenance.
 The Model workspace owner is building its visual tools on one shared native
 viewport, without changing the Scene game camera or creating another renderer.
 The full shell, Sound production and all-tools 3D rally gates remain open.
@@ -500,6 +501,40 @@ transport identity, failure cleanup and the occupied 18-renderer pool. The
 captured original no-effect float WAV remains byte-identical. No device,
 microphone, audible playback or hardware/latency claim; leak sanitizer remains
 disabled with explicit ownership accounting instead.
+
+### Integrated Sound, production DSP and device-free previews
+
+The coordinating branch integrates the short-SFX component as `69f5e8d`,
+WAV/path-ownership persistence as `1314a22`, and production DSP as `975da67`.
+All 41 affected component/audio/core/native/Qt-host/document/export selectors
+pass in Debug and ASan/UBSan, with LSan disabled and installed Qt/system
+frameworks outside the instrumentation boundary. The genuine
+`nova_qt_sound_host` consumer verifies default PCM24 and float32 Sound exports,
+exact publication acknowledgements, native preflight, source-only old-output
+retention, reopened source and rejection of stale/foreign component identity.
+
+The real Run publication gate, 2D/3D transform cases and Code tools also pass
+under LLDB in both builds. A follow-up `182d1ab` fixes unintended audio-device
+activation during GPU authoring staging: graphics still upload, while WAVs and
+aliases are decoded/validated without uploading sounds. A protected native
+bridge regression verifies an actual sprite texture, device-free audio,
+malformed-WAV rollback and successful restaging in Debug and ASan/UBSan.
+Affected native import, service and Qt persistence consumers pass afterward.
+Explicit runtime Run retains normal audio upload; no shared-device teardown
+or second renderer was introduced.
+
+The current C11 Android build and exact APK verification pass. Generated
+dependency graphs for the Qt app and real Mesh/Sound consumers contain only
+the selected Qt raylib/audio host, never ordinary raylib, GLFW or `nova_assets`.
+The negative-result LLDB runner regression also passes. These are package and
+software ownership checks, not Android-device or audible-playback evidence.
+
+Actual Sprite/Sound shell integration and the Model workspace remain active
+in isolated owner worktrees. Per-participant discard/recovery provenance is
+the remaining shared save-lifecycle continuation. Native active-window/input,
+human IME/VoiceOver and audio/microphone qualification remain deferred.
+The arranger/piano roll, recording, full production GUI, runtime long-music
+binding, portable delivery and all-tools 3D rally exercise are not complete.
 
 ## Pre-Qt integrated baseline (retained evidence)
 
