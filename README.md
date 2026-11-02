@@ -49,6 +49,15 @@ scripts/env.sh cargo run --release -p nova-runtime --bin nova -- pack examples/c
 /opt/homebrew/bin/ctest --test-dir build/audio --output-on-failure
 ```
 
+The macOS app (the studio with the game runtime and the examples inside it):
+
+```sh
+scripts/build-studio-app.sh --install    # builds target/release/bundle/macos/Nova Studio.app and copies it to /Applications
+```
+
+It is signed ad hoc, not with a developer identity or notarised, so it opens on the Mac that built it; another Mac asks for
+approval the first time. A developer signature and notarisation are the project owner's to arrange.
+
 The studio (needs the Node pinned in `scripts/env.sh`; run these from `studio/`):
 
 ```sh

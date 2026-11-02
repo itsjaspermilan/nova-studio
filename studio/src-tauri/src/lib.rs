@@ -93,10 +93,10 @@ fn templates() -> Vec<templates::TemplateInfo> {
     templates::template_infos()
 }
 
-/// The example projects shipped with Nova (found next to the repository in development).
-#[tauri::command]
-fn examples() -> Vec<ExampleInfo> {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
+/// The example projects shipped with Nova: inside the app bundle, or next to the repository in development.
+fn examples_in(app: &AppHandle) -> Vec<ExampleInfo> {
+    let bundled = app.path().resource_dir().ok().map(|d| d.join("examples")).filter(|d| d.is_dir());
+    let dir = bundled.unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples"));
     let mut out: Vec<ExampleInfo> = std::fs::read_dir(dir)
         .into_iter()
         .flatten()
@@ -113,6 +113,11 @@ fn examples() -> Vec<ExampleInfo> {
         .collect();
     out.sort_by(|a, b| a.id.cmp(&b.id));
     out
+}
+
+#[tauri::command]
+fn examples(app: AppHandle) -> Vec<ExampleInfo> {
+    examples_in(&app)
 }
 
 #[tauri::command]
@@ -134,12 +139,13 @@ fn new_project(
 /// Copies an example into `parent` under a new name and opens the copy.
 #[tauri::command]
 fn copy_example(
+    app: AppHandle,
     state: State<AppState>,
     example: String,
     parent: String,
     name: String,
 ) -> Result<ProjectInfo, String> {
-    let source = examples()
+    let source = examples_in(&app)
         .into_iter()
         .find(|e| e.id == example)
         .ok_or_else(|| format!("unknown example '{example}'"))?;

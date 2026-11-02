@@ -362,7 +362,7 @@ First slice, built (`SpriteEditor.svelte`, pure logic in `pixels.ts` and `sprite
   Nova's tools: models, sprites, music, SFX, Lua. Save, reopen, run, export APK.
 - [ ] Failure-recovery exercise: crash during save, bad asset, missing file.
 - [ ] Run on the Retroid; log performance and controller behaviour.
-- [ ] Windows/Linux studio builds and signing/notarization plan.
+- [x] macOS app bundle (2026-11-02): `scripts/build-studio-app.sh [--install]` builds `Nova Studio.app` with the `nova` runtime and the examples inside, sealed with an ad-hoc signature; installed to /Applications on the author's Mac and launched. [ ] Developer-ID signing, notarisation, a DMG, Windows/Linux builds, an app icon of its own design.
 
 ## Device validation track (starts when the Retroid arrives)
 

@@ -38,3 +38,4 @@ signing.properties
 # Studio build output
 /studio/src-tauri/gen/
 /.claude/
+/studio/src-tauri/binaries/
