@@ -54,3 +54,72 @@ describe("sprite layers files", () => {
     expect(studio.files.map((f) => f.path).some((p) => p.endsWith(".layers.json"))).toBe(false);
   });
 });
+
+describe("files changed outside the studio", () => {
+  it("reloads tabs with nothing unsaved and flags the ones with unsaved work", async () => {
+    await openProject();
+    await studio.openFile("main.lua");
+    await studio.openFile("scenes/title.lua");
+    studio.edit("scenes/title.lua", "-- my unsaved edit\n");
+    await studio.api!.writeFile("main.lua", "-- changed by git\n");
+    await studio.api!.writeFile("scenes/title.lua", "-- changed by git too\n");
+    await studio.checkExternal();
+    const main = studio.tabs.find((t) => t.path === "main.lua")!;
+    const title = studio.tabs.find((t) => t.path === "scenes/title.lua")!;
+    expect(main.text).toBe("-- changed by git\n");
+    expect(main.conflict).toBeFalsy();
+    expect(title.text).toBe("-- my unsaved edit\n"); // untouched
+    expect(title.conflict).toBe(true);
+  });
+
+  it("lets the person keep their version (and save over the disk one) or take the disk version", async () => {
+    await openProject();
+    await studio.openFile("main.lua");
+    studio.edit("main.lua", "-- mine\n");
+    await studio.api!.writeFile("main.lua", "-- theirs\n");
+    await studio.checkExternal();
+    const tab = () => studio.tabs.find((t) => t.path === "main.lua")!;
+    expect(tab().conflict).toBe(true);
+    await studio.keepMine("main.lua");
+    expect(tab().conflict).toBe(false);
+    expect(tab().text).toBe("-- mine\n");
+    await studio.checkExternal();
+    expect(tab().conflict).toBeFalsy(); // not flagged again
+    await studio.save("main.lua");
+    expect((await studio.api!.readFile("main.lua")).text).toBe("-- mine\n");
+
+    studio.edit("main.lua", "-- mine again\n");
+    await studio.api!.writeFile("main.lua", "-- theirs again\n");
+    await studio.checkExternal();
+    expect(tab().conflict).toBe(true);
+    await studio.useDiskVersion("main.lua");
+    expect(tab().text).toBe("-- theirs again\n");
+    expect(tab().conflict).toBe(false);
+  });
+
+  it("asks before saving over a conflicting file, and does nothing when nothing changed", async () => {
+    await openProject();
+    await studio.openFile("main.lua");
+    await studio.checkExternal();
+    expect(studio.tabs[0]!.conflict).toBeFalsy();
+    studio.edit("main.lua", "-- mine\n");
+    await studio.api!.writeFile("main.lua", "-- theirs\n");
+    await studio.checkExternal();
+    vi.stubGlobal("confirm", () => false);
+    expect(await studio.save("main.lua")).toBe(false);
+    expect((await studio.api!.readFile("main.lua")).text).toBe("-- theirs\n");
+    vi.stubGlobal("confirm", () => true);
+    expect(await studio.save("main.lua")).toBe(true);
+    expect((await studio.api!.readFile("main.lua")).text).toBe("-- mine\n");
+  });
+
+  it("drops editor state for reloaded sprite-like tabs so they read the new file", async () => {
+    await openProject();
+    await studio.openFile("sprites/player.sprite.json");
+    studio.sessions.set("sprites/player.sprite.json", { stale: true });
+    const text = (await studio.api!.readFile("sprites/player.sprite.json")).text!;
+    await studio.api!.writeFile("sprites/player.sprite.json", text.replace("200", "250"));
+    await studio.checkExternal();
+    expect(studio.sessions.has("sprites/player.sprite.json")).toBe(false);
+  });
+});

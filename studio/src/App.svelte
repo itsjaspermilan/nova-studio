@@ -23,8 +23,13 @@
         void (studio.running ? studio.stop() : studio.play());
       }
     };
+    const refocus = () => void studio.checkExternal();
     window.addEventListener("keydown", keys);
-    return () => window.removeEventListener("keydown", keys);
+    window.addEventListener("focus", refocus);
+    return () => {
+      window.removeEventListener("keydown", keys);
+      window.removeEventListener("focus", refocus);
+    };
   });
 
   // Scene files open visually unless the person asked for the JSON; remembered per file.
@@ -72,6 +77,13 @@
           </div>
         {/each}
       </div>
+      {#if studio.tab?.conflict}
+        <div class="conflict" role="alert">
+          <span><strong>{base(studio.tab.path)}</strong> was changed outside the studio, and you have unsaved changes here.</span>
+          <button onclick={() => studio.keepMine(studio.tab!.path)}>Keep mine</button>
+          <button class="danger" onclick={() => studio.useDiskVersion(studio.tab!.path)}>Load from disk</button>
+        </div>
+      {/if}
       <div class="editor-host">
         {#key studio.active}
           {#if studio.tab}
@@ -134,6 +146,8 @@
   .tab > button:first-child { background: transparent; border: none; border-radius: 0; padding: 6px 4px 6px 12px; }
   .tab .x { padding: 0 6px; font-size: 10px; }
   .dot { color: var(--warn); margin-left: 6px; font-size: 9px; }
+  .conflict { display: flex; gap: 8px; align-items: center; padding: 6px 12px; background: color-mix(in srgb, var(--warn) 18%, var(--panel)); border-bottom: 1px solid var(--warn); }
+  .conflict span { flex: 1; }
   .editor-host { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .editor-host > :global(*) { flex: 1; min-height: 0; }
   .editor-host > :global(.viewbar) { flex: none; padding: 2px 8px; background: var(--panel); border-bottom: 1px solid var(--line); }

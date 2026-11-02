@@ -21,6 +21,8 @@ export interface Tab {
   size: number;
   /// Changes that live outside `text` (a sprite's pixels) and still need saving.
   pending?: boolean;
+  /// The file changed on disk (outside the studio) while this tab had unsaved changes.
+  conflict?: boolean;
 }
 
 export const isDirty = (t: Tab) => t.text !== t.saved || !!t.pending;
@@ -223,6 +225,7 @@ class Studio {
   async save(path = this.active) {
     const tab = this.tabs.find((t) => t.path === path);
     if (!tab || !isDirty(tab) || (tab.binary && !this.saveHooks.has(tab.path))) return true;
+    if (tab.conflict && !confirm(`${tab.path} was changed outside the studio since you opened it. Save anyway and replace that version?`)) return false;
     const text = tab.text;
     const ok = await this.#guard(async () => {
       await this.saveHooks.get(tab.path)?.();
@@ -232,6 +235,7 @@ class Studio {
     if (ok) {
       tab.saved = text;
       tab.pending = false;
+      tab.conflict = false;
       this.#scheduleCheck();
     }
     return !!ok;
@@ -408,6 +412,61 @@ class Studio {
     const current = this.active;
     this.active = null;
     this.active = current; // remount the visible editor with the new text
+  }
+
+  /// Takes the file's text from disk into the tab and forgets editor state built on the old text.
+  #adoptDisk(tab: Tab, text: string) {
+    tab.text = tab.saved = text;
+    tab.conflict = false;
+    tab.pending = false;
+    editorStates.forget(tab.path);
+    this.saveHooks.delete(tab.path);
+    this.sessions.delete(tab.path);
+  }
+
+  #remount() {
+    const current = this.active;
+    this.active = null;
+    this.active = current; // the visible editor is rebuilt from the tab's text
+  }
+
+  /// Looks for files changed outside the studio (another editor, git, a script): tabs with nothing unsaved
+  /// are reloaded, tabs with unsaved work are flagged so nothing is overwritten by surprise.
+  async checkExternal() {
+    if (!this.project || !this.api) return;
+    let reloaded = false;
+    for (const tab of [...this.tabs]) {
+      if (tab.binary) continue;
+      const disk = await this.api.readFile(tab.path).catch(() => null);
+      if (!disk || disk.text == null || disk.text === tab.saved) continue;
+      if (isDirty(tab)) tab.conflict = true;
+      else {
+        this.#adoptDisk(tab, disk.text);
+        reloaded = true;
+      }
+    }
+    const before = this.files.length;
+    await this.refreshFiles();
+    if (reloaded) this.#remount();
+    // Re-check the project only when something actually changed under us.
+    if (reloaded || this.files.length !== before) void this.check();
+  }
+
+  async useDiskVersion(path: string) {
+    const tab = this.tabs.find((t) => t.path === path);
+    const disk = tab && (await this.#guard(() => this.api!.readFile(path)));
+    if (!tab || !disk || disk.text == null) return;
+    this.#adoptDisk(tab, disk.text);
+    this.#remount();
+  }
+
+  /// Keeps the tab's text; the next save will replace what is on disk.
+  async keepMine(path: string) {
+    const tab = this.tabs.find((t) => t.path === path);
+    const disk = tab && (await this.#guard(() => this.api!.readFile(path)));
+    if (!tab || !disk || disk.text == null) return;
+    tab.saved = disk.text; // the new baseline, so it is not flagged again
+    tab.conflict = false;
   }
 
   async remove(path: string) {

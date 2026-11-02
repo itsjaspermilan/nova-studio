@@ -278,7 +278,7 @@ Second slice, built: visual scene editor for `*.scene.json` (opens by default, J
 - [x] Tile painting (paint, fill, erase, make tiles solid, resize, new map from a tileset image) and object `props` editing (text, number, true/false; tables stay in JSON).
 - [x] Objects are drawn with their entity's real sprite (read from `entities/*.lua`, following parent classes; first frame of a sheet, pivot respected) and selected by that sprite's size.
 - [ ] Not yet: animations playing in the editor, entities that set their sprite in code (they stay boxes named by kind), multi-select, rotate/resize handles, (renames now update scene references).
-- [ ] Undo/redo across editors, safe saves, recovery, external-change handling.
+- [x] External changes: when the studio window regains focus, open text files changed on disk are reloaded if nothing is unsaved, or flagged with Keep mine / Load from disk (and a confirm before saving over them) if there is. Saves are already atomic. [ ] Not yet: changed PNG/WAV/GLB files are not noticed, no crash-recovery drafts, no undo that spans editors.
 - [ ] Help window and short tutorials; beginner wording throughout.
 - [ ] Port from GameStudio where it fits: project tree, tabs, code editor, layout
   editor, help system, MCP server for agents.
