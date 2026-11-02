@@ -47,7 +47,7 @@ another physical Android device) to settle; the emulator cannot.
 
 **Runtime and format**
 - [x] Music as Ogg (2026-11-02): songs now save as `music/<name>.ogg` (about a fifth of the WAV or less; the studio backend encodes with libvorbis through `vorbis_rs`, BSD-3, notice in `licenses/vorbis-ogg.txt`), a WAV in `music/` offers **Convert to Ogg** (the WAV goes to the project trash), and Ogg files can be listened to in the studio. [ ] No importer that converts on the way in yet; sound effects stay WAV.
-- [x] Streamed music (2026-11-02): Ogg in `music/` streams through a lock-free ring fed by a decoder thread (`stream.rs`); checked against one real Ogg with `NOVA_TEST_OGG` (samples identical to full decode, loops). [ ] WAV music is still held in memory; the studio cannot write Ogg (no encoder); no seeking or position query; underruns are counted but not shown; not run on a device. Text is done except
+- [x] Streamed music (2026-11-02): Ogg in `music/` streams through a lock-free ring fed by a decoder thread (`stream.rs`); checked against one real Ogg with `NOVA_TEST_OGG` (samples identical to full decode, loops). `nova.music.position()` / `nova.music.seek()` and an underrun counter in the F3 audio line (2026-11-02); seeking a stream decodes and drops what comes before (slow for far jumps). [ ] WAV music still decodes into memory at load (the studio now converts it to Ogg on request); not run on a device or the emulator yet. Text is done except
   world-space text and variable-font weights.
 - [ ] The OpenGL ES fallback backend was fixed (limits) but not re-run on Android since; Vulkan is what
   has been exercised.

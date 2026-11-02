@@ -80,6 +80,10 @@ struct Shared {
     sounds: HashMap<String, Arc<Sample>>,
     /// Ogg music in `music/`: kept compressed and decoded a little ahead while it plays.
     streams: HashMap<String, StreamSource>,
+    /// The music that is playing now, so `nova.music.seek` knows how to restart it.
+    current_music: Option<(Option<StreamSource>, bool)>,
+    /// Seconds into that track as last reported by the audio thread.
+    music_position: Option<f64>,
     audio: Vec<mixer::Command>,
     next_sound: u64,
     save: SaveStore,
@@ -973,6 +977,10 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 };
                 let id = sh.next_sound;
                 sh.next_sound += 1;
+                if is_music {
+                    sh.current_music = Some((streamed.clone(), looping));
+                    sh.music_position = None;
+                }
                 sh.audio.push(mixer::Command::Play(Box::new(mixer::Play {
                     id,
                     stream: streamed.map(|src| src.start(looping)),
@@ -1022,9 +1030,34 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
     )?;
     let s = shared.clone();
     music.set(
+        "position",
+        lua.create_function(move |_, ()| Ok(s.borrow().music_position))?,
+    )?;
+    let s = shared.clone();
+    music.set(
+        "seek",
+        lua.create_function(move |_, seconds: f64| {
+            if !seconds.is_finite() || seconds < 0.0 {
+                return Err(lua_err("seek needs a time in seconds, 0 or more"));
+            }
+            let mut sh = s.borrow_mut();
+            let Some((stream, looping)) = sh.current_music.clone() else {
+                return Ok(false); // nothing is playing
+            };
+            let feed = stream.map(|src| src.start_at(looping, (seconds * src.rate as f64) as u64));
+            sh.audio.push(mixer::Command::SeekMusic { seconds, feed });
+            sh.music_position = Some(seconds);
+            Ok(true)
+        })?,
+    )?;
+    let s = shared.clone();
+    music.set(
         "stop",
         lua.create_function(move |_, fade: Option<f64>| {
-            s.borrow_mut().audio.push(mixer::Command::StopMusic {
+            let mut sh = s.borrow_mut();
+            sh.current_music = None;
+            sh.music_position = None;
+            sh.audio.push(mixer::Command::StopMusic {
                 fade: fade.unwrap_or(0.0).clamp(0.0, 60.0) as f32,
             });
             Ok(())
@@ -1494,6 +1527,8 @@ impl Game {
             pixel_scale: 1.0,
             sounds,
             streams,
+            current_music: None,
+            music_position: None,
             audio: Vec::new(),
             next_sound: 1,
             save: store,
@@ -1616,6 +1651,14 @@ impl Game {
     }
 
     /// Sound commands scripts queued since the last call, for the host to hand to the mixer.
+    /// How far into the music track the audio thread is, for `nova.music.position()` (None when no music plays).
+    pub fn set_music_position(&self, position: Option<f64>) {
+        let mut sh = self.shared.borrow_mut();
+        if sh.current_music.is_some() {
+            sh.music_position = position;
+        }
+    }
+
     pub fn take_audio(&self) -> Vec<mixer::Command> {
         std::mem::take(&mut self.shared.borrow_mut().audio)
     }

@@ -1515,3 +1515,52 @@ fn bad_particle_arguments_do_not_crash_the_game() {
     steps(&mut g, 20);
     assert!(g.error.is_none(), "{:?}", g.error);
 }
+
+#[test]
+fn music_position_and_seek_follow_what_is_playing() {
+    let mut g = project(vec![
+        ("music/theme.wav", wav_bytes(22050, 44100)),
+        (
+            "main.lua",
+            lua(
+                "local state = 0\nfunction update(dt)\n  state = state + 1\n  if state == 1 then nova.log('before ' .. tostring(nova.music.position()) .. ' ' .. tostring(nova.music.seek(1)))\n    nova.music.play('theme')\n  elseif state == 2 then nova.log('seek ' .. tostring(nova.music.seek(0.5)))\n  elseif state == 3 then nova.log('pos ' .. tostring(nova.music.position()))\n  elseif state == 4 then nova.music.stop() nova.log('after ' .. tostring(nova.music.position()) .. ' ' .. tostring(nova.music.seek(2)))\n  end\nend",
+            ),
+        ),
+    ]);
+    run(&mut g, 1, 1.0 / 60.0);
+    g.set_music_position(Some(1.25)); // the audio thread reports in
+    run(&mut g, 1, 1.0 / 60.0);
+    run(&mut g, 1, 1.0 / 60.0);
+    run(&mut g, 1, 1.0 / 60.0);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let log = g.take_log();
+    assert_eq!(
+        log[0], "before nil false",
+        "nothing playing: no position, seek says so"
+    );
+    assert_eq!(log[1], "seek true");
+    assert_eq!(
+        log[2], "pos 0.5",
+        "right after a seek the position is the one asked for"
+    );
+    assert_eq!(log[3], "after nil false", "stopping clears both");
+    use nova_runtime::mixer::Command;
+    let commands = g.take_audio();
+    assert!(
+        commands.iter().any(|c| matches!(c, Command::SeekMusic { seconds, feed: None } if (*seconds - 0.5).abs() < 1e-9)),
+        "music in memory seeks by moving its playhead"
+    );
+}
+
+#[test]
+fn bad_seek_times_are_explained() {
+    for script in ["nova.music.seek(-1)", "nova.music.seek(1/0)"] {
+        let mut g = project(vec![(
+            "main.lua",
+            lua(&format!("function update(dt) {script} end")),
+        )]);
+        run(&mut g, 1, 1.0 / 60.0);
+        let e = g.error.clone().unwrap_or_default();
+        assert!(e.contains("seek needs a time in seconds"), "{script}: {e}");
+    }
+}

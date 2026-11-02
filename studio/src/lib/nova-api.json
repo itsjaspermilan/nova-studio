@@ -259,6 +259,20 @@
   "group": "Sound"
  },
  {
+  "name": "nova.music.position",
+  "kind": "function",
+  "signature": "nova.music.position() -> seconds | nil",
+  "doc": "How far into the current music track it is, in seconds (nil when no music plays). For a looping track it wraps once the track has played through. It updates every frame, a little behind what you hear.",
+  "group": "Sound"
+ },
+ {
+  "name": "nova.music.seek",
+  "kind": "function",
+  "signature": "nova.music.seek(seconds) -> true | false",
+  "doc": "Jump the current music to a time in the track. Returns false when no music is playing. On a streamed (Ogg) track a far jump is silent for a moment while it catches up.",
+  "group": "Sound"
+ },
+ {
   "name": "nova.save",
   "kind": "namespace",
   "signature": "nova.save",

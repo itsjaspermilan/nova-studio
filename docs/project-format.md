@@ -464,7 +464,10 @@ kept in memory (a minute of music is about a megabyte, not ten) and a background
 ahead while `nova.music.play` runs, looping without a gap. Their header is checked at load, so a broken file still
 stops the project with an error naming it, but a streamed file cannot be played with `nova.sound.play`. WAV music,
 and Ogg in `sounds/`, is decoded at load as before, so ship long music as Ogg. The studio does this for you: songs save as `.ogg`, and a WAV in `music/` has a **Convert to Ogg** button. If the decoder ever falls behind
-(a very slow device) that moment is silence and playback carries on.
+(a very slow device) that moment is silence and playback carries on; the F3 overlay's audio line shows
+`underruns N` (frames of music that were silence for that reason; it should stay 0). `nova.music.seek` on a
+streamed track restarts its decoder at the new time, so a jump far into a long track is silent for a moment while
+it catches up.
 
 ```lua
 local id = nova.sound.play("jump", { volume = 0.6, pan = -0.5, pitch = 1.2, loop = false })
@@ -475,6 +478,8 @@ nova.sound.volume(0.8)               -- master volume for effects (0 to 2)
 nova.music.play("theme", { volume = 0.4, fade = 1.0 })   -- loops by default; one track at a time
 nova.music.stop(0.5)                 -- optional fade-out
 nova.music.volume(0.5)               -- master volume for music (0 to 2)
+nova.music.position()                -- seconds into the track (nil when no music plays; wraps on loops)
+nova.music.seek(30)                  -- jump to 30 s; true, or false when nothing is playing
 ```
 
 `volume` 0 to 4 (default 1), `pan` -1 (left) to 1 (right) with an equal-power law, `pitch` 0.05 to 16

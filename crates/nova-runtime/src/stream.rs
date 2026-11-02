@@ -21,6 +21,8 @@ struct Ring {
     /// The listener went away: the decoder should stop.
     stop: AtomicBool,
     underruns: AtomicU64,
+    /// Length of one pass of the track in frames, known once the decoder has played it through (0 until then).
+    pass_frames: AtomicU64,
 }
 
 fn pack(f: [i16; 2]) -> u32 {
@@ -39,6 +41,7 @@ impl Ring {
             done: AtomicBool::new(false),
             stop: AtomicBool::new(false),
             underruns: AtomicU64::new(0),
+            pass_frames: AtomicU64::new(0),
         }
     }
 }
@@ -78,6 +81,11 @@ impl StreamFeed {
             && self.ring.read.load(Ordering::Relaxed) == self.ring.write.load(Ordering::Acquire)
     }
 
+    /// One pass of the track in frames, once the decoder has been through it (a position can then wrap on loops).
+    pub fn pass_frames(&self) -> Option<u64> {
+        Some(self.ring.pass_frames.load(Ordering::Acquire)).filter(|&n| n > 0)
+    }
+
     pub fn note_underrun(&self) {
         self.ring.underruns.fetch_add(1, Ordering::Relaxed);
     }
@@ -89,16 +97,25 @@ impl StreamFeed {
 
     /// A stream of ready-made frames fed from a thread (for tests, and anything already decoded).
     pub fn from_frames(rate: u32, frames: Vec<[i16; 2]>, looping: bool) -> Self {
-        spawn(rate, move |push| {
+        Self::from_frames_at(rate, frames, looping, 0)
+    }
+
+    /// Like [`from_frames`](Self::from_frames) but beginning `start` frames in (counted across loops).
+    pub fn from_frames_at(rate: u32, frames: Vec<[i16; 2]>, looping: bool, start: u64) -> Self {
+        spawn(rate, move |push, note_pass| {
             if frames.is_empty() {
                 return;
             }
+            let mut skip = start;
             loop {
                 for f in &frames {
-                    if !push(*f) {
+                    if skip > 0 {
+                        skip -= 1;
+                    } else if !push(*f) {
                         return;
                     }
                 }
+                note_pass(frames.len() as u64);
                 if !looping {
                     return;
                 }
@@ -110,7 +127,7 @@ impl StreamFeed {
 /// Starts a decoder thread running `produce`, which calls `push` for every frame and stops when `push` says false.
 fn spawn<F>(rate: u32, produce: F) -> StreamFeed
 where
-    F: FnOnce(&dyn Fn([i16; 2]) -> bool) + Send + 'static,
+    F: FnOnce(&dyn Fn([i16; 2]) -> bool, &dyn Fn(u64)) + Send + 'static,
 {
     let ring = Arc::new(Ring::new());
     let thread_ring = ring.clone();
@@ -132,7 +149,16 @@ where
                     std::thread::sleep(Duration::from_millis(3)); // the ring is full: playback has not caught up
                 }
             };
-            produce(&push);
+            let note_pass = |frames: u64| {
+                // Only the first full pass tells the length; a pass that started part way in would be short.
+                let _ = thread_ring.pass_frames.compare_exchange(
+                    0,
+                    frames,
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                );
+            };
+            produce(&push, &note_pass);
             thread_ring.done.store(true, Ordering::Release);
         })
         .expect("a thread for the music decoder");
@@ -175,12 +201,20 @@ impl StreamSource {
 
     /// Starts decoding from the beginning. A looping stream goes back to the start when it ends, without a gap.
     pub fn start(&self, looping: bool) -> StreamFeed {
+        self.start_at(looping, 0)
+    }
+
+    /// Starts `start_frame` frames into the track (decoding and dropping what comes before). Far seeks cost a moment of
+    /// decoding, during which the ring is empty and the music is silent.
+    pub fn start_at(&self, looping: bool, start_frame: u64) -> StreamFeed {
         let bytes = self.bytes.clone();
-        spawn(self.rate, move |push| {
+        spawn(self.rate, move |push, note_pass| {
+            let mut skip = start_frame;
+            let mut first_pass = true;
             loop {
                 let Ok(mut reader) = open(&bytes) else { return };
                 let channels = reader.ident_hdr.audio_channels as usize;
-                let mut produced = false;
+                let mut frames_this_pass = 0u64;
                 while let Ok(Some(packet)) = reader.read_dec_packet_itl() {
                     for frame in packet.chunks_exact(channels) {
                         let f = if channels == 1 {
@@ -188,13 +222,20 @@ impl StreamSource {
                         } else {
                             [frame[0], frame[1]]
                         };
-                        produced = true;
-                        if !push(f) {
+                        frames_this_pass += 1;
+                        if skip > 0 {
+                            skip -= 1;
+                        } else if !push(f) {
                             return;
                         }
                     }
                 }
-                if !looping || !produced {
+                if first_pass {
+                    note_pass(frames_this_pass);
+                    first_pass = false;
+                }
+                // A seek past the end of a non-looping track plays nothing; a looping one wraps.
+                if !looping || frames_this_pass == 0 {
                     return;
                 }
             }
@@ -289,6 +330,34 @@ mod tests {
                 .err()
                 .unwrap()
                 .contains("not a readable Ogg Vorbis")
+        );
+    }
+
+    #[test]
+    fn a_stream_can_start_part_way_in_and_wrap_when_it_loops() {
+        let frames: Vec<[i16; 2]> = (0..10).map(|i| [i, i]).collect();
+        let feed = StreamFeed::from_frames_at(1000, frames.clone(), false, 4);
+        assert_eq!(drain(&feed, 100), frames[4..].to_vec());
+        let looped = StreamFeed::from_frames_at(1000, frames.clone(), true, 13); // 13 = a whole pass and 3 more
+        assert_eq!(
+            drain(&looped, 5),
+            vec![[3, 3], [4, 4], [5, 5], [6, 6], [7, 7]]
+        );
+        let past = StreamFeed::from_frames_at(1000, frames, false, 99);
+        assert!(drain(&past, 5).is_empty() && past.finished());
+    }
+
+    #[test]
+    fn the_length_of_a_pass_is_known_once_it_has_been_played() {
+        let feed = StreamFeed::from_frames(1000, vec![[1, 1]; 20], true);
+        assert_eq!(drain(&feed, 45).len(), 45);
+        assert_eq!(feed.pass_frames(), Some(20));
+        let later = StreamFeed::from_frames_at(1000, vec![[1, 1]; 20], true, 5);
+        drain(&later, 40);
+        assert_eq!(
+            later.pass_frames(),
+            Some(20),
+            "a start part way in still reports the whole track once it loops"
         );
     }
 

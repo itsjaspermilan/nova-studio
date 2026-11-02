@@ -16,20 +16,39 @@ struct Decoded {
 }
 
 fn read_wav(bytes: &[u8]) -> Result<Decoded, String> {
-    let mut reader = hound::WavReader::new(Cursor::new(bytes)).map_err(|e| format!("not a readable WAV file: {e}"))?;
+    let mut reader = hound::WavReader::new(Cursor::new(bytes))
+        .map_err(|e| format!("not a readable WAV file: {e}"))?;
     let spec = reader.spec();
     if spec.channels == 0 || spec.channels > 2 {
-        return Err(format!("{} channels is not supported; use mono or stereo", spec.channels));
+        return Err(format!(
+            "{} channels is not supported; use mono or stereo",
+            spec.channels
+        ));
     }
     if !(8_000..=192_000).contains(&spec.sample_rate) {
-        return Err(format!("{} Hz is outside the supported 8000 to 192000 Hz", spec.sample_rate));
+        return Err(format!(
+            "{} Hz is outside the supported 8000 to 192000 Hz",
+            spec.sample_rate
+        ));
     }
     let interleaved: Vec<f32> = match (spec.sample_format, spec.bits_per_sample) {
         (hound::SampleFormat::Float, 32) => reader.samples::<f32>().collect::<Result<_, _>>(),
-        (hound::SampleFormat::Int, 8) => reader.samples::<i8>().map(|s| s.map(|v| v as f32 / 128.0)).collect(),
-        (hound::SampleFormat::Int, 16) => reader.samples::<i16>().map(|s| s.map(|v| v as f32 / 32768.0)).collect(),
-        (hound::SampleFormat::Int, 24) => reader.samples::<i32>().map(|s| s.map(|v| v as f32 / 8_388_608.0)).collect(),
-        (hound::SampleFormat::Int, 32) => reader.samples::<i32>().map(|s| s.map(|v| v as f32 / 2_147_483_648.0)).collect(),
+        (hound::SampleFormat::Int, 8) => reader
+            .samples::<i8>()
+            .map(|s| s.map(|v| v as f32 / 128.0))
+            .collect(),
+        (hound::SampleFormat::Int, 16) => reader
+            .samples::<i16>()
+            .map(|s| s.map(|v| v as f32 / 32768.0))
+            .collect(),
+        (hound::SampleFormat::Int, 24) => reader
+            .samples::<i32>()
+            .map(|s| s.map(|v| v as f32 / 8_388_608.0))
+            .collect(),
+        (hound::SampleFormat::Int, 32) => reader
+            .samples::<i32>()
+            .map(|s| s.map(|v| v as f32 / 2_147_483_648.0))
+            .collect(),
         (format, bits) => return Err(format!("{bits}-bit {format:?} WAV is not supported")),
     }
     .map_err(|e| format!("WAV data is damaged: {e}"))?;
@@ -43,7 +62,10 @@ fn read_wav(bytes: &[u8]) -> Result<Decoded, String> {
     if channels[0].is_empty() {
         return Err("the WAV file has no audio".into());
     }
-    Ok(Decoded { rate: spec.sample_rate, channels })
+    Ok(Decoded {
+        rate: spec.sample_rate,
+        channels,
+    })
 }
 
 /// Encodes WAV bytes (8, 16, 24 or 32-bit PCM or float; mono or stereo) as Ogg Vorbis at `quality` (-0.1 to 1).
@@ -54,7 +76,9 @@ pub fn wav_to_ogg(wav: &[u8], quality: f32) -> Result<Vec<u8>, String> {
     let channels = NonZeroU8::new(audio.channels.len() as u8).ok_or("no channels")?;
     let mut encoder = VorbisEncoderBuilder::new(rate, channels, &mut out)
         .map_err(|e| format!("cannot start the Ogg encoder: {e}"))?
-        .bitrate_management_strategy(VorbisBitrateManagementStrategy::QualityVbr { target_quality: quality.clamp(-0.1, 1.0) })
+        .bitrate_management_strategy(VorbisBitrateManagementStrategy::QualityVbr {
+            target_quality: quality.clamp(-0.1, 1.0),
+        })
         .build()
         .map_err(|e| format!("cannot start the Ogg encoder: {e}"))?;
     // Feed it in blocks so memory stays modest for long songs.
@@ -64,26 +88,41 @@ pub fn wav_to_ogg(wav: &[u8], quality: f32) -> Result<Vec<u8>, String> {
     while at < total {
         let end = (at + block).min(total);
         let slices: Vec<&[f32]> = audio.channels.iter().map(|c| &c[at..end]).collect();
-        encoder.encode_audio_block(slices).map_err(|e| format!("Ogg encoding failed: {e}"))?;
+        encoder
+            .encode_audio_block(slices)
+            .map_err(|e| format!("Ogg encoding failed: {e}"))?;
         at = end;
     }
-    encoder.finish().map_err(|e| format!("Ogg encoding failed: {e}"))?;
+    encoder
+        .finish()
+        .map_err(|e| format!("Ogg encoding failed: {e}"))?;
     Ok(out)
 }
 
 /// Decodes Ogg Vorbis (mono or stereo) to 16-bit WAV bytes.
 pub fn ogg_to_wav(ogg: &[u8]) -> Result<Vec<u8>, String> {
     use lewton::inside_ogg::OggStreamReader;
-    let mut reader = OggStreamReader::new(Cursor::new(ogg)).map_err(|e| format!("not a readable Ogg Vorbis file: {e}"))?;
+    let mut reader = OggStreamReader::new(Cursor::new(ogg))
+        .map_err(|e| format!("not a readable Ogg Vorbis file: {e}"))?;
     let channels = reader.ident_hdr.audio_channels as u16;
     if channels == 0 || channels > 2 {
-        return Err(format!("{channels} channels is not supported; use mono or stereo"));
+        return Err(format!(
+            "{channels} channels is not supported; use mono or stereo"
+        ));
     }
-    let spec = hound::WavSpec { channels, sample_rate: reader.ident_hdr.audio_sample_rate, bits_per_sample: 16, sample_format: hound::SampleFormat::Int };
+    let spec = hound::WavSpec {
+        channels,
+        sample_rate: reader.ident_hdr.audio_sample_rate,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
     let mut cursor = Cursor::new(Vec::new());
     {
         let mut writer = hound::WavWriter::new(&mut cursor, spec).map_err(|e| e.to_string())?;
-        while let Some(packet) = reader.read_dec_packet_itl().map_err(|e| format!("Ogg Vorbis data is damaged: {e}"))? {
+        while let Some(packet) = reader
+            .read_dec_packet_itl()
+            .map_err(|e| format!("Ogg Vorbis data is damaged: {e}"))?
+        {
             for s in packet {
                 writer.write_sample(s).map_err(|e| e.to_string())?;
             }
@@ -104,7 +143,11 @@ mod tests {
                 channels,
                 sample_rate: rate,
                 bits_per_sample: bits,
-                sample_format: if float { hound::SampleFormat::Float } else { hound::SampleFormat::Int },
+                sample_format: if float {
+                    hound::SampleFormat::Float
+                } else {
+                    hound::SampleFormat::Int
+                },
             };
             let mut w = hound::WavWriter::new(&mut cursor, spec).unwrap();
             for i in 0..(rate as f32 * seconds) as usize {
@@ -126,7 +169,10 @@ mod tests {
     }
 
     fn crossings(samples: &[i16]) -> usize {
-        samples.windows(2).filter(|w| (w[0] < 0) != (w[1] < 0)).count()
+        samples
+            .windows(2)
+            .filter(|w| (w[0] < 0) != (w[1] < 0))
+            .count()
     }
 
     fn decode_i16(wav_bytes: &[u8]) -> (hound::WavSpec, Vec<i16>) {
@@ -139,25 +185,50 @@ mod tests {
         let source = wav(2, 44100, 4.0, 440.0, 16, false);
         let ogg = wav_to_ogg(&source, DEFAULT_QUALITY).unwrap();
         assert!(&ogg[..4] == b"OggS", "an Ogg container");
-        assert!(ogg.len() * 5 < source.len(), "{} bytes of Ogg for {} of WAV", ogg.len(), source.len());
+        assert!(
+            ogg.len() * 5 < source.len(),
+            "{} bytes of Ogg for {} of WAV",
+            ogg.len(),
+            source.len()
+        );
         let (spec, samples) = decode_i16(&ogg_to_wav(&ogg).unwrap());
         assert_eq!((spec.channels, spec.sample_rate), (2, 44100));
         let frames = samples.len() / 2;
-        assert!((frames as i64 - 4 * 44100).abs() < 4096, "about 4 seconds back, got {frames} frames");
+        assert!(
+            (frames as i64 - 4 * 44100).abs() < 4096,
+            "about 4 seconds back, got {frames} frames"
+        );
         let left: Vec<i16> = samples.iter().step_by(2).copied().collect();
         let hz = crossings(&left) as f32 / 2.0 / (frames as f32 / 44100.0);
-        assert!((hz - 440.0).abs() < 8.0, "still a 440 Hz tone, measured {hz}");
+        assert!(
+            (hz - 440.0).abs() < 8.0,
+            "still a 440 Hz tone, measured {hz}"
+        );
         let peak = left.iter().map(|s| s.unsigned_abs()).max().unwrap();
-        assert!((15000..24000).contains(&peak), "about the original loudness, peak {peak}");
+        assert!(
+            (15000..24000).contains(&peak),
+            "about the original loudness, peak {peak}"
+        );
     }
 
     #[test]
     fn mono_and_every_wav_depth_encode() {
-        for (channels, bits, float) in [(1, 16, false), (1, 8, false), (2, 24, false), (1, 32, false), (2, 32, true)] {
-            let ogg = wav_to_ogg(&wav(channels, 22050, 0.5, 300.0, bits, float), 0.3).unwrap_or_else(|e| panic!("{channels}ch {bits}bit float={float}: {e}"));
+        for (channels, bits, float) in [
+            (1, 16, false),
+            (1, 8, false),
+            (2, 24, false),
+            (1, 32, false),
+            (2, 32, true),
+        ] {
+            let ogg = wav_to_ogg(&wav(channels, 22050, 0.5, 300.0, bits, float), 0.3)
+                .unwrap_or_else(|e| panic!("{channels}ch {bits}bit float={float}: {e}"));
             let (spec, samples) = decode_i16(&ogg_to_wav(&ogg).unwrap());
             assert_eq!((spec.channels, spec.sample_rate), (channels, 22050));
-            assert!(samples.len() >= 22050 / 2 * channels as usize / 2, "{channels}ch {bits}bit: {} samples", samples.len());
+            assert!(
+                samples.len() >= 22050 / 2 * channels as usize / 2,
+                "{channels}ch {bits}bit: {} samples",
+                samples.len()
+            );
         }
     }
 
@@ -166,14 +237,22 @@ mod tests {
         let source = wav(2, 44100, 2.0, 1000.0, 16, false);
         let low = wav_to_ogg(&source, 0.0).unwrap().len();
         let high = wav_to_ogg(&source, 1.0).unwrap().len();
-        assert!(high > low, "quality 1.0 ({high}) should be bigger than 0.0 ({low})");
+        assert!(
+            high > low,
+            "quality 1.0 ({high}) should be bigger than 0.0 ({low})"
+        );
     }
 
     #[test]
     fn silence_and_very_short_clips_work() {
         let mut cursor = Cursor::new(Vec::new());
         {
-            let spec = hound::WavSpec { channels: 1, sample_rate: 8000, bits_per_sample: 16, sample_format: hound::SampleFormat::Int };
+            let spec = hound::WavSpec {
+                channels: 1,
+                sample_rate: 8000,
+                bits_per_sample: 16,
+                sample_format: hound::SampleFormat::Int,
+            };
             let mut w = hound::WavWriter::new(&mut cursor, spec).unwrap();
             for _ in 0..100 {
                 w.write_sample(0i16).unwrap();
@@ -186,14 +265,38 @@ mod tests {
 
     #[test]
     fn unusable_input_is_explained() {
-        assert!(wav_to_ogg(b"nope", 0.5).unwrap_err().contains("not a readable WAV"));
-        assert!(wav_to_ogg(&wav(2, 4000, 0.1, 100.0, 16, false), 0.5).unwrap_err().contains("outside the supported"));
-        assert!(ogg_to_wav(b"OggSnonsense").unwrap_err().contains("not a readable Ogg"));
+        assert!(
+            wav_to_ogg(b"nope", 0.5)
+                .unwrap_err()
+                .contains("not a readable WAV")
+        );
+        assert!(
+            wav_to_ogg(&wav(2, 4000, 0.1, 100.0, 16, false), 0.5)
+                .unwrap_err()
+                .contains("outside the supported")
+        );
+        assert!(
+            ogg_to_wav(b"OggSnonsense")
+                .unwrap_err()
+                .contains("not a readable Ogg")
+        );
         let mut cursor = Cursor::new(Vec::new());
         {
-            let spec = hound::WavSpec { channels: 1, sample_rate: 8000, bits_per_sample: 16, sample_format: hound::SampleFormat::Int };
-            hound::WavWriter::new(&mut cursor, spec).unwrap().finalize().unwrap();
+            let spec = hound::WavSpec {
+                channels: 1,
+                sample_rate: 8000,
+                bits_per_sample: 16,
+                sample_format: hound::SampleFormat::Int,
+            };
+            hound::WavWriter::new(&mut cursor, spec)
+                .unwrap()
+                .finalize()
+                .unwrap();
         }
-        assert!(wav_to_ogg(&cursor.into_inner(), 0.5).unwrap_err().contains("no audio"));
+        assert!(
+            wav_to_ogg(&cursor.into_inner(), 0.5)
+                .unwrap_err()
+                .contains("no audio")
+        );
     }
 }

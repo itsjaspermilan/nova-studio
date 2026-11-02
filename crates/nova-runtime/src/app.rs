@@ -278,13 +278,14 @@ impl App {
         if let Some(audio) = &self.audio {
             let s = &audio.stats;
             return format!(
-                "{} cb {} max {:.2}ms flt {} err {} voices {}",
+                "{} cb {} max {:.2}ms flt {} err {} voices {} underruns {}",
                 audio.description,
                 s.callbacks.load(Ordering::Relaxed),
                 s.max_callback_micros.load(Ordering::Relaxed) as f32 / 1000.0,
                 s.faults.load(Ordering::Relaxed),
                 s.stream_errors.load(Ordering::Relaxed),
-                s.voices.load(Ordering::Relaxed)
+                s.voices.load(Ordering::Relaxed),
+                s.stream_underruns.load(Ordering::Relaxed)
             );
         }
         match &self.audio_error {
@@ -315,9 +316,14 @@ impl App {
             self.last_audio_log = Instant::now();
             log::info!("audio: {audio}");
         }
+        let music_position = self.audio.as_ref().and_then(|a| {
+            (a.stats.music_playing.load(Ordering::Relaxed) == 1)
+                .then(|| a.stats.music_position_ms.load(Ordering::Relaxed) as f64 / 1000.0)
+        });
         let (Some(gfx), Some(content)) = (self.gfx.as_mut(), self.content.as_mut()) else {
             return;
         };
+        content.set_music_position(music_position);
         if self.input.take_toggle_hud() {
             content.toggle_hud();
         }

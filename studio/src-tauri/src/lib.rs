@@ -96,8 +96,14 @@ fn templates() -> Vec<templates::TemplateInfo> {
 
 /// The example projects shipped with Nova: inside the app bundle, or next to the repository in development.
 fn examples_in(app: &AppHandle) -> Vec<ExampleInfo> {
-    let bundled = app.path().resource_dir().ok().map(|d| d.join("examples")).filter(|d| d.is_dir());
-    let dir = bundled.unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples"));
+    let bundled = app
+        .path()
+        .resource_dir()
+        .ok()
+        .map(|d| d.join("examples"))
+        .filter(|d| d.is_dir());
+    let dir =
+        bundled.unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples"));
     let mut out: Vec<ExampleInfo> = std::fs::read_dir(dir)
         .into_iter()
         .flatten()

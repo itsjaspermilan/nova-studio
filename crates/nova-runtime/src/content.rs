@@ -160,6 +160,13 @@ impl Content {
         }
     }
 
+    /// Tells the game how far into the music track the audio thread is (None when no music plays).
+    pub fn set_music_position(&mut self, position: Option<f64>) {
+        if let Content::Game { game, .. } = self {
+            game.set_music_position(position);
+        }
+    }
+
     /// Sound commands queued by scripts this frame (none for the benchmark scene).
     pub fn take_audio(&mut self) -> Vec<crate::mixer::Command> {
         match self {

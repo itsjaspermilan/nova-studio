@@ -113,6 +113,11 @@ pub struct AudioStats {
     pub channels: AtomicU32,
     pub voices: AtomicU32,
     pub dropped_commands: AtomicU32,
+    /// Frames of streamed music that were silence because the decoder was behind.
+    pub stream_underruns: AtomicU64,
+    /// Seconds into the current music track, in milliseconds; only meaningful while `music_playing` is 1.
+    pub music_position_ms: AtomicU64,
+    pub music_playing: AtomicU32,
 }
 
 pub struct AudioOut {
@@ -181,6 +186,18 @@ where
                         callback_stats
                             .voices
                             .store(mixer.active_voices() as u32, Ordering::Relaxed);
+                        callback_stats
+                            .stream_underruns
+                            .store(mixer.underruns(), Ordering::Relaxed);
+                        match mixer.music_position() {
+                            Some(seconds) => {
+                                callback_stats
+                                    .music_position_ms
+                                    .store((seconds * 1000.0) as u64, Ordering::Relaxed);
+                                callback_stats.music_playing.store(1, Ordering::Relaxed);
+                            }
+                            None => callback_stats.music_playing.store(0, Ordering::Relaxed),
+                        }
                     }
                 }
                 for (frame, out) in data.chunks_mut(channels.max(1)).enumerate() {

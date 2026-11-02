@@ -79,3 +79,31 @@ fn a_streamed_track_reaches_the_mixer_and_makes_sound() {
     }
     assert!(peak > 0.001, "the stream became audible, peak {peak}");
 }
+
+#[test]
+fn seeking_streamed_music_restarts_its_decoder_part_way_in() {
+    let Some(ogg) = real_ogg() else { return };
+    let mut g = game(ogg, "nova.music.play('theme')");
+    g.take_audio();
+    // Ask for a seek from Lua on the next frame via a fresh script call.
+    let vfs: Rc<dyn Vfs> = Rc::new(MemVfs::new(vec![
+        ("nova.json", br#"{"format":1,"name":"T"}"#.to_vec()),
+        ("music/theme.ogg", real_ogg().unwrap()),
+        ("main.lua", b"local n = 0\nfunction update(dt) n = n + 1 if n == 1 then nova.music.play('theme') elseif n == 2 then nova.music.seek(0.1) end end".to_vec()),
+    ]));
+    g = Game::load(vfs).expect("loads");
+    g.upload(&mut Gpu(Cell::new(0)));
+    g.update(1.0 / 60.0, 0.0, [960.0, 540.0], Actions::default(), false);
+    g.update(1.0 / 60.0, 0.0, [960.0, 540.0], Actions::default(), false);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let seek = g.take_audio().into_iter().find_map(|c| match c {
+        Command::SeekMusic { seconds, feed } => Some((seconds, feed)),
+        _ => None,
+    });
+    let (seconds, feed) = seek.expect("a seek command");
+    assert!((seconds - 0.1).abs() < 1e-9);
+    assert!(
+        feed.is_some(),
+        "a streamed track gets a fresh decoder that starts there"
+    );
+}

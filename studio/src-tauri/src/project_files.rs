@@ -138,15 +138,24 @@ pub fn read_audio(root: &Path, rel: &str) -> Result<String, String> {
     }
     let bytes = std::fs::read(&path).map_err(|e| format!("cannot read '{rel}': {e}"))?;
     // The studio's webview cannot play Ogg Vorbis, so an Ogg file is handed over decoded to WAV.
-    let bytes = if lower.ends_with(".ogg") { crate::audio_files::ogg_to_wav(&bytes).map_err(|e| format!("{rel}: {e}"))? } else { bytes };
+    let bytes = if lower.ends_with(".ogg") {
+        crate::audio_files::ogg_to_wav(&bytes).map_err(|e| format!("{rel}: {e}"))?
+    } else {
+        bytes
+    };
     Ok(format!("{WAV_PREFIX}{}", base64(&bytes)))
 }
 
 fn wav_from_data_url(data_url: &str) -> Result<Vec<u8>, String> {
-    let encoded = data_url.strip_prefix(WAV_PREFIX).ok_or("expected a WAV data URL")?;
+    let encoded = data_url
+        .strip_prefix(WAV_PREFIX)
+        .ok_or("expected a WAV data URL")?;
     let bytes = unbase64(encoded)?;
     if bytes.len() as u64 > MAX_AUDIO_BYTES * 2 {
-        return Err(format!("that sound is bigger than {} MiB", (MAX_AUDIO_BYTES * 2) >> 20));
+        return Err(format!(
+            "that sound is bigger than {} MiB",
+            (MAX_AUDIO_BYTES * 2) >> 20
+        ));
     }
     if !is_wav(&bytes) {
         return Err("that is not WAV data".into());
@@ -159,7 +168,10 @@ pub fn write_ogg(root: &Path, rel: &str, data_url: &str) -> Result<(), String> {
     if !rel.to_ascii_lowercase().ends_with(".ogg") {
         return Err(format!("'{rel}' is not a .ogg path"));
     }
-    let ogg = crate::audio_files::wav_to_ogg(&wav_from_data_url(data_url)?, crate::audio_files::DEFAULT_QUALITY)?;
+    let ogg = crate::audio_files::wav_to_ogg(
+        &wav_from_data_url(data_url)?,
+        crate::audio_files::DEFAULT_QUALITY,
+    )?;
     write_bytes(root, rel, &ogg)
 }
 
@@ -176,10 +188,14 @@ pub fn convert_wav_to_ogg(root: &Path, rel: &str) -> Result<String, String> {
     }
     let meta = std::fs::metadata(&wav_path).map_err(|e| format!("cannot read '{rel}': {e}"))?;
     if !meta.is_file() || meta.len() > MAX_AUDIO_BYTES * 2 {
-        return Err(format!("'{rel}' is not a readable sound (or is bigger than {} MiB)", (MAX_AUDIO_BYTES * 2) >> 20));
+        return Err(format!(
+            "'{rel}' is not a readable sound (or is bigger than {} MiB)",
+            (MAX_AUDIO_BYTES * 2) >> 20
+        ));
     }
     let wav = std::fs::read(&wav_path).map_err(|e| format!("cannot read '{rel}': {e}"))?;
-    let ogg = crate::audio_files::wav_to_ogg(&wav, crate::audio_files::DEFAULT_QUALITY).map_err(|e| format!("{rel}: {e}"))?;
+    let ogg = crate::audio_files::wav_to_ogg(&wav, crate::audio_files::DEFAULT_QUALITY)
+        .map_err(|e| format!("{rel}: {e}"))?;
     write_bytes(root, &target_rel, &ogg)?;
     delete(root, rel)?; // only after the Ogg is safely written
     Ok(target_rel)
@@ -561,7 +577,12 @@ mod tests {
     fn tiny_wav(seconds: f32) -> Vec<u8> {
         let mut cursor = std::io::Cursor::new(Vec::new());
         {
-            let spec = hound::WavSpec { channels: 2, sample_rate: 22050, bits_per_sample: 16, sample_format: hound::SampleFormat::Int };
+            let spec = hound::WavSpec {
+                channels: 2,
+                sample_rate: 22050,
+                bits_per_sample: 16,
+                sample_format: hound::SampleFormat::Int,
+            };
             let mut w = hound::WavWriter::new(&mut cursor, spec).unwrap();
             for i in 0..(22050.0 * seconds) as usize {
                 let v = ((i as f32 * 0.05).sin() * 9000.0) as i16;
@@ -581,12 +602,29 @@ mod tests {
         write_ogg(&root, "music/theme.ogg", &url).unwrap();
         let bytes = std::fs::read(root.join("music/theme.ogg")).unwrap();
         assert_eq!(&bytes[..4], b"OggS");
-        assert!(bytes.len() * 4 < wav.len(), "{} vs {}", bytes.len(), wav.len());
+        assert!(
+            bytes.len() * 4 < wav.len(),
+            "{} vs {}",
+            bytes.len(),
+            wav.len()
+        );
         let back = read_audio(&root, "music/theme.ogg").unwrap();
         assert!(back.starts_with(WAV_PREFIX));
-        assert!(write_ogg(&root, "music/theme.wav", &url).unwrap_err().contains("not a .ogg"));
-        assert!(write_ogg(&root, "../x.ogg", &url).unwrap_err().contains("leaves the project"));
-        assert!(write_ogg(&root, "a.ogg", "data:audio/wav;base64,AAAA").unwrap_err().contains("not WAV"));
+        assert!(
+            write_ogg(&root, "music/theme.wav", &url)
+                .unwrap_err()
+                .contains("not a .ogg")
+        );
+        assert!(
+            write_ogg(&root, "../x.ogg", &url)
+                .unwrap_err()
+                .contains("leaves the project")
+        );
+        assert!(
+            write_ogg(&root, "a.ogg", "data:audio/wav;base64,AAAA")
+                .unwrap_err()
+                .contains("not WAV")
+        );
         assert!(write_ogg(&root, "a.ogg", "data:image/png;base64,AA==").is_err());
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -596,22 +634,39 @@ mod tests {
         let root = project("convert");
         std::fs::create_dir_all(root.join("music")).unwrap();
         std::fs::write(root.join("music/theme.wav"), tiny_wav(1.0)).unwrap();
-        assert_eq!(convert_wav_to_ogg(&root, "music/theme.wav").unwrap(), "music/theme.ogg");
+        assert_eq!(
+            convert_wav_to_ogg(&root, "music/theme.wav").unwrap(),
+            "music/theme.ogg"
+        );
         assert!(root.join("music/theme.ogg").is_file());
-        assert!(!root.join("music/theme.wav").exists(), "the WAV is gone from the project");
+        assert!(
+            !root.join("music/theme.wav").exists(),
+            "the WAV is gone from the project"
+        );
         let trashed = std::fs::read_dir(root.join(".nova/trash")).unwrap().count();
         assert_eq!(trashed, 1, "and kept in the trash");
         // A second conversion has nothing to convert; an existing Ogg is never overwritten.
         std::fs::write(root.join("music/other.wav"), tiny_wav(0.5)).unwrap();
         std::fs::write(root.join("music/other.ogg"), b"keep me").unwrap();
-        assert!(convert_wav_to_ogg(&root, "music/other.wav").unwrap_err().contains("already exists"));
-        assert_eq!(std::fs::read(root.join("music/other.ogg")).unwrap(), b"keep me");
+        assert!(
+            convert_wav_to_ogg(&root, "music/other.wav")
+                .unwrap_err()
+                .contains("already exists")
+        );
+        assert_eq!(
+            std::fs::read(root.join("music/other.ogg")).unwrap(),
+            b"keep me"
+        );
         assert!(root.join("music/other.wav").exists());
         // Damaged input leaves the WAV where it was.
         std::fs::write(root.join("music/bad.wav"), b"RIFFnope").unwrap();
         assert!(convert_wav_to_ogg(&root, "music/bad.wav").is_err());
         assert!(root.join("music/bad.wav").exists() && !root.join("music/bad.ogg").exists());
-        assert!(convert_wav_to_ogg(&root, "music/theme.png").unwrap_err().contains("not a WAV"));
+        assert!(
+            convert_wav_to_ogg(&root, "music/theme.png")
+                .unwrap_err()
+                .contains("not a WAV")
+        );
         assert!(convert_wav_to_ogg(&root, "../x.wav").is_err());
         let _ = std::fs::remove_dir_all(&root);
     }
