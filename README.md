@@ -230,6 +230,7 @@ the `ProjectDocument` owning thread:
 | `StudioAssetSnapshot` | Stable host `id`/`kind`, component revision, bounded JSON association metadata, one binary source and a complete output list. Each `StudioAssetFile` carries a contained relative path, owned bytes and an exact expected disk version. PNG/GLB/WAV outputs also require their actual `runtimeId`/`runtimeType`; metadata sidecars have no runtime ID. |
 | `readAssetFile(path, &bytes, &expected, &error)` | Reads a guarded existing file or captures absence, including when its parent directories do not exist yet. `expected` is an opaque existence/version token; never fabricate one or refresh it silently after a conflict. |
 | `stageAssetSnapshot(snapshot, &error)` | Validates registration, budgets and versions, and deep-owns input strings/bytes, including Qt `fromRawData` buffers. It creates no project files/directories. Re-staging the same participant replaces its pending snapshot, not its persistent identity/source path/kind. |
+| `discardAssetSnapshot(id, &error)` | Restores only that participant's last committed snapshot/publication, or unregisters a never-committed participant. Preserves other drafts, selection and core history, updates guarded recovery, and never writes/deletes authored source or runtime outputs. An original unmanaged declaration survives cancellation of its initial adoption. |
 | `assetSnapshots()` / `savedAssetSnapshots()` | Current pending values versus the last committed source/output associations. Ordinary core undo cannot unregister live participant bindings. Component history/inspector drafts remain the component's responsibility; there is no invented asset undo command. |
 | `assetSnapshotDigest(snapshot)` | Lowercase SHA-256 of the deterministic compact snapshot descriptor, including revision, metadata, source/output hashes and publication mode, but excluding disk-version tokens. Use the normalized snapshot returned after staging. |
 | `assetSnapshotSaved(id, revision, digest)` / `isAssetSnapshotSaved(...)` | Acknowledge only that exact committed snapshot, and reject acknowledgment as current when a newer snapshot is staged. Reentrant edits made by an acknowledgment receiver remain dirty and get their own recovery record. |
@@ -292,6 +293,18 @@ source-only acknowledgment as a fresh export. Removing an output from a later
 complete publication removes its association/declaration, **not the old file**.
 Retired files are subsequently independent of this document's disk guards.
 
+Participant discard is an explicit host decision, not a component undo command
+or a saved acknowledgment. It emits `changed()`, never `assetSnapshotSaved`.
+Only after success should the host reset/reload that component from
+`assetSnapshots()`, or close a removed never-saved participant. A committed
+source-only snapshot remains source-only/stale after reset. Other participants,
+scene/Lua drafts and selection are not rolled back; a reset that would invalidate
+them is refused. Read-only/busy/unlocked projects, unresolved prior recovery,
+interrupted writes and exact disk/recovery-version conflicts also block reset.
+No project asset is deleted, including pre-existing files adopted by an
+uncommitted participant. Studio's own recovery metadata is rewritten or removed
+before success so the discarded snapshot does not reappear after restart.
+
 Limits are binary MiB/KiB and checked without truncation:
 
 | Boundary | Limit |
@@ -330,6 +343,18 @@ the exact intended after-bytes, but never overwrite that file. An unattempted
 absent target that appears externally is a conflict even if its bytes match.
 The journal remains the runtime/export barrier until the complete set is
 verified; this is not filesystem-wide atomicity.
+
+Version-2 records may additionally carry `unmanagedBindings`: at most 32 original
+runtime ID/type/path declarations adopted before the participant was committed.
+This preserves an independent, unsaved Import command through restart/Restore
+and later participant reset, without changing runtime or asset-index versions.
+Duplicate, unsupported, escaping or inconsistent provenance is rejected;
+an absent original file cannot be invented as an earlier import. Records without
+the field remain readable. Where an older record cannot distinguish a prior
+unmanaged import from a new binding to an existing file, reset explicitly refuses
+to guess; preserve that recovery or explicitly commit the current participant
+first. Existing supported declaration lines are retained during normalization,
+and core undo/redo cannot resurrect a discarded generated binding.
 
 Recovery checks all required blobs, including a newer recovery's source/output
 set, and disk guards before project writes. Its recovery metadata guard is held

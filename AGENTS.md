@@ -131,6 +131,10 @@ exported. The earlier externally authored 2D assessment game is not that proof.
   PCM/file/duration/project budgets. Source/unbound payloads cannot claim any
   runtime asset path; exact bound adoption must not overwrite unmanaged aliases.
   Apply these ownership rules equally to staging, index loading and recovery.
+  Single-participant discard preserves other drafts and original unmanaged
+  declarations, maintains recovery, and never deletes project source/outputs.
+  Refuse interrupted writes, conflicts and ambiguous old binding provenance;
+  optional v2 unmanaged-binding metadata is bounded to 32 native declarations.
   Real component embedding/undo routing follows separately. The journal is a
   recoverable multi-file commit, not filesystem atomicity. Interrupted journals
   block runtime/export; v2 checks exact before/absence and completed-write

@@ -536,6 +536,31 @@ human IME/VoiceOver and audio/microphone qualification remain deferred.
 The arranger/piano roll, recording, full production GUI, runtime long-music
 binding, portable delivery and all-tools 3D rally exercise are not complete.
 
+### Component discard/reset continuation
+
+The host can call `discardAssetSnapshot(id, error)` to restore one committed
+participant or unstage a never-saved participant without dropping other asset,
+scene/Lua or selection drafts. Original unmanaged declarations survive canceled
+adoption; generated bindings cannot reappear through unrelated core undo/redo.
+Only Studio recovery state is maintained; project source/output files are never
+rewritten or deleted. Interrupted commits, external/recovery conflicts and
+dependency-breaking resets are explicit refusals, not implicit rollback.
+
+Optional bounded v2 recovery provenance preserves original unmanaged ID/type/path
+bindings, including unsaved Import -> adoption -> restart/Restore -> reset.
+Runtime/index versions and byte budgets stay unchanged. Old v2 remains readable;
+ambiguous old binding origins refuse reset rather than inventing ownership.
+Host component reset remains explicit and emits no saved acknowledgment.
+
+All 143 headless Qt document cases pass normally and with ASan/UBSan, including a
+second complete instrumented run. The 48 additional cases cover independent
+participant/core drafts, saved/source-only reset, unmanaged import adoption and
+undo/redo, restart and older-commit rebasing, exact guards and recovery-write
+failure, ambiguous old records, malformed/forged provenance and the exact
+32-declaration boundary. The studio target builds without compiler diagnostics.
+No GUI/focus, native playback-device, runtime audio or Scene serializer changes
+were made for this continuation.
+
 ## Pre-Qt integrated baseline (retained evidence)
 
 The approved bounded software milestones are implemented and locally committed:

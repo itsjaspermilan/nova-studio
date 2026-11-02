@@ -324,6 +324,63 @@ using Files = std::map<QString, std::unique_ptr<File>>;
 using Payloads = std::map<QString, QByteArray>;
 using Bindings = std::map<QString, StudioAssetFile>;
 
+struct BindingOrigins {
+    Bindings unmanaged;
+    QSet<QString> unknown;
+};
+
+Bindings bindings(const AssetStates &states)
+{
+    Bindings result;
+    for (const auto &pair : states)
+        for (const auto &file : pair.second.snapshot.outputs)
+            if (!file.runtimeId.isEmpty()) result.emplace(file.runtimeId, file);
+    return result;
+}
+
+const NovaAsset *runtimeDeclaration(const NovaProject &project, const QString &id)
+{
+    for (size_t i = 0; i < project.count; ++i)
+        if (QString::fromUtf8(project.assets[i].id) == id) return &project.assets[i];
+    return nullptr;
+}
+
+StudioAssetFile binding(const StudioAssetFile &file)
+{
+    StudioAssetFile result;
+    result.path = QString(file.path.constData(), file.path.size());
+    result.runtimeId = QString(file.runtimeId.constData(), file.runtimeId.size());
+    result.runtimeType = file.runtimeType;
+    return result;
+}
+
+void rememberOrigins(BindingOrigins *origins, const NovaProject &project, const Bindings &owned,
+    const AssetStates &states)
+{
+    for (const auto &pair : bindings(states))
+        if (!owned.count(pair.first) && runtimeDeclaration(project, pair.first))
+            origins->unmanaged.emplace(QString(pair.first.constData(), pair.first.size()), binding(pair.second));
+}
+
+void retainBindings(const AssetStates &states, Bindings *owned, BindingOrigins *origins)
+{
+    const auto wanted = bindings(states);
+    for (auto it = origins->unmanaged.begin(); it != origins->unmanaged.end();)
+        if (!wanted.count(it->first)) {
+            owned->erase(it->first);
+            it = origins->unmanaged.erase(it);
+        } else ++it;
+    for (const auto &pair : wanted) owned->emplace(pair);
+}
+
+void commitOrigins(const AssetStates &committed, BindingOrigins *origins)
+{
+    for (const auto &pair : bindings(committed)) {
+        origins->unmanaged.erase(pair.first);
+        origins->unknown.remove(pair.first);
+    }
+}
+
 void seal(AssetState *state)
 {
     state->description = assetJson(state->snapshot);
@@ -557,6 +614,15 @@ QByteArray bytesFor(const StudioDraft &draft, const NovaProject &project, const 
     return draft.scene;
 }
 
+bool hasDraftChanges(const StudioDraft &draft, const NovaProject &project, const QString &manifest,
+    const Files &files, const AssetStates &assets)
+{
+    for (const auto &path : pathsFor(project, manifest))
+        if (files.at(path)->saved() != bytesFor(draft, project, path, manifest)) return true;
+    return (!assets.empty() || files.at(indexName)->exists()) &&
+        files.at(indexName)->saved() != indexBytes(assets, manifest);
+}
+
 QByteArray record(const QString &manifest, const StudioDraft &draft, const NovaProject &project,
     const std::map<QString, std::unique_ptr<File>> &files)
 {
@@ -583,6 +649,8 @@ struct Recovery {
     std::vector<RecoveredFile> files;
     int version = 1;
     QString store = blobDirectory;
+    BindingOrigins origins = {};
+    bool preciseOrigins = false;
 };
 
 bool parseRecord(const QByteArray &bytes, const QString &manifest, Recovery *result, QString *error)
@@ -657,9 +725,16 @@ QByteArray recordV2(const Recovery &recovery)
             {"after", blobJson(file.after, true, file.afterHash)}, {"attempted", file.attempted},
             {"committed", QString::fromLatin1(file.committed.token)}});
     }
-    return QJsonDocument(QJsonObject{{"format", "nova-studio-recovery"}, {"version", 2},
+    QJsonObject json{{"format", "nova-studio-recovery"}, {"version", 2},
         {"manifest", recovery.manifest}, {"selection", recovery.selection}, {"time", recovery.time},
-        {"store", recovery.store}, {"files", files}}).toJson(QJsonDocument::Compact);
+        {"store", recovery.store}, {"files", files}};
+    if (recovery.preciseOrigins) {
+        QJsonArray unmanaged;
+        for (const auto &pair : recovery.origins.unmanaged)
+            unmanaged.append(QJsonObject{{"id", pair.first}, {"path", pair.second.path}, {"type", int(pair.second.runtimeType)}});
+        json.insert("unmanagedBindings", unmanaged);
+    }
+    return QJsonDocument(json).toJson(QJsonDocument::Compact);
 }
 
 QSet<QByteArray> blobReferences(const QByteArray &record)
@@ -839,10 +914,13 @@ bool parseRecordV2(const QString &root, const QByteArray &bytes, const QString &
 {
     QJsonParseError detail;
     const auto json = QJsonDocument::fromJson(bytes, &detail).object();
-    if (bytes.size() > qsizetype(JournalLimit) || detail.error != QJsonParseError::NoError || json.size() != 7 ||
+    const bool preciseOrigins = json.contains("unmanagedBindings");
+    if (bytes.size() > qsizetype(JournalLimit) || detail.error != QJsonParseError::NoError ||
+        json.size() != (preciseOrigins ? 8 : 7) ||
         json["format"] != "nova-studio-recovery" || json["version"] != 2 || json["manifest"] != manifest ||
         !json["selection"].isString() || !json["time"].isString() || !json["files"].isArray() ||
-        json["files"].toArray().size() > ProjectDocument::MaxAssetFiles + 4)
+        json["files"].toArray().size() > ProjectDocument::MaxAssetFiles + 4 ||
+        (preciseOrigins && (!json["unmanagedBindings"].isArray() || json["unmanagedBindings"].toArray().size() > NOVA_MAX_ASSETS)))
         return failure(error, "Unsupported or malformed version-2 recovery record.");
     if (!uniqueJsonKeys(bytes)) return failure(error, "Version-2 recovery contains duplicate JSON keys; it has been retained.");
     Recovery recovery{manifest, json["selection"].toString(), json["time"].toString(), {}, 2, json["store"].toString()};
@@ -900,6 +978,42 @@ bool parseRecordV2(const QString &root, const QByteArray &bytes, const QString &
     if (!oldPayloads.at(indexName).isEmpty() && !parseIndex(oldPayloads.at(indexName), manifest, before, oldPayloads, &oldAssets, error))
         return false;
     if (!parseIndex(newPayloads.at(indexName), manifest, after, newPayloads, &newAssets, error)) return false;
+    recovery.preciseOrigins = preciseOrigins;
+    const auto oldBindings = bindings(oldAssets), newBindings = bindings(newAssets);
+    QSet<QString> originPaths;
+    for (const auto value : json["unmanagedBindings"].toArray()) {
+        const auto origin = value.toObject();
+        const auto id = origin["id"].toString(), path = origin["path"].toString();
+        const auto found = newBindings.find(id);
+        const double type = origin["type"].toDouble(-1);
+        if (origin.size() != 3 || !origin["id"].isString() || !origin["path"].isString() ||
+            !origin["type"].isDouble() || !validId(id) || !assetPath(path) ||
+            recovery.origins.unmanaged.count(id) || originPaths.contains(pathKey(path)) ||
+            oldBindings.count(id) || found == newBindings.end() ||
+            path != found->second.path || type != int(found->second.runtimeType))
+            return failure(error, "Invalid, duplicate or inconsistent original unmanaged binding provenance.");
+        const auto original = runtimeDeclaration(before, id);
+        const auto file = std::find_if(recovery.files.begin(), recovery.files.end(),
+            [&path](const RecoveredFile &entry) { return entry.path == path; });
+        if (original ? (QString::fromUtf8(original->path) != path || int(original->type) != type) :
+            (file == recovery.files.end() || !file->expected.exists))
+            return failure(error, "Unmanaged binding provenance cannot invent a pre-existing runtime declaration or imported file.");
+        recovery.origins.unmanaged.emplace(id, binding(found->second));
+        originPaths.insert(pathKey(path));
+    }
+    for (const auto &pair : newBindings) {
+        if (oldBindings.count(pair.first)) continue;
+        if (const auto original = runtimeDeclaration(before, pair.first)) {
+            if (QString::fromUtf8(original->path) != pair.second.path || original->type != pair.second.runtimeType ||
+                (preciseOrigins && !recovery.origins.unmanaged.count(pair.first)))
+                return failure(error, "Recovery must preserve the exact original unmanaged binding provenance.");
+            recovery.origins.unmanaged.emplace(pair.first, binding(pair.second));
+        } else if (!preciseOrigins) {
+            const auto file = std::find_if(recovery.files.begin(), recovery.files.end(),
+                [&pair](const RecoveredFile &entry) { return entry.path == pair.second.path; });
+            if (file != recovery.files.end() && file->expected.exists) recovery.origins.unknown.insert(pair.first);
+        }
+    }
     for (const auto &pair : newAssets) {
         const auto old = oldAssets.find(pair.first);
         const auto &snapshot = pair.second.snapshot;
@@ -961,18 +1075,14 @@ bool parseAnyRecord(const QString &root, const QByteArray &bytes, const QString 
     return parseRecord(bytes, manifest, record, error);
 }
 
-Bindings bindings(const AssetStates &states)
+bool normalizeManifest(StudioDraft *draft, const AssetStates &states, const Bindings &owned, QString *error,
+    const BindingOrigins &origins = {})
 {
-    Bindings result;
-    for (const auto &pair : states)
-        for (const auto &file : pair.second.snapshot.outputs)
-            if (!file.runtimeId.isEmpty()) result.emplace(file.runtimeId, file);
-    return result;
-}
-
-bool normalizeManifest(StudioDraft *draft, const AssetStates &states, const Bindings &owned, QString *error)
-{
-    auto wanted = bindings(states);
+    const auto wanted = bindings(states);
+    for (const auto &id : origins.unknown)
+        if (owned.count(id) && !wanted.count(id))
+            return failure(error, "Original runtime binding ownership is ambiguous in this older recovery: " + id +
+                ". Reset is refused; retain the recovery or explicitly commit the current participant before resetting it.");
     if (std::any_of(wanted.begin(), wanted.end(),
         [](const auto &pair) { return pair.second.runtimeType == NOVA_ASSET_AUDIO; })) {
         NovaProject project{};
@@ -991,6 +1101,7 @@ bool normalizeManifest(StudioDraft *draft, const AssetStates &states, const Bind
         managed.emplace(pair);
     }
     if (managed.empty()) return true;
+    auto missing = wanted;
     QByteArray manifest;
     const auto lines = draft->manifest.split('\n');
     static const QRegularExpression declaration("^(sprite|model|audio)[ \\t]+([^ \\t]+)[ \\t]+(.+)$");
@@ -1004,15 +1115,16 @@ bool normalizeManifest(StudioDraft *draft, const AssetStates &states, const Bind
                     match.captured(1) == "model" ? NOVA_ASSET_MODEL : NOVA_ASSET_AUDIO;
                 if (found->second.path != match.captured(3) || found->second.runtimeType != type)
                     return failure(error, "Runtime binding conflicts with an existing declaration: " + match.captured(2));
-                continue;
+                if (!wanted.count(found->first) && !origins.unmanaged.count(found->first)) continue;
+                missing.erase(found->first);
             }
         }
         manifest += line;
         if (i + 1 < lines.size()) manifest += '\n';
     }
     const auto newline = draft->manifest.contains("\r\n") ? QByteArray("\r\n") : QByteArray("\n");
-    if (!manifest.isEmpty() && !manifest.endsWith('\n')) manifest += newline;
-    for (const auto &pair : wanted)
+    if (!missing.empty() && !manifest.isEmpty() && !manifest.endsWith('\n')) manifest += newline;
+    for (const auto &pair : missing)
         manifest += QByteArray(pair.second.runtimeType == NOVA_ASSET_SPRITE ? "sprite " :
             pair.second.runtimeType == NOVA_ASSET_MODEL ? "model " : "audio ") +
             pair.first.toUtf8() + " " + pair.second.path.toUtf8() + newline;
@@ -1031,9 +1143,14 @@ void setVersions(AssetStates *states, const Files &files)
 
 bool makeRecord(const QString &manifest, const StudioDraft &draft, const NovaProject &project,
     const Files &files, const AssetStates &before, const AssetStates &after, const Recovery *interrupted,
-    Recovery *result, QString *error)
+    Recovery *result, QString *error, const BindingOrigins &origins = {})
 {
     Recovery recovery{manifest, draft.selection, QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs), {}, 2};
+    recovery.preciseOrigins = origins.unknown.isEmpty();
+    const auto wanted = bindings(after), committed = bindings(before);
+    for (const auto &pair : origins.unmanaged)
+        if (wanted.count(pair.first) && !committed.count(pair.first))
+            recovery.origins.unmanaged.emplace(pair.first, binding(pair.second));
     Payloads payloads;
     std::map<QString, QByteArray> hashes;
     for (const auto &pair : after)
@@ -1228,7 +1345,9 @@ bool rebaseRecovery(const QString &root, const Recovery &commit, const Files &co
         if (entry.path == QString::fromUtf8(project.entry)) draft.script = entry.after;
         else if (entry.path == QString::fromUtf8(project.scene)) draft.scene = entry.after;
     draft.selection = pending.selection;
-    if (!normalizeManifest(&draft, after, bindings(committedAssets), error) ||
+    auto origins = pending.origins;
+    commitOrigins(committedAssets, &origins);
+    if (!normalizeManifest(&draft, after, bindings(committedAssets), error, origins) ||
         !nova_project_parse(&project, draft.manifest.constData(), size_t(draft.manifest.size()), detail, sizeof(detail)) ||
         !validateAssets(after, project, commit.manifest, error))
         return failure(error, "Newer recovery could not be rebased on the completed commit; it is retained.\n" +
@@ -1257,7 +1376,7 @@ bool rebaseRecovery(const QString &root, const Recovery &commit, const Files &co
         files.emplace(path, std::move(file));
     }
     Recovery rebased;
-    if (!makeRecord(commit.manifest, draft, project, files, committedAssets, after, nullptr, &rebased, error)) return false;
+    if (!makeRecord(commit.manifest, draft, project, files, committedAssets, after, nullptr, &rebased, error, origins)) return false;
     rebased.time = pending.time;
     if (!storeRecovery(root, recordFile->rootIdentity(), rebased, error)) return false;
     return recordFile->replace(recordV2(rebased), error) && recordFile->save(error);
@@ -1332,6 +1451,7 @@ struct ProjectDocument::DiskState {
     std::unique_ptr<File> recovery;
     AssetStates assets, savedAssets;
     Bindings ownedBindings;
+    BindingOrigins bindingOrigins;
     std::unique_ptr<Recovery> interrupted;
 };
 
@@ -1528,12 +1648,7 @@ bool ProjectDocument::dirty() const
     if (!disk_) return false;
     if (disk_->interrupted) return true;
     if (QFileInfo::exists(QDir(root_).filePath(journalName))) return true;
-    const auto manifest = QFileInfo(path_).fileName();
-    for (const auto &path : pathsFor(project_, manifest))
-        if (disk_->files.at(path)->saved() != bytesFor(draft_, project_, path, manifest)) return true;
-    if ((!disk_->assets.empty() || disk_->files.at(indexName)->exists()) &&
-        disk_->files.at(indexName)->saved() != indexBytes(disk_->assets, manifest)) return true;
-    return false;
+    return hasDraftChanges(draft_, project_, QFileInfo(path_).fileName(), disk_->files, disk_->assets);
 }
 
 void ProjectDocument::apply(const StudioDraft &draft)
@@ -1564,7 +1679,7 @@ void ProjectDocument::select(const QString &id)
 
 bool ProjectDocument::normalizeAssetManifest(StudioDraft *draft, QString *error) const
 {
-    return !disk_ || normalizeManifest(draft, disk_->assets, disk_->ownedBindings, error);
+    return !disk_ || normalizeManifest(draft, disk_->assets, disk_->ownedBindings, error, disk_->bindingOrigins);
 }
 
 bool ProjectDocument::readAssetFile(const QString &relative, QByteArray *bytes, StudioDiskVersion *expected, QString *error) const
@@ -1668,9 +1783,11 @@ bool ProjectDocument::stageAssetSnapshot(const StudioAssetSnapshot &input, QStri
     state.snapshot = snapshot;
     AssetStates candidate = disk_->assets;
     candidate[snapshot.id] = std::move(state);
+    auto origins = disk_->bindingOrigins;
+    rememberOrigins(&origins, project_, disk_->ownedBindings, candidate);
     StudioDraft draft = draft_;
     NovaProject project{}; NovaScene scene{};
-    if (!normalizeManifest(&draft, candidate, disk_->ownedBindings, error) || !parse(draft, &project, &scene, error) ||
+    if (!normalizeManifest(&draft, candidate, disk_->ownedBindings, error, origins) || !parse(draft, &project, &scene, error) ||
         !validateAssets(candidate, project, QFileInfo(path_).fileName(), error)) return false;
     const auto ownString = [](QString &text) { text = QString(text.constData(), text.size()); };
     const auto ownFile = [&ownString](StudioAssetFile &file) {
@@ -1724,10 +1841,85 @@ bool ProjectDocument::stageAssetSnapshot(const StudioAssetSnapshot &input, QStri
         if (!needed.contains(it->first)) it = disk_->files.erase(it);
         else ++it;
     disk_->assets = std::move(candidate);
-    for (const auto &pair : bindings(disk_->assets)) disk_->ownedBindings.emplace(pair);
+    disk_->bindingOrigins = std::move(origins);
+    retainBindings(disk_->assets, &disk_->ownedBindings, &disk_->bindingOrigins);
     draft_ = draft; project_ = project; scene_ = scene;
     recoveryTimer_->start();
     watch();
+    emit changed();
+    return true;
+}
+
+bool ProjectDocument::discardAssetSnapshot(const QString &id, QString *error)
+{
+    if (!disk_ || !lock_ || !lock_->isLocked())
+        return failure(error, "Open a locked project before discarding an asset snapshot.");
+    if (generated_)
+        return failure(error, "Legacy generated outputs are read-only here. Use the compatibility editor.");
+    if (writing_)
+        return failure(error, "A project write is in progress; wait before discarding an asset snapshot.");
+    if (disk_->interrupted)
+        return failure(error, "An interrupted commit cannot be discarded; recover its recorded writes first.");
+    const auto manifest = QFileInfo(path_).fileName();
+    const auto &identity = disk_->files.at(manifest)->rootIdentity();
+    File journal;
+    if (!journal.open(root_, journalName, JournalLimit, true, error)) return false;
+    if (!sameRoot(journal.rootIdentity(), identity))
+        return failure(error, "Project root changed before asset discard; reopen explicitly.");
+    if (journal.exists())
+        return failure(error, "An interrupted commit cannot be discarded; recover its recorded writes first.");
+    if (recoveryPending_)
+        return failure(error, "An older recovery snapshot needs an explicit Restore or Discard decision before resetting an asset.");
+    if (!disk_->assets.count(id))
+        return failure(error, "No asset participant with that ID is registered: " + id);
+    if (!checkExternal(error) || !disk_->recovery->check(error)) return false;
+
+    AssetStates candidate = disk_->assets;
+    const auto saved = disk_->savedAssets.find(id);
+    if (saved == disk_->savedAssets.end()) candidate.erase(id);
+    else candidate.at(id) = saved->second;
+    StudioDraft draft = draft_;
+    NovaProject project{}; NovaScene scene{};
+    if (!normalizeManifest(&draft, candidate, disk_->ownedBindings, error, disk_->bindingOrigins) ||
+        !parse(draft, &project, &scene, error) || !validateAssets(candidate, project, manifest, error))
+        return false;
+    const auto needed = commitPaths(project, manifest, disk_->savedAssets, candidate);
+    if (!validateCommitPaths(needed, error)) return false;
+    const bool pending = hasDraftChanges(draft, project, manifest, disk_->files, candidate);
+    auto recovery = std::make_unique<File>();
+    if (!recovery->open(root_, recoveryName, JournalLimit, true, error) ||
+        !sameRoot(recovery->rootIdentity(), identity) ||
+        version(*recovery, recoveryName) != version(*disk_->recovery, recoveryName))
+        return failure(error, "Recovery changed before asset discard; all drafts are retained.");
+    {
+        QScopedValueRollback<bool> writing(writing_, true);
+        if (pending) {
+            QByteArray bytes;
+            if (!candidate.empty() || disk_->files.at(indexName)->exists()) {
+                Recovery record;
+                if (!makeRecord(manifest, draft, project, disk_->files, disk_->savedAssets, candidate, nullptr,
+                    &record, error, disk_->bindingOrigins) || !storeRecovery(root_, identity, record, error)) return false;
+                bytes = recordV2(record);
+            } else bytes = record(manifest, draft, project, disk_->files);
+            if (!checkExternal(error) || !journal.check(error) ||
+                !recovery->replace(bytes, error) || !recovery->save(error)) return false;
+        } else {
+            if (!checkExternal(error) || !journal.check(error) || !recovery->remove(error)) return false;
+            if (!recovery->open(root_, recoveryName, JournalLimit, true, error) ||
+                !sameRoot(recovery->rootIdentity(), identity) || recovery->exists())
+                return failure(error, "Recovery cleanup changed externally; project files and in-memory drafts are retained.");
+        }
+        disk_->assets = std::move(candidate);
+        retainBindings(disk_->assets, &disk_->ownedBindings, &disk_->bindingOrigins);
+        for (auto it = disk_->files.begin(); it != disk_->files.end();)
+            if (!needed.contains(it->first)) it = disk_->files.erase(it);
+            else ++it;
+        disk_->recovery = std::move(recovery);
+        draft_ = draft; project_ = project; scene_ = scene;
+        recoveryTimer_->stop();
+    }
+    watch();
+    if (externalChanged_) { externalChanged_ = false; emit externalChange({}); }
     emit changed();
     return true;
 }
@@ -1859,7 +2051,7 @@ bool ProjectDocument::writeRecovery(QString *error)
     if (!disk_->assets.empty() || disk_->files.at(indexName)->exists()) {
         Recovery recovery;
         if (!makeRecord(QFileInfo(path_).fileName(), draft_, project_, disk_->files,
-            disk_->savedAssets, disk_->assets, disk_->interrupted.get(), &recovery, error)) return false;
+            disk_->savedAssets, disk_->assets, disk_->interrupted.get(), &recovery, error, disk_->bindingOrigins)) return false;
         QScopedValueRollback<bool> writing(writing_, true);
         return storeRecovery(root_, disk_->files.at(QFileInfo(path_).fileName())->rootIdentity(), recovery, error) &&
             disk_->recovery->replace(recordV2(recovery), error) && disk_->recovery->save(error);
@@ -1911,7 +2103,7 @@ bool ProjectDocument::saveRecoveryCopy(const QString &destination, QString *erro
     if (!disk_->assets.empty() || disk_->files.at(indexName)->exists()) {
         Recovery recovery;
         if (!makeRecord(QFileInfo(path_).fileName(), draft_, project_, disk_->files, disk_->savedAssets, disk_->assets,
-            disk_->interrupted.get(), &recovery, error)) return false;
+            disk_->interrupted.get(), &recovery, error, disk_->bindingOrigins)) return false;
         recovery.store = ".nova-studio-copy-" + QUuid::createUuid().toString(QUuid::WithoutBraces);
         if (!storeRecovery(target.absolutePath(), copy.rootIdentity(), recovery, error)) return false;
         return copy.replace(recordV2(recovery), error) && copy.save(error);
@@ -2018,7 +2210,8 @@ bool ProjectDocument::saveAssetBatch(QString *error)
         return failure(error, "An older recovery snapshot needs an explicit Restore or Discard decision.");
     Recovery recovery;
     const auto manifest = QFileInfo(path_).fileName();
-    if (!makeRecord(manifest, draft_, project_, disk_->files, disk_->savedAssets, disk_->assets, nullptr, &recovery, error))
+    if (!makeRecord(manifest, draft_, project_, disk_->files, disk_->savedAssets, disk_->assets, nullptr, &recovery, error,
+        disk_->bindingOrigins))
         return false;
     const AssetStates committedAssets = disk_->assets;
     {
@@ -2044,6 +2237,7 @@ bool ProjectDocument::saveAssetBatch(QString *error)
             return false;
         }
         disk_->savedAssets = committedAssets;
+        commitOrigins(committedAssets, &disk_->bindingOrigins);
         setVersions(&disk_->savedAssets, disk_->files);
         setVersions(&disk_->assets, disk_->files);
         const auto retained = commitPaths(project_, manifest, committedAssets, committedAssets);
@@ -2090,7 +2284,9 @@ bool ProjectDocument::restoreAssetRecovery(QString *error)
     setVersions(&after, files);
     disk_->files = std::move(files);
     disk_->assets = std::move(after);
-    for (const auto &pair : bindings(disk_->assets)) disk_->ownedBindings.emplace(pair);
+    disk_->bindingOrigins = recovery.origins;
+    commitOrigins(disk_->savedAssets, &disk_->bindingOrigins);
+    retainBindings(disk_->assets, &disk_->ownedBindings, &disk_->bindingOrigins);
     recoveryPending_ = false;
     push(next, "Recover project and asset snapshots", false);
     watch();
@@ -2121,7 +2317,9 @@ bool ProjectDocument::resumeAssetCommit(QString *error)
         }
     StudioDraft draft = draft_;
     NovaProject project{}; NovaScene scene{};
-    if (!normalizeManifest(&draft, current, disk_->ownedBindings, error) || !parse(draft, &project, &scene, error) ||
+    auto origins = disk_->bindingOrigins;
+    commitOrigins(committedAssets, &origins);
+    if (!normalizeManifest(&draft, current, disk_->ownedBindings, error, origins) || !parse(draft, &project, &scene, error) ||
         !validateAssets(current, project, manifest, error)) return false;
     recoveryTimer_->stop();
     {
@@ -2157,6 +2355,8 @@ bool ProjectDocument::resumeAssetCommit(QString *error)
         disk_->files = std::move(refreshed);
         disk_->assets = std::move(current);
         disk_->savedAssets = committedAssets;
+        disk_->bindingOrigins = std::move(origins);
+        retainBindings(disk_->assets, &disk_->ownedBindings, &disk_->bindingOrigins);
         disk_->interrupted.reset();
         draft_ = draft; project_ = project; scene_ = scene;
         disk_->recovery = std::move(recovered);

@@ -80,6 +80,7 @@ public:
     static constexpr qsizetype AssetSnapshotLimit = 256 * 1024 * 1024;
     bool readAssetFile(const QString &relative, QByteArray *bytes, StudioDiskVersion *expected, QString *error) const;
     bool stageAssetSnapshot(const StudioAssetSnapshot &snapshot, QString *error);
+    bool discardAssetSnapshot(const QString &id, QString *error);
     QVector<StudioAssetSnapshot> assetSnapshots() const;
     QVector<StudioAssetSnapshot> savedAssetSnapshots() const;
     StudioAssetPublication assetPublication(const QString &id) const;

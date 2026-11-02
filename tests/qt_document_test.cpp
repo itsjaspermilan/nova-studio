@@ -8,6 +8,7 @@
 #include <QTemporaryDir>
 #include <QtEndian>
 #include <QtTest>
+#include <cstring>
 #include <unistd.h>
 
 extern "C" {
@@ -61,10 +62,10 @@ static QByteArray pcmWav(quint32 frames = 240)
     return bytes;
 }
 
-static StudioAssetSnapshot assetSnapshot(NovaAssetType type = NOVA_ASSET_SPRITE)
+static StudioAssetSnapshot assetSnapshot(NovaAssetType type = NOVA_ASSET_SPRITE, const QString &id = "authored")
 {
     StudioAssetSnapshot snapshot;
-    snapshot.id = "authored"; snapshot.kind = type == NOVA_ASSET_AUDIO ? "sound" : type == NOVA_ASSET_MODEL ? "mesh" : "sprite";
+    snapshot.id = id; snapshot.kind = type == NOVA_ASSET_AUDIO ? "sound" : type == NOVA_ASSET_MODEL ? "mesh" : "sprite";
     snapshot.revision = 17;
     snapshot.metadata = {{"name", "Authored asset"}, {"componentVersion", 1}};
     snapshot.source.path = type == NOVA_ASSET_AUDIO ? "sources/authored.sound-source" :
@@ -83,6 +84,11 @@ static StudioAssetSnapshot assetSnapshot(NovaAssetType type = NOVA_ASSET_SPRITE)
         metadata.path = "generated/authored/sound.json";
         metadata.bytes = "{\"format\":\"sound-storage-fixture\",\"frames\":240}";
         snapshot.outputs.append(metadata);
+    }
+    snapshot.source.path.replace("authored", id);
+    for (auto &file : snapshot.outputs) {
+        file.path.replace("authored", id);
+        file.runtimeId.replace("authored", id);
     }
     return snapshot;
 }
@@ -1336,6 +1342,745 @@ private slots:
         QVERIFY(document.save(&error));
     }
 
+    void discardNewParticipantKeepsOtherDrafts_data() { assetPublishedRoundTrip_data(); }
+
+    void discardNewParticipantKeepsOtherDrafts()
+    {
+        QFETCH(int, type);
+        QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-asset-discard-new-XXXXXX");
+        QString error, path, root;
+        auto removed = assetSnapshot(NovaAssetType(type));
+        auto retained = assetSnapshot(NOVA_ASSET_SPRITE, "other");
+        QByteArray retainedDigest, scene, script;
+        {
+            ProjectDocument document;
+            QVERIFY(document.create(temporary.path(), "DiscardNew", false, NOVA_EXAMPLES, &error));
+            path = document.path(); root = document.root();
+            QVERIFY(QDir(root).mkpath("sources"));
+            QVERIFY(QDir(root).mkpath("generated/authored"));
+            QVERIFY(writeFile(root + "/" + removed.source.path, "independent original source"));
+            for (const auto &file : removed.outputs) QVERIFY(writeFile(root + "/" + file.path, file.bytes));
+            QVERIFY(expectedVersions(document, &removed, &error));
+            QVERIFY(expectedVersions(document, &retained, &error));
+            QVERIFY(document.stageAssetSnapshot(removed, &error));
+            QVERIFY(document.stageAssetSnapshot(retained, &error));
+            auto moved = document.scene(); moved.objects[0].position.x += 12;
+            QVERIFY(document.editScene(moved, "player", "Move independently", &error));
+            QVERIFY(document.editScript(QString::fromUtf8(document.draft().script) + "\n-- keep this Lua edit\n", &error));
+            scene = document.draft().scene; script = document.draft().script;
+            retainedDigest = ProjectDocument::assetSnapshotDigest(document.assetSnapshots()[1]);
+            const auto history = document.undoStack()->count();
+            QVERIFY(document.writeRecovery(&error));
+            QSignalSpy changed(&document, &ProjectDocument::changed);
+            QSignalSpy acknowledged(&document, &ProjectDocument::assetSnapshotSaved);
+            QVERIFY2(document.discardAssetSnapshot(removed.id, &error), qPrintable(error));
+            QCOMPARE(changed.size(), 1);
+            QCOMPARE(acknowledged.size(), 0);
+            QCOMPARE(document.assetSnapshots().size(), 1);
+            QCOMPARE(ProjectDocument::assetSnapshotDigest(document.assetSnapshots()[0]), retainedDigest);
+            QCOMPARE(document.draft().scene, scene);
+            QCOMPARE(document.draft().script, script);
+            QCOMPARE(document.selection(), QString("player"));
+            QCOMPARE(document.undoStack()->count(), history);
+            QCOMPARE(document.project().count, size_t(2));
+            QVERIFY(document.dirty());
+            QVERIFY(!document.draft().manifest.contains("authored_output"));
+            QCOMPARE(readFile(root + "/" + removed.source.path), QByteArray("independent original source"));
+            for (const auto &file : removed.outputs) QCOMPARE(readFile(root + "/" + file.path), file.bytes);
+            QVERIFY(writeFile(root + "/" + removed.source.path, "now independently edited"));
+            QVERIFY2(document.checkExternal(&error), qPrintable(error));
+            document.undoStack()->undo();
+            QVERIFY(!document.draft().manifest.contains("authored_output"));
+            document.undoStack()->redo();
+            QCOMPARE(document.draft().script, script);
+            QVERIFY(!document.draft().manifest.contains("authored_output"));
+            QVERIFY(document.writeRecovery(&error));
+        }
+        ProjectDocument reopened;
+        QVERIFY(reopened.open(path, &error));
+        QVERIFY2(reopened.restoreRecovery(&error), qPrintable(error));
+        QCOMPARE(reopened.assetSnapshots().size(), 1);
+        QCOMPARE(ProjectDocument::assetSnapshotDigest(reopened.assetSnapshots()[0]), retainedDigest);
+        QCOMPARE(reopened.draft().scene, scene);
+        QCOMPARE(reopened.draft().script, script);
+        QVERIFY2(reopened.save(&error), qPrintable(error));
+        QCOMPARE(readFile(root + "/" + removed.source.path), QByteArray("now independently edited"));
+        for (const auto &file : removed.outputs) QCOMPARE(readFile(root + "/" + file.path), file.bytes);
+    }
+
+    void discardRestoresCommittedParticipant_data()
+    {
+        QTest::addColumn<int>("type");
+        QTest::addColumn<bool>("sourceOnly");
+        for (const auto type : {NOVA_ASSET_SPRITE, NOVA_ASSET_MODEL, NOVA_ASSET_AUDIO}) {
+            QTest::newRow(qPrintable(QString("published-%1").arg(int(type)))) << int(type) << false;
+            QTest::newRow(qPrintable(QString("source-only-%1").arg(int(type)))) << int(type) << true;
+        }
+    }
+
+    void discardRestoresCommittedParticipant()
+    {
+        QFETCH(int, type);
+        QFETCH(bool, sourceOnly);
+        QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-asset-discard-saved-XXXXXX");
+        ProjectDocument document;
+        QString error;
+        QVERIFY(document.create(temporary.path(), "DiscardSaved", false, NOVA_EXAMPLES, &error));
+        auto snapshot = assetSnapshot(NovaAssetType(type));
+        QVERIFY(expectedVersions(document, &snapshot, &error));
+        QVERIFY(document.stageAssetSnapshot(snapshot, &error));
+        QVERIFY2(document.save(&error), qPrintable(error));
+        if (sourceOnly) {
+            snapshot = document.assetSnapshots()[0];
+            snapshot.revision++; snapshot.source.bytes += "\nsource saved without fresh output";
+            snapshot.mode = StudioAssetSnapshot::Mode::SourceOnly;
+            snapshot.derivedProblem = "Keep the old publication";
+            snapshot.outputs.clear();
+            QVERIFY(document.stageAssetSnapshot(snapshot, &error));
+            QVERIFY(document.save(&error));
+        }
+        const auto saved = document.savedAssetSnapshots()[0];
+        const auto publication = document.assetPublication(saved.id);
+        const auto manifest = document.draft().manifest;
+        const auto index = readFile(document.root() + "/.nova-studio-assets");
+        auto newer = saved;
+        newer.revision++; newer.source.bytes += "\ndiscard this candidate";
+        newer.metadata["name"] = "Discard this name";
+        newer.mode = StudioAssetSnapshot::Mode::PublishDerived; newer.derivedProblem.clear();
+        newer.outputs[0].runtimeId += "_new";
+        newer.outputs[0].path.replace("generated/authored/", "generated/new/");
+        QVERIFY(expectedVersions(document, &newer, &error));
+        QVERIFY(document.stageAssetSnapshot(newer, &error));
+        QVERIFY(document.writeRecovery(&error));
+        QSignalSpy acknowledgments(&document, &ProjectDocument::assetSnapshotSaved);
+        QVERIFY2(document.discardAssetSnapshot(saved.id, &error), qPrintable(error));
+        const auto restored = document.assetSnapshots()[0];
+        QCOMPARE(ProjectDocument::assetSnapshotDigest(restored), ProjectDocument::assetSnapshotDigest(saved));
+        QCOMPARE(restored.source.expected, saved.source.expected);
+        for (qsizetype i = 0; i < saved.outputs.size(); ++i)
+            QCOMPARE(restored.outputs[i].expected, saved.outputs[i].expected);
+        QCOMPARE(document.assetPublication(saved.id).revision, publication.revision);
+        QCOMPARE(document.assetPublication(saved.id).sourceDigest, publication.sourceDigest);
+        QCOMPARE(document.assetPublication(saved.id).problem, publication.problem);
+        QCOMPARE(document.assetPublication(saved.id).stale, publication.stale);
+        QVERIFY(document.assetPublication(saved.id).saved);
+        QCOMPARE(document.draft().manifest, manifest);
+        QCOMPARE(readFile(document.root() + "/.nova-studio-assets"), index);
+        QCOMPARE(readFile(document.root() + "/" + saved.source.path), saved.source.bytes);
+        for (const auto &file : saved.outputs) QCOMPARE(readFile(document.root() + "/" + file.path), file.bytes);
+        QVERIFY(!QFileInfo::exists(document.root() + "/generated/new"));
+        QCOMPARE(acknowledgments.size(), 0);
+        QVERIFY(!document.dirty());
+        QVERIFY(!QFileInfo::exists(document.root() + "/.nova-studio-recovery"));
+        QCOMPARE(document.runtimeAssetsReady(&error), !sourceOnly);
+    }
+
+    void discardAdoptionPreservesUnmanagedBinding_data()
+    {
+        QTest::addColumn<bool>("imported");
+        QTest::addColumn<bool>("recovered");
+        QTest::newRow("committed-runtime") << false << false;
+        QTest::newRow("unsaved-import") << true << false;
+        QTest::newRow("recovered-runtime") << false << true;
+        QTest::newRow("recovered-import") << true << true;
+    }
+
+    void discardSavedKeepsOtherParticipantAndInvalidLuaDraft()
+    {
+        QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-asset-discard-other-XXXXXX");
+        QString error, path;
+        QByteArray otherDigest, source, output, scene, script;
+        {
+            ProjectDocument document;
+            QVERIFY(document.create(temporary.path(), "DiscardOther", false, NOVA_EXAMPLES, &error));
+            path = document.path();
+            auto first = assetSnapshot(NOVA_ASSET_AUDIO), second = assetSnapshot(NOVA_ASSET_MODEL, "other");
+            QVERIFY(expectedVersions(document, &first, &error));
+            QVERIFY(expectedVersions(document, &second, &error));
+            QVERIFY(document.stageAssetSnapshot(first, &error));
+            QVERIFY(document.stageAssetSnapshot(second, &error));
+            QVERIFY(document.save(&error));
+            first = document.assetSnapshots()[0]; second = document.assetSnapshots()[1];
+            source = first.source.bytes; output = first.outputs[0].bytes;
+            first.revision++; first.source.bytes += "\ndiscard this Sound edit"; first.outputs[0].bytes = pcmWav(480);
+            second.revision++; second.source.bytes += "\nkeep this Mesh edit"; second.outputs[0].bytes = "not a publishable GLB";
+            QVERIFY(document.stageAssetSnapshot(first, &error));
+            QVERIFY(document.stageAssetSnapshot(second, &error));
+            auto moved = document.scene(); moved.objects[0].position.x += 17;
+            QVERIFY(document.editScene(moved, "player", "Keep position", &error));
+            QVERIFY(document.editScript("function incomplete(", &error));
+            scene = document.draft().scene; script = document.draft().script;
+            otherDigest = ProjectDocument::assetSnapshotDigest(document.assetSnapshots()[1]);
+            const auto history = document.undoStack()->count();
+            QVERIFY(document.writeRecovery(&error));
+            QVERIFY2(document.discardAssetSnapshot(first.id, &error), qPrintable(error));
+            QCOMPARE(document.assetSnapshots().size(), 2);
+            QVERIFY(document.assetPublication(first.id).saved);
+            QVERIFY(!document.assetPublication(first.id).stale);
+            QCOMPARE(document.assetSnapshots()[0].source.bytes, source);
+            QCOMPARE(document.assetSnapshots()[0].outputs[0].bytes, output);
+            QCOMPARE(ProjectDocument::assetSnapshotDigest(document.assetSnapshots()[1]), otherDigest);
+            QCOMPARE(document.draft().scene, scene);
+            QCOMPARE(document.draft().script, script);
+            QCOMPARE(document.selection(), QString("player"));
+            QCOMPARE(document.undoStack()->count(), history);
+            QVERIFY(document.dirty());
+            QVERIFY(!document.runtimeAssetsReady(&error));
+        }
+        ProjectDocument reopened;
+        QVERIFY(reopened.open(path, &error));
+        QVERIFY2(reopened.restoreRecovery(&error), qPrintable(error));
+        QCOMPARE(reopened.assetSnapshots().size(), 2);
+        QCOMPARE(reopened.assetSnapshots()[0].source.bytes, source);
+        QCOMPARE(reopened.assetSnapshots()[0].outputs[0].bytes, output);
+        QCOMPARE(ProjectDocument::assetSnapshotDigest(reopened.assetSnapshots()[1]), otherDigest);
+        QCOMPARE(reopened.draft().scene, scene);
+        QCOMPARE(reopened.draft().script, script);
+        QVERIFY(reopened.dirty());
+    }
+
+    void discardAdoptionPreservesUnmanagedBinding()
+    {
+        QFETCH(bool, imported);
+        QFETCH(bool, recovered);
+        QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-asset-discard-adopt-XXXXXX");
+        auto document = std::make_unique<ProjectDocument>();
+        QString error;
+        QVERIFY(document->create(temporary.path(), "DiscardAdoption", false, NOVA_EXAMPLES, &error));
+        const auto path = document->path(), root = document->root();
+        QString runtimeId = "starter";
+        if (imported)
+            QVERIFY(document->importAsset(QString(NOVA_EXAMPLES) + "/sprites/assets/tile.png", &runtimeId, &error));
+        const auto originalManifest = document->draft().manifest;
+        const auto runtimePath = QString::fromUtf8(document->project().assets[imported ? 1 : 0].path);
+        const auto originalOutput = readFile(root + "/" + runtimePath);
+        auto snapshot = assetSnapshot();
+        QString borrowedId(runtimeId.constData(), runtimeId.size()), borrowedPath(runtimePath.constData(), runtimePath.size());
+        snapshot.outputs[0].runtimeId = QString::fromRawData(borrowedId.constData(), borrowedId.size());
+        snapshot.outputs[0].path = QString::fromRawData(borrowedPath.constData(), borrowedPath.size());
+        QVERIFY(expectedVersions(*document, &snapshot, &error));
+        QVERIFY(document->stageAssetSnapshot(snapshot, &error));
+        borrowedId.fill('x'); borrowedPath.fill('x');
+        QCOMPARE(document->draft().manifest, originalManifest);
+        auto moved = document->scene(); moved.objects[0].position.x += 9;
+        QVERIFY(document->editScene(moved, "player", "Keep this movement", &error));
+        const auto scene = document->draft().scene;
+        QVERIFY(document->writeRecovery(&error));
+        if (imported && recovered) {
+            const auto copy = temporary.path() + "/adoption-copy.json";
+            QVERIFY(document->saveRecoveryCopy(copy, &error));
+            const auto origins = QJsonDocument::fromJson(readFile(copy)).object()["unmanagedBindings"].toArray();
+            QCOMPARE(origins.size(), 1);
+            QCOMPARE(origins[0].toObject()["id"].toString(), runtimeId);
+            QCOMPARE(origins[0].toObject()["path"].toString(), runtimePath);
+        }
+        if (recovered) {
+            document.reset();
+            document = std::make_unique<ProjectDocument>();
+            QVERIFY(document->open(path, &error));
+            QVERIFY(document->restoreRecovery(&error));
+        }
+        QVERIFY2(document->discardAssetSnapshot(snapshot.id, &error), qPrintable(error));
+        QVERIFY(document->assetSnapshots().isEmpty());
+        QCOMPARE(document->draft().manifest, originalManifest);
+        QCOMPARE(document->draft().scene, scene);
+        QCOMPARE(document->project().count, size_t(imported ? 2 : 1));
+        QCOMPARE(readFile(root + "/" + runtimePath), originalOutput);
+        QVERIFY(!QFileInfo::exists(root + "/" + snapshot.source.path));
+        QSignalSpy problems(document.get(), &ProjectDocument::problem);
+        document->undoStack()->undo();
+        QVERIFY(document->assetSnapshots().isEmpty());
+        if (!recovered) {
+            QCOMPARE(document->project().count, size_t(imported ? 2 : 1));
+            if (imported) {
+                document->undoStack()->undo();
+                QCOMPARE(document->project().count, size_t(1));
+                document->undoStack()->redo();
+            }
+        }
+        document->undoStack()->redo();
+        QCOMPARE(document->draft().manifest, originalManifest);
+        QCOMPARE(document->draft().scene, scene);
+        QCOMPARE(problems.size(), 0);
+        QVERIFY(document->writeRecovery(&error));
+        document.reset();
+        document = std::make_unique<ProjectDocument>();
+        QVERIFY(document->open(path, &error));
+        QVERIFY2(document->restoreRecovery(&error), qPrintable(error));
+        QVERIFY(document->assetSnapshots().isEmpty());
+        QCOMPARE(document->draft().manifest, originalManifest);
+        QVERIFY(document->save(&error));
+        QCOMPARE(readFile(root + "/" + runtimePath), originalOutput);
+    }
+
+    void discardLastNewParticipantClearsRecovery_data() { assetPublishedRoundTrip_data(); }
+
+    void discardLastNewParticipantClearsRecovery()
+    {
+        QFETCH(int, type);
+        QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-asset-discard-clean-XXXXXX");
+        ProjectDocument document;
+        QString error;
+        QVERIFY(document.create(temporary.path(), "DiscardClean", false, NOVA_EXAMPLES, &error));
+        const auto manifest = document.draft().manifest;
+        auto snapshot = assetSnapshot(NovaAssetType(type));
+        QVERIFY(expectedVersions(document, &snapshot, &error));
+        QVERIFY(document.stageAssetSnapshot(snapshot, &error));
+        QVERIFY(document.writeRecovery(&error));
+        QVERIFY2(document.discardAssetSnapshot(snapshot.id, &error), qPrintable(error));
+        QVERIFY(document.assetSnapshots().isEmpty());
+        QCOMPARE(document.draft().manifest, manifest);
+        QVERIFY(!document.dirty());
+        QVERIFY(document.runtimeAssetsReady(&error));
+        QVERIFY(!QFileInfo::exists(document.root() + "/sources"));
+        QVERIFY(!QFileInfo::exists(document.root() + "/generated"));
+        QVERIFY(!QFileInfo::exists(document.root() + "/.nova-studio-assets"));
+        QVERIFY(!QFileInfo::exists(document.root() + "/.nova-studio-recovery"));
+        QVERIFY(!document.discardAssetSnapshot(snapshot.id, &error));
+        QVERIFY2(error.contains("registered"), qPrintable(error));
+    }
+
+    void discardRefusesUnresolvedRecoveryAndCommit()
+    {
+        QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-asset-discard-blocked-XXXXXX");
+        auto document = std::make_unique<ProjectDocument>();
+        QString error;
+        QVERIFY(!document->discardAssetSnapshot("authored", &error));
+        QVERIFY(document->create(temporary.path(), "DiscardBlocked", false, NOVA_EXAMPLES, &error));
+        const auto path = document->path(), root = document->root();
+        auto snapshot = assetSnapshot();
+        QVERIFY(expectedVersions(*document, &snapshot, &error));
+        QVERIFY(document->stageAssetSnapshot(snapshot, &error));
+        QVERIFY(document->save(&error));
+        snapshot = document->assetSnapshots()[0];
+        snapshot.revision++; snapshot.source.bytes += "\nnew source";
+        QVERIFY(document->stageAssetSnapshot(snapshot, &error));
+        QVERIFY(document->writeRecovery(&error));
+        const auto recovery = readFile(root + "/.nova-studio-recovery");
+        document.reset();
+        document = std::make_unique<ProjectDocument>();
+        QVERIFY(document->open(path, &error));
+        QVERIFY(!document->discardAssetSnapshot(snapshot.id, &error));
+        QVERIFY2(error.contains("recovery"), qPrintable(error));
+        QCOMPARE(readFile(root + "/.nova-studio-recovery"), recovery);
+        QVERIFY(document->restoreRecovery(&error));
+        QVERIFY(writeFile(root + "/.nova-studio-journal", recovery));
+        const auto hash = ProjectDocument::assetSnapshotDigest(document->assetSnapshots()[0]);
+        QVERIFY(!document->discardAssetSnapshot(snapshot.id, &error));
+        QVERIFY2(error.contains("interrupted"), qPrintable(error));
+        QCOMPARE(ProjectDocument::assetSnapshotDigest(document->assetSnapshots()[0]), hash);
+        QCOMPARE(readFile(root + "/.nova-studio-journal"), recovery);
+        QCOMPARE(readFile(root + "/.nova-studio-recovery"), recovery);
+    }
+
+    void discardRejectsExternalChanges_data()
+    {
+        QTest::addColumn<QString>("changedPath");
+        QTest::newRow("source") << QString("sources/authored.nvsprite");
+        QTest::newRow("output") << QString("generated/authored/frame-1.png");
+        QTest::newRow("index") << QString(".nova-studio-assets");
+        QTest::newRow("script") << QString("main.lua");
+        QTest::newRow("recovery") << QString(".nova-studio-recovery");
+    }
+
+    void discardRejectsExternalChanges()
+    {
+        QFETCH(QString, changedPath);
+        QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-asset-discard-conflict-XXXXXX");
+        ProjectDocument document;
+        QString error;
+        QVERIFY(document.create(temporary.path(), "DiscardConflict", false, NOVA_EXAMPLES, &error));
+        auto snapshot = assetSnapshot();
+        QVERIFY(expectedVersions(document, &snapshot, &error));
+        QVERIFY(document.stageAssetSnapshot(snapshot, &error));
+        QVERIFY(document.save(&error));
+        snapshot = document.assetSnapshots()[0];
+        snapshot.revision++; snapshot.source.bytes += "\nkeep on failure";
+        QVERIFY(document.stageAssetSnapshot(snapshot, &error));
+        QVERIFY(document.writeRecovery(&error));
+        const auto recovery = readFile(document.root() + "/.nova-studio-recovery");
+        const auto original = readFile(document.root() + "/" + changedPath);
+        QVERIFY(writeFile(document.root() + "/" + changedPath, original));
+        QSignalSpy changed(&document, &ProjectDocument::changed);
+        QVERIFY(!document.discardAssetSnapshot(snapshot.id, &error));
+        QVERIFY2(error.contains("Disk differs"), qPrintable(error));
+        QCOMPARE(document.assetSnapshots()[0].source.bytes, snapshot.source.bytes);
+        QCOMPARE(document.assetSnapshots()[0].revision, snapshot.revision);
+        QCOMPARE(readFile(document.root() + "/" + changedPath), original);
+        QCOMPARE(readFile(document.root() + "/.nova-studio-recovery"), recovery);
+        QCOMPARE(changed.size(), 0);
+        QVERIFY(document.dirty());
+    }
+
+    void discardCannotInvalidateOtherSceneDraft()
+    {
+        QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-asset-discard-references-XXXXXX");
+        ProjectDocument document;
+        QString error;
+        QVERIFY(document.create(temporary.path(), "DiscardReferences", false, NOVA_EXAMPLES, &error));
+        auto snapshot = assetSnapshot();
+        QVERIFY(expectedVersions(document, &snapshot, &error));
+        QVERIFY(document.stageAssetSnapshot(snapshot, &error));
+        auto scene = document.scene();
+        std::strcpy(scene.objects[0].asset, "authored_output");
+        QVERIFY(document.editScene(scene, "player", "Use authored sprite", &error));
+        QVERIFY(document.writeRecovery(&error));
+        const auto draft = document.draft();
+        const auto recovery = readFile(document.root() + "/.nova-studio-recovery");
+        QVERIFY(!document.discardAssetSnapshot(snapshot.id, &error));
+        QVERIFY2(!error.isEmpty(), qPrintable(error));
+        QCOMPARE(document.assetSnapshots().size(), 1);
+        QCOMPARE(document.draft().manifest, draft.manifest);
+        QCOMPARE(document.draft().scene, draft.scene);
+        QCOMPARE(document.draft().selection, draft.selection);
+        QCOMPARE(readFile(document.root() + "/.nova-studio-recovery"), recovery);
+    }
+
+    void discardCannotClaimAnotherParticipant()
+    {
+        QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-asset-discard-owner-XXXXXX");
+        ProjectDocument document;
+        QString error;
+        QVERIFY(document.create(temporary.path(), "DiscardOwner", false, NOVA_EXAMPLES, &error));
+        auto first = assetSnapshot();
+        QVERIFY(expectedVersions(document, &first, &error));
+        QVERIFY(document.stageAssetSnapshot(first, &error));
+        QVERIFY(document.save(&error));
+        const auto saved = document.assetSnapshots()[0];
+        first = saved; first.revision++; first.source.bytes += "\nnew generation";
+        first.outputs[0].path = "generated/new/frame.png";
+        first.outputs[0].runtimeId = "new_frame";
+        QVERIFY(expectedVersions(document, &first, &error));
+        QVERIFY(document.stageAssetSnapshot(first, &error));
+        auto second = assetSnapshot(NOVA_ASSET_SPRITE, "other");
+        second.outputs = saved.outputs;
+        QVERIFY(expectedVersions(document, &second, &error));
+        QVERIFY(document.stageAssetSnapshot(second, &error));
+        QVERIFY(document.writeRecovery(&error));
+        const auto recovery = readFile(document.root() + "/.nova-studio-recovery");
+        const auto manifest = document.draft().manifest;
+        QVERIFY(!document.discardAssetSnapshot(first.id, &error));
+        QVERIFY2(error.contains("overlap"), qPrintable(error));
+        QCOMPARE(document.assetSnapshots().size(), 2);
+        QCOMPARE(document.assetSnapshots()[0].source.bytes, first.source.bytes);
+        QCOMPARE(document.assetSnapshots()[1].source.bytes, second.source.bytes);
+        QCOMPARE(document.draft().manifest, manifest);
+        QCOMPARE(readFile(document.root() + "/.nova-studio-recovery"), recovery);
+    }
+
+    void discardRejectsNewFileAndRecoveryWriteFailure_data()
+    {
+        QTest::addColumn<bool>("readOnlyRecovery");
+        QTest::newRow("new-output-appeared") << false;
+        QTest::newRow("recovery-write-refused") << true;
+    }
+
+    void discardRejectsNewFileAndRecoveryWriteFailure()
+    {
+        QFETCH(bool, readOnlyRecovery);
+        QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-asset-discard-write-XXXXXX");
+        auto document = std::make_unique<ProjectDocument>();
+        QString error;
+        QVERIFY(document->create(temporary.path(), "DiscardWrite", false, NOVA_EXAMPLES, &error));
+        const auto path = document->path(), root = document->root();
+        auto snapshot = assetSnapshot(), other = assetSnapshot(NOVA_ASSET_AUDIO, "other");
+        QVERIFY(expectedVersions(*document, &snapshot, &error));
+        QVERIFY(expectedVersions(*document, &other, &error));
+        QVERIFY(document->stageAssetSnapshot(snapshot, &error));
+        QVERIFY(document->stageAssetSnapshot(other, &error));
+        QVERIFY(document->writeRecovery(&error));
+        const auto recovery = readFile(root + "/.nova-studio-recovery");
+        if (readOnlyRecovery) {
+            document.reset();
+            QVERIFY(QFile::setPermissions(root + "/.nova-studio-recovery", QFile::ReadOwner));
+            document = std::make_unique<ProjectDocument>();
+            QVERIFY(document->open(path, &error));
+            QVERIFY(document->restoreRecovery(&error));
+        } else {
+            QVERIFY(QDir(root).mkpath("generated/authored"));
+            QVERIFY(writeFile(root + "/" + snapshot.outputs[0].path, snapshot.outputs[0].bytes));
+        }
+        const auto manifest = document->draft().manifest;
+        const auto history = document->undoStack()->count();
+        QSignalSpy changes(document.get(), &ProjectDocument::changed);
+        QVERIFY(!document->discardAssetSnapshot(snapshot.id, &error));
+        QVERIFY2(!error.isEmpty(), qPrintable(error));
+        QCOMPARE(document->assetSnapshots().size(), 2);
+        QCOMPARE(document->assetSnapshots()[0].source.bytes, snapshot.source.bytes);
+        QCOMPARE(document->assetSnapshots()[1].source.bytes, other.source.bytes);
+        QCOMPARE(document->draft().manifest, manifest);
+        QCOMPARE(document->undoStack()->count(), history);
+        QCOMPARE(changes.size(), 0);
+        QCOMPARE(readFile(root + "/.nova-studio-recovery"), recovery);
+        QVERIFY(!QFileInfo::exists(root + "/" + snapshot.source.path));
+        if (!readOnlyRecovery) QCOMPARE(readFile(root + "/" + snapshot.outputs[0].path), snapshot.outputs[0].bytes);
+    }
+
+    void legacyRecoveryBindingOrigins_data()
+    {
+        QTest::addColumn<int>("origin");
+        QTest::newRow("committed-unmanaged") << 0;
+        QTest::newRow("absent-new-output") << 1;
+        QTest::newRow("ambiguous-existing-output") << 2;
+        QTest::newRow("ambiguous-unsaved-import") << 3;
+    }
+
+    void maximumUnmanagedBindingsRoundTrip()
+    {
+        QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-asset-discard-origin-limit-XXXXXX");
+        QString error, path, root;
+        {
+            ProjectDocument starter;
+            QVERIFY(starter.create(temporary.path(), "MaximumOrigins", false, NOVA_EXAMPLES, &error));
+            path = starter.path(); root = starter.root();
+        }
+        QByteArray manifest = readFile(path);
+        const auto png = readFile(root + "/starter.png");
+        for (int i = 1; i < NOVA_MAX_ASSETS; ++i) {
+            const auto leaf = QString("original-%1.png").arg(i);
+            QVERIFY(writeFile(root + "/" + leaf, png));
+            manifest += "sprite original_" + QByteArray::number(i) + " " + leaf.toUtf8() + "\n";
+        }
+        QVERIFY(writeFile(path, manifest));
+        {
+            ProjectDocument document;
+            QVERIFY(document.open(path, &error));
+            auto snapshot = assetSnapshot();
+            snapshot.outputs.clear();
+            for (size_t i = 0; i < document.project().count; ++i) {
+                StudioAssetFile file;
+                file.path = QString::fromUtf8(document.project().assets[i].path);
+                file.runtimeId = QString::fromUtf8(document.project().assets[i].id);
+                file.bytes = png;
+                snapshot.outputs.append(file);
+            }
+            QCOMPARE(snapshot.outputs.size(), qsizetype(NOVA_MAX_ASSETS));
+            QVERIFY(expectedVersions(document, &snapshot, &error));
+            QVERIFY2(document.stageAssetSnapshot(snapshot, &error), qPrintable(error));
+            QVERIFY2(document.writeRecovery(&error), qPrintable(error));
+            const auto record = QJsonDocument::fromJson(readFile(root + "/.nova-studio-recovery")).object();
+            QCOMPARE(record["unmanagedBindings"].toArray().size(), qsizetype(NOVA_MAX_ASSETS));
+        }
+        ProjectDocument reopened;
+        QVERIFY(reopened.open(path, &error));
+        QVERIFY2(reopened.restoreRecovery(&error), qPrintable(error));
+        QVERIFY2(reopened.discardAssetSnapshot("authored", &error), qPrintable(error));
+        QVERIFY(reopened.assetSnapshots().isEmpty());
+        QCOMPARE(reopened.draft().manifest, manifest);
+        QCOMPARE(reopened.project().count, size_t(NOVA_MAX_ASSETS));
+        QVERIFY(!reopened.dirty());
+        QVERIFY(!QFileInfo::exists(root + "/.nova-studio-recovery"));
+        for (size_t i = 0; i < reopened.project().count; ++i)
+            QCOMPARE(readFile(root + "/" + QString::fromUtf8(reopened.project().assets[i].path)), png);
+    }
+
+    void legacyRecoveryBindingOrigins()
+    {
+        QFETCH(int, origin);
+        QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-asset-discard-old-XXXXXX");
+        QString error, path, root;
+        auto snapshot = assetSnapshot();
+        {
+            ProjectDocument document;
+            QVERIFY(document.create(temporary.path(), "OldOrigins", false, NOVA_EXAMPLES, &error));
+            path = document.path(); root = document.root();
+            if (origin == 0) {
+                snapshot.outputs[0].runtimeId = "starter";
+                snapshot.outputs[0].path = "starter.png";
+            } else if (origin == 2) {
+                QVERIFY(QDir(root).mkpath("generated/authored"));
+                QVERIFY(writeFile(root + "/" + snapshot.outputs[0].path, snapshot.outputs[0].bytes));
+            } else if (origin == 3) {
+                QString id;
+                QVERIFY(document.importAsset(QString(NOVA_EXAMPLES) + "/sprites/assets/tile.png", &id, &error));
+                snapshot.outputs[0].runtimeId = id;
+                snapshot.outputs[0].path = QString::fromUtf8(document.project().assets[1].path);
+            }
+            QVERIFY(expectedVersions(document, &snapshot, &error));
+            QVERIFY(document.stageAssetSnapshot(snapshot, &error));
+            QVERIFY(document.writeRecovery(&error));
+        }
+        auto legacy = QJsonDocument::fromJson(readFile(root + "/.nova-studio-recovery")).object();
+        QVERIFY(legacy.contains("unmanagedBindings"));
+        legacy.remove("unmanagedBindings");
+        const auto bytes = QJsonDocument(legacy).toJson();
+        QVERIFY(writeFile(root + "/.nova-studio-recovery", bytes));
+        ProjectDocument reopened;
+        QVERIFY(reopened.open(path, &error));
+        QVERIFY2(reopened.restoreRecovery(&error), qPrintable(error));
+        if (origin >= 2) {
+            const auto draft = reopened.draft();
+            QVERIFY(!reopened.discardAssetSnapshot(snapshot.id, &error));
+            QVERIFY2(error.contains("ambiguous"), qPrintable(error));
+            QCOMPARE(reopened.assetSnapshots().size(), 1);
+            QCOMPARE(reopened.draft().manifest, draft.manifest);
+            QCOMPARE(readFile(root + "/.nova-studio-recovery"), bytes);
+            auto sourceOnly = reopened.assetSnapshots()[0];
+            sourceOnly.mode = StudioAssetSnapshot::Mode::SourceOnly;
+            sourceOnly.derivedProblem = "Do not guess original declaration ownership";
+            sourceOnly.outputs.clear();
+            QVERIFY(!reopened.stageAssetSnapshot(sourceOnly, &error));
+            QVERIFY(error.contains("ambiguous"));
+            QVERIFY2(reopened.save(&error), qPrintable(error));
+            snapshot = reopened.assetSnapshots()[0];
+            const auto source = snapshot.source.bytes;
+            snapshot.revision++; snapshot.source.bytes += "\nnew edit after explicit commit";
+            QVERIFY(reopened.stageAssetSnapshot(snapshot, &error));
+            QVERIFY(reopened.discardAssetSnapshot(snapshot.id, &error));
+            QCOMPARE(reopened.assetSnapshots()[0].source.bytes, source);
+            QVERIFY(!reopened.dirty());
+        } else {
+            QVERIFY2(reopened.discardAssetSnapshot(snapshot.id, &error), qPrintable(error));
+            QVERIFY(reopened.assetSnapshots().isEmpty());
+            QCOMPARE(reopened.project().count, size_t(1));
+            QVERIFY(!reopened.dirty());
+            QVERIFY(!QFileInfo::exists(root + "/.nova-studio-recovery"));
+        }
+    }
+
+    void malformedBindingProvenanceIsRetained_data()
+    {
+        QTest::addColumn<int>("damage");
+        QTest::newRow("not-array") << 0;
+        QTest::newRow("duplicate-id") << 1;
+        QTest::newRow("wrong-native-type") << 2;
+        QTest::newRow("unknown-type") << 3;
+        QTest::newRow("escaping-path") << 4;
+        QTest::newRow("case-alias") << 5;
+        QTest::newRow("unrelated-id") << 6;
+        QTest::newRow("unknown-field") << 7;
+        QTest::newRow("source-path") << 8;
+        QTest::newRow("invented-existing-output") << 9;
+        QTest::newRow("committed-owner-is-not-unmanaged") << 10;
+        QTest::newRow("too-many-declarations") << 11;
+        QTest::newRow("duplicate-json-key") << 12;
+        QTest::newRow("omitted-committed-origin") << 13;
+    }
+
+    void discardAdoptionAfterOlderCommit_data()
+    {
+        QTest::addColumn<bool>("restart");
+        QTest::newRow("resume-in-place") << false;
+        QTest::newRow("finish-and-restore") << true;
+    }
+
+    void discardAdoptionAfterOlderCommit()
+    {
+        QFETCH(bool, restart);
+        QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-asset-discard-rebase-XXXXXX");
+        auto document = std::make_unique<ProjectDocument>();
+        QString error, importedId;
+        QVERIFY(document->create(temporary.path(), "DiscardRebased", false, NOVA_EXAMPLES, &error));
+        const auto path = document->path(), root = document->root();
+        auto first = assetSnapshot();
+        QVERIFY(expectedVersions(*document, &first, &error));
+        QVERIFY(document->stageAssetSnapshot(first, &error));
+        QVERIFY(document->writeRecovery(&error));
+        QVERIFY(writeFile(root + "/.nova-studio-journal", readFile(root + "/.nova-studio-recovery")));
+        QVERIFY(document->importAsset(QString(NOVA_EXAMPLES) + "/sprites/assets/tile.png", &importedId, &error));
+        auto second = assetSnapshot(NOVA_ASSET_SPRITE, "other");
+        second.outputs[0].runtimeId = importedId;
+        second.outputs[0].path = QString::fromUtf8(document->project().assets[2].path);
+        const auto importedBytes = readFile(root + "/" + second.outputs[0].path);
+        QVERIFY(expectedVersions(*document, &second, &error));
+        QVERIFY(document->stageAssetSnapshot(second, &error));
+        const auto manifest = document->draft().manifest;
+        QVERIFY(document->editScript(QString::fromUtf8(document->draft().script) + "\n-- newer independent Lua\n", &error));
+        const auto script = document->draft().script;
+        QVERIFY(document->writeRecovery(&error));
+        if (restart) {
+            document.reset();
+            QVERIFY2(ProjectDocument::finishInterruptedSave(path, &error), qPrintable(error));
+            document = std::make_unique<ProjectDocument>();
+            QVERIFY(document->open(path, &error));
+            QVERIFY2(document->restoreRecovery(&error), qPrintable(error));
+        } else QVERIFY2(document->resumeInterruptedSave(&error), qPrintable(error));
+        QCOMPARE(document->savedAssetSnapshots().size(), 1);
+        QCOMPARE(document->assetSnapshots().size(), 2);
+        QVERIFY2(document->discardAssetSnapshot(second.id, &error), qPrintable(error));
+        QCOMPARE(document->assetSnapshots().size(), 1);
+        QVERIFY(document->assetPublication(first.id).saved);
+        QCOMPARE(document->draft().manifest, manifest);
+        QCOMPARE(document->draft().script, script);
+        QCOMPARE(document->project().count, size_t(3));
+        QCOMPARE(readFile(root + "/" + second.outputs[0].path), importedBytes);
+        QVERIFY(!QFileInfo::exists(root + "/" + second.source.path));
+        QVERIFY(document->save(&error));
+        QVERIFY(!document->dirty());
+        QCOMPARE(readFile(path), manifest);
+        QCOMPARE(readFile(root + "/main.lua"), script);
+    }
+
+    void malformedBindingProvenanceIsRetained()
+    {
+        QFETCH(int, damage);
+        QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-asset-discard-provenance-XXXXXX");
+        QString error, path, root;
+        QByteArray manifest, script, scene, source;
+        auto snapshot = assetSnapshot();
+        {
+            ProjectDocument document;
+            QVERIFY(document.create(temporary.path(), "Provenance", false, NOVA_EXAMPLES, &error));
+            path = document.path(); root = document.root();
+            if (damage == 13) {
+                snapshot.outputs[0].runtimeId = "starter"; snapshot.outputs[0].path = "starter.png";
+            } else if (damage != 9 && damage != 10) {
+                QString id;
+                QVERIFY(document.importAsset(QString(NOVA_EXAMPLES) + "/sprites/assets/tile.png", &id, &error));
+                snapshot.outputs[0].runtimeId = id;
+                snapshot.outputs[0].path = QString::fromUtf8(document.project().assets[1].path);
+            }
+            QVERIFY(expectedVersions(document, &snapshot, &error));
+            QVERIFY(document.stageAssetSnapshot(snapshot, &error));
+            if (damage == 10) {
+                QVERIFY(document.save(&error));
+                snapshot = document.assetSnapshots()[0];
+                snapshot.revision++; snapshot.source.bytes += "\npending edit";
+                QVERIFY(document.stageAssetSnapshot(snapshot, &error));
+            }
+            QVERIFY(document.writeRecovery(&error));
+            manifest = readFile(path); script = readFile(root + "/main.lua");
+            scene = readFile(root + "/start.nova-scene"); source = readFile(root + "/" + snapshot.source.path);
+        }
+        auto record = QJsonDocument::fromJson(readFile(root + "/.nova-studio-recovery")).object();
+        QJsonObject origin{{"id", snapshot.outputs[0].runtimeId}, {"path", snapshot.outputs[0].path},
+            {"type", int(snapshot.outputs[0].runtimeType)}};
+        if (damage == 2) origin["type"] = int(NOVA_ASSET_MODEL);
+        if (damage == 3) origin["type"] = 99;
+        if (damage == 4) origin["path"] = "../outside.png";
+        if (damage == 5) origin["path"] = snapshot.outputs[0].path.toUpper();
+        if (damage == 6) origin["id"] = "unrelated";
+        if (damage == 7) origin["invented"] = true;
+        if (damage == 8) origin["path"] = snapshot.source.path;
+        QJsonArray origins{origin};
+        if (damage == 1) origins.append(origin);
+        if (damage == 11) while (origins.size() <= NOVA_MAX_ASSETS) origins.append(origin);
+        if (damage == 13) origins = {};
+        record["unmanagedBindings"] = damage == 0 ? QJsonValue("not an array") : QJsonValue(origins);
+        auto malformed = QJsonDocument(record).toJson(QJsonDocument::Compact);
+        if (damage == 12) malformed.replace("\"type\":0", "\"type\":0,\"type\":0");
+        QVERIFY(writeFile(root + "/.nova-studio-recovery", malformed));
+        {
+            ProjectDocument reopened;
+            QVERIFY(reopened.open(path, &error));
+            QSignalSpy changed(&reopened, &ProjectDocument::changed);
+            QVERIFY(!reopened.restoreRecovery(&error));
+            QVERIFY2(!error.isEmpty(), qPrintable(error));
+            QCOMPARE(changed.size(), 0);
+            QCOMPARE(reopened.draft().manifest, manifest);
+            QCOMPARE(readFile(root + "/.nova-studio-recovery"), malformed);
+        }
+        QVERIFY(writeFile(root + "/.nova-studio-journal", malformed));
+        QVERIFY(!ProjectDocument::finishInterruptedSave(path, &error));
+        QVERIFY2(!error.isEmpty(), qPrintable(error));
+        QCOMPARE(readFile(root + "/.nova-studio-journal"), malformed);
+        QCOMPARE(readFile(root + "/.nova-studio-recovery"), malformed);
+        QCOMPARE(readFile(path), manifest);
+        QCOMPARE(readFile(root + "/main.lua"), script);
+        QCOMPARE(readFile(root + "/start.nova-scene"), scene);
+        QCOMPARE(readFile(root + "/" + snapshot.source.path), source);
+    }
+
     void binaryRecoveryCopyIsSelfContained()
     {
         QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-asset-copy-XXXXXX");
@@ -1411,7 +2156,16 @@ private slots:
         newer.revision++; newer.source.bytes += "\nchanged source";
         newer.outputs[0].bytes = audio ? pcmWav(480) : readFile(QString(NOVA_EXAMPLES) + "/sprites/assets/tile.png");
         QVERIFY(document.stageAssetSnapshot(newer, &error));
+        bool busyDiscardRefused = false, attemptedDiscard = false;
+        connect(&document, &ProjectDocument::changed, &document, [&] {
+            if (attemptedDiscard) return;
+            attemptedDiscard = true;
+            QString detail;
+            const bool discarded = document.discardAssetSnapshot(snapshot.id, &detail);
+            busyDiscardRefused = !discarded && detail.contains("write is in progress");
+        });
         QVERIFY(!document.save(&error));
+        QVERIFY(busyDiscardRefused);
         QVERIFY2(error.contains("after 1 writes"), qPrintable(error));
         QCOMPARE(readFile(root + "/" + snapshot.source.path), newer.source.bytes);
         QCOMPARE(readFile(root + "/" + snapshot.outputs[0].path), snapshot.outputs[0].bytes);
@@ -1422,6 +2176,10 @@ private slots:
         QVERIFY(first["attempted"].toBool());
         QVERIFY(!first["committed"].toString().isEmpty());
         QVERIFY(!document.discardRecovery(&error));
+        const auto pendingSource = document.assetSnapshots()[0].source.bytes;
+        QVERIFY(!document.discardAssetSnapshot(snapshot.id, &error));
+        QVERIFY2(error.contains("interrupted"), qPrintable(error));
+        QCOMPARE(document.assetSnapshots()[0].source.bytes, pendingSource);
         QVERIFY(!document.runtimeAssetsReady(&error));
         NovaProjectValidation validation{};
         char detail[1024] = {};
