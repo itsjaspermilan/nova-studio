@@ -1430,6 +1430,18 @@ audio-device access (output paths must be new):
 
 See [the C/C++ API, ownership, DSP limits and evidence](docs/audio-core.md).
 
+`audio/production.h` adds opt-in stereo low/high-pass and bell EQ, signed/damped
+delay, room reverb, linked compression and a sample-peak-only limiter, plus
+acyclic pre/post-fader sends and sample-clock automation. It returns the same
+prepared program consumed by existing offline/live renderers; old public
+contracts and no-effect output remain unchanged. Limits are 16 inserts (four
+per bus), 16 sends, 4096 combined events and 2 MiB of effect buffers per renderer.
+Tail/fade bounds are explicitly included in score length, with logical-history
+reset and control-side retirement. Memory accounting and render-owner insert
+diagnostics are exposed; native live insert-meter snapshots are not yet provided.
+No limiter/normalization is applied by default, and software meters are not
+true-peak, loudness, hardware-latency or xrun measurements.
+
 `audio/transport.h` adds bounded command/receipt queues, coalesced meter snapshots
 and control-side renderer retirement. `runtime/audio_device.h` exposes independent
 Audition/Game handles through two streams on the **existing single device**.
@@ -1471,7 +1483,7 @@ hardware xruns. Desktop audition/focus policy remains the host's decision.
 This is **not a complete Sound Studio**: manifest/Lua/packaged-Android music binding,
 multitrack disk mixing,
 comprehensive device-loss/Android-focus handling, recording, MIDI, sound documents,
-waveform/arrangement/piano-roll UI, production effects and aligned-stem workflows
+waveform/arrangement/piano-roll UI, production/mixer/automation controls and aligned-stem workflows
 remain later stages. Device-free concurrent/sanitizer checks do not establish human
 listening, microphone/MIDI, latency or Android device behavior.
 

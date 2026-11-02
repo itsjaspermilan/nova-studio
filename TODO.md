@@ -58,10 +58,10 @@ Confirmed product requirements:
 | Scene orientation/navigation | Authoring foundation + shared renderer | Coherent authored/runtime 3D rotation, native transform gizmos, snapping/undo/cancel and separate editor camera. | Bounded implementation complete; unlocked-focus and other-host qualification remain |
 | Sprite workspace | Authoring foundation + runtime animation | Real drawing/layers/frames, source preservation, reversible editing and matching scene/runtime updates. | Embeddable document/canvas component implemented; guarded host/runtime integration pending |
 | Model workspace | Authoring foundation + existing GLB pipeline | Mesh/transform/material/UV basics, reversible editing and faithful supported model round trips. | Independent [editable-mesh component](docs/mesh-authoring.md) implemented; Qt workspace/save/preview integration pending |
-| Audio engine | Existing native services | Sample-clock processing, float mixing, quality instruments/DSP, streams/buses, device handling and offline rendering. | C11 DSP/offline, shared-device controls and bounded disk streams implemented; runtime music binding and hardware/lifecycle qualification remain |
+| Audio engine | Existing native services | Sample-clock processing, float mixing, quality instruments/DSP, streams/buses, device handling and offline rendering. | C11 DSP/offline, shared-device controls, bounded disk streams and opt-in production inserts/sends/automation implemented; runtime music binding and hardware/lifecycle qualification remain |
 | Recording and SFX | Authoring foundation + audio engine | Nondestructive waveform editing, explicit recording, layered SFX, safe audition and persistent sources. | Embeddable short-SFX document/waveform component implemented; recording and guarded host integration pending |
 | Music composition | Recording/SFX foundations | Arrangement, piano roll, patterns/drums, synth/sampler, MIDI, loops and document persistence. | Pending |
-| Sound production | Music composition | Mixer, sends/buses, effects, automation, lossless masters, aligned stems/loops and runtime-profile audition. | Pending |
+| Sound production | Music composition | Mixer, sends/buses, effects, automation, lossless masters, aligned stems/loops and runtime-profile audition. | Bounded shared DSP/routing/automation backend available; authoring controls and remaining production workflow pending |
 | Application and game delivery | Completed authoring pipelines | An unambiguous studio application entry point and real selected-project desktop/Android outputs with preflight. | Development Nova Studio.app exists; portable Qt deployment and integrated export UI remain |
 | Complete creation exercise | Integrated studio | Build a playable 3D rally racer through Nova's actual scene/model/sprite/Lua/audio tools; save/reopen/run/export and exercise failure recovery. | Pending |
 
@@ -130,6 +130,24 @@ are explicit. Close quiesces callbacks before joining the reader and closing/
 freeing its source; join failures retain ownership for retry. The native role
 initially accepts a score or file, while the pure C stream is reusable for future
 multitrack mixing. No manifest/Lua/Qt UI contract changed.
+
+The production-stage follow-up adds `audio/production.h` and an opt-in constructor
+returning the same prepared score type. Stereo LP/HP/bell filtering, signed/damped
+delay, four-line room reverb, linked compression and explicit sample-peak limiting
+actually process audio. Acyclic pre/post-fader sends and prepared parameter
+automation share the live/offline sample clock. Existing APIs/default output,
+short-effect budgets, source rates and the single-device boundary remain intact.
+This adds no GUI controls or sound-document schema.
+
+Limits are 16 inserts/four per bus, 16 sends, 4096 combined events, 2 MiB of
+delay/reverb buffers per renderer and a deliberately declared <=30s tail suffix
+inside total score length. Exact byte accounting separates renderer buffers/state
+from immutable scores/samples/transport memory. In this arm64 build the full
+renderer at the buffer cap requests 2,106,488 bytes; budget all retained candidates,
+not just the audible slot. Loops/reset logically invalidate history with bounded
+work. Cancellation preserves a partial natural fade rather than jumping to unity.
+Insert diagnostics remain render-owned; live native insert snapshots are deferred.
+Tail/fade bounds are not measured decay, and the limiter is not true-peak.
 
 Next audio stages include coordinated runtime/Lua/packaged-Android music binding,
 multitrack disk mixing, device-loss/Android focus integration and hardware
@@ -470,6 +488,18 @@ guards, source-only retention, interrupted/reopened saves, and forged recovery
 claims on runtime paths. The actual Sound codec/workspace is a separate owner.
 The affected studio target builds; no GUI focus, playback-device or OS-setting
 changes were used.
+
+### Production audio handoff verification
+
+In the isolated audio worktree, all 18 affected device-free checks pass in Debug
+and ASan/UBSan; both native applications link. Six DSP/concurrent transport/
+disk/device/lifecycle selectors pass ten repetitions each under ThreadSanitizer.
+Tests assert analytical response, exact transformed automation and delay/loop/
+fade positions, finite headroom, storage/routing limits, offline/direct/pre-device
+transport identity, failure cleanup and the occupied 18-renderer pool. The
+captured original no-effect float WAV remains byte-identical. No device,
+microphone, audible playback or hardware/latency claim; leak sanitizer remains
+disabled with explicit ownership accounting instead.
 
 ## Pre-Qt integrated baseline (retained evidence)
 

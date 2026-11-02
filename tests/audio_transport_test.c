@@ -1,4 +1,5 @@
 #include "transport.h"
+#include "production.h"
 
 #include <math.h>
 #include <pthread.h>
@@ -13,7 +14,7 @@
 
 static char error[512];
 
-static NovaAudioProgram *program(uint32_t rate, float level)
+static NovaAudioProgram *create_program(uint32_t rate, float level, bool processing)
 {
     float data[] = {level, level, level, level};
     NovaAudioSample *sample = NULL;
@@ -29,10 +30,27 @@ static NovaAudioProgram *program(uint32_t rate, float level)
         .samples = &sample, .sample_count = 1, .patches = &patch, .patch_count = 1,
         .buses = &bus, .bus_count = 1, .events = events, .event_count = 2, .loop = true};
     NovaAudioProgram *p = NULL;
-    CHECK(nova_audio_program_create(&desc, &p, error, sizeof(error)));
+    if (processing) {
+        NovaAudioInsert inserts[] = {
+            {.type = NOVA_AUDIO_LOWPASS, .wet = 1, .settings.filter = {.frequency_hz = 1000, .q = 0.7}},
+            {.type = NOVA_AUDIO_DELAY, .wet = 0.3f, .settings.delay = {.frames = {31, 37}, .feedback = 0.5}},
+            {.type = NOVA_AUDIO_REVERB, .wet = 0.3f, .settings.reverb = {.decay_seconds = 0.3, .damping_hz = 6000}},
+            {.type = NOVA_AUDIO_LIMITER, .wet = 1, .settings.limiter = {.ceiling_db = -20, .release_frames = 16}}
+        };
+        NovaAudioProductionEvent changes[] = {
+            {.frame = 13, .parameter = NOVA_AUDIO_FILTER_FREQUENCY, .value = 9000, .ramp_frames = 64},
+            {.frame = 79, .parameter = NOVA_AUDIO_INSERT_WET, .target = 2, .value = 0.8, .ramp_frames = 128}
+        };
+        NovaAudioProductionDesc production = {.inserts = inserts, .insert_count = 4,
+            .events = changes, .event_count = 2, .tail_frames = 2048, .tail_fade_frames = 64};
+        desc.length_frames += production.tail_frames;
+        CHECK(nova_audio_program_create_production(&desc, &production, &p, error, sizeof(error)));
+    } else CHECK(nova_audio_program_create(&desc, &p, error, sizeof(error)));
     nova_audio_sample_release(sample);
     return p;
 }
+
+static NovaAudioProgram *program(uint32_t rate, float level) { return create_program(rate, level, false); }
 
 static NovaAudioTransport *transport(uint32_t rate)
 {
@@ -211,10 +229,10 @@ static void *render_thread(void *context)
     return NULL;
 }
 
-static void concurrent_transfer(void)
+static void concurrent_transfer(bool processing)
 {
     NovaAudioTransport *t = transport(48000);
-    NovaAudioProgram *p = program(48000, 0.1f);
+    NovaAudioProgram *p = create_program(48000, 0.1f, processing);
     Threads threads = {.transport = t};
     atomic_init(&threads.done, false);
     pthread_t thread;
@@ -237,7 +255,8 @@ static void concurrent_transfer(void)
         NovaAudioTransportSnapshot status;
         if (nova_audio_transport_snapshot(t, &status)) {
             CHECK(status.publication > publication && status.sample_rate == 48000 && status.fault == NOVA_AUDIO_OK);
-            CHECK(status.peak[0] <= 0.201f && status.peak[1] == 0);
+            CHECK(status.peak[0] <= 0.201f && status.peak[1] <= 0.201f);
+            if (!processing) CHECK(status.peak[1] == 0);
             CHECK(status.program <= last_ticket && status.last_command <= last_ticket);
             publication = status.publication;
         }
@@ -260,7 +279,8 @@ int main(void)
     independent_lifetimes();
     replacement_and_backpressure();
     transition_block_independence();
-    concurrent_transfer();
+    concurrent_transfer(false);
+    concurrent_transfer(true);
     puts("Nova bounded audio transport queues, crossfades, cancellation, stale controls and concurrent ownership passed.");
     return 0;
 }

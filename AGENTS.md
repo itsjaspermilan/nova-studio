@@ -223,6 +223,16 @@ exported. The earlier externally authored 2D assessment game is not that proof.
   file writes, global/device shutdown, alternate audio backend or implicit sound
   registration. The host supplies native pickers/journal/actions; pending fields
   block snapshots. Offscreen QWidget evidence is not native/input/audio approval.
+- `audio/production.{c,h}` adds opt-in stereo inserts, acyclic sends and prepared
+  sample-clock automation without changing existing public structs. Keep the
+  no-effect path unchanged, explicit headroom and declared tail/fade suffixes
+  separate from acoustic decay. At most 16 inserts/four per bus, 16 sends,
+  4096 combined events and 2 MiB delay/reverb buffers per renderer. Query exact
+  immutable/state/renderer byte accounting and budget all retained candidates.
+  Reset invalidates delay history logically; never clear large buffers on the
+  callback. Inserts/meters are render-owned; native live insert snapshots are
+  deferred, not permission for UI reads of live state. The limiter is sample-
+  peak only; no true-peak, normalization or hardware-latency claim follows.
 - `audio/transport.{c,h}` supplies fixed-rate SPSC control/receipt queues,
   coalesced snapshots and control-side renderer retirement. Core status/cancel/
   reset remain render-owner operations; all reference mutations stay serialized
@@ -287,6 +297,10 @@ exported. The earlier externally authored 2D assessment game is not that proof.
   Disk fixtures verify complete 75-second/>16 MiB playback with fixed storage,
   exact one-hour limits, loop/seek/pause/fade boundaries, partial I/O/late faults
   and concurrent render/control/reader close with allocation/descriptor/thread balance.
+  Production checks cover analytical filter/dynamics responses, signed/damped
+  delay, reverb decay/decorrelation, every exposed automation parameter, exact
+  storage/routing caps, logical-history reset, cancellation during a natural
+  fade, offline/direct/transport identity and concurrent processing retirement.
 - `tests/game_test.c` covers both-mode source/reference/behavior/generation/
   guarded reopen/conflict/import/no-clobber contracts. `game_failure_test.c`
   redirects only the save call in a separate test build to check honest partial

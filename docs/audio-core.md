@@ -3,6 +3,8 @@
 This is a reusable Sound Studio backend, not a finished Sound Studio.
 `audio/audio.h` is a C11 API with C++ linkage guards; link `nova_audio`.
 It has no raylib, Lua, Qt, device, filesystem or third-party DSP dependency.
+`audio/production.h` adds opt-in inserts, sends, prepared automation and explicit
+effect tails to the same library without changing the existing public structs.
 `audio/transport.h` adds bounded control/render transfer to that library.
 `audio/stream.h` adds original-rate disk-backed WAV playback; link
 `nova_audio_stream` (the core plus system POSIX threads, no new third-party dependency).
@@ -19,8 +21,9 @@ recording/composition/mixing stages.
 
 The implementation provides stereo float processing at **48 kHz** (the default
 constant) or explicitly **44.1 kHz**, prepared sample-clock scores, independent
-renderers, synth/sampler voices, envelopes and ramps, a small bus tree, meters,
-and offline WAV rendering. The core does not record or open devices. Selecting
+renderers, synth/sampler voices, envelopes and ramps, buses, opt-in stereo
+production processing, meters and offline WAV rendering. The core does not
+record or open devices. Selecting
 a sample does not start playback; the native adapter opens playback only when
 explicitly requested. All fixtures and the demonstration composition are
 generated from original code, not recordings or another application's assets.
@@ -33,12 +36,12 @@ From the assigned Nova Studio checkout:
 ./scripts/with-toolchain.sh cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug \
   -DNOVA_GPU_TESTS=OFF -DNOVA_AUDIO_TESTS=OFF
 ./scripts/with-toolchain.sh cmake --build build --target \
-  nova_audio_render nova_audio_tests nova_audio_wav_tests \
+  nova_audio_render nova_audio_tests nova_audio_production_tests nova_audio_wav_tests \
   nova_audio_allocation_tests nova_audio_cpp_tests nova_audio_transport_tests \
   nova_audio_stream_tests nova_audio_stream_failure_tests \
   nova_audio_device_tests nova_audio_lifecycle_tests nova_service_tests -j 4
 ./scripts/with-toolchain.sh ctest --test-dir build --output-on-failure \
-  -R '^nova_(audio_(dsp|wav|allocations|cpp_contract|render_cli|transport|disk_stream|disk_failures|device_seam|source_patch|lifecycle_seam)|services)$'
+  -R '^nova_(audio_(dsp|production|wav|allocations|cpp_contract|render_cli|transport|disk_stream|disk_failures|device_seam|source_patch|lifecycle_seam)|services)$'
 ./build/nova_audio_render build/audio-master.wav
 ./build/nova_audio_render build/audio-runtime.wav 44100 pcm24
 ```
@@ -79,7 +82,8 @@ renderer keeps its dependencies alive. Destroy renderers only after their
 callback is quiescent. No global current score, global voice pool, device owner
 or singleton audition state exists in `nova_audio`.
 
-`nova_audio_render`, `nova_audio_cancel`, `nova_audio_status`, and
+`nova_audio_render`, `nova_audio_cancel`, `nova_audio_status`,
+`nova_audio_production_status`, and
 `nova_audio_renderer_reset` operate on the **single render-owner thread**. They
 perform no allocation/free, I/O, logging/diagnostic formatting, Lua calls,
 reference-count changes or locking. Never call status or cancel concurrently
@@ -185,13 +189,175 @@ frequency-response checks. It is not a resonant filter or a general effects rack
 sources and buses. Stereo center balance is unity, not a forced -3 dB reduction.
 Each bus routes to a lower-index parent; bus 0 is Master. Reverse-order mixing
 makes a bounded tree with no feedback cycles. Gain/pan ramps operate per frame.
-There are no sends, insert chains, compensated-latency processors or solo rules
-yet. Use distinct song buses versus eventual game Music/SFX/UI buses.
+The original constructor has no sends or inserts; the additive production
+constructor below enables them. Compensated-latency processors and solo rules
+are not implemented. Use distinct song buses versus eventual game Music/SFX/UI buses.
 
 Mixing uses double accumulators and float output. Cumulative pre-device peak
 and over-range-frame counters are available for every bus. Values above unity
-remain in the output: **no limiter, saturation or loudness normalization is
-applied**. Meters are sample peaks, not true-peak or loudness analysis.
+remain in the output: **no default limiter, saturation or loudness normalization
+is applied**. A limiter is an explicit opt-in insert, not an export fallback.
+Meters are sample peaks, not true-peak or loudness analysis.
+
+## Opt-in production processing (A3)
+
+Include `audio/production.h` and call
+`nova_audio_program_create_production(&base, &production, &program, error, size)`.
+This returns an ordinary `NovaAudioProgram`: the existing renderer, WAV exporter,
+transport and caller-selected native host consume it unchanged. All A0/A1/A2
+public structs/signatures remain unchanged. NULL or zero-initialized production
+descriptors take the original no-effect path. There is no new manifest,
+Lua binding, sound document, device owner or Qt dependency.
+
+`NovaAudioProductionDesc` contains insert, send and automation arrays plus
+declared tail/fade frames. Preparation copies/validates them, resolves indices,
+transforms parameter endpoints and allocates immutable coefficients off-callback.
+Invalid input or allocation failure leaves the caller's output unchanged with a
+diagnostic. The same program can be shared by independent live/offline renderers;
+each renderer owns its own effect history, ramps, cancellation and insert meters.
+Creation/destruction/reference mutations still belong to the serialized control
+owner. An offline worker needs its own renderer prepared/retired under that rule.
+
+### Real stereo processors and signal bounds
+
+| Insert | Processing and bounds |
+| --- | --- |
+| Low-pass / high-pass / bell | Original topology-preserving state-variable filter, independent L/R integrators; 20..0.4*rate Hz, Q 0.5..4. Bell mixes the normalized band response into dry, with -12..12 dB center gain; other types require gain_db=0. This defines its Q/shape rather than claiming interchangeable cookbook-EQ coefficients. |
+| Delay | Independent fixed L/R delay of 1..2*rate frames; signed feedback -0.95..0.95; optional one-pole feedback damping. No variable-delay interpolation or hidden crossfeed. |
+| Room reverb | Original four-line, orthogonal Householder feedback-delay network, stereo injection/output projections and optional feedback damping. Lines are 1429/1601/1867/2053 frames at 48 kHz, rounded proportionally at 44.1 kHz. Decay setting 0.1..10 seconds is a feedback design target, **not measured RT60**. |
+| Compressor | Stereo-linked sample-peak detector, hard knee, threshold -60..0 dB, ratio 1..20, explicit makeup -24..24 dB. Gain attack/release are exponential time constants of 1..10*rate frames, not exact fade durations. Attack can overshoot; this is not a limiter. |
+| Limiter | Stereo-linked **sample-peak** gain reduction with instantaneous attack and 1..10*rate-frame exponential release. Ceiling -24..0 dB applies to the local full-wet insert output. No lookahead, oversampling, true-peak, hardware-latency or mastering-certification claim. Partial wet, downstream faders/summing or later processors can exceed that ceiling. |
+
+Every insert has a linear dry/wet blend, 0..1. Wet zero preserves dry arithmetic
+exactly but **keeps processing history**, so later wet automation has warm state;
+it is not a CPU/storage bypass. Delay/reverb damping 0 bypasses the feedback
+low-pass; otherwise 20..0.45*rate Hz is required. Feedback bounds are validated,
+not silently clamped. The delay recursion has absolute feedback below one;
+the reverb's orthogonal mixing and strictly sub-unity line gains constrain
+feedback, with contractive one-pole damping. Filter cutoff changes use the
+stable TPT form with fixed Q, rather than interpolating arbitrary biquad poles.
+
+Calculations/accumulators use double precision, with float delay storage and
+stereo float output. Nonfinite/unrepresentable output or delay writes produce
+the existing latched `NOVA_AUDIO_NONFINITE` fault. Recursive state below 1e-30
+in magnitude is zeroed as a numerical denormal floor; there is no signal-level
+normalization or hidden unity clipping. Nonlinear dynamics and fast modulation
+are not universally alias-free. The oscillator/resampler quality gates remain
+separate; listening and device-output qualification are still required.
+
+### Routing and prepared automation
+
+There are at most **16 inserts, four per bus, and 16 sends** across the existing
+eight buses. Array order sets each bus's insert order. Each send requires
+`destination < source`; reverse-order processing and the existing lower-index
+parent route make cycles impossible. The parent route remains active: use an
+auxiliary bus for a return rather than mistaking a send for reassignment.
+
+Both send taps are post-insert. Pre-fader taps precede source bus gain/pan;
+post-fader taps follow them. Send gain is 0..2. Duplicate source/destination/tap
+triples are rejected, but distinct pre/post taps between the same buses are valid.
+This is bounded song routing, not new runtime Music/SFX/UI bus controls.
+
+Base and production events together may total **4096**. Production events are
+sorted by output frame. At a shared frame, base events apply first, then
+production events in their array order, then that sample is processed. No
+callback sorting, allocation or document lookup occurs. Each ramp is 1..60*rate
+frames and must finish within the total score length. Frame F uses the current
+value; F+N uses the target. An interrupted ramp starts at its exact current value,
+and the last same-frame event for a parameter wins its new target.
+
+| Automated parameter | Descriptor units | Interpolation after preparation |
+| --- | --- | --- |
+| Insert wet / delay feedback / send gain | Linear amount | Linear amount |
+| Filter frequency | Hz | Linear in `tan(pi * Hz / sample_rate)`, **not linear Hz** |
+| Bell gain / compressor threshold and makeup / limiter ceiling | dB | Linear amplitude between transformed endpoints, **not linear dB** |
+
+Q, delay lengths, reverb topology/decay, compressor ratio and detector time
+constants are fixed per prepared program in this stage. Changing them requires
+preparing/replacing a program, not mutating a live renderer. Same-build output
+is independent of render block size. The shared engine renders offline and live
+pre-device output; inherited native conversion/clipping can change device output.
+
+### Exact tails, cancellation and reset
+
+`base.length_frames` remains the exact total output length. `tail_frames` is a
+suffix **included inside that length**, not appended automatically. Inserts
+require an explicitly chosen nonzero tail of at most 30 seconds, strictly
+shorter than the score, with a nonzero `tail_fade_frames <= tail_frames`.
+Every note release must end by `length_frames - tail_frames`. Bus/insert/send
+automation may continue into the tail if its ramp fits the total length.
+
+The final master-output fade uses gains 1, (N-1)/N, ... 1/N across its N frames;
+output is zero at the exclusive score end. There is no automatic decay detector
+or promise that an arbitrary chosen suffix contains the entire acoustic decay.
+The host must deliberately choose tail/fade duration and export the corresponding
+total length. An offline shorter export still deliberately truncates it.
+
+Cancellation stops further production automation and score loops, releases
+voices as before, and, for a declared tail, also fades the complete wet/dry
+master output over the requested cancellation window. It captures the current
+terminal-fade level rather than jumping back to unity if already fading.
+Repeated cancellation is idempotent. Cancellation may continue past a loop's
+old end without resetting history; rendered score position caps at that end
+while the output clock advances. Sends-only graphs without a declared tail
+retain the original voice-only cancellation and do not add an extra fade.
+One-frame fades are legal, not a perceptual click-free guarantee.
+
+Each natural loop resets effect/voice/parameter state; repeated cycles are
+bit-identical, with no tail carried across the boundary. Explicit reset also
+clears clocks/meters; loops preserve cumulative meters. Delay-line resets
+invalidate cursor/fill metadata instead of clearing up to 2 MiB of sample
+storage. Old samples are never read before being overwritten. Reset work is
+bounded by the fixed voice/insert/line/send counts, not buffer length. Replacing
+a transport keeps old/new effect states separate until the old cancellation
+window ends; rejected candidates and finished renderers are freed on the
+control side. Quiescence and A2 failed-join ownership remain unchanged.
+
+### Storage accounting and render-owner diagnostics
+
+All insert/routing/event and storage limits are checked before publication.
+Combined delay/reverb buffers may occupy at most **2,097,152 bytes per renderer**.
+There is one bounded processing-state allocation in addition to the base
+renderer allocation; allocation/zeroing occurs on the control side. Render work
+adds at most 16 insert processes and 16 sends per frame, plus bounded ramps and
+the combined event budget. These are operation/storage bounds, not a measured
+real-time deadline guarantee.
+
+`nova_audio_program_production_info` exposes exact requested allocation bytes:
+
+| Field | Includes / excludes |
+| --- | --- |
+| `prepared_bytes` | New immutable production data only; separate from the base program, oscillator/sinc tables and original sample allocations. |
+| `state_bytes` | New fixed per-renderer processing state **plus** its delay/reverb buffers. |
+| `buffer_bytes` | Buffer portion already included in `state_bytes`, not an additional allocation. |
+| `renderer_bytes` | Complete base renderer plus `state_bytes`; excludes immutable programs/samples, transport/native buffers, allocator overhead and stacks. |
+
+In the verified arm64 build, nonempty production data uses **167,056 immutable
+bytes**, fixed processing state is **3,912 bytes**, and the base renderer is
+**5,424 bytes**. At the exact buffer limit, new processing state is **2,101,064
+bytes**, giving **2,106,488 bytes per whole renderer**. Empty production has zero
+new immutable/state/buffer bytes. These layout figures are build-specific;
+query the API rather than hard-coding them. The 48 kHz five-insert test graph
+uses 28,784 buffer bytes and 38,120 whole-renderer bytes.
+
+Do not report one renderer as the entire transport budget: A1 retains up to 18
+candidates/current/retiring renderers per role. At the per-renderer maximum,
+both roles' 36 slots can therefore request **75,833,568 renderer bytes**, before
+immutable scores/samples, queues, native conversion buffers and other memory.
+
+`nova_audio_production_status` is **render-owner only**, just like core status.
+It copies cumulative insert input/output sample peaks and over-unity-frame
+counts, plus current/minimum dynamics gain before makeup/wet. Insert output
+meters are post-wet, pre-fader and pre-terminal-fade. Master/core and existing
+safe transport output meters include the final fade. `tail_active`, remaining
+declared tail/cancel frames and `ended` describe the DSP/tail window; use
+`nova_audio_status().finished` for completion including voices. Remaining frames
+are editorial bounds, not decay or audible-playhead estimates.
+
+**Native live insert-meter snapshots are deferred.** The unchanged transport
+provides its safe bus/master snapshots, not the new insert arrays. The UI must
+not call the renderer getter concurrently or borrow renderer state. No loudness,
+true-peak, latency or hardware-xrun metrics are implied.
 
 ## Minimal C / Qt-side use
 
@@ -606,7 +772,8 @@ signals, full command/receipt rings, coalesced snapshots and a fully occupied
 18-renderer pool at shutdown. Allocator guards include transport rendering and
 control-side retirement, with failure injection and exact allocation/free balance.
 A real producer/consumer pair transfers 3000 commands while rendering, collecting
-and reading snapshots concurrently. The fake native host holds its mixer lock
+and reading snapshots concurrently, now for both original scores and production
+graphs with separately owned filter/delay/reverb/limiter state. The fake native host holds its mixer lock
 inside an in-flight callback until close requests the lock, proving the detach
 barrier before teardown. Its executable links the actual `nova_audio_native`
 library without GLFW/raylib and injects render/device/stream/play failures.
@@ -649,13 +816,45 @@ The optional native lifetime gate now also includes a silent original-rate disk
 loop/pause alongside the other role and legacy WAV services; it was compiled,
 **not enabled or run**. No microphone or native audio device was activated.
 
+Production-stage checks compare LP/HP/bell magnitude against analytical responses
+at 100/1000/8000 Hz at both rates (error <0.00002), and transformed cutoff/bell/wet
+ramps against an independent state-update reference. They verify signed/damped
+delay feedback, exact maximum two-second delay positions, linked dynamics
+curves/time constants/automation, full-wet sample ceilings and intentional
+partial-wet exceptions. Room fixtures check first arrivals, stereo decorrelation
+(absolute correlation <0.1) and decay; the measured early-half-second energies
+were 0.56832/0.56311 at 44.1/48 kHz, with final-half-second energy below 3e-32
+in this three-second fixture. These measurements do not certify an RT60 or
+perceptual reverb quality.
+
+The tests also cover every exposed automation parameter, same-frame and
+interrupted ramps, all 16 inserts/sends, the full combined 4096-event budget,
+exact 2 MiB buffer acceptance/overflow rejection, 30-second declared tails,
+60-second ramp bounds, high-headroom finite processing and unchanged no-effect
+output. Offline float WAV decode, direct rendering with blocks 1/4096, and the
+pre-device transport agree exactly for the automated graph at both rates.
+Tail/fade/cancel/loop/reset checks include cancelling during a natural end fade
+and past a previous loop boundary without stale state. Allocation injection covers
+every production preparation and both renderer allocations, offline failures,
+exact byte accounting, callback guards and the full 18-slot transport pool.
+
+Production-stage verification: **18 focused checks pass in Debug and ASan/UBSan**,
+and both native applications link. Six production/disk/transport/device/lifecycle
+selectors pass ten repetitions each under ThreadSanitizer. Explicit balance
+checks cover ownership; macOS leak sanitizer remains disabled. The original
+48 kHz float demonstration is byte-identical before/after this change in the
+same build environment, SHA-256
+`3196fab8fc5f8e4df2d050a67b192acc4c257fc1a05eee3b1262fd829d13cd48`.
+No device/audio/microphone/Android hardware run or host installation occurred.
+
 Still required for the complete Sound Studio: measured underruns/latency and
 more complete device-loss recovery; Android focus/lifecycle handling; quality
 qualification of the inherited output conversion; coordinated manifest/Lua/
 packaged-Android music integration and multitrack disk mixing;
 sound documents and reversible waveform/loop/crossfade editing; recording
 consent/input/retention; MIDI; arrangement/
-piano roll; effects, sends, automation UI, stem exports/latency policy, and
+piano roll; production/mixer/automation UI, additional modulation/saturation,
+stem exports/latency policy, and
 runtime-profile audition. Listening, microphone/MIDI hardware and Android
 device behavior have not been established by these checks. No comparative
 fidelity claim about GameStudio/Glow43 is made.

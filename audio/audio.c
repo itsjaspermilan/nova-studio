@@ -1,4 +1,5 @@
 #include "audio.h"
+#include "production_internal.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -32,7 +33,7 @@ typedef struct {
 struct NovaAudioProgram {
     unsigned references;
     uint32_t rate, voice_limit;
-    uint64_t length;
+    uint64_t length, content_length;
     bool loop;
     size_t sample_count, patch_count, bus_count, event_count;
     NovaAudioSample *samples[NOVA_AUDIO_MAX_SAMPLES];
@@ -40,6 +41,7 @@ struct NovaAudioProgram {
     NovaAudioBus buses[NOVA_AUDIO_MAX_BUSES];
     Event events[NOVA_AUDIO_MAX_EVENTS];
     float *tables;
+    NovaProduction *production;
 };
 
 typedef struct {
@@ -57,6 +59,7 @@ typedef struct {
 
 struct NovaAudioRenderer {
     NovaAudioProgram *program;
+    NovaProductionState *production;
     uint64_t clock, position;
     size_t event;
     bool cancelled;
@@ -196,7 +199,8 @@ static bool prepare_events(NovaAudioProgram *program, char *error, size_t size)
                     note->released = true;
                     note->off = e->frame;
                     note->end = e->frame + program->patches[note->patch].desc.envelope.release_frames;
-                    if (note->end > program->length) reason = "release tail exceeds score length";
+                    if (note->end > program->content_length) reason = program->content_length == program->length ?
+                        "release tail exceeds score length" : "release tail exceeds score content length (before production tail)";
                 }
             } else if ((e->type == NOVA_AUDIO_VOICE_GAIN && !finite_range(e->value, 0, 4)) ||
                        (e->type == NOVA_AUDIO_VOICE_PAN && !finite_range(e->value, -1, 1)) ||
@@ -299,7 +303,7 @@ static bool prepare_tables(NovaAudioProgram *program, char *error, size_t size)
     return true;
 }
 
-bool nova_audio_program_create(const NovaAudioProgramDesc *desc,
+static bool program_create(const NovaAudioProgramDesc *desc, const NovaAudioProductionDesc *production,
     NovaAudioProgram **out, char *error, size_t error_size)
 {
     if (!desc || !out || (desc->sample_rate != 48000 && desc->sample_rate != 44100) ||
@@ -316,6 +320,7 @@ bool nova_audio_program_create(const NovaAudioProgramDesc *desc,
     program->rate = desc->sample_rate;
     program->voice_limit = desc->voice_limit;
     program->length = desc->length_frames;
+    program->content_length = desc->length_frames;
     program->loop = desc->loop;
     program->patch_count = desc->patch_count;
     program->bus_count = desc->bus_count;
@@ -344,6 +349,9 @@ bool nova_audio_program_create(const NovaAudioProgramDesc *desc,
             goto failed;
         }
     }
+    if (!nova_production_prepare(production, program->rate, program->length, program->bus_count, program->event_count,
+        &program->production, error, error_size)) goto failed;
+    program->content_length -= nova_production_info(program->production).tail_frames;
     if (!patches_valid(program, error, error_size) || !prepare_events(program, error, error_size) ||
         !prepare_tables(program, error, error_size)) goto failed;
     *out = program;
@@ -354,18 +362,38 @@ failed:
     return false;
 }
 
+bool nova_audio_program_create(const NovaAudioProgramDesc *desc,
+    NovaAudioProgram **out, char *error, size_t error_size)
+{
+    return program_create(desc, NULL, out, error, error_size);
+}
+
+bool nova_audio_program_create_production(const NovaAudioProgramDesc *desc, const NovaAudioProductionDesc *production,
+    NovaAudioProgram **out, char *error, size_t error_size)
+{
+    return program_create(desc, production, out, error, error_size);
+}
+
 void nova_audio_program_release(NovaAudioProgram *program)
 {
     if (!program || --program->references != 0) return;
     for (size_t i = 0; i < program->sample_count; ++i) nova_audio_sample_release(program->samples[i]);
     for (size_t i = 0; i < program->patch_count; ++i) free(program->patches[i].sinc);
     free(program->tables);
+    nova_production_destroy(program->production);
     free(program);
 }
 
 uint32_t nova_audio_program_rate(const NovaAudioProgram *program) { return program->rate; }
 uint64_t nova_audio_program_length(const NovaAudioProgram *program) { return program->length; }
 size_t nova_audio_program_bus_count(const NovaAudioProgram *program) { return program->bus_count; }
+
+NovaAudioProductionInfo nova_audio_program_production_info(const NovaAudioProgram *program)
+{
+    NovaAudioProductionInfo info = nova_production_info(program->production);
+    info.renderer_bytes = sizeof(NovaAudioRenderer) + info.state_bytes;
+    return info;
+}
 
 static Ramp constant(double value) { return (Ramp){.from = value, .to = value}; }
 static double ramp_value(const Ramp *r)
@@ -378,11 +406,12 @@ static void ramp_set(Ramp *r, double target, uint32_t frames)
     *r = (Ramp){.from = ramp_value(r), .to = target, .length = frames};
 }
 
-static void reset_cycle(NovaAudioRenderer *r)
+static void reset_cycle(NovaAudioRenderer *r, bool meters)
 {
     r->position = 0;
     r->event = 0;
     memset(r->voices, 0, sizeof(r->voices));
+    nova_production_reset(r->production, meters);
     for (size_t i = 0; i < r->program->bus_count; ++i) {
         r->gain[i] = constant(r->program->buses[i].gain);
         r->pan[i] = constant(r->program->buses[i].pan);
@@ -392,9 +421,11 @@ static void reset_cycle(NovaAudioRenderer *r)
 void nova_audio_renderer_reset(NovaAudioRenderer *renderer)
 {
     NovaAudioProgram *program = renderer->program;
+    NovaProductionState *production = renderer->production;
     memset(renderer, 0, sizeof(*renderer));
     renderer->program = program;
-    reset_cycle(renderer);
+    renderer->production = production;
+    reset_cycle(renderer, true);
 }
 
 bool nova_audio_renderer_create(NovaAudioProgram *program,
@@ -403,9 +434,13 @@ bool nova_audio_renderer_create(NovaAudioProgram *program,
     if (!program || !out) return fail(error, error_size, "renderer requires a prepared score and output pointer");
     NovaAudioRenderer *r = calloc(1, sizeof(*r));
     if (!r) return fail(error, error_size, "audio renderer allocation failed");
+    if (program->production) {
+        r->production = nova_production_create(program->production, error, error_size);
+        if (!r->production) { free(r); return false; }
+    }
     r->program = program;
     ++program->references;
-    reset_cycle(r);
+    reset_cycle(r, true);
     *out = r;
     if (error && error_size) error[0] = '\0';
     return true;
@@ -414,6 +449,7 @@ bool nova_audio_renderer_create(NovaAudioProgram *program,
 void nova_audio_renderer_destroy(NovaAudioRenderer *renderer)
 {
     if (!renderer) return;
+    nova_production_free(renderer->production);
     nova_audio_program_release(renderer->program);
     free(renderer);
 }
@@ -445,6 +481,7 @@ NovaAudioResult nova_audio_cancel(NovaAudioRenderer *r, uint32_t fade_frames)
     if (!r || !fade_frames || fade_frames > r->program->rate * 60) return NOVA_AUDIO_INVALID_ARGUMENT;
     if (r->cancelled) return r->fault;
     r->cancelled = true;
+    nova_production_cancel(r->production, fade_frames);
     for (uint32_t i = 0; i < r->program->voice_limit; ++i) {
         Voice *v = &r->voices[i];
         if (v->active) release_voice(v, r->program->patches[v->patch].desc.envelope, fade_frames);
@@ -596,10 +633,11 @@ NovaAudioResult nova_audio_render(NovaAudioRenderer *r, float *stereo, size_t fr
     }
     NovaAudioProgram *program = r->program;
     for (size_t frame = 0; frame < frames; ++frame) {
-        if (!r->cancelled && r->position == program->length && program->loop) reset_cycle(r);
+        if (!r->cancelled && r->position == program->length && program->loop) reset_cycle(r, false);
         if (!r->cancelled)
             while (r->event < program->event_count && program->events[r->event].desc.frame == r->position)
                 apply_event(r, &program->events[r->event++]);
+        nova_production_begin(r->production, r->position);
         double buses[NOVA_AUDIO_MAX_BUSES][2] = {{0}};
         for (uint32_t i = 0; i < program->voice_limit; ++i) {
             Voice *v = &r->voices[i];
@@ -610,7 +648,17 @@ NovaAudioResult nova_audio_render(NovaAudioRenderer *r, float *stereo, size_t fr
             buses[v->bus][1] += value[1];
         }
         for (size_t i = program->bus_count; i-- > 0;) {
+            if (!nova_production_bus(r->production, (uint32_t)i, buses[i])) {
+                r->fault = NOVA_AUDIO_NONFINITE;
+                memset(stereo + frame * 2, 0, (frames - frame) * 2 * sizeof(float));
+                return r->fault;
+            }
+            nova_production_sends(r->production, (uint32_t)i, false, buses);
             balance(buses[i], ramp_value(&r->pan[i]), ramp_value(&r->gain[i]));
+            if (i == 0 && r->production) {
+                double gain = nova_production_output_gain(r->production);
+                buses[i][0] *= gain; buses[i][1] *= gain;
+            }
             float left = (float)buses[i][0], right = (float)buses[i][1];
             if (!isfinite(left) || !isfinite(right)) {
                 r->fault = NOVA_AUDIO_NONFINITE;
@@ -620,6 +668,7 @@ NovaAudioResult nova_audio_render(NovaAudioRenderer *r, float *stereo, size_t fr
             r->peak[i][0] = fmaxf(r->peak[i][0], fabsf(left));
             r->peak[i][1] = fmaxf(r->peak[i][1], fabsf(right));
             if (fabsf(left) > 1 || fabsf(right) > 1) ++r->over_frames[i];
+            nova_production_sends(r->production, (uint32_t)i, true, buses);
             if (i) {
                 uint32_t parent = program->buses[i].parent;
                 buses[parent][0] += buses[i][0];
@@ -631,7 +680,8 @@ NovaAudioResult nova_audio_render(NovaAudioRenderer *r, float *stereo, size_t fr
         stereo[frame * 2 + 1] = (float)buses[0][1];
         ++r->clock;
         if (r->position < program->length) ++r->position;
-        if (!r->cancelled && program->loop && r->position == program->length) reset_cycle(r);
+        nova_production_advance(r->production);
+        if (!r->cancelled && program->loop && r->position == program->length) reset_cycle(r, false);
     }
     return NOVA_AUDIO_OK;
 }
@@ -642,9 +692,14 @@ NovaAudioStatus nova_audio_status(const NovaAudioRenderer *r)
         .cancelled = r->cancelled, .fault = r->fault};
     for (uint32_t i = 0; i < r->program->voice_limit; ++i)
         if (r->voices[i].active) ++status.active_voices;
-    status.finished = !status.active_voices &&
+    status.finished = !status.active_voices && nova_production_finished(r->production) &&
         (r->cancelled || (!r->program->loop && r->position == r->program->length));
     memcpy(status.peak, r->peak, sizeof(status.peak));
     memcpy(status.over_frames, r->over_frames, sizeof(status.over_frames));
     return status;
+}
+
+NovaAudioProductionStatus nova_audio_production_status(const NovaAudioRenderer *r)
+{
+    return nova_production_status(r->production);
 }

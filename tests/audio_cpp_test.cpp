@@ -1,4 +1,5 @@
 #include "audio.h"
+#include "production.h"
 #include "transport.h"
 #include "audio_device.h"
 
@@ -34,6 +35,11 @@ int main()
     bool ok = nova_audio_render(renderer, output.data(), 16) == NOVA_AUDIO_OK &&
         nova_audio_status(renderer).finished;
     nova_audio_renderer_destroy(renderer);
+    NovaAudioProductionDesc production{};
+    if (!nova_audio_program_create_production(&desc, &production, &program, error, sizeof(error))) return 1;
+    NovaAudioProductionInfo production_info = nova_audio_program_production_info(program);
+    ok = ok && !production_info.state_bytes && production_info.renderer_bytes;
+    nova_audio_program_release(program);
     NovaAudioTransport *transport = nullptr;
     if (!nova_audio_transport_create(NOVA_AUDIO_DEFAULT_RATE, &transport, error, sizeof(error))) {
         std::fprintf(stderr, "%s\n", error);
