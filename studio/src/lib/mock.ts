@@ -13,6 +13,7 @@ const STARTER: Record<string, string> = {
 export function createMockApi(): Api {
   const files = new Map<string, string>();
   const images = new Map<string, string>(); // saved PNGs as data URLs
+  const audio = new Map<string, string>(); // saved WAVs as data URLs
   const dirs = new Set<string>();
   let root: string | null = null;
   let running = false;
@@ -25,6 +26,7 @@ export function createMockApi(): Api {
     files.clear();
     dirs.clear();
     images.clear();
+    audio.clear();
     for (const [path, text] of Object.entries(STARTER)) {
       files.set(path, path === "nova.json" ? text.replace("Mock Project", name) : text);
       const parts = path.split("/");
@@ -88,6 +90,22 @@ export function createMockApi(): Api {
       const text = files.get(path);
       if (text === undefined) throw `'${path}' does not exist`;
       return { text, binary: false, size: text.length };
+    },
+    readAudio: async (path) => {
+      need();
+      bad(path);
+      const saved = audio.get(path);
+      if (!saved) throw `'${path}' does not exist`;
+      return saved;
+    },
+    writeAudio: async (path, dataUrl) => {
+      need();
+      bad(path);
+      if (!path.endsWith(".wav") || !dataUrl.startsWith("data:audio/wav;base64,")) throw "expected a WAV";
+      audio.set(path, dataUrl);
+      files.set(path, "");
+      const parts = path.split("/");
+      for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join("/"));
     },
     readImage: async (path) => {
       need();

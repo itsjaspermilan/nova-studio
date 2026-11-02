@@ -8,6 +8,7 @@
   let selected = $state("");
   let editing: Editing | null = $state(null);
   let sprite: { name: string; side: number } | null = $state(null);
+  let sfx: string | null = $state(null);
 
   const rows = $derived(visibleRows(buildTree(studio.files), open));
   const errorFiles = $derived(new Set(studio.diagnostics.filter((d) => d.severity === "error" && d.file).map((d) => d.file!)));
@@ -74,8 +75,16 @@
     <span class="title">{studio.project?.name}</span>
     <button class="ghost" title="New file" aria-label="New file" onclick={() => begin("file")}>＋</button>
     <button class="ghost" title="New sprite" aria-label="New sprite" onclick={() => (sprite = { name: "", side: 32 })}>◩</button>
+    <button class="ghost" title="New sound effect" aria-label="New sound effect" onclick={() => (sfx = "")}>♪</button>
     <button class="ghost" title="New folder" aria-label="New folder" onclick={() => begin("dir")}>▤</button>
   </header>
+  {#if sfx !== null}
+    <form class="sprite" onsubmit={(e) => { e.preventDefault(); const n = sfx!; sfx = null; void studio.createSound(n); }}>
+      <input use:focusOnMount bind:value={sfx} placeholder="sound name" aria-label="Sound name" />
+      <button class="primary" disabled={!sfx.trim()}>Create</button>
+      <button type="button" class="ghost" aria-label="Cancel" onclick={() => (sfx = null)}>✕</button>
+    </form>
+  {/if}
   {#if sprite}
     <form class="sprite" onsubmit={(e) => { e.preventDefault(); const s = sprite!; sprite = null; void studio.createSprite(s.name, s.side); }}>
       <input use:focusOnMount bind:value={sprite.name} placeholder="sprite name" aria-label="Sprite name" />

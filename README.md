@@ -66,7 +66,7 @@ checks; it does not predict handheld performance.
 
 ## Limits today
 
-- The studio has a project hub, a Lua editor, Problems, Play and a visual scene editor (objects, images, text; no tile painting) and a pixel sprite studio (one layer, frames, animations); no model or sound editors yet. Assets are made elsewhere. Projects are Lua, JSON scenes, PNG and GLB files; there is no OGG/streamed music or world-space text yet.
+- The studio has a project hub, a Lua editor, Problems, Play and a visual scene editor (objects, images, text; no tile painting) a pixel sprite studio (one layer, frames, animations) and a sound studio (effect generator and WAV trimming); no model editor and no music editor yet. Assets are made elsewhere. Projects are Lua, JSON scenes, PNG and GLB files; there is no OGG/streamed music or world-space text yet.
 - APKs of games run on the Android emulator; no handheld has run one. Analogue sticks and triggers do not reach the game on Android yet.
 - Only the Android emulator has run the APK; no handheld has.
 - The audio core was verified with offline renders only, not by listening.

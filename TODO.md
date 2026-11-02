@@ -299,7 +299,13 @@ First slice, built (`SpriteEditor.svelte`, pure logic in `pixels.ts` and `sprite
 
 - [ ] Rust FFI wrapper over the C audio core; offline render + device audition
   (replace the raylib-tied adapter). Verify tests carried over still pass.
-- [ ] SFX generator (sfxr-style) with presets, layering, waveform trim/fade.
+- [x] First slice, built in TypeScript (`sfx.ts`, `wav.ts`, `SoundEditor.svelte`): an sfxr-style effect
+  generator (5 waves, slide, vibrato, pitch jump, envelope, punch, filters, presets, randomise/mutate)
+  saved as `sounds/<name>.sfx.json` plus the rendered `sounds/<name>.wav` the game plays; a WAV
+  editor (waveform, selection, keep/cut, trim silence, fades, normalise, gain, reverse, undo) that
+  reads 8/16/24/32-bit PCM and float and saves 16-bit PCM. Preview uses the browser's Web Audio; it
+  has not been listened to on a device and says nothing about runtime latency.
+- [ ] Still open there: layering several effects, loops/crossfades, OGG export, spectrum view.
 - [ ] Instruments: synth patches, sampler, optional SoundFont playback.
 - [ ] Music editor: patterns, piano roll, drums, arrangement, tempo; later mixer,
   buses, effects and automation using the existing production DSP.

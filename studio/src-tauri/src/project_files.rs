@@ -96,6 +96,43 @@ pub fn read_image(root: &Path, rel: &str) -> Result<String, String> {
     Ok(format!("data:image/png;base64,{}", base64(&bytes)))
 }
 
+const MAX_AUDIO_BYTES: u64 = 32 << 20;
+const WAV_PREFIX: &str = "data:audio/wav;base64,";
+
+fn is_wav(bytes: &[u8]) -> bool {
+    bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WAVE"
+}
+
+/// A project WAV as a `data:` URL for the sound editor. Only `.wav` files are served.
+pub fn read_audio(root: &Path, rel: &str) -> Result<String, String> {
+    if !rel.to_ascii_lowercase().ends_with(".wav") {
+        return Err(format!("'{rel}' is not a WAV file"));
+    }
+    let path = confine(root, rel)?;
+    let meta = std::fs::metadata(&path).map_err(|e| format!("cannot read '{rel}': {e}"))?;
+    if !meta.is_file() || meta.len() > MAX_AUDIO_BYTES {
+        return Err(format!("'{rel}' is not a readable sound (or is bigger than {} MiB)", MAX_AUDIO_BYTES >> 20));
+    }
+    let bytes = std::fs::read(&path).map_err(|e| format!("cannot read '{rel}': {e}"))?;
+    Ok(format!("{WAV_PREFIX}{}", base64(&bytes)))
+}
+
+/// Saves a WAV sent as a `data:audio/wav;base64,...` URL, after checking it really is one.
+pub fn write_audio(root: &Path, rel: &str, data_url: &str) -> Result<(), String> {
+    if !rel.to_ascii_lowercase().ends_with(".wav") {
+        return Err(format!("'{rel}' is not a .wav path"));
+    }
+    let encoded = data_url.strip_prefix(WAV_PREFIX).ok_or("expected a WAV data URL")?;
+    let bytes = unbase64(encoded)?;
+    if bytes.len() as u64 > MAX_AUDIO_BYTES {
+        return Err(format!("'{rel}' would be bigger than {} MiB", MAX_AUDIO_BYTES >> 20));
+    }
+    if !is_wav(&bytes) {
+        return Err("that is not WAV data".into());
+    }
+    write_bytes(root, rel, &bytes)
+}
+
 pub fn read_file(root: &Path, rel: &str) -> Result<FileContent, String> {
     let path = confine(root, rel)?;
     let meta = std::fs::metadata(&path).map_err(|e| format!("cannot read '{rel}': {e}"))?;
@@ -296,6 +333,25 @@ mod tests {
         assert!(write_image(&root, "../c.png", &url).unwrap_err().contains("leaves the project"));
         assert!(write_image(&root, "d.png", "data:text/plain;base64,AA==").is_err());
         assert!(write_image(&root, "d.png", "data:image/png;base64,@@@").unwrap_err().contains("base64"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn wav_data_urls_round_trip_and_are_checked() {
+        let root = project("audio");
+        let mut wav = b"RIFF\x24\0\0\0WAVEfmt ".to_vec();
+        wav.extend([1, 2, 3]);
+        let url = format!("{WAV_PREFIX}{}", base64(&wav));
+        write_audio(&root, "sounds/a.wav", &url).unwrap();
+        assert_eq!(read_audio(&root, "sounds/a.wav").unwrap(), url);
+        wav[0] = b'X';
+        let bad = format!("{WAV_PREFIX}{}", base64(&wav));
+        assert!(write_audio(&root, "b.wav", &bad).unwrap_err().contains("not WAV"));
+        assert!(write_audio(&root, "b.png", &url).unwrap_err().contains("not a .wav"));
+        assert!(write_audio(&root, "../b.wav", &url).unwrap_err().contains("leaves the project"));
+        assert!(write_audio(&root, "b.wav", "data:image/png;base64,AA==").is_err());
+        assert!(read_audio(&root, "main.lua").unwrap_err().contains("not a WAV"));
+        assert!(read_audio(&root, "gone.wav").is_err());
         let _ = std::fs::remove_dir_all(&root);
     }
 

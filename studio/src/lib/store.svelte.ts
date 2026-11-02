@@ -2,7 +2,9 @@ import { getApi } from "./api";
 import { editorStates } from "./editor-state";
 import { newRaster } from "./pixels";
 import { rasterToDataUrl } from "./png";
+import { PRESETS, render, toJson } from "./sfx";
 import { newDoc, toSheetJson } from "./sprite-doc";
+import { encodeWav, toBase64 } from "./wav";
 import { moved, planRename } from "./refs";
 import { byFile } from "./diagnostics";
 import { projectSymbols, type ProjectSymbols } from "./completions";
@@ -275,6 +277,21 @@ class Studio {
       if (this.files.some((f) => f.path === json || f.path === png)) throw `'${clean}' already exists in sprites/`;
       await this.api!.writeImage(png, rasterToDataUrl(newRaster(side, side)));
       await this.api!.createFile(json, toSheetJson(newDoc(side, side), `${clean}.png`));
+      await this.refreshFiles();
+      await this.openFile(json);
+    });
+  }
+
+  /// A new sound effect: settings in `sounds/<name>.sfx.json` and the rendered `sounds/<name>.wav`.
+  async createSound(name: string) {
+    const clean = name.trim().replace(/\.sfx\.json$|\.wav$/i, "");
+    if (!/^[A-Za-z0-9_-]+$/.test(clean)) return this.say("error", "Sound names use letters, numbers, - and _.");
+    await this.#guard(async () => {
+      const json = `sounds/${clean}.sfx.json`;
+      const wav = `sounds/${clean}.wav`;
+      if (this.files.some((f) => f.path === json || f.path === wav)) throw `'${clean}' already exists in sounds/`;
+      await this.api!.writeAudio(wav, `data:audio/wav;base64,${toBase64(encodeWav(render(PRESETS.coin!)))}`);
+      await this.api!.createFile(json, toJson(PRESETS.coin!));
       await this.refreshFiles();
       await this.openFile(json);
     });
