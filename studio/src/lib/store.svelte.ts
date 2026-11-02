@@ -5,6 +5,7 @@ import { rasterToDataUrl } from "./png";
 import { exportGlb } from "./glb";
 import { newModel, serializeModel } from "./model-doc";
 import { PRESETS, render, toJson } from "./sfx";
+import { newSong, renderSong, serializeSong } from "./song";
 import { newDoc, toSheetJson } from "./sprite-doc";
 import { encodeWav, toBase64 } from "./wav";
 import { moved, planRename } from "./refs";
@@ -310,6 +311,22 @@ class Studio {
       const doc = newModel();
       await this.api!.writeModel(glb, `data:model/gltf-binary;base64,${toBase64(exportGlb(doc))}`);
       await this.api!.createFile(json, serializeModel(doc));
+      await this.refreshFiles();
+      await this.openFile(json);
+    });
+  }
+
+  /// A new song: `music/<name>.song.json` (what the editor edits) and the rendered `music/<name>.wav`.
+  async createSong(name: string) {
+    const clean = name.trim().replace(/\.song\.json$|\.wav$/i, "");
+    if (!/^[A-Za-z0-9_-]+$/.test(clean)) return this.say("error", "Song names use letters, numbers, - and _.");
+    await this.#guard(async () => {
+      const json = `music/${clean}.song.json`;
+      const wav = `music/${clean}.wav`;
+      if (this.files.some((f) => f.path === json || f.path === wav)) throw `'${clean}' already exists in music/`;
+      const song = newSong();
+      await this.api!.writeAudio(wav, `data:audio/wav;base64,${toBase64(encodeWav(renderSong(song)))}`);
+      await this.api!.createFile(json, serializeSong(song));
       await this.refreshFiles();
       await this.openFile(json);
     });

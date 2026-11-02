@@ -308,7 +308,16 @@ First slice, built (`SpriteEditor.svelte`, pure logic in `pixels.ts` and `sprite
   has not been listened to on a device and says nothing about runtime latency.
 - [ ] Still open there: layering several effects, loops/crossfades, OGG export, spectrum view.
 - [ ] Instruments: synth patches, sampler, optional SoundFont playback.
-- [ ] Music editor: patterns, piano roll, drums, arrangement, tempo; later mixer,
+- [x] First slice, built (`SongEditor.svelte`, pure logic and synthesis in `song.ts`): a step-sequencer piano
+  roll with synth tracks (square/saw/triangle/sine/noise, ADSR, pan, volume, mute) and a seven-piece
+  synthesised drum kit, tempo, bar count, click/drag/resize/remove notes, transpose, undo, looping
+  playback with a playhead (Web Audio) and note audition. Saved as `music/<name>.song.json`; saving
+  renders the song offline to `music/<name>.wav` (stereo 44.1 kHz, tails wrapped so it loops without a
+  gap) for `nova.music.play("name")`.
+- [ ] Still open there: patterns and arrangement (one song is one looping pattern for now), per-note
+  velocity editing, swing, effects/buses, sampler and SoundFont instruments, import of MIDI, Ogg export,
+  and whether the long WAV (about 10 MB a minute) should become Ogg for shipping.
+- [ ] (original plan) Music editor: patterns, piano roll, drums, arrangement, tempo; later mixer,
   buses, effects and automation using the existing production DSP.
 - [ ] Exports: WAV (PCM16/24/float) and OGG; loops and stems.
 - [ ] Microphone recording only with explicit permission and its own consent step.
