@@ -3,6 +3,7 @@
   import Hub from "./components/Hub.svelte";
   import FileTree from "./components/FileTree.svelte";
   import Editor from "./components/Editor.svelte";
+  import SceneEditor from "./components/SceneEditor.svelte";
   import BottomPanel from "./components/BottomPanel.svelte";
   import { fileKind } from "./lib/tree";
   import { studio } from "./lib/store.svelte";
@@ -22,6 +23,15 @@
     return () => window.removeEventListener("keydown", keys);
   });
 
+  // Scene files open visually unless the person asked for the JSON; remembered per file.
+  let jsonView = $state(new Set<string>());
+  const isScene = (p: string) => p.endsWith(".scene.json");
+  const toggleJson = (p: string, on: boolean) => {
+    const next = new Set(jsonView);
+    if (on) next.add(p);
+    else next.delete(p);
+    jsonView = next;
+  };
   const base = (p: string) => p.slice(p.lastIndexOf("/") + 1);
   const errors = $derived(studio.diagnostics.filter((d) => d.severity === "error").length);
 </script>
@@ -63,7 +73,12 @@
           {#if studio.tab}
             {#if studio.tab.binary}
               <div class="placeholder dim">{base(studio.tab.path)} · {fileKind(studio.tab.path)} · {studio.tab.size.toLocaleString()} bytes<br />Binary files open in their own editors (coming later).</div>
+            {:else if isScene(studio.tab.path) && !jsonView.has(studio.tab.path)}
+              <SceneEditor path={studio.tab.path} text={studio.tab.text} onjson={() => toggleJson(studio.tab!.path, true)} />
             {:else}
+              {#if isScene(studio.tab.path)}
+                <div class="viewbar"><button class="ghost" onclick={() => toggleJson(studio.tab!.path, false)}>◧ Visual editor</button></div>
+              {/if}
               <Editor path={studio.tab.path} text={studio.tab.text} />
             {/if}
           {:else}
@@ -92,7 +107,7 @@
 
 <style>
   .boot { height: 100%; display: grid; place-items: center; }
-  .shell { height: 100%; display: grid; grid-template-columns: 240px 1fr; grid-template-rows: auto 1fr 220px; grid-template-areas: "top top" "tree center" "bottom bottom"; }
+  .shell { height: 100%; display: grid; grid-template-columns: 240px minmax(0, 1fr); grid-template-rows: auto 1fr 220px; grid-template-areas: "top top" "tree center" "bottom bottom"; }
   .shell.no-panel { grid-template-rows: auto 1fr auto; }
   .top { grid-area: top; display: flex; align-items: center; gap: 10px; padding: 6px 10px; background: var(--panel); border-bottom: 1px solid var(--line); }
   .shell > :global(.tree) { grid-area: tree; }
@@ -107,7 +122,9 @@
   .tab > button:first-child { background: transparent; border: none; border-radius: 0; padding: 6px 4px 6px 12px; }
   .tab .x { padding: 0 6px; font-size: 10px; }
   .dot { color: var(--warn); margin-left: 6px; font-size: 9px; }
-  .editor-host { flex: 1; min-height: 0; }
+  .editor-host { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .editor-host > :global(*) { flex: 1; min-height: 0; }
+  .editor-host > :global(.viewbar) { flex: none; padding: 2px 8px; background: var(--panel); border-bottom: 1px solid var(--line); }
   .placeholder { height: 100%; display: grid; place-items: center; text-align: center; padding: 24px; }
   .toast { position: fixed; bottom: 16px; right: 16px; max-width: 460px; display: flex; gap: 8px; align-items: flex-start; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; box-shadow: 0 8px 24px #0006; z-index: 50; }
   .toast.error { border-color: var(--error); }

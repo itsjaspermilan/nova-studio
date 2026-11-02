@@ -73,6 +73,8 @@ export interface Api {
   closeProject(): Promise<void>;
   listFiles(): Promise<FileEntry[]>;
   readFile(path: string): Promise<FileContent>;
+  /// A project PNG as a data: URL.
+  readImage(path: string): Promise<string>;
   writeFile(path: string, text: string): Promise<void>;
   createFile(path: string, contents?: string): Promise<void>;
   createDir(path: string): Promise<void>;

@@ -4,6 +4,8 @@ const STARTER: Record<string, string> = {
   "nova.json": JSON.stringify({ format: 1, name: "Mock Project", entry: "main.lua", world_height: 540, version: "0.1.0", input: { jump: ["key:Space", "pad:south"] } }, null, 2) + "\n",
   "main.lua": `-- Entry point: start the first scene.\nnova.start("title")\n`,
   "scenes/title.lua": `local Title = nova.scene {}\n\nfunction Title:enter()\n  self.t = 0\n  self:spawn("player", { x = 480, y = 270 })\nend\n\nfunction Title:update(dt)\n  self.t = self.t + dt\nend\n\nfunction Title:draw_ui()\n  nova.ui.text(24, 24, "Hello, Nova!", { size = 48, font = "rounded" })\nend\n\nreturn Title\n`,
+  "scenes/title.scene.json": `{\n  "version": 1,\n  "background": [40, 60, 90],\n  "objects": [\n    { "kind": "player", "name": "hero", "x": 480, "y": 400 }\n  ],\n  "images": [\n    { "image": "sprites/player_sheet.png", "x": 120, "y": 200, "scale": 2 }\n  ],\n  "texts": [\n    { "text": "MY GAME", "x": 24, "y": 24, "scale": 5 }\n  ]\n}\n`,
+  "sprites/player_sheet.png": "",
   "entities/player.lua": `local Player = nova.entity { sprite = "player", w = 32, h = 32 }\n\nfunction Player:update(dt)\n  self.x = self.x + nova.input.axis("move_x") * 160 * dt\n  if nova.input.pressed("jump") then\n    nova.sound.play("jump")\n  end\nend\n\nreturn Player\n`,
 };
 
@@ -83,6 +85,13 @@ export function createMockApi(): Api {
       const text = files.get(path);
       if (text === undefined) throw `'${path}' does not exist`;
       return { text, binary: false, size: text.length };
+    },
+    readImage: async (path) => {
+      need();
+      bad(path);
+      // No real pixels in a browser preview: a labelled placeholder with a 48x32 size.
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="32"><rect width="48" height="32" fill="#e6b450" stroke="#222"/><text x="4" y="20" font-size="9" font-family="sans-serif">${path.split("/").pop()?.slice(0, 7) ?? ""}</text></svg>`;
+      return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
     },
     writeFile: async (path, text) => {
       need();

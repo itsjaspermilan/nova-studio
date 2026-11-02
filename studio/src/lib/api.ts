@@ -22,6 +22,7 @@ async function tauriApi(): Promise<Api> {
     closeProject: () => invoke("close_project"),
     listFiles: () => invoke<FileEntry[]>("list_files"),
     readFile: (path) => invoke<FileContent>("read_file", { path }),
+    readImage: (path) => invoke<string>("read_image", { path }),
     writeFile: (path, text) => invoke("write_file", { path, text }),
     createFile: (path, contents) => invoke("create_file", { path, contents: contents ?? null }),
     createDir: (path) => invoke("create_dir", { path }),

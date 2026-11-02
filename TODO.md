@@ -20,7 +20,7 @@ Waiting on the user:
 - Nothing blocks the studio now: the first slice (hub, code editor, Play) was approved and is built
   (see M4). The look and feel is a first draft in `studio/src/app.css`; tell me what to change.
 
-Can proceed without input, in rough priority: the scene editor (M4 second slice); rigid-bone model
+Can proceed without input, in rough priority: the rest of the scene editor (tile painting, props, entity previews); the sprite studio (M5); rigid-bone model
 animation and simple lights; OGG and streamed music; the C audio core's synthesis for the sound studio
 (M6); Android analogue input and immersive mode (need the device to verify).
 
@@ -268,6 +268,13 @@ First slice, built (Svelte 5 + TypeScript + CodeMirror 6; backend in `studio/src
   Problems panel from `nova check --json`, click-to-line. [ ] Optional language server later.
 - [x] Play: runs `nova run` as its own native window; Run/Stop, log console, saves first. [ ] Pause,
   and Run on device.
+Second slice, built: visual scene editor for `*.scene.json` (opens by default, JSON view one click away):
+- [x] Canvas with pan/zoom, snap grid, select and drag, arrow-key nudge, duplicate, delete, undo/redo.
+- [x] Palette of project entities and PNGs, inspector for kind/name/position/scale/layer/depth/text/
+  colour, scene background and size. Saves tidy, diff-friendly JSON; unknown keys pass through.
+- [x] Pictures come from the project (`read_image` data URLs); tile maps are drawn.
+- [ ] Not yet: painting tiles, editing `props`, previewing an entity's real sprite (objects are boxes
+  named by kind), multi-select, rotate/resize handles, and no rename-aware scene references.
 - [ ] Undo/redo across editors, safe saves, recovery, external-change handling.
 - [ ] Help window and short tutorials; beginner wording throughout.
 - [ ] Port from GameStudio where it fits: project tree, tabs, code editor, layout

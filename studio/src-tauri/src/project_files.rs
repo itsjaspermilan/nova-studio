@@ -63,6 +63,39 @@ pub fn list_files(root: &Path) -> Result<Vec<FileEntry>, String> {
     Ok(out)
 }
 
+const MAX_ASSET_BYTES: u64 = 16 << 20;
+
+fn base64(bytes: &[u8]) -> String {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let n = (u32::from(chunk[0]) << 16) | (u32::from(*chunk.get(1).unwrap_or(&0)) << 8) | u32::from(*chunk.get(2).unwrap_or(&0));
+        for i in 0..4 {
+            if i <= chunk.len() {
+                out.push(T[(n >> (18 - 6 * i) & 63) as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
+}
+
+/// A project image as a `data:` URL, so the front end can draw it without any file-access rights.
+/// Only PNG files are served.
+pub fn read_image(root: &Path, rel: &str) -> Result<String, String> {
+    if !rel.to_ascii_lowercase().ends_with(".png") {
+        return Err(format!("'{rel}' is not a PNG image"));
+    }
+    let path = confine(root, rel)?;
+    let meta = std::fs::metadata(&path).map_err(|e| format!("cannot read '{rel}': {e}"))?;
+    if !meta.is_file() || meta.len() > MAX_ASSET_BYTES {
+        return Err(format!("'{rel}' is not a readable image (or is bigger than {} MiB)", MAX_ASSET_BYTES >> 20));
+    }
+    let bytes = std::fs::read(&path).map_err(|e| format!("cannot read '{rel}': {e}"))?;
+    Ok(format!("data:image/png;base64,{}", base64(&bytes)))
+}
+
 pub fn read_file(root: &Path, rel: &str) -> Result<FileContent, String> {
     let path = confine(root, rel)?;
     let meta = std::fs::metadata(&path).map_err(|e| format!("cannot read '{rel}': {e}"))?;
@@ -188,6 +221,26 @@ mod tests {
             [("main.lua".to_string(), false), ("nova.json".into(), false), ("scenes".into(), true), ("scenes/a.lua".into(), false)]
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn images_come_back_as_data_urls_and_only_pngs_inside_the_project() {
+        let root = project("image");
+        std::fs::write(root.join("a.png"), [1u8, 2, 3, 4]).unwrap();
+        assert_eq!(read_image(&root, "a.png").unwrap(), "data:image/png;base64,AQIDBA==");
+        std::fs::write(root.join("b.png"), [255u8, 254]).unwrap();
+        assert_eq!(read_image(&root, "b.png").unwrap(), "data:image/png;base64,//4=");
+        assert!(read_image(&root, "main.lua").unwrap_err().contains("not a PNG"));
+        assert!(read_image(&root, "../x.png").unwrap_err().contains("leaves the project"));
+        assert!(read_image(&root, "gone.png").is_err());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn base64_matches_the_standard_vectors() {
+        for (input, out) in [("", ""), ("f", "Zg=="), ("fo", "Zm8="), ("foo", "Zm9v"), ("foob", "Zm9vYg=="), ("fooba", "Zm9vYmE="), ("foobar", "Zm9vYmFy")] {
+            assert_eq!(base64(input.as_bytes()), out);
+        }
     }
 
     #[test]
