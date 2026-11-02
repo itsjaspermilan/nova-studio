@@ -27,6 +27,8 @@ pub struct Options {
     pub uncapped: bool,
     pub no_audio: bool,
     pub headless: bool,
+    /// Height of the world render target in pixels (UI is always native). 0 = native.
+    pub world_height: u32,
 }
 
 impl Default for Options {
@@ -37,6 +39,7 @@ impl Default for Options {
             script: None,
             size: (1280, 720),
             uncapped: false,
+            world_height: 540,
             no_audio: false,
             headless: false,
         }
@@ -152,7 +155,7 @@ pub fn run_headless(opts: Options) -> Result<(), String> {
         );
         let upd = spike.build(dt, size, &state, &hud);
         let render_started = Instant::now();
-        perf.stats = gfx.render(&view, size, &spike.frame_input(&state));
+        perf.stats = gfx.render(&view, size, &spike.frame_input(&state, opts.world_height));
         gfx.device
             .poll(wgpu::PollType::wait_indefinitely())
             .map_err(|e| e.to_string())?;
@@ -173,7 +176,7 @@ pub fn run_headless(opts: Options) -> Result<(), String> {
         let state = script.state();
         let hud = spike::hud_text(&spike, &perf, &state, None, "off (headless)");
         spike.build(dt, size, &state, &hud);
-        let pixels = gfx.capture(size, &spike.frame_input(&state));
+        let pixels = gfx.capture(size, &spike.frame_input(&state, opts.world_height));
         save_png(path, size, &pixels)?;
         println!("captured {}", path.display());
     }
@@ -293,7 +296,11 @@ impl App {
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
         let render_started = Instant::now();
-        self.perf.stats = gfx.render(&view, size, &spike.frame_input(&state));
+        self.perf.stats = gfx.render(
+            &view,
+            size,
+            &spike.frame_input(&state, self.opts.world_height),
+        );
         self.perf.times.render_ms = render_started.elapsed().as_secs_f32() * 1000.0;
         gfx.queue.present(texture);
         self.perf.times.update_ms = upd;

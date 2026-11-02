@@ -33,7 +33,7 @@ asdf Java 17 (only for the SDK tools). `TODO.md` lists exactly what is installed
 
 ```sh
 scripts/env.sh cargo test
-scripts/env.sh cargo run --release -p nova-runtime --bin nova                 # window, Esc quits
+scripts/env.sh cargo run --release -p nova-runtime --bin nova                 # window, Esc quits (world 540p, UI native; --world-height 0 for native)
 scripts/env.sh cargo run --release -p nova-runtime --bin nova -- --headless --frames 300 --size 1920x1080 --capture build/spike.png
 scripts/build-apk.sh                                                          # build/android/nova-spike-debug.apk
 /opt/homebrew/bin/cmake -S audio -B build/audio

@@ -2,6 +2,7 @@
 //!
 //!   nova                         open a window (Esc quits)
 //!   nova --script path.lua       use (and hot-reload) a script from disk
+//!   nova --world-height 0        render the world at native resolution (default 540)
 //!   nova --headless --frames 300 --capture out.png    offscreen benchmark and capture
 //!   nova --frames 600 --uncapped --no-audio           windowed benchmark without vsync
 
@@ -25,6 +26,11 @@ fn parse() -> Result<Options, String> {
             }
             "--capture" => opts.capture = Some(value("--capture")?.into()),
             "--script" => opts.script = Some(value("--script")?.into()),
+            "--world-height" => {
+                opts.world_height = value("--world-height")?
+                    .parse()
+                    .map_err(|_| "--world-height needs a number (0 = native)")?
+            }
             "--size" => {
                 let v = value("--size")?;
                 let (w, h) = v.split_once('x').ok_or("--size needs WIDTHxHEIGHT")?;
@@ -35,7 +41,7 @@ fn parse() -> Result<Options, String> {
             }
             "--help" | "-h" => {
                 println!(
-                    "usage: nova [--headless] [--frames N] [--capture out.png] [--script file.lua] [--size WxH] [--uncapped] [--no-audio]"
+                    "usage: nova [--headless] [--frames N] [--capture out.png] [--script file.lua] [--size WxH] [--world-height N] [--uncapped] [--no-audio]"
                 );
                 std::process::exit(0);
             }

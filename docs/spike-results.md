@@ -60,6 +60,25 @@ Release APK, built without Gradle (`scripts/build-apk.sh`, 7.9 MB), installed wi
 16 Rust unit tests (glTF import, font, Lua host including hot reload, Lua stdlib
 hardening, audio FFI, perf summary) and the 7 audio-core C tests pass.
 
+## World at 540p, UI at native (added later the same day)
+
+Decision: the world renders at a fixed logical height (default 540) and is upscaled with
+a sharp-bilinear filter; HUD sprites and text render at native resolution. Measured on
+the M4, headless 1920x1080, same scene (10k sprites, 400 cars):
+
+| World target | Mean ms | p95 ms |
+| --- | ---: | ---: |
+| 960x540, upscaled | 0.92 | 2.06 |
+| 1920x1080, native | 1.29 | 3.21 |
+
+That is about 29% less frame time here. The test shaders are trivial, so this
+understates what a fragment-heavy game would save; mobile GPUs are usually more
+fill-rate and bandwidth limited than this Mac, but that is unmeasured until the device
+arrives. On the Android emulator the surface was 1920x944, giving a 1098x540 world with
+a crisp native HUD. Costs to expect: world edges look a little more stepped and sprites
+authored for higher resolutions look softer than at native. `world_height` is therefore a
+per-game setting (0 = native). A GPU test (`tests/headless_render.rs`) covers both modes.
+
 ## What was proven
 
 - Rust to Android works end to end: `cargo-ndk` library, `aapt2`-built manifest,

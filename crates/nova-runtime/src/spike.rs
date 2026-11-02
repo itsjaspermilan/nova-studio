@@ -267,7 +267,7 @@ impl Spike {
         started.elapsed().as_secs_f32() * 1000.0
     }
 
-    pub fn frame_input(&self, state: &ScriptState) -> FrameInput<'_> {
+    pub fn frame_input(&self, state: &ScriptState, world_height: u32) -> FrameInput<'_> {
         let c = state.camera;
         FrameInput {
             clear: [0.36, 0.55, 0.78, 1.0].map(|v: f64| v.powf(2.2)),
@@ -279,6 +279,7 @@ impl Spike {
             sprites_back: &self.back,
             models: &self.models,
             sprites_front: &self.front,
+            world_height,
         }
     }
 }
@@ -359,12 +360,14 @@ pub fn hud_text(
     audio: &str,
 ) -> String {
     let mut text = format!(
-        "NOVA SPIKE  {}\nFPS {:.1}  UPD {:.2}  LUA {:.2}  DRAW {:.2} MS\nDRAWS {}  SPRITES {}  TRIS {}  CARS {}\nAUDIO {}",
+        "NOVA SPIKE  {}\nFPS {:.1}  UPD {:.2}  LUA {:.2}  DRAW {:.2} MS\nWORLD {}X{}  DRAWS {}  SPRITES {}  TRIS {}  CARS {}\nAUDIO {}",
         spike.adapter.to_uppercase(),
         perf.fps,
         perf.times.update_ms,
         perf.times.lua_ms,
         perf.times.render_ms,
+        perf.stats.world_size.0,
+        perf.stats.world_size.1,
         perf.stats.draw_calls,
         perf.stats.sprites,
         perf.stats.triangles,

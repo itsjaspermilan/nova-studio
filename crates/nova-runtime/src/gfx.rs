@@ -48,6 +48,10 @@ pub struct FrameInput<'a> {
     /// Draws using the same mesh must be contiguous; each run becomes one instanced draw.
     pub models: &'a [ModelDraw],
     pub sprites_front: &'a [SpriteInstance],
+    /// Height in pixels of the world (sprites_back + models) render target; 0 or >= the
+    /// screen height renders the world at native resolution. The width follows the screen
+    /// aspect. `sprites_front` (HUD/UI) always renders at native resolution.
+    pub world_height: u32,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -55,6 +59,7 @@ pub struct FrameStats {
     pub draw_calls: u32,
     pub sprites: u32,
     pub triangles: u32,
+    pub world_size: (u32, u32),
 }
 
 #[repr(C)]
@@ -113,6 +118,12 @@ impl DynBuffer {
     }
 }
 
+struct WorldTarget {
+    view: wgpu::TextureView,
+    size: (u32, u32),
+    group: wgpu::BindGroup,
+}
+
 struct GpuMesh {
     vertices: wgpu::Buffer,
     indices: wgpu::Buffer,
@@ -127,6 +138,12 @@ pub struct Gfx {
     pub format: wgpu::TextureFormat,
     pub adapter_info: wgpu::AdapterInfo,
     sprite_pipeline: wgpu::RenderPipeline,
+    sprite_ui_pipeline: wgpu::RenderPipeline,
+    blit_pipeline: wgpu::RenderPipeline,
+    blit_uniform: wgpu::Buffer,
+    blit_group: wgpu::BindGroup,
+    linear_sampler: wgpu::Sampler,
+    world: Option<WorldTarget>,
     sprite_view: wgpu::Buffer,
     sprite_view_group: wgpu::BindGroup,
     texture_layout: wgpu::BindGroupLayout,
@@ -325,37 +342,95 @@ impl Gfx {
             0 => Float32x2, 1 => Float32x2, 2 => Float32x4, 3 => Unorm8x4, 4 => Float32
         ];
         let blend = wgpu::BlendState::ALPHA_BLENDING;
-        let sprite_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("sprites"),
-            layout: Some(&sprite_layout),
+        let make_sprite_pipeline = |label: &'static str, depth: bool| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some(label),
+                layout: Some(&sprite_layout),
+                vertex: wgpu::VertexState {
+                    module: &sprite_shader,
+                    entry_point: Some("vs_main"),
+                    compilation_options: Default::default(),
+                    buffers: &[Some(wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<SpriteInstance>() as u64,
+                        step_mode: wgpu::VertexStepMode::Instance,
+                        attributes: &sprite_attributes,
+                    })],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &sprite_shader,
+                    entry_point: Some("fs_main"),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format,
+                        blend: Some(blend),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: depth.then_some(wgpu::DepthStencilState {
+                    format: DEPTH_FORMAT,
+                    depth_write_enabled: Some(false),
+                    depth_compare: Some(wgpu::CompareFunction::Always),
+                    stencil: Default::default(),
+                    bias: Default::default(),
+                }),
+                multisample: wgpu::MultisampleState::default(),
+                multiview_mask: None,
+                cache: None,
+            })
+        };
+        let sprite_pipeline = make_sprite_pipeline("sprites", true);
+        let sprite_ui_pipeline = make_sprite_pipeline("ui sprites", false);
+
+        let blit_shader = device.create_shader_module(wgpu::include_wgsl!("shaders/blit.wgsl"));
+        let blit_uniform_layout =
+            uniform_layout("blit uniform layout", wgpu::ShaderStages::FRAGMENT);
+        let blit_uniform = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("blit uniform"),
+            size: 16,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let blit_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("blit uniform"),
+            layout: &blit_uniform_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: blit_uniform.as_entire_binding(),
+            }],
+        });
+        let linear_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("linear"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+        let blit_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("blit pipeline layout"),
+            bind_group_layouts: &[Some(&blit_uniform_layout), Some(&texture_layout)],
+            immediate_size: 0,
+        });
+        let blit_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("blit"),
+            layout: Some(&blit_pipeline_layout),
             vertex: wgpu::VertexState {
-                module: &sprite_shader,
+                module: &blit_shader,
                 entry_point: Some("vs_main"),
                 compilation_options: Default::default(),
-                buffers: &[Some(wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<SpriteInstance>() as u64,
-                    step_mode: wgpu::VertexStepMode::Instance,
-                    attributes: &sprite_attributes,
-                })],
+                buffers: &[],
             },
             fragment: Some(wgpu::FragmentState {
-                module: &sprite_shader,
+                module: &blit_shader,
                 entry_point: Some("fs_main"),
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
                     format,
-                    blend: Some(blend),
+                    blend: None,
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
             }),
             primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: DEPTH_FORMAT,
-                depth_write_enabled: Some(false),
-                depth_compare: Some(wgpu::CompareFunction::Always),
-                stencil: Default::default(),
-                bias: Default::default(),
-            }),
+            depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
             multiview_mask: None,
             cache: None,
@@ -439,6 +514,12 @@ impl Gfx {
             format,
             adapter_info,
             sprite_pipeline,
+            sprite_ui_pipeline,
+            blit_pipeline,
+            blit_uniform,
+            blit_group,
+            linear_sampler,
+            world: None,
             sprite_view,
             sprite_view_group,
             texture_layout,
@@ -542,6 +623,42 @@ impl Gfx {
         ));
     }
 
+    fn ensure_world(&mut self, size: (u32, u32)) {
+        if matches!(&self.world, Some(w) if w.size == size) {
+            return;
+        }
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("world target"),
+            size: wgpu::Extent3d {
+                width: size.0,
+                height: size.1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: self.format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("world target"),
+            layout: &self.texture_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.linear_sampler),
+                },
+            ],
+        });
+        self.world = Some(WorldTarget { view, size, group });
+    }
+
     /// Logical height 540 maps to the target height, so 2D art keeps its size on any screen.
     pub fn ui_scale(size: (u32, u32)) -> f32 {
         size.1 as f32 / 540.0
@@ -553,7 +670,28 @@ impl Gfx {
         size: (u32, u32),
         input: &FrameInput,
     ) -> FrameStats {
-        self.ensure_depth(size);
+        let aspect = size.0 as f32 / size.1 as f32;
+        let world_size = if input.world_height != 0 && input.world_height < size.1 {
+            (
+                ((input.world_height as f32 * aspect).round() as u32).max(1),
+                input.world_height,
+            )
+        } else {
+            size
+        };
+        let separate = world_size != size;
+        self.ensure_depth(world_size);
+        if separate {
+            self.ensure_world(world_size);
+            let blit = [
+                world_size.0 as f32,
+                world_size.1 as f32,
+                size.0 as f32 / world_size.0 as f32,
+                size.1 as f32 / world_size.1 as f32,
+            ];
+            self.queue
+                .write_buffer(&self.blit_uniform, 0, bytemuck::cast_slice(&blit));
+        }
         let scale = Self::ui_scale(size);
         let view = SpriteView {
             size: [size.0 as f32 / scale, size.1 as f32 / scale],
@@ -562,7 +700,6 @@ impl Gfx {
         self.queue
             .write_buffer(&self.sprite_view, 0, bytemuck::bytes_of(&view));
 
-        let aspect = size.0 as f32 / size.1 as f32;
         // wgpu clip space is 0..1 in depth with y up, which is glam's "directx" projection.
         let view_proj = glam::camera::rh::proj::directx::perspective(
             input.camera.fov_y_degrees.to_radians(),
@@ -599,7 +736,10 @@ impl Gfx {
         self.model_instances
             .write(&self.device, &self.queue, bytemuck::cast_slice(&instances));
 
-        let mut stats = FrameStats::default();
+        let mut stats = FrameStats {
+            world_size,
+            ..Default::default()
+        };
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -608,9 +748,13 @@ impl Gfx {
         {
             let depth_view = &self.depth.as_ref().expect("depth exists").0;
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("main pass"),
+                label: Some("world pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: target,
+                    view: if separate {
+                        &self.world.as_ref().expect("world target exists").view
+                    } else {
+                        target
+                    },
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -636,19 +780,27 @@ impl Gfx {
                 multiview_mask: None,
             });
 
-            let draw_sprites =
-                |pass: &mut wgpu::RenderPass<'_>, buffer: &DynBuffer, count: usize| -> u32 {
-                    if count == 0 {
-                        return 0;
-                    }
-                    pass.set_pipeline(&self.sprite_pipeline);
-                    pass.set_bind_group(0, &self.sprite_view_group, &[]);
-                    pass.set_bind_group(1, &self.atlas, &[]);
-                    pass.set_vertex_buffer(0, buffer.buffer.slice(..));
-                    pass.draw(0..6, 0..count as u32);
-                    count as u32
-                };
-            let back = draw_sprites(&mut pass, &self.sprites_back, input.sprites_back.len());
+            let draw_sprites = |pass: &mut wgpu::RenderPass<'_>,
+                                pipeline: &wgpu::RenderPipeline,
+                                buffer: &DynBuffer,
+                                count: usize|
+             -> u32 {
+                if count == 0 {
+                    return 0;
+                }
+                pass.set_pipeline(pipeline);
+                pass.set_bind_group(0, &self.sprite_view_group, &[]);
+                pass.set_bind_group(1, &self.atlas, &[]);
+                pass.set_vertex_buffer(0, buffer.buffer.slice(..));
+                pass.draw(0..6, 0..count as u32);
+                count as u32
+            };
+            let back = draw_sprites(
+                &mut pass,
+                &self.sprite_pipeline,
+                &self.sprites_back,
+                input.sprites_back.len(),
+            );
             stats.draw_calls += u32::from(back > 0);
             stats.sprites += back;
 
@@ -679,10 +831,49 @@ impl Gfx {
                     start = end;
                 }
             }
-
-            let front = draw_sprites(&mut pass, &self.sprites_front, input.sprites_front.len());
-            stats.draw_calls += u32::from(front > 0);
-            stats.sprites += front;
+        }
+        {
+            // UI pass: always at native resolution, after the (possibly upscaled) world.
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("ui pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: target,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: if separate {
+                            wgpu::LoadOp::Clear(wgpu::Color::BLACK)
+                        } else {
+                            wgpu::LoadOp::Load
+                        },
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            if separate {
+                pass.set_pipeline(&self.blit_pipeline);
+                pass.set_bind_group(0, &self.blit_group, &[]);
+                pass.set_bind_group(
+                    1,
+                    &self.world.as_ref().expect("world target exists").group,
+                    &[],
+                );
+                pass.draw(0..3, 0..1);
+                stats.draw_calls += 1;
+            }
+            if !input.sprites_front.is_empty() {
+                pass.set_pipeline(&self.sprite_ui_pipeline);
+                pass.set_bind_group(0, &self.sprite_view_group, &[]);
+                pass.set_bind_group(1, &self.atlas, &[]);
+                pass.set_vertex_buffer(0, self.sprites_front.buffer.slice(..));
+                pass.draw(0..6, 0..input.sprites_front.len() as u32);
+                stats.draw_calls += 1;
+                stats.sprites += input.sprites_front.len() as u32;
+            }
         }
         self.queue.submit([encoder.finish()]);
         stats

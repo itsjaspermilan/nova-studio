@@ -26,6 +26,9 @@ good defaults. No fantasy-console limits: native resolution, real GPU, real audi
 | Sprites | Follow Pixelorama's model: layers x frames cel grid, linked cels, animation tags with direction, per-frame duration, onion skin, pixel-perfect drawing, symmetry, palettes, tilemap layers. Our own plain format; import Aseprite/.pxo later. |
 | 3D modelling | Follow Blockbench's model: hierarchy of parts, per-face texturing, keyframed rigid bones. No skinning/vertex weights in v1. glTF in/out. |
 | Look | Low-poly/flat/unlit/vertex-colour/texture shading, simple enough that the editor viewport and the runtime match. |
+| Resolution (decided 2026-11-02) | The **world** (3D and background sprites) renders to a target of fixed logical height, default **540 px** (960x540 on 16:9), and is upscaled to the screen with a sharp-bilinear filter. The **UI** (HUD sprites, text) always renders at native screen resolution. Coordinates are logical units, 540 high. Per-game setting `world_height` (e.g. 540, 720, 0 = native); pixel-art games may later opt into a smaller target scaled in whole steps. Implemented in the runtime (`FrameInput::world_height`, `--world-height`). |
+| Project manifest (decided 2026-11-02) | `nova.json`: name, entry script and settings. Assets are found by scanning the project's folders; an asset's ID is its project-relative path, so nothing is declared by hand. |
+| Scene files (decided 2026-11-02) | JSON data in `scenes/<name>.scene.json` beside the scene's Lua code in `scenes/<name>.lua`. Loading data never executes code; the studio edits and diffs the JSON. |
 | Reuse | Nova: audio core, docs/UX research, Pine Ridge Rally, Android notes. GameStudio (read/copy only, never modify it): editors, Lua API design, help, MCP server. Nova's old "no GameStudio" rule is superseded; copy deliberately, record what came from where. |
 | Repo | This repo. Rebuild on `main`. Old Copilot work is salvaged from branches, then branches are deleted. |
 | Fantasy consoles | Dropped: no console specs, budgets or fixed resolutions. |
@@ -206,8 +209,8 @@ Results, numbers and findings: [docs/spike-results.md](docs/spike-results.md).
 
 ## Open decisions (ask the user before deciding)
 
-- Default render resolution/scaling policy and the pixel-art mode's exact rules.
-- Manifest filename/schema details, scene file format (Lua vs JSON layouts).
+- Pixel-art mode's exact rules (low-resolution target size, integer scaling, UI interaction).
+- The full `nova.json` and `*.scene.json` schemas and versioning (the formats themselves are decided).
 - glTF subset and material model; texture compression policy for Android.
 - Language server and typed-Lua (Luau) timing.
 - Studio on Windows/Linux: when, and how the runtime ships with it.
