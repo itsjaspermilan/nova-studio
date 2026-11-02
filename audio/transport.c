@@ -286,6 +286,8 @@ const char *nova_audio_control_message(NovaAudioControlResult result)
     case NOVA_AUDIO_CONTROL_RENDER_FAILED: return "audio rendering failed; inspect snapshot fault";
     case NOVA_AUDIO_CONTROL_DEVICE_UNAVAILABLE: return "shared audio device is not started or its configuration changed";
     case NOVA_AUDIO_CONTROL_BACKEND_FAILED: return "native audio backend initialization or stream allocation failed";
+    case NOVA_AUDIO_CONTROL_SOURCE_FAILED: return "disk audio source preparation or descriptor close failed";
+    case NOVA_AUDIO_CONTROL_RETIREMENT_PENDING: return "disk reader could not be joined; handle retained for explicit close retry";
     }
     return "unknown audio control result";
 }

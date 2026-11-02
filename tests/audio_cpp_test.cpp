@@ -3,6 +3,7 @@
 #include "audio_device.h"
 
 #include <array>
+#include <cstdint>
 #include <cstdio>
 
 int main()
@@ -42,5 +43,12 @@ int main()
     NovaAudioTransportSnapshot snapshot{};
     ok = ok && nova_audio_transport_snapshot(transport, &snapshot) && snapshot.output_frames == 16;
     nova_audio_transport_destroy(transport);
+    NovaAudioStream *file = nullptr;
+    NovaAudioStreamCommand pause{};
+    pause.type = NOVA_STREAM_PAUSE;
+    pause.generation = 1;
+    std::uint64_t ticket = 0;
+    ok = ok && !nova_audio_stream_open("", &file, error, sizeof(error)) && !file && *error;
+    ok = ok && nova_audio_stream_command(file, pause, &ticket) == NOVA_AUDIO_CONTROL_INVALID;
     return ok ? 0 : 1;
 }

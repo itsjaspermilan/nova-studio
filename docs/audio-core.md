@@ -4,6 +4,8 @@ This is a reusable Sound Studio backend, not a finished Sound Studio.
 `audio/audio.h` is a C11 API with C++ linkage guards; link `nova_audio`.
 It has no raylib, Lua, Qt, device, filesystem or third-party DSP dependency.
 `audio/transport.h` adds bounded control/render transfer to that library.
+`audio/stream.h` adds original-rate disk-backed WAV playback; link
+`nova_audio_stream` (the core plus system POSIX threads, no new third-party dependency).
 `runtime/audio_device.h` supplies an explicit shared-device adapter; link
 `nova_audio_native` and exactly one caller-selected patched raylib host.
 The existing game `nova.play` / `nova.stop` service remains a separate,
@@ -27,9 +29,10 @@ From the assigned Nova Studio checkout:
 ./scripts/with-toolchain.sh cmake --build build --target \
   nova_audio_render nova_audio_tests nova_audio_wav_tests \
   nova_audio_allocation_tests nova_audio_cpp_tests nova_audio_transport_tests \
+  nova_audio_stream_tests nova_audio_stream_failure_tests \
   nova_audio_device_tests nova_audio_lifecycle_tests nova_service_tests -j 4
 ./scripts/with-toolchain.sh ctest --test-dir build --output-on-failure \
-  -R '^nova_(audio_(dsp|wav|allocations|cpp_contract|render_cli|transport|device_seam|source_patch|lifecycle_seam)|services)$'
+  -R '^nova_(audio_(dsp|wav|allocations|cpp_contract|render_cli|transport|disk_stream|disk_failures|device_seam|source_patch|lifecycle_seam)|services)$'
 ./build/nova_audio_render build/audio-master.wav
 ./build/nova_audio_render build/audio-runtime.wav 44100 pcm24
 ```
@@ -223,11 +226,13 @@ tickets. No new manifest version or music-document schema is defined here.
 
 ## Live transport and shared-device integration
 
-The transport and native adapter stream **prepared score rendering**, not files
-from disk. Sample, score, event and voice limits above are unchanged. Audition
+`NovaAudioTransport` streams **prepared score rendering**, not files from disk.
+The separate disk-stream API below now supplies file playback through the same
+native adapter. Sample, score, event and voice limits above are unchanged. Audition
 and game transports have independent clocks, cancellation and ownership even
 when they retain the same program; they are not synchronized stem transports.
-No sound document, automatic game binding, seek or pause/resume API is implied.
+The prepared-score API does not acquire a sound document, automatic game binding
+or seek/pause/resume from the new disk controls.
 
 ### Control, render and retirement contract
 
@@ -288,8 +293,10 @@ cannot revive an old handle. `nova_audio_device_close(handle)` stops, detaches
 and unloads only that stream, then destroys its transport. It remains available
 when the device or rendering has failed. If the callback is stopped, cancellation
 receipts cannot progress: close is the explicit teardown path, not an indefinite
-wait. `nova_audio_device_close_transports()` invalidates both handles without
-closing the device or disturbing legacy WAV ownership.
+wait. `nova_audio_device_close_transports()` quiesces both roles without closing the
+device or disturbing legacy WAV ownership. Normally it invalidates both handles;
+an exceptional disk-worker join failure retains a detached handle for retirement
+retry, as described below.
 
 Native calls share the serialized control owner of legacy raylib resources.
 Unload legacy resources before final shutdown; `nova_shutdown_audio()` now
@@ -303,7 +310,8 @@ are reported without silently recreating resources. Android focus policy and
 document-level resume/recovery still need host integration and hardware checks.
 
 The adapter is **renderer-host-neutral at link time**. `nova_audio_native`
-links only `nova_audio`, not ordinary GLFW raylib. The host supplies exactly one
+links `nova_audio_stream`, `nova_audio` and system threads, not ordinary GLFW
+raylib. The host supplies exactly one
 patched raylib target, including when it builds its own assets/presentation
 targets for Qt. Do not accidentally link ordinary `nova_assets` into that host:
 the ordinary target intentionally brings its ordinary raylib backend.
@@ -366,6 +374,144 @@ output. Device converter/filter history and already-submitted hardware buffers
 can also outlive a score command. Cancellation is safe ownership/render timing,
 not a promise to retract already-buffered audible frames.
 
+## Disk-backed original-rate streams
+
+`NovaAudioStream` is a device-free C11 reader/render input, independently
+embeddable in a future multitrack mixer. The native convenience layer currently
+allows **one prepared score OR one file per Audition/Game role**; this is a bounded
+first integration, not a permanent two-track composition limit. No file input is
+yet connected to the prepared score's buses. A future mixer must deliberately
+convert differing source rates rather than relabeling these frames.
+
+### Source and storage bounds
+
+| Property | Contract |
+| --- | --- |
+| Source | One trusted host-selected regular filesystem file, opened read-only with a pinned descriptor; the final path component cannot be a symlink. This is not a Lua path, contained project-import API or packaged Android asset reader. |
+| Formats | The same canonical PCM8/16/24 and IEEE float32 WAV layouts below, mono/stereo, original 8000..48000 Hz. No compressed/extra chunks or implicit conversion. |
+| Duration | Nonempty, at most **3600 seconds** and the RIFF size ceiling. This is separate from unchanged 60-second/16 MiB short-effect imports. At the maximum stereo float48k format, one hour is 1,382,400,056 file bytes. |
+| Float data | Finite and within +/-16, checked incrementally before publication. Stereo float output retains headroom; mono is duplicated at unity. No normalization, limiter or hidden clipping. |
+| PCM ring | Eight 1024-frame stereo float blocks: **65,536 bytes**, independent of file length. Short loops fill whole blocks, including one-frame loops. |
+| Instance | One fixed allocation, compile-time capped at **96 KiB**, including ring/control/meter storage. `instance_bytes` reports actual storage (68,000 bytes in the verified arm64 build). |
+| Worker | One reader thread, configured **256 KiB stack**, bounded raw decode scratch and no per-block heap allocations. `worker_stack_bytes` is configured storage, not a measurement of OS thread/TLS/guard-page overhead. No whole-process RSS/page-cache cap is claimed. |
+| Transfer | Sixteen commands/receipts each, SPSC block ring, and separate triple-buffer request/snapshot mailboxes. Always-lock-free unsigned atomics; no callback locks or wake syscalls. |
+
+Native raylib stream/converter/device buffers are separate from these low-level
+instance/worker bounds; no measurement of their total allocation is claimed here.
+
+`nova_audio_stream_open(path, &stream, error, size)` validates the header and
+padding, starts its reader and leaves playback **PAUSED**, generation 1. It
+changes the output pointer only on success. Opening performs filesystem work
+and may block; a host must schedule control-side work appropriately, not move
+it onto the audio callback. `nova_audio_stream_info` returns immutable metadata.
+Getters, receipt and snapshot reads require a live owned instance.
+
+The worker alone reads/decodes PCM into the fixed ring. It checks descriptor
+identity, size, modification and change timestamps before/after each block.
+Changed sources, failed `pread`/`fstat`, premature EOF and late invalid floats
+produce typed faults; metadata is not silently refreshed. Short reads and EINTR
+are handled. A pinned descriptor is not a filename watcher or cryptographic
+immutable snapshot: buffered material is not continuously rechecked, and a
+path replacement does not automatically reopen the new file.
+
+### Controls and timing
+
+`nova_audio_stream_command` queues a `NovaAudioStreamCommand` and returns a ticket.
+Drain `nova_audio_stream_receipt`; enqueue success is not application or fade
+completion. Every command names its expected generation. Full queues explicitly
+return `QUEUE_FULL` without changing the ticket; receipt backpressure defers
+commands, never blocks rendering. Commands apply at render-block boundaries,
+not at an implied GUI/hardware timestamp.
+
+| Control | Render-owner behavior |
+| --- | --- |
+| `RESUME` | From paused, renders from the frozen source position. Optional 0..rate*60 frame fade to unity. Does not rewind an ended/cancelled stream (`BUSY`); seek or select a region first. |
+| `PAUSE` | Consumes the explicit fade-out frames then holds position. An already paused/ended/cancelled source stays in that state. `completed_command` identifies fade completion. |
+| `SEEK` | Only paused/ended/cancelled; selects an absolute original-source frame within the current region. A nonlooped seek to its exclusive end immediately becomes ENDED. Loop seeks cannot select the exclusive end. |
+| `REGION` | Only paused/ended/cancelled; establishes exact `[frame,end_frame)` bounds and loop flag, starts paused at `frame`. No automatic play or crossfade. |
+| `CANCEL` | Fades out, holds position, invalidates old work and becomes CANCELLED. Reopening or explicit SEEK/REGION is needed before resuming. |
+
+Pause/resume preserve generation. Seek/region change it to their ticket;
+cancellation changes it to the cancellation ticket **when its fade completes**.
+A cancellation receipt can therefore contain the previous generation; consume
+the completion snapshot before issuing new controls. Other commands complete
+on application, not when prefill or a resume fade finishes. A command during a
+pending pause/cancel receives `BUSY`; stale generations receive `STALE`.
+
+Use **PAUSE -> await completed pause -> SEEK/REGION -> await receipt/prefill ->
+RESUME**. Cancellation or EOF never silently rewinds. At EOF, pause completes as
+ENDED, while cancellation completes as CANCELLED. Fades use the old level on
+their first frame and reach the target after N consumed frames. Zero fade is an
+explicit hard gate, not a click-free promise. Arbitrary loop discontinuities
+remain audible unless the author creates appropriate endpoints/crossfades.
+
+`nova_audio_stream_render(stream, stereo, frames)` accepts 0..4096 frames at the
+**source's actual rate**. It performs no file access, decoding, allocation/free,
+logging/formatting, Lua, locking or OS calls. A zero-frame call processes
+controls/publishes state without consuming samples. Prefill is observable through
+snapshots; a real-time host may resume early but must report resulting starvation.
+On an empty/stale buffer it zeros the remainder without consuming missing source
+frames. A starved pause/cancel can complete immediately because output is already
+silent. There is no implicit catch-up, dropped-time seek or desktop focus policy.
+
+Snapshots separate lifetime `output_frames` (including silence), `rendered_frames`
+(consumed frames), next absolute source `position`, cumulative `loops`, peaks/
+over-range frames, and software `underrun_frames/episodes`. A loop wraps to its
+inclusive begin immediately after rendering its final sample. Seek/region do
+not reset lifetime counters. Output is block-size-independent for the same
+control positions and available PCM; this does not promise identical starvation
+under different thread/OS schedules.
+
+These are **rendered source positions and software-buffer starvation**, not an
+audible playhead or hardware xruns. Snapshots can coalesce. `fault`, `system_error`
+and `fault_frame` survive until close/reopen; invalid PCM locates the exact
+original source frame, while I/O/stat diagnoses identify the associated read/
+block. Faults can be observed while paused, before consuming preceding buffered
+PCM; they stop the stream rather than playing a known-invalid candidate.
+`nova_audio_stream_fault_message` is a control-side diagnostic helper.
+
+Seek/region/cancel requests carry generations. An in-flight worker checks for
+replacement both before reading and before publication, discards superseded
+work, and takes the newest request. A block published in a race remains tagged;
+the render owner never plays obsolete PCM or adopts its old fault. `stale_blocks`
+counts discarded published blocks, not reads discarded before publication.
+
+### Native use and close ordering
+
+`nova_audio_device_open_file(role, path, &handle, &info, error, size)` explicitly
+uses the existing device, opens paused and creates a stereo-float native stream
+at the file's real source rate. Use `nova_audio_device_file_command` and
+`nova_audio_device_file_poll` with the same commands/receipts/snapshots above.
+Score calls reject file handles and file calls reject score handles. Late faults
+remain reported as `RENDER_FAILED` even when no new snapshot arrives. Device
+unavailability is reported separately while poll still drains available state.
+Qt must keep the same one-device owner and choose its own audition/focus policy.
+The inherited lock/conversion/clipping and telemetry limitations above still apply.
+
+For a pure stream, quiesce its single render owner **before**
+`nova_audio_stream_close(&stream, error, size)`. Close sets the worker stop flag,
+joins it, then closes the descriptor and frees the instance. It may wait for an
+in-flight kernel read; there is no timeout claim or forced cancellation of
+arbitrary filesystem I/O. No reference is freed while a reader/callback owns it.
+Pending requests/receipts are abandoned. Join failure reports an error and
+retains the pointer in closing state for retry; no new commands are accepted.
+After retirement, the pointer becomes null even if descriptor close reports an
+error. Never blindly retry a failed POSIX descriptor close against a reused fd.
+
+Native close performs **stop/detach callback barrier -> unload native stream ->
+stop/join reader -> close descriptor/free**. `RETIREMENT_PENDING` retains a
+detached handle for a close retry; `SOURCE_FAILED` after descriptor cleanup
+invalidates it and reports the error. A failed native open normally leaves output
+arguments unchanged. Exception: if rollback cannot join the reader, it returns
+`RETIREMENT_PENDING` and writes the detached handle to `out` so ownership is not
+lost (`info` remains unchanged). The all-role shutdown helper logs failures and
+retains failed-join handles; use per-handle close when the host needs an explicit
+result. Never clear a retained handle as if retirement succeeded.
+
+Manifest/Lua music declarations, contained project/import policy, packaged Android
+asset streaming, synchronized multitrack disk mixing and focus/device-loss
+recovery are separate coordinated stages, not implied by filesystem playback.
+
 ## WAVs, export and native runtime integration
 
 The shared strict reader accepts little-endian RIFF with `fmt(16)`:
@@ -382,7 +528,7 @@ and OGG are still rejected. Original rates 8000..48000 Hz and mono/stereo are
 retained. Float sources must be finite and within +/-16; out-of-range imports
 fail explicitly, never normalize or clip.
 
-Existing limits remain: **16 MiB input/file, 64 MiB total project input, 32 asset
+Existing short-effect limits remain: **16 MiB input/file, 64 MiB total project input, 32 asset
 declarations, <=60 seconds per sample and <=120 seconds across unique audio
 paths**. Alias declarations still share native resource/voice ownership. Core
 prepared scores also bound unique sample duration to 120 seconds (pointer aliases
@@ -465,7 +611,7 @@ converter failures, checks diagnostics and balance, and invokes a final callback
 during device uninitialization to verify that its mutex is still alive. Separate
 patch checks exercise idempotence and rejection of unknown source.
 
-Follow-up verification: all 15 focused audio/core/project/asset/service/export
+Transport-stage verification: all 15 focused audio/core/project/asset/service/export
 checks passed in ordinary Debug and ASan/UBSan builds. All three threaded/device-
 free seam selectors also passed ten consecutive runs under ThreadSanitizer with
 the installed Apple Clang, without installing tooling or opening a device.
@@ -473,11 +619,34 @@ ASan leak detection was disabled on macOS; allocation balance is covered by the
 explicit fault-injection tests, not a leak-sanitizer claim. Both native application
 targets link. The opt-in `nova_audio_lifetime` test now also exercises silent
 44.1/48 kHz score streams alongside legacy WAV/alias/reload services and final
-shutdown, but **was not run** for this milestone.
+shutdown, but **was not run** for that milestone.
+
+The disk-stage tests generate and verify every frame of a **75-second,
+28,800,056-byte stereo float48k file**: 3,600,000 source frames with a 64 KiB PCM
+ring and one fixed instance allocation. They also check the exact one-hour
+boundary using a sparse source, all supported encodings/original rates, one-frame
+and block-crossing loops, seeks inside loops, fade/EOF boundaries, paused
+positions, full queues, stale commands/work, partial reads/EINTR, premature EOF,
+late invalid PCM and changed sources. A read held in flight is released only
+after close requests worker join; cleanup balances allocations, descriptors and
+threads. Separate actual render/control/reader threads exercise 500 control
+cycles. Callback guards reject I/O/decode/allocation/free/formatting/join, and
+the fake native host checks simultaneous file/score roles, source rates, retained
+join-failure handles and callback retirement.
+
+Disk-stage verification: **17 focused checks passed in Debug and ASan/UBSan**;
+both native application targets link. Five disk/transport/device/lifecycle
+selectors passed ten repetitions each under ThreadSanitizer. These are device-free
+checks, not a real-time deadline or hardware qualification. Leak sanitizer remains
+disabled on macOS, with explicit allocation/descriptor/thread accounting instead.
+The optional native lifetime gate now also includes a silent original-rate disk
+loop/pause alongside the other role and legacy WAV services; it was compiled,
+**not enabled or run**. No microphone or native audio device was activated.
 
 Still required for the complete Sound Studio: measured underruns/latency and
 more complete device-loss recovery; Android focus/lifecycle handling; quality
-qualification of the inherited output conversion; streamed full-length music;
+qualification of the inherited output conversion; coordinated manifest/Lua/
+packaged-Android music integration and multitrack disk mixing;
 sound documents and reversible waveform/loop/crossfade editing; recording
 consent/input/retention; MIDI; arrangement/
 piano roll; effects, sends, automation UI, stem exports/latency policy, and

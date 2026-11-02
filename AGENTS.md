@@ -187,8 +187,18 @@ exported. The earlier externally authored 2D assessment game is not that proof.
   errors/backpressure, and pending-candidate cleanup. The inherited mixer still
   locks and converts/clips output; no whole-callback realtime guarantee follows.
   Report rendered score position, configured formats/periods and observed callback
-  size separately; never invent latency/xrun metrics. Disk streaming, comprehensive
-  device loss/Android focus, recording/MIDI, sound documents and Sound UI remain.
+  size separately; never invent latency/xrun metrics. Comprehensive device loss/
+  Android focus, recording/MIDI, sound documents and Sound UI remain.
+- `audio/stream.{c,h}` owns original-rate disk WAV playback with a fixed 64 KiB PCM
+  ring, <=96 KiB instance and configured 256 KiB reader stack (OS overhead separate).
+  One worker owns PCM reads/decoding; callback work is bounded and generation-tagged.
+  Keep pause-before-seek, exact exclusive loop bounds, explicit software starvation/
+  late source faults and callback-detach -> worker-join -> descriptor/free ordering.
+  Failed joins retain ownership for close retry. The native convenience API allows
+  a score or file per role; the pure stream remains future mixer input, not a
+  permanent multitrack restriction. Desktop focus policy is host-controlled.
+  One-hour disk bounds do not relax old short-effect budgets. Manifest/Lua/
+  packaged-Android streaming remains coordinated follow-up, not a new schema.
 - `examples/{2d,mixed}/main.lua` are editable scenes. Desktop builds synchronize
   them next to the executable; direct `--scene` permits source-script reload.
   Android resolves the same relative paths through bundled assets.
@@ -227,6 +237,9 @@ exported. The earlier externally authored 2D assessment game is not that proof.
   functions with allocation/init failure injection. Device upload/lifetime checks
   remain explicitly opt-in; deterministic signals are not human listening,
   hardware, latency or comparative benchmarks.
+  Disk fixtures verify complete 75-second/>16 MiB playback with fixed storage,
+  exact one-hour limits, loop/seek/pause/fade boundaries, partial I/O/late faults
+  and concurrent render/control/reader close with allocation/descriptor/thread balance.
 - `tests/game_test.c` covers both-mode source/reference/behavior/generation/
   guarded reopen/conflict/import/no-clobber contracts. `game_failure_test.c`
   redirects only the save call in a separate test build to check honest partial
@@ -308,7 +321,7 @@ This is a native project/sample launcher and bounded desktop beginner object/
 room editor for both 2D and 3D, with separate Advanced source/project editing and
 original static primitive modelling, not a full IDE/mesh modeller. Manifest v1
 and the bounded PNG/static GLB pipeline, native framebuffer HUD and bounded
-world presets are implemented; skeletal animation, full audio mixing/streaming
+world presets are implemented; skeletal animation, full runtime music/mixing integration
 and Glow compatibility are not.
 Timers/sprite frames/numeric tweens, PCM WAV and explicit project saves are bounded
 native services, not automatic lifecycle persistence. Android package

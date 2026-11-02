@@ -7,8 +7,10 @@
 typedef struct {
     NovaAudioTransportHandle handle;
     NovaAudioTransport *transport;
+    NovaAudioStream *file;
     AudioStream stream;
     NovaAudioResult fault;
+    NovaAudioStreamFault file_fault;
 } NativeTransport;
 
 static NativeTransport transports[NOVA_AUDIO_TRANSPORTS];
@@ -33,12 +35,13 @@ bool nova_audio_device_ensure(char *error, size_t error_size)
 
 static void stream_render(NovaAudioTransportRole role, void *output, unsigned frames)
 {
-    NovaAudioTransport *t = transports[role].transport;
+    NativeTransport *native = &transports[role];
     float *stereo = output;
     for (unsigned position = 0; position < frames;) {
         unsigned count = frames - position > NOVA_AUDIO_MAX_BLOCK ? NOVA_AUDIO_MAX_BLOCK : frames - position;
         /* Result/fault is published by the transport, never logged on this thread. */
-        nova_audio_transport_render(t, stereo + (size_t)position * 2, count);
+        if (native->file) nova_audio_stream_render(native->file, stereo + (size_t)position * 2, count);
+        else nova_audio_transport_render(native->transport, stereo + (size_t)position * 2, count);
         position += count;
     }
 }
@@ -54,39 +57,40 @@ static NativeTransport *find(NovaAudioTransportHandle handle)
     return NULL;
 }
 
-NovaAudioControlResult nova_audio_device_open(NovaAudioTransportRole role, uint32_t rate,
-    NovaAudioTransportHandle *out, char *error, size_t error_size)
+static void detach(NativeTransport *native)
 {
-    if (!out || role < NOVA_AUDIO_AUDITION || role >= NOVA_AUDIO_TRANSPORTS ||
-        (rate != 44100 && rate != 48000) || next_handle == UINT64_MAX) return NOVA_AUDIO_CONTROL_INVALID;
-    NativeTransport *native = &transports[role];
-    if (native->handle) return NOVA_AUDIO_CONTROL_BUSY;
-    NovaAudioTransport *transport = NULL;
-    if (!nova_audio_transport_create(rate, &transport, error, error_size)) return NOVA_AUDIO_CONTROL_ALLOCATION_FAILED;
-    if (!nova_audio_device_ensure(error, error_size)) {
-        nova_audio_transport_destroy(transport);
-        return NOVA_AUDIO_CONTROL_DEVICE_UNAVAILABLE;
-    }
+    if (!native->stream.buffer) return;
+    StopAudioStream(native->stream);
+    SetAudioStreamCallback(native->stream, NULL);
+    UnloadAudioStream(native->stream);
+    native->stream = (AudioStream){0};
+}
+
+static NovaAudioControlResult activate(NovaAudioTransportRole role, uint32_t rate,
+    NovaAudioTransport *transport, NovaAudioStream *file, NovaAudioTransportHandle *out,
+    char *error, size_t error_size)
+{
+    if (!nova_audio_device_ensure(error, error_size)) return NOVA_AUDIO_CONTROL_DEVICE_UNAVAILABLE;
     NovaAudioDeviceInfo info = nova_audio_device_info();
     if (info.mixer_channels != 2 || info.mixer_format != NOVA_DEVICE_FORMAT_F32) {
-        nova_audio_transport_destroy(transport);
-        if (error && error_size) snprintf(error, error_size, "native score streams require the pinned stereo float mixer");
+        if (error && error_size) snprintf(error, error_size, "native streams require the pinned stereo float mixer");
         return NOVA_AUDIO_CONTROL_BACKEND_FAILED;
     }
     AudioStream stream = LoadAudioStream(rate, 32, 2);
     if (!IsAudioStreamValid(stream)) {
-        nova_audio_transport_destroy(transport);
         if (error && error_size) snprintf(error, error_size, "native audio stream allocation/converter initialization failed");
         return NOVA_AUDIO_CONTROL_BACKEND_FAILED;
     }
-    *native = (NativeTransport){.handle = ++next_handle, .transport = transport, .stream = stream};
+    NativeTransport *native = &transports[role];
+    *native = (NativeTransport){.handle = ++next_handle, .transport = transport, .file = file, .stream = stream};
     /* raylib's fixed center-pan law is 11/16 per channel; do not attenuate a
      * stereo score a second time. This is not normalization or a user gain. */
     SetAudioStreamVolume(stream, 16.0f / 11.0f);
     SetAudioStreamCallback(stream, role == NOVA_AUDIO_AUDITION ? audition_render : game_render);
     PlayAudioStream(stream);
     if (!IsAudioStreamPlaying(stream)) {
-        nova_audio_device_close(native->handle);
+        detach(native);
+        *native = (NativeTransport){0};
         if (error && error_size) snprintf(error, error_size, "native audio stream failed to start");
         return NOVA_AUDIO_CONTROL_BACKEND_FAILED;
     }
@@ -95,18 +99,61 @@ NovaAudioControlResult nova_audio_device_open(NovaAudioTransportRole role, uint3
     return NOVA_AUDIO_CONTROL_OK;
 }
 
+NovaAudioControlResult nova_audio_device_open(NovaAudioTransportRole role, uint32_t rate,
+    NovaAudioTransportHandle *out, char *error, size_t error_size)
+{
+    if (!out || role < NOVA_AUDIO_AUDITION || role >= NOVA_AUDIO_TRANSPORTS ||
+        (rate != 44100 && rate != 48000) || next_handle == UINT64_MAX) return NOVA_AUDIO_CONTROL_INVALID;
+    if (transports[role].handle) return NOVA_AUDIO_CONTROL_BUSY;
+    NovaAudioTransport *transport = NULL;
+    if (!nova_audio_transport_create(rate, &transport, error, error_size)) return NOVA_AUDIO_CONTROL_ALLOCATION_FAILED;
+    NovaAudioControlResult result = activate(role, rate, transport, NULL, out, error, error_size);
+    if (result != NOVA_AUDIO_CONTROL_OK) nova_audio_transport_destroy(transport);
+    return result;
+}
+
+NovaAudioControlResult nova_audio_device_open_file(NovaAudioTransportRole role, const char *path,
+    NovaAudioTransportHandle *out, NovaAudioStreamInfo *info, char *error, size_t error_size)
+{
+    if (!out || !info || !path || role < NOVA_AUDIO_AUDITION || role >= NOVA_AUDIO_TRANSPORTS ||
+        next_handle >= UINT64_MAX - 1) return NOVA_AUDIO_CONTROL_INVALID;
+    if (transports[role].handle) return NOVA_AUDIO_CONTROL_BUSY;
+    NovaAudioStream *file = NULL;
+    if (!nova_audio_stream_open(path, &file, error, error_size)) return NOVA_AUDIO_CONTROL_SOURCE_FAILED;
+    NovaAudioStreamInfo source = nova_audio_stream_info(file);
+    NovaAudioControlResult result = activate(role, source.wav.sample.sample_rate, NULL, file, out, error, error_size);
+    if (result != NOVA_AUDIO_CONTROL_OK) {
+        char cleanup[256];
+        if (!nova_audio_stream_close(&file, cleanup, sizeof(cleanup))) {
+            if (error && error_size) snprintf(error, error_size, "native stream open failed; %s", cleanup);
+            if (file) {
+                transports[role] = (NativeTransport){.handle = ++next_handle, .file = file};
+                *out = next_handle;
+                return NOVA_AUDIO_CONTROL_RETIREMENT_PENDING;
+            }
+            return NOVA_AUDIO_CONTROL_SOURCE_FAILED;
+        }
+    } else *info = source;
+    return result;
+}
+
 NovaAudioControlResult nova_audio_device_close(NovaAudioTransportHandle handle)
 {
     NativeTransport *native = find(handle);
     if (!native) return NOVA_AUDIO_CONTROL_STALE;
     /* Each call waits for the inherited mixer lock. Stop first, then detach:
      * after the detach barrier no callback can still read this transport. */
-    StopAudioStream(native->stream);
-    SetAudioStreamCallback(native->stream, NULL);
-    UnloadAudioStream(native->stream);
+    detach(native);
+    bool closed = true;
+    if (native->file) {
+        char error[256];
+        closed = nova_audio_stream_close(&native->file, error, sizeof(error));
+        if (!closed) fprintf(stderr, "Nova audio: %s\n", error);
+        if (native->file) return NOVA_AUDIO_CONTROL_RETIREMENT_PENDING;
+    }
     nova_audio_transport_destroy(native->transport);
     *native = (NativeTransport){0};
-    return NOVA_AUDIO_CONTROL_OK;
+    return closed ? NOVA_AUDIO_CONTROL_OK : NOVA_AUDIO_CONTROL_SOURCE_FAILED;
 }
 
 NovaAudioControlResult nova_audio_device_replace(NovaAudioTransportHandle handle,
@@ -114,6 +161,7 @@ NovaAudioControlResult nova_audio_device_replace(NovaAudioTransportHandle handle
 {
     NativeTransport *native = find(handle);
     if (!native) return NOVA_AUDIO_CONTROL_STALE;
+    if (!native->transport) return NOVA_AUDIO_CONTROL_INVALID;
     if (!available(nova_audio_device_info())) return NOVA_AUDIO_CONTROL_DEVICE_UNAVAILABLE;
     return nova_audio_transport_replace(native->transport, program, fade_frames, ticket);
 }
@@ -123,6 +171,7 @@ NovaAudioControlResult nova_audio_device_command(NovaAudioTransportHandle handle
 {
     NativeTransport *native = find(handle);
     if (!native) return NOVA_AUDIO_CONTROL_STALE;
+    if (!native->transport) return NOVA_AUDIO_CONTROL_INVALID;
     if (!available(nova_audio_device_info())) return NOVA_AUDIO_CONTROL_DEVICE_UNAVAILABLE;
     return nova_audio_transport_command(native->transport, type, program, fade_frames, ticket);
 }
@@ -133,12 +182,38 @@ NovaAudioControlResult nova_audio_device_poll(NovaAudioTransportHandle handle,
     if (!receipt || !has_receipt || !snapshot || !has_snapshot) return NOVA_AUDIO_CONTROL_INVALID;
     NativeTransport *native = find(handle);
     if (!native) return NOVA_AUDIO_CONTROL_STALE;
+    if (!native->transport) return NOVA_AUDIO_CONTROL_INVALID;
     *has_receipt = nova_audio_transport_receipt(native->transport, receipt);
     *has_snapshot = nova_audio_transport_snapshot(native->transport, snapshot);
     if (*has_snapshot) native->fault = snapshot->fault;
     nova_audio_transport_collect(native->transport);
     if (!available(nova_audio_device_info())) return NOVA_AUDIO_CONTROL_DEVICE_UNAVAILABLE;
     return native->fault == NOVA_AUDIO_OK ? NOVA_AUDIO_CONTROL_OK : NOVA_AUDIO_CONTROL_RENDER_FAILED;
+}
+
+NovaAudioControlResult nova_audio_device_file_command(NovaAudioTransportHandle handle,
+    NovaAudioStreamCommand command, uint64_t *ticket)
+{
+    NativeTransport *native = find(handle);
+    if (!native) return NOVA_AUDIO_CONTROL_STALE;
+    if (!native->file || !native->stream.buffer) return NOVA_AUDIO_CONTROL_INVALID;
+    if (!available(nova_audio_device_info())) return NOVA_AUDIO_CONTROL_DEVICE_UNAVAILABLE;
+    return nova_audio_stream_command(native->file, command, ticket);
+}
+
+NovaAudioControlResult nova_audio_device_file_poll(NovaAudioTransportHandle handle,
+    NovaAudioStreamReceipt *receipt, bool *has_receipt, NovaAudioStreamSnapshot *snapshot, bool *has_snapshot)
+{
+    if (!receipt || !has_receipt || !snapshot || !has_snapshot) return NOVA_AUDIO_CONTROL_INVALID;
+    NativeTransport *native = find(handle);
+    if (!native) return NOVA_AUDIO_CONTROL_STALE;
+    if (!native->file) return NOVA_AUDIO_CONTROL_INVALID;
+    *has_receipt = nova_audio_stream_receipt(native->file, receipt);
+    *has_snapshot = nova_audio_stream_snapshot(native->file, snapshot);
+    if (*has_snapshot) native->file_fault = snapshot->fault;
+    if (!native->stream.buffer) return NOVA_AUDIO_CONTROL_RETIREMENT_PENDING;
+    if (!available(nova_audio_device_info())) return NOVA_AUDIO_CONTROL_DEVICE_UNAVAILABLE;
+    return native->file_fault ? NOVA_AUDIO_CONTROL_RENDER_FAILED : NOVA_AUDIO_CONTROL_OK;
 }
 
 void nova_audio_device_close_transports(void)

@@ -1,4 +1,5 @@
 #include "audio.h"
+#include "wav_internal.h"
 
 #include <float.h>
 #include <math.h>
@@ -31,11 +32,11 @@ static float f32(const unsigned char *bytes)
     return value;
 }
 
-bool nova_audio_wav_inspect(const unsigned char *bytes, size_t size,
-    NovaAudioWavInfo *info, char *error, size_t error_size)
+bool nova_wav_header(const unsigned char *bytes, size_t size, uint64_t file_size,
+    uint32_t max_seconds, NovaAudioWavInfo *info, char *error, size_t error_size)
 {
-    if (!bytes || !info || size < 44 || size > NOVA_AUDIO_WAV_INPUT_LIMIT ||
-        memcmp(bytes, "RIFF", 4) || u32(bytes + 4) != size - 8 ||
+    if (!bytes || !info || size < 44 || file_size < 44 || file_size > (uint64_t)UINT32_MAX + 8 ||
+        memcmp(bytes, "RIFF", 4) || u32(bytes + 4) != file_size - 8 ||
         memcmp(bytes + 8, "WAVEfmt ", 8) || u32(bytes + 16) != 16)
         return fail(error, error_size, "WAV requires bounded RIFF, fmt(16) and exact chunk/file lengths");
     uint32_t format = u16(bytes + 20), channels = u16(bytes + 22);
@@ -49,20 +50,63 @@ bool nova_audio_wav_inspect(const unsigned char *bytes, size_t size,
         return fail(error, error_size, "WAV requires mono/stereo PCM8/16/24 or float32 with fact(4), at 8000..48000 Hz; no extra chunks");
     uint32_t alignment = channels * (bits / 8), data_size = u32(bytes + offset - 4);
     if (u16(bytes + 32) != alignment || u32(bytes + 28) != rate * alignment ||
-        !data_size || data_size % alignment || data_size / alignment > rate * NOVA_AUDIO_SAMPLE_SECONDS ||
-        size != offset + (size_t)data_size + (data_size & 1u) ||
-        ((data_size & 1u) && bytes[size - 1] != 0) ||
+        !data_size || data_size % alignment || data_size / alignment > (uint64_t)rate * max_seconds ||
+        file_size != offset + (uint64_t)data_size + (data_size & 1u) ||
         (format == 3 && u32(bytes + 44) != data_size / alignment))
-        return fail(error, error_size, "WAV requires valid alignment/rate/fact/padding and 0 < duration <= 60s");
-    if (format == 3)
-        for (size_t i = offset; i < offset + data_size; i += 4) {
-            float value = f32(bytes + i);
-            if (!isfinite(value) || fabsf(value) > NOVA_AUDIO_SAMPLE_PEAK_LIMIT)
-                return fail(error, error_size, "float WAV samples must be finite and within +/-16; no clipping is performed");
-        }
+        return fail(error, error_size, "WAV requires valid alignment/rate/fact and duration within its source budget");
     *info = (NovaAudioWavInfo){.sample = {rate, channels, data_size / alignment},
         .bits = bits, .format = format, .data_bytes = data_size, .data_offset = offset};
     if (error && error_size) error[0] = '\0';
+    return true;
+}
+
+bool nova_wav_decode(const unsigned char *bytes, size_t frames, const NovaAudioWavInfo *info,
+    float *output, bool stereo, size_t *bad_frame)
+{
+    unsigned channels = info->sample.channels, stride = info->bits / 8;
+    for (size_t frame = 0; frame < frames; ++frame) {
+        float values[2];
+        for (unsigned channel = 0; channel < channels; ++channel, bytes += stride) {
+            float value;
+            if (info->format == 3) {
+                value = f32(bytes);
+                if (!isfinite(value) || fabsf(value) > NOVA_AUDIO_SAMPLE_PEAK_LIMIT) {
+                    if (bad_frame) *bad_frame = frame;
+                    return false;
+                }
+            } else if (info->bits == 8) value = ((int)bytes[0] - 128) / 128.0f;
+            else if (info->bits == 16) {
+                int32_t integer = (int32_t)u16(bytes);
+                if (integer >= 32768) integer -= 65536;
+                value = integer / 32768.0f;
+            } else {
+                int32_t integer = (int32_t)(u16(bytes) | ((uint32_t)bytes[2] << 16));
+                if (integer >= 8388608) integer -= 16777216;
+                value = integer / 8388608.0f;
+            }
+            values[channel] = value;
+        }
+        if (output) {
+            *output++ = values[0];
+            if (channels == 2 || stereo) *output++ = values[channels == 1 ? 0 : 1];
+        }
+    }
+    return true;
+}
+
+bool nova_audio_wav_inspect(const unsigned char *bytes, size_t size,
+    NovaAudioWavInfo *info, char *error, size_t error_size)
+{
+    NovaAudioWavInfo candidate;
+    if (!info || size > NOVA_AUDIO_WAV_INPUT_LIMIT)
+        return fail(error, error_size, "WAV requires an output pointer and <=16 MiB short-effect input");
+    if (!nova_wav_header(bytes, size, size, NOVA_AUDIO_SAMPLE_SECONDS, &candidate, error, error_size)) return false;
+    if ((candidate.data_bytes & 1u) && bytes[size - 1] != 0)
+        return fail(error, error_size, "WAV requires zero odd-data padding");
+    if (candidate.format == 3 &&
+        !nova_wav_decode(bytes + candidate.data_offset, candidate.sample.frames, &candidate, NULL, false, NULL))
+        return fail(error, error_size, "float WAV samples must be finite and within +/-16; no clipping is performed");
+    *info = candidate;
     return true;
 }
 
@@ -73,21 +117,7 @@ bool nova_audio_wav_read(const unsigned char *bytes, size_t size, float *data,
     if (!nova_audio_wav_inspect(bytes, size, &info, error, error_size)) return false;
     size_t count = (size_t)info.sample.frames * info.sample.channels;
     if (!data || sample_capacity < count) return fail(error, error_size, "WAV float output buffer is too small");
-    const unsigned char *source = bytes + info.data_offset;
-    for (size_t i = 0; i < count; ++i, source += info.bits / 8) {
-        if (info.format == 3) data[i] = f32(source);
-        else if (info.bits == 8) data[i] = ((int)source[0] - 128) / 128.0f;
-        else if (info.bits == 16) {
-            int32_t value = (int32_t)u16(source);
-            if (value >= 32768) value -= 65536;
-            data[i] = value / 32768.0f;
-        } else {
-            int32_t value = (int32_t)(u16(source) | ((uint32_t)source[2] << 16));
-            if (value >= 8388608) value -= 16777216;
-            data[i] = value / 8388608.0f;
-        }
-    }
-    return true;
+    return nova_wav_decode(bytes + info.data_offset, info.sample.frames, &info, data, false, NULL);
 }
 
 bool nova_audio_sample_from_wav(const unsigned char *bytes, size_t size,

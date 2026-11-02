@@ -57,7 +57,7 @@ Confirmed product requirements:
 | Lua-first creation loop | Authoring foundation | Project creation/open/save, visual scenes and script/property binding, useful code tools, diagnostics and Run/Stop without overwriting authored code. | First 2D/3D creation slice implemented; complete studio remains in progress |
 | Sprite workspace | Authoring foundation + runtime animation | Real drawing/layers/frames, source preservation, reversible editing and matching scene/runtime updates. | Isolated document/canvas in progress; shell, transaction and runtime integration remain |
 | Model workspace | Authoring foundation + existing GLB pipeline | Mesh/transform/material/UV basics, reversible editing and faithful supported model round trips. | Independent [editable-mesh component](docs/mesh-authoring.md) implemented; Qt workspace/save/preview integration pending |
-| Audio engine | Existing native services | Sample-clock processing, float mixing, quality instruments/DSP, streams/buses, device handling and offline rendering. | C11 DSP/offline plus shared-device transport/control foundation implemented; disk streaming and hardware/lifecycle qualification remain |
+| Audio engine | Existing native services | Sample-clock processing, float mixing, quality instruments/DSP, streams/buses, device handling and offline rendering. | C11 DSP/offline, shared-device controls and bounded disk streams implemented; runtime music binding and hardware/lifecycle qualification remain |
 | Recording and SFX | Authoring foundation + audio engine | Nondestructive waveform editing, explicit recording, layered SFX, safe audition and persistent sources. | Pending |
 | Music composition | Recording/SFX foundations | Arrangement, piano roll, patterns/drums, synth/sampler, MIDI, loops and document persistence. | Pending |
 | Sound production | Music composition | Mixer, sends/buses, effects, automation, lossless masters, aligned stems/loops and runtime-profile audition. | Pending |
@@ -119,10 +119,22 @@ Integrated as `1a07a3e`: the coordinating worktree rebuilt the native targets
 and independently passed all 11 focused audio/core/project/asset/service/export
 checks with native device tests disabled.
 
-Next audio stages include disk-streamed full-length music, device-loss/Android
-focus integration and hardware qualification, then real sound documents and
+The disk-stage follow-up now supplies original-rate, one-hour canonical WAV
+streams with eight 1024-frame stereo-float buffers (64 KiB PCM), fixed <=96 KiB
+instance storage and a configured 256 KiB reader stack, excluding OS/thread
+overhead. One off-callback worker reads/decodes; bounded commands/receipts and
+generation-tagged work support exact source-frame pause/seek/loop/resume/cancel.
+Software starvation, changed sources, late PCM/I/O errors and queue backpressure
+are explicit. Close quiesces callbacks before joining the reader and closing/
+freeing its source; join failures retain ownership for retry. The native role
+initially accepts a score or file, while the pure C stream is reusable for future
+multitrack mixing. No manifest/Lua/Qt UI contract changed.
+
+Next audio stages include coordinated runtime/Lua/packaged-Android music binding,
+multitrack disk mixing, device-loss/Android focus integration and hardware
+qualification, then real sound documents and
 the recording/SFX/composition/mixer interfaces. Prepared-score live rendering
-is not file streaming, and this foundation does not complete the roadmap's Audio
+and disk-file streaming are distinct APIs; this foundation does not complete the roadmap's Audio
 engine stage or the requested Sound Studio.
 
 Follow-up verification in the isolated audio worktree: all 15 focused audio/
@@ -133,6 +145,17 @@ concurrent queue/retirement and in-flight callback shutdown. Leak sanitizer was
 disabled on macOS; explicit fault-injection/balance checks cover ownership and
 preserved diagnostics. The expanded native lifetime gate was compiled but not
 enabled/run. No audio device, microphone or hardware playback was activated.
+
+Disk-stage verification in the isolated audio worktree: all 17 affected
+device-free checks pass in Debug and ASan/UBSan, and both native applications
+link. Five disk/transport/device/lifecycle selectors pass ten repetitions each
+under ThreadSanitizer. Generated fixtures verify all 3,600,000 frames of a
+75-second/28,800,056-byte float file with fixed memory, exact one-hour acceptance/
+rejection, short loops, fades, stale work, queue exhaustion, partial I/O, late
+errors and genuinely concurrent close/control. Explicit allocation/descriptor/
+thread accounting covers ownership; no LSan claim. The native lifetime gate
+also compiles file/score coexistence, but remains unrun and disabled. Original
+short-effect budgets and legacy alias/reload services remain.
 
 ### First Qt foundation handoff
 

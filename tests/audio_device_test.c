@@ -1,16 +1,21 @@
 #undef nova_audio_render
+#undef pthread_join
 #include "audio_device.h"
 #include <raylib.h>
 
 #include <math.h>
+#include <errno.h>
 #include <pthread.h>
 #include <sched.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+#include <unistd.h>
 
 #define CHECK(c) do { if (!(c)) { fprintf(stderr, "%s:%d: %s\n", __FILE__, __LINE__, #c); exit(1); } } while (0)
+#include "audio_stream_fixture.h"
 
 struct rAudioBuffer {
     bool allocated, playing;
@@ -23,9 +28,15 @@ static pthread_mutex_t mixer = PTHREAD_MUTEX_INITIALIZER;
 static struct rAudioBuffer buffers[NOVA_AUDIO_TRANSPORTS];
 static NovaAudioDeviceInfo info;
 static unsigned initializations, allocations, unloads;
-static bool fail_device, fail_stream, fail_play, fail_render;
+static bool fail_device, fail_stream, fail_play, fail_render, fail_reader_join;
 static atomic_bool in_render, hold_callback, leave_callback, stop_worker, stop_requested;
 static atomic_uint callbacks;
+
+int nova_device_test_join(pthread_t thread, void **result)
+{
+    if (fail_reader_join) return EDEADLK;
+    return pthread_join(thread, result);
+}
 
 NovaAudioResult nova_audio_test_render(NovaAudioRenderer *renderer, float *output, size_t frames)
 {
@@ -166,6 +177,148 @@ static void *release_inflight(void *unused)
     return NULL;
 }
 
+static NovaAudioStreamSnapshot file_state(NovaAudioTransportHandle handle, uint64_t expected_ticket)
+{
+    NovaAudioStreamReceipt receipt;
+    NovaAudioStreamSnapshot snapshot;
+    bool has_receipt, has_snapshot;
+    CHECK(nova_audio_device_file_poll(handle, &receipt, &has_receipt, &snapshot, &has_snapshot) == NOVA_AUDIO_CONTROL_OK);
+    CHECK(has_snapshot);
+    if (expected_ticket) CHECK(has_receipt && receipt.ticket == expected_ticket && receipt.result == NOVA_AUDIO_CONTROL_OK);
+    else CHECK(!has_receipt);
+    return snapshot;
+}
+
+static void file_ready(NovaAudioTransportHandle handle, unsigned buffer, unsigned frames)
+{
+    float silence[2];
+    for (unsigned i = 0; i < 5000; ++i) {
+        pump(buffer, silence, 1);
+        NovaAudioStreamSnapshot snapshot = file_state(handle, 0);
+        CHECK(snapshot.state == NOVA_STREAM_PAUSED && silence[0] == 0 && silence[1] == 0);
+        if (snapshot.buffered_frames >= frames) return;
+        const struct timespec delay = {.tv_nsec = 1000000};
+        nanosleep(&delay, NULL);
+    }
+    CHECK(false);
+}
+
+static void file_transports(void)
+{
+    StreamFixture file = stream_fixture(32000, 1, 24, 20000);
+    StreamFixture stereo = stream_fixture(44100, 2, 32, 16000);
+    char error[512];
+    NovaAudioTransportHandle audition = 777, game;
+    NovaAudioStreamInfo source = {0};
+    CHECK(nova_audio_device_open_file(NOVA_AUDIO_AUDITION, "", &audition, &source,
+        error, sizeof(error)) == NOVA_AUDIO_CONTROL_SOURCE_FAILED && audition == 777 && *error);
+    fail_stream = true;
+    CHECK(nova_audio_device_open_file(NOVA_AUDIO_AUDITION, file.path, &audition, &source,
+        error, sizeof(error)) == NOVA_AUDIO_CONTROL_BACKEND_FAILED && audition == 777 && *error);
+    fail_reader_join = true;
+    CHECK(nova_audio_device_open_file(NOVA_AUDIO_AUDITION, file.path, &audition, &source,
+        error, sizeof(error)) == NOVA_AUDIO_CONTROL_RETIREMENT_PENDING && audition != 777 && *error);
+    fail_reader_join = false;
+    CHECK(nova_audio_device_close(audition) == NOVA_AUDIO_CONTROL_OK);
+    audition = 777;
+    fail_stream = false; fail_play = true;
+    CHECK(nova_audio_device_open_file(NOVA_AUDIO_AUDITION, file.path, &audition, &source,
+        error, sizeof(error)) == NOVA_AUDIO_CONTROL_BACKEND_FAILED && audition == 777 && *error);
+    fail_play = false;
+    CHECK(allocations == unloads);
+    CHECK(nova_audio_device_open_file(NOVA_AUDIO_AUDITION, file.path, &audition, &source,
+        error, sizeof(error)) == NOVA_AUDIO_CONTROL_OK);
+    CHECK(source.wav.sample.sample_rate == 32000 && buffers[0].rate == 32000);
+    fail_reader_join = true;
+    CHECK(nova_audio_device_close(audition) == NOVA_AUDIO_CONTROL_RETIREMENT_PENDING && allocations == unloads);
+    fail_reader_join = false;
+    CHECK(nova_audio_device_close(audition) == NOVA_AUDIO_CONTROL_OK);
+    CHECK(nova_audio_device_open_file(NOVA_AUDIO_AUDITION, file.path, &audition, &source,
+        error, sizeof(error)) == NOVA_AUDIO_CONTROL_OK);
+    CHECK(nova_audio_device_open(NOVA_AUDIO_GAME, 48000, &game, error, sizeof(error)) == NOVA_AUDIO_CONTROL_OK);
+    NovaAudioTransportHandle unchanged = 999;
+    CHECK(nova_audio_device_open_file(NOVA_AUDIO_GAME, stereo.path, &unchanged, &source,
+        error, sizeof(error)) == NOVA_AUDIO_CONTROL_BUSY && unchanged == 999);
+    NovaAudioProgram *p = program();
+    uint64_t ticket;
+    CHECK(nova_audio_device_replace(audition, p, 16, &ticket) == NOVA_AUDIO_CONTROL_INVALID);
+    CHECK(nova_audio_device_file_command(game,
+        (NovaAudioStreamCommand){.type = NOVA_STREAM_RESUME, .generation = 1}, &ticket) == NOVA_AUDIO_CONTROL_INVALID);
+    CHECK(nova_audio_device_replace(game, p, 16, &ticket) == NOVA_AUDIO_CONTROL_OK);
+    nova_audio_program_release(p);
+    float output[256 * 2];
+    pump(1, output, 256);
+    file_ready(audition, 0, 256);
+    CHECK(nova_audio_device_file_command(audition,
+        (NovaAudioStreamCommand){.type = NOVA_STREAM_RESUME, .generation = 1}, &ticket) == NOVA_AUDIO_CONTROL_OK);
+    pump(0, output, 256);
+    CHECK(file_state(audition, ticket).position == 256);
+    for (unsigned i = 0; i < 256; ++i) for (unsigned c = 0; c < 2; ++c)
+        CHECK(fabsf(output[i * 2 + c] - stream_value(file, i, 0)) < 0.000001f);
+    CHECK(nova_audio_device_file_command(audition,
+        (NovaAudioStreamCommand){.type = NOVA_STREAM_PAUSE, .generation = 1, .fade_frames = 8}, &ticket) == NOVA_AUDIO_CONTROL_OK);
+    pump(0, output, 256);
+    NovaAudioStreamSnapshot snapshot = file_state(audition, ticket);
+    CHECK(snapshot.position == 264 && snapshot.state == NOVA_STREAM_PAUSED);
+    pump(1, output, 256);
+    NovaAudioReceipt score_receipt;
+    NovaAudioTransportSnapshot score;
+    bool has_receipt, has_snapshot;
+    CHECK(nova_audio_device_poll(game, &score_receipt, &has_receipt, &score, &has_snapshot) == NOVA_AUDIO_CONTROL_OK);
+    CHECK(has_snapshot && score.current.clock == 512 && !score.current.cancelled);
+    CHECK(nova_audio_device_poll(audition, &score_receipt, &has_receipt, &score, &has_snapshot) == NOVA_AUDIO_CONTROL_INVALID);
+    info.interrupted = true;
+    CHECK(nova_audio_device_file_command(audition,
+        (NovaAudioStreamCommand){.type = NOVA_STREAM_RESUME, .generation = 1}, &ticket) == NOVA_AUDIO_CONTROL_DEVICE_UNAVAILABLE);
+    info.interrupted = false;
+    CHECK(nova_audio_device_close(game) == NOVA_AUDIO_CONTROL_OK);
+    CHECK(nova_audio_device_open_file(NOVA_AUDIO_GAME, stereo.path, &game, &source,
+        error, sizeof(error)) == NOVA_AUDIO_CONTROL_OK && buffers[1].rate == 44100);
+    file_ready(game, 1, 256);
+    CHECK(nova_audio_device_file_command(game,
+        (NovaAudioStreamCommand){.type = NOVA_STREAM_RESUME, .generation = 1}, &ticket) == NOVA_AUDIO_CONTROL_OK);
+    pump(1, output, 256);
+    CHECK(file_state(game, ticket).position == 256);
+    for (unsigned i = 0; i < 256; ++i) for (unsigned c = 0; c < 2; ++c)
+        CHECK(fabsf(output[i * 2 + c] - stream_value(stereo, i, c)) < 0.000001f);
+
+    CHECK(nova_audio_device_file_command(audition,
+        (NovaAudioStreamCommand){.type = NOVA_STREAM_SEEK, .generation = 1, .frame = 19000}, &ticket) == NOVA_AUDIO_CONTROL_OK);
+    CHECK(!truncate(file.path, 44));
+    pump(0, output, 1);
+    NovaAudioStreamReceipt disk_receipt;
+    NovaAudioControlResult result = nova_audio_device_file_poll(audition, &disk_receipt, &has_receipt,
+        &snapshot, &has_snapshot);
+    CHECK(result == NOVA_AUDIO_CONTROL_OK || result == NOVA_AUDIO_CONTROL_RENDER_FAILED);
+    CHECK(has_receipt && disk_receipt.ticket == ticket);
+    for (unsigned i = 0; i < 5000 && result != NOVA_AUDIO_CONTROL_RENDER_FAILED; ++i) {
+        const struct timespec delay = {.tv_nsec = 1000000};
+        nanosleep(&delay, NULL);
+        pump(0, output, 1);
+        result = nova_audio_device_file_poll(audition, &disk_receipt, &has_receipt, &snapshot, &has_snapshot);
+    }
+    CHECK(result == NOVA_AUDIO_CONTROL_RENDER_FAILED && has_snapshot && snapshot.fault == NOVA_STREAM_SOURCE_CHANGED);
+    CHECK(nova_audio_device_file_poll(audition, &disk_receipt, &has_receipt, &snapshot, &has_snapshot) ==
+        NOVA_AUDIO_CONTROL_RENDER_FAILED && !has_snapshot);
+
+    atomic_store_explicit(&hold_callback, true, memory_order_release);
+    atomic_store_explicit(&leave_callback, false, memory_order_release);
+    atomic_store_explicit(&stop_worker, false, memory_order_release);
+    atomic_store_explicit(&stop_requested, false, memory_order_release);
+    pthread_t thread, release;
+    CHECK(!pthread_create(&thread, NULL, worker, NULL));
+    while (!atomic_load_explicit(&in_render, memory_order_acquire)) sched_yield();
+    CHECK(!pthread_create(&release, NULL, release_inflight, NULL));
+    nova_audio_device_close_transports();
+    CHECK(!pthread_join(release, NULL));
+    atomic_store_explicit(&stop_worker, true, memory_order_release);
+    CHECK(!pthread_join(thread, NULL));
+    CHECK(nova_audio_device_close(audition) == NOVA_AUDIO_CONTROL_STALE);
+    CHECK(nova_audio_device_close(game) == NOVA_AUDIO_CONTROL_STALE);
+    CHECK(allocations == unloads && info.initialized && initializations == 2);
+    CHECK(!unlink(file.path) && !unlink(stereo.path));
+}
+
 int main(void)
 {
     atomic_init(&in_render, false); atomic_init(&hold_callback, false);
@@ -271,6 +424,7 @@ int main(void)
     CHECK(nova_audio_device_poll(audition, &receipt, &has_receipt, &snapshot, &has_snapshot) == NOVA_AUDIO_CONTROL_RENDER_FAILED);
     CHECK(!has_receipt && !has_snapshot);
     CHECK(nova_audio_device_close(audition) == NOVA_AUDIO_CONTROL_OK && allocations == unloads);
+    file_transports();
     CHECK(!pthread_mutex_destroy(&mixer));
     puts("Nova device-free native adapter: shared ownership, failures, telemetry, concurrent detach and retirement passed.");
     return 0;

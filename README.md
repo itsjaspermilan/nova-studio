@@ -1059,7 +1059,8 @@ nonempty, at most 60 seconds per sound and 120 seconds across unique project
 sounds. Chunk lengths, alignment, byte rate, zero odd-data padding and file
 length must match exactly. Float samples must be finite and within +/-16;
 headroom is retained, never silently normalized/clipped. Compressed/extensible
-WAV, metadata/extra chunks, MP3, OGG and streaming music are explicitly rejected.
+WAV, metadata/extra chunks, MP3, OGG and streaming music are explicitly rejected
+by this legacy asset service; the separate disk-stream API below does not relax it.
 PCM8/16 keeps pinned raylib's existing decoder. PCM24/float32 uses the shared
 float decoder before native upload because raylib's WAV loader would otherwise
 reduce it to PCM16. No dependency is added. Decode/upload happens only at load.
@@ -1080,7 +1081,7 @@ audio budgets and live-save-independent preflight. Enable
 `-DNOVA_AUDIO_TESTS=ON` and run `ctest --test-dir build -R nova_audio_lifetime`
 through `scripts/with-toolchain.sh` for real native device/resource/play/stop/
 pause/reload/alias cleanup checks; it uses generated silence, not a listening test.
-That opt-in test also covers two independently controlled silent score streams
+That opt-in test also covers independently controlled silent score/file streams
 sharing this device and final callback-quiescent shutdown. It remains a hardware
 gate, not part of the default device-free suite.
 
@@ -1194,7 +1195,27 @@ explicitly unavailable. The inherited mixer still locks, may resample, and appli
 its existing output clipping; the whole device callback is not claimed lock-free.
 Core/offline float masters retain their unclipped headroom.
 
-This is **not a complete Sound Studio**: disk-streamed full-length music,
+`audio/stream.h` / `nova_audio_stream` now provide actual disk-backed canonical
+PCM8/16/24/float32 WAV playback, up to one hour at the original 8..48 kHz rate.
+One reader worker owns PCM reads/decoding; the callback consumes a fixed 64 KiB
+stereo-float ring, with an instance capped at 96 KiB and a configured 256 KiB
+worker stack (not a whole-process/OS-overhead cap). The device-free fixture checks
+every frame of a 75-second, 28,800,056-byte float file, beyond both short-effect
+limits without relaxing them.
+
+`nova_audio_device_open_file`, `file_command` and `file_poll` reuse the same
+Audition/Game roles and caller-selected host. Each role initially owns a score
+or file; the low-level stream remains embeddable in a future multitrack mixer.
+Files open paused, with explicit fades, pause/resume, source-frame seek and
+exclusive loop bounds. Generation guards reject stale work; starvation emits
+counted silence without consuming source frames. Changed-source/late-decode/I/O
+faults and queue-full outcomes are explicit. Close detaches callbacks before
+joining the reader and freeing it; failed joins retain ownership for retry.
+Positions and starvation counts are software evidence, not audible playheads or
+hardware xruns. Desktop audition/focus policy remains the host's decision.
+
+This is **not a complete Sound Studio**: manifest/Lua/packaged-Android music binding,
+multitrack disk mixing,
 comprehensive device-loss/Android-focus handling, recording, MIDI, sound documents,
 waveform/arrangement/piano-roll UI, production effects and aligned-stem workflows
 remain later stages. Device-free concurrent/sanitizer checks do not establish human
