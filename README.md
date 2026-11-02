@@ -191,6 +191,114 @@ An interrupted persistent commit cannot be discarded as if no writes happened.
 A project lock prevents simultaneous Qt writers; legacy/external editors do
 not share that lock, so exact file guards still apply.
 
+#### Asset source/output participation
+
+`ProjectDocument` also supplies the persistence boundary for real asset
+components. This is a **registration/storage API**, not new Sprite/Model tabs,
+component codecs, or completed workspace/undo integration. It does not change
+runtime manifest versions: PNG/GLB outputs use ordinary existing declarations,
+and authoring associations live in `.nova-studio-assets` **version 1**.
+Existing v1/v2 projects keep their versions and exact hand-authored Lua.
+Legacy generated projects remain read-only.
+
+The host freezes an actual component snapshot, then uses these interfaces on
+the `ProjectDocument` owning thread:
+
+| Interface | Contract |
+| --- | --- |
+| `StudioAssetSnapshot` | Stable host `id`/`kind`, component revision, bounded JSON association metadata, one binary source and a complete output list. Each `StudioAssetFile` carries a contained relative path, owned bytes and an exact expected disk version. PNG/GLB outputs also require their actual `runtimeId`/`runtimeType`; metadata sidecars have no runtime ID. |
+| `readAssetFile(path, &bytes, &expected, &error)` | Reads a guarded existing file or captures absence, including when its parent directories do not exist yet. `expected` is an opaque existence/version token; never fabricate one or refresh it silently after a conflict. |
+| `stageAssetSnapshot(snapshot, &error)` | Validates registration, budgets and versions, and deep-owns input strings/bytes, including Qt `fromRawData` buffers. It creates no project files/directories. Re-staging the same participant replaces its pending snapshot, not its persistent identity/source path/kind. |
+| `assetSnapshots()` / `savedAssetSnapshots()` | Current pending values versus the last committed source/output associations. Ordinary core undo cannot unregister live participant bindings. Component history/inspector drafts remain the component's responsibility; there is no invented asset undo command. |
+| `assetSnapshotDigest(snapshot)` | Lowercase SHA-256 of the deterministic compact snapshot descriptor, including revision, metadata, source/output hashes and publication mode, but excluding disk-version tokens. Use the normalized snapshot returned after staging. |
+| `assetSnapshotSaved(id, revision, digest)` / `isAssetSnapshotSaved(...)` | Acknowledge only that exact committed snapshot, and reject acknowledgment as current when a newer snapshot is staged. Reentrant edits made by an acknowledgment receiver remain dirty and get their own recovery record. |
+| `assetPublication(id)` | Reports whether the current source snapshot is saved, whether derived output is stale, its diagnostic, and the **last committed derived generation's** revision/exact-source SHA-256. A pending candidate is not reported as a published generation. |
+| `runtimeAssetsReady(&error)` | Refuses pending/uncommitted or source-only/stale asset generations, interrupted commits and disk conflicts. This supplements, not replaces, ordinary Lua/scene/runtime preflight. |
+
+Keep the **original component snapshot and session identity** until its exact
+acknowledgment is processed. A persisted participant ID is not a replacement
+for a component's process-local UUID; revisions may restart on reopen. In
+particular, do not reconstruct a current Mesh UUID from the index to
+acknowledge an older export. Finish/validate component inspector fields before
+freezing any snapshot. Source codecs and export completeness belong to those
+components; this layer does not infer a scene/model from a generated file.
+
+`PublishDerived` requests a complete generated set and whole-project,
+CPU-only native preflight in a private staging directory. This includes
+untouched runtime assets, the authored scene, current Lua and its initial
+update, without GPU upload, live audio or save effects. Failure keeps the
+candidate source/output snapshots recoverable and leaves the previous
+generated files/index unchanged. It never silently downgrades to source-only.
+
+For unsupported/over-budget exports, explicitly stage `SourceOnly` with a
+nonempty `derivedProblem` and no replacement outputs. This saves the editable
+source and retains the **last committed generated set and bindings**, labeling
+them stale with their generating source digest. With no previous export, it
+creates no runtime outputs/declarations. Source-only saving does not require
+Lua to run successfully. The host must block an apparent current-source
+Run/export, or explicitly offer the last published output; it must not label a
+source-only acknowledgment as a fresh export. Removing an output from a later
+complete publication removes its association/declaration, **not the old file**.
+Retired files are subsequently independent of this document's disk guards.
+
+Limits are binary MiB/KiB and checked without truncation:
+
+| Boundary | Limit |
+| --- | --- |
+| Authored source file | 65 MiB (68,157,440 bytes) |
+| Each derived file, including runtime PNG/GLB | 16 MiB; existing native import/pixel/asset-count limits still apply |
+| Active source + output payloads | 256 MiB across at most 16 participants and 128 files |
+| Association metadata | 64 KiB per participant; 1 MiB complete index |
+| Journal/recovery metadata | 2 MiB |
+| One record's combined before/after payloads | 520 MiB, including retained retired files/core documents |
+| Private content-addressed blob store | 1040 MiB; only verified, unreferenced owned blobs are cleaned up |
+
+The current Sprite envelope is a 65 MiB source, up to 32 PNGs totaling 65 MiB,
+and 64 KiB export metadata: **130 MiB + 64 KiB / 34 files**. Its exact maximal
+serialized source is 67,121,780 bytes. Mesh needs at most 64 MiB source plus
+one 16 MiB GLB. The budgets accommodate either complete component, both
+generations and recovery overhead. Aggregate project and union-of-old/new-file
+limits can still reject a larger transaction before project-file mutation.
+These are bounded in-memory byte snapshots, **not a streamed recording API**;
+future large audio sources need a deliberate file-backed participation design.
+The separate C `nova_document_open_authored_source` opener reuses the same
+guarded implementation; `nova_document_open_output` remains capped at 16 MiB
+and text editing at 256 KiB.
+
+With registered assets, recovery/commit records use **version 2**: bounded
+JSON descriptors reference immutable SHA-256 blobs in
+`.nova-studio-snapshots`, rather than base64-expanding binary source data.
+Source files, complete derived sets, association index, scene, Lua and
+manifest participate together. Exact root/file versions and expected absence
+are recorded; symlinks, hardlinks, reserved/escaping paths and case-folded or
+Unicode-normalized path aliases are refused. Each file is still committed
+atomically **on its own**, with a durable attempted-write marker and completed
+version receipt. A crash between replacement and its receipt may recognize
+the exact intended after-bytes, but never overwrite that file. An unattempted
+absent target that appears externally is a conflict even if its bytes match.
+The journal remains the runtime/export barrier until the complete set is
+verified; this is not filesystem-wide atomicity.
+
+Recovery checks all required blobs, including a newer recovery's source/output
+set, and disk guards before project writes. Its recovery metadata guard is held
+through commit/rebasing; external replacements are not silently adopted.
+Finishing an older commit rebases newer recovery onto its confirmed versions,
+preserving the newer source and matching derived snapshots across both
+same-session recovery and restart. Missing/tampered blobs, malformed metadata,
+duplicate JSON keys, external edits and interrupted cleanup are explicit
+failures, not overwritten successes. Unknown or empty existing recovery records
+require an explicit review/discard decision. Original **version-1 three-text-file
+records remain supported explicitly**, with their original old/new-byte recovery
+contract. Binary
+comparison/recovery views show lengths and hashes rather than dumping binary
+data into text controls.
+
+A separate version-2 recovery copy consists of the chosen new JSON file
+**and its adjacent, uniquely named `.nova-studio-copy-...` blob directory**.
+Keep/copy both; it has no dependency on the live project's cleanup. Existing
+copy filenames are never overwritten. These are recovery snapshots, not a
+permanent revision-history archive or an automatic merge/import facility.
+
 #### Opt-in manifest v3 and nova-scene v1/v2
 
 v1/v2 manifests and legacy generated ownership are unchanged. v3 adds one

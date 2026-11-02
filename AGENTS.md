@@ -101,6 +101,9 @@ exported. The earlier externally authored 2D assessment game is not that proof.
   failed reload/validation behavior; headless preflight must not upload GPU data.
 - `authoring/document.{c,h}` owns bounded manifest/Lua drafts and exact disk
   snapshots with contained atomic/conflict-guarded text/binary output.
+  The separately named authored-source opener permits 65 MiB binary sources/
+  recovery blobs; ordinary output remains 16 MiB and source text 256 KiB.
+  Keep the same root/no-follow/no-clobber/conflict guarantees for every opener.
   `authoring/editor.c` and `widgets.{c,h}` implement the separate desktop-only
   source/project editor. Preserve explicit dirty/conflict decisions and use
   shared inspection/presentation/runtime for its real preview, not another renderer.
@@ -116,10 +119,21 @@ exported. The earlier externally authored 2D assessment game is not that proof.
   owners are destroyed. Link `nova_audio_native` plus the selected Qt host and
   apply `nova_configure_raylib_audio` to that host; never pull ordinary
   `nova_assets`/GLFW raylib into the Qt graph.
-  `ProjectDocument` owns scene/Lua/manifest, selection and unified undo. Its
-  journal is a recoverable multi-file commit, not filesystem atomicity.
-  Interrupted journals block runtime/export; exact old/new-byte checks protect
-  recovery and external edits. Do not overwrite unresolved prior recovery.
+  `ProjectDocument` owns scene/Lua/manifest, selection and unified core undo.
+  Asset participants use a separate authoring-only index v1 and blob-backed
+  journal/recovery v2; source/output snapshots, disk versions and publication
+  state are explicit. Source-only saving retains stale generated output, not
+  a successful fresh export. Host Run/export must check runtimeAssetsReady,
+  and acknowledgments require the original component snapshot/session identity
+  plus the exact participant/revision/digest; never reconstruct a process UUID.
+  Real component embedding/undo routing follows separately. The journal is a
+  recoverable multi-file commit, not filesystem atomicity. Interrupted journals
+  block runtime/export; v2 checks exact before/absence and completed-write
+  versions, while original v1 text records retain old/new-byte compatibility.
+  Do not overwrite unresolved recovery or drop newer source/derived snapshots.
+  Respect 65 MiB source, 16 MiB derived and 256 MiB active payload bounds, and
+  520 MiB record / 1040 MiB blob-store limits. Never inline large binaries in
+  JSON or stretch this bounded byte API into a recording/streaming format.
   Native production file panels must remain native; deterministic tests may
   inject a per-dialog configuration, never a production/app-wide nonnative flag.
   macOS native Qt CTests run under LLDB and check the debuggee's actual exit,

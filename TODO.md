@@ -53,7 +53,7 @@ Confirmed product requirements:
 | --- | --- | --- | --- |
 | Baseline reconciliation | Existing committed work | Build and exercise the integrated native editor, assets, services, modeller and exporter in this worktree. | Complete |
 | Desktop UI/platform decision | Retained research | Qt 6/C++ selected by the user; prove real text input, focus/accessibility facilities, dialogs/docking and live native GPU integration before committing to the bridge. | Native macOS bridge implemented; human IME/VoiceOver and other OS qualification remain |
-| Authoring/document foundation | UI decision + baseline | Unified documents/selection, full undo/redo, safe coherent writes, recovery, conflict handling and native preview. | First Scene/Code foundation implemented; future asset document types still need integration |
+| Authoring/document foundation | UI decision + baseline | Unified documents/selection, full undo/redo, safe coherent writes, recovery, conflict handling and native preview. | Scene/Code foundation and asset persistence API implemented; real component embedding/undo routing still need integration |
 | Lua-first creation loop | Authoring foundation | Project creation/open/save, visual scenes and script/property binding, useful code tools, diagnostics and Run/Stop without overwriting authored code. | First 2D/3D creation slice implemented; complete studio remains in progress |
 | Scene orientation/navigation | Authoring foundation + shared renderer | Coherent authored/runtime 3D rotation, native transform gizmos, snapping/undo/cancel and separate editor camera. | Bounded implementation complete; unlocked-focus and other-host qualification remain |
 | Sprite workspace | Authoring foundation + runtime animation | Real drawing/layers/frames, source preservation, reversible editing and matching scene/runtime updates. | Embeddable document/canvas component implemented; guarded host/runtime integration pending |
@@ -355,6 +355,47 @@ or publishing was used. Android remains Qt-free; this follow-up has no new
 Android-device claim.
 Triangle-exact mesh picking, 2D rotation, physics, the Model/Sprite/Sound
 workspaces and the final playable 3D rally exercise are not completed here.
+
+### Asset persistence continuation
+
+`ProjectDocument` now accepts immutable source/output participants with exact
+expected disk versions, including absent files. An authoring-only
+`.nova-studio-assets` v1 index preserves stable source/generated associations;
+runtime manifest versions and authored Lua are unchanged. The new separately
+bounded C source opener retains existing path/root/snapshot/atomic-file guards,
+without increasing the 16 MiB runtime-output or 256 KiB text-editor limits.
+
+Explicit `PublishDerived` versus `SourceOnly` snapshots separate source
+preservation from usable runtime publication. Whole-project CPU preflight
+protects publication; source-only saves retain and label the last valid
+generated set. Hosts must check `runtimeAssetsReady` and retain original
+component snapshot/session identities for revision/digest acknowledgments.
+Saved source is not proof of fresh runtime output. Retired outputs stay on disk.
+
+Journal/recovery v2 stores complete before/after snapshots as content-addressed
+binary blobs, with guarded per-file attempted/completed receipts and recovery
+rebasing for newer edits after an older commit. Original v1 three-file records
+remain explicit compatibility input. Budgets: 65 MiB/source, 16 MiB/derived
+file, 256 MiB active asset payloads, 16 participants/128 files, 1 MiB index,
+2 MiB record metadata, 520 MiB before/after and 1040 MiB blob store. These fit
+the confirmed 130 MiB + 64 KiB Sprite and 80 MiB Mesh envelopes without
+base64 expansion. This is recoverability, not filesystem-wide atomicity.
+
+This continuation owns persistence/registration and focused failure/boundary
+coverage, not Sprite/Mesh component implementations, host workspace embedding,
+new undo routing or streaming audio source formats. It does not rerun or relax
+native focus gates while the desktop is locked. The parent owns combined
+audio/Qt build and lifetime glue; the scene-transform owner retains the
+scene-version/serialization helper and starter-scene version hunks.
+
+The 42 headless Qt document cases and the five legacy document/game/save-failure/
+model/textured-model suites pass ordinary and ASan/UBSan builds. The final
+instrumented Qt suite passed twice consecutively under LLDB, with debuggee exit
+status checked. Coverage includes the complete 130 MiB + 64 KiB storage envelope,
+exact caps/absence/receipts, real partial-write failure, source-only publication,
+and refusing damaged newer recovery before an older commit writes project files.
+The affected `nova_studio_app` target also builds; no locked-desktop focus or
+component-embedding evidence is implied.
 
 ## Pre-Qt integrated baseline (retained evidence)
 

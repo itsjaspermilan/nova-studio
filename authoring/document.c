@@ -139,12 +139,14 @@ static bool same_disk(const NovaDiskText *a, const NovaDiskText *b)
 }
 
 static bool document_open(NovaDocument *document, const char *root, const char *relative,
-    size_t limit, bool binary, bool allow_missing, char *error, size_t size)
+    size_t limit, bool binary, bool allow_missing, bool authored_source, char *error, size_t size)
 {
-    NovaDocument candidate = {.limit = limit, .binary = binary, .allow_missing = allow_missing};
+    NovaDocument candidate = {.limit = limit, .binary = binary, .allow_missing = allow_missing,
+        .authored_source = authored_source};
     if (!root || !relative || strlen(root) >= sizeof(candidate.root) ||
         strlen(relative) >= sizeof(candidate.relative) || !nova_project_relative_path(relative) ||
-        !limit || limit > (allow_missing ? NOVA_ASSET_FILE_LIMIT : NOVA_SOURCE_EDIT_LIMIT))
+        !limit || limit > (authored_source ? NOVA_AUTHORED_SOURCE_LIMIT :
+            allow_missing ? NOVA_ASSET_FILE_LIMIT : NOVA_SOURCE_EDIT_LIMIT))
         return fail(error, size, "invalid authoring root, path or text budget");
     strcpy(candidate.root, root);
     strcpy(candidate.relative, relative);
@@ -171,13 +173,19 @@ static bool document_open(NovaDocument *document, const char *root, const char *
 bool nova_document_open(NovaDocument *document, const char *root, const char *relative,
     size_t limit, char *error, size_t size)
 {
-    return document_open(document, root, relative, limit, false, false, error, size);
+    return document_open(document, root, relative, limit, false, false, false, error, size);
 }
 
 bool nova_document_open_output(NovaDocument *document, const char *root, const char *relative,
     size_t limit, bool binary, char *error, size_t size)
 {
-    return document_open(document, root, relative, limit, binary, true, error, size);
+    return document_open(document, root, relative, limit, binary, true, false, error, size);
+}
+
+bool nova_document_open_authored_source(NovaDocument *document, const char *root, const char *relative,
+    size_t limit, char *error, size_t size)
+{
+    return document_open(document, root, relative, limit, true, true, true, error, size);
 }
 
 bool nova_document_dirty(const NovaDocument *document)
@@ -314,7 +322,7 @@ done:
 bool nova_document_reread(NovaDocument *document, char *error, size_t size)
 {
     return document_open(document, document->root, document->relative, document->limit,
-        document->binary, document->allow_missing, error, size);
+        document->binary, document->allow_missing, document->authored_source, error, size);
 }
 
 bool nova_document_remove(NovaDocument *document, char *error, size_t size)

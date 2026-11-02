@@ -5,6 +5,7 @@
 #include <sys/stat.h>
 
 #define NOVA_SOURCE_EDIT_LIMIT (256 * 1024)
+#define NOVA_AUTHORED_SOURCE_LIMIT (65 * 1024 * 1024)
 
 typedef struct {
     char *text;
@@ -18,7 +19,7 @@ typedef struct {
     char *text;
     size_t length, limit;
     NovaDiskText saved, conflict;
-    bool has_conflict, binary, allow_missing;
+    bool has_conflict, binary, allow_missing, authored_source;
 } NovaDocument;
 
 typedef struct {
@@ -34,6 +35,10 @@ bool nova_document_open(NovaDocument *document, const char *root, const char *re
  * Binary drafts use lengths (not strlen) and must never enter the text widget. */
 bool nova_document_open_output(NovaDocument *document, const char *root, const char *relative,
     size_t limit, bool binary, char *error, size_t error_size);
+/* Editable asset sources and their recovery blobs are not runtime imports.
+ * The separate bound does not raise the PNG/GLB output or text-editor limits. */
+bool nova_document_open_authored_source(NovaDocument *document, const char *root, const char *relative,
+    size_t limit, char *error, size_t error_size);
 bool nova_document_dirty(const NovaDocument *document);
 /* Refresh observed disk conflict without replacing the draft or saved snapshot. */
 bool nova_document_check_disk(NovaDocument *document, char *error, size_t error_size);
