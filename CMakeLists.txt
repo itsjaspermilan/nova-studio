@@ -47,7 +47,7 @@ target_include_directories(nova_lua PUBLIC "${lua_SOURCE_DIR}/src")
 target_compile_definitions(nova_lua PRIVATE LUA_USE_POSIX)
 target_link_libraries(nova_lua PUBLIC m)
 
-add_library(nova_core STATIC engine/nova.c engine/project.c engine/scene.c)
+add_library(nova_core STATIC engine/nova.c engine/project.c engine/scene.c engine/transform.c)
 target_include_directories(nova_core PUBLIC engine)
 target_link_libraries(nova_core PUBLIC nova_lua)
 target_compile_options(nova_core PRIVATE -Wall -Wextra -Wpedantic -Werror)

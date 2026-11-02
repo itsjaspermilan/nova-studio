@@ -23,7 +23,7 @@ typedef enum { NOVA_2D, NOVA_3D, NOVA_MIXED } NovaMode;
 typedef enum { NOVA_RECTANGLE, NOVA_CUBE, NOVA_TEXT, NOVA_SPRITE, NOVA_MODEL } NovaCommandType;
 typedef struct {
     NovaCommandType type;
-    NovaVec3 position, size;
+    NovaVec3 position, size, rotation;
     NovaColor color;
     size_t asset;
     char text[NOVA_TEXT_CAPACITY];

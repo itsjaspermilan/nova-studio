@@ -101,20 +101,47 @@ silently replaced. Hand-authored v1/v2 Lua stays editable, with native initial
 frame/asset inspection but no fabricated visual scene hierarchy.
 
 In Scene, select an object in the outline or native viewport. Edit its UTF-8
-display name, position, size/scale, compatible appearance and primitive colour
-in the Inspector; finishing a field commits an undoable edit. Stable IDs are
+display name, position, size/scale, 3D rotation, compatible appearance and primitive
+colour in the Inspector; finishing a changed field commits an undoable edit. Stable IDs are
 read-only. Add shapes, duplicate or delete objects, or import a supported PNG/
 static GLB and **Add selected asset to scene**. Imported files are copied to
 fresh contained paths immediately; **undo/discard removes registration, never
-deletes the copied file**. Sprite/model tint, rotation gizmos, physics and
-per-object lifecycle are not implied by these controls.
+deletes the copied file**. Sprite/model tint, physics and per-object lifecycle
+are not implied by these controls.
 
-2D uses logical 960x540 coordinates. Dragging moves XY; 3D dragging moves on the
-selected object's horizontal XZ plane, with height in the Inspector. Snap is
-explicit; selecting without dragging does not snap/move an object. Each drag
-is one undo command; Escape/focus loss cancels it. Scene settings edit the
-background and actual game camera, not a separate software editing renderer.
-Plain transforms reuse the loaded GPU resources.
+The labelled **Move / Rotate / Scale** tools have constant-screen-size,
+colour-coded native viewport handles and numeric Inspector alternatives:
+
+| Tool (key while the viewport owns input) | Gesture | Snap |
+| --- | --- | --- |
+| Move (W) | World-axis arrows; centre or object dragging moves on XZ in 3D, XY in 2D | Absolute grid, initially 0.25 world units in 3D / 16 logical pixels in 2D |
+| Rotate (E) | 3D Euler-axis rings; edge-on handles hide rather than offering an unstable drag | Absolute degrees, initially 15 |
+| Scale (R) | Local-axis handles; centre scales uniformly while preserving proportions | Percentage change from the gesture start, initially 10% |
+
+Transforms use the same **right-handed, +Y-up, local scale -> X rotation ->
+Y rotation -> Z rotation -> translation** convention as the primitive modeller.
+Angles are degrees; cube pivots are their centres and GLB pivots are their asset
+origins. Rotate rings follow the corresponding Euler parameter, not three
+independent world axes. Picking intersects transformed local bounds (oriented
+boxes), not triangle-exact mesh geometry. Plain transforms reuse GPU resources.
+Each completed changed gesture is one undo command. Escape, focus loss,
+deactivation or hiding the viewport cancels and restores the prior draft.
+Selecting, an unchanged field commit, or returning a rotation gesture to its
+original value does not upgrade the scene. Gameplay Lua is never regenerated.
+
+**Orbit**, **Pan**, **Frame** and the **View** menu control a separate, disposable
+3D editing camera. Alt-drag or right-drag orbits; Alt+Shift-drag or middle-drag
+pans. The labelled Orbit/Pan tools also support left-drag and arrow keys.
+Wheel or +/- zooms; F frames selection, Shift+F frames all, and Home restores
+the authored game camera view. Framing uses transformed bounds and editor-only
+clip distances; the unobtrusive ground grid/axis compass can be hidden.
+Navigation never enters document undo or changes the game camera, and the
+editing view survives Run/Stop. Scene settings explicitly edit the saved game
+camera instead. Shortcuts belong to the viewport, not Lua/property text fields;
+while running they cannot switch authoring tools or move the editing camera.
+2D retains its unrotated, fixed logical 960x540 canvas and Move/Scale tools;
+3D navigation and rotation are disabled there. There is still one native GPU
+viewport and one shared game renderer, not a software editing renderer.
 
 Code provides native text editing, Lua highlighting, `Ctrl+Space` API/project
 reference completion, signatures, an offline reference, find, and debounced
@@ -164,7 +191,7 @@ An interrupted persistent commit cannot be discarded as if no writes happened.
 A project lock prevents simultaneous Qt writers; legacy/external editors do
 not share that lock, so exact file guards still apply.
 
-#### Opt-in manifest v3 and nova-scene v1
+#### Opt-in manifest v3 and nova-scene v1/v2
 
 v1/v2 manifests and legacy generated ownership are unchanged. v3 adds one
 required contained `.nova-scene` path to the v2 identity/audio declarations:
@@ -186,9 +213,30 @@ object player cube - 0 0 0 1 1 1 77 225 201 Player
 
 Object fields are stable ID, `rectangle`/`cube`/`sprite`/`model`, asset ID (or
 `-` for a primitive), XYZ position, XYZ size/scale, RGB, then a UTF-8 display
-name. Scene bounds: 64 KiB, 128 objects, existing 1..63-character ASCII IDs,
+name in **scene v1**. New projects and existing v1 files keep this zero-rotation
+format. The first deliberate nonzero authored 3D rotation upgrades the scene
+to **v2**, as labelled in the tools/Inspector; that same undo command restores
+the exact preceding v1 draft. Merely focusing/committing an unchanged field does
+not upgrade it. Resetting a v2 rotation to zero does not silently downgrade.
+Older Nova builds that only understand scene v1 reject v2 rather than dropping
+orientation. Manifest v3 and the project journal format are unchanged.
+
+**Scene v2** adds mandatory `rx ry rz` between XYZ size/scale and RGB on every
+object record, including zero triples for 2D objects:
+
+```text
+nova-scene 2
+mode 3d
+background 18 24 41
+camera 7 6 9 0 0 0 50
+object player cube - 0 0 0 2 1 4 0 45 0 77 225 201 Player
+```
+
+Scene bounds: 64 KiB, 128 objects, existing 1..63-character ASCII IDs,
 1..127 UTF-8-byte names without ASCII controls, positions +/-10000, sizes .01..1000.
-2D objects require Z=0/depth=1; visual types must match 2D/3D/mixed mode.
+Authored rotation angles must be finite and within +/-360; partial triples
+and nonzero v1 rotations are invalid. 2D objects require Z=0/depth=1 and zero
+rotation; visual types must match 2D/3D/mixed mode.
 Asset types/references are checked, and asset RGB must be white because
 sprite/model tint is unsupported. Camera bounds/FOV are validated. Unknown
 versions/directives, duplicates, malformed UTF-8 and nonfinite numbers fail
@@ -211,6 +259,24 @@ and failure/effect-discard behavior. The API deliberately has no per-object
 Create/Step/Destroy lifecycle. Export preflight includes the scene file in its
 required inventory; Qt is not a game-runtime dependency.
 
+For 3D objects, `nova.rotation(object)` returns XYZ Euler degrees and
+`nova.set_rotation(object, rx, ry, rz)` changes the runtime orientation.
+**Finite runtime angles normalize to [-180, 180)** before conversion to the
+native float representation: 180 becomes -180, and complete turns become 0.
+Continuous steering may therefore accumulate beyond 360 without stopping a
+scene. NaN/infinity, partial triples, wrong handles and 2D setters fail explicitly.
+This works with both scene versions, without changing saved bytes or upgrading
+v1 at runtime; Stop/reload restores the authored orientation. For example:
+
+```lua
+local car = nova.object("player")
+local rx, yaw, rz = nova.rotation(car)
+function update(dt, input)
+    yaw = yaw + input.horizontal * 90 * dt
+    nova.set_rotation(car, rx, yaw, rz)
+end
+```
+
 #### Native bridge and validation boundaries
 
 `QOpenGLWidget` owns the native context/window/input. A small backend compiled
@@ -219,7 +285,9 @@ decoders and presentation** draw into Qt's actual, resize-dependent GPU FBO.
 The world target is bounded; HUD composition uses physical framebuffer pixels.
 There is no hidden GLFW window, private Qt API, WebView, CPU readback display
 or second scene renderer. Raylib globals currently permit one context-owned
-viewport per process. Viewport destruction disconnects outgoing signals and
+viewport per process. Editor gizmos/system-text chrome draw through Qt's
+OpenGL paint device into that same FBO after native drawing, with vertex-array,
+culling and pixel-upload alignment ownership kept separate. Viewport destruction disconnects outgoing signals and
 application-state callbacks before late widget teardown can reach dead actions
 or derived members; Qt and ordinary GLFW raylib builds are not linked
 into the same process. Both renderer hosts use the same checked audio hooks,
@@ -256,6 +324,17 @@ OS-owned selection controls or a human IME/VoiceOver workflow.
 Captures are `build/qt-studio-{2d,3d}.png`,
 `build/qt-studio-{2d,3d}-min.png` (1100x740 logical), and
 `build/qt-studio-code-{2d,3d}.png`.
+The orientation follow-up adds headless `nova_scene`, `nova_qt_documents` and
+`nova_qt_scene_tools` contracts plus native `sceneTransformsAndNavigation` /
+`flatSceneTools` widget cases and rotated cube/GLB pixel checks in the bridge
+suite. Coverage includes explicit v1/v2 undo/recovery/reopen, unchanged-field
+precision, one-command gestures, cancellation, editor/game-camera separation,
+large-scene framing and hit-coordinate/gizmo-pixel agreement at native density.
+Its actual native captures are `build/qt-scene-tools.png`,
+`build/qt-scene-tools-min.png`, `build/qt-scene-rotate.png`,
+`build/qt-scene-tools-2d.png` and `build/qt-rotated-native-model.png`.
+These focused exposed-window cases can run under LLDB on a locked desktop;
+they do not replace the original unlocked-window focus assertions.
 These are regression evidence, not novice, performance or Android-device
 validation. The larger studio's requested final acceptance exercise is a
 playable **3D rally racer** using every delivered authoring component, including
@@ -864,13 +943,20 @@ end
 | `nova.rectangle` | `x, y, width, height, r, g, b` |
 | `nova.text` | `text, x, y, fontSize, r, g, b` |
 | `nova.camera` | `x, y, z, targetX, targetY, targetZ, verticalFovDegrees` |
-| `nova.cube` | `centerX, centerY, centerZ, width, height, depth, r, g, b` |
+| `nova.cube` | `centerX, centerY, centerZ, width, height, depth, r, g, b [, rx, ry, rz]` |
 | `nova.asset` | `declaredID`; returns an opaque, scene-local sprite/model/audio handle |
 | `nova.sprite` | `spriteHandle or framePlayback, x, y, width, height`; whole image, white tint, alpha blending, nearest filtering |
-| `nova.model` | `handle, x, y, z, uniformScale`; static model at position, positive scale, no extra rotation |
+| `nova.model` | `handle, x, y, z, uniformScale [, rx, ry, rz]`; positive scale, rotation about the asset origin |
 | `nova.overlap` | `ax, ay, aw, ah, bx, by, bw, bh`; returns boolean, edge-touching is not overlap |
 
-Rectangles and text are drawn after the depth-tested 3D models, as an overlay. Cube commands instance a GPU-uploaded unit-cube mesh model, not software-rendered shapes. Camera up is +Y and its direction may not be parallel to that axis. Color channels are integer 0..255. Sizes must be positive; numeric arguments must be finite and within +/-1,000,000. Text is limited to 191 bytes and the bundled font has limited glyph coverage.
+Rectangles and text are drawn after the depth-tested 3D models, as an overlay. Cube commands instance a GPU-uploaded unit-cube mesh model, not software-rendered shapes. Camera up is +Y and its direction may not be parallel to that axis. Color channels are integer 0..255. Sizes must be positive; position/size arguments must be finite and within +/-1,000,000. Text is limited to 191 bytes and the bundled font has limited glyph coverage.
+
+Cube/model rotations are optional **complete trailing triples**, in degrees,
+using local scale -> right-handed X/Y/Z rotation -> translation. Omit all three
+for the old zero-rotation behavior. Cube RGB arguments stay at positions 7..9;
+rotation starts at 10 (model rotation starts at 6). No argument-count heuristic
+reinterprets colours as angles. Finite runtime angles normalize to [-180, 180);
+partial triples and nonfinite angles are errors.
 
 Each update rebuilds the draw-command buffer (maximum 512); Lua gameplay state persists until reload. Both loading and each update have a 200,000-instruction budget and the Lua allocator has a 16 MiB limit. Script errors stop that scene, appear in the native error screen and log, and can be fixed/reloaded. Only base/math/string/table libraries are exposed; filesystem/process/package libraries are absent. These are stability limits for local authoring, **not a hardened security sandbox for hostile scripts**.
 

@@ -38,6 +38,7 @@ bool nova_presentation_pointer(const NovaPresentationLayout *layout,
 bool nova_presentation_configure(NovaPresentation *presentation,
     NovaWorldResolution resolution, char *error, size_t error_capacity);
 void nova_presentation_destroy(NovaPresentation *presentation);
+Matrix nova_command_matrix(const NovaCommand *command);
 void nova_presentation_world(NovaPresentation *presentation,
     const NovaFrame *frame, const NovaResources *resources);
 

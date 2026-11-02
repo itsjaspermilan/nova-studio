@@ -1,4 +1,6 @@
 #include "presentation.h"
+#include "transform.h"
+#include <raymath.h>
 #include <rlgl.h>
 #include <math.h>
 #include <stdio.h>
@@ -132,6 +134,16 @@ void nova_presentation_destroy(NovaPresentation *presentation)
 static Color ray_color(NovaColor value) { return (Color){value.r, value.g, value.b, value.a}; }
 static Vector3 ray_vector(NovaVec3 value) { return (Vector3){value.x, value.y, value.z}; }
 
+Matrix nova_command_matrix(const NovaCommand *draw)
+{
+    const NovaVec3 x = nova_rotate((NovaVec3){draw->size.x, 0, 0}, draw->rotation);
+    const NovaVec3 y = nova_rotate((NovaVec3){0, draw->size.y, 0}, draw->rotation);
+    const NovaVec3 z = nova_rotate((NovaVec3){0, 0, draw->size.z}, draw->rotation);
+    return (Matrix){.m0 = x.x, .m1 = x.y, .m2 = x.z, .m4 = y.x, .m5 = y.y, .m6 = y.z,
+        .m8 = z.x, .m9 = z.y, .m10 = z.z, .m12 = draw->position.x,
+        .m13 = draw->position.y, .m14 = draw->position.z, .m15 = 1};
+}
+
 void nova_presentation_world(NovaPresentation *presentation,
     const NovaFrame *frame, const NovaResources *resources)
 {
@@ -145,13 +157,17 @@ void nova_presentation_world(NovaPresentation *presentation,
         BeginMode3D(camera);
         for (size_t i = 0; i < frame->count; ++i) {
             const NovaCommand *draw = &frame->commands[i];
-            if (draw->type == NOVA_CUBE) {
-                DrawModelEx(presentation->cube, ray_vector(draw->position), (Vector3){0, 1, 0},
-                    0, ray_vector(draw->size), ray_color(draw->color));
-                DrawCubeWiresV(ray_vector(draw->position), ray_vector(draw->size), (Color){18, 24, 41, 255});
-            } else if (draw->type == NOVA_MODEL) {
-                DrawModelEx(resources->resources[draw->asset].model, ray_vector(draw->position),
-                    (Vector3){0, 1, 0}, 0, ray_vector(draw->size), WHITE);
+            if (draw->type == NOVA_CUBE || draw->type == NOVA_MODEL) {
+                Model model = draw->type == NOVA_CUBE ? presentation->cube : resources->resources[draw->asset].model;
+                Matrix transform = nova_command_matrix(draw);
+                model.transform = MatrixMultiply(model.transform, transform);
+                DrawModel(model, (Vector3){0}, 1, draw->type == NOVA_CUBE ? ray_color(draw->color) : WHITE);
+                if (draw->type == NOVA_CUBE) {
+                    rlPushMatrix();
+                    rlMultMatrixf(MatrixToFloat(transform));
+                    DrawCubeWiresV((Vector3){0}, (Vector3){1, 1, 1}, (Color){18, 24, 41, 255});
+                    rlPopMatrix();
+                }
             }
         }
         EndMode3D();

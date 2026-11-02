@@ -27,6 +27,65 @@ static bool writeFile(const QString &path, const QByteArray &bytes)
 class DocumentTest final : public QObject {
     Q_OBJECT
 private slots:
+    void rotationVersionUpgradeAndRecovery()
+    {
+        QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-rotation-XXXXXX");
+        QVERIFY(temporary.isValid());
+        QString error, path;
+        QByteArray script, rotated;
+        {
+            ProjectDocument document;
+            QVERIFY2(document.create(temporary.path(), "Rotations", true, NOVA_EXAMPLES, &error), qPrintable(error));
+            path = document.path();
+            script = document.draft().script;
+            const auto v1 = document.draft().scene;
+            QCOMPARE(document.scene().version, 1u);
+            auto scene = document.scene();
+            QVERIFY(document.editScene(scene, "player", "Unchanged", &error));
+            QCOMPARE(document.undoStack()->count(), 0);
+            QCOMPARE(document.draft().scene, v1);
+            scene.objects[0].rotation = {23, -61, 117};
+            QVERIFY(!document.editScene(scene, "player", "Missing explicit upgrade", &error));
+            QCOMPARE(document.draft().scene, v1);
+            scene.version = 2;
+            QVERIFY2(document.editScene(scene, "player", "Rotate object", &error), qPrintable(error));
+            rotated = document.draft().scene;
+            QVERIFY(rotated.startsWith("nova-scene 2\n"));
+            QCOMPARE(document.undoStack()->count(), 1);
+            QCOMPARE(document.scene().objects[0].rotation.y, -61.f);
+            QCOMPARE(document.draft().script, script);
+            document.undoStack()->undo();
+            QCOMPARE(document.draft().scene, v1);
+            QCOMPARE(document.scene().version, 1u);
+            document.undoStack()->redo();
+            QCOMPARE(document.draft().scene, rotated);
+            QVERIFY(document.writeRecovery(&error));
+        }
+        {
+            ProjectDocument document;
+            QVERIFY(document.open(path, &error));
+            QCOMPARE(document.scene().version, 1u);
+            QVERIFY(document.restoreRecovery(&error));
+            QCOMPARE(document.draft().scene, rotated);
+            QCOMPARE(document.draft().script, script);
+            QVERIFY2(document.save(&error), qPrintable(error));
+            NovaProjectValidation validation{};
+            char detail[1024]{};
+            QVERIFY2(nova_validate_project(path.toUtf8().constData(), &validation, detail, sizeof(detail)), detail);
+        }
+        ProjectDocument reopened;
+        QVERIFY(reopened.open(path, &error));
+        QCOMPARE(reopened.scene().version, 2u);
+        QCOMPARE(reopened.scene().objects[0].rotation.x, 23.f);
+        QCOMPARE(reopened.scene().objects[0].rotation.y, -61.f);
+        QCOMPARE(reopened.scene().objects[0].rotation.z, 117.f);
+        QCOMPARE(reopened.draft().script, script);
+        auto scene = reopened.scene();
+        scene.objects[0].rotation = {};
+        QVERIFY(reopened.editScene(scene, "player", "Reset rotation", &error));
+        QCOMPARE(reopened.scene().version, 2u); // No silent downgrade after a deliberate upgrade.
+    }
+
     void sceneAndScriptOwnership_data()
     {
         QTest::addColumn<bool>("threeD");

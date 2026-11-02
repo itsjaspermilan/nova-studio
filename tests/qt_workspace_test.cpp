@@ -6,6 +6,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QComboBox>
+#include <QCheckBox>
 #include <QCompleter>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -13,6 +14,7 @@
 #include <QDoubleSpinBox>
 #include <QFile>
 #include <QFileDialog>
+#include <QFocusEvent>
 #include <QInputMethodEvent>
 #include <QLabel>
 #include <QLineEdit>
@@ -20,12 +22,15 @@
 #include <QPushButton>
 #include <QSurfaceFormat>
 #include <QStatusBar>
+#include <QScrollArea>
 #include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTextBlock>
 #include <QTextLayout>
 #include <QTreeWidget>
+#include <QWheelEvent>
 #include <QtTest>
+#include <cmath>
 
 namespace {
 QByteArray readFile(const QString &path)
@@ -72,11 +77,316 @@ void typeNumber(QDoubleSpinBox *field, const QString &value)
     QTest::keyClick(field, Qt::Key_Return);
 }
 
+int countColor(const QImage &image, QColor colour)
+{
+    int count = 0;
+    for (int y = 0; y < image.height(); ++y)
+        for (int x = 0; x < image.width(); ++x)
+            if (image.pixelColor(x, y) == colour) ++count;
+    return count;
+}
+
+int paintedGizmoPoints(const QImage &image, NativeViewport *viewport, QPoint offset = {})
+{
+    const qreal density = viewport->devicePixelRatioF();
+    const int radius = qCeil(2 * density);
+    const auto gizmo = viewport->gizmo();
+    int painted = 0;
+    for (const auto point : gizmo.paths[0]) {
+        const auto pixel = ((viewport->widgetPoint(point) + offset) * density).toPoint();
+        const auto area = QRect(pixel - QPoint(radius, radius), QSize(2 * radius + 1, 2 * radius + 1)).intersected(image.rect());
+        bool found = false;
+        for (int y = area.top(); y <= area.bottom() && !found; ++y)
+            for (int x = area.left(); x <= area.right(); ++x)
+                if (image.pixelColor(x, y) == QColor("#fa939b")) { found = true; break; }
+        painted += found;
+    }
+    return painted;
+}
+
 }
 
 class WorkspaceTest final : public QObject {
     Q_OBJECT
 private slots:
+    void sceneTransformsAndNavigation()
+    {
+        QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-transforms-XXXXXX");
+        QVERIFY(temporary.isValid());
+        StudioWindow window(NOVA_EXAMPLES, false);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        auto *viewport = window.viewport();
+        auto *document = window.projectDocument();
+        QString error;
+        QVERIFY2(document->create(temporary.path(), "Scene tools", true, NOVA_EXAMPLES, &error), qPrintable(error));
+        QTRY_VERIFY_WITH_TIMEOUT(viewport->ready(), 10000);
+        QTRY_COMPARE(viewport->resources().count, size_t(1));
+        auto scene = document->scene();
+        scene.objects[0].position.x = .123456f;
+        scene.objects[0].size = {2, 1, 3};
+        QVERIFY(document->editScene(scene, "player", "Asymmetric model", &error));
+        QVERIFY(document->save(&error));
+        QVERIFY(writeFile(document->root() + "/start.nova-scene", document->draft().scene + "# Retained on a no-op edit.\n"));
+        QVERIFY(window.openProject(document->path(), false));
+        document->select("player");
+        const auto lua = document->draft().script;
+        const auto v1 = document->draft().scene;
+        const auto modelMesh = viewport->resources().resources[0].model.meshes[0].vaoId;
+        auto *rotationY = window.findChild<QDoubleSpinBox *>("rotation1");
+        QVERIFY(rotationY);
+        for (auto *scroll : window.findChildren<QScrollArea *>())
+            if (scroll->isAncestorOf(rotationY)) scroll->ensureWidgetVisible(rotationY);
+        QTest::keyClick(rotationY, Qt::Key_Return);
+        QCOMPARE(document->draft().scene, v1);
+        typeNumber(rotationY, "15");
+        QCOMPARE(document->scene().version, 2u);
+        QCOMPARE(document->scene().objects[0].rotation.y, 15.f);
+        QCOMPARE(document->scene().objects[0].position.x, .123456f);
+        QCOMPARE(document->draft().script, lua);
+        document->undoStack()->undo();
+        QCOMPARE(document->draft().scene, v1);
+        viewport->frameSelection();
+        viewport->setTool(SceneTool::Rotate);
+        const auto unchangedRing = viewport->gizmo().paths[1];
+        QVERIFY(unchangedRing.size() > 22);
+        QCOMPARE(viewport->gizmoHandle(unchangedRing[10]), 1);
+        const auto startPoint = viewport->widgetPoint(unchangedRing[10]).toPoint();
+        QTest::mousePress(viewport, Qt::LeftButton, Qt::NoModifier, startPoint);
+        QTest::mouseMove(viewport, viewport->widgetPoint(unchangedRing[22]).toPoint());
+        QTest::mouseMove(viewport, startPoint);
+        QTest::mouseRelease(viewport, Qt::LeftButton, Qt::NoModifier, startPoint);
+        QCOMPARE(document->draft().scene, v1);
+        QVERIFY(document->undoStack()->canRedo());
+        document->undoStack()->redo();
+        QTest::keyClick(rotationY, Qt::Key_Return);
+        QCOMPARE(document->scene().objects[0].rotation.y, 15.f);
+
+        const auto gesture = [viewport](QPointF start, QPointF end, bool cancel) {
+            const auto a = viewport->widgetPoint(start).toPoint(), b = viewport->widgetPoint(end).toPoint();
+            QTest::mousePress(viewport, Qt::LeftButton, Qt::NoModifier, a);
+            QTest::mouseMove(viewport, b);
+            if (cancel) QTest::keyClick(viewport, Qt::Key_Escape);
+            QTest::mouseRelease(viewport, Qt::LeftButton, Qt::NoModifier, b);
+        };
+        window.findChild<QAction *>("frameSelection")->trigger();
+        QTest::keyClick(viewport, Qt::Key_E);
+        QCOMPARE(viewport->tool(), SceneTool::Rotate);
+        QVERIFY(window.findChild<QAction *>("rotateTool")->isChecked());
+        auto rings = viewport->gizmo();
+        QVERIFY(!rings.paths[1].isEmpty());
+        int start = -1;
+        for (int i = 4; i < 48; ++i)
+            if (viewport->gizmoHandle(rings.paths[1][i]) == 1) { start = i; break; }
+        QVERIFY(start >= 0);
+        auto before = document->draft().scene;
+        int undo = document->undoStack()->index();
+        gesture(rings.paths[1][start], rings.paths[1][start + 12], false);
+        QVERIFY(document->draft().scene != before);
+        QCOMPARE(document->undoStack()->index(), undo + 1);
+        QCOMPARE(document->scene().objects[0].rotation.x, 0.f);
+        QCOMPARE(document->scene().objects[0].rotation.z, 0.f);
+        QVERIFY(std::abs(std::remainder(document->scene().objects[0].rotation.y, 15.f)) < .001f);
+        QCOMPARE(document->draft().script, lua);
+        QCOMPARE(viewport->resources().resources[0].model.meshes[0].vaoId, modelMesh);
+        document->undoStack()->undo();
+        QCOMPARE(document->draft().scene, before);
+        rings = viewport->gizmo();
+        gesture(rings.paths[1][start], rings.paths[1][start + 12], true);
+        QCOMPARE(document->draft().scene, before);
+        QCOMPARE(document->undoStack()->index(), undo);
+        QCOMPARE(viewport->frame()->commands[0].rotation.y, document->scene().objects[0].rotation.y);
+        auto *projectState = window.findChild<QLabel *>("projectState");
+        QTRY_VERIFY(projectState->width() >= projectState->fontMetrics().horizontalAdvance(projectState->text()) + 16);
+        const auto rotationImage = viewport->grabFramebuffer();
+        QVERIFY(paintedGizmoPoints(rotationImage, viewport) > 48);
+        QVERIFY(rotationImage.save(QString(NOVA_TEST_DIRECTORY) + "/qt-scene-rotate-viewport.png"));
+        const auto rotationWindow = window.grab().toImage();
+        QVERIFY(paintedGizmoPoints(rotationWindow, viewport, viewport->mapTo(&window, QPoint())) > 48);
+        QVERIFY(rotationWindow.save(QString(NOVA_TEST_DIRECTORY) + "/qt-scene-rotate.png"));
+
+        QTest::keyClick(viewport, Qt::Key_W);
+        auto move = viewport->gizmo();
+        QVERIFY(!move.paths[1].isEmpty());
+        const auto position = document->scene().objects[0].position;
+        gesture(move.paths[1].back(), move.center + (move.paths[1].back() - move.center) * 1.6, false);
+        QVERIFY(document->scene().objects[0].position.y != position.y);
+        QCOMPARE(document->scene().objects[0].position.x, position.x);
+        QCOMPARE(document->scene().objects[0].position.z, position.z);
+        QCOMPARE(document->undoStack()->index(), undo + 1);
+        document->undoStack()->undo();
+        QCOMPARE(document->draft().scene, before);
+        move = viewport->gizmo();
+        const auto press = viewport->widgetPoint(move.paths[1].back()).toPoint();
+        QTest::mousePress(viewport, Qt::LeftButton, Qt::NoModifier, press);
+        QTest::mouseMove(viewport, press + QPoint(0, -50));
+        QFocusEvent blur(QEvent::FocusOut);
+        QCoreApplication::sendEvent(viewport, &blur);
+        QTest::mouseRelease(viewport, Qt::LeftButton, Qt::NoModifier, press + QPoint(0, -50));
+        QCOMPARE(document->draft().scene, before);
+        QCOMPARE(viewport->frame()->commands[0].position.y, position.y);
+
+        QTest::keyClick(viewport, Qt::Key_R);
+        const auto scale = viewport->gizmo();
+        const auto size = document->scene().objects[0].size;
+        const auto offset = viewport->logicalPoint(viewport->widgetPoint(scale.center) + QPointF(50, -20));
+        gesture(scale.center, offset, false);
+        QVERIFY(document->scene().objects[0].size.x > size.x);
+        QVERIFY(std::abs(document->scene().objects[0].size.x / document->scene().objects[0].size.y - size.x / size.y) < .001);
+        QCOMPARE(document->undoStack()->index(), undo + 1);
+        document->undoStack()->undo();
+        QCOMPARE(document->draft().scene, before);
+
+        const auto gameCamera = document->scene().camera_position;
+        const auto initialView = viewport->viewCamera();
+        const int beforeNavigation = document->undoStack()->index();
+        window.findChild<QAction *>("orbitTool")->trigger();
+        const QPoint centre(viewport->width() / 2, viewport->height() / 2);
+        QTest::mousePress(viewport, Qt::LeftButton, Qt::NoModifier, centre);
+        QTest::mouseMove(viewport, centre + QPoint(70, 30));
+        QTest::mouseRelease(viewport, Qt::LeftButton, Qt::NoModifier, centre + QPoint(70, 30));
+        QVERIFY(viewport->viewCamera().position.x != initialView.position.x);
+        const auto orbited = viewport->viewCamera();
+        QTest::mousePress(viewport, Qt::LeftButton, Qt::NoModifier, centre);
+        QTest::mouseMove(viewport, centre + QPoint(40, 20));
+        QTest::keyClick(viewport, Qt::Key_Escape);
+        QTest::mouseRelease(viewport, Qt::LeftButton, Qt::NoModifier, centre + QPoint(40, 20));
+        QCOMPARE(viewport->viewCamera().position.x, orbited.position.x);
+        window.findChild<QAction *>("panTool")->trigger();
+        QTest::keyClick(viewport, Qt::Key_Right);
+        QVERIFY(viewport->viewCamera().target.x != orbited.target.x);
+        const auto panned = viewport->viewCamera();
+        QWheelEvent wheel(centre, viewport->mapToGlobal(centre), {}, {0, 120}, Qt::NoButton,
+            Qt::NoModifier, Qt::NoScrollPhase, false);
+        QCoreApplication::sendEvent(viewport, &wheel);
+        QVERIFY(viewport->viewCamera().position.x != panned.position.x);
+        QCOMPARE(document->draft().scene, before);
+        QCOMPARE(document->undoStack()->index(), beforeNavigation);
+        QCOMPARE(viewport->frame()->camera_position.x, gameCamera.x);
+        const auto navigated = viewport->viewCamera();
+        window.findChild<QAction *>("runProject")->trigger();
+        QVERIFY2(viewport->running(), qPrintable(viewport->error()));
+        QCOMPARE(viewport->frame()->camera_position.x, gameCamera.x);
+        QTest::keyClick(viewport, Qt::Key_E);
+        QCOMPARE(viewport->tool(), SceneTool::Pan); // Game keys cannot switch authoring tools.
+        window.findChild<QAction *>("stopProject")->trigger();
+        QCOMPARE(viewport->viewCamera().position.x, navigated.position.x);
+        QCOMPARE(document->draft().script, lua);
+        QCOMPARE(document->draft().scene, before);
+
+        auto *tabs = window.findChild<QTabWidget *>("workspaces");
+        tabs->setCurrentIndex(1);
+        auto *editor = window.codeEditor();
+        editor->moveCursor(QTextCursor::End);
+        QTest::keyClick(editor, Qt::Key_Return);
+        QTest::keyClicks(editor, "-- werf");
+        QVERIFY(document->draft().script.endsWith("-- werf"));
+        QCOMPARE(viewport->tool(), SceneTool::Pan);
+        document->undoStack()->undo();
+        tabs->setCurrentIndex(0);
+        window.findChild<QAction *>("gameView")->trigger();
+        QCOMPARE(viewport->viewCamera().position.x, gameCamera.x);
+        window.findChild<QAction *>("moveTool")->trigger();
+        window.findChild<QAction *>("frameSelection")->trigger();
+        QVERIFY(window.grab().save(QString(NOVA_TEST_DIRECTORY) + "/qt-scene-tools.png"));
+        window.resize(1100, 740);
+        QTest::qWait(50);
+        QVERIFY(window.grab().save(QString(NOVA_TEST_DIRECTORY) + "/qt-scene-tools-min.png"));
+        const auto logical = QPointF(417.25, 241.5);
+        QVERIFY(QLineF(viewport->logicalPoint(viewport->widgetPoint(logical)), logical).length() < .001);
+        QCOMPARE(viewport->grabFramebuffer().width(), qRound(viewport->width() * viewport->devicePixelRatioF()));
+        viewport->setFixedSize(701, 401);
+        QTest::qWait(50);
+        for (const QPointF point : {QPointF(1, 1), logical, QPointF(959, 539)})
+            QVERIFY(QLineF(viewport->logicalPoint(viewport->widgetPoint(point)), point).length() < .001);
+        QCOMPARE(viewport->grabFramebuffer().width(), qRound(viewport->width() * viewport->devicePixelRatioF()));
+        viewport->setTool(SceneTool::Rotate);
+        QVERIFY(paintedGizmoPoints(viewport->grabFramebuffer(), viewport) > 48);
+        QVERIFY(document->save(&error));
+    }
+
+    void flatSceneTools()
+    {
+        QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-flat-tools-XXXXXX");
+        QVERIFY(temporary.isValid());
+        StudioWindow window(NOVA_EXAMPLES, false);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        auto *viewport = window.viewport();
+        auto *document = window.projectDocument();
+        QString error;
+        QVERIFY2(document->create(temporary.path(), "Flat tools", false, NOVA_EXAMPLES, &error), qPrintable(error));
+        QTRY_VERIFY_WITH_TIMEOUT(viewport->ready(), 10000);
+        QTRY_COMPARE(viewport->resources().count, size_t(1));
+        const auto original = document->draft().scene, lua = document->draft().script;
+        const auto object = document->scene().objects[0];
+        const auto camera = viewport->viewCamera();
+        const auto texture = viewport->resources().resources[0].texture.id;
+        const int undo = document->undoStack()->index();
+        QVERIFY(!window.findChild<QAction *>("rotateTool")->isEnabled());
+        QVERIFY(!window.findChild<QAction *>("orbitTool")->isEnabled());
+        QVERIFY(!window.findChild<QAction *>("frameAll")->isEnabled());
+        QVERIFY(!window.findChild<QDoubleSpinBox *>("rotation0")->isVisible());
+        QCOMPARE(window.findChild<QDoubleSpinBox *>("Snap increment")->value(), 16.0);
+        QTest::keyClick(viewport, Qt::Key_E);
+        QCOMPARE(viewport->tool(), SceneTool::Move);
+        QTest::qWait(30);
+        auto center = objectPoint(document, viewport);
+        QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier, center);
+        QCOMPARE(document->selection(), QString("player"));
+        QCOMPARE(document->draft().scene, original);
+
+        window.findChild<QAction *>("scaleTool")->trigger();
+        QCOMPARE(viewport->tool(), SceneTool::Scale);
+        QVERIFY(viewport->gizmo().visible);
+        center = viewport->widgetPoint(viewport->gizmo().center).toPoint();
+        QCOMPARE(viewport->gizmoHandle(viewport->logicalPoint(center)), 3);
+        QTest::mousePress(viewport, Qt::LeftButton, Qt::NoModifier, center);
+        QTest::mouseMove(viewport, center + QPoint(48, 0));
+        QTest::mouseRelease(viewport, Qt::LeftButton, Qt::NoModifier, center + QPoint(48, 0));
+        QCOMPARE(document->undoStack()->index(), undo + 1);
+        QVERIFY(document->scene().objects[0].size.x > object.size.x);
+        QCOMPARE(document->scene().objects[0].size.z, 1.f);
+        QCOMPARE(document->scene().objects[0].position.x, object.position.x);
+        QCOMPARE(document->scene().objects[0].position.y, object.position.y);
+        QCOMPARE(document->scene().version, 1u);
+        QCOMPARE(document->draft().script, lua);
+        QCOMPARE(viewport->resources().resources[0].texture.id, texture);
+        document->undoStack()->undo();
+        QCOMPARE(document->draft().scene, original);
+
+        auto *tabs = window.findChild<QTabWidget *>("workspaces");
+        for (bool hide : {false, true}) {
+            center = viewport->widgetPoint(viewport->gizmo().center).toPoint();
+            QTest::mousePress(viewport, Qt::LeftButton, Qt::NoModifier, center);
+            QTest::mouseMove(viewport, center + QPoint(48, 0));
+            QVERIFY(viewport->frame()->commands[0].size.x != object.size.x);
+            if (hide) tabs->setCurrentIndex(1);
+            else QTest::keyClick(viewport, Qt::Key_Escape);
+            QTest::mouseRelease(viewport, Qt::LeftButton, Qt::NoModifier, center + QPoint(48, 0));
+            QCOMPARE(document->draft().scene, original);
+            QCOMPARE(document->undoStack()->index(), undo);
+            QCOMPARE(viewport->frame()->commands[0].size.x, object.size.x);
+            tabs->setCurrentIndex(0);
+        }
+        auto *name = window.findChild<QLineEdit *>("objectName");
+        name->selectAll();
+        QTest::keyClicks(name, "wer frame");
+        QTest::keyClick(name, Qt::Key_Return);
+        QCOMPARE(QByteArray(document->scene().objects[0].name), QByteArray("wer frame"));
+        QCOMPARE(viewport->tool(), SceneTool::Scale);
+        document->undoStack()->undo();
+        QCOMPARE(document->draft().scene, original);
+        QWheelEvent wheel(center, viewport->mapToGlobal(center), {}, {0, 120}, Qt::NoButton,
+            Qt::NoModifier, Qt::NoScrollPhase, false);
+        QCoreApplication::sendEvent(viewport, &wheel);
+        QCOMPARE(viewport->viewCamera().position.x, camera.position.x);
+        QCOMPARE(viewport->viewCamera().position.y, camera.position.y);
+        QCOMPARE(viewport->viewCamera().position.z, camera.position.z);
+        QVERIFY(window.grab().save(QString(NOVA_TEST_DIRECTORY) + "/qt-scene-tools-2d.png"));
+        QVERIFY(document->save(&error));
+    }
+
     void authoringLoop_data()
     {
         QTest::addColumn<bool>("threeD");

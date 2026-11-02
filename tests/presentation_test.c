@@ -1,4 +1,6 @@
 #include "presentation.h"
+#include "transform.h"
+#include <raymath.h>
 #include <rlgl.h>
 #include <math.h>
 #include <stdio.h>
@@ -16,6 +18,10 @@ static bool color_is(Color color, int r, int g, int b)
 
 static bool layouts(void)
 {
+    NovaCommand draw = {.position = {3, -7, 4}, .size = {2, .5f, 3}, .rotation = {23, -61, 117}};
+    Vector3 transformed = Vector3Transform((Vector3){1, 2, 3}, nova_command_matrix(&draw));
+    NovaVec3 expected = nova_transform_point((NovaVec3){1, 2, 3}, draw.position, draw.size, draw.rotation);
+    CHECK(near(transformed.x, expected.x) && near(transformed.y, expected.y) && near(transformed.z, expected.z));
     NovaWorldResolution resolution = {17, 19};
     CHECK(!nova_world_resolution_parse("1280x720junk", &resolution));
     CHECK(resolution.width == 17 && resolution.height == 19);

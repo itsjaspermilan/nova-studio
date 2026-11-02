@@ -1,4 +1,5 @@
 #include "model.h"
+#include "transform.h"
 #include "assets.h"
 
 #include <errno.h>
@@ -233,16 +234,12 @@ typedef struct {
 
 static void vertex(Geometry *g, const NovaModelPrimitive *p, const float point[3])
 {
-    float v[3] = {point[0] * p->scale[0], point[1] * p->scale[1], point[2] * p->scale[2]};
-    /* Authored Euler rotations apply X, then Y, then Z in right-handed space. */
-    const int first[] = {1, 2, 0}, second[] = {2, 0, 1};
+    NovaVec3 transformed = nova_transform_point((NovaVec3){point[0], point[1], point[2]},
+        (NovaVec3){p->position[0], p->position[1], p->position[2]},
+        (NovaVec3){p->scale[0], p->scale[1], p->scale[2]},
+        (NovaVec3){p->rotation[0], p->rotation[1], p->rotation[2]});
+    const float v[] = {transformed.x, transformed.y, transformed.z};
     for (int a = 0; a < 3; ++a) {
-        float angle = p->rotation[a] * 0.017453292519943295f;
-        float c = cosf(angle), s = sinf(angle), x = v[first[a]], y = v[second[a]];
-        v[first[a]] = c * x - s * y; v[second[a]] = s * x + c * y;
-    }
-    for (int a = 0; a < 3; ++a) {
-        v[a] += p->position[a];
         if (!g->count || v[a] < g->min[a]) g->min[a] = v[a];
         if (!g->count || v[a] > g->max[a]) g->max[a] = v[a];
         g->vertices[g->count * 3 + (size_t)a] = v[a];

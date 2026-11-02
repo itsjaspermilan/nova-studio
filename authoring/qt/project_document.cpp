@@ -351,6 +351,7 @@ bool ProjectDocument::create(const QString &parentDirectory, const QString &name
     NovaScene scene{};
     scene.mode = threeD ? NOVA_3D : NOVA_2D;
     scene.background = {18, 24, 41, 255};
+    scene.version = 1;
     scene.camera_position = {7, 6, 9}; scene.camera_target = {0, 0, 0}; scene.camera_fov = 50;
     scene.count = 1;
     auto &object = scene.objects[0];
@@ -435,7 +436,8 @@ bool ProjectDocument::editScript(const QString &text, QString *error)
 
 QByteArray ProjectDocument::serialize(const NovaScene &scene)
 {
-    QByteArray text = "nova-scene 1\nmode " + QByteArray(scene.mode == NOVA_2D ? "2d" : scene.mode == NOVA_3D ? "3d" : "mixed");
+    QByteArray text = "nova-scene " + QByteArray::number(scene.version) + "\nmode " +
+        QByteArray(scene.mode == NOVA_2D ? "2d" : scene.mode == NOVA_3D ? "3d" : "mixed");
     const auto n = [](float value) { return QByteArray::number(double(value), 'g', 9); };
     const auto v = [&n](NovaVec3 value) { return n(value.x) + " " + n(value.y) + " " + n(value.z); };
     const auto c = [](NovaColor value) { return QByteArray::number(value.r) + " " + QByteArray::number(value.g) + " " + QByteArray::number(value.b); };
@@ -447,7 +449,9 @@ QByteArray ProjectDocument::serialize(const NovaScene &scene)
             object.type == NOVA_SPRITE ? "sprite" : "model";
         text += "object " + QByteArray(object.id) + " " + type + " " +
             (*object.asset ? QByteArray(object.asset) : QByteArray("-")) + " " +
-            v(object.position) + " " + v(object.size) + " " + c(object.color) + " " + object.name + "\n";
+            v(object.position) + " " + v(object.size) + " " +
+            (scene.version == 2 ? v(object.rotation) + " " : QByteArray()) +
+            c(object.color) + " " + object.name + "\n";
     }
     return text;
 }
@@ -456,6 +460,9 @@ bool ProjectDocument::editScene(const NovaScene &scene, const QString &selection
 {
     if (generated_) return failure(error, "Generated project ownership is read-only here; use the compatibility editor.");
     if (!visual()) return failure(error, "This project has no authored scene. Its Lua is not converted or regenerated.");
+    char detail[1024]{};
+    if (!nova_scene_validate(&scene, project_.assets, project_.count, detail, sizeof(detail)))
+        return failure(error, QString::fromUtf8(detail));
     StudioDraft next = draft_;
     next.scene = serialize(scene); next.selection = selection;
     NovaProject parsed{};

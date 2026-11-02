@@ -63,6 +63,36 @@ QIcon studioIcon(const QString &name, const QPalette &palette)
             } else if (name == "addObject") {
                 p.drawRoundedRect(QRectF(3, 3, 18, 18), 4, 4);
                 line(7, 12, 17, 12); line(12, 7, 12, 17);
+            } else if (name == "moveTool") {
+                line(3, 12, 21, 12); line(12, 3, 12, 21);
+                line(3, 12, 6, 9); line(3, 12, 6, 15); line(21, 12, 18, 9); line(21, 12, 18, 15);
+                line(12, 3, 9, 6); line(12, 3, 15, 6); line(12, 21, 9, 18); line(12, 21, 15, 18);
+            } else if (name == "rotateTool" || name == "orbitTool") {
+                p.drawArc(QRectF(4, 4, 16, 16), 40 * 16, 290 * 16);
+                line(19, 3, 19, 8); line(19, 8, 14, 8);
+                if (name == "orbitTool") p.drawEllipse(QRectF(7, 5, 10, 14));
+                else p.drawEllipse(QPointF(12, 12), 2, 2);
+            } else if (name == "scaleTool") {
+                p.drawRect(QRectF(3, 13, 8, 8)); p.drawRect(QRectF(16, 3, 5, 5));
+                line(10, 14, 16, 8); line(10, 14, 10, 9); line(10, 14, 15, 14);
+            } else if (name == "panTool") {
+                QPainterPath hand;
+                hand.moveTo(7, 13); hand.lineTo(7, 5); hand.cubicTo(7, 2, 10, 2, 10, 5);
+                hand.lineTo(10, 11); hand.lineTo(10, 3); hand.cubicTo(10, 1, 13, 1, 13, 3);
+                hand.lineTo(13, 11); hand.lineTo(13, 5); hand.cubicTo(13, 3, 16, 3, 16, 5);
+                hand.lineTo(16, 12); hand.lineTo(16, 8); hand.cubicTo(16, 6, 19, 6, 19, 8);
+                hand.lineTo(19, 17); hand.lineTo(16, 22); hand.lineTo(9, 22); hand.lineTo(3, 15);
+                hand.cubicTo(1, 11, 4, 10, 7, 13); p.drawPath(hand);
+            } else if (name == "frameSelection" || name == "frameAll" || name == "gameView") {
+                line(3, 8, 3, 3); line(3, 3, 8, 3); line(16, 3, 21, 3); line(21, 3, 21, 8);
+                line(3, 16, 3, 21); line(3, 21, 8, 21); line(16, 21, 21, 21); line(21, 21, 21, 16);
+                p.drawRect(QRectF(8, 8, 8, 8));
+            } else if (name == "sceneGrid") {
+                p.drawRect(QRectF(3, 3, 18, 18));
+                line(9, 3, 9, 21); line(15, 3, 15, 21); line(3, 9, 21, 9); line(3, 15, 21, 15);
+            } else if (name == "zoomIn" || name == "zoomOut") {
+                p.drawEllipse(QRectF(3, 3, 13, 13)); line(15, 15, 21, 21); line(6, 9, 13, 9);
+                if (name == "zoomIn") line(9, 6, 9, 13);
             } else if (name == "scene") {
                 QPolygon polygon{{12, 2}, {22, 8}, {22, 17}, {12, 23}, {2, 17}, {2, 8}};
                 p.drawPolygon(polygon); line(2, 8, 12, 14); line(12, 14, 22, 8); line(12, 14, 12, 23);
@@ -92,8 +122,10 @@ void applyStudioStyle(QMainWindow *window)
         "QToolBar#applicationToolbar { spacing: 6px; padding: 8px; border: 0; border-bottom: 1px solid %2; }"
         "QToolBar#applicationToolbar QToolButton { padding: 6px 9px; border-radius: 6px; }"
         "QToolBar#applicationToolbar QToolButton:hover { background: %1; }"
-        "QToolBar#sceneTools { spacing: 5px; padding: 6px 10px; border: 0; border-bottom: 1px solid %2; }"
-        "QToolBar#sceneTools QToolButton { padding: 5px 7px; }"
+        "QToolBar#sceneTools, QToolBar#sceneNavigation { spacing: 4px; padding: 5px 8px; border: 0; border-bottom: 1px solid %2; }"
+        "QToolBar#sceneTools QToolButton, QToolBar#sceneNavigation QToolButton { padding: 5px 6px; border-radius: 4px; }"
+        "QToolBar#sceneTools QToolButton:hover, QToolBar#sceneNavigation QToolButton:hover { background: %1; }"
+        "QToolBar#sceneTools QToolButton:checked, QToolBar#sceneNavigation QToolButton:checked { background: %1; border: 1px solid #16858a; }"
         "QDockWidget { font-weight: 600; }"
         "QDockWidget::title { padding: 8px 10px; background: %1; border-bottom: 1px solid %2; }"
         "QTreeWidget#sceneOutline, QTreeWidget#assetOutline { border: 0; background: %3; }"

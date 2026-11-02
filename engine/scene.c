@@ -1,4 +1,5 @@
 #include "scene.h"
+#include "transform.h"
 #include <errno.h>
 #include <math.h>
 #include <stdio.h>
@@ -44,9 +45,10 @@ static bool valid_name(const char *text, size_t capacity)
 bool nova_scene_validate(const NovaScene *scene, const NovaAsset *assets,
     size_t count, char *error, size_t size)
 {
-    if (!scene || scene->count > NOVA_MAX_OBJECTS || count > NOVA_MAX_ASSETS || (count && !assets) ||
+    if (!scene || (scene->version != 1 && scene->version != 2) ||
+        scene->count > NOVA_MAX_OBJECTS || count > NOVA_MAX_ASSETS || (count && !assets) ||
         (scene->mode != NOVA_2D && scene->mode != NOVA_3D && scene->mode != NOVA_MIXED))
-        return fail(error, size, "scene mode or object/asset count is invalid");
+        return fail(error, size, "scene version, mode or object/asset count is invalid");
     NovaVec3 c = scene->camera_position, t = scene->camera_target;
     if (!bounded(c, -10000, 10000) || !bounded(t, -10000, 10000) ||
         !isfinite(scene->camera_fov) || scene->camera_fov < 10 || scene->camera_fov > 120 ||
@@ -66,6 +68,11 @@ bool nova_scene_validate(const NovaScene *scene, const NovaAsset *assets,
         if (!bounded(object->position, -10000, 10000) || !bounded(object->size, 0.01f, 1000) ||
             (flat && (object->position.z != 0 || object->size.z != 1)))
             return fail(error, size, "object positions must be +/-10000, sizes 0.01..1000; 2D requires Z=0, depth=1");
+        if (!nova_rotation_valid(object->rotation))
+            return fail(error, size, "object rotation requires finite X/Y/Z degrees within +/-360");
+        if ((flat || scene->version == 1) &&
+            (object->rotation.x != 0 || object->rotation.y != 0 || object->rotation.z != 0))
+            return fail(error, size, "rotation requires a 3D object and nova-scene 2; v1 and 2D use zero rotation");
         if (!memchr(object->asset, 0, sizeof(object->asset)))
             return fail(error, size, "unterminated object asset reference");
         if (object->type == NOVA_SPRITE || object->type == NOVA_MODEL) {
@@ -142,8 +149,10 @@ bool nova_scene_parse(NovaScene *scene, const char *source, size_t length,
         char *directive = word(&cursor);
         if (!*directive || *directive == '#') continue;
         if (!seen) {
-            if (strcmp(directive, "nova-scene") || strcmp(word(&cursor), "1") || *word(&cursor))
-                { reason = "first directive must be nova-scene 1"; goto invalid; }
+            char *version = word(&cursor);
+            if (strcmp(directive, "nova-scene") || (strcmp(version, "1") && strcmp(version, "2")) || *word(&cursor))
+                { reason = "first directive must be nova-scene 1 or 2"; goto invalid; }
+            candidate.version = !strcmp(version, "1") ? 1 : 2;
             seen = 1;
         } else if (!strcmp(directive, "mode") && !(seen & 2)) {
             char *mode = word(&cursor);
@@ -173,6 +182,7 @@ bool nova_scene_parse(NovaScene *scene, const char *source, size_t length,
             else if (!strcmp(type, "model")) object->type = NOVA_MODEL;
             else goto invalid;
             if (!vector(&cursor, &object->position) || !vector(&cursor, &object->size) ||
+                (candidate.version == 2 && !vector(&cursor, &object->rotation)) ||
                 !colour(&cursor, &object->color)) goto invalid;
             while (*cursor == ' ' || *cursor == '\t') ++cursor;
             if (strlen(cursor) >= sizeof(object->name)) goto invalid;
@@ -197,7 +207,7 @@ void nova_scene_frame(const NovaScene *scene, const NovaAsset *assets, size_t co
         const NovaSceneObject *object = &scene->objects[i];
         NovaCommand *command = &frame->commands[i];
         *command = (NovaCommand){.type = object->type, .position = object->position,
-            .size = object->size, .color = object->color};
+            .size = object->size, .rotation = object->rotation, .color = object->color};
         for (size_t j = 0; j < count; ++j)
             if (!strcmp(object->asset, assets[j].id)) { command->asset = j; break; }
     }

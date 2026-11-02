@@ -1,5 +1,6 @@
 #include "nova.h"
 #include "scene.h"
+#include "transform.h"
 
 #include <lua.h>
 #include <lauxlib.h>
@@ -88,6 +89,24 @@ static float positive(lua_State *lua, int index)
     return value;
 }
 
+static NovaVec3 rotation(lua_State *lua, int index)
+{
+    float values[3];
+    for (int i = 0; i < 3; ++i) {
+        double value = luaL_checknumber(lua, index + i);
+        luaL_argcheck(lua, isfinite(value), index + i, "rotation requires finite X/Y/Z degrees");
+        values[i] = nova_angle_normalize(value);
+    }
+    return (NovaVec3){values[0], values[1], values[2]};
+}
+
+static NovaVec3 optional_rotation(lua_State *lua, int index)
+{
+    if (lua_gettop(lua) < index) return (NovaVec3){0};
+    luaL_argcheck(lua, lua_gettop(lua) == index + 2, index, "supply all three rotation angles: rx, ry, rz");
+    return rotation(lua, index);
+}
+
 static NovaColor color(lua_State *lua, int index)
 {
     unsigned char channels[3];
@@ -146,6 +165,7 @@ static int cube(lua_State *lua)
     draw->position = (NovaVec3){number(lua, 1), number(lua, 2), number(lua, 3)};
     draw->size = (NovaVec3){positive(lua, 4), positive(lua, 5), positive(lua, 6)};
     draw->color = color(lua, 7);
+    draw->rotation = optional_rotation(lua, 10);
     return 0;
 }
 
@@ -224,6 +244,26 @@ static int object_set_position(lua_State *lua)
     return 0;
 }
 
+static int object_rotation(lua_State *lua)
+{
+    const NovaSceneObject *value = scene_object(lua, 1);
+    lua_pushnumber(lua, value->rotation.x);
+    lua_pushnumber(lua, value->rotation.y);
+    lua_pushnumber(lua, value->rotation.z);
+    return 3;
+}
+
+static int object_set_rotation(lua_State *lua)
+{
+    NovaSceneObject *value = scene_object(lua, 1);
+    if (lua_gettop(lua) != 4) return luaL_error(lua, "set_rotation expects object, rx, ry, rz");
+    NovaVec3 angles = rotation(lua, 2);
+    if (value->type != NOVA_CUBE && value->type != NOVA_MODEL)
+        return luaL_error(lua, "set_rotation requires a 3D scene object");
+    value->rotation = angles;
+    return 0;
+}
+
 static size_t asset_handle(lua_State *lua, NovaAssetType type)
 {
     size_t index = *(size_t *)luaL_checkudata(lua, 1, "nova.asset");
@@ -272,6 +312,7 @@ static int model(lua_State *lua)
     draw->position = (NovaVec3){number(lua, 2), number(lua, 3), number(lua, 4)};
     float scale = positive(lua, 5);
     draw->size = (NovaVec3){scale, scale, scale};
+    draw->rotation = optional_rotation(lua, 6);
     draw->color = (NovaColor){255, 255, 255, 255};
     return 0;
 }
@@ -614,7 +655,11 @@ bool nova_load_with_scene(NovaEngine *engine, const char *source, size_t length,
         if (!nova_scene_validate(authored, assets, count, engine->error, sizeof(engine->error))) return false;
         engine->scene = *authored;
         engine->has_scene = true;
-        nova_scene_frame(authored, assets, count, &engine->frame);
+        for (size_t i = 0; i < engine->scene.count; ++i) {
+            NovaVec3 *r = &engine->scene.objects[i].rotation;
+            *r = (NovaVec3){nova_angle_normalize(r->x), nova_angle_normalize(r->y), nova_angle_normalize(r->z)};
+        }
+        nova_scene_frame(&engine->scene, assets, count, &engine->frame);
     }
     *(NovaEngine **)lua_getextraspace(engine->lua) = engine;
     // Deliberately expose only gameplay libraries, not filesystem or process access.
@@ -634,7 +679,8 @@ bool nova_load_with_scene(NovaEngine *engine, const char *source, size_t length,
         {"timer", timer}, {"timer_poll", timer_poll}, {"cancel", cancel},
         {"tween", tween}, {"tween_value", tween_value}, {"frames", frames},
         {"play", play}, {"stop", stop}, {"save_get", save_get}, {"save_set", save_set},
-        {"object", object}, {"position", object_position}, {"set_position", object_set_position}, {NULL, NULL}
+        {"object", object}, {"position", object_position}, {"set_position", object_set_position},
+        {"rotation", object_rotation}, {"set_rotation", object_set_rotation}, {NULL, NULL}
     };
     luaL_newmetatable(engine->lua, "nova.asset");
     lua_pushliteral(engine->lua, "protected asset handle");
@@ -728,7 +774,7 @@ bool nova_tick(NovaEngine *engine, double dt, NovaInput input)
             const NovaSceneObject *value = &engine->scene.objects[i];
             NovaCommand *draw = &engine->frame.commands[i];
             *draw = (NovaCommand){.type = value->type, .position = value->position,
-                .size = value->size, .color = value->color};
+                .size = value->size, .rotation = value->rotation, .color = value->color};
             for (size_t j = 0; j < engine->asset_count; ++j)
                 if (!strcmp(value->asset, engine->assets[j].id)) { draw->asset = j; break; }
         }

@@ -55,6 +55,7 @@ Confirmed product requirements:
 | Desktop UI/platform decision | Retained research | Qt 6/C++ selected by the user; prove real text input, focus/accessibility facilities, dialogs/docking and live native GPU integration before committing to the bridge. | Native macOS bridge implemented; human IME/VoiceOver and other OS qualification remain |
 | Authoring/document foundation | UI decision + baseline | Unified documents/selection, full undo/redo, safe coherent writes, recovery, conflict handling and native preview. | First Scene/Code foundation implemented; future asset document types still need integration |
 | Lua-first creation loop | Authoring foundation | Project creation/open/save, visual scenes and script/property binding, useful code tools, diagnostics and Run/Stop without overwriting authored code. | First 2D/3D creation slice implemented; complete studio remains in progress |
+| Scene orientation/navigation | Authoring foundation + shared renderer | Coherent authored/runtime 3D rotation, native transform gizmos, snapping/undo/cancel and separate editor camera. | Bounded implementation complete; unlocked-focus and other-host qualification remain |
 | Sprite workspace | Authoring foundation + runtime animation | Real drawing/layers/frames, source preservation, reversible editing and matching scene/runtime updates. | Embeddable document/canvas component implemented; guarded host/runtime integration pending |
 | Model workspace | Authoring foundation + existing GLB pipeline | Mesh/transform/material/UV basics, reversible editing and faithful supported model round trips. | Independent [editable-mesh component](docs/mesh-authoring.md) implemented; Qt workspace/save/preview integration pending |
 | Audio engine | Existing native services | Sample-clock processing, float mixing, quality instruments/DSP, streams/buses, device handling and offline rendering. | C11 DSP/offline, shared-device controls and bounded disk streams implemented; runtime music binding and hardware/lifecycle qualification remain |
@@ -174,7 +175,7 @@ Model or Sound workspace pretends to be implemented. `nova_editor` remains the
 legacy Objects/Rooms/Advanced/modeller application; `nova_studio` stays the C11
 runtime/launcher. The original research and workspace study are unchanged.
 
-The approved opt-in boundary is manifest v3 + `nova-scene` v1, with stable IDs
+The initial opt-in boundary is manifest v3 + `nova-scene` v1, with stable IDs
 and generation-checked Lua object handles. Saved authoring data, Lua source and
 runtime mutation are separate. Objects and Lua share the existing frame budget
 and native renderer; failed staging retains the prior preview. v1/v2 and
@@ -295,6 +296,65 @@ This verifies component/host compatibility, not the finished Sprite/Model/
 Sound workflows. Responsive Sprite embedding, asset transactions, Scene tools
 and Sound authoring remain active, and full native-focus qualification is
 still deferred rather than weakened.
+
+### Scene orientation and navigation handoff
+
+The bounded follow-up uses shared C right-handed local scale -> X/Y/Z degrees
+-> translation throughout authored scenes, Lua, native cube/GLB drawing,
+primitive model export, transformed bounds and oriented-box picking. Cubes
+rotate about their centres; models use asset origins. New `nova.rotation` /
+`nova.set_rotation` and complete optional trailing cube/model angle triples
+normalize finite runtime angles to **[-180,180)**, so continuous yaw can cross
+360. Existing arguments/colours and zero-rotation output remain compatible.
+
+New projects keep scene v1. A deliberate authored nonzero 3D rotation upgrades
+to scene v2, whose object records insert bounded +/-360 XYZ degrees after size.
+Undo restores the exact earlier version/bytes; zeroing a v2 object does not
+downgrade it. Unchanged fields/gestures preserve the draft, including precision
+and comments. Runtime changes never upgrade saved scenes or rewrite Lua.
+Manifest v3 is unchanged. The coordinated ProjectDocument edits are limited
+to version-aware serialization, starter version=1 and validating scene edits
+before serialization; journal/import/asset APIs remain untouched.
+
+Scene supplies labelled Move/Rotate/Scale handles, world/Euler/local axes,
+unit/degree/percentage snapping, one undo per completed gesture and
+Escape/blur/hide cancellation. Orbit/Pan/Frame/zoom, grid and axis compass use
+the same native GPU viewport with a separate editing camera. Editor-only clip
+planes support distant framing without changing runtime presentation.
+Viewport shortcuts do not capture Lua/Inspector text or running-game controls.
+2D retains fixed 960x540, unrotated Move/Scale behavior. Mesh/model workspace
+embedding remains separate; no second viewport was added.
+
+All 14 focused Debug core/project/scene/assets/presentation/modeller/document,
+legacy game/service/export and Qt geometry/document checks pass. Six focused
+scene/presentation/modeller/Qt geometry/document checks also pass with
+ASan/UBSan, along with the native bridge and transform/Code cases.
+LeakSanitizer is disabled on macOS; no audio-device test was enabled.
+LLDB-protected native bridge and focused 2D/3D transform cases verify real
+rotated pixels, matching gizmo hit/pixel
+coordinates, resource reuse, upgrade/undo/cancel, navigation and Run/Stop.
+Widget checks pass at native 2x and process-local 1x/1.5x Qt scales, including
+odd-sized framebuffers. A fractional-density round-trip regression caught and
+corrected an input/render mismatch caused by deriving scale from rounded sizes.
+Actual normal/minimum captures are `build/qt-scene-tools.png`,
+`build/qt-scene-tools-min.png`, `build/qt-scene-rotate.png` and
+`build/qt-scene-tools-2d.png`; rotated GLB evidence is
+`build/qt-rotated-native-model.png`. Normal/minimum captures are
+2582x1678 / 2200x1480 physical pixels. Capture review caught and corrected
+shared-GL-state glyph/culling errors rather than treating geometry-only tests
+as UI proof. The native C presentation GPU regression also passes.
+
+The full native workspace run was attempted and fails in both original
+`authoringLoop` dimensions at `window.isActiveWindow() && viewport->hasFocus()`
+on the locked desktop; the new transform cases and Code tools pass.
+Exposed-window/widget-local events are not OS activation, human IME/VoiceOver
+or novice qualification. Original focus assertions and LLDB debuggee-exit
+checking remain intact; the runner's negative-result regression also passes.
+No audio device, microphone, dependency install, SDK/security change, signing
+or publishing was used. Android remains Qt-free; this follow-up has no new
+Android-device claim.
+Triangle-exact mesh picking, 2D rotation, physics, the Model/Sprite/Sound
+workspaces and the final playable 3D rally exercise are not completed here.
 
 ## Pre-Qt integrated baseline (retained evidence)
 

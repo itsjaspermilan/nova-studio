@@ -11,11 +11,12 @@ typedef struct {
     char id[NOVA_ASSET_ID_CAPACITY], name[NOVA_OBJECT_NAME_CAPACITY];
     char asset[NOVA_ASSET_ID_CAPACITY];
     NovaCommandType type;
-    NovaVec3 position, size;
+    NovaVec3 position, size, rotation;
     NovaColor color;
 } NovaSceneObject;
 
 struct NovaScene {
+    unsigned version;
     NovaMode mode;
     NovaColor background;
     NovaVec3 camera_position, camera_target;

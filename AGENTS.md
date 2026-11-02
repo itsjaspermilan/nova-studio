@@ -59,10 +59,16 @@ exported. The earlier externally authored 2D assessment game is not that proof.
   sprite/static-model handles; audio handles produce service effects.
   `engine/project.{c,h}` preserves v1 and owns
   explicit v2 identity/audio declarations plus opt-in v3 authored scenes.
-  `engine/scene.{c,h}` owns strict nova-scene v1, stable object IDs and UTF-8
-  display names. Scene objects and Lua share the 512-command frame budget.
-  `nova.object`/`position`/`set_position` validate opaque handle generation and
-  lifetime; runtime mutations never edit authored files. Per-object lifecycle
+  `engine/scene.{c,h}` owns strict nova-scene v1/v2, stable object IDs and UTF-8
+  display names. v1 means zero rotation; v2 adds bounded XYZ degrees after size.
+  `engine/transform.{c,h}` centralizes right-handed scale -> X/Y/Z -> translation,
+  inverse/bounds/ray math, matching primitive modelling. Cube pivots are centres;
+  models use asset origins. Finite Lua rotations normalize to [-180,180), while
+  authored values stay within +/-360. Optional draw angles are complete trailing
+  triples, never shifted colour arguments. Scene objects and Lua share the
+  512-command frame budget. `nova.object`/`position`/`set_position` and
+  `rotation`/`set_rotation` validate opaque handle generation and lifetime;
+  runtime mutations never edit authored files or upgrade scene versions. Per-object lifecycle
   and automatic conversion of v1/v2/generated projects are not implemented.
   Timers/numeric tweens/sprite frames advance on validated simulation ticks;
   native audio/save effects dispatch after successful Lua calls.
@@ -121,6 +127,16 @@ exported. The earlier externally authored 2D assessment game is not that proof.
   windows without activating them; keep focus assertions and qualification gaps
   intact, without changing OS security settings.
   Keep system input/IME/accessibility, scoped styling and original vector icons.
+  Scene Move uses world axes, Rotate uses Euler-parameter rings, and Scale uses
+  local axes, with one undo per changed gesture and full cancellation. The first
+  authored rotation explicitly upgrades v1 to v2 in the same undo command; no-op
+  fields/gestures must not upgrade or rewrite the draft. Editing camera/grid,
+  framing/clip planes and navigation stay separate from the authored camera and
+  Run input. Picking uses transformed local bounds, not triangle-exact geometry.
+  Qt's GPU gizmo/system-text overlay uses the same framebuffer after rlgl;
+  restore culling and 4-byte glyph upload alignment before starting its painter.
+  Keep point/logical/framebuffer mappings consistent at high DPI. 2D retains
+  its fixed, unrotated canvas; no second viewport or software game renderer.
   Scene edits do not rewrite scripts; Run saves/stages normal runtime services,
   while visual authoring uses nondispatching staging. The legacy editor remains
   available for its owned projects and primitive modelling.

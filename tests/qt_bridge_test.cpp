@@ -11,6 +11,10 @@
 #include <QSurfaceFormat>
 #include <QtTest>
 
+extern "C" {
+#include <rlgl.h>
+}
+
 struct ClipboardGuard {
     QMimeData *original = new QMimeData;
     ClipboardGuard()
@@ -24,6 +28,87 @@ struct ClipboardGuard {
 class BridgeTest final : public QObject {
     Q_OBJECT
 private slots:
+    void rotatedNativeCubesAndModels()
+    {
+        QMainWindow window;
+        auto *viewport = new NativeViewport;
+        window.setCentralWidget(viewport);
+        window.resize(960, 620);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        QTRY_VERIFY_WITH_TIMEOUT(viewport->ready(), 10000);
+        QVERIFY(viewport->openProject(QString(NOVA_EXAMPLES) + "/static/nova.project"));
+        viewport->setGridVisible(false);
+        auto frame = std::make_unique<NovaFrame>();
+        frame->mode = NOVA_3D; frame->background = {18, 24, 41, 255};
+        frame->camera_position = {0, 0, 12}; frame->camera_target = {0, 0, 0}; frame->camera_fov = 50;
+        frame->count = 1;
+        frame->commands[0].type = NOVA_CUBE;
+        frame->commands[0].size = {4, 1, 1};
+        frame->commands[0].color = {77, 225, 201, 255};
+        const auto colouredBounds = [](const QImage &image, bool cube) {
+            QRect result;
+            for (int y = 0; y < image.height(); ++y)
+                for (int x = 0; x < image.width(); ++x) {
+                    const auto color = image.pixelColor(x, y);
+                    if (cube ? color == QColor(77, 225, 201) :
+                        color == QColor(63, 127, 255) || color == QColor(255, 127, 63))
+                        result = result.united(QRect(x, y, 1, 1));
+                }
+            return result;
+        };
+        viewport->setAuthoringFrame(*frame);
+        viewport->gameView();
+        const auto cube = colouredBounds(viewport->grabFramebuffer(), true);
+        QVERIFY(cube.width() > 100 && cube.width() > cube.height() * 3);
+        frame->commands[0].rotation = {0, 90, 0};
+        viewport->setAuthoringFrame(*frame);
+        const auto turnedCube = colouredBounds(viewport->grabFramebuffer(), true);
+        QVERIFY(turnedCube.width() > 30 && turnedCube.width() * 2 < cube.width());
+        QCOMPARE(viewport->pick({NOVA_WIDTH / 2, NOVA_HEIGHT / 2}), 0);
+
+        frame->commands[0].type = NOVA_MODEL;
+        frame->commands[0].size = {1, 1, 1};
+        frame->commands[0].rotation = {};
+        viewport->setAuthoringFrame(*frame);
+        const auto mesh = viewport->resources().resources[0].model.meshes[0].vaoId;
+        const auto model = colouredBounds(viewport->grabFramebuffer(), false);
+        QVERIFY(model.width() > model.height() * 2);
+        frame->commands[0].rotation = {0, 0, 90};
+        viewport->setAuthoringFrame(*frame);
+        const auto image = viewport->grabFramebuffer();
+        const auto turnedModel = colouredBounds(image, false);
+        QVERIFY(turnedModel.height() > turnedModel.width() * 2);
+        const auto origin = viewport->widgetPoint({NOVA_WIDTH / 2, NOVA_HEIGHT / 2}) * viewport->devicePixelRatioF();
+        QVERIFY(turnedModel.right() <= origin.x() + 4); // +Y rotates to -X, not +X.
+        const auto point = GetWorldToScreenEx({-.75f, .5f, 0}, viewport->viewCamera(), NOVA_WIDTH, NOVA_HEIGHT);
+        QCOMPARE(viewport->pick({point.x, point.y}), 0);
+        QCOMPARE(viewport->resources().resources[0].model.meshes[0].vaoId, mesh);
+        QVERIFY(image.save(QString(NOVA_TEST_DIRECTORY) + "/qt-rotated-native-model.png"));
+
+        const double nearPlane = rlGetCullDistanceNear(), farPlane = rlGetCullDistanceFar();
+        frame->count = 2; frame->camera_fov = 10;
+        frame->commands[0].type = NOVA_CUBE;
+        frame->commands[0].size = {1000, 1000, 1000};
+        frame->commands[0].position = {-9000, 0, 0};
+        frame->commands[0].rotation = {};
+        frame->commands[1] = frame->commands[0];
+        frame->commands[1].position.x = 9000;
+        viewport->setAuthoringFrame(*frame);
+        viewport->gameView();
+        viewport->frameSelection(true);
+        const auto distant = viewport->grabFramebuffer();
+        const auto framed = colouredBounds(distant, true);
+        QVERIFY(framed.width() > distant.width() / 3 && framed.height() > 20);
+        QCOMPARE(rlGetCullDistanceNear(), nearPlane);
+        QCOMPARE(rlGetCullDistanceFar(), farPlane);
+        for (int i = 0; i < 2; ++i) {
+            const auto center = GetWorldToScreenEx({frame->commands[i].position.x, 0, 0},
+                viewport->viewCamera(), NOVA_WIDTH, NOVA_HEIGHT);
+            QCOMPARE(viewport->pick({center.x, center.y}), i);
+        }
+    }
+
     void disconnectApplicationBeforeChildTeardown()
     {
         bool controlChecked = false;

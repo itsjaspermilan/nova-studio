@@ -3,6 +3,7 @@
 #include "native_viewport.h"
 #include "studio_style.h"
 #include <QAction>
+#include <QActionGroup>
 #include <QApplication>
 #include <QCheckBox>
 #include <QCloseEvent>
@@ -37,6 +38,7 @@
 #include <QTabWidget>
 #include <QTextBrowser>
 #include <QToolBar>
+#include <QToolButton>
 #include <QTreeWidget>
 #include <QUuid>
 #include <QVBoxLayout>
@@ -70,13 +72,17 @@ bool flat(const NovaSceneObject &object)
     return object.type == NOVA_RECTANGLE || object.type == NOVA_SPRITE;
 }
 
+bool sameVector(NovaVec3 a, NovaVec3 b)
+{
+    return a.x == b.x && a.y == b.y && a.z == b.z;
+}
+
 void copyString(char *destination, size_t capacity, const QString &text)
 {
     const QByteArray bytes = text.toUtf8();
     if (size_t(bytes.size()) < capacity) std::memcpy(destination, bytes.constData(), size_t(bytes.size()) + 1);
 }
 }
-
 StudioWindow::StudioWindow(QString examples, bool persistWorkspace, DialogSetup dialogSetup, QWidget *parent)
     : QMainWindow(parent), examples_(std::move(examples)), dialogSetup_(std::move(dialogSetup)), persist_(persistWorkspace),
       viewport_(new NativeViewport(this)), code_(new CodeEditor(this))
@@ -171,6 +177,7 @@ StudioWindow::StudioWindow(QString examples, bool persistWorkspace, DialogSetup 
     projectState_ = new QLabel(tr("No project"), global);
     projectState_->setObjectName("projectState");
     projectState_->setAccessibleName(tr("Project save state"));
+    projectState_->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Preferred);
     global->addWidget(projectState_);
     global->addSeparator();
     run_ = action("runProject", tr("Run game"), QKeySequence(Qt::Key_F5));
@@ -215,18 +222,70 @@ StudioWindow::StudioWindow(QString examples, bool persistWorkspace, DialogSetup 
     add_ = action("addObject", tr("Add shape"), {});
     duplicate_ = action("duplicateObject", tr("Duplicate"), {});
     remove_ = action("deleteObject", tr("Delete"), {});
-    for (auto *a : {add_, duplicate_, remove_}) { tools->addAction(a); sceneMenu->addAction(a); }
+    for (auto *a : {add_, duplicate_, remove_}) sceneMenu->addAction(a);
     connect(add_, &QAction::triggered, this, [this] { addObject(); });
     connect(duplicate_, &QAction::triggered, this, &StudioWindow::duplicateObject);
     connect(remove_, &QAction::triggered, this, &StudioWindow::deleteObject);
+    auto *toolGroup = new QActionGroup(this);
+    const QStringList toolNames{"moveTool", "rotateTool", "scaleTool", "orbitTool", "panTool"};
+    const QStringList toolLabels{tr("Move"), tr("Rotate"), tr("Scale"), tr("Orbit"), tr("Pan")};
+    const QStringList toolTips{
+        tr("Move (W): world-axis arrows; centre or object drag moves in XZ (3D) / XY (2D)."),
+        tr("Rotate (E): drag an Euler-axis ring. X then Y then Z, right-handed degrees. First authored rotation upgrades scene v1 to v2; Undo restores v1."),
+        tr("Scale (R): local-axis handles; centre scales uniformly. Positive sizes only."),
+        tr("Orbit: left-drag or arrow keys. Alt-drag also orbits. Editing camera only."),
+        tr("Pan: left-drag or arrow keys. Alt+Shift-drag also pans. Editing camera only.")};
+    auto *navigation = new QToolBar(tr("Scene navigation and objects"), scene);
+    navigation->setObjectName("sceneNavigation");
+    navigation->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    navigation->setIconSize(QSize(20, 20));
+    navigation->addAction(add_);
+    navigation->addSeparator();
+    for (int i = 0; i < int(sceneTools_.size()); ++i) {
+        auto *a = sceneTools_[i] = action(toolNames[i], toolLabels[i], {});
+        a->setCheckable(true); a->setToolTip(toolTips[i]);
+        toolGroup->addAction(a); sceneMenu->addAction(a);
+        (i < 3 ? tools : navigation)->addAction(a);
+        connect(a, &QAction::triggered, this, [this, i] {
+            viewport_->setTool(static_cast<SceneTool>(i));
+            viewport_->setFocus(Qt::OtherFocusReason);
+        });
+    }
+    sceneTools_[0]->setChecked(true);
     tools->addSeparator();
     snap_ = new QCheckBox(tr("Snap"), tools);
     snap_->setChecked(true); snap_->setObjectName("snap");
     snapStep_ = numberField("Snap increment", .01, 128, tools);
-    snapStep_->setValue(16); snapStep_->setMaximumWidth(110);
+    snapStep_->setValue(16); snapStep_->setFixedWidth(140);
+    snapStep_->setSuffix(tr(" px"));
     tools->addWidget(snap_); tools->addWidget(snapStep_);
-    tools->addAction(tr("Scene settings"), this, [this] { document_.select({}); refreshInspector(); });
+    snap_->setToolTip(tr("Move snaps to an absolute grid; Rotate snaps degrees; Scale snaps percentage changes from the gesture start."));
+    frameSelection_ = action("frameSelection", tr("Frame"), {});
+    frameSelection_->setToolTip(tr("Frame selected 3D object (F in viewport). Does not change the game camera."));
+    navigation->addAction(frameSelection_);
+    frameAll_ = action("frameAll", tr("Frame all"), {});
+    gameView_ = action("gameView", tr("Game camera view"), {});
+    gameView_->setToolTip(tr("Reset the editing view to the authored game camera (Home in viewport)."));
+    zoomIn_ = action("zoomIn", tr("Zoom in"), {});
+    zoomOut_ = action("zoomOut", tr("Zoom out"), {});
+    grid_ = action("sceneGrid", tr("Ground grid and axes"), {});
+    grid_->setCheckable(true); grid_->setChecked(true);
+    auto *viewTools = new QToolButton(navigation);
+    viewTools->setText(tr("View")); viewTools->setPopupMode(QToolButton::InstantPopup);
+    auto *viewMenu = new QMenu(viewTools);
+    for (auto *a : {frameAll_, gameView_, zoomIn_, zoomOut_, grid_}) { viewMenu->addAction(a); view->addAction(a); }
+    viewMenu->addSeparator();
+    viewMenu->addAction(tr("Scene / game camera settings"), this, [this] { document_.select({}); refreshInspector(); });
+    viewMenu->addAction(duplicate_); viewMenu->addAction(remove_);
+    viewTools->setMenu(viewMenu); navigation->addWidget(viewTools);
+    connect(frameSelection_, &QAction::triggered, this, [this] { viewport_->frameSelection(); });
+    connect(frameAll_, &QAction::triggered, this, [this] { viewport_->frameSelection(true); });
+    connect(gameView_, &QAction::triggered, viewport_, &NativeViewport::gameView);
+    connect(zoomIn_, &QAction::triggered, this, [this] { viewport_->zoomView(1); });
+    connect(zoomOut_, &QAction::triggered, this, [this] { viewport_->zoomView(-1); });
+    connect(grid_, &QAction::toggled, viewport_, &NativeViewport::setGridVisible);
     sceneLayout->addWidget(tools);
+    sceneLayout->addWidget(navigation);
     previewState_ = new QLabel(tr("Editing - click an object to select; drag to move"), scene);
     previewState_->setObjectName("previewState");
     previewState_->setWordWrap(true);
@@ -308,11 +367,22 @@ StudioWindow::StudioWindow(QString examples, bool persistWorkspace, DialogSetup 
         form->addRow(labels[int(i)], transform_[i]);
         connect(transform_[i], &QDoubleSpinBox::editingFinished, this, &StudioWindow::commitInspector);
     }
+    for (size_t i = 0; i < rotation_.size(); ++i) {
+        rotation_[i] = numberField("rotation" + QString::number(i), -360, 360, properties);
+        rotation_[i]->setSuffix(tr(" deg"));
+        rotation_[i]->setSingleStep(15);
+        const QString label = tr("Rotation %1").arg(QChar('X' + int(i)));
+        rotation_[i]->setAccessibleName(label + tr(" in degrees"));
+        rotation_[i]->setToolTip(tr("Right-handed Euler degrees, applied X then Y then Z. First rotation upgrades scene v1 to v2; Undo restores it."));
+        form->addRow(label, rotation_[i]);
+        connect(rotation_[i], &QDoubleSpinBox::editingFinished, this, &StudioWindow::commitInspector);
+    }
     colour_ = new QPushButton(tr("Choose colour..."), properties);
     colour_->setObjectName("objectColour"); form->addRow(tr("Primitive colour"), colour_);
     propertiesLayout->addLayout(form);
     selectionHelp_ = new QLabel(tr("Select an object in the outline or native viewport."), properties);
     selectionHelp_->setObjectName("selectionHelp");
+    selectionHelp_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
     selectionHelp_->setWordWrap(true); propertiesLayout->addWidget(selectionHelp_);
     auto *scriptButton = new QPushButton(tr("Open gameplay Lua"), properties);
     scriptButton->setObjectName("openGameplay");
@@ -386,8 +456,9 @@ StudioWindow::StudioWindow(QString examples, bool persistWorkspace, DialogSetup 
         });
     }
     cameraLayout->addLayout(cameraForm);
-    auto *cameraHelp = new QLabel(tr("The game camera is also the editing view. +Y is up in 3D. "
-        "2D uses a fixed 960 x 540 logical canvas.\n\nSelect objects to edit their position and size. "
+    auto *cameraHelp = new QLabel(tr("These fields change the saved game camera, not your editing view. "
+        "Use View > Game camera view to see it. Orbit, Pan, Frame and zoom never edit these values. +Y is up in 3D. "
+        "2D keeps its fixed 960 x 540 logical canvas.\n\nSelect objects to move, rotate or scale. "
         "Runtime behavior stays in your Lua file."), camera);
     cameraHelp->setWordWrap(true); cameraLayout->addWidget(cameraHelp); cameraLayout->addStretch();
     auto *cameraScroll = new QScrollArea(inspectorPages_);
@@ -513,6 +584,10 @@ StudioWindow::StudioWindow(QString examples, bool persistWorkspace, DialogSetup 
     connect(viewport_, &NativeViewport::sceneDragged, this, &StudioWindow::drag);
     connect(viewport_, &NativeViewport::sceneReleased, this, &StudioWindow::endDrag);
     connect(viewport_, &NativeViewport::cancelGesture, this, &StudioWindow::cancelDrag);
+    connect(viewport_, &NativeViewport::toolChanged, this, &StudioWindow::refreshSceneTools);
+    connect(viewport_, &NativeViewport::interactionHint, this, [this](const QString &message) {
+        statusBar()->showMessage(message, 7000);
+    });
     if (persist_) {
         QSettings settings;
         restoreGeometry(settings.value("windowGeometry").toByteArray());
@@ -574,7 +649,6 @@ void StudioWindow::newProject()
         if (!document_.create(location->text(), name->text(), mode->currentIndex() == 1, examples_, &error)) {
             QMessageBox::warning(&dialog, tr("Project not created"), error); return;
         }
-        snapStep_->setValue(mode->currentIndex() == 1 ? .25 : 16);
         workspaces_->setCurrentIndex(0);
         remember(); dialog.accept();
     });
@@ -611,7 +685,6 @@ bool StudioWindow::openProject(const QString &path, bool decisions)
     }
     QString error;
     if (!document_.open(path, &error)) { report(error); return false; }
-    snapStep_->setValue(document_.visual() && document_.scene().mode != NOVA_2D ? .25 : 16);
     remember();
     if (decisions && !document_.recoveryDescription().isEmpty()) reviewRecovery();
     return true;
@@ -723,10 +796,12 @@ void StudioWindow::refreshProjectState()
         document_.externalChanges() ? tr("External changes") :
         document_.generated() ? tr("Generated - read-only") :
         document_.dirty() ? tr("Unsaved changes") : tr("Saved"));
+    projectState_->setMinimumWidth(projectState_->sizeHint().width());
 }
 
 void StudioWindow::refresh()
 {
+    cancelDrag();
     refreshing_ = true;
     const bool open = document_.isOpen();
     const bool entering = open && central_->currentIndex() == 0;
@@ -742,6 +817,7 @@ void StudioWindow::refresh()
     complete_->setEnabled(open && !running && !document_.generated());
     refreshProjectState();
     if (!open) {
+        refreshSceneTools();
         refreshing_ = false; return;
     }
     save_->setToolTip(document_.generated() ? tr("Generated ownership is protected. Edit this project in the compatibility editor.") :
@@ -813,6 +889,7 @@ void StudioWindow::refreshInspector()
         const float values[]{object.position.x, object.position.y, object.position.z, object.size.x, object.size.y, object.size.z};
         for (size_t i = 0; i < transform_.size(); ++i) {
             transform_[i]->setValue(values[i]);
+            transform_[i]->setProperty("displayedValue", transform_[i]->value());
             transform_[i]->setEnabled(!flat(object) || (i != 2 && i != 5));
             propertiesForm_->setRowVisible(transform_[i], !flat(object) || (i != 2 && i != 5));
             if (i >= 3) {
@@ -823,12 +900,20 @@ void StudioWindow::refreshInspector()
                 if (label) label->setText(sizes[int(i - 3)]);
             }
         }
+        const float rotations[]{object.rotation.x, object.rotation.y, object.rotation.z};
+        for (size_t i = 0; i < rotation_.size(); ++i) {
+            rotation_[i]->setValue(rotations[i]);
+            rotation_[i]->setProperty("displayedValue", rotation_[i]->value());
+            rotation_[i]->setEnabled(!flat(object));
+            propertiesForm_->setRowVisible(rotation_[i], !flat(object));
+        }
         colour_->setEnabled(object.type == NOVA_RECTANGLE || object.type == NOVA_CUBE);
         propertiesForm_->setRowVisible(colour_, colour_->isEnabled());
         colour_->setToolTip(colour_->isEnabled() ? tr("Set RGB colour") : tr("Asset appearance comes from its source; tint is not supported."));
         selectionHelp_->setText(flat(object) ?
-            tr("2D: X right, Y down, positions and size in logical pixels. Drag to move. Finish a field to apply; Undo restores it.") :
-            tr("3D: +Y up. Drag on the object's horizontal XZ plane; edit Y here. GLB size fields multiply source bounds. Finish a field to apply."));
+            tr("2D: X right, Y down, logical pixels. Move and Scale handles keep the unrotated 960 x 540 canvas. Finish a field to apply; Undo restores it.") :
+            tr("3D: +Y up. Move uses world axes; Scale uses local axes. Rotation applies X then Y then Z about the cube centre / model origin. "
+               "First rotation upgrades scene v1 to v2; Undo restores it. Lua is never rewritten."));
         if (auto *root = outline_->topLevelItem(0))
             for (int i = 0; i < root->childCount(); ++i)
                 if (root->child(i)->data(0, Qt::UserRole).toString() == document_.selection())
@@ -845,6 +930,45 @@ void StudioWindow::refreshInspector()
         outline_->setCurrentItem(outline_->topLevelItem(0));
     }
     refreshing_ = false;
+    refreshSceneTools();
+}
+
+void StudioWindow::refreshSceneTools()
+{
+    if (toolsPath_ != document_.path()) {
+        toolsPath_ = document_.path();
+        snapSteps_[0] = document_.visual() && document_.scene().mode != NOVA_2D ? .25 : 16;
+        snapStep_->setRange(.01, 128);
+        snapStep_->setValue(snapSteps_[0]);
+        snapTool_ = 0;
+        viewport_->setTool(SceneTool::Move);
+        return;
+    }
+    const int index = selectedIndex();
+    const bool editable = document_.visual() && !document_.generated() && !viewport_->running();
+    const bool threeD = editable && document_.scene().mode != NOVA_2D;
+    const bool solid = index >= 0 && !flat(document_.scene().objects[index]);
+    for (int i = 0; i < int(sceneTools_.size()); ++i)
+        sceneTools_[i]->setEnabled(i >= 3 ? threeD : i == 1 ? threeD && solid : editable);
+    const int current = int(viewport_->tool());
+    if (editable && !sceneTools_[current]->isEnabled() && current != 0) {
+        viewport_->setTool(SceneTool::Move);
+        return;
+    }
+    sceneTools_[current]->setChecked(true);
+    if (snapTool_ < 3) snapSteps_[snapTool_] = snapStep_->value();
+    if (current < 3) {
+        snapStep_->setRange(current == 1 ? 1 : .01, current == 1 ? 180 : current == 2 ? 100 : 128);
+        snapStep_->setSuffix(current == 1 ? tr(" deg") : current == 2 ? tr(" %") :
+            index >= 0 && flat(document_.scene().objects[index]) ? tr(" px") :
+            document_.scene().mode == NOVA_2D ? tr(" px") : tr(" units"));
+        snapStep_->setValue(snapSteps_[current]);
+    }
+    snapTool_ = current;
+    snap_->setEnabled(editable && current < 3);
+    snapStep_->setEnabled(editable && current < 3);
+    frameSelection_->setEnabled(threeD && solid);
+    for (auto *a : {frameAll_, gameView_, grid_, zoomIn_, zoomOut_}) a->setEnabled(threeD);
 }
 
 void StudioWindow::refreshPreview(bool force)
@@ -862,8 +986,8 @@ void StudioWindow::refreshPreview(bool force)
         nova_scene_frame(&document_.scene(), document_.project().assets, document_.project().count, frame.get());
         viewport_->setAuthoringFrame(*frame);
         previewState_->setText(document_.scene().mode == NOVA_2D ?
-            tr("Editing 2D scene - select and drag objects; gameplay runs only with Run game.") :
-            tr("Editing native 3D scene - drag in XZ; edit height and scale in the Inspector."));
+            tr("Editing 2D - click to select. Move or Scale handles; Escape cancels. Gameplay runs only with Run game.") :
+            tr("Editing 3D - Move / Rotate / Scale handles; Escape cancels. Alt-drag orbits, Alt+Shift-drag pans; wheel zooms. F frames selection."));
     } else if (viewport_->frame()) {
         viewport_->setAuthoringFrame(*viewport_->frame());
         previewState_->setText(tr("Legacy Lua project - native initial frame. Visual objects are not reconstructed from Lua. Run restarts the saved script."));
@@ -876,12 +1000,24 @@ void StudioWindow::commitInspector()
     if (refreshing_ || index < 0 || viewport_->running()) return;
     NovaScene scene = document_.scene();
     auto &object = scene.objects[index];
+    bool changed = name_->text() != QString::fromUtf8(object.name) ||
+        appearance_->currentData().toString() != QString::fromUtf8(object.asset);
+    for (auto *field : transform_) changed |= field->value() != field->property("displayedValue").toDouble();
+    for (auto *field : rotation_) changed |= field->value() != field->property("displayedValue").toDouble();
+    if (!changed) return;
     if (name_->text().toUtf8().size() >= NOVA_OBJECT_NAME_CAPACITY || name_->text().isEmpty()) {
         report(tr("Object names must contain 1..127 UTF-8 bytes.")); refreshInspector(); return;
     }
     copyString(object.name, sizeof(object.name), name_->text());
-    object.position = {float(transform_[0]->value()), float(transform_[1]->value()), float(transform_[2]->value())};
-    object.size = {float(transform_[3]->value()), float(transform_[4]->value()), float(transform_[5]->value())};
+    const auto edited = [](QDoubleSpinBox *field, float value) {
+        return field->value() == field->property("displayedValue").toDouble() ? value : float(field->value());
+    };
+    object.position = {edited(transform_[0], object.position.x), edited(transform_[1], object.position.y),
+        edited(transform_[2], object.position.z)};
+    object.size = {edited(transform_[3], object.size.x), edited(transform_[4], object.size.y), edited(transform_[5], object.size.z)};
+    object.rotation = {edited(rotation_[0], object.rotation.x), edited(rotation_[1], object.rotation.y),
+        edited(rotation_[2], object.rotation.z)};
+    if (object.rotation.x != 0 || object.rotation.y != 0 || object.rotation.z != 0) scene.version = 2;
     const bool twoD = flat(object);
     const auto asset = appearance_->currentData().toString();
     copyString(object.asset, sizeof(object.asset), asset);
@@ -992,33 +1128,30 @@ void StudioWindow::stopProject()
 
 void StudioWindow::beginDrag(QPointF point)
 {
-    if (!document_.visual() || !previewValid_) return;
-    const int index = viewport_->pick(point);
+    if (!document_.visual() || document_.generated() || viewport_->running() || !previewValid_) return;
+    const int handle = viewport_->gizmoHandle(point);
+    const int index = handle >= 0 ? selectedIndex() : viewport_->pick(point);
     document_.select(index < 0 ? QString() : QString::fromUtf8(document_.scene().objects[index].id));
     if (index < 0) return;
+    if (handle < 0 && viewport_->tool() != SceneTool::Move) return;
+    if (!viewport_->beginTransform(index, handle < 0 ? 3 : handle, point)) return;
     dragIndex_ = index; dragScene_ = document_.scene(); dragPointer_ = point; dragMoved_ = false;
-    dragStart_ = flat(dragScene_.objects[index]) ? point : viewport_->groundPoint(point, dragScene_.objects[index].position.y);
-    if (!std::isfinite(dragStart_.x()) || !std::isfinite(dragStart_.y())) dragIndex_ = -1;
 }
 
 void StudioWindow::drag(QPointF point)
 {
     if (dragIndex_ < 0) return;
-    if (!dragMoved_ && QLineF(point, dragPointer_).length() <
-        QApplication::startDragDistance() * NOVA_WIDTH / double(viewport_->width())) return;
+    if (!dragMoved_ && QLineF(viewport_->widgetPoint(point), viewport_->widgetPoint(dragPointer_)).length() <
+        QApplication::startDragDistance()) return;
+    NovaCommand transformed{};
+    if (!viewport_->transformAt(point, snap_->isChecked(), snapStep_->value(), &transformed)) return;
     dragMoved_ = true;
     auto &object = dragScene_.objects[dragIndex_];
-    const auto &before = document_.scene().objects[dragIndex_];
-    const QPointF current = flat(object) ? point : viewport_->groundPoint(point, before.position.y);
-    if (!std::isfinite(current.x()) || !std::isfinite(current.y())) return;
-    const QPointF delta = current - dragStart_;
-    const auto snapped = [this](double value) {
-        if (snap_->isChecked()) value = std::round(value / snapStep_->value()) * snapStep_->value();
-        return float(std::clamp(value, -10000.0, 10000.0));
-    };
-    object.position.x = snapped(before.position.x + delta.x());
-    if (flat(object)) object.position.y = snapped(before.position.y + delta.y());
-    else object.position.z = snapped(before.position.z + delta.y());
+    object.position = transformed.position;
+    object.rotation = transformed.rotation;
+    object.size = transformed.size;
+    dragScene_.version = document_.scene().version;
+    if (object.rotation.x != 0 || object.rotation.y != 0 || object.rotation.z != 0) dragScene_.version = 2;
     auto frame = std::make_unique<NovaFrame>();
     nova_scene_frame(&dragScene_, document_.project().assets, document_.project().count, frame.get());
     viewport_->setAuthoringFrame(*frame);
@@ -1029,14 +1162,27 @@ void StudioWindow::endDrag(QPointF point)
     if (dragIndex_ < 0) return;
     drag(point); dragIndex_ = -1;
     if (!dragMoved_) return;
+    const int index = selectedIndex();
+    if (index >= 0) {
+        const auto &before = document_.scene().objects[index], &after = dragScene_.objects[index];
+        if (sameVector(before.position, after.position) && sameVector(before.size, after.size) &&
+            sameVector(before.rotation, after.rotation)) {
+            refreshPreview();
+            return;
+        }
+    }
     QString error;
-    if (!document_.editScene(dragScene_, document_.selection(), tr("Move object"), &error)) { report(error); refreshPreview(); }
+    const QString operation = viewport_->tool() == SceneTool::Rotate ? tr("Rotate object") :
+        viewport_->tool() == SceneTool::Scale ? tr("Scale object") : tr("Move object");
+    if (!document_.editScene(dragScene_, document_.selection(), operation, &error)) { report(error); refreshPreview(); }
+    else if (dragScene_.version == 2) statusBar()->showMessage(tr("Scene v2 transform applied. Undo restores the previous draft; Lua is unchanged."), 5000);
 }
 
 void StudioWindow::cancelDrag()
 {
     if (dragIndex_ < 0) return;
     dragIndex_ = -1;
+    viewport_->setTool(viewport_->tool());
     refreshPreview();
 }
 

@@ -6,7 +6,7 @@ set(NOVA_RAYLIB_COMMON
     "${raylib_SOURCE_DIR}/src/raudio.c" "${raylib_SOURCE_DIR}/src/utils.c")
 add_library(nova_qt_raylib STATIC authoring/qt/raylib_host.c ${NOVA_RAYLIB_COMMON})
 nova_configure_raylib_audio(nova_qt_raylib "${raylib_SOURCE_DIR}")
-target_include_directories(nova_qt_raylib PUBLIC "${raylib_SOURCE_DIR}/src")
+target_include_directories(nova_qt_raylib SYSTEM PUBLIC "${raylib_SOURCE_DIR}/src")
 target_compile_definitions(nova_qt_raylib PRIVATE GRAPHICS_API_OPENGL_33 SUPPORT_CUSTOM_FRAME_CONTROL)
 if(APPLE)
     target_link_libraries(nova_qt_raylib PUBLIC "-framework OpenGL" "-framework CoreAudio"
@@ -26,6 +26,7 @@ target_compile_definitions(nova_qt_runtime PRIVATE
 target_compile_options(nova_qt_runtime PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_library(nova_qt_ui STATIC authoring/qt/native_viewport.cpp authoring/qt/native_viewport.h
+    authoring/qt/scene_tools.cpp authoring/qt/scene_tools.h
     authoring/qt/project_document.cpp authoring/qt/project_document.h
     authoring/qt/code_editor.cpp authoring/qt/code_editor.h
     authoring/qt/studio_window.cpp authoring/qt/studio_window.h
@@ -73,6 +74,11 @@ if(BUILD_TESTING)
         NOVA_EXAMPLES="${PROJECT_SOURCE_DIR}/examples"
         NOVA_TEST_DIRECTORY="${CMAKE_BINARY_DIR}")
     add_test(NAME nova_qt_documents COMMAND nova_qt_document_tests)
+    add_executable(nova_qt_scene_tools_tests tests/qt_scene_tools_test.cpp)
+    set_target_properties(nova_qt_scene_tools_tests PROPERTIES AUTOMOC ON)
+    target_link_libraries(nova_qt_scene_tools_tests PRIVATE nova_qt_ui Qt6::Test)
+    target_compile_options(nova_qt_scene_tools_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    add_test(NAME nova_qt_scene_tools COMMAND nova_qt_scene_tools_tests)
     if(APPLE AND NOVA_GPU_TESTS)
         add_test(NAME nova_qt_debugger_contract COMMAND "${CMAKE_COMMAND}"
             "-DNOVA_LLDB=${NOVA_LLDB}"
