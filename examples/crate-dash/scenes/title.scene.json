@@ -6,8 +6,8 @@
     { "kind": "player", "name": "hero", "x": 480, "y": 440 }
   ],
   "images": [
-    { "image": "sprites/star.png", "x": 300, "y": 150, "scale": 3, "layer": "ui" },
-    { "image": "sprites/star.png", "x": 720, "y": 150, "scale": 3, "layer": "ui" }
+    { "image": "sprites/star.png", "x": 268, "y": 150, "scale": 3, "layer": "ui" },
+    { "image": "sprites/star.png", "x": 704, "y": 150, "scale": 3, "layer": "ui" }
   ],
   "texts": [
     { "text": "CRATE DASH", "name": "title", "x": 330, "y": 120, "scale": 6, "color": [255, 218, 74] },

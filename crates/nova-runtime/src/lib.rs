@@ -18,6 +18,7 @@ pub mod scene;
 pub mod script;
 pub mod spike;
 pub mod sprite;
+pub mod text;
 pub mod tilemap;
 pub mod vfs;
 

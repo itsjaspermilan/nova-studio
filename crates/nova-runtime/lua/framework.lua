@@ -378,14 +378,18 @@ function Picture:draw()
 end
 
 local text_color = { 255, 255, 255, 255 }
-local text_opts = { scale = 2, color = text_color }
+local text_opts = { size = 16, color = text_color }
 local Text = nova.entity { screen = true, text = "" }
 function Text:draw()
   if not self.visible then return end
   local c, col = text_color, self.color
   c[1], c[2], c[3] = col and col[1] or 255, col and col[2] or 255, col and col[3] or 255
   c[4] = col and col[4] or 255
-  text_opts.scale = self.size or 2
+  text_opts.size = (self.size or 2) * 8 -- scene files give "scale" steps of 8 units; use `size` in code
+  text_opts.font = self.font
+  text_opts.width = self.width
+  text_opts.align = self.align
+  text_opts.shadow = self.shadow
   nova.ui.text(self.x, self.y, tostring(self.text), text_opts)
 end
 nova.Entity, nova.Picture, nova.Text = Entity, Picture, Text

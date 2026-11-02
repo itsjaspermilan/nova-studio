@@ -814,7 +814,7 @@ fn runaway_memory_use_fails_cleanly() {
     let mut g = project(vec![(
         "main.lua",
         lua(
-            "function update(dt) local t = {} for i = 1, 1e9 do t[i] = string.rep('x', 1000) .. i end end",
+            "function update(dt) local t = {} for i = 1, 1e6 do t[i] = string.rep('x', 1000000) .. i end end",
         ),
     )]);
     steps(&mut g, 1);
@@ -1034,4 +1034,119 @@ fn unknown_sounds_and_bad_audio_files_are_explained() {
         "{:?}",
         g.warnings
     );
+}
+
+// ---------------------------------------------------------------- text
+
+fn text_game(source: &str) -> Game {
+    project(vec![("main.lua", lua(source))])
+}
+
+#[test]
+fn text_draws_letters_measures_wraps_and_aligns() {
+    let mut g = text_game(
+        "function update(dt)\n  nova.ui.text(10, 20, 'Hello', { size = 24 })\n  local w, h = nova.ui.text_size('Hello', { size = 24 })\n  local w2, h2 = nova.ui.text_size('Hello there friend', { size = 24, width = 90 })\n  local legacy = nova.ui.text_width('Hi', 2)\n  nova.log(string.format('%.0f %.0f %s %s', w, h, tostring(h2 > h * 1.5), tostring(legacy > 8)))\n  nova.ui.text(0, 100, 'centred', { size = 20, width = 200, align = 'center', shadow = true })\nend",
+    );
+    steps(&mut g, 1);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let l = logs(&g);
+    assert!(
+        l[0].ends_with("true true"),
+        "wrapped text is taller, legacy width works: {l:?}"
+    );
+    let input = g.frame_input(540);
+    assert!(
+        input.text.len() > 5 + 7,
+        "Hello plus a shadowed 'centred' draws letters and shadow copies: {}",
+        input.text.len()
+    );
+    assert_eq!(
+        input.sprites_front.len(),
+        0,
+        "text is not in the sprite list"
+    );
+}
+
+#[test]
+fn every_builtin_font_name_works_and_unknown_fonts_list_the_choices() {
+    for name in [
+        "sans", "rounded", "pixel", "terminal", "mono", "serif", "comic", "display", "script",
+    ] {
+        let mut g = text_game(&format!(
+            "function update(dt) nova.ui.text(0, 0, 'Abc', {{ font = '{name}', size = 20 }}) end"
+        ));
+        steps(&mut g, 1);
+        assert!(g.error.is_none(), "{name}: {:?}", g.error);
+        assert_eq!(g.frame_input(540).text.len(), 3, "{name}");
+    }
+    let mut g =
+        text_game("function update(dt) nova.ui.text(0, 0, 'x', { font = 'wingdings' }) end");
+    steps(&mut g, 1);
+    let e = g.error.clone().expect("error");
+    assert!(
+        e.contains("unknown font 'wingdings'")
+            && e.contains("pixel")
+            && e.contains("fonts/title.ttf"),
+        "{e}"
+    );
+    let mut g = text_game("function update(dt) nova.ui.text(0, 0, 'x', { align = 'middle' }) end");
+    steps(&mut g, 1);
+    assert!(g.error.clone().unwrap().contains("align must be"));
+}
+
+#[test]
+fn project_fonts_load_by_path_and_short_name_and_bad_ones_fail_the_load() {
+    let font = nova_runtime::text::BUILTIN[0].1.to_vec();
+    let mut g = project(vec![
+        ("fonts/title.ttf", font.clone()),
+        (
+            "main.lua",
+            lua(
+                "function update(dt) nova.ui.text(0, 0, 'Hi', { font = 'title' }) nova.ui.text(0, 30, 'Hi', { font = 'fonts/title.ttf' }) end",
+            ),
+        ),
+    ]);
+    steps(&mut g, 1);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    assert_eq!(g.frame_input(540).text.len(), 4);
+
+    let vfs: Rc<dyn Vfs> = Rc::new(MemVfs::new(vec![
+        ("nova.json", br#"{"format":1,"name":"T"}"#.to_vec()),
+        ("main.lua", lua("")),
+        ("fonts/broken.ttf", b"nope".to_vec()),
+    ]));
+    let e = Game::load(vfs).err().expect("must fail");
+    assert!(
+        e.starts_with("fonts/broken.ttf:") && e.contains("not a usable font"),
+        "{e}"
+    );
+}
+
+#[test]
+fn text_is_rasterised_at_the_screens_pixel_size_and_the_atlas_reaches_the_host() {
+    let mut g = text_game("function update(dt) nova.ui.text(10, 10, 'Sharp', { size = 20 }) end");
+    g.set_pixel_scale(2.0);
+    steps(&mut g, 1);
+    let at_2x = g
+        .frame_input(540)
+        .text
+        .iter()
+        .map(|q| q.size[1])
+        .fold(0.0f32, f32::max);
+    let atlas = g.take_glyph_atlas().expect("new glyphs mean a new atlas");
+    assert!(atlas.iter().any(|&c| c > 200));
+    assert!(
+        g.take_glyph_atlas().is_none(),
+        "not again until something changes"
+    );
+    let mut g1 = text_game("function update(dt) nova.ui.text(10, 10, 'Sharp', { size = 20 }) end");
+    steps(&mut g1, 1);
+    let at_1x = g1
+        .frame_input(540)
+        .text
+        .iter()
+        .map(|q| q.size[1])
+        .fold(0.0f32, f32::max);
+    // Quads are in logical units, so both cover the same logical height (rasterised at different pixel sizes).
+    assert!((at_2x - at_1x).abs() < 1.5, "{at_2x} vs {at_1x}");
 }

@@ -136,7 +136,11 @@ impl Content {
                 }
                 let scale = Gfx::ui_scale(size);
                 let view = [size.0 as f32 / scale, size.1 as f32 / scale];
+                game.set_pixel_scale(scale);
                 game.update(dt, time, view, actions, pressed);
+                if let Some(atlas) = game.take_glyph_atlas() {
+                    gfx.update_glyph_atlas(&atlas);
+                }
                 if *hud {
                     let text = format!(
                         "FPS {:.0}  UPD {:.2}  DRAW {:.2} MS\nWORLD {}X{}  DRAWS {}  SPRITES {}  TRIS {}\nAUDIO {}",

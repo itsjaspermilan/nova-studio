@@ -48,6 +48,9 @@ pub struct FrameInput<'a> {
     /// Draws using the same mesh must be contiguous; each run becomes one instanced draw.
     pub models: &'a [ModelDraw],
     pub sprites_front: &'a [SpriteInstance],
+    /// Text quads (UI layer, native resolution, drawn after `sprites_front`); the UVs index the
+    /// glyph atlas set with [`Gfx::update_glyph_atlas`].
+    pub text: &'a [SpriteInstance],
     /// Height in pixels of the world (sprites_back + models) render target; 0 or >= the
     /// screen height renders the world at native resolution. The width follows the screen
     /// aspect. `sprites_front` (HUD/UI) always renders at native resolution.
@@ -139,6 +142,10 @@ pub struct Gfx {
     pub adapter_info: wgpu::AdapterInfo,
     sprite_pipeline: wgpu::RenderPipeline,
     sprite_ui_pipeline: wgpu::RenderPipeline,
+    text_pipeline: wgpu::RenderPipeline,
+    glyph_texture: wgpu::Texture,
+    glyph_group: wgpu::BindGroup,
+    sprites_text: DynBuffer,
     blit_pipeline: wgpu::RenderPipeline,
     blit_uniform: wgpu::Buffer,
     blit_group: wgpu::BindGroup,
@@ -342,45 +349,77 @@ impl Gfx {
             0 => Float32x2, 1 => Float32x2, 2 => Float32x4, 3 => Unorm8x4, 4 => Float32
         ];
         let blend = wgpu::BlendState::ALPHA_BLENDING;
-        let make_sprite_pipeline = |label: &'static str, depth: bool| {
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some(label),
-                layout: Some(&sprite_layout),
-                vertex: wgpu::VertexState {
-                    module: &sprite_shader,
-                    entry_point: Some("vs_main"),
-                    compilation_options: Default::default(),
-                    buffers: &[Some(wgpu::VertexBufferLayout {
-                        array_stride: std::mem::size_of::<SpriteInstance>() as u64,
-                        step_mode: wgpu::VertexStepMode::Instance,
-                        attributes: &sprite_attributes,
-                    })],
+        let make_sprite_pipeline =
+            |label: &'static str, shader: &wgpu::ShaderModule, depth: bool| {
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some(label),
+                    layout: Some(&sprite_layout),
+                    vertex: wgpu::VertexState {
+                        module: shader,
+                        entry_point: Some("vs_main"),
+                        compilation_options: Default::default(),
+                        buffers: &[Some(wgpu::VertexBufferLayout {
+                            array_stride: std::mem::size_of::<SpriteInstance>() as u64,
+                            step_mode: wgpu::VertexStepMode::Instance,
+                            attributes: &sprite_attributes,
+                        })],
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module: shader,
+                        entry_point: Some("fs_main"),
+                        compilation_options: Default::default(),
+                        targets: &[Some(wgpu::ColorTargetState {
+                            format,
+                            blend: Some(blend),
+                            write_mask: wgpu::ColorWrites::ALL,
+                        })],
+                    }),
+                    primitive: wgpu::PrimitiveState::default(),
+                    depth_stencil: depth.then_some(wgpu::DepthStencilState {
+                        format: DEPTH_FORMAT,
+                        depth_write_enabled: Some(false),
+                        depth_compare: Some(wgpu::CompareFunction::Always),
+                        stencil: Default::default(),
+                        bias: Default::default(),
+                    }),
+                    multisample: wgpu::MultisampleState::default(),
+                    multiview_mask: None,
+                    cache: None,
+                })
+            };
+        let sprite_pipeline = make_sprite_pipeline("sprites", &sprite_shader, true);
+        let sprite_ui_pipeline = make_sprite_pipeline("ui sprites", &sprite_shader, false);
+        let text_shader = device.create_shader_module(wgpu::include_wgsl!("shaders/text.wgsl"));
+        let text_pipeline = make_sprite_pipeline("text", &text_shader, false);
+        let glyph_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("glyph atlas"),
+            size: wgpu::Extent3d {
+                width: crate::text::ATLAS_SIZE,
+                height: crate::text::ATLAS_SIZE,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::R8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let glyph_view = glyph_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let glyph_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("glyph atlas"),
+            layout: &texture_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&glyph_view),
                 },
-                fragment: Some(wgpu::FragmentState {
-                    module: &sprite_shader,
-                    entry_point: Some("fs_main"),
-                    compilation_options: Default::default(),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format,
-                        blend: Some(blend),
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                }),
-                primitive: wgpu::PrimitiveState::default(),
-                depth_stencil: depth.then_some(wgpu::DepthStencilState {
-                    format: DEPTH_FORMAT,
-                    depth_write_enabled: Some(false),
-                    depth_compare: Some(wgpu::CompareFunction::Always),
-                    stencil: Default::default(),
-                    bias: Default::default(),
-                }),
-                multisample: wgpu::MultisampleState::default(),
-                multiview_mask: None,
-                cache: None,
-            })
-        };
-        let sprite_pipeline = make_sprite_pipeline("sprites", true);
-        let sprite_ui_pipeline = make_sprite_pipeline("ui sprites", false);
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler_nearest),
+                },
+            ],
+        });
 
         let blit_shader = device.create_shader_module(wgpu::include_wgsl!("shaders/blit.wgsl"));
         let blit_uniform_layout =
@@ -500,6 +539,8 @@ impl Gfx {
             wgpu::BufferUsages::VERTEX,
             1 << 14,
         );
+        let sprites_text =
+            DynBuffer::new(&device, "sprites text", wgpu::BufferUsages::VERTEX, 1 << 14);
         let model_instances = DynBuffer::new(
             &device,
             "model instances",
@@ -515,6 +556,10 @@ impl Gfx {
             adapter_info,
             sprite_pipeline,
             sprite_ui_pipeline,
+            text_pipeline,
+            glyph_texture,
+            glyph_group,
+            sprites_text,
             blit_pipeline,
             blit_uniform,
             blit_group,
@@ -544,6 +589,30 @@ impl Gfx {
             &self.sampler_nearest,
             "atlas",
             image,
+        );
+    }
+
+    /// Replaces the glyph atlas contents (`text::ATLAS_SIZE` squared coverage bytes).
+    pub fn update_glyph_atlas(&mut self, coverage: &[u8]) {
+        let side = crate::text::ATLAS_SIZE;
+        self.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.glyph_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            coverage,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(side),
+                rows_per_image: Some(side),
+            },
+            wgpu::Extent3d {
+                width: side,
+                height: side,
+                depth_or_array_layers: 1,
+            },
         );
     }
 
@@ -732,6 +801,8 @@ impl Gfx {
             &self.queue,
             bytemuck::cast_slice(input.sprites_front),
         );
+        self.sprites_text
+            .write(&self.device, &self.queue, bytemuck::cast_slice(input.text));
         let instances: Vec<ModelInstance> = input.models.iter().map(|m| m.instance).collect();
         self.model_instances
             .write(&self.device, &self.queue, bytemuck::cast_slice(&instances));
@@ -873,6 +944,15 @@ impl Gfx {
                 pass.draw(0..6, 0..input.sprites_front.len() as u32);
                 stats.draw_calls += 1;
                 stats.sprites += input.sprites_front.len() as u32;
+            }
+            if !input.text.is_empty() {
+                pass.set_pipeline(&self.text_pipeline);
+                pass.set_bind_group(0, &self.sprite_view_group, &[]);
+                pass.set_bind_group(1, &self.glyph_group, &[]);
+                pass.set_vertex_buffer(0, self.sprites_text.buffer.slice(..));
+                pass.draw(0..6, 0..input.text.len() as u32);
+                stats.draw_calls += 1;
+                stats.sprites += input.text.len() as u32;
             }
         }
         self.queue.submit([encoder.finish()]);

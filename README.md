@@ -20,6 +20,7 @@ results are in `docs/spike-results.md`; the plan, decisions and milestones are i
 | `audio/` | C11 audio core and its standalone tests (`docs/audio-core.md`) |
 | `docs/project-format.md` | Project format v1 and Lua API v1 (what `nova run` accepts) |
 | `examples/rally-demo/` | Immediate-mode project: sprites, 3D models, Lua, HUD |
+| `examples/font-gallery/` | All nine bundled fonts, wrapping, alignment, shadows |
 | `examples/crate-dash/` | A small 2D game using scenes, entities, collisions, timers |
 | `docs/spike-results.md` | M1 measurements, proven pieces and open findings |
 | `docs/ux/` | UX research, workspace study, and the Pine Ridge Rally exercise |
@@ -27,7 +28,7 @@ results are in `docs/spike-results.md`; the plan, decisions and milestones are i
 | `scripts/env.sh` | Command-local Rust/Android/Java environment |
 | `scripts/build-apk.sh` | Gradle-free debug APK of the runtime spike |
 | `scripts/gen_spike_assets.py` | Generates the original spike car model |
-| `licenses/` | Upstream licence notices for bundled dependencies |
+| `licenses/` | Upstream licence notices for bundled dependencies and the nine fonts |
 
 ## Build and test
 
@@ -53,7 +54,7 @@ checks; it does not predict handheld performance.
 
 ## Limits today
 
-- No studio app or editors yet. Projects are hand-written Lua, JSON scenes, PNG and GLB files; there are no real fonts (the UI text is a debug pixel font) or OGG/streamed music yet.
+- No studio app or editors yet. Projects are hand-written Lua, JSON scenes, PNG and GLB files; there is no OGG/streamed music or world-space text yet.
 - APKs of games run on the Android emulator; no handheld has run one. Analogue sticks and triggers do not reach the game on Android yet.
 - Only the Android emulator has run the APK; no handheld has.
 - The audio core was verified with offline renders only, not by listening.

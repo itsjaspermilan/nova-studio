@@ -13,9 +13,6 @@ collisions, animation, tilemap, sound, saves). 111 Rust tests plus 7 audio-core 
 Nothing has run on a physical device; the Retroid has not arrived.
 
 Waiting on the user:
-- **A default font** for real text rendering (needs a download and a licence choice). Proposal: one
-  SIL Open Font License sans (Inter or Noto Sans, about 0.3 to 0.8 MB) bundled as the default, with
-  project fonts in `fonts/` overriding it.
 - **The Retroid** for the M1 device gate (frame pacing, thermals, controller, audio latency).
 
 Can proceed without input, in rough priority: real font rendering once the font is chosen; the
@@ -46,8 +43,8 @@ another physical Android device) to settle; the emulator cannot.
 - [ ] Keyboard input on Android (touch is verified on the emulator, the keyboard path is not).
 
 **Runtime and format**
-- [ ] Real text rendering (in progress; see M2c) and OGG / streamed music (WAV only, fully decoded in
-  memory, so music is large).
+- [ ] OGG / streamed music (WAV only, fully decoded in memory, so music is large). Text is done except
+  world-space text and variable-font weights.
 - [ ] The OpenGL ES fallback backend was fixed (limits) but not re-run on Android since; Vulkan is what
   has been exercised.
 - [ ] No GPU timestamps; frame time is CPU-side plus vsync.
@@ -226,9 +223,7 @@ Spec in [docs/project-format.md](docs/project-format.md); example `examples/crat
 - [x] Native tilemaps: validated data, culled drawing, `get`/`set`/`tile_at`/`cell_at`,
   solid tiles, `slide()` with sub-stepping (no tunnelling), scene-file `tilemaps`.
 - [x] Crate Dash uses both (animated player, tilemap floor); 25 framework tests.
-- [ ] **Real font rendering and text layout** (replaces the debug pixel font): TTF/OTF
-  rasterised into a glyph atlas, project fonts in `fonts/`, wrapping and alignment. Needs a
-  decision from the user on a bundled default font (licence, look) and consent to download it.
+- [x] Real text (2026-11-02): vector fonts rasterised at the screen's pixel size into a glyph atlas (`text.rs`), kerning, wrapping, alignment, shadow, nine bundled OFL fonts (`licenses/fonts/`), project `fonts/*.ttf|otf`; `examples/font-gallery`. Variable fonts use their default weight; text is UI-layer only.
 - [ ] Particles, paths, `in_rect`.
 
 ### M2d: Services and platform

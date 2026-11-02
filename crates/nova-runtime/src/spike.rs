@@ -279,6 +279,7 @@ impl Spike {
             sprites_back: &self.back,
             models: &self.models,
             sprites_front: &self.front,
+            text: &[],
             world_height,
         }
     }

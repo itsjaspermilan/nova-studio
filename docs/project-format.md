@@ -87,8 +87,8 @@ ratio). `nova.view()` returns the current width and height as whole numbers (rou
 | `nova.clear(r, g, b)` | world | Background colour, 0 to 255. |
 | `nova.ui.sprite(id, x, y [, opts])` | UI | Same as `nova.sprite`, at native resolution. |
 | `nova.ui.rect(x, y, w, h [, color])` | UI | Same as `nova.rect`, at native resolution. |
-| `nova.ui.text(x, y, text [, opts])` | UI | Debug pixel font, top-left `x, y`. `opts.scale` (default 2), `opts.color`. Uppercase letters, digits and basic punctuation only. |
-| `nova.ui.text_width(text [, scale])` | | Width in logical units. |
+| `nova.ui.text(x, y, text [, opts])` | UI | Vector text, top-left `x, y` (see "Text and fonts"). |
+| `nova.ui.text_size(text [, opts])`, `nova.ui.text_width(text [, opts_or_scale])` | | Measure text in logical units. |
 
 **Layers.** Draw order within a frame is: world sprites (behind), then 3D models (depth
 tested), then the UI layer. World sprites and models render into the world target
@@ -311,6 +311,36 @@ entities glide along walls) in sub-steps no bigger than half a tile, so a fast e
 thin wall. It uses the entity's hitbox box. Tile numbers outside the tileset, ragged rows and
 unknown tilesets are errors that say which cell.
 
+## Text and fonts
+
+Text is real vector text, rasterised at the screen's own pixel size so letters stay sharp, with
+kerning, wrapping and alignment. It is drawn in the UI layer (native resolution), after UI sprites.
+
+```lua
+local w, h = nova.ui.text(x, y, "Hello", {
+  font = "serif",            -- a built-in name or a project font (below); default "sans"
+  size = 24,                 -- logical units tall (default 16); the older `scale` is 8 units per step
+  color = { 255, 220, 120 },
+  width = 300,               -- wrap lines at this width
+  align = "center",          -- "left" (default), "center" or "right", inside `width` (or the widest line)
+  shadow = true,             -- or a colour such as { 0, 0, 0, 200 }
+})                           -- returns the size it took
+local w, h = nova.ui.text_size("Hello", { font = "mono", size = 20, width = 200 })   -- measure only
+local w = nova.ui.text_width("Hello", 2)                                              -- older form
+```
+
+Built-in fonts (SIL Open Font License; see `licenses/fonts/`): `sans` (Inter), `rounded` (Fredoka),
+`pixel` (Press Start 2P), `terminal` (VT323), `mono` (JetBrains Mono), `serif` (Lora), `comic`
+(Bangers), `display` (Cinzel), `script` (Pacifico). `examples/font-gallery` shows all of them.
+
+Your own: put a `.ttf` or `.otf` in the project (for example `fonts/title.ttf`) and use `font = "title"`
+or `font = "fonts/title.ttf"`. A file that is not a usable font stops the project from loading, naming
+it. Notes: variable fonts draw at their default weight; pixel fonts look best at multiples of their
+design size (Press Start 2P at 8, 16, 24...); `\n` starts a new line; text beyond 20,000 characters in one
+call is cut. Letters are rasterised once per (font, character, pixel size) into a 2048x2048 coverage
+atlas; if it ever fills it is cleared and rebuilt. The engine's own overlays (the error banner, the F3
+stats) still use a small built-in pixel font.
+
 ## Sound
 
 Put WAV files anywhere in the project (`sounds/` and `music/` are where short names are looked up).
@@ -392,7 +422,7 @@ animation, collisions, tilemap) at 60 fps. Not verified: any physical device.
 
 ## Not yet
 
-Real fonts and text layout (the UI text is still a debug pixel font), paths, particles, OGG and
+World-space text, paths, particles, OGG and
 streamed music, synthesised music and a sound editor (M6), input remapping and named actions, rigid-bone model animation, and the studio itself.
 
 ## Testing helpers

@@ -50,9 +50,10 @@ fn rally_demo_loads_cleanly_and_draws_every_layer() {
     assert!(input.sprites_back.len() >= 14, "clouds in the world layer");
     assert!(input.models.len() >= 42, "ground, crates and the car");
     assert!(
-        input.sprites_front.len() > 50,
-        "HUD text and gauge in the UI layer"
+        !input.sprites_front.is_empty(),
+        "the gauge is in the UI layer"
     );
+    assert!(input.text.len() >= 8, "HUD text is drawn as letters");
 }
 
 #[test]
@@ -166,8 +167,8 @@ fn crate_dash_plays_through_every_scene_without_errors() {
         game.update(1.0 / 60.0, frame as f64 / 60.0, [960.0, 540.0], idle, false);
     }
     assert!(game.error.is_none(), "{:?}", game.error);
-    let title_sprites = game.frame_input(540).sprites_front.len();
-    assert!(title_sprites > 100, "the title text is on screen");
+    let title_letters = game.frame_input(540).text.len();
+    assert!(title_letters > 30, "the title text is on screen");
 
     // Hold jump for a long play session. Crates fall on the player until the game ends and returns
     // to the title; holding jump starts it again, so this runs title -> play -> over -> title repeatedly.
@@ -183,4 +184,21 @@ fn crate_dash_plays_through_every_scene_without_errors() {
     }
     let input = game.frame_input(540);
     assert!(!input.sprites_back.is_empty() || !input.sprites_front.is_empty());
+}
+
+#[test]
+fn font_gallery_draws_every_builtin_font() {
+    let vfs: Rc<dyn Vfs> =
+        Rc::new(DirVfs::new(&example().join("../font-gallery")).expect("folder"));
+    let mut game = Game::load(vfs).expect("loads");
+    game.upload(&mut FakeGpu(0));
+    assert!(game.warnings.is_empty(), "{:?}", game.warnings);
+    game.set_pixel_scale(2.0);
+    game.update(1.0 / 60.0, 0.0, [960.0, 540.0], Actions::default(), false);
+    assert!(game.error.is_none(), "{:?}", game.error);
+    assert!(
+        game.frame_input(540).text.len() > 400,
+        "paragraphs of letters on screen"
+    );
+    assert!(game.take_glyph_atlas().is_some());
 }

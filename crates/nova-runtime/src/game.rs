@@ -25,6 +25,7 @@ use crate::save::SaveStore;
 use crate::scene;
 use crate::script::new_lua;
 use crate::sprite::{self, SpriteDef};
+use crate::text::{self as vtext, Align, TextEngine};
 use crate::tilemap::TileMap;
 use crate::vfs::Vfs;
 
@@ -66,6 +67,9 @@ struct Shared {
     layout: AtlasLayout,
     sheets: HashMap<String, SpriteDef>,
     tilemaps: Vec<TileMap>,
+    text: TextEngine,
+    text_out: Vec<SpriteInstance>,
+    pixel_scale: f32,
     sounds: HashMap<String, Arc<Sample>>,
     audio: Vec<mixer::Command>,
     next_sound: u64,
@@ -106,6 +110,7 @@ pub struct Game {
     meshes: Vec<(String, MeshData)>,
     world: Vec<SpriteInstance>,
     ui: Vec<SpriteInstance>,
+    text: Vec<SpriteInstance>,
     models: Vec<ModelDraw>,
     camera: Camera,
     clear: [f64; 4],
@@ -280,6 +285,86 @@ fn sprite_instance(
     })
 }
 
+/// Draws (or, with `draw` false, only measures) UI text. Returns its size in logical units.
+/// Options: `font` (a built-in name or a project font), `size` in logical units (default 16;
+/// the older `scale` means 8 units per step), `color`, `width` (wrap, logical units), `align`
+/// (`left`, `center`, `right` within `width`), `shadow` (true, or a colour).
+fn draw_text(
+    sh: &mut Shared,
+    text: &str,
+    x: f32,
+    y: f32,
+    opts: &Option<Table>,
+    draw: bool,
+) -> mlua::Result<(f32, f32)> {
+    let scale = sh.pixel_scale.max(0.25);
+    let size = match (number_option(opts, "size")?, number_option(opts, "scale")?) {
+        (Some(s), _) => s,
+        (None, Some(k)) => k * 8.0,
+        (None, None) => 16.0,
+    }
+    .clamp(4.0, 400.0) as f32;
+    let px = (size * scale).round().max(1.0);
+    let font_name = string_option(opts, "font")?.unwrap_or_else(|| vtext::DEFAULT_FONT.to_string());
+    let font = sh.text.resolve(&font_name).ok_or_else(|| {
+        lua_err(format!(
+            "unknown font '{font_name}' (fonts available: {}; project fonts are TTF or OTF files, for example fonts/title.ttf)",
+            sh.text.font_names().join(", ")
+        ))
+    })?;
+    let wrap = number_option(opts, "width")?.map(|w| (w as f32 * scale).max(1.0));
+    let align = match string_option(opts, "align")?.as_deref() {
+        None | Some("left") => Align::Left,
+        Some("center") => Align::Center,
+        Some("right") => Align::Right,
+        Some(other) => {
+            return Err(lua_err(format!(
+                "align must be 'left', 'center' or 'right', not '{other}'"
+            )));
+        }
+    };
+    let layout = sh.text.layout(font, text, px, wrap);
+    if draw {
+        let color = color_option(opts, "color", [255; 4])?;
+        let shadow = match opts {
+            Some(t) => match t.get::<Value>("shadow")? {
+                Value::Nil | Value::Boolean(false) => None,
+                Value::Table(_) => Some(color_option(opts, "shadow", [0, 0, 0, 170])?),
+                _ => Some([0, 0, 0, 170]),
+            },
+            None => None,
+        };
+        let mut out = std::mem::take(&mut sh.text_out);
+        if let Some(shadow) = shadow {
+            let offset = (size / 16.0).max(1.0);
+            sh.text.draw(
+                &mut out,
+                font,
+                &layout,
+                px,
+                (x + offset, y + offset),
+                scale,
+                shadow,
+                align,
+                wrap,
+            );
+        }
+        sh.text.draw(
+            &mut out,
+            font,
+            &layout,
+            px,
+            (x, y),
+            scale,
+            color,
+            align,
+            wrap,
+        );
+        sh.text_out = out;
+    }
+    Ok((layout.width / scale, layout.height / scale))
+}
+
 fn rect_instance(
     shared: &Shared,
     x: f64,
@@ -414,20 +499,42 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
         lua.create_function(
             move |_, (x, y, text, opts): (f64, f64, String, Option<Table>)| {
                 let mut sh = s.borrow_mut();
-                let scale = number_option(&opts, "scale")?
-                    .unwrap_or(2.0)
-                    .clamp(0.5, 32.0) as f32;
-                let color = color_option(&opts, "color", [255; 4])?;
-                let uv = sh.layout.white_uv();
-                font::draw_text(&mut sh.ui, uv, x as f32, y as f32, scale, color, &text);
-                Ok(())
+                let (w, h) = draw_text(&mut sh, &text, x as f32, y as f32, &opts, true)?;
+                Ok((w as f64, h as f64))
             },
         )?,
     )?;
+    // text_size(text, opts) -> width, height (logical units) without drawing anything.
+    let s = shared.clone();
+    ui.set(
+        "text_size",
+        lua.create_function(move |_, (text, opts): (String, Option<Table>)| {
+            let mut sh = s.borrow_mut();
+            let (w, h) = draw_text(&mut sh, &text, 0.0, 0.0, &opts, false)?;
+            Ok((w as f64, h as f64))
+        })?,
+    )?;
+    // text_width(text, opts_or_scale): the older form took a number (scale, 8 logical units per step).
+    let s = shared.clone();
     ui.set(
         "text_width",
-        lua.create_function(|_, (text, scale): (String, Option<f64>)| {
-            Ok(font::text_width(scale.unwrap_or(2.0) as f32, &text) as f64)
+        lua.create_function(move |lua, (text, second): (String, Option<Value>)| {
+            let opts = match second {
+                Some(Value::Table(t)) => Some(t),
+                Some(Value::Number(n)) => {
+                    let t = lua.create_table()?;
+                    t.set("scale", n)?;
+                    Some(t)
+                }
+                Some(Value::Integer(n)) => {
+                    let t = lua.create_table()?;
+                    t.set("scale", n)?;
+                    Some(t)
+                }
+                _ => None,
+            };
+            let mut sh = s.borrow_mut();
+            Ok(draw_text(&mut sh, &text, 0.0, 0.0, &opts, false)?.0 as f64)
         })?,
     )?;
     nova.set("ui", ui)?;
@@ -974,6 +1081,12 @@ impl Game {
             sounds.insert(asset.id.clone(), Arc::new(sample));
         }
 
+        let mut text = TextEngine::new().map_err(|e| format!("built-in fonts: {e}"))?;
+        for asset in project.assets_of(AssetKind::Font) {
+            text.add_font(&asset.id, &vfs.read(&asset.id)?)
+                .map_err(|e| format!("{}: {e}", asset.id))?;
+        }
+
         let shared = Rc::new(RefCell::new(Shared {
             actions: Actions::default(),
             action_pressed: false,
@@ -982,6 +1095,9 @@ impl Game {
             layout: layout.clone(),
             sheets,
             tilemaps: Vec::new(),
+            text,
+            text_out: Vec::new(),
+            pixel_scale: 1.0,
             sounds,
             audio: Vec::new(),
             next_sound: 1,
@@ -1022,6 +1138,7 @@ impl Game {
             meshes,
             world: Vec::new(),
             ui: Vec::new(),
+            text: Vec::new(),
             models: Vec::new(),
             camera: DEFAULT_CAMERA,
             clear: srgb_to_linear([0.36, 0.55, 0.78, 1.0]),
@@ -1102,6 +1219,21 @@ impl Game {
         std::mem::take(&mut self.shared.borrow_mut().audio)
     }
 
+    /// Physical pixels per logical unit of the screen the game is drawn on (text is rasterised at
+    /// this scale so letters stay sharp). Tests leave it at 1.
+    pub fn set_pixel_scale(&mut self, scale: f32) {
+        self.shared.borrow_mut().pixel_scale = scale;
+    }
+
+    /// The glyph atlas, when new letters were rasterised since the last call, for the GPU upload.
+    pub fn take_glyph_atlas(&self) -> Option<Vec<u8>> {
+        self.shared
+            .borrow_mut()
+            .text
+            .take_atlas_if_dirty()
+            .map(<[u8]>::to_vec)
+    }
+
     pub fn world_height(&self) -> u32 {
         self.project.manifest.world_height
     }
@@ -1146,9 +1278,11 @@ impl Game {
             let mut sh = self.shared.borrow_mut();
             std::mem::swap(&mut sh.world, &mut self.world);
             std::mem::swap(&mut sh.ui, &mut self.ui);
+            std::mem::swap(&mut sh.text_out, &mut self.text);
             std::mem::swap(&mut sh.models, &mut self.models);
             sh.world.clear();
             sh.ui.clear();
+            sh.text_out.clear();
             sh.models.clear();
             sh.actions = actions;
             sh.action_pressed = action_pressed;
@@ -1182,6 +1316,7 @@ impl Game {
         let mut sh = self.shared.borrow_mut();
         std::mem::swap(&mut sh.world, &mut self.world);
         std::mem::swap(&mut sh.ui, &mut self.ui);
+        std::mem::swap(&mut sh.text_out, &mut self.text);
         std::mem::swap(&mut sh.models, &mut self.models);
         self.models.sort_by_key(|m| m.mesh); // equal meshes become one instanced draw
         self.camera = sh.camera;
@@ -1239,6 +1374,7 @@ impl Game {
             sprites_back: &self.world,
             models: &self.models,
             sprites_front: &self.ui,
+            text: &self.text,
             world_height,
         }
     }
@@ -1311,7 +1447,8 @@ mod tests {
         );
         assert!((s.rotation - 0.5).abs() < 1e-6);
         assert_eq!(g.world[1].color, [1, 2, 3, 4]);
-        assert!(g.ui.len() > 2, "text pixels plus an anchored sprite");
+        assert_eq!(g.ui.len(), 1, "only the anchored sprite is a UI sprite now");
+        assert_eq!(g.text.len(), 2, "two letters, drawn as text quads");
         let anchored = g.ui.last().unwrap();
         assert_eq!(
             anchored.center,

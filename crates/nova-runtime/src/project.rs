@@ -23,6 +23,7 @@ pub enum AssetKind {
     Script,
     Scene,
     Sheet,
+    Font,
     Audio,
     Other,
 }
@@ -41,6 +42,7 @@ impl AssetKind {
             Some("glb") => Self::Model,
             Some("lua") => Self::Script,
             Some("wav") | Some("ogg") => Self::Audio,
+            Some("ttf") | Some("otf") => Self::Font,
             _ => Self::Other,
         }
     }
