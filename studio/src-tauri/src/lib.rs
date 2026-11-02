@@ -184,6 +184,11 @@ fn write_audio(state: State<AppState>, path: String, data_url: String) -> Result
 }
 
 #[tauri::command]
+fn write_model(state: State<AppState>, path: String, data_url: String) -> Result<(), String> {
+    project_files::write_model(&root_of(&state)?, &path, &data_url)
+}
+
+#[tauri::command]
 fn write_file(state: State<AppState>, path: String, text: String) -> Result<(), String> {
     project_files::write_file(&root_of(&state)?, &path, &text)
 }
@@ -285,6 +290,7 @@ pub fn run() {
             read_image,
             read_audio,
             write_audio,
+            write_model,
             write_file,
             write_image,
             create_file,

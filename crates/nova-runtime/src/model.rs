@@ -246,3 +246,52 @@ mod tests {
         assert_eq!((ground.vertices.len(), ground.indices.len()), (4, 6));
     }
 }
+
+#[cfg(test)]
+mod studio_model_tests {
+    use super::*;
+
+    /// `studio/src/lib/model-doc.test.ts` pins this file to what the studio's exporter writes for its
+    /// sample model: a 16-unit body cube and a rotated, offset wheel cube, at 1/16 scale.
+    #[test]
+    fn studio_models_load_with_the_expected_shape() {
+        let mesh = import_glb(include_bytes!("../tests/fixtures/studio_model.glb")).unwrap();
+        assert!(mesh.notes.is_empty(), "{:?}", mesh.notes);
+        assert_eq!(mesh.vertices.len(), 48, "two cubes of 24 vertices");
+        assert_eq!(mesh.indices.len(), 72, "24 triangles");
+        let (mut lo, mut hi) = ([f32::MAX; 3], [f32::MIN; 3]);
+        for v in &mesh.vertices {
+            for a in 0..3 {
+                lo[a] = lo[a].min(v.position[a]);
+                hi[a] = hi[a].max(v.position[a]);
+            }
+            let n = Vec3::from(v.normal);
+            assert!((n.length() - 1.0).abs() < 1e-4, "unit normals, got {n:?}");
+        }
+        // Body: x and z from -0.5 to 0.5, y 0 to 1. Wheel (rotated 90 degrees about z, at (6, 2, 8)/16):
+        // x 4/16 to 8/16, y 0 to 4/16, z 7/16 to 9/16, so the whole model reaches z = 9/16.
+        let close = |a: f32, b: f32| (a - b).abs() < 1e-4;
+        assert!(close(lo[0], -0.5) && close(hi[0], 0.5), "{lo:?} {hi:?}");
+        assert!(close(lo[1], 0.0) && close(hi[1], 1.0), "{lo:?} {hi:?}");
+        assert!(
+            close(lo[2], -0.5) && close(hi[2], 9.0 / 16.0),
+            "{lo:?} {hi:?}"
+        );
+        let dark = mesh
+            .vertices
+            .iter()
+            .filter(|v| v.color == [32, 32, 32, 255])
+            .count();
+        assert_eq!(dark, 24, "the wheel's dark colour survived");
+        // Triangles face outward: for every triangle the geometric normal agrees with the stored one.
+        for t in mesh.indices.chunks(3) {
+            let [a, b, c] = [t[0], t[1], t[2]].map(|i| &mesh.vertices[i as usize]);
+            let geometric = (Vec3::from(b.position) - Vec3::from(a.position))
+                .cross(Vec3::from(c.position) - Vec3::from(a.position));
+            assert!(
+                geometric.dot(Vec3::from(a.normal)) > 0.0,
+                "winding disagrees with the normal"
+            );
+        }
+    }
+}

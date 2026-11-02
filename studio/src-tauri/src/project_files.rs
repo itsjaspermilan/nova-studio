@@ -160,6 +160,29 @@ pub fn write_audio(root: &Path, rel: &str, data_url: &str) -> Result<(), String>
     write_bytes(root, rel, &bytes)
 }
 
+const MODEL_PREFIX: &str = "data:model/gltf-binary;base64,";
+
+/// Saves a binary glTF (`.glb`) sent as a data URL, after checking the `glTF` magic and version.
+pub fn write_model(root: &Path, rel: &str, data_url: &str) -> Result<(), String> {
+    if !rel.to_ascii_lowercase().ends_with(".glb") {
+        return Err(format!("'{rel}' is not a .glb path"));
+    }
+    let encoded = data_url
+        .strip_prefix(MODEL_PREFIX)
+        .ok_or("expected a glTF data URL")?;
+    let bytes = unbase64(encoded)?;
+    if bytes.len() as u64 > MAX_ASSET_BYTES {
+        return Err(format!(
+            "'{rel}' would be bigger than {} MiB",
+            MAX_ASSET_BYTES >> 20
+        ));
+    }
+    if bytes.len() < 12 || &bytes[0..4] != b"glTF" || bytes[4..8] != [2, 0, 0, 0] {
+        return Err("that is not binary glTF 2.0 data".into());
+    }
+    write_bytes(root, rel, &bytes)
+}
+
 pub fn read_file(root: &Path, rel: &str) -> Result<FileContent, String> {
     let path = confine(root, rel)?;
     let meta = std::fs::metadata(&path).map_err(|e| format!("cannot read '{rel}': {e}"))?;
@@ -458,6 +481,34 @@ mod tests {
                 .contains("not a WAV")
         );
         assert!(read_audio(&root, "gone.wav").is_err());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn glb_data_urls_are_checked_and_saved_confined() {
+        let root = project("glb");
+        let glb = [b'g', b'l', b'T', b'F', 2, 0, 0, 0, 12, 0, 0, 0];
+        let url = format!("{MODEL_PREFIX}{}", base64(&glb));
+        write_model(&root, "models/m.glb", &url).unwrap();
+        assert_eq!(std::fs::read(root.join("models/m.glb")).unwrap(), glb);
+        let mut wrong = glb;
+        wrong[4] = 1;
+        assert!(
+            write_model(&root, "m.glb", &format!("{MODEL_PREFIX}{}", base64(&wrong)))
+                .unwrap_err()
+                .contains("not binary glTF")
+        );
+        assert!(
+            write_model(&root, "m.png", &url)
+                .unwrap_err()
+                .contains("not a .glb")
+        );
+        assert!(
+            write_model(&root, "../m.glb", &url)
+                .unwrap_err()
+                .contains("leaves the project")
+        );
+        assert!(write_model(&root, "m.glb", "data:image/png;base64,AA==").is_err());
         let _ = std::fs::remove_dir_all(&root);
     }
 

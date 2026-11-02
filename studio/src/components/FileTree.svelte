@@ -9,6 +9,7 @@
   let editing: Editing | null = $state(null);
   let sprite: { name: string; side: number } | null = $state(null);
   let sfx: string | null = $state(null);
+  let model: string | null = $state(null);
 
   const rows = $derived(visibleRows(buildTree(studio.files), open));
   const errorFiles = $derived(new Set(studio.diagnostics.filter((d) => d.severity === "error" && d.file).map((d) => d.file!)));
@@ -76,8 +77,16 @@
     <button class="ghost" title="New file" aria-label="New file" onclick={() => begin("file")}>＋</button>
     <button class="ghost" title="New sprite" aria-label="New sprite" onclick={() => (sprite = { name: "", side: 32 })}>◩</button>
     <button class="ghost" title="New sound effect" aria-label="New sound effect" onclick={() => (sfx = "")}>♪</button>
+    <button class="ghost" title="New 3D model" aria-label="New 3D model" onclick={() => (model = "")}>◆</button>
     <button class="ghost" title="New folder" aria-label="New folder" onclick={() => begin("dir")}>▤</button>
   </header>
+  {#if model !== null}
+    <form class="sprite" onsubmit={(e) => { e.preventDefault(); const n = model!; model = null; void studio.createModel(n); }}>
+      <input use:focusOnMount bind:value={model} placeholder="model name" aria-label="Model name" />
+      <button class="primary" disabled={!model.trim()}>Create</button>
+      <button type="button" class="ghost" aria-label="Cancel" onclick={() => (model = null)}>✕</button>
+    </form>
+  {/if}
   {#if sfx !== null}
     <form class="sprite" onsubmit={(e) => { e.preventDefault(); const n = sfx!; sfx = null; void studio.createSound(n); }}>
       <input use:focusOnMount bind:value={sfx} placeholder="sound name" aria-label="Sound name" />

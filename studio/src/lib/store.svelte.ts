@@ -2,6 +2,8 @@ import { getApi } from "./api";
 import { editorStates } from "./editor-state";
 import { newRaster } from "./pixels";
 import { rasterToDataUrl } from "./png";
+import { exportGlb } from "./glb";
+import { newModel, serializeModel } from "./model-doc";
 import { PRESETS, render, toJson } from "./sfx";
 import { newDoc, toSheetJson } from "./sprite-doc";
 import { encodeWav, toBase64 } from "./wav";
@@ -292,6 +294,22 @@ class Studio {
       if (this.files.some((f) => f.path === json || f.path === wav)) throw `'${clean}' already exists in sounds/`;
       await this.api!.writeAudio(wav, `data:audio/wav;base64,${toBase64(encodeWav(render(PRESETS.coin!)))}`);
       await this.api!.createFile(json, toJson(PRESETS.coin!));
+      await this.refreshFiles();
+      await this.openFile(json);
+    });
+  }
+
+  /// A new model: `models/<name>.model.json` (what the editor edits) and the exported `models/<name>.glb`.
+  async createModel(name: string) {
+    const clean = name.trim().replace(/\.model\.json$|\.glb$/i, "");
+    if (!/^[A-Za-z0-9_-]+$/.test(clean)) return this.say("error", "Model names use letters, numbers, - and _.");
+    await this.#guard(async () => {
+      const json = `models/${clean}.model.json`;
+      const glb = `models/${clean}.glb`;
+      if (this.files.some((f) => f.path === json || f.path === glb)) throw `'${clean}' already exists in models/`;
+      const doc = newModel();
+      await this.api!.writeModel(glb, `data:model/gltf-binary;base64,${toBase64(exportGlb(doc))}`);
+      await this.api!.createFile(json, serializeModel(doc));
       await this.refreshFiles();
       await this.openFile(json);
     });

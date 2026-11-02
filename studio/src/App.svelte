@@ -6,6 +6,7 @@
   import SceneEditor from "./components/SceneEditor.svelte";
   import SpriteEditor from "./components/SpriteEditor.svelte";
   import SoundEditor from "./components/SoundEditor.svelte";
+  import ModelEditor from "./components/ModelEditor.svelte";
   import BottomPanel from "./components/BottomPanel.svelte";
   import { fileKind } from "./lib/tree";
   import { isDirty, studio } from "./lib/store.svelte";
@@ -77,12 +78,14 @@
               <SpriteEditor path={studio.tab.path} text={studio.tab.text} />
             {:else if studio.tab.path.toLowerCase().endsWith(".wav") || (studio.tab.path.endsWith(".sfx.json") && !jsonView.has(studio.tab.path))}
               <SoundEditor path={studio.tab.path} text={studio.tab.text} />
+            {:else if studio.tab.path.endsWith(".model.json") && !jsonView.has(studio.tab.path)}
+              <ModelEditor path={studio.tab.path} text={studio.tab.text} onjson={() => toggleJson(studio.tab!.path, true)} />
             {:else if studio.tab.binary}
               <div class="placeholder dim">{base(studio.tab.path)} · {fileKind(studio.tab.path)} · {studio.tab.size.toLocaleString()} bytes<br />Binary files open in their own editors (coming later).</div>
             {:else if isScene(studio.tab.path) && !jsonView.has(studio.tab.path)}
               <SceneEditor path={studio.tab.path} text={studio.tab.text} onjson={() => toggleJson(studio.tab!.path, true)} />
             {:else}
-              {#if isScene(studio.tab.path) || studio.tab.path.endsWith(".sprite.json") || studio.tab.path.endsWith(".sfx.json")}
+              {#if isScene(studio.tab.path) || studio.tab.path.endsWith(".sprite.json") || studio.tab.path.endsWith(".sfx.json") || studio.tab.path.endsWith(".model.json")}
                 <div class="viewbar"><button class="ghost" onclick={() => toggleJson(studio.tab!.path, false)}>◧ Visual editor</button></div>
               {/if}
               <Editor path={studio.tab.path} text={studio.tab.text} />

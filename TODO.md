@@ -317,7 +317,14 @@ First slice, built (`SpriteEditor.svelte`, pure logic in `pixels.ts` and `sprite
 
 ## M7: 3D model and scene editors (Blockbench model)
 
-- [ ] Model editor: parts hierarchy, cubes then vertex/face editing, per-face UV
+- [x] First slice, built (`ModelEditor.svelte`, three.js 0.170 in the studio only; pure logic in `model-doc.ts`
+  and `glb.ts`): a parts hierarchy of coloured cubes (per-face colours), orbit viewport with click-to-
+  select, numeric editing, keyboard nudging, duplicate/delete/undo, saved as `models/<name>.model.json`
+  and exported to `models/<name>.glb` (one node per part, vertex colours, 1/16 scale by default) which
+  the runtime's real importer loads (fixture + Rust test pin the two together).
+- [ ] Still open: dragging gizmos, UV/texture painting, non-cube shapes, vertex/face editing, bones and
+  animation, importing existing GLB, lights/materials, a "preview in game renderer" button.
+- [ ] (original plan) Model editor: parts hierarchy, cubes then vertex/face editing, per-face UV
   and texture paint, materials, keyframed rigid-bone animation, glTF export.
 - [ ] 3D scene/layout editor: place models, transform gizmos with snapping and
   undo, camera/lighting, separate editor camera.

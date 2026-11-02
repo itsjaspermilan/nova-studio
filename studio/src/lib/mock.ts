@@ -91,6 +91,14 @@ export function createMockApi(): Api {
       if (text === undefined) throw `'${path}' does not exist`;
       return { text, binary: false, size: text.length };
     },
+    writeModel: async (path, dataUrl) => {
+      need();
+      bad(path);
+      if (!path.endsWith(".glb") || !dataUrl.startsWith("data:model/gltf-binary;base64,")) throw "expected a glTF";
+      files.set(path, "");
+      const parts = path.split("/");
+      for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join("/"));
+    },
     readAudio: async (path) => {
       need();
       bad(path);

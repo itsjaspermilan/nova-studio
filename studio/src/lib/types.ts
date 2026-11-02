@@ -80,6 +80,8 @@ export interface Api {
   readAudio(path: string): Promise<string>;
   /// Saves a WAV given as a data: URL.
   writeAudio(path: string, dataUrl: string): Promise<void>;
+  /// Saves a binary glTF given as a data: URL.
+  writeModel(path: string, dataUrl: string): Promise<void>;
   /// Saves a PNG given as a data: URL.
   writeImage(path: string, dataUrl: string): Promise<void>;
   createFile(path: string, contents?: string): Promise<void>;
