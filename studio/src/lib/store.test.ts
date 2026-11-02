@@ -162,3 +162,51 @@ describe("adding lesson code to a project", () => {
     studio.helpOpen = false;
   });
 });
+
+describe("music as Ogg", () => {
+  const wavUrl = "data:audio/wav;base64,UklGRg==";
+  it("a new song is saved as an Ogg beside its song file", async () => {
+    await openProject();
+    await studio.createSong("theme");
+    const paths = studio.files.map((f) => f.path);
+    expect(paths).toContain("music/theme.song.json");
+    expect(paths).toContain("music/theme.ogg");
+    expect(paths).not.toContain("music/theme.wav");
+    expect(studio.active).toBe("music/theme.song.json");
+  });
+
+  it("saving a song over an older WAV of the same name moves the WAV to the trash so it cannot shadow the Ogg", async () => {
+    await openProject();
+    await studio.api!.writeAudio("music/theme.wav", wavUrl);
+    await studio.refreshFiles();
+    await studio.writeMusicOgg("music/theme.ogg", wavUrl);
+    const paths = studio.files.map((f) => f.path);
+    expect(paths).toContain("music/theme.ogg");
+    expect(paths).not.toContain("music/theme.wav");
+  });
+
+  it("converting a WAV replaces it with an Ogg and opens that in its place", async () => {
+    await openProject();
+    await studio.api!.writeAudio("music/loop.wav", wavUrl);
+    await studio.refreshFiles();
+    await studio.openFile("music/loop.wav");
+    await studio.convertToOgg("music/loop.wav");
+    const paths = studio.files.map((f) => f.path);
+    expect(paths).toContain("music/loop.ogg");
+    expect(paths).not.toContain("music/loop.wav");
+    expect(studio.tabs.map((t) => t.path)).toContain("music/loop.ogg");
+    expect(studio.tabs.map((t) => t.path)).not.toContain("music/loop.wav");
+    expect(studio.active).toBe("music/loop.ogg");
+    expect(studio.notice?.text).toContain("Converted to music/loop.ogg");
+  });
+
+  it("refuses to convert when the Ogg is already there, leaving the WAV alone", async () => {
+    await openProject();
+    await studio.api!.writeAudio("music/a.wav", wavUrl);
+    await studio.api!.writeOgg("music/a.ogg", wavUrl);
+    await studio.refreshFiles();
+    await studio.convertToOgg("music/a.wav");
+    expect(studio.notice?.text).toContain("already exists");
+    expect(studio.files.map((f) => f.path)).toContain("music/a.wav");
+  });
+});

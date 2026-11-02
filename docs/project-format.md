@@ -463,7 +463,7 @@ decoded once when the project loads. **Ogg files in `music/` are streamed instea
 kept in memory (a minute of music is about a megabyte, not ten) and a background thread decodes a second or so
 ahead while `nova.music.play` runs, looping without a gap. Their header is checked at load, so a broken file still
 stops the project with an error naming it, but a streamed file cannot be played with `nova.sound.play`. WAV music,
-and Ogg in `sounds/`, is decoded at load as before, so ship long music as Ogg. If the decoder ever falls behind
+and Ogg in `sounds/`, is decoded at load as before, so ship long music as Ogg. The studio does this for you: songs save as `.ogg`, and a WAV in `music/` has a **Convert to Ogg** button. If the decoder ever falls behind
 (a very slow device) that moment is silence and playback carries on.
 
 ```lua

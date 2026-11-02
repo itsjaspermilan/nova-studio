@@ -18,8 +18,8 @@
   let loop = $state(true);
   let playing = $state(false);
   let playhead = $state(0); // steps
-  const wavPath = untrack(() => filePath).replace(/\.song\.json$/i, ".wav");
-  const songName = wavPath.slice(wavPath.lastIndexOf("/") + 1).replace(/\.wav$/, "");
+  const oggPath = untrack(() => filePath).replace(/\.song\.json$/i, ".ogg");
+  const songName = oggPath.slice(oggPath.lastIndexOf("/") + 1).replace(/\.ogg$/, "");
 
   // ---- history ------------------------------------------------------------------------------------------
   const past: Song[] = [];
@@ -60,7 +60,7 @@
     studio.saveHooks.set(filePath, async () => {
       const current = (studio.sessions.get(filePath) as { song: Song } | undefined)?.song ?? song;
       const wav = encodeWav(renderSong(current));
-      await studio.api!.writeAudio(wavPath, `data:audio/wav;base64,${toBase64(wav)}`);
+      await studio.writeMusicOgg(oggPath, `data:audio/wav;base64,${toBase64(wav)}`);
     });
     return () => stopPlayback();
   });
@@ -320,7 +320,7 @@
       <label>Tempo <input type="number" class="narrow" min="40" max="240" value={song.bpm} onchange={(e) => commit(setTempo(song, Number(e.currentTarget.value)))} /> bpm</label>
       <label>Bars <input type="number" class="narrow" min="1" max="64" value={bars} onchange={(e) => setBars(Number(e.currentTarget.value))} /></label>
       <label>New note <select bind:value={noteLen}>{#each [1, 2, 4, 8, 16] as n (n)}<option value={n}>{n} step{n > 1 ? "s" : ""}</option>{/each}</select></label>
-      <span class="dim">{secs} s · saves {wavPath}</span>
+      <span class="dim">{secs} s · saves {oggPath}</span>
       <span class="spacer"></span>
       <button class="ghost" onclick={undo} disabled={!canUndo} aria-label="Undo">↶</button>
       <button class="ghost" onclick={redo} disabled={!canRedo} aria-label="Redo">↷</button>

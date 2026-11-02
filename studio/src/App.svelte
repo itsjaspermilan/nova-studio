@@ -94,7 +94,7 @@
           {#if studio.tab}
             {#if studio.tab.path.toLowerCase().endsWith(".png") || (studio.tab.path.endsWith(".sprite.json") && !jsonView.has(studio.tab.path))}
               <SpriteEditor path={studio.tab.path} text={studio.tab.text} />
-            {:else if studio.tab.path.toLowerCase().endsWith(".wav") || (studio.tab.path.endsWith(".sfx.json") && !jsonView.has(studio.tab.path))}
+            {:else if /\.(wav|ogg)$/i.test(studio.tab.path) || (studio.tab.path.endsWith(".sfx.json") && !jsonView.has(studio.tab.path))}
               <SoundEditor path={studio.tab.path} text={studio.tab.text} />
             {:else if studio.tab.path.endsWith(".model.json") && !jsonView.has(studio.tab.path)}
               <ModelEditor path={studio.tab.path} text={studio.tab.text} onjson={() => toggleJson(studio.tab!.path, true)} />

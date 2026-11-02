@@ -324,19 +324,49 @@ class Studio {
     });
   }
 
-  /// A new song: `music/<name>.song.json` (what the editor edits) and the rendered `music/<name>.wav`.
+  /// A new song: `music/<name>.song.json` (what the editor edits) and the rendered `music/<name>.ogg` (small, and streamed by the game).
   async createSong(name: string) {
     const clean = name.trim().replace(/\.song\.json$|\.wav$/i, "");
     if (!/^[A-Za-z0-9_-]+$/.test(clean)) return this.say("error", "Song names use letters, numbers, - and _.");
     await this.#guard(async () => {
       const json = `music/${clean}.song.json`;
+      const ogg = `music/${clean}.ogg`;
       const wav = `music/${clean}.wav`;
-      if (this.files.some((f) => f.path === json || f.path === wav)) throw `'${clean}' already exists in music/`;
+      if (this.files.some((f) => f.path === json || f.path === ogg || f.path === wav)) throw `'${clean}' already exists in music/`;
       const song = newSong();
-      await this.api!.writeAudio(wav, `data:audio/wav;base64,${toBase64(encodeWav(renderSong(song)))}`);
+      await this.api!.writeOgg(ogg, `data:audio/wav;base64,${toBase64(encodeWav(renderSong(song)))}`);
       await this.api!.createFile(json, serializeSong(song));
       await this.refreshFiles();
       await this.openFile(json);
+    });
+  }
+
+  /// Saves a rendered song (as a WAV data URL) as `music/<name>.ogg`. An older `music/<name>.wav` of the same name would
+  /// shadow it (the game looks for .wav first), so it goes to the project's trash.
+  async writeMusicOgg(oggPath: string, wavDataUrl: string) {
+    await this.api!.writeOgg(oggPath, wavDataUrl);
+    const wav = oggPath.replace(/\.ogg$/, ".wav");
+    if (this.files.some((f) => f.path === wav)) await this.api!.deleteFile(wav);
+    await this.refreshFiles();
+  }
+
+  /// Converts a WAV in the project to Ogg Vorbis, much smaller and streamed by the game when it is music. Unsaved edits to
+  /// the WAV are saved first; the WAV goes to the trash; the Ogg opens in its place.
+  async convertToOgg(path: string) {
+    const tab = this.tabs.find((t) => t.path === path);
+    if (tab && isDirty(tab) && !(await this.save(path))) return;
+    await this.#guard(async () => {
+      const target = await this.api!.convertToOgg(path);
+      if (tab) {
+        editorStates.forget(path);
+        this.saveHooks.delete(path);
+        this.sessions.delete(path);
+        this.tabs = this.tabs.filter((t) => t.path !== path);
+        if (this.active === path) this.active = this.tabs.at(-1)?.path ?? null;
+      }
+      await this.refreshFiles();
+      await this.openFile(target);
+      this.say("info", `Converted to ${target}. The WAV is in the project's trash.`);
     });
   }
 

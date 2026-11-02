@@ -99,6 +99,27 @@ export function createMockApi(): Api {
       const parts = path.split("/");
       for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join("/"));
     },
+    writeOgg: async (path, wavDataUrl) => {
+      need();
+      bad(path);
+      if (!path.endsWith(".ogg") || !wavDataUrl.startsWith("data:audio/wav;base64,")) throw "expected a WAV to encode as .ogg";
+      audio.set(path, wavDataUrl); // the mock keeps the sound as it was given; reading an .ogg returns it as WAV
+      files.set(path, "");
+      const parts = path.split("/");
+      for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join("/"));
+    },
+    convertToOgg: async (path) => {
+      need();
+      bad(path);
+      if (!path.endsWith(".wav") || !audio.has(path)) throw `'${path}' is not a WAV in this project`;
+      const target = `${path.slice(0, -4)}.ogg`;
+      if (files.has(target)) throw `'${target}' already exists`;
+      audio.set(target, audio.get(path)!);
+      files.set(target, "");
+      audio.delete(path);
+      files.delete(path);
+      return target;
+    },
     readAudio: async (path) => {
       need();
       bad(path);

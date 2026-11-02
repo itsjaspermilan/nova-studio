@@ -9,6 +9,10 @@
   const fromPath = untrack(() => path);
   const generator = fromPath.endsWith(".sfx.json");
   const wavPath = generator ? fromPath.replace(/\.sfx\.json$/i, ".wav") : fromPath;
+  /// Ogg files can only be listened to here; they are made by converting a WAV or by saving a song.
+  const isOgg = fromPath.toLowerCase().endsWith(".ogg");
+  /// A WAV in music/ is held in memory by the game; as Ogg it is a fraction of the size and streams.
+  const convertible = !generator && !isOgg && fromPath.startsWith("music/");
 
   interface Session {
     params: SfxParams;
@@ -47,10 +51,12 @@
       sound = session.sound;
       canUndo = session.past.length > 0;
       canRedo = session.future.length > 0;
-      studio.saveHooks.set(fromPath, async () => {
-        const wav = encodeWav(session!.sound);
-        await studio.api!.writeAudio(wavPath, `data:audio/wav;base64,${toBase64(wav)}`);
-      });
+      if (!isOgg) {
+        studio.saveHooks.set(fromPath, async () => {
+          const wav = encodeWav(session!.sound);
+          await studio.api!.writeAudio(wavPath, `data:audio/wav;base64,${toBase64(wav)}`);
+        });
+      }
       ready = true;
     } catch (e) {
       failure = e instanceof Error ? e.message : String(e);
@@ -284,7 +290,15 @@
             </fieldset>
           {/each}
         </div>
+      {:else if isOgg}
+        <p class="dim small">This is an Ogg Vorbis file. The game streams it from <code>{fromPath}</code>, so it stays small in memory. You can listen to it here; to change it, edit the song it came from, or the original sound.</p>
       {:else}
+        {#if convertible}
+          <div class="convert">
+            <div><strong>This music is a WAV file.</strong> The game keeps all of it in memory (about {(frames(sound) * 4 / 1048576).toFixed(1)} MB). As Ogg it is a fraction of that, and it streams.</div>
+            <button class="primary" onclick={() => studio.convertToOgg(fromPath)}>Convert to Ogg</button>
+          </div>
+        {/if}
         <p class="dim small">Drag on the waveform to select a part.</p>
         <div class="presets">
           <button onclick={trimToSelection} disabled={!selection}>Keep selection</button>
@@ -320,5 +334,6 @@
   .slider span { width: 110px; flex: none; color: var(--dim); font-size: 12px; }
   .slider input { flex: 1; min-width: 0; accent-color: var(--accent); }
   .slider output { width: 84px; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .convert { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 8px 12px; border: 1px solid var(--warn); border-radius: 8px; background: color-mix(in srgb, var(--warn) 12%, transparent); }
   .fail { padding: 32px; display: grid; place-items: start; gap: 8px; }
 </style>

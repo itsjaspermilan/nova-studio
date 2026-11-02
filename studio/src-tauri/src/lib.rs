@@ -2,6 +2,7 @@
 //! module (`project_files`, `templates`, `recent`, `runner`); every file operation goes through the
 //! project root held in the app state and is confined to it (`paths`).
 
+mod audio_files;
 mod paths;
 mod project_files;
 mod recent;
@@ -185,6 +186,16 @@ fn read_audio(state: State<AppState>, path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn write_ogg(state: State<AppState>, path: String, data_url: String) -> Result<(), String> {
+    project_files::write_ogg(&root_of(&state)?, &path, &data_url)
+}
+
+#[tauri::command]
+fn convert_to_ogg(state: State<AppState>, path: String) -> Result<String, String> {
+    project_files::convert_wav_to_ogg(&root_of(&state)?, &path)
+}
+
+#[tauri::command]
 fn write_audio(state: State<AppState>, path: String, data_url: String) -> Result<(), String> {
     project_files::write_audio(&root_of(&state)?, &path, &data_url)
 }
@@ -296,6 +307,8 @@ pub fn run() {
             read_image,
             read_audio,
             write_audio,
+            write_ogg,
+            convert_to_ogg,
             write_model,
             write_file,
             write_image,

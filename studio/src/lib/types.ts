@@ -78,6 +78,10 @@ export interface Api {
   writeFile(path: string, text: string): Promise<void>;
   /// A project WAV as a data: URL.
   readAudio(path: string): Promise<string>;
+  /// Saves a sound as Ogg Vorbis at an `.ogg` path; the sound is given as a WAV data: URL and encoded by the backend.
+  writeOgg(path: string, wavDataUrl: string): Promise<void>;
+  /// Replaces a project WAV with an Ogg of the same name (the WAV goes to the trash). Returns the new path.
+  convertToOgg(path: string): Promise<string>;
   /// Saves a WAV given as a data: URL.
   writeAudio(path: string, dataUrl: string): Promise<void>;
   /// Saves a binary glTF given as a data: URL.
