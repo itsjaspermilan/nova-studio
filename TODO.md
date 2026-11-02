@@ -171,9 +171,10 @@ Spec in [docs/project-format.md](docs/project-format.md); example `examples/crat
 - [ ] Named input actions with remapping; Android analogue sticks/triggers (needs a
   native-activity input path), touch/lifecycle exercised on Android; immersive mode.
 - [ ] Audio service and Lua API (SFX, music, buses) over the C core.
-- [ ] Save-data API (project-scoped).
+- [x] Save-data API (`nova.save`, atomic JSON file, corruption recovery, 1 MiB limit; done 2026-11-02).
 - [ ] 3D extras: simple lights/material options, rigid-bone animation playback.
-- [ ] Lua time and memory limits; structured diagnostics for the studio.
+- [x] Lua time and memory limits (256 MiB; 1 s per frame, 5 s to load; covers coroutines; done 2026-11-02).
+- [ ] Structured diagnostics for the studio (file, line, traceback as data, not just a banner).
 - [ ] Project loading on Android (APK asset source behind `Vfs`) and the APK running a
   real project (overlaps M3).
 

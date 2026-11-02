@@ -26,6 +26,8 @@ pub struct Options {
     pub script: Option<PathBuf>,
     /// A Nova project folder to run (`nova run <folder>`).
     pub project: Option<PathBuf>,
+    /// Where save data goes (default: the platform's data folder; in memory when headless).
+    pub save_dir: Option<PathBuf>,
     /// Show the stats overlay in project mode (F3 toggles it).
     pub hud: bool,
     pub size: (u32, u32),
@@ -46,6 +48,7 @@ impl Default for Options {
             capture: None,
             script: None,
             project: None,
+            save_dir: None,
             hud: false,
             size: (1280, 720),
             uncapped: false,

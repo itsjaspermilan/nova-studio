@@ -13,7 +13,7 @@ const USAGE: &str = "usage:
   nova run <project-folder> [options]    play a Nova project
   nova [options]                         built-in benchmark scene
 options: [--headless] [--frames N] [--capture out.png] [--size WxH] [--world-height N]
-         [--uncapped] [--no-audio] [--hud] [--hold throttle,steer=1] [--script file.lua (benchmark scene only)]";
+         [--uncapped] [--no-audio] [--hud] [--hold throttle,steer=1] [--save-dir folder] [--script file.lua (benchmark scene only)]";
 
 fn parse() -> Result<Options, String> {
     let mut opts = Options::default();
@@ -30,6 +30,7 @@ fn parse() -> Result<Options, String> {
             "--uncapped" => opts.uncapped = true,
             "--no-audio" => opts.no_audio = true,
             "--hud" => opts.hud = true,
+            "--save-dir" => opts.save_dir = Some(value("--save-dir")?.into()),
             "--hold" => {
                 opts.hold = value("--hold")?.split(',').map(str::to_string).collect();
             }

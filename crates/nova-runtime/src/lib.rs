@@ -11,6 +11,7 @@ pub mod gfx;
 pub mod input;
 pub mod model;
 pub mod project;
+pub mod save;
 pub mod scene;
 pub mod script;
 pub mod spike;
@@ -32,7 +33,11 @@ fn android_main(android: android_activity::AndroidApp) {
         android_activity::WindowManagerFlags::FULLSCREEN,
         android_activity::WindowManagerFlags::empty(),
     );
-    if let Err(e) = app::run_windowed(app::Options::default(), android) {
+    let options = app::Options {
+        save_dir: android.internal_data_path(),
+        ..app::Options::default()
+    };
+    if let Err(e) = app::run_windowed(options, android) {
         log::error!("nova exited with an error: {e}");
     }
 }

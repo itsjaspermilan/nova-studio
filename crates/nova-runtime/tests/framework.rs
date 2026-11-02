@@ -729,11 +729,9 @@ fn bad_tilemap_data_is_explained() {
 fn sliding_stops_against_solid_tiles_and_follows_walls() {
     // A floor of solid tiles (tile 1) along row 6 (y 96..112) and a wall at column 10 (x 160..176).
     let mut rows = vec![vec![-1; 20]; 8];
-    for c in 0..20 {
-        rows[6][c] = 1;
-    }
-    for r in 0..8 {
-        rows[r][10] = 1;
+    rows[6] = vec![1; 20];
+    for row in rows.iter_mut() {
+        row[10] = 1;
     }
     let tiles = rows
         .iter()
@@ -768,4 +766,143 @@ fn sliding_stops_against_solid_tiles_and_follows_walls() {
         "right edge (x + 4) stops at the wall at x = 160, y is free: {l:?}"
     );
     assert_eq!(l[2], "free 30.0 30.0 false false");
+}
+
+// ---------------------------------------------------------------- limits
+
+#[test]
+fn an_endless_loop_is_stopped_with_a_clear_error_instead_of_hanging() {
+    let mut g = project(vec![(
+        "main.lua",
+        lua("function update(dt) while true do end end"),
+    )]);
+    let started = std::time::Instant::now();
+    steps(&mut g, 1);
+    let took = started.elapsed();
+    let e = g.error.clone().expect("the loop was stopped");
+    assert!(e.contains("ran for too long"), "{e}");
+    assert!(
+        took < std::time::Duration::from_secs(5),
+        "stopped in {took:?}"
+    );
+}
+
+#[test]
+fn an_endless_loop_while_loading_is_stopped_too() {
+    let g = project(vec![("main.lua", lua("while true do end"))]);
+    assert!(g.error.clone().expect("error").contains("ran for too long"));
+}
+
+#[test]
+fn a_waiting_coroutine_that_spins_is_covered_by_the_same_limit() {
+    let mut g = project(vec![
+        ("entities/e.lua", lua("return nova.entity {}")),
+        (
+            "scenes/s.lua",
+            lua(
+                "local S = nova.scene {}\nfunction S:enter() self:go(function() while true do end end) end\nreturn S",
+            ),
+        ),
+        ("main.lua", lua("nova.start('s')")),
+    ]);
+    steps(&mut g, 3);
+    assert!(g.error.clone().expect("error").contains("ran for too long"));
+}
+
+#[test]
+fn runaway_memory_use_fails_cleanly() {
+    let mut g = project(vec![(
+        "main.lua",
+        lua(
+            "function update(dt) local t = {} for i = 1, 1e9 do t[i] = string.rep('x', 1000) .. i end end",
+        ),
+    )]);
+    steps(&mut g, 1);
+    let e = g.error.clone().expect("memory limit hit");
+    assert!(e.to_lowercase().contains("memory"), "{e}");
+}
+
+// ---------------------------------------------------------------- save data
+
+#[test]
+fn save_values_round_trip_with_defaults_nesting_and_clear_errors() {
+    let mut g = project(vec![(
+        "main.lua",
+        lua(r#"
+local missing = nova.save.get('nothing')
+nova.save.set('best', 12)
+nova.save.set('cfg', { volume = 0.5, names = { 'a', 'b' }, on = true })
+local cfg = nova.save.get('cfg')
+nova.log(string.format('%s %d %s %s %s %s %s', tostring(missing), nova.save.get('best'), tostring(nova.save.get('x', 'dflt')), cfg.volume, cfg.names[2], tostring(cfg.on), table.concat(nova.save.keys(), ',')))
+nova.save.delete('best')
+nova.log(tostring(nova.save.get('best')))
+local ok, err = pcall(nova.save.set, 'f', function() end)
+nova.log(tostring(ok) .. ' ' .. tostring(err):match('cannot be saved') )
+local ok2, err2 = pcall(nova.save.set, '', 1)
+nova.log(tostring(ok2) .. ' ' .. tostring(err2):match('1 to 128'))
+"#),
+    )]);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    steps(&mut g, 1);
+    assert_eq!(
+        logs(&g),
+        [
+            "nil 12 dflt 0.5 b true best,cfg",
+            "nil",
+            "false cannot be saved",
+            "false 1 to 128"
+        ]
+    );
+}
+
+#[test]
+fn save_data_persists_across_games_and_scripts_can_read_it_at_load() {
+    let dir = std::env::temp_dir().join(format!("nova-game-save-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let make = |source: &str| {
+        let vfs: Rc<dyn Vfs> = Rc::new(MemVfs::new(vec![
+            ("nova.json", br#"{"format":1,"name":"Saver"}"#.to_vec()),
+            ("main.lua", lua(source)),
+        ]));
+        let d = dir.clone();
+        Game::load_with(vfs, &move |_| Some(d.clone())).expect("loads")
+    };
+    {
+        let g = make(
+            "nova.save.set('runs', (nova.save.get('runs', 0)) + 1) nova.log('runs ' .. nova.save.get('runs'))",
+        );
+        assert!(g.error.is_none(), "{:?}", g.error);
+        assert_eq!(logs(&g), ["runs 1"]);
+        // dropped here: unsaved changes are written
+    }
+    let g = make("nova.log('at load ' .. nova.save.get('runs', 0))");
+    assert_eq!(
+        logs(&g),
+        ["at load 1"],
+        "the save was read before the entry script ran"
+    );
+    assert!(dir.join("save.json").exists());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_damaged_save_file_warns_and_the_game_still_starts() {
+    let dir = std::env::temp_dir().join(format!("nova-game-badsave-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("save.json"), "{ broken").unwrap();
+    let vfs: Rc<dyn Vfs> = Rc::new(MemVfs::new(vec![
+        ("nova.json", br#"{"format":1,"name":"Saver"}"#.to_vec()),
+        ("main.lua", lua("nova.log(tostring(nova.save.get('x')))")),
+    ]));
+    let d = dir.clone();
+    let g = Game::load_with(vfs, &move |_| Some(d.clone())).expect("loads");
+    assert!(g.error.is_none());
+    assert!(
+        g.warnings.iter().any(|w| w.contains("could not be read")),
+        "{:?}",
+        g.warnings
+    );
+    assert_eq!(logs(&g), ["nil"]);
+    let _ = std::fs::remove_dir_all(&dir);
 }

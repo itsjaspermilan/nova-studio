@@ -22,11 +22,23 @@ pub enum Content {
     Game { game: Box<Game>, hud: bool },
 }
 
+/// Save data goes where the platform keeps it (or `--save-dir`); headless runs keep it in
+/// memory unless a folder is given, so tests and captures never touch real saves.
+fn save_location(opts: &Options, game_name: &str) -> Option<std::path::PathBuf> {
+    opts.save_dir.clone().or_else(|| {
+        if opts.headless {
+            None
+        } else {
+            crate::save::default_dir(game_name)
+        }
+    })
+}
+
 impl Content {
     pub fn load(opts: &Options, gfx: &mut Gfx) -> Result<Content, String> {
         if let Some(dir) = &opts.project {
             let vfs: Rc<dyn Vfs> = Rc::new(DirVfs::new(dir)?);
-            let mut game = Game::load(vfs)?;
+            let mut game = Game::load_with(vfs, &|name| save_location(opts, name))?;
             game.upload(gfx);
             log::info!(
                 "project '{}': {} assets, world height {}",
@@ -106,7 +118,9 @@ impl Content {
             }
             Content::Game { game, hud } => {
                 if game.changed_on_disk() {
-                    match Game::load(game.vfs()) {
+                    game.flush_save(); // the reloaded game reads the file, so write first
+                    let dir = game.save_dir().map(std::path::Path::to_path_buf);
+                    match Game::load_with(game.vfs(), &|_| dir.clone()) {
                         Ok(mut reloaded) => {
                             reloaded.upload(gfx);
                             log::info!("project reloaded");

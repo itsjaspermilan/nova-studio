@@ -5,13 +5,13 @@
 //! friends from `update(dt)` / `draw()`, and the engine renders what was asked that frame.
 //! Scenes, entities, tilemaps and animation arrive on top of this in later M2 slices.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 use std::time::{Duration, Instant, SystemTime};
 
 use glam::{Mat4, Vec3};
-use mlua::{Function, Lua, LuaSerdeExt, Table, Value};
+use mlua::{Function, HookTriggers, Lua, LuaSerdeExt, Table, Value, VmState};
 
 use crate::assets::{self, AtlasLayout};
 use crate::font;
@@ -19,11 +19,25 @@ use crate::gfx::{Camera, FrameInput, Gfx, ModelDraw, ModelInstance, SpriteInstan
 use crate::input::Actions;
 use crate::model::{self, Image, MeshData};
 use crate::project::{AssetKind, Project};
+use crate::save::SaveStore;
 use crate::scene;
 use crate::script::new_lua;
 use crate::sprite::{self, SpriteDef};
 use crate::tilemap::TileMap;
 use crate::vfs::Vfs;
+
+impl Drop for Game {
+    fn drop(&mut self) {
+        self.flush_save();
+    }
+}
+
+/// Stability limits for hand-written scripts (not a hostile-code sandbox): one frame of
+/// `update` + `draw` may take this long before it is stopped, and loading a project
+/// (the entry script and `init`) gets a longer allowance. Lua may use this much memory.
+pub const FRAME_BUDGET: Duration = Duration::from_millis(1000);
+pub const LOAD_BUDGET: Duration = Duration::from_millis(5000);
+pub const LUA_MEMORY_LIMIT: usize = 256 << 20;
 
 /// The entity/scene/timer framework, written in Lua and loaded before every project's
 /// entry script. It only takes over the frame when a game calls `nova.start`.
@@ -50,6 +64,7 @@ struct Shared {
     layout: AtlasLayout,
     sheets: HashMap<String, SpriteDef>,
     tilemaps: Vec<TileMap>,
+    save: SaveStore,
     mesh_ids: HashMap<String, usize>,
     known_models: Vec<String>,
     world: Vec<SpriteInstance>,
@@ -78,6 +93,7 @@ impl Uploader for Gfx {
 
 pub struct Game {
     pub project: Project,
+    deadline: Rc<Cell<Option<Instant>>>,
     vfs: Rc<dyn Vfs>,
     lua: Lua,
     shared: Rc<RefCell<Shared>>,
@@ -93,6 +109,8 @@ pub struct Game {
     pub last_update: Duration,
     stamp: Option<SystemTime>,
     checked: Instant,
+    last_flush: Instant,
+    save_dir: Option<std::path::PathBuf>,
 }
 
 fn lua_err(message: impl Into<String>) -> mlua::Error {
@@ -468,6 +486,64 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
         })?,
     )?;
     nova.set("input", input)?;
+    // --- save data: nova.save.get/set/delete/keys/flush ---
+    let save = lua.create_table()?;
+    let s = shared.clone();
+    save.set(
+        "get",
+        lua.create_function(move |lua, (key, default): (String, Option<Value>)| {
+            let sh = s.borrow();
+            match sh.save.get(&key) {
+                Some(v) => lua.to_value(v),
+                None => Ok(default.unwrap_or(Value::Nil)),
+            }
+        })?,
+    )?;
+    let s = shared.clone();
+    save.set(
+        "set",
+        lua.create_function(move |lua, (key, value): (String, Value)| {
+            let json: serde_json::Value = lua
+                .from_value(value)
+                .map_err(|e| lua_err(format!("save.set('{key}'): this value cannot be saved ({e}); use numbers, strings, booleans and tables of those")))?;
+            s.borrow_mut().save.set(&key, json).map_err(|e| lua_err(format!("save.set: {e}")))
+        })?,
+    )?;
+    let s = shared.clone();
+    save.set(
+        "delete",
+        lua.create_function(move |_, key: String| {
+            s.borrow_mut().save.delete(&key);
+            Ok(())
+        })?,
+    )?;
+    let s = shared.clone();
+    save.set(
+        "keys",
+        lua.create_function(move |_, ()| {
+            let mut keys: Vec<String> = s
+                .borrow()
+                .save
+                .keys()
+                .into_iter()
+                .map(str::to_string)
+                .collect();
+            keys.sort();
+            Ok(keys)
+        })?,
+    )?;
+    let s = shared.clone();
+    save.set(
+        "flush",
+        lua.create_function(move |_, ()| {
+            s.borrow_mut()
+                .save
+                .flush()
+                .map_err(|e| lua_err(format!("save.flush: {e}")))
+        })?,
+    )?;
+    nova.set("save", save)?;
+
     // --- raw: lookups the Lua framework needs ---
     let raw = lua.create_table()?;
     let s = shared.clone();
@@ -718,8 +794,29 @@ impl Game {
     /// entry script. Project problems (manifest, assets) are errors; a Lua error in the
     /// entry script is not: it shows in `error` so a fix hot-reloads.
     pub fn load(vfs: Rc<dyn Vfs>) -> Result<Game, String> {
+        Self::load_with(vfs, &|_| None)
+    }
+
+    /// Like `load`, with save data kept in the folder `save_dir(game_name)` names (None keeps
+    /// it in memory). The save is opened before any script runs, so scripts can read it at load.
+    pub fn load_with(
+        vfs: Rc<dyn Vfs>,
+        save_dir: &dyn Fn(&str) -> Option<std::path::PathBuf>,
+    ) -> Result<Game, String> {
         let project = Project::open(vfs.as_ref())?;
         let mut warnings = project.warnings.clone();
+        let mut store = SaveStore::memory();
+        let mut chosen_dir = None;
+        if let Some(dir) = save_dir(&project.manifest.name) {
+            match SaveStore::open(&dir) {
+                Ok((opened, warning)) => {
+                    warnings.extend(warning);
+                    store = opened;
+                    chosen_dir = Some(dir);
+                }
+                Err(e) => warnings.push(format!("saving is off: {e}")),
+            }
+        }
 
         let mut images = Vec::new();
         for asset in project.assets_of(AssetKind::Image) {
@@ -761,6 +858,7 @@ impl Game {
             layout: layout.clone(),
             sheets,
             tilemaps: Vec::new(),
+            save: store,
             mesh_ids: HashMap::new(),
             known_models: meshes.iter().map(|(id, _)| id.clone()).collect(),
             world: Vec::new(),
@@ -771,7 +869,24 @@ impl Game {
             log: Vec::new(),
         }));
         let lua = new_lua();
+        lua.set_memory_limit(LUA_MEMORY_LIMIT)
+            .map_err(|e| format!("cannot limit Lua memory: {e}"))?;
+        // A hook every 20,000 VM instructions checks the clock. It is global, so scripts
+        // started with go() (coroutines) are covered as well.
+        let deadline: Rc<Cell<Option<Instant>>> = Rc::new(Cell::new(None));
+        let hook_deadline = deadline.clone();
+        lua.set_global_hook(
+            HookTriggers::new().every_nth_instruction(20_000),
+            move |_, _| match hook_deadline.get() {
+                Some(limit) if Instant::now() > limit => Err(lua_err(
+                    "the script ran for too long in one frame; is there an endless loop?",
+                )),
+                _ => Ok(VmState::Continue),
+            },
+        )
+        .map_err(|e| format!("cannot install the script time limit: {e}"))?;
         let mut game = Game {
+            deadline,
             stamp: vfs.stamp(),
             vfs: vfs.clone(),
             lua,
@@ -787,12 +902,15 @@ impl Game {
             warnings,
             last_update: Duration::ZERO,
             checked: Instant::now(),
+            last_flush: Instant::now(),
+            save_dir: chosen_dir,
             project,
         };
         for warning in &game.warnings {
             log::warn!("project: {warning}");
         }
         let entry = game.project.manifest.entry.clone();
+        game.deadline.set(Some(Instant::now() + LOAD_BUDGET));
         let result = (|| -> mlua::Result<()> {
             register_api(&game.lua, &shared, &vfs)?;
             game.lua
@@ -811,6 +929,7 @@ impl Game {
             }
             Ok(())
         })();
+        game.deadline.set(None);
         if let Err(e) = result {
             log::error!("script error: {e}");
             game.error = Some(first_line(&e.to_string()));
@@ -828,6 +947,27 @@ impl Game {
             ids.insert(id, target.add_mesh(&mesh));
         }
         self.shared.borrow_mut().mesh_ids = ids;
+    }
+
+    /// Keeps this game's save data in `dir` (read now, written as it changes). Without it the
+    /// save data lives in memory only. Returns a warning when an unreadable save was set aside.
+    pub fn open_save(&mut self, dir: &std::path::Path) -> Result<Option<String>, String> {
+        let (store, warning) = SaveStore::open(dir)?;
+        self.shared.borrow_mut().save = store;
+        self.save_dir = Some(dir.to_path_buf());
+        Ok(warning)
+    }
+
+    /// The folder save data is kept in, if it is saved at all.
+    pub fn save_dir(&self) -> Option<&std::path::Path> {
+        self.save_dir.as_deref()
+    }
+
+    /// Writes unsaved changes now (also done every few seconds and when the game is dropped).
+    pub fn flush_save(&self) {
+        if let Err(e) = self.shared.borrow_mut().save.flush() {
+            log::error!("{e}");
+        }
     }
 
     pub fn world_height(&self) -> u32 {
@@ -885,6 +1025,7 @@ impl Game {
         }
         if self.error.is_none() {
             let started = Instant::now();
+            self.deadline.set(Some(started + FRAME_BUDGET));
             let globals = self.lua.globals();
             let mut result = Ok(());
             if let Ok(update) = globals.get::<Function>("update") {
@@ -895,11 +1036,16 @@ impl Game {
             {
                 result = draw.call::<()>(());
             }
+            self.deadline.set(None);
             self.last_update = started.elapsed();
             if let Err(e) = result {
                 log::error!("script error: {e}");
                 self.error = Some(first_line(&e.to_string()));
             }
+        }
+        if self.last_flush.elapsed() > Duration::from_secs(3) {
+            self.last_flush = Instant::now();
+            self.flush_save();
         }
         let mut sh = self.shared.borrow_mut();
         std::mem::swap(&mut sh.world, &mut self.world);

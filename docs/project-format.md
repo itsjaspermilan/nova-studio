@@ -71,8 +71,7 @@ lists; draw what you want to see.
 
 The Lua environment has `math`, `string`, `table`, `utf8` and `coroutine` only. `io`, `os`,
 `package`, `debug`, `dofile`, `loadfile` and `collectgarbage` do not exist. This is a
-stability boundary for hand-written games, not a hostile-code sandbox: there are no
-time or memory limits yet.
+stability boundary for hand-written games, not a hostile-code sandbox (see "Script limits").
 
 ### Drawing
 
@@ -312,6 +311,32 @@ entities glide along walls) in sub-steps no bigger than half a tile, so a fast e
 thin wall. It uses the entity's hitbox box. Tile numbers outside the tileset, ragged rows and
 unknown tilesets are errors that say which cell.
 
+## Save data
+
+```lua
+nova.save.set("best", 120)                        -- numbers, strings, booleans and tables of those
+nova.save.set("settings", { volume = 0.5, names = { "a", "b" } })
+local best = nova.save.get("best", 0)             -- the second argument is the default
+nova.save.delete("best")        nova.save.keys()  -- sorted list of keys
+nova.save.flush()                                 -- write now (it is also written every 3 seconds and on exit)
+```
+
+One JSON file per game, `save.json`, in the platform's data folder: `~/Library/Application
+Support/Nova/<game-name>/` on macOS, `$XDG_DATA_HOME/Nova/...` on Linux, the app's private storage on
+Android. `--save-dir <folder>` chooses another place. **Headless runs keep saves in memory** unless
+`--save-dir` is given, so tests and captures never touch real saves. The file is written atomically
+(a temporary file, then a rename); if it cannot be read it is kept as `save.json.corrupt-<time>`, the
+game starts with an empty save and a warning is logged. Limits: 1 MiB in total, keys of 1 to 128
+characters. A value that cannot be saved (a function, say) or would break the limit is an error that
+names the key. The save is opened before any script runs, so a script can read it at load time.
+
+## Script limits
+
+Lua may use at most 256 MiB. One frame of `update` + `draw` may run for at most 1 second and loading
+(the entry script and `init`) for 5 seconds; after that the script is stopped with "the script ran for
+too long in one frame; is there an endless loop?" and the error banner shows. Coroutines started with
+`go` are covered too. These are guard rails for hand-written games, not a security boundary.
+
 ## Errors and reloading
 
 - A bad project (missing or invalid `nova.json`, unreadable image or model, atlas overflow)
@@ -326,8 +351,8 @@ unknown tilesets are errors that say which cell.
 
 ## Not yet
 
-Real fonts and text layout (the UI text is still a debug pixel font), paths, particles, audio and
-save-data APIs, input remapping and named actions, rigid-bone model animation, Android loading
+Real fonts and text layout (the UI text is still a debug pixel font), paths, particles, an audio
+API, input remapping and named actions, rigid-bone model animation, Android loading
 of project files (the APK still embeds the benchmark scene), and the studio itself.
 
 ## Testing helpers

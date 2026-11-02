@@ -13,7 +13,7 @@ function Play:enter()
 end
 
 function Play:update(dt)
-  state.best = math.max(state.best, state.score)
+  state.submit_score()
 end
 
 function Play:draw_ui()
