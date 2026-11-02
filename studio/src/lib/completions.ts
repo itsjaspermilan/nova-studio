@@ -107,10 +107,10 @@ export function projectSymbols(files: string[], manifestText?: string): ProjectS
   return { images, models, sounds, fonts, scenes, entities, actions };
 }
 
-type Kind = keyof ProjectSymbols;
+export type Kind = keyof ProjectSymbols;
 
 /// Calls whose first argument is a name from the project, and which kind of name.
-const STRING_ARGUMENTS: [RegExp, Kind][] = [
+export const STRING_ARGUMENTS: [RegExp, Kind][] = [
   [/nova\.(?:ui\.)?sprite\s*\(\s*$/, "images"],
   [/nova\.model\s*\(\s*$/, "models"],
   [/nova\.(?:sound|music)\.play\s*\(\s*$/, "sounds"],

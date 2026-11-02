@@ -262,7 +262,7 @@ Spec in [docs/project-format.md](docs/project-format.md); example `examples/crat
 
 First slice, built (Svelte 5 + TypeScript + CodeMirror 6; backend in `studio/src-tauri`):
 - [x] Project hub (New/Open/Recent, templates, examples), folder-as-project.
-- [x] File tree: create, rename, delete (to `.nova/trash`). [ ] Rename does not update references yet.
+- [x] File tree: create, rename, delete (to `.nova/trash`). Renaming offers to update references (full paths, short names after known calls such as `nova.sprite("x")`, scene `kind`, sheet `image`); files with unsaved edits are skipped. [ ] Short names are not updated when a file moves out of its folder (e.g. `sprites/` to `art/`).
 - [x] Lua editor: CodeMirror (not Monaco), completions and hover docs from `nova-api.json` (kept in step
   with the runtime by a test), project names inside strings (sprites, sounds, scenes, actions),
   Problems panel from `nova check --json`, click-to-line. [ ] Optional language server later.
@@ -274,7 +274,7 @@ Second slice, built: visual scene editor for `*.scene.json` (opens by default, J
   colour, scene background and size. Saves tidy, diff-friendly JSON; unknown keys pass through.
 - [x] Pictures come from the project (`read_image` data URLs); tile maps are drawn.
 - [ ] Not yet: painting tiles, editing `props`, previewing an entity's real sprite (objects are boxes
-  named by kind), multi-select, rotate/resize handles, and no rename-aware scene references.
+  named by kind), multi-select, rotate/resize handles, (renames now update scene references).
 - [ ] Undo/redo across editors, safe saves, recovery, external-change handling.
 - [ ] Help window and short tutorials; beginner wording throughout.
 - [ ] Port from GameStudio where it fits: project tree, tabs, code editor, layout

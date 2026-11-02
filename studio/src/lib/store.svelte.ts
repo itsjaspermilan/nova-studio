@@ -3,6 +3,7 @@ import { editorStates } from "./editor-state";
 import { newRaster } from "./pixels";
 import { rasterToDataUrl } from "./png";
 import { newDoc, toSheetJson } from "./sprite-doc";
+import { moved, planRename } from "./refs";
 import { byFile } from "./diagnostics";
 import { projectSymbols, type ProjectSymbols } from "./completions";
 import type { Api, Diagnostic, ExampleInfo, FileEntry, LogLine, ProjectInfo, RecentProject, TemplateInfo } from "./types";
@@ -285,9 +286,42 @@ class Studio {
       await this.refreshFiles();
     });
   }
+  /// Text of the project's Lua and JSON files for reference updates; open tabs count with their unsaved text.
+  async #projectTexts(): Promise<Map<string, string>> {
+    const texts = new Map<string, string>();
+    const paths = this.files.filter((f) => !f.dir && /\.(lua|json)$/i.test(f.path) && f.size <= 1 << 20).map((f) => f.path);
+    await Promise.all(
+      paths.map(async (path) => {
+        const open = this.tabs.find((t) => t.path === path && !t.binary);
+        if (open) return void texts.set(path, open.text);
+        const content = await this.api!.readFile(path).catch(() => null);
+        if (content?.text != null) texts.set(path, content.text);
+      }),
+    );
+    return texts;
+  }
+
   async rename(from: string, to: string) {
     await this.#guard(async () => {
+      // Work out which scripts and data files mention the old name before anything moves.
+      const edits = planRename(from, to, await this.#projectTexts(), this.files.map((f) => f.path));
+      let apply = edits.length > 0 && confirm(`Update ${edits.reduce((n, e) => n + e.count, 0)} reference(s) in ${edits.length} file(s) to the new name?\n\n${edits.map((e) => `• ${e.file} (${e.count})`).join("\n")}`);
       await this.api!.renameFile(from, to);
+      if (apply) {
+        const skipped: string[] = [];
+        for (const edit of edits) {
+          const target = moved(edit.file, from, to) ?? edit.file;
+          const unsaved = this.tabs.find((t) => (t.path === edit.file || t.path === target) && isDirty(t));
+          if (unsaved) {
+            skipped.push(edit.file);
+            continue;
+          }
+          await this.api!.writeFile(target, edit.text);
+        }
+        if (skipped.length) this.say("error", `Not updated (unsaved changes): ${skipped.join(", ")}`);
+        else this.say("info", `Updated references in ${edits.length} file(s)`);
+        apply = true;
+      }
       for (const tab of this.tabs) {
         if (tab.path === from || tab.path.startsWith(`${from}/`)) {
           const moved = to + tab.path.slice(from.length);
@@ -299,9 +333,26 @@ class Studio {
         }
       }
       await this.refreshFiles();
+      if (apply) await this.#reloadTabs();
       this.#scheduleCheck();
     });
   }
+
+  /// Re-reads open text tabs whose files were rewritten on disk by a reference update.
+  async #reloadTabs() {
+    for (const tab of this.tabs) {
+      if (tab.binary || isDirty(tab)) continue;
+      const content = await this.api!.readFile(tab.path).catch(() => null);
+      if (content?.text != null && content.text !== tab.saved) {
+        tab.text = tab.saved = content.text;
+        editorStates.forget(tab.path);
+      }
+    }
+    const current = this.active;
+    this.active = null;
+    this.active = current; // remount the visible editor with the new text
+  }
+
   async remove(path: string) {
     await this.#guard(async () => {
       const where = await this.api!.deleteFile(path);

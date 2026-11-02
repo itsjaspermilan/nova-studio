@@ -373,6 +373,22 @@ mod tests {
         assert!(d.tags.is_empty());
     }
 
+    /// The exact shapes the studio's sprite editor writes (`toSheetJson` in studio/src/lib/sprite-doc.ts;
+    /// its test pins the same text), so a format drift on either side fails a test.
+    #[test]
+    fn files_written_by_the_studio_are_accepted() {
+        let full = "{\n  \"version\": 1,\n  \"image\": \"sheet.png\",\n  \"frame_width\": 32,\n  \"frame_height\": 32,\n  \"columns\": 4,\n  \"frames\": 4,\n  \"durations_ms\": [100, 100, 250, 100],\n  \"tags\": [\n    { \"name\": \"run\", \"from\": 0, \"to\": 2, \"direction\": \"pingpong\" },\n    { \"name\": \"hit\", \"from\": 3, \"to\": 3, \"loop\": false }\n  ]\n}\n";
+        let d = parse(full).unwrap();
+        assert_eq!((d.columns, d.frames), (4, 4));
+        assert_eq!(d.durations_ms, vec![100, 100, 250, 100]);
+        assert_eq!(d.tags[0].sequence(), vec![0, 1, 2, 1]);
+        assert!(!d.tags[1].looping);
+
+        let single = "{\n  \"version\": 1,\n  \"image\": \"sheet.png\",\n  \"frame_width\": 128,\n  \"frame_height\": 64,\n  \"frame_duration_ms\": 100\n}\n";
+        let d = parse(single).unwrap();
+        assert_eq!((d.columns, d.frames), (1, 1));
+    }
+
     #[test]
     fn the_image_path_is_relative_to_the_sheet_file() {
         let d = parse_sprite(
