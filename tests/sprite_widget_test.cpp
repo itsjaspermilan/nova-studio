@@ -9,11 +9,14 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
+#include <QDockWidget>
 #include <QFile>
 #include <QInputMethodEvent>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMainWindow>
+#include <QMenuBar>
 #include <QMouseEvent>
 #include <QPushButton>
 #include <QSaveFile>
@@ -21,10 +24,15 @@
 #include <QScrollBar>
 #include <QSignalSpy>
 #include <QSpinBox>
+#include <QStackedWidget>
+#include <QStatusBar>
+#include <QTabBar>
+#include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTimer>
-#include <QToolBox>
+#include <QToolBar>
 #include <QToolButton>
+#include <QTreeWidget>
 #include <QWheelEvent>
 #include <QtTest>
 #include <memory>
@@ -50,6 +58,9 @@ private slots:
     void onionSkinIsViewOnly();
     void pointerAnchoredZoomAndPan();
     void authoredRoundTripAndCaptures();
+    void embeddedWorkspace_data();
+    void embeddedWorkspace();
+    void responsiveBreakpoints();
 };
 
 static bool show(Workspace &workspace, QSize size = {1440, 900}, bool requireActive = true)
@@ -79,28 +90,60 @@ static bool show(Workspace &workspace, QSize size = {1440, 900}, bool requireAct
     return true;
 }
 
-static bool section(Workspace &workspace, const QString &name)
+static bool reveal(QWidget *control)
 {
-    auto *box = workspace.findChild<QToolBox *>("spriteInspector");
-    if (!box) return false;
-    for (QAbstractButton *control : box->findChildren<QAbstractButton *>()) {
-        if (control->text() == name && control->isVisible()) {
-            QTest::mouseClick(control, Qt::LeftButton);
-            QApplication::processEvents();
-            return true;
+    if (!control || !control->isVisible()) return false;
+    QApplication::processEvents();
+    for (QWidget *parent = control->parentWidget(); parent; parent = parent->parentWidget()) {
+        if (auto *scroll = qobject_cast<QScrollArea *>(parent)) {
+            QRect bounds(control->mapTo(scroll->widget(), QPoint()), control->size());
+            // ensureWidgetVisible may expose only a spin box's input cursor, not the whole hit target.
+            scroll->ensureVisible(bounds.center().x(), bounds.center().y(),
+                                  (bounds.width() + 1) / 2 + 2, (bounds.height() + 1) / 2 + 2);
         }
     }
-    return false;
+    QApplication::processEvents();
+    for (QWidget *ancestor = control->parentWidget(); ancestor; ancestor = ancestor->parentWidget()) {
+        QRect bounds(control->mapTo(ancestor, QPoint()), control->size());
+        if (!ancestor->rect().contains(bounds)) {
+            qWarning("Clipped control %s in %s: (%d,%d %dx%d) outside %dx%d",
+                     qPrintable(control->objectName()), qPrintable(ancestor->objectName()),
+                     bounds.x(), bounds.y(), bounds.width(), bounds.height(), ancestor->width(), ancestor->height());
+            return false;
+        }
+        if (ancestor->isWindow()) break;
+    }
+    QWidget *hit = control->window()->childAt(control->mapTo(control->window(), control->rect().center()));
+    return hit == control || (hit && control->isAncestorOf(hit));
+}
+
+static bool section(Workspace &workspace, const QString &name)
+{
+    auto *selector = workspace.findChild<QComboBox *>("spriteInspectorSections");
+    if (!reveal(selector)) return false;
+    int index = selector->findText(name);
+    if (index < 0) return false;
+    selector->setFocus();
+    QTest::keyClick(selector, Qt::Key_Home);
+    for (int i = 0; i < index; ++i) QTest::keyClick(selector, Qt::Key_Down);
+    QApplication::processEvents();
+    return selector->currentIndex() == index;
+}
+
+static bool page(Workspace &workspace, int index)
+{
+    auto *tabs = workspace.findChild<QTabBar *>("spriteCanvasPages");
+    if (!tabs || !reveal(tabs)) return false;
+    QTest::mouseClick(tabs, Qt::LeftButton, Qt::NoModifier, tabs->tabRect(index).center());
+    QApplication::processEvents();
+    return tabs->currentIndex() == index;
 }
 
 static bool click(Workspace &workspace, const char *name)
 {
     auto *control = workspace.findChild<QAbstractButton *>(name);
     if (!control || !control->isEnabled()) return false;
-    for (QWidget *parent = control->parentWidget(); parent; parent = parent->parentWidget())
-        if (auto *scroll = qobject_cast<QScrollArea *>(parent)) scroll->ensureWidgetVisible(control);
-    QApplication::processEvents();
-    if (!control->isVisible()) return false;
+    if (!reveal(control)) return false;
     QTest::mouseClick(control, Qt::LeftButton);
     QApplication::processEvents();
     return true;
@@ -109,9 +152,7 @@ static bool click(Workspace &workspace, const char *name)
 static bool type(Workspace &workspace, const char *name, const QString &value)
 {
     auto *edit = workspace.findChild<QLineEdit *>(name);
-    if (!edit || !edit->isVisible()) return false;
-    for (QWidget *parent = edit->parentWidget(); parent; parent = parent->parentWidget())
-        if (auto *scroll = qobject_cast<QScrollArea *>(parent)) scroll->ensureWidgetVisible(edit);
+    if (!reveal(edit)) return false;
     QTest::mouseClick(edit, Qt::LeftButton);
     QTest::keySequence(edit, QKeySequence::SelectAll);
     QTest::keyClicks(edit, value);
@@ -123,8 +164,7 @@ static bool number(QWidget &parent, const char *name, int value)
 {
     auto *control = parent.findChild<QSpinBox *>(name);
     if (!control || !control->isEnabled() || !control->isVisible()) return false;
-    for (QWidget *ancestor = control->parentWidget(); ancestor; ancestor = ancestor->parentWidget())
-        if (auto *scroll = qobject_cast<QScrollArea *>(ancestor)) scroll->ensureWidgetVisible(control);
+    if (!reveal(control)) return false;
     control->setFocus(Qt::OtherFocusReason);
     QTest::keySequence(control, QKeySequence::SelectAll);
     QTest::keyClicks(control, QString::number(value));
@@ -148,10 +188,8 @@ static void drag(Canvas *canvas, QPoint from, QPoint to, bool release = true)
 
 static bool choose(Workspace &workspace, Tool tool)
 {
-    auto *control = workspace.findChild<QToolButton *>(QString("spriteTool%1").arg(int(tool)));
-    if (!control) return false;
-    QTest::mouseClick(control, Qt::LeftButton);
-    return workspace.canvas()->tool() == tool;
+    QByteArray name = QString("spriteTool%1").arg(int(tool)).toLatin1();
+    return click(workspace, name.constData()) && workspace.canvas()->tool() == tool;
 }
 
 static void driveDialog(Workspace &workspace, const std::function<void(QDialog &)> &interaction)
@@ -589,16 +627,9 @@ void SpriteWidgetTest::authoredRoundTripAndCaptures()
         QCOMPARE(surface->palette().color(QPalette::Text), QColor("#edf5fb"));
         QVERIFY(surface->palette().color(QPalette::Base) != surface->palette().color(QPalette::AlternateBase));
     }
-    auto *inspector = workspace.findChild<QToolBox *>("spriteInspector");
-    for (int i = 0; i < inspector->count(); ++i) {
-        bool found = false;
-        for (auto *header : inspector->findChildren<QAbstractButton *>()) {
-            if (header->text() != inspector->itemText(i)) continue;
-            found = true;
-            QVERIFY2(header->height() >= header->fontMetrics().height() + 4, qPrintable(header->text()));
-        }
-        QVERIFY(found);
-    }
+    auto *inspector = workspace.findChild<QComboBox *>("spriteInspectorSections");
+    QCOMPARE(inspector->count(), 5);
+    QVERIFY(inspector->height() >= inspector->fontMetrics().height() + 4);
     for (auto *toggle : workspace.findChildren<QCheckBox *>())
         if (toggle->isVisible()) QVERIFY(toggle->width() >= toggle->minimumSizeHint().width());
     QVERIFY(type(workspace, "spriteLayerName", "Car body"));
@@ -693,7 +724,7 @@ void SpriteWidgetTest::authoredRoundTripAndCaptures()
         workspace.resize(workspace.minimumSizeHint());
         QApplication::processEvents();
         workspace.canvas()->fitCanvas();
-        QCOMPARE(workspace.size(), QSize(1280, 720));
+        QCOMPARE(workspace.size(), QSize(960, 500));
         QVERIFY(workspace.canvas()->width() >= 400);
         QVERIFY(workspace.canvas()->height() >= 240);
         QVERIFY(workspace.grab().save(QDir(directory).filePath("sprite-minimum.png")));
@@ -792,7 +823,7 @@ void SpriteWidgetTest::pendingNumbersAndHostActions()
     QVERIFY(document.setLayer(layer, error));
     workspace.resize(workspace.minimumSizeHint());
     QApplication::processEvents();
-    QCOMPARE(workspace.size(), QSize(1280, 720));
+    QCOMPARE(workspace.size(), QSize(960, 500));
     QCOMPARE(workspace.findChild<QLabel *>("spriteTitle")->toolTip(), QString(96, 'W'));
 }
 
@@ -858,6 +889,339 @@ void SpriteWidgetTest::closingCancelsGesture()
     QVERIFY(!document.gestureActive());
     QVERIFY(document.state() == before);
     QCOMPARE(document.undoStack()->count(), 0);
+}
+
+void SpriteWidgetTest::embeddedWorkspace_data()
+{
+    QTest::addColumn<QSize>("requested");
+    QTest::addColumn<bool>("hosted");
+    QTest::newRow("content-1000x540") << QSize(1000, 540) << false;
+    QTest::newRow("minimum-960x500") << QSize(960, 500) << false;
+    QTest::newRow("host-1280x720") << QSize(1280, 720) << true;
+}
+
+void SpriteWidgetTest::embeddedWorkspace()
+{
+    QFETCH(QSize, requested);
+    QFETCH(bool, hosted);
+    Document document;
+    QString error;
+    QVERIFY(document.create({16, 16}, "Rally marker", RasterMode::Pixel, error));
+    QMainWindow host;
+    auto ownedWorkspace = std::make_unique<Workspace>(document);
+    Workspace &workspace = *ownedWorkspace;
+    QWidget *window = &workspace;
+    QAction save("Save sprite"), import("Import PNG"), exportImages("Export frames");
+    QByteArray savedSource, importedPng;
+    ExportBundle exportedBundle;
+    int saveAttempts = 0, saved = 0, imported = 0, exported = 0;
+    QImage importImage(2, 2, QImage::Format_ARGB32);
+    importImage.fill(QColor("#e7bd77"));
+    importImage.setPixelColor(1, 1, QColor("#29475d"));
+    QVERIFY(encodePng(importImage, importedPng, error));
+    connect(&save, &QAction::triggered, &workspace, [&] {
+        ++saveAttempts;
+        if (workspace.prepareSnapshot(error) && document.serialize(savedSource, error)) ++saved;
+    });
+    connect(&import, &QAction::triggered, &workspace, [&] {
+        if (workspace.importPng(importedPng, error)) ++imported;
+    });
+    connect(&exportImages, &QAction::triggered, &workspace, [&] {
+        if (workspace.prepareSnapshot(error) && document.exportBundle(exportedBundle, error)) ++exported;
+    });
+    workspace.setHostActions(&save, &import, &exportImages);
+    QDockWidget *project = nullptr;
+    QToolBar *toolbar = nullptr;
+    if (hosted) {
+        host.setWindowTitle("Nova Sprite embedding host fixture");
+        auto *tabs = new QTabWidget;
+        tabs->addTab(new QWidget, "Scene");
+        tabs->addTab(new QWidget, "Code");
+        tabs->addTab(&workspace, "Sprite");
+        tabs->setCurrentWidget(&workspace);
+        host.setCentralWidget(tabs);
+        project = new QDockWidget("Project", &host);
+        project->setFeatures(QDockWidget::NoDockWidgetFeatures);
+        project->setFixedWidth(240);
+        auto *tree = new QTreeWidget;
+        tree->setHeaderHidden(true);
+        auto *assets = new QTreeWidgetItem(tree, {"Rally project"});
+        auto *sprites = new QTreeWidgetItem(assets, {"Sprites"});
+        new QTreeWidgetItem(sprites, {"Rally marker.nova-sprite"});
+        new QTreeWidgetItem(assets, {"Scenes"});
+        new QTreeWidgetItem(assets, {"Models"});
+        tree->expandAll();
+        project->setWidget(tree);
+        host.addDockWidget(Qt::LeftDockWidgetArea, project);
+        toolbar = host.addToolBar("Studio actions");
+        toolbar->setMovable(false);
+        toolbar->addActions({&save, &import, &exportImages});
+        toolbar->addSeparator();
+        toolbar->addActions({workspace.undoAction(), workspace.redoAction()});
+        host.menuBar()->addMenu("File")->addActions({&save, &import, &exportImages});
+        host.statusBar()->showMessage("Test-only embedding host; source and PNG payloads remain in memory.");
+        host.setPalette(workspace.palette());
+        window = &host;
+    }
+    window->resize(requested);
+    window->show();
+    // Geometry and widget-local input only; this deliberately does not claim Cocoa activation.
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+    QApplication::processEvents();
+    QCOMPARE(window->size(), requested);
+    QVERIFY(workspace.width() <= 1040);
+    QVERIFY(workspace.height() >= 500);
+    QVERIFY(workspace.minimumWidth() <= 960);
+    QVERIFY(workspace.minimumHeight() <= 500);
+    QCOMPARE(workspace.minimumSizeHint(), QSize(960, 500));
+    const QSize contentSize = workspace.size();
+    const QFont font = workspace.font();
+    QVERIFY(font.pointSizeF() >= 12);
+    for (QWidget *surface : {static_cast<QWidget *>(workspace.canvas()), static_cast<QWidget *>(workspace.preview())}) {
+        QCOMPARE(surface->palette().color(QPalette::Window), QColor("#142131"));
+        QCOMPARE(surface->palette().color(QPalette::Text), QColor("#edf5fb"));
+        QVERIFY(surface->font().pointSizeF() >= 12);
+    }
+    if (hosted) {
+        QCOMPARE(project->width(), 240);
+        QVERIFY(reveal(project));
+        QCOMPARE(host.findChildren<QDockWidget *>().size(), 1);
+        for (QAction *action : {&save, &import, &exportImages}) QVERIFY(reveal(toolbar->widgetForAction(action)));
+    }
+    auto *pages = workspace.findChild<QTabBar *>("spriteCanvasPages");
+    QVERIFY(reveal(pages));
+    QCOMPARE(pages->currentIndex(), 0);
+    QVERIFY(workspace.canvas()->isVisible());
+    QVERIFY(workspace.canvas()->width() >= 500);
+    QVERIFY(workspace.canvas()->height() >= 240);
+    QVERIFY(!workspace.preview()->isVisible());
+    auto capture = [&](const char *name) {
+        QString directory = qEnvironmentVariable("NOVA_SPRITE_CAPTURE_DIR");
+        if (directory.isEmpty()) return true;
+        QApplication::processEvents();
+        QString file = QString("sprite-embedded-%1-%2.png").arg(QTest::currentDataTag(), name);
+        return QDir().mkpath(directory) && window->grab().save(QDir(directory).filePath(file));
+    };
+    for (int i = int(Tool::Select); i <= int(Tool::Eyedropper); ++i) {
+        QVERIFY(choose(workspace, Tool(i)));
+        QCOMPARE(workspace.findChild<QToolButton *>(QString("spriteTool%1").arg(i))->size(), QSize(40, 40));
+    }
+    QVERIFY(choose(workspace, Tool::Rectangle));
+    QVERIFY(click(workspace, "spriteFilledShapes"));
+    workspace.canvas()->fitCanvas();
+    drag(workspace.canvas(), {4, 2}, {11, 13});
+    QVERIFY(!document.gestureActive());
+    QCOMPARE(document.undoStack()->count(), 1);
+    QCOMPARE(document.cel(workspace.canvas()->frameId(), workspace.canvas()->layerId()).pixelColor(7, 7),
+             workspace.canvas()->toolSettings().color);
+    QVERIFY(click(workspace, "spriteHostImport"));
+    QCOMPARE(imported, 1);
+    QVERIFY(click(workspace, "spriteHostSave"));
+    QCOMPARE(saved, 1);
+    Document reopened;
+    QVERIFY(reopened.load(savedSource, error));
+    QVERIFY(reopened.state() == document.state());
+    QVERIFY(click(workspace, "spriteHostExport"));
+    QCOMPARE(exported, 1);
+    QCOMPARE(exportedBundle.frames.size(), 1);
+    QImage exportedImage;
+    QVERIFY(decodePng(exportedBundle.frames[0].png, exportedImage, error));
+    QCOMPARE(exportedImage, composite(document.state(), workspace.canvas()->frameId()));
+    QVERIFY(capture("draw"));
+
+    QVERIFY(page(workspace, 1));
+    QVERIFY(!workspace.canvas()->isVisible());
+    QVERIFY(reveal(workspace.preview()));
+    for (const char *name : {"spriteHostSave", "spriteHostImport", "spriteHostExport", "spriteTitle", "spriteStatus"})
+        QVERIFY2(reveal(workspace.findChild<QWidget *>(name)), name);
+    for (const char *name : {"spriteNewFrame", "spriteDuplicateFrame", "spriteFrameEarlier",
+                             "spriteFrameLater", "spriteDeleteFrame", "spriteFrameDuration",
+                             "spriteAnimations", "spritePlayAnimation", "spriteStopAnimation",
+                             "spriteOnionSkin", "spriteOnionOpacity"})
+        QVERIFY2(reveal(workspace.findChild<QWidget *>(name)), name);
+    QVERIFY(click(workspace, "spriteDuplicateFrame"));
+    Id duplicate = workspace.canvas()->frameId();
+    QVERIFY(number(workspace, "spriteFrameDuration", 60000));
+    auto *frameList = workspace.findChild<QListWidget *>("spriteFrames");
+    QRect frameRect = frameList->visualItemRect(frameList->currentItem());
+    QVERIFY(frameRect.width() >= frameList->fontMetrics().horizontalAdvance("60000 ms") + 16);
+    QVERIFY(frameRect.height() >= 52 + 2 * frameList->fontMetrics().height() + 12);
+    QVERIFY(capture("maximum-duration"));
+    QVERIFY(number(workspace, "spriteFrameDuration", 80));
+    QVERIFY(click(workspace, "spriteFrameEarlier"));
+    QCOMPARE(document.state().frames[0].id, duplicate);
+    QVERIFY(click(workspace, "spriteFrameLater"));
+    QCOMPARE(document.state().frames[1].id, duplicate);
+    QVERIFY(click(workspace, "spriteNewFrame"));
+    QCOMPARE(document.state().frames.size(), 3);
+    QVERIFY(click(workspace, "spriteDeleteFrame"));
+    QCOMPARE(document.state().frames.size(), 2);
+    QVERIFY(click(workspace, "spriteOnionSkin"));
+    QVERIFY(number(workspace, "spriteOnionOpacity", 40));
+    QVERIFY(click(workspace, "spritePlayAnimation"));
+    QVERIFY(workspace.preview()->isPlaying());
+    QTRY_COMPARE_WITH_TIMEOUT(workspace.preview()->displayedFrame(), document.state().frames[0].id, 500);
+    QTRY_COMPARE_WITH_TIMEOUT(workspace.preview()->displayedFrame(), document.state().frames[1].id, 500);
+    QVERIFY(click(workspace, "spriteStopAnimation"));
+    QVERIFY(capture("frames"));
+    State beforeError = document.state();
+    QVERIFY(section(workspace, "Sprite and canvas"));
+    QVERIFY(number(workspace, "spritePivotX", 2000));
+    QVERIFY(click(workspace, "spriteApplyMetadata"));
+    QVERIFY(document.state() == beforeError);
+    QVERIFY(workspace.hasPendingEdits());
+    QVERIFY(reveal(workspace.findChild<QWidget *>("spriteProblemRow")));
+    QCOMPARE(window->size(), requested);
+    for (const char *name : {"spriteNewFrame", "spriteDuplicateFrame", "spriteFrameDuration",
+                             "spriteAnimations", "spritePlayAnimation", "spriteOnionSkin", "spriteOnionOpacity"})
+        QVERIFY2(reveal(workspace.findChild<QWidget *>(name)), name);
+    QVERIFY(capture("frames-error"));
+    QVERIFY(click(workspace, "spriteResetMetadata"));
+    QVERIFY(click(workspace, "spriteDismissProblem"));
+    QVERIFY(page(workspace, 0));
+    auto *inspector = workspace.findChild<QStackedWidget *>("spriteInspector");
+    for (const QString &name : {"Layers", "Sprite and canvas", "Selection and transforms",
+                                "Palette and color", "Named animations"}) {
+        QVERIFY(section(workspace, name));
+        for (QWidget *control : inspector->currentWidget()->findChildren<QWidget *>()) {
+            if (!control->objectName().startsWith("sprite")) continue;
+            if (qobject_cast<QAbstractButton *>(control) || qobject_cast<QLineEdit *>(control) ||
+                qobject_cast<QSpinBox *>(control) || qobject_cast<QComboBox *>(control)) {
+                QVERIFY2(reveal(control), qPrintable(control->objectName()));
+                QVERIFY(control->font().pointSizeF() >= 12);
+            }
+        }
+    }
+    QVERIFY(section(workspace, "Layers"));
+    QVERIFY(type(workspace, "spriteLayerName", "Pending layer"));
+    QVERIFY(section(workspace, "Sprite and canvas"));
+    QVERIFY(type(workspace, "spriteName", "Pending sprite"));
+    QVERIFY(section(workspace, "Palette and color"));
+    QVERIFY(type(workspace, "spritePaletteName", "Pending palette"));
+    QVERIFY(section(workspace, "Named animations"));
+    QVERIFY(type(workspace, "spriteAnimationName", "Pending animation"));
+    State before = document.state();
+    quint64 revision = document.revision();
+    int history = document.undoStack()->index();
+    QVERIFY(!workspace.undoAction()->isEnabled());
+    window->resize(hosted ? QSize(1680, 1000) : QSize(1440, 900));
+    QApplication::processEvents();
+    QVERIFY(!pages->isVisible());
+    QVERIFY(workspace.canvas()->isVisible() && workspace.preview()->isVisible());
+    window->resize(requested);
+    QApplication::processEvents();
+    QCOMPARE(window->size(), requested);
+    QCOMPARE(workspace.size(), contentSize);
+    QCOMPARE(workspace.font(), font);
+    QVERIFY(click(workspace, "spriteHostSave"));
+    QCOMPARE(saveAttempts, 2);
+    QCOMPARE(saved, 1);
+    QVERIFY(!error.isEmpty());
+    QVERIFY(click(workspace, "spriteHostExport"));
+    QCOMPARE(exported, 1);
+    QCOMPARE(document.revision(), revision);
+    QCOMPARE(document.undoStack()->index(), history);
+    QVERIFY(document.state() == before);
+    for (const auto &draft : {qMakePair("spriteLayerName", "Pending layer"), qMakePair("spriteName", "Pending sprite"),
+                             qMakePair("spritePaletteName", "Pending palette"), qMakePair("spriteAnimationName", "Pending animation")})
+        QCOMPARE(workspace.findChild<QLineEdit *>(draft.first)->text(), QString(draft.second));
+    QVERIFY(section(workspace, "Layers"));
+    QVERIFY(click(workspace, "spriteAddLayer"));
+    QVERIFY(document.state() == before);
+    QVERIFY(section(workspace, "Sprite and canvas"));
+    auto *apply = workspace.findChild<QPushButton *>("spriteApplyMetadata");
+    QPoint footer = apply->mapTo(&workspace, QPoint());
+    QVERIFY(reveal(workspace.findChild<QSpinBox *>("spriteCollisionHeight")));
+    auto *propertiesScroll = inspector->currentWidget()->findChild<QScrollArea *>();
+    QVERIFY(propertiesScroll);
+    int scrollPosition = propertiesScroll->verticalScrollBar()->value();
+    QVERIFY(scrollPosition > 0);
+    QPoint scrollPoint = propertiesScroll->viewport()->rect().center();
+    QWheelEvent wheel(scrollPoint, propertiesScroll->viewport()->mapToGlobal(scrollPoint), {}, {0, 120},
+                      Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+    QApplication::sendEvent(propertiesScroll->viewport(), &wheel);
+    QApplication::processEvents();
+    QVERIFY(propertiesScroll->verticalScrollBar()->value() < scrollPosition);
+    QCOMPARE(apply->mapTo(&workspace, QPoint()), footer);
+    QVERIFY(reveal(apply));
+    QVERIFY(reveal(workspace.findChild<QWidget *>("spriteProblemRow")));
+    QCOMPARE(window->size(), requested);
+    QVERIFY(capture("properties"));
+    for (const auto &reset : {qMakePair("Layers", "spriteResetLayer"), qMakePair("Sprite and canvas", "spriteResetMetadata"),
+                             qMakePair("Palette and color", "spriteResetPalette"), qMakePair("Named animations", "spriteResetAnimation")}) {
+        QVERIFY(section(workspace, reset.first));
+        QVERIFY(click(workspace, reset.second));
+    }
+    QVERIFY(!workspace.hasPendingEdits());
+    QVERIFY(document.state() == before);
+    QVERIFY(click(workspace, "spriteDismissProblem"));
+
+    window->resize(hosted ? QSize(1680, 1000) : QSize(1440, 900));
+    QApplication::processEvents();
+    auto *duration = workspace.findChild<QSpinBox *>("spriteFrameDuration");
+    QVERIFY(reveal(duration));
+    duration->setFocus();
+    QTest::keySequence(duration, QKeySequence::SelectAll);
+    QTest::keyClicks(duration, "217");
+    QVERIFY(workspace.hasPendingEdits());
+    window->resize(requested);
+    QApplication::processEvents();
+    QCOMPARE(window->size(), requested);
+    QCOMPARE(pages->currentIndex(), 1);
+    QVERIFY(reveal(duration));
+    QVERIFY(duration->text().startsWith("217"));
+    QVERIFY(document.state() == before);
+    QVERIFY(!workspace.prepareSnapshot(error));
+    QTest::keyClick(duration, Qt::Key_Return);
+    QCOMPARE(document.state().frames[document.frameIndex(workspace.canvas()->frameId())].durationMs, 217);
+    QVERIFY(workspace.prepareSnapshot(error));
+    QVERIFY(click(workspace, "spritePlayAnimation"));
+    window->resize(hosted ? QSize(1680, 1000) : QSize(1440, 900));
+    QApplication::processEvents();
+    window->resize(requested);
+    QApplication::processEvents();
+    QCOMPARE(pages->currentIndex(), 1);
+    QVERIFY(workspace.preview()->isPlaying());
+    QVERIFY(choose(workspace, Tool::Pencil));
+    QCOMPARE(pages->currentIndex(), 0);
+    QVERIFY(workspace.canvas()->isVisible());
+    QVERIFY(!workspace.preview()->isVisible());
+    QVERIFY(!workspace.preview()->isPlaying());
+    workspace.setDarkTheme(false);
+    QVERIFY(section(workspace, "Layers"));
+    QVERIFY(capture("light"));
+    qInfo("Embedding fixture platform=%s, outer=%dx%d, component=%dx%d, canvas=%dx%d, inspector=%d, DPR=%.2f",
+          qPrintable(QGuiApplication::platformName()), window->width(), window->height(),
+          workspace.width(), workspace.height(), workspace.canvas()->width(), workspace.canvas()->height(),
+          workspace.findChild<QWidget *>("spriteInspectorPanel")->width(), workspace.devicePixelRatioF());
+}
+
+void SpriteWidgetTest::responsiveBreakpoints()
+{
+    Document document;
+    Workspace workspace(document);
+    QVERIFY(show(workspace, {1180, 720}, false));
+    auto *pages = workspace.findChild<QTabBar *>("spriteCanvasPages");
+    auto *sections = workspace.findChild<QComboBox *>("spriteInspectorSections");
+    QVERIFY(pages && sections);
+    QAccessibleInterface *sectionInterface = QAccessible::queryAccessibleInterface(sections);
+    QAccessibleInterface *pageInterface = QAccessible::queryAccessibleInterface(pages);
+    QVERIFY(sectionInterface && pageInterface);
+    QCOMPARE(sectionInterface->role(), QAccessible::ComboBox);
+    QCOMPARE(pageInterface->role(), QAccessible::PageTabList);
+    for (QSize size : {QSize(1180, 720), QSize(1179, 720), QSize(1180, 719),
+                      QSize(1180, 720), QSize(960, 500), QSize(1000, 540)}) {
+        workspace.resize(size);
+        QApplication::processEvents();
+        QCOMPARE(workspace.size(), size);
+        bool compact = size.width() < 1180 || size.height() < 720;
+        QCOMPARE(pages->isVisible(), compact);
+        QCOMPARE(workspace.preview()->isVisible(), !compact);
+        QVERIFY(workspace.canvas()->isVisible());
+        QVERIFY(workspace.canvas()->height() >= 240);
+        for (int i = int(Tool::Select); i <= int(Tool::Eyedropper); ++i)
+            QVERIFY(reveal(workspace.findChild<QToolButton *>(QString("spriteTool%1").arg(i))));
+    }
 }
 
 int main(int argc, char **argv)

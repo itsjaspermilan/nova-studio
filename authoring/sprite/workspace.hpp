@@ -8,13 +8,16 @@
 class QAction;
 class QCheckBox;
 class QComboBox;
+class QGridLayout;
 class QLabel;
 class QLineEdit;
 class QListWidget;
 class QPushButton;
+class QScrollArea;
 class QSpinBox;
 class QSplitter;
-class QToolBox;
+class QStackedWidget;
+class QTabBar;
 class QToolButton;
 
 namespace nova::sprite {
@@ -34,13 +37,19 @@ public:
     bool importPng(const QByteArray &bytes, QString &error);
     void setHostActions(QAction *save, QAction *importImage, QAction *exportImages);
     void setDarkTheme(bool dark);
-    QSize minimumSizeHint() const override { return {1280, 720}; }
+    QSize minimumSizeHint() const override { return {960, 500}; }
+protected:
+    void resizeEvent(QResizeEvent *event) override;
+    void showEvent(QShowEvent *event) override;
 signals:
     void problem(const QString &message);
     void pendingEditsChanged(bool pending);
     void saveRequested();
 private:
     void buildUi();
+    void updateLayoutMode();
+    void updateCanvasPage();
+    void addInspectorPage(QWidget *page, const QString &name);
     void refresh();
     void refreshHistory();
     void refreshSelection();
@@ -65,8 +74,13 @@ private:
     Canvas *canvas_ = nullptr;
     AnimationPreview *preview_ = nullptr;
     QAction *undo_ = nullptr, *redo_ = nullptr;
-    QSplitter *splitter_ = nullptr;
-    QToolBox *inspector_ = nullptr;
+    QSplitter *splitter_ = nullptr, *surface_ = nullptr;
+    QStackedWidget *inspector_ = nullptr;
+    QComboBox *inspectorSections_ = nullptr;
+    QTabBar *canvasPages_ = nullptr;
+    QWidget *timeline_ = nullptr, *toolSettings_ = nullptr, *viewSettings_ = nullptr;
+    QGridLayout *toolLayout_ = nullptr;
+    QScrollArea *toolScroll_ = nullptr;
     QLabel *title_ = nullptr, *saved_ = nullptr, *status_ = nullptr, *problemLabel_ = nullptr;
     QLabel *dimensions_ = nullptr, *animationMembers_ = nullptr;
     QWidget *problemRow_ = nullptr;
@@ -89,6 +103,7 @@ private:
     bool refreshing_ = false, layerPending_ = false, metadataPending_ = false;
     bool animationPending_ = false, palettePending_ = false;
     bool durationPending_ = false;
+    bool compact_ = false, dark_ = true;
 };
 
 } // namespace nova::sprite

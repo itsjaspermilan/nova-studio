@@ -16,10 +16,50 @@ with a document member and a child workspace, explicitly delete the workspace
 in the host's destructor before member destruction.
 
 `Workspace(Document&, QWidget*)` provides the full component; `Canvas` and
-`AnimationPreview` can also be embedded separately. The workspace has a
-1280x720 logical minimum; 1440x900 is the normal reviewed size. Inspector pages
-scroll without moving their Apply/Reset footers. Theme changes are local to the
-workspace; they do not change QApplication styling or native file dialogs.
+`AnimationPreview` can also be embedded separately. Reserve **1000x540 logical
+pixels of content** for the embedded workspace. Its `minimumSizeHint()` is
+960x500, also covered by the compact tests; it does not force a 1280x720 child
+minimum or a top-level window size. The host still owns its window minimum and
+must reserve space for its own docks, tabs, toolbar, status and OS decorations.
+
+The Sprite inspector is already included in that content budget: **replace/hide
+the Scene inspector while the Sprite tab is active**, rather than allocating
+another right-hand inspector alongside it. The component does not manipulate
+the host's docks. A 1280x720 test-host widget with a 240px Project dock, menu,
+toolbar, Scene/Code/Sprite tabs and status bar leaves 1030x606 for the component.
+The separate 1000x540 case reserves additional space for host/native chrome.
+These are logical Qt widget bounds, not a measurement of an OS-decorated window.
+
+Layout behavior:
+
+- Below 1180px wide **or** 720px high, **Draw / Frames & preview** choose the
+  central view. Drawing settings and Grid/Zoom/Fit appear in Draw; every frame,
+  duration, range, playback and onion-skin control remains in Frames & preview.
+  Choosing a drawing tool returns to Draw. At or above both thresholds, canvas and
+  timeline are simultaneously visible in a vertical splitter.
+- Compact tools reflow into two columns of the original 40x40 targets; wide
+  layout uses one column. System typography remains at least 12pt. Command
+  groups wrap rather than shrink or disappear into an overflow menu; the
+  timeline can scroll when its content needs more height. Frame thumbnails
+  reserve space for both the frame number and the full 1..60000ms duration.
+- A native Qt combo box selects the five retained inspector sections. The
+  inspector starts at 250px in compact layout (306px wide layout), with a 240px
+  minimum and a user-adjustable splitter. Forms scroll independently of their
+  fixed Apply/Reset footers. The selected section and unapplied fields survive
+  layout changes; the same controls are retained rather than recreated.
+- Entering compact layout keeps Frames & preview visible when a duration is
+  unfinished, a timeline control has focus, or preview is playing. Resizing does
+  not commit that partial duration. Explicitly returning to Draw hides/stops
+  preview; it does not alter frames or animation timing. Save/export/history
+  guards still apply to the retained document-property drafts.
+
+At 12pt in the Qt 6.12 offscreen fixture, the default 1000x540 Draw view has a
+618x359 canvas, and the 960x500 case has a 578x319 canvas (before an error banner).
+These observed sizes are not a promise of identical metrics on every platform;
+the content budgets and accessible controls are the embedding constraints.
+Save/Import/Export actions remain visible in both views when supplied by the
+host. Theme changes are scoped to this workspace, including after adoption by
+a host tab; they do not change QApplication styling or native file dialogs.
 Long names remain complete in fields/accessibility/heading tooltips and are
 elided in the heading/status instead of enlarging the window.
 
@@ -285,6 +325,34 @@ controls, fixed-footer scrolling, size previews, host actions, failure retention
 and teardown. Its private offscreen clipboard does not replace the OS clipboard.
 This is not an OS IME, accessibility-client or novice usability study.
 
+The embedding follow-up additionally exercises 1000x540 and 960x500 content,
+and a 1280x720 `QMainWindow` fixture with a real 240px Project dock, tabs,
+menu/toolbar/status and supplied Save/Import/Export actions. Its save/export
+handlers capture real serialized source/PNG payloads, and Import applies a
+decoded PNG; the fixture is not `StudioWindow` or a replacement save journal.
+Checks cover full hit-target rectangles within every ancestor viewport,
+widget-local scrolling with fixed footers, all ten tools and all five inspector
+sections, compact/wide threshold transitions, 60000ms labels, visible errors,
+unapplied text/numbers across resize, guarded save/export/undo, and preview
+continuity/stop behavior. The native activation helper is unchanged.
+
+To reproduce the **offscreen** high-DPI embedding captures without activating
+the desktop:
+
+```sh
+QT_QPA_PLATFORM=offscreen QT_SCALE_FACTOR=2 \
+NOVA_SPRITE_CAPTURE_DIR="$PWD/build-sprite/sprite-embedding-evidence-2x" \
+./scripts/with-toolchain.sh \
+  ./build-sprite/nova_sprite_widget_tests.app/Contents/MacOS/nova_sprite_widget_tests \
+  authoredRoundTripAndCaptures embeddedWorkspace responsiveBreakpoints
+```
+
+The follow-up passed the three focused Debug selectors and the widget selector
+under ASan/UBSan, with offscreen layout/control captures at DPR 1 and 2. The
+current embedded layout has **not** been reverified on an active Cocoa desktop.
+The earlier native captures below describe the original component checkpoint,
+not new proof of native input or the revised embedded layout.
+
 With `-DNOVA_SPRITE_NATIVE_TESTS=ON`, two separate selectors exist:
 
 - `nova_sprite_native_layout`: exposed Cocoa-widget authoring/output and
@@ -322,8 +390,8 @@ macOS leak sanitizer is disabled). A fresh `NOVA_QT_SPRITE=OFF` build passed
 core/project/CLI/lifecycle-patch checks; the launcher linked only native system
 frameworks, not Qt.
 
-Final exposed Cocoa layout/authoring and resize/scale dialog captures completed
-under LLDB with debuggee exit 0. The separate native focus/accessibility case
+At the original checkpoint, exposed Cocoa layout/authoring and resize/scale
+dialog captures completed under LLDB with debuggee exit 0. The separate native focus/accessibility case
 returned debuggee exit 1 with the explicit locked-desktop diagnostic. That is a
 retained validation blocker, not a component test pass. The user explicitly
 deferred native input verification for this bounded component handoff; the

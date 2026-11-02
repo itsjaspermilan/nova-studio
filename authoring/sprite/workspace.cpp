@@ -3,31 +3,89 @@
 
 #include <QAbstractButton>
 #include <QAction>
+#include <QApplication>
 #include <QCheckBox>
 #include <QColorDialog>
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFormLayout>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPainter>
 #include <QPushButton>
+#include <QResizeEvent>
 #include <QScopedValueRollback>
 #include <QScrollArea>
 #include <QSignalBlocker>
+#include <QShowEvent>
 #include <QSpinBox>
 #include <QSplitter>
+#include <QStackedWidget>
 #include <QStyle>
-#include <QToolBox>
+#include <QTabBar>
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <algorithm>
 
 namespace nova::sprite {
 namespace {
+
+class FlowRow final : public QLayout {
+public:
+    FlowRow() { setContentsMargins(0, 0, 0, 0); setSpacing(6); }
+    ~FlowRow() override { while (!items_.isEmpty()) delete items_.takeLast(); }
+    void addItem(QLayoutItem *item) override { items_.append(item); }
+    int count() const override { return int(items_.size()); }
+    QLayoutItem *itemAt(int index) const override { return items_.value(index); }
+    QLayoutItem *takeAt(int index) override
+    {
+        return index >= 0 && index < count() ? items_.takeAt(index) : nullptr;
+    }
+    Qt::Orientations expandingDirections() const override { return Qt::Horizontal; }
+    bool hasHeightForWidth() const override { return true; }
+    int heightForWidth(int width) const override { return arrange(QRect(0, 0, width, 0), false); }
+    QSize minimumSize() const override
+    {
+        QSize size;
+        for (auto *item : items_) if (!item->isEmpty()) size = size.expandedTo(item->minimumSize());
+        return size;
+    }
+    QSize sizeHint() const override
+    {
+        int width = 0, height = 0;
+        for (auto *item : items_) if (!item->isEmpty()) {
+            if (width) width += spacing();
+            width += item->sizeHint().width();
+            height = std::max(height, item->sizeHint().height());
+        }
+        return {width, height};
+    }
+    void setGeometry(const QRect &rect) override { QLayout::setGeometry(rect); arrange(rect, true); }
+private:
+    int arrange(QRect rect, bool apply) const
+    {
+        int x = rect.x(), y = rect.y(), rowHeight = 0;
+        for (auto *item : items_) {
+            if (item->isEmpty()) continue;
+            QSize size = item->sizeHint().expandedTo(item->minimumSize());
+            size.setWidth(std::max(item->minimumSize().width(), std::min(size.width(), rect.width())));
+            if (x != rect.x() && x + size.width() > rect.x() + rect.width()) {
+                x = rect.x();
+                y += rowHeight + spacing();
+                rowHeight = 0;
+            }
+            if (apply) item->setGeometry(QRect(QPoint(x, y), size));
+            x += size.width() + spacing();
+            rowHeight = std::max(rowHeight, size.height());
+        }
+        return y + rowHeight - rect.y();
+    }
+    QList<QLayoutItem *> items_;
+};
 
 class ElidedLabel final : public QLabel {
 public:
@@ -177,10 +235,10 @@ QIcon colorIcon(QColor color)
 Workspace::Workspace(Document &document, QWidget *parent) : QWidget(parent), document_(document)
 {
     setObjectName("SpriteWorkspace");
+    setAttribute(Qt::WA_StyledBackground);
     setAccessibleName(tr("Sprite workspace"));
-    setMinimumSize(minimumSizeHint());
     QFont system = font();
-    if (system.pointSizeF() < 12) system.setPointSizeF(12);
+    system.setPointSizeF(std::max(12.0, system.pointSizeF()));
     setFont(system);
     buildUi();
     setDarkTheme(true);
@@ -221,12 +279,14 @@ Workspace::~Workspace()
 void Workspace::buildUi()
 {
     auto *layout = new QVBoxLayout(this);
+    // Let a host resize across the wide layout's minimum before compact reflow.
+    layout->setSizeConstraint(QLayout::SetNoConstraint);
     layout->setContentsMargins(12, 12, 12, 8);
     layout->setSpacing(8);
     auto *heading = new QHBoxLayout;
     title_ = new ElidedLabel;
     title_->setObjectName("spriteTitle");
-    saved_ = label({});
+    saved_ = new ElidedLabel;
     saved_->setObjectName("spriteSaveState");
     heading->addWidget(title_);
     heading->addWidget(saved_);
@@ -234,6 +294,9 @@ void Workspace::buildUi()
     saveHost_ = new QToolButton;
     importHost_ = new QToolButton;
     exportHost_ = new QToolButton;
+    saveHost_->setObjectName("spriteHostSave");
+    importHost_->setObjectName("spriteHostImport");
+    exportHost_->setObjectName("spriteHostExport");
     for (auto *host : {saveHost_, importHost_, exportHost_}) {
         host->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
         host->setMinimumHeight(34);
@@ -282,14 +345,15 @@ void Workspace::buildUi()
     canvas_ = new Canvas(document_);
     canvas_->setHistoryActions(undo_, redo_);
     preview_ = new AnimationPreview(document_);
-    auto *context = new QHBoxLayout;
+    auto *context = new FlowRow;
+    toolSettings_ = new QWidget;
+    toolSettings_->setLayout(context);
     auto *toolLabel = label(tr("Pencil"));
     toolLabel->setMinimumWidth(84);
     toolLabel->setObjectName("spriteToolLabel");
     connect(canvas_, &Canvas::activeChanged, toolLabel, [this, toolLabel] {
         toolLabel->setText(toolName(canvas_->tool()));
     });
-    context->addWidget(toolLabel);
     colorButton_ = new QToolButton;
     colorButton_->setObjectName("spriteQuickColor");
     colorButton_->setAccessibleName(tr("Choose drawing color"));
@@ -298,38 +362,42 @@ void Workspace::buildUi()
     colorButton_->setMinimumHeight(34);
     colorButton_->setIcon(colorIcon(canvas_->toolSettings().color));
     colorButton_->setText(canvas_->toolSettings().color.name());
-    context->addWidget(colorButton_);
+    context->addWidget(row({toolLabel, colorButton_}));
     connect(colorButton_, &QToolButton::clicked, this, [this] {
         QColor value = QColorDialog::getColor(canvas_->toolSettings().color, this, tr("Drawing color"),
                                               QColorDialog::ShowAlphaChannel);
         if (value.isValid()) setColor(value.toRgb());
     });
-    context->addWidget(label(tr("Size")));
     brushSize_ = spin("spriteBrushSize", 1, 64, tr(" px"));
     brushSize_->setAccessibleName(tr("Brush size in pixels"));
     brushSize_->setToolTip(tr("Pencil is always 1 px. Brush, eraser and shape outlines use this size."));
     brushSize_->setFixedWidth(84);
-    context->addWidget(brushSize_);
-    context->addWidget(label(tr("Opacity")));
     brushOpacity_ = spin("spriteBrushOpacity", 1, 100, "%");
     brushOpacity_->setAccessibleName(tr("Tool opacity"));
     brushOpacity_->setValue(100);
     brushOpacity_->setFixedWidth(84);
-    context->addWidget(brushOpacity_);
+    context->addWidget(row({label(tr("Size")), brushSize_, label(tr("Opacity")), brushOpacity_}));
     filled_ = new CheckBox(tr("Filled shapes"));
     filled_->setObjectName("spriteFilledShapes");
     filled_->setToolTip(tr("Fill rectangles and ellipses. Other drawing tools do not use this setting."));
-    context->addWidget(filled_);
     mode_ = new QComboBox;
     mode_->setObjectName("spriteRasterMode");
     mode_->setAccessibleName(tr("Raster workflow"));
     mode_->addItems({tr("Pixel art"), tr("Smooth raster")});
-    context->addWidget(mode_);
-    context->addStretch();
+    context->addWidget(row({filled_, mode_}));
+    auto *viewControls = new QHBoxLayout;
+    canvasPages_ = new QTabBar;
+    canvasPages_->setObjectName("spriteCanvasPages");
+    canvasPages_->setAccessibleName(tr("Drawing or frame workspace"));
+    canvasPages_->setExpanding(false);
+    canvasPages_->setDrawBase(false);
+    canvasPages_->addTab(tr("Draw"));
+    canvasPages_->addTab(tr("Frames && preview"));
+    viewControls->addWidget(canvasPages_);
+    viewControls->addStretch();
     auto *grid = new CheckBox(tr("Grid"));
     grid->setObjectName("spriteGrid");
     grid->setChecked(true);
-    context->addWidget(grid);
     zoom_ = new QComboBox;
     zoom_->setObjectName("spriteZoom");
     zoom_->setAccessibleName(tr("Canvas zoom"));
@@ -337,12 +405,12 @@ void Workspace::buildUi()
     zoom_->setInsertPolicy(QComboBox::NoInsert);
     zoom_->addItems({"12.5%", "25%", "50%", "100%", "200%", "400%", "800%", "1600%", "3200%"});
     zoom_->setFixedWidth(100);
-    context->addWidget(zoom_);
     auto *fit = button(tr("Fit"), "spriteFit");
     fit->setProperty("spriteIcon", int(Icon::Fit));
     fit->setToolTip(tr("Fit canvas (Home). Space-drag pans; wheel zooms."));
-    context->addWidget(fit);
-    layout->addLayout(context);
+    viewSettings_ = row({grid, zoom_, fit});
+    viewControls->addWidget(viewSettings_);
+    layout->addWidget(toolSettings_);
     connect(fit, &QPushButton::clicked, canvas_, &Canvas::fitCanvas);
     connect(grid, &QCheckBox::toggled, canvas_, &Canvas::setGridVisible);
     auto toolSettings = [this] {
@@ -387,9 +455,10 @@ void Workspace::buildUi()
     drawingLayout->setContentsMargins(0, 0, 0, 0);
     drawingLayout->setSpacing(8);
     auto *rail = new QWidget;
-    auto *railLayout = new QVBoxLayout(rail);
-    railLayout->setContentsMargins(2, 0, 2, 0);
-    railLayout->setSpacing(5);
+    toolLayout_ = new QGridLayout(rail);
+    toolLayout_->setContentsMargins(2, 0, 2, 0);
+    toolLayout_->setSpacing(5);
+    toolLayout_->setAlignment(Qt::AlignTop);
     const QStringList keys{"Q", "W", "P", "B", "E", "G", "L", "R", "O", "I"};
     for (int i = 0; i <= int(Tool::Eyedropper); ++i) {
         Tool tool = Tool(i);
@@ -403,29 +472,35 @@ void Workspace::buildUi()
         control->setAutoExclusive(true);
         control->setFixedSize(40, 40);
         control->setIconSize({22, 22});
-        railLayout->addWidget(control);
+        toolLayout_->addWidget(control, i, 0);
         tools_.append(control);
         connect(control, &QToolButton::clicked, this, [this, tool] {
+            if (compact_) canvasPages_->setCurrentIndex(0);
             canvas_->setTool(tool);
             canvas_->setFocus(Qt::ShortcutFocusReason);
         });
     }
-    railLayout->addStretch();
-    auto *railScroll = scrollArea(rail);
+    auto *railScroll = toolScroll_ = scrollArea(rail);
     railScroll->setFixedWidth(56);
     drawingLayout->addWidget(railScroll);
-    auto *surface = new QSplitter(Qt::Vertical);
-    surface->setObjectName("spriteSurfaceSplitter");
-    surface->setChildrenCollapsible(false);
-    surface->addWidget(canvas_);
+    auto *center = new QWidget;
+    auto *centerLayout = new QVBoxLayout(center);
+    centerLayout->setContentsMargins(0, 0, 0, 0);
+    centerLayout->setSpacing(6);
+    centerLayout->addLayout(viewControls);
+    surface_ = new QSplitter(Qt::Vertical);
+    surface_->setObjectName("spriteSurfaceSplitter");
+    surface_->setChildrenCollapsible(false);
+    surface_->addWidget(canvas_);
     auto *timeline = new QWidget;
+    timeline_ = scrollArea(timeline);
+    timeline_->setObjectName("spriteTimelinePanel");
     timeline->setObjectName("spriteTimeline");
-    timeline->setMinimumHeight(222);
     auto *timelineLayout = new QHBoxLayout(timeline);
     timelineLayout->setContentsMargins(8, 8, 8, 8);
     auto *timelineMain = new QVBoxLayout;
     timelineMain->setSpacing(6);
-    auto *frameCommands = new QHBoxLayout;
+    auto *frameCommands = new FlowRow;
     auto *newFrame = button(tr("New"), "spriteNewFrame");
     newFrame->setProperty("spriteIcon", int(Icon::Add));
     auto *duplicate = button(tr("Duplicate"), "spriteDuplicateFrame");
@@ -437,7 +512,6 @@ void Workspace::buildUi()
     later->setToolTip(tr("Move the selected frame later. Named animation membership is retained."));
     for (QPushButton *control : {newFrame, duplicate, earlier, later, deleteFrame})
         frameCommands->addWidget(control);
-    frameCommands->addStretch();
     duration_ = spin("spriteFrameDuration", 1, 60000, tr(" ms"));
     duration_->setAccessibleName(tr("Selected frame duration in milliseconds"));
     duration_->setToolTip(tr("Exact duration of the selected frame, not a global frames-per-second setting."));
@@ -452,26 +526,24 @@ void Workspace::buildUi()
     frames_->setFlow(QListView::LeftToRight);
     frames_->setWrapping(false);
     frames_->setIconSize({52, 52});
-    frames_->setGridSize({86, 106});
+    frames_->setGridSize({104, 112});
     frames_->setMinimumHeight(120);
     frames_->setMaximumHeight(124);
     timelineMain->addWidget(frames_);
-    auto *transport = new QHBoxLayout;
+    auto *transport = new FlowRow;
     animations_ = new QComboBox;
     animations_->setObjectName("spriteAnimations");
     animations_->setAccessibleName(tr("Animation playback range"));
     animations_->setMinimumWidth(116);
     animations_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     animations_->setMinimumContentsLength(8);
-    transport->addWidget(animations_, 1);
     play_ = button(tr("Preview"), "spritePlayAnimation");
     play_->setProperty("spriteIcon", int(Icon::Play));
     play_->setToolTip(tr("Preview this animation in the editor. This does not start the game."));
     stop_ = button(tr("Stop"), "spriteStopAnimation");
     stop_->setProperty("spriteIcon", int(Icon::Stop));
     stop_->setEnabled(false);
-    transport->addWidget(play_);
-    transport->addWidget(stop_);
+    transport->addWidget(row({animations_, play_, stop_}));
     onion_ = new CheckBox(tr("Onion skin"));
     onion_->setObjectName("spriteOnionSkin");
     onion_->setToolTip(tr("Show previous/next timeline frames in rose/blue behind the current frame."));
@@ -479,17 +551,26 @@ void Workspace::buildUi()
     onionOpacity_->setAccessibleName(tr("Onion-skin opacity"));
     onionOpacity_->setValue(25);
     onionOpacity_->setFixedWidth(78);
-    transport->addWidget(onion_);
-    transport->addWidget(onionOpacity_);
+    transport->addWidget(row({onion_, onionOpacity_}));
     timelineMain->addLayout(transport);
     timelineLayout->addLayout(timelineMain, 1);
-    preview_->setFixedWidth(152);
-    timelineLayout->addWidget(preview_);
-    surface->addWidget(timeline);
-    surface->setStretchFactor(0, 1);
-    surface->setStretchFactor(1, 0);
-    surface->setSizes({500, 222});
-    drawingLayout->addWidget(surface, 1);
+    preview_->setFixedSize(152, 180);
+    timelineLayout->addWidget(preview_, 0, Qt::AlignVCenter);
+    surface_->addWidget(timeline_);
+    surface_->setStretchFactor(0, 1);
+    surface_->setStretchFactor(1, 0);
+    surface_->setSizes({500, 250});
+    centerLayout->addWidget(surface_, 1);
+    drawingLayout->addWidget(center, 1);
+    connect(canvasPages_, &QTabBar::currentChanged, this, [this](int index) {
+        if (compact_ && index == 0 && durationPending_) {
+            QSignalBlocker blocker(canvasPages_);
+            canvasPages_->setCurrentIndex(1);
+            showProblem(tr("Finish editing the frame duration with Enter before returning to Draw."));
+            return;
+        }
+        updateCanvasPage();
+    });
     splitter_->addWidget(drawing);
     connect(newFrame, &QPushButton::clicked, this, [this] { addFrame(false); });
     connect(duplicate, &QPushButton::clicked, this, [this] { addFrame(true); });
@@ -541,11 +622,24 @@ void Workspace::buildUi()
     connect(onionOpacity_, &QSpinBox::valueChanged, this, onionChanged);
     onionChanged();
 
-    inspector_ = new QToolBox;
+    auto *inspectorPanel = new QWidget;
+    inspectorPanel->setObjectName("spriteInspectorPanel");
+    inspectorPanel->setMinimumWidth(240);
+    auto *inspectorLayout = new QVBoxLayout(inspectorPanel);
+    inspectorLayout->setContentsMargins(0, 0, 0, 0);
+    inspectorLayout->setSpacing(6);
+    inspectorSections_ = new QComboBox;
+    inspectorSections_->setObjectName("spriteInspectorSections");
+    inspectorSections_->setAccessibleName(tr("Sprite inspector section"));
+    inspectorSections_->setToolTip(tr("Choose layer, sprite, selection, palette or animation properties."));
+    inspectorSections_->setMinimumHeight(34);
+    inspectorLayout->addWidget(inspectorSections_);
+    inspector_ = new QStackedWidget;
     inspector_->setObjectName("spriteInspector");
     inspector_->setAccessibleName(tr("Sprite inspector sections"));
-    inspector_->setMinimumWidth(270);
     inspector_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
+    inspectorLayout->addWidget(inspector_, 1);
+    connect(inspectorSections_, &QComboBox::currentIndexChanged, inspector_, &QStackedWidget::setCurrentIndex);
 
     auto *layerForm = new QWidget;
     auto *layerLayout = new QVBoxLayout(layerForm);
@@ -554,14 +648,17 @@ void Workspace::buildUi()
     layers_ = new QListWidget;
     layers_->setObjectName("spriteLayers");
     layers_->setAccessibleName(tr("Layers, topmost first"));
-    layers_->setMinimumHeight(128);
+    layers_->setMinimumHeight(100);
     layers_->setMaximumHeight(144);
     layerLayout->addWidget(layers_);
     auto *add = button(tr("Add"), "spriteAddLayer");
     auto *up = button(tr("Raise"), "spriteRaiseLayer");
     auto *down = button(tr("Lower"), "spriteLowerLayer");
     auto *remove = button(tr("Delete"), "spriteDeleteLayer");
-    layerLayout->addWidget(row({add, up, down, remove}));
+    auto *layerCommands = new FlowRow;
+    layerCommands->addWidget(row({add, remove}));
+    layerCommands->addWidget(row({up, down}));
+    layerLayout->addLayout(layerCommands);
     auto *properties = new QFormLayout;
     layerName_ = text("spriteLayerName");
     visible_ = new CheckBox(tr("Visible"));
@@ -580,7 +677,7 @@ void Workspace::buildUi()
     auto *applyLayer = button(tr("Apply layer"), "spriteApplyLayer");
     applyLayer->setProperty("primary", true);
     auto *resetLayer = button(tr("Reset"), "spriteResetLayer");
-    inspector_->addItem(formPage(layerForm, row({applyLayer, resetLayer})), tr("Layers"));
+    addInspectorPage(formPage(layerForm, row({applyLayer, resetLayer})), tr("Layers"));
     connect(add, &QPushButton::clicked, this, &Workspace::addLayer);
     connect(up, &QPushButton::clicked, this, [this] {
         if (!requireApplied()) return;
@@ -631,7 +728,8 @@ void Workspace::buildUi()
     pivotY_ = spin("spritePivotY", 0, MaxDimension, tr(" px"));
     spriteLayout->addRow(tr("Pivot X"), pivotX_);
     spriteLayout->addRow(tr("Pivot Y"), pivotY_);
-    collision_ = new CheckBox(tr("Rectangle collision metadata"));
+    collision_ = new CheckBox(tr("Collision rectangle"));
+    collision_->setAccessibleName(tr("Rectangle collision metadata"));
     collision_->setObjectName("spriteCollisionEnabled");
     spriteLayout->addRow(collision_);
     collisionX_ = spin("spriteCollisionX", 0, MaxDimension);
@@ -648,7 +746,7 @@ void Workspace::buildUi()
     auto *applySprite = button(tr("Apply sprite"), "spriteApplyMetadata");
     applySprite->setProperty("primary", true);
     auto *resetSprite = button(tr("Reset"), "spriteResetMetadata");
-    inspector_->addItem(formPage(spriteForm, row({applySprite, resetSprite})), tr("Sprite and canvas"));
+    addInspectorPage(formPage(spriteForm, row({applySprite, resetSprite})), tr("Sprite and canvas"));
     connect(resize, &QPushButton::clicked, this, [this] { resizeDialog(false, false); });
     connect(scale, &QPushButton::clicked, this, [this] { resizeDialog(true, false); });
     connect(crop, &QPushButton::clicked, this, [this] { resizeDialog(false, true); });
@@ -691,7 +789,7 @@ void Workspace::buildUi()
     for (auto *control : {select, transform, flipX, flipY, rotate}) selectionLayout->addRow(control);
     selectionLayout->addRow(row({copy, cut, paste}));
     selectionLayout->addRow(clear);
-    inspector_->addItem(formPage(selectionForm), tr("Selection and transforms"));
+    addInspectorPage(formPage(selectionForm), tr("Selection and transforms"));
     connect(select, &QPushButton::clicked, this, [this] { applySelection(false); });
     connect(transform, &QPushButton::clicked, this, [this] { applySelection(true); });
     connect(flipX, &QPushButton::clicked, this, [this] {
@@ -745,7 +843,7 @@ void Workspace::buildUi()
     paletteLayout->addRow(row({addColor, removeColor}));
     auto *applyPalette = button(tr("Apply name"), "spriteApplyPalette");
     auto *resetPalette = button(tr("Reset"), "spriteResetPalette");
-    inspector_->addItem(formPage(paletteForm, row({applyPalette, resetPalette})), tr("Palette and color"));
+    addInspectorPage(formPage(paletteForm, row({applyPalette, resetPalette})), tr("Palette and color"));
     connect(paletteName_, &QLineEdit::textEdited, this, [this] {
         if (!refreshing_) { palettePending_ = true; markPending(); }
     });
@@ -806,7 +904,7 @@ void Workspace::buildUi()
     auto *animationForm = new QWidget;
     auto *animationLayout = new QFormLayout(animationForm);
     animationLayout->setContentsMargins(0, 0, 0, 0);
-    auto *animationHint = label(tr("Choose a saved animation below the canvas, or define a named range here. Durations belong to individual frames."));
+    auto *animationHint = label(tr("Choose a saved animation in Frames & preview, or define a named range here. Durations belong to individual frames."));
     animationHint->setWordWrap(true);
     animationLayout->addRow(animationHint);
     animationName_ = text("spriteAnimationName");
@@ -830,7 +928,7 @@ void Workspace::buildUi()
     animationLayout->addRow(delivery);
     auto *applyAnimation = button(tr("Apply range"), "spriteApplyAnimation");
     auto *resetAnimation = button(tr("Reset"), "spriteResetAnimation");
-    inspector_->addItem(formPage(animationForm, row({applyAnimation, resetAnimation})), tr("Named animations"));
+    addInspectorPage(formPage(animationForm, row({applyAnimation, resetAnimation})), tr("Named animations"));
     auto animationEdited = [this] { if (!refreshing_) { animationPending_ = true; markPending(); } };
     connect(animationName_, &QLineEdit::textEdited, this, animationEdited);
     connect(animationFrom_, &QSpinBox::valueChanged, this, animationEdited);
@@ -846,7 +944,7 @@ void Workspace::buildUi()
         QString error;
         if (!document_.removeAnimation(animation_, error)) showProblem(error);
     });
-    splitter_->addWidget(inspector_);
+    splitter_->addWidget(inspectorPanel);
     splitter_->setStretchFactor(0, 1);
     splitter_->setStretchFactor(1, 0);
     splitter_->setSizes({990, 306});
@@ -857,6 +955,56 @@ void Workspace::buildUi()
     status_->setAccessibleName(tr("Sprite editing status"));
     status_->setMinimumHeight(24);
     layout->addWidget(status_);
+    updateLayoutMode();
+}
+
+void Workspace::addInspectorPage(QWidget *page, const QString &name)
+{
+    inspector_->addWidget(page);
+    inspectorSections_->addItem(name);
+}
+
+void Workspace::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);
+    updateLayoutMode();
+}
+
+void Workspace::showEvent(QShowEvent *event)
+{
+    QWidget::showEvent(event);
+    // Adoption by a host tab repolishes descendants, including custom painted surfaces.
+    setDarkTheme(dark_);
+}
+
+void Workspace::updateLayoutMode()
+{
+    bool compact = width() < 1180 || height() < 720;
+    if (compact != compact_) {
+        compact_ = compact;
+        toolScroll_->setFixedWidth(compact_ ? 96 : 56);
+        for (auto *control : tools_) toolLayout_->removeWidget(control);
+        for (int i = 0; i < tools_.size(); ++i)
+            toolLayout_->addWidget(tools_[i], compact_ ? i / 2 : i, compact_ ? i % 2 : 0);
+        if (compact_) {
+            QWidget *focus = QApplication::focusWidget();
+            QSignalBlocker blocker(canvasPages_);
+            canvasPages_->setCurrentIndex(durationPending_ || preview_->isPlaying() ||
+                (focus && timeline_->isAncestorOf(focus)) ? 1 : 0);
+        }
+        splitter_->setSizes({std::max(1, width() - 280), compact_ ? 250 : 306});
+    }
+    canvasPages_->setVisible(compact_);
+    updateCanvasPage();
+}
+
+void Workspace::updateCanvasPage()
+{
+    bool drawing = !compact_ || canvasPages_->currentIndex() == 0;
+    toolSettings_->setVisible(drawing);
+    viewSettings_->setVisible(drawing);
+    canvas_->setVisible(drawing);
+    timeline_->setVisible(!compact_ || canvasPages_->currentIndex() == 1);
 }
 
 bool Workspace::hasPendingEdits() const
@@ -921,6 +1069,7 @@ void Workspace::refreshTitle()
     title_->setToolTip(document_.state().name);
     saved_->setText(hasPendingEdits() ? tr("Inspector changes not applied") :
                     document_.isDirty() ? tr("Unsaved changes") : tr("Saved source"));
+    saved_->setToolTip(saved_->text());
 }
 
 void Workspace::refresh()
@@ -956,6 +1105,7 @@ void Workspace::refresh()
             s.mode == RasterMode::Pixel ? Qt::FastTransformation : Qt::SmoothTransformation);
         auto *item = new QListWidgetItem(QIcon(QPixmap::fromImage(thumbnail)),
                                         tr("%1\n%2 ms").arg(i + 1).arg(frame.durationMs), frames_);
+        item->setSizeHint(frames_->gridSize() - QSize(4, 4));
         item->setData(Qt::UserRole, frame.id);
         item->setToolTip(tr("Frame %1, stable ID %2, duration %3 ms").arg(i + 1).arg(frame.id).arg(frame.durationMs));
         if (i == activeFrame) frames_->setCurrentItem(item);
@@ -1199,6 +1349,7 @@ void Workspace::setHostActions(QAction *save, QAction *importImage, QAction *exp
 
 void Workspace::setDarkTheme(bool dark)
 {
+    dark_ = dark;
     QPalette p = palette();
     QColor background(dark ? "#142131" : "#f1f5f8"), panel(dark ? "#1c2d40" : "#ffffff");
     QColor base(dark ? "#122031" : "#e9eff4"), alternate(dark ? "#25394d" : "#d8e3ec");
@@ -1217,6 +1368,7 @@ void Workspace::setDarkTheme(bool dark)
     setAutoFillBackground(true);
     QString style = QStringLiteral(
         "#SpriteWorkspace { background: %1; color: %2; }"
+        "#SpriteWorkspace QWidget { font-size: %9pt; }"
         "#SpriteWorkspace QLabel { color: %2; background: transparent; }"
         "#SpriteWorkspace QLabel#spriteTitle { font-size: 19px; font-weight: 600; }"
         "#SpriteWorkspace QLabel#spriteSaveState, #SpriteWorkspace QLabel#spriteStatus { color: %3; }"
@@ -1233,19 +1385,26 @@ void Workspace::setDarkTheme(bool dark)
         "#SpriteWorkspace QListWidget { background: %4; color: %2; border: 1px solid %5; border-radius: 5px; padding: 3px; }"
         "#SpriteWorkspace QListWidget::item { padding: 3px; border-radius: 4px; }"
         "#SpriteWorkspace QListWidget::item:selected { background: %8; color: %2; border: 1px solid %6; }"
-        "#SpriteWorkspace QScrollArea, #SpriteWorkspace QToolBox { background: %7; border: none; }"
-        "#SpriteWorkspace QToolBox::tab { background: %7; color: %2; border: 1px solid %5; border-radius: 4px; padding: 0px 10px; min-height: 32px; }"
-        "#SpriteWorkspace QToolBox::tab:selected { background: %8; border-color: %6; font-weight: 600; }"
+        "#SpriteWorkspace QScrollArea, #SpriteWorkspace #spriteInspectorPanel { background: %7; border: none; }"
+        "#SpriteWorkspace QTabBar::tab { background: %7; color: %2; border: 1px solid %5; border-radius: 4px; padding: 7px 10px; }"
+        "#SpriteWorkspace QTabBar::tab:selected { background: %8; border-color: %6; }"
         "#SpriteWorkspace QSplitter::handle { background: %1; }"
         "#SpriteWorkspace QCheckBox { color: %2; spacing: 6px; min-height: 28px; }"
         "#SpriteWorkspace QCheckBox:focus { outline: 1px solid %6; }")
         .arg(background.name(), textColor.name(), secondary.name(), base.name(), border.name(),
-             accent.name(), panel.name(), selected.name());
+             accent.name(), panel.name(), selected.name(), QString::number(font().pointSizeF()));
     style += QStringLiteral("#SpriteWorkspace #spriteProblemRow { background: %1; border-radius: 5px; }"
                             "#SpriteWorkspace QLabel#spriteProblem { color: %2; }")
         .arg(dark ? "#432e29" : "#ffebe4", dark ? "#ffd0bb" : "#792b15");
     setStyleSheet(style);
     applyChildPalette(*this, p);
+    const QFontMetrics metrics = frames_->fontMetrics();
+    frames_->setGridSize({std::max(104, metrics.horizontalAdvance(tr("60000 ms")) + 24),
+                         52 + metrics.height() * 2 + 20});
+    int timelineHeight = frames_->gridSize().height() + this->style()->pixelMetric(QStyle::PM_ScrollBarExtent) + 12;
+    frames_->setFixedHeight(timelineHeight);
+    for (int i = 0; i < frames_->count(); ++i)
+        frames_->item(i)->setSizeHint(frames_->gridSize() - QSize(4, 4));
     for (auto *control : findChildren<QAbstractButton *>()) {
         QVariant kind = control->property("spriteIcon");
         if (kind.isValid()) control->setIcon(actionIcon(Icon(kind.toInt()), textColor));
