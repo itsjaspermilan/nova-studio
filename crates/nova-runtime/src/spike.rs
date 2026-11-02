@@ -270,6 +270,7 @@ impl Spike {
     pub fn frame_input(&self, state: &ScriptState, world_height: u32) -> FrameInput<'_> {
         let c = state.camera;
         FrameInput {
+            lighting: crate::gfx::Lighting::default(),
             clear: [0.36, 0.55, 0.78, 1.0].map(|v: f64| v.powf(2.2)),
             camera: Camera {
                 eye: Vec3::new(c[0], c[1], c[2]),

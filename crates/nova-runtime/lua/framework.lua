@@ -348,6 +348,7 @@ function Entity:draw()
     model_opts.ry = self.ry or self.angle
     model_opts.rx = self.rx
     model_opts.rz = self.rz
+    model_opts.parts = self.parts -- pieces turned on their own, e.g. { wheel = { rx = t } }
     model_opts.scale = self.sx
     local tint = self.tint
     model_opts.tint[1], model_opts.tint[2], model_opts.tint[3] = tint and tint[1] or 255, tint and tint[2] or 255, tint and tint[3] or 255

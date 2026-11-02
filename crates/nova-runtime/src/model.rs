@@ -85,6 +85,171 @@ fn to_rgba(data: &gltf::image::Data) -> Result<Vec<u8>, String> {
     })
 }
 
+/// Reads every triangle primitive of a mesh into `out`, with positions and normals moved by `world`.
+fn append_mesh(
+    out: &mut MeshData,
+    mesh: &gltf::Mesh,
+    world: Mat4,
+    buffers: &[gltf::buffer::Data],
+    texture_index: &mut Option<usize>,
+) {
+    let normal_matrix = Mat3::from_mat4(world).inverse().transpose();
+    for primitive in mesh.primitives() {
+        if primitive.mode() != gltf::mesh::Mode::Triangles {
+            out.notes.push(format!(
+                "primitive mode {:?} skipped (triangles only)",
+                primitive.mode()
+            ));
+            continue;
+        }
+        if primitive.morph_targets().count() > 0 {
+            out.notes.push("morph targets are ignored".into());
+        }
+        let reader = primitive.reader(|b| Some(&buffers[b.index()]));
+        let Some(positions) = reader.read_positions() else {
+            out.notes.push("primitive without POSITION skipped".into());
+            continue;
+        };
+        let positions: Vec<[f32; 3]> = positions.collect();
+        let normals: Option<Vec<[f32; 3]>> = reader.read_normals().map(|n| n.collect());
+        let uvs: Option<Vec<[f32; 2]>> = reader.read_tex_coords(0).map(|t| t.into_f32().collect());
+        let colors: Option<Vec<[u8; 4]>> =
+            reader.read_colors(0).map(|c| c.into_rgba_u8().collect());
+        let mut indices: Vec<u32> = match reader.read_indices() {
+            Some(i) => i.into_u32().collect(),
+            None => (0..positions.len() as u32).collect(),
+        };
+        let pbr = primitive.material().pbr_metallic_roughness();
+        let factor = pbr.base_color_factor();
+        if let Some(info) = pbr.base_color_texture() {
+            let index = info.texture().source().index();
+            match *texture_index {
+                None => *texture_index = Some(index),
+                Some(first) if first != index => out
+                    .notes
+                    .push("more than one base colour texture: only the first is used".into()),
+                _ => {}
+            }
+            if info.tex_coord() != 0 {
+                out.notes.push("only UV set 0 is supported".into());
+            }
+        }
+        let tint = factor.map(|c| (c.clamp(0.0, 1.0) * 255.0).round() as u8);
+        let base = out.vertices.len() as u32;
+        let mut verts: Vec<MeshVertex> = (0..positions.len())
+            .map(|i| {
+                let p = world.transform_point3(Vec3::from(positions[i]));
+                let n = normals
+                    .as_ref()
+                    .map(|n| (normal_matrix * Vec3::from(n[i])).normalize_or_zero())
+                    .unwrap_or(Vec3::Y);
+                let c = colors.as_ref().map(|c| c[i]).unwrap_or([255; 4]);
+                let mul = |a: u8, b: u8| ((a as u16 * b as u16 + 127) / 255) as u8;
+                MeshVertex {
+                    position: p.to_array(),
+                    normal: n.to_array(),
+                    color: [
+                        mul(c[0], tint[0]),
+                        mul(c[1], tint[1]),
+                        mul(c[2], tint[2]),
+                        mul(c[3], tint[3]),
+                    ],
+                    uv: uvs.as_ref().map(|u| u[i]).unwrap_or([0.0, 0.0]),
+                }
+            })
+            .collect();
+        if normals.is_none() {
+            // Flat shading: give every triangle its own vertices and face normal.
+            let mut flat = Vec::with_capacity(indices.len());
+            for tri in indices.as_chunks::<3>().0.iter() {
+                let [a, b, c] = [tri[0], tri[1], tri[2]].map(|i| verts[i as usize]);
+                let n = (Vec3::from(b.position) - Vec3::from(a.position))
+                    .cross(Vec3::from(c.position) - Vec3::from(a.position))
+                    .normalize_or_zero();
+                for mut v in [a, b, c] {
+                    v.normal = n.to_array();
+                    flat.push(v);
+                }
+            }
+            verts = flat;
+            indices = (0..verts.len() as u32).collect();
+        }
+        out.vertices.extend(verts);
+        out.indices.extend(indices.iter().map(|i| i + base));
+    }
+}
+
+/// One node of a model: where it sits in its parent and the triangles that move with it.
+pub struct Part {
+    pub name: String,
+    /// Index of the parent part (parents always come before their children).
+    pub parent: Option<usize>,
+    /// The node's own transform in its parent, as authored.
+    pub rest: Mat4,
+    /// Triangles in the part's own space (so the part can be turned about its pivot); `None` for an empty node.
+    pub mesh: Option<MeshData>,
+}
+
+/// Reads a glTF as a tree of parts, for models whose pieces move on their own (wheels, doors, arms).
+pub fn import_parts(bytes: &[u8]) -> Result<Vec<Part>, String> {
+    let (document, buffers, images) =
+        gltf::import_slice(bytes).map_err(|e| format!("glTF import failed: {e}"))?;
+    let scene = document
+        .default_scene()
+        .or_else(|| document.scenes().next())
+        .ok_or("glTF has no scene")?;
+    let mut parts: Vec<Part> = Vec::new();
+    let mut used = std::collections::HashSet::new();
+    // Depth first, parents before children, siblings in file order.
+    let mut roots: Vec<gltf::Node> = scene.nodes().collect();
+    roots.reverse();
+    let mut stack: Vec<(gltf::Node, Option<usize>)> =
+        roots.into_iter().map(|n| (n, None)).collect();
+    while let Some((node, parent)) = stack.pop() {
+        let mut name = node
+            .name()
+            .filter(|n| !n.trim().is_empty())
+            .map_or_else(|| format!("part{}", node.index()), str::to_string);
+        if !used.insert(name.clone()) {
+            name = format!("{name}_{}", node.index());
+            used.insert(name.clone());
+        }
+        let mut mesh = None;
+        if let Some(source) = node.mesh() {
+            let mut data = MeshData::default();
+            let mut texture: Option<usize> = None;
+            append_mesh(&mut data, &source, Mat4::IDENTITY, &buffers, &mut texture);
+            if !data.vertices.is_empty() {
+                if let Some(index) = texture {
+                    let image = &images[index];
+                    data.texture = Some(Image {
+                        width: image.width,
+                        height: image.height,
+                        rgba: to_rgba(image)?,
+                    });
+                }
+                mesh = Some(data);
+            }
+        }
+        let index = parts.len();
+        parts.push(Part {
+            name,
+            parent,
+            rest: Mat4::from_cols_array_2d(&node.transform().matrix()),
+            mesh,
+        });
+        let mut children: Vec<gltf::Node> = node.children().collect();
+        children.reverse();
+        for child in children {
+            stack.push((child, Some(index)));
+        }
+    }
+    if parts.iter().all(|p| p.mesh.is_none()) {
+        return Err("glTF contains no triangle geometry".into());
+    }
+    Ok(parts)
+}
+
 pub fn import_glb(bytes: &[u8]) -> Result<MeshData, String> {
     let (document, buffers, images) =
         gltf::import_slice(bytes).map_err(|e| format!("glTF import failed: {e}"))?;
@@ -110,91 +275,7 @@ pub fn import_glb(bytes: &[u8]) -> Result<MeshData, String> {
             stack.push((child, world));
         }
         let Some(mesh) = node.mesh() else { continue };
-        let normal_matrix = Mat3::from_mat4(world).inverse().transpose();
-        for primitive in mesh.primitives() {
-            if primitive.mode() != gltf::mesh::Mode::Triangles {
-                out.notes.push(format!(
-                    "primitive mode {:?} skipped (triangles only)",
-                    primitive.mode()
-                ));
-                continue;
-            }
-            if primitive.morph_targets().count() > 0 {
-                out.notes.push("morph targets are ignored".into());
-            }
-            let reader = primitive.reader(|b| Some(&buffers[b.index()]));
-            let Some(positions) = reader.read_positions() else {
-                out.notes.push("primitive without POSITION skipped".into());
-                continue;
-            };
-            let positions: Vec<[f32; 3]> = positions.collect();
-            let normals: Option<Vec<[f32; 3]>> = reader.read_normals().map(|n| n.collect());
-            let uvs: Option<Vec<[f32; 2]>> =
-                reader.read_tex_coords(0).map(|t| t.into_f32().collect());
-            let colors: Option<Vec<[u8; 4]>> =
-                reader.read_colors(0).map(|c| c.into_rgba_u8().collect());
-            let mut indices: Vec<u32> = match reader.read_indices() {
-                Some(i) => i.into_u32().collect(),
-                None => (0..positions.len() as u32).collect(),
-            };
-            let pbr = primitive.material().pbr_metallic_roughness();
-            let factor = pbr.base_color_factor();
-            if let Some(info) = pbr.base_color_texture() {
-                let index = info.texture().source().index();
-                match texture_index {
-                    None => texture_index = Some(index),
-                    Some(first) if first != index => out
-                        .notes
-                        .push("more than one base colour texture: only the first is used".into()),
-                    _ => {}
-                }
-                if info.tex_coord() != 0 {
-                    out.notes.push("only UV set 0 is supported".into());
-                }
-            }
-            let tint = factor.map(|c| (c.clamp(0.0, 1.0) * 255.0).round() as u8);
-            let base = out.vertices.len() as u32;
-            let mut verts: Vec<MeshVertex> = (0..positions.len())
-                .map(|i| {
-                    let p = world.transform_point3(Vec3::from(positions[i]));
-                    let n = normals
-                        .as_ref()
-                        .map(|n| (normal_matrix * Vec3::from(n[i])).normalize_or_zero())
-                        .unwrap_or(Vec3::Y);
-                    let c = colors.as_ref().map(|c| c[i]).unwrap_or([255; 4]);
-                    let mul = |a: u8, b: u8| ((a as u16 * b as u16 + 127) / 255) as u8;
-                    MeshVertex {
-                        position: p.to_array(),
-                        normal: n.to_array(),
-                        color: [
-                            mul(c[0], tint[0]),
-                            mul(c[1], tint[1]),
-                            mul(c[2], tint[2]),
-                            mul(c[3], tint[3]),
-                        ],
-                        uv: uvs.as_ref().map(|u| u[i]).unwrap_or([0.0, 0.0]),
-                    }
-                })
-                .collect();
-            if normals.is_none() {
-                // Flat shading: give every triangle its own vertices and face normal.
-                let mut flat = Vec::with_capacity(indices.len());
-                for tri in indices.as_chunks::<3>().0.iter() {
-                    let [a, b, c] = [tri[0], tri[1], tri[2]].map(|i| verts[i as usize]);
-                    let n = (Vec3::from(b.position) - Vec3::from(a.position))
-                        .cross(Vec3::from(c.position) - Vec3::from(a.position))
-                        .normalize_or_zero();
-                    for mut v in [a, b, c] {
-                        v.normal = n.to_array();
-                        flat.push(v);
-                    }
-                }
-                verts = flat;
-                indices = (0..verts.len() as u32).collect();
-            }
-            out.vertices.extend(verts);
-            out.indices.extend(indices.iter().map(|i| i + base));
-        }
+        append_mesh(&mut out, &mesh, world, &buffers, &mut texture_index);
     }
     if out.vertices.is_empty() {
         return Err("glTF contains no triangle geometry".into());

@@ -1,8 +1,11 @@
 // Low-poly meshes: one directional light, flat ambient, palette/base-colour texture.
 struct Globals {
     view_proj: mat4x4<f32>,
-    light_dir: vec4<f32>,
+    light_dir: vec4<f32>,      // xyz: direction the light travels, w: point light count
+    light_color: vec4<f32>,
     ambient: vec4<f32>,
+    point_pos: array<vec4<f32>, 8>,   // xyz position, w radius
+    point_color: array<vec4<f32>, 8>,
 };
 @group(0) @binding(0) var<uniform> globals: Globals;
 @group(1) @binding(0) var base_texture: texture_2d<f32>;
@@ -35,13 +38,16 @@ struct VertexOut {
     @location(0) normal: vec3<f32>,
     @location(1) color: vec4<f32>,
     @location(2) uv: vec2<f32>,
+    @location(3) world: vec3<f32>,
 };
 
 @vertex
 fn vs_main(v: Vertex, inst: Instance) -> VertexOut {
     let model = mat4x4<f32>(inst.m0, inst.m1, inst.m2, inst.m3);
     var out: VertexOut;
-    out.position = globals.view_proj * (model * vec4<f32>(v.position, 1.0));
+    let world = model * vec4<f32>(v.position, 1.0);
+    out.world = world.xyz;
+    out.position = globals.view_proj * world;
     out.normal = normalize((model * vec4<f32>(v.normal, 0.0)).xyz);
     out.color = v.color * vec4<f32>(srgb_to_linear(inst.tint.rgb), inst.tint.a);
     out.uv = v.uv;
@@ -51,7 +57,16 @@ fn vs_main(v: Vertex, inst: Instance) -> VertexOut {
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     let base = textureSample(base_texture, base_sampler, in.uv) * in.color;
-    let diffuse = max(dot(normalize(in.normal), -globals.light_dir.xyz), 0.0);
-    let light = globals.ambient.rgb + vec3<f32>(diffuse) * (1.0 - globals.ambient.rgb);
+    let n = normalize(in.normal);
+    let diffuse = max(dot(n, -globals.light_dir.xyz), 0.0);
+    var light = globals.ambient.rgb + globals.light_color.rgb * diffuse * (1.0 - globals.ambient.rgb);
+    let count = i32(globals.light_dir.w);
+    for (var i = 0; i < count; i = i + 1) {
+        let to_light = globals.point_pos[i].xyz - in.world;
+        let dist = length(to_light);
+        let falloff = clamp(1.0 - dist / globals.point_pos[i].w, 0.0, 1.0);
+        let lambert = max(dot(n, to_light / max(dist, 0.0001)), 0.0);
+        light = light + globals.point_color[i].rgb * (falloff * falloff * lambert);
+    }
     return vec4<f32>(base.rgb * light, base.a);
 }

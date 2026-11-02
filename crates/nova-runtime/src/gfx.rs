@@ -28,6 +28,57 @@ pub struct ModelInstance {
     pub tint: [f32; 4],
 }
 
+/// Most point lights drawn at once (a frame's extra ones are ignored).
+pub const MAX_POINT_LIGHTS: usize = 8;
+
+/// A light that fades to nothing at `radius` world units.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PointLight {
+    pub position: [f32; 3],
+    pub radius: f32,
+    /// Linear multipliers, 1.0 = full.
+    pub color: [f32; 3],
+}
+
+/// How 3D models are lit: one directional light, an ambient floor and a few point lights.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Lighting {
+    /// Direction the light travels (normalised).
+    pub direction: [f32; 3],
+    pub color: [f32; 3],
+    pub ambient: [f32; 3],
+    pub points: [PointLight; MAX_POINT_LIGHTS],
+    pub point_count: usize,
+}
+
+impl Default for Lighting {
+    fn default() -> Self {
+        Self {
+            direction: Vec3::new(-0.4, -1.0, -0.3).normalize().to_array(),
+            color: [1.0; 3],
+            ambient: [0.38, 0.4, 0.46],
+            points: [PointLight {
+                position: [0.0; 3],
+                radius: 1.0,
+                color: [0.0; 3],
+            }; MAX_POINT_LIGHTS],
+            point_count: 0,
+        }
+    }
+}
+
+impl Lighting {
+    /// Adds a point light for this frame; beyond [`MAX_POINT_LIGHTS`] it is ignored.
+    pub fn push_point(&mut self, light: PointLight) -> bool {
+        if self.point_count >= MAX_POINT_LIGHTS {
+            return false;
+        }
+        self.points[self.point_count] = light;
+        self.point_count += 1;
+        true
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct ModelDraw {
     pub mesh: usize,
@@ -47,6 +98,7 @@ pub struct FrameInput<'a> {
     pub sprites_back: &'a [SpriteInstance],
     /// Draws using the same mesh must be contiguous; each run becomes one instanced draw.
     pub models: &'a [ModelDraw],
+    pub lighting: Lighting,
     pub sprites_front: &'a [SpriteInstance],
     /// Text quads (UI layer, native resolution, drawn after `sprites_front`); the UVs index the
     /// glyph atlas set with [`Gfx::update_glyph_atlas`].
@@ -76,8 +128,13 @@ struct SpriteView {
 #[derive(Clone, Copy, Pod, Zeroable)]
 struct Globals {
     view_proj: [[f32; 4]; 4],
+    /// xyz: direction the light travels; w: how many point lights are in use.
     light_dir: [f32; 4],
+    light_color: [f32; 4],
     ambient: [f32; 4],
+    /// xyz: position; w: radius.
+    point_pos: [[f32; 4]; MAX_POINT_LIGHTS],
+    point_color: [[f32; 4]; MAX_POINT_LIGHTS],
 }
 
 struct DynBuffer {
@@ -780,13 +837,30 @@ impl Gfx {
             input.camera.target,
             Vec3::Y,
         );
+        let lit = &input.lighting;
+        let mut point_pos = [[0.0f32; 4]; MAX_POINT_LIGHTS];
+        let mut point_color = [[0.0f32; 4]; MAX_POINT_LIGHTS];
+        for (i, p) in lit.points.iter().take(lit.point_count).enumerate() {
+            point_pos[i] = [
+                p.position[0],
+                p.position[1],
+                p.position[2],
+                p.radius.max(0.0001),
+            ];
+            point_color[i] = [p.color[0], p.color[1], p.color[2], 1.0];
+        }
         let globals = Globals {
             view_proj: view_proj.to_cols_array_2d(),
-            light_dir: Vec3::new(-0.4, -1.0, -0.3)
-                .normalize()
-                .extend(0.0)
-                .to_array(),
-            ambient: [0.38, 0.4, 0.46, 1.0],
+            light_dir: [
+                lit.direction[0],
+                lit.direction[1],
+                lit.direction[2],
+                lit.point_count.min(MAX_POINT_LIGHTS) as f32,
+            ],
+            light_color: [lit.color[0], lit.color[1], lit.color[2], 1.0],
+            ambient: [lit.ambient[0], lit.ambient[1], lit.ambient[2], 1.0],
+            point_pos,
+            point_color,
         };
         self.queue
             .write_buffer(&self.globals, 0, bytemuck::bytes_of(&globals));

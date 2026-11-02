@@ -17,7 +17,28 @@
   "name": "nova.model",
   "kind": "function",
   "signature": "nova.model(id, x, y, z [, opts])",
-  "doc": "Draw a 3D model. Options: scale, rx, ry, rz (radians), tint.",
+  "doc": "Draw a 3D model. Options: scale, rx, ry, rz (radians), tint, parts (turn pieces on their own: parts = { wheel = { ry = 1 } }, see nova.model_parts).",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.light",
+  "kind": "function",
+  "signature": "nova.light{ dir = {x, y, z}, color = {r, g, b}, ambient = {r, g, b} }",
+  "doc": "Sets the sun that lights 3D models: the direction it travels, its colour and the ambient floor. Colours are 0 to 255 multipliers (255 = full). Any field can be left out. Stays until changed.",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.point_light",
+  "kind": "function",
+  "signature": "nova.point_light(x, y, z [, { radius = 10, color = {r, g, b} }])",
+  "doc": "A light that fades out at `radius`. Call it every frame you want it (it lasts one frame); up to 8 are used.",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.model_parts",
+  "kind": "function",
+  "signature": "nova.model_parts(id) -> { name, ... }",
+  "doc": "The names of a model's parts (nodes), for `parts = { name = { ry = 1 } }` in nova.model.",
   "group": "Drawing"
  },
  {

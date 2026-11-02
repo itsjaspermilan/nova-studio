@@ -104,8 +104,35 @@ native resolution.
 `{r,g,b[,a]}` (0 to 255, multiplies the image), `anchor` (`"center"` default, or
 `"topleft"`).
 
-**Model options:** `scale`, `rx`, `ry`, `rz` (radians), `tint` `{r,g,b[,a]}`. Models are
+**Model options:** `scale`, `rx`, `ry`, `rz` (radians), `tint` `{r,g,b[,a]}`, `parts`. Models are
 instanced: draws of the same model in a frame become one GPU draw call.
+
+**Lights.** Models are lit by one sun, an ambient floor and up to eight point lights:
+
+```lua
+nova.light { dir = { -0.4, -1, -0.3 }, color = { 255, 240, 220 }, ambient = { 97, 102, 117 } }   -- stays until changed
+nova.point_light(x, y, z, { radius = 8, color = { 255, 160, 60 } })    -- one frame: call it every frame you want it
+```
+
+`dir` is the way the light travels; colours are 0 to 255 multipliers (255 = full, no gamma). Every
+field of `nova.light` is optional. A ninth point light in a frame is ignored. Sprites and text are not lit.
+
+**Parts.** A model is a tree of named parts (the nodes of its `.glb`; the studio's model editor makes
+one per part). `nova.model_parts("car")` lists their names. To move pieces on their own, give `parts`
+a table of changes; each turns about the part's own pivot, inside its parent, so a wheel stays on its axle
+and a door swings on its hinge:
+
+```lua
+nova.model("car", x, y, z, { ry = heading, parts = {
+  wheel_fl = { rx = spin, ry = steer },     -- rx, ry, rz in radians
+  door     = { ry = open * 1.2, x = 0.1 },  -- x, y, z shift in the part's own space
+} })
+-- entities do the same with a field:  self.parts = { wheel_fl = { rx = self.spin } }
+```
+
+Without `parts` a model is one instanced draw; with it each piece is drawn separately (more draw calls,
+so use it for the few things that move). Only rigid pieces are supported: no skinning or glTF
+animation clips yet.
 
 ### Input, time, log
 

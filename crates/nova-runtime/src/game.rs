@@ -17,7 +17,9 @@ use mlua::{Function, HookTriggers, Lua, LuaSerdeExt, Table, Value, VmState};
 use crate::actions::{self, ActionStates, Binding, Bindings, InputFrame};
 use crate::assets::{self, AtlasLayout};
 use crate::font;
-use crate::gfx::{Camera, FrameInput, Gfx, ModelDraw, ModelInstance, SpriteInstance};
+use crate::gfx::{
+    Camera, FrameInput, Gfx, Lighting, ModelDraw, ModelInstance, PointLight, SpriteInstance,
+};
 use crate::input::Actions;
 use crate::mixer::{self, Sample};
 use crate::model::{self, Image, MeshData};
@@ -80,12 +82,71 @@ struct Shared {
     save: SaveStore,
     mesh_ids: HashMap<String, usize>,
     known_models: Vec<String>,
+    /// Each model's parts, for drawing pieces that move on their own.
+    parts: HashMap<String, Vec<PartRt>>,
+    lighting: Lighting,
     world: Vec<SpriteInstance>,
     ui: Vec<SpriteInstance>,
     models: Vec<ModelDraw>,
     camera: Camera,
     clear: [f64; 4],
     log: Vec<String>,
+}
+
+/// A model part as the game draws it: its place in the tree and the GPU mesh key of its triangles.
+#[derive(Clone)]
+struct PartRt {
+    name: String,
+    parent: Option<usize>,
+    rest: Mat4,
+    mesh_key: Option<String>,
+}
+
+/// A table of three 0-255 numbers as linear multipliers (255 is full strength).
+fn light_color(table: &Table, key: &str) -> mlua::Result<Option<[f32; 3]>> {
+    let Some(c) = table.get::<Option<Table>>(key)? else {
+        return Ok(None);
+    };
+    let mut out = [0.0f32; 3];
+    for (i, slot) in out.iter_mut().enumerate() {
+        let v: f64 = c
+            .get::<Option<f64>>(i + 1)?
+            .ok_or_else(|| lua_err(format!("{key} must be {{r, g, b}} with values 0 to 255")))?;
+        if !(0.0..=255.0).contains(&v) {
+            return Err(lua_err(format!(
+                "{key} must be {{r, g, b}} with values 0 to 255, not {v}"
+            )));
+        }
+        *slot = (v / 255.0) as f32;
+    }
+    Ok(Some(out))
+}
+
+/// A turn, shift and scale applied to one model part on top of its authored place.
+fn part_transform(t: &Table, model: &str, part: &str) -> mlua::Result<Mat4> {
+    let n = |key: &str| -> mlua::Result<f64> {
+        let v = t.get::<Option<f64>>(key)?.unwrap_or(0.0);
+        if v.is_finite() {
+            Ok(v)
+        } else {
+            Err(lua_err(format!(
+                "parts.{part}.{key} of model '{model}' must be a finite number"
+            )))
+        }
+    };
+    let scale = t.get::<Option<f64>>("scale")?.unwrap_or(1.0);
+    if !scale.is_finite() || scale <= 0.0 {
+        return Err(lua_err(format!(
+            "parts.{part}.scale of model '{model}' must be greater than 0"
+        )));
+    }
+    Ok(
+        Mat4::from_translation(Vec3::new(n("x")? as f32, n("y")? as f32, n("z")? as f32))
+            * Mat4::from_rotation_y(n("ry")? as f32)
+            * Mat4::from_rotation_x(n("rx")? as f32)
+            * Mat4::from_rotation_z(n("rz")? as f32)
+            * Mat4::from_scale(Vec3::splat(scale as f32)),
+    )
 }
 
 /// Where decoded assets go. `Gfx` is the real target; tests use a fake so project
@@ -129,6 +190,7 @@ pub struct Game {
     text: Vec<SpriteInstance>,
     models: Vec<ModelDraw>,
     camera: Camera,
+    lighting: Lighting,
     clear: [f64; 4],
     pub error: Option<String>,
     /// The complete error text including any Lua traceback (the banner shows only `error`).
@@ -455,6 +517,42 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     * rotation
                     * Mat4::from_scale(Vec3::splat(scale));
                 let tint = color_option(&opts, "tint", [255; 4])?.map(|c| c as f32 / 255.0);
+                let overrides = match &opts {
+                    Some(o) => o.get::<Option<Table>>("parts")?,
+                    None => None,
+                };
+                if let Some(table) = overrides {
+                    // Pieces that move on their own: each part is drawn separately at its turned place.
+                    let parts = sh.parts.get(&found).cloned().unwrap_or_default();
+                    let mut turn = vec![Mat4::IDENTITY; parts.len()];
+                    for pair in table.pairs::<String, Table>() {
+                        let (name, t) = pair?;
+                        let index = parts.iter().position(|p| p.name == name).ok_or_else(|| {
+                            lua_err(format!(
+                                "model '{id}' has no part '{name}' (its parts: {})",
+                                parts.iter().map(|p| p.name.as_str()).collect::<Vec<_>>().join(", ")
+                            ))
+                        })?;
+                        turn[index] = part_transform(&t, &id, &name)?;
+                    }
+                    let mut world = vec![Mat4::IDENTITY; parts.len()];
+                    for (i, p) in parts.iter().enumerate() {
+                        let local = p.rest * turn[i];
+                        world[i] = p.parent.map_or(local, |parent| world[parent] * local);
+                    }
+                    for (i, p) in parts.iter().enumerate() {
+                        let Some(key) = &p.mesh_key else { continue };
+                        let Some(&mesh) = sh.mesh_ids.get(key) else { continue };
+                        sh.models.push(ModelDraw {
+                            mesh,
+                            instance: ModelInstance {
+                                matrix: (matrix * world[i]).to_cols_array_2d(),
+                                tint,
+                            },
+                        });
+                    }
+                    return Ok(());
+                }
                 sh.models.push(ModelDraw {
                     mesh,
                     instance: ModelInstance {
@@ -477,6 +575,70 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 fov_y_degrees: v.6.unwrap_or(60.0).clamp(10.0, 120.0) as f32,
             };
             Ok(())
+        })?,
+    )?;
+    let s = shared.clone();
+    nova.set(
+        "light",
+        lua.create_function(move |_, opts: Table| {
+            let mut sh = s.borrow_mut();
+            if let Some(dir) = opts.get::<Option<Table>>("dir")? {
+                let mut v = [0.0f32; 3];
+                for (i, slot) in v.iter_mut().enumerate() {
+                    *slot = dir
+                        .get::<Option<f64>>(i + 1)?
+                        .filter(|n| n.is_finite())
+                        .ok_or_else(|| lua_err("dir must be {x, y, z}, three numbers"))?
+                        as f32;
+                }
+                let d = Vec3::from(v);
+                if d.length() < 1e-6 {
+                    return Err(lua_err("dir cannot be {0, 0, 0}; it is the way the light travels, e.g. {-0.4, -1, -0.3}"));
+                }
+                sh.lighting.direction = d.normalize().to_array();
+            }
+            if let Some(c) = light_color(&opts, "color")? {
+                sh.lighting.color = c;
+            }
+            if let Some(c) = light_color(&opts, "ambient")? {
+                sh.lighting.ambient = c;
+            }
+            Ok(())
+        })?,
+    )?;
+    let s = shared.clone();
+    nova.set(
+        "point_light",
+        lua.create_function(move |_, (x, y, z, opts): (f64, f64, f64, Option<Table>)| {
+            let radius = number_option(&opts, "radius")?.unwrap_or(10.0);
+            if !radius.is_finite() || radius <= 0.0 {
+                return Err(lua_err("radius must be greater than 0"));
+            }
+            let color = match &opts {
+                Some(o) => light_color(o, "color")?.unwrap_or([1.0; 3]),
+                None => [1.0; 3],
+            };
+            // More than the renderer's limit are quietly dropped: a crowd of lights is a design problem, not a crash.
+            s.borrow_mut().lighting.push_point(PointLight {
+                position: [x as f32, y as f32, z as f32],
+                radius: radius as f32,
+                color,
+            });
+            Ok(())
+        })?,
+    )?;
+    let s = shared.clone();
+    nova.set(
+        "model_parts",
+        lua.create_function(move |lua, id: String| {
+            let sh = s.borrow();
+            let found = find_model(&sh.known_models, &id)
+                .ok_or_else(|| lua_err(format!("unknown model '{id}'")))?;
+            let names = lua.create_table()?;
+            for (i, p) in sh.parts.get(&found).into_iter().flatten().enumerate() {
+                names.set(i + 1, p.name.clone())?;
+            }
+            Ok(names)
         })?,
     )?;
     let s = shared.clone();
@@ -1170,6 +1332,8 @@ impl Game {
         }
 
         let mut meshes = Vec::new();
+        let mut model_ids = Vec::new();
+        let mut model_parts: HashMap<String, Vec<PartRt>> = HashMap::new();
         for asset in project.assets_of(AssetKind::Model) {
             let bytes = vfs.read(&asset.id)?;
             let mesh = model::import_glb(&bytes).map_err(|e| format!("{}: {e}", asset.id))?;
@@ -1177,6 +1341,25 @@ impl Game {
                 warnings.push(format!("{}: {note}", asset.id));
             }
             meshes.push((asset.id.clone(), mesh));
+            model_ids.push(asset.id.clone());
+            // The same file as separate parts, used only when a script turns individual parts.
+            if let Ok(parts) = model::import_parts(&bytes) {
+                let mut runtime = Vec::with_capacity(parts.len());
+                for part in parts {
+                    let mesh_key = part.mesh.map(|m| {
+                        let key = format!("{}#{}", asset.id, part.name);
+                        meshes.push((key.clone(), m));
+                        key
+                    });
+                    runtime.push(PartRt {
+                        name: part.name,
+                        parent: part.parent,
+                        rest: part.rest,
+                        mesh_key,
+                    });
+                }
+                model_parts.insert(asset.id.clone(), runtime);
+            }
         }
 
         let mut sounds: HashMap<String, Arc<Sample>> = HashMap::new();
@@ -1232,7 +1415,9 @@ impl Game {
             next_sound: 1,
             save: store,
             mesh_ids: HashMap::new(),
-            known_models: meshes.iter().map(|(id, _)| id.clone()).collect(),
+            known_models: model_ids,
+            parts: model_parts,
+            lighting: Lighting::default(),
             world: Vec::new(),
             ui: Vec::new(),
             models: Vec::new(),
@@ -1270,6 +1455,7 @@ impl Game {
             text: Vec::new(),
             models: Vec::new(),
             camera: DEFAULT_CAMERA,
+            lighting: Lighting::default(),
             clear: srgb_to_linear([0.36, 0.55, 0.78, 1.0]),
             error: None,
             error_detail: None,
@@ -1471,6 +1657,8 @@ impl Game {
         std::mem::swap(&mut sh.models, &mut self.models);
         self.models.sort_by_key(|m| m.mesh); // equal meshes become one instanced draw
         self.camera = sh.camera;
+        self.lighting = sh.lighting;
+        sh.lighting.point_count = 0; // point lights last one frame; the sun and ambient stay
         self.clear = sh.clear;
         let white = sh.layout.white_uv();
         drop(sh);
@@ -1524,6 +1712,7 @@ impl Game {
             camera: self.camera,
             sprites_back: &self.world,
             models: &self.models,
+            lighting: self.lighting,
             sprites_front: &self.ui,
             text: &self.text,
             world_height,
