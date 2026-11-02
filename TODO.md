@@ -57,7 +57,7 @@ Confirmed product requirements:
 | Lua-first creation loop | Authoring foundation | Project creation/open/save, visual scenes and script/property binding, useful code tools, diagnostics and Run/Stop without overwriting authored code. | First 2D/3D creation slice implemented; complete studio remains in progress |
 | Sprite workspace | Authoring foundation + runtime animation | Real drawing/layers/frames, source preservation, reversible editing and matching scene/runtime updates. | Pending |
 | Model workspace | Authoring foundation + existing GLB pipeline | Mesh/transform/material/UV basics, reversible editing and faithful supported model round trips. | Pending |
-| Audio engine | Existing native services | Sample-clock processing, float mixing, quality instruments/DSP, streams/buses, device handling and offline rendering. | C11 sample-clock/DSP/bus/offline foundation implemented; live streams/device integration pending |
+| Audio engine | Existing native services | Sample-clock processing, float mixing, quality instruments/DSP, streams/buses, device handling and offline rendering. | C11 DSP/offline plus shared-device transport/control foundation implemented; disk streaming and hardware/lifecycle qualification remain |
 | Recording and SFX | Authoring foundation + audio engine | Nondestructive waveform editing, explicit recording, layered SFX, safe audition and persistent sources. | Pending |
 | Music composition | Recording/SFX foundations | Arrangement, piano roll, patterns/drums, synth/sampler, MIDI, loops and document persistence. | Pending |
 | Sound production | Music composition | Mixer, sends/buses, effects, automation, lossless masters, aligned stems/loops and runtime-profile audition. | Pending |
@@ -100,12 +100,17 @@ The [API/ownership/integration contract](docs/audio-core.md) records objective
 timing/quality/failure checks and the remaining work. No recording, microphone,
 native audible playback or Android-device claim follows.
 
-The next audio stage is the shared single-device streaming/control adapter and
-device/lifecycle failure reporting, followed by real sound documents and the
-recording/SFX/composition/mixer interfaces. This foundation does not complete
-the roadmap's Audio engine stage or the requested Sound Studio.
+The follow-up now supplies independent Audition/Game streams on the existing
+device, 16-entry command/receipt queues, coalesced meters, crossfade/cancel/reset,
+stale-handle guards and control-side retirement. Renderer-host-neutral
+`nova_audio_native` links to one caller-selected patched raylib host via
+`nova_configure_raylib_audio(target, source_dir)`; it does not pull GLFW into Qt.
+The checked hook joins callbacks before destroying their mutex, fixes init/start/
+PCM/converter failure cleanup and reports configuration versus observations
+honestly. Positions are rendered score positions. The inherited mixer still
+locks/converts/clips; xruns and hardware latency are explicitly unavailable.
 
-Verification in the isolated audio worktree: 11 focused audio/core/project/
+Initial foundation verification in the isolated audio worktree: 11 focused audio/core/project/
 asset/service/export checks passed in both ordinary Debug and fully
 ASan/UBSan-instrumented builds; the native editor/runtime also link. Leak
 sanitizer was disabled on macOS; explicit allocation-failure/balance tests
@@ -113,6 +118,21 @@ provide the core ownership evidence. No native device test was enabled.
 Integrated as `1a07a3e`: the coordinating worktree rebuilt the native targets
 and independently passed all 11 focused audio/core/project/asset/service/export
 checks with native device tests disabled.
+
+Next audio stages include disk-streamed full-length music, device-loss/Android
+focus integration and hardware qualification, then real sound documents and
+the recording/SFX/composition/mixer interfaces. Prepared-score live rendering
+is not file streaming, and this foundation does not complete the roadmap's Audio
+engine stage or the requested Sound Studio.
+
+Follow-up verification in the isolated audio worktree: all 15 focused audio/
+core/project/asset/service/export checks passed in Debug and ASan/UBSan builds;
+the native editor/runtime also link. Three device-free transport/device/lifecycle
+selectors passed ten repetitions each under ThreadSanitizer, including genuinely
+concurrent queue/retirement and in-flight callback shutdown. Leak sanitizer was
+disabled on macOS; explicit fault-injection/balance checks cover ownership and
+preserved diagnostics. The expanded native lifetime gate was compiled but not
+enabled/run. No audio device, microphone or hardware playback was activated.
 
 ### First Qt foundation handoff
 

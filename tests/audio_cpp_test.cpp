@@ -1,10 +1,14 @@
 #include "audio.h"
+#include "transport.h"
+#include "audio_device.h"
 
 #include <array>
 #include <cstdio>
 
 int main()
 {
+    NovaAudioDeviceInfo device{};
+    if (device.hardware_latency_known || device.underruns_known) return 1;
     NovaAudioBus master{NOVA_AUDIO_NO_BUS, 1, 0};
     NovaAudioProgramDesc desc{};
     desc.sample_rate = NOVA_AUDIO_DEFAULT_RATE;
@@ -29,5 +33,14 @@ int main()
     bool ok = nova_audio_render(renderer, output.data(), 16) == NOVA_AUDIO_OK &&
         nova_audio_status(renderer).finished;
     nova_audio_renderer_destroy(renderer);
+    NovaAudioTransport *transport = nullptr;
+    if (!nova_audio_transport_create(NOVA_AUDIO_DEFAULT_RATE, &transport, error, sizeof(error))) {
+        std::fprintf(stderr, "%s\n", error);
+        return 1;
+    }
+    ok = ok && nova_audio_transport_render(transport, output.data(), 16) == NOVA_AUDIO_OK;
+    NovaAudioTransportSnapshot snapshot{};
+    ok = ok && nova_audio_transport_snapshot(transport, &snapshot) && snapshot.output_frames == 16;
+    nova_audio_transport_destroy(transport);
     return ok ? 0 : 1;
 }

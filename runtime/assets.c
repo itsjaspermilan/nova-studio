@@ -1,5 +1,6 @@
 #include "assets.h"
 #include "audio.h"
+#include "audio_device.h"
 #include "scene.h"
 #include <cgltf.h>
 
@@ -146,7 +147,11 @@ void nova_pause_services(NovaResources *resources, bool paused)
     }
 }
 
-void nova_shutdown_audio(void) { if (IsAudioDeviceReady()) CloseAudioDevice(); }
+void nova_shutdown_audio(void)
+{
+    nova_audio_device_close_transports();
+    if (IsAudioDeviceReady()) CloseAudioDevice();
+}
 
 bool nova_project_root(const char *manifest, char *root, char *error, size_t error_size)
 {
@@ -746,8 +751,10 @@ static bool stage_scene(NovaEngine **engine, NovaResources *resources,
                     goto asset_error;
                 }
                 if (gpu) {
-                    if (!IsAudioDeviceReady()) InitAudioDevice();
-                    if (IsAudioDeviceReady()) r->sound = LoadSoundFromWave(wave);
+                    if (!nova_audio_device_ensure(detail, sizeof(detail))) {
+                        UnloadWave(wave); goto asset_error;
+                    }
+                    r->sound = LoadSoundFromWave(wave);
                 }
                 UnloadWave(wave);
                 if (gpu && (!IsAudioDeviceReady() || !IsSoundValid(r->sound))) {

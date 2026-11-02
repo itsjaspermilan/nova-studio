@@ -166,9 +166,20 @@ exported. The earlier externally authored 2D assessment game is not that proof.
   allocate/log/lock nothing while rendering. Keep the existing device/legacy
   service ownership; no competing device or implicit sequencer migration.
   PCM24/float masters must not use raylib's PCM16-forcing WAV loader. Do not relax
-  short-effect budgets or equate them with score/offline duration. Full live
-  streaming/device handling, recording/MIDI, sound documents and Sound UI remain
-  subsequent work.
+  short-effect budgets or equate them with score/offline duration.
+- `audio/transport.{c,h}` supplies fixed-rate SPSC control/receipt queues,
+  coalesced snapshots and control-side renderer retirement. Core status/cancel/
+  reset remain render-owner operations; all reference mutations stay serialized
+  on the control side. `runtime/audio_device.{c,h}` owns two independently
+  controlled streams on the existing device, not another device or Qt backend.
+  Link `nova_audio_native` with exactly one caller-selected raylib host and call
+  `nova_configure_raylib_audio(target, source_dir)` for that source/target.
+  Preserve callback-quiescent detach and device-before-mutex teardown, explicit
+  errors/backpressure, and pending-candidate cleanup. The inherited mixer still
+  locks and converts/clips output; no whole-callback realtime guarantee follows.
+  Report rendered score position, configured formats/periods and observed callback
+  size separately; never invent latency/xrun metrics. Disk streaming, comprehensive
+  device loss/Android focus, recording/MIDI, sound documents and Sound UI remain.
 - `examples/{2d,mixed}/main.lua` are editable scenes. Desktop builds synchronize
   them next to the executable; direct `--scene` permits source-script reload.
   Android resolves the same relative paths through bundled assets.
@@ -181,6 +192,8 @@ exported. The earlier externally authored 2D assessment game is not that proof.
 - `CMakeLists.txt` pins native archives/hashes and declares targets/tests/assets.
   `cmake/DependencyNotices.cmake` collects upstream notices;
   `cmake/RaylibAndroid.cmake` applies the checked/idempotent destruction patch.
+  `cmake/RaylibAudio.cmake` fingerprints pinned raudio.c before applying the
+  checked lifecycle/allocation/evidence hook for either desktop host or Android.
   Preserve `LINKER:-u,ANativeActivity_onCreate` on the Android shared target.
 - `android/app/build.gradle` pins SDK35/build-tools35.0.0, NDK27.2.12479018 and
   CMake3.22.1; min API26, target API33, arm64-v8a. Gradle8.11.1/AGP8.9.2 and
@@ -200,8 +213,11 @@ exported. The earlier externally authored 2D assessment game is not that proof.
 - `tests/audio*_test.*` covers sample-clock timing, source/score loops, rate
   conversion, envelopes/ramps, band-limiting/filter evidence, headroom, native
   WAV/project round trips, offline failures/no-clobber, C++ linkage and allocation
-  balance. Device upload/lifetime checks remain explicitly opt-in; deterministic
-  signals are not human listening, hardware, latency or comparative benchmarks.
+  balance. Transport/device seams add concurrent SPSC transfer, full queues,
+  fault handling and callback retirement; lifecycle tests compile actual patched
+  functions with allocation/init failure injection. Device upload/lifetime checks
+  remain explicitly opt-in; deterministic signals are not human listening,
+  hardware, latency or comparative benchmarks.
 - `tests/game_test.c` covers both-mode source/reference/behavior/generation/
   guarded reopen/conflict/import/no-clobber contracts. `game_failure_test.c`
   redirects only the save call in a separate test build to check honest partial

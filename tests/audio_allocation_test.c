@@ -4,6 +4,7 @@
 #undef snprintf
 
 #include "audio.h"
+#include "transport.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -96,6 +97,50 @@ int main(void)
     attempts = 0; fail_at = 0;
     CHECK(nova_audio_program_create(&desc, &program, error, sizeof(error)));
     size_t baseline = live;
+    NovaAudioTransport *transport = NULL;
+    attempts = 0; fail_at = 1;
+    CHECK(!nova_audio_transport_create(48000, &transport, error, sizeof(error)));
+    CHECK(!transport && live == baseline);
+    attempts = 0; fail_at = 0;
+    CHECK(nova_audio_transport_create(48000, &transport, error, sizeof(error)));
+    uint64_t ticket = 1234;
+    attempts = 0; fail_at = 1;
+    CHECK(nova_audio_transport_replace(transport, program, 16, &ticket) == NOVA_AUDIO_CONTROL_ALLOCATION_FAILED);
+    CHECK(ticket == 1234 && live == baseline + 1);
+    attempts = 0; fail_at = 0;
+    for (unsigned i = 0; i < NOVA_AUDIO_COMMAND_CAPACITY; ++i)
+        CHECK(nova_audio_transport_replace(transport, program, 16, &ticket) == NOVA_AUDIO_CONTROL_OK);
+    size_t before_full = attempts;
+    CHECK(nova_audio_transport_replace(transport, program, 16, &ticket) == NOVA_AUDIO_CONTROL_QUEUE_FULL);
+    CHECK(attempts == before_full);
+    float mixed[256 * 2];
+    realtime = true;
+    CHECK(nova_audio_transport_render(transport, mixed, 256) == NOVA_AUDIO_OK);
+    realtime = false;
+    CHECK(nova_audio_transport_collect(transport) == NOVA_AUDIO_COMMAND_CAPACITY - 1);
+    NovaAudioReceipt receipt;
+    for (unsigned i = 0; i < NOVA_AUDIO_COMMAND_CAPACITY; ++i)
+        CHECK(nova_audio_transport_receipt(transport, &receipt));
+    NovaAudioTransportSnapshot snapshot;
+    CHECK(nova_audio_transport_snapshot(transport, &snapshot));
+    CHECK(nova_audio_transport_command(transport, NOVA_AUDIO_CANCEL, snapshot.program, 16, &ticket) == NOVA_AUDIO_CONTROL_OK);
+    realtime = true;
+    CHECK(nova_audio_transport_render(transport, mixed, 256) == NOVA_AUDIO_OK);
+    realtime = false;
+    CHECK(nova_audio_transport_command(transport, NOVA_AUDIO_RESET, snapshot.program, 16, &ticket) == NOVA_AUDIO_CONTROL_OK);
+    realtime = true;
+    CHECK(nova_audio_transport_render(transport, mixed, 256) == NOVA_AUDIO_OK);
+    realtime = false;
+    CHECK(nova_audio_transport_replace(transport, program, 128, &ticket) == NOVA_AUDIO_CONTROL_OK);
+    realtime = true;
+    CHECK(nova_audio_transport_render(transport, mixed, 1) == NOVA_AUDIO_OK);
+    realtime = false;
+    CHECK(nova_audio_transport_snapshot(transport, &snapshot) && snapshot.retiring_program);
+    for (unsigned i = 0; i < NOVA_AUDIO_COMMAND_CAPACITY; ++i)
+        CHECK(nova_audio_transport_replace(transport, program, 16, &ticket) == NOVA_AUDIO_CONTROL_OK);
+    CHECK(live == baseline + 1 + NOVA_AUDIO_RENDERER_CAPACITY);
+    nova_audio_transport_destroy(transport);
+    CHECK(live == baseline);
     NovaAudioRenderer *r = NULL;
     attempts = 0; fail_at = 1;
     CHECK(!nova_audio_renderer_create(program, &r, error, sizeof(error)));
@@ -134,6 +179,6 @@ int main(void)
     CHECK(nova_audio_sample_from_wav(wav, sizeof(wav), &sample, error, sizeof(error)));
     nova_audio_sample_release(sample);
     CHECK(!live);
-    printf("Nova audio allocation failures: %zu score stages, balanced ownership, no render/control allocation or formatting.\n", allocations);
+    printf("Nova audio allocation failures: %zu score stages, balanced ownership, no render-thread allocation/free/formatting.\n", allocations);
     return 0;
 }

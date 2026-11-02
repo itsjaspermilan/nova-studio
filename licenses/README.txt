@@ -7,7 +7,12 @@ The build copies licenses, original single-header dependency sources containing
 embedded notices, GLFW's license and controller mapping notices alongside the
 desktop executable, and into Android assets. Keep that directory when distributing.
 Sources fetched by CMake remain unaltered except for the documented, narrowly
-scoped raylib Android destruction-loop patch in cmake/RaylibAndroid.cmake.
+scoped raylib Android destruction-loop patch in cmake/RaylibAndroid.cmake and
+the fingerprint-checked audio lifecycle/allocation/evidence hooks in
+cmake/RaylibAudio.cmake. The latter preserves the shared native device, joins
+callbacks before mutex destruction, cleans partial initialization/stream failures,
+and observes configuration/callbacks/notifications without a second backend.
+Archive hashes and original notices are unchanged; see docs/audio-core.md.
 
 No third-party artwork/game assets, Blender code, or GameStudio code is included.
 The original badge.png and gem.glb fixtures in examples/assets/assets are CC0;

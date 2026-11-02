@@ -1060,6 +1060,9 @@ audio budgets and live-save-independent preflight. Enable
 `-DNOVA_AUDIO_TESTS=ON` and run `ctest --test-dir build -R nova_audio_lifetime`
 through `scripts/with-toolchain.sh` for real native device/resource/play/stop/
 pause/reload/alias cleanup checks; it uses generated silence, not a listening test.
+That opt-in test also covers two independently controlled silent score streams
+sharing this device and final callback-quiescent shutdown. It remains a hardware
+gate, not part of the default device-free suite.
 
 **Save containment/format:** keys use the same 1..63 ASCII identifier grammar and
 are case-sensitive; values are binary strings of 0..4096 bytes. A project may
@@ -1151,10 +1154,31 @@ audio-device access (output paths must be new):
 ```
 
 See [the C/C++ API, ownership, DSP limits and evidence](docs/audio-core.md).
-This is **not a complete Sound Studio**: live streaming/device integration,
-recording, MIDI, sound documents, waveform/arrangement/piano-roll UI, production
-effects and aligned-stem workflows remain later stages. Headless checks do not
-establish human listening, microphone/MIDI or Android device behavior.
+
+`audio/transport.h` adds bounded command/receipt queues, coalesced meter snapshots
+and control-side renderer retirement. `runtime/audio_device.h` exposes independent
+Audition/Game handles through two streams on the **existing single device**.
+Replace/cancel/reset use explicit fades and program identities; full queues,
+stale controls, overlapping transitions, render faults and device unavailability
+have typed outcomes. Position means rendered score position, not an audible
+hardware playhead. Opening is explicit; no asset selection starts playback.
+
+Link `nova_audio_native` plus exactly one chosen raylib host; it has no transitive
+GLFW/raylib dependency. Both ordinary and Qt-hosted targets use
+`nova_configure_raylib_audio(target, source_dir)` from `cmake/RaylibAudio.cmake`.
+The checked/idempotent hook fixes callback-before-mutex shutdown and partial
+stream cleanup, rejecting unknown upstream source without changing archive hashes.
+It reports configured mixer/backend formats/periods separately from observed
+callback sizes and received notifications. Xruns and hardware latency remain
+explicitly unavailable. The inherited mixer still locks, may resample, and applies
+its existing output clipping; the whole device callback is not claimed lock-free.
+Core/offline float masters retain their unclipped headroom.
+
+This is **not a complete Sound Studio**: disk-streamed full-length music,
+comprehensive device-loss/Android-focus handling, recording, MIDI, sound documents,
+waveform/arrangement/piano-roll UI, production effects and aligned-stem workflows
+remain later stages. Device-free concurrent/sanitizer checks do not establish human
+listening, microphone/MIDI, latency or Android device behavior.
 
 ### Native read-only inspection v2
 

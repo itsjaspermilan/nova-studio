@@ -1,4 +1,5 @@
 #include "assets.h"
+#include "audio_device.h"
 
 #include <math.h>
 #include <signal.h>
@@ -278,6 +279,55 @@ static void wav_tests(void)
     CHECK(!IsAudioDeviceReady());
 }
 
+static NovaAudioTransportSnapshot await_native_transport(NovaAudioTransportHandle handle, uint64_t ticket, bool cancelled)
+{
+    bool accepted = false;
+    NovaAudioTransportSnapshot latest = {0};
+    for (unsigned attempt = 0; attempt < 400; ++attempt) {
+        NovaAudioReceipt receipt;
+        NovaAudioTransportSnapshot snapshot;
+        bool has_receipt, has_snapshot;
+        CHECK(nova_audio_device_poll(handle, &receipt, &has_receipt, &snapshot, &has_snapshot) == NOVA_AUDIO_CONTROL_OK);
+        if (has_receipt) {
+            CHECK(receipt.ticket == ticket && receipt.result == NOVA_AUDIO_CONTROL_OK);
+            accepted = true;
+        }
+        if (has_snapshot) latest = snapshot;
+        if (accepted && latest.current.clock && latest.current.cancelled == cancelled &&
+            (!cancelled || latest.current.finished)) return latest;
+        usleep(5000);
+    }
+    CHECK(false);
+    return latest;
+}
+
+static void native_transports(NovaAudioTransportHandle *audition, NovaAudioTransportHandle *game)
+{
+    char error[512];
+    CHECK(nova_audio_device_open(NOVA_AUDIO_AUDITION, 48000, audition, error, sizeof(error)) == NOVA_AUDIO_CONTROL_OK);
+    CHECK(nova_audio_device_open(NOVA_AUDIO_GAME, 44100, game, error, sizeof(error)) == NOVA_AUDIO_CONTROL_OK);
+    NovaAudioBus master = {NOVA_AUDIO_NO_BUS, 1, 0};
+    NovaAudioProgramDesc desc = {.sample_rate = 48000, .voice_limit = 1, .length_frames = 48000,
+        .loop = true, .buses = &master, .bus_count = 1};
+    NovaAudioProgram *program = NULL;
+    CHECK(nova_audio_program_create(&desc, &program, error, sizeof(error)));
+    uint64_t first, second, cancelled;
+    CHECK(nova_audio_device_replace(*audition, program, 128, &first) == NOVA_AUDIO_CONTROL_OK);
+    nova_audio_program_release(program);
+    desc.sample_rate = 44100; desc.length_frames = 44100;
+    CHECK(nova_audio_program_create(&desc, &program, error, sizeof(error)));
+    CHECK(nova_audio_device_replace(*game, program, 128, &second) == NOVA_AUDIO_CONTROL_OK);
+    nova_audio_program_release(program);
+    CHECK(await_native_transport(*audition, first, false).program == first);
+    CHECK(await_native_transport(*game, second, false).program == second);
+    CHECK(nova_audio_device_command(*audition, NOVA_AUDIO_CANCEL, first, 128, &cancelled) == NOVA_AUDIO_CONTROL_OK);
+    CHECK(await_native_transport(*audition, cancelled, true).program == first);
+    NovaAudioDeviceInfo info = nova_audio_device_info();
+    CHECK(info.initialized && info.started && info.configuration_known && info.callback_observed);
+    CHECK(info.mixer_channels == 2 && info.mixer_format == NOVA_DEVICE_FORMAT_F32 && info.mixer_rate);
+    CHECK(!info.hardware_latency_known && !info.underruns_known);
+}
+
 static void project_services(bool audio)
 {
     char base[] = NOVA_TEST_DIRECTORY "/service-project.XXXXXX";
@@ -355,6 +405,8 @@ static void project_services(bool audio)
     if (old_home) { CHECK(!setenv("HOME", old_home, 1)); free(old_home); }
     else CHECK(!unsetenv("HOME"));
     if (audio) {
+        NovaAudioTransportHandle audition, game;
+        native_transports(&audition, &game);
         const char *playback = "nova.play(nova.asset('tone'),0,true);"
             "local t=nova.timer(1); function update() assert(nova.timer_poll(t)==0) end";
         write_file(script, playback, strlen(playback));
@@ -400,6 +452,8 @@ static void project_services(bool audio)
         CHECK(!resources.services && !resources.count);
         nova_shutdown_audio();
         CHECK(!IsAudioDeviceReady());
+        CHECK(nova_audio_device_close(audition) == NOVA_AUDIO_CONTROL_STALE);
+        CHECK(nova_audio_device_close(game) == NOVA_AUDIO_CONTROL_STALE);
     }
     CHECK(!unlink(manifest) && !unlink(script) && !unlink(wav) && !rmdir(base));
 }
