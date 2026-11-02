@@ -1,0 +1,9 @@
+[package]
+name = "nova-runtime"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "Nova's native game runtime (wgpu renderer, Lua gameplay, audio)"
+
+[lints]
+workspace = true
