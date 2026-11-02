@@ -155,11 +155,17 @@ fn crate_dash() -> Game {
 fn crate_dash_plays_through_every_scene_without_errors() {
     use nova_runtime::actions::InputFrame;
     let mut game = crate_dash();
+    game.reseed(2026); // repeatable crates and stars, so the session always reaches the same scenes
     assert!(game.warnings.is_empty(), "{:?}", game.warnings);
     let idle = InputFrame::default();
-    let mut play = InputFrame::default();
-    play.sources.insert("key:Space".into(), 1.0); // the project's "jump"
-    play.sources.insert("key:KeyD".into(), 1.0); // move_x to the right
+    // Jump held, and sweeping left and right every two seconds so crates actually hit the player.
+    let player_input = |key: &str| {
+        let mut frame = InputFrame::default();
+        frame.sources.insert("key:Space".into(), 1.0); // the project's "jump"
+        frame.sources.insert(key.into(), 1.0);
+        frame
+    };
+    let (go_right, go_left) = (player_input("key:KeyD"), player_input("key:KeyA"));
 
     // The title waits for a button: nothing moves on until the player jumps.
     for frame in 0..60 {
@@ -179,7 +185,12 @@ fn crate_dash_plays_through_every_scene_without_errors() {
     for frame in 0..(60 * 60 * 3) {
         // Hold jump for 20 frames, let go for 5: menus wait for a fresh press, so each cycle can
         // start the game again, and in play the player keeps hopping.
-        let input = if frame % 25 < 20 { &play } else { &idle };
+        let sweep = if (frame / 120) % 2 == 0 {
+            &go_right
+        } else {
+            &go_left
+        };
+        let input = if frame % 25 < 20 { sweep } else { &idle };
         game.update_input(1.0 / 60.0, time, [960.0, 540.0], input);
         time += 1.0 / 60.0;
         assert!(

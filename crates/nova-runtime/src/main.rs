@@ -21,6 +21,7 @@ const USAGE: &str = "usage:
   nova run --pak <file.npk> [options]    play a packed project
   nova pack <project-folder> <out.npk>   pack a project into one file
   nova info <project-folder>             print the project's name, version and id (for build scripts)
+  nova check <project-folder> [--json] [--frames N]   load and run a project headless, list its problems
   nova [options]                         built-in benchmark scene
 options: [--headless] [--frames N] [--capture out.png] [--size WxH] [--world-height N]
          [--uncapped] [--no-audio] [--hud] [--hold jump,move_x=1] [--save-dir folder]
@@ -28,8 +29,18 @@ options: [--headless] [--frames N] [--capture out.png] [--size WxH] [--world-hei
 
 enum Command {
     Play(Box<Options>),
-    Pack { folder: PathBuf, out: PathBuf },
-    Info { folder: PathBuf },
+    Check {
+        folder: PathBuf,
+        json: bool,
+        frames: u32,
+    },
+    Pack {
+        folder: PathBuf,
+        out: PathBuf,
+    },
+    Info {
+        folder: PathBuf,
+    },
 }
 
 fn parse() -> Result<Command, String> {
@@ -49,6 +60,28 @@ fn parse() -> Result<Command, String> {
         return Ok(Command::Pack {
             folder: folder.into(),
             out: out.into(),
+        });
+    }
+    if args.peek().map(String::as_str) == Some("check") {
+        args.next();
+        let folder = args.next().ok_or("`nova check` needs a project folder")?;
+        let (mut json, mut frames) = (false, 60u32);
+        while let Some(arg) = args.next() {
+            match arg.as_str() {
+                "--json" => json = true,
+                "--frames" => {
+                    frames = args
+                        .next()
+                        .and_then(|v| v.parse().ok())
+                        .ok_or("--frames needs a number")?
+                }
+                other => return Err(format!("`nova check`: unexpected argument '{other}'")),
+            }
+        }
+        return Ok(Command::Check {
+            folder: folder.into(),
+            json,
+            frames,
         });
     }
     if args.peek().map(String::as_str) == Some("info") {
@@ -182,6 +215,73 @@ fn info(folder: PathBuf) -> Result<(), String> {
     Ok(())
 }
 
+/// Loads a project without a GPU, runs it for a short time and reports every problem found.
+/// Exit status 1 when there are errors. With `--json` the report is machine-readable (the
+/// studio's Problems panel reads it).
+fn check(folder: &std::path::Path, json: bool, frames: u32) -> Result<bool, String> {
+    use nova_runtime::diagnostics::{self, Diagnostic};
+    use nova_runtime::game::{Game, NullUploader};
+    use nova_runtime::input::Actions;
+    use nova_runtime::vfs::Vfs;
+    use std::rc::Rc;
+
+    log::set_max_level(log::LevelFilter::Off); // the report is the output
+    let mut problems: Vec<Diagnostic> = Vec::new();
+    let mut name = None;
+    let mut steps_run = 0;
+    match DirVfs::new(folder).and_then(|v| Game::load(Rc::new(v) as Rc<dyn Vfs>)) {
+        Err(message) => problems.push(diagnostics::parse(&message, "error")),
+        Ok(mut game) => {
+            name = Some(game.project.manifest.name.clone());
+            game.upload(&mut NullUploader::default());
+            for warning in &game.warnings {
+                problems.push(diagnostics::parse(warning, "warning"));
+            }
+            for frame in 0..frames {
+                if game.error.is_some() {
+                    break;
+                }
+                game.update(
+                    1.0 / 60.0,
+                    frame as f64 / 60.0,
+                    [960.0, 540.0],
+                    Actions::default(),
+                    false,
+                );
+                steps_run += 1;
+            }
+            if let Some(detail) = game.error_detail.take() {
+                problems.push(diagnostics::parse(&detail, "error"));
+            }
+        }
+    }
+    let ok = !problems.iter().any(|p| p.severity == "error");
+    if json {
+        let report = serde_json::json!({
+            "ok": ok,
+            "name": name,
+            "frames_run": steps_run,
+            "diagnostics": problems,
+        });
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report).expect("report serialises")
+        );
+    } else {
+        for p in &problems {
+            let place = match (&p.file, p.line, &p.place) {
+                (Some(f), Some(l), _) => format!("{f}:{l}: "),
+                (Some(f), None, Some(pl)) => format!("{f} ({pl}): "),
+                (Some(f), None, None) => format!("{f}: "),
+                _ => String::new(),
+            };
+            println!("{}: {place}{}", p.severity, p.message);
+        }
+        println!("{}", if ok { "no errors" } else { "errors found" });
+    }
+    Ok(ok)
+}
+
 fn main() {
     env_logger::Builder::from_env(
         env_logger::Env::default().default_filter_or("nova_runtime=info,warn"),
@@ -197,6 +297,15 @@ fn main() {
     let result = match command {
         Command::Pack { folder, out } => pack(folder, out),
         Command::Info { folder } => info(folder),
+        Command::Check {
+            folder,
+            json,
+            frames,
+        } => match check(&folder, json, frames) {
+            Ok(true) => Ok(()),
+            Ok(false) => std::process::exit(1),
+            Err(e) => Err(e),
+        },
         Command::Play(opts) if opts.headless => app::run_headless(*opts),
         Command::Play(opts) => app::run_windowed(*opts),
     };

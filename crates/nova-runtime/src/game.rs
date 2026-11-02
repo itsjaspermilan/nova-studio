@@ -104,6 +104,18 @@ impl Uploader for Gfx {
     }
 }
 
+/// An uploader that keeps nothing: for checking a project without a GPU.
+#[derive(Default)]
+pub struct NullUploader(usize);
+
+impl Uploader for NullUploader {
+    fn set_atlas(&mut self, _atlas: &Image) {}
+    fn add_mesh(&mut self, _mesh: &MeshData) -> usize {
+        self.0 += 1;
+        self.0 - 1
+    }
+}
+
 pub struct Game {
     pub project: Project,
     deadline: Rc<Cell<Option<Instant>>>,
@@ -119,6 +131,8 @@ pub struct Game {
     camera: Camera,
     clear: [f64; 4],
     pub error: Option<String>,
+    /// The complete error text including any Lua traceback (the banner shows only `error`).
+    pub error_detail: Option<String>,
     pub warnings: Vec<String>,
     pub last_update: Duration,
     stamp: Option<SystemTime>,
@@ -1254,6 +1268,7 @@ impl Game {
             camera: DEFAULT_CAMERA,
             clear: srgb_to_linear([0.36, 0.55, 0.78, 1.0]),
             error: None,
+            error_detail: None,
             warnings,
             last_update: Duration::ZERO,
             checked: Instant::now(),
@@ -1287,6 +1302,7 @@ impl Game {
         game.deadline.set(None);
         if let Err(e) = result {
             log::error!("script error: {e}");
+            game.error_detail = Some(e.to_string());
             game.error = Some(first_line(&e.to_string()));
         }
         Ok(game)
@@ -1345,6 +1361,19 @@ impl Game {
             .map(<[u8]>::to_vec)
     }
 
+    /// Makes `math.random` repeatable from here on (tests and replays). Randomness used while the
+    /// project loads is not affected.
+    pub fn reseed(&self, seed: u64) {
+        if let Ok(random_seed) = self
+            .lua
+            .globals()
+            .get::<Table>("math")
+            .and_then(|m| m.get::<Function>("randomseed"))
+        {
+            let _ = random_seed.call::<()>(seed as i64);
+        }
+    }
+
     pub fn world_height(&self) -> u32 {
         self.project.manifest.world_height
     }
@@ -1352,6 +1381,7 @@ impl Game {
     pub fn set_error(&mut self, message: String) {
         log::error!("{message}");
         self.error = Some(first_line(&message));
+        self.error_detail = Some(message);
     }
 
     /// True when files changed on disk since the last check (at most every 400 ms).
@@ -1422,6 +1452,7 @@ impl Game {
             self.last_update = started.elapsed();
             if let Err(e) = result {
                 log::error!("script error: {e}");
+                self.error_detail = Some(e.to_string());
                 self.error = Some(first_line(&e.to_string()));
             }
         }

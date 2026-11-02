@@ -1,0 +1,611 @@
+[
+ {
+  "name": "nova.sprite",
+  "kind": "function",
+  "signature": "nova.sprite(id, x, y [, opts])",
+  "doc": "Draw an image or one frame of a sprite sheet, centred on x, y, in the world layer. Options: scale, sx, sy, w, h, rotation, color, anchor, frame.",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.rect",
+  "kind": "function",
+  "signature": "nova.rect(x, y, w, h [, color])",
+  "doc": "Draw a solid rectangle (top-left x, y) in the world layer. color is {r, g, b [, a]}.",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.model",
+  "kind": "function",
+  "signature": "nova.model(id, x, y, z [, opts])",
+  "doc": "Draw a 3D model. Options: scale, rx, ry, rz (radians), tint.",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.camera",
+  "kind": "function",
+  "signature": "nova.camera(ex, ey, ez, tx, ty, tz [, fov])",
+  "doc": "Set the 3D camera: eye position, target position and field of view in degrees.",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.clear",
+  "kind": "function",
+  "signature": "nova.clear(r, g, b)",
+  "doc": "Set the background colour (0 to 255).",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.view",
+  "kind": "function",
+  "signature": "nova.view() -> width, height",
+  "doc": "The size of the screen in logical units (whole numbers, 540 high).",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.time",
+  "kind": "function",
+  "signature": "nova.time() -> seconds",
+  "doc": "Seconds since the game started.",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.log",
+  "kind": "function",
+  "signature": "nova.log(text)",
+  "doc": "Write a line to the log.",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.ui",
+  "kind": "namespace",
+  "signature": "nova.ui",
+  "doc": "Drawing in the UI layer, always at the screen's native resolution.",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.ui.sprite",
+  "kind": "function",
+  "signature": "nova.ui.sprite(id, x, y [, opts])",
+  "doc": "Like nova.sprite, in the UI layer.",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.ui.rect",
+  "kind": "function",
+  "signature": "nova.ui.rect(x, y, w, h [, color])",
+  "doc": "Like nova.rect, in the UI layer.",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.ui.text",
+  "kind": "function",
+  "signature": "nova.ui.text(x, y, text [, opts]) -> width, height",
+  "doc": "Draw text. Options: font, size, color, width (wrap), align, shadow. Fonts: sans, rounded, pixel, terminal, mono, serif, comic, display, script, or a project font.",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.ui.text_size",
+  "kind": "function",
+  "signature": "nova.ui.text_size(text [, opts]) -> width, height",
+  "doc": "Measure text without drawing it.",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.ui.text_width",
+  "kind": "function",
+  "signature": "nova.ui.text_width(text [, opts]) -> width",
+  "doc": "Width of text in logical units.",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.input",
+  "kind": "namespace",
+  "signature": "nova.input",
+  "doc": "Named input actions. Projects bind actions to keys, buttons, sticks and touch in nova.json.",
+  "group": "Input"
+ },
+ {
+  "name": "nova.input.down",
+  "kind": "function",
+  "signature": "nova.input.down(action) -> boolean",
+  "doc": "True while the action is held.",
+  "group": "Input"
+ },
+ {
+  "name": "nova.input.pressed",
+  "kind": "function",
+  "signature": "nova.input.pressed(action) -> boolean",
+  "doc": "True in the one game step after the action went down.",
+  "group": "Input"
+ },
+ {
+  "name": "nova.input.released",
+  "kind": "function",
+  "signature": "nova.input.released(action) -> boolean",
+  "doc": "True in the one game step after the action was let go.",
+  "group": "Input"
+ },
+ {
+  "name": "nova.input.axis",
+  "kind": "function",
+  "signature": "nova.input.axis(action) -> number",
+  "doc": "-1 to 1 for axes such as move_x; 0 to 1 for buttons.",
+  "group": "Input"
+ },
+ {
+  "name": "nova.input.actions",
+  "kind": "function",
+  "signature": "nova.input.actions() -> list",
+  "doc": "Every action name.",
+  "group": "Input"
+ },
+ {
+  "name": "nova.input.bind",
+  "kind": "function",
+  "signature": "nova.input.bind(action, sources)",
+  "doc": "Change what drives an action. A list of sources makes a button; { negative = {...}, positive = {...} } makes an axis.",
+  "group": "Input"
+ },
+ {
+  "name": "nova.input.bindings",
+  "kind": "function",
+  "signature": "nova.input.bindings(action) -> list",
+  "doc": "The sources an action uses.",
+  "group": "Input"
+ },
+ {
+  "name": "nova.input.reset_bindings",
+  "kind": "function",
+  "signature": "nova.input.reset_bindings()",
+  "doc": "Restore the project's own bindings.",
+  "group": "Input"
+ },
+ {
+  "name": "nova.input.last_source",
+  "kind": "function",
+  "signature": "nova.input.last_source() -> string",
+  "doc": "The most recently pressed input source, such as key:KeyZ (for rebinding screens).",
+  "group": "Input"
+ },
+ {
+  "name": "nova.sound",
+  "kind": "namespace",
+  "signature": "nova.sound",
+  "doc": "Sound effects (WAV files).",
+  "group": "Sound"
+ },
+ {
+  "name": "nova.sound.play",
+  "kind": "function",
+  "signature": "nova.sound.play(name [, opts]) -> id",
+  "doc": "Play a sound effect. Options: volume, pan, pitch, loop.",
+  "group": "Sound"
+ },
+ {
+  "name": "nova.sound.stop",
+  "kind": "function",
+  "signature": "nova.sound.stop(id [, fade])",
+  "doc": "Stop one sound, optionally fading out over fade seconds.",
+  "group": "Sound"
+ },
+ {
+  "name": "nova.sound.stop_all",
+  "kind": "function",
+  "signature": "nova.sound.stop_all()",
+  "doc": "Stop every sound effect.",
+  "group": "Sound"
+ },
+ {
+  "name": "nova.sound.volume",
+  "kind": "function",
+  "signature": "nova.sound.volume(v)",
+  "doc": "Master volume for effects (0 to 2).",
+  "group": "Sound"
+ },
+ {
+  "name": "nova.music",
+  "kind": "namespace",
+  "signature": "nova.music",
+  "doc": "Background music: one track at a time.",
+  "group": "Sound"
+ },
+ {
+  "name": "nova.music.play",
+  "kind": "function",
+  "signature": "nova.music.play(name [, opts])",
+  "doc": "Play music. Loops by default. Options: volume, fade, loop.",
+  "group": "Sound"
+ },
+ {
+  "name": "nova.music.stop",
+  "kind": "function",
+  "signature": "nova.music.stop([fade])",
+  "doc": "Stop the music, optionally fading out.",
+  "group": "Sound"
+ },
+ {
+  "name": "nova.music.volume",
+  "kind": "function",
+  "signature": "nova.music.volume(v)",
+  "doc": "Master volume for music (0 to 2).",
+  "group": "Sound"
+ },
+ {
+  "name": "nova.save",
+  "kind": "namespace",
+  "signature": "nova.save",
+  "doc": "Values kept between runs of the game.",
+  "group": "Save data"
+ },
+ {
+  "name": "nova.save.get",
+  "kind": "function",
+  "signature": "nova.save.get(key [, default])",
+  "doc": "Read a saved value.",
+  "group": "Save data"
+ },
+ {
+  "name": "nova.save.set",
+  "kind": "function",
+  "signature": "nova.save.set(key, value)",
+  "doc": "Save a number, string, boolean or table of those.",
+  "group": "Save data"
+ },
+ {
+  "name": "nova.save.delete",
+  "kind": "function",
+  "signature": "nova.save.delete(key)",
+  "doc": "Forget a saved value.",
+  "group": "Save data"
+ },
+ {
+  "name": "nova.save.keys",
+  "kind": "function",
+  "signature": "nova.save.keys() -> list",
+  "doc": "Every saved key, sorted.",
+  "group": "Save data"
+ },
+ {
+  "name": "nova.save.flush",
+  "kind": "function",
+  "signature": "nova.save.flush()",
+  "doc": "Write the save file now (it is also written every few seconds and on exit).",
+  "group": "Save data"
+ },
+ {
+  "name": "nova.start",
+  "kind": "function",
+  "signature": "nova.start(scene)",
+  "doc": "Hand the frame to the framework and begin with this scene (scenes/<name>.lua).",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.entity",
+  "kind": "function",
+  "signature": "nova.entity([parent,] spec)",
+  "doc": "Define an entity class. Spec: sprite, model, tags, depth, hitbox, screen, and default fields.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.scene",
+  "kind": "function",
+  "signature": "nova.scene([parent,] spec)",
+  "doc": "Define a scene class with enter, update, draw, draw_ui and leave methods.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.goto_scene",
+  "kind": "function",
+  "signature": "nova.goto_scene(name, ...)",
+  "doc": "Replace the scene at the start of the next frame; extra arguments go to enter().",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.restart_scene",
+  "kind": "function",
+  "signature": "nova.restart_scene()",
+  "doc": "Rebuild the current scene from its file.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.current_scene",
+  "kind": "function",
+  "signature": "nova.current_scene() -> name",
+  "doc": "The name of the running scene.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.spawn",
+  "kind": "function",
+  "signature": "nova.spawn(kind, x, y [, props]) -> entity",
+  "doc": "Create an entity from entities/<kind>.lua.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.each",
+  "kind": "function",
+  "signature": "nova.each(tag, fn)",
+  "doc": "Call fn for every living entity with the tag.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.all",
+  "kind": "function",
+  "signature": "nova.all(tag) -> list",
+  "doc": "A new list of the living entities with the tag.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.first",
+  "kind": "function",
+  "signature": "nova.first(tag) -> entity",
+  "doc": "The first living entity with the tag.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.count",
+  "kind": "function",
+  "signature": "nova.count(tag) -> number",
+  "doc": "How many living entities have the tag.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.nearest",
+  "kind": "function",
+  "signature": "nova.nearest(x, y, tag [, max_distance]) -> entity",
+  "doc": "The closest entity with the tag.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.in_radius",
+  "kind": "function",
+  "signature": "nova.in_radius(x, y, radius, tag [, list]) -> list",
+  "doc": "Entities with the tag within a distance of a point.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.send",
+  "kind": "function",
+  "signature": "nova.send(entity_or_tag, message, ...)",
+  "doc": "Call a method on one entity, or on every entity with a tag.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.pause",
+  "kind": "function",
+  "signature": "nova.pause([on])",
+  "doc": "Freeze entities (the scene and timers keep running), for pause menus.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.count_alive",
+  "kind": "function",
+  "signature": "nova.count_alive() -> number",
+  "doc": "How many entities are alive.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.wait",
+  "kind": "function",
+  "signature": "nova.wait(seconds)",
+  "doc": "Inside self:go(): pause the script.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.wait_until",
+  "kind": "function",
+  "signature": "nova.wait_until(fn)",
+  "doc": "Inside self:go(): wait until fn() is true.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.ease",
+  "kind": "namespace",
+  "signature": "nova.ease",
+  "doc": "Easing functions for tweens: linear, in_quad, out_quad, in_out_quad, in_cubic, out_cubic, in_out_cubic, out_back, out_bounce.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.cam",
+  "kind": "namespace",
+  "signature": "nova.cam",
+  "doc": "The 2D camera.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.cam.set",
+  "kind": "function",
+  "signature": "nova.cam.set(x, y)",
+  "doc": "Put the camera's centre at a world point.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.cam.follow",
+  "kind": "function",
+  "signature": "nova.cam.follow(entity [, lerp])",
+  "doc": "Follow an entity; lerp 1 locks on, smaller values trail behind.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.cam.limit",
+  "kind": "function",
+  "signature": "nova.cam.limit(x0, y0, x1, y1)",
+  "doc": "Keep the view inside a world rectangle.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.cam.position",
+  "kind": "function",
+  "signature": "nova.cam.position() -> x, y",
+  "doc": "The camera centre.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.tilemap",
+  "kind": "function",
+  "signature": "nova.tilemap(spec) -> tilemap",
+  "doc": "Create a tile grid. Spec: image, tile_width, tile_height, tiles, solid, x, y, depth.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.solid_at",
+  "kind": "function",
+  "signature": "nova.solid_at(x, y) -> boolean",
+  "doc": "True when a world point is inside a solid tile.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.Entity",
+  "kind": "namespace",
+  "signature": "nova.Entity",
+  "doc": "The base entity class (call nova.Entity.draw(self) from a custom draw).",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.Picture",
+  "kind": "namespace",
+  "signature": "nova.Picture",
+  "doc": "The built-in picture entity used by scene files.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.Text",
+  "kind": "namespace",
+  "signature": "nova.Text",
+  "doc": "The built-in text entity used by scene files.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "destroy",
+  "kind": "method",
+  "signature": "self:destroy()",
+  "doc": "Remove the entity.",
+  "group": "Entity methods"
+ },
+ {
+  "name": "is_alive",
+  "kind": "method",
+  "signature": "self:is_alive() -> boolean",
+  "doc": "False once destroyed.",
+  "group": "Entity methods"
+ },
+ {
+  "name": "distance_to",
+  "kind": "method",
+  "signature": "self:distance_to(x, y | entity) -> number",
+  "doc": "Distance to a point or entity.",
+  "group": "Entity methods"
+ },
+ {
+  "name": "angle_to",
+  "kind": "method",
+  "signature": "self:angle_to(x, y | entity) -> radians",
+  "doc": "Angle to a point or entity.",
+  "group": "Entity methods"
+ },
+ {
+  "name": "move_toward",
+  "kind": "method",
+  "signature": "self:move_toward(x, y | entity, step) -> arrived",
+  "doc": "Step toward a point; true on arrival.",
+  "group": "Entity methods"
+ },
+ {
+  "name": "set_velocity",
+  "kind": "method",
+  "signature": "self:set_velocity(angle, speed)",
+  "doc": "Set vx and vy from an angle and speed.",
+  "group": "Entity methods"
+ },
+ {
+  "name": "speed",
+  "kind": "method",
+  "signature": "self:speed() -> number",
+  "doc": "Current speed.",
+  "group": "Entity methods"
+ },
+ {
+  "name": "overlaps",
+  "kind": "method",
+  "signature": "self:overlaps(other) -> boolean",
+  "doc": "Whether two entities' hitboxes overlap.",
+  "group": "Entity methods"
+ },
+ {
+  "name": "touching",
+  "kind": "method",
+  "signature": "self:touching(tag) -> entity",
+  "doc": "The first overlapping entity with the tag.",
+  "group": "Entity methods"
+ },
+ {
+  "name": "bounds",
+  "kind": "method",
+  "signature": "self:bounds() -> x0, y0, x1, y1",
+  "doc": "The entity's hitbox in the world.",
+  "group": "Entity methods"
+ },
+ {
+  "name": "slide",
+  "kind": "method",
+  "signature": "self:slide(dx, dy) -> blocked_x, blocked_y",
+  "doc": "Move, stopping against solid tiles.",
+  "group": "Entity methods"
+ },
+ {
+  "name": "play",
+  "kind": "method",
+  "signature": "self:play(tag [, opts])",
+  "doc": "Play an animation tag of the sprite sheet.",
+  "group": "Entity methods"
+ },
+ {
+  "name": "stop_animation",
+  "kind": "method",
+  "signature": "self:stop_animation()",
+  "doc": "Stop animating.",
+  "group": "Entity methods"
+ },
+ {
+  "name": "set_frame",
+  "kind": "method",
+  "signature": "self:set_frame(frame)",
+  "doc": "Show one frame of the sprite sheet.",
+  "group": "Entity methods"
+ },
+ {
+  "name": "after",
+  "kind": "method",
+  "signature": "self:after(seconds, fn)",
+  "doc": "Run fn once later; cancelled if the entity is destroyed.",
+  "group": "Entity methods"
+ },
+ {
+  "name": "every",
+  "kind": "method",
+  "signature": "self:every(seconds, fn)",
+  "doc": "Run fn repeatedly.",
+  "group": "Entity methods"
+ },
+ {
+  "name": "go",
+  "kind": "method",
+  "signature": "self:go(fn)",
+  "doc": "Run a script that can nova.wait().",
+  "group": "Entity methods"
+ },
+ {
+  "name": "tween",
+  "kind": "method",
+  "signature": "self:tween(props, seconds [, easing [, on_done]])",
+  "doc": "Glide fields to new values.",
+  "group": "Entity methods"
+ },
+ {
+  "name": "draw",
+  "kind": "method",
+  "signature": "self:draw()",
+  "doc": "Draw the entity (override for custom drawing).",
+  "group": "Entity methods"
+ }
+]
