@@ -55,7 +55,7 @@ Confirmed product requirements:
 | Desktop UI/platform decision | Retained research | Qt 6/C++ selected by the user; prove real text input, focus/accessibility facilities, dialogs/docking and live native GPU integration before committing to the bridge. | Native macOS bridge implemented; human IME/VoiceOver and other OS qualification remain |
 | Authoring/document foundation | UI decision + baseline | Unified documents/selection, full undo/redo, safe coherent writes, recovery, conflict handling and native preview. | First Scene/Code foundation implemented; future asset document types still need integration |
 | Lua-first creation loop | Authoring foundation | Project creation/open/save, visual scenes and script/property binding, useful code tools, diagnostics and Run/Stop without overwriting authored code. | First 2D/3D creation slice implemented; complete studio remains in progress |
-| Sprite workspace | Authoring foundation + runtime animation | Real drawing/layers/frames, source preservation, reversible editing and matching scene/runtime updates. | Isolated document/canvas in progress; shell, transaction and runtime integration remain |
+| Sprite workspace | Authoring foundation + runtime animation | Real drawing/layers/frames, source preservation, reversible editing and matching scene/runtime updates. | Embeddable document/canvas component implemented; guarded host/runtime integration pending |
 | Model workspace | Authoring foundation + existing GLB pipeline | Mesh/transform/material/UV basics, reversible editing and faithful supported model round trips. | Independent [editable-mesh component](docs/mesh-authoring.md) implemented; Qt workspace/save/preview integration pending |
 | Audio engine | Existing native services | Sample-clock processing, float mixing, quality instruments/DSP, streams/buses, device handling and offline rendering. | C11 DSP/offline, shared-device controls and bounded disk streams implemented; runtime music binding and hardware/lifecycle qualification remain |
 | Recording and SFX | Authoring foundation + audio engine | Nondestructive waveform editing, explicit recording, layered SFX, safe audition and persistent sources. | Pending |
@@ -241,6 +241,33 @@ their files. Source-only saving must preserve editable work and explicitly
 mark stale derived output rather than silently publishing an older result.
 These components, integrated workspaces, sound production, delivery and the
 playable 3D rally exercise remain unfinished.
+
+### Independent Qt Sprite component handoff
+
+`nova_sprite` is an opt-in desktop library in `authoring/sprite/`, not another
+application or a replacement for the shared native game renderer. It supplies
+real raster tools, layers, selection/clipboard/transforms, frames and exact
+durations, named animations, palettes, onion skin, editor preview, pivot/
+rectangle metadata and grouped undo. Qt controls use scoped dark/light styling,
+system fonts and original vector icons; normal/minimum native-widget captures
+are separate from native input activation evidence.
+
+The [embedding/source/export contract](docs/sprite-component.md) specifies
+ownership, strict binary `.nova-sprite` v1, exact bounds, guarded snapshot/
+revision acknowledgement and separately identified PNG/metadata payloads.
+The maximum-valid-source regression persists and reopens 67,121,780 bytes
+without base64 expansion, plus all derived files; a second fixture exercises
+the full composite-pixel delivery budget. Model/canvas/workspace code performs
+no filesystem writes and does not change manifests, scenes or engine APIs.
+
+The current Qt journal handles only three text documents. Integration must
+extend it for blob-backed sprite source/outputs, track source-only/stale-derived
+saves explicitly, protect existing assets, preflight shared project budgets and
+coordinate scene placement/native animation. The native `nova.frames` API
+still has one uniform duration; it does not consume this component's metadata.
+The full Cocoa active/key-window control check remains an explicit gate on an
+unlocked desktop; offscreen control and exposed-layout captures do not replace
+it. The layered animated marker fixture is not the final 3D rally game.
 
 ## Pre-Qt integrated baseline (retained evidence)
 

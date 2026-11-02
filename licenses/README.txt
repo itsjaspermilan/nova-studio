@@ -22,3 +22,13 @@ its embedded notice is preserved with the other raylib headers.
 Nova-authored source and documentation are MIT licensed; see the packaged LICENSE
 (Copyright (c) 2026 Nova Studio contributors). This does not relicense vendored
 dependencies or the separately CC0 sample artwork. Preserve their notices.
+
+The optional desktop nova_sprite component uses installed Qt 6 Core, Gui and
+Widgets, with QtTest for verification (minimum 6.5; checked with Homebrew qtbase
+6.12.0_2). These modules offer LGPLv3/GPLv3/commercial licensing; see
+https://doc.qt.io/qt-6/licensing.html. No Qt modules are linked into Android or
+the existing native runtime. The current component links shared host Qt and is
+not a Qt application distribution. Deployment of the integrated Qt host must
+include its applicable Qt/third-party notices and LGPL compliance materials;
+the existing runtime notice collector does not package them automatically.
+See docs/sprite-component.md for the component and integration boundary.

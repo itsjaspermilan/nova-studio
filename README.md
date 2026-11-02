@@ -45,6 +45,13 @@ existing modeller UI or yet provide the integrated Qt Model workspace.
 It performs no file writes or rendering. Shared save/recovery, the single
 native viewport and scene/runtime integration remain separate requirements.
 
+The opt-in [Qt Sprite component](docs/sprite-component.md) adds an embeddable
+layer/frame document, drawing canvas and styled workspace, with preserved
+editable source and separate PNG/metadata snapshots. It is not another
+standalone editor or an integrated project save/runtime-animation feature.
+Its host must provide native pickers, guarded binary/multi-file persistence,
+whole-project preflight and scene integration; the default runtime stays Qt-free.
+
 In the sample launcher, click an example, press **1 / 2 / 3**, or use gamepad **A / B / X**. Move with **WASD, arrow keys, D-pad, or left stick**. In the 3D example, **Space / A** makes the model bounce; in the asset project it lifts the imported gem. **F1 / Start** returns to the launcher, **R** reloads the active script or whole project, and **Esc / Android Back** exits.
 
 Edit the source examples with your preferred text editor, then rebuild to synchronize them into `build/examples`. Asset synchronization runs even when no C source changed. Alternatively, play a source script directly and use R after saving:
@@ -291,7 +298,9 @@ explicitly **Import appearance**. Selection/navigation never saves. Import valid
 through the shared decoder and guardedly copies into a fresh stable-ID filename;
 existing destinations are refused. It writes that asset copy, not the game
 document. Undo/deletion retain imported files rather than silently deleting
-potentially useful data. PNG painting and animated GLB are not implemented.
+potentially useful data. PNG painting is not integrated into this legacy
+workspace; the separate Qt component above supplies its authoring foundation.
+Animated GLB is not implemented.
 
 The modeller has **Parts** on the left, a large central **Model view**, and a
 contextual **Inspector** on the right, matching the room workspace's hierarchy.
