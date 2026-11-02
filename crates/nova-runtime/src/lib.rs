@@ -1,6 +1,7 @@
 //! Nova's native runtime. At this stage it is the M1 device spike: a wgpu renderer
 //! (2D sprites + low-poly 3D), a Lua gameplay host, an input action layer and audio.
 
+pub mod actions;
 pub mod app;
 pub mod assets;
 pub mod audio;

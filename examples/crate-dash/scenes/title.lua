@@ -8,7 +8,7 @@ function Title:enter()
   -- A script that can wait: pause briefly, then wait for a button.
   self:go(function()
     nova.wait(0.4)
-    nova.wait_until(function() return nova.input.down("throttle") or nova.input.down("action") end)
+    nova.wait_until(function() return nova.input.pressed("jump") end)
     nova.goto_scene("play")
   end)
   -- The prompt blinks, using a repeating timer.

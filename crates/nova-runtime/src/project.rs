@@ -62,6 +62,8 @@ pub struct Manifest {
     pub entry: String,
     pub world_height: u32,
     pub version: Option<String>,
+    /// The raw `"input"` section (validated when the manifest is read).
+    pub input: Option<serde_json::Value>,
 }
 
 pub struct Project {
@@ -144,15 +146,29 @@ pub fn parse_manifest(text: &str, warnings: &mut Vec<String>) -> Result<Manifest
         }
     };
     for key in object.keys() {
-        if !["format", "name", "entry", "world_height", "version"].contains(&key.as_str()) {
+        if ![
+            "format",
+            "name",
+            "entry",
+            "world_height",
+            "version",
+            "input",
+        ]
+        .contains(&key.as_str())
+        {
             warnings.push(format!("{MANIFEST}: unknown key \"{key}\" is ignored"));
         }
+    }
+    let input = object.get("input").cloned();
+    if let Some(input) = &input {
+        crate::actions::Bindings::from_manifest(input)?;
     }
     Ok(Manifest {
         name,
         entry,
         world_height,
         version,
+        input,
     })
 }
 

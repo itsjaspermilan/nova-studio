@@ -23,7 +23,7 @@ const USAGE: &str = "usage:
   nova info <project-folder>             print the project's name, version and id (for build scripts)
   nova [options]                         built-in benchmark scene
 options: [--headless] [--frames N] [--capture out.png] [--size WxH] [--world-height N]
-         [--uncapped] [--no-audio] [--hud] [--hold throttle,steer=1] [--save-dir folder]
+         [--uncapped] [--no-audio] [--hud] [--hold jump,move_x=1] [--save-dir folder]
          [--script file.lua (benchmark scene only)]";
 
 enum Command {

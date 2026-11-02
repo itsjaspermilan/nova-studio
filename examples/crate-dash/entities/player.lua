@@ -13,10 +13,10 @@ local Player = nova.entity {
 
 function Player:update(dt)
   local w = nova.view()
-  self.x = math.max(16, math.min(w - 16, self.x + nova.input.axis("steer") * self.speed * dt))
+  self.x = math.max(16, math.min(w - 16, self.x + nova.input.axis("move_x") * self.speed * dt))
 
   local on_ground = self.y >= self.floor
-  if on_ground and (nova.input.down("throttle") or nova.input.down("action")) then
+  if on_ground and nova.input.down("jump") then
     self.vy = -self.jump
     nova.sound.play("jump", { volume = 0.6, pitch = 0.9 + math.random() * 0.2 })
   end
@@ -29,7 +29,7 @@ function Player:update(dt)
   self.alpha = (nova.time() < self.hurt_until) and 0.5 or 1
 
   -- Animation: the sprite sheet has the tags idle, run and jump (sprites/player.sprite.json).
-  local steer = nova.input.axis("steer")
+  local steer = nova.input.axis("move_x")
   if steer < -0.1 then self.sx = -1 elseif steer > 0.1 then self.sx = 1 end
   if self.y < self.floor then
     self:play("jump")

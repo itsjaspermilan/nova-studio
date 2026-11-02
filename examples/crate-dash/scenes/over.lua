@@ -7,7 +7,7 @@ function Over:enter()
   nova.spawn("ground", 0, 440)
   self:go(function()
     nova.wait(0.8)
-    nova.wait_until(function() return nova.input.down("throttle") or nova.input.down("action") end)
+    nova.wait_until(function() return nova.input.pressed("jump") end)
     nova.goto_scene("title")
   end)
 end

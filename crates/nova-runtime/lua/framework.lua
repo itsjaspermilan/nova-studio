@@ -862,6 +862,7 @@ local function compact()
 end
 
 local function step(dt)
+  raw.input_step() -- presses and releases since the last step become visible to this one
   W.step_id = W.step_id + 1
   W.time = W.time + dt
   timers.update(dt)
@@ -938,6 +939,7 @@ function nova.start(first)
   if W.started then error("nova.start was already called", 2) end
   if type(first) ~= "string" then error("nova.start(scene_name): give the name of the first scene", 2) end
   W.started = true
+  raw.use_fixed_steps()
   W.pending = { name = first, args = { n = 0 } }
   _G.update, _G.draw = frame_update, frame_draw
 end

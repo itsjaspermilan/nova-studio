@@ -1150,3 +1150,216 @@ fn text_is_rasterised_at_the_screens_pixel_size_and_the_atlas_reaches_the_host()
     // Quads are in logical units, so both cover the same logical height (rasterised at different pixel sizes).
     assert!((at_2x - at_1x).abs() < 1.5, "{at_2x} vs {at_1x}");
 }
+
+// ---------------------------------------------------------------- input actions
+
+use nova_runtime::actions::InputFrame;
+
+fn input(sources: &[(&str, f32)]) -> InputFrame {
+    InputFrame {
+        sources: sources.iter().map(|(k, v)| (k.to_string(), *v)).collect(),
+        ..Default::default()
+    }
+}
+
+fn project_with(manifest: &str, files: Vec<(&'static str, Vec<u8>)>) -> Result<Game, String> {
+    let mut all = vec![("nova.json", manifest.as_bytes().to_vec())];
+    all.extend(files);
+    let vfs: Rc<dyn Vfs> = Rc::new(MemVfs::new(all));
+    let mut game = Game::load(vfs)?;
+    game.upload(&mut FakeGpu);
+    Ok(game)
+}
+
+fn frame_with(game: &mut Game, dt: f32, frame: &InputFrame) {
+    game.update_input(dt, 0.0, [960.0, 540.0], frame);
+}
+
+#[test]
+fn actions_report_down_value_and_edges_from_sources() {
+    let mut g = project(vec![(
+        "main.lua",
+        lua(
+            "function update(dt)\n nova.log(string.format('%s %s %s %.1f %.1f', tostring(nova.input.down('a')), tostring(nova.input.pressed('a')), tostring(nova.input.released('a')), nova.input.axis('move_x'), nova.input.axis('move_y')))\nend",
+        ),
+    )]);
+    frame_with(&mut g, 1.0 / 60.0, &input(&[]));
+    frame_with(
+        &mut g,
+        1.0 / 60.0,
+        &input(&[("key:KeyZ", 1.0), ("axis:left_x", 1.0)]),
+    );
+    frame_with(
+        &mut g,
+        1.0 / 60.0,
+        &input(&[("key:KeyZ", 1.0), ("axis:left_y", 0.6)]),
+    );
+    frame_with(&mut g, 1.0 / 60.0, &input(&[]));
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let l = logs(&g);
+    assert_eq!(l[0], "false false false 0.0 0.0");
+    assert_eq!(l[1], "true true false 1.0 0.0", "{l:?}");
+    assert!(
+        l[2].starts_with("true false false 0.0 0.5"),
+        "held, not pressed again; stick down: {l:?}"
+    );
+    assert_eq!(l[3], "false false true 0.0 0.0", "{l:?}");
+}
+
+#[test]
+fn a_press_is_seen_by_exactly_one_game_step_at_any_frame_rate() {
+    let counting = |source: &str| {
+        project(vec![
+            ("scenes/s.lua", lua(source)),
+            ("main.lua", lua("nova.start('s')")),
+        ])
+    };
+    for (label, dt) in [
+        ("120 Hz frames", 1.0 / 120.0),
+        ("30 Hz frames", 1.0 / 30.0),
+        ("60 Hz frames", 1.0 / 60.0),
+    ] {
+        let mut g = counting(
+            "local S = nova.scene {}\nfunction S:enter() self.n = 0 self.r = 0 end\nfunction S:update(dt)\n  if nova.input.pressed('a') then self.n = self.n + 1 end\n  if nova.input.released('a') then self.r = self.r + 1 end\nend\nfunction S:draw() nova.log(self.n .. ' ' .. self.r) end\nreturn S",
+        );
+        let hold = input(&[("key:KeyZ", 1.0)]);
+        let idle = input(&[]);
+        for _ in 0..6 {
+            frame_with(&mut g, dt, &idle);
+        }
+        for _ in 0..12 {
+            frame_with(&mut g, dt, &hold); // held for 0.1 s whatever the frame rate
+        }
+        for _ in 0..12 {
+            frame_with(&mut g, dt, &idle);
+        }
+        assert!(g.error.is_none(), "{label}: {:?}", g.error);
+        let last = logs(&g).last().cloned().expect("draw ran");
+        assert_eq!(
+            last, "1 1",
+            "{label}: one press and one release, no more and no fewer"
+        );
+    }
+}
+
+#[test]
+fn manifest_bindings_add_and_replace_actions() {
+    let mut g = project_with(
+        r#"{"format":1,"name":"T","input":{"fire":["key:KeyJ","pad:west"],"move_x":{"negative":["key:KeyH"],"positive":["key:KeyL"]}}}"#,
+        vec![(
+            "main.lua",
+            lua("function update(dt) nova.log(tostring(nova.input.down('fire')) .. ' ' .. nova.input.axis('move_x')) end"),
+        )],
+    )
+    .unwrap();
+    frame_with(
+        &mut g,
+        0.016,
+        &input(&[("key:KeyJ", 1.0), ("key:KeyL", 1.0)]),
+    );
+    frame_with(&mut g, 0.016, &input(&[("key:KeyD", 1.0)]));
+    assert_eq!(
+        logs(&g),
+        ["true 1.0", "false 0.0"],
+        "the default D key no longer drives move_x"
+    );
+}
+
+#[test]
+fn bad_manifest_bindings_stop_the_load_with_the_exact_place() {
+    for (manifest, expected) in [
+        (
+            r#"{"format":1,"name":"T","input":{"fire":["key:Nope"]}}"#,
+            "nova.json.input.fire[0]: 'Nope' is not a key name",
+        ),
+        (
+            r#"{"format":1,"name":"T","input":{"Fire":["key:KeyJ"]}}"#,
+            "not a valid action name",
+        ),
+        (
+            r#"{"format":1,"name":"T","input":[]}"#,
+            "\"input\" must be an object",
+        ),
+    ] {
+        let e = project_with(manifest, vec![("main.lua", lua(""))])
+            .err()
+            .expect("must fail");
+        assert!(e.contains(expected), "{manifest}: {e}");
+    }
+}
+
+#[test]
+fn scripts_can_rebind_actions_list_them_and_learn_the_last_pressed_source() {
+    let mut g = project(vec![(
+        "main.lua",
+        lua(r#"
+local step = 0
+function update(dt)
+  step = step + 1
+  if step == 1 then
+    nova.input.bind('jump', { 'key:KeyM', 'pad:east' })
+    nova.input.bind('move_x', { negative = { 'key:KeyJ' }, positive = { 'key:KeyK' } })
+    nova.log(table.concat(nova.input.bindings('jump'), ','))
+    local mx = nova.input.bindings('move_x')
+    nova.log(mx.negative[1] .. ' ' .. mx.positive[1])
+    nova.log(tostring(nova.input.last_source()))
+  elseif step == 2 then
+    nova.log(tostring(nova.input.down('jump')) .. ' ' .. nova.input.axis('move_x') .. ' ' .. tostring(nova.input.last_source()))
+    nova.input.reset_bindings()
+    local ok, err = pcall(nova.input.bind, 'jump', { 'key:Nope' })
+    nova.log(tostring(ok) .. ' ' .. tostring(err):match("not a key name"))
+    local ok2, err2 = pcall(nova.input.down, 'nonexistent')
+    nova.log(tostring(ok2) .. ' ' .. tostring(err2):match("unknown input action 'nonexistent' %(actions: "))
+    local names = nova.input.actions()
+    local has = {}
+    for _, n in ipairs(names) do has[n] = true end
+    nova.log(tostring(has.a and has.move_x and has.start and has.steer and not has.jump))
+  end
+end"#),
+    )]);
+    frame_with(&mut g, 0.016, &input(&[]));
+    let mut second = input(&[("key:KeyM", 1.0), ("key:KeyK", 1.0)]);
+    second.last_source = Some("key:KeyM".into());
+    frame_with(&mut g, 0.016, &second);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let l = logs(&g);
+    assert_eq!(l[0], "key:KeyM,pad:east");
+    assert_eq!(l[1], "key:KeyJ key:KeyK");
+    assert_eq!(l[2], "nil", "nothing pressed yet");
+    assert_eq!(l[3], "true 1.0 key:KeyM");
+    assert_eq!(l[4], "false not a key name");
+    assert_eq!(l[5], "false unknown input action 'nonexistent' (actions: ");
+    assert_eq!(
+        l[6], "true",
+        "reset_bindings restores the project's actions and removes added ones"
+    );
+}
+
+#[test]
+fn the_older_four_actions_and_the_compat_update_still_work() {
+    let mut g = project(vec![(
+        "main.lua",
+        lua(
+            "function update(dt) nova.log(nova.input.axis('steer') .. ' ' .. nova.input.axis('throttle') .. ' ' .. tostring(nova.input.down('action'))) end",
+        ),
+    )]);
+    g.update(
+        0.016,
+        0.0,
+        [960.0, 540.0],
+        Actions {
+            steer: -1.0,
+            throttle: 1.0,
+            brake: 0.0,
+            action: true,
+        },
+        false,
+    );
+    g.update_input(
+        0.016,
+        0.0,
+        [960.0, 540.0],
+        &input(&[("key:KeyD", 1.0), ("key:Space", 1.0), ("key:KeyW", 1.0)]),
+    );
+    assert_eq!(logs(&g), ["-1.0 1.0 true", "1.0 1.0 true"]);
+}

@@ -153,37 +153,48 @@ fn crate_dash() -> Game {
 
 #[test]
 fn crate_dash_plays_through_every_scene_without_errors() {
+    use nova_runtime::actions::InputFrame;
     let mut game = crate_dash();
     assert!(game.warnings.is_empty(), "{:?}", game.warnings);
-    let idle = Actions::default();
-    let jump = Actions {
-        throttle: 1.0,
-        steer: 0.4,
-        ..Default::default()
-    };
+    let idle = InputFrame::default();
+    let mut play = InputFrame::default();
+    play.sources.insert("key:Space".into(), 1.0); // the project's "jump"
+    play.sources.insert("key:KeyD".into(), 1.0); // move_x to the right
 
     // The title waits for a button: nothing moves on until the player jumps.
     for frame in 0..60 {
-        game.update(1.0 / 60.0, frame as f64 / 60.0, [960.0, 540.0], idle, false);
+        game.update_input(1.0 / 60.0, frame as f64 / 60.0, [960.0, 540.0], &idle);
     }
     assert!(game.error.is_none(), "{:?}", game.error);
     let title_letters = game.frame_input(540).text.len();
-    assert!(title_letters > 30, "the title text is on screen");
+    assert!(
+        title_letters > 30,
+        "the title text is on screen ({title_letters} letters)"
+    );
 
-    // Hold jump for a long play session. Crates fall on the player until the game ends and returns
-    // to the title; holding jump starts it again, so this runs title -> play -> over -> title repeatedly.
+    // Play a long session. Crates fall on the player until the game ends and returns to the title;
+    // pressing jump starts it again, so this runs title -> play -> over -> title repeatedly.
+    let (mut saw_play, mut saw_over) = (false, false);
     let mut time = 1.0;
-    for _ in 0..(60 * 60 * 3) {
-        game.update(1.0 / 60.0, time, [960.0, 540.0], jump, false);
+    for frame in 0..(60 * 60 * 3) {
+        // Hold jump for 20 frames, let go for 5: menus wait for a fresh press, so each cycle can
+        // start the game again, and in play the player keeps hopping.
+        let input = if frame % 25 < 20 { &play } else { &idle };
+        game.update_input(1.0 / 60.0, time, [960.0, 540.0], input);
         time += 1.0 / 60.0;
         assert!(
             game.error.is_none(),
             "error at t={time:.1}s: {:?}",
             game.error
         );
+        if frame % 15 == 0 {
+            let letters = game.frame_input(540).text.len();
+            saw_play |= (1..=6).contains(&letters); // the play HUD is a score number
+            saw_over |= letters > 20 && letters != title_letters; // "GAME OVER" and the score line
+        }
     }
-    let input = game.frame_input(540);
-    assert!(!input.sprites_back.is_empty() || !input.sprites_front.is_empty());
+    assert!(saw_play, "the play scene was reached");
+    assert!(saw_over, "the game-over scene was reached");
 }
 
 #[test]

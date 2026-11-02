@@ -14,6 +14,7 @@ use std::time::{Duration, Instant, SystemTime};
 use glam::{Mat4, Vec3};
 use mlua::{Function, HookTriggers, Lua, LuaSerdeExt, Table, Value, VmState};
 
+use crate::actions::{self, ActionStates, Binding, Bindings, InputFrame};
 use crate::assets::{self, AtlasLayout};
 use crate::font;
 use crate::gfx::{Camera, FrameInput, Gfx, ModelDraw, ModelInstance, SpriteInstance};
@@ -60,8 +61,11 @@ const DEFAULT_CAMERA: Camera = Camera {
 };
 
 struct Shared {
-    actions: Actions,
-    action_pressed: bool,
+    bindings: Bindings,
+    base_bindings: Bindings,
+    states: ActionStates,
+    last_source: Option<String>,
+    fixed_steps: bool,
     view: [f32; 2],
     time: f64,
     layout: AtlasLayout,
@@ -565,47 +569,131 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
         })?,
     )?;
 
-    // --- input ---
+    // --- input: named actions, see docs/project-format.md ---
     let input = lua.create_table()?;
+    fn unknown_action(sh: &Shared, name: &str) -> mlua::Error {
+        let names = sh.bindings.names();
+        let shown: Vec<&str> = names.iter().copied().take(14).collect();
+        lua_err(format!(
+            "unknown input action '{name}' (actions: {}{})",
+            shown.join(", "),
+            if names.len() > shown.len() {
+                ", ..."
+            } else {
+                ""
+            }
+        ))
+    }
     let s = shared.clone();
     input.set(
         "axis",
         lua.create_function(move |_, name: String| {
-            let a = s.borrow().actions;
-            match name.as_str() {
-                "steer" => Ok(a.steer as f64),
-                "throttle" => Ok(a.throttle as f64),
-                "brake" => Ok(a.brake as f64),
-                "action" => Ok(if a.action { 1.0 } else { 0.0 }),
-                other => Err(lua_err(format!(
-                    "unknown input action '{other}' (steer, throttle, brake, action)"
-                ))),
-            }
+            let sh = s.borrow();
+            sh.bindings
+                .get(&name)
+                .ok_or_else(|| unknown_action(&sh, &name))?;
+            Ok(sh.states.value(&name) as f64)
         })?,
     )?;
     let s = shared.clone();
     input.set(
         "down",
         lua.create_function(move |_, name: String| {
-            let a = s.borrow().actions;
-            match name.as_str() {
-                "steer" => Ok(a.steer != 0.0),
-                "throttle" => Ok(a.throttle > 0.0),
-                "brake" => Ok(a.brake > 0.0),
-                "action" => Ok(a.action),
-                other => Err(lua_err(format!("unknown input action '{other}'"))),
-            }
+            let sh = s.borrow();
+            sh.bindings
+                .get(&name)
+                .ok_or_else(|| unknown_action(&sh, &name))?;
+            Ok(sh.states.is_down(&name))
         })?,
     )?;
     let s = shared.clone();
     input.set(
         "pressed",
-        lua.create_function(move |_, name: String| match name.as_str() {
-            "action" => Ok(s.borrow().action_pressed),
-            other => Err(lua_err(format!(
-                "'{other}' has no pressed edge yet (only 'action')"
-            ))),
+        lua.create_function(move |_, name: String| {
+            let sh = s.borrow();
+            sh.bindings
+                .get(&name)
+                .ok_or_else(|| unknown_action(&sh, &name))?;
+            Ok(sh.states.was_pressed(&name))
         })?,
+    )?;
+    let s = shared.clone();
+    input.set(
+        "released",
+        lua.create_function(move |_, name: String| {
+            let sh = s.borrow();
+            sh.bindings
+                .get(&name)
+                .ok_or_else(|| unknown_action(&sh, &name))?;
+            Ok(sh.states.was_released(&name))
+        })?,
+    )?;
+    let s = shared.clone();
+    input.set(
+        "actions",
+        lua.create_function(move |_, ()| {
+            Ok(s.borrow()
+                .bindings
+                .names()
+                .into_iter()
+                .map(str::to_string)
+                .collect::<Vec<_>>())
+        })?,
+    )?;
+    // bind("jump", { "key:Space", "pad:south" }) or bind("move_x", { negative = {...}, positive = {...} })
+    let s = shared.clone();
+    input.set(
+        "bind",
+        lua.create_function(move |lua, (name, spec): (String, Value)| {
+            let json: serde_json::Value = lua
+                .from_value(spec)
+                .map_err(|e| lua_err(format!("bind('{name}'): {e}")))?;
+            let binding =
+                actions::parse_binding(&json, &format!("bind('{name}')")).map_err(lua_err)?;
+            s.borrow_mut().bindings.set(&name, binding).map_err(lua_err)
+        })?,
+    )?;
+    let s = shared.clone();
+    input.set(
+        "bindings",
+        lua.create_function(move |lua, name: String| {
+            let sh = s.borrow();
+            let binding = sh
+                .bindings
+                .get(&name)
+                .ok_or_else(|| unknown_action(&sh, &name))?;
+            match binding {
+                Binding::Button(_) => lua.to_value(&binding.source_ids()),
+                Binding::Axis { negative, positive } => {
+                    let t = lua.create_table()?;
+                    t.set(
+                        "negative",
+                        negative.iter().map(actions::Source::id).collect::<Vec<_>>(),
+                    )?;
+                    t.set(
+                        "positive",
+                        positive.iter().map(actions::Source::id).collect::<Vec<_>>(),
+                    )?;
+                    Ok(Value::Table(t))
+                }
+            }
+        })?,
+    )?;
+    let s = shared.clone();
+    input.set(
+        "reset_bindings",
+        lua.create_function(move |_, ()| {
+            let mut sh = s.borrow_mut();
+            sh.bindings = sh.base_bindings.clone();
+            Ok(())
+        })?,
+    )?;
+    // last_source(): the input id (such as "key:KeyZ") that was most recently pressed, for
+    // "press a button to bind it" screens; nil until something is pressed.
+    let s = shared.clone();
+    input.set(
+        "last_source",
+        lua.create_function(move |_, ()| Ok(s.borrow().last_source.clone()))?,
     )?;
     nova.set("input", input)?;
     // --- sound: nova.sound.* effects, nova.music.* one background track ---
@@ -934,6 +1022,22 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             },
         )?,
     )?;
+    let s = shared.clone();
+    raw.set(
+        "input_step",
+        lua.create_function(move |_, ()| {
+            s.borrow_mut().states.begin_step();
+            Ok(())
+        })?,
+    )?;
+    let s = shared.clone();
+    raw.set(
+        "use_fixed_steps",
+        lua.create_function(move |_, ()| {
+            s.borrow_mut().fixed_steps = true;
+            Ok(())
+        })?,
+    )?;
     let scene_vfs = vfs.clone();
     raw.set(
         "scene_data",
@@ -1081,6 +1185,10 @@ impl Game {
             sounds.insert(asset.id.clone(), Arc::new(sample));
         }
 
+        let bindings = match &project.manifest.input {
+            Some(input) => Bindings::from_manifest(input)?,
+            None => Bindings::defaults(),
+        };
         let mut text = TextEngine::new().map_err(|e| format!("built-in fonts: {e}"))?;
         for asset in project.assets_of(AssetKind::Font) {
             text.add_font(&asset.id, &vfs.read(&asset.id)?)
@@ -1088,8 +1196,11 @@ impl Game {
         }
 
         let shared = Rc::new(RefCell::new(Shared {
-            actions: Actions::default(),
-            action_pressed: false,
+            bindings: bindings.clone(),
+            base_bindings: bindings,
+            states: ActionStates::default(),
+            last_source: None,
+            fixed_steps: false,
             view: [960.0, 540.0],
             time: 0.0,
             layout: layout.clone(),
@@ -1265,15 +1376,13 @@ impl Game {
         std::mem::take(&mut self.shared.borrow_mut().log)
     }
 
-    /// Runs one frame of scripts and collects what they asked to draw.
-    pub fn update(
-        &mut self,
-        dt: f32,
-        time: f64,
-        view: [f32; 2],
-        actions: Actions,
-        action_pressed: bool,
-    ) {
+    /// Compatibility entry point: the four original actions as plain values.
+    pub fn update(&mut self, dt: f32, time: f64, view: [f32; 2], actions: Actions, _pressed: bool) {
+        self.update_input(dt, time, view, &InputFrame::from_actions(actions));
+    }
+
+    /// Runs one frame of scripts with this frame's input and collects what they asked to draw.
+    pub fn update_input(&mut self, dt: f32, time: f64, view: [f32; 2], input: &InputFrame) {
         {
             let mut sh = self.shared.borrow_mut();
             std::mem::swap(&mut sh.world, &mut self.world);
@@ -1284,8 +1393,15 @@ impl Game {
             sh.ui.clear();
             sh.text_out.clear();
             sh.models.clear();
-            sh.actions = actions;
-            sh.action_pressed = action_pressed;
+            let bindings = sh.bindings.clone();
+            sh.states
+                .update(&bindings, &input.sources, &input.overrides);
+            if input.last_source.is_some() {
+                sh.last_source = input.last_source.clone();
+            }
+            if !sh.fixed_steps {
+                sh.states.begin_step(); // without the framework every frame is one step
+            }
             sh.view = view;
             sh.time = time;
         }

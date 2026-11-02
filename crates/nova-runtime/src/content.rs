@@ -3,10 +3,10 @@
 
 use std::rc::Rc;
 
+use crate::actions::InputFrame;
 use crate::app::Options;
 use crate::game::Game;
 use crate::gfx::{FrameInput, Gfx};
-use crate::input::Actions;
 use crate::pak::PakVfs;
 use crate::script::{ScriptHost, ScriptState};
 use crate::spike::{self, Perf, Spike};
@@ -107,14 +107,13 @@ impl Content {
         dt: f32,
         time: f64,
         size: (u32, u32),
-        actions: Actions,
-        pressed: bool,
+        input: &InputFrame,
         perf: &Perf,
         audio: &str,
     ) -> (f32, f32) {
         match self {
             Content::Spike(s) => {
-                s.script.update(dt, actions, pressed);
+                s.script.update(dt, input.legacy_actions(), false);
                 s.state = s.script.state();
                 let hud =
                     spike::hud_text(&s.spike, perf, &s.state, s.script.error.as_deref(), audio);
@@ -137,7 +136,7 @@ impl Content {
                 let scale = Gfx::ui_scale(size);
                 let view = [size.0 as f32 / scale, size.1 as f32 / scale];
                 game.set_pixel_scale(scale);
-                game.update(dt, time, view, actions, pressed);
+                game.update_input(dt, time, view, input);
                 if let Some(atlas) = game.take_glyph_atlas() {
                     gfx.update_glyph_atlas(&atlas);
                 }

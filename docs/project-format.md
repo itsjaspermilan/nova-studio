@@ -109,18 +109,59 @@ instanced: draws of the same model in a frame become one GPU draw call.
 
 ### Input, time, log
 
+Games ask about named **actions**, never about devices: `nova.input.down("jump")` works the same
+with a keyboard, a gamepad or a touch screen, because the project (not the script) says which
+inputs drive which action.
+
 | Call | Meaning |
 | --- | --- |
-| `nova.input.axis(name)` | `"steer"` (-1..1), `"throttle"`, `"brake"` (0..1), `"action"` (0 or 1). |
-| `nova.input.down(name)` | True while the action is active. |
-| `nova.input.pressed("action")` | True on the frame the action button goes down. |
+| `nova.input.down(name)` | True while the action is held (axes count as down past half way in either direction). |
+| `nova.input.pressed(name)` | True in the one game step after the action went down. |
+| `nova.input.released(name)` | True in the one game step after it was let go. |
+| `nova.input.axis(name)` | `-1` to `1` for axes (`move_x`), `0` to `1` for buttons. |
+| `nova.input.actions()` | Every action name. |
+| `nova.input.bind(name, spec)` | Rebind at run time (see below); `nova.input.reset_bindings()` undoes it. |
+| `nova.input.bindings(name)` | The sources an action uses (a list, or `{ negative, positive }` for axes). |
+| `nova.input.last_source()` | The most recently pressed source id (`"key:KeyZ"`), for "press a button to bind it" screens. |
 | `nova.time()` | Seconds since the game started. |
 | `nova.log(text)` | Write to the log. |
 
-The actions come from the keyboard (WASD or arrows, Space), a gamepad (desktop: left stick,
-triggers, South/East/West buttons; Android: D-pad and A/B/X buttons only for now) and touch
-(drag the left half to steer, hold the right half to accelerate). Named, remappable
-actions are planned for the rest of M2.
+**Edges are exact.** `pressed` and `released` are latched to game steps: the framework steps at 60 Hz
+whatever the frame rate, and a press that lands on a frame with no step (a 120 Hz screen) is held for
+the next step instead of being lost, and a press is never seen by two steps. A tap that starts and
+ends between two steps still reports both edges.
+
+**Built-in actions** (all can be replaced): `left right up down`, `a b x y`, `l1 r1 l2 r2`, `start
+select` (buttons), `move_x move_y look_x look_y` (axes: right and down are positive, `look_*` is the
+right stick), and the older `steer throttle brake action`. Defaults: arrows or WASD or the D-pad or the
+left stick for movement; `a` is Z, Space, the gamepad's south button or a touch on the right half of the
+screen; `b x y` are X, C, V and east, west, north; `start` is Enter; `select` is Tab. Dragging a finger
+on the left half of the screen moves `move_x`/`move_y`.
+
+**Project bindings.** Add an `"input"` section to `nova.json`. A list is a button; an object with
+`negative` and `positive` lists is an axis. A name that already exists is replaced (not merged); a new
+name is added:
+
+```json
+{ "format": 1, "name": "My Game",
+  "input": {
+    "jump": ["key:Space", "pad:south", "touch:right"],
+    "fire": ["key:KeyZ", "pad:west"],
+    "move_x": { "negative": ["key:KeyJ", "axis:left_x"], "positive": ["key:KeyL", "axis:left_x"] }
+  } }
+```
+
+**Sources** are `key:<Name>` (a keyboard key: `KeyA`, `Digit1`, `ArrowLeft`, `Space`, `Enter`,
+`ShiftLeft`, `F5`...), `pad:<button>` (`south east west north l1 r1 l2 r2 start select thumb_l thumb_r
+dpad_up dpad_down dpad_left dpad_right`), `axis:<name>` (`left_x left_y right_x right_y l2 r2`; add `+`
+or `-` to take only one direction) and `touch:<zone>` (`left`, `right`, `drag_x`, `drag_y`). Analogue
+sources have a 20% dead zone. A mistake in `nova.json` stops the project from loading and names the
+exact place, for example `nova.json.input.fire[0]: 'Nope' is not a key name`. At run time,
+`nova.input.bind("jump", { "key:KeyM", "pad:east" })` changes an action for the rest of the run; save
+the player's choice with `nova.save` and bind again at start-up.
+
+Android: gamepad *buttons* and the D-pad work (as key events). Analogue sticks and triggers do not
+reach the game on Android yet.
 
 ### require
 
@@ -428,5 +469,5 @@ streamed music, synthesised music and a sound editor (M6), input remapping and n
 ## Testing helpers
 
 `nova run <folder> --headless --frames N --capture out.png` renders without a window, and
-`--hold throttle,steer=0.5` holds actions down for the whole run, so a screenshot can show
+`--hold jump,move_x=0.5` holds actions down for the whole run, so a screenshot can show
 real gameplay.

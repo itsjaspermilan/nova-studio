@@ -1,5 +1,8 @@
 {
   "format": 1,
   "name": "Crate Dash",
-  "version": "0.1.0"
+  "version": "0.1.0",
+  "input": {
+    "jump": ["key:Space", "key:ArrowUp", "key:KeyW", "pad:south", "touch:right"]
+  }
 }

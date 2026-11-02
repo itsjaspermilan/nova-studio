@@ -12,10 +12,11 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
 
+use crate::actions::InputFrame;
 use crate::audio::{self, AudioOut};
 use crate::content::Content;
 use crate::gfx::Gfx;
-use crate::input::{Actions, Input};
+use crate::input::Input;
 use crate::spike::Perf;
 
 /// A packed project held in memory (read from an `.npk` file or from the APK's assets).
@@ -100,31 +101,19 @@ fn backend_candidates() -> Vec<wgpu::Backends> {
     }
 }
 
-/// Turns `--hold` entries into the actions held every frame of a headless run.
-fn held_actions(hold: &[String]) -> Result<Actions, String> {
-    let mut actions = Actions::default();
-    for entry in hold {
-        let (name, value) = match entry.split_once('=') {
-            Some((n, v)) => (
-                n,
-                v.parse::<f32>()
-                    .map_err(|_| format!("--hold {entry}: '{v}' is not a number"))?,
-            ),
-            None => (entry.as_str(), 1.0),
-        };
-        match name {
-            "steer" => actions.steer = value.clamp(-1.0, 1.0),
-            "throttle" => actions.throttle = value.clamp(0.0, 1.0),
-            "brake" => actions.brake = value.clamp(0.0, 1.0),
-            "action" => actions.action = value > 0.0,
-            other => {
-                return Err(format!(
-                    "--hold: unknown action '{other}' (steer, throttle, brake, action)"
-                ));
-            }
-        }
-    }
-    Ok(actions)
+/// Turns `--hold` entries into values forced on actions every frame: `a`, `move_x=-1`,
+/// or any action name a project defines.
+fn held_actions(hold: &[String]) -> Result<Vec<(String, f32)>, String> {
+    hold.iter()
+        .filter(|e| !e.is_empty())
+        .map(|entry| match entry.split_once('=') {
+            Some((name, v)) => v
+                .parse::<f32>()
+                .map(|v| (name.to_string(), v))
+                .map_err(|_| format!("--hold {entry}: '{v}' is not a number")),
+            None => Ok((entry.clone(), 1.0)),
+        })
+        .collect()
 }
 
 fn print_summary(label: &str, perf: &Perf) {
@@ -188,8 +177,10 @@ pub fn run_headless(opts: Options) -> Result<(), String> {
             dt,
             frame as f64 * dt as f64,
             size,
-            held,
-            false,
+            &InputFrame {
+                overrides: held.clone(),
+                ..Default::default()
+            },
             &perf,
             "off (headless)",
         );
@@ -240,7 +231,7 @@ struct App {
     audio_error: Option<String>,
     audio_started: bool,
     frames_done: u32,
-    held: Actions,
+    held: Vec<(String, f32)>,
     last_audio_log: Instant,
     finished: bool,
     failed: Option<String>,
@@ -314,17 +305,11 @@ impl App {
         self.last_frame = now;
         let size = (config.width, config.height);
 
-        let mut actions = self.input.frame();
-        if !self.held.is_empty() {
-            actions.steer = if self.held.steer != 0.0 {
-                self.held.steer
-            } else {
-                actions.steer
-            };
-            actions.throttle = actions.throttle.max(self.held.throttle);
-            actions.brake = actions.brake.max(self.held.brake);
-            actions.action |= self.held.action;
-        }
+        let frame = InputFrame {
+            sources: self.input.sources(),
+            overrides: self.held.clone(),
+            last_source: self.input.last_new_source.take(),
+        };
         let audio = self.audio_text();
         if self.last_audio_log.elapsed().as_secs() >= 2 && self.audio.is_some() {
             self.last_audio_log = Instant::now();
@@ -341,8 +326,7 @@ impl App {
             dt,
             self.started.elapsed().as_secs_f64(),
             size,
-            actions,
-            self.input.action_pressed,
+            &frame,
             &self.perf,
             &audio,
         );
