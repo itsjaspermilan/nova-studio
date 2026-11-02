@@ -339,8 +339,11 @@ First slice, built (`SpriteEditor.svelte`, pure logic in `pixels.ts` and `sprite
   select, numeric editing, keyboard nudging, duplicate/delete/undo, saved as `models/<name>.model.json`
   and exported to `models/<name>.glb` (one node per part, vertex colours, 1/16 scale by default) which
   the runtime's real importer loads (fixture + Rust test pin the two together).
-- [ ] Still open: dragging gizmos, UV/texture painting, non-cube shapes, vertex/face editing, bones and
-  animation, importing existing GLB, lights/materials, a "preview in game renderer" button.
+- [x] Animations (2026-11-02): an Animate mode with clips (name, length, loop), a scrub bar with key diamonds,
+  play/stop, and a pose panel where editing a part's position, rotation or scale keys it at the current time; clips are
+  saved in the `.model.json` and exported into the `.glb`, and the runtime plays them (`clip`/`time`, `play_clip`).
+- [ ] Still open: dragging gizmos, UV/texture painting, non-cube shapes, vertex/face editing, easing curves and
+  copy/paste of keys, importing existing GLB, lights/materials, a "preview in game renderer" button.
 - [ ] (original plan) Model editor: parts hierarchy, cubes then vertex/face editing, per-face UV
   and texture paint, materials, keyframed rigid-bone animation, glTF export.
 - [ ] 3D scene/layout editor: place models, transform gizmos with snapping and

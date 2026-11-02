@@ -4,9 +4,10 @@
   import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
   import {
     FACES, History, addCube, addPart, afterRemoval, countCubes, cubeAt, duplicateNode, faceColor, newModel, parseModel, partAt, removeNode, samePath, serializeModel,
-    setFaceColor, updateCube, updatePart, walk, type Face, type ModelDoc, type Path, type Vec3,
+    setFaceColor, updateCube, updatePart, walk, namesOf, PROPS, type Face, type ModelDoc, type Path, type Prop, type Vec3,
   } from "../lib/model-doc";
   import { exportGlb } from "../lib/glb";
+  import { addClip, findTrack, pathKey, removeClip, removeKey, samplePose, setKey, snapTime, updateClip, KEY_STEP, type Pose } from "../lib/model-anim";
   import { toBase64 } from "../lib/wav";
   import { studio } from "../lib/store.svelte";
 
@@ -17,6 +18,11 @@
   let doc: ModelDoc = $state.raw(parsed.ok ? parsed.doc : newModel());
   let selected = $state<Path | null>(null);
   let showGrid = $state(true);
+  // animation
+  let mode = $state<"model" | "animate">("model");
+  let clipIndex = $state(0);
+  let animTime = $state(0);
+  let playingAnim = $state(false);
   const history = new History();
   let tick = $state(0);
   const canUndo = $derived(tick >= 0 && history.canUndo);
@@ -64,6 +70,8 @@
   let outline: THREE.Box3Helper | undefined;
   let frameId = 0;
   const meshes: { mesh: THREE.Mesh; path: Path }[] = [];
+  /// Part groups by name path, with how they are authored, so a clip can pose them and put them back.
+  const groups = new Map<string, { group: THREE.Group; origin: Vec3; rotation: Vec3 }>();
 
   function setup() {
     try {
@@ -109,11 +117,13 @@
       for (const mat of m.mesh.material as THREE.Material[]) mat.dispose();
     }
     meshes.length = 0;
+    groups.clear();
     modelGroup.clear();
     const build = (list: ModelDoc["parts"], parent: THREE.Object3D, prefix: number[]) => {
       list.forEach((part, i) => {
         const parts = [...prefix, i];
         const group = new THREE.Group();
+        groups.set(pathKey(namesOf(doc, parts)), { group, origin: [...part.origin], rotation: [...part.rotation] });
         group.position.set(...part.origin);
         group.rotation.set(...(part.rotation.map((d) => (d * Math.PI) / 180) as Vec3), "XYZ");
         group.name = part.name;
@@ -131,6 +141,23 @@
       });
     };
     build(doc.parts, modelGroup, []);
+    applyPose();
+  }
+
+  /// Puts every part where the clip says at the current time (or where it was authored, outside animate mode).
+  function applyPose() {
+    if (!modelGroup) return;
+    const clip = mode === "animate" ? doc.clips?.[clipIndex] : undefined;
+    const pose: Map<string, Pose> = clip ? samplePose(clip, animTime, false) : new Map();
+    for (const [key, g] of groups) {
+      g.group.position.set(...g.origin);
+      g.group.rotation.set(...(g.rotation.map((d) => (d * Math.PI) / 180) as Vec3), "XYZ");
+      g.group.scale.set(1, 1, 1);
+      const p = pose.get(key);
+      if (p?.position) g.group.position.set(...p.position);
+      if (p?.rotation) g.group.quaternion.set(...p.rotation);
+      if (p?.scale) g.group.scale.set(...p.scale);
+    }
     modelGroup.updateMatrixWorld(true);
     drawOutline();
   }
@@ -158,6 +185,33 @@
   $effect(() => {
     selected;
     untrack(drawOutline);
+  });
+  $effect(() => {
+    animTime; clipIndex; mode;
+    untrack(applyPose);
+  });
+  // Playback: advance the time every frame, wrapping if the clip loops and stopping at its end if not.
+  $effect(() => {
+    if (!playingAnim) return;
+    let last = performance.now();
+    let id = 0;
+    const tick = (now: number) => {
+      const clip = untrack(() => doc.clips?.[clipIndex]);
+      if (!clip) return void (playingAnim = false);
+      let t = untrack(() => animTime) + (now - last) / 1000;
+      last = now;
+      if (t >= clip.duration) {
+        if (clip.loop) t %= clip.duration;
+        else {
+          t = clip.duration;
+          playingAnim = false;
+        }
+      }
+      animTime = t;
+      if (playingAnim) id = requestAnimationFrame(tick);
+    };
+    id = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(id);
   });
   $effect(() => {
     if (grid) grid.visible = showGrid;
@@ -266,6 +320,62 @@
     if (selected.cube !== undefined && cube) commit(updateCube(doc, selected, { from: [cube.from[0] + dx, cube.from[1] + dy, cube.from[2] + dz] }));
     else if (part) commit(updatePart(doc, selected.parts, { origin: [part.origin[0] + dx, part.origin[1] + dy, part.origin[2] + dz] }));
   }
+  // ---- animation ----------------------------------------------------------------------------------------
+  const clips = $derived(doc.clips ?? []);
+  const clip = $derived(clips[clipIndex]);
+  const partNames = $derived(selected ? namesOf(doc, selected.parts) : []);
+  const authored = (p: NonNullable<typeof part>, prop: Prop): Vec3 => (prop === "position" ? p.origin : prop === "rotation" ? p.rotation : [1, 1, 1]);
+  const toEuler = (q: [number, number, number, number]): Vec3 => {
+    const e = new THREE.Euler().setFromQuaternion(new THREE.Quaternion(...q), "XYZ");
+    return [e.x, e.y, e.z].map((r) => Math.round(((r * 180) / Math.PI) * 100) / 100) as Vec3;
+  };
+  /// The value of one property of the selected part right now: from the clip if it keys it, else as authored.
+  function poseValue(prop: Prop): Vec3 {
+    const p = part;
+    if (!p) return [0, 0, 0];
+    const pose = clip ? samplePose(clip, animTime, false).get(pathKey(partNames)) : undefined;
+    if (prop === "position" && pose?.position) return pose.position;
+    if (prop === "scale" && pose?.scale) return pose.scale;
+    if (prop === "rotation" && pose?.rotation) return toEuler(pose.rotation);
+    return authored(p, prop);
+  }
+  const keyedHere = (prop: Prop) => !!clip && !!findTrack(clip, partNames, prop)?.keys.some((k) => Math.abs(k.t - animTime) < KEY_STEP / 2);
+  function keyProp(prop: Prop, value = poseValue(prop)) {
+    if (clip && partNames.length) commit(setKey(doc, clipIndex, partNames, prop, animTime, value));
+  }
+  function setPoseValue(prop: Prop, index: number, raw: string) {
+    const n = Number(raw);
+    if (!Number.isFinite(n) || raw.trim() === "") return;
+    const v = [...poseValue(prop)] as Vec3;
+    v[index] = n;
+    keyProp(prop, v); // editing a value in animate mode keys it at the current time
+  }
+  const keyTimes = $derived(
+    clip && partNames.length
+      ? [...new Set(PROPS.flatMap((prop) => findTrack(clip, partNames, prop)?.keys.map((k) => k.t) ?? []))].sort((a, b) => a - b)
+      : [],
+  );
+  function newClip() {
+    const r = addClip(doc);
+    commit(r.doc);
+    clipIndex = r.index;
+    animTime = 0;
+    mode = "animate";
+  }
+  function dropClip() {
+    if (!clip || !confirm(`Delete the animation "${clip.name}"?`)) return;
+    commit(removeClip(doc, clipIndex));
+    clipIndex = Math.max(0, clipIndex - 1);
+    animTime = 0;
+    playingAnim = false;
+  }
+  function deleteKeysHere() {
+    let next = doc;
+    for (const prop of PROPS) next = removeKey(next, clipIndex, partNames, prop, animTime);
+    if (next !== doc) commit(next);
+  }
+  const fmtTime = (t: number) => t.toFixed(2);
+
   function key(e: KeyboardEvent) {
     const t = e.target as HTMLElement;
     if (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA") return;
@@ -330,6 +440,8 @@
       <div class="bar">
         <button class="ghost" onclick={undo} disabled={!canUndo} aria-label="Undo">↶</button>
         <button class="ghost" onclick={redo} disabled={!canRedo} aria-label="Redo">↷</button>
+        <button class:on={mode === "model"} onclick={() => { mode = "model"; playingAnim = false; }}>Model</button>
+        <button class:on={mode === "animate"} onclick={() => { mode = "animate"; if (!clips.length) newClip(); }}>Animate</button>
         <label class="check"><input type="checkbox" bind:checked={showGrid} /> Grid</label>
         <button class="ghost" onclick={resetView}>Reset view</button>
         <span class="dim">{countCubes(doc)} cubes · saves {glbPath}</span>
@@ -342,11 +454,51 @@
         {/if}
         <canvas bind:this={canvas} tabindex="0" aria-label="3D view" onpointerdown={pointerDown} onpointerup={pointerUp}></canvas>
       </div>
+      {#if mode === "animate" && clip}
+        <div class="timeline">
+          <div class="clips">
+            <select bind:value={clipIndex} aria-label="Animation" onchange={() => { animTime = 0; playingAnim = false; }}>
+              {#each clips as c, i (i)}<option value={i}>{c.name}</option>{/each}
+            </select>
+            <button onclick={newClip} title="New animation">＋</button>
+            <input class="cname" value={clip.name} aria-label="Animation name" onchange={(e) => commit(updateClip(doc, clipIndex, { name: e.currentTarget.value }))} />
+            <label class="inline">Length <input type="number" min="0.1" max="600" step="0.1" value={clip.duration} onchange={(e) => commit(updateClip(doc, clipIndex, { duration: Number(e.currentTarget.value) }))} /> s</label>
+            <label class="check"><input type="checkbox" checked={clip.loop} onchange={(e) => commit(updateClip(doc, clipIndex, { loop: e.currentTarget.checked }))} /> Loop</label>
+            <button class="danger" onclick={dropClip}>Delete</button>
+          </div>
+          <div class="scrub">
+            <button class="primary" onclick={() => { if (animTime >= clip.duration) animTime = 0; playingAnim = !playingAnim; }}>{playingAnim ? "■" : "▶"}</button>
+            <div class="track">
+              <input type="range" min="0" max={clip.duration} step={KEY_STEP} value={animTime} aria-label="Time" oninput={(e) => { playingAnim = false; animTime = snapTime(Number(e.currentTarget.value)); }} />
+              {#each keyTimes as t (t)}
+                <button class="diamond" style:left="{(t / clip.duration) * 100}%" title="Key at {fmtTime(t)} s" aria-label="Jump to key at {fmtTime(t)} seconds" onclick={() => { playingAnim = false; animTime = t; }}>◆</button>
+              {/each}
+            </div>
+            <span class="dim time">{fmtTime(animTime)} / {fmtTime(clip.duration)} s</span>
+          </div>
+        </div>
+      {/if}
       <p class="hint dim">Drag to orbit · right-drag to pan · scroll to zoom · click a cube to select · arrows and PageUp/PageDown move it (⇧ for 4) · ⌘D duplicates · Delete removes</p>
     </div>
 
     <aside class="inspector">
-      {#if selected && cube}
+      {#if mode === "animate"}
+        <h3>Pose</h3>
+        {#if !clip}
+          <p class="dim small">Make an animation first (＋).</p>
+        {:else if !selected || !part}
+          <p class="dim small">Select a part (or one of its cubes) to pose it. Changing a value sets a key at {fmtTime(animTime)} s.</p>
+        {:else}
+          <p class="small"><strong>{partNames.join(" › ")}</strong></p>
+          {#each [["position", "Position"], ["rotation", "Rotation (°)"], ["scale", "Scale"]] as [prop, label] (prop)}
+            <h4>{label} {#if keyedHere(prop as Prop)}<span class="keyed" title="There is a key here">◆</span>{/if}</h4>
+            <div class="vec">{#each poseValue(prop as Prop) as v, i (i)}<input type="number" step={prop === "scale" ? 0.1 : 1} value={v} aria-label={`${"xyz"[i]} ${prop}`} onchange={(e) => setPoseValue(prop as Prop, i, e.currentTarget.value)} />{/each}</div>
+            <button class="ghost keybtn" onclick={() => keyProp(prop as Prop)}>◆ Key {prop}</button>
+          {/each}
+          <div class="row"><button class="danger" onclick={deleteKeysHere} disabled={!keyTimes.some((t) => Math.abs(t - animTime) < KEY_STEP / 2)}>Delete keys here</button></div>
+          <p class="dim small">Properties with no key stay as modelled. Keys blend smoothly; rotations take the short way round.</p>
+        {/if}
+      {:else if selected && cube}
         <h3>Cube</h3>
         <label>Name <input value={cube.name ?? ""} placeholder="optional" onchange={(e) => commit(updateCube(doc, selected!, { name: e.currentTarget.value.trim() || undefined }))} /></label>
         <h4>Corner (from)</h4>
@@ -405,6 +557,18 @@
   .vec { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; } .vec input { min-width: 0; padding: 3px 4px; }
   .colour { flex-direction: row; align-items: center; justify-content: space-between; } .colour input { width: 44px; height: 24px; padding: 0; }
   .row { display: flex; gap: 6px; }
+  .bar button.on { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
+  .timeline { background: var(--panel); border-top: 1px solid var(--line); padding: 6px 10px; display: flex; flex-direction: column; gap: 6px; }
+  .clips { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .cname { width: 110px; padding: 2px 6px; }
+  .inline { flex-direction: row; align-items: center; gap: 4px; } .inline input { width: 64px; padding: 2px 6px; }
+  .scrub { display: flex; gap: 10px; align-items: center; }
+  .track { position: relative; flex: 1; height: 28px; }
+  .track input[type="range"] { width: 100%; margin: 0; position: absolute; top: 0; accent-color: var(--accent); }
+  .diamond { position: absolute; top: 14px; transform: translateX(-50%); padding: 0; border: none; background: transparent; color: var(--warn); font-size: 12px; line-height: 12px; cursor: pointer; }
+  .time { width: 110px; text-align: right; font-variant-numeric: tabular-nums; }
+  .keyed { color: var(--warn); }
+  .keybtn { align-self: flex-start; padding: 0 6px; font-size: 11px; }
   .small { font-size: 11px; margin: 4px 0; }
   .bad { padding: 32px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 </style>

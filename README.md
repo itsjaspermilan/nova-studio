@@ -66,7 +66,7 @@ checks; it does not predict handheld performance.
 
 ## Limits today
 
-- The studio has a project hub, a Lua editor, Problems, Play and a visual scene editor (objects, images, text, tile maps), a pixel sprite studio (layers, frames, animations, selection, mirroring, canvas resize), a sound studio (effect generator and WAV trimming) and a 3D model editor (coloured cubes in parts, exports GLB) and a music editor (piano-roll sequencer that renders to WAV). Assets are made elsewhere. Projects are Lua, JSON scenes, PNG and GLB files; Ogg Vorbis music is decoded fully into memory (no streaming); there is no world-space text yet.
+- The studio has a project hub, a Lua editor, Problems, Play and a visual scene editor (objects, images, text, tile maps), a pixel sprite studio (layers, frames, animations, selection, mirroring, canvas resize), a sound studio (effect generator and WAV trimming) and a 3D model editor (coloured cubes in parts, animation clips, exports GLB) and a music editor (piano-roll sequencer that renders to WAV). Assets are made elsewhere. Projects are Lua, JSON scenes, PNG and GLB files; Ogg Vorbis music is decoded fully into memory (no streaming); there is no world-space text yet.
 - APKs of games run on the Android emulator; no handheld has run one. Analogue sticks and triggers do not reach the game on Android yet.
 - Only the Android emulator has run the APK; no handheld has.
 - The audio core was verified with offline renders only, not by listening.
