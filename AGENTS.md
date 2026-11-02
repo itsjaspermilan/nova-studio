@@ -18,6 +18,16 @@ and Android game outputs; Qt must not become an Android runtime dependency.
 Prove actual native GPU hosting and desktop input/accessibility facilities
 before relying on the new UI bridge.
 
+The Qt workspace must use a deliberate, polished visual system, not an unstyled
+stock-widget demo. Follow the retained study's hierarchy with system typography,
+original crisp icons, consistent spacing and clear interaction states, preserving
+keyboard, IME and accessibility semantics. Review actual native application
+captures at normal and minimum sizes; concept images are not implementation
+evidence. Use OS-native Open/Save/folder pickers wherever available. Keep import
+options separate when necessary to retain the native picker. Do not globally
+force nonnative dialogs to make automation pass; isolate test configuration and
+distinguish native-panel display/cancel coverage from OS-owned file selection.
+
 The user approved additional essential, license-compatible open-source
 dependencies for the agreed studio implementation so unattended work can
 continue. Declare dependencies or establish an actual missing-dependency

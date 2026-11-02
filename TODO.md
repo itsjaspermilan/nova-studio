@@ -28,6 +28,14 @@ Confirmed product requirements:
   their action forms the new default or rewrite hand-authored gameplay code.
 - Use a coherent Scene / Sprite / Model / Sound / Code shell with meaningful
   icons, consistent toolbars, contextual inspectors and beginner guidance.
+- Use polished, platform-appropriate Qt components rather than an unstyled
+  stock-widget appearance. Preserve the study's hierarchy, deliberate spacing,
+  system typography, original crisp icons and clear hover/focus/disabled states.
+  Review actual native workspace captures at normal and minimum sizes.
+- Use OS-native Open/Save/folder pickers wherever available, including asset
+  import and export locations. Preserve cancellation and unsaved work; keep
+  import options outside the picker when needed. Test-only dialog configuration
+  must not change production behavior or imply untested OS-owned selection.
 - Proper desktop text input, focus, accessibility, undo/redo, coherent saving,
   external-change handling and crash recovery are foundational requirements.
   Existing one-step/source-only undo and separately guarded multi-file writes
@@ -44,8 +52,8 @@ Confirmed product requirements:
 | Stage | Dependency | Completion gate | State |
 | --- | --- | --- | --- |
 | Baseline reconciliation | Existing committed work | Build and exercise the integrated native editor, assets, services, modeller and exporter in this worktree. | Complete |
-| Desktop UI/platform decision | Retained research | Qt 6/C++ selected by the user; prove real text input, focus/accessibility facilities, dialogs/docking and live native GPU integration before committing to the bridge. | Toolkit approved; bridge pending |
-| Authoring/document foundation | UI decision + baseline | Unified documents/selection, full undo/redo, safe coherent writes, recovery, conflict handling and native preview. | Pending |
+| Desktop UI/platform decision | Retained research | Qt 6/C++ selected by the user; prove real text input, focus/accessibility facilities, dialogs/docking and live native GPU integration before committing to the bridge. | Isolated Qt bridge verified; integration pending |
+| Authoring/document foundation | UI decision + baseline | Unified documents/selection, full undo/redo, safe coherent writes, recovery, conflict handling and native preview. | In progress in isolated Qt worktree; native dialogs and visual refinement required |
 | Lua-first creation loop | Authoring foundation | Project creation/open/save, visual scenes and script/property binding, useful code tools, diagnostics and Run/Stop without overwriting authored code. | Pending |
 | Sprite workspace | Authoring foundation + runtime animation | Real drawing/layers/frames, source preservation, reversible editing and matching scene/runtime updates. | Pending |
 | Model workspace | Authoring foundation + existing GLB pipeline | Mesh/transform/material/UV basics, reversible editing and faithful supported model round trips. | Pending |
@@ -98,6 +106,9 @@ asset/service/export checks passed in both ordinary Debug and fully
 ASan/UBSan-instrumented builds; the native editor/runtime also link. Leak
 sanitizer was disabled on macOS; explicit allocation-failure/balance tests
 provide the core ownership evidence. No native device test was enabled.
+Integrated as `1a07a3e`: the coordinating worktree rebuilt the native targets
+and independently passed all 11 focused audio/core/project/asset/service/export
+checks with native device tests disabled.
 
 ## Current integrated handoff
 
