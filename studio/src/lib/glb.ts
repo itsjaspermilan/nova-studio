@@ -2,7 +2,7 @@
 // (so a later bone animation can move them), one mesh per part with flat-coloured cubes baked in
 // as COLOR_0 vertex colours and per-face normals.
 
-import { FACES, hexToRgba, faceColor, walk, type Face, type ModelDoc, type Part, type Vec3 } from "./model-doc";
+import { FACES, hexToRgba, faceColor, walk, type Clip, type Face, type ModelDoc, type Part, type Track, type Vec3 } from "./model-doc";
 
 /// Which corner of the box (0 = minimum, 1 = maximum on x, y, z) each face's four vertices are, counter-clockwise seen from outside.
 export const FACE_CORNERS: Record<Face, { normal: Vec3; corners: [number, number, number][] }> = {
@@ -55,6 +55,14 @@ function meshOf(part: Part, scale: number): PartMesh {
 
 const pad4 = (n: number) => (n + 3) & ~3;
 
+/// The track's keys with a held key at time 0 and at the clip's end, so every clip lasts its full duration.
+function holdEnds(track: Track, clip: Clip) {
+  const keys = track.keys.map((k) => ({ t: k.t, value: k.value }));
+  if (keys[0]!.t > 0) keys.unshift({ t: 0, value: keys[0]!.value });
+  if (keys[keys.length - 1]!.t < clip.duration) keys.push({ t: clip.duration, value: keys[keys.length - 1]!.value });
+  return keys;
+}
+
 export function exportGlb(doc: ModelDoc): Uint8Array {
   const scale = doc.scale;
   const gltfNodes: Record<string, unknown>[] = [];
@@ -64,8 +72,8 @@ export function exportGlb(doc: ModelDoc): Uint8Array {
   const chunks: Uint8Array[] = [];
   let offset = 0;
 
-  const addView = (bytes: Uint8Array, target: number) => {
-    views.push({ buffer: 0, byteOffset: offset, byteLength: bytes.length, target });
+  const addView = (bytes: Uint8Array, target?: number) => {
+    views.push({ buffer: 0, byteOffset: offset, byteLength: bytes.length, ...(target ? { target } : {}) });
     const padded = new Uint8Array(pad4(bytes.length));
     padded.set(bytes);
     chunks.push(padded);
@@ -117,6 +125,38 @@ export function exportGlb(doc: ModelDoc): Uint8Array {
   }
   if (drawn === 0) throw new Error("the model has no cubes with volume to export");
 
+  // Animation clips: one channel per keyed property, on the node of the part it names.
+  const nodeByNames = new Map<string, number>();
+  {
+    const chain: string[] = [];
+    for (const { part, parts, depth } of order) {
+      chain.length = depth;
+      chain.push(part.name);
+      nodeByNames.set(chain.join("/"), nodeOf.get(parts.join("."))!);
+    }
+  }
+  const animations: Record<string, unknown>[] = [];
+  for (const clip of doc.clips ?? []) {
+    const samplers: Record<string, unknown>[] = [];
+    const channels: Record<string, unknown>[] = [];
+    for (const track of clip.tracks) {
+      const node = nodeByNames.get(track.part.join("/"));
+      if (node === undefined || track.keys.length === 0) continue; // a track for a part that no longer exists is skipped
+      const keys = holdEnds(track, clip);
+      const times = new Float32Array(keys.map((k) => k.t));
+      const out = track.prop === "rotation"
+        ? new Float32Array(keys.flatMap((k) => eulerToQuaternion(k.value)))
+        : new Float32Array(keys.flatMap((k) => (track.prop === "position" ? k.value.map((v) => v * scale) : k.value)));
+      const inView = addView(bytesOf(times));
+      const outView = addView(bytesOf(out));
+      const input = accessors.push({ bufferView: inView, componentType: 5126, count: times.length, type: "SCALAR", min: [times[0]], max: [times[times.length - 1]] }) - 1;
+      const output = accessors.push({ bufferView: outView, componentType: 5126, count: keys.length, type: track.prop === "rotation" ? "VEC4" : "VEC3" }) - 1;
+      samplers.push({ input, output, interpolation: "LINEAR" });
+      channels.push({ sampler: samplers.length - 1, target: { node, path: track.prop === "position" ? "translation" : track.prop } });
+    }
+    if (channels.length) animations.push({ name: clip.name, samplers, channels });
+  }
+
   const json = {
     asset: { version: "2.0", generator: "Nova Studio" },
     scene: 0,
@@ -124,6 +164,7 @@ export function exportGlb(doc: ModelDoc): Uint8Array {
     nodes: gltfNodes,
     meshes,
     materials: [{ name: "vertex colours", pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: 1 } }],
+    ...(animations.length ? { animations } : {}),
     accessors,
     bufferViews: views,
     buffers: [{ byteLength: offset }],

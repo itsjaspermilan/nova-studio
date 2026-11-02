@@ -17,7 +17,7 @@
   "name": "nova.model",
   "kind": "function",
   "signature": "nova.model(id, x, y, z [, opts])",
-  "doc": "Draw a 3D model. Options: scale, rx, ry, rz (radians), tint, parts (turn pieces on their own: parts = { wheel = { ry = 1 } }, see nova.model_parts).",
+  "doc": "Draw a 3D model. Options: scale, rx, ry, rz (radians), tint, parts (turn pieces on their own: parts = { wheel = { ry = 1 } }, see nova.model_parts), clip and time (pose it from an animation clip, see nova.model_clips; loop = false holds the last pose).",
   "group": "Drawing"
  },
  {
@@ -39,6 +39,13 @@
   "kind": "function",
   "signature": "nova.model_parts(id) -> { name, ... }",
   "doc": "The names of a model's parts (nodes), for `parts = { name = { ry = 1 } }` in nova.model.",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.model_clips",
+  "kind": "function",
+  "signature": "nova.model_clips(id) -> { { name, duration }, ... }",
+  "doc": "The animation clips a model has, with their length in seconds, for nova.model(..., { clip = name, time = seconds }).",
   "group": "Drawing"
  },
  {
@@ -592,6 +599,20 @@
   "kind": "method",
   "signature": "self:play(tag [, opts])",
   "doc": "Play an animation tag of the sprite sheet.",
+  "group": "Entity methods"
+ },
+ {
+  "name": "play_clip",
+  "kind": "method",
+  "signature": "self:play_clip(name [, { loop = true, restart = false }])",
+  "doc": "Play an animation clip of the entity's 3D model. on_clip_end(name) runs when a non-looping clip finishes; set self.clip_speed to scale time.",
+  "group": "Entity methods"
+ },
+ {
+  "name": "stop_clip",
+  "kind": "method",
+  "signature": "self:stop_clip()",
+  "doc": "Stop the entity's model animation clip (the model returns to its authored pose).",
   "group": "Entity methods"
  },
  {

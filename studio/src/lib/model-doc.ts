@@ -27,12 +27,41 @@ export interface Part {
   children: Part[];
 }
 
+export type Prop = "position" | "rotation" | "scale";
+export const PROPS: Prop[] = ["position", "rotation", "scale"];
+
+/// A value at a time. Position is the part's pivot position in model units, rotation is degrees (X then Y then Z),
+/// scale is a factor per axis.
+export interface Key {
+  t: number;
+  value: Vec3;
+}
+
+/// The keys of one property of one part. `part` is the chain of part names from the top, e.g. ["body", "wheel"].
+export interface Track {
+  part: string[];
+  prop: Prop;
+  keys: Key[];
+}
+
+/// A named animation. Properties a clip does not key stay as authored.
+export interface Clip {
+  name: string;
+  duration: number;
+  loop: boolean;
+  tracks: Track[];
+}
+
 export interface ModelDoc {
   version: 1;
   /// World units per model unit when exported (1/16 makes a 16-unit cube one world unit).
   scale: number;
   parts: Part[];
+  clips?: Clip[];
 }
+
+export const MAX_CLIPS = 64;
+export const MAX_KEYS = 512;
 
 /// A path to a node: part indices from the root, then optionally a cube index.
 export interface Path {
@@ -94,7 +123,29 @@ export function parseModel(text: string): Parsed {
     const bad = check(p, `parts[${i}]`);
     if (bad) return { ok: false, error: bad };
   }
-  return { ok: true, doc: { version: 1, scale: o.scale ?? DEFAULT_SCALE, parts: o.parts as Part[] } };
+  const clips = o.clips;
+  if (clips !== undefined) {
+    if (!Array.isArray(clips) || clips.length > MAX_CLIPS) return { ok: false, error: `"clips" must be a list of up to ${MAX_CLIPS}` };
+    for (const [i, c] of clips.entries()) {
+      const at = `clips[${i}]`;
+      if (!c || typeof c.name !== "string" || !c.name.trim()) return { ok: false, error: `${at} needs a name` };
+      if (!(typeof c.duration === "number" && c.duration > 0 && c.duration <= 600)) return { ok: false, error: `${at}.duration must be a number of seconds above 0` };
+      if (typeof c.loop !== "boolean" || !Array.isArray(c.tracks)) return { ok: false, error: `${at} needs "loop" (true or false) and a "tracks" list` };
+      for (const [j, tr] of c.tracks.entries()) {
+        const tat = `${at}.tracks[${j}]`;
+        if (!tr || !Array.isArray(tr.part) || tr.part.length === 0 || !tr.part.every((n) => typeof n === "string")) return { ok: false, error: `${tat}.part must be a list of part names` };
+        if (!PROPS.includes(tr.prop)) return { ok: false, error: `${tat}.prop must be position, rotation or scale` };
+        if (!Array.isArray(tr.keys) || tr.keys.length > MAX_KEYS) return { ok: false, error: `${tat}.keys must be a list of up to ${MAX_KEYS}` };
+        let last = -1;
+        for (const [k, key] of tr.keys.entries()) {
+          if (!key || typeof key.t !== "number" || !(key.t >= 0) || !isVec3(key.value)) return { ok: false, error: `${tat}.keys[${k}] needs "t" (seconds) and "value" as three numbers` };
+          if (key.t <= last) return { ok: false, error: `${tat}.keys must be in time order, one per time` };
+          last = key.t;
+        }
+      }
+    }
+  }
+  return { ok: true, doc: { version: 1, scale: o.scale ?? DEFAULT_SCALE, parts: o.parts as Part[], ...(clips && clips.length ? { clips: clips as Clip[] } : {}) } };
 }
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
@@ -114,7 +165,13 @@ export function serializeModel(doc: ModelDoc): string {
     return `{\n${lines.join(",\n")}\n${indent}}`;
   };
   const body = doc.parts.length ? `[\n${doc.parts.map((p) => `    ${part(p, "    ")}`).join(",\n")}\n  ]` : "[]";
-  return `{\n  "version": 1,\n  "scale": ${doc.scale},\n  "parts": ${body}\n}\n`;
+  const clip = (c: Clip) => {
+    const track = (t: Track) => `        { "part": ${JSON.stringify(t.part)}, "prop": "${t.prop}", "keys": [${t.keys.map((k) => `{ "t": ${k.t}, "value": ${vec(k.value)} }`).join(", ")}] }`;
+    const tracks = c.tracks.length ? `[\n${c.tracks.map(track).join(",\n")}\n      ]` : "[]";
+    return `    {\n      "name": ${JSON.stringify(c.name)},\n      "duration": ${c.duration},\n      "loop": ${c.loop},\n      "tracks": ${tracks}\n    }`;
+  };
+  const clips = doc.clips?.length ? `,\n  "clips": [\n${doc.clips.map(clip).join(",\n")}\n  ]` : "";
+  return `{\n  "version": 1,\n  "scale": ${doc.scale},\n  "parts": ${body}${clips}\n}\n`;
 }
 
 // ---- navigating and editing ----------------------------------------------------------------------
@@ -208,12 +265,34 @@ export function setFaceColor(doc: ModelDoc, path: Path, face: Face | "all", colo
   });
 }
 
+/// The chain of part names for an index path ("body", "wheel").
+export function namesOf(doc: ModelDoc, parts: number[]): string[] {
+  const out: string[] = [];
+  let list = doc.parts;
+  for (const i of parts) {
+    const p = list[i];
+    if (!p) break;
+    out.push(p.name);
+    list = p.children;
+  }
+  return out;
+}
+
+const startsWith = (path: string[], prefix: string[]) => prefix.length <= path.length && prefix.every((n, i) => n === path[i]);
+
 export function updatePart(doc: ModelDoc, parts: number[], change: Partial<Pick<Part, "name" | "origin" | "rotation">>): ModelDoc {
-  return edit(doc, parts, (p) => {
+  const before = namesOf(doc, parts);
+  const out = edit(doc, parts, (p) => {
     if (change.name !== undefined && change.name.trim()) p.name = change.name.trim();
     if (change.origin) p.origin = [...change.origin];
     if (change.rotation) p.rotation = [...change.rotation];
   });
+  // Tracks follow a renamed part (and everything under it).
+  const after = namesOf(out, parts);
+  if (out !== doc && out.clips?.length && before.at(-1) !== after.at(-1)) {
+    for (const c of out.clips) for (const t of c.tracks) if (startsWith(t.part, before)) t.part = [...after, ...t.part.slice(before.length)];
+  }
+  return out;
 }
 
 export function removeNode(doc: ModelDoc, path: Path): ModelDoc {
@@ -228,7 +307,10 @@ export function removeNode(doc: ModelDoc, path: Path): ModelDoc {
   const parent = path.parts.length > 1 ? partAt(next, path.parts.slice(0, -1))?.children : next.parts;
   const index = path.parts.at(-1)!;
   if (!parent?.[index]) return doc;
+  const gone = namesOf(doc, path.parts);
   parent.splice(index, 1);
+  // Tracks of the removed part (and its children) go with it.
+  for (const c of next.clips ?? []) c.tracks = c.tracks.filter((t) => !startsWith(t.part, gone));
   return next;
 }
 

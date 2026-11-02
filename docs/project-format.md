@@ -131,8 +131,25 @@ nova.model("car", x, y, z, { ry = heading, parts = {
 ```
 
 Without `parts` a model is one instanced draw; with it each piece is drawn separately (more draw calls,
-so use it for the few things that move). Only rigid pieces are supported: no skinning or glTF
-animation clips yet.
+so use it for the few things that move). Only rigid pieces are supported: no skinning.
+
+**Animation clips.** A `.glb` can carry named clips (the model editor's Animations panel makes them): keyframes
+for the position, rotation and scale of parts. `nova.model_clips("car")` lists `{ name, duration }`.
+
+```lua
+nova.model("car", x, y, z, { clip = "spin", time = t })            -- pose it at t seconds (loops by default)
+nova.model("car", x, y, z, { clip = "open", time = t, loop = false }) -- holds the last pose past the end
+
+-- entities play clips and keep their own time:
+self:play_clip("spin")                       -- loops; { loop = false } plays once and calls on_clip_end("spin")
+self.clip_speed = 2                          -- twice as fast (field; default 1)
+self:stop_clip()                             -- back to the authored pose
+```
+
+A clip replaces whatever it keys (position, rotation or scale) of a part; everything else stays as authored,
+and `parts = {...}` turns still apply on top. Blending is linear, rotations blend as quaternions, and a clip
+holds its first and last values outside its keys. glTF cubic-spline keys are read as their values only.
+Playing a clip draws each part separately, like `parts`.
 
 ### Input, time, log
 

@@ -329,6 +329,50 @@ local function animate(e, dt)
   end
 end
 
+-- Play an animation clip of this entity's 3D model (the clips are made in the model editor or come with the
+-- .glb). Calling it again with the same clip keeps going ({ restart = true } starts over); `speed` scales time;
+-- on_clip_end(name) runs when a non-looping clip finishes.
+function Entity:play_clip(name, opts)
+  local model = rawget(self, "model") or getmetatable(self).__model
+  if not model then error("play_clip(): this entity has no model", 2) end
+  local found
+  local list = nova.model_clips(model_id(model))
+  for i = 1, #list do
+    if list[i].name == name then found = list[i] end
+  end
+  if not found then
+    local names = {}
+    for i = 1, #list do names[i] = list[i].name end
+    error("play_clip(): the model '" .. tostring(model) .. "' has no clip '" .. tostring(name) .. "' (its clips: " .. (#names > 0 and table.concat(names, ", ") or "none") .. ")", 2)
+  end
+  local c = self._clip
+  if c and c.name == name and not c.done and not (opts and opts.restart) then return end
+  local loop = not (opts and opts.loop == false)
+  self._clip = { name = name, duration = found.duration, loop = loop, done = false }
+  self.clip, self.clip_time, self.clip_loop = name, 0, loop
+end
+
+function Entity:stop_clip()
+  self._clip = nil
+  self.clip, self.clip_time = nil, nil
+end
+
+local function advance_clip(e, dt)
+  local c = e._clip
+  if c.done then return end
+  local t = (e.clip_time or 0) + dt * (e.clip_speed or 1)
+  if c.loop then
+    if c.duration > 0 then t = t % c.duration end
+  elseif t >= c.duration then
+    t = c.duration
+    c.done = true
+    e.clip_time = t
+    if e.on_clip_end then e:on_clip_end(c.name) end
+    return
+  end
+  e.clip_time = t
+end
+
 -- Where a sprite is drawn so that its pivot (fractions of its size, default centre) sits on the
 -- entity's position. Rotation turns the picture about the pivot.
 local function pivot_shift(pivot, w, h, sx, sy, angle)
@@ -349,6 +393,7 @@ function Entity:draw()
     model_opts.rx = self.rx
     model_opts.rz = self.rz
     model_opts.parts = self.parts -- pieces turned on their own, e.g. { wheel = { rx = t } }
+    model_opts.clip, model_opts.time, model_opts.loop = self.clip, self.clip_time, self.clip_loop
     model_opts.scale = self.sx
     local tint = self.tint
     model_opts.tint[1], model_opts.tint[2], model_opts.tint[3] = tint and tint[1] or 255, tint and tint[2] or 255, tint and tint[3] or 255
@@ -1032,6 +1077,7 @@ local function step(dt)
         if update then update(e, dt) end
         if not e._dead then
           if e._anim then animate(e, dt) end
+          if e._clip then advance_clip(e, dt) end
           local vx, vy, vz = e.vx, e.vy, e.vz
           if vx ~= 0 then e.x = e.x + vx * dt end
           if vy ~= 0 then e.y = e.y + vy * dt end

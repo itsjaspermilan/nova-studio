@@ -7,7 +7,7 @@
 //! the log can say what was ignored.
 
 use bytemuck::{Pod, Zeroable};
-use glam::{Mat3, Mat4, Vec3};
+use glam::{Mat3, Mat4, Quat, Vec3};
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
@@ -190,8 +190,117 @@ pub struct Part {
     pub mesh: Option<MeshData>,
 }
 
+/// Which transform of a part a keyframe track drives.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ClipPath {
+    Translation,
+    Rotation,
+    Scale,
+}
+
+/// Keyframes for one transform of one part. Values are xyz (w unused) or an xyzw quaternion.
+pub struct Channel {
+    pub part: usize,
+    pub path: ClipPath,
+    /// Hold each value until the next key instead of blending.
+    pub step: bool,
+    pub times: Vec<f32>,
+    pub values: Vec<[f32; 4]>,
+}
+
+/// A named animation: tracks that move parts over `duration` seconds.
+pub struct Clip {
+    pub name: String,
+    pub duration: f32,
+    pub channels: Vec<Channel>,
+}
+
+/// What a clip says one part looks like at an instant; anything it does not animate stays as authored.
+#[derive(Clone, Copy, Default)]
+pub struct PartPose {
+    pub translation: Option<Vec3>,
+    pub rotation: Option<Quat>,
+    pub scale: Option<Vec3>,
+}
+
+impl Clip {
+    /// The time a clip is read at: wrapped for looping clips, held at the ends otherwise.
+    pub fn local_time(&self, t: f32, looped: bool) -> f32 {
+        if !t.is_finite() {
+            return 0.0;
+        }
+        if self.duration <= 0.0 {
+            0.0
+        } else if looped {
+            t.rem_euclid(self.duration)
+        } else {
+            t.clamp(0.0, self.duration)
+        }
+    }
+
+    /// The pose of every part (indexed like the model's parts) at time `t`.
+    pub fn pose(&self, t: f32, looped: bool, part_count: usize) -> Vec<PartPose> {
+        let t = self.local_time(t, looped);
+        let mut out = vec![PartPose::default(); part_count];
+        for c in &self.channels {
+            let Some(pose) = out.get_mut(c.part) else {
+                continue;
+            };
+            let v = c.sample(t);
+            match c.path {
+                ClipPath::Translation => pose.translation = Some(Vec3::new(v[0], v[1], v[2])),
+                ClipPath::Scale => pose.scale = Some(Vec3::new(v[0], v[1], v[2])),
+                ClipPath::Rotation => {
+                    pose.rotation = Some(Quat::from_xyzw(v[0], v[1], v[2], v[3]).normalize())
+                }
+            }
+        }
+        out
+    }
+}
+
+impl Channel {
+    fn sample(&self, t: f32) -> [f32; 4] {
+        let n = self.times.len();
+        if n == 0 {
+            return [0.0, 0.0, 0.0, 1.0];
+        }
+        if n == 1 || t <= self.times[0] {
+            return self.values[0];
+        }
+        if t >= self.times[n - 1] {
+            return self.values[n - 1];
+        }
+        // The last key at or before t.
+        let i = self.times.partition_point(|&k| k <= t) - 1;
+        let (a, b) = (self.values[i], self.values[i + 1]);
+        if self.step {
+            return a;
+        }
+        let span = self.times[i + 1] - self.times[i];
+        let f = if span > 0.0 {
+            (t - self.times[i]) / span
+        } else {
+            0.0
+        };
+        if self.path == ClipPath::Rotation {
+            let q = Quat::from_xyzw(a[0], a[1], a[2], a[3])
+                .normalize()
+                .slerp(Quat::from_xyzw(b[0], b[1], b[2], b[3]).normalize(), f);
+            return q.to_array();
+        }
+        std::array::from_fn(|k| a[k] + (b[k] - a[k]) * f)
+    }
+}
+
+/// A model as parts plus its animation clips.
+pub struct ModelParts {
+    pub parts: Vec<Part>,
+    pub clips: Vec<Clip>,
+}
+
 /// Reads a glTF as a tree of parts, for models whose pieces move on their own (wheels, doors, arms).
-pub fn import_parts(bytes: &[u8]) -> Result<Vec<Part>, String> {
+pub fn import_parts(bytes: &[u8]) -> Result<ModelParts, String> {
     let (document, buffers, images) =
         gltf::import_slice(bytes).map_err(|e| format!("glTF import failed: {e}"))?;
     let scene = document
@@ -199,6 +308,7 @@ pub fn import_parts(bytes: &[u8]) -> Result<Vec<Part>, String> {
         .or_else(|| document.scenes().next())
         .ok_or("glTF has no scene")?;
     let mut parts: Vec<Part> = Vec::new();
+    let mut by_node: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
     let mut used = std::collections::HashSet::new();
     // Depth first, parents before children, siblings in file order.
     let mut roots: Vec<gltf::Node> = scene.nodes().collect();
@@ -232,6 +342,7 @@ pub fn import_parts(bytes: &[u8]) -> Result<Vec<Part>, String> {
             }
         }
         let index = parts.len();
+        by_node.insert(node.index(), index);
         parts.push(Part {
             name,
             parent,
@@ -247,7 +358,69 @@ pub fn import_parts(bytes: &[u8]) -> Result<Vec<Part>, String> {
     if parts.iter().all(|p| p.mesh.is_none()) {
         return Err("glTF contains no triangle geometry".into());
     }
-    Ok(parts)
+    let mut clips: Vec<Clip> = Vec::new();
+    for (i, animation) in document.animations().enumerate() {
+        let mut name = animation
+            .name()
+            .filter(|n| !n.trim().is_empty())
+            .map_or_else(|| format!("clip{i}"), str::to_string);
+        if clips.iter().any(|c| c.name == name) {
+            name = format!("{name}_{i}");
+        }
+        let mut channels = Vec::new();
+        for channel in animation.channels() {
+            let Some(&part) = by_node.get(&channel.target().node().index()) else {
+                continue;
+            };
+            let path = match channel.target().property() {
+                gltf::animation::Property::Translation => ClipPath::Translation,
+                gltf::animation::Property::Rotation => ClipPath::Rotation,
+                gltf::animation::Property::Scale => ClipPath::Scale,
+                gltf::animation::Property::MorphTargetWeights => continue,
+            };
+            let reader = channel.reader(|b| Some(&buffers[b.index()]));
+            let (Some(inputs), Some(outputs)) = (reader.read_inputs(), reader.read_outputs())
+            else {
+                continue;
+            };
+            let times: Vec<f32> = inputs.collect();
+            let mut values: Vec<[f32; 4]> = match outputs {
+                gltf::animation::util::ReadOutputs::Translations(v) => {
+                    v.map(|a| [a[0], a[1], a[2], 0.0]).collect()
+                }
+                gltf::animation::util::ReadOutputs::Scales(v) => {
+                    v.map(|a| [a[0], a[1], a[2], 0.0]).collect()
+                }
+                gltf::animation::util::ReadOutputs::Rotations(v) => v.into_f32().collect(),
+                gltf::animation::util::ReadOutputs::MorphTargetWeights(_) => continue,
+            };
+            let interpolation = channel.sampler().interpolation();
+            if interpolation == gltf::animation::Interpolation::CubicSpline {
+                // Each key carries in-tangent, value, out-tangent; the tangents are dropped (blended linearly).
+                values = values.as_chunks::<3>().0.iter().map(|c| c[1]).collect();
+            }
+            if times.is_empty() || values.len() != times.len() {
+                continue;
+            }
+            channels.push(Channel {
+                part,
+                path,
+                step: interpolation == gltf::animation::Interpolation::Step,
+                times,
+                values,
+            });
+        }
+        let duration = channels
+            .iter()
+            .filter_map(|c| c.times.last().copied())
+            .fold(0.0f32, f32::max);
+        clips.push(Clip {
+            name,
+            duration,
+            channels,
+        });
+    }
+    Ok(ModelParts { parts, clips })
 }
 
 pub fn import_glb(bytes: &[u8]) -> Result<MeshData, String> {

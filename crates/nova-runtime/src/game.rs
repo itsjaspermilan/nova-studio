@@ -84,6 +84,8 @@ struct Shared {
     known_models: Vec<String>,
     /// Each model's parts, for drawing pieces that move on their own.
     parts: HashMap<String, Vec<PartRt>>,
+    /// Each model's animation clips.
+    clips: HashMap<String, Vec<model::Clip>>,
     lighting: Lighting,
     world: Vec<SpriteInstance>,
     ui: Vec<SpriteInstance>,
@@ -521,12 +523,34 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     Some(o) => o.get::<Option<Table>>("parts")?,
                     None => None,
                 };
-                if let Some(table) = overrides {
+                let clip_name = string_option(&opts, "clip")?;
+                if overrides.is_some() || clip_name.is_some() {
                     // Pieces that move on their own: each part is drawn separately at its turned place.
                     let parts = sh.parts.get(&found).cloned().unwrap_or_default();
+                    // A clip first (it replaces what it animates of each part's authored place) ...
+                    let mut poses = vec![model::PartPose::default(); parts.len()];
+                    if let Some(name) = &clip_name {
+                        let clips = sh.clips.get(&found).map(Vec::as_slice).unwrap_or(&[]);
+                        let clip = clips.iter().find(|c| &c.name == name).ok_or_else(|| {
+                            lua_err(format!(
+                                "model '{id}' has no clip '{name}' (its clips: {})",
+                                if clips.is_empty() { "none".to_string() } else { clips.iter().map(|c| c.name.as_str()).collect::<Vec<_>>().join(", ") }
+                            ))
+                        })?;
+                        let time = number_option(&opts, "time")?.unwrap_or(0.0) as f32;
+                        let looped = match &opts {
+                            Some(o) => o.get::<Option<bool>>("loop")?.unwrap_or(true),
+                            None => true,
+                        };
+                        poses = clip.pose(time, looped, parts.len());
+                    }
+                    // ... then the script's own turns on top.
                     let mut turn = vec![Mat4::IDENTITY; parts.len()];
-                    for pair in table.pairs::<String, Table>() {
-                        let (name, t) = pair?;
+                    let named: Vec<(String, Table)> = match &overrides {
+                        Some(t) => t.pairs::<String, Table>().collect::<mlua::Result<_>>()?,
+                        None => Vec::new(),
+                    };
+                    for (name, t) in named {
                         let index = parts.iter().position(|p| p.name == name).ok_or_else(|| {
                             lua_err(format!(
                                 "model '{id}' has no part '{name}' (its parts: {})",
@@ -537,7 +561,14 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     }
                     let mut world = vec![Mat4::IDENTITY; parts.len()];
                     for (i, p) in parts.iter().enumerate() {
-                        let local = p.rest * turn[i];
+                        let (s0, r0, t0) = p.rest.to_scale_rotation_translation();
+                        let pose = poses[i];
+                        let authored = Mat4::from_scale_rotation_translation(
+                            pose.scale.unwrap_or(s0),
+                            pose.rotation.unwrap_or(r0),
+                            pose.translation.unwrap_or(t0),
+                        );
+                        let local = authored * turn[i];
                         world[i] = p.parent.map_or(local, |parent| world[parent] * local);
                     }
                     for (i, p) in parts.iter().enumerate() {
@@ -625,6 +656,23 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 color,
             });
             Ok(())
+        })?,
+    )?;
+    let s = shared.clone();
+    nova.set(
+        "model_clips",
+        lua.create_function(move |lua, id: String| {
+            let sh = s.borrow();
+            let found = find_model(&sh.known_models, &id)
+                .ok_or_else(|| lua_err(format!("unknown model '{id}'")))?;
+            let list = lua.create_table()?;
+            for (i, c) in sh.clips.get(&found).into_iter().flatten().enumerate() {
+                let entry = lua.create_table()?;
+                entry.set("name", c.name.clone())?;
+                entry.set("duration", c.duration as f64)?;
+                list.set(i + 1, entry)?;
+            }
+            Ok(list)
         })?,
     )?;
     let s = shared.clone();
@@ -1334,6 +1382,7 @@ impl Game {
         let mut meshes = Vec::new();
         let mut model_ids = Vec::new();
         let mut model_parts: HashMap<String, Vec<PartRt>> = HashMap::new();
+        let mut model_clips: HashMap<String, Vec<model::Clip>> = HashMap::new();
         for asset in project.assets_of(AssetKind::Model) {
             let bytes = vfs.read(&asset.id)?;
             let mesh = model::import_glb(&bytes).map_err(|e| format!("{}: {e}", asset.id))?;
@@ -1343,9 +1392,10 @@ impl Game {
             meshes.push((asset.id.clone(), mesh));
             model_ids.push(asset.id.clone());
             // The same file as separate parts, used only when a script turns individual parts.
-            if let Ok(parts) = model::import_parts(&bytes) {
-                let mut runtime = Vec::with_capacity(parts.len());
-                for part in parts {
+            if let Ok(imported) = model::import_parts(&bytes) {
+                model_clips.insert(asset.id.clone(), imported.clips);
+                let mut runtime = Vec::with_capacity(imported.parts.len());
+                for part in imported.parts {
                     let mesh_key = part.mesh.map(|m| {
                         let key = format!("{}#{}", asset.id, part.name);
                         meshes.push((key.clone(), m));
@@ -1417,6 +1467,7 @@ impl Game {
             mesh_ids: HashMap::new(),
             known_models: model_ids,
             parts: model_parts,
+            clips: model_clips,
             lighting: Lighting::default(),
             world: Vec::new(),
             ui: Vec::new(),
