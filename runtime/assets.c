@@ -1,5 +1,6 @@
 #include "assets.h"
 #include "audio.h"
+#include "scene.h"
 #include <cgltf.h>
 
 #include <math.h>
@@ -634,9 +635,10 @@ static bool upload_model(Model *model, NovaModelImages *images, char *error, siz
 }
 
 static bool stage_scene(NovaEngine **engine, NovaResources *resources,
-    const char *path, bool project, bool gpu, char *error, size_t error_size)
+    const char *path, bool project, bool gpu, const NovaProjectDraft *draft, char *error, size_t error_size)
 {
     NovaProject manifest = {0};
+    NovaScene authored = {0};
     NovaResources pending = {0};
     NovaEngine *candidate = NULL;
     unsigned char *bytes = NULL;
@@ -652,10 +654,28 @@ static bool stage_scene(NovaEngine **engine, NovaResources *resources,
     if (project) {
         if (!nova_project_root(path, root, detail, sizeof(detail))) goto done;
         snprintf(pending.root, sizeof(pending.root), "%s", root);
-        bytes = nova_read_file(path, NOVA_MANIFEST_LIMIT, &length, detail, sizeof(detail));
-        if (!bytes || !nova_project_parse(&manifest, (const char *)bytes, (size_t)length, detail, sizeof(detail))) goto done;
+        char journal[NOVA_NATIVE_PATH_CAPACITY + 32];
+        snprintf(journal, sizeof(journal), "%s/.nova-studio-journal", root);
+        if (FileExists(journal)) {
+            error_message(detail, sizeof(detail),
+                "interrupted Studio save: open the project in Nova Studio to review and finish recovery");
+            goto done;
+        }
+        if (!draft) bytes = nova_read_file(path, NOVA_MANIFEST_LIMIT, &length, detail, sizeof(detail));
+        if ((!draft && !bytes) || !nova_project_parse(&manifest,
+            draft ? draft->manifest : (const char *)bytes,
+            draft ? draft->manifest_length : (size_t)length, detail, sizeof(detail))) goto done;
         snprintf(pending.relative_entry, sizeof(pending.relative_entry), "%s", manifest.entry);
+        snprintf(pending.relative_scene, sizeof(pending.relative_scene), "%s", manifest.scene);
         UnloadFileData(bytes); bytes = NULL;
+        if (*manifest.scene) {
+            if (!nova_project_resolve(root, manifest.scene, resolved, detail, sizeof(detail))) goto done;
+            if (!draft) bytes = nova_read_file(resolved, NOVA_SCENE_LIMIT, &length, detail, sizeof(detail));
+            if ((!draft && !bytes) || !nova_scene_parse(&authored,
+                draft ? draft->scene : (const char *)bytes, draft ? draft->scene_length : (size_t)length,
+                manifest.assets, manifest.count, detail, sizeof(detail))) goto done;
+            UnloadFileData(bytes); bytes = NULL;
+        }
         for (size_t i = 0; i < manifest.count; ++i) {
             NovaAsset *asset = &manifest.assets[i];
             if (!nova_project_resolve(root, asset->path, resolved, detail, sizeof(detail))) goto done;
@@ -750,9 +770,14 @@ asset_error: {
     } else {
         snprintf(resolved, sizeof(resolved), "%s", path);
     }
-    bytes = nova_read_file(resolved, NOVA_ASSET_FILE_LIMIT, &length, detail, sizeof(detail));
-    if (!bytes) goto done;
-    if (memchr(bytes, '\0', (size_t)length)) {
+    if (!draft) bytes = nova_read_file(resolved, NOVA_ASSET_FILE_LIMIT, &length, detail, sizeof(detail));
+    if (!draft && !bytes) goto done;
+    const char *source = draft ? draft->source : (const char *)bytes;
+    size_t source_length = draft ? draft->source_length : (size_t)length;
+    if (!source || source_length > NOVA_ASSET_FILE_LIMIT) {
+        error_message(detail, sizeof(detail), "missing or oversized Lua source"); goto done;
+    }
+    if (memchr(source, '\0', source_length)) {
         error_message(detail, sizeof(detail), "entry Lua scene contains NUL"); goto done;
     }
     candidate = nova_create();
@@ -761,18 +786,19 @@ asset_error: {
     pending.manifest_version = manifest.version;
     snprintf(pending.identity, sizeof(pending.identity), "%s", manifest.identity);
     NovaServices *services = pending.services;
-    services->preflight = !gpu; services->count = pending.count;
+    services->preflight = !gpu || draft; services->count = pending.count;
     snprintf(services->identity, sizeof(services->identity), "%s", manifest.identity);
     for (size_t i = 0; i < pending.count; ++i) {
         services->indices[i] = pending.inspection[i].resource_index;
         services->sounds[i] = pending.resources[i].sound;
     }
     nova_set_service_host(candidate, (NovaServiceHost){
-        .context = services, .saves = manifest.version == 2,
+        .context = services, .saves = manifest.version >= 2,
         .read_save = service_read, .effect = service_effect
     });
-    if (!nova_load_with_assets(candidate, (const char *)bytes, (size_t)length, resolved,
-        manifest.assets, manifest.count) || !nova_tick(candidate, 0, (NovaInput){0})) {
+    if (!nova_load_with_scene(candidate, source, source_length, resolved,
+        manifest.assets, manifest.count, *manifest.scene ? &authored : NULL) ||
+        !nova_tick(candidate, 0, (NovaInput){0})) {
         snprintf(detail, sizeof(detail), "%s", nova_error(candidate)); goto done;
     }
     pending.project = project;
@@ -803,7 +829,7 @@ bool nova_open_scene(NovaEngine **engine, NovaResources *resources,
     NovaEngine *candidate = NULL;
     NovaResources pending = {0};
     char detail[1024];
-    if (!stage_scene(&candidate, &pending, path, project, true, detail, sizeof(detail))) {
+    if (!stage_scene(&candidate, &pending, path, project, true, NULL, detail, sizeof(detail))) {
         snprintf(resources->load_error, sizeof(resources->load_error), "%s", detail);
         snprintf(error, error_size, "%s", detail);
         return false;
@@ -824,17 +850,35 @@ bool nova_open_scene(NovaEngine **engine, NovaResources *resources,
     return true;
 }
 
+bool nova_open_authoring_snapshot(NovaEngine **engine, NovaResources *resources,
+    const char *path, const NovaProjectDraft *draft, char *error, size_t error_size)
+{
+    NovaEngine *candidate = NULL;
+    NovaResources pending = {0};
+    if (!draft || !stage_scene(&candidate, &pending, path, true, true, draft, error, error_size)) {
+        if (!draft) error_message(error, error_size, "authoring snapshot is required");
+        snprintf(resources->load_error, sizeof(resources->load_error), "%s", error);
+        return false;
+    }
+    nova_destroy(*engine);
+    nova_unload_resources(resources);
+    *engine = candidate;
+    *resources = pending;
+    return true;
+}
+
 bool nova_validate_project(const char *path, NovaProjectValidation *validation,
     char *error, size_t error_size)
 {
     NovaEngine *engine = NULL;
     NovaResources pending = {0};
-    if (!stage_scene(&engine, &pending, path, true, false, error, error_size)) return false;
+    if (!stage_scene(&engine, &pending, path, true, false, NULL, error, error_size)) return false;
     *validation = (NovaProjectValidation){0};
     validation->project.count = pending.count;
     validation->project.version = pending.manifest_version;
     snprintf(validation->project.identity, sizeof(validation->project.identity), "%s", pending.identity);
     snprintf(validation->project.entry, sizeof(validation->project.entry), "%s", pending.relative_entry);
+    snprintf(validation->project.scene, sizeof(validation->project.scene), "%s", pending.relative_scene);
     snprintf(validation->root, sizeof(validation->root), "%s", pending.root);
     snprintf(validation->entry, sizeof(validation->entry), "%s", pending.entry);
     for (size_t i = 0; i < pending.count; ++i) {

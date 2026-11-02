@@ -43,6 +43,9 @@ bool nova_document_replace(NovaDocument *document, size_t start, size_t end,
 bool nova_document_save(NovaDocument *document, bool overwrite_conflict,
     char *error, size_t error_size);
 bool nova_document_reread(NovaDocument *document, char *error, size_t error_size);
+/* Remove only the exact saved snapshot, for committed authoring journals.
+ * The draft must be clean. This is not a general recursive delete operation. */
+bool nova_document_remove(NovaDocument *document, char *error, size_t error_size);
 void nova_authoring_close(NovaAuthoringProject *project);
 /* Copy-on-success opening the manifest. Broken declarations/missing entry remain
  * editable and are reported through source_error; the source document is empty.

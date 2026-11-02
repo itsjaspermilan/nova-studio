@@ -141,8 +141,16 @@ int main(void)
     write_file(exported, "external export");
     CHECK(!nova_document_save(&output, false, error, sizeof(error)) && output.has_conflict);
     CHECK(nova_document_save(&output, true, error, sizeof(error)));
+    write_file(exported, "external journal");
+    CHECK(!nova_document_remove(&output, error, sizeof(error)));
+    matches(exported, "external journal");
+    CHECK(nova_document_reread(&output, error, sizeof(error)));
+    CHECK(nova_document_replace(&output, 0, output.length, "dirty", 5, error, sizeof(error)));
+    CHECK(!nova_document_remove(&output, error, sizeof(error)));
+    CHECK(nova_document_save(&output, false, error, sizeof(error)));
+    CHECK(nova_document_remove(&output, error, sizeof(error)));
+    CHECK(access(exported, F_OK) != 0 && !output.text);
     nova_document_close(&output);
-    CHECK(!unlink(exported));
     CHECK(nova_document_open_output(&output, root, "new.lua", 100, false, error, sizeof(error)));
     CHECK(nova_document_replace(&output, 0, 0, "new draft", 9, error, sizeof(error)));
     snprintf(exported, sizeof(exported), "%s/new.lua", root);

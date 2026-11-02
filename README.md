@@ -1,6 +1,6 @@
 # Nova Studio
 
-A working **native runtime and bounded beginner object/room editor for both 2D and 3D**, with Advanced source editing and original static primitive modelling, not a full game IDE. The native launcher opens editable Lua examples and versioned projects containing imported PNG sprites and static GLB models. The separate native editor creates reusable objects, authors real behaviors, places room instances and generates standalone runtime projects without requiring Lua/manifest edits. Everything lives here; GameStudio and Glow43 are unchanged and are not dependencies.
+A working **native Lua-first studio foundation for 2D and 3D**: a Qt 6 desktop application with Scene and Code workspaces, visual object transforms, PNG/static GLB import, guarded project saving/recovery and live native Run/Stop. The C11/Lua runtime, legacy Objects/Rooms editor, Advanced source editor and original static primitive modeller remain available. This is the first Qt authoring milestone, **not the complete five-workspace studio or a full IDE**. Everything lives here; GameStudio and Glow43 are unchanged and are not dependencies.
 
 The provisional product name is Nova Studio. This foundation targets desktop authoring and standalone Android games, initially Retroid Pocket 6. It contains **no WebView, browser renderer, or screenshot-streaming gameplay**.
 
@@ -10,17 +10,28 @@ Requires the Apple command-line tools and CMake 3.22 or later. `.tool-versions` 
 
 For a reproducible installation, see **Easy toolchain setup** below. Once installed, prefix native commands with `./scripts/with-toolchain.sh` to select the project tools without changing your shell settings; for example `./scripts/with-toolchain.sh cmake -S . -B build`. The first native configure downloads raylib 5.5 and Lua 5.4.8 from upstream; SHA-256 hashes pin both archives. The native build itself does not install SDKs.
 
-From `/Users/jasper/Developer/NovaStudio`:
+From your Nova Studio checkout:
 
 ```sh
-./scripts/with-toolchain.sh cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+./scripts/with-toolchain.sh cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug \
+  -DNOVA_QT_STUDIO=ON -DCMAKE_PREFIX_PATH=/opt/homebrew/opt/qtbase
 ./scripts/with-toolchain.sh cmake --build build -j 4
 ./scripts/with-toolchain.sh ctest --test-dir build --output-on-failure
-./build/nova_editor
+open "build/Nova Studio.app"
+# Or launch directly with an existing manifest:
+"build/Nova Studio.app/Contents/MacOS/Nova Studio" --project /path/to/nova.project
 ```
 
-`nova_editor` opens the current authoring application. The separate
-`./build/nova_studio` executable is the sample launcher/runtime, not the editor.
+The optional desktop target `nova_studio_app` needs **Qt Base >=6.5**; macOS was
+verified with Homebrew `qtbase` **6.12.0** at the prefix above. Configuration does
+not install Qt. Obtain consent before new host installations. Omit the prefix
+when Qt is already discoverable. `-DNOVA_QT_STUDIO=OFF` (the default) retains the
+Qt-free C11 build; Android always uses that runtime and rejects the Qt option.
+
+**`Nova Studio.app` is the new desktop authoring entry point.** `nova_editor`
+is the retained compatibility editor, and `./build/nova_studio` is the native
+sample launcher/runtime, not the editor. On other desktop hosts the Qt target
+is `nova_studio_app`; Windows/Linux desktop behavior has not been qualified.
 The [active studio roadmap](TODO.md#active-product-build-researched-lua-first-studio)
 and [retained UX specification](docs/ux/nova-studio-ux-assessment.md) describe the
 larger Lua-first studio now being implemented; their concept screens are not
@@ -38,9 +49,186 @@ Edit the source examples with your preferred text editor, then rebuild to synchr
 ./build/nova_studio --project "$PWD/examples/static/nova.project"
 ```
 
-The executables resolve bundled examples relative to their own directory, not the shell's current directory. To move the desktop build, keep `nova_studio`, optional `nova_editor`, `examples/`, and `licenses/` (including Nova's MIT LICENSE) together. There is no `.app` bundle, installer or notarization.
+The executables resolve bundled examples relative to their own directory, not
+the shell's current directory. The Qt app uses `Contents/Resources/examples`.
+For the C11 runtime/legacy editor, keep `nova_studio`, optional `nova_editor`,
+`examples/`, and `licenses/` (including Nova's MIT LICENSE) together.
+The Qt `.app` dynamically links the installed Qt frameworks: it is a
+**development bundle, not a portable installer or signed/notarized release**.
+Its Qt notices and LGPLv3/GPLv3 texts are in `Resources/licenses/qt-base`.
+Core, Gui, Widgets, OpenGL and OpenGLWidgets are LGPLv3-capable Qt Base modules;
+Qt Test is test-only. No GPL-only add-on was introduced. See
+[`authoring/qt/NOTICE.txt`](authoring/qt/NOTICE.txt) before release packaging.
 
-### Native desktop project editor
+### Qt Scene and Code foundation
+
+**New project** creates a fresh folder with a 2D sprite or 3D model starter,
+an editable `main.lua`, a `start.nova-scene`, and an opt-in v3 `nova.project`.
+Existing folders are never overwritten. **Open project** accepts v1/v2/v3
+manifests without automatic conversion. Production Open, parent-folder,
+import and separate-recovery-copy pickers use OS-native `QFileDialog` panels
+where available; import validation/options do not replace the native picker.
+Standard Qt controls retain Unicode/IME, selection/clipboard, focus and
+accessibility interfaces. Original vector action icons, system typography,
+light/dark palette adaptation and dockable/resizable panels are authoring-only.
+
+Only **Scene** and **Code** are exposed. Sprite painting, a new mesh/model
+workspace and Sound Studio are later milestones, not empty tabs. The existing
+primitive modeller and typed-action projects stay in the compatibility editor,
+available from File. A legacy generated `game.project`/`game.generated.lua`
+is read-only here: its owning `.nova-game` source is not reconstructed or
+silently replaced. Hand-authored v1/v2 Lua stays editable, with native initial
+frame/asset inspection but no fabricated visual scene hierarchy.
+
+In Scene, select an object in the outline or native viewport. Edit its UTF-8
+display name, position, size/scale, compatible appearance and primitive colour
+in the Inspector; finishing a field commits an undoable edit. Stable IDs are
+read-only. Add shapes, duplicate or delete objects, or import a supported PNG/
+static GLB and **Add selected asset to scene**. Imported files are copied to
+fresh contained paths immediately; **undo/discard removes registration, never
+deletes the copied file**. Sprite/model tint, rotation gizmos, physics and
+per-object lifecycle are not implied by these controls.
+
+2D uses logical 960x540 coordinates. Dragging moves XY; 3D dragging moves on the
+selected object's horizontal XZ plane, with height in the Inspector. Snap is
+explicit; selecting without dragging does not snap/move an object. Each drag
+is one undo command; Escape/focus loss cancels it. Scene settings edit the
+background and actual game camera, not a separate software editing renderer.
+Plain transforms reuse the loaded GPU resources.
+
+Code provides native text editing, Lua highlighting, `Ctrl+Space` API/project
+reference completion, signatures, an offline reference, find, and debounced
+line diagnostics. Syntax checking compiles without executing gameplay.
+Double-click a line problem to navigate to it. This is not an LSP, debugger,
+refactoring engine or automatic script rewrite. **Moving/renaming/duplicating/
+deleting a visual object never regenerates the gameplay Lua**; deleting a
+referenced ID yields a useful runtime error until the reference or deletion
+is corrected. Studio's Unicode UI does not extend the game's bitmap HUD font.
+
+**Run game / F5** coherently saves, then stages the real saved project through
+the shared engine/assets/presentation. The focused viewport receives gameplay
+keys; blur, hidden windows and modal dialogs pause simulation/services and
+clear input. Escape releases game focus, not the application. **Stop /
+Shift+F5** discards runtime changes and restores the authored scene. Failed
+asset/scene/Lua staging retains the previous native resources/output and
+labels the preview as retained, with Problems details. Use View -> Reload
+native preview assets (F6) to explicitly reload external asset changes.
+
+#### Document ownership and recoverable saving
+
+One project document owns manifest, scene, Lua, selection and a shared
+256-command undo stack. Nearby text edits coalesce; transforms/import
+registration are independent named commands. Selection alone is not a file
+edit. Saved bytes, disk snapshots and disposable running engine state are
+separate.
+
+Save prechecks exact disk snapshots, records a guarded recovery snapshot and
+commit journal, then writes **scene, Lua, manifest** with the existing contained
+atomic **per-file** replacement. The journal is removed only after every file
+is rechecked. This is a **recoverable multi-file commit, not filesystem-atomic
+multi-file replacement**. A partial failure reports how many files were
+written and keeps the journal and draft. Runtime/export preflight refuses a
+project with a pending journal. Save/reopen can finish it only when each file
+still matches the recorded old or new version; external edits are never
+blindly overwritten. Same-session recovery preserves edits made after the
+failed commit as a newer, unsaved draft.
+
+A 600 ms debounced `.nova-studio-recovery` retains authoring snapshots, not
+runtime gameplay state. On reopen, review its timestamp and saved-base/draft
+details, then explicitly Restore, Discard or Keep for later. An older unresolved
+recovery is not overwritten by new autosave. File -> Compare with disk shows
+the saved base, draft and current file. Reopen or save a **new separate recovery
+copy** when resolving a conflict; there is no automatic merge/force-overwrite
+path. Closing dirty work requires Save, Keep recovery, Discard, or Cancel.
+An interrupted persistent commit cannot be discarded as if no writes happened.
+A project lock prevents simultaneous Qt writers; legacy/external editors do
+not share that lock, so exact file guards still apply.
+
+#### Opt-in manifest v3 and nova-scene v1
+
+v1/v2 manifests and legacy generated ownership are unchanged. v3 adds one
+required contained `.nova-scene` path to the v2 identity/audio declarations:
+
+```text
+nova-project 3
+identity my-game
+entry main.lua
+scene start.nova-scene
+```
+
+```text
+nova-scene 1
+mode 3d
+background 18 24 41
+camera 7 6 9 0 0 0 50
+object player cube - 0 0 0 1 1 1 77 225 201 Player
+```
+
+Object fields are stable ID, `rectangle`/`cube`/`sprite`/`model`, asset ID (or
+`-` for a primitive), XYZ position, XYZ size/scale, RGB, then a UTF-8 display
+name. Scene bounds: 64 KiB, 128 objects, existing 1..63-character ASCII IDs,
+1..127 UTF-8-byte names without ASCII controls, positions +/-10000, sizes .01..1000.
+2D objects require Z=0/depth=1; visual types must match 2D/3D/mixed mode.
+Asset types/references are checked, and asset RGB must be white because
+sprite/model tint is unsupported. Camera bounds/FOV are validated. Unknown
+versions/directives, duplicates, malformed UTF-8 and nonfinite numbers fail
+without replacing the prior document.
+
+```lua
+local player = nova.object("player")
+function update(dt, input)
+    local x, y, z = nova.position(player)
+    nova.set_position(player, x + input.horizontal * 3 * dt, y,
+                      z + input.vertical * 3 * dt)
+end
+```
+
+Opaque object handles validate type, generation and lifetime. Lua changes the
+engine's disposable scene copy, never the authoring draft. The scene's mode
+cannot be changed by Lua. Static scene visuals follow behavior updates and are
+prepended below Lua overlays, sharing the existing **512-command** frame budget
+and failure/effect-discard behavior. The API deliberately has no per-object
+Create/Step/Destroy lifecycle. Export preflight includes the scene file in its
+required inventory; Qt is not a game-runtime dependency.
+
+#### Native bridge and validation boundaries
+
+`QOpenGLWidget` owns the native context/window/input. A small backend compiled
+with the hash-pinned raylib 5.5 sources lets the **same C renderer, asset
+decoders and presentation** draw into Qt's actual, resize-dependent GPU FBO.
+The world target is bounded; HUD composition uses physical framebuffer pixels.
+There is no hidden GLFW window, private Qt API, WebView, CPU readback display
+or second scene renderer. Raylib globals currently permit one context-owned
+viewport per process. Context teardown disconnects host callbacks before
+parent actions disappear; Qt and ordinary GLFW raylib builds are not linked
+into the same process.
+
+With an active logged-in desktop:
+
+```sh
+./scripts/with-toolchain.sh cmake -S . -B build -DNOVA_QT_STUDIO=ON \
+  -DCMAKE_PREFIX_PATH=/opt/homebrew/opt/qtbase -DNOVA_GPU_TESTS=ON
+./scripts/with-toolchain.sh cmake --build build -j 4
+./scripts/with-toolchain.sh ctest --test-dir build --output-on-failure -R '^nova_(scene|qt_.*)$'
+```
+
+Coverage includes real native 2D/3D pixels/input, Unicode input-method events,
+clipboard preservation, accessibility text interfaces, docking/resizing,
+actual New/typed transform/Code/import/undo/Save/Open/Run/Stop controls,
+partial-save recovery, external edits and retained failed previews.
+Workspace file-selection tests inject a **per-dialog test-only** standard
+Qt widget dialog; production retains native panels. Separate native-panel
+display/cancel coverage is not a claim that automated Qt events exercised
+OS-owned selection controls or a human IME/VoiceOver workflow.
+Captures are `build/qt-studio-{2d,3d}.png`,
+`build/qt-studio-{2d,3d}-min.png` (1100x740 logical), and
+`build/qt-studio-code-{2d,3d}.png`.
+These are regression evidence, not novice, performance or Android-device
+validation. The larger studio's requested final acceptance exercise is a
+playable **3D rally racer** using every delivered authoring component, including
+the future Sprite/Model/Sound workspaces; that exercise is not completed here.
+
+### Legacy native desktop project editor
 
 ```sh
 ./build/nova_editor
@@ -522,10 +710,12 @@ and standalone runtime. Evidence includes `build/textured-native.png`,
 | `runtime/main.c` | Shared desktop/Android native game loop, input, launcher and capture options |
 | `runtime/presentation.{c,h}` | Shared GPU world ownership, framebuffer/panel layout, native HUD drawing and composite captures |
 | `engine/project.{c,h}` | Versioned manifest declarations, stable IDs and lexical path validation |
+| `engine/scene.{c,h}` | Strict authored scene v1 and data-owned visual commands for opt-in manifest v3 |
 | `runtime/assets.{c,h}` | Native path resolution, PNG/GLB decoding, resource cache and transactional scene replacement |
 | `runtime/inspect.h` | Read-only loaded scene/resource views and shared headless project preflight v2 |
 | `runtime/saves.{c,h}` | Project-owned, hex-encoded bounded save keys and atomic versioned file replacement |
 | `authoring/document.{c,h}` | Bounded real file drafts, disk snapshots, contained atomic/conflict-guarded text/binary output |
+| `authoring/qt/`, `cmake/QtStudio.cmake` | Desktop Scene/Code app, unified documents/recovery, system controls and Qt-hosted native GPU bridge |
 | `authoring/editor.c`, `authoring/widgets.{c,h}` | Native project browser, source/property editing, decisions and shared-runtime preview |
 | `authoring/style.{c,h}` | System typography, framebuffer-density text cache and platform-style authoring palette |
 | `examples/2d/main.lua` | Editable 2D gameplay, moving target and native contact detection |
@@ -536,7 +726,13 @@ and standalone runtime. Evidence includes `build/textured-native.png`,
 | `tests/` | Focused shared-engine and build-integration tests |
 | `licenses/` | Dependency licenses; builds also preserve embedded upstream notices |
 
-**Rendering choice:** raylib 5.5 uses GLFW/Cocoa and OpenGL on macOS, and EGL/OpenGL ES 2 with Android NativeActivity. Lua 5.4.8 has no JIT requirement. Native C owns rendering, meshes, resources, collision and frame scheduling; Lua controls lightweight gameplay. macOS OpenGL is deprecated, so this is a practical first-slice backend, not a commitment to use OpenGL indefinitely.
+**Rendering choice:** the standalone runtime and legacy editor use raylib 5.5
+with GLFW/Cocoa/OpenGL on macOS; the Qt app owns its native OpenGL context and
+hosts the same renderer without GLFW. Android uses EGL/OpenGL ES 2 with
+NativeActivity, never Qt. Lua 5.4.8 has no JIT requirement. Native C owns
+rendering, meshes, resources and collision; Lua controls lightweight gameplay.
+macOS OpenGL is deprecated, so this is a practical first-slice backend, not a
+commitment to use OpenGL indefinitely.
 
 **Coordinates and timing:** all scenes share a 960x540 logical canvas and 60 Hz fixed simulation. A 2D scene uses nearest-neighbor, integer letterboxing when the **native framebuffer** can fit at least one logical canvas; smaller framebuffers use fractional downscaling. 3D/mixed worlds use aspect-preserving fractional scaling with bilinear presentation. Resizing and display DPI never change gameplay coordinates.
 

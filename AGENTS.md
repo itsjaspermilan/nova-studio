@@ -58,7 +58,12 @@ exported. The earlier externally authored 2D assessment game is not that proof.
   Draw commands include rectangles, text, generated cubes and validated
   sprite/static-model handles; audio handles produce service effects.
   `engine/project.{c,h}` preserves v1 and owns
-  explicit v2 identity/audio declarations.
+  explicit v2 identity/audio declarations plus opt-in v3 authored scenes.
+  `engine/scene.{c,h}` owns strict nova-scene v1, stable object IDs and UTF-8
+  display names. Scene objects and Lua share the 512-command frame budget.
+  `nova.object`/`position`/`set_position` validate opaque handle generation and
+  lifetime; runtime mutations never edit authored files. Per-object lifecycle
+  and automatic conversion of v1/v2/generated projects are not implemented.
   Timers/numeric tweens/sprite frames advance on validated simulation ticks;
   native audio/save effects dispatch after successful Lua calls.
   Lua exposes base/math/string/table, not filesystem/process
@@ -94,6 +99,22 @@ exported. The earlier externally authored 2D assessment game is not that proof.
   source/project editor. Preserve explicit dirty/conflict decisions and use
   shared inspection/presentation/runtime for its real preview, not another renderer.
   Save is per file; whole-project runtime reload is transactional separately.
+- `authoring/qt/` is the new desktop-only Scene/Code foundation, enabled with
+  `NOVA_QT_STUDIO=ON`. Qt owns context/window/input/accessibility; the pinned
+  raylib custom backend compiles the identical native import/presentation code.
+  Never link its rcore and GLFW rcore into one process. One viewport owns the
+  global renderer; restore Qt's nonzero FBO after world rendering and disconnect
+  outgoing signals before parent-owned actions disappear during destruction.
+  `ProjectDocument` owns scene/Lua/manifest, selection and unified undo. Its
+  journal is a recoverable multi-file commit, not filesystem atomicity.
+  Interrupted journals block runtime/export; exact old/new-byte checks protect
+  recovery and external edits. Do not overwrite unresolved prior recovery.
+  Native production file panels must remain native; deterministic tests may
+  inject a per-dialog configuration, never a production/app-wide nonnative flag.
+  Keep system input/IME/accessibility, scoped styling and original vector icons.
+  Scene edits do not rewrite scripts; Run saves/stages normal runtime services,
+  while visual authoring uses nondispatching staging. The legacy editor remains
+  available for its owned projects and primitive modelling.
 - `authoring/game.{c,h}` owns strict nova-game v1 resources/objects/actions/
   rooms/stable instances and bounded undo. `game.nova-game` is authored source;
   `game.project` / `game.generated.lua` are exact verified generated ownership,
@@ -204,6 +225,21 @@ bash tests/toolchain_test.sh
 ./scripts/build-android.sh
 ./scripts/verify-apk.sh
 ```
+
+For the new desktop studio (Qt Base must already be installed with consent):
+
+```sh
+./scripts/with-toolchain.sh cmake -S . -B build -DNOVA_QT_STUDIO=ON \
+  -DCMAKE_PREFIX_PATH=/opt/homebrew/opt/qtbase
+./scripts/with-toolchain.sh cmake --build build -j 4
+open "build/Nova Studio.app"
+```
+
+For potentially crashing native UI reproductions, use LLDB and verify the
+debuggee's exit status, not merely LLDB's status. Do not mask failures or change
+CrashReporter/security settings. Ordinary Qt test failures must return nonzero
+with cleanup, not abort. Send Return as a key event, not a newline in
+`QTest::keyClicks`; popup interactions target the popup that owns the input.
 
 Enable graphical CTests with `-DNOVA_GPU_TESTS=ON` at configure time only when
 a logged-in desktop is available. Do not confuse deterministic capture runs

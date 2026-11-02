@@ -16,6 +16,7 @@
 #define NOVA_SAVE_DATA_LIMIT 4096
 
 typedef struct NovaEngine NovaEngine;
+typedef struct NovaScene NovaScene;
 typedef struct { float x, y, z; } NovaVec3;
 typedef struct { unsigned char r, g, b, a; } NovaColor;
 typedef enum { NOVA_2D, NOVA_3D, NOVA_MIXED } NovaMode;
@@ -61,6 +62,8 @@ bool nova_dispatch_effects(NovaEngine *engine);
 bool nova_load(NovaEngine *engine, const char *source, size_t length, const char *name);
 bool nova_load_with_assets(NovaEngine *engine, const char *source, size_t length,
     const char *name, const NovaAsset *assets, size_t count);
+bool nova_load_with_scene(NovaEngine *engine, const char *source, size_t length,
+    const char *name, const NovaAsset *assets, size_t count, const NovaScene *scene);
 bool nova_tick(NovaEngine *engine, double dt, NovaInput input);
 const NovaFrame *nova_frame(const NovaEngine *engine);
 const char *nova_error(const NovaEngine *engine);

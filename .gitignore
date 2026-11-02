@@ -29,3 +29,6 @@ signing.properties
 *.pem
 __pycache__/
 *.idsig
+.nova-studio-lock
+.nova-studio-recovery
+.nova-studio-journal

@@ -1,4 +1,5 @@
 #include "nova.h"
+#include "scene.h"
 
 #include <lua.h>
 #include <lauxlib.h>
@@ -17,6 +18,7 @@ typedef struct {
     size_t count, frames[NOVA_MAX_ASSETS];
 } NovaTrack;
 typedef struct { size_t index; unsigned generation; } TrackHandle;
+typedef struct { size_t index; unsigned long long generation; } ObjectHandle;
 
 struct NovaEngine {
     lua_State *lua;
@@ -32,6 +34,9 @@ struct NovaEngine {
     size_t save_reads;
     NovaEffect effects[NOVA_MAX_EFFECTS];
     NovaTrack tracks[NOVA_MAX_TRACKS];
+    bool has_scene;
+    NovaScene scene;
+    unsigned long long scene_generation;
 };
 
 static void *lua_memory(void *context, void *pointer, size_t old_size, size_t new_size)
@@ -107,11 +112,15 @@ static NovaCommand *command(lua_State *lua, NovaCommandType type)
 static int scene(lua_State *lua)
 {
     const char *mode = luaL_checkstring(lua, 1);
-    NovaFrame *frame = &get_engine(lua)->frame;
-    if (strcmp(mode, "2d") == 0) frame->mode = NOVA_2D;
-    else if (strcmp(mode, "3d") == 0) frame->mode = NOVA_3D;
-    else if (strcmp(mode, "mixed") == 0) frame->mode = NOVA_MIXED;
+    NovaEngine *engine = get_engine(lua);
+    NovaMode requested;
+    if (strcmp(mode, "2d") == 0) requested = NOVA_2D;
+    else if (strcmp(mode, "3d") == 0) requested = NOVA_3D;
+    else if (strcmp(mode, "mixed") == 0) requested = NOVA_MIXED;
     else return luaL_error(lua, "scene mode must be '2d', '3d' or 'mixed'");
+    if (engine->has_scene && requested != engine->scene.mode)
+        return luaL_error(lua, "scene dimension is owned by the authored scene document");
+    engine->frame.mode = requested;
     return 0;
 }
 
@@ -167,6 +176,52 @@ static int asset(lua_State *lua)
         }
     }
     return luaL_error(lua, "undeclared asset '%s'; check the project manifest", id);
+}
+
+static NovaSceneObject *scene_object(lua_State *lua, int index)
+{
+    const ObjectHandle *handle = luaL_checkudata(lua, index, "nova.object");
+    NovaEngine *engine = get_engine(lua);
+    if (!engine->has_scene || handle->index >= engine->scene.count ||
+        handle->generation != engine->scene_generation) luaL_error(lua, "expired or invalid scene object handle");
+    return &engine->scene.objects[handle->index];
+}
+
+static int object(lua_State *lua)
+{
+    size_t length;
+    const char *id = luaL_checklstring(lua, 1, &length);
+    NovaEngine *engine = get_engine(lua);
+    for (size_t i = 0; engine->has_scene && i < engine->scene.count; ++i) {
+        if (strlen(engine->scene.objects[i].id) == length && !memcmp(id, engine->scene.objects[i].id, length)) {
+            ObjectHandle *handle = lua_newuserdatauv(lua, sizeof(*handle), 0);
+            *handle = (ObjectHandle){i, engine->scene_generation};
+            luaL_setmetatable(lua, "nova.object");
+            return 1;
+        }
+    }
+    return luaL_error(lua, "unknown scene object '%s'", id);
+}
+
+static int object_position(lua_State *lua)
+{
+    NovaSceneObject *value = scene_object(lua, 1);
+    lua_pushnumber(lua, value->position.x);
+    lua_pushnumber(lua, value->position.y);
+    lua_pushnumber(lua, value->position.z);
+    return 3;
+}
+
+static int object_set_position(lua_State *lua)
+{
+    NovaSceneObject *value = scene_object(lua, 1);
+    NovaVec3 position = {number(lua, 2), number(lua, 3), number(lua, 4)};
+    if (fabsf(position.x) > 10000 || fabsf(position.y) > 10000 || fabsf(position.z) > 10000)
+        return luaL_error(lua, "object positions must be within +/-10000");
+    if ((value->type == NOVA_RECTANGLE || value->type == NOVA_SPRITE) && position.z != 0)
+        return luaL_error(lua, "2D scene objects require Z=0");
+    value->position = position;
+    return 0;
 }
 
 static size_t asset_handle(lua_State *lua, NovaAssetType type)
@@ -510,6 +565,12 @@ bool nova_load(NovaEngine *engine, const char *source, size_t length, const char
 bool nova_load_with_assets(NovaEngine *engine, const char *source, size_t length,
     const char *name, const NovaAsset *assets, size_t count)
 {
+    return nova_load_with_scene(engine, source, length, name, assets, count, NULL);
+}
+
+bool nova_load_with_scene(NovaEngine *engine, const char *source, size_t length,
+    const char *name, const NovaAsset *assets, size_t count, const NovaScene *authored)
+{
     if (!engine) return false;
     if (engine->lua) lua_close(engine->lua);
     engine->lua = lua_newstate(lua_memory, engine);
@@ -519,6 +580,8 @@ bool nova_load_with_assets(NovaEngine *engine, const char *source, size_t length
     engine->effect_count = 0;
     memset(engine->tracks, 0, sizeof(engine->tracks));
     engine->save_reads = 0;
+    engine->has_scene = false;
+    if (++engine->scene_generation == 0) ++engine->scene_generation;
     engine->frame = (NovaFrame){
         .mode = NOVA_2D, .background = {20, 24, 36, 255},
         .camera_position = {7, 6, 9}, .camera_target = {0, 0, 0}, .camera_fov = 50
@@ -547,6 +610,12 @@ bool nova_load_with_assets(NovaEngine *engine, const char *source, size_t length
     }
     if (count) memcpy(engine->assets, assets, count * sizeof(*assets));
     engine->asset_count = count;
+    if (authored) {
+        if (!nova_scene_validate(authored, assets, count, engine->error, sizeof(engine->error))) return false;
+        engine->scene = *authored;
+        engine->has_scene = true;
+        nova_scene_frame(authored, assets, count, &engine->frame);
+    }
     *(NovaEngine **)lua_getextraspace(engine->lua) = engine;
     // Deliberately expose only gameplay libraries, not filesystem or process access.
     const struct { const char *name; lua_CFunction open; } libraries[] = {
@@ -564,10 +633,15 @@ bool nova_load_with_assets(NovaEngine *engine, const char *source, size_t length
         {"cube", cube}, {"text", text}, {"camera", camera}, {"overlap", overlap},
         {"timer", timer}, {"timer_poll", timer_poll}, {"cancel", cancel},
         {"tween", tween}, {"tween_value", tween_value}, {"frames", frames},
-        {"play", play}, {"stop", stop}, {"save_get", save_get}, {"save_set", save_set}, {NULL, NULL}
+        {"play", play}, {"stop", stop}, {"save_get", save_get}, {"save_set", save_set},
+        {"object", object}, {"position", object_position}, {"set_position", object_set_position}, {NULL, NULL}
     };
     luaL_newmetatable(engine->lua, "nova.asset");
     lua_pushliteral(engine->lua, "protected asset handle");
+    lua_setfield(engine->lua, -2, "__metatable");
+    lua_pop(engine->lua, 1);
+    luaL_newmetatable(engine->lua, "nova.object");
+    lua_pushliteral(engine->lua, "protected scene object handle");
     lua_setfield(engine->lua, -2, "__metatable");
     lua_pop(engine->lua, 1);
     luaL_newmetatable(engine->lua, "nova.track");
@@ -640,6 +714,26 @@ bool nova_tick(NovaEngine *engine, double dt, NovaInput input)
     lua_pushnumber(lua, input.vertical); lua_setfield(lua, -2, "vertical");
     lua_pushboolean(lua, input.action); lua_setfield(lua, -2, "action");
     if (lua_pcall(lua, 2, 0, 0) != LUA_OK) return failure(engine);
+    if (engine->has_scene) {
+        if (engine->frame.count + engine->scene.count > NOVA_MAX_COMMANDS) {
+            snprintf(engine->error, sizeof(engine->error), "scene objects and Lua exceed %d draw commands", NOVA_MAX_COMMANDS);
+            engine->loaded = false; engine->frame.count = 0; engine->effect_count = 0;
+            return false;
+        }
+        /* Prepend data-owned visuals after behavior updates, below Lua overlays. */
+        size_t count = engine->frame.count;
+        memmove(engine->frame.commands + engine->scene.count, engine->frame.commands,
+            count * sizeof(*engine->frame.commands));
+        for (size_t i = 0; i < engine->scene.count; ++i) {
+            const NovaSceneObject *value = &engine->scene.objects[i];
+            NovaCommand *draw = &engine->frame.commands[i];
+            *draw = (NovaCommand){.type = value->type, .position = value->position,
+                .size = value->size, .color = value->color};
+            for (size_t j = 0; j < engine->asset_count; ++j)
+                if (!strcmp(value->asset, engine->assets[j].id)) { draw->asset = j; break; }
+        }
+        engine->frame.count += engine->scene.count;
+    }
     return true;
 }
 

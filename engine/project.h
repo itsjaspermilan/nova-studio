@@ -19,6 +19,7 @@ typedef struct {
     unsigned version;
     char identity[NOVA_ASSET_ID_CAPACITY];
     char entry[NOVA_PROJECT_PATH_CAPACITY];
+    char scene[NOVA_PROJECT_PATH_CAPACITY];
     size_t count;
     NovaAsset assets[NOVA_MAX_ASSETS];
 } NovaProject;

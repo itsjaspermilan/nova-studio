@@ -49,6 +49,7 @@ struct NovaResources {
     char root[NOVA_NATIVE_PATH_CAPACITY];
     char entry[NOVA_NATIVE_PATH_CAPACITY];
     char relative_entry[NOVA_PROJECT_PATH_CAPACITY];
+    char relative_scene[NOVA_PROJECT_PATH_CAPACITY];
     char load_error[1024];
 };
 
@@ -77,5 +78,15 @@ void nova_shutdown_audio(void);
 void nova_unload_resources(NovaResources *resources);
 bool nova_open_scene(NovaEngine **engine, NovaResources *resources,
     const char *path, bool project, char *error, size_t error_size);
+
+typedef struct {
+    const char *manifest, *source, *scene;
+    size_t manifest_length, source_length, scene_length;
+} NovaProjectDraft;
+/* Stage a consistent in-memory authoring snapshot against an existing project
+ * root. GPU imports are real; save reads are deterministic and effects are NOT
+ * dispatched. Failed staging retains the complete prior engine/resources. */
+bool nova_open_authoring_snapshot(NovaEngine **engine, NovaResources *resources,
+    const char *path, const NovaProjectDraft *draft, char *error, size_t error_size);
 
 #endif

@@ -1,0 +1,30 @@
+Nova Studio desktop Qt integration
+
+Nova-authored editor code and action-icon artwork are MIT licensed; see LICENSE.
+The optional desktop application dynamically links the Qt Base modules Core,
+Gui, Widgets, OpenGL and OpenGLWidgets. Qt Test is used only by test executables.
+No GPL-only Qt add-on module is requested.
+
+The inspected Qt Base 6.12.0 module/header notices offer:
+LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only.
+This project uses the LGPLv3 option, not a commercial license or a GPL-only
+application license. The required LGPLv3 and GPLv3 license texts accompany this
+notice. Upstream copyright and individual third-party notices still apply.
+
+Qt source and module licensing:
+https://code.qt.io/cgit/qt/qtbase.git/
+https://doc.qt.io/qt-6/licensing.html
+https://www.qt.io/licensing/open-source-lgpl-obligations
+
+The development build uses the installed Qt shared libraries/frameworks; it
+does not copy Qt into the .app. Installing or building Qt is separate from
+building Nova. The verified development installation is Homebrew qtbase 6.12.0.
+Qt is not linked into nova_studio, nova_editor or Android game outputs.
+
+This .app is not a portable, signed, notarized or distribution-ready installer.
+Before distributing a combined application/Qt bundle, preserve dynamic
+replacement/relinking and debugging rights, deliver the exact applicable Qt
+and third-party notices/licenses, and provide corresponding Qt source access
+as required by LGPLv3. Keep any Qt modifications and source/build information.
+Do not treat this development notice as completion of a release compliance
+review, an SDK license, or permission to distribute another party's artwork.

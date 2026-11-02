@@ -52,16 +52,16 @@ Confirmed product requirements:
 | Stage | Dependency | Completion gate | State |
 | --- | --- | --- | --- |
 | Baseline reconciliation | Existing committed work | Build and exercise the integrated native editor, assets, services, modeller and exporter in this worktree. | Complete |
-| Desktop UI/platform decision | Retained research | Qt 6/C++ selected by the user; prove real text input, focus/accessibility facilities, dialogs/docking and live native GPU integration before committing to the bridge. | Isolated Qt bridge verified; integration pending |
-| Authoring/document foundation | UI decision + baseline | Unified documents/selection, full undo/redo, safe coherent writes, recovery, conflict handling and native preview. | In progress in isolated Qt worktree; native dialogs and visual refinement required |
-| Lua-first creation loop | Authoring foundation | Project creation/open/save, visual scenes and script/property binding, useful code tools, diagnostics and Run/Stop without overwriting authored code. | Pending |
+| Desktop UI/platform decision | Retained research | Qt 6/C++ selected by the user; prove real text input, focus/accessibility facilities, dialogs/docking and live native GPU integration before committing to the bridge. | Native macOS bridge implemented; human IME/VoiceOver and other OS qualification remain |
+| Authoring/document foundation | UI decision + baseline | Unified documents/selection, full undo/redo, safe coherent writes, recovery, conflict handling and native preview. | First Scene/Code foundation implemented; future asset document types still need integration |
+| Lua-first creation loop | Authoring foundation | Project creation/open/save, visual scenes and script/property binding, useful code tools, diagnostics and Run/Stop without overwriting authored code. | First 2D/3D creation slice implemented; complete studio remains in progress |
 | Sprite workspace | Authoring foundation + runtime animation | Real drawing/layers/frames, source preservation, reversible editing and matching scene/runtime updates. | Pending |
 | Model workspace | Authoring foundation + existing GLB pipeline | Mesh/transform/material/UV basics, reversible editing and faithful supported model round trips. | Pending |
 | Audio engine | Existing native services | Sample-clock processing, float mixing, quality instruments/DSP, streams/buses, device handling and offline rendering. | C11 sample-clock/DSP/bus/offline foundation implemented; live streams/device integration pending |
 | Recording and SFX | Authoring foundation + audio engine | Nondestructive waveform editing, explicit recording, layered SFX, safe audition and persistent sources. | Pending |
 | Music composition | Recording/SFX foundations | Arrangement, piano roll, patterns/drums, synth/sampler, MIDI, loops and document persistence. | Pending |
 | Sound production | Music composition | Mixer, sends/buses, effects, automation, lossless masters, aligned stems/loops and runtime-profile audition. | Pending |
-| Application and game delivery | Completed authoring pipelines | An unambiguous studio application entry point and real selected-project desktop/Android outputs with preflight. | Pending |
+| Application and game delivery | Completed authoring pipelines | An unambiguous studio application entry point and real selected-project desktop/Android outputs with preflight. | Development Nova Studio.app exists; portable Qt deployment and integrated export UI remain |
 | Complete creation exercise | Integrated studio | Build a playable 3D rally racer through Nova's actual scene/model/sprite/Lua/audio tools; save/reopen/run/export and exercise failure recovery. | Pending |
 
 The user explicitly requested the final rally exercise be **3D** and use the
@@ -114,7 +114,58 @@ Integrated as `1a07a3e`: the coordinating worktree rebuilt the native targets
 and independently passed all 11 focused audio/core/project/asset/service/export
 checks with native device tests disabled.
 
-## Current integrated handoff
+### First Qt foundation handoff
+
+`NOVA_QT_STUDIO=ON` builds `nova_studio_app` / `build/Nova Studio.app`, using
+Qt Base >=6.5 (verified 6.12.0) with native system controls, original vector
+action icons, coherent spacing/palette, and production OS-native file panels.
+The user approved Qt Base's installation; additional essential, license-compatible
+project dependencies are also approved, with host installations coordinated
+through one installer owner. This does not authorize SDK/security changes,
+personal signing, device installation, microphone use or public publishing.
+
+The actual Scene and Code workspaces provide New/Open/Save, scene/asset outline,
+native object selection/dragging, typed transforms, import/place, Lua editing/
+reference/completion/syntax diagnostics, and native Run/Stop. No empty Sprite,
+Model or Sound workspace pretends to be implemented. `nova_editor` remains the
+legacy Objects/Rooms/Advanced/modeller application; `nova_studio` stays the C11
+runtime/launcher. The original research and workspace study are unchanged.
+
+The approved opt-in boundary is manifest v3 + `nova-scene` v1, with stable IDs
+and generation-checked Lua object handles. Saved authoring data, Lua source and
+runtime mutation are separate. Objects and Lua share the existing frame budget
+and native renderer; failed staging retains the prior preview. v1/v2 and
+legacy generated outputs are never automatically converted.
+
+One document/selection/undo owner guards scene, Lua and manifest. Save uses a
+recoverable journal with exact per-file atomic replacement, **not filesystem
+atomicity across files**. Pending journals block runtime/export. Recovery
+rejects intervening edits and preserves newer same-session drafts. Imported
+asset copies persist independently of undo/discard. See README for the full
+recovery/compatibility contract and the development Qt licensing boundary.
+
+Automated native coverage proves both dimensions, Unicode input-method event
+commits, clipboard/selection, accessible text semantics, docking, high-DPI
+output, real controls/input and failure retention. Native file panels are
+shown/cancelled separately; deterministic selection uses a per-dialog test
+override, not a production or app-wide nonnative setting. Human native-panel
+selection/IME/VoiceOver, novice studies and other desktop hosts remain
+unqualified. An internal QtTest newline assertion and a real late viewport
+signal to already-destroyed actions were fixed; debugger-protected repeat runs
+and ASan/UBSan cover both workflows and teardown without masking failures.
+The handoff passed all 50 non-Qt configured tests plus the three Qt suites,
+three consecutive complete native workspace repetitions, and instrumented
+scene/document/workspace/bridge runs. The exact final C11 code also builds and
+passes Android APK asset/notice/native-entry verification with no Qt dependency.
+Minimum captures are 1100x740 logical / 2200x1480 physical; normal captures on
+the available high-DPI desktop are 1291x839 logical / 2582x1678 physical.
+
+Next bounded work is integration of actual asset-authoring document types and
+the researched Sprite/Model/Sound workflows, preserving these native/document
+contracts. The final **3D rally racer** acceptance project must exercise those
+tools as they arrive, not claim completion from this first Scene/Code slice.
+
+## Pre-Qt integrated baseline (retained evidence)
 
 The approved bounded software milestones are implemented and locally committed:
 manifest/native assets, inspection, runtime services, standalone export/signing
@@ -158,9 +209,10 @@ Debug signing is not release readiness; standalone release exports remain
 unsigned until the separate personal-signing task is completed.
 
 The user approved the beginner object/room authoring milestone below after
-testing the source-oriented editor. Other remaining work requires personal-key/
-device participation, public-publishing authorization, or separately approved
-advanced engine/authoring scope. Historical milestone evidence follows.
+testing the source-oriented editor. At that earlier handoff, further advanced
+software scope still needed approval; the active product approval above now
+supersedes that restriction. Personal-key/device/public-publishing boundaries
+remain separate. Historical milestone evidence follows.
 
 ## Completed milestone: beginner 2D and 3D game authoring
 

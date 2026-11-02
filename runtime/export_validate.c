@@ -24,6 +24,7 @@ int main(int argc, char **argv)
         return 1;
     }
     fprintf(output, "%s\n", validation.project.entry);
+    if (*validation.project.scene) fprintf(output, "%s\n", validation.project.scene);
     for (size_t i = 0; i < validation.project.count; ++i) {
         bool duplicate = false;
         for (size_t j = 0; j < i; ++j)

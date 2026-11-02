@@ -317,6 +317,30 @@ bool nova_document_reread(NovaDocument *document, char *error, size_t size)
         document->binary, document->allow_missing, error, size);
 }
 
+bool nova_document_remove(NovaDocument *document, char *error, size_t size)
+{
+    if (!document->text || nova_document_dirty(document))
+        return fail(error, size, "refusing to remove an unopened or dirty document");
+    char name[NOVA_PROJECT_PATH_CAPACITY];
+    int dir = directory(document, name, error, size);
+    if (dir < 0) return false;
+    NovaDiskText current = {0};
+    bool ok = false;
+    if (flock(dir, LOCK_EX)) io_fail(error, size, "lock journal directory");
+    else if (disk_read(dir, name, document, &current, error, size)) {
+        if (!same_disk(&document->saved, &current))
+            fail(error, size, "journal changed externally; refusing removal");
+        else if (current.info.st_ino && unlinkat(dir, name, 0))
+            io_fail(error, size, "remove committed journal");
+        else if (fsync(dir)) io_fail(error, size, "journal removed but directory sync failed");
+        else ok = true;
+    }
+    disk_free(&current);
+    close(dir);
+    if (ok) nova_document_close(document);
+    return ok;
+}
+
 void nova_authoring_close(NovaAuthoringProject *project)
 {
     nova_document_close(&project->declaration);

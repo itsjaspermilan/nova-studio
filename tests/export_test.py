@@ -229,6 +229,25 @@ class ExportTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "symlink"):
             export.load_stage(self.output)
 
+    @unittest.skipUnless(os.environ.get("NOVA_EXPORT_VALIDATOR"), "Native validator supplied by CTest")
+    def test_v3_scene_inventory_and_interrupted_commit(self):
+        validator = os.environ["NOVA_EXPORT_VALIDATOR"]
+        manifest = self.project / "nova.project"
+        manifest.write_text("nova-project 3\nidentity visual\nentry main.lua\nscene start.nova-scene\n")
+        (self.project / "start.nova-scene").write_text(
+            "nova-scene 1\nmode 2d\nbackground 18 24 41\ncamera 7 6 9 0 0 0 50\n"
+            "object player rectangle - 10 20 0 32 32 1 77 225 201 Player\n")
+        (self.project / "main.lua").write_text(
+            "local p = nova.object('player')\nfunction update() nova.set_position(p, 20, 20, 0) end\n")
+        result = subprocess.run([validator, str(manifest)], text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "main.lua\nstart.nova-scene\n")
+        (self.project / ".nova-studio-journal").write_text("interrupted")
+        result = subprocess.run([validator, str(manifest)], text=True, capture_output=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("interrupted Studio save", result.stderr)
+        self.assertEqual(result.stdout, "")
+
     def test_previous_export_requires_same_id_and_greater_code(self):
         self.make_stage()
         with self.assertRaisesRegex(ValueError, "greater"):

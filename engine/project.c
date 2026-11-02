@@ -75,20 +75,26 @@ bool nova_project_parse(NovaProject *project, const char *source, size_t length,
         char *directive = token(&cursor);
         if (!*directive || *directive == '#') continue;
         if (!header) {
-            reason = "first directive must be 'nova-project 1' or 'nova-project 2'";
+            reason = "first directive must be nova-project 1, 2 or 3";
             char *version = token(&cursor);
             if (strcmp(directive, "nova-project") ||
-                (strcmp(version, "1") && strcmp(version, "2")) || *token(&cursor)) goto fail;
-            parsed.version = !strcmp(version, "1") ? 1 : 2;
+                (strcmp(version, "1") && strcmp(version, "2") && strcmp(version, "3")) || *token(&cursor)) goto fail;
+            parsed.version = (unsigned)(version[0] - '0');
             header = true;
             continue;
         }
         while (*cursor == ' ' || *cursor == '\t') cursor++;
-        if (!strcmp(directive, "identity") && parsed.version == 2) {
+        if (!strcmp(directive, "identity") && parsed.version >= 2) {
             char *id = token(&cursor);
-            reason = "v2 identity must occur once and be a 1..63 ASCII identifier";
+            reason = "v2/v3 identity must occur once and be a 1..63 ASCII identifier";
             if (*parsed.identity || !nova_asset_id_valid(id) || *token(&cursor)) goto fail;
             memcpy(parsed.identity, id, strlen(id) + 1);
+        } else if (!strcmp(directive, "scene") && parsed.version == 3) {
+            reason = "v3 scene must occur once and use a contained .nova-scene path";
+            size_t path_size = strlen(cursor);
+            if (*parsed.scene || !nova_project_relative_path(cursor) || path_size < 11 ||
+                strcmp(cursor + path_size - 11, ".nova-scene")) goto fail;
+            memcpy(parsed.scene, cursor, path_size + 1);
         } else if (!strcmp(directive, "entry")) {
             reason = "entry must occur once and use a contained project-relative .lua path";
             if (*parsed.entry || !nova_project_relative_path(cursor)) goto fail;
@@ -100,8 +106,8 @@ bool nova_project_parse(NovaProject *project, const char *source, size_t length,
             const char *extension;
             if (!strcmp(directive, "sprite")) { type = NOVA_ASSET_SPRITE; extension = ".png"; }
             else if (!strcmp(directive, "model")) { type = NOVA_ASSET_MODEL; extension = ".glb"; }
-            else if (!strcmp(directive, "audio") && parsed.version == 2) { type = NOVA_ASSET_AUDIO; extension = ".wav"; }
-            else { reason = "unknown directive; expected entry, sprite or model"; goto fail; }
+            else if (!strcmp(directive, "audio") && parsed.version >= 2) { type = NOVA_ASSET_AUDIO; extension = ".wav"; }
+            else { reason = "unknown directive for this manifest version"; goto fail; }
             reason = "at most 32 assets may be declared";
             if (parsed.count == NOVA_MAX_ASSETS) goto fail;
             char *id = token(&cursor);
@@ -121,9 +127,11 @@ bool nova_project_parse(NovaProject *project, const char *source, size_t length,
             memcpy(asset->path, cursor, path_size + 1);
         }
     }
-    reason = "manifest requires a supported header, exactly one entry, and identity for v2";
+    reason = "manifest requires a supported header, exactly one entry, and identity for v2/v3";
     if (!header || !*parsed.entry) goto fail;
-    if (parsed.version == 2 && !*parsed.identity) goto fail;
+    if (parsed.version >= 2 && !*parsed.identity) goto fail;
+    reason = "manifest v3 requires exactly one scene";
+    if (parsed.version == 3 && !*parsed.scene) goto fail;
     *project = parsed;
     if (error_size) error[0] = '\0';
     return true;
