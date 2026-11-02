@@ -6,20 +6,26 @@ unless it is ticked.
 
 ## Where things stand (2026-11-02, end of the first long session)
 
-Done and committed: M0 (reset), M1 (device spike), M2a-M2d except the items below, and a
-Gradle-free APK path. Two example games run on desktop and on the Android emulator:
-`examples/rally-demo` (immediate mode, 3D) and `examples/crate-dash` (scenes, entities,
-collisions, animation, tilemap, sound, saves). 111 Rust tests plus 7 audio-core tests pass.
-Nothing has run on a physical device; the Retroid has not arrived.
+Done and committed: M0 (reset), M1 (device spike), and M2 (the runtime) apart from the items under
+"Known gaps". The runtime has scenes and entities, collisions, timers and tweens, sprite sheets with
+animation tags, native tilemaps, real vector text with nine bundled fonts, a sound mixer, named input
+actions with project bindings and rebinding, project save data, script time/memory limits, and a
+Gradle-free APK path. Three example games run on desktop and on the Android emulator:
+`examples/rally-demo` (immediate mode, 3D), `examples/crate-dash` (a small complete 2D game) and
+`examples/font-gallery`. 145 Rust tests plus 7 audio-core tests pass. Nothing has run on a physical
+device; the Retroid has not arrived.
 
 Waiting on the user:
 - **The Retroid** for the M1 device gate (frame pacing, thermals, controller, audio latency).
+- **Product decisions for the studio (M4):** the studio is the next large piece (Tauri 2 with a
+  web-tech UI). It needs a few calls before it starts: which workspace comes first (proposal: project
+  hub + code editor + Play, then the scene editor), the front-end stack (proposal: TypeScript with a
+  small framework such as Svelte, or plain TypeScript like GameStudio), and the look and feel.
 
-Can proceed without input, in rough priority: real font rendering once the font is chosen; the
-studio shell (M4, Tauri, a web-tech UI) which will need a few product decisions; Android analogue
-sticks/triggers and immersive mode (need the device to verify); named/remappable input actions;
-rigid-bone model animation and simple lights; structured Lua diagnostics for the studio; OGG and
-streamed music; the C audio core's synthesis for the sound studio (M6).
+Can proceed without input, in rough priority: the studio shell once those are decided; structured Lua
+diagnostics (file, line and traceback as data, for the studio's Problems panel); rigid-bone model
+animation and simple lights; OGG and streamed music; the C audio core's synthesis for the sound studio
+(M6); Android analogue input and immersive mode (need the device to verify).
 
 ## Known gaps (audited 2026-11-02)
 
