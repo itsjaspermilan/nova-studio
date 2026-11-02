@@ -218,3 +218,14 @@ export function frameAt(doc: SpriteDoc, sequence: number[], ms: number, loop = t
   }
   return sequence[sequence.length - 1]!;
 }
+
+import { resizeCanvas } from "./pixels";
+
+/// Every frame on a new canvas size (see `resizeCanvas` for the anchor). Tags and durations are untouched.
+export function resizeDoc(doc: SpriteDoc, w: number, h: number, anchorX = 0, anchorY = 0): SpriteDoc {
+  const side = (n: number) => Math.max(1, Math.min(MAX_SIDE, Math.floor(n)));
+  const nw = side(w);
+  const nh = side(h);
+  if (nw === doc.fw && nh === doc.fh) return doc;
+  return { ...cloneDoc(doc), fw: nw, fh: nh, frames: doc.frames.map((f) => resizeCanvas(f, nw, nh, anchorX, anchorY)) };
+}

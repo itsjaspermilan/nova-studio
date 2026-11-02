@@ -174,3 +174,79 @@ export function toHex(c: Rgba): string {
 }
 
 export const isClear = (r: Raster) => r.data.every((v, i) => i % 4 !== 3 || v === 0);
+
+// ---- symmetry, pixel-perfect strokes, selections ----------------------------------------------
+
+/// The point and its mirror images across the middle of a w x h picture (duplicates removed).
+export function mirrored(p: Point, w: number, h: number, horizontal: boolean, vertical: boolean): Point[] {
+  const out: Point[] = [p];
+  if (horizontal) out.push({ x: w - 1 - p.x, y: p.y });
+  if (vertical) out.push({ x: p.x, y: h - 1 - p.y });
+  if (horizontal && vertical) out.push({ x: w - 1 - p.x, y: h - 1 - p.y });
+  return out.filter((q, i) => out.findIndex((r) => r.x === q.x && r.y === q.y) === i);
+}
+
+/// Drops the corner pixel of an "L" in a hand-drawn line, so one-pixel strokes stay one pixel thick.
+export function pixelPerfect(points: Point[]): Point[] {
+  const out: Point[] = [];
+  for (const p of points) {
+    const last = out.at(-1);
+    if (last && last.x === p.x && last.y === p.y) continue;
+    out.push(p);
+    while (out.length >= 3) {
+      const [a, b, c] = out.slice(-3) as [Point, Point, Point];
+      const corner = (a.x === b.x || a.y === b.y) && (b.x === c.x || b.y === c.y) && a.x !== c.x && a.y !== c.y && Math.abs(a.x - c.x) === 1 && Math.abs(a.y - c.y) === 1;
+      if (!corner) break;
+      out.splice(out.length - 2, 1);
+    }
+  }
+  return out;
+}
+
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/// The rectangle between two corner cells (inclusive), clipped to the picture; null when nothing is inside.
+export function rectBetween(a: Point, b: Point, w: number, h: number): Rect | null {
+  const x0 = Math.max(0, Math.min(a.x, b.x));
+  const y0 = Math.max(0, Math.min(a.y, b.y));
+  const x1 = Math.min(w - 1, Math.max(a.x, b.x));
+  const y1 = Math.min(h - 1, Math.max(a.y, b.y));
+  return x1 < x0 || y1 < y0 ? null : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+}
+
+export const inRect = (r: Rect, x: number, y: number) => x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h;
+
+/// Cuts a rectangle out: the pixels it held, and the picture with that area cleared.
+export function lift(r: Raster, rect: Rect): { piece: Raster; rest: Raster } {
+  const rest = cloneRaster(r);
+  for (let y = rect.y; y < rect.y + rect.h; y++) for (let x = rect.x; x < rect.x + rect.w; x++) setPixel(rest, x, y, CLEAR);
+  return { piece: crop(r, rect.x, rect.y, rect.w, rect.h), rest };
+}
+
+/// Lays `piece` over `base` at (x, y): transparent pixels of the piece leave what is underneath alone.
+export function place(base: Raster, piece: Raster, x: number, y: number): Raster {
+  const out = cloneRaster(base);
+  for (let j = 0; j < piece.h; j++) for (let i = 0; i < piece.w; i++) {
+    const c = getPixel(piece, i, j)!;
+    if (c[3] > 0) setPixel(out, x + i, y + j, c);
+  }
+  return out;
+}
+
+/// The same picture on a w x h canvas. The anchor (0 to 1 on each axis) says where the old picture sits
+/// when the canvas grows or which part is kept when it shrinks: (0,0) top-left, (0.5,0.5) centre.
+export function resizeCanvas(r: Raster, w: number, h: number, anchorX = 0, anchorY = 0): Raster {
+  const ox = Math.round((w - r.w) * anchorX);
+  const oy = Math.round((h - r.h) * anchorY);
+  const out = newRaster(w, h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const c = getPixel(r, x - ox, y - oy);
+    if (c) setPixel(out, x, y, c);
+  }
+  return out;
+}

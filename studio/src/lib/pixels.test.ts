@@ -112,3 +112,72 @@ describe("pixels", () => {
     expect(toHex([1, 2, 3, 4])).toBe("#01020304");
   });
 });
+
+import { inRect, lift, mirrored, pixelPerfect, place, rectBetween, resizeCanvas } from "./pixels";
+
+describe("symmetry", () => {
+  it("lists a point and its mirrors without duplicates", () => {
+    expect(mirrored({ x: 1, y: 2 }, 8, 8, false, false)).toEqual([{ x: 1, y: 2 }]);
+    expect(mirrored({ x: 1, y: 2 }, 8, 8, true, false)).toEqual([{ x: 1, y: 2 }, { x: 6, y: 2 }]);
+    expect(mirrored({ x: 1, y: 2 }, 8, 8, true, true)).toHaveLength(4);
+    expect(mirrored({ x: 3, y: 3 }, 7, 7, true, true)).toEqual([{ x: 3, y: 3 }]); // on the centre lines
+  });
+});
+
+describe("pixel-perfect strokes", () => {
+  it("removes the corner of an L but keeps straight and diagonal runs", () => {
+    const L = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }];
+    expect(pixelPerfect(L)).toEqual([{ x: 0, y: 0 }, { x: 1, y: 1 }]);
+    const straight = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }];
+    expect(pixelPerfect(straight)).toEqual(straight);
+    const diagonal = [{ x: 0, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 2 }];
+    expect(pixelPerfect(diagonal)).toEqual(diagonal);
+    const stairs = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 1 }, { x: 2, y: 2 }];
+    expect(pixelPerfect(stairs)).toEqual([{ x: 0, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 2 }]);
+    expect(pixelPerfect([{ x: 2, y: 2 }, { x: 2, y: 2 }])).toEqual([{ x: 2, y: 2 }]);
+    expect(pixelPerfect([])).toEqual([]);
+  });
+});
+
+describe("selections", () => {
+  it("makes clipped rectangles from two corners", () => {
+    expect(rectBetween({ x: 3, y: 1 }, { x: 1, y: 2 }, 8, 8)).toEqual({ x: 1, y: 1, w: 3, h: 2 });
+    expect(rectBetween({ x: -5, y: -5 }, { x: 1, y: 1 }, 8, 8)).toEqual({ x: 0, y: 0, w: 2, h: 2 });
+    expect(rectBetween({ x: 9, y: 9 }, { x: 12, y: 12 }, 8, 8)).toBeNull();
+    expect(inRect({ x: 1, y: 1, w: 2, h: 2 }, 2, 2)).toBe(true);
+    expect(inRect({ x: 1, y: 1, w: 2, h: 2 }, 3, 2)).toBe(false);
+  });
+
+  it("lifts pixels out and places them elsewhere, letting transparent pixels show through", () => {
+    const r = newRaster(6, 3);
+    setPixel(r, 1, 1, RED);
+    setPixel(r, 2, 1, BLUE);
+    setPixel(r, 5, 0, BLUE);
+    const { piece, rest } = lift(r, { x: 1, y: 1, w: 3, h: 1 });
+    expect(lit(rest)).toEqual(["5,0"]);
+    expect(lit(piece)).toEqual(["0,0", "1,0"]);
+    const moved = place(rest, piece, 3, 2);
+    expect(lit(moved)).toEqual(["5,0", "3,2", "4,2"]);
+    const under = newRaster(6, 3);
+    setPixel(under, 4, 2, RED);
+    const over = place(under, piece, 3, 2);
+    expect(getPixel(over, 3, 2)).toEqual(RED); // piece pixel (0,0) is the red one
+    expect(getPixel(over, 4, 2)).toEqual(BLUE); // overwritten by the piece's blue
+    expect(getPixel(place(under, piece, 3, 2), 5, 2)).toEqual(CLEAR); // the piece's transparent third column
+    expect(lit(place(newRaster(2, 2), piece, 1, 1))).toEqual(["1,1"]); // clipped at the edge
+  });
+
+  it("resizes the canvas around an anchor, keeping or cropping pixels", () => {
+    const r = newRaster(2, 2);
+    setPixel(r, 0, 0, RED);
+    setPixel(r, 1, 1, BLUE);
+    const grown = resizeCanvas(r, 4, 4);
+    expect(grown.w).toBe(4);
+    expect(lit(grown)).toEqual(["0,0", "1,1"]);
+    expect(lit(resizeCanvas(r, 4, 4, 1, 1))).toEqual(["2,2", "3,3"]);
+    expect(lit(resizeCanvas(r, 4, 4, 0.5, 0.5))).toEqual(["1,1", "2,2"]);
+    const cropped = resizeCanvas(grown, 2, 2, 0, 0);
+    expect(lit(cropped)).toEqual(["0,0", "1,1"]);
+    expect(lit(resizeCanvas(grown, 1, 1, 1, 1))).toEqual([]); // the kept corner is empty
+  });
+});

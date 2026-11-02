@@ -1,18 +1,19 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
   import {
-    CLEAR, cloneRaster, composite, drawEllipse, drawLine, drawRect, floodFill, getPixel, inside, parseHex, stamp, toHex, type Point, type Raster, type Rgba,
+    CLEAR, cloneRaster, crop, drawEllipse, drawLine, drawRect, floodFill, getPixel, inRect, inside, lift, linePoints, parseHex, pixelPerfect, place, rectBetween, stamp, toHex,
+    type Point, type Raster, type Rect, type Rgba,
   } from "../lib/pixels";
   import {
     addTag, cloneDoc, frameAt, fromImage, fromSheet, insertFrame, moveFrame, newDoc, parseSheetJson, removeFrame, removeTag, tagProblems, tagSequence,
-    toSheet, toSheetJson, updateTag, type Direction, type SpriteDoc,
+    resizeDoc, toSheet, toSheetJson, updateTag, type Direction, type SpriteDoc,
   } from "../lib/sprite-doc";
   import { loadRaster, rasterToDataUrl } from "../lib/png";
   import { studio } from "../lib/store.svelte";
 
   let { path, text }: { path: string; text: string } = $props();
 
-  type Tool = "pencil" | "eraser" | "fill" | "line" | "rect" | "ellipse" | "picker";
+  type Tool = "select" | "pencil" | "eraser" | "fill" | "line" | "rect" | "ellipse" | "picker";
   interface Session {
     doc: SpriteDoc;
     past: SpriteDoc[];
@@ -24,6 +25,7 @@
   }
 
   const TOOLS: { id: Tool; label: string; key: string; icon: string }[] = [
+    { id: "select", label: "Select and move", key: "M", icon: "⬚" },
     { id: "pencil", label: "Pencil", key: "B", icon: "✎" },
     { id: "eraser", label: "Eraser", key: "E", icon: "⌫" },
     { id: "fill", label: "Fill", key: "G", icon: "▨" },
@@ -202,6 +204,21 @@
       for (let y = 1; y < doc.fh; y++) { ctx.moveTo(0, y * zoom + 0.5); ctx.lineTo(w, y * zoom + 0.5); }
       ctx.stroke();
     }
+    if (selection && tool === "select") {
+      ctx.strokeStyle = "#ffd166";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeRect(selection.x * zoom + 1, selection.y * zoom + 1, selection.w * zoom - 2, selection.h * zoom - 2);
+      ctx.setLineDash([]);
+      ctx.lineWidth = 1;
+    }
+    if (symX || symY) {
+      ctx.strokeStyle = "rgba(255,120,200,.7)";
+      ctx.beginPath();
+      if (symX) { ctx.moveTo(w / 2, 0); ctx.lineTo(w / 2, h); }
+      if (symY) { ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2); }
+      ctx.stroke();
+    }
     if (hover && inside(current, hover.x, hover.y) && !drawing) {
       ctx.strokeStyle = "rgba(255,255,255,.8)";
       const start = -Math.floor((size - 1) / 2);
@@ -212,7 +229,7 @@
 
   $effect(() => {
     // everything the picture depends on
-    doc; frame; rev; zoom; onion; showGrid; ready; hover; size; tool; playing; canvas;
+    doc; frame; rev; zoom; onion; showGrid; ready; hover; size; tool; playing; canvas; selection; symX; symY;
     paint();
   });
 
@@ -250,6 +267,25 @@
   let last: Point = { x: 0, y: 0 };
   let base: Raster | null = null;
   let before: SpriteDoc | null = null;
+  let strokePoints: Point[] = [];
+
+  let symX = $state(false);
+  let symY = $state(false);
+  let perfect = $state(true);
+  let selection: Rect | null = $state(null);
+  let selecting: Point | null = null;
+  let moving: { piece: Raster; rest: Raster; dx: number; dy: number } | null = null;
+  let clipboard: Raster | null = null;
+  let recent: string[] = $state([]);
+
+  function variants(): [boolean, boolean][] {
+    const out: [boolean, boolean][] = [[false, false]];
+    if (symX) out.push([true, false]);
+    if (symY) out.push([false, true]);
+    if (symX && symY) out.push([true, true]);
+    return out;
+  }
+  const flipped = (p: Point, fx: boolean, fy: boolean): Point => ({ x: fx ? doc.fw - 1 - p.x : p.x, y: fy ? doc.fh - 1 - p.y : p.y });
 
   function cell(e: PointerEvent): Point {
     const r = canvas!.getBoundingClientRect();
@@ -266,39 +302,82 @@
       return;
     }
     canvas!.setPointerCapture(e.pointerId);
+    if (tool === "select") {
+      if (selection && inRect(selection, p.x, p.y)) {
+        before = cloneDoc(doc);
+        drawing = true;
+        const { piece, rest } = lift(r, selection);
+        moving = { piece, rest, dx: p.x - selection.x, dy: p.y - selection.y };
+      } else {
+        selection = null;
+        selecting = p;
+      }
+      return;
+    }
     before = cloneDoc(doc);
     drawing = true;
     start = last = p;
     base = cloneRaster(r);
-    if (tool === "pencil" || tool === "eraser") stamp(r, p.x, p.y, size, tool === "eraser" ? CLEAR : color);
+    strokePoints = [p];
+    if (tool === "pencil" || tool === "eraser") drawStroke(r);
     else if (tool === "fill") {
-      floodFill(r, p.x, p.y, color);
+      for (const [fx, fy] of variants()) {
+        const q = flipped(p, fx, fy);
+        floodFill(r, q.x, q.y, color);
+      }
       finish();
       return;
     } else shape(r, p);
     rev++;
   }
 
+  /// Pencil and eraser redraw the whole stroke from the picture as it was, so the pixel-perfect filter can
+  /// take a corner pixel back as the line continues.
+  function drawStroke(r: Raster) {
+    r.data.set(base!.data);
+    const c = tool === "eraser" ? CLEAR : color;
+    const points = tool === "pencil" && perfect && size === 1 ? pixelPerfect(strokePoints) : strokePoints;
+    for (const [fx, fy] of variants()) for (const pt of points) {
+      const q = flipped(pt, fx, fy);
+      stamp(r, q.x, q.y, size, c);
+    }
+  }
+
   function shape(r: Raster, p: Point) {
     r.data.set(base!.data);
-    if (tool === "line") drawLine(r, start, p, size, color);
-    else if (tool === "rect") drawRect(r, start, p, size, color, filled);
-    else if (tool === "ellipse") drawEllipse(r, start, p, size, color, filled);
+    for (const [fx, fy] of variants()) {
+      const a = flipped(start, fx, fy);
+      const b = flipped(p, fx, fy);
+      if (tool === "line") drawLine(r, a, b, size, color);
+      else if (tool === "rect") drawRect(r, a, b, size, color, filled);
+      else if (tool === "ellipse") drawEllipse(r, a, b, size, color, filled);
+    }
   }
 
   function move(e: PointerEvent) {
     const p = cell(e);
     if (!hover || hover.x !== p.x || hover.y !== p.y) hover = p;
+    if (selecting) {
+      selection = rectBetween(selecting, p, doc.fw, doc.fh);
+      return;
+    }
     if (!drawing) return;
     const r = doc.frames[frame]!;
-    if (tool === "pencil" || tool === "eraser") {
-      drawLine(r, last, p, size, tool === "eraser" ? CLEAR : color);
+    if (moving && selection) {
+      const nx = p.x - moving.dx;
+      const ny = p.y - moving.dy;
+      r.data.set(place(moving.rest, moving.piece, nx, ny).data);
+      selection = { x: nx, y: ny, w: moving.piece.w, h: moving.piece.h };
+    } else if (tool === "pencil" || tool === "eraser") {
+      strokePoints.push(...linePoints(last, p).slice(1));
       last = p;
+      drawStroke(r);
     } else shape(r, p);
     rev++;
   }
 
   function finish() {
+    selecting = null;
     if (!drawing) return;
     drawing = false;
     const r = doc.frames[frame]!;
@@ -307,12 +386,59 @@
       session!.past.push(before!);
       if (session!.past.length > MAX_HISTORY) session!.past.shift();
       session!.future = [];
+      if (tool !== "select" && tool !== "eraser") rememberColor(color);
       changed();
     }
     before = base = null;
+    moving = null;
   }
   const up = () => finish();
   const leave = () => (hover = null);
+
+  function rememberColor(c: Rgba) {
+    const h = toHex([c[0], c[1], c[2], 255]);
+    recent = [h, ...recent.filter((x) => x !== h)].slice(0, 16);
+  }
+
+  // ---- selection commands ---------------------------------------------------------------------
+  function clearSelection() {
+    if (!selection) return;
+    const next = cloneDoc(doc);
+    next.frames[frame] = lift(next.frames[frame]!, selection).rest;
+    structural(next);
+  }
+  function copySelection(cut = false) {
+    if (!selection) return;
+    clipboard = crop(doc.frames[frame]!, selection.x, selection.y, selection.w, selection.h);
+    if (cut) clearSelection();
+  }
+  function paste() {
+    if (!clipboard) return;
+    const at = selection ? { x: selection.x, y: selection.y } : { x: 0, y: 0 };
+    const next = cloneDoc(doc);
+    next.frames[frame] = place(next.frames[frame]!, clipboard, at.x, at.y);
+    structural(next);
+    tool = "select";
+    selection = { x: at.x, y: at.y, w: clipboard.w, h: clipboard.h };
+  }
+
+  // ---- canvas size ----------------------------------------------------------------------------------
+  let sizing = $state(false);
+  let newW = $state(32);
+  let newH = $state(32);
+  let anchor = $state("0,0");
+  function openSizing() {
+    newW = doc.fw;
+    newH = doc.fh;
+    sizing = !sizing;
+  }
+  function applySize() {
+    const [ax, ay] = anchor.split(",").map(Number) as [number, number];
+    structural(resizeDoc(doc, newW, newH, ax, ay));
+    selection = null;
+    sizing = false;
+    zoom = Math.max(1, Math.min(32, Math.floor(420 / Math.max(doc.fw, doc.fh))));
+  }
 
   function clearFrame() {
     const next = cloneDoc(doc);
@@ -390,6 +516,24 @@
     } else if (mod && e.key.toLowerCase() === "y") {
       e.preventDefault();
       redo();
+    } else if (mod && e.key.toLowerCase() === "c" && selection) {
+      e.preventDefault();
+      copySelection();
+    } else if (mod && e.key.toLowerCase() === "x" && selection) {
+      e.preventDefault();
+      copySelection(true);
+    } else if (mod && e.key.toLowerCase() === "v" && clipboard) {
+      e.preventDefault();
+      paste();
+    } else if (mod && e.key.toLowerCase() === "a") {
+      e.preventDefault();
+      tool = "select";
+      selection = { x: 0, y: 0, w: doc.fw, h: doc.fh };
+    } else if ((e.key === "Delete" || e.key === "Backspace") && selection) {
+      e.preventDefault();
+      clearSelection();
+    } else if (e.key === "Escape" && selection) {
+      selection = null;
     } else if (!mod) {
       const hit = TOOLS.find((t) => t.key.toLowerCase() === e.key.toLowerCase());
       if (hit) tool = hit.id;
@@ -443,14 +587,33 @@
         {#if tool === "rect" || tool === "ellipse"}
           <label class="check"><input type="checkbox" bind:checked={filled} /> Filled</label>
         {/if}
+        <label class="check" title="Mirror strokes left-right"><input type="checkbox" bind:checked={symX} /> ↔</label>
+        <label class="check" title="Mirror strokes up-down"><input type="checkbox" bind:checked={symY} /> ↕</label>
+        {#if tool === "pencil"}<label class="check" title="One-pixel lines without double corners"><input type="checkbox" bind:checked={perfect} /> Pixel-perfect</label>{/if}
         <label class="check"><input type="checkbox" bind:checked={onion} /> Onion skin</label>
         <label class="check"><input type="checkbox" bind:checked={showGrid} /> Grid</label>
+        <button class="ghost" onclick={openSizing}>Canvas size…</button>
         <span class="spacer"></span>
         <button class="ghost" onclick={() => (zoom = Math.max(1, zoom - 1))} aria-label="Zoom out">−</button>
         <span class="dim">{zoom * 100}%</span>
         <button class="ghost" onclick={() => (zoom = Math.min(48, zoom + 1))} aria-label="Zoom in">＋</button>
         <span class="dim">{doc.fw}×{doc.fh}{hover && inside(current, hover.x, hover.y) ? ` · ${hover.x},${hover.y}` : ""}</span>
       </div>
+      {#if sizing}
+        <form class="sizing" onsubmit={(e) => { e.preventDefault(); applySize(); }}>
+          <label>Width <input type="number" min="1" max="1024" bind:value={newW} class="narrow" /></label>
+          <label>Height <input type="number" min="1" max="1024" bind:value={newH} class="narrow" /></label>
+          <label>Keep the picture at
+            <select bind:value={anchor}>
+              <option value="0,0">top left</option><option value="0.5,0">top</option><option value="1,0">top right</option>
+              <option value="0,0.5">left</option><option value="0.5,0.5">centre</option><option value="1,0.5">right</option>
+              <option value="0,1">bottom left</option><option value="0.5,1">bottom</option><option value="1,1">bottom right</option>
+            </select>
+          </label>
+          <button class="primary">Resize all frames</button>
+          <button type="button" class="ghost" onclick={() => (sizing = false)}>Cancel</button>
+        </form>
+      {/if}
       <div class="scroller">
         <canvas bind:this={canvas} aria-label="Sprite canvas" onpointerdown={down} onpointermove={move} onpointerup={up} onpointercancel={up} onpointerleave={leave}></canvas>
       </div>
@@ -488,6 +651,14 @@
           <button class="swatch" class:on={same(color, p)} style:background={p} title={p} aria-label={p} onclick={() => pickHex(p)}></button>
         {/each}
       </div>
+
+      {#if recent.length}
+        <div class="palette recent">
+          {#each recent as p (p)}
+            <button class="swatch" class:on={same(color, p)} style:background={p} title="Recently used {p}" aria-label="Recent {p}" onclick={() => pickHex(p)}></button>
+          {/each}
+        </div>
+      {/if}
 
       <h3>Preview</h3>
       <div class="preview"><canvas bind:this={preview}></canvas></div>
@@ -560,6 +731,9 @@
   .swatch.on { outline: 2px solid var(--accent); outline-offset: 1px; }
   .preview { display: grid; place-items: center; min-height: 120px; background: repeating-conic-gradient(#3a3d48 0 25%, #2e313b 0 50%) 0 0 / 12px 12px; border: 1px solid var(--line); border-radius: 6px; }
   .preview canvas { image-rendering: pixelated; }
+  .sizing { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; padding: 6px 10px; background: var(--panel-2); border-bottom: 1px solid var(--line); }
+  .sizing label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--dim); }
+  .recent { margin-top: -2px; }
   .row { display: flex; gap: 6px; } .row select { flex: 1; min-width: 0; }
   .tag { display: flex; flex-direction: column; gap: 4px; padding: 6px; border: 1px solid var(--line); border-radius: 6px; }
   .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; align-items: center; }

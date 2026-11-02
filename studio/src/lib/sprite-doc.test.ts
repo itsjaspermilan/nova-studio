@@ -147,3 +147,23 @@ describe("playback timing", () => {
     expect(frameAt(d, [], 10)).toBe(0);
   });
 });
+
+import { resizeDoc } from "./sprite-doc";
+
+describe("resizeDoc", () => {
+  it("resizes every frame, clamps silly sizes and keeps tags and durations", () => {
+    let d = marked(2);
+    d.durations = [10, 20];
+    d.tags = [tag({ from: 0, to: 1 })];
+    const big = resizeDoc(d, 8, 6);
+    expect([big.fw, big.fh]).toEqual([8, 6]);
+    expect(big.frames.every((f) => f.w === 8 && f.h === 6)).toBe(true);
+    expect(getPixel(big.frames[1]!, 1, 0)![3]).toBe(255);
+    expect(big.durations).toEqual([10, 20]);
+    expect(big.tags).toEqual(d.tags);
+    expect(resizeDoc(d, 4, 4)).toBe(d);
+    expect(resizeDoc(d, 99999, 0).fw).toBe(1024);
+    expect(resizeDoc(d, 99999, 0).fh).toBe(1);
+    expect(d.fw).toBe(4); // untouched
+  });
+});

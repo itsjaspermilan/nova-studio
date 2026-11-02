@@ -290,8 +290,8 @@ First slice, built (`SpriteEditor.svelte`, pure logic in `pixels.ts` and `sprite
   flips, clear, onion skin, grid, zoom, a 32-colour palette, undo/redo, animation preview.
 - [x] Saves the sheet PNG (16 frames wide) and tidy sprite JSON the runtime reads; tag names are what
   `self:play("run")` uses. Importing existing sheets works through the same JSON.
-- [ ] Not yet: layers and cels, selection/move, symmetry, custom palettes, resizing a sprite,
-  pixel-perfect pencil, reference images, hot-reload of a running game, Aseprite/`.pxo` import.
+- [x] Second pass: rectangle select with move, copy/cut/paste/delete, mirror drawing (left-right, up-down), pixel-perfect pencil, resize canvas with an anchor, recent colours.
+- [ ] Not yet: layers and cels, custom/imported palettes, reference images, hot-reload of a running game, Aseprite/`.pxo` import.
   Semi-transparent pixels can lose precision on save (the webview's canvas premultiplies alpha).
 - [ ] (original plan, still open) layers x frames cels, linked cels, blend modes, palettes, tilemap layers.
 - [ ] Sprite changes update running games on hot reload.
