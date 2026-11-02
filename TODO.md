@@ -282,12 +282,17 @@ Second slice, built: visual scene editor for `*.scene.json` (opens by default, J
 
 ## M5: Sprite studio (Pixelorama model)
 
-- [ ] Document: layers x frames cels, linked cels, opacity/blend, tags with play
-  direction, per-frame durations, palettes, tilemap layers. Plain format + PNG.
-- [ ] Tools: pencil/eraser/fill/shape/select/move, pixel-perfect, symmetry, onion
-  skin, zoom/pan/pinch, reference image.
-- [ ] Export spritesheet + JSON read directly by the runtime; tag names are what
-  `sprite:play("run")` uses. Import PNG sheets; later Aseprite and `.pxo`.
+First slice, built (`SpriteEditor.svelte`, pure logic in `pixels.ts` and `sprite-doc.ts`):
+- [x] One layer, many frames; per-frame durations; animation tags with forward/reverse/ping-pong and
+  loop; open a `.sprite.json` (sheet) or a plain `.png`; New sprite (8 to 128 px) in the file tree.
+- [x] Tools: pencil, eraser, fill, line, rectangle, ellipse, colour picker; brush size, filled shapes,
+  flips, clear, onion skin, grid, zoom, a 32-colour palette, undo/redo, animation preview.
+- [x] Saves the sheet PNG (16 frames wide) and tidy sprite JSON the runtime reads; tag names are what
+  `self:play("run")` uses. Importing existing sheets works through the same JSON.
+- [ ] Not yet: layers and cels, selection/move, symmetry, custom palettes, resizing a sprite,
+  pixel-perfect pencil, reference images, hot-reload of a running game, Aseprite/`.pxo` import.
+  Semi-transparent pixels can lose precision on save (the webview's canvas premultiplies alpha).
+- [ ] (original plan, still open) layers x frames cels, linked cels, blend modes, palettes, tilemap layers.
 - [ ] Sprite changes update running games on hot reload.
 
 ## M6: Sound studio

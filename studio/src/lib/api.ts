@@ -24,6 +24,7 @@ async function tauriApi(): Promise<Api> {
     readFile: (path) => invoke<FileContent>("read_file", { path }),
     readImage: (path) => invoke<string>("read_image", { path }),
     writeFile: (path, text) => invoke("write_file", { path, text }),
+    writeImage: (path, dataUrl) => invoke("write_image", { path, dataUrl }),
     createFile: (path, contents) => invoke("create_file", { path, contents: contents ?? null }),
     createDir: (path) => invoke("create_dir", { path }),
     renameFile: (from, to) => invoke("rename_file", { from, to }),

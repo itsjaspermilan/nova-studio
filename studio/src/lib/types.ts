@@ -76,6 +76,8 @@ export interface Api {
   /// A project PNG as a data: URL.
   readImage(path: string): Promise<string>;
   writeFile(path: string, text: string): Promise<void>;
+  /// Saves a PNG given as a data: URL.
+  writeImage(path: string, dataUrl: string): Promise<void>;
   createFile(path: string, contents?: string): Promise<void>;
   createDir(path: string): Promise<void>;
   renameFile(from: string, to: string): Promise<void>;

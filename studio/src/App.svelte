@@ -4,9 +4,10 @@
   import FileTree from "./components/FileTree.svelte";
   import Editor from "./components/Editor.svelte";
   import SceneEditor from "./components/SceneEditor.svelte";
+  import SpriteEditor from "./components/SpriteEditor.svelte";
   import BottomPanel from "./components/BottomPanel.svelte";
   import { fileKind } from "./lib/tree";
-  import { studio } from "./lib/store.svelte";
+  import { isDirty, studio } from "./lib/store.svelte";
 
   onMount(() => {
     void studio.init();
@@ -62,7 +63,7 @@
         {#each studio.tabs as tab (tab.path)}
           <div class="tab" class:on={studio.active === tab.path} role="presentation">
             <button role="tab" aria-selected={studio.active === tab.path} onclick={() => (studio.active = tab.path)} title={tab.path}>
-              {base(tab.path)}{#if tab.text !== tab.saved}<span class="dot" aria-label="unsaved">●</span>{/if}
+              {base(tab.path)}{#if isDirty(tab)}<span class="dot" aria-label="unsaved">●</span>{/if}
             </button>
             <button class="ghost x" aria-label="Close {base(tab.path)}" onclick={() => studio.closeTab(tab.path)}>✕</button>
           </div>
@@ -71,12 +72,14 @@
       <div class="editor-host">
         {#key studio.active}
           {#if studio.tab}
-            {#if studio.tab.binary}
+            {#if studio.tab.path.toLowerCase().endsWith(".png") || (studio.tab.path.endsWith(".sprite.json") && !jsonView.has(studio.tab.path))}
+              <SpriteEditor path={studio.tab.path} text={studio.tab.text} />
+            {:else if studio.tab.binary}
               <div class="placeholder dim">{base(studio.tab.path)} · {fileKind(studio.tab.path)} · {studio.tab.size.toLocaleString()} bytes<br />Binary files open in their own editors (coming later).</div>
             {:else if isScene(studio.tab.path) && !jsonView.has(studio.tab.path)}
               <SceneEditor path={studio.tab.path} text={studio.tab.text} onjson={() => toggleJson(studio.tab!.path, true)} />
             {:else}
-              {#if isScene(studio.tab.path)}
+              {#if isScene(studio.tab.path) || studio.tab.path.endsWith(".sprite.json")}
                 <div class="viewbar"><button class="ghost" onclick={() => toggleJson(studio.tab!.path, false)}>◧ Visual editor</button></div>
               {/if}
               <Editor path={studio.tab.path} text={studio.tab.text} />

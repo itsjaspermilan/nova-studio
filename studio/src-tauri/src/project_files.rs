@@ -119,6 +119,10 @@ pub fn write_file(root: &Path, rel: &str, text: &str) -> Result<(), String> {
     if text.len() as u64 > MAX_EDIT_BYTES {
         return Err(format!("'{rel}' is bigger than the {} MiB editing limit", MAX_EDIT_BYTES >> 20));
     }
+    write_bytes(root, rel, text.as_bytes())
+}
+
+fn write_bytes(root: &Path, rel: &str, bytes: &[u8]) -> Result<(), String> {
     let path = confine(root, rel)?;
     if path.is_dir() {
         return Err(format!("'{rel}' is a folder"));
@@ -130,11 +134,52 @@ pub fn write_file(root: &Path, rel: &str, text: &str) -> Result<(), String> {
         ".{}.nova-save",
         path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
     ));
-    std::fs::write(&temp, text).map_err(|e| format!("cannot save '{rel}': {e}"))?;
+    std::fs::write(&temp, bytes).map_err(|e| format!("cannot save '{rel}': {e}"))?;
     std::fs::rename(&temp, &path).map_err(|e| {
         let _ = std::fs::remove_file(&temp);
         format!("cannot replace '{rel}': {e}")
     })
+}
+
+fn unbase64(text: &str) -> Result<Vec<u8>, String> {
+    let mut out = Vec::with_capacity(text.len() / 4 * 3);
+    let (mut bits, mut have) = (0u32, 0);
+    for c in text.bytes().filter(|c| !c.is_ascii_whitespace()) {
+        let v = match c {
+            b'A'..=b'Z' => c - b'A',
+            b'a'..=b'z' => c - b'a' + 26,
+            b'0'..=b'9' => c - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            b'=' => break,
+            _ => return Err("the image data is not valid base64".into()),
+        };
+        bits = (bits << 6) | u32::from(v);
+        have += 6;
+        if have >= 8 {
+            have -= 8;
+            out.push((bits >> have) as u8);
+            bits &= (1 << have) - 1;
+        }
+    }
+    Ok(out)
+}
+
+/// Saves a PNG sent as a `data:image/png;base64,...` URL (what a canvas produces). Anything that is
+/// not a PNG, or not a `.png` path, is refused.
+pub fn write_image(root: &Path, rel: &str, data_url: &str) -> Result<(), String> {
+    if !rel.to_ascii_lowercase().ends_with(".png") {
+        return Err(format!("'{rel}' is not a .png path"));
+    }
+    let encoded = data_url.strip_prefix("data:image/png;base64,").ok_or("expected a PNG data URL")?;
+    let bytes = unbase64(encoded)?;
+    if bytes.len() as u64 > MAX_ASSET_BYTES {
+        return Err(format!("'{rel}' would be bigger than {} MiB", MAX_ASSET_BYTES >> 20));
+    }
+    if !bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]) {
+        return Err("that is not PNG data".into());
+    }
+    write_bytes(root, rel, &bytes)
 }
 
 pub fn create_file(root: &Path, rel: &str, contents: &str) -> Result<(), String> {
@@ -234,6 +279,32 @@ mod tests {
         assert!(read_image(&root, "../x.png").unwrap_err().contains("leaves the project"));
         assert!(read_image(&root, "gone.png").is_err());
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn png_data_urls_are_decoded_checked_and_saved_confined() {
+        let root = project("wimage");
+        let mut png = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3];
+        let url = format!("data:image/png;base64,{}", base64(&png));
+        write_image(&root, "art/a.png", &url).unwrap();
+        assert_eq!(std::fs::read(root.join("art/a.png")).unwrap(), png);
+        assert_eq!(read_image(&root, "art/a.png").unwrap(), url, "round trip");
+        png[0] = 0;
+        let bad = format!("data:image/png;base64,{}", base64(&png));
+        assert!(write_image(&root, "b.png", &bad).unwrap_err().contains("not PNG"));
+        assert!(write_image(&root, "b.txt", &url).unwrap_err().contains("not a .png"));
+        assert!(write_image(&root, "../c.png", &url).unwrap_err().contains("leaves the project"));
+        assert!(write_image(&root, "d.png", "data:text/plain;base64,AA==").is_err());
+        assert!(write_image(&root, "d.png", "data:image/png;base64,@@@").unwrap_err().contains("base64"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn unbase64_inverts_base64() {
+        for len in 0..40usize {
+            let data: Vec<u8> = (0..len).map(|i| (i * 37 + 11) as u8).collect();
+            assert_eq!(unbase64(&base64(&data)).unwrap(), data);
+        }
     }
 
     #[test]

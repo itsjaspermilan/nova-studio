@@ -289,7 +289,7 @@ several steps (at most five, then it lets go instead of spiralling).
 
 `sprites/hero.sprite.json` cuts one PNG into equal frames and names animations. The model
 follows Pixelorama: frames in a grid, a duration per frame, and *tags* (named frame ranges with a
-play direction). The sprite studio (M5) will write these files; hand edits are fine.
+play direction). The studio's sprite editor writes these files; hand edits are fine.
 
 ```json
 {

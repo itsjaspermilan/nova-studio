@@ -136,6 +136,11 @@ fn read_image(state: State<AppState>, path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn write_image(state: State<AppState>, path: String, data_url: String) -> Result<(), String> {
+    project_files::write_image(&root_of(&state)?, &path, &data_url)
+}
+
+#[tauri::command]
 fn write_file(state: State<AppState>, path: String, text: String) -> Result<(), String> {
     project_files::write_file(&root_of(&state)?, &path, &text)
 }
@@ -229,6 +234,7 @@ pub fn run() {
             read_file,
             read_image,
             write_file,
+            write_image,
             create_file,
             create_dir,
             rename_file,

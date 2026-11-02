@@ -7,6 +7,7 @@
   let open = $state(new Set<string>(["scenes", "entities", "sprites"]));
   let selected = $state("");
   let editing: Editing | null = $state(null);
+  let sprite: { name: string; side: number } | null = $state(null);
 
   const rows = $derived(visibleRows(buildTree(studio.files), open));
   const errorFiles = $derived(new Set(studio.diagnostics.filter((d) => d.severity === "error" && d.file).map((d) => d.file!)));
@@ -72,8 +73,19 @@
   <header>
     <span class="title">{studio.project?.name}</span>
     <button class="ghost" title="New file" aria-label="New file" onclick={() => begin("file")}>＋</button>
+    <button class="ghost" title="New sprite" aria-label="New sprite" onclick={() => (sprite = { name: "", side: 32 })}>◩</button>
     <button class="ghost" title="New folder" aria-label="New folder" onclick={() => begin("dir")}>▤</button>
   </header>
+  {#if sprite}
+    <form class="sprite" onsubmit={(e) => { e.preventDefault(); const s = sprite!; sprite = null; void studio.createSprite(s.name, s.side); }}>
+      <input use:focusOnMount bind:value={sprite.name} placeholder="sprite name" aria-label="Sprite name" />
+      <select bind:value={sprite.side} aria-label="Frame size">
+        {#each [8, 16, 32, 48, 64, 128] as n (n)}<option value={n}>{n}×{n}</option>{/each}
+      </select>
+      <button class="primary" disabled={!sprite.name.trim()}>Create</button>
+      <button type="button" class="ghost" aria-label="Cancel" onclick={() => (sprite = null)}>✕</button>
+    </form>
+  {/if}
   <ul role="tree">
     {#if editing && editing.mode !== "rename" && editing.base === ""}
       <li class="edit" style:padding-left="10px">
@@ -133,6 +145,9 @@
   .actions { display: none; }
   .row:hover .actions { display: inline-flex; }
   .actions button { padding: 0 5px; font-size: 11px; }
+  .sprite { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  .sprite input { flex: 1 1 100%; }
+  .sprite select { flex: 1; min-width: 0; }
   .edit { padding: 2px 8px 2px 10px; }
   .edit input { width: 100%; padding: 2px 6px; }
 </style>

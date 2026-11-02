@@ -1,5 +1,8 @@
 import { getApi } from "./api";
 import { editorStates } from "./editor-state";
+import { newRaster } from "./pixels";
+import { rasterToDataUrl } from "./png";
+import { newDoc, toSheetJson } from "./sprite-doc";
 import { byFile } from "./diagnostics";
 import { projectSymbols, type ProjectSymbols } from "./completions";
 import type { Api, Diagnostic, ExampleInfo, FileEntry, LogLine, ProjectInfo, RecentProject, TemplateInfo } from "./types";
@@ -10,7 +13,11 @@ export interface Tab {
   saved: string;
   binary: boolean;
   size: number;
+  /// Changes that live outside `text` (a sprite's pixels) and still need saving.
+  pending?: boolean;
 }
+
+export const isDirty = (t: Tab) => t.text !== t.saved || !!t.pending;
 
 export type Panel = "problems" | "play";
 
@@ -45,6 +52,10 @@ class Studio {
   panelOpen = $state(true);
   jump: { path: string; line: number; nonce: number } | null = $state(null);
 
+  /// Editors with their own files to save (a sprite's PNG) register here; run before the text is written.
+  saveHooks = new Map<string, () => Promise<void>>();
+  /// Per-file editor sessions (a sprite's pixels and undo history) that outlive switching tabs.
+  sessions = new Map<string, unknown>();
   #unlisten: (() => void)[] = [];
   #checkTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -52,7 +63,7 @@ class Studio {
     return this.tabs.find((t) => t.path === this.active);
   }
   get dirty(): boolean {
-    return this.tabs.some((t) => t.text !== t.saved);
+    return this.tabs.some(isDirty);
   }
   get symbols(): ProjectSymbols {
     const manifest = this.tabs.find((t) => t.path === "nova.json")?.text;
@@ -183,11 +194,19 @@ class Studio {
 
   closeTab(path: string) {
     const tab = this.tabs.find((t) => t.path === path);
-    if (tab && tab.text !== tab.saved && !confirm(`Close ${path} without saving?`)) return;
+    if (tab && isDirty(tab) && !confirm(`Close ${path} without saving?`)) return;
     editorStates.forget(path);
+    this.saveHooks.delete(path);
+    this.sessions.delete(path);
     const index = this.tabs.findIndex((t) => t.path === path);
     this.tabs = this.tabs.filter((t) => t.path !== path);
     if (this.active === path) this.active = this.tabs[Math.min(index, this.tabs.length - 1)]?.path ?? null;
+  }
+
+  /// An editor changed something that is not in the tab's text (pixels): mark the tab unsaved.
+  markPending(path: string) {
+    const tab = this.tabs.find((t) => t.path === path);
+    if (tab) tab.pending = true;
   }
 
   edit(path: string, text: string) {
@@ -197,14 +216,16 @@ class Studio {
 
   async save(path = this.active) {
     const tab = this.tabs.find((t) => t.path === path);
-    if (!tab || tab.binary || tab.text === tab.saved) return true;
+    if (!tab || !isDirty(tab) || (tab.binary && !this.saveHooks.has(tab.path))) return true;
     const text = tab.text;
     const ok = await this.#guard(async () => {
-      await this.api!.writeFile(tab.path, text);
+      await this.saveHooks.get(tab.path)?.();
+      if (!tab.binary) await this.api!.writeFile(tab.path, text);
       return true;
     });
     if (ok) {
       tab.saved = text;
+      tab.pending = false;
       this.#scheduleCheck();
     }
     return !!ok;
@@ -243,6 +264,21 @@ class Studio {
       await this.openFile(path);
     });
   }
+  /// A new blank sprite: `sprites/<name>.png` and `sprites/<name>.sprite.json`, opened in the sprite studio.
+  async createSprite(name: string, side: number) {
+    const clean = name.trim().replace(/\.sprite\.json$|\.png$/i, "");
+    if (!/^[A-Za-z0-9_-]+$/.test(clean)) return this.say("error", "Sprite names use letters, numbers, - and _.");
+    await this.#guard(async () => {
+      const json = `sprites/${clean}.sprite.json`;
+      const png = `sprites/${clean}.png`;
+      if (this.files.some((f) => f.path === json || f.path === png)) throw `'${clean}' already exists in sprites/`;
+      await this.api!.writeImage(png, rasterToDataUrl(newRaster(side, side)));
+      await this.api!.createFile(json, toSheetJson(newDoc(side, side), `${clean}.png`));
+      await this.refreshFiles();
+      await this.openFile(json);
+    });
+  }
+
   async createDir(path: string) {
     await this.#guard(async () => {
       await this.api!.createDir(path);
@@ -256,6 +292,8 @@ class Studio {
         if (tab.path === from || tab.path.startsWith(`${from}/`)) {
           const moved = to + tab.path.slice(from.length);
           editorStates.forget(tab.path);
+          this.saveHooks.delete(tab.path);
+          this.sessions.delete(tab.path);
           if (this.active === tab.path) this.active = moved;
           tab.path = moved;
         }
@@ -269,6 +307,7 @@ class Studio {
       const where = await this.api!.deleteFile(path);
       for (const tab of this.tabs.filter((t) => t.path === path || t.path.startsWith(`${path}/`))) {
         tab.text = tab.saved;
+        tab.pending = false;
         this.closeTab(tab.path);
       }
       await this.refreshFiles();
