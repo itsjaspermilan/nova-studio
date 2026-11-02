@@ -1,6 +1,6 @@
 # Nova Studio handoff and TODO
 
-Last checked: 2026-11-01. Read `README.md` for full commands and limitations,
+Last checked: 2026-11-02. Read `README.md` for full commands and limitations,
 and `AGENTS.md` before making changes. This is a working native vertical slice,
 not a finished editor or a hardware-validated game engine.
 
@@ -55,8 +55,8 @@ Confirmed product requirements:
 | Desktop UI/platform decision | Retained research | Qt 6/C++ selected by the user; prove real text input, focus/accessibility facilities, dialogs/docking and live native GPU integration before committing to the bridge. | Native macOS bridge implemented; human IME/VoiceOver and other OS qualification remain |
 | Authoring/document foundation | UI decision + baseline | Unified documents/selection, full undo/redo, safe coherent writes, recovery, conflict handling and native preview. | First Scene/Code foundation implemented; future asset document types still need integration |
 | Lua-first creation loop | Authoring foundation | Project creation/open/save, visual scenes and script/property binding, useful code tools, diagnostics and Run/Stop without overwriting authored code. | First 2D/3D creation slice implemented; complete studio remains in progress |
-| Sprite workspace | Authoring foundation + runtime animation | Real drawing/layers/frames, source preservation, reversible editing and matching scene/runtime updates. | Pending |
-| Model workspace | Authoring foundation + existing GLB pipeline | Mesh/transform/material/UV basics, reversible editing and faithful supported model round trips. | Pending |
+| Sprite workspace | Authoring foundation + runtime animation | Real drawing/layers/frames, source preservation, reversible editing and matching scene/runtime updates. | Isolated document/canvas in progress; shell, transaction and runtime integration remain |
+| Model workspace | Authoring foundation + existing GLB pipeline | Mesh/transform/material/UV basics, reversible editing and faithful supported model round trips. | Isolated mesh component in progress; native workspace integration remains |
 | Audio engine | Existing native services | Sample-clock processing, float mixing, quality instruments/DSP, streams/buses, device handling and offline rendering. | C11 DSP/offline plus shared-device transport/control foundation implemented; disk streaming and hardware/lifecycle qualification remain |
 | Recording and SFX | Authoring foundation + audio engine | Nondestructive waveform editing, explicit recording, layered SFX, safe audition and persistent sources. | Pending |
 | Music composition | Recording/SFX foundations | Arrangement, piano roll, patterns/drums, synth/sampler, MIDI, loops and document persistence. | Pending |
@@ -110,8 +110,8 @@ PCM/converter failure cleanup and reports configuration versus observations
 honestly. Positions are rendered score positions. The inherited mixer still
 locks/converts/clips; xruns and hardware latency are explicitly unavailable.
 
-Initial foundation verification in the isolated audio worktree: 11 focused audio/core/project/
-asset/service/export checks passed in both ordinary Debug and fully
+Initial foundation verification in the isolated audio worktree: 11 focused
+audio/core/project/asset/service/export checks passed in both ordinary Debug and fully
 ASan/UBSan-instrumented builds; the native editor/runtime also link. Leak
 sanitizer was disabled on macOS; explicit allocation-failure/balance tests
 provide the core ownership evidence. No native device test was enabled.
@@ -184,6 +184,40 @@ Next bounded work is integration of actual asset-authoring document types and
 the researched Sprite/Model/Sound workflows, preserving these native/document
 contracts. The final **3D rally racer** acceptance project must exercise those
 tools as they arrive, not claim completion from this first Scene/Code slice.
+
+### Combined Qt/audio integration
+
+The Qt handoff is integrated as `66295d6`, followed by audio transport
+`5bf239e`. The Qt runtime links `nova_audio_native` with only its Qt-hosted
+raylib and applies the same checked audio hooks. Shared-device shutdown now
+belongs to application teardown after resource owners, not graphics-context
+teardown, so an independent audition is not closed by a viewport release.
+Viewport destruction also explicitly disconnects incoming application-state
+callbacks before derived members disappear.
+
+The combined Debug build passed 18 focused audio/scene/document/core/project/
+asset/service/export and debugger-runner checks. Five targeted ASan/UBSan
+selectors passed, as did the additional real-widget teardown regression under
+LLDB in both builds. That regression checks a positive QWidget control before
+checking the viewport, without opening a window. LeakSanitizer is disabled on
+macOS; no hardware-audio test was enabled. The combined C11 Android build and
+exact APK verification also pass.
+
+macOS native Qt CTests now retain failures under LLDB and require a zero
+**debuggee** exit; an intentionally failing QtTest invocation verifies that
+LLDB's own success cannot hide failure. The desktop was locked during this
+integration, so complete native focus/workspace repetitions remain pending
+on an unlocked desktop. Earlier child GUI evidence is not substituted for
+that combined-state qualification; no focus assertion or OS setting changed.
+
+Parallel bounded work continues on guarded asset-document transactions,
+Sprite and Mesh components, and true long-form disk audio. Authored sources
+need separate limits from 16 MiB runtime assets: confirmed Sprite/Mesh source
+envelopes fit 65 MiB, and complete Sprite exports can exceed 130 MiB across
+their files. Source-only saving must preserve editable work and explicitly
+mark stale derived output rather than silently publishing an older result.
+These components, integrated workspaces, sound production, delivery and the
+playable 3D rally exercise remain unfinished.
 
 ## Pre-Qt integrated baseline (retained evidence)
 

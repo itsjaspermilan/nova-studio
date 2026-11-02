@@ -6,6 +6,10 @@
 #include <QSurfaceFormat>
 #include <clocale>
 
+extern "C" {
+#include "assets.h"
+}
+
 int main(int argc, char **argv)
 {
     QSurfaceFormat format;
@@ -28,8 +32,13 @@ int main(int argc, char **argv)
 #ifdef Q_OS_MACOS
     examples = QDir(QApplication::applicationDirPath()).filePath("../Resources/examples");
 #endif
-    StudioWindow window(examples);
-    window.show();
-    if (parser.isSet("project")) window.openProject(parser.value("project"));
-    return app.exec();
+    int result;
+    {
+        StudioWindow window(examples);
+        window.show();
+        if (parser.isSet("project")) window.openProject(parser.value("project"));
+        result = app.exec();
+    }
+    nova_shutdown_audio();
+    return result;
 }

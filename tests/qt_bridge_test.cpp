@@ -24,6 +24,35 @@ struct ClipboardGuard {
 class BridgeTest final : public QObject {
     Q_OBJECT
 private slots:
+    void disconnectApplicationBeforeChildTeardown()
+    {
+        bool controlChecked = false;
+        bool controlConnection = false;
+        {
+            QWidget control;
+            connect(qApp, &QGuiApplication::applicationStateChanged, &control, [] {});
+            auto *child = new QObject(&control);
+            connect(child, &QObject::destroyed, qApp, [&] {
+                controlChecked = true;
+                controlConnection = QObject::disconnect(qApp, nullptr, &control, nullptr);
+            });
+        }
+        QVERIFY(controlChecked);
+        QVERIFY(controlConnection);
+
+        auto *viewport = new NativeViewport;
+        auto *child = new QObject(viewport);
+        bool checked = false;
+        bool lateConnection = false;
+        connect(child, &QObject::destroyed, qApp, [&] {
+            checked = true;
+            lateConnection = QObject::disconnect(qApp, nullptr, viewport, nullptr);
+        });
+        delete viewport;
+        QVERIFY(checked);
+        QVERIFY(!lateConnection);
+    }
+
     void desktopAndNativeOutput()
     {
         QMainWindow window;
@@ -130,6 +159,8 @@ int main(int argc, char **argv)
     QSurfaceFormat::setDefaultFormat(format);
     QApplication app(argc, argv);
     BridgeTest test;
-    return QTest::qExec(&test, argc, argv);
+    const int result = QTest::qExec(&test, argc, argv);
+    nova_shutdown_audio();
+    return result;
 }
 #include "qt_bridge_test.moc"

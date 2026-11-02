@@ -425,6 +425,8 @@ int main(int argc, char **argv)
     QSurfaceFormat::setDefaultFormat(format);
     QApplication app(argc, argv);
     WorkspaceTest test;
-    return QTest::qExec(&test, argc, argv);
+    const int result = QTest::qExec(&test, argc, argv);
+    nova_shutdown_audio();
+    return result;
 }
 #include "qt_workspace_test.moc"

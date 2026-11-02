@@ -199,9 +199,14 @@ decoders and presentation** draw into Qt's actual, resize-dependent GPU FBO.
 The world target is bounded; HUD composition uses physical framebuffer pixels.
 There is no hidden GLFW window, private Qt API, WebView, CPU readback display
 or second scene renderer. Raylib globals currently permit one context-owned
-viewport per process. Context teardown disconnects host callbacks before
-parent actions disappear; Qt and ordinary GLFW raylib builds are not linked
-into the same process.
+viewport per process. Viewport destruction disconnects outgoing signals and
+application-state callbacks before late widget teardown can reach dead actions
+or derived members; Qt and ordinary GLFW raylib builds are not linked
+into the same process. Both renderer hosts use the same checked audio hooks,
+with `nova_audio_native` linked only to the selected host. Shared audio belongs
+to the application, not the graphics context: viewport teardown releases its
+own scene resources without closing an independent audition stream. Application
+shutdown closes audio after the windows and their resource owners are destroyed.
 
 With an active logged-in desktop:
 
@@ -211,6 +216,13 @@ With an active logged-in desktop:
 ./scripts/with-toolchain.sh cmake --build build -j 4
 ./scripts/with-toolchain.sh ctest --test-dir build --output-on-failure -R '^nova_(scene|qt_.*)$'
 ```
+
+On macOS, the native Qt CTests use the installed LLDB to capture a failing
+debuggee's backtrace without changing CrashReporter or OS security settings.
+They require the test process itself to exit zero; LLDB's status alone is not
+success. A device-free runner regression deliberately returns a QtTest failure
+and checks that it is rejected. Native focus checks require an unlocked desktop;
+exposed windows on a locked desktop do not qualify as active-window coverage.
 
 Coverage includes real native 2D/3D pixels/input, Unicode input-method events,
 clipboard preservation, accessibility text interfaces, docking/resizing,

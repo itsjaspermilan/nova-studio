@@ -49,6 +49,7 @@ NativeViewport::~NativeViewport()
 {
     // Parent-owned actions may already be gone during QWidget child teardown.
     disconnect(this, nullptr, nullptr, nullptr);
+    disconnect(qApp, nullptr, this, nullptr);
     releaseGraphics();
 }
 
@@ -95,7 +96,6 @@ void NativeViewport::releaseGraphics()
     engine_ = nullptr;
     nova_unload_resources(resources_.get());
     nova_presentation_destroy(&presentation_);
-    nova_shutdown_audio();
     CloseWindow();
     ready_ = false;
     graphicsOwner = nullptr;

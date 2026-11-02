@@ -103,14 +103,23 @@ exported. The earlier externally authored 2D assessment game is not that proof.
   `NOVA_QT_STUDIO=ON`. Qt owns context/window/input/accessibility; the pinned
   raylib custom backend compiles the identical native import/presentation code.
   Never link its rcore and GLFW rcore into one process. One viewport owns the
-  global renderer; restore Qt's nonzero FBO after world rendering and disconnect
-  outgoing signals before parent-owned actions disappear during destruction.
+  global renderer; restore Qt's nonzero FBO after world rendering. Disconnect
+  outgoing signals and incoming application callbacks before late widget
+  destruction can reach dead actions or derived members. Shared audio belongs
+  to the application, not the viewport/context: close it only after resource
+  owners are destroyed. Link `nova_audio_native` plus the selected Qt host and
+  apply `nova_configure_raylib_audio` to that host; never pull ordinary
+  `nova_assets`/GLFW raylib into the Qt graph.
   `ProjectDocument` owns scene/Lua/manifest, selection and unified undo. Its
   journal is a recoverable multi-file commit, not filesystem atomicity.
   Interrupted journals block runtime/export; exact old/new-byte checks protect
   recovery and external edits. Do not overwrite unresolved prior recovery.
   Native production file panels must remain native; deterministic tests may
   inject a per-dialog configuration, never a production/app-wide nonnative flag.
+  macOS native Qt CTests run under LLDB and check the debuggee's actual exit,
+  including a negative-result runner regression. A locked desktop may expose
+  windows without activating them; keep focus assertions and qualification gaps
+  intact, without changing OS security settings.
   Keep system input/IME/accessibility, scoped styling and original vector icons.
   Scene edits do not rewrite scripts; Run saves/stages normal runtime services,
   while visual authoring uses nondispatching staging. The legacy editor remains

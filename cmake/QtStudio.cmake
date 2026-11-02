@@ -5,6 +5,7 @@ set(NOVA_RAYLIB_COMMON
     "${raylib_SOURCE_DIR}/src/rtext.c" "${raylib_SOURCE_DIR}/src/rtextures.c"
     "${raylib_SOURCE_DIR}/src/raudio.c" "${raylib_SOURCE_DIR}/src/utils.c")
 add_library(nova_qt_raylib STATIC authoring/qt/raylib_host.c ${NOVA_RAYLIB_COMMON})
+nova_configure_raylib_audio(nova_qt_raylib "${raylib_SOURCE_DIR}")
 target_include_directories(nova_qt_raylib PUBLIC "${raylib_SOURCE_DIR}/src")
 target_compile_definitions(nova_qt_raylib PRIVATE GRAPHICS_API_OPENGL_33 SUPPORT_CUSTOM_FRAME_CONTROL)
 if(APPLE)
@@ -19,7 +20,7 @@ endif()
 add_library(nova_qt_runtime STATIC runtime/assets.c runtime/presentation.c authoring/document.c)
 target_include_directories(nova_qt_runtime PUBLIC runtime authoring
     PRIVATE "${raylib_SOURCE_DIR}/src/external")
-target_link_libraries(nova_qt_runtime PUBLIC nova_saves nova_qt_raylib)
+target_link_libraries(nova_qt_runtime PUBLIC nova_saves nova_audio_native nova_qt_raylib)
 target_compile_definitions(nova_qt_runtime PRIVATE
     NOVA_DEFAULT_WORLD_WIDTH=${NOVA_WORLD_WIDTH} NOVA_DEFAULT_WORLD_HEIGHT=${NOVA_WORLD_HEIGHT})
 target_compile_options(nova_qt_runtime PRIVATE -Wall -Wextra -Wpedantic -Werror)
@@ -54,6 +55,21 @@ add_dependencies(nova_studio_app nova_qt_app_assets)
 
 if(BUILD_TESTING)
     find_package(Qt6 6.5 REQUIRED COMPONENTS Test)
+    if(APPLE AND NOVA_GPU_TESTS)
+        find_program(NOVA_LLDB NAMES lldb HINTS "/usr/bin" REQUIRED)
+    endif()
+    function(nova_add_qt_native_test name target timeout)
+        if(APPLE)
+            math(EXPR debugger_timeout "${timeout} - 10")
+            add_test(NAME "${name}" COMMAND "${CMAKE_COMMAND}"
+                "-DNOVA_LLDB=${NOVA_LLDB}" "-DNOVA_TEST_EXECUTABLE=$<TARGET_FILE:${target}>"
+                "-DNOVA_TEST_TIMEOUT=${debugger_timeout}"
+                -P "${PROJECT_SOURCE_DIR}/tests/qt_native_test.cmake")
+        else()
+            add_test(NAME "${name}" COMMAND "${target}")
+        endif()
+        set_tests_properties("${name}" PROPERTIES TIMEOUT "${timeout}" RUN_SERIAL TRUE)
+    endfunction()
     add_executable(nova_qt_document_tests tests/qt_document_test.cpp)
     set_target_properties(nova_qt_document_tests PROPERTIES AUTOMOC ON)
     target_link_libraries(nova_qt_document_tests PRIVATE nova_qt_ui Qt6::Test)
@@ -61,6 +77,13 @@ if(BUILD_TESTING)
         NOVA_EXAMPLES="${PROJECT_SOURCE_DIR}/examples"
         NOVA_TEST_DIRECTORY="${CMAKE_BINARY_DIR}")
     add_test(NAME nova_qt_documents COMMAND nova_qt_document_tests)
+    if(APPLE AND NOVA_GPU_TESTS)
+        add_test(NAME nova_qt_debugger_contract COMMAND "${CMAKE_COMMAND}"
+            "-DNOVA_LLDB=${NOVA_LLDB}"
+            "-DNOVA_TEST_EXECUTABLE=$<TARGET_FILE:nova_qt_document_tests>"
+            -P "${PROJECT_SOURCE_DIR}/tests/qt_native_runner_test.cmake")
+        set_tests_properties(nova_qt_debugger_contract PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
+    endif()
     add_executable(nova_qt_bridge_tests tests/qt_bridge_test.cpp)
     set_target_properties(nova_qt_bridge_tests PROPERTIES AUTOMOC ON)
     target_link_libraries(nova_qt_bridge_tests PRIVATE nova_qt_ui Qt6::Test)
@@ -68,8 +91,7 @@ if(BUILD_TESTING)
         NOVA_EXAMPLES="${PROJECT_SOURCE_DIR}/examples"
         NOVA_TEST_DIRECTORY="${CMAKE_BINARY_DIR}")
     if(NOVA_GPU_TESTS)
-        add_test(NAME nova_qt_native_bridge COMMAND nova_qt_bridge_tests)
-        set_tests_properties(nova_qt_native_bridge PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
+        nova_add_qt_native_test(nova_qt_native_bridge nova_qt_bridge_tests 60)
     endif()
     add_executable(nova_qt_workspace_tests tests/qt_workspace_test.cpp)
     set_target_properties(nova_qt_workspace_tests PROPERTIES AUTOMOC ON)
@@ -78,7 +100,6 @@ if(BUILD_TESTING)
         NOVA_EXAMPLES="${PROJECT_SOURCE_DIR}/examples"
         NOVA_TEST_DIRECTORY="${CMAKE_BINARY_DIR}")
     if(NOVA_GPU_TESTS)
-        add_test(NAME nova_qt_workspace COMMAND nova_qt_workspace_tests)
-        set_tests_properties(nova_qt_workspace PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+        nova_add_qt_native_test(nova_qt_workspace nova_qt_workspace_tests 90)
     endif()
 endif()
