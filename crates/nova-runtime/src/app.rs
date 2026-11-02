@@ -15,7 +15,7 @@ use winit::window::{Window, WindowId};
 use crate::audio::{self, AudioOut};
 use crate::content::Content;
 use crate::gfx::Gfx;
-use crate::input::Input;
+use crate::input::{Actions, Input};
 use crate::spike::Perf;
 
 #[derive(Clone, Debug)]
@@ -32,6 +32,8 @@ pub struct Options {
     pub uncapped: bool,
     pub no_audio: bool,
     pub headless: bool,
+    /// Actions held down for the whole headless run, e.g. `throttle`, `steer=1` (testing).
+    pub hold: Vec<String>,
     /// Height of the world render target in pixels (UI is always native); 0 = native.
     /// `None` uses the project's `world_height` (540 for the spike).
     pub world_height: Option<u32>,
@@ -50,6 +52,7 @@ impl Default for Options {
             world_height: None,
             no_audio: false,
             headless: false,
+            hold: Vec::new(),
         }
     }
 }
@@ -79,6 +82,33 @@ fn backend_candidates() -> Vec<wgpu::Backends> {
     } else {
         vec![wgpu::Backends::PRIMARY]
     }
+}
+
+/// Turns `--hold` entries into the actions held every frame of a headless run.
+fn held_actions(hold: &[String]) -> Result<Actions, String> {
+    let mut actions = Actions::default();
+    for entry in hold {
+        let (name, value) = match entry.split_once('=') {
+            Some((n, v)) => (
+                n,
+                v.parse::<f32>()
+                    .map_err(|_| format!("--hold {entry}: '{v}' is not a number"))?,
+            ),
+            None => (entry.as_str(), 1.0),
+        };
+        match name {
+            "steer" => actions.steer = value.clamp(-1.0, 1.0),
+            "throttle" => actions.throttle = value.clamp(0.0, 1.0),
+            "brake" => actions.brake = value.clamp(0.0, 1.0),
+            "action" => actions.action = value > 0.0,
+            other => {
+                return Err(format!(
+                    "--hold: unknown action '{other}' (steer, throttle, brake, action)"
+                ));
+            }
+        }
+    }
+    Ok(actions)
 }
 
 fn print_summary(label: &str, perf: &Perf) {
@@ -129,6 +159,7 @@ pub fn run_headless(opts: Options) -> Result<(), String> {
     let view = target.create_view(&wgpu::TextureViewDescriptor::default());
     let mut perf = Perf::default();
     let dt = 1.0 / 60.0;
+    let held = held_actions(&opts.hold)?;
     println!(
         "adapter: {} ({:?})",
         gfx.adapter_info.name, gfx.adapter_info.backend
@@ -141,7 +172,7 @@ pub fn run_headless(opts: Options) -> Result<(), String> {
             dt,
             frame as f64 * dt as f64,
             size,
-            Default::default(),
+            held,
             false,
             &perf,
             "off (headless)",

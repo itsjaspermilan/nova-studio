@@ -1,0 +1,748 @@
+-- Nova framework v1: entities, scenes, timers, collisions and a 2D camera, written in Lua
+-- over the immediate-mode API. It is loaded for every project and takes over the frame only
+-- when main.lua calls nova.start("scene_name"). Specification: docs/project-format.md.
+--
+--   -- entities/player.lua
+--   local Player = nova.entity { sprite = "player", tags = { "player" }, speed = 120 }
+--   function Player:update(dt) self.x = self.x + nova.input.axis("steer") * self.speed * dt end
+--   function Player:on_collide_enemy(enemy) enemy:destroy() end
+--   return Player
+--
+--   -- scenes/play.lua
+--   local Play = nova.scene {}
+--   function Play:enter() self.hero = nova.spawn("player", 100, 100) end
+--   return Play
+local raw = nova.raw
+local timers = require("nova.timers")
+
+local STEP = 1 / 60 -- the game always advances in 60 Hz steps
+local MAX_STEPS = 5 -- after a long hitch it catches up at most this far, then lets go
+local CELL = 64
+
+local sqrt, abs, atan, cos, sin, floor = math.sqrt, math.abs, math.atan, math.cos, math.sin, math.floor
+
+local W = {
+  list = {}, -- every living entity, in the order they were made
+  tags = {}, -- tag -> list of entities
+  counts = {}, -- tag -> number of living entities
+  next_id = 1,
+  step_id = 0,
+  time = 0,
+  acc = 0,
+  scene = nil,
+  scene_name = nil,
+  pending = nil,
+  paused = false,
+  dirty = false,
+  background = nil,
+  started = false,
+  cam = { x = 480, y = 270, follow = nil, lerp = 1, limit = nil, set = false },
+}
+nova.world = W
+
+-- ------------------------------------------------------------------ names and files
+local function image_id(name, what)
+  if raw.has_image(name) then return name end
+  local guess = "sprites/" .. name .. ".png"
+  if raw.has_image(guess) then return guess end
+  error((what or "sprite") .. " '" .. tostring(name) .. "' not found (looked for '" .. name .. "' and '" .. guess .. "')", 3)
+end
+
+local model_ids = {}
+local function model_id(name)
+  local id = model_ids[name]
+  if id then return id end
+  if raw.has_model(name) then id = name
+  else
+    local guess = "models/" .. name .. ".glb"
+    if raw.has_model(guess) then id = guess
+    else error("model '" .. tostring(name) .. "' not found (looked for '" .. name .. "' and '" .. guess .. "')", 3) end
+  end
+  model_ids[name] = id
+  return id
+end
+
+local sprite_ids = {}
+local function sprite_id(name)
+  local id = sprite_ids[name]
+  if id then return id end
+  id = image_id(name, "sprite")
+  sprite_ids[name] = id
+  return id
+end
+
+local function copy_value(v, depth)
+  if type(v) ~= "table" or (depth or 0) > 8 then return v end
+  local out = {}
+  for k, x in pairs(v) do out[k] = copy_value(x, (depth or 0) + 1) end
+  return out
+end
+
+-- ------------------------------------------------------------------ classes
+local Entity = { __kind = "entity", __flat = true, __defaults = {}, __tags = {}, __collide = {}, __depth = 0 }
+Entity.__index = Entity
+local Scene = { __kind = "scene", __flat = true, __defaults = {}, __tags = {}, __collide = {}, __depth = 0 }
+Scene.__index = Scene
+local bases = { entity = Entity, scene = Scene }
+
+local RESERVED = { tags = true, sprite = true, model = true, depth = true, hitbox = true, screen = true }
+
+local function define(kind, a, b)
+  local parent, spec
+  if b ~= nil then parent, spec = a, b
+  elseif type(a) == "table" and rawget(a, "__kind") then parent, spec = a, {}
+  else spec = a or {} end
+  if parent ~= nil and not (type(parent) == "table" and rawget(parent, "__kind") == kind) then
+    error("nova." .. kind .. "(parent, spec): the first argument must be another " .. kind
+      .. " (did its file forget to 'return' it?)", 3)
+  end
+  local cls = { __kind = kind, __parent = parent or bases[kind], __spec = spec, __flat = false }
+  cls.__index = cls
+  return cls
+end
+
+-- Copy inherited methods into the class and work out defaults, tags, hitbox and collision
+-- handlers. Done once, the first time the class is used, so a method call is one lookup.
+local function finalize(cls)
+  if cls.__flat then return cls end
+  local parent = cls.__parent
+  finalize(parent)
+  for k, v in pairs(parent) do
+    if type(k) == "string" and k:sub(1, 2) ~= "__" and rawget(cls, k) == nil then cls[k] = v end
+  end
+  local defaults, tags = {}, {}
+  for k, v in pairs(parent.__defaults) do defaults[k] = v end
+  for t in pairs(parent.__tags) do tags[t] = true end
+  local spec = cls.__spec
+  for k, v in pairs(spec) do
+    if k == "tags" then
+      for _, t in ipairs(v) do tags[t] = true end
+    elseif not RESERVED[k] then
+      defaults[k] = v
+    end
+  end
+  cls.__defaults, cls.__tags = defaults, tags
+  cls.__sprite = spec.sprite or parent.__sprite
+  cls.__model = spec.model or parent.__model
+  cls.__depth = spec.depth or parent.__depth or 0
+  cls.__hitbox = spec.hitbox or parent.__hitbox
+  if spec.screen ~= nil then cls.__screen = spec.screen else cls.__screen = parent.__screen end
+  local handlers = {}
+  for k, v in pairs(cls) do
+    if type(k) == "string" and type(v) == "function" then
+      local tag = k:match("^on_collide_(.+)$")
+      if tag then handlers[#handlers + 1] = { tag = tag, name = k } end
+    end
+  end
+  table.sort(handlers, function(x, y) return x.tag < y.tag end)
+  cls.__collide = handlers
+  cls.__flat = true
+  return cls
+end
+
+function nova.entity(a, b) return define("entity", a, b) end
+function nova.scene(a, b) return define("scene", a, b) end
+
+-- "player" -> entities/player.lua, "enemies.grub" -> entities/enemies/grub.lua; a class is used as given.
+local function resolve(what, kind)
+  if type(what) == "table" then return what end
+  if type(what) ~= "string" then error("expected a " .. kind .. " name or class, got " .. type(what), 3) end
+  local prefix = kind == "scene" and "scenes." or "entities."
+  local module = what:find("^" .. prefix:gsub("%.", "%%.")) and what or (prefix .. what)
+  local cls = require(module)
+  if type(cls) ~= "table" or rawget(cls, "__kind") ~= kind then
+    error(module:gsub("%.", "/") .. ".lua must end with 'return <the " .. kind .. " class>' (it returned " .. tostring(cls) .. ")", 3)
+  end
+  return cls
+end
+
+-- ------------------------------------------------------------------ geometry
+-- Hitboxes are offsets from the entity's position. { x, y, w, h } is a box; { r = 8 } a circle
+-- (with optional x, y offsets). Without a hitbox the sprite's size, centred, is used.
+local function bounds(e)
+  local cls = getmetatable(e)
+  local spec = rawget(e, "hitbox") or cls.__hitbox
+  local sx, sy = abs(e.sx), abs(e.sy)
+  if spec then
+    if spec.r then
+      local r = spec.r * math.max(sx, sy)
+      local cx, cy = e.x + (spec.x or 0) * e.sx, e.y + (spec.y or 0) * e.sy
+      return cx - r, cy - r, cx + r, cy + r, r
+    end
+    local x0 = e.x + (spec[1] or spec.x or 0) * e.sx
+    local y0 = e.y + (spec[2] or spec.y or 0) * e.sy
+    local w, h = (spec[3] or spec.w or 0) * sx, (spec[4] or spec.h or 0) * sy
+    return x0, y0, x0 + w, y0 + h
+  end
+  local sprite = rawget(e, "sprite") or cls.__sprite
+  if sprite then
+    local w, h = raw.image_size(sprite_id(sprite))
+    w, h = w * sx, h * sy
+    return e.x - w * 0.5, e.y - h * 0.5, e.x + w * 0.5, e.y + h * 0.5
+  end
+  return nil
+end
+
+local function overlap(a, b)
+  local ax0, ay0, ax1, ay1, ar = bounds(a)
+  local bx0, by0, bx1, by1, br = bounds(b)
+  if not ax0 or not bx0 then return false end
+  if ar and br then
+    local dx, dy = (ax0 + ar) - (bx0 + br), (ay0 + ar) - (by0 + br)
+    local r = ar + br
+    return dx * dx + dy * dy <= r * r
+  end
+  return ax0 < bx1 and bx0 < ax1 and ay0 < by1 and by0 < ay1
+end
+
+-- ------------------------------------------------------------------ what every entity can do
+Entity.x, Entity.y, Entity.z = 0, 0, 0
+Entity.vx, Entity.vy, Entity.vz = 0, 0, 0
+Entity.sx, Entity.sy = 1, 1
+Entity.angle = 0
+Entity.alpha = 1
+Entity.visible = true
+
+function Entity:bounds() return bounds(self) end
+function Entity:overlaps(other) return overlap(self, other) end
+function Entity:is_alive() return not self._dead end
+
+function Entity:destroy()
+  if self._dead then return end
+  self._dead = true
+  W.dirty = true
+  for tag in pairs(getmetatable(self).__tags) do W.counts[tag] = (W.counts[tag] or 1) - 1 end
+  if self.on_destroy then self:on_destroy() end
+end
+
+local function target_xy(a, b)
+  if type(a) == "table" then return a.x, a.y end
+  return a, b
+end
+
+function Entity:distance_to(a, b)
+  local x, y = target_xy(a, b)
+  local dx, dy = x - self.x, y - self.y
+  return sqrt(dx * dx + dy * dy)
+end
+
+function Entity:angle_to(a, b)
+  local x, y = target_xy(a, b)
+  return atan(y - self.y, x - self.x)
+end
+
+-- Step toward a point (or entity); returns true when it arrived this call.
+function Entity:move_toward(a, b, c)
+  local x, y, step
+  if type(a) == "table" then x, y, step = a.x, a.y, b else x, y, step = a, b, c end
+  local dx, dy = x - self.x, y - self.y
+  local d = sqrt(dx * dx + dy * dy)
+  if d <= step or d == 0 then
+    self.x, self.y = x, y
+    return true
+  end
+  self.x, self.y = self.x + dx / d * step, self.y + dy / d * step
+  return false
+end
+
+function Entity:set_velocity(angle, speed)
+  self.vx, self.vy = cos(angle) * speed, sin(angle) * speed
+end
+
+function Entity:speed() return sqrt(self.vx * self.vx + self.vy * self.vy) end
+function Entity:after(seconds, fn) return timers.after(self, seconds, fn) end
+function Entity:every(seconds, fn) return timers.every(self, seconds, fn) end
+function Entity:go(fn) return timers.go(self, fn) end
+function Entity:tween(props, seconds, easing, on_done) return timers.tween(self, self, props, seconds, easing, on_done) end
+
+-- The first living entity with this tag that overlaps this one, or nil.
+function Entity:touching(tag)
+  local list = W.tags[tag]
+  if not list then return nil end
+  for i = 1, #list do
+    local o = list[i]
+    if o ~= self and not o._dead and overlap(self, o) then return o end
+  end
+  return nil
+end
+
+local draw_opts = { sx = 1, sy = 1, rotation = 0, color = { 255, 255, 255, 255 } }
+local model_opts = { ry = 0, scale = 1, tint = { 255, 255, 255, 255 } }
+
+function Entity:draw()
+  if not self.visible then return end
+  local cls = getmetatable(self)
+  local model = rawget(self, "model") or cls.__model
+  if model then
+    model_opts.ry = self.ry or self.angle
+    model_opts.rx = self.rx
+    model_opts.rz = self.rz
+    model_opts.scale = self.sx
+    local tint = self.tint
+    model_opts.tint[1], model_opts.tint[2], model_opts.tint[3] = tint and tint[1] or 255, tint and tint[2] or 255, tint and tint[3] or 255
+    model_opts.tint[4] = floor(255 * self.alpha)
+    nova.model(model_id(model), self.x, self.y, self.z, model_opts)
+  end
+  local sprite = rawget(self, "sprite") or cls.__sprite
+  if sprite then
+    local screen = self.screen
+    if screen == nil then screen = cls.__screen end
+    draw_opts.sx, draw_opts.sy, draw_opts.rotation = self.sx, self.sy, self.angle
+    local c, tint = draw_opts.color, self.tint
+    c[1], c[2], c[3] = tint and tint[1] or 255, tint and tint[2] or 255, tint and tint[3] or 255
+    c[4] = floor(255 * self.alpha)
+    if screen then
+      nova.ui.sprite(sprite_id(sprite), self.x, self.y, draw_opts)
+    else
+      local w, h = nova.view()
+      nova.sprite(sprite_id(sprite), self.x - (W.cam.x - w * 0.5), self.y - (W.cam.y - h * 0.5), draw_opts)
+    end
+  end
+end
+
+-- ------------------------------------------------------------------ built-in kinds used by scene files
+local Picture = nova.entity { screen = false }
+function Picture:draw()
+  if not self.visible then return end
+  local id = sprite_id(self.image)
+  draw_opts.sx, draw_opts.sy, draw_opts.rotation = self.sx, self.sy, self.angle
+  local c, tint = draw_opts.color, self.tint
+  c[1], c[2], c[3] = tint and tint[1] or 255, tint and tint[2] or 255, tint and tint[3] or 255
+  c[4] = floor(255 * self.alpha)
+  if self.screen then
+    nova.ui.sprite(id, self.x, self.y, draw_opts)
+  else
+    local w, h = nova.view()
+    nova.sprite(id, self.x - (W.cam.x - w * 0.5), self.y - (W.cam.y - h * 0.5), draw_opts)
+  end
+end
+
+local text_color = { 255, 255, 255, 255 }
+local text_opts = { scale = 2, color = text_color }
+local Text = nova.entity { screen = true, text = "" }
+function Text:draw()
+  if not self.visible then return end
+  local c, col = text_color, self.color
+  c[1], c[2], c[3] = col and col[1] or 255, col and col[2] or 255, col and col[3] or 255
+  c[4] = col and col[4] or 255
+  text_opts.scale = self.size or 2
+  nova.ui.text(self.x, self.y, tostring(self.text), text_opts)
+end
+nova.Entity, nova.Picture, nova.Text = Entity, Picture, Text
+
+-- ------------------------------------------------------------------ the world
+local function spawn(what, x, y, props)
+  local cls = finalize(resolve(what, "entity"))
+  local e = setmetatable({}, cls)
+  for k, v in pairs(cls.__defaults) do e[k] = copy_value(v) end
+  e.x, e.y = x or 0, y or 0
+  if props then
+    for k, v in pairs(props) do e[k] = v end
+  end
+  if rawget(e, "depth") == nil then e.depth = cls.__depth end
+  e.id = W.next_id
+  W.next_id = W.next_id + 1
+  W.list[#W.list + 1] = e
+  for tag in pairs(cls.__tags) do
+    local list = W.tags[tag]
+    if not list then
+      list = {}
+      W.tags[tag] = list
+      W.counts[tag] = 0
+    end
+    list[#list + 1] = e
+    W.counts[tag] = W.counts[tag] + 1
+  end
+  if e.create then e:create() end
+  return e
+end
+nova.spawn = spawn
+
+function nova.each(tag, fn)
+  local list = W.tags[tag]
+  if not list then return end
+  for i = 1, #list do
+    local e = list[i]
+    if not e._dead then fn(e) end
+  end
+end
+
+function nova.all(tag)
+  local out = {}
+  local list = W.tags[tag]
+  if list then
+    for i = 1, #list do
+      local e = list[i]
+      if not e._dead then out[#out + 1] = e end
+    end
+  end
+  return out
+end
+
+function nova.first(tag)
+  local list = W.tags[tag]
+  if list then
+    for i = 1, #list do
+      if not list[i]._dead then return list[i] end
+    end
+  end
+  return nil
+end
+
+function nova.count(tag) return W.counts[tag] or 0 end
+
+function nova.nearest(x, y, tag, max_distance)
+  local best, best_d = nil, (max_distance or math.huge) ^ 2
+  local list = W.tags[tag]
+  if list then
+    for i = 1, #list do
+      local e = list[i]
+      if not e._dead then
+        local dx, dy = e.x - x, e.y - y
+        local d = dx * dx + dy * dy
+        if d <= best_d then best, best_d = e, d end
+      end
+    end
+  end
+  return best
+end
+
+function nova.in_radius(x, y, radius, tag, out)
+  out = out or {}
+  local n = 0
+  local list = W.tags[tag]
+  if list then
+    local r2 = radius * radius
+    for i = 1, #list do
+      local e = list[i]
+      if not e._dead then
+        local dx, dy = e.x - x, e.y - y
+        if dx * dx + dy * dy <= r2 then
+          n = n + 1
+          out[n] = e
+        end
+      end
+    end
+  end
+  for i = #out, n + 1, -1 do out[i] = nil end
+  return out
+end
+
+-- nova.send(entity_or_tag, "message", ...) calls that method on one entity or on every entity with the tag.
+function nova.send(target, message, ...)
+  if type(target) == "string" then
+    local list = W.tags[target]
+    if list then
+      for i = 1, #list do
+        local e = list[i]
+        if not e._dead and e[message] then e[message](e, ...) end
+      end
+    end
+  elseif target and not target._dead and target[message] then
+    return target[message](target, ...)
+  end
+end
+
+function nova.pause(on) W.paused = on ~= false end
+function nova.count_alive() return #W.list end
+nova.wait, nova.wait_until, nova.ease = timers.wait, timers.wait_until, timers.ease
+
+-- ------------------------------------------------------------------ camera (2D)
+local cam = W.cam
+nova.cam = {}
+-- Put the camera's centre at a world point.
+function nova.cam.set(x, y)
+  cam.x, cam.y, cam.set, cam.follow = x, y, true, nil
+end
+-- Follow an entity; lerp 1 locks on, smaller values trail behind (0.1 is smooth).
+function nova.cam.follow(entity, lerp)
+  cam.follow, cam.lerp = entity, lerp or 1
+  if entity and not cam.set then cam.x, cam.y, cam.set = entity.x, entity.y, true end
+end
+-- Keep the view inside this world rectangle.
+function nova.cam.limit(x0, y0, x1, y1) cam.limit = { x0, y0, x1, y1 } end
+function nova.cam.position() return cam.x, cam.y end
+
+local function clamp_camera()
+  local l = cam.limit
+  if not l then return end
+  local vw, vh = nova.view()
+  local lo_x, hi_x = l[1] + vw * 0.5, l[3] - vw * 0.5
+  local lo_y, hi_y = l[2] + vh * 0.5, l[4] - vh * 0.5
+  cam.x = lo_x > hi_x and (l[1] + l[3]) * 0.5 or math.max(lo_x, math.min(hi_x, cam.x))
+  cam.y = lo_y > hi_y and (l[2] + l[4]) * 0.5 or math.max(lo_y, math.min(hi_y, cam.y))
+end
+
+local function update_camera()
+  local f = cam.follow
+  if f then
+    if f._dead then
+      cam.follow = nil
+    else
+      local k = cam.lerp or 1
+      cam.x, cam.y = cam.x + (f.x - cam.x) * k, cam.y + (f.y - cam.y) * k
+    end
+  end
+  clamp_camera()
+end
+
+-- ------------------------------------------------------------------ collisions
+local grids = {}
+
+local function cell_key(cx, cy) return (cx + 32768) * 65536 + (cy + 32768) end
+
+local function grid_for(tag)
+  local g = grids[tag]
+  if g and g.step == W.step_id then return g end
+  g = { step = W.step_id, cells = {} }
+  local list = W.tags[tag]
+  if list then
+    for i = 1, #list do
+      local e = list[i]
+      if not e._dead then
+        local x0, y0, x1, y1 = bounds(e)
+        if x0 then
+          for cx = floor(x0 / CELL), floor(x1 / CELL) do
+            for cy = floor(y0 / CELL), floor(y1 / CELL) do
+              local key = cell_key(cx, cy)
+              local cell = g.cells[key]
+              if not cell then
+                cell = {}
+                g.cells[key] = cell
+              end
+              cell[#cell + 1] = e
+            end
+          end
+        end
+      end
+    end
+  end
+  grids[tag] = g
+  return g
+end
+
+local seen = {}
+local hits = {}
+local seen_mark = 0
+
+local function collide_pass()
+  local list = W.list
+  for i = 1, #list do
+    local a = list[i]
+    local handlers = not a._dead and getmetatable(a).__collide
+    if handlers and #handlers > 0 then
+      local x0, y0, x1, y1 = bounds(a)
+      if x0 then
+        for h = 1, #handlers do
+          local handler = handlers[h]
+          local grid = grid_for(handler.tag)
+          seen_mark = seen_mark + 1
+          local n = 0
+          for cx = floor(x0 / CELL), floor(x1 / CELL) do
+            for cy = floor(y0 / CELL), floor(y1 / CELL) do
+              local cell = grid.cells[cell_key(cx, cy)]
+              if cell then
+                for j = 1, #cell do
+                  local b = cell[j]
+                  if b ~= a and seen[b] ~= seen_mark and not b._dead then
+                    seen[b] = seen_mark
+                    if overlap(a, b) then
+                      n = n + 1
+                      hits[n] = b
+                    end
+                  end
+                end
+              end
+            end
+          end
+          for k = 1, n do
+            local b = hits[k]
+            hits[k] = nil
+            if not a._dead and not b._dead then a[handler.name](a, b) end
+          end
+        end
+      end
+    end
+  end
+end
+
+-- ------------------------------------------------------------------ scenes
+local RESERVED_SCENE_NAMES = { enter = true, leave = true, update = true, draw = true, draw_ui = true, after = true, every = true, go = true, tween = true }
+
+function Scene:after(seconds, fn) return timers.after(self, seconds, fn) end
+function Scene:every(seconds, fn) return timers.every(self, seconds, fn) end
+function Scene:go(fn) return timers.go(self, fn) end
+function Scene:tween(props, seconds, easing, on_done) return timers.tween(self, self, props, seconds, easing, on_done) end
+
+local function build_scene(scene, data, file)
+  if data.background then W.background = data.background end
+  if data.width and data.height then nova.cam.limit(0, 0, data.width, data.height) end
+  local function named(item, e)
+    local name = item.name
+    if not name then return end
+    if RESERVED_SCENE_NAMES[name] or type(scene[name]) == "function" then
+      error(file .. ": '" .. name .. "' is the name of something every scene already has; give it another name", 0)
+    end
+    scene[name] = e
+  end
+  for _, o in ipairs(data.objects) do
+    local props = o.props or {}
+    if o.z ~= 0 and props.z == nil then props.z = o.z end
+    named(o, spawn(o.kind, o.x, o.y, props))
+  end
+  for _, im in ipairs(data.images) do
+    named(im, spawn(Picture, im.x, im.y, {
+      image = im.image, sx = im.scale, sy = im.scale, depth = im.depth, screen = im.layer == "ui", tint = im.color,
+      alpha = im.color and im.color[4] and im.color[4] / 255 or 1,
+    }))
+  end
+  for _, t in ipairs(data.texts) do
+    named(t, spawn(Text, t.x, t.y, { text = t.text, size = t.scale, color = t.color, depth = t.depth }))
+  end
+end
+
+local function leave_scene()
+  local scene = W.scene
+  if scene and scene.leave then scene:leave() end
+  if scene then scene._dead = true end
+  for i = 1, #W.list do W.list[i]._dead = true end
+  W.list, W.tags, W.counts = {}, {}, {}
+  W.dirty, W.background, W.paused = false, nil, false
+  grids = {}
+  timers.clear()
+  cam.follow, cam.limit, cam.set = nil, nil, false
+  W.scene, W.scene_name = nil, nil
+end
+
+local function enter_scene(name, args)
+  leave_scene()
+  local cls = finalize(resolve(name, "scene"))
+  local scene = setmetatable({}, cls)
+  for k, v in pairs(cls.__defaults) do scene[k] = copy_value(v) end
+  W.scene, W.scene_name, W.time, W.acc = scene, name, 0, 0
+  local vw, vh = nova.view()
+  cam.x, cam.y = vw * 0.5, vh * 0.5
+  local short = name:gsub("^scenes%.", "")
+  local data = raw.scene_data(short)
+  if data then build_scene(scene, data, "scenes/" .. short:gsub("%.", "/") .. ".scene.json") end
+  if scene.enter then scene:enter(table.unpack(args, 1, args.n or #args)) end
+end
+
+function nova.goto_scene(name, ...)
+  if type(name) ~= "string" then error("goto_scene(name, ...): the scene name must be a string", 2) end
+  W.pending = { name = name, args = table.pack(...) }
+end
+
+function nova.restart_scene()
+  if not W.scene_name then error("restart_scene(): no scene is running", 2) end
+  W.pending = { name = W.scene_name, args = { n = 0 } }
+end
+
+function nova.current_scene() return W.scene_name and (W.scene_name:gsub("^scenes%.", "")) end
+
+local function switch_if_pending()
+  local p = W.pending
+  if p then
+    W.pending = nil
+    enter_scene(p.name, p.args)
+  end
+end
+
+-- ------------------------------------------------------------------ the frame
+local function compact()
+  if not W.dirty then return end
+  W.dirty = false
+  local function sweep(list)
+    local j = 0
+    for i = 1, #list do
+      local e = list[i]
+      if not e._dead then
+        j = j + 1
+        list[j] = e
+      end
+    end
+    for i = #list, j + 1, -1 do list[i] = nil end
+  end
+  sweep(W.list)
+  for _, list in pairs(W.tags) do sweep(list) end
+end
+
+local function step(dt)
+  W.step_id = W.step_id + 1
+  W.time = W.time + dt
+  timers.update(dt)
+  if not W.paused then
+    local list = W.list
+    for i = 1, #list do
+      local e = list[i]
+      if not e._dead then
+        local update = e.update
+        if update then update(e, dt) end
+        if not e._dead then
+          local vx, vy, vz = e.vx, e.vy, e.vz
+          if vx ~= 0 then e.x = e.x + vx * dt end
+          if vy ~= 0 then e.y = e.y + vy * dt end
+          if vz ~= 0 then e.z = e.z + vz * dt end
+        end
+      end
+    end
+    collide_pass()
+  end
+  local scene = W.scene
+  if scene and scene.update then scene:update(dt) end
+  update_camera()
+  compact()
+end
+
+local function frame_update(dt)
+  switch_if_pending()
+  W.acc = W.acc + dt
+  local steps = 0
+  while W.acc >= STEP and steps < MAX_STEPS do
+    W.acc = W.acc - STEP
+    step(STEP)
+    steps = steps + 1
+    switch_if_pending()
+  end
+  if steps == MAX_STEPS then W.acc = 0 end
+end
+
+local order = {}
+local function by_depth(a, b)
+  if a.depth ~= b.depth then return a.depth > b.depth end
+  return a.id < b.id
+end
+
+local function frame_draw()
+  local bg = W.background
+  if bg then nova.clear(bg[1], bg[2], bg[3]) end
+  local list = W.list
+  local n = 0
+  for i = 1, #list do
+    local e = list[i]
+    if not e._dead and e.visible then
+      n = n + 1
+      order[n] = e
+    end
+  end
+  for i = #order, n + 1, -1 do order[i] = nil end
+  table.sort(order, by_depth)
+  for i = 1, n do
+    local e = order[i]
+    if not e._dead then e:draw() end
+  end
+  local scene = W.scene
+  if scene then
+    if scene.draw then scene:draw() end
+    if scene.draw_ui then scene:draw_ui() end
+  end
+end
+
+-- Hand the frame to the framework: the first scene is loaded, then update/draw run it.
+function nova.start(first)
+  if W.started then error("nova.start was already called", 2) end
+  if type(first) ~= "string" then error("nova.start(scene_name): give the name of the first scene", 2) end
+  W.started = true
+  W.pending = { name = first, args = { n = 0 } }
+  _G.update, _G.draw = frame_update, frame_draw
+end

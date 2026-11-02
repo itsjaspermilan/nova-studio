@@ -15,6 +15,13 @@ struct Instance {
     @location(4) rotation: f32,
 };
 
+// Colours from scripts are 8-bit sRGB values; the target is sRGB, so blend in linear space.
+fn srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
+    let low = c / 12.92;
+    let high = pow((c + vec3<f32>(0.055)) / 1.055, vec3<f32>(2.4));
+    return select(high, low, c <= vec3<f32>(0.04045));
+}
+
 struct VertexOut {
     @builtin(position) position: vec4<f32>,
     @location(0) uv: vec2<f32>,
@@ -35,7 +42,7 @@ fn vs_main(@builtin(vertex_index) vertex: u32, inst: Instance) -> VertexOut {
     var out: VertexOut;
     out.position = vec4<f32>(world.x / view.size.x * 2.0 - 1.0, 1.0 - world.y / view.size.y * 2.0, 0.0, 1.0);
     out.uv = mix(inst.uv.xy, inst.uv.zw, corner + vec2<f32>(0.5, 0.5));
-    out.color = inst.color;
+    out.color = vec4<f32>(srgb_to_linear(inst.color.rgb), inst.color.a);
     return out;
 }
 

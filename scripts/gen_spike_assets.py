@@ -16,6 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SPIKE_CAR = ROOT / "crates/nova-runtime/assets/spike/car.glb"
 EXAMPLE = ROOT / "examples/rally-demo"
+DASH = ROOT / "examples/crate-dash"
 
 CELL = 8  # texels per palette cell, so nearest sampling stays flat
 
@@ -217,6 +218,44 @@ def gauge_sprite():
     return raster(96, 96, shade)
 
 
+def player_sprite():
+    def shade(x, y):
+        # a little rounded robot: body, visor, feet
+        if 6 <= x <= 26 and 4 <= y <= 24 and not ((x < 8 or x > 24) and (y < 6 or y > 22)):
+            if 10 <= x <= 22 and 9 <= y <= 14:
+                return (120, 220, 255, 255)  # visor
+            return (232, 200, 80, 255) if y < 20 else (90, 96, 110, 255)
+        if 8 <= x <= 13 and 25 <= y <= 30 or 19 <= x <= 24 and 25 <= y <= 30:
+            return (60, 64, 76, 255)
+        return (0, 0, 0, 0)
+
+    return raster(32, 32, shade)
+
+
+def crate2d_sprite():
+    def shade(x, y):
+        if not (2 <= x <= 29 and 2 <= y <= 29):
+            return (0, 0, 0, 0)
+        edge = x < 5 or x > 26 or y < 5 or y > 26
+        plank = abs(x - y) < 2 or abs(x + y - 31) < 2
+        if edge or plank:
+            return (120, 80, 44, 255)
+        return (190, 138, 76, 255)
+
+    return raster(32, 32, shade)
+
+
+def star_sprite():
+    def shade(x, y):
+        dx, dy = x - 12, y - 12
+        d = math.hypot(dx, dy)
+        angle = math.atan2(dy, dx)
+        radius = 5.5 + 5.5 * abs(math.cos(2.5 * angle))
+        return (255, 218, 74, 255) if d <= radius else (0, 0, 0, 0)
+
+    return raster(24, 24, shade)
+
+
 def main():
     car = build_car()
     write_glb(SPIKE_CAR, *car, CAR_PALETTE, "rally_car")
@@ -225,6 +264,11 @@ def main():
     write_glb(EXAMPLE / "models/crate.glb", *build_crate(), CRATE_PALETTE, "crate")
     for name, data in (("cloud", cloud_sprite()), ("pine", pine_sprite()), ("gauge", gauge_sprite())):
         path = EXAMPLE / f"sprites/{name}.png"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+        print(f"wrote {path.relative_to(ROOT)} ({len(data)} bytes)")
+    for name, data in (("player", player_sprite()), ("crate", crate2d_sprite()), ("star", star_sprite())):
+        path = DASH / f"sprites/{name}.png"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
         print(f"wrote {path.relative_to(ROOT)} ({len(data)} bytes)")

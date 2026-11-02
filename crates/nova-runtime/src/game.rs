@@ -11,7 +11,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant, SystemTime};
 
 use glam::{Mat4, Vec3};
-use mlua::{Function, Lua, Table, Value};
+use mlua::{Function, Lua, LuaSerdeExt, Table, Value};
 
 use crate::assets::{self, AtlasLayout};
 use crate::font;
@@ -19,8 +19,20 @@ use crate::gfx::{Camera, FrameInput, Gfx, ModelDraw, ModelInstance, SpriteInstan
 use crate::input::Actions;
 use crate::model::{self, Image, MeshData};
 use crate::project::{AssetKind, Project};
+use crate::scene;
 use crate::script::new_lua;
 use crate::vfs::Vfs;
+
+/// The entity/scene/timer framework, written in Lua and loaded before every project's
+/// entry script. It only takes over the frame when a game calls `nova.start`.
+const FRAMEWORK: &str = include_str!("../lua/framework.lua");
+
+fn builtin_module(name: &str) -> Option<&'static str> {
+    match name {
+        "nova.timers" => Some(include_str!("../lua/timers.lua")),
+        _ => None,
+    }
+}
 
 const DEFAULT_CAMERA: Camera = Camera {
     eye: Vec3::new(0.0, 6.0, -10.0),
@@ -133,6 +145,26 @@ fn string_option(opts: &Option<Table>, key: &str) -> mlua::Result<Option<String>
     }
 }
 
+/// An image by full id (`sprites/car.png`) or by short name (`car`, meaning `sprites/car.png`).
+fn find_image<'a>(layout: &'a AtlasLayout, id: &str) -> Option<&'a assets::AtlasRect> {
+    if id == assets::WHITE {
+        return None;
+    }
+    layout
+        .rects
+        .get(id)
+        .or_else(|| layout.rects.get(&format!("sprites/{id}.png")))
+}
+
+/// A model by full id (`models/car.glb`) or short name (`car`).
+fn find_model(models: &[String], id: &str) -> Option<String> {
+    if models.iter().any(|m| m == id) {
+        return Some(id.to_string());
+    }
+    let guess = format!("models/{id}.glb");
+    models.contains(&guess).then_some(guess)
+}
+
 fn sprite_instance(
     shared: &Shared,
     id: &str,
@@ -140,7 +172,7 @@ fn sprite_instance(
     y: f64,
     opts: &Option<Table>,
 ) -> mlua::Result<SpriteInstance> {
-    let rect = shared.layout.rects.get(id).ok_or_else(|| {
+    let rect = find_image(&shared.layout, id).ok_or_else(|| {
         let known: Vec<&str> = shared
             .layout
             .rects
@@ -150,7 +182,7 @@ fn sprite_instance(
             .take(6)
             .collect();
         lua_err(format!(
-            "unknown image '{id}' (images in this project: {})",
+            "unknown image '{id}' (looked for '{id}' and 'sprites/{id}.png'; images in this project: {})",
             if known.is_empty() {
                 "none".into()
             } else {
@@ -233,17 +265,16 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
         lua.create_function(
             move |_, (id, x, y, z, opts): (String, f64, f64, f64, Option<Table>)| {
                 let mut sh = s.borrow_mut();
-                let mesh = *sh.mesh_ids.get(&id).ok_or_else(|| {
-                    lua_err(format!(
-                        "unknown model '{id}' (models in this project: {})",
-                        if sh.known_models.is_empty() {
-                            "none".into()
-                        } else {
-                            sh.known_models.join(", ")
-                        }
-                    ))
-                })?;
-                let scale = number_option(&opts, "scale")?.unwrap_or(1.0) as f32;
+                let found = find_model(&sh.known_models, &id).ok_or_else(|| {
+                lua_err(format!(
+                    "unknown model '{id}' (looked for '{id}' and 'models/{id}.glb'; models in this project: {})",
+                    if sh.known_models.is_empty() { "none".into() } else { sh.known_models.join(", ") }
+                ))
+            })?;
+            let mesh = *sh.mesh_ids.get(&found).ok_or_else(|| {
+                lua_err(format!("model '{found}' is not on the GPU yet (draw models from update/draw, not while the script loads)"))
+            })?;
+            let scale = number_option(&opts, "scale")?.unwrap_or(1.0) as f32;
                 let rotation =
                     Mat4::from_rotation_y(number_option(&opts, "ry")?.unwrap_or(0.0) as f32)
                         * Mat4::from_rotation_x(number_option(&opts, "rx")?.unwrap_or(0.0) as f32)
@@ -402,6 +433,48 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
         })?,
     )?;
     nova.set("input", input)?;
+    // --- raw: lookups the Lua framework needs ---
+    let raw = lua.create_table()?;
+    let s = shared.clone();
+    raw.set(
+        "has_image",
+        lua.create_function(
+            move |_, id: String| Ok(find_image(&s.borrow().layout, &id).is_some()),
+        )?,
+    )?;
+    let s = shared.clone();
+    raw.set(
+        "has_model",
+        lua.create_function(move |_, id: String| {
+            Ok(find_model(&s.borrow().known_models, &id).is_some())
+        })?,
+    )?;
+    let s = shared.clone();
+    raw.set(
+        "image_size",
+        lua.create_function(move |_, id: String| {
+            let sh = s.borrow();
+            let r = find_image(&sh.layout, &id)
+                .ok_or_else(|| lua_err(format!("unknown image '{id}'")))?;
+            Ok((r.w as f64, r.h as f64))
+        })?,
+    )?;
+    let scene_vfs = vfs.clone();
+    raw.set(
+        "scene_data",
+        lua.create_function(move |lua, name: String| {
+            let path = format!("scenes/{}.scene.json", name.replace('.', "/"));
+            if !scene_vfs.exists(&path) {
+                return Ok(Value::Nil);
+            }
+            let bytes = scene_vfs.read(&path).map_err(lua_err)?;
+            let text = String::from_utf8(bytes)
+                .map_err(|_| lua_err(format!("{path} is not valid UTF-8")))?;
+            let data = scene::parse_scene(&text, &path).map_err(lua_err)?;
+            lua.to_value(&data)
+        })?,
+    )?;
+    nova.set("raw", raw)?;
     lua.globals().set("nova", nova)?;
 
     // --- require: modules come only from inside the project ---
@@ -416,6 +489,15 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             }
             if loading.get::<Option<bool>>(name.clone())?.unwrap_or(false) {
                 return Err(lua_err(format!("circular require of '{name}'")));
+            }
+            if let Some(builtin) = builtin_module(&name) {
+                loading.set(name.clone(), true)?;
+                let result: mlua::Result<Value> =
+                    lua.load(builtin).set_name(format!("={name}")).call(());
+                loading.set(name.clone(), Value::Nil)?;
+                let value = result?;
+                loaded.set(name, value.clone())?;
+                return Ok(value);
             }
             let path = format!("{}.lua", name.replace('.', "/"));
             let source = vfs
@@ -506,6 +588,10 @@ impl Game {
         let entry = game.project.manifest.entry.clone();
         let result = (|| -> mlua::Result<()> {
             register_api(&game.lua, &shared, &vfs)?;
+            game.lua
+                .load(FRAMEWORK)
+                .set_name("=nova.framework")
+                .exec()?;
             let source = vfs.read(&entry).map_err(lua_err)?;
             let source = String::from_utf8(source)
                 .map_err(|_| lua_err(format!("{entry} is not valid UTF-8")))?;

@@ -133,13 +133,25 @@ Spec and API: [docs/project-format.md](docs/project-format.md). Example: `exampl
 - [x] Tests: path rules, manifest errors, atlas packing, Lua API, example project, GPU
   render, hot reload.
 
-### M2b: Scenes and entities (next)
+### M2b: Scenes and entities (done 2026-11-02)
 
-- [ ] `*.scene.json` data format and loader (layers, placed objects, names exposed as
-  fields of the scene's Lua), JSON schema and versioning documented.
-- [ ] Scene/entity model, tags, timers, tweens, coroutines (port the design of
-  GameStudio's `gs` Lua framework and its `lua-engine-design.md`).
-- [ ] Collision queries (grid broadphase in Rust) and camera helpers.
+Spec in [docs/project-format.md](docs/project-format.md); example `examples/crate-dash/`.
+
+- [x] `scenes/<name>.scene.json` v1 (validated in Rust, exact error locations; objects, images,
+  texts, background, camera limits; names become scene fields).
+- [x] Entity and scene classes with inheritance, defaults, tags, depth ordering, custom draw,
+  velocity integration, fixed 60 Hz stepping, pause.
+- [x] Timers, tweens (9 easings), and `go` coroutines with `wait` / `wait_until`, owned by
+  entities or scenes.
+- [x] Collisions: `on_collide_<tag>` handlers with a spatial-grid broad phase (in Lua for
+  now), box and circle hitboxes, queries (`nearest`, `in_radius`, `touching`, `send`).
+- [x] 2D camera: follow, lerp, limits.
+- [x] Short asset names everywhere (`car` for `sprites/car.png`).
+- [x] Colour fix: 8-bit sRGB script colours are converted for the sRGB target.
+- [x] Tests: 17 framework tests, scene-file validation, a 3-minute soak playing every scene of
+  Crate Dash; `--hold` for headless gameplay captures.
+- Not done in this slice: moving the collision broad phase to Rust (measure first), paths,
+  `in_rect`, tile layers, particles.
 
 ### M2c: 2D content
 

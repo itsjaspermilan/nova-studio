@@ -141,3 +141,46 @@ fn editing_a_script_on_disk_is_noticed_and_a_broken_one_shows_an_error() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+fn crate_dash() -> Game {
+    let vfs: Rc<dyn Vfs> =
+        Rc::new(DirVfs::new(&example().join("../crate-dash")).expect("crate-dash folder"));
+    let mut game = Game::load(vfs).expect("crate-dash loads");
+    game.upload(&mut FakeGpu(0));
+    game
+}
+
+#[test]
+fn crate_dash_plays_through_every_scene_without_errors() {
+    let mut game = crate_dash();
+    assert!(game.warnings.is_empty(), "{:?}", game.warnings);
+    let idle = Actions::default();
+    let jump = Actions {
+        throttle: 1.0,
+        steer: 0.4,
+        ..Default::default()
+    };
+
+    // The title waits for a button: nothing moves on until the player jumps.
+    for frame in 0..60 {
+        game.update(1.0 / 60.0, frame as f64 / 60.0, [960.0, 540.0], idle, false);
+    }
+    assert!(game.error.is_none(), "{:?}", game.error);
+    let title_sprites = game.frame_input(540).sprites_front.len();
+    assert!(title_sprites > 100, "the title text is on screen");
+
+    // Hold jump for a long play session. Crates fall on the player until the game ends and returns
+    // to the title; holding jump starts it again, so this runs title -> play -> over -> title repeatedly.
+    let mut time = 1.0;
+    for _ in 0..(60 * 60 * 3) {
+        game.update(1.0 / 60.0, time, [960.0, 540.0], jump, false);
+        time += 1.0 / 60.0;
+        assert!(
+            game.error.is_none(),
+            "error at t={time:.1}s: {:?}",
+            game.error
+        );
+    }
+    let input = game.frame_input(540);
+    assert!(!input.sprites_back.is_empty() || !input.sprites_front.is_empty());
+}

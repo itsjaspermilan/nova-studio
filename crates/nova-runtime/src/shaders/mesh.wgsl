@@ -23,6 +23,13 @@ struct Instance {
     @location(8) tint: vec4<f32>,
 };
 
+// Instance tints are sRGB values from scripts; the vertex colours stay linear (glTF).
+fn srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
+    let low = c / 12.92;
+    let high = pow((c + vec3<f32>(0.055)) / 1.055, vec3<f32>(2.4));
+    return select(high, low, c <= vec3<f32>(0.04045));
+}
+
 struct VertexOut {
     @builtin(position) position: vec4<f32>,
     @location(0) normal: vec3<f32>,
@@ -36,7 +43,7 @@ fn vs_main(v: Vertex, inst: Instance) -> VertexOut {
     var out: VertexOut;
     out.position = globals.view_proj * (model * vec4<f32>(v.position, 1.0));
     out.normal = normalize((model * vec4<f32>(v.normal, 0.0)).xyz);
-    out.color = v.color * inst.tint;
+    out.color = v.color * vec4<f32>(srgb_to_linear(inst.tint.rgb), inst.tint.a);
     out.uv = v.uv;
     return out;
 }

@@ -17,7 +17,9 @@ words, few choices, good defaults. There are no fantasy-console limits.
 
 - `crates/nova-runtime`: Rust game runtime. Projects: `vfs.rs` (read-only file view), `project.rs`
   (`nova.json` and assets), `assets.rs` (PNG decode, atlas), `game.rs` (Lua API v1, draw lists),
-  `content.rs` (benchmark scene or project). Spec in `docs/project-format.md`. `wgpu` renderer
+  `content.rs` (benchmark scene or project), `scene.rs` (`*.scene.json` validation). The
+  entity/scene/timer/collision/camera framework is Lua in `crates/nova-runtime/lua/` (embedded,
+  loaded before every project). Spec in `docs/project-format.md`. `wgpu` renderer
   for 2D and 3D (`gfx.rs`, WGSL in `src/shaders/`), Lua 5.4 via `mlua` (`script.rs`,
   reduced stdlib), glTF import (`model.rs`), input actions (`input.rs`), audio via
   `cpal` + the C core (`audio.rs`, `build.rs`), `winit` host and headless runner

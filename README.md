@@ -19,7 +19,8 @@ results are in `docs/spike-results.md`; the plan, decisions and milestones are i
 | `crates/nova-runtime` | Rust runtime: renderer, Lua host, input, audio, Android entry (M1 spike) |
 | `audio/` | C11 audio core and its standalone tests (`docs/audio-core.md`) |
 | `docs/project-format.md` | Project format v1 and Lua API v1 (what `nova run` accepts) |
-| `examples/rally-demo/` | A small project: sprites, 3D models, Lua, HUD |
+| `examples/rally-demo/` | Immediate-mode project: sprites, 3D models, Lua, HUD |
+| `examples/crate-dash/` | A small 2D game using scenes, entities, collisions, timers |
 | `docs/spike-results.md` | M1 measurements, proven pieces and open findings |
 | `docs/ux/` | UX research, workspace study, and the Pine Ridge Rally exercise |
 | `docs/archive/` | Notes from the dropped Qt components, kept for ideas |
@@ -50,7 +51,7 @@ checks; it does not predict handheld performance.
 
 ## Limits today
 
-- No studio app or editors yet. Projects are hand-written Lua plus PNG and GLB files; there are no scenes, entities, tilemaps, animation, audio API or saves yet.
+- No studio app or editors yet. Projects are hand-written Lua, JSON scenes, PNG and GLB files; there are no tilemaps, sprite animation, real fonts, audio API or saves yet.
 - The APK still embeds the M1 benchmark scene; it cannot load a project yet.
 - Only the Android emulator has run the APK; no handheld has.
 - The audio core was verified with offline renders only, not by listening.

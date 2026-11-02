@@ -11,6 +11,7 @@ pub mod gfx;
 pub mod input;
 pub mod model;
 pub mod project;
+pub mod scene;
 pub mod script;
 pub mod spike;
 pub mod vfs;

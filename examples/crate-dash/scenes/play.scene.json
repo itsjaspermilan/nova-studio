@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "background": [92, 150, 214],
+  "objects": [
+    { "kind": "ground", "x": 0, "y": 440 },
+    { "kind": "player", "name": "hero", "x": 480, "y": 440 }
+  ],
+  "images": [
+    { "image": "sprites/star.png", "x": 24, "y": 24, "scale": 1, "layer": "ui", "color": [255, 255, 255, 255] }
+  ]
+}
