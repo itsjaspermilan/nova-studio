@@ -311,6 +311,32 @@ entities glide along walls) in sub-steps no bigger than half a tile, so a fast e
 thin wall. It uses the entity's hitbox box. Tile numbers outside the tileset, ragged rows and
 unknown tilesets are errors that say which cell.
 
+## Sound
+
+Put WAV files anywhere in the project (`sounds/` and `music/` are where short names are looked up).
+WAV files of 8, 16, 24 or 32-bit integer or 32-bit float PCM, mono or stereo, 8 to 192 kHz, up to 10
+minutes each and 256 MiB decoded in total, are decoded once when the project loads. OGG is not
+supported yet (it is skipped with a warning).
+
+```lua
+local id = nova.sound.play("jump", { volume = 0.6, pan = -0.5, pitch = 1.2, loop = false })
+nova.sound.stop(id, 0.25)            -- optional fade-out in seconds
+nova.sound.stop_all()
+nova.sound.volume(0.8)               -- master volume for effects (0 to 2)
+
+nova.music.play("theme", { volume = 0.4, fade = 1.0 })   -- loops by default; one track at a time
+nova.music.stop(0.5)                 -- optional fade-out
+nova.music.volume(0.5)               -- master volume for music (0 to 2)
+```
+
+`volume` 0 to 4 (default 1), `pan` -1 (left) to 1 (right) with an equal-power law, `pitch` 0.05 to 16
+(2 is an octave up; it also changes speed). Starting new music fades the old track out over 0.3
+seconds. Up to 32 effects play at once; past that the oldest gives way. Output is soft-clipped, so a
+loud mix cannot distort harshly. Names resolve as the exact path, then `sounds/<name>.wav`, then
+`music/<name>.wav`. The mixer runs on the audio thread and costs about 0.1 ms per callback on the
+Android emulator. Sound calls are queued and sent to the audio thread each frame; with no audio
+device (headless runs) they are discarded.
+
 ## Save data
 
 ```lua
@@ -366,8 +392,8 @@ animation, collisions, tilemap) at 60 fps. Not verified: any physical device.
 
 ## Not yet
 
-Real fonts and text layout (the UI text is still a debug pixel font), paths, particles, an audio
-API, input remapping and named actions, rigid-bone model animation, and the studio itself.
+Real fonts and text layout (the UI text is still a debug pixel font), paths, particles, OGG and
+streamed music, synthesised music and a sound editor (M6), input remapping and named actions, rigid-bone model animation, and the studio itself.
 
 ## Testing helpers
 

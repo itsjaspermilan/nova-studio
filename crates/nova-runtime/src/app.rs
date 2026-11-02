@@ -193,6 +193,7 @@ pub fn run_headless(opts: Options) -> Result<(), String> {
             &perf,
             "off (headless)",
         );
+        content.take_audio(); // no audio device here; keep the queue from growing
         let render_started = Instant::now();
         perf.stats = gfx.render(&view, size, &content.frame_input(opts.world_height));
         gfx.device
@@ -239,6 +240,8 @@ struct App {
     audio_error: Option<String>,
     audio_started: bool,
     frames_done: u32,
+    held: Actions,
+    last_audio_log: Instant,
     finished: bool,
     failed: Option<String>,
 }
@@ -284,12 +287,13 @@ impl App {
         if let Some(audio) = &self.audio {
             let s = &audio.stats;
             return format!(
-                "{} cb {} max {:.2}ms flt {} err {}",
+                "{} cb {} max {:.2}ms flt {} err {} voices {}",
                 audio.description,
                 s.callbacks.load(Ordering::Relaxed),
                 s.max_callback_micros.load(Ordering::Relaxed) as f32 / 1000.0,
                 s.faults.load(Ordering::Relaxed),
-                s.stream_errors.load(Ordering::Relaxed)
+                s.stream_errors.load(Ordering::Relaxed),
+                s.voices.load(Ordering::Relaxed)
             );
         }
         match &self.audio_error {
@@ -310,8 +314,22 @@ impl App {
         self.last_frame = now;
         let size = (config.width, config.height);
 
-        let actions = self.input.frame();
+        let mut actions = self.input.frame();
+        if !self.held.is_empty() {
+            actions.steer = if self.held.steer != 0.0 {
+                self.held.steer
+            } else {
+                actions.steer
+            };
+            actions.throttle = actions.throttle.max(self.held.throttle);
+            actions.brake = actions.brake.max(self.held.brake);
+            actions.action |= self.held.action;
+        }
         let audio = self.audio_text();
+        if self.last_audio_log.elapsed().as_secs() >= 2 && self.audio.is_some() {
+            self.last_audio_log = Instant::now();
+            log::info!("audio: {audio}");
+        }
         let (Some(gfx), Some(content)) = (self.gfx.as_mut(), self.content.as_mut()) else {
             return;
         };
@@ -328,6 +346,11 @@ impl App {
             &self.perf,
             &audio,
         );
+        for command in content.take_audio() {
+            if let Some(out) = &self.audio {
+                out.send(command);
+            }
+        }
 
         let surface = self.surface.as_ref().expect("surface checked above");
         let texture = match surface.get_current_texture() {
@@ -435,7 +458,11 @@ impl ApplicationHandler for App {
         self.configure(size.width, size.height);
         if !self.audio_started && !self.opts.no_audio {
             self.audio_started = true;
-            match audio::start() {
+            let mixer = self
+                .content
+                .as_ref()
+                .is_some_and(|c| c.plays_sound_effects());
+            match audio::start(mixer) {
                 Ok(out) => self.audio = Some(out),
                 Err(e) => {
                     log::warn!("audio disabled: {e}");
@@ -499,6 +526,7 @@ pub fn run_windowed(
         .build()
         .map_err(|e| format!("cannot create event loop: {e}"))?;
     event_loop.set_control_flow(ControlFlow::Poll);
+    let held = held_actions(&opts.hold)?;
     let mut app = App {
         opts,
         instance: new_instance(wgpu::Backends::PRIMARY),
@@ -515,6 +543,8 @@ pub fn run_windowed(
         audio_error: None,
         audio_started: false,
         frames_done: 0,
+        held,
+        last_audio_log: Instant::now(),
         finished: false,
         failed: None,
     };

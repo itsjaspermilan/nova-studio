@@ -9,6 +9,7 @@ pub mod font;
 pub mod game;
 pub mod gfx;
 pub mod input;
+pub mod mixer;
 pub mod model;
 pub mod pak;
 pub mod project;

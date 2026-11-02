@@ -18,6 +18,13 @@ pub struct Actions {
     pub action: bool,
 }
 
+impl Actions {
+    /// True when no action is held.
+    pub fn is_empty(&self) -> bool {
+        *self == Actions::default()
+    }
+}
+
 #[derive(Default)]
 pub struct Input {
     keys: HashSet<KeyCode>,

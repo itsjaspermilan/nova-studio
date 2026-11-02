@@ -157,6 +157,18 @@ impl Content {
         }
     }
 
+    /// Sound commands queued by scripts this frame (none for the benchmark scene).
+    pub fn take_audio(&mut self) -> Vec<crate::mixer::Command> {
+        match self {
+            Content::Game { game, .. } => game.take_audio(),
+            Content::Spike(_) => Vec::new(),
+        }
+    }
+
+    pub fn plays_sound_effects(&self) -> bool {
+        matches!(self, Content::Game { .. })
+    }
+
     /// `cli_world_height` is the `--world-height` override, when given.
     pub fn frame_input(&self, cli_world_height: Option<u32>) -> FrameInput<'_> {
         match self {

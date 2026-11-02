@@ -8,6 +8,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
 use glam::{Mat4, Vec3};
@@ -17,6 +18,7 @@ use crate::assets::{self, AtlasLayout};
 use crate::font;
 use crate::gfx::{Camera, FrameInput, Gfx, ModelDraw, ModelInstance, SpriteInstance};
 use crate::input::Actions;
+use crate::mixer::{self, Sample};
 use crate::model::{self, Image, MeshData};
 use crate::project::{AssetKind, Project};
 use crate::save::SaveStore;
@@ -64,6 +66,9 @@ struct Shared {
     layout: AtlasLayout,
     sheets: HashMap<String, SpriteDef>,
     tilemaps: Vec<TileMap>,
+    sounds: HashMap<String, Arc<Sample>>,
+    audio: Vec<mixer::Command>,
+    next_sound: u64,
     save: SaveStore,
     mesh_ids: HashMap<String, usize>,
     known_models: Vec<String>,
@@ -192,6 +197,14 @@ fn resolve_sprite<'a>(
         return layout.rects.get(&def.image).map(|r| (r, Some(def)));
     }
     find_image(layout, id).map(|r| (r, None))
+}
+
+/// A sound by full id (`sounds/hit.wav`) or short name (`hit`, looked up in `sounds/` then `music/`).
+fn find_sound<'a>(sounds: &'a HashMap<String, Arc<Sample>>, id: &str) -> Option<&'a Arc<Sample>> {
+    sounds
+        .get(id)
+        .or_else(|| sounds.get(&format!("sounds/{id}.wav")))
+        .or_else(|| sounds.get(&format!("music/{id}.wav")))
 }
 
 /// A model by full id (`models/car.glb`) or short name (`car`).
@@ -488,6 +501,92 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
         })?,
     )?;
     nova.set("input", input)?;
+    // --- sound: nova.sound.* effects, nova.music.* one background track ---
+    let sound = lua.create_table()?;
+    let music = lua.create_table()?;
+    for is_music in [false, true] {
+        let s = shared.clone();
+        let table = if is_music { &music } else { &sound };
+        table.set(
+            "play",
+            lua.create_function(move |_, (name, opts): (String, Option<Table>)| {
+                let mut sh = s.borrow_mut();
+                let sample = find_sound(&sh.sounds, &name)
+                    .ok_or_else(|| {
+                        let mut known: Vec<&str> = sh.sounds.keys().map(String::as_str).collect();
+                        known.sort_unstable();
+                        known.truncate(6);
+                        lua_err(format!(
+                            "unknown sound '{name}' (looked for '{name}', 'sounds/{name}.wav' and 'music/{name}.wav'; sounds in this project: {})",
+                            if known.is_empty() { "none".into() } else { known.join(", ") }
+                        ))
+                    })?
+                    .clone();
+                let id = sh.next_sound;
+                sh.next_sound += 1;
+                let looping = match &opts {
+                    Some(t) => t.get::<Option<bool>>("loop")?.unwrap_or(is_music),
+                    None => is_music,
+                };
+                sh.audio.push(mixer::Command::Play(Box::new(mixer::Play {
+                    id,
+                    sample,
+                    volume: number_option(&opts, "volume")?.unwrap_or(1.0).clamp(0.0, 4.0) as f32,
+                    pan: number_option(&opts, "pan")?.unwrap_or(0.0).clamp(-1.0, 1.0) as f32,
+                    pitch: number_option(&opts, "pitch")?.unwrap_or(1.0).clamp(0.05, 16.0) as f32,
+                    looping,
+                    music: is_music,
+                    fade_in: number_option(&opts, "fade")?.unwrap_or(0.0).clamp(0.0, 60.0) as f32,
+                })));
+                Ok(id)
+            })?,
+        )?;
+        let s = shared.clone();
+        table.set(
+            "volume",
+            lua.create_function(move |_, v: f64| {
+                let v = v.clamp(0.0, 2.0) as f32;
+                s.borrow_mut().audio.push(if is_music {
+                    mixer::Command::MusicVolume(v)
+                } else {
+                    mixer::Command::SfxVolume(v)
+                });
+                Ok(())
+            })?,
+        )?;
+    }
+    let s = shared.clone();
+    sound.set(
+        "stop",
+        lua.create_function(move |_, (id, fade): (u64, Option<f64>)| {
+            s.borrow_mut().audio.push(mixer::Command::Stop {
+                id,
+                fade: fade.unwrap_or(0.0).clamp(0.0, 60.0) as f32,
+            });
+            Ok(())
+        })?,
+    )?;
+    let s = shared.clone();
+    sound.set(
+        "stop_all",
+        lua.create_function(move |_, ()| {
+            s.borrow_mut().audio.push(mixer::Command::StopAll);
+            Ok(())
+        })?,
+    )?;
+    let s = shared.clone();
+    music.set(
+        "stop",
+        lua.create_function(move |_, fade: Option<f64>| {
+            s.borrow_mut().audio.push(mixer::Command::StopMusic {
+                fade: fade.unwrap_or(0.0).clamp(0.0, 60.0) as f32,
+            });
+            Ok(())
+        })?,
+    )?;
+    nova.set("sound", sound)?;
+    nova.set("music", music)?;
+
     // --- save data: nova.save.get/set/delete/keys/flush ---
     let save = lua.create_table()?;
     let s = shared.clone();
@@ -852,6 +951,29 @@ impl Game {
             meshes.push((asset.id.clone(), mesh));
         }
 
+        let mut sounds: HashMap<String, Arc<Sample>> = HashMap::new();
+        let mut sound_bytes = 0usize;
+        for asset in project.assets_of(AssetKind::Audio) {
+            if !asset.id.to_ascii_lowercase().ends_with(".wav") {
+                warnings.push(format!(
+                    "'{}' is not a WAV file; only WAV sounds are supported yet, so it is ignored",
+                    asset.id
+                ));
+                continue;
+            }
+            let sample = assets::decode_wav(&vfs.read(&asset.id)?)
+                .map_err(|e| format!("{}: {e}", asset.id))?;
+            sound_bytes += sample.frames.len() * 4;
+            if sound_bytes > assets::MAX_SOUND_BYTES {
+                return Err(format!(
+                    "the project's sounds need more than {} MiB of memory (reached at '{}'); shorten or remove some",
+                    assets::MAX_SOUND_BYTES >> 20,
+                    asset.id
+                ));
+            }
+            sounds.insert(asset.id.clone(), Arc::new(sample));
+        }
+
         let shared = Rc::new(RefCell::new(Shared {
             actions: Actions::default(),
             action_pressed: false,
@@ -860,6 +982,9 @@ impl Game {
             layout: layout.clone(),
             sheets,
             tilemaps: Vec::new(),
+            sounds,
+            audio: Vec::new(),
+            next_sound: 1,
             save: store,
             mesh_ids: HashMap::new(),
             known_models: meshes.iter().map(|(id, _)| id.clone()).collect(),
@@ -970,6 +1095,11 @@ impl Game {
         if let Err(e) = self.shared.borrow_mut().save.flush() {
             log::error!("{e}");
         }
+    }
+
+    /// Sound commands scripts queued since the last call, for the host to hand to the mixer.
+    pub fn take_audio(&self) -> Vec<mixer::Command> {
+        std::mem::take(&mut self.shared.borrow_mut().audio)
     }
 
     pub fn world_height(&self) -> u32 {

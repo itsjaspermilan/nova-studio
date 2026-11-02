@@ -18,6 +18,7 @@ function Player:update(dt)
   local on_ground = self.y >= self.floor
   if on_ground and (nova.input.down("throttle") or nova.input.down("action")) then
     self.vy = -self.jump
+    nova.sound.play("jump", { volume = 0.6, pitch = 0.9 + math.random() * 0.2 })
   end
   if self.y < self.floor or self.vy < 0 then
     self.vy = self.vy + self.gravity * dt
@@ -41,12 +42,14 @@ end
 
 function Player:on_collide_star(star)
   state.score = state.score + 1
+  nova.sound.play("star", { pan = (self.x / nova.view() - 0.5) * 1.2 })
   star:destroy()
 end
 
 function Player:on_collide_crate(crate)
   if nova.time() < self.hurt_until then return end
   crate:destroy()
+  nova.sound.play("hit")
   state.lives = state.lives - 1
   self.hurt_until = nova.time() + 1.2
   if state.lives <= 0 then

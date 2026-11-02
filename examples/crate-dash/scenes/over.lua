@@ -3,6 +3,7 @@ local state = require("lib.state")
 local Over = nova.scene {}
 
 function Over:enter()
+  nova.sound.play("over")
   nova.spawn("ground", 0, 440)
   self:go(function()
     nova.wait(0.8)

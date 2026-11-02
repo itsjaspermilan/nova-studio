@@ -9,7 +9,9 @@ procedurally. Everything here is original. Run with:
 """
 import json
 import math
+import random
 import struct
+import wave
 import zlib
 from pathlib import Path
 
@@ -278,6 +280,68 @@ def star_sprite():
     return raster(24, 24, shade)
 
 
+RATE = 22050
+
+
+def write_wav(path, samples):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(RATE)
+        w.writeframes(b"".join(struct.pack("<h", int(max(-1.0, min(1.0, v)) * 32000)) for v in samples))
+    print(f"wrote {path.relative_to(ROOT)} ({path.stat().st_size} bytes)")
+
+
+def envelope(i, n, attack=0.004, release=0.35):
+    t = i / RATE
+    total = n / RATE
+    a = min(1.0, t / attack)
+    r = min(1.0, (total - t) / max(release * total, 1e-6))
+    return a * r
+
+
+def sweep(f0, f1, seconds, wave_fn, volume=0.5):
+    n = int(RATE * seconds)
+    out, phase = [], 0.0
+    for i in range(n):
+        f = f0 + (f1 - f0) * i / n
+        phase += 2 * math.pi * f / RATE
+        out.append(volume * wave_fn(phase) * envelope(i, n))
+    return out
+
+
+square = lambda p: 1.0 if math.sin(p) >= 0 else -1.0
+sine = math.sin
+triangle = lambda p: 2 / math.pi * math.asin(math.sin(p))
+
+
+def make_sounds():
+    sounds = {}
+    sounds["jump"] = sweep(300, 720, 0.16, square, 0.28)
+    sounds["star"] = sweep(880, 880, 0.08, sine, 0.5) + sweep(1318, 1318, 0.16, sine, 0.5)
+    rng = random.Random(7)
+    n = int(RATE * 0.28)
+    sounds["hit"] = [(rng.uniform(-1, 1) * 0.5 + 0.5 * math.sin(2 * math.pi * 90 * i / RATE)) * math.exp(-i / (n * 0.28)) * 0.8 for i in range(n)]
+    sounds["over"] = sweep(440, 110, 0.7, triangle, 0.5)
+    # A four-second loop: an arpeggio over a bass note, ending on silence so it repeats cleanly.
+    beat = 0.25
+    notes = [220, 262, 330, 262, 196, 247, 294, 247, 175, 220, 262, 220, 196, 247, 294, 392]
+    theme = []
+    for k, f in enumerate(notes):
+        bass = f / 2 if k % 4 == 0 else 0
+        seg = int(RATE * beat)
+        for i in range(seg):
+            t = i / RATE
+            decay = math.exp(-t * 6)
+            v = 0.35 * decay * triangle(2 * math.pi * f * t)
+            if bass:
+                v += 0.3 * math.exp(-t * 3) * sine(2 * math.pi * bass * t)
+            theme.append(v)
+    sounds["theme"] = theme
+    return sounds
+
+
 def main():
     car = build_car()
     write_glb(SPIKE_CAR, *car, CAR_PALETTE, "rally_car")
@@ -289,6 +353,8 @@ def main():
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
         print(f"wrote {path.relative_to(ROOT)} ({len(data)} bytes)")
+    for name, samples in make_sounds().items():
+        write_wav(DASH / f"{'music' if name == 'theme' else 'sounds'}/{name}.wav", samples)
     for name, data in (("player_sheet", player_sheet()), ("tiles", tiles_sprite()), ("crate", crate2d_sprite()), ("star", star_sprite())):
         path = DASH / f"sprites/{name}.png"
         path.parent.mkdir(parents=True, exist_ok=True)

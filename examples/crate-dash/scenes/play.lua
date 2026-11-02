@@ -10,6 +10,11 @@ function Play:enter()
   -- Things speed up: tween a field of the scene itself.
   self.pace = 1
   self:tween({ pace = 2.2 }, 60, "linear")
+  nova.music.play("theme", { volume = 0.4 }) -- loops by default
+end
+
+function Play:leave()
+  nova.music.stop(0.4)
 end
 
 function Play:update(dt)

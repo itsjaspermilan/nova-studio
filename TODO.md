@@ -170,7 +170,7 @@ Spec in [docs/project-format.md](docs/project-format.md); example `examples/crat
 
 - [ ] Named input actions with remapping; Android analogue sticks/triggers (needs a
   native-activity input path), touch/lifecycle exercised on Android; immersive mode.
-- [ ] Audio service and Lua API (SFX, music, buses) over the C core.
+- [x] Audio service v1 (2026-11-02): WAV decoding, a tested mixer (32 effect voices, one music track, pan/pitch/volume/fades, soft clip), `nova.sound` / `nova.music`, run on the audio thread through `cpal`; verified on the emulator. Not yet: OGG, streamed music, buses and effects, and the C core's synthesis and DSP (M6).
 - [x] Save-data API (`nova.save`, atomic JSON file, corruption recovery, 1 MiB limit; done 2026-11-02).
 - [ ] 3D extras: simple lights/material options, rigid-bone animation playback.
 - [x] Lua time and memory limits (256 MiB; 1 s per frame, 5 s to load; covers coroutines; done 2026-11-02).

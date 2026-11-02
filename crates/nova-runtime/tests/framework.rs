@@ -921,3 +921,117 @@ fn the_view_size_is_whole_numbers_even_on_odd_aspect_ratios() {
     let l = logs(&g);
     assert!(l[0].starts_with("integer integer 1098 540 "), "{l:?}");
 }
+
+// ---------------------------------------------------------------- sound
+
+fn wav_bytes(rate: u32, frames: usize) -> Vec<u8> {
+    let mut cursor = std::io::Cursor::new(Vec::new());
+    {
+        let spec = hound::WavSpec {
+            channels: 1,
+            sample_rate: rate,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        let mut w = hound::WavWriter::new(&mut cursor, spec).unwrap();
+        for i in 0..frames {
+            w.write_sample((i % 100) as i16 * 50).unwrap();
+        }
+        w.finalize().unwrap();
+    }
+    cursor.into_inner()
+}
+
+#[test]
+fn sound_calls_queue_mixer_commands_with_options_and_short_names() {
+    use nova_runtime::mixer::Command;
+    let g = project(vec![
+        ("sounds/jump.wav", wav_bytes(22050, 2000)),
+        ("music/theme.wav", wav_bytes(22050, 4000)),
+        (
+            "main.lua",
+            lua(
+                "local id = nova.sound.play('jump', { volume = 0.5, pan = -2, pitch = 2 })\nlocal full = nova.sound.play('sounds/jump.wav', { loop = true })\nnova.music.play('theme', { fade = 1.5, volume = 0.3 })\nnova.music.play('music/theme.wav', { loop = false })\nnova.sound.stop(id, 0.25)\nnova.sound.stop_all()\nnova.music.stop(2)\nnova.sound.volume(0.5)\nnova.music.volume(0.25)\nnova.log(id .. ' ' .. full)",
+            ),
+        ),
+    ]);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    assert_eq!(logs(&g), ["1 2"], "play returns ids that count up");
+    let cmds = g.take_audio();
+    assert_eq!(cmds.len(), 9);
+    match &cmds[0] {
+        Command::Play(p) => {
+            assert_eq!(
+                (p.id, p.volume, p.pan, p.pitch, p.looping, p.music),
+                (1, 0.5, -1.0, 2.0, false, false),
+                "pan clamps to -1"
+            );
+            assert_eq!(p.sample.frames.len(), 2000);
+            assert_eq!(p.sample.rate, 22050);
+        }
+        _ => panic!("first command is a play"),
+    }
+    assert!(
+        matches!(&cmds[1], Command::Play(p) if p.looping),
+        "loop = true is honoured"
+    );
+    assert!(
+        matches!(&cmds[2], Command::Play(p) if p.music && p.looping && p.fade_in == 1.5),
+        "music loops by default and can fade in"
+    );
+    assert!(
+        matches!(&cmds[3], Command::Play(p) if p.music && !p.looping),
+        "music can opt out of looping"
+    );
+    assert!(matches!(&cmds[4], Command::Stop { id: 1, fade } if (*fade - 0.25).abs() < 1e-6));
+    assert!(matches!(&cmds[5], Command::StopAll));
+    assert!(matches!(&cmds[6], Command::StopMusic { fade } if *fade == 2.0));
+    assert!(matches!(&cmds[7], Command::SfxVolume(v) if *v == 0.5));
+    assert!(matches!(&cmds[8], Command::MusicVolume(v) if *v == 0.25));
+    assert!(
+        g.take_audio().is_empty(),
+        "taking the commands empties the queue"
+    );
+}
+
+#[test]
+fn unknown_sounds_and_bad_audio_files_are_explained() {
+    let mut g = project(vec![
+        ("sounds/a.wav", wav_bytes(22050, 100)),
+        (
+            "main.lua",
+            lua("function update(dt) nova.sound.play('nope') end"),
+        ),
+    ]);
+    steps(&mut g, 1);
+    let e = g.error.clone().expect("error");
+    assert!(
+        e.contains("unknown sound 'nope'") && e.contains("sounds/a.wav"),
+        "{e}"
+    );
+
+    let vfs: Rc<dyn Vfs> = Rc::new(MemVfs::new(vec![
+        ("nova.json", br#"{"format":1,"name":"T"}"#.to_vec()),
+        ("main.lua", lua("")),
+        ("sounds/broken.wav", b"RIFF nope".to_vec()),
+    ]));
+    let e = Game::load(vfs).err().expect("must fail");
+    assert!(
+        e.starts_with("sounds/broken.wav:") && e.contains("not a readable WAV"),
+        "{e}"
+    );
+
+    let vfs: Rc<dyn Vfs> = Rc::new(MemVfs::new(vec![
+        ("nova.json", br#"{"format":1,"name":"T"}"#.to_vec()),
+        ("main.lua", lua("")),
+        ("music/theme.ogg", b"OggS".to_vec()),
+    ]));
+    let g = Game::load(vfs).expect("an OGG file is skipped with a warning, not fatal");
+    assert!(
+        g.warnings
+            .iter()
+            .any(|w| w.contains("music/theme.ogg") && w.contains("only WAV")),
+        "{:?}",
+        g.warnings
+    );
+}

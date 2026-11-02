@@ -53,7 +53,7 @@ checks; it does not predict handheld performance.
 
 ## Limits today
 
-- No studio app or editors yet. Projects are hand-written Lua, JSON scenes, PNG and GLB files; there are no real fonts (the UI text is a debug pixel font), audio API or saves yet.
+- No studio app or editors yet. Projects are hand-written Lua, JSON scenes, PNG and GLB files; there are no real fonts (the UI text is a debug pixel font) or OGG/streamed music yet.
 - APKs of games run on the Android emulator; no handheld has run one. Analogue sticks and triggers do not reach the game on Android yet.
 - Only the Android emulator has run the APK; no handheld has.
 - The audio core was verified with offline renders only, not by listening.

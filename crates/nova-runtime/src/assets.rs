@@ -314,3 +314,159 @@ mod tests {
         assert_eq!(bigger.width, 128);
     }
 }
+
+/// Longest sound the mixer will hold in memory, and the total across a project.
+pub const MAX_SOUND_SECONDS: f32 = 600.0;
+pub const MAX_SOUND_BYTES: usize = 256 << 20;
+
+/// Decodes a WAV file (8, 16, 24 or 32-bit integer or 32-bit float PCM; mono or stereo) to the
+/// mixer's 16-bit stereo format.
+pub fn decode_wav(bytes: &[u8]) -> Result<crate::mixer::Sample, String> {
+    let mut reader = hound::WavReader::new(Cursor::new(bytes))
+        .map_err(|e| format!("not a readable WAV file: {e}"))?;
+    let spec = reader.spec();
+    if spec.channels == 0 || spec.channels > 2 {
+        return Err(format!(
+            "{} channels is not supported; use mono or stereo",
+            spec.channels
+        ));
+    }
+    if !(8_000..=192_000).contains(&spec.sample_rate) {
+        return Err(format!(
+            "{} Hz is outside the supported 8000 to 192000 Hz",
+            spec.sample_rate
+        ));
+    }
+    let channels = spec.channels as usize;
+    let to_i16 = |v: f32| (v.clamp(-1.0, 1.0) * 32767.0).round() as i16;
+    let samples: Vec<i16> = match (spec.sample_format, spec.bits_per_sample) {
+        (hound::SampleFormat::Int, 8) => reader.samples::<i8>().map(|s| s.map(|v| (v as i16) << 8)).collect::<Result<_, _>>(),
+        (hound::SampleFormat::Int, 16) => reader.samples::<i16>().collect::<Result<_, _>>(),
+        (hound::SampleFormat::Int, 24) => reader.samples::<i32>().map(|s| s.map(|v| (v >> 8) as i16)).collect::<Result<_, _>>(),
+        (hound::SampleFormat::Int, 32) => reader.samples::<i32>().map(|s| s.map(|v| (v >> 16) as i16)).collect::<Result<_, _>>(),
+        (hound::SampleFormat::Float, 32) => reader.samples::<f32>().map(|s| s.map(to_i16)).collect::<Result<_, _>>(),
+        (format, bits) => return Err(format!("{bits}-bit {format:?} WAV is not supported (8, 16, 24 or 32-bit PCM, or 32-bit float)")),
+    }
+    .map_err(|e| format!("WAV data is damaged: {e}"))?;
+    let frames: Vec<[i16; 2]> = if channels == 1 {
+        samples.iter().map(|&s| [s, s]).collect()
+    } else {
+        samples.as_chunks::<2>().0.to_vec()
+    };
+    let seconds = frames.len() as f32 / spec.sample_rate as f32;
+    if seconds > MAX_SOUND_SECONDS {
+        return Err(format!(
+            "{seconds:.0} seconds is longer than the {MAX_SOUND_SECONDS:.0} second limit"
+        ));
+    }
+    if frames.is_empty() {
+        return Err("the WAV file has no audio".into());
+    }
+    Ok(crate::mixer::Sample {
+        rate: spec.sample_rate,
+        frames,
+    })
+}
+
+#[cfg(test)]
+mod wav_tests {
+    use super::*;
+
+    fn wav(
+        channels: u16,
+        rate: u32,
+        bits: u16,
+        format: hound::SampleFormat,
+        write: impl FnOnce(&mut hound::WavWriter<&mut Cursor<Vec<u8>>>),
+    ) -> Vec<u8> {
+        let mut cursor = Cursor::new(Vec::new());
+        {
+            let spec = hound::WavSpec {
+                channels,
+                sample_rate: rate,
+                bits_per_sample: bits,
+                sample_format: format,
+            };
+            let mut w = hound::WavWriter::new(&mut cursor, spec).unwrap();
+            write(&mut w);
+            w.finalize().unwrap();
+        }
+        cursor.into_inner()
+    }
+
+    #[test]
+    fn decodes_every_supported_format_to_16_bit_stereo() {
+        let mono16 = wav(1, 22050, 16, hound::SampleFormat::Int, |w| {
+            w.write_sample(1000i16).unwrap();
+            w.write_sample(-2000i16).unwrap();
+        });
+        let s = decode_wav(&mono16).unwrap();
+        assert_eq!(
+            (s.rate, s.frames.as_slice()),
+            (22050, &[[1000, 1000], [-2000, -2000]][..])
+        );
+
+        let stereo16 = wav(2, 44100, 16, hound::SampleFormat::Int, |w| {
+            for v in [1i16, 2, 3, 4] {
+                w.write_sample(v).unwrap();
+            }
+        });
+        assert_eq!(decode_wav(&stereo16).unwrap().frames, [[1, 2], [3, 4]]);
+
+        let pcm24 = wav(1, 44100, 24, hound::SampleFormat::Int, |w| {
+            w.write_sample(0x123400i32).unwrap()
+        });
+        assert_eq!(decode_wav(&pcm24).unwrap().frames, [[0x1234, 0x1234]]);
+
+        let pcm32 = wav(1, 44100, 32, hound::SampleFormat::Int, |w| {
+            w.write_sample(0x4000_0000i32).unwrap()
+        });
+        assert_eq!(decode_wav(&pcm32).unwrap().frames, [[0x4000, 0x4000]]);
+
+        let pcm8 = wav(1, 22050, 8, hound::SampleFormat::Int, |w| {
+            w.write_sample(64i8).unwrap()
+        });
+        assert_eq!(decode_wav(&pcm8).unwrap().frames, [[64 << 8, 64 << 8]]);
+
+        let float = wav(1, 48000, 32, hound::SampleFormat::Float, |w| {
+            w.write_sample(0.5f32).unwrap();
+            w.write_sample(-3.0f32).unwrap();
+        });
+        assert_eq!(
+            decode_wav(&float).unwrap().frames,
+            [[16384, 16384], [-32767, -32767]],
+            "floats clamp to full scale"
+        );
+    }
+
+    #[test]
+    fn unsupported_or_broken_wav_files_are_explained() {
+        assert!(
+            decode_wav(b"RIFF nope")
+                .unwrap_err()
+                .contains("not a readable WAV")
+        );
+        let six = wav(6, 44100, 16, hound::SampleFormat::Int, |w| {
+            for _ in 0..6 {
+                w.write_sample(0i16).unwrap();
+            }
+        });
+        assert!(decode_wav(&six).unwrap_err().contains("6 channels"));
+        let slow = wav(1, 4000, 16, hound::SampleFormat::Int, |w| {
+            w.write_sample(0i16).unwrap()
+        });
+        assert!(decode_wav(&slow).unwrap_err().contains("4000 Hz"));
+        let empty = wav(1, 44100, 16, hound::SampleFormat::Int, |_| {});
+        assert!(decode_wav(&empty).unwrap_err().contains("no audio"));
+        let mut truncated = wav(1, 44100, 16, hound::SampleFormat::Int, |w| {
+            for _ in 0..100 {
+                w.write_sample(5i16).unwrap();
+            }
+        });
+        truncated.truncate(60);
+        assert!(
+            decode_wav(&truncated).is_err(),
+            "a cut-off file is an error, not silence"
+        );
+    }
+}

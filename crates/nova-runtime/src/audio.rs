@@ -7,9 +7,12 @@
 use std::ffi::c_char;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::time::Instant;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+
+use crate::mixer::{Command, Mixer};
 
 const NOVA_AUDIO_MAX_BLOCK: usize = 4096; // audio/audio.h
 
@@ -108,25 +111,49 @@ pub struct AudioStats {
     pub stream_errors: AtomicU32,
     pub sample_rate: AtomicU32,
     pub channels: AtomicU32,
+    pub voices: AtomicU32,
+    pub dropped_commands: AtomicU32,
 }
 
 pub struct AudioOut {
     _stream: cpal::Stream,
     pub stats: Arc<AudioStats>,
     pub description: String,
+    sender: Option<SyncSender<Command>>,
+}
+
+impl AudioOut {
+    /// Hands a sound command to the audio thread. Dropped (and counted) if the queue is full,
+    /// which only happens when scripts queue hundreds of sounds faster than they play.
+    pub fn send(&self, command: Command) {
+        if let Some(sender) = &self.sender
+            && sender.try_send(command).is_err()
+        {
+            self.stats.dropped_commands.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+}
+
+/// What the audio thread renders: the C core's demo score (the M1 benchmark) or the game mixer.
+enum Source {
+    Demo(DemoRenderer),
+    Mixer(Mixer, Receiver<Command>),
 }
 
 fn build<T>(
     device: &cpal::Device,
     config: cpal::StreamConfig,
-    rate: u32,
+    mut source: Source,
     stats: Arc<AudioStats>,
 ) -> Result<cpal::Stream, String>
 where
     T: cpal::SizedSample + cpal::FromSample<f32>,
 {
-    let mut renderer = DemoRenderer::new(rate)?;
     let channels = config.channels as usize;
+    let gain = match source {
+        Source::Demo(_) => 0.5,
+        Source::Mixer(..) => 1.0,
+    };
     let mut scratch: Vec<f32> = vec![0.0; NOVA_AUDIO_MAX_BLOCK * 2];
     let callback_stats = stats.clone();
     let error_stats = stats;
@@ -140,8 +167,21 @@ where
                     // Only grows on an unusually large device buffer; never in steady state.
                     scratch.resize(frames * 2, 0.0);
                 }
-                if !renderer.render(&mut scratch[..frames * 2]) {
-                    callback_stats.faults.fetch_add(1, Ordering::Relaxed);
+                match &mut source {
+                    Source::Demo(renderer) => {
+                        if !renderer.render(&mut scratch[..frames * 2]) {
+                            callback_stats.faults.fetch_add(1, Ordering::Relaxed);
+                        }
+                    }
+                    Source::Mixer(mixer, commands) => {
+                        while let Ok(command) = commands.try_recv() {
+                            mixer.apply(command);
+                        }
+                        mixer.render(&mut scratch[..frames * 2]);
+                        callback_stats
+                            .voices
+                            .store(mixer.active_voices() as u32, Ordering::Relaxed);
+                    }
                 }
                 for (frame, out) in data.chunks_mut(channels.max(1)).enumerate() {
                     let (l, r) = (scratch[frame * 2], scratch[frame * 2 + 1]);
@@ -152,7 +192,7 @@ where
                             (_, 1) => r,
                             _ => 0.0,
                         };
-                        *sample = T::from_sample_(v.clamp(-1.0, 1.0) * 0.5);
+                        *sample = T::from_sample_(v.clamp(-1.0, 1.0) * gain);
                     }
                 }
                 let micros = started.elapsed().as_micros() as u64;
@@ -173,7 +213,8 @@ where
         .map_err(|e| format!("cannot open audio stream: {e}"))
 }
 
-pub fn start() -> Result<AudioOut, String> {
+/// `game` selects the mixer for project games; otherwise the benchmark's demo score plays.
+pub fn start(game: bool) -> Result<AudioOut, String> {
     let host = cpal::default_host();
     let device = host
         .default_output_device()
@@ -184,19 +225,25 @@ pub fn start() -> Result<AudioOut, String> {
     let format = supported.sample_format();
     let config = supported.config();
     let rate: u32 = config.sample_rate;
-    if rate != 44100 && rate != 48000 {
-        return Err(format!(
-            "device rate {rate} Hz is not supported by the audio core (44100/48000)"
-        ));
-    }
     let stats = Arc::new(AudioStats::default());
     stats.sample_rate.store(rate, Ordering::Relaxed);
     stats
         .channels
         .store(config.channels as u32, Ordering::Relaxed);
+    let (source, sender) = if game {
+        let (tx, rx) = sync_channel::<Command>(512);
+        (Source::Mixer(Mixer::new(rate), rx), Some(tx))
+    } else {
+        if rate != 44100 && rate != 48000 {
+            return Err(format!(
+                "device rate {rate} Hz is not supported by the audio core (44100/48000)"
+            ));
+        }
+        (Source::Demo(DemoRenderer::new(rate)?), None)
+    };
     let stream = match format {
-        cpal::SampleFormat::F32 => build::<f32>(&device, config, rate, stats.clone())?,
-        cpal::SampleFormat::I16 => build::<i16>(&device, config, rate, stats.clone())?,
+        cpal::SampleFormat::F32 => build::<f32>(&device, config, source, stats.clone())?,
+        cpal::SampleFormat::I16 => build::<i16>(&device, config, source, stats.clone())?,
         other => return Err(format!("unsupported device sample format {other:?}")),
     };
     stream
@@ -208,6 +255,7 @@ pub fn start() -> Result<AudioOut, String> {
         _stream: stream,
         stats,
         description,
+        sender,
     })
 }
 
