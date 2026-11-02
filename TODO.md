@@ -531,7 +531,7 @@ software ownership checks, not Android-device or audible-playback evidence.
 
 Actual Sprite/Sound shell integration and the Model workspace remain active
 in isolated owner worktrees. Per-participant discard/recovery provenance is
-the remaining shared save-lifecycle continuation. Native active-window/input,
+under combined qualification in the continuation below. Native active-window/input,
 human IME/VoiceOver and audio/microphone qualification remain deferred.
 The arranger/piano roll, recording, full production GUI, runtime long-music
 binding, portable delivery and all-tools 3D rally exercise are not complete.
@@ -560,6 +560,15 @@ failure, ambiguous old records, malformed/forged provenance and the exact
 32-declaration boundary. The studio target builds without compiler diagnostics.
 No GUI/focus, native playback-device, runtime audio or Scene serializer changes
 were made for this continuation.
+
+The continuation is integrated as `f76a275`. Combined document and real Sound
+publication/reset consumers pass in Debug and ASan/UBSan, including source-only
+reset/reload without a saved acknowledgement or rewritten WAV/metadata.
+Coordinator review found two tightly coupled historical-binding issues:
+retired entries retain unnecessary output bytes, and importing a basename equal
+to a discarded generated runtime ID can report success without registration.
+The real shell reproduces the latter. The foundation owner is implementing a
+focused follow-up; reset qualification remains open until those regressions pass.
 
 ## Pre-Qt integrated baseline (retained evidence)
 

@@ -65,7 +65,8 @@ When `NOVA_QT_STUDIO` is also enabled, `nova_qt_sound_host` uses this component'
 actual codec/compiler with `ProjectDocument` and the Qt-selected native runtime.
 It covers default PCM24 and float32 publication, native preflight, exact
 participant/revision/digest acknowledgements, source-only retention of the old
-WAV/metadata, stale-output Run readiness and reopened component identity.
+WAV/metadata, guarded discard/reload without a saved acknowledgement,
+stale-output Run readiness and reopened component identity.
 No native audio device is opened. This is a persistence consumer, not a claim
 that the actual Studio shell or native input is integrated.
 

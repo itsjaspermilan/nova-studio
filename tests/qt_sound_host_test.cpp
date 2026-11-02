@@ -143,6 +143,30 @@ private slots:
         QVERIFY(!document.dirty());
         QVERIFY(document.derivedStale());
         QVERIFY(!document.markPersisted(*revised, sound::SaveIntent::SourceOnly, nullptr, error));
+
+        QVERIFY2(document.setSettings("Uncommitted brake", 48000, 0.8, error), qPrintable(error));
+        const auto unsaved = sound::sourceValue(document.snapshot(), error);
+        QVERIFY2(unsaved, qPrintable(error));
+        auto candidate = restored;
+        candidate.revision = unsaved->snapshot->revision.number;
+        candidate.source.bytes = unsaved->bytes;
+        candidate.outputs.clear();
+        QSignalSpy acknowledgements(&reopened, &ProjectDocument::assetSnapshotSaved);
+        QVERIFY2(reopened.stageAssetSnapshot(candidate, &error), qPrintable(error));
+        QVERIFY(reopened.dirty());
+        QVERIFY2(reopened.discardAssetSnapshot(candidate.id, &error), qPrintable(error));
+        QCOMPARE(acknowledgements.count(), 0);
+        QCOMPARE(ProjectDocument::assetSnapshotDigest(reopened.assetSnapshots().front()),
+            ProjectDocument::assetSnapshotDigest(restored));
+        QVERIFY(!reopened.dirty());
+        QVERIFY(reopened.assetPublication(restored.id).stale);
+        QVERIFY(!reopened.runtimeAssetsReady(&error));
+        QCOMPARE(readFile(reopened.root() + "/brake.wav"), output->wav);
+        QCOMPARE(readFile(reopened.root() + "/brake.json"), output->metadata);
+        QVERIFY2(document.load(reopened.assetSnapshots().front().source.bytes, error), qPrintable(error));
+        QVERIFY(!document.dirty());
+        QVERIFY(document.derivedStale());
+        QVERIFY(!document.markPersisted(*unsaved, sound::SaveIntent::SourceOnly, nullptr, error));
         QVERIFY(!IsAudioDeviceReady());
     }
 };
