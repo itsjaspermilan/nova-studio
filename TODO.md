@@ -279,7 +279,13 @@ Second slice, built: visual scene editor for `*.scene.json` (opens by default, J
 - [x] Objects are drawn with their entity's real sprite (read from `entities/*.lua`, following parent classes; first frame of a sheet, pivot respected) and selected by that sprite's size.
 - [ ] Not yet: animations playing in the editor, entities that set their sprite in code (they stay boxes named by kind), multi-select, rotate/resize handles, (renames now update scene references).
 - [x] External changes: when the studio window regains focus, open text files changed on disk are reloaded if nothing is unsaved, or flagged with Keep mine / Load from disk (and a confirm before saving over them) if there is. Saves are already atomic. [ ] Not yet: changed PNG/WAV/GLB files are not noticed, no crash-recovery drafts, no undo that spans editors.
-- [ ] Help window and short tutorials; beginner wording throughout.
+- [x] Help window (2026-11-02; F1, "? Help" in the project bar, a "make your first game" button in the hub): a
+  start page, five hands-on lessons with per-step checkboxes (first game, drawing and animating a sprite, a sound
+  effect, a level bigger than the screen, a 3D model with an animation), a searchable Nova reference, and a
+  keys-and-tips page. Lesson code is in `studio/src/lib/tutorials/*.lua` with an "Add to my project" button, and the
+  runtime's `tests/tutorials.rs` plays every file on top of the Starter template (including picking up the coins
+  and the sound). [ ] Not yet: tooltips on the studio's own buttons, a first-run prompt, lessons for tile maps and
+  the music editor in depth, translated text.
 - [ ] Port from GameStudio where it fits: project tree, tabs, code editor, layout
   editor, help system, MCP server for agents.
 

@@ -58,6 +58,10 @@ class Studio {
   log: LogLine[] = $state([]);
   panel: Panel = $state("problems");
   panelOpen = $state(true);
+  helpOpen = $state(false);
+  /// Which part of the help window to show: "start", "lessons", "reference" or "keys"; lesson opens a lesson.
+  helpTab: "start" | "lessons" | "reference" | "keys" = $state("start");
+  helpLesson: string | null = $state(null);
   jump: { path: string; line: number; nonce: number } | null = $state(null);
 
   /// Editors with their own files to save (a sprite's PNG) register here; run before the text is written.
@@ -467,6 +471,30 @@ class Studio {
     if (!tab || !disk || disk.text == null) return;
     tab.saved = disk.text; // the new baseline, so it is not flagged again
     tab.conflict = false;
+  }
+
+  /// Writes a lesson's code into the project (asking before it replaces a file) and opens it.
+  async applySnippet(path: string, code: string) {
+    if (!this.project) return this.say("error", "Open a project first, then add the code to it.");
+    const exists = this.files.some((f) => f.path === path);
+    if (exists && !confirm(`Replace ${path} with the lesson's version? Your version will be gone.`)) return;
+    await this.#guard(async () => {
+      if (exists) {
+        await this.api!.writeFile(path, code);
+        await this.checkExternal(); // clean tabs reload; a tab with unsaved changes is flagged instead of overwritten
+      } else {
+        await this.api!.createFile(path, code);
+        await this.refreshFiles();
+      }
+      await this.openFile(path);
+      this.say("info", `${exists ? "Replaced" : "Added"} ${path}`);
+    });
+  }
+
+  openHelp(tab: "start" | "lessons" | "reference" | "keys" = "start", lesson: string | null = null) {
+    this.helpTab = tab;
+    this.helpLesson = lesson;
+    this.helpOpen = true;
   }
 
   async remove(path: string) {

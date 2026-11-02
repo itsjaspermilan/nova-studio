@@ -8,6 +8,7 @@
   import SoundEditor from "./components/SoundEditor.svelte";
   import ModelEditor from "./components/ModelEditor.svelte";
   import SongEditor from "./components/SongEditor.svelte";
+  import Help from "./components/Help.svelte";
   import BottomPanel from "./components/BottomPanel.svelte";
   import { fileKind } from "./lib/tree";
   import { isDirty, studio } from "./lib/store.svelte";
@@ -15,7 +16,10 @@
   onMount(() => {
     void studio.init();
     const keys = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+      if (e.key === "F1") {
+        e.preventDefault();
+        studio.helpOpen ? (studio.helpOpen = false) : studio.openHelp();
+      } else if ((e.metaKey || e.ctrlKey) && e.key === "s") {
         e.preventDefault();
         void studio.save();
       } else if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && studio.project) {
@@ -56,6 +60,7 @@
       <strong>{studio.project.name}</strong>
       {#if studio.api?.kind === "mock"}<span class="pill">browser preview</span>{/if}
       <span class="spacer"></span>
+      <button class="ghost" onclick={() => studio.openHelp()} title="Help and lessons (F1)">? Help</button>
       <button onclick={() => studio.saveAll()} disabled={!studio.dirty}>Save all</button>
       {#if studio.running}
         <button class="danger" onclick={() => studio.stop()}>■ Stop</button>
@@ -121,6 +126,8 @@
     {/if}
   </div>
 {/if}
+
+<Help />
 
 {#if studio.notice}
   <div class="toast" class:error={studio.notice.kind === "error"} role="status">

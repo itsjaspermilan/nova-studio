@@ -19,6 +19,7 @@
   <section class="hero">
     <h1>Nova Studio</h1>
     <p class="dim">Make native 2D and 3D games in Lua. Projects are plain folders you own.</p>
+    <p><button class="primary" onclick={() => studio.openHelp("lessons", "first-game")}>New here? Make your first game (10 min)</button> <button class="ghost" onclick={() => studio.openHelp()}>? Help and lessons</button></p>
   </section>
 
   <div class="columns">

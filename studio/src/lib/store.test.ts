@@ -123,3 +123,42 @@ describe("files changed outside the studio", () => {
     expect(studio.sessions.has("sprites/player.sprite.json")).toBe(false);
   });
 });
+
+describe("adding lesson code to a project", () => {
+  it("creates a new file, opens it, and asks before replacing one", async () => {
+    await openProject();
+    await studio.applySnippet("entities/coin.lua", "return nova.entity {}\n");
+    expect((await studio.api!.readFile("entities/coin.lua")).text).toBe("return nova.entity {}\n");
+    expect(studio.active).toBe("entities/coin.lua");
+
+    vi.stubGlobal("confirm", () => false);
+    await studio.applySnippet("entities/coin.lua", "-- replaced\n");
+    expect((await studio.api!.readFile("entities/coin.lua")).text).toBe("return nova.entity {}\n"); // declined
+
+    vi.stubGlobal("confirm", () => true);
+    await studio.applySnippet("entities/coin.lua", "-- replaced\n");
+    expect((await studio.api!.readFile("entities/coin.lua")).text).toBe("-- replaced\n");
+    expect(studio.tabs.find((t) => t.path === "entities/coin.lua")!.text).toBe("-- replaced\n"); // the open tab shows it
+  });
+
+  it("does not overwrite unsaved work in an open tab, and needs a project", async () => {
+    await openProject();
+    await studio.openFile("main.lua");
+    studio.edit("main.lua", "-- my work\n");
+    await studio.applySnippet("main.lua", "-- lesson\n");
+    const tab = studio.tabs.find((t) => t.path === "main.lua")!;
+    expect(tab.text).toBe("-- my work\n");
+    expect(tab.conflict).toBe(true); // flagged, with the choice left to the person
+    await studio.closeProject();
+    await studio.applySnippet("x.lua", "-- x\n");
+    expect(studio.notice?.text).toContain("Open a project first");
+  });
+
+  it("opens the help window on the tab and lesson asked for", () => {
+    studio.openHelp("lessons", "sound");
+    expect([studio.helpOpen, studio.helpTab, studio.helpLesson]).toEqual([true, "lessons", "sound"]);
+    studio.openHelp();
+    expect([studio.helpTab, studio.helpLesson]).toEqual(["start", null]);
+    studio.helpOpen = false;
+  });
+});
