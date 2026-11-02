@@ -26,6 +26,14 @@ export interface Box {
 }
 /// Natural pixel sizes of images by project path, once they have loaded.
 export type Sizes = ReadonlyMap<string, { w: number; h: number }>;
+/// What is known about an entity kind's picture: its size on screen units and where its pivot sits (fractions).
+export interface KindInfo {
+  w: number;
+  h: number;
+  px: number;
+  py: number;
+}
+export type Kinds = ReadonlyMap<string, KindInfo>;
 
 export const DEFAULT_WORLD = { width: 960, height: 540 };
 export const OBJECT_BOX = 32;
@@ -98,10 +106,14 @@ export function itemAt(scene: Scene, ref: Ref): Item | undefined {
 
 const num = (v: unknown, fallback: number) => (typeof v === "number" && Number.isFinite(v) ? v : fallback);
 
-export function boundsOf(scene: Scene, ref: Ref, sizes: Sizes): Box {
+export function boundsOf(scene: Scene, ref: Ref, sizes: Sizes, kinds?: Kinds): Box {
   const item = itemAt(scene, ref);
   if (!item) return { x: 0, y: 0, w: 0, h: 0 };
-  if (ref.kind === "objects") return { x: item.x, y: item.y, w: OBJECT_BOX, h: OBJECT_BOX };
+  if (ref.kind === "objects") {
+    // An entity with a sprite occupies the sprite's size around its pivot (centred unless it has one).
+    const k = kinds?.get(String(item.kind));
+    return k ? { x: item.x - k.px * k.w, y: item.y - k.py * k.h, w: k.w, h: k.h } : { x: item.x, y: item.y, w: OBJECT_BOX, h: OBJECT_BOX };
+  }
   if (ref.kind === "images") {
     const size = sizes.get(String(item.image)) ?? { w: OBJECT_BOX, h: OBJECT_BOX };
     const scale = num(item.scale, 1);
@@ -127,10 +139,10 @@ export function drawOrder(scene: Scene): Ref[] {
 }
 
 /// The topmost item under a world point.
-export function hitTest(scene: Scene, x: number, y: number, sizes: Sizes): Ref | null {
+export function hitTest(scene: Scene, x: number, y: number, sizes: Sizes, kinds?: Kinds): Ref | null {
   const order = drawOrder(scene);
   for (let i = order.length - 1; i >= 0; i--) {
-    const b = boundsOf(scene, order[i]!, sizes);
+    const b = boundsOf(scene, order[i]!, sizes, kinds);
     if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return order[i]!;
   }
   return null;

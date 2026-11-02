@@ -276,8 +276,8 @@ Second slice, built: visual scene editor for `*.scene.json` (opens by default, J
   colour, scene background and size. Saves tidy, diff-friendly JSON; unknown keys pass through.
 - [x] Pictures come from the project (`read_image` data URLs); tile maps are drawn.
 - [x] Tile painting (paint, fill, erase, make tiles solid, resize, new map from a tileset image) and object `props` editing (text, number, true/false; tables stay in JSON).
-- [ ] Not yet: previewing an entity's real sprite (objects are boxes
-  named by kind), multi-select, rotate/resize handles, (renames now update scene references).
+- [x] Objects are drawn with their entity's real sprite (read from `entities/*.lua`, following parent classes; first frame of a sheet, pivot respected) and selected by that sprite's size.
+- [ ] Not yet: animations playing in the editor, entities that set their sprite in code (they stay boxes named by kind), multi-select, rotate/resize handles, (renames now update scene references).
 - [ ] Undo/redo across editors, safe saves, recovery, external-change handling.
 - [ ] Help window and short tutorials; beginner wording throughout.
 - [ ] Port from GameStudio where it fits: project tree, tabs, code editor, layout

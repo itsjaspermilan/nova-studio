@@ -231,3 +231,19 @@ describe("tile maps", () => {
     expect(JSON.parse(serializeScene(s))).toEqual(JSON.parse(JSON.stringify(s)));
   });
 });
+
+describe("objects with a known sprite", () => {
+  const kinds = new Map([["player", { w: 16, h: 32, px: 0.5, py: 1 }], ["crate", { w: 10, h: 10, px: 0.5, py: 0.5 }]]);
+  it("occupy the sprite's size around its pivot; unknown kinds keep the marker box", () => {
+    const s = scene();
+    expect(boundsOf(s, { kind: "objects", index: 0 }, sizes, kinds)).toEqual({ x: 472, y: 408, w: 16, h: 32 });
+    expect(boundsOf(s, { kind: "objects", index: 1 }, sizes, kinds)).toEqual({ x: 95, y: 435, w: 10, h: 10 });
+    expect(boundsOf(s, { kind: "objects", index: 1 }, sizes, new Map([["player", kinds.get("player")!]]))).toEqual({ x: 100, y: 440, w: 32, h: 32 });
+    expect(boundsOf(s, { kind: "objects", index: 0 }, sizes)).toEqual({ x: 480, y: 440, w: 32, h: 32 });
+  });
+  it("hit tests against those boxes", () => {
+    const s = scene();
+    expect(hitTest(s, 480, 420, sizes, kinds)).toEqual({ kind: "objects", index: 0 }); // above the origin: inside the pivoted sprite
+    expect(hitTest(s, 480, 420, sizes)).toEqual({ kind: "images", index: 1 }); // without the sprite size only the background is there
+  });
+});

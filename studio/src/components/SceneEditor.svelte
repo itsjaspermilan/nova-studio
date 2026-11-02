@@ -4,9 +4,11 @@
     History, addItem, afterRemoval, boundsOf, drawOrder, duplicateItem, hitTest, itemAt, moveTo, parseScene, removeItem, sameRef,
     serializeScene, setField, setSceneField, snap, uniqueName, worldSize, type Item, type ItemKind, type Ref, type Scene, type Sizes,
     addTilemap, cellAt, fillTiles, mapSize, paintTile, parsePropValue, propsOf, removeTilemap, renameProp, resizeTilemap, setProp, showPropValue,
-    tilemapBox, tilemaps, toggleSolid, EMPTY_TILE,
+    tilemapBox, tilemaps, toggleSolid, EMPTY_TILE, type Kinds,
   } from "../lib/scene-model";
   import { studio } from "../lib/store.svelte";
+  import { resolveEntity } from "../lib/entity-info";
+  import { parseSheetJson } from "../lib/sprite-doc";
 
   let { path, text, onjson }: { path: string; text: string; onjson: () => void } = $props();
 
@@ -43,21 +45,72 @@
   const pictures = new Map<string, HTMLImageElement>();
   let pictureTick = $state(0);
 
-  function loadPicture(file: string) {
-    if (pictures.has(file) || !studio.api) return;
+  const loading = new Map<string, Promise<HTMLImageElement | undefined>>();
+  /// Loads a project picture once; resolves when it can be drawn (or undefined if it cannot be read).
+  function loadPicture(file: string): Promise<HTMLImageElement | undefined> {
+    const known = loading.get(file);
+    if (known) return known;
     const img = new Image();
     pictures.set(file, img);
-    studio.api
-      .readImage(file)
-      .then((url) => {
-        img.onload = () => {
-          sizes = new Map(sizes).set(file, { w: img.naturalWidth, h: img.naturalHeight });
-          pictureTick++;
-        };
-        img.src = url;
-      })
-      .catch(() => {});
+    const promise = new Promise<HTMLImageElement | undefined>((resolve) => {
+      if (!studio.api) return resolve(undefined);
+      studio.api
+        .readImage(file)
+        .then((url) => {
+          img.onload = () => {
+            sizes = new Map(sizes).set(file, { w: img.naturalWidth, h: img.naturalHeight });
+            pictureTick++;
+            resolve(img);
+          };
+          img.onerror = () => resolve(undefined);
+          img.src = url;
+        })
+        .catch(() => resolve(undefined));
+    });
+    loading.set(file, promise);
+    return promise;
   }
+
+  // What each entity kind in the scene looks like, learned by reading its Lua file (sprite and pivot).
+  let kindSizes = $state(new Map<string, { w: number; h: number; px: number; py: number }>());
+  const kindPics = new Map<string, { image: string; sx: number; sy: number; sw: number; sh: number }>();
+  const asked = new Set<string>();
+  const dirOf = (p: string) => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
+  const joinPath = (folder: string, rel: string) => {
+    const out = folder ? folder.split("/") : [];
+    for (const part of rel.split("/")) part === ".." ? out.pop() : part !== "." && part !== "" && out.push(part);
+    return out.join("/");
+  };
+
+  async function learnKind(kind: string) {
+    if (asked.has(kind) || !studio.api) return;
+    asked.add(kind);
+    const api = studio.api;
+    const look = await resolveEntity(kind, (p) => api.readFile(p).then((c) => c.text).catch(() => null));
+    if (!look.sprite) return;
+    const files = studio.files.filter((f) => !f.dir).map((f) => f.path);
+    const name = look.sprite;
+    let image = "";
+    let frame: { sx: number; sy: number; sw: number; sh: number } | null = null;
+    const sheet = files.find((f) => f === name || f.endsWith(`/${name}.sprite.json`) || f === `${name}.sprite.json`);
+    if (sheet?.endsWith(".sprite.json")) {
+      const parsed = parseSheetJson((await api.readFile(sheet).catch(() => null))?.text ?? "");
+      if (parsed.ok && parsed.json.image) {
+        image = joinPath(dirOf(sheet), parsed.json.image);
+        frame = { sx: 0, sy: 0, sw: parsed.json.frame_width, sh: parsed.json.frame_height };
+      }
+    }
+    if (!image) image = files.find((f) => f === name || f === `sprites/${name}.png`) ?? "";
+    if (!image) return;
+    const picture = await loadPicture(image);
+    if (!picture) return;
+    const f = frame ?? { sx: 0, sy: 0, sw: picture.naturalWidth, sh: picture.naturalHeight };
+    kindPics.set(kind, { image, ...f });
+    kindSizes = new Map(kindSizes).set(kind, { w: f.sw, h: f.sh, px: look.pivot?.[0] ?? 0.5, py: look.pivot?.[1] ?? 0.5 });
+  }
+  $effect(() => {
+    for (const o of scene.objects ?? []) if (typeof o.kind === "string") void learnKind(o.kind);
+  });
 
   $effect(() => {
     for (const item of scene.images ?? []) if (typeof item.image === "string") loadPicture(item.image);
@@ -137,7 +190,7 @@
 
     for (const ref of drawOrder(scene)) {
       const it = itemAt(scene, ref)!;
-      const b = boundsOf(scene, ref, sizes as Sizes);
+      const b = boundsOf(scene, ref, sizes as Sizes, kindSizes as Kinds);
       const [sx, sy] = toScreen(b.x, b.y);
       if (ref.kind === "images") {
         const picture = pictures.get(String(it.image));
@@ -147,6 +200,20 @@
           ctx.strokeRect(sx, sy, b.w * zoom, b.h * zoom);
         }
       } else if (ref.kind === "objects") {
+        const pic = kindPics.get(String(it.kind));
+        const picture = pic ? pictures.get(pic.image) : undefined;
+        if (pic && picture?.complete && picture.naturalWidth) {
+          ctx.drawImage(picture, pic.sx, pic.sy, pic.sw, pic.sh, sx, sy, b.w * zoom, b.h * zoom);
+          ctx.strokeStyle = "rgba(90,169,255,.55)";
+          ctx.setLineDash([3, 3]);
+          ctx.strokeRect(sx + 0.5, sy + 0.5, b.w * zoom, b.h * zoom);
+          ctx.setLineDash([]);
+          ctx.fillStyle = "#fff";
+          ctx.font = `${Math.max(9, 10 * zoom)}px system-ui`;
+          ctx.textBaseline = "bottom";
+          ctx.fillText(String(it.name ?? ""), sx + 2, sy - 2);
+          continue;
+        }
         ctx.fillStyle = "rgba(90,169,255,.35)";
         ctx.fillRect(sx, sy, b.w * zoom, b.h * zoom);
         ctx.strokeStyle = "#5aa9ff";
@@ -210,7 +277,7 @@
       }
     }
     if (selected && mode === "select") {
-      const b = boundsOf(scene, selected, sizes as Sizes);
+      const b = boundsOf(scene, selected, sizes as Sizes, kindSizes as Kinds);
       const [sx, sy] = toScreen(b.x, b.y);
       ctx.strokeStyle = "#ffd166";
       ctx.lineWidth = 2;
@@ -223,7 +290,7 @@
 
   $effect(() => {
     // redraw whenever anything the picture depends on changes
-    scene; selected; zoom; originX; originY; width; height; gridSize; showGrid; pictureTick; sizes; mode; mapIndex; hoverCell;
+    scene; selected; zoom; originX; originY; width; height; gridSize; showGrid; pictureTick; sizes; mode; mapIndex; hoverCell; kindSizes;
     draw();
   });
 
@@ -274,7 +341,7 @@
     }
     const [sx, sy] = pointer(e);
     const [x, y] = toWorld(sx, sy);
-    const hit = e.button === 0 && !e.altKey ? hitTest(scene, x, y, sizes as Sizes) : null;
+    const hit = e.button === 0 && !e.altKey ? hitTest(scene, x, y, sizes as Sizes, kindSizes as Kinds) : null;
     if (hit) {
       selected = hit;
       const it = itemAt(scene, hit)!;
