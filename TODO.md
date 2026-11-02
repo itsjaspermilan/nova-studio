@@ -4,6 +4,26 @@ Last updated: 2026-11-02. This replaces the earlier C11/raylib/Qt plan (M0 has
 rewritten `AGENTS.md` and `README.md` to match). Nothing below is implemented
 unless it is ticked.
 
+## Where things stand (2026-11-02, end of the first long session)
+
+Done and committed: M0 (reset), M1 (device spike), M2a-M2d except the items below, and a
+Gradle-free APK path. Two example games run on desktop and on the Android emulator:
+`examples/rally-demo` (immediate mode, 3D) and `examples/crate-dash` (scenes, entities,
+collisions, animation, tilemap, sound, saves). 111 Rust tests plus 7 audio-core tests pass.
+Nothing has run on a physical device; the Retroid has not arrived.
+
+Waiting on the user:
+- **A default font** for real text rendering (needs a download and a licence choice). Proposal: one
+  SIL Open Font License sans (Inter or Noto Sans, about 0.3 to 0.8 MB) bundled as the default, with
+  project fonts in `fonts/` overriding it.
+- **The Retroid** for the M1 device gate (frame pacing, thermals, controller, audio latency).
+
+Can proceed without input, in rough priority: real font rendering once the font is chosen; the
+studio shell (M4, Tauri, a web-tech UI) which will need a few product decisions; Android analogue
+sticks/triggers and immersive mode (need the device to verify); named/remappable input actions;
+rigid-bone model animation and simple lights; structured Lua diagnostics for the studio; OGG and
+streamed music; the C audio core's synthesis for the sound studio (M6).
+
 ## Goal
 
 A Game Maker 8-style studio, simpler and original, that makes **native Android
