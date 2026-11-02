@@ -324,6 +324,8 @@ frameworks, not Qt.
 Final exposed Cocoa layout/authoring and resize/scale dialog captures completed
 under LLDB with debuggee exit 0. The separate native focus/accessibility case
 returned debuggee exit 1 with the explicit locked-desktop diagnostic. That is a
-retained validation blocker, not a component test pass. Reproducible captures
-and logs are generated under the ignored `build-sprite/`, not committed as
-claims of final integrated acceptance.
+retained validation blocker, not a component test pass. The user explicitly
+deferred native input verification for this bounded component handoff; the
+strict assertions remain unchanged for the later unlocked-desktop check.
+Reproducible captures and logs are generated under the ignored `build-sprite/`,
+not committed as claims of final integrated acceptance.

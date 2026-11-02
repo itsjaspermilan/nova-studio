@@ -267,7 +267,9 @@ coordinate scene placement/native animation. The native `nova.frames` API
 still has one uniform duration; it does not consume this component's metadata.
 The full Cocoa active/key-window control check remains an explicit gate on an
 unlocked desktop; offscreen control and exposed-layout captures do not replace
-it. The layered animated marker fixture is not the final 3D rally game.
+it. The user explicitly deferred that native input check for this bounded
+component handoff; its assertions remain intact and it is not recorded as a
+pass. The layered animated marker fixture is not the final 3D rally game.
 
 ## Pre-Qt integrated baseline (retained evidence)
 
