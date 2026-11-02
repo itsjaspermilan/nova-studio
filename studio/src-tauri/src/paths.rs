@@ -15,7 +15,9 @@ pub fn normalize(rel: &str) -> Result<String, String> {
         return Err(format!("'{rel}' is not a valid project path"));
     }
     if rel.starts_with('/') || rel.as_bytes().get(1) == Some(&b':') {
-        return Err(format!("'{rel}' is an absolute path; use a path inside the project"));
+        return Err(format!(
+            "'{rel}' is an absolute path; use a path inside the project"
+        ));
     }
     let mut parts = Vec::new();
     for part in rel.split('/') {
@@ -35,13 +37,17 @@ pub fn normalize(rel: &str) -> Result<String, String> {
 /// existing parent must resolve to somewhere inside the project.
 pub fn confine(root: &Path, rel: &str) -> Result<PathBuf, String> {
     let rel = normalize(rel)?;
-    let root = root.canonicalize().map_err(|e| format!("the project folder is not available: {e}"))?;
+    let root = root
+        .canonicalize()
+        .map_err(|e| format!("the project folder is not available: {e}"))?;
     let full = root.join(&rel);
     let mut existing = full.as_path();
     while !existing.exists() {
         existing = existing.parent().ok_or("the path has no parent")?;
     }
-    let real = existing.canonicalize().map_err(|e| format!("cannot resolve '{rel}': {e}"))?;
+    let real = existing
+        .canonicalize()
+        .map_err(|e| format!("cannot resolve '{rel}': {e}"))?;
     if !real.starts_with(&root) {
         return Err(format!("'{rel}' resolves outside the project folder"));
     }
@@ -67,7 +73,17 @@ mod tests {
     fn normalize_accepts_plain_paths_and_rejects_escapes() {
         assert_eq!(normalize("a/b.lua").unwrap(), "a/b.lua");
         assert_eq!(normalize("./a//b/./c").unwrap(), "a/b/c");
-        for bad in ["", "/etc/passwd", "../x", "a/../../x", "C:/x", "a\\b", ".", "./", "a\0b"] {
+        for bad in [
+            "",
+            "/etc/passwd",
+            "../x",
+            "a/../../x",
+            "C:/x",
+            "a\\b",
+            ".",
+            "./",
+            "a\0b",
+        ] {
             assert!(normalize(bad).is_err(), "'{bad}'");
         }
     }
@@ -78,7 +94,11 @@ mod tests {
         std::fs::create_dir_all(root.join("scenes")).unwrap();
         std::fs::write(root.join("main.lua"), "x").unwrap();
         assert!(confine(&root, "main.lua").unwrap().ends_with("main.lua"));
-        assert!(confine(&root, "scenes/new/deep/file.lua").unwrap().ends_with("scenes/new/deep/file.lua"));
+        assert!(
+            confine(&root, "scenes/new/deep/file.lua")
+                .unwrap()
+                .ends_with("scenes/new/deep/file.lua")
+        );
         assert!(confine(&root, "../outside").is_err());
         let _ = std::fs::remove_dir_all(&root);
     }

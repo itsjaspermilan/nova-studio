@@ -85,7 +85,7 @@ local Scene = { __kind = "scene", __flat = true, __defaults = {}, __tags = {}, _
 Scene.__index = Scene
 local bases = { entity = Entity, scene = Scene }
 
-local RESERVED = { tags = true, sprite = true, model = true, depth = true, hitbox = true, screen = true }
+local RESERVED = { tags = true, sprite = true, model = true, depth = true, hitbox = true, screen = true, pivot = true }
 
 local function define(kind, a, b)
   local parent, spec
@@ -126,6 +126,7 @@ local function finalize(cls)
   cls.__model = spec.model or parent.__model
   cls.__depth = spec.depth or parent.__depth or 0
   cls.__hitbox = spec.hitbox or parent.__hitbox
+  cls.__pivot = spec.pivot or parent.__pivot
   if spec.screen ~= nil then cls.__screen = spec.screen else cls.__screen = parent.__screen end
   local handlers = {}
   for k, v in pairs(cls) do
@@ -178,7 +179,9 @@ local function bounds(e)
   if sprite then
     local w, h = raw.image_size(sprite_id(sprite))
     w, h = w * sx, h * sy
-    return e.x - w * 0.5, e.y - h * 0.5, e.x + w * 0.5, e.y + h * 0.5
+    local pivot = rawget(e, "pivot") or cls.__pivot
+    local px, py = pivot and pivot[1] or 0.5, pivot and pivot[2] or 0.5
+    return e.x - w * px, e.y - h * py, e.x + w * (1 - px), e.y + h * (1 - py)
   end
   return nil
 end
@@ -326,6 +329,14 @@ local function animate(e, dt)
   end
 end
 
+-- Where a sprite is drawn so that its pivot (fractions of its size, default centre) sits on the
+-- entity's position. Rotation turns the picture about the pivot.
+local function pivot_shift(pivot, w, h, sx, sy, angle)
+  local ox, oy = (0.5 - pivot[1]) * w * sx, (0.5 - pivot[2]) * h * sy
+  local c, s = cos(angle), sin(angle)
+  return ox * c - oy * s, ox * s + oy * c
+end
+
 local draw_opts = { sx = 1, sy = 1, rotation = 0, frame = 0, color = { 255, 255, 255, 255 } }
 local model_opts = { ry = 0, scale = 1, tint = { 255, 255, 255, 255 } }
 
@@ -351,11 +362,19 @@ function Entity:draw()
     local c, tint = draw_opts.color, self.tint
     c[1], c[2], c[3] = tint and tint[1] or 255, tint and tint[2] or 255, tint and tint[3] or 255
     c[4] = floor(255 * self.alpha)
+    local id = sprite_id(sprite)
+    local x, y = self.x, self.y
+    local pivot = rawget(self, "pivot") or cls.__pivot
+    if pivot then
+      local iw, ih = raw.image_size(id)
+      local dx, dy = pivot_shift(pivot, iw, ih, self.sx, self.sy, self.angle)
+      x, y = x + dx, y + dy
+    end
     if screen then
-      nova.ui.sprite(sprite_id(sprite), self.x, self.y, draw_opts)
+      nova.ui.sprite(id, x, y, draw_opts)
     else
       local w, h = nova.view()
-      nova.sprite(sprite_id(sprite), self.x - (W.cam.x - w * 0.5), self.y - (W.cam.y - h * 0.5), draw_opts)
+      nova.sprite(id, x - (W.cam.x - w * 0.5), y - (W.cam.y - h * 0.5), draw_opts)
     end
   end
 end
@@ -422,6 +441,143 @@ local function spawn(what, x, y, props)
   return e
 end
 nova.spawn = spawn
+
+-- ------------------------------------------------------------------ particles
+-- An emitter is an entity that owns a pool of small moving pictures. Everything about a particle is
+-- picked from the ranges in the spec when it is born, then it moves with gravity and drag, fades
+-- from `color` to `color_end` and shrinks or grows by `size_end`.
+local function range(v, default)
+  if v == nil then v = default end
+  if type(v) == "table" then return v[1], v[2] or v[1] end
+  return v, v
+end
+local function pick(a, b) if a == b then return a end return a + (b - a) * math.random() end
+
+local Emitter = nova.entity { screen = false }
+nova.Emitter = Emitter
+
+function Emitter:create()
+  self.spec = self.spec or {}
+  self.ps = { n = 0 } -- one small table per particle: plain, and fast enough for the 1000 default cap
+  self.carry = 0
+  self.emitting = true
+end
+
+local function emit_one(e)
+  local ps, spec = e.ps, e.spec
+  if ps.n >= (spec.max or 1000) then return end
+  local life_a, life_b = range(spec.life, { 0.4, 0.9 })
+  local speed_a, speed_b = range(spec.speed, { 40, 120 })
+  local size_a, size_b = range(spec.size, 4)
+  local spin_a, spin_b = range(spec.spin, 0)
+  local direction = spec.angle or -math.pi / 2
+  local spread = spec.spread or math.pi * 2
+  local a = direction + (math.random() - 0.5) * spread
+  local speed = pick(speed_a, speed_b)
+  local ox, oy = 0, 0
+  if spec.area then
+    ox, oy = (math.random() - 0.5) * (spec.area[1] or 0), (math.random() - 0.5) * (spec.area[2] or 0)
+  end
+  local life = pick(life_a, life_b)
+  ps.n = ps.n + 1
+  ps[ps.n] = {
+    x = e.x + ox, y = e.y + oy, vx = cos(a) * speed, vy = sin(a) * speed,
+    age = 0, life = life, size = pick(size_a, size_b), angle = 0, spin = pick(spin_a, spin_b),
+  }
+end
+
+--- Emits `n` particles at once.
+function Emitter:burst(n)
+  for _ = 1, n or 10 do emit_one(self) end
+end
+
+--- Stops making new particles; the emitter removes itself once the last one has faded (if `auto_destroy`).
+function Emitter:stop() self.emitting = false end
+
+function Emitter:update(dt)
+  local spec = self.spec
+  local rate = spec.rate or 0
+  if self.emitting and rate > 0 then
+    self.carry = self.carry + rate * dt
+    local n = floor(self.carry)
+    self.carry = self.carry - n
+    for _ = 1, n do emit_one(self) end
+  end
+  local ps = self.ps
+  local gravity, drag = spec.gravity or 0, spec.drag or 0
+  local damp = drag > 0 and math.max(0, 1 - drag * dt) or 1
+  local i = 1
+  while i <= ps.n do
+    local p = ps[i]
+    p.age = p.age + dt
+    if p.age >= p.life then
+      ps[i] = ps[ps.n]
+      ps[ps.n] = nil
+      ps.n = ps.n - 1
+    else
+      p.vy = p.vy + gravity * dt
+      p.vx, p.vy = p.vx * damp, p.vy * damp
+      p.x, p.y = p.x + p.vx * dt, p.y + p.vy * dt
+      p.angle = p.angle + p.spin * dt
+      i = i + 1
+    end
+  end
+  if self.auto_destroy and ps.n == 0 and (rate == 0 or not self.emitting) then self:destroy() end
+end
+
+local particle_opts = { sx = 1, sy = 1, rotation = 0, color = { 255, 255, 255, 255 } }
+local particle_color = { 255, 255, 255, 255 }
+
+function Emitter:draw()
+  if not self.visible then return end
+  local ps = self.ps
+  local spec = self.spec
+  local c0 = spec.color or { 255, 255, 255, 255 }
+  local c1 = spec.color_end or c0
+  local grow = spec.size_end or 1
+  local sprite = spec.image and sprite_id(spec.image)
+  local w, h = nova.view()
+  local camx, camy = W.cam.x - w * 0.5, W.cam.y - h * 0.5
+  local iw, ih
+  if sprite then iw, ih = raw.image_size(sprite) end
+  local col = sprite and particle_opts.color or particle_color
+  for i = 1, ps.n do
+    local p = ps[i]
+    local t = p.age / p.life
+    col[1] = c0[1] + ((c1[1] or c0[1]) - c0[1]) * t
+    col[2] = c0[2] + ((c1[2] or c0[2]) - c0[2]) * t
+    col[3] = c0[3] + ((c1[3] or c0[3]) - c0[3]) * t
+    col[4] = ((c0[4] or 255) + ((c1[4] or c0[4] or 255) - (c0[4] or 255)) * t) * self.alpha
+    local size = p.size * (1 + (grow - 1) * t)
+    local x, y = p.x, p.y
+    if not self.screen then x, y = x - camx, y - camy end
+    if sprite then
+      local s = size / math.max(iw, ih)
+      particle_opts.sx, particle_opts.sy, particle_opts.rotation = s, s, p.angle
+      if self.screen then nova.ui.sprite(sprite, x, y, particle_opts) else nova.sprite(sprite, x, y, particle_opts) end
+    elseif self.screen then
+      nova.ui.rect(x - size * 0.5, y - size * 0.5, size, size, col)
+    else
+      nova.rect(x - size * 0.5, y - size * 0.5, size, size, col)
+    end
+  end
+end
+
+--- `nova.particles(x, y, spec)`: a continuous emitter (`spec.rate` per second) you keep and move; call
+--- `:burst(n)` for a puff and `:stop()` to let it fade out.
+function nova.particles(x, y, spec)
+  spec = spec or {}
+  return spawn(Emitter, x, y, { spec = copy_value(spec), screen = spec.screen, depth = spec.depth })
+end
+
+--- `nova.burst(x, y, spec)`: one puff of `spec.count` (default 12) particles that cleans itself up.
+function nova.burst(x, y, spec)
+  spec = copy_value(spec or {})
+  spec.rate = 0
+  local e = spawn(Emitter, x, y, { spec = spec, screen = spec.screen, depth = spec.depth, auto_destroy = true })
+  e:burst(spec.count or 12)
+  return e
+end
 
 -- ------------------------------------------------------------------ tilemaps
 -- A grid of tiles from a tileset PNG. The data lives in native code; tile numbers count across the

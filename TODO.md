@@ -53,8 +53,7 @@ another physical Android device) to settle; the emulator cannot.
 - [ ] No GPU timestamps; frame time is CPU-side plus vsync.
 - [ ] 3D has no collision or physics (collisions are 2D boxes and circles only), static models only
   (no bone animation yet), one directional light, no shadows.
-- [ ] Sprites have no pivot/origin setting (always centred; flip with a negative scale); text is UI
-  layer only and draws on top of UI sprites.
+- [ ] Text is UI layer only and draws on top of UI sprites.
 - [ ] The mixer resamples linearly (pitched-up sounds can alias) and has no buses or effects; the C
   audio core's synthesis and DSP are not connected to game audio (M6).
 - [ ] Hot reload restarts the whole project (no state-preserving reload).
@@ -229,7 +228,7 @@ Spec in [docs/project-format.md](docs/project-format.md); example `examples/crat
   solid tiles, `slide()` with sub-stepping (no tunnelling), scene-file `tilemaps`.
 - [x] Crate Dash uses both (animated player, tilemap floor); 25 framework tests.
 - [x] Real text (2026-11-02): vector fonts rasterised at the screen's pixel size into a glyph atlas (`text.rs`), kerning, wrapping, alignment, shadow, nine bundled OFL fonts (`licenses/fonts/`), project `fonts/*.ttf|otf`; `examples/font-gallery`. Variable fonts use their default weight; text is UI-layer only.
-- [ ] Particles, paths, `in_rect`.
+- [x] Particles (`nova.particles`, `nova.burst`) and sprite pivots (`pivot = { x, y }`), 2026-11-02. [ ] Paths, `in_rect`.
 
 ### M2d: Services and platform
 
@@ -239,7 +238,7 @@ Spec in [docs/project-format.md](docs/project-format.md); example `examples/crat
 - [x] Save-data API (`nova.save`, atomic JSON file, corruption recovery, 1 MiB limit; done 2026-11-02).
 - [ ] 3D extras: simple lights/material options, rigid-bone animation playback.
 - [x] Lua time and memory limits (256 MiB; 1 s per frame, 5 s to load; covers coroutines; done 2026-11-02).
-- [ ] Structured diagnostics for the studio (file, line, traceback as data, not just a banner).
+- [x] Structured diagnostics for the studio (`nova check --json`, Problems panel).
 - [x] Project loading on Android: `.npk` single-file archive behind `Vfs`, bundled in the APK as
   `assets/project.npk`; `scripts/build-apk.sh --project <folder>` builds a per-game APK; Crate Dash
   verified on the emulator (2026-11-02). Real-device behaviour still unverified.

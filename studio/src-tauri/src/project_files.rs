@@ -30,7 +30,9 @@ pub struct FileContent {
 /// symbolic links and top-level build output are left out, matching what the runtime treats as the project.
 pub fn list_files(root: &Path) -> Result<Vec<FileEntry>, String> {
     fn walk(dir: &Path, prefix: &str, out: &mut Vec<FileEntry>) -> Result<(), String> {
-        for entry in std::fs::read_dir(dir).map_err(|e| format!("cannot read '{}': {e}", dir.display()))? {
+        for entry in
+            std::fs::read_dir(dir).map_err(|e| format!("cannot read '{}': {e}", dir.display()))?
+        {
             let entry = entry.map_err(|e| e.to_string())?;
             let name = entry.file_name().to_string_lossy().into_owned();
             if name.starts_with('.') {
@@ -40,19 +42,31 @@ pub fn list_files(root: &Path) -> Result<Vec<FileEntry>, String> {
             if kind.is_symlink() {
                 continue;
             }
-            let rel = if prefix.is_empty() { name.clone() } else { format!("{prefix}/{name}") };
+            let rel = if prefix.is_empty() {
+                name.clone()
+            } else {
+                format!("{prefix}/{name}")
+            };
             if kind.is_dir() {
                 if prefix.is_empty() && SKIPPED_TOP_LEVEL.contains(&name.as_str()) {
                     continue;
                 }
-                out.push(FileEntry { path: rel.clone(), dir: true, size: 0 });
+                out.push(FileEntry {
+                    path: rel.clone(),
+                    dir: true,
+                    size: 0,
+                });
                 walk(&entry.path(), &rel, out)?;
             } else if kind.is_file() {
                 if out.len() >= MAX_FILES {
                     return Err(format!("the project has more than {MAX_FILES} files"));
                 }
                 let size = entry.metadata().map_err(|e| e.to_string())?.len();
-                out.push(FileEntry { path: rel, dir: false, size });
+                out.push(FileEntry {
+                    path: rel,
+                    dir: false,
+                    size,
+                });
             }
         }
         Ok(())
@@ -69,7 +83,9 @@ fn base64(bytes: &[u8]) -> String {
     const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
-        let n = (u32::from(chunk[0]) << 16) | (u32::from(*chunk.get(1).unwrap_or(&0)) << 8) | u32::from(*chunk.get(2).unwrap_or(&0));
+        let n = (u32::from(chunk[0]) << 16)
+            | (u32::from(*chunk.get(1).unwrap_or(&0)) << 8)
+            | u32::from(*chunk.get(2).unwrap_or(&0));
         for i in 0..4 {
             if i <= chunk.len() {
                 out.push(T[(n >> (18 - 6 * i) & 63) as usize] as char);
@@ -90,7 +106,10 @@ pub fn read_image(root: &Path, rel: &str) -> Result<String, String> {
     let path = confine(root, rel)?;
     let meta = std::fs::metadata(&path).map_err(|e| format!("cannot read '{rel}': {e}"))?;
     if !meta.is_file() || meta.len() > MAX_ASSET_BYTES {
-        return Err(format!("'{rel}' is not a readable image (or is bigger than {} MiB)", MAX_ASSET_BYTES >> 20));
+        return Err(format!(
+            "'{rel}' is not a readable image (or is bigger than {} MiB)",
+            MAX_ASSET_BYTES >> 20
+        ));
     }
     let bytes = std::fs::read(&path).map_err(|e| format!("cannot read '{rel}': {e}"))?;
     Ok(format!("data:image/png;base64,{}", base64(&bytes)))
@@ -111,7 +130,10 @@ pub fn read_audio(root: &Path, rel: &str) -> Result<String, String> {
     let path = confine(root, rel)?;
     let meta = std::fs::metadata(&path).map_err(|e| format!("cannot read '{rel}': {e}"))?;
     if !meta.is_file() || meta.len() > MAX_AUDIO_BYTES {
-        return Err(format!("'{rel}' is not a readable sound (or is bigger than {} MiB)", MAX_AUDIO_BYTES >> 20));
+        return Err(format!(
+            "'{rel}' is not a readable sound (or is bigger than {} MiB)",
+            MAX_AUDIO_BYTES >> 20
+        ));
     }
     let bytes = std::fs::read(&path).map_err(|e| format!("cannot read '{rel}': {e}"))?;
     Ok(format!("{WAV_PREFIX}{}", base64(&bytes)))
@@ -122,10 +144,15 @@ pub fn write_audio(root: &Path, rel: &str, data_url: &str) -> Result<(), String>
     if !rel.to_ascii_lowercase().ends_with(".wav") {
         return Err(format!("'{rel}' is not a .wav path"));
     }
-    let encoded = data_url.strip_prefix(WAV_PREFIX).ok_or("expected a WAV data URL")?;
+    let encoded = data_url
+        .strip_prefix(WAV_PREFIX)
+        .ok_or("expected a WAV data URL")?;
     let bytes = unbase64(encoded)?;
     if bytes.len() as u64 > MAX_AUDIO_BYTES {
-        return Err(format!("'{rel}' would be bigger than {} MiB", MAX_AUDIO_BYTES >> 20));
+        return Err(format!(
+            "'{rel}' would be bigger than {} MiB",
+            MAX_AUDIO_BYTES >> 20
+        ));
     }
     if !is_wav(&bytes) {
         return Err("that is not WAV data".into());
@@ -141,12 +168,24 @@ pub fn read_file(root: &Path, rel: &str) -> Result<FileContent, String> {
     }
     let size = meta.len();
     if size > MAX_EDIT_BYTES {
-        return Ok(FileContent { text: None, binary: true, size });
+        return Ok(FileContent {
+            text: None,
+            binary: true,
+            size,
+        });
     }
     let bytes = std::fs::read(&path).map_err(|e| format!("cannot read '{rel}': {e}"))?;
     match String::from_utf8(bytes) {
-        Ok(text) => Ok(FileContent { text: Some(text), binary: false, size }),
-        Err(_) => Ok(FileContent { text: None, binary: true, size }),
+        Ok(text) => Ok(FileContent {
+            text: Some(text),
+            binary: false,
+            size,
+        }),
+        Err(_) => Ok(FileContent {
+            text: None,
+            binary: true,
+            size,
+        }),
     }
 }
 
@@ -154,7 +193,10 @@ pub fn read_file(root: &Path, rel: &str) -> Result<FileContent, String> {
 /// target, so an interrupted save never leaves half a file.
 pub fn write_file(root: &Path, rel: &str, text: &str) -> Result<(), String> {
     if text.len() as u64 > MAX_EDIT_BYTES {
-        return Err(format!("'{rel}' is bigger than the {} MiB editing limit", MAX_EDIT_BYTES >> 20));
+        return Err(format!(
+            "'{rel}' is bigger than the {} MiB editing limit",
+            MAX_EDIT_BYTES >> 20
+        ));
     }
     write_bytes(root, rel, text.as_bytes())
 }
@@ -165,11 +207,14 @@ fn write_bytes(root: &Path, rel: &str, bytes: &[u8]) -> Result<(), String> {
         return Err(format!("'{rel}' is a folder"));
     }
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("cannot create the folder for '{rel}': {e}"))?;
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("cannot create the folder for '{rel}': {e}"))?;
     }
     let temp = path.with_file_name(format!(
         ".{}.nova-save",
-        path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+        path.file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default()
     ));
     std::fs::write(&temp, bytes).map_err(|e| format!("cannot save '{rel}': {e}"))?;
     std::fs::rename(&temp, &path).map_err(|e| {
@@ -208,10 +253,15 @@ pub fn write_image(root: &Path, rel: &str, data_url: &str) -> Result<(), String>
     if !rel.to_ascii_lowercase().ends_with(".png") {
         return Err(format!("'{rel}' is not a .png path"));
     }
-    let encoded = data_url.strip_prefix("data:image/png;base64,").ok_or("expected a PNG data URL")?;
+    let encoded = data_url
+        .strip_prefix("data:image/png;base64,")
+        .ok_or("expected a PNG data URL")?;
     let bytes = unbase64(encoded)?;
     if bytes.len() as u64 > MAX_ASSET_BYTES {
-        return Err(format!("'{rel}' would be bigger than {} MiB", MAX_ASSET_BYTES >> 20));
+        return Err(format!(
+            "'{rel}' would be bigger than {} MiB",
+            MAX_ASSET_BYTES >> 20
+        ));
     }
     if !bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]) {
         return Err("that is not PNG data".into());
@@ -247,7 +297,8 @@ pub fn rename(root: &Path, from: &str, to: &str) -> Result<(), String> {
         return Err(format!("'{to}' already exists"));
     }
     if let Some(parent) = to_path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("cannot create the folder for '{to}': {e}"))?;
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("cannot create the folder for '{to}': {e}"))?;
     }
     std::fs::rename(&from_path, &to_path).map_err(|e| format!("cannot rename '{from}': {e}"))
 }
@@ -297,10 +348,19 @@ mod tests {
     #[test]
     fn listing_shows_files_and_folders_sorted_and_hides_hidden_and_build_output() {
         let root = project("list");
-        let names: Vec<_> = list_files(&root).unwrap().into_iter().map(|e| (e.path, e.dir)).collect();
+        let names: Vec<_> = list_files(&root)
+            .unwrap()
+            .into_iter()
+            .map(|e| (e.path, e.dir))
+            .collect();
         assert_eq!(
             names,
-            [("main.lua".to_string(), false), ("nova.json".into(), false), ("scenes".into(), true), ("scenes/a.lua".into(), false)]
+            [
+                ("main.lua".to_string(), false),
+                ("nova.json".into(), false),
+                ("scenes".into(), true),
+                ("scenes/a.lua".into(), false)
+            ]
         );
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -309,11 +369,25 @@ mod tests {
     fn images_come_back_as_data_urls_and_only_pngs_inside_the_project() {
         let root = project("image");
         std::fs::write(root.join("a.png"), [1u8, 2, 3, 4]).unwrap();
-        assert_eq!(read_image(&root, "a.png").unwrap(), "data:image/png;base64,AQIDBA==");
+        assert_eq!(
+            read_image(&root, "a.png").unwrap(),
+            "data:image/png;base64,AQIDBA=="
+        );
         std::fs::write(root.join("b.png"), [255u8, 254]).unwrap();
-        assert_eq!(read_image(&root, "b.png").unwrap(), "data:image/png;base64,//4=");
-        assert!(read_image(&root, "main.lua").unwrap_err().contains("not a PNG"));
-        assert!(read_image(&root, "../x.png").unwrap_err().contains("leaves the project"));
+        assert_eq!(
+            read_image(&root, "b.png").unwrap(),
+            "data:image/png;base64,//4="
+        );
+        assert!(
+            read_image(&root, "main.lua")
+                .unwrap_err()
+                .contains("not a PNG")
+        );
+        assert!(
+            read_image(&root, "../x.png")
+                .unwrap_err()
+                .contains("leaves the project")
+        );
         assert!(read_image(&root, "gone.png").is_err());
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -328,11 +402,27 @@ mod tests {
         assert_eq!(read_image(&root, "art/a.png").unwrap(), url, "round trip");
         png[0] = 0;
         let bad = format!("data:image/png;base64,{}", base64(&png));
-        assert!(write_image(&root, "b.png", &bad).unwrap_err().contains("not PNG"));
-        assert!(write_image(&root, "b.txt", &url).unwrap_err().contains("not a .png"));
-        assert!(write_image(&root, "../c.png", &url).unwrap_err().contains("leaves the project"));
+        assert!(
+            write_image(&root, "b.png", &bad)
+                .unwrap_err()
+                .contains("not PNG")
+        );
+        assert!(
+            write_image(&root, "b.txt", &url)
+                .unwrap_err()
+                .contains("not a .png")
+        );
+        assert!(
+            write_image(&root, "../c.png", &url)
+                .unwrap_err()
+                .contains("leaves the project")
+        );
         assert!(write_image(&root, "d.png", "data:text/plain;base64,AA==").is_err());
-        assert!(write_image(&root, "d.png", "data:image/png;base64,@@@").unwrap_err().contains("base64"));
+        assert!(
+            write_image(&root, "d.png", "data:image/png;base64,@@@")
+                .unwrap_err()
+                .contains("base64")
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -346,11 +436,27 @@ mod tests {
         assert_eq!(read_audio(&root, "sounds/a.wav").unwrap(), url);
         wav[0] = b'X';
         let bad = format!("{WAV_PREFIX}{}", base64(&wav));
-        assert!(write_audio(&root, "b.wav", &bad).unwrap_err().contains("not WAV"));
-        assert!(write_audio(&root, "b.png", &url).unwrap_err().contains("not a .wav"));
-        assert!(write_audio(&root, "../b.wav", &url).unwrap_err().contains("leaves the project"));
+        assert!(
+            write_audio(&root, "b.wav", &bad)
+                .unwrap_err()
+                .contains("not WAV")
+        );
+        assert!(
+            write_audio(&root, "b.png", &url)
+                .unwrap_err()
+                .contains("not a .wav")
+        );
+        assert!(
+            write_audio(&root, "../b.wav", &url)
+                .unwrap_err()
+                .contains("leaves the project")
+        );
         assert!(write_audio(&root, "b.wav", "data:image/png;base64,AA==").is_err());
-        assert!(read_audio(&root, "main.lua").unwrap_err().contains("not a WAV"));
+        assert!(
+            read_audio(&root, "main.lua")
+                .unwrap_err()
+                .contains("not a WAV")
+        );
         assert!(read_audio(&root, "gone.wav").is_err());
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -365,7 +471,15 @@ mod tests {
 
     #[test]
     fn base64_matches_the_standard_vectors() {
-        for (input, out) in [("", ""), ("f", "Zg=="), ("fo", "Zm8="), ("foo", "Zm9v"), ("foob", "Zm9vYg=="), ("fooba", "Zm9vYmE="), ("foobar", "Zm9vYmFy")] {
+        for (input, out) in [
+            ("", ""),
+            ("f", "Zg=="),
+            ("fo", "Zm8="),
+            ("foo", "Zm9v"),
+            ("foob", "Zm9vYg=="),
+            ("fooba", "Zm9vYmE="),
+            ("foobar", "Zm9vYmFy"),
+        ] {
             assert_eq!(base64(input.as_bytes()), out);
         }
     }
@@ -373,15 +487,33 @@ mod tests {
     #[test]
     fn reading_returns_text_and_flags_binary_and_oversized_files() {
         let root = project("read");
-        assert_eq!(read_file(&root, "main.lua").unwrap().text.as_deref(), Some("print('x')"));
+        assert_eq!(
+            read_file(&root, "main.lua").unwrap().text.as_deref(),
+            Some("print('x')")
+        );
         std::fs::write(root.join("pic.png"), [0x89, 0x50, 0xff, 0xfe, 0x00]).unwrap();
         let png = read_file(&root, "pic.png").unwrap();
         assert!(png.binary && png.text.is_none());
-        std::fs::write(root.join("big.txt"), vec![b'a'; (MAX_EDIT_BYTES + 1) as usize]).unwrap();
-        assert!(read_file(&root, "big.txt").unwrap().binary, "too big to edit");
-        assert!(read_file(&root, "scenes").unwrap_err().contains("not a file"));
+        std::fs::write(
+            root.join("big.txt"),
+            vec![b'a'; (MAX_EDIT_BYTES + 1) as usize],
+        )
+        .unwrap();
+        assert!(
+            read_file(&root, "big.txt").unwrap().binary,
+            "too big to edit"
+        );
+        assert!(
+            read_file(&root, "scenes")
+                .unwrap_err()
+                .contains("not a file")
+        );
         assert!(read_file(&root, "missing.lua").is_err());
-        assert!(read_file(&root, "../etc/hosts").unwrap_err().contains("leaves the project"));
+        assert!(
+            read_file(&root, "../etc/hosts")
+                .unwrap_err()
+                .contains("leaves the project")
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -389,14 +521,29 @@ mod tests {
     fn writing_is_atomic_creates_folders_and_leaves_no_temporary_files() {
         let root = project("write");
         write_file(&root, "main.lua", "new").unwrap();
-        assert_eq!(std::fs::read_to_string(root.join("main.lua")).unwrap(), "new");
+        assert_eq!(
+            std::fs::read_to_string(root.join("main.lua")).unwrap(),
+            "new"
+        );
         write_file(&root, "entities/deep/hero.lua", "return nil").unwrap();
         assert!(root.join("entities/deep/hero.lua").exists());
-        let stray: Vec<_> = std::fs::read_dir(&root).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().ends_with(".nova-save")).collect();
+        let stray: Vec<_> = std::fs::read_dir(&root)
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".nova-save"))
+            .collect();
         assert!(stray.is_empty());
-        assert!(write_file(&root, "scenes", "x").unwrap_err().contains("is a folder"));
+        assert!(
+            write_file(&root, "scenes", "x")
+                .unwrap_err()
+                .contains("is a folder")
+        );
         assert!(write_file(&root, "../evil.lua", "x").is_err());
-        assert!(write_file(&root, "big.txt", &"a".repeat((MAX_EDIT_BYTES + 1) as usize)).unwrap_err().contains("editing limit"));
+        assert!(
+            write_file(&root, "big.txt", &"a".repeat((MAX_EDIT_BYTES + 1) as usize))
+                .unwrap_err()
+                .contains("editing limit")
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -404,20 +551,39 @@ mod tests {
     fn create_rename_and_delete_follow_the_rules() {
         let root = project("ops");
         create_file(&root, "lib/util.lua", "return {}").unwrap();
-        assert!(create_file(&root, "lib/util.lua", "x").unwrap_err().contains("already exists"));
+        assert!(
+            create_file(&root, "lib/util.lua", "x")
+                .unwrap_err()
+                .contains("already exists")
+        );
         create_dir(&root, "sounds").unwrap();
         assert!(create_dir(&root, "sounds").is_err());
 
         rename(&root, "lib/util.lua", "lib/tools/util.lua").unwrap();
         assert!(root.join("lib/tools/util.lua").exists() && !root.join("lib/util.lua").exists());
-        assert!(rename(&root, "lib/tools/util.lua", "main.lua").unwrap_err().contains("already exists"));
-        assert!(rename(&root, "nova.json", "game.json").unwrap_err().contains("manifest"));
-        assert!(rename(&root, "nope.lua", "x.lua").unwrap_err().contains("does not exist"));
+        assert!(
+            rename(&root, "lib/tools/util.lua", "main.lua")
+                .unwrap_err()
+                .contains("already exists")
+        );
+        assert!(
+            rename(&root, "nova.json", "game.json")
+                .unwrap_err()
+                .contains("manifest")
+        );
+        assert!(
+            rename(&root, "nope.lua", "x.lua")
+                .unwrap_err()
+                .contains("does not exist")
+        );
         assert!(rename(&root, "main.lua", "../x.lua").is_err());
 
         let trashed = delete(&root, "lib/tools/util.lua").unwrap();
         assert!(trashed.starts_with(".nova/trash/") && trashed.ends_with("/lib/tools/util.lua"));
-        assert!(root.join(&trashed).exists(), "kept in the project's trash, not erased");
+        assert!(
+            root.join(&trashed).exists(),
+            "kept in the project's trash, not erased"
+        );
         assert!(!root.join("lib/tools/util.lua").exists());
         assert!(delete(&root, "nova.json").unwrap_err().contains("manifest"));
         assert!(delete(&root, "ghost").is_err());

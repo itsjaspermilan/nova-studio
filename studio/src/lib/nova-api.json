@@ -322,6 +322,20 @@
   "group": "Scenes and entities"
  },
  {
+  "name": "nova.particles",
+  "kind": "function",
+  "signature": "nova.particles(x, y, spec) -> emitter",
+  "doc": "A particle emitter. spec: rate (per second), life, speed, size, size_end, color, color_end, gravity, drag, angle, spread, spin, area, image, max, screen, depth. Ranges are {min, max}. Call emitter:burst(n) for a puff, emitter:stop() to stop and let the rest fade.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.burst",
+  "kind": "function",
+  "signature": "nova.burst(x, y, spec) -> emitter",
+  "doc": "One puff of spec.count (default 12) particles that removes itself afterwards. Same spec as nova.particles.",
+  "group": "Scenes and entities"
+ },
+ {
   "name": "nova.each",
   "kind": "function",
   "signature": "nova.each(tag, fn)",

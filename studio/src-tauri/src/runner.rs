@@ -17,7 +17,14 @@ pub struct Runner {
 pub fn find_nova_binary() -> Result<PathBuf, String> {
     if let Some(path) = std::env::var_os("NOVA_BIN") {
         let path = PathBuf::from(path);
-        return if path.is_file() { Ok(path) } else { Err(format!("NOVA_BIN points at '{}', which is not a file", path.display())) };
+        return if path.is_file() {
+            Ok(path)
+        } else {
+            Err(format!(
+                "NOVA_BIN points at '{}', which is not a file",
+                path.display()
+            ))
+        };
     }
     let name = if cfg!(windows) { "nova.exe" } else { "nova" };
     let mut candidates = Vec::new();
@@ -71,8 +78,20 @@ impl Runner {
         let on_line = Arc::new(on_line);
         let mut readers = Vec::new();
         for (stream, pipe) in [
-            ("stdout", child.stdout.take().map(|p| Box::new(p) as Box<dyn std::io::Read + Send>)),
-            ("stderr", child.stderr.take().map(|p| Box::new(p) as Box<dyn std::io::Read + Send>)),
+            (
+                "stdout",
+                child
+                    .stdout
+                    .take()
+                    .map(|p| Box::new(p) as Box<dyn std::io::Read + Send>),
+            ),
+            (
+                "stderr",
+                child
+                    .stderr
+                    .take()
+                    .map(|p| Box::new(p) as Box<dyn std::io::Read + Send>),
+            ),
         ] {
             if let Some(pipe) = pipe {
                 let on_line = on_line.clone();
@@ -130,7 +149,13 @@ pub fn check(root: &Path) -> Result<serde_json::Value, String> {
         .output()
         .map_err(|e| format!("cannot run the checker: {e}"))?;
     serde_json::from_slice(&out.stdout).map_err(|e| {
-        format!("the checker gave an unreadable report ({e}): {}", String::from_utf8_lossy(&out.stderr).lines().next().unwrap_or(""))
+        format!(
+            "the checker gave an unreadable report ({e}): {}",
+            String::from_utf8_lossy(&out.stderr)
+                .lines()
+                .next()
+                .unwrap_or("")
+        )
     })
 }
 
@@ -157,10 +182,25 @@ mod tests {
                 move |c| exit_tx.send(c).unwrap(),
             )
             .unwrap();
-        assert_eq!(exit_rx.recv_timeout(Duration::from_secs(5)).unwrap(), Some(3));
+        assert_eq!(
+            exit_rx.recv_timeout(Duration::from_secs(5)).unwrap(),
+            Some(3)
+        );
         let mut lines: Vec<_> = lines_rx.try_iter().collect();
         lines.sort_by_key(|l| l.stream);
-        assert_eq!(lines, [LogLine { stream: "stderr", line: "oops".into() }, LogLine { stream: "stdout", line: "hello".into() }]);
+        assert_eq!(
+            lines,
+            [
+                LogLine {
+                    stream: "stderr",
+                    line: "oops".into()
+                },
+                LogLine {
+                    stream: "stdout",
+                    line: "hello".into()
+                }
+            ]
+        );
         assert!(!runner.is_running());
     }
 
@@ -168,24 +208,33 @@ mod tests {
     fn a_running_game_blocks_a_second_start_and_can_be_stopped() {
         let runner = Runner::default();
         let (exit_tx, exit_rx) = channel();
-        runner.start(shell("sleep 30"), |_| {}, move |c| exit_tx.send(c).unwrap()).unwrap();
+        runner
+            .start(shell("sleep 30"), |_| {}, move |c| exit_tx.send(c).unwrap())
+            .unwrap();
         assert!(runner.is_running());
         let e = runner.start(shell("echo x"), |_| {}, |_| {}).unwrap_err();
         assert!(e.contains("already running"), "{e}");
         assert!(runner.stop(), "it was running");
-        assert!(exit_rx.recv_timeout(Duration::from_secs(5)).is_ok(), "on_exit still fires after a stop");
+        assert!(
+            exit_rx.recv_timeout(Duration::from_secs(5)).is_ok(),
+            "on_exit still fires after a stop"
+        );
         assert!(!runner.is_running());
         assert!(!runner.stop(), "nothing to stop now");
         // And it can start again.
         let (tx, rx) = channel();
-        runner.start(shell("true"), |_| {}, move |c| tx.send(c).unwrap()).unwrap();
+        runner
+            .start(shell("true"), |_| {}, move |c| tx.send(c).unwrap())
+            .unwrap();
         assert_eq!(rx.recv_timeout(Duration::from_secs(5)).unwrap(), Some(0));
     }
 
     #[test]
     fn a_missing_program_is_a_clear_error() {
         let runner = Runner::default();
-        let e = runner.start(Command::new("/definitely/not/here"), |_| {}, |_| {}).unwrap_err();
+        let e = runner
+            .start(Command::new("/definitely/not/here"), |_| {}, |_| {})
+            .unwrap_err();
         assert!(e.contains("cannot start the game"), "{e}");
     }
 }

@@ -35,15 +35,29 @@ struct ExampleInfo {
 }
 
 fn root_of(state: &State<AppState>) -> Result<PathBuf, String> {
-    state.root.lock().expect("state lock").clone().ok_or_else(|| "no project is open".to_string())
+    state
+        .root
+        .lock()
+        .expect("state lock")
+        .clone()
+        .ok_or_else(|| "no project is open".to_string())
 }
 
 /// Reads `nova.json` and returns the project's identity, or why this folder is not a Nova project.
 fn read_info(root: &Path) -> Result<ProjectInfo, String> {
-    let text = std::fs::read_to_string(root.join("nova.json"))
-        .map_err(|_| format!("'{}' has no nova.json, so it is not a Nova project", root.display()))?;
-    let value: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("nova.json is not valid JSON: {e}"))?;
-    let name = value["name"].as_str().filter(|n| !n.trim().is_empty()).ok_or("nova.json has no \"name\"")?.to_string();
+    let text = std::fs::read_to_string(root.join("nova.json")).map_err(|_| {
+        format!(
+            "'{}' has no nova.json, so it is not a Nova project",
+            root.display()
+        )
+    })?;
+    let value: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("nova.json is not valid JSON: {e}"))?;
+    let name = value["name"]
+        .as_str()
+        .filter(|n| !n.trim().is_empty())
+        .ok_or("nova.json has no \"name\"")?
+        .to_string();
     Ok(ProjectInfo {
         root: root.to_string_lossy().into_owned(),
         name,
@@ -52,7 +66,9 @@ fn read_info(root: &Path) -> Result<ProjectInfo, String> {
 }
 
 fn open(state: &State<AppState>, root: &Path) -> Result<ProjectInfo, String> {
-    let root = root.canonicalize().map_err(|e| format!("cannot open '{}': {e}", root.display()))?;
+    let root = root
+        .canonicalize()
+        .map_err(|e| format!("cannot open '{}': {e}", root.display()))?;
     let info = read_info(&root)?;
     *state.root.lock().expect("state lock") = Some(root.clone());
     // A failure to remember the project must not stop it opening.
@@ -88,7 +104,11 @@ fn examples() -> Vec<ExampleInfo> {
         .filter(|e| e.path().join("nova.json").is_file())
         .filter_map(|e| {
             let info = read_info(&e.path()).ok()?;
-            Some(ExampleInfo { id: e.file_name().to_string_lossy().into_owned(), name: info.name, path: e.path().to_string_lossy().into_owned() })
+            Some(ExampleInfo {
+                id: e.file_name().to_string_lossy().into_owned(),
+                name: info.name,
+                path: e.path().to_string_lossy().into_owned(),
+            })
         })
         .collect();
     out.sort_by(|a, b| a.id.cmp(&b.id));
@@ -101,15 +121,28 @@ fn open_project(state: State<AppState>, path: String) -> Result<ProjectInfo, Str
 }
 
 #[tauri::command]
-fn new_project(state: State<AppState>, parent: String, name: String, template: String) -> Result<ProjectInfo, String> {
+fn new_project(
+    state: State<AppState>,
+    parent: String,
+    name: String,
+    template: String,
+) -> Result<ProjectInfo, String> {
     let dest = templates::create_from_template(Path::new(&parent), &name, &template)?;
     open(&state, &dest)
 }
 
 /// Copies an example into `parent` under a new name and opens the copy.
 #[tauri::command]
-fn copy_example(state: State<AppState>, example: String, parent: String, name: String) -> Result<ProjectInfo, String> {
-    let source = examples().into_iter().find(|e| e.id == example).ok_or_else(|| format!("unknown example '{example}'"))?;
+fn copy_example(
+    state: State<AppState>,
+    example: String,
+    parent: String,
+    name: String,
+) -> Result<ProjectInfo, String> {
+    let source = examples()
+        .into_iter()
+        .find(|e| e.id == example)
+        .ok_or_else(|| format!("unknown example '{example}'"))?;
     let dest = templates::copy_project(Path::new(&source.path), Path::new(&parent), &name)?;
     open(&state, &dest)
 }
@@ -156,7 +189,11 @@ fn write_file(state: State<AppState>, path: String, text: String) -> Result<(), 
 }
 
 #[tauri::command]
-fn create_file(state: State<AppState>, path: String, contents: Option<String>) -> Result<(), String> {
+fn create_file(
+    state: State<AppState>,
+    path: String,
+    contents: Option<String>,
+) -> Result<(), String> {
     project_files::create_file(&root_of(&state)?, &path, contents.as_deref().unwrap_or(""))
 }
 
@@ -212,7 +249,10 @@ fn check_project(state: State<AppState>) -> Result<serde_json::Value, String> {
 /// Where new projects go by default: `Documents/Nova Projects`, created if it is missing.
 #[tauri::command]
 fn default_projects_dir(app: AppHandle) -> Result<String, String> {
-    let documents = app.path().document_dir().map_err(|e| format!("no Documents folder: {e}"))?;
+    let documents = app
+        .path()
+        .document_dir()
+        .map_err(|e| format!("no Documents folder: {e}"))?;
     let dir = documents.join("Nova Projects");
     std::fs::create_dir_all(&dir).map_err(|e| format!("cannot create '{}': {e}", dir.display()))?;
     Ok(dir.to_string_lossy().into_owned())

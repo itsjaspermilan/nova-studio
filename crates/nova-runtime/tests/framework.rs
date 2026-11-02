@@ -1363,3 +1363,156 @@ fn the_older_four_actions_and_the_compat_update_still_work() {
     );
     assert_eq!(logs(&g), ["-1.0 1.0 true", "1.0 1.0 true"]);
 }
+
+#[test]
+fn a_pivot_puts_that_point_of_the_sprite_on_the_entity_and_moves_its_box() {
+    let mut g = project(vec![
+        ("sprites/box.png", png(10, 20)),
+        (
+            "entities/feet.lua",
+            lua("return nova.entity { sprite = 'box', pivot = { 0.5, 1 } }"),
+        ),
+        (
+            "scenes/s.lua",
+            lua(
+                "local S = nova.scene {}\nfunction S:enter()\n  local e = nova.spawn('feet', 100, 100)\n  local x0, y0, x1, y1 = e:bounds()\n  nova.log(x0 .. ' ' .. y0 .. ' ' .. x1 .. ' ' .. y1)\nend\nreturn S",
+            ),
+        ),
+        ("main.lua", lua("nova.start('s')")),
+    ]);
+    steps(&mut g, 2);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    assert_eq!(
+        logs(&g),
+        ["95.0 80.0 105.0 100.0"],
+        "the box hangs from the pivot"
+    );
+    let input = g.frame_input(540);
+    let sprite = input.sprites_back.last().expect("sprite");
+    // Centre = position + (0.5 - pivot) * size = (100, 100 - 10).
+    assert_eq!(sprite.center, [100.0, 90.0]);
+}
+
+#[test]
+fn rotation_turns_a_pivoted_sprite_about_the_pivot() {
+    let mut g = project(vec![
+        ("sprites/box.png", png(10, 20)),
+        (
+            "entities/arm.lua",
+            lua("return nova.entity { sprite = 'box', pivot = { 0.5, 1 }, angle = math.pi / 2 }"),
+        ),
+        (
+            "scenes/s.lua",
+            lua(
+                "local S = nova.scene {}\nfunction S:enter() nova.spawn('arm', 100, 100) end\nreturn S",
+            ),
+        ),
+        ("main.lua", lua("nova.start('s')")),
+    ]);
+    steps(&mut g, 2);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let c = g
+        .frame_input(540)
+        .sprites_back
+        .last()
+        .expect("sprite")
+        .center;
+    // The offset (0, -10) turned a quarter turn clockwise (y down) becomes (10, 0).
+    assert!(
+        (c[0] - 110.0).abs() < 1e-3 && (c[1] - 100.0).abs() < 1e-3,
+        "{c:?}"
+    );
+}
+
+fn particle_game(scene_body: &str) -> Game {
+    project(vec![
+        ("sprites/spark.png", png(8, 8)),
+        (
+            "scenes/s.lua",
+            lua(&format!(
+                "local S = nova.scene {{}}\nfunction S:enter()\n{scene_body}\nend\nreturn S"
+            )),
+        ),
+        ("main.lua", lua("nova.start('s')")),
+    ])
+}
+
+#[test]
+fn a_burst_draws_its_particles_moves_them_with_gravity_and_cleans_itself_up() {
+    let mut g = particle_game(
+        "nova.burst(100, 100, { count = 10, life = 0.5, speed = 0, gravity = 100, size = 4, color = {255,0,0,255} })",
+    );
+    steps(&mut g, 1);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    assert_eq!(g.frame_input(540).sprites_back.len(), 10);
+    steps(&mut g, 28); // nearly half a second of falling
+    let early = g.frame_input(540).sprites_back.len();
+    assert_eq!(
+        early, 10,
+        "still alive just before the end of their life: {early}"
+    );
+    let y = g.frame_input(540).sprites_back[0].center[1];
+    assert!(
+        y > 100.0 && y < 100.0 + 0.5 * 100.0 * 0.25 + 2.0,
+        "fell about 12 units, got {y}"
+    );
+    steps(&mut g, 10);
+    assert_eq!(
+        g.frame_input(540).sprites_back.len(),
+        0,
+        "all gone after their life"
+    );
+    assert!(g.error.is_none(), "{:?}", g.error);
+    // The emitter entity removed itself.
+}
+
+#[test]
+fn continuous_emitters_follow_their_rate_the_cap_and_stop_cleanly() {
+    let mut g = particle_game(
+        "self.fx = nova.particles(50, 50, { rate = 60, life = 100, max = 25, speed = 0, size = 2 })\nnova.log('n')",
+    );
+    steps(&mut g, 60);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    assert_eq!(g.frame_input(540).sprites_back.len(), 25, "capped by max");
+    let mut g =
+        particle_game("self.fx = nova.particles(0, 0, { rate = 60, life = 100, speed = 0 })");
+    steps(&mut g, 30);
+    let n = g.frame_input(540).sprites_back.len();
+    assert!(
+        (29..=31).contains(&n),
+        "30 steps at 60/s is 30 particles, got {n}"
+    );
+}
+
+#[test]
+fn particles_can_be_sprites_follow_the_camera_and_stay_in_range() {
+    let mut g = particle_game(
+        "nova.burst(480, 270, { count = 5, image = 'spark', life = 1, speed = {10, 30}, angle = 0, spread = 0.5, size = 8, size_end = 2, color = {255,255,255,255}, color_end = {255,255,255,0} })",
+    );
+    steps(&mut g, 30);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let input = g.frame_input(540);
+    assert_eq!(input.sprites_back.len(), 5);
+    for s in input.sprites_back {
+        assert!(
+            s.center[0] > 480.0,
+            "launched to the right (angle 0): {:?}",
+            s.center
+        );
+        assert!(
+            s.size[0] > 8.0 - 0.01 && s.size[0] < 16.1,
+            "grows toward size_end: {:?}",
+            s.size
+        );
+        assert!(s.color[3] < 230, "fades out: {:?}", s.color);
+    }
+}
+
+#[test]
+fn bad_particle_arguments_do_not_crash_the_game() {
+    let mut g = particle_game(
+        "nova.burst(0, 0, { count = 3, life = {0.1}, speed = {5}, size = 1 })\nnova.burst(0, 0)",
+    );
+    steps(&mut g, 20);
+    assert!(g.error.is_none(), "{:?}", g.error);
+}

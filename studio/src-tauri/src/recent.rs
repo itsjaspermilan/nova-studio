@@ -32,7 +32,9 @@ fn now() -> u64 {
 
 impl RecentStore {
     pub fn new(config_dir: &Path) -> Self {
-        Self { file: config_dir.join("recent-projects.json") }
+        Self {
+            file: config_dir.join("recent-projects.json"),
+        }
     }
 
     fn load(&self) -> File {
@@ -44,7 +46,8 @@ impl RecentStore {
 
     fn save(&self, data: &File) -> Result<(), String> {
         if let Some(parent) = self.file.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| format!("cannot create the settings folder: {e}"))?;
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("cannot create the settings folder: {e}"))?;
         }
         let temp = self.file.with_extension("json.tmp");
         let text = serde_json::to_string_pretty(data).map_err(|e| e.to_string())?;
@@ -54,7 +57,12 @@ impl RecentStore {
 
     /// Newest first, leaving out folders that no longer exist.
     pub fn list(&self) -> Vec<RecentProject> {
-        let mut projects: Vec<RecentProject> = self.load().projects.into_iter().filter(|p| Path::new(&p.path).join("nova.json").is_file()).collect();
+        let mut projects: Vec<RecentProject> = self
+            .load()
+            .projects
+            .into_iter()
+            .filter(|p| Path::new(&p.path).join("nova.json").is_file())
+            .collect();
         projects.sort_by(|a, b| b.opened.cmp(&a.opened));
         projects
     }
@@ -63,7 +71,11 @@ impl RecentStore {
         let path = path.to_string_lossy().into_owned();
         let mut data = self.load();
         data.projects.retain(|p| p.path != path);
-        data.projects.push(RecentProject { path, name: name.to_string(), opened: now() });
+        data.projects.push(RecentProject {
+            path,
+            name: name.to_string(),
+            opened: now(),
+        });
         data.projects.sort_by(|a, b| b.opened.cmp(&a.opened));
         data.projects.truncate(MAX_RECENT);
         self.save(&data)
@@ -102,7 +114,14 @@ mod tests {
         store.add(&a, "A").unwrap();
         std::thread::sleep(std::time::Duration::from_millis(1100));
         store.add(&b, "B").unwrap();
-        assert_eq!(store.list().iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), ["B", "A"]);
+        assert_eq!(
+            store
+                .list()
+                .iter()
+                .map(|p| p.name.as_str())
+                .collect::<Vec<_>>(),
+            ["B", "A"]
+        );
         std::thread::sleep(std::time::Duration::from_millis(1100));
         store.add(&a, "A again").unwrap();
         let names: Vec<_> = store.list().into_iter().map(|p| p.name).collect();
@@ -115,7 +134,9 @@ mod tests {
         let base = scratch("cap");
         let store = RecentStore::new(&base.join("config"));
         for i in 0..15 {
-            store.add(&project(&base, &format!("p{i}")), &format!("P{i}")).unwrap();
+            store
+                .add(&project(&base, &format!("p{i}")), &format!("P{i}"))
+                .unwrap();
         }
         assert_eq!(store.list().len(), MAX_RECENT);
         std::fs::remove_dir_all(base.join("p14")).unwrap();

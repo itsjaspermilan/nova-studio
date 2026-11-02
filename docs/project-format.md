@@ -194,7 +194,7 @@ return Player                                      -- the file must return the c
 return nova.entity(require("entities.enemy"), { hp = 500, tags = { "boss" } })
 ```
 
-- A spec's `sprite`, `model`, `tags`, `depth`, `hitbox` and `screen` are read by the engine; every
+- A spec's `sprite`, `model`, `tags`, `depth`, `hitbox`, `pivot` and `screen` are read by the engine; every
   other field is a default value for new instances (tables are copied per instance).
 - Inherited methods, defaults and tags come from the parent; a child can override any of them.
 - Built-in fields: `x`, `y`, `z`, `vx`, `vy`, `vz` (velocity moves the entity each step), `sx`,
@@ -258,6 +258,33 @@ Data only: loading it never runs code. Defaults are shown; unknown keys are erro
 camera's limits. **A `name` becomes a field of the scene** (`self.hero`); names must be unique,
 start with a letter and not collide with the scene's own methods. Errors are reported with the file
 and the exact place, for example `scenes/play.scene.json.objects[2]: missing "kind"`.
+
+### Pivot
+
+A sprite is centred on the entity's `x, y` by default. `pivot = { 0.5, 1 }` (fractions of its
+size, left/top is `0, 0`) puts that point there instead, here the bottom centre, so a character
+stands on its position. Rotation (`angle`) turns the picture about the pivot, and the default hitbox
+(the sprite's size) moves with it.
+
+### Particles
+
+```lua
+-- a puff that cleans itself up
+nova.burst(self.x, self.y, { count = 14, speed = { 60, 160 }, life = { 0.3, 0.7 }, size = 5, size_end = 0,
+                             color = { 255, 200, 80, 255 }, color_end = { 255, 60, 0, 0 }, gravity = 200 })
+
+-- a continuous emitter you keep (sparks, smoke, rain); move it with fx.x, fx.y
+local fx = nova.particles(self.x, self.y, { rate = 40, image = "spark", life = 0.8, angle = -math.pi / 2, spread = 0.6, speed = { 30, 80 } })
+fx:burst(10)   -- an extra puff
+fx:stop()      -- stop making new ones
+```
+
+Spec fields: `rate` (per second), `count` (for `burst`), `life`, `speed`, `size`, `spin` (each a number or
+`{ min, max }`), `size_end` (a multiplier reached at the end of life), `color` and `color_end` (RGBA,
+blended over life), `gravity`, `drag`, `angle` (direction in radians, default up) and `spread` (the
+cone's full width, default all directions), `area` (`{ w, h }` to spawn across), `image` (a sprite
+instead of a square), `max` (default 1000), `screen` (UI layer) and `depth`. Particles are drawn by
+the emitter, an ordinary entity, so they obey the camera and depth ordering.
 
 ### Timers, tweens and scripts that wait
 
