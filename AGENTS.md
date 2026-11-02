@@ -206,6 +206,18 @@ exported. The earlier externally authored 2D assessment game is not that proof.
   service ownership; no competing device or implicit sequencer migration.
   PCM24/float masters must not use raylib's PCM16-forcing WAV loader. Do not relax
   short-effect budgets or equate them with score/offline duration.
+- `authoring/sound/` is an opt-in, embeddable Qt short-SFX component, not a host
+  application or full Sound Studio. See `docs/sound-component.md` for sealed
+  snapshot/open-revision provenance, strict binary source, named history and
+  SourceOnly/PublishDerived acknowledgements. Preserve whole canonical originals
+  (<=60s/16 MiB each, <=60s/32 MiB aggregate); >30s originals require explicit
+  source-frame regions for the 30s composition. Workers own independent native
+  objects; only explicit Play may ask the injected host for the existing Audition
+  role. Join before transferring native reference ownership, poll receipts, and
+  retain/hand off detached close-retry handles even on failed open. No direct
+  file writes, global/device shutdown, alternate audio backend or implicit sound
+  registration. The host supplies native pickers/journal/actions; pending fields
+  block snapshots. Offscreen QWidget evidence is not native/input/audio approval.
 - `audio/transport.{c,h}` supplies fixed-rate SPSC control/receipt queues,
   coalesced snapshots and control-side renderer retirement. Core status/cancel/
   reset remain render-owner operations; all reference mutations stay serialized

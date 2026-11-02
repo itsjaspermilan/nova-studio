@@ -52,10 +52,22 @@ standalone editor or an integrated project save/runtime-animation feature.
 Its host must provide native pickers, guarded binary/multi-file persistence,
 whole-project preflight and scene integration; the default runtime stays Qt-free.
 
-Both authoring libraries can be built alongside the Qt application with
-`-DNOVA_QT_SPRITE=ON -DNOVA_MESH_AUTHORING=ON`. Enabling them does not yet add
-Sprite/Model tabs. The mesh checks include a CPU-only consumer linked to the
-Qt-selected runtime, keeping the ordinary GLFW renderer out of that host.
+The opt-in [Qt short-SFX Sound component](docs/sound-component.md)
+(`NOVA_QT_SOUND=ON`) adds immutable editable sound documents, preserved canonical
+WAV originals, source-frame waveform trim/fades/reverse, layered native-engine
+instruments, editable presets, cancellable exports and a receipt-based audition
+host seam. It fits inside the studio content area and performs no file writes or
+automatic hardware activation. Compositions are bounded to 30 seconds; originals
+retain the existing 60-second/16-MiB envelope and longer-than-composition sources
+require an explicit region. This is not an integrated Sound tab, recorder,
+arranger/piano roll, MIDI tool or full mixer; native pickers, project-journal
+registration and final host/runtime integration remain separate stages.
+
+All three authoring components can be built alongside the Qt application with
+`-DNOVA_QT_SPRITE=ON -DNOVA_MESH_AUTHORING=ON -DNOVA_QT_SOUND=ON`. Enabling them
+does not yet add Sprite/Model/Sound tabs. The mesh checks include a CPU-only
+consumer linked to the Qt-selected runtime, keeping the ordinary GLFW renderer
+out of that host.
 
 In the sample launcher, click an example, press **1 / 2 / 3**, or use gamepad **A / B / X**. Move with **WASD, arrow keys, D-pad, or left stick**. In the 3D example, **Space / A** makes the model bounce; in the asset project it lifts the imported gem. **F1 / Start** returns to the launcher, **R** reloads the active script or whole project, and **Esc / Android Back** exits.
 

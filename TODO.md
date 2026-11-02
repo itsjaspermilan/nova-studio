@@ -59,7 +59,7 @@ Confirmed product requirements:
 | Sprite workspace | Authoring foundation + runtime animation | Real drawing/layers/frames, source preservation, reversible editing and matching scene/runtime updates. | Embeddable document/canvas component implemented; guarded host/runtime integration pending |
 | Model workspace | Authoring foundation + existing GLB pipeline | Mesh/transform/material/UV basics, reversible editing and faithful supported model round trips. | Independent [editable-mesh component](docs/mesh-authoring.md) implemented; Qt workspace/save/preview integration pending |
 | Audio engine | Existing native services | Sample-clock processing, float mixing, quality instruments/DSP, streams/buses, device handling and offline rendering. | C11 DSP/offline, shared-device controls and bounded disk streams implemented; runtime music binding and hardware/lifecycle qualification remain |
-| Recording and SFX | Authoring foundation + audio engine | Nondestructive waveform editing, explicit recording, layered SFX, safe audition and persistent sources. | Independent Sound document/SFX workspace in progress; recording and shared host integration remain |
+| Recording and SFX | Authoring foundation + audio engine | Nondestructive waveform editing, explicit recording, layered SFX, safe audition and persistent sources. | Embeddable short-SFX document/waveform component implemented; recording and guarded host integration pending |
 | Music composition | Recording/SFX foundations | Arrangement, piano roll, patterns/drums, synth/sampler, MIDI, loops and document persistence. | Pending |
 | Sound production | Music composition | Mixer, sends/buses, effects, automation, lossless masters, aligned stems/loops and runtime-profile audition. | Pending |
 | Application and game delivery | Completed authoring pipelines | An unambiguous studio application entry point and real selected-project desktop/Android outputs with preflight. | Development Nova Studio.app exists; portable Qt deployment and integrated export UI remain |
@@ -133,8 +133,8 @@ multitrack mixing. No manifest/Lua/Qt UI contract changed.
 
 Next audio stages include coordinated runtime/Lua/packaged-Android music binding,
 multitrack disk mixing, device-loss/Android focus integration and hardware
-qualification, then real sound documents and
-the recording/SFX/composition/mixer interfaces. Prepared-score live rendering
+qualification, then integration of the bounded sound document/SFX component and
+the recording/composition/mixer interfaces. Prepared-score live rendering
 and disk-file streaming are distinct APIs; this foundation does not complete the roadmap's Audio
 engine stage or the requested Sound Studio.
 
@@ -244,6 +244,38 @@ their files. Source-only saving must preserve editable work and explicitly
 mark stale derived output rather than silently publishing an older result.
 Integrated workspace workflows, sound production, delivery and the playable
 3D rally exercise remain unfinished.
+
+### Independent Qt short-SFX Sound component handoff
+
+`NOVA_QT_SOUND=ON` builds `nova_sound` under `authoring/sound/`, with a separate
+caller-host-selected `nova_sound_native` audition adapter. The
+[source/export/embedding contract](docs/sound-component.md) defines immutable
+snapshots, persistent UUID/stable IDs, open-scoped revisions, guarded save
+acknowledgements, strict binary source, bounded history, original WAV retention,
+layered native DSP and source-frame waveform editing. No shared engine format,
+StudioWindow, viewport, ProjectDocument or audio-core contract changed.
+
+The explicitly bounded composition/export profile is 30 seconds at 44.1/48 kHz
+stereo. Original canonical WAVs retain the existing <=60-second/16-MiB per-file
+envelope, with <=60 seconds/32 MiB aggregate originals and <=33 MiB source.
+An original longer than 30 seconds stays intact and needs an explicit region
+before layering. Separate <=16 MiB generated WAV and <=64 KiB metadata values
+are returned to the host, never written or registered directly. Source-only
+saving must retain old outputs and mark them stale; sound registration is not
+assumed from Sprite/Mesh journal support.
+
+Actual engine output, source/export round trips, ownership/retirement, stale
+completions, pending fields and offscreen controls are covered by five focused
+selectors in Debug and ASan/UBSan. Reviewed QWidget captures cover 1000x540 and
+900x480 central content in light/dark palettes and a 1280x720 embedding test
+shell with host actions visible. No audio device, microphone, new dependency,
+desktop activation or native-compositor/input qualification was attempted.
+The native GUI gate remains deferred on the locked desktop.
+
+This is not a full Sound Studio or completed rally exercise. Host-native
+pickers, guarded project transactions, final shell/runtime integration,
+recording, arrangement/piano roll, MIDI, long-media persistence and full
+production/mixing remain explicit stages.
 
 ### Independent Qt Sprite component handoff
 

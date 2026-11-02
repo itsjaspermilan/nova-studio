@@ -11,6 +11,12 @@ It has no raylib, Lua, Qt, device, filesystem or third-party DSP dependency.
 The existing game `nova.play` / `nova.stop` service remains a separate,
 compatible short-WAV playback path.
 
+The independent [short-SFX authoring component](sound-component.md) now uses
+these unchanged APIs for owned sound sources, waveform edits, layered recipes,
+offline byte exports and an injected Audition-role seam. It does not register
+runtime audio, write project files, introduce a device owner or complete the
+recording/composition/mixing stages.
+
 The implementation provides stereo float processing at **48 kHz** (the default
 constant) or explicitly **44.1 kHz**, prepared sample-clock scores, independent
 renderers, synth/sampler voices, envelopes and ramps, a small bus tree, meters,
