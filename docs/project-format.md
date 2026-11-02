@@ -76,7 +76,7 @@ stability boundary for hand-written games, not a hostile-code sandbox (see "Scri
 ### Drawing
 
 Coordinates are *logical units*, 540 high on any screen (the width follows the aspect
-ratio). `nova.view()` returns the current width and height.
+ratio). `nova.view()` returns the current width and height as whole numbers (rounded down on screens that are not 16:9).
 
 | Call | Layer | Meaning |
 | --- | --- | --- |
@@ -337,6 +337,21 @@ Lua may use at most 256 MiB. One frame of `update` + `draw` may run for at most 
 too long in one frame; is there an endless loop?" and the error banner shows. Coroutines started with
 `go` are covered too. These are guard rails for hand-written games, not a security boundary.
 
+## Packing and Android
+
+`nova pack <folder> <out.npk>` validates a project and packs it into one file (`NPK1`: a file table
+and the data, using the same path rules as everywhere; a damaged or hostile file is rejected, never
+trusted). `nova run --pak game.npk` plays it, exactly like the folder minus hot reload.
+
+`scripts/build-apk.sh --project <folder>` builds a debug-signed APK of a game without Gradle: the
+runtime library, a manifest filled from `nova.json` (package `com.nova.games.<id>`, the game's name
+as the label), and the packed project as `assets/project.npk`. On Android the runtime loads that
+file; an APK without one runs the benchmark scene. Save data goes to the app's private storage.
+`nova info <folder>` prints the name, version and id for scripts.
+
+Verified: Crate Dash built this way installs and plays on the Android emulator (touch input,
+animation, collisions, tilemap) at 60 fps. Not verified: any physical device.
+
 ## Errors and reloading
 
 - A bad project (missing or invalid `nova.json`, unreadable image or model, atlas overflow)
@@ -352,8 +367,7 @@ too long in one frame; is there an endless loop?" and the error banner shows. Co
 ## Not yet
 
 Real fonts and text layout (the UI text is still a debug pixel font), paths, particles, an audio
-API, input remapping and named actions, rigid-bone model animation, Android loading
-of project files (the APK still embeds the benchmark scene), and the studio itself.
+API, input remapping and named actions, rigid-bone model animation, and the studio itself.
 
 ## Testing helpers
 

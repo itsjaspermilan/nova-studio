@@ -10,6 +10,7 @@ pub mod game;
 pub mod gfx;
 pub mod input;
 pub mod model;
+pub mod pak;
 pub mod project;
 pub mod save;
 pub mod scene;
@@ -33,8 +34,22 @@ fn android_main(android: android_activity::AndroidApp) {
         android_activity::WindowManagerFlags::FULLSCREEN,
         android_activity::WindowManagerFlags::empty(),
     );
+    // An APK built for a game carries it as assets/project.npk; without one it runs the benchmark.
+    let pak = {
+        use std::io::Read;
+        android
+            .asset_manager()
+            .open(c"project.npk")
+            .and_then(|mut asset| {
+                let mut bytes = Vec::new();
+                asset.read_to_end(&mut bytes).ok()?;
+                log::info!("project.npk: {} bytes", bytes.len());
+                Some(app::PakBytes(std::sync::Arc::new(bytes)))
+            })
+    };
     let options = app::Options {
         save_dir: android.internal_data_path(),
+        pak,
         ..app::Options::default()
     };
     if let Err(e) = app::run_windowed(options, android) {

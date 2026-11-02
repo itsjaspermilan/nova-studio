@@ -39,7 +39,9 @@ scripts/env.sh cargo test
 scripts/env.sh cargo run --release -p nova-runtime --bin nova -- run examples/rally-demo   # play a project (F3 stats, Esc quits)
 scripts/env.sh cargo run --release -p nova-runtime --bin nova                 # the M1 benchmark scene (--world-height 0 for native world)
 scripts/env.sh cargo run --release -p nova-runtime --bin nova -- --headless --frames 300 --size 1920x1080 --capture build/spike.png
-scripts/build-apk.sh                                                          # build/android/nova-spike-debug.apk
+scripts/build-apk.sh                                                          # build/android/nova-spike-debug.apk (benchmark)
+scripts/build-apk.sh --project examples/crate-dash                            # a game as an APK
+scripts/env.sh cargo run --release -p nova-runtime --bin nova -- pack examples/crate-dash build/game.npk
 /opt/homebrew/bin/cmake -S audio -B build/audio
 /opt/homebrew/bin/cmake --build build/audio
 /opt/homebrew/bin/ctest --test-dir build/audio --output-on-failure
@@ -52,7 +54,7 @@ checks; it does not predict handheld performance.
 ## Limits today
 
 - No studio app or editors yet. Projects are hand-written Lua, JSON scenes, PNG and GLB files; there are no real fonts (the UI text is a debug pixel font), audio API or saves yet.
-- The APK still embeds the M1 benchmark scene; it cannot load a project yet.
+- APKs of games run on the Android emulator; no handheld has run one. Analogue sticks and triggers do not reach the game on Android yet.
 - Only the Android emulator has run the APK; no handheld has.
 - The audio core was verified with offline renders only, not by listening.
 - The project's own licence is not chosen. Dependency licences are separate.

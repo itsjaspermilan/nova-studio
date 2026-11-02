@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- NativeActivity host for the Nova runtime: no Java or Kotlin code (hasCode=false). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.nova.spike">
+    package="@PACKAGE@">
 
     <uses-feature android:glEsVersion="0x00030000" android:required="true" />
     <uses-feature android:name="android.hardware.vulkan.version" android:version="0x400003" android:required="false" />
@@ -9,7 +9,7 @@
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
     <application
-        android:label="Nova Spike"
+        android:label="@LABEL@"
         android:hasCode="false"
         android:allowBackup="false"
         android:theme="@android:style/Theme.NoTitleBar.Fullscreen">

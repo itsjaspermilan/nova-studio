@@ -17,7 +17,8 @@ words, few choices, good defaults. There are no fantasy-console limits.
 
 - `crates/nova-runtime`: Rust game runtime. Projects: `vfs.rs` (read-only file view), `project.rs`
   (`nova.json` and assets), `assets.rs` (PNG decode, atlas), `game.rs` (Lua API v1, draw lists),
-  `content.rs` (benchmark scene or project), `scene.rs` (`*.scene.json` validation). The
+  `content.rs` (benchmark scene or project), `scene.rs` (`*.scene.json` validation), `sprite.rs` (`*.sprite.json`), `tilemap.rs`, `save.rs`,
+  `pak.rs` (the `.npk` archive). The
   entity/scene/timer/collision/camera framework is Lua in `crates/nova-runtime/lua/` (embedded,
   loaded before every project). Spec in `docs/project-format.md`. `wgpu` renderer
   for 2D and 3D (`gfx.rs`, WGSL in `src/shaders/`), Lua 5.4 via `mlua` (`script.rs`,
@@ -42,7 +43,7 @@ words, few choices, good defaults. There are no fantasy-console limits.
 scripts/env.sh cargo build                         # desktop build
 scripts/env.sh cargo run --release -p nova-runtime --bin nova -- run examples/rally-demo --headless --frames 120 --capture build/demo.png
 scripts/env.sh cargo run --release -p nova-runtime --bin nova -- --headless --frames 300 --capture build/spike.png
-scripts/build-apk.sh                               # Gradle-free debug APK -> build/android/
+scripts/build-apk.sh [--project folder]           # Gradle-free debug APK -> build/android/
 scripts/env.sh cargo test
 scripts/env.sh cargo clippy --all-targets
 scripts/env.sh cargo fmt --check

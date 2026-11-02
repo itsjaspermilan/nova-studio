@@ -18,6 +18,16 @@ use crate::gfx::Gfx;
 use crate::input::{Actions, Input};
 use crate::spike::Perf;
 
+/// A packed project held in memory (read from an `.npk` file or from the APK's assets).
+#[derive(Clone)]
+pub struct PakBytes(pub Arc<Vec<u8>>);
+
+impl std::fmt::Debug for PakBytes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "PakBytes({} bytes)", self.0.len())
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Options {
     pub frames: Option<u32>,
@@ -26,6 +36,8 @@ pub struct Options {
     pub script: Option<PathBuf>,
     /// A Nova project folder to run (`nova run <folder>`).
     pub project: Option<PathBuf>,
+    /// A packed project to play instead of a folder (`--pak`, or the Android APK's own).
+    pub pak: Option<PakBytes>,
     /// Where save data goes (default: the platform's data folder; in memory when headless).
     pub save_dir: Option<PathBuf>,
     /// Show the stats overlay in project mode (F3 toggles it).
@@ -48,6 +60,7 @@ impl Default for Options {
             capture: None,
             script: None,
             project: None,
+            pak: None,
             save_dir: None,
             hud: false,
             size: (1280, 720),

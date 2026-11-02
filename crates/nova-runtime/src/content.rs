@@ -7,6 +7,7 @@ use crate::app::Options;
 use crate::game::Game;
 use crate::gfx::{FrameInput, Gfx};
 use crate::input::Actions;
+use crate::pak::PakVfs;
 use crate::script::{ScriptHost, ScriptState};
 use crate::spike::{self, Perf, Spike};
 use crate::vfs::{DirVfs, Vfs};
@@ -36,8 +37,12 @@ fn save_location(opts: &Options, game_name: &str) -> Option<std::path::PathBuf> 
 
 impl Content {
     pub fn load(opts: &Options, gfx: &mut Gfx) -> Result<Content, String> {
-        if let Some(dir) = &opts.project {
-            let vfs: Rc<dyn Vfs> = Rc::new(DirVfs::new(dir)?);
+        if opts.project.is_some() || opts.pak.is_some() {
+            let vfs: Rc<dyn Vfs> = match (&opts.pak, &opts.project) {
+                (Some(pak), _) => Rc::new(PakVfs::new(pak.0.clone())?),
+                (None, Some(dir)) => Rc::new(DirVfs::new(dir)?),
+                (None, None) => unreachable!("checked above"),
+            };
             let mut game = Game::load_with(vfs, &|name| save_location(opts, name))?;
             game.upload(gfx);
             log::info!(

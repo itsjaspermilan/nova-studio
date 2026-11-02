@@ -424,8 +424,10 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
     nova.set(
         "view",
         lua.create_function(move |_, ()| {
+            // Whole numbers, so scripts can use them with math.random and as grid sizes. On a
+            // screen that is not 16:9 the exact width is fractional; this rounds down.
             let v = s.borrow().view;
-            Ok((v[0] as f64, v[1] as f64))
+            Ok((v[0].floor() as i64, v[1].floor() as i64))
         })?,
     )?;
     let s = shared.clone();

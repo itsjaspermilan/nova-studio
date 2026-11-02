@@ -175,11 +175,13 @@ Spec in [docs/project-format.md](docs/project-format.md); example `examples/crat
 - [ ] 3D extras: simple lights/material options, rigid-bone animation playback.
 - [x] Lua time and memory limits (256 MiB; 1 s per frame, 5 s to load; covers coroutines; done 2026-11-02).
 - [ ] Structured diagnostics for the studio (file, line, traceback as data, not just a banner).
-- [ ] Project loading on Android (APK asset source behind `Vfs`) and the APK running a
-  real project (overlaps M3).
+- [x] Project loading on Android: `.npk` single-file archive behind `Vfs`, bundled in the APK as
+  `assets/project.npk`; `scripts/build-apk.sh --project <folder>` builds a per-game APK; Crate Dash
+  verified on the emulator (2026-11-02). Real-device behaviour still unverified.
 
 ## M3: Packaging and device loop
 
+- [x] (script version) APK build + asset packer + signing: `scripts/build-apk.sh --project`, `nova pack`, `nova info`. Moving it into a `nova export android` command remains.
 - [ ] Template APK build + asset packer + signing. Debug keystore generated
   locally; **release signing and distribution stay the user's to do**.
 - [ ] `nova` CLI: `run` (desktop), `run --device` (adb push + live reload),

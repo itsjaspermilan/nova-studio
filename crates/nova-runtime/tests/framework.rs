@@ -906,3 +906,18 @@ fn a_damaged_save_file_warns_and_the_game_still_starts() {
     assert_eq!(logs(&g), ["nil"]);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn the_view_size_is_whole_numbers_even_on_odd_aspect_ratios() {
+    let mut g = project(vec![(
+        "main.lua",
+        lua(
+            "function update(dt)\n local w, h = nova.view()\n nova.log(math.type(w) .. ' ' .. math.type(h) .. ' ' .. w .. ' ' .. h .. ' ' .. math.random(24, w - 24))\nend",
+        ),
+    )]);
+    // A 1920x944 surface (as on the Android emulator) is 1098.5 logical units wide at 540 high.
+    g.update(0.016, 0.0, [1098.5, 540.0], Actions::default(), false);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let l = logs(&g);
+    assert!(l[0].starts_with("integer integer 1098 540 "), "{l:?}");
+}
