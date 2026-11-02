@@ -34,3 +34,7 @@ signing.properties
 
 # Scratch references (Pixelorama, Blockbench, GameStudio copies for reading)
 /references/
+
+# Studio build output
+/studio/src-tauri/gen/
+/.claude/

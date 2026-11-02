@@ -1,0 +1,7 @@
+{
+  "format": 1,
+  "name": "My Game",
+  "input": {
+    "jump": ["key:Space", "key:ArrowUp", "key:KeyW", "pad:south", "touch:right"]
+  }
+}

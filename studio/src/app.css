@@ -1,0 +1,45 @@
+:root {
+  color-scheme: dark;
+  --bg: #15171c;
+  --panel: #1b1e25;
+  --panel-2: #222630;
+  --line: #2c313c;
+  --text: #d9dde6;
+  --dim: #8b93a3;
+  --accent: #5aa9ff;
+  --accent-2: #3b82d6;
+  --error: #ff6b6b;
+  --warn: #e6b450;
+  --ok: #6fcf8e;
+  font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f4f5f8;
+  --panel: #ffffff;
+  --panel-2: #eceef3;
+  --line: #d6d9e0;
+  --text: #20242c;
+  --dim: #667085;
+  --accent: #1a6fd4;
+  --accent-2: #1558a8;
+}
+* { box-sizing: border-box; }
+html, body, #app { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--text); overflow: hidden; }
+button, input, select { font: inherit; color: inherit; }
+button {
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px;
+  padding: 4px 10px; cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: default; }
+button.primary { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
+button.danger { color: var(--error); }
+button.ghost { background: transparent; border-color: transparent; }
+input, select {
+  background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px;
+}
+input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.dim { color: var(--dim); }
+.mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }

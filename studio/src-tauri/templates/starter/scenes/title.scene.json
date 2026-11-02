@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "background": [40, 60, 90],
+  "objects": [
+    { "kind": "player", "name": "hero", "x": 480, "y": 400 }
+  ],
+  "texts": [
+    { "text": "MY GAME", "x": 24, "y": 24, "scale": 5 },
+    { "text": "Move with A and D, jump with Space", "x": 24, "y": 90, "scale": 2, "color": [190, 200, 220] }
+  ]
+}

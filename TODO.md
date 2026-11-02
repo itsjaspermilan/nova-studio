@@ -17,13 +17,10 @@ device; the Retroid has not arrived.
 
 Waiting on the user:
 - **The Retroid** for the M1 device gate (frame pacing, thermals, controller, audio latency).
-- **Product decisions for the studio (M4):** the studio is the next large piece (Tauri 2 with a
-  web-tech UI). It needs a few calls before it starts: which workspace comes first (proposal: project
-  hub + code editor + Play, then the scene editor), the front-end stack (proposal: TypeScript with a
-  small framework such as Svelte, or plain TypeScript like GameStudio), and the look and feel.
+- Nothing blocks the studio now: the first slice (hub, code editor, Play) was approved and is built
+  (see M4). The look and feel is a first draft in `studio/src/app.css`; tell me what to change.
 
-Can proceed without input, in rough priority: the studio shell once those are decided; structured Lua
-diagnostics (file, line and traceback as data, for the studio's Problems panel); rigid-bone model
+Can proceed without input, in rough priority: the scene editor (M4 second slice); rigid-bone model
 animation and simple lights; OGG and streamed music; the C audio core's synthesis for the sound studio
 (M6); Android analogue input and immersive mode (need the device to verify).
 
@@ -70,7 +67,9 @@ another physical Android device) to settle; the emulator cannot.
   user's to do. `nova export android` does not exist yet (a script does the work).
 - [ ] Third-party licence notices for Rust dependencies are not bundled into outputs (fonts' notices are
   in `licenses/fonts/`).
-- [ ] The studio does not exist yet (M4 to M7); neither do Windows/Linux builds.
+- [ ] Only the first studio slice exists (hub, code editor, Play; M4). Scene, sprite, model and sound
+  editors (M4 to M7) do not, nor do Windows/Linux builds. The studio was verified in the browser
+  preview (in-memory backend) and by compiling the real Tauri app; nobody has driven the native window.
 
 ## Goal
 
@@ -261,12 +260,14 @@ Spec in [docs/project-format.md](docs/project-format.md); example `examples/crat
 
 ## M4: Studio shell (Tauri 2 + TypeScript)
 
-- [ ] Project hub (New/Open/Recent, templates, examples), folder-as-project.
-- [ ] File tree with folders, rename/move updates references.
-- [ ] Lua editor: Monaco with typed API stubs generated from the runtime, Problems
-  panel, hover docs, go-to-error. Optional language server later.
-- [ ] Play: runtime in its own native window controlled by the studio, plus Run on
-  device. Distinct Run/Pause/Stop controls.
+First slice, built (Svelte 5 + TypeScript + CodeMirror 6; backend in `studio/src-tauri`):
+- [x] Project hub (New/Open/Recent, templates, examples), folder-as-project.
+- [x] File tree: create, rename, delete (to `.nova/trash`). [ ] Rename does not update references yet.
+- [x] Lua editor: CodeMirror (not Monaco), completions and hover docs from `nova-api.json` (kept in step
+  with the runtime by a test), project names inside strings (sprites, sounds, scenes, actions),
+  Problems panel from `nova check --json`, click-to-line. [ ] Optional language server later.
+- [x] Play: runs `nova run` as its own native window; Run/Stop, log console, saves first. [ ] Pause,
+  and Run on device.
 - [ ] Undo/redo across editors, safe saves, recovery, external-change handling.
 - [ ] Help window and short tutorials; beginner wording throughout.
 - [ ] Port from GameStudio where it fits: project tree, tabs, code editor, layout

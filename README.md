@@ -17,6 +17,7 @@ results are in `docs/spike-results.md`; the plan, decisions and milestones are i
 | Path | What |
 | --- | --- |
 | `crates/nova-runtime` | Rust runtime: renderer, Lua host, input, audio, Android entry (M1 spike) |
+| `studio/` | Nova Studio desktop app: Svelte + TypeScript front end, Tauri backend in `studio/src-tauri` (hub, code editor, Problems, Play) |
 | `audio/` | C11 audio core and its standalone tests (`docs/audio-core.md`) |
 | `docs/project-format.md` | Project format v1 and Lua API v1 (what `nova run` accepts) |
 | `examples/rally-demo/` | Immediate-mode project: sprites, 3D models, Lua, HUD |
@@ -48,13 +49,24 @@ scripts/env.sh cargo run --release -p nova-runtime --bin nova -- pack examples/c
 /opt/homebrew/bin/ctest --test-dir build/audio --output-on-failure
 ```
 
+The studio (needs the Node pinned in `scripts/env.sh`; run these from `studio/`):
+
+```sh
+../scripts/env.sh npm install
+../scripts/env.sh npx vitest run                 # front-end logic tests
+../scripts/env.sh npx svelte-check
+../scripts/env.sh npx tauri dev                  # the desktop app (build the runtime first: cargo build -p nova-runtime)
+../scripts/env.sh npx vite                       # browser preview with an in-memory project (no runtime)
+../scripts/env.sh cargo test -p nova-studio      # backend tests
+```
+
 Start the Android emulator profile with
 `scripts/env.sh emulator -avd retroid-sim`. It is for build/install/lifecycle
 checks; it does not predict handheld performance.
 
 ## Limits today
 
-- No studio app or editors yet. Projects are hand-written Lua, JSON scenes, PNG and GLB files; there is no OGG/streamed music or world-space text yet.
+- The studio has a project hub, a Lua editor, Problems and Play only; no scene, sprite, model or sound editors yet. Assets are made elsewhere. Projects are Lua, JSON scenes, PNG and GLB files; there is no OGG/streamed music or world-space text yet.
 - APKs of games run on the Android emulator; no handheld has run one. Analogue sticks and triggers do not reach the game on Android yet.
 - Only the Android emulator has run the APK; no handheld has.
 - The audio core was verified with offline renders only, not by listening.

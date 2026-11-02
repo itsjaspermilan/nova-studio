@@ -21,6 +21,8 @@ fail() { printf 'env.sh: %s\n' "$1" >&2; exit 1; }
 JAVA_HOME="$(ASDF_JAVA_VERSION=$JAVA_PIN asdf where java 2>/dev/null)" || fail "asdf Java $JAVA_PIN missing"
 
 export ANDROID_HOME
+# Node for the studio's front end (asdf has several installed; pin one for this command only).
+export ASDF_NODEJS_VERSION="${ASDF_NODEJS_VERSION:-22.17.0}"
 export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/$NDK_VERSION"
 export JAVA_HOME
 export PATH="/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/build-tools/36.1.0:$PATH"

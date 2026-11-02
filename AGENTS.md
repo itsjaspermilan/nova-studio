@@ -37,6 +37,14 @@ words, few choices, good defaults. There are no fantasy-console limits.
 - `docs/ux/`: retained UX research and the Pine Ridge Rally Lua exercise.
   `docs/archive/`: notes from the dropped Qt components, kept for ideas only.
 
+## Studio (`studio/`)
+
+Svelte 5 + TypeScript (Vite, vitest) front end; Tauri 2 backend in `studio/src-tauri` (workspace member
+`nova-studio`). The front end talks only through the `Api` interface in `src/lib/types.ts`: `api.ts`
+picks the Tauri backend or the in-memory `mock.ts` (browser preview). Every backend file operation is
+confined to the open project (`paths.rs`). `src/lib/nova-api.json` must match the Lua API (test
+`crates/nova-runtime/tests/api_docs.rs`). Run Node tooling through `scripts/env.sh`.
+
 ## Commands (repo root)
 
 ```sh
