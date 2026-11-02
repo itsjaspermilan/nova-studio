@@ -33,7 +33,7 @@ Repeat the focused authoring checks with an active logged-in desktop:
 
 The final ordinary Android launcher rebuild/package verification passed.
 Current modelling-milestone debug APK SHA-256:
-`98cc9b0521e6b1008aaf037f229fa95d510aaae6578c240ce27b551630037da6`.
+`7ab91df11c1e61095cf96e7059b96a6db57f13dcf26939a150f06f72179be218`.
 The standalone `build/exports/services-demo-v3/` export also built and passed exact
 package verification: manifest v2/audio, increasing versionCode 3, compiled
 `NOVA_STANDALONE=ON` and world preset `1920x1080`. Its generated unsigned release
@@ -117,6 +117,9 @@ quadrant pixels (4278/13020/4278/13020), texture allocation/free seam (22 balanc
 uploads/releases, second-upload rollback), and real native Models -> New model ->
 named parts -> PNG -> Save/reopen -> Create Object -> room Run workflow.
 Original 2D, untextured model, editor, presentation and services tests still pass.
+Integrated as `5b369d2`; the coordinator rebuilt and reran all 50 tests without
+crashes, then rebuilt/verified the debug Android APK. The hash above identifies
+this workspace's generated package, not the implementation child's build.
 The new UV decoder initially had a last-vertex indexing overrun; it was corrected
 before the final suite. Explicit mirrored/nonmirrored final-triangle vertex/UV
 correspondence now covers textured/untextured multi-primitive/node-alias models.
