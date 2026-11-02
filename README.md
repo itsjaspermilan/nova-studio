@@ -209,9 +209,9 @@ not share that lock, so exact file guards still apply.
 #### Asset source/output participation
 
 `ProjectDocument` also supplies the persistence boundary for real asset
-components. This is a **registration/storage API**, not new Sprite/Model tabs,
+components. This is a **registration/storage API**, not new Sprite/Model/Sound tabs,
 component codecs, or completed workspace/undo integration. It does not change
-runtime manifest versions: PNG/GLB outputs use ordinary existing declarations,
+runtime manifest versions: PNG/GLB/WAV outputs use ordinary existing declarations,
 and authoring associations live in `.nova-studio-assets` **version 1**.
 Existing v1/v2 projects keep their versions and exact hand-authored Lua.
 Legacy generated projects remain read-only.
@@ -221,7 +221,7 @@ the `ProjectDocument` owning thread:
 
 | Interface | Contract |
 | --- | --- |
-| `StudioAssetSnapshot` | Stable host `id`/`kind`, component revision, bounded JSON association metadata, one binary source and a complete output list. Each `StudioAssetFile` carries a contained relative path, owned bytes and an exact expected disk version. PNG/GLB outputs also require their actual `runtimeId`/`runtimeType`; metadata sidecars have no runtime ID. |
+| `StudioAssetSnapshot` | Stable host `id`/`kind`, component revision, bounded JSON association metadata, one binary source and a complete output list. Each `StudioAssetFile` carries a contained relative path, owned bytes and an exact expected disk version. PNG/GLB/WAV outputs also require their actual `runtimeId`/`runtimeType`; metadata sidecars have no runtime ID. |
 | `readAssetFile(path, &bytes, &expected, &error)` | Reads a guarded existing file or captures absence, including when its parent directories do not exist yet. `expected` is an opaque existence/version token; never fabricate one or refresh it silently after a conflict. |
 | `stageAssetSnapshot(snapshot, &error)` | Validates registration, budgets and versions, and deep-owns input strings/bytes, including Qt `fromRawData` buffers. It creates no project files/directories. Re-staging the same participant replaces its pending snapshot, not its persistent identity/source path/kind. |
 | `assetSnapshots()` / `savedAssetSnapshots()` | Current pending values versus the last committed source/output associations. Ordinary core undo cannot unregister live participant bindings. Component history/inspector drafts remain the component's responsibility; there is no invented asset undo command. |
@@ -238,12 +238,42 @@ acknowledge an older export. Finish/validate component inspector fields before
 freezing any snapshot. Source codecs and export completeness belong to those
 components; this layer does not infer a scene/model from a generated file.
 
+Source and unbound metadata paths cannot overlap any declared runtime asset,
+including normalized/case-equivalent aliases. A generated output may adopt an
+existing runtime file only with its exact declared ID, type and path; a new ID
+cannot take over another declaration's file, and a shared path with an unmanaged
+alias is refused. Unrelated runtime aliases remain readable and unchanged.
+Binding normalization preserves complete supported paths, including spaces.
+These ownership checks apply during staging, index loading and v2 recovery;
+source-only saving cannot bypass them. The native printable-ASCII relative-path
+contract is unchanged; Unicode lookalikes are not an escape from containment.
+
 `PublishDerived` requests a complete generated set and whole-project,
 CPU-only native preflight in a private staging directory. This includes
 untouched runtime assets, the authored scene, current Lua and its initial
 update, without GPU upload, live audio or save effects. Failure keeps the
 candidate source/output snapshots recoverable and leaves the previous
 generated files/index unchanged. It never silently downgrades to source-only.
+
+For a generated canonical WAV, set the output's `runtimeType` to
+`NOVA_ASSET_AUDIO`, its contained `.wav` path and explicit `runtimeId`. The
+manifest receives an ordinary `audio` declaration. Publication requires an
+existing v2/v3 project; v1 receives an explicit diagnostic, never an implicit
+upgrade. A v1 project can still save editable sound source using `SourceOnly`,
+without an audio declaration. Metadata sidecars remain separately guarded
+unbound files, not disguised WAV outputs.
+
+WAV publication uses the existing native decoder and whole-project preflight:
+canonical RIFF PCM8/PCM16/PCM24 or finite float32 within +/-16, mono/stereo,
+8000..48000 Hz, at most 60 seconds per native sound, 120 seconds across unique
+project sounds, 16 MiB per file and the shared 64 MiB runtime input budget.
+Unsupported/compressed or extra-chunk WAVs are rejected before project outputs
+change. No device is opened or playback/save
+effect dispatched by preflight. The Sound component owns its narrower
+**33 MiB editable-source / 30-second composition** contract and embeds retained
+originals in that source; the persistence layer does not invent a sound codec
+or widen native budgets. Invalid/oversized WAV publication never silently
+replaces the previous WAV or converts the operation into a source-only save.
 
 For unsupported/over-budget exports, explicitly stage `SourceOnly` with a
 nonempty `derivedProblem` and no replacement outputs. This saves the editable
@@ -261,7 +291,7 @@ Limits are binary MiB/KiB and checked without truncation:
 | Boundary | Limit |
 | --- | --- |
 | Authored source file | 65 MiB (68,157,440 bytes) |
-| Each derived file, including runtime PNG/GLB | 16 MiB; existing native import/pixel/asset-count limits still apply |
+| Each derived file, including runtime PNG/GLB/WAV | 16 MiB; existing native import/pixel/audio/asset-count limits still apply |
 | Active source + output payloads | 256 MiB across at most 16 participants and 128 files |
 | Association metadata | 64 KiB per participant; 1 MiB complete index |
 | Journal/recovery metadata | 2 MiB |
@@ -271,8 +301,9 @@ Limits are binary MiB/KiB and checked without truncation:
 The current Sprite envelope is a 65 MiB source, up to 32 PNGs totaling 65 MiB,
 and 64 KiB export metadata: **130 MiB + 64 KiB / 34 files**. Its exact maximal
 serialized source is 67,121,780 bytes. Mesh needs at most 64 MiB source plus
-one 16 MiB GLB. The budgets accommodate either complete component, both
-generations and recovery overhead. Aggregate project and union-of-old/new-file
+one 16 MiB GLB. Sound's 33 MiB source and up-to-16 MiB WAV plus metadata fit the
+same bounds. The budgets accommodate a complete component, both generations
+and recovery overhead. Aggregate project and union-of-old/new-file
 limits can still reject a larger transaction before project-file mutation.
 These are bounded in-memory byte snapshots, **not a streamed recording API**;
 future large audio sources need a deliberate file-backed participation design.
@@ -304,9 +335,8 @@ duplicate JSON keys, external edits and interrupted cleanup are explicit
 failures, not overwritten successes. Unknown or empty existing recovery records
 require an explicit review/discard decision. Original **version-1 three-text-file
 records remain supported explicitly**, with their original old/new-byte recovery
-contract. Binary
-comparison/recovery views show lengths and hashes rather than dumping binary
-data into text controls.
+contract. Binary comparison/recovery views show lengths and hashes rather than
+dumping binary data into text controls.
 
 A separate version-2 recovery copy consists of the chosen new JSON file
 **and its adjacent, uniquely named `.nova-studio-copy-...` blob directory**.

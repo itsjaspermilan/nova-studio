@@ -446,6 +446,31 @@ The Model workspace owner is building its visual tools on one shared native
 viewport, without changing the Scene game camera or creating another renderer.
 The full shell, Sound production and all-tools 3D rally gates remain open.
 
+### Focused Sound persistence continuation
+
+The same participant API now accepts explicitly bound `NOVA_ASSET_AUDIO` WAV
+outputs and guarded metadata sidecars. Native canonical WAV and whole-project
+preflight remain authoritative; no runtime/audio budget or manifest version is
+changed. v1 audio publication fails explicitly, while source-only persistence
+remains available. Sound's 33 MiB source / 30-second composition envelope fits
+the existing byte-backed source/output/recovery limits; this is not long-media
+storage or Sound workspace embedding.
+
+A reproduced source-only overwrite of the existing starter GLB is corrected:
+source/unbound paths cannot overlap declared runtime files, and new output IDs
+cannot claim unrelated runtime paths or unmanaged aliases. Exact ID/type/path
+output adoption remains supported. Shared normalized ownership checks protect
+staging, index reads and v2 recovery before writes, independently of preflight.
+
+All 95 headless Qt document cases plus native manifest and service suites pass
+ordinary and ASan/UBSan builds; the instrumented document suite also passes a
+second complete run. Coverage includes a 33 MiB opaque source fixture with a
+real 30-second stereo PCM WAV, invalid/over-budget publication, exact output
+guards, source-only retention, interrupted/reopened saves, and forged recovery
+claims on runtime paths. The actual Sound codec/workspace is a separate owner.
+The affected studio target builds; no GUI focus, playback-device or OS-setting
+changes were used.
+
 ## Pre-Qt integrated baseline (retained evidence)
 
 The approved bounded software milestones are implemented and locally committed:

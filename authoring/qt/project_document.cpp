@@ -364,12 +364,29 @@ bool validateAssets(const AssetStates &states, const NovaProject &project, const
             for (const auto &path : paths)
                 if (key.startsWith(path + "/") || path.startsWith(key + "/"))
                     return failure(error, "An asset file path overlaps another document's parent directory: " + file.path);
+            for (size_t j = 0; j < project.count; ++j) {
+                const auto &asset = project.assets[j];
+                const auto runtimePath = QString::fromUtf8(asset.path), runtimeKey = pathKey(runtimePath);
+                if (key != runtimeKey) {
+                    if (key.startsWith(runtimeKey + "/") || runtimeKey.startsWith(key + "/"))
+                        return failure(error, "An asset file path overlaps a runtime asset's parent directory: " + file.path);
+                    continue;
+                }
+                if (!i || file.runtimeId != QString::fromUtf8(asset.id) ||
+                    file.runtimeType != asset.type || file.path != runtimePath)
+                    return failure(error, "Authored payload overlaps an unrelated runtime asset: " +
+                        QString::fromUtf8(asset.id) + " (" + runtimePath + "). Only an exact, explicitly bound output may adopt that runtime file.");
+            }
             paths.insert(key); total += file.bytes.size();
             if (!file.runtimeId.isEmpty()) {
                 if (!validId(file.runtimeId) || ids.contains(file.runtimeId) ||
-                    (file.runtimeType != NOVA_ASSET_SPRITE && file.runtimeType != NOVA_ASSET_MODEL) ||
-                    !file.path.endsWith(file.runtimeType == NOVA_ASSET_SPRITE ? ".png" : ".glb"))
-                    return failure(error, "Generated runtime bindings require unique sprite/model IDs and matching PNG/GLB paths.");
+                    (file.runtimeType != NOVA_ASSET_SPRITE && file.runtimeType != NOVA_ASSET_MODEL &&
+                        file.runtimeType != NOVA_ASSET_AUDIO) ||
+                    !file.path.endsWith(file.runtimeType == NOVA_ASSET_SPRITE ? ".png" :
+                        file.runtimeType == NOVA_ASSET_MODEL ? ".glb" : ".wav"))
+                    return failure(error, "Generated runtime bindings require unique sprite/model/audio IDs and matching PNG/GLB/WAV paths.");
+                if (file.runtimeType == NOVA_ASSET_AUDIO && project.version < 2)
+                    return failure(error, "Generated WAV publication requires manifest v2 or v3; this project has not been upgraded. Save source-only or use an audio-capable project.");
                 ids.insert(file.runtimeId);
                 bool declared = false;
                 for (size_t j = 0; j < project.count; ++j)
@@ -379,8 +396,8 @@ bool validateAssets(const AssetStates &states, const NovaProject &project, const
                         break;
                     }
                 if (!declared) return failure(error, "Authored output binding differs from the runtime manifest: " + file.runtimeId);
-            } else if (i && (file.path.endsWith(".png") || file.path.endsWith(".glb"))) {
-                return failure(error, "Generated PNG/GLB outputs require explicit runtime bindings.");
+            } else if (i && (file.path.endsWith(".png") || file.path.endsWith(".glb") || file.path.endsWith(".wav"))) {
+                return failure(error, "Generated PNG/GLB/WAV outputs require explicit runtime bindings.");
             }
         }
     }
@@ -422,7 +439,8 @@ bool readIndexFile(const QJsonValue &value, const Payloads &payloads, StudioAsse
         return failure(error, "Authored source/output differs from its saved association: " + json["path"].toString());
     file->path = found->first; file->bytes = found->second; file->runtimeId = json["runtimeId"].toString();
     const double type = json["runtimeType"].toDouble();
-    if (file->runtimeId.isEmpty() ? type != -1 : (type != NOVA_ASSET_SPRITE && type != NOVA_ASSET_MODEL))
+    if (file->runtimeId.isEmpty() ? type != -1 :
+        (type != NOVA_ASSET_SPRITE && type != NOVA_ASSET_MODEL && type != NOVA_ASSET_AUDIO))
         return failure(error, "Unsupported runtime binding in authoring index.");
     if (!file->runtimeId.isEmpty()) file->runtimeType = NovaAssetType(int(type));
     return true;
@@ -955,6 +973,15 @@ Bindings bindings(const AssetStates &states)
 bool normalizeManifest(StudioDraft *draft, const AssetStates &states, const Bindings &owned, QString *error)
 {
     auto wanted = bindings(states);
+    if (std::any_of(wanted.begin(), wanted.end(),
+        [](const auto &pair) { return pair.second.runtimeType == NOVA_ASSET_AUDIO; })) {
+        NovaProject project{};
+        char detail[1024] = {};
+        if (!nova_project_parse(&project, draft->manifest.constData(), size_t(draft->manifest.size()), detail, sizeof(detail)))
+            return failure(error, QString::fromUtf8(detail));
+        if (project.version < 2)
+            return failure(error, "Generated WAV publication requires manifest v2 or v3; this project has not been upgraded. Save source-only or use an audio-capable project.");
+    }
     Bindings managed = owned;
     for (const auto &pair : wanted) {
         const auto previous = managed.find(pair.first);
@@ -966,15 +993,17 @@ bool normalizeManifest(StudioDraft *draft, const AssetStates &states, const Bind
     if (managed.empty()) return true;
     QByteArray manifest;
     const auto lines = draft->manifest.split('\n');
+    static const QRegularExpression declaration("^(sprite|model|audio)[ \\t]+([^ \\t]+)[ \\t]+(.+)$");
     for (qsizetype i = 0; i < lines.size(); ++i) {
         const auto &line = lines[i];
-        const auto fields = QString::fromUtf8(line).trimmed().split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
-        if (fields.size() >= 3 && (fields[0] == "sprite" || fields[0] == "model" || fields[0] == "audio")) {
-            const auto found = managed.find(fields[1]);
+        const auto match = declaration.match(QString::fromUtf8(line).trimmed());
+        if (match.hasMatch()) {
+            const auto found = managed.find(match.captured(2));
             if (found != managed.end()) {
-                const auto type = fields[0] == "sprite" ? NOVA_ASSET_SPRITE : fields[0] == "model" ? NOVA_ASSET_MODEL : NOVA_ASSET_AUDIO;
-                if (found->second.path != fields[2] || found->second.runtimeType != type)
-                    return failure(error, "Runtime binding conflicts with an existing declaration: " + fields[1]);
+                const auto type = match.captured(1) == "sprite" ? NOVA_ASSET_SPRITE :
+                    match.captured(1) == "model" ? NOVA_ASSET_MODEL : NOVA_ASSET_AUDIO;
+                if (found->second.path != match.captured(3) || found->second.runtimeType != type)
+                    return failure(error, "Runtime binding conflicts with an existing declaration: " + match.captured(2));
                 continue;
             }
         }
@@ -984,7 +1013,8 @@ bool normalizeManifest(StudioDraft *draft, const AssetStates &states, const Bind
     const auto newline = draft->manifest.contains("\r\n") ? QByteArray("\r\n") : QByteArray("\n");
     if (!manifest.isEmpty() && !manifest.endsWith('\n')) manifest += newline;
     for (const auto &pair : wanted)
-        manifest += QByteArray(pair.second.runtimeType == NOVA_ASSET_SPRITE ? "sprite " : "model ") +
+        manifest += QByteArray(pair.second.runtimeType == NOVA_ASSET_SPRITE ? "sprite " :
+            pair.second.runtimeType == NOVA_ASSET_MODEL ? "model " : "audio ") +
             pair.first.toUtf8() + " " + pair.second.path.toUtf8() + newline;
     draft->manifest = manifest;
     return true;

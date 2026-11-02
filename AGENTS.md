@@ -126,6 +126,11 @@ exported. The earlier externally authored 2D assessment game is not that proof.
   a successful fresh export. Host Run/export must check runtimeAssetsReady,
   and acknowledgments require the original component snapshot/session identity
   plus the exact participant/revision/digest; never reconstruct a process UUID.
+  Generated PNG/GLB/WAV outputs need explicit native type/ID/path bindings.
+  WAV publication requires v2/v3; never upgrade v1 implicitly or widen native
+  PCM/file/duration/project budgets. Source/unbound payloads cannot claim any
+  runtime asset path; exact bound adoption must not overwrite unmanaged aliases.
+  Apply these ownership rules equally to staging, index loading and recovery.
   Real component embedding/undo routing follows separately. The journal is a
   recoverable multi-file commit, not filesystem atomicity. Interrupted journals
   block runtime/export; v2 checks exact before/absence and completed-write

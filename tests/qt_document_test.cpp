@@ -6,6 +6,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTemporaryDir>
+#include <QtEndian>
 #include <QtTest>
 #include <unistd.h>
 
@@ -41,19 +42,48 @@ static bool expectedVersions(ProjectDocument &document, StudioAssetSnapshot *sna
     return true;
 }
 
-static StudioAssetSnapshot assetSnapshot(bool model = false)
+static QByteArray pcmWav(quint32 frames = 240)
+{
+    const quint32 dataBytes = frames * 4;
+    QByteArray bytes(44 + qsizetype(dataBytes), '\0');
+    bytes.replace(0, 4, "RIFF");
+    qToLittleEndian<quint32>(36 + dataBytes, bytes.data() + 4);
+    bytes.replace(8, 8, "WAVEfmt ");
+    qToLittleEndian<quint32>(16, bytes.data() + 16);
+    qToLittleEndian<quint16>(1, bytes.data() + 20);
+    qToLittleEndian<quint16>(2, bytes.data() + 22);
+    qToLittleEndian<quint32>(48000, bytes.data() + 24);
+    qToLittleEndian<quint32>(48000 * 4, bytes.data() + 28);
+    qToLittleEndian<quint16>(4, bytes.data() + 32);
+    qToLittleEndian<quint16>(16, bytes.data() + 34);
+    bytes.replace(36, 4, "data");
+    qToLittleEndian<quint32>(dataBytes, bytes.data() + 40);
+    return bytes;
+}
+
+static StudioAssetSnapshot assetSnapshot(NovaAssetType type = NOVA_ASSET_SPRITE)
 {
     StudioAssetSnapshot snapshot;
-    snapshot.id = "authored"; snapshot.kind = model ? "mesh" : "sprite"; snapshot.revision = 17;
+    snapshot.id = "authored"; snapshot.kind = type == NOVA_ASSET_AUDIO ? "sound" : type == NOVA_ASSET_MODEL ? "mesh" : "sprite";
+    snapshot.revision = 17;
     snapshot.metadata = {{"name", "Authored asset"}, {"componentVersion", 1}};
-    snapshot.source.path = model ? "sources/authored.nvmesh" : "sources/authored.nvsprite";
+    snapshot.source.path = type == NOVA_ASSET_AUDIO ? "sources/authored.sound-source" :
+        type == NOVA_ASSET_MODEL ? "sources/authored.nvmesh" : "sources/authored.nvsprite";
     snapshot.source.bytes = QByteArray("component-owned\0source", 22);
     StudioAssetFile output;
-    output.path = model ? "generated/authored/mesh.glb" : "generated/authored/frame-1.png";
+    output.path = type == NOVA_ASSET_AUDIO ? "generated/authored/sound.wav" :
+        type == NOVA_ASSET_MODEL ? "generated/authored/mesh.glb" : "generated/authored/frame-1.png";
     output.runtimeId = "authored_output";
-    output.runtimeType = model ? NOVA_ASSET_MODEL : NOVA_ASSET_SPRITE;
-    output.bytes = readFile(QString(NOVA_EXAMPLES) + (model ? "/assets/assets/gem.glb" : "/sprites/assets/token.png"));
+    output.runtimeType = type;
+    output.bytes = type == NOVA_ASSET_AUDIO ? pcmWav() :
+        readFile(QString(NOVA_EXAMPLES) + (type == NOVA_ASSET_MODEL ? "/assets/assets/gem.glb" : "/sprites/assets/token.png"));
     snapshot.outputs.append(output);
+    if (type == NOVA_ASSET_AUDIO) {
+        StudioAssetFile metadata;
+        metadata.path = "generated/authored/sound.json";
+        metadata.bytes = "{\"format\":\"sound-storage-fixture\",\"frames\":240}";
+        snapshot.outputs.append(metadata);
+    }
     return snapshot;
 }
 
@@ -424,23 +454,24 @@ private slots:
 
     void assetPublishedRoundTrip_data()
     {
-        QTest::addColumn<bool>("model");
-        QTest::newRow("png") << false;
-        QTest::newRow("glb") << true;
+        QTest::addColumn<int>("type");
+        QTest::newRow("png") << int(NOVA_ASSET_SPRITE);
+        QTest::newRow("glb") << int(NOVA_ASSET_MODEL);
+        QTest::newRow("wav") << int(NOVA_ASSET_AUDIO);
     }
 
     void assetPublishedRoundTrip()
     {
-        QFETCH(bool, model);
+        QFETCH(int, type);
         QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-assets-XXXXXX");
         QString error, path, root;
-        auto snapshot = assetSnapshot(model);
+        auto snapshot = assetSnapshot(NovaAssetType(type));
         snapshot.revision = (quint64(1) << 60) + 17;
         QVERIFY(!snapshot.outputs[0].bytes.isEmpty());
         QByteArray script, hash;
         {
             ProjectDocument document;
-            QVERIFY(document.create(temporary.path(), "Assets", model, NOVA_EXAMPLES, &error));
+            QVERIFY(document.create(temporary.path(), "Assets", type == NOVA_ASSET_MODEL, NOVA_EXAMPLES, &error));
             path = document.path(); root = document.root(); script = document.draft().script;
             QVERIFY2(expectedVersions(document, &snapshot, &error), qPrintable(error));
             QVERIFY(!snapshot.source.expected.exists);
@@ -468,6 +499,16 @@ private slots:
             const auto index = QJsonDocument::fromJson(readFile(root + "/.nova-studio-assets")).object();
             QCOMPARE(index["version"].toInt(), 1);
             QCOMPARE(index["assets"].toArray().size(), 1);
+            NovaProjectValidation validation{};
+            char detail[1024] = {};
+            QVERIFY2(nova_validate_project(path.toUtf8().constData(), &validation, detail, sizeof(detail)), detail);
+            QCOMPARE(int(validation.assets[1].declaration.type), type);
+            if (type == NOVA_ASSET_AUDIO) {
+                QVERIFY(document.draft().manifest.contains("audio authored_output generated/authored/sound.wav\n"));
+                QCOMPARE(validation.assets[1].sample_rate, 48000u);
+                QCOMPARE(validation.assets[1].channels, 2u);
+                QCOMPARE(validation.assets[1].sample_frames, 240u);
+            }
         }
         ProjectDocument reopened;
         QVERIFY2(reopened.open(path, &error), qPrintable(error));
@@ -475,41 +516,51 @@ private slots:
         const auto restored = reopened.assetSnapshots()[0];
         QCOMPARE(ProjectDocument::assetSnapshotDigest(restored), hash);
         QCOMPARE(restored.source.bytes, snapshot.source.bytes);
+        QCOMPARE(restored.outputs.size(), snapshot.outputs.size());
+        for (qsizetype i = 0; i < snapshot.outputs.size(); ++i) {
+            QCOMPARE(restored.outputs[i].bytes, snapshot.outputs[i].bytes);
+            QCOMPARE(restored.outputs[i].runtimeId, snapshot.outputs[i].runtimeId);
+            QCOMPARE(restored.outputs[i].runtimeType, snapshot.outputs[i].runtimeType);
+        }
         QVERIFY(restored.source.expected.exists);
         QVERIFY(reopened.assetPublication(snapshot.id).saved);
         QVERIFY2(reopened.runtimeAssetsReady(&error), qPrintable(error));
         QVERIFY(!reopened.dirty());
     }
 
+    void sourceOnlyRetainsPublishedGeneration_data() { assetPublishedRoundTrip_data(); }
+
     void sourceOnlyRetainsPublishedGeneration()
     {
+        QFETCH(int, type);
         QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-source-only-XXXXXX");
         QString error, path;
-        QByteArray oldPng, oldScript, oldSource;
+        QByteArray oldOutput, oldScript, oldSource;
         {
             ProjectDocument document;
             QVERIFY(document.create(temporary.path(), "SourceOnly", false, NOVA_EXAMPLES, &error));
             path = document.path(); oldScript = document.draft().script;
-            auto snapshot = assetSnapshot();
+            auto snapshot = assetSnapshot(NovaAssetType(type));
             QVERIFY(expectedVersions(document, &snapshot, &error));
             QVERIFY(document.stageAssetSnapshot(snapshot, &error));
             QVERIFY2(document.save(&error), qPrintable(error));
             snapshot = document.assetSnapshots()[0];
-            oldPng = snapshot.outputs[0].bytes; oldSource = snapshot.source.bytes;
+            const auto outputPath = snapshot.outputs[0].path;
+            oldOutput = snapshot.outputs[0].bytes; oldSource = snapshot.source.bytes;
             snapshot.revision++;
             snapshot.source.bytes += "\neditable new source";
-            snapshot.outputs[0].bytes = "not a PNG";
+            snapshot.outputs[0].bytes = "invalid native export";
             QVERIFY(document.stageAssetSnapshot(snapshot, &error));
             QVERIFY(!document.save(&error));
             QVERIFY2(error.contains("publication failed"), qPrintable(error));
             QCOMPARE(readFile(document.root() + "/" + snapshot.source.path), oldSource);
-            QCOMPARE(readFile(document.root() + "/" + snapshot.outputs[0].path), oldPng);
+            QCOMPARE(readFile(document.root() + "/" + snapshot.outputs[0].path), oldOutput);
             QVERIFY(QFileInfo::exists(document.root() + "/.nova-studio-recovery"));
             QVERIFY(!QFileInfo::exists(document.root() + "/.nova-studio-journal"));
             QVERIFY(!document.runtimeAssetsReady(&error));
             QCOMPARE(document.assetPublication(snapshot.id).revision, quint64(17));
             QCOMPARE(document.assetPublication(snapshot.id).sourceDigest, sha256(oldSource));
-            QCOMPARE(document.savedAssetSnapshots()[0].outputs[0].bytes, oldPng);
+            QCOMPARE(document.savedAssetSnapshots()[0].outputs[0].bytes, oldOutput);
             snapshot.mode = StudioAssetSnapshot::Mode::SourceOnly;
             snapshot.derivedProblem = "Current source requires unsupported runtime features";
             snapshot.outputs.clear();
@@ -517,7 +568,11 @@ private slots:
             QVERIFY(document.editScript("function incomplete(", &error));
             QVERIFY2(document.save(&error), qPrintable(error));
             QCOMPARE(readFile(document.root() + "/" + snapshot.source.path), snapshot.source.bytes);
-            QCOMPARE(readFile(document.root() + "/generated/authored/frame-1.png"), oldPng);
+            QCOMPARE(readFile(document.root() + "/" + outputPath), oldOutput);
+            const auto retained = document.assetSnapshots()[0];
+            QCOMPARE(retained.outputs[0].runtimeType, NovaAssetType(type));
+            for (const auto &file : retained.outputs)
+                QCOMPARE(readFile(document.root() + "/" + file.path), file.bytes);
             const auto publication = document.assetPublication(snapshot.id);
             QVERIFY(publication.saved);
             QVERIFY(publication.stale);
@@ -535,7 +590,9 @@ private slots:
         snapshot.revision++;
         snapshot.mode = StudioAssetSnapshot::Mode::PublishDerived;
         snapshot.derivedProblem.clear();
-        snapshot.outputs[0].bytes = oldPng;
+        QCOMPARE(snapshot.outputs[0].bytes, oldOutput);
+        QCOMPARE(snapshot.outputs[0].runtimeType, NovaAssetType(type));
+        snapshot.outputs[0].bytes = oldOutput;
         QVERIFY(reopened.editScript(QString::fromUtf8(oldScript), &error));
         QVERIFY(reopened.stageAssetSnapshot(snapshot, &error));
         QVERIFY2(reopened.save(&error), qPrintable(error));
@@ -544,13 +601,548 @@ private slots:
         QCOMPARE(reopened.assetPublication(snapshot.id).sourceDigest, sha256(snapshot.source.bytes));
     }
 
+    void sourceOnlyCannotOverwriteRuntimeFile_data()
+    {
+        QTest::addColumn<QString>("runtimeName");
+        QTest::addColumn<QString>("candidateName");
+        QTest::addColumn<bool>("source");
+        QTest::addColumn<bool>("nativePath");
+        QTest::newRow("source-exact") << QString("starter.glb") << QString("starter.glb") << true << true;
+        QTest::newRow("source-case-alias") << QString("starter.glb") << QString("STARTER.GLB") << true << true;
+        QTest::newRow("metadata-exact") << QString("starter.glb") << QString("starter.glb") << false << true;
+        QTest::newRow("metadata-case-alias") << QString("starter.glb") << QString("STARTER.GLB") << false << true;
+        QTest::newRow("non-ascii-normalized-source-alias") << QString("K.glb")
+            << QString::fromUtf8("\xe2\x84\xaa.glb") << true << false;
+        QTest::newRow("non-ascii-normalized-metadata-alias") << QString("K.glb")
+            << QString::fromUtf8("\xe2\x84\xaa.GLB") << false << false;
+    }
+
+    void sourceOnlyCannotOverwriteRuntimeFile()
+    {
+        QFETCH(QString, runtimeName);
+        QFETCH(QString, candidateName);
+        QFETCH(bool, source);
+        QFETCH(bool, nativePath);
+        QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-runtime-ownership-XXXXXX");
+        QString error, root, path;
+        QByteArray manifest;
+        {
+            ProjectDocument initial;
+            QVERIFY(initial.create(temporary.path(), "RuntimeOwnership", true, NOVA_EXAMPLES, &error));
+            root = initial.root(); path = initial.path(); manifest = initial.draft().manifest;
+        }
+        if (runtimeName != "starter.glb") {
+            QVERIFY(QFile::rename(root + "/starter.glb", root + "/" + runtimeName));
+            manifest.replace("starter.glb", runtimeName.toUtf8());
+            QVERIFY(writeFile(path, manifest));
+        }
+        ProjectDocument document;
+        QVERIFY2(document.open(path, &error), qPrintable(error));
+        const auto runtimePath = root + "/" + runtimeName;
+        const auto original = readFile(runtimePath);
+        auto snapshot = assetSnapshot(NOVA_ASSET_MODEL);
+        if (source) {
+            snapshot.source.path = candidateName;
+            snapshot.mode = StudioAssetSnapshot::Mode::SourceOnly;
+            snapshot.derivedProblem = "Source must not replace the runtime model";
+            snapshot.outputs.clear();
+        } else {
+            StudioAssetFile metadata;
+            metadata.path = candidateName; metadata.bytes = "editable metadata, not a runtime model";
+            snapshot.outputs.append(metadata);
+        }
+        QCOMPARE(expectedVersions(document, &snapshot, &error), nativePath);
+        QVERIFY(!document.stageAssetSnapshot(snapshot, &error));
+        QVERIFY2(error.contains(nativePath ? "unrelated runtime asset" : "invalid"), qPrintable(error));
+        QCOMPARE(readFile(runtimePath), original);
+        QCOMPARE(readFile(path), manifest);
+        QVERIFY(!QFileInfo::exists(root + "/.nova-studio-assets"));
+        QVERIFY(!QFileInfo::exists(root + "/sources"));
+        QVERIFY(document.assetSnapshots().isEmpty());
+    }
+
+    void runtimeOutputAdoption_data()
+    {
+        QTest::addColumn<int>("type");
+        QTest::addColumn<int>("claim");
+        QTest::addColumn<bool>("spaces");
+        for (const auto type : {NOVA_ASSET_SPRITE, NOVA_ASSET_MODEL, NOVA_ASSET_AUDIO})
+            for (int claim = 0; claim < 3; ++claim) {
+                const auto name = QByteArray(type == NOVA_ASSET_SPRITE ? "png" : type == NOVA_ASSET_MODEL ? "glb" : "wav") +
+                    (claim == 0 ? "-explicit-adoption" : claim == 1 ? "-unrelated-id" : "-unmanaged-alias");
+                QTest::newRow(name.constData()) << int(type) << claim << false;
+            }
+        QTest::newRow("wav-explicit-adoption-spaces") << int(NOVA_ASSET_AUDIO) << 0 << true;
+    }
+
+    void runtimeOutputAdoption()
+    {
+        QFETCH(int, type);
+        QFETCH(int, claim);
+        QFETCH(bool, spaces);
+        QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-runtime-adoption-XXXXXX");
+        const auto root = temporary.path(), path = root + "/nova.project";
+        auto snapshot = assetSnapshot(NovaAssetType(type));
+        if (spaces) snapshot.outputs[0].path = "generated/authored/My  sound.wav";
+        const auto existing = snapshot.outputs[0];
+        const QByteArray directive = type == NOVA_ASSET_SPRITE ? "sprite " : type == NOVA_ASSET_MODEL ? "model " : "audio ";
+        QByteArray manifest = "nova-project 2\nidentity adoption\nentry main.lua\n" +
+            directive + "existing " + existing.path.toUtf8() + "\n";
+        if (claim == 2) manifest += directive + "alias " + existing.path.toUtf8() + "\n";
+        QVERIFY(QDir(root).mkpath("generated/authored"));
+        QVERIFY(writeFile(root + "/" + existing.path, existing.bytes));
+        QVERIFY(writeFile(root + "/main.lua", "function update() end\n"));
+        QVERIFY(writeFile(path, manifest));
+        ProjectDocument document;
+        QString error;
+        QVERIFY(document.open(path, &error));
+        snapshot.outputs[0].runtimeId = claim == 1 ? "new_output" : "existing";
+        QVERIFY(expectedVersions(document, &snapshot, &error));
+        if (claim) {
+            QVERIFY(!document.stageAssetSnapshot(snapshot, &error));
+            QVERIFY2(error.contains("unrelated runtime asset"), qPrintable(error));
+            QCOMPARE(readFile(path), manifest);
+            QCOMPARE(readFile(root + "/" + existing.path), existing.bytes);
+            QVERIFY(!QFileInfo::exists(root + "/" + snapshot.source.path));
+            QVERIFY(!QFileInfo::exists(root + "/.nova-studio-assets"));
+        } else {
+            QVERIFY2(document.stageAssetSnapshot(snapshot, &error), qPrintable(error));
+            QVERIFY2(document.save(&error), qPrintable(error));
+            QCOMPARE(document.project().version, 2u);
+            QCOMPARE(document.project().count, size_t(1));
+            QVERIFY2(document.open(path, &error), qPrintable(error));
+            QCOMPARE(document.assetSnapshots()[0].outputs[0].runtimeId, QString("existing"));
+            QCOMPARE(document.assetSnapshots()[0].outputs[0].runtimeType, NovaAssetType(type));
+            QVERIFY(document.runtimeAssetsReady(&error));
+            if (spaces) {
+                snapshot = document.assetSnapshots()[0];
+                snapshot.revision++; snapshot.source.bytes += "\nchanged source";
+                snapshot.outputs.clear(); snapshot.mode = StudioAssetSnapshot::Mode::SourceOnly;
+                snapshot.derivedProblem = "Current source has not been exported";
+                QVERIFY2(document.stageAssetSnapshot(snapshot, &error), qPrintable(error));
+                QVERIFY2(document.save(&error), qPrintable(error));
+                QVERIFY2(document.open(path, &error), qPrintable(error));
+                QCOMPARE(document.assetSnapshots()[0].outputs[0].path, existing.path);
+                QCOMPARE(readFile(root + "/" + existing.path), existing.bytes);
+                QVERIFY(document.assetPublication(snapshot.id).stale);
+            }
+        }
+    }
+
+    void recoveryCannotClaimRuntimePayload_data()
+    {
+        QTest::addColumn<QString>("candidateName");
+        QTest::addColumn<int>("claim");
+        QTest::newRow("source-exact") << QString("starter.glb") << 0;
+        QTest::newRow("source-case-alias") << QString("STARTER.glb") << 0;
+        QTest::newRow("metadata-exact") << QString("starter.glb") << 1;
+        QTest::newRow("metadata-case-alias") << QString("STARTER.glb") << 1;
+        QTest::newRow("unrelated-binding-exact") << QString("starter.glb") << 2;
+        QTest::newRow("unrelated-binding-case-alias") << QString("STARTER.glb") << 2;
+    }
+
+    void recoveryCannotClaimRuntimePayload()
+    {
+        QFETCH(QString, candidateName);
+        QFETCH(int, claim);
+        QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-recovery-ownership-XXXXXX");
+        QString error, root, path;
+        QByteArray manifest, runtimeBytes, claimedBefore, recordBytes;
+        StudioDiskVersion claimedVersion;
+        auto snapshot = assetSnapshot(NOVA_ASSET_MODEL);
+        if (claim == 0) {
+            snapshot.mode = StudioAssetSnapshot::Mode::SourceOnly;
+            snapshot.derivedProblem = "Editable source is not a runtime export";
+            snapshot.outputs.clear();
+        } else if (claim == 1) {
+            StudioAssetFile metadata;
+            metadata.path = "generated/authored/details.bin"; metadata.bytes = "component metadata";
+            snapshot.outputs.append(metadata);
+        }
+        const auto claimedPath = claim == 0 ? snapshot.source.path : claim == 1 ?
+            snapshot.outputs[1].path : snapshot.outputs[0].path;
+        {
+            ProjectDocument document;
+            QVERIFY(document.create(temporary.path(), "RecoveryOwnership", true, NOVA_EXAMPLES, &error));
+            root = document.root(); path = document.path(); manifest = document.draft().manifest;
+            runtimeBytes = readFile(root + "/starter.glb");
+            QVERIFY(document.readAssetFile(candidateName, &claimedBefore, &claimedVersion, &error));
+            QVERIFY(expectedVersions(document, &snapshot, &error));
+            QVERIFY(document.stageAssetSnapshot(snapshot, &error));
+            QVERIFY(document.writeRecovery(&error));
+            recordBytes = readFile(root + "/.nova-studio-recovery");
+        }
+        auto record = QJsonDocument::fromJson(recordBytes).object();
+        auto files = record["files"].toArray();
+        const auto store = root + "/.nova-studio-snapshots/";
+        const auto saveBlob = [&store](const QByteArray &bytes) {
+            return writeFile(store + QString::fromLatin1(sha256(bytes)) + ".blob", bytes);
+        };
+        auto redirected = snapshot;
+        if (claim == 0) redirected.source.path = candidateName;
+        else redirected.outputs[claim == 1 ? 1 : 0].path = candidateName;
+        if (claimedVersion.exists) QVERIFY(saveBlob(claimedBefore));
+        for (qsizetype i = 0; i < files.size(); ++i) {
+            auto entry = files[i].toObject();
+            if (entry["path"] == claimedPath) {
+                entry["path"] = candidateName;
+                entry["before"] = QJsonObject{{"exists", claimedVersion.exists}, {"size", double(claimedBefore.size())},
+                    {"sha256", claimedVersion.exists ? QString::fromLatin1(sha256(claimedBefore)) : QString()},
+                    {"version", QString::fromLatin1(claimedVersion.token)}};
+            } else if (entry["path"] == ".nova-studio-assets") {
+                auto after = entry["after"].toObject();
+                auto index = QJsonDocument::fromJson(readFile(store + after["sha256"].toString() + ".blob")).object();
+                auto assets = index["assets"].toArray();
+                auto asset = assets[0].toObject();
+                if (claim == 0) {
+                    auto source = asset["source"].toObject();
+                    source["path"] = candidateName; asset["source"] = source;
+                } else {
+                    auto outputs = asset["outputs"].toArray();
+                    const int output = claim == 1 ? 1 : 0;
+                    auto descriptor = outputs[output].toObject();
+                    descriptor["path"] = candidateName; outputs[output] = descriptor;
+                    asset["outputs"] = outputs;
+                }
+                asset["digest"] = QString::fromLatin1(ProjectDocument::assetSnapshotDigest(redirected));
+                assets[0] = asset; index["assets"] = assets;
+                const auto bytes = QJsonDocument(index).toJson(QJsonDocument::Compact);
+                QVERIFY(saveBlob(bytes));
+                after["sha256"] = QString::fromLatin1(sha256(bytes)); after["size"] = double(bytes.size());
+                entry["after"] = after;
+            } else if (claim == 2 && entry["path"] == "nova.project") {
+                auto after = entry["after"].toObject();
+                auto bytes = readFile(store + after["sha256"].toString() + ".blob");
+                const auto declarationPath = " " + claimedPath.toUtf8() + "\n";
+                QVERIFY(bytes.contains(declarationPath));
+                bytes.replace(declarationPath, " " + candidateName.toUtf8() + "\n");
+                QVERIFY(saveBlob(bytes));
+                after["sha256"] = QString::fromLatin1(sha256(bytes)); after["size"] = double(bytes.size());
+                entry["after"] = after;
+            }
+            files[i] = entry;
+        }
+        record["files"] = files;
+        const auto invalid = QJsonDocument(record).toJson(QJsonDocument::Compact);
+        QVERIFY(writeFile(root + "/.nova-studio-recovery", invalid));
+        {
+            ProjectDocument document;
+            QVERIFY(document.open(path, &error));
+            QVERIFY(!document.restoreRecovery(&error));
+            QVERIFY2(error.contains("unrelated runtime asset"), qPrintable(error));
+            QVERIFY(document.assetSnapshots().isEmpty());
+        }
+        QVERIFY(writeFile(root + "/.nova-studio-journal", invalid));
+        QVERIFY(!ProjectDocument::finishInterruptedSave(path, &error));
+        QVERIFY2(error.contains("unrelated runtime asset"), qPrintable(error));
+        QCOMPARE(readFile(root + "/starter.glb"), runtimeBytes);
+        QCOMPARE(readFile(path), manifest);
+        QCOMPARE(readFile(root + "/.nova-studio-recovery"), invalid);
+        QCOMPARE(readFile(root + "/.nova-studio-journal"), invalid);
+        QVERIFY(!QFileInfo::exists(root + "/" + snapshot.source.path));
+        QVERIFY(!QFileInfo::exists(root + "/.nova-studio-assets"));
+    }
+
+    void soundManifestVersionIsExplicit_data()
+    {
+        QTest::addColumn<int>("version");
+        QTest::newRow("v1-source-only-without-upgrade") << 1;
+        QTest::newRow("v2-publishes-audio") << 2;
+    }
+
+    void soundManifestVersionIsExplicit()
+    {
+        QFETCH(int, version);
+        QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-wav-version-XXXXXX");
+        const auto root = temporary.path(), path = root + "/nova.project";
+        const QByteArray manifest = "nova-project " + QByteArray::number(version) +
+            "\r\nentry main.lua\r\n" + (version == 2 ? QByteArray("identity sound_version\r\n") : QByteArray());
+        const QByteArray script = "-- user-authored gameplay\r\nfunction update() end\r\n";
+        QVERIFY(writeFile(path, manifest));
+        QVERIFY(writeFile(root + "/main.lua", script));
+        QString error;
+        auto snapshot = assetSnapshot(NOVA_ASSET_AUDIO);
+        {
+            ProjectDocument document;
+            QVERIFY(document.open(path, &error));
+            QVERIFY(expectedVersions(document, &snapshot, &error));
+            if (version == 1) {
+                QVERIFY(!document.stageAssetSnapshot(snapshot, &error));
+                QVERIFY2(error.contains("requires manifest v2 or v3") && error.contains("not been upgraded"), qPrintable(error));
+                QCOMPARE(document.draft().manifest, manifest);
+                QVERIFY(document.assetSnapshots().isEmpty());
+                snapshot.mode = StudioAssetSnapshot::Mode::SourceOnly;
+                snapshot.derivedProblem = "Project format does not support audio publication";
+                snapshot.outputs.clear();
+            }
+            QVERIFY2(document.stageAssetSnapshot(snapshot, &error), qPrintable(error));
+            QVERIFY2(document.save(&error), qPrintable(error));
+            QCOMPARE(document.project().version, unsigned(version));
+            QCOMPARE(readFile(root + "/main.lua"), script);
+            if (version == 1) {
+                QCOMPARE(readFile(path), manifest);
+                QVERIFY(!QFileInfo::exists(root + "/generated"));
+                QVERIFY(!document.runtimeAssetsReady(&error));
+            } else {
+                QVERIFY(readFile(path).startsWith("nova-project 2\r\n"));
+                QVERIFY(readFile(path).contains("audio authored_output generated/authored/sound.wav\r\n"));
+                QVERIFY(document.runtimeAssetsReady(&error));
+            }
+        }
+        ProjectDocument reopened;
+        QVERIFY2(reopened.open(path, &error), qPrintable(error));
+        QCOMPARE(reopened.project().version, unsigned(version));
+        QCOMPARE(reopened.assetSnapshots()[0].source.bytes, snapshot.source.bytes);
+        QCOMPARE(reopened.assetPublication(snapshot.id).stale, version == 1);
+        QVERIFY(reopened.assetPublication(snapshot.id).saved);
+    }
+
+    void soundBindingConflicts_data()
+    {
+        QTest::addColumn<int>("conflict");
+        QTest::newRow("existing-sprite-id") << 0;
+        QTest::newRow("redirect-published-id") << 1;
+        QTest::newRow("duplicate-participant-output-id") << 2;
+        QTest::newRow("duplicate-output-path") << 3;
+        QTest::newRow("wrong-extension") << 4;
+        QTest::newRow("unbound-wav-sidecar") << 5;
+        QTest::newRow("case-equivalent-output-path") << 6;
+    }
+
+    void soundBindingConflicts()
+    {
+        QFETCH(int, conflict);
+        QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-wav-bindings-XXXXXX");
+        ProjectDocument document;
+        QString error;
+        QVERIFY(document.create(temporary.path(), "SoundBindings", false, NOVA_EXAMPLES, &error));
+        auto snapshot = assetSnapshot(NOVA_ASSET_AUDIO);
+        QVERIFY(expectedVersions(document, &snapshot, &error));
+        QVERIFY(document.stageAssetSnapshot(snapshot, &error));
+        QVERIFY2(document.save(&error), qPrintable(error));
+        const auto saved = document.assetSnapshots()[0];
+        const auto manifest = readFile(document.path()), index = readFile(document.root() + "/.nova-studio-assets");
+        snapshot = saved; snapshot.revision++;
+        if (conflict == 0) snapshot.outputs[0].runtimeId = "starter";
+        else if (conflict == 1) snapshot.outputs[0].path = "generated/authored/redirected.wav";
+        else if (conflict == 4) {
+            snapshot.outputs[0].path = "generated/authored/wrong.png";
+            snapshot.outputs[0].runtimeId = "new_output";
+        } else if (conflict == 5) {
+            StudioAssetFile unbound;
+            unbound.path = "generated/authored/unbound.wav"; unbound.bytes = pcmWav();
+            snapshot.outputs.append(unbound);
+        } else {
+            snapshot.id = "second";
+            snapshot.source.path = "sources/second.sound-source";
+            snapshot.outputs[1].path = "generated/second/sound.json";
+            if (conflict == 2) snapshot.outputs[0].path = "generated/second/sound.wav";
+            else {
+                snapshot.outputs[0].runtimeId = "second_output";
+                if (conflict == 6) snapshot.outputs[0].path = "GENERATED/AUTHORED/SOUND.wav";
+            }
+        }
+        QVERIFY(expectedVersions(document, &snapshot, &error));
+        QVERIFY(!document.stageAssetSnapshot(snapshot, &error));
+        QVERIFY(!error.isEmpty());
+        if (conflict == 5) QVERIFY2(error.contains("explicit runtime bindings"), qPrintable(error));
+        QCOMPARE(readFile(document.path()), manifest);
+        QCOMPARE(readFile(document.root() + "/.nova-studio-assets"), index);
+        QCOMPARE(document.assetSnapshots().size(), 1);
+        QCOMPARE(ProjectDocument::assetSnapshotDigest(document.assetSnapshots()[0]), ProjectDocument::assetSnapshotDigest(saved));
+        for (const auto &file : saved.outputs) QCOMPARE(readFile(document.root() + "/" + file.path), file.bytes);
+        QVERIFY(!QFileInfo::exists(document.root() + "/.nova-studio-journal"));
+    }
+
+    void soundOutputStillRequiresExactDiskVersion()
+    {
+        QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-wav-exact-XXXXXX");
+        ProjectDocument document;
+        QString error;
+        QVERIFY(document.create(temporary.path(), "SoundExact", false, NOVA_EXAMPLES, &error));
+        auto snapshot = assetSnapshot(NOVA_ASSET_AUDIO);
+        QVERIFY(expectedVersions(document, &snapshot, &error));
+        QVERIFY(document.stageAssetSnapshot(snapshot, &error));
+        QVERIFY(document.save(&error));
+        const auto saved = document.assetSnapshots()[0];
+        const auto index = readFile(document.root() + "/.nova-studio-assets");
+        snapshot = saved; snapshot.revision++; snapshot.source.bytes += "\nnew source";
+        QVERIFY(document.stageAssetSnapshot(snapshot, &error));
+        QVERIFY(writeFile(document.root() + "/" + saved.outputs[0].path, saved.outputs[0].bytes));
+        QVERIFY(!document.save(&error));
+        QVERIFY2(error.contains("Disk differs"), qPrintable(error));
+        snapshot.mode = StudioAssetSnapshot::Mode::SourceOnly;
+        snapshot.derivedProblem = "Do not replace an externally rewritten WAV";
+        snapshot.outputs.clear();
+        QVERIFY(!document.stageAssetSnapshot(snapshot, &error));
+        QCOMPARE(readFile(document.root() + "/" + saved.source.path), saved.source.bytes);
+        QCOMPARE(readFile(document.root() + "/" + saved.outputs[0].path), saved.outputs[0].bytes);
+        QCOMPARE(readFile(document.root() + "/.nova-studio-assets"), index);
+        QVERIFY(!QFileInfo::exists(document.root() + "/.nova-studio-journal"));
+    }
+
+    void invalidSoundPublicationPreservesPreviousFiles_data()
+    {
+        QTest::addColumn<int>("invalid");
+        QTest::newRow("not-wav") << 0;
+        QTest::newRow("invalid-float-bit-depth") << 1;
+        QTest::newRow("noncanonical-extra-chunk") << 2;
+        QTest::newRow("native-duration-exceeded") << 3;
+        QTest::newRow("exact-file-limit-still-needs-valid-wav") << 4;
+        QTest::newRow("file-limit-exceeded") << 5;
+    }
+
+    void invalidSoundPublicationPreservesPreviousFiles()
+    {
+        QFETCH(int, invalid);
+        QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-wav-invalid-XXXXXX");
+        ProjectDocument document;
+        QString error;
+        QVERIFY(document.create(temporary.path(), "SoundInvalid", false, NOVA_EXAMPLES, &error));
+        auto snapshot = assetSnapshot(NOVA_ASSET_AUDIO);
+        QVERIFY(expectedVersions(document, &snapshot, &error));
+        QVERIFY(document.stageAssetSnapshot(snapshot, &error));
+        QVERIFY(document.save(&error));
+        const auto saved = document.assetSnapshots()[0];
+        const auto manifest = readFile(document.path()), index = readFile(document.root() + "/.nova-studio-assets");
+        snapshot = saved; snapshot.revision++; snapshot.source.bytes += "\neditable sound revision";
+        auto &wav = snapshot.outputs[0].bytes;
+        if (invalid == 0) wav = "not a WAV";
+        else if (invalid == 1) qToLittleEndian<quint16>(3, wav.data() + 20);
+        else if (invalid == 2) {
+            wav.append("JUNK\0\0\0\0", 8);
+            qToLittleEndian<quint32>(quint32(wav.size() - 8), wav.data() + 4);
+        } else if (invalid == 3) wav = pcmWav(60 * 48000 + 1);
+        else wav.resize(ProjectDocument::AssetFileLimit + (invalid == 5 ? 1 : 0), '\0');
+        QSignalSpy acknowledgments(&document, &ProjectDocument::assetSnapshotSaved);
+        if (invalid == 5) {
+            QVERIFY(!document.stageAssetSnapshot(snapshot, &error));
+            QVERIFY2(error.contains("limits"), qPrintable(error));
+        } else {
+            QVERIFY2(document.stageAssetSnapshot(snapshot, &error), qPrintable(error));
+            QVERIFY(!document.save(&error));
+            QVERIFY2(error.contains("publication failed") && error.contains("WAV"), qPrintable(error));
+            if (invalid == 3) QVERIFY(error.contains("60s"));
+            QVERIFY(QFileInfo::exists(document.root() + "/.nova-studio-recovery"));
+        }
+        QCOMPARE(acknowledgments.size(), 0);
+        QCOMPARE(readFile(document.path()), manifest);
+        QCOMPARE(readFile(document.root() + "/.nova-studio-assets"), index);
+        QCOMPARE(readFile(document.root() + "/" + saved.source.path), saved.source.bytes);
+        for (const auto &file : saved.outputs) QCOMPARE(readFile(document.root() + "/" + file.path), file.bytes);
+        QVERIFY(!QFileInfo::exists(document.root() + "/.nova-studio-journal"));
+        snapshot.mode = StudioAssetSnapshot::Mode::SourceOnly;
+        snapshot.derivedProblem = "Current WAV export is invalid or exceeds its native budget";
+        snapshot.outputs.clear();
+        QVERIFY(document.stageAssetSnapshot(snapshot, &error));
+        QVERIFY2(document.save(&error), qPrintable(error));
+        QCOMPARE(acknowledgments.size(), 1);
+        QCOMPARE(readFile(document.root() + "/" + snapshot.source.path), snapshot.source.bytes);
+        QCOMPARE(readFile(document.root() + "/" + saved.outputs[0].path), saved.outputs[0].bytes);
+        QCOMPARE(document.assetPublication(snapshot.id).sourceDigest, sha256(saved.source.bytes));
+        QVERIFY(document.assetPublication(snapshot.id).stale);
+        QVERIFY(!document.runtimeAssetsReady(&error));
+    }
+
+    void soundPublicationChecksWholeProject_data()
+    {
+        QTest::addColumn<int>("failure");
+        QTest::newRow("untouched-wav-corrupted") << 0;
+        QTest::newRow("unique-project-duration-exceeded") << 1;
+        QTest::newRow("initial-lua-update-fails") << 2;
+    }
+
+    void soundPublicationChecksWholeProject()
+    {
+        QFETCH(int, failure);
+        QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-wav-preflight-XXXXXX");
+        const auto root = temporary.path(), path = root + "/nova.project";
+        const auto wave = pcmWav(30 * 48000);
+        QByteArray manifest = "nova-project 2\nidentity shadow_audio\nentry main.lua\n";
+        const QByteArray script = "function update() end\n";
+        for (int i = 0; i < (failure == 1 ? 4 : 1); ++i) {
+            const auto name = "existing" + QString::number(i);
+            QVERIFY(writeFile(root + "/" + name + ".wav", wave));
+            manifest += "audio " + name.toUtf8() + " " + name.toUtf8() + ".wav\n";
+        }
+        QVERIFY(writeFile(path, manifest));
+        QVERIFY(writeFile(root + "/main.lua", script));
+        NovaProjectValidation validation{};
+        char detail[1024] = {};
+        QVERIFY2(nova_validate_project(path.toUtf8().constData(), &validation, detail, sizeof(detail)), detail);
+        ProjectDocument document;
+        QString error;
+        QVERIFY(document.open(path, &error));
+        auto snapshot = assetSnapshot(NOVA_ASSET_AUDIO);
+        snapshot.outputs[0].bytes = wave;
+        QVERIFY(expectedVersions(document, &snapshot, &error));
+        QVERIFY(document.stageAssetSnapshot(snapshot, &error));
+        if (failure == 0) QVERIFY(writeFile(root + "/existing0.wav", "externally changed WAV"));
+        if (failure == 2)
+            QVERIFY(document.editScript("local sound = nova.asset('authored_output')\n"
+                "function update() nova.play(sound, 0.1); error('sound shadow failure') end\n", &error));
+        QVERIFY(!document.save(&error));
+        QVERIFY2(error.contains("publication failed"), qPrintable(error));
+        QVERIFY2(error.contains(failure == 0 ? "WAV" : failure == 1 ? "120 seconds" : "sound shadow failure"), qPrintable(error));
+        QCOMPARE(readFile(path), manifest);
+        QCOMPARE(readFile(root + "/main.lua"), script);
+        QCOMPARE(readFile(root + "/existing0.wav"), failure == 0 ? QByteArray("externally changed WAV") : wave);
+        QVERIFY(!QFileInfo::exists(root + "/" + snapshot.source.path));
+        QVERIFY(!QFileInfo::exists(root + "/" + snapshot.outputs[0].path));
+        QVERIFY(!QFileInfo::exists(root + "/.nova-studio-assets"));
+        QVERIFY(!QFileInfo::exists(root + "/.nova-studio-journal"));
+        QVERIFY(QFileInfo::exists(root + "/.nova-studio-recovery"));
+    }
+
+    void soundSourceEnvelopeRoundTrip()
+    {
+        QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-sound-envelope-XXXXXX");
+        QString error, root, path;
+        auto snapshot = assetSnapshot(NOVA_ASSET_AUDIO);
+        snapshot.kind = "sound_storage_fixture";
+        snapshot.source.bytes = QByteArray(33 * 1024 * 1024, '\0');
+        snapshot.source.bytes[0] = 'S';
+        snapshot.outputs[0].bytes = pcmWav(30 * 48000);
+        snapshot.outputs[1].bytes = "{\"format\":\"sound-storage-fixture\",\"frames\":1440000}";
+        QCOMPARE(snapshot.outputs[0].bytes.size(), qsizetype(44 + 30 * 48000 * 4));
+        QVERIFY(snapshot.outputs[0].bytes.size() <= ProjectDocument::AssetFileLimit);
+        {
+            ProjectDocument document;
+            QVERIFY(document.create(temporary.path(), "SoundEnvelope", false, NOVA_EXAMPLES, &error));
+            path = document.path(); root = document.root();
+            QVERIFY(expectedVersions(document, &snapshot, &error));
+            QVERIFY(document.stageAssetSnapshot(snapshot, &error));
+            QVERIFY2(document.save(&error), qPrintable(error));
+            snapshot = document.assetSnapshots()[0];
+            snapshot.revision++; snapshot.source.bytes[1] = 'N';
+            snapshot.outputs[0].bytes[44] = 1;
+            QVERIFY(document.stageAssetSnapshot(snapshot, &error));
+            QVERIFY(document.writeRecovery(&error));
+        }
+        ProjectDocument reopened;
+        QVERIFY(reopened.open(path, &error));
+        QVERIFY2(reopened.restoreRecovery(&error), qPrintable(error));
+        const auto restored = reopened.assetSnapshots()[0];
+        QCOMPARE(restored.source.bytes.size(), qsizetype(33 * 1024 * 1024));
+        QVERIFY(restored.source.bytes == snapshot.source.bytes);
+        QVERIFY(restored.outputs[0].bytes == snapshot.outputs[0].bytes);
+        QCOMPARE(restored.outputs[1].bytes, snapshot.outputs[1].bytes);
+        QVERIFY2(reopened.save(&error), qPrintable(error));
+        QVERIFY(readFile(root + "/" + snapshot.source.path) == snapshot.source.bytes);
+        for (const auto &file : restored.outputs) QVERIFY(readFile(root + "/" + file.path) == file.bytes);
+        QVERIFY(reopened.runtimeAssetsReady(&error));
+    }
+
+    void sourceOnlyWithoutPreviousExport_data() { assetPublishedRoundTrip_data(); }
+
     void sourceOnlyWithoutPreviousExport()
     {
+        QFETCH(int, type);
         QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-unpublished-XXXXXX");
         ProjectDocument document;
         QString error;
         QVERIFY(document.create(temporary.path(), "Unpublished", false, NOVA_EXAMPLES, &error));
-        auto snapshot = assetSnapshot();
+        auto snapshot = assetSnapshot(NovaAssetType(type));
         snapshot.outputs.clear(); snapshot.mode = StudioAssetSnapshot::Mode::SourceOnly;
         snapshot.source.bytes.clear();
         snapshot.derivedProblem = "Export is not yet available";
@@ -640,13 +1232,21 @@ private slots:
         QCOMPARE(readFile(root + "/" + snapshot.outputs[0].path), snapshot.outputs[0].bytes);
     }
 
+    void interruptedAssetCommitRetainsNewerSnapshot_data()
+    {
+        QTest::addColumn<bool>("audio");
+        QTest::newRow("png") << false;
+        QTest::newRow("wav") << true;
+    }
+
     void interruptedAssetCommitRetainsNewerSnapshot()
     {
+        QFETCH(bool, audio);
         QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-asset-resume-XXXXXX");
         ProjectDocument document;
         QString error;
         QVERIFY(document.create(temporary.path(), "ResumeAssets", false, NOVA_EXAMPLES, &error));
-        auto snapshot = assetSnapshot();
+        auto snapshot = assetSnapshot(audio ? NOVA_ASSET_AUDIO : NOVA_ASSET_SPRITE);
         QVERIFY(expectedVersions(document, &snapshot, &error));
         QVERIFY(document.stageAssetSnapshot(snapshot, &error));
         QVERIFY(document.writeRecovery(&error));
@@ -654,7 +1254,8 @@ private slots:
         QVERIFY(writeFile(document.root() + "/.nova-studio-journal", readFile(document.root() + "/.nova-studio-recovery")));
         snapshot.revision++;
         snapshot.source.bytes += "\nnewer source";
-        snapshot.outputs[0].bytes = readFile(QString(NOVA_EXAMPLES) + "/sprites/assets/tile.png");
+        snapshot.outputs[0].bytes = audio ? pcmWav(480) : readFile(QString(NOVA_EXAMPLES) + "/sprites/assets/tile.png");
+        if (audio) snapshot.outputs[1].bytes = "{\"format\":\"sound-storage-fixture\",\"frames\":480}";
         QVERIFY(document.stageAssetSnapshot(snapshot, &error));
         QSignalSpy acknowledgments(&document, &ProjectDocument::assetSnapshotSaved);
         QVERIFY2(document.resumeInterruptedSave(&error), qPrintable(error));
@@ -662,6 +1263,7 @@ private slots:
         QCOMPARE(readFile(document.root() + "/" + snapshot.outputs[0].path), older.outputs[0].bytes);
         QCOMPARE(document.assetSnapshots()[0].source.bytes, snapshot.source.bytes);
         QCOMPARE(document.assetSnapshots()[0].outputs[0].bytes, snapshot.outputs[0].bytes);
+        if (audio) QCOMPARE(document.assetSnapshots()[0].outputs[1].bytes, snapshot.outputs[1].bytes);
         QVERIFY(document.dirty());
         QCOMPARE(acknowledgments.size(), 1);
         QCOMPARE(acknowledgments[0][1].toULongLong(), older.revision);
@@ -671,6 +1273,7 @@ private slots:
         QVERIFY2(document.save(&error), qPrintable(error));
         QCOMPARE(readFile(document.root() + "/" + snapshot.source.path), snapshot.source.bytes);
         QCOMPARE(readFile(document.root() + "/" + snapshot.outputs[0].path), snapshot.outputs[0].bytes);
+        if (audio) QCOMPARE(readFile(document.root() + "/" + snapshot.outputs[1].path), snapshot.outputs[1].bytes);
         QVERIFY(!document.dirty());
     }
 
@@ -785,11 +1388,14 @@ private slots:
         QCOMPARE(readFile(document.root() + "/" + snapshot.outputs[0].path), expectedOutput);
     }
 
+    void partialBinaryWriteReportsAndRetainsSnapshots_data() { interruptedAssetCommitRetainsNewerSnapshot_data(); }
+
     void partialBinaryWriteReportsAndRetainsSnapshots()
     {
+        QFETCH(bool, audio);
         QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-asset-partial-XXXXXX");
         QString error, path, root;
-        auto snapshot = assetSnapshot();
+        auto snapshot = assetSnapshot(audio ? NOVA_ASSET_AUDIO : NOVA_ASSET_SPRITE);
         {
             ProjectDocument initial;
             QVERIFY(initial.create(temporary.path(), "Partial", false, NOVA_EXAMPLES, &error));
@@ -803,7 +1409,7 @@ private slots:
         QVERIFY(document.open(path, &error));
         auto newer = document.assetSnapshots()[0];
         newer.revision++; newer.source.bytes += "\nchanged source";
-        newer.outputs[0].bytes = readFile(QString(NOVA_EXAMPLES) + "/sprites/assets/tile.png");
+        newer.outputs[0].bytes = audio ? pcmWav(480) : readFile(QString(NOVA_EXAMPLES) + "/sprites/assets/tile.png");
         QVERIFY(document.stageAssetSnapshot(newer, &error));
         QVERIFY(!document.save(&error));
         QVERIFY2(error.contains("after 1 writes"), qPrintable(error));
@@ -827,18 +1433,23 @@ private slots:
     void committedBinaryReceiptAndAbsentConflict_data()
     {
         QTest::addColumn<int>("receipt");
-        QTest::newRow("completed-receipt") << 1;
-        QTest::newRow("interrupted-before-receipt") << 0;
-        QTest::newRow("external-rewrite-after-receipt") << 2;
+        QTest::addColumn<bool>("audio");
+        QTest::newRow("completed-receipt") << 1 << false;
+        QTest::newRow("interrupted-before-receipt") << 0 << false;
+        QTest::newRow("external-rewrite-after-receipt") << 2 << false;
+        QTest::newRow("wav-completed-receipt") << 1 << true;
+        QTest::newRow("wav-interrupted-before-receipt") << 0 << true;
+        QTest::newRow("wav-external-rewrite-after-receipt") << 2 << true;
     }
 
     void committedBinaryReceiptAndAbsentConflict()
     {
         QFETCH(int, receipt);
+        QFETCH(bool, audio);
         QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-asset-receipt-XXXXXX");
         QString error, root, path;
         StudioDiskVersion committed;
-        auto snapshot = assetSnapshot();
+        auto snapshot = assetSnapshot(audio ? NOVA_ASSET_AUDIO : NOVA_ASSET_SPRITE);
         {
             ProjectDocument document;
             QVERIFY(document.create(temporary.path(), "Receipt", false, NOVA_EXAMPLES, &error));
@@ -882,11 +1493,14 @@ private slots:
         QCOMPARE(reopened.assetSnapshots()[0].source.expected, committed);
     }
 
+    void restartFinishesOldCommitAndRecoversNewerAssets_data() { interruptedAssetCommitRetainsNewerSnapshot_data(); }
+
     void restartFinishesOldCommitAndRecoversNewerAssets()
     {
+        QFETCH(bool, audio);
         QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-asset-restart-XXXXXX");
         QString error, path, root;
-        auto old = assetSnapshot(), newer = old;
+        auto old = assetSnapshot(audio ? NOVA_ASSET_AUDIO : NOVA_ASSET_SPRITE), newer = old;
         {
             ProjectDocument document;
             QVERIFY(document.create(temporary.path(), "Restart", false, NOVA_EXAMPLES, &error));
@@ -896,7 +1510,8 @@ private slots:
             QVERIFY(document.writeRecovery(&error));
             QVERIFY(writeFile(root + "/.nova-studio-journal", readFile(root + "/.nova-studio-recovery")));
             newer = old; newer.revision++; newer.source.bytes += "\nnew source";
-            newer.outputs[0].bytes = readFile(QString(NOVA_EXAMPLES) + "/sprites/assets/tile.png");
+            newer.outputs[0].bytes = audio ? pcmWav(480) : readFile(QString(NOVA_EXAMPLES) + "/sprites/assets/tile.png");
+            if (audio) newer.outputs[1].bytes = "{\"format\":\"sound-storage-fixture\",\"frames\":480}";
             QVERIFY(document.stageAssetSnapshot(newer, &error));
             QVERIFY(document.writeRecovery(&error));
         }
@@ -907,9 +1522,11 @@ private slots:
         QVERIFY2(document.restoreRecovery(&error), qPrintable(error));
         QCOMPARE(document.assetSnapshots()[0].source.bytes, newer.source.bytes);
         QCOMPARE(document.assetSnapshots()[0].outputs[0].bytes, newer.outputs[0].bytes);
+        if (audio) QCOMPARE(document.assetSnapshots()[0].outputs[1].bytes, newer.outputs[1].bytes);
         QVERIFY(document.dirty());
         QVERIFY(document.save(&error));
         QCOMPARE(readFile(root + "/" + newer.source.path), newer.source.bytes);
+        if (audio) QCOMPARE(readFile(root + "/" + newer.outputs[1].path), newer.outputs[1].bytes);
     }
 
     void newerRecoveryIsValidatedBeforeCommit_data()
