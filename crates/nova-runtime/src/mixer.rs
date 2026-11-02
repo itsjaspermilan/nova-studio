@@ -8,6 +8,8 @@
 
 use std::sync::Arc;
 
+use crate::stream::StreamFeed;
+
 pub const MAX_VOICES: usize = 32;
 
 /// Decoded audio: interleaved stereo 16-bit frames at the file's own rate.
@@ -26,6 +28,8 @@ impl Sample {
 pub struct Play {
     pub id: u64,
     pub sample: Arc<Sample>,
+    /// Streamed music: when set the sound comes from this feed and `sample` is only a placeholder.
+    pub stream: Option<StreamFeed>,
     pub volume: f32,
     /// -1 (left) to 1 (right).
     pub pan: f32,
@@ -52,9 +56,21 @@ pub enum Command {
     MusicVolume(f32),
 }
 
+/// Where a streamed voice is: the two decoded frames around the playhead.
+struct StreamState {
+    feed: StreamFeed,
+    cur: Option<[i16; 2]>,
+    next: Option<[i16; 2]>,
+    /// 0 to 1 between `cur` and `next`.
+    frac: f64,
+    /// The feed has run out for good: the voice ends when it reaches the last frame.
+    last: bool,
+}
+
 struct Voice {
     id: u64,
     sample: Arc<Sample>,
+    stream: Option<StreamState>,
     pos: f64,
     step: f64,
     gain_l: f32,
@@ -89,6 +105,79 @@ fn soft_clip(x: f32) -> f32 {
     }
 }
 
+/// Mixes a streamed voice into `out`. The decoder runs on its own thread; here frames are only taken from the ring,
+/// and if it is empty the frame is silence (an underrun) and the playhead does not move.
+fn render_stream(voice: &mut Voice, volume: f32, out: &mut [f32]) {
+    let frames = out.len() / 2;
+    let Some(s) = voice.stream.as_mut() else {
+        return;
+    };
+    for frame in 0..frames {
+        // Make sure the two frames around the playhead are loaded.
+        if s.cur.is_none() {
+            s.cur = s.feed.pop();
+            s.next = None;
+        }
+        if s.cur.is_some() && s.next.is_none() && !s.last {
+            s.next = s.feed.pop();
+            if s.next.is_none() && s.feed.finished() {
+                s.last = true;
+            }
+        }
+        let Some(a) = s.cur else {
+            if s.feed.finished() {
+                voice.pos = f64::INFINITY; // nothing was ever decoded, or it all played already
+                return;
+            }
+            s.feed.note_underrun();
+            continue;
+        };
+        let b = match s.next {
+            Some(b) => b,
+            None if s.last => a,
+            None => {
+                s.feed.note_underrun(); // the decoder is behind: silence, and wait here
+                continue;
+            }
+        };
+        // Fades only move on frames that are really played, so waiting for the decoder never eats into a fade-in.
+        if voice.fade != voice.fade_target {
+            if voice.fade < voice.fade_target {
+                voice.fade = (voice.fade + voice.fade_step).min(voice.fade_target);
+            } else {
+                voice.fade = (voice.fade - voice.fade_step).max(voice.fade_target);
+            }
+            if voice.stopping && voice.fade <= 0.0 {
+                voice.pos = f64::INFINITY;
+                return;
+            }
+        }
+        let t = s.frac as f32;
+        let l = a[0] as f32 + (b[0] as f32 - a[0] as f32) * t;
+        let r = a[1] as f32 + (b[1] as f32 - a[1] as f32) * t;
+        let g = volume * voice.fade / 32768.0;
+        out[frame * 2] += l * g * voice.gain_l;
+        out[frame * 2 + 1] += r * g * voice.gain_r;
+        s.frac += voice.step;
+        while s.frac >= 1.0 {
+            s.frac -= 1.0;
+            if s.last && s.next.is_none() {
+                voice.pos = f64::INFINITY; // played the last frame
+                return;
+            }
+            s.cur = s.next.take();
+            if s.cur.is_none() {
+                s.frac = 0.0;
+                break;
+            }
+            s.next = s.feed.pop();
+            if s.next.is_none() && s.feed.finished() {
+                s.last = true;
+            }
+        }
+    }
+}
+
 impl Mixer {
     pub fn new(device_rate: u32) -> Self {
         Self {
@@ -106,7 +195,8 @@ impl Mixer {
     pub fn apply(&mut self, command: Command) {
         match command {
             Command::Play(p) => {
-                if p.sample.frames.is_empty() {
+                let mut p = p;
+                if p.stream.is_none() && p.sample.frames.is_empty() {
                     return;
                 }
                 if p.music {
@@ -124,11 +214,20 @@ impl Mixer {
                 }
                 let (gain_l, gain_r) = pan_gains(p.volume.max(0.0), p.pan);
                 let fading_in = p.fade_in > 0.0;
+                let source_rate = p.stream.as_ref().map_or(p.sample.rate, StreamFeed::rate);
+                let stream = p.stream.take().map(|feed| StreamState {
+                    feed,
+                    cur: None,
+                    next: None,
+                    frac: 0.0,
+                    last: false,
+                });
                 self.voices.push(Voice {
                     id: p.id,
-                    step: p.sample.rate as f64 / self.device_rate as f64
+                    step: source_rate as f64 / self.device_rate as f64
                         * p.pitch.clamp(0.05, 16.0) as f64,
                     sample: p.sample,
+                    stream,
                     pos: 0.0,
                     gain_l,
                     gain_r,
@@ -182,6 +281,10 @@ impl Mixer {
             } else {
                 self.sfx_volume
             };
+            if voice.stream.is_some() {
+                render_stream(voice, volume, out);
+                continue;
+            }
             let data = &voice.sample.frames;
             let last = data.len() - 1;
             for frame in 0..frames {
@@ -249,6 +352,7 @@ mod tests {
     fn play(id: u64, s: &Arc<Sample>) -> Play {
         Play {
             id,
+            stream: None,
             sample: s.clone(),
             volume: 1.0,
             pan: 0.0,
@@ -480,5 +584,145 @@ mod tests {
         })));
         let out = render(&mut m, 100);
         assert!(out.iter().all(|x| x.is_finite()));
+    }
+
+    fn stream_play(id: u64, feed: StreamFeed) -> Play {
+        Play {
+            id,
+            stream: Some(feed),
+            sample: Arc::new(Sample {
+                rate: 1000,
+                frames: Vec::new(),
+            }),
+            volume: 1.0,
+            pan: 0.0,
+            pitch: 1.0,
+            looping: false,
+            music: true,
+            fade_in: 0.0,
+        }
+    }
+
+    /// Renders until `frames` are collected or the mixer has no voices left (the decoder thread needs a moment).
+    fn render_until_done(m: &mut Mixer, frames: usize) -> Vec<f32> {
+        let mut all = Vec::new();
+        let start = std::time::Instant::now();
+        while all.len() < frames * 2 && start.elapsed() < std::time::Duration::from_secs(5) {
+            let mut chunk = vec![0.0; 64];
+            m.render(&mut chunk);
+            all.extend(chunk);
+            if m.active_voices() == 0 {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        all
+    }
+
+    #[test]
+    fn a_streamed_voice_sounds_like_the_same_samples_played_from_memory() {
+        let frames: Vec<[i16; 2]> = (0..300)
+            .map(|i| [(i * 90) as i16, (-i * 60) as i16])
+            .collect();
+        let mut memory = Mixer::new(1000);
+        memory.apply(Command::Play(Box::new(play(
+            1,
+            &sample(1000, frames.clone()),
+        ))));
+        let expected = render_until_done(&mut memory, 300);
+        let mut streamed = Mixer::new(1000);
+        streamed.apply(Command::Play(Box::new(stream_play(
+            1,
+            StreamFeed::from_frames(1000, frames, false),
+        ))));
+        let got = render_until_done(&mut streamed, 300);
+        let _ = render_until_done(&mut streamed, 1); // one more look: the voice ends once its last frame has been played
+        assert_eq!(
+            streamed.active_voices(),
+            0,
+            "the streamed voice ends with its stream"
+        );
+        // The streamed voice may start a frame or two after the decoder woke up; compare the part that is sound.
+        let nonzero = |v: &[f32]| v.iter().position(|&x| x != 0.0).unwrap_or(0);
+        let (a, b) = (nonzero(&expected), nonzero(&got));
+        let n = 2 * 280;
+        assert_eq!(
+            &expected[a..a + n],
+            &got[b..b + n],
+            "same samples, same interpolation"
+        );
+    }
+
+    #[test]
+    fn a_looping_stream_keeps_playing_and_stopping_the_music_ends_it() {
+        let mut m = Mixer::new(1000);
+        let mut p = stream_play(
+            1,
+            StreamFeed::from_frames(1000, vec![[16384, 16384]; 50], true),
+        );
+        p.looping = true;
+        m.apply(Command::Play(Box::new(p)));
+        let out = render_until_done(&mut m, 400);
+        assert!(
+            out.len() >= 800 && m.active_voices() == 1,
+            "still going after several passes"
+        );
+        assert!(
+            out[out.len() - 64..].iter().all(|&s| s > 0.1),
+            "and still sounding"
+        );
+        m.apply(Command::StopMusic { fade: 0.0 });
+        assert_eq!(m.active_voices(), 0);
+    }
+
+    #[test]
+    fn a_stream_that_is_behind_plays_silence_and_catches_up_without_losing_frames() {
+        let mut m = Mixer::new(1000);
+        let feed = StreamFeed::from_frames(1000, vec![[8000, 8000]; 40], false);
+        m.apply(Command::Play(Box::new(stream_play(1, feed))));
+        // Render at once, before the decoder thread has necessarily produced anything.
+        let mut first = vec![0.0; 8];
+        m.render(&mut first);
+        let rest = render_until_done(&mut m, 100);
+        let heard = first
+            .iter()
+            .chain(rest.iter())
+            .filter(|&&s| s > 0.05)
+            .count()
+            / 2;
+        assert!(
+            heard >= 38,
+            "all frames were played whatever the timing, heard {heard}"
+        );
+    }
+
+    #[test]
+    fn a_streamed_voice_obeys_pan_pitch_and_fade() {
+        let mut fast = Mixer::new(1000);
+        let mut p = stream_play(
+            1,
+            StreamFeed::from_frames(1000, vec![[16000, 16000]; 100], false),
+        );
+        p.pitch = 2.0;
+        p.pan = -1.0;
+        fast.apply(Command::Play(Box::new(p)));
+        let out = render_until_done(&mut fast, 100);
+        let lit = out.chunks(2).filter(|c| c[0] > 0.1).count();
+        assert!(
+            (45..=55).contains(&lit),
+            "twice as fast: about 50 frames of sound, got {lit}"
+        );
+        assert!(out.chunks(2).all(|c| c[1].abs() < 1e-3), "hard left");
+        let mut fading = Mixer::new(1000);
+        let mut f = stream_play(
+            1,
+            StreamFeed::from_frames(1000, vec![[16000, 16000]; 400], true),
+        );
+        f.fade_in = 0.1;
+        fading.apply(Command::Play(Box::new(f)));
+        let out = render_until_done(&mut fading, 200);
+        let first_sound = out.chunks(2).position(|c| c[0] > 0.0).unwrap();
+        assert!(out[first_sound * 2] < 0.05, "starts quiet");
+        assert!(out[out.len() - 2] > 0.2, "and reaches full volume");
     }
 }

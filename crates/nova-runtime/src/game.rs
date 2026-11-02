@@ -28,6 +28,7 @@ use crate::save::SaveStore;
 use crate::scene;
 use crate::script::new_lua;
 use crate::sprite::{self, SpriteDef};
+use crate::stream::StreamSource;
 use crate::text::{self as vtext, Align, TextEngine};
 use crate::tilemap::TileMap;
 use crate::vfs::Vfs;
@@ -77,6 +78,8 @@ struct Shared {
     text_out: Vec<SpriteInstance>,
     pixel_scale: f32,
     sounds: HashMap<String, Arc<Sample>>,
+    /// Ogg music in `music/`: kept compressed and decoded a little ahead while it plays.
+    streams: HashMap<String, StreamSource>,
     audio: Vec<mixer::Command>,
     next_sound: u64,
     save: SaveStore,
@@ -295,6 +298,16 @@ fn find_sound<'a>(sounds: &'a HashMap<String, Arc<Sample>>, id: &str) -> Option<
                 .find_map(|ext| sounds.get(&format!("{folder}/{id}.{ext}")))
         })
     })
+}
+
+/// Streamed music by full id (`music/theme.ogg`) or short name (`theme`).
+fn find_stream<'a>(
+    streams: &'a HashMap<String, StreamSource>,
+    id: &str,
+) -> Option<&'a StreamSource> {
+    streams
+        .get(id)
+        .or_else(|| streams.get(&format!("music/{id}.ogg")))
 }
 
 /// A model by full id (`models/car.glb`) or short name (`car`).
@@ -933,7 +946,20 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             "play",
             lua.create_function(move |_, (name, opts): (String, Option<Table>)| {
                 let mut sh = s.borrow_mut();
-                let sample = find_sound(&sh.sounds, &name)
+                let looping = match &opts {
+                    Some(t) => t.get::<Option<bool>>("loop")?.unwrap_or(is_music),
+                    None => is_music,
+                };
+                // Ogg files in music/ are streamed when played as music.
+                let streamed = if is_music { find_stream(&sh.streams, &name).cloned() } else { None };
+                if streamed.is_none() && !is_music && find_stream(&sh.streams, &name).is_some() {
+                    return Err(lua_err(format!(
+                        "'{name}' is streamed music (an Ogg file in music/); play it with nova.music.play"
+                    )));
+                }
+                let sample = match &streamed {
+                    Some(src) => Arc::new(Sample { rate: src.rate, frames: Vec::new() }),
+                    None => find_sound(&sh.sounds, &name)
                     .ok_or_else(|| {
                         let mut known: Vec<&str> = sh.sounds.keys().map(String::as_str).collect();
                         known.sort_unstable();
@@ -943,15 +969,13 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                             if known.is_empty() { "none".into() } else { known.join(", ") }
                         ))
                     })?
-                    .clone();
+                    .clone(),
+                };
                 let id = sh.next_sound;
                 sh.next_sound += 1;
-                let looping = match &opts {
-                    Some(t) => t.get::<Option<bool>>("loop")?.unwrap_or(is_music),
-                    None => is_music,
-                };
                 sh.audio.push(mixer::Command::Play(Box::new(mixer::Play {
                     id,
+                    stream: streamed.map(|src| src.start(looping)),
                     sample,
                     volume: number_option(&opts, "volume")?.unwrap_or(1.0).clamp(0.0, 4.0) as f32,
                     pan: number_option(&opts, "pan")?.unwrap_or(0.0).clamp(-1.0, 1.0) as f32,
@@ -1413,6 +1437,7 @@ impl Game {
         }
 
         let mut sounds: HashMap<String, Arc<Sample>> = HashMap::new();
+        let mut streams: HashMap<String, StreamSource> = HashMap::new();
         let mut sound_bytes = 0usize;
         for asset in project.assets_of(AssetKind::Audio) {
             let lower = asset.id.to_ascii_lowercase();
@@ -1421,6 +1446,13 @@ impl Game {
                     "'{}' is not a WAV or Ogg Vorbis file, so it is ignored",
                     asset.id
                 ));
+                continue;
+            }
+            if lower.ends_with(".ogg") && asset.id.starts_with("music/") {
+                // Music in Ogg is not decoded now: only its header is checked, and it streams when played.
+                let source = StreamSource::new(vfs.read(&asset.id)?)
+                    .map_err(|e| format!("{}: {e}", asset.id))?;
+                streams.insert(asset.id.clone(), source);
                 continue;
             }
             let sample = assets::decode_sound(&asset.id, &vfs.read(&asset.id)?)
@@ -1461,6 +1493,7 @@ impl Game {
             text_out: Vec::new(),
             pixel_scale: 1.0,
             sounds,
+            streams,
             audio: Vec::new(),
             next_sound: 1,
             save: store,

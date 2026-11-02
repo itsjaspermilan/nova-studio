@@ -46,8 +46,7 @@ another physical Android device) to settle; the emulator cannot.
 - [ ] Keyboard input on Android (touch is verified on the emulator, the keyboard path is not).
 
 **Runtime and format**
-- [ ] Streamed music (Ogg Vorbis decodes now, with `lewton`, but fully into memory, so long music uses memory; only
-  decoding was checked against one real file, run with `NOVA_TEST_OGG`). Text is done except
+- [x] Streamed music (2026-11-02): Ogg in `music/` streams through a lock-free ring fed by a decoder thread (`stream.rs`); checked against one real Ogg with `NOVA_TEST_OGG` (samples identical to full decode, loops). [ ] WAV music is still held in memory; the studio cannot write Ogg (no encoder); no seeking or position query; underruns are counted but not shown; not run on a device. Text is done except
   world-space text and variable-font weights.
 - [ ] The OpenGL ES fallback backend was fixed (limits) but not re-run on Android since; Vulkan is what
   has been exercised.
