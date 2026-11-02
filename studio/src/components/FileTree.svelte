@@ -12,7 +12,8 @@
   let model: string | null = $state(null);
   let song: string | null = $state(null);
 
-  const rows = $derived(visibleRows(buildTree(studio.files), open));
+  // A sprite's layers file is the sprite editor's business; it stays out of the tree.
+  const rows = $derived(visibleRows(buildTree(studio.files.filter((f) => !f.path.endsWith(".layers.json"))), open));
   const errorFiles = $derived(new Set(studio.diagnostics.filter((d) => d.severity === "error" && d.file).map((d) => d.file!)));
   const ICON: Record<string, string> = { lua: "☾", scene: "▦", sheet: "◫", manifest: "⚙", json: "{ }", image: "▣", model: "◆", sound: "♪", font: "A", other: "·" };
 

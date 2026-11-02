@@ -7,6 +7,7 @@
   import {
     addTag, cloneDoc, frameAt, fromImage, fromSheet, insertFrame, moveFrame, newDoc, parseSheetJson, removeFrame, removeTag, tagProblems, tagSequence,
     resizeDoc, toSheet, toSheetJson, updateTag, type Direction, type SpriteDoc,
+    addLayer, applyLayers, duplicateLayer, layerSheets, layersFileText, mergeDown, moveLayer, parseLayersFile, recompose, removeLayer, updateLayer, MAX_LAYERS,
   } from "../lib/sprite-doc";
   import { loadRaster, rasterToDataUrl } from "../lib/png";
   import { studio } from "../lib/store.svelte";
@@ -21,6 +22,7 @@
     frame: number;
     imagePath: string; // the PNG this sprite saves to
     imageName: string; // how the JSON refers to it (relative to the JSON file)
+    layer: number; // the layer being drawn on
     sheet: boolean; // false: a plain PNG, no JSON
   }
 
@@ -63,6 +65,10 @@
 
   let session: Session | undefined;
   let isSheet = $state(false);
+  let activeLayer = $state(0);
+  let renaming = $state(-1);
+  const focusNow = (n: HTMLInputElement) => { n.focus(); n.select(); };
+  const cel = () => doc.layers[activeLayer]!.cels[frame]!;
   let canvas: HTMLCanvasElement | undefined = $state();
   let preview: HTMLCanvasElement | undefined = $state();
   const thumbs = new Map<number, HTMLCanvasElement>();
@@ -86,7 +92,7 @@
       let s: Session;
       if (asPng) {
         const image = await loadRaster(await studio.api!.readImage(fromPath));
-        s = { doc: fromImage(image), past: [], future: [], frame: 0, imagePath: fromPath, imageName: fromPath.slice(fromPath.lastIndexOf("/") + 1), sheet: false };
+        s = { doc: fromImage(image), past: [], future: [], frame: 0, imagePath: fromPath, imageName: fromPath.slice(fromPath.lastIndexOf("/") + 1), layer: 0, sheet: false };
       } else {
         const parsed = parseSheetJson(text);
         if (!parsed.ok) throw new Error(parsed.error);
@@ -99,7 +105,8 @@
           // The picture is missing or unreadable: start blank at the frame size so it can be redrawn.
           base = newDoc(parsed.json.frame_width, parsed.json.frame_height, Math.max(1, parsed.json.frames ?? 1));
         }
-        s = { doc: base, past: [], future: [], frame: 0, imagePath, imageName, sheet: true };
+        base = await restoreLayers(base);
+        s = { doc: base, past: [], future: [], frame: 0, imagePath, imageName, layer: 0, sheet: true };
       }
       studio.sessions.set(fromPath, s);
       session = s;
@@ -109,15 +116,45 @@
     }
   }
 
+  const layersPath = untrack(() => fromPath).replace(/\.sprite\.json$/i, ".layers.json");
+
+  /// Layers live in a file next to the sheet; they are only trusted while they still add up to the sheet.
+  async function restoreLayers(flat: SpriteDoc): Promise<SpriteDoc> {
+    let content;
+    try {
+      content = await studio.api!.readFile(layersPath);
+    } catch {
+      return flat; // no layers file: the sprite is one layer
+    }
+    const file = content.text ? parseLayersFile(content.text) : null;
+    if (!file) return flat;
+    try {
+      const sheets = await Promise.all(file.layers.map((l) => loadRaster(l.image)));
+      const layered = applyLayers(flat, file, sheets);
+      if (layered) return layered;
+    } catch {
+      // fall through
+    }
+    studio.say("info", "The picture was changed outside the studio, so its layers were flattened into one.");
+    return flat;
+  }
+
   function adopt() {
     doc = session!.doc;
     frame = Math.min(session!.frame, doc.frames.length - 1);
+    activeLayer = Math.min(session!.layer, doc.layers.length - 1);
     zoom = Math.max(1, Math.min(32, Math.floor(420 / Math.max(doc.fw, doc.fh))));
     canUndo = session!.past.length > 0;
     canRedo = session!.future.length > 0;
     isSheet = session!.sheet;
     studio.saveHooks.set(fromPath, async () => {
-      await studio.api!.writeImage(session!.imagePath, rasterToDataUrl(toSheet(session!.doc)));
+      const d = session!.doc;
+      await studio.api!.writeImage(session!.imagePath, rasterToDataUrl(toSheet(d)));
+      // Layers go in a file beside the sheet (only when there is more than one, or there was a file before).
+      if (session!.sheet && (d.layers.length > 1 || studio.files.some((f) => f.path === layersPath))) {
+        await studio.api!.writeFile(layersPath, layersFileText(d, layerSheets(d).map(rasterToDataUrl)));
+        if (!studio.files.some((f) => f.path === layersPath)) void studio.refreshFiles();
+      }
     });
     ready = true;
   }
@@ -127,6 +164,7 @@
     if (!session) return;
     session.doc = doc;
     session.frame = frame;
+    session.layer = activeLayer;
     canUndo = session.past.length > 0;
     canRedo = session.future.length > 0;
     if (session.sheet) studio.edit(fromPath, toSheetJson(doc, session.imageName));
@@ -145,6 +183,8 @@
     remember();
     doc = next;
     frame = Math.max(0, Math.min(newFrame, doc.frames.length - 1));
+    activeLayer = Math.min(activeLayer, doc.layers.length - 1);
+    recompose(doc, frame);
     changed();
   }
   function undo() {
@@ -153,6 +193,7 @@
     session!.future.push(cloneDoc(doc));
     doc = prev;
     frame = Math.min(frame, doc.frames.length - 1);
+    activeLayer = Math.min(activeLayer, doc.layers.length - 1);
     changed();
   }
   function redo() {
@@ -161,6 +202,7 @@
     session!.past.push(cloneDoc(doc));
     doc = next;
     frame = Math.min(frame, doc.frames.length - 1);
+    activeLayer = Math.min(activeLayer, doc.layers.length - 1);
     changed();
   }
 
@@ -295,12 +337,17 @@
   function down(e: PointerEvent) {
     if (e.button !== 0 || !ready) return;
     const p = cell(e);
-    const r = doc.frames[frame]!;
     if (tool === "picker") {
-      const c = getPixel(r, p.x, p.y);
+      const c = getPixel(doc.frames[frame]!, p.x, p.y);
       if (c && c[3] > 0) color = c;
       return;
     }
+    const layer = doc.layers[activeLayer]!;
+    if (!layer.visible) {
+      studio.say("info", `"${layer.name}" is hidden. Show it (the eye) to draw on it.`);
+      return;
+    }
+    const r = cel();
     canvas!.setPointerCapture(e.pointerId);
     if (tool === "select") {
       if (selection && inRect(selection, p.x, p.y)) {
@@ -325,9 +372,11 @@
         const q = flipped(p, fx, fy);
         floodFill(r, q.x, q.y, color);
       }
+      recompose(doc, frame);
       finish();
       return;
     } else shape(r, p);
+    recompose(doc, frame);
     rev++;
   }
 
@@ -362,7 +411,7 @@
       return;
     }
     if (!drawing) return;
-    const r = doc.frames[frame]!;
+    const r = cel();
     if (moving && selection) {
       const nx = p.x - moving.dx;
       const ny = p.y - moving.dy;
@@ -373,6 +422,7 @@
       last = p;
       drawStroke(r);
     } else shape(r, p);
+    recompose(doc, frame);
     rev++;
   }
 
@@ -380,8 +430,8 @@
     selecting = null;
     if (!drawing) return;
     drawing = false;
-    const r = doc.frames[frame]!;
-    const was = before!.frames[frame]!;
+    const r = cel();
+    const was = before!.layers[activeLayer]!.cels[frame]!;
     if (r.data.some((v, i) => v !== was.data[i])) {
       session!.past.push(before!);
       if (session!.past.length > MAX_HISTORY) session!.past.shift();
@@ -404,19 +454,19 @@
   function clearSelection() {
     if (!selection) return;
     const next = cloneDoc(doc);
-    next.frames[frame] = lift(next.frames[frame]!, selection).rest;
+    next.layers[activeLayer]!.cels[frame] = lift(next.layers[activeLayer]!.cels[frame]!, selection).rest;
     structural(next);
   }
   function copySelection(cut = false) {
     if (!selection) return;
-    clipboard = crop(doc.frames[frame]!, selection.x, selection.y, selection.w, selection.h);
+    clipboard = crop(cel(), selection.x, selection.y, selection.w, selection.h);
     if (cut) clearSelection();
   }
   function paste() {
     if (!clipboard) return;
     const at = selection ? { x: selection.x, y: selection.y } : { x: 0, y: 0 };
     const next = cloneDoc(doc);
-    next.frames[frame] = place(next.frames[frame]!, clipboard, at.x, at.y);
+    next.layers[activeLayer]!.cels[frame] = place(next.layers[activeLayer]!.cels[frame]!, clipboard, at.x, at.y);
     structural(next);
     tool = "select";
     selection = { x: at.x, y: at.y, w: clipboard.w, h: clipboard.h };
@@ -442,12 +492,12 @@
 
   function clearFrame() {
     const next = cloneDoc(doc);
-    next.frames[frame]!.data.fill(0);
+    next.layers[activeLayer]!.cels[frame]!.data.fill(0);
     structural(next);
   }
   function flip(horizontal: boolean) {
     const next = cloneDoc(doc);
-    const r = next.frames[frame]!;
+    const r = next.layers[activeLayer]!.cels[frame]!;
     const src = cloneRaster(r);
     for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) {
       const c = getPixel(src, horizontal ? r.w - 1 - x : x, horizontal ? y : r.h - 1 - y)!;
@@ -469,6 +519,27 @@
     structural(next);
   }
   const problems = $derived(tagProblems(doc));
+
+  // ---- layers -------------------------------------------------------------------------------------
+  function layerEdit(result: { doc: SpriteDoc; index: number }) {
+    if (result.doc === doc) return;
+    structural(result.doc);
+    activeLayer = result.index;
+  }
+  const newLayer = () => layerEdit(addLayer(doc, activeLayer));
+  const copyLayer = () => layerEdit(duplicateLayer(doc, activeLayer));
+  const dropLayer = () => {
+    const next = removeLayer(doc, activeLayer);
+    if (next !== doc) {
+      structural(next);
+      activeLayer = Math.max(0, Math.min(activeLayer, next.layers.length - 1));
+    }
+  };
+  const shiftLayer = (by: number) => layerEdit(moveLayer(doc, activeLayer, by));
+  const mergeLayer = () => layerEdit(mergeDown(doc, activeLayer));
+  const setLayer = (i: number, change: Parameters<typeof updateLayer>[2]) => structural(updateLayer(doc, i, change));
+  /// Top layer first, as in most drawing programs.
+  const layerRows = $derived(doc.layers.map((l, i) => ({ l, i })).reverse());
 
   // ---- preview ----------------------------------------------------------------------------------
   let playing = $state(false);
@@ -660,6 +731,30 @@
         </div>
       {/if}
 
+      <h3>Layers</h3>
+      <div class="layers" role="listbox" aria-label="Layers">
+        {#each layerRows as { l, i } (i)}
+          <div class="layer" class:on={i === activeLayer} role="option" aria-selected={i === activeLayer}>
+            <button class="ghost eye" title={l.visible ? "Hide" : "Show"} aria-label={l.visible ? `Hide ${l.name}` : `Show ${l.name}`} onclick={() => setLayer(i, { visible: !l.visible })}>{l.visible ? "👁" : "·"}</button>
+            <button class="lname" onclick={() => (activeLayer = i)} ondblclick={() => (renaming = i)}>
+              {#if renaming === i}
+                <input value={l.name} aria-label="Layer name" use:focusNow onblur={(e) => { renaming = -1; setLayer(i, { name: e.currentTarget.value }); }} onkeydown={(e) => { if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur(); }} onclick={(e) => e.stopPropagation()} />
+              {:else}{l.name}{/if}
+            </button>
+          </div>
+        {/each}
+      </div>
+      <label class="slider"><span>Opacity</span><input type="range" min="0" max="1" step="0.05" value={doc.layers[activeLayer]?.opacity ?? 1} oninput={(e) => setLayer(activeLayer, { opacity: Number(e.currentTarget.value) })} /><output>{Math.round((doc.layers[activeLayer]?.opacity ?? 1) * 100)}%</output></label>
+      <div class="row wrap">
+        <button onclick={newLayer} disabled={doc.layers.length >= MAX_LAYERS} title="New layer above">＋</button>
+        <button onclick={copyLayer} disabled={doc.layers.length >= MAX_LAYERS} title="Duplicate layer">⧉</button>
+        <button onclick={() => shiftLayer(1)} disabled={activeLayer >= doc.layers.length - 1} title="Move up" aria-label="Move layer up">↑</button>
+        <button onclick={() => shiftLayer(-1)} disabled={activeLayer <= 0} title="Move down" aria-label="Move layer down">↓</button>
+        <button onclick={mergeLayer} disabled={activeLayer <= 0} title="Merge into the layer below">⤓</button>
+        <button class="danger" onclick={dropLayer} disabled={doc.layers.length <= 1} title="Delete layer" aria-label="Delete layer">✕</button>
+      </div>
+      {#if !isSheet && doc.layers.length > 1}<p class="warn small">This plain image is saved flat. Open a .sprite.json to keep layers.</p>{/if}
+
       <h3>Preview</h3>
       <div class="preview"><canvas bind:this={preview}></canvas></div>
       <div class="row">
@@ -734,6 +829,13 @@
   .sizing { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; padding: 6px 10px; background: var(--panel-2); border-bottom: 1px solid var(--line); }
   .sizing label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--dim); }
   .recent { margin-top: -2px; }
+  .layers { flex: none; display: flex; flex-direction: column; gap: 2px; max-height: 150px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; padding: 2px; }
+  .layer { display: flex; align-items: center; border-radius: 4px; }
+  .layer.on { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+  .eye { width: 26px; padding: 0; }
+  .lname { flex: 1; text-align: left; background: transparent; border-color: transparent; padding: 2px 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lname input { width: 100%; padding: 0 4px; }
+  .wrap { flex-wrap: wrap; } .wrap button { flex: 1 0 28px; padding: 3px; }
   .row { display: flex; gap: 6px; } .row select { flex: 1; min-width: 0; }
   .tag { display: flex; flex-direction: column; gap: 4px; padding: 6px; border: 1px solid var(--line); border-radius: 6px; }
   .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; align-items: center; }

@@ -40,3 +40,17 @@ describe("renaming updates references", () => {
     expect(await read("sprites/player.sprite.json")).toContain('"image": "player_sheet.png"');
   });
 });
+
+describe("sprite layers files", () => {
+  it("move and disappear with their sprite", async () => {
+    await openProject();
+    await studio.api!.createFile("sprites/player.layers.json", "{}");
+    await studio.refreshFiles();
+    await studio.rename("sprites/player.sprite.json", "sprites/hero.sprite.json");
+    const paths = studio.files.map((f) => f.path);
+    expect(paths).toContain("sprites/hero.layers.json");
+    expect(paths).not.toContain("sprites/player.layers.json");
+    await studio.remove("sprites/hero.sprite.json");
+    expect(studio.files.map((f) => f.path).some((p) => p.endsWith(".layers.json"))).toBe(false);
+  });
+});

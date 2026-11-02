@@ -359,6 +359,11 @@ class Studio {
       const edits = planRename(from, to, await this.#projectTexts(), this.files.map((f) => f.path));
       let apply = edits.length > 0 && confirm(`Update ${edits.reduce((n, e) => n + e.count, 0)} reference(s) in ${edits.length} file(s) to the new name?\n\n${edits.map((e) => `• ${e.file} (${e.count})`).join("\n")}`);
       await this.api!.renameFile(from, to);
+      // A sprite's layers file travels with it.
+      if (from.endsWith(".sprite.json") && to.endsWith(".sprite.json")) {
+        const [layersFrom, layersTo] = [from, to].map((p) => p.replace(/\.sprite\.json$/, ".layers.json")) as [string, string];
+        if (this.files.some((f) => f.path === layersFrom)) await this.api!.renameFile(layersFrom, layersTo).catch(() => {});
+      }
       if (apply) {
         const skipped: string[] = [];
         for (const edit of edits) {
@@ -408,6 +413,8 @@ class Studio {
   async remove(path: string) {
     await this.#guard(async () => {
       const where = await this.api!.deleteFile(path);
+      const layersFile = path.endsWith(".sprite.json") ? path.replace(/\.sprite\.json$/, ".layers.json") : "";
+      if (layersFile && this.files.some((f) => f.path === layersFile)) await this.api!.deleteFile(layersFile).catch(() => {});
       for (const tab of this.tabs.filter((t) => t.path === path || t.path.startsWith(`${path}/`))) {
         tab.text = tab.saved;
         tab.pending = false;

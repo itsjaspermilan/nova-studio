@@ -167,3 +167,122 @@ describe("resizeDoc", () => {
     expect(d.fw).toBe(4); // untouched
   });
 });
+
+import { addLayer, applyLayers, composeFrame, duplicateLayer, hashRaster, layerSheets, layersFileText, mergeDown, moveLayer, parseLayersFile, recompose, removeLayer, updateLayer } from "./sprite-doc";
+import { newRaster, stamp } from "./pixels";
+
+const BLUE: Rgba = [0, 0, 255, 255];
+const px = (r: ReturnType<typeof newRaster>, x: number, y: number) => getPixel(r, x, y)!;
+
+describe("layers", () => {
+  it("starts with one layer and stacks visible layers bottom to top", () => {
+    let d = newDoc(4, 4, 2);
+    expect(d.layers).toHaveLength(1);
+    setPixel(d.layers[0]!.cels[0]!, 1, 1, RED);
+    const added = addLayer(d, 0);
+    d = added.doc;
+    expect(added.index).toBe(1);
+    expect(d.layers.map((l) => l.name)).toEqual(["Layer 1", "Layer 2"]);
+    setPixel(d.layers[1]!.cels[0]!, 1, 1, BLUE);
+    setPixel(d.layers[1]!.cels[0]!, 2, 2, BLUE);
+    recompose(d, 0);
+    expect(px(d.frames[0]!, 1, 1)).toEqual(BLUE); // the top layer wins
+    expect(px(composeFrame(d, 1), 1, 1)).toEqual([0, 0, 0, 0]);
+    d = updateLayer(d, 1, { visible: false });
+    expect(px(d.frames[0]!, 1, 1)).toEqual(RED); // hiding shows what is underneath
+    expect(px(d.frames[0]!, 2, 2)[3]).toBe(0);
+    d = updateLayer(d, 1, { visible: true, opacity: 0.5 });
+    expect(px(d.frames[0]!, 2, 2)[3]).toBe(128);
+    expect(updateLayer(d, 9, { name: "x" })).toBe(d);
+    expect(updateLayer(d, 0, { name: "  Body " }).layers[0]!.name).toBe("Body");
+    expect(updateLayer(d, 0, { opacity: 7 }).layers[0]!.opacity).toBe(1);
+  });
+
+  it("adds layers above a chosen one, duplicates, reorders and removes (never the last)", () => {
+    let d = newDoc(2, 2);
+    d = addLayer(addLayer(d, 0).doc, 0).doc; // a second layer inserted above the first, then another above the first
+    expect(d.layers.map((l) => l.name)).toEqual(["Layer 1", "Layer 3", "Layer 2"]);
+    const dup = duplicateLayer(d, 0);
+    expect(dup.index).toBe(1);
+    expect(dup.doc.layers[1]!.name).toBe("Layer 1 copy");
+    const up = moveLayer(dup.doc, 0, 1);
+    expect(up.index).toBe(1);
+    expect(up.doc.layers.map((l) => l.name)).toEqual(["Layer 1 copy", "Layer 1", "Layer 3", "Layer 2"]);
+    expect(moveLayer(d, 2, 1).index).toBe(2);
+    expect(moveLayer(d, 0, -1).doc).toBe(d);
+    const removed = removeLayer(d, 1);
+    expect(removed.layers).toHaveLength(2);
+    expect(removeLayer(removeLayer(removed, 0), 0).layers).toHaveLength(1);
+    expect(removeLayer(newDoc(2, 2), 0).layers).toHaveLength(1);
+    expect(d.layers).toHaveLength(3); // untouched
+  });
+
+  it("keeps every layer in step with frame and canvas edits", () => {
+    let d = addLayer(newDoc(4, 4, 2), 0).doc;
+    setPixel(d.layers[1]!.cels[1]!, 0, 0, RED);
+    d = insertFrame(d, 0);
+    expect(d.layers.every((l) => l.cels.length === 3)).toBe(true);
+    expect(px(d.layers[1]!.cels[2]!, 0, 0)).toEqual(RED); // moved along with its frame
+    d = moveFrame(d, 2, 0);
+    expect(px(d.layers[1]!.cels[0]!, 0, 0)).toEqual(RED);
+    d = insertFrame(d, 1, 0); // a copy of frame 0 carries each layer's pixels
+    expect(px(d.layers[1]!.cels[1]!, 0, 0)).toEqual(RED);
+    d = removeFrame(d, 1);
+    expect(d.layers.every((l) => l.cels.length === 3)).toBe(true);
+    const big = resizeDoc(d, 8, 8, 1, 1);
+    expect(big.layers.every((l) => l.cels.every((c) => c.w === 8 && c.h === 8))).toBe(true);
+    expect(px(big.layers[1]!.cels[0]!, 4, 4)).toEqual(RED);
+  });
+
+  it("merges a layer into the one below using its opacity", () => {
+    let d = addLayer(newDoc(2, 2), 0).doc;
+    setPixel(d.layers[0]!.cels[0]!, 0, 0, RED);
+    setPixel(d.layers[1]!.cels[0]!, 1, 0, BLUE);
+    d = updateLayer(d, 1, { opacity: 0.5 });
+    const m = mergeDown(d, 1);
+    expect(m.index).toBe(0);
+    expect(m.doc.layers).toHaveLength(1);
+    expect(px(m.doc.layers[0]!.cels[0]!, 0, 0)).toEqual(RED);
+    expect(px(m.doc.layers[0]!.cels[0]!, 1, 0)).toEqual([0, 0, 255, 128]);
+    expect(mergeDown(d, 0).doc).toBe(d);
+  });
+
+  it("round-trips layers through a file and notices when the sheet was changed elsewhere", () => {
+    let d = addLayer(newDoc(4, 4, 3), 0).doc;
+    setPixel(d.layers[0]!.cels[1]!, 1, 1, RED);
+    setPixel(d.layers[1]!.cels[2]!, 2, 2, BLUE);
+    d = updateLayer(d, 1, { name: "Outline", opacity: 0.75 });
+    recompose(d, 1);
+    recompose(d, 2);
+    const sheets = layerSheets(d);
+    const text = layersFileText(d, sheets.map((_, i) => `data:image/png;base64,L${i}`));
+    const file = parseLayersFile(text)!;
+    expect(file).toMatchObject({ frames: 3, columns: 3, sheet: hashRaster(toSheet(d)) });
+    expect(file.layers.map((l) => [l.name, l.opacity])).toEqual([["Layer 1", 1], ["Outline", 0.75]]);
+    const flat = fromSheet(toSheet(d), { frame_width: 4, frame_height: 4, frames: 3 });
+    const back = applyLayers(flat, file, sheets)!;
+    expect(back.layers.map((l) => l.name)).toEqual(["Layer 1", "Outline"]);
+    expect(px(back.layers[1]!.cels[2]!, 2, 2)).toEqual(BLUE);
+    expect(hashRaster(toSheet(back))).toBe(hashRaster(toSheet(d)));
+    // someone edited the PNG: the flat picture no longer matches the layers
+    setPixel(flat.frames[0]!, 0, 0, [9, 9, 9, 255]);
+    expect(applyLayers(flat, file, sheets)).toBeNull();
+    expect(applyLayers(fromSheet(toSheet(d), { frame_width: 4, frame_height: 4, frames: 2 }), file, sheets)).toBeNull();
+  });
+
+  it("rejects damaged layer files", () => {
+    expect(parseLayersFile("{ no")).toBeNull();
+    expect(parseLayersFile('{"version":2}')).toBeNull();
+    expect(parseLayersFile('{"version":1,"sheet":"x","frames":1,"columns":1,"layers":[]}')).toBeNull();
+    expect(parseLayersFile('{"version":1,"sheet":"x","frames":1,"columns":1,"layers":[{"name":1}]}')).toBeNull();
+  });
+
+  it("fingerprints pictures by size and content", () => {
+    const a = newRaster(2, 2);
+    const b = newRaster(2, 2);
+    expect(hashRaster(a)).toBe(hashRaster(b));
+    stamp(b, 0, 0, 1, RED);
+    expect(hashRaster(a)).not.toBe(hashRaster(b));
+    expect(hashRaster(newRaster(4, 1))).not.toBe(hashRaster(newRaster(2, 2)));
+  });
+});

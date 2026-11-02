@@ -316,7 +316,8 @@ several steps (at most five, then it lets go instead of spiralling).
 
 `sprites/hero.sprite.json` cuts one PNG into equal frames and names animations. The model
 follows Pixelorama: frames in a grid, a duration per frame, and *tags* (named frame ranges with a
-play direction). The studio's sprite editor writes these files; hand edits are fine.
+play direction). The studio's sprite editor writes these files; hand edits are fine. Beside the sheet it may keep
+`<name>.layers.json`, its own editable layers; the game ignores it (only the flat PNG is used).
 
 ```json
 {
