@@ -21,6 +21,8 @@ use crate::model::{self, Image, MeshData};
 use crate::project::{AssetKind, Project};
 use crate::scene;
 use crate::script::new_lua;
+use crate::sprite::{self, SpriteDef};
+use crate::tilemap::TileMap;
 use crate::vfs::Vfs;
 
 /// The entity/scene/timer framework, written in Lua and loaded before every project's
@@ -46,6 +48,8 @@ struct Shared {
     view: [f32; 2],
     time: f64,
     layout: AtlasLayout,
+    sheets: HashMap<String, SpriteDef>,
+    tilemaps: Vec<TileMap>,
     mesh_ids: HashMap<String, usize>,
     known_models: Vec<String>,
     world: Vec<SpriteInstance>,
@@ -156,6 +160,22 @@ fn find_image<'a>(layout: &'a AtlasLayout, id: &str) -> Option<&'a assets::Atlas
         .or_else(|| layout.rects.get(&format!("sprites/{id}.png")))
 }
 
+/// What a sprite name means: the PNG's rectangle in the atlas and, for a sprite sheet
+/// (`sprites/hero.sprite.json`), its frame layout. Sheets win over plain images for short names.
+fn resolve_sprite<'a>(
+    layout: &'a AtlasLayout,
+    sheets: &'a HashMap<String, SpriteDef>,
+    id: &str,
+) -> Option<(&'a assets::AtlasRect, Option<&'a SpriteDef>)> {
+    let sheet = sheets
+        .get(id)
+        .or_else(|| sheets.get(&format!("sprites/{id}.sprite.json")));
+    if let Some(def) = sheet {
+        return layout.rects.get(&def.image).map(|r| (r, Some(def)));
+    }
+    find_image(layout, id).map(|r| (r, None))
+}
+
 /// A model by full id (`models/car.glb`) or short name (`car`).
 fn find_model(models: &[String], id: &str) -> Option<String> {
     if models.iter().any(|m| m == id) {
@@ -172,7 +192,7 @@ fn sprite_instance(
     y: f64,
     opts: &Option<Table>,
 ) -> mlua::Result<SpriteInstance> {
-    let rect = find_image(&shared.layout, id).ok_or_else(|| {
+    let (rect, sheet) = resolve_sprite(&shared.layout, &shared.sheets, id).ok_or_else(|| {
         let known: Vec<&str> = shared
             .layout
             .rects
@@ -190,6 +210,21 @@ fn sprite_instance(
             }
         ))
     })?;
+    // A sprite sheet draws one frame (`frame`, 0-based) of its grid; a plain image ignores it.
+    let cell = match sheet {
+        Some(def) => {
+            let frame = number_option(opts, "frame")?.unwrap_or(0.0).max(0.0) as u32;
+            let (col, row) = def.cell(frame);
+            assets::AtlasRect {
+                x: rect.x + col * def.frame_width,
+                y: rect.y + row * def.frame_height,
+                w: def.frame_width,
+                h: def.frame_height,
+            }
+        }
+        None => *rect,
+    };
+    let rect = &cell;
     let scale = number_option(opts, "scale")?.unwrap_or(1.0);
     let sx = number_option(opts, "sx")?.unwrap_or(scale);
     let sy = number_option(opts, "sy")?.unwrap_or(scale);
@@ -438,9 +473,10 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
     let s = shared.clone();
     raw.set(
         "has_image",
-        lua.create_function(
-            move |_, id: String| Ok(find_image(&s.borrow().layout, &id).is_some()),
-        )?,
+        lua.create_function(move |_, id: String| {
+            let sh = s.borrow();
+            Ok(resolve_sprite(&sh.layout, &sh.sheets, &id).is_some())
+        })?,
     )?;
     let s = shared.clone();
     raw.set(
@@ -454,10 +490,165 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
         "image_size",
         lua.create_function(move |_, id: String| {
             let sh = s.borrow();
-            let r = find_image(&sh.layout, &id)
+            let (rect, sheet) = resolve_sprite(&sh.layout, &sh.sheets, &id)
                 .ok_or_else(|| lua_err(format!("unknown image '{id}'")))?;
-            Ok((r.w as f64, r.h as f64))
+            Ok(match sheet {
+                Some(def) => (def.frame_width as f64, def.frame_height as f64),
+                None => (rect.w as f64, rect.h as f64),
+            })
         })?,
+    )?;
+    // sprite_info(name): nil for plain images; for a sheet its frame count, per-frame
+    // durations in milliseconds and tags as { sequence = {frames...}, loop = bool }.
+    let s = shared.clone();
+    raw.set(
+        "sprite_info",
+        lua.create_function(move |lua, id: String| {
+            let sh = s.borrow();
+            let Some((_, Some(def))) = resolve_sprite(&sh.layout, &sh.sheets, &id) else {
+                return Ok(Value::Nil);
+            };
+            let info = lua.create_table()?;
+            info.set("frames", def.frames)?;
+            info.set("durations", def.durations_ms.clone())?;
+            let tags = lua.create_table()?;
+            for tag in &def.tags {
+                let t = lua.create_table()?;
+                t.set("sequence", tag.sequence())?;
+                t.set("loop", tag.looping)?;
+                tags.set(tag.name.clone(), t)?;
+            }
+            info.set("tags", tags)?;
+            Ok(Value::Table(info))
+        })?,
+    )?;
+    // --- tilemaps: tile data lives here, drawing is culled to the view ---
+    let s = shared.clone();
+    raw.set(
+        "tilemap_create",
+        lua.create_function(move |_, spec: Table| {
+            let image: String = spec
+                .get::<Option<String>>("image")?
+                .ok_or_else(|| lua_err("tilemap: missing 'image' (the tileset PNG)"))?;
+            let tile_w: u32 = spec.get::<Option<u32>>("tile_width")?.ok_or_else(|| lua_err("tilemap: missing 'tile_width'"))?;
+            let tile_h: u32 = spec.get::<Option<u32>>("tile_height")?.ok_or_else(|| lua_err("tilemap: missing 'tile_height'"))?;
+            let rows: Vec<Vec<i64>> = spec
+                .get::<Option<Vec<Vec<i64>>>>("tiles")?
+                .ok_or_else(|| lua_err("tilemap: missing 'tiles' (a list of rows of tile numbers)"))?;
+            let mut sh = s.borrow_mut();
+            let (id, size) = {
+                let rect = find_image(&sh.layout, &image).ok_or_else(|| {
+                    lua_err(format!("tilemap: unknown tileset image '{image}' (looked for '{image}' and 'sprites/{image}.png')"))
+                })?;
+                let id = sh
+                    .layout
+                    .rects
+                    .iter()
+                    .find(|(_, r)| *r == rect)
+                    .map(|(k, _)| k.clone())
+                    .expect("rect came from the layout");
+                (id, (rect.w, rect.h))
+            };
+            let map = TileMap::new(&id, tile_w, tile_h, size, rows).map_err(|e| lua_err(format!("tilemap: {e}")))?;
+            sh.tilemaps.push(map);
+            Ok(sh.tilemaps.len() - 1)
+        })?,
+    )?;
+    let s = shared.clone();
+    raw.set(
+        "tilemap_get",
+        lua.create_function(move |_, (id, col, row): (usize, i64, i64)| {
+            let sh = s.borrow();
+            let map = sh
+                .tilemaps
+                .get(id)
+                .ok_or_else(|| lua_err("unknown tilemap"))?;
+            Ok(map.get(col, row) as i64)
+        })?,
+    )?;
+    let s = shared.clone();
+    raw.set(
+        "tilemap_set",
+        lua.create_function(move |_, (id, col, row, tile): (usize, i64, i64, i64)| {
+            let mut sh = s.borrow_mut();
+            let map = sh
+                .tilemaps
+                .get_mut(id)
+                .ok_or_else(|| lua_err("unknown tilemap"))?;
+            map.set(col, row, tile)
+                .map_err(|e| lua_err(format!("tilemap: {e}")))
+        })?,
+    )?;
+    let s = shared.clone();
+    raw.set(
+        "tilemap_size",
+        lua.create_function(move |_, id: usize| {
+            let sh = s.borrow();
+            let map = sh
+                .tilemaps
+                .get(id)
+                .ok_or_else(|| lua_err("unknown tilemap"))?;
+            Ok((map.width, map.height, map.tile_w, map.tile_h))
+        })?,
+    )?;
+    // tilemap_draw(id, x, y, layer): x, y is where the map's top-left corner is on screen.
+    let s = shared.clone();
+    raw.set(
+        "tilemap_draw",
+        lua.create_function(
+            move |_, (id, ox, oy, layer): (usize, f64, f64, Option<String>)| {
+                let mut sh = s.borrow_mut();
+                let ui = match layer.as_deref() {
+                    None | Some("world") => false,
+                    Some("ui") => true,
+                    Some(other) => {
+                        return Err(lua_err(format!(
+                            "tilemap_draw: layer must be 'world' or 'ui', not '{other}'"
+                        )));
+                    }
+                };
+                let view = sh.view;
+                let (ox, oy) = (ox as f32, oy as f32);
+                let mut out = std::mem::take(if ui { &mut sh.ui } else { &mut sh.world });
+                {
+                    let map = sh
+                        .tilemaps
+                        .get(id)
+                        .ok_or_else(|| lua_err("unknown tilemap"))?;
+                    if let Some((c0, c1, r0, r1)) = map.visible(ox, oy, 1.0, view) {
+                        let rect = sh.layout.rects[&map.image];
+                        let (tw, th) = (map.tile_w as f32, map.tile_h as f32);
+                        for row in r0..=r1 {
+                            for col in c0..=c1 {
+                                let tile = map.get(col as i64, row as i64);
+                                if tile < 0 {
+                                    continue;
+                                }
+                                let t = tile as u32;
+                                let cell = assets::AtlasRect {
+                                    x: rect.x + (t % map.columns) * map.tile_w,
+                                    y: rect.y + (t / map.columns) * map.tile_h,
+                                    w: map.tile_w,
+                                    h: map.tile_h,
+                                };
+                                out.push(SpriteInstance {
+                                    center: [
+                                        ox + (col as f32 + 0.5) * tw,
+                                        oy + (row as f32 + 0.5) * th,
+                                    ],
+                                    size: [tw, th],
+                                    uv: sh.layout.uv(&cell),
+                                    color: [255; 4],
+                                    rotation: 0.0,
+                                });
+                            }
+                        }
+                    }
+                }
+                *(if ui { &mut sh.ui } else { &mut sh.world }) = out;
+                Ok(())
+            },
+        )?,
     )?;
     let scene_vfs = vfs.clone();
     raw.set(
@@ -538,6 +729,20 @@ impl Game {
         }
         let (atlas, layout) = assets::build_atlas(images, assets::MAX_ATLAS)?;
 
+        let mut sheets = HashMap::new();
+        for asset in project.assets_of(AssetKind::Sheet) {
+            let text = String::from_utf8(vfs.read(&asset.id)?)
+                .map_err(|_| format!("{}: not valid UTF-8", asset.id))?;
+            let def = sprite::parse_sprite(&text, &asset.id, &|image| {
+                layout
+                    .rects
+                    .get(image)
+                    .filter(|_| image != assets::WHITE)
+                    .map(|r| (r.w, r.h))
+            })?;
+            sheets.insert(asset.id.clone(), def);
+        }
+
         let mut meshes = Vec::new();
         for asset in project.assets_of(AssetKind::Model) {
             let bytes = vfs.read(&asset.id)?;
@@ -554,6 +759,8 @@ impl Game {
             view: [960.0, 540.0],
             time: 0.0,
             layout: layout.clone(),
+            sheets,
+            tilemaps: Vec::new(),
             mesh_ids: HashMap::new(),
             known_models: meshes.iter().map(|(id, _)| id.clone()).collect(),
             world: Vec::new(),

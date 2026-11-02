@@ -51,7 +51,7 @@ checks; it does not predict handheld performance.
 
 ## Limits today
 
-- No studio app or editors yet. Projects are hand-written Lua, JSON scenes, PNG and GLB files; there are no tilemaps, sprite animation, real fonts, audio API or saves yet.
+- No studio app or editors yet. Projects are hand-written Lua, JSON scenes, PNG and GLB files; there are no real fonts (the UI text is a debug pixel font), audio API or saves yet.
 - The APK still embeds the M1 benchmark scene; it cannot load a project yet.
 - Only the Android emulator has run the APK; no handheld has.
 - The audio core was verified with offline renders only, not by listening.

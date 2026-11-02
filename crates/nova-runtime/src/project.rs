@@ -22,6 +22,7 @@ pub enum AssetKind {
     Model,
     Script,
     Scene,
+    Sheet,
     Audio,
     Other,
 }
@@ -31,6 +32,9 @@ impl AssetKind {
         let lower = path.to_ascii_lowercase();
         if lower.ends_with(".scene.json") {
             return Self::Scene;
+        }
+        if lower.ends_with(".sprite.json") {
+            return Self::Sheet;
         }
         match lower.rsplit_once('.').map(|(_, ext)| ext) {
             Some("png") => Self::Image,

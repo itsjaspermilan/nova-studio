@@ -514,3 +514,258 @@ fn pause_freezes_entities_but_not_the_scene_and_input_still_reaches_it() {
     steps(&mut g, 40);
     assert_eq!(logs(&g), ["0.0 30"]);
 }
+
+// ---------------------------------------------------------------- sprite sheets
+
+const SHEET: &str = r#"{"version":1,"image":"sheet.png","frame_width":32,"frame_height":32,"frame_duration_ms":100,
+    "tags":[{"name":"idle","from":0,"to":3,"direction":"pingpong"},
+            {"name":"run","from":2,"to":5},
+            {"name":"hit","from":6,"to":7,"loop":false}]}"#;
+
+fn sheet_files() -> Vec<(&'static str, Vec<u8>)> {
+    vec![
+        ("sprites/sheet.png", png(128, 64)),
+        ("sprites/sheet.png", png(128, 64)),
+        ("sprites/hero.sprite.json", lua(SHEET)),
+    ]
+}
+
+fn with_sheet(mut files: Vec<(&'static str, Vec<u8>)>) -> Game {
+    let mut all = sheet_files();
+    all.dedup_by(|a, b| a.0 == b.0);
+    all.append(&mut files);
+    project(all)
+}
+
+#[test]
+fn a_sheet_draws_one_frame_at_frame_size() {
+    let mut g = with_sheet(vec![(
+        "main.lua",
+        lua(
+            "function update(dt)\n nova.sprite('hero', 10, 10, { frame = 0 })\n nova.sprite('hero', 10, 10, { frame = 5 })\n nova.sprite('sheet', 10, 10)\n end",
+        ),
+    )]);
+    steps(&mut g, 1);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let sprites = g.frame_input(540).sprites_back;
+    assert_eq!(sprites.len(), 3);
+    assert_eq!(
+        sprites[0].size,
+        [32.0, 32.0],
+        "the frame, not the whole sheet"
+    );
+    let (a, b) = (sprites[0].uv, sprites[1].uv);
+    assert!(
+        b[0] > a[0] && b[1] > a[1],
+        "frame 5 is one column right and one row down of frame 0"
+    );
+    assert!(
+        ((b[0] - a[0]) - (b[1] - a[1])).abs() < 1e-6,
+        "square frames in a square atlas"
+    );
+    assert_eq!(
+        sprites[2].size,
+        [128.0, 64.0],
+        "the plain image is still the whole sheet"
+    );
+}
+
+#[test]
+fn tags_play_with_directions_durations_and_end_callbacks() {
+    let mut g = with_sheet(vec![
+        (
+            "entities/h.lua",
+            lua(
+                "local H = nova.entity { sprite = 'hero', tags = {'h'} }\nfunction H:on_animation_end(tag) nova.log('end ' .. tag .. ' ' .. self.frame) end\nreturn H",
+            ),
+        ),
+        (
+            "scenes/s.lua",
+            lua(
+                "local S = nova.scene {}\nfunction S:enter()\n  self.h = nova.spawn('h', 0, 0)\n  self.h:play('run')\n  self.h:play('run') -- same tag again keeps going\n  self.n = 0\nend\nfunction S:update(dt)\n  self.n = self.n + 1\n  if self.n == 1 then nova.log('run start ' .. self.h.frame) end\n  if self.n == 7 then nova.log('run 0.1s ' .. self.h.frame) end\n  if self.n == 40 then nova.log('run 0.67s ' .. self.h.frame) self.h:play('idle') end\n  if self.n == 80 then nova.log('idle 0.67s ' .. self.h.frame) self.h:play('hit') end\n  if self.n == 120 then nova.log('hit done ' .. self.h.frame) end\nend\nreturn S",
+            ),
+        ),
+        ("main.lua", lua("nova.start('s')")),
+    ]);
+    steps(&mut g, 130);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let l = logs(&g);
+    // run = frames 2..5 forward, loop. 100 ms per frame at 60 Hz steps: a frame change after 6 steps.
+    assert_eq!(l[0], "run start 2");
+    assert_eq!(l[1], "run 0.1s 3");
+    assert_eq!(l[2], "run 0.67s 4", "{l:?}");
+    // idle = pingpong 0..3 plays 0,1,2,3,2,1 then loops: six frames advanced in 0.6 s is one full
+    // cycle, so it is back on frame 0.
+    assert_eq!(l[3], "idle 0.67s 0", "{l:?}");
+    // hit = frames 6..7, no loop: ends on the last frame and reports it once.
+    assert_eq!(l[4], "end hit 7");
+    assert_eq!(l[5], "hit done 7");
+    assert_eq!(l.len(), 6, "{l:?}");
+}
+
+#[test]
+fn play_reports_unknown_tags_and_plain_images() {
+    for (sprite, call, expected) in [
+        ("hero", "e:play('nope')", "has no tag 'nope'"),
+        ("sheet", "e:play('run')", "is not a sprite sheet"),
+    ] {
+        let source = format!(
+            "local S = nova.scene {{}}\nfunction S:enter() local e = nova.spawn('e', 0, 0) {call} end\nreturn S"
+        );
+        let mut g = with_sheet(vec![
+            (
+                "entities/e.lua",
+                lua(&format!("return nova.entity {{ sprite = '{sprite}' }}")),
+            ),
+            ("scenes/s.lua", lua(&source)),
+            ("main.lua", lua("nova.start('s')")),
+        ]);
+        steps(&mut g, 2);
+        let e = g.error.clone().expect("error");
+        assert!(e.contains(expected), "{call}: {e}");
+    }
+}
+
+#[test]
+fn a_sheet_with_a_missing_image_fails_the_load_naming_the_file() {
+    let vfs: Rc<dyn Vfs> = Rc::new(MemVfs::new(vec![
+        ("nova.json", br#"{"format":1,"name":"T"}"#.to_vec()),
+        ("main.lua", lua("")),
+        (
+            "sprites/hero.sprite.json",
+            lua(r#"{"version":1,"image":"gone.png","frame_width":8,"frame_height":8}"#),
+        ),
+    ]));
+    let e = Game::load(vfs).err().expect("must fail");
+    assert!(e.starts_with("sprites/hero.sprite.json.image"), "{e}");
+}
+
+// ---------------------------------------------------------------- tilemaps
+
+fn tile_project(extra: Vec<(&'static str, Vec<u8>)>) -> Game {
+    let mut files = vec![("sprites/tiles.png", png(64, 32))];
+    files.extend(extra);
+    project(files)
+}
+
+#[test]
+fn tilemaps_draw_only_what_the_view_can_see() {
+    let row = vec!["0"; 100].join(",");
+    let rows = vec![format!("[{row}]"); 50].join(",");
+    let scene = format!(
+        r#"{{"version":1,"tilemaps":[{{"name":"ground","tileset":{{"image":"sprites/tiles.png","tile_width":16,"tile_height":16}},"tiles":[{rows}]}}]}}"#
+    );
+    let mut g = tile_project(vec![
+        ("scenes/s.scene.json", lua(&scene)),
+        (
+            "scenes/s.lua",
+            lua(
+                "local S = nova.scene {}\nfunction S:enter() nova.log(table.concat({ self.ground:size() }, ' ')) end\nfunction S:update(dt) if self.far then nova.cam.set(9000, 9000) end end\nreturn S",
+            ),
+        ),
+        ("main.lua", lua("nova.start('s')")),
+    ]);
+    steps(&mut g, 2);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    assert_eq!(logs(&g)[0], "100 50 16 16");
+    // 960x540 view, camera centred on it: columns 0..=60 and rows 0..=33 touch the view.
+    assert_eq!(g.frame_input(540).sprites_back.len(), 61 * 34);
+}
+
+#[test]
+fn tilemap_cells_can_be_read_and_changed_from_lua() {
+    let mut g = tile_project(vec![
+        (
+            "scenes/s.lua",
+            lua(
+                "local S = nova.scene {}\nfunction S:enter()\n  local m = nova.tilemap { image = 'tiles', tile_width = 16, tile_height = 16, x = 100, y = 50, tiles = { { 0, 1, -1 }, { 7, 2, 3 } }, solid = { 1 } }\n  nova.log(m:get(1, 0) .. ' ' .. m:get(2, 0) .. ' ' .. m:get(0, 1) .. ' ' .. m:get(9, 9))\n  nova.log(m:tile_at(100 + 16 + 3, 50 + 4) .. ' ' .. table.concat({ m:cell_at(100 + 40, 50 + 20) }, ','))\n  m:set(2, 0, 5)\n  nova.log(tostring(m:get(2, 0)) .. ' ' .. tostring(m:is_solid_at(100 + 20, 50 + 5)) .. ' ' .. tostring(m:is_solid_at(100 + 4, 50 + 5)) .. ' ' .. tostring(nova.solid_at(100 + 20, 50 + 5)))\nend\nreturn S",
+            ),
+        ),
+        ("main.lua", lua("nova.start('s')")),
+    ]);
+    steps(&mut g, 2);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    assert_eq!(logs(&g), ["1 -1 7 -1", "1 2,1", "5 true false true"]);
+}
+
+#[test]
+fn bad_tilemap_data_is_explained() {
+    for (spec, expected) in [
+        (
+            "{ image = 'tiles', tile_width = 16, tile_height = 16, tiles = { { 99 } } }",
+            "99 is not a tile of this tileset",
+        ),
+        (
+            "{ image = 'tiles', tile_width = 16, tile_height = 16, tiles = { { 0, 1 }, { 0 } } }",
+            "row 1 has 1 tiles but row 0 has 2",
+        ),
+        (
+            "{ image = 'ghost', tile_width = 16, tile_height = 16, tiles = { { 0 } } }",
+            "unknown tileset image 'ghost'",
+        ),
+        (
+            "{ tile_width = 16, tile_height = 16, tiles = { { 0 } } }",
+            "missing 'image'",
+        ),
+        (
+            "{ image = 'tiles', tile_height = 16, tiles = { { 0 } } }",
+            "missing 'tile_width'",
+        ),
+    ] {
+        let source = format!(
+            "local S = nova.scene {{}}\nfunction S:enter() nova.tilemap({spec}) end\nreturn S"
+        );
+        let mut g = tile_project(vec![
+            ("scenes/s.lua", lua(&source)),
+            ("main.lua", lua("nova.start('s')")),
+        ]);
+        steps(&mut g, 2);
+        let e = g.error.clone().expect("error");
+        assert!(e.contains(expected), "{spec}: {e}");
+    }
+}
+
+#[test]
+fn sliding_stops_against_solid_tiles_and_follows_walls() {
+    // A floor of solid tiles (tile 1) along row 6 (y 96..112) and a wall at column 10 (x 160..176).
+    let mut rows = vec![vec![-1; 20]; 8];
+    for c in 0..20 {
+        rows[6][c] = 1;
+    }
+    for r in 0..8 {
+        rows[r][10] = 1;
+    }
+    let tiles = rows
+        .iter()
+        .map(|r| {
+            let cells: Vec<String> = r.iter().map(|n| n.to_string()).collect();
+            format!("{{{}}}", cells.join(","))
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    let mut g = tile_project(vec![
+        (
+            "entities/box.lua",
+            lua("return nova.entity { hitbox = { -4, -4, 8, 8 }, tags = {'box'} }"),
+        ),
+        (
+            "scenes/s.lua",
+            lua(&format!(
+                "local S = nova.scene {{}}\nfunction S:enter()\n  nova.tilemap {{ image = 'tiles', tile_width = 16, tile_height = 16, solid = {{ 1 }}, tiles = {{ {tiles} }} }}\n  local falling = nova.spawn('box', 40, 20)\n  for i = 1, 30 do falling:slide(0, 8) end\n  nova.log(string.format('floor %.1f', falling.y))\n  local walker = nova.spawn('box', 150, 60)\n  local bx, by = walker:slide(30, 5)\n  nova.log(string.format('wall %.1f %.1f %s %s', walker.x, walker.y, tostring(bx), tostring(by)))\n  local free = nova.spawn('box', 20, 20)\n  local fx, fy = free:slide(10, 10)\n  nova.log(string.format('free %.1f %.1f %s %s', free.x, free.y, tostring(fx), tostring(fy)))\nend\nreturn S"
+            )),
+        ),
+        ("main.lua", lua("nova.start('s')")),
+    ]);
+    steps(&mut g, 2);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let l = logs(&g);
+    assert_eq!(
+        l[0], "floor 92.0",
+        "box bottom (y + 4) rests on the floor top at y = 96: {l:?}"
+    );
+    assert_eq!(
+        l[1], "wall 156.0 65.0 true false",
+        "right edge (x + 4) stops at the wall at x = 160, y is free: {l:?}"
+    );
+    assert_eq!(l[2], "free 30.0 30.0 false false");
+}

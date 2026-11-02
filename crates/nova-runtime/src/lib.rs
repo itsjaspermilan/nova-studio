@@ -14,6 +14,8 @@ pub mod project;
 pub mod scene;
 pub mod script;
 pub mod spike;
+pub mod sprite;
+pub mod tilemap;
 pub mod vfs;
 
 #[cfg(target_os = "android")]

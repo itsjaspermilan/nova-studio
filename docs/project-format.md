@@ -13,6 +13,7 @@ my-game/
   nova.json        required: names the game
   main.lua         the entry script (the name is configurable)
   sprites/*.png    PNG images (any folder works; sprites/ is where short names are looked up)
+  sprites/*.sprite.json   sprite sheets: frames, durations and animation tags for a PNG
   models/*.glb     static glTF models (models/ is where short names are looked up)
   entities/*.lua   one entity class per file (entities/enemies/grub.lua is "enemies.grub")
   scenes/*.lua     one scene class per file, with an optional scenes/<name>.scene.json
@@ -244,6 +245,73 @@ World sprites and entities are drawn relative to a camera: `nova.cam.set(x, y)` 
 The framework always advances in 60 Hz steps, however fast frames come: a slow frame runs
 several steps (at most five, then it lets go instead of spiralling).
 
+## Sprite sheets and animation
+
+`sprites/hero.sprite.json` cuts one PNG into equal frames and names animations. The model
+follows Pixelorama: frames in a grid, a duration per frame, and *tags* (named frame ranges with a
+play direction). The sprite studio (M5) will write these files; hand edits are fine.
+
+```json
+{
+  "version": 1,
+  "image": "hero_sheet.png",
+  "frame_width": 32, "frame_height": 32,
+  "columns": 6, "frames": 6,
+  "durations_ms": [320, 320, 90, 90, 90, 90],
+  "tags": [
+    { "name": "idle", "from": 0, "to": 1 },
+    { "name": "run",  "from": 2, "to": 5, "direction": "forward" },
+    { "name": "hit",  "from": 6, "to": 7, "loop": false }
+  ]
+}
+```
+
+`image` is relative to the JSON file. `columns` and `frames` default to what fits in the image.
+Durations: `frame_duration_ms` (one value for all frames, default 100) or `durations_ms` (one per
+frame), in milliseconds. Tag `direction`: `forward` (default), `reverse` or `pingpong` (forward and
+back without repeating the end frames). `loop` defaults to true. Errors name the file and place.
+
+A short name like `"hero"` refers to the sheet (it wins over a plain `hero.png`). Drawing a sheet
+draws one frame: `nova.sprite("hero", x, y, { frame = 3 })`, sized as a frame, not the whole PNG.
+
+On an entity with `sprite = "hero"`:
+
+```lua
+local Hero = nova.entity { sprite = "hero", anim = "idle" }   -- anim: the tag that plays from the start
+self:play("run")                    -- same tag again keeps going; { restart = true } starts over
+self:set_frame(4)                   -- stop animating and show frame 4
+self:stop_animation()
+function Hero:on_animation_end(tag) end     -- when a non-looping tag finishes
+self.anim_speed = 2                 -- playback speed multiplier (default 1)
+```
+
+`self.frame` is the frame being shown. A default hitbox uses the frame size.
+
+## Tilemaps
+
+A tilemap is a grid of tiles cut from a tileset PNG (row-major from 0; `-1` is empty). The tile
+data lives in native code, so drawing is culled to the view and big maps are cheap.
+
+```lua
+local ground = nova.tilemap {
+  image = "tiles", tile_width = 16, tile_height = 16,      -- the tileset (a short name or a path)
+  tiles = { { 0, 0, 0 }, { 1, 1, 1 } },                    -- rows, top first
+  solid = { 0, 1 },                                        -- tile numbers that block slide()
+  x = 0, y = 456, depth = 90,
+}
+ground:get(col, row)   ground:set(col, row, tile)   ground:size()        -- columns, rows, tile w, tile h
+ground:cell_at(x, y)   ground:tile_at(x, y)         ground:is_solid_at(x, y)    -- world points
+nova.solid_at(x, y)                                                       -- any tilemap
+local hit_x, hit_y = self:slide(dx, dy)                                   -- entity moves, stopping at solid tiles
+```
+
+In a scene file, add `"tilemaps": [ { "name": "ground", "tileset": { "image": "sprites/tiles.png",
+"tile_width": 16, "tile_height": 16 }, "x": 0, "y": 456, "depth": 90, "solid": [0, 1], "tiles":
+[[0, 0], [1, 1]] } ]`; the tilemap becomes `self.ground`. `slide` moves one axis at a time (so
+entities glide along walls) in sub-steps no bigger than half a tile, so a fast entity cannot jump a
+thin wall. It uses the entity's hitbox box. Tile numbers outside the tileset, ragged rows and
+unknown tilesets are errors that say which cell.
+
 ## Errors and reloading
 
 - A bad project (missing or invalid `nova.json`, unreadable image or model, atlas overflow)
@@ -258,7 +326,7 @@ several steps (at most five, then it lets go instead of spiralling).
 
 ## Not yet
 
-Tilemaps, sprite sheets and animation, real fonts and text layout, paths, audio and
+Real fonts and text layout (the UI text is still a debug pixel font), paths, particles, audio and
 save-data APIs, input remapping and named actions, rigid-bone model animation, Android loading
 of project files (the APK still embeds the benchmark scene), and the studio itself.
 

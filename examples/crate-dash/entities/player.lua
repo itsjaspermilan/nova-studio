@@ -26,6 +26,17 @@ function Player:update(dt)
     self.y, self.vy = self.floor, 0
   end
   self.alpha = (nova.time() < self.hurt_until) and 0.5 or 1
+
+  -- Animation: the sprite sheet has the tags idle, run and jump (sprites/player.sprite.json).
+  local steer = nova.input.axis("steer")
+  if steer < -0.1 then self.sx = -1 elseif steer > 0.1 then self.sx = 1 end
+  if self.y < self.floor then
+    self:play("jump")
+  elseif math.abs(steer) > 0.1 then
+    self:play("run")
+  else
+    self:play("idle")
+  end
 end
 
 function Player:on_collide_star(star)

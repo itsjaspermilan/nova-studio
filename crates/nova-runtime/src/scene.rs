@@ -12,7 +12,9 @@
 //!   "width": 1200, "height": 540,
 //!   "objects":  [ { "kind": "player", "name": "hero", "x": 40, "y": 200, "props": { "hp": 3 } } ],
 //!   "images":   [ { "image": "sprites/cloud.png", "x": 100, "y": 40, "scale": 2, "depth": 50 } ],
-//!   "texts":    [ { "text": "HELLO", "x": 8, "y": 8, "scale": 3, "color": [255, 255, 255] } ]
+//!   "texts":    [ { "text": "HELLO", "x": 8, "y": 8, "scale": 3, "color": [255, 255, 255] } ],
+//!   "tilemaps": [ { "name": "ground", "tileset": { "image": "sprites/tiles.png", "tile_width": 16, "tile_height": 16 },
+//!                   "x": 0, "y": 400, "depth": 90, "solid": [1, 2], "tiles": [[0, 1, 1], [-1, 2, 2]] } ]
 //! }
 //! ```
 
@@ -166,6 +168,7 @@ pub fn parse_scene(text: &str, file: &str) -> Result<Value, String> {
             "objects",
             "images",
             "texts",
+            "tilemaps",
         ],
     )?;
 
@@ -322,6 +325,128 @@ pub fn parse_scene(text: &str, file: &str) -> Result<Value, String> {
     }
     out.insert("texts".into(), Value::Array(texts));
 
+    let mut tilemaps = Vec::new();
+    for (i, item) in list("tilemaps")?.into_iter().enumerate() {
+        let at = format!("{file}.tilemaps[{i}]");
+        let o = item
+            .as_object()
+            .ok_or_else(|| err(&at, "each tilemap must be a JSON object"))?;
+        check_keys(
+            o,
+            &at,
+            &["name", "tileset", "x", "y", "depth", "solid", "tiles"],
+        )?;
+        let name = optional_name(o, &at)?;
+        take_name(&name, &at)?;
+        let tileset = match o.get("tileset") {
+            Some(Value::Object(t)) => t,
+            Some(_) => {
+                return Err(err(
+                    &format!("{at}.tileset"),
+                    "\"tileset\" must be an object",
+                ));
+            }
+            None => {
+                return Err(err(
+                    &at,
+                    "missing \"tileset\" ({\"image\", \"tile_width\", \"tile_height\"})",
+                ));
+            }
+        };
+        let tat = format!("{at}.tileset");
+        check_keys(tileset, &tat, &["image", "tile_width", "tile_height"])?;
+        let image = string(tileset, "image", &tat)?;
+        let mut ts = Map::new();
+        ts.insert("image".into(), Value::String(image.to_string()));
+        for key in ["tile_width", "tile_height"] {
+            let v = tileset
+                .get(key)
+                .ok_or_else(|| err(&tat, format!("missing \"{key}\"")))?;
+            match v.as_u64() {
+                Some(n) if (1..=4096).contains(&n) => {
+                    ts.insert(key.into(), Value::Number(n.into()));
+                }
+                _ => {
+                    return Err(err(
+                        &format!("{tat}.{key}"),
+                        format!("\"{key}\" must be a whole number from 1 to 4096"),
+                    ));
+                }
+            }
+        }
+        let rows = match o.get("tiles") {
+            Some(Value::Array(rows)) if !rows.is_empty() => rows,
+            Some(_) => {
+                return Err(err(
+                    &format!("{at}.tiles"),
+                    "\"tiles\" must be a non-empty list of rows, each a list of tile numbers",
+                ));
+            }
+            None => {
+                return Err(err(
+                    &at,
+                    "missing \"tiles\" (rows of tile numbers, -1 for empty)",
+                ));
+            }
+        };
+        let mut checked_rows = Vec::with_capacity(rows.len());
+        for (r, row) in rows.iter().enumerate() {
+            let cells = row.as_array().ok_or_else(|| {
+                err(
+                    &format!("{at}.tiles[{r}]"),
+                    "each row must be a list of tile numbers",
+                )
+            })?;
+            for (c, cell) in cells.iter().enumerate() {
+                match cell.as_i64() {
+                    Some(n) if (-1..=32767).contains(&n) => {}
+                    _ => {
+                        return Err(err(
+                            &format!("{at}.tiles[{r}][{c}]"),
+                            "tiles are whole numbers from -1 (empty) to 32767",
+                        ));
+                    }
+                }
+            }
+            checked_rows.push(Value::Array(cells.clone()));
+        }
+        let solid = match o.get("solid") {
+            None => Value::Array(vec![]),
+            Some(Value::Array(list)) => {
+                for (k, n) in list.iter().enumerate() {
+                    if !n.as_u64().is_some_and(|n| n <= 32767) {
+                        return Err(err(
+                            &format!("{at}.solid[{k}]"),
+                            "solid tiles are whole numbers from 0 to 32767",
+                        ));
+                    }
+                }
+                Value::Array(list.clone())
+            }
+            Some(_) => {
+                return Err(err(
+                    &format!("{at}.solid"),
+                    "\"solid\" must be a list of tile numbers",
+                ));
+            }
+        };
+        let mut obj = Map::new();
+        if let Some(n) = name {
+            obj.insert("name".into(), Value::String(n));
+        }
+        obj.insert("tileset".into(), Value::Object(ts));
+        obj.insert("x".into(), num(optional_number(o, "x", &at, 0.0)?));
+        obj.insert("y".into(), num(optional_number(o, "y", &at, 0.0)?));
+        obj.insert(
+            "depth".into(),
+            num(optional_number(o, "depth", &at, 100.0)?),
+        );
+        obj.insert("solid".into(), solid);
+        obj.insert("tiles".into(), Value::Array(checked_rows));
+        tilemaps.push(Value::Object(obj));
+    }
+    out.insert("tilemaps".into(), Value::Array(tilemaps));
+
     Ok(Value::Object(out))
 }
 
@@ -339,6 +464,80 @@ mod tests {
         assert_eq!(v["objects"], serde_json::json!([]));
         assert_eq!(v["images"], serde_json::json!([]));
         assert_eq!(v["texts"], serde_json::json!([]));
+        assert_eq!(v["tilemaps"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn tilemaps_are_validated_and_defaulted() {
+        let v = parse(
+            r#"{"version":1,"tilemaps":[{"name":"ground","tileset":{"image":"t.png","tile_width":16,"tile_height":8},
+                "solid":[1,2],"tiles":[[0,1],[-1,2]],"y":400}]}"#,
+        )
+        .unwrap();
+        let t = &v["tilemaps"][0];
+        assert_eq!(t["tileset"]["tile_height"], 8);
+        assert_eq!(t["depth"].as_f64(), Some(100.0));
+        assert_eq!(t["x"].as_f64(), Some(0.0));
+        assert_eq!(t["solid"], serde_json::json!([1, 2]));
+        assert_eq!(t["tiles"][1][0], -1);
+    }
+
+    #[test]
+    fn malformed_tilemaps_name_the_exact_problem() {
+        let wrap = |body: &str| format!(r#"{{"version":1,"tilemaps":[{body}]}}"#);
+        let cases: &[(&str, &str)] = &[
+            (r#"{"tiles":[[0]]}"#, "tilemaps[0]: missing \"tileset\""),
+            (
+                r#"{"tileset":{"image":"t.png","tile_width":16,"tile_height":16}}"#,
+                "missing \"tiles\"",
+            ),
+            (r#"{"tileset":3,"tiles":[[0]]}"#, "tilemaps[0].tileset"),
+            (
+                r#"{"tileset":{"image":"t.png","tile_width":16},"tiles":[[0]]}"#,
+                "missing \"tile_height\"",
+            ),
+            (
+                r#"{"tileset":{"image":"t.png","tile_width":0,"tile_height":8},"tiles":[[0]]}"#,
+                "tileset.tile_width",
+            ),
+            (
+                r#"{"tileset":{"image":"t.png","tile_width":8,"tile_height":8},"tiles":[]}"#,
+                "non-empty list of rows",
+            ),
+            (
+                r#"{"tileset":{"image":"t.png","tile_width":8,"tile_height":8},"tiles":[5]}"#,
+                "tiles[0]: each row",
+            ),
+            (
+                r#"{"tileset":{"image":"t.png","tile_width":8,"tile_height":8},"tiles":[[0,"a"]]}"#,
+                "tiles[0][1]",
+            ),
+            (
+                r#"{"tileset":{"image":"t.png","tile_width":8,"tile_height":8},"tiles":[[-2]]}"#,
+                "tiles[0][0]",
+            ),
+            (
+                r#"{"tileset":{"image":"t.png","tile_width":8,"tile_height":8},"tiles":[[0]],"solid":[-1]}"#,
+                "solid[0]",
+            ),
+            (
+                r#"{"tileset":{"image":"t.png","tile_width":8,"tile_height":8},"tiles":[[0]],"solid":"all"}"#,
+                "\"solid\" must be a list",
+            ),
+            (
+                r#"{"tileset":{"image":"t.png","tile_width":8,"tile_height":8},"tiles":[[0]],"bogus":1}"#,
+                "unknown key \"bogus\"",
+            ),
+        ];
+        for (body, expected) in cases {
+            let e = parse(&wrap(body))
+                .err()
+                .unwrap_or_else(|| format!("accepted {body}"));
+            assert!(
+                e.contains(expected),
+                "tilemap {body}: expected '{expected}' in '{e}'"
+            );
+        }
     }
 
     #[test]

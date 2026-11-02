@@ -218,18 +218,40 @@ def gauge_sprite():
     return raster(96, 96, shade)
 
 
-def player_sprite():
+def player_sheet():
+    """Six 32x32 frames in a row: 0-1 idle (a small bob), 2-5 run (feet swing)."""
+    bob = [0, 1, 0, 0, 0, 0]
+    swing = [0, 0, -3, 0, 3, 0]  # left foot offset; the right foot mirrors it
+
     def shade(x, y):
-        # a little rounded robot: body, visor, feet
-        if 6 <= x <= 26 and 4 <= y <= 24 and not ((x < 8 or x > 24) and (y < 6 or y > 22)):
-            if 10 <= x <= 22 and 9 <= y <= 14:
+        f, lx = int(x) // 32, int(x) % 32 + 0.5
+        yy = y - bob[f]
+        if 6 <= lx <= 26 and 4 <= yy <= 24 and not ((lx < 8 or lx > 24) and (yy < 6 or yy > 22)):
+            if 10 <= lx <= 22 and 9 <= yy <= 14:
                 return (120, 220, 255, 255)  # visor
-            return (232, 200, 80, 255) if y < 20 else (90, 96, 110, 255)
-        if 8 <= x <= 13 and 25 <= y <= 30 or 19 <= x <= 24 and 25 <= y <= 30:
-            return (60, 64, 76, 255)
+            return (232, 200, 80, 255) if yy < 20 else (90, 96, 110, 255)
+        for foot, offset in ((8, swing[f]), (19, -swing[f])):
+            if foot + offset <= lx <= foot + offset + 5 and 25 <= y <= 30:
+                return (60, 64, 76, 255)
         return (0, 0, 0, 0)
 
-    return raster(32, 32, shade)
+    return raster(192, 32, shade)
+
+
+def tiles_sprite():
+    """Four 16x16 tiles in a row: 0 grass, 1 dirt, 2 stone, 3 brick."""
+
+    def shade(x, y):
+        t, lx = int(x) // 16, int(x) % 16
+        if t == 0:
+            return (110, 168, 90, 255) if y < 5 else (120, 84, 54, 255)
+        if t == 1:
+            return (132, 94, 60, 255) if (lx * 7 + y * 3) % 11 else (112, 78, 48, 255)
+        if t == 2:
+            return (150, 154, 162, 255) if (lx + y) % 9 else (128, 132, 140, 255)
+        return (176, 84, 66, 255) if (y % 8 != 0 and (lx + (4 if y // 8 % 2 else 0)) % 16 != 0) else (110, 50, 40, 255)
+
+    return raster(64, 16, shade)
 
 
 def crate2d_sprite():
@@ -267,7 +289,7 @@ def main():
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
         print(f"wrote {path.relative_to(ROOT)} ({len(data)} bytes)")
-    for name, data in (("player", player_sprite()), ("crate", crate2d_sprite()), ("star", star_sprite())):
+    for name, data in (("player_sheet", player_sheet()), ("tiles", tiles_sprite()), ("crate", crate2d_sprite()), ("star", star_sprite())):
         path = DASH / f"sprites/{name}.png"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)

@@ -200,6 +200,7 @@ Entity.x, Entity.y, Entity.z = 0, 0, 0
 Entity.vx, Entity.vy, Entity.vz = 0, 0, 0
 Entity.sx, Entity.sy = 1, 1
 Entity.angle = 0
+Entity.frame = 0 -- the frame of a sprite sheet to show (play() animates it)
 Entity.alpha = 1
 Entity.visible = true
 
@@ -266,7 +267,66 @@ function Entity:touching(tag)
   return nil
 end
 
-local draw_opts = { sx = 1, sy = 1, rotation = 0, color = { 255, 255, 255, 255 } }
+-- ---- animation: sprite sheets (sprites/<name>.sprite.json) have frames and tags
+local sheet_cache = {}
+local function sheet_info(name)
+  local info = sheet_cache[name]
+  if info == nil then
+    info = raw.sprite_info(name) or false
+    sheet_cache[name] = info
+  end
+  return info
+end
+
+-- Play a tag of this entity's sprite sheet. Calling it again with the same tag keeps going
+-- (pass { restart = true } to start over); on_animation_end(tag) runs when a non-looping tag finishes.
+function Entity:play(tag, opts)
+  local name = rawget(self, "sprite") or getmetatable(self).__sprite
+  local info = name and sheet_info(name)
+  if not info then
+    error("play(): '" .. tostring(name) .. "' is not a sprite sheet (a sprites/<name>.sprite.json file)", 2)
+  end
+  local t = info.tags[tag]
+  if not t then error("play(): the sprite sheet '" .. name .. "' has no tag '" .. tostring(tag) .. "'", 2) end
+  local a = self._anim
+  if a and a.tag == tag and not a.done and not (opts and opts.restart) then return end
+  self._anim = { tag = tag, seq = t.sequence, loop = t.loop, i = 1, t = 0, done = false }
+  self.frame = t.sequence[1]
+end
+
+function Entity:stop_animation() self._anim = nil end
+function Entity:set_frame(frame)
+  self._anim = nil
+  self.frame = frame
+end
+
+local function animate(e, dt)
+  local a = e._anim
+  if a.done then return end
+  local info = sheet_info(rawget(e, "sprite") or getmetatable(e).__sprite)
+  if not info then
+    e._anim = nil
+    return
+  end
+  a.t = a.t + dt * 1000 * (e.anim_speed or 1)
+  local dur = info.durations[e.frame + 1] or 100
+  while a.t >= dur do
+    a.t = a.t - dur
+    if a.i < #a.seq then
+      a.i = a.i + 1
+    elseif a.loop then
+      a.i = 1
+    else
+      a.done = true
+      if e.on_animation_end then e:on_animation_end(a.tag) end
+      break
+    end
+    e.frame = a.seq[a.i]
+    dur = info.durations[e.frame + 1] or 100
+  end
+end
+
+local draw_opts = { sx = 1, sy = 1, rotation = 0, frame = 0, color = { 255, 255, 255, 255 } }
 local model_opts = { ry = 0, scale = 1, tint = { 255, 255, 255, 255 } }
 
 function Entity:draw()
@@ -287,7 +347,7 @@ function Entity:draw()
   if sprite then
     local screen = self.screen
     if screen == nil then screen = cls.__screen end
-    draw_opts.sx, draw_opts.sy, draw_opts.rotation = self.sx, self.sy, self.angle
+    draw_opts.sx, draw_opts.sy, draw_opts.rotation, draw_opts.frame = self.sx, self.sy, self.angle, self.frame
     local c, tint = draw_opts.color, self.tint
     c[1], c[2], c[3] = tint and tint[1] or 255, tint and tint[2] or 255, tint and tint[3] or 255
     c[4] = floor(255 * self.alpha)
@@ -305,7 +365,7 @@ local Picture = nova.entity { screen = false }
 function Picture:draw()
   if not self.visible then return end
   local id = sprite_id(self.image)
-  draw_opts.sx, draw_opts.sy, draw_opts.rotation = self.sx, self.sy, self.angle
+  draw_opts.sx, draw_opts.sy, draw_opts.rotation, draw_opts.frame = self.sx, self.sy, self.angle, self.frame
   local c, tint = draw_opts.color, self.tint
   c[1], c[2], c[3] = tint and tint[1] or 255, tint and tint[2] or 255, tint and tint[3] or 255
   c[4] = floor(255 * self.alpha)
@@ -353,10 +413,133 @@ local function spawn(what, x, y, props)
     list[#list + 1] = e
     W.counts[tag] = W.counts[tag] + 1
   end
+  if e.anim then e:play(e.anim) end
   if e.create then e:create() end
   return e
 end
 nova.spawn = spawn
+
+-- ------------------------------------------------------------------ tilemaps
+-- A grid of tiles from a tileset PNG. The data lives in native code; tile numbers count across the
+-- tileset row by row from 0, and -1 is empty. Solid tiles stop entities that slide().
+local Tilemap = nova.entity { tags = { "nova_tilemap" }, screen = false }
+Tilemap.map = -1
+Tilemap.solid = {}
+
+function Tilemap:get(col, row) return raw.tilemap_get(self.map, col, row) end
+function Tilemap:set(col, row, tile) raw.tilemap_set(self.map, col, row, tile) end
+function Tilemap:size() return raw.tilemap_size(self.map) end -- columns, rows, tile width, tile height
+-- The cell (column, row) that contains a world point.
+function Tilemap:cell_at(x, y)
+  local _, _, tw, th = raw.tilemap_size(self.map)
+  return floor((x - self.x) / tw), floor((y - self.y) / th)
+end
+-- The tile number under a world point (-1 when empty or outside the map).
+function Tilemap:tile_at(x, y)
+  local col, row = self:cell_at(x, y)
+  return raw.tilemap_get(self.map, col, row)
+end
+function Tilemap:is_solid_at(x, y)
+  local t = self:tile_at(x, y)
+  return t >= 0 and self.solid[t] == true
+end
+function Tilemap:draw()
+  if not self.visible then return end
+  if self.screen then
+    raw.tilemap_draw(self.map, self.x, self.y, "ui")
+  else
+    local w, h = nova.view()
+    raw.tilemap_draw(self.map, self.x - (W.cam.x - w * 0.5), self.y - (W.cam.y - h * 0.5), "world")
+  end
+end
+
+-- nova.tilemap { image = "tiles", tile_width = 16, tile_height = 16, tiles = { {0, 1}, {-1, 2} },
+--                solid = { 1, 2 }, x = 0, y = 0, depth = 100 }
+function nova.tilemap(spec)
+  local solid = {}
+  for _, t in ipairs(spec.solid or {}) do solid[t] = true end
+  local map = raw.tilemap_create(spec)
+  return spawn(Tilemap, spec.x or 0, spec.y or 0, { map = map, solid = solid, depth = spec.depth or 100 })
+end
+
+-- Does a world rectangle overlap a solid tile? Returns the tilemap cell edges that block it.
+local function solid_overlap(x0, y0, x1, y1)
+  local list = W.tags.nova_tilemap
+  if not list then return nil end
+  for i = 1, #list do
+    local tm = list[i]
+    if not tm._dead and next(tm.solid) then
+      local cols, rows, tw, th = raw.tilemap_size(tm.map)
+      local c0 = math.max(0, floor((x0 - tm.x) / tw))
+      local c1 = math.min(cols - 1, floor((x1 - 0.0001 - tm.x) / tw))
+      local r0 = math.max(0, floor((y0 - tm.y) / th))
+      local r1 = math.min(rows - 1, floor((y1 - 0.0001 - tm.y) / th))
+      for r = r0, r1 do
+        for c = c0, c1 do
+          local t = raw.tilemap_get(tm.map, c, r)
+          if t >= 0 and tm.solid[t] then
+            return tm.x + c * tw, tm.y + r * th, tm.x + (c + 1) * tw, tm.y + (r + 1) * th
+          end
+        end
+      end
+    end
+  end
+  return nil
+end
+
+-- True when a world point is inside a solid tile of any tilemap.
+function nova.solid_at(x, y)
+  return solid_overlap(x, y, x + 0.001, y + 0.001) ~= nil
+end
+
+-- The biggest safe sub-step: half the smallest solid tile, so a fast move cannot jump a wall.
+local function solid_step()
+  local best = 8
+  local list = W.tags.nova_tilemap
+  if list then
+    for i = 1, #list do
+      local tm = list[i]
+      if not tm._dead and next(tm.solid) then
+        local _, _, tw, th = raw.tilemap_size(tm.map)
+        best = math.min(best, tw / 2, th / 2)
+      end
+    end
+  end
+  return math.max(best, 1)
+end
+
+local function slide_axis(e, delta, horizontal, limit)
+  local blocked = false
+  local steps = math.max(1, math.ceil(abs(delta) / limit))
+  local each = delta / steps
+  for _ = 1, steps do
+    if horizontal then e.x = e.x + each else e.y = e.y + each end
+    for _ = 1, 4 do
+      local x0, y0, x1, y1 = bounds(e)
+      if not x0 then return blocked end
+      local sx0, sy0, sx1, sy1 = solid_overlap(x0, y0, x1, y1)
+      if not sx0 then break end
+      blocked = true
+      if horizontal then
+        if each > 0 then e.x = e.x - (x1 - sx0) else e.x = e.x + (sx1 - x0) end
+      else
+        if each > 0 then e.y = e.y - (y1 - sy0) else e.y = e.y + (sy1 - y0) end
+      end
+    end
+    if blocked then break end
+  end
+  return blocked
+end
+
+-- Move by dx, dy and stop against solid tiles, one axis at a time so entities slide along walls.
+-- Large moves are taken in small steps, so nothing tunnels through a thin wall.
+-- Returns whether it was blocked horizontally and vertically.
+function Entity:slide(dx, dy)
+  local limit = solid_step()
+  local blocked_x = dx ~= 0 and slide_axis(self, dx, true, limit) or false
+  local blocked_y = dy ~= 0 and slide_axis(self, dy, false, limit) or false
+  return blocked_x, blocked_y
+end
 
 function nova.each(tag, fn)
   local list = W.tags[tag]
@@ -596,6 +779,13 @@ local function build_scene(scene, data, file)
       alpha = im.color and im.color[4] and im.color[4] / 255 or 1,
     }))
   end
+  for _, tm in ipairs(data.tilemaps or {}) do
+    local solid = {}
+    for _, t in ipairs(tm.solid) do solid[t] = true end
+    local ts = tm.tileset
+    local map = raw.tilemap_create({ image = ts.image, tile_width = ts.tile_width, tile_height = ts.tile_height, tiles = tm.tiles })
+    named(tm, spawn(Tilemap, tm.x, tm.y, { map = map, solid = solid, depth = tm.depth }))
+  end
   for _, t in ipairs(data.texts) do
     named(t, spawn(Text, t.x, t.y, { text = t.text, size = t.scale, color = t.color, depth = t.depth }))
   end
@@ -679,6 +869,7 @@ local function step(dt)
         local update = e.update
         if update then update(e, dt) end
         if not e._dead then
+          if e._anim then animate(e, dt) end
           local vx, vy, vz = e.vx, e.vy, e.vz
           if vx ~= 0 then e.x = e.x + vx * dt end
           if vy ~= 0 then e.y = e.y + vy * dt end

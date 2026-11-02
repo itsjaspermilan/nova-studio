@@ -153,11 +153,18 @@ Spec in [docs/project-format.md](docs/project-format.md); example `examples/crat
 - Not done in this slice: moving the collision broad phase to Rust (measure first), paths,
   `in_rect`, tile layers, particles.
 
-### M2c: 2D content
+### M2c: 2D content (sheets and tilemaps done 2026-11-02; fonts waiting)
 
-- [ ] Real font rendering and text layout (replace the debug font).
-- [ ] Sprite sheets, animation tags and per-frame durations (format from the M5 design).
-- [ ] Tilemaps.
+- [x] Sprite sheets (`*.sprite.json` v1): frames, per-frame durations, tags with forward /
+  reverse / pingpong and loop, validated with exact errors; `frame` drawing option;
+  `play`, `set_frame`, `on_animation_end`, `anim_speed`, default `anim`.
+- [x] Native tilemaps: validated data, culled drawing, `get`/`set`/`tile_at`/`cell_at`,
+  solid tiles, `slide()` with sub-stepping (no tunnelling), scene-file `tilemaps`.
+- [x] Crate Dash uses both (animated player, tilemap floor); 25 framework tests.
+- [ ] **Real font rendering and text layout** (replaces the debug pixel font): TTF/OTF
+  rasterised into a glyph atlas, project fonts in `fonts/`, wrapping and alignment. Needs a
+  decision from the user on a bundled default font (licence, look) and consent to download it.
+- [ ] Particles, paths, `in_rect`.
 
 ### M2d: Services and platform
 
