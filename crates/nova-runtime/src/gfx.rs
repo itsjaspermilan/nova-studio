@@ -1,0 +1,757 @@
+//! wgpu renderer: batched 2D sprites and instanced low-poly meshes in one pass.
+//!
+//! The renderer draws into any `TextureView`, so the same code serves the window
+//! surface, headless captures and (later) editor viewports.
+
+use bytemuck::{Pod, Zeroable};
+use glam::Vec3;
+use wgpu::util::DeviceExt;
+
+use crate::model::{Image, MeshData, MeshVertex};
+
+pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct SpriteInstance {
+    pub center: [f32; 2],
+    pub size: [f32; 2],
+    pub uv: [f32; 4],
+    pub color: [u8; 4],
+    pub rotation: f32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct ModelInstance {
+    pub matrix: [[f32; 4]; 4],
+    pub tint: [f32; 4],
+}
+
+#[derive(Clone, Copy)]
+pub struct ModelDraw {
+    pub mesh: usize,
+    pub instance: ModelInstance,
+}
+
+#[derive(Clone, Copy)]
+pub struct Camera {
+    pub eye: Vec3,
+    pub target: Vec3,
+    pub fov_y_degrees: f32,
+}
+
+pub struct FrameInput<'a> {
+    pub clear: [f64; 4],
+    pub camera: Camera,
+    pub sprites_back: &'a [SpriteInstance],
+    /// Draws using the same mesh must be contiguous; each run becomes one instanced draw.
+    pub models: &'a [ModelDraw],
+    pub sprites_front: &'a [SpriteInstance],
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct FrameStats {
+    pub draw_calls: u32,
+    pub sprites: u32,
+    pub triangles: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct SpriteView {
+    size: [f32; 2],
+    pad: [f32; 2],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct Globals {
+    view_proj: [[f32; 4]; 4],
+    light_dir: [f32; 4],
+    ambient: [f32; 4],
+}
+
+struct DynBuffer {
+    buffer: wgpu::Buffer,
+    capacity: u64,
+    usage: wgpu::BufferUsages,
+    label: &'static str,
+}
+
+impl DynBuffer {
+    fn new(
+        device: &wgpu::Device,
+        label: &'static str,
+        usage: wgpu::BufferUsages,
+        capacity: u64,
+    ) -> Self {
+        let usage = usage | wgpu::BufferUsages::COPY_DST;
+        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(label),
+            size: capacity,
+            usage,
+            mapped_at_creation: false,
+        });
+        Self {
+            buffer,
+            capacity,
+            usage,
+            label,
+        }
+    }
+
+    fn write(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, data: &[u8]) {
+        let needed = (data.len() as u64).max(4);
+        if needed > self.capacity {
+            let capacity = needed.next_power_of_two();
+            *self = DynBuffer::new(device, self.label, self.usage, capacity);
+        }
+        if !data.is_empty() {
+            queue.write_buffer(&self.buffer, 0, data);
+        }
+    }
+}
+
+struct GpuMesh {
+    vertices: wgpu::Buffer,
+    indices: wgpu::Buffer,
+    index_count: u32,
+    texture: wgpu::BindGroup,
+}
+
+pub struct Gfx {
+    pub adapter: wgpu::Adapter,
+    pub device: wgpu::Device,
+    pub queue: wgpu::Queue,
+    pub format: wgpu::TextureFormat,
+    pub adapter_info: wgpu::AdapterInfo,
+    sprite_pipeline: wgpu::RenderPipeline,
+    sprite_view: wgpu::Buffer,
+    sprite_view_group: wgpu::BindGroup,
+    texture_layout: wgpu::BindGroupLayout,
+    sampler_nearest: wgpu::Sampler,
+    atlas: wgpu::BindGroup,
+    sprites_back: DynBuffer,
+    sprites_front: DynBuffer,
+    mesh_pipeline: wgpu::RenderPipeline,
+    globals: wgpu::Buffer,
+    globals_group: wgpu::BindGroup,
+    meshes: Vec<GpuMesh>,
+    model_instances: DynBuffer,
+    depth: Option<(wgpu::TextureView, (u32, u32))>,
+}
+
+fn texture_group(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    layout: &wgpu::BindGroupLayout,
+    sampler: &wgpu::Sampler,
+    label: &str,
+    image: &Image,
+) -> wgpu::BindGroup {
+    let texture = device.create_texture_with_data(
+        queue,
+        &wgpu::TextureDescriptor {
+            label: Some(label),
+            size: wgpu::Extent3d {
+                width: image.width,
+                height: image.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        },
+        wgpu::util::TextureDataOrder::LayerMajor,
+        &image.rgba,
+    );
+    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some(label),
+        layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::Sampler(sampler),
+            },
+        ],
+    })
+}
+
+impl Gfx {
+    pub fn new(
+        instance: &wgpu::Instance,
+        surface: Option<&wgpu::Surface<'_>>,
+    ) -> Result<Self, String> {
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance,
+            force_fallback_adapter: false,
+            compatible_surface: surface,
+            apply_limit_buckets: false,
+        }))
+        .map_err(|e| format!("no suitable GPU adapter: {e}"))?;
+        let adapter_info = adapter.get_info();
+        log::info!(
+            "adapter: {} ({:?}, {:?})",
+            adapter_info.name,
+            adapter_info.backend,
+            adapter_info.device_type
+        );
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            label: Some("nova device"),
+            required_features: wgpu::Features::empty(),
+            // The lowest common denominator (GLES 3.0 class), with the texture sizes the GPU offers.
+            required_limits:
+                wgpu::Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits()),
+            ..Default::default()
+        }))
+        .map_err(|e| format!("cannot create GPU device: {e}"))?;
+        let format = surface
+            .map(|surface| {
+                let formats = surface.get_capabilities(&adapter).formats;
+                formats
+                    .iter()
+                    .copied()
+                    .find(|f| f.is_srgb())
+                    .unwrap_or(formats[0])
+            })
+            .unwrap_or(wgpu::TextureFormat::Rgba8UnormSrgb);
+
+        let sampler_nearest = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("nearest"),
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+        let texture_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("texture layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+        let uniform_layout = |label: &str, visibility| {
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some(label),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            })
+        };
+        let sprite_view_layout = uniform_layout("sprite view layout", wgpu::ShaderStages::VERTEX);
+        let globals_layout = uniform_layout("globals layout", wgpu::ShaderStages::VERTEX_FRAGMENT);
+
+        let sprite_view = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("sprite view"),
+            size: std::mem::size_of::<SpriteView>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let sprite_view_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("sprite view"),
+            layout: &sprite_view_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: sprite_view.as_entire_binding(),
+            }],
+        });
+        let globals = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("globals"),
+            size: std::mem::size_of::<Globals>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let globals_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("globals"),
+            layout: &globals_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: globals.as_entire_binding(),
+            }],
+        });
+
+        let white = Image {
+            width: 1,
+            height: 1,
+            rgba: vec![255; 4],
+        };
+        let atlas = texture_group(
+            &device,
+            &queue,
+            &texture_layout,
+            &sampler_nearest,
+            "empty atlas",
+            &white,
+        );
+
+        let sprite_shader = device.create_shader_module(wgpu::include_wgsl!("shaders/sprite.wgsl"));
+        let mesh_shader = device.create_shader_module(wgpu::include_wgsl!("shaders/mesh.wgsl"));
+
+        let sprite_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("sprite pipeline layout"),
+            bind_group_layouts: &[Some(&sprite_view_layout), Some(&texture_layout)],
+            immediate_size: 0,
+        });
+        let sprite_attributes = wgpu::vertex_attr_array![
+            0 => Float32x2, 1 => Float32x2, 2 => Float32x4, 3 => Unorm8x4, 4 => Float32
+        ];
+        let blend = wgpu::BlendState::ALPHA_BLENDING;
+        let sprite_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("sprites"),
+            layout: Some(&sprite_layout),
+            vertex: wgpu::VertexState {
+                module: &sprite_shader,
+                entry_point: Some("vs_main"),
+                compilation_options: Default::default(),
+                buffers: &[Some(wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<SpriteInstance>() as u64,
+                    step_mode: wgpu::VertexStepMode::Instance,
+                    attributes: &sprite_attributes,
+                })],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &sprite_shader,
+                entry_point: Some("fs_main"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    blend: Some(blend),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_write_enabled: Some(false),
+                depth_compare: Some(wgpu::CompareFunction::Always),
+                stencil: Default::default(),
+                bias: Default::default(),
+            }),
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+
+        let mesh_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("mesh pipeline layout"),
+            bind_group_layouts: &[Some(&globals_layout), Some(&texture_layout)],
+            immediate_size: 0,
+        });
+        let vertex_attributes =
+            wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Unorm8x4, 3 => Float32x2];
+        let instance_attributes = wgpu::vertex_attr_array![
+            4 => Float32x4, 5 => Float32x4, 6 => Float32x4, 7 => Float32x4, 8 => Float32x4
+        ];
+        let mesh_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("meshes"),
+            layout: Some(&mesh_layout),
+            vertex: wgpu::VertexState {
+                module: &mesh_shader,
+                entry_point: Some("vs_main"),
+                compilation_options: Default::default(),
+                buffers: &[
+                    Some(wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<MeshVertex>() as u64,
+                        step_mode: wgpu::VertexStepMode::Vertex,
+                        attributes: &vertex_attributes,
+                    }),
+                    Some(wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<ModelInstance>() as u64,
+                        step_mode: wgpu::VertexStepMode::Instance,
+                        attributes: &instance_attributes,
+                    }),
+                ],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &mesh_shader,
+                entry_point: Some("fs_main"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                cull_mode: Some(wgpu::Face::Back),
+                ..Default::default()
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(wgpu::CompareFunction::Less),
+                stencil: Default::default(),
+                bias: Default::default(),
+            }),
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+
+        let sprites_back =
+            DynBuffer::new(&device, "sprites back", wgpu::BufferUsages::VERTEX, 1 << 16);
+        let sprites_front = DynBuffer::new(
+            &device,
+            "sprites front",
+            wgpu::BufferUsages::VERTEX,
+            1 << 14,
+        );
+        let model_instances = DynBuffer::new(
+            &device,
+            "model instances",
+            wgpu::BufferUsages::VERTEX,
+            1 << 16,
+        );
+
+        Ok(Self {
+            adapter,
+            device,
+            queue,
+            format,
+            adapter_info,
+            sprite_pipeline,
+            sprite_view,
+            sprite_view_group,
+            texture_layout,
+            sampler_nearest,
+            atlas,
+            sprites_back,
+            sprites_front,
+            mesh_pipeline,
+            globals,
+            globals_group,
+            meshes: Vec::new(),
+            model_instances,
+            depth: None,
+        })
+    }
+
+    pub fn set_sprite_atlas(&mut self, image: &Image) {
+        self.atlas = texture_group(
+            &self.device,
+            &self.queue,
+            &self.texture_layout,
+            &self.sampler_nearest,
+            "atlas",
+            image,
+        );
+    }
+
+    /// Uploads a mesh once; the returned id is used by [`ModelDraw`].
+    pub fn upload_mesh(&mut self, mesh: &MeshData) -> usize {
+        let vertices = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("mesh vertices"),
+                contents: bytemuck::cast_slice(&mesh.vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
+        let indices = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("mesh indices"),
+                contents: bytemuck::cast_slice(&mesh.indices),
+                usage: wgpu::BufferUsages::INDEX,
+            });
+        let texture = match &mesh.texture {
+            Some(image) => texture_group(
+                &self.device,
+                &self.queue,
+                &self.texture_layout,
+                &self.sampler_nearest,
+                "mesh texture",
+                image,
+            ),
+            None => self.white_group(),
+        };
+        self.meshes.push(GpuMesh {
+            vertices,
+            indices,
+            index_count: mesh.indices.len() as u32,
+            texture,
+        });
+        self.meshes.len() - 1
+    }
+
+    fn white_group(&self) -> wgpu::BindGroup {
+        let white = Image {
+            width: 1,
+            height: 1,
+            rgba: vec![255; 4],
+        };
+        texture_group(
+            &self.device,
+            &self.queue,
+            &self.texture_layout,
+            &self.sampler_nearest,
+            "white",
+            &white,
+        )
+    }
+
+    fn ensure_depth(&mut self, size: (u32, u32)) {
+        if matches!(&self.depth, Some((_, s)) if *s == size) {
+            return;
+        }
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("depth"),
+            size: wgpu::Extent3d {
+                width: size.0,
+                height: size.1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: DEPTH_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        self.depth = Some((
+            texture.create_view(&wgpu::TextureViewDescriptor::default()),
+            size,
+        ));
+    }
+
+    /// Logical height 540 maps to the target height, so 2D art keeps its size on any screen.
+    pub fn ui_scale(size: (u32, u32)) -> f32 {
+        size.1 as f32 / 540.0
+    }
+
+    pub fn render(
+        &mut self,
+        target: &wgpu::TextureView,
+        size: (u32, u32),
+        input: &FrameInput,
+    ) -> FrameStats {
+        self.ensure_depth(size);
+        let scale = Self::ui_scale(size);
+        let view = SpriteView {
+            size: [size.0 as f32 / scale, size.1 as f32 / scale],
+            pad: [0.0; 2],
+        };
+        self.queue
+            .write_buffer(&self.sprite_view, 0, bytemuck::bytes_of(&view));
+
+        let aspect = size.0 as f32 / size.1 as f32;
+        // wgpu clip space is 0..1 in depth with y up, which is glam's "directx" projection.
+        let view_proj = glam::camera::rh::proj::directx::perspective(
+            input.camera.fov_y_degrees.to_radians(),
+            aspect,
+            0.1,
+            400.0,
+        ) * glam::camera::rh::view::look_at_mat4(
+            input.camera.eye,
+            input.camera.target,
+            Vec3::Y,
+        );
+        let globals = Globals {
+            view_proj: view_proj.to_cols_array_2d(),
+            light_dir: Vec3::new(-0.4, -1.0, -0.3)
+                .normalize()
+                .extend(0.0)
+                .to_array(),
+            ambient: [0.38, 0.4, 0.46, 1.0],
+        };
+        self.queue
+            .write_buffer(&self.globals, 0, bytemuck::bytes_of(&globals));
+
+        self.sprites_back.write(
+            &self.device,
+            &self.queue,
+            bytemuck::cast_slice(input.sprites_back),
+        );
+        self.sprites_front.write(
+            &self.device,
+            &self.queue,
+            bytemuck::cast_slice(input.sprites_front),
+        );
+        let instances: Vec<ModelInstance> = input.models.iter().map(|m| m.instance).collect();
+        self.model_instances
+            .write(&self.device, &self.queue, bytemuck::cast_slice(&instances));
+
+        let mut stats = FrameStats::default();
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("frame"),
+            });
+        {
+            let depth_view = &self.depth.as_ref().expect("depth exists").0;
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("main pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: target,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: input.clear[0],
+                            g: input.clear[1],
+                            b: input.clear[2],
+                            a: input.clear[3],
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: depth_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Discard,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+
+            let draw_sprites =
+                |pass: &mut wgpu::RenderPass<'_>, buffer: &DynBuffer, count: usize| -> u32 {
+                    if count == 0 {
+                        return 0;
+                    }
+                    pass.set_pipeline(&self.sprite_pipeline);
+                    pass.set_bind_group(0, &self.sprite_view_group, &[]);
+                    pass.set_bind_group(1, &self.atlas, &[]);
+                    pass.set_vertex_buffer(0, buffer.buffer.slice(..));
+                    pass.draw(0..6, 0..count as u32);
+                    count as u32
+                };
+            let back = draw_sprites(&mut pass, &self.sprites_back, input.sprites_back.len());
+            stats.draw_calls += u32::from(back > 0);
+            stats.sprites += back;
+
+            if !input.models.is_empty() {
+                pass.set_pipeline(&self.mesh_pipeline);
+                pass.set_bind_group(0, &self.globals_group, &[]);
+                let stride = std::mem::size_of::<ModelInstance>() as u64;
+                let mut start = 0usize;
+                while start < input.models.len() {
+                    let mesh_id = input.models[start].mesh;
+                    let mut end = start;
+                    while end < input.models.len() && input.models[end].mesh == mesh_id {
+                        end += 1;
+                    }
+                    let mesh = &self.meshes[mesh_id];
+                    pass.set_bind_group(1, &mesh.texture, &[]);
+                    pass.set_vertex_buffer(0, mesh.vertices.slice(..));
+                    pass.set_vertex_buffer(
+                        1,
+                        self.model_instances
+                            .buffer
+                            .slice(start as u64 * stride..end as u64 * stride),
+                    );
+                    pass.set_index_buffer(mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
+                    pass.draw_indexed(0..mesh.index_count, 0, 0..(end - start) as u32);
+                    stats.draw_calls += 1;
+                    stats.triangles += mesh.index_count / 3 * (end - start) as u32;
+                    start = end;
+                }
+            }
+
+            let front = draw_sprites(&mut pass, &self.sprites_front, input.sprites_front.len());
+            stats.draw_calls += u32::from(front > 0);
+            stats.sprites += front;
+        }
+        self.queue.submit([encoder.finish()]);
+        stats
+    }
+
+    /// Renders one frame offscreen and returns tightly packed RGBA8 pixels.
+    pub fn capture(&mut self, size: (u32, u32), input: &FrameInput) -> Vec<u8> {
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("capture"),
+            size: wgpu::Extent3d {
+                width: size.0,
+                height: size.1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: self.format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        self.render(&view, size, input);
+        let row_bytes = size.0 * 4;
+        let padded = row_bytes.div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT)
+            * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+        let readback = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("readback"),
+            size: (padded * size.1) as u64,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("capture copy"),
+            });
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &readback,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(padded),
+                    rows_per_image: Some(size.1),
+                },
+            },
+            wgpu::Extent3d {
+                width: size.0,
+                height: size.1,
+                depth_or_array_layers: 1,
+            },
+        );
+        self.queue.submit([encoder.finish()]);
+        let slice = readback.slice(..);
+        slice.map_async(wgpu::MapMode::Read, |result| result.expect("map readback"));
+        self.device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .expect("poll");
+        let mapped = slice.get_mapped_range().expect("mapped range");
+        let mut pixels = Vec::with_capacity((row_bytes * size.1) as usize);
+        for row in mapped.chunks(padded as usize).take(size.1 as usize) {
+            pixels.extend_from_slice(&row[..row_bytes as usize]);
+        }
+        pixels
+    }
+}

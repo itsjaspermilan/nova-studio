@@ -84,27 +84,33 @@ Pixelorama, Blockbench, GameStudio, Game Maker 8 manual.
 - [ ] Worth a look in M6: the unfinished music-runtime work in
   `~/Developer/copilot-worktrees-backup/itsjaspermilan-improved-funicular-uncommitted.tgz`.
 
-## M1: Device spike (gate before building more)
+## M1: Device spike (desktop and emulator done 2026-11-02; device gate open)
 
 Goal: prove Rust + wgpu + Lua + audio is fast enough and workable on Android.
+Results, numbers and findings: [docs/spike-results.md](docs/spike-results.md).
 
-- [ ] `nova-runtime` crate: window/surface on desktop (macOS) and Android
-  (`android-activity`), shared code path.
-- [ ] Test scene: 10,000 batched sprites, a rotating low-poly glTF model with a
-  texture, 2D HUD over 3D, frame-time overlay (CPU and GPU ms, draw calls).
-- [ ] Lua 5.4 update loop via `mlua` with a simple entity API; hot reload on desktop.
-- [ ] Input: keyboard/mouse, touch, gamepad (Android `KeyEvent`/`MotionEvent`
-  mapping), all through one action layer.
-- [ ] Audio: output stream with a tone or the C audio core rendering a short
-  score; measure underruns.
-- [ ] Build a signed debug APK without Gradle (template + `aapt2`/`apksigner`),
-  install and run on `retroid-sim` with `adb`.
-- [ ] Record results in `docs/spike-results.md` for desktop and emulator now.
-- [ ] **On the Retroid when it arrives:** repeat, plus 10-minute thermal run,
-  controller check, audio latency, 60/120 Hz behaviour. Record numbers.
+- [x] `nova-runtime` crate: window/surface on desktop (macOS) and Android
+  (`android-activity`), one shared code path; headless offscreen runner with PNG capture.
+- [x] Test scene: 10,000 batched sprites, 400 instanced low-poly cars (53k triangles)
+  from an imported GLB with a palette texture, 2D HUD over 3D, per-frame CPU/draw stats.
+- [x] Lua 5.4 update loop via `mlua` with a small API and a reduced standard library;
+  hot reload on desktop with error reporting.
+- [x] Input action layer: keyboard, touch and desktop gamepad (`gilrs`); Android
+  controller buttons via native key codes.
+- [x] Audio: `cpal` output driving the C audio core live (48 kHz stereo F32 on both).
+- [x] Debug-signed APK without Gradle (`scripts/build-apk.sh`); installed and run on
+  `retroid-sim` (Vulkan on the host GPU: steady 60 fps, audio running).
+- [x] Results recorded for desktop and emulator.
+- [ ] **On the Retroid when it arrives:** repeat on device, plus a 10-minute thermal run,
+  controller check, audio latency, 60/120 Hz behaviour. Record numbers next to the
+  emulator ones.
 - Gate: stable frame rate on the device with headroom for the test scene, controller
-  works, APK installs. If `wgpu` or Android windowing fails, fallback is C + SDL3 +
-  OpenGL ES (keeping the audio core as is); decide from the recorded numbers.
+  works, APK installs. Fallback if `wgpu` or Android windowing fails there: C + SDL3 +
+  OpenGL ES, keeping the audio core as is. **Provisionally passed; final decision needs
+  the device.**
+- Carry into M2 (from the findings): immersive/system-bar handling on Android; an input
+  path for analogue sticks and triggers on Android (winit gives key events only); exercise
+  touch, keyboard and lifecycle on Android; real text rendering and the resolution policy.
 
 ## M2: Runtime v1
 
@@ -132,6 +138,10 @@ Goal: prove Rust + wgpu + Lua + audio is fast enough and workable on Android.
 - [ ] `nova` CLI: `run` (desktop), `run --device` (adb push + live reload),
   `export android`, `export desktop`.
 - [ ] Preflight checks (missing assets, bad manifest) before export.
+- [ ] Third-party licence notices for the Rust dependencies (wgpu, winit, cpal, mlua,
+  gltf and their transitive crates) bundled with desktop and APK outputs, and a
+  licence allow-list check (e.g. `cargo deny`). Not done yet; required before any
+  distribution.
 - [ ] Verify APK structure; never claim device behaviour from emulator checks.
 
 ## M4: Studio shell (Tauri 2 + TypeScript)

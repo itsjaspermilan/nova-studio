@@ -6,19 +6,24 @@ drag-and-drop blocks. It will include a scene/layout editor, a sprite and
 animation editor, a 3D model editor and a sound/music studio. The first target
 device is the Retroid Pocket 6.
 
-**Status: early reset.** Nothing playable exists yet. The repository holds a Rust
-workspace skeleton, a salvaged C11 audio core with tests, and design research.
-`TODO.md` has the plan, decisions and milestones; start there.
+**Status: early.** No game or studio exists yet. The repository holds the M1 runtime
+spike (Rust, `wgpu`, Lua, audio) that renders 2D + 3D on desktop and the Android
+emulator, a salvaged C11 audio core with tests, and design research. Measured
+results are in `docs/spike-results.md`; the plan, decisions and milestones are in
+`TODO.md`. Start there.
 
 ## Layout
 
 | Path | What |
 | --- | --- |
-| `crates/nova-runtime` | Rust runtime skeleton (the M1 device spike builds on it) |
+| `crates/nova-runtime` | Rust runtime: renderer, Lua host, input, audio, Android entry (M1 spike) |
 | `audio/` | C11 audio core and its standalone tests (`docs/audio-core.md`) |
+| `docs/spike-results.md` | M1 measurements, proven pieces and open findings |
 | `docs/ux/` | UX research, workspace study, and the Pine Ridge Rally exercise |
 | `docs/archive/` | Notes from the dropped Qt components, kept for ideas |
 | `scripts/env.sh` | Command-local Rust/Android/Java environment |
+| `scripts/build-apk.sh` | Gradle-free debug APK of the runtime spike |
+| `scripts/gen_spike_assets.py` | Generates the original spike car model |
 | `licenses/` | Upstream licence notices for bundled dependencies |
 
 ## Build and test
@@ -28,7 +33,9 @@ asdf Java 17 (only for the SDK tools). `TODO.md` lists exactly what is installed
 
 ```sh
 scripts/env.sh cargo test
-scripts/env.sh cargo ndk -t arm64-v8a build --release
+scripts/env.sh cargo run --release -p nova-runtime --bin nova                 # window, Esc quits
+scripts/env.sh cargo run --release -p nova-runtime --bin nova -- --headless --frames 300 --size 1920x1080 --capture build/spike.png
+scripts/build-apk.sh                                                          # build/android/nova-spike-debug.apk
 /opt/homebrew/bin/cmake -S audio -B build/audio
 /opt/homebrew/bin/cmake --build build/audio
 /opt/homebrew/bin/ctest --test-dir build/audio --output-on-failure
@@ -40,8 +47,8 @@ checks; it does not predict handheld performance.
 
 ## Limits today
 
-- No renderer, scripting, studio app, editors or APK export yet.
-- No Android device has run anything from this repository.
+- No studio app, editors or game project format yet; the runtime is a measurement spike.
+- Only the Android emulator has run the APK; no handheld has.
 - The audio core was verified with offline renders only, not by listening.
 - The project's own licence is not chosen. Dependency licences are separate.
 - Earlier work (C11/raylib/Qt) is kept only in git tag

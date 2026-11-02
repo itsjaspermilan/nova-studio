@@ -14,7 +14,7 @@ endif()
 find_package(Threads REQUIRED)
 set(NOVA_WARNINGS -Wall -Wextra -Wpedantic -Werror)
 
-add_library(nova_audio STATIC audio.c production.c wav.c transport.c)
+add_library(nova_audio STATIC audio.c production.c wav.c transport.c demo_score.c)
 target_include_directories(nova_audio PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(nova_audio PUBLIC m)
 target_compile_options(nova_audio PRIVATE ${NOVA_WARNINGS})

@@ -15,10 +15,14 @@ words, few choices, good defaults. There are no fantasy-console limits.
 
 ## Architecture (decided; see TODO.md for the table)
 
-- `crates/nova-runtime`: Rust game runtime. `wgpu` renderer for 2D and 3D, Lua 5.4
-  via `mlua`, `android-activity` + `winit` on Android. Currently only a skeleton.
+- `crates/nova-runtime`: Rust game runtime (currently the M1 spike). `wgpu` renderer
+  for 2D and 3D (`gfx.rs`, WGSL in `src/shaders/`), Lua 5.4 via `mlua` (`script.rs`,
+  reduced stdlib), glTF import (`model.rs`), input actions (`input.rs`), audio via
+  `cpal` + the C core (`audio.rs`, `build.rs`), `winit` host and headless runner
+  (`app.rs`), `android-activity` entry in `lib.rs`. Read `docs/spike-results.md`.
 - `audio/`: salvaged C11 sample-clock audio core (no raylib/Lua/Qt). Built and
-  tested standalone with CMake now; linked into Rust through `cc` + FFI in M6.
+  tested standalone with CMake, and compiled into the runtime by `build.rs`
+  (`cc`) behind a small FFI wrapper in `audio.rs`.
   Read `docs/audio-core.md` (its status note lists what is historical).
 - Studio (not started): Tauri 2 + TypeScript in a later crate/folder. Editors may
   use web tech; the game never runs in a WebView.
@@ -32,10 +36,12 @@ words, few choices, good defaults. There are no fantasy-console limits.
 
 ```sh
 scripts/env.sh cargo build                         # desktop build
+scripts/env.sh cargo run --release -p nova-runtime --bin nova -- --headless --frames 300 --capture build/spike.png
+scripts/build-apk.sh                               # Gradle-free debug APK -> build/android/
 scripts/env.sh cargo test
 scripts/env.sh cargo clippy --all-targets
 scripts/env.sh cargo fmt --check
-scripts/env.sh cargo ndk -t arm64-v8a build --release   # Android library/binary
+scripts/env.sh cargo ndk -t arm64-v8a --platform 26 build --release   # Android library
 /opt/homebrew/bin/cmake -S audio -B build/audio && /opt/homebrew/bin/cmake --build build/audio && /opt/homebrew/bin/ctest --test-dir build/audio
 ```
 
