@@ -29,6 +29,7 @@ pub struct Input {
     action_was_down: bool,
     pub action_pressed: bool,
     pub last_unknown_key: Option<String>,
+    hud_toggle: bool,
 }
 
 // Android KeyEvent codes for game controllers.
@@ -51,6 +52,11 @@ impl Input {
         }
     }
 
+    /// True once after F3 is pressed.
+    pub fn take_toggle_hud(&mut self) -> bool {
+        std::mem::take(&mut self.hud_toggle)
+    }
+
     pub fn set_surface_width(&mut self, width: f32) {
         self.width = width;
     }
@@ -59,6 +65,9 @@ impl Input {
         let down = event.state == ElementState::Pressed;
         match event.physical_key {
             PhysicalKey::Code(code) => {
+                if down && code == KeyCode::F3 && !event.repeat {
+                    self.hud_toggle = true;
+                }
                 if down {
                     self.keys.insert(code);
                 } else {

@@ -47,7 +47,7 @@ fn render(size: (u32, u32), world_height: u32) -> Option<(Vec<u8>, (u32, u32))> 
 
 fn distinct_colors(pixels: &[u8]) -> usize {
     let mut seen = std::collections::HashSet::new();
-    for px in pixels.chunks_exact(4).step_by(7) {
+    for px in pixels.as_chunks::<4>().0.iter().step_by(7) {
         seen.insert([px[0], px[1], px[2]]);
     }
     seen.len()
@@ -71,7 +71,7 @@ fn world_renders_at_reduced_height_and_upscales_to_the_screen() {
     );
     assert!(distinct_colors(&reduced) > 20, "scene is not blank");
     assert!(
-        reduced.chunks_exact(4).all(|p| p[3] == 255),
+        reduced.as_chunks::<4>().0.iter().all(|p| p[3] == 255),
         "output is fully opaque"
     );
 }

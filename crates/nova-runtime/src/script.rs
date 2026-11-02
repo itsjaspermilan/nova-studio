@@ -48,7 +48,7 @@ pub struct ScriptHost {
 /// Lua with only the pure libraries. No io/os/package/debug, and the base functions
 /// that read files are removed. This is a stability boundary for hand-written game
 /// scripts, not a hostile-code sandbox (limits on time and memory arrive in M2).
-fn new_lua() -> Lua {
+pub(crate) fn new_lua() -> Lua {
     let libs = mlua::StdLib::MATH
         | mlua::StdLib::STRING
         | mlua::StdLib::TABLE

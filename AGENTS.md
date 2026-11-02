@@ -15,7 +15,9 @@ words, few choices, good defaults. There are no fantasy-console limits.
 
 ## Architecture (decided; see TODO.md for the table)
 
-- `crates/nova-runtime`: Rust game runtime (currently the M1 spike). `wgpu` renderer
+- `crates/nova-runtime`: Rust game runtime. Projects: `vfs.rs` (read-only file view), `project.rs`
+  (`nova.json` and assets), `assets.rs` (PNG decode, atlas), `game.rs` (Lua API v1, draw lists),
+  `content.rs` (benchmark scene or project). Spec in `docs/project-format.md`. `wgpu` renderer
   for 2D and 3D (`gfx.rs`, WGSL in `src/shaders/`), Lua 5.4 via `mlua` (`script.rs`,
   reduced stdlib), glTF import (`model.rs`), input actions (`input.rs`), audio via
   `cpal` + the C core (`audio.rs`, `build.rs`), `winit` host and headless runner
@@ -36,6 +38,7 @@ words, few choices, good defaults. There are no fantasy-console limits.
 
 ```sh
 scripts/env.sh cargo build                         # desktop build
+scripts/env.sh cargo run --release -p nova-runtime --bin nova -- run examples/rally-demo --headless --frames 120 --capture build/demo.png
 scripts/env.sh cargo run --release -p nova-runtime --bin nova -- --headless --frames 300 --capture build/spike.png
 scripts/build-apk.sh                               # Gradle-free debug APK -> build/android/
 scripts/env.sh cargo test

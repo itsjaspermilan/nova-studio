@@ -1395,6 +1395,8 @@ dependencies = [
  "mlua",
  "png",
  "pollster",
+ "serde",
+ "serde_json",
  "wgpu",
  "winit",
 ]

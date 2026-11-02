@@ -18,6 +18,7 @@ pub struct MeshVertex {
     pub uv: [f32; 2],
 }
 
+#[derive(Clone, Debug)]
 pub struct Image {
     pub width: u32,
     pub height: u32,

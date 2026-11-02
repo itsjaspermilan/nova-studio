@@ -115,24 +115,48 @@ Results, numbers and findings: [docs/spike-results.md](docs/spike-results.md).
   path for analogue sticks and triggers on Android (winit gives key events only); exercise
   touch, keyboard and lifecycle on Android; real text rendering and the resolution policy.
 
-## M2: Runtime v1
+## M2: Runtime v1 (in slices)
 
-- [ ] Project format v1: `nova.json` manifest (name, entry scene, assets with stable
-  ids), path rules (no root escape), versioning and actionable errors. Document it.
+### M2a: Projects run (done 2026-11-02)
+
+Spec and API: [docs/project-format.md](docs/project-format.md). Example: `examples/rally-demo/`.
+
+- [x] Project format v1: `nova.json`, asset scanning with path IDs, path rules (no root
+  escape, no symlink escape, case-collision check), file/size budgets, actionable errors.
+- [x] `Vfs` abstraction (directory, in-memory) so desktop, tests and the future APK share
+  one project reader.
+- [x] PNG decoding and a one-time atlas packer; static GLB import with warnings.
+- [x] Lua API v1 (immediate mode): sprites, rects, models, camera, UI layer, debug text,
+  input actions, `require` from inside the project, error banner, whole-project reload.
+- [x] `nova run <folder>` (window and `--headless` with `--capture`), F3 stats, 540p world
+  with native UI.
+- [x] Tests: path rules, manifest errors, atlas packing, Lua API, example project, GPU
+  render, hot reload.
+
+### M2b: Scenes and entities (next)
+
+- [ ] `*.scene.json` data format and loader (layers, placed objects, names exposed as
+  fields of the scene's Lua), JSON schema and versioning documented.
 - [ ] Scene/entity model, tags, timers, tweens, coroutines (port the design of
-  GameStudio's `gs` Lua framework; `docs` from GameStudio's `lua-engine-design.md`).
-- [ ] Layout data (`*.layout.lua` or JSON) built at scene start; names become scene
-  fields; renaming stays consistent.
-- [ ] 2D: sprites, animation tags, tilemaps, text/fonts, camera, layers/depth,
-  collision queries (grid broadphase in Rust).
-- [ ] 3D: meshes, materials (flat/unlit/vertex colour/texture), camera, simple
-  lights if needed, glTF subset import with explicit unsupported-feature errors,
-  rigid-bone animation playback.
-- [ ] Input actions and remapping; save-data API (project-scoped).
-- [ ] Audio service: SFX, music, buses via the audio core; Lua API.
-- [ ] Error overlay with file/line, structured diagnostics to the studio.
-- [ ] Headless tests: offscreen golden-frame renders, Lua API tests, asset budget
-  tests. Perf counters exposed.
+  GameStudio's `gs` Lua framework and its `lua-engine-design.md`).
+- [ ] Collision queries (grid broadphase in Rust) and camera helpers.
+
+### M2c: 2D content
+
+- [ ] Real font rendering and text layout (replace the debug font).
+- [ ] Sprite sheets, animation tags and per-frame durations (format from the M5 design).
+- [ ] Tilemaps.
+
+### M2d: Services and platform
+
+- [ ] Named input actions with remapping; Android analogue sticks/triggers (needs a
+  native-activity input path), touch/lifecycle exercised on Android; immersive mode.
+- [ ] Audio service and Lua API (SFX, music, buses) over the C core.
+- [ ] Save-data API (project-scoped).
+- [ ] 3D extras: simple lights/material options, rigid-bone animation playback.
+- [ ] Lua time and memory limits; structured diagnostics for the studio.
+- [ ] Project loading on Android (APK asset source behind `Vfs`) and the APK running a
+  real project (overlaps M3).
 
 ## M3: Packaging and device loop
 

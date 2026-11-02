@@ -13,22 +13,28 @@ use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
 
 use crate::audio::{self, AudioOut};
+use crate::content::Content;
 use crate::gfx::Gfx;
 use crate::input::Input;
-use crate::script::ScriptHost;
-use crate::spike::{self, Perf, Spike};
+use crate::spike::Perf;
 
 #[derive(Clone, Debug)]
 pub struct Options {
     pub frames: Option<u32>,
     pub capture: Option<PathBuf>,
+    /// A Lua script to run instead of the built-in spike script (spike mode only).
     pub script: Option<PathBuf>,
+    /// A Nova project folder to run (`nova run <folder>`).
+    pub project: Option<PathBuf>,
+    /// Show the stats overlay in project mode (F3 toggles it).
+    pub hud: bool,
     pub size: (u32, u32),
     pub uncapped: bool,
     pub no_audio: bool,
     pub headless: bool,
-    /// Height of the world render target in pixels (UI is always native). 0 = native.
-    pub world_height: u32,
+    /// Height of the world render target in pixels (UI is always native); 0 = native.
+    /// `None` uses the project's `world_height` (540 for the spike).
+    pub world_height: Option<u32>,
 }
 
 impl Default for Options {
@@ -37,9 +43,11 @@ impl Default for Options {
             frames: None,
             capture: None,
             script: None,
+            project: None,
+            hud: false,
             size: (1280, 720),
             uncapped: false,
-            world_height: 540,
+            world_height: None,
             no_audio: false,
             headless: false,
         }
@@ -73,25 +81,6 @@ fn backend_candidates() -> Vec<wgpu::Backends> {
     }
 }
 
-fn script_host(opts: &Options) -> Result<ScriptHost, String> {
-    match &opts.script {
-        Some(path) => {
-            let source = std::fs::read_to_string(path)
-                .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
-            Ok(ScriptHost::new(
-                source,
-                path.display().to_string(),
-                Some(path.clone()),
-            ))
-        }
-        None => Ok(ScriptHost::new(
-            spike::MAIN_LUA.to_string(),
-            "main.lua".into(),
-            None,
-        )),
-    }
-}
-
 fn print_summary(label: &str, perf: &Perf) {
     if let Some(s) = perf.summary() {
         println!(
@@ -120,8 +109,7 @@ pub fn save_png(path: &std::path::Path, size: (u32, u32), rgba: &[u8]) -> Result
 pub fn run_headless(opts: Options) -> Result<(), String> {
     let instance = new_instance(backend_candidates()[0]);
     let mut gfx = Gfx::new(&instance, None)?;
-    let mut spike = Spike::new(&mut gfx)?;
-    let mut script = script_host(&opts)?;
+    let mut content = Content::load(&opts, &mut gfx)?;
     let frames = opts.frames.unwrap_or(120);
     let size = opts.size;
     let target = gfx.device.create_texture(&wgpu::TextureDescriptor {
@@ -141,42 +129,47 @@ pub fn run_headless(opts: Options) -> Result<(), String> {
     let view = target.create_view(&wgpu::TextureViewDescriptor::default());
     let mut perf = Perf::default();
     let dt = 1.0 / 60.0;
-    println!("adapter: {}", spike.adapter);
-    for _ in 0..frames {
+    println!(
+        "adapter: {} ({:?})",
+        gfx.adapter_info.name, gfx.adapter_info.backend
+    );
+    println!("content: {}", content.title());
+    for frame in 0..frames {
         let started = Instant::now();
-        script.update(dt, Default::default(), false);
-        let state = script.state();
-        let hud = spike::hud_text(
-            &spike,
+        let (build_ms, lua_ms) = content.update(
+            &mut gfx,
+            dt,
+            frame as f64 * dt as f64,
+            size,
+            Default::default(),
+            false,
             &perf,
-            &state,
-            script.error.as_deref(),
             "off (headless)",
         );
-        let upd = spike.build(dt, size, &state, &hud);
         let render_started = Instant::now();
-        perf.stats = gfx.render(&view, size, &spike.frame_input(&state, opts.world_height));
+        perf.stats = gfx.render(&view, size, &content.frame_input(opts.world_height));
         gfx.device
             .poll(wgpu::PollType::wait_indefinitely())
             .map_err(|e| e.to_string())?;
-        perf.times.update_ms = upd;
-        perf.times.lua_ms = script.last_update.as_secs_f32() * 1000.0;
+        perf.times.update_ms = build_ms;
+        perf.times.lua_ms = lua_ms;
         perf.times.render_ms = render_started.elapsed().as_secs_f32() * 1000.0;
         perf.record(started.elapsed().as_secs_f32() * 1000.0);
     }
     print_summary("headless", &perf);
     println!(
-        "last frame: draws={} sprites={} triangles={}",
-        perf.stats.draw_calls, perf.stats.sprites, perf.stats.triangles
+        "last frame: draws={} sprites={} triangles={} world={}x{}",
+        perf.stats.draw_calls,
+        perf.stats.sprites,
+        perf.stats.triangles,
+        perf.stats.world_size.0,
+        perf.stats.world_size.1
     );
-    if let Some(error) = &script.error {
+    if let Some(error) = content.error() {
         return Err(format!("script error: {error}"));
     }
     if let Some(path) = &opts.capture {
-        let state = script.state();
-        let hud = spike::hud_text(&spike, &perf, &state, None, "off (headless)");
-        spike.build(dt, size, &state, &hud);
-        let pixels = gfx.capture(size, &spike.frame_input(&state, opts.world_height));
+        let pixels = gfx.capture(size, &content.frame_input(opts.world_height));
         save_png(path, size, &pixels)?;
         println!("captured {}", path.display());
     }
@@ -190,15 +183,16 @@ struct App {
     surface: Option<wgpu::Surface<'static>>,
     config: Option<wgpu::SurfaceConfiguration>,
     gfx: Option<Gfx>,
-    spike: Option<Spike>,
-    script: ScriptHost,
+    content: Option<Content>,
     input: Input,
     perf: Perf,
     last_frame: Instant,
+    started: Instant,
     audio: Option<AudioOut>,
     audio_error: Option<String>,
     audio_started: bool,
     frames_done: u32,
+    finished: bool,
     failed: Option<String>,
 }
 
@@ -258,6 +252,9 @@ impl App {
     }
 
     fn frame(&mut self, event_loop: &ActiveEventLoop) {
+        if self.finished {
+            return;
+        }
         let (Some(config), Some(_)) = (self.config.clone(), self.surface.as_ref()) else {
             return;
         };
@@ -267,20 +264,23 @@ impl App {
         let size = (config.width, config.height);
 
         let actions = self.input.frame();
-        self.script.update(dt, actions, self.input.action_pressed);
-        let state = self.script.state();
         let audio = self.audio_text();
-        let (Some(gfx), Some(spike)) = (self.gfx.as_mut(), self.spike.as_mut()) else {
+        let (Some(gfx), Some(content)) = (self.gfx.as_mut(), self.content.as_mut()) else {
             return;
         };
-        let hud = spike::hud_text(
-            spike,
+        if self.input.take_toggle_hud() {
+            content.toggle_hud();
+        }
+        let (build_ms, lua_ms) = content.update(
+            gfx,
+            dt,
+            self.started.elapsed().as_secs_f64(),
+            size,
+            actions,
+            self.input.action_pressed,
             &self.perf,
-            &state,
-            self.script.error.as_deref(),
             &audio,
         );
-        let upd = spike.build(dt, size, &state, &hud);
 
         let surface = self.surface.as_ref().expect("surface checked above");
         let texture = match surface.get_current_texture() {
@@ -296,19 +296,16 @@ impl App {
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
         let render_started = Instant::now();
-        self.perf.stats = gfx.render(
-            &view,
-            size,
-            &spike.frame_input(&state, self.opts.world_height),
-        );
+        self.perf.stats = gfx.render(&view, size, &content.frame_input(self.opts.world_height));
         self.perf.times.render_ms = render_started.elapsed().as_secs_f32() * 1000.0;
         gfx.queue.present(texture);
-        self.perf.times.update_ms = upd;
-        self.perf.times.lua_ms = self.script.last_update.as_secs_f32() * 1000.0;
+        self.perf.times.update_ms = build_ms;
+        self.perf.times.lua_ms = lua_ms;
         self.perf.record(dt * 1000.0);
 
         self.frames_done += 1;
         if self.opts.frames.is_some_and(|n| self.frames_done >= n) {
+            self.finished = true;
             print_summary("windowed", &self.perf);
             event_loop.exit();
         }
@@ -321,7 +318,7 @@ impl ApplicationHandler for App {
             return;
         }
         let attributes = Window::default_attributes()
-            .with_title("Nova spike")
+            .with_title("Nova")
             .with_inner_size(LogicalSize::new(self.opts.size.0, self.opts.size.1));
         let window = match event_loop.create_window(attributes) {
             Ok(w) => Arc::new(w),
@@ -344,15 +341,10 @@ impl ApplicationHandler for App {
                         continue;
                     }
                 };
-                let built = Gfx::new(&instance, Some(&candidate)).and_then(|mut gfx| {
-                    let spike = Spike::new(&mut gfx)?;
-                    Ok((gfx, spike))
-                });
-                match built {
-                    Ok((gfx, spike)) => {
+                match Gfx::new(&instance, Some(&candidate)) {
+                    Ok(gfx) => {
                         self.instance = instance;
                         self.gfx = Some(gfx);
-                        self.spike = Some(spike);
                         surface = Some(candidate);
                         break;
                     }
@@ -379,6 +371,17 @@ impl ApplicationHandler for App {
                 }
             },
         };
+        if self.content.is_none() {
+            let gfx = self.gfx.as_mut().expect("graphics were created above");
+            match Content::load(&self.opts, gfx) {
+                Ok(content) => self.content = Some(content),
+                Err(e) => {
+                    self.failed = Some(e);
+                    event_loop.exit();
+                    return;
+                }
+            }
+        }
         let size = window.inner_size();
         self.window = Some(window);
         self.surface = Some(surface);
@@ -449,7 +452,6 @@ pub fn run_windowed(
         .build()
         .map_err(|e| format!("cannot create event loop: {e}"))?;
     event_loop.set_control_flow(ControlFlow::Poll);
-    let script = script_host(&opts)?;
     let mut app = App {
         opts,
         instance: new_instance(wgpu::Backends::PRIMARY),
@@ -457,15 +459,16 @@ pub fn run_windowed(
         surface: None,
         config: None,
         gfx: None,
-        spike: None,
-        script,
+        content: None,
         input: Input::new(),
         perf: Perf::default(),
         last_frame: Instant::now(),
+        started: Instant::now(),
         audio: None,
         audio_error: None,
         audio_started: false,
         frames_done: 0,
+        finished: false,
         failed: None,
     };
     event_loop
