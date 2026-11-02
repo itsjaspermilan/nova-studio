@@ -63,7 +63,7 @@ impl RecentStore {
             .into_iter()
             .filter(|p| Path::new(&p.path).join("nova.json").is_file())
             .collect();
-        projects.sort_by(|a, b| b.opened.cmp(&a.opened));
+        projects.sort_by_key(|p| std::cmp::Reverse(p.opened));
         projects
     }
 
@@ -76,7 +76,7 @@ impl RecentStore {
             name: name.to_string(),
             opened: now(),
         });
-        data.projects.sort_by(|a, b| b.opened.cmp(&a.opened));
+        data.projects.sort_by_key(|p| std::cmp::Reverse(p.opened));
         data.projects.truncate(MAX_RECENT);
         self.save(&data)
     }
