@@ -67,9 +67,11 @@ another physical Android device) to settle; the emulator cannot.
   user's to do. `nova export android` does not exist yet (a script does the work).
 - [ ] Third-party licence notices for Rust dependencies are not bundled into outputs (fonts' notices are
   in `licenses/fonts/`).
-- [ ] Only the first studio slice exists (hub, code editor, Play; M4). Scene, sprite, model and sound
-  editors (M4 to M7) do not, nor do Windows/Linux builds. The studio was verified in the browser
-  preview (in-memory backend) and by compiling the real Tauri app; nobody has driven the native window.
+- [ ] The studio now has every editor in a first version (code, scene, sprite with layers, sound effects, music,
+  3D model); each has open items listed under M4 to M7. No Windows/Linux builds. On 2026-11-02 the user ran the
+  native window (`tauri dev`) and reported that it works; only that one overall check was made, so individual
+  native-only paths (folder picker, Play against a game, audio and WebGL in the real webview) were not
+  separately recorded.
 
 ## Goal
 
