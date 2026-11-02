@@ -24,6 +24,7 @@ static void free_cpu(Model model)
     for (int i = 0; i < model.meshCount; ++i) {
         MemFree(model.meshes[i].vertices);
         MemFree(model.meshes[i].colors);
+        MemFree(model.meshes[i].texcoords);
     }
     MemFree(model.meshes);
     MemFree(model.materials);

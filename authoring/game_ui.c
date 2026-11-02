@@ -254,6 +254,20 @@ bool nova_game_ui_action(NovaGameUI *ui, NovaGameAction action)
             selection(ui, p->data.resource[p->data.resources-1].id);
         }
         break;
+    case NOVA_GAME_NEW_MODEL:
+        ok = nova_game_new_model(p,ui->name,ERROR);
+        if (ok) {
+            const NovaGameResource *r = &p->data.resource[p->data.resources-1];
+            selection(ui,r->id);
+            char manifest[NOVA_NATIVE_PATH_CAPACITY];
+            if (nova_project_resolve(p->authored.root,NOVA_GAME_MANIFEST,manifest,ERROR) &&
+                nova_model_ui_open(&ui->modeller,manifest,p->authored.root,r->path,ERROR)) ui->modeller.beginner = true;
+            else {
+                char detail[768]; snprintf(detail,sizeof(detail),"%.767s",ui->message);
+                snprintf(ui->message,sizeof(ui->message),"Model files/resource created; opening modeller failed. Select model and retry. %s",detail);
+            }
+        }
+        break;
     case NOVA_GAME_OBJECT:
         ok = nova_game_add_object(p, ui->object_appearance ? ui->object_appearance : ui->selected, ui->name, ERROR);
         if (ok) { selection(ui, p->data.object[p->data.objects-1].id); message(ui, "Object created. Add behaviors in the Inspector, then choose Place above the room."); }
@@ -306,7 +320,7 @@ bool nova_game_ui_action(NovaGameUI *ui, NovaGameAction action)
     case NOVA_GAME_STOP: return true;
     }
     if (ok && (action == NOVA_GAME_NEW || action == NOVA_GAME_OPEN || action == NOVA_GAME_IMPORT ||
-        action == NOVA_GAME_OBJECT || action == NOVA_GAME_ROOM)) {
+        action == NOVA_GAME_OBJECT || action == NOVA_GAME_ROOM || action == NOVA_GAME_NEW_MODEL)) {
         ui->sheet = NOVA_GAME_SHEET_NONE;
         ui->name_focus = ui->path_focus = ui->location_focus = false;
         memset(ui->field_focus,0,sizeof(ui->field_focus));
@@ -442,6 +456,7 @@ static void open_sheet(NovaGameUI *ui, NovaGameSheet sheet)
     ui->new_mode = room ? room->mode : NOVA_2D;
     if (sheet == NOVA_GAME_SHEET_NEW) snprintf(ui->name,sizeof(ui->name),"MyGame");
     else if (sheet == NOVA_GAME_SHEET_ROOM) default_name(ui,"Room");
+    else if (sheet == NOVA_GAME_SHEET_MODEL) default_name(ui,"Model");
     else if (sheet == NOVA_GAME_SHEET_OBJECT) {
         default_name(ui,"Object");
         const NovaGameResource *a = nova_game_resource(g,ui->selected);
@@ -478,7 +493,8 @@ static void tree(NovaGameUI *ui, int height)
             char label[64]; snprintf(label,sizeof(label),"%s %s",ui->collapsed[group] ? ">" : "v",headings[group]);
             if (row_button((Rectangle){8,(float)y,157,27},label,false,!ui->playing)) ui->collapsed[group] = !ui->collapsed[group];
             if (nova_ui_button((Rectangle){172,(float)y,35,25},"+",!ui->playing)) {
-                open_sheet(ui,group < 2 ? NOVA_GAME_SHEET_IMPORT : group == 2 ? NOVA_GAME_SHEET_OBJECT : NOVA_GAME_SHEET_ROOM);
+                open_sheet(ui,group == 0 ? NOVA_GAME_SHEET_IMPORT : group == 1 ? NOVA_GAME_SHEET_MODEL :
+                    group == 2 ? NOVA_GAME_SHEET_OBJECT : NOVA_GAME_SHEET_ROOM);
                 if (group < 2) {
                     ui->new_mode = group == 0 ? NOVA_2D : NOVA_3D;
                     default_name(ui,group == 0 ? "Sprite" : "Model");
@@ -654,15 +670,8 @@ static void properties(NovaGameUI *ui, int x, int height)
         if (a->type == NOVA_ASSET_MODEL && y >= ui->inspector_top && y+32 <= ui->inspector_bottom &&
             nova_ui_button((Rectangle){(float)x,(float)y,277,32},"Edit in static modeller",true) && clean_values(ui)) {
             char manifest[NOVA_NATIVE_PATH_CAPACITY];
-            NovaProject saved;
-            bool declared = false;
-            if (nova_project_parse(&saved,ui->project.manifest.saved.text,ui->project.manifest.saved.length,ERROR)) {
-                for (size_t i = 0; i < saved.count; ++i)
-                    if (saved.assets[i].type == NOVA_ASSET_MODEL && !strcmp(saved.assets[i].path,a->path)) declared = true;
-                if (!declared) message(ui,"Save the game explicitly before modelling this imported appearance; no implicit save or export occurred.");
-                else if (nova_project_resolve(ui->project.authored.root,NOVA_GAME_MANIFEST,manifest,ERROR))
-                    nova_model_ui_open(&ui->modeller,manifest,ui->project.authored.root,a->path,ERROR);
-            }
+            if (nova_project_resolve(ui->project.authored.root,NOVA_GAME_MANIFEST,manifest,ERROR) &&
+                nova_model_ui_open(&ui->modeller,manifest,ui->project.authored.root,a->path,ERROR)) ui->modeller.beginner = true;
         }
     }
     if (maximum) {
@@ -847,10 +856,11 @@ static void creation_sheet(NovaGameUI *ui, int width, int height)
     bool importing = ui->sheet == NOVA_GAME_SHEET_IMPORT;
     bool object = ui->sheet == NOVA_GAME_SHEET_OBJECT;
     bool project = ui->sheet == NOVA_GAME_SHEET_PROJECT;
+    bool model = ui->sheet == NOVA_GAME_SHEET_MODEL;
     Rectangle box = {(float)width/2-390,(float)height/2-305,780,610};
     int x = (int)box.x+24, y = (int)box.y+24;
     DrawRectangleRounded(box,0.025f,8,nova_ui_style()->panel);
-    const char *title = project ? "Project" : importing ? "Add an appearance" : object ? "Create an object" : "Add a room";
+    const char *title = project ? "Project" : model ? "Create a model" : importing ? "Add an appearance" : object ? "Create an object" : "Add a room";
     nova_ui_label(title,x,y,732,INK);
     if (project) {
         nova_ui_label("Project setup and source tools",x,y+40,732,MUTED);
@@ -861,13 +871,21 @@ static void creation_sheet(NovaGameUI *ui, int width, int height)
         }
         nova_ui_label("Advanced drafts stay separate. Opening this menu never saves.",x,y+282,732,MUTED);
     } else {
-        nova_ui_label(importing ? "Import a sprite or static model, then use it to create an object." :
+        nova_ui_label(model ? "Assemble named static parts, assign colours/PNGs, then create an object." :
+            importing ? "Import a sprite or static model, then use it to create an object." :
             object ? "Objects share an appearance and behaviors. Place copies in rooms." :
             "Rooms hold placed instances. Choose the room's dimension here.",x,y+33,732,MUTED);
-        nova_ui_label(importing ? "Appearance name" : object ? "Object name" : "Room name",x,y+72,400,MUTED);
+        nova_ui_label(model ? "Model name" : importing ? "Appearance name" : object ? "Object name" : "Room name",x,y+72,400,MUTED);
         nova_ui_field_checked((Rectangle){(float)x,(float)y+98,350,34},ui->name,sizeof(ui->name),&ui->name_focus,ERROR);
-        if (!object) dimensions(ui,x+384,y+98,importing);
-        if (importing) {
+        if (!object && !model) dimensions(ui,x+384,y+98,importing);
+        if (model) {
+            nova_ui_label("New model starts with one editable box. Add boxes, pyramids or cylinders.",x,y+180,732,MUTED);
+            nova_ui_label("Editable source and self-contained GLB get fresh project-local filenames.",x,y+218,732,MUTED);
+            nova_ui_label("No rigging, animation or arbitrary mesh reconstruction.",x,y+256,732,MUTED);
+            if (nova_ui_button((Rectangle){(float)x,(float)y+318,300,36},"Import existing GLB instead...",true)) {
+                open_sheet(ui,NOVA_GAME_SHEET_IMPORT); ui->new_mode = NOVA_3D; default_name(ui,"Model");
+            }
+        } else if (importing) {
             file_browser(ui,(Rectangle){(float)x,(float)y+154,732,304},true);
             nova_ui_label(*ui->path ? TextFormat("Selected: %s",GetFileName(ui->path)) : "Select a file, then choose Import.",x,y+475,732,MUTED);
         } else if (object) {
@@ -896,8 +914,8 @@ static void creation_sheet(NovaGameUI *ui, int width, int height)
         bool enabled = nova_game_name(ui->name) && (importing ? *ui->path != 0 : !object || ui->object_appearance != 0);
         if (!nova_game_name(ui->name))
             nova_ui_label("Name: use 1..31 letters, numbers or underscores (no spaces).",x,y+502,732,MUTED);
-        if (nova_ui_button((Rectangle){box.x+540,box.y+550,216,36},importing ? "Import appearance" : object ? "Create object" : "Create room",enabled))
-            request(ui,importing ? NOVA_GAME_IMPORT : object ? NOVA_GAME_OBJECT : NOVA_GAME_ROOM);
+        if (nova_ui_button((Rectangle){box.x+540,box.y+550,216,36},model ? "New model" : importing ? "Import appearance" : object ? "Create object" : "Create room",enabled))
+            request(ui,model ? NOVA_GAME_NEW_MODEL : importing ? NOVA_GAME_IMPORT : object ? NOVA_GAME_OBJECT : NOVA_GAME_ROOM);
     }
     if (nova_ui_button((Rectangle){box.x+24,box.y+550,140,36},"Cancel",true)) ui->sheet = NOVA_GAME_SHEET_NONE;
 }
@@ -913,6 +931,7 @@ static void dialog(NovaGameUI *ui, int width, int height)
     nova_ui_label(title,(int)box.x+20,(int)box.y+18,740,INK);
     const char *body = ui->dialog == NOVA_GAME_DIALOG_CONFLICT && ui->project.authored.has_conflict ?
         ui->project.authored.conflict.text : ui->message;
+    if (ui->dialog == NOVA_GAME_DIALOG_DETAILS && ui->modeller.active) body = ui->modeller.message;
     if (ui->dialog == NOVA_GAME_DIALOG_DELETE)
         body = TextFormat("Delete %s from this game's draft?\n\nUndo can restore it. Imported files are kept.\n"
             "Items used by objects or room instances cannot be deleted.\nThe starting room cannot be deleted.",ui->fields[0]);
@@ -968,8 +987,8 @@ bool nova_game_ui_draw(NovaGameUI *ui, bool bounded)
     }
     if (ui->modeller.exported) {
         ui->modeller.exported = false; ui->staged.resources = NOVA_MAX_ASSETS+1;
-        nova_game_ui_stage(ui);
-        message(ui,"Model exported separately. Preview restaged; Run remains explicit and guarded.");
+        if (nova_game_ui_stage(ui))
+            message(ui,"Model exported separately. Preview restaged; Run remains explicit and guarded.");
     }
     const NovaGameRoom *r = nova_game_room(&ui->project.data,ui->room);
     bool setup = ui->sheet == NOVA_GAME_SHEET_NEW || ui->sheet == NOVA_GAME_SHEET_OPEN || !ui->project.authored.text;
@@ -1112,8 +1131,10 @@ bool nova_game_ui_draw(NovaGameUI *ui, bool bounded)
     if (!setup && ui->sheet != NOVA_GAME_SHEET_NONE && !modal) creation_sheet(ui,width,height);
     if (modal) dialog(ui,width,height);
     DrawRectangle(0,height-42,width,42,nova_ui_style()->panel);
-    const char *summary = ui->message;
-    if (strstr(summary,"PARTIAL SAVE")) summary = "Save incomplete. Some files were written; Run was cancelled. Open Details before retrying.";
+    const char *summary = ui->modeller.active ? ui->modeller.message : ui->message;
+    if (ui->modeller.active) {
+        if (!*summary) summary = "Model draft / native preview. Apply part fields, Save model, then Return to project to create an object.";
+    } else if (strstr(summary,"PARTIAL SAVE")) summary = "Save incomplete. Some files were written; Run was cancelled. Open Details before retrying.";
     else if (strstr(summary,"preflight failed")) summary = "The saved game could not be validated. Run was cancelled; your previous game is retained. Details";
     else if (ui->stale) summary = "Preview could not refresh. Your draft and previous preview are retained. Open Details.";
     else if (ui->action_failed) summary = ui->last_action == NOVA_GAME_RUN || ui->last_action == NOVA_GAME_RESTART ?

@@ -82,6 +82,7 @@ bool nova_game_new(NovaGameProject *project, const char *parent, const char *nam
     NovaMode mode, char *error, size_t size);
 bool nova_game_import(NovaGameProject *project, const char *path, const char *name,
     NovaAssetType type, char *error, size_t size);
+bool nova_game_new_model(NovaGameProject *project, const char *name, char *error, size_t size);
 /* Saves authored source then generated Lua then manifest, each guarded separately.
  * Writes records successful files even on failure. Consent is only for authored
  * source's exact observed conflict; edited generated outputs are never overwritten. */

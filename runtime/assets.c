@@ -253,6 +253,28 @@ static bool accessor_valid(const cgltf_accessor *a)
     return remaining >= element && a->count - 1 <= (remaining - element) / a->stride;
 }
 
+bool nova_decode_model_png(const unsigned char *bytes, int length, Image *image,
+    char *error, size_t error_size)
+{
+    *image = (Image){0};
+    if (length > NOVA_MODEL_TEXTURE_BYTES ||
+        !nova_decode_sprite(bytes, length, image, error, error_size))
+        return error_message(error, error_size, "model texture requires a valid RGB/RGBA PNG of at most 1 MiB");
+    bool valid = image->width <= 1024 && image->height <= 1024;
+    ImageFormat(image, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+    if (!image->data) valid = false;
+    if (valid) {
+        const unsigned char *pixels = image->data;
+        size_t count = (size_t)image->width * (size_t)image->height;
+        for (size_t i = 0; i < count; ++i) if (pixels[i*4+3] != 255) { valid = false; break; }
+    }
+    if (!valid) {
+        UnloadImage(*image); *image = (Image){0};
+        return error_message(error, error_size, "model PNG subset: 1..1024 pixels per dimension; every pixel must be opaque");
+    }
+    return true;
+}
+
 static bool material_valid(const cgltf_material *m)
 {
     if (!m->unlit || m->extensions_count || m->has_pbr_specular_glossiness ||
@@ -261,8 +283,9 @@ static bool material_valid(const cgltf_material *m)
         m->has_anisotropy || m->has_dispersion || m->double_sided ||
         m->alpha_mode != cgltf_alpha_mode_opaque || m->normal_texture.texture ||
         m->occlusion_texture.texture || m->emissive_texture.texture ||
-        m->pbr_metallic_roughness.base_color_texture.texture ||
         m->pbr_metallic_roughness.metallic_roughness_texture.texture) return false;
+    const cgltf_texture_view *view = &m->pbr_metallic_roughness.base_color_texture;
+    if (view->texture && (view->texcoord != 0 || view->has_transform)) return false;
     for (int i = 0; i < 3; ++i) if (m->emissive_factor[i] != 0) return false;
     for (int i = 0; i < 4; ++i) {
         float c = m->pbr_metallic_roughness.base_color_factor[i];
@@ -280,10 +303,29 @@ static bool glb_subset(cgltf_data *data, char *error, size_t error_size)
         data->scenes_count != 1 || !data->nodes_count || data->nodes_count > 256 ||
         !data->meshes_count || data->meshes_count > 128 || data->asset.min_version) goto fail;
     reason = "unsupported GLB feature: only KHR_materials_unlit, static geometry and opaque base colors are supported";
-    if (data->animations_count || data->skins_count || data->images_count || data->textures_count ||
-        data->samplers_count || data->cameras_count || data->lights_count || data->variants_count ||
+    if (data->animations_count || data->skins_count ||
+        data->images_count > NOVA_MODEL_TEXTURES || data->textures_count > NOVA_MODEL_TEXTURES ||
+        data->samplers_count > NOVA_MODEL_TEXTURES || data->materials_count > 128 ||
+        data->cameras_count || data->lights_count || data->variants_count ||
         data->data_extensions_count || data->asset.extensions_count || data->scenes[0].extensions_count ||
         data->buffers[0].extensions_count) goto fail;
+    reason = "model textures require embedded PNG buffer views and nearest/clamp samplers; no URIs or texture extensions";
+    for (size_t i = 0; i < data->images_count; ++i) {
+        const cgltf_image *image = &data->images[i];
+        if (image->uri || !image->buffer_view || !image->mime_type ||
+            strcmp(image->mime_type, "image/png") || image->extensions_count ||
+            image->buffer_view->size > NOVA_MODEL_TEXTURE_BYTES) goto fail;
+    }
+    for (size_t i = 0; i < data->samplers_count; ++i) {
+        const cgltf_sampler *s = &data->samplers[i];
+        if (s->extensions_count || s->mag_filter != 9728 || s->min_filter != 9728 ||
+            s->wrap_s != 33071 || s->wrap_t != 33071) goto fail;
+    }
+    for (size_t i = 0; i < data->textures_count; ++i) {
+        const cgltf_texture *t = &data->textures[i];
+        if (!t->image || !t->sampler || t->extensions_count || t->has_basisu || t->has_webp) goto fail;
+    }
+    reason = "unsupported material/extension: only opaque unlit base color and TEXCOORD_0 PNG are supported";
     for (size_t i = 0; i < data->extensions_used_count; ++i)
         if (strcmp(data->extensions_used[i], "KHR_materials_unlit")) goto fail;
     for (size_t i = 0; i < data->extensions_required_count; ++i)
@@ -298,7 +340,7 @@ static bool glb_subset(cgltf_data *data, char *error, size_t error_size)
     }
     for (size_t i = 0; i < data->accessors_count; ++i)
         if (data->accessors[i].extensions_count || !accessor_valid(&data->accessors[i])) goto fail;
-    reason = "GLB subset requires triangles, float POSITION and optional float NORMAL; no UVs, vertex colors or morphs";
+    reason = "GLB requires triangles, float POSITION/optional NORMAL, and float TEXCOORD_0 for textured materials";
     for (size_t i = 0; i < data->meshes_count; ++i) {
         cgltf_mesh *mesh = &data->meshes[i];
         if (!mesh->primitives_count || mesh->primitives_count > 128 || mesh->extensions_count ||
@@ -307,16 +349,20 @@ static bool glb_subset(cgltf_data *data, char *error, size_t error_size)
             cgltf_primitive *p = &mesh->primitives[j];
             if (p->type != cgltf_primitive_type_triangles || p->targets_count ||
                 p->has_draco_mesh_compression || p->extensions_count || p->mappings_count) goto fail;
-            int positions = 0, normals = 0;
+            int positions = 0, normals = 0, uvs = 0;
+            size_t position_count = 0, uv_count = 0;
             for (size_t k = 0; k < p->attributes_count; ++k) {
                 cgltf_attribute *a = &p->attributes[k];
-                if (a->data->type != cgltf_type_vec3 || a->data->component_type != cgltf_component_type_r_32f ||
+                if (a->data->type != (a->type == cgltf_attribute_type_texcoord ? cgltf_type_vec2 : cgltf_type_vec3) ||
+                    a->data->component_type != cgltf_component_type_r_32f ||
                     a->index != 0) goto fail;
-                if (a->type == cgltf_attribute_type_position) positions++;
+                if (a->type == cgltf_attribute_type_position) { positions++; position_count = a->data->count; }
                 else if (a->type == cgltf_attribute_type_normal) normals++;
+                else if (a->type == cgltf_attribute_type_texcoord) { uvs++; uv_count = a->data->count; }
                 else goto fail;
             }
-            if (positions != 1 || normals > 1) goto fail;
+            if (positions != 1 || normals > 1 || uvs > 1 || (uvs && uv_count != position_count) ||
+                (p->material && p->material->pbr_metallic_roughness.base_color_texture.texture && !uvs)) goto fail;
             if (p->indices && (p->indices->type != cgltf_type_scalar ||
                 (p->indices->component_type != cgltf_component_type_r_8u &&
                  p->indices->component_type != cgltf_component_type_r_16u &&
@@ -351,12 +397,13 @@ fail:
     return error_message(error, error_size, reason);
 }
 
-static void unload_cpu_model(Model *model)
+void nova_unload_cpu_model(Model *model)
 {
     if (model->meshes) {
         for (int i = 0; i < model->meshCount; ++i) {
             MemFree(model->meshes[i].vertices);
             MemFree(model->meshes[i].colors);
+            MemFree(model->meshes[i].texcoords);
         }
     }
     MemFree(model->meshes);
@@ -365,15 +412,26 @@ static void unload_cpu_model(Model *model)
     *model = (Model){0};
 }
 
-bool nova_decode_glb(const unsigned char *bytes, int length, Model *model,
+void nova_unload_model_images(NovaModelImages *images)
+{
+    for (size_t i = 0; i < images->count; ++i) {
+        if (images->images[i].data) UnloadImage(images->images[i]);
+        if (images->textures[i].id) UnloadTexture(images->textures[i]);
+    }
+    *images = (NovaModelImages){0};
+}
+
+bool nova_decode_glb_images(const unsigned char *bytes, int length, Model *model, NovaModelImages *images,
     char *error, size_t error_size)
 {
     *model = (Model){0};
+    *images = (NovaModelImages){0};
+    for (size_t i = 0; i < 128; ++i) images->material_image[i] = -1;
     cgltf_options options = {0};
     cgltf_data *data = NULL;
     uint32_t declared = length >= 12 ? (uint32_t)bytes[8] | ((uint32_t)bytes[9] << 8) |
         ((uint32_t)bytes[10] << 16) | ((uint32_t)bytes[11] << 24) : 0;
-    if (length < 20 || declared != (uint32_t)length ||
+    if (length < 20 || length > NOVA_ASSET_FILE_LIMIT || declared != (uint32_t)length ||
         cgltf_parse(&options, bytes, (size_t)length, &data) != cgltf_result_success)
         return error_message(error, error_size, "cannot parse GLB container/JSON");
     const char *reason = "invalid GLB buffer or geometry";
@@ -382,6 +440,15 @@ bool nova_decode_glb(const unsigned char *bytes, int length, Model *model,
     // No URI loader is called: the only buffer aliases the validated embedded BIN.
     data->buffers[0].data = (void *)data->bin;
     if (cgltf_validate(data) != cgltf_result_success) goto fail;
+    for (size_t i = 0; i < data->images_count; ++i) {
+        const cgltf_buffer_view *v = data->images[i].buffer_view;
+        images->count = i + 1;
+        if (!nova_decode_model_png((const unsigned char *)data->bin + v->offset, (int)v->size,
+            &images->images[i], error, error_size)) goto done;
+        images->pixels += (size_t)images->images[i].width * (size_t)images->images[i].height;
+        reason = "model exceeds 4 million unique texture pixels";
+        if (images->pixels > NOVA_MODEL_TEXTURE_PIXELS) goto fail;
+    }
     size_t primitives = 0, vertices = 0;
     for (size_t i = 0; i < data->nodes_count; ++i)
         if (data->nodes[i].mesh) primitives += data->nodes[i].mesh->primitives_count;
@@ -410,9 +477,11 @@ bool nova_decode_glb(const unsigned char *bytes, int length, Model *model,
             (double)transform[8] * (transform[1] * (double)transform[6] - transform[5] * (double)transform[2]);
         for (size_t j = 0; j < node->mesh->primitives_count; ++j, ++slot) {
             cgltf_primitive *p = &node->mesh->primitives[j];
-            cgltf_accessor *position = NULL;
-            for (size_t k = 0; k < p->attributes_count; ++k)
+            cgltf_accessor *position = NULL, *uv = NULL;
+            for (size_t k = 0; k < p->attributes_count; ++k) {
                 if (p->attributes[k].type == cgltf_attribute_type_position) position = p->attributes[k].data;
+                if (p->attributes[k].type == cgltf_attribute_type_texcoord) uv = p->attributes[k].data;
+            }
             size_t count = p->indices ? p->indices->count : position->count;
             reason = "GLB triangle count invalid or exceeds 65535 expanded vertices per primitive / 262144 per model";
             if (count % 3 || count > 65535 || count > NOVA_MODEL_VERTEX_LIMIT - vertices) goto fail;
@@ -422,13 +491,16 @@ bool nova_decode_glb(const unsigned char *bytes, int length, Model *model,
             mesh->triangleCount = (int)(count / 3);
             mesh->vertices = MemAlloc((unsigned int)(count * 3 * sizeof(float)));
             mesh->colors = MemAlloc((unsigned int)(count * 4));
+            if (uv) mesh->texcoords = MemAlloc((unsigned int)(count * 2 * sizeof(float)));
             reason = "cannot allocate GLB vertices";
-            if (!mesh->vertices || !mesh->colors) goto fail;
+            if (!mesh->vertices || !mesh->colors || (uv && !mesh->texcoords)) goto fail;
             Color base = WHITE;
             if (p->material) {
                 float *c = p->material->pbr_metallic_roughness.base_color_factor;
                 base = (Color){(unsigned char)(c[0] * 255), (unsigned char)(c[1] * 255),
                     (unsigned char)(c[2] * 255), 255};
+                cgltf_texture *texture = p->material->pbr_metallic_roughness.base_color_texture.texture;
+                if (texture) images->material_image[slot] = (int)(texture->image - data->images);
             }
             reason = "GLB contains invalid indices or nonfinite/out-of-range transformed positions";
             for (size_t k = 0; k < count; ++k) {
@@ -436,6 +508,13 @@ bool nova_decode_glb(const unsigned char *bytes, int length, Model *model,
                 size_t index = p->indices ? cgltf_accessor_read_index(p->indices, k) : k;
                 float v[3];
                 if (index >= position->count || !cgltf_accessor_read_float(position, index, v, 3)) goto fail;
+                if (uv) {
+                    float t[2];
+                    reason = "GLB UVs must be finite float TEXCOORD_0 values in 0..1";
+                    if (!cgltf_accessor_read_float(uv, index, t, 2) ||
+                        !isfinite(t[0]) || !isfinite(t[1]) || t[0] < 0 || t[0] > 1 || t[1] < 0 || t[1] > 1) goto fail;
+                    memcpy(mesh->texcoords + k*2, t, sizeof(t));
+                }
                 for (int axis = 0; axis < 3; ++axis) {
                     float value = transform[axis] * v[0] + transform[4 + axis] * v[1] +
                         transform[8 + axis] * v[2] + transform[12 + axis];
@@ -450,6 +529,11 @@ bool nova_decode_glb(const unsigned char *bytes, int length, Model *model,
                         mesh->vertices[(k + 1) * 3 + (size_t)axis] = mesh->vertices[(k + 2) * 3 + (size_t)axis];
                         mesh->vertices[(k + 2) * 3 + (size_t)axis] = value;
                     }
+                    if (uv) for (int axis = 0; axis < 2; ++axis) {
+                        float value = mesh->texcoords[(k+1)*2+(size_t)axis];
+                        mesh->texcoords[(k+1)*2+(size_t)axis] = mesh->texcoords[(k+2)*2+(size_t)axis];
+                        mesh->texcoords[(k+2)*2+(size_t)axis] = value;
+                    }
                 }
             }
             model->meshMaterial[slot] = (int)slot;
@@ -460,9 +544,17 @@ bool nova_decode_glb(const unsigned char *bytes, int length, Model *model,
 fail:
     error_message(error, error_size, reason);
 done:
-    if (!success) unload_cpu_model(model);
+    if (!success) { nova_unload_cpu_model(model); nova_unload_model_images(images); }
     cgltf_free(data);
     return success;
+}
+
+bool nova_decode_glb(const unsigned char *bytes, int length, Model *model, char *error, size_t error_size)
+{
+    NovaModelImages images = {0};
+    bool ok = nova_decode_glb_images(bytes, length, model, &images, error, error_size);
+    nova_unload_model_images(&images);
+    return ok;
 }
 
 void nova_unload_resources(NovaResources *resources)
@@ -471,7 +563,7 @@ void nova_unload_resources(NovaResources *resources)
         NovaResource *r = &resources->resources[i];
         if (!r->owned) continue;
         if (r->type == NOVA_ASSET_SPRITE) UnloadTexture(r->texture);
-        else if (r->type == NOVA_ASSET_MODEL) UnloadModel(r->model);
+        else if (r->type == NOVA_ASSET_MODEL) { UnloadModel(r->model); nova_unload_model_images(&r->images); }
         else if (IsSoundValid(r->sound)) { StopSound(r->sound); UnloadSound(r->sound); }
     }
     free(resources->services);
@@ -517,12 +609,22 @@ static void inspect_model(NovaAssetInspection *info, const Model *model)
     }
 }
 
-static bool upload_model(Model *model, char *error, size_t error_size)
+static bool upload_model(Model *model, NovaModelImages *images, char *error, size_t error_size)
 {
+    for (size_t i = 0; i < images->count; ++i) {
+        images->textures[i] = LoadTextureFromImage(images->images[i]);
+        UnloadImage(images->images[i]); images->images[i] = (Image){0};
+        if (!IsTextureValid(images->textures[i]))
+            return error_message(error, error_size, "GLB GPU texture upload failed");
+        SetTextureFilter(images->textures[i], TEXTURE_FILTER_POINT);
+        SetTextureWrap(images->textures[i], TEXTURE_WRAP_CLAMP);
+    }
     bool valid = true;
     for (int i = 0; i < model->meshCount; ++i) {
         model->materials[i] = LoadMaterialDefault();
         if (!model->materials[i].maps) { valid = false; break; }
+        int image = images->material_image[i];
+        if (image >= 0) model->materials[i].maps[MATERIAL_MAP_DIFFUSE].texture = images->textures[image];
         UploadMesh(&model->meshes[i], false);
         if (!model->meshes[i].vboId || !model->meshes[i].vboId[0]) { valid = false; break; }
     }
@@ -597,15 +699,21 @@ static bool stage_scene(NovaEngine **engine, NovaResources *resources,
                 }
                 if (gpu) SetTextureFilter(r->texture, TEXTURE_FILTER_POINT);
             } else if (r->type == NOVA_ASSET_MODEL) {
-                if (!nova_decode_glb(bytes, length, &r->model, detail, sizeof(detail))) goto asset_error;
+                if (!nova_decode_glb_images(bytes, length, &r->model, &r->images, detail, sizeof(detail))) goto asset_error;
                 inspect_model(info, &r->model);
+                info->textures = r->images.count; info->texture_pixels = r->images.pixels;
                 total_vertices += info->vertices;
-                if (!gpu) unload_cpu_model(&r->model);
+                total_pixels += r->images.pixels;
+                if (!gpu) { nova_unload_cpu_model(&r->model); nova_unload_model_images(&r->images); }
+                if (total_pixels > NOVA_SPRITE_PIXEL_LIMIT) {
+                    error_message(detail, sizeof(detail), "project exceeds 16 million sprite/model texture pixels");
+                    goto asset_error;
+                }
                 if (total_vertices > NOVA_MODEL_VERTEX_LIMIT) {
                     error_message(detail, sizeof(detail), "project exceeds 262144 expanded model vertices");
                     goto asset_error;
                 }
-                if (gpu && !upload_model(&r->model, detail, sizeof(detail))) goto asset_error;
+                if (gpu && !upload_model(&r->model, &r->images, detail, sizeof(detail))) goto asset_error;
             } else {
                 Wave wave = {0};
                 if (!nova_decode_wav(bytes, length, &wave, detail, sizeof(detail))) goto asset_error;

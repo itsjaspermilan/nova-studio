@@ -7,6 +7,7 @@
 
 typedef struct {
     char directory[NOVA_NATIVE_PATH_CAPACITY];
+    char source_root[NOVA_NATIVE_PATH_CAPACITY];
     NovaDocument output;
     NovaEngine *engine;
     NovaResources resources;

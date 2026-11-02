@@ -9,10 +9,11 @@ not a finished editor or a hardware-validated game engine.
 The approved bounded software milestones are implemented and locally committed:
 manifest/native assets, inspection, runtime services, standalone export/signing
 tooling, native HUD, source/project editor, original static primitive modeller,
-and beginner 2D/3D Objects and Rooms with the substantive native UX follow-up.
+beginner 2D/3D Objects and Rooms with the substantive native UX follow-up,
+and named primitive modelling with bounded opaque PNG textures.
 No remote push, personal-key operation or device installation was performed.
 
-The implementation child's 45-test suite passed, including real native both-dimension form/
+The latest modelling implementation's 50-test suite passed, including real native both-dimension form/
 typing/scroll workflows, game frames/pixels, source/modeller/export regressions
 and guarded save-failure tests. The ordinary debug Android launcher also builds
 and passes exact APK verification. Screenshots cover minimum 1200x780 logical
@@ -31,8 +32,8 @@ Repeat the focused authoring checks with an active logged-in desktop:
 ```
 
 The final ordinary Android launcher rebuild/package verification passed.
-Current generated debug APK SHA-256:
-`e973c1683389fda3e4459cbc5108045bfa593ddb825b092c7567291097471475`.
+Current modelling-milestone debug APK SHA-256:
+`98cc9b0521e6b1008aaf037f229fa95d510aaae6578c240ce27b551630037da6`.
 The standalone `build/exports/services-demo-v3/` export also built and passed exact
 package verification: manifest v2/audio, increasing versionCode 3, compiled
 `NOVA_STANDALONE=ON` and world preset `1920x1080`. Its generated unsigned release
@@ -88,7 +89,7 @@ placement/play paths and existing Advanced editor/modeller regressions.
 This is bounded native room/object authoring, not a GameMaker compatibility
 layer. Full IDE, arbitrary mesh editing and animated GLB remain outside scope.
 
-## Approved following milestone: easy 3D modelling and basic textures
+## Completed milestone: easy 3D modelling and basic textures
 
 User decision: deliver this after Objects and Rooms, not as an expansion of the
 current implementation. Beginner workflow: Models -> New Model -> assemble
@@ -96,24 +97,53 @@ parts -> assign colours/textures -> Save -> Create Object -> place in a 3D Room
 -> Run. Build play areas by arranging objects/environment pieces in rooms,
 without requiring an entire level to be authored as one mesh.
 
-- [ ] Make the original primitive modeller approachable for static characters,
+- [x] Make the original primitive modeller approachable for static characters,
   props and environment pieces: named/selectable parts, clear positioning/
   scaling and colour controls, with the model-to-object bridge and guarded
   source/export/save/reopen workflow integrated into the default editor.
-- [ ] Add bounded PNG colour textures with automatic primitive UV mapping and
+- [x] Add bounded PNG colour textures with automatic primitive UV mapping and
   straightforward material assignment. Extend the actual native GLB import/
-  export, GPU rendering and resource ownership contracts; the current opaque
-  unlit importer deliberately rejects textured models. Preserve old untextured
+  export, GPU rendering and resource ownership contracts; the opaque unlit
+  importer now accepts the explicit embedded PNG subset. Preserve old untextured
   projects and explicit format/path/budget errors; no placeholder texture UI.
-- [ ] Verify real textured primitive output, source/export/reopen round trips,
+- [x] Verify real textured primitive output, source/export/reopen round trips,
   object/room usage, failed-import/reload retention and texture/resource cleanup
   on desktop, plus debug Android build/package integrity. Device visual output
   still needs separately consented testing.
 
-These features are planned, not delivered. Initial characters are static
-assembled models; rigging/skeletal animation, detailed UV/vertex editing,
+All 50 configured desktop CTests passed (GPU and audio enabled), including the
+new headless texture/material/path/UV/budget suite, exact asymmetric native
+quadrant pixels (4278/13020/4278/13020), texture allocation/free seam (22 balanced
+uploads/releases, second-upload rollback), and real native Models -> New model ->
+named parts -> PNG -> Save/reopen -> Create Object -> room Run workflow.
+Original 2D, untextured model, editor, presentation and services tests still pass.
+The new UV decoder initially had a last-vertex indexing overrun; it was corrected
+before the final suite. Explicit mirrored/nonmirrored final-triangle vertex/UV
+correspondence now covers textured/untextured multi-primitive/node-alias models.
+Seven focused fully ASan/UBSan-instrumented selectors passed, including original
+modeller/editor consumers, real editor child processes and the texture allocation
+failure path; six focused instrumented headless selectors also passed.
+Final Save model cancellation and post-export project-preview failure assertions
+passed both instrumented and ordinary native workflow runs: a written source is
+reported as 1 of 2 outputs, and staging errors retain the old engine/mesh without
+being replaced by a success message.
+Debug Android was rebuilt and exact sample/notices/ARM64/activity/signature
+verification passed. No device visual/performance/lifecycle guarantee follows.
+
+The source is nova-model v2 with unique named parts and contained PNG declarations;
+v1 reads preserve the old IDs/transforms/colours and derive `Part_<ID>` names.
+PNG copy, model source/GLB writes and game saves remain separate guarded writes,
+not a multi-file transaction. Failed/cancelled partial saves report persistent
+outcomes; undo/discard retains copied files. Screenshots are
+`build/textured-native.png`, `build/textured-model-workspace.png` and
+`build/textured-room-run.png`.
+
+Initial characters are static assembled models; rigging/skeletal animation,
+detailed UV/vertex editing,
 arbitrary mesh authoring and broader PBR materials remain separately scoped
-later work. No new asset/dependency downloads or personal signing are implied.
+later work. No new dependency/version or external artwork was added; only the
+existing hash-pinned build dependencies were fetched for this isolated worktree.
+Personal signing and device installation remain deferred.
 
 ## Verified completed foundation
 
@@ -347,19 +377,20 @@ sprite painter, arbitrary mesh editor, physics engine or animated GLB pipeline.
 The supported catalog and ownership/recovery boundaries are explicit in README.
 Textured primitive authoring is not included in this completed slice.
 
-### Next approved separate modelling milestone
+### Subsequent modelling milestone (now completed above)
 
-- [ ] Approachable static character/prop/environment modelling, basic PNG
+- [x] Approachable static character/prop/environment modelling, basic PNG
   textures and automatic primitive UV mapping, AFTER Objects and Rooms.
   Preserve the shared room/object model and existing original primitive source/
-  supported GLB importer. This is a separately scoped follow-up, not delivered
-  functionality and not authorization for placeholder texture controls here.
+  supported GLB importer. Delivered in the separate follow-up described above;
+  no placeholder texture controls or second renderer were added.
 
 ### Recommended fresh-session kickoff
 
 > Read AGENTS.md, TODO.md and README.md in the assigned NovaStudio worktree.
 > The native beginner object/room workflow for both dimensions, Advanced
-> project/source editor and bounded static primitive modeller are implemented.
+> project/source editor and bounded named/static primitive modeller with opaque
+> embedded PNG materials are implemented.
 > Preserve generated ownership/no-clobber/partial-save contracts, real
 > document/widgets, inspection v2 and shared
 > presentation/preflight seams, direct scenes, old examples and strict static/

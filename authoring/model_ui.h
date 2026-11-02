@@ -17,6 +17,11 @@ typedef struct {
     char disk_summary[256];
     bool review_disk;
     bool check_export;
+    bool beginner, save_model, saving_model, export_pending;
+    bool name_focus, texture_path_focus, texture_sheet, import_texture;
+    char part_name[32], texture_path[NOVA_NATIVE_PATH_CAPACITY], texture_location[NOVA_NATIVE_PATH_CAPACITY];
+    FilePathList texture_files;
+    int texture_scroll, property_scroll;
     NovaTextEditor disk_editor;
     size_t selected;
     int scroll;
@@ -38,5 +43,6 @@ void nova_model_ui_draw(NovaModelUI *ui, Rectangle preview);
 void nova_model_ui_request_close(NovaModelUI *ui);
 void nova_model_ui_close(NovaModelUI *ui);
 bool nova_model_ui_apply(NovaModelUI *ui, const NovaModelDocument *candidate);
+bool nova_model_ui_import_texture(NovaModelUI *ui, const char *path);
 
 #endif

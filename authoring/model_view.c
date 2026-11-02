@@ -80,7 +80,7 @@ bool nova_model_view_stage(NovaModelView *view, const NovaModelDocument *model, 
     }
     unsigned char *bytes = NULL;
     size_t length = 0;
-    if (!nova_model_glb(model, &bytes, &length, error, size)) return false;
+    if (!nova_model_glb_at(model, view->source_root, &bytes, &length, error, size)) return false;
     bool written = nova_document_replace(&view->output, 0, view->output.length, (char *)bytes, length, error, size) &&
         nova_document_save(&view->output, false, error, size);
     free(bytes);

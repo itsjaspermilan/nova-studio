@@ -41,7 +41,22 @@ int main(void)
     CHECK(p->writes == 2 && strstr(error,"PARTIAL SAVE"));
     fail_at = 0;
     CHECK(nova_game_save(p,false,error,sizeof(error)) && p->writes == 3);
-    char root[4096], path[4096];
+    original = p->data;
+    fail_at = 1; call = 0;
+    CHECK(!nova_game_new_model(p,"Model",error,sizeof(error)));
+    CHECK(!memcmp(&original,&p->data,sizeof(original)));
+    fail_at = 2; call = 0;
+    CHECK(!nova_game_new_model(p,"Model",error,sizeof(error)));
+    CHECK(strstr(error,"PARTIAL MODEL CREATION: 1 of 2") && !memcmp(&original,&p->data,sizeof(original)));
+    char partial[4096], root[4096], path[4096];
+    snprintf(partial,sizeof(partial),"resource_%u.glb.nova-model",p->data.next_id);
+    CHECK(nova_project_resolve(p->authored.root,partial,path,error,sizeof(error)));
+    CHECK(!unlink(path));
+    fail_at = 0;
+    CHECK(nova_game_new_model(p,"Model",error,sizeof(error)) && p->data.resources == 2);
+    const NovaGameResource *model = &p->data.resource[1];
+    CHECK(nova_project_resolve(p->authored.root,model->path,path,error,sizeof(error)) && !unlink(path));
+    CHECK(nova_project_resolve(p->authored.root,partial,path,error,sizeof(error)) && !unlink(path));
     strcpy(root,p->authored.root);
     const char *files[] = {NOVA_GAME_FILE,NOVA_GAME_MANIFEST,NOVA_GAME_LUA,"resource_1.png"};
     for (size_t i = 0; i < 4; ++i) {

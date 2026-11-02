@@ -32,6 +32,12 @@ before changing contracts; roadmap entries are not implemented features.
   buffers with native framebuffer pixels.
 - `runtime/assets.{c,h}` resolves project roots, validates/decodes PNG and embedded
   static GLB using raylib's pinned cgltf, and stages resource/Lua replacement.
+  Opaque unlit base-colour PNG GLBs use finite float TEXCOORD_0, explicit nearest/
+  clamp samplers, <=16 embedded PNGs (<=1 MiB/1024 per dimension each),
+  <=4,194,304 model pixels and the shared <=16,777,216 project sprite/model
+  pixel budget.
+  CPU images and GPU textures are resource-owned once; materials/node aliases
+  borrow cache entries. Keep CPU preflight context-free and partial upload cleanup.
   Declared path/type aliases share resources; failed staging unloads only candidates.
   Keep the documented import subset and reject unsupported features explicitly.
 - `runtime/inspect.h` defines read-only inspection v2 and shared headless project
@@ -62,6 +68,14 @@ before changing contracts; roadmap entries are not implemented features.
   labelled editing diagrams, not a replacement gameplay renderer. Advanced and
   visual drafts are retained independently; unknown data/edited generated
   outputs must not be silently migrated or overwritten.
+- `authoring/model.{c,h}` owns named stable-ID box/pyramid/cylinder parts and
+  strict nova-model v2 texture references (v1 still reads losslessly with derived
+  names). Export embeds opaque PNGs with automatic planar/cylindrical UVs into
+  supported unlit GLB. `model_ui`/`model_view` reuse native staging, guard unapplied
+  fields/source/GLB conflicts, and upload only on edits. Models + -> New model
+  creates guarded no-clobber source/GLB files, then uses that same modeller.
+  PNG copy, model source/GLB saves and game saves are separate persistent writes,
+  with honest partial outcomes. Discard/undo never deletes imported files.
 - `authoring/style.{c,h}` owns authoring-only system typography and light/dark
   palette. macOS uses Core Text at physical framebuffer density, with a bounded
   GPU text cache and system interface/monospace fonts; never bundle Apple fonts.
@@ -171,5 +185,7 @@ Timers/sprite frames/numeric tweens, PCM WAV and explicit project saves are boun
 native services, not automatic lifecycle persistence. Android package
 verification passes, but device behavior remains unvalidated.
 State these boundaries when reporting results; see TODO for actual prerequisites.
-The next approved modelling/texture milestone is separate: keep this workflow's
-primitive model authoring untextured and do not add placeholder texture controls.
+The bounded modelling/PNG milestone is implemented, not a full material/mesh editor.
+Keep rigging, skeletal animation, detailed mesh/UV editing, PBR and texture painting
+deferred. Texture tests must assert asymmetric orientation and mirrored/nonmirrored
+UV/vertex correspondence through the final triangle, and allocation/free balance.

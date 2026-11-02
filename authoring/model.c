@@ -23,12 +23,33 @@ void nova_model_init(NovaModelDocument *document)
     *document = (NovaModelDocument){.next_id = 1};
 }
 
+static bool part_name(const char *name)
+{
+    size_t n = strnlen(name, 32);
+    if (!n || n == 32) return false;
+    for (size_t i = 0; i < n; ++i)
+        if (!strchr("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", name[i])) return false;
+    return true;
+}
+
 bool nova_model_validate(const NovaModelDocument *d, char *error, size_t size)
 {
-    if (!d || !d->next_id || d->count > NOVA_MODEL_PRIMITIVES)
+    if (!d || !d->next_id || d->count > NOVA_MODEL_PRIMITIVES || d->texture_count > NOVA_MODEL_MATERIALS)
         return invalid(error, size, "model requires a next ID and at most 64 primitives");
+    for (size_t i = 0; i < d->texture_count; ++i) {
+        if (strnlen(d->textures[i], NOVA_MODEL_TEXTURE_PATH) == NOVA_MODEL_TEXTURE_PATH ||
+            !nova_project_relative_path(d->textures[i]) || strpbrk(d->textures[i], " \t\r\n") ||
+            !IsFileExtension(d->textures[i], ".png"))
+            return invalid(error, size, "textures require contained project-relative .png paths");
+        for (size_t j = 0; j < i; ++j) if (!strcmp(d->textures[i], d->textures[j]))
+            return invalid(error, size, "duplicate texture declaration");
+    }
     for (size_t i = 0; i < d->count; ++i) {
         const NovaModelPrimitive *p = &d->primitives[i];
+        if (!part_name(p->name) || p->texture > d->texture_count)
+            return invalid(error, size, "part requires a 1..31 ASCII letter/digit/underscore name and declared texture");
+        for (size_t j = 0; j < i; ++j) if (!strcmp(p->name, d->primitives[j].name))
+            return invalid(error, size, "part names must be unique");
         if (!p->id || p->id >= d->next_id || p->shape < NOVA_SHAPE_BOX ||
             p->shape > NOVA_SHAPE_CYLINDER || (p->shape == NOVA_SHAPE_CYLINDER ?
                 p->sides < 3 || p->sides > NOVA_MODEL_SIDES : p->sides != 0))
@@ -51,9 +72,13 @@ bool nova_model_add(NovaModelDocument *d, NovaModelShape shape, char *error, siz
     if (d->count == NOVA_MODEL_PRIMITIVES || d->next_id == UINT32_MAX ||
         shape < NOVA_SHAPE_BOX || shape > NOVA_SHAPE_CYLINDER)
         return invalid(error, size, "primitive count/ID exhausted or invalid shape");
+    char name[32]; snprintf(name,sizeof(name),"Part_%u",d->next_id);
+    for (size_t i = 0; i < d->count; ++i) if (!strcmp(name,d->primitives[i].name))
+        return invalid(error,size,"default part name already used; rename that part before adding another");
     d->primitives[d->count++] = (NovaModelPrimitive){.id = d->next_id++, .shape = shape,
         .sides = shape == NOVA_SHAPE_CYLINDER ? 8 : 0,
         .scale = {1, 1, 1}, .color = {80, 190, 230}};
+    strcpy(d->primitives[d->count-1].name,name);
     return true;
 }
 
@@ -80,14 +105,15 @@ bool nova_model_serialize(const NovaModelDocument *d, unsigned char **bytes, siz
     if (!nova_model_validate(d, error, size)) return false;
     Text text = {.data = malloc(NOVA_MODEL_DOCUMENT_BYTES), .capacity = NOVA_MODEL_DOCUMENT_BYTES};
     if (!text.data) return invalid(error, size, "cannot allocate model document");
-    append(&text, "nova-model 1\nnext %u\n", d->next_id);
+    append(&text, "nova-model 2\nnext %u\n", d->next_id);
+    for (size_t i = 0; i < d->texture_count; ++i) append(&text, "texture %zu %s\n", i+1, d->textures[i]);
     for (size_t i = 0; i < d->count; ++i) {
         const NovaModelPrimitive *p = &d->primitives[i];
         append(&text, "primitive %u %s %u", p->id, shape_name(p->shape), p->sides);
         for (int a = 0; a < 3; ++a) append(&text, " %.9g", (double)p->position[a]);
         for (int a = 0; a < 3; ++a) append(&text, " %.9g", (double)p->rotation[a]);
         for (int a = 0; a < 3; ++a) append(&text, " %.9g", (double)p->scale[a]);
-        append(&text, " %u %u %u\n", p->color[0], p->color[1], p->color[2]);
+        append(&text, " %u %u %u %s %u\n", p->color[0], p->color[1], p->color[2], p->name, p->texture);
     }
     if (text.failed) { free(text.data); return invalid(error, size, "model document byte limit exceeded"); }
     *bytes = (unsigned char *)text.data; *length = text.used;
@@ -130,7 +156,8 @@ bool nova_model_parse(const unsigned char *bytes, size_t length, NovaModelDocume
     if (!copy) return invalid(error, size, "cannot allocate document parser");
     memcpy(copy, bytes, length); copy[length] = 0;
     NovaModelDocument candidate = {0};
-    unsigned directive = 0, line = 0;
+    unsigned directive = 0, line = 0, version = 0;
+    bool parts = false;
     bool valid = true;
     char *cursor = copy;
     while (*cursor && valid) {
@@ -138,18 +165,29 @@ bool nova_model_parse(const unsigned char *bytes, size_t length, NovaModelDocume
         while (*cursor && *cursor != '\n') ++cursor;
         if (*cursor) *cursor++ = 0;
         ++line;
-        char *tokens[17], *save = NULL;
+        char *tokens[19], *save = NULL;
         size_t count = 0;
         for (char *t = strtok_r(start, " \t\r", &save); t; t = strtok_r(NULL, " \t\r", &save)) {
-            if (count == 17) { valid = false; break; }
+            if (count == 19) { valid = false; break; }
             tokens[count++] = t;
         }
         if (!count) continue;
-        if (directive == 0) valid = count == 2 && !strcmp(tokens[0], "nova-model") && !strcmp(tokens[1], "1");
+        if (directive == 0) {
+            valid = count == 2 && !strcmp(tokens[0], "nova-model") &&
+                (!strcmp(tokens[1], "1") || !strcmp(tokens[1], "2"));
+            if (valid) version = (unsigned)(tokens[1][0]-'0');
+        }
         else if (directive == 1) valid = count == 2 && !strcmp(tokens[0], "next") &&
             integer(tokens[1], &candidate.next_id);
-        else {
-            valid = count == 16 && !strcmp(tokens[0], "primitive") && candidate.count < NOVA_MODEL_PRIMITIVES;
+        else if (version == 2 && !strcmp(tokens[0], "texture")) {
+            uint32_t index;
+            valid = !parts && count == 3 && candidate.texture_count < NOVA_MODEL_MATERIALS &&
+                integer(tokens[1], &index) && index == candidate.texture_count+1 &&
+                strlen(tokens[2]) < NOVA_MODEL_TEXTURE_PATH;
+            if (valid) strcpy(candidate.textures[candidate.texture_count++], tokens[2]);
+        } else {
+            parts = true;
+            valid = count == (version == 1 ? 16u : 18u) && !strcmp(tokens[0], "primitive") && candidate.count < NOVA_MODEL_PRIMITIVES;
             if (valid) {
                 NovaModelPrimitive *p = &candidate.primitives[candidate.count++];
                 uint32_t sides, color;
@@ -166,13 +204,19 @@ bool nova_model_parse(const unsigned char *bytes, size_t length, NovaModelDocume
                     valid = integer(tokens[13 + a], &color) && color <= 255;
                     if (valid) p->color[a] = (unsigned char)color;
                 }
+                if (version == 1) snprintf(p->name, sizeof(p->name), "Part_%u", p->id);
+                else if (valid) {
+                    uint32_t texture;
+                    valid = strlen(tokens[16]) < sizeof(p->name) && integer(tokens[17], &texture);
+                    if (valid) { strcpy(p->name, tokens[16]); p->texture = texture; }
+                }
             }
         }
         ++directive;
     }
     free(copy);
     if (!valid || directive < 2) {
-        if (error && size) snprintf(error, size, "invalid nova-model 1 directive at line %u", line);
+        if (error && size) snprintf(error, size, "invalid nova-model 1/2 directive at line %u", line);
         return false;
     }
     if (!nova_model_validate(&candidate, error, size)) return false;
@@ -182,6 +226,7 @@ bool nova_model_parse(const unsigned char *bytes, size_t length, NovaModelDocume
 
 typedef struct {
     float vertices[12 * NOVA_MODEL_SIDES * 3];
+    float uv[12 * NOVA_MODEL_SIDES * 2];
     size_t count;
     float min[3], max[3];
 } Geometry;
@@ -207,6 +252,28 @@ static void vertex(Geometry *g, const NovaModelPrimitive *p, const float point[3
 
 static void triangle(Geometry *g, const NovaModelPrimitive *p, const float a[3], const float b[3], const float c[3])
 {
+    float u[3], v[3];
+    for (int i = 0; i < 3; ++i) { u[i] = b[i]-a[i]; v[i] = c[i]-a[i]; }
+    float n[3] = {u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0]};
+    const float *points[] = {a,b,c};
+    int axis = fabsf(n[0]) > fabsf(n[1]) ? 0 : 1;
+    if (fabsf(n[2]) > fabsf(n[axis])) axis = 2;
+    float angles[3] = {0};
+    bool cylinder_side = p->shape == NOVA_SHAPE_CYLINDER && axis != 1;
+    if (cylinder_side) {
+        for (int i = 0; i < 3; ++i) {
+            angles[i] = atan2f(points[i][2],points[i][0])/6.283185307179586f;
+            if (angles[i] < 0) angles[i] += 1;
+        }
+        float low = fminf(angles[0],fminf(angles[1],angles[2]));
+        float high = fmaxf(angles[0],fmaxf(angles[1],angles[2]));
+        if (high-low > .5f) for (int i = 0; i < 3; ++i) if (angles[i] < .5f) angles[i] = 1;
+    }
+    for (int i = 0; i < 3; ++i) {
+        size_t index = (g->count+(size_t)i)*2;
+        g->uv[index] = cylinder_side ? angles[i] : points[i][axis == 0 ? 2 : 0]+.5f;
+        g->uv[index+1] = axis == 1 ? points[i][2]+.5f : .5f-points[i][1];
+    }
     vertex(g, p, a); vertex(g, p, b); vertex(g, p, c);
 }
 
@@ -256,14 +323,21 @@ static double color_factor(unsigned char channel)
 bool nova_model_glb(const NovaModelDocument *d, unsigned char **bytes, size_t *length,
     char *error, size_t size)
 {
+    return nova_model_glb_at(d, NULL, bytes, length, error, size);
+}
+
+bool nova_model_glb_at(const NovaModelDocument *d, const char *root, unsigned char **bytes, size_t *length,
+    char *error, size_t size)
+{
     if (!nova_model_validate(d, error, size)) return false;
     if (!d->count) return invalid(error, size, "add a primitive before GLB export");
     Text json = {.data = malloc(131072), .capacity = 131072};
-    unsigned char *binary = malloc(294912);
+    unsigned char *binary = calloc(NOVA_MODEL_GLB_BYTES, 1);
     if (!json.data || !binary) {
         free(json.data); free(binary); return invalid(error, size, "cannot allocate GLB export");
     }
-    size_t offset[NOVA_MODEL_PRIMITIVES], counts[NOVA_MODEL_PRIMITIVES], used = 0;
+    size_t offset[NOVA_MODEL_PRIMITIVES], uv_offset[NOVA_MODEL_PRIMITIVES], counts[NOVA_MODEL_PRIMITIVES], used = 0;
+    size_t image_offset[NOVA_MODEL_MATERIALS], image_length[NOVA_MODEL_MATERIALS], pixels = 0;
     float bounds[NOVA_MODEL_PRIMITIVES][6];
     for (size_t i = 0; i < d->count; ++i) {
         Geometry g = geometry(&d->primitives[i]);
@@ -273,32 +347,70 @@ bool nova_model_glb(const NovaModelDocument *d, unsigned char **bytes, size_t *l
             uint32_t bits; memcpy(&bits, &g.vertices[j], sizeof(bits));
             put32(binary + used, bits); used += 4;
         }
+        uv_offset[i] = used;
+        for (size_t j = 0; j < g.count * 2; ++j) {
+            uint32_t bits; memcpy(&bits, &g.uv[j], sizeof(bits));
+            put32(binary + used, bits); used += 4;
+        }
+    }
+    for (size_t i = 0; i < d->texture_count; ++i) {
+        char path[NOVA_NATIVE_PATH_CAPACITY];
+        int n = 0;
+        Image image = {0};
+        unsigned char *png = NULL;
+        bool ok = root && nova_project_resolve(root,d->textures[i],path,error,size);
+        if (!root) invalid(error,size,"textured export requires the actual project root");
+        if (ok) png = nova_read_file(path,NOVA_MODEL_TEXTURE_BYTES,&n,error,size);
+        if (ok) ok = png && nova_decode_model_png(png,n,&image,error,size);
+        if (ok) pixels += (size_t)image.width*(size_t)image.height;
+        if (image.data) UnloadImage(image);
+        if (ok && (pixels > NOVA_MODEL_TEXTURE_PIXELS || used+(size_t)n+4 > NOVA_MODEL_GLB_BYTES))
+            ok = invalid(error,size,"model exceeds texture pixel/GLB byte budget");
+        if (!ok) { UnloadFileData(png); free(binary); free(json.data); return false; }
+        image_offset[i] = used; image_length[i] = (size_t)n;
+        memcpy(binary+used,png,(size_t)n); used = (used+(size_t)n+3)&~(size_t)3;
+        UnloadFileData(png);
     }
     append(&json, "{\"asset\":{\"version\":\"2.0\",\"generator\":\"Nova original static modeller\"},"
         "\"extensionsUsed\":[\"KHR_materials_unlit\"],\"extensionsRequired\":[\"KHR_materials_unlit\"],"
         "\"buffers\":[{\"byteLength\":%zu}],\"bufferViews\":[", used);
     for (size_t i = 0; i < d->count; ++i)
-        append(&json, "%s{\"buffer\":0,\"byteOffset\":%zu,\"byteLength\":%zu}", i ? "," : "", offset[i], counts[i]*12);
+        append(&json, "%s{\"buffer\":0,\"byteOffset\":%zu,\"byteLength\":%zu},"
+            "{\"buffer\":0,\"byteOffset\":%zu,\"byteLength\":%zu}",
+            i ? "," : "", offset[i], counts[i]*12, uv_offset[i], counts[i]*8);
+    for (size_t i = 0; i < d->texture_count; ++i)
+        append(&json,",{\"buffer\":0,\"byteOffset\":%zu,\"byteLength\":%zu}",image_offset[i],image_length[i]);
     append(&json, "],\"accessors\":[");
     for (size_t i = 0; i < d->count; ++i)
         append(&json, "%s{\"bufferView\":%zu,\"componentType\":5126,\"count\":%zu,\"type\":\"VEC3\","
-            "\"min\":[%.9g,%.9g,%.9g],\"max\":[%.9g,%.9g,%.9g]}", i ? "," : "", i, counts[i],
+            "\"min\":[%.9g,%.9g,%.9g],\"max\":[%.9g,%.9g,%.9g]},"
+            "{\"bufferView\":%zu,\"componentType\":5126,\"count\":%zu,\"type\":\"VEC2\"}", i ? "," : "", i*2, counts[i],
             (double)bounds[i][0], (double)bounds[i][1], (double)bounds[i][2],
-            (double)bounds[i][3], (double)bounds[i][4], (double)bounds[i][5]);
+            (double)bounds[i][3], (double)bounds[i][4], (double)bounds[i][5], i*2+1, counts[i]);
+    if (d->texture_count) {
+        append(&json,"],\"samplers\":[{\"magFilter\":9728,\"minFilter\":9728,\"wrapS\":33071,\"wrapT\":33071}],\"images\":[");
+        for (size_t i = 0; i < d->texture_count; ++i)
+            append(&json,"%s{\"bufferView\":%zu,\"mimeType\":\"image/png\"}",i ? "," : "",d->count*2+i);
+        append(&json,"],\"textures\":[");
+        for (size_t i = 0; i < d->texture_count; ++i)
+            append(&json,"%s{\"sampler\":0,\"source\":%zu}",i ? "," : "",i);
+    }
     append(&json, "],\"materials\":[");
     for (size_t i = 0; i < d->count; ++i) {
         const unsigned char *c = d->primitives[i].color;
         append(&json, "%s{\"extensions\":{\"KHR_materials_unlit\":{}},\"pbrMetallicRoughness\":"
-            "{\"baseColorFactor\":[%.9g,%.9g,%.9g,1]}}", i ? "," : "",
+            "{\"baseColorFactor\":[%.9g,%.9g,%.9g,1]", i ? "," : "",
             color_factor(c[0]), color_factor(c[1]), color_factor(c[2]));
+        if (d->primitives[i].texture) append(&json,",\"baseColorTexture\":{\"index\":%u}",d->primitives[i].texture-1);
+        append(&json,"}}");
     }
     append(&json, "],\"meshes\":[");
     for (size_t i = 0; i < d->count; ++i)
-        append(&json, "%s{\"primitives\":[{\"attributes\":{\"POSITION\":%zu},\"material\":%zu,\"mode\":4}]}",
-            i ? "," : "", i, i);
+        append(&json, "%s{\"primitives\":[{\"attributes\":{\"POSITION\":%zu,\"TEXCOORD_0\":%zu},\"material\":%zu,\"mode\":4}]}",
+            i ? "," : "", i*2, i*2+1, i);
     append(&json, "],\"nodes\":[");
     for (size_t i = 0; i < d->count; ++i)
-        append(&json, "%s{\"mesh\":%zu,\"name\":\"primitive-%u\"}", i ? "," : "", i, d->primitives[i].id);
+        append(&json, "%s{\"mesh\":%zu,\"name\":\"%s\"}", i ? "," : "", i, d->primitives[i].name);
     append(&json, "],\"scenes\":[{\"nodes\":[");
     for (size_t i = 0; i < d->count; ++i) append(&json, "%s%zu", i ? "," : "", i);
     append(&json, "]}],\"scene\":0}");
@@ -315,10 +427,7 @@ bool nova_model_glb(const NovaModelDocument *d, unsigned char **bytes, size_t *l
     memcpy(result + 28 + padded, binary, used); free(json.data); free(binary);
     Model model = {0};
     if (!nova_decode_glb(result, (int)total, &model, error, size)) { free(result); return false; }
-    for (int i = 0; i < model.meshCount; ++i) {
-        MemFree(model.meshes[i].vertices); MemFree(model.meshes[i].colors);
-    }
-    MemFree(model.meshes); MemFree(model.materials); MemFree(model.meshMaterial);
+    nova_unload_cpu_model(&model);
     *bytes = result; *length = total;
     return true;
 }

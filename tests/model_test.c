@@ -15,10 +15,7 @@ static char error[1024];
 
 static void free_cpu(Model model)
 {
-    for (int i = 0; i < model.meshCount; ++i) {
-        MemFree(model.meshes[i].vertices); MemFree(model.meshes[i].colors);
-    }
-    MemFree(model.meshes); MemFree(model.materials); MemFree(model.meshMaterial);
+    nova_unload_cpu_model(&model);
 }
 
 static void reject(const char *text)
@@ -49,7 +46,7 @@ static void documents(void)
     CHECK(nova_model_parse(bytes, length, &parsed, error, sizeof(error)));
     CHECK(!memcmp(&d, &parsed, sizeof(d)));
     free(bytes);
-    reject("nova-model 2\nnext 1\n");
+    reject("nova-model 3\nnext 1\n");
     reject("nova-model 1\n");
     reject("nova-model 1\nnext 0\n");
     reject("nova-model 1\nnext 4294967296\n");

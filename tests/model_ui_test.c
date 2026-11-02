@@ -16,6 +16,7 @@ static Vector2 mouse = {-100,-100};
 static bool pressed, command;
 static int key;
 static const char *characters = "";
+static float wheel;
 static const Rectangle preview = {830,106,436,245};
 
 Vector2 nova_model_test_mouse(void) { return mouse; }
@@ -24,7 +25,7 @@ bool nova_model_test_key(int value) { return value == key; }
 bool nova_model_test_repeat(int value) { (void)value; return false; }
 bool nova_model_test_down(int value) { return command && value == KEY_LEFT_CONTROL; }
 int nova_model_test_char(void) { return *characters ? *characters++ : 0; }
-float nova_model_test_wheel(void) { return 0; }
+float nova_model_test_wheel(void) { return wheel; }
 
 static void step(const char *capture)
 {
@@ -47,7 +48,7 @@ static void step(const char *capture)
     if (ui->active) nova_model_ui_draw(ui,preview);
     if (capture) CHECK(nova_capture_native(capture,GetRenderWidth(),GetRenderHeight()));
     EndDrawing();
-    pressed=false; key=0; command=false; characters="";
+    pressed=false; key=0; command=false; characters=""; wheel=0;
 }
 
 static void click(float x,float y)
@@ -57,6 +58,16 @@ static void click(float x,float y)
 
 static void type_field(float x,float y,const char *text)
 {
+    if (y < 500) {
+        float target = y+65;
+        if (target-ui->property_scroll > 505 || target-ui->property_scroll < 165) {
+            mouse=(Vector2){300,300};
+            wheel=(float)ui->property_scroll/35.0f;
+            if (target>505) wheel-=3;
+            step(NULL);
+        }
+        y=target-ui->property_scroll;
+    }
     click(x,y);
     command=true; key=KEY_A; step(NULL);
     characters=text; step(NULL);
@@ -178,16 +189,16 @@ int main(int argc,char **argv)
     CHECK(ui->model.primitives[2].sides==12);
     type_field(260,342,"0000000000000000000000000000000000000000000");
     CHECK(strstr(ui->message,"Field byte budget exceeded") && ui->values_dirty);
-    click(615,492);
+    click(615,542);
     CHECK(!ui->values_dirty);
     type_field(260,342,"-1");
     key=KEY_ENTER; step(NULL);
     CHECK(ui->values_dirty && ui->model.primitives[2].scale[0]==1);
     click(90,188);
     CHECK(ui->selected==2 && ui->values_dirty);
-    click(615,492);
+    click(615,542);
     CHECK(!ui->values_dirty);
-    click(90,222); click(440,449);
+    click(90,222); click(440,542);
     CHECK(ui->model.count==2 && ui->model.next_id==4 && ui->model.primitives[1].id==3);
     click(405,116);
     CHECK(ui->model.primitives[2].id==4 && ui->model.next_id==5);
@@ -263,7 +274,7 @@ int main(int argc,char **argv)
     CHECK(ui->decision==NOVA_MODEL_DECISION_EXIT && ui->active);
     click(290,528);
     CHECK(ui->active && ui->values_dirty);
-    click(610,450);
+    click(610,542);
     CHECK(!ui->values_dirty);
     type_field(280,620,"other.nova-model");
     click(290,663);

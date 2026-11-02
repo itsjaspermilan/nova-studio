@@ -10,12 +10,23 @@
 #define NOVA_MODEL_VERTEX_LIMIT 262144
 #define NOVA_SPRITE_PIXEL_LIMIT (16 * 1024 * 1024)
 #define NOVA_AUDIO_SECONDS_LIMIT 120
+#define NOVA_MODEL_TEXTURES 16
+#define NOVA_MODEL_TEXTURE_BYTES (1024 * 1024)
+#define NOVA_MODEL_TEXTURE_PIXELS (4 * 1024 * 1024)
+
+typedef struct {
+    size_t count, pixels;
+    Image images[NOVA_MODEL_TEXTURES];
+    Texture2D textures[NOVA_MODEL_TEXTURES];
+    int material_image[128];
+} NovaModelImages;
 
 typedef struct {
     NovaAssetType type;
     bool owned;
     Texture2D texture;
     Model model;
+    NovaModelImages images;
     Sound sound;
 } NovaResource;
 typedef struct {
@@ -49,6 +60,14 @@ unsigned char *nova_read_file(const char *path, int limit, int *length,
 bool nova_decode_sprite(const unsigned char *bytes, int length, Image *image,
     char *error, size_t error_size);
 bool nova_decode_glb(const unsigned char *bytes, int length, Model *model,
+    char *error, size_t error_size);
+/* CPU-only decode. Images are unique embedded PNGs; materials borrow their indices.
+ * The geometry-only compatibility entry above validates then discards images. */
+bool nova_decode_glb_images(const unsigned char *bytes, int length, Model *model,
+    NovaModelImages *images, char *error, size_t error_size);
+void nova_unload_cpu_model(Model *model);
+void nova_unload_model_images(NovaModelImages *images);
+bool nova_decode_model_png(const unsigned char *bytes, int length, Image *image,
     char *error, size_t error_size);
 bool nova_decode_wav(const unsigned char *bytes, int length, Wave *wave,
     char *error, size_t error_size);

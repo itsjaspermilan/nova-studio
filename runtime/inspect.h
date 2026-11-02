@@ -14,6 +14,7 @@ typedef struct {
     size_t input_bytes;
     int width, height;
     size_t primitives, vertices;
+    size_t textures, texture_pixels;
     unsigned sample_rate, channels, sample_frames;
     NovaVec3 bounds_min, bounds_max;
 } NovaAssetInspection;

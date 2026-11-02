@@ -483,6 +483,44 @@ bool nova_game_import(NovaGameProject *p, const char *path, const char *name,
     return ok;
 }
 
+bool nova_game_new_model(NovaGameProject *p, const char *name, char *error, size_t size)
+{
+    if (!p->authored.text || !nova_game_name(name) || p->data.resources == NOVA_MAX_ASSETS)
+        return fail(error,size,"New model requires an open game, unique name and available resource slot");
+    NovaGame candidate = p->data;
+    NovaGameResource *r = &candidate.resource[candidate.resources++];
+    *r = (NovaGameResource){.id = candidate.next_id++, .type = NOVA_ASSET_MODEL};
+    strcpy(r->name,name); snprintf(r->path,sizeof(r->path),"resource_%u.glb",r->id);
+    if (!nova_game_validate(&candidate,error,size)) return false;
+    NovaModelDocument model; nova_model_init(&model);
+    unsigned char *source = NULL, *glb = NULL;
+    size_t source_length = 0, glb_length = 0, writes = 0;
+    char source_path[NOVA_PROJECT_PATH_CAPACITY];
+    snprintf(source_path,sizeof(source_path),"%s.nova-model",r->path);
+    NovaDocument a = {0}, b = {0};
+    bool ok = nova_model_add(&model,NOVA_SHAPE_BOX,error,size);
+    memset(model.primitives[0].color,255,3);
+    if (ok) ok = nova_model_serialize(&model,&source,&source_length,error,size) &&
+        nova_model_glb(&model,&glb,&glb_length,error,size) &&
+        new_output(&a,p->authored.root,source_path,NOVA_MODEL_DOCUMENT_BYTES,false,error,size) &&
+        new_output(&b,p->authored.root,r->path,NOVA_MODEL_GLB_BYTES,true,error,size) &&
+        nova_document_replace(&a,0,0,(char *)source,source_length,error,size) &&
+        nova_document_replace(&b,0,0,(char *)glb,glb_length,error,size);
+    if (ok && !p->history) {
+        p->history = calloc(NOVA_GAME_UNDO,sizeof(NovaGame));
+        if (!p->history) ok = fail(error,size,"Cannot retain model creation undo");
+    }
+    if (ok) { ok = nova_document_save(&a,false,error,size); if (ok) ++writes; }
+    if (ok) { ok = nova_document_save(&b,false,error,size); if (ok) ++writes; }
+    if (ok) ok = nova_game_commit(p,&candidate,error,size);
+    if (!ok && writes) {
+        char reason[768]; snprintf(reason,sizeof(reason),"%.767s",error);
+        snprintf(error,size,"PARTIAL MODEL CREATION: %zu of 2 files written (%s). Game draft retained; files kept. %s",writes,source_path,reason);
+    } else if (ok) snprintf(error,size,"Editable model source and GLB created (2 guarded files). Game resource draft unsaved.");
+    nova_document_close(&a); nova_document_close(&b); free(source); free(glb);
+    return ok;
+}
+
 bool nova_game_save(NovaGameProject *p, bool overwrite, char *error, size_t size)
 {
     p->writes = 0;

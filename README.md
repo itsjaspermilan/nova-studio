@@ -67,14 +67,31 @@ The left **Resources** panel groups **Sprites**, **Models**, **Objects** and
 **Rooms**. Each group's **+** opens its own local creation/import form; group
 headings collapse and the panel scrolls. A separate **Room instances** outline
 lists only instances in the current room and scrolls independently.
-The Sprites/Models **+** opens a PNG/static-GLB browser with its own **Name** and
-type controls. Navigate with **Up / Browse**, choose a file, then
+The Sprites **+** opens a PNG browser with its own **Name** and type controls.
+**Models + -> New model** creates independently editable source and a supported
+GLB in fresh stable-ID destinations, then opens the original native modeller.
+**Import existing GLB instead...** opens the static-GLB browser.
+Navigate with **Up / Browse**, choose a file, then
 explicitly **Import appearance**. Selection/navigation never saves. Import validates
 through the shared decoder and guardedly copies into a fresh stable-ID filename;
 existing destinations are refused. It writes that asset copy, not the game
 document. Undo/deletion retain imported files rather than silently deleting
-potentially useful data. PNG painting, animated GLB and textured primitive
-authoring are not implemented.
+potentially useful data. PNG painting and animated GLB are not implemented.
+
+In the modeller, assemble named box/pyramid/cylinder parts, **Apply** position,
+rotation, scale and RGB fields, then scroll the part properties to **Import PNG
+material...**. The local browser copies an opaque PNG into a fresh contained
+project file and assigns it to the selected part, initially with white RGB tint.
+The material button cycles plain colour and the model's imported PNGs, so parts
+can share one texture. The real model preview shows the assignment; RGB multiplies
+the texture. **Save model** (also Cmd/Ctrl-S here) prechecks source/GLB snapshots,
+saves source, then asks before replacing the GLB. These are separate guarded
+writes, not one transaction; cancellation/failure after source save reports
+**1 of 2 files written**. PNG import itself already wrote a separate file.
+**Return to project -> Create object using this... -> Place -> Run** needs no
+GLB-path or manifest editing. Save the game separately to persist its resource/
+object/room references. Build play areas by placing environment-piece objects
+in rooms rather than forcing the whole level into a single model.
 
 Select the appearance in the left resource tree and choose **Create object using
 this...**. The local **Create Object** form suggests a unique name and lets you
@@ -190,9 +207,9 @@ appearance/object bridge and behavior toggle, room placement, drag-level undo,
 typed edits, save/reopen, designated-start Run/Stop/Restart and exact native
 framebuffer colors. Failed preflight/staging retains real prior engines/GPU
 resources. Both generated projects also reopen in the real editor executable
-and run/capture through the ordinary runtime executable. All 45 configured
-desktop CTests passed; the new headless authoring/save-failure tests also passed
-AddressSanitizer/UndefinedBehaviorSanitizer. The ordinary debug Android launcher was rebuilt and its complete
+and run/capture through the ordinary runtime executable. All 50 configured
+desktop CTests passed; focused headless and native model/editor/workflow consumers
+also passed AddressSanitizer/UndefinedBehaviorSanitizer. The ordinary debug Android launcher was rebuilt and its complete
 sample/notices/native/signature inventory verified; no device was installed
 or validated and personal release signing remains deferred.
 
@@ -351,19 +368,20 @@ modeller integrated with its real project/source/asset shell:
 In the project inspector, select a model declaration and click **Modeller**.
 If the current inspected declaration is not a model, the first saved model
 declaration is selected; the exact destination is displayed before any write.
-The modeller uses the **saved** manifest, never a draft asset path. Projects
+In Advanced, the modeller uses the **saved** manifest, never a draft asset path. Projects
 without a declared model fail explicitly; add/save a declaration in the editor
 first. Existing GLB is not changed on entry.
 
-Create **box**, **pyramid** or **cylinder**, select a stable-ID list item, and
-edit XYZ position/rotation/scale, opaque RGB or cylinder sides. **Apply values**
+Create **box**, **pyramid** or **cylinder**, select a named stable-ID list item, and
+edit its unique ASCII name, XYZ position/rotation/scale, opaque RGB or cylinder sides. **Apply values**
 validates and commits typed fields to the source draft; **Reset values** discards
 only those un-applied fields. Selection, save, export and deletion cannot
 silently lose typed values. **Delete selected** preserves every remaining ID
 and the next unused ID. **Original RGB demo** is available only in an empty
 document and creates original separated primitives, not copied artwork.
 Front/perspective/side and bounded button/wheel zoom change only the preview
-camera, not authored transforms.
+camera, not authored transforms. Properties scroll independently; Apply/Delete/
+Reset remain fixed. Scroll down to material assignment and the local PNG browser.
 
 Editable source defaults to `<declared-model-path>.nova-model`. A contained
 project-relative `.nova-model` path can be entered with **Open / new source**
@@ -377,14 +395,19 @@ conflicts offer the shell's full scrollable read-only text viewer. A second
 external edit invalidates prior consent. Symlink/hard-link/root escapes and
 failed source parses never replace the current draft/live view.
 
-Successful export means generated bytes passed `nova_decode_glb`, the guarded
+Successful Advanced export means generated bytes passed `nova_decode_glb`, the guarded
 write succeeded, and the actual saved project passed `nova_validate_project`.
 The UI shows native exported counts/bounds. If GLB was written but another
 project file fails preflight, that partial outcome is stated explicitly, not
 reported as a verified project export. Return to the editor and **Reload saved**
 to restart gameplay with exported assets; source save, asset export and gameplay
 reload remain separate. Returning/closing with unsaved source or un-applied
-fields requires explicit discard or cancel.
+fields or an unexported model revision requires explicit discard or cancel.
+Objects/Rooms uses the same modeller with a fixed source destination and
+**Save model** bridge; its export validates the actual self-contained GLB even
+before the new resource has been saved in the game manifest. Run separately
+preflights the entire generated game. Edited generated game outputs still block
+visual Save/Run; importing or editing a model does not authorize their overwrite.
 
 Native previews stage private project fixtures only on model edits, through
 `nova_open_scene`, real decoded/uploaded/cached `NovaResources`, and the shared
@@ -394,21 +417,30 @@ only the draw instance to remain within the native camera clip range; displayed
 inspection bounds and exported geometry remain authored coordinates. View/camera
 changes do not upload meshes. Private preview fixtures are removed on exit.
 There is no second renderer, WebView, arbitrary-mesh reconstruction, vertex/face
-modelling, textured material editor, skeletal authoring or animated GLB support.
+modelling, full material/PBR editor, skeletal authoring or animated GLB support.
 
 `authoring/model.{c,h}` implements original bounded box, pyramid and cylinder
 geometry without another importer or rendering engine. The editable source is
-strict non-executable ASCII `nova-model 1`, separate from the exported GLB:
+strict non-executable ASCII `nova-model 2`, separate from the exported GLB:
 
 ```text
-nova-model 1
+nova-model 2
 next 2
-primitive 1 cylinder 8 0 0 0 0 0 0 1 1 1 80 190 230
+texture 1 resource_5.glb.texture_1.png
+primitive 1 cylinder 8 0 0 0 0 0 0 1 1 1 255 255 255 Body 1
 ```
 
 `next` is the monotonically increasing next unused numeric ID. Each primitive
 line contains ID, shape, sides, position XYZ, Euler rotation XYZ in degrees,
-scale XYZ and integer RGB. Box/pyramid sides must be zero; cylinder sides are
+scale XYZ, integer RGB, unique 1..31 letter/digit/underscore part name and texture
+index (0 for plain colour). Texture declarations precede parts and have consecutive
+1-based indices and unique contained project-relative `.png` paths without spaces.
+Paths are relative to the project root, not the source's directory.
+Up to 16 PNG declarations are retained, including currently unassigned imports.
+Version 1 remains readable without losing transforms, colours, sides or IDs;
+its implicit part names become `Part_<ID>`, with no textures. Explicit source
+saving writes v2; opening never rewrites the old source. Unknown versions fail.
+Box/pyramid sides must be zero; cylinder sides are
 3..32. Scale defines the full unit-shape extent (cylinder diameter/height).
 Shapes are centered at the origin, Y-up; rotations apply right-handed X, Y,
 then Z after scaling and before translation. Up to 64 primitives, positive
@@ -420,9 +452,14 @@ indices. Empty documents are editable but cannot export an empty GLB.
 
 Memory parse/serialization/export APIs replace their outputs only on success.
 GLB exports bake authored transforms into float32 triangle positions, preserving
-outward winding and per-primitive `KHR_materials_unlit` opaque colors in one
-embedded BIN and one scene. Maximum generated geometry is 24576 expanded
-vertices (8192 triangles), with a 512 KiB GLB ceiling. Every returned export
+outward winding and per-primitive `KHR_materials_unlit` opaque colours in one
+embedded BIN and one scene. UVs are generated before transforms: dominant-axis
+planar mapping for box faces/pyramid sides and caps, cylindrical wrapping for
+cylinder sides with a seam at positive X, and planar cylinder caps. V increases
+down the PNG for vertical faces. No manual UV editor is needed. The GLB embeds
+all declared PNG bytes, so runtime/export does not need external image paths.
+Maximum generated geometry is 24576 expanded vertices (8192 triangles), with a
+16 MiB GLB ceiling and the stricter texture budgets below. Every returned export
 passes the exact native `nova_decode_glb` importer first; headless tests also
 run `nova_validate_project` and verify real counts/bounds. Arbitrary imported
 GLB meshes are never presented as recoverable primitive-source documents.
@@ -438,6 +475,17 @@ real `nova_editor --modeller` shell. Generated evidence is
 `build/model-roundtrip.png`, `build/modeller-ui.png` and
 `build/modeller-shell.png`; these are desktop functional checks, not Android
 device validation or performance measurements.
+`nova_textured_model` also checks v1/v2 named sources, texture paths/materials/
+images/UV rejection, exact pixel/dimension/byte budgets and headless preflight.
+`nova_gpu_textured_model` checks asymmetric quadrant orientation/widths, shared
+material/node/resource aliases and retained live textures on failed reload.
+`nova_gpu_texture_lifetime` redirects only texture allocation/free calls in a
+separate test build, verifies balanced unique uploads/releases and failure on
+the second texture upload. `nova_gpu_textured_workflow` uses actual native hit,
+typing, browser and scroll controls for New model, named parts, PNG assignment,
+Save/reopen/export, Create Object, placement and Run, then reopens both editor
+and standalone runtime. Evidence includes `build/textured-native.png`,
+`build/textured-model-workspace.png` and `build/textured-room-run.png`.
 
 | Path | Purpose |
 | --- | --- |
@@ -626,22 +674,35 @@ cache, filesystem watcher, incremental reload or GPU-context reconstruction.
   grayscale, 16-bit and other image formats are rejected. Alpha is preserved.
 - **GLB:** glTF 2.0, exactly one embedded BIN buffer and one scene, with all nodes
   belonging to that scene. Static triangle primitives use float32 `POSITION` and
-  optional float32 `NORMAL`; normals have no lighting effect in this unlit slice.
+  optional float32 `NORMAL`, and optional float32 `TEXCOORD_0` (VEC2, same count
+  as positions, finite 0..1). UVs are required when a material has a PNG.
+  Normals have no lighting effect in this unlit slice.
   Non-indexed and unsigned 8/16/32-bit indices work, including indices above 65535:
   triangles are expanded rather than truncated. Parent/local translation, normalized
   quaternion rotation, scale and affine matrices are baked into vertices; mirrored
   transforms correct winding. Repeated mesh nodes become separate mesh instances.
   Materialless geometry is opaque white; declared materials must use
   `KHR_materials_unlit` with an opaque base-color factor. Raylib's default shader
-  renders those colors without PBR lighting.
-- **Explicitly rejected:** all buffer/image URIs (external and data), textures,
-  UVs, vertex colors/tangents, animation, skins, morph targets, compression,
+  renders those colours without PBR lighting. Opaque base-colour PNG textures
+  may use embedded buffer-view images with MIME `image/png`, texture coordinate
+  set 0, and explicit nearest min/mag + clamp-to-edge S/T sampler (9728/33071).
+  RGB tint multiplies the sampled PNG. Each PNG must be 8-bit RGB/RGBA,
+  noninterlaced, 1..1024 per dimension, <=1 MiB, and every decoded alpha must be
+  255. No mipmaps are needed, including NPOT textures on Android GLES2.
+  CPU decode owns each image once; native staging uploads it once and materials
+  borrow the cached texture. Scene aliases share the entire resource. Partial
+  upload/reload failures release only candidate images/textures/meshes; successful
+  replacement releases the old cache once. Headless preflight never uploads.
+- **Explicitly rejected:** all buffer/image URIs (external and data), other
+  texture formats, UV sets/transforms, vertex colors/tangents, animation, skins, morph targets, compression,
   multiple scenes, imported cameras/lights, double-sided/transparent/emissive
   materials, lit/PBR materials and extensions other than `KHR_materials_unlit`.
   Unsupported or malformed data never reports successful fallback geometry.
 
 Bounds: 16 MiB per asset/entry file, 64 MiB total unique asset input, 16 million
-total sprite pixels, 256 GLB nodes, 128 node-instanced primitives per model,
+total sprite plus model-texture pixels (16,777,216), 16 images/textures/samplers
+and 4,194,304 decoded texture pixels per GLB, 128 materials, 256 GLB nodes,
+128 node-instanced primitives per model,
 65535 expanded vertices per primitive, and 262144 expanded vertices across the
 project's unique models. Accessors are nonsparse, component-aligned with strides
 up to 252 bytes. Local matrices and transformed positions must be finite and
@@ -851,7 +912,8 @@ Before first successful open, or after resource unloading,
 host pair; resources must be non-NULL. This is not a cross-thread snapshot API.
 
 Each `NovaAssetInspection` includes the input file byte count, sprite dimensions,
-audio sample rate/channel/sample-frame count, or model node-instanced primitive count, expanded vertex count and AABB after
+audio sample rate/channel/sample-frame count, or model embedded-image count/
+decoded texture-pixel count, node-instanced primitive count, expanded vertex count and AABB after
 baked GLB hierarchy transforms, before Lua positioning/scaling. Type-inapplicable
 fields are zero. `resource_index` points to the first declaration sharing the
 same path/type; `NovaCommand.asset` indexes declarations, not that unique resource.
@@ -1108,7 +1170,7 @@ execution, lifecycle/context-loss or Retroid performance validation**.
 
 ## Deliberately outside this slice
 
-No arbitrary-mesh reconstruction, vertex/face editing, extrusion, skeletal animation, full textured/PBR model pipeline, lighting/shadows, physics world, full IDE/debugger, release-signing GUI or user-script module loader is delivered. The bounded native project/source inspector and original static primitive modeller, shared runtime timers/tweens/sprite frames, PCM audio, explicit project saves and local CLI export/signing are implemented. Live previews share those normal gameplay services; automated authoring evidence uses isolated v1 fixtures. The original 3D example uses generated meshes; imported projects use the strict static GLB/PNG subset. No Glow compatibility is implied.
+No arbitrary-mesh reconstruction, vertex/face editing, extrusion, skeletal animation, PBR/full material system, texture painter, lighting/shadows, physics world, full IDE/debugger, release-signing GUI or user-script module loader is delivered. The bounded native project/source inspector and original named primitive modeller with opaque PNG materials, shared runtime timers/tweens/sprite frames, PCM audio, explicit project saves and local CLI export/signing are implemented. Live previews share those normal gameplay services; automated authoring evidence uses isolated fixtures. The original 3D example uses generated meshes; imported projects use the strict static GLB/PNG subset. No Glow compatibility is implied.
 
 **Remaining gates:** personal signing-key creation/unlock and installation on the user's intended Retroids require the user's local participation and consent. Validate imported assets, controllers, lifecycle and render resolutions on those devices before claiming hardware-proven behavior. Public publishing is not authorized. Skeletal/animated GLB and broader authoring require separate future contracts; desktop authoring and package checks are not Android device evidence.
 
