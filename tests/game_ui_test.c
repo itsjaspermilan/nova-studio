@@ -113,8 +113,13 @@ static size_t pixels(NovaGameUI *ui, Color color)
     Color *colors = LoadImageColors(image);
     CHECK(colors);
     size_t count = 0;
-    for (int i = 0; i < image.width*image.height; ++i)
-        if (colors[i].r == color.r && colors[i].g == color.g && colors[i].b == color.b) ++count;
+    Rectangle region=ui->preview_bounds;
+    for (int y=0;y<image.height;++y) for (int x=0;x<image.width;++x) {
+        int i=y*image.width+x;
+        if (x>=region.x*image.width/GetScreenWidth() && x<(region.x+region.width)*image.width/GetScreenWidth() &&
+            y>=region.y*image.height/GetScreenHeight() && y<(region.y+region.height)*image.height/GetScreenHeight() &&
+            colors[i].r == color.r && colors[i].g == color.g && colors[i].b == color.b) ++count;
+    }
     UnloadImageColors(colors); UnloadImage(image);
     return count;
 }
@@ -189,6 +194,9 @@ static void textured_workflow(NovaGameUI *ui, const char *parent, const char *ed
     SetWindowSize(1280,800);
     strcpy(ui->location,parent); strcpy(ui->name,"TexturedGame"); ui->new_mode = NOVA_3D;
     CHECK(nova_game_ui_action(ui,NOVA_GAME_NEW)); draw(ui);
+    mouse=(Vector2){800,28}; draw(ui); WaitTime(.6); draw(ui);
+    CHECK(strstr(nova_ui_tooltip_text(),"No earlier change to undo"));
+    evidence(ui,"textured-room-disabled-undo-tooltip");
     Image checker = GenImageColor(32,32,WHITE);
     for (int y = 0; y < 32; ++y) for (int x = 0; x < 32; ++x)
         ImageDrawPixel(&checker,x,y,y < 16 ? x < 8 ? RED : GREEN : x < 8 ? BLUE : YELLOW);
@@ -201,44 +209,108 @@ static void textured_workflow(NovaGameUI *ui, const char *parent, const char *ed
     type_field(ui,350,233,"HeroModel");
     click(ui,890,662); draw(ui);
     CHECK(ui->modeller.active && ui->modeller.beginner && ui->modeller.model.count == 1);
+    SetWindowSize(1200,780); draw(ui);
+    CHECK(ui->preview_bounds.width>=636 && ui->preview_bounds.height>=536 &&
+        ui->preview_bounds.x+ui->preview_bounds.width<GetScreenWidth()-312);
     uint32_t appearance = ui->selected;
-    char source_path[NOVA_PROJECT_PATH_CAPACITY], texture_path[NOVA_PROJECT_PATH_CAPACITY];
+    char source_path[NOVA_PROJECT_PATH_CAPACITY], texture_paths[6][NOVA_PROJECT_PATH_CAPACITY];
     snprintf(source_path,sizeof(source_path),"%s.nova-model",ui->modeller.target.relative);
-    type_field(ui,300,212,"Body"); key = KEY_ENTER; draw(ui); draw(ui);
+    type_field(ui,1040,153,"Body"); key = KEY_ENTER; draw(ui); draw(ui);
     CHECK(!strcmp(ui->modeller.model.primitives[0].name,"Body") && !ui->modeller.values_dirty);
-    click(ui,405,116); draw(ui);
-    type_field(ui,300,212,"Head"); key = KEY_ENTER; draw(ui); draw(ui);
-    type_field(ui,370,277,"1.25"); key = KEY_ENTER; draw(ui); draw(ui);
+    click(ui,100,167); draw(ui);
+    type_field(ui,1040,153,"Head"); key = KEY_ENTER; draw(ui); draw(ui);
+    type_field(ui,1052,226,"1.25"); key = KEY_ENTER; draw(ui); draw(ui);
     CHECK(ui->modeller.model.count == 2 && ui->modeller.model.primitives[1].position[1] == 1.25f);
-    click(ui,80,188);
-    mouse = (Vector2){300,350}; wheel = -10; draw(ui);
+    click(ui,80,285);
+    mouse = (Vector2){1050,350}; wheel = -10; draw(ui);
     CHECK(ui->modeller.property_scroll > 0);
-    click(ui,330,583-ui->modeller.property_scroll);
+    click(ui,1050,623-ui->modeller.property_scroll);
     CHECK(ui->modeller.texture_sheet);
     /* Local PNG browser: selecting does not copy; explicit import assigns. */
-    click(ui,380,267);
+    click(ui,380,257);
     CHECK(*ui->modeller.texture_path && !ui->modeller.model.texture_count);
-    click(ui,850,643); draw(ui);
+    click(ui,850,633); draw(ui);
     CHECK(!ui->modeller.texture_sheet && ui->modeller.model.texture_count == 1 &&
         ui->modeller.model.primitives[0].texture == 1 && !ui->modeller.stale);
-    strcpy(texture_path,ui->modeller.model.textures[0]);
+    strcpy(texture_paths[0],ui->modeller.model.textures[0]);
+    CHECK(strstr(texture_paths[0],"OriginalChecker.png"));
     unsigned texture = ui->modeller.view.resources.resources[0].images.textures[0].id;
     size_t revision = ui->modeller.view.revisions;
     CHECK(texture);
-    click(ui,880,534); click(ui,880,574); draw(ui);
+    click(ui,275,121); click(ui,575,121); draw(ui);
     CHECK(ui->modeller.view.frame.camera_position.x == 0 &&
         ui->modeller.view.frame.camera_position.z < 10);
     CHECK(ui->modeller.view.resources.resources[0].images.textures[0].id == texture &&
         ui->modeller.view.revisions == revision);
-    evidence(ui,"textured-model-workspace");
+    evidence(ui,"textured-model-workspace-minimum");
     CHECK(pixels(ui,RED) > 100 && pixels(ui,GREEN) > 100 && pixels(ui,BLUE) > 100 && pixels(ui,YELLOW) > 100);
-    click(ui,350,621); draw(ui);
+    click(ui,1050,579-ui->modeller.property_scroll); draw(ui);
+    CHECK(ui->modeller.materials);
+    evidence(ui,"textured-material-choices");
+    Image thumbnail=LoadImage(ui->capture);
+    CHECK(IsImageValid(thumbnail));
+    const Color expected_thumbnail[]={RED,GREEN,BLUE,YELLOW};
+    for (int q=0;q<4;++q) {
+        int x=(q%2 ? 352 : 332)*thumbnail.width/GetScreenWidth();
+        int y=(q/2 ? 325 : 301)*thumbnail.height/GetScreenHeight();
+        Color c=GetImageColor(thumbnail,x,y);
+        CHECK(!memcmp(&c,&expected_thumbnail[q],sizeof(c)));
+    }
+    UnloadImage(thumbnail);
+    click(ui,600,247); draw(ui);
+    CHECK(!ui->modeller.materials && !ui->modeller.model.primitives[0].texture);
+    click(ui,1050,579-ui->modeller.property_scroll); draw(ui);
+    click(ui,600,315); draw(ui);
+    CHECK(!ui->modeller.materials && ui->modeller.model.primitives[0].texture==1);
+    CHECK(ui->modeller.view.resources.resources[0].images.textures[0].id &&
+        ui->modeller.view.revisions==revision+2);
+    /* Populate more than one chooser viewport; navigation and assignment below
+     * still use the real controls, not synthetic GPU thumbnails. */
+    NovaDocument original_png={0};
+    CHECK(nova_document_open_output(&original_png,ui->project.authored.root,"OriginalChecker.png",
+        NOVA_ASSET_FILE_LIMIT,true,ui->message,sizeof(ui->message)));
+    for (int i=1;i<6;++i) {
+        char name[32], path[4096];
+        snprintf(name,sizeof(name),"Accent%d.png",i+1);
+        write_file(ui,name,original_png.text,original_png.length,true);
+        CHECK(nova_project_resolve(ui->project.authored.root,name,path,ui->message,sizeof(ui->message)));
+        CHECK(nova_model_ui_import_texture(&ui->modeller,path));
+        strcpy(texture_paths[i],ui->modeller.model.textures[i]);
+        CHECK(!unlink(path));
+    }
+    nova_document_close(&original_png);
+    draw(ui);
+    CHECK(ui->modeller.model.texture_count==6 && ui->modeller.view.resources.resources[0].images.count==6);
+    click(ui,1050,579-ui->modeller.property_scroll); draw(ui);
+    CHECK(ui->modeller.materials);
+    mouse=(Vector2){600,400}; wheel=-10; draw(ui);
+    CHECK(ui->modeller.material_scroll==2);
+    evidence(ui,"textured-material-choices-scrolled");
+    click(ui,600,519); draw(ui);
+    CHECK(!ui->modeller.materials && ui->modeller.model.primitives[0].texture==6 &&
+        strstr(ui->modeller.model.textures[5],"Accent6.png"));
+    click(ui,80,28); draw(ui);
+    CHECK(ui->modeller.decision==NOVA_MODEL_DECISION_EXIT);
+    click(ui,260,517); draw(ui);
+    CHECK(ui->modeller.active && ui->modeller.export_pending && ui->modeller.model.texture_count==6);
+    SetWindowSize(1440,900); draw(ui);
+    CHECK(ui->preview_bounds.width>=876 && ui->preview_bounds.height>=656);
+    evidence(ui,"textured-model-workspace-large");
+    SetWindowSize(1200,780); draw(ui);
+    texture=ui->modeller.view.resources.resources[0].images.textures[0].id;
+    revision=ui->modeller.view.revisions;
+    mouse=(Vector2){1135,28}; draw(ui); WaitTime(.6); draw(ui);
+    CHECK(strstr(nova_ui_tooltip_text(),"Ctrl/Cmd-S") &&
+        ui->modeller.view.resources.resources[0].images.textures[0].id==texture &&
+        ui->modeller.view.revisions==revision);
+    evidence(ui,"textured-save-tooltip");
+    click(ui,1135,28); draw(ui);
     CHECK(ui->modeller.decision == NOVA_MODEL_DECISION_EXPORT);
-    click(ui,300,528); draw(ui);
+    click(ui,260,517); draw(ui);
     CHECK(ui->modeller.decision == NOVA_MODEL_DECISION_NONE &&
         ui->modeller.export_pending && !nova_document_dirty(&ui->modeller.source) &&
         strstr(ui->modeller.message,"source written (1 of 2)"));
-    click(ui,350,621); draw(ui);
+    click(ui,1135,28); draw(ui);
     CHECK(ui->modeller.decision == NOVA_MODEL_DECISION_EXPORT);
     NovaDocument original_asset = {0};
     CHECK(nova_document_open_output(&original_asset,ui->project.authored.root,ui->project.data.resource[0].path,
@@ -246,19 +318,34 @@ static void textured_workflow(NovaGameUI *ui, const char *parent, const char *ed
     NovaEngine *previous_preview = ui->preview_engine;
     unsigned previous_mesh = ui->preview_resources.resources[0].model.meshes[0].vaoId;
     write_file(ui,original_asset.relative,"bad",3,true);
-    click(ui,530,528); draw(ui);
+    click(ui,500,517); draw(ui);
     CHECK(!ui->modeller.export_pending && !nova_document_dirty(&ui->modeller.source));
     CHECK(ui->stale && ui->ready && ui->preview_engine == previous_preview &&
         ui->preview_resources.resources[0].model.meshes[0].vaoId == previous_mesh &&
-        strstr(ui->message,"Preview staging failed") && !strstr(ui->message,"Preview restaged"));
+        strstr(ui->message,"Preview staging failed") && !strstr(ui->message,"Preview restaged") &&
+        strstr(ui->modeller.message,"project preview could not refresh"));
+    click(ui,1135,752); draw(ui);
+    CHECK(ui->modeller.details);
+    evidence(ui,"textured-model-details");
+    click(ui,100,709); draw(ui);
+    CHECK(!ui->modeller.details);
     write_file(ui,original_asset.relative,original_asset.text,original_asset.length,true);
     nova_document_close(&original_asset);
     CHECK(nova_game_ui_stage(ui) && !ui->stale);
-    click(ui,80,81); draw(ui);
+    click(ui,80,28); draw(ui);
     CHECK(!ui->modeller.active && ui->selected == appearance);
+    SetWindowSize(1280,800); draw(ui);
     click(ui,1130,355); draw(ui);
-    CHECK(ui->modeller.active && ui->modeller.model.texture_count == 1 &&
+    CHECK(ui->modeller.active && ui->modeller.model.texture_count == 6 &&
+        ui->modeller.model.primitives[0].texture==6 &&
         !strcmp(ui->modeller.model.primitives[0].name,"Body") && ui->modeller.ready);
+    click(ui,1090,28); draw(ui);
+    CHECK(ui->modeller.advanced);
+    evidence(ui,"textured-model-advanced");
+    click(ui,600,307); draw(ui);
+    CHECK(ui->modeller.model.texture_count==6 && !ui->modeller.export_pending);
+    click(ui,910,643); draw(ui);
+    CHECK(!ui->modeller.advanced);
     /* Failed PNG re-import retains exact authored draft and GPU cache. */
     NovaModelDocument retained = ui->modeller.model;
     texture = ui->modeller.view.resources.resources[0].images.textures[0].id;
@@ -269,12 +356,12 @@ static void textured_workflow(NovaGameUI *ui, const char *parent, const char *ed
     CHECK(!memcmp(&retained,&ui->modeller.model,sizeof(retained)) &&
         ui->modeller.view.resources.resources[0].images.textures[0].id == texture);
     char collision[NOVA_PROJECT_PATH_CAPACITY], original[4096];
-    snprintf(collision,sizeof(collision),"%s.texture_2.png",ui->modeller.target.relative);
+    snprintf(collision,sizeof(collision),"%s.texture_7.OriginalChecker.png",ui->modeller.target.relative);
     write_file(ui,collision,"retain this existing file",25,true);
     CHECK(nova_project_resolve(ui->project.authored.root,"OriginalChecker.png",original,ui->message,sizeof(ui->message)));
     CHECK(!nova_model_ui_import_texture(&ui->modeller,original) &&
         !memcmp(&retained,&ui->modeller.model,sizeof(retained)));
-    click(ui,80,81); draw(ui);
+    click(ui,80,28); draw(ui);
     click(ui,1130,271);
     CHECK(ui->sheet == NOVA_GAME_SHEET_OBJECT && ui->object_appearance == appearance);
     type_field(ui,350,233,"TexturedHero"); click(ui,890,662);
@@ -294,9 +381,13 @@ static void textured_workflow(NovaGameUI *ui, const char *parent, const char *ed
     CHECK(nova_project_resolve(ui->project.authored.root,NOVA_GAME_FILE,source,ui->message,sizeof(ui->message)));
     strcpy(ui->path,source); CHECK(nova_game_ui_action(ui,NOVA_GAME_OPEN));
     CHECK(ui->project.data.resources == 2 && ui->project.data.instances == 2);
-    const char *extras[] = {source_path,texture_path,"OriginalChecker.png","BadTexture.png",collision};
-    for (size_t i = 0; i < 5; ++i) {
+    const char *extras[] = {source_path,"OriginalChecker.png","BadTexture.png",collision};
+    for (size_t i = 0; i < 4; ++i) {
         CHECK(nova_project_resolve(ui->project.authored.root,extras[i],source,ui->message,sizeof(ui->message)));
+        CHECK(!unlink(source));
+    }
+    for (int i=0;i<6;++i) {
+        CHECK(nova_project_resolve(ui->project.authored.root,texture_paths[i],source,ui->message,sizeof(ui->message)));
         CHECK(!unlink(source));
     }
     remove_game(ui);
@@ -306,7 +397,7 @@ int main(int argc, char **argv)
 {
     if (argc != 3 && argc != 4) { fprintf(stderr,"Requires editor and runtime paths\n"); return 2; }
     SetTraceLogLevel(LOG_WARNING);
-    SetConfigFlags(FLAG_WINDOW_HIDDEN);
+    SetConfigFlags(FLAG_WINDOW_HIDDEN | FLAG_WINDOW_HIGHDPI);
     InitWindow(1200,780,"Private Nova workflow test");
     char error[1024] = {0};
     if (!IsWindowReady() || !nova_ui_style_open(error,sizeof(error))) {

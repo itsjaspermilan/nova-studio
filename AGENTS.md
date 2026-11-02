@@ -76,6 +76,15 @@ before changing contracts; roadmap entries are not implemented features.
   creates guarded no-clobber source/GLB files, then uses that same modeller.
   PNG copy, model source/GLB saves and game saves are separate persistent writes,
   with honest partial outcomes. Discard/undo never deletes imported files.
+  Keep Parts / large central viewport / contextual Inspector and one primary
+  Save. Source-only save/reopen/export paths and technical diagnostics belong
+  under Advanced/Details. Named texture choices use actual cached thumbnails,
+  explicit assignment and Colour only, never blind cycling/per-frame uploads.
+  Apply/Reset stay fixed while Inspector properties scroll; deletion confirms
+  that part undo is unavailable. Shared original vector action icons retain
+  labels and delayed shortcut/disabled-reason tooltips. Numeric transform
+  controls do not imply viewport gizmos. Native hit/typing/hover/scroll and
+  minimum/large high-DPI captures are regression evidence, not novice studies.
 - `authoring/style.{c,h}` owns authoring-only system typography and light/dark
   palette. macOS uses Core Text at physical framebuffer density, with a bounded
   GPU text cache and system interface/monospace fonts; never bundle Apple fonts.

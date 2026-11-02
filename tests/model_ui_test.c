@@ -17,7 +17,7 @@ static bool pressed, command;
 static int key;
 static const char *characters = "";
 static float wheel;
-static const Rectangle preview = {830,106,436,245};
+static Rectangle preview;
 
 Vector2 nova_model_test_mouse(void) { return mouse; }
 bool nova_model_test_click(int button) { return button == MOUSE_BUTTON_LEFT && pressed; }
@@ -30,6 +30,7 @@ float nova_model_test_wheel(void) { return wheel; }
 static void step(const char *capture)
 {
     nova_model_ui_update(ui);
+    preview=nova_model_ui_preview(GetScreenWidth(),GetScreenHeight());
     NovaPresentationLayout layout;
     if (ui->ready) {
         int fw=GetRenderWidth(), fh=GetRenderHeight(), ww=GetScreenWidth(), wh=GetScreenHeight();
@@ -39,6 +40,7 @@ static void step(const char *capture)
         nova_presentation_world(&ui->view.presentation,&ui->view.frame,&ui->view.resources);
     }
     BeginDrawing();
+    nova_ui_begin_frame();
     ClearBackground((Color){19,27,39,255});
     if (ui->ready) {
         NovaCanvasState canvas=nova_begin_canvas(GetRenderWidth(),GetRenderHeight());
@@ -46,6 +48,7 @@ static void step(const char *capture)
         nova_end_canvas(canvas);
     }
     if (ui->active) nova_model_ui_draw(ui,preview);
+    nova_ui_end_frame();
     if (capture) CHECK(nova_capture_native(capture,GetRenderWidth(),GetRenderHeight()));
     EndDrawing();
     pressed=false; key=0; command=false; characters=""; wheel=0;
@@ -58,19 +61,40 @@ static void click(float x,float y)
 
 static void type_field(float x,float y,const char *text)
 {
-    if (y < 500) {
-        float target = y+65;
-        if (target-ui->property_scroll > 505 || target-ui->property_scroll < 165) {
-            mouse=(Vector2){300,300};
-            wheel=(float)ui->property_scroll/35.0f;
-            if (target>505) wheel-=3;
-            step(NULL);
-        }
-        y=target-ui->property_scroll;
-    }
     click(x,y);
     command=true; key=KEY_A; step(NULL);
     characters=text; step(NULL);
+}
+
+static void property(int row,int axis,const char *text)
+{
+    mouse=(Vector2){GetScreenWidth()-120,300};
+    wheel=(float)ui->property_scroll/35.0f; step(NULL);
+    type_field(GetScreenWidth()-244+axis*96,226+row*74,text);
+}
+
+static void advanced(void)
+{
+    if (!ui->advanced) click(GetScreenWidth()-185,28);
+    CHECK(ui->advanced);
+}
+
+static void back(void)
+{
+    click(GetScreenWidth()/2+270,GetScreenHeight()/2+243);
+    CHECK(!ui->advanced);
+}
+
+static void save_source(void)
+{
+    advanced();
+    click(GetScreenWidth()/2-260,GetScreenHeight()/2-93);
+}
+
+static void export_glb(void)
+{
+    advanced();
+    click(GetScreenWidth()/2-240,GetScreenHeight()/2+29);
 }
 
 static void apply(void)
@@ -95,11 +119,11 @@ static void capture_colors(void)
         Color c=GetImageColor(image,x,y);
         unsigned char rgb[3]={c.r,c.g,c.b};
         for (int a=0;a<3;++a)
-            if (rgb[a]==255 && !rgb[(a+1)%3] && !rgb[(a+2)%3]) {
-                CHECK(x >= preview.x*image.width/GetScreenWidth() &&
-                    x < (preview.x+preview.width)*image.width/GetScreenWidth());
-                CHECK(y >= preview.y*image.height/GetScreenHeight() &&
-                    y < (preview.y+preview.height)*image.height/GetScreenHeight());
+            if (rgb[a]==255 && !rgb[(a+1)%3] && !rgb[(a+2)%3] &&
+                x >= preview.x*image.width/GetScreenWidth() &&
+                x < (preview.x+preview.width)*image.width/GetScreenWidth() &&
+                y >= preview.y*image.height/GetScreenHeight() &&
+                y < (preview.y+preview.height)*image.height/GetScreenHeight()) {
                 ++colors[a];
             }
     }
@@ -173,37 +197,41 @@ int main(int argc,char **argv)
     CHECK(nova_model_ui_open(ui,manifest,directory,"model.glb",ui->message,sizeof(ui->message)));
     step(NULL);
     CHECK(ui->active && ui->ready && ui->model.count==0 && nova_document_dirty(&ui->source));
-    click(280,116); click(405,116); click(525,116);
+    click(100,127); click(100,167); click(100,207);
     CHECK(ui->model.count==3 && ui->model.next_id==4);
-    click(90,188);
-    type_field(260,212,"-2"); type_field(260,407,"255");
-    type_field(370,407,"0"); type_field(485,407,"0"); apply();
+    click(90,285);
+    property(0,0,"-2"); property(3,0,"255");
+    property(3,1,"0"); property(3,2,"0"); apply();
     CHECK(ui->model.primitives[0].position[0]==-2 && ui->model.primitives[0].color[0]==255);
-    click(90,222);
-    type_field(370,277,"30"); type_field(260,407,"0");
-    type_field(370,407,"255"); type_field(485,407,"0"); apply();
-    click(90,256);
-    type_field(260,212,"2"); type_field(370,342,"1.5");
-    type_field(260,407,"0"); type_field(370,407,"0"); type_field(485,407,"255"); apply();
-    type_field(455,450,"12"); apply();
+    click(90,319);
+    property(1,1,"30"); property(3,0,"0");
+    property(3,1,"255"); property(3,2,"0"); apply();
+    click(90,353);
+    property(0,0,"2"); property(2,1,"1.5");
+    property(3,0,"0"); property(3,1,"0"); property(3,2,"255"); apply();
+    type_field(1225,497,"12"); apply();
     CHECK(ui->model.primitives[2].sides==12);
-    type_field(260,342,"0000000000000000000000000000000000000000000");
+    property(2,0,"0000000000000000000000000000000000000000000");
     CHECK(strstr(ui->message,"Field byte budget exceeded") && ui->values_dirty);
-    click(615,542);
+    click(1200,729);
     CHECK(!ui->values_dirty);
-    type_field(260,342,"-1");
+    property(2,0,"-1");
     key=KEY_ENTER; step(NULL);
     CHECK(ui->values_dirty && ui->model.primitives[2].scale[0]==1);
-    click(90,188);
+    click(90,285);
     CHECK(ui->selected==2 && ui->values_dirty);
-    click(615,542);
+    click(1200,729);
     CHECK(!ui->values_dirty);
-    click(90,222); click(440,542);
+    click(90,319); click(100,729);
+    CHECK(ui->decision==NOVA_MODEL_DECISION_DELETE);
+    click(480,470);
+    CHECK(ui->model.count==3 && ui->decision==NOVA_MODEL_DECISION_NONE);
+    click(100,729); click(760,470);
     CHECK(ui->model.count==2 && ui->model.next_id==4 && ui->model.primitives[1].id==3);
-    click(405,116);
+    click(100,167);
     CHECK(ui->model.primitives[2].id==4 && ui->model.next_id==5);
-    type_field(370,277,"30"); type_field(260,407,"0");
-    type_field(370,407,"255"); type_field(485,407,"0"); apply();
+    property(1,1,"30"); property(3,0,"0");
+    property(3,1,"255"); property(3,2,"0"); apply();
     size_t revisions=ui->view.revisions;
     unsigned vao=ui->view.resources.resources[0].model.meshes[0].vaoId;
     for (int i=0;i<8;++i) step(NULL);
@@ -212,13 +240,13 @@ int main(int argc,char **argv)
     invalid.primitives[0].position[0]=INFINITY;
     CHECK(!nova_model_ui_apply(ui,&invalid));
     CHECK(ui->view.revisions==revisions && ui->view.resources.resources[0].model.meshes[0].vaoId==vao);
-    click(885,574); click(885,574);
+    click(575,121); click(575,121);
     CHECK(ui->view.revisions==revisions && ui->view.resources.resources[0].model.meshes[0].vaoId==vao);
     capture_colors();
-    click(460,663);
+    save_source();
     CHECK(!nova_document_dirty(&ui->source) && FileExists(source));
     write_file(source,"nova-model 1\nnext 1\n",20);
-    click(460,663);
+    save_source();
     CHECK(ui->decision==NOVA_MODEL_DECISION_SAVE_CONFLICT && ui->source.has_conflict);
     click(725,528);
     CHECK(ui->review_disk);
@@ -229,14 +257,14 @@ int main(int argc,char **argv)
     CHECK(ui->decision==NOVA_MODEL_DECISION_SAVE_CONFLICT);
     click(520,528);
     CHECK(ui->decision==NOVA_MODEL_DECISION_NONE && !nova_document_dirty(&ui->source));
-    click(910,81);
+    export_glb();
     CHECK(ui->decision==NOVA_MODEL_DECISION_EXPORT && !ui->inspected_export);
     click(290,528);
     CHECK(ui->decision==NOVA_MODEL_DECISION_NONE && !ui->inspected_export);
-    click(910,81); click(520,528);
+    export_glb(); click(520,528);
     CHECK(ui->inspected_export && ui->exported_asset.primitives==3 && ui->exported_asset.vertices==198);
     write_file(glb,"external user GLB",17);
-    click(910,81);
+    export_glb();
     CHECK(ui->decision==NOVA_MODEL_DECISION_EXPORT_CONFLICT && !ui->inspected_export);
     CHECK(ui->target.conflict.length==17 && !memcmp(ui->target.conflict.text,"external user GLB",17));
     click(290,528);
@@ -245,7 +273,7 @@ int main(int argc,char **argv)
     unsigned char *disk=nova_read_file(glb,65536,&disk_length,ui->message,sizeof(ui->message));
     CHECK(disk && disk_length==17 && !memcmp(disk,"external user GLB",17));
     free(disk);
-    click(910,81);
+    export_glb();
     CHECK(ui->decision==NOVA_MODEL_DECISION_EXPORT_CONFLICT);
     write_file(glb,"second external",16);
     click(520,528);
@@ -257,7 +285,7 @@ int main(int argc,char **argv)
     CHECK(validation.assets[0].vertices==198);
     char fixture_directory[NOVA_NATIVE_PATH_CAPACITY];
     strcpy(fixture_directory,ui->view.directory);
-    click(80,81);
+    back(); click(80,28);
     CHECK(!ui->active && !DirectoryExists(fixture_directory));
     CHECK(nova_model_ui_open(ui,manifest,directory,"model.glb",ui->message,sizeof(ui->message)));
     step(NULL);
@@ -266,22 +294,31 @@ int main(int argc,char **argv)
     char blocked[256];
     snprintf(blocked,sizeof(blocked),"%s/blocked.nova-model",directory);
     CHECK(!symlink(source,blocked));
-    type_field(280,620,"blocked.nova-model"); click(290,663);
+    advanced();
+    type_field(500,257,"blocked.nova-model"); click(600,307);
     CHECK(ui->model.count==3 && !strcmp(ui->source.relative,"model.glb.nova-model") && ui->view.revisions==revisions);
+    click(1210,775);
+    CHECK(ui->details && ui->advanced);
+    step(NOVA_TEST_DIRECTORY "/modeller-advanced-error.png");
+    click(100,729);
+    CHECK(!ui->details && ui->advanced);
     CHECK(!unlink(blocked));
-    type_field(260,212,"123");
-    click(80,81);
+    back(); property(0,0,"123");
+    mouse=(Vector2){GetScreenWidth()-65,28}; step(NULL); WaitTime(.6); step(NULL);
+    CHECK(strstr(nova_ui_tooltip_text(),"Apply or Reset"));
+    step(NOVA_TEST_DIRECTORY "/modeller-disabled-save-tooltip.png");
+    click(80,28);
     CHECK(ui->decision==NOVA_MODEL_DECISION_EXIT && ui->active);
     click(290,528);
     CHECK(ui->active && ui->values_dirty);
-    click(610,542);
+    click(1200,729);
     CHECK(!ui->values_dirty);
-    type_field(280,620,"other.nova-model");
-    click(290,663);
+    advanced(); type_field(500,257,"other.nova-model");
+    click(600,307);
     CHECK(ui->model.count==0 && !strcmp(ui->source.relative,"other.nova-model"));
-    click(95,665);
+    click(370,593);
     CHECK(ui->model.count==3);
-    click(80,81);
+    back(); click(80,28);
     CHECK(ui->decision==NOVA_MODEL_DECISION_EXIT);
     click(520,528);
     CHECK(!ui->active);

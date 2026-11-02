@@ -148,6 +148,44 @@ later work. No new dependency/version or external artwork was added; only the
 existing hash-pinned build dependencies were fetched for this isolated worktree.
 Personal signing and device installation remain deferred.
 
+### Modelling usability correction
+
+The follow-up addresses the concrete modeller control/layout issues, not new
+mesh scope. Parts, a large central native viewport and a contextual Inspector
+now follow the room workspace's hierarchy. One primary Save keeps the guarded
+source/game-model operation; source-only save/reopen, separate export, paths
+and geometry diagnostics live under Advanced. Details retains full diagnostics.
+Named texture choices show actual cached thumbnails and Colour only rather than
+cycling blindly. Names survive reopen through contained imported filenames;
+legacy texture paths remain supported. Delete confirms the lack of part undo.
+Original shared vector icons label actual model/room actions, with delayed
+tooltips for shortcuts and disabled reasons; numeric transforms are not gizmos.
+
+Verification exercises real add/name/transform/Apply/Reset, texture import and
+thumbnail pixels, explicit assignment and chooser scrolling, Save/partial cancel,
+Return guards, Advanced repair, Details and the object/room Run bridge. Minimum
+1200x780 and large 1440x900 high-DPI captures are inspected. These are control and
+layout regression checks, not a novice study or proof of effortless usability.
+Rigging, new mesh tools, dependencies and personal/device operations remain out
+of scope.
+
+Final correction evidence: all 50 configured native CTests passed (90.24 s).
+Before ordinary graphics, seven ASan/UBSan model/texture-ownership/workflow and
+original modeller/editor selectors passed (137.37 s, leak detection disabled;
+this is not leak-sanitizer evidence). The expanded instrumented workflow
+initially exceeded its old 60-second timeout, without a crash or sanitizer
+finding; its bounded timeout is now 180 seconds. Final runs had no crashes.
+Debug Android build and exact package verification passed; the APK hash above
+is unchanged because this correction is desktop authoring-only.
+Logs: `build/ux-asan-tests.log`, `build/ux-native-tests.log`,
+`build/ux-android-build.log`, `build/ux-apk-verification.log`.
+Screenshots actually reviewed include:
+`build/textured-model-workspace-minimum.png` (1200x780 points / 2400x1560 pixels),
+`build/textured-model-workspace-large.png` (1440x900 / 2880x1800),
+`build/textured-material-choices.png`, `build/textured-material-choices-scrolled.png`,
+`build/textured-model-advanced.png`, `build/textured-model-details.png` and
+the enabled/disabled model Save and room Undo tooltip captures.
+
 ## Verified completed foundation
 
 - [x] Independent source tree: no dependency on GameStudio or Glow43.

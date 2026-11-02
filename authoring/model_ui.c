@@ -72,8 +72,8 @@ static bool source_open(NovaModelUI *ui, const char *root)
     }
     ui->selected = 0; ui->scroll = 0; ui->refresh = true;
     fields(ui);
-    message(ui, candidate.saved.info.st_ino ? "Reopened authored source; native preview stages next frame" :
-        "New unsaved source. Imported meshes are not reconstructed; add original primitives and Save source.");
+    message(ui, candidate.saved.info.st_ino ? "Model opened. Select a part to edit, or add another part." :
+        "New model. Add a part, edit its shape and texture, then Save.");
     return true;
 }
 
@@ -81,6 +81,7 @@ void nova_model_ui_close(NovaModelUI *ui)
 {
     if (ui->texture_files.paths) UnloadDirectoryFiles(ui->texture_files);
     nova_ui_text_reset(&ui->disk_editor);
+    nova_ui_text_reset(&ui->details_editor);
     nova_document_close(&ui->source);
     nova_document_close(&ui->target);
     nova_model_view_close(&ui->view);
@@ -131,7 +132,7 @@ bool nova_model_ui_apply(NovaModelUI *ui, const NovaModelDocument *candidate)
     ui->export_pending = true;
     ui->refresh = true;
     fields(ui);
-    message(ui, "Authored draft changed; native resources stage once next frame. Save and Export are explicit.");
+    message(ui, "Model changed. Save when ready, then return to your project to create an object.");
     return true;
 }
 
@@ -166,7 +167,17 @@ bool nova_model_ui_import_texture(NovaModelUI *ui, const char *path)
     }
     NovaModelDocument candidate = ui->model;
     size_t index = candidate.texture_count;
-    int n = snprintf(candidate.textures[index],NOVA_MODEL_TEXTURE_PATH,"%s.texture_%zu.png",ui->target.relative,index+1);
+    char name[32] = {0};
+    const char *filename=GetFileName(path);
+    size_t used=0;
+    for (size_t i=0; filename[i] && used<sizeof(name)-1; ++i) {
+        unsigned char c=(unsigned char)filename[i];
+        if (c=='.') break;
+        name[used++]=(c>='a' && c<='z') || (c>='A' && c<='Z') ||
+            (c>='0' && c<='9') || c=='_' ? (char)c : '_';
+    }
+    if (!used) strcpy(name,"Texture");
+    int n = snprintf(candidate.textures[index],NOVA_MODEL_TEXTURE_PATH,"%s.texture_%zu.%s.png",ui->target.relative,index+1,name);
     if (ok && (n < 0 || n >= NOVA_MODEL_TEXTURE_PATH)) {
         message(ui,"Texture destination path is too long"); ok = false;
     }
@@ -192,7 +203,7 @@ bool nova_model_ui_import_texture(NovaModelUI *ui, const char *path)
         free(ui->source.text); ui->source.text = draft.text; ui->source.length = draft.length;
         draft.text = NULL;
         ui->model = candidate; ui->refresh = ui->export_pending = true; fields(ui);
-        message(ui,"Opaque PNG copied (1 persistent file). Assigned to selected part with white tint; source/GLB drafts need Save model. Undo/delete never removes copied files.");
+        message(ui,"Texture imported and assigned. Save to finish. Discarding does not delete the copied image.");
     }
     nova_document_close(&draft); nova_document_close(&output);
     free(source); UnloadFileData(bytes);
@@ -221,7 +232,7 @@ static bool export_model(NovaModelUI *ui)
     ui->saving_model = false;
     if (ui->beginner) {
         ui->exported = true;
-        message(ui, "Model GLB written and import-validated. Return to project -> Create object using this. Save the game separately.");
+        message(ui, "Model saved. Return to project to create an object. Save project changes separately.");
         return true;
     }
     NovaProjectValidation *validation = calloc(1, sizeof(*validation));
@@ -301,7 +312,10 @@ void nova_model_ui_update(NovaModelUI *ui)
                 ui->check_export = true;
                 message(ui,"Source saved (1 of 2 files). Confirm GLB replacement to finish Save model; these writes are not atomic together.");
             }
-        } else message(ui,"Save model blocked by external source/GLB edit. Use separate Save source / Export decisions; drafts retained.");
+        } else {
+            message(ui,"Save blocked: model files changed outside Nova. Open Advanced to review source/export conflicts. Your changes are retained.");
+            ui->advanced = true;
+        }
     }
     if (ui->check_export) {
         ui->check_export = false;
@@ -361,6 +375,26 @@ static bool parse_fields(NovaModelUI *ui)
 
 static void modal(NovaModelUI *ui, int width, int height)
 {
+    if (ui->decision == NOVA_MODEL_DECISION_DELETE) {
+        int x=width/2-270, y=height/2-110;
+        DrawRectangle(0,0,width,height,(Color){0,0,0,150});
+        DrawRectangleRounded((Rectangle){(float)x,(float)y,540,220},.05f,8,nova_ui_style()->panel);
+        nova_ui_label(TextFormat("Delete %s?",ui->model.primitives[ui->selected].name),x+20,y+24,500,ink);
+        nova_ui_label("This removes the part. Imported textures remain available.",x+20,y+65,500,muted);
+        nova_ui_label("There is no part undo. Cancel to keep it.",x+20,y+94,500,muted);
+        if (nova_ui_button((Rectangle){(float)x+20,(float)y+160,160,34},"Cancel",true))
+            ui->decision=NOVA_MODEL_DECISION_NONE;
+        if (nova_ui_icon_button((Rectangle){(float)x+300,(float)y+160,220,34},"Delete part",NOVA_ICON_DELETE,
+            false,true,"Remove this part permanently from the draft",NULL)) {
+            NovaModelDocument candidate=ui->model;
+            memmove(&candidate.primitives[ui->selected],&candidate.primitives[ui->selected+1],
+                (candidate.count-ui->selected-1)*sizeof(candidate.primitives[0]));
+            --candidate.count;
+            memset(&candidate.primitives[candidate.count],0,sizeof(candidate.primitives[0]));
+            if (nova_model_ui_apply(ui,&candidate)) ui->decision=NOVA_MODEL_DECISION_NONE;
+        }
+        return;
+    }
     if (ui->review_disk) {
         DrawRectangle(0,0,width,height,nova_ui_style()->background);
         nova_ui_label("READ ONLY / exact observed disk source; scroll to review",20,20,width-40,accent);
@@ -377,8 +411,9 @@ static void modal(NovaModelUI *ui, int width, int height)
         ui->decision == NOVA_MODEL_DECISION_EXPORT_CONFLICT;
     bool binary = ui->decision == NOVA_MODEL_DECISION_EXPORT || ui->decision == NOVA_MODEL_DECISION_EXPORT_CONFLICT;
     NovaDocument *doc = binary ? &ui->target : &ui->source;
-    nova_ui_label(conflict ? "EXTERNAL EDIT / exact observed disk-version decision" :
-        binary ? "REPLACE EXISTING GLB / explicit overwrite decision" : "UNSAVED SOURCE / explicit discard decision",
+    nova_ui_label(conflict ? "Files changed outside Nova / review before replacing" :
+        binary ? ui->saving_model ? "Finish saving / replace the previous game model?" : "Export / replace the game model?" :
+        "Unsaved model / discard these changes?",
         x+20,y+20,780,accent);
     nova_ui_label(binary ? doc->relative : ui->source.relative,x+20,y+58,780,ink);
     const NovaDiskText *disk = conflict ? &doc->conflict : &doc->saved;
@@ -420,7 +455,7 @@ static void modal(NovaModelUI *ui, int width, int height)
         }
         ui->decision = NOVA_MODEL_DECISION_NONE; return;
     }
-    const char *action = binary ? "Overwrite shown version" :
+    const char *action = binary ? ui->saving_model && !conflict ? "Finish Save" : "Overwrite shown version" :
         conflict ? "Overwrite shown source" : ui->decision == NOVA_MODEL_DECISION_OPEN ? "Discard + open source" : "Discard + return";
     if (nova_ui_button((Rectangle){(float)x+194,(float)y+280,226,38},action,true)) {
         NovaModelDecision decision = ui->decision;
@@ -538,183 +573,276 @@ static void texture_sheet(NovaModelUI *ui, int width, int height)
         sizeof(ui->texture_path),&ui->texture_path_focus,ui->message,sizeof(ui->message));
     nova_ui_label(ui->message,x+20,y+458,680,ink);
     if (nova_ui_button((Rectangle){(float)x+20,(float)y+506,140,34},"Cancel",true)) ui->texture_sheet = false;
+    if (nova_ui_button((Rectangle){(float)x+172,(float)y+506,120,34},"Details",true)) {
+        ui->details=true; nova_ui_text_reset(&ui->details_editor);
+    }
     if (nova_ui_button((Rectangle){(float)x+490,(float)y+506,210,34},"Import and assign PNG",*ui->texture_path != 0)) ui->import_texture = true;
+}
+
+Rectangle nova_model_ui_preview(int width, int height)
+{
+    return (Rectangle){236,148,(float)width-564,(float)height-244};
+}
+
+static const char *texture_name(const NovaModelUI *ui, unsigned index)
+{
+    if (!index) return "Colour only";
+    const char *name=GetFileName(ui->model.textures[index-1]);
+    char prefix[NOVA_PROJECT_PATH_CAPACITY+32];
+    snprintf(prefix,sizeof(prefix),"%s.texture_%u.",GetFileName(ui->target.relative),index);
+    if (!strncmp(name,prefix,strlen(prefix))) name+=strlen(prefix);
+    if (!strcmp(name,"png")) return TextFormat("Texture %u",index);
+    return name;
+}
+
+static bool swatch(const NovaModelUI *ui, unsigned index, Rectangle box, Color color)
+{
+    bool available=!index;
+    DrawRectangleRec(box,index ? nova_ui_style()->field : color);
+    if (index && !ui->stale && ui->view.resources.count &&
+        index <= ui->view.resources.resources[0].images.count) {
+        Texture2D texture=ui->view.resources.resources[0].images.textures[index-1];
+        if (texture.id) {
+            DrawTexturePro(texture,(Rectangle){0,0,(float)texture.width,(float)texture.height},box,(Vector2){0},0,WHITE);
+            available=true;
+        }
+    }
+    if (!available) DrawLineEx((Vector2){box.x+4,box.y+4},(Vector2){box.x+box.width-4,box.y+box.height-4},2,muted);
+    DrawRectangleLinesEx(box,1,nova_ui_style()->border);
+    return available;
+}
+
+static void material_sheet(NovaModelUI *ui, int width, int height)
+{
+    int x=width/2-300, y=height/2-265;
+    DrawRectangle(0,0,width,height,(Color){0,0,0,150});
+    DrawRectangleRounded((Rectangle){(float)x,(float)y,600,530},.04f,8,nova_ui_style()->panel);
+    nova_ui_label("Choose a texture",x+20,y+20,560,ink);
+    nova_ui_label("Click a named image to assign it to the selected part.",x+20,y+54,560,muted);
+    Rectangle list={(float)x+20,(float)y+92,560,350};
+    int count=(int)ui->model.texture_count+1;
+    if (CheckCollisionPointRec(GetMousePosition(),list)) ui->material_scroll-=(int)(GetMouseWheelMove()*3);
+    int maximum=count-5;
+    if (ui->material_scroll>maximum) ui->material_scroll=maximum;
+    if (ui->material_scroll<0) ui->material_scroll=0;
+    for (int row=0;row<5 && row+ui->material_scroll<count;++row) {
+        unsigned index=(unsigned)(row+ui->material_scroll);
+        Rectangle box={list.x,list.y+row*68,list.width,60};
+        bool selected=ui->model.primitives[ui->selected].texture==index;
+        if (nova_ui_select_button(box,"",selected,true)) {
+            NovaModelDocument candidate=ui->model;
+            candidate.primitives[ui->selected].texture=index;
+            if (nova_model_ui_apply(ui,&candidate)) ui->materials=false;
+        }
+        bool available=swatch(ui,index,(Rectangle){box.x+8,box.y+8,44,44},(Color){
+            ui->model.primitives[ui->selected].color[0],ui->model.primitives[ui->selected].color[1],
+            ui->model.primitives[ui->selected].color[2],255});
+        nova_ui_label(texture_name(ui,index),(int)box.x+66,(int)box.y+12,480,selected ? WHITE : ink);
+        nova_ui_label(!available ? "Thumbnail unavailable" : selected ? "Selected" : index ? "Assign this texture" : "Use the part's colour",
+            (int)box.x+66,(int)box.y+34,480,selected ? WHITE : muted);
+    }
+    if (nova_ui_button((Rectangle){(float)x+20,(float)y+474,140,34},"Cancel",true)) ui->materials=false;
+    nova_ui_label(count>5 ? "Scroll for more textures" : "Import another image from the Inspector.",x+180,y+484,400,muted);
+}
+
+static void advanced_sheet(NovaModelUI *ui, int width, int height)
+{
+    int x=width/2-380, y=height/2-280;
+    DrawRectangle(0,0,width,height,(Color){0,0,0,150});
+    DrawRectangleRounded((Rectangle){(float)x,(float)y,760,560},.04f,8,nova_ui_style()->panel);
+    nova_ui_label("Advanced / model files and repair",x+20,y+20,720,ink);
+    nova_ui_label("GLB is the portable 3D file used by the game. Editable parts stay in a separate source file.",x+20,y+54,720,muted);
+    nova_ui_label("Editable source (project-relative)",x+20,y+92,720,muted);
+    if (ui->beginner) nova_ui_label(ui->source_path,x+20,y+122,720,ink);
+    else nova_ui_field_checked((Rectangle){(float)x+20,(float)y+120,720,34},
+        ui->source_path,sizeof(ui->source_path),&ui->source_focus,ui->message,sizeof(ui->message));
+    if (nova_ui_button((Rectangle){(float)x+20,(float)y+170,200,34},"Save source only",!ui->values_dirty)) ui->save=true;
+    if (nova_ui_button((Rectangle){(float)x+232,(float)y+170,210,34},ui->beginner ? "Reopen saved parts" : "Open / new source",true)) {
+        if (nova_document_dirty(&ui->source) || ui->values_dirty || ui->export_pending) ui->decision=NOVA_MODEL_DECISION_OPEN;
+        else ui->reopen=true;
+    }
+    nova_ui_label("Game model / export destination",x+20,y+228,720,muted);
+    nova_ui_label(ui->target.relative,x+20,y+256,720,ink);
+    if (nova_ui_button((Rectangle){(float)x+20,(float)y+292,240,34},"Export GLB separately...",ui->model.count && !ui->values_dirty))
+        ui->check_export=true;
+    nova_ui_label("Separate operations can leave source and game model different until both are saved.",x+20,y+340,720,muted);
+    NovaSceneInspection inspection=nova_inspect_scene(ui->view.engine,&ui->view.resources);
+    if (inspection.count) {
+        const NovaAssetInspection *a=&inspection.assets[0];
+        nova_ui_label(TextFormat("Preview: %zu parts / %zu vertices / %zu bytes; upload revision %zu",
+            a->primitives,a->vertices,a->input_bytes,ui->view.revisions),x+20,y+378,720,muted);
+        nova_ui_label(TextFormat("Bounds: (%.2f, %.2f, %.2f) to (%.2f, %.2f, %.2f)",
+            a->bounds_min.x,a->bounds_min.y,a->bounds_min.z,a->bounds_max.x,a->bounds_max.y,a->bounds_max.z),
+            x+20,y+404,720,muted);
+    }
+    if (nova_ui_button((Rectangle){(float)x+20,(float)y+456,180,34},"Original colour demo",!ui->model.count)) demo(ui);
+    if (nova_ui_button((Rectangle){(float)x+560,(float)y+506,180,34},"Back to model",true)) {
+        ui->advanced=false; ui->source_focus=false;
+    }
+    nova_ui_label(ui->message,12,height-31,width-130,muted);
+    if (nova_ui_button((Rectangle){(float)width-108,(float)height-35,94,28},"Details",true)) {
+        ui->details=true; nova_ui_text_reset(&ui->details_editor);
+    }
 }
 
 void nova_model_ui_draw(NovaModelUI *ui, Rectangle preview)
 {
-    int width = GetScreenWidth(), height = GetScreenHeight(), right = (int)preview.x;
-    nova_ui_label("Nova Studio / Static Modeller",16,18,width-32,ink);
+    int width=GetScreenWidth(), height=GetScreenHeight(), x=width-300, w=284;
+    DrawRectangle(0,0,width,58,nova_ui_style()->panel);
+    DrawRectangle(0,62,220,height-104,nova_ui_style()->panel);
+    DrawRectangle(width-312,62,312,height-104,nova_ui_style()->panel);
+    DrawLine(220,62,220,height-42,nova_ui_style()->border);
+    DrawLine(width-312,62,width-312,height-42,nova_ui_style()->border);
+    DrawRectangle(0,height-42,width,42,nova_ui_style()->panel);
     if (ui->decision != NOVA_MODEL_DECISION_NONE) { modal(ui,width,height); return; }
-    if (ui->texture_sheet) { texture_sheet(ui,width,height); return; }
-    if (nova_ui_button((Rectangle){12,65,206,33},"Return to project",true)) nova_model_ui_request_close(ui);
-    nova_ui_label("AUTHORED PRIMITIVES",12,113,206,accent);
-    char line[512];
-    snprintf(line,sizeof(line),"%zu/64  next stable ID=%u",ui->model.count,ui->model.next_id);
-    nova_ui_label(line,12,141,206,muted);
-    Rectangle list = {12,174,206,(float)(height-350)};
-    if (CheckCollisionPointRec(GetMousePosition(),list)) {
-        ui->scroll -= (int)(GetMouseWheelMove()*3);
-        int maximum = (int)ui->model.count - (int)(list.height/34);
-        if (ui->scroll > maximum) ui->scroll = maximum;
-        if (ui->scroll < 0) ui->scroll = 0;
+    if (ui->details) {
+        DrawRectangle(0,62,width,height-104,nova_ui_style()->background);
+        nova_ui_label("Model / full diagnostic",20,80,width-40,ink);
+        char wrapped[1152];
+        size_t length=0, column=0;
+        size_t columns=(size_t)fmaxf(32,(width-64)/nova_ui_code_cell());
+        for (size_t i=0;ui->message[i];++i) {
+            unsigned char c=(unsigned char)ui->message[i];
+            if (column>=columns && (c&0xc0)!=0x80) {
+                wrapped[length++]='\n'; column=0;
+            }
+            wrapped[length++]=(char)c;
+            column=c=='\n' ? 0 : column+1;
+        }
+        wrapped[length]=0;
+        NovaDocument diagnostic={.text=wrapped,.length=length};
+        nova_ui_text(&ui->details_editor,&diagnostic,(Rectangle){20,118,(float)width-40,(float)height-224},false,ui->message,sizeof(ui->message));
+        if (nova_ui_button((Rectangle){20,(float)height-88,180,34},
+            ui->texture_sheet ? "Back to import" : ui->advanced ? "Back to Advanced" : "Back to model",true)) ui->details=false;
+        return;
     }
-    for (size_t i = (size_t)ui->scroll; i < ui->model.count; ++i) {
-        float y = list.y + (float)(i-(size_t)ui->scroll)*34;
-        if (y+31 > list.y+list.height) break;
-        snprintf(line,sizeof(line),"%s %s",ui->selected == i ? ">" : "",ui->model.primitives[i].name);
-        if (nova_ui_select_button((Rectangle){12,y,206,29},line,ui->selected == i,true)) {
-            if (ui->values_dirty) message(ui,"Apply or Reset the typed values before changing selection");
+    if (ui->texture_sheet) { texture_sheet(ui,width,height); return; }
+    if (ui->materials) { material_sheet(ui,width,height); return; }
+    if (ui->advanced) { advanced_sheet(ui,width,height); return; }
+    if (nova_ui_button((Rectangle){12,11,206,34},"Return to project",true)) nova_model_ui_request_close(ui);
+    nova_ui_label(nova_document_dirty(&ui->source) || ui->export_pending || ui->values_dirty ? "Model  /  Unsaved" : "Model",236,19,width-540,ink);
+    if (nova_ui_button((Rectangle){(float)width-240,11,112,34},"Advanced...",true)) ui->advanced=true;
+    bool can_save=ui->model.count && !ui->values_dirty;
+    if (nova_ui_icon_button((Rectangle){(float)width-116,11,102,34},"Save",NOVA_ICON_SAVE,true,can_save,
+        "Save editable parts and game model (Ctrl/Cmd-S)",ui->values_dirty ? "Apply or Reset Inspector edits before saving" : "Add a part before saving"))
+        ui->save_model=true;
+    if (nova_ui_command() && IsKeyPressed(KEY_S)) {
+        if (can_save) ui->save_model=true;
+        else message(ui,ui->values_dirty ? "Apply or Reset Inspector edits before saving." : "Add a part before saving.");
+    }
+    nova_ui_label("Parts",12,78,206,ink);
+    const char *names[]={"Box","Pyramid","Cylinder"};
+    for (int i=0;i<3;++i)
+        if (nova_ui_icon_button((Rectangle){12,110+(float)i*40,196,34},names[i],NOVA_ICON_ADD,false,
+            ui->model.count<NOVA_MODEL_PRIMITIVES && !ui->values_dirty,
+            "Add a part; edit its name and shape in the Inspector",
+            ui->values_dirty ? "Apply or Reset Inspector edits before adding a part" : "A model can contain at most 64 parts"))
+            add_shape(ui,(NovaModelShape)i);
+    nova_ui_label(TextFormat("%zu parts",ui->model.count),12,240,196,muted);
+    Rectangle list={12,270,196,(float)height-378};
+    if (CheckCollisionPointRec(GetMousePosition(),list)) ui->scroll-=(int)(GetMouseWheelMove()*3);
+    int maximum=(int)ui->model.count-(int)(list.height/34);
+    if (ui->scroll>maximum) ui->scroll=maximum;
+    if (ui->scroll<0) ui->scroll=0;
+    for (size_t i=(size_t)ui->scroll;i<ui->model.count;++i) {
+        float y=list.y+(i-(size_t)ui->scroll)*34;
+        if (y+30>list.y+list.height) break;
+        if (nova_ui_select_button((Rectangle){12,y,196,30},ui->model.primitives[i].name,ui->selected==i,true)) {
+            if (ui->values_dirty) message(ui,"Apply or Reset Inspector edits before selecting another part.");
             else { ui->selected=i; fields(ui); }
         }
     }
-    if (nova_ui_button((Rectangle){12,(float)height-153,206,33},"Original RGB demo",ui->model.count == 0)) demo(ui);
-    nova_ui_label("Source stays separate from GLB",12,height-110,206,muted);
-    nova_ui_label("Static parts / opaque PNG materials",12,height-87,206,muted);
-    int x=236, y=65, central=right-x-16;
-    nova_ui_label("CREATE / select / delete / edit",x,y,central,accent); y+=35;
-    for (int i=0;i<3;++i)
-        if (nova_ui_button((Rectangle){(float)x+i*117,(float)y,109,33},shape((NovaModelShape)i),
-            ui->model.count < NOVA_MODEL_PRIMITIVES && !ui->values_dirty)) add_shape(ui,(NovaModelShape)i);
-    y+=45;
-    if (ui->model.count) {
-        NovaModelPrimitive *p=&ui->model.primitives[ui->selected];
-        Rectangle properties = {(float)x,(float)y,(float)central,(float)height-270-y-12};
-        if (CheckCollisionPointRec(GetMousePosition(),properties)) {
-            ui->property_scroll -= (int)(GetMouseWheelMove()*35);
-            int maximum = 570-(int)properties.height;
-            if (ui->property_scroll > maximum) ui->property_scroll = maximum;
-            if (ui->property_scroll < 0) ui->property_scroll = 0;
+    if (nova_ui_icon_button((Rectangle){12,(float)height-88,196,34},"Delete part...",NOVA_ICON_DELETE,false,
+        ui->model.count && !ui->values_dirty,"Delete selected part (confirmation required)",
+        ui->values_dirty ? "Apply or Reset Inspector edits before deleting" : "Select a part to delete"))
+        ui->decision=NOVA_MODEL_DECISION_DELETE;
+    nova_ui_label("Model view",236,78,(int)preview.width,ink);
+    if (nova_ui_button((Rectangle){236,106,82,30},"Front",ui->ready)) ui->view.frame.camera_position=(NovaVec3){0,0,10};
+    if (nova_ui_button((Rectangle){326,106,118,30},"Perspective",ui->ready)) ui->view.frame.camera_position=(NovaVec3){5,3,9};
+    if (nova_ui_button((Rectangle){452,106,74,30},"Side",ui->ready)) ui->view.frame.camera_position=(NovaVec3){10,0,0};
+    if (nova_ui_button((Rectangle){534,106,88,30},"Zoom +",ui->ready)) zoom(ui,.8f);
+    if (nova_ui_button((Rectangle){630,106,88,30},"Zoom -",ui->ready)) zoom(ui,1.25f);
+    DrawRectangleLinesEx(preview,1,ui->stale ? RED : nova_ui_style()->border);
+    if (ui->stale || !ui->ready) {
+        nova_ui_label(ui->stale ? "Preview could not refresh. Previous view retained." : "Add a part to see your model.",
+            (int)preview.x+12,(int)preview.y+16,(int)preview.width-24,ui->stale ? RED : muted);
+        if (ui->stale && nova_ui_button((Rectangle){preview.x+12,preview.y+48,160,32},"Retry preview",true)) {
+            ui->refresh=true;
+            if (!*ui->view.directory) ui->view_attempted=false;
         }
-        y -= ui->property_scroll;
-        snprintf(line,sizeof(line),"Selected stable ID %u / %s",p->id,shape(p->shape));
-        property_label(properties,line,x,y,central,ink); y+=29;
-        property_label(properties,"Part name",x,y,central,muted); y+=23;
-        if (property_field(ui,properties,(Rectangle){(float)x,(float)y,(float)central,33},ui->part_name,
-                sizeof(ui->part_name),&ui->name_focus)) ui->values_dirty = true;
-        y+=42;
-        const char *labels[]={"Position XYZ","Rotation XYZ degrees","Scale XYZ","Opaque RGB"};
-        for (int row=0;row<4;++row) {
-            property_label(properties,labels[row],x,y,central,muted); y+=23;
-            for (int a=0;a<3;++a)
-                if (property_field(ui,properties,(Rectangle){(float)x+a*112,(float)y,104,33},
-                    ui->fields[row*3+a],32,&ui->field_focus[row*3+a]))
-                    ui->values_dirty = true;
-            y+=42;
-        }
-        if (p->shape==NOVA_SHAPE_CYLINDER) {
-            property_label(properties,"Cylinder sides 3..32",x,y+8,190,muted);
-            if (property_field(ui,properties,(Rectangle){(float)x+195,(float)y,104,33},
-                ui->fields[12],32,&ui->field_focus[12]))
-                ui->values_dirty = true;
-            y+=42;
-        }
-        property_label(properties,"Material / PNG multiplied by RGB tint",x,y,central,accent); y+=26;
-        char material[96];
-        snprintf(material,sizeof(material),p->texture ? "PNG %u / click for next material" : "Plain colour / click for next material",p->texture);
-        if (y >= properties.y && y+33 <= properties.y+properties.height &&
-            nova_ui_button((Rectangle){(float)x,(float)y,(float)central,33},material,!ui->values_dirty)) {
-            NovaModelDocument candidate = ui->model;
-            candidate.primitives[ui->selected].texture = (p->texture+1)%((unsigned)candidate.texture_count+1);
-            nova_model_ui_apply(ui,&candidate);
-        }
-        y+=42;
-        if (y >= properties.y && y+33 <= properties.y+properties.height &&
-            nova_ui_button((Rectangle){(float)x,(float)y,220,33},"Import PNG material...",!ui->values_dirty && ui->model.texture_count < NOVA_MODEL_MATERIALS)) {
-            ui->texture_sheet = true; ui->texture_path[0] = 0;
-            snprintf(ui->texture_location,sizeof(ui->texture_location),"%s",ui->target.root);
-            texture_browse(ui);
-        }
-        if (ui->property_scroll || properties.height < 500)
-            nova_ui_label("Scroll part properties for materials",x,height-293,central,muted);
-        y=height-270;
-        if (nova_ui_button((Rectangle){(float)x,(float)y,155,33},"Apply values",true) ||
-            (IsKeyPressed(KEY_ENTER) && !ui->source_focus)) parse_fields(ui);
-        if (nova_ui_button((Rectangle){(float)x+163,(float)y,155,33},"Delete selected",!ui->values_dirty)) {
-            NovaModelDocument candidate=ui->model;
-            memmove(&candidate.primitives[ui->selected],&candidate.primitives[ui->selected+1],
-                (candidate.count-ui->selected-1)*sizeof(candidate.primitives[0]));
-            --candidate.count;
-            memset(&candidate.primitives[candidate.count],0,sizeof(candidate.primitives[0]));
-            nova_model_ui_apply(ui,&candidate);
-        }
-        if (nova_ui_button((Rectangle){(float)x+326,(float)y,105,33},"Reset values",ui->values_dirty)) fields(ui);
-    } else nova_ui_label("Create a primitive or use the original RGB demo.",x,y,central,ink);
-    y=height-219;
-    nova_ui_label(ui->beginner ? "Editable model / guarded source and GLB" : "Editable .nova-model source (project-relative)",x,y,central,accent); y+=25;
-    if (ui->beginner) {
-        if (nova_ui_button((Rectangle){(float)x,(float)y,(float)central,33},"Save model (source + GLB)",!ui->values_dirty && ui->model.count)) ui->save_model = true;
-    } else nova_ui_field_checked((Rectangle){(float)x,(float)y,(float)central,33},ui->source_path,sizeof(ui->source_path),&ui->source_focus,
-        ui->message,sizeof(ui->message));
-    y+=41;
-    if (nova_ui_button((Rectangle){(float)x,(float)y,155,33},ui->beginner ? "Reopen model" : "Open / new source",true)) {
-        if (nova_document_dirty(&ui->source) || ui->values_dirty) ui->decision=NOVA_MODEL_DECISION_OPEN;
-        else ui->reopen=true;
     }
-    if (nova_ui_button((Rectangle){(float)x+163,(float)y,155,33},nova_document_dirty(&ui->source) ? "Save source *" : "Save source",!ui->values_dirty)) ui->save=true;
-    if (!ui->values_dirty && nova_ui_command() && IsKeyPressed(KEY_S)) {
-        if (ui->beginner) ui->save_model = true; else ui->save = true;
-    }
-    y+=43;
-    snprintf(line,sizeof(line),"Active source: %s",ui->source.relative);
-    nova_ui_label(line,x,y,central,muted);
-    if (nova_ui_button((Rectangle){preview.x,65,164,33},"Export declared GLB",ui->model.count>0 && !ui->values_dirty)) {
-        ui->check_export=true;
-    }
-    if (nova_ui_button((Rectangle){preview.x+172,65,126,33},"Retry preview",ui->stale)) {
-        ui->refresh=true;
-        if (!*ui->view.directory) ui->view_attempted=false;
-    }
-    DrawRectangleLinesEx(preview,1,ui->stale ? RED : muted);
-    DrawRectangle((int)preview.x+2,(int)preview.y+2,(int)preview.width-4,28,nova_ui_style()->panel);
-    nova_ui_label(ui->stale ? "PREVIEW FAILED / prior revision retained" :
-        !ui->ready || ui->refresh ? "PENDING native staging" : "NATIVE MODEL PREVIEW / auto-fit draw instance",
-        (int)preview.x+8,(int)preview.y+8,(int)preview.width-16,ui->stale ? RED : accent);
-    y=(int)(preview.y+preview.height+12); x=(int)preview.x;
-    nova_ui_label(ui->beginner ? "Model export (project-local)" : "Declared GLB destination (saved project)",x,y,(int)preview.width,accent); y+=24;
-    nova_ui_label(ui->target.relative,x,y,(int)preview.width,ink); y+=28;
-    NovaSceneInspection inspection=nova_inspect_scene(ui->view.engine,&ui->view.resources);
-    if (inspection.count) {
-        const NovaAssetInspection *asset=&inspection.assets[0];
-        snprintf(line,sizeof(line),"Live native: %zu primitives / %zu vertices / %zu bytes",asset->primitives,asset->vertices,asset->input_bytes);
-        nova_ui_label(line,x,y,(int)preview.width,ink); y+=24;
-        snprintf(line,sizeof(line),"Authored bounds (%.2f %.2f %.2f)..(%.2f %.2f %.2f)",
-            asset->bounds_min.x,asset->bounds_min.y,asset->bounds_min.z,asset->bounds_max.x,asset->bounds_max.y,asset->bounds_max.z);
-        nova_ui_label(line,x,y,(int)preview.width,muted); y+=24;
-    }
-    snprintf(line,sizeof(line),"Native staging revision=%zu (only model edits)",ui->view.revisions);
-    nova_ui_label(line,x,y,(int)preview.width,muted); y+=29;
-    if (ui->inspected_export) {
-        snprintf(line,sizeof(line),"Saved native export: %zu primitives / %zu vertices",ui->exported_asset.primitives,ui->exported_asset.vertices);
-        nova_ui_label(line,x,y,(int)preview.width,accent); y+=24;
-        snprintf(line,sizeof(line),"Saved bounds (%.2f %.2f %.2f)..(%.2f %.2f %.2f)",
-            ui->exported_asset.bounds_min.x,ui->exported_asset.bounds_min.y,ui->exported_asset.bounds_min.z,
-            ui->exported_asset.bounds_max.x,ui->exported_asset.bounds_max.y,ui->exported_asset.bounds_max.z);
-        nova_ui_label(line,x,y,(int)preview.width,muted); y+=24;
-    }
-    nova_ui_label("View: front / perspective / side; wheel zoom",x,y,(int)preview.width,muted); y+=26;
-    if (nova_ui_button((Rectangle){(float)x,(float)y,100,33},"Front",ui->ready)) ui->view.frame.camera_position=(NovaVec3){0,0,10};
-    if (nova_ui_button((Rectangle){(float)x+108,(float)y,128,33},"Perspective",ui->ready)) ui->view.frame.camera_position=(NovaVec3){5,3,9};
-    if (nova_ui_button((Rectangle){(float)x+244,(float)y,100,33},"Side",ui->ready)) ui->view.frame.camera_position=(NovaVec3){10,0,0};
-    y+=40;
-    if (nova_ui_button((Rectangle){(float)x,(float)y,100,33},"Zoom +",ui->ready)) zoom(ui,.8f);
-    if (nova_ui_button((Rectangle){(float)x+108,(float)y,100,33},"Zoom -",ui->ready)) zoom(ui,1.25f);
     if (ui->ready && CheckCollisionPointRec(GetMousePosition(),preview)) {
         float wheel=GetMouseWheelMove();
         if (wheel) zoom(ui,expf(-wheel*.15f));
     }
-    y+=50;
-    const char *text=ui->message;
-    for (int row=0;*text && row<6 && y+20<height-46;++row) {
-        char excerpt[51];
-        size_t count=0;
-        while (text[count] && text[count]!='\n' && count<sizeof(excerpt)-1) ++count;
-        memcpy(excerpt,text,count); excerpt[count]=0;
-        nova_ui_label(excerpt,x,y,(int)preview.width,ink); y+=21;
-        text+=count;
-        if (*text=='\n') ++text;
+    nova_ui_label("Add parts  >  Choose a texture  >  Save  >  Create an object in your project",
+        236,height-76,(int)preview.width,muted);
+    nova_ui_label("Inspector",x,78,w,ink);
+    if (ui->model.count) {
+        NovaModelPrimitive *p=&ui->model.primitives[ui->selected];
+        Rectangle properties={(float)x,112,(float)w,(float)height-250};
+        int content=578+(p->shape==NOVA_SHAPE_CYLINDER ? 48 : 0);
+        if (CheckCollisionPointRec(GetMousePosition(),properties))
+            ui->property_scroll-=(int)(GetMouseWheelMove()*35);
+        int max=content-(int)properties.height;
+        if (ui->property_scroll>max) ui->property_scroll=max;
+        if (ui->property_scroll<0) ui->property_scroll=0;
+        int y=112-ui->property_scroll;
+        property_label(properties,"Name",x,y,w,muted); y+=24;
+        if (property_field(ui,properties,(Rectangle){(float)x,(float)y,(float)w,34},
+            ui->part_name,sizeof(ui->part_name),&ui->name_focus)) ui->values_dirty=true;
+        y+=48;
+        const char *labels[]={"Position","Rotation (degrees)","Scale","Colour (0-255)"};
+        const char *axes[]={"X","Y","Z","R","G","B"};
+        for (int row=0;row<4;++row) {
+            int offset=row<3 ? 26 : 0;
+            if (row<3 && property_visible(properties,y,22))
+                nova_ui_icon(row==0 ? NOVA_ICON_MOVE : row==1 ? NOVA_ICON_ROTATE : NOVA_ICON_SCALE,
+                    (Vector2){(float)x+9,(float)y+9},muted);
+            property_label(properties,labels[row],x+offset,y,w-offset,muted); y+=25;
+            for (int a=0;a<3;++a) {
+                property_label(properties,axes[(row==3 ? 3 : 0)+a],x+a*96,y,20,muted);
+                if (property_field(ui,properties,(Rectangle){(float)x+a*96+20,(float)y,72,34},
+                    ui->fields[row*3+a],32,&ui->field_focus[row*3+a])) ui->values_dirty=true;
+            }
+            y+=49;
+        }
+        if (p->shape==NOVA_SHAPE_CYLINDER) {
+            property_label(properties,"Cylinder sides (3-32)",x,y,w,muted);
+            if (property_field(ui,properties,(Rectangle){(float)x+206,(float)y,78,34},
+                ui->fields[12],32,&ui->field_focus[12])) ui->values_dirty=true;
+            y+=48;
+        }
+        property_label(properties,"Texture",x,y,w,ink); y+=26;
+        if (property_visible(properties,y,48)) {
+            bool available=swatch(ui,p->texture,(Rectangle){(float)x,(float)y,44,44},(Color){p->color[0],p->color[1],p->color[2],255});
+            nova_ui_label(texture_name(ui,p->texture),x+54,y+4,w-54,ink);
+            nova_ui_label(!available ? "Thumbnail unavailable" : p->texture ? "Image tinted by Colour" : "No image assigned",x+54,y+25,w-54,muted);
+        }
+        y+=56;
+        if (property_visible(properties,y,34) &&
+            nova_ui_button((Rectangle){(float)x,(float)y,(float)w,34},"Choose texture...",!ui->values_dirty))
+            ui->materials=true;
+        y+=44;
+        if (property_visible(properties,y,34) &&
+            nova_ui_icon_button((Rectangle){(float)x,(float)y,(float)w,34},"Import texture...",NOVA_ICON_ADD,false,
+                !ui->values_dirty && ui->model.texture_count<NOVA_MODEL_MATERIALS,
+                "Copy an opaque PNG into this model and assign it",ui->values_dirty ? "Apply or Reset Inspector edits before importing" : "At most 16 textures per model")) {
+            ui->texture_sheet=true; ui->texture_path[0]=0;
+            snprintf(ui->texture_location,sizeof(ui->texture_location),"%s",ui->target.root); texture_browse(ui);
+        }
+        nova_ui_label(ui->values_dirty ? "Unapplied edits" : max>0 ? "Scroll Inspector for texture controls" : shape(p->shape),x,height-124,w,muted);
+        if (nova_ui_button((Rectangle){(float)x,(float)height-88,138,34},"Apply",ui->values_dirty) ||
+            (ui->values_dirty && IsKeyPressed(KEY_ENTER))) parse_fields(ui);
+        if (nova_ui_button((Rectangle){(float)x+146,(float)height-88,138,34},"Reset",ui->values_dirty)) fields(ui);
+    } else nova_ui_label("Add a part to start.",x,120,w,muted);
+    const char *summary=ui->message;
+    if (strstr(summary,"PARTIAL MODEL SAVE") || strstr(summary,"Source saved (1 of 2"))
+        summary="Save incomplete: editable parts were written, but the game model was not. Open Details.";
+    else if (ui->stale) summary="Preview could not refresh. Your changes and previous preview are retained. Open Details.";
+    else if (ui->values_dirty) summary="Inspector edits are not applied. Apply to update the model, or Reset to discard those edits.";
+    nova_ui_label(summary,12,height-31,width-130,ui->stale || strstr(ui->message,"PARTIAL MODEL SAVE") ? RED : muted);
+    if (nova_ui_button((Rectangle){(float)width-108,(float)height-35,94,28},"Details",true)) {
+        ui->details=true; nova_ui_text_reset(&ui->details_editor);
     }
-    nova_ui_label(ui->values_dirty ? "Unapplied typed values: Apply commits them to the source draft; Reset discards them. Save/export/selection are guarded." :
-        ui->stale ? ui->message : "Static primitive source only; no arbitrary GLB reconstruction, skeletal authoring or Blender-like mesh editing.",
-        12,height-32,width-24,ui->stale ? RED : muted);
 }

@@ -738,6 +738,7 @@ int main(int argc, char **argv)
         nova_ui_style_update();
         int framebuffer_width = GetRenderWidth(), framebuffer_height = GetRenderHeight();
         Rectangle preview = {(float)width - 450, 106, 436, 245};
+        if (editor->modeller.active) preview=nova_model_ui_preview(width,height);
         NovaFramebufferRect region = {
             (int)lroundf(preview.x * framebuffer_width / width),
             (int)lroundf(preview.y * framebuffer_height / height),
@@ -774,6 +775,7 @@ int main(int argc, char **argv)
             &editor->modeller.view.resources : &editor->resources;
         if (preview_frame) nova_presentation_world(preview_presentation, preview_frame, preview_resources);
         BeginDrawing();
+        nova_ui_begin_frame();
         ClearBackground(nova_ui_style()->background);
         DrawRectangle(0, 0, width, 54, nova_ui_style()->panel);
         DrawRectangle(0, 60, 222, height - 98, nova_ui_style()->panel);
@@ -787,7 +789,7 @@ int main(int argc, char **argv)
         Vector2 pointer;
         if (CheckCollisionPointRec(GetMousePosition(), preview) &&
             nova_presentation_pointer(&layout, GetMousePosition(), &pointer) && editor->decision == DECISION_NONE &&
-            (!editor->modeller.active || editor->modeller.decision == NOVA_MODEL_DECISION_NONE)) {
+            !editor->modeller.active) {
             char coordinates[128];
             snprintf(coordinates, sizeof(coordinates), "Logical pointer %.0f, %.0f", pointer.x, pointer.y);
             nova_ui_label(coordinates, (int)preview.x + 8, (int)(preview.y + preview.height - 24), (int)preview.width - 16, ink);
@@ -796,6 +798,7 @@ int main(int argc, char **argv)
         if (smoke && frames >= limit && !smoke_pixels(&layout)) {
             fprintf(stderr, "Editor smoke: exact native preview/chrome pixels failed\n"); result = 1;
         }
+        nova_ui_end_frame();
         if (limit && frames >= limit && capture && !nova_capture_native(capture, framebuffer_width, framebuffer_height)) result = 1;
         EndDrawing();
         if (nova_ui_style_error()[0]) { result = 1; break; }

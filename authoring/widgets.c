@@ -7,6 +7,95 @@
 #define ink (nova_ui_style()->ink)
 #define muted (nova_ui_style()->muted)
 
+static struct {
+    Rectangle bounds;
+    double since;
+    bool hovered, visible;
+    char text[256];
+} tooltip;
+
+void nova_ui_begin_frame(void) { tooltip.hovered = false; tooltip.visible = false; }
+
+const char *nova_ui_tooltip_text(void) { return tooltip.visible ? tooltip.text : ""; }
+
+void nova_ui_end_frame(void)
+{
+    if (!tooltip.hovered) { tooltip.text[0] = 0; return; }
+    if (GetTime()-tooltip.since < .55) return;
+    tooltip.visible = true;
+    int width = (int)fminf(520,GetScreenWidth()-24);
+    int x = (int)fmaxf(12,fminf(tooltip.bounds.x,GetScreenWidth()-width-12));
+    int y = (int)tooltip.bounds.y+(int)tooltip.bounds.height+8;
+    if (y+42 > GetScreenHeight()) y = (int)tooltip.bounds.y-46;
+    DrawRectangleRounded((Rectangle){(float)x,(float)y,(float)width,38},.12f,8,nova_ui_style()->panel);
+    DrawRectangleLinesEx((Rectangle){(float)x,(float)y,(float)width,38},1,nova_ui_style()->border);
+    nova_ui_label(tooltip.text,x+10,y+10,width-20,ink);
+}
+
+void nova_ui_icon(NovaUIIcon icon, Vector2 p, Color c)
+{
+    float x=p.x, y=p.y;
+    switch (icon) {
+    case NOVA_ICON_SAVE:
+        DrawRectangleLinesEx((Rectangle){x-7,y-7,14,14},2,c);
+        DrawRectangleLinesEx((Rectangle){x-3,y+1,6,6},1,c);
+        DrawLineEx((Vector2){x-3,y-5},(Vector2){x+3,y-5},2,c); break;
+    case NOVA_ICON_PLAY:
+        DrawTriangle((Vector2){x-5,y-7},(Vector2){x-5,y+7},(Vector2){x+7,y},c); break;
+    case NOVA_ICON_STOP: DrawRectangle((int)x-6,(int)y-6,12,12,c); break;
+    case NOVA_ICON_UNDO: case NOVA_ICON_REDO: {
+        float s=icon==NOVA_ICON_UNDO ? 1 : -1;
+        DrawLineEx((Vector2){x-6*s,y-3},(Vector2){x+5*s,y-3},2,c);
+        DrawLineEx((Vector2){x+5*s,y-3},(Vector2){x+5*s,y+6},2,c);
+        DrawLineEx((Vector2){x-6*s,y-3},(Vector2){x-1*s,y-8},2,c);
+        DrawLineEx((Vector2){x-6*s,y-3},(Vector2){x-1*s,y+2},2,c); break;
+    }
+    case NOVA_ICON_ADD:
+        DrawLineEx((Vector2){x-6,y},(Vector2){x+6,y},2,c);
+        DrawLineEx((Vector2){x,y-6},(Vector2){x,y+6},2,c); break;
+    case NOVA_ICON_DELETE:
+        DrawRectangleLinesEx((Rectangle){x-5,y-3,10,10},2,c);
+        DrawLineEx((Vector2){x-7,y-6},(Vector2){x+7,y-6},2,c);
+        DrawLineEx((Vector2){x-2,y-8},(Vector2){x+2,y-8},2,c); break;
+    case NOVA_ICON_SELECT:
+        DrawLineEx((Vector2){x-5,y-7},(Vector2){x-5,y+6},2,c);
+        DrawLineEx((Vector2){x-5,y-7},(Vector2){x+6,y+2},2,c);
+        DrawLineEx((Vector2){x-5,y+6},(Vector2){x+6,y+2},2,c); break;
+    case NOVA_ICON_MOVE:
+        DrawLineEx((Vector2){x-7,y},(Vector2){x+7,y},2,c);
+        DrawLineEx((Vector2){x,y-7},(Vector2){x,y+7},2,c);
+        DrawLineEx((Vector2){x-7,y},(Vector2){x-3,y-4},2,c);
+        DrawLineEx((Vector2){x,y-7},(Vector2){x+4,y-3},2,c); break;
+    case NOVA_ICON_ROTATE:
+        DrawCircleLines((int)x,(int)y,6,c);
+        DrawLineEx((Vector2){x+6,y-5},(Vector2){x+6,y+1},2,c);
+        DrawLineEx((Vector2){x+6,y+1},(Vector2){x,y+1},2,c); break;
+    case NOVA_ICON_SCALE:
+        DrawRectangleLinesEx((Rectangle){x-7,y+1,6,6},1,c);
+        DrawLineEx((Vector2){x-1,y+1},(Vector2){x+6,y-6},2,c);
+        DrawLineEx((Vector2){x,y-6},(Vector2){x+6,y-6},2,c);
+        DrawLineEx((Vector2){x+6,y-6},(Vector2){x+6,y},2,c); break;
+    }
+}
+
+bool nova_ui_icon_button(Rectangle box, const char *label, NovaUIIcon icon,
+    bool selected, bool enabled, const char *hint, const char *disabled_reason)
+{
+    bool clicked = nova_ui_select_button(box,"",selected,enabled);
+    Color color=selected ? WHITE : enabled ? ink : ColorAlpha(ink,.45f);
+    nova_ui_icon(icon,(Vector2){box.x+17,box.y+box.height/2},color);
+    nova_ui_label(label,(int)box.x+33,(int)(box.y+(box.height-18)/2),(int)box.width-39,color);
+    if (CheckCollisionPointRec(GetMousePosition(),box)) {
+        const char *text=enabled ? hint : disabled_reason;
+        if (text && *text) {
+            if (memcmp(&tooltip.bounds,&box,sizeof(box)) || strcmp(tooltip.text,text)) tooltip.since=GetTime();
+            tooltip.bounds=box; tooltip.hovered=true;
+            snprintf(tooltip.text,sizeof(tooltip.text),"%s",text);
+        }
+    }
+    return clicked;
+}
+
 bool nova_ui_command(void)
 {
     return IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL) ||

@@ -240,7 +240,7 @@ else()
                 "$<TARGET_FILE:nova_editor>" "$<TARGET_FILE:nova_studio>")
             add_test(NAME nova_gpu_textured_workflow COMMAND nova_game_ui_tests
                 "$<TARGET_FILE:nova_editor>" "$<TARGET_FILE:nova_studio>" --textured)
-            set_tests_properties(nova_gpu_textured_workflow PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
+            set_tests_properties(nova_gpu_textured_workflow PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
             set_tests_properties(nova_gpu_objects_rooms PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
             add_executable(nova_ui_style_tests tests/ui_style_test.c)
             target_link_libraries(nova_ui_style_tests PRIVATE nova_ui_style nova_presentation)

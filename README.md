@@ -78,16 +78,25 @@ existing destinations are refused. It writes that asset copy, not the game
 document. Undo/deletion retain imported files rather than silently deleting
 potentially useful data. PNG painting and animated GLB are not implemented.
 
-In the modeller, assemble named box/pyramid/cylinder parts, **Apply** position,
-rotation, scale and RGB fields, then scroll the part properties to **Import PNG
-material...**. The local browser copies an opaque PNG into a fresh contained
-project file and assigns it to the selected part, initially with white RGB tint.
-The material button cycles plain colour and the model's imported PNGs, so parts
-can share one texture. The real model preview shows the assignment; RGB multiplies
-the texture. **Save model** (also Cmd/Ctrl-S here) prechecks source/GLB snapshots,
-saves source, then asks before replacing the GLB. These are separate guarded
+The modeller has **Parts** on the left, a large central **Model view**, and a
+contextual **Inspector** on the right, matching the room workspace's hierarchy.
+Add a **Box**, **Pyramid** or **Cylinder**, name it, then **Apply** the labelled
+XYZ position/rotation/scale and RGB colour fields. **Reset** keeps the last
+applied values. The Inspector scrolls independently; Apply/Reset stay fixed.
+**Import texture...** copies an opaque PNG into a fresh contained project file
+and assigns it to the selected part, initially with white RGB tint.
+**Choose texture...** lists named imported images with real cached thumbnails,
+an explicit selected choice and **Colour only**; it never blindly cycles through
+materials. Parts can share one image. The real model preview shows the assignment;
+Colour multiplies the texture. **Save** (also Cmd/Ctrl-S) is the one primary model
+save action. It prechecks source/GLB snapshots, saves editable parts, then asks
+before replacing the game model. These are separate guarded
 writes, not one transaction; cancellation/failure after source save reports
 **1 of 2 files written**. PNG import itself already wrote a separate file.
+**Advanced...** holds source-only saving, reopen, separate GLB export and file/
+geometry diagnostics. **Details** shows full errors without competing with normal
+editing. GLB is the portable 3D file used by the game; users do not need to
+choose its path in the beginner workflow.
 **Return to project -> Create object using this... -> Place -> Run** needs no
 GLB-path or manifest editing. Save the game separately to persist its resource/
 object/room references. Build play areas by placing environment-piece objects
@@ -372,22 +381,27 @@ In Advanced, the modeller uses the **saved** manifest, never a draft asset path.
 without a declared model fail explicitly; add/save a declaration in the editor
 first. Existing GLB is not changed on entry.
 
-Create **box**, **pyramid** or **cylinder**, select a named stable-ID list item, and
-edit its unique ASCII name, XYZ position/rotation/scale, opaque RGB or cylinder sides. **Apply values**
-validates and commits typed fields to the source draft; **Reset values** discards
-only those un-applied fields. Selection, save, export and deletion cannot
-silently lose typed values. **Delete selected** preserves every remaining ID
-and the next unused ID. **Original RGB demo** is available only in an empty
-document and creates original separated primitives, not copied artwork.
+Create **Box**, **Pyramid** or **Cylinder** in Parts, select a named part, and
+edit its unique ASCII name, XYZ position/rotation/scale, opaque RGB or cylinder
+sides in the Inspector. **Apply** validates and commits typed fields to the
+source draft; **Reset** discards only those un-applied fields. Selection, save,
+export and deletion cannot silently lose typed values. **Delete part...** asks
+for confirmation, explicitly states that no part undo is available, and preserves
+every remaining ID and the next unused ID. **Advanced... -> Original colour demo**
+is available only in an empty document and creates original separated primitives,
+not copied artwork.
 Front/perspective/side and bounded button/wheel zoom change only the preview
-camera, not authored transforms. Properties scroll independently; Apply/Delete/
-Reset remain fixed. Scroll down to material assignment and the local PNG browser.
+camera, not authored transforms. Properties scroll independently; Apply/Reset
+and the Parts delete action remain fixed. Named texture choices use the existing
+staged GPU image cache; opening/scrolling the chooser or hovering controls does
+not upload textures. Missing/stale thumbnails are labelled unavailable, never
+replaced with a fake texture approximation.
 
 Editable source defaults to `<declared-model-path>.nova-model`. A contained
-project-relative `.nova-model` path can be entered with **Open / new source**
+project-relative `.nova-model` path can be entered under **Advanced...** with **Open / new source**
 to reopen source or start a new document; its parent directory must already
-exist. New documents are unsaved, even when empty. **Save source** atomically
-creates/replaces that strict source document. **Export declared GLB** separately
+exist. New documents are unsaved, even when empty. **Save source only** atomically
+creates/replaces that strict source document. **Export GLB separately...** separately
 exports the draft to the displayed model declaration. Existing GLB requires an
 explicit native overwrite decision; external source/binary edits are preserved
 until the exact observed version is reviewed and explicitly approved. Source
@@ -404,10 +418,18 @@ to restart gameplay with exported assets; source save, asset export and gameplay
 reload remain separate. Returning/closing with unsaved source or un-applied
 fields or an unexported model revision requires explicit discard or cancel.
 Objects/Rooms uses the same modeller with a fixed source destination and
-**Save model** bridge; its export validates the actual self-contained GLB even
+the primary **Save** bridge; its export validates the actual self-contained GLB even
 before the new resource has been saved in the game manifest. Run separately
 preflights the entire generated game. Edited generated game outputs still block
 visual Save/Run; importing or editing a model does not authorize their overwrite.
+
+The room workspace and modeller share small original native vector icons for
+real Save/Run/Stop, Undo/Redo, add/delete and selection actions. Inspector
+transform headings identify numeric controls, not nonexistent viewport gizmos.
+Labels remain alongside nonobvious icons; hovering action icons briefly shows
+the action/shortcut or its disabled reason. These are functional control/layout
+checks, not a novice usability study or a claim that the editor is equivalent
+to another product.
 
 Native previews stage private project fixtures only on model edits, through
 `nova_open_scene`, real decoded/uploaded/cached `NovaResources`, and the shared

@@ -426,7 +426,21 @@ static bool button(Rectangle rect, const char *label, bool enabled, NovaGameUI *
             action == NOVA_GAME_REDO_ACTION ? "No undone change to redo." :
             action == NOVA_GAME_APPLY ? "No unapplied properties. Edit a value first." : "Select an item before using this action.");
     }
-    if (!nova_ui_button(rect, label, enabled)) return false;
+    bool clicked;
+    if (action == NOVA_GAME_SAVE || action == NOVA_GAME_STOP || action == NOVA_GAME_RESTART ||
+        action == NOVA_GAME_UNDO_ACTION || action == NOVA_GAME_REDO_ACTION) {
+        NovaUIIcon icon=action == NOVA_GAME_SAVE ? NOVA_ICON_SAVE : action == NOVA_GAME_STOP ? NOVA_ICON_STOP :
+            action == NOVA_GAME_UNDO_ACTION ? NOVA_ICON_UNDO : action == NOVA_GAME_REDO_ACTION ? NOVA_ICON_REDO : NOVA_ICON_PLAY;
+        const char *hint=action == NOVA_GAME_SAVE ? "Save project changes (Ctrl/Cmd-S)" :
+            action == NOVA_GAME_STOP ? "Stop and return to your unchanged room" :
+            action == NOVA_GAME_RESTART ? "Restart the game from its starting room" :
+            action == NOVA_GAME_UNDO_ACTION ? "Undo the last room/project change (Ctrl/Cmd-Z)" :
+            "Redo the undone change (Ctrl/Cmd-Shift-Z)";
+        clicked=nova_ui_icon_button(rect,label,icon,false,enabled,hint,ui->playing ?
+            "Stop the game before editing or saving" : action == NOVA_GAME_UNDO_ACTION ?
+            "No earlier change to undo" : "No undone change to redo");
+    } else clicked=nova_ui_button(rect,label,enabled);
+    if (!clicked) return false;
     request(ui, action); return true;
 }
 
@@ -492,7 +506,8 @@ static void tree(NovaGameUI *ui, int height)
             int y = 106+(n-ui->tree_scroll)*28;
             char label[64]; snprintf(label,sizeof(label),"%s %s",ui->collapsed[group] ? ">" : "v",headings[group]);
             if (row_button((Rectangle){8,(float)y,157,27},label,false,!ui->playing)) ui->collapsed[group] = !ui->collapsed[group];
-            if (nova_ui_button((Rectangle){172,(float)y,35,25},"+",!ui->playing)) {
+            if (nova_ui_icon_button((Rectangle){172,(float)y,35,25},"",NOVA_ICON_ADD,false,!ui->playing,
+                TextFormat("Add to %s",headings[group]),"Stop the game to add resources or rooms")) {
                 open_sheet(ui,group == 0 ? NOVA_GAME_SHEET_IMPORT : group == 1 ? NOVA_GAME_SHEET_MODEL :
                     group == 2 ? NOVA_GAME_SHEET_OBJECT : NOVA_GAME_SHEET_ROOM);
                 if (group < 2) {
@@ -534,7 +549,8 @@ static void tree(NovaGameUI *ui, int height)
     }
     if (ui->outline_scroll > count-visible) ui->outline_scroll = count > visible ? count-visible : 0;
     if (!count) nova_ui_label("No instances yet",20,(int)outline.y+6,186,MUTED);
-    if (nova_ui_button((Rectangle){12,(float)height-85,196,30},"Delete selected...",ui->selected && !ui->playing) && clean_values(ui))
+    if (nova_ui_icon_button((Rectangle){12,(float)height-85,196,30},"Delete selected...",NOVA_ICON_DELETE,false,ui->selected && !ui->playing,
+        "Delete selected item (confirmation required)",ui->playing ? "Stop the game before deleting" : "Select an item to delete") && clean_values(ui))
         ui->dialog = NOVA_GAME_DIALOG_DELETE;
 }
 
@@ -989,6 +1005,8 @@ bool nova_game_ui_draw(NovaGameUI *ui, bool bounded)
         ui->modeller.exported = false; ui->staged.resources = NOVA_MAX_ASSETS+1;
         if (nova_game_ui_stage(ui))
             message(ui,"Model exported separately. Preview restaged; Run remains explicit and guarded.");
+        else snprintf(ui->modeller.message,sizeof(ui->modeller.message),
+            "Model saved, but project preview could not refresh. Previous project view retained. Details: %.800s",ui->message);
     }
     const NovaGameRoom *r = nova_game_room(&ui->project.data,ui->room);
     bool setup = ui->sheet == NOVA_GAME_SHEET_NEW || ui->sheet == NOVA_GAME_SHEET_OPEN || !ui->project.authored.text;
@@ -997,8 +1015,8 @@ bool nova_game_ui_draw(NovaGameUI *ui, bool bounded)
     int center_width = width-556;
     int canvas_height = height-228;
     Rectangle preview = {236,176,(float)center_width,r && r->mode == NOVA_3D && !ui->playing && !context ? canvas_height*0.57f : (float)canvas_height};
+    if (ui->modeller.active) preview = nova_model_ui_preview(width,height);
     ui->preview_bounds = preview;
-    if (ui->modeller.active) preview = (Rectangle){(float)width-450,106,436,245};
     NovaFramebufferRect region = {(int)lroundf(preview.x*fw/width),(int)lroundf(preview.y*fh/height),
         (int)lroundf(preview.width*fw/width),(int)lroundf(preview.height*fh/height)};
     NovaPresentationLayout present;
@@ -1037,6 +1055,7 @@ bool nova_game_ui_draw(NovaGameUI *ui, bool bounded)
     }
     if (frame) nova_presentation_world(presentation,frame,resources);
     BeginDrawing();
+    nova_ui_begin_frame();
     ClearBackground(nova_ui_style()->background);
     DrawRectangle(0,0,width,58,nova_ui_style()->panel);
     if (!setup) {
@@ -1065,7 +1084,8 @@ bool nova_game_ui_draw(NovaGameUI *ui, bool bounded)
             button((Rectangle){(float)width-242,11,106,34},"Stop",true,ui,NOVA_GAME_STOP);
             button((Rectangle){(float)width-126,11,112,34},"Restart",true,ui,NOVA_GAME_RESTART);
         } else {
-            if (nova_ui_select_button((Rectangle){(float)width-242,11,228,34},"Run game",false,true))
+            if (nova_ui_icon_button((Rectangle){(float)width-242,11,228,34},"Run game",NOVA_ICON_PLAY,false,true,
+                "Save and run the project's starting room",NULL))
                 request(ui,NOVA_GAME_RUN);
         }
         tree(ui,height);
@@ -1082,13 +1102,15 @@ bool nova_game_ui_draw(NovaGameUI *ui, bool bounded)
             bool appearance = nova_game_resource(&ui->project.data,ui->selected) || nova_game_object(&ui->project.data,ui->selected);
             if (nova_ui_select_button((Rectangle){(float)width-508,69,82,30},"Room",!context,true)) ui->resource_view = false;
             if (nova_ui_select_button((Rectangle){(float)width-418,69,98,30},"Resource",context,appearance)) ui->resource_view = true;
-            if (nova_ui_select_button((Rectangle){236,110,95,30},"Select",!ui->place_tool,true)) {
+            if (nova_ui_icon_button((Rectangle){236,110,95,30},"Select",NOVA_ICON_SELECT,!ui->place_tool,true,
+                "Select an instance; drag it to move, or use arrow keys",NULL)) {
                 ui->place_tool = false; ui->resource_view = false;
             }
             const NovaGameObject *palette = nova_game_object(&ui->project.data,ui->palette);
             const NovaGameResource *asset = palette ? nova_game_resource(&ui->project.data,palette->resource) : NULL;
             bool compatible = asset && r && (r->mode == NOVA_2D ? asset->type == NOVA_ASSET_SPRITE : asset->type == NOVA_ASSET_MODEL);
-            if (nova_ui_select_button((Rectangle){340,110,95,30},"Place",ui->place_tool,compatible)) {
+            if (nova_ui_icon_button((Rectangle){340,110,95,30},"Place",NOVA_ICON_ADD,ui->place_tool,compatible,
+                "Click the room to place the chosen object","Choose an object matching this room's dimension")) {
                 ui->place_tool = true; ui->resource_view = false;
             }
             if (nova_ui_select_button((Rectangle){444,110,110,30},"Grid / snap",ui->snap,true)) ui->snap = !ui->snap;
@@ -1130,24 +1152,25 @@ bool nova_game_ui_draw(NovaGameUI *ui, bool bounded)
     }
     if (!setup && ui->sheet != NOVA_GAME_SHEET_NONE && !modal) creation_sheet(ui,width,height);
     if (modal) dialog(ui,width,height);
-    DrawRectangle(0,height-42,width,42,nova_ui_style()->panel);
-    const char *summary = ui->modeller.active ? ui->modeller.message : ui->message;
-    if (ui->modeller.active) {
-        if (!*summary) summary = "Model draft / native preview. Apply part fields, Save model, then Return to project to create an object.";
-    } else if (strstr(summary,"PARTIAL SAVE")) summary = "Save incomplete. Some files were written; Run was cancelled. Open Details before retrying.";
-    else if (strstr(summary,"preflight failed")) summary = "The saved game could not be validated. Run was cancelled; your previous game is retained. Details";
-    else if (ui->stale) summary = "Preview could not refresh. Your draft and previous preview are retained. Open Details.";
-    else if (ui->action_failed) summary = ui->last_action == NOVA_GAME_RUN || ui->last_action == NOVA_GAME_RESTART ?
-        "Run could not start. Your draft and previous game are retained. Open Details." :
-        ui->last_action == NOVA_GAME_SAVE ? "Save did not finish. Your changes are retained. Open Details." :
-        ui->last_action == NOVA_GAME_OPEN ? "Project could not open. Your current project is retained. Open Details." :
-        "Could not complete the action. Open Details for the reason; your changes are retained.";
-    else if (strlen(summary) > 140) summary = ui->playing ? "Running. Stop returns to your unchanged room." : "Action needs attention. Open Details for the full diagnostic.";
-    if (*ui->hint) summary = ui->hint;
-    nova_ui_label(summary,12,height-31,width-130,MUTED);
-    if (!modal && nova_ui_button((Rectangle){(float)width-108,(float)height-35,94,28},"Details",true)) {
-        ui->dialog = NOVA_GAME_DIALOG_DETAILS; nova_ui_text_reset(&ui->details);
+    if (!ui->modeller.active) {
+        DrawRectangle(0,height-42,width,42,nova_ui_style()->panel);
+        const char *summary=ui->message;
+        if (strstr(summary,"PARTIAL SAVE")) summary = "Save incomplete. Some files were written; Run was cancelled. Open Details before retrying.";
+        else if (strstr(summary,"preflight failed")) summary = "The saved game could not be validated. Run was cancelled; your previous game is retained. Details";
+        else if (ui->stale) summary = "Preview could not refresh. Your draft and previous preview are retained. Open Details.";
+        else if (ui->action_failed) summary = ui->last_action == NOVA_GAME_RUN || ui->last_action == NOVA_GAME_RESTART ?
+            "Run could not start. Your draft and previous game are retained. Open Details." :
+            ui->last_action == NOVA_GAME_SAVE ? "Save did not finish. Your changes are retained. Open Details." :
+            ui->last_action == NOVA_GAME_OPEN ? "Project could not open. Your current project is retained. Open Details." :
+            "Could not complete the action. Open Details for the reason; your changes are retained.";
+        else if (strlen(summary) > 140) summary = ui->playing ? "Running. Stop returns to your unchanged room." : "Action needs attention. Open Details for the full diagnostic.";
+        if (*ui->hint) summary = ui->hint;
+        nova_ui_label(summary,12,height-31,width-130,MUTED);
+        if (!modal && nova_ui_button((Rectangle){(float)width-108,(float)height-35,94,28},"Details",true)) {
+            ui->dialog = NOVA_GAME_DIALOG_DETAILS; nova_ui_text_reset(&ui->details);
+        }
     }
+    nova_ui_end_frame();
     if (bounded && ui->quit) message(ui,"Bounded run ended");
     bool captured = !*ui->capture || nova_capture_native(ui->capture,fw,fh);
     EndDrawing();

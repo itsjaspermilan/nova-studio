@@ -7,7 +7,7 @@
 typedef enum {
     NOVA_MODEL_DECISION_NONE, NOVA_MODEL_DECISION_EXIT, NOVA_MODEL_DECISION_OPEN,
     NOVA_MODEL_DECISION_SAVE_CONFLICT, NOVA_MODEL_DECISION_EXPORT,
-    NOVA_MODEL_DECISION_EXPORT_CONFLICT
+    NOVA_MODEL_DECISION_EXPORT_CONFLICT, NOVA_MODEL_DECISION_DELETE
 } NovaModelDecision;
 
 typedef struct {
@@ -19,6 +19,9 @@ typedef struct {
     bool check_export;
     bool beginner, save_model, saving_model, export_pending;
     bool name_focus, texture_path_focus, texture_sheet, import_texture;
+    bool advanced, details, materials;
+    int material_scroll;
+    NovaTextEditor details_editor;
     char part_name[32], texture_path[NOVA_NATIVE_PATH_CAPACITY], texture_location[NOVA_NATIVE_PATH_CAPACITY];
     FilePathList texture_files;
     int texture_scroll, property_scroll;
@@ -40,6 +43,7 @@ bool nova_model_ui_open(NovaModelUI *ui, const char *manifest, const char *root,
 /* IO/GPU staging runs outside drawing; widgets only queue work or change drafts. */
 void nova_model_ui_update(NovaModelUI *ui);
 void nova_model_ui_draw(NovaModelUI *ui, Rectangle preview);
+Rectangle nova_model_ui_preview(int width, int height);
 void nova_model_ui_request_close(NovaModelUI *ui);
 void nova_model_ui_close(NovaModelUI *ui);
 bool nova_model_ui_apply(NovaModelUI *ui, const NovaModelDocument *candidate);

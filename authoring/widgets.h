@@ -13,6 +13,18 @@ typedef struct {
     size_t undo_length, undo_cursor, undo_anchor;
 } NovaTextEditor;
 
+typedef enum {
+    NOVA_ICON_SAVE, NOVA_ICON_PLAY, NOVA_ICON_STOP, NOVA_ICON_UNDO, NOVA_ICON_REDO,
+    NOVA_ICON_ADD, NOVA_ICON_DELETE, NOVA_ICON_SELECT, NOVA_ICON_MOVE,
+    NOVA_ICON_ROTATE, NOVA_ICON_SCALE
+} NovaUIIcon;
+
+void nova_ui_begin_frame(void);
+void nova_ui_end_frame(void);
+const char *nova_ui_tooltip_text(void);
+void nova_ui_icon(NovaUIIcon icon, Vector2 center, Color color);
+bool nova_ui_icon_button(Rectangle bounds, const char *label, NovaUIIcon icon,
+    bool selected, bool enabled, const char *hint, const char *disabled_reason);
 bool nova_ui_button(Rectangle bounds, const char *label, bool enabled);
 bool nova_ui_select_button(Rectangle bounds, const char *label, bool selected, bool enabled);
 void nova_ui_label(const char *text, int x, int y, int width, Color color);
