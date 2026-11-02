@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nova Studio - workspace design study</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --page: #0c111b; --base: #111824; --panel: #182232; --raised: #202d40;
+      --line: #36455a; --text: #e8eff8; --muted: #aab9ce; --teal: #7de1ce;
+      --selected: #234a4b; --gold: #f0c77e; --purple: #c3adf0;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--page); color: var(--text); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    button, input { font: inherit; }
+    button { color: inherit; }
+    a { color: var(--teal); }
+    [hidden] { display: none !important; }
+    .defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+    .icon { width: 18px; height: 18px; flex: 0 0 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .study { padding: 28px 32px 38px; max-width: 1536px; margin: auto; }
+    .masthead { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; gap: 30px; }
+    .eyebrow { color: var(--teal); font-size: 11px; font-weight: 650; letter-spacing: 2px; margin: 0 0 7px; }
+    h1 { margin: 0; font-size: 27px; font-weight: 600; letter-spacing: -.6px; }
+    .lede { color: var(--muted); margin: 6px 0 0; max-width: 750px; }
+    .edition { color: var(--muted); text-align: right; font-size: 12px; padding-top: 6px; white-space: nowrap; }
+    .review-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+    .review-switcher { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; }
+    .review-controls button { border: 1px solid #60748d; border-radius: 5px; background: #1b293b; color: var(--text); padding: 7px 11px; font-size: 12px; cursor: pointer; min-height: 34px; }
+    .review-controls button[aria-pressed="true"] { border-color: var(--teal); color: var(--teal); background: #234444; }
+    .review-controls button:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+    .scale-note { color: var(--muted); font-size: 11px; margin: 0 0 12px; }
+    .studio-container { width: 100%; overflow: hidden; }
+    .studio { width: 1440px; transform-origin: top left; border: 1px solid #43536b; border-radius: 10px; background: var(--base); overflow: hidden; box-shadow: 0 20px 70px #0005; }
+    .concept { height: 28px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; background: #302b22; color: #f0d7a7; font-size: 11px; letter-spacing: .15px; }
+    .topbar { height: 60px; display: flex; align-items: center; gap: 12px; padding: 0 15px; border-bottom: 1px solid var(--line); background: #1b2637; }
+    .brand { display: flex; align-items: center; gap: 10px; width: 204px; flex: 0 0 204px; }
+    .brand-mark { width: 29px; height: 29px; color: var(--teal); display: grid; place-items: center; border: 1px solid #517f7d; border-radius: 7px; font-weight: 700; font-size: 18px; }
+    .project-title { font-size: 14px; font-weight: 600; }
+    .project-subtitle { color: var(--muted); font-size: 11px; }
+    .tabs { display: flex; align-items: center; gap: 3px; flex: 1; }
+    .tab { display: flex; align-items: center; gap: 7px; height: 36px; border: 1px solid transparent; border-radius: 5px; background: transparent; padding: 0 11px; color: var(--muted); cursor: pointer; font-size: 13px; }
+    .tab:hover { color: var(--text); background: #263448; }
+    .tab[aria-selected="true"] { color: var(--teal); background: #253e45; border-color: #47656c; }
+    .tab:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+    .global-actions { display: flex; align-items: center; gap: 7px; }
+    .global-edit { display: flex; align-items: center; gap: 4px; }
+    .mock { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 32px; border: 1px solid var(--line); border-radius: 5px; padding: 0 10px; background: #243248; font-size: 12px; white-space: nowrap; }
+    .mock.primary { color: #0d2924; background: var(--teal); border-color: var(--teal); font-weight: 650; }
+    .mock.quiet { background: transparent; }
+    .mock.active { background: var(--selected); color: var(--teal); border-color: #648e8e; }
+    .mock.square { width: 32px; padding: 0; }
+    .mock.inactive { color: #78889e; background: #1c2839; }
+    .separator { width: 1px; height: 22px; background: var(--line); margin: 0 4px; flex: 0 0 1px; }
+    .workspace { height: 704px; display: grid; grid-template-columns: 220px minmax(0, 1fr) 272px; }
+    .left, .right { background: var(--panel); min-height: 0; overflow: hidden; }
+    .left { border-right: 1px solid var(--line); display: flex; flex-direction: column; }
+    .right { border-left: 1px solid var(--line); padding-bottom: 12px; overflow-y: auto; }
+    .panel-heading { display: flex; align-items: center; justify-content: space-between; padding: 13px 15px 9px; font-size: 12px; font-weight: 600; color: #d7e3f2; }
+    .small-label { text-transform: uppercase; letter-spacing: 1px; color: var(--muted); font-size: 10px; font-weight: 650; }
+    .panel-section { padding: 0 12px 12px; }
+    .search { display: flex; gap: 7px; align-items: center; color: var(--muted); background: #101927; border: 1px solid var(--line); border-radius: 4px; padding: 7px 9px; font-size: 12px; margin-bottom: 10px; }
+    .search .icon { width: 15px; height: 15px; flex-basis: 15px; }
+    .tree-row { display: flex; gap: 8px; align-items: center; height: 32px; padding: 0 9px; color: #c5d3e6; border-radius: 4px; font-size: 13px; }
+    .tree-row.child { padding-left: 27px; }
+    .tree-row.selected { color: var(--teal); background: #24424a; box-shadow: inset 2px 0 var(--teal); }
+    .tree-row .icon { width: 15px; height: 15px; flex-basis: 15px; }
+    .tree-row .tail { margin-left: auto; color: #a9bad1; font-size: 10px; }
+    .divider { border-top: 1px solid var(--line); }
+    .asset-section { margin-top: auto; border-top: 1px solid var(--line); padding-bottom: 12px; }
+    .panel-actions { display: flex; gap: 6px; margin: 0 12px 10px; }
+    .chips { display: flex; gap: 5px; margin: 0 0 10px; }
+    .chip { font-size: 10px; padding: 3px 7px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); }
+    .chip.active { color: var(--teal); background: #203b41; border-color: #517777; }
+    .asset-note { margin: 10px 15px 0; font-size: 11px; color: var(--muted); line-height: 1.5; }
+    .center { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+    .documents { height: 35px; display: flex; align-items: stretch; background: #141d2b; border-bottom: 1px solid var(--line); flex: 0 0 35px; }
+    .document { display: flex; align-items: center; gap: 8px; padding: 0 15px; border-right: 1px solid var(--line); font-size: 12px; color: #e3edf8; background: #202c3e; }
+    .document.secondary { background: transparent; color: var(--muted); }
+    .document .icon { width: 14px; height: 14px; flex-basis: 14px; color: var(--muted); }
+    .dirty { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); margin-left: 7px; }
+    .context { height: 47px; display: flex; align-items: center; gap: 5px; border-bottom: 1px solid var(--line); padding: 0 10px; background: #1a2535; flex: 0 0 47px; }
+    .context .mock { height: 30px; padding: 0 7px; font-size: 11px; }
+    .context .mock.square { width: 32px; height: 32px; }
+    .push { margin-left: auto; }
+    .muted { color: var(--muted); }
+    .viewport { position: relative; flex: 1; min-height: 0; background: #111b27; overflow: hidden; }
+    .viewport svg.art { width: 100%; height: 100%; display: block; }
+    .viewport-label { position: absolute; left: 13px; top: 12px; color: #b6c8d8; font-size: 11px; background: #142231df; padding: 4px 8px; border: 1px solid #44576c; border-radius: 4px; }
+    .viewport-label.right-label { left: auto; right: 13px; }
+    .viewport-bottom { position: absolute; bottom: 11px; left: 14px; color: #a9bfd0; font-size: 10px; }
+    .bottom-tabs { display: flex; align-items: center; gap: 22px; height: 33px; border-top: 1px solid var(--line); background: #1b2737; padding: 0 13px; font-size: 11px; color: var(--muted); flex: 0 0 33px; }
+    .bottom-tabs .current { color: var(--teal); border-bottom: 2px solid var(--teal); height: 33px; display: flex; align-items: center; }
+    .hint-panel { display: flex; align-items: center; gap: 12px; padding: 11px 15px; background: #182531; font-size: 12px; color: var(--muted); min-height: 62px; }
+    .hint-dot { display: grid; place-items: center; width: 25px; height: 25px; border: 1px solid #49676f; border-radius: 50%; color: var(--teal); flex: 0 0 25px; }
+    .hint-panel strong { color: var(--text); font-weight: 550; }
+    .inspector-title { border-bottom: 1px solid var(--line); padding: 13px 16px 14px; }
+    .inspector-title h2 { font-size: 17px; margin: 4px 0 3px; font-weight: 600; }
+    .inspector-title p { font-size: 11px; color: var(--muted); margin: 0; }
+    .group { padding: 12px 15px; border-bottom: 1px solid #304055; }
+    .group-title { display: flex; gap: 7px; align-items: center; font-size: 12px; color: #d8e6f4; font-weight: 600; margin-bottom: 11px; }
+    .group-title .icon { width: 14px; height: 14px; flex-basis: 14px; color: var(--muted); }
+    .field { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; font-size: 12px; color: var(--muted); }
+    .value { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 120px; min-height: 31px; border: 1px solid #475970; border-radius: 4px; background: #101b2a; color: var(--text); padding: 4px 8px; font-variant-numeric: tabular-nums; }
+    .value.wide { width: 100%; }
+    .value .unit { font-size: 10px; color: var(--muted); }
+    .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+    .pair .value { min-width: 0; }
+    .axis { font-size: 11px; font-weight: 650; }
+    .axis.x { color: #ffa9aa; } .axis.y { color: #9ce7c1; } .axis.z { color: #b1c7ff; }
+    .tiny { font-size: 11px; color: var(--muted); line-height: 1.5; }
+    .group p.tiny { margin: 10px 0 0; }
+    .linklike { display: flex; align-items: center; gap: 7px; color: var(--teal); font-size: 11px; margin-top: 10px; }
+    .status { height: 26px; display: flex; align-items: center; gap: 16px; padding: 0 14px; border-top: 1px solid var(--line); background: #1d2b3c; font-size: 10px; color: var(--muted); }
+    .status .safe { color: var(--teal); }
+    .review { margin-top: 20px; display: grid; grid-template-columns: 270px 1fr; gap: 22px; }
+    .review h2 { font-size: 17px; margin: 0 0 5px; font-weight: 550; }
+    .review p { color: var(--muted); font-size: 12px; margin: 0; }
+    .principles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+    .principle { padding-left: 13px; border-left: 2px solid #36545b; }
+    .principle strong { display: block; font-size: 12px; margin-bottom: 5px; font-weight: 550; }
+    .footer { margin-top: 24px; padding-top: 15px; border-top: 1px solid #28364a; font-size: 11px; color: var(--muted); display: flex; justify-content: space-between; }
+    .tool-rail { width: 48px; border-right: 1px solid var(--line); background: #1b2736; display: flex; flex-direction: column; align-items: center; gap: 7px; padding-top: 12px; position: absolute; inset: 0 auto 0 0; z-index: 1; }
+    .sprite-work { margin-left: 48px; height: 100%; display: grid; place-items: center; background-image: radial-gradient(#36475b 1px, transparent 1px); background-size: 16px 16px; }
+    .pixel-frame { width: 272px; height: 272px; padding: 8px; background: #465469; border: 1px solid #8394a7; box-shadow: 0 12px 38px #0004; position: relative; }
+    .pixel-frame:after { content: "64 x 64 px  /  400%"; position: absolute; top: calc(100% + 13px); left: 0; right: 0; text-align: center; color: var(--muted); font-size: 11px; }
+    .pixel-canvas { width: 256px; height: 256px; background: repeating-conic-gradient(#2c3b4e 0% 25%, #253344 0% 50%) 0 0/32px 32px; image-rendering: pixelated; }
+    .pixel-canvas svg { width: 100%; height: 100%; shape-rendering: crispEdges; }
+    .frames { display: flex; align-items: center; gap: 9px; padding: 12px 14px 14px; min-height: 108px; background: #172332; }
+    .frame { width: 69px; text-align: center; font-size: 10px; color: var(--muted); }
+    .frame-art { width: 62px; height: 59px; background: #26384a; border: 1px solid #526178; border-radius: 3px; margin-bottom: 5px; display: grid; place-items: center; }
+    .frame-art svg { width: 46px; height: 46px; shape-rendering: crispEdges; }
+    .frame.active .frame-art { border: 2px solid var(--teal); background: #244746; }
+    .frame.active { color: var(--teal); }
+    .palette { display: grid; grid-template-columns: repeat(6, 1fr); gap: 7px; margin-top: 10px; }
+    .swatch { height: 24px; border-radius: 3px; border: 1px solid #718398; }
+    .layer { display: flex; gap: 7px; align-items: center; padding: 8px 7px; color: var(--muted); font-size: 12px; border-radius: 4px; }
+    .layer.active { background: #24424a; color: var(--teal); }
+    .slider { height: 4px; background: #3e4d63; border-radius: 5px; margin: 15px 0 6px; position: relative; }
+    .slider span { display: block; height: 4px; width: 64%; background: var(--teal); border-radius: 5px; position: relative; }
+    .slider span:after { content: ""; width: 9px; height: 13px; position: absolute; right: -3px; top: -5px; border-radius: 2px; background: #d7f5ec; }
+    .audio-transport { gap: 7px; }
+    .transport-readout { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--teal); padding: 4px 8px; background: #101c29; border: 1px solid var(--line); border-radius: 3px; }
+    .arrangement { height: 296px; flex: 0 0 296px; background: #111b29; position: relative; overflow: hidden; }
+    .ruler { height: 32px; margin-left: 126px; display: grid; grid-template-columns: repeat(8, 1fr); background: #1c2a3d; border-bottom: 1px solid #51617b; color: var(--muted); font-size: 10px; align-items: center; }
+    .ruler span { border-left: 1px solid #59707f; padding-left: 7px; }
+    .loop-strip { height: 5px; position: absolute; left: 126px; right: 0; background: #6bc3b2; top: 0; }
+    .audio-row { display: grid; grid-template-columns: 126px 1fr; height: 65px; border-bottom: 1px solid #304258; }
+    .track-label { padding: 6px 10px; background: #1e2b3d; font-size: 11px; border-right: 1px solid #485971; }
+    .track-name { display: flex; gap: 7px; align-items: center; }
+    .track-color { display: inline-block; width: 3px; height: 14px; border-radius: 2px; background: var(--teal); }
+    .track-controls { display: flex; align-items: center; gap: 6px; margin-top: 3px; }
+    .mini-control { display: grid; place-items: center; width: 32px; height: 32px; flex: 0 0 32px; border: 1px solid #4d5e75; border-radius: 3px; font-size: 9px; color: #bfd0e4; }
+    .track-meter { flex: 1; height: 4px; background: #3c5267; }
+    .track-meter span { display: block; width: 64%; height: 100%; background: #6cc3a6; }
+    .lane { position: relative; display: grid; grid-template-columns: repeat(8, 1fr); padding: 8px 0; gap: 3px; background: repeating-linear-gradient(90deg, transparent 0, transparent calc(12.5% - 1px), #304158 calc(12.5% - 1px), #304158 12.5%); }
+    .clip { border-radius: 4px; border: 1px solid #8bc7ba; background: #326356; color: #e6fff6; padding: 4px 7px; font-size: 10px; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between; }
+    .clip.purple { background: #55496e; border-color: #a88bc6; color: #f1e8ff; }
+    .clip.gold { background: #6a5331; border-color: #c4a66a; color: #fff0cf; }
+    .clip.blue { background: #34566e; border-color: #7eaac4; color: #e2f5ff; }
+    .clip.selected { box-shadow: inset 0 0 0 1px #e4d7ff; }
+    .clip-notes { height: 12px; background: repeating-linear-gradient(90deg, #d6ffe9 0 4px, transparent 4px 13px); opacity: .7; clip-path: polygon(0 60%, 7% 60%, 7% 30%, 20% 30%, 20% 70%, 35% 70%, 35% 0, 50% 0, 50% 40%, 70% 40%, 70% 10%, 85% 10%, 85% 50%, 100% 50%, 100% 100%, 0 100%); }
+    .piano { position: relative; flex: 1; min-height: 0; display: flex; background: #15202e; }
+    .piano-keys { width: 43px; flex: 0 0 43px; display: flex; flex-direction: column; border-right: 1px solid #607487; }
+    .piano-key { height: 18px; flex: 0 0 18px; font-size: 8px; background: #bdc9d3; color: #263441; border-bottom: 1px solid #81919f; text-align: right; padding-right: 6px; }
+    .piano-key.black { background: #344255; color: #bdcbda; }
+    .note-grid { position: relative; flex: 1; background-image: linear-gradient(#2c3d50 1px, transparent 1px), linear-gradient(90deg, #2c3d50 1px, transparent 1px); background-size: 100% 18px, 30px 100%; overflow: hidden; }
+    .note { position: absolute; height: 15px; background: #bda5e9; border: 1px solid #decefb; border-radius: 3px; font-size: 9px; color: #282036; padding-left: 5px; font-weight: 600; }
+    .piano-caption { position: absolute; bottom: 4px; left: 10px; color: var(--muted); font-size: 10px; background: #15202e; padding: 3px 6px; }
+    .velocity { height: 34px; padding: 7px 20px; background: #1d2c3d; color: var(--muted); display: flex; align-items: flex-end; gap: 16px; font-size: 9px; flex: 0 0 34px; }
+    .velocity i { display: block; width: 4px; background: #bda5e9; border-radius: 2px 2px 0 0; }
+    .meter-pair { display: flex; gap: 5px; height: 60px; justify-content: center; margin: 9px 0; align-items: flex-end; }
+    .meter-pair span { width: 13px; height: 100%; background: repeating-linear-gradient(to top, #65be9b 0 4px, #213b39 4px 6px); border-top: 7px solid #d5bd79; }
+    .meter-pair span:last-child { height: 89%; }
+    .audio-state { display: flex; align-items: center; gap: 13px; padding-top: 9px; }
+    .code-area { flex: 1; padding: 18px 0; background: #121b29; overflow: hidden; font: 12px/1.9 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .code-line { display: flex; white-space: pre; }
+    .line-no { display: inline-block; width: 46px; padding-right: 12px; text-align: right; color: #7288a3; flex: 0 0 46px; user-select: none; }
+    .line-no.breakpoint { color: #ffb1b8; background: #47303e; border-radius: 0 3px 3px 0; }
+    .code-line.highlight { background: #26364a; }
+    .kw { color: #c7b1ee; } .fn { color: #8cdbc9; } .str { color: #e6c482; } .num { color: #91c8ff; } .comment { color: #a4b5c8; }
+    .completion { margin: 12px 18px 0 46px; border: 1px solid #587787; border-radius: 5px; background: #203146; font: 12px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 480px; box-shadow: 0 8px 20px #0003; }
+    .completion-title { padding: 7px 11px; color: #b5c9da; border-bottom: 1px solid #485b71; font-size: 11px; }
+    .completion-row { padding: 5px 11px; display: flex; gap: 9px; color: #cad9e8; }
+    .completion-row.active { background: #2b5556; color: #d9fff3; }
+    .signature { font: 11px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace; color: #b5e7db; overflow-wrap: anywhere; }
+    .callout { padding: 11px; border: 1px solid #53677d; border-radius: 5px; background: #203045; }
+    .preview-scene { height: 130px; border: 1px solid #45566b; border-radius: 4px; position: relative; background: repeating-linear-gradient(0deg, #182a38 0 16px, #1d3040 16px 32px); margin-top: 10px; }
+    .preview-scene .player { position: absolute; left: 50px; bottom: 35px; width: 23px; height: 23px; background: #7de1ce; }
+    .preview-scene .coin { position: absolute; right: 39px; bottom: 41px; width: 18px; height: 18px; background: #f0c77e; }
+    @media (max-width: 900px) {
+      .study { padding: 20px 16px 28px; }
+      .masthead { display: block; }
+      .edition { text-align: left; margin-top: 12px; white-space: normal; }
+      h1 { font-size: 23px; }
+      .review { grid-template-columns: 1fr; gap: 14px; }
+      .principles { grid-template-columns: 1fr; gap: 15px; }
+      .footer { display: block; }
+      .footer span { display: block; margin-top: 8px; }
+    }
+  </style>
+</head>
+<body>
+  <svg class="defs" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="i-scene" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m3 16 6-6 4 4 3-3 5 5"/><circle cx="16" cy="8" r="1"/></symbol>
+    <symbol id="i-sprite" viewBox="0 0 24 24"><path d="M7 3h10v4h4v10h-4v4H7v-4H3V7h4Z"/><path d="M8 9v3m8-3v3m-7 4h6"/></symbol>
+    <symbol id="i-model" viewBox="0 0 24 24"><path d="m12 2 9 5v10l-9 5-9-5V7Z"/><path d="m3 7 9 5 9-5m-9 5v10"/></symbol>
+    <symbol id="i-sound" viewBox="0 0 24 24"><path d="M3 9v6m4-10v14m5-16v18m5-13v8m4-6v4"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="m8 6-6 6 6 6m8-12 6 6-6 6m-3-15-2 18"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="m7 4 13 8-13 8Z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14m8-14v14" stroke-width="4"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="1" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-export" viewBox="0 0 24 24"><path d="M4 13v7h16v-7M12 16V3m-5 5 5-5 5 5"/></symbol>
+    <symbol id="i-import" viewBox="0 0 24 24"><path d="M4 14v6h16v-6M12 3v12m-5-5 5 5 5-5"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m7 9 5 5 5-5"/></symbol>
+    <symbol id="i-select" viewBox="0 0 24 24"><path d="m5 3 14 10-7 1-3 7Z"/></symbol>
+    <symbol id="i-move" viewBox="0 0 24 24"><path d="M12 2v20M2 12h20m-13-7 3-3 3 3m-6 14 3 3 3-3M5 9l-3 3 3 3m14-6 3 3-3 3"/></symbol>
+    <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M4 9a9 9 0 1 1 0 7m0-14v7h7"/></symbol>
+    <symbol id="i-scale" viewBox="0 0 24 24"><rect x="3" y="14" width="7" height="7"/><path d="m10 14 10-10m-7 0h7v7"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M9 3v18m6-18v18M3 9h18M3 15h18"/></symbol>
+    <symbol id="i-magnet" viewBox="0 0 24 24"><path d="M4 3v10a8 8 0 0 0 16 0V3h-5v10a3 3 0 0 1-6 0V3Zm0 5h5m6 0h5"/></symbol>
+    <symbol id="i-frame" viewBox="0 0 24 24"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m8 0h5v-5"/><rect x="8" y="8" width="8" height="8" rx="1"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6h7l2 3h9v12H3Z"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12c5-9 15-9 20 0-5 9-15 9-20 0Z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3"/></symbol>
+    <symbol id="i-brush" viewBox="0 0 24 24"><path d="m9 14 9-12 4 4-12 9m-4-1c-4 0-2 5-5 7 6 1 9-1 8-5Z"/></symbol>
+    <symbol id="i-eraser" viewBox="0 0 24 24"><path d="m3 14 11-11 8 8-10 10H8Zm6-6 8 8M12 21h10"/></symbol>
+    <symbol id="i-fill" viewBox="0 0 24 24"><path d="m4 10 7-7 9 9-8 8-9-9ZM8 2l7 7M3 11h16m1 4c-4 5-4 7 0 7s4-2 0-7Z"/></symbol>
+    <symbol id="i-loop" viewBox="0 0 24 24"><path d="M4 9V6h15m-4-4 4 4-4 4M20 15v3H5m4-4-4 4 4 4"/></symbol>
+    <symbol id="i-record" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-headphones" viewBox="0 0 24 24"><path d="M3 14v-3a9 9 0 0 1 18 0v3"/><rect x="2" y="12" width="5" height="9" rx="2"/><rect x="17" y="12" width="5" height="9" rx="2"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m4 12 5 5L20 6"/></symbol>
+    <symbol id="i-save" viewBox="0 0 24 24"><path d="M3 3h15l3 3v15H3Z"/><path d="M7 3v6h10V3M7 21v-8h10v8"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="m8 3-6 6 6 6M2 9h11a8 8 0 0 1 0 16" transform="translate(0 -2)"/></symbol>
+    <symbol id="i-redo" viewBox="0 0 24 24"><path d="m16 3 6 6-6 6m6-6H11a8 8 0 0 0 0 16" transform="translate(0 -2)"/></symbol>
+    <symbol id="i-note" viewBox="0 0 24 24"><path d="M9 17V5l12-3v13M9 9l12-3"/><ellipse cx="6" cy="18" rx="3" ry="2"/><ellipse cx="18" cy="16" rx="3" ry="2"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="m9 15 6-6m-8 5-3 3a4 4 0 0 0 6 5l4-4m-4-8 4-4a4 4 0 0 1 6 5l-3 3"/></symbol>
+    <symbol id="hero" viewBox="0 0 64 64">
+      <path d="M18 10h28v5h6v31h-6v9H35v-8h-6v8H18v-9h-6V15h6Z" fill="#6bd7bd"/>
+      <path d="M18 10h28v5H18Zm-6 5h6v31h-6Zm6 31h11v9H18Z" fill="#a2efcf"/>
+      <path d="M46 15h6v31h-6v9H35v-8h6V21h5Z" fill="#36a89e"/>
+      <path d="M22 22h7v9h-7Zm14 0h7v9h-7Z" fill="#192d3d"/>
+      <path d="M23 23h3v3h-3Zm14 0h3v3h-3Z" fill="#ecfff5"/>
+      <path d="M27 36h11v4H27Z" fill="#275b60"/>
+    </symbol>
+  </svg>
+  <main class="study">
+    <header class="masthead">
+      <div>
+        <p class="eyebrow">NOVA STUDIO / PRODUCT DESIGN</p>
+        <h1>One studio. Five focused workspaces.</h1>
+        <p class="lede">Visual creation around Lua, with familiar tools, clear ownership, and a short path back to your game.</p>
+      </div>
+      <div class="edition">Workspace study &middot; 01 November 2026<br><a href="nova-studio-ux-assessment.md">Read the full assessment and specification</a></div>
+    </header>
+    <div class="review-controls">
+      <nav class="review-switcher" aria-label="Choose a workspace study">
+        <button data-study="scene" aria-pressed="true">Scene</button>
+        <button data-study="sprite" aria-pressed="false">Sprite</button>
+        <button data-study="model" aria-pressed="false">Model</button>
+        <button data-study="sound" aria-pressed="false">Sound</button>
+        <button data-study="code" aria-pressed="false">Code</button>
+      </nav>
+      <button id="actual-size" aria-pressed="false">Actual size</button>
+    </div>
+    <p class="scale-note">1440-pixel desktop layout, scaled to fit this panel. Choose Actual size to inspect details, or enlarge the panel. This scaling is for the design board, not the proposed editor.</p>
+    <div class="studio-container" id="studio-container">
+    <div class="studio" id="studio">
+      <div class="concept"><strong>DESIGN CONCEPT &mdash; NOT IMPLEMENTED</strong><span>Workspace tabs navigate this study. All authoring controls and content are illustrative.</span></div>
+      <header class="topbar">
+        <div class="brand"><div class="brand-mark">N</div><div><div class="project-title">Forest walk <span class="muted">&middot;</span></div><div class="project-subtitle" id="project-save-state">Example project / saved</div></div></div>
+        <div class="global-edit" aria-label="Illustrative editing controls">
+          <span class="mock square" id="save-control" title="Save active document (Cmd/Ctrl+S)"><svg class="icon" aria-label="Save active document"><use href="#i-save"/></svg></span>
+          <span class="mock square quiet" title="Undo the active document's last edit (Cmd/Ctrl+Z)"><svg class="icon" aria-label="Undo"><use href="#i-undo"/></svg></span>
+          <span class="mock square quiet" title="Redo (Cmd/Ctrl+Shift+Z)"><svg class="icon" aria-label="Redo"><use href="#i-redo"/></svg></span>
+          <span class="separator"></span>
+        </div>
+        <nav class="tabs" role="tablist" aria-label="Workspace design concepts">
+          <button class="tab" id="tab-scene" role="tab" aria-selected="true" aria-controls="view-scene" data-view="scene"><svg class="icon" aria-hidden="true"><use href="#i-scene"/></svg>Scene</button>
+          <button class="tab" id="tab-sprite" role="tab" aria-selected="false" aria-controls="view-sprite" data-view="sprite" tabindex="-1"><svg class="icon" aria-hidden="true"><use href="#i-sprite"/></svg>Sprite</button>
+          <button class="tab" id="tab-model" role="tab" aria-selected="false" aria-controls="view-model" data-view="model" tabindex="-1"><svg class="icon" aria-hidden="true"><use href="#i-model"/></svg>Model</button>
+          <button class="tab" id="tab-sound" role="tab" aria-selected="false" aria-controls="view-sound" data-view="sound" tabindex="-1"><svg class="icon" aria-hidden="true"><use href="#i-sound"/></svg>Sound</button>
+          <button class="tab" id="tab-code" role="tab" aria-selected="false" aria-controls="view-code" data-view="code" tabindex="-1"><svg class="icon" aria-hidden="true"><use href="#i-code"/></svg>Code</button>
+        </nav>
+        <div class="global-actions" aria-label="Illustrative global controls">
+          <span class="mock primary"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg>Run game <svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></span>
+          <span class="mock square inactive" title="Pause: available while the game is running"><svg class="icon" aria-label="Pause"><use href="#i-pause"/></svg></span>
+          <span class="mock square inactive" title="Stop: available while the game is running"><svg class="icon" aria-label="Stop"><use href="#i-stop"/></svg></span>
+          <span class="separator"></span>
+          <span class="mock quiet"><svg class="icon" aria-hidden="true"><use href="#i-export"/></svg>Export</span>
+        </div>
+      </header>
+
+      <section class="workspace" id="view-scene" role="tabpanel" aria-labelledby="tab-scene">
+        <aside class="left">
+          <div class="panel-heading">Scene outline <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></div>
+          <div class="panel-section">
+            <div class="search"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>Find an object</div>
+            <div class="tree-row"><svg class="icon" aria-hidden="true"><use href="#i-scene"/></svg>Start scene</div>
+            <div class="tree-row child"><svg class="icon" aria-hidden="true"><use href="#i-grid"/></svg>Ground</div>
+            <div class="tree-row child selected"><svg class="icon" aria-hidden="true"><use href="#i-sprite"/></svg>Player <span class="tail">Lua</span></div>
+            <div class="tree-row child"><svg class="icon" aria-hidden="true"><use href="#i-sprite"/></svg>Collectibles <span class="tail">3</span></div>
+            <div class="tree-row child"><svg class="icon" aria-hidden="true"><use href="#i-camera"/></svg>Camera</div>
+            <div class="tree-row child"><svg class="icon" aria-hidden="true"><use href="#i-sound"/></svg>Ambience</div>
+          </div>
+          <div class="asset-section">
+            <div class="panel-heading">Assets <span class="small-label">PROJECT</span></div>
+            <div class="panel-actions"><span class="mock"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>Create</span><span class="mock quiet"><svg class="icon" aria-hidden="true"><use href="#i-import"/></svg>Import</span></div>
+            <div class="panel-section">
+              <div class="search"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>Search assets</div>
+              <div class="chips"><span class="chip active">All</span><span class="chip">2D</span><span class="chip">Audio</span></div>
+              <div class="tree-row"><svg class="icon" aria-hidden="true"><use href="#i-sprite"/></svg>Player</div>
+              <div class="tree-row"><svg class="icon" aria-hidden="true"><use href="#i-sprite"/></svg>Forest tiles</div>
+              <div class="tree-row"><svg class="icon" aria-hidden="true"><use href="#i-model"/></svg>Garden house</div>
+              <div class="tree-row"><svg class="icon" aria-hidden="true"><use href="#i-note"/></svg>Forest theme</div>
+              <div class="tree-row"><svg class="icon" aria-hidden="true"><use href="#i-sound"/></svg>Pickup</div>
+            </div>
+          </div>
+        </aside>
+        <div class="center">
+          <div class="documents"><span class="document"><svg class="icon" aria-hidden="true"><use href="#i-scene"/></svg>Start.scene</span><span class="document secondary">Game UI</span></div>
+          <div class="context" aria-label="Illustrative scene toolbar">
+            <span class="mock square" title="Select (Q)"><svg class="icon" aria-label="Select"><use href="#i-select"/></svg></span>
+            <span class="mock active"><svg class="icon" aria-hidden="true"><use href="#i-move"/></svg>Move</span>
+            <span class="mock square" title="Rotate (E)"><svg class="icon" aria-label="Rotate"><use href="#i-rotate"/></svg></span>
+            <span class="mock square" title="Scale (R)"><svg class="icon" aria-label="Scale"><use href="#i-scale"/></svg></span>
+            <span class="separator"></span><span class="mock"><svg class="icon" aria-hidden="true"><use href="#i-magnet"/></svg>16 px</span>
+            <span class="mock square" title="Frame selection (F)"><svg class="icon" aria-label="Frame selection"><use href="#i-frame"/></svg></span>
+            <span class="mock quiet push">2D <svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></span><span class="mock quiet optional">100%</span>
+          </div>
+          <div class="viewport">
+            <div class="viewport-label">World &nbsp; / &nbsp; Start scene</div><div class="viewport-label right-label">Game camera &middot; 960 &times; 540</div>
+            <svg class="art" viewBox="0 0 800 480" role="img" aria-label="Conceptual top-down level with a selected player, transform handles, path, trees and collectibles.">
+              <defs><pattern id="scene-grid" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M24 0H0V24" fill="none" stroke="#30434e" stroke-width=".6"/></pattern></defs>
+              <rect width="800" height="480" fill="#182a31"/><rect width="800" height="480" fill="url(#scene-grid)"/>
+              <rect x="74" y="78" width="652" height="366.75" rx="3" fill="#293d3d" stroke="#9bbdb4" stroke-dasharray="6 5"/>
+              <path d="M74 300H302V216H480V150H726" fill="none" stroke="#746647" stroke-width="52"/>
+              <path d="M74 300H302V216H480V150H726" fill="none" stroke="#8c7c53" stroke-width="43"/>
+              <path d="M74 300H302V216H480V150H726" fill="none" stroke="#9e8e65" stroke-width="2" stroke-dasharray="3 13"/>
+              <g fill="#203936" stroke="#405d50" stroke-width="2">
+                <circle cx="149" cy="143" r="31"/><circle cx="209" cy="129" r="26"/><circle cx="120" cy="201" r="25"/><circle cx="633" cy="324" r="39"/><circle cx="682" cy="282" r="27"/><circle cx="580" cy="365" r="26"/>
+              </g>
+              <g fill="#4a7861"><circle cx="145" cy="133" r="20"/><circle cx="204" cy="120" r="17"/><circle cx="116" cy="193" r="16"/><circle cx="628" cy="314" r="27"/><circle cx="678" cy="275" r="18"/><circle cx="576" cy="358" r="18"/></g>
+              <g fill="#f1ca77" stroke="#ffe0a2" stroke-width="2"><circle cx="307" cy="217" r="9"/><circle cx="479" cy="212" r="9"/><circle cx="577" cy="149" r="9"/></g>
+              <g transform="translate(353 265)"><rect x="-7" y="-7" width="42" height="42" fill="#67d5bc18" stroke="#a3efda" stroke-width="1.5"/><rect width="28" height="28" rx="3" fill="#73ddc1"/><rect x="7" y="8" width="4" height="6" fill="#1e3b42"/><rect x="19" y="8" width="4" height="6" fill="#1e3b42"/>
+                <g fill="#e1fff3"><rect x="-9" y="-9" width="5" height="5"/><rect x="32" y="-9" width="5" height="5"/><rect x="-9" y="32" width="5" height="5"/><rect x="32" y="32" width="5" height="5"/></g>
+                <path d="M14 14h72" stroke="#f4a1a1" stroke-width="2"/><path d="m86 14-8-4v8Z" fill="#f4a1a1"/><path d="M14 14v66" stroke="#a5e5bb" stroke-width="2"/><path d="m14 80-4-8h8Z" fill="#a5e5bb"/>
+                <text x="89" y="18" fill="#f4b6b6" font-size="12">X</text><text x="10" y="96" fill="#b9f1cc" font-size="12">Y</text>
+              </g>
+              <rect x="338" y="233" width="64" height="22" rx="4" fill="#143b3c" stroke="#75b9ad"/><text x="370" y="248" text-anchor="middle" fill="#c6f7e6" font-size="11">Player</text>
+              <rect x="74" y="78" width="106" height="22" fill="#1b303a"/><text x="83" y="93" fill="#b6cecf" font-size="10">Camera bounds</text>
+            </svg>
+            <div class="viewport-bottom">Illustrative level &middot; world-space editing, not a running game</div>
+          </div>
+          <div class="bottom-tabs"><span class="current">Help for selection</span><span>Problems</span><span>Output</span><span class="push">Expand panel</span></div>
+          <div class="hint-panel"><span class="hint-dot">i</span><div><strong>Move the player visually. Keep its behavior in Lua.</strong><br>Drag a handle or enter a position. Open player.lua from the inspector to change movement.</div></div>
+        </div>
+        <aside class="right">
+          <div class="inspector-title"><span class="small-label">INSPECTOR / OBJECT</span><h2>Player</h2><p>Start scene &nbsp;/&nbsp; Sprite object</p></div>
+          <div class="group"><div class="group-title"><svg class="icon" aria-hidden="true"><use href="#i-move"/></svg>Transform</div><div class="pair"><div class="value"><span class="axis x">X</span>416<span class="unit">px</span></div><div class="value"><span class="axis y">Y</span>270<span class="unit">px</span></div></div><div class="field">Rotation <span class="value">0<span class="unit">degrees</span></span></div><div class="field">Scale <span class="value">1.0<span class="unit">uniform</span></span></div></div>
+          <div class="group"><div class="group-title"><svg class="icon" aria-hidden="true"><use href="#i-sprite"/></svg>Sprite</div><div class="value wide"><span>Player.sprite</span><svg class="icon" aria-hidden="true"><use href="#i-link"/></svg></div><div class="field">Animation<span class="value">Idle<svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></span></div><div class="linklike">Edit sprite &rarr;</div></div>
+          <div class="group"><div class="group-title"><svg class="icon" aria-hidden="true"><use href="#i-code"/></svg>Lua behavior</div><div class="value wide"><span>player.lua</span><svg class="icon" aria-hidden="true"><use href="#i-code"/></svg></div><div class="field">Move speed<span class="value">230<span class="unit">px/s</span></span></div><p class="tiny">Exposed properties stay visual.<br>Game behavior stays in your script.</p><div class="linklike">Open script &rarr;</div></div>
+          <div class="group"><div class="group-title">Collision shape</div><div class="field">Shape<span class="value">Box<svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></span></div><p class="tiny">Show bounds in the scene</p></div>
+        </aside>
+      </section>
+
+      <section class="workspace" id="view-sprite" role="tabpanel" aria-labelledby="tab-sprite" hidden>
+        <aside class="left">
+          <div class="panel-heading">Sprite assets <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></div><div class="panel-section"><div class="search"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>Find a sprite</div><div class="tree-row selected"><svg class="icon" aria-hidden="true"><use href="#i-sprite"/></svg>Player</div><div class="tree-row"><svg class="icon" aria-hidden="true"><use href="#i-sprite"/></svg>Forest tiles</div><div class="tree-row"><svg class="icon" aria-hidden="true"><use href="#i-sprite"/></svg>Collectible</div></div>
+          <div class="divider"></div><div class="panel-heading">Palette <span class="small-label">FOREST</span></div><div class="panel-section"><div class="palette"><span class="swatch" style="background:#192d3d"></span><span class="swatch" style="background:#275b60"></span><span class="swatch" style="background:#36a89e"></span><span class="swatch" style="background:#6bd7bd"></span><span class="swatch" style="background:#a2efcf"></span><span class="swatch" style="background:#ecfff5"></span><span class="swatch" style="background:#786442"></span><span class="swatch" style="background:#d6a86a"></span><span class="swatch" style="background:#f0c77e"></span><span class="swatch" style="background:#a891ca"></span><span class="swatch" style="background:#dd9ba9"></span><span class="swatch" style="background:#f7d1ca"></span></div><div class="field" style="margin-top:20px">Color<span class="value">#6BD7BD</span></div></div>
+          <div class="asset-section"><div class="panel-heading">Used in</div><div class="tree-row"><svg class="icon" aria-hidden="true"><use href="#i-scene"/></svg>Start scene <span class="tail">Player</span></div><p class="asset-note">Edit the source once.<br>Keep the same asset reference in every scene.</p><div class="panel-actions" style="margin-top:15px"><span class="mock"><svg class="icon" aria-hidden="true"><use href="#i-import"/></svg>Import image</span></div></div>
+        </aside>
+        <div class="center">
+          <div class="documents"><span class="document"><svg class="icon" aria-hidden="true"><use href="#i-sprite"/></svg>Player.sprite<span class="dirty"></span></span></div>
+          <div class="context"><span class="mock active"><svg class="icon" aria-hidden="true"><use href="#i-brush"/></svg>Pencil</span><span class="mock">1 px</span><span class="mock optional">Opacity 100%</span><span class="separator"></span><span class="mock quiet">Pixel art</span><span class="mock quiet push"><svg class="icon" aria-hidden="true"><use href="#i-grid"/></svg>Grid</span></div>
+          <div class="viewport">
+            <div class="tool-rail" aria-label="Illustrative sprite tools"><span class="mock square"><svg class="icon" aria-label="Select"><use href="#i-select"/></svg></span><span class="mock square active"><svg class="icon" aria-label="Pencil"><use href="#i-brush"/></svg></span><span class="mock square"><svg class="icon" aria-label="Eraser"><use href="#i-eraser"/></svg></span><span class="mock square"><svg class="icon" aria-label="Fill"><use href="#i-fill"/></svg></span><span class="mock square"><svg class="icon" aria-label="Move"><use href="#i-move"/></svg></span></div>
+            <div class="sprite-work"><div class="pixel-frame"><div class="pixel-canvas"><svg viewBox="0 0 64 64" role="img" aria-label="Original illustrative pixel-art character"><use href="#hero"/><path d="M32 44v8m-4-4h8" stroke="#f0c77e" stroke-width=".5" fill="none"/></svg></div></div></div>
+            <div class="viewport-label right-label">Frame 1 &middot; Body layer</div>
+          </div>
+          <div class="bottom-tabs"><span class="current">Frames &middot; Idle</span><span>Onion skin</span><span class="push">Preview animation &nbsp; &#9654; &nbsp; 8 fps</span></div>
+          <div class="frames"><div class="frame active"><div class="frame-art"><svg aria-hidden="true"><use href="#hero"/></svg></div>1 &middot; 125 ms</div><div class="frame"><div class="frame-art"><svg aria-hidden="true" style="transform:translateY(-2px)"><use href="#hero"/></svg></div>2 &middot; 125 ms</div><div class="frame"><div class="frame-art"><svg aria-hidden="true" style="transform:scaleX(.95)"><use href="#hero"/></svg></div>3 &middot; 125 ms</div><div class="frame"><div class="frame-art"><svg aria-hidden="true" style="transform:translateY(2px)"><use href="#hero"/></svg></div>4 &middot; 125 ms</div><span class="mock square"><svg class="icon" aria-label="Add frame"><use href="#i-plus"/></svg></span><div class="tiny push" style="max-width:130px">Timing is shared<br>with runtime playback.</div></div>
+        </div>
+        <aside class="right">
+          <div class="inspector-title"><span class="small-label">SPRITE DOCUMENT</span><h2>Player</h2><p>Editable artwork &middot; 4 frames</p></div>
+          <div class="group"><div class="group-title">Canvas</div><div class="pair"><div class="value">64<span class="unit">px wide</span></div><div class="value">64<span class="unit">px high</span></div></div><div class="linklike">Resize canvas &middot; Scale artwork</div></div>
+          <div class="group"><div class="group-title">Layers</div><div class="layer"><svg class="icon" aria-hidden="true"><use href="#i-eye"/></svg>Highlights</div><div class="layer active"><svg class="icon" aria-hidden="true"><use href="#i-eye"/></svg>Body</div><div class="layer"><svg class="icon" aria-hidden="true"><use href="#i-eye"/></svg>Shadow</div><div class="linklike"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>Add layer</div></div>
+          <div class="group"><div class="group-title">Origin / pivot</div><div class="pair"><div class="value"><span class="axis x">X</span>32</div><div class="value"><span class="axis y">Y</span>48</div></div><p class="tiny">The marker stays consistent when switching between frames.</p></div>
+          <div class="group"><div class="group-title">Animation</div><div class="field">Loop<span class="value">On</span></div><div class="field">Duration<span class="value">0.5<span class="unit">seconds</span></span></div><p class="tiny">Source layers and frames are retained when a sprite sheet is generated.</p></div>
+        </aside>
+      </section>
+
+      <section class="workspace" id="view-model" role="tabpanel" aria-labelledby="tab-model" hidden>
+        <aside class="left">
+          <div class="panel-heading">Model parts <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></div><div class="panel-section"><div class="tree-row"><svg class="icon" aria-hidden="true"><use href="#i-model"/></svg>Garden house</div><div class="tree-row child selected"><svg class="icon" aria-hidden="true"><use href="#i-model"/></svg>Roof</div><div class="tree-row child"><svg class="icon" aria-hidden="true"><use href="#i-model"/></svg>Walls</div><div class="tree-row child"><svg class="icon" aria-hidden="true"><use href="#i-model"/></svg>Door</div><div class="tree-row child"><svg class="icon" aria-hidden="true"><use href="#i-model"/></svg>Windows</div></div>
+          <div class="divider"></div><div class="panel-heading">Create primitive</div><div class="panel-section"><div class="tree-row"><svg class="icon" aria-hidden="true"><use href="#i-model"/></svg>Cube</div><div class="tree-row"><svg class="icon" aria-hidden="true"><use href="#i-model"/></svg>Cylinder</div><div class="tree-row"><svg class="icon" aria-hidden="true"><use href="#i-model"/></svg>Sphere</div><div class="tree-row"><svg class="icon" aria-hidden="true"><use href="#i-grid"/></svg>Plane</div></div>
+          <div class="asset-section"><div class="panel-heading">Assets</div><div class="tree-row selected"><svg class="icon" aria-hidden="true"><use href="#i-model"/></svg>Garden house</div><div class="tree-row"><svg class="icon" aria-hidden="true"><use href="#i-model"/></svg>Stone</div><p class="asset-note">Model editing and scene placement are separate contexts. Your source mesh stays editable.</p></div>
+        </aside>
+        <div class="center">
+          <div class="documents"><span class="document"><svg class="icon" aria-hidden="true"><use href="#i-model"/></svg>Garden house.model<span class="dirty"></span></span></div>
+          <div class="context"><span class="mock quiet">Object</span><span class="mock active">Face</span><span class="separator"></span><span class="mock">Extrude</span><span class="mock">Inset</span><span class="mock optional">Bevel</span><span class="mock square push" title="Frame selection"><svg class="icon" aria-label="Frame selection"><use href="#i-frame"/></svg></span></div>
+          <div class="viewport">
+            <div class="viewport-label">Perspective &nbsp; / &nbsp; Solid + edges</div><div class="viewport-label right-label">Local axes</div>
+            <svg class="art" viewBox="0 0 800 480" role="img" aria-label="Original low-poly house concept with a selected roof face, perspective grid and labeled axes. This is a diagram, not a 3D renderer.">
+              <rect width="800" height="480" fill="#182330"/>
+              <g stroke="#344659" stroke-width="1"><path d="M0 430 470 150M120 480 525 150M270 480 580 150M420 480 635 150M570 480 690 150M720 480 745 150M800 430 180 150M650 480 125 150M500 480 70 150M350 480 15 150M200 480 0 205M50 480 0 315"/><path d="M0 390h800M0 320h800M0 270h800M0 233h800M0 204h800M0 181h800M0 162h800"/></g>
+              <ellipse cx="416" cy="357" rx="176" ry="43" fill="#0d1623" opacity=".6"/>
+              <path d="m286 245 126 62v111l-126-63Z" fill="#b5ac8d" stroke="#243445" stroke-width="2"/>
+              <path d="m412 307 133-76v113l-133 74Z" fill="#7e8d86" stroke="#243445" stroke-width="2"/>
+              <path d="m269 247 141-92 150 77-150 89Z" fill="#4c8f89" stroke="#bcebdd" stroke-width="2"/>
+              <path d="m269 247 141-92-31 137Z" fill="#76c5ac" stroke="#bcebdd" stroke-width="2"/>
+              <path d="m379 292 31-137 150 77-150 89Z" fill="#397f7d" stroke="#a8e7d4" stroke-width="2"/>
+              <path d="m269 247 110 45 31 29-124-61Z" fill="#40786e"/>
+              <path d="m410 321 150-89-3 15-145 83Z" fill="#2c5e65"/>
+              <path d="m331 304 42 21v73l-42-21Z" fill="#4b5d5d" stroke="#2b4147" stroke-width="2"/>
+              <circle cx="362" cy="364" r="3" fill="#efcb86"/>
+              <path d="m452 319 45-25v44l-45 26Z" fill="#99c7cb" stroke="#465b62" stroke-width="5"/><path d="m475 306 0 45m-23-8 45-26" stroke="#465b62" stroke-width="3"/>
+              <g fill="#e0fff0" stroke="#243e45" stroke-width="1"><circle cx="269" cy="247" r="4"/><circle cx="410" cy="155" r="4"/><circle cx="379" cy="292" r="4"/><circle cx="560" cy="232" r="4"/><circle cx="410" cy="321" r="4"/></g>
+              <path d="M373 232v-65" stroke="#a7e6b5" stroke-width="2"/><path d="m373 163-5 10h10Z" fill="#a7e6b5"/><text x="384" y="176" fill="#bfebc4" font-size="12">Y</text>
+              <g transform="translate(713 391)"><path d="M0 0v-40" stroke="#8ee4b5" stroke-width="2"/><path d="M0 0 35 18" stroke="#e9a1a2" stroke-width="2"/><path d="M0 0-31 20" stroke="#a4bfff" stroke-width="2"/><text x="-4" y="-47" fill="#b2efcc" font-size="11">Y</text><text x="41" y="23" fill="#f2bcbd" font-size="11">X</text><text x="-43" y="25" fill="#bed0ff" font-size="11">Z</text></g>
+            </svg>
+            <div class="viewport-bottom">Original modelling illustration &middot; not a rendered or editable mesh</div>
+          </div>
+          <div class="bottom-tabs"><span class="current">Selection</span><span>UV editor</span><span>Materials</span><span class="push">1 face selected &middot; meters</span></div>
+          <div class="hint-panel"><span class="hint-dot">i</span><div><strong>Shape a prop, then place it in a scene.</strong><br>Named selection modes, reversible edits, and a faithful supported material preview.</div></div>
+        </div>
+        <aside class="right">
+          <div class="inspector-title"><span class="small-label">MODEL / FACE SELECTION</span><h2>Roof</h2><p>Garden house &nbsp;/&nbsp; 1 face selected</p></div>
+          <div class="group"><div class="group-title">Selected face</div><div class="field">Extrude<span class="value">0.00<span class="unit">m</span></span></div><div class="field">Inset<span class="value">0.00<span class="unit">m</span></span></div><p class="tiny">An operation is one undoable edit, including its preview.</p></div>
+          <div class="group"><div class="group-title">Material</div><div class="value wide">Forest green<span class="swatch" style="width:22px;height:20px;background:#76c5ac"></span></div><div class="field">Surface<span class="value">Base color</span></div><p class="tiny">Only advertise properties supported by the game renderer.</p></div>
+          <div class="group"><div class="group-title">Model properties</div><div class="field">Units<span class="value">Meters</span></div><div class="field">Origin<span class="value">Ground center</span></div><div class="linklike">Edit pivot &rarr;</div></div>
+          <div class="group"><div class="group-title">Runtime output</div><div class="callout tiny">Static GLB target<br><span class="muted">Supported mesh/material subset must be explicit. Editable source is preserved.</span></div><div class="linklike">View import / export report &rarr;</div></div>
+        </aside>
+      </section>
+
+      <section class="workspace" id="view-sound" role="tabpanel" aria-labelledby="tab-sound" hidden>
+        <aside class="left">
+          <div class="panel-heading">Sound Studio <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></div><div class="panel-section"><div class="chips"><span class="chip active">Music</span><span class="chip">SFX</span><span class="chip">Samples</span></div><div class="search"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>Find an instrument</div><div class="tree-row"><svg class="icon" aria-hidden="true"><use href="#i-note"/></svg>Warm keys</div><div class="tree-row selected"><svg class="icon" aria-hidden="true"><use href="#i-note"/></svg>Soft lead</div><div class="tree-row"><svg class="icon" aria-hidden="true"><use href="#i-note"/></svg>Round bass</div><div class="tree-row"><svg class="icon" aria-hidden="true"><use href="#i-sound"/></svg>Acoustic kit</div><div class="tree-row"><svg class="icon" aria-hidden="true"><use href="#i-sound"/></svg>Noise &amp; texture</div><p class="tiny" style="margin:12px 9px">Audition samples explicitly.<br>No surprise playback on selection.</p></div>
+          <div class="asset-section"><div class="panel-heading">Project audio</div><div class="tree-row selected"><svg class="icon" aria-hidden="true"><use href="#i-note"/></svg>Forest theme</div><div class="tree-row"><svg class="icon" aria-hidden="true"><use href="#i-sound"/></svg>Pickup</div><div class="tree-row"><svg class="icon" aria-hidden="true"><use href="#i-sound"/></svg>Forest ambience</div><div class="panel-actions" style="margin-top:14px"><span class="mock"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>Create</span><span class="mock quiet"><svg class="icon" aria-hidden="true"><use href="#i-import"/></svg>Import</span></div></div>
+        </aside>
+        <div class="center">
+          <div class="documents"><span class="document"><svg class="icon" aria-hidden="true"><use href="#i-note"/></svg>Forest theme.music<span class="dirty"></span></span><span class="document secondary">Pickup.sfx</span></div>
+          <div class="context audio-transport"><span class="mock active"><svg class="icon" aria-hidden="true"><use href="#i-headphones"/></svg>Audition</span><span class="mock square"><svg class="icon" aria-label="Stop audition"><use href="#i-stop"/></svg></span><span class="mock square" title="Record: arm a track and choose an input"><svg class="icon" style="color:#efa9ae" aria-label="Record"><use href="#i-record"/></svg></span><span class="separator"></span><span class="transport-readout">001:1</span><span class="mock quiet">120 BPM</span><span class="mock quiet optional">4/4</span><span class="mock square active push" title="Loop on"><svg class="icon" aria-label="Loop on"><use href="#i-loop"/></svg></span></div>
+          <div class="arrangement" role="img" aria-label="Illustrative eight-bar arrangement with drums, bass, melody, and ambience. No audio is produced.">
+            <div class="loop-strip"></div><div class="ruler"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span></div>
+            <div class="audio-row"><div class="track-label"><div class="track-name"><i class="track-color"></i>Drums</div><div class="track-controls"><span class="mini-control">M</span><span class="mini-control">S</span><div class="track-meter"><span></span></div></div></div><div class="lane"><div class="clip" style="grid-column:span 2">Drum pattern<div class="clip-notes"></div></div><div class="clip" style="grid-column:span 2">Drum pattern<div class="clip-notes"></div></div><div class="clip" style="grid-column:span 2">Drum pattern<div class="clip-notes"></div></div><div class="clip" style="grid-column:span 2">Drum fill<div class="clip-notes"></div></div></div></div>
+            <div class="audio-row"><div class="track-label"><div class="track-name"><i class="track-color" style="background:var(--gold)"></i>Bass</div><div class="track-controls"><span class="mini-control">M</span><span class="mini-control">S</span><div class="track-meter"><span style="width:48%"></span></div></div></div><div class="lane"><div class="clip gold" style="grid-column:span 4">Round bass &middot; A<div class="clip-notes"></div></div><div class="clip gold" style="grid-column:span 4">Round bass &middot; B<div class="clip-notes"></div></div></div></div>
+            <div class="audio-row"><div class="track-label"><div class="track-name"><i class="track-color" style="background:var(--purple)"></i>Melody</div><div class="track-controls"><span class="mini-control">M</span><span class="mini-control">S</span><div class="track-meter"><span style="width:71%"></span></div></div></div><div class="lane"><div class="clip purple selected" style="grid-column:span 4">Forest motif &middot; selected<div class="clip-notes"></div></div><div class="clip purple" style="grid-column:span 4">Forest motif &middot; variation<div class="clip-notes"></div></div></div></div>
+            <div class="audio-row"><div class="track-label"><div class="track-name"><i class="track-color" style="background:#93c0df"></i>Ambience</div><div class="track-controls"><span class="mini-control">M</span><span class="mini-control">S</span><div class="track-meter"><span style="width:30%"></span></div></div></div><div class="lane"><div class="clip blue" style="grid-column:span 8">Forest air &middot; looped sample<svg viewBox="0 0 600 14" preserveAspectRatio="none" aria-hidden="true" style="height:16px;width:100%"><path d="M0 7 8 5 12 10 20 6 24 2 29 13 34 8 40 4 46 10 51 3 58 11 67 6 78 7 86 1 92 12 97 5 105 10 114 4 120 7 136 2 144 11 155 5 166 10 178 1 186 12 195 7 208 4 218 11 226 3 236 9 249 7 258 1 267 12 278 5 290 9 305 3 313 11 326 5 338 8 349 1 357 12 370 6 383 4 396 10 410 2 426 12 439 7 450 3 465 11 478 6 490 1 504 12 519 6 530 8 544 2 556 12 572 5 586 9 600 7" fill="none" stroke="#cae7f2" stroke-width="1"/></svg></div></div></div>
+          </div>
+          <div class="bottom-tabs"><span class="current">Notes</span><span>Waveform</span><span>Mixer</span><span>Automation</span><span class="push">Snap 1/16</span></div>
+          <div class="piano" role="img" aria-label="Concept piano roll with editable-looking notes, keyboard labels and velocity. This is an illustration, not a sequencer.">
+            <div class="piano-keys"><div class="piano-key">C5</div><div class="piano-key">B4</div><div class="piano-key black"></div><div class="piano-key">A4</div><div class="piano-key black"></div><div class="piano-key">G4</div><div class="piano-key black"></div><div class="piano-key">F4</div><div class="piano-key">E4</div><div class="piano-key black"></div><div class="piano-key">D4</div><div class="piano-key black"></div><div class="piano-key">C4</div></div>
+            <div class="note-grid"><span class="note" style="left:4%;top:217px;width:12%">C4</span><span class="note" style="left:18%;top:145px;width:10%">E4</span><span class="note" style="left:31%;top:91px;width:10%">G4</span><span class="note" style="left:43%;top:127px;width:17%">F4</span><span class="note" style="left:63%;top:145px;width:11%">E4</span><span class="note" style="left:77%;top:181px;width:16%">D4</span><div class="piano-caption">Forest motif / Soft lead &middot; Drag note edges for duration; inspector for precision.</div></div>
+          </div>
+          <div class="velocity"><span>VELOCITY</span><i style="height:17px"></i><i style="height:13px"></i><i style="height:20px"></i><i style="height:16px"></i><i style="height:15px"></i><i style="height:11px"></i><span class="push">Illustrative notes and meters &middot; no audio playback</span></div>
+        </div>
+        <aside class="right">
+          <div class="inspector-title"><span class="small-label">CLIP / INSTRUMENT</span><h2>Forest motif</h2><p>Melody track &nbsp;/&nbsp; Bars 1-4</p></div>
+          <div class="group"><div class="group-title">Instrument</div><div class="value wide">Soft lead<svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></div><div class="field">Attack<span class="value">18<span class="unit">ms</span></span></div><div class="field">Release<span class="value">240<span class="unit">ms</span></span></div><div class="field">Filter<span class="value">4.2<span class="unit">kHz</span></span></div></div>
+          <div class="group"><div class="group-title">Effects</div><div class="value wide">Room reverb<span class="unit">On</span></div><div class="slider"><span style="width:18%"></span></div><div class="field">Wet amount<span>18%</span></div><div class="linklike"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>Add effect</div></div>
+          <div class="group"><div class="group-title">Output / monitor</div><div class="audio-state"><div class="meter-pair" aria-hidden="true"><span></span><span></span></div><div><div style="font-size:13px">Master &middot; stereo</div><div class="tiny">Example peak: -6.2 dBFS</div><div class="tiny">Monitoring off</div></div></div><div class="tiny">48 kHz / float processing target<br>Device and underruns visible here</div></div>
+          <div class="group"><div class="group-title">Use in game</div><div class="field">Game bus<span class="value">Music</span></div><div class="linklike">Render loop / stems &rarr;</div></div>
+        </aside>
+      </section>
+
+      <section class="workspace" id="view-code" role="tabpanel" aria-labelledby="tab-code" hidden>
+        <aside class="left">
+          <div class="panel-heading">Scripts <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></div><div class="panel-section"><div class="search"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>Find a script or symbol</div><div class="tree-row"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>Examples / 2D</div><div class="tree-row child selected"><svg class="icon" aria-hidden="true"><use href="#i-code"/></svg>main.lua</div></div>
+          <div class="divider"></div><div class="panel-heading">Symbols</div><div class="panel-section"><div class="tree-row">x, y <span class="tail">local</span></div><div class="tree-row selected">update(dt, input) <span class="tail">function</span></div></div>
+          <div class="asset-section"><div class="panel-heading">Learn by changing</div><p class="asset-note">This view illustrates editing the current small Lua API. The full scene/object binding API is a separate contract in the specification.</p><div class="tree-row" style="margin-top:9px"><svg class="icon" aria-hidden="true"><use href="#i-code"/></svg>Movement template</div><div class="tree-row"><svg class="icon" aria-hidden="true"><use href="#i-code"/></svg>API reference</div></div>
+        </aside>
+        <div class="center">
+          <div class="documents"><span class="document"><svg class="icon" aria-hidden="true"><use href="#i-code"/></svg>main.lua</span></div>
+          <div class="context"><span class="mock quiet">Examples / 2D / main.lua</span><span class="mock quiet push">Lua 5.4</span><span class="mock optional">Format</span></div>
+          <div class="code-area" aria-label="Illustrative Lua editor with an example using the current Nova API">
+            <div class="code-line"><span class="line-no">1</span><span><span class="comment">-- Minimal example using the current Nova API</span></span></div>
+            <div class="code-line"><span class="line-no">2</span><span>nova.<span class="fn">scene</span>(<span class="str">"2d"</span>)</span></div>
+            <div class="code-line"><span class="line-no">3</span><span><span class="kw">local</span> x, y = <span class="num">220</span>, <span class="num">260</span></span></div>
+            <div class="code-line"><span class="line-no">4</span><span></span></div>
+            <div class="code-line"><span class="line-no">5</span><span><span class="kw">function</span> <span class="fn">update</span>(dt, input)</span></div>
+            <div class="code-line"><span class="line-no breakpoint">6</span><span>    x = x + input.horizontal * <span class="num">230</span> * dt</span></div>
+            <div class="code-line"><span class="line-no">7</span><span>    y = y + input.vertical * <span class="num">230</span> * dt</span></div>
+            <div class="code-line"><span class="line-no">8</span><span></span></div>
+            <div class="code-line"><span class="line-no">9</span><span>    nova.<span class="fn">background</span>(<span class="num">18</span>, <span class="num">24</span>, <span class="num">41</span>)</span></div>
+            <div class="code-line highlight"><span class="line-no">10</span><span>    nova.<span class="fn">rectangle</span>(x, y, <span class="num">36</span>, <span class="num">36</span>, <span class="num">77</span>, <span class="num">225</span>, <span class="num">201</span>)</span></div>
+            <div class="code-line"><span class="line-no">11</span><span><span class="kw">end</span></span></div>
+            <div class="completion"><div class="completion-title">Proposed completion &middot; from the installed API contract</div><div class="completion-row active"><span class="fn">f</span>rectangle(x, y, width, height, r, g, b)</div><div class="completion-row"><span class="fn">f</span>text(text, x, y, fontSize, r, g, b)</div><div class="completion-row"><span class="fn">f</span>overlap(ax, ay, aw, ah, bx, by, bw, bh)</div></div>
+          </div>
+          <div class="bottom-tabs"><span class="current">Problems</span><span>Output</span><span>Call stack</span><span>Watches</span></div>
+          <div class="hint-panel"><span class="hint-dot">i</span><div><strong>Errors should take you directly to the fix.</strong><br>File, line, explanation, and recovery action &mdash; without replacing your document.</div></div>
+        </div>
+        <aside class="right">
+          <div class="inspector-title"><span class="small-label">CONTEXTUAL REFERENCE</span><h2>nova.rectangle</h2><p>Existing API / proposed help panel</p></div>
+          <div class="group"><div class="signature">nova.rectangle(x, y,<br>  width, height, r, g, b)</div><p class="tiny">Draw a rectangle in logical game coordinates. Rectangles are drawn after 3D geometry.</p></div>
+          <div class="group"><div class="group-title">Parameters</div><div class="field">x, y<span>position</span></div><div class="field">width, height<span>positive size</span></div><div class="field">r, g, b<span>0-255 integers</span></div><div class="linklike">Open full reference &rarr;</div></div>
+          <div class="group"><div class="group-title">Predictable ownership</div><p class="tiny">The code editor edits Lua. Scene tools edit scene data. Neither rewrites the other behind your back.</p></div>
+          <div class="group"><div class="group-title">Example preview placement</div><div class="preview-scene" role="img" aria-label="Static illustration of a small game preview"><span class="player"></span><span class="coin"></span></div><p class="tiny">A real preview would use the native runtime, not this HTML illustration.</p></div>
+        </aside>
+      </section>
+      <footer class="status"><span id="status-context">Scene / Move tool</span><span class="safe" id="status-hint">Q Select &nbsp; W Move &nbsp; E Rotate &nbsp; R Scale &nbsp; F Frame</span><span class="push" id="save-status">Example state: all changes saved</span><span>DESIGN ONLY</span></footer>
+    </div>
+    </div>
+    <section class="review" aria-live="polite">
+      <div><h2 id="review-title">A stable place for every task</h2><p id="review-summary">Scene and asset selection share one inspector. The work surface remains the focus.</p></div>
+      <div class="principles">
+        <div class="principle"><strong id="principle-title-0">Global versus local</strong><p id="principle-text-0">Run game never moves. Transform tools belong directly above the scene they edit.</p></div>
+        <div class="principle"><strong id="principle-title-1">Selection you can explain</strong><p id="principle-text-1">Outline, viewport, and inspector agree on the selected object. Units remain visible.</p></div>
+        <div class="principle"><strong id="principle-title-2">Visual data, Lua behavior</strong><p id="principle-text-2">Edit position and resources visually; open a small script for behavior. No generated code blocks.</p></div>
+      </div>
+    </section>
+    <footer class="footer"><span>Original layout study &middot; desktop reference, not a functioning editor &middot; no external assets or network dependencies</span><span>Native engine and runtime remain unchanged.</span></footer>
+  </main>
+  <script>
+    const studies = {
+      scene: {
+        title: "A stable place for every task",
+        summary: "Scene and asset selection share one inspector. The work surface remains the focus.",
+        context: "Scene / Move tool",
+        hint: "Q Select   W Move   E Rotate   R Scale   F Frame",
+        points: [
+          ["Global versus local", "Run game never moves. Transform tools belong directly above the scene they edit."],
+          ["Selection you can explain", "Outline, viewport, and inspector agree on the selected object. Units remain visible."],
+          ["Visual data, Lua behavior", "Edit position and resources visually; open a small script for behavior. No generated code blocks."]
+        ]
+      },
+      sprite: {
+        title: "Artwork without leaving the project",
+        summary: "Canvas, layers, palette, and timing are in one coherent document.",
+        context: "Sprite / Pencil tool",
+        hint: "Frame 1 of 4   |   64 x 64 px   |   Editable source retained",
+        points: [
+          ["Tools near the canvas", "A compact drawing rail and contextual settings avoid mixing painting with scene transforms."],
+          ["Animation is not gameplay", "Preview animation is a local action. The global Run game command remains unambiguous."],
+          ["No flattened-only saves", "Keep layers, frames, pivots, and timing. Generate runtime images without losing the source."]
+        ]
+      },
+      model: {
+        title: "A small modeller, not a cube arranger",
+        summary: "Object and mesh-editing contexts are explicit. Source geometry remains editable.",
+        context: "Model / Face mode",
+        hint: "1 face selected   |   Local axes   |   Units: meters",
+        points: [
+          ["Modes with names", "Object, vertex, edge, and face editing must be legible, with relevant tools in each mode."],
+          ["Mouse and numeric parity", "Transform handles, property fields, and keyboard actions reach the same reversible operations."],
+          ["Honest rendering", "Show the material subset the runtime supports. Never sell an editor-only effect as export parity."]
+        ]
+      },
+      sound: {
+        title: "A real game-focused Sound Studio",
+        summary: "Composition, SFX, samples, instruments, mixing, and automation share one audio document model.",
+        context: "Sound / Forest motif",
+        hint: "Audition is separate from Run game   |   No audio is produced by this study",
+        points: [
+          ["Two distinct transports", "The local Audition/Record controls manipulate sound. Run game still starts the game."],
+          ["Reveal detail when needed", "Arrange above; edit notes, waveform, mixer, or automation below. Avoid a wall of floating windows."],
+          ["Fidelity is engineered", "Preserve sources, use sample-clock timing, expose levels and failures, and audition runtime conversions."]
+        ]
+      },
+      code: {
+        title: "Make Lua approachable, not invisible",
+        summary: "Completion, documentation, examples, and diagnostics should make the engine discoverable.",
+        context: "Code / main.lua",
+        hint: "Current API example   |   Proposed completion, debugger, and help placement",
+        points: [
+          ["One API contract", "Generate completion and reference from the same versioned API metadata instead of drifting copies."],
+          ["Actionable diagnostics", "Keep the document open, show the location and cause, and make the recovery action obvious."],
+          ["Scripts belong to the author", "Visual tools bind references and properties; they do not parse and rewrite arbitrary game logic."]
+        ]
+      }
+    };
+    const tabs = Array.from(document.querySelectorAll("[data-view]"));
+    let actualSize = false;
+    function fitStudy() {
+      const container = document.getElementById("studio-container");
+      const studio = document.getElementById("studio");
+      const scale = actualSize ? 1 : Math.min(1, container.clientWidth / 1440);
+      studio.style.transform = `scale(${scale})`;
+      container.style.height = `${Math.ceil(studio.offsetHeight * scale)}px`;
+      container.style.overflowX = actualSize ? "auto" : "hidden";
+    }
+    function showStudy(name, focus = false) {
+      const study = studies[name];
+      if (!study) return;
+      for (const tab of tabs) {
+        const selected = tab.dataset.view === name;
+        tab.setAttribute("aria-selected", String(selected));
+        tab.tabIndex = selected ? 0 : -1;
+        document.getElementById(`view-${tab.dataset.view}`).hidden = !selected;
+        if (selected && focus) tab.focus();
+      }
+      document.getElementById("review-title").textContent = study.title;
+      document.getElementById("review-summary").textContent = study.summary;
+      document.getElementById("status-context").textContent = study.context;
+      document.getElementById("status-hint").textContent = study.hint;
+      for (const [index, [title, text]] of study.points.entries()) {
+        document.getElementById(`principle-title-${index}`).textContent = title;
+        document.getElementById(`principle-text-${index}`).textContent = text;
+      }
+      for (const button of document.querySelectorAll("[data-study]")) {
+        button.setAttribute("aria-pressed", String(button.dataset.study === name));
+      }
+      const dirtyDocument = {sprite: "Player.sprite", model: "Garden house.model", sound: "Forest theme.music"}[name];
+      document.getElementById("save-status").textContent = dirtyDocument
+        ? `Example state: unsaved changes / ${dirtyDocument}`
+        : "Example state: all changes saved";
+      document.getElementById("project-save-state").textContent = dirtyDocument
+        ? "Example project / unsaved"
+        : "Example project / saved";
+      document.getElementById("save-control").classList.toggle("active", Boolean(dirtyDocument));
+      fitStudy();
+    }
+    tabs.forEach((tab, index) => {
+      tab.addEventListener("click", () => showStudy(tab.dataset.view));
+      tab.addEventListener("keydown", (event) => {
+        let next;
+        if (event.key === "ArrowRight") next = (index + 1) % tabs.length;
+        if (event.key === "ArrowLeft") next = (index + tabs.length - 1) % tabs.length;
+        if (event.key === "Home") next = 0;
+        if (event.key === "End") next = tabs.length - 1;
+        if (next !== undefined) {
+          event.preventDefault();
+          showStudy(tabs[next].dataset.view, true);
+        }
+      });
+    });
+    document.querySelectorAll("[data-study]").forEach(button => {
+      button.addEventListener("click", () => showStudy(button.dataset.study));
+    });
+    document.getElementById("actual-size").addEventListener("click", event => {
+      actualSize = !actualSize;
+      event.currentTarget.setAttribute("aria-pressed", String(actualSize));
+      event.currentTarget.textContent = actualSize ? "Fit to panel" : "Actual size";
+      fitStudy();
+    });
+    window.addEventListener("resize", fitStudy);
+    fitStudy();
+  </script>
+</body>
+</html>

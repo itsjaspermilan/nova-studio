@@ -4,6 +4,22 @@ Read `TODO.md` for current milestones and the bounded next assignment, then
 `README.md` for behavior, build/setup details and limitations. Inspect source
 before changing contracts; roadmap entries are not implemented features.
 
+## Active product direction
+
+The user has approved implementing the researched studio, not merely polishing
+the current launcher or preserving every earlier editor decision. Follow the
+active roadmap at the top of `TODO.md` and the retained
+`docs/ux/nova-studio-ux-assessment.md` / workspace study. That report's original
+current-state evidence describes `918cefa`; the newer integrated implementation
+already supplies assets, bounded editing/modelling and runtime services.
+
+New gameplay authoring is Lua-first with visual scene/asset/music tools.
+Preserve legacy typed-action projects, but do not expand their forms as the new
+primary logic interface or overwrite user-authored scripts. Existing custom
+controls, limited undo and partial multi-file save semantics may be replaced
+to meet the researched input/accessibility/work-safety requirements. Keep
+working native contracts and explicit compatibility/migration behavior.
+
 ## Architecture and edit surfaces
 
 - Shared C11 engine/runtime with Lua 5.4.8 and raylib 5.5. Native GPU rendering

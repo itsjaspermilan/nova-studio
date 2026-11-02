@@ -16,10 +16,17 @@ From `/Users/jasper/Developer/NovaStudio`:
 ./scripts/with-toolchain.sh cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
 ./scripts/with-toolchain.sh cmake --build build -j 4
 ./scripts/with-toolchain.sh ctest --test-dir build --output-on-failure
-./build/nova_studio
+./build/nova_editor
 ```
 
-Click an example, press **1 / 2 / 3**, or use gamepad **A / B / X**. Move with **WASD, arrow keys, D-pad, or left stick**. In the 3D example, **Space / A** makes the model bounce; in the asset project it lifts the imported gem. **F1 / Start** returns to the launcher, **R** reloads the active script or whole project, and **Esc / Android Back** exits.
+`nova_editor` opens the current authoring application. The separate
+`./build/nova_studio` executable is the sample launcher/runtime, not the editor.
+The [active studio roadmap](TODO.md#active-product-build-researched-lua-first-studio)
+and [retained UX specification](docs/ux/nova-studio-ux-assessment.md) describe the
+larger Lua-first studio now being implemented; their concept screens are not
+implemented features.
+
+In the sample launcher, click an example, press **1 / 2 / 3**, or use gamepad **A / B / X**. Move with **WASD, arrow keys, D-pad, or left stick**. In the 3D example, **Space / A** makes the model bounce; in the asset project it lifts the imported gem. **F1 / Start** returns to the launcher, **R** reloads the active script or whole project, and **Esc / Android Back** exits.
 
 Edit the source examples with your preferred text editor, then rebuild to synchronize them into `build/examples`. Asset synchronization runs even when no C source changed. Alternatively, play a source script directly and use R after saving:
 

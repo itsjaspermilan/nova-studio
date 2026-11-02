@@ -4,6 +4,60 @@ Last checked: 2026-11-01. Read `README.md` for full commands and limitations,
 and `AGENTS.md` before making changes. This is a working native vertical slice,
 not a finished editor or a hardware-validated game engine.
 
+## Active product build: researched Lua-first studio
+
+The user has now approved building the full authoring product described in the
+[retained UX specification](docs/ux/nova-studio-ux-assessment.md), including
+corrections to earlier implementation decisions. The specification's original
+current-state assessment used `918cefa`; this work now builds on the newer
+integrated foundation `ffb4c84`. Do not repeat the old missing-feature findings
+as a description of that newer baseline.
+
+The research and original [five-workspace design study](docs/ux/nova-studio-workspace-study.html),
+including their linked evidence and playable rally exercise, are preserved in
+`docs/ux/`. They define the intended workflows, not implemented functionality.
+
+Confirmed product requirements:
+
+- Gameplay logic is Lua-first; scenes, assets, levels, models and sound are
+  visually authored. Preserve legacy typed-action projects, but do not make
+  their action forms the new default or rewrite hand-authored gameplay code.
+- Use a coherent Scene / Sprite / Model / Sound / Code shell with meaningful
+  icons, consistent toolbars, contextual inspectors and beginner guidance.
+- Proper desktop text input, focus, accessibility, undo/redo, coherent saving,
+  external-change handling and crash recovery are foundational requirements.
+  Existing one-step/source-only undo and separately guarded multi-file writes
+  are not the finished implementation of these requirements.
+- Keep the native shared game renderer and validated asset/runtime contracts.
+  No WebView gameplay, streamed preview, placeholder tools or invented success.
+- A complete Sound Studio means recording, waveform/SFX editing, instruments,
+  arrangement, piano roll, MIDI, mixing, effects, automation and useful exports.
+  Existing WAV playback is a foundation, not completion of that product.
+- Reuse working engine/model/export code; correct or replace earlier authoring
+  code when necessary. Keep existing projects readable and handle migrations
+  explicitly rather than silently discarding their data.
+
+| Stage | Dependency | Completion gate | State |
+| --- | --- | --- | --- |
+| Baseline reconciliation | Existing committed work | Build and exercise the integrated native editor, assets, services, modeller and exporter in this worktree. | Complete |
+| Desktop UI/platform decision | Retained research | Choose the editor toolkit/platform; prove real text input, focus/accessibility facilities, dialogs/docking and live native GPU integration before committing to the bridge. Qt 6 is recommended; the user's Rust question remains under consideration. | Pending |
+| Authoring/document foundation | UI decision + baseline | Unified documents/selection, full undo/redo, safe coherent writes, recovery, conflict handling and native preview. | Pending |
+| Lua-first creation loop | Authoring foundation | Project creation/open/save, visual scenes and script/property binding, useful code tools, diagnostics and Run/Stop without overwriting authored code. | Pending |
+| Sprite workspace | Authoring foundation + runtime animation | Real drawing/layers/frames, source preservation, reversible editing and matching scene/runtime updates. | Pending |
+| Model workspace | Authoring foundation + existing GLB pipeline | Mesh/transform/material/UV basics, reversible editing and faithful supported model round trips. | Pending |
+| Audio engine | Existing native services | Sample-clock processing, float mixing, quality instruments/DSP, streams/buses, device handling and offline rendering. | Pending |
+| Recording and SFX | Authoring foundation + audio engine | Nondestructive waveform editing, explicit recording, layered SFX, safe audition and persistent sources. | Pending |
+| Music composition | Recording/SFX foundations | Arrangement, piano roll, patterns/drums, synth/sampler, MIDI, loops and document persistence. | Pending |
+| Sound production | Music composition | Mixer, sends/buses, effects, automation, lossless masters, aligned stems/loops and runtime-profile audition. | Pending |
+| Application and game delivery | Completed authoring pipelines | An unambiguous studio application entry point and real selected-project desktop/Android outputs with preflight. | Pending |
+| Complete creation exercise | Integrated studio | Make the rally's scenes, Lua, sprites/models and music/SFX through the actual tools; save/reopen/run/export and exercise failure recovery. | Pending |
+
+This authorizes implementation, not new host toolchain installation, personal
+signing, device installation, public distribution or a claim of novice/device
+validation. Obtain the relevant permission or participation when needed.
+Retain the detailed acceptance criteria and explicit deferred scope in the
+research; do not silently shrink the product to the first completed milestone.
+
 ## Current integrated handoff
 
 The approved bounded software milestones are implemented and locally committed:
