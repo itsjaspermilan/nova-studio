@@ -11,13 +11,20 @@ if(NOVA_MESH_AUTHORING)
         authoring/mesh/topology.cpp
         authoring/mesh/validation.cpp)
     target_compile_features(nova_mesh PUBLIC cxx_std_17)
-    target_include_directories(nova_mesh PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/authoring")
-    target_include_directories(nova_mesh SYSTEM PRIVATE "${raylib_SOURCE_DIR}/src/external")
-    target_link_libraries(nova_mesh PUBLIC Qt6::Core PRIVATE nova_assets)
+    target_include_directories(nova_mesh PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/authoring"
+        PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/runtime" "${CMAKE_CURRENT_SOURCE_DIR}/engine")
+    target_include_directories(nova_mesh SYSTEM PRIVATE
+        "${raylib_SOURCE_DIR}/src" "${raylib_SOURCE_DIR}/src/external")
+    # Decoder/raylib symbols belong to the consumer's selected native host.
+    target_link_libraries(nova_mesh PUBLIC Qt6::Core)
     target_compile_options(nova_mesh PRIVATE -Wall -Wextra -Wpedantic -Werror)
     if(BUILD_TESTING)
+        add_test(NAME nova_mesh_host_linkage COMMAND "${CMAKE_COMMAND}"
+            "-DNOVA_MESH_LINK_LIBRARIES=$<TARGET_PROPERTY:nova_mesh,LINK_LIBRARIES>"
+            "-DNOVA_MESH_INTERFACE_LINK_LIBRARIES=$<TARGET_PROPERTY:nova_mesh,INTERFACE_LINK_LIBRARIES>"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/mesh_link_test.cmake")
         add_executable(nova_mesh_tests tests/mesh_test.cpp)
-        target_link_libraries(nova_mesh_tests PRIVATE nova_mesh nova_model)
+        target_link_libraries(nova_mesh_tests PRIVATE nova_mesh nova_model nova_assets)
         target_compile_options(nova_mesh_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
         foreach(suite document native capacity)
             add_test(NAME nova_mesh_${suite} COMMAND nova_mesh_tests ${suite})
@@ -38,7 +45,7 @@ if(NOVA_MESH_AUTHORING)
         target_compile_options(nova_mesh_test_native PRIVATE -Wall -Wextra -Wpedantic -Werror)
         add_executable(nova_mesh_ownership_tests tests/mesh_test.cpp tests/mesh_allocation_hooks.c
             $<TARGET_OBJECTS:nova_mesh_test_assets> $<TARGET_OBJECTS:nova_mesh_test_native>)
-        target_link_libraries(nova_mesh_ownership_tests PRIVATE nova_mesh nova_model)
+        target_link_libraries(nova_mesh_ownership_tests PRIVATE nova_mesh nova_model nova_assets)
         target_compile_definitions(nova_mesh_ownership_tests PRIVATE NOVA_MESH_ALLOCATION_TEST)
         target_compile_options(nova_mesh_ownership_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
         add_test(NAME nova_mesh_ownership COMMAND nova_mesh_ownership_tests native)

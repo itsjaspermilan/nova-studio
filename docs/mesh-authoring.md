@@ -30,9 +30,17 @@ The component is opt-in and excluded from the Android CMake branch:
 owned byte arrays, JSON and SHA-256. Development was verified with the already
 installed Homebrew `qtbase` **6.12.0_2**, reporting Qt **6.12.0**. No packages
 were installed for this component. It does not require Qt Gui, Widgets, Test,
-OpenGLWidgets, or Qt on Android. `nova_assets` supplies the existing CPU PNG/GLB
-decoder and its pinned raylib 5.5/cgltf implementation; there is no second
-import library or PNG codec.
+OpenGLWidgets, or Qt on Android.
+
+`nova_mesh` links **only Qt6::Core**. Runtime/raylib/cgltf headers are private
+compile-time inputs; decoder and image-release symbols intentionally remain
+unresolved in the static archive. Each consumer must supply exactly one native
+host: CPU/CLI tests explicitly link `nova_assets`, while the Qt workspace must
+link `nova_qt_runtime` and `nova_qt_raylib`. Both hosts use the same runtime
+PNG/GLB decoder and pinned raylib 5.5/cgltf implementation; there is no second
+import library or PNG codec. Do not add even a `PRIVATE nova_assets` dependency
+to `nova_mesh`: CMake propagates static-library link requirements, bringing
+ordinary GLFW/rcore into the Qt process and violating single-context ownership.
 
 Nova-authored component code remains MIT. Qt Core is available under
 [LGPLv3 or a commercial license](https://doc.qt.io/qt-6/licensing.html), with
@@ -301,6 +309,11 @@ normal transformation and interpolation failures, exact native-decoded
 triangle/UV/color/pixel correspondence, import-original retention, legacy
 export compatibility and hard capacity boundaries.
 
+`nova_mesh_host_linkage` checks the generated direct and interface link
+properties are Qt6::Core only, guarding against an implicit renderer dependency.
+CPU test executables select their ordinary runtime host explicitly; that link
+choice is not part of the component's interface.
+
 The capacity suite reaches **262,143 expanded vertices**, split into five
 native primitives including a final three-vertex primitive, then verifies
 rejection above the limit. It also checks the 64 MiB source cap, native texture
@@ -312,7 +325,7 @@ with test-local allocation/image seams. It checks exact acquired/released
 buffer/image balance, plus 45 model-allocation and five image-load failure
 points across import validation/adoption; production targets are unmodified.
 Both those seams and the ordinary library run without a window or device.
-All four suites and the two existing model/textured-model regressions pass in
+These five tests and the two existing model/textured-model regressions pass in
 ordinary Debug and fully ASan/UBSan-instrumented native builds. macOS leak
 sanitizer is disabled; the explicit ownership counters supply the allocation
 balance evidence. Installed Qt/system frameworks are not instrumented.
