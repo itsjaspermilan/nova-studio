@@ -37,6 +37,14 @@ and [retained UX specification](docs/ux/nova-studio-ux-assessment.md) describe t
 larger Lua-first studio now being implemented; their concept screens are not
 implemented features.
 
+The independent [editable mesh component](docs/mesh-authoring.md) adds real
+polygon editing, undoable topology/material/UV operations, strict `.nova-mesh`
+source and native-decoder-verified static GLB snapshots. Enable the optional
+desktop `NOVA_MESH_AUTHORING` target with Qt Core; it does not replace the
+existing modeller UI or yet provide the integrated Qt Model workspace.
+It performs no file writes or rendering. Shared save/recovery, the single
+native viewport and scene/runtime integration remain separate requirements.
+
 In the sample launcher, click an example, press **1 / 2 / 3**, or use gamepad **A / B / X**. Move with **WASD, arrow keys, D-pad, or left stick**. In the 3D example, **Space / A** makes the model bounce; in the asset project it lifts the imported gem. **F1 / Start** returns to the launcher, **R** reloads the active script or whole project, and **Esc / Android Back** exits.
 
 Edit the source examples with your preferred text editor, then rebuild to synchronize them into `build/examples`. Asset synchronization runs even when no C source changed. Alternatively, play a source script directly and use R after saving:
