@@ -19,6 +19,10 @@ including their linked evidence and playable rally exercise, are preserved in
 
 Confirmed product requirements:
 
+- The user selected Qt 6/C++ for the cross-platform desktop editor. Keep the
+  shared native C11/Lua engine; do not introduce a Rust rewrite or a WebView.
+  Prove the native GPU bridge and desktop input/accessibility facilities
+  before building the complete workspace shell on them.
 - Gameplay logic is Lua-first; scenes, assets, levels, models and sound are
   visually authored. Preserve legacy typed-action projects, but do not make
   their action forms the new default or rewrite hand-authored gameplay code.
@@ -40,7 +44,7 @@ Confirmed product requirements:
 | Stage | Dependency | Completion gate | State |
 | --- | --- | --- | --- |
 | Baseline reconciliation | Existing committed work | Build and exercise the integrated native editor, assets, services, modeller and exporter in this worktree. | Complete |
-| Desktop UI/platform decision | Retained research | Choose the editor toolkit/platform; prove real text input, focus/accessibility facilities, dialogs/docking and live native GPU integration before committing to the bridge. Qt 6 is recommended; the user's Rust question remains under consideration. | Pending |
+| Desktop UI/platform decision | Retained research | Qt 6/C++ selected by the user; prove real text input, focus/accessibility facilities, dialogs/docking and live native GPU integration before committing to the bridge. | Toolkit approved; bridge pending |
 | Authoring/document foundation | UI decision + baseline | Unified documents/selection, full undo/redo, safe coherent writes, recovery, conflict handling and native preview. | Pending |
 | Lua-first creation loop | Authoring foundation | Project creation/open/save, visual scenes and script/property binding, useful code tools, diagnostics and Run/Stop without overwriting authored code. | Pending |
 | Sprite workspace | Authoring foundation + runtime animation | Real drawing/layers/frames, source preservation, reversible editing and matching scene/runtime updates. | Pending |

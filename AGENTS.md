@@ -13,6 +13,11 @@ active roadmap at the top of `TODO.md` and the retained
 current-state evidence describes `918cefa`; the newer integrated implementation
 already supplies assets, bounded editing/modelling and runtime services.
 
+The approved desktop editor technology is Qt 6/C++. Retain the C11/Lua runtime
+and Android game outputs; Qt must not become an Android runtime dependency.
+Prove actual native GPU hosting and desktop input/accessibility facilities
+before relying on the new UI bridge. New host installations still need consent.
+
 New gameplay authoring is Lua-first with visual scene/asset/music tools.
 Preserve legacy typed-action projects, but do not expand their forms as the new
 primary logic interface or overwrite user-authored scripts. Existing custom
