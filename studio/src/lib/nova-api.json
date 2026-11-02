@@ -269,7 +269,7 @@
   "name": "nova.music.seek",
   "kind": "function",
   "signature": "nova.music.seek(seconds) -> true | false",
-  "doc": "Jump the current music to a time in the track. Returns false when no music is playing. On a streamed (Ogg) track a far jump is silent for a moment while it catches up.",
+  "doc": "Jump the current music to a time in the track. Returns false when no music is playing. A streamed (Ogg) track finds the spot quickly, so even far jumps are heard within a few tens of milliseconds.",
   "group": "Sound"
  },
  {

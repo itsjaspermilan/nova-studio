@@ -2,7 +2,7 @@
 //! module (`project_files`, `templates`, `recent`, `runner`); every file operation goes through the
 //! project root held in the app state and is confined to it (`paths`).
 
-mod audio_files;
+pub mod audio_files;
 mod paths;
 mod project_files;
 mod recent;

@@ -204,8 +204,8 @@ impl StreamSource {
         self.start_at(looping, 0)
     }
 
-    /// Starts `start_frame` frames into the track (decoding and dropping what comes before). Far seeks cost a moment of
-    /// decoding, during which the ring is empty and the music is silent.
+    /// Starts `start_frame` frames into the track. Far starts jump near the spot using the file's page index and only
+    /// decode a little before it; if that is not possible it falls back to decoding and dropping everything before.
     pub fn start_at(&self, looping: bool, start_frame: u64) -> StreamFeed {
         let bytes = self.bytes.clone();
         spawn(self.rate, move |push, note_pass| {
@@ -214,14 +214,29 @@ impl StreamSource {
             loop {
                 let Ok(mut reader) = open(&bytes) else { return };
                 let channels = reader.ident_hdr.audio_channels as usize;
+                let mut measured = first_pass; // does this pass see the whole track, so its length can be reported?
+                if first_pass && start_frame > SEEK_GUARD_FRAMES {
+                    match seek_near(&mut reader, channels, start_frame) {
+                        Some((frames, still_to_skip)) => {
+                            skip = still_to_skip;
+                            measured = false;
+                            for f in frames {
+                                if !push(f) {
+                                    return;
+                                }
+                            }
+                        }
+                        // The jump failed part way: start again from the beginning and decode through.
+                        None => match open(&bytes) {
+                            Ok(fresh) => reader = fresh,
+                            Err(_) => return,
+                        },
+                    }
+                }
                 let mut frames_this_pass = 0u64;
                 while let Ok(Some(packet)) = reader.read_dec_packet_itl() {
                     for frame in packet.chunks_exact(channels) {
-                        let f = if channels == 1 {
-                            [frame[0], frame[0]]
-                        } else {
-                            [frame[0], frame[1]]
-                        };
+                        let f = to_stereo(frame);
                         frames_this_pass += 1;
                         if skip > 0 {
                             skip -= 1;
@@ -230,10 +245,10 @@ impl StreamSource {
                         }
                     }
                 }
-                if first_pass {
+                if measured {
                     note_pass(frames_this_pass);
-                    first_pass = false;
                 }
+                first_pass = false;
                 // A seek past the end of a non-looping track plays nothing; a looping one wraps.
                 if !looping || frames_this_pass == 0 {
                     return;
@@ -241,6 +256,60 @@ impl StreamSource {
             }
         })
     }
+}
+
+/// Frames before a seek target that are decoded and thrown away so the first sound is a fully overlapped decode.
+const SEEK_GUARD_FRAMES: u64 = 32768;
+
+fn to_stereo(frame: &[i16]) -> [i16; 2] {
+    if frame.len() == 1 {
+        [frame[0], frame[0]]
+    } else {
+        [frame[0], frame[1]]
+    }
+}
+
+/// Jumps the reader to a page shortly before `target` and returns the frames from `target` onward up to the end of the
+/// second page it reads (or, when the target is further on, no frames and how many more to drop). The reader is left just after that page. Where the jump lands is only known per page, and the
+/// first page after a jump is not decoded exactly (it has no earlier audio to overlap with), so the frames of the
+/// first page are thrown away and the position is taken from the granule position that closes the second one. None if
+/// the file would not seek or that position cannot be worked out (the caller then decodes from the start).
+fn seek_near(
+    reader: &mut lewton::inside_ogg::OggStreamReader<Cursor<Arc<[u8]>>>,
+    channels: usize,
+    target: u64,
+) -> Option<(Vec<[i16; 2]>, u64)> {
+    reader.seek_absgp_pg(target - SEEK_GUARD_FRAMES).ok()?;
+    let mut decoded: Vec<[i16; 2]> = Vec::new();
+    // `get_last_absgp` keeps the granule position of the last page that ended until the next one does, so a page end is
+    // a change in its value.
+    let mut last_end: Option<u64> = None;
+    let mut warmed_up = false;
+    for _ in 0..8192 {
+        let packet = reader.read_dec_packet_itl().ok()??;
+        decoded.extend(packet.chunks_exact(channels).map(to_stereo));
+        let end = reader.get_last_absgp();
+        if end.is_some() && end != last_end {
+            last_end = end;
+            if !warmed_up {
+                warmed_up = true;
+                decoded.clear(); // the warm-up page
+                continue;
+            }
+            let end = end?;
+            let start = end.checked_sub(decoded.len() as u64)?;
+            if target < start {
+                return None; // landed after the target: decode from the start instead
+            }
+            if target >= end {
+                // The target is further on than this page: nothing here is wanted, and what follows is dropped up to it.
+                return Some((Vec::new(), target - end));
+            }
+            let skip = (target - start) as usize;
+            return Some((decoded.into_iter().skip(skip).collect(), 0));
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -386,5 +455,55 @@ mod tests {
             "the second pass is the file again"
         );
         eprintln!("streamed {path}: {} frames, twice", whole.frames.len());
+    }
+
+    /// With `NOVA_TEST_OGG` naming a file of a few seconds or more (the repository's tests use a 90 second one made
+    /// with the studio's encoder), jumping into the track must give the same samples as decoding up to there.
+    #[test]
+    fn seeking_deep_into_a_real_file_matches_decoding_up_to_there() {
+        let Ok(path) = std::env::var("NOVA_TEST_OGG") else {
+            return;
+        };
+        let bytes = std::fs::read(&path).unwrap();
+        let whole = crate::assets::decode_ogg(&bytes).unwrap();
+        if whole.frames.len() < 200_000 {
+            return; // too short to exercise a page-level jump
+        }
+        let source = StreamSource::new(bytes).unwrap();
+        for target in [
+            40_000u64,
+            100_003,
+            (whole.frames.len() / 2) as u64,
+            (whole.frames.len() - 20_000) as u64,
+        ] {
+            let started = std::time::Instant::now();
+            let feed = source.start_at(false, target);
+            let got = drain(&feed, 4000);
+            let first = started.elapsed();
+            assert!(
+                got.len() >= 4000.min(whole.frames.len() - target as usize),
+                "target {target}: {} frames",
+                got.len()
+            );
+            for (i, f) in got.iter().enumerate() {
+                let expected = whole.frames[target as usize + i];
+                assert!(
+                    (f[0] as i32 - expected[0] as i32).abs() <= 4
+                        && (f[1] as i32 - expected[1] as i32).abs() <= 4,
+                    "target {target}, frame {i}: got {f:?}, decoding gives {expected:?}"
+                );
+            }
+            eprintln!(
+                "seek to frame {target}: first {} frames after {first:?}",
+                got.len()
+            );
+        }
+        let looped = source.start_at(true, whole.frames.len() as u64 - 100);
+        let wrapped = drain(&looped, 300);
+        assert_eq!(
+            &wrapped[100..110],
+            &whole.frames[0..10],
+            "after the end of the track a looping stream starts over"
+        );
     }
 }

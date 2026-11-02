@@ -466,8 +466,8 @@ stops the project with an error naming it, but a streamed file cannot be played 
 and Ogg in `sounds/`, is decoded at load as before, so ship long music as Ogg. The studio does this for you: songs save as `.ogg`, and a WAV in `music/` has a **Convert to Ogg** button. If the decoder ever falls behind
 (a very slow device) that moment is silence and playback carries on; the F3 overlay's audio line shows
 `underruns N` (frames of music that were silence for that reason; it should stay 0). `nova.music.seek` on a
-streamed track restarts its decoder at the new time, so a jump far into a long track is silent for a moment while
-it catches up.
+streamed track restarts its decoder at the new time: the spot is found through the file's page index, so it is
+heard within a few tens of milliseconds wherever it lands in the track.
 
 ```lua
 local id = nova.sound.play("jump", { volume = 0.6, pan = -0.5, pitch = 1.2, loop = false })
