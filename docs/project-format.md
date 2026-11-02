@@ -411,10 +411,11 @@ stats) still use a small built-in pixel font.
 
 ## Sound
 
-Put WAV files anywhere in the project (`sounds/` and `music/` are where short names are looked up).
-WAV files of 8, 16, 24 or 32-bit integer or 32-bit float PCM, mono or stereo, 8 to 192 kHz, up to 10
-minutes each and 256 MiB decoded in total, are decoded once when the project loads. OGG is not
-supported yet (it is skipped with a warning).
+Put WAV or Ogg Vorbis files anywhere in the project (`sounds/` and `music/` are where short names
+are looked up, `.wav` before `.ogg`). WAV files of 8, 16, 24 or 32-bit integer or 32-bit float PCM and
+Ogg Vorbis files, mono or stereo, 8 to 192 kHz, up to 10 minutes each and 256 MiB decoded in total, are
+decoded once when the project loads. Ogg is a smaller download but not streamed: it still takes the
+same memory once decoded. A file that cannot be read stops the project with an error naming it.
 
 ```lua
 local id = nova.sound.play("jump", { volume = 0.6, pan = -0.5, pitch = 1.2, loop = false })
@@ -490,8 +491,7 @@ animation, collisions, tilemap) at 60 fps. Not verified: any physical device.
 
 ## Not yet
 
-World-space text, paths, particles, OGG and
-streamed music, synthesised music and a sound editor (M6), input remapping and named actions, rigid-bone model animation, and the studio itself.
+World-space text, paths, streamed music (Ogg is decoded fully into memory), synthesised music and a sound editor (M6), input remapping and named actions, rigid-bone model animation, and the studio itself.
 
 ## Testing helpers
 

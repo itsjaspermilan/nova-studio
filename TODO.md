@@ -21,7 +21,7 @@ Waiting on the user:
   (see M4). The look and feel is a first draft in `studio/src/app.css`; tell me what to change.
 
 Can proceed without input, in rough priority: the rest of the scene editor (tile painting, props, entity previews); the sprite studio (M5); rigid-bone model
-animation and simple lights; OGG and streamed music; the C audio core's synthesis for the sound studio
+animation and simple lights; streamed music; the C audio core's synthesis for the sound studio
 (M6); Android analogue input and immersive mode (need the device to verify).
 
 ## Known gaps (audited 2026-11-02)
@@ -46,7 +46,8 @@ another physical Android device) to settle; the emulator cannot.
 - [ ] Keyboard input on Android (touch is verified on the emulator, the keyboard path is not).
 
 **Runtime and format**
-- [ ] OGG / streamed music (WAV only, fully decoded in memory, so music is large). Text is done except
+- [ ] Streamed music (Ogg Vorbis decodes now, with `lewton`, but fully into memory, so long music uses memory; only
+  decoding was checked against one real file, run with `NOVA_TEST_OGG`). Text is done except
   world-space text and variable-font weights.
 - [ ] The OpenGL ES fallback backend was fixed (limits) but not re-run on Android since; Vulkan is what
   has been exercised.
@@ -234,7 +235,7 @@ Spec in [docs/project-format.md](docs/project-format.md); example `examples/crat
 
 - [x] Named input actions (2026-11-02): `actions.rs` bindings engine, `nova.json` `"input"`, run-time `nova.input.bind`, step-latched `pressed`/`released`, Android native key codes and desktop `gilrs`; all tested.
 - [ ] Android analogue sticks/triggers (needs a native-activity input path), lifecycle exercised on Android; immersive mode.
-- [x] Audio service v1 (2026-11-02): WAV decoding, a tested mixer (32 effect voices, one music track, pan/pitch/volume/fades, soft clip), `nova.sound` / `nova.music`, run on the audio thread through `cpal`; verified on the emulator. Not yet: OGG, streamed music, buses and effects, and the C core's synthesis and DSP (M6).
+- [x] Audio service v1 (2026-11-02): WAV decoding, a tested mixer (32 effect voices, one music track, pan/pitch/volume/fades, soft clip), `nova.sound` / `nova.music`, run on the audio thread through `cpal`; verified on the emulator. Ogg Vorbis decoding added later the same day. Not yet: streamed music, buses and effects, and the C core's synthesis and DSP (M6).
 - [x] Save-data API (`nova.save`, atomic JSON file, corruption recovery, 1 MiB limit; done 2026-11-02).
 - [ ] 3D extras: simple lights/material options, rigid-bone animation playback.
 - [x] Lua time and memory limits (256 MiB; 1 s per frame, 5 s to load; covers coroutines; done 2026-11-02).

@@ -1026,13 +1026,12 @@ fn unknown_sounds_and_bad_audio_files_are_explained() {
         ("main.lua", lua("")),
         ("music/theme.ogg", b"OggS".to_vec()),
     ]));
-    let g = Game::load(vfs).expect("an OGG file is skipped with a warning, not fatal");
+    let e = Game::load(vfs)
+        .err()
+        .expect("a broken OGG is an error that names the file");
     assert!(
-        g.warnings
-            .iter()
-            .any(|w| w.contains("music/theme.ogg") && w.contains("only WAV")),
-        "{:?}",
-        g.warnings
+        e.starts_with("music/theme.ogg:") && e.contains("not a readable Ogg Vorbis"),
+        "{e}"
     );
 }
 

@@ -80,7 +80,7 @@ fn data_location(text: &str) -> Option<(String, Option<String>, String)> {
     }
     let is_file = |s: &str| {
         [
-            ".json", ".png", ".ttf", ".otf", ".wav", ".glb", ".lua", ".npk",
+            ".json", ".png", ".ttf", ".otf", ".wav", ".ogg", ".glb", ".lua", ".npk",
         ]
         .iter()
         .any(|ext| s.ends_with(ext))

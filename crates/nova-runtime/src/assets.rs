@@ -348,24 +348,112 @@ pub fn decode_wav(bytes: &[u8]) -> Result<crate::mixer::Sample, String> {
         (format, bits) => return Err(format!("{bits}-bit {format:?} WAV is not supported (8, 16, 24 or 32-bit PCM, or 32-bit float)")),
     }
     .map_err(|e| format!("WAV data is damaged: {e}"))?;
+    sample_from_interleaved(&samples, channels, spec.sample_rate, "WAV")
+}
+
+/// Mono or stereo interleaved samples to the mixer's stereo frames, with the project's limits.
+fn sample_from_interleaved(
+    samples: &[i16],
+    channels: usize,
+    rate: u32,
+    what: &str,
+) -> Result<crate::mixer::Sample, String> {
     let frames: Vec<[i16; 2]> = if channels == 1 {
         samples.iter().map(|&s| [s, s]).collect()
     } else {
         samples.as_chunks::<2>().0.to_vec()
     };
-    let seconds = frames.len() as f32 / spec.sample_rate as f32;
+    let seconds = frames.len() as f32 / rate as f32;
     if seconds > MAX_SOUND_SECONDS {
         return Err(format!(
             "{seconds:.0} seconds is longer than the {MAX_SOUND_SECONDS:.0} second limit"
         ));
     }
     if frames.is_empty() {
-        return Err("the WAV file has no audio".into());
+        return Err(format!("the {what} file has no audio"));
     }
-    Ok(crate::mixer::Sample {
-        rate: spec.sample_rate,
-        frames,
-    })
+    Ok(crate::mixer::Sample { rate, frames })
+}
+
+/// Decodes an Ogg Vorbis file (mono or stereo) fully into memory, as 16-bit stereo like WAV.
+/// (It is not streamed: a long music track still takes memory, but costs far less to ship.)
+pub fn decode_ogg(bytes: &[u8]) -> Result<crate::mixer::Sample, String> {
+    use lewton::inside_ogg::OggStreamReader;
+    let mut reader = OggStreamReader::new(Cursor::new(bytes))
+        .map_err(|e| format!("not a readable Ogg Vorbis file: {e}"))?;
+    let channels = reader.ident_hdr.audio_channels as usize;
+    let rate = reader.ident_hdr.audio_sample_rate;
+    if channels == 0 || channels > 2 {
+        return Err(format!(
+            "{channels} channels is not supported; use mono or stereo"
+        ));
+    }
+    if !(8_000..=192_000).contains(&rate) {
+        return Err(format!(
+            "{rate} Hz is outside the supported 8000 to 192000 Hz"
+        ));
+    }
+    let limit = (MAX_SOUND_SECONDS * rate as f32) as usize * channels;
+    let mut samples: Vec<i16> = Vec::new();
+    while let Some(packet) = reader
+        .read_dec_packet_itl()
+        .map_err(|e| format!("Ogg Vorbis data is damaged: {e}"))?
+    {
+        samples.extend_from_slice(&packet);
+        if samples.len() > limit {
+            return Err(format!(
+                "longer than the {MAX_SOUND_SECONDS:.0} second limit"
+            ));
+        }
+    }
+    sample_from_interleaved(&samples, channels, rate, "Ogg Vorbis")
+}
+
+/// Decodes a project sound by its file extension (`.wav` or `.ogg`).
+pub fn decode_sound(id: &str, bytes: &[u8]) -> Result<crate::mixer::Sample, String> {
+    if id.to_ascii_lowercase().ends_with(".ogg") {
+        decode_ogg(bytes)
+    } else {
+        decode_wav(bytes)
+    }
+}
+
+#[cfg(test)]
+mod ogg_tests {
+    use super::*;
+
+    #[test]
+    fn garbage_and_truncated_files_are_clear_errors_not_panics() {
+        assert!(
+            decode_ogg(b"")
+                .unwrap_err()
+                .contains("not a readable Ogg Vorbis")
+        );
+        assert!(
+            decode_ogg(b"OggS\0\x02nonsense")
+                .unwrap_err()
+                .contains("not a readable Ogg Vorbis")
+        );
+        assert!(decode_sound("x.ogg", b"RIFF....WAVE").is_err());
+        assert!(decode_sound("x.wav", b"OggS").unwrap_err().contains("WAV"));
+    }
+
+    /// Decodes a real file when `NOVA_TEST_OGG` names one (no encoder is available to make a fixture,
+    /// and no third-party audio is checked in). Run: `NOVA_TEST_OGG=/path/a.ogg cargo test ogg`.
+    #[test]
+    fn decodes_a_real_file_when_one_is_provided() {
+        let Ok(path) = std::env::var("NOVA_TEST_OGG") else {
+            return;
+        };
+        let sample = decode_ogg(&std::fs::read(&path).unwrap()).unwrap();
+        assert!(sample.frames.len() > 100, "{} frames", sample.frames.len());
+        assert!(sample.frames.iter().any(|f| f[0] != 0), "not silent");
+        eprintln!(
+            "decoded {path}: {} Hz, {} frames",
+            sample.rate,
+            sample.frames.len()
+        );
+    }
 }
 
 #[cfg(test)]

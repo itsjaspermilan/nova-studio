@@ -224,10 +224,13 @@ fn resolve_sprite<'a>(
 
 /// A sound by full id (`sounds/hit.wav`) or short name (`hit`, looked up in `sounds/` then `music/`).
 fn find_sound<'a>(sounds: &'a HashMap<String, Arc<Sample>>, id: &str) -> Option<&'a Arc<Sample>> {
-    sounds
-        .get(id)
-        .or_else(|| sounds.get(&format!("sounds/{id}.wav")))
-        .or_else(|| sounds.get(&format!("music/{id}.wav")))
+    sounds.get(id).or_else(|| {
+        ["sounds", "music"].iter().find_map(|folder| {
+            ["wav", "ogg"]
+                .iter()
+                .find_map(|ext| sounds.get(&format!("{folder}/{id}.{ext}")))
+        })
+    })
 }
 
 /// A model by full id (`models/car.glb`) or short name (`car`).
@@ -726,7 +729,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                         known.sort_unstable();
                         known.truncate(6);
                         lua_err(format!(
-                            "unknown sound '{name}' (looked for '{name}', 'sounds/{name}.wav' and 'music/{name}.wav'; sounds in this project: {})",
+                            "unknown sound '{name}' (looked for '{name}' and '{name}.wav' or '.ogg' in 'sounds/' and 'music/'; sounds in this project: {})",
                             if known.is_empty() { "none".into() } else { known.join(", ") }
                         ))
                     })?
@@ -1179,14 +1182,15 @@ impl Game {
         let mut sounds: HashMap<String, Arc<Sample>> = HashMap::new();
         let mut sound_bytes = 0usize;
         for asset in project.assets_of(AssetKind::Audio) {
-            if !asset.id.to_ascii_lowercase().ends_with(".wav") {
+            let lower = asset.id.to_ascii_lowercase();
+            if !lower.ends_with(".wav") && !lower.ends_with(".ogg") {
                 warnings.push(format!(
-                    "'{}' is not a WAV file; only WAV sounds are supported yet, so it is ignored",
+                    "'{}' is not a WAV or Ogg Vorbis file, so it is ignored",
                     asset.id
                 ));
                 continue;
             }
-            let sample = assets::decode_wav(&vfs.read(&asset.id)?)
+            let sample = assets::decode_sound(&asset.id, &vfs.read(&asset.id)?)
                 .map_err(|e| format!("{}: {e}", asset.id))?;
             sound_bytes += sample.frames.len() * 4;
             if sound_bytes > assets::MAX_SOUND_BYTES {
