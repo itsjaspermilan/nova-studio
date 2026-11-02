@@ -24,6 +24,51 @@ sticks/triggers and immersive mode (need the device to verify); named/remappable
 rigid-bone model animation and simple lights; structured Lua diagnostics for the studio; OGG and
 streamed music; the C audio core's synthesis for the sound studio (M6).
 
+## Known gaps (audited 2026-11-02)
+
+Everything we know is missing or unverified, in one place. "Device" means it needs the Retroid (or
+another physical Android device) to settle; the emulator cannot.
+
+**Needs the device**
+- [ ] Frame pacing, thermals over 10+ minutes, battery, 60/120 Hz behaviour (emulator speed is not
+  device speed; the Lua framework and collision grid are unmeasured on handheld CPUs).
+- [ ] Controller: analogue sticks and triggers do not reach the game on Android (winit delivers
+  button key events only; needs a native-activity input path). Rumble, several pads and remapping
+  are not implemented.
+- [ ] Audio latency and underruns on real output (AAudio low-latency mode is not requested; only
+  callback time was measured, about 0.1 ms on the emulator).
+- [ ] Android lifecycle: pause/resume, rotation, process death are coded (surface dropped and rebuilt)
+  but not exercised; **GPU device loss is not handled at all**.
+- [ ] Immersive mode: the emulator profile reserves a 136 px system-bar strip; the real panel is
+  believed to be a plain 16:9 with no cutout. Verify, then hide the bars properly.
+- [ ] Verify the Retroid's facts: SoC, Android version (assumed 13), screen size/refresh, how its
+  controller is presented, USB debugging.
+- [ ] Keyboard input on Android (touch is verified on the emulator, the keyboard path is not).
+
+**Runtime and format**
+- [ ] Real text rendering (in progress; see M2c) and OGG / streamed music (WAV only, fully decoded in
+  memory, so music is large).
+- [ ] The OpenGL ES fallback backend was fixed (limits) but not re-run on Android since; Vulkan is what
+  has been exercised.
+- [ ] No GPU timestamps; frame time is CPU-side plus vsync.
+- [ ] 3D has no collision or physics (collisions are 2D boxes and circles only), static models only
+  (no bone animation yet), one directional light, no shadows.
+- [ ] Sprites have no pivot/origin setting (always centred; flip with a negative scale); text is UI
+  layer only and draws on top of UI sprites.
+- [ ] The mixer resamples linearly (pitched-up sounds can alias) and has no buses or effects; the C
+  audio core's synthesis and DSP are not connected to game audio (M6).
+- [ ] Hot reload restarts the whole project (no state-preserving reload).
+- [ ] Lua script errors show as a one-line banner; the traceback is not available as data.
+- [ ] Released builds: the native library is not stripped or size-optimised, and 16 KB page-size
+  alignment for newer Android versions has not been checked.
+
+**Delivery and product**
+- [ ] APKs are debug-signed only; release signing, distribution and installing on a device are the
+  user's to do. `nova export android` does not exist yet (a script does the work).
+- [ ] Third-party licence notices for Rust dependencies are not bundled into outputs (fonts' notices are
+  in `licenses/fonts/`).
+- [ ] The studio does not exist yet (M4 to M7); neither do Windows/Linux builds.
+
 ## Goal
 
 A Game Maker 8-style studio, simpler and original, that makes **native Android
