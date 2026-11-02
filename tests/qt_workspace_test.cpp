@@ -5,6 +5,7 @@
 #include <QAbstractItemView>
 #include <QAction>
 #include <QApplication>
+#include <QBuffer>
 #include <QComboBox>
 #include <QCheckBox>
 #include <QCompleter>
@@ -109,6 +110,72 @@ int paintedGizmoPoints(const QImage &image, NativeViewport *viewport, QPoint off
 class WorkspaceTest final : public QObject {
     Q_OBJECT
 private slots:
+    void sourceOnlySaveBlocksRun()
+    {
+        QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-source-only-run-XXXXXX");
+        QVERIFY(temporary.isValid());
+        StudioWindow window(NOVA_EXAMPLES, false);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        auto *document = window.projectDocument();
+        auto *viewport = window.viewport();
+        QString error;
+        QVERIFY2(document->create(temporary.path(), "Publication gate", true, NOVA_EXAMPLES, &error), qPrintable(error));
+        QTRY_VERIFY_WITH_TIMEOUT(viewport->ready(), 10000);
+        QTRY_COMPARE(viewport->resources().count, size_t(1));
+        auto *run = window.findChild<QAction *>("runProject");
+        auto *problems = window.findChild<QListWidget *>("problems");
+        QVERIFY(run);
+        QVERIFY(problems);
+        StudioAssetSnapshot snapshot;
+        snapshot.id = "marker-source"; snapshot.kind = "sprite"; snapshot.revision = 1;
+        snapshot.source.path = "marker.nova-sprite";
+        QByteArray previous;
+        QVERIFY2(document->readAssetFile(snapshot.source.path, &previous, &snapshot.source.expected, &error), qPrintable(error));
+        QVERIFY(previous.isEmpty());
+        snapshot.source.bytes = "editable source retained without a generated image";
+        snapshot.mode = StudioAssetSnapshot::Mode::SourceOnly;
+        snapshot.derivedProblem = "The generated image has not been published.";
+        QVERIFY2(document->stageAssetSnapshot(snapshot, &error), qPrintable(error));
+        QVERIFY(run->isEnabled());
+        run->trigger();
+        QVERIFY(!viewport->running());
+        QVERIFY(!document->dirty());
+        QCOMPARE(readFile(document->root() + "/" + snapshot.source.path), snapshot.source.bytes);
+        QCOMPARE(problems->findItems("Runtime output is stale for marker-source", Qt::MatchContains).size(), 1);
+        QVERIFY(document->assetPublication(snapshot.id).saved);
+        QVERIFY(document->assetPublication(snapshot.id).stale);
+
+        QVERIFY(window.openProject(document->path(), false));
+        QVERIFY(run->isEnabled());
+        run->trigger();
+        QVERIFY(!viewport->running());
+        QVERIFY(document->assetPublication(snapshot.id).stale);
+
+        snapshot = document->assetSnapshots().front();
+        ++snapshot.revision;
+        snapshot.mode = StudioAssetSnapshot::Mode::PublishDerived;
+        snapshot.derivedProblem.clear();
+        StudioAssetFile output;
+        output.path = "marker.png"; output.runtimeId = "marker"; output.runtimeType = NOVA_ASSET_SPRITE;
+        QVERIFY2(document->readAssetFile(output.path, &previous, &output.expected, &error), qPrintable(error));
+        QImage image(2, 2, QImage::Format_RGBA8888);
+        image.fill(Qt::green);
+        QBuffer buffer(&output.bytes);
+        QVERIFY(buffer.open(QIODevice::WriteOnly));
+        QVERIFY(image.save(&buffer, "PNG"));
+        buffer.close();
+        snapshot.outputs = {output};
+        QVERIFY2(document->stageAssetSnapshot(snapshot, &error), qPrintable(error));
+        QVERIFY(run->isEnabled());
+        run->trigger();
+        QVERIFY2(viewport->running(), qPrintable(problems->count() ? problems->item(problems->count() - 1)->text() : QString()));
+        QVERIFY2(document->runtimeAssetsReady(&error), qPrintable(error));
+        QVERIFY(!document->assetPublication(snapshot.id).stale);
+        window.findChild<QAction *>("stopProject")->trigger();
+        QVERIFY(!viewport->running());
+    }
+
     void sceneTransformsAndNavigation()
     {
         QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-transforms-XXXXXX");

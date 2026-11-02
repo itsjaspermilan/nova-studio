@@ -1111,7 +1111,7 @@ void StudioWindow::runProject()
     if (!document_.isOpen()) return;
     if (focusWidget()) focusWidget()->clearFocus();
     QString error;
-    if ((!document_.generated() && !document_.save(&error)) || !document_.checkExternal(&error)) { report(error); return; }
+    if ((!document_.generated() && !document_.save(&error)) || !document_.runtimeAssetsReady(&error)) { report(error); return; }
     workspaces_->setCurrentIndex(0);
     if (!viewport_->openProject(document_.path())) return;
     viewport_->setRunning(true);

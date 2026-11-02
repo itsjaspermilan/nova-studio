@@ -152,8 +152,11 @@ deleting a visual object never regenerates the gameplay Lua**; deleting a
 referenced ID yields a useful runtime error until the reference or deletion
 is corrected. Studio's Unicode UI does not extend the game's bitmap HUD font.
 
-**Run game / F5** coherently saves, then stages the real saved project through
-the shared engine/assets/presentation. The focused viewport receives gameplay
+**Run game / F5** coherently saves, requires current published asset outputs,
+then stages the real saved project through the shared engine/assets/presentation.
+A source-only save retains editable work but blocks Run until publication
+succeeds; it never silently plays stale generated assets. The focused viewport
+receives gameplay
 keys; blur, hidden windows and modal dialogs pause simulation/services and
 clear input. Escape releases game focus, not the application. **Stop /
 Shift+F5** discards runtime changes and restores the authored scene. Failed

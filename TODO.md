@@ -397,6 +397,23 @@ and refusing damaged newer recovery before an older commit writes project files.
 The affected `nova_studio_app` target also builds; no locked-desktop focus or
 component-embedding evidence is implied.
 
+### Integrated Scene, asset and compact Sprite checkpoint
+
+The coordinating worktree has integrated Scene tools as `c41db47`, asset
+persistence as `5d7def8`, and compact Sprite embedding as `04625e7`. Twelve
+combined Scene/document/Sprite/mesh-host and legacy compatibility selectors
+pass. Studio's real Run action now requires `runtimeAssetsReady` after Save:
+source-only work remains saved, but stale generated assets cannot silently run.
+A focused LLDB-protected native widget case verifies that refusal before and
+after reopen, then successful Run after publishing a real PNG. This is not
+an active-window/input qualification or completed component embedding.
+
+The persistence owner is extending canonical WAV participation and explicit
+path ownership against all manifest runtime files before general host wiring.
+The Model workspace owner is building its visual tools on one shared native
+viewport, without changing the Scene game camera or creating another renderer.
+The full shell, Sound production and all-tools 3D rally gates remain open.
+
 ## Pre-Qt integrated baseline (retained evidence)
 
 The approved bounded software milestones are implemented and locally committed:
