@@ -3,12 +3,14 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QDockWidget>
+#include <QFile>
 #include <QFileDialog>
 #include <QInputMethodEvent>
 #include <QMainWindow>
 #include <QMimeData>
 #include <QPlainTextEdit>
 #include <QSurfaceFormat>
+#include <QTemporaryDir>
 #include <QtTest>
 
 extern "C" {
@@ -28,6 +30,66 @@ struct ClipboardGuard {
 class BridgeTest final : public QObject {
     Q_OBJECT
 private slots:
+    void authoringAudioDoesNotOpenDevice()
+    {
+        QVERIFY(!IsAudioDeviceReady());
+        QTemporaryDir temporary(QString(NOVA_TEST_DIRECTORY) + "/qt-audio-preview-XXXXXX");
+        QVERIFY(temporary.isValid());
+        const QString root = temporary.path();
+        QVERIFY(QFile::copy(QString(NOVA_EXAMPLES) + "/services/assets/chime.wav", root + "/chime.wav"));
+        QVERIFY(QFile::copy(QString(NOVA_EXAMPLES) + "/services/assets/awake.png", root + "/marker.png"));
+        const QByteArray manifest =
+            "nova-project 2\nidentity qt-audio-preview\nentry main.lua\n"
+            "sprite marker marker.png\naudio chime chime.wav\naudio alias chime.wav\n";
+        const QByteArray source =
+            "nova.scene('2d')\nlocal marker = nova.asset('marker')\n"
+            "nova.play(nova.asset('chime'), 0.2)\n"
+            "function update() nova.sprite(marker, 20, 20, 80, 80) end\n";
+        const auto write = [](const QString &path, const QByteArray &bytes) {
+            QFile file(path);
+            return file.open(QIODevice::WriteOnly) && file.write(bytes) == bytes.size() && file.flush();
+        };
+        QVERIFY(write(root + "/nova.project", manifest));
+        QVERIFY(write(root + "/main.lua", source));
+        QFile wave(root + "/chime.wav");
+        QVERIFY(wave.open(QIODevice::ReadOnly));
+        const auto original = wave.readAll();
+        wave.close();
+
+        QMainWindow window;
+        auto *viewport = new NativeViewport;
+        window.setCentralWidget(viewport);
+        window.resize(960, 620);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        QTRY_VERIFY_WITH_TIMEOUT(viewport->ready(), 10000);
+        QVERIFY2(viewport->openAuthoring(root + "/nova.project", manifest, {}, source), qPrintable(viewport->error()));
+        QCOMPARE(viewport->resources().count, size_t{3});
+        const auto texture = viewport->resources().resources[0].texture.id;
+        QVERIFY(texture != 0);
+        QVERIFY(viewport->resources().resources[0].owned);
+        for (size_t i = 1; i < 3; ++i) {
+            QCOMPARE(viewport->resources().resources[i].type, NOVA_ASSET_AUDIO);
+            QVERIFY(!viewport->resources().resources[i].owned);
+            QCOMPARE(viewport->resources().resources[i].sound.frameCount, 0u);
+            QVERIFY(viewport->resources().inspection[i].sample_frames > 0);
+            QCOMPARE(viewport->resources().inspection[i].resource_index, size_t{1});
+        }
+        QVERIFY(viewport->resources().services->preflight);
+        QVERIFY(!viewport->resources().services->initialized);
+        QVERIFY(!IsAudioDeviceReady());
+        QVERIFY(!viewport->grabFramebuffer().isNull());
+
+        QVERIFY(write(root + "/chime.wav", "not a WAV"));
+        QVERIFY(!viewport->openAuthoring(root + "/nova.project", manifest, {}, source));
+        QCOMPARE(viewport->resources().resources[0].texture.id, texture);
+        QCOMPARE(viewport->resources().count, size_t{3});
+        QVERIFY(!IsAudioDeviceReady());
+        QVERIFY(write(root + "/chime.wav", original));
+        QVERIFY2(viewport->openAuthoring(root + "/nova.project", manifest, {}, source), qPrintable(viewport->error()));
+        QVERIFY(!IsAudioDeviceReady());
+    }
+
     void rotatedNativeCubesAndModels()
     {
         QMainWindow window;

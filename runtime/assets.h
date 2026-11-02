@@ -84,8 +84,9 @@ typedef struct {
     size_t manifest_length, source_length, scene_length;
 } NovaProjectDraft;
 /* Stage a consistent in-memory authoring snapshot against an existing project
- * root. GPU imports are real; save reads are deterministic and effects are NOT
- * dispatched. Failed staging retains the complete prior engine/resources. */
+ * root. Graphics imports use the GPU; audio is validated without device/sound
+ * upload. Save reads are deterministic and effects are NOT dispatched.
+ * Failed staging retains the complete prior engine/resources. */
 bool nova_open_authoring_snapshot(NovaEngine **engine, NovaResources *resources,
     const char *path, const NovaProjectDraft *draft, char *error, size_t error_size);
 

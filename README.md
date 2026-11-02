@@ -175,6 +175,9 @@ Shift+F5** discards runtime changes and restores the authored scene. Failed
 asset/scene/Lua staging retains the previous native resources/output and
 labels the preview as retained, with Problems details. Use View -> Reload
 native preview assets (F6) to explicitly reload external asset changes.
+Authoring previews, including read-only projects, validate WAVs without opening
+an audio device or uploading native sounds. Graphics still use the real GPU.
+Audio upload belongs to explicit Run; Sound audition has its separate Play action.
 
 #### Document ownership and recoverable saving
 

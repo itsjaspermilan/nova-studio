@@ -742,6 +742,7 @@ static bool stage_scene(NovaEngine **engine, NovaResources *resources,
                 if (gpu && !upload_model(&r->model, &r->images, detail, sizeof(detail))) goto asset_error;
             } else {
                 Wave wave = {0};
+                r->owned = gpu && !draft;
                 if (!nova_decode_wav(bytes, length, &wave, detail, sizeof(detail))) goto asset_error;
                 info->sample_rate = wave.sampleRate; info->channels = wave.channels; info->sample_frames = wave.frameCount;
                 total_audio_seconds += (double)wave.frameCount / wave.sampleRate;
@@ -750,20 +751,20 @@ static bool stage_scene(NovaEngine **engine, NovaResources *resources,
                     error_message(detail, sizeof(detail), "project exceeds 120 seconds of unique decoded audio");
                     goto asset_error;
                 }
-                if (gpu) {
+                if (r->owned) {
                     if (!nova_audio_device_ensure(detail, sizeof(detail))) {
                         UnloadWave(wave); goto asset_error;
                     }
                     r->sound = LoadSoundFromWave(wave);
                 }
                 UnloadWave(wave);
-                if (gpu && (!IsAudioDeviceReady() || !IsSoundValid(r->sound))) {
+                if (r->owned && (!IsAudioDeviceReady() || !IsSoundValid(r->sound))) {
                     error_message(detail, sizeof(detail), "native audio device initialization or sound upload failed");
                     goto asset_error;
                 }
             }
             UnloadFileData(bytes); bytes = NULL;
-            TraceLog(LOG_INFO, "NOVA_ASSET %s id=%s type=%s", gpu ? "loaded" : "validated", asset->id,
+            TraceLog(LOG_INFO, "NOVA_ASSET %s id=%s type=%s", r->owned ? "loaded" : "validated", asset->id,
                 asset->type == NOVA_ASSET_SPRITE ? "sprite" : asset->type == NOVA_ASSET_MODEL ? "model" : "audio");
             continue;
 asset_error: {
