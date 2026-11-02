@@ -273,7 +273,8 @@ Second slice, built: visual scene editor for `*.scene.json` (opens by default, J
 - [x] Palette of project entities and PNGs, inspector for kind/name/position/scale/layer/depth/text/
   colour, scene background and size. Saves tidy, diff-friendly JSON; unknown keys pass through.
 - [x] Pictures come from the project (`read_image` data URLs); tile maps are drawn.
-- [ ] Not yet: painting tiles, editing `props`, previewing an entity's real sprite (objects are boxes
+- [x] Tile painting (paint, fill, erase, make tiles solid, resize, new map from a tileset image) and object `props` editing (text, number, true/false; tables stay in JSON).
+- [ ] Not yet: previewing an entity's real sprite (objects are boxes
   named by kind), multi-select, rotate/resize handles, (renames now update scene references).
 - [ ] Undo/redo across editors, safe saves, recovery, external-change handling.
 - [ ] Help window and short tutorials; beginner wording throughout.

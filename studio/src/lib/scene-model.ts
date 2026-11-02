@@ -256,3 +256,166 @@ export class History {
     this.#future = [];
   }
 }
+
+// ---- properties of objects ---------------------------------------------------------------------
+
+export type PropValue = string | number | boolean;
+
+/// What a person typed into a property box: a number, true/false, or text (put quotes round
+/// something that looks like a number to keep it text).
+export function parsePropValue(raw: string): PropValue {
+  const t = raw.trim();
+  if (/^-?(\d+\.?\d*|\.\d+)$/.test(t)) return Number(t);
+  if (t === "true") return true;
+  if (t === "false") return false;
+  if (t.length >= 2 && (t[0] === '"' || t[0] === "'") && t.at(-1) === t[0]) return t.slice(1, -1);
+  return raw;
+}
+
+export function showPropValue(v: unknown): string {
+  return typeof v === "string" ? (parsePropValue(v) === v ? v : JSON.stringify(v)) : JSON.stringify(v);
+}
+
+/// The simple (text, number, true/false) properties of an object; nested tables are left to the JSON view.
+export function propsOf(scene: Scene, ref: Ref): { key: string; value: unknown; simple: boolean }[] {
+  const props = itemAt(scene, ref)?.props;
+  if (!props || typeof props !== "object") return [];
+  return Object.entries(props as Record<string, unknown>).map(([key, value]) => ({ key, value, simple: ["string", "number", "boolean"].includes(typeof value) }));
+}
+
+/// Sets, changes or (with undefined) removes a property; an empty `props` is dropped.
+export function setProp(scene: Scene, ref: Ref, key: string, value: PropValue | undefined): Scene {
+  const next = clone(scene);
+  const item = itemAt(next, ref);
+  if (!item || !key.trim()) return scene;
+  const props = { ...((item.props as Record<string, unknown> | undefined) ?? {}) };
+  if (value === undefined) delete props[key];
+  else props[key] = value;
+  if (Object.keys(props).length === 0) delete item.props;
+  else item.props = props;
+  return next;
+}
+
+export function renameProp(scene: Scene, ref: Ref, from: string, to: string): Scene {
+  const item = itemAt(scene, ref);
+  const props = item?.props as Record<string, unknown> | undefined;
+  const name = to.trim();
+  if (!props || !(from in props) || !name || name === from || name in props) return scene;
+  const next = clone(scene);
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries((itemAt(next, ref)!.props as Record<string, unknown>))) out[k === from ? name : k] = v;
+  itemAt(next, ref)!.props = out;
+  return next;
+}
+
+// ---- tile maps ---------------------------------------------------------------------------------
+
+export interface Tilemap {
+  name?: string;
+  tileset: { image: string; tile_width: number; tile_height: number };
+  x?: number;
+  y?: number;
+  depth?: number;
+  solid?: number[];
+  tiles: number[][];
+  [key: string]: unknown;
+}
+export const EMPTY_TILE = -1;
+export const MAX_MAP_SIDE = 1000;
+
+export const tilemaps = (scene: Scene): Tilemap[] => (Array.isArray(scene.tilemaps) ? (scene.tilemaps as Tilemap[]) : []);
+
+export function mapSize(m: Tilemap): { cols: number; rows: number } {
+  return { cols: Math.max(0, ...m.tiles.map((r) => r.length)), rows: m.tiles.length };
+}
+
+/// The grid cell under a world point, or null outside the map.
+export function cellAt(m: Tilemap, x: number, y: number): { col: number; row: number } | null {
+  const { cols, rows } = mapSize(m);
+  const col = Math.floor((x - (m.x ?? 0)) / m.tileset.tile_width);
+  const row = Math.floor((y - (m.y ?? 0)) / m.tileset.tile_height);
+  return col >= 0 && row >= 0 && col < cols && row < rows ? { col, row } : null;
+}
+
+export function tilemapBox(m: Tilemap): Box {
+  const { cols, rows } = mapSize(m);
+  return { x: m.x ?? 0, y: m.y ?? 0, w: cols * m.tileset.tile_width, h: rows * m.tileset.tile_height };
+}
+
+/// An empty map, named uniquely, appended to the scene.
+export function addTilemap(scene: Scene, image: string, tileW: number, tileH: number, cols: number, rows: number): { scene: Scene; index: number } {
+  const next = clone(scene);
+  const c = Math.max(1, Math.min(MAX_MAP_SIDE, Math.floor(cols)));
+  const r = Math.max(1, Math.min(MAX_MAP_SIDE, Math.floor(rows)));
+  const map: Tilemap = {
+    name: uniqueName(scene, "ground"),
+    tileset: { image, tile_width: tileW, tile_height: tileH },
+    x: 0,
+    y: 0,
+    depth: 100,
+    solid: [],
+    tiles: Array.from({ length: r }, () => Array(c).fill(EMPTY_TILE)),
+  };
+  const list = (next.tilemaps = [...tilemaps(next), map]);
+  return { scene: next, index: list.length - 1 };
+}
+
+/// Makes the grid exactly `cols` by `rows`, keeping what fits and filling new cells with empty.
+export function resizeTilemap(scene: Scene, index: number, cols: number, rows: number): Scene {
+  if (!tilemaps(scene)[index]) return scene;
+  const next = clone(scene);
+  const m = tilemaps(next)[index]!;
+  const c = Math.max(1, Math.min(MAX_MAP_SIDE, Math.floor(cols)));
+  const r = Math.max(1, Math.min(MAX_MAP_SIDE, Math.floor(rows)));
+  m.tiles = Array.from({ length: r }, (_, y) => Array.from({ length: c }, (_, x) => m.tiles[y]?.[x] ?? EMPTY_TILE));
+  return next;
+}
+
+/// Sets one cell; painting past the right or bottom edge grows the map.
+export function paintTile(scene: Scene, index: number, col: number, row: number, tile: number): Scene {
+  const current = tilemaps(scene)[index];
+  if (!current || col < 0 || row < 0 || col >= MAX_MAP_SIDE || row >= MAX_MAP_SIDE) return scene;
+  const { cols, rows } = mapSize(current);
+  let next = col >= cols || row >= rows ? resizeTilemap(scene, index, Math.max(cols, col + 1), Math.max(rows, row + 1)) : clone(scene);
+  const m = tilemaps(next)[index]!;
+  if (m.tiles[row]![col] === tile) return next === scene ? scene : next;
+  m.tiles[row]![col] = tile;
+  return next;
+}
+
+/// Replaces the connected run of the same tile (4-way) with `tile`.
+export function fillTiles(scene: Scene, index: number, col: number, row: number, tile: number): Scene {
+  const current = tilemaps(scene)[index];
+  const target = current?.tiles[row]?.[col];
+  if (!current || target === undefined || target === tile) return scene;
+  const next = clone(scene);
+  const m = tilemaps(next)[index]!;
+  const stack: [number, number][] = [[col, row]];
+  while (stack.length) {
+    const [c, r] = stack.pop()!;
+    if (m.tiles[r]?.[c] !== target) continue;
+    m.tiles[r]![c] = tile;
+    stack.push([c + 1, r], [c - 1, r], [c, r + 1], [c, r - 1]);
+  }
+  return next;
+}
+
+/// Adds or removes a tile number from the map's solid list (what `slide()` and `solid_at` treat as walls).
+export function toggleSolid(scene: Scene, index: number, tile: number): Scene {
+  if (!tilemaps(scene)[index] || tile < 0) return scene;
+  const next = clone(scene);
+  const m = tilemaps(next)[index]!;
+  const solid = new Set(m.solid ?? []);
+  if (!solid.delete(tile)) solid.add(tile);
+  m.solid = [...solid].sort((a, b) => a - b);
+  return next;
+}
+
+export function removeTilemap(scene: Scene, index: number): Scene {
+  if (!tilemaps(scene)[index]) return scene;
+  const next = clone(scene);
+  const list = tilemaps(next);
+  list.splice(index, 1);
+  if (list.length === 0) delete next.tilemaps;
+  return next;
+}

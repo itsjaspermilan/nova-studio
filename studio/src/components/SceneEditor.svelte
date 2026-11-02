@@ -3,6 +3,8 @@
   import {
     History, addItem, afterRemoval, boundsOf, drawOrder, duplicateItem, hitTest, itemAt, moveTo, parseScene, removeItem, sameRef,
     serializeScene, setField, setSceneField, snap, uniqueName, worldSize, type Item, type ItemKind, type Ref, type Scene, type Sizes,
+    addTilemap, cellAt, fillTiles, mapSize, paintTile, parsePropValue, propsOf, removeTilemap, renameProp, resizeTilemap, setProp, showPropValue,
+    tilemapBox, tilemaps, toggleSolid, EMPTY_TILE,
   } from "../lib/scene-model";
   import { studio } from "../lib/store.svelte";
 
@@ -15,6 +17,16 @@
   let historyTick = $state(0); // bumps so the undo/redo buttons re-evaluate
   let selected: Ref | null = $state(null);
   let gridSize = $state(8);
+  // tile painting
+  let mode: "select" | "tiles" = $state("select");
+  let mapIndex = $state(0);
+  let tile = $state(0); // the tile to paint; -1 erases
+  let tileTool: "paint" | "fill" = $state("paint");
+  let newSet = $state("");
+  let newTile = $state(16);
+  let newCols = $state(30);
+  let newRows = $state(17);
+  let tileCell: { col: number; row: number } | null = $state(null);
   let showGrid = $state(true);
 
   // view: world -> screen is (world - origin) * zoom
@@ -59,6 +71,7 @@
     studio.edit(path, serializeScene(next));
   }
   const edit = (next: Scene) => commit(next);
+  const structuredCloneSafe = (v: Scene): Scene => JSON.parse(JSON.stringify(v));
 
   function undo() {
     const prev = history.undo($state.snapshot(scene) as Scene);
@@ -78,6 +91,8 @@
 
   // ---- drawing -------------------------------------------------------------------------------
   const rgb = (c: number[] | undefined, fallback: string) => (c && c.length >= 3 ? `rgb(${c[0]}, ${c[1]}, ${c[2]})` : fallback);
+
+  let hoverCell: { col: number; row: number } | null = $state(null);
 
   function draw() {
     const ctx = canvas?.getContext("2d");
@@ -168,7 +183,33 @@
     ctx.strokeStyle = "rgba(255,255,255,.5)";
     ctx.strokeRect(wx + 0.5, wy + 0.5, world.width * zoom, world.height * zoom);
 
-    if (selected) {
+    if (mode === "tiles") {
+      const m = tilemaps(scene)[mapIndex];
+      if (m) {
+        const box = tilemapBox(m);
+        const [bx, by] = toScreen(box.x, box.y);
+        ctx.strokeStyle = "#6fcf8e";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(bx, by, box.w * zoom, box.h * zoom);
+        ctx.lineWidth = 1;
+        const tw = m.tileset.tile_width;
+        const th = m.tileset.tile_height;
+        ctx.strokeStyle = "rgba(111,207,142,.25)";
+        ctx.beginPath();
+        for (let x = 1; x < mapSize(m).cols; x++) { ctx.moveTo(bx + x * tw * zoom + 0.5, by); ctx.lineTo(bx + x * tw * zoom + 0.5, by + box.h * zoom); }
+        for (let y = 1; y < mapSize(m).rows; y++) { ctx.moveTo(bx, by + y * th * zoom + 0.5); ctx.lineTo(bx + box.w * zoom, by + y * th * zoom + 0.5); }
+        ctx.stroke();
+        // solid tiles get a red wash so walls are visible while painting
+        const solid = new Set(m.solid ?? []);
+        ctx.fillStyle = "rgba(255,80,80,.28)";
+        m.tiles.forEach((row, r) => row.forEach((n, c) => solid.has(n) && ctx.fillRect(bx + c * tw * zoom, by + r * th * zoom, tw * zoom, th * zoom)));
+        if (hoverCell) {
+          ctx.strokeStyle = "#ffd166";
+          ctx.strokeRect(bx + hoverCell.col * tw * zoom + 0.5, by + hoverCell.row * th * zoom + 0.5, tw * zoom - 1, th * zoom - 1);
+        }
+      }
+    }
+    if (selected && mode === "select") {
       const b = boundsOf(scene, selected, sizes as Sizes);
       const [sx, sy] = toScreen(b.x, b.y);
       ctx.strokeStyle = "#ffd166";
@@ -182,7 +223,7 @@
 
   $effect(() => {
     // redraw whenever anything the picture depends on changes
-    scene; selected; zoom; originX; originY; width; height; gridSize; showGrid; pictureTick; sizes;
+    scene; selected; zoom; originX; originY; width; height; gridSize; showGrid; pictureTick; sizes; mode; mapIndex; hoverCell;
     draw();
   });
 
@@ -204,8 +245,33 @@
     return [e.clientX - r.left, e.clientY - r.top];
   }
 
+  let painting: { before: Scene; last: string } | null = null;
+
+  function cellUnder(e: PointerEvent) {
+    const m = tilemaps(scene)[mapIndex];
+    if (!m) return null;
+    const [x, y] = toWorld(...pointer(e));
+    const col = Math.floor((x - (m.x ?? 0)) / m.tileset.tile_width);
+    const row = Math.floor((y - (m.y ?? 0)) / m.tileset.tile_height);
+    return col >= 0 && row >= 0 ? { col, row } : null;
+  }
+
+  function paintAt(cell: { col: number; row: number }) {
+    const next = tileTool === "fill" ? fillTiles(scene, mapIndex, cell.col, cell.row, tile) : paintTile(scene, mapIndex, cell.col, cell.row, tile);
+    if (next !== scene) commit(next, true);
+  }
+
   function down(e: PointerEvent) {
     canvas!.setPointerCapture(e.pointerId);
+    if (mode === "tiles" && e.button === 0 && !e.altKey && tilemaps(scene)[mapIndex]) {
+      const cell = cellUnder(e);
+      if (cell) {
+        painting = { before: $state.snapshot(scene) as Scene, last: `${cell.col},${cell.row}` };
+        paintAt(cell);
+        canvas!.focus();
+        return;
+      }
+    }
     const [sx, sy] = pointer(e);
     const [x, y] = toWorld(sx, sy);
     const hit = e.button === 0 && !e.altKey ? hitTest(scene, x, y, sizes as Sizes) : null;
@@ -221,6 +287,17 @@
   }
 
   function move(e: PointerEvent) {
+    if (mode === "tiles") {
+      const cell = cellUnder(e);
+      if (cell?.col !== hoverCell?.col || cell?.row !== hoverCell?.row) hoverCell = cell;
+      if (painting && cell && tileTool === "paint") {
+        const key = `${cell.col},${cell.row}`;
+        if (key !== painting.last) {
+          painting.last = key;
+          paintAt(cell);
+        }
+      }
+    }
     if (!drag) return;
     const [sx, sy] = pointer(e);
     if (drag.kind === "pan") {
@@ -241,7 +318,17 @@
     }
   }
 
-  const up = () => (drag = null);
+  const up = () => {
+    if (painting) {
+      // one undo step per stroke, only if something changed
+      if (JSON.stringify(painting.before) !== JSON.stringify($state.snapshot(scene))) {
+        history.record(painting.before);
+        historyTick++;
+      }
+      painting = null;
+    }
+    drag = null;
+  };
 
   function wheel(e: WheelEvent) {
     e.preventDefault();
@@ -315,6 +402,64 @@
   const images = $derived(studio.files.filter((f) => !f.dir && f.path.toLowerCase().endsWith(".png")).map((f) => f.path));
   const entities = $derived(studio.symbols.entities.map((s) => s.label));
 
+  // ---- tile maps ----------------------------------------------------------------------------
+  const maps = $derived(tilemaps(scene));
+  const activeMap = $derived(maps[mapIndex]);
+  let tilesetCanvas: HTMLCanvasElement | undefined = $state();
+  const TS_SCALE = 2;
+  $effect(() => {
+    // draw the tileset with the chosen tile outlined and solid tiles tinted
+    scene; tile; mapIndex; pictureTick; mode; tilesetCanvas;
+    const m = activeMap;
+    const ctx = tilesetCanvas?.getContext("2d");
+    const picture = m ? pictures.get(m.tileset.image) : undefined;
+    if (!ctx || !tilesetCanvas || !m || !picture?.naturalWidth) return;
+    const { tile_width: tw, tile_height: th } = m.tileset;
+    tilesetCanvas.width = picture.naturalWidth * TS_SCALE;
+    tilesetCanvas.height = picture.naturalHeight * TS_SCALE;
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = "#2e313b";
+    ctx.fillRect(0, 0, tilesetCanvas.width, tilesetCanvas.height);
+    ctx.drawImage(picture, 0, 0, tilesetCanvas.width, tilesetCanvas.height);
+    const perRow = Math.max(1, Math.floor(picture.naturalWidth / tw));
+    const rows = Math.floor(picture.naturalHeight / th);
+    const solid = new Set(m.solid ?? []);
+    for (const n of solid) {
+      ctx.fillStyle = "rgba(255,80,80,.35)";
+      ctx.fillRect((n % perRow) * tw * TS_SCALE, Math.floor(n / perRow) * th * TS_SCALE, tw * TS_SCALE, th * TS_SCALE);
+    }
+    if (tile >= 0 && tile < perRow * rows) {
+      ctx.strokeStyle = "#ffd166";
+      ctx.lineWidth = 2;
+      ctx.strokeRect((tile % perRow) * tw * TS_SCALE + 1, Math.floor(tile / perRow) * th * TS_SCALE + 1, tw * TS_SCALE - 2, th * TS_SCALE - 2);
+    }
+  });
+  function pickTile(e: MouseEvent) {
+    const m = activeMap;
+    const picture = m ? pictures.get(m.tileset.image) : undefined;
+    if (!m || !picture?.naturalWidth || !tilesetCanvas) return;
+    const r = tilesetCanvas.getBoundingClientRect();
+    const px = ((e.clientX - r.left) / r.width) * picture.naturalWidth;
+    const py = ((e.clientY - r.top) / r.height) * picture.naturalHeight;
+    const perRow = Math.max(1, Math.floor(picture.naturalWidth / m.tileset.tile_width));
+    const n = Math.floor(py / m.tileset.tile_height) * perRow + Math.floor(px / m.tileset.tile_width);
+    if (n >= 0 && px < perRow * m.tileset.tile_width) tile = n;
+  }
+  function createMap() {
+    if (!newSet) return;
+    const result = addTilemap(scene, newSet, Math.max(1, newTile), Math.max(1, newTile), newCols, newRows);
+    edit(result.scene);
+    mapIndex = result.index;
+    mode = "tiles";
+    tile = 0;
+  }
+  function deleteMap() {
+    if (!activeMap || !confirm(`Delete the tile map "${activeMap.name ?? mapIndex + 1}"?`)) return;
+    edit(removeTilemap(scene, mapIndex));
+    mapIndex = 0;
+    if (tilemaps(scene).length === 0) mode = "select";
+  }
+
   // ---- inspector ----------------------------------------------------------------------------
   const field = (key: string) => (item ? (item[key] as unknown) : undefined);
   function set(key: string, value: unknown) {
@@ -359,6 +504,22 @@
       {:else}
         <p class="dim small">No PNG files yet.</p>
       {/each}
+      <h4>Tile maps</h4>
+      {#each maps as m, i (i)}
+        <button class="item" class:on={mode === "tiles" && mapIndex === i} onclick={() => { mapIndex = i; mode = "tiles"; }}>▦ {m.name ?? `map ${i + 1}`}</button>
+      {/each}
+      {#if images.length}
+        <details class="newmap">
+          <summary>New tile map…</summary>
+          <label>Tileset <select bind:value={newSet}><option value="">choose…</option>{#each images as p (p)}<option value={p}>{p.replace(/^sprites\//, "")}</option>{/each}</select></label>
+          <div class="pair">
+            <label>Tile size <input type="number" min="1" bind:value={newTile} /></label>
+            <label>Cells <input type="number" min="1" bind:value={newCols} /></label>
+          </div>
+          <label>Rows <input type="number" min="1" bind:value={newRows} /></label>
+          <button disabled={!newSet} onclick={createMap}>Create</button>
+        </details>
+      {/if}
       <h4>In this scene</h4>
       {#each all as ref (ref.kind + ref.index)}
         <button class="item" class:on={sameRef(selected, ref)} onclick={() => (selected = ref)}>
@@ -371,6 +532,9 @@
       <div class="bar">
         <button class="ghost" onclick={undo} disabled={!canUndo} title="Undo (⌘Z)">↶</button>
         <button class="ghost" onclick={redo} disabled={!canRedo} title="Redo (⇧⌘Z)">↷</button>
+        <span class="sep"></span>
+        <button class:on={mode === "select"} onclick={() => (mode = "select")}>Select</button>
+        <button class:on={mode === "tiles"} disabled={maps.length === 0} title={maps.length ? "Paint tiles" : "Create a tile map first"} onclick={() => (mode = "tiles")}>Tiles</button>
         <span class="sep"></span>
         <label>Snap
           <select bind:value={gridSize}>
@@ -403,7 +567,32 @@
     </div>
 
     <aside class="inspector">
-      {#if selected && item}
+      {#if mode === "tiles" && activeMap}
+        <h3>Tile map</h3>
+        <label>Map
+          <select bind:value={mapIndex}>{#each maps as m, i (i)}<option value={i}>{m.name ?? `map ${i + 1}`}</option>{/each}</select>
+        </label>
+        <div class="tools2">
+          <button class:on={tileTool === "paint"} onclick={() => (tileTool = "paint")}>Paint</button>
+          <button class:on={tileTool === "fill"} onclick={() => (tileTool = "fill")}>Fill</button>
+          <button class:on={tile === EMPTY_TILE} onclick={() => (tile = EMPTY_TILE)} title="Paint with nothing">Erase</button>
+        </div>
+        <div class="tileset"><canvas bind:this={tilesetCanvas} aria-label="Tileset" onclick={pickTile}></canvas></div>
+        <p class="dim small">Tile {tile < 0 ? "none (erase)" : tile}{tileCell ? "" : ""}. Click a tile above, then the map. Painting past the edge grows the map.</p>
+        <button disabled={tile < 0} onclick={() => edit(toggleSolid(scene, mapIndex, tile))}>
+          {(activeMap.solid ?? []).includes(tile) ? "✓ Solid (click to make walkable)" : "Make this tile solid"}
+        </button>
+        <p class="dim small">Solid tiles stop <code>self:slide()</code> and are found by <code>nova.solid_at</code> (shown red).</p>
+        <div class="pair">
+          <label>Columns <input type="number" min="1" value={mapSize(activeMap).cols} onchange={(e) => edit(resizeTilemap(scene, mapIndex, Number(e.currentTarget.value), mapSize(activeMap!).rows))} /></label>
+          <label>Rows <input type="number" min="1" value={mapSize(activeMap).rows} onchange={(e) => edit(resizeTilemap(scene, mapIndex, mapSize(activeMap!).cols, Number(e.currentTarget.value)))} /></label>
+        </div>
+        <div class="pair">
+          <label>X <input type="number" value={activeMap.x ?? 0} onchange={(e) => { const next = structuredCloneSafe(scene); tilemaps(next)[mapIndex]!.x = Number(e.currentTarget.value) || 0; edit(next); }} /></label>
+          <label>Y <input type="number" value={activeMap.y ?? 0} onchange={(e) => { const next = structuredCloneSafe(scene); tilemaps(next)[mapIndex]!.y = Number(e.currentTarget.value) || 0; edit(next); }} /></label>
+        </div>
+        <button class="danger" onclick={deleteMap}>Delete map</button>
+      {:else if selected && item}
         <h3>{selected.kind === "objects" ? "Object" : selected.kind === "images" ? "Image" : "Text"}</h3>
         {#if selected.kind === "objects"}
           <label>Kind <input value={String(field("kind") ?? "")} onchange={(e) => set("kind", e.currentTarget.value.trim())} list="kinds" /></label>
@@ -445,8 +634,25 @@
           <button onclick={() => { const d = duplicateItem(scene, selected!); if (d) { edit(d.scene); selected = d.ref; } }}>Duplicate</button>
           <button class="danger" onclick={remove}>Delete</button>
         </div>
-        {#if selected.kind === "objects" && field("props")}
-          <p class="dim small">Has <code>props</code> (edit them in the JSON view).</p>
+        {#if selected.kind === "objects"}
+          <h4>Properties</h4>
+          <p class="dim small">Become fields on the object, like <code>self.hp</code>.</p>
+          {#each propsOf(scene, selected) as p (p.key)}
+            <div class="prop">
+              <input class="k" value={p.key} aria-label="Property name" onchange={(e) => edit(renameProp(scene, selected!, p.key, e.currentTarget.value))} />
+              {#if p.simple}
+                <input class="v" value={showPropValue(p.value)} aria-label="Value of {p.key}" onchange={(e) => edit(setProp(scene, selected!, p.key, parsePropValue(e.currentTarget.value)))} />
+              {:else}
+                <span class="v dim" title="Edit tables in the JSON view">{"{ … }"}</span>
+              {/if}
+              <button class="ghost danger" aria-label="Remove {p.key}" onclick={() => edit(setProp(scene, selected!, p.key, undefined))}>✕</button>
+            </div>
+          {/each}
+          <form class="prop" onsubmit={(e) => { e.preventDefault(); const f = e.currentTarget; const k = (f.elements.namedItem("k") as HTMLInputElement).value.trim(); if (k) { edit(setProp(scene, selected!, k, parsePropValue((f.elements.namedItem("v") as HTMLInputElement).value))); f.reset(); } }}>
+            <input class="k" name="k" placeholder="name" aria-label="New property name" />
+            <input class="v" name="v" placeholder="value" aria-label="New property value" />
+            <button class="ghost" aria-label="Add property">＋</button>
+          </form>
         {/if}
       {:else}
         <h3>Scene</h3>
@@ -481,7 +687,7 @@
   .sep { width: 1px; height: 18px; background: var(--line); }
   .spacer { flex: 1; }
   .canvas-box { flex: 1; min-height: 0; position: relative; overflow: hidden; }
-  canvas { position: absolute; inset: 0; display: block; cursor: default; outline: none; --panel-2: #222630; }
+  .canvas-box canvas { position: absolute; inset: 0; display: block; cursor: default; outline: none; --panel-2: #222630; }
   .hint { margin: 0; padding: 3px 10px; font-size: 11px; border-top: 1px solid var(--line); background: var(--panel); }
   label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--dim); }
   label input, label select, label textarea { color: var(--text); }
@@ -489,5 +695,15 @@
   .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
   .row { display: flex; gap: 6px; margin-top: 6px; }
   .small { font-size: 11px; margin: 4px 0; }
+  .bar button.on, .tools2 button.on { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
+  .tools2 { display: flex; gap: 4px; }
+  .tileset { max-height: 240px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: #2e313b; }
+  .tileset canvas { display: block; image-rendering: pixelated; cursor: pointer; }
+  .newmap { border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; display: flex; flex-direction: column; gap: 4px; }
+  .newmap summary { cursor: pointer; }
+  .newmap input, .newmap select { min-width: 0; width: 100%; }
+  .prop { display: flex; gap: 4px; align-items: center; }
+  .prop .k { width: 70px; min-width: 0; } .prop .v { flex: 1; min-width: 0; }
+  .prop input { padding: 2px 6px; }
   .bad { padding: 32px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 </style>

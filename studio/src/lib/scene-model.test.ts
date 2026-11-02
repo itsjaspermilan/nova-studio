@@ -130,3 +130,104 @@ describe("history", () => {
     expect(new History().undo(a)).toBeNull();
   });
 });
+
+import { addTilemap, cellAt, fillTiles, mapSize, paintTile, parsePropValue, propsOf, removeTilemap, renameProp, resizeTilemap, setProp, showPropValue, tilemapBox, tilemaps, toggleSolid } from "./scene-model";
+
+describe("object properties", () => {
+  it("parses what people type", () => {
+    expect(parsePropValue("5")).toBe(5);
+    expect(parsePropValue("-2.5")).toBe(-2.5);
+    expect(parsePropValue("true")).toBe(true);
+    expect(parsePropValue("hello world")).toBe("hello world");
+    expect(parsePropValue('"42"')).toBe("42");
+    expect(parsePropValue("")).toBe("");
+    expect(showPropValue("42")).toBe('"42"');
+    expect(showPropValue("hello")).toBe("hello");
+    expect(showPropValue(7)).toBe("7");
+  });
+
+  it("lists, sets, renames and removes props, dropping an empty table", () => {
+    const ref = { kind: "objects" as const, index: 1 };
+    let s = scene();
+    expect(propsOf(s, ref)).toEqual([{ key: "hp", value: 3, simple: true }]);
+    expect(propsOf(s, { kind: "objects", index: 0 })).toEqual([]);
+    s = setProp(s, ref, "speed", 2.5);
+    s = setProp(s, ref, "hp", 9);
+    expect(s.objects![1]!.props).toEqual({ hp: 9, speed: 2.5 });
+    s = renameProp(s, ref, "hp", "health");
+    expect(Object.keys(s.objects![1]!.props as object)).toEqual(["health", "speed"]);
+    expect(renameProp(s, ref, "health", "speed")).toBe(s); // would overwrite
+    expect(renameProp(s, ref, "nope", "x")).toBe(s);
+    s = setProp(setProp(s, ref, "health", undefined), ref, "speed", undefined);
+    expect("props" in s.objects![1]!).toBe(false);
+    const first = { kind: "objects" as const, index: 0 };
+    expect(setProp(scene(), first, "a", true).objects![0]!.props).toEqual({ a: true });
+    expect(setProp(scene(), first, "  ", 1)).toEqual(scene());
+    expect(scene().objects![1]!.props).toEqual({ hp: 3 }); // original untouched
+  });
+});
+
+describe("tile maps", () => {
+  it("finds the existing map and measures it", () => {
+    const s = scene();
+    expect(tilemaps(s)).toHaveLength(1);
+    expect(mapSize(tilemaps(s)[0]!)).toEqual({ cols: 2, rows: 2 });
+    expect(tilemapBox(tilemaps(s)[0]!)).toEqual({ x: 0, y: 0, w: 32, h: 32 });
+    expect(cellAt(tilemaps(s)[0]!, 17, 3)).toEqual({ col: 1, row: 0 });
+    expect(cellAt(tilemaps(s)[0]!, 40, 3)).toBeNull();
+    expect(cellAt(tilemaps(s)[0]!, -1, 3)).toBeNull();
+    expect(tilemaps({ version: 1 })).toEqual([]);
+  });
+
+  it("adds an empty map with a fresh name, and removes it again", () => {
+    const { scene: s, index } = addTilemap(scene(), "sprites/t.png", 16, 16, 4, 3);
+    const m = tilemaps(s)[index]!;
+    expect(m.name).toBe("ground");
+    expect(m.tiles).toEqual([[-1, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1]]);
+    expect(addTilemap(s, "sprites/t.png", 16, 16, 1, 1).scene.tilemaps).toHaveLength(3);
+    expect(tilemaps(addTilemap(s, "sprites/t.png", 16, 16, 1, 1).scene)[2]!.name).toBe("ground2");
+    expect((addTilemap(scene(), "x.png", 8, 8, 99999, 0).scene.tilemaps as unknown[])[1]).toMatchObject({ tiles: expect.any(Array) });
+    expect("tilemaps" in removeTilemap(removeTilemap(removeTilemap(s, 1), 0), 0)).toBe(false);
+    expect(removeTilemap(s, 9)).toBe(s);
+  });
+
+  it("paints a cell, grows the map to the right and down, and ignores silly cells", () => {
+    let s = scene();
+    s = paintTile(s, 0, 0, 0, 5);
+    expect(tilemaps(s)[0]!.tiles[0]).toEqual([5, 1]);
+    s = paintTile(s, 0, 3, 3, 2);
+    expect(mapSize(tilemaps(s)[0]!)).toEqual({ cols: 4, rows: 4 });
+    expect(tilemaps(s)[0]!.tiles[3]).toEqual([-1, -1, -1, 2]);
+    expect(tilemaps(s)[0]!.tiles[0]).toEqual([5, 1, -1, -1]);
+    expect(paintTile(s, 0, -1, 0, 1)).toBe(s);
+    expect(paintTile(s, 0, 5000, 0, 1)).toBe(s);
+    expect(paintTile(s, 4, 0, 0, 1)).toBe(s);
+    expect(tilemaps(scene())[0]!.tiles[0]).toEqual([0, 1]);
+  });
+
+  it("fills connected areas only, and resizes keeping what fits", () => {
+    let s = resizeTilemap(scene(), 0, 4, 3);
+    expect(mapSize(tilemaps(s)[0]!)).toEqual({ cols: 4, rows: 3 });
+    s = paintTile(s, 0, 1, 0, 7);
+    s = fillTiles(s, 0, 3, 2, 9); // the whole empty area
+    const t = tilemaps(s)[0]!.tiles;
+    expect(t[2]).toEqual([9, 9, 9, 9]);
+    expect(t[0]).toEqual([0, 7, 9, 9]);
+    expect(fillTiles(s, 0, 0, 0, 0)).toBe(s);
+    expect(fillTiles(s, 0, 50, 0, 3)).toBe(s);
+    expect(mapSize(tilemaps(resizeTilemap(s, 0, 1, 1))[0]!)).toEqual({ cols: 1, rows: 1 });
+  });
+
+  it("toggles solid tiles in order", () => {
+    let s = toggleSolid(scene(), 0, 3);
+    s = toggleSolid(s, 0, 1);
+    expect(tilemaps(s)[0]!.solid).toEqual([1, 3]);
+    expect(tilemaps(toggleSolid(s, 0, 3))[0]!.solid).toEqual([1]);
+    expect(toggleSolid(s, 0, -1)).toBe(s);
+  });
+
+  it("round-trips through the tidy serialiser", () => {
+    const s = paintTile(scene(), 0, 2, 0, 4);
+    expect(JSON.parse(serializeScene(s))).toEqual(JSON.parse(JSON.stringify(s)));
+  });
+});
