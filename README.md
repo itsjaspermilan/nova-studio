@@ -835,19 +835,24 @@ function update(dt, input)
 end
 ```
 
-**Audio subset/lifetime:** WAV must be little-endian RIFF PCM with exactly a
-16-byte `fmt ` chunk followed by `data`: mono/stereo unsigned PCM8 or signed PCM16,
-8000..48000 Hz, nonempty, at most 60 seconds per sound and 120 seconds across unique
-project sounds. Chunk lengths, alignment, byte rate, optional zero RIFF padding and
-file length must match exactly. Float/compressed WAV, metadata/extra chunks, MP3,
-OGG and streaming music are explicitly rejected. Decoding uses pinned raylib's
-existing decoder; no dependency is added. Decode/upload happens only at load.
+**Audio subset/lifetime:** WAV must be little-endian RIFF with exactly a
+16-byte `fmt ` chunk followed by `data` for unsigned PCM8 or signed PCM16/PCM24.
+IEEE float32 is also supported with exactly `fmt(16)`, `fact(4)`, then `data`;
+the fact frame count must match. All formats are mono/stereo, 8000..48000 Hz,
+nonempty, at most 60 seconds per sound and 120 seconds across unique project
+sounds. Chunk lengths, alignment, byte rate, zero odd-data padding and file
+length must match exactly. Float samples must be finite and within +/-16;
+headroom is retained, never silently normalized/clipped. Compressed/extensible
+WAV, metadata/extra chunks, MP3, OGG and streaming music are explicitly rejected.
+PCM8/16 keeps pinned raylib's existing decoder. PCM24/float32 uses the shared
+float decoder before native upload because raylib's WAV loader would otherwise
+reduce it to PCM16. No dependency is added. Decode/upload happens only at load.
 Audio input shares the existing per-file/project input budgets; total duration also
 bounds backend resampling storage.
 
 The native audio device initializes lazily for an audio project and closes on
 runtime shutdown. Each unique audio path has one sound/voice, at most 32; aliases
-share playback, volume and stop state. Playing restarts that voice; this milestone
+share playback, volume and stop state. Playing restarts that voice; this legacy API
 does not provide overlapping voices, pitch, spatial audio or sample-accurate/gapless
 loops. Loop replay is checked at simulation ticks, so there may be a tick-sized gap.
 Desktop focus suspension pauses/resumes sounds with simulation. Android activity
@@ -899,7 +904,7 @@ never plays candidate sounds or writes candidate saves; failed native dispatch
 retains the old engine/resources but can have earlier per-key commits as above.
 Return to launcher/exit releases sounds and all scene-local handles.
 
-Skeletal/animated-GLB import/playback, animation editor, audio mixing/streaming,
+Skeletal/animated-GLB import/playback, animation editor, Lua-controlled audio mixing/music streaming,
 save migration/cloud sync, automatic lifecycle saves and filesystem module loading
 are not implemented.
 
@@ -925,6 +930,35 @@ and the bounded PCM WAV format. Existing sample assets are not rewritten.
 Default `nova_services` preflight/scene regressions simulate idle/button/held/reload
 behavior using an isolated save root and a nonplaying audio-effect recorder,
 without audible playback or actual user save access.
+
+### Sample-clock audio/DSP foundation
+
+The separate shared C11 `nova_audio` library now provides stereo float processing
+at 48 kHz or explicitly 44.1 kHz, exact-frame event/loop scheduling, bounded
+voices, band-limited synths and a rate-aware sinc sampler, envelopes, smoothed
+gain/pan/pitch, a real low-pass filter, nested buses and unclipped peak monitoring.
+Immutable prepared scores and independently owned renderers separate audition,
+game preview and offline export lifetimes. Render operations allocate nothing
+and perform no Lua, I/O, logging or locking. No device is opened by this library;
+the existing game playback/device ownership above is unchanged.
+
+Offline output includes float32 masters and deliberately quantized/dithered
+PCM24/PCM16 WAVs. Integer overflow fails explicitly instead of clipping.
+Score/export length is bounded to one hour, independently of unchanged
+short-sample import budgets. Reproduce the original eight-second fixture without
+audio-device access (output paths must be new):
+
+```sh
+./scripts/with-toolchain.sh cmake --build build --target nova_audio_render -j 4
+./build/nova_audio_render build/audio-master.wav
+./build/nova_audio_render build/audio-runtime.wav 44100 pcm24
+```
+
+See [the C/C++ API, ownership, DSP limits and evidence](docs/audio-core.md).
+This is **not a complete Sound Studio**: live streaming/device integration,
+recording, MIDI, sound documents, waveform/arrangement/piano-roll UI, production
+effects and aligned-stem workflows remain later stages. Headless checks do not
+establish human listening, microphone/MIDI or Android device behavior.
 
 ### Native read-only inspection v2
 

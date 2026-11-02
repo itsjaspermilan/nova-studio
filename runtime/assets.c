@@ -1,4 +1,5 @@
 #include "assets.h"
+#include "audio.h"
 #include <cgltf.h>
 
 #include <math.h>
@@ -6,6 +7,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+_Static_assert(NOVA_AUDIO_WAV_INPUT_LIMIT == NOVA_ASSET_FILE_LIMIT,
+    "shared WAV input budget must match native assets");
+_Static_assert(NOVA_AUDIO_TOTAL_SAMPLE_SECONDS == NOVA_AUDIO_SECONDS_LIMIT,
+    "shared audio duration budget must match native assets");
+
 #ifdef __ANDROID__
 #include <android_native_app_glue.h>
 extern struct android_app *GetAndroidApp(void);
@@ -20,34 +27,28 @@ static bool error_message(char *error, size_t size, const char *message)
     return false;
 }
 
-static uint32_t wav_u32(const unsigned char *bytes)
-{
-    return (uint32_t)bytes[0] | ((uint32_t)bytes[1] << 8) |
-        ((uint32_t)bytes[2] << 16) | ((uint32_t)bytes[3] << 24);
-}
-
-static unsigned wav_u16(const unsigned char *bytes) { return bytes[0] | ((unsigned)bytes[1] << 8); }
-
 bool nova_decode_wav(const unsigned char *bytes, int length, Wave *wave,
     char *error, size_t error_size)
 {
+    if (!wave) return error_message(error, error_size, "native WAV output is required");
     *wave = (Wave){0};
-    if (!bytes || length < 44 || length > NOVA_ASSET_FILE_LIMIT ||
-        memcmp(bytes, "RIFF", 4) || wav_u32(bytes + 4) != (uint32_t)length - 8 ||
-        memcmp(bytes + 8, "WAVEfmt ", 8) || wav_u32(bytes + 16) != 16 ||
-        wav_u16(bytes + 20) != 1 || memcmp(bytes + 36, "data", 4))
-        return error_message(error, error_size, "WAV requires RIFF PCM with exactly fmt(16) then data; no extra chunks");
-    unsigned channels = wav_u16(bytes + 22), rate = wav_u32(bytes + 24), bits = wav_u16(bytes + 34);
-    unsigned align = channels * (bits / 8);
-    uint32_t size = wav_u32(bytes + 40);
-    if ((channels != 1 && channels != 2) || rate < 8000 || rate > 48000 ||
-        (bits != 8 && bits != 16) || wav_u16(bytes + 32) != align ||
-        wav_u32(bytes + 28) != rate * align || !size || size % align ||
-        size > 60 * rate * align || (size_t)length != 44 + (size_t)size + (size & 1u) ||
-        ((size & 1u) && bytes[length - 1] != 0))
-        return error_message(error, error_size, "WAV must be nonempty, at most 60s, mono/stereo PCM8/PCM16 at 8000..48000 Hz with valid sizes");
-    *wave = LoadWaveFromMemory(".wav", bytes, length);
-    if (!IsWaveValid(*wave) || wave->frameCount != size / align || wave->channels != channels || wave->sampleRate != rate) {
+    NovaAudioWavInfo info;
+    if (length < 0 || length > NOVA_ASSET_FILE_LIMIT)
+        return error_message(error, error_size, "native WAV input exceeds the bounded file size");
+    if (!nova_audio_wav_inspect(bytes, (size_t)length, &info, error, error_size)) return false;
+    if (info.bits == 24 || info.format == 3) {
+        /* raylib 5.5's LoadWaveFromMemory always reduces WAV to PCM16. */
+        size_t count = (size_t)info.sample.frames * info.sample.channels;
+        float *data = MemAlloc((unsigned int)(count * sizeof(float)));
+        if (!data) return error_message(error, error_size, "native float WAV allocation failed");
+        if (!nova_audio_wav_read(bytes, (size_t)length, data, count, error, error_size)) {
+            MemFree(data); return false;
+        }
+        *wave = (Wave){.frameCount = info.sample.frames, .sampleRate = info.sample.sample_rate,
+            .sampleSize = 32, .channels = info.sample.channels, .data = data};
+    } else *wave = LoadWaveFromMemory(".wav", bytes, length);
+    if (!IsWaveValid(*wave) || wave->frameCount != info.sample.frames ||
+        wave->channels != info.sample.channels || wave->sampleRate != info.sample.sample_rate) {
         UnloadWave(*wave); *wave = (Wave){0};
         return error_message(error, error_size, "native WAV decoding failed");
     }

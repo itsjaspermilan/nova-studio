@@ -49,7 +49,7 @@ Confirmed product requirements:
 | Lua-first creation loop | Authoring foundation | Project creation/open/save, visual scenes and script/property binding, useful code tools, diagnostics and Run/Stop without overwriting authored code. | Pending |
 | Sprite workspace | Authoring foundation + runtime animation | Real drawing/layers/frames, source preservation, reversible editing and matching scene/runtime updates. | Pending |
 | Model workspace | Authoring foundation + existing GLB pipeline | Mesh/transform/material/UV basics, reversible editing and faithful supported model round trips. | Pending |
-| Audio engine | Existing native services | Sample-clock processing, float mixing, quality instruments/DSP, streams/buses, device handling and offline rendering. | Pending |
+| Audio engine | Existing native services | Sample-clock processing, float mixing, quality instruments/DSP, streams/buses, device handling and offline rendering. | C11 sample-clock/DSP/bus/offline foundation implemented; live streams/device integration pending |
 | Recording and SFX | Authoring foundation + audio engine | Nondestructive waveform editing, explicit recording, layered SFX, safe audition and persistent sources. | Pending |
 | Music composition | Recording/SFX foundations | Arrangement, piano roll, patterns/drums, synth/sampler, MIDI, loops and document persistence. | Pending |
 | Sound production | Music composition | Mixer, sends/buses, effects, automation, lossless masters, aligned stems/loops and runtime-profile audition. | Pending |
@@ -69,6 +69,35 @@ Obtain the relevant permission or participation when needed; continue other
 approved work rather than treating a hardware-only gate as a product-wide stop.
 Retain the detailed acceptance criteria and explicit deferred scope in the
 research; do not silently shrink the product to the first completed milestone.
+
+### Native audio foundation handoff
+
+`nova_audio` supplies immutable prepared scores, separately owned renderers,
+44.1/48 kHz stereo float DSP, bounded sample-clock voices/events, band-limited
+synths, original-rate sinc sampling, envelopes/parameter ramps, nested buses and
+unclipped meters. Offline rendering produces actual float32 or PCM24/PCM16 WAVs
+through a checked sink; the original `nova_audio_render` fixture is a device-free
+reproduction command. Score/export length is independently bounded to one hour,
+not the old short-effect 60 seconds.
+
+Canonical PCM24/float32 masters round-trip through the shared native decoder and
+project preflight; float upload avoids raylib's implicit PCM16 WAV conversion.
+Existing manifest versions/declarations, Lua effects, device ownership,
+8/16-bit playback and 16 MiB/file, 60s/sample, 120s/project budgets are retained.
+The [API/ownership/integration contract](docs/audio-core.md) records objective
+timing/quality/failure checks and the remaining work. No recording, microphone,
+native audible playback or Android-device claim follows.
+
+The next audio stage is the shared single-device streaming/control adapter and
+device/lifecycle failure reporting, followed by real sound documents and the
+recording/SFX/composition/mixer interfaces. This foundation does not complete
+the roadmap's Audio engine stage or the requested Sound Studio.
+
+Verification in the isolated audio worktree: 11 focused audio/core/project/
+asset/service/export checks passed in both ordinary Debug and fully
+ASan/UBSan-instrumented builds; the native editor/runtime also link. Leak
+sanitizer was disabled on macOS; explicit allocation-failure/balance tests
+provide the core ownership evidence. No native device test was enabled.
 
 ## Current integrated handoff
 

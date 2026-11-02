@@ -124,6 +124,16 @@ working native contracts and explicit compatibility/migration behavior.
   Identities/keys are lowercase hex of ASCII bytes to preserve case distinction.
   Never pass Lua paths or touch other applications' saves. Headless preflight
   uses deterministic missing-save reads and never dispatches audio/save effects.
+- `audio/audio.{c,h}` owns shared C11 sample-clock DSP; `audio/wav.c` owns strict
+  bounded WAV decoding and offline checked-sink output. See `docs/audio-core.md`
+  for sample/score/renderer ownership, exact frame/loop/ramp semantics and signal
+  quality bounds. Renderers are single-owner, independently cancellable, and
+  allocate/log/lock nothing while rendering. Keep the existing device/legacy
+  service ownership; no competing device or implicit sequencer migration.
+  PCM24/float masters must not use raylib's PCM16-forcing WAV loader. Do not relax
+  short-effect budgets or equate them with score/offline duration. Full live
+  streaming/device handling, recording/MIDI, sound documents and Sound UI remain
+  subsequent work.
 - `examples/{2d,mixed}/main.lua` are editable scenes. Desktop builds synchronize
   them next to the executable; direct `--scene` permits source-script reload.
   Android resolves the same relative paths through bundled assets.
@@ -152,6 +162,11 @@ working native contracts and explicit compatibility/migration behavior.
   placement, sprite alpha/filtering and capture shapes; its partial-allocation
   test redirects only allocation/free calls in a separate test build.
   `tests/toolchain_test.sh` uses isolated fake tools, not the real SDK.
+- `tests/audio*_test.*` covers sample-clock timing, source/score loops, rate
+  conversion, envelopes/ramps, band-limiting/filter evidence, headroom, native
+  WAV/project round trips, offline failures/no-clobber, C++ linkage and allocation
+  balance. Device upload/lifetime checks remain explicitly opt-in; deterministic
+  signals are not human listening, hardware, latency or comparative benchmarks.
 - `tests/game_test.c` covers both-mode source/reference/behavior/generation/
   guarded reopen/conflict/import/no-clobber contracts. `game_failure_test.c`
   redirects only the save call in a separate test build to check honest partial
