@@ -48,11 +48,11 @@ if(NOVA_QT_SPRITE)
         set_tests_properties(nova_sprite_runtime_png PROPERTIES TIMEOUT 30)
         option(NOVA_SPRITE_NATIVE_TESTS "Run Sprite controls on the real desktop and capture the widget" OFF)
         if(NOVA_SPRITE_NATIVE_TESTS)
-            add_test(NAME nova_sprite_native COMMAND nova_sprite_widget_tests)
-            set_tests_properties(nova_sprite_native PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE
+            nova_add_qt_native_test(nova_sprite_native nova_sprite_widget_tests 180)
+            set_tests_properties(nova_sprite_native PROPERTIES
                 ENVIRONMENT "NOVA_SPRITE_CAPTURE_DIR=${CMAKE_BINARY_DIR}/sprite-evidence")
-            add_test(NAME nova_sprite_native_layout COMMAND nova_sprite_widget_tests authoredRoundTripAndCaptures)
-            set_tests_properties(nova_sprite_native_layout PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE
+            nova_add_qt_native_test(nova_sprite_native_layout nova_sprite_widget_tests 60 authoredRoundTripAndCaptures)
+            set_tests_properties(nova_sprite_native_layout PROPERTIES
                 ENVIRONMENT "NOVA_SPRITE_CAPTURE_DIR=${CMAKE_BINARY_DIR}/sprite-evidence")
         endif()
     endif()

@@ -314,6 +314,12 @@ properties are Qt6::Core only, guarding against an implicit renderer dependency.
 CPU test executables select their ordinary runtime host explicitly; that link
 choice is not part of the component's interface.
 
+When both `NOVA_QT_STUDIO` and `NOVA_MESH_AUTHORING` are enabled,
+`nova_qt_mesh_host` separately links the component to `nova_qt_runtime`, not
+`nova_assets`. It creates a textured source, exports and decodes GLB geometry/
+pixels, reimports the retained original and reopens the editable source using
+the Qt-selected native host. It opens no viewport or audio device.
+
 The capacity suite reaches **262,143 expanded vertices**, split into five
 native primitives including a final three-vertex primitive, then verifies
 rejection above the limit. It also checks the 64 MiB source cap, native texture

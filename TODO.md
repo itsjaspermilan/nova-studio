@@ -58,7 +58,7 @@ Confirmed product requirements:
 | Sprite workspace | Authoring foundation + runtime animation | Real drawing/layers/frames, source preservation, reversible editing and matching scene/runtime updates. | Embeddable document/canvas component implemented; guarded host/runtime integration pending |
 | Model workspace | Authoring foundation + existing GLB pipeline | Mesh/transform/material/UV basics, reversible editing and faithful supported model round trips. | Independent [editable-mesh component](docs/mesh-authoring.md) implemented; Qt workspace/save/preview integration pending |
 | Audio engine | Existing native services | Sample-clock processing, float mixing, quality instruments/DSP, streams/buses, device handling and offline rendering. | C11 DSP/offline, shared-device controls and bounded disk streams implemented; runtime music binding and hardware/lifecycle qualification remain |
-| Recording and SFX | Authoring foundation + audio engine | Nondestructive waveform editing, explicit recording, layered SFX, safe audition and persistent sources. | Pending |
+| Recording and SFX | Authoring foundation + audio engine | Nondestructive waveform editing, explicit recording, layered SFX, safe audition and persistent sources. | Independent Sound document/SFX workspace in progress; recording and shared host integration remain |
 | Music composition | Recording/SFX foundations | Arrangement, piano roll, patterns/drums, synth/sampler, MIDI, loops and document persistence. | Pending |
 | Sound production | Music composition | Mixer, sends/buses, effects, automation, lossless masters, aligned stems/loops and runtime-profile audition. | Pending |
 | Application and game delivery | Completed authoring pipelines | An unambiguous studio application entry point and real selected-project desktop/Android outputs with preflight. | Development Nova Studio.app exists; portable Qt deployment and integrated export UI remain |
@@ -233,14 +233,16 @@ integration, so complete native focus/workspace repetitions remain pending
 on an unlocked desktop. Earlier child GUI evidence is not substituted for
 that combined-state qualification; no focus assertion or OS setting changed.
 
-Parallel bounded work continues on guarded asset-document transactions,
-Sprite and Mesh components, and true long-form disk audio. Authored sources
+The Sprite and Mesh components and true long-form disk audio are now integrated
+on the coordinating branch; they are not yet full shared workspaces. Parallel
+bounded work continues on guarded asset-document transactions, 3D scene tools,
+Sprite host-layout refinements and Sound documents/SFX. Authored sources
 need separate limits from 16 MiB runtime assets: confirmed Sprite/Mesh source
 envelopes fit 65 MiB, and complete Sprite exports can exceed 130 MiB across
 their files. Source-only saving must preserve editable work and explicitly
 mark stale derived output rather than silently publishing an older result.
-These components, integrated workspaces, sound production, delivery and the
-playable 3D rally exercise remain unfinished.
+Integrated workspace workflows, sound production, delivery and the playable
+3D rally exercise remain unfinished.
 
 ### Independent Qt Sprite component handoff
 
@@ -270,6 +272,29 @@ unlocked desktop; offscreen control and exposed-layout captures do not replace
 it. The user explicitly deferred that native input check for this bounded
 component handoff; its assertions remain intact and it is not recorded as a
 pass. The layered animated marker fixture is not the final 3D rally game.
+
+### Combined component integration
+
+The coordinating branch now contains the Mesh component and host-neutral
+linkage correction, Qt Sprite component and native-input deferral record, and
+A2 disk streaming. The combined build passes all **30 focused checks** in both
+Debug and ASan/UBSan, including the actual Qt-selected host's textured mesh/
+source round trip. Generated target-graph inspection confirms neither the
+application nor that consumer reaches ordinary raylib, GLFW or `nova_assets`.
+Installed Qt/system frameworks are not instrumented; macOS LSan remains off.
+
+The shared native-test registration now also protects both optional Sprite
+Cocoa selectors with the existing LLDB runner, preserving explicit test-case
+arguments and debuggee-exit checking. Registration was inspected without
+running the locked-desktop focus suites. The negative-result runner and
+no-window QWidget teardown regression pass; the latter also passes with
+ASan/UBSan. The updated C11 Android build and exact APK verification pass,
+without introducing Qt into the game.
+
+This verifies component/host compatibility, not the finished Sprite/Model/
+Sound workflows. Responsive Sprite embedding, asset transactions, Scene tools
+and Sound authoring remain active, and full native-focus qualification is
+still deferred rather than weakened.
 
 ## Pre-Qt integrated baseline (retained evidence)
 

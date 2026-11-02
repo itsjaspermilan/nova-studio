@@ -52,6 +52,11 @@ standalone editor or an integrated project save/runtime-animation feature.
 Its host must provide native pickers, guarded binary/multi-file persistence,
 whole-project preflight and scene integration; the default runtime stays Qt-free.
 
+Both authoring libraries can be built alongside the Qt application with
+`-DNOVA_QT_SPRITE=ON -DNOVA_MESH_AUTHORING=ON`. Enabling them does not yet add
+Sprite/Model tabs. The mesh checks include a CPU-only consumer linked to the
+Qt-selected runtime, keeping the ordinary GLFW renderer out of that host.
+
 In the sample launcher, click an example, press **1 / 2 / 3**, or use gamepad **A / B / X**. Move with **WASD, arrow keys, D-pad, or left stick**. In the 3D example, **Space / A** makes the model bounce; in the asset project it lifts the imported gem. **F1 / Start** returns to the launcher, **R** reloads the active script or whole project, and **Esc / Android Back** exits.
 
 Edit the source examples with your preferred text editor, then rebuild to synchronize them into `build/examples`. Asset synchronization runs even when no C source changed. Alternatively, play a source script directly and use R after saving:
@@ -232,8 +237,9 @@ With an active logged-in desktop:
 ./scripts/with-toolchain.sh ctest --test-dir build --output-on-failure -R '^nova_(scene|qt_.*)$'
 ```
 
-On macOS, the native Qt CTests use the installed LLDB to capture a failing
-debuggee's backtrace without changing CrashReporter or OS security settings.
+On macOS, the native Qt CTests, including optional Sprite controls, use the
+installed LLDB to capture a failing debuggee's backtrace without changing
+CrashReporter or OS security settings.
 They require the test process itself to exit zero; LLDB's status alone is not
 success. A device-free runner regression deliberately returns a QtTest failure
 and checks that it is rejected. Native focus checks require an unlocked desktop;
@@ -1503,7 +1509,7 @@ execution, lifecycle/context-loss or Retroid performance validation**.
 
 ## Deliberately outside this slice
 
-No arbitrary-mesh reconstruction, vertex/face editing, extrusion, skeletal animation, PBR/full material system, texture painter, lighting/shadows, physics world, full IDE/debugger, release-signing GUI or user-script module loader is delivered. The bounded native project/source inspector and original named primitive modeller with opaque PNG materials, shared runtime timers/tweens/sprite frames, PCM audio, explicit project saves and local CLI export/signing are implemented. Live previews share those normal gameplay services; automated authoring evidence uses isolated fixtures. The original 3D example uses generated meshes; imported projects use the strict static GLB/PNG subset. No Glow compatibility is implied.
+The retained native modeller does not provide arbitrary-mesh reconstruction, vertex/face editing or extrusion. The optional editable-mesh component now adds vertex/edge/face editing and bounded extrusion, but its integrated Qt workspace remains pending. Skeletal animation, PBR/full material systems, texture painting, lighting/shadows, a physics world, full IDE/debugger, release-signing GUI and user-script module loader are not delivered. The bounded native project/source inspector and original named primitive modeller with opaque PNG materials, shared runtime timers/tweens/sprite frames, PCM audio, explicit project saves and local CLI export/signing are implemented. Live previews share those normal gameplay services; automated authoring evidence uses isolated fixtures. The original 3D example uses generated meshes; imported projects use the strict static GLB/PNG subset. No Glow compatibility is implied.
 
 **Remaining gates:** personal signing-key creation/unlock and installation on the user's intended Retroids require the user's local participation and consent. Validate imported assets, controllers, lifecycle and render resolutions on those devices before claiming hardware-proven behavior. Public publishing is not authorized. Skeletal/animated GLB and broader authoring require separate future contracts; desktop authoring and package checks are not Android device evidence.
 

@@ -298,18 +298,19 @@ With `-DNOVA_SPRITE_NATIVE_TESTS=ON`, two separate selectors exist:
   diagnostic rather than forcing Qt active state or silently skipping the gate.
 
 Native tests use only widget-targeted synthetic events, never global OS input.
-Use LLDB for a potentially crashing native reproduction and inspect the
-debuggee's exit status, not merely LLDB's status:
+On macOS, both selectors use the shared LLDB-backed Qt CTest runner, which
+requires the debuggee itself to exit zero. The same protected layout
+reproduction can be run directly:
 
 ```sh
 NOVA_SPRITE_CAPTURE_DIR="$PWD/build-sprite/sprite-evidence" \
-./scripts/with-toolchain.sh lldb --batch -o run -o 'process status' \
-  -k 'thread backtrace all' -k 'process kill' -- \
-  build-sprite/nova_sprite_widget_tests.app/Contents/MacOS/nova_sprite_widget_tests \
-  authoredRoundTripAndCaptures
+./scripts/with-toolchain.sh cmake -DNOVA_LLDB=/usr/bin/lldb \
+  -DNOVA_TEST_EXECUTABLE="$PWD/build-sprite/nova_sprite_widget_tests.app/Contents/MacOS/nova_sprite_widget_tests" \
+  -DNOVA_TEST_ARGUMENTS=authoredRoundTripAndCaptures \
+  -P tests/qt_native_test.cmake
 ```
 
-Omit the final test-case argument only on an unlocked, uncontested desktop to
+Omit `NOVA_TEST_ARGUMENTS` only on an unlocked, uncontested desktop to
 exercise the stronger full-native gate. Do not unlock the machine or change
 security settings for automation. No successful Cocoa input claim follows from
 the exposed-layout test.
