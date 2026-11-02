@@ -16,7 +16,16 @@ already supplies assets, bounded editing/modelling and runtime services.
 The approved desktop editor technology is Qt 6/C++. Retain the C11/Lua runtime
 and Android game outputs; Qt must not become an Android runtime dependency.
 Prove actual native GPU hosting and desktop input/accessibility facilities
-before relying on the new UI bridge. New host installations still need consent.
+before relying on the new UI bridge.
+
+The user approved additional essential, license-compatible open-source
+dependencies for the agreed studio implementation so unattended work can
+continue. Declare dependencies or establish an actual missing-dependency
+failure before installation; record package versions, purpose and changes.
+Coordinate host installations through the parent to avoid competing installers.
+This does not authorize Android/Xcode SDK changes, security-setting changes,
+purchases, signing, device installation or public publishing. Existing
+microphone/device-consent boundaries and security-warning stops still apply.
 
 New gameplay authoring is Lua-first with visual scene/asset/music tools.
 Preserve legacy typed-action projects, but do not expand their forms as the new

@@ -56,9 +56,17 @@ Confirmed product requirements:
 | Application and game delivery | Completed authoring pipelines | An unambiguous studio application entry point and real selected-project desktop/Android outputs with preflight. | Pending |
 | Complete creation exercise | Integrated studio | Make the rally's scenes, Lua, sprites/models and music/SFX through the actual tools; save/reopen/run/export and exercise failure recovery. | Pending |
 
-This authorizes implementation, not new host toolchain installation, personal
-signing, device installation, public distribution or a claim of novice/device
-validation. Obtain the relevant permission or participation when needed.
+The user also approved essential, license-compatible open-source dependencies
+needed for the agreed studio features during unattended implementation. Declare
+the dependency or establish a missing-dependency failure first, review licensing,
+and record versions/purpose/changes. The parent coordinates host installations;
+Homebrew `qtbase` 6.12.0_2 is now installed at `/opt/homebrew/opt/qtbase`.
+
+This permission does not include Android/Xcode SDK changes, security-setting
+changes, purchases, personal signing, device installation or public publishing.
+It does not authorize microphone capture or imply novice/device validation.
+Obtain the relevant permission or participation when needed; continue other
+approved work rather than treating a hardware-only gate as a product-wide stop.
 Retain the detailed acceptance criteria and explicit deferred scope in the
 research; do not silently shrink the product to the first completed milestone.
 
