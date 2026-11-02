@@ -62,7 +62,11 @@ Confirmed product requirements:
 | Music composition | Recording/SFX foundations | Arrangement, piano roll, patterns/drums, synth/sampler, MIDI, loops and document persistence. | Pending |
 | Sound production | Music composition | Mixer, sends/buses, effects, automation, lossless masters, aligned stems/loops and runtime-profile audition. | Pending |
 | Application and game delivery | Completed authoring pipelines | An unambiguous studio application entry point and real selected-project desktop/Android outputs with preflight. | Pending |
-| Complete creation exercise | Integrated studio | Make the rally's scenes, Lua, sprites/models and music/SFX through the actual tools; save/reopen/run/export and exercise failure recovery. | Pending |
+| Complete creation exercise | Integrated studio | Build a playable 3D rally racer through Nova's actual scene/model/sprite/Lua/audio tools; save/reopen/run/export and exercise failure recovery. | Pending |
+
+The user explicitly requested the final rally exercise be **3D** and use the
+components built in Nova. The earlier externally authored 2D Lua assessment
+game and concept screenshots do not satisfy this acceptance requirement.
 
 The user also approved essential, license-compatible open-source dependencies
 needed for the agreed studio features during unattended implementation. Declare

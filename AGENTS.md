@@ -44,6 +44,10 @@ controls, limited undo and partial multi-file save semantics may be replaced
 to meet the researched input/accessibility/work-safety requirements. Keep
 working native contracts and explicit compatibility/migration behavior.
 
+Final integrated acceptance includes a playable 3D rally racer built through
+Nova's actual scene/model/sprite/Lua/audio tools, then saved, reopened, run and
+exported. The earlier externally authored 2D assessment game is not that proof.
+
 ## Architecture and edit surfaces
 
 - Shared C11 engine/runtime with Lua 5.4.8 and raylib 5.5. Native GPU rendering
