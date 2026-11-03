@@ -176,7 +176,8 @@ function race.define(config)
   function Race:ghost_pose()
     local g = self.ghost
     if not g or self.phase ~= "racing" then return nil end
-    local t = self.clock - (self.player.lap_started or 0)
+    if not self.player.lap_started then return nil end -- before the line is crossed there is nothing to race
+    local t = self.clock - self.player.lap_started
     local i = t / 0.1
     local k = math.floor(i)
     local a, b = k * 3 + 1, (k + 1) * 3 + 1
@@ -184,6 +185,27 @@ function race.define(config)
     local f = i - k
     local dh = track.wrap(g.pts[b + 2] - g.pts[a + 2])
     return g.pts[a] + (g.pts[b] - g.pts[a]) * f, g.pts[a + 1] + (g.pts[b + 1] - g.pts[a + 1]) * f, g.pts[a + 2] + dh * f
+  end
+
+  -- How far ahead of (negative) or behind (positive) the ghost the player is, in seconds: the ghost was at the player's spot
+  -- some time into its lap; the player has been going for this long. Looks only a few seconds either side of where the
+  -- ghost should be, so a lap that crosses itself cannot confuse it.
+  function Race:ghost_gap()
+    local g = self.ghost
+    if not g or self.phase ~= "racing" or self.player.finish_time then return nil end
+    if not self.player.lap_started then return nil end
+    local t = self.clock - self.player.lap_started
+    local near = math.floor(t / 0.1)
+    local best, at = 1e9, nil
+    for k = math.max(0, near - 60), near + 60 do
+      local i = k * 3 + 1
+      local gx, gz = g.pts[i], g.pts[i + 1]
+      if not gz then break end
+      local d = (gx - self.player.x) ^ 2 + (gz - self.player.z) ^ 2
+      if d < best then best, at = d, k end
+    end
+    if not at or best > 15 * 15 then return nil end
+    return t - at * 0.1
   end
 
   function Race:lap_of(car) return math.floor(car.progress / self.length) + 1 end
@@ -250,6 +272,11 @@ function race.define(config)
     local lap = math.floor(p.progress / self.length)    -- laps completed (negative before the start line)
     if lap <= (p.laps_done or -1) then return end
     p.laps_done = lap
+    if lap == 0 and self.trial then
+      -- in a trial the clock for lap one starts as the line is crossed, so every lap (and the ghost) is a flying lap
+      p.lap_started = self.clock
+      self.recording = { t = 0, pts = {} }
+    end
     if lap < 1 then return end
     local t = self.clock - (p.lap_started or 0)
     p.lap_started = self.clock
@@ -372,7 +399,7 @@ function race.define(config)
       end
     end
 
-    if self.trial and self.phase == "racing" and not p.finish_time then self:record_ghost(dt) end
+    if self.trial and self.phase == "racing" and not p.finish_time and p.lap_started then self:record_ghost(dt) end
     fx.update(dt)
     self:places()
     self:update_camera(dt)
@@ -447,6 +474,11 @@ function race.define(config)
     ui.panel(16, 16, 190, 70, 150)
     if self.trial then
       ui.text(28, 22, "TRIAL", 34, ui.color.gold, { font = "display" })
+      local gap = self:ghost_gap()
+      if gap then
+        local ahead = gap <= 0
+        ui.text(138, 28, string.format("%s%.2f", ahead and "-" or "+", math.abs(gap)), 24, ahead and ui.color.green or ui.color.red, { font = "display" })
+      end
     else
       ui.text(28, 20, ui.ordinal(p.place or 1), 40, ui.color.gold, { font = "display" })
       ui.text(100, 30, "/ " .. #self.cars, 22, ui.color.dim)
