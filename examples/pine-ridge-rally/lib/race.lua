@@ -43,7 +43,9 @@ local function drive_itself(car)
   -- slow for the sharpest bend in the next stretch
   local kmax = 0
   for j = 1, 14 do kmax = math.max(kmax, math.abs(track.point((car.waypoint or 1) + j).k)) end
-  local a_lat = (car.surface == "rough" and 15 or 22) * (car.skill or 0.9)
+  -- how hard it dares to corner: what the tyres can hold on this surface, less a margin for the weaker drivers
+  local hold = ({ road = 21, dirt = 15, rough = 11 })[car.surface] or 21
+  local a_lat = hold * (car.grip_scale or 1) * (car.skill or 0.9)
   local want_speed = math.min(car.vmax or 40, math.sqrt(a_lat / math.max(kmax, 0.0008)))
   want_speed = math.max(want_speed, 13)
   local diff = want_speed - car.speed
@@ -397,7 +399,7 @@ function race.define(config)
     end
     -- the camera's own heading trails the car's a little, so a bend swings into view
     local diff = track.wrap(p.heading - cam.heading)
-    cam.heading = cam.heading + diff * math.min(1, dt * 4.5)
+    cam.heading = cam.heading + diff * math.min(1, dt * 7)
     local sh, ch = math.sin(cam.heading), math.cos(cam.heading)
     if self.view_mode == 3 then          -- bonnet
       cam.x, cam.y, cam.z = p.x + sinh * 0.6, 1.25, p.z + cosh * 0.6
@@ -408,7 +410,7 @@ function race.define(config)
       local back = (near and 6.4 or 9.5) + speed * 0.03
       cam.x, cam.y, cam.z = p.x - sh * back, near and 2.6 or 4.2, p.z - ch * back
       cam.tx, cam.ty, cam.tz = p.x + sh * 5, 1.1, p.z + ch * 5
-      cam.fov = 62 + speed * 0.28
+      cam.fov = 62 + speed * 0.2
     end
   end
 

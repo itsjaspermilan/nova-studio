@@ -21,7 +21,7 @@ local WHEEL_NAMES = { "wheel_fl", "wheel_fr", "wheel_rl", "wheel_rr" }
 local WHEELBASE, TRACK = 2.75, 2.12
 -- How bumpy each surface is (metres of ground height), and the body's suspension (a springy, damped mass).
 local BUMPS = { road = 0.012, dirt = 0.04, rough = 0.1 }
-local SPRING, DAMPER = 140, 15
+local SPRING, DAMPER = 240, 30   -- stiff and well damped: the body settles at once instead of wallowing
 
 -- The height of the ground at a spot: a fixed, smooth pattern of bumps.
 local function ground(x, z, size)
@@ -85,7 +85,9 @@ function Car:drive(dt)
   -- steering: the faster you go, the less the wheels can turn the car
   local steer = live and c.steer or 0
   local steering_speed = math.min(1, math.abs(vf) / 4)
-  local omega = math.min(2.5, kind.lateral * grip_scale / math.max(math.abs(vf), 1))
+  -- downforce: the faster the car goes, the harder the tyres are pressed on the road, so it bites and turns better
+  local downforce = 1 + math.min(0.6, math.abs(vf) / 70)
+  local omega = math.min(2.5, kind.lateral * grip_scale * downforce / math.max(math.abs(vf), 1))
   if c.handbrake and live then omega = omega * 1.45 end
   local direction = vf >= -0.5 and 1 or -1
   self.heading = self.heading - steer * omega * steering_speed * direction * dt
@@ -124,10 +126,10 @@ function Car:drive(dt)
   end
   -- rolling resistance, engine braking, and the grass dragging at the wheels
   local sign = vf >= 0 and 1 or -1
-  vf = vf - sign * math.min(math.abs(vf), (0.7 + kind.drag + 0.03 * math.abs(vf)) * dt)
+  vf = vf - sign * math.min(math.abs(vf), (1.1 + kind.drag + 0.055 * math.abs(vf)) * dt)
   if vf > top then vf = vf - (vf - top) * 1.5 * dt end
 
-  local grip = kind.grip * grip_scale * (c.handbrake and live and 0.22 or 1)
+  local grip = kind.grip * grip_scale * downforce * (c.handbrake and live and 0.22 or 1)
   vl = vl * math.exp(-grip * dt)
   self.slip = math.min(1, math.abs(vl) / (math.abs(vf) * 0.25 + 2))
 
@@ -177,8 +179,8 @@ function Car:suspension(dt, vf, accel, lateral_accel)
   local sp = self.susp
   local size = (BUMPS[self.surface] or BUMPS.road) * math.min(1, 0.3 + math.abs(vf) / 20)
   local sinh, cosh = math.sin(self.heading), math.cos(self.heading)
-  local long_shift = math.max(-0.14, math.min(0.14, accel * 0.008))    -- braking (negative) drops the nose
-  local side_shift = math.max(-0.14, math.min(0.14, lateral_accel * 0.0062))   -- turning left (positive) loads the left side
+  local long_shift = math.max(-0.14, math.min(0.14, accel * 0.005))    -- braking (negative) drops the nose
+  local side_shift = math.max(-0.14, math.min(0.14, lateral_accel * 0.004))   -- turning left (positive) loads the left side
   for i, name in ipairs(WHEEL_NAMES) do
     local w = WHEELS[name]
     local wx = self.x + sinh * w.fwd + cosh * w.left
