@@ -1,5 +1,4 @@
 local state = require("lib.state")
-local camera = require("lib.camera")
 local upgrades = require("lib.upgrades")
 
 local Arena = nova.scene {}
@@ -11,7 +10,9 @@ function Arena:enter()
   self.spawn_carry = 0
   nova.light { dir = { -0.4, -1, -0.3 }, color = { 255, 214, 170 }, ambient = { 70, 70, 96 } }
   nova.shadows { radius = 26, strength = 0.5 }
-  camera.eye.x, camera.eye.y, camera.eye.z = 0, 8.5, 9
+  nova.cam3.yaw, nova.cam3.pitch = 0, 0
+  nova.cam3.eye = { x = 0, y = 8.5, z = 9 }
+  self.cards = nova.ui.row { count = 3, w = 208, h = 200, gap = 18, y = 190 }
 end
 
 -- How many enemies the director wants alive: a few, then more every second.
@@ -32,6 +33,7 @@ end
 
 function Arena:update(dt)
   if nova.input.pressed("god") then state.god = not state.god end
+  if nova.input.pressed("stats") then self.show_stats = not self.show_stats end
   if nova.input.pressed("stress") then
     -- the benchmark: hold a number of enemies steady, a hundred more on each press
     state.god = true
@@ -39,11 +41,11 @@ function Arena:update(dt)
   end
   -- level-ups wait for a choice
   if state.choosing then
-    local pick = self.pick or 1
-    if nova.input.pressed("left") then pick = (pick - 2) % 3 + 1; nova.sound.play("blip") end
-    if nova.input.pressed("right") then pick = pick % 3 + 1; nova.sound.play("blip") end
+    -- the cards: left and right, the mouse or a finger over one, a click or A takes it (the engine's nova.ui.choose)
+    local pick, accepted, moved = nova.ui.choose { rects = self.cards, current = self.pick or 1 }
+    if moved then nova.sound.play("blip") end
     self.pick = pick
-    if nova.input.pressed("a") or nova.input.pressed("start") then
+    if accepted then
       state.choosing[pick].apply()
       state.choosing, self.pick = nil, nil
       nova.pause(false)
@@ -70,7 +72,6 @@ function Arena:update(dt)
 end
 
 function Arena:draw()
-  camera.apply()
   nova.model("ground", 0, 0, 0, { shadow = false })
 end
 
@@ -88,12 +89,21 @@ function Arena:draw_ui()
   nova.ui.text(w / 2 - 200, 34, string.format("level %d", state.level), { size = 14, shadow = true })
   nova.ui.text(w - 260, 18, string.format("%d:%02d   kills %d", math.floor(state.time / 60), math.floor(state.time % 60), state.kills), { size = 16, align = "right", width = 240, shadow = true })
   nova.ui.text(w - 260, 40, string.format("enemies %d  bullets %d  gems %d", nova.count("enemy"), nova.count("bullet"), nova.count("gem")), { size = 12, align = "right", width = 240, color = { 200, 200, 220 }, shadow = true })
+  if self.show_stats then
+    -- the engine's own numbers for the last frame (F3)
+    local t = nova.stats()
+    nova.ui.rect(16, 64, 250, 112, { 0, 0, 0, 150 })
+    nova.ui.text(24, 70, string.format("%.0f fps   lua %.1f ms   draw %.1f ms", t.fps, t.lua_ms, t.render_ms), { size = 13, shadow = true })
+    nova.ui.text(24, 92, string.format("%d draws   %d triangles", t.draws, t.triangles), { size = 13, shadow = true })
+    nova.ui.text(24, 114, string.format("%d entities   %d scenery", t.entities, t.scenery), { size = 13, shadow = true })
+    nova.ui.text(24, 136, string.format("lua memory %.1f MB", t.memory_kb / 1024), { size = 13, shadow = true })
+  end
   if state.view == "first" then nova.ui.rect(w / 2 - 1, 270 - 8, 2, 16, { 255, 255, 255, 160 }); nova.ui.rect(w / 2 - 8, 269, 16, 2, { 255, 255, 255, 160 }) end
   if state.choosing then
     nova.ui.rect(0, 0, w, 540, { 0, 0, 0, 150 })
     nova.ui.text(0, 90, "LEVEL UP", { font = "display", size = 46, align = "center", width = w, color = { 255, 214, 120 }, shadow = true })
     for i, u in ipairs(state.choosing) do
-      local x, y = w / 2 - 330 + (i - 1) * 226, 190
+      local x, y = self.cards[i].x, self.cards[i].y
       local on = i == self.pick
       nova.ui.rect(x, y, 208, 200, on and { 240, 160, 40, 235 } or { 30, 34, 52, 235 })
       nova.ui.text(x + 12, y + 18, u.name, { size = 22, width = 184, shadow = true, color = on and { 20, 20, 30 } or nil })

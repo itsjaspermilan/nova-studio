@@ -1,2 +1,2 @@
 -- A grunt: see enemy.lua for what all of them do.
-return nova.entity(require("entities.enemy"), { model = "grunt", hitbox = { r = 0.6 }, hp = 3, speed = 3.4, radius = 0.6, damage = 8, gem = 1, sx = 1 })
+return nova.entity(require("entities.enemy"), { model = "grunt", hitbox = { r = 0.6, base = 0, height = 0.8 }, hp = 3, speed = 3.4, radius = 0.6, damage = 8, gem = 1, sx = 1 })

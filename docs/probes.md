@@ -49,19 +49,24 @@ The hypotheses, one by one:
    answers for a game on `x, z`. There was no way to ask "who is near here" except `nova.in_radius`, a scan of every entity
    with the tag, so a crowd that pushes itself apart cost n squared. **Fixed:** `nova.collision { plane = "xz", cell = 2 }`
    makes all of those use the ground plane, and `nova.in_radius` and `nova.nearest` use a grid once a tag has about forty
-   entities (checked against a plain scan on random positions). Still missing: a raycast (against scenery circles or
-   entities) and 3D (height) overlap; tilemaps and `slide` are flat only.
+   entities (checked against a plain scan on random positions). **Also fixed afterwards:** `nova.raycast` (entities) and
+   `nova.scenery.raycast` / `line_clear` (scenery), and hitbox heights (`base`, `height`) so that things at different heights
+   do not collide and a shot can pass over a short enemy. Still missing: floors, ramps and ledges (scenery is circles on
+   the ground; that is the platformer probe) and flat-only tilemaps and `slide`.
 3. **Drawing (a call per entity per frame): not a problem.** 1000 enemies draw in 13 to 17 draw calls (the renderer batches
    equal meshes) and cost 1.8 to 2.4 ms. A model with several parts would cost one draw per part per entity.
 4. **Particles: fine at this size.** One short burst (a Lua emitter entity) per kill is inside the numbers above. Not
    pushed further.
 5. **Camera and input: works, with gaps.** A smoothed follow camera and the first-person camera are 40 lines of Lua
-   (`lib/camera.lua`); the stick-driven look and a camera-relative move are fine; there is no helper for either, no
-   ray from the camera into the world (aiming at things the player points at, rather than the nearest), and no mouse look
-   or pointer lock for a desktop build. Not fixed.
+   (`lib/camera.lua`); the stick-driven look and a camera-relative move are fine; there was no helper for either, no
+   ray from the camera into the world, and no mouse at all (no buttons, no position, no look, no pointer lock; the desktop
+   window also quit on Escape even when the game used it for pause). **Fixed:** `nova.cam3` (follow, first person, `look`,
+   `ray`, `ground_point`), `mouse:` sources, `nova.input.pointer()` (mouse or first finger, each press seen by exactly one step),
+   `nova.input.grab_mouse()`, and Escape only closes a game that does not use it. The probe now uses all of them.
 6. **UI: works with no layout help.** The HUD, XP bar and three upgrade cards were placed by hand with coordinates. It
    needed nothing that was missing, but every position is a magic number, there are no hit areas for touch and no
-   focus/selection helper for cards (`left`, `right` and `a` were handled by hand). Not fixed.
+   focus/selection helper for cards (`left`, `right` and `a` were handled by hand). **Fixed:** `nova.ui.row`, `column`, `hit`,
+   `clicked` and `choose` (keys, d-pad, pointer); the level-up cards use them.
 7. **Studio: easy by script, nothing tried by hand.** The models, the arena (a ring of pillars and some inside, with the
    collision circles made in the model editor) and the sounds came from `scripts/swarm/build.mjs` in one run.
 
@@ -74,8 +79,7 @@ Things found that were not on the list:
   n copies of one sound and lets the oldest copy of the same sound give way instead. Not measured: the audio cost itself
   (headless runs have no audio device).
 - **The headless runner printed only the total.** It now prints where the time went (Lua, the rest of the update, drawing).
-  The same numbers are still not available inside a running game: there is no `nova.stats()` for an on-screen profiler.
-  Not fixed.
+  Inside a running game they are `nova.stats()` now (the probe shows them on F3).
 - **Frame-time spikes: not garbage collection.** The worst frame is 1.4 to 1.6 times the mean at 1000 enemies (16 ms against
   11.7). Lua's generational mode and two tunings of the incremental one (`NOVA_GC` experiment, since removed) gave the same
   mean, 95th percentile and worst frame to within 3%. The spread follows how crowded it is around the player (more
@@ -89,5 +93,6 @@ enemies cost more than fourteen times the time (the old version was about 27 tim
 
 - A **3D platformer**: height. Scenery collision is circles on the ground, so there are no floors, ramps, ledges or
   jumping onto things; this will show how much of "3D" the engine does not do.
-- A **first-person shooter in rooms**: raycasts (hit scan, line of sight), walls that are not circles, doors, pickups.
+- A **first-person shooter in rooms**: rays now exist, but the walls they can hit are only circles; rooms need boxes or
+  wall segments, doors and line of sight around corners.
 - A **big open world**: streaming and culling of far more scenery than the rally's 1,500 pieces, and memory.

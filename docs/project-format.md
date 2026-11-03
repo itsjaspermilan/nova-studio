@@ -138,6 +138,26 @@ where the ray starts and how it rises, so a shot can pass over a short thing); `
 static scenery's circles and `nova.scenery.line_clear(x1, z1, x2, z2 [, radius])` answers "can they see each other?".
 There are still no floors, ramps or ledges: scenery is circles on the ground.
 
+**The 3D camera.** `nova.cam3` is a smoothed follow camera, a first-person camera and the way from a point of the screen into the world:
+
+```lua
+nova.cam3.look(-stick_x * dt, -stick_y * dt)                       -- yaw and pitch in radians (a mouse: pointer.dx * 0.0025)
+nova.cam3.follow(player, { distance = 9, height = 8, smooth = 6, dt = dt })      -- behind and above, easing after it
+nova.cam3.first_person(player, { height = 1.6 })                    -- at its head, looking where cam3.yaw / pitch say
+local fx, fz = nova.cam3.forward()                                  -- "forward" on a stick, relative to the camera
+local gx, gz = nova.cam3.ground_point(pointer.x, pointer.y, 1)      -- the ground under the mouse or a finger
+local ox, oy, oz, dx, dy, dz = nova.cam3.ray(x, y)                  -- or the whole ray, for your own tests
+```
+
+**Seeing how the game is doing.** `nova.stats()` returns the last frame's `fps`, `lua_ms`, `render_ms`, `draws`, `triangles`, `sprites`,
+`memory_kb` (the scripts' memory), `entities` and `scenery`: enough for an on-screen profiler (Ember Swarm shows it on F3).
+`nova run --headless` prints the same split (scripts, the rest of the update, drawing) at the end.
+
+**Interface layout and hit areas.** Rectangles are `{ x, y, w, h }`. `nova.ui.row { count, w, h, gap, y }` and `nova.ui.column { ... }` lay a
+list of them out (centred in the view unless told where); `nova.ui.hit(rect)` and `nova.ui.clicked(rect)` ask about the pointer (the mouse, or the
+first finger); `nova.ui.choose { rects, current }` runs a whole selection (keys and d-pad, pointer hover, click or A to accept) and returns
+`chosen, accepted, moved`.
+
 **Static scenery.** A level has thousands of trees, road pieces and barriers that never move. Do not make them live
 entities: give the entity class `static = true` and a model, and a scene file's objects of that kind go into
 `nova.scenery`, a grid of squares drawn only near the camera (out to `nova.scenery.range` metres, 200 by default):

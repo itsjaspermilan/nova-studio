@@ -2090,8 +2090,11 @@ fn the_pointer_reaches_each_step_once_and_the_mouse_can_be_locked() {
     assert_eq!(g.take_grab_request(), None, "once");
 }
 
+/// What one frame of a UI test gives the game: the pointer (x, y, moved, pressed), or none, and the keys held.
+type UiFrame<'a> = (Option<(f32, f32, bool, bool)>, &'a [&'a str]);
+
 /// Runs a scene whose update calls `body` every step, with the pointer and keys of each frame given, and returns the log of each.
-fn ui_frames(body: &str, frames: &[(Option<(f32, f32, bool, bool)>, &[&str])]) -> Vec<Vec<String>> {
+fn ui_frames(body: &str, frames: &[UiFrame]) -> Vec<Vec<String>> {
     use nova_runtime::actions::{InputFrame, PointerFrame};
     let mut g = project(vec![
         (

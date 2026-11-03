@@ -540,8 +540,10 @@ mod tests {
 
     #[test]
     fn a_locked_mouse_reports_pushes_not_positions_and_a_finger_is_the_pointer_without_a_mouse() {
-        let mut input = Input::default();
-        input.mouse_locked = true;
+        let mut input = Input {
+            mouse_locked: true,
+            ..Default::default()
+        };
         input.cursor_moved(500.0, 500.0);
         input.cursor_moved(900.0, 900.0); // a locked cursor does not travel: positions say nothing about motion
         input.mouse_motion(7.0, -3.0);

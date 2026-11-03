@@ -7,6 +7,7 @@
     "pause": ["key:Escape", "key:KeyP", "pad:start"],
     "autoplay": ["key:F9"],
     "stress": ["key:F5"],
-    "god": ["key:F6"]
+    "god": ["key:F6"],
+    "stats": ["key:F3"]
   }
 }
