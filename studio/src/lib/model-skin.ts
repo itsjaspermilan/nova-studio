@@ -4,7 +4,7 @@
 // writes the same weights as a glTF skin.
 
 import { eulerToQuaternion, type Quat } from "./model-ease";
-import { cubeAt, partAt, type Cube, type ModelDoc, type Part, type Path, type Skin, type Vec3 } from "./model-doc";
+import { cubeAt, partAt, setCube, type Cube, type ModelDoc, type Part, type Path, type Skin, type Vec3 } from "./model-doc";
 
 /// A 4x4 matrix, column-major (the way three.js and glTF keep them).
 export type Mat = number[];
@@ -217,3 +217,13 @@ export function setWeight(cube: Cube, points: number[], bone: string, weight: nu
 
 /// The strongest bone of each point, as the number in `skin.bones` (for colouring points in the editor).
 export const dominantBones = (skin: Skin): number[] => skin.weights.map((w) => w.reduce((m, pair) => (pair[1] > m[1] ? pair : m), w[0]!)[0]);
+
+/// After an edit that changed how many points a skinned mesh has, the weights no longer line up: they are worked out again
+/// (weights set by hand are lost). Meshes whose weights still fit are left alone.
+export function reskin(doc: ModelDoc, path: Path): ModelDoc {
+  const cube = cubeAt(doc, path);
+  if (!cube?.skin || !cube.verts || cube.skin.weights.length === cube.verts.length) return doc;
+  const skin = autoWeights(doc, path);
+  const { skin: _old, ...rest } = cube;
+  return setCube(doc, path, skin ? { ...rest, skin } : rest);
+}

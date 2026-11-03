@@ -97,7 +97,7 @@ good defaults. No fantasy-console limits: native resolution, real GPU, real audi
 | Project format | A folder of plain files: Lua, JSON, PNG, glTF, WAV/OGG. Studio never generates code a person could not have typed. Format is independent of the runtime so a different runtime could read it. |
 | Sound | Reuse Nova's C11 audio core (`audio/`, no raylib/Lua/Qt dependency) through FFI behind a safe Rust wrapper; same DSP for in-game and exports. Device output via a Rust audio backend (replaces the raylib-tied adapter). |
 | Sprites | Follow Pixelorama's model: layers x frames cel grid, linked cels, animation tags with direction, per-frame duration, onion skin, pixel-perfect drawing, symmetry, palettes, tilemap layers. Our own plain format; import Aseprite/.pxo later. |
-| 3D modelling | Follow Blockbench's model: hierarchy of parts, per-face texturing, keyframed rigid bones. No skinning/vertex weights in v1. glTF in/out. |
+| 3D modelling | Follow Blockbench's model: hierarchy of parts, per-face texturing, keyframed bones; skinned meshes bend with the part tree (added 2026-11-02, CPU skinning). glTF in/out. |
 | Look | Low-poly/flat/unlit/vertex-colour/texture shading, simple enough that the editor viewport and the runtime match. |
 | Resolution (decided 2026-11-02) | The **world** (3D and background sprites) renders to a target of fixed logical height, default **540 px** (960x540 on 16:9), and is upscaled to the screen with a sharp-bilinear filter. The **UI** (HUD sprites, text) always renders at native screen resolution. Coordinates are logical units, 540 high. Per-game setting `world_height` (e.g. 540, 720, 0 = native); pixel-art games may later opt into a smaller target scaled in whole steps. Implemented in the runtime (`FrameInput::world_height`, `--world-height`). |
 | Project manifest (decided 2026-11-02) | `nova.json`: name, entry script and settings. Assets are found by scanning the project's folders; an asset's ID is its project-relative path, so nothing is declared by hand. |
@@ -324,6 +324,11 @@ First slice, built (`SpriteEditor.svelte`, pure logic in `pixels.ts` and `sprite
 - [x] Easing and GLB import (2026-11-02): keys can ease in, out, both or step (baked into extra glTF keys on export); a plain `.glb` in
   `models/` has an "✎ Edit" button that reads its parts, mesh colours and animations into an editable model (original kept as
   `<name>-original.glb`; textures, skins and morph targets are not carried over, and it says so).
+- [x] Skinned meshes (2026-11-02): a mesh shape can bend with the parts of its model ("Bend with parts": automatic weights from the part
+  tree, weights per picked point, re-worked when points change; follows renames and deletes). Exported as a glTF skin; the runtime reads
+  JOINTS_0/WEIGHTS_0, poses on the CPU and rewrites a pool of 8 meshes per skinned part each frame (`MeshWrite` in `FrameInput`). The
+  studio's maths and the runtime agree on a fixture (`tests/skin.rs`); a headless render shows the bend. The viewport bends it in Animate.
+  Not device-timed: skinning cost on the Retroid is unmeasured. Not done: importing skins from a `.glb`, blending clips, normals in the viewport.
 - [x] Third round (2026-11-02): vertex snap while dragging points, per-face UV rectangles for boxes, turn and resize for several shapes in one part.
 - [x] Second usability round (2026-11-02): pivot tool, edge picking with bevel and open-edge extend, sprite frame multi-select with copy, delete and
   move between animations.
@@ -389,8 +394,7 @@ First slice, built (`SpriteEditor.svelte`, pure logic in `pixels.ts` and `sprite
   blocks by dragging, resizes the picture and packs blocks. Mirror copies of boxes show the texels reflected. Checked
   by `model-uv`/`model-texture` tests, a fixture the runtime's importer reads (`studio_textures_reach_the_vertices`) and a
   headless render. Painted pixels do not follow a block when a shape is resized or its mesh is edited (paint last).
-- [ ] Still open: painting with layers or alpha cut-outs, texture tiling, skinned meshes and
-  vertex weights (runtime too), live symmetry editing, copy/paste of keys, lights/materials, a "preview in game renderer" button.
+- [ ] Still open: painting with layers or alpha cut-outs, texture tiling, live symmetry editing, copy/paste of keys, lights/materials, a "preview in game renderer" button.
 - [ ] (original plan) Model editor: parts hierarchy, cubes then vertex/face editing, per-face UV
   and texture paint, materials, keyframed rigid-bone animation, glTF export.
 - [ ] 3D scene/layout editor: place models, transform gizmos with snapping and
@@ -435,6 +439,6 @@ First slice, built (`SpriteEditor.svelte`, pure logic in `pixels.ts` and `sprite
 
 ## Not now
 
-Skeletal skinning/vertex weights, networking, full DAW features beyond M6, WebView
+Importing skins from a `.glb`, networking, full DAW features beyond M6, WebView
 gameplay, iOS, Glow/GameStudio compatibility, app-store publishing, personal
 signing, device installation without the user's go-ahead.

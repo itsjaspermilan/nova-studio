@@ -3,8 +3,8 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { exportGlb } from "./glb";
 import { addClip, samplePose, setKey } from "./model-anim";
 import { eulerToQuaternion } from "./model-ease";
-import { parseModel, serializeModel, type Cube, type ModelDoc, type Vec3 } from "./model-doc";
-import { IDENTITY, autoWeights, boneKey, compose, dominantBones, invertAffine, multiply, setWeight, skinnedPoints, transformDirection, transformPoint, worldMatrices } from "./model-skin";
+import { parseModel, removeNode, serializeModel, updatePart, type Cube, type ModelDoc, type Vec3 } from "./model-doc";
+import { IDENTITY, autoWeights, boneKey, compose, dominantBones, invertAffine, multiply, reskin, setWeight, skinnedPoints, transformDirection, transformPoint, worldMatrices } from "./model-skin";
 
 const close = (a: number[], b: number[], digits = 6) => a.forEach((x, i) => expect(x, `item ${i}`).toBeCloseTo(b[i]!, digits));
 
@@ -205,5 +205,40 @@ describe("skins in the glb", () => {
     const bytes = exportGlb(waving());
     if (process.env.UPDATE_FIXTURES || !existsSync(fixture)) writeFileSync(fixture, bytes);
     expect(Array.from(readFileSync(fixture))).toEqual(Array.from(bytes));
+  });
+});
+
+describe("skins when the model changes", () => {
+  const skinned = () => {
+    const d = model();
+    d.parts[0]!.children[0]!.cubes[0]!.skin = autoWeights(d, path)!;
+    return d;
+  };
+  const bones = (d: ModelDoc) => d.parts[0]!.children[0]!.cubes[0]!.skin?.bones;
+
+  it("follow a renamed part, and the parts below it", () => {
+    expect(bones(updatePart(skinned(), [0, 0], { name: "limb" }))).toEqual(["body/limb", "body/limb/hand", "body"]);
+    expect(bones(updatePart(skinned(), [0], { name: "torso" }))).toEqual(["torso/arm", "torso/arm/hand", "torso"]);
+  });
+
+  it("let go of a removed part and share its weight out again", () => {
+    const d = removeNode(skinned(), { parts: [0, 0, 0] }); // the hand
+    const skin = d.parts[0]!.children[0]!.cubes[0]!.skin!;
+    expect(skin.bones).toEqual(["body/arm", "body"]);
+    for (const w of skin.weights) {
+      expect(w.reduce((n, [, x]) => n + x, 0)).toBeCloseTo(1, 3);
+      for (const [b] of w) expect(b).toBeLessThan(2);
+    }
+    expect(parseModel(serializeModel(d)).ok).toBe(true);
+  });
+
+  it("works out weights again only when the points changed", () => {
+    const d = skinned();
+    expect(reskin(d, path)).toBe(d);
+    const cube = d.parts[0]!.children[0]!.cubes[0]!;
+    cube.verts!.push([0, 8, 0]);
+    expect(cube.skin!.weights).toHaveLength(16);
+    const again = reskin(d, path);
+    expect(again.parts[0]!.children[0]!.cubes[0]!.skin!.weights).toHaveLength(17);
   });
 });

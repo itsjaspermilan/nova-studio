@@ -472,6 +472,51 @@ export function namesOf(doc: ModelDoc, parts: number[]): string[] {
 
 const startsWith = (path: string[], prefix: string[]) => prefix.length <= path.length && prefix.every((n, i) => n === path[i]);
 
+/// Every skinned shape of the model.
+function skinned(doc: ModelDoc): Cube[] {
+  const out: Cube[] = [];
+  const visit = (list: Part[]) => {
+    for (const p of list) {
+      for (const c of p.cubes) if (c.skin) out.push(c);
+      visit(p.children);
+    }
+  };
+  visit(doc.parts);
+  return out;
+}
+const underBone = (bone: string, chain: string[]) => {
+  const key = chain.join("/");
+  return bone === key || bone.startsWith(key + "/");
+};
+
+/// Skins follow a renamed part (and everything under it): `before` and `after` are its name chain.
+function renameBones(doc: ModelDoc, before: string[], after: string[]) {
+  const from = before.join("/");
+  for (const c of skinned(doc)) c.skin!.bones = c.skin!.bones.map((b) => (underBone(b, before) ? after.join("/") + b.slice(from.length) : b));
+}
+
+/// Skins let go of parts that are gone: their weight goes to what was left, in proportion (or to the first bone when nothing was).
+function dropBones(doc: ModelDoc, gone: string[]) {
+  for (const c of skinned(doc)) {
+    const skin = c.skin!;
+    const dead = new Set(skin.bones.map((b, i) => (underBone(b, gone) ? i : -1)).filter((i) => i >= 0));
+    if (!dead.size) continue;
+    const kept = skin.bones.map((_, i) => i).filter((i) => !dead.has(i));
+    if (!kept.length) {
+      delete c.skin; // nothing to follow any more
+      continue;
+    }
+    const newIndex = new Map(kept.map((old, i) => [old, i]));
+    skin.weights = skin.weights.map((ws) => {
+      const live = ws.filter(([b]) => !dead.has(b));
+      const sum = live.reduce((n, [, w]) => n + w, 0);
+      if (!live.length || sum <= 0) return [[0, 1]];
+      return live.map(([b, w]) => [newIndex.get(b)!, Math.round((w / sum) * 10000) / 10000] as [number, number]);
+    });
+    skin.bones = kept.map((i) => skin.bones[i]!);
+  }
+}
+
 export function updatePart(doc: ModelDoc, parts: number[], change: Partial<Pick<Part, "name" | "origin" | "rotation">>): ModelDoc {
   const before = namesOf(doc, parts);
   const out = edit(doc, parts, (p) => {
@@ -484,6 +529,7 @@ export function updatePart(doc: ModelDoc, parts: number[], change: Partial<Pick<
   if (out !== doc && out.clips?.length && before.at(-1) !== after.at(-1)) {
     for (const c of out.clips) for (const t of c.tracks) if (startsWith(t.part, before)) t.part = [...after, ...t.part.slice(before.length)];
   }
+  if (out !== doc && before.at(-1) !== after.at(-1)) renameBones(out, before, after);
   return out;
 }
 
@@ -503,6 +549,7 @@ export function removeNode(doc: ModelDoc, path: Path): ModelDoc {
   parent.splice(index, 1);
   // Tracks of the removed part (and its children) go with it.
   for (const c of next.clips ?? []) c.tracks = c.tracks.filter((t) => !startsWith(t.part, gone));
+  dropBones(next, gone);
   return next;
 }
 

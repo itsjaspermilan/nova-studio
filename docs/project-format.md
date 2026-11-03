@@ -59,8 +59,9 @@ case-insensitive systems.
   decoded or uploaded per frame. JPEG, GIF and BMP are not supported yet and are warned
   about.
 - **Models:** static GLB/glTF: triangle meshes in the default scene, positions, normals,
-  UV set 0, COLOR_0, a base colour factor and one base colour texture. Animations, skins,
-  morph targets and extensions are reported as warnings in the log, not silently dropped.
+  UV set 0, COLOR_0, a base colour factor and one base colour texture. Skins (JOINTS_0 and
+  WEIGHTS_0, up to four joints per point) are read when a model is drawn with `parts` or a `clip`. Morph
+  targets and extensions are reported as warnings in the log, not silently dropped.
 - **Scripts:** Lua 5.4.
 
 ## Lua API v1
@@ -131,7 +132,8 @@ nova.model("car", x, y, z, { ry = heading, parts = {
 ```
 
 Without `parts` a model is one instanced draw; with it each piece is drawn separately (more draw calls,
-so use it for the few things that move). Only rigid pieces are supported: no skinning.
+so use it for the few things that move). A mesh with a skin bends with the parts it is weighted to: the runtime poses its points on
+the CPU every frame it is drawn this way (a part can be drawn up to 8 times in one frame). Without `parts` or a `clip` it shows at rest.
 
 **Studio model files.** The model editor keeps `models/<name>.model.json` and writes the `.glb` from it on save;
 the game only needs the `.glb`. The file is a tree: `parts` (each with `name`, `origin`, `rotation` in degrees,
@@ -142,7 +144,7 @@ is 1/16 of a world unit unless `scale` says otherwise):
 |---|---|
 | `box` (default, omitted) | `from` (smallest corner) and `size`, colours per face (`faces`: east, west, up, down, south, north). |
 | `wedge`, `pyramid`, `cylinder`, `cone`, `sphere` | The same `from`/`size` box. A wedge is full height at its north side sloping to nothing at the south; the rest stand on y. `segments` (3 to 64, default 16) sets the sides of round shapes and `smooth: false` makes them faceted. Face colours: wedge up/down/north/east/west, pyramid down and the four sides, cylinder up/down, cone down; everything else takes `color`. |
-| `mesh` | `verts` (points in the part's space) and `polys` (each `{ "v": [point numbers], "color"?, "smooth"? }`, counter-clockwise seen from outside, three to 64 points). `from` and `size` are worked out from the points and are not written. |
+| `mesh` | `verts` (points in the part's space) and `polys` (each `{ "v": [point numbers], "color"?, "smooth"? }`, counter-clockwise seen from outside, three to 64 points). `from` and `size` are worked out from the points and are not written. Optional `skin`: `{ "bones": [part paths such as "body/arm"], "weights": [[[bone number, weight], ...] for each point] }`, at most four bones per point, weights adding up to one. The studio works the weights out from the parts around the shape and lets you set them by hand. A renamed part is followed; a removed part's weight is shared among the rest. |
 
 Animation keys (`clips[].tracks[].keys[]`: `t`, `value`) may carry `"ease"`: `step`, `in`, `out` or `inout` (straight when absent) for how the
 value blends into the next key. The exported `.glb` bakes an eased segment into extra keys (glTF samplers are straight), so the runtime

@@ -8,7 +8,8 @@
     setCube, setFaceColor, updateCube, updatePart, walk, namesOf, PROPS, MAX_SEGMENTS, MIN_SEGMENTS, DEFAULT_SEGMENTS, type Cube, type Ease, type Face, type ModelDoc, type Path, type Prop, type Shape, type Vec3,
   } from "../lib/model-doc";
   import { addFace, bevelEdge, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsSymmetric, setFaceColors, setSmooth, setVert, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
-  import { hasVolume, meshOf, segmentsOf, shapeFaces } from "../lib/model-mesh";
+  import { hasVolume, meshOf, segmentsOf, shapeFaces, solidOf } from "../lib/model-mesh";
+  import { autoWeights, invertAffine, reskin, setWeight, skinnedPoints, transformPoint, worldMatrices } from "../lib/model-skin";
   import { bakeAll, blockOf, faceRects, flippedRect, normRect, rectAt, enableTexture, fitPicture, packModel, resizeTexture, unwrap, uvsOf } from "../lib/model-uv";
   import { CLEAR, cloneRaster, drawEllipse, drawLine, drawRect, floodFill, getPixel, newRaster, parseHex, stamp, toHex, type Raster, type Rgba } from "../lib/pixels";
   import { applyBrush, applyGradient } from "../lib/paint";
@@ -203,7 +204,8 @@
   let grid: THREE.GridHelper | undefined;
   let outline: THREE.Box3Helper | undefined;
   let frameId = 0;
-  const meshes: { mesh: THREE.Mesh; path: Path; polyOfTriangle: number[] }[] = [];
+  /// `skin` is set for a mesh that bends with the parts: where its vertices are at rest, and the mesh point each one shows.
+  const meshes: { mesh: THREE.Mesh; path: Path; polyOfTriangle: number[]; skin?: { rest: Float32Array; pointOf: number[] } }[] = [];
   /// Part groups by name path, with how they are authored, so a clip can pose them and put them back.
   const groups = new Map<string, { group: THREE.Group; origin: Vec3; rotation: Vec3 }>();
 
@@ -310,7 +312,8 @@
           const material = new THREE.MeshLambertMaterial({ vertexColors: true, map: useTexture ? threeTex : null, wireframe: viewMode === "wire", transparent: translucent, side: cube.shape === "mesh" ? THREE.DoubleSide : THREE.FrontSide });
           const mesh = new THREE.Mesh(geometry, material);
           group.add(mesh);
-          meshes.push({ mesh, path: { parts, cube: ci }, polyOfTriangle: m.polyOfTriangle });
+          const skin = cube.shape === "mesh" && cube.skin ? { rest: new Float32Array(m.positions), pointOf: solidOf(cube).polys.flatMap((p) => p.v) } : undefined;
+          meshes.push({ mesh, path: { parts, cube: ci }, polyOfTriangle: m.polyOfTriangle, skin });
         });
         parent.add(group);
         build(part.children, group, parts);
@@ -335,7 +338,35 @@
       if (p?.scale) g.group.scale.set(...p.scale);
     }
     modelGroup.updateMatrixWorld(true);
+    bendSkins(clip ? pose : undefined);
     drawOutline();
+  }
+
+  /// Shapes that bend with the parts follow the pose; without one they sit where they were built.
+  function bendSkins(pose: Map<string, Pose> | undefined) {
+    const skinned = meshes.filter((m) => m.skin);
+    if (!skinned.length) return;
+    const rest = worldMatrices(doc);
+    const posed = pose ? worldMatrices(doc, pose) : rest;
+    for (const m of skinned) {
+      const attr = m.mesh.geometry.getAttribute("position") as THREE.BufferAttribute;
+      const points = pose ? skinnedPoints(doc, m.path, posed, rest) : null;
+      const owner = posed.get(pathKey(namesOf(doc, m.path.parts)));
+      if (!points || !owner) {
+        attr.array.set(m.skin!.rest);
+      } else {
+        // the shape hangs from its own part, which is posed too: its points go back into that part's space
+        const back = invertAffine(owner);
+        m.skin!.pointOf.forEach((p, i) => {
+          const q = transformPoint(back, points[p]!);
+          attr.array[i * 3] = q[0];
+          attr.array[i * 3 + 1] = q[1];
+          attr.array[i * 3 + 2] = q[2];
+        });
+      }
+      attr.needsUpdate = true;
+      m.mesh.geometry.computeBoundingSphere();
+    }
   }
 
   function drawOutline() {
@@ -1320,12 +1351,38 @@
   // ---- mesh tools ---------------------------------------------------------------------------------------
   function change(next: Cube, reset = false) {
     if (!selected) return;
-    commit(setCube(doc, selected, next));
+    // a skinned mesh whose points changed gets its weights worked out again
+    commit(reskin(setCube(doc, selected, next), selected));
     if (reset) {
       selVerts = [];
       selFace = null;
       selEdge = null;
     }
+  }
+  let skinNote = $state("");
+  let skinBone = $state("");
+  let skinWeight = $state(100);
+  function autoSkin() {
+    if (!selected || !cube) return;
+    const skin = autoWeights(doc, selected);
+    if (!skin) {
+      skinNote = "Put this shape on a part that has a parent or child parts, so there is something to bend with.";
+      return;
+    }
+    skinNote = "";
+    commit(setCube(doc, selected, { ...cube, skin }));
+  }
+  function unskin() {
+    if (!selected || !cube?.skin) return;
+    const { skin: _gone, ...rest } = cube;
+    commit(setCube(doc, selected, rest));
+  }
+  function applyWeight() {
+    if (!selected || !cube?.skin || !selVerts.length || !skinBone) return;
+    commit(setCube(doc, selected, setWeight(cube, selVerts, skinBone, skinWeight / 100)));
+  }
+  function weightsOf(i: number): string {
+    return (cube?.skin?.weights[i] ?? []).map(([b, w]) => `${cube!.skin!.bones[b]!.split("/").at(-1)} ${Math.round(w * 100)}%`).join(", ");
   }
   function makeEditable() {
     if (!selected || !cube) return;
@@ -1748,6 +1805,24 @@
         <div class="row">
           <button class:on={inEdit} onclick={() => (inEdit ? (editPoints = false) : makeEditable())} title={cube.shape === "mesh" ? "Move points and pull faces" : "Turns this into a free mesh you can pull into shape (undo brings the shape back)"}>{inEdit ? "Done with points" : "Edit points"}</button>
         </div>
+        {#if cube.shape === "mesh"}
+          <h4>Bend with parts</h4>
+          {#if cube.skin}
+            <p class="dim small">Follows {cube.skin.bones.length} part{cube.skin.bones.length === 1 ? "" : "s"}. Pose them in Animate to see it bend.</p>
+            {#if inEdit && selVerts.length}
+              <p class="dim small">{selVerts.length === 1 ? weightsOf(selVerts[0]!) : `${selVerts.length} points picked`}</p>
+              <div class="pair">
+                <label class="inline">Part <select bind:value={skinBone} aria-label="Part to follow">{#each rows as r (r.parts.join("."))}{@const key = pathKey(namesOf(doc, r.parts))}<option value={key}>{key}</option>{/each}</select></label>
+                <label class="inline">% <input type="number" min="0" max="100" step="10" bind:value={skinWeight} /></label>
+              </div>
+              <div class="row"><button onclick={applyWeight} disabled={!skinBone} title="The picked points follow that part this much, and the others share the rest">Set weight</button></div>
+            {/if}
+            <div class="row"><button onclick={autoSkin} title="Works the weights out again from where the parts are (hand-set weights are lost)">Auto weights</button><button class="danger" onclick={unskin}>Stop bending</button></div>
+          {:else}
+            <div class="row"><button onclick={autoSkin} title="The shape bends where parts meet, like a sleeve at the elbow, instead of staying stiff">Bend with the parts around it</button></div>
+          {/if}
+          {#if skinNote}<p class="dim small">{skinNote}</p>{/if}
+        {/if}
         <div class="row mirror">
           <span class="dim small">Mirror copy</span>
           {#each [0, 1, 2] as a (a)}<button onclick={() => mirrorCopy(a as Axis)} title={`A reflected copy across the part's ${"xyz"[a]} = 0 plane`}>{"XYZ"[a]}</button>{/each}
