@@ -315,3 +315,133 @@ describe("symmetry", () => {
     expect(m.verts![0]![1]).toBe(5);
   });
 });
+
+import { movePivot } from "./mesh-edit";
+import { samplePose } from "./model-anim";
+import { walk, type ModelDoc as Doc, type Vec3 } from "./model-doc";
+import { rotationMatrix, solidOf } from "./model-mesh";
+
+describe("moving a pivot", () => {
+  const apply = (m: number[], p: number[]): Vec3 => [m[0]! * p[0]! + m[1]! * p[1]! + m[2]! * p[2]!, m[3]! * p[0]! + m[4]! * p[1]! + m[5]! * p[2]!, m[6]! * p[0]! + m[7]! * p[1]! + m[8]! * p[2]!];
+  /// Every shape's points in the world (the model's own space), through the chain of parts above it.
+  const worldPoints = (d: Doc) => {
+    const out: string[] = [];
+    const visit = (list: Doc["parts"], toWorld: (p: Vec3) => Vec3) => {
+      for (const part of list) {
+        const here = (p: Vec3): Vec3 => {
+          const r = apply(rotationMatrix(part.rotation), p);
+          return toWorld([r[0] + part.origin[0], r[1] + part.origin[1], r[2] + part.origin[2]]);
+        };
+        for (const c of part.cubes) for (const p of solidOf(c).verts) out.push(here(p).map((x) => x.toFixed(4).replace("-0.0000", "0.0000")).join(","));
+        visit(part.children, here);
+      }
+    };
+    visit(d.parts, (p) => p);
+    return out;
+  };
+  const arm = (): Doc => ({
+    version: 1, scale: 1,
+    parts: [{ name: "body", origin: [0, 0, 0], rotation: [0, 0, 0], cubes: [], children: [{
+      name: "arm", origin: [6, 10, 0], rotation: [0, 0, 40],
+      cubes: [{ from: [-1, -8, -1], size: [2, 8, 2], color: "#ffffff" }],
+      children: [{ name: "hand", origin: [0, -8, 0], rotation: [10, 0, 0], cubes: [{ from: [-1, -2, -1], size: [2, 2, 2], color: "#ffffff" }], children: [] }],
+    }] }],
+    clips: [{ name: "wave", duration: 1, loop: true, tracks: [
+      { part: ["body", "arm"], prop: "position", keys: [{ t: 0, value: [6, 10, 0] }, { t: 1, value: [6, 12, 0] }] },
+      { part: ["body", "arm", "hand"], prop: "position", keys: [{ t: 0, value: [0, -8, 0] }] },
+    ] }],
+  });
+
+  it("leaves everything where it was, even in a turned part with a child", () => {
+    const d = arm();
+    const moved = movePivot(d, [0, 0], [6, 2, 3])!;
+    expect(moved.parts[0]!.children[0]!.origin).toEqual([6, 2, 3]);
+    expect(worldPoints(moved)).toEqual(worldPoints(d));
+    expect(d.parts[0]!.children[0]!.origin).toEqual([6, 10, 0]); // the input is untouched
+  });
+
+  it("keeps animations playing the same way", () => {
+    const d = arm();
+    const moved = movePivot(d, [0, 0], [6, 2, 3])!;
+    const [a, b] = [samplePose(d.clips![0]!, 0.5, false), samplePose(moved.clips![0]!, 0.5, false)];
+    // the arm's keyed position moved with its pivot, and the hand's with the arm's frame
+    const armBefore = a.get("body/arm")!.position!;
+    const armAfter = b.get("body/arm")!.position!;
+    expect(armAfter.map((x, i) => x - armBefore[i]!)).toEqual([0, -8, 3]);
+    expect(b.get("body/arm/hand")!.position!).not.toEqual(a.get("body/arm/hand")!.position!);
+    expect(walk(moved).length).toBe(3);
+  });
+
+  it("does nothing for no move or a bad point", () => {
+    const d = arm();
+    expect(movePivot(d, [0, 0], [6, 10, 0])).toBeNull();
+    expect(movePivot(d, [0, 0], [NaN, 0, 0])).toBeNull();
+    expect(movePivot(d, [5], [0, 0, 0])).toBeNull();
+  });
+});
+
+import { bevelEdge, edgesOf, extrudeEdge } from "./mesh-edit";
+
+describe("edges", () => {
+  it("lists each edge once with how many faces share it", () => {
+    const m = toMesh(box());
+    const e = edgesOf(m);
+    expect(e).toHaveLength(12);
+    expect(e.every((x) => x.faces === 2 && x.a < x.b)).toBe(true);
+    expect(edgesOf(freshMesh()).every((x) => x.faces === 1)).toBe(true);
+  });
+
+  /// an edge of the box between two faces: any one will do
+  const edgeOfBox = (m: Cube) => {
+    const e = edgesOf(m)[0]!;
+    return [e.a, e.b] as const;
+  };
+
+  it("bevels an edge of a box: a narrow face replaces the edge and the shape stays closed", () => {
+    const m = toMesh(box());
+    for (const e of edgesOf(m)) {
+      const r = bevelEdge(m, e.a, e.b, 0.2);
+      expect(r, `${e.a},${e.b}`).not.toBeNull();
+      // a prism of 2 x 2 (half of it, a triangle) x 10 long comes off
+      expect(vol(r!.cube)).toBeCloseTo(1000 - 0.5 * 2 * 2 * 10, 6);
+      expect(r!.cube.polys).toHaveLength(7);
+      expect(r!.cube.verts).toHaveLength(10);
+      expect(r!.points).toHaveLength(4);
+    }
+  });
+
+  it("can bevel either way round the edge and again after another bevel is made elsewhere", () => {
+    const m = toMesh(box());
+    const [a, b] = edgeOfBox(m);
+    const one = bevelEdge(m, b, a, 0.1);
+    expect(one).not.toBeNull();
+    expect(vol(one!.cube)).toBeCloseTo(1000 - 0.5 * 1 * 1 * 10, 6);
+    // bevelling a second edge that does not touch the first
+    const far = edgesOf(one!.cube).find((e) => e.faces === 2 && !one!.points.includes(e.a) && !one!.points.includes(e.b) && bevelEdge(one!.cube, e.a, e.b, 0.1));
+    expect(far).toBeDefined();
+  });
+
+  it("refuses an edge whose ends are not simple corners, and an open edge", () => {
+    const m = toMesh(box());
+    const split = subdivide(m);
+    const e = edgesOf(split).find((x) => x.faces === 2)!;
+    // after subdividing, the original corners are not valence three any more
+    expect(bevelEdge(split, e.a, e.b)).toBeNull();
+    expect(bevelEdge(freshMesh(), 0, 1)).toBeNull();
+    expect(bevelEdge(m, 0, 0)).toBeNull();
+  });
+
+  it("extends an open edge away from its face", () => {
+    const sheet = freshMesh(); // 8 x 8 square on y = 0
+    const e = edgesOf(sheet)[0]!;
+    const r = extrudeEdge(sheet, e.a, e.b, 4)!;
+    expect(r.cube.polys).toHaveLength(2);
+    expect(r.points).toHaveLength(2);
+    // the sheet grew to 12 along one axis
+    expect([...r.cube.size].sort((x, y) => y - x).slice(0, 2)).toEqual([12, 8]);
+    expect(extrudeEdge(sheet, e.a, e.b, 0)).toBeNull();
+    const closed = toMesh(box());
+    const ce = edgesOf(closed)[0]!;
+    expect(extrudeEdge(closed, ce.a, ce.b, 3)).toBeNull(); // not on an open boundary
+  });
+});

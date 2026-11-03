@@ -144,43 +144,43 @@
   </header>
   {#if scene !== null}
     <form class="sprite" onsubmit={(e) => { e.preventDefault(); const n = scene!; scene = null; void studio.createScene(n); }}>
-      <input use:focusOnMount bind:value={scene} placeholder="scene name" aria-label="Scene name" />
+      <input use:focusOnMount bind:value={() => scene ?? "", (x) => (scene = x)} placeholder="scene name" aria-label="Scene name" />
       <button class="primary" disabled={!scene.trim()}>Create</button>
       <button type="button" class="ghost" aria-label="Cancel" onclick={() => (scene = null)}>✕</button>
     </form>
   {/if}
   {#if entity !== null}
     <form class="sprite" onsubmit={(e) => { e.preventDefault(); const n = entity!; entity = null; void studio.createEntity(n); }}>
-      <input use:focusOnMount bind:value={entity} placeholder="entity name" aria-label="Entity name" />
+      <input use:focusOnMount bind:value={() => entity ?? "", (x) => (entity = x)} placeholder="entity name" aria-label="Entity name" />
       <button class="primary" disabled={!entity.trim()}>Create</button>
       <button type="button" class="ghost" aria-label="Cancel" onclick={() => (entity = null)}>✕</button>
     </form>
   {/if}
   {#if song !== null}
     <form class="sprite" onsubmit={(e) => { e.preventDefault(); const n = song!; song = null; void studio.createSong(n); }}>
-      <input use:focusOnMount bind:value={song} placeholder="song name" aria-label="Song name" />
+      <input use:focusOnMount bind:value={() => song ?? "", (x) => (song = x)} placeholder="song name" aria-label="Song name" />
       <button class="primary" disabled={!song.trim()}>Create</button>
       <button type="button" class="ghost" aria-label="Cancel" onclick={() => (song = null)}>✕</button>
     </form>
   {/if}
   {#if model !== null}
     <form class="sprite" onsubmit={(e) => { e.preventDefault(); const n = model!; model = null; void studio.createModel(n); }}>
-      <input use:focusOnMount bind:value={model} placeholder="model name" aria-label="Model name" />
+      <input use:focusOnMount bind:value={() => model ?? "", (x) => (model = x)} placeholder="model name" aria-label="Model name" />
       <button class="primary" disabled={!model.trim()}>Create</button>
       <button type="button" class="ghost" aria-label="Cancel" onclick={() => (model = null)}>✕</button>
     </form>
   {/if}
   {#if sfx !== null}
     <form class="sprite" onsubmit={(e) => { e.preventDefault(); const n = sfx!; sfx = null; void studio.createSound(n); }}>
-      <input use:focusOnMount bind:value={sfx} placeholder="sound name" aria-label="Sound name" />
+      <input use:focusOnMount bind:value={() => sfx ?? "", (x) => (sfx = x)} placeholder="sound name" aria-label="Sound name" />
       <button class="primary" disabled={!sfx.trim()}>Create</button>
       <button type="button" class="ghost" aria-label="Cancel" onclick={() => (sfx = null)}>✕</button>
     </form>
   {/if}
   {#if sprite}
     <form class="sprite" onsubmit={(e) => { e.preventDefault(); const s = sprite!; sprite = null; void studio.createSprite(s.name, s.side); }}>
-      <input use:focusOnMount bind:value={sprite.name} placeholder="sprite name" aria-label="Sprite name" />
-      <select bind:value={sprite.side} aria-label="Frame size">
+      <input use:focusOnMount bind:value={() => sprite?.name ?? "", (x) => { if (sprite) sprite.name = x; }} placeholder="sprite name" aria-label="Sprite name" />
+      <select bind:value={() => sprite?.side ?? 32, (x) => { if (sprite) sprite.side = x; }} aria-label="Frame size">
         {#each [8, 16, 32, 48, 64, 128] as n (n)}<option value={n}>{n}×{n}</option>{/each}
       </select>
       <button class="primary" disabled={!sprite.name.trim()}>Create</button>
@@ -203,7 +203,7 @@
             {#each g.items as item (item.path)}
               {#if renamingResource?.path === item.path}
                 <div class="edit" style:padding-left="26px">
-                  <input use:focusOnMount bind:value={renamingResource.value} onkeydown={(e) => { if (e.key === "Enter") void commitResourceRename(); else if (e.key === "Escape") renamingResource = null; }} onblur={commitResourceRename} />
+                  <input use:focusOnMount bind:value={() => renamingResource?.value ?? "", (x) => { if (renamingResource) renamingResource.value = x; }} onkeydown={(e) => { if (e.key === "Enter") void commitResourceRename(); else if (e.key === "Escape") renamingResource = null; }} onblur={commitResourceRename} />
                 </div>
               {:else}
                 <div class="row item" class:active={isActive(item)} class:selected={selected === item.path} style:padding-left="26px" role="presentation" onclick={() => { selected = item.path; void studio.openFile(item.path); }}>
@@ -227,14 +227,14 @@
   <ul role="tree">
     {#if editing && editing.mode !== "rename" && editing.base === ""}
       <li class="edit" style:padding-left="10px">
-        <input use:focusOnMount bind:value={editing.value} onkeydown={keydown} onblur={commit} placeholder={editing.mode === "dir" ? "folder name" : "file name"} />
+        <input use:focusOnMount bind:value={() => editing?.value ?? "", (x) => { if (editing) editing.value = x; }} onkeydown={keydown} onblur={commit} placeholder={editing.mode === "dir" ? "folder name" : "file name"} />
       </li>
     {/if}
     {#each rows as { node, depth } (node.path)}
       <li role="treeitem" aria-selected={selected === node.path} aria-expanded={node.dir ? open.has(node.path) : undefined}>
         {#if editing?.mode === "rename" && editing.base === node.path}
           <div class="edit" style:padding-left="{10 + depth * 14}px">
-            <input use:focusOnMount bind:value={editing.value} onkeydown={keydown} onblur={commit} />
+            <input use:focusOnMount bind:value={() => editing?.value ?? "", (x) => { if (editing) editing.value = x; }} onkeydown={keydown} onblur={commit} />
           </div>
         {:else}
           <div
@@ -260,7 +260,7 @@
         {/if}
         {#if editing && editing.mode !== "rename" && node.dir && editing.base === node.path && open.has(node.path)}
           <div class="edit" style:padding-left="{10 + (depth + 1) * 14}px">
-            <input use:focusOnMount bind:value={editing.value} onkeydown={keydown} onblur={commit} placeholder={editing.mode === "dir" ? "folder name" : "file name"} />
+            <input use:focusOnMount bind:value={() => editing?.value ?? "", (x) => { if (editing) editing.value = x; }} onkeydown={keydown} onblur={commit} placeholder={editing.mode === "dir" ? "folder name" : "file name"} />
           </div>
         {/if}
       </li>

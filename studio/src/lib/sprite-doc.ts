@@ -197,6 +197,57 @@ export function moveFrame(doc: SpriteDoc, from: number, to: number): SpriteDoc {
   return next;
 }
 
+/// Removes several frames at once. An animation keeps at least one frame: if the choice would empty one, its first frame stays.
+export function removeFrames(doc: SpriteDoc, indices: number[]): SpriteDoc {
+  const gone = new Set(indices.filter((i) => i >= 0 && i < doc.frames.length));
+  if (!gone.size) return doc;
+  const blocks = blocksOf(doc).map((b) => {
+    const keep = b.frames.filter((f) => !gone.has(f));
+    return { tag: b.tag, frames: keep.length ? keep : [b.frames[0]!] };
+  });
+  const next = assemble(doc, blocks);
+  return next.frames.length === doc.frames.length ? doc : next;
+}
+
+/// Copies of the chosen frames, put right after the last chosen frame of each animation, in order.
+export function duplicateFrames(doc: SpriteDoc, indices: number[]): { doc: SpriteDoc; picked: number[] } {
+  const chosen = [...new Set(indices.filter((i) => i >= 0 && i < doc.frames.length))].sort((a, b) => a - b);
+  if (!chosen.length || doc.frames.length + chosen.length > MAX_FRAMES) return { doc, picked: indices };
+  // blocks hold old frame numbers; a copy is a repeat of the number, so `assemble` clones the picture
+  const picked: number[] = [];
+  let at = 0;
+  const blocks = blocksOf(doc).map((b) => {
+    const mine = chosen.filter((f) => f >= b.tag.from && f <= b.tag.to);
+    const frames = [...b.frames];
+    if (mine.length) frames.splice(frames.indexOf(mine.at(-1)!) + 1, 0, ...mine);
+    const copyStart = at + frames.indexOf(mine.at(-1) ?? -1) + 1;
+    mine.forEach((_, k) => picked.push(copyStart + k));
+    at += frames.length;
+    return { tag: b.tag, frames };
+  });
+  return { doc: assemble(doc, blocks), picked };
+}
+
+/// Moves the chosen frames to the end of animation `target` (frames of that animation that are chosen stay where they are,
+/// ahead of the rest). Another animation is never emptied: its first frame stays. Returns the frames' new numbers.
+export function moveFramesTo(doc: SpriteDoc, indices: number[], target: number): { doc: SpriteDoc; picked: number[] } {
+  if (!doc.tags[target]) return { doc, picked: indices };
+  const chosen = new Set(indices.filter((i) => i >= 0 && i < doc.frames.length));
+  const moving: number[] = [];
+  const blocks = blocksOf(doc).map((b, i) => {
+    if (i === target) return { tag: b.tag, frames: [...b.frames] };
+    const keep = b.frames.filter((f) => !chosen.has(f));
+    const out = keep.length ? keep : [b.frames[0]!];
+    for (const f of b.frames) if (chosen.has(f) && !(keep.length === 0 && f === b.frames[0])) moving.push(f);
+    return { tag: b.tag, frames: out };
+  });
+  if (!moving.length) return { doc, picked: indices };
+  blocks[target]!.frames.push(...moving.sort((a, b) => a - b));
+  const next = assemble(doc, blocks);
+  const end = next.tags[target]!.to;
+  return { doc: next, picked: moving.map((_, k) => end - moving.length + 1 + k) };
+}
+
 /// A new animation of one blank frame, after the others.
 export function addAnimation(doc: SpriteDoc, name = "animation"): { doc: SpriteDoc; index: number } {
   if (doc.frames.length >= MAX_FRAMES) return { doc, index: doc.tags.length - 1 };

@@ -314,6 +314,8 @@ First slice, built (`SpriteEditor.svelte`, pure logic in `pixels.ts` and `sprite
 - [x] Editor usability pass (2026-11-02, from `docs/ux/editor-research.md`): model editor handles (move, turn, resize), multi-select,
   face pull arrow, taper, inset, loop cut, point symmetry, paint opacity and lock alpha; sprite onion skin counts and tint,
   frame drag to reorder, import by tile count and smart slice.
+- [x] Second usability round (2026-11-02): pivot tool, edge picking with bevel and open-edge extend, sprite frame multi-select with copy, delete and
+  move between animations.
 - [x] Resource tree (2026-11-02): the studio shows Sprites, 3D Models, Scenes, Entities, Sounds, Music... as one item each (a sprite is its JSON
   plus its picture and layers, a model its JSON plus `.glb` and texture, a scene its Lua plus layout); renaming and deleting move the files
   together; a Files view shows everything as on disk. Research notes in `docs/ux/editor-research.md`.

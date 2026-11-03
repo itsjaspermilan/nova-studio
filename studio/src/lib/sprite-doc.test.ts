@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getPixel, newRaster, setPixel, type Rgba } from "./pixels";
 import {
-  addAnimation, animationOf, detectGrid, gridFromCounts, smartGrid, duplicateAnimation, frameAt, fromImage, fromSheet, gridTiles, importTiles, insertFrame, isPristine, moveAnimation, moveFrame, newDoc, normalizeAnimations,
+  addAnimation, animationOf, duplicateFrames, moveFramesTo, removeFrames, detectGrid, gridFromCounts, smartGrid, duplicateAnimation, frameAt, fromImage, fromSheet, gridTiles, importTiles, insertFrame, isPristine, moveAnimation, moveFrame, newDoc, normalizeAnimations,
   parseSheetJson, removeAnimation, removeFrame, setAnimationDuration, tagProblems, tagSequence, toSheet, toSheetJson, updateAnimation, type SpriteDoc, type Tag,
 } from "./sprite-doc";
 
@@ -466,5 +466,40 @@ describe("finding a grid", () => {
     expect(gridFromCounts(newRaster(64, 32), 4, 2)).toEqual({ tw: 16, th: 16, spacing: 0, margin: 0 });
     expect(gridFromCounts(newRaster(71, 32), 4, 1, 1, 2)).toEqual({ tw: 16, th: 28, spacing: 1, margin: 2 });
     expect(gridFromCounts(newRaster(10, 10), 0, 0).tw).toBe(10);
+  });
+});
+
+describe("working on several frames at once", () => {
+  // split(3, 1): frames 0, 1, 2 in animation a and frame 3 in b, each marked with its own column
+  it("removes chosen frames but never empties an animation", () => {
+    const d = removeFrames(split(3, 1), [0, 2]);
+    expect(shape(d)).toEqual([["a", 0, 0], ["b", 1, 1]]);
+    expect(which(d)).toEqual([1, 3]);
+    const all = removeFrames(split(2, 2), [0, 1, 2, 3]);
+    expect(shape(all)).toEqual([["a", 0, 0], ["b", 1, 1]]);
+    expect(which(all)).toEqual([0, 2]); // the first frame of each stays
+    const one = split(2);
+    expect(removeFrames(one, [9])).toBe(one);
+  });
+
+  it("copies chosen frames after the last chosen frame of their animation", () => {
+    const r = duplicateFrames(split(3, 1), [0, 1, 3]);
+    expect(shape(r.doc)).toEqual([["a", 0, 4], ["b", 5, 6]]);
+    expect(which(r.doc)).toEqual([0, 1, 0, 1, 2, 3, 3]);
+    expect(r.picked).toEqual([2, 3, 6]);
+    expect(r.doc.layers[0]!.cels).toHaveLength(7);
+    expect(r.doc.frames[2]).not.toBe(r.doc.frames[0]); // a picture of its own
+  });
+
+  it("moves chosen frames to the end of another animation", () => {
+    const r = moveFramesTo(split(3, 1), [0, 2], 1);
+    expect(shape(r.doc)).toEqual([["a", 0, 0], ["b", 1, 3]]);
+    expect(which(r.doc)).toEqual([1, 3, 0, 2]);
+    expect(r.picked).toEqual([2, 3]);
+    const keep = moveFramesTo(split(2, 1), [0, 1], 1);
+    expect(shape(keep.doc)).toEqual([["a", 0, 0], ["b", 1, 2]]); // a keeps its first frame, so only one frame moved
+    expect(which(keep.doc)).toEqual([0, 2, 1]);
+    const d = split(3, 1);
+    expect(moveFramesTo(d, [0], 9).doc).toBe(d);
   });
 });

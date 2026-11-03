@@ -2,8 +2,8 @@
 // Every function returns a new element and leaves its input alone. Faces are lists of point numbers,
 // counter-clockwise seen from outside; deleting points renumbers the rest.
 
-import { MAX_PARTS, fitBounds, partAt, uniqueSiblingName, walk, type Cube, type MeshFace, type ModelDoc, type Part, type Path, type Vec3 } from "./model-doc";
-import { polyNormal, solidOf } from "./model-mesh";
+import { MAX_PARTS, fitBounds, movedCube, namesOf, partAt, uniqueSiblingName, walk, type Cube, type MeshFace, type ModelDoc, type Part, type Path, type Vec3 } from "./model-doc";
+import { polyNormal, rotationMatrix, solidOf } from "./model-mesh";
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
@@ -186,21 +186,26 @@ export function moveVertsSymmetric(c: Cube, indices: number[], delta: Vec3, axis
   for (const [i, d] of moves) verts[i] = add(verts[i]!, d);
   return finish(out);
 }
-/// Drops points that no face uses and renumbers the rest.
-export function compact(c: Cube): Cube {
+/// Drops points that no face uses and renumbers the rest. `map[old]` is the new number (or -1 for a dropped point).
+export function compactWithMap(c: Cube): { cube: Cube; map: number[] } {
   const out = clone(c);
   const used = new Set(out.polys!.flatMap((f) => f.v));
-  const remap = new Map<number, number>();
+  const map: number[] = out.verts!.map(() => -1);
   const verts: Vec3[] = [];
   out.verts!.forEach((p, i) => {
     if (used.has(i)) {
-      remap.set(i, verts.length);
+      map[i] = verts.length;
       verts.push(p);
     }
   });
   out.verts = verts;
-  for (const f of out.polys!) f.v = f.v.map((i) => remap.get(i)!);
-  return finish(out);
+  for (const f of out.polys!) f.v = f.v.map((i) => map[i]!);
+  return { cube: finish(out), map };
+}
+
+/// Drops points that no face uses and renumbers the rest.
+export function compact(c: Cube): Cube {
+  return compactWithMap(c).cube;
 }
 
 export function deleteFaces(c: Cube, faces: number[]): Cube {
@@ -388,4 +393,135 @@ export function transformMesh(c: Cube, m: number[]): Cube {
   const det = m[0]! * (m[5]! * m[10]! - m[9]! * m[6]!) - m[4]! * (m[1]! * m[10]! - m[9]! * m[2]!) + m[8]! * (m[1]! * m[6]! - m[5]! * m[2]!);
   if (det < 0) for (const f of out.polys ?? []) f.v.reverse();
   return finish(out);
+}
+
+/// Moves a part's pivot (its origin, the point it turns about) to `to`, in its parent's space, without moving anything you
+/// can see: the part's shapes and child parts shift the opposite way inside it. Animation keys follow so clips still play
+/// the same way.
+export function movePivot(doc: ModelDoc, parts: number[], to: Vec3): ModelDoc | null {
+  const next = clone(doc);
+  const part = partAt(next, parts);
+  if (!part || !to.every((n) => Number.isFinite(n))) return null;
+  const d = sub(to, part.origin);
+  if (d.every((n) => n === 0)) return null;
+  // the same step seen from inside the part, which may be turned: R^-1 d (R is a rotation, so its inverse is its transpose)
+  const r = rotationMatrix(part.rotation);
+  const inside: Vec3 = [r[0]! * d[0] + r[3]! * d[1] + r[6]! * d[2], r[1]! * d[0] + r[4]! * d[1] + r[7]! * d[2], r[2]! * d[0] + r[5]! * d[1] + r[8]! * d[2]];
+  const back = scale(inside, -1);
+  part.origin = [...to];
+  part.cubes = part.cubes.map((c) => movedCube(c, back));
+  for (const child of part.children) child.origin = add(child.origin, back);
+  const mine = namesOf(next, parts);
+  for (const clip of next.clips ?? []) {
+    for (const track of clip.tracks) {
+      if (track.prop !== "position") continue;
+      const own = track.part.length === mine.length && track.part.every((n, i) => n === mine[i]);
+      const child = track.part.length === mine.length + 1 && mine.every((n, i) => n === track.part[i]);
+      if (own) for (const k of track.keys) k.value = add(k.value, d);
+      else if (child) for (const k of track.keys) k.value = add(k.value, back);
+    }
+  }
+  return next;
+}
+
+/// Every edge of a mesh once, as `[a, b]` with a < b, with how many faces share it (1 = the mesh is open there).
+export function edgesOf(c: Cube): { a: number; b: number; faces: number }[] {
+  const seen = new Map<string, { a: number; b: number; faces: number }>();
+  for (const p of c.polys ?? []) {
+    p.v.forEach((x, k) => {
+      const y = p.v[(k + 1) % p.v.length]!;
+      const [a, b] = x < y ? [x, y] : [y, x];
+      const e = seen.get(`${a},${b}`);
+      if (e) e.faces++;
+      else seen.set(`${a},${b}`, { a, b, faces: 1 });
+    });
+  }
+  return [...seen.values()];
+}
+
+const lerp = (p: Vec3, q: Vec3, t: number): Vec3 => [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t, p[2] + (q[2] - p[2]) * t];
+const rotated = <T,>(list: T[], at: number): T[] => [...list.slice(at), ...list.slice(0, at)];
+
+/// Chamfers the edge between points `a` and `b`: it is replaced by a narrow face, each of its two neighbours losing `fraction`
+/// (0 to 0.5) of the length of their next edge. The edge must join two faces, and the faces at each end must be three in all,
+/// as at the corner of a box; otherwise the mesh is left alone and this returns null. The result says which points are new.
+export function bevelEdge(c: Cube, a: number, b: number, fraction = 0.25): { cube: Cube; points: number[] } | null {
+  const out = clone(c);
+  const polys = out.polys ?? [];
+  const verts = out.verts ?? [];
+  const t = Math.min(0.5, Math.max(0.02, fraction));
+  const along = (p: { v: number[] }, x: number, y: number) => {
+    const i = p.v.indexOf(x);
+    return i >= 0 && p.v[(i + 1) % p.v.length] === y ? i : -1;
+  };
+  const i1 = polys.findIndex((p) => along(p, a, b) >= 0);
+  const i2 = polys.findIndex((p) => along(p, b, a) >= 0);
+  if (i1 < 0 || i2 < 0 || i1 === i2) return null;
+  const around = (v: number) => polys.map((p, i) => (p.v.includes(v) ? i : -1)).filter((i) => i >= 0);
+  const [fa, fb] = [around(a), around(b)];
+  if (fa.length !== 3 || fb.length !== 3) return null;
+  const sa = fa.find((i) => i !== i1 && i !== i2)!;
+  const sb = fb.find((i) => i !== i1 && i !== i2)!;
+  // F1 runs ... pa, a, b, nb ...; F2 runs ... pb, b, a, na ...
+  const f1 = rotated(polys[i1]!.v, along(polys[i1]!, a, b));
+  const f2 = rotated(polys[i2]!.v, along(polys[i2]!, b, a));
+  const [pa, nb] = [f1.at(-1)!, f1[2]!];
+  const [pb, na] = [f2.at(-1)!, f2[2]!];
+  const push = (p: Vec3) => verts.push(p) - 1;
+  const a1 = push(lerp(verts[a]!, verts[pa]!, t));
+  const b1 = push(lerp(verts[b]!, verts[nb]!, t));
+  const b2 = push(lerp(verts[b]!, verts[pb]!, t));
+  const a2 = push(lerp(verts[a]!, verts[na]!, t));
+  polys[i1]!.v = [a1, b1, ...f1.slice(2).filter((v) => v !== b)];
+  polys[i2]!.v = [b2, a2, ...f2.slice(2).filter((v) => v !== a)];
+  const swap = (face: number, old: number, pair: [number, number], first: boolean) => {
+    const p = polys[face]!.v;
+    const k = p.indexOf(old);
+    const [x, y] = first ? pair : [pair[1], pair[0]];
+    p.splice(k, 1, x, y);
+  };
+  {
+    const p = polys[sa]!.v;
+    const k = p.indexOf(a);
+    // seen along the face, the corner at a is entered from na and left towards pa, or the other way round
+    swap(sa, a, [a2, a1], p[(k + 1) % p.length] === pa);
+  }
+  {
+    const p = polys[sb]!.v;
+    const k = p.indexOf(b);
+    swap(sb, b, [b1, b2], p[(k - 1 + p.length) % p.length] === nb);
+  }
+  polys.push({ v: [b1, a1, a2, b2], ...(polys[i1]!.color ? { color: polys[i1]!.color } : {}) });
+  const { cube, map } = compactWithMap(out);
+  return { cube, points: [a1, b1, b2, a2].map((i) => map[i]!) };
+}
+
+/// Pulls an open edge (one face only) away from its face, in the face's plane, by `distance`, adding a face that joins the
+/// old edge to the new one. Returns the new points, or null for an edge that is not on the open boundary.
+export function extrudeEdge(c: Cube, a: number, b: number, distance: number): { cube: Cube; points: number[] } | null {
+  const out = clone(c);
+  const polys = out.polys ?? [];
+  const verts = out.verts ?? [];
+  if (!Number.isFinite(distance) || distance === 0) return null;
+  const owners = polys.map((p, i) => ({ p, i })).filter(({ p }) => p.v.includes(a) && p.v.includes(b));
+  if (owners.length !== 1) return null;
+  const { p, i } = owners[0]!;
+  const k = p.v.indexOf(a);
+  const forward = p.v[(k + 1) % p.v.length] === b; // the face goes a -> b, else b -> a
+  const [from, to] = forward ? [a, b] : [b, a];
+  const e = sub(verts[to]!, verts[from]!);
+  const n = faceNormal(out, i);
+  let dir: Vec3 = [e[1] * n[2] - e[2] * n[1], e[2] * n[0] - e[0] * n[2], e[0] * n[1] - e[1] * n[0]];
+  const l = Math.hypot(...dir);
+  if (l < 1e-12) return null;
+  dir = scale(dir, 1 / l);
+  const middle = scale(add(verts[from]!, verts[to]!), 0.5);
+  const away = sub(middle, faceCentre(out, i));
+  if (dir[0] * away[0] + dir[1] * away[1] + dir[2] * away[2] < 0) dir = scale(dir, -1);
+  const push = (q: Vec3) => verts.push(q) - 1;
+  const na = push(add(verts[from]!, scale(dir, distance)));
+  const nb = push(add(verts[to]!, scale(dir, distance)));
+  // the new face runs the opposite way along the old edge, so the two faces agree
+  polys.push({ v: [to, from, na, nb], ...(p.color ? { color: p.color } : {}) });
+  return { cube: finish(out), points: [na, nb] };
 }

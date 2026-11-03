@@ -5,7 +5,7 @@
     type Point, type Raster, type Rect, type Rgba,
   } from "../lib/pixels";
   import {
-    addAnimation, animationOf, cloneDoc, detectGrid, duplicateAnimation, frameAt, gridFromCounts, smartGrid, framesIn, fromImage, fromSheet, gridTiles, importTiles, insertFrame, moveAnimation, isPristine, moveFrame, newDoc, parseSheetJson,
+    addAnimation, animationOf, cloneDoc, duplicateFrames, moveFramesTo, removeFrames, detectGrid, duplicateAnimation, frameAt, gridFromCounts, smartGrid, framesIn, fromImage, fromSheet, gridTiles, importTiles, insertFrame, moveAnimation, isPristine, moveFrame, newDoc, parseSheetJson,
     removeAnimation, removeFrame, setAnimationDuration, tagProblems, tagSequence, resizeDoc, toSheet, toSheetJson, updateAnimation, type Direction, type SpriteDoc,
     addLayer, applyLayers, duplicateLayer, layerSheets, layersFileText, mergeDown, moveLayer, parseLayersFile, recompose, removeLayer, updateLayer, MAX_LAYERS,
   } from "../lib/sprite-doc";
@@ -541,8 +541,44 @@
   const animFrames = $derived(anim ? Array.from({ length: framesIn(anim) }, (_, i) => anim.from + i) : []);
   let dragFrame: number | null = null;
   const addBlank = () => structural(insertFrame(doc, frame + 1), frame + 1);
-  const duplicate = () => structural(insertFrame(doc, frame + 1, frame), frame + 1);
-  const remove = () => structural(removeFrame(doc, frame), frame);
+  /// Frames picked with Ctrl, ⌘ or Shift besides the current one: copy, delete and move act on all of them.
+  let others = $state<number[]>([]);
+  const chosen = $derived([...new Set([frame, ...others])].sort((a, b) => a - b));
+  // picked frames belong to the animation being worked on; moving to another leaves them behind
+  $effect(() => {
+    const a = anim;
+    const kept = untrack(() => others).filter((f) => !!a && f >= a.from && f <= a.to);
+    if (kept.length !== untrack(() => others).length) others = kept;
+  });
+  function pickFrame(i: number, e: MouseEvent) {
+    if (e.shiftKey && anim) {
+      const [lo, hi] = [Math.min(frame, i), Math.max(frame, i)];
+      others = Array.from({ length: hi - lo + 1 }, (_, k) => lo + k).filter((f) => f !== frame && f >= anim!.from && f <= anim!.to);
+    } else if (e.ctrlKey || e.metaKey) {
+      if (i !== frame) others = others.includes(i) ? others.filter((f) => f !== i) : [...others, i];
+    } else {
+      frame = i;
+      others = [];
+    }
+  }
+  function duplicate() {
+    if (chosen.length === 1) return structural(insertFrame(doc, frame + 1, frame), frame + 1);
+    const r = duplicateFrames(doc, chosen);
+    structural(r.doc, r.picked[0] ?? frame);
+    others = r.picked.slice(1);
+  }
+  function remove() {
+    if (chosen.length === 1) return structural(removeFrame(doc, frame), frame);
+    structural(removeFrames(doc, chosen), Math.min(...chosen));
+    others = [];
+  }
+  function moveChosen(target: number) {
+    if (target === animIndex || !Number.isInteger(target) || target < 0) return;
+    const r = moveFramesTo(doc, chosen, target);
+    if (r.doc === doc) return;
+    structural(r.doc, r.picked[0] ?? frame);
+    others = r.picked.slice(1);
+  }
   const shift = (by: number) => structural(moveFrame(doc, frame, frame + by), frame + by);
   function setDuration(ms: number) {
     if (!Number.isFinite(ms) || ms < 10) return;
@@ -842,7 +878,7 @@
         <div class="frames" role="listbox" aria-label="Frames">
           {#if anim}<span class="animlabel" title="The animation these frames belong to">{anim.name || "(unnamed)"}</span>{/if}
           {#each animFrames as i (i)}
-            <button class="frame" class:on={i === frame} role="option" aria-selected={i === frame} draggable="true" ondragstart={(e) => { dragFrame = i; e.dataTransfer?.setData("text/plain", String(i)); }} ondragover={(e) => e.preventDefault()} ondrop={(e) => { e.preventDefault(); if (dragFrame !== null && dragFrame !== i) structural(moveFrame(doc, dragFrame, i), i); dragFrame = null; }} onclick={() => (frame = i)} title="Frame {i - (anim?.from ?? 0) + 1} · {doc.durations[i]} ms · drag to move">
+            <button class="frame" class:on={i === frame} role="option" aria-selected={i === frame} draggable="true" ondragstart={(e) => { dragFrame = i; e.dataTransfer?.setData("text/plain", String(i)); }} ondragover={(e) => e.preventDefault()} ondrop={(e) => { e.preventDefault(); if (dragFrame !== null && dragFrame !== i) structural(moveFrame(doc, dragFrame, i), i); dragFrame = null; }} onclick={(e) => pickFrame(i, e)} class:picked={others.includes(i)} title="Frame {i - (anim?.from ?? 0) + 1} · {doc.durations[i]} ms · drag to move · ⌘ or ⇧ picks more">
               <canvas use:drawThumb={i}></canvas>
               <span>{i - (anim?.from ?? 0) + 1}</span>
             </button>
@@ -850,10 +886,16 @@
         </div>
         <div class="frame-actions">
           <button onclick={addBlank} title="New blank frame after this one">＋ Frame</button>
-          <button onclick={duplicate}>Duplicate</button>
+          <button onclick={duplicate}>Duplicate{chosen.length > 1 ? ` ${chosen.length}` : ""}</button>
           <button onclick={() => shift(-1)} disabled={!anim || frame === anim.from} aria-label="Move frame left">◀</button>
           <button onclick={() => shift(1)} disabled={!anim || frame === anim.to} aria-label="Move frame right">▶</button>
-          <button class="danger" onclick={remove} disabled={!anim || framesIn(anim) <= 1} title="Delete this frame (an animation keeps at least one)">Delete</button>
+          <button class="danger" onclick={remove} disabled={!anim || framesIn(anim) <= 1} title="Delete the picked frames (an animation keeps at least one)">Delete{chosen.length > 1 ? ` ${chosen.length}` : ""}</button>
+          {#if doc.tags.length > 1}
+            <select aria-label="Move the picked frames to another animation" value="" onchange={(e) => { moveChosen(Number(e.currentTarget.value)); e.currentTarget.value = ""; }}>
+              <option value="" disabled>Move to…</option>
+              {#each doc.tags as t, ti (ti)}{#if ti !== animIndex}<option value={ti}>{t.name || "(unnamed)"}</option>{/if}{/each}
+            </select>
+          {/if}
           <label class="inline">Duration <input type="number" min="10" step="10" value={doc.durations[frame]} onchange={(e) => setDuration(Number(e.currentTarget.value))} class="narrow" /> ms</label>
           <button class="ghost" onclick={() => structural(setAnimationDuration(doc, animIndex, doc.durations[frame]!))} title="Give every frame of this animation this duration">Apply to animation</button>
         </div>
@@ -1026,6 +1068,7 @@
   .frames { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
   .frame { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 3px; min-width: 52px; background: var(--bg); }
   .frame.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .frame.picked { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, var(--bg)); }
   .frame canvas { width: 40px; height: 40px; object-fit: contain; image-rendering: pixelated; background: repeating-conic-gradient(#3a3d48 0 25%, #2e313b 0 50%) 0 0 / 8px 8px; }
   .frame span { font-size: 10px; color: var(--dim); }
   .frame-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }

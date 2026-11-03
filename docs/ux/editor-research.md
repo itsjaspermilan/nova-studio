@@ -55,10 +55,13 @@ it. Neither program's code was read or copied; a clone of either is not on this 
 - Sprite editor: onion skin shows up to three frames before and after, tinted blue and red; frames drag to reorder inside
   an animation; the import dialog cuts by tile size or by tile count, and Smart slice finds tiles separated by empty gaps.
 
+- Model editor, second round: a Pivot tool (P) that moves the point a part turns about without moving anything you can see,
+  with animation keys following; edges can be picked in point mode, bevelled (at box-like corners) and open edges pulled out.
+- Sprite editor, second round: Ctrl, ⌘ and Shift pick several frames to copy, delete or move into another animation.
+- The tree's create and rename boxes no longer log an error when they close.
+
 ## Still open, in the order that would help most
 
-1. Mesh: bevel of edges (a real chamfer needs edges to be pickable; Taper and Inset cover faces), extruding an edge or
-   point, knife.
-2. Model editor: a pivot tool, vertex snap, multi-select across turn and resize, per-face UV editing, mirror painting,
-   painting shapes and gradients.
-3. Sprites: multi-select of frames, linked cels, frame duration as a multiplier, moving frames between animations.
+1. Mesh: bevel at corners that are not box-like, extruding a single point, a knife; vertex snap while dragging points.
+2. Model editor: per-face UV editing, mirror painting, painting shapes and gradients, resize and turn for several shapes at once.
+3. Sprites: linked cels, frame duration as a multiplier, drag several frames at once.

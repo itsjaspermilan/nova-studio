@@ -7,7 +7,7 @@
     FACES, History, SHAPES, addCube, addPart, afterRemoval, countCubes, cubeAt, duplicateNode, faceColor, newModel, parseModel, partAt, removeNode, samePath, serializeModel,
     setCube, setFaceColor, updateCube, updatePart, walk, namesOf, PROPS, MAX_SEGMENTS, MIN_SEGMENTS, DEFAULT_SEGMENTS, type Cube, type Face, type ModelDoc, type Path, type Prop, type Shape, type Vec3,
   } from "../lib/model-doc";
-  import { addFace, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, mirrorElement, mirrorPart, loopCut, moveVerts, moveVertsSymmetric, setFaceColors, setSmooth, setVert, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
+  import { addFace, bevelEdge, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsSymmetric, setFaceColors, setSmooth, setVert, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
   import { hasVolume, meshOf, segmentsOf, shapeFaces } from "../lib/model-mesh";
   import { bakeAll, blockOf, enableTexture, fitPicture, packModel, resizeTexture, unwrap, uvsOf } from "../lib/model-uv";
   import { CLEAR, cloneRaster, drawLine, floodFill, getPixel, newRaster, parseHex, stamp, toHex, type Raster, type Rgba } from "../lib/pixels";
@@ -48,11 +48,14 @@
   // how the model is drawn: with its texture, flat colours only, or as a wireframe (Z cycles them)
   let viewMode = $state<"textured" | "solid" | "wire">("textured");
   // the move / turn / resize handles drawn on the selected part or shape
-  let gizmoMode = $state<"translate" | "rotate" | "scale">("translate");
+  let gizmoMode = $state<"translate" | "rotate" | "scale" | "pivot">("translate");
   // editing the points of a mesh
   let editPoints = $state(false);
   let selVerts = $state<number[]>([]);
   let selFace = $state<number | null>(null);
+  let selEdge = $state<[number, number] | null>(null); // two points joined by an edge of the picked mesh
+  let bevelBy = $state(25); // percent of the next edge each neighbour gives up
+  let edgeBy = $state(4);
   let snap = $state(true);
   let extrudeBy = $state(4);
   let shrinkBy = $state(0); // percent the new face is pulled towards its middle: a taper, or with no pull, an inset
@@ -420,6 +423,8 @@
   let proxy: THREE.Object3D | undefined;
   let proxyBase: THREE.Matrix4 | null = null;
   let attachedPart: THREE.Object3D | undefined;
+  let pivotPart: number[] | null = null; // the part whose pivot is being moved
+  let pivotMark: THREE.AxesHelper | undefined; // shows where the selected part's pivot is
   let partBase: { origin: Vec3; rotation: Vec3 } | null = null;
   const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -431,6 +436,12 @@
     proxyBase = null;
     attachedPart = undefined;
     partBase = null;
+    pivotPart = null;
+    if (pivotMark) {
+      pivotMark.removeFromParent();
+      pivotMark.dispose();
+      pivotMark = undefined;
+    }
     const live = mode === "model" && !inEdit && !!selected;
     gizmo.getHelper().visible = live;
     if (!live || !selected) return;
@@ -441,6 +452,23 @@
     gizmo.setScaleSnap(snap ? 0.25 : null);
     if (selected.cube === undefined) {
       // a part: its own group is moved and turned (resizing a part is only for animation)
+      pivotMark = new THREE.AxesHelper(3);
+      g.add(pivotMark);
+      if (gizmoMode === "pivot") {
+        // the pivot is moved on its own, in the parent's space: nothing you can see moves
+        const parent = selected.parts.length > 1 ? groupOf(selected.parts.slice(0, -1)) : modelGroup;
+        const p = partAt(doc, selected.parts)!;
+        if (!parent) return;
+        proxy = new THREE.Object3D();
+        proxy.position.set(...p.origin);
+        parent.add(proxy);
+        proxy.updateMatrix();
+        pivotPart = selected.parts;
+        gizmo.setMode("translate");
+        gizmo.setSpace("world");
+        gizmo.attach(proxy);
+        return;
+      }
       gizmo.setMode(gizmoMode === "scale" ? "translate" : gizmoMode);
       gizmo.setSpace("world");
       attachedPart = g;
@@ -457,7 +485,7 @@
     g.add(proxy);
     proxy.updateMatrix();
     proxyBase = proxy.matrix.clone();
-    gizmo.setMode(also.length ? "translate" : gizmoMode);
+    gizmo.setMode(also.length || gizmoMode === "pivot" ? "translate" : gizmoMode);
     gizmo.setSpace(also.length ? "world" : "local");
     gizmo.attach(proxy);
   }
@@ -489,6 +517,12 @@
 
   function finishGizmo() {
     if (!gizmoDown || !selected) return;
+    if (pivotPart && proxy) {
+      const to = proxy.position.toArray().map(round2) as Vec3;
+      const moved = movePivot(doc, pivotPart, to);
+      if (moved) commit(moved);
+      return;
+    }
     if (attachedPart && partBase) {
       const e = new THREE.Euler().setFromQuaternion(attachedPart.quaternion, "XYZ");
       const origin = attachedPart.position.toArray().map(round2) as Vec3;
@@ -730,15 +764,17 @@
   // ---- points and faces of a mesh in the view -------------------------------------------------------
   let handles: THREE.Points | undefined;
   let faceLine: THREE.LineLoop | undefined;
+  let edgeLines: THREE.LineSegments | undefined;
+  let edgeSel: THREE.Line | undefined;
   let pullArrow: THREE.ArrowHelper | undefined;
   function clearHandles() {
-    for (const o of [handles, faceLine]) {
+    for (const o of [handles, faceLine, edgeLines, edgeSel]) {
       if (!o) continue;
       scene?.remove(o);
       o.geometry.dispose();
       (o.material as THREE.Material).dispose();
     }
-    handles = faceLine = undefined;
+    handles = faceLine = edgeLines = edgeSel = undefined;
     if (pullArrow) {
       scene?.remove(pullArrow);
       pullArrow.dispose();
@@ -772,6 +808,16 @@
     handles = new THREE.Points(geometry, new THREE.PointsMaterial({ size: 9, sizeAttenuation: false, vertexColors: true, depthTest: false }));
     handles.renderOrder = 10;
     scene.add(handles);
+    // every edge faintly, so there is something to click; the picked one in yellow
+    const edges = edgesOf(cube);
+    edgeLines = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(edges.flatMap((e) => [pts[e.a]!, pts[e.b]!])), new THREE.LineBasicMaterial({ color: 0x8fa4d6, transparent: true, opacity: 0.45, depthTest: false }));
+    edgeLines.renderOrder = 8;
+    scene.add(edgeLines);
+    if (selEdge && pts[selEdge[0]] && pts[selEdge[1]]) {
+      edgeSel = new THREE.Line(new THREE.BufferGeometry().setFromPoints([pts[selEdge[0]]!, pts[selEdge[1]]!]), new THREE.LineBasicMaterial({ color: 0xffd166, depthTest: false }));
+      edgeSel.renderOrder = 12;
+      scene.add(edgeSel);
+    }
     const face = selFace === null ? undefined : cube.polys?.[selFace];
     if (face) {
       const line = new THREE.BufferGeometry().setFromPoints(face.v.map((i) => pts[i]!));
@@ -809,6 +855,30 @@
         bestDist = d;
       }
     });
+    return best;
+  }
+
+  /// The edge of the picked mesh within a few pixels of the pointer, if any.
+  function pickEdge(e: PointerEvent): [number, number] | null {
+    if (!camera || !canvas || !cube) return null;
+    const r = canvas.getBoundingClientRect();
+    const pts = worldVerts().map((w) => {
+      const p = w.clone().project(camera!);
+      return [((p.x + 1) / 2) * r.width + r.left, ((1 - p.y) / 2) * r.height + r.top] as const;
+    });
+    let best: [number, number] | null = null;
+    let bestDist = 7;
+    for (const edge of edgesOf(cube)) {
+      const [p, q] = [pts[edge.a], pts[edge.b]];
+      if (!p || !q) continue;
+      const len2 = (q[0] - p[0]) ** 2 + (q[1] - p[1]) ** 2 || 1;
+      const u = Math.max(0, Math.min(1, ((e.clientX - p[0]) * (q[0] - p[0]) + (e.clientY - p[1]) * (q[1] - p[1])) / len2));
+      const d = Math.hypot(p[0] + u * (q[0] - p[0]) - e.clientX, p[1] + u * (q[1] - p[1]) - e.clientY);
+      if (d < bestDist) {
+        best = [edge.a, edge.b];
+        bestDist = d;
+      }
+    }
     return best;
   }
 
@@ -867,6 +937,7 @@
     if (e.shiftKey) selVerts = selVerts.includes(point) ? selVerts.filter((v) => v !== point) : [...selVerts, point];
     else if (!selVerts.includes(point)) selVerts = [point];
     selFace = null;
+    selEdge = null;
     if (!selVerts.includes(point)) return;
     const start = worldVerts()[point]!;
     const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(camera.getWorldDirection(new THREE.Vector3()), start);
@@ -941,6 +1012,15 @@
     const ray = new THREE.Raycaster();
     ray.setFromCamera(pointer(e), camera);
     if (inEdit && selected) {
+      const edge = pickEdge(e);
+      if (edge) {
+        selEdge = edge;
+        selFace = null;
+        selVerts = [...edge];
+        canvas.focus();
+        return;
+      }
+      selEdge = null;
       const mine = meshes.find((m) => samePath(m.path, selected));
       const hit = mine ? ray.intersectObject(mine.mesh, false)[0] : undefined;
       const face = hit?.faceIndex != null ? mine!.polyOfTriangle[hit.faceIndex] : undefined;
@@ -976,9 +1056,10 @@
     pendingEdit = false;
     selVerts = [];
     selFace = null;
+    selEdge = null;
   });
   $effect(() => {
-    doc; selected; selVerts; selFace; inEdit; mode;
+    doc; selected; selVerts; selFace; selEdge; inEdit; mode;
     untrack(drawHandles);
   });
   const part = $derived(selected && selected.cube === undefined ? partAt(doc, selected.parts) : selected ? partAt(doc, selected.parts) : undefined);
@@ -1056,6 +1137,7 @@
     if (reset) {
       selVerts = [];
       selFace = null;
+      selEdge = null;
     }
   }
   function makeEditable() {
@@ -1074,6 +1156,23 @@
     const r = extrudeFace(cube, selFace, 0, (shrinkBy || 25) / 100);
     change(r.cube);
     selVerts = r.points;
+  }
+  function bevel() {
+    if (!selected || !cube || !selEdge) return;
+    const r = bevelEdge(cube, selEdge[0], selEdge[1], bevelBy / 100);
+    if (!r) return void studio.say("info", "A bevel needs an edge between two faces, at a corner where three faces meet (like a box's).");
+    change(r.cube);
+    selEdge = null;
+    selFace = null;
+    selVerts = r.points;
+  }
+  function extendEdge() {
+    if (!selected || !cube || !selEdge) return;
+    const r = extrudeEdge(cube, selEdge[0], selEdge[1], edgeBy);
+    if (!r) return void studio.say("info", "Only an open edge, one that has a face on one side only, can be pulled out.");
+    change(r.cube);
+    selEdge = [r.points[0]!, r.points[1]!];
+    selVerts = [...r.points];
   }
   function cutLoop(way: 0 | 1) {
     if (!selected || !cube || selFace === null) return;
@@ -1195,8 +1294,8 @@
     if (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA") return;
     const mod = e.metaKey || e.ctrlKey;
     const step = e.shiftKey ? 4 : 1;
-    if (!mod && mode === "model" && !inEdit && selected && ["w", "e", "r"].includes(e.key.toLowerCase())) {
-      gizmoMode = ({ w: "translate", e: "rotate", r: "scale" } as const)[e.key.toLowerCase() as "w" | "e" | "r"];
+    if (!mod && mode === "model" && !inEdit && selected && ["w", "e", "r", "p"].includes(e.key.toLowerCase())) {
+      gizmoMode = ({ w: "translate", e: "rotate", r: "scale", p: "pivot" } as const)[e.key.toLowerCase() as "w" | "e" | "r" | "p"];
     } else if (e.key.toLowerCase() === "z" && !mod) {
       viewMode = viewMode === "textured" ? "solid" : viewMode === "solid" ? "wire" : "textured";
     } else if (e.key === "Escape" && editPoints) {
@@ -1285,6 +1384,7 @@
           <span class="seg" role="group" aria-label="Handles">
             <button class:on={gizmoMode === "translate"} onclick={() => (gizmoMode = "translate")} title="Move (W)">Move</button>
             <button class:on={gizmoMode === "rotate"} onclick={() => (gizmoMode = "rotate")} title="Turn (E)">Turn</button>
+            <button class:on={gizmoMode === "pivot"} disabled={selected.cube !== undefined} onclick={() => (gizmoMode = "pivot")} title={selected.cube !== undefined ? "Select a part to move its pivot" : "Move the point this part turns about, leaving its shapes where they are (P)"}>Pivot</button>
             <button class:on={gizmoMode === "scale"} disabled={selected.cube === undefined} onclick={() => (gizmoMode = "scale")} title={selected.cube === undefined ? "Parts are resized in animations" : "Resize (R)"}>Resize</button>
           </span>
           <label class="check" title="Snap to whole units and 15 degrees"><input type="checkbox" bind:checked={snap} /> Snap</label>
@@ -1333,9 +1433,9 @@
       {#if mode === "texture"}
         <p class="hint dim">Texture: drag on the model to paint it, or paint in the picture on the right · ⇧-click draws a straight line from the last point · ✥ moves a shape's block · ⌘Z undoes painting · Z changes the view · right-drag pans, scroll zooms (⌥-drag orbits)</p>
       {:else if inEdit}
-        <p class="hint dim">Points: click a face to pick it and its points · click or drag a dot to move it (⇧-click adds more) · arrows and PageUp/PageDown nudge the picked points · Esc leaves point mode</p>
+        <p class="hint dim">Points: click a face or an edge to pick it · click or drag a dot to move it (⇧-click adds more) · arrows and PageUp/PageDown nudge the picked points · Esc leaves point mode</p>
       {:else}
-        <p class="hint dim">Drag to orbit · right-drag to pan · scroll to zoom · click a shape to select (⌘ or ⇧ adds more) · drag the handles, or W E R for move, turn, resize · arrows and PageUp/PageDown nudge (⇧ for 4) · ⌘D duplicates · Delete removes · Z changes the view</p>
+        <p class="hint dim">Drag to orbit · right-drag to pan · scroll to zoom · click a shape to select (⌘ or ⇧ adds more) · drag the handles, or W E R P for move, turn, resize, pivot · arrows and PageUp/PageDown nudge (⇧ for 4) · ⌘D duplicates · Delete removes · Z changes the view</p>
       {/if}
     </div>
 
@@ -1448,6 +1548,11 @@
             <button onclick={makeFace} disabled={selVerts.length < 3} title="Fills a face between the picked points">Make face</button>
             <button class="danger" onclick={removePointsPicked} disabled={!selVerts.length}>Delete points</button>
           </div>
+          {#if selEdge}
+            <h4>Edge</h4>
+            <div class="pair"><label class="inline">Width % <input type="number" min="2" max="50" step="5" bind:value={bevelBy} /></label><label class="inline">Pull by <input type="number" step="1" bind:value={edgeBy} /></label></div>
+            <div class="row"><button onclick={bevel} title="Cuts the edge off with a narrow slanting face">Bevel</button><button onclick={extendEdge} title="Pulls an open edge away, widening the sheet">Extend</button></div>
+          {/if}
           <h4>Face</h4>
           {#if selFace !== null && cube.polys?.[selFace]}
             <p class="dim small">Drag the yellow arrow to pull the face out.</p>
