@@ -509,3 +509,12 @@ export function eraseNear(scene: Scene, at: [number, number], radius: number, ki
   next.objects = keep.map((o) => ({ ...o }));
   return { scene: next, removed };
 }
+
+/// The ground points that are not on a road: more than `clear` metres from every object whose kind has "road" in its name
+/// (road pieces are placed along a circuit, so this keeps trees and rocks off the tarmac while painting).
+export function offRoad(scene: Scene, points: [number, number][], clear = 8): [number, number][] {
+  const road = (scene.objects ?? []).filter((o) => String(o.kind).includes("road")).map((o) => positionOf(o));
+  if (!road.length) return points;
+  const near2 = clear * clear;
+  return points.filter(([x, z]) => !road.some((r) => (r[0] - x) ** 2 + (r[2] - z) ** 2 < near2));
+}

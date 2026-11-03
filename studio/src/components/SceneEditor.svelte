@@ -4,7 +4,7 @@
     History, addItem, afterRemoval, boundsOf, drawOrder, duplicateItem, hitTest, itemAt, moveTo, parseScene, removeItem, sameRef,
     serializeScene, setField, setSceneField, snap, uniqueName, worldSize, type Item, type ItemKind, type Ref, type Scene, type Sizes,
     addTilemap, cellAt, fillTiles, mapSize, paintTile, parsePropValue, propsOf, removeTilemap, renameProp, resizeTilemap, setProp, showPropValue,
-    tilemapBox, tilemaps, toggleSolid, EMPTY_TILE, type Kinds, cameraOf, moveTo3, setCamera, positionOf, placeObjects, eraseNear, type Camera3,
+    tilemapBox, tilemaps, toggleSolid, EMPTY_TILE, type Kinds, cameraOf, moveTo3, setCamera, positionOf, placeObjects, eraseNear, offRoad, type Camera3,
   } from "../lib/scene-model";
   import Scene3D from "./Scene3D.svelte";
   import { parseModel, type ModelDoc } from "../lib/model-doc";
@@ -40,6 +40,7 @@
   let brushRadius = $state(0);
   let brushCount = $state(3);
   let vary = $state(true);
+  let keepOff = $state(true);
   let erasing = $state(false);
   let mapView = $state(false); // look straight down on a 3D level instead of orbiting it
   let onlyKind = $state(true);
@@ -58,7 +59,10 @@
   });
   function placeAt(points: [number, number][], first: boolean) {
     if (!placing) return;
-    const r = placeObjects(scene, placing, points, Math.random, vary);
+    // scenery stays off the road (a road piece is any object with "road" in its kind); road pieces themselves may go anywhere
+    const spots = keepOff && !placing.includes("road") ? offRoad(scene, points) : points;
+    if (!spots.length) return;
+    const r = placeObjects(scene, placing, spots, Math.random, vary);
     commit(r.scene, !first);
   }
   let view3: { current: () => Camera3 } | null = null;
@@ -604,6 +608,7 @@
           <label>Brush radius <input type="range" min="0" max="40" step="1" bind:value={brushRadius} /><span class="dim small">{brushRadius === 0 ? "one at a time" : `${brushRadius} m`}</span></label>
           {#if brushRadius > 0}<label>Objects per dab <input type="range" min="1" max="12" step="1" bind:value={brushCount} /><span class="dim small">{brushCount}</span></label>{/if}
           <label class="check"><input type="checkbox" bind:checked={vary} /> Vary turn and size</label>
+          <label class="check" title="Skips spots within 8 m of a road piece (any object with road in its kind)"><input type="checkbox" bind:checked={keepOff} /> Keep off the road</label>
           <div class="row"><button class:on={erasing} onclick={() => ((erasing = !erasing), erasing && (selected = null))} title="Click or drag on the ground to take objects away">Eraser</button></div>
           {#if erasing}<label class="check"><input type="checkbox" bind:checked={onlyKind} disabled={!placing} /> Only {placing ?? "the picked kind"}</label>{/if}
         </div>

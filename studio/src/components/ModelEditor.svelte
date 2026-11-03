@@ -9,7 +9,7 @@
   } from "../lib/model-doc";
   import { addFace, bevelEdge, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsSymmetric, setFaceColors, setSmooth, setVert, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
   import { hasVolume, meshOf, segmentsOf, shapeFaces, solidOf } from "../lib/model-mesh";
-  import { autoWeights, invertAffine, reskin, setWeight, skinnedPoints, transformPoint, worldMatrices } from "../lib/model-skin";
+  import { autoWeights, dominantBones, invertAffine, reskin, setWeight, skinnedPoints, transformPoint, worldMatrices } from "../lib/model-skin";
   import { bakeAll, blockOf, faceRects, flippedRect, normRect, rectAt, enableTexture, fitPicture, packModel, resizeTexture, unwrap, uvsOf } from "../lib/model-uv";
   import { CLEAR, cloneRaster, drawEllipse, drawLine, drawRect, floodFill, getPixel, newRaster, parseHex, stamp, toHex, type Raster, type Rgba } from "../lib/pixels";
   import { applyBrush, applyGradient } from "../lib/paint";
@@ -991,13 +991,18 @@
     if (!g || !cube?.verts) return [];
     return cube.verts.map((p) => new THREE.Vector3(...p).applyMatrix4(g.matrixWorld));
   }
+  /// The colour of each part a shape bends with, for its points in point mode (and the key beside the weights).
+  const BONE_COLORS: [number, number, number][] = [[0.36, 0.65, 1], [0.45, 0.9, 0.5], [1, 0.55, 0.55], [0.8, 0.6, 1], [1, 0.8, 0.35], [0.4, 0.9, 0.9], [1, 0.6, 0.85], [0.75, 0.75, 0.75]];
+  const boneCss = (i: number) => `rgb(${BONE_COLORS[i % BONE_COLORS.length]!.map((v) => Math.round(v * 255)).join(",")})`;
   function drawHandles() {
     clearHandles();
     if (!scene || !inEdit || !cube) return;
     const pts = worldVerts();
     const chosen = new Set(selVerts);
     const geometry = new THREE.BufferGeometry().setFromPoints(pts);
-    geometry.setAttribute("color", new THREE.Float32BufferAttribute(pts.flatMap((_, i) => (chosen.has(i) ? [1, 0.82, 0.4] : [0.9, 0.93, 1])), 3));
+    // a shape that bends with parts shows each point in the colour of the part that holds it most
+    const holder = cube.skin && cube.skin.weights.length === pts.length ? dominantBones(cube.skin) : null;
+    geometry.setAttribute("color", new THREE.Float32BufferAttribute(pts.flatMap((_, i) => (chosen.has(i) ? [1, 0.82, 0.4] : holder ? BONE_COLORS[holder[i]! % BONE_COLORS.length]! : [0.9, 0.93, 1])), 3));
     handles = new THREE.Points(geometry, new THREE.PointsMaterial({ size: 9, sizeAttenuation: false, vertexColors: true, depthTest: false }));
     handles.renderOrder = 10;
     scene.add(handles);
@@ -1597,7 +1602,7 @@
   <div class="editor3d" style:grid-template-columns={mode === "texture" ? "190px minmax(0, 1fr) 380px" : "190px minmax(0, 1fr) 230px"}>
     <aside class="outliner">
       <div class="adder">
-        <button onclick={() => newPart(selected?.parts ?? [])} title="New part inside the selected one">＋ Part</button>
+        <button onclick={() => newPart(selected?.parts ?? [])} title={selected ? `A new part inside "${partAt(doc, selected.parts)?.name ?? "the selected part"}"` : "A new part at the top level (select a part first to put it inside that one)"}>＋ Part{selected ? "" : " (top)"}</button>
         <div class="row">
           <select bind:value={newKind} aria-label="Kind of shape to add">
             <option value="box">Box</option>
@@ -1614,7 +1619,7 @@
       <ul>
         {#each rows as r (r.parts.join("."))}
           <li>
-            <button class="node" class:on={selected?.cube === undefined && samePath(selected, { parts: r.parts })} style:padding-left="{8 + r.depth * 14}px" onclick={() => choose({ parts: r.parts }, false)}>◈ {r.part.name}</button>
+            <button class="node" class:on={selected?.cube === undefined && samePath(selected, { parts: r.parts })} style:padding-left="{8 + r.depth * 14}px" onclick={() => choose({ parts: r.parts }, false)}>{r.depth ? "└ " : ""}◈ {r.part.name}</button>
             {#each r.part.cubes as c, ci (ci)}
               <button class="node cube" class:on={isPicked({ parts: r.parts, cube: ci })} style:padding-left="{22 + r.depth * 14}px" onclick={(e) => choose({ parts: r.parts, cube: ci }, e.shiftKey || e.ctrlKey || e.metaKey)}>
                 <i class="dot" class:round={c.shape === "sphere" || c.shape === "cylinder" || c.shape === "cone"} style:background={hexOf(c.color)}></i>{c.name || `${c.shape && c.shape !== "box" ? c.shape : "cube"} ${ci + 1}`}
@@ -1809,6 +1814,8 @@
           <h4>Bend with parts</h4>
           {#if cube.skin}
             <p class="dim small">Follows {cube.skin.bones.length} part{cube.skin.bones.length === 1 ? "" : "s"}. Pose them in Animate to see it bend.</p>
+            <ul class="bones">{#each cube.skin.bones as b, i (b)}<li><i class="dot" style:background={boneCss(i)}></i>{b.split("/").at(-1)}</li>{/each}</ul>
+            {#if inEdit}<p class="dim small">In point mode each point has the colour of the part that holds it most.</p>{/if}
             {#if inEdit && selVerts.length}
               <p class="dim small">{selVerts.length === 1 ? weightsOf(selVerts[0]!) : `${selVerts.length} points picked`}</p>
               <div class="pair">
@@ -1894,6 +1901,8 @@
   .outliner, .inspector { background: var(--panel); overflow: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
   .outliner { border-right: 1px solid var(--line); padding: 0; }
   .outliner ul { list-style: none; margin: 0; padding: 4px 0; overflow: auto; }
+  .bones { list-style: none; margin: 2px 0 4px; padding: 0; display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 11px; color: var(--dim); }
+  .bones li { display: flex; align-items: center; gap: 4px; }
   .node { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; background: transparent; border-color: transparent; border-radius: 0; padding: 2px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .node:hover { background: var(--panel-2); }
   .node.on { background: color-mix(in srgb, var(--accent) 22%, transparent); }

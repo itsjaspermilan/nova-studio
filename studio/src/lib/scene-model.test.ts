@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { History, eraseNear, placeObjects, scatterPoints, cameraOf, moveTo3, positionOf, setCamera, addItem, afterRemoval, boundsOf, drawOrder, duplicateItem, hitTest, moveTo, parseScene, removeItem, serializeScene, setField, snap, uniqueName, worldSize, type Scene } from "./scene-model";
+import { History, eraseNear, offRoad, placeObjects, scatterPoints, cameraOf, moveTo3, positionOf, setCamera, addItem, afterRemoval, boundsOf, drawOrder, duplicateItem, hitTest, moveTo, parseScene, removeItem, serializeScene, setField, snap, uniqueName, worldSize, type Scene } from "./scene-model";
 
 const text = `{
   "version": 1,
@@ -307,5 +307,17 @@ describe("erasing scenery", () => {
     const none = eraseNear(scene, [20, 20], 3, null);
     expect(none.removed).toBe(0);
     expect(none.scene).toBe(scene);
+  });
+});
+
+describe("keeping scenery off the road", () => {
+  const scene: Scene = { version: 1, objects: [{ kind: "road_asphalt", x: 0, y: 0, z: 0 }, { kind: "road_asphalt", x: 0, y: 0, z: 5 }, { kind: "pine", x: 50, y: 0 }] };
+  it("drops points close to a road piece and keeps the rest", () => {
+    expect(offRoad(scene, [[1, 1], [3, 8], [20, 0], [-9, 5], [0, 14]])).toEqual([[20, 0], [-9, 5], [0, 14]]);
+    expect(offRoad(scene, [[1, 1]], 0.5)).toEqual([[1, 1]]);
+  });
+  it("lets everything through when the scene has no road", () => {
+    const pts: [number, number][] = [[1, 1], [2, 2]];
+    expect(offRoad({ version: 1, objects: [{ kind: "pine", x: 0, y: 0 }] }, pts)).toBe(pts);
   });
 });
