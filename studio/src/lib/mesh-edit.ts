@@ -525,3 +525,30 @@ export function extrudeEdge(c: Cube, a: number, b: number, distance: number): { 
   polys.push({ v: [to, from, na, nb], ...(p.color ? { color: p.color } : {}) });
   return { cube: finish(out), points: [na, nb] };
 }
+
+/// Cuts a face in two along a straight line between two of its points (which must not already be neighbours): the knife.
+/// Returns null when no single face has both points with a gap between them.
+export function cutFace(c: Cube, a: number, b: number): Cube | null {
+  const out = clone(c);
+  const polys = out.polys ?? [];
+  for (let i = 0; i < polys.length; i++) {
+    const p = polys[i]!;
+    const [ia, ib] = [p.v.indexOf(a), p.v.indexOf(b)];
+    if (ia < 0 || ib < 0 || ia === ib) continue;
+    const n = p.v.length;
+    const gap = (ib - ia + n) % n;
+    if (gap === 1 || gap === n - 1) continue; // neighbours: nothing to cut
+    const walk = (from: number, to: number) => {
+      const out: number[] = [];
+      for (let k = from; ; k = (k + 1) % n) {
+        out.push(p.v[k]!);
+        if (k === to) break;
+      }
+      return out;
+    };
+    const keep = { ...(p.color ? { color: p.color } : {}), ...(p.smooth ? { smooth: true } : {}) };
+    polys.splice(i, 1, { v: walk(ia, ib), ...keep }, { v: walk(ib, ia), ...keep });
+    return finish(out);
+  }
+  return null;
+}

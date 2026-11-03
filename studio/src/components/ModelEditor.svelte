@@ -7,7 +7,7 @@
     FACES, History, SHAPES, addCube, addPart, afterRemoval, countCubes, cubeAt, duplicateNode, faceColor, newModel, parseModel, partAt, removeNode, samePath, serializeModel,
     setCube, setFaceColor, updateCube, updatePart, walk, namesOf, PROPS, MAX_SEGMENTS, MIN_SEGMENTS, DEFAULT_SEGMENTS, type Cube, type Face, type ModelDoc, type Path, type Prop, type Shape, type Vec3,
   } from "../lib/model-doc";
-  import { addFace, bevelEdge, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsSymmetric, setFaceColors, setSmooth, setVert, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
+  import { addFace, bevelEdge, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsSymmetric, setFaceColors, setSmooth, setVert, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
   import { hasVolume, meshOf, segmentsOf, shapeFaces } from "../lib/model-mesh";
   import { bakeAll, blockOf, faceRects, flippedRect, normRect, rectAt, enableTexture, fitPicture, packModel, resizeTexture, unwrap, uvsOf } from "../lib/model-uv";
   import { CLEAR, cloneRaster, drawEllipse, drawLine, drawRect, floodFill, getPixel, newRaster, parseHex, stamp, toHex, type Raster, type Rgba } from "../lib/pixels";
@@ -1369,6 +1369,14 @@
     change(next);
     if ((next.polys?.length ?? 0) > before) selFace = before;
   }
+  function knife() {
+    if (!cube || selVerts.length !== 2) return;
+    const next = cutFace(cube, selVerts[0]!, selVerts[1]!);
+    if (!next) return void studio.say("info", "The knife cuts a face between two of its points that are not next to each other. Pick two such points of one face.");
+    change(next);
+    selFace = null;
+    selEdge = null;
+  }
   function removeFacePicked() {
     if (cube && selFace !== null) change(deleteFaces(cube, [selFace]), true);
   }
@@ -1742,6 +1750,7 @@
           <label>Symmetry <select bind:value={symmetry} aria-label="Symmetry"><option value="off">Off</option><option value="0">Mirror left–right (x)</option><option value="1">Mirror up–down (y)</option><option value="2">Mirror front–back (z)</option></select></label>
           <div class="row">
             <button onclick={makeFace} disabled={selVerts.length < 3} title="Fills a face between the picked points">Make face</button>
+            <button onclick={knife} disabled={selVerts.length !== 2} title="Cuts a face in two along a line between the two picked points">Knife</button>
             <button class="danger" onclick={removePointsPicked} disabled={!selVerts.length}>Delete points</button>
           </div>
           {#if selEdge}

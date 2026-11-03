@@ -445,3 +445,42 @@ describe("edges", () => {
     expect(extrudeEdge(closed, ce.a, ce.b, 3)).toBeNull(); // not on an open boundary
   });
 });
+
+import { cutFace } from "./mesh-edit";
+
+describe("the knife", () => {
+  it("splits a four-sided face along its diagonal into two triangles, keeping the shape", () => {
+    const m = toMesh(box());
+    const up = upFace(m);
+    const [a, , c] = m.polys![up]!.v;
+    const r = cutFace(m, a!, c!)!;
+    expect(r.polys).toHaveLength(7);
+    expect(r.polys!.filter((f) => f.v.length === 3)).toHaveLength(2);
+    expect(vol(r)).toBeCloseTo(1000, 6);
+    expect(r.verts).toHaveLength(8);
+  });
+
+  it("splits a bigger face between any two points that are not neighbours, and keeps colour and smoothing", () => {
+    const m = toMesh(box());
+    const split = subdivide(m, [upFace(m)]); // the top is four quads; build a hexagon from points instead
+    expect(split.polys).toHaveLength(9);
+    const hex: Cube = { shape: "mesh", from: [0, 0, 0], size: [1, 1, 1], color: "#ffffff", verts: [[0, 0, 0], [2, 0, 0], [3, 0, 1], [2, 0, 2], [0, 0, 2], [-1, 0, 1]], polys: [{ v: [0, 1, 2, 3, 4, 5], color: "#ff0000", smooth: true }] };
+    const r = cutFace(hex, 0, 3)!;
+    expect(r.polys!.map((f) => f.v)).toEqual([[0, 1, 2, 3], [3, 4, 5, 0]]);
+    expect(r.polys!.every((f) => f.color === "#ff0000" && f.smooth === true)).toBe(true);
+  });
+
+  it("refuses neighbours, points of different faces, and unknown points", () => {
+    const m = toMesh(box());
+    const [a, b] = m.polys![upFace(m)]!.v;
+    expect(cutFace(m, a!, b!)).toBeNull();
+    expect(cutFace(m, 0, 0)).toBeNull();
+    expect(cutFace(m, 0, 99)).toBeNull();
+    // two corners of a box that share no face
+    const far = (() => {
+      for (let i = 0; i < 8; i++) for (let j = i + 1; j < 8; j++) if (!m.polys!.some((f) => f.v.includes(i) && f.v.includes(j))) return [i, j] as const;
+      return [0, 1] as const;
+    })();
+    expect(cutFace(m, far[0], far[1])).toBeNull();
+  });
+});
