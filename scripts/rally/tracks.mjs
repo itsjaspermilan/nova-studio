@@ -125,6 +125,11 @@ function layout(spec) {
       const side = k > 0 ? 1 : -1;
       objects.push(obj("sign_chevron", p.x + -p.tz * side * 8, p.z + p.tx * side * 8, p.ry + (k > 0 ? Math.PI : Math.PI)));
     }
+    // street lamps along the outer edge every 40 m, turned to face the road (the lamp's arm points along its +z)
+    if (spec.lamps && i % 8 === 3) {
+      const side = i % 16 === 3 ? 1 : -1, nx = -p.tz * side, nz = p.tx * side;
+      objects.push(obj("lamp", p.x + nx * 7.2, p.z + nz * 7.2, Math.atan2(-nx, -nz)));
+    }
     if (i % 17 === 5 && Math.abs(k) < 0.006) objects.push(obj("hay_bale", p.x + -p.tz * 9, p.z + p.tx * 9, p.ry));
   }
 
@@ -189,6 +194,12 @@ tracks.frost_pass = {
   control: [[0, -80], [0, 0], [0, 110], [-50, 190], [-140, 215], [-215, 165], [-205, 80], [-130, 40], [-105, -30], [-155, -105], [-135, -185], [-55, -225], [40, -195], [70, -125]],
   trees: ["pine_snow", "pine_snow", "pine_snow", "pine_dark"], small: ["bush_snow", "rock_ice", "bush_snow"], rock: "rock_ice", density: 0.55, rocks: 0.08,
   far: { kind: "pine_snow", density: 0.6 }, landmarks: { kind: "pine_snow", count: 0, radius: 0 },
+};
+tracks.harbour_lights = {
+  seed: 45, road: "road_asphalt", rail: "guardrail", sky: [12, 18, 34], lamps: true,
+  control: [[0, -80], [0, 0], [0, 130], [60, 215], [150, 245], [235, 215], [250, 130], [200, 70], [215, -10], [265, -80], [240, -165], [160, -215], [80, -195], [30, -160], [4, -120]],
+  trees: ["pine_dark", "pine_dark", "bush"], small: ["bush", "rock", "bush"], rock: "rock", density: 0.3, rocks: 0.05,
+  far: { kind: "pine_dark", density: 0.3 }, landmarks: { kind: "pine_dark", count: 0, radius: 0 },
 };
 await withServer(async (nova) => {
   for (const [name, spec] of Object.entries(tracks)) {

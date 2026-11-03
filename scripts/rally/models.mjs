@@ -215,6 +215,18 @@ const snowPine = () =>
 const snowBush = () =>
   model([part("bush", [0, 0, 0], [round("sphere", [-18, 0, -18], [36, 24, 36], "#dfe9f3", { segments: 6, smooth: false }), round("sphere", [-8, 8, -6], [24, 18, 22], "#f4f8fb", { segments: 6, smooth: false })])]);
 
+// ---- the night circuit ----------------------------------------------------------------------------------------------------
+// A street lamp: the arm reaches towards +z, which the layout turns to face the road. The game adds a point light at the head.
+const lamp = () =>
+  model([
+    part("lamp", [0, 0, 0], [
+      box([-1.5, 0, -1.5], [3, 96, 3], "#59616b", { name: "post" }),
+      box([-3, 0, -3], [6, 6, 6], "#3f464f", { name: "foot" }),
+      box([-1, 92, -1], [2, 2.5, 26], "#59616b", { name: "arm" }),
+      box([-4, 89, 20], [8, 3, 12], "#fff1b8", { name: "lamp head" }),
+    ]),
+  ]);
+
 const blob = () => model([part("shadow", [0, 0, 0], [round("cylinder", [-26, 2.6, -40], [52, 0.4, 80], "#00000055", { segments: 12 })])]);
 
 const spark = () => model([part("puff", [0, 0, 0], [round("sphere", [-8, 0, -8], [16, 12, 16], "#d9c7a3cc", { segments: 6, smooth: false })])]);
@@ -265,6 +277,9 @@ await withServer(async (nova) => {
     bush_snow: snowBush(),
     rock_ice: rock("#9fb4c9", "#bfd0e0"),
     road_snow: road("#555b64", "#f1f5f9", "#cbd5e1"),
+    ground_night: ground("#1e2a38"),
+    mountain_night: mountain("#222e44", "#4a5b78"),
+    lamp: lamp(),
     cloud: cloud(),
     shadow: blob(),
     dust: spark(),

@@ -109,6 +109,17 @@ const raceSnow = {
   ],
 };
 
+// a low, steady night drive: a pulsing bass under a slow, lonely lead (D minor)
+const raceNight = {
+  version: 1, bpm: 108, stepsPerBeat: 4, length: 128,
+  tracks: [
+    track("lead", "synth", "triangle", [[0, 62, 6], [8, 65, 4], [12, 69, 4], [16, 67, 8], [24, 65, 4], [28, 62, 4], [32, 60, 6], [40, 64, 4], [44, 67, 4], [48, 69, 12], [64, 62, 6], [72, 65, 4], [76, 69, 4], [80, 70, 8], [88, 69, 4], [92, 65, 4], [96, 67, 6], [104, 64, 4], [108, 60, 4], [112, 62, 14]].map(([s, p, l]) => ({ step: s, len: l, pitch: p, vel: 0.65 })), { volume: 0.3, attack: 0.03, release: 0.5, pan: 0.15 }),
+    track("bass", "synth", "saw", bassline([38, 38, 34, 36, 38, 38, 34, 31], [[0, 2], [4, 2], [8, 2], [12, 2]], 0.8), { volume: 0.38, sustain: 0.5 }),
+    track("pad", "synth", "triangle", pads([[50, 53, 57], [50, 53, 57], [46, 50, 53], [48, 52, 55], [50, 53, 57], [50, 53, 57], [46, 50, 53], [43, 47, 50]], 16, 0.3), { attack: 0.2, release: 0.6, volume: 0.3, pan: -0.2 }),
+    track("drums", "drums", "noise", drums(8, [["kick", [0, 4, 8, 12]], ["snare", [4, 12], 0.6], ["hat", [2, 6, 10, 14], 0.3]]), { volume: 0.5 }),
+  ],
+};
+
 // a short, bright fanfare for the results screen
 const results = {
   version: 1, bpm: 112, stepsPerBeat: 4, length: 64,
@@ -124,5 +135,5 @@ const results = {
 
 await withServer(async (nova) => {
   for (const [name, a] of Object.entries(sfx)) console.log(await nova.call("sfx_write", { name, ...a }));
-  for (const [name, song] of Object.entries({ menu, race_forest: raceForest, race_desert: raceDesert, race_snow: raceSnow, results })) console.log(await nova.call("song_write", { name, song }));
+  for (const [name, song] of Object.entries({ menu, race_forest: raceForest, race_desert: raceDesert, race_snow: raceSnow, race_night: raceNight, results })) console.log(await nova.call("song_write", { name, song }));
 });

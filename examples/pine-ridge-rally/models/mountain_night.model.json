@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "mountain",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "shape": "pyramid", "from": [-1500, 0, -1300], "size": [3000, 1500, 2600], "color": "#222e44" },
+        { "shape": "pyramid", "from": [-460, 1050, -400], "size": [920, 450, 800], "color": "#4a5b78" }
+      ],
+      "children": []
+    }
+  ]
+}

@@ -16,11 +16,11 @@ for i = 1, 7 do
 end
 local ground_opts = { scale = 1 }
 
--- `kind`: "forest" or "desert".
+-- `kind`: "forest", "desert", "snow" or "night".
 function horizon.draw(cx, cz, kind)
-  local ground = (kind == "desert" and "ground_sand") or (kind == "snow" and "ground_snow") or "ground_grass"
+  local ground = (kind == "desert" and "ground_sand") or (kind == "snow" and "ground_snow") or (kind == "night" and "ground_night") or "ground_grass"
   nova.model(ground, cx, 0, cz, ground_opts)
-  local peak = (kind == "desert" and "mountain_red") or (kind == "snow" and "mountain_ice") or "mountain"
+  local peak = (kind == "desert" and "mountain_red") or (kind == "snow" and "mountain_ice") or (kind == "night" and "mountain_night") or "mountain"
   for i = 1, RING do
     local m = mountains[i]
     m.opts.ry, m.opts.scale = m.turn, m.scale

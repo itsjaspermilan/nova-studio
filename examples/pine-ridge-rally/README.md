@@ -1,6 +1,6 @@
 # Pine Ridge Rally
 
-A 3D rally game for Nova: three circuits, three rivals, a chase camera, menus, music and sound. Play it with
+A 3D rally game for Nova: four circuits, three rivals, a chase camera, menus, music and sound. Play it with
 `nova run examples/pine-ridge-rally`, or open it in the studio (Examples in the project hub).
 
 **Modes:** a race against three rivals, or a time trial: alone on the circuit against a blue ghost of your best lap (kept in the save file).
@@ -18,7 +18,7 @@ Like any Nova project it is plain files, and most of them are what the studio's 
 | `models/` | 37 models made in the model editor's format: four cars (a body, and four wheels that spin, steer and ride the bumps on their own), pines, rocks, cacti, mesas, barriers, the start arch, road pieces, mountains. Each is a `.model.json` and the `.glb` the game loads. |
 | `sprites/` | Pixel sprites: the flag, the medals, the menu cursor. |
 | `sounds/`, `music/` | 14 sound effects (the sound editor's synth; the engine, gravel and tyre squeal are loops the game steers while they play with `nova.sound.set`) and five songs (the music editor's sequencer, streamed as Ogg): menu, a theme for each circuit, and the results fanfare. |
-| `scenes/` | `pine_ridge`, `dust_valley`, `frost_pass` (a circuit each), `title` and `results`: each is a layout (`.scene.json`: road pieces, scenery, waypoints, the start grid, a camera) and the code that runs it. |
+| `scenes/` | `pine_ridge`, `dust_valley`, `frost_pass`, `harbour_lights` (a circuit each), `title` and `results`: each is a layout (`.scene.json`: road pieces, scenery, waypoints, the start grid, a camera) and the code that runs it. |
 | `entities/` | One small file per kind of thing a layout can hold (`pine.lua`, `road_dirt.lua`, `waypoint.lua`...), and the cars. |
 | `lib/` | `race.lua` (countdown, laps, places, camera, HUD, pause), `track.lua`, `world.lua`, `ui.lua`, `audio.lua`, `state.lua` (options and best times, saved). |
 

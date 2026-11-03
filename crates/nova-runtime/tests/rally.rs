@@ -179,3 +179,18 @@ fn a_whole_race_on_frost_pass_ends_on_the_results_screen() {
         "nobody got stuck: {log:?}"
     );
 }
+
+#[test]
+fn a_whole_race_on_harbour_lights_ends_on_the_results_screen() {
+    let log = play(3, false);
+    assert!(log.iter().any(|l| l.starts_with("results:")), "{log:?}");
+    assert_eq!(
+        log.iter().filter(|l| l.starts_with("lap ")).count(),
+        3,
+        "{log:?}"
+    );
+    assert!(
+        !log.iter().any(|l| l.contains("put back on the road")),
+        "nobody got stuck: {log:?}"
+    );
+}

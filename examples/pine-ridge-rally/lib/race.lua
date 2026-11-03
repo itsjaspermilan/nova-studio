@@ -441,9 +441,41 @@ function race.define(config)
     end
   end
 
+  -- After dark the renderer has room for eight point lights a frame: two pools of light in front of the player, one
+  -- in front of each of the two nearest rivals, and whatever is left goes to the street lamps nearest the camera.
+  local HEADLIGHT = { color = { 255, 238, 190 }, radius = 22 }
+  local PLAYER_BEAM = { color = { 255, 238, 190 }, radius = 34 }
+  local LAMP = { color = { 255, 226, 150 }, radius = 26 }
+  local function headlights(car, far, opts)
+    local fx, fz = math.sin(car.heading), math.cos(car.heading)
+    nova.point_light(car.x + fx * far, 1.2, car.z + fz * far, opts)
+  end
+
+  function Race:night_lights(cam)
+    local p = self.player
+    headlights(p, 8, HEADLIGHT)
+    headlights(p, 20, PLAYER_BEAM)
+    local used = 2
+    local a, b, da, db
+    for _, car in ipairs(self.cars) do
+      if car ~= p then
+        local d = (car.x - p.x) ^ 2 + (car.z - p.z) ^ 2
+        if d < 60 * 60 then
+          if not a or d < da then b, db, a, da = a, da, car, d
+          elseif not b or d < db then b, db = car, d end
+        end
+      end
+    end
+    for _, car in ipairs({ a or false, b or false }) do
+      if car then headlights(car, 8, HEADLIGHT); used = used + 1 end
+    end
+    world.light_lamps(cam.x, cam.z, 70, 8 - used, LAMP)
+  end
+
   function Race:draw()
     local cam = self.camera
     nova.camera(cam.x, cam.y, cam.z, cam.tx, cam.ty, cam.tz, cam.fov)
+    if config.night then self:night_lights(cam) end
     horizon.draw(cam.x, cam.z, config.horizon)
     world.draw(cam.x, cam.z, LOOK_FAR)
     fx.draw()
