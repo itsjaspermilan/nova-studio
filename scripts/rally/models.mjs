@@ -13,33 +13,33 @@ const axle = (from, size, color, segments = 12) => round("cylinder", from, size,
 // The wheels are not part of the body: the body leans and bounces on its suspension while each wheel follows the road.
 function car({ paint, trim, stripe, glass = "#27384d", light = "#ffe9a8" }) {
   const wheel = (name, x, z) =>
-    part(name, [x, 5.5, z], [axle([-5.5, -3, -5.5], [11, 6, 11], "#1b1b1b"), axle([-3.5, -3.6, -3.5], [7, 7.2, 7], "#b9c0c8", 8)]);
+    part(name, [x, 5.5, z], [{ ...axle([-5.5, -3, -5.5], [11, 6, 11], "#1b1b1b"), name: "tyre" }, { ...axle([-3.5, -3.6, -3.5], [7, 7.2, 7], "#b9c0c8", 8), name: "hub" }]);
   return model([
     part("chassis", [0, 0, 0], [], [
     part(
       "body",
       [0, 0, 0],
       [
-        box([-15, 5, -34], [30, 8, 68], paint), // the tub
-        box([-13, 13, -20], [26, 3, 22], paint), // bonnet and boot shoulders
-        box([-12, 13, -14], [24, 7, 28], glass), // windows
-        box([-11, 20, -11], [22, 2, 22], paint), // roof
-        box([-3, 13.1, 4], [6, 0.4, 16], stripe), // bonnet stripe
-        box([-3, 22.1, -9], [6, 0.4, 18], stripe), // roof stripe
-        box([-14, 4, 33], [28, 3, 3], trim), // front splitter
-        box([-14, 5, -36], [28, 4, 2], trim), // rear bumper
-        box([-14, 19, -35], [28, 2, 8], trim), // wing
-        box([-10, 13, -32], [2, 6, 2], trim), // wing struts
-        box([8, 13, -32], [2, 6, 2], trim),
-        box([-12, 8, 34], [6, 3, 1], light), // headlights
-        box([6, 8, 34], [6, 3, 1], light),
-        box([-12, 8, -36.5], [6, 3, 1], "#e11d2e"), // tail lights
-        box([6, 8, -36.5], [6, 3, 1], "#e11d2e"),
-        box([-2, 21.5, 6], [4, 3, 6], trim), // roof vent
+        box([-15, 5, -34], [30, 8, 68], paint, { name: "tub" }), // the tub
+        box([-13, 13, -20], [26, 3, 22], paint, { name: "shoulders" }), // bonnet and boot shoulders
+        box([-12, 13, -14], [24, 7, 28], glass, { name: "windows" }), // windows
+        box([-11, 20, -11], [22, 2, 22], paint, { name: "roof" }), // roof
+        box([-3, 13.1, 4], [6, 0.4, 16], stripe, { name: "bonnet stripe" }), // bonnet stripe
+        box([-3, 22.1, -9], [6, 0.4, 18], stripe, { name: "roof stripe" }), // roof stripe
+        box([-14, 4, 33], [28, 3, 3], trim, { name: "front splitter" }), // front splitter
+        box([-14, 5, -36], [28, 4, 2], trim, { name: "rear bumper" }), // rear bumper
+        box([-14, 19, -35], [28, 2, 8], trim, { name: "wing" }), // wing
+        box([-10, 13, -32], [2, 6, 2], trim, { name: "wing strut right" }), // wing struts
+        box([8, 13, -32], [2, 6, 2], trim, { name: "wing strut left" }),
+        box([-12, 8, 34], [6, 3, 1], light, { name: "headlight right" }), // headlights
+        box([6, 8, 34], [6, 3, 1], light, { name: "headlight left" }),
+        box([-12, 8, -36.5], [6, 3, 1], "#e11d2e", { name: "tail light right" }), // tail lights
+        box([6, 8, -36.5], [6, 3, 1], "#e11d2e", { name: "tail light left" }),
+        box([-2, 21.5, 6], [4, 3, 6], trim, { name: "roof vent" }), // roof vent
         round("cylinder", [-13, 10, 24], [4, 2, 4], light, { rotation: [90, 0, 0], segments: 8 }), // rally lamps
         round("cylinder", [9, 10, 24], [4, 2, 4], light, { rotation: [90, 0, 0], segments: 8 }),
-        box([15, 8, -5], [0.6, 6, 6], "#f8fafc"), // door roundels
-        box([-15.6, 8, -5], [0.6, 6, 6], "#f8fafc"),
+        box([15, 8, -5], [0.6, 6, 6], "#f8fafc", { name: "roundel left" }), // door roundels
+        box([-15.6, 8, -5], [0.6, 6, 6], "#f8fafc", { name: "roundel right" }),
       ],
       [],
     ),
