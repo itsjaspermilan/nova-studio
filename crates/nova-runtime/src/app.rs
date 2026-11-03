@@ -194,6 +194,7 @@ pub fn run_headless(opts: Options) -> Result<(), String> {
             "off (headless)",
         );
         content.take_audio(); // no audio device here; keep the queue from growing
+        content.take_rumble(); // nor a gamepad
         let render_started = Instant::now();
         perf.stats = gfx.render(&view, size, &content.frame_input(opts.world_height));
         gfx.device
@@ -349,6 +350,9 @@ impl App {
             if let Some(out) = &self.audio {
                 out.send(command);
             }
+        }
+        for rumble in content.take_rumble() {
+            self.input.rumble(&rumble);
         }
 
         let surface = self.surface.as_ref().expect("surface checked above");

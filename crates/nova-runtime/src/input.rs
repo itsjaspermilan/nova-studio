@@ -40,6 +40,9 @@ pub struct Input {
     width: f32,
     #[cfg(not(target_os = "android"))]
     pad: Option<gilrs::Gilrs>,
+    /// Rumbles in progress; a force-feedback effect stops when it is dropped, so each is kept until its time is up.
+    #[cfg(not(target_os = "android"))]
+    rumbling: Vec<(std::time::Instant, gilrs::ff::Effect)>,
     previous_active: HashSet<String>,
     /// The source that most recently went down (for "press a key to bind" screens).
     pub last_new_source: Option<String>,
@@ -100,6 +103,38 @@ pub fn native_axis_sources(axes: &HashMap<u32, f32>) -> Vec<(String, f32)> {
     out
 }
 
+/// What one gamepad is doing, by Nova's button and axis names.
+#[derive(Default, Clone, Debug, PartialEq)]
+pub struct PadSnapshot {
+    pub buttons: Vec<&'static str>,
+    pub axes: Vec<(&'static str, f32)>,
+}
+
+/// Turns the connected pads (first plugged in first) into sources: `pad1:south`, `axis2:left_x` for each pad (up to
+/// `MAX_PADS`), and the combined `pad:south` (any pad holds it) and `axis:left_x` (the pad that moves it most) that a
+/// one-player game binds to.
+pub fn pads_to_sources(pads: &[PadSnapshot], out: &mut Sources) {
+    use crate::actions::{MAX_PADS, pad_kind};
+    for (i, snap) in pads.iter().enumerate() {
+        let player = (i + 1).min(MAX_PADS as usize + 1) as u8;
+        for name in &snap.buttons {
+            out.insert(format!("pad:{name}"), 1.0);
+            if player <= MAX_PADS {
+                out.insert(format!("{}:{name}", pad_kind("pad", player)), 1.0);
+            }
+        }
+        for (name, value) in &snap.axes {
+            let any = out.entry(format!("axis:{name}")).or_insert(0.0);
+            if value.abs() > any.abs() {
+                *any = *value;
+            }
+            if player <= MAX_PADS {
+                out.insert(format!("{}:{name}", pad_kind("axis", player)), *value);
+            }
+        }
+    }
+}
+
 /// Android `KeyEvent` codes for game controllers and the D-pad.
 fn native_pad_name(code: u32) -> Option<&'static str> {
     Some(match code {
@@ -132,6 +167,62 @@ impl Input {
                 .ok(),
             ..Default::default()
         }
+    }
+
+    /// Shakes the gamepad(s) a script asked for, when the platform can (gilrs force feedback: Linux and Windows pads that
+    /// support it; macOS and Android do nothing yet, and nothing is lost by asking).
+    pub fn rumble(&mut self, r: &crate::game::Rumble) {
+        #[cfg(not(target_os = "android"))]
+        {
+            use gilrs::ff::{BaseEffect, BaseEffectType, EffectBuilder, Replay, Ticks};
+            let now = std::time::Instant::now();
+            self.rumbling.retain(|(until, _)| *until > now);
+            let Some(pad) = self.pad.as_mut() else { return };
+            let mut connected: Vec<_> = pad
+                .gamepads()
+                .map(|(id, g)| (id, g.is_ff_supported()))
+                .collect();
+            connected.sort_by_key(|(id, _)| usize::from(*id));
+            let ids: Vec<_> = connected
+                .iter()
+                .enumerate()
+                .filter(|(i, (_, ff))| *ff && (r.pad == 0 || usize::from(r.pad) == i + 1))
+                .map(|(_, (id, _))| *id)
+                .collect();
+            if ids.is_empty() {
+                return;
+            }
+            let ms = (r.seconds * 1000.0) as u32;
+            let play = |magnitude: f32, kind: fn(u16) -> BaseEffectType| BaseEffect {
+                kind: kind((magnitude.clamp(0.0, 1.0) * f32::from(u16::MAX)) as u16),
+                scheduling: Replay {
+                    play_for: Ticks::from_ms(ms),
+                    with_delay: Ticks::from_ms(0),
+                    after: Ticks::from_ms(0),
+                },
+                envelope: Default::default(),
+            };
+            let mut builder = EffectBuilder::new();
+            if r.strong > 0.0 {
+                builder.add_effect(play(r.strong, |magnitude| BaseEffectType::Strong {
+                    magnitude,
+                }));
+            }
+            if r.weak > 0.0 {
+                builder.add_effect(play(r.weak, |magnitude| BaseEffectType::Weak { magnitude }));
+            }
+            match builder.gamepads(&ids).finish(pad) {
+                Ok(effect) => {
+                    if effect.play().is_ok() {
+                        let until = now + std::time::Duration::from_millis(u64::from(ms) + 100);
+                        self.rumbling.push((until, effect));
+                    }
+                }
+                Err(e) => log::debug!("rumble not played: {e}"),
+            }
+        }
+        #[cfg(target_os = "android")]
+        log::debug!("rumble is not wired up on Android yet: {r:?}");
     }
 
     /// True once after F3 is pressed.
@@ -231,42 +322,54 @@ impl Input {
         #[cfg(not(target_os = "android"))]
         if let Some(pad) = self.pad.as_mut() {
             while pad.next_event().is_some() {}
-            if let Some((_, gamepad)) = pad.gamepads().next() {
-                use gilrs::{Axis, Button};
-                const BUTTONS: [(Button, &str); 16] = [
-                    (Button::South, "south"),
-                    (Button::East, "east"),
-                    (Button::West, "west"),
-                    (Button::North, "north"),
-                    (Button::LeftTrigger, "l1"),
-                    (Button::RightTrigger, "r1"),
-                    (Button::LeftTrigger2, "l2"),
-                    (Button::RightTrigger2, "r2"),
-                    (Button::Start, "start"),
-                    (Button::Select, "select"),
-                    (Button::LeftThumb, "thumb_l"),
-                    (Button::RightThumb, "thumb_r"),
-                    (Button::DPadUp, "dpad_up"),
-                    (Button::DPadDown, "dpad_down"),
-                    (Button::DPadLeft, "dpad_left"),
-                    (Button::DPadRight, "dpad_right"),
-                ];
-                for (button, name) in BUTTONS {
-                    if gamepad.is_pressed(button) {
-                        s.insert(format!("pad:{name}"), 1.0);
+            use gilrs::{Axis, Button};
+            const BUTTONS: [(Button, &str); 16] = [
+                (Button::South, "south"),
+                (Button::East, "east"),
+                (Button::West, "west"),
+                (Button::North, "north"),
+                (Button::LeftTrigger, "l1"),
+                (Button::RightTrigger, "r1"),
+                (Button::LeftTrigger2, "l2"),
+                (Button::RightTrigger2, "r2"),
+                (Button::Start, "start"),
+                (Button::Select, "select"),
+                (Button::LeftThumb, "thumb_l"),
+                (Button::RightThumb, "thumb_r"),
+                (Button::DPadUp, "dpad_up"),
+                (Button::DPadDown, "dpad_down"),
+                (Button::DPadLeft, "dpad_left"),
+                (Button::DPadRight, "dpad_right"),
+            ];
+            // Every connected pad, in the order they were plugged in (gilrs ids count up).
+            let mut connected: Vec<_> = pad.gamepads().collect();
+            connected.sort_by_key(|(id, _)| usize::from(*id));
+            let snapshots: Vec<PadSnapshot> = connected
+                .iter()
+                .map(|(_, gamepad)| {
+                    let mut snap = PadSnapshot::default();
+                    for (button, name) in BUTTONS {
+                        if gamepad.is_pressed(button) {
+                            snap.buttons.push(name);
+                        }
                     }
-                }
-                // gilrs reports stick up as positive; Nova's axes are right and down positive.
-                s.insert("axis:left_x".into(), gamepad.value(Axis::LeftStickX));
-                s.insert("axis:left_y".into(), -gamepad.value(Axis::LeftStickY));
-                s.insert("axis:right_x".into(), gamepad.value(Axis::RightStickX));
-                s.insert("axis:right_y".into(), -gamepad.value(Axis::RightStickY));
-                for (button, name) in [(Button::LeftTrigger2, "l2"), (Button::RightTrigger2, "r2")]
-                {
-                    let v = gamepad.button_data(button).map_or(0.0, |d| d.value());
-                    s.insert(format!("axis:{name}"), v);
-                }
-            }
+                    // gilrs reports stick up as positive; Nova's axes are right and down positive.
+                    snap.axes = vec![
+                        ("left_x", gamepad.value(Axis::LeftStickX)),
+                        ("left_y", -gamepad.value(Axis::LeftStickY)),
+                        ("right_x", gamepad.value(Axis::RightStickX)),
+                        ("right_y", -gamepad.value(Axis::RightStickY)),
+                    ];
+                    for (button, name) in
+                        [(Button::LeftTrigger2, "l2"), (Button::RightTrigger2, "r2")]
+                    {
+                        let v = gamepad.button_data(button).map_or(0.0, |d| d.value());
+                        snap.axes.push((name, v));
+                    }
+                    snap
+                })
+                .collect();
+            pads_to_sources(&snapshots, &mut s);
         }
 
         let active: HashSet<String> = s
@@ -287,6 +390,49 @@ impl Input {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn several_pads_make_numbered_and_combined_sources() {
+        let first = PadSnapshot {
+            buttons: vec!["south"],
+            axes: vec![("left_x", -0.3), ("r2", 0.0)],
+        };
+        let second = PadSnapshot {
+            buttons: vec!["east"],
+            axes: vec![("left_x", 0.8), ("r2", 1.0)],
+        };
+        let mut s = Sources::new();
+        pads_to_sources(&[first, second], &mut s);
+        // numbered by the order plugged in
+        assert_eq!(s["pad1:south"], 1.0);
+        assert_eq!(s["pad2:east"], 1.0);
+        assert!(!s.contains_key("pad1:east") && !s.contains_key("pad2:south"));
+        assert_eq!(s["axis1:left_x"], -0.3);
+        assert_eq!(s["axis2:left_x"], 0.8);
+        // combined: any pad holds a button; the stick moved furthest wins
+        assert_eq!(s["pad:south"], 1.0);
+        assert_eq!(s["pad:east"], 1.0);
+        assert_eq!(s["axis:left_x"], 0.8);
+        assert_eq!(s["axis:r2"], 1.0);
+        // no pad: nothing
+        let mut none = Sources::new();
+        pads_to_sources(&[], &mut none);
+        assert!(none.is_empty());
+    }
+
+    #[test]
+    fn a_fifth_pad_still_counts_for_any_pad_but_has_no_number() {
+        let pads: Vec<PadSnapshot> = (0..5)
+            .map(|i| PadSnapshot {
+                buttons: if i == 4 { vec!["start"] } else { vec![] },
+                axes: vec![],
+            })
+            .collect();
+        let mut s = Sources::new();
+        pads_to_sources(&pads, &mut s);
+        assert_eq!(s["pad:start"], 1.0);
+        assert!(s.keys().all(|k| !k.starts_with("pad5")));
+    }
 
     #[test]
     fn android_native_codes_map_to_gamepad_buttons() {

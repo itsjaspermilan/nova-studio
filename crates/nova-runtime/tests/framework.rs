@@ -1680,3 +1680,37 @@ fn shadows_turn_on_and_off_and_explain_a_mistake() {
         assert!(e.contains(expected), "{script}: '{e}'");
     }
 }
+
+#[test]
+fn rumble_is_queued_for_the_host_and_mistakes_are_explained() {
+    let g = project(vec![(
+        "main.lua",
+        lua(
+            "nova.input.rumble(0.5, 0.3)\nnova.input.rumble { strong = 1, weak = 0.25, seconds = 0.4, pad = 2 }\nnova.input.rumble { strength = 0.6 }\nnova.input.rumble(1, 99)",
+        ),
+    )]);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let r = g.take_rumble();
+    assert_eq!(r.len(), 4);
+    assert_eq!(
+        (r[0].pad, r[0].strong, r[0].weak, r[0].seconds),
+        (0, 0.5, 0.5, 0.3)
+    );
+    assert_eq!(
+        (r[1].pad, r[1].strong, r[1].weak, r[1].seconds),
+        (2, 1.0, 0.25, 0.4)
+    );
+    assert_eq!((r[2].strong, r[2].weak, r[2].seconds), (0.6, 0.6, 0.2));
+    assert_eq!(r[3].seconds, 5.0, "a long rumble is cut short");
+    assert!(g.take_rumble().is_empty(), "taken once");
+    for (script, expected) in [
+        ("nova.input.rumble(2)", "from 0 to 1"),
+        ("nova.input.rumble(0.5, 0)", "greater than 0"),
+        ("nova.input.rumble { pad = 9 }", "pad must be"),
+        ("nova.input.rumble('hard')", "takes a strength"),
+    ] {
+        let g = project(vec![("main.lua", lua(script))]);
+        let e = g.error.clone().unwrap_or_default();
+        assert!(e.contains(expected), "{script}: '{e}'");
+    }
+}

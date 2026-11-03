@@ -400,7 +400,10 @@ function race.define(config)
         end
       end
       if car.hit then
-        if car.is_player then audio.sfx("bump", { volume = car.hit }) end
+        if car.is_player then
+          audio.sfx("bump", { volume = car.hit })
+          if state.vibration then nova.input.rumble { strong = math.min(1, car.hit * 1.2), weak = math.min(1, car.hit), seconds = 0.12 + 0.2 * car.hit } end
+        end
         car.hit = nil
       end
     end

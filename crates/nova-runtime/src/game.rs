@@ -86,6 +86,7 @@ struct Shared {
     /// Seconds into that track as last reported by the audio thread.
     music_position: Option<f64>,
     audio: Vec<mixer::Command>,
+    rumble: Vec<Rumble>,
     next_sound: u64,
     save: SaveStore,
     mesh_ids: HashMap<String, usize>,
@@ -106,6 +107,17 @@ struct Shared {
     camera: Camera,
     clear: [f64; 4],
     log: Vec<String>,
+}
+
+/// A request from a script to shake a gamepad (`nova.input.rumble`); the host passes it on where it can.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Rumble {
+    /// The pad to shake, 1 up to `actions::MAX_PADS`; 0 shakes them all.
+    pub pad: u8,
+    /// The big (low) motor and the small (high) one, 0 to 1.
+    pub strong: f32,
+    pub weak: f32,
+    pub seconds: f32,
 }
 
 /// A model part as the game draws it: its place in the tree and the GPU mesh key of its triangles.
@@ -1076,6 +1088,56 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             Ok(())
         })?,
     )?;
+    // rumble(strength, seconds) or rumble { strong, weak, seconds, pad }: shake a gamepad for a moment.
+    let s = shared.clone();
+    input.set(
+        "rumble",
+        lua.create_function(move |_, (a, b): (Value, Option<f64>)| {
+            let (strong, weak, seconds, pad) = match a {
+                Value::Table(t) => {
+                    let o = Some(t);
+                    let strong = number_option(&o, "strong")?;
+                    let weak = number_option(&o, "weak")?;
+                    let both = number_option(&o, "strength")?;
+                    (
+                        strong.or(both).unwrap_or(0.0),
+                        weak.or(both).unwrap_or(0.0),
+                        number_option(&o, "seconds")?.unwrap_or(0.2),
+                        number_option(&o, "pad")?.unwrap_or(0.0),
+                    )
+                }
+                Value::Number(n) => (n, n, b.unwrap_or(0.2), 0.0),
+                Value::Integer(n) => (n as f64, n as f64, b.unwrap_or(0.2), 0.0),
+                _ => {
+                    return Err(lua_err(
+                        "nova.input.rumble(strength, seconds) takes a strength from 0 to 1, or a table like { strong = 1, weak = 0.3, seconds = 0.4, pad = 1 }",
+                    ))
+                }
+            };
+            for (name, v) in [("strong", strong), ("weak", weak)] {
+                if !v.is_finite() || !(0.0..=1.0).contains(&v) {
+                    return Err(lua_err(format!("rumble {name} must be from 0 to 1, not {v}")));
+                }
+            }
+            if !seconds.is_finite() || seconds <= 0.0 {
+                return Err(lua_err(format!("rumble seconds must be greater than 0, not {seconds}")));
+            }
+            if pad.fract() != 0.0 || !(0.0..=f64::from(actions::MAX_PADS)).contains(&pad) {
+                return Err(lua_err(format!(
+                    "rumble pad must be a whole number from 1 to {} (or 0 for all pads), not {pad}",
+                    actions::MAX_PADS
+                )));
+            }
+            // a long rumble is cut short: a stuck motor is no fun
+            s.borrow_mut().rumble.push(Rumble {
+                pad: pad as u8,
+                strong: strong as f32,
+                weak: weak as f32,
+                seconds: seconds.min(5.0) as f32,
+            });
+            Ok(())
+        })?,
+    )?;
     // last_source(): the input id (such as "key:KeyZ") that was most recently pressed, for
     // "press a button to bind it" screens; nil until something is pressed.
     let s = shared.clone();
@@ -1735,6 +1797,7 @@ impl Game {
             current_music: None,
             music_position: None,
             audio: Vec::new(),
+            rumble: Vec::new(),
             next_sound: 1,
             save: store,
             mesh_ids: HashMap::new(),
@@ -1870,6 +1933,11 @@ impl Game {
 
     pub fn take_audio(&self) -> Vec<mixer::Command> {
         std::mem::take(&mut self.shared.borrow_mut().audio)
+    }
+
+    /// Gamepad rumbles that scripts asked for since the last call.
+    pub fn take_rumble(&self) -> Vec<Rumble> {
+        std::mem::take(&mut self.shared.borrow_mut().rumble)
     }
 
     /// Physical pixels per logical unit of the screen the game is drawn on (text is rasterised at

@@ -7,9 +7,10 @@
 //!
 //! Source ids:
 //! - `key:<Name>`: a keyboard key by its W3C-style name (`KeyA`, `Digit1`, `ArrowLeft`, `Space`, `Enter`, `F5`...)
-//! - `pad:<button>`: `south`, `east`, `west`, `north` (the A, B, X, Y positions), `l1`, `r1`, `l2`,
+//! - `pad:<button>`: held on any gamepad; `pad2:<button>` (up to `pad4`) only on the second pad (in the order they were
+//!   plugged in; `pad1:` is the first). The buttons are `south`, `east`, `west`, `north` (the A, B, X, Y positions), `l1`, `r1`, `l2`,
 //!   `r2`, `start`, `select`, `thumb_l`, `thumb_r`, `dpad_up`, `dpad_down`, `dpad_left`, `dpad_right`
-//! - `axis:<name>`: `left_x`, `left_y`, `right_x`, `right_y` (right and down are positive) and the triggers
+//! - `axis:<name>`: (`axis2:<name>` for the second pad, and so on; plain `axis:` follows whichever pad moves it most) `left_x`, `left_y`, `right_x`, `right_y` (right and down are positive) and the triggers
 //!   `l2`, `r2` (0 to 1); a trailing `+` or `-` takes only that direction (`axis:left_x-`)
 //! - `touch:<zone>`: `left` or `right` (a finger held on that half of the screen), `drag_x`, `drag_y`
 //!   (how far a finger on the left half has been dragged, -1 to 1)
@@ -93,6 +94,33 @@ const PAD_BUTTONS: [&str; 16] = [
 const AXES: [&str; 6] = ["left_x", "left_y", "right_x", "right_y", "l2", "r2"];
 const TOUCH_ZONES: [&str; 4] = ["left", "right", "drag_x", "drag_y"];
 
+/// How many gamepads can be told apart.
+pub const MAX_PADS: u8 = 4;
+
+/// `pad` for any pad, `pad2` for the second.
+pub fn pad_kind(kind: &str, player: u8) -> String {
+    if player == 0 {
+        kind.to_string()
+    } else {
+        format!("{kind}{player}")
+    }
+}
+
+/// Splits `pad2` into (`pad`, 2); a kind without a number is player 0 (any pad). Only `pad` and `axis` take a number.
+fn split_player(kind: &str) -> Result<(&str, u8), String> {
+    for base in ["pad", "axis"] {
+        if let Some(n) = kind.strip_prefix(base).filter(|n| !n.is_empty()) {
+            return match n.parse::<u8>() {
+                Ok(p) if (1..=MAX_PADS).contains(&p) => Ok((base, p)),
+                _ => Err(format!(
+                    "'{kind}:' is not a gamepad number; use {base}1: to {base}{MAX_PADS}: (or {base}: for any pad)"
+                )),
+            };
+        }
+    }
+    Ok((kind, 0))
+}
+
 fn is_key_name(name: &str) -> bool {
     let letters = name
         .strip_prefix("Key")
@@ -156,9 +184,14 @@ fn is_key_name(name: &str) -> bool {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Source {
     Key(String),
-    Pad(String),
+    /// `player` 0 is any pad; 1 to `MAX_PADS` only that one.
+    Pad {
+        player: u8,
+        name: String,
+    },
     /// `sign` 0 takes the direction the binding's list implies; +1 or -1 forces one.
     Axis {
+        player: u8,
         name: String,
         sign: i8,
     },
@@ -170,12 +203,17 @@ impl Source {
         let (kind, name) = text.split_once(':').ok_or_else(|| {
             format!("'{text}' is not an input source; write it like key:Space, pad:south, axis:left_x or touch:right")
         })?;
+        // `pad2:south`, `axis3:left_x`: a number after the kind picks one gamepad
+        let (kind, player) = split_player(kind)?;
         match kind {
             "key" if is_key_name(name) => Ok(Source::Key(name.to_string())),
             "key" => Err(format!(
                 "'{name}' is not a key name; use names like KeyA, Digit1, ArrowLeft, Space, Enter, ShiftLeft, F5"
             )),
-            "pad" if PAD_BUTTONS.contains(&name) => Ok(Source::Pad(name.to_string())),
+            "pad" if PAD_BUTTONS.contains(&name) => Ok(Source::Pad {
+                player,
+                name: name.to_string(),
+            }),
             "pad" => Err(format!(
                 "'{name}' is not a gamepad button; the buttons are {}",
                 PAD_BUTTONS.join(", ")
@@ -190,6 +228,7 @@ impl Source {
                 };
                 if AXES.contains(&base) {
                     Ok(Source::Axis {
+                        player,
                         name: base.to_string(),
                         sign,
                     })
@@ -200,7 +239,9 @@ impl Source {
                     ))
                 }
             }
-            "touch" if TOUCH_ZONES.contains(&name) => Ok(Source::Touch(name.to_string())),
+            "touch" if TOUCH_ZONES.contains(&name) && player == 0 => {
+                Ok(Source::Touch(name.to_string()))
+            }
             "touch" => Err(format!(
                 "'{name}' is not a touch zone; use {}",
                 TOUCH_ZONES.join(", ")
@@ -214,9 +255,10 @@ impl Source {
     pub fn id(&self) -> String {
         match self {
             Source::Key(n) => format!("key:{n}"),
-            Source::Pad(n) => format!("pad:{n}"),
-            Source::Axis { name, sign } => format!(
-                "axis:{name}{}",
+            Source::Pad { player, name } => format!("{}:{name}", pad_kind("pad", *player)),
+            Source::Axis { player, name, sign } => format!(
+                "{}:{name}{}",
+                pad_kind("axis", *player),
                 match sign {
                     1 => "+",
                     -1 => "-",
@@ -231,14 +273,14 @@ impl Source {
     fn strength(&self, sources: &Sources, direction: i8) -> f32 {
         let get = |id: &str| sources.get(id).copied().unwrap_or(0.0);
         match self {
-            Source::Key(_) | Source::Pad(_) => get(&self.id()).clamp(0.0, 1.0),
+            Source::Key(_) | Source::Pad { .. } => get(&self.id()).clamp(0.0, 1.0),
             Source::Touch(n) if n == "drag_x" || n == "drag_y" => {
                 let v = get(&self.id());
                 (v * direction as f32).clamp(0.0, 1.0)
             }
             Source::Touch(_) => get(&self.id()).clamp(0.0, 1.0),
-            Source::Axis { name, sign } => {
-                let raw = get(&format!("axis:{name}"));
+            Source::Axis { player, name, sign } => {
+                let raw = get(&format!("{}:{name}", pad_kind("axis", *player)));
                 let dir = if *sign != 0 { *sign } else { direction };
                 let v = (raw * dir as f32).clamp(0.0, 1.0);
                 if v < DEADZONE {
@@ -606,7 +648,13 @@ mod tests {
         ] {
             assert_eq!(Source::parse(ok).unwrap().id(), ok);
         }
+        for ok in ["pad2:south", "pad4:dpad_up", "axis2:left_x", "axis3:r2+"] {
+            assert_eq!(Source::parse(ok).unwrap().id(), ok, "a numbered pad");
+        }
         let cases: &[(&str, &str)] = &[
+            ("pad5:south", "not a gamepad number"),
+            ("pad0:south", "not a gamepad number"),
+            ("axis9:left_x", "not a gamepad number"),
             ("Space", "not an input source"),
             ("key:space", "not a key name"),
             ("key:F13", "not a key name"),
@@ -808,5 +856,44 @@ mod tests {
         assert_eq!(b.get("a").unwrap().value(&held(&[("pad:south", 1.0)])), 0.0);
         assert!(b.set("Bad Name", Binding::Button(vec![])).is_err());
         assert_eq!(b.get("a").unwrap().source_ids(), ["key:KeyM"]);
+    }
+}
+
+#[cfg(test)]
+mod pad_tests {
+    use super::*;
+
+    fn held(list: &[(&str, f32)]) -> Sources {
+        list.iter().map(|(k, v)| (k.to_string(), *v)).collect()
+    }
+
+    #[test]
+    fn a_numbered_pad_drives_only_its_own_binding() {
+        let second = Binding::Button(vec![Source::parse("pad2:south").unwrap()]);
+        let any = Binding::Button(vec![Source::parse("pad:south").unwrap()]);
+        // the second pad's A: both "any pad" and "pad 2" see it
+        let s = held(&[("pad:south", 1.0), ("pad2:south", 1.0)]);
+        assert_eq!(second.value(&s), 1.0);
+        assert_eq!(any.value(&s), 1.0);
+        // the first pad's A: "any pad" sees it, "pad 2" does not
+        let s = held(&[("pad:south", 1.0), ("pad1:south", 1.0)]);
+        assert_eq!(second.value(&s), 0.0);
+        assert_eq!(any.value(&s), 1.0);
+    }
+
+    #[test]
+    fn a_numbered_stick_is_read_from_its_own_axis() {
+        let steer = Binding::Axis {
+            negative: vec![Source::parse("axis2:left_x").unwrap()],
+            positive: vec![Source::parse("axis2:left_x").unwrap()],
+        };
+        let s = held(&[("axis:left_x", 1.0), ("axis1:left_x", 1.0)]);
+        assert_eq!(
+            steer.value(&s),
+            0.0,
+            "the first pad's stick does not steer player two"
+        );
+        let s = held(&[("axis:left_x", 1.0), ("axis2:left_x", 1.0)]);
+        assert!(steer.value(&s) > 0.9);
     }
 }

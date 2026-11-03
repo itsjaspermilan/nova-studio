@@ -175,6 +175,14 @@ impl Content {
         }
     }
 
+    /// Gamepad rumbles queued by scripts this frame (none for the benchmark scene).
+    pub fn take_rumble(&mut self) -> Vec<crate::game::Rumble> {
+        match self {
+            Content::Game { game, .. } => game.take_rumble(),
+            Content::Spike(_) => Vec::new(),
+        }
+    }
+
     pub fn plays_sound_effects(&self) -> bool {
         matches!(self, Content::Game { .. })
     }

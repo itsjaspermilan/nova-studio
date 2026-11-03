@@ -243,6 +243,7 @@ inputs drive which action.
 | `nova.input.bind(name, spec)` | Rebind at run time (see below); `nova.input.reset_bindings()` undoes it. |
 | `nova.input.bindings(name)` | The sources an action uses (a list, or `{ negative, positive }` for axes). |
 | `nova.input.last_source()` | The most recently pressed source id (`"key:KeyZ"`), for "press a button to bind it" screens. |
+| `nova.input.rumble(strength, seconds)` | Shake a gamepad (`nova.input.rumble{ strong, weak, seconds, pad }` for the two motors and one pad). Pads that cannot rumble ignore it. |
 | `nova.time()` | Seconds since the game started. |
 | `nova.log(text)` | Write to the log. |
 
@@ -274,7 +275,10 @@ name is added:
 **Sources** are `key:<Name>` (a keyboard key: `KeyA`, `Digit1`, `ArrowLeft`, `Space`, `Enter`,
 `ShiftLeft`, `F5`...), `pad:<button>` (`south east west north l1 r1 l2 r2 start select thumb_l thumb_r
 dpad_up dpad_down dpad_left dpad_right`), `axis:<name>` (`left_x left_y right_x right_y l2 r2`; add `+`
-or `-` to take only one direction) and `touch:<zone>` (`left`, `right`, `drag_x`, `drag_y`). Analogue
+or `-` to take only one direction) and `touch:<zone>` (`left`, `right`, `drag_x`, `drag_y`). **Several gamepads:** `pad:south` is held on any pad and `axis:left_x` follows the stick that moves most, which is what a
+one-player game wants; `pad2:south` and `axis2:left_x` (up to `pad4`/`axis4`) are only the second pad, counting in the
+order the pads were plugged in (`pad1:` is the first), for a game with several players. Numbered pads work on desktop;
+Android reports every controller as one pad for now. Analogue
 sources have a 20% dead zone. A mistake in `nova.json` stops the project from loading and names the
 exact place, for example `nova.json.input.fire[0]: 'Nope' is not a key name`. At run time,
 `nova.input.bind("jump", { "key:KeyM", "pad:east" })` changes an action for the rest of the run; save
