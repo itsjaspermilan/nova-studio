@@ -18,9 +18,11 @@
     onmove,
     onready,
     placing = null,
+    erasing = false,
     brushRadius = 0,
     brushCount = 1,
     onplace = () => {},
+    onerase = () => {},
     onstop = () => {},
   }: {
     scene: Scene;
@@ -39,6 +41,9 @@
     brushCount?: number;
     /// Called with the ground points [x, z] to add; `first` is true for the first of a stroke (one undo step per stroke).
     onplace?: (points: [number, number][], first: boolean) => void;
+    /// The brush as an eraser: take away what stands within the brush at this ground point.
+    erasing?: boolean;
+    onerase?: (at: [number, number], first: boolean) => void;
     onstop?: () => void;
   } = $props();
 
@@ -245,7 +250,7 @@
   let down: { x: number; y: number } | null = null;
   function pointerdown(e: PointerEvent) {
     down = { x: e.clientX, y: e.clientY };
-    if (placing && e.button === 0) {
+    if ((placing || erasing) && e.button === 0) {
       stroke = { last: null, first: true };
       paint(e);
     }
@@ -266,22 +271,24 @@
   }
 
   function paint(e: PointerEvent) {
-    if (!placing || !stroke) return;
+    if (!(placing || erasing) || !stroke) return;
     const at = groundAt(e);
     if (!at) return;
     // along a stroke a new batch goes down each time the pointer has moved about half a brush (or a metre, for a stamp)
     const spacing = Math.max(1, brushRadius * 0.6);
     if (stroke.last && Math.hypot(at[0] - stroke.last[0], at[1] - stroke.last[1]) < spacing) return;
     stroke.last = at;
-    onplace(scatterPoints(at, brushRadius, brushCount, Math.random), stroke.first);
+    if (erasing) onerase(at, stroke.first);
+    else onplace(scatterPoints(at, brushRadius, brushCount, Math.random), stroke.first);
     stroke.first = false;
   }
 
   function pointermove(e: PointerEvent) {
-    if (!placing) {
+    if (!placing && !erasing) {
       ring.visible = false;
       return;
     }
+    (ring.material as THREE.MeshBasicMaterial).color.set(erasing ? 0xef4444 : 0xffd166);
     const at = groundAt(e);
     ring.visible = !!at;
     if (at) {
@@ -293,7 +300,7 @@
   }
 
   function keydown(e: KeyboardEvent) {
-    if (e.key === "Escape" && placing) onstop();
+    if (e.key === "Escape" && (placing || erasing)) onstop();
   }
   function pointerup(e: PointerEvent) {
     const start = down;
@@ -328,7 +335,7 @@
   });
   // while an object is being placed the left button paints; the right button and the wheel still move the view
   $effect(() => {
-    const on = !!placing;
+    const on = !!placing || erasing;
     if (controls) controls.mouseButtons.LEFT = on ? (null as unknown as THREE.MOUSE) : THREE.MOUSE.ROTATE;
     if (!on) ring.visible = false;
     if (on) gizmo?.detach();

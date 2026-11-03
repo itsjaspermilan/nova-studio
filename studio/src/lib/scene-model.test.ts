@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { History, placeObjects, scatterPoints, cameraOf, moveTo3, positionOf, setCamera, addItem, afterRemoval, boundsOf, drawOrder, duplicateItem, hitTest, moveTo, parseScene, removeItem, serializeScene, setField, snap, uniqueName, worldSize, type Scene } from "./scene-model";
+import { History, eraseNear, placeObjects, scatterPoints, cameraOf, moveTo3, positionOf, setCamera, addItem, afterRemoval, boundsOf, drawOrder, duplicateItem, hitTest, moveTo, parseScene, removeItem, serializeScene, setField, snap, uniqueName, worldSize, type Scene } from "./scene-model";
 
 const text = `{
   "version": 1,
@@ -289,5 +289,23 @@ describe("placing scenery", () => {
     const plain = placeObjects(base, "pine", [[1, 1]], Math.random, false);
     expect(plain.scene.objects![1]).toEqual({ kind: "pine", x: 1, y: 0, z: 1 });
     expect(placeObjects(base, "pine", [[NaN, 1]], Math.random).indexes).toEqual([]);
+  });
+});
+
+describe("erasing scenery", () => {
+  const scene: Scene = { version: 1, objects: [{ kind: "pine", x: 0, y: 0, z: 0 }, { kind: "pine", x: 3, y: 0, z: 4 }, { kind: "rock", x: 1, y: 0, z: 1 }, { kind: "pine", x: 50, y: 0 }] };
+  it("takes the objects within the brush, of the kinds asked for", () => {
+    const all = eraseNear(scene, [0, 0], 6, null);
+    expect(all.removed).toBe(3);
+    expect(all.scene.objects!.map((o) => o.kind)).toEqual(["pine"]);
+    const pines = eraseNear(scene, [0, 0], 6, new Set(["pine"]));
+    expect(pines.scene.objects!.map((o) => o.kind)).toEqual(["rock", "pine"]);
+    expect(scene.objects).toHaveLength(4); // the original is untouched
+  });
+  it("picks off one object with a click (a radius of at least a metre) and changes nothing when nothing is near", () => {
+    expect(eraseNear(scene, [-0.4, -0.2], 0, null).removed).toBe(1);
+    const none = eraseNear(scene, [20, 20], 3, null);
+    expect(none.removed).toBe(0);
+    expect(none.scene).toBe(scene);
   });
 });

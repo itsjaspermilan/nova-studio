@@ -4,7 +4,7 @@
     History, addItem, afterRemoval, boundsOf, drawOrder, duplicateItem, hitTest, itemAt, moveTo, parseScene, removeItem, sameRef,
     serializeScene, setField, setSceneField, snap, uniqueName, worldSize, type Item, type ItemKind, type Ref, type Scene, type Sizes,
     addTilemap, cellAt, fillTiles, mapSize, paintTile, parsePropValue, propsOf, removeTilemap, renameProp, resizeTilemap, setProp, showPropValue,
-    tilemapBox, tilemaps, toggleSolid, EMPTY_TILE, type Kinds, cameraOf, moveTo3, setCamera, positionOf, placeObjects, type Camera3,
+    tilemapBox, tilemaps, toggleSolid, EMPTY_TILE, type Kinds, cameraOf, moveTo3, setCamera, positionOf, placeObjects, eraseNear, type Camera3,
   } from "../lib/scene-model";
   import Scene3D from "./Scene3D.svelte";
   import { parseModel, type ModelDoc } from "../lib/model-doc";
@@ -40,8 +40,20 @@
   let brushRadius = $state(0);
   let brushCount = $state(3);
   let vary = $state(true);
+  let erasing = $state(false);
+  let onlyKind = $state(true);
+  function eraseAt(at: [number, number], first: boolean) {
+    const kinds = onlyKind && placing ? new Set([placing]) : null;
+    const r = eraseNear(scene, at, brushRadius, kinds);
+    if (!r.removed) return;
+    selected = null;
+    commit(r.scene, !first);
+  }
   $effect(() => {
-    if (view !== "3d") placing = null;
+    if (view !== "3d") {
+      placing = null;
+      erasing = false;
+    }
   });
   function placeAt(points: [number, number][], first: boolean) {
     if (!placing) return;
@@ -591,10 +603,12 @@
           <label>Brush radius <input type="range" min="0" max="40" step="1" bind:value={brushRadius} /><span class="dim small">{brushRadius === 0 ? "one at a time" : `${brushRadius} m`}</span></label>
           {#if brushRadius > 0}<label>Objects per dab <input type="range" min="1" max="12" step="1" bind:value={brushCount} /><span class="dim small">{brushCount}</span></label>{/if}
           <label class="check"><input type="checkbox" bind:checked={vary} /> Vary turn and size</label>
+          <div class="row"><button class:on={erasing} onclick={() => ((erasing = !erasing), erasing && (selected = null))} title="Click or drag on the ground to take objects away">Eraser</button></div>
+          {#if erasing}<label class="check"><input type="checkbox" bind:checked={onlyKind} disabled={!placing} /> Only {placing ?? "the picked kind"}</label>{/if}
         </div>
       {/if}
       {#each entities as e (e)}
-        <button class="item" class:on={view === "3d" && placing === e} onclick={() => (view === "3d" ? (placing = placing === e ? null : e, selected = null) : addObject(e))} title={view === "3d" ? "Click the ground to put one down; drag to paint with the brush" : ""}>{e}</button>
+        <button class="item" class:on={view === "3d" && placing === e} onclick={() => (view === "3d" ? (placing = placing === e ? null : e, erasing = false, selected = null) : addObject(e))} title={view === "3d" ? "Click the ground to put one down; drag to paint with the brush" : ""}>{e}</button>
       {:else}
         <p class="dim small">Make a file in <code>entities/</code> and it shows up here.</p>
       {/each}
@@ -660,10 +674,12 @@
           onmove={(r, p) => edit(moveTo3(scene, r, p))}
           onready={(v) => (view3 = v)}
           {placing}
+          {erasing}
+          onerase={eraseAt}
           {brushRadius}
           brushCount={brushRadius > 0 ? brushCount : 1}
           onplace={placeAt}
-          onstop={() => (placing = null)}
+          onstop={() => ((placing = null), (erasing = false))}
         />
         <p class="hint dim">Click an object to select it · drag the arrows to move it · drag to orbit, right-drag to pan, scroll to zoom · the box with lines is the game's camera</p>
       {:else}

@@ -493,3 +493,19 @@ export function placeObjects(scene: Scene, kind: string, points: [number, number
   }
   return { scene: next, indexes };
 }
+
+/// Removes the objects standing within `radius` of the ground point (x, z) (at least 1 m, so a click can pick off one).
+/// `kinds` limits it to those kinds; null takes anything. Returns the new scene and how many went.
+export function eraseNear(scene: Scene, at: [number, number], radius: number, kinds: ReadonlySet<string> | null): { scene: Scene; removed: number } {
+  const reach = Math.max(1, radius);
+  const keep = (scene.objects ?? []).filter((o) => {
+    if (kinds && !kinds.has(String(o.kind))) return true;
+    const [x, , z] = positionOf(o);
+    return Math.hypot(x - at[0], z - at[1]) > reach;
+  });
+  const removed = (scene.objects ?? []).length - keep.length;
+  if (!removed) return { scene, removed: 0 };
+  const next = clone(scene);
+  next.objects = keep.map((o) => ({ ...o }));
+  return { scene: next, removed };
+}
