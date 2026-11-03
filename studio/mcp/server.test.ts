@@ -62,6 +62,25 @@ describe("the Nova MCP server", () => {
     expect(glb.toString("latin1")).toContain("JOINTS_0");
   });
 
+  it("keeps an activity log the studio can show: one line per call, the files written, errors too", () => {
+    const logFile = join(dir, ".nova/activity.jsonl");
+    use("model_write", { name: "log_crate", model: crate });
+    expect(() => use("model_write", { name: "log_bad", model: { version: 1, parts: "nope" } })).toThrow();
+    const lines = readFileSync(logFile, "utf8").trim().split("\n").map((l) => JSON.parse(l));
+    const ok = lines.find((l) => l.tool === "model_write" && l.files.includes("models/log_crate.glb"));
+    expect(ok).toMatchObject({ tool: "model_write", files: ["models/log_crate.model.json", "models/log_crate.glb"] });
+    expect(typeof ok.t).toBe("number");
+    expect(ok.note).toContain("models/log_crate.model.json");
+    expect(ok.error).toBeUndefined();
+    const bad = lines.at(-1);
+    expect(bad).toMatchObject({ tool: "model_write", files: [], error: true });
+    expect(bad.note).toMatch(/not valid/);
+    // the log never lists itself, and it is kept short
+    expect(lines.every((l) => !l.files.includes(".nova/activity.jsonl"))).toBe(true);
+    for (let i = 0; i < 450; i++) use("project_info");
+    expect(readFileSync(logFile, "utf8").trim().split("\n").length).toBeLessThanOrEqual(400);
+  });
+
   it("writes a sound effect and a song", () => {
     use("sfx_write", { name: "beep", preset: "coin", params: { freq: 600 } });
     expect(readFileSync(join(dir, "sounds/beep.wav")).subarray(0, 4).toString()).toBe("RIFF");

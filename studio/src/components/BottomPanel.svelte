@@ -2,6 +2,15 @@
   import { tick } from "svelte";
   import { summary } from "../lib/diagnostics";
   import { studio } from "../lib/store.svelte";
+  import { ago, toolWords } from "../lib/activity";
+
+  // "5 s ago" moves on by itself
+  let now = $state(Date.now());
+  $effect(() => {
+    const id = setInterval(() => (now = Date.now()), 5000);
+    return () => clearInterval(id);
+  });
+  const unseen = $derived(studio.activity.filter((a) => a.t > studio.activitySeen).length);
 
   let logBox: HTMLDivElement | undefined = $state();
   const label = (n: number | null) => (n ? `line ${n}` : "");
@@ -20,8 +29,13 @@
     <button role="tab" aria-selected={studio.panel === "play"} class:on={studio.panel === "play"} onclick={() => (studio.panel = "play")}>
       Play {#if studio.running}<span class="live">●</span>{/if}
     </button>
+    <button role="tab" aria-selected={studio.panel === "activity"} class:on={studio.panel === "activity"} onclick={() => ((studio.panel = "activity"), studio.markActivitySeen())} title="What an assistant using the Nova MCP server has done to this project">
+      Activity {#if unseen > 0 && studio.panel !== "activity"}<span class="badge new">{unseen}</span>{/if}
+    </button>
     <span class="spacer"></span>
-    {#if studio.panel === "problems"}
+    {#if studio.panel === "activity"}
+      <span class="dim">{studio.activity.length ? `${studio.activity.length} recent` : ""}</span>
+    {:else if studio.panel === "problems"}
       <span class="dim">{studio.checking ? "Checking…" : summary(studio.diagnostics)}</span>
       <button class="ghost" onclick={() => studio.check()} disabled={studio.checking}>Check now</button>
     {:else}
@@ -51,6 +65,21 @@
         <li class="empty dim">{studio.checkedAt ? "The project runs for a few frames without problems." : "Checking the project…"}</li>
       {/each}
     </ul>
+  {:else if studio.panel === "activity"}
+    <ul class="list activity">
+      {#each studio.activity as a (a.t + a.tool + a.note)}
+        <li class="act" class:bad={a.error}>
+          <span class="when dim">{ago(a.t, now)}</span>
+          <span class="what">{toolWords(a.tool)}</span>{#if a.error}<span class="failed">failed</span>{/if}
+          <span class="note dim">{a.note}</span>
+          {#each a.files as f (f)}
+            <button class="ghost file mono" onclick={() => studio.openFile(f)} title="Open {f}">{f}</button>
+          {/each}
+        </li>
+      {:else}
+        <li class="empty dim">Nothing yet. When an assistant uses the Nova MCP server on this project (see docs/mcp.md), what it does shows up here as it happens.</li>
+      {/each}
+    </ul>
   {:else}
     <div class="log mono" bind:this={logBox}>
       {#each studio.log as l, i (i)}
@@ -71,6 +100,15 @@
   .badge { background: var(--warn); color: #111; border-radius: 8px; padding: 0 6px; font-size: 11px; margin-left: 4px; }
   .badge.err { background: var(--error); }
   .live { color: var(--ok); margin-left: 4px; }
+  .badge.new { background: var(--accent); color: #fff; }
+  .act { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 3px 8px; border-radius: 4px; }
+  .act:hover { background: var(--panel-2); }
+  .act .when { width: 70px; font-size: 11px; flex: none; }
+  .act .what { font-weight: 600; }
+  .act .note { font-size: 12px; min-width: 0; flex: 1 1 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .act.bad .what { color: var(--error); }
+  .act .failed { color: var(--error); font-size: 11px; border: 1px solid var(--error); border-radius: 8px; padding: 0 6px; }
+  .act .file { padding: 0 6px; font-size: 11px; border: 1px solid var(--line); }
   .list { list-style: none; margin: 0; padding: 4px; overflow: auto; flex: 1; }
   .problem { width: 100%; display: flex; align-items: baseline; gap: 8px; text-align: left; background: transparent; border-color: transparent; }
   .problem:hover:not(:disabled) { background: var(--panel-2); }

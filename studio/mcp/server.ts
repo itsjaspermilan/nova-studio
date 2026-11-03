@@ -47,11 +47,36 @@ function inside(root: string, rel: string): string {
   return full;
 }
 
+/// The files the tool call in progress has written (for the activity log).
+let written: string[] = [];
+
 function put(root: string, rel: string, data: string | Uint8Array): string {
   const full = inside(root, rel);
   mkdirSync(dirname(full), { recursive: true });
   writeFileSync(full, data);
+  if (!written.includes(rel)) written.push(rel);
   return rel;
+}
+
+const ACTIVITY = ".nova/activity.jsonl";
+const ACTIVITY_KEEP = 200;
+
+/// One line per tool call in `<project>/.nova/activity.jsonl`: when, which tool, the files it wrote and the first line of what it said.
+/// The studio's Activity panel shows it, so a person can watch an assistant work. It keeps the newest 200 calls.
+function logActivity(args: Args, tool: string, note: string, error: boolean) {
+  try {
+    const root = projectRoot(args);
+    if (!existsSync(root)) return;
+    const full = inside(root, ACTIVITY);
+    mkdirSync(dirname(full), { recursive: true });
+    const entry = { t: Date.now(), tool, files: written.filter((f) => f !== ACTIVITY), note: note.split("\n")[0]!.slice(0, 200), ...(error ? { error: true } : {}) };
+    let lines: string[] = existsSync(full) ? readFileSync(full, "utf8").split("\n").filter(Boolean) : [];
+    lines.push(JSON.stringify(entry));
+    if (lines.length > ACTIVITY_KEEP * 2) lines = lines.slice(-ACTIVITY_KEEP);
+    writeFileSync(full, `${lines.join("\n")}\n`);
+  } catch {
+    // keeping a log must never stop a tool from working
+  }
 }
 
 const safeName = (name: unknown, what: string): string => {
@@ -359,7 +384,15 @@ function call(name: string, args: Args) {
   const t = tools.find((x) => x.name === name);
   if (!t) throw new Error(`unknown tool '${name}'`);
   for (const key of t.required ?? []) if (args[key] === undefined) throw new Error(`'${key}' is required`);
-  const r = t.handler(args);
+  written = [];
+  let r: Result;
+  try {
+    r = t.handler(args);
+  } catch (e) {
+    logActivity(args, name, e instanceof Error ? e.message : String(e), true);
+    throw e;
+  }
+  logActivity(args, name, typeof r === "string" ? r : r.text, false);
   const content: unknown[] = [{ type: "text", text: typeof r === "string" ? r : r.text }];
   if (typeof r !== "string") for (const file of r.images ?? []) content.push({ type: "image", data: readFileSync(file).toString("base64"), mimeType: "image/png" });
   return { content };

@@ -26,3 +26,11 @@ the real protocol (`--list` shows them), which is how this repository's own game
 | `check`, `screenshot` | the Problems panel's check, and a headless picture of the running game (with `press` taps such as `key:Enter@30` to get past menus) |
 
 Every tool takes a `project` folder (or uses `NOVA_PROJECT`). Tool failures come back as readable text with `isError`.
+
+## Watching it work
+
+Every tool call adds a line to `<project>/.nova/activity.jsonl` (when, which tool, the files it wrote, the first line of its
+answer, and whether it failed); the newest 200 are kept. The studio shows them in the bottom panel's **Activity** tab, checking
+every few seconds and when the window gets focus: the tab shows a count of what is new, each row says what was done in words, and
+the file names open in the editors. `.nova/` is a hidden folder, so the log does not show in the resource tree.
+

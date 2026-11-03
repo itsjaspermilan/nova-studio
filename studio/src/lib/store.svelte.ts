@@ -13,6 +13,7 @@ import { moved, planRename } from "./refs";
 import { renamePlan, resolveFrom, type Resource } from "./resources";
 import { byFile } from "./diagnostics";
 import { projectSymbols, type ProjectSymbols } from "./completions";
+import { ACTIVITY_FILE, parseActivity, type Activity } from "./activity";
 import type { Api, Diagnostic, ExampleInfo, ExportReport, FileEntry, LogLine, ProjectInfo, RecentProject, TemplateInfo } from "./types";
 
 export interface Tab {
@@ -29,7 +30,7 @@ export interface Tab {
 
 export const isDirty = (t: Tab) => t.text !== t.saved || !!t.pending;
 
-export type Panel = "problems" | "play";
+export type Panel = "problems" | "play" | "activity";
 
 const MAX_LOG = 2000;
 
@@ -140,6 +141,10 @@ class Studio {
     this.checkedAt = null;
     this.log = [];
     this.panel = "problems";
+    // what happened before the project was opened is history, not news
+    this.activity = [];
+    this.activitySeen = 0;
+    void this.refreshActivity().then(() => this.markActivitySeen());
     await this.refreshFiles();
     for (const first of ["main.lua", "nova.json"]) {
       if (this.files.some((f) => f.path === first)) {
@@ -191,6 +196,30 @@ class Studio {
       this.running = false;
       this.recents = await this.api!.recentProjects();
     });
+  }
+
+  /// What the Nova MCP server has done to this project lately (newest first), read from `.nova/activity.jsonl`.
+  activity: Activity[] = $state([]);
+  /// The time of the newest call the person has looked at, so the tab can show that something new happened.
+  activitySeen = $state(0);
+
+  /// Reads the activity log again (cheap; the studio asks every few seconds while a project is open). With the panel showing,
+  /// everything counts as seen.
+  async refreshActivity() {
+    if (!this.api || !this.project) return;
+    let text: string | null = null;
+    try {
+      text = (await this.api.readFile(ACTIVITY_FILE)).text;
+    } catch {
+      // no log yet: nobody has used the server on this project
+    }
+    const next = parseActivity(text);
+    if (next.length !== this.activity.length || next[0]?.t !== this.activity[0]?.t) this.activity = next;
+    if (this.panel === "activity" && this.panelOpen) this.markActivitySeen();
+  }
+
+  markActivitySeen() {
+    this.activitySeen = this.activity[0]?.t ?? this.activitySeen;
   }
 
   async refreshFiles() {

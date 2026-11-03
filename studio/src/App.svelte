@@ -27,10 +27,16 @@
         void (studio.running ? studio.stop() : studio.play());
       }
     };
-    const refocus = () => void studio.checkExternal();
+    const refocus = () => {
+      void studio.checkExternal();
+      void studio.refreshActivity();
+    };
+    // an assistant working through the MCP server writes files and a log; look for new entries every few seconds
+    const watch = setInterval(() => void studio.refreshActivity(), 3000);
     window.addEventListener("keydown", keys);
     window.addEventListener("focus", refocus);
     return () => {
+      clearInterval(watch);
       window.removeEventListener("keydown", keys);
       window.removeEventListener("focus", refocus);
     };
