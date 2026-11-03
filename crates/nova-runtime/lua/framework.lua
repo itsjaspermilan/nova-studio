@@ -966,6 +966,8 @@ function Scene:tween(props, seconds, easing, on_done) return timers.tween(self, 
 local function build_scene(scene, data, file)
   if data.background then W.background = data.background end
   if data.width and data.height then nova.cam.limit(0, 0, data.width, data.height) end
+  local cam = data.camera
+  if cam then nova.camera(cam.eye[1], cam.eye[2], cam.eye[3], cam.target[1], cam.target[2], cam.target[3], cam.fov) end
   local function named(item, e)
     local name = item.name
     if not name then return end

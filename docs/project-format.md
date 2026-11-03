@@ -326,6 +326,7 @@ Data only: loading it never runs code. Defaults are shown; unknown keys are erro
   "version": 1,
   "background": [92, 150, 214],
   "width": 2000, "height": 540,
+  "camera": { "eye": [0, 6, 12], "target": [0, 1, 0], "fov": 60 },
   "objects": [ { "kind": "player", "name": "hero", "x": 480, "y": 440, "z": 0, "props": { "hp": 5 } } ],
   "images":  [ { "image": "sprites/star.png", "x": 24, "y": 24, "scale": 1, "depth": 0, "layer": "ui", "color": [255, 255, 255, 255] } ],
   "texts":   [ { "text": "SCORE", "name": "label", "x": 8, "y": 8, "scale": 2, "depth": -10, "color": [255, 255, 255] } ]
@@ -334,7 +335,10 @@ Data only: loading it never runs code. Defaults are shown; unknown keys are erro
 
 `objects` spawn `entities/<kind>.lua` with `props` as field values. `images` are pictures
 (`"layer"`: `"world"`, the default, or `"ui"`). `texts` are UI text. `width` and `height` set the
-camera's limits. **A `name` becomes a field of the scene** (`self.hero`); names must be unique,
+camera's limits. `camera` (optional) is the 3D camera the scene starts with, the same as calling
+`nova.camera(eye, target, fov)` when the scene is built; each part is optional (eye `[0, 5, 10]`, target
+`[0, 0, 0]`, `fov` 60, allowed 10 to 150). In a 3D scene an object's `x` goes across, `y` up and `z` towards the
+viewer, and the props `ry`, `rx`, `rz` (radians) and `sx` (size) turn and scale a model entity. **A `name` becomes a field of the scene** (`self.hero`); names must be unique,
 start with a letter and not collide with the scene's own methods. Errors are reported with the file
 and the exact place, for example `scenes/play.scene.json.objects[2]: missing "kind"`.
 

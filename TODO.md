@@ -397,8 +397,12 @@ First slice, built (`SpriteEditor.svelte`, pure logic in `pixels.ts` and `sprite
 - [ ] Still open: painting with layers or alpha cut-outs, texture tiling, live symmetry editing, copy/paste of keys, lights/materials, a "preview in game renderer" button.
 - [ ] (original plan) Model editor: parts hierarchy, cubes then vertex/face editing, per-face UV
   and texture paint, materials, keyframed rigid-bone animation, glTF export.
-- [ ] 3D scene/layout editor: place models, transform gizmos with snapping and
-  undo, camera/lighting, separate editor camera.
+- [x] 3D scene view (2026-11-03): the scene editor has a 2D/3D switch. 3D shows each object whose entity says `model = "name"` (read from
+  `models/<name>.model.json`, rest pose, vertex colours) and a wire box for the others; click to select, drag the arrows to move (snapped), orbit
+  camera, a Z field, and a "Game camera" panel (eye, target, field of view, "Use this view") backed by the new scene key `camera`, which the
+  runtime applies when the scene is built (`tests/models3d.rs`). Turn and size are the props `ry`/`sx`, edited as properties.
+  [ ] Not yet: rotate and scale gizmos, textured or animated models in the view, lights in the scene file, ground or terrain pieces, a
+  view through the game camera, 3D objects in the 2D canvas (they show as boxes at x, y).
 - [ ] Editor viewport matches the runtime look; add "preview in game renderer".
 - [ ] Round-trip tests: authored model to glTF to runtime.
 

@@ -10,6 +10,7 @@
 //!   "version": 1,
 //!   "background": [130, 178, 232],
 //!   "width": 1200, "height": 540,
+//!   "camera":   { "eye": [0, 6, 12], "target": [0, 1, 0], "fov": 60 },
 //!   "objects":  [ { "kind": "player", "name": "hero", "x": 40, "y": 200, "props": { "hp": 3 } } ],
 //!   "images":   [ { "image": "sprites/cloud.png", "x": 100, "y": 40, "scale": 2, "depth": 50 } ],
 //!   "texts":    [ { "text": "HELLO", "x": 8, "y": 8, "scale": 3, "color": [255, 255, 255] } ],
@@ -121,6 +122,42 @@ fn color(v: Option<&Value>, at: &str) -> Result<Option<Value>, String> {
     Ok(Some(Value::Array(out)))
 }
 
+/// The 3D camera a scene starts with: `{ "eye": [x, y, z], "target": [x, y, z], "fov": degrees }`, all optional.
+fn camera(v: &Value, at: &str) -> Result<Value, String> {
+    let o = v.as_object().ok_or_else(|| {
+        err(
+            at,
+            "\"camera\" must be an object like {\"eye\": [0, 5, 10], \"target\": [0, 0, 0]}",
+        )
+    })?;
+    check_keys(o, at, &["eye", "target", "fov"])?;
+    let mut out = Map::new();
+    for (key, default) in [("eye", [0.0, 5.0, 10.0]), ("target", [0.0, 0.0, 0.0])] {
+        let mut point = default;
+        if let Some(p) = o.get(key) {
+            let list = p.as_array().filter(|a| a.len() == 3).ok_or_else(|| {
+                err(
+                    &format!("{at}.{key}"),
+                    format!("\"{key}\" must be [x, y, z]"),
+                )
+            })?;
+            for (i, n) in list.iter().enumerate() {
+                point[i] = number(n, &format!("{at}.{key}[{i}]"), "a coordinate")?;
+            }
+        }
+        out.insert(key.into(), Value::Array(point.map(num).to_vec()));
+    }
+    let fov = optional_number(o, "fov", at, 60.0)?;
+    if !(10.0..=150.0).contains(&fov) {
+        return Err(err(
+            &format!("{at}.fov"),
+            "\"fov\" is the vertical field of view in degrees, 10 to 150",
+        ));
+    }
+    out.insert("fov".into(), num(fov));
+    Ok(Value::Object(out))
+}
+
 fn num(n: f64) -> Value {
     Value::Number(Number::from_f64(n).expect("finite"))
 }
@@ -165,6 +202,7 @@ pub fn parse_scene(text: &str, file: &str) -> Result<Value, String> {
             "background",
             "width",
             "height",
+            "camera",
             "objects",
             "images",
             "texts",
@@ -188,6 +226,10 @@ pub fn parse_scene(text: &str, file: &str) -> Result<Value, String> {
             }
             out.insert(key.into(), num(n));
         }
+    }
+
+    if let Some(c) = root.get("camera") {
+        out.insert("camera".into(), camera(c, &format!("{file}.camera"))?);
     }
 
     let list = |key: &str| -> Result<Vec<&Value>, String> {
@@ -538,6 +580,27 @@ mod tests {
                 "tilemap {body}: expected '{expected}' in '{e}'"
             );
         }
+    }
+
+    #[test]
+    fn a_camera_is_validated_and_filled_in() {
+        let v = parse(r#"{"version":1,"camera":{"eye":[1,2,3],"fov":45}}"#).unwrap();
+        assert_eq!(v["camera"]["eye"], serde_json::json!([1.0, 2.0, 3.0]));
+        assert_eq!(v["camera"]["target"], serde_json::json!([0.0, 0.0, 0.0]));
+        assert_eq!(v["camera"]["fov"].as_f64(), Some(45.0));
+        assert!(parse(r#"{"version":1,"camera":{}}"#).is_ok());
+        for (body, expected) in [
+            (r#"{"eye":[1,2]}"#, "camera.eye"),
+            (r#"{"eye":[1,"a",3]}"#, "camera.eye[1]"),
+            (r#"{"fov":3}"#, "camera.fov"),
+            (r#"{"up":1}"#, "up"),
+        ] {
+            let e = parse(&format!(r#"{{"version":1,"camera":{body}}}"#))
+                .err()
+                .unwrap_or_default();
+            assert!(e.contains(expected), "{body}: '{e}'");
+        }
+        assert!(parse(r#"{"version":1,"camera":[1]}"#).is_err());
     }
 
     #[test]

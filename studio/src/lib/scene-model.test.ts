@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { History, addItem, afterRemoval, boundsOf, drawOrder, duplicateItem, hitTest, moveTo, parseScene, removeItem, serializeScene, setField, snap, uniqueName, worldSize, type Scene } from "./scene-model";
+import { History, cameraOf, moveTo3, positionOf, setCamera, addItem, afterRemoval, boundsOf, drawOrder, duplicateItem, hitTest, moveTo, parseScene, removeItem, serializeScene, setField, snap, uniqueName, worldSize, type Scene } from "./scene-model";
 
 const text = `{
   "version": 1,
@@ -245,5 +245,26 @@ describe("objects with a known sprite", () => {
     const s = scene();
     expect(hitTest(s, 480, 420, sizes, kinds)).toEqual({ kind: "objects", index: 0 }); // above the origin: inside the pivoted sprite
     expect(hitTest(s, 480, 420, sizes)).toEqual({ kind: "images", index: 1 }); // without the sprite size only the background is there
+  });
+});
+
+describe("3D scenes", () => {
+  const base = (): Scene => ({ version: 1, objects: [{ kind: "car", x: 1, y: 2 }] });
+  it("have a camera with the runtime's defaults, set whole and removable", () => {
+    expect(cameraOf(base())).toEqual({ eye: [0, 6, 12], target: [0, 0, 0], fov: 60 });
+    const s = setCamera(base(), { eye: [1, 2, 3], target: [4, 5, 6], fov: 200 });
+    expect(s.camera).toEqual({ eye: [1, 2, 3], target: [4, 5, 6], fov: 150 });
+    expect(cameraOf(s).eye).toEqual([1, 2, 3]);
+    expect(serializeScene(s).indexOf('"camera"')).toBeLessThan(serializeScene(s).indexOf('"objects"'));
+    expect(setCamera(s, undefined).camera).toBeUndefined();
+    expect(cameraOf({ version: 1, camera: { eye: [1, "a", 3], fov: 3 } as never })).toEqual(cameraOf(base()));
+  });
+  it("move objects in three directions, keeping z out of the file while it is zero", () => {
+    const ref = { kind: "objects" as const, index: 0 };
+    const moved = moveTo3(base(), ref, [5, 6, -7]);
+    expect(positionOf(moved.objects![0]!)).toEqual([5, 6, -7]);
+    expect(moveTo3(moved, ref, [5, 6, 0]).objects![0]).toEqual({ kind: "car", x: 5, y: 6 });
+    expect(moveTo3(base(), ref, [NaN, 0, 0])).toEqual(base());
+    expect(base().objects![0]!.x).toBe(1); // the original is untouched
   });
 });

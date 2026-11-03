@@ -64,7 +64,7 @@ export function parseScene(text: string): Parsed {
 }
 
 /// Key order the runtime docs use, so saved files stay tidy and diff well.
-const KEY_ORDER = ["version", "background", "width", "height", "objects", "images", "texts", "tilemaps", "kind", "image", "text", "name", "x", "y", "z", "scale", "depth", "layer", "color", "props"];
+const KEY_ORDER = ["version", "background", "width", "height", "camera", "objects", "images", "texts", "tilemaps", "kind", "image", "text", "name", "x", "y", "z", "scale", "depth", "layer", "color", "props"];
 
 const isPrimitive = (v: unknown) => v === null || typeof v !== "object";
 const inline = (v: unknown): string => (Array.isArray(v) ? `[${v.map(inline).join(", ")}]` : JSON.stringify(v));
@@ -172,6 +172,39 @@ export function setField(scene: Scene, ref: Ref, key: string, value: unknown): S
   if (!item) return scene;
   if (value === undefined || value === "" || value === null) delete item[key];
   else item[key] = value;
+  return next;
+}
+
+/// The 3D camera a scene starts with (the runtime's defaults when the scene says nothing).
+export interface Camera3 {
+  eye: [number, number, number];
+  target: [number, number, number];
+  fov: number;
+}
+export const DEFAULT_CAMERA3: Camera3 = { eye: [0, 6, 12], target: [0, 0, 0], fov: 60 };
+export const cameraOf = (scene: Scene): Camera3 => {
+  const c = scene.camera as Partial<Camera3> | undefined;
+  const point = (p: unknown, fallback: [number, number, number]): [number, number, number] =>
+    Array.isArray(p) && p.length === 3 && p.every((n) => typeof n === "number" && Number.isFinite(n)) ? [p[0], p[1], p[2]] : fallback;
+  return { eye: point(c?.eye, DEFAULT_CAMERA3.eye), target: point(c?.target, DEFAULT_CAMERA3.target), fov: typeof c?.fov === "number" && c.fov >= 10 && c.fov <= 150 ? c.fov : DEFAULT_CAMERA3.fov };
+};
+/// Gives the scene a 3D camera (or, with undefined, none).
+export function setCamera(scene: Scene, camera: Camera3 | undefined): Scene {
+  const next = clone(scene);
+  if (!camera) delete next.camera;
+  else next.camera = { eye: [...camera.eye], target: [...camera.target], fov: Math.min(150, Math.max(10, camera.fov)) };
+  return next;
+}
+
+/// Where an object stands in 3D: x across, y up, z towards the viewer.
+export const positionOf = (item: Item): [number, number, number] => [item.x, item.y, typeof item.z === "number" ? item.z : 0];
+export function moveTo3(scene: Scene, ref: Ref, p: [number, number, number]): Scene {
+  const next = clone(scene);
+  const item = itemAt(next, ref);
+  if (!item || !p.every(Number.isFinite)) return scene;
+  [item.x, item.y] = [p[0], p[1]];
+  if (p[2] === 0) delete item.z;
+  else item.z = p[2];
   return next;
 }
 

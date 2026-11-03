@@ -4,6 +4,8 @@
 
 export interface EntityLook {
   sprite?: string;
+  /// A 3D model: `models/<name>.glb`, drawn in the scene's 3D view.
+  model?: string;
   pivot?: [number, number];
   screen?: boolean;
 }
@@ -41,6 +43,8 @@ export function parseEntitySource(source: string): { look: EntityLook; parent?: 
   const look: EntityLook = {};
   const sprite = /\bsprite\s*=\s*["']([^"']+)["']/.exec(topLevel(found.spec));
   if (sprite) look.sprite = sprite[1];
+  const model = /\bmodel\s*=\s*["']([^"']+)["']/.exec(topLevel(found.spec));
+  if (model) look.model = model[1];
   const pivot = /\bpivot\s*=\s*\{\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\}/.exec(found.spec);
   if (pivot) look.pivot = [Number(pivot[1]), Number(pivot[2])];
   const screen = /\bscreen\s*=\s*(true|false)/.exec(topLevel(found.spec));

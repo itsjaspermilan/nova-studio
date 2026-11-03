@@ -22,6 +22,18 @@ describe("parseEntitySource", () => {
   });
 });
 
+describe("models", () => {
+  it("are read like sprites, and a child can change them", async () => {
+    expect(parseEntitySource(`return nova.entity { model = "car", tags = { model = "no" } }`)?.look).toEqual({ model: "car" });
+    const files: Record<string, string> = {
+      "entities/vehicle.lua": `return nova.entity { model = "car" }`,
+      "entities/truck.lua": `return nova.entity(require("entities.vehicle"), { hp = 9 })`,
+    };
+    const read = async (p: string) => files[p] ?? null;
+    expect(await resolveEntity("truck", read)).toEqual({ model: "car" });
+  });
+});
+
 describe("resolveEntity", () => {
   const files: Record<string, string> = {
     "entities/enemy.lua": `return nova.entity { sprite = "grub", pivot = { 0.5, 1 } }`,

@@ -4,8 +4,10 @@
     History, addItem, afterRemoval, boundsOf, drawOrder, duplicateItem, hitTest, itemAt, moveTo, parseScene, removeItem, sameRef,
     serializeScene, setField, setSceneField, snap, uniqueName, worldSize, type Item, type ItemKind, type Ref, type Scene, type Sizes,
     addTilemap, cellAt, fillTiles, mapSize, paintTile, parsePropValue, propsOf, removeTilemap, renameProp, resizeTilemap, setProp, showPropValue,
-    tilemapBox, tilemaps, toggleSolid, EMPTY_TILE, type Kinds,
+    tilemapBox, tilemaps, toggleSolid, EMPTY_TILE, type Kinds, cameraOf, moveTo3, setCamera, positionOf, type Camera3,
   } from "../lib/scene-model";
+  import Scene3D from "./Scene3D.svelte";
+  import { parseModel, type ModelDoc } from "../lib/model-doc";
   import { studio } from "../lib/store.svelte";
   import { resolveEntity } from "../lib/entity-info";
   import { parseSheetJson } from "../lib/sprite-doc";
@@ -30,6 +32,10 @@
   let newRows = $state(17);
   let tileCell: { col: number; row: number } | null = $state(null);
   let showGrid = $state(true);
+  // 2D is the flat level; 3D shows the objects whose entity has a model, and the game's camera
+  let view: "2d" | "3d" = $state(untrack(() => ((scene.camera || (scene.objects ?? []).some((o) => o.z)) ? "3d" : "2d")));
+  let modelDocs = $state(new Map<string, ModelDoc>()); // by entity kind
+  let view3: { current: () => Camera3 } | null = null;
 
   // view: world -> screen is (world - origin) * zoom
   let zoom = $state(1);
@@ -87,6 +93,11 @@
     asked.add(kind);
     const api = studio.api;
     const look = await resolveEntity(kind, (p) => api.readFile(p).then((c) => c.text).catch(() => null));
+    if (look.model) {
+      const file = await api.readFile(`models/${look.model}.model.json`).catch(() => null);
+      const doc = file?.text != null ? parseModel(file.text) : null;
+      if (doc?.ok) modelDocs = new Map(modelDocs).set(kind, doc.doc);
+    }
     if (!look.sprite) return;
     const files = studio.files.filter((f) => !f.dir).map((f) => f.path);
     const name = look.sprite;
@@ -613,8 +624,22 @@
         <button class="ghost" onclick={fit}>Fit</button>
         <span class="dim">{Math.round(zoom * 100)}%</span>
         <span class="spacer"></span>
+        <button class:on={view === "2d"} onclick={() => (view = "2d")} title="The flat level">2D</button>
+        <button class:on={view === "3d"} onclick={() => (view = "3d")} title="Objects with 3D models, and the game camera">3D</button>
         <button class="ghost" onclick={onjson}>JSON</button>
       </div>
+      {#if view === "3d"}
+        <Scene3D
+          {scene}
+          {selected}
+          models={modelDocs}
+          {gridSize}
+          onselect={(r) => (selected = r)}
+          onmove={(r, p) => edit(moveTo3(scene, r, p))}
+          onready={(v) => (view3 = v)}
+        />
+        <p class="hint dim">Click an object to select it · drag the arrows to move it · drag to orbit, right-drag to pan, scroll to zoom · the box with lines is the game's camera</p>
+      {:else}
       <div class="canvas-box" bind:this={box}>
         <canvas
           bind:this={canvas}
@@ -631,6 +656,7 @@
         ></canvas>
       </div>
       <p class="hint dim">Drag to move · drag empty space to pan · scroll to zoom · arrows nudge · ⌘D duplicate · Delete removes · hold ⇧ to ignore snap</p>
+      {/if}
     </div>
 
     <aside class="inspector">
@@ -681,6 +707,10 @@
           <label>X <input type="number" value={item.x} onchange={(e) => setNumber("x", e.currentTarget.value, item.x)} /></label>
           <label>Y <input type="number" value={item.y} onchange={(e) => setNumber("y", e.currentTarget.value, item.y)} /></label>
         </div>
+        {#if selected.kind === "objects" && view === "3d"}
+          <label>Z (towards you) <input type="number" value={positionOf(item)[2]} onchange={(e) => edit(moveTo3(scene, selected!, [item.x, item.y, Number(e.currentTarget.value) || 0]))} /></label>
+          <p class="dim small">In 3D, x goes across, y up and z towards the viewer. Turn it with the properties <code>ry</code> (radians) and <code>sx</code> (size).</p>
+        {/if}
         {#if selected.kind !== "objects"}
           <label>Scale <input type="number" step="0.25" min="0" value={field("scale") ?? 1} onchange={(e) => setNumber("scale", e.currentTarget.value)} /></label>
         {/if}
@@ -732,6 +762,20 @@
         {#if (scene.tilemaps as unknown[] | undefined)?.length}
           <p class="dim small">Tile maps are shown but edited in the JSON view for now.</p>
         {/if}
+        {#if view === "3d"}
+          {@const cam = cameraOf(scene)}
+          <h4>Game camera</h4>
+          {#each ["eye", "target"] as const as which (which)}
+            <span class="dim small">{which === "eye" ? "Camera at" : "Looks at"}</span>
+            <div class="vec3">{#each [0, 1, 2] as i (i)}<input type="number" step="0.5" value={cam[which][i]} aria-label="{which} {'xyz'[i]}" onchange={(e) => { const p = [...cam[which]] as [number, number, number]; p[i] = Number(e.currentTarget.value) || 0; edit(setCamera(scene, { ...cam, [which]: p })); }} />{/each}</div>
+          {/each}
+          <label>Field of view <input type="number" min="10" max="150" value={cam.fov} onchange={(e) => edit(setCamera(scene, { ...cam, fov: Number(e.currentTarget.value) || cam.fov }))} /></label>
+          <div class="row">
+            <button onclick={() => view3 && edit(setCamera(scene, { ...view3.current(), fov: cam.fov }))} title="Puts the game camera where you are looking from now">Use this view</button>
+            {#if scene.camera}<button class="danger" onclick={() => edit(setCamera(scene, undefined))} title="The scene's script sets the camera instead">Remove</button>{/if}
+          </div>
+          <p class="dim small">{scene.camera ? "The game starts with this camera." : "No camera is saved: your script sets it (nova.camera). Change a number or press Use this view to save one."}</p>
+        {/if}
       {/if}
     </aside>
   </div>
@@ -772,5 +816,7 @@
   .prop { display: flex; gap: 4px; align-items: center; }
   .prop .k { width: 70px; min-width: 0; } .prop .v { flex: 1; min-width: 0; }
   .prop input { padding: 2px 6px; }
+  .vec3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+  .vec3 input { min-width: 0; }
   .bad { padding: 32px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 </style>

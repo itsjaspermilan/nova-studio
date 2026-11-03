@@ -270,3 +270,41 @@ fn lighting_changes_what_is_drawn() {
         "a point light adds light: night {night:.1}, torch {torch:.1}"
     );
 }
+
+#[test]
+fn a_scene_file_sets_the_3d_camera_and_places_model_entities() {
+    let mut g = game(
+        r#"nova.start("level")"#,
+        vec![
+            (
+                "entities/car.lua",
+                br#"return nova.entity { model = "car" }"#.to_vec(),
+            ),
+            ("scenes/level.lua", b"return nova.scene {}".to_vec()),
+            (
+                "scenes/level.scene.json",
+                br#"{"version":1,"camera":{"eye":[1,2,3],"target":[4,5,6],"fov":50},
+                    "objects":[{"kind":"car","x":10,"y":0,"z":-4,"props":{"ry":90}},{"kind":"car","x":-10,"z":5}]}"#
+                    .to_vec(),
+            ),
+        ],
+    );
+    frame(&mut g);
+    frame(&mut g);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let input = g.frame_input(0);
+    assert_eq!(input.camera.eye.to_array(), [1.0, 2.0, 3.0]);
+    assert_eq!(input.camera.target.to_array(), [4.0, 5.0, 6.0]);
+    assert_eq!(input.camera.fov_y_degrees, 50.0);
+    assert_eq!(input.models.len(), 2, "one car at each place");
+    let mut at: Vec<[f32; 3]> = input
+        .models
+        .iter()
+        .map(|m| {
+            let c = m.instance.matrix[3];
+            [c[0], c[1], c[2]]
+        })
+        .collect();
+    at.sort_by(|a, b| a[0].total_cmp(&b[0]));
+    assert_eq!(at, [[-10.0, 0.0, 5.0], [10.0, 0.0, -4.0]]);
+}
