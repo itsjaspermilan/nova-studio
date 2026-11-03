@@ -32,7 +32,7 @@ assistant (or a script) drives the studio's own code: see `scripts/rally/` (`mod
 `tracks.mjs`, `showroom.mjs`). Each script is a list of tool calls whose results are the files in this folder. Running
 `node scripts/rally/models.mjs` (and the others) writes them again; the Lua is hand-written.
 
-`crates/nova-runtime/tests/rally.rs` plays the game through its menus and a full race on both circuits.
+`crates/nova-runtime/tests/rally.rs` plays the game through its menus and a full race on every circuit.
 
 ## Not done
 
