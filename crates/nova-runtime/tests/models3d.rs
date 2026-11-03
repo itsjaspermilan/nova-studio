@@ -308,3 +308,74 @@ fn a_scene_file_sets_the_3d_camera_and_places_model_entities() {
     at.sort_by(|a, b| a[0].total_cmp(&b[0]));
     assert_eq!(at, [[-10.0, 0.0, 5.0], [10.0, 0.0, -4.0]]);
 }
+
+/// The studio writes a glowing shape as its own material with an emissive factor; the importer turns that into a per-vertex
+/// glow (0 for the dark box, 0.8 for the glowing one).
+#[test]
+fn an_emissive_material_becomes_a_glow_on_its_vertices() {
+    let imported =
+        nova_runtime::model::import_parts(include_bytes!("fixtures/studio_model_glow.glb"))
+            .expect("imports");
+    let mesh = imported
+        .parts
+        .iter()
+        .find_map(|p| p.mesh.as_ref())
+        .expect("a part with triangles");
+    let glows: Vec<f32> = mesh.vertices.iter().map(|v| v.emissive).collect();
+    assert!(
+        glows.contains(&0.0),
+        "the dark box is lit by the scene: {glows:?}"
+    );
+    assert!(
+        glows.iter().any(|&g| (g - 0.8).abs() < 1e-6),
+        "the lamp glows 0.8: {glows:?}"
+    );
+    assert!(
+        glows.iter().all(|&g| g == 0.0 || (g - 0.8).abs() < 1e-6),
+        "{glows:?}"
+    );
+}
+
+/// In a scene with almost no light, the shape the studio marked as glowing still shows its colour, and the other box stays dark.
+#[test]
+fn a_glowing_shape_shows_in_the_dark() {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        backends: wgpu::Backends::PRIMARY,
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
+    });
+    let mut gfx = match Gfx::new(&instance, None) {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("skipping GPU test: {e}");
+            return;
+        }
+    };
+    let script = "nova.camera(0.25, 0.12, 0.8, 0.25, 0.12, 0, 50)\nfunction update(dt)\n  nova.light { ambient = {2, 2, 2}, color = {0, 0, 0} }\n  nova.model('glow', 0, 0, 0)\nend";
+    let vfs: Rc<dyn Vfs> = Rc::new(MemVfs::new(vec![
+        ("nova.json", br#"{"format":1,"name":"T"}"#.to_vec()),
+        (
+            "models/glow.glb",
+            include_bytes!("fixtures/studio_model_glow.glb").to_vec(),
+        ),
+        ("main.lua", script.as_bytes().to_vec()),
+    ]));
+    let mut g = Game::load(vfs).expect("loads");
+    g.upload(&mut gfx);
+    g.update(1.0 / 60.0, 0.0, [320.0, 180.0], Actions::default(), false);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let pixels = gfx.capture((320, 180), &g.frame_input(0));
+    let sky = [pixels[0], pixels[1], pixels[2]];
+    let (mut bright, mut dark) = (0, 0);
+    for p in pixels.as_chunks::<4>().0 {
+        if [p[0], p[1], p[2]] == sky {
+            continue;
+        }
+        if p[0] > 150 {
+            bright += 1;
+        } else if p[0] < 30 {
+            dark += 1;
+        }
+    }
+    assert!(bright > 50, "the lamp shines: {bright} bright pixels");
+    assert!(dark > 50, "the other box stays dark: {dark} dark pixels");
+}

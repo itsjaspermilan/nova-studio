@@ -206,3 +206,46 @@ describe("the runtime's view of exported models", () => {
     expect(Array.from(readFileSync(fixture))).toEqual(Array.from(bytes));
   });
 });
+
+describe("shapes that light themselves", () => {
+  const glowing = (): ModelDoc => {
+    let d = newModel();
+    d = addCube(d, [0], { from: [0, 0, 0], size: [4, 4, 4], color: "#444444" }).doc;
+    d = addCube(d, [0], { from: [6, 0, 0], size: [2, 2, 2], color: "#ffe9a8", emissive: 0.8 }).doc;
+    return d;
+  };
+  const gltfOf = (glb: Uint8Array) => {
+    const len = new DataView(glb.buffer, glb.byteOffset).getUint32(12, true);
+    return JSON.parse(new TextDecoder().decode(glb.slice(20, 20 + len)));
+  };
+  it("is written to the file only when it glows, and read back", () => {
+    const text = serializeModel(glowing());
+    expect(text.match(/"emissive"/g)).toHaveLength(1);
+    const back = parseModel(text);
+    expect(back.ok && back.doc.parts[0]!.cubes.map((c) => c.emissive)).toContain(0.8);
+    expect(parseModel(text.replace('"emissive": 0.8', '"emissive": 3')).ok).toBe(false);
+  });
+  it("exports a material with an emissive factor, used only by the glowing shape", () => {
+    const json = gltfOf(exportGlb(glowing()));
+    expect(json.materials).toHaveLength(2);
+    expect(json.materials[1].emissiveFactor).toEqual([0.8, 0.8, 0.8]);
+    expect(json.materials[0].emissiveFactor).toBeUndefined();
+    const prims = json.meshes[0].primitives;
+    expect(prims.map((p: { material: number }) => p.material).sort()).toEqual([0, 1]);
+  });
+});
+
+describe("the glow fixture for the runtime", () => {
+  // a dark box (0 to 4) and a box that glows 80% (6 to 8), in one part: the runtime test reads this file back
+  it("matches the committed fixture byte for byte (UPDATE_FIXTURES=1 rewrites it)", async () => {
+    const { existsSync, readFileSync, writeFileSync } = await import("node:fs");
+    let d = newModel();
+    d.parts[0]!.cubes = []; // (a new model starts with one grey cube)
+    d = addCube(d, [0], { from: [0, 0, 0], size: [4, 4, 4], color: "#444444" }).doc;
+    d = addCube(d, [0], { from: [6, 0, 0], size: [2, 2, 2], color: "#ffe9a8", emissive: 0.8 }).doc;
+    const bytes = exportGlb(d);
+    const fixture = new URL("../../../crates/nova-runtime/tests/fixtures/studio_model_glow.glb", import.meta.url);
+    if (process.env.UPDATE_FIXTURES || !existsSync(fixture)) writeFileSync(fixture, bytes);
+    expect(Array.from(readFileSync(fixture))).toEqual(Array.from(bytes));
+  });
+});

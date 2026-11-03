@@ -2,7 +2,7 @@
 // the part tree, shapes in their vertex colours, at rest. Textures and bending are not drawn here.
 
 import * as THREE from "three";
-import type { ModelDoc, Part, Vec3 } from "./model-doc";
+import { glowOf, type ModelDoc, type Part, type Vec3 } from "./model-doc";
 import { meshOf } from "./model-mesh";
 
 const linearCache = new Map<number, number>();
@@ -37,7 +37,14 @@ export function buildModel(doc: ModelDoc): THREE.Group {
         geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 4));
         geometry.setIndex(m.indices);
         const translucent = m.colors.some((c, k) => k % 4 === 3 && c < 255);
-        group.add(new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({ vertexColors: true, transparent: translucent, side: cube.shape === "mesh" ? THREE.DoubleSide : THREE.FrontSide })));
+        const glow = glowOf(cube);
+        // a glowing shape also shines in its own colour (how the game draws it: the colour, lit by the scene plus the glow)
+        const material = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: translucent, side: cube.shape === "mesh" ? THREE.DoubleSide : THREE.FrontSide });
+        if (glow > 0) {
+          material.emissive = new THREE.Color(cube.color.slice(0, 7));
+          material.emissiveIntensity = glow;
+        }
+        group.add(new THREE.Mesh(geometry, material));
       }
       parent.add(group);
       add(part.children, group);

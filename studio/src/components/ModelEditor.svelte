@@ -1796,6 +1796,7 @@
           <label>Sides <input type="number" min={MIN_SEGMENTS} max={MAX_SEGMENTS} step="1" value={segmentsOf(cube)} onchange={(e) => commit(updateCube(doc, selected!, { segments: Math.min(MAX_SEGMENTS, Math.max(MIN_SEGMENTS, Math.round(num(e.currentTarget.value, DEFAULT_SEGMENTS)))) }))} /></label>
           <label class="check"><input type="checkbox" checked={cube.smooth !== false} onchange={(e) => commit(updateCube(doc, selected!, { smooth: e.currentTarget.checked }))} /> Smooth shading</label>
         {/if}
+        <label title="0 is lit by the scene like anything else; 1 shines at full brightness even in the dark (lamps, windows, tail lights)">Glow <input type="range" min="0" max="1" step="0.05" value={cube.emissive ?? 0} aria-label="Glow" oninput={(e) => commit(updateCube(doc, selected!, { emissive: Number(e.currentTarget.value) }))} /><span class="dim small">{Math.round((cube.emissive ?? 0) * 100)}%</span></label>
         <h4>{cube.shape === "mesh" ? "Box around it: corner" : "Corner (from)"}</h4>
         <div class="vec">{#each cube.from as v, i (i)}<input type="number" value={v} aria-label={"xyz"[i] + " from"} onchange={(e) => setVec("from", i, e.currentTarget.value)} />{/each}</div>
         <h4>Size</h4>

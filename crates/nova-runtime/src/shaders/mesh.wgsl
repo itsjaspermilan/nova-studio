@@ -1,4 +1,4 @@
-// Low-poly meshes: one directional light, flat ambient, palette/base-colour texture.
+// Low-poly meshes: one directional light, flat ambient, point lights, palette/base-colour texture, per-vertex glow.
 struct Globals {
     view_proj: mat4x4<f32>,
     light_dir: vec4<f32>,      // xyz: direction the light travels, w: point light count
@@ -16,6 +16,7 @@ struct Vertex {
     @location(1) normal: vec3<f32>,
     @location(2) color: vec4<f32>,
     @location(3) uv: vec2<f32>,
+    @location(9) emissive: f32,
 };
 
 struct Instance {
@@ -39,6 +40,7 @@ struct VertexOut {
     @location(1) color: vec4<f32>,
     @location(2) uv: vec2<f32>,
     @location(3) world: vec3<f32>,
+    @location(4) emissive: f32,
 };
 
 @vertex
@@ -51,6 +53,7 @@ fn vs_main(v: Vertex, inst: Instance) -> VertexOut {
     out.normal = normalize((model * vec4<f32>(v.normal, 0.0)).xyz);
     out.color = v.color * vec4<f32>(srgb_to_linear(inst.tint.rgb), inst.tint.a);
     out.uv = v.uv;
+    out.emissive = v.emissive;
     return out;
 }
 
@@ -68,5 +71,6 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
         let lambert = max(dot(n, to_light / max(dist, 0.0001)), 0.0);
         light = light + globals.point_color[i].rgb * (falloff * falloff * lambert);
     }
-    return vec4<f32>(base.rgb * light, base.a);
+    // a glowing surface shows its colour at full brightness however dark the scene is
+    return vec4<f32>(base.rgb * (light + vec3<f32>(in.emissive)), base.a);
 }

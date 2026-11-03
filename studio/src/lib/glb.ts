@@ -2,7 +2,7 @@
 // (so a later bone animation can move them), one mesh per part with flat-coloured cubes baked in
 // as COLOR_0 vertex colours and per-face normals.
 
-import { namesOf, walk, type Clip, type Cube, type Ease, type ModelDoc, type Part, type Track, type Vec3 } from "./model-doc";
+import { glowOf, namesOf, walk, type Clip, type Cube, type Ease, type ModelDoc, type Part, type Track, type Vec3 } from "./model-doc";
 import { BAKE_STEPS, applyEase, lerp3, slerp } from "./model-ease";
 import { FACE_CORNERS, hasVolume, meshOf as solidMesh, solidOf, type Mesh } from "./model-mesh";
 import { boneKey, invertAffine, transformDirection, transformPoint, worldMatrices } from "./model-skin";
@@ -116,6 +116,14 @@ export function exportGlb(doc: ModelDoc, texture?: Raster): Uint8Array {
   const image = textured ? textureForExport(doc, texture) : undefined;
   const tex: Texel | undefined = image ? { w: image.w, rows: image.h, whiteU: 0.5 / image.w, whiteV: (image.h - 0.5) / image.h } : undefined;
 
+  // Material 0 is the plain one; a glowing shape's material adds an emissive factor (see `glowOf`).
+  const glows: number[] = [];
+  const materialFor = (glow: number) => {
+    if (glow === 0) return 0;
+    let at = glows.indexOf(glow);
+    if (at < 0) at = glows.push(glow) - 1;
+    return at + 1;
+  };
   let drawn = 0;
   // Node numbers follow the depth-first walk; children refer to their numbers.
   const order = walk(doc);
@@ -124,9 +132,17 @@ export function exportGlb(doc: ModelDoc, texture?: Raster): Uint8Array {
     const node: Record<string, unknown> = { name: part.name };
     if (part.origin.some((v) => v !== 0)) node.translation = part.origin.map((v) => v * scale);
     if (part.rotation.some((v) => v !== 0)) node.rotation = eulerToQuaternion(part.rotation);
-    const m = meshOf(part, scale, tex);
-    if (m.positions.length) {
-      drawn += part.cubes.filter((c) => hasVolume(c) && !isSkinned(c)).length;
+    // Shapes that glow get a material of their own (one per strength), so a part may have several primitives.
+    const groups = new Map<number, Cube[]>();
+    for (const c of part.cubes) {
+      const glow = glowOf(c);
+      groups.set(glow, [...(groups.get(glow) ?? []), c]);
+    }
+    const primitives: Record<string, unknown>[] = [];
+    for (const [glow, cubes] of groups) {
+      const m = meshOf({ ...part, cubes }, scale, tex);
+      if (!m.positions.length) continue;
+      drawn += cubes.filter((c) => hasVolume(c) && !isSkinned(c)).length;
       const pos = new Float32Array(m.positions);
       const min = [Infinity, Infinity, Infinity];
       const max = [-Infinity, -Infinity, -Infinity];
@@ -141,7 +157,7 @@ export function exportGlb(doc: ModelDoc, texture?: Raster): Uint8Array {
       const colView = addView(bytesOf(new Uint8Array(m.colors)), 34962);
       const idxView = addView(bytesOf(wide ? new Uint32Array(m.indices) : new Uint16Array(m.indices)), 34963);
       const accessor = (a: Record<string, unknown>) => accessors.push(a) - 1;
-      const primitive = {
+      primitives.push({
         attributes: {
           POSITION: accessor({ bufferView: posView, componentType: 5126, count: vertexCount, type: "VEC3", min, max }),
           NORMAL: accessor({ bufferView: nrmView, componentType: 5126, count: vertexCount, type: "VEC3" }),
@@ -149,9 +165,11 @@ export function exportGlb(doc: ModelDoc, texture?: Raster): Uint8Array {
           ...(tex ? { TEXCOORD_0: accessor({ bufferView: addView(bytesOf(new Float32Array(m.uvs)), 34962), componentType: 5126, count: vertexCount, type: "VEC2" }) } : {}),
         },
         indices: accessor({ bufferView: idxView, componentType: wide ? 5125 : 5123, count: m.indices.length, type: "SCALAR" }),
-        material: 0,
-      };
-      meshes.push({ name: part.name, primitives: [primitive] });
+        material: materialFor(glow),
+      });
+    }
+    if (primitives.length) {
+      meshes.push({ name: part.name, primitives });
       node.mesh = meshes.length - 1;
     }
     const childNumbers = part.children.map((_, i) => nodeOf.get([...parts, i].join("."))!);
@@ -220,7 +238,7 @@ export function exportGlb(doc: ModelDoc, texture?: Raster): Uint8Array {
           WEIGHTS_0: accessor({ bufferView: addView(bytesOf(weights), 34962), componentType: 5126, count, type: "VEC4" }),
         },
         indices: accessor({ bufferView: addView(bytesOf(wide ? new Uint32Array(m.indices) : new Uint16Array(m.indices)), 34963), componentType: wide ? 5125 : 5123, count: m.indices.length, type: "SCALAR" }),
-        material: 0,
+        material: materialFor(glowOf(cube)),
       };
       meshes.push({ name: cube.name ?? "skin", primitives: [primitive] });
       // the inverse of each joint's place at rest, in the exported (scaled) space
@@ -267,7 +285,10 @@ export function exportGlb(doc: ModelDoc, texture?: Raster): Uint8Array {
     nodes: gltfNodes,
     meshes,
     ...(skins.length ? { skins } : {}),
-    materials: [{ name: tex ? "texture" : "vertex colours", pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], ...(tex ? { baseColorTexture: { index: 0 } } : {}), metallicFactor: 0, roughnessFactor: 1 } }],
+    materials: [
+      { name: tex ? "texture" : "vertex colours", pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], ...(tex ? { baseColorTexture: { index: 0 } } : {}), metallicFactor: 0, roughnessFactor: 1 } },
+      ...glows.map((g) => ({ name: `glow ${g}`, pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], ...(tex ? { baseColorTexture: { index: 0 } } : {}), metallicFactor: 0, roughnessFactor: 1 }, emissiveFactor: [g, g, g] })),
+    ],
     ...(tex && image
       ? {
           // nearest filtering keeps painted texels crisp; the picture is clamped, not tiled

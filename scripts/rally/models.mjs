@@ -31,10 +31,10 @@ function car({ paint, trim, stripe, glass = "#27384d", light = "#ffe9a8" }) {
         box([-14, 19, -35], [28, 2, 8], trim, { name: "wing" }), // wing
         box([-10, 13, -32], [2, 6, 2], trim, { name: "wing strut right" }), // wing struts
         box([8, 13, -32], [2, 6, 2], trim, { name: "wing strut left" }),
-        box([-12, 8, 34], [6, 3, 1], light, { name: "headlight right" }), // headlights
-        box([6, 8, 34], [6, 3, 1], light, { name: "headlight left" }),
-        box([-12, 8, -36.5], [6, 3, 1], "#e11d2e", { name: "tail light right" }), // tail lights
-        box([6, 8, -36.5], [6, 3, 1], "#e11d2e", { name: "tail light left" }),
+        box([-12, 8, 34], [6, 3, 1], light, { name: "headlight right", emissive: 0.9 }), // headlights
+        box([6, 8, 34], [6, 3, 1], light, { name: "headlight left", emissive: 0.9 }),
+        box([-12, 8, -36.5], [6, 3, 1], "#e11d2e", { name: "tail light right", emissive: 0.7 }), // tail lights
+        box([6, 8, -36.5], [6, 3, 1], "#e11d2e", { name: "tail light left", emissive: 0.7 }),
         box([-2, 21.5, 6], [4, 3, 6], trim, { name: "roof vent" }), // roof vent
         round("cylinder", [-13, 10, 24], [4, 2, 4], light, { rotation: [90, 0, 0], segments: 8 }), // rally lamps
         round("cylinder", [9, 10, 24], [4, 2, 4], light, { rotation: [90, 0, 0], segments: 8 }),
@@ -216,14 +216,15 @@ const snowBush = () =>
   model([part("bush", [0, 0, 0], [round("sphere", [-18, 0, -18], [36, 24, 36], "#dfe9f3", { segments: 6, smooth: false }), round("sphere", [-8, 8, -6], [24, 18, 22], "#f4f8fb", { segments: 6, smooth: false })])]);
 
 // ---- the night circuit ----------------------------------------------------------------------------------------------------
-// A street lamp: the arm reaches towards +z, which the layout turns to face the road. The game adds a point light at the head.
+// A street lamp: the arm reaches towards +z, which the layout turns to face the road. The head glows by itself and the
+// game adds a point light there.
 const lamp = () =>
   model([
     part("lamp", [0, 0, 0], [
       box([-1.5, 0, -1.5], [3, 96, 3], "#59616b", { name: "post" }),
       box([-3, 0, -3], [6, 6, 6], "#3f464f", { name: "foot" }),
       box([-1, 92, -1], [2, 2.5, 26], "#59616b", { name: "arm" }),
-      box([-4, 89, 20], [8, 3, 12], "#fff1b8", { name: "lamp head" }),
+      box([-4, 89, 20], [8, 3, 12], "#fff1b8", { name: "lamp head", emissive: 1 }),
     ]),
   ]);
 

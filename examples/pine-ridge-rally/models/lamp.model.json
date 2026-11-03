@@ -10,7 +10,7 @@
         { "name": "post", "from": [-1.5, 0, -1.5], "size": [3, 96, 3], "color": "#59616b" },
         { "name": "foot", "from": [-3, 0, -3], "size": [6, 6, 6], "color": "#3f464f" },
         { "name": "arm", "from": [-1, 92, -1], "size": [2, 2.5, 26], "color": "#59616b" },
-        { "name": "lamp head", "from": [-4, 89, 20], "size": [8, 3, 12], "color": "#fff1b8" }
+        { "name": "lamp head", "from": [-4, 89, 20], "size": [8, 3, 12], "emissive": 1, "color": "#fff1b8" }
       ],
       "children": []
     }

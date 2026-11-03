@@ -39,6 +39,8 @@ export interface Cube {
   segments?: number;
   /// Round shapes shade smoothly unless this is false.
   smooth?: boolean;
+  /// How much the shape lights itself, 0 (lit by the scene, the default) to 1 (as bright as its colour, in the dark too).
+  emissive?: number;
   /// Colour of all faces, `#rrggbb` or `#rrggbbaa`.
   color: string;
   /// Colours of individual faces, overriding `color`.
@@ -230,6 +232,7 @@ export function parseModel(text: string): Parsed {
       }
       if (c.segments !== undefined && !(Number.isInteger(c.segments) && c.segments >= MIN_SEGMENTS && c.segments <= MAX_SEGMENTS)) return `${cat}.segments must be a whole number from ${MIN_SEGMENTS} to ${MAX_SEGMENTS}`;
       if (c.smooth !== undefined && typeof c.smooth !== "boolean") return `${cat}.smooth must be true or false`;
+      if (c.emissive !== undefined && !(typeof c.emissive === "number" && c.emissive >= 0 && c.emissive <= 1)) return `${cat}.emissive must be a number from 0 to 1`;
       if (c.rotation !== undefined && !isVec3(c.rotation)) return `${cat}.rotation must be three numbers`;
       if (c.texture !== undefined) {
         const t = c.texture;
@@ -294,6 +297,9 @@ export function parseModel(text: string): Parsed {
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 
+/// How much a shape lights itself, 0 to 1, to two decimals (what is written to the file and the glTF).
+export const glowOf = (c: Cube): number => Math.round(Math.max(0, Math.min(1, c.emissive ?? 0)) * 100) / 100;
+
 export function serializeModel(doc: ModelDoc): string {
   const vec = (v: Vec3) => `[${v.join(", ")}]`;
   const vec2 = (v: number[]) => `[${v.join(", ")}]`;
@@ -305,6 +311,7 @@ export function serializeModel(doc: ModelDoc): string {
     if (c.rotation?.some((n) => n !== 0)) parts.push(`"rotation": ${vec(c.rotation)}`);
     if (c.segments !== undefined) parts.push(`"segments": ${c.segments}`);
     if (c.smooth === false) parts.push(`"smooth": false`);
+    if (glowOf(c) > 0) parts.push(`"emissive": ${glowOf(c)}`);
     parts.push(`"color": "${c.color}"`);
     if (c.faces && Object.keys(c.faces).length) parts.push(`"faces": ${JSON.stringify(c.faces)}`);
     if (c.texture) parts.push(`"texture": { "at": ${vec2(c.texture.at)}${c.texture.scale !== undefined && c.texture.scale !== 1 ? `, "scale": ${c.texture.scale}` : ""}${c.texture.mirror ? `, "mirror": ${c.texture.mirror}` : ""}${c.texture.faces && Object.keys(c.texture.faces).length ? `, "faces": ${JSON.stringify(c.texture.faces)}` : ""} }`);

@@ -16,6 +16,9 @@ pub struct MeshVertex {
     pub normal: [f32; 3],
     pub color: [u8; 4],
     pub uv: [f32; 2],
+    /// How much the surface lights itself, from the material's emissive factor: 0 is lit by the scene only; at 1 the
+    /// colour shows at full brightness whatever the lights do.
+    pub emissive: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -51,6 +54,7 @@ impl MeshData {
                     normal: [0.0, 1.0, 0.0],
                     color: [255; 4],
                     uv,
+                    emissive: 0.0,
                 })
                 .collect(),
             indices: vec![0, 1, 2, 0, 2, 3],
@@ -159,6 +163,13 @@ fn append_mesh(
             }
         }
         let tint = factor.map(|c| (c.clamp(0.0, 1.0) * 255.0).round() as u8);
+        // (the studio writes the same number in all three channels; with a coloured one the brightest counts)
+        let emissive = primitive
+            .material()
+            .emissive_factor()
+            .into_iter()
+            .fold(0.0f32, f32::max)
+            .clamp(0.0, 1.0);
         let base = out.vertices.len() as u32;
         let mut verts: Vec<MeshVertex> = (0..positions.len())
             .map(|i| {
@@ -179,6 +190,7 @@ fn append_mesh(
                         mul(c[3], tint[3]),
                     ],
                     uv: uvs.as_ref().map(|u| u[i]).unwrap_or([0.0, 0.0]),
+                    emissive,
                 }
             })
             .collect();
