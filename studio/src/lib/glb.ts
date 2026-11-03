@@ -2,32 +2,27 @@
 // (so a later bone animation can move them), one mesh per part with flat-coloured cubes baked in
 // as COLOR_0 vertex colours and per-face normals.
 
-import { walk, type Clip, type Ease, type ModelDoc, type Part, type Track, type Vec3 } from "./model-doc";
+import { namesOf, walk, type Clip, type Cube, type Ease, type ModelDoc, type Part, type Track, type Vec3 } from "./model-doc";
 import { BAKE_STEPS, applyEase, lerp3, slerp } from "./model-ease";
-import { FACE_CORNERS, hasVolume, meshOf as solidMesh, type Mesh } from "./model-mesh";
+import { FACE_CORNERS, hasVolume, meshOf as solidMesh, solidOf, type Mesh } from "./model-mesh";
+import { boneKey, invertAffine, transformDirection, transformPoint, worldMatrices } from "./model-skin";
 import { bakeAll, uvsOf } from "./model-uv";
 import { newRaster, type Raster } from "./pixels";
 import { encodePng } from "./png-encode";
 
 export { FACE_CORNERS };
 
-/// Quaternion [x, y, z, w] for rotations in degrees applied X then Y then Z (three.js's "XYZ" Euler order).
-export function eulerToQuaternion(deg: Vec3): [number, number, number, number] {
-  const half = (d: number) => (d * Math.PI) / 360;
-  const [x, y, z] = [half(deg[0]), half(deg[1]), half(deg[2])]; // half angles
-  const [sx, cx, sy, cy, sz, cz] = [Math.sin(x), Math.cos(x), Math.sin(y), Math.cos(y), Math.sin(z), Math.cos(z)];
-  return [
-    sx * cy * cz + cx * sy * sz,
-    cx * sy * cz - sx * cy * sz,
-    cx * cy * sz + sx * sy * cz,
-    cx * cy * cz - sx * sy * sz,
-  ];
-}
+export { eulerToQuaternion } from "./model-ease";
+import { eulerToQuaternion } from "./model-ease";
 
 /// The part's solids as one set of triangles, scaled to world units.
+/// A mesh that bends with the model's parts.
+const isSkinned = (c: Cube) => c.shape === "mesh" && !!c.skin;
+
 function meshOf(part: Part, scale: number, tex?: Texel): PartMesh {
   const m: PartMesh = { positions: [], normals: [], colors: [], indices: [], uvs: [] };
   for (const cube of part.cubes) {
+    if (isSkinned(cube)) continue; // drawn as a skinned mesh of its own
     const one = solidMesh(cube, scale);
     const base = m.positions.length / 3;
     m.positions.push(...one.positions);
@@ -131,7 +126,7 @@ export function exportGlb(doc: ModelDoc, texture?: Raster): Uint8Array {
     if (part.rotation.some((v) => v !== 0)) node.rotation = eulerToQuaternion(part.rotation);
     const m = meshOf(part, scale, tex);
     if (m.positions.length) {
-      drawn += part.cubes.filter(hasVolume).length;
+      drawn += part.cubes.filter((c) => hasVolume(c) && !isSkinned(c)).length;
       const pos = new Float32Array(m.positions);
       const min = [Infinity, Infinity, Infinity];
       const max = [-Infinity, -Infinity, -Infinity];
@@ -163,7 +158,8 @@ export function exportGlb(doc: ModelDoc, texture?: Raster): Uint8Array {
     if (childNumbers.length) node.children = childNumbers;
     gltfNodes.push(node);
   }
-  if (drawn === 0) throw new Error("the model has no shapes with volume to export");
+  const skinnedShapes = order.flatMap(({ part, parts }) => part.cubes.filter((c) => isSkinned(c) && hasVolume(c)).map((cube) => ({ cube, parts })));
+  if (drawn + skinnedShapes.length === 0) throw new Error("the model has no shapes with volume to export");
 
   // Animation clips: one channel per keyed property, on the node of the part it names.
   const nodeByNames = new Map<string, number>();
@@ -173,6 +169,75 @@ export function exportGlb(doc: ModelDoc, texture?: Raster): Uint8Array {
       chain.length = depth;
       chain.push(part.name);
       nodeByNames.set(chain.join("/"), nodeOf.get(parts.join("."))!);
+    }
+  }
+  // Skinned meshes: one node each at the top, in the model's space at rest, with the part nodes as its joints.
+  const skins: Record<string, unknown>[] = [];
+  const skinNodes: number[] = [];
+  if (skinnedShapes.length) {
+    const rest = worldMatrices(doc);
+    for (const { cube, parts } of skinnedShapes) {
+      const skin = cube.skin!;
+      const names = namesOf(doc, parts);
+      const owner = rest.get(boneKey(names))!;
+      const m = solidMesh(cube, 1);
+      const solid = solidOf(cube);
+      const order2 = solid.polys.flatMap((p) => p.v); // the point each emitted vertex came from
+      const count = m.positions.length / 3;
+      const pos = new Float32Array(count * 3);
+      const nrm = new Float32Array(count * 3);
+      const joints = new Uint8Array(count * 4);
+      const weights = new Float32Array(count * 4);
+      const own = tex ? uvsOf(cube) : [];
+      const uv = new Float32Array(tex ? count * 2 : 0);
+      for (let i = 0; i < count; i++) {
+        const p = transformPoint(owner, [m.positions[i * 3]!, m.positions[i * 3 + 1]!, m.positions[i * 3 + 2]!]);
+        const n = transformDirection(owner, [m.normals[i * 3]!, m.normals[i * 3 + 1]!, m.normals[i * 3 + 2]!]);
+        const l = Math.hypot(...n) || 1;
+        pos.set([p[0] * scale, p[1] * scale, p[2] * scale], i * 3);
+        nrm.set([n[0] / l, n[1] / l, n[2] / l], i * 3);
+        (skin.weights[order2[i]!] ?? [[0, 1]]).slice(0, 4).forEach(([b, w], k) => {
+          joints[i * 4 + k] = b;
+          weights[i * 4 + k] = w;
+        });
+        if (tex) uv.set(own.length ? [own[i * 2]! / tex.w, own[i * 2 + 1]! / tex.rows] : [tex.whiteU, tex.whiteV], i * 2);
+      }
+      const min = [Infinity, Infinity, Infinity];
+      const max = [-Infinity, -Infinity, -Infinity];
+      for (let i = 0; i < pos.length; i += 3) for (let a = 0; a < 3; a++) {
+        min[a] = Math.min(min[a]!, pos[i + a]!);
+        max[a] = Math.max(max[a]!, pos[i + a]!);
+      }
+      const wide = count > 65535;
+      const accessor = (a: Record<string, unknown>) => accessors.push(a) - 1;
+      const primitive = {
+        attributes: {
+          POSITION: accessor({ bufferView: addView(bytesOf(pos), 34962), componentType: 5126, count, type: "VEC3", min, max }),
+          NORMAL: accessor({ bufferView: addView(bytesOf(nrm), 34962), componentType: 5126, count, type: "VEC3" }),
+          COLOR_0: accessor({ bufferView: addView(bytesOf(new Uint8Array(m.colors)), 34962), componentType: 5121, normalized: true, count, type: "VEC4" }),
+          ...(tex ? { TEXCOORD_0: accessor({ bufferView: addView(bytesOf(uv), 34962), componentType: 5126, count, type: "VEC2" }) } : {}),
+          JOINTS_0: accessor({ bufferView: addView(bytesOf(joints), 34962), componentType: 5121, count, type: "VEC4" }),
+          WEIGHTS_0: accessor({ bufferView: addView(bytesOf(weights), 34962), componentType: 5126, count, type: "VEC4" }),
+        },
+        indices: accessor({ bufferView: addView(bytesOf(wide ? new Uint32Array(m.indices) : new Uint16Array(m.indices)), 34963), componentType: wide ? 5125 : 5123, count: m.indices.length, type: "SCALAR" }),
+        material: 0,
+      };
+      meshes.push({ name: cube.name ?? "skin", primitives: [primitive] });
+      // the inverse of each joint's place at rest, in the exported (scaled) space
+      const ibm = new Float32Array(skin.bones.length * 16);
+      skin.bones.forEach((b, i) => {
+        const world = [...(rest.get(b) ?? owner)];
+        world[12] = world[12]! * scale;
+        world[13] = world[13]! * scale;
+        world[14] = world[14]! * scale;
+        ibm.set(invertAffine(world), i * 16);
+      });
+      skins.push({
+        joints: skin.bones.map((b) => nodeByNames.get(b) ?? nodeByNames.get(boneKey(names))!),
+        inverseBindMatrices: accessor({ bufferView: addView(bytesOf(ibm)), componentType: 5126, count: skin.bones.length, type: "MAT4" }),
+      });
+      gltfNodes.push({ name: `skin ${cube.name ?? skins.length}`, mesh: meshes.length - 1, skin: skins.length - 1 });
+      skinNodes.push(gltfNodes.length - 1);
     }
   }
   const animations: Record<string, unknown>[] = [];
@@ -198,9 +263,10 @@ export function exportGlb(doc: ModelDoc, texture?: Raster): Uint8Array {
   const json = {
     asset: { version: "2.0", generator: "Nova Studio" },
     scene: 0,
-    scenes: [{ nodes: doc.parts.map((_, i) => nodeOf.get(String(i))!) }],
+    scenes: [{ nodes: [...doc.parts.map((_, i) => nodeOf.get(String(i))!), ...skinNodes] }],
     nodes: gltfNodes,
     meshes,
+    ...(skins.length ? { skins } : {}),
     materials: [{ name: tex ? "texture" : "vertex colours", pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], ...(tex ? { baseColorTexture: { index: 0 } } : {}), metallicFactor: 0, roughnessFactor: 1 } }],
     ...(tex && image
       ? {

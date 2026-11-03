@@ -15,6 +15,7 @@ export const DEFAULT_SEGMENTS = 16;
 export const MAX_VERTS = 20000;
 export const MAX_FACES = 20000;
 export const MAX_TOTAL_VERTS = 60000;
+export const MAX_BONES = 64;
 
 /// A flat polygon of a mesh: point numbers in counter-clockwise order seen from outside.
 export interface MeshFace {
@@ -45,12 +46,22 @@ export interface Cube {
   /// Mesh only: the points, in the part's space, and the polygons between them.
   verts?: Vec3[];
   polys?: MeshFace[];
+  /// Mesh only: makes the mesh bend with the model's parts.
+  skin?: Skin;
   /// Present when the shape is painted with the model's texture: where its unwrapped faces sit in the picture
   /// (the top-left of its block of texels) and how many texels one model unit gets (default 1).
   /// `mirror` (a box mirrored by "Mirror copy"): bits 1, 2 and 4 for x, y and z, showing the same texels reflected.
   /// `faces` places single faces of a box, wedge or pyramid anywhere in the picture: `[x, y, width, height]` in texels, instead of
   /// the automatic layout inside the block. A negative width or height runs the other way from the corner, flipping the face.
   texture?: { at: [number, number]; scale?: number; mirror?: number; faces?: Partial<Record<Face, [number, number, number, number]>> };
+}
+
+/// A mesh that bends with the parts it is attached to (the model's skeleton is its part tree): every point follows up to four parts,
+/// each with a weight, and the weights of a point add up to 1. `bones` names the parts as paths of part names joined by "/"
+/// ("body/arm"); `weights[i]` is the `[bone number, weight]` pairs of point i.
+export interface Skin {
+  bones: string[];
+  weights: [number, number][][];
 }
 
 export type TextureInfo = { size: [number, number] };
@@ -144,6 +155,23 @@ function checkMesh(c: Cube, at: string): string | null {
   return null;
 }
 
+/// Why a mesh's skin is not usable, or null.
+function checkSkin(c: Cube, at: string): string | null {
+  const s = c.skin;
+  if (!s || !Array.isArray(s.bones) || s.bones.length === 0 || s.bones.length > MAX_BONES || !s.bones.every((b) => typeof b === "string" && b.length > 0)) return `${at}.skin.bones must be a list of up to ${MAX_BONES} part names (like "body/arm")`;
+  if (!Array.isArray(s.weights) || s.weights.length !== c.verts!.length) return `${at}.skin.weights needs one entry for each of the mesh's ${c.verts!.length} points`;
+  for (const [i, w] of s.weights.entries()) {
+    if (!Array.isArray(w) || w.length === 0 || w.length > 4) return `${at}.skin.weights[${i}] must list one to four [bone, weight] pairs`;
+    let total = 0;
+    for (const pair of w) {
+      if (!Array.isArray(pair) || pair.length !== 2 || !Number.isInteger(pair[0]) || pair[0] < 0 || pair[0] >= s.bones.length || !(typeof pair[1] === "number" && pair[1] >= 0 && pair[1] <= 1)) return `${at}.skin.weights[${i}] has a pair that is not [bone number, weight from 0 to 1]`;
+      total += pair[1];
+    }
+    if (Math.abs(total - 1) > 0.01) return `${at}.skin.weights[${i}] adds up to ${Math.round(total * 1000) / 1000}, not 1`;
+  }
+  return null;
+}
+
 /// Sets a mesh element's `from` and `size` to the box around its points.
 export function fitBounds(c: Cube) {
   const v = c.verts ?? [];
@@ -219,8 +247,11 @@ export function parseModel(text: string): Parsed {
         if (bad) return bad;
         verts += c.verts!.length;
         if (verts > MAX_TOTAL_VERTS) return `more than ${MAX_TOTAL_VERTS} mesh points in all`;
+        const badSkin = c.skin === undefined ? null : checkSkin(c, cat);
+        if (badSkin) return badSkin;
         fitBounds(c);
       } else {
+        if (c.skin !== undefined) return `${cat}.skin is only for a mesh`;
         if (!isVec3(c.from) || !isVec3(c.size)) return `${cat} needs "from" and "size" as three numbers`;
         if (c.size.some((n) => n < 0)) return `${cat}.size cannot be negative`;
       }
@@ -282,6 +313,10 @@ export function serializeModel(doc: ModelDoc): string {
       const verts = (c.verts ?? []).map((p) => `${i2}  ${vec(p)}`).join(",\n");
       const polys = (c.polys ?? []).map((f) => `${i2}  ${JSON.stringify(f)}`).join(",\n");
       parts.push(`"verts": [${verts ? `\n${verts}\n${i2}` : ""}]`, `"polys": [${polys ? `\n${polys}\n${i2}` : ""}]`);
+      if (c.skin) {
+        const rows = c.skin.weights.map((w) => `${i2}  ${JSON.stringify(w.map(([b, x]) => [b, Math.round(x * 10000) / 10000]))}`).join(",\n");
+        parts.push(`"skin": { "bones": ${JSON.stringify(c.skin.bones)}, "weights": [${rows ? `\n${rows}\n${i2}` : ""}] }`);
+      }
       return `{\n${parts.map((x) => `${i2}${x}`).join(",\n")}\n${indent}}`;
     }
     return `{ ${parts.join(", ")} }`;

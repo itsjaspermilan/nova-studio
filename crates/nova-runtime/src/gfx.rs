@@ -92,12 +92,20 @@ pub struct Camera {
     pub fov_y_degrees: f32,
 }
 
+/// New vertices for a mesh made to be rewritten (a posed skinned part), written before the frame draws.
+pub struct MeshWrite {
+    pub mesh: usize,
+    pub vertices: Vec<MeshVertex>,
+}
+
 pub struct FrameInput<'a> {
     pub clear: [f64; 4],
     pub camera: Camera,
     pub sprites_back: &'a [SpriteInstance],
     /// Draws using the same mesh must be contiguous; each run becomes one instanced draw.
     pub models: &'a [ModelDraw],
+    /// Vertices to put into meshes before drawing (their ids are used by `models`).
+    pub mesh_writes: &'a [MeshWrite],
     pub lighting: Lighting,
     pub sprites_front: &'a [SpriteInstance],
     /// Text quads (UI layer, native resolution, drawn after `sprites_front`); the UVs index the
@@ -680,7 +688,7 @@ impl Gfx {
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("mesh vertices"),
                 contents: bytemuck::cast_slice(&mesh.vertices),
-                usage: wgpu::BufferUsages::VERTEX,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             });
         let indices = self
             .device
@@ -877,6 +885,15 @@ impl Gfx {
         );
         self.sprites_text
             .write(&self.device, &self.queue, bytemuck::cast_slice(input.text));
+        for w in input.mesh_writes {
+            // A write for a mesh that is not there, or with a different size, is ignored.
+            if let Some(m) = self.meshes.get(w.mesh) {
+                let bytes: &[u8] = bytemuck::cast_slice(&w.vertices);
+                if bytes.len() as u64 == m.vertices.size() {
+                    self.queue.write_buffer(&m.vertices, 0, bytes);
+                }
+            }
+        }
         let instances: Vec<ModelInstance> = input.models.iter().map(|m| m.instance).collect();
         self.model_instances
             .write(&self.device, &self.queue, bytemuck::cast_slice(&instances));

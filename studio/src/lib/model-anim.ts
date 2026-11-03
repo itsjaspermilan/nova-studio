@@ -2,7 +2,7 @@
 // runtime does with the exported glTF (linear blends, rotations blended as quaternions, held before the first key
 // and after the last).
 
-import { eulerToQuaternion } from "./glb";
+import { eulerToQuaternion } from "./model-ease";
 import { applyEase, lerp3, slerp } from "./model-ease";
 import { MAX_CLIPS, MAX_KEYS, type Clip, type Ease, type ModelDoc, type Prop, type Track, type Vec3 } from "./model-doc";
 

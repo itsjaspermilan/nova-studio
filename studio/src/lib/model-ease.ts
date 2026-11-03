@@ -40,3 +40,16 @@ export function slerp(a: Quat, b: Quat, f: number): Quat {
 
 /// How many extra keys an eased segment is baked into on export (a step needs one).
 export const BAKE_STEPS = 8;
+
+/// Quaternion [x, y, z, w] for rotations in degrees applied X then Y then Z (three.js's "XYZ" Euler order).
+export function eulerToQuaternion(deg: Vec3): [number, number, number, number] {
+  const half = (d: number) => (d * Math.PI) / 360;
+  const [x, y, z] = [half(deg[0]), half(deg[1]), half(deg[2])]; // half angles
+  const [sx, cx, sy, cy, sz, cz] = [Math.sin(x), Math.cos(x), Math.sin(y), Math.cos(y), Math.sin(z), Math.cos(z)];
+  return [
+    sx * cy * cz + cx * sy * sz,
+    cx * sy * cz - sx * cy * sz,
+    cx * cy * sz + sx * sy * cz,
+    cx * cy * cz - sx * sy * sz,
+  ];
+}

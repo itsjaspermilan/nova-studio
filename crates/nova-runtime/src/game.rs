@@ -18,7 +18,8 @@ use crate::actions::{self, ActionStates, Binding, Bindings, InputFrame};
 use crate::assets::{self, AtlasLayout};
 use crate::font;
 use crate::gfx::{
-    Camera, FrameInput, Gfx, Lighting, ModelDraw, ModelInstance, PointLight, SpriteInstance,
+    Camera, FrameInput, Gfx, Lighting, MeshWrite, ModelDraw, ModelInstance, PointLight,
+    SpriteInstance,
 };
 use crate::input::Actions;
 use crate::mixer::{self, Sample};
@@ -97,6 +98,9 @@ struct Shared {
     world: Vec<SpriteInstance>,
     ui: Vec<SpriteInstance>,
     models: Vec<ModelDraw>,
+    /// Vertex rewrites for skinned parts drawn this frame, and how many pool meshes each part has used.
+    mesh_writes: Vec<MeshWrite>,
+    skin_used: HashMap<String, usize>,
     camera: Camera,
     clear: [f64; 4],
     log: Vec<String>,
@@ -109,6 +113,19 @@ struct PartRt {
     parent: Option<usize>,
     rest: Mat4,
     mesh_key: Option<String>,
+    /// A mesh that bends with other parts, drawn through a pool of rewritable meshes.
+    skinned: Option<Rc<SkinnedPart>>,
+}
+
+/// How many times one skinned part can be drawn in a frame (each draw needs its own mesh to write).
+const SKIN_SLOTS: usize = 8;
+
+struct SkinnedPart {
+    skin: model::Skin,
+    /// The vertices at rest (model space).
+    bind: Vec<model::MeshVertex>,
+    /// Mesh keys of the pool.
+    slots: Vec<String>,
 }
 
 /// A table of three 0-255 numbers as linear multipliers (255 is full strength).
@@ -198,6 +215,7 @@ pub struct Game {
     ui: Vec<SpriteInstance>,
     text: Vec<SpriteInstance>,
     models: Vec<ModelDraw>,
+    mesh_writes: Vec<MeshWrite>,
     camera: Camera,
     lighting: Lighting,
     clear: [f64; 4],
@@ -588,7 +606,31 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                         let local = authored * turn[i];
                         world[i] = p.parent.map_or(local, |parent| world[parent] * local);
                     }
+                    let world_matrices = world.clone();
                     for (i, p) in parts.iter().enumerate() {
+                        if let Some(skinned) = &p.skinned {
+                            // The mesh follows the parts; it is drawn from the model's own place.
+                            let used = sh.skin_used.entry(format!("{found}#{}", p.name)).or_insert(0);
+                            let Some(key) = skinned.slots.get(*used) else {
+                                sh.log.push(format!(
+                                    "model '{id}': '{}' is drawn more than {SKIN_SLOTS} times in a frame; the rest are skipped",
+                                    p.name
+                                ));
+                                continue;
+                            };
+                            *used += 1;
+                            let Some(&mesh) = sh.mesh_ids.get(key) else { continue };
+                            let vertices = skinned.skin.pose(&skinned.bind, &world_matrices);
+                            sh.mesh_writes.push(MeshWrite { mesh, vertices });
+                            sh.models.push(ModelDraw {
+                                mesh,
+                                instance: ModelInstance {
+                                    matrix: matrix.to_cols_array_2d(),
+                                    tint,
+                                },
+                            });
+                            continue;
+                        }
                         let Some(key) = &p.mesh_key else { continue };
                         let Some(&mesh) = sh.mesh_ids.get(key) else { continue };
                         sh.models.push(ModelDraw {
@@ -1453,16 +1495,44 @@ impl Game {
                 model_clips.insert(asset.id.clone(), imported.clips);
                 let mut runtime = Vec::with_capacity(imported.parts.len());
                 for part in imported.parts {
-                    let mesh_key = part.mesh.map(|m| {
-                        let key = format!("{}#{}", asset.id, part.name);
-                        meshes.push((key.clone(), m));
-                        key
-                    });
+                    let mut skinned = None;
+                    let mesh_key = match (part.mesh, part.skin) {
+                        (Some(m), Some(skin)) => {
+                            // Each draw of a posed mesh needs a buffer of its own to write.
+                            let slots: Vec<String> = (0..SKIN_SLOTS)
+                                .map(|k| format!("{}#{}#skin{k}", asset.id, part.name))
+                                .collect();
+                            for key in &slots {
+                                meshes.push((
+                                    key.clone(),
+                                    MeshData {
+                                        vertices: m.vertices.clone(),
+                                        indices: m.indices.clone(),
+                                        texture: m.texture.clone(),
+                                        notes: Vec::new(),
+                                    },
+                                ));
+                            }
+                            skinned = Some(Rc::new(SkinnedPart {
+                                skin,
+                                bind: m.vertices,
+                                slots,
+                            }));
+                            None
+                        }
+                        (Some(m), None) => {
+                            let key = format!("{}#{}", asset.id, part.name);
+                            meshes.push((key.clone(), m));
+                            Some(key)
+                        }
+                        (None, _) => None,
+                    };
                     runtime.push(PartRt {
                         name: part.name,
                         parent: part.parent,
                         rest: part.rest,
                         mesh_key,
+                        skinned,
                     });
                 }
                 model_parts.insert(asset.id.clone(), runtime);
@@ -1540,6 +1610,8 @@ impl Game {
             world: Vec::new(),
             ui: Vec::new(),
             models: Vec::new(),
+            mesh_writes: Vec::new(),
+            skin_used: HashMap::new(),
             camera: DEFAULT_CAMERA,
             clear: srgb_to_linear([0.36, 0.55, 0.78, 1.0]),
             log: Vec::new(),
@@ -1573,6 +1645,7 @@ impl Game {
             ui: Vec::new(),
             text: Vec::new(),
             models: Vec::new(),
+            mesh_writes: Vec::new(),
             camera: DEFAULT_CAMERA,
             lighting: Lighting::default(),
             clear: srgb_to_linear([0.36, 0.55, 0.78, 1.0]),
@@ -1736,10 +1809,13 @@ impl Game {
             std::mem::swap(&mut sh.ui, &mut self.ui);
             std::mem::swap(&mut sh.text_out, &mut self.text);
             std::mem::swap(&mut sh.models, &mut self.models);
+            std::mem::swap(&mut sh.mesh_writes, &mut self.mesh_writes);
             sh.world.clear();
             sh.ui.clear();
             sh.text_out.clear();
             sh.models.clear();
+            sh.mesh_writes.clear();
+            sh.skin_used.clear();
             let bindings = sh.bindings.clone();
             sh.states
                 .update(&bindings, &input.sources, &input.overrides);
@@ -1782,6 +1858,7 @@ impl Game {
         std::mem::swap(&mut sh.ui, &mut self.ui);
         std::mem::swap(&mut sh.text_out, &mut self.text);
         std::mem::swap(&mut sh.models, &mut self.models);
+        std::mem::swap(&mut sh.mesh_writes, &mut self.mesh_writes);
         self.models.sort_by_key(|m| m.mesh); // equal meshes become one instanced draw
         self.camera = sh.camera;
         self.lighting = sh.lighting;
@@ -1839,6 +1916,7 @@ impl Game {
             camera: self.camera,
             sprites_back: &self.world,
             models: &self.models,
+            mesh_writes: &self.mesh_writes,
             lighting: self.lighting,
             sprites_front: &self.ui,
             text: &self.text,

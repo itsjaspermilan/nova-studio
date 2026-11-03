@@ -85,6 +85,30 @@ fn to_rgba(data: &gltf::image::Data) -> Result<Vec<u8>, String> {
     })
 }
 
+/// Joint numbers and weights for each vertex that `append_mesh` makes from this mesh (when it keeps the file's vertices).
+fn read_influences(
+    mesh: &gltf::Mesh,
+    buffers: &[gltf::buffer::Data],
+) -> Option<Vec<([u16; 4], [f32; 4])>> {
+    let mut out = Vec::new();
+    for primitive in mesh.primitives() {
+        if primitive.mode() != gltf::mesh::Mode::Triangles {
+            continue;
+        }
+        let reader = primitive.reader(|b| Some(&buffers[b.index()]));
+        let count = reader.read_positions()?.count();
+        // Without normals the importer splits vertices per triangle, which would no longer match.
+        reader.read_normals()?;
+        let joints: Vec<[u16; 4]> = reader.read_joints(0)?.into_u16().collect();
+        let weights: Vec<[f32; 4]> = reader.read_weights(0)?.into_f32().collect();
+        if joints.len() != count || weights.len() != count {
+            return None;
+        }
+        out.extend(joints.into_iter().zip(weights));
+    }
+    Some(out)
+}
+
 /// Reads every triangle primitive of a mesh into `out`, with positions and normals moved by `world`.
 fn append_mesh(
     out: &mut MeshData,
@@ -188,6 +212,52 @@ pub struct Part {
     pub rest: Mat4,
     /// Triangles in the part's own space (so the part can be turned about its pivot); `None` for an empty node.
     pub mesh: Option<MeshData>,
+    /// Set when `mesh` bends with other parts: its triangles are in model space, as at rest.
+    pub skin: Option<Skin>,
+}
+
+/// How a mesh follows the parts it hangs on (glTF skin): up to four joints per vertex.
+pub struct Skin {
+    /// The part index of each joint.
+    pub joints: Vec<usize>,
+    /// Each joint's inverse rest matrix (model space to the joint's space).
+    pub inverse_bind: Vec<Mat4>,
+    /// Per vertex: joint numbers (into `joints`) and their weights.
+    pub influences: Vec<([u16; 4], [f32; 4])>,
+}
+
+impl Skin {
+    /// The mesh's vertices when the parts are at `world` (each part's place in the model, indexed like the parts).
+    pub fn pose(&self, bind: &[MeshVertex], world: &[Mat4]) -> Vec<MeshVertex> {
+        let joint: Vec<Mat4> = self
+            .joints
+            .iter()
+            .zip(&self.inverse_bind)
+            .map(|(&part, &ibm)| world.get(part).copied().unwrap_or(Mat4::IDENTITY) * ibm)
+            .collect();
+        bind.iter()
+            .zip(&self.influences)
+            .map(|(v, (j, w))| {
+                let mut m = Mat4::ZERO;
+                let mut total = 0.0;
+                for k in 0..4 {
+                    if let (true, Some(&jm)) = (w[k] > 0.0, joint.get(j[k] as usize)) {
+                        m += jm * w[k];
+                        total += w[k];
+                    }
+                }
+                if total <= 0.0 {
+                    return *v;
+                }
+                let n = (Mat3::from_mat4(m) * Vec3::from(v.normal)).normalize_or_zero();
+                MeshVertex {
+                    position: m.transform_point3(Vec3::from(v.position)).to_array(),
+                    normal: n.to_array(),
+                    ..*v
+                }
+            })
+            .collect()
+    }
 }
 
 /// Which transform of a part a keyframe track drives.
@@ -310,6 +380,7 @@ pub fn import_parts(bytes: &[u8]) -> Result<ModelParts, String> {
     let mut parts: Vec<Part> = Vec::new();
     let mut by_node: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
     let mut used = std::collections::HashSet::new();
+    let mut pending_skins = Vec::new();
     // Depth first, parents before children, siblings in file order.
     let mut roots: Vec<gltf::Node> = scene.nodes().collect();
     roots.reverse();
@@ -325,6 +396,7 @@ pub fn import_parts(bytes: &[u8]) -> Result<ModelParts, String> {
             used.insert(name.clone());
         }
         let mut mesh = None;
+        let mut skin_source = None;
         if let Some(source) = node.mesh() {
             let mut data = MeshData::default();
             let mut texture: Option<usize> = None;
@@ -338,16 +410,33 @@ pub fn import_parts(bytes: &[u8]) -> Result<ModelParts, String> {
                         rgba: to_rgba(image)?,
                     });
                 }
+                if let Some(skin) = node.skin() {
+                    let influences = read_influences(&source, &buffers);
+                    match influences {
+                        Some(i) if i.len() == data.vertices.len() => skin_source = Some((skin, i)),
+                        _ => {}
+                    }
+                }
                 mesh = Some(data);
             }
         }
         let index = parts.len();
+        if let Some((skin, influences)) = skin_source {
+            let reader = skin.reader(|b| Some(&buffers[b.index()]));
+            let joint_nodes: Vec<usize> = skin.joints().map(|j| j.index()).collect();
+            let inverse_bind = reader
+                .read_inverse_bind_matrices()
+                .map(|m| m.map(|a| Mat4::from_cols_array_2d(&a)).collect())
+                .unwrap_or_else(|| vec![Mat4::IDENTITY; joint_nodes.len()]);
+            pending_skins.push((index, joint_nodes, inverse_bind, influences));
+        }
         by_node.insert(node.index(), index);
         parts.push(Part {
             name,
             parent,
             rest: Mat4::from_cols_array_2d(&node.transform().matrix()),
             mesh,
+            skin: None,
         });
         let mut children: Vec<gltf::Node> = node.children().collect();
         children.reverse();
@@ -357,6 +446,20 @@ pub fn import_parts(bytes: &[u8]) -> Result<ModelParts, String> {
     }
     if parts.iter().all(|p| p.mesh.is_none()) {
         return Err("glTF contains no triangle geometry".into());
+    }
+    // Joints are nodes that may come after the skinned node, so their parts are looked up now.
+    for (part, joint_nodes, inverse_bind, influences) in pending_skins {
+        let joints: Option<Vec<usize>> = joint_nodes
+            .iter()
+            .map(|n| by_node.get(n).copied())
+            .collect();
+        if let Some(joints) = joints.filter(|j| j.len() == inverse_bind.len() && !j.is_empty()) {
+            parts[part].skin = Some(Skin {
+                joints,
+                inverse_bind,
+                influences,
+            });
+        }
     }
     let mut clips: Vec<Clip> = Vec::new();
     for (i, animation) in document.animations().enumerate() {
