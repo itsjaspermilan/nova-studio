@@ -363,8 +363,14 @@ First slice, built (`SpriteEditor.svelte`, pure logic in `pixels.ts` and `sprite
   shape (X/Y/Z) or of a whole part with its children. One shared triangle generator (`model-mesh.ts`) feeds both the
   view and the `.glb`; fixture `studio_model_shapes.glb` and the Rust test `studio_shapes_load_and_wind_outwards`
   pin it to the runtime's importer (outward winding checked by enclosed volume).
-- [ ] Still open: UV/texture painting (the runtime already reads one base-colour texture with UVs per model, but the studio
-  has no stable UV layout or painter yet, and the mesh sampler clamps instead of tiling), skinned meshes and
+- [x] Textures (2026-11-02): a model carries one painted picture (`models/<name>.texture.png`, embedded in the `.glb` with
+  UVs). Shapes opt in ("Paint with the model's texture"): their colours are baked into a block of the picture, they unwrap
+  automatically (box cross, round strips and caps, per-polygon flats for meshes), and a Texture tab paints on the model in
+  3D or on the picture in 2D (pencil, eraser, fill, picker, brush size, undo), shows every unwrap over the picture, moves
+  blocks by dragging, resizes the picture and packs blocks. Mirror copies of boxes show the texels reflected. Checked
+  by `model-uv`/`model-texture` tests, a fixture the runtime's importer reads (`studio_textures_reach_the_vertices`) and a
+  headless render. Painted pixels do not follow a block when a shape is resized or its mesh is edited (paint last).
+- [ ] Still open: a UV editor for moving single faces, painting with layers or alpha cut-outs, texture tiling, skinned meshes and
   vertex weights (runtime too), live symmetry editing, dragging gizmos for whole shapes, easing curves and copy/paste of
   keys, importing existing GLB, lights/materials, a "preview in game renderer" button.
 - [ ] (original plan) Model editor: parts hierarchy, cubes then vertex/face editing, per-face UV

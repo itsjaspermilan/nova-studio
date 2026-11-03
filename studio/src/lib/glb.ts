@@ -4,6 +4,9 @@
 
 import { walk, type Clip, type ModelDoc, type Part, type Track, type Vec3 } from "./model-doc";
 import { FACE_CORNERS, hasVolume, meshOf as solidMesh, type Mesh } from "./model-mesh";
+import { bakeAll, uvsOf } from "./model-uv";
+import { newRaster, type Raster } from "./pixels";
+import { encodePng } from "./png-encode";
 
 export { FACE_CORNERS };
 
@@ -21,8 +24,8 @@ export function eulerToQuaternion(deg: Vec3): [number, number, number, number] {
 }
 
 /// The part's solids as one set of triangles, scaled to world units.
-function meshOf(part: Part, scale: number): PartMesh {
-  const m: PartMesh = { positions: [], normals: [], colors: [], indices: [] };
+function meshOf(part: Part, scale: number, tex?: Texel): PartMesh {
+  const m: PartMesh = { positions: [], normals: [], colors: [], indices: [], uvs: [] };
   for (const cube of part.cubes) {
     const one = solidMesh(cube, scale);
     const base = m.positions.length / 3;
@@ -30,11 +33,35 @@ function meshOf(part: Part, scale: number): PartMesh {
     m.normals.push(...one.normals);
     m.colors.push(...one.colors);
     for (const i of one.indices) m.indices.push(base + i);
+    if (tex) {
+      // Painted shapes use their texels; the rest all point at the white texel, so their colour shows as it is.
+      const own = uvsOf(cube);
+      const count = one.positions.length / 3;
+      for (let i = 0; i < count; i++) m.uvs.push(...(own.length ? [own[i * 2]! / tex.w, own[i * 2 + 1]! / tex.rows] : [tex.whiteU, tex.whiteV]));
+    }
   }
   return m;
 }
 
-type PartMesh = Pick<Mesh, "positions" | "normals" | "colors" | "indices">;
+type PartMesh = Pick<Mesh, "positions" | "normals" | "colors" | "indices"> & { uvs: number[] };
+
+/// The embedded picture is the texture plus one extra row of white at the bottom.
+interface Texel {
+  w: number;
+  rows: number;
+  whiteU: number;
+  whiteV: number;
+}
+
+/// The texture with the white row added; its size is the picture's, or the model's if none was given.
+export function textureForExport(doc: ModelDoc, picture?: Raster): Raster {
+  const [w, h] = picture ? [picture.w, picture.h] : doc.texture!.size;
+  const base = picture ?? bakeAll(doc);
+  const out = newRaster(w, h + 1);
+  out.data.set(base.data);
+  out.data.fill(255, w * h * 4);
+  return out;
+}
 
 const pad4 = (n: number) => (n + 3) & ~3;
 
@@ -46,7 +73,9 @@ function holdEnds(track: Track, clip: Clip) {
   return keys;
 }
 
-export function exportGlb(doc: ModelDoc): Uint8Array {
+/// `texture` is the painted picture (`models/<name>.texture.png`); without it a model that has textured shapes
+/// gets their colours baked into a fresh one.
+export function exportGlb(doc: ModelDoc, texture?: Raster): Uint8Array {
   const scale = doc.scale;
   const gltfNodes: Record<string, unknown>[] = [];
   const meshes: Record<string, unknown>[] = [];
@@ -65,6 +94,10 @@ export function exportGlb(doc: ModelDoc): Uint8Array {
   };
   const bytesOf = (a: Float32Array | Uint8Array | Uint16Array | Uint32Array) => new Uint8Array(a.buffer, a.byteOffset, a.byteLength);
 
+  const textured = !!doc.texture && walk(doc).some(({ part }) => part.cubes.some((c) => c.texture && hasVolume(c)));
+  const image = textured ? textureForExport(doc, texture) : undefined;
+  const tex: Texel | undefined = image ? { w: image.w, rows: image.h, whiteU: 0.5 / image.w, whiteV: (image.h - 0.5) / image.h } : undefined;
+
   let drawn = 0;
   // Node numbers follow the depth-first walk; children refer to their numbers.
   const order = walk(doc);
@@ -73,7 +106,7 @@ export function exportGlb(doc: ModelDoc): Uint8Array {
     const node: Record<string, unknown> = { name: part.name };
     if (part.origin.some((v) => v !== 0)) node.translation = part.origin.map((v) => v * scale);
     if (part.rotation.some((v) => v !== 0)) node.rotation = eulerToQuaternion(part.rotation);
-    const m = meshOf(part, scale);
+    const m = meshOf(part, scale, tex);
     if (m.positions.length) {
       drawn += part.cubes.filter(hasVolume).length;
       const pos = new Float32Array(m.positions);
@@ -95,6 +128,7 @@ export function exportGlb(doc: ModelDoc): Uint8Array {
           POSITION: accessor({ bufferView: posView, componentType: 5126, count: vertexCount, type: "VEC3", min, max }),
           NORMAL: accessor({ bufferView: nrmView, componentType: 5126, count: vertexCount, type: "VEC3" }),
           COLOR_0: accessor({ bufferView: colView, componentType: 5121, normalized: true, count: vertexCount, type: "VEC4" }),
+          ...(tex ? { TEXCOORD_0: accessor({ bufferView: addView(bytesOf(new Float32Array(m.uvs)), 34962), componentType: 5126, count: vertexCount, type: "VEC2" }) } : {}),
         },
         indices: accessor({ bufferView: idxView, componentType: wide ? 5125 : 5123, count: m.indices.length, type: "SCALAR" }),
         material: 0,
@@ -146,7 +180,15 @@ export function exportGlb(doc: ModelDoc): Uint8Array {
     scenes: [{ nodes: doc.parts.map((_, i) => nodeOf.get(String(i))!) }],
     nodes: gltfNodes,
     meshes,
-    materials: [{ name: "vertex colours", pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: 1 } }],
+    materials: [{ name: tex ? "texture" : "vertex colours", pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], ...(tex ? { baseColorTexture: { index: 0 } } : {}), metallicFactor: 0, roughnessFactor: 1 } }],
+    ...(tex && image
+      ? {
+          // nearest filtering keeps painted texels crisp; the picture is clamped, not tiled
+          samplers: [{ magFilter: 9728, minFilter: 9728, wrapS: 33071, wrapT: 33071 }],
+          textures: [{ sampler: 0, source: 0 }],
+          images: [{ bufferView: addView(encodePng(image)), mimeType: "image/png" }],
+        }
+      : {}),
     ...(animations.length ? { animations } : {}),
     accessors,
     bufferViews: views,

@@ -57,7 +57,7 @@ export function shapeFaces(shape: Cube["shape"]): Face[] {
 const cornerIndex = (c: [number, number, number]) => c[0] | (c[1] << 1) | (c[2] << 2);
 
 /// The shape in a unit box (0 to 1 on every axis).
-function unitSolid(c: Cube): Solid {
+export function unitSolid(c: Cube): Solid {
   const shape = c.shape ?? "box";
   const n = segmentsOf(c);
   const smooth = c.smooth !== false;
@@ -172,6 +172,9 @@ export function hasVolume(c: Cube): boolean {
   return c.size.every((s) => s > 0);
 }
 
+/// The colour a polygon takes: its own, else its box face's, else the element's.
+export const polyColor = (c: Cube, poly: Poly) => poly.color ?? (poly.face ? faceColor(c, poly.face) : c.color);
+
 export function meshOf(c: Cube, scale = 1): Mesh {
   const m: Mesh = { positions: [], normals: [], colors: [], indices: [], polyOfTriangle: [] };
   if (!hasVolume(c)) return m;
@@ -188,7 +191,7 @@ export function meshOf(c: Cube, scale = 1): Mesh {
   }
   solid.polys.forEach((poly, pi) => {
     const flat = unit(polyNormal(solid.verts, poly.v));
-    const rgba = hexToRgba(poly.color ?? (poly.face ? faceColor(c, poly.face) : c.color));
+    const rgba = hexToRgba(polyColor(c, poly));
     const base = m.positions.length / 3;
     for (const i of poly.v) {
       const p = solid.verts[i]!;

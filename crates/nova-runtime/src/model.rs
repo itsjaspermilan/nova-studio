@@ -537,6 +537,58 @@ mod studio_model_tests {
     }
 
     #[test]
+    fn studio_textures_reach_the_vertices() {
+        // A painted box (top face green, north face red, the rest baked white) and a plain #336699 box, from the
+        // studio's exporter (studio/src/lib/model-texture.test.ts). The picture is 32x32 plus a white row.
+        let mesh = import_glb(include_bytes!(
+            "../tests/fixtures/studio_model_textured.glb"
+        ))
+        .unwrap();
+        assert!(mesh.notes.is_empty(), "{:?}", mesh.notes);
+        let tex = mesh.texture.as_ref().expect("the embedded texture");
+        assert_eq!((tex.width, tex.height), (32, 33));
+        let texel = |x: u32, y: u32| {
+            let i = ((y * tex.width + x) * 4) as usize;
+            [
+                tex.rgba[i],
+                tex.rgba[i + 1],
+                tex.rgba[i + 2],
+                tex.rgba[i + 3],
+            ]
+        };
+        assert!((0..32).all(|x| texel(x, 32) == [255; 4]), "the white row");
+        assert_eq!(mesh.vertices.len(), 48);
+        // Each face is four consecutive vertices; the middle of its texture coordinates is a texel centre.
+        for (face, quad) in mesh.vertices.chunks(4).enumerate() {
+            let mid = quad.iter().fold([0.0f32; 2], |a, v| {
+                [a[0] + v.uv[0] / 4.0, a[1] + v.uv[1] / 4.0]
+            });
+            let sampled = texel(
+                ((mid[0] * 32.0) as u32).min(31),
+                ((mid[1] * 33.0) as u32).min(32),
+            );
+            let normal = Vec3::from(quad[0].normal);
+            if face < 6 {
+                let want = if normal.y > 0.9 {
+                    [0, 255, 0, 255]
+                } else if normal.z < -0.9 {
+                    [255, 0, 0, 255]
+                } else {
+                    [255, 255, 255, 255]
+                };
+                assert_eq!(
+                    sampled, want,
+                    "painted box face {face} with normal {normal:?}"
+                );
+                assert!(quad.iter().all(|v| v.color == [255, 255, 255, 255]));
+            } else {
+                assert_eq!(sampled, [255; 4], "the plain box samples the white texel");
+                assert!(quad.iter().all(|v| v.color == [51, 102, 153, 255]));
+            }
+        }
+    }
+
+    #[test]
     fn studio_models_load_with_the_expected_shape() {
         let mesh = import_glb(include_bytes!("../tests/fixtures/studio_model.glb")).unwrap();
         assert!(mesh.notes.is_empty(), "{:?}", mesh.notes);

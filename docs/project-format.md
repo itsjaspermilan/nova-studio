@@ -146,7 +146,20 @@ is 1/16 of a world unit unless `scale` says otherwise):
 
 Every shape but a mesh may carry `rotation` (degrees, X then Y then Z, about its box's centre). A polygon's colour
 is its own `color`, else the shape's `color`; shapes are drawn with flat colours baked into the `.glb` as vertex
-colours. There are no textures yet.
+colours.
+
+**Textures.** A model can carry one painted picture, saved as `models/<name>.texture.png` beside the `.model.json`
+and embedded in the `.glb`. The model file says `"texture": { "size": [64, 64] }` (8 to 1024 texels each way) and
+each shape painted with it has `"texture": { "at": [x, y], "scale": 1 }`: `at` is the top-left of its block of the
+picture and `scale` the texels per model unit (default 1). Inside its block a shape unwraps by itself: a box as the
+usual cross of six faces, a wedge or pyramid the same way, cylinders, cones and spheres as a strip round the middle
+plus caps, and a mesh as one flat patch per polygon. The layout follows the shape's size and points, never its
+position or turn, so resizing a shape changes its block (use "Pack blocks" in the editor to lay them out again;
+painted pixels do not move with it). A shape's `color` is a tint multiplied with its texels (white after texturing is
+turned on, which also paints the shape's old colours into its block). `"mirror"` on a mirrored box's texture
+(bits 1, 2, 4 for x, y, z) makes it show the same texels reflected. In the `.glb` the picture gets one extra white
+row at the bottom that unpainted shapes sample, so a model's flat-coloured shapes show exactly their colour; the
+sampler is nearest-neighbour and clamped. The runtime needs nothing new: it reads one base-colour texture with UVs.
 
 **Animation clips.** A `.glb` can carry named clips (the model editor's Animations panel makes them): keyframes
 for the position, rotation and scale of parts. `nova.model_clips("car")` lists `{ name, duration }`.

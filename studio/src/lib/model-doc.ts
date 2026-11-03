@@ -45,7 +45,15 @@ export interface Cube {
   /// Mesh only: the points, in the part's space, and the polygons between them.
   verts?: Vec3[];
   polys?: MeshFace[];
+  /// Present when the shape is painted with the model's texture: where its unwrapped faces sit in the picture
+  /// (the top-left of its block of texels) and how many texels one model unit gets (default 1).
+  /// `mirror` (a box mirrored by "Mirror copy"): bits 1, 2 and 4 for x, y and z, showing the same texels reflected.
+  texture?: { at: [number, number]; scale?: number; mirror?: number };
 }
+
+export type TextureInfo = { size: [number, number] };
+export const MIN_TEXTURE = 8;
+export const MAX_TEXTURE = 1024;
 
 export interface Part {
   name: string;
@@ -84,6 +92,8 @@ export interface Clip {
 
 export interface ModelDoc {
   version: 1;
+  /// Set when the model has a texture, painted in `models/<name>.texture.png` at this size.
+  texture?: TextureInfo;
   /// World units per model unit when exported (1/16 makes a 16-unit cube one world unit).
   scale: number;
   parts: Part[];
@@ -156,6 +166,11 @@ export function parseModel(text: string): Parsed {
   const o = v as Partial<ModelDoc>;
   if (!o || typeof o !== "object" || !Array.isArray(o.parts)) return { ok: false, error: 'a model file has a "parts" list' };
   if (o.scale !== undefined && !(typeof o.scale === "number" && o.scale > 0 && o.scale < 1000)) return { ok: false, error: '"scale" must be a positive number' };
+  if (o.texture !== undefined) {
+    const size = (o.texture as Partial<TextureInfo> | null)?.size;
+    const side = (n: unknown) => typeof n === "number" && Number.isInteger(n) && n >= MIN_TEXTURE && n <= MAX_TEXTURE;
+    if (!Array.isArray(size) || size.length !== 2 || !size.every(side)) return { ok: false, error: `"texture.size" must be two whole numbers from ${MIN_TEXTURE} to ${MAX_TEXTURE}` };
+  }
   let parts = 0;
   let cubes = 0;
   let verts = 0;
@@ -180,6 +195,13 @@ export function parseModel(text: string): Parsed {
       if (c.segments !== undefined && !(Number.isInteger(c.segments) && c.segments >= MIN_SEGMENTS && c.segments <= MAX_SEGMENTS)) return `${cat}.segments must be a whole number from ${MIN_SEGMENTS} to ${MAX_SEGMENTS}`;
       if (c.smooth !== undefined && typeof c.smooth !== "boolean") return `${cat}.smooth must be true or false`;
       if (c.rotation !== undefined && !isVec3(c.rotation)) return `${cat}.rotation must be three numbers`;
+      if (c.texture !== undefined) {
+        const t = c.texture;
+        if (!t || !Array.isArray(t.at) || t.at.length !== 2 || !t.at.every((n) => typeof n === "number" && Number.isFinite(n) && n >= 0)) return `${cat}.texture.at must be two numbers, 0 or more`;
+        if (t.scale !== undefined && !(typeof t.scale === "number" && t.scale > 0 && t.scale <= 64)) return `${cat}.texture.scale must be a number above 0 and at most 64`;
+        if (t.mirror !== undefined && !(Number.isInteger(t.mirror) && t.mirror >= 0 && t.mirror <= 7)) return `${cat}.texture.mirror must be a whole number from 0 to 7`;
+        if (!o.texture) return `${cat} has a texture but the model has none: add "texture": { "size": [64, 64] }`;
+      }
       if (shape === "mesh") {
         if (c.rotation?.some((n) => n !== 0)) return `${cat}.rotation is not used on a mesh: turn its points instead`;
         const bad = checkMesh(c, cat);
@@ -224,13 +246,14 @@ export function parseModel(text: string): Parsed {
       }
     }
   }
-  return { ok: true, doc: { version: 1, scale: o.scale ?? DEFAULT_SCALE, parts: o.parts as Part[], ...(clips && clips.length ? { clips: clips as Clip[] } : {}) } };
+  return { ok: true, doc: { version: 1, scale: o.scale ?? DEFAULT_SCALE, ...(o.texture ? { texture: { size: [...o.texture.size] as [number, number] } } : {}), parts: o.parts as Part[], ...(clips && clips.length ? { clips: clips as Clip[] } : {}) } };
 }
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 
 export function serializeModel(doc: ModelDoc): string {
   const vec = (v: Vec3) => `[${v.join(", ")}]`;
+  const vec2 = (v: number[]) => `[${v.join(", ")}]`;
   const cube = (c: Cube, indent: string) => {
     const shape = c.shape ?? "box";
     const parts = [...(c.name ? [`"name": ${JSON.stringify(c.name)}`] : [])];
@@ -241,6 +264,7 @@ export function serializeModel(doc: ModelDoc): string {
     if (c.smooth === false) parts.push(`"smooth": false`);
     parts.push(`"color": "${c.color}"`);
     if (c.faces && Object.keys(c.faces).length) parts.push(`"faces": ${JSON.stringify(c.faces)}`);
+    if (c.texture) parts.push(`"texture": { "at": ${vec2(c.texture.at)}${c.texture.scale !== undefined && c.texture.scale !== 1 ? `, "scale": ${c.texture.scale}` : ""}${c.texture.mirror ? `, "mirror": ${c.texture.mirror}` : ""} }`);
     if (shape === "mesh") {
       const i2 = `${indent}  `;
       const verts = (c.verts ?? []).map((p) => `${i2}  ${vec(p)}`).join(",\n");
@@ -264,7 +288,8 @@ export function serializeModel(doc: ModelDoc): string {
     return `    {\n      "name": ${JSON.stringify(c.name)},\n      "duration": ${c.duration},\n      "loop": ${c.loop},\n      "tracks": ${tracks}\n    }`;
   };
   const clips = doc.clips?.length ? `,\n  "clips": [\n${doc.clips.map(clip).join(",\n")}\n  ]` : "";
-  return `{\n  "version": 1,\n  "scale": ${doc.scale},\n  "parts": ${body}${clips}\n}\n`;
+  const texture = doc.texture ? `,\n  "texture": { "size": ${vec2(doc.texture.size)} }` : "";
+  return `{\n  "version": 1,\n  "scale": ${doc.scale}${texture},\n  "parts": ${body}${clips}\n}\n`;
 }
 
 // ---- navigating and editing ----------------------------------------------------------------------

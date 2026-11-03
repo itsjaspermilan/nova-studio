@@ -234,6 +234,8 @@ export function mirrorElement(c: Cube, axis: Axis): Cube {
       // A reflection turns the opposite way about every axis but its own.
       out.rotation = out.rotation.map((d, a) => (a === axis ? d : -d)) as Vec3;
     }
+    // A painted box shows the same texels reflected (round shapes simply share theirs).
+    if (out.texture && shape === "box") out.texture = { ...out.texture, mirror: (out.texture.mirror ?? 0) ^ (1 << axis) || undefined };
     if (axis === 0 && out.faces) swapFaces(out, "east", "west");
     if (axis === 1 && out.faces) swapFaces(out, "up", "down");
     if (axis === 2 && out.faces) swapFaces(out, "south", "north");
