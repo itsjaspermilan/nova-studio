@@ -12,6 +12,7 @@
 //!   `r2`, `start`, `select`, `thumb_l`, `thumb_r`, `dpad_up`, `dpad_down`, `dpad_left`, `dpad_right`
 //! - `axis:<name>`: (`axis2:<name>` for the second pad, and so on; plain `axis:` follows whichever pad moves it most) `left_x`, `left_y`, `right_x`, `right_y` (right and down are positive) and the triggers
 //!   `l2`, `r2` (0 to 1); a trailing `+` or `-` takes only that direction (`axis:left_x-`)
+//! - `mouse:<button>`: `left`, `right` or `middle` held (a pointer position is `nova.input.pointer()`)
 //! - `touch:<zone>`: `left` or `right` (a finger held on that half of the screen), `drag_x`, `drag_y`
 //!   (how far a finger on the left half has been dragged, -1 to 1)
 
@@ -22,6 +23,26 @@ use serde_json::Value;
 /// Active sources and their values.
 pub type Sources = HashMap<String, f32>;
 
+/// The mouse, or the first finger, as the host measured it over one frame. Positions are in the game's own units (as
+/// `nova.view()` measures them); `pressed` and `released` mean it went down or up since the last frame.
+#[derive(Default, Clone, Copy, Debug, PartialEq)]
+pub struct PointerFrame {
+    /// A mouse is over the window, or a finger is down.
+    pub present: bool,
+    pub x: f32,
+    pub y: f32,
+    /// How far it moved since the last frame (with the mouse locked, how far it was pushed).
+    pub dx: f32,
+    pub dy: f32,
+    pub down: bool,
+    pub right: bool,
+    pub middle: bool,
+    pub pressed: bool,
+    pub released: bool,
+    /// Scroll since the last frame (lines, up positive).
+    pub wheel: f32,
+}
+
 /// One frame of input as the game host receives it: what is held, plus values forced on top
 /// (used by `--hold` and tests) and the source most recently pressed.
 #[derive(Default, Clone, Debug)]
@@ -29,6 +50,7 @@ pub struct InputFrame {
     pub sources: Sources,
     pub overrides: Vec<(String, f32)>,
     pub last_source: Option<String>,
+    pub pointer: PointerFrame,
 }
 
 impl InputFrame {
@@ -92,6 +114,7 @@ const PAD_BUTTONS: [&str; 16] = [
     "dpad_right",
 ];
 const AXES: [&str; 6] = ["left_x", "left_y", "right_x", "right_y", "l2", "r2"];
+const MOUSE_BUTTONS: [&str; 3] = ["left", "right", "middle"];
 const TOUCH_ZONES: [&str; 4] = ["left", "right", "drag_x", "drag_y"];
 
 /// How many gamepads can be told apart.
@@ -196,12 +219,13 @@ pub enum Source {
         sign: i8,
     },
     Touch(String),
+    Mouse(String),
 }
 
 impl Source {
     pub fn parse(text: &str) -> Result<Source, String> {
         let (kind, name) = text.split_once(':').ok_or_else(|| {
-            format!("'{text}' is not an input source; write it like key:Space, pad:south, axis:left_x or touch:right")
+            format!("'{text}' is not an input source; write it like key:Space, pad:south, axis:left_x, mouse:left or touch:right")
         })?;
         // `pad2:south`, `axis3:left_x`: a number after the kind picks one gamepad
         let (kind, player) = split_player(kind)?;
@@ -239,6 +263,11 @@ impl Source {
                     ))
                 }
             }
+            "mouse" if MOUSE_BUTTONS.contains(&name) => Ok(Source::Mouse(name.to_string())),
+            "mouse" => Err(format!(
+                "'{name}' is not a mouse button; use {}",
+                MOUSE_BUTTONS.join(", ")
+            )),
             "touch" if TOUCH_ZONES.contains(&name) && player == 0 => {
                 Ok(Source::Touch(name.to_string()))
             }
@@ -247,7 +276,7 @@ impl Source {
                 TOUCH_ZONES.join(", ")
             )),
             other => Err(format!(
-                "'{other}:' is not a kind of input source (key, pad, axis, touch)"
+                "'{other}:' is not a kind of input source (key, pad, axis, mouse, touch)"
             )),
         }
     }
@@ -266,6 +295,7 @@ impl Source {
                 }
             ),
             Source::Touch(n) => format!("touch:{n}"),
+            Source::Mouse(n) => format!("mouse:{n}"),
         }
     }
 
@@ -278,7 +308,7 @@ impl Source {
                 let v = get(&self.id());
                 (v * direction as f32).clamp(0.0, 1.0)
             }
-            Source::Touch(_) => get(&self.id()).clamp(0.0, 1.0),
+            Source::Touch(_) | Source::Mouse(_) => get(&self.id()).clamp(0.0, 1.0),
             Source::Axis { player, name, sign } => {
                 let raw = get(&format!("{}:{name}", pad_kind("axis", *player)));
                 let dir = if *sign != 0 { *sign } else { direction };
@@ -401,6 +431,13 @@ pub struct Bindings {
 }
 
 impl Bindings {
+    /// Does any action use this source (`key:Escape`)?
+    pub fn uses_source(&self, id: &str) -> bool {
+        self.map
+            .values()
+            .any(|b| b.source_ids().iter().any(|s| s == id))
+    }
+
     /// Built-in actions: `left right up down`, `a b x y`, `l1 r1 l2 r2`, `start select`, the axes
     /// `move_x move_y look_x look_y`, and the older `steer throttle brake action`.
     pub fn defaults() -> Self {
@@ -648,6 +685,14 @@ mod tests {
         ] {
             assert_eq!(Source::parse(ok).unwrap().id(), ok);
         }
+        for ok in ["mouse:left", "mouse:right", "mouse:middle"] {
+            assert_eq!(Source::parse(ok).unwrap().id(), ok, "a mouse button");
+        }
+        assert!(
+            Source::parse("mouse:back")
+                .unwrap_err()
+                .contains("not a mouse button")
+        );
         for ok in ["pad2:south", "pad4:dpad_up", "axis2:left_x", "axis3:r2+"] {
             assert_eq!(Source::parse(ok).unwrap().id(), ok, "a numbered pad");
         }
@@ -661,7 +706,7 @@ mod tests {
             ("pad:cross", "not a gamepad button"),
             ("axis:left_z", "not an axis"),
             ("touch:middle", "not a touch zone"),
-            ("mouse:left", "not a kind of input source"),
+            ("wheel:up", "not a kind of input source"),
         ];
         for (text, expected) in cases {
             let e = Source::parse(text).unwrap_err();

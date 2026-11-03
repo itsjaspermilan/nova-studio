@@ -287,6 +287,20 @@
   "group": "Input"
  },
  {
+  "name": "nova.input.pointer",
+  "kind": "function",
+  "signature": "nova.input.pointer() -> { present, x, y, dx, dy, down, right, middle, pressed, released, wheel }",
+  "doc": "The mouse, or the first finger when there is no mouse, as this step sees it: where it is in the game's own units (as nova.view() measures them), how far it moved since the last step, which buttons are down, whether the main button went down (`pressed`) or up (`released`) since the last step (each once, even on a fast screen), and the wheel. With the mouse locked, dx and dy are how far it was pushed.",
+  "group": "Input"
+ },
+ {
+  "name": "nova.input.grab_mouse",
+  "kind": "function",
+  "signature": "nova.input.grab_mouse(on)",
+  "doc": "Locks the cursor to the window and hides it, so that the mouse can turn a camera without end (nova.input.pointer().dx and dy are then the pushes); false frees it. Where the platform cannot, nothing happens.",
+  "group": "Input"
+ },
+ {
   "name": "nova.input.rumble",
   "kind": "function",
   "signature": "nova.input.rumble(strength, seconds) or nova.input.rumble{ strong, weak, seconds, pad }",

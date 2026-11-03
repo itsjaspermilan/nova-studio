@@ -264,10 +264,14 @@ inputs drive which action.
 | `nova.input.bind(name, spec)` | Rebind at run time (see below); `nova.input.reset_bindings()` undoes it. |
 | `nova.input.bindings(name)` | The sources an action uses (a list, or `{ negative, positive }` for axes). |
 | `nova.input.last_source()` | The most recently pressed source id (`"key:KeyZ"`), for "press a button to bind it" screens. |
+| `nova.input.pointer()` | The mouse, or the first finger: `{ present, x, y, dx, dy, down, right, middle, pressed, released, wheel }`, in the game's units; `pressed` and `released` are seen by exactly one step each. |
+| `nova.input.grab_mouse(on)` | Lock and hide the cursor so the mouse can turn a camera without end (`dx`, `dy` are then pushes); `false` frees it. |
 | `nova.input.next_source()` | The source pressed since you last asked (each press once, then `nil`): call it once to drop the press that opened your screen, then every frame until it returns something. |
 | `nova.input.rumble(strength, seconds)` | Shake a gamepad (`nova.input.rumble{ strong, weak, seconds, pad }` for the two motors and one pad). Pads that cannot rumble ignore it. |
 | `nova.time()` | Seconds since the game started. |
 | `nova.log(text)` | Write to the log. |
+
+**The desktop window closes on Escape** unless the game uses `key:Escape` in an action (a pause, say).
 
 **Edges are exact.** `pressed` and `released` are latched to game steps: the framework steps at 60 Hz
 whatever the frame rate, and a press that lands on a frame with no step (a 120 Hz screen) is held for
@@ -297,7 +301,7 @@ name is added:
 **Sources** are `key:<Name>` (a keyboard key: `KeyA`, `Digit1`, `ArrowLeft`, `Space`, `Enter`,
 `ShiftLeft`, `F5`...), `pad:<button>` (`south east west north l1 r1 l2 r2 start select thumb_l thumb_r
 dpad_up dpad_down dpad_left dpad_right`), `axis:<name>` (`left_x left_y right_x right_y l2 r2`; add `+`
-or `-` to take only one direction) and `touch:<zone>` (`left`, `right`, `drag_x`, `drag_y`). **Several gamepads:** `pad:south` is held on any pad and `axis:left_x` follows the stick that moves most, which is what a
+or `-` to take only one direction), `mouse:<button>` (`left right middle`) and `touch:<zone>` (`left`, `right`, `drag_x`, `drag_y`). **Several gamepads:** `pad:south` is held on any pad and `axis:left_x` follows the stick that moves most, which is what a
 one-player game wants; `pad2:south` and `axis2:left_x` (up to `pad4`/`axis4`) are only the second pad, counting in the
 order the pads were plugged in (`pad1:` is the first), for a game with several players. Numbered pads work on desktop;
 Android reports every controller as one pad for now. Analogue

@@ -2009,3 +2009,83 @@ fn rays_and_collisions_respect_heights_in_the_ground_plane() {
         "five metres up does not touch: {log:?}"
     );
 }
+
+#[test]
+fn the_pointer_reaches_each_step_once_and_the_mouse_can_be_locked() {
+    use nova_runtime::actions::{InputFrame, PointerFrame};
+    let mut g = project(vec![
+        (
+            "scenes/s.lua",
+            lua(
+                "local S = nova.scene {}\nfunction S:update(dt)\n  local p = nova.input.pointer()\n  if p.pressed or p.released or p.wheel ~= 0 or p.dx ~= 0 then nova.log(string.format('%s %s %.0f %.0f %.0f %.0f %.0f', tostring(p.pressed), tostring(p.released), p.x, p.y, p.dx, p.dy, p.wheel)) end\n  if p.pressed then nova.input.grab_mouse(true) end\nend\nreturn S",
+            ),
+        ),
+        ("main.lua", lua("nova.start('s')")),
+    ]);
+    let frame_of = |pointer: PointerFrame, dt: f32, g: &mut Game| {
+        g.update_input(
+            dt,
+            0.0,
+            [960.0, 540.0],
+            &InputFrame {
+                pointer,
+                ..Default::default()
+            },
+        );
+    };
+    steps(&mut g, 2);
+    g.take_log();
+    // a press and some movement on a frame too short for a step is still seen, once, by the next step
+    frame_of(
+        PointerFrame {
+            present: true,
+            x: 100.0,
+            y: 50.0,
+            dx: 4.0,
+            dy: 1.0,
+            down: true,
+            pressed: true,
+            wheel: 1.0,
+            ..Default::default()
+        },
+        0.001,
+        &mut g,
+    );
+    assert!(g.take_log().is_empty(), "no step ran");
+    frame_of(
+        PointerFrame {
+            present: true,
+            x: 110.0,
+            y: 52.0,
+            dx: 6.0,
+            dy: 1.0,
+            down: true,
+            ..Default::default()
+        },
+        1.0 / 60.0,
+        &mut g,
+    );
+    assert_eq!(
+        g.take_log(),
+        ["true false 110 52 10 2 1"],
+        "edges and movement add up; position is the latest"
+    );
+    frame_of(
+        PointerFrame {
+            present: true,
+            x: 110.0,
+            y: 52.0,
+            down: true,
+            ..Default::default()
+        },
+        1.0 / 60.0,
+        &mut g,
+    );
+    assert!(g.take_log().is_empty(), "reported once");
+    assert_eq!(
+        g.take_grab_request(),
+        Some(true),
+        "the script asked for the mouse to be locked"
+    );
+    assert_eq!(g.take_grab_request(), None, "once");
+}

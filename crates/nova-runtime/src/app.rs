@@ -7,10 +7,12 @@ use std::time::Instant;
 
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
-use winit::event::{ElementState, WindowEvent};
+use winit::event::{
+    DeviceEvent, DeviceId, ElementState, MouseButton, MouseScrollDelta, WindowEvent,
+};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
-use winit::window::{Window, WindowId};
+use winit::window::{CursorGrabMode, Window, WindowId};
 
 use crate::actions::InputFrame;
 use crate::audio::{self, AudioOut};
@@ -306,6 +308,23 @@ impl App {
         self.config = Some(config);
     }
 
+    /// Locks the cursor to the window and hides it (or frees it), so that the mouse can turn a camera without end. Not every
+    /// platform can: macOS and Windows lock, Linux confines; a handheld has no mouse.
+    fn set_mouse_grab(window: &Option<Arc<Window>>, input: &mut Input, on: bool) {
+        let Some(window) = window else { return };
+        let granted = if on {
+            window
+                .set_cursor_grab(CursorGrabMode::Locked)
+                .or_else(|_| window.set_cursor_grab(CursorGrabMode::Confined))
+                .is_ok()
+        } else {
+            let _ = window.set_cursor_grab(CursorGrabMode::None);
+            false
+        };
+        window.set_cursor_visible(!granted);
+        input.mouse_locked = granted;
+    }
+
     fn audio_text(&self) -> String {
         if let Some(audio) = &self.audio {
             let s = &audio.stats;
@@ -342,6 +361,7 @@ impl App {
             sources: self.input.sources(),
             overrides: self.held.clone(),
             last_source: self.input.last_new_source.take(),
+            pointer: self.input.pointer(Gfx::ui_scale(size)),
         };
         let audio = self.audio_text();
         if self.last_audio_log.elapsed().as_secs() >= 2 && self.audio.is_some() {
@@ -375,6 +395,9 @@ impl App {
         }
         for rumble in content.take_rumble() {
             self.input.rumble(&rumble);
+        }
+        if let Some(on) = content.take_grab_request() {
+            Self::set_mouse_grab(&self.window, &mut self.input, on);
         }
 
         let surface = self.surface.as_ref().expect("surface checked above");
@@ -510,12 +533,40 @@ impl ApplicationHandler for App {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => self.configure(size.width, size.height),
             WindowEvent::KeyboardInput { event, .. } => {
+                // Escape closes the window unless the game uses it (to pause, say)
+                let used = self
+                    .content
+                    .as_ref()
+                    .is_some_and(|c| c.uses_source("key:Escape"));
                 if event.state == ElementState::Pressed
                     && event.physical_key == PhysicalKey::Code(KeyCode::Escape)
+                    && !used
                 {
                     event_loop.exit();
                 }
                 self.input.key(&event);
+            }
+            WindowEvent::CursorMoved { position, .. } => {
+                self.input
+                    .cursor_moved(position.x as f32, position.y as f32);
+            }
+            WindowEvent::CursorLeft { .. } => self.input.cursor_left(),
+            WindowEvent::MouseInput { state, button, .. } => {
+                let index = match button {
+                    MouseButton::Left => 0,
+                    MouseButton::Right => 1,
+                    MouseButton::Middle => 2,
+                    _ => 3,
+                };
+                self.input
+                    .mouse_button(index, state == ElementState::Pressed);
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                let lines = match delta {
+                    MouseScrollDelta::LineDelta(_, y) => y,
+                    MouseScrollDelta::PixelDelta(p) => p.y as f32 / 40.0,
+                };
+                self.input.mouse_wheel(lines);
             }
             WindowEvent::Touch(touch) => {
                 self.input.touch(
@@ -532,6 +583,12 @@ impl ApplicationHandler for App {
             }
             WindowEvent::RedrawRequested => self.frame(event_loop),
             _ => {}
+        }
+    }
+
+    fn device_event(&mut self, _event_loop: &ActiveEventLoop, _id: DeviceId, event: DeviceEvent) {
+        if let DeviceEvent::MouseMotion { delta } = event {
+            self.input.mouse_motion(delta.0 as f32, delta.1 as f32);
         }
     }
 

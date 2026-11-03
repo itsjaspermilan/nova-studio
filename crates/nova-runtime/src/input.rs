@@ -43,6 +43,18 @@ pub struct Input {
     /// Rumbles in progress; a force-feedback effect stops when it is dropped, so each is kept until its time is up.
     #[cfg(not(target_os = "android"))]
     rumbling: Vec<(std::time::Instant, gilrs::ff::Effect)>,
+    /// The mouse (physical pixels): where it is over the window, which buttons are down (left, right, middle), what
+    /// happened since the last frame, and whether the game has it locked (then motion is pushes, not positions).
+    mouse_pos: Option<[f32; 2]>,
+    mouse_down: [bool; 3],
+    mouse_edges: (bool, bool),
+    mouse_moved: [f32; 2],
+    wheel: f32,
+    pub mouse_locked: bool,
+    /// The finger that is the pointer (the first one down), and its edges since the last frame.
+    pointer_finger: Option<u64>,
+    finger_edges: (bool, bool),
+    finger_moved: [f32; 2],
     previous_active: HashSet<String>,
     /// The source that most recently went down (for "press a key to bind" screens).
     pub last_new_source: Option<String>,
@@ -271,16 +283,116 @@ impl Input {
         match phase {
             TouchPhase::Started => {
                 self.touches.insert(id, ([x, y], [x, y]));
+                if self.pointer_finger.is_none() {
+                    self.pointer_finger = Some(id);
+                    self.finger_edges.0 = true;
+                }
             }
             TouchPhase::Moved => {
                 if let Some(t) = self.touches.get_mut(&id) {
+                    if self.pointer_finger == Some(id) {
+                        self.finger_moved[0] += x - t.1[0];
+                        self.finger_moved[1] += y - t.1[1];
+                    }
                     t.1 = [x, y];
                 }
             }
             TouchPhase::Ended | TouchPhase::Cancelled => {
                 self.touches.remove(&id);
+                if self.pointer_finger == Some(id) {
+                    self.pointer_finger = None;
+                    self.finger_edges.1 = true;
+                }
             }
         }
+    }
+
+    /// The cursor moved over the window to (x, y) physical pixels.
+    pub fn cursor_moved(&mut self, x: f32, y: f32) {
+        if let (Some(before), false) = (self.mouse_pos, self.mouse_locked) {
+            self.mouse_moved[0] += x - before[0];
+            self.mouse_moved[1] += y - before[1];
+        }
+        self.mouse_pos = Some([x, y]);
+    }
+
+    /// The cursor left the window.
+    pub fn cursor_left(&mut self) {
+        self.mouse_pos = None;
+        self.mouse_down = [false; 3];
+    }
+
+    /// Raw mouse motion (what a locked cursor reports instead of positions).
+    pub fn mouse_motion(&mut self, dx: f32, dy: f32) {
+        if self.mouse_locked {
+            self.mouse_moved[0] += dx;
+            self.mouse_moved[1] += dy;
+        }
+    }
+
+    /// A mouse button changed: 0 left, 1 right, 2 middle (others are ignored).
+    pub fn mouse_button(&mut self, button: usize, pressed: bool) {
+        if button > 2 {
+            return;
+        }
+        if pressed && !self.mouse_down[button] && button == 0 {
+            self.mouse_edges.0 = true;
+        }
+        if !pressed && self.mouse_down[button] && button == 0 {
+            self.mouse_edges.1 = true;
+        }
+        self.mouse_down[button] = pressed;
+    }
+
+    /// The wheel turned by `lines` (up positive).
+    pub fn mouse_wheel(&mut self, lines: f32) {
+        self.wheel += lines;
+    }
+
+    /// The pointer for this frame, in the game's units (`scale` physical pixels to one unit); what happened since the last
+    /// call (presses, movement, scroll) is reported once. The mouse wins over a finger when both are there.
+    pub fn pointer(&mut self, scale: f32) -> crate::actions::PointerFrame {
+        let s = scale.max(0.0001);
+        let finger = self
+            .pointer_finger
+            .and_then(|id| self.touches.get(&id))
+            .map(|t| t.1);
+        let (pos, down, pressed, released, moved) = if let Some(p) = self.mouse_pos {
+            (
+                Some(p),
+                self.mouse_down[0],
+                self.mouse_edges.0,
+                self.mouse_edges.1,
+                self.mouse_moved,
+            )
+        } else {
+            (
+                finger,
+                finger.is_some(),
+                self.finger_edges.0,
+                self.finger_edges.1,
+                self.finger_moved,
+            )
+        };
+        let frame = crate::actions::PointerFrame {
+            present: pos.is_some(),
+            x: pos.map_or(0.0, |p| p[0] / s),
+            y: pos.map_or(0.0, |p| p[1] / s),
+            dx: moved[0] / s,
+            dy: moved[1] / s,
+            down,
+            right: self.mouse_down[1],
+            middle: self.mouse_down[2],
+            pressed,
+            released,
+            wheel: self.wheel,
+        };
+        self.mouse_edges = (false, false);
+        self.mouse_moved = [0.0; 2];
+        self.finger_edges = (false, false);
+        self.finger_moved = [0.0; 2];
+        self.wheel = 0.0;
+        frame
     }
 
     /// Everything held right now. Call once per frame.
@@ -297,6 +409,11 @@ impl Input {
         for (name, value) in native_axis_sources(&self.native_axes) {
             if value != 0.0 {
                 s.insert(name, value);
+            }
+        }
+        for (i, name) in ["left", "right", "middle"].iter().enumerate() {
+            if self.mouse_down[i] {
+                s.insert(format!("mouse:{name}"), 1.0);
             }
         }
         // Touch: the left half is a steering area (dragging sideways or up and down), the
@@ -390,6 +507,59 @@ impl Input {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_mouse_gives_button_sources_and_a_pointer_in_game_units() {
+        let mut input = Input::default();
+        input.cursor_moved(200.0, 100.0);
+        input.cursor_moved(230.0, 90.0);
+        input.mouse_button(0, true);
+        input.mouse_button(1, true);
+        input.mouse_wheel(2.0);
+        let s = input.sources();
+        assert_eq!(s["mouse:left"], 1.0);
+        assert_eq!(s["mouse:right"], 1.0);
+        assert!(!s.contains_key("mouse:middle"));
+        // two physical pixels to a unit
+        let p = input.pointer(2.0);
+        assert!(p.present && p.down && p.pressed && !p.released && p.right);
+        assert_eq!(
+            (p.x, p.y, p.dx, p.dy, p.wheel),
+            (115.0, 45.0, 15.0, -5.0, 2.0)
+        );
+        // what happened is reported once; where it is and what is held stay
+        let again = input.pointer(2.0);
+        assert!(again.down && !again.pressed && again.dx == 0.0 && again.wheel == 0.0);
+        input.mouse_button(0, false);
+        let up = input.pointer(2.0);
+        assert!(!up.down && up.released);
+        input.cursor_left();
+        assert!(!input.pointer(2.0).present);
+        assert!(!input.sources().contains_key("mouse:right"));
+    }
+
+    #[test]
+    fn a_locked_mouse_reports_pushes_not_positions_and_a_finger_is_the_pointer_without_a_mouse() {
+        let mut input = Input::default();
+        input.mouse_locked = true;
+        input.cursor_moved(500.0, 500.0);
+        input.cursor_moved(900.0, 900.0); // a locked cursor does not travel: positions say nothing about motion
+        input.mouse_motion(7.0, -3.0);
+        input.mouse_motion(1.0, 1.0);
+        let p = input.pointer(1.0);
+        assert_eq!((p.dx, p.dy), (8.0, -2.0));
+        // no mouse over the window: the first finger is the pointer
+        let mut input = Input::default();
+        input.touch(7, TouchPhase::Started, 100.0, 50.0);
+        input.touch(8, TouchPhase::Started, 400.0, 400.0);
+        input.touch(7, TouchPhase::Moved, 130.0, 60.0);
+        let p = input.pointer(1.0);
+        assert!(p.present && p.down && p.pressed);
+        assert_eq!((p.x, p.y, p.dx, p.dy), (130.0, 60.0, 30.0, 10.0));
+        input.touch(7, TouchPhase::Ended, 130.0, 60.0);
+        let p = input.pointer(1.0);
+        assert!(p.released && !p.pressed);
+    }
 
     #[test]
     fn several_pads_make_numbered_and_combined_sources() {

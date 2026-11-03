@@ -186,6 +186,22 @@ impl Content {
         }
     }
 
+    /// Did a script ask for the mouse to be locked (true) or freed (false)?
+    pub fn take_grab_request(&mut self) -> Option<bool> {
+        match self {
+            Content::Game { game, .. } => game.take_grab_request(),
+            Content::Spike(_) => None,
+        }
+    }
+
+    /// Does the game use this source for something (so the host should leave it alone)?
+    pub fn uses_source(&self, id: &str) -> bool {
+        match self {
+            Content::Game { game, .. } => game.uses_source(id),
+            Content::Spike(_) => false,
+        }
+    }
+
     /// Gamepad rumbles queued by scripts this frame (none for the benchmark scene).
     pub fn take_rumble(&mut self) -> Vec<crate::game::Rumble> {
         match self {

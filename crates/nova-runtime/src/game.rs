@@ -90,6 +90,12 @@ struct Shared {
     audio: Vec<mixer::Command>,
     rumble: Vec<Rumble>,
     host_stats: HostStats,
+    /// The pointer as the host last reported it, what built up since the last step, and what this step sees.
+    pointer_now: actions::PointerFrame,
+    pointer_acc: actions::PointerFrame,
+    pointer_step: actions::PointerFrame,
+    /// A script asked for the mouse to be locked (true) or freed (false); the host reads it once.
+    grab_request: Option<bool>,
     /// What the scripts took last frame (ms) and the memory they use (KB), for `nova.stats()`.
     lua_ms: f32,
     lua_kb: f32,
@@ -113,6 +119,33 @@ struct Shared {
     camera: Camera,
     clear: [f64; 4],
     log: Vec<String>,
+}
+
+impl Shared {
+    /// Adds a frame's pointer to what is waiting for the next step: presses, releases, movement and scrolling are kept until a
+    /// step has seen them (a frame can pass without a step on a fast screen).
+    fn take_pointer(&mut self, p: &actions::PointerFrame) {
+        let acc = &mut self.pointer_acc;
+        acc.pressed |= p.pressed;
+        acc.released |= p.released;
+        acc.dx += p.dx;
+        acc.dy += p.dy;
+        acc.wheel += p.wheel;
+        self.pointer_now = *p;
+    }
+
+    /// The pointer a step sees: where it is and what is held now, and what happened since the last step.
+    fn begin_pointer_step(&mut self) {
+        let acc = std::mem::take(&mut self.pointer_acc);
+        self.pointer_step = actions::PointerFrame {
+            pressed: acc.pressed,
+            released: acc.released,
+            dx: acc.dx,
+            dy: acc.dy,
+            wheel: acc.wheel,
+            ..self.pointer_now
+        };
+    }
 }
 
 /// What the host measured about the previous frame, for `nova.stats()`.
@@ -1179,6 +1212,36 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
         "last_source",
         lua.create_function(move |_, ()| Ok(s.borrow().last_source.clone()))?,
     )?;
+    // pointer(): the mouse, or the first finger, as this step sees it
+    let s = shared.clone();
+    input.set(
+        "pointer",
+        lua.create_function(move |lua, ()| {
+            let p = s.borrow().pointer_step;
+            let t = lua.create_table()?;
+            t.set("present", p.present)?;
+            t.set("x", p.x as f64)?;
+            t.set("y", p.y as f64)?;
+            t.set("dx", p.dx as f64)?;
+            t.set("dy", p.dy as f64)?;
+            t.set("down", p.down)?;
+            t.set("right", p.right)?;
+            t.set("middle", p.middle)?;
+            t.set("pressed", p.pressed)?;
+            t.set("released", p.released)?;
+            t.set("wheel", p.wheel as f64)?;
+            Ok(t)
+        })?,
+    )?;
+    // grab_mouse(true): lock the cursor to the window and hide it, so that the mouse can turn a camera without end
+    let s = shared.clone();
+    input.set(
+        "grab_mouse",
+        lua.create_function(move |_, on: bool| {
+            s.borrow_mut().grab_request = Some(on);
+            Ok(())
+        })?,
+    )?;
     // next_source(): the source pressed since the last call (and forgets it), or nil: for "press the new key" screens,
     // which call it once when they start listening (to drop the press that opened the screen) and then every frame.
     let s = shared.clone();
@@ -1587,7 +1650,9 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
     raw.set(
         "input_step",
         lua.create_function(move |_, ()| {
-            s.borrow_mut().states.begin_step();
+            let mut sh = s.borrow_mut();
+            sh.states.begin_step();
+            sh.begin_pointer_step();
             Ok(())
         })?,
     )?;
@@ -1848,6 +1913,10 @@ impl Game {
             audio: Vec::new(),
             rumble: Vec::new(),
             host_stats: HostStats::default(),
+            pointer_now: actions::PointerFrame::default(),
+            pointer_acc: actions::PointerFrame::default(),
+            pointer_step: actions::PointerFrame::default(),
+            grab_request: None,
             lua_ms: 0.0,
             lua_kb: 0.0,
             next_sound: 1,
@@ -1995,6 +2064,16 @@ impl Game {
         sh.lua_kb = self.lua.used_memory() as f32 / 1024.0;
     }
 
+    /// Did a script ask for the mouse to be locked (true) or freed (false) since the last call?
+    pub fn take_grab_request(&self) -> Option<bool> {
+        self.shared.borrow_mut().grab_request.take()
+    }
+
+    /// Does any action of this game use the source (such as `key:Escape`)?
+    pub fn uses_source(&self, id: &str) -> bool {
+        self.shared.borrow().bindings.uses_source(id)
+    }
+
     /// Gamepad rumbles that scripts asked for since the last call.
     pub fn take_rumble(&self) -> Vec<Rumble> {
         std::mem::take(&mut self.shared.borrow_mut().rumble)
@@ -2087,8 +2166,10 @@ impl Game {
                 sh.last_source = input.last_source.clone();
                 sh.pending_source = input.last_source.clone();
             }
+            sh.take_pointer(&input.pointer);
             if !sh.fixed_steps {
                 sh.states.begin_step(); // without the framework every frame is one step
+                sh.begin_pointer_step();
             }
             sh.view = view;
             sh.time = time;
