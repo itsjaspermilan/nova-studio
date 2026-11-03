@@ -287,6 +287,57 @@ export function detectGrid(sheet: Raster): GridSpec {
   return g >= 4 && (w / g) * (h / g) >= 2 ? { tw: g, th: g } : { tw: w, th: h };
 }
 
+/// The tile size for a sheet cut into `columns` x `rows` tiles (with the same gap and border options as `gridTiles`).
+export function gridFromCounts(sheet: Raster, columns: number, rows: number, spacing = 0, margin = 0): GridSpec {
+  const [c, r] = [Math.max(1, Math.floor(columns)), Math.max(1, Math.floor(rows))];
+  return {
+    tw: Math.max(1, Math.floor((sheet.w - 2 * margin - (c - 1) * spacing) / c)),
+    th: Math.max(1, Math.floor((sheet.h - 2 * margin - (r - 1) * spacing) / r)),
+    spacing,
+    margin,
+  };
+}
+
+/// Runs of pixels (columns or rows) that have something in them, as [start, end] pairs.
+function runs(has: boolean[]): [number, number][] {
+  const out: [number, number][] = [];
+  for (let i = 0; i < has.length; i++) {
+    if (!has[i]) continue;
+    let j = i;
+    while (j + 1 < has.length && has[j + 1]) j++;
+    out.push([i, j]);
+    i = j;
+  }
+  return out;
+}
+
+/// Finds the grid of a sheet whose tiles are separated by empty gutters: every tile the same size, every gutter the same
+/// width, and the same border all round. Null when the sheet is not laid out like that (tiles touching, or uneven).
+export function smartGrid(sheet: Raster): GridSpec | null {
+  const col = Array.from({ length: sheet.w }, () => false);
+  const row = Array.from({ length: sheet.h }, () => false);
+  for (let y = 0; y < sheet.h; y++) for (let x = 0; x < sheet.w; x++) {
+    if (sheet.data[(y * sheet.w + x) * 4 + 3]! > 0) col[x] = row[y] = true;
+  }
+  const [cs, rs] = [runs(col), runs(row)];
+  if (!cs.length || !rs.length || cs.length * rs.length < 2) return null;
+  const even = (list: [number, number][], total: number) => {
+    const size = list[0]![1] - list[0]![0] + 1;
+    const gap = list.length > 1 ? list[1]![0] - list[0]![1] - 1 : 0;
+    const ok = list.every((r, i) => r[1] - r[0] + 1 === size && (i === 0 || r[0] - list[i - 1]![1] - 1 === gap));
+    const margin = list[0]![0];
+    const endMargin = total - 1 - list.at(-1)![1];
+    return ok && endMargin === margin ? { size, gap, margin } : null;
+  };
+  const [a, b] = [even(cs, sheet.w), even(rs, sheet.h)];
+  if (!a || !b) return null;
+  // a single row or column has no gap to measure: take the other axis's
+  const gap = cs.length > 1 ? a.gap : rs.length > 1 ? b.gap : 0;
+  if (cs.length > 1 && rs.length > 1 && a.gap !== b.gap) return null;
+  if (a.margin !== b.margin) return null;
+  return { tw: a.size, th: b.size, spacing: gap, margin: a.margin };
+}
+
 /// A fresh sprite that has not been drawn on: one blank frame in one animation.
 export function isPristine(doc: SpriteDoc): boolean {
   return doc.frames.length === 1 && doc.tags.length === 1 && doc.layers.length === 1 && isClear(doc.frames[0]!);

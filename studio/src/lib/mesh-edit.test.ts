@@ -202,3 +202,116 @@ describe("mirroring parts", () => {
     expect(mirrorPart(d, [5], 0)).toBeNull();
   });
 });
+
+import { transformMesh } from "./mesh-edit";
+
+describe("transforming a mesh with a matrix", () => {
+  // column-major
+  const translate = (x: number, y: number, z: number) => [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1];
+  const scale = (x: number, y: number, z: number) => [x, 0, 0, 0, 0, y, 0, 0, 0, 0, z, 0, 0, 0, 0, 1];
+  it("moves, resizes and keeps the bounds in step", () => {
+    const m = toMesh(box());
+    const moved = transformMesh(m, translate(5, -2, 1));
+    expect(moved.from).toEqual([5, -2, 1]);
+    expect(moved.size).toEqual([10, 10, 10]);
+    const big = transformMesh(m, scale(2, 1, 0.5));
+    expect(big.size).toEqual([20, 10, 5]);
+    expect(vol(big)).toBeCloseTo(1000, 6);
+  });
+
+  it("keeps faces outward when a resize flips the mesh", () => {
+    const flipped = transformMesh(toMesh(box()), scale(-1, 1, 1));
+    expect(vol(flipped)).toBeCloseTo(1000, 6);
+    expect(flipped.from[0]).toBe(-10);
+  });
+
+  it("turns a mesh a quarter about y", () => {
+    const m = toMesh(box({ size: [4, 2, 2] }));
+    const c = Math.cos(Math.PI / 2), s = Math.sin(Math.PI / 2);
+    const turned = transformMesh(m, [c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, 0, 0, 0, 1]);
+    expect(turned.size.map((n) => Math.round(n))).toEqual([2, 2, 4]);
+    expect(vol(turned)).toBeCloseTo(16, 6);
+  });
+});
+
+import { loopCut, moveVertsSymmetric } from "./mesh-edit";
+
+describe("tapering and insetting", () => {
+  it("pulls the new face towards its middle", () => {
+    const m = toMesh(box());
+    const up = upFace(m);
+    const taper = extrudeFace(m, up, 5, 0.5).cube;
+    expect(taper.size).toEqual([10, 15, 10]);
+    // a frustum: 10x10 base to 5x5 top over 5 units
+    expect(vol(taper)).toBeCloseTo(1000 + (5 * (100 + 25 + Math.sqrt(100 * 25))) / 3, 4);
+    const inset = extrudeFace(m, up, 0, 0.2);
+    expect(inset.cube.polys).toHaveLength(10);
+    expect(vol(inset.cube)).toBeCloseTo(1000, 6); // nothing moved up or down
+    const top = faceCentre(inset.cube, up);
+    expect(top[1]).toBeCloseTo(10, 6);
+    // each point went a fifth of the way to the middle, so the cap is 80% of its width
+    const xs = inset.cube.polys![up]!.v.map((i) => inset.cube.verts![i]![0]);
+    expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo(8, 6);
+    expect(extrudeFace(m, up, 1, 7).cube.polys).toHaveLength(10); // an oversized shrink is held back
+  });
+});
+
+describe("loop cuts", () => {
+  it("cuts the ring of faces around a box in two without changing its shape", () => {
+    const m = toMesh(box());
+    const up = upFace(m);
+    for (const way of [0, 1] as const) {
+      const r = loopCut(m, up, way);
+      // the ring runs round the box through four faces, so four edges are crossed
+      expect(r.points).toHaveLength(4);
+      expect(r.cube.polys).toHaveLength(6 + 4);
+      expect(vol(r.cube)).toBeCloseTo(1000, 6);
+      expect(r.cube.size).toEqual([10, 10, 10]);
+    }
+  });
+
+  it("cuts at a chosen place and leaves a face that is not four-sided alone", () => {
+    const m = toMesh(box());
+    const r = loopCut(m, upFace(m), 0, 0.25);
+    const ys = r.points.map((i) => r.cube.verts![i]!);
+    expect(ys.length).toBe(4);
+    const tri = toMesh({ shape: "wedge", from: [0, 0, 0], size: [4, 4, 4], color: "#ffffff" });
+    const triFace = tri.polys!.findIndex((f) => f.v.length === 3);
+    expect(loopCut(tri, triFace, 0).points).toEqual([]);
+  });
+
+  it("stops at a boundary", () => {
+    const sheet = freshMesh();
+    const { cube } = extrudeFace(sheet, 0, 4);
+    const r = loopCut(cube, 0, 0);
+    expect(r.cube.polys!.length).toBeGreaterThan(cube.polys!.length);
+  });
+});
+
+describe("symmetry", () => {
+  const half = toMesh(box({ from: [-5, 0, -5] }));
+  it("moves the point across the mirror plane the opposite way", () => {
+    const i = half.verts!.findIndex((p) => p[0] === 5 && p[1] === 10 && p[2] === 5);
+    const out = moveVertsSymmetric(half, [i], [2, 3, 0], 0);
+    expect(out.verts![i]).toEqual([7, 13, 5]);
+    const twin = half.verts!.findIndex((p) => p[0] === -5 && p[1] === 10 && p[2] === 5);
+    expect(out.verts![twin]).toEqual([-7, 13, 5]);
+  });
+
+  it("keeps points on the plane on it, and does not move a twin twice", () => {
+    const sheet = freshMesh();
+    sheet.verts![0] = [0, 0, 4];
+    const on = moveVertsSymmetric(sheet, [0], [3, 1, 0], 0);
+    expect(on.verts![0]).toEqual([0, 1, 4]);
+    const i = half.verts!.findIndex((p) => p[0] === 5 && p[1] === 10 && p[2] === 5);
+    const twin = half.verts!.findIndex((p) => p[0] === -5 && p[1] === 10 && p[2] === 5);
+    const both = moveVertsSymmetric(half, [i, twin], [1, 0, 0], 0);
+    expect(both.verts![i]![0]).toBe(6);
+    expect(both.verts![twin]![0]).toBe(-5 + 1); // each moved by what was asked, not mirrored over each other
+  });
+
+  it("moves a lone point when there is no twin", () => {
+    const m = moveVertsSymmetric(toMesh(box({ from: [1, 0, 0] })), [0], [0, 5, 0], 0);
+    expect(m.verts![0]![1]).toBe(5);
+  });
+});

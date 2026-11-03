@@ -48,11 +48,17 @@ it. Neither program's code was read or copied; a clone of either is not on this 
 
 - The project tree is now a resource tree (Sprites, 3D Models, Scenes, Entities, Sounds, Music...), one item per thing, like
   Game Maker; the files behind each item move, rename and delete together. "Files" shows everything as on disk.
-- Model editor: Z cycles textured, colours-only and wireframe views; Shift-click paints a straight line.
+- Model editor: Z cycles textured, colours-only and wireframe views; Shift-click paints a straight line; Move, Turn and
+  Resize handles in the viewport (W, E, R; snapping on by default) for parts and shapes; Ctrl, ⌘ or Shift picks several
+  shapes, which move, copy, delete and recolour together; in point mode a yellow arrow pulls a face out, with Shrink %
+  for tapers, Inset, Loop cut, and Symmetry for point moves; painting has opacity and Lock alpha.
+- Sprite editor: onion skin shows up to three frames before and after, tinted blue and red; frames drag to reorder inside
+  an animation; the import dialog cuts by tile size or by tile count, and Smart slice finds tiles separated by empty gaps.
 
 ## Still open, in the order that would help most
 
-1. Viewport gizmos (move, rotate, resize, pivot) and multi-select with Ctrl and Shift in the model editor.
-2. Mesh tools: loop cut, inset, bevel, drag a face to extrude, live symmetry.
-3. Painting: opacity, lock alpha, mirror painting; per-face UV editing.
-4. Sprites: onion skin counts and tint, frame multi-select and drag to reorder, import by tile count and smart slice.
+1. Mesh: bevel of edges (a real chamfer needs edges to be pickable; Taper and Inset cover faces), extruding an edge or
+   point, knife.
+2. Model editor: a pivot tool, vertex snap, multi-select across turn and resize, per-face UV editing, mirror painting,
+   painting shapes and gradients.
+3. Sprites: multi-select of frames, linked cels, frame duration as a multiplier, moving frames between animations.

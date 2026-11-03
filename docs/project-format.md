@@ -415,7 +415,8 @@ so nothing here changes the runtime.
 
 **Importing a sheet.** In the sprite editor, "Import sheet…" cuts any PNG in the project into tiles (tile size is
 guessed and can be set, with an optional gap between tiles and border around them) and adds them as one new
-animation, or as one animation per row, or onto the end of the current animation. Empty tiles can be left out.
+animation, or as one animation per row, or onto the end of the current animation. Empty tiles can be left out. Tiles can be cut by size, by how many there are across and down, or by "Smart slice", which
+finds tiles separated by empty gaps of equal width.
 Tiles take the sprite's frame size (bottom centre kept); a sprite that is still empty takes the tile size. The
 imported pictures are copied into the sprite: the sheet itself is not referenced afterwards.
 

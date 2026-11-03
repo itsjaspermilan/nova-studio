@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getPixel, newRaster, setPixel, type Rgba } from "./pixels";
 import {
-  addAnimation, animationOf, detectGrid, duplicateAnimation, frameAt, fromImage, fromSheet, gridTiles, importTiles, insertFrame, isPristine, moveAnimation, moveFrame, newDoc, normalizeAnimations,
+  addAnimation, animationOf, detectGrid, gridFromCounts, smartGrid, duplicateAnimation, frameAt, fromImage, fromSheet, gridTiles, importTiles, insertFrame, isPristine, moveAnimation, moveFrame, newDoc, normalizeAnimations,
   parseSheetJson, removeAnimation, removeFrame, setAnimationDuration, tagProblems, tagSequence, toSheet, toSheetJson, updateAnimation, type SpriteDoc, type Tag,
 } from "./sprite-doc";
 
@@ -432,5 +432,39 @@ describe("importing sheets", () => {
     expect(diag(r.doc.layers[1]!.cels[1]!)).toBe(0);
     expect(r.doc.layers[0]!.cels[1]!.data.some((v) => v)).toBe(false);
     expect(diag(r.doc.frames[1]!)).toBe(0);
+  });
+});
+
+describe("finding a grid", () => {
+  /// A sheet of cols x rows tiles (each tile w x h with a pixel in it), `gap` apart with `margin` all round.
+  const sheet = (cols: number, rows: number, w: number, h: number, gap = 0, margin = 0) => {
+    const r = newRaster(2 * margin + cols * w + (cols - 1) * gap, 2 * margin + rows * h + (rows - 1) * gap);
+    for (let c = 0; c < cols; c++) for (let k = 0; k < rows; k++) {
+      const [x0, y0] = [margin + c * (w + gap), margin + k * (h + gap)];
+      for (let x = 0; x < w; x++) setPixel(r, x0 + x, y0, RED);
+      for (let y = 0; y < h; y++) setPixel(r, x0, y0 + y, RED);
+    }
+    return r;
+  };
+
+  it("smart-slices a sheet with gutters", () => {
+    expect(smartGrid(sheet(4, 2, 12, 10, 2, 3))).toEqual({ tw: 12, th: 10, spacing: 2, margin: 3 });
+    expect(smartGrid(sheet(5, 1, 8, 8, 1, 0))).toEqual({ tw: 8, th: 8, spacing: 1, margin: 0 });
+    expect(smartGrid(sheet(1, 3, 6, 9, 4, 2))).toEqual({ tw: 6, th: 9, spacing: 4, margin: 2 });
+  });
+
+  it("gives up on tiles that touch, differ or have uneven gutters", () => {
+    expect(smartGrid(sheet(3, 3, 8, 8))).toBeNull();
+    expect(smartGrid(sheet(1, 1, 8, 8, 0, 2))).toBeNull();
+    expect(smartGrid(newRaster(8, 8))).toBeNull();
+    const uneven = sheet(3, 1, 8, 8, 2);
+    for (let y = 0; y < 8; y++) setPixel(uneven, 8, y, RED); // widens the first gutter's neighbour
+    expect(smartGrid(uneven)).toBeNull();
+  });
+
+  it("works out a tile size from how many tiles there are", () => {
+    expect(gridFromCounts(newRaster(64, 32), 4, 2)).toEqual({ tw: 16, th: 16, spacing: 0, margin: 0 });
+    expect(gridFromCounts(newRaster(71, 32), 4, 1, 1, 2)).toEqual({ tw: 16, th: 28, spacing: 1, margin: 2 });
+    expect(gridFromCounts(newRaster(10, 10), 0, 0).tw).toBe(10);
   });
 });

@@ -2,14 +2,16 @@
   import { onMount, untrack } from "svelte";
   import * as THREE from "three";
   import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+  import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
   import {
     FACES, History, SHAPES, addCube, addPart, afterRemoval, countCubes, cubeAt, duplicateNode, faceColor, newModel, parseModel, partAt, removeNode, samePath, serializeModel,
     setCube, setFaceColor, updateCube, updatePart, walk, namesOf, PROPS, MAX_SEGMENTS, MIN_SEGMENTS, DEFAULT_SEGMENTS, type Cube, type Face, type ModelDoc, type Path, type Prop, type Shape, type Vec3,
   } from "../lib/model-doc";
-  import { addFace, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, mirrorElement, mirrorPart, moveVerts, setFaceColors, setSmooth, setVert, subdivide, toMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
+  import { addFace, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, mirrorElement, mirrorPart, loopCut, moveVerts, moveVertsSymmetric, setFaceColors, setSmooth, setVert, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
   import { hasVolume, meshOf, segmentsOf, shapeFaces } from "../lib/model-mesh";
   import { bakeAll, blockOf, enableTexture, fitPicture, packModel, resizeTexture, unwrap, uvsOf } from "../lib/model-uv";
-  import { CLEAR, cloneRaster, drawLine, floodFill, getPixel, parseHex, stamp, toHex, type Raster, type Rgba } from "../lib/pixels";
+  import { CLEAR, cloneRaster, drawLine, floodFill, getPixel, newRaster, parseHex, stamp, toHex, type Raster, type Rgba } from "../lib/pixels";
+  import { applyBrush } from "../lib/paint";
   import { loadRaster, rasterToDataUrl } from "../lib/png";
   import { exportGlb } from "../lib/glb";
   import { addClip, findTrack, pathKey, removeClip, removeKey, samplePose, setKey, snapTime, updateClip, KEY_STEP, type Pose } from "../lib/model-anim";
@@ -22,15 +24,40 @@
   const error = parsed.ok ? "" : parsed.error;
   let doc: ModelDoc = $state.raw(parsed.ok ? parsed.doc : newModel());
   let selected = $state<Path | null>(null);
+  /// More shapes picked with Ctrl, ⌘ or Shift beside `selected`: move, copy, delete and colour act on all of them.
+  let also = $state<Path[]>([]);
+  const picked = $derived<Path[]>(selected && selected.cube !== undefined ? [selected, ...also] : selected ? [selected] : []);
+  const pickedShapes = $derived(picked.filter((p) => p.cube !== undefined));
+  /// A click that may add to or take from the picked shapes instead of replacing them.
+  function choose(path: Path | null, additive: boolean) {
+    if (!path || !additive || !selected || selected.cube === undefined || path.cube === undefined) {
+      selected = path;
+      also = [];
+      return;
+    }
+    if (samePath(selected, path)) {
+      if (also.length) {
+        selected = also[0]!;
+        also = also.slice(1);
+      }
+    } else if (also.some((p) => samePath(p, path))) also = also.filter((p) => !samePath(p, path));
+    else also = [...also, path];
+  }
+  const isPicked = (p: Path) => picked.some((q) => samePath(q, p));
   let showGrid = $state(true);
   // how the model is drawn: with its texture, flat colours only, or as a wireframe (Z cycles them)
   let viewMode = $state<"textured" | "solid" | "wire">("textured");
+  // the move / turn / resize handles drawn on the selected part or shape
+  let gizmoMode = $state<"translate" | "rotate" | "scale">("translate");
   // editing the points of a mesh
   let editPoints = $state(false);
   let selVerts = $state<number[]>([]);
   let selFace = $state<number | null>(null);
   let snap = $state(true);
   let extrudeBy = $state(4);
+  let shrinkBy = $state(0); // percent the new face is pulled towards its middle: a taper, or with no pull, an inset
+  let cutAt = $state(50); // percent along each crossed edge
+  let symmetry = $state<"off" | "0" | "1" | "2">("off"); // move points in mirrored pairs across the x, y or z plane
   let newKind = $state<Shape | "square">("box");
   let pendingEdit = false;
   // animation
@@ -61,6 +88,10 @@
   let texTool = $state<TexTool>("pencil");
   let texColor = $state<Rgba>([220, 70, 70, 255]);
   let texBrush = $state(1);
+  let texOpacity = $state(100); // percent
+  let lockAlpha = $state(false); // paint only what is already painted, and keep its see-through-ness
+  let strokeBase: Raster | null = null; // the picture as the stroke began
+  let strokeDone = new Uint8Array(0); // pixels this stroke has already worked out
   let texTick = $state(0);
   const texPast: Raster[] = [];
   let texFuture: Raster[] = [];
@@ -180,6 +211,15 @@
     controls = new OrbitControls(camera, canvas!);
     controls.target.set(0, 8, 0);
     controls.enableDamping = true;
+    gizmo = new TransformControls(camera, canvas!);
+    gizmo.setSize(0.75);
+    gizmo.addEventListener("dragging-changed", (e) => {
+      if (controls) controls.enabled = !e.value;
+      if (e.value) gizmoDown = true;
+      else finishGizmo();
+    });
+    gizmo.addEventListener("objectChange", liveGizmo);
+    scene.add(gizmo.getHelper());
     scene.add(new THREE.AmbientLight(0xffffff, 1.6));
     const sun = new THREE.DirectionalLight(0xffffff, 1.8);
     sun.position.set(20, 40, 30);
@@ -296,7 +336,7 @@
     }
     if (!selected) return;
     const box3 = new THREE.Box3();
-    const inside = (p: Path) => (selected!.cube === undefined ? p.parts.length >= selected!.parts.length && selected!.parts.every((n, i) => n === p.parts[i]) : samePath(p, selected));
+    const inside = (p: Path) => picked.some((q) => (q.cube === undefined ? p.parts.length >= q.parts.length && q.parts.every((n, i) => n === p.parts[i]) : samePath(p, q)));
     for (const m of meshes) if (inside(m.path)) box3.expandByObject(m.mesh);
     if (box3.isEmpty()) return;
     outline = new THREE.Box3Helper(box3, 0xffd166);
@@ -308,8 +348,12 @@
     if (modelGroup) untrack(rebuild);
   });
   $effect(() => {
-    selected;
+    selected; also;
     untrack(drawOutline);
+  });
+  $effect(() => {
+    doc; selected; also; mode; inEdit; gizmoMode; snap;
+    untrack(attachGizmo);
   });
   $effect(() => {
     animTime; clipIndex; mode;
@@ -359,6 +403,8 @@
     return () => {
       watch.disconnect();
       cancelAnimationFrame(frameId);
+      gizmo?.dispose();
+      gizmo = undefined;
       controls?.dispose();
       disposeMeshes();
       clearHandles();
@@ -367,6 +413,118 @@
       renderer = undefined;
     };
   });
+
+  // ---- move / turn / resize handles ---------------------------------------------------------------------------
+  let gizmo: TransformControls | undefined;
+  let gizmoDown = false; // a handle was grabbed: the click that follows must not change the selection
+  let proxy: THREE.Object3D | undefined;
+  let proxyBase: THREE.Matrix4 | null = null;
+  let attachedPart: THREE.Object3D | undefined;
+  let partBase: { origin: Vec3; rotation: Vec3 } | null = null;
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+
+  function attachGizmo() {
+    if (!gizmo) return;
+    gizmo.detach();
+    proxy?.removeFromParent();
+    proxy = undefined;
+    proxyBase = null;
+    attachedPart = undefined;
+    partBase = null;
+    const live = mode === "model" && !inEdit && !!selected;
+    gizmo.getHelper().visible = live;
+    if (!live || !selected) return;
+    const g = groupOf(selected.parts);
+    if (!g) return;
+    gizmo.setTranslationSnap(snap ? 1 : null);
+    gizmo.setRotationSnap(snap ? THREE.MathUtils.degToRad(15) : null);
+    gizmo.setScaleSnap(snap ? 0.25 : null);
+    if (selected.cube === undefined) {
+      // a part: its own group is moved and turned (resizing a part is only for animation)
+      gizmo.setMode(gizmoMode === "scale" ? "translate" : gizmoMode);
+      gizmo.setSpace("world");
+      attachedPart = g;
+      const p = partAt(doc, selected.parts)!;
+      partBase = { origin: [...p.origin], rotation: [...p.rotation] };
+      gizmo.attach(g);
+      return;
+    }
+    const c = cube;
+    if (!c || !hasVolume(c)) return;
+    proxy = new THREE.Object3D();
+    proxy.position.set(c.from[0] + c.size[0] / 2, c.from[1] + c.size[1] / 2, c.from[2] + c.size[2] / 2);
+    if (c.shape !== "mesh" && c.rotation) proxy.rotation.set(...(c.rotation.map((d) => (d * Math.PI) / 180) as Vec3), "XYZ");
+    g.add(proxy);
+    proxy.updateMatrix();
+    proxyBase = proxy.matrix.clone();
+    gizmo.setMode(also.length ? "translate" : gizmoMode);
+    gizmo.setSpace(also.length ? "world" : "local");
+    gizmo.attach(proxy);
+  }
+
+  /// While a handle is dragged the shape's own pieces follow it; nothing is saved until it is let go.
+  function liveGizmo() {
+    if (!proxy || !proxyBase || !selected) return;
+    proxy.updateMatrix();
+    const delta = new THREE.Matrix4().multiplyMatrices(proxy.matrix, proxyBase.clone().invert());
+    const g = groupOf(selected.parts);
+    for (const m of meshes) {
+      if (!isPicked(m.path)) continue;
+      m.mesh.matrixAutoUpdate = false;
+      if (samePath(m.path, selected)) m.mesh.matrix.copy(delta);
+      else {
+        // the others move by the same amount in the world, which is another amount inside their own part
+        const t = convertShift(new THREE.Vector3().setFromMatrixPosition(delta), g, groupOf(m.path.parts));
+        m.mesh.matrix.makeTranslation(t.x, t.y, t.z);
+      }
+      m.mesh.matrixWorldNeedsUpdate = true;
+    }
+  }
+  /// A shift measured in one part's space, as it is in another part's space.
+  function convertShift(v: THREE.Vector3, from: THREE.Object3D | undefined, to: THREE.Object3D | undefined) {
+    if (!from || !to || from === to) return v.clone();
+    const out = v.clone().applyMatrix3(new THREE.Matrix3().setFromMatrix4(from.matrixWorld));
+    return out.applyMatrix3(new THREE.Matrix3().setFromMatrix4(to.matrixWorld.clone().invert()));
+  }
+
+  function finishGizmo() {
+    if (!gizmoDown || !selected) return;
+    if (attachedPart && partBase) {
+      const e = new THREE.Euler().setFromQuaternion(attachedPart.quaternion, "XYZ");
+      const origin = attachedPart.position.toArray().map(round2) as Vec3;
+      const rotation = [e.x, e.y, e.z].map((r) => round2((r * 180) / Math.PI)) as Vec3;
+      const same = origin.every((v, i) => v === partBase!.origin[i]) && rotation.every((v, i) => Math.abs(v - partBase!.rotation[i]!) < 0.01);
+      if (!same) commit(updatePart(doc, selected.parts, { origin, rotation }));
+      return;
+    }
+    if (!proxy || !proxyBase || !cube) return;
+    proxy.updateMatrix();
+    const delta = new THREE.Matrix4().multiplyMatrices(proxy.matrix, proxyBase.clone().invert());
+    if (delta.equals(new THREE.Matrix4())) return;
+    if (also.length) {
+      const shift = new THREE.Vector3().setFromMatrixPosition(delta);
+      const home = groupOf(selected.parts);
+      let next = doc;
+      for (const p of pickedShapes) {
+        const c = cubeAt(next, p);
+        if (!c) continue;
+        const d = convertShift(shift, home, groupOf(p.parts));
+        next = updateCube(next, p, { from: [round2(c.from[0] + d.x), round2(c.from[1] + d.y), round2(c.from[2] + d.z)] });
+      }
+      commit(next);
+      return;
+    }
+    if (cube.shape === "mesh") {
+      commit(setCube(doc, selected, transformMesh(cube, delta.toArray())));
+      return;
+    }
+    const s = proxy.scale;
+    const size = cube.size.map((n, i) => round2(Math.abs(n * [s.x, s.y, s.z][i]!))) as Vec3;
+    const centre = proxy.position.toArray();
+    const e = new THREE.Euler().setFromQuaternion(proxy.quaternion, "XYZ");
+    const rotation = [e.x, e.y, e.z].map((r) => round2((r * 180) / Math.PI)) as Vec3;
+    commit(updateCube(doc, selected, { from: centre.map((v, i) => round2(v - size[i]! / 2)) as Vec3, size, ...(rotation.some((r) => r !== 0) || cube.rotation ? { rotation } : {}) }));
+  }
 
   // ---- painting ----------------------------------------------------------------------------------------------
   let stroke: { last: [number, number] | null } | null = null;
@@ -389,6 +547,8 @@
   let lastPaint: [number, number] | null = null; // where the last stroke ended, for Shift-click lines
   function beginStroke(straight = false) {
     if (texTool !== "picker") rememberPicture();
+    strokeBase = picture ? cloneRaster(picture) : null;
+    strokeDone = new Uint8Array(picture ? picture.w * picture.h : 0);
     stroke = { last: straight && (texTool === "pencil" || texTool === "eraser") ? lastPaint : null };
   }
   function pictureChanged() {
@@ -405,10 +565,16 @@
       return;
     }
     if (texTool === "fill") floodFill(picture, x, y, texColor);
-    else {
+    else if (texOpacity >= 100 && !lockAlpha) {
       const colour = texTool === "eraser" ? CLEAR : texColor;
       if (stroke.last) drawLine(picture, { x: stroke.last[0], y: stroke.last[1] }, { x, y }, texBrush, colour);
       else stamp(picture, x, y, texBrush, colour);
+    } else if (strokeBase) {
+      // the stroke goes into a mask, and each touched pixel is blended once from how the picture was before
+      const mask = newRaster(picture.w, picture.h);
+      if (stroke.last) drawLine(mask, { x: stroke.last[0], y: stroke.last[1] }, { x, y }, texBrush, [255, 255, 255, 255]);
+      else stamp(mask, x, y, texBrush, [255, 255, 255, 255]);
+      applyBrush(picture, strokeBase, mask, strokeDone, { colour: texColor, opacity: texOpacity / 100, erase: texTool === "eraser", lockAlpha });
     }
     stroke.last = lastPaint = [x, y];
     pictureChanged();
@@ -564,6 +730,7 @@
   // ---- points and faces of a mesh in the view -------------------------------------------------------
   let handles: THREE.Points | undefined;
   let faceLine: THREE.LineLoop | undefined;
+  let pullArrow: THREE.ArrowHelper | undefined;
   function clearHandles() {
     for (const o of [handles, faceLine]) {
       if (!o) continue;
@@ -572,6 +739,21 @@
       (o.material as THREE.Material).dispose();
     }
     handles = faceLine = undefined;
+    if (pullArrow) {
+      scene?.remove(pullArrow);
+      pullArrow.dispose();
+      pullArrow = undefined;
+    }
+  }
+  /// Where the picked face is in the world, and which way it faces.
+  function faceFrame(): { at: THREE.Vector3; dir: THREE.Vector3 } | null {
+    const g = selected ? groupOf(selected.parts) : undefined;
+    if (!g || !cube || selFace === null || !cube.polys?.[selFace]) return null;
+    const c = faceCentre(cube, selFace);
+    const n = faceNormal(cube, selFace);
+    const at = new THREE.Vector3(...c).applyMatrix4(g.matrixWorld);
+    const dir = new THREE.Vector3(...n).applyMatrix3(new THREE.Matrix3().setFromMatrix4(g.matrixWorld)).normalize();
+    return { at, dir };
   }
   const groupOf = (parts: number[]) => groups.get(pathKey(namesOf(doc, parts)))?.group;
   /// The selected mesh's points in the world.
@@ -596,8 +778,17 @@
       faceLine = new THREE.LineLoop(line, new THREE.LineBasicMaterial({ color: 0xffd166, depthTest: false }));
       faceLine.renderOrder = 9;
       scene.add(faceLine);
+      const frame = faceFrame();
+      if (frame) {
+        // the handle that pulls the face out: drag its tip along the way the face points
+        pullArrow = new THREE.ArrowHelper(frame.dir, frame.at, PULL_LENGTH, 0xffd166, 3, 2);
+        pullArrow.renderOrder = 11;
+        for (const part of [pullArrow.line, pullArrow.cone]) (part.material as THREE.Material).depthTest = false;
+        scene.add(pullArrow);
+      }
     }
   }
+  const PULL_LENGTH = 9;
 
   const pointer = (e: PointerEvent) => {
     const r = canvas!.getBoundingClientRect();
@@ -624,6 +815,18 @@
   // Click (without dragging) selects the shape under the pointer; in point mode it picks the face instead.
   // Dragging a point's handle moves it, and every other selected point with it.
   let downAt: [number, number] | null = null;
+  let pull: { base: ModelDoc; baseCube: Cube; path: Path; face: number; origin: THREE.Vector3; dir: THREE.Vector3; t0: number; moved: boolean } | null = null;
+  /// How far along the line (origin + t * dir) the pointer's ray comes closest, in world units.
+  function lineParameter(e: PointerEvent, origin: THREE.Vector3, dir: THREE.Vector3): number | null {
+    if (!camera) return null;
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(pointer(e), camera);
+    const v = ray.ray.direction;
+    const w = origin.clone().sub(ray.ray.origin);
+    const [a, b, c, d, f] = [dir.dot(dir), dir.dot(v), v.dot(v), dir.dot(w), v.dot(w)];
+    const denom = a * c - b * b;
+    return Math.abs(denom) < 1e-6 ? null : (b * f - c * d) / denom;
+  }
   let drag: { point: number; base: ModelDoc; baseCube: Cube; path: Path; start: THREE.Vector3; plane: THREE.Plane; moved: boolean } | null = null;
   function pointerDown(e: PointerEvent) {
     downAt = [e.clientX, e.clientY];
@@ -638,6 +841,27 @@
       }
     }
     if (!inEdit || !camera || !canvas || !selected || !cube || e.button !== 0) return;
+    const frame = faceFrame();
+    if (frame && selFace !== null && camera) {
+      const r = canvas.getBoundingClientRect();
+      // grab anywhere on the outer part of the arrow, not only its very tip
+      const screen = (k: number) => {
+        const p = frame.at.clone().addScaledVector(frame.dir, PULL_LENGTH * k).project(camera!);
+        return [((p.x + 1) / 2) * r.width + r.left, ((1 - p.y) / 2) * r.height + r.top] as const;
+      };
+      const [a, b] = [screen(0.4), screen(1)];
+      const len2 = (b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2 || 1;
+      const u = Math.max(0, Math.min(1, ((e.clientX - a[0]) * (b[0] - a[0]) + (e.clientY - a[1]) * (b[1] - a[1])) / len2));
+      if (Math.hypot(a[0] + u * (b[0] - a[0]) - e.clientX, a[1] + u * (b[1] - a[1]) - e.clientY) < 16) {
+        const t0 = lineParameter(e, frame.at, frame.dir);
+        if (t0 !== null) {
+          pull = { base: doc, baseCube: cube, path: selected, face: selFace, origin: frame.at, dir: frame.dir, t0, moved: false };
+          controls!.enabled = false;
+          canvas.setPointerCapture(e.pointerId);
+          return;
+        }
+      }
+    }
     const point = pickVert(e);
     if (point < 0) return;
     if (e.shiftKey) selVerts = selVerts.includes(point) ? selVerts.filter((v) => v !== point) : [...selVerts, point];
@@ -657,6 +881,19 @@
       else stroke.last = null;
       return;
     }
+    if (pull && camera) {
+      const t = lineParameter(e, pull.origin, pull.dir);
+      if (t === null) return;
+      const step = snap ? 1 : 0.01;
+      const dist = Math.round((t - pull.t0) / step) * step;
+      if (!pull.moved && dist === 0) return;
+      if (!pull.moved) history.record(pull.base);
+      pull.moved = true;
+      const r = extrudeFace(pull.baseCube, pull.face, dist, shrinkBy / 100);
+      commit(setCube(pull.base, pull.path, r.cube), true);
+      selVerts = r.points;
+      return;
+    }
     if (!drag || !camera) return;
     const g = groupOf(drag.path.parts);
     if (!g) return;
@@ -671,11 +908,22 @@
     if (!drag.moved && delta.every((d) => d === 0)) return;
     if (!drag.moved) history.record(drag.base);
     drag.moved = true;
-    commit(setCube(drag.base, drag.path, moveVerts(drag.baseCube, selVerts, delta)), true);
+    commit(setCube(drag.base, drag.path, symmetry === "off" ? moveVerts(drag.baseCube, selVerts, delta) : moveVertsSymmetric(drag.baseCube, selVerts, delta, Number(symmetry) as Axis)), true);
   }
   function pointerUp(e: PointerEvent) {
+    if (gizmoDown) {
+      gizmoDown = false;
+      downAt = null;
+      return;
+    }
     if (stroke) {
       stroke = null;
+      downAt = null;
+      if (controls) controls.enabled = true;
+      return;
+    }
+    if (pull) {
+      pull = null;
       downAt = null;
       if (controls) controls.enabled = true;
       return;
@@ -702,7 +950,7 @@
       return;
     }
     const hit = ray.intersectObjects(meshes.map((m) => m.mesh), false)[0];
-    selected = hit ? (meshes.find((m) => m.mesh === hit.object)?.path ?? null) : null;
+    choose(hit ? (meshes.find((m) => m.mesh === hit.object)?.path ?? null) : null, e.shiftKey || e.ctrlKey || e.metaKey);
     canvas.focus();
   }
 
@@ -739,6 +987,7 @@
     const r = addPart(doc, parent);
     commit(r.doc);
     selected = r.path;
+    also = [];
   }
   function newCube() {
     const target = selected?.parts ?? (doc.parts.length ? [0] : null);
@@ -749,21 +998,42 @@
     commit(r.doc);
     pendingEdit = square; // a new sheet is for pulling into shape
     selected = r.path;
+    also = [];
   }
   function remove() {
     if (!selected) return;
+    if (pickedShapes.length > 1) {
+      // later shapes first, so the numbers of the earlier ones in the same part stay right
+      const order = [...pickedShapes].sort((a, b) => (a.parts.join(".") === b.parts.join(".") ? b.cube! - a.cube! : 0));
+      let next = doc;
+      for (const p of order) next = removeNode(next, p);
+      const first = pickedShapes[0]!;
+      commit(next);
+      selected = { parts: first.parts };
+      also = [];
+      return;
+    }
     const gone = selected;
     const next = removeNode(doc, gone);
     if (next === doc) return;
     commit(next);
     selected = afterRemoval(next, gone);
+    also = [];
   }
   function duplicate() {
     if (!selected) return;
-    const r = duplicateNode(doc, selected);
-    if (!r) return;
-    commit(r.doc);
-    selected = r.path;
+    let next = doc;
+    const copies: Path[] = [];
+    for (const p of picked) {
+      const r = duplicateNode(next, p);
+      if (!r) continue;
+      next = r.doc;
+      copies.push(r.path);
+    }
+    if (!copies.length) return;
+    commit(next);
+    selected = copies[0]!;
+    also = copies.slice(1);
   }
   const num = (raw: string, fallback: number) => (Number.isFinite(Number(raw)) && raw.trim() !== "" ? Number(raw) : fallback);
   function setVec(kind: "from" | "size" | "origin" | "rotation", index: number, raw: string) {
@@ -795,8 +1065,22 @@
   }
   function extrude() {
     if (!selected || !cube || selFace === null) return;
-    const r = extrudeFace(cube, selFace, extrudeBy);
+    const r = extrudeFace(cube, selFace, extrudeBy, shrinkBy / 100);
     change(r.cube);
+    selVerts = r.points;
+  }
+  function inset() {
+    if (!selected || !cube || selFace === null) return;
+    const r = extrudeFace(cube, selFace, 0, (shrinkBy || 25) / 100);
+    change(r.cube);
+    selVerts = r.points;
+  }
+  function cutLoop(way: 0 | 1) {
+    if (!selected || !cube || selFace === null) return;
+    const r = loopCut(cube, selFace, way, cutAt / 100);
+    if (!r.points.length) return void studio.say("info", "A loop cut needs four-sided faces all the way round.");
+    change(r.cube);
+    selFace = null;
     selVerts = r.points;
   }
   function makeFace() {
@@ -825,6 +1109,7 @@
     const r = addCube(doc, selected.parts, mirrorElement(cube, axis));
     commit(r.doc);
     selected = r.path;
+    also = [];
   }
   function mirrorPartCopy(axis: Axis) {
     if (!selected) return;
@@ -832,13 +1117,21 @@
     if (!r) return;
     commit(r.doc);
     selected = r.path;
+    also = [];
   }
   const faceHex = $derived(cube && selFace !== null ? (cube.polys?.[selFace]?.color ?? cube.color).slice(0, 7) : "#c9d1d9");
 
   function nudge(dx: number, dy: number, dz: number) {
     if (!selected) return;
-    if (inEdit && cube && selVerts.length) change(moveVerts(cube, selVerts, [dx, dy, dz]));
-    else if (selected.cube !== undefined && cube) commit(updateCube(doc, selected, { from: [cube.from[0] + dx, cube.from[1] + dy, cube.from[2] + dz] }));
+    if (inEdit && cube && selVerts.length) change(symmetry === "off" ? moveVerts(cube, selVerts, [dx, dy, dz]) : moveVertsSymmetric(cube, selVerts, [dx, dy, dz], Number(symmetry) as Axis));
+    else if (selected.cube !== undefined && cube) {
+      let next = doc;
+      for (const p of pickedShapes) {
+        const c = cubeAt(next, p);
+        if (c) next = updateCube(next, p, { from: [c.from[0] + dx, c.from[1] + dy, c.from[2] + dz] });
+      }
+      commit(next);
+    }
     else if (part) commit(updatePart(doc, selected.parts, { origin: [part.origin[0] + dx, part.origin[1] + dy, part.origin[2] + dz] }));
   }
   // ---- animation ----------------------------------------------------------------------------------------
@@ -902,7 +1195,9 @@
     if (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA") return;
     const mod = e.metaKey || e.ctrlKey;
     const step = e.shiftKey ? 4 : 1;
-    if (e.key.toLowerCase() === "z" && !mod) {
+    if (!mod && mode === "model" && !inEdit && selected && ["w", "e", "r"].includes(e.key.toLowerCase())) {
+      gizmoMode = ({ w: "translate", e: "rotate", r: "scale" } as const)[e.key.toLowerCase() as "w" | "e" | "r"];
+    } else if (e.key.toLowerCase() === "z" && !mod) {
       viewMode = viewMode === "textured" ? "solid" : viewMode === "solid" ? "wire" : "textured";
     } else if (e.key === "Escape" && editPoints) {
       editPoints = false;
@@ -930,7 +1225,12 @@
     }
   }
   const hexOf = (c: string) => c.slice(0, 7);
-  const pickColour = (face: Face | "all", value: string) => selected && commit(setFaceColor(doc, selected, face, value));
+  const pickColour = (face: Face | "all", value: string) => {
+    if (!selected) return;
+    let next = doc;
+    for (const p of face === "all" ? pickedShapes : [selected]) next = setFaceColor(next, p, face, value);
+    commit(next);
+  };
   const label = (f: Face) => ({ east: "East +x", west: "West −x", up: "Top +y", down: "Bottom −y", south: "South +z", north: "North −z" })[f];
 </script>
 
@@ -963,9 +1263,9 @@
       <ul>
         {#each rows as r (r.parts.join("."))}
           <li>
-            <button class="node" class:on={selected?.cube === undefined && samePath(selected, { parts: r.parts })} style:padding-left="{8 + r.depth * 14}px" onclick={() => (selected = { parts: r.parts })}>◈ {r.part.name}</button>
+            <button class="node" class:on={selected?.cube === undefined && samePath(selected, { parts: r.parts })} style:padding-left="{8 + r.depth * 14}px" onclick={() => choose({ parts: r.parts }, false)}>◈ {r.part.name}</button>
             {#each r.part.cubes as c, ci (ci)}
-              <button class="node cube" class:on={samePath(selected, { parts: r.parts, cube: ci })} style:padding-left="{22 + r.depth * 14}px" onclick={() => (selected = { parts: r.parts, cube: ci })}>
+              <button class="node cube" class:on={isPicked({ parts: r.parts, cube: ci })} style:padding-left="{22 + r.depth * 14}px" onclick={(e) => choose({ parts: r.parts, cube: ci }, e.shiftKey || e.ctrlKey || e.metaKey)}>
                 <i class="dot" class:round={c.shape === "sphere" || c.shape === "cylinder" || c.shape === "cone"} style:background={hexOf(c.color)}></i>{c.name || `${c.shape && c.shape !== "box" ? c.shape : "cube"} ${ci + 1}`}
               </button>
             {/each}
@@ -981,6 +1281,14 @@
         <button class:on={mode === "model"} onclick={() => { mode = "model"; playingAnim = false; }}>Model</button>
         <button class:on={mode === "texture"} onclick={() => { mode = "texture"; playingAnim = false; editPoints = false; }} title="Paint the shapes with a texture">Texture</button>
         <button class:on={mode === "animate"} onclick={() => { mode = "animate"; if (!clips.length) newClip(); }}>Animate</button>
+        {#if mode === "model" && selected && !inEdit}
+          <span class="seg" role="group" aria-label="Handles">
+            <button class:on={gizmoMode === "translate"} onclick={() => (gizmoMode = "translate")} title="Move (W)">Move</button>
+            <button class:on={gizmoMode === "rotate"} onclick={() => (gizmoMode = "rotate")} title="Turn (E)">Turn</button>
+            <button class:on={gizmoMode === "scale"} disabled={selected.cube === undefined} onclick={() => (gizmoMode = "scale")} title={selected.cube === undefined ? "Parts are resized in animations" : "Resize (R)"}>Resize</button>
+          </span>
+          <label class="check" title="Snap to whole units and 15 degrees"><input type="checkbox" bind:checked={snap} /> Snap</label>
+        {/if}
         <label class="check"><input type="checkbox" bind:checked={showGrid} /> Grid</label>
         <select bind:value={viewMode} aria-label="View (Z)" title="How the model is drawn (Z)">
           <option value="textured">Textured</option>
@@ -1027,7 +1335,7 @@
       {:else if inEdit}
         <p class="hint dim">Points: click a face to pick it and its points · click or drag a dot to move it (⇧-click adds more) · arrows and PageUp/PageDown nudge the picked points · Esc leaves point mode</p>
       {:else}
-        <p class="hint dim">Drag to orbit · right-drag to pan · scroll to zoom · click a shape to select · arrows and PageUp/PageDown move it (⇧ for 4) · ⌘D duplicates · Delete removes</p>
+        <p class="hint dim">Drag to orbit · right-drag to pan · scroll to zoom · click a shape to select (⌘ or ⇧ adds more) · drag the handles, or W E R for move, turn, resize · arrows and PageUp/PageDown nudge (⇧ for 4) · ⌘D duplicates · Delete removes · Z changes the view</p>
       {/if}
     </div>
 
@@ -1051,6 +1359,10 @@
             <input type="color" value={texHex} oninput={(e) => pickTexHex(e.currentTarget.value)} aria-label="Paint colour" />
             <input class="mono" value={texHex} onchange={(e) => pickTexHex(e.currentTarget.value)} aria-label="Hex colour" />
             <label class="inline">Brush <input type="number" min="1" max="16" bind:value={texBrush} /></label>
+          </div>
+          <div class="paintrow">
+            <label class="inline grow">Opacity <input type="range" min="5" max="100" step="5" bind:value={texOpacity} aria-label="Opacity" /> <output>{texOpacity}%</output></label>
+            <label class="check" title="Paint only pixels that are already painted, and keep their see-through-ness"><input type="checkbox" bind:checked={lockAlpha} /> Lock alpha</label>
           </div>
           <div class="swatches">
             {#each TEX_PALETTE as c (c)}<button class="swatch" style:background={c} title={c} aria-label={c} onclick={() => pickTexHex(c)}></button>{/each}
@@ -1088,6 +1400,7 @@
         {/if}
       {:else if selected && cube}
         <h3>{cube.shape === "mesh" ? "Mesh" : "Shape"}</h3>
+        {#if pickedShapes.length > 1}<p class="note small">{pickedShapes.length} shapes picked. Moving, copying, deleting and colouring act on all of them; the fields below are for the first.</p>{/if}
         <label>Name <input value={cube.name ?? ""} placeholder="optional" onchange={(e) => commit(updateCube(doc, selected!, { name: e.currentTarget.value.trim() || undefined }))} /></label>
         {#if cube.shape !== "mesh"}
           <label>Shape
@@ -1130,14 +1443,17 @@
             <p class="dim small">{selVerts.length ? `${selVerts.length} points picked` : "Click a dot or a face."}</p>
           {/if}
           <label class="check"><input type="checkbox" bind:checked={snap} /> Snap to whole units</label>
+          <label>Symmetry <select bind:value={symmetry} aria-label="Symmetry"><option value="off">Off</option><option value="0">Mirror left–right (x)</option><option value="1">Mirror up–down (y)</option><option value="2">Mirror front–back (z)</option></select></label>
           <div class="row">
             <button onclick={makeFace} disabled={selVerts.length < 3} title="Fills a face between the picked points">Make face</button>
             <button class="danger" onclick={removePointsPicked} disabled={!selVerts.length}>Delete points</button>
           </div>
           <h4>Face</h4>
           {#if selFace !== null && cube.polys?.[selFace]}
-            <label class="inline">Pull by <input type="number" step="1" bind:value={extrudeBy} /></label>
-            <div class="row"><button onclick={extrude} title="Pushes the face out (a negative number digs in) and joins it to the rest">Extrude</button><button class="danger" onclick={removeFacePicked}>Delete face</button></div>
+            <p class="dim small">Drag the yellow arrow to pull the face out.</p>
+            <div class="pair"><label class="inline">Pull by <input type="number" step="1" bind:value={extrudeBy} /></label><label class="inline">Shrink % <input type="number" min="0" max="95" step="5" bind:value={shrinkBy} title="Moves the new face's points towards its middle: a taper" /></label></div>
+            <div class="row"><button onclick={extrude} title="Pushes the face out (a negative number digs in) and joins it to the rest">Extrude</button><button onclick={inset} title="A smaller face inside this one (uses Shrink %, 25 if empty)">Inset</button><button class="danger" onclick={removeFacePicked}>Delete</button></div>
+            <div class="row"><button onclick={() => cutLoop(0)} title="Cuts the ring of four-sided faces round the shape in two">Loop cut 1</button><button onclick={() => cutLoop(1)} title="The same, the other way round">Loop cut 2</button><label class="inline">at % <input type="number" min="5" max="95" step="5" bind:value={cutAt} /></label></div>
             <label class="colour">Colour <input type="color" value={faceHex} onchange={(e) => change(setFaceColors(cube, [selFace!], e.currentTarget.value))} /></label>
             <label class="check"><input type="checkbox" checked={!!cube.polys[selFace]!.smooth} onchange={(e) => change(setSmooth(cube, [selFace!], e.currentTarget.checked))} /> Smooth shading</label>
             <div class="row"><button onclick={() => change(flipFaces(cube, [selFace!]))} title="Turns the face inside out">Flip</button><button onclick={() => change(subdivide(cube, [selFace!]), true)}>Split</button></div>
@@ -1186,9 +1502,11 @@
   .adder { padding: 8px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
   .adder .row { min-width: 0; } .adder select { min-width: 0; flex: 1; }
   .mirror { align-items: center; } .mirror button { padding: 0 8px; }
+  .bar .seg { display: inline-flex; } .bar .seg button { border-radius: 0; padding: 2px 8px; } .bar .seg button:first-child { border-radius: 5px 0 0 5px; } .bar .seg button:last-child { border-radius: 0 5px 5px 0; margin-left: -1px; }
   .tools { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; } .tools button { width: 30px; height: 28px; padding: 0; } .tools button.on { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
   .tools .gap { flex: 1; }
   .paintrow { display: flex; gap: 6px; align-items: center; } .paintrow input[type="color"] { width: 38px; height: 28px; padding: 0; } .paintrow .mono { flex: 1; min-width: 0; } .paintrow label.inline { flex-direction: row; align-items: center; gap: 4px; } .paintrow label.inline input { width: 48px; }
+  .paintrow .grow { flex: 1; } .paintrow input[type="range"] { flex: 1; min-width: 0; } .paintrow output { width: 34px; text-align: right; font-size: 11px; }
   .swatches { display: grid; grid-template-columns: repeat(8, 1fr); gap: 3px; } .swatch { aspect-ratio: 1; padding: 0; border-radius: 3px; }
   .texbox { overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px; max-height: 360px; display: grid; place-items: start center; } .texbox canvas { image-rendering: pixelated; cursor: crosshair; touch-action: none; }
   .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
@@ -1223,5 +1541,6 @@
   .keyed { color: var(--warn); }
   .keybtn { align-self: flex-start; padding: 0 6px; font-size: 11px; }
   .small { font-size: 11px; margin: 4px 0; }
+  .note { color: var(--accent); }
   .bad { padding: 32px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 </style>

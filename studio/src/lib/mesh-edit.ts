@@ -67,15 +67,22 @@ export function faceNormal(c: Cube, face: number): Vec3 {
   return l > 1e-12 ? scale(n, 1 / l) : [0, 1, 0];
 }
 
-/// Pushes a face out along its normal by `distance` (negative digs in), adding walls around it.
+/// Pushes a face out along its normal by `distance` (negative digs in), adding walls around it. `shrink` (0 to 0.95)
+/// pulls the new face's points towards its middle by that fraction: with a distance of 0 that is an inset, with both a taper.
 /// The face itself becomes the new cap; the result says which points that cap uses.
-export function extrudeFace(c: Cube, face: number, distance: number): { cube: Cube; points: number[] } {
+export function extrudeFace(c: Cube, face: number, distance: number, shrink = 0): { cube: Cube; points: number[] } {
   const out = clone(c);
   const f = out.polys?.[face];
   if (!f || !Number.isFinite(distance)) return { cube: out, points: [] };
   const n = scale(faceNormal(out, face), distance);
   const old = [...f.v];
-  const fresh = old.map((i) => out.verts!.push(add(out.verts![i]!, n)) - 1);
+  const mid = faceCentre(out, face);
+  const t = Math.min(0.95, Math.max(0, Number.isFinite(shrink) ? shrink : 0));
+  const fresh = old.map((i) => {
+    const p = out.verts![i]!;
+    const pulled: Vec3 = t ? [p[0] + (mid[0] - p[0]) * t, p[1] + (mid[1] - p[1]) * t, p[2] + (mid[2] - p[2]) * t] : p;
+    return out.verts!.push(add(pulled, n)) - 1;
+  });
   for (let i = 0; i < old.length; i++) {
     const j = (i + 1) % old.length;
     // The same winding serves digging in: the sign of the distance already turns the wall's normal round.
@@ -85,6 +92,100 @@ export function extrudeFace(c: Cube, face: number, distance: number): { cube: Cu
   return { cube: finish(out), points: fresh };
 }
 
+/// Cuts a ring of four-sided faces in two: the cut crosses the edges `way` and `way + 2` of `face` (way 0 or 1), runs on
+/// through each neighbouring four-sided face, and stops where the ring closes or meets a face of another shape.
+/// `at` (0 to 1) is how far along each crossed edge the cut falls. Returns the cut's new points.
+export function loopCut(c: Cube, face: number, way: 0 | 1, at = 0.5): { cube: Cube; points: number[] } {
+  const out = clone(c);
+  const polys = out.polys!;
+  if (!polys[face] || polys[face]!.v.length !== 4) return { cube: out, points: [] };
+  const key = (a: number, b: number) => (a < b ? `${a},${b}` : `${b},${a}`);
+  const sharing = new Map<string, number[]>();
+  polys.forEach((p, i) => p.v.forEach((a, k) => {
+    const e = key(a, p.v[(k + 1) % p.v.length]!);
+    sharing.set(e, [...(sharing.get(e) ?? []), i]);
+  }));
+  // each visited face and the position (0 or 1) of its first crossed edge; the second is two further on
+  const visited = new Map<number, number>();
+  const walk = (start: number, crossing: number, enter: number) => {
+    let cur = start;
+    let k = crossing;
+    // leave through the edge at k; the face beyond it is entered across the edge it shares
+    for (;;) {
+      const p = polys[cur]!;
+      const exit = key(p.v[k]!, p.v[(k + 1) % 4]!);
+      const next = (sharing.get(exit) ?? []).find((i) => i !== cur);
+      if (next === undefined || polys[next]!.v.length !== 4 || visited.has(next)) return;
+      const q = polys[next]!;
+      const entry = q.v.findIndex((a, m) => key(a, q.v[(m + 1) % 4]!) === exit);
+      visited.set(next, entry % 2);
+      k = (entry + 2) % 4; // out of the opposite edge
+      cur = next;
+      void enter;
+    }
+  };
+  visited.set(face, way);
+  walk(face, (way + 2) % 4, 0);
+  walk(face, way, 0);
+  const middles = new Map<string, number>();
+  const middle = (a: number, b: number) => {
+    const e = key(a, b);
+    let m = middles.get(e);
+    if (m === undefined) {
+      const [lo, hi] = a < b ? [a, b] : [b, a];
+      const [p, q] = [out.verts![lo]!, out.verts![hi]!];
+      m = out.verts!.push([p[0] + (q[0] - p[0]) * at, p[1] + (q[1] - p[1]) * at, p[2] + (q[2] - p[2]) * at]) - 1;
+      middles.set(e, m);
+    }
+    return m;
+  };
+  const result: typeof polys = [];
+  polys.forEach((p, i) => {
+    const way0 = visited.get(i);
+    if (way0 === undefined) return void result.push(p);
+    const [a, b, cc, d] = way0 === 0 ? p.v : [p.v[1]!, p.v[2]!, p.v[3]!, p.v[0]!];
+    // crossed edges are a-b and cc-d; the cut joins their middles
+    const m1 = middle(a!, b!);
+    const m2 = middle(cc!, d!);
+    const extra = p.color ? { color: p.color } : {};
+    const smooth = p.smooth ? { smooth: true } : {};
+    result.push({ v: [a!, m1, m2, d!], ...extra, ...smooth }, { v: [m1, b!, cc!, m2], ...extra, ...smooth });
+  });
+  out.polys = result;
+  return { cube: finish(out), points: [...middles.values()] };
+}
+
+/// Moves points, and with symmetry also the point on the other side of the mirror plane (square to `axis`, through the
+/// origin) by the reflected amount. A point on the plane only slides along it.
+export function moveVertsSymmetric(c: Cube, indices: number[], delta: Vec3, axis: Axis, eps = 0.01): Cube {
+  const out = clone(c);
+  const verts = out.verts ?? [];
+  const chosen = new Set(indices);
+  const twinOf = (i: number): number => {
+    const p = verts[i]!;
+    const r: Vec3 = [...p] as Vec3;
+    r[axis] = -r[axis];
+    return verts.findIndex((q, j) => j !== i && Math.hypot(q[0] - r[0], q[1] - r[1], q[2] - r[2]) <= eps);
+  };
+  const moves = new Map<number, Vec3>();
+  const mirrored: Vec3 = [...delta] as Vec3;
+  mirrored[axis] = -mirrored[axis];
+  for (const i of chosen) {
+    if (!verts[i]) continue;
+    const onPlane = Math.abs(verts[i]![axis]) <= eps;
+    if (onPlane) {
+      const d: Vec3 = [...delta] as Vec3;
+      d[axis] = 0;
+      moves.set(i, d);
+      continue;
+    }
+    moves.set(i, delta);
+    const twin = twinOf(i);
+    if (twin >= 0 && !chosen.has(twin)) moves.set(twin, mirrored);
+  }
+  for (const [i, d] of moves) verts[i] = add(verts[i]!, d);
+  return finish(out);
+}
 /// Drops points that no face uses and renumbers the rest.
 export function compact(c: Cube): Cube {
   const out = clone(c);
@@ -278,3 +379,13 @@ export function mirrorPart(doc: ModelDoc, parts: number[], axis: Axis): { doc: M
 }
 
 const walkCount = (p: Part): number => 1 + p.children.reduce((n, c) => n + walkCount(c), 0);
+
+/// Every point of a mesh moved by a 4x4 matrix (column-major, the way three.js stores one): a move, turn or resize made with
+/// the viewport handles. Flipping handedness (a negative resize) turns the faces inside out, so their order is reversed back.
+export function transformMesh(c: Cube, m: number[]): Cube {
+  const out = clone(c);
+  out.verts = (out.verts ?? []).map((p) => [m[0]! * p[0] + m[4]! * p[1] + m[8]! * p[2] + m[12]!, m[1]! * p[0] + m[5]! * p[1] + m[9]! * p[2] + m[13]!, m[2]! * p[0] + m[6]! * p[1] + m[10]! * p[2] + m[14]!] as Vec3);
+  const det = m[0]! * (m[5]! * m[10]! - m[9]! * m[6]!) - m[4]! * (m[1]! * m[10]! - m[9]! * m[2]!) + m[8]! * (m[1]! * m[6]! - m[5]! * m[2]!);
+  if (det < 0) for (const f of out.polys ?? []) f.v.reverse();
+  return finish(out);
+}

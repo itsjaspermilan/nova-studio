@@ -311,6 +311,9 @@ First slice, built (`SpriteEditor.svelte`, pure logic in `pixels.ts` and `sprite
   saved as consecutive blocks; overlapping tags from other tools are split on opening). "Import sheet…" cuts any project
   PNG into tiles (guessed tile size, gap, border, skip empty) into a new animation, one per row, or onto the current
   animation. Tests in `sprite-doc.test.ts`; nothing changed in the runtime.
+- [x] Editor usability pass (2026-11-02, from `docs/ux/editor-research.md`): model editor handles (move, turn, resize), multi-select,
+  face pull arrow, taper, inset, loop cut, point symmetry, paint opacity and lock alpha; sprite onion skin counts and tint,
+  frame drag to reorder, import by tile count and smart slice.
 - [x] Resource tree (2026-11-02): the studio shows Sprites, 3D Models, Scenes, Entities, Sounds, Music... as one item each (a sprite is its JSON
   plus its picture and layers, a model its JSON plus `.glb` and texture, a scene its Lua plus layout); renaming and deleting move the files
   together; a Files view shows everything as on disk. Research notes in `docs/ux/editor-research.md`.

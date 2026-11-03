@@ -5,7 +5,7 @@
     type Point, type Raster, type Rect, type Rgba,
   } from "../lib/pixels";
   import {
-    addAnimation, animationOf, cloneDoc, detectGrid, duplicateAnimation, frameAt, framesIn, fromImage, fromSheet, gridTiles, importTiles, insertFrame, moveAnimation, isPristine, moveFrame, newDoc, parseSheetJson,
+    addAnimation, animationOf, cloneDoc, detectGrid, duplicateAnimation, frameAt, gridFromCounts, smartGrid, framesIn, fromImage, fromSheet, gridTiles, importTiles, insertFrame, moveAnimation, isPristine, moveFrame, newDoc, parseSheetJson,
     removeAnimation, removeFrame, setAnimationDuration, tagProblems, tagSequence, resizeDoc, toSheet, toSheetJson, updateAnimation, type Direction, type SpriteDoc,
     addLayer, applyLayers, duplicateLayer, layerSheets, layersFileText, mergeDown, moveLayer, parseLayersFile, recompose, removeLayer, updateLayer, MAX_LAYERS,
   } from "../lib/sprite-doc";
@@ -58,6 +58,9 @@
   let size = $state(1);
   let filled = $state(false);
   let onion = $state(true);
+  let onionPast = $state(1); // frames before the current one shown faintly
+  let onionFuture = $state(0); // frames after it
+  let onionTint = $state(true); // blue for before, red for after
   let showGrid = $state(true);
   let zoom = $state(12);
   let canUndo = $state(false);
@@ -237,7 +240,26 @@
       ctx.drawImage(tmp, 0, 0, w, h);
       ctx.globalAlpha = 1;
     };
-    if (onion && anim && frame > anim.from && !playing) blit(doc.frames[frame - 1]!, 0.3);
+    if (onion && anim && !playing) {
+      const ghost = (r: Raster, alpha: number, colour: string | null) => {
+        const tmp = document.createElement("canvas");
+        tmp.width = r.w;
+        tmp.height = r.h;
+        const c2 = tmp.getContext("2d")!;
+        c2.putImageData(new ImageData(new Uint8ClampedArray(r.data), r.w, r.h), 0, 0);
+        if (colour) {
+          c2.globalCompositeOperation = "source-atop";
+          c2.fillStyle = colour;
+          c2.fillRect(0, 0, r.w, r.h);
+        }
+        ctx.globalAlpha = alpha;
+        ctx.drawImage(tmp, 0, 0, w, h);
+        ctx.globalAlpha = 1;
+      };
+      // the nearest ghost is the strongest
+      for (let k = onionPast; k >= 1; k--) if (frame - k >= anim.from) ghost(doc.frames[frame - k]!, 0.4 / k, onionTint ? "rgba(70,110,255,.6)" : null);
+      for (let k = onionFuture; k >= 1; k--) if (frame + k <= anim.to) ghost(doc.frames[frame + k]!, 0.4 / k, onionTint ? "rgba(255,80,80,.6)" : null);
+    }
     blit(current, 1);
     if (showGrid && zoom >= 8) {
       ctx.strokeStyle = "rgba(255,255,255,.12)";
@@ -271,7 +293,7 @@
 
   $effect(() => {
     // everything the picture depends on
-    doc; frame; rev; zoom; onion; showGrid; ready; hover; size; tool; playing; canvas; selection; symX; symY;
+    doc; frame; rev; zoom; onion; onionPast; onionFuture; onionTint; showGrid; ready; hover; size; tool; playing; canvas; selection; symX; symY;
     paint();
   });
 
@@ -517,6 +539,7 @@
   const animIndex = $derived(Math.max(0, animationOf(doc, frame)));
   const anim = $derived(doc.tags[animIndex]);
   const animFrames = $derived(anim ? Array.from({ length: framesIn(anim) }, (_, i) => anim.from + i) : []);
+  let dragFrame: number | null = null;
   const addBlank = () => structural(insertFrame(doc, frame + 1), frame + 1);
   const duplicate = () => structural(insertFrame(doc, frame + 1, frame), frame + 1);
   const remove = () => structural(removeFrame(doc, frame), frame);
@@ -549,6 +572,9 @@
   let gridH = $state(16);
   let gridGap = $state(0);
   let gridMargin = $state(0);
+  let cutBy = $state<"size" | "count">("size");
+  let gridCols = $state(4);
+  let gridRows = $state(1);
   let importMode = $state<"one" | "rows">("one");
   let importName = $state("");
   let skipEmpty = $state(true);
@@ -581,7 +607,19 @@
     appendHere = false;
     if (!importPath || !sheetCandidates.includes(importPath)) void loadImport(sheetCandidates[0] ?? "");
   }
-  const grid = $derived(importImage ? gridTiles(importImage, { tw: gridW, th: gridH, spacing: gridGap, margin: gridMargin }) : null);
+  /// How the sheet is cut: by the size of a tile, or by how many tiles there are across and down.
+  const spec = $derived({ ...(importImage && cutBy === "count" ? gridFromCounts(importImage, gridCols, gridRows, gridGap, gridMargin) : { tw: gridW, th: gridH }), spacing: gridGap, margin: gridMargin });
+  const grid = $derived(importImage ? gridTiles(importImage, spec) : null);
+  function smartSlice() {
+    if (!importImage) return;
+    const g = smartGrid(importImage);
+    if (!g) return void studio.say("info", "No gaps between the tiles to find. Set the size or count yourself.");
+    cutBy = "size";
+    gridW = g.tw;
+    gridH = g.th;
+    gridGap = g.spacing ?? 0;
+    gridMargin = g.margin ?? 0;
+  }
   /// The animations the import would make: one with every tile, or one per row of the sheet.
   const groups = $derived.by(() => {
     if (!grid) return [];
@@ -611,7 +649,7 @@
     ctx.strokeStyle = "rgba(255,209,102,.85)";
     ctx.lineWidth = 1;
     for (let r = 0; r < grid.rows; r++) for (let c = 0; c < grid.columns; c++) {
-      ctx.strokeRect((gridMargin + c * (gridW + gridGap)) * scale + 0.5, (gridMargin + r * (gridH + gridGap)) * scale + 0.5, gridW * scale - 1, gridH * scale - 1);
+      ctx.strokeRect((spec.margin + c * (spec.tw + spec.spacing)) * scale + 0.5, (spec.margin + r * (spec.th + spec.spacing)) * scale + 0.5, spec.tw * scale - 1, spec.th * scale - 1);
     }
   });
   function doImport() {
@@ -768,6 +806,11 @@
         <label class="check" title="Mirror strokes up-down"><input type="checkbox" bind:checked={symY} /> ↕</label>
         {#if tool === "pencil"}<label class="check" title="One-pixel lines without double corners"><input type="checkbox" bind:checked={perfect} /> Pixel-perfect</label>{/if}
         <label class="check"><input type="checkbox" bind:checked={onion} /> Onion skin</label>
+        {#if onion}
+          <label title="Frames before this one shown faintly">before <select bind:value={onionPast}>{#each [0, 1, 2, 3] as n (n)}<option value={n}>{n}</option>{/each}</select></label>
+          <label title="Frames after this one shown faintly">after <select bind:value={onionFuture}>{#each [0, 1, 2, 3] as n (n)}<option value={n}>{n}</option>{/each}</select></label>
+          <label class="check" title="Blue for before, red for after"><input type="checkbox" bind:checked={onionTint} /> Tint</label>
+        {/if}
         <label class="check"><input type="checkbox" bind:checked={showGrid} /> Grid</label>
         <button class="ghost" onclick={openSizing}>Canvas size…</button>
         <span class="spacer"></span>
@@ -799,7 +842,7 @@
         <div class="frames" role="listbox" aria-label="Frames">
           {#if anim}<span class="animlabel" title="The animation these frames belong to">{anim.name || "(unnamed)"}</span>{/if}
           {#each animFrames as i (i)}
-            <button class="frame" class:on={i === frame} role="option" aria-selected={i === frame} onclick={() => (frame = i)} title="Frame {i - (anim?.from ?? 0) + 1} · {doc.durations[i]} ms">
+            <button class="frame" class:on={i === frame} role="option" aria-selected={i === frame} draggable="true" ondragstart={(e) => { dragFrame = i; e.dataTransfer?.setData("text/plain", String(i)); }} ondragover={(e) => e.preventDefault()} ondrop={(e) => { e.preventDefault(); if (dragFrame !== null && dragFrame !== i) structural(moveFrame(doc, dragFrame, i), i); dragFrame = null; }} onclick={() => (frame = i)} title="Frame {i - (anim?.from ?? 0) + 1} · {doc.durations[i]} ms · drag to move">
               <canvas use:drawThumb={i}></canvas>
               <span>{i - (anim?.from ?? 0) + 1}</span>
             </button>
@@ -925,13 +968,23 @@
             {#if importError}<p class="warn small">{importError}</p>{/if}
             {#if importImage}
               <div class="sheetview"><canvas bind:this={importCanvas} aria-label="The sheet cut into tiles"></canvas></div>
+              <div class="modes row">
+                <label class="check"><input type="radio" bind:group={cutBy} value="size" /> By tile size</label>
+                <label class="check"><input type="radio" bind:group={cutBy} value="count" /> By tile count</label>
+                <button type="button" class="ghost" onclick={smartSlice} title="Looks for empty gaps between the tiles">Smart slice</button>
+              </div>
               <div class="grid4">
-                <label>Tile width <input type="number" min="1" max="1024" bind:value={gridW} /></label>
-                <label>Tile height <input type="number" min="1" max="1024" bind:value={gridH} /></label>
+                {#if cutBy === "size"}
+                  <label>Tile width <input type="number" min="1" max="1024" bind:value={gridW} /></label>
+                  <label>Tile height <input type="number" min="1" max="1024" bind:value={gridH} /></label>
+                {:else}
+                  <label>Across <input type="number" min="1" max="256" bind:value={gridCols} /></label>
+                  <label>Down <input type="number" min="1" max="256" bind:value={gridRows} /></label>
+                {/if}
                 <label>Gap <input type="number" min="0" max="64" bind:value={gridGap} title="Space between tiles" /></label>
                 <label>Border <input type="number" min="0" max="64" bind:value={gridMargin} title="Space around the whole sheet" /></label>
               </div>
-              <p class="dim small">{importImage.w}×{importImage.h} px · {grid?.columns ?? 0} × {grid?.rows ?? 0} tiles of {gridW}×{gridH}</p>
+              <p class="dim small">{importImage.w}×{importImage.h} px · {grid?.columns ?? 0} × {grid?.rows ?? 0} tiles of {spec.tw}×{spec.th}</p>
               <div class="modes">
                 <label class="check"><input type="radio" bind:group={importMode} value="one" /> One animation with every tile</label>
                 <label class="check"><input type="radio" bind:group={importMode} value="rows" /> One animation per row</label>
@@ -942,7 +995,7 @@
               </div>
               <label class="check"><input type="checkbox" bind:checked={skipEmpty} /> Leave out empty tiles</label>
               <label class="check"><input type="checkbox" bind:checked={appendHere} disabled={importMode === "rows"} /> Add the frames to “{anim?.name}” instead of making a new animation</label>
-              {#if isPristineNow}<p class="dim small">This sprite is still empty, so it takes the tile size ({gridW}×{gridH}).</p>{:else if importImage && (gridW !== doc.fw || gridH !== doc.fh)}<p class="dim small">Tiles are {gridW}×{gridH} and this sprite is {doc.fw}×{doc.fh}: each tile is placed at the bottom centre of the frame.</p>{/if}
+              {#if isPristineNow}<p class="dim small">This sprite is still empty, so it takes the tile size ({spec.tw}×{spec.th}).</p>{:else if importImage && (spec.tw !== doc.fw || spec.th !== doc.fh)}<p class="dim small">Tiles are {spec.tw}×{spec.th} and this sprite is {doc.fw}×{doc.fh}: each tile is placed at the bottom centre of the frame.</p>{/if}
             {/if}
           {/if}
           <div class="row end">
@@ -1020,7 +1073,7 @@
   .sheetview canvas { image-rendering: pixelated; }
   .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-  .modes { display: flex; flex-direction: column; gap: 4px; }
+  .modes { display: flex; flex-direction: column; gap: 4px; } .modes.row { flex-direction: row; align-items: center; gap: 10px; flex-wrap: wrap; }
   .row.end { justify-content: flex-end; }
   .small { font-size: 11px; margin: 2px 0; }
   .warn { color: var(--warn); }
