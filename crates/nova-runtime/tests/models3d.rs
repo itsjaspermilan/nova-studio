@@ -545,3 +545,43 @@ fn particles_can_be_models_in_3d() {
     );
     assert!(gone.is_empty(), "{gone:?}");
 }
+
+#[test]
+fn the_sun_casts_shadows_and_a_model_can_opt_out() {
+    // a big car far below stands for the ground; a small one floats above it with the sun straight down
+    let scene = |shadows: &str, cast: &str| {
+        format!(
+            "nova.camera(0, 14, 7, 0, -2, 0, 55)\nfunction update(dt)\n  nova.light {{ dir = {{0, -1, 0.001}}, ambient = {{40, 40, 40}} }}\n  {shadows}\n  nova.model('car', 0, -14, 0, {{ scale = 8, shadow = false }})\n  nova.model('car', 0, 0, 0, {{ scale = 2, {cast} }})\nend"
+        )
+    };
+    let mean = |script: String| {
+        let p = frame_pixels(&script)?;
+        let sky = pixel(&p, 0, 0);
+        let (mut sum, mut n) = (0.0f64, 0.0f64);
+        for c in p.as_chunks::<4>().0 {
+            if [c[0], c[1], c[2]] != sky {
+                sum += (c[0] as f64 + c[1] as f64 + c[2] as f64) / 3.0;
+                n += 1.0;
+            }
+        }
+        Some(sum / n.max(1.0))
+    };
+    let (Some(off), Some(on), Some(opted_out)) = (
+        mean(scene("", "")),
+        mean(scene("nova.shadows { radius = 30, strength = 1 }", "")),
+        mean(scene(
+            "nova.shadows { radius = 30, strength = 1 }",
+            "shadow = false",
+        )),
+    ) else {
+        return;
+    };
+    assert!(
+        on < off - 1.0,
+        "the floating car shades what is below it: off {off:.2}, on {on:.2}"
+    );
+    assert!(
+        (opted_out - off).abs() < f64::max(on.abs(), 1.0) * 0.5 && opted_out > on + 0.5,
+        "a model that does not cast leaves the ground lit: off {off:.2}, on {on:.2}, opted out {opted_out:.2}"
+    );
+}

@@ -57,12 +57,13 @@ function Title:update(dt)
   elseif screen == "howto" then
     if nova.input.pressed("a") or nova.input.pressed("b") or nova.input.pressed("start") then audio.sfx("menu_back"); self:go("menu") end
   elseif screen == "options" then
-    local choice, action = ui.navigate(self.choice, 3)
+    local choice, action = ui.navigate(self.choice, 4)
     self.choice = choice
     local step = (action == "right" and 0.1) or (action == "left" and -0.1) or 0
     if choice == 1 and step ~= 0 then state.music_volume = math.max(0, math.min(1, state.music_volume + step)); state.save_options(); audio.sfx("menu_move") end
     if choice == 2 and step ~= 0 then state.sfx_volume = math.max(0, math.min(1, state.sfx_volume + step)); state.save_options(); audio.sfx("menu_move") end
-    if action == "back" or (action == "accept" and choice == 3) then audio.sfx("menu_back"); self:go("menu") end
+    if choice == 3 and (step ~= 0 or action == "accept") then state.shadows = not state.shadows; state.save_options(); audio.sfx("menu_move") end
+    if action == "back" or (action == "accept" and choice == 4) then audio.sfx("menu_back"); self:go("menu") end
   elseif screen == "select" then
     local choice, action = ui.navigate(self.choice, 5)
     self.choice = choice
@@ -116,6 +117,7 @@ function Title:draw_ui()
     ui.menu({
       { "Music volume", string.format("< %d%% >", math.floor(state.music_volume * 100 + 0.5)) },
       { "Sound volume", string.format("< %d%% >", math.floor(state.sfx_volume * 100 + 0.5)) },
+      { "Shadows", state.shadows and "< On >" or "< Off >" },
       "Back",
     }, self.choice, 180, { width = 420 })
   elseif screen == "select" then

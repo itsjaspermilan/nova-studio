@@ -120,6 +120,20 @@ nova.point_light(x, y, z, { radius = 8, color = { 255, 160, 60 } })    -- one fr
 `dir` is the way the light travels; colours are 0 to 255 multipliers (255 = full, no gamma). Every
 field of `nova.light` is optional. A ninth point light in a frame is ignored. Sprites and text are not lit.
 
+**Sky, fog and shadows.** Three more things set the scene's look; each stays until changed and `(nil)` turns it off:
+
+```lua
+nova.sky { top = { 40, 90, 200 }, horizon = { 200, 220, 240 } }       -- a gradient behind everything in 3D
+nova.fog { color = { 200, 220, 240 }, near = 40, far = 250 }          -- models fade into the colour with distance
+nova.shadows { radius = 45, strength = 0.6 }                          -- the sun's shadows around what the camera looks at
+```
+
+Sky and fog colours are as you pick them on screen. Fog the colour of the sky's horizon hides the place where far scenery
+stops being drawn. Shadows are cast and received by every model unless it is drawn with `shadow = false` (do that for
+the ground, far mountains and clouds); a model with see-through colours never casts one. A smaller `radius` gives sharper
+shadows; they cost an extra drawing pass, so let players switch them off. A model shape can glow by itself in the dark
+(`emissive`, see the model format). Scene files can set `sky` and `fog` too.
+
 **Parts.** A model is a tree of named parts (the nodes of its `.glb`; the studio's model editor makes
 one per part). `nova.model_parts("car")` lists their names. To move pieces on their own, give `parts`
 a table of changes; each turns about the part's own pivot, inside its parent, so a wheel stays on its axle

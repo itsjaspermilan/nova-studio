@@ -12,10 +12,14 @@ struct Globals {
     sky_horizon: vec4<f32>,
     fog_color: vec4<f32>,   // w: 1 when there is fog
     fog_range: vec4<f32>,   // x: start, y: complete
+    light_view_proj: mat4x4<f32>,
+    shadow: vec4<f32>,      // x: 1 when on, y: one texel, z: bias, w: how dark
 };
 @group(0) @binding(0) var<uniform> globals: Globals;
 @group(1) @binding(0) var base_texture: texture_2d<f32>;
 @group(1) @binding(1) var base_sampler: sampler;
+@group(2) @binding(0) var shadow_map: texture_depth_2d;
+@group(2) @binding(1) var shadow_sampler: sampler_comparison;
 
 struct Vertex {
     @location(0) position: vec3<f32>,
@@ -63,11 +67,36 @@ fn vs_main(v: Vertex, inst: Instance) -> VertexOut {
     return out;
 }
 
+// How much of the sun reaches a point: 1 in the open, less in a shadow (a soft edge from 3x3 samples).
+fn sun_visibility(world: vec3<f32>, normal: vec3<f32>) -> f32 {
+    if (globals.shadow.x < 0.5) {
+        return 1.0;
+    }
+    // push the point a little along its normal so that surfaces facing away from the sun do not shadow themselves
+    let p = world + normal * 0.03;
+    let clip = globals.light_view_proj * vec4<f32>(p, 1.0);
+    let uv = vec2<f32>(clip.x * 0.5 + 0.5, 0.5 - clip.y * 0.5);
+    let depth = clip.z - globals.shadow.z;
+    var lit = 0.0;
+    for (var x = -1; x <= 1; x = x + 1) {
+        for (var y = -1; y <= 1; y = y + 1) {
+            let o = vec2<f32>(f32(x), f32(y)) * globals.shadow.y;
+            lit = lit + textureSampleCompare(shadow_map, shadow_sampler, uv + o, depth);
+        }
+    }
+    lit = lit / 9.0;
+    // outside the map, or beyond the light's far plane, there is no shadow
+    let inside = uv.x > 0.0 && uv.x < 1.0 && uv.y > 0.0 && uv.y < 1.0 && clip.z > 0.0 && clip.z < 1.0;
+    return select(1.0, lit, inside);
+}
+
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     let base = textureSample(base_texture, base_sampler, in.uv) * in.color;
     let n = normalize(in.normal);
-    let diffuse = max(dot(n, -globals.light_dir.xyz), 0.0);
+    // the sun's share is dimmed in a shadow, down to `1 - strength` of it
+    let visible = mix(1.0 - globals.shadow.w, 1.0, sun_visibility(in.world, n));
+    let diffuse = max(dot(n, -globals.light_dir.xyz), 0.0) * visible;
     var light = globals.ambient.rgb + globals.light_color.rgb * diffuse * (1.0 - globals.ambient.rgb);
     let count = i32(globals.light_dir.w);
     for (var i = 0; i < count; i = i + 1) {

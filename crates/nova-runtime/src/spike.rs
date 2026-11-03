@@ -160,6 +160,7 @@ impl Spike {
         self.built_cars = Some(count);
         self.scenery.clear();
         self.scenery.push(ModelDraw {
+            casts: true,
             mesh: self.ground_mesh,
             instance: ModelInstance {
                 matrix: Mat4::from_translation(Vec3::new(0.0, -0.02, 0.0)).to_cols_array_2d(),
@@ -188,6 +189,7 @@ impl Spike {
                     1.0,
                 ];
                 self.scenery.push(ModelDraw {
+                    casts: true,
                     mesh: self.car_mesh,
                     instance: ModelInstance {
                         matrix: m.to_cols_array_2d(),
@@ -214,6 +216,7 @@ impl Spike {
         let [x, z, heading] = state.car;
         let m = Mat4::from_translation(Vec3::new(x, 0.0, z)) * Mat4::from_rotation_y(heading);
         self.models.push(ModelDraw {
+            casts: true,
             mesh: self.car_mesh,
             instance: ModelInstance {
                 matrix: m.to_cols_array_2d(),

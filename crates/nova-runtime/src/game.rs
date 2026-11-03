@@ -18,8 +18,8 @@ use crate::actions::{self, ActionStates, Binding, Bindings, InputFrame};
 use crate::assets::{self, AtlasLayout};
 use crate::font;
 use crate::gfx::{
-    Camera, Fog, FrameInput, Gfx, Lighting, MeshWrite, ModelDraw, ModelInstance, PointLight, Sky,
-    SpriteInstance,
+    Camera, Fog, FrameInput, Gfx, Lighting, MeshWrite, ModelDraw, ModelInstance, PointLight,
+    Shadows, Sky, SpriteInstance,
 };
 use crate::input::Actions;
 use crate::mixer::{self, Sample};
@@ -559,6 +559,11 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     * rotation
                     * Mat4::from_scale(Vec3::splat(scale));
                 let tint = color_option(&opts, "tint", [255; 4])?.map(|c| c as f32 / 255.0);
+                // `shadow = false`: this model does not cast a shadow (clouds, glass, a fake blob shadow)
+                let casts = match &opts {
+                    Some(o) => o.get::<Option<bool>>("shadow")?.unwrap_or(true),
+                    None => true,
+                };
                 let overrides = match &opts {
                     Some(o) => o.get::<Option<Table>>("parts")?,
                     None => None,
@@ -628,6 +633,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                             let vertices = skinned.skin.pose(&skinned.bind, &world_matrices);
                             sh.mesh_writes.push(MeshWrite { mesh, vertices });
                             sh.models.push(ModelDraw {
+                                casts,
                                 mesh,
                                 instance: ModelInstance {
                                     matrix: matrix.to_cols_array_2d(),
@@ -639,6 +645,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                         let Some(key) = &p.mesh_key else { continue };
                         let Some(&mesh) = sh.mesh_ids.get(key) else { continue };
                         sh.models.push(ModelDraw {
+                            casts,
                             mesh,
                             instance: ModelInstance {
                                 matrix: (matrix * world[i]).to_cols_array_2d(),
@@ -649,6 +656,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     return Ok(());
                 }
                 sh.models.push(ModelDraw {
+                    casts,
                     mesh,
                     instance: ModelInstance {
                         matrix: matrix.to_cols_array_2d(),
@@ -698,6 +706,34 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             if let Some(c) = light_color(&opts, "ambient")? {
                 sh.lighting.ambient = c;
             }
+            Ok(())
+        })?,
+    )?;
+    let s = shared.clone();
+    nova.set(
+        "shadows",
+        lua.create_function(move |_, opts: Option<Value>| {
+            let shadows = match opts {
+                None | Some(Value::Nil) | Some(Value::Boolean(false)) => None,
+                Some(Value::Boolean(true)) => Some(Shadows::default()),
+                Some(Value::Table(t)) => {
+                    let o = Some(t);
+                    let radius = number_option(&o, "radius")?.unwrap_or(60.0);
+                    let strength = number_option(&o, "strength")?.unwrap_or(0.6);
+                    if !radius.is_finite() || radius <= 0.0 {
+                        return Err(lua_err("shadows radius must be greater than 0 (metres around the camera's target that get shadows)"));
+                    }
+                    if !(0.0..=1.0).contains(&strength) {
+                        return Err(lua_err("shadows strength must be from 0 (none) to 1 (as dark as the ambient light)"));
+                    }
+                    Some(Shadows {
+                        radius: radius as f32,
+                        strength: strength as f32,
+                    })
+                }
+                Some(_) => return Err(lua_err("nova.shadows takes a table like { radius = 60, strength = 0.6 }, true, or false")),
+            };
+            s.borrow_mut().lighting.shadows = shadows;
             Ok(())
         })?,
     )?;

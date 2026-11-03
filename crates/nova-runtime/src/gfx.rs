@@ -47,6 +47,23 @@ pub struct Sky {
     pub horizon: [f32; 3],
 }
 
+/// The sun's shadows, in a square of ground `radius` metres either side of what the camera looks at (more is blurrier).
+/// `strength` is how dark a shadow is: 0 none, 1 down to the ambient light.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Shadows {
+    pub radius: f32,
+    pub strength: f32,
+}
+
+impl Default for Shadows {
+    fn default() -> Self {
+        Self {
+            radius: 60.0,
+            strength: 0.6,
+        }
+    }
+}
+
 /// Distance fog: models fade into `color` between `near` and `far` world units from the camera. Colour is linear.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Fog {
@@ -67,6 +84,7 @@ pub struct Lighting {
     pub point_count: usize,
     pub sky: Option<Sky>,
     pub fog: Option<Fog>,
+    pub shadows: Option<Shadows>,
 }
 
 impl Default for Lighting {
@@ -83,6 +101,7 @@ impl Default for Lighting {
             point_count: 0,
             sky: None,
             fog: None,
+            shadows: None,
         }
     }
 }
@@ -101,6 +120,8 @@ impl Lighting {
 
 #[derive(Clone, Copy)]
 pub struct ModelDraw {
+    /// Whether it casts a shadow (when shadows are on); translucent meshes never do.
+    pub casts: bool,
     pub mesh: usize,
     pub instance: ModelInstance,
 }
@@ -173,7 +194,13 @@ struct Globals {
     fog_color: [f32; 4],
     /// x: where fog starts; y: where it is complete.
     fog_range: [f32; 4],
+    light_view_proj: [[f32; 4]; 4],
+    /// x: 1 when shadows are on; y: one texel of the shadow map, as a fraction; z: bias; w: how dark a shadow is.
+    shadow: [f32; 4],
 }
+
+/// Side of the (square) shadow map in texels.
+const SHADOW_SIZE: u32 = 2048;
 
 struct DynBuffer {
     buffer: wgpu::Buffer,
@@ -258,6 +285,9 @@ pub struct Gfx {
     mesh_pipeline: wgpu::RenderPipeline,
     mesh_blend_pipeline: wgpu::RenderPipeline,
     sky_pipeline: wgpu::RenderPipeline,
+    shadow_pipeline: wgpu::RenderPipeline,
+    shadow_view: wgpu::TextureView,
+    shadow_group: wgpu::BindGroup,
     globals: wgpu::Buffer,
     globals_group: wgpu::BindGroup,
     meshes: Vec<GpuMesh>,
@@ -574,9 +604,71 @@ impl Gfx {
             cache: None,
         });
 
+        // The sun's shadow map: a depth texture the world is drawn into from the sun's side, then sampled by every mesh.
+        let shadow_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("shadow map"),
+            size: wgpu::Extent3d {
+                width: SHADOW_SIZE,
+                height: SHADOW_SIZE,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: DEPTH_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let shadow_view = shadow_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let shadow_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("shadow sampler"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            compare: Some(wgpu::CompareFunction::LessEqual),
+            ..Default::default()
+        });
+        let shadow_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("shadow layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Depth,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
+                    count: None,
+                },
+            ],
+        });
+        let shadow_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("shadow"),
+            layout: &shadow_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&shadow_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&shadow_sampler),
+                },
+            ],
+        });
         let mesh_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("mesh pipeline layout"),
-            bind_group_layouts: &[Some(&globals_layout), Some(&texture_layout)],
+            bind_group_layouts: &[
+                Some(&globals_layout),
+                Some(&texture_layout),
+                Some(&shadow_layout),
+            ],
             immediate_size: 0,
         });
         let vertex_attributes = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Unorm8x4, 3 => Float32x2, 9 => Float32];
@@ -633,6 +725,48 @@ impl Gfx {
                     cache: None,
                 })
             };
+        let shadow_shader = device.create_shader_module(wgpu::include_wgsl!("shaders/shadow.wgsl"));
+        let shadow_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("shadow pipeline layout"),
+                bind_group_layouts: &[Some(&globals_layout)],
+                immediate_size: 0,
+            });
+        // Depth only: the same vertices and instances as the meshes, from the sun's side. Both faces are drawn (thin
+        // shapes like the ground box and flat quads would otherwise leak light) and the bias lives in the sampling.
+        let shadow_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("shadow"),
+            layout: Some(&shadow_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shadow_shader,
+                entry_point: Some("vs_main"),
+                compilation_options: Default::default(),
+                buffers: &[
+                    Some(wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<MeshVertex>() as u64,
+                        step_mode: wgpu::VertexStepMode::Vertex,
+                        attributes: &vertex_attributes,
+                    }),
+                    Some(wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<ModelInstance>() as u64,
+                        step_mode: wgpu::VertexStepMode::Instance,
+                        attributes: &instance_attributes,
+                    }),
+                ],
+            },
+            fragment: None,
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(wgpu::CompareFunction::Less),
+                stencil: Default::default(),
+                bias: Default::default(),
+            }),
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
         let sky_shader = device.create_shader_module(wgpu::include_wgsl!("shaders/sky.wgsl"));
         let sky_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("sky pipeline layout"),
@@ -722,6 +856,9 @@ impl Gfx {
             mesh_pipeline,
             mesh_blend_pipeline,
             sky_pipeline,
+            shadow_pipeline,
+            shadow_view,
+            shadow_group,
             globals,
             globals_group,
             meshes: Vec::new(),
@@ -943,6 +1080,34 @@ impl Gfx {
             point_color[i] = [p.color[0], p.color[1], p.color[2], 1.0];
         }
         let (sky, fog) = (lit.sky, lit.fog);
+        // The sun's view of the ground around what the camera looks at: a square box seen along the light, moved in whole
+        // texels so that shadows do not crawl as the camera moves.
+        let (light_view_proj, shadow) = match lit.shadows {
+            Some(sh) => {
+                let dir = Vec3::from(lit.direction).normalize_or_zero();
+                let dir = if dir == Vec3::ZERO { -Vec3::Y } else { dir };
+                let r = sh.radius.max(0.5);
+                let up = if dir.y.abs() > 0.99 { Vec3::X } else { Vec3::Y };
+                let look = glam::camera::rh::view::look_to_mat4(Vec3::ZERO, dir, up);
+                let texel = 2.0 * r / SHADOW_SIZE as f32;
+                let mut centre = look.transform_point3(input.camera.target);
+                centre.x = (centre.x / texel).round() * texel;
+                centre.y = (centre.y / texel).round() * texel;
+                let proj = glam::camera::rh::proj::directx::orthographic(
+                    centre.x - r,
+                    centre.x + r,
+                    centre.y - r,
+                    centre.y + r,
+                    -centre.z - r * 4.0,
+                    -centre.z + r * 4.0,
+                );
+                (
+                    (proj * look).to_cols_array_2d(),
+                    [1.0, 1.0 / SHADOW_SIZE as f32, 0.0015, sh.strength],
+                )
+            }
+            None => ([[0.0; 4]; 4], [0.0; 4]),
+        };
         let globals = Globals {
             view_proj: view_proj.to_cols_array_2d(),
             light_dir: [
@@ -968,6 +1133,8 @@ impl Gfx {
             }),
             fog_color: fog.map_or([0.0; 4], |f| [f.color[0], f.color[1], f.color[2], 1.0]),
             fog_range: fog.map_or([0.0; 4], |f| [f.near, f.far.max(f.near + 0.001), 0.0, 0.0]),
+            light_view_proj,
+            shadow,
         };
         self.queue
             .write_buffer(&self.globals, 0, bytemuck::bytes_of(&globals));
@@ -1006,6 +1173,51 @@ impl Gfx {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("frame"),
             });
+        if lit.shadows.is_some() && !input.models.is_empty() {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("shadow pass"),
+                color_attachments: &[],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.shadow_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            pass.set_pipeline(&self.shadow_pipeline);
+            pass.set_bind_group(0, &self.globals_group, &[]);
+            let stride = std::mem::size_of::<ModelInstance>() as u64;
+            let mut start = 0usize;
+            while start < input.models.len() {
+                let (mesh_id, casts) = (input.models[start].mesh, input.models[start].casts);
+                let mut end = start;
+                while end < input.models.len()
+                    && input.models[end].mesh == mesh_id
+                    && input.models[end].casts == casts
+                {
+                    end += 1;
+                }
+                let mesh = &self.meshes[mesh_id];
+                if casts && !mesh.translucent {
+                    pass.set_vertex_buffer(0, mesh.vertices.slice(..));
+                    pass.set_vertex_buffer(
+                        1,
+                        self.model_instances
+                            .buffer
+                            .slice(start as u64 * stride..end as u64 * stride),
+                    );
+                    pass.set_index_buffer(mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
+                    pass.draw_indexed(0..mesh.index_count, 0, 0..(end - start) as u32);
+                    stats.draw_calls += 1;
+                }
+                start = end;
+            }
+        }
         {
             let depth_view = &self.depth.as_ref().expect("depth exists").0;
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -1081,6 +1293,7 @@ impl Gfx {
                     &self.mesh_pipeline
                 });
                 pass.set_bind_group(0, &self.globals_group, &[]);
+                pass.set_bind_group(2, &self.shadow_group, &[]);
                 let stride = std::mem::size_of::<ModelInstance>() as u64;
                 let mut start = 0usize;
                 while start < input.models.len() {

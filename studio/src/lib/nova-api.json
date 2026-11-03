@@ -17,7 +17,7 @@
   "name": "nova.model",
   "kind": "function",
   "signature": "nova.model(id, x, y, z [, opts])",
-  "doc": "Draw a 3D model. Options: scale, rx, ry, rz (radians), tint, parts (turn pieces on their own: parts = { wheel = { ry = 1 } }, see nova.model_parts), clip and time (pose it from an animation clip, see nova.model_clips; loop = false holds the last pose).",
+  "doc": "Draw a 3D model. Options: scale, rx, ry, rz (radians), tint, parts (turn pieces on their own: parts = { wheel = { ry = 1 } }, see nova.model_parts), clip and time (pose it from an animation clip, see nova.model_clips; loop = false holds the last pose), shadow = false (casts no shadow, see nova.shadows).",
   "group": "Drawing"
  },
  {
@@ -25,6 +25,13 @@
   "kind": "function",
   "signature": "nova.light{ dir = {x, y, z}, color = {r, g, b}, ambient = {r, g, b} }",
   "doc": "Sets the sun that lights 3D models: the direction it travels, its colour and the ambient floor. Colours are 0 to 255 multipliers (255 = full). Any field can be left out. Stays until changed.",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.shadows",
+  "kind": "function",
+  "signature": "nova.shadows{ radius = 60, strength = 0.6 }",
+  "doc": "Turns on the sun's shadows (set the sun with nova.light). They cover `radius` metres around what the camera looks at: a smaller radius is sharper. `strength` is how dark they are, 0 to 1. Models cast and receive them unless drawn with shadow = false; see-through models never cast. Costs extra drawing, so offer a way to turn it off. `nova.shadows(nil)` turns them off.",
   "group": "Drawing"
  },
  {

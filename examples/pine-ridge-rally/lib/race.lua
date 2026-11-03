@@ -64,6 +64,7 @@ function race.define(config)
     local sun = config.sun
     nova.light { dir = sun.dir, color = sun.color, ambient = sun.ambient }
     -- the sky, and fog the colour of its horizon so that the far scenery fades out instead of popping in
+    nova.shadows(state.shadows and { radius = 42, strength = 0.55 } or nil)
     nova.sky(config.sky)
     if config.sky then nova.fog { color = config.sky.horizon, near = 70, far = 330 } end
     local info = state.current_track()
@@ -95,7 +96,7 @@ function race.define(config)
   function Race:leave()
     for _, car in ipairs(self.cars) do if car.engine then car.engine:stop() end end
     nova.music.volume(state.music_volume)
-    nova.sky(nil); nova.fog(nil)
+    nova.sky(nil); nova.fog(nil); nova.shadows(nil)
     world.clear(); track.clear(); grid.clear(); fx.clear()
   end
 

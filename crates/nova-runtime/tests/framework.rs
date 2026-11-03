@@ -1660,3 +1660,23 @@ fn sky_and_fog_set_up_and_explain_a_mistake() {
         assert!(e.contains(expected), "{script}: '{e}'");
     }
 }
+
+#[test]
+fn shadows_turn_on_and_off_and_explain_a_mistake() {
+    let g = project(vec![(
+        "main.lua",
+        lua(
+            "nova.shadows { radius = 30 }\nnova.shadows(true)\nnova.shadows(false)\nnova.shadows(nil)",
+        ),
+    )]);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    for (script, expected) in [
+        ("nova.shadows { radius = 0 }", "radius"),
+        ("nova.shadows { strength = 2 }", "strength"),
+        ("nova.shadows('lots')", "takes a table"),
+    ] {
+        let g = project(vec![("main.lua", lua(script))]);
+        let e = g.error.clone().unwrap_or_default();
+        assert!(e.contains(expected), "{script}: '{e}'");
+    }
+}

@@ -2,6 +2,7 @@
 -- race scene calling `car:drive(dt)` after it has set `car.ctl` from the player's controls or from the AI.
 local world = require("lib.world")
 local fx = require("lib.fx")
+local state = require("lib.state")
 
 local Car = nova.entity { model = "car", tags = { "car" } }
 
@@ -210,7 +211,7 @@ function Car:draw()
   pt.wheel_fl.rx, pt.wheel_fr.rx, pt.wheel_rl.rx, pt.wheel_rr.rx = self.spin, self.spin, self.spin, self.spin
   self.draw_opts.ry = self.heading
   self.shadow_opts.ry = self.heading
-  nova.model("shadow", self.x, 0, self.z, self.shadow_opts)
+  if not state.shadows then nova.model("shadow", self.x, 0, self.z, self.shadow_opts) end -- (a flat blob when there are no real shadows)
   nova.model(self.model_id, self.x, 0, self.z, self.draw_opts)
 end
 
