@@ -76,8 +76,10 @@ Things found that were not on the list:
 - **The headless runner printed only the total.** It now prints where the time went (Lua, the rest of the update, drawing).
   The same numbers are still not available inside a running game: there is no `nova.stats()` for an on-screen profiler.
   Not fixed.
-- **Frame-time spikes:** the worst frame is 1.5 to 2 times the mean at 1000 enemies (16.7 ms against 10.4); garbage
-  collection from the tables each kill and burst makes is the suspect. Not investigated.
+- **Frame-time spikes: not garbage collection.** The worst frame is 1.4 to 1.6 times the mean at 1000 enemies (16 ms against
+  11.7). Lua's generational mode and two tunings of the incremental one (`NOVA_GC` experiment, since removed) gave the same
+  mean, 95th percentile and worst frame to within 3%. The spread follows how crowded it is around the player (more
+  neighbours to push apart), which changes as the autopilot circles. Nothing to fix there.
 - `nova.pause(true)` froze the whole swarm for the level-up screen exactly as wanted.
 
 Guarded by `crates/nova-runtime/tests/swarm.rs`, which runs the game with 100 and with 600 enemies and fails if six times the
