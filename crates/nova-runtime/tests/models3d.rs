@@ -379,3 +379,113 @@ fn a_glowing_shape_shows_in_the_dark() {
     assert!(bright > 50, "the lamp shines: {bright} bright pixels");
     assert!(dark > 50, "the other box stays dark: {dark} dark pixels");
 }
+
+/// The pixels of a 320x180 frame of `script` drawing the car, or None without a GPU.
+fn frame_pixels(script: &str) -> Option<Vec<u8>> {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        backends: wgpu::Backends::PRIMARY,
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
+    });
+    let mut gfx = match Gfx::new(&instance, None) {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("skipping GPU test: {e}");
+            return None;
+        }
+    };
+    let vfs: Rc<dyn Vfs> = Rc::new(MemVfs::new(vec![
+        ("nova.json", br#"{"format":1,"name":"T"}"#.to_vec()),
+        ("models/car.glb", CAR.to_vec()),
+        ("main.lua", script.as_bytes().to_vec()),
+    ]));
+    let mut g = Game::load(vfs).expect("loads");
+    g.upload(&mut gfx);
+    g.update(1.0 / 60.0, 0.0, [320.0, 180.0], Actions::default(), false);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    Some(gfx.capture((320, 180), &g.frame_input(0)))
+}
+
+fn pixel(pixels: &[u8], x: usize, y: usize) -> [u8; 3] {
+    let i = (y * 320 + x) * 4;
+    [pixels[i], pixels[i + 1], pixels[i + 2]]
+}
+
+#[test]
+fn a_sky_is_painted_from_the_horizon_up() {
+    // looking level: the horizon is the middle of the screen, the top of the screen is higher up
+    let script = "nova.camera(0, 1, 5, 0, 1, 0, 60)\nfunction update(dt)\n  nova.sky { top = {20, 40, 200}, horizon = {240, 200, 120} }\nend";
+    let Some(p) = frame_pixels(script) else {
+        return;
+    };
+    let top = pixel(&p, 160, 2);
+    let low = pixel(&p, 160, 175);
+    assert!(top[2] > top[0] + 60, "blue overhead: {top:?}");
+    assert!(
+        low[0] > low[2] + 60,
+        "warm at the horizon and below: {low:?}"
+    );
+    // without a sky it is the plain clear colour all over
+    let plain = frame_pixels("nova.camera(0, 1, 5, 0, 1, 0, 60)").unwrap();
+    assert_eq!(pixel(&plain, 160, 2), pixel(&plain, 160, 175));
+}
+
+#[test]
+fn fog_turns_a_model_into_the_fog_colour_with_distance() {
+    // the car is 5 m from the camera
+    let draw = |fog: &str| {
+        let script = format!(
+            "nova.camera(0, 1, 6, 0, 0.4, 0, 50)\nfunction update(dt)\n  {fog}\n  nova.model('car', 0, 0, 1)\nend"
+        );
+        frame_pixels(&script)
+    };
+    let magenta = |p: &[u8]| {
+        p.as_chunks::<4>()
+            .0
+            .iter()
+            .filter(|c| c[0] > 200 && c[1] < 60 && c[2] > 200)
+            .count()
+    };
+    let (Some(clear), Some(thick), Some(far_off)) = (
+        draw(""),
+        draw("nova.fog { color = {255, 0, 255}, near = 0, far = 3 }"),
+        draw("nova.fog { color = {255, 0, 255}, near = 100, far = 300 }"),
+    ) else {
+        return;
+    };
+    assert_eq!(magenta(&clear), 0);
+    assert!(
+        magenta(&thick) > 500,
+        "past `far` the car is all fog: {}",
+        magenta(&thick)
+    );
+    assert_eq!(
+        magenta(&far_off),
+        0,
+        "fog that starts beyond the car does not touch it"
+    );
+    assert_eq!(clear, far_off, "and the picture is the same as without fog");
+}
+
+#[test]
+fn a_scene_file_can_have_a_sky_and_fog() {
+    let mut g = game(
+        r#"nova.start("level")"#,
+        vec![
+            ("scenes/level.lua", b"return nova.scene {}".to_vec()),
+            (
+                "scenes/level.scene.json",
+                br#"{"version":1,"sky":{"top":[0,0,255],"horizon":[255,255,0]},"fog":{"color":[10,20,30],"near":5,"far":50}}"#
+                    .to_vec(),
+            ),
+        ],
+    );
+    frame(&mut g);
+    frame(&mut g);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let lighting = g.frame_input(0).lighting;
+    let sky = lighting.sky.expect("the scene's sky is set");
+    assert!(sky.top[2] > 0.9 && sky.top[0] < 0.01);
+    assert!(sky.horizon[0] > 0.9 && sky.horizon[1] > 0.9);
+    let fog = lighting.fog.expect("the scene's fog is set");
+    assert_eq!((fog.near, fog.far), (5.0, 50.0));
+}

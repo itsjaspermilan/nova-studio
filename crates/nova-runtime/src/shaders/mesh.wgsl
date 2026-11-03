@@ -6,6 +6,12 @@ struct Globals {
     ambient: vec4<f32>,
     point_pos: array<vec4<f32>, 8>,   // xyz position, w radius
     point_color: array<vec4<f32>, 8>,
+    inv_view_proj: mat4x4<f32>,
+    eye: vec4<f32>,
+    sky_top: vec4<f32>,
+    sky_horizon: vec4<f32>,
+    fog_color: vec4<f32>,   // w: 1 when there is fog
+    fog_range: vec4<f32>,   // x: start, y: complete
 };
 @group(0) @binding(0) var<uniform> globals: Globals;
 @group(1) @binding(0) var base_texture: texture_2d<f32>;
@@ -72,5 +78,11 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
         light = light + globals.point_color[i].rgb * (falloff * falloff * lambert);
     }
     // a glowing surface shows its colour at full brightness however dark the scene is
-    return vec4<f32>(base.rgb * (light + vec3<f32>(in.emissive)), base.a);
+    var rgb = base.rgb * (light + vec3<f32>(in.emissive));
+    if (globals.fog_color.w > 0.5) {
+        let d = distance(in.world, globals.eye.xyz);
+        let f = clamp((d - globals.fog_range.x) / (globals.fog_range.y - globals.fog_range.x), 0.0, 1.0);
+        rgb = mix(rgb, globals.fog_color.rgb, f);
+    }
+    return vec4<f32>(rgb, base.a);
 }

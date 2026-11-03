@@ -40,7 +40,23 @@ pub struct PointLight {
     pub color: [f32; 3],
 }
 
-/// How 3D models are lit: one directional light, an ambient floor and a few point lights.
+/// A sky behind everything: `horizon` at and below the horizon line, blending up to `top` overhead. Colours are linear.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Sky {
+    pub top: [f32; 3],
+    pub horizon: [f32; 3],
+}
+
+/// Distance fog: models fade into `color` between `near` and `far` world units from the camera. Colour is linear.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Fog {
+    pub color: [f32; 3],
+    pub near: f32,
+    pub far: f32,
+}
+
+/// How 3D models are lit and seen: one directional light, an ambient floor, a few point lights, and optionally a sky
+/// and fog.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Lighting {
     /// Direction the light travels (normalised).
@@ -49,6 +65,8 @@ pub struct Lighting {
     pub ambient: [f32; 3],
     pub points: [PointLight; MAX_POINT_LIGHTS],
     pub point_count: usize,
+    pub sky: Option<Sky>,
+    pub fog: Option<Fog>,
 }
 
 impl Default for Lighting {
@@ -63,6 +81,8 @@ impl Default for Lighting {
                 color: [0.0; 3],
             }; MAX_POINT_LIGHTS],
             point_count: 0,
+            sky: None,
+            fog: None,
         }
     }
 }
@@ -143,6 +163,16 @@ struct Globals {
     /// xyz: position; w: radius.
     point_pos: [[f32; 4]; MAX_POINT_LIGHTS],
     point_color: [[f32; 4]; MAX_POINT_LIGHTS],
+    inv_view_proj: [[f32; 4]; 4],
+    /// xyz: the camera.
+    eye: [f32; 4],
+    /// rgb: colour overhead; w: 1 when there is a sky.
+    sky_top: [f32; 4],
+    sky_horizon: [f32; 4],
+    /// rgb: colour; w: 1 when there is fog.
+    fog_color: [f32; 4],
+    /// x: where fog starts; y: where it is complete.
+    fog_range: [f32; 4],
 }
 
 struct DynBuffer {
@@ -227,6 +257,7 @@ pub struct Gfx {
     sprites_front: DynBuffer,
     mesh_pipeline: wgpu::RenderPipeline,
     mesh_blend_pipeline: wgpu::RenderPipeline,
+    sky_pipeline: wgpu::RenderPipeline,
     globals: wgpu::Buffer,
     globals_group: wgpu::BindGroup,
     meshes: Vec<GpuMesh>,
@@ -602,6 +633,44 @@ impl Gfx {
                     cache: None,
                 })
             };
+        let sky_shader = device.create_shader_module(wgpu::include_wgsl!("shaders/sky.wgsl"));
+        let sky_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("sky pipeline layout"),
+            bind_group_layouts: &[Some(&globals_layout)],
+            immediate_size: 0,
+        });
+        // One triangle over the whole screen, behind everything: no depth test or write.
+        let sky_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("sky"),
+            layout: Some(&sky_layout),
+            vertex: wgpu::VertexState {
+                module: &sky_shader,
+                entry_point: Some("vs_main"),
+                compilation_options: Default::default(),
+                buffers: &[],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &sky_shader,
+                entry_point: Some("fs_main"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_write_enabled: Some(false),
+                depth_compare: Some(wgpu::CompareFunction::Always),
+                stencil: Default::default(),
+                bias: Default::default(),
+            }),
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
         let mesh_pipeline = make_mesh_pipeline("meshes", None, true);
         let mesh_blend_pipeline = make_mesh_pipeline(
             "translucent meshes",
@@ -652,6 +721,7 @@ impl Gfx {
             sprites_front,
             mesh_pipeline,
             mesh_blend_pipeline,
+            sky_pipeline,
             globals,
             globals_group,
             meshes: Vec::new(),
@@ -872,6 +942,7 @@ impl Gfx {
             ];
             point_color[i] = [p.color[0], p.color[1], p.color[2], 1.0];
         }
+        let (sky, fog) = (lit.sky, lit.fog);
         let globals = Globals {
             view_proj: view_proj.to_cols_array_2d(),
             light_dir: [
@@ -884,6 +955,19 @@ impl Gfx {
             ambient: [lit.ambient[0], lit.ambient[1], lit.ambient[2], 1.0],
             point_pos,
             point_color,
+            inv_view_proj: view_proj.inverse().to_cols_array_2d(),
+            eye: [
+                input.camera.eye.x,
+                input.camera.eye.y,
+                input.camera.eye.z,
+                0.0,
+            ],
+            sky_top: sky.map_or([0.0; 4], |k| [k.top[0], k.top[1], k.top[2], 1.0]),
+            sky_horizon: sky.map_or([0.0; 4], |k| {
+                [k.horizon[0], k.horizon[1], k.horizon[2], 1.0]
+            }),
+            fog_color: fog.map_or([0.0; 4], |f| [f.color[0], f.color[1], f.color[2], 1.0]),
+            fog_range: fog.map_or([0.0; 4], |f| [f.near, f.far.max(f.near + 0.001), 0.0, 0.0]),
         };
         self.queue
             .write_buffer(&self.globals, 0, bytemuck::bytes_of(&globals));
@@ -972,6 +1056,12 @@ impl Gfx {
                 pass.draw(0..6, 0..count as u32);
                 count as u32
             };
+            if lit.sky.is_some() {
+                pass.set_pipeline(&self.sky_pipeline);
+                pass.set_bind_group(0, &self.globals_group, &[]);
+                pass.draw(0..3, 0..1);
+                stats.draw_calls += 1;
+            }
             let back = draw_sprites(
                 &mut pass,
                 &self.sprite_pipeline,

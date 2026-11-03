@@ -9,6 +9,8 @@
 //! {
 //!   "version": 1,
 //!   "background": [130, 178, 232],
+//!   "sky": { "top": [40, 90, 200], "horizon": [200, 220, 240] },
+//!   "fog": { "color": [200, 220, 240], "near": 40, "far": 250 },
 //!   "width": 1200, "height": 540,
 //!   "camera":   { "eye": [0, 6, 12], "target": [0, 1, 0], "fov": 60 },
 //!   "objects":  [ { "kind": "player", "name": "hero", "x": 40, "y": 200, "props": { "hp": 3 } } ],
@@ -158,6 +160,51 @@ fn camera(v: &Value, at: &str) -> Result<Value, String> {
     Ok(Value::Object(out))
 }
 
+/// `sky`: `{ "top": [r, g, b], "horizon": [r, g, b] }` (the horizon defaults to the top colour).
+fn sky(v: &Value, at: &str) -> Result<Value, String> {
+    let o = v.as_object().ok_or_else(|| {
+        err(
+            at,
+            "\"sky\" must be an object like {\"top\": [40, 90, 200], \"horizon\": [200, 220, 240]}",
+        )
+    })?;
+    check_keys(o, at, &["top", "horizon"])?;
+    let mut out = Map::new();
+    let top = color(o.get("top"), &format!("{at}.top"))?
+        .ok_or_else(|| err(at, "\"sky\" needs a \"top\" colour [r, g, b]"))?;
+    out.insert("top".into(), top);
+    if let Some(h) = color(o.get("horizon"), &format!("{at}.horizon"))? {
+        out.insert("horizon".into(), h);
+    }
+    Ok(Value::Object(out))
+}
+
+/// `fog`: `{ "color": [r, g, b], "near": 40, "far": 250 }`.
+fn fog(v: &Value, at: &str) -> Result<Value, String> {
+    let o = v.as_object().ok_or_else(|| {
+        err(
+            at,
+            "\"fog\" must be an object like {\"color\": [200, 220, 240], \"near\": 40, \"far\": 250}",
+        )
+    })?;
+    check_keys(o, at, &["color", "near", "far"])?;
+    let mut out = Map::new();
+    let c = color(o.get("color"), &format!("{at}.color"))?
+        .ok_or_else(|| err(at, "\"fog\" needs a \"color\" [r, g, b]"))?;
+    out.insert("color".into(), c);
+    let near = optional_number(o, "near", at, 40.0)?;
+    let far = optional_number(o, "far", at, 250.0)?;
+    if near < 0.0 || far <= near {
+        return Err(err(
+            at,
+            "\"far\" must be greater than \"near\", and \"near\" cannot be negative",
+        ));
+    }
+    out.insert("near".into(), num(near));
+    out.insert("far".into(), num(far));
+    Ok(Value::Object(out))
+}
+
 fn num(n: f64) -> Value {
     Value::Number(Number::from_f64(n).expect("finite"))
 }
@@ -203,6 +250,8 @@ pub fn parse_scene(text: &str, file: &str) -> Result<Value, String> {
             "width",
             "height",
             "camera",
+            "sky",
+            "fog",
             "objects",
             "images",
             "texts",
@@ -230,6 +279,13 @@ pub fn parse_scene(text: &str, file: &str) -> Result<Value, String> {
 
     if let Some(c) = root.get("camera") {
         out.insert("camera".into(), camera(c, &format!("{file}.camera"))?);
+    }
+
+    if let Some(v) = root.get("sky") {
+        out.insert("sky".into(), sky(v, &format!("{file}.sky"))?);
+    }
+    if let Some(v) = root.get("fog") {
+        out.insert("fog".into(), fog(v, &format!("{file}.fog"))?);
     }
 
     let list = |key: &str| -> Result<Vec<&Value>, String> {
@@ -601,6 +657,36 @@ mod tests {
             assert!(e.contains(expected), "{body}: '{e}'");
         }
         assert!(parse(r#"{"version":1,"camera":[1]}"#).is_err());
+    }
+
+    #[test]
+    fn a_sky_and_fog_are_validated_and_filled_in() {
+        let v = parse(r#"{"version":1,"sky":{"top":[1,2,3]},"fog":{"color":[9,8,7],"near":10}}"#)
+            .unwrap();
+        assert_eq!(v["sky"]["top"], serde_json::json!([1.0, 2.0, 3.0]));
+        assert!(
+            v["sky"].get("horizon").is_none(),
+            "the horizon defaults in the game"
+        );
+        assert_eq!(v["fog"]["near"].as_f64(), Some(10.0));
+        assert_eq!(v["fog"]["far"].as_f64(), Some(250.0));
+        for (key, body, expected) in [
+            ("sky", r#"{}"#, "needs a \"top\""),
+            ("sky", r#"{"top":[1,2]}"#, "sky.top"),
+            ("sky", r#"{"top":[1,2,3],"bottom":[1,2,3]}"#, "bottom"),
+            ("fog", r#"{"near":1}"#, "needs a \"color\""),
+            (
+                "fog",
+                r#"{"color":[1,2,3],"near":50,"far":20}"#,
+                "greater than",
+            ),
+            ("fog", r#"[1]"#, "must be an object"),
+        ] {
+            let e = parse(&format!(r#"{{"version":1,"{key}":{body}}}"#))
+                .err()
+                .unwrap_or_default();
+            assert!(e.contains(expected), "{key} {body}: '{e}'");
+        }
     }
 
     #[test]

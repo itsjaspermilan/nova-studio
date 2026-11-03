@@ -18,7 +18,7 @@ use crate::actions::{self, ActionStates, Binding, Bindings, InputFrame};
 use crate::assets::{self, AtlasLayout};
 use crate::font;
 use crate::gfx::{
-    Camera, FrameInput, Gfx, Lighting, MeshWrite, ModelDraw, ModelInstance, PointLight,
+    Camera, Fog, FrameInput, Gfx, Lighting, MeshWrite, ModelDraw, ModelInstance, PointLight, Sky,
     SpriteInstance,
 };
 use crate::input::Actions;
@@ -129,6 +129,11 @@ struct SkinnedPart {
 }
 
 /// A table of three 0-255 numbers as linear multipliers (255 is full strength).
+/// A colour as picked on screen ({r, g, b}, 0 to 255) made linear, as `nova.clear` does: for what is drawn, not for light.
+fn picture_color(table: &Table, key: &str) -> mlua::Result<Option<[f32; 3]>> {
+    Ok(light_color(table, key)?.map(|c| c.map(|v| v.powf(2.2))))
+}
+
 fn light_color(table: &Table, key: &str) -> mlua::Result<Option<[f32; 3]>> {
     let Some(c) = table.get::<Option<Table>>(key)? else {
         return Ok(None);
@@ -693,6 +698,47 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             if let Some(c) = light_color(&opts, "ambient")? {
                 sh.lighting.ambient = c;
             }
+            Ok(())
+        })?,
+    )?;
+    let s = shared.clone();
+    nova.set(
+        "sky",
+        lua.create_function(move |_, opts: Option<Table>| {
+            let Some(opts) = opts else {
+                s.borrow_mut().lighting.sky = None;
+                return Ok(());
+            };
+            let top = picture_color(&opts, "top")?
+                .ok_or_else(|| lua_err("nova.sky needs top = {r, g, b}: the colour overhead (and horizon = {r, g, b} for the line where it meets the ground)"))?;
+            let horizon = picture_color(&opts, "horizon")?.unwrap_or(top);
+            s.borrow_mut().lighting.sky = Some(Sky { top, horizon });
+            Ok(())
+        })?,
+    )?;
+    let s = shared.clone();
+    nova.set(
+        "fog",
+        lua.create_function(move |_, opts: Option<Table>| {
+            let Some(opts) = opts else {
+                s.borrow_mut().lighting.fog = None;
+                return Ok(());
+            };
+            let color = picture_color(&opts, "color")?
+                .ok_or_else(|| lua_err("nova.fog needs color = {r, g, b}, and near and far in metres"))?;
+            let opts = Some(opts);
+            let near = number_option(&opts, "near")?.unwrap_or(40.0);
+            let far = number_option(&opts, "far")?.unwrap_or(250.0);
+            if !near.is_finite() || !far.is_finite() || near < 0.0 || far <= near {
+                return Err(lua_err(format!(
+                    "fog far ({far}) must be greater than near ({near}), and near cannot be negative"
+                )));
+            }
+            s.borrow_mut().lighting.fog = Some(Fog {
+                color,
+                near: near as f32,
+                far: far as f32,
+            });
             Ok(())
         })?,
     )?;

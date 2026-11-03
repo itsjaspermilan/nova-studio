@@ -18,7 +18,7 @@ local RIVALS = {
 }
 local MAP_COLORS = { { 96, 165, 250 }, { 74, 222, 128 }, { 244, 114, 182 } }
 local ROAD_HALF = 6.2        -- metres from the middle to where the grass starts
-local LOOK_FAR = 200         -- metres of scenery drawn around the camera
+local LOOK_FAR = 240         -- metres of scenery drawn around the camera (fog hides its edge)
 
 -- ---- driving: the player's controls and the other drivers ---------------------------------------------------------------
 
@@ -63,6 +63,9 @@ function race.define(config)
   function Race:enter()
     local sun = config.sun
     nova.light { dir = sun.dir, color = sun.color, ambient = sun.ambient }
+    -- the sky, and fog the colour of its horizon so that the far scenery fades out instead of popping in
+    nova.sky(config.sky)
+    if config.sky then nova.fog { color = config.sky.horizon, near = 70, far = 330 } end
     local info = state.current_track()
     self.laps = state.laps
     track.ensure()
@@ -92,6 +95,7 @@ function race.define(config)
   function Race:leave()
     for _, car in ipairs(self.cars) do if car.engine then car.engine:stop() end end
     nova.music.volume(state.music_volume)
+    nova.sky(nil); nova.fog(nil)
     world.clear(); track.clear(); grid.clear(); fx.clear()
   end
 

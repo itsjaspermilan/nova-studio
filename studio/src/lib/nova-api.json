@@ -28,6 +28,20 @@
   "group": "Drawing"
  },
  {
+  "name": "nova.sky",
+  "kind": "function",
+  "signature": "nova.sky{ top = {r, g, b}, horizon = {r, g, b} }",
+  "doc": "Paints a sky behind everything in 3D: `horizon` where it meets the ground (and below), blending up to `top` overhead. Colours are 0 to 255, as you would pick them on screen. Stays until changed; `nova.sky(nil)` goes back to the plain clear colour.",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.fog",
+  "kind": "function",
+  "signature": "nova.fog{ color = {r, g, b}, near = 40, far = 250 }",
+  "doc": "Fades 3D models into `color` between `near` and `far` metres from the camera, which hides things popping in at a distance. Use the sky's horizon colour for it to blend in. Stays until changed; `nova.fog(nil)` turns it off.",
+  "group": "Drawing"
+ },
+ {
   "name": "nova.point_light",
   "kind": "function",
   "signature": "nova.point_light(x, y, z [, { radius = 10, color = {r, g, b} }])",

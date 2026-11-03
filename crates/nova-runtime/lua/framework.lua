@@ -977,6 +977,10 @@ local function build_scene(scene, data, file)
   if data.width and data.height then nova.cam.limit(0, 0, data.width, data.height) end
   local cam = data.camera
   if cam then nova.camera(cam.eye[1], cam.eye[2], cam.eye[3], cam.target[1], cam.target[2], cam.target[3], cam.fov) end
+  local sky = data.sky
+  if sky then nova.sky { top = sky.top, horizon = sky.horizon } end
+  local fog = data.fog
+  if fog then nova.fog { color = fog.color, near = fog.near, far = fog.far } end
   local function named(item, e)
     local name = item.name
     if not name then return end

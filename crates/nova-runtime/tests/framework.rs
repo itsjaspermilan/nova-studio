@@ -1629,3 +1629,34 @@ fn a_field_and_a_method_with_the_same_name_is_explained() {
     ]);
     assert!(ok.error.is_none(), "{:?}", ok.error);
 }
+
+#[test]
+fn sky_and_fog_set_up_and_explain_a_mistake() {
+    let g = project(vec![(
+        "main.lua",
+        lua(
+            "nova.sky { top = {10, 20, 30}, horizon = {200, 210, 220} }\nnova.fog { color = {200, 210, 220}, near = 20, far = 100 }",
+        ),
+    )]);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let g = project(vec![(
+        "main.lua",
+        lua(
+            "nova.sky { top = {1, 2, 3} }\nnova.sky(nil)\nnova.fog { color = {1, 2, 3} }\nnova.fog(nil)",
+        ),
+    )]);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    for (script, expected) in [
+        ("nova.sky {}", "needs top"),
+        ("nova.sky { top = {1, 2} }", "{r, g, b}"),
+        (
+            "nova.fog { color = {1, 2, 3}, near = 50, far = 20 }",
+            "greater than near",
+        ),
+        ("nova.fog { near = 1, far = 2 }", "needs color"),
+    ] {
+        let g = project(vec![("main.lua", lua(script))]);
+        let e = g.error.clone().unwrap_or_default();
+        assert!(e.contains(expected), "{script}: '{e}'");
+    }
+}
