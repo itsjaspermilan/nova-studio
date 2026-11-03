@@ -64,9 +64,14 @@ it. Neither program's code was read or copied; a clone of either is not on this 
   the picture (face tool, by dragging or typing the rectangle); turning and resizing work on several shapes in one part, about
   the first one's middle (resizing is one factor on every axis).
 
+- Fourth round: painting has line, rectangle, ellipse and gradient tools in the picture and mirror painting on the model; a placed
+  face can be flipped; a Knife cuts a face between two picked points; turn and resize work on shapes picked in different parts;
+  several frames drag together; frame durations scale (×½, ×2) for the picked frames; cels can be linked so drawing on one draws on
+  the others (kept in the layers file, so the game never sees it).
+
 ## Still open, in the order that would help most
 
-1. Mesh: bevel at corners that are not box-like, extruding a single point, a knife.
-2. Painting: mirror painting, shapes and gradients; flipping or turning a placed face.
-3. Sprites: linked cels, frame duration as a multiplier, drag several frames at once.
-4. Resizing shapes in several parts at once.
+1. Mesh: bevel at corners that are not box-like (a vertex with more than three faces needs a cap polygon). Extruding a single point
+   has no meaning yet: meshes are made of faces, with no loose edges or points.
+2. Texture: turning a placed face a quarter turn; painting on a mesh's unwrap survives edits (today it moves with the faces).
+3. Sprites: frame duration as a multiplier of a base rate (we store milliseconds), cel opacity, blend modes.

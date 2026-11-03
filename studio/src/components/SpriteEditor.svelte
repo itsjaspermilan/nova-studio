@@ -5,7 +5,7 @@
     type Point, type Raster, type Rect, type Rgba,
   } from "../lib/pixels";
   import {
-    addAnimation, animationOf, cloneDoc, moveFramesWithin, scaleDurations, duplicateFrames, moveFramesTo, removeFrames, detectGrid, duplicateAnimation, frameAt, gridFromCounts, smartGrid, framesIn, fromImage, fromSheet, gridTiles, importTiles, insertFrame, moveAnimation, isPristine, moveFrame, newDoc, parseSheetJson,
+    addAnimation, animationOf, cloneDoc, linkCels, unlinkCels, syncLinked, moveFramesWithin, scaleDurations, duplicateFrames, moveFramesTo, removeFrames, detectGrid, duplicateAnimation, frameAt, gridFromCounts, smartGrid, framesIn, fromImage, fromSheet, gridTiles, importTiles, insertFrame, moveAnimation, isPristine, moveFrame, newDoc, parseSheetJson,
     removeAnimation, removeFrame, setAnimationDuration, tagProblems, tagSequence, resizeDoc, toSheet, toSheetJson, updateAnimation, type Direction, type SpriteDoc,
     addLayer, applyLayers, duplicateLayer, layerSheets, layersFileText, mergeDown, moveLayer, parseLayersFile, recompose, removeLayer, updateLayer, MAX_LAYERS,
   } from "../lib/sprite-doc";
@@ -154,7 +154,7 @@
       const d = session!.doc;
       await studio.api!.writeImage(session!.imagePath, rasterToDataUrl(toSheet(d)));
       // Layers go in a file beside the sheet (only when there is more than one, or there was a file before).
-      if (session!.sheet && (d.layers.length > 1 || studio.files.some((f) => f.path === layersPath))) {
+      if (session!.sheet && (d.layers.length > 1 || d.layers.some((l) => l.links?.some((n) => n > 0)) || studio.files.some((f) => f.path === layersPath))) {
         await studio.api!.writeFile(layersPath, layersFileText(d, layerSheets(d).map(rasterToDataUrl)));
         if (!studio.files.some((f) => f.path === layersPath)) void studio.refreshFiles();
       }
@@ -168,6 +168,8 @@
     session.doc = doc;
     session.frame = frame;
     session.layer = activeLayer;
+    // drawing on a linked cel draws on every cel linked to it
+    syncLinked(doc, activeLayer, frame);
     canUndo = session.past.length > 0;
     canRedo = session.future.length > 0;
     if (session.sheet) studio.edit(fromPath, toSheetJson(doc, session.imageName));
@@ -894,6 +896,7 @@
             <button class="frame" class:on={i === frame} role="option" aria-selected={i === frame} draggable="true" ondragstart={(e) => { dragFrame = i; e.dataTransfer?.setData("text/plain", String(i)); }} ondragover={(e) => e.preventDefault()} ondrop={(e) => { e.preventDefault(); dropFrame(i); }} onclick={(e) => pickFrame(i, e)} class:picked={others.includes(i)} title="Frame {i - (anim?.from ?? 0) + 1} · {doc.durations[i]} ms · drag to move · ⌘ or ⇧ picks more">
               <canvas use:drawThumb={i}></canvas>
               <span>{i - (anim?.from ?? 0) + 1}</span>
+              {#if (doc.layers[activeLayer]?.links?.[i] ?? 0) > 0}<i class="chain" title="Linked with other frames on this layer">⛓</i>{/if}
             </button>
           {/each}
         </div>
@@ -910,6 +913,8 @@
             </select>
           {/if}
           <label class="inline">Duration <input type="number" min="10" step="10" value={doc.durations[frame]} onchange={(e) => setDuration(Number(e.currentTarget.value))} class="narrow" /> ms</label>
+          <button class="ghost" onclick={() => structural(linkCels(doc, activeLayer, chosen))} disabled={chosen.length < 2} title="Link the picked frames on this layer: drawing on one draws on all">Link</button>
+          <button class="ghost" onclick={() => structural(unlinkCels(doc, activeLayer, chosen))} disabled={!chosen.some((f) => (doc.layers[activeLayer]?.links?.[f] ?? 0) > 0)} title="Let the picked frames be drawn on separately again">Unlink</button>
           <button class="ghost" onclick={() => rescale(0.5)} title="Half as long: the picked frames play twice as fast">×½</button>
           <button class="ghost" onclick={() => rescale(2)} title="Twice as long: the picked frames play half as fast">×2</button>
           <button class="ghost" onclick={() => structural(setAnimationDuration(doc, animIndex, doc.durations[frame]!))} title="Give every frame of this animation this duration">Apply to animation</button>
@@ -1083,6 +1088,7 @@
   .frames { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
   .frame { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 3px; min-width: 52px; background: var(--bg); }
   .frame.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .frame .chain { position: absolute; top: 1px; right: 3px; font-size: 10px; color: var(--accent); font-style: normal; }
   .frame.picked { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, var(--bg)); }
   .frame canvas { width: 40px; height: 40px; object-fit: contain; image-rendering: pixelated; background: repeating-conic-gradient(#3a3d48 0 25%, #2e313b 0 50%) 0 0 / 8px 8px; }
   .frame span { font-size: 10px; color: var(--dim); }

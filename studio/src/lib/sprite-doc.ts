@@ -23,6 +23,8 @@ export interface Layer {
   /// 0 to 1.
   opacity: number;
   cels: Raster[];
+  /// For each cel, 0 or a group number: cels of this layer with the same number are linked, and drawing on one draws on all.
+  links?: number[];
 }
 export interface SpriteDoc {
   fw: number;
@@ -55,7 +57,7 @@ export function newDoc(fw: number, fh: number, frames = 1): SpriteDoc {
 export function cloneDoc(d: SpriteDoc): SpriteDoc {
   return {
     fw: d.fw, fh: d.fh, frames: d.frames.map(cloneRaster), durations: [...d.durations], tags: d.tags.map((t) => ({ ...t })),
-    layers: d.layers.map((l) => ({ ...l, cels: l.cels.map(cloneRaster) })),
+    layers: d.layers.map((l) => ({ ...l, cels: l.cels.map(cloneRaster), ...(l.links ? { links: [...l.links] } : {}) })),
   };
 }
 
@@ -116,7 +118,12 @@ function assemble(doc: SpriteDoc, blocks: { tag: Tag; frames: number[] }[]): Spr
   const next = cloneDoc(doc);
   next.frames = order.map((i) => cloneRaster(doc.frames[i]!));
   next.durations = order.map((i) => doc.durations[i]!);
-  next.layers = doc.layers.map((l) => ({ ...l, cels: order.map((i) => cloneRaster(l.cels[i]!)) }));
+  // a frame that appears twice (a copy) keeps its link on the first appearance only
+  next.layers = doc.layers.map((l) => {
+    const seen = new Set<number>();
+    const links = l.links ? order.map((i) => (seen.has(i) ? 0 : (seen.add(i), l.links![i] ?? 0))) : undefined;
+    return { ...l, cels: order.map((i) => cloneRaster(l.cels[i]!)), ...(links ? { links } : {}) };
+  });
   let at = 0;
   next.tags = blocks.map(({ tag, frames }) => {
     const out = { ...tag, from: at, to: at + frames.length - 1 };
@@ -161,7 +168,10 @@ export function insertFrame(doc: SpriteDoc, index: number, copyOf?: number, anim
   const owner = anim ?? animationOf(next, Math.max(0, Math.min(at - 1, next.frames.length - 1)));
   if (!next.tags[owner]) return doc;
   next.frames.splice(at, 0, copyOf === undefined ? newRaster(next.fw, next.fh) : cloneRaster(next.frames[copyOf]!));
-  for (const l of next.layers) l.cels.splice(at, 0, copyOf === undefined ? newRaster(next.fw, next.fh) : cloneRaster(l.cels[copyOf]!));
+  for (const l of next.layers) {
+    l.cels.splice(at, 0, copyOf === undefined ? newRaster(next.fw, next.fh) : cloneRaster(l.cels[copyOf]!));
+    l.links?.splice(at, 0, 0); // a copy is not linked to what it was copied from
+  }
   next.durations.splice(at, 0, copyOf === undefined ? DEFAULT_DURATION : next.durations[copyOf]!);
   shiftFrom(next.tags, at, 1, owner);
   next.tags[owner]!.to++;
@@ -174,7 +184,10 @@ export function removeFrame(doc: SpriteDoc, index: number): SpriteDoc {
   if (owner < 0 || framesIn(doc.tags[owner]!) <= 1) return doc;
   const next = cloneDoc(doc);
   next.frames.splice(index, 1);
-  for (const l of next.layers) l.cels.splice(index, 1);
+  for (const l of next.layers) {
+    l.cels.splice(index, 1);
+    l.links?.splice(index, 1);
+  }
   next.durations.splice(index, 1);
   next.tags[owner]!.to--;
   shiftFrom(next.tags, index + 1, -1, owner);
@@ -192,6 +205,10 @@ export function moveFrame(doc: SpriteDoc, from: number, to: number): SpriteDoc {
   for (const l of next.layers) {
     const [cel] = l.cels.splice(from, 1);
     l.cels.splice(to, 0, cel!);
+    if (l.links) {
+      const [link] = l.links.splice(from, 1);
+      l.links.splice(to, 0, link ?? 0);
+    }
   }
   next.durations.splice(to, 0, duration!);
   return next;
@@ -284,7 +301,10 @@ export function addAnimation(doc: SpriteDoc, name = "animation"): { doc: SpriteD
   const next = cloneDoc(doc);
   const at = next.frames.length;
   next.frames.push(newRaster(next.fw, next.fh));
-  for (const l of next.layers) l.cels.push(newRaster(next.fw, next.fh));
+  for (const l of next.layers) {
+    l.cels.push(newRaster(next.fw, next.fh));
+    l.links?.push(0);
+  }
   next.durations.push(DEFAULT_DURATION);
   next.tags.push({ name: uniqueName(doc, name), from: at, to: at, direction: "forward", loop: true });
   return { doc: next, index: next.tags.length - 1 };
@@ -331,6 +351,54 @@ export function setAnimationDuration(doc: SpriteDoc, index: number, ms: number):
   const next = cloneDoc(doc);
   for (let i = t.from; i <= t.to; i++) next.durations[i] = Math.round(ms);
   return next;
+}
+
+// ---- linked cels -------------------------------------------------------------------------------------------
+
+/// The frames whose cel on `layer` is linked to the one at `frame` (including `frame` itself); just `frame` when it is not linked.
+export function linkedFrames(layer: Layer, frame: number): number[] {
+  const group = layer.links?.[frame] ?? 0;
+  if (!group) return [frame];
+  return layer.links!.map((g, i) => (g === group ? i : -1)).filter((i) => i >= 0);
+}
+
+/// Links the cels of `frames` on one layer: they all take the picture of the first, and from then on drawing on one draws on all.
+/// A frame that was linked to others leaves its old group.
+export function linkCels(doc: SpriteDoc, layerIndex: number, frames: number[]): SpriteDoc {
+  const chosen = [...new Set(frames)].filter((f) => f >= 0 && f < doc.frames.length).sort((a, b) => a - b);
+  if (chosen.length < 2 || !doc.layers[layerIndex]) return doc;
+  const next = cloneDoc(doc);
+  const layer = next.layers[layerIndex]!;
+  layer.links ??= layer.cels.map(() => 0);
+  const group = Math.max(0, ...layer.links) + 1;
+  for (const f of chosen) {
+    layer.links[f] = group;
+    if (f !== chosen[0]) layer.cels[f]!.data.set(layer.cels[chosen[0]!]!.data);
+  }
+  for (const f of chosen) recompose(next, f);
+  return next;
+}
+
+/// Takes cels out of their link groups; they keep the picture they have.
+export function unlinkCels(doc: SpriteDoc, layerIndex: number, frames: number[]): SpriteDoc {
+  const layer = doc.layers[layerIndex];
+  if (!layer?.links || !frames.some((f) => (layer.links![f] ?? 0) > 0)) return doc;
+  const next = cloneDoc(doc);
+  for (const f of frames) if (next.layers[layerIndex]!.links![f] !== undefined) next.layers[layerIndex]!.links![f] = 0;
+  return next;
+}
+
+/// After drawing on the cel at `frame`, gives its picture to the cels it is linked to and refreshes their frames, in place.
+/// Returns the frames that changed.
+export function syncLinked(doc: SpriteDoc, layerIndex: number, frame: number): number[] {
+  const layer = doc.layers[layerIndex];
+  if (!layer?.links || !(layer.links[frame] ?? 0)) return [];
+  const others = linkedFrames(layer, frame).filter((f) => f !== frame);
+  for (const f of others) {
+    layer.cels[f]!.data.set(layer.cels[frame]!.data);
+    recompose(doc, f);
+  }
+  return others;
 }
 
 // ---- importing sheets --------------------------------------------------------------------------------------
@@ -480,23 +548,30 @@ export function importTiles(
   const frames: Raster[] = [];
   const durations: number[] = [];
   const cels: Raster[][] = base.layers.map(() => []);
+  const linkArrays: number[][] = base.layers.map(() => []);
   const tags: Tag[] = [];
   blocks.forEach((b, i) => {
     const start = frames.length;
     for (const f of b.frames) {
       frames.push(cloneRaster(base.frames[f]!));
       durations.push(base.durations[f]!);
-      base.layers.forEach((l, li) => cels[li]!.push(cloneRaster(l.cels[f]!)));
+      base.layers.forEach((l, li) => {
+        cels[li]!.push(cloneRaster(l.cels[f]!));
+        linkArrays[li]!.push(l.links?.[f] ?? 0);
+      });
     }
     for (const t of extra[i] ?? []) {
       const picture = fit(t);
       frames.push(picture);
       durations.push(ms);
-      base.layers.forEach((_, li) => cels[li]!.push(li === layer ? cloneRaster(picture) : newRaster(base.fw, base.fh)));
+      base.layers.forEach((_, li) => {
+        cels[li]!.push(li === layer ? cloneRaster(picture) : newRaster(base.fw, base.fh));
+        linkArrays[li]!.push(0);
+      });
     }
     tags.push({ ...b.tag, from: start, to: frames.length - 1 });
   });
-  const next: SpriteDoc = { ...cloneDoc(base), frames, durations, tags, layers: base.layers.map((l, li) => ({ ...l, cels: cels[li]! })) };
+  const next: SpriteDoc = { ...cloneDoc(base), frames, durations, tags, layers: base.layers.map((l, li) => ({ ...l, cels: cels[li]!, ...(l.links ? { links: linkArrays[li]! } : {}) })) };
   return { doc: recomposed(next), index, added, truncated };
 }
 
@@ -654,7 +729,7 @@ export function duplicateLayer(doc: SpriteDoc, index: number): { doc: SpriteDoc;
   const src = doc.layers[index];
   if (!src || doc.layers.length >= MAX_LAYERS) return { doc, index };
   const next = cloneDoc(doc);
-  next.layers.splice(index + 1, 0, { ...src, name: `${src.name} copy`, cels: src.cels.map(cloneRaster) });
+  next.layers.splice(index + 1, 0, { ...src, name: `${src.name} copy`, cels: src.cels.map(cloneRaster), ...(src.links ? { links: [...src.links] } : {}) });
   return { doc: recomposed(next), index: index + 1 };
 }
 
@@ -717,7 +792,7 @@ export interface LayersFile {
   sheet: string;
   frames: number;
   columns: number;
-  layers: { name: string; visible: boolean; opacity: number; image: string }[];
+  layers: { name: string; visible: boolean; opacity: number; image: string; /** link groups of the cels, when any are linked */ links?: number[] }[];
 }
 
 /// Each layer as a sheet laid out like the exported one.
@@ -728,7 +803,7 @@ export function layerSheets(doc: SpriteDoc): Raster[] {
 export function layersFileText(doc: SpriteDoc, images: string[]): string {
   const file: LayersFile = {
     version: 1, sheet: hashRaster(toSheet(doc)), frames: doc.frames.length, columns: sheetColumns(doc.frames.length),
-    layers: doc.layers.map((l, i) => ({ name: l.name, visible: l.visible, opacity: l.opacity, image: images[i]! })),
+    layers: doc.layers.map((l, i) => ({ name: l.name, visible: l.visible, opacity: l.opacity, image: images[i]!, ...(l.links?.some((n) => n > 0) ? { links: l.links } : {}) })),
   };
   return `${JSON.stringify(file, null, 1)}\n`;
 }
@@ -737,7 +812,8 @@ export function parseLayersFile(text: string): LayersFile | null {
   try {
     const f = JSON.parse(text) as LayersFile;
     const good = f && f.version === 1 && typeof f.sheet === "string" && Number.isInteger(f.frames) && Number.isInteger(f.columns) && Array.isArray(f.layers) && f.layers.length > 0 && f.layers.length <= MAX_LAYERS
-      && f.layers.every((l) => typeof l.name === "string" && typeof l.visible === "boolean" && typeof l.opacity === "number" && typeof l.image === "string");
+      && f.layers.every((l) => typeof l.name === "string" && typeof l.visible === "boolean" && typeof l.opacity === "number" && typeof l.image === "string"
+        && (l.links === undefined || (Array.isArray(l.links) && l.links.length === f.frames && l.links.every((n) => Number.isInteger(n) && n >= 0))));
     return good ? f : null;
   } catch {
     return null;
@@ -753,6 +829,7 @@ export function applyLayers(doc: SpriteDoc, file: LayersFile, sheets: Raster[]):
   next.layers = file.layers.map((l, i) => ({
     name: l.name, visible: l.visible, opacity: clampOpacity(l.opacity),
     cels: cutFrames(sheets[i]!, doc.fw, doc.fh, doc.frames.length, columns),
+    ...(l.links?.some((n) => n > 0) ? { links: [...l.links] } : {}),
   }));
   recomposed(next);
   return hashRaster(toSheet(next)) === file.sheet && hashRaster(toSheet(next)) === hashRaster(toSheet(doc)) ? next : null;

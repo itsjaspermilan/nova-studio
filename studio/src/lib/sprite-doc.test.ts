@@ -547,3 +547,77 @@ describe("scaling durations", () => {
     expect(scaleDurations(d, [9], 2)).toBe(d);
   });
 });
+
+import { linkCels, linkedFrames, syncLinked, unlinkCels } from "./sprite-doc";
+
+describe("linked cels", () => {
+  const six = () => split(3, 3); // frames 0-2 in a, 3-5 in b, each marked with its own column
+  const pixel = (d: SpriteDoc, layer: number, frame: number, x = 0, y = 1) => getPixel(d.layers[layer]!.cels[frame]!, x, y)![3] > 0;
+
+  it("links frames: they take the first one's picture and report who they are linked with", () => {
+    const d = linkCels(six(), 0, [2, 0]);
+    expect(d.layers[0]!.links).toEqual([1, 0, 1, 0, 0, 0]);
+    expect(linkedFrames(d.layers[0]!, 0)).toEqual([0, 2]);
+    expect(linkedFrames(d.layers[0]!, 1)).toEqual([1]);
+    // frame 2's cel became frame 0's picture (a mark in column 0), so the flat frame shows it
+    expect(which(d)[2]).toBe(0);
+    expect(linkCels(six(), 0, [1])).toEqual(six()); // one frame is not a link
+  });
+
+  it("copies a drawn-on cel to the cels linked to it, in place", () => {
+    const d = linkCels(six(), 0, [0, 1, 4]);
+    setPixel(d.layers[0]!.cels[1]!, 3, 3, RED); // draw on frame 1
+    const changed = syncLinked(d, 0, 1);
+    expect(changed.sort()).toEqual([0, 4]);
+    expect(getPixel(d.layers[0]!.cels[0]!, 3, 3)).toEqual(RED);
+    expect(getPixel(d.frames[4]!, 3, 3)).toEqual(RED); // the flat picture follows
+    expect(getPixel(d.layers[0]!.cels[2]!, 3, 3)![3]).toBe(0); // not linked
+    expect(syncLinked(d, 0, 2)).toEqual([]);
+  });
+
+  it("unlinks, leaving each cel its picture", () => {
+    const linked = linkCels(six(), 0, [0, 1]);
+    const free = unlinkCels(linked, 0, [1]);
+    expect(free.layers[0]!.links).toEqual([1, 0, 0, 0, 0, 0]);
+    setPixel(free.layers[0]!.cels[1]!, 3, 3, RED);
+    expect(syncLinked(free, 0, 1)).toEqual([]);
+    expect(unlinkCels(six(), 0, [0])).toEqual(six());
+  });
+
+  it("follows frames through inserting, removing, moving, copying and reordering", () => {
+    let d = linkCels(six(), 0, [0, 1, 4]);
+    d = insertFrame(d, 1, 0); // a copy of frame 0 goes in at 1: not linked
+    expect(d.layers[0]!.links).toEqual([1, 0, 1, 0, 0, 1, 0]);
+    d = removeFrame(d, 1);
+    expect(d.layers[0]!.links).toEqual([1, 1, 0, 0, 1, 0]);
+    d = moveFrame(d, 0, 2);
+    expect(d.layers[0]!.links).toEqual([1, 0, 1, 0, 1, 0]);
+    const dup = duplicateAnimation(linkCels(six(), 0, [0, 1]), 0).doc;
+    expect(dup.layers[0]!.links!.slice(0, 3)).toEqual([1, 1, 0]);
+    expect(dup.layers[0]!.links!.slice(3, 6)).toEqual([0, 0, 0]); // the copy of the animation is not linked
+    // frames 0 and 4 linked; swapping the two animations puts frame 4 first and frame 0 fourth
+    const swapped = moveAnimation(linkCels(six(), 0, [0, 4]), 1, -1).doc;
+    expect(swapped.layers[0]!.links).toEqual([0, 1, 0, 1, 0, 0]);
+    expect(linkedFrames(swapped.layers[0]!, 1)).toEqual([1, 3]);
+    const added = addAnimation(linkCels(six(), 0, [0, 1])).doc;
+    expect(added.layers[0]!.links).toHaveLength(7);
+  });
+
+  it("is saved in the layers file and read back", () => {
+    const d = linkCels(six(), 0, [0, 3]);
+    const text = layersFileText(d, ["layer.png"]);
+    expect(JSON.parse(text).layers[0].links).toEqual([1, 0, 0, 1, 0, 0]);
+    const file = parseLayersFile(text)!;
+    expect(file).not.toBeNull();
+    const flat = { ...six(), layers: six().layers };
+    const back = applyLayers(flat, file, layerSheets(d));
+    // the flat sheet differs from the linked doc's (frame 3 now equals frame 0), so the layers do not add up here...
+    expect(back).toBeNull();
+    const ok = applyLayers(d, file, layerSheets(d));
+    expect(ok!.layers[0]!.links).toEqual([1, 0, 0, 1, 0, 0]);
+    expect(layersFileText(six(), ["a.png"])).not.toContain("links");
+    const bad = JSON.parse(text);
+    bad.layers[0].links = [1, 2];
+    expect(parseLayersFile(JSON.stringify(bad))).toBeNull();
+  });
+});
