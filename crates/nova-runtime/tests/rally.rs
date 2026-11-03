@@ -164,3 +164,18 @@ fn a_time_trial_has_no_rivals_and_keeps_the_ghost_of_the_best_lap() {
         "about ten points a second of a lap of half a minute or more: {saved:?}"
     );
 }
+
+#[test]
+fn a_whole_race_on_frost_pass_ends_on_the_results_screen() {
+    let log = play(2, false);
+    assert!(log.iter().any(|l| l.starts_with("results:")), "{log:?}");
+    assert_eq!(
+        log.iter().filter(|l| l.starts_with("lap ")).count(),
+        3,
+        "{log:?}"
+    );
+    assert!(
+        !log.iter().any(|l| l.contains("put back on the road")),
+        "nobody got stuck: {log:?}"
+    );
+}

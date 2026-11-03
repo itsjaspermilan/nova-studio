@@ -184,6 +184,12 @@ const tracks = {
 };
 
 const only = process.argv[2];
+tracks.frost_pass = {
+  seed: 33, road: "road_snow", rail: "guardrail", sky: [196, 216, 236],
+  control: [[0, -80], [0, 0], [0, 110], [-50, 190], [-140, 215], [-215, 165], [-205, 80], [-130, 40], [-105, -30], [-155, -105], [-135, -185], [-55, -225], [40, -195], [70, -125]],
+  trees: ["pine_snow", "pine_snow", "pine_snow", "pine_dark"], small: ["bush_snow", "rock_ice", "bush_snow"], rock: "rock_ice", density: 0.55, rocks: 0.08,
+  far: { kind: "pine_snow", density: 0.6 }, landmarks: { kind: "pine_snow", count: 0, radius: 0 },
+};
 await withServer(async (nova) => {
   for (const [name, spec] of Object.entries(tracks)) {
     if (only && only !== name) continue;

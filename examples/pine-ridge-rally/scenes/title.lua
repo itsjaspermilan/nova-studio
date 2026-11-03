@@ -98,7 +98,7 @@ function Title:draw_ui()
     ui.letterbox()
     logo(self.t)
     if screen == "title" and math.floor(self.t * 1.6) % 2 == 0 then ui.center("PRESS START", 420, 28, ui.color.white) end
-    ui.center("two circuits  ·  three rivals  ·  one chance to get it right", 484, 16, ui.color.dim)
+    ui.center("three circuits  ·  three rivals  ·  one chance to get it right", 484, 16, ui.color.dim)
   elseif screen == "menu" then
     logo(self.t)
     ui.menu(MENU, self.choice, 270)

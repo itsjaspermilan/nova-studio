@@ -98,6 +98,17 @@ const raceDesert = {
   ],
 };
 
+// a cool, spacious theme for the snow circuit: bell-like arpeggios over a slow pulse (A minor, then F)
+const raceSnow = {
+  version: 1, bpm: 124, stepsPerBeat: 4, length: 128,
+  tracks: [
+    track("bells", "synth", "sine", [57, 60, 64, 69, 64, 60, 57, 60, 65, 69, 72, 69, 65, 69, 64, 60].flatMap((pitch, i) => [0, 1, 2, 3, 4, 5, 6, 7].map((bar) => ({ step: bar * 16 + i, len: 1, pitch: pitch + (bar % 4 === 2 ? -4 : 0) + (bar % 4 === 3 ? -2 : 0), vel: 0.55 + (i % 4 === 0 ? 0.2 : 0) }))), { volume: 0.3, attack: 0.002, decay: 0.25, sustain: 0.2, release: 0.4, pan: 0.1 }),
+    track("bass", "synth", "triangle", bassline([45, 45, 41, 43, 45, 45, 41, 43], [[0, 6], [8, 3], [12, 3]], 0.85), { volume: 0.5, sustain: 0.7 }),
+    track("pad", "synth", "saw", pads([[57, 60, 64], [57, 60, 64], [53, 57, 60], [55, 59, 62], [57, 60, 64], [57, 60, 64], [53, 57, 60], [55, 59, 62]], 16, 0.3), { attack: 0.15, release: 0.5, volume: 0.16, pan: -0.2 }),
+    track("drums", "drums", "noise", drums(8, [["kick", [0, 6, 8, 14]], ["clap", [4, 12], 0.5], ["hat", [2, 6, 10, 14], 0.35], ["open", [15], 0.2]]), { volume: 0.5 }),
+  ],
+};
+
 // a short, bright fanfare for the results screen
 const results = {
   version: 1, bpm: 112, stepsPerBeat: 4, length: 64,
@@ -113,5 +124,5 @@ const results = {
 
 await withServer(async (nova) => {
   for (const [name, a] of Object.entries(sfx)) console.log(await nova.call("sfx_write", { name, ...a }));
-  for (const [name, song] of Object.entries({ menu, race_forest: raceForest, race_desert: raceDesert, results })) console.log(await nova.call("song_write", { name, song }));
+  for (const [name, song] of Object.entries({ menu, race_forest: raceForest, race_desert: raceDesert, race_snow: raceSnow, results })) console.log(await nova.call("song_write", { name, song }));
 });

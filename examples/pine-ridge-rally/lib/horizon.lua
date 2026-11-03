@@ -18,9 +18,9 @@ local ground_opts = { scale = 1 }
 
 -- `kind`: "forest" or "desert".
 function horizon.draw(cx, cz, kind)
-  local ground = kind == "desert" and "ground_sand" or "ground_grass"
+  local ground = (kind == "desert" and "ground_sand") or (kind == "snow" and "ground_snow") or "ground_grass"
   nova.model(ground, cx, 0, cz, ground_opts)
-  local peak = kind == "desert" and "mountain_red" or "mountain"
+  local peak = (kind == "desert" and "mountain_red") or (kind == "snow" and "mountain_ice") or "mountain"
   for i = 1, RING do
     local m = mountains[i]
     m.opts.ry, m.opts.scale = m.turn, m.scale

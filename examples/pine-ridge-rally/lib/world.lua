@@ -11,7 +11,7 @@ local count = 0
 -- What can be driven into, by model: circles { sideways, forwards, radius } in metres, in the model's own frame.
 local SOLID = {
   pine = { { 0, 0, 0.9 } }, pine_dark = { { 0, 0, 0.9 } }, autumn_tree = { { 0, 0, 0.9 } }, birch = { { 0, 0, 0.9 } },
-  rock = { { 0, 0, 2.3 } }, rock_red = { { 0, 0, 2.3 } }, cactus = { { 0, 0, 0.7 } }, mesa = { { -3, 0, 5 }, { 3, 0, 5 } },
+  rock = { { 0, 0, 2.3 } }, rock_red = { { 0, 0, 2.3 } }, rock_ice = { { 0, 0, 2.3 } }, pine_snow = { { 0, 0, 0.9 } }, cactus = { { 0, 0, 0.7 } }, mesa = { { -3, 0, 5 }, { 3, 0, 5 } },
   tires = { { 0, 0, 1.5 } }, hay_bale = { { -0.8, 0, 1.2 }, { 0.8, 0, 1.2 } },
   guardrail = { { 0, -2.5, 1.1 }, { 0, 0, 1.1 }, { 0, 2.5, 1.1 } },
   tower = { { 0, 0, 3.3 } }, start_arch = { { -7.2, 0, 0.7 }, { 7.2, 0, 0.7 } },

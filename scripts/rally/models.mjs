@@ -199,6 +199,22 @@ const dryBush = () =>
 const bush = () =>
   model([part("bush", [0, 0, 0], [round("sphere", [-18, 0, -18], [36, 24, 36], "#356b34", { segments: 6, smooth: false }), round("sphere", [-8, 8, -6], [24, 18, 22], "#3f8040", { segments: 6, smooth: false })])]);
 
+// ---- the snow circuit ---------------------------------------------------------------------------------------------------
+const snowPine = () =>
+  model([
+    part("tree", [0, 0, 0], [
+      box([-3, 0, -3], [6, 28, 6], "#5b4636"),
+      round("cone", [-27, 18, -27], [54, 46, 54], "#2c5a4a", { segments: 8, smooth: false }),
+      round("cone", [-24, 40, -24], [48, 24, 48], "#f4f8fb", { segments: 8, smooth: false }),
+      round("cone", [-21, 48, -21], [42, 42, 42], "#2f6250", { segments: 8, smooth: false }),
+      round("cone", [-18, 70, -18], [36, 20, 36], "#f4f8fb", { segments: 8, smooth: false }),
+      round("cone", [-14, 78, -14], [28, 38, 28], "#356b56", { segments: 8, smooth: false }),
+      round("cone", [-10, 100, -10], [20, 16, 20], "#f4f8fb", { segments: 8, smooth: false }),
+    ]),
+  ]);
+const snowBush = () =>
+  model([part("bush", [0, 0, 0], [round("sphere", [-18, 0, -18], [36, 24, 36], "#dfe9f3", { segments: 6, smooth: false }), round("sphere", [-8, 8, -6], [24, 18, 22], "#f4f8fb", { segments: 6, smooth: false })])]);
+
 const blob = () => model([part("shadow", [0, 0, 0], [round("cylinder", [-26, 2.6, -40], [52, 0.4, 80], "#00000055", { segments: 12 })])]);
 
 const spark = () => model([part("puff", [0, 0, 0], [round("sphere", [-8, 0, -8], [16, 12, 16], "#d9c7a3cc", { segments: 6, smooth: false })])]);
@@ -243,6 +259,12 @@ await withServer(async (nova) => {
     ground_sand: ground("#d9b277"),
     mountain: mountain("#6b7a8f", "#f8fafc"),
     mountain_red: mountain("#a85d3a", "#e8c9a0"),
+    mountain_ice: mountain("#8aa2bd", "#ffffff"),
+    ground_snow: ground("#eaf0f6"),
+    pine_snow: snowPine(),
+    bush_snow: snowBush(),
+    rock_ice: rock("#9fb4c9", "#bfd0e0"),
+    road_snow: road("#555b64", "#f1f5f9", "#cbd5e1"),
     cloud: cloud(),
     shadow: blob(),
     dust: spark(),

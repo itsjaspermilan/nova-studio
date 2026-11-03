@@ -4,6 +4,7 @@ local state = {}
 state.tracks = {
   { id = "pine_ridge", name = "Pine Ridge", blurb = "Fast asphalt through the pines. Long straights, one tight hairpin.", laps = 3, music = "race_forest" },
   { id = "dust_valley", name = "Dust Valley", blurb = "Loose dirt and twisty bends between the mesas.", laps = 3, music = "race_desert" },
+  { id = "frost_pass", name = "Frost Pass", blurb = "Packed snow on a long, looping pass. Grip is thin: brake early and be gentle.", laps = 3, music = "race_snow" },
 }
 state.cars = {
   { id = "car", name = "Redline" },
