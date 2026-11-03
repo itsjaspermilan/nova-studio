@@ -1,12 +1,12 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
   import {
-    CLEAR, cloneRaster, crop, drawEllipse, drawLine, drawRect, floodFill, getPixel, inRect, inside, lift, linePoints, parseHex, pixelPerfect, place, rectBetween, stamp, toHex,
+    CLEAR, cloneRaster, crop, drawEllipse, drawLine, drawRect, floodFill, getPixel, inRect, inside, isClear, lift, linePoints, parseHex, pixelPerfect, place, rectBetween, stamp, toHex,
     type Point, type Raster, type Rect, type Rgba,
   } from "../lib/pixels";
   import {
-    addTag, cloneDoc, frameAt, fromImage, fromSheet, insertFrame, moveFrame, newDoc, parseSheetJson, removeFrame, removeTag, tagProblems, tagSequence,
-    resizeDoc, toSheet, toSheetJson, updateTag, type Direction, type SpriteDoc,
+    addAnimation, animationOf, cloneDoc, detectGrid, duplicateAnimation, frameAt, framesIn, fromImage, fromSheet, gridTiles, importTiles, insertFrame, moveAnimation, isPristine, moveFrame, newDoc, parseSheetJson,
+    removeAnimation, removeFrame, setAnimationDuration, tagProblems, tagSequence, resizeDoc, toSheet, toSheetJson, updateAnimation, type Direction, type SpriteDoc,
     addLayer, applyLayers, duplicateLayer, layerSheets, layersFileText, mergeDown, moveLayer, parseLayersFile, recompose, removeLayer, updateLayer, MAX_LAYERS,
   } from "../lib/sprite-doc";
   import { loadRaster, rasterToDataUrl } from "../lib/png";
@@ -71,7 +71,7 @@
   const cel = () => doc.layers[activeLayer]!.cels[frame]!;
   let canvas: HTMLCanvasElement | undefined = $state();
   let preview: HTMLCanvasElement | undefined = $state();
-  const thumbs = new Map<number, HTMLCanvasElement>();
+  const thumbs = new Map<HTMLCanvasElement, number>(); // each little picture and the frame it shows
 
   // ---- loading and saving ---------------------------------------------------------------------
   function resolve(image: string): string {
@@ -237,7 +237,7 @@
       ctx.drawImage(tmp, 0, 0, w, h);
       ctx.globalAlpha = 1;
     };
-    if (onion && frame > 0 && !playing) blit(doc.frames[frame - 1]!, 0.3);
+    if (onion && anim && frame > anim.from && !playing) blit(doc.frames[frame - 1]!, 0.3);
     blit(current, 1);
     if (showGrid && zoom >= 8) {
       ctx.strokeStyle = "rgba(255,255,255,.12)";
@@ -277,9 +277,9 @@
 
   // thumbnails
   function drawThumb(node: HTMLCanvasElement, index: number) {
-    thumbs.set(index, node);
+    thumbs.set(node, index);
     const render = () => {
-      const r = doc.frames[index];
+      const r = doc.frames[thumbs.get(node) ?? 0];
       const ctx = node.getContext("2d");
       if (!r || !ctx) return;
       node.width = r.w;
@@ -287,11 +287,17 @@
       ctx.putImageData(new ImageData(new Uint8ClampedArray(r.data), r.w, r.h), 0, 0);
     };
     render();
-    return { update: () => render(), destroy: () => thumbs.delete(index) };
+    return {
+      update: (next: number) => {
+        thumbs.set(node, next);
+        render();
+      },
+      destroy: () => thumbs.delete(node),
+    };
   }
   $effect(() => {
     rev; doc;
-    for (const [i, node] of thumbs) {
+    for (const [node, i] of thumbs) {
       const r = doc.frames[i];
       const ctx = node.getContext("2d");
       if (r && ctx) {
@@ -506,19 +512,118 @@
     structural(next);
   }
 
-  // ---- frames and tags --------------------------------------------------------------------------
+  // ---- frames and animations ------------------------------------------------------------------------
+  /// The animation being worked on is the one the current frame is in; its frames are the timeline.
+  const animIndex = $derived(Math.max(0, animationOf(doc, frame)));
+  const anim = $derived(doc.tags[animIndex]);
+  const animFrames = $derived(anim ? Array.from({ length: framesIn(anim) }, (_, i) => anim.from + i) : []);
   const addBlank = () => structural(insertFrame(doc, frame + 1), frame + 1);
   const duplicate = () => structural(insertFrame(doc, frame + 1, frame), frame + 1);
   const remove = () => structural(removeFrame(doc, frame), frame);
   const shift = (by: number) => structural(moveFrame(doc, frame, frame + by), frame + by);
-  function setDuration(ms: number, all = false) {
+  function setDuration(ms: number) {
     if (!Number.isFinite(ms) || ms < 10) return;
     const next = cloneDoc(doc);
-    if (all) next.durations.fill(ms);
-    else next.durations[frame] = ms;
+    next.durations[frame] = ms;
     structural(next);
   }
   const problems = $derived(tagProblems(doc));
+  /// Edits that reorganise animations, which hand back the animation to show.
+  function animEdit(result: { doc: SpriteDoc; index: number }) {
+    if (result.doc === doc) return;
+    structural(result.doc, result.doc.tags[result.index]!.from);
+  }
+  const newAnimation = () => animEdit(addAnimation(doc));
+  const copyAnimation = () => animEdit(duplicateAnimation(doc, animIndex));
+  const dropAnimation = () => {
+    if (anim && doc.tags.length > 1 && confirm(`Delete the animation "${anim.name}" and its ${framesIn(anim)} frames?`)) animEdit(removeAnimation(doc, animIndex));
+  };
+  const shiftAnimation = (by: number) => animEdit(moveAnimation(doc, animIndex, by));
+
+  // ---- importing a sheet ----------------------------------------------------------------------------------
+  let importing = $state(false);
+  let importPath = $state("");
+  let importImage: Raster | null = $state(null);
+  let importError = $state("");
+  let gridW = $state(16);
+  let gridH = $state(16);
+  let gridGap = $state(0);
+  let gridMargin = $state(0);
+  let importMode = $state<"one" | "rows">("one");
+  let importName = $state("");
+  let skipEmpty = $state(true);
+  let appendHere = $state(false);
+  let importMs = $state(100);
+  let importCanvas: HTMLCanvasElement | undefined = $state();
+  /// Pictures in the project that could be sheets (not this sprite's own).
+  const sheetCandidates = $derived(studio.files.filter((f) => !f.dir && /\.png$/i.test(f.path) && f.path !== session?.imagePath && !f.path.endsWith(".layers.png")).map((f) => f.path));
+
+  async function loadImport(p: string) {
+    importPath = p;
+    importImage = null;
+    importError = "";
+    if (!p) return;
+    try {
+      const image = await loadRaster(await studio.api!.readImage(p));
+      const g = detectGrid(image);
+      gridW = g.tw;
+      gridH = g.th;
+      gridGap = 0;
+      gridMargin = 0;
+      importName = p.slice(p.lastIndexOf("/") + 1).replace(/\.png$/i, "").replace(/[_-]?(sheet|strip|tiles?)$/i, "") || "animation";
+      importImage = image;
+    } catch (e) {
+      importError = e instanceof Error ? e.message : String(e);
+    }
+  }
+  function openImport() {
+    importing = true;
+    appendHere = false;
+    if (!importPath || !sheetCandidates.includes(importPath)) void loadImport(sheetCandidates[0] ?? "");
+  }
+  const grid = $derived(importImage ? gridTiles(importImage, { tw: gridW, th: gridH, spacing: gridGap, margin: gridMargin }) : null);
+  /// The animations the import would make: one with every tile, or one per row of the sheet.
+  const groups = $derived.by(() => {
+    if (!grid) return [];
+    const keep = (tiles: Raster[]) => (skipEmpty ? tiles.filter((t) => !isClear(t)) : tiles);
+    const name = importName.trim() || "animation";
+    if (importMode === "one") return [{ name, tiles: keep(grid.tiles) }];
+    return Array.from({ length: grid.rows }, (_, r) => ({ name: `${name} ${r + 1}`, tiles: keep(grid!.tiles.slice(r * grid!.columns, (r + 1) * grid!.columns)) })).filter((g) => g.tiles.length);
+  });
+  const isPristineNow = $derived(isPristine(doc));
+  const importCount = $derived(groups.reduce((n, g) => n + g.tiles.length, 0));
+  $effect(() => {
+    const ctx = importCanvas?.getContext("2d");
+    const image = importImage;
+    if (!ctx || !importCanvas || !image || !importing) return;
+    const scale = Math.max(1, Math.min(8, Math.floor(420 / Math.max(image.w, 1)), Math.floor(260 / Math.max(image.h, 1))));
+    importCanvas.width = image.w * scale;
+    importCanvas.height = image.h * scale;
+    const tmp = document.createElement("canvas");
+    tmp.width = image.w;
+    tmp.height = image.h;
+    tmp.getContext("2d")!.putImageData(new ImageData(new Uint8ClampedArray(image.data), image.w, image.h), 0, 0);
+    ctx.fillStyle = "#2e313b";
+    ctx.fillRect(0, 0, importCanvas.width, importCanvas.height);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(tmp, 0, 0, importCanvas.width, importCanvas.height);
+    if (!grid) return;
+    ctx.strokeStyle = "rgba(255,209,102,.85)";
+    ctx.lineWidth = 1;
+    for (let r = 0; r < grid.rows; r++) for (let c = 0; c < grid.columns; c++) {
+      ctx.strokeRect((gridMargin + c * (gridW + gridGap)) * scale + 0.5, (gridMargin + r * (gridH + gridGap)) * scale + 0.5, gridW * scale - 1, gridH * scale - 1);
+    }
+  });
+  function doImport() {
+    if (!importCount) return;
+    const sizeBefore = [doc.fw, doc.fh];
+    const r = importTiles(doc, groups, { append: appendHere ? animIndex : undefined, layer: activeLayer, durationMs: importMs });
+    if (r.doc === doc) return;
+    structural(r.doc, r.doc.tags[r.index]!.from);
+    if (sizeBefore[0] !== doc.fw || sizeBefore[1] !== doc.fh) zoom = Math.max(1, Math.min(32, Math.floor(420 / Math.max(doc.fw, doc.fh))));
+    importing = false;
+    studio.say("info", r.truncated ? `Imported ${r.added} frames; ${r.truncated} more did not fit (the limit is 256 frames).` : `Imported ${r.added} frame${r.added === 1 ? "" : "s"}.`);
+  }
 
   // ---- layers -------------------------------------------------------------------------------------
   function layerEdit(result: { doc: SpriteDoc; index: number }) {
@@ -543,11 +648,10 @@
 
   // ---- preview ----------------------------------------------------------------------------------
   let playing = $state(false);
-  let previewTag = $state(-1); // -1: all frames
   let previewFrame = $state(0);
   $effect(() => {
     if (!playing) return;
-    const tag = doc.tags[previewTag];
+    const tag = doc.tags[animIndex];
     const sequence = tag ? tagSequence(tag) : doc.frames.map((_, i) => i);
     const loop = tag ? tag.loop : true;
     const started = performance.now();
@@ -603,6 +707,8 @@
     } else if ((e.key === "Delete" || e.key === "Backspace") && selection) {
       e.preventDefault();
       clearSelection();
+    } else if (e.key === "Escape" && importing) {
+      importing = false;
     } else if (e.key === "Escape" && selection) {
       selection = null;
     } else if (!mod) {
@@ -610,8 +716,8 @@
       if (hit) tool = hit.id;
       else if (e.key === "[") size = Math.max(1, size - 1);
       else if (e.key === "]") size = Math.min(16, size + 1);
-      else if (e.key === "ArrowLeft") frame = Math.max(0, frame - 1);
-      else if (e.key === "ArrowRight") frame = Math.min(doc.frames.length - 1, frame + 1);
+      else if (e.key === "ArrowLeft") frame = Math.max(anim?.from ?? 0, frame - 1);
+      else if (e.key === "ArrowRight") frame = Math.min(anim?.to ?? doc.frames.length - 1, frame + 1);
       else if (e.key === " ") {
         e.preventDefault();
         playing = !playing;
@@ -691,22 +797,22 @@
 
       <div class="timeline">
         <div class="frames" role="listbox" aria-label="Frames">
-          {#each doc.frames as _, i (i)}
-            <button class="frame" class:on={i === frame} role="option" aria-selected={i === frame} onclick={() => (frame = i)} title="Frame {i + 1} · {doc.durations[i]} ms">
+          {#if anim}<span class="animlabel" title="The animation these frames belong to">{anim.name || "(unnamed)"}</span>{/if}
+          {#each animFrames as i (i)}
+            <button class="frame" class:on={i === frame} role="option" aria-selected={i === frame} onclick={() => (frame = i)} title="Frame {i - (anim?.from ?? 0) + 1} · {doc.durations[i]} ms">
               <canvas use:drawThumb={i}></canvas>
-              <span>{i + 1}</span>
-              {#each doc.tags.filter((t) => i >= t.from && i <= t.to) as t (t.name + i)}<i class="bar" title={t.name}></i>{/each}
+              <span>{i - (anim?.from ?? 0) + 1}</span>
             </button>
           {/each}
         </div>
         <div class="frame-actions">
           <button onclick={addBlank} title="New blank frame after this one">＋ Frame</button>
           <button onclick={duplicate}>Duplicate</button>
-          <button onclick={() => shift(-1)} disabled={frame === 0} aria-label="Move frame left">◀</button>
-          <button onclick={() => shift(1)} disabled={frame === doc.frames.length - 1} aria-label="Move frame right">▶</button>
-          <button class="danger" onclick={remove} disabled={doc.frames.length <= 1}>Delete</button>
+          <button onclick={() => shift(-1)} disabled={!anim || frame === anim.from} aria-label="Move frame left">◀</button>
+          <button onclick={() => shift(1)} disabled={!anim || frame === anim.to} aria-label="Move frame right">▶</button>
+          <button class="danger" onclick={remove} disabled={!anim || framesIn(anim) <= 1} title="Delete this frame (an animation keeps at least one)">Delete</button>
           <label class="inline">Duration <input type="number" min="10" step="10" value={doc.durations[frame]} onchange={(e) => setDuration(Number(e.currentTarget.value))} class="narrow" /> ms</label>
-          <button class="ghost" onclick={() => setDuration(doc.durations[frame]!, true)}>Apply to all</button>
+          <button class="ghost" onclick={() => structural(setAnimationDuration(doc, animIndex, doc.durations[frame]!))} title="Give every frame of this animation this duration">Apply to animation</button>
         </div>
       </div>
     </section>
@@ -759,37 +865,93 @@
       <div class="preview"><canvas bind:this={preview}></canvas></div>
       <div class="row">
         <button onclick={() => (playing = !playing)}>{playing ? "■ Stop" : "▶ Play"}</button>
-        <select bind:value={previewTag} aria-label="What to play">
-          <option value={-1}>All frames</option>
-          {#each doc.tags as t, i (i)}<option value={i}>{t.name || "(unnamed)"}</option>{/each}
-        </select>
+        <span class="dim small grow">{anim?.name ?? ""}</span>
       </div>
 
       {#if isSheet}
         <h3>Animations</h3>
-        {#each doc.tags as t, i (i)}
-          <div class="tag">
-            <input value={t.name} placeholder="name" aria-label="Tag name" onchange={(e) => structural(updateTag(doc, i, { name: e.currentTarget.value.trim() }))} />
-            <div class="pair">
-              <label>From <input type="number" min="1" max={doc.frames.length} value={t.from + 1} onchange={(e) => structural(updateTag(doc, i, { from: Number(e.currentTarget.value) - 1 }))} /></label>
-              <label>To <input type="number" min="1" max={doc.frames.length} value={t.to + 1} onchange={(e) => structural(updateTag(doc, i, { to: Number(e.currentTarget.value) - 1 }))} /></label>
+        <div class="anims" role="listbox" aria-label="Animations">
+          {#each doc.tags as t, i (i)}
+            <div class="anim" class:on={i === animIndex} role="option" aria-selected={i === animIndex}>
+              <button class="pick" onclick={() => (frame = t.from)} title="Edit {t.name || 'this animation'}">
+                <canvas use:drawThumb={t.from}></canvas>
+                <span class="aname">{t.name || "(unnamed)"}</span>
+                <span class="dim small">{framesIn(t)}</span>
+              </button>
+              {#if i === animIndex}
+                <div class="detail">
+                  <input value={t.name} placeholder="name" aria-label="Animation name" onchange={(e) => structural(updateAnimation(doc, i, { name: e.currentTarget.value.trim() }))} />
+                  <div class="pair">
+                    <select value={t.direction} aria-label="Direction" onchange={(e) => structural(updateAnimation(doc, i, { direction: e.currentTarget.value as Direction }))}>
+                      <option value="forward">forward</option><option value="reverse">reverse</option><option value="pingpong">ping-pong</option>
+                    </select>
+                    <label class="check"><input type="checkbox" checked={t.loop} onchange={(e) => structural(updateAnimation(doc, i, { loop: e.currentTarget.checked }))} /> Loop</label>
+                  </div>
+                  <label class="speed">Every frame <input type="number" min="10" step="10" value={doc.durations[t.from]} aria-label="Milliseconds per frame" onchange={(e) => structural(setAnimationDuration(doc, i, Number(e.currentTarget.value)))} /> ms</label>
+                  <div class="row wrap">
+                    <button onclick={() => shiftAnimation(-1)} disabled={i === 0} title="Move up" aria-label="Move animation up">↑</button>
+                    <button onclick={() => shiftAnimation(1)} disabled={i === doc.tags.length - 1} title="Move down" aria-label="Move animation down">↓</button>
+                    <button onclick={copyAnimation} title="Duplicate this animation with its frames" aria-label="Duplicate animation">⧉</button>
+                    <button class="danger" onclick={dropAnimation} disabled={doc.tags.length <= 1} title="Delete this animation and its frames" aria-label="Delete animation">✕</button>
+                  </div>
+                </div>
+              {/if}
             </div>
-            <div class="pair">
-              <select value={t.direction} aria-label="Direction" onchange={(e) => structural(updateTag(doc, i, { direction: e.currentTarget.value as Direction }))}>
-                <option value="forward">forward</option><option value="reverse">reverse</option><option value="pingpong">ping-pong</option>
-              </select>
-              <label class="check"><input type="checkbox" checked={t.loop} onchange={(e) => structural(updateTag(doc, i, { loop: e.currentTarget.checked }))} /> Loop</label>
-            </div>
-            <button class="ghost danger" onclick={() => structural(removeTag(doc, i))}>Remove</button>
-          </div>
-        {/each}
+          {/each}
+        </div>
         {#each problems as p (p)}<p class="warn small">{p}</p>{/each}
-        <button onclick={() => structural(addTag(doc, frame, frame))}>＋ Animation from this frame</button>
-        <p class="dim small">In Lua: <code>self:play("name")</code></p>
+        <div class="row wrap">
+          <button onclick={newAnimation}>＋ New</button>
+          <button onclick={openImport} title="Cut a picture of tiles into frames">Import sheet…</button>
+        </div>
+        <p class="dim small">Each animation has its own frames. In Lua: <code>self:play("name")</code></p>
       {:else}
         <p class="dim small">This is a plain image. Open or create a <code>.sprite.json</code> to get frames and animations.</p>
       {/if}
     </aside>
+
+    {#if importing}
+      <div class="backdrop" role="presentation" onclick={(e) => { if (e.target === e.currentTarget) importing = false; }}>
+        <form class="modal" aria-label="Import a sheet" onsubmit={(e) => { e.preventDefault(); doImport(); }}>
+          <h2>Import a sheet</h2>
+          {#if !sheetCandidates.length}
+            <p class="dim">There are no other pictures in this project yet. Put a PNG of tiles in the project folder (for example <code>sprites/</code>) and come back.</p>
+          {:else}
+            <label>Picture
+              <select value={importPath} onchange={(e) => void loadImport(e.currentTarget.value)}>
+                {#each sheetCandidates as c (c)}<option value={c}>{c}</option>{/each}
+              </select>
+            </label>
+            {#if importError}<p class="warn small">{importError}</p>{/if}
+            {#if importImage}
+              <div class="sheetview"><canvas bind:this={importCanvas} aria-label="The sheet cut into tiles"></canvas></div>
+              <div class="grid4">
+                <label>Tile width <input type="number" min="1" max="1024" bind:value={gridW} /></label>
+                <label>Tile height <input type="number" min="1" max="1024" bind:value={gridH} /></label>
+                <label>Gap <input type="number" min="0" max="64" bind:value={gridGap} title="Space between tiles" /></label>
+                <label>Border <input type="number" min="0" max="64" bind:value={gridMargin} title="Space around the whole sheet" /></label>
+              </div>
+              <p class="dim small">{importImage.w}×{importImage.h} px · {grid?.columns ?? 0} × {grid?.rows ?? 0} tiles of {gridW}×{gridH}</p>
+              <div class="modes">
+                <label class="check"><input type="radio" bind:group={importMode} value="one" /> One animation with every tile</label>
+                <label class="check"><input type="radio" bind:group={importMode} value="rows" /> One animation per row</label>
+              </div>
+              <div class="grid2">
+                <label>Name <input bind:value={importName} /></label>
+                <label>Every frame <input type="number" min="10" step="10" bind:value={importMs} /> ms</label>
+              </div>
+              <label class="check"><input type="checkbox" bind:checked={skipEmpty} /> Leave out empty tiles</label>
+              <label class="check"><input type="checkbox" bind:checked={appendHere} disabled={importMode === "rows"} /> Add the frames to “{anim?.name}” instead of making a new animation</label>
+              {#if isPristineNow}<p class="dim small">This sprite is still empty, so it takes the tile size ({gridW}×{gridH}).</p>{:else if importImage && (gridW !== doc.fw || gridH !== doc.fh)}<p class="dim small">Tiles are {gridW}×{gridH} and this sprite is {doc.fw}×{doc.fh}: each tile is placed at the bottom centre of the frame.</p>{/if}
+            {/if}
+          {/if}
+          <div class="row end">
+            <button type="button" class="ghost" onclick={() => (importing = false)}>Cancel</button>
+            <button class="primary" disabled={!importCount}>Import {importCount ? `${importCount} frame${importCount === 1 ? "" : "s"}` : ""}</button>
+          </div>
+        </form>
+      </div>
+    {/if}
   </div>
 {/if}
 
@@ -813,7 +975,6 @@
   .frame.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
   .frame canvas { width: 40px; height: 40px; object-fit: contain; image-rendering: pixelated; background: repeating-conic-gradient(#3a3d48 0 25%, #2e313b 0 50%) 0 0 / 8px 8px; }
   .frame span { font-size: 10px; color: var(--dim); }
-  .frame .bar { position: absolute; left: 3px; right: 3px; bottom: 1px; height: 3px; background: var(--ok); border-radius: 2px; opacity: .8; }
   .frame-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
   .inline { display: flex; align-items: center; gap: 4px; margin-left: auto; }
   .side { background: var(--panel); border-left: 1px solid var(--line); overflow: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
@@ -836,11 +997,31 @@
   .lname { flex: 1; text-align: left; background: transparent; border-color: transparent; padding: 2px 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .lname input { width: 100%; padding: 0 4px; }
   .wrap { flex-wrap: wrap; } .wrap button { flex: 1 0 28px; padding: 3px; }
-  .row { display: flex; gap: 6px; } .row select { flex: 1; min-width: 0; }
-  .tag { display: flex; flex-direction: column; gap: 4px; padding: 6px; border: 1px solid var(--line); border-radius: 6px; }
+  .row { display: flex; gap: 6px; }
   .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; align-items: center; }
-  .tag label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--dim); }
-  .tag label.check { flex-direction: row; align-items: center; color: var(--text); }
+  .anims { display: flex; flex-direction: column; gap: 4px; }
+  .anim { border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .anim.on { border-color: var(--accent); }
+  .pick { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: transparent; border: none; border-radius: 0; padding: 4px 6px; }
+  .pick canvas { width: 28px; height: 28px; object-fit: contain; image-rendering: pixelated; flex: none; background: repeating-conic-gradient(#3a3d48 0 25%, #2e313b 0 50%) 0 0 / 8px 8px; }
+  .aname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .detail { display: flex; flex-direction: column; gap: 6px; padding: 6px; border-top: 1px solid var(--line); background: var(--panel-2); }
+  .detail label.check { display: flex; flex-direction: row; align-items: center; gap: 4px; }
+  .speed { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--dim); } .speed input { width: 64px; padding: 2px 6px; }
+  .animlabel { align-self: center; font-size: 11px; color: var(--accent); padding: 0 8px 0 2px; white-space: nowrap; }
+  .grow { flex: 1; align-self: center; }
+  .backdrop { position: fixed; inset: 0; background: #0009; display: grid; place-items: center; z-index: 50; padding: 16px; }
+  .modal { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 8px; width: min(520px, 100%); max-height: 100%; overflow: auto; }
+  .modal h2 { margin: 0 0 4px; font-size: 15px; }
+  .modal label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--dim); }
+  .modal label.check { flex-direction: row; align-items: center; gap: 6px; color: var(--text); font-size: 12px; }
+  .modal input[type="number"], .modal input:not([type]) { padding: 3px 6px; min-width: 0; }
+  .sheetview { display: grid; place-items: center; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px; overflow: auto; max-height: 280px; }
+  .sheetview canvas { image-rendering: pixelated; }
+  .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .modes { display: flex; flex-direction: column; gap: 4px; }
+  .row.end { justify-content: flex-end; }
   .small { font-size: 11px; margin: 2px 0; }
   .warn { color: var(--warn); }
   .fail { padding: 32px; display: grid; place-items: start; gap: 8px; }

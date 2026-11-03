@@ -171,9 +171,9 @@ describe("glTF export", () => {
   });
 
   it("refuses an empty model and skips cubes without volume", () => {
-    expect(() => exportGlb({ version: 1, scale: 1, parts: [] })).toThrow("no cubes");
+    expect(() => exportGlb({ version: 1, scale: 1, parts: [] })).toThrow("no shapes");
     const flat = updateCube(newModel(), { parts: [0], cube: 0 }, { size: [4, 0, 4] });
-    expect(() => exportGlb(flat)).toThrow("no cubes");
+    expect(() => exportGlb(flat)).toThrow("no shapes");
     const mixed = addCube(flat, [0], { size: [2, 2, 2] }).doc;
     expect(parse(exportGlb(mixed)).json.accessors[0].count).toBe(24);
   });

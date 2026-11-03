@@ -133,6 +133,21 @@ nova.model("car", x, y, z, { ry = heading, parts = {
 Without `parts` a model is one instanced draw; with it each piece is drawn separately (more draw calls,
 so use it for the few things that move). Only rigid pieces are supported: no skinning.
 
+**Studio model files.** The model editor keeps `models/<name>.model.json` and writes the `.glb` from it on save;
+the game only needs the `.glb`. The file is a tree: `parts` (each with `name`, `origin`, `rotation` in degrees,
+`cubes` and `children`) and optional `clips`. The `cubes` list holds solids, all in the part's own space (1 unit
+is 1/16 of a world unit unless `scale` says otherwise):
+
+| `shape` | Notes |
+|---|---|
+| `box` (default, omitted) | `from` (smallest corner) and `size`, colours per face (`faces`: east, west, up, down, south, north). |
+| `wedge`, `pyramid`, `cylinder`, `cone`, `sphere` | The same `from`/`size` box. A wedge is full height at its north side sloping to nothing at the south; the rest stand on y. `segments` (3 to 64, default 16) sets the sides of round shapes and `smooth: false` makes them faceted. Face colours: wedge up/down/north/east/west, pyramid down and the four sides, cylinder up/down, cone down; everything else takes `color`. |
+| `mesh` | `verts` (points in the part's space) and `polys` (each `{ "v": [point numbers], "color"?, "smooth"? }`, counter-clockwise seen from outside, three to 64 points). `from` and `size` are worked out from the points and are not written. |
+
+Every shape but a mesh may carry `rotation` (degrees, X then Y then Z, about its box's centre). A polygon's colour
+is its own `color`, else the shape's `color`; shapes are drawn with flat colours baked into the `.glb` as vertex
+colours. There are no textures yet.
+
 **Animation clips.** A `.glb` can carry named clips (the model editor's Animations panel makes them): keyframes
 for the position, rotation and scale of parts. `nova.model_clips("car")` lists `{ name, duration }`.
 
@@ -377,6 +392,19 @@ play direction). The studio's sprite editor writes these files; hand edits are f
   ]
 }
 ```
+
+In the studio each animation owns its frames: the sprite editor shows one animation's frames at a time, and
+adding, removing or moving a frame changes only that animation. It saves the animations as tags that are
+consecutive blocks of the frame list (no overlaps, no gaps), so a file the studio wrote never has two tags
+sharing a frame. A file written elsewhere with overlapping tags is split on opening: a shared frame is copied into
+each animation, and frames in no tag go into an animation called `unused`. The game reads tags exactly as before,
+so nothing here changes the runtime.
+
+**Importing a sheet.** In the sprite editor, "Import sheet…" cuts any PNG in the project into tiles (tile size is
+guessed and can be set, with an optional gap between tiles and border around them) and adds them as one new
+animation, or as one animation per row, or onto the end of the current animation. Empty tiles can be left out.
+Tiles take the sprite's frame size (bottom centre kept); a sprite that is still empty takes the tile size. The
+imported pictures are copied into the sprite: the sheet itself is not referenced afterwards.
 
 `image` is relative to the JSON file. `columns` and `frames` default to what fits in the image.
 Durations: `frame_duration_ms` (one value for all frames, default 100) or `durations_ms` (one per

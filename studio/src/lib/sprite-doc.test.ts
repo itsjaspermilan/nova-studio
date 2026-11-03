@@ -1,12 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { getPixel, setPixel, type Rgba } from "./pixels";
-import { addTag, frameAt, fromImage, fromSheet, insertFrame, moveFrame, newDoc, parseSheetJson, removeFrame, removeTag, tagProblems, tagSequence, toSheet, toSheetJson, updateTag, type SpriteDoc, type Tag } from "./sprite-doc";
+import { getPixel, newRaster, setPixel, type Rgba } from "./pixels";
+import {
+  addAnimation, animationOf, detectGrid, duplicateAnimation, frameAt, fromImage, fromSheet, gridTiles, importTiles, insertFrame, isPristine, moveAnimation, moveFrame, newDoc, normalizeAnimations,
+  parseSheetJson, removeAnimation, removeFrame, setAnimationDuration, tagProblems, tagSequence, toSheet, toSheetJson, updateAnimation, type SpriteDoc, type Tag,
+} from "./sprite-doc";
 
 const RED: Rgba = [255, 0, 0, 255];
 const tag = (over: Partial<Tag> = {}): Tag => ({ name: "t", from: 0, to: 3, direction: "forward", loop: true, ...over });
 const marked = (n: number): SpriteDoc => {
   const d = newDoc(4, 4, n);
-  d.frames.forEach((f, i) => setPixel(f, i % 4, 0, RED)); // frame i has its red pixel at x = i % 4
+  d.frames.forEach((f, i) => {
+    setPixel(f, i % 4, 0, RED); // frame i has its red pixel at x = i % 4
+    setPixel(d.layers[0]!.cels[i]!, i % 4, 0, RED); // on its only layer too, as drawn frames are
+  });
   return d;
 };
 const which = (d: SpriteDoc) => d.frames.map((f) => [0, 1, 2, 3].find((x) => getPixel(f, x, 0)![3] > 0));
@@ -21,57 +27,117 @@ describe("tag playback order", () => {
   });
 });
 
-describe("frames", () => {
-  it("inserts blanks and copies, shifting tags", () => {
-    let d = marked(3);
-    d.tags = [tag({ from: 1, to: 2 })];
-    d = insertFrame(d, 1, 0); // copy of frame 0 goes to index 1
-    expect(which(d)).toEqual([0, 0, 1, 2]);
-    expect(d.tags[0]).toMatchObject({ from: 2, to: 3 });
-    expect(which(insertFrame(d, 99))).toEqual([0, 0, 1, 2, undefined]);
-    expect(d.frames).toHaveLength(4);
+/// n marked frames split into animations of the given sizes, named a, b, c...
+const split = (...sizes: number[]): SpriteDoc => {
+  const d = marked(sizes.reduce((x, y) => x + y, 0));
+  let at = 0;
+  d.tags = sizes.map((n, i) => {
+    const t = tag({ name: String.fromCharCode(97 + i), from: at, to: at + n - 1 });
+    at += n;
+    return t;
+  });
+  return d;
+};
+const shape = (d: SpriteDoc) => d.tags.map((t) => [t.name, t.from, t.to]);
+
+describe("frames inside animations", () => {
+  it("inserts into the animation of the frame before, and only later animations move", () => {
+    let d = split(2, 2);
+    d = insertFrame(d, 1, 0); // a copy of frame 0 after frame 0
+    expect(which(d)).toEqual([0, 0, 1, 2, 3]);
+    expect(shape(d)).toEqual([["a", 0, 2], ["b", 3, 4]]);
+    d = insertFrame(d, 5, 4); // after the very last frame
+    expect(shape(d)).toEqual([["a", 0, 2], ["b", 3, 5]]);
+    const front = insertFrame(split(2, 2), 2, undefined, 1); // asked for animation b explicitly: at its start
+    expect(shape(front)).toEqual([["a", 0, 1], ["b", 2, 4]]);
+    expect(which(insertFrame(marked(2), 99))).toEqual([0, 1, undefined]);
   });
 
-  it("removes frames, shrinking and dropping tags, and keeps the last frame", () => {
-    let d = marked(4);
-    d.tags = [tag({ name: "a", from: 1, to: 2 }), tag({ name: "b", from: 3, to: 3 }), tag({ name: "c", from: 0, to: 3 })];
+  it("removes a frame from its own animation and refuses to empty one", () => {
+    let d = split(2, 1, 2);
+    d = removeFrame(d, 0);
+    expect(shape(d)).toEqual([["a", 0, 0], ["b", 1, 1], ["c", 2, 3]]);
+    expect(removeFrame(d, 0)).toBe(d); // a has one frame left
+    expect(removeFrame(d, 1)).toBe(d);
     d = removeFrame(d, 3);
-    expect(d.tags.map((t) => [t.name, t.from, t.to])).toEqual([["a", 1, 2], ["c", 0, 2]]);
-    d = removeFrame(d, 1);
-    expect(d.tags.map((t) => [t.name, t.from, t.to])).toEqual([["a", 1, 1], ["c", 0, 1]]);
+    expect(shape(d)).toEqual([["a", 0, 0], ["b", 1, 1], ["c", 2, 2]]);
+    expect(d.layers[0]!.cels).toHaveLength(3);
     const one = newDoc(2, 2);
     expect(removeFrame(one, 0)).toBe(one);
   });
 
-  it("moves a frame with its duration; tags stay on their positions", () => {
-    let d = marked(3);
-    d.durations = [10, 20, 30];
-    d.tags = [tag({ from: 0, to: 1 })];
+  it("moves a frame with its duration, within its animation only", () => {
+    let d = split(3, 1);
+    d.durations = [10, 20, 30, 40];
     d = moveFrame(d, 0, 2);
-    expect(which(d)).toEqual([1, 2, 0]);
-    expect(d.durations).toEqual([20, 30, 10]);
-    expect(d.tags[0]).toMatchObject({ from: 0, to: 1 });
+    expect(which(d)).toEqual([1, 2, 0, 3]);
+    expect(d.durations).toEqual([20, 30, 10, 40]);
+    expect(shape(d)).toEqual([["a", 0, 2], ["b", 3, 3]]);
     expect(moveFrame(d, 1, 1)).toBe(d);
+    expect(moveFrame(d, 2, 3)).toBe(d); // into another animation
     expect(moveFrame(d, 0, 9)).toBe(d);
+  });
+
+  it("finds a frame's animation", () => {
+    const d = split(2, 3);
+    expect([0, 1, 2, 4, 5].map((f) => animationOf(d, f))).toEqual([0, 0, 1, 1, -1]);
   });
 });
 
-describe("tags", () => {
-  it("adds with fresh names, clamps edits to the frames and finds problems", () => {
-    let d = newDoc(2, 2, 3);
-    d = addTag(d, 2, 0);
-    d = addTag(d, 1, 1);
-    expect(d.tags.map((t) => [t.name, t.from, t.to])).toEqual([["tag1", 0, 2], ["tag2", 1, 1]]);
-    d = updateTag(d, 0, { to: 99 });
-    expect(d.tags[0]!.to).toBe(2);
-    d = updateTag(d, 1, { from: 2, to: 0 });
-    expect(d.tags[1]).toMatchObject({ from: 2, to: 2 });
-    expect(updateTag(d, 9, { name: "x" })).toBe(d);
+describe("the animation list", () => {
+  it("adds, duplicates, removes and reorders whole animations with their frames", () => {
+    let d = split(2, 1);
+    d.durations = [10, 20, 30];
+    const added = addAnimation(d, "jump");
+    expect(shape(added.doc)).toEqual([["a", 0, 1], ["b", 2, 2], ["jump", 3, 3]]);
+    expect(added.index).toBe(2);
+    expect(addAnimation(added.doc, "jump").doc.tags[3]!.name).toBe("jump 2");
+
+    const copy = duplicateAnimation(d, 0);
+    expect(copy.index).toBe(1);
+    expect(shape(copy.doc)).toEqual([["a", 0, 1], ["a copy", 2, 3], ["b", 4, 4]]);
+    expect(which(copy.doc)).toEqual([0, 1, 0, 1, 2]);
+    expect(copy.doc.durations).toEqual([10, 20, 10, 20, 30]);
+    copy.doc.frames[2]!.data[0] = 7; // the copy has pictures of its own
+    expect(d.frames[0]!.data[0]).not.toBe(7);
+
+    const gone = removeAnimation(copy.doc, 1);
+    expect(shape(gone.doc)).toEqual([["a", 0, 1], ["b", 2, 2]]);
+    expect(gone.index).toBe(1);
+    expect(removeAnimation(newDoc(2, 2), 0).doc.tags).toHaveLength(1);
+
+    const moved = moveAnimation(d, 1, -1);
+    expect(shape(moved.doc)).toEqual([["b", 0, 0], ["a", 1, 2]]);
+    expect(which(moved.doc)).toEqual([2, 0, 1]);
+    expect(moved.doc.durations).toEqual([30, 10, 20]);
+    expect(moved.index).toBe(0);
+    expect(moveAnimation(d, 0, -1).doc).toBe(d);
+  });
+
+  it("edits names, direction and loop, and gives a whole animation one speed", () => {
+    let d = split(2, 2);
+    d = updateAnimation(d, 1, { name: "run", direction: "pingpong", loop: false });
+    expect(d.tags[1]).toMatchObject({ name: "run", direction: "pingpong", loop: false, from: 2, to: 3 });
+    expect(updateAnimation(d, 9, { name: "x" })).toBe(d);
+    d = setAnimationDuration(d, 1, 55);
+    expect(d.durations).toEqual([100, 100, 55, 55]);
+    expect(setAnimationDuration(d, 1, 3)).toBe(d);
     expect(tagProblems(d)).toEqual([]);
-    d = updateTag(updateTag(d, 1, { name: "tag1" }), 0, { name: " " });
-    expect(tagProblems(d)).toEqual(["Tag 1 needs a name"]);
-    expect(tagProblems(updateTag(d, 0, { name: "tag1" }))).toEqual(['There are two tags called "tag1"']);
-    expect(removeTag(d, 0).tags).toHaveLength(1);
+    expect(tagProblems(updateAnimation(d, 0, { name: " " }))).toEqual(["Tag 1 needs a name"]);
+    expect(tagProblems(updateAnimation(d, 0, { name: "run" }))).toEqual(['There are two tags called "run"']);
+  });
+
+  it("splits overlapping and gappy files into animations of their own", () => {
+    const sheet = toSheet(marked(4));
+    const d = fromSheet(sheet, { frame_width: 4, frame_height: 4, durations_ms: [5, 6, 7, 8], tags: [{ name: "walk", from: 0, to: 1 }, { name: "run", from: 1, to: 2 }] });
+    expect(shape(d)).toEqual([["walk", 0, 1], ["run", 2, 3], ["unused", 4, 4]]);
+    expect(which(d)).toEqual([0, 1, 1, 2, 3]);
+    expect(d.durations).toEqual([5, 6, 6, 7, 8]);
+    expect(d.layers[0]!.cels).toHaveLength(5);
+    expect(normalizeAnimations(d)).toBe(d); // already blocks
+    const none = fromSheet(sheet, { frame_width: 4, frame_height: 4 });
+    expect(shape(none)).toEqual([["idle", 0, 3]]);
+    expect(shape(newDoc(4, 4, 3))).toEqual([["idle", 0, 2]]);
   });
 });
 
@@ -89,10 +155,11 @@ describe("sheets", () => {
   it("reads the runtime's defaults: columns and frame count from the image, durations from either key", () => {
     const sheet = toSheet(marked(4));
     const d = fromSheet(sheet, { frame_width: 4, frame_height: 4, durations_ms: [5, 6], frame_duration_ms: 7, tags: [{ name: "ok", from: 0, to: 1 }, { name: "bad", from: 2, to: 9 }, { name: "pp", from: 1, to: 2, direction: "pingpong", loop: false }] });
-    expect(d.frames).toHaveLength(4);
-    expect(d.durations).toEqual([5, 6, 7, 7]);
-    expect(d.tags.map((t) => t.name)).toEqual(["ok", "pp"]);
-    expect(d.tags[1]).toMatchObject({ direction: "pingpong", loop: false });
+    // ok (0-1) and pp (1-2) overlap on frame 1, which is copied; frame 3 is in none and goes to "unused"
+    expect(d.frames).toHaveLength(5);
+    expect(d.durations).toEqual([5, 6, 6, 7, 7]);
+    expect(d.tags.map((t) => t.name)).toEqual(["ok", "pp", "unused"]);
+    expect(d.tags[1]).toMatchObject({ direction: "pingpong", loop: false, from: 2, to: 3 });
     expect(fromSheet(sheet, { frame_width: 4, frame_height: 4, frames: 2 }).frames).toHaveLength(2);
     expect(fromSheet(sheet, { frame_width: 50, frame_height: 50 }).frames).toHaveLength(1);
     expect(fromImage(sheet).frames).toHaveLength(1);
@@ -101,7 +168,7 @@ describe("sheets", () => {
   it("writes tidy JSON the parser and runtime format accept, and survives a round trip", () => {
     const d = marked(3);
     d.durations = [100, 100, 250];
-    d.tags = [tag({ name: "run", from: 0, to: 2, direction: "pingpong" }), tag({ name: "hit", from: 2, to: 2, loop: false })];
+    d.tags = [tag({ name: "run", from: 0, to: 1, direction: "pingpong" }), tag({ name: "hit", from: 2, to: 2, loop: false })];
     const text = toSheetJson(d, "hero.png");
     expect(text).toBe(`{
   "version": 1,
@@ -112,7 +179,7 @@ describe("sheets", () => {
   "frames": 3,
   "durations_ms": [100, 100, 250],
   "tags": [
-    { "name": "run", "from": 0, "to": 2, "direction": "pingpong" },
+    { "name": "run", "from": 0, "to": 1, "direction": "pingpong" },
     { "name": "hit", "from": 2, "to": 2, "loop": false }
   ]
 }
@@ -123,7 +190,7 @@ describe("sheets", () => {
     const back = fromSheet(toSheet(d), parsed.json);
     expect(back.tags).toEqual(d.tags);
     expect(back.durations).toEqual(d.durations);
-    expect(toSheetJson(newDoc(8, 8), "a.png")).toBe('{\n  "version": 1,\n  "image": "a.png",\n  "frame_width": 8,\n  "frame_height": 8,\n  "frame_duration_ms": 100\n}\n');
+    expect(toSheetJson(newDoc(8, 8), "a.png")).toBe('{\n  "version": 1,\n  "image": "a.png",\n  "frame_width": 8,\n  "frame_height": 8,\n  "frame_duration_ms": 100,\n  "tags": [\n    { "name": "idle", "from": 0, "to": 0 }\n  ]\n}\n');
   });
 
   it("rejects bad sheet files with a reason", () => {
@@ -169,7 +236,7 @@ describe("resizeDoc", () => {
 });
 
 import { addLayer, applyLayers, composeFrame, duplicateLayer, hashRaster, layerSheets, layersFileText, mergeDown, moveLayer, parseLayersFile, recompose, removeLayer, updateLayer } from "./sprite-doc";
-import { newRaster, stamp } from "./pixels";
+import { stamp } from "./pixels";
 
 const BLUE: Rgba = [0, 0, 255, 255];
 const px = (r: ReturnType<typeof newRaster>, x: number, y: number) => getPixel(r, x, y)!;
@@ -284,5 +351,86 @@ describe("layers", () => {
     stamp(b, 0, 0, 1, RED);
     expect(hashRaster(a)).not.toBe(hashRaster(b));
     expect(hashRaster(newRaster(4, 1))).not.toBe(hashRaster(newRaster(2, 2)));
+  });
+});
+
+describe("importing sheets", () => {
+  /// A sheet of `cols` x `rows` 4x4 tiles; tile k has its red pixel at x = k % 4 in its top row, and tiles listed in `blank` stay empty.
+  const sheetOf = (cols: number, rows: number, blank: number[] = [], gap = 0, margin = 0) => {
+    const r = newRaster(2 * margin + cols * 4 + (cols - 1) * gap, 2 * margin + rows * 4 + (rows - 1) * gap);
+    for (let k = 0; k < cols * rows; k++) {
+      if (blank.includes(k)) continue;
+      const [c, row] = [k % cols, Math.floor(k / cols)];
+      setPixel(r, margin + c * (4 + gap) + (k % 4), margin + row * (4 + gap), RED);
+    }
+    return r;
+  };
+  const diag = (r: { data: Uint8ClampedArray }) => [0, 1, 2, 3].find((x) => r.data[x * 4 + 3]! > 0);
+
+  it("cuts a sheet into tiles, with optional gaps and a border", () => {
+    const g = gridTiles(sheetOf(3, 2), { tw: 4, th: 4 });
+    expect([g.columns, g.rows, g.tiles.length]).toEqual([3, 2, 6]);
+    expect(g.tiles.map(diag)).toEqual([0, 1, 2, 3, 0, 1]);
+    const gap = gridTiles(sheetOf(3, 2, [], 1, 2), { tw: 4, th: 4, spacing: 1, margin: 2 });
+    expect([gap.columns, gap.rows]).toEqual([3, 2]);
+    expect(gap.tiles.map(diag)).toEqual([0, 1, 2, 3, 0, 1]);
+    expect(gridTiles(sheetOf(1, 1), { tw: 9, th: 9 }).tiles).toEqual([]);
+  });
+
+  it("guesses a tile size", () => {
+    expect(detectGrid(newRaster(64, 16))).toEqual({ tw: 16, th: 16 });
+    expect(detectGrid(newRaster(128, 128))).toEqual({ tw: 64, th: 64 });
+    expect(detectGrid(newRaster(96, 32))).toEqual({ tw: 32, th: 32 });
+    expect(detectGrid(newRaster(30, 10))).toEqual({ tw: 10, th: 10 });
+    expect(detectGrid(newRaster(7, 5))).toEqual({ tw: 7, th: 5 });
+  });
+
+  it("turns an untouched sprite into the imported animation at the tile size", () => {
+    const fresh = newDoc(16, 16);
+    expect(isPristine(fresh)).toBe(true);
+    const tiles = gridTiles(sheetOf(4, 1), { tw: 4, th: 4 }).tiles;
+    const r = importTiles(fresh, [{ name: "run", tiles }], { durationMs: 80 });
+    expect([r.doc.fw, r.doc.fh, r.added, r.truncated, r.index]).toEqual([4, 4, 4, 0, 0]);
+    expect(shape(r.doc)).toEqual([["run", 0, 3]]);
+    expect(which(r.doc)).toEqual([0, 1, 2, 3]);
+    expect(r.doc.durations).toEqual([80, 80, 80, 80]);
+    expect(r.doc.layers[0]!.cels).toHaveLength(4);
+    expect(isPristine(r.doc)).toBe(false);
+  });
+
+  it("adds animations after the existing ones, sizing tiles to the frames and keeping other animations", () => {
+    const d = split(2, 1);
+    const tiles = gridTiles(sheetOf(2, 1), { tw: 4, th: 4 }).tiles;
+    const small = tiles.map((t) => t);
+    const r = importTiles(d, [{ name: "a", tiles: small }, { name: "walk", tiles }]);
+    expect(shape(r.doc)).toEqual([["a", 0, 1], ["b", 2, 2], ["a 2", 3, 4], ["walk", 5, 6]]);
+    expect(r.index).toBe(3);
+    expect(which(r.doc)).toEqual([0, 1, 2, 0, 1, 0, 1]);
+    // tiles of another size are placed at the bottom centre of the frame
+    const big = importTiles(d, [{ name: "tiny", tiles: [newRaster(2, 2)] }]);
+    expect(big.doc.frames[3]!.w).toBe(4);
+  });
+
+  it("appends to an animation, reports tiles over the frame limit and ignores empty groups", () => {
+    const d = split(2, 2);
+    const tiles = gridTiles(sheetOf(3, 1), { tw: 4, th: 4 }).tiles;
+    const r = importTiles(d, [{ name: "x", tiles }], { append: 0 });
+    expect(shape(r.doc)).toEqual([["a", 0, 4], ["b", 5, 6]]);
+    expect(which(r.doc)).toEqual([0, 1, 0, 1, 2, 2, 3]);
+    expect(r.index).toBe(0);
+    expect(importTiles(d, [{ name: "none", tiles: [] }]).doc).toBe(d);
+    const full = newDoc(4, 4, 255);
+    const over = importTiles(full, [{ name: "more", tiles }]);
+    expect([over.added, over.truncated, over.doc.frames.length]).toEqual([1, 2, 256]);
+  });
+
+  it("puts imported pictures on the chosen layer", () => {
+    const d = split(1);
+    d.layers.push({ name: "Top", visible: true, opacity: 1, cels: d.frames.map(() => newRaster(4, 4)) });
+    const tiles = gridTiles(sheetOf(1, 1), { tw: 4, th: 4 }).tiles;
+    const r = importTiles(d, [{ name: "n", tiles }], { layer: 1 });
+    expect(diag(r.doc.layers[1]!.cels[1]!)).toBe(0);
+    expect(r.doc.layers[0]!.cels[1]!.data.some((v) => v)).toBe(false);
+    expect(diag(r.doc.frames[1]!)).toBe(0);
   });
 });

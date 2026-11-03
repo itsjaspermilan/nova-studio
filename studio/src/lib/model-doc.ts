@@ -6,15 +6,45 @@ export type Vec3 = [number, number, number];
 export type Face = "east" | "west" | "up" | "down" | "south" | "north";
 export const FACES: Face[] = ["east", "west", "up", "down", "south", "north"];
 
+/// What an element is. Every shape but `mesh` fills its box (`from`, `size`); a `mesh` is free points and faces.
+export type Shape = "box" | "wedge" | "pyramid" | "cylinder" | "cone" | "sphere" | "mesh";
+export const SHAPES: Shape[] = ["box", "wedge", "pyramid", "cylinder", "cone", "sphere", "mesh"];
+export const MIN_SEGMENTS = 3;
+export const MAX_SEGMENTS = 64;
+export const DEFAULT_SEGMENTS = 16;
+export const MAX_VERTS = 20000;
+export const MAX_FACES = 20000;
+export const MAX_TOTAL_VERTS = 60000;
+
+/// A flat polygon of a mesh: point numbers in counter-clockwise order seen from outside.
+export interface MeshFace {
+  v: number[];
+  /// Overrides the element's colour.
+  color?: string;
+  /// Shade smoothly across its shared points instead of flat.
+  smooth?: boolean;
+}
+
+/// One solid in a part. (Named "cube" for the first shape it had; the file key is still `cubes`.)
 export interface Cube {
   name?: string;
-  /// Corner with the smallest x, y, z, in the part's own space.
+  shape?: Shape;
+  /// Corner with the smallest x, y, z, in the part's own space. For a mesh this is derived from its points.
   from: Vec3;
   size: Vec3;
+  /// Turn about the box's centre, degrees, X then Y then Z. Meshes carry their turn in their points.
+  rotation?: Vec3;
+  /// Sides around a cylinder, cone or sphere.
+  segments?: number;
+  /// Round shapes shade smoothly unless this is false.
+  smooth?: boolean;
   /// Colour of all faces, `#rrggbb` or `#rrggbbaa`.
   color: string;
   /// Colours of individual faces, overriding `color`.
   faces?: Partial<Record<Face, string>>;
+  /// Mesh only: the points, in the part's space, and the polygons between them.
+  verts?: Vec3[];
+  polys?: MeshFace[];
 }
 
 export interface Part {
@@ -82,6 +112,38 @@ export const newModel = (): ModelDoc => ({
 const isVec3 = (v: unknown): v is Vec3 => Array.isArray(v) && v.length === 3 && v.every((n) => typeof n === "number" && Number.isFinite(n));
 const isColor = (c: unknown) => typeof c === "string" && /^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(c);
 
+/// Why a mesh element's points and polygons are not usable, or null.
+function checkMesh(c: Cube, at: string): string | null {
+  if (!Array.isArray(c.verts) || c.verts.length > MAX_VERTS || !c.verts.every(isVec3)) return `${at}.verts must be a list of up to ${MAX_VERTS} points, each three numbers`;
+  if (!Array.isArray(c.polys) || c.polys.length > MAX_FACES) return `${at}.polys must be a list of up to ${MAX_FACES} polygons`;
+  for (const [j, f] of c.polys.entries()) {
+    if (!f || !Array.isArray(f.v) || f.v.length < 3 || f.v.length > 64) return `${at}.polys[${j}].v needs at least three point numbers`;
+    if (!f.v.every((n) => Number.isInteger(n) && n >= 0 && n < c.verts!.length)) return `${at}.polys[${j}].v refers to a point that does not exist`;
+    if (new Set(f.v).size !== f.v.length) return `${at}.polys[${j}].v uses a point twice`;
+    if (f.color !== undefined && !isColor(f.color)) return `${at}.polys[${j}].color must be like #c9d1d9`;
+    if (f.smooth !== undefined && typeof f.smooth !== "boolean") return `${at}.polys[${j}].smooth must be true or false`;
+  }
+  return null;
+}
+
+/// Sets a mesh element's `from` and `size` to the box around its points.
+export function fitBounds(c: Cube) {
+  const v = c.verts ?? [];
+  if (!v.length) {
+    c.from = [0, 0, 0];
+    c.size = [0, 0, 0];
+    return;
+  }
+  const lo: Vec3 = [Infinity, Infinity, Infinity];
+  const hi: Vec3 = [-Infinity, -Infinity, -Infinity];
+  for (const p of v) for (let a = 0; a < 3; a++) {
+    lo[a] = Math.min(lo[a]!, p[a]!);
+    hi[a] = Math.max(hi[a]!, p[a]!);
+  }
+  c.from = lo;
+  c.size = [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]];
+}
+
 export type Parsed = { ok: true; doc: ModelDoc } | { ok: false; error: string };
 
 export function parseModel(text: string): Parsed {
@@ -96,6 +158,7 @@ export function parseModel(text: string): Parsed {
   if (o.scale !== undefined && !(typeof o.scale === "number" && o.scale > 0 && o.scale < 1000)) return { ok: false, error: '"scale" must be a positive number' };
   let parts = 0;
   let cubes = 0;
+  let verts = 0;
   const check = (p: unknown, at: string): string | null => {
     const part = p as Part;
     if (!part || typeof part !== "object") return `${at} must be an object`;
@@ -106,11 +169,27 @@ export function parseModel(text: string): Parsed {
     if (++parts > MAX_PARTS) return `more than ${MAX_PARTS} parts`;
     for (const [i, c] of part.cubes.entries()) {
       if (++cubes > MAX_CUBES) return `more than ${MAX_CUBES} cubes`;
-      if (!c || !isVec3(c.from) || !isVec3(c.size)) return `${at}.cubes[${i}] needs "from" and "size" as three numbers`;
-      if (c.size.some((n) => n < 0)) return `${at}.cubes[${i}].size cannot be negative`;
-      if (!isColor(c.color)) return `${at}.cubes[${i}].color must be like #c9d1d9`;
+      const cat = `${at}.cubes[${i}]`;
+      if (!c || typeof c !== "object") return `${cat} must be an object`;
+      const shape = c.shape ?? "box";
+      if (!SHAPES.includes(shape)) return `${cat}.shape must be one of ${SHAPES.join(", ")}`;
+      if (!isColor(c.color)) return `${cat}.color must be like #c9d1d9`;
       for (const [f, col] of Object.entries(c.faces ?? {})) {
-        if (!FACES.includes(f as Face) || !isColor(col)) return `${at}.cubes[${i}].faces.${f} is not a face with a #rrggbb colour`;
+        if (!FACES.includes(f as Face) || !isColor(col)) return `${cat}.faces.${f} is not a face with a #rrggbb colour`;
+      }
+      if (c.segments !== undefined && !(Number.isInteger(c.segments) && c.segments >= MIN_SEGMENTS && c.segments <= MAX_SEGMENTS)) return `${cat}.segments must be a whole number from ${MIN_SEGMENTS} to ${MAX_SEGMENTS}`;
+      if (c.smooth !== undefined && typeof c.smooth !== "boolean") return `${cat}.smooth must be true or false`;
+      if (c.rotation !== undefined && !isVec3(c.rotation)) return `${cat}.rotation must be three numbers`;
+      if (shape === "mesh") {
+        if (c.rotation?.some((n) => n !== 0)) return `${cat}.rotation is not used on a mesh: turn its points instead`;
+        const bad = checkMesh(c, cat);
+        if (bad) return bad;
+        verts += c.verts!.length;
+        if (verts > MAX_TOTAL_VERTS) return `more than ${MAX_TOTAL_VERTS} mesh points in all`;
+        fitBounds(c);
+      } else {
+        if (!isVec3(c.from) || !isVec3(c.size)) return `${cat} needs "from" and "size" as three numbers`;
+        if (c.size.some((n) => n < 0)) return `${cat}.size cannot be negative`;
       }
     }
     for (const [i, child] of part.children.entries()) {
@@ -152,15 +231,29 @@ const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 
 export function serializeModel(doc: ModelDoc): string {
   const vec = (v: Vec3) => `[${v.join(", ")}]`;
-  const cube = (c: Cube) => {
-    const parts = [...(c.name ? [`"name": ${JSON.stringify(c.name)}`] : []), `"from": ${vec(c.from)}`, `"size": ${vec(c.size)}`, `"color": "${c.color}"`];
+  const cube = (c: Cube, indent: string) => {
+    const shape = c.shape ?? "box";
+    const parts = [...(c.name ? [`"name": ${JSON.stringify(c.name)}`] : [])];
+    if (shape !== "box") parts.push(`"shape": "${shape}"`);
+    if (shape !== "mesh") parts.push(`"from": ${vec(c.from)}`, `"size": ${vec(c.size)}`);
+    if (c.rotation?.some((n) => n !== 0)) parts.push(`"rotation": ${vec(c.rotation)}`);
+    if (c.segments !== undefined) parts.push(`"segments": ${c.segments}`);
+    if (c.smooth === false) parts.push(`"smooth": false`);
+    parts.push(`"color": "${c.color}"`);
     if (c.faces && Object.keys(c.faces).length) parts.push(`"faces": ${JSON.stringify(c.faces)}`);
+    if (shape === "mesh") {
+      const i2 = `${indent}  `;
+      const verts = (c.verts ?? []).map((p) => `${i2}  ${vec(p)}`).join(",\n");
+      const polys = (c.polys ?? []).map((f) => `${i2}  ${JSON.stringify(f)}`).join(",\n");
+      parts.push(`"verts": [${verts ? `\n${verts}\n${i2}` : ""}]`, `"polys": [${polys ? `\n${polys}\n${i2}` : ""}]`);
+      return `{\n${parts.map((x) => `${i2}${x}`).join(",\n")}\n${indent}}`;
+    }
     return `{ ${parts.join(", ")} }`;
   };
   const part = (p: Part, indent: string): string => {
     const i2 = `${indent}  `;
     const lines = [`${i2}"name": ${JSON.stringify(p.name)}`, `${i2}"origin": ${vec(p.origin)}`, `${i2}"rotation": ${vec(p.rotation)}`];
-    lines.push(p.cubes.length ? `${i2}"cubes": [\n${p.cubes.map((c) => `${i2}  ${cube(c)}`).join(",\n")}\n${i2}]` : `${i2}"cubes": []`);
+    lines.push(p.cubes.length ? `${i2}"cubes": [\n${p.cubes.map((c) => `${i2}  ${cube(c, `${i2}  `)}`).join(",\n")}\n${i2}]` : `${i2}"cubes": []`);
     lines.push(p.children.length ? `${i2}"children": [\n${p.children.map((c) => `${i2}  ${part(c, `${i2}  `)}`).join(",\n")}\n${i2}]` : `${i2}"children": []`);
     return `{\n${lines.join(",\n")}\n${indent}}`;
   };
@@ -215,7 +308,7 @@ function edit(doc: ModelDoc, parts: number[], change: (p: Part) => void): ModelD
   return next;
 }
 
-const uniqueSiblingName = (siblings: Part[], base: string) => {
+export const uniqueSiblingName = (siblings: Part[], base: string) => {
   const used = new Set(siblings.map((p) => p.name));
   if (!used.has(base)) return base;
   let n = 2;
@@ -248,9 +341,36 @@ export function updateCube(doc: ModelDoc, path: Path, change: Partial<Cube>): Mo
   return edit(doc, path.parts, (p) => {
     const c = p.cubes[path.cube!];
     if (!c) return;
+    const before = { from: [...c.from] as Vec3, size: [...c.size] as Vec3 };
     Object.assign(c, clone(change));
-    c.size = c.size.map((n) => Math.max(0, n)) as Vec3;
+    if (c.shape === "mesh") {
+      // Moving or resizing a mesh carries its points along.
+      if (change.from || change.size) remapVerts(c, before.from, before.size);
+      delete c.rotation;
+    } else c.size = c.size.map((n) => Math.max(0, n)) as Vec3;
   });
+}
+
+/// Maps a mesh's points from the box (from, size) it had onto the box it has now.
+function remapVerts(c: Cube, from: Vec3, size: Vec3) {
+  c.size = c.size.map((n) => Math.max(0, n)) as Vec3;
+  c.verts = (c.verts ?? []).map((p) => p.map((x, a) => (size[a]! > 1e-9 ? c.from[a]! + ((x - from[a]!) / size[a]!) * c.size[a]! : x - from[a]! + c.from[a]!)) as Vec3);
+}
+
+/// Replaces one element with another (an edit made elsewhere, like extruding a mesh).
+export function setCube(doc: ModelDoc, path: Path, cube: Cube): ModelDoc {
+  if (path.cube === undefined) return doc;
+  return edit(doc, path.parts, (p) => {
+    if (p.cubes[path.cube!]) p.cubes[path.cube!] = clone(cube);
+  });
+}
+
+/// A copy of an element moved by `d`.
+export function movedCube(c: Cube, d: Vec3): Cube {
+  const twin = clone(c);
+  twin.from = [twin.from[0] + d[0], twin.from[1] + d[1], twin.from[2] + d[2]];
+  if (twin.verts) twin.verts = twin.verts.map((p) => [p[0] + d[0], p[1] + d[1], p[2] + d[2]] as Vec3);
+  return twin;
 }
 
 export function setFaceColor(doc: ModelDoc, path: Path, face: Face | "all", color: string): ModelDoc {
@@ -321,9 +441,7 @@ export function duplicateNode(doc: ModelDoc, path: Path): { doc: ModelDoc; path:
     const p = partAt(next, path.parts);
     const c = p?.cubes[path.cube];
     if (!p || !c) return null;
-    const twin = clone(c);
-    twin.from = [twin.from[0] + 2, twin.from[1], twin.from[2] + 2];
-    p.cubes.push(twin);
+    p.cubes.push(movedCube(c, [2, 0, 2]));
     return { doc: next, path: { parts: path.parts, cube: p.cubes.length - 1 } };
   }
   const part = partAt(next, path.parts);

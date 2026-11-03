@@ -3,9 +3,11 @@
   import * as THREE from "three";
   import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
   import {
-    FACES, History, addCube, addPart, afterRemoval, countCubes, cubeAt, duplicateNode, faceColor, newModel, parseModel, partAt, removeNode, samePath, serializeModel,
-    setFaceColor, updateCube, updatePart, walk, namesOf, PROPS, type Face, type ModelDoc, type Path, type Prop, type Vec3,
+    FACES, History, SHAPES, addCube, addPart, afterRemoval, countCubes, cubeAt, duplicateNode, faceColor, newModel, parseModel, partAt, removeNode, samePath, serializeModel,
+    setCube, setFaceColor, updateCube, updatePart, walk, namesOf, PROPS, MAX_SEGMENTS, MIN_SEGMENTS, DEFAULT_SEGMENTS, type Cube, type Face, type ModelDoc, type Path, type Prop, type Shape, type Vec3,
   } from "../lib/model-doc";
+  import { addFace, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, mirrorElement, mirrorPart, moveVerts, setFaceColors, setSmooth, setVert, subdivide, toMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
+  import { meshOf, segmentsOf, shapeFaces } from "../lib/model-mesh";
   import { exportGlb } from "../lib/glb";
   import { addClip, findTrack, pathKey, removeClip, removeKey, samplePose, setKey, snapTime, updateClip, KEY_STEP, type Pose } from "../lib/model-anim";
   import { toBase64 } from "../lib/wav";
@@ -18,6 +20,14 @@
   let doc: ModelDoc = $state.raw(parsed.ok ? parsed.doc : newModel());
   let selected = $state<Path | null>(null);
   let showGrid = $state(true);
+  // editing the points of a mesh
+  let editPoints = $state(false);
+  let selVerts = $state<number[]>([]);
+  let selFace = $state<number | null>(null);
+  let snap = $state(true);
+  let extrudeBy = $state(4);
+  let newKind = $state<Shape | "square">("box");
+  let pendingEdit = false;
   // animation
   let mode = $state<"model" | "animate">("model");
   let clipIndex = $state(0);
@@ -69,7 +79,7 @@
   let grid: THREE.GridHelper | undefined;
   let outline: THREE.Box3Helper | undefined;
   let frameId = 0;
-  const meshes: { mesh: THREE.Mesh; path: Path }[] = [];
+  const meshes: { mesh: THREE.Mesh; path: Path; polyOfTriangle: number[] }[] = [];
   /// Part groups by name path, with how they are authored, so a clip can pose them and put them back.
   const groups = new Map<string, { group: THREE.Group; origin: Vec3; rotation: Vec3 }>();
 
@@ -105,17 +115,31 @@
     loop();
   }
 
-  const colour = (hex: string) => {
-    const c = new THREE.Color(hex.slice(0, 7));
-    return c;
+  /// Vertex colours as the view wants them: sRGB bytes in, linear floats out, alpha kept.
+  function linear(bytes: number[]): number[] {
+    const out: number[] = [];
+    const cache = new Map<number, number>();
+    const lin = (b: number) => {
+      let v = cache.get(b);
+      if (v === undefined) {
+        v = new THREE.Color().setRGB(b / 255, b / 255, b / 255, THREE.SRGBColorSpace).r;
+        cache.set(b, v);
+      }
+      return v;
+    };
+    for (let i = 0; i < bytes.length; i += 4) out.push(lin(bytes[i]!), lin(bytes[i + 1]!), lin(bytes[i + 2]!), bytes[i + 3]! / 255);
+    return out;
+  }
+  const disposeMeshes = () => {
+    for (const m of meshes) {
+      m.mesh.geometry.dispose();
+      (m.mesh.material as THREE.Material).dispose();
+    }
   };
 
   function rebuild() {
     if (!modelGroup) return;
-    for (const m of meshes) {
-      m.mesh.geometry.dispose();
-      for (const mat of m.mesh.material as THREE.Material[]) mat.dispose();
-    }
+    disposeMeshes();
     meshes.length = 0;
     groups.clear();
     modelGroup.clear();
@@ -128,13 +152,18 @@
         group.rotation.set(...(part.rotation.map((d) => (d * Math.PI) / 180) as Vec3), "XYZ");
         group.name = part.name;
         part.cubes.forEach((cube, ci) => {
-          const [sx, sy, sz] = cube.size;
-          // BoxGeometry face order is +x, -x, +y, -y, +z, -z, the same as FACES (east, west, up, down, south, north).
-          const materials = FACES.map((f) => new THREE.MeshLambertMaterial({ color: colour(faceColor(cube, f)), transparent: faceColor(cube, f).length === 9, opacity: faceColor(cube, f).length === 9 ? parseInt(faceColor(cube, f).slice(7, 9), 16) / 255 : 1 }));
-          const mesh = new THREE.Mesh(new THREE.BoxGeometry(Math.max(sx, 0.001), Math.max(sy, 0.001), Math.max(sz, 0.001)), materials);
-          mesh.position.set(cube.from[0] + sx / 2, cube.from[1] + sy / 2, cube.from[2] + sz / 2);
+          const m = meshOf(cube);
+          const geometry = new THREE.BufferGeometry();
+          geometry.setAttribute("position", new THREE.Float32BufferAttribute(m.positions, 3));
+          geometry.setAttribute("normal", new THREE.Float32BufferAttribute(m.normals, 3));
+          geometry.setAttribute("color", new THREE.Float32BufferAttribute(linear(m.colors), 4));
+          geometry.setIndex(m.indices);
+          const translucent = m.colors.some((c, k) => k % 4 === 3 && c < 255);
+          // A mesh can be a single sheet, so it shows from both sides while you build it.
+          const material = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: translucent, side: cube.shape === "mesh" ? THREE.DoubleSide : THREE.FrontSide });
+          const mesh = new THREE.Mesh(geometry, material);
           group.add(mesh);
-          meshes.push({ mesh, path: { parts, cube: ci } });
+          meshes.push({ mesh, path: { parts, cube: ci }, polyOfTriangle: m.polyOfTriangle });
         });
         parent.add(group);
         build(part.children, group, parts);
@@ -235,30 +264,132 @@
       watch.disconnect();
       cancelAnimationFrame(frameId);
       controls?.dispose();
-      for (const m of meshes) {
-        m.mesh.geometry.dispose();
-        for (const mat of m.mesh.material as THREE.Material[]) mat.dispose();
-      }
+      disposeMeshes();
+      clearHandles();
       outline?.dispose();
       renderer?.dispose();
       renderer = undefined;
     };
   });
 
-  // Click (without dragging) selects the cube under the pointer.
+  // ---- points and faces of a mesh in the view -------------------------------------------------------
+  let handles: THREE.Points | undefined;
+  let faceLine: THREE.LineLoop | undefined;
+  function clearHandles() {
+    for (const o of [handles, faceLine]) {
+      if (!o) continue;
+      scene?.remove(o);
+      o.geometry.dispose();
+      (o.material as THREE.Material).dispose();
+    }
+    handles = faceLine = undefined;
+  }
+  const groupOf = (parts: number[]) => groups.get(pathKey(namesOf(doc, parts)))?.group;
+  /// The selected mesh's points in the world.
+  function worldVerts(): THREE.Vector3[] {
+    const g = selected ? groupOf(selected.parts) : undefined;
+    if (!g || !cube?.verts) return [];
+    return cube.verts.map((p) => new THREE.Vector3(...p).applyMatrix4(g.matrixWorld));
+  }
+  function drawHandles() {
+    clearHandles();
+    if (!scene || !inEdit || !cube) return;
+    const pts = worldVerts();
+    const chosen = new Set(selVerts);
+    const geometry = new THREE.BufferGeometry().setFromPoints(pts);
+    geometry.setAttribute("color", new THREE.Float32BufferAttribute(pts.flatMap((_, i) => (chosen.has(i) ? [1, 0.82, 0.4] : [0.9, 0.93, 1])), 3));
+    handles = new THREE.Points(geometry, new THREE.PointsMaterial({ size: 9, sizeAttenuation: false, vertexColors: true, depthTest: false }));
+    handles.renderOrder = 10;
+    scene.add(handles);
+    const face = selFace === null ? undefined : cube.polys?.[selFace];
+    if (face) {
+      const line = new THREE.BufferGeometry().setFromPoints(face.v.map((i) => pts[i]!));
+      faceLine = new THREE.LineLoop(line, new THREE.LineBasicMaterial({ color: 0xffd166, depthTest: false }));
+      faceLine.renderOrder = 9;
+      scene.add(faceLine);
+    }
+  }
+
+  const pointer = (e: PointerEvent) => {
+    const r = canvas!.getBoundingClientRect();
+    return new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  };
+  /// The point whose handle is within a few pixels of the pointer, or -1.
+  function pickVert(e: PointerEvent): number {
+    if (!camera || !canvas) return -1;
+    const r = canvas.getBoundingClientRect();
+    let best = -1;
+    let bestDist = 11;
+    worldVerts().forEach((w, i) => {
+      const p = w.clone().project(camera!);
+      if (p.z > 1) return;
+      const d = Math.hypot(((p.x + 1) / 2) * r.width + r.left - e.clientX, ((1 - p.y) / 2) * r.height + r.top - e.clientY);
+      if (d < bestDist) {
+        best = i;
+        bestDist = d;
+      }
+    });
+    return best;
+  }
+
+  // Click (without dragging) selects the shape under the pointer; in point mode it picks the face instead.
+  // Dragging a point's handle moves it, and every other selected point with it.
   let downAt: [number, number] | null = null;
+  let drag: { point: number; base: ModelDoc; baseCube: Cube; path: Path; start: THREE.Vector3; plane: THREE.Plane; moved: boolean } | null = null;
   function pointerDown(e: PointerEvent) {
     downAt = [e.clientX, e.clientY];
+    if (!inEdit || !camera || !canvas || !selected || !cube || e.button !== 0) return;
+    const point = pickVert(e);
+    if (point < 0) return;
+    if (e.shiftKey) selVerts = selVerts.includes(point) ? selVerts.filter((v) => v !== point) : [...selVerts, point];
+    else if (!selVerts.includes(point)) selVerts = [point];
+    selFace = null;
+    if (!selVerts.includes(point)) return;
+    const start = worldVerts()[point]!;
+    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(camera.getWorldDirection(new THREE.Vector3()), start);
+    drag = { point, base: doc, baseCube: cube, path: selected, start, plane, moved: false };
+    controls!.enabled = false;
+    canvas.setPointerCapture(e.pointerId);
+  }
+  function pointerMove(e: PointerEvent) {
+    if (!drag || !camera) return;
+    const g = groupOf(drag.path.parts);
+    if (!g) return;
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(pointer(e), camera);
+    const hit = ray.ray.intersectPlane(drag.plane, new THREE.Vector3());
+    if (!hit) return;
+    const local = hit.sub(drag.start).applyMatrix3(new THREE.Matrix3().setFromMatrix4(g.matrixWorld.clone().invert()));
+    const from = drag.baseCube.verts![drag.point]!;
+    const step = snap ? 1 : 0.01;
+    const delta = [0, 1, 2].map((a) => Math.round((from[a]! + [local.x, local.y, local.z][a]!) / step) * step - from[a]!) as Vec3;
+    if (!drag.moved && delta.every((d) => d === 0)) return;
+    if (!drag.moved) history.record(drag.base);
+    drag.moved = true;
+    commit(setCube(drag.base, drag.path, moveVerts(drag.baseCube, selVerts, delta)), true);
   }
   function pointerUp(e: PointerEvent) {
+    if (drag) {
+      drag = null;
+      downAt = null;
+      if (controls) controls.enabled = true;
+      return;
+    }
     if (!downAt || !camera || !canvas) return;
     const moved = Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]);
     downAt = null;
     if (moved > 4) return;
-    const r = canvas.getBoundingClientRect();
-    const ndc = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     const ray = new THREE.Raycaster();
-    ray.setFromCamera(ndc, camera);
+    ray.setFromCamera(pointer(e), camera);
+    if (inEdit && selected) {
+      const mine = meshes.find((m) => samePath(m.path, selected));
+      const hit = mine ? ray.intersectObject(mine.mesh, false)[0] : undefined;
+      const face = hit?.faceIndex != null ? mine!.polyOfTriangle[hit.faceIndex] : undefined;
+      selFace = face ?? null;
+      selVerts = face !== undefined ? [...cube!.polys![face]!.v] : e.shiftKey ? selVerts : [];
+      canvas.focus();
+      return;
+    }
     const hit = ray.intersectObjects(meshes.map((m) => m.mesh), false)[0];
     selected = hit ? (meshes.find((m) => m.mesh === hit.object)?.path ?? null) : null;
     canvas.focus();
@@ -272,6 +403,25 @@
   // ---- editing ------------------------------------------------------------------------------------------
   const rows = $derived(walk(doc));
   const cube = $derived(selected ? cubeAt(doc, selected) : undefined);
+  const inEdit = $derived(editPoints && mode === "model" && cube?.shape === "mesh");
+  const isRound = $derived(cube?.shape === "cylinder" || cube?.shape === "cone" || cube?.shape === "sphere");
+  const paintFaces = $derived(shapeFaces(cube?.shape));
+  const shapeName = (c: Cube) => c.name || (c.shape && c.shape !== "box" ? c.shape : "cube");
+  // The edit state belongs to one element: choosing another leaves point mode.
+  let lastKey = "";
+  $effect(() => {
+    const k = selected ? `${selected.parts.join(".")}/${selected.cube ?? ""}` : "";
+    if (k === lastKey) return;
+    lastKey = k;
+    editPoints = pendingEdit;
+    pendingEdit = false;
+    selVerts = [];
+    selFace = null;
+  });
+  $effect(() => {
+    doc; selected; selVerts; selFace; inEdit; mode;
+    untrack(drawHandles);
+  });
   const part = $derived(selected && selected.cube === undefined ? partAt(doc, selected.parts) : selected ? partAt(doc, selected.parts) : undefined);
 
   function newPart(parent: number[]) {
@@ -282,8 +432,11 @@
   function newCube() {
     const target = selected?.parts ?? (doc.parts.length ? [0] : null);
     if (!target) return newPart([]);
-    const r = addCube(doc, target);
+    const kind = newKind;
+    const square = kind === "square";
+    const r = addCube(doc, target, kind === "square" ? freshMesh() : { shape: kind });
     commit(r.doc);
+    pendingEdit = square; // a new sheet is for pulling into shape
     selected = r.path;
   }
   function remove() {
@@ -315,9 +468,66 @@
       commit(updateCube(doc, selected, { [kind]: v }));
     }
   }
+  // ---- mesh tools ---------------------------------------------------------------------------------------
+  function change(next: Cube, reset = false) {
+    if (!selected) return;
+    commit(setCube(doc, selected, next));
+    if (reset) {
+      selVerts = [];
+      selFace = null;
+    }
+  }
+  function makeEditable() {
+    if (!selected || !cube) return;
+    if (cube.shape !== "mesh") change(toMesh(cube));
+    editPoints = true;
+  }
+  function extrude() {
+    if (!selected || !cube || selFace === null) return;
+    const r = extrudeFace(cube, selFace, extrudeBy);
+    change(r.cube);
+    selVerts = r.points;
+  }
+  function makeFace() {
+    if (!cube || selVerts.length < 3) return;
+    const before = cube.polys?.length ?? 0;
+    const next = addFace(cube, selVerts);
+    change(next);
+    if ((next.polys?.length ?? 0) > before) selFace = before;
+  }
+  function removeFacePicked() {
+    if (cube && selFace !== null) change(deleteFaces(cube, [selFace]), true);
+  }
+  function removePointsPicked() {
+    if (cube && selVerts.length) change(deleteVerts(cube, selVerts), true);
+  }
+  const vert = (i: number) => cube?.verts?.[selVerts[0]!]?.[i] ?? 0;
+  function setVertAxis(i: number, raw: string) {
+    if (!cube?.verts || selVerts.length !== 1 || raw.trim() === "" || !Number.isFinite(Number(raw))) return;
+    const p = [...cube.verts[selVerts[0]!]!] as Vec3;
+    p[i] = Number(raw);
+    change(setVert(cube, selVerts[0]!, p));
+  }
+  const weldCount = $derived(cube?.shape === "mesh" ? weldable(cube) : 0);
+  function mirrorCopy(axis: Axis) {
+    if (!selected || !cube) return;
+    const r = addCube(doc, selected.parts, mirrorElement(cube, axis));
+    commit(r.doc);
+    selected = r.path;
+  }
+  function mirrorPartCopy(axis: Axis) {
+    if (!selected) return;
+    const r = mirrorPart(doc, selected.parts, axis);
+    if (!r) return;
+    commit(r.doc);
+    selected = r.path;
+  }
+  const faceHex = $derived(cube && selFace !== null ? (cube.polys?.[selFace]?.color ?? cube.color).slice(0, 7) : "#c9d1d9");
+
   function nudge(dx: number, dy: number, dz: number) {
     if (!selected) return;
-    if (selected.cube !== undefined && cube) commit(updateCube(doc, selected, { from: [cube.from[0] + dx, cube.from[1] + dy, cube.from[2] + dz] }));
+    if (inEdit && cube && selVerts.length) change(moveVerts(cube, selVerts, [dx, dy, dz]));
+    else if (selected.cube !== undefined && cube) commit(updateCube(doc, selected, { from: [cube.from[0] + dx, cube.from[1] + dy, cube.from[2] + dz] }));
     else if (part) commit(updatePart(doc, selected.parts, { origin: [part.origin[0] + dx, part.origin[1] + dy, part.origin[2] + dz] }));
   }
   // ---- animation ----------------------------------------------------------------------------------------
@@ -381,7 +591,9 @@
     if (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA") return;
     const mod = e.metaKey || e.ctrlKey;
     const step = e.shiftKey ? 4 : 1;
-    if (mod && e.key.toLowerCase() === "z") {
+    if (e.key === "Escape" && editPoints) {
+      editPoints = false;
+    } else if (mod && e.key.toLowerCase() === "z") {
       e.preventDefault();
       e.shiftKey ? redo() : undo();
     } else if (mod && e.key.toLowerCase() === "y") {
@@ -418,9 +630,20 @@
 {:else}
   <div class="editor3d">
     <aside class="outliner">
-      <div class="row">
+      <div class="adder">
         <button onclick={() => newPart(selected?.parts ?? [])} title="New part inside the selected one">＋ Part</button>
-        <button onclick={newCube} title="New cube in the selected part">＋ Cube</button>
+        <div class="row">
+          <select bind:value={newKind} aria-label="Kind of shape to add">
+            <option value="box">Box</option>
+            <option value="wedge">Wedge</option>
+            <option value="pyramid">Pyramid</option>
+            <option value="cylinder">Cylinder</option>
+            <option value="cone">Cone</option>
+            <option value="sphere">Sphere</option>
+            <option value="square">Flat square (to pull out)</option>
+          </select>
+          <button onclick={newCube} title="New shape in the selected part">＋ Add</button>
+        </div>
       </div>
       <ul>
         {#each rows as r (r.parts.join("."))}
@@ -428,7 +651,7 @@
             <button class="node" class:on={selected?.cube === undefined && samePath(selected, { parts: r.parts })} style:padding-left="{8 + r.depth * 14}px" onclick={() => (selected = { parts: r.parts })}>◈ {r.part.name}</button>
             {#each r.part.cubes as c, ci (ci)}
               <button class="node cube" class:on={samePath(selected, { parts: r.parts, cube: ci })} style:padding-left="{22 + r.depth * 14}px" onclick={() => (selected = { parts: r.parts, cube: ci })}>
-                <i class="dot" style:background={hexOf(c.color)}></i>{c.name || `cube ${ci + 1}`}
+                <i class="dot" class:round={c.shape === "sphere" || c.shape === "cylinder" || c.shape === "cone"} style:background={hexOf(c.color)}></i>{c.name || `${c.shape && c.shape !== "box" ? c.shape : "cube"} ${ci + 1}`}
               </button>
             {/each}
           </li>
@@ -444,7 +667,7 @@
         <button class:on={mode === "animate"} onclick={() => { mode = "animate"; if (!clips.length) newClip(); }}>Animate</button>
         <label class="check"><input type="checkbox" bind:checked={showGrid} /> Grid</label>
         <button class="ghost" onclick={resetView}>Reset view</button>
-        <span class="dim">{countCubes(doc)} cubes · saves {glbPath}</span>
+        <span class="dim">{countCubes(doc)} shapes · saves {glbPath}</span>
         <span class="spacer"></span>
         <button class="ghost" onclick={onjson}>JSON</button>
       </div>
@@ -452,7 +675,7 @@
         {#if webglFailed}
           <p class="dim pad">3D drawing is not available in this window (WebGL could not start).</p>
         {/if}
-        <canvas bind:this={canvas} tabindex="0" aria-label="3D view" onpointerdown={pointerDown} onpointerup={pointerUp}></canvas>
+        <canvas bind:this={canvas} tabindex="0" aria-label="3D view" onpointerdown={pointerDown} onpointermove={pointerMove} onpointerup={pointerUp}></canvas>
       </div>
       {#if mode === "animate" && clip}
         <div class="timeline">
@@ -478,7 +701,11 @@
           </div>
         </div>
       {/if}
-      <p class="hint dim">Drag to orbit · right-drag to pan · scroll to zoom · click a cube to select · arrows and PageUp/PageDown move it (⇧ for 4) · ⌘D duplicates · Delete removes</p>
+      {#if inEdit}
+        <p class="hint dim">Points: click a face to pick it and its points · click or drag a dot to move it (⇧-click adds more) · arrows and PageUp/PageDown nudge the picked points · Esc leaves point mode</p>
+      {:else}
+        <p class="hint dim">Drag to orbit · right-drag to pan · scroll to zoom · click a shape to select · arrows and PageUp/PageDown move it (⇧ for 4) · ⌘D duplicates · Delete removes</p>
+      {/if}
     </div>
 
     <aside class="inspector">
@@ -499,17 +726,67 @@
           <p class="dim small">Properties with no key stay as modelled. Keys blend smoothly; rotations take the short way round.</p>
         {/if}
       {:else if selected && cube}
-        <h3>Cube</h3>
+        <h3>{cube.shape === "mesh" ? "Mesh" : "Shape"}</h3>
         <label>Name <input value={cube.name ?? ""} placeholder="optional" onchange={(e) => commit(updateCube(doc, selected!, { name: e.currentTarget.value.trim() || undefined }))} /></label>
-        <h4>Corner (from)</h4>
+        {#if cube.shape !== "mesh"}
+          <label>Shape
+            <select value={cube.shape ?? "box"} onchange={(e) => commit(updateCube(doc, selected!, { shape: e.currentTarget.value as Shape }))}>
+              {#each SHAPES.filter((k) => k !== "mesh") as k (k)}<option value={k}>{k[0]!.toUpperCase() + k.slice(1)}</option>{/each}
+            </select>
+          </label>
+        {/if}
+        {#if isRound}
+          <label>Sides <input type="number" min={MIN_SEGMENTS} max={MAX_SEGMENTS} step="1" value={segmentsOf(cube)} onchange={(e) => commit(updateCube(doc, selected!, { segments: Math.min(MAX_SEGMENTS, Math.max(MIN_SEGMENTS, Math.round(num(e.currentTarget.value, DEFAULT_SEGMENTS)))) }))} /></label>
+          <label class="check"><input type="checkbox" checked={cube.smooth !== false} onchange={(e) => commit(updateCube(doc, selected!, { smooth: e.currentTarget.checked }))} /> Smooth shading</label>
+        {/if}
+        <h4>{cube.shape === "mesh" ? "Box around it: corner" : "Corner (from)"}</h4>
         <div class="vec">{#each cube.from as v, i (i)}<input type="number" value={v} aria-label={"xyz"[i] + " from"} onchange={(e) => setVec("from", i, e.currentTarget.value)} />{/each}</div>
         <h4>Size</h4>
         <div class="vec">{#each cube.size as v, i (i)}<input type="number" min="0" value={v} aria-label={"xyz"[i] + " size"} onchange={(e) => setVec("size", i, e.currentTarget.value)} />{/each}</div>
+        {#if cube.shape !== "mesh"}
+          <h4>Turn (degrees)</h4>
+          <div class="vec">{#each cube.rotation ?? [0, 0, 0] as v, i (i)}<input type="number" value={v} aria-label={"xyz"[i] + " turn"} onchange={(e) => { const r = [...(cube.rotation ?? [0, 0, 0])] as Vec3; r[i] = num(e.currentTarget.value, v); commit(updateCube(doc, selected!, { rotation: r })); }} />{/each}</div>
+        {/if}
         <h4>Colour</h4>
-        <label class="colour">All faces <input type="color" value={hexOf(cube.color)} onchange={(e) => pickColour("all", e.currentTarget.value)} /></label>
-        {#each FACES as f (f)}
+        <label class="colour">{cube.shape === "mesh" ? "Mesh" : "All faces"} <input type="color" value={hexOf(cube.color)} onchange={(e) => pickColour("all", e.currentTarget.value)} /></label>
+        {#each paintFaces as f (f)}
           <label class="colour">{label(f)} <input type="color" value={hexOf(faceColor(cube, f))} onchange={(e) => pickColour(f, e.currentTarget.value)} /></label>
         {/each}
+        <h4>Shape tools</h4>
+        <div class="row">
+          <button class:on={inEdit} onclick={() => (inEdit ? (editPoints = false) : makeEditable())} title={cube.shape === "mesh" ? "Move points and pull faces" : "Turns this into a free mesh you can pull into shape (undo brings the shape back)"}>{inEdit ? "Done with points" : "Edit points"}</button>
+        </div>
+        <div class="row mirror">
+          <span class="dim small">Mirror copy</span>
+          {#each [0, 1, 2] as a (a)}<button onclick={() => mirrorCopy(a as Axis)} title={`A reflected copy across the part's ${"xyz"[a]} = 0 plane`}>{"XYZ"[a]}</button>{/each}
+        </div>
+        {#if inEdit}
+          <h4>Points</h4>
+          {#if selVerts.length === 1}
+            <div class="vec">{#each [0, 1, 2] as i (i)}<input type="number" step="0.5" value={vert(i)} aria-label={"xyz"[i] + " point"} onchange={(e) => setVertAxis(i, e.currentTarget.value)} />{/each}</div>
+          {:else}
+            <p class="dim small">{selVerts.length ? `${selVerts.length} points picked` : "Click a dot or a face."}</p>
+          {/if}
+          <label class="check"><input type="checkbox" bind:checked={snap} /> Snap to whole units</label>
+          <div class="row">
+            <button onclick={makeFace} disabled={selVerts.length < 3} title="Fills a face between the picked points">Make face</button>
+            <button class="danger" onclick={removePointsPicked} disabled={!selVerts.length}>Delete points</button>
+          </div>
+          <h4>Face</h4>
+          {#if selFace !== null && cube.polys?.[selFace]}
+            <label class="inline">Pull by <input type="number" step="1" bind:value={extrudeBy} /></label>
+            <div class="row"><button onclick={extrude} title="Pushes the face out (a negative number digs in) and joins it to the rest">Extrude</button><button class="danger" onclick={removeFacePicked}>Delete face</button></div>
+            <label class="colour">Colour <input type="color" value={faceHex} onchange={(e) => change(setFaceColors(cube, [selFace!], e.currentTarget.value))} /></label>
+            <label class="check"><input type="checkbox" checked={!!cube.polys[selFace]!.smooth} onchange={(e) => change(setSmooth(cube, [selFace!], e.currentTarget.checked))} /> Smooth shading</label>
+            <div class="row"><button onclick={() => change(flipFaces(cube, [selFace!]))} title="Turns the face inside out">Flip</button><button onclick={() => change(subdivide(cube, [selFace!]), true)}>Split</button></div>
+          {:else}
+            <p class="dim small">Click a face to pull it out, colour it or delete it.</p>
+          {/if}
+          <h4>Whole mesh</h4>
+          <div class="row"><button onclick={() => change(subdivide(cube), true)} title="Splits every face into four-sided pieces">Split all</button><button onclick={() => change(weld(cube), true)} disabled={!weldCount} title="Joins points that sit on top of each other">Weld{weldCount ? ` (${weldCount})` : ""}</button></div>
+          <div class="row"><button onclick={() => change(setSmooth(cube, cube.polys!.map((_, i) => i), true))}>Smooth all</button><button onclick={() => change(setSmooth(cube, cube.polys!.map((_, i) => i), false))}>Flat all</button></div>
+          <p class="dim small">{cube.verts?.length ?? 0} points · {cube.polys?.length ?? 0} faces</p>
+        {/if}
         <div class="row"><button onclick={duplicate}>Duplicate</button><button class="danger" onclick={remove}>Delete</button></div>
       {:else if selected && part}
         <h3>Part</h3>
@@ -518,29 +795,37 @@
         <div class="vec">{#each part.origin as v, i (i)}<input type="number" value={v} aria-label={"xyz"[i] + " origin"} onchange={(e) => setVec("origin", i, e.currentTarget.value)} />{/each}</div>
         <h4>Rotation (degrees)</h4>
         <div class="vec">{#each part.rotation as v, i (i)}<input type="number" value={v} aria-label={"xyz"[i] + " rotation"} onchange={(e) => setVec("rotation", i, e.currentTarget.value)} />{/each}</div>
-        <p class="dim small">A part moves and turns about its pivot, with its cubes and child parts. Use parts for things that will move on their own later, like wheels.</p>
+        <div class="row mirror">
+          <span class="dim small">Mirror copy</span>
+          {#each [0, 1, 2] as a (a)}<button onclick={() => mirrorPartCopy(a as Axis)} title={`A reflected copy of this part across its parent's ${"xyz"[a]} = 0 plane`}>{"XYZ"[a]}</button>{/each}
+        </div>
+        <p class="dim small">A part moves and turns about its pivot, with its shapes and child parts. Use parts for things that will move on their own later, like wheels. A mirror copy is a new part without the animation keys.</p>
         <div class="row"><button onclick={duplicate}>Duplicate</button><button class="danger" onclick={remove} disabled={doc.parts.length === 1 && selected.parts.length === 1}>Delete</button></div>
       {:else}
         <h3>Model</h3>
         <label>Export scale <input type="number" step="0.001" min="0.0001" value={doc.scale} onchange={(e) => commit({ ...doc, scale: Math.max(0.0001, num(e.currentTarget.value, doc.scale)) })} /></label>
         <p class="dim small">World units per model unit. 1/16 = 0.0625 makes a 16-unit cube one world unit.</p>
         <p class="dim small">Saving writes <code>{glbPath}</code>. In Lua: <code>nova.model("{modelName}", x, y, z)</code>.</p>
-        <p class="dim small">Click a cube in the view or the list to edit it. Colours are flat per face for now; textures and animation come later.</p>
+        <p class="dim small">Click a shape in the view or the list to edit it. Shapes: box, wedge, pyramid, cylinder, cone, sphere, or a free mesh you pull into shape point by point. Colours are flat per face.</p>
       {/if}
     </aside>
   </div>
 {/if}
 
 <style>
-  .editor3d { height: 100%; display: grid; grid-template-columns: 170px minmax(0, 1fr) 210px; min-height: 0; }
+  .editor3d { height: 100%; display: grid; grid-template-columns: 190px minmax(0, 1fr) 230px; min-height: 0; }
   .outliner, .inspector { background: var(--panel); overflow: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
   .outliner { border-right: 1px solid var(--line); padding: 0; }
-  .outliner .row { padding: 8px; border-bottom: 1px solid var(--line); }
   .outliner ul { list-style: none; margin: 0; padding: 4px 0; overflow: auto; }
   .node { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; background: transparent; border-color: transparent; border-radius: 0; padding: 2px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .node:hover { background: var(--panel-2); }
   .node.on { background: color-mix(in srgb, var(--accent) 22%, transparent); }
-  .dot { width: 10px; height: 10px; border-radius: 2px; border: 1px solid #0006; flex: none; }
+  .dot { width: 10px; height: 10px; border-radius: 2px; border: 1px solid #0006; flex: none; } .dot.round { border-radius: 50%; }
+  .adder { padding: 8px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
+  .adder .row { min-width: 0; } .adder select { min-width: 0; flex: 1; }
+  .mirror { align-items: center; } .mirror button { padding: 0 8px; }
+  .row.mirror span { flex: 1; }
+  select { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 2px 4px; }
   .inspector { border-left: 1px solid var(--line); }
   .stage { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
   .bar { display: flex; align-items: center; gap: 8px; padding: 4px 8px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }

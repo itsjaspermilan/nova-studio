@@ -508,6 +508,35 @@ mod studio_model_tests {
     /// `studio/src/lib/model-doc.test.ts` pins this file to what the studio's exporter writes for its
     /// sample model: a 16-unit body cube and a rotated, offset wheel cube, at 1/16 scale.
     #[test]
+    fn studio_shapes_load_and_wind_outwards() {
+        // Eight shapes from the studio's exporter (studio/src/lib/model-shapes.test.ts): box, wedge, pyramid,
+        // cylinder, cone, sphere, a turned box and an extruded mesh, at 1/16 scale.
+        let mesh = import_glb(include_bytes!("../tests/fixtures/studio_model_shapes.glb")).unwrap();
+        assert!(mesh.notes.is_empty(), "{:?}", mesh.notes);
+        assert_eq!(mesh.vertices.len(), 314);
+        assert_eq!(mesh.indices.len(), 148 * 3);
+        // Every triangle winds outwards, so the volume the triangles enclose is the sum of the solids' volumes.
+        let mut six_volumes = 0.0f64;
+        for t in mesh.indices.chunks(3) {
+            let p = |i: u32| {
+                let v = mesh.vertices[i as usize].position;
+                glam::DVec3::new(v[0] as f64, v[1] as f64, v[2] as f64)
+            };
+            six_volumes += p(t[0]).dot(p(t[1]).cross(p(t[2])));
+        }
+        let units = six_volumes / 6.0 * 16.0f64.powi(3);
+        assert!((units - 2907.39778661252).abs() < 0.05, "volume {units}");
+        for v in &mesh.vertices {
+            let n = Vec3::from(v.normal);
+            assert!((n.length() - 1.0).abs() < 1e-4, "unit normals, got {n:?}");
+        }
+        assert!(
+            mesh.vertices.iter().any(|v| v.color == [255, 136, 0, 255]),
+            "the cone's colour survived"
+        );
+    }
+
+    #[test]
     fn studio_models_load_with_the_expected_shape() {
         let mesh = import_glb(include_bytes!("../tests/fixtures/studio_model.glb")).unwrap();
         assert!(mesh.notes.is_empty(), "{:?}", mesh.notes);

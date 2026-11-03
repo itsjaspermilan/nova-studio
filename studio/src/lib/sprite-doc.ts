@@ -1,7 +1,12 @@
-// A sprite document: equal-sized frames, per-frame durations and animation tags. It maps onto a
-// PNG sheet plus a `*.sprite.json` file (format v1, see crates/nova-runtime/src/sprite.rs).
+// A sprite document: equal-sized frames, per-frame durations and animations. It maps onto a PNG sheet plus a
+// `*.sprite.json` file (format v1, see crates/nova-runtime/src/sprite.rs).
+//
+// In the studio every animation owns its frames: the frames are one list, and the animations (`tags`) are
+// consecutive blocks of it that cover every frame once, in order. So adding, removing or moving a frame
+// touches one animation only, and the saved file's tags never overlap. Files from elsewhere whose tags
+// overlap or leave gaps are split into such blocks when they are opened (`normalizeAnimations`).
 
-import { blit, cloneRaster, composite, crop, newRaster, resizeCanvas, type Raster } from "./pixels";
+import { blit, cloneRaster, composite, crop, isClear, newRaster, resizeCanvas, type Raster } from "./pixels";
 
 export type Direction = "forward" | "reverse" | "pingpong";
 export interface Tag {
@@ -37,9 +42,14 @@ export const MAX_SIDE = 1024;
 export const MAX_FRAMES = 256;
 export const SHEET_COLUMNS = 16;
 
+export const DEFAULT_ANIMATION = "idle";
+
 export function newDoc(fw: number, fh: number, frames = 1): SpriteDoc {
   const blank = () => Array.from({ length: frames }, () => newRaster(fw, fh));
-  return { fw, fh, frames: blank(), durations: Array(frames).fill(DEFAULT_DURATION), tags: [], layers: [layerOf("Layer 1", blank())] };
+  return {
+    fw, fh, frames: blank(), durations: Array(frames).fill(DEFAULT_DURATION),
+    tags: [{ name: DEFAULT_ANIMATION, from: 0, to: frames - 1, direction: "forward", loop: true }], layers: [layerOf("Layer 1", blank())],
+  };
 }
 
 export function cloneDoc(d: SpriteDoc): SpriteDoc {
@@ -79,38 +89,102 @@ export function tagSequence(tag: Tag): number[] {
   return forward;
 }
 
-/// Inserts a frame so it ends up at `index` (blank, or a copy of the frame it follows). Tags at or after it shift right.
-export function insertFrame(doc: SpriteDoc, index: number, copyOf?: number): SpriteDoc {
-  if (doc.frames.length >= MAX_FRAMES) return doc;
+// ---- animations: consecutive blocks of frames ------------------------------------------------------------
+
+export const framesIn = (t: Tag) => t.to - t.from + 1;
+
+/// The animation a frame belongs to (-1 when there are none).
+export function animationOf(doc: SpriteDoc, frame: number): number {
+  return doc.tags.findIndex((t) => frame >= t.from && frame <= t.to);
+}
+
+const isPartition = (doc: SpriteDoc) =>
+  doc.tags.length > 0 && doc.tags[0]!.from === 0 && doc.tags.every((t, i) => t.to >= t.from && (i === 0 || t.from === doc.tags[i - 1]!.to + 1)) && doc.tags.at(-1)!.to === doc.frames.length - 1;
+
+const uniqueName = (doc: SpriteDoc, base: string) => {
+  const used = new Set(doc.tags.map((t) => t.name));
+  if (!used.has(base)) return base;
+  let n = 2;
+  while (used.has(`${base} ${n}`)) n++;
+  return `${base} ${n}`;
+};
+
+/// A document made of the given blocks, in order: each block is an animation and the old frame numbers it plays
+/// (a number may appear in several blocks or none; the pictures are copied).
+function assemble(doc: SpriteDoc, blocks: { tag: Tag; frames: number[] }[]): SpriteDoc {
+  const order = blocks.flatMap((b) => b.frames);
   const next = cloneDoc(doc);
-  const at = Math.max(0, Math.min(index, next.frames.length));
-  next.frames.splice(at, 0, copyOf === undefined ? newRaster(next.fw, next.fh) : cloneRaster(next.frames[copyOf]!));
-  for (const l of next.layers) l.cels.splice(at, 0, copyOf === undefined ? newRaster(next.fw, next.fh) : cloneRaster(l.cels[copyOf]!));
-  next.durations.splice(at, 0, copyOf === undefined ? DEFAULT_DURATION : next.durations[copyOf]!);
-  for (const t of next.tags) {
-    if (t.from >= at) t.from++;
-    if (t.to >= at) t.to++;
-  }
+  next.frames = order.map((i) => cloneRaster(doc.frames[i]!));
+  next.durations = order.map((i) => doc.durations[i]!);
+  next.layers = doc.layers.map((l) => ({ ...l, cels: order.map((i) => cloneRaster(l.cels[i]!)) }));
+  let at = 0;
+  next.tags = blocks.map(({ tag, frames }) => {
+    const out = { ...tag, from: at, to: at + frames.length - 1 };
+    at += frames.length;
+    return out;
+  });
   return next;
 }
 
-/// Removes a frame (never the last one). Tags shrink with it and disappear when empty.
+const range = (from: number, to: number) => Array.from({ length: Math.max(0, to - from + 1) }, (_, i) => from + i);
+const blocksOf = (doc: SpriteDoc) => doc.tags.map((tag) => ({ tag, frames: range(tag.from, tag.to) }));
+
+/// Makes the animations consecutive blocks that cover every frame once. A frame in two animations is copied into
+/// each; frames in none go into an animation of their own. Documents that already are blocks come back unchanged.
+export function normalizeAnimations(doc: SpriteDoc): SpriteDoc {
+  const n = doc.frames.length;
+  if (n === 0 || isPartition(doc)) return doc;
+  const tags = doc.tags.filter((t) => t.from >= 0 && t.to >= t.from && t.to < n).sort((a, b) => a.from - b.from);
+  const blocks = tags.map((tag) => ({ tag, frames: range(tag.from, tag.to) }));
+  const covered = new Set(blocks.flatMap((b) => b.frames));
+  const loose = range(0, n - 1).filter((i) => !covered.has(i));
+  if (loose.length) blocks.push({ tag: { name: blocks.length ? "unused" : DEFAULT_ANIMATION, from: 0, to: 0, direction: "forward", loop: true }, frames: loose });
+  return assemble(doc, blocks);
+}
+
+function shiftFrom(tags: Tag[], at: number, by: number, skip = -1) {
+  tags.forEach((t, i) => {
+    if (i === skip) return;
+    if (t.from >= at) {
+      t.from += by;
+      t.to += by;
+    }
+  });
+}
+
+/// Inserts a frame so it ends up at `index` (blank, or a copy of `copyOf`). It joins the animation the frame
+/// before it is in (or `anim`, when given); later animations move along.
+export function insertFrame(doc: SpriteDoc, index: number, copyOf?: number, anim?: number): SpriteDoc {
+  if (doc.frames.length >= MAX_FRAMES) return doc;
+  const next = cloneDoc(doc);
+  const at = Math.max(0, Math.min(index, next.frames.length));
+  const owner = anim ?? animationOf(next, Math.max(0, Math.min(at - 1, next.frames.length - 1)));
+  if (!next.tags[owner]) return doc;
+  next.frames.splice(at, 0, copyOf === undefined ? newRaster(next.fw, next.fh) : cloneRaster(next.frames[copyOf]!));
+  for (const l of next.layers) l.cels.splice(at, 0, copyOf === undefined ? newRaster(next.fw, next.fh) : cloneRaster(l.cels[copyOf]!));
+  next.durations.splice(at, 0, copyOf === undefined ? DEFAULT_DURATION : next.durations[copyOf]!);
+  shiftFrom(next.tags, at, 1, owner);
+  next.tags[owner]!.to++;
+  return next;
+}
+
+/// Removes a frame from its animation. An animation keeps at least one frame (remove the animation instead).
 export function removeFrame(doc: SpriteDoc, index: number): SpriteDoc {
-  if (doc.frames.length <= 1 || index < 0 || index >= doc.frames.length) return doc;
+  const owner = animationOf(doc, index);
+  if (owner < 0 || framesIn(doc.tags[owner]!) <= 1) return doc;
   const next = cloneDoc(doc);
   next.frames.splice(index, 1);
   for (const l of next.layers) l.cels.splice(index, 1);
   next.durations.splice(index, 1);
-  next.tags = next.tags
-    .map((t) => ({ ...t, from: t.from > index ? t.from - 1 : t.from, to: t.to >= index ? t.to - 1 : t.to }))
-    .filter((t) => t.to >= t.from);
+  next.tags[owner]!.to--;
+  shiftFrom(next.tags, index + 1, -1, owner);
   return next;
 }
 
-/// Moves a frame to a new position. Tags keep their frame numbers (they describe positions, not pictures).
+/// Moves a frame to a new position inside its animation (other animations are left alone).
 export function moveFrame(doc: SpriteDoc, from: number, to: number): SpriteDoc {
-  const last = doc.frames.length - 1;
-  if (from === to || from < 0 || from > last || to < 0 || to > last) return doc;
+  const owner = animationOf(doc, from);
+  if (from === to || owner < 0 || animationOf(doc, to) !== owner) return doc;
   const next = cloneDoc(doc);
   const [frame] = next.frames.splice(from, 1);
   const [duration] = next.durations.splice(from, 1);
@@ -123,30 +197,175 @@ export function moveFrame(doc: SpriteDoc, from: number, to: number): SpriteDoc {
   return next;
 }
 
-export function addTag(doc: SpriteDoc, from: number, to: number): SpriteDoc {
+/// A new animation of one blank frame, after the others.
+export function addAnimation(doc: SpriteDoc, name = "animation"): { doc: SpriteDoc; index: number } {
+  if (doc.frames.length >= MAX_FRAMES) return { doc, index: doc.tags.length - 1 };
   const next = cloneDoc(doc);
-  const used = new Set(next.tags.map((t) => t.name));
-  let n = 1;
-  while (used.has(`tag${n}`)) n++;
-  next.tags.push({ name: `tag${n}`, from: Math.min(from, to), to: Math.max(from, to), direction: "forward", loop: true });
+  const at = next.frames.length;
+  next.frames.push(newRaster(next.fw, next.fh));
+  for (const l of next.layers) l.cels.push(newRaster(next.fw, next.fh));
+  next.durations.push(DEFAULT_DURATION);
+  next.tags.push({ name: uniqueName(doc, name), from: at, to: at, direction: "forward", loop: true });
+  return { doc: next, index: next.tags.length - 1 };
+}
+
+/// A copy of an animation (all its frames) right after it.
+export function duplicateAnimation(doc: SpriteDoc, index: number): { doc: SpriteDoc; index: number } {
+  const t = doc.tags[index];
+  if (!t || doc.frames.length + framesIn(t) > MAX_FRAMES) return { doc, index };
+  const blocks = blocksOf(doc);
+  blocks.splice(index + 1, 0, { tag: { ...t, name: uniqueName(doc, `${t.name} copy`) }, frames: range(t.from, t.to) });
+  return { doc: assemble(doc, blocks), index: index + 1 };
+}
+
+/// Removes an animation with its frames (the last animation cannot be removed).
+export function removeAnimation(doc: SpriteDoc, index: number): { doc: SpriteDoc; index: number } {
+  if (doc.tags.length <= 1 || !doc.tags[index]) return { doc, index };
+  const blocks = blocksOf(doc);
+  blocks.splice(index, 1);
+  return { doc: assemble(doc, blocks), index: Math.min(index, blocks.length - 1) };
+}
+
+/// Swaps an animation with its neighbour (`delta` -1 or 1), taking its frames with it.
+export function moveAnimation(doc: SpriteDoc, index: number, delta: number): { doc: SpriteDoc; index: number } {
+  const to = index + delta;
+  if (!doc.tags[index] || to < 0 || to >= doc.tags.length || delta === 0) return { doc, index };
+  const blocks = blocksOf(doc);
+  const [moved] = blocks.splice(index, 1);
+  blocks.splice(to, 0, moved!);
+  return { doc: assemble(doc, blocks), index: to };
+}
+
+export function updateAnimation(doc: SpriteDoc, index: number, change: Partial<Pick<Tag, "name" | "direction" | "loop">>): SpriteDoc {
+  if (!doc.tags[index]) return doc;
+  const next = cloneDoc(doc);
+  Object.assign(next.tags[index]!, change);
   return next;
 }
 
-export function updateTag(doc: SpriteDoc, index: number, change: Partial<Tag>): SpriteDoc {
+/// Gives every frame of an animation the same duration.
+export function setAnimationDuration(doc: SpriteDoc, index: number, ms: number): SpriteDoc {
+  const t = doc.tags[index];
+  if (!t || !Number.isFinite(ms) || ms < 10) return doc;
   const next = cloneDoc(doc);
-  const tag = next.tags[index];
-  if (!tag) return doc;
-  Object.assign(tag, change);
-  const last = next.frames.length - 1;
-  tag.from = Math.max(0, Math.min(tag.from, last));
-  tag.to = Math.max(tag.from, Math.min(tag.to, last));
+  for (let i = t.from; i <= t.to; i++) next.durations[i] = Math.round(ms);
   return next;
 }
 
-export function removeTag(doc: SpriteDoc, index: number): SpriteDoc {
-  const next = cloneDoc(doc);
-  next.tags.splice(index, 1);
-  return next;
+// ---- importing sheets --------------------------------------------------------------------------------------
+
+/// How a picture of tiles is cut up: tile size, the gap between tiles and the border around them.
+export interface GridSpec {
+  tw: number;
+  th: number;
+  spacing?: number;
+  margin?: number;
+}
+
+/// The tiles of a sheet, row by row.
+export function gridTiles(sheet: Raster, g: GridSpec): { tiles: Raster[]; columns: number; rows: number } {
+  const [tw, th, gap, margin] = [Math.max(1, Math.floor(g.tw)), Math.max(1, Math.floor(g.th)), Math.max(0, Math.floor(g.spacing ?? 0)), Math.max(0, Math.floor(g.margin ?? 0))];
+  const columns = Math.max(0, Math.floor((sheet.w - 2 * margin + gap) / (tw + gap)));
+  const rows = Math.max(0, Math.floor((sheet.h - 2 * margin + gap) / (th + gap)));
+  const tiles: Raster[] = [];
+  for (let r = 0; r < rows; r++) for (let c = 0; c < columns; c++) tiles.push(crop(sheet, margin + c * (tw + gap), margin + r * (th + gap), tw, th));
+  return { tiles, columns, rows };
+}
+
+const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
+
+/// A first guess at the tile size of a sheet: the biggest common square size that cuts it into at least two tiles
+/// with nothing left over; failing that, squares as tall as the picture; failing that, the whole picture.
+export function detectGrid(sheet: Raster): GridSpec {
+  const { w, h } = sheet;
+  for (const s of [256, 128, 96, 64, 48, 32, 24, 16, 12, 8]) {
+    if (w % s === 0 && h % s === 0 && (w / s) * (h / s) >= 2) return { tw: s, th: s };
+  }
+  if (w > h && w % h === 0) return { tw: h, th: h };
+  if (h > w && h % w === 0) return { tw: w, th: w };
+  const g = gcd(w, h);
+  return g >= 4 && (w / g) * (h / g) >= 2 ? { tw: g, th: g } : { tw: w, th: h };
+}
+
+/// A fresh sprite that has not been drawn on: one blank frame in one animation.
+export function isPristine(doc: SpriteDoc): boolean {
+  return doc.frames.length === 1 && doc.tags.length === 1 && doc.layers.length === 1 && isClear(doc.frames[0]!);
+}
+
+export interface TileGroup {
+  name: string;
+  tiles: Raster[];
+}
+
+/// Puts groups of tiles into a sprite as animations, one per group, after the existing ones. Each tile goes on
+/// layer `layer`, sized to the sprite's frames (bottom centre kept) — except that an untouched sprite takes the tile
+/// size itself. With `append`, the tiles of the first group join the end of that animation instead. `truncated`
+/// counts tiles that did not fit under the frame limit.
+export function importTiles(
+  doc: SpriteDoc, groups: TileGroup[], opts: { append?: number; layer?: number; durationMs?: number } = {},
+): { doc: SpriteDoc; index: number; added: number; truncated: number } {
+  const usable = groups.filter((g) => g.tiles.length > 0);
+  if (!usable.length) return { doc, index: Math.max(0, doc.tags.length - 1), added: 0, truncated: 0 };
+  const ms = Math.max(10, Math.round(opts.durationMs ?? DEFAULT_DURATION));
+  let base = doc;
+  const fresh = isPristine(doc) && opts.append === undefined;
+  if (fresh) {
+    const first = usable[0]!.tiles[0]!;
+    base = newDoc(first.w, first.h, 1);
+    base.frames = [];
+    base.durations = [];
+    base.tags = [];
+    base.layers = [{ ...base.layers[0]!, cels: [] }];
+  }
+  const layer = Math.min(Math.max(0, opts.layer ?? 0), base.layers.length - 1);
+  const fit = (t: Raster) => (t.w === base.fw && t.h === base.fh ? cloneRaster(t) : resizeCanvas(t, base.fw, base.fh, 0.5, 1));
+  const blocks = blocksOf(base);
+  let room = MAX_FRAMES - base.frames.length;
+  let truncated = 0;
+  let added = 0;
+  let index = Math.max(0, base.tags.length - 1);
+  const extra: Raster[][] = []; // new pictures for each block, in block order
+  const names = new Set(base.tags.map((t) => t.name));
+  usable.forEach((g, gi) => {
+    const take = g.tiles.slice(0, Math.max(0, room));
+    truncated += g.tiles.length - take.length;
+    room -= take.length;
+    if (!take.length) return;
+    added += take.length;
+    if (opts.append !== undefined && gi === 0 && base.tags[opts.append]) {
+      extra[opts.append] = [...(extra[opts.append] ?? []), ...take];
+      index = opts.append;
+      return;
+    }
+    let name = g.name.trim() || "animation";
+    for (let n = 2; names.has(name); n++) name = `${g.name.trim() || "animation"} ${n}`;
+    names.add(name);
+    blocks.push({ tag: { name, from: 0, to: 0, direction: "forward", loop: true }, frames: [] });
+    extra[blocks.length - 1] = take;
+    index = blocks.length - 1;
+  });
+  // Build the new frame list: each block's old frames, then its new tiles.
+  const frames: Raster[] = [];
+  const durations: number[] = [];
+  const cels: Raster[][] = base.layers.map(() => []);
+  const tags: Tag[] = [];
+  blocks.forEach((b, i) => {
+    const start = frames.length;
+    for (const f of b.frames) {
+      frames.push(cloneRaster(base.frames[f]!));
+      durations.push(base.durations[f]!);
+      base.layers.forEach((l, li) => cels[li]!.push(cloneRaster(l.cels[f]!)));
+    }
+    for (const t of extra[i] ?? []) {
+      const picture = fit(t);
+      frames.push(picture);
+      durations.push(ms);
+      base.layers.forEach((_, li) => cels[li]!.push(li === layer ? cloneRaster(picture) : newRaster(base.fw, base.fh)));
+    }
+    tags.push({ ...b.tag, from: start, to: frames.length - 1 });
+  });
+  const next: SpriteDoc = { ...cloneDoc(base), frames, durations, tags, layers: base.layers.map((l, li) => ({ ...l, cels: cels[li]! })) };
+  return { doc: recomposed(next), index, added, truncated };
 }
 
 /// Problems a person should fix before the runtime will accept the sheet.
@@ -217,7 +436,7 @@ export function fromSheet(sheet: Raster, json: SheetJson): SpriteDoc {
     .filter((t) => t && typeof t.name === "string" && Number.isInteger(t.from) && Number.isInteger(t.to))
     .map((t) => ({ name: t.name, from: t.from, to: t.to, direction: t.direction ?? "forward", loop: t.loop ?? true }))
     .filter((t) => t.from >= 0 && t.to >= t.from && t.to < count);
-  return { fw, fh, frames, durations, tags, layers: [layerOf("Layer 1", frames.map(cloneRaster))] };
+  return normalizeAnimations({ fw, fh, frames, durations, tags, layers: [layerOf("Layer 1", frames.map(cloneRaster))] });
 }
 
 /// Cuts `count` frames of fw x fh out of a sheet laid out `columns` wide.
@@ -227,7 +446,7 @@ export function cutFrames(sheet: Raster, fw: number, fh: number, count: number, 
 
 /// A single PNG as a one-frame document.
 export function fromImage(image: Raster): SpriteDoc {
-  return { fw: image.w, fh: image.h, frames: [cloneRaster(image)], durations: [DEFAULT_DURATION], tags: [], layers: [layerOf("Layer 1", [cloneRaster(image)])] };
+  return { fw: image.w, fh: image.h, frames: [cloneRaster(image)], durations: [DEFAULT_DURATION], tags: [{ name: DEFAULT_ANIMATION, from: 0, to: 0, direction: "forward", loop: true }], layers: [layerOf("Layer 1", [cloneRaster(image)])] };
 }
 
 /// The `*.sprite.json` text for a document whose sheet PNG is `image` (relative to the JSON file).

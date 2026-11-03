@@ -305,7 +305,14 @@ First slice, built (`SpriteEditor.svelte`, pure logic in `pixels.ts` and `sprite
   `sprites/<name>.layers.json` beside them (one PNG sheet per layer inside, hidden from the file tree, moved and
   deleted with the sprite) and are only trusted while they add up to the sheet, so a PNG edited elsewhere is
   flattened to one layer with a notice. A plain `.png` has no layers file and is saved flat.
-- [ ] Not yet: linked cels, blend modes, custom/imported palettes, reference images, hot-reload of a running game, Aseprite/`.pxo` import.
+- [x] Animations that own their frames, and sheet import (2026-11-02): the sprite editor shows one animation's frames at a time;
+  adding, removing or moving a frame changes that animation only; an animations panel lists them with a thumbnail,
+  name, direction, loop, one speed for all frames, reorder, duplicate and delete. The file format is unchanged (tags
+  saved as consecutive blocks; overlapping tags from other tools are split on opening). "Import sheet…" cuts any project
+  PNG into tiles (guessed tile size, gap, border, skip empty) into a new animation, one per row, or onto the current
+  animation. Tests in `sprite-doc.test.ts`; nothing changed in the runtime.
+- [ ] Not yet: drag-and-drop of frames between animations, a sheet-grid view of a whole sprite, animation preview thumbnails that play,
+  linked cels, blend modes, custom/imported palettes, reference images, hot-reload of a running game, Aseprite/`.pxo` import.
   Semi-transparent pixels can lose precision on save (the webview's canvas premultiplies alpha).
 - [ ] (original plan, still open) layers x frames cels, linked cels, blend modes, palettes, tilemap layers.
 - [ ] Sprite changes update running games on hot reload.
@@ -348,8 +355,18 @@ First slice, built (`SpriteEditor.svelte`, pure logic in `pixels.ts` and `sprite
 - [x] Animations (2026-11-02): an Animate mode with clips (name, length, loop), a scrub bar with key diamonds,
   play/stop, and a pose panel where editing a part's position, rotation or scale keys it at the current time; clips are
   saved in the `.model.json` and exported into the `.glb`, and the runtime plays them (`clip`/`time`, `play_clip`).
-- [ ] Still open: dragging gizmos, UV/texture painting, non-cube shapes, vertex/face editing, easing curves and
-  copy/paste of keys, importing existing GLB, lights/materials, a "preview in game renderer" button.
+- [x] Shapes and meshes (2026-11-02): besides boxes, a part holds wedges, pyramids, cylinders, cones and spheres (sides
+  and smooth/flat shading are settable), each with its own turn about its centre; "Edit points" turns any shape
+  into a free mesh whose points you drag (camera-plane drag, snap to whole units, shift to pick several) and whose
+  faces you click, extrude (negative digs in), delete, flip, split, colour and smooth; points can be deleted, faces
+  made between picked points, close points welded. A "flat square" starts a mesh from nothing. Mirror copies of a
+  shape (X/Y/Z) or of a whole part with its children. One shared triangle generator (`model-mesh.ts`) feeds both the
+  view and the `.glb`; fixture `studio_model_shapes.glb` and the Rust test `studio_shapes_load_and_wind_outwards`
+  pin it to the runtime's importer (outward winding checked by enclosed volume).
+- [ ] Still open: UV/texture painting (the runtime already reads one base-colour texture with UVs per model, but the studio
+  has no stable UV layout or painter yet, and the mesh sampler clamps instead of tiling), skinned meshes and
+  vertex weights (runtime too), live symmetry editing, dragging gizmos for whole shapes, easing curves and copy/paste of
+  keys, importing existing GLB, lights/materials, a "preview in game renderer" button.
 - [ ] (original plan) Model editor: parts hierarchy, cubes then vertex/face editing, per-face UV
   and texture paint, materials, keyframed rigid-bone animation, glTF export.
 - [ ] 3D scene/layout editor: place models, transform gizmos with snapping and

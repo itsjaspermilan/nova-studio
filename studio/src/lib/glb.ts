@@ -2,17 +2,10 @@
 // (so a later bone animation can move them), one mesh per part with flat-coloured cubes baked in
 // as COLOR_0 vertex colours and per-face normals.
 
-import { FACES, hexToRgba, faceColor, walk, type Clip, type Face, type ModelDoc, type Part, type Track, type Vec3 } from "./model-doc";
+import { walk, type Clip, type ModelDoc, type Part, type Track, type Vec3 } from "./model-doc";
+import { FACE_CORNERS, hasVolume, meshOf as solidMesh, type Mesh } from "./model-mesh";
 
-/// Which corner of the box (0 = minimum, 1 = maximum on x, y, z) each face's four vertices are, counter-clockwise seen from outside.
-export const FACE_CORNERS: Record<Face, { normal: Vec3; corners: [number, number, number][] }> = {
-  east: { normal: [1, 0, 0], corners: [[1, 0, 1], [1, 0, 0], [1, 1, 0], [1, 1, 1]] },
-  west: { normal: [-1, 0, 0], corners: [[0, 0, 0], [0, 0, 1], [0, 1, 1], [0, 1, 0]] },
-  up: { normal: [0, 1, 0], corners: [[0, 1, 1], [1, 1, 1], [1, 1, 0], [0, 1, 0]] },
-  down: { normal: [0, -1, 0], corners: [[0, 0, 0], [1, 0, 0], [1, 0, 1], [0, 0, 1]] },
-  south: { normal: [0, 0, 1], corners: [[0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]] },
-  north: { normal: [0, 0, -1], corners: [[1, 0, 0], [0, 0, 0], [0, 1, 0], [1, 1, 0]] },
-};
+export { FACE_CORNERS };
 
 /// Quaternion [x, y, z, w] for rotations in degrees applied X then Y then Z (three.js's "XYZ" Euler order).
 export function eulerToQuaternion(deg: Vec3): [number, number, number, number] {
@@ -27,31 +20,21 @@ export function eulerToQuaternion(deg: Vec3): [number, number, number, number] {
   ];
 }
 
-interface PartMesh {
-  positions: number[];
-  normals: number[];
-  colors: number[];
-  indices: number[];
-}
-
+/// The part's solids as one set of triangles, scaled to world units.
 function meshOf(part: Part, scale: number): PartMesh {
   const m: PartMesh = { positions: [], normals: [], colors: [], indices: [] };
   for (const cube of part.cubes) {
-    if (cube.size.some((s) => s <= 0)) continue; // a flat cube has no volume to draw
-    for (const face of FACES) {
-      const spec = FACE_CORNERS[face];
-      const base = m.positions.length / 3;
-      const rgba = hexToRgba(faceColor(cube, face));
-      for (const c of spec.corners) {
-        for (let axis = 0; axis < 3; axis++) m.positions.push((cube.from[axis]! + (c[axis]! ? cube.size[axis]! : 0)) * scale);
-        m.normals.push(...spec.normal);
-        m.colors.push(...rgba);
-      }
-      m.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-    }
+    const one = solidMesh(cube, scale);
+    const base = m.positions.length / 3;
+    m.positions.push(...one.positions);
+    m.normals.push(...one.normals);
+    m.colors.push(...one.colors);
+    for (const i of one.indices) m.indices.push(base + i);
   }
   return m;
 }
+
+type PartMesh = Pick<Mesh, "positions" | "normals" | "colors" | "indices">;
 
 const pad4 = (n: number) => (n + 3) & ~3;
 
@@ -92,7 +75,7 @@ export function exportGlb(doc: ModelDoc): Uint8Array {
     if (part.rotation.some((v) => v !== 0)) node.rotation = eulerToQuaternion(part.rotation);
     const m = meshOf(part, scale);
     if (m.positions.length) {
-      drawn += part.cubes.filter((c) => c.size.every((s) => s > 0)).length;
+      drawn += part.cubes.filter(hasVolume).length;
       const pos = new Float32Array(m.positions);
       const min = [Infinity, Infinity, Infinity];
       const max = [-Infinity, -Infinity, -Infinity];
@@ -123,7 +106,7 @@ export function exportGlb(doc: ModelDoc): Uint8Array {
     if (childNumbers.length) node.children = childNumbers;
     gltfNodes.push(node);
   }
-  if (drawn === 0) throw new Error("the model has no cubes with volume to export");
+  if (drawn === 0) throw new Error("the model has no shapes with volume to export");
 
   // Animation clips: one channel per keyed property, on the node of the part it names.
   const nodeByNames = new Map<string, number>();
