@@ -479,16 +479,20 @@ export function scatterPoints(centre: [number, number], radius: number, count: n
 
 /// Puts a kind of object on the ground (y = 0) at each (x, z). `vary` gives each a random turn and a size of 0.8 to 1.3, so a
 /// stand of trees does not look stamped. Returns the new scene and the objects' places in the list.
-export function placeObjects(scene: Scene, kind: string, points: [number, number][], rng: () => number, vary = true): { scene: Scene; indexes: number[] } {
+/// `turns` (in radians, one per point) sets an object's turn instead of a random one: it is how objects snapped to a road
+/// stand parallel to it, and they are not resized.
+export function placeObjects(scene: Scene, kind: string, points: [number, number][], rng: () => number, vary = true, turns?: (number | undefined)[]): { scene: Scene; indexes: number[] } {
   const next = clone(scene);
   const list = (next.objects ??= []);
   const indexes: number[] = [];
   const r1 = (n: number) => Math.round(n * 10) / 10;
-  for (const [x, z] of points) {
+  for (const [i, [x, z]] of points.entries()) {
     if (!Number.isFinite(x) || !Number.isFinite(z)) continue;
     const item: Item = { kind, x: r1(x), y: 0 };
     if (z !== 0) item.z = r1(z);
-    if (vary) item.props = { ry: Math.round(rng() * Math.PI * 2 * 1000) / 1000, sx: Math.round((0.8 + rng() * 0.5) * 100) / 100 };
+    const turn = turns?.[i];
+    if (turn !== undefined) item.props = { ry: Math.round(turn * 1000) / 1000 };
+    else if (vary) item.props = { ry: Math.round(rng() * Math.PI * 2 * 1000) / 1000, sx: Math.round((0.8 + rng() * 0.5) * 100) / 100 };
     indexes.push(list.push(item) - 1);
   }
   return { scene: next, indexes };
@@ -517,4 +521,24 @@ export function offRoad(scene: Scene, points: [number, number][], clear = 8): [n
   if (!road.length) return points;
   const near2 = clear * clear;
   return points.filter(([x, z]) => !road.some((r) => (r[0] - x) ** 2 + (r[2] - z) ** 2 < near2));
+}
+
+/// Moves a ground point to the edge of the nearest road piece: `edge` metres from its middle, on the side the point is on, and
+/// returns the turn that makes an object stand along the road (a road piece's `ry` is the way it points; its forward is
+/// (sin ry, cos ry)). Null when the scene has no road within `reach` metres of the point.
+export function snapToRoad(scene: Scene, at: [number, number], edge = 8, reach = 40): { x: number; z: number; ry: number } | null {
+  let best: { d2: number; x: number; z: number; ry: number } | null = null;
+  for (const o of scene.objects ?? []) {
+    if (!String(o.kind).includes("road")) continue;
+    const [x, , z] = positionOf(o);
+    const d2 = (x - at[0]) ** 2 + (z - at[1]) ** 2;
+    if (d2 > reach * reach || (best && d2 >= best.d2)) continue;
+    const ry = Number((o.props as Record<string, unknown> | undefined)?.ry ?? 0) || 0;
+    best = { d2, x, z, ry };
+  }
+  if (!best) return null;
+  // the left of the road is (cos ry, -sin ry); which side is the point on?
+  const lx = Math.cos(best.ry), lz = -Math.sin(best.ry);
+  const side = (at[0] - best.x) * lx + (at[1] - best.z) * lz >= 0 ? 1 : -1;
+  return { x: best.x + lx * edge * side, z: best.z + lz * edge * side, ry: best.ry };
 }

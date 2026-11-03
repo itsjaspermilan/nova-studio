@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { History, eraseNear, offRoad, placeObjects, scatterPoints, cameraOf, moveTo3, positionOf, setCamera, addItem, afterRemoval, boundsOf, drawOrder, duplicateItem, hitTest, moveTo, parseScene, removeItem, serializeScene, setField, snap, uniqueName, worldSize, type Scene } from "./scene-model";
+import { History, snapToRoad, eraseNear, offRoad, placeObjects, scatterPoints, cameraOf, moveTo3, positionOf, setCamera, addItem, afterRemoval, boundsOf, drawOrder, duplicateItem, hitTest, moveTo, parseScene, removeItem, serializeScene, setField, snap, uniqueName, worldSize, type Scene } from "./scene-model";
 
 const text = `{
   "version": 1,
@@ -319,5 +319,35 @@ describe("keeping scenery off the road", () => {
   it("lets everything through when the scene has no road", () => {
     const pts: [number, number][] = [[1, 1], [2, 2]];
     expect(offRoad({ version: 1, objects: [{ kind: "pine", x: 0, y: 0 }] }, pts)).toBe(pts);
+  });
+});
+
+describe("snapping to the edge of the road", () => {
+  // a road piece at the origin pointing along +z (ry 0), and one at x = 100 turned a quarter (pointing along +x)
+  const scene: Scene = { version: 1, objects: [{ kind: "road_asphalt", x: 0, y: 0, z: 0 }, { kind: "road_dirt", x: 100, y: 0, z: 0, props: { ry: Math.PI / 2 } }, { kind: "pine", x: 3, y: 0 }] };
+  it("puts a point `edge` metres from the middle on the side it is on, turned along the road", () => {
+    const right = snapToRoad(scene, [-3, 2], 8)!;
+    expect(right.x).toBeCloseTo(-8);
+    expect(right.z).toBeCloseTo(0);
+    expect(right.ry).toBe(0);
+    const left = snapToRoad(scene, [20, 1], 6)!;
+    expect(left.x).toBeCloseTo(6);
+  });
+  it("follows a turned road piece, and ignores things that are not road", () => {
+    const hit = snapToRoad(scene, [100, 30], 8)!;
+    // the piece points along +x, so its left is (cos, -sin) = (0, -1): a point at +z is on the right
+    expect(hit.x).toBeCloseTo(100);
+    expect(hit.z).toBeCloseTo(8);
+    expect(hit.ry).toBeCloseTo(Math.PI / 2);
+    expect(snapToRoad({ version: 1, objects: [{ kind: "pine", x: 0, y: 0 }] }, [1, 1])).toBeNull();
+  });
+  it("gives up when the road is further than the reach", () => {
+    expect(snapToRoad(scene, [0, 500], 8, 40)).toBeNull();
+  });
+  it("places objects along the road with the given turns and no random size", () => {
+    const r = placeObjects(scene, "lamp", [[8, 0], [1, 1]], () => 0.5, true, [1.5, undefined]);
+    const lamps = r.scene.objects!.slice(-2);
+    expect(lamps[0]!.props).toEqual({ ry: 1.5 });
+    expect(lamps[1]!.props).toHaveProperty("sx");
   });
 });
