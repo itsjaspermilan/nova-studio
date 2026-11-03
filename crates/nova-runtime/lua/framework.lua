@@ -121,6 +121,15 @@ local function finalize(cls)
       defaults[k] = v
     end
   end
+  -- A field with the same name as one of the class's own methods would hide the method on every instance
+  -- (`place = { ... }` next to `function Car:place()`): that is always a mistake, and a confusing one, so say so now.
+  -- (The built-in methods are left alone: a field called `speed` is common and hiding `entity:speed()` is harmless.)
+  for k in pairs(spec) do
+    local method = rawget(cls, k)
+    if defaults[k] ~= nil and type(method) == "function" and bases[cls.__kind][k] ~= method then
+      error(("this %s has a field and a method both called '%s': the field hides the method. Rename one of them."):format(cls.__kind, k), 0)
+    end
+  end
   cls.__defaults, cls.__tags = defaults, tags
   cls.__sprite = spec.sprite or parent.__sprite
   cls.__model = spec.model or parent.__model

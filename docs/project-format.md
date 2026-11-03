@@ -280,6 +280,9 @@ return nova.entity(require("entities.enemy"), { hp = 500, tags = { "boss" } })
 - Inherited methods, defaults and tags come from the parent; a child can override any of them.
 - Built-in fields: `x`, `y`, `z`, `vx`, `vy`, `vz` (velocity moves the entity each step), `sx`,
   `sy` (scale), `angle` (radians), `alpha`, `visible`, `tint` (`{r,g,b}`), `depth`, `id`.
+  Do not keep your own velocity in `vx`/`vy`/`vz` if your code also moves the entity: the engine adds it again
+  (use `velx`, `velz`...). A field with the same name as a method of the same class (`place = 3` and
+  `function Car:place()`) is an error, because the field would hide the method.
 - Sprites draw centred on `x, y`. A `model` draws at `x, y, z` (y up) turned by `ry`
   (or `angle`). `screen = true` draws a sprite in the UI layer, ignoring the camera.
 - `depth`: bigger is further back (default 0). Equal depths draw in creation order.

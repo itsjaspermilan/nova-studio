@@ -1602,3 +1602,30 @@ fn sound_set_queues_a_change_and_explains_a_mistake() {
         assert!(e.contains(expected), "{script}: '{e}'");
     }
 }
+
+#[test]
+fn a_field_and_a_method_with_the_same_name_is_explained() {
+    // the rally game's `place` bug: the field hid the method
+    let g = project(vec![
+        (
+            "entities/car.lua",
+            lua(
+                "local Car = nova.entity { place = 3 }\nfunction Car:place() return 1 end\nreturn Car",
+            ),
+        ),
+        ("main.lua", lua("nova.spawn('car', 0, 0)")),
+    ]);
+    let e = g.error.clone().unwrap_or_default();
+    assert!(e.contains("field and a method both called 'place'"), "{e}");
+    // a field named like a built-in method (speed) is fine, and so is a method with a different name
+    let ok = project(vec![
+        (
+            "entities/car.lua",
+            lua(
+                "local Car = nova.entity { speed = 3 }\nfunction Car:go() return 1 end\nreturn Car",
+            ),
+        ),
+        ("main.lua", lua("nova.spawn('car', 0, 0)")),
+    ]);
+    assert!(ok.error.is_none(), "{:?}", ok.error);
+}
