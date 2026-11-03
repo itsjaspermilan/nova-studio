@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "sign",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "from": [-1.2, 0, -1.2], "size": [2.4, 26, 2.4], "color": "#9ca3af" },
+        { "from": [-13, 22, -1.5], "size": [26, 20, 2.5], "color": "#fcd34d" },
+        { "from": [-10, 25, -2.2], "size": [5, 14, 1], "rotation": [0, 0, -35], "color": "#111827" },
+        { "from": [5, 25, -2.2], "size": [5, 14, 1], "rotation": [0, 0, 35], "color": "#111827" }
+      ],
+      "children": []
+    }
+  ]
+}

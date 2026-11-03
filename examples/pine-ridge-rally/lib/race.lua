@@ -1,0 +1,492 @@
+-- The race: building a circuit's scene into a start grid, the countdown, laps and places, the chase camera, the HUD,
+-- pause and the finish. A circuit's own scene file (scenes/pine_ridge.lua) just says which ground, sky and music it has.
+local state = require("lib.state")
+local track = require("lib.track")
+local world = require("lib.world")
+local grid = require("lib.grid")
+local fx = require("lib.fx")
+local horizon = require("lib.horizon")
+local audio = require("lib.audio")
+local ui = require("lib.ui")
+
+local race = {}
+
+local RIVALS = {
+  { name = "Mika", skill = 0.93, lane = -1.8 },
+  { name = "Dax", skill = 0.88, lane = 2.2 },
+  { name = "Rosa", skill = 0.83, lane = 0.4 },
+}
+local MAP_COLORS = { { 96, 165, 250 }, { 74, 222, 128 }, { 244, 114, 182 } }
+local ROAD_HALF = 6.2        -- metres from the middle to where the grass starts
+local LOOK_FAR = 200         -- metres of scenery drawn around the camera
+
+-- ---- driving: the player's controls and the other drivers ---------------------------------------------------------------
+
+local function read_controls(car)
+  local c = car.ctl
+  c.throttle = nova.input.axis("throttle")
+  c.brake = nova.input.axis("brake")
+  c.steer = nova.input.axis("steer")
+  c.handbrake = nova.input.down("handbrake")
+end
+
+-- Steers a car along the waypoints. `car.skill` (0.8 to 1) is how hard it dares to go.
+local function drive_itself(car)
+  local c = car.ctl
+  local look = 3 + math.floor(math.abs(car.speed) / 8)
+  local target = track.point((car.waypoint or 1) + look)
+  local tx = target.x + target.tz * (car.lane or 0)
+  local tz = target.z - target.tx * (car.lane or 0)
+  local want = math.atan(tx - car.x, tz - car.z)
+  local err = track.wrap(want - car.heading)
+  c.steer = math.max(-1, math.min(1, -err * 2.4))
+  -- slow for the sharpest bend in the next stretch
+  local kmax = 0
+  for j = 1, 14 do kmax = math.max(kmax, math.abs(track.point((car.waypoint or 1) + j).k)) end
+  local a_lat = (car.surface == "rough" and 15 or 22) * (car.skill or 0.9)
+  local want_speed = math.min(car.vmax or 40, math.sqrt(a_lat / math.max(kmax, 0.0008)))
+  want_speed = math.max(want_speed, 13)
+  local diff = want_speed - car.speed
+  c.throttle = diff > 0 and math.min(1, diff / 3) or 0
+  c.brake = diff < -2 and math.min(1, (-diff - 2) / 8) or 0
+  c.handbrake = false
+  if math.abs(err) > 1.0 then c.throttle = math.min(c.throttle, 0.4) end
+end
+
+-- ---- the scene ---------------------------------------------------------------------------------------------------------
+
+function race.define(config)
+  local Race = nova.scene {}
+
+  function Race:enter()
+    local sun = config.sun
+    nova.light { dir = sun.dir, color = sun.color, ambient = sun.ambient }
+    local info = state.current_track()
+    self.laps = state.laps
+    track.ensure()
+    assert(track.count() > 10, "this scene has no waypoints: place `waypoint` objects along the road")
+    self.length = track.length
+    self.phase = "countdown"
+    self.clock = 0              -- time since the green light
+    self.countdown = 3.9
+    self.last_beep = 4
+    self.paused, self.pause_choice = false, 1
+    self.view_mode = 1
+    self.message, self.message_time = "", 0
+    self.cars = {}
+    self.lap_times = {}
+    self.best_lap = nil
+    self.camera = { x = 0, y = 4, z = 0, heading = 0, fov = 62, tx = 0, ty = 1, tz = 0 }
+    self:build_cars()
+    self:build_minimap()
+    self.player.engine = audio.engine(1.0)
+    audio.music(info.music or config.music, { volume = 0.5, fade = 0.8 })
+    self:update_camera(1 / 60)
+  end
+
+  function Race:leave()
+    nova.music.volume(state.music_volume)
+    world.clear(); track.clear(); grid.clear(); fx.clear()
+  end
+
+  -- The player and three rivals on the grid; the player starts third.
+  function Race:build_cars()
+    local mine = state.current_car().id
+    local pool = {}
+    for _, c in ipairs(state.cars) do if c.id ~= mine then pool[#pool + 1] = c.id end end
+    local slots = { 1, 2, 4 }  -- the rivals' places; the player has slot 3
+    local length = self.length
+    local function put(kind, slot)
+      local g = grid.slots[slot] or grid.slots[1]
+      local car = nova.spawn(kind, g.x, 0, { z = g.z })
+      car:teleport(g.x, g.z, g.heading)
+      car.slot = slot
+      car.grip_scale = config.grip or 1
+      car.dust_color = config.dust or { 200, 190, 160 }
+      local idx, s = track.locate(car.x, car.z)
+      car.waypoint = idx
+      car.last_s = s
+      car.progress = s - length   -- behind the line: negative until it is crossed
+      return car
+    end
+    self.player = put(mine, 3)
+    self.player.is_player = true
+    self.player.name = "You"
+    self.cars[1] = self.player
+    for i, r in ipairs(RIVALS) do
+      local car = put(pool[i], slots[i])
+      car.name, car.skill, car.lane = r.name, r.skill, r.lane
+      car.vmax = 40 * r.skill + 4
+      car.engine = audio.engine(0.55)
+      self.cars[#self.cars + 1] = car
+    end
+  end
+
+  function Race:build_minimap()
+    local lo_x, hi_x, lo_z, hi_z = 1e9, -1e9, 1e9, -1e9
+    for i = 1, track.count(), 2 do
+      local p = track.point(i)
+      lo_x, hi_x, lo_z, hi_z = math.min(lo_x, p.x), math.max(hi_x, p.x), math.min(lo_z, p.z), math.max(hi_z, p.z)
+    end
+    local scale = 120 / math.max(hi_x - lo_x, hi_z - lo_z)
+    -- north (+z) is at the top and +x on the left, as seen from behind a car leaving the start line
+    self.map = { scale = scale, hi_x = hi_x, hi_z = hi_z, dots = {}, w = (hi_x - lo_x) * scale, h = (hi_z - lo_z) * scale }
+    for i = 1, track.count(), 2 do
+      local p = track.point(i)
+      self.map.dots[#self.map.dots + 1] = { (hi_x - p.x) * scale, (hi_z - p.z) * scale }
+    end
+  end
+
+  function Race:say(text, seconds)
+    self.message, self.message_time = text, seconds or 2
+  end
+
+  -- Where each car is: waypoint, distance along the circuit, and how far from the middle of the road.
+  function Race:locate(car)
+    local idx, s, left, dist = track.locate(car.x, car.z, car.waypoint)
+    car.waypoint = idx
+    car.left, car.off_middle = left, dist
+    -- progress is the running total of distance covered (it goes down when driving backwards)
+    local delta = s - car.last_s
+    if delta > self.length / 2 then delta = delta - self.length
+    elseif delta < -self.length / 2 then delta = delta + self.length end
+    car.progress = car.progress + delta
+    car.last_s = s
+    car.surface = car.off_middle > ROAD_HALF + 0.8 and "rough" or (config.surface or "road")
+  end
+
+  function Race:lap_of(car) return math.floor(car.progress / self.length) + 1 end
+
+  function Race:places()
+    local order = {}
+    for _, c in ipairs(self.cars) do order[#order + 1] = c end
+    table.sort(order, function(a, b)
+      if a.finish_time and b.finish_time then return a.finish_time < b.finish_time end
+      if a.finish_time then return true end
+      if b.finish_time then return false end
+      return a.progress > b.progress
+    end)
+    for i, c in ipairs(order) do c.place = i end
+    return order
+  end
+
+  function Race:respawn(car)
+    local p = track.point(car.waypoint or 1)
+    car:teleport(p.x, p.z, p.heading)
+    car.surface = config.surface or "road"
+    car.stuck = 0
+    car.off_middle = 0
+  end
+
+  function Race:bump_cars()
+    for i = 1, #self.cars do
+      for j = i + 1, #self.cars do
+        local a, b = self.cars[i], self.cars[j]
+        local dx, dz = b.x - a.x, b.z - a.z
+        local d2 = dx * dx + dz * dz
+        if d2 < 3.6 * 3.6 then
+          local d = math.max(0.01, math.sqrt(d2))
+          local nx, nz = dx / d, dz / d
+          local push = (3.6 - d) / 2
+          a.x, a.z, b.x, b.z = a.x - nx * push, a.z - nz * push, b.x + nx * push, b.z + nz * push
+          local rel = (b.velx - a.velx) * nx + (b.velz - a.velz) * nz
+          if rel < 0 then
+            local share = rel * 0.55
+            a.velx, a.velz, b.velx, b.velz = a.velx + nx * share, a.velz + nz * share, b.velx - nx * share, b.velz - nz * share
+            if (a.is_player or b.is_player) and a.bump_cooldown <= 0 and rel < -1.5 then
+              a.bump_cooldown, b.bump_cooldown = 0.4, 0.4
+              audio.sfx("bump", { volume = math.min(1, -rel / 8) })
+            end
+          end
+        end
+      end
+    end
+  end
+
+  function Race:finish_car(car)
+    car.finish_time = self.clock
+    if car.is_player then
+      audio.sfx("finish")
+      self.player_finished_at = self.clock
+      self:say("FINISH!", 4)
+      car.autopilot = true
+      car.skill, car.vmax, car.lane = 0.8, 30, 0
+    end
+  end
+
+  function Race:update_player_lap()
+    local p = self.player
+    local lap = math.floor(p.progress / self.length)    -- laps completed (negative before the start line)
+    if lap <= (p.laps_done or -1) then return end
+    p.laps_done = lap
+    if lap < 1 then return end
+    local t = self.clock - (p.lap_started or 0)
+    p.lap_started = self.clock
+    self.lap_times[#self.lap_times + 1] = t
+    local record = not self.best_lap or t < self.best_lap
+    if record then self.best_lap = t end
+    nova.log(string.format("lap %d done in %s", lap, ui.time(t)))
+    if lap < self.laps then
+      audio.sfx(record and "best_lap" or "lap")
+      self:say((lap + 1 == self.laps and "FINAL LAP   " or ("LAP " .. (lap + 1) .. "   ")) .. ui.time(t), 2.6)
+    end
+  end
+
+  function Race:update(dt)
+    if self.phase ~= "countdown" and not self.player_finished_at and nova.input.pressed("pause") then
+      self.paused = not self.paused
+      self.pause_choice = 1
+      nova.music.volume(state.music_volume * (self.paused and 0.35 or 1))
+      audio.sfx("pause")
+      return
+    end
+    if self.paused then return self:update_pause() end
+
+    if self.message_time > 0 then self.message_time = self.message_time - dt end
+    if nova.input.pressed("view") then self.view_mode = self.view_mode % 3 + 1 end
+    -- F9 lets the computer drive for you (for demos, and for testing the circuits without a controller)
+    if nova.input.pressed("autodrive") then
+      self.player.autopilot = not self.player.autopilot
+      self.player.skill, self.player.vmax, self.player.lane = 0.95, 44, 0
+    end
+
+    if self.phase == "countdown" then
+      self.countdown = self.countdown - dt
+      local whole = math.ceil(self.countdown)
+      if whole < self.last_beep and whole >= 1 and whole <= 3 then
+        audio.sfx("beep")
+        self.last_beep = whole
+      end
+      if self.countdown <= 0 then
+        nova.log("go")
+        self.phase = "racing"
+        audio.sfx("go")
+        for _, c in ipairs(self.cars) do c.enabled = true end
+        self.clock = 0
+        self:say("GO!", 1.2)
+      end
+    else
+      self.clock = self.clock + dt
+    end
+
+    for _, car in ipairs(self.cars) do
+      if car.is_player and not car.autopilot then read_controls(car) else drive_itself(car) end
+      if car.finish_time and not car.is_player then car.vmax = 26 end
+      car:drive(dt)
+      self:locate(car)
+    end
+    self:bump_cars()
+
+    if self.phase == "racing" then
+      -- rivals try a little harder when behind the player, and a little less when far ahead
+      for _, car in ipairs(self.cars) do
+        if not car.is_player and not car.finish_time then
+          local gap = self.player.progress - car.progress        -- positive: the rival is behind
+          car.vmax = (40 * car.skill + 4) * (1 + math.max(-0.07, math.min(0.07, gap * 0.0004)))
+        end
+      end
+      self:update_player_lap()
+      for _, car in ipairs(self.cars) do
+        if not car.finish_time and car.progress >= self.laps * self.length then self:finish_car(car) end
+      end
+    end
+
+    -- help for every car: far off the road, or stuck against something
+    local p = self.player
+    if self.phase == "racing" then
+      for _, car in ipairs(self.cars) do
+        local asked = car == p and not p.autopilot and nova.input.pressed("reset")
+        if math.abs(car.speed) < 1.5 and car.enabled then car.stuck = (car.stuck or 0) + dt else car.stuck = 0 end
+        if asked or car.off_middle > 60 or car.stuck > 4 then
+          self:respawn(car)
+          if car == p then self:say("Back on the road", 1.5) else nova.log(car.name .. " put back on the road") end
+        end
+      end
+    end
+
+    -- the sound of every engine that is close enough to hear
+    for _, car in ipairs(self.cars) do
+      if car.engine then
+        local rev = math.min(1, math.abs(car.speed) / 42 * 0.8 + car.ctl.throttle * 0.2)
+        if car.is_player then
+          car.engine:update(dt, rev, car.ctl.throttle, car.surface == "rough" and math.abs(car.speed) > 3, car.slip)
+        else
+          local d = math.sqrt((car.x - p.x) ^ 2 + (car.z - p.z) ^ 2)
+          if d < 70 then
+            car.engine.volume = 0.5 * (1 - d / 70)
+            car.engine:update(dt, rev, car.ctl.throttle)
+          end
+        end
+      end
+      if car.hit then
+        if car.is_player then audio.sfx("bump", { volume = car.hit }) end
+        car.hit = nil
+      end
+    end
+
+    fx.update(dt)
+    self:places()
+    self:update_camera(dt)
+
+    -- the race is over a few seconds after the player finishes
+    if self.player_finished_at and self.clock - self.player_finished_at > 4 then self:to_results() end
+  end
+
+  -- ---- camera ---------------------------------------------------------------------------------------------------------
+
+  function Race:update_camera(dt)
+    local p, cam = self.player, self.camera
+    local sinh, cosh = math.sin(p.heading), math.cos(p.heading)
+    local speed = math.abs(p.speed)
+    if self.phase == "countdown" then
+      -- a slow sweep round the car before the lights go out
+      local t = 1 - math.max(0, self.countdown) / 3.9
+      local a = p.heading + math.pi * (1.2 - 1.2 * t)
+      cam.heading = p.heading
+      cam.x, cam.z, cam.y = p.x + math.sin(a + math.pi) * 9, p.z + math.cos(a + math.pi) * 9, 3.2 - 0.5 * t
+      cam.tx, cam.ty, cam.tz = p.x, 1.0, p.z
+      cam.fov = 58
+      return
+    end
+    -- the camera's own heading trails the car's a little, so a bend swings into view
+    local diff = track.wrap(p.heading - cam.heading)
+    cam.heading = cam.heading + diff * math.min(1, dt * 4.5)
+    local sh, ch = math.sin(cam.heading), math.cos(cam.heading)
+    if self.view_mode == 3 then          -- bonnet
+      cam.x, cam.y, cam.z = p.x + sinh * 0.6, 1.25, p.z + cosh * 0.6
+      cam.tx, cam.ty, cam.tz = p.x + sinh * 20, 1.1, p.z + cosh * 20
+      cam.fov = 70 + speed * 0.2
+    else
+      local near = self.view_mode == 1
+      local back = (near and 6.4 or 9.5) + speed * 0.03
+      cam.x, cam.y, cam.z = p.x - sh * back, near and 2.6 or 4.2, p.z - ch * back
+      cam.tx, cam.ty, cam.tz = p.x + sh * 5, 1.1, p.z + ch * 5
+      cam.fov = 62 + speed * 0.28
+    end
+  end
+
+  function Race:draw()
+    local cam = self.camera
+    nova.camera(cam.x, cam.y, cam.z, cam.tx, cam.ty, cam.tz, cam.fov)
+    horizon.draw(cam.x, cam.z, config.horizon)
+    world.draw(cam.x, cam.z, LOOK_FAR)
+    fx.draw()
+  end
+
+  -- ---- the HUD ----------------------------------------------------------------------------------------------------------
+
+  function Race:draw_ui()
+    local w = nova.view()
+    local p = self.player
+    -- speed, bottom right
+    local kmh = math.floor(math.abs(p.speed) * 3.6 + 0.5)
+    ui.panel(w - 200, 448, 180, 76, 150)
+    ui.right(tostring(kmh), w - 74, 454, 52, ui.color.white, { font = "display" })
+    ui.text(w - 68, 488, "km/h", 18, ui.color.dim)
+    local fill = math.min(1, math.abs(p.speed) / 44)
+    nova.ui.rect(w - 190, 508, 160, 6, { 255, 255, 255, 50 })
+    nova.ui.rect(w - 190, 508, 160 * fill, 6, fill > 0.85 and { 239, 68, 68 } or { 245, 158, 11 })
+
+    -- place and lap, top left
+    ui.panel(16, 16, 190, 70, 150)
+    ui.text(28, 20, ui.ordinal(p.place or 1), 40, ui.color.gold, { font = "display" })
+    ui.text(100, 30, "/ " .. #self.cars, 22, ui.color.dim)
+    local lap = math.max(1, math.min(self.laps, self:lap_of(p)))
+    ui.text(28, 62, "LAP " .. lap .. " / " .. self.laps, 18, ui.color.white)
+
+    -- times, top right
+    ui.panel(w - 210, 16, 194, 70, 150)
+    ui.text(w - 198, 22, "TIME  " .. ui.time(math.max(0, self.clock)), 20, ui.color.white)
+    ui.text(w - 198, 46, "LAST  " .. ui.time(self.lap_times[#self.lap_times]), 16, ui.color.dim)
+    ui.text(w - 198, 64, "BEST  " .. ui.time(self.best_lap), 16, ui.color.gold)
+
+    -- minimap, bottom left
+    local m = self.map
+    local mx, my = 24, 540 - 24 - m.h - 10
+    ui.panel(mx - 10, my - 8, m.w + 20, m.h + 26, 140)
+    for _, d in ipairs(m.dots) do nova.ui.rect(mx + d[1] - 1, my + d[2] - 1, 3, 3, { 255, 255, 255, 140 }) end
+    for i = #self.cars, 1, -1 do
+      local car = self.cars[i]
+      local dx, dz = (m.hi_x - car.x) * m.scale, (m.hi_z - car.z) * m.scale
+      local size = car.is_player and 7 or 5
+      local colour = car.is_player and { 252, 211, 77 } or MAP_COLORS[(i - 2) % 3 + 1]
+      nova.ui.rect(mx + dx - size / 2, my + dz - size / 2, size, size, colour)
+    end
+
+    -- countdown, messages, wrong way
+    if self.phase == "countdown" then
+      local n = math.ceil(self.countdown)
+      if n >= 1 and n <= 3 then
+        local frac = self.countdown - (n - 1)
+        ui.center(tostring(n), 70 - (1 - frac) * 10, 130 * (0.7 + 0.3 * frac), ui.color.gold, { font = "display" })
+      end
+    end
+    if self.message_time > 0 then
+      ui.center(self.message, 110, 44, self.message == "GO!" and ui.color.green or ui.color.white, { font = "comic" })
+    end
+    local here = track.point(p.waypoint or 1)
+    if self.phase == "racing" and math.abs(p.speed) > 4 then
+      local facing = math.sin(p.heading) * here.tx + math.cos(p.heading) * here.tz
+      if facing < -0.3 then ui.center("WRONG WAY", 190, 40, ui.color.red, { font = "comic" }) end
+    end
+    if p.surface == "rough" and self.phase == "racing" and p.off_middle > 14 then
+      ui.center("Press R to get back on the road", 470, 18, ui.color.dim)
+    end
+
+    if self.paused then self:draw_pause() end
+  end
+
+  -- ---- pause -----------------------------------------------------------------------------------------------------------
+
+  local PAUSE_ITEMS = { "Resume", "Restart race", "Quit to menu" }
+
+  function Race:update_pause()
+    local choice, action = ui.navigate(self.pause_choice, #PAUSE_ITEMS)
+    self.pause_choice = choice
+    if action == "back" or (action == "accept" and choice == 1) then
+      if action == "accept" then audio.sfx("menu_accept") end
+      self.paused = false
+      nova.music.volume(state.music_volume)
+    elseif action == "accept" then
+      audio.sfx("menu_accept")
+      if choice == 2 then
+        nova.restart_scene()
+      else
+        audio.stop_music(0.4)
+        nova.goto_scene("title", "select")
+      end
+    end
+  end
+
+  function Race:draw_pause()
+    local w = nova.view()
+    nova.ui.rect(0, 0, w, 540, { 0, 0, 0, 140 })
+    ui.center("PAUSED", 120, 56, ui.color.white, { font = "comic" })
+    ui.menu(PAUSE_ITEMS, self.pause_choice, 220)
+  end
+
+  -- ---- the end -----------------------------------------------------------------------------------------------------------
+
+  function Race:to_results()
+    local order = self:places()
+    local info = state.current_track()
+    local rows = {}
+    for i, car in ipairs(order) do
+      rows[i] = { name = car.name, car = car.model_id, place = i, time = car.finish_time, you = car.is_player }
+    end
+    local me = self.player
+    state.result = {
+      track = info.id, track_name = info.name, laps = self.laps, rows = rows, place = me.place, time = me.finish_time,
+      best_lap = self.best_lap, record_time = false, record_lap = false,
+    }
+    if me.finish_time then state.result.record_time = state.submit("race" .. self.laps, info.id, me.finish_time) end
+    if self.best_lap then state.result.record_lap = state.submit("lap", info.id, self.best_lap) end
+    nova.log(string.format("results: place %d of %d, time %s", me.place, #order, ui.time(me.finish_time)))
+    audio.stop_music(0.5)
+    nova.goto_scene("results")
+  end
+
+  return Race
+end
+
+return race

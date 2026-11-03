@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "bush",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "shape": "sphere", "from": [-14, 0, -14], "size": [28, 18, 28], "segments": 6, "smooth": false, "color": "#9a8a4a" },
+        { "shape": "sphere", "from": [-6, 6, -6], "size": [20, 14, 18], "segments": 6, "smooth": false, "color": "#b6a35a" }
+      ],
+      "children": []
+    }
+  ]
+}

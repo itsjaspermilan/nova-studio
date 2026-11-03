@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "rock",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "shape": "sphere", "from": [-26, -6, -22], "size": [52, 40, 44], "segments": 6, "smooth": false, "color": "#a8553a" },
+        { "shape": "sphere", "from": [4, -4, 2], "size": [30, 28, 28], "segments": 6, "smooth": false, "color": "#b9694a" }
+      ],
+      "children": []
+    }
+  ]
+}

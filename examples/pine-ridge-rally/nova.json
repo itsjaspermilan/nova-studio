@@ -1,0 +1,55 @@
+{
+  "format": 1,
+  "name": "Pine Ridge Rally",
+  "version": "0.1.0",
+  "input": {
+    "throttle": [
+      "key:ArrowUp",
+      "key:KeyW",
+      "pad:r2",
+      "axis:r2",
+      "pad:south",
+      "touch:right"
+    ],
+    "brake": [
+      "key:ArrowDown",
+      "key:KeyS",
+      "pad:l2",
+      "axis:l2",
+      "pad:west"
+    ],
+    "handbrake": [
+      "key:Space",
+      "pad:east",
+      "pad:r1"
+    ],
+    "steer": {
+      "negative": [
+        "key:ArrowLeft",
+        "key:KeyA",
+        "axis:left_x-"
+      ],
+      "positive": [
+        "key:ArrowRight",
+        "key:KeyD",
+        "axis:left_x+"
+      ]
+    },
+    "pause": [
+      "key:Escape",
+      "key:KeyP",
+      "pad:start"
+    ],
+    "reset": [
+      "key:KeyR",
+      "pad:north"
+    ],
+    "view": [
+      "key:KeyC",
+      "pad:l1"
+    ],
+    "autodrive": [
+      "key:F9"
+    ]
+  }
+}

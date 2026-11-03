@@ -313,13 +313,20 @@ tool("check", "Check the project the way the studio's Problems panel does: load 
 
 tool(
   "screenshot",
-  "Run the project headless for some frames and return a picture of the last one. Nothing presses keys, so use it for menus and for demo modes.",
-  { frames: { type: "number", description: "How many frames to run first (60 = one second). Default 90." }, width: { type: "number" }, height: { type: "number" } },
+  "Run the project headless for some frames and return a picture of the last one. Keys are pressed only as `press` and `hold` say, so use those to get past menus and into the game.",
+  {
+    frames: { type: "number", description: "How many frames to run first (60 = one second). Default 90." },
+    press: { type: "array", items: { type: "string" }, description: 'Taps, each "source@frame", for example "key:Enter@30": the key is held for two frames from that frame. Use them to get past menus.' },
+    hold: { type: "array", items: { type: "string" }, description: 'Actions held every frame, for example ["throttle", "steer=0.3"].' },
+    width: { type: "number" },
+    height: { type: "number" },
+  },
   [],
   (a) => {
     const root = projectRoot(a);
     const out = join(tmpdir(), `nova-shot-${Date.now()}.png`);
-    const r = run(novaBin, ["run", root, "--headless", "--frames", String(a.frames ?? 90), "--size", `${a.width ?? 960}x${a.height ?? 540}`, "--capture", out]);
+    const extra = [...(a.press?.length ? ["--press", a.press.join(",")] : []), ...(a.hold?.length ? ["--hold", a.hold.join(",")] : [])];
+    const r = run(novaBin, ["run", root, "--headless", "--frames", String(a.frames ?? 90), "--size", `${a.width ?? 960}x${a.height ?? 540}`, ...extra, "--capture", out]);
     if (!existsSync(out)) throw new Error(`no picture was made:\n${r.out}`);
     return { text: `${r.out.split("\n").slice(-3).join("\n")}\nsaved at ${out}`, images: [out] };
   },

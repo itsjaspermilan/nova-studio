@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "road",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "from": [-96, 0, -50], "size": [192, 2, 100], "color": "#a67c4e" },
+        { "from": [-92, 2, -50], "size": [4, 0.4, 100], "color": "#d9b88a" },
+        { "from": [88, 2, -50], "size": [4, 0.4, 100], "color": "#d9b88a" }
+      ],
+      "children": []
+    }
+  ]
+}

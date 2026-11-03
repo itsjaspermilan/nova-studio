@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "cloud",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "shape": "sphere", "from": [-120, 0, -50], "size": [140, 50, 100], "segments": 8, "smooth": false, "color": "#ffffff" },
+        { "shape": "sphere", "from": [-20, 14, -50], "size": [130, 56, 100], "segments": 8, "smooth": false, "color": "#ffffff" },
+        { "shape": "sphere", "from": [60, 0, -40], "size": [110, 44, 80], "segments": 8, "smooth": false, "color": "#f1f5f9" }
+      ],
+      "children": []
+    }
+  ]
+}

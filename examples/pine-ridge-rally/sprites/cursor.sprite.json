@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "image": "cursor.png",
+  "frame_width": 8,
+  "frame_height": 11,
+  "columns": 1,
+  "frames": 1,
+  "frame_duration_ms": 100
+}

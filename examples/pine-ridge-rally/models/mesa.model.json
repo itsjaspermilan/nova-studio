@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "mesa",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "from": [-90, 0, -70], "size": [180, 70, 140], "color": "#b5532f" },
+        { "from": [-84, 70, -64], "size": [168, 40, 128], "color": "#c8693f" },
+        { "from": [-72, 110, -54], "size": [144, 14, 108], "color": "#d8b27c" }
+      ],
+      "children": []
+    }
+  ]
+}

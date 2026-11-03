@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "tower",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "from": [-40, 0, -30], "size": [80, 90, 60], "color": "#e5e7eb" },
+        { "from": [-46, 90, -36], "size": [92, 8, 72], "color": "#d62828" },
+        { "from": [-34, 98, -24], "size": [68, 26, 48], "color": "#27384d" },
+        { "from": [-30, 124, -20], "size": [60, 5, 40], "color": "#e5e7eb" },
+        { "from": [-1, 129, -1], "size": [2, 40, 2], "color": "#9ca3af" },
+        { "from": [1, 150, -1], "size": [30, 18, 1], "color": "#fcd34d" }
+      ],
+      "children": []
+    }
+  ]
+}

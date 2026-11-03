@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "image": "flag.png",
+  "frame_width": 16,
+  "frame_height": 16,
+  "columns": 2,
+  "frames": 2,
+  "frame_duration_ms": 260,
+  "tags": [
+    {
+      "name": "wave",
+      "from": 0,
+      "to": 1
+    }
+  ]
+}

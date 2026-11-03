@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "image": "medal.png",
+  "frame_width": 16,
+  "frame_height": 16,
+  "columns": 3,
+  "frames": 3,
+  "frame_duration_ms": 100,
+  "tags": [
+    {
+      "name": "gold",
+      "from": 0,
+      "to": 0
+    },
+    {
+      "name": "silver",
+      "from": 1,
+      "to": 1
+    },
+    {
+      "name": "bronze",
+      "from": 2,
+      "to": 2
+    }
+  ]
+}

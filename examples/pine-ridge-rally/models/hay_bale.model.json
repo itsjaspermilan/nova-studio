@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "bale",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "from": [-18, 0, -12], "size": [36, 20, 24], "color": "#e0b84a" },
+        { "from": [-18.3, 0, -4], "size": [36.6, 20.3, 1.2], "color": "#a47a1e" },
+        { "from": [-18.3, 0, 3], "size": [36.6, 20.3, 1.2], "color": "#a47a1e" }
+      ],
+      "children": []
+    }
+  ]
+}

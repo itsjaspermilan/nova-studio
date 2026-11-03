@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "tree",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "from": [-3.5, 0, -3.5], "size": [7, 40, 7], "color": "#7a5230" },
+        { "shape": "sphere", "from": [-30, 30, -30], "size": [60, 54, 60], "segments": 8, "smooth": false, "color": "#9bbf4a" },
+        { "shape": "sphere", "from": [-18, 54, -16], "size": [38, 34, 38], "segments": 8, "smooth": false, "color": "#9bbf4a" }
+      ],
+      "children": []
+    }
+  ]
+}

@@ -1,0 +1,139 @@
+-- The front of the game: the title card, the main menu, how to play, options, and choosing a circuit and a car.
+-- They are screens of one scene, so the car keeps turning and the music keeps playing between them.
+local state = require("lib.state")
+local audio = require("lib.audio")
+local ui = require("lib.ui")
+local backdrop = require("lib.backdrop")
+
+local Title = nova.scene {}
+
+local MENU = { "Race", "How to play", "Options" }
+local CONTROLS = {
+  { "Steer", "Left / Right  ·  A / D  ·  left stick" },
+  { "Accelerate", "Up  ·  W  ·  right trigger  ·  A button" },
+  { "Brake / reverse", "Down  ·  S  ·  left trigger  ·  X button" },
+  { "Handbrake (slides)", "Space  ·  B button  ·  right bumper" },
+  { "Back on the road", "R  ·  Y button" },
+  { "Change camera", "C  ·  left bumper" },
+  { "Pause", "Esc  ·  P  ·  Start" },
+}
+
+function Title:enter(screen)
+  backdrop.light()
+  self.screen = screen or "title"
+  self.choice = 1
+  self.t = 0
+  audio.music("menu", { volume = 0.6, fade = 0.8 })
+  state.apply_volumes()
+end
+
+function Title:leave() backdrop.leave() end
+
+function Title:go(screen)
+  self.screen, self.choice = screen, 1
+end
+
+local function wear()
+  local car = nova.first("show")
+  if car then car:wear() end
+end
+
+function Title:update(dt)
+  self.t = self.t + dt
+  local screen = self.screen
+  if screen == "title" then
+    if nova.input.pressed("start") or nova.input.pressed("a") then
+      audio.sfx("menu_accept")
+      self:go("menu")
+    end
+  elseif screen == "menu" then
+    local choice, action = ui.navigate(self.choice, #MENU)
+    self.choice = choice
+    if action == "back" then audio.sfx("menu_back"); self:go("title")
+    elseif action == "accept" then
+      audio.sfx("menu_accept")
+      self:go(({ "select", "howto", "options" })[choice])
+    end
+  elseif screen == "howto" then
+    if nova.input.pressed("a") or nova.input.pressed("b") or nova.input.pressed("start") then audio.sfx("menu_back"); self:go("menu") end
+  elseif screen == "options" then
+    local choice, action = ui.navigate(self.choice, 3)
+    self.choice = choice
+    local step = (action == "right" and 0.1) or (action == "left" and -0.1) or 0
+    if choice == 1 and step ~= 0 then state.music_volume = math.max(0, math.min(1, state.music_volume + step)); state.save_options(); audio.sfx("menu_move") end
+    if choice == 2 and step ~= 0 then state.sfx_volume = math.max(0, math.min(1, state.sfx_volume + step)); state.save_options(); audio.sfx("menu_move") end
+    if action == "back" or (action == "accept" and choice == 3) then audio.sfx("menu_back"); self:go("menu") end
+  elseif screen == "select" then
+    local choice, action = ui.navigate(self.choice, 4)
+    self.choice = choice
+    local step = (action == "right" and 1) or (action == "left" and -1) or 0
+    if choice == 1 and step ~= 0 then state.track = (state.track - 1 + step) % #state.tracks + 1; state.laps = state.current_track().laps; audio.sfx("menu_move") end
+    if choice == 2 and step ~= 0 then state.car = (state.car - 1 + step) % #state.cars + 1; wear(); audio.sfx("menu_move") end
+    if choice == 3 and step ~= 0 then state.laps = math.max(1, math.min(5, state.laps + step)); audio.sfx("menu_move") end
+    if action == "back" then audio.sfx("menu_back"); self:go("menu")
+    elseif action == "accept" and choice == 4 then
+      audio.sfx("menu_accept")
+      state.save_options()
+      audio.stop_music(0.6)
+      self:after(0.35, function() nova.goto_scene(state.current_track().id) end)
+      self.screen = "starting"
+    end
+  end
+end
+
+function Title:draw()
+  backdrop.draw(self.t, "title")
+end
+
+local function logo(t)
+  ui.center("PINE RIDGE", 70 + math.sin(t * 1.3) * 3, 84, ui.color.gold, { font = "comic" })
+  ui.center("RALLY", 150, 64, ui.color.white, { font = "comic" })
+end
+
+function Title:draw_ui()
+  local w = nova.view()
+  local screen = self.screen
+  if screen == "title" or screen == "starting" then
+    ui.letterbox()
+    logo(self.t)
+    if screen == "title" and math.floor(self.t * 1.6) % 2 == 0 then ui.center("PRESS START", 420, 28, ui.color.white) end
+    ui.center("two circuits  ·  three rivals  ·  one chance to get it right", 484, 16, ui.color.dim)
+  elseif screen == "menu" then
+    logo(self.t)
+    ui.menu(MENU, self.choice, 270)
+  elseif screen == "howto" then
+    ui.center("HOW TO PLAY", 40, 44, ui.color.gold, { font = "comic" })
+    ui.panel(w / 2 - 330, 110, 660, 340, 200)
+    for i, row in ipairs(CONTROLS) do
+      ui.text(w / 2 - 306, 124 + (i - 1) * 42, row[1], 20, ui.color.gold)
+      ui.text(w / 2 - 70, 124 + (i - 1) * 42, row[2], 18, ui.color.white)
+    end
+    ui.center("Finish all the laps ahead of your rivals. The grass slows you down; the handbrake lets the back out.", 405, 14, ui.color.dim, { cx = w / 2 })
+    ui.center("press A", 480, 18, ui.color.dim)
+  elseif screen == "options" then
+    ui.center("OPTIONS", 60, 52, ui.color.gold, { font = "comic" })
+    ui.menu({
+      { "Music volume", string.format("< %d%% >", math.floor(state.music_volume * 100 + 0.5)) },
+      { "Sound volume", string.format("< %d%% >", math.floor(state.sfx_volume * 100 + 0.5)) },
+      "Back",
+    }, self.choice, 180, { width = 420 })
+  elseif screen == "select" then
+    local info = state.current_track()
+    ui.center("CHOOSE YOUR RACE", 30, 44, ui.color.gold, { font = "comic" })
+    ui.menu({
+      { "Circuit", "< " .. info.name .. " >" },
+      { "Car", "< " .. state.current_car().name .. " >" },
+      { "Laps", "< " .. state.laps .. " >" },
+      "START RACE",
+    }, self.choice, 110, { width = 460 })
+    ui.panel(w / 2 - 230, 300, 460, 120, 190)
+    ui.text(w / 2 - 214, 308, info.blurb, 16, ui.color.white, { width = 430 })
+    local best = state.best("race" .. state.laps, info.id)
+    local lap = state.best("lap", info.id)
+    ui.text(w / 2 - 214, 372, "Best " .. state.laps .. " laps  " .. ui.time(best), 18, ui.color.gold)
+    ui.text(w / 2 - 214, 396, "Best lap  " .. ui.time(lap), 18, ui.color.gold)
+    ui.center("up / down: choose     left / right: change     A: go     B: back", 490, 14, ui.color.dim)
+  end
+end
+
+return Title

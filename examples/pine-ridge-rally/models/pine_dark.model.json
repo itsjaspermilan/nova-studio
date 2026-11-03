@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "tree",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "from": [-3, 0, -3], "size": [6, 28, 6], "color": "#6b4423" },
+        { "shape": "cone", "from": [-27, 18, -27], "size": [54, 46, 54], "segments": 8, "smooth": false, "color": "#24543a" },
+        { "shape": "cone", "from": [-21, 48, -21], "size": [42, 42, 42], "segments": 8, "smooth": false, "color": "#2b6444" },
+        { "shape": "cone", "from": [-14, 78, -14], "size": [28, 38, 28], "segments": 8, "smooth": false, "color": "#347653" }
+      ],
+      "children": []
+    }
+  ]
+}

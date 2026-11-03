@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "stack",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "shape": "cylinder", "from": [-13, 0, -13], "size": [26, 9, 26], "segments": 10, "color": "#d62828" },
+        { "shape": "cylinder", "from": [-13, 9, -13], "size": [26, 9, 26], "segments": 10, "color": "#f8fafc" },
+        { "shape": "cylinder", "from": [-13, 18, -13], "size": [26, 9, 26], "segments": 10, "color": "#d62828" },
+        { "shape": "cylinder", "from": [-6, 0, -6], "size": [12, 28, 12], "segments": 8, "color": "#202020" }
+      ],
+      "children": []
+    }
+  ]
+}

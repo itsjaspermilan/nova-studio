@@ -16,7 +16,9 @@ fn main() -> ExitCode {
     let result = std::fs::read(input)
         .map_err(|e| format!("cannot read {input}: {e}"))
         .and_then(|wav| studio_lib::audio_files::wav_to_ogg(&wav, quality))
-        .and_then(|ogg| std::fs::write(output, ogg).map_err(|e| format!("cannot write {output}: {e}")));
+        .and_then(|ogg| {
+            std::fs::write(output, ogg).map_err(|e| format!("cannot write {output}: {e}"))
+        });
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {

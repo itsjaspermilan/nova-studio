@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "rail",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "from": [-1, 7, -48], "size": [2, 7, 96], "color": "#9ca3af" },
+        { "from": [-1.2, 9, -48], "size": [2.4, 1, 96], "color": "#e5e7eb" },
+        { "from": [-1.5, 0, -44], "size": [3, 11, 3], "color": "#6b7280" },
+        { "from": [-1.5, 0, 41], "size": [3, 11, 3], "color": "#6b7280" }
+      ],
+      "children": []
+    }
+  ]
+}
