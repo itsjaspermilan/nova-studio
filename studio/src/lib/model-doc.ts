@@ -49,7 +49,7 @@ export interface Cube {
   /// (the top-left of its block of texels) and how many texels one model unit gets (default 1).
   /// `mirror` (a box mirrored by "Mirror copy"): bits 1, 2 and 4 for x, y and z, showing the same texels reflected.
   /// `faces` places single faces of a box, wedge or pyramid anywhere in the picture: `[x, y, width, height]` in texels, instead of
-  /// the automatic layout inside the block.
+  /// the automatic layout inside the block. A negative width or height runs the other way from the corner, flipping the face.
   texture?: { at: [number, number]; scale?: number; mirror?: number; faces?: Partial<Record<Face, [number, number, number, number]>> };
 }
 
@@ -203,7 +203,7 @@ export function parseModel(text: string): Parsed {
         if (t.scale !== undefined && !(typeof t.scale === "number" && t.scale > 0 && t.scale <= 64)) return `${cat}.texture.scale must be a number above 0 and at most 64`;
         if (t.mirror !== undefined && !(Number.isInteger(t.mirror) && t.mirror >= 0 && t.mirror <= 7)) return `${cat}.texture.mirror must be a whole number from 0 to 7`;
         for (const [f, r] of Object.entries(t.faces ?? {})) {
-          if (!FACES.includes(f as Face) || !Array.isArray(r) || r.length !== 4 || !r.every((n) => typeof n === "number" && Number.isFinite(n)) || r[0]! < 0 || r[1]! < 0 || r[2]! <= 0 || r[3]! <= 0) return `${cat}.texture.faces.${f} must be a face name with [x, y, width, height] in texels, the size above 0`;
+          if (!FACES.includes(f as Face) || !Array.isArray(r) || r.length !== 4 || !r.every((n) => typeof n === "number" && Number.isFinite(n)) || r[2] === 0 || r[3] === 0 || Math.min(r[0]!, r[0]! + r[2]!) < 0 || Math.min(r[1]!, r[1]! + r[3]!) < 0) return `${cat}.texture.faces.${f} must be a face name with [x, y, width, height] in texels: a size of 0 is no use, and a negative one turns the face over`;
         }
         if (!o.texture) return `${cat} has a texture but the model has none: add "texture": { "size": [64, 64] }`;
       }

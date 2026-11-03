@@ -352,3 +352,16 @@ export function faceRects(c: Cube): Partial<Record<Face, [number, number, number
   }
   return out;
 }
+
+/// A rectangle as the area it covers (`[left, top, width, height]`, sizes positive), whichever way it runs.
+export const normRect = (r: [number, number, number, number]): [number, number, number, number] => [Math.min(r[0], r[0] + r[2]), Math.min(r[1], r[1] + r[3]), Math.abs(r[2]), Math.abs(r[3])];
+
+/// The same area at a new top-left corner, running the same ways as `like` (flipped sides stay flipped).
+export const rectAt = (like: [number, number, number, number], left: number, top: number): [number, number, number, number] => {
+  const [, , w, h] = normRect(like);
+  return [like[2] < 0 ? left + w : left, like[3] < 0 ? top + h : top, like[2] < 0 ? -w : w, like[3] < 0 ? -h : h];
+};
+
+/// The rectangle turned over left to right (`across` true) or top to bottom.
+export const flippedRect = (r: [number, number, number, number], across: boolean): [number, number, number, number] =>
+  across ? [r[0] + r[2], r[1], -r[2], r[3]] : [r[0], r[1] + r[3], r[2], -r[3]];

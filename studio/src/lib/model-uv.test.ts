@@ -307,3 +307,41 @@ describe("placing single faces by hand", () => {
     expect(parseModel(text.replace("[30,20,6,5]", "[30,20,6]"))).toMatchObject({ ok: false });
   });
 });
+
+import { flippedRect, normRect, rectAt } from "./model-uv";
+
+describe("flipping a placed face", () => {
+  const box = (faces: Record<string, number[]>): Cube => ({ shape: "box", from: [0, 0, 0], size: [4, 4, 4], color: "#ffffff", texture: { at: [0, 0], faces: faces as never } });
+  const cornerUV = (c: Cube, face: string) => {
+    const poly = solidOf(c).polys.findIndex((p) => p.face === face);
+    return unwrap(c).polys[poly]!.map((q) => q.map((n) => Math.round(n * 100) / 100).join(","));
+  };
+
+  it("runs a negative size the other way from its corner, so the same face comes out mirrored", () => {
+    const plain = cornerUV(box({ up: [20, 10, 8, 6] }), "up");
+    const across = cornerUV(box({ up: flippedRect([20, 10, 8, 6], true) }), "up");
+    const down = cornerUV(box({ up: flippedRect([20, 10, 8, 6], false) }), "up");
+    // the same four corners reached by mirroring x (20 <-> 28) or y (10 <-> 16)
+    expect(across).toEqual(plain.map((s) => { const [x, y] = s.split(",").map(Number); return `${48 - x!},${y}`; }));
+    expect(down).toEqual(plain.map((s) => { const [x, y] = s.split(",").map(Number); return `${x},${26 - y!}`; }));
+  });
+
+  it("normalises, moves and flips rectangles", () => {
+    expect(normRect([28, 10, -8, 6])).toEqual([20, 10, 8, 6]);
+    expect(normRect([20, 16, 8, -6])).toEqual([20, 10, 8, 6]);
+    expect(rectAt([28, 10, -8, 6], 2, 3)).toEqual([10, 3, -8, 6]);
+    expect(rectAt([20, 10, 8, 6], 2, 3)).toEqual([2, 3, 8, 6]);
+    expect(flippedRect(flippedRect([20, 10, 8, 6], true), true)).toEqual([20, 10, 8, 6]);
+  });
+
+  it("is saved and checked", () => {
+    let d: ModelDoc = { ...newModel(), texture: { size: [64, 64] } };
+    d = addCube(d, [0], box({ up: flippedRect([20, 10, 8, 6], true) })).doc;
+    const text = serializeModel(d);
+    expect(text).toContain('"up":[28,10,-8,6]');
+    const back = parseModel(text);
+    expect(back.ok && serializeModel(back.doc)).toBe(text);
+    expect(parseModel(text.replace("[28,10,-8,6]", "[3,10,-8,6]"))).toMatchObject({ ok: false }); // runs off the left edge
+    expect(parseModel(text.replace("[28,10,-8,6]", "[28,10,0,6]"))).toMatchObject({ ok: false });
+  });
+});

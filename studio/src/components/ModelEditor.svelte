@@ -9,7 +9,7 @@
   } from "../lib/model-doc";
   import { addFace, bevelEdge, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsSymmetric, setFaceColors, setSmooth, setVert, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
   import { hasVolume, meshOf, segmentsOf, shapeFaces } from "../lib/model-mesh";
-  import { bakeAll, blockOf, faceRects, enableTexture, fitPicture, packModel, resizeTexture, unwrap, uvsOf } from "../lib/model-uv";
+  import { bakeAll, blockOf, faceRects, flippedRect, normRect, rectAt, enableTexture, fitPicture, packModel, resizeTexture, unwrap, uvsOf } from "../lib/model-uv";
   import { CLEAR, cloneRaster, drawEllipse, drawLine, drawRect, floodFill, getPixel, newRaster, parseHex, stamp, toHex, type Raster, type Rgba } from "../lib/pixels";
   import { applyBrush, applyGradient } from "../lib/paint";
   import { loadRaster, rasterToDataUrl } from "../lib/png";
@@ -756,7 +756,8 @@
         for (const [face, r] of Object.entries(rects ?? {})) {
           ctx.strokeStyle = face === faceSel ? "rgba(255,120,200,1)" : "rgba(120,220,255,.8)";
           ctx.lineWidth = face === faceSel ? 2 : 1;
-          ctx.strokeRect(r![0] * z + 0.5, r![1] * z + 0.5, r![2] * z - 1, r![3] * z - 1);
+          const n = normRect(r!);
+          ctx.strokeRect(n[0] * z + 0.5, n[1] * z + 0.5, n[2] * z - 1, n[3] * z - 1);
         }
       }
     }
@@ -778,7 +779,10 @@
       // the topmost painted box whose face rectangle holds the point
       for (const t of [...painted].reverse()) {
         const rects = faceRects(t.c);
-        const hit = Object.entries(rects ?? {}).find(([, r]) => x >= r![0] && x < r![0] + r![2] && y >= r![1] && y < r![1] + r![3]);
+        const hit = Object.entries(rects ?? {}).find(([, r]) => {
+          const n = normRect(r!);
+          return x >= n[0] && x < n[0] + n[2] && y >= n[1] && y < n[1] + n[3];
+        });
         if (!hit) continue;
         selected = t.path;
         texFace = { path: t.path, face: hit[0] as Face };
@@ -822,9 +826,11 @@
     if (!picture || !texView) return;
     const [x, y] = texCell(e);
     if (faceDrag) {
-      const [w, h] = [faceDrag.rect[2], faceDrag.rect[3]];
-      const at: [number, number, number, number] = [Math.max(0, Math.min(picture.w - w, faceDrag.rect[0] + x - faceDrag.from[0])), Math.max(0, Math.min(picture.h - h, faceDrag.rect[1] + y - faceDrag.from[1])), w, h];
-      if (!faceDrag.moved && at[0] === faceDrag.rect[0] && at[1] === faceDrag.rect[1]) return;
+      const n = normRect(faceDrag.rect);
+      const left = Math.max(0, Math.min(picture.w - n[2], n[0] + x - faceDrag.from[0]));
+      const top = Math.max(0, Math.min(picture.h - n[3], n[1] + y - faceDrag.from[1]));
+      const at = rectAt(faceDrag.rect, left, top);
+      if (!faceDrag.moved && left === n[0] && top === n[1]) return;
       if (!faceDrag.moved) history.record(faceDrag.base);
       faceDrag.moved = true;
       commit(placeFace(faceDrag.base, faceDrag.path, faceDrag.cube, faceDrag.face, at), true);
@@ -856,13 +862,18 @@
   function setRectPart(index: number, raw: string) {
     const n = Number(raw);
     if (!selected || !cube?.texture || !faceSel || !pickedRect || !Number.isFinite(n) || !picture) return;
-    const r = [...pickedRect] as [number, number, number, number];
-    r[index] = Math.round(n);
-    r[2] = Math.max(1, Math.min(picture.w, r[2]));
-    r[3] = Math.max(1, Math.min(picture.h, r[3]));
-    r[0] = Math.max(0, Math.min(picture.w - r[2], r[0]));
-    r[1] = Math.max(0, Math.min(picture.h - r[3], r[1]));
+    const area = normRect(pickedRect);
+    area[index] = Math.round(n);
+    area[2] = Math.max(1, Math.min(picture.w, area[2]));
+    area[3] = Math.max(1, Math.min(picture.h, area[3]));
+    area[0] = Math.max(0, Math.min(picture.w - area[2], area[0]));
+    area[1] = Math.max(0, Math.min(picture.h - area[3], area[1]));
+    // the face keeps its flips: a negative side stays negative
+    const r: [number, number, number, number] = [pickedRect[2] < 0 ? area[0] + area[2] : area[0], pickedRect[3] < 0 ? area[1] + area[3] : area[1], pickedRect[2] < 0 ? -area[2] : area[2], pickedRect[3] < 0 ? -area[3] : area[3]];
     commit(placeFace(doc, selected, cube, faceSel, r));
+  }
+  function flipFace(across: boolean) {
+    if (selected && cube?.texture && faceSel && pickedRect) commit(placeFace(doc, selected, cube, faceSel, flippedRect(pickedRect, across)));
   }
   function resetRect() {
     if (selected && cube?.texture && faceSel) commit(placeFace(doc, selected, cube, faceSel, null));
@@ -1651,8 +1662,8 @@
           {#if texTool === "face"}
             {#if pickedRect && faceSel}
               <h4>{faceSel} face</h4>
-              <div class="vec4">{#each ["x", "y", "width", "height"] as lab, k (lab)}<label>{lab}<input type="number" min="0" step="1" value={pickedRect[k]} aria-label="{faceSel} {lab}" onchange={(e) => setRectPart(k, e.currentTarget.value)} /></label>{/each}</div>
-              <button onclick={resetRect} disabled={!cube?.texture?.faces?.[faceSel]} title="Back to its place in the automatic layout">Reset this face</button>
+              <div class="vec4">{#each ["x", "y", "width", "height"] as lab, k (lab)}<label>{lab}<input type="number" min="0" step="1" value={normRect(pickedRect)[k]} aria-label="{faceSel} {lab}" onchange={(e) => setRectPart(k, e.currentTarget.value)} /></label>{/each}</div>
+              <div class="row"><button onclick={() => flipFace(true)} title="Turns the face's picture over, left to right">Flip ↔</button><button onclick={() => flipFace(false)} title="Turns it over, top to bottom">Flip ↕</button><button onclick={resetRect} disabled={!cube?.texture?.faces?.[faceSel]} title="Back to its place in the automatic layout">Reset</button></div>
             {:else}
               <p class="dim small">Click a face rectangle of a painted box in the picture, then drag it or type where it goes. Faces can share the same texels.</p>
             {/if}
