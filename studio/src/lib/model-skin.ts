@@ -218,6 +218,19 @@ export function setWeight(cube: Cube, points: number[], bone: string, weight: nu
 /// The strongest bone of each point, as the number in `skin.bones` (for colouring points in the editor).
 export const dominantBones = (skin: Skin): number[] => skin.weights.map((w) => w.reduce((m, pair) => (pair[1] > m[1] ? pair : m), w[0]!)[0]);
 
+/// How strongly one part (a position in `skin.bones`) holds each point, 0 to 1: what the gradient view paints.
+export const boneHeat = (skin: Skin, bone: number): number[] => skin.weights.map((w) => w.reduce((sum, [b, weight]) => (b === bone ? sum + weight : sum), 0));
+
+/// A colour for a weight from 0 to 1: dark blue (not held), through cyan and yellow, to red (held completely).
+export function heatColor(w: number): [number, number, number] {
+  const t = Math.max(0, Math.min(1, w));
+  const stops: [number, number, number][] = [[0.1, 0.15, 0.55], [0.1, 0.75, 0.85], [0.95, 0.9, 0.2], [0.95, 0.2, 0.15]];
+  const at = t * (stops.length - 1);
+  const i = Math.min(stops.length - 2, Math.floor(at));
+  const f = at - i, a = stops[i]!, b = stops[i + 1]!;
+  return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
+}
+
 /// After an edit that changed how many points a skinned mesh has, the weights no longer line up: they are worked out again
 /// (weights set by hand are lost). Meshes whose weights still fit are left alone.
 export function reskin(doc: ModelDoc, path: Path): ModelDoc {

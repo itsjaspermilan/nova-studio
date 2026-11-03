@@ -9,7 +9,7 @@
   } from "../lib/model-doc";
   import { addFace, bevelEdge, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsSymmetric, setFaceColors, setSmooth, setVert, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
   import { hasVolume, meshOf, segmentsOf, shapeFaces, solidOf } from "../lib/model-mesh";
-  import { autoWeights, dominantBones, invertAffine, reskin, setWeight, skinnedPoints, transformPoint, worldMatrices } from "../lib/model-skin";
+  import { autoWeights, boneHeat, dominantBones, heatColor, invertAffine, reskin, setWeight, skinnedPoints, transformPoint, worldMatrices } from "../lib/model-skin";
   import { bakeAll, blockOf, faceRects, flippedRect, normRect, rectAt, enableTexture, fitPicture, packModel, resizeTexture, unwrap, uvsOf } from "../lib/model-uv";
   import { CLEAR, cloneRaster, drawEllipse, drawLine, drawRect, floodFill, getPixel, newRaster, parseHex, stamp, toHex, type Raster, type Rgba } from "../lib/pixels";
   import { applyBrush, applyGradient } from "../lib/paint";
@@ -1001,8 +1001,10 @@
     const chosen = new Set(selVerts);
     const geometry = new THREE.BufferGeometry().setFromPoints(pts);
     // a shape that bends with parts shows each point in the colour of the part that holds it most
-    const holder = cube.skin && cube.skin.weights.length === pts.length ? dominantBones(cube.skin) : null;
-    geometry.setAttribute("color", new THREE.Float32BufferAttribute(pts.flatMap((_, i) => (chosen.has(i) ? [1, 0.82, 0.4] : holder ? BONE_COLORS[holder[i]! % BONE_COLORS.length]! : [0.9, 0.93, 1])), 3));
+    const fits = !!cube.skin && cube.skin.weights.length === pts.length;
+    const holder = fits ? dominantBones(cube.skin!) : null;
+    const heat = fits && heatBone !== null ? boneHeat(cube.skin!, heatBone) : null;
+    geometry.setAttribute("color", new THREE.Float32BufferAttribute(pts.flatMap((_, i) => (chosen.has(i) ? [1, 0.82, 0.4] : heat ? heatColor(heat[i]!) : holder ? BONE_COLORS[holder[i]! % BONE_COLORS.length]! : [0.9, 0.93, 1])), 3));
     handles = new THREE.Points(geometry, new THREE.PointsMaterial({ size: 9, sizeAttenuation: false, vertexColors: true, depthTest: false }));
     handles.renderOrder = 10;
     scene.add(handles);
@@ -1280,9 +1282,10 @@
     selVerts = [];
     selFace = null;
     selEdge = null;
+    heatBone = null;
   });
   $effect(() => {
-    doc; selected; selVerts; selFace; selEdge; inEdit; mode;
+    doc; selected; selVerts; selFace; selEdge; inEdit; mode; heatBone;
     untrack(drawHandles);
   });
   const part = $derived(selected && selected.cube === undefined ? partAt(doc, selected.parts) : selected ? partAt(doc, selected.parts) : undefined);
@@ -1366,6 +1369,7 @@
   }
   let skinNote = $state("");
   let skinBone = $state("");
+  let heatBone: number | null = $state(null); // a part picked in the key: points show how strongly it holds them (blue to red)
   let skinWeight = $state(100);
   function autoSkin() {
     if (!selected || !cube) return;
@@ -1814,8 +1818,8 @@
           <h4>Bend with parts</h4>
           {#if cube.skin}
             <p class="dim small">Follows {cube.skin.bones.length} part{cube.skin.bones.length === 1 ? "" : "s"}. Pose them in Animate to see it bend.</p>
-            <ul class="bones">{#each cube.skin.bones as b, i (b)}<li><i class="dot" style:background={boneCss(i)}></i>{b.split("/").at(-1)}</li>{/each}</ul>
-            {#if inEdit}<p class="dim small">In point mode each point has the colour of the part that holds it most.</p>{/if}
+            <ul class="bones">{#each cube.skin.bones as b, i (b)}<li><button class="bone" class:on={heatBone === i} title="Show how strongly this part holds each point: blue not at all, red completely" onclick={() => ((heatBone = heatBone === i ? null : i), (editPoints = true))}><i class="dot" style:background={boneCss(i)}></i>{b.split("/").at(-1)}</button></li>{/each}</ul>
+            {#if inEdit}<p class="dim small">{heatBone === null ? "Each point has the colour of the part that holds it most. Click a part for a gradient." : "Blue: not held by this part. Red: held completely."}</p>{/if}
             {#if inEdit && selVerts.length}
               <p class="dim small">{selVerts.length === 1 ? weightsOf(selVerts[0]!) : `${selVerts.length} points picked`}</p>
               <div class="pair">
@@ -1903,6 +1907,8 @@
   .outliner ul { list-style: none; margin: 0; padding: 4px 0; overflow: auto; }
   .bones { list-style: none; margin: 2px 0 4px; padding: 0; display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 11px; color: var(--dim); }
   .bones li { display: flex; align-items: center; gap: 4px; }
+  .bone { all: unset; display: flex; align-items: center; gap: 4px; cursor: pointer; padding: 0 4px; border-radius: 4px; }
+  .bone:hover, .bone.on { background: color-mix(in srgb, var(--accent, #5ea1ff) 25%, transparent); color: var(--text, inherit); }
   .node { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; background: transparent; border-color: transparent; border-radius: 0; padding: 2px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .node:hover { background: var(--panel-2); }
   .node.on { background: color-mix(in srgb, var(--accent) 22%, transparent); }

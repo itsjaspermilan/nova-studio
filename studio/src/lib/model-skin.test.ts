@@ -4,7 +4,7 @@ import { exportGlb } from "./glb";
 import { addClip, samplePose, setKey } from "./model-anim";
 import { eulerToQuaternion } from "./model-ease";
 import { parseModel, removeNode, serializeModel, updatePart, type Cube, type ModelDoc, type Vec3 } from "./model-doc";
-import { IDENTITY, autoWeights, boneKey, compose, dominantBones, invertAffine, multiply, reskin, setWeight, skinnedPoints, transformDirection, transformPoint, worldMatrices } from "./model-skin";
+import { IDENTITY, autoWeights, boneKey, compose, boneHeat, dominantBones, heatColor, invertAffine, multiply, reskin, setWeight, skinnedPoints, transformDirection, transformPoint, worldMatrices } from "./model-skin";
 
 const close = (a: number[], b: number[], digits = 6) => a.forEach((x, i) => expect(x, `item ${i}`).toBeCloseTo(b[i]!, digits));
 
@@ -240,5 +240,19 @@ describe("skins when the model changes", () => {
     expect(cube.skin!.weights).toHaveLength(16);
     const again = reskin(d, path);
     expect(again.parts[0]!.children[0]!.cubes[0]!.skin!.weights).toHaveLength(17);
+  });
+});
+
+describe("the weight gradient", () => {
+  it("adds up what one part holds of each point", () => {
+    const skin = { bones: ["a", "b"], weights: [[[0, 1]], [[0, 0.25], [1, 0.75]], [[1, 1]]] } as unknown as Parameters<typeof boneHeat>[0];
+    expect(boneHeat(skin, 0)).toEqual([1, 0.25, 0]);
+    expect(boneHeat(skin, 1)).toEqual([0, 0.75, 1]);
+  });
+  it("runs from blue to red and clamps what is outside 0 to 1", () => {
+    expect(heatColor(0)[2]).toBeGreaterThan(heatColor(0)[0]); // blue
+    expect(heatColor(1)[0]).toBeGreaterThan(heatColor(1)[2]); // red
+    expect(heatColor(-3)).toEqual(heatColor(0));
+    expect(heatColor(9)).toEqual(heatColor(1));
   });
 });
