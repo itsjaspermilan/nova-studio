@@ -1,5 +1,6 @@
 <script lang="ts">
   import { buildTree, fileKind, visibleRows } from "../lib/tree";
+  import { groupResources, type Resource } from "../lib/resources";
   import { studio } from "../lib/store.svelte";
 
   type Editing = { mode: "file" | "dir" | "rename"; base: string; value: string };
@@ -11,6 +12,56 @@
   let sfx: string | null = $state(null);
   let model: string | null = $state(null);
   let song: string | null = $state(null);
+  let scene: string | null = $state(null);
+  let entity: string | null = $state(null);
+  // "resources": Sprites, Models, Scenes... as single items; "files": every file as it is on disk
+  const saved = (() => {
+    try {
+      return localStorage.getItem("nova.treeView");
+    } catch {
+      return null;
+    }
+  })();
+  let view = $state<"resources" | "files">(saved === "files" ? "files" : "resources");
+  const setView = (v: "resources" | "files") => {
+    view = v;
+    try {
+      localStorage.setItem("nova.treeView", v);
+    } catch {
+      // not remembered
+    }
+  };
+  let shut = $state(new Set<string>()); // resource groups folded away
+  let renamingResource: { path: string; value: string } | null = $state(null);
+  const groups = $derived(groupResources(studio.files, studio.spriteImages));
+  const foldGroup = (id: string) => {
+    const next = new Set(shut);
+    if (!next.delete(id)) next.add(id);
+    shut = next;
+  };
+  const SINGLE: Record<string, string> = { sprites: "sprite", models: "3D model", sounds: "sound effect", music: "song", scenes: "scene", entities: "entity" };
+  const RES_ICON: Record<string, string> = { sprite: "◫", model: "◆", scene: "▦", entity: "☺", sound: "♪", song: "♫", script: "☾", image: "▣", font: "A", project: "⚙", file: "·" };
+  const add = (id: string) => {
+    shut.has(id) && foldGroup(id);
+    if (id === "sprites") sprite = { name: "", side: 32 };
+    else if (id === "models") model = "";
+    else if (id === "sounds") sfx = "";
+    else if (id === "music") song = "";
+    else if (id === "scenes") scene = "";
+    else if (id === "entities") entity = "";
+  };
+  const isActive = (r: Resource) => r.files.includes(studio.active ?? "");
+  async function commitResourceRename() {
+    const r = renamingResource;
+    renamingResource = null;
+    if (!r || !r.value.trim()) return;
+    const item = groups.flatMap((g) => g.items).find((i) => i.path === r.path);
+    if (item) await studio.renameResource(item, r.value.trim());
+  }
+  async function removeResource(item: Resource) {
+    const what = item.files.length > 1 ? `${item.name} and its ${item.files.length - 1} other file${item.files.length > 2 ? "s" : ""}` : item.name;
+    if (confirm(`Move ${what} to the project's trash?`)) await studio.removeResource(item);
+  }
 
   // A sprite's layers file is the sprite editor's business; it stays out of the tree.
   const rows = $derived(visibleRows(buildTree(studio.files.filter((f) => !f.path.endsWith(".layers.json"))), open));
@@ -76,13 +127,35 @@
 <aside class="tree">
   <header>
     <span class="title">{studio.project?.name}</span>
-    <button class="ghost" title="New file" aria-label="New file" onclick={() => begin("file")}>＋</button>
-    <button class="ghost" title="New sprite" aria-label="New sprite" onclick={() => (sprite = { name: "", side: 32 })}>◩</button>
-    <button class="ghost" title="New sound effect" aria-label="New sound effect" onclick={() => (sfx = "")}>♪</button>
-    <button class="ghost" title="New song" aria-label="New song" onclick={() => (song = "")}>♫</button>
-    <button class="ghost" title="New 3D model" aria-label="New 3D model" onclick={() => (model = "")}>◆</button>
-    <button class="ghost" title="New folder" aria-label="New folder" onclick={() => begin("dir")}>▤</button>
+    {#if view === "files"}
+      <button class="ghost" title="New file" aria-label="New file" onclick={() => begin("file")}>＋</button>
+      <button class="ghost" title="New sprite" aria-label="New sprite" onclick={() => (sprite = { name: "", side: 32 })}>◩</button>
+      <button class="ghost" title="New sound effect" aria-label="New sound effect" onclick={() => (sfx = "")}>♪</button>
+      <button class="ghost" title="New song" aria-label="New song" onclick={() => (song = "")}>♫</button>
+      <button class="ghost" title="New 3D model" aria-label="New 3D model" onclick={() => (model = "")}>◆</button>
+      <button class="ghost" title="New folder" aria-label="New folder" onclick={() => begin("dir")}>▤</button>
+    {:else}
+      <button class="ghost" title="New file" aria-label="New file" onclick={() => { setView("files"); begin("file"); }}>＋</button>
+    {/if}
+    <span class="seg" role="group" aria-label="Project view">
+      <button class:on={view === "resources"} title="Sprites, models, scenes... one item each" onclick={() => setView("resources")}>Resources</button>
+      <button class:on={view === "files"} title="Every file as it is on disk" onclick={() => setView("files")}>Files</button>
+    </span>
   </header>
+  {#if scene !== null}
+    <form class="sprite" onsubmit={(e) => { e.preventDefault(); const n = scene!; scene = null; void studio.createScene(n); }}>
+      <input use:focusOnMount bind:value={scene} placeholder="scene name" aria-label="Scene name" />
+      <button class="primary" disabled={!scene.trim()}>Create</button>
+      <button type="button" class="ghost" aria-label="Cancel" onclick={() => (scene = null)}>✕</button>
+    </form>
+  {/if}
+  {#if entity !== null}
+    <form class="sprite" onsubmit={(e) => { e.preventDefault(); const n = entity!; entity = null; void studio.createEntity(n); }}>
+      <input use:focusOnMount bind:value={entity} placeholder="entity name" aria-label="Entity name" />
+      <button class="primary" disabled={!entity.trim()}>Create</button>
+      <button type="button" class="ghost" aria-label="Cancel" onclick={() => (entity = null)}>✕</button>
+    </form>
+  {/if}
   {#if song !== null}
     <form class="sprite" onsubmit={(e) => { e.preventDefault(); const n = song!; song = null; void studio.createSong(n); }}>
       <input use:focusOnMount bind:value={song} placeholder="song name" aria-label="Song name" />
@@ -114,6 +187,43 @@
       <button type="button" class="ghost" aria-label="Cancel" onclick={() => (sprite = null)}>✕</button>
     </form>
   {/if}
+  {#if view === "resources"}
+    <ul class="resources" role="tree" aria-label="Resources">
+      {#each groups as g (g.id)}
+        <li role="treeitem" aria-selected="false" aria-expanded={!shut.has(g.id)}>
+          <div class="group" role="presentation" onclick={() => foldGroup(g.id)}>
+            <span class="icon dir">{shut.has(g.id) ? "▸" : "▾"}</span>
+            <span class="gtitle">{g.title}</span>
+            <span class="count dim">{g.items.length || ""}</span>
+            {#if ["sprites", "models", "sounds", "music", "scenes", "entities"].includes(g.id)}
+              <button class="ghost add" title="New {SINGLE[g.id]}" aria-label="New {SINGLE[g.id]}" onclick={(e) => { e.stopPropagation(); add(g.id); }}>＋</button>
+            {/if}
+          </div>
+          {#if !shut.has(g.id)}
+            {#each g.items as item (item.path)}
+              {#if renamingResource?.path === item.path}
+                <div class="edit" style:padding-left="26px">
+                  <input use:focusOnMount bind:value={renamingResource.value} onkeydown={(e) => { if (e.key === "Enter") void commitResourceRename(); else if (e.key === "Escape") renamingResource = null; }} onblur={commitResourceRename} />
+                </div>
+              {:else}
+                <div class="row item" class:active={isActive(item)} class:selected={selected === item.path} style:padding-left="26px" role="presentation" onclick={() => { selected = item.path; void studio.openFile(item.path); }}>
+                  <span class="icon">{RES_ICON[item.kind]}</span>
+                  <span class="name" class:bad={item.files.some((f) => errorFiles.has(f))} title={item.files.join("\n")}>{item.name}</span>
+                  <span class="actions">
+                    {#if item.code}<button class="ghost" title="Open the code" aria-label="Code of {item.name}" onclick={(e) => { e.stopPropagation(); void studio.openFile(item.code!); }}>&lt;/&gt;</button>{/if}
+                    <button class="ghost" title="Rename" aria-label="Rename {item.name}" onclick={(e) => { e.stopPropagation(); renamingResource = { path: item.path, value: item.name.slice(item.name.lastIndexOf("/") + 1) }; }}>✎</button>
+                    <button class="ghost danger" title="Delete" aria-label="Delete {item.name}" onclick={(e) => { e.stopPropagation(); void removeResource(item); }}>✕</button>
+                  </span>
+                </div>
+              {/if}
+            {:else}
+              <div class="empty dim">Nothing yet</div>
+            {/each}
+          {/if}
+        </li>
+      {/each}
+    </ul>
+  {:else}
   <ul role="tree">
     {#if editing && editing.mode !== "rename" && editing.base === ""}
       <li class="edit" style:padding-left="10px">
@@ -156,6 +266,7 @@
       </li>
     {/each}
   </ul>
+  {/if}
 </aside>
 
 <style>
@@ -176,6 +287,11 @@
   .sprite { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--line); }
   .sprite input { flex: 1 1 100%; }
   .sprite select { flex: 1; min-width: 0; }
+  .seg { display: inline-flex; margin-left: 4px; } .seg button { padding: 1px 7px; font-size: 11px; border-radius: 0; } .seg button:first-child { border-radius: 5px 0 0 5px; } .seg button:last-child { border-radius: 0 5px 5px 0; margin-left: -1px; }
+  .seg button.on { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
+  .group { display: flex; align-items: center; gap: 6px; padding: 4px 6px 2px 10px; cursor: pointer; font-weight: 600; font-size: 12px; }
+  .group:hover { background: var(--panel-2); } .gtitle { flex: 1; } .count { font-size: 11px; font-weight: 400; } .group .add { padding: 0 6px; }
+  .empty { padding: 1px 6px 3px 26px; font-size: 11px; }
   .edit { padding: 2px 8px 2px 10px; }
   .edit input { width: 100%; padding: 2px 6px; }
 </style>

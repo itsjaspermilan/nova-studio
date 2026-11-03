@@ -23,6 +23,8 @@
   let doc: ModelDoc = $state.raw(parsed.ok ? parsed.doc : newModel());
   let selected = $state<Path | null>(null);
   let showGrid = $state(true);
+  // how the model is drawn: with its texture, flat colours only, or as a wireframe (Z cycles them)
+  let viewMode = $state<"textured" | "solid" | "wire">("textured");
   // editing the points of a mesh
   let editPoints = $state(false);
   let selVerts = $state<number[]>([]);
@@ -224,7 +226,7 @@
     groups.clear();
     modelGroup.clear();
     syncTexture();
-    const useTexture = !!threeTex && hasTexture(doc);
+    const useTexture = !!threeTex && hasTexture(doc) && viewMode === "textured";
     const [texW, texH] = picture ? [picture.w, picture.h + 1] : [1, 1];
     const build = (list: ModelDoc["parts"], parent: THREE.Object3D, prefix: number[]) => {
       list.forEach((part, i) => {
@@ -254,7 +256,7 @@
           }
           const translucent = m.colors.some((c, k) => k % 4 === 3 && c < 255);
           // A mesh can be a single sheet, so it shows from both sides while you build it.
-          const material = new THREE.MeshLambertMaterial({ vertexColors: true, map: useTexture ? threeTex : null, transparent: translucent, side: cube.shape === "mesh" ? THREE.DoubleSide : THREE.FrontSide });
+          const material = new THREE.MeshLambertMaterial({ vertexColors: true, map: useTexture ? threeTex : null, wireframe: viewMode === "wire", transparent: translucent, side: cube.shape === "mesh" ? THREE.DoubleSide : THREE.FrontSide });
           const mesh = new THREE.Mesh(geometry, material);
           group.add(mesh);
           meshes.push({ mesh, path: { parts, cube: ci }, polyOfTriangle: m.polyOfTriangle });
@@ -302,7 +304,7 @@
   }
 
   $effect(() => {
-    doc; // redraw whenever the model changes
+    doc; viewMode; // redraw whenever the model changes or is shown another way
     if (modelGroup) untrack(rebuild);
   });
   $effect(() => {
@@ -384,9 +386,10 @@
     texFuture = [];
     texTick++;
   }
-  function beginStroke() {
+  let lastPaint: [number, number] | null = null; // where the last stroke ended, for Shift-click lines
+  function beginStroke(straight = false) {
     if (texTool !== "picker") rememberPicture();
-    stroke = { last: null };
+    stroke = { last: straight && (texTool === "pencil" || texTool === "eraser") ? lastPaint : null };
   }
   function pictureChanged() {
     picRev++;
@@ -407,7 +410,7 @@
       if (stroke.last) drawLine(picture, { x: stroke.last[0], y: stroke.last[1] }, { x, y }, texBrush, colour);
       else stamp(picture, x, y, texBrush, colour);
     }
-    stroke.last = [x, y];
+    stroke.last = lastPaint = [x, y];
     pictureChanged();
   }
   function undoTexture() {
@@ -498,7 +501,7 @@
       return;
     }
     if (x < 0 || y < 0 || x >= picture.w || y >= picture.h) return;
-    beginStroke();
+    beginStroke(e.shiftKey);
     paintTexel(x, y);
   }
   function texMove(e: PointerEvent) {
@@ -627,7 +630,7 @@
     if (mode === "texture" && texTool !== "move" && picture && e.button === 0 && !e.altKey && canvas) {
       const t = textureHit(e);
       if (t) {
-        beginStroke();
+        beginStroke(e.shiftKey);
         paintTexel(t[0], t[1]);
         controls!.enabled = false;
         canvas.setPointerCapture(e.pointerId);
@@ -899,7 +902,9 @@
     if (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA") return;
     const mod = e.metaKey || e.ctrlKey;
     const step = e.shiftKey ? 4 : 1;
-    if (e.key === "Escape" && editPoints) {
+    if (e.key.toLowerCase() === "z" && !mod) {
+      viewMode = viewMode === "textured" ? "solid" : viewMode === "solid" ? "wire" : "textured";
+    } else if (e.key === "Escape" && editPoints) {
       editPoints = false;
     } else if (mod && e.key.toLowerCase() === "z") {
       e.preventDefault();
@@ -977,6 +982,11 @@
         <button class:on={mode === "texture"} onclick={() => { mode = "texture"; playingAnim = false; editPoints = false; }} title="Paint the shapes with a texture">Texture</button>
         <button class:on={mode === "animate"} onclick={() => { mode = "animate"; if (!clips.length) newClip(); }}>Animate</button>
         <label class="check"><input type="checkbox" bind:checked={showGrid} /> Grid</label>
+        <select bind:value={viewMode} aria-label="View (Z)" title="How the model is drawn (Z)">
+          <option value="textured">Textured</option>
+          <option value="solid">Colours only</option>
+          <option value="wire">Wireframe</option>
+        </select>
         <button class="ghost" onclick={resetView}>Reset view</button>
         <span class="dim">{countCubes(doc)} shapes · saves {glbPath}</span>
         <span class="spacer"></span>
@@ -1013,7 +1023,7 @@
         </div>
       {/if}
       {#if mode === "texture"}
-        <p class="hint dim">Texture: drag on the model to paint it, or paint in the picture on the right · ✥ moves a shape's block of the picture · ⌘Z undoes painting · right-drag pans, scroll zooms (⌥-drag orbits)</p>
+        <p class="hint dim">Texture: drag on the model to paint it, or paint in the picture on the right · ⇧-click draws a straight line from the last point · ✥ moves a shape's block · ⌘Z undoes painting · Z changes the view · right-drag pans, scroll zooms (⌥-drag orbits)</p>
       {:else if inEdit}
         <p class="hint dim">Points: click a face to pick it and its points · click or drag a dot to move it (⇧-click adds more) · arrows and PageUp/PageDown nudge the picked points · Esc leaves point mode</p>
       {:else}

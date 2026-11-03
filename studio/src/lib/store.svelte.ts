@@ -9,6 +9,7 @@ import { newSong, renderSong, serializeSong } from "./song";
 import { newDoc, toSheetJson } from "./sprite-doc";
 import { encodeWav, toBase64 } from "./wav";
 import { moved, planRename } from "./refs";
+import { renamePlan, resolveFrom, type Resource } from "./resources";
 import { byFile } from "./diagnostics";
 import { projectSymbols, type ProjectSymbols } from "./completions";
 import type { Api, Diagnostic, ExampleInfo, FileEntry, LogLine, ProjectInfo, RecentProject, TemplateInfo } from "./types";
@@ -190,7 +191,27 @@ class Studio {
 
   async refreshFiles() {
     const files = await this.#guard(() => this.api!.listFiles());
-    if (files) this.files = files;
+    if (files) {
+      this.files = files;
+      void this.#readSpriteImages();
+    }
+  }
+
+  /// Which picture each sprite file cuts up (its "image" key), so the resource tree can show the pair as one sprite.
+  spriteImages: Map<string, string> = $state(new Map());
+  async #readSpriteImages() {
+    const next = new Map<string, string>();
+    for (const f of this.files.filter((e) => !e.dir && e.path.endsWith(".sprite.json")).slice(0, 400)) {
+      try {
+        const text = (await this.api!.readFile(f.path)).text;
+        const image = text ? (JSON.parse(text) as { image?: unknown }).image : undefined;
+        if (typeof image === "string" && image) next.set(f.path, resolveFrom(f.path, image));
+      } catch {
+        // an unreadable sprite file shows as itself
+      }
+    }
+    const same = next.size === this.spriteImages.size && [...next].every(([k, v]) => this.spriteImages.get(k) === v);
+    if (!same) this.spriteImages = next;
   }
 
   async openFile(path: string, line?: number) {
@@ -278,6 +299,37 @@ class Studio {
       await this.openFile(path);
     });
   }
+  /// A new scene: its Lua in `scenes/<name>.lua` and its layout in `scenes/<name>.scene.json` (opened in the scene editor).
+  async createScene(name: string) {
+    const clean = name.trim().replace(/\.scene\.json$|\.lua$/i, "");
+    if (!/^[A-Za-z0-9_-]+$/.test(clean)) return this.say("error", "Scene names use letters, numbers, - and _.");
+    await this.#guard(async () => {
+      const lua = `scenes/${clean}.lua`;
+      const json = `scenes/${clean}.scene.json`;
+      if (this.files.some((f) => f.path === lua || f.path === json)) throw `'${clean}' already exists in scenes/`;
+      const id = clean.split(/[-_]+/).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join("") || "Scene";
+      await this.api!.createFile(lua, `-- A scene. Everything in ${clean}.scene.json is built before enter() runs.\nlocal ${/^[A-Za-z]/.test(id) ? id : `Scene${id}`} = nova.scene {}\n\nfunction ${/^[A-Za-z]/.test(id) ? id : `Scene${id}`}:enter()\nend\n\nreturn ${/^[A-Za-z]/.test(id) ? id : `Scene${id}`}\n`);
+      await this.api!.createFile(json, '{\n  "version": 1,\n  "background": [40, 60, 90],\n  "objects": [],\n  "texts": []\n}\n');
+      await this.refreshFiles();
+      await this.openFile(json);
+    });
+  }
+
+  /// A new entity: `entities/<name>.lua`.
+  async createEntity(name: string) {
+    const clean = name.trim().replace(/\.lua$/i, "");
+    if (!/^[A-Za-z0-9_-]+$/.test(clean)) return this.say("error", "Entity names use letters, numbers, - and _.");
+    await this.#guard(async () => {
+      const lua = `entities/${clean}.lua`;
+      if (this.files.some((f) => f.path === lua)) throw `'${clean}' already exists in entities/`;
+      const id = clean.split(/[-_]+/).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join("");
+      const ident = /^[A-Za-z]/.test(id) ? id : `Entity${id}`;
+      await this.api!.createFile(lua, `-- An entity: something in a scene that updates and draws itself.\nlocal ${ident} = nova.entity {}\n\nfunction ${ident}:update(dt)\nend\n\nreturn ${ident}\n`);
+      await this.refreshFiles();
+      await this.openFile(lua);
+    });
+  }
+
   /// A new blank sprite: `sprites/<name>.png` and `sprites/<name>.sprite.json`, opened in the sprite studio.
   async createSprite(name: string, side: number) {
     const clean = name.trim().replace(/\.sprite\.json$|\.png$/i, "");
@@ -391,10 +443,10 @@ class Studio {
     return texts;
   }
 
-  async rename(from: string, to: string) {
+  async rename(from: string, to: string, references = true) {
     await this.#guard(async () => {
       // Work out which scripts and data files mention the old name before anything moves.
-      const edits = planRename(from, to, await this.#projectTexts(), this.files.map((f) => f.path));
+      const edits = references ? planRename(from, to, await this.#projectTexts(), this.files.map((f) => f.path)) : [];
       let apply = edits.length > 0 && confirm(`Update ${edits.reduce((n, e) => n + e.count, 0)} reference(s) in ${edits.length} file(s) to the new name?\n\n${edits.map((e) => `• ${e.file} (${e.count})`).join("\n")}`);
       await this.api!.renameFile(from, to);
       // A sprite's layers file travels with it.
@@ -525,6 +577,23 @@ class Studio {
     this.helpTab = tab;
     this.helpLesson = lesson;
     this.helpOpen = true;
+  }
+
+  /// Renames a resource (a sprite, model, scene...) by renaming all of its files together; scripts that name it are updated once.
+  async renameResource(resource: Resource, name: string) {
+    const clean = name.trim();
+    if (!clean || /[\\:*?"<>|]/.test(clean)) return this.say("error", "That name has characters a file cannot have.");
+    // a sprite's layers file travels with its JSON on its own
+    const plan = renamePlan(resource, clean).filter(([from]) => !(from.endsWith(".layers.json") && resource.path.endsWith(".sprite.json")));
+    if (!plan.length) return;
+    const clash = plan.find(([, to]) => this.files.some((f) => f.path === to));
+    if (clash) return this.say("error", `'${clash[1]}' already exists.`);
+    for (const [i, [from, to]] of plan.entries()) await this.rename(from, to, i === 0);
+  }
+
+  /// Moves every file of a resource to the project's trash.
+  async removeResource(resource: Resource) {
+    for (const path of resource.files) if (!(path.endsWith(".layers.json") && resource.path.endsWith(".sprite.json"))) await this.remove(path);
   }
 
   async remove(path: string) {
