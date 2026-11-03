@@ -561,6 +561,49 @@ function scenery.push(x, z, r)
   if hit then return px, pz end
 end
 
+--- Looks along a line from (x, z) in the direction (dx, dz) for `length` metres, as wide as a circle of `radius`: the nearest
+--- solid circle in the way. Returns how far away it is (0 if already touching), and the circle's x, z and radius; or nothing.
+--- It is how a car or a character sees what is coming, to steer round it.
+function scenery.ahead(x, z, dx, dz, length, radius)
+  local len = sqrt(dx * dx + dz * dz)
+  if len < 1e-9 or length <= 0 then return nil end
+  dx, dz = dx / len, dz / len
+  radius = radius or 0
+  local best, bx, bz, br = nil, nil, nil, nil
+  local seen = {}
+  local t = 0
+  while true do
+    local px, pz = x + dx * t, z + dz * t
+    for gx = cell(px) - 1, cell(px) + 1 do
+      for gz = cell(pz) - 1, cell(pz) + 1 do
+        local k = key(gx, gz)
+        if not seen[k] then
+          seen[k] = true
+          local list = solid_bins[k]
+          if list then
+            for i = 1, #list do
+              local c = list[i]
+              local rx, rz = c[1] - x, c[2] - z
+              local along = rx * dx + rz * dz
+              local reach = c[3] + radius
+              if along > -reach and along < length + reach then
+                local across = rx * -dz + rz * dx
+                if across * across < reach * reach then
+                  local d = math.max(0, along - sqrt(reach * reach - across * across))
+                  if d <= length and (not best or d < best) then best, bx, bz, br = d, c[1], c[2], c[3] end
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+    if t >= length then break end
+    t = math.min(length, t + CELL * 0.5)
+  end
+  if best then return best, bx, bz, br end
+end
+
 local function spawn(what, x, y, props)
   local cls = finalize(resolve(what, "entity"))
   local e = setmetatable({}, cls)

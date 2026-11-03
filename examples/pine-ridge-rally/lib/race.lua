@@ -39,15 +39,27 @@ local function drive_itself(car)
   local tz = target.z - target.tx * (car.lane or 0)
   local want = math.atan(tx - car.x, tz - car.z)
   local err = track.wrap(want - car.heading)
+  -- what is in the way? (a barrier on the outside of a bend, a tree on a straight): steer away from it and ease off
+  local h = car.heading
+  local ahead = 9 + math.abs(car.speed) * 0.8
+  local dist, ox, oz = nova.scenery.ahead(car.x, car.z, math.sin(h), math.cos(h), ahead, 1.7)
+  local urgency = 0
+  if dist then
+    urgency = 1 - dist / ahead
+    local on_left = (ox - car.x) * math.cos(h) - (oz - car.z) * math.sin(h) >= 0
+    -- (the heading grows to the left, so turning away from something on the left lowers it)
+    err = err + (on_left and -1 or 1) * (0.25 + 0.9 * urgency)
+  end
   c.steer = math.max(-1, math.min(1, -err * 2.4))
   -- slow for the sharpest bend in the next stretch
   local kmax = 0
   for j = 1, 14 do kmax = math.max(kmax, math.abs(track.point((car.waypoint or 1) + j).k)) end
   -- how hard it dares to corner: what the tyres can hold on this surface, less a margin for the weaker drivers
   local hold = ({ road = 21, dirt = 15, rough = 11 })[car.surface] or 21
-  local a_lat = hold * (car.grip_scale or 1) * (car.skill or 0.9)
+  local a_lat = hold * car:grip_now() * (car.skill or 0.9)
   local want_speed = math.min(car.vmax or 40, math.sqrt(a_lat / math.max(kmax, 0.0008)))
   want_speed = math.max(want_speed, 13)
+  if urgency > 0.45 then want_speed = math.max(13, want_speed * (1.3 - urgency)) end
   local diff = want_speed - car.speed
   c.throttle = diff > 0 and math.min(1, diff / 3) or 0
   c.brake = diff < -2 and math.min(1, (-diff - 2) / 8) or 0
@@ -508,6 +520,16 @@ function race.define(config)
     nova.ui.rect(w - 190, 508, 160, 6, { 255, 255, 255, 50 })
     nova.ui.rect(w - 190, 508, 160 * fill, 6, fill > 0.85 and { 239, 68, 68 } or { 245, 158, 11 })
 
+    -- the tyres and the body, above the speed
+    ui.panel(w - 200, 394, 180, 48, 150)
+    for i, bar in ipairs({ { "TYRES", p.tyres }, { "BODY", 1 - p.damage } }) do
+      local by = 400 + (i - 1) * 20
+      ui.text(w - 192, by - 3, bar[1], 12, ui.color.dim)
+      nova.ui.rect(w - 138, by + 2, 108, 8, { 255, 255, 255, 40 })
+      local v = math.max(0, math.min(1, bar[2]))
+      nova.ui.rect(w - 138, by + 2, 108 * v, 8, v > 0.55 and { 74, 222, 128 } or (v > 0.25 and { 245, 158, 11 } or { 239, 68, 68 }))
+    end
+
     -- place and lap, top left
     ui.panel(16, 16, 190, 70, 150)
     if self.trial then
@@ -617,6 +639,7 @@ function race.define(config)
     if me.finish_time then state.result.record_time = state.submit("race" .. self.laps, info.id, me.finish_time) end
     if self.best_lap then state.result.record_lap = state.submit("lap", info.id, self.best_lap) end
     nova.log(string.format("results: place %d of %d, time %s", me.place, #order, ui.time(me.finish_time)))
+    nova.log(string.format("wear: tyres %.2f, body %.2f", me.tyres, 1 - me.damage))
     audio.stop_music(0.5)
     nova.goto_scene("results")
   end

@@ -696,3 +696,34 @@ fn static_scenery_blocks_with_the_circles_of_its_model() {
     assert_ne!(log[2], "free", "{log:?}");
     assert_eq!(log[3], "3", "all three posts are in the world");
 }
+
+#[test]
+fn the_scenery_can_be_looked_through_for_what_is_ahead() {
+    let probes = "if not done then done = true\n\
+        local function look(x, z, dx, dz, len, r) local d, cx, cz, cr = nova.scenery.ahead(x, z, dx, dz, len, r); nova.log(d and string.format('%.2f %.2f %.2f %.3f', d, cx, cz, cr) or 'clear') end\n\
+        look(-5, 0, 1, 0, 10, 0.2)\n\
+        look(-5, 3, 1, 0, 10, 0.2)\n\
+        look(-5, 0, 1, 0, 3, 0.2)\n\
+        look(-5, 0, -1, 0, 10, 0.2)\n\
+        look(0.2, 0, 1, 0, 5, 0.2)\n\
+        look(-5, 0.6, 1, 0, 10, 0.2)\n\
+        look(-90, 0, 1, 0, 120, 0.2)\n\
+        end";
+    let g = world_game(0.0, probes);
+    let log = g.take_log();
+    // the first post's big circle: radius 0.5 at the origin; a 0.2 wide look from 5 m away reaches it after 5 - 0.7 = 4.3 m
+    assert!(
+        log[0].starts_with("4.3") && log[0].ends_with("0.00 0.00 0.500"),
+        "{log:?}"
+    );
+    assert_eq!(log[1], "clear", "three metres to the side: nothing");
+    assert_eq!(log[2], "clear", "not long enough to reach it");
+    assert_eq!(log[3], "clear", "looking away");
+    assert!(log[4].starts_with("0.00"), "already touching: {log:?}");
+    assert_ne!(log[5], "clear", "just clipping its edge counts: {log:?}");
+    // a long look finds the nearest of everything along it (the first post, not the one 10 m on)
+    assert!(
+        log[6].contains("0.500") && log[6].starts_with("89.3"),
+        "{log:?}"
+    );
+}

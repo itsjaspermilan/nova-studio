@@ -56,6 +56,13 @@
   "group": "3D"
  },
  {
+  "name": "nova.scenery.ahead",
+  "kind": "function",
+  "signature": "nova.scenery.ahead(x, z, dx, dz, length [, radius]) -> distance, cx, cz, cr | nil",
+  "doc": "Looks along a line from (x, z) in the direction (dx, dz) for `length` metres, as wide as a circle of `radius`, for the nearest solid circle of the static scenery. Gives how far away it is (0 if touching) and the circle's x, z and radius, or nothing. How a car or a character sees what is coming, to steer round it.",
+  "group": "3D"
+ },
+ {
   "name": "nova.scenery.push",
   "kind": "function",
   "signature": "nova.scenery.push(x, z, r) -> dx, dz | nil",

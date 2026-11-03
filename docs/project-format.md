@@ -138,6 +138,9 @@ local dx, dz = nova.scenery.push(self.x, self.z, 1.3)   -- a car-sized circle
 if dx then self.x, self.z = self.x + dx, self.z + dz end
 ```
 
+`nova.scenery.ahead(x, z, dx, dz, length, radius)` looks along a line, as wide as a circle of `radius`, and returns how far away the nearest solid circle is and
+where it is (`distance, cx, cz, cr`), or nothing: how a car or a character sees what is coming to steer round it.
+
 `nova.scenery.add(model, x, y, z, opts)` adds a piece from a script; the scenery is emptied when a scene ends. A static
 entity runs no code, so for a piece that also needs to do something (a lamp that gives a light), use an ordinary entity
 whose `create` calls `nova.scenery.add` and destroys itself.

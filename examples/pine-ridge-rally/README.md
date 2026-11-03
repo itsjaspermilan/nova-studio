@@ -1,6 +1,6 @@
 # Pine Ridge Rally
 
-A 3D rally game for Nova: four circuits, three rivals, a chase camera, menus, music and sound. Play it with
+A 3D rally game for Nova: four circuits, three rivals, a chase camera, tyre wear and damage, controls you can remap, menus, music and sound. Play it with
 `nova run examples/pine-ridge-rally`, or open it in the studio (Examples in the project hub).
 
 **Modes:** a race against three rivals, or a time trial: alone on the circuit against a blue ghost of your best lap (kept in the save file).

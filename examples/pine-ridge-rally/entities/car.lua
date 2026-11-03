@@ -65,6 +65,15 @@ function Car:create()
   self.shadow_opts = { ry = 0 }
   self.bump_cooldown = 0
   self.y = 0
+  self.damage = 0              -- the body, 0 (new) to 1 (wrecked): hits add to it and it never gets better
+  self.tyres = 1               -- the tyres, 1 (new) to 0 (bald): sliding and the rough wear them
+  self.pull = 0                -- which way a damaged car drifts: -1, 0 or 1
+  self.smoke_carry = 0
+end
+
+-- How much the tyres hold: the circuit's grip, less what the wear has taken (a bald set holds 30% less).
+function Car:grip_now()
+  return (self.grip_scale or 1) * (0.7 + 0.3 * self.tyres)
 end
 
 function Car:teleport(x, z, heading)
@@ -76,14 +85,15 @@ end
 function Car:drive(dt)
   local c = self.ctl
   local kind = SURFACE[self.surface] or SURFACE.road
-  local grip_scale = self.grip_scale or 1
+  local grip_scale = self:grip_now()
   local live = self.enabled
   local sinh, cosh = math.sin(self.heading), math.cos(self.heading)
   local vf = self.velx * sinh + self.velz * cosh
-  local top = self.top * (self.surface == "rough" and 0.5 or 1)
+  local top = self.top * (self.surface == "rough" and 0.5 or 1) * (1 - 0.25 * self.damage)
 
-  -- steering: the faster you go, the less the wheels can turn the car
+  -- steering: the faster you go, the less the wheels can turn the car (and a damaged car drifts to one side)
   local steer = live and c.steer or 0
+  if live and self.damage > 0.1 then steer = steer + self.pull * (self.damage - 0.1) * 0.2 * math.min(1, math.abs(vf) / 15) end
   local steering_speed = math.min(1, math.abs(vf) / 4)
   -- downforce: the faster the car goes, the harder the tyres are pressed on the road, so it bites and turns better
   local downforce = 1 + math.min(0.6, math.abs(vf) / 70)
@@ -116,7 +126,7 @@ function Car:drive(dt)
   if live then
     if c.throttle > 0 and self.shift_time <= 0 then
       -- the pull fades towards the end of the gear; at the limiter it stops
-      local push = vf < 0 and self.power * 1.4 or self.power * gear.pull * math.max(0, 1 - 0.6 * share * share) * (share >= 1 and 0 or 1)
+      local push = vf < 0 and self.power * 1.4 or self.power * (1 - 0.2 * self.damage) * gear.pull * math.max(0, 1 - 0.6 * share * share) * (share >= 1 and 0 or 1)
       vf = vf + push * c.throttle * dt
     end
     if c.brake > 0 then
@@ -148,7 +158,12 @@ function Car:drive(dt)
       if into < 0 then
         self.velx, self.velz = self.velx - nx * into * 1.25, self.velz - nz * into * 1.25
         self.velx, self.velz = self.velx * 0.82, self.velz * 0.82
-        if -into > 4 then self.hit = math.min(1, -into / 20) end
+        if -into > 4 then
+          self.hit = math.min(1, -into / 20)
+          if self.damage < 0.1 and self.pull == 0 then self.pull = math.random() < 0.5 and -1 or 1 end
+          -- scrapes cost nothing: only hard hits (a 15 m/s one is a tenth of the body, a 30 m/s one a third)
+          self.damage = math.min(1, self.damage + math.max(0, -into - 6) * 0.0125)
+        end
       end
     end
   end
@@ -165,6 +180,20 @@ function Car:drive(dt)
   self.steer_visual = self.steer_visual + (steer - self.steer_visual) * math.min(1, dt * 12)
   self.spin = self.spin + vf / WHEEL_RADIUS * dt
   self.bump_cooldown = math.max(0, self.bump_cooldown - dt)
+
+  -- the tyres wear: a little all the time, a lot when sliding or on the rough
+  if live then
+    local wear = 0.0008 + 0.012 * math.max(0, self.slip - 0.3) + (self.surface == "rough" and 0.006 or 0) + ((c.handbrake and math.abs(vf) > 5) and 0.01 or 0)
+    self.tyres = math.max(0, self.tyres - wear * dt)
+  end
+  -- a badly damaged car smokes from the bonnet
+  if self.damage > 0.45 and math.abs(self.speed) > 1 then
+    self.smoke_carry = self.smoke_carry + dt * (4 + 22 * (self.damage - 0.45))
+    while self.smoke_carry >= 1 do
+      self.smoke_carry = self.smoke_carry - 1
+      fx.puff(self.x + sinh * 1.7, self.z + cosh * 1.7, self.velx * 0.1, self.velz * 0.1, 0.9, { 50, 50, 55 }, 1.0)
+    end
+  end
 
   -- dust and gravel behind the rear wheels
   if (self.surface == "rough" or self.slip > 0.5) and math.abs(vf) > 5 and math.random() < dt * 30 then
@@ -209,6 +238,8 @@ function Car:draw()
   pt.wheel_fl.ry, pt.wheel_fr.ry = sv, sv
   pt.wheel_fl.rx, pt.wheel_fr.rx, pt.wheel_rl.rx, pt.wheel_rr.rx = self.spin, self.spin, self.spin, self.spin
   self.draw_opts.ry = self.heading
+  local dim = 255 - math.floor(110 * self.damage)
+  self.draw_opts.tint = self.damage > 0.02 and { dim, dim, dim } or nil
   self.shadow_opts.ry = self.heading
   if not state.shadows then nova.model("shadow", self.x, 0, self.z, self.shadow_opts) end -- (a flat blob when there are no real shadows)
   nova.model(self.model_id, self.x, 0, self.z, self.draw_opts)

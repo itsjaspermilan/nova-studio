@@ -117,6 +117,24 @@ fn a_whole_race_on_pine_ridge_ends_on_the_results_screen() {
     );
     let results = log.iter().find(|l| l.starts_with("results:")).unwrap();
     assert!(results.contains("of 4"), "{results}");
+    // the tyres wore (a little just by driving three laps) and the computer driver did not wreck the car
+    let wear = log
+        .iter()
+        .find(|l| l.starts_with("wear:"))
+        .expect("the wear is logged");
+    let number = |after: &str| -> f32 {
+        wear.split(after)
+            .nth(1)
+            .unwrap()
+            .split([',', ' '])
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap()
+    };
+    let (tyres, body) = (number("tyres "), number("body "));
+    assert!((0.2..0.995).contains(&tyres), "tyres wore: {wear}");
+    assert!(body > 0.5, "the car is not wrecked: {wear}");
 }
 
 #[test]
