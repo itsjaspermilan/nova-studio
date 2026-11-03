@@ -490,6 +490,11 @@ impl ApplicationHandler for App {
                     touch.location.y as f32,
                 );
             }
+            // Android game controllers: sticks, triggers and the d-pad hat (see vendor/winit/NOVA-PATCH.md).
+            #[cfg(target_os = "android")]
+            WindowEvent::AxisMotion { axis, value, .. } => {
+                self.input.native_axis(axis, value as f32)
+            }
             WindowEvent::RedrawRequested => self.frame(event_loop),
             _ => {}
         }

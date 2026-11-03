@@ -2,6 +2,10 @@
 resolver = "3"
 members = ["crates/*", "studio/src-tauri"]
 
+# winit 0.30.13 with one change (see vendor/winit/NOVA-PATCH.md): analogue sticks and triggers on Android.
+[patch.crates-io]
+winit = { path = "vendor/winit" }
+
 [workspace.package]
 version = "0.1.0"
 edition = "2024"

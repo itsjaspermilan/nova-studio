@@ -1,9 +1,10 @@
 //! Platform input: keyboard, touch and gamepad, reported as *sources* (see `actions.rs`).
 //!
 //! Games never see this layer directly; project bindings turn sources into named actions.
-//! Android gamepad buttons arrive as winit key events carrying native key codes. Analogue sticks
-//! and triggers are not delivered by winit and need a native-activity input path (an open item
-//! in TODO.md); on desktop `gilrs` provides everything.
+//! Android gamepad buttons arrive as winit key events carrying native key codes. Analogue sticks,
+//! triggers and the d-pad hat arrive as `AxisMotion` events from the patched winit in `vendor/winit`
+//! (stock winit drops them), with Android axis codes; `native_axis_sources` turns those into Nova's
+//! sources. On desktop `gilrs` provides everything.
 
 use std::collections::{HashMap, HashSet};
 
@@ -33,6 +34,8 @@ impl Actions {
 pub struct Input {
     keys: HashSet<KeyCode>,
     native: HashSet<u32>,
+    /// Latest value of each Android motion axis from a game controller, by axis code.
+    native_axes: HashMap<u32, f32>,
     touches: HashMap<u64, ([f32; 2], [f32; 2])>,
     width: f32,
     #[cfg(not(target_os = "android"))]
@@ -42,6 +45,59 @@ pub struct Input {
     pub last_new_source: Option<String>,
     pub last_unknown_key: Option<String>,
     hud_toggle: bool,
+}
+
+/// Sticks inside this much of centre read as zero.
+const STICK_DEADZONE: f32 = 0.12;
+
+/// Android motion axes (the `AMOTION_EVENT_AXIS_*` codes) from a game controller as Nova sources: `axis:left_x`, `axis:left_y`,
+/// `axis:right_x`, `axis:right_y` (right and down positive), `axis:l2` and `axis:r2` (0 to 1), and the d-pad hat as `pad:dpad_*`.
+/// Controllers differ in which axes carry the right stick (Z and RZ, or RX and RY) and the triggers (LTRIGGER and RTRIGGER, or
+/// BRAKE and GAS); whichever moves furthest is used.
+pub fn native_axis_sources(axes: &HashMap<u32, f32>) -> Vec<(String, f32)> {
+    const X: u32 = 0;
+    const Y: u32 = 1;
+    const Z: u32 = 11;
+    const RX: u32 = 12;
+    const RY: u32 = 13;
+    const RZ: u32 = 14;
+    const HAT_X: u32 = 15;
+    const HAT_Y: u32 = 16;
+    const LT: u32 = 17;
+    const RT: u32 = 18;
+    const GAS: u32 = 22;
+    const BRAKE: u32 = 23;
+    let get = |code: u32| axes.get(&code).copied().unwrap_or(0.0);
+    let bigger = |a: f32, b: f32| if a.abs() >= b.abs() { a } else { b };
+    let dead = |v: f32| {
+        if v.abs() < STICK_DEADZONE {
+            0.0
+        } else {
+            v.clamp(-1.0, 1.0)
+        }
+    };
+    let mut out = vec![
+        ("axis:left_x".to_string(), dead(get(X))),
+        ("axis:left_y".to_string(), dead(get(Y))),
+        ("axis:right_x".to_string(), dead(bigger(get(RX), get(Z)))),
+        ("axis:right_y".to_string(), dead(bigger(get(RY), get(RZ)))),
+        (
+            "axis:l2".to_string(),
+            get(LT).max(get(BRAKE)).clamp(0.0, 1.0),
+        ),
+        ("axis:r2".to_string(), get(RT).max(get(GAS)).clamp(0.0, 1.0)),
+    ];
+    for (name, held) in [
+        ("dpad_left", get(HAT_X) < -0.5),
+        ("dpad_right", get(HAT_X) > 0.5),
+        ("dpad_up", get(HAT_Y) < -0.5),
+        ("dpad_down", get(HAT_Y) > 0.5),
+    ] {
+        if held {
+            out.push((format!("pad:{name}"), 1.0));
+        }
+    }
+    out
 }
 
 /// Android `KeyEvent` codes for game controllers and the D-pad.
@@ -115,6 +171,11 @@ impl Input {
         }
     }
 
+    /// A controller's motion axis changed (Android axis code and value).
+    pub fn native_axis(&mut self, code: u32, value: f32) {
+        self.native_axes.insert(code, value);
+    }
+
     pub fn touch(&mut self, id: u64, phase: TouchPhase, x: f32, y: f32) {
         match phase {
             TouchPhase::Started => {
@@ -140,6 +201,11 @@ impl Input {
         for code in &self.native {
             if let Some(name) = native_pad_name(*code) {
                 s.insert(format!("pad:{name}"), 1.0);
+            }
+        }
+        for (name, value) in native_axis_sources(&self.native_axes) {
+            if value != 0.0 {
+                s.insert(name, value);
             }
         }
         // Touch: the left half is a steering area (dragging sideways or up and down), the
@@ -235,6 +301,76 @@ mod tests {
             assert_eq!(native_pad_name(code), Some(name));
         }
         assert_eq!(native_pad_name(4), None, "BACK is not a gamepad button");
+    }
+
+    fn axes(list: &[(u32, f32)]) -> HashMap<u32, f32> {
+        list.iter().copied().collect()
+    }
+    fn source(list: &[(String, f32)], name: &str) -> f32 {
+        list.iter()
+            .find(|(n, _)| n == name)
+            .map_or(0.0, |(_, v)| *v)
+    }
+
+    #[test]
+    fn sticks_map_to_axes_with_a_dead_zone() {
+        let s = native_axis_sources(&axes(&[(0, 0.8), (1, -0.5), (11, 0.05), (14, -1.0)]));
+        assert_eq!(source(&s, "axis:left_x"), 0.8);
+        assert_eq!(source(&s, "axis:left_y"), -0.5);
+        assert_eq!(source(&s, "axis:right_x"), 0.0, "inside the dead zone");
+        assert_eq!(source(&s, "axis:right_y"), -1.0);
+        let still = native_axis_sources(&axes(&[(0, 0.1), (1, -0.11)]));
+        assert!(still.iter().all(|(_, v)| *v == 0.0));
+    }
+
+    #[test]
+    fn controllers_that_use_other_axes_for_the_right_stick_and_triggers_still_work() {
+        // RX/RY instead of Z/RZ, BRAKE/GAS instead of the triggers
+        let s = native_axis_sources(&axes(&[(12, 0.6), (13, -0.7), (23, 0.4), (22, 1.0)]));
+        assert_eq!(source(&s, "axis:right_x"), 0.6);
+        assert_eq!(source(&s, "axis:right_y"), -0.7);
+        assert_eq!(source(&s, "axis:l2"), 0.4);
+        assert_eq!(source(&s, "axis:r2"), 1.0);
+        // when both pairs report, the one that moved furthest wins
+        let both = native_axis_sources(&axes(&[(11, 0.2), (12, -0.9), (17, 0.3), (23, 0.8)]));
+        assert_eq!(source(&both, "axis:right_x"), -0.9);
+        assert_eq!(source(&both, "axis:l2"), 0.8);
+        // triggers never go below zero or above one
+        let wild = native_axis_sources(&axes(&[(17, -0.5), (18, 3.0)]));
+        assert_eq!(
+            (source(&wild, "axis:l2"), source(&wild, "axis:r2")),
+            (0.0, 1.0)
+        );
+    }
+
+    #[test]
+    fn the_hat_is_a_dpad() {
+        let s = native_axis_sources(&axes(&[(15, -1.0), (16, 1.0)]));
+        assert_eq!(source(&s, "pad:dpad_left"), 1.0);
+        assert_eq!(source(&s, "pad:dpad_down"), 1.0);
+        assert!(
+            s.iter()
+                .all(|(n, _)| n != "pad:dpad_right" && n != "pad:dpad_up")
+        );
+        assert!(
+            native_axis_sources(&axes(&[(15, 0.0), (16, 0.2)]))
+                .iter()
+                .all(|(n, _)| !n.starts_with("pad:"))
+        );
+    }
+
+    #[test]
+    fn axis_events_reach_the_sources_and_release_when_the_stick_centres() {
+        let mut input = Input::default();
+        input.native_axis(0, 1.0);
+        input.native_axis(18, 0.9);
+        let s = input.sources();
+        assert_eq!(s["axis:left_x"], 1.0);
+        assert_eq!(s["axis:r2"], 0.9);
+        assert_eq!(input.last_new_source.as_deref(), Some("axis:left_x"));
+        input.native_axis(0, 0.0);
+        input.native_axis(18, 0.0);
+        assert!(!input.sources().contains_key("axis:left_x"));
     }
 
     #[test]

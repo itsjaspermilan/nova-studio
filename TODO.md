@@ -32,9 +32,11 @@ another physical Android device) to settle; the emulator cannot.
 **Needs the device**
 - [ ] Frame pacing, thermals over 10+ minutes, battery, 60/120 Hz behaviour (emulator speed is not
   device speed; the Lua framework and collision grid are unmeasured on handheld CPUs).
-- [ ] Controller: analogue sticks and triggers do not reach the game on Android (winit delivers
-  button key events only; needs a native-activity input path). Rumble, several pads and remapping
-  are not implemented.
+- [x] Controller axes on Android (2026-11-02, code only): the workspace uses `vendor/winit` (stock winit 0.30.13 plus one patch, see its
+  `NOVA-PATCH.md`) which reports a controller's sticks, triggers and d-pad hat as `AxisMotion`; `input.rs` turns them into `axis:left_x`,
+  `axis:right_y`, `axis:l2`..., `pad:dpad_*` (tested with synthetic values; compiles for arm64). **Not verified with a real controller**:
+  the emulator cannot send controller motion events, so which axes the Retroid uses is unconfirmed (Z/RZ or RX/RY for the right stick,
+  LTRIGGER/RTRIGGER or BRAKE/GAS for triggers are both handled). [ ] Rumble, several pads and remapping are not implemented.
 - [ ] Audio latency and underruns on real output (AAudio low-latency mode is not requested; only
   callback time was measured, about 0.1 ms on the emulator).
 - [ ] Android lifecycle: pause/resume, rotation, process death are coded (surface dropped and rebuilt)
@@ -43,7 +45,8 @@ another physical Android device) to settle; the emulator cannot.
   believed to be a plain 16:9 with no cutout. Verify, then hide the bars properly.
 - [ ] Verify the Retroid's facts: SoC, Android version (assumed 13), screen size/refresh, how its
   controller is presented, USB debugging.
-- [ ] Keyboard input on Android (touch is verified on the emulator, the keyboard path is not).
+- [x] Keyboard and gamepad-button input on Android: `adb shell input keyevent` reached the game on the emulator (native key 96 started Crate Dash's jump)
+  with the patched winit; touch unchanged. A physical keyboard is unverified.
 
 **Runtime and format**
 - [x] Music as Ogg (2026-11-02): songs now save as `music/<name>.ogg` (about a fifth of the WAV or less; the studio backend encodes with libvorbis through `vorbis_rs`, BSD-3, notice in `licenses/vorbis-ogg.txt`), a WAV in `music/` offers **Convert to Ogg** (the WAV goes to the project trash), and Ogg files can be listened to in the studio. [ ] No importer that converts on the way in yet; sound effects stay WAV.
