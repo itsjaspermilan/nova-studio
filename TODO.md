@@ -323,12 +323,12 @@ First slice, built (`SpriteEditor.svelte`, pure logic in `pixels.ts` and `sprite
 - [x] Fourth round, painting and UV (2026-11-02): placed faces can be flipped (negative width or height); line, rectangle, ellipse and gradient tools in the texture picture (with opacity and lock alpha) and mirror painting on the model.
 - [x] Easing and GLB import (2026-11-02): keys can ease in, out, both or step (baked into extra glTF keys on export); a plain `.glb` in
   `models/` has an "✎ Edit" button that reads its parts, mesh colours and animations into an editable model (original kept as
-  `<name>-original.glb`; textures, skins and morph targets are not carried over, and it says so).
+  `<name>-original.glb`; textures and morph targets are not carried over, and it says so; skins are, see below).
 - [x] Skinned meshes (2026-11-02): a mesh shape can bend with the parts of its model ("Bend with parts": automatic weights from the part
   tree, weights per picked point, re-worked when points change; follows renames and deletes). Exported as a glTF skin; the runtime reads
   JOINTS_0/WEIGHTS_0, poses on the CPU and rewrites a pool of 8 meshes per skinned part each frame (`MeshWrite` in `FrameInput`). The
   studio's maths and the runtime agree on a fixture (`tests/skin.rs`); a headless render shows the bend. The viewport bends it in Animate.
-  Not device-timed: skinning cost on the Retroid is unmeasured. Not done: importing skins from a `.glb`, blending clips, normals in the viewport.
+  Not device-timed: skinning cost on the Retroid is unmeasured. Importing a `.glb` keeps its skin (joints that are nodes become the bones; a different bind pose is noted). Not done: blending clips, normals in the viewport.
 - [x] Third round (2026-11-02): vertex snap while dragging points, per-face UV rectangles for boxes, turn and resize for several shapes in one part.
 - [x] Second usability round (2026-11-02): pivot tool, edge picking with bevel and open-edge extend, sprite frame multi-select with copy, delete and
   move between animations.
@@ -443,6 +443,6 @@ First slice, built (`SpriteEditor.svelte`, pure logic in `pixels.ts` and `sprite
 
 ## Not now
 
-Importing skins from a `.glb`, networking, full DAW features beyond M6, WebView
+Networking, full DAW features beyond M6, WebView
 gameplay, iOS, Glow/GameStudio compatibility, app-store publishing, personal
 signing, device installation without the user's go-ahead.

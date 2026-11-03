@@ -1,8 +1,10 @@
 // Reads a binary glTF (.glb) into an editable model: its node tree becomes parts, each mesh primitive a free mesh (points welded
 // where they coincide, a triangle per face, flat colours from vertex colours or the material), and its animations become clips.
-// Textures, skins and morph targets are not imported (shapes keep flat colours; a skinned model comes in as rigid parts).
+// A skinned mesh keeps its weights (up to four joints per point; the joints are nodes that became parts). Textures and morph targets
+// are not imported (shapes keep flat colours).
 
-import { DEFAULT_SCALE, MAX_CLIPS, MAX_FACES, MAX_KEYS, MAX_PARTS, MAX_TOTAL_VERTS, MAX_VERTS, fitBounds, uniqueSiblingName, type Clip, type Cube, type MeshFace, type ModelDoc, type Part, type Prop, type Track, type Vec3 } from "./model-doc";
+import { boneKey, invertAffine, transformPoint, worldMatrices } from "./model-skin";
+import { DEFAULT_SCALE, MAX_CLIPS, MAX_FACES, MAX_KEYS, MAX_PARTS, MAX_TOTAL_VERTS, MAX_VERTS, fitBounds, uniqueSiblingName, type Clip, type Cube, type MeshFace, type ModelDoc, type Part, type Prop, type Skin, type Track, type Vec3 } from "./model-doc";
 
 /// Model units per glTF unit: the editor's default scale makes a 16-unit shape one glTF unit.
 const UNITS = 1 / DEFAULT_SCALE;
@@ -120,7 +122,7 @@ export function importGlb(bytes: Uint8Array): Imported {
 
   let totalVerts = 0;
   /// One mesh primitive as a free mesh, with its points welded where they coincide.
-  const primitive = (prim: Json, name: string, scale: Vec3): Cube | null => {
+  const primitive = (prim: Json, name: string, scale: Vec3, joints?: number[]): { cube: Cube; influences?: [number, number][][] } | null => {
     if ((prim.mode ?? 4) !== 4) {
       notes.push(`"${name}": only triangle meshes are imported`);
       return null;
@@ -145,15 +147,26 @@ export function importGlb(bytes: Uint8Array): Imported {
       // vertex colours are taken as they are (Nova's exporter stores them as the sRGB bytes); the material's tint is linear
       return [255 * c[0]! * tint[0]!, 255 * c[1]! * tint[1]!, 255 * c[2]! * tint[2]!, 255 * a * tint[3]!];
     };
+    // a skin's weights: per point, the joints (as numbers into the skin's joint list) and what each holds
+    const jointAttr = joints && prim.attributes?.JOINTS_0 !== undefined ? accessor(prim.attributes.JOINTS_0) : null;
+    const weightAttr = joints && prim.attributes?.WEIGHTS_0 !== undefined ? accessor(prim.attributes.WEIGHTS_0) : null;
+    const skinned = !!(jointAttr && weightAttr && jointAttr.width === 4 && weightAttr.width === 4 && jointAttr.count === pos.count && weightAttr.count === pos.count);
+    if (joints && !skinned) notes.push(`"${name}" has a skin this importer cannot read: it comes in as a rigid shape`);
+    const influenceAt = (vi: number): [number, number][] =>
+      [0, 1, 2, 3].map((k) => [jointAttr!.values[vi * 4 + k]!, weightAttr!.values[vi * 4 + k]!] as [number, number]).filter(([, w]) => w > 0);
     const verts: Vec3[] = [];
+    const influences: [number, number][][] = [];
     const seen = new Map<string, number>();
     const weld = (vi: number): number => {
       const p: Vec3 = [pos.values[vi * 3]! * scale[0] * UNITS, pos.values[vi * 3 + 1]! * scale[1] * UNITS, pos.values[vi * 3 + 2]! * scale[2] * UNITS];
-      const key = p.map((x) => Math.round(x * 1e4)).join(",");
+      const infl = skinned ? influenceAt(vi) : [];
+      // points that coincide but are held by different joints stay apart
+      const key = p.map((x) => Math.round(x * 1e4)).join(",") + (skinned ? "|" + infl.map(([j, w]) => `${j}:${Math.round(w * 1e3)}`).join(",") : "");
       let n = seen.get(key);
       if (n === undefined) {
         n = verts.length;
         verts.push(p.map(round) as Vec3);
+        if (skinned) influences.push(infl);
         seen.set(key, n);
       }
       return n;
@@ -179,11 +192,13 @@ export function importGlb(bytes: Uint8Array): Imported {
     const polys: MeshFace[] = faces.map((f) => (f.colour === base ? { v: f.v } : { v: f.v, color: f.colour }));
     const cube: Cube = { shape: "mesh", ...(name ? { name } : {}), from: [0, 0, 0], size: [0, 0, 0], color: base, verts, polys };
     fitBounds(cube);
-    return cube;
+    // points that no face uses carry no weights worth keeping, but the lists must line up with the points
+    return { cube, ...(skinned ? { influences } : {}) };
   };
 
   const nodes: Json[] = json.nodes ?? [];
   let parts = 0;
+  const skinnedShapes: { part: Part; cube: Cube; node: number; influences: [number, number][][] }[] = [];
   const nameChain = new Map<number, string[]>(); // node -> part names from the top
   const visiting = new Set<number>();
   const build = (index: number, siblings: Part[], parentChain: string[]): Part | null => {
@@ -200,12 +215,16 @@ export function importGlb(bytes: Uint8Array): Imported {
     siblings.push(part);
     const chain = [...parentChain, name];
     nameChain.set(index, chain);
-    if (node.skin !== undefined) notes.push(`"${name}" is skinned: its bones are not imported, only its shape`);
+    const joints: number[] | undefined = node.skin !== undefined ? json!.skins?.[node.skin]?.joints : undefined;
+    if (node.skin !== undefined && !joints) notes.push(`"${name}" has a skin that cannot be read: it comes in as a rigid shape`);
     if (node.mesh !== undefined) {
       const mesh = json!.meshes?.[node.mesh];
       for (const [k, prim] of (mesh?.primitives ?? []).entries()) {
-        const cube = primitive(prim, (mesh.primitives.length > 1 ? `${mesh.name ?? name} ${k + 1}` : (mesh.name ?? "")) as string, s);
-        if (cube) part.cubes.push(cube);
+        // a skinned mesh is placed by its joints, not by its own node, so the node's size does not apply to it
+        const made = primitive(prim, (mesh.primitives.length > 1 ? `${mesh.name ?? name} ${k + 1}` : (mesh.name ?? "")) as string, joints ? [1, 1, 1] : s, joints);
+        if (!made) continue;
+        part.cubes.push(made.cube);
+        if (made.influences && joints) skinnedShapes.push({ part, cube: made.cube, node: index, influences: made.influences });
       }
     }
     if (s.some((x) => Math.abs(x - 1) > 1e-6) && node.children?.length) notes.push(`"${name}" is resized and has child parts: the children are not resized with it`);
@@ -218,6 +237,8 @@ export function importGlb(bytes: Uint8Array): Imported {
   for (const root of roots) build(root, top, []);
   if (parts > MAX_PARTS) return { ok: false, error: `the model has more than ${MAX_PARTS} parts` };
   if (!top.length) return { ok: false, error: "the model has nothing in it" };
+  const doc: ModelDoc = { version: 1, scale: DEFAULT_SCALE, parts: top };
+  if (skinnedShapes.length) attachSkins(doc, skinnedShapes);
   if ((json.textures?.length ?? 0) > 0) notes.push("textures are not imported: shapes keep flat colours (paint a new texture in the Texture tab)");
 
   // animations: translation, rotation and scale of nodes that became parts
@@ -261,5 +282,55 @@ export function importGlb(bytes: Uint8Array): Imported {
     c.name = n;
     used.add(n);
   }
-  return { ok: true, doc: { version: 1, scale: DEFAULT_SCALE, parts: top, ...(clips.length ? { clips } : {}) }, notes };
+  if (clips.length) doc.clips = clips;
+  return { ok: true, doc, notes };
+
+  /// Gives each skinned shape its weights: joints become part paths, and the points move from the model's space (where a glTF
+  /// skinned mesh lives) into the space of the part that holds the shape.
+  function attachSkins(model: ModelDoc, shapes: typeof skinnedShapes) {
+    const rest = worldMatrices(model);
+    for (const { part, cube, node, influences } of shapes) {
+      const skin = json!.skins[nodes[node]!.skin] as Json;
+      const owner = rest.get(boneKey(nameChain.get(node)!));
+      if (!owner) continue;
+      // which of the skin's joints are parts of this model
+      const bones: string[] = [];
+      const boneOf = new Map<number, number>();
+      (skin.joints as number[]).forEach((n, j) => {
+        const chain = nameChain.get(n);
+        if (chain && bones.length < 64) boneOf.set(j, bones.push(boneKey(chain)) - 1);
+      });
+      if (!bones.length) {
+        notes.push(`"${part.name}" is skinned to nodes that are not in the model: it comes in as a rigid shape`);
+        continue;
+      }
+      const weights: [number, number][][] = influences.map((infl) => {
+        const live = infl.filter(([j]) => boneOf.has(j));
+        const sum = live.reduce((n, [, w]) => n + w, 0);
+        if (!live.length || sum <= 0) return [[boneOf.get(infl[0]?.[0] ?? 0) ?? 0, 1]];
+        return live.map(([j, w]) => [boneOf.get(j)!, Math.round((w / sum) * 10000) / 10000] as [number, number]);
+      });
+      // rounding must not leave a point's weights short of one
+      for (const w of weights) {
+        const total = w.reduce((n, [, x]) => n + x, 0);
+        const big = w.reduce((m, pair) => (pair[1] > m[1] ? pair : m), w[0]!);
+        big[1] = Math.round((big[1] + (1 - total)) * 10000) / 10000;
+      }
+      const back = invertAffine(owner);
+      cube.verts = cube.verts!.map((v) => transformPoint(back, v).map(round) as Vec3);
+      fitBounds(cube);
+      cube.skin = { bones, weights } satisfies Skin;
+      // the file's own bind pose may differ from the pose the parts are in; bending starts from the parts' pose
+      const bind = skin.inverseBindMatrices !== undefined ? accessor(skin.inverseBindMatrices) : null;
+      if (bind) {
+        const off = (skin.joints as number[]).some((n, j) => {
+          const w = rest.get(boneKey(nameChain.get(n) ?? []));
+          if (!w) return false;
+          const inv = invertAffine(bind.values.slice(j * 16, j * 16 + 16));
+          return [12, 13, 14].some((k) => Math.abs(inv[k]! * UNITS - w[k]!) > 0.05 * Math.max(1, Math.abs(w[k]!)));
+        });
+        if (off) notes.push(`"${part.name}": the file's bind pose differs from its parts' pose; it will bend from the parts' pose`);
+      }
+    }
+  }
 }

@@ -1,3 +1,6 @@
+import { waving } from "./model-skin.test";
+import { samplePose } from "./model-anim";
+import { skinnedPoints, worldMatrices } from "./model-skin";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { exportGlb, eulerToQuaternion } from "./glb";
@@ -165,7 +168,7 @@ describe("importing a model made elsewhere", () => {
   it("says what it left out", () => {
     const r = ok(make({ textures: [{ source: 0 }], nodes: [{ name: "Tri", mesh: 0, skin: 0 }] }));
     expect(r.notes.some((n) => n.includes("textures are not imported"))).toBe(true);
-    expect(r.notes.some((n) => n.includes("skinned"))).toBe(true);
+    expect(r.notes.some((n) => n.includes("skin"))).toBe(true);
   });
 
   it("refuses what is not a model, and files that are cut short", () => {
@@ -175,5 +178,38 @@ describe("importing a model made elsewhere", () => {
     expect(importGlb(good.slice(0, 40)).ok).toBe(false);
     const empty = make({ nodes: [], scenes: [{ nodes: [] }] });
     expect(importGlb(empty)).toMatchObject({ ok: false, error: "the model has nothing in it" });
+  });
+});
+
+describe("skinned models", () => {
+  it("come back with their weights: the same points at rest and in a pose", () => {
+    const original = waving();
+    const r = importGlb(exportGlb(original));
+    if (!r.ok) throw new Error(r.error);
+    expect(r.notes.filter((n) => /skin|bind/.test(n))).toEqual([]);
+    // find the skinned shape and the part that holds it
+    let path: { parts: number[]; cube: number } | null = null;
+    const visit = (list: typeof r.doc.parts, prefix: number[]) =>
+      list.forEach((p, i) => {
+        p.cubes.forEach((c, ci) => c.skin && (path = { parts: [...prefix, i], cube: ci }));
+        visit(p.children, [...prefix, i]);
+      });
+    visit(r.doc.parts, []);
+    expect(path).not.toBeNull();
+    const cube = path!.cube;
+    const imported = r.doc;
+    const sorted = (pts: number[][]) => pts.map((p) => p.map((x) => Math.round(x * 100) / 100)).sort((a, b) => a[0]! - b[0]! || a[1]! - b[1]! || a[2]! - b[2]!);
+    const pts = (doc: typeof imported, p: typeof path, t: number) => {
+      const clip = doc.clips![0]!;
+      return skinnedPoints(doc, p!, worldMatrices(doc, samplePose(clip, t, false) as never))!;
+    };
+    const originalPath = { parts: [0, 0], cube: 0 };
+    for (const t of [0, 0.5, 1]) {
+      const want = sorted(pts(original, originalPath, t));
+      const got = sorted(pts(imported, path, t));
+      // each original point appears in the import (welding may keep a point more than once, never fewer)
+      for (const w of want) expect(got.some((g) => g.every((x, k) => Math.abs(x - w[k]!) < 0.02)), `t=${t} ${w}`).toBe(true);
+    }
+    expect(cube).toBeGreaterThanOrEqual(0);
   });
 });
