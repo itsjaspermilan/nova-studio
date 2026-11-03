@@ -6,8 +6,8 @@
   import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
   import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
   import type { ModelDoc } from "../lib/model-doc";
-  import { buildModel, disposeModel } from "../lib/model-three";
-  import { cameraOf, positionOf, sameRef, snap, type Camera3, type Ref, type Scene } from "../lib/scene-model";
+  import { ModelShapes, instanceScene, moveObject, placement, type Instanced } from "../lib/scene-three";
+  import { cameraOf, itemAt, positionOf, snap, type Camera3, type Ref, type Scene } from "../lib/scene-model";
 
   let {
     scene,
@@ -39,9 +39,13 @@
   let content: THREE.Group | undefined;
   let frameId = 0;
   let observer: ResizeObserver | undefined;
-  const holders: { holder: THREE.Group; ref: Ref }[] = [];
-
-  const radians = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+  // Every shape of every model is one instanced mesh; objects without a model are small wire boxes.
+  let shapes = new ModelShapes();
+  let shapesFor: ReadonlyMap<string, unknown> | undefined;
+  let instanced: Instanced | undefined;
+  const markers = new Map<number, THREE.Group>();
+  /// What the move arrows hold on to: it stands where the picked object does, and the object follows it.
+  const grip = new THREE.Group();
 
   onMount(() => {
     if (!canvas || !box) return;
@@ -59,6 +63,9 @@
     const target = bounds.getCenter(new THREE.Vector3());
     const reach = Math.max(6, bounds.getSize(new THREE.Vector3()).length());
     camera.position.copy(target).add(new THREE.Vector3(0.5, 0.6, 1).normalize().multiplyScalar(reach * 1.2));
+    // (plain listeners: the orbit and move controls hold on to the pointer, which a delegated handler can miss)
+    canvas.addEventListener("pointerdown", pointerdown);
+    canvas.addEventListener("pointerup", pointerup);
     controls = new OrbitControls(camera, canvas);
     controls.target.copy(target);
     controls.update();
@@ -69,12 +76,19 @@
       if (controls) controls.enabled = !e.value;
       if (!e.value) finishDrag();
     });
+    gizmo.addEventListener("objectChange", follow);
     three.add(gizmo.getHelper());
+    three.add(grip);
     three.add(new THREE.AmbientLight(0xffffff, 1.6));
     const sun = new THREE.DirectionalLight(0xffffff, 1.8);
     sun.position.set(20, 40, 30);
     three.add(sun);
-    three.add(new THREE.GridHelper(200, 100, 0x4a5163, 0x2c313c));
+    // a ground grid that fits the scene: lines every ten units, as far as the objects reach
+    const half = Math.min(2000, Math.ceil((Math.max(bounds.max.x - bounds.min.x, bounds.max.z - bounds.min.z, 40) * 0.75) / 10) * 10);
+    const spacing = half > 300 ? 50 : 10;
+    const grid = new THREE.GridHelper(Math.ceil(half / spacing) * spacing * 2, Math.ceil(half / spacing) * 2, 0x4a5163, 0x363c4a);
+    grid.position.set(Math.round(target.x / 10) * 10, 0, Math.round(target.z / 10) * 10);
+    three.add(grid);
     content = new THREE.Group();
     three.add(content);
     const size = () => {
@@ -103,10 +117,13 @@
     loop();
     return () => {
       cancelAnimationFrame(frameId);
+      canvas?.removeEventListener("pointerdown", pointerdown);
+      canvas?.removeEventListener("pointerup", pointerup);
       observer?.disconnect();
       gizmo?.dispose();
       controls?.dispose();
       if (content) clear();
+      shapes.dispose();
       renderer?.dispose();
     };
   });
@@ -116,46 +133,43 @@
   function clear() {
     if (!content) return;
     gizmo?.detach();
+    for (const m of instanced?.meshes ?? []) m.dispose();
+    instanced = undefined;
     content.traverse((o) => {
-      if (o instanceof THREE.LineSegments || o instanceof THREE.Line) {
+      if (o instanceof THREE.LineSegments || (o instanceof THREE.Mesh && o.userData.marker)) {
         o.geometry.dispose();
         (o.material as THREE.Material).dispose();
       }
     });
-    for (const child of [...content.children]) disposeModel(child);
     content.clear();
-    holders.length = 0;
+    markers.clear();
   }
 
   function rebuild() {
     if (!content || !three) return;
     clear();
+    if (shapesFor !== models) {
+      shapes.dispose(); // the models changed: their shapes are made again
+      shapes = new ModelShapes();
+      shapesFor = models;
+    }
     const bg = scene.background;
     three.background = Array.isArray(bg) && bg.length >= 3 ? new THREE.Color().setRGB(bg[0]! / 255, bg[1]! / 255, bg[2]! / 255, THREE.SRGBColorSpace) : new THREE.Color(0x5c96d6);
-    (scene.objects ?? []).forEach((o, index) => {
-      const holder = new THREE.Group();
-      const props = (o.props ?? {}) as Record<string, unknown>;
-      holder.position.set(...positionOf(o));
-      // the runtime turns about y, then x, then z, in radians
-      holder.rotation.order = "YXZ";
-      holder.rotation.set(radians(props.rx), radians(props.ry ?? props.angle), radians(props.rz));
-      const s = typeof props.sx === "number" && props.sx > 0 ? props.sx : 1;
-      holder.scale.setScalar(s);
-      const doc = typeof o.kind === "string" ? models.get(o.kind) : undefined;
-      if (doc) holder.add(buildModel(doc));
-      else {
-        // an object without a model is a marker: a small wire box
-        const edges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)), new THREE.LineBasicMaterial({ color: 0xe6b450 }));
-        edges.position.y = 0.5;
-        holder.add(edges);
-        const hit = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ visible: false }));
-        hit.position.y = 0.5;
-        holder.add(hit);
-      }
-      holder.userData.index = index;
-      content!.add(holder);
-      holders.push({ holder, ref: { kind: "objects", index } });
-    });
+    instanced = instanceScene(scene, models, shapes);
+    for (const m of instanced.meshes) content.add(m);
+    for (const index of instanced.markers) {
+      const g = new THREE.Group();
+      g.applyMatrix4(placement(scene.objects![index]!));
+      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)), new THREE.LineBasicMaterial({ color: 0xe6b450 }));
+      edges.position.y = 0.5;
+      const hit = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ visible: false }));
+      hit.position.y = 0.5;
+      hit.userData.marker = true;
+      g.add(edges, hit);
+      g.userData.index = index;
+      content.add(g);
+      markers.set(index, g);
+    }
     drawCamera();
     attach();
   }
@@ -175,17 +189,34 @@
   function attach() {
     if (!gizmo) return;
     gizmo.detach();
-    const found = holders.find((h) => sameRef(h.ref, selected));
-    if (found) gizmo.attach(found.holder);
+    const o = selected && selected.kind === "objects" ? itemAt(scene, selected) : undefined;
+    if (!o) return;
+    grip.position.set(...positionOf(o));
+    grip.updateMatrixWorld(true);
+    gizmo.attach(grip);
+  }
+
+  /// While an arrow is dragged the object follows it, without waiting for the file to change.
+  function follow() {
+    if (!selected || !instanced) return;
+    const o = itemAt(scene, selected);
+    if (!o) return;
+    const placed = placement(o).setPosition(grip.position);
+    moveObject(instanced, selected.index, placed);
+    const marker = markers.get(selected.index);
+    if (marker) marker.position.copy(grip.position);
   }
 
   function finishDrag() {
-    const found = holders.find((h) => sameRef(h.ref, selected));
-    if (!found) return;
-    const p = found.holder.position;
+    if (!selected) return;
+    const p = grip.position;
+    const here = itemAt(scene, selected);
+    if (!here) return;
+    const [hx, hy, hz] = positionOf(here);
+    if (Math.hypot(p.x - hx, p.y - hy, p.z - hz) < 1e-4) return; // nothing was dragged: leave the file alone
     const grid = gridSize > 0 ? gridSize / 8 : 0; // the 2D grid is in pixels; 8 of them make one world unit here
     const at = (v: number) => (grid ? snap(v, grid) : Math.round(v * 1000) / 1000);
-    onmove(found.ref, [at(p.x), at(p.y), at(p.z)]);
+    onmove(selected, [at(p.x), at(p.y), at(p.z)]);
   }
 
   // A click without a drag picks the object under the pointer.
@@ -196,18 +227,20 @@
   function pointerup(e: PointerEvent) {
     const start = down;
     down = null;
-    if (!start || e.button !== 0 || !camera || !canvas || gizmo?.dragging) return;
+    if (!start || e.button !== 0 || !camera || !canvas || gizmo?.dragging || !instanced) return;
     if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 4) return;
     const rect = canvas.getBoundingClientRect();
     const ray = new THREE.Raycaster();
     ray.setFromCamera(new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -(((e.clientY - rect.top) / rect.height) * 2 - 1)), camera);
-    const hits = ray.intersectObjects(
-      holders.map((h) => h.holder),
-      true,
-    );
-    let node: THREE.Object3D | null = hits[0]?.object ?? null;
-    while (node && node.userData.index === undefined) node = node.parent;
-    onselect(node ? { kind: "objects", index: node.userData.index as number } : null);
+    const hit = ray.intersectObjects([...instanced.meshes, ...markers.values()], true)[0];
+    let index: number | undefined;
+    if (hit?.object instanceof THREE.InstancedMesh) index = instanced.owners.get(hit.object)?.[hit.instanceId ?? -1];
+    else {
+      let node: THREE.Object3D | null = hit?.object ?? null;
+      while (node && node.userData.index === undefined) node = node.parent;
+      index = node?.userData.index as number | undefined;
+    }
+    onselect(index === undefined ? null : { kind: "objects", index });
   }
 
   $effect(() => {
@@ -221,7 +254,7 @@
 </script>
 
 <div class="view" bind:this={box}>
-  <canvas bind:this={canvas} aria-label="3D scene view" onpointerdown={pointerdown} onpointerup={pointerup}></canvas>
+  <canvas bind:this={canvas} aria-label="3D scene view"></canvas>
 </div>
 
 <style>

@@ -654,6 +654,12 @@
           onwheel={wheel}
           onkeydown={key}
         ></canvas>
+        {#if scene.camera}
+          <div class="flat3d">
+            <p><strong>This level is 3D.</strong> Its objects stand at x, y (up) and z, and the game has a 3D camera, so the flat view cannot show them where they are.</p>
+            <button class="primary" onclick={() => (view = "3d")}>Open the 3D view</button>
+          </div>
+        {/if}
       </div>
       <p class="hint dim">Drag to move · drag empty space to pan · scroll to zoom · arrows nudge · ⌘D duplicate · Delete removes · hold ⇧ to ignore snap</p>
       {/if}
@@ -759,11 +765,15 @@
       {:else}
         <h3>Scene</h3>
         <label>Background <input type="color" value={hex(scene.background)} onchange={(e) => edit(setSceneField(scene, "background", unhex(e.currentTarget.value)))} /></label>
-        <div class="pair">
-          <label>Width <input type="number" min="1" value={world.width} onchange={(e) => edit(setSceneField(scene, "width", Number(e.currentTarget.value) || undefined))} /></label>
-          <label>Height <input type="number" min="1" value={world.height} onchange={(e) => edit(setSceneField(scene, "height", Number(e.currentTarget.value) || undefined))} /></label>
-        </div>
-        <p class="dim small">The world is {world.width}×{world.height}. The camera stops at its edges. Click something to edit it.</p>
+        {#if view === "2d"}
+          <div class="pair">
+            <label>Width <input type="number" min="1" value={world.width} onchange={(e) => edit(setSceneField(scene, "width", Number(e.currentTarget.value) || undefined))} /></label>
+            <label>Height <input type="number" min="1" value={world.height} onchange={(e) => edit(setSceneField(scene, "height", Number(e.currentTarget.value) || undefined))} /></label>
+          </div>
+          <p class="dim small">The world is {world.width}×{world.height}. The camera stops at its edges. Click something to edit it.</p>
+        {:else}
+          <p class="dim small">Click an object to edit it. The size of the 2D world ({world.width}×{world.height}) is set in the 2D view.</p>
+        {/if}
         {#if (scene.tilemaps as unknown[] | undefined)?.length}
           <p class="dim small">Tile maps are shown but edited in the JSON view for now.</p>
         {/if}
@@ -790,6 +800,8 @@
   .scene { height: 100%; display: grid; grid-template-columns: 190px minmax(0, 1fr) 220px; min-height: 0; }
   .palette, .inspector { background: var(--panel); overflow: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
   .palette { border-right: 1px solid var(--line); }
+  /* a long list of entities must scroll, not squash its buttons to nothing */
+  .palette > :global(*), .inspector > :global(*) { flex-shrink: 0; }
   .inspector { border-left: 1px solid var(--line); }
   h3 { margin: 2px 0 4px; font-size: 13px; }
   h4 { margin: 10px 0 2px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--dim); }
@@ -804,6 +816,8 @@
   .spacer { flex: 1; }
   .canvas-box { flex: 1; min-height: 0; position: relative; overflow: hidden; }
   .canvas-box canvas { position: absolute; inset: 0; display: block; cursor: default; outline: none; --panel-2: #222630; }
+  .flat3d { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 24px; text-align: center; background: color-mix(in srgb, var(--panel) 88%, transparent); }
+  .flat3d p { max-width: 380px; margin: 0; color: var(--dim); }
   .hint { margin: 0; padding: 3px 10px; font-size: 11px; border-top: 1px solid var(--line); background: var(--panel); }
   label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--dim); }
   label input, label select, label textarea { color: var(--text); }

@@ -5,7 +5,8 @@ import { svelte } from "@sveltejs/vite-plugin-svelte";
 export default defineConfig({
   plugins: [svelte()],
   clearScreen: false,
-  server: { port: 1420, strictPort: true, host: "127.0.0.1" },
+  // (the examples folder next to the studio may be read in development, to try the editors on real projects)
+  server: { port: 1420, strictPort: true, host: "127.0.0.1", fs: { allow: [".."] } },
   build: { target: "es2022", sourcemap: false },
   test: { environment: "node", include: ["src/**/*.test.ts", "mcp/**/*.test.ts"] },
 });

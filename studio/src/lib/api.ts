@@ -49,6 +49,15 @@ let cached: Promise<Api> | undefined;
 
 /// The desktop backend inside Tauri, an in-memory project in a plain browser (for previews and tests).
 export function getApi(): Promise<Api> {
-  cached ??= "__TAURI_INTERNALS__" in window ? tauriApi() : import("./mock").then((m) => m.createMockApi());
+  cached ??= "__TAURI_INTERNALS__" in window ? tauriApi() : import("./mock").then((m) => {
+    const api = m.createMockApi();
+    // In development the preview's project can be filled from the outside (a browser console, a test script).
+    if (import.meta.env.DEV) {
+      const w = window as unknown as { __novaMock?: Api; __loadExample?: (name: string) => Promise<number> };
+      w.__novaMock = api;
+      w.__loadExample = (name) => import("./dev-examples").then((d) => d.loadExample(api, name));
+    }
+    return api;
+  });
   return cached;
 }
