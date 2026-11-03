@@ -61,7 +61,8 @@ another physical Android device) to settle; the emulator cannot.
 - [ ] The mixer resamples linearly (pitched-up sounds can alias) and has no buses or effects; the C
   audio core's synthesis and DSP are not connected to game audio (M6).
 - [ ] Hot reload restarts the whole project (no state-preserving reload).
-- [ ] Lua script errors show as a one-line banner; the traceback is not available as data.
+- [x] Lua errors carry their call stack as data (2026-11-02): `nova check --json` gives each diagnostic a `stack` (file, line, function, internal), and
+  the studio's Problems panel lists the frames of the person's own code, each opening its file at the line.
 - [ ] Released builds: the native library is not stripped or size-optimised, and 16 KB page-size
   alignment for newer Android versions has not been checked.
 

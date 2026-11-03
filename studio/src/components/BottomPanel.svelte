@@ -39,6 +39,13 @@
             <span class="msg">{d.message}</span>
             <span class="where dim mono">{d.file ?? "project"}{d.line ? ` · ${label(d.line)}` : ""}{d.place ? ` · ${d.place}` : ""}</span>
           </button>
+          {#if d.stack?.some((f) => !f.internal)}
+            <ol class="stack" aria-label="Call stack">
+              {#each d.stack.filter((f) => !f.internal) as f, k (k)}
+                <li><button class="ghost frame" onclick={() => studio.showProblem({ ...d, file: f.file, line: f.line })} title="Open {f.file}">{f.function || "code"} <span class="dim mono">{f.file}:{f.line}</span></button></li>
+              {/each}
+            </ol>
+          {/if}
         </li>
       {:else}
         <li class="empty dim">{studio.checkedAt ? "The project runs for a few frames without problems." : "Checking the project…"}</li>
@@ -74,4 +81,6 @@
   .empty { padding: 12px; }
   .log { overflow: auto; flex: 1; padding: 8px 12px; font-size: 12px; white-space: pre-wrap; }
   .log .err { color: var(--warn); }
+  .stack { list-style: none; margin: 0 0 4px 26px; padding: 0; display: flex; flex-direction: column; font-size: 11px; }
+  .frame { text-align: left; padding: 0 6px; border: none; }
 </style>

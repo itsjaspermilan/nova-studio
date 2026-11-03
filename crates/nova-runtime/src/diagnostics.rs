@@ -24,6 +24,54 @@ pub struct Diagnostic {
     pub message: String,
     /// The complete original text, including any Lua traceback.
     pub detail: String,
+    /// The Lua call stack at the error, innermost first (empty for errors that are not from running code).
+    pub stack: Vec<StackFrame>,
+}
+
+/// One line of a Lua traceback.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct StackFrame {
+    /// The project file, when the frame is in one (not Rust code and not the framework).
+    pub file: Option<String>,
+    pub line: Option<u32>,
+    /// What was running: `method 'enter'`, `function <scenes/play.lua:5>`, `field 'sprite'`...
+    pub function: String,
+    /// True for Rust functions (`[C]`) and Nova's own Lua framework: not the person's code.
+    pub internal: bool,
+}
+
+/// The frames of the `stack traceback:` in a Lua error message, innermost first.
+pub fn parse_traceback(message: &str) -> Vec<StackFrame> {
+    let Some((_, after)) = message.split_once("stack traceback:") else {
+        return vec![];
+    };
+    after
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with("..."))
+        .filter_map(|line| {
+            let (place, function) = line.split_once(": in ").unwrap_or((line, ""));
+            let function = function.trim().to_string();
+            if place == "[C]" {
+                return Some(StackFrame {
+                    file: None,
+                    line: None,
+                    function,
+                    internal: true,
+                });
+            }
+            // "scenes/play.lua:8" (or "nova.framework:822")
+            let (file, number) = place.rsplit_once(':')?;
+            let line: u32 = number.trim().parse().ok()?;
+            let project = file.ends_with(".lua") && safe_path(file);
+            Some(StackFrame {
+                file: project.then(|| file.to_string()),
+                line: Some(line),
+                function,
+                internal: !project,
+            })
+        })
+        .collect()
 }
 
 /// A project-relative path that stays inside the project (no `..`, not absolute).
@@ -132,6 +180,7 @@ pub fn parse(message: &str, severity: &'static str) -> Diagnostic {
             line: Some(line),
             place: None,
             message: text,
+            stack: parse_traceback(&detail),
             detail,
         };
     }
@@ -148,6 +197,7 @@ pub fn parse(message: &str, severity: &'static str) -> Diagnostic {
             line: json_line(first),
             place,
             message: rest,
+            stack: parse_traceback(&detail),
             detail,
         };
     }
@@ -157,6 +207,7 @@ pub fn parse(message: &str, severity: &'static str) -> Diagnostic {
         line: None,
         place: None,
         message: first.to_string(),
+        stack: parse_traceback(&detail),
         detail,
     }
 }
@@ -164,6 +215,34 @@ pub fn parse(message: &str, severity: &'static str) -> Diagnostic {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_traceback_becomes_a_call_stack_innermost_first() {
+        let d = parse(
+            "runtime error: scenes/play.lua:8: boom\nstack traceback:\n\t[C]: in function 'error'\n\tscenes/play.lua:8: in method 'enter'\n\tnova.framework:822: in upvalue 'enter_scene'\n\t...(skipping 3 levels)\n\tmain.lua:2: in main chunk",
+            "error",
+        );
+        let shown: Vec<_> = d
+            .stack
+            .iter()
+            .map(|f| (f.file.as_deref(), f.line, f.function.as_str(), f.internal))
+            .collect();
+        assert_eq!(
+            shown,
+            [
+                (None, None, "function 'error'", true),
+                (Some("scenes/play.lua"), Some(8), "method 'enter'", false),
+                (None, Some(822), "upvalue 'enter_scene'", true),
+                (Some("main.lua"), Some(2), "main chunk", false),
+            ]
+        );
+        assert!(
+            parse("sprites/a.sprite.json: not valid JSON", "error")
+                .stack
+                .is_empty()
+        );
+        assert!(parse("no nova.json found", "error").stack.is_empty());
+    }
 
     #[test]
     fn lua_runtime_errors_give_file_line_and_message() {

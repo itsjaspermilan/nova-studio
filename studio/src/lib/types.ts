@@ -43,6 +43,16 @@ export interface Diagnostic {
   place: string | null;
   message: string;
   detail: string;
+  /// The Lua call stack at an error, innermost first (empty or missing for problems that are not from running code).
+  stack?: StackFrame[];
+}
+
+export interface StackFrame {
+  file: string | null;
+  line: number | null;
+  function: string;
+  /// Rust functions and Nova's own framework: not the person's code.
+  internal: boolean;
 }
 
 export interface CheckReport {

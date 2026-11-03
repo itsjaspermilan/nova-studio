@@ -201,3 +201,39 @@ fn the_plain_text_report_is_readable() {
     assert_eq!(out.status.code(), Some(1));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_runtime_error_comes_with_its_call_stack() {
+    let dir = scratch("stack");
+    write(&dir, "nova.json", r#"{"format":1,"name":"Stack"}"#);
+    write(
+        &dir,
+        "main.lua",
+        "local function inner() error('boom') end\nlocal function outer() inner() end\nfunction update(dt) outer() end\n",
+    );
+    let (ok, report, _) = check(&dir);
+    assert!(!ok);
+    let d = first(&report);
+    assert_eq!(d["file"], "main.lua");
+    let frames: Vec<(String, i64)> = d["stack"]
+        .as_array()
+        .expect("a stack")
+        .iter()
+        .filter(|f| f["internal"] == false)
+        .map(|f| {
+            (
+                f["file"].as_str().unwrap().to_string(),
+                f["line"].as_i64().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        frames,
+        [
+            ("main.lua".to_string(), 1),
+            ("main.lua".to_string(), 2),
+            ("main.lua".to_string(), 3)
+        ],
+        "{d}"
+    );
+}
