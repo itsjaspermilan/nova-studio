@@ -727,3 +727,20 @@ fn the_scenery_can_be_looked_through_for_what_is_ahead() {
         "{log:?}"
     );
 }
+
+#[test]
+fn scenery_can_be_shot_through_and_looked_across() {
+    let probes = "if not done then done = true\n\
+        local d, hx, hz, cx, cz, cr = nova.scenery.raycast(-5, 0, 1, 0, 20)\n\
+        nova.log(d and string.format('%.2f %.2f %.2f %.2f %.3f', d, hx, hz, cx, cr) or 'clear')\n\
+        nova.log(tostring(nova.scenery.raycast(-5, 3, 1, 0, 20)))\n\
+        nova.log(tostring(nova.scenery.line_clear(-5, 0, 5, 0)) .. ' ' .. tostring(nova.scenery.line_clear(-5, 3, 5, 3)) .. ' ' .. tostring(nova.scenery.line_clear(-5, 0.7, 5, 0.7, 0)) .. ' ' .. tostring(nova.scenery.line_clear(-5, 0.9, 5, 0.9, 0.5)))\n\
+        end";
+    let g = world_game(0.0, probes);
+    let log = g.take_log();
+    // the post's circle (radius 0.5 at the origin) is first reached 4.5 m along, at x = -0.5
+    assert_eq!(log[0], "4.50 -0.50 0.00 0.00 0.500");
+    assert_eq!(log[1], "nil");
+    // straight through it: blocked; three metres to the side: clear; just past its edge with no width: clear; with width: blocked
+    assert_eq!(log[2], "false true true false");
+}

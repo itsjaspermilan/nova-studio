@@ -131,6 +131,13 @@ In `"xz"`, `on_collide_<tag>`, `overlaps`, `touching`, `distance_to`, `angle_to`
 `x` and `z`; a hitbox `{ r = 0.6 }` is a circle on the ground (scaled by the entity's `sx`, as a model's size is); height is ignored.
 Tilemaps and `slide` stay flat.
 
+Height: give a hitbox a `base` and a `height` (`{ r = 0.5, base = 0, height = 2 }`, in the model's own size) and two things only
+collide when their heights meet; a hitbox with no `height` reaches every height. `nova.raycast(x, z, dx, dz, length, tag, { ignore, height, slope })`
+shoots a ray at the entities with that tag and returns `entity, distance, hit_x, hit_z` for the nearest (`height` and `slope` say
+where the ray starts and how it rises, so a shot can pass over a short thing); `nova.scenery.raycast` does the same against the
+static scenery's circles and `nova.scenery.line_clear(x1, z1, x2, z2 [, radius])` answers "can they see each other?".
+There are still no floors, ramps or ledges: scenery is circles on the ground.
+
 **Static scenery.** A level has thousands of trees, road pieces and barriers that never move. Do not make them live
 entities: give the entity class `static = true` and a model, and a scene file's objects of that kind go into
 `nova.scenery`, a grid of squares drawn only near the camera (out to `nova.scenery.range` metres, 200 by default):

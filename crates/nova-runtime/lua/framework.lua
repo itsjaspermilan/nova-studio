@@ -205,10 +205,29 @@ local function bounds(e)
   return nil
 end
 
+-- How high a thing stands, in the ground plane x, z (where y is height): { bottom, top } from the hitbox's `base` and `height`,
+-- or nil when it has none (it then reaches any height).
+local function vrange(e)
+  local spec = rawget(e, "hitbox") or getmetatable(e).__hitbox
+  local h = spec and spec.height
+  if not h then return nil end
+  local s = abs(e.sx)
+  local y0 = e.y + (spec.base or 0) * s
+  return y0, y0 + h * s
+end
+
 local function overlap(a, b)
   local ax0, ay0, ax1, ay1, ar = bounds(a)
   local bx0, by0, bx1, by1, br = bounds(b)
   if not ax0 or not bx0 then return false end
+  if XZ then
+    -- a bullet flying over a short wall, a player standing on a crate: heights that do not meet do not collide
+    local a0, a1 = vrange(a)
+    if a0 then
+      local b0, b1 = vrange(b)
+      if b0 and (a1 < b0 or b1 < a0) then return false end
+    end
+  end
   if ar and br then
     local dx, dy = (ax0 + ar) - (bx0 + br), (ay0 + ar) - (by0 + br)
     local r = ar + br
@@ -612,6 +631,23 @@ function scenery.ahead(x, z, dx, dz, length, radius)
     t = math.min(length, t + SCENERY_CELL * 0.5)
   end
   if best then return best, bx, bz, br end
+end
+
+--- A ray along the ground from (x, z) in the direction (dx, dz): the first solid circle it meets, as `distance, hit_x, hit_z,
+--- circle_x, circle_z, circle_radius`, or nothing (`length` metres at most).
+function scenery.raycast(x, z, dx, dz, length)
+  local d, cx, cz, cr = scenery.ahead(x, z, dx, dz, length, 0)
+  if not d then return nil end
+  local len = sqrt(dx * dx + dz * dz)
+  return d, x + dx / len * d, z + dz / len * d, cx, cz, cr
+end
+
+--- Is the straight line from (x1, z1) to (x2, z2) free of solid scenery? (`radius` makes the line that wide.)
+function scenery.line_clear(x1, z1, x2, z2, radius)
+  local dx, dz = x2 - x1, z2 - z1
+  local len = sqrt(dx * dx + dz * dz)
+  if len < 1e-9 then return true end
+  return scenery.ahead(x1, z1, dx, dz, len, radius or 0) == nil
 end
 
 local function spawn(what, x, y, props)
@@ -1215,6 +1251,81 @@ local function grid_for(tag)
   end
   grids[tag] = g
   return g
+end
+
+--- A ray along the ground (x, y in a flat game, x, z in a ground-plane game) from (x, y) in the direction (dx, dy), at most
+--- `length` long, against the entities with `tag` that have a hitbox. Returns the nearest `entity, distance, hit_x, hit_y`, or
+--- nothing. `opts`: `ignore` (an entity to skip, such as the shooter), and for a ground-plane game `height` (where the ray starts,
+--- up) and `slope` (how much it rises per metre; negative falls), so that a shot can pass over a short thing or under a tall one.
+function nova.raycast(x, y, dx, dy, length, tag, opts)
+  local len = sqrt(dx * dx + dy * dy)
+  if len < 1e-9 or length <= 0 then return nil end
+  dx, dy = dx / len, dy / len
+  local ignore = opts and opts.ignore
+  local h0, slope = opts and opts.height, opts and opts.slope or 0
+  local cells = grid_for(tag).cells
+  local best, best_e = length, nil
+  local seen_here = {}
+  local t = 0
+  while true do
+    local px, py = x + dx * t, y + dy * t
+    for gx = floor(px / grid_cell) - 1, floor(px / grid_cell) + 1 do
+      for gy = floor(py / grid_cell) - 1, floor(py / grid_cell) + 1 do
+        local cell = cells[cell_key(gx, gy)]
+        if cell then
+          for i = 1, #cell do
+            local e = cell[i]
+            if e ~= ignore and not e._dead and not seen_here[e] then
+              seen_here[e] = true
+              local x0, y0, x1, y1, r = bounds(e)
+              local hit
+              if r then
+                -- a circle: how far along the ray does it first reach it?
+                local rx, ry = (x0 + x1) / 2 - x, (y0 + y1) / 2 - y
+                local along = rx * dx + ry * dy
+                local across = rx * -dy + ry * dx
+                if across * across < r * r then
+                  local d = along - sqrt(r * r - across * across)
+                  if d < 0 and along + sqrt(r * r - across * across) >= 0 then d = 0 end
+                  if d >= 0 then hit = d end
+                end
+              else
+                -- a box: the slab test
+                local tmin, tmax = 0, math.huge
+                for axis = 1, 2 do
+                  local o, v, lo, hi
+                  if axis == 1 then o, v, lo, hi = x, dx, x0, x1 else o, v, lo, hi = y, dy, y0, y1 end
+                  if abs(v) < 1e-12 then
+                    if o < lo or o > hi then tmin, tmax = 1, 0 end
+                  else
+                    local a, b = (lo - o) / v, (hi - o) / v
+                    if a > b then a, b = b, a end
+                    tmin, tmax = math.max(tmin, a), math.min(tmax, b)
+                  end
+                end
+                if tmin <= tmax then hit = tmin end
+              end
+              if hit and hit < best then
+                -- over or under it? (only when the ray has a height and the thing has one)
+                local ok = true
+                if XZ and h0 then
+                  local b0, b1 = vrange(e)
+                  if b0 then
+                    local at = h0 + slope * hit
+                    ok = at >= b0 and at <= b1
+                  end
+                end
+                if ok then best, best_e = hit, e end
+              end
+            end
+          end
+        end
+      end
+    end
+    if t >= best or t >= length then break end
+    t = math.min(length, t + grid_cell * 0.5)
+  end
+  if best_e then return best_e, best, x + dx * best, y + dy * best end
 end
 
 local seen = {}

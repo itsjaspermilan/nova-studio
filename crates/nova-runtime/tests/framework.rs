@@ -1887,3 +1887,125 @@ fn stats_tell_a_game_how_the_last_frame_went() {
         ["60 2.5 17 1234 9 entities=2 lua>0=true memory>0=true"]
     );
 }
+
+/// A ground-plane game with entities `ball` (a circle, 1 m across the radius), `crate` (a box 2 x 2) and `pole` (a circle that
+/// is only 2 m tall, standing at `y = base`); `body` runs in the scene's enter function.
+fn ray_game(body: &str) -> Game {
+    let mut g = project(vec![
+        (
+            "entities/ball.lua",
+            lua("return nova.entity { tags = { 't' }, hitbox = { r = 1 } }"),
+        ),
+        (
+            "entities/crate.lua",
+            lua("return nova.entity { tags = { 't' }, hitbox = { -1, -1, 2, 2 } }"),
+        ),
+        (
+            "entities/pole.lua",
+            lua(
+                "return nova.entity { tags = { 't' }, hitbox = { r = 0.5, base = 0, height = 2 } }",
+            ),
+        ),
+        (
+            "scenes/s.lua",
+            lua(&format!(
+                "local S = nova.scene {{}}\nfunction S:enter()\n{body}\nend\nreturn S"
+            )),
+        ),
+        (
+            "main.lua",
+            lua("nova.collision { plane = 'xz', cell = 2 }\nnova.start('s')"),
+        ),
+    ]);
+    steps(&mut g, 2);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    g
+}
+
+#[test]
+fn a_ray_finds_the_nearest_thing_it_hits_with_its_distance_and_place() {
+    let g = ray_game(
+        "local near = nova.spawn('ball', 5, 0, { z = 0 })\n\
+         local far = nova.spawn('ball', 10, 0, { z = 0.5 })\n\
+         local box = nova.spawn('crate', 20, 0, { z = 0 })\n\
+         local function show(e, d, x, z) nova.log(e == near and 'near' or e == far and 'far' or e == box and 'box' or 'none', d and string.format('%.2f %.2f %.2f', d, x, z) or '-') end\n\
+         show(nova.raycast(0, 0, 1, 0, 50, 't'))\n\
+         show(nova.raycast(0, 0, 1, 0, 3, 't'))\n\
+         show(nova.raycast(0, 3, 1, 0, 50, 't'))\n\
+         show(nova.raycast(0, 0, 1, 0, 50, 't', { ignore = near }))\n\
+         show(nova.raycast(30, 0, -1, 0, 50, 't'))\n\
+         show(nova.raycast(5, 0, 1, 0, 50, 't'))",
+    );
+    // (nova.log takes one string: the two values were joined by the log, so check the lines)
+    let log = g.take_log();
+    assert_eq!(log.len(), 6, "{log:?}");
+    assert_eq!(log[0], "near");
+    assert_eq!(log[1], "none", "too short to reach it");
+    assert_eq!(log[2], "none", "three metres off the line");
+    assert_eq!(
+        log[3], "far",
+        "the ignored one is skipped: the next one is hit"
+    );
+    assert_eq!(log[4], "box", "from the other side the box comes first");
+    assert_eq!(
+        log[5], "near",
+        "starting inside a thing hits it at distance 0"
+    );
+}
+
+#[test]
+fn rays_and_collisions_respect_heights_in_the_ground_plane() {
+    let g = ray_game(
+        "nova.spawn('pole', 5, 0, { z = 0 })\n\
+         local function hit(height, slope) local e = nova.raycast(0, 0, 1, 0, 20, 't', { height = height, slope = slope }); return e ~= nil end\n\
+         nova.log(tostring(hit(1, 0)) .. ' ' .. tostring(hit(3, 0)) .. ' ' .. tostring(hit(3, -0.4)) .. ' ' .. tostring(hit(1, 0.5)))\n\
+         nova.log(tostring(nova.raycast(0, 0, 1, 0, 20, 't') ~= nil))",
+    );
+    assert_eq!(
+        g.take_log(),
+        [
+            // at 1 m: hits; at 3 m (over the 2 m pole): misses; 3 m falling 0.4 a metre is 1.2 m by the pole: hits; 1 m rising 0.5 a metre is 3 m by the pole: misses
+            "true false true false",
+            "true"
+        ]
+    );
+    // two things whose heights do not meet do not collide; a thing with no height reaches any height
+    let g = project(vec![
+        (
+            "entities/low.lua",
+            lua(
+                "local L = nova.entity { tags = { 'low' }, hitbox = { r = 1, height = 1 } }\nfunction L:on_collide_high(o) nova.log('hit ' .. self.name .. ' ' .. o.name) end\nreturn L",
+            ),
+        ),
+        (
+            "entities/high.lua",
+            lua("return nova.entity { tags = { 'high' }, hitbox = { r = 1, height = 1 } }"),
+        ),
+        (
+            "entities/any.lua",
+            lua("return nova.entity { tags = { 'high' }, hitbox = { r = 1 } }"),
+        ),
+        (
+            "scenes/s.lua",
+            lua(
+                "local S = nova.scene {}\nfunction S:enter()\n  nova.spawn('low', 0, 0, { name = 'low', z = 0 })\n  nova.spawn('high', 0.5, 5, { name = 'floating', z = 0 })\n  nova.spawn('high', 0.5, 0.5, { name = 'touching', z = 0 })\n  nova.spawn('any', -0.5, 40, { name = 'tall', z = 0 })\nend\nreturn S",
+            ),
+        ),
+        (
+            "main.lua",
+            lua("nova.collision { plane = 'xz' }\nnova.start('s')"),
+        ),
+    ]);
+    let mut g = g;
+    steps(&mut g, 1);
+    let log = g.take_log();
+    assert!(log.contains(&"hit low touching".to_string()), "{log:?}");
+    assert!(
+        log.contains(&"hit low tall".to_string()),
+        "no height reaches every height: {log:?}"
+    );
+    assert!(
+        !log.iter().any(|l| l.contains("floating")),
+        "five metres up does not touch: {log:?}"
+    );
+}

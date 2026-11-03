@@ -63,6 +63,20 @@
   "group": "3D"
  },
  {
+  "name": "nova.scenery.raycast",
+  "kind": "function",
+  "signature": "nova.scenery.raycast(x, z, dx, dz, length) -> distance, hit_x, hit_z, cx, cz, cr | nil",
+  "doc": "A ray along the ground: the first solid circle of the static scenery it meets (at most `length` metres), with where it hit and the circle.",
+  "group": "3D"
+ },
+ {
+  "name": "nova.scenery.line_clear",
+  "kind": "function",
+  "signature": "nova.scenery.line_clear(x1, z1, x2, z2 [, radius]) -> boolean",
+  "doc": "Is the straight line between two points on the ground free of solid scenery? `radius` makes the line that wide. Line of sight, or a clear path.",
+  "group": "3D"
+ },
+ {
   "name": "nova.scenery.push",
   "kind": "function",
   "signature": "nova.scenery.push(x, z, r) -> dx, dz | nil",
@@ -508,6 +522,13 @@
   "kind": "function",
   "signature": "nova.stats() -> { fps, lua_ms, render_ms, draws, triangles, sprites, memory_kb, entities, scenery }",
   "doc": "How the last frame went, for an on-screen profiler: frames a second, what your scripts took and what drawing took (milliseconds), draw calls, triangles and sprites drawn, the scripts' memory (KB), live entities and static scenery pieces.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.raycast",
+  "kind": "function",
+  "signature": "nova.raycast(x, y, dx, dy, length, tag [, { ignore, height, slope }]) -> entity, distance, hit_x, hit_y | nil",
+  "doc": "A ray against the entities with `tag` that have a hitbox (circles and boxes); the ground plane is x, y in a flat game and x, z after nova.collision{ plane = \"xz\" }. Gives the nearest hit, how far along, and where. `ignore` skips an entity (the shooter). In a ground-plane game `height` is where the ray starts and `slope` how much it rises per metre, so a shot passes over a thing whose hitbox has a `height` (and a `base`) that it does not reach.",
   "group": "Scenes and entities"
  },
  {
