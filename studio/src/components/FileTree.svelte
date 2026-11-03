@@ -210,6 +210,7 @@
                   <span class="icon">{RES_ICON[item.kind]}</span>
                   <span class="name" class:bad={item.files.some((f) => errorFiles.has(f))} title={item.files.join("\n")}>{item.name}</span>
                   <span class="actions">
+                    {#if item.kind === "model" && item.files.length === 1 && item.path.endsWith(".glb")}<button class="ghost" title="Make this model editable in the studio (its parts, colours and animations are read in; the original is kept)" aria-label="Make {item.name} editable" onclick={(e) => { e.stopPropagation(); void studio.makeModelEditable(item.path); }}>✎ Edit</button>{/if}
                     {#if item.code}<button class="ghost" title="Open the code" aria-label="Code of {item.name}" onclick={(e) => { e.stopPropagation(); void studio.openFile(item.code!); }}>&lt;/&gt;</button>{/if}
                     <button class="ghost" title="Rename" aria-label="Rename {item.name}" onclick={(e) => { e.stopPropagation(); renamingResource = { path: item.path, value: item.name.slice(item.name.lastIndexOf("/") + 1) }; }}>✎</button>
                     <button class="ghost danger" title="Delete" aria-label="Delete {item.name}" onclick={(e) => { e.stopPropagation(); void removeResource(item); }}>✕</button>

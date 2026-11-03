@@ -14,6 +14,7 @@ export function createMockApi(): Api {
   const files = new Map<string, string>();
   const images = new Map<string, string>(); // saved PNGs as data URLs
   const audio = new Map<string, string>(); // saved WAVs as data URLs
+  const models = new Map<string, string>(); // saved .glb files as data URLs
   const dirs = new Set<string>();
   let root: string | null = null;
   let running = false;
@@ -95,6 +96,7 @@ export function createMockApi(): Api {
       need();
       bad(path);
       if (!path.endsWith(".glb") || !dataUrl.startsWith("data:model/gltf-binary;base64,")) throw "expected a glTF";
+      models.set(path, dataUrl);
       files.set(path, "");
       const parts = path.split("/");
       for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join("/"));
@@ -119,6 +121,13 @@ export function createMockApi(): Api {
       audio.delete(path);
       files.delete(path);
       return target;
+    },
+    readModel: async (path) => {
+      need();
+      bad(path);
+      const saved = models.get(path);
+      if (!saved) throw `'${path}' is not a model in this project`;
+      return saved;
     },
     readAudio: async (path) => {
       need();

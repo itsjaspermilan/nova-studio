@@ -5,7 +5,7 @@
   import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
   import {
     FACES, History, SHAPES, addCube, addPart, afterRemoval, countCubes, cubeAt, duplicateNode, faceColor, newModel, parseModel, partAt, removeNode, samePath, serializeModel,
-    setCube, setFaceColor, updateCube, updatePart, walk, namesOf, PROPS, MAX_SEGMENTS, MIN_SEGMENTS, DEFAULT_SEGMENTS, type Cube, type Face, type ModelDoc, type Path, type Prop, type Shape, type Vec3,
+    setCube, setFaceColor, updateCube, updatePart, walk, namesOf, PROPS, MAX_SEGMENTS, MIN_SEGMENTS, DEFAULT_SEGMENTS, type Cube, type Ease, type Face, type ModelDoc, type Path, type Prop, type Shape, type Vec3,
   } from "../lib/model-doc";
   import { addFace, bevelEdge, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsSymmetric, setFaceColors, setSmooth, setVert, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
   import { hasVolume, meshOf, segmentsOf, shapeFaces } from "../lib/model-mesh";
@@ -14,7 +14,7 @@
   import { applyBrush, applyGradient } from "../lib/paint";
   import { loadRaster, rasterToDataUrl } from "../lib/png";
   import { exportGlb } from "../lib/glb";
-  import { addClip, findTrack, pathKey, removeClip, removeKey, samplePose, setKey, snapTime, updateClip, KEY_STEP, type Pose } from "../lib/model-anim";
+  import { addClip, easeAt, findTrack, pathKey, removeClip, removeKey, samplePose, setEase, setKey, snapTime, updateClip, KEY_STEP, type Pose } from "../lib/model-anim";
   import { toBase64 } from "../lib/wav";
   import { studio } from "../lib/store.svelte";
 
@@ -1705,6 +1705,13 @@
             <div class="vec">{#each poseValue(prop as Prop) as v, i (i)}<input type="number" step={prop === "scale" ? 0.1 : 1} value={v} aria-label={`${"xyz"[i]} ${prop}`} onchange={(e) => setPoseValue(prop as Prop, i, e.currentTarget.value)} />{/each}</div>
             <button class="ghost keybtn" onclick={() => keyProp(prop as Prop)}>◆ Key {prop}</button>
           {/each}
+          {#if clip && partNames.length && easeAt(clip, partNames, animTime) !== undefined}
+            <label>How this key blends into the next
+              <select value={easeAt(clip, partNames, animTime)} aria-label="Easing" onchange={(e) => commit(setEase(doc, clipIndex, partNames, animTime, e.currentTarget.value as Ease))}>
+                <option value="linear">Straight</option><option value="in">Slow start</option><option value="out">Slow end</option><option value="inout">Slow start and end</option><option value="step">Jump (hold, then change)</option>
+              </select>
+            </label>
+          {/if}
           <div class="row"><button class="danger" onclick={deleteKeysHere} disabled={!keyTimes.some((t) => Math.abs(t - animTime) < KEY_STEP / 2)}>Delete keys here</button></div>
           <p class="dim small">Properties with no key stay as modelled. Keys blend smoothly; rotations take the short way round.</p>
         {/if}

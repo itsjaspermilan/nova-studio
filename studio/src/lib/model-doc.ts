@@ -75,7 +75,13 @@ export const PROPS: Prop[] = ["position", "rotation", "scale"];
 export interface Key {
   t: number;
   value: Vec3;
+  /// How the value blends from this key to the next: straight (the default), held until the next key (`step`), or easing in,
+  /// out, or both.
+  ease?: Ease;
 }
+
+export type Ease = "linear" | "step" | "in" | "out" | "inout";
+export const EASES: Ease[] = ["linear", "step", "in", "out", "inout"];
 
 /// The keys of one property of one part. `part` is the chain of part names from the top, e.g. ["body", "wheel"].
 export interface Track {
@@ -245,6 +251,7 @@ export function parseModel(text: string): Parsed {
         let last = -1;
         for (const [k, key] of tr.keys.entries()) {
           if (!key || typeof key.t !== "number" || !(key.t >= 0) || !isVec3(key.value)) return { ok: false, error: `${tat}.keys[${k}] needs "t" (seconds) and "value" as three numbers` };
+          if (key.ease !== undefined && !EASES.includes(key.ease)) return { ok: false, error: `${tat}.keys[${k}].ease must be one of ${EASES.join(", ")}` };
           if (key.t <= last) return { ok: false, error: `${tat}.keys must be in time order, one per time` };
           last = key.t;
         }
@@ -288,7 +295,7 @@ export function serializeModel(doc: ModelDoc): string {
   };
   const body = doc.parts.length ? `[\n${doc.parts.map((p) => `    ${part(p, "    ")}`).join(",\n")}\n  ]` : "[]";
   const clip = (c: Clip) => {
-    const track = (t: Track) => `        { "part": ${JSON.stringify(t.part)}, "prop": "${t.prop}", "keys": [${t.keys.map((k) => `{ "t": ${k.t}, "value": ${vec(k.value)} }`).join(", ")}] }`;
+    const track = (t: Track) => `        { "part": ${JSON.stringify(t.part)}, "prop": "${t.prop}", "keys": [${t.keys.map((k) => `{ "t": ${k.t}, "value": ${vec(k.value)}${k.ease && k.ease !== "linear" ? `, "ease": "${k.ease}"` : ""} }`).join(", ")}] }`;
     const tracks = c.tracks.length ? `[\n${c.tracks.map(track).join(",\n")}\n      ]` : "[]";
     return `    {\n      "name": ${JSON.stringify(c.name)},\n      "duration": ${c.duration},\n      "loop": ${c.loop},\n      "tracks": ${tracks}\n    }`;
   };

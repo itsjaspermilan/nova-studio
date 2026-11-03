@@ -144,6 +144,10 @@ is 1/16 of a world unit unless `scale` says otherwise):
 | `wedge`, `pyramid`, `cylinder`, `cone`, `sphere` | The same `from`/`size` box. A wedge is full height at its north side sloping to nothing at the south; the rest stand on y. `segments` (3 to 64, default 16) sets the sides of round shapes and `smooth: false` makes them faceted. Face colours: wedge up/down/north/east/west, pyramid down and the four sides, cylinder up/down, cone down; everything else takes `color`. |
 | `mesh` | `verts` (points in the part's space) and `polys` (each `{ "v": [point numbers], "color"?, "smooth"? }`, counter-clockwise seen from outside, three to 64 points). `from` and `size` are worked out from the points and are not written. |
 
+Animation keys (`clips[].tracks[].keys[]`: `t`, `value`) may carry `"ease"`: `step`, `in`, `out` or `inout` (straight when absent) for how the
+value blends into the next key. The exported `.glb` bakes an eased segment into extra keys (glTF samplers are straight), so the runtime
+needs nothing new.
+
 Every shape but a mesh may carry `rotation` (degrees, X then Y then Z, about its box's centre). A polygon's colour
 is its own `color`, else the shape's `color`; shapes are drawn with flat colours baked into the `.glb` as vertex
 colours.

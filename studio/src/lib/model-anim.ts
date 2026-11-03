@@ -3,7 +3,8 @@
 // and after the last).
 
 import { eulerToQuaternion } from "./glb";
-import { MAX_CLIPS, MAX_KEYS, type Clip, type ModelDoc, type Prop, type Track, type Vec3 } from "./model-doc";
+import { applyEase, lerp3, slerp } from "./model-ease";
+import { MAX_CLIPS, MAX_KEYS, type Clip, type Ease, type ModelDoc, type Prop, type Track, type Vec3 } from "./model-doc";
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 export const KEY_STEP = 0.01;
@@ -60,7 +61,7 @@ export function setKey(doc: ModelDoc, clipIndex: number, part: string[], prop: P
     clip.tracks.push(track);
   }
   const at = track.keys.findIndex((k) => Math.abs(k.t - time) < KEY_STEP / 2);
-  if (at >= 0) track.keys[at] = { t: track.keys[at]!.t, value: [...value] };
+  if (at >= 0) track.keys[at] = { t: track.keys[at]!.t, value: [...value], ...(track.keys[at]!.ease ? { ease: track.keys[at]!.ease } : {}) };
   else if (track.keys.length >= MAX_KEYS) return doc;
   else {
     track.keys.push({ t: time, value: [...value] });
@@ -86,26 +87,6 @@ export interface Pose {
   /// Quaternion x, y, z, w.
   rotation?: [number, number, number, number];
   scale?: Vec3;
-}
-
-const lerp3 = (a: Vec3, b: Vec3, f: number): Vec3 => [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
-
-function slerp(a: [number, number, number, number], b: [number, number, number, number], f: number): [number, number, number, number] {
-  let dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
-  const flip = dot < 0 ? -1 : 1; // take the short way round
-  dot *= flip;
-  const mix = (k: number) => a[k]! * (1 - f) + flip * b[k]! * f;
-  let q: [number, number, number, number];
-  if (dot > 0.9995) q = [mix(0), mix(1), mix(2), mix(3)];
-  else {
-    const theta = Math.acos(Math.min(1, dot));
-    const s = Math.sin(theta);
-    const wa = Math.sin((1 - f) * theta) / s;
-    const wb = Math.sin(f * theta) / s;
-    q = [wa * a[0] + wb * flip * b[0], wa * a[1] + wb * flip * b[1], wa * a[2] + wb * flip * b[2], wa * a[3] + wb * flip * b[3]];
-  }
-  const n = Math.hypot(...q) || 1;
-  return [q[0] / n, q[1] / n, q[2] / n, q[3] / n];
 }
 
 /// The time a clip is read at: wrapped when looping, held at the ends otherwise.
@@ -135,7 +116,7 @@ export function samplePose(clip: Clip, t: number, loop = clip.loop): Map<string,
     } else {
       const a = keys[i]!;
       const b = keys[i + 1]!;
-      const f = (time - a.t) / (b.t - a.t);
+      const f = applyEase(a.ease, (time - a.t) / (b.t - a.t));
       value = lerp3(a.value, b.value, f);
       quat = track.prop === "rotation" ? slerp(asQuat(a.value), asQuat(b.value), f) : undefined;
     }
@@ -146,4 +127,30 @@ export function samplePose(clip: Clip, t: number, loop = clip.loop): Map<string,
     out.set(pathKey(track.part), pose);
   }
   return out;
+}
+
+/// How the keys at time `t` of one part blend into the next key, taken from the first track of the part that has a key there.
+export function easeAt(clip: Clip, part: string[], t: number): Ease | undefined {
+  for (const track of clip.tracks) {
+    if (pathKey(track.part) !== pathKey(part)) continue;
+    const key = track.keys.find((k) => Math.abs(k.t - t) < KEY_STEP / 2);
+    if (key) return key.ease ?? "linear";
+  }
+  return undefined;
+}
+
+/// Sets how every key of a part at time `t` (position, turn and size) blends into the next key.
+export function setEase(doc: ModelDoc, clipIndex: number, part: string[], t: number, ease: Ease): ModelDoc {
+  const clip = doc.clips?.[clipIndex];
+  if (!clip || easeAt(clip, part, t) === undefined) return doc;
+  const next = clone(doc);
+  for (const track of next.clips![clipIndex]!.tracks) {
+    if (pathKey(track.part) !== pathKey(part)) continue;
+    for (const key of track.keys) {
+      if (Math.abs(key.t - t) >= KEY_STEP / 2) continue;
+      if (ease === "linear") delete key.ease;
+      else key.ease = ease;
+    }
+  }
+  return next;
 }

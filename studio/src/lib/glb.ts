@@ -2,7 +2,8 @@
 // (so a later bone animation can move them), one mesh per part with flat-coloured cubes baked in
 // as COLOR_0 vertex colours and per-face normals.
 
-import { walk, type Clip, type ModelDoc, type Part, type Track, type Vec3 } from "./model-doc";
+import { walk, type Clip, type Ease, type ModelDoc, type Part, type Track, type Vec3 } from "./model-doc";
+import { BAKE_STEPS, applyEase, lerp3, slerp } from "./model-ease";
 import { FACE_CORNERS, hasVolume, meshOf as solidMesh, type Mesh } from "./model-mesh";
 import { bakeAll, uvsOf } from "./model-uv";
 import { newRaster, type Raster } from "./pixels";
@@ -65,9 +66,31 @@ export function textureForExport(doc: ModelDoc, picture?: Raster): Raster {
 
 const pad4 = (n: number) => (n + 3) & ~3;
 
+/// The keys as the numbers glTF stores (a quaternion for a turn), with each eased segment baked into extra keys, since a glTF
+/// sampler blends straight (or steps) for its whole track. Segments with no easing stay as they are.
+function bakeKeys(keys: { t: number; value: Vec3; ease?: Ease }[], prop: Track["prop"], scale: number): { t: number; value: number[] }[] {
+  const num = (v: Vec3): number[] => (prop === "rotation" ? eulerToQuaternion(v) : prop === "position" ? v.map((x) => x * scale) : v);
+  const out: { t: number; value: number[] }[] = [];
+  keys.forEach((k, i) => {
+    out.push({ t: k.t, value: num(k.value) });
+    const next = keys[i + 1];
+    if (!next || !k.ease || k.ease === "linear") return;
+    if (k.ease === "step") {
+      out.push({ t: next.t - 0.0001, value: num(k.value) });
+      return;
+    }
+    for (let n = 1; n <= BAKE_STEPS; n++) {
+      const f = applyEase(k.ease, n / (BAKE_STEPS + 1));
+      const value = prop === "rotation" ? slerp(eulerToQuaternion(k.value), eulerToQuaternion(next.value), f) : num(lerp3(k.value, next.value, f));
+      out.push({ t: k.t + ((next.t - k.t) * n) / (BAKE_STEPS + 1), value });
+    }
+  });
+  return out;
+}
+
 /// The track's keys with a held key at time 0 and at the clip's end, so every clip lasts its full duration.
 function holdEnds(track: Track, clip: Clip) {
-  const keys = track.keys.map((k) => ({ t: k.t, value: k.value }));
+  const keys = track.keys.map((k) => ({ t: k.t, value: k.value, ...(k.ease ? { ease: k.ease } : {}) }));
   if (keys[0]!.t > 0) keys.unshift({ t: 0, value: keys[0]!.value });
   if (keys[keys.length - 1]!.t < clip.duration) keys.push({ t: clip.duration, value: keys[keys.length - 1]!.value });
   return keys;
@@ -159,11 +182,9 @@ export function exportGlb(doc: ModelDoc, texture?: Raster): Uint8Array {
     for (const track of clip.tracks) {
       const node = nodeByNames.get(track.part.join("/"));
       if (node === undefined || track.keys.length === 0) continue; // a track for a part that no longer exists is skipped
-      const keys = holdEnds(track, clip);
+      const keys = bakeKeys(holdEnds(track, clip), track.prop, scale);
       const times = new Float32Array(keys.map((k) => k.t));
-      const out = track.prop === "rotation"
-        ? new Float32Array(keys.flatMap((k) => eulerToQuaternion(k.value)))
-        : new Float32Array(keys.flatMap((k) => (track.prop === "position" ? k.value.map((v) => v * scale) : k.value)));
+      const out = new Float32Array(keys.flatMap((k) => k.value));
       const inView = addView(bytesOf(times));
       const outView = addView(bytesOf(out));
       const input = accessors.push({ bufferView: inView, componentType: 5126, count: times.length, type: "SCALAR", min: [times[0]], max: [times[times.length - 1]] }) - 1;

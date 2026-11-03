@@ -23,6 +23,7 @@ async function tauriApi(): Promise<Api> {
     listFiles: () => invoke<FileEntry[]>("list_files"),
     readFile: (path) => invoke<FileContent>("read_file", { path }),
     writeModel: (path, dataUrl) => invoke("write_model", { path, dataUrl }),
+    readModel: (path) => invoke<string>("read_model", { path }),
     writeOgg: (path, wavDataUrl) => invoke("write_ogg", { path, dataUrl: wavDataUrl }),
     convertToOgg: (path) => invoke<string>("convert_to_ogg", { path }),
     readAudio: (path) => invoke<string>("read_audio", { path }),

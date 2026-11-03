@@ -3,11 +3,12 @@ import { editorStates } from "./editor-state";
 import { newRaster } from "./pixels";
 import { rasterToDataUrl } from "./png";
 import { exportGlb } from "./glb";
+import { importGlb } from "./glb-import";
 import { newModel, serializeModel } from "./model-doc";
 import { PRESETS, render, toJson } from "./sfx";
 import { newSong, renderSong, serializeSong } from "./song";
 import { newDoc, toSheetJson } from "./sprite-doc";
-import { encodeWav, toBase64 } from "./wav";
+import { encodeWav, fromBase64, toBase64 } from "./wav";
 import { moved, planRename } from "./refs";
 import { renamePlan, resolveFrom, type Resource } from "./resources";
 import { byFile } from "./diagnostics";
@@ -376,6 +377,29 @@ class Studio {
       await this.api!.createFile(json, serializeModel(doc));
       await this.refreshFiles();
       await this.openFile(json);
+    });
+  }
+
+  /// Turns a `.glb` made elsewhere into a model the studio can edit: reads its parts and animations into `<name>.model.json`, keeps the
+  /// original beside it as `<name>-original.glb`, and writes the editable model's own `.glb` in its place.
+  async makeModelEditable(glb: string) {
+    if (!/\.glb$/i.test(glb)) return;
+    await this.#guard(async () => {
+      const stem = glb.slice(0, -4);
+      const json = `${stem}.model.json`;
+      if (this.files.some((f) => f.path === json)) throw `'${json}' already exists`;
+      const url = await this.api!.readModel(glb);
+      const result = importGlb(fromBase64(url.slice(url.indexOf(",") + 1)));
+      if (!result.ok) throw `${glb}: ${result.error}`;
+      let original = `${stem}-original.glb`;
+      for (let n = 2; this.files.some((f) => f.path === original); n++) original = `${stem}-original${n}.glb`;
+      await this.api!.renameFile(glb, original);
+      await this.api!.writeModel(glb, `data:model/gltf-binary;base64,${toBase64(exportGlb(result.doc))}`);
+      await this.api!.createFile(json, serializeModel(result.doc));
+      await this.refreshFiles();
+      await this.openFile(json);
+      const kept = original.slice(original.lastIndexOf("/") + 1);
+      this.say("info", `Made ${json.slice(json.lastIndexOf("/") + 1)} editable. The original is kept as ${kept}.${result.notes.length ? ` Not carried over: ${result.notes.slice(0, 3).join("; ")}${result.notes.length > 3 ? "…" : ""}` : ""}`);
     });
   }
 

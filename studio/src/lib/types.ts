@@ -96,6 +96,8 @@ export interface Api {
   writeAudio(path: string, dataUrl: string): Promise<void>;
   /// Saves a binary glTF given as a data: URL.
   writeModel(path: string, dataUrl: string): Promise<void>;
+  /// A project `.glb` as a `data:model/gltf-binary;base64,` URL.
+  readModel(path: string): Promise<string>;
   /// Saves a PNG given as a data: URL.
   writeImage(path: string, dataUrl: string): Promise<void>;
   createFile(path: string, contents?: string): Promise<void>;

@@ -245,6 +245,23 @@ pub fn write_model(root: &Path, rel: &str, data_url: &str) -> Result<(), String>
     write_bytes(root, rel, &bytes)
 }
 
+/// A project `.glb` as a `data:` URL, so the studio can turn a model made elsewhere into one it can edit.
+pub fn read_model(root: &Path, rel: &str) -> Result<String, String> {
+    if !rel.to_ascii_lowercase().ends_with(".glb") {
+        return Err(format!("'{rel}' is not a .glb file"));
+    }
+    let path = confine(root, rel)?;
+    let meta = std::fs::metadata(&path).map_err(|e| format!("cannot read '{rel}': {e}"))?;
+    if !meta.is_file() || meta.len() > MAX_ASSET_BYTES {
+        return Err(format!(
+            "'{rel}' is not a readable model (or is bigger than {} MiB)",
+            MAX_ASSET_BYTES >> 20
+        ));
+    }
+    let bytes = std::fs::read(&path).map_err(|e| format!("cannot read '{rel}': {e}"))?;
+    Ok(format!("{MODEL_PREFIX}{}", base64(&bytes)))
+}
+
 pub fn read_file(root: &Path, rel: &str) -> Result<FileContent, String> {
     let path = confine(root, rel)?;
     let meta = std::fs::metadata(&path).map_err(|e| format!("cannot read '{rel}': {e}"))?;
@@ -571,6 +588,27 @@ mod tests {
                 .contains("leaves the project")
         );
         assert!(write_model(&root, "m.glb", "data:image/png;base64,AA==").is_err());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_glb_can_be_read_back_as_a_data_url_only_inside_the_project() {
+        let root = project("readglb");
+        let glb = [b'g', b'l', b'T', b'F', 2, 0, 0, 0, 12, 0, 0, 0];
+        let url = format!("{MODEL_PREFIX}{}", base64(&glb));
+        write_model(&root, "models/m.glb", &url).unwrap();
+        assert_eq!(read_model(&root, "models/m.glb").unwrap(), url);
+        assert!(read_model(&root, "models/missing.glb").is_err());
+        assert!(
+            read_model(&root, "main.lua")
+                .unwrap_err()
+                .contains("not a .glb")
+        );
+        assert!(
+            read_model(&root, "../m.glb")
+                .unwrap_err()
+                .contains("leaves the project")
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 

@@ -163,6 +163,35 @@ describe("adding lesson code to a project", () => {
   });
 });
 
+describe("making an imported model editable", () => {
+  it("reads its parts into a model file, keeps the original and writes the model's own glb", async () => {
+    await openProject();
+    const { exportGlb } = await import("./glb");
+    const { addCube, addPart, newModel, serializeModel } = await import("./model-doc");
+    const { toBase64 } = await import("./wav");
+    const source = addCube(addPart(newModel(), [0], "arm").doc, [0, 0], { from: [0, 0, 0], size: [2, 6, 2], color: "#336699" }).doc;
+    await studio.api!.writeModel("models/robot.glb", `data:model/gltf-binary;base64,${toBase64(exportGlb(source))}`);
+    await studio.refreshFiles();
+    await studio.makeModelEditable("models/robot.glb");
+    const paths = studio.files.map((f) => f.path);
+    expect(paths).toEqual(expect.arrayContaining(["models/robot.model.json", "models/robot.glb", "models/robot-original.glb"]));
+    expect(studio.active).toBe("models/robot.model.json");
+    const text = await read("models/robot.model.json");
+    expect(text).toContain('"name": "arm"');
+    expect(text).toContain('"shape": "mesh"');
+    expect(serializeModel(JSON.parse(text))).toBeTruthy();
+    // doing it again refuses rather than overwriting
+    await studio.makeModelEditable("models/robot.glb");
+    expect(studio.notice?.kind).toBe("error");
+    // a file that is not a model is reported and leaves things as they were
+    await studio.api!.writeModel("models/bad.glb", "data:model/gltf-binary;base64,Z2xURgIAAAAMAAAA");
+    await studio.refreshFiles();
+    await studio.makeModelEditable("models/bad.glb");
+    expect(studio.notice?.kind).toBe("error");
+    expect(studio.files.map((f) => f.path)).not.toContain("models/bad.model.json");
+  });
+});
+
 describe("music as Ogg", () => {
   const wavUrl = "data:audio/wav;base64,UklGRg==";
   it("a new song is saved as an Ogg beside its song file", async () => {

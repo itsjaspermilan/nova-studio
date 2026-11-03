@@ -321,6 +321,9 @@ First slice, built (`SpriteEditor.svelte`, pure logic in `pixels.ts` and `sprite
   frame drag to reorder, import by tile count and smart slice.
 - [x] Fourth round, rest (2026-11-02): knife, cross-part turn and resize, drag several frames, duration scaling, linked cels.
 - [x] Fourth round, painting and UV (2026-11-02): placed faces can be flipped (negative width or height); line, rectangle, ellipse and gradient tools in the texture picture (with opacity and lock alpha) and mirror painting on the model.
+- [x] Easing and GLB import (2026-11-02): keys can ease in, out, both or step (baked into extra glTF keys on export); a plain `.glb` in
+  `models/` has an "✎ Edit" button that reads its parts, mesh colours and animations into an editable model (original kept as
+  `<name>-original.glb`; textures, skins and morph targets are not carried over, and it says so).
 - [x] Third round (2026-11-02): vertex snap while dragging points, per-face UV rectangles for boxes, turn and resize for several shapes in one part.
 - [x] Second usability round (2026-11-02): pivot tool, edge picking with bevel and open-edge extend, sprite frame multi-select with copy, delete and
   move between animations.
@@ -386,9 +389,8 @@ First slice, built (`SpriteEditor.svelte`, pure logic in `pixels.ts` and `sprite
   blocks by dragging, resizes the picture and packs blocks. Mirror copies of boxes show the texels reflected. Checked
   by `model-uv`/`model-texture` tests, a fixture the runtime's importer reads (`studio_textures_reach_the_vertices`) and a
   headless render. Painted pixels do not follow a block when a shape is resized or its mesh is edited (paint last).
-- [ ] Still open: a UV editor for moving single faces, painting with layers or alpha cut-outs, texture tiling, skinned meshes and
-  vertex weights (runtime too), live symmetry editing, dragging gizmos for whole shapes, easing curves and copy/paste of
-  keys, importing existing GLB, lights/materials, a "preview in game renderer" button.
+- [ ] Still open: painting with layers or alpha cut-outs, texture tiling, skinned meshes and
+  vertex weights (runtime too), live symmetry editing, copy/paste of keys, lights/materials, a "preview in game renderer" button.
 - [ ] (original plan) Model editor: parts hierarchy, cubes then vertex/face editing, per-face UV
   and texture paint, materials, keyframed rigid-bone animation, glTF export.
 - [ ] 3D scene/layout editor: place models, transform gizmos with snapping and
