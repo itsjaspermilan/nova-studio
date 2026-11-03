@@ -263,3 +263,47 @@ describe("mirrored copies of painted boxes", () => {
     expect(parseModel(text.replace('"mirror": 1', '"mirror": 9'))).toMatchObject({ ok: false });
   });
 });
+
+import { faceRects } from "./model-uv";
+
+describe("placing single faces by hand", () => {
+  const painted = (extra: Partial<NonNullable<Cube["texture"]>> = {}): Cube => shape("box", { size: [4, 4, 4], texture: { at: [2, 3], ...extra } });
+  const uvBox = (c: Cube, poly: number) => {
+    const un = unwrap(c);
+    const xs = un.polys[poly]!.map((q) => q[0] + c.texture!.at[0]);
+    const ys = un.polys[poly]!.map((q) => q[1] + c.texture!.at[1]);
+    return [Math.min(...xs), Math.min(...ys), Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)];
+  };
+  const polyOf = (c: Cube, face: string) => solidOf(c).polys.findIndex((p) => p.face === face);
+
+  it("reports each face's automatic rectangle, and a hand-placed one in its place", () => {
+    const auto = faceRects(painted())!;
+    const up = boxRects(4, 4, 4).up!;
+    expect(auto.up).toEqual([2 + up[0], 3 + up[1], up[2], up[3]]);
+    const moved = faceRects(painted({ faces: { up: [30, 20, 6, 5] } }))!;
+    expect(moved.up).toEqual([30, 20, 6, 5]);
+    expect(moved.down).toEqual(auto.down);
+    expect(faceRects(shape("sphere"))).toBeNull();
+    expect(faceRects({ ...painted(), texture: undefined })).toBeNull();
+  });
+
+  it("maps the face's corners onto the rectangle it was given", () => {
+    const c = painted({ faces: { east: [30, 20, 8, 6] } });
+    expect(uvBox(c, polyOf(c, "east"))).toEqual([30, 20, 8, 6]);
+    // the other faces stay where the automatic layout puts them
+    const plain = painted();
+    expect(uvBox(c, polyOf(c, "north"))).toEqual(uvBox(plain, polyOf(plain, "north")));
+  });
+
+  it("is saved and checked", () => {
+    let d: ModelDoc = { ...newModel(), texture: { size: [64, 64] } };
+    d = addCube(d, [0], painted({ faces: { up: [30, 20, 6, 5] } })).doc;
+    const text = serializeModel(d);
+    expect(text).toContain('"faces": {"up":[30,20,6,5]}');
+    const back = parseModel(text);
+    expect(back.ok && serializeModel(back.doc)).toBe(text);
+    expect(parseModel(text.replace("[30,20,6,5]", "[30,20,0,5]"))).toMatchObject({ ok: false });
+    expect(parseModel(text.replace('"up"', '"top"'))).toMatchObject({ ok: false });
+    expect(parseModel(text.replace("[30,20,6,5]", "[30,20,6]"))).toMatchObject({ ok: false });
+  });
+});

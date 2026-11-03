@@ -9,7 +9,7 @@
   } from "../lib/model-doc";
   import { addFace, bevelEdge, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsSymmetric, setFaceColors, setSmooth, setVert, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
   import { hasVolume, meshOf, segmentsOf, shapeFaces } from "../lib/model-mesh";
-  import { bakeAll, blockOf, enableTexture, fitPicture, packModel, resizeTexture, unwrap, uvsOf } from "../lib/model-uv";
+  import { bakeAll, blockOf, faceRects, enableTexture, fitPicture, packModel, resizeTexture, unwrap, uvsOf } from "../lib/model-uv";
   import { CLEAR, cloneRaster, drawLine, floodFill, getPixel, newRaster, parseHex, stamp, toHex, type Raster, type Rgba } from "../lib/pixels";
   import { applyBrush } from "../lib/paint";
   import { loadRaster, rasterToDataUrl } from "../lib/png";
@@ -44,6 +44,8 @@
     else also = [...also, path];
   }
   const isPicked = (p: Path) => picked.some((q) => samePath(q, p));
+  /// Turning and resizing several shapes together needs them all in one part (they turn about the first one's middle).
+  const sameHome = $derived(pickedShapes.length > 1 && pickedShapes.every((p) => p.parts.join(".") === pickedShapes[0]!.parts.join(".")));
   let showGrid = $state(true);
   // how the model is drawn: with its texture, flat colours only, or as a wireframe (Z cycles them)
   let viewMode = $state<"textured" | "solid" | "wire">("textured");
@@ -57,6 +59,7 @@
   let bevelBy = $state(25); // percent of the next edge each neighbour gives up
   let edgeBy = $state(4);
   let snap = $state(true);
+  let snapPoints = $state(true); // a dragged point jumps onto another point of the mesh when it comes close
   let extrudeBy = $state(4);
   let shrinkBy = $state(0); // percent the new face is pulled towards its middle: a taper, or with no pull, an inset
   let cutAt = $state(50); // percent along each crossed edge
@@ -87,7 +90,7 @@
   let texData: Uint8ClampedArray | undefined;
   let texImage: ImageData | undefined;
   let threeTex: THREE.CanvasTexture | undefined;
-  type TexTool = "pencil" | "eraser" | "fill" | "picker" | "move";
+  type TexTool = "pencil" | "eraser" | "fill" | "picker" | "move" | "face";
   let texTool = $state<TexTool>("pencil");
   let texColor = $state<Rgba>([220, 70, 70, 255]);
   let texBrush = $state(1);
@@ -96,6 +99,8 @@
   let strokeBase: Raster | null = null; // the picture as the stroke began
   let strokeDone = new Uint8Array(0); // pixels this stroke has already worked out
   let texTick = $state(0);
+  let texFace = $state<{ path: Path; face: Face } | null>(null); // a face of a painted box whose rectangle is being placed
+  const faceSel = $derived(texFace && selected && samePath(texFace.path, selected) ? texFace.face : null);
   const texPast: Raster[] = [];
   let texFuture: Raster[] = [];
   const canUndoTex = $derived(texTick >= 0 && texPast.length > 0);
@@ -481,11 +486,12 @@
     if (!c || !hasVolume(c)) return;
     proxy = new THREE.Object3D();
     proxy.position.set(c.from[0] + c.size[0] / 2, c.from[1] + c.size[1] / 2, c.from[2] + c.size[2] / 2);
-    if (c.shape !== "mesh" && c.rotation) proxy.rotation.set(...(c.rotation.map((d) => (d * Math.PI) / 180) as Vec3), "XYZ");
+    if (!also.length && c.shape !== "mesh" && c.rotation) proxy.rotation.set(...(c.rotation.map((d) => (d * Math.PI) / 180) as Vec3), "XYZ");
     g.add(proxy);
     proxy.updateMatrix();
     proxyBase = proxy.matrix.clone();
-    gizmo.setMode(also.length || gizmoMode === "pivot" ? "translate" : gizmoMode);
+    // several shapes: all three handles when they share a part, otherwise only move
+    gizmo.setMode((also.length && !sameHome) || gizmoMode === "pivot" ? "translate" : gizmoMode);
     gizmo.setSpace(also.length ? "world" : "local");
     gizmo.attach(proxy);
   }
@@ -499,7 +505,7 @@
     for (const m of meshes) {
       if (!isPicked(m.path)) continue;
       m.mesh.matrixAutoUpdate = false;
-      if (samePath(m.path, selected)) m.mesh.matrix.copy(delta);
+      if (samePath(m.path, selected) || (sameHome && also.length && gizmoMode !== "translate")) m.mesh.matrix.copy(groupDelta(delta));
       else {
         // the others move by the same amount in the world, which is another amount inside their own part
         const t = convertShift(new THREE.Vector3().setFromMatrixPosition(delta), g, groupOf(m.path.parts));
@@ -507,6 +513,14 @@
       }
       m.mesh.matrixWorldNeedsUpdate = true;
     }
+  }
+  /// What the group does when the handle was turned or resized: the same movement about the first shape's middle, with a
+  /// resize made even (one factor for every axis) so shapes turned differently do not shear.
+  function groupDelta(delta: THREE.Matrix4): THREE.Matrix4 {
+    if (gizmoMode !== "scale" || !proxy || !proxyBase) return delta;
+    const f = (proxy.scale.x + proxy.scale.y + proxy.scale.z) / 3;
+    const c = new THREE.Vector3().setFromMatrixPosition(proxyBase);
+    return new THREE.Matrix4().makeTranslation(c.x, c.y, c.z).multiply(new THREE.Matrix4().makeScale(f, f, f)).multiply(new THREE.Matrix4().makeTranslation(-c.x, -c.y, -c.z));
   }
   /// A shift measured in one part's space, as it is in another part's space.
   function convertShift(v: THREE.Vector3, from: THREE.Object3D | undefined, to: THREE.Object3D | undefined) {
@@ -535,6 +549,28 @@
     proxy.updateMatrix();
     const delta = new THREE.Matrix4().multiplyMatrices(proxy.matrix, proxyBase.clone().invert());
     if (delta.equals(new THREE.Matrix4())) return;
+    if (also.length && sameHome && gizmoMode !== "translate") {
+      const d = groupDelta(delta);
+      const q = new THREE.Quaternion().setFromRotationMatrix(d);
+      const f = gizmoMode === "scale" ? (proxy.scale.x + proxy.scale.y + proxy.scale.z) / 3 : 1;
+      let next = doc;
+      for (const p of pickedShapes) {
+        const c = cubeAt(next, p);
+        if (!c) continue;
+        if (c.shape === "mesh") {
+          next = setCube(next, p, transformMesh(c, d.toArray()));
+          continue;
+        }
+        const centre = new THREE.Vector3(c.from[0] + c.size[0] / 2, c.from[1] + c.size[1] / 2, c.from[2] + c.size[2] / 2).applyMatrix4(d);
+        const size = c.size.map((n) => round2(n * f)) as Vec3;
+        const turn = new THREE.Quaternion().setFromEuler(new THREE.Euler(...((c.rotation ?? [0, 0, 0]).map((a) => (a * Math.PI) / 180) as Vec3), "XYZ"));
+        const e = new THREE.Euler().setFromQuaternion(gizmoMode === "rotate" ? q.multiply(turn) : turn, "XYZ");
+        const rotation = [e.x, e.y, e.z].map((r) => round2((r * 180) / Math.PI)) as Vec3;
+        next = updateCube(next, p, { from: [round2(centre.x - size[0] / 2), round2(centre.y - size[1] / 2), round2(centre.z - size[2] / 2)], size, ...(rotation.some((r) => r !== 0) || c.rotation ? { rotation } : {}) });
+      }
+      commit(next);
+      return;
+    }
     if (also.length) {
       const shift = new THREE.Vector3().setFromMatrixPosition(delta);
       const home = groupOf(selected.parts);
@@ -673,11 +709,18 @@
         ctx.setLineDash([4, 3]);
         ctx.strokeRect(b.x * z + 0.5, b.y * z + 0.5, b.w * z, b.h * z);
         ctx.setLineDash([]);
+        // with the face tool, every face of a box is a rectangle that can be picked
+        const rects = texTool === "face" ? faceRects(c) : null;
+        for (const [face, r] of Object.entries(rects ?? {})) {
+          ctx.strokeStyle = face === faceSel ? "rgba(255,120,200,1)" : "rgba(120,220,255,.8)";
+          ctx.lineWidth = face === faceSel ? 2 : 1;
+          ctx.strokeRect(r![0] * z + 0.5, r![1] * z + 0.5, r![2] * z - 1, r![3] * z - 1);
+        }
       }
     }
   }
   $effect(() => {
-    picRev; doc; selected; mode; texView; picture;
+    picRev; doc; selected; mode; texView; picture; texTool; faceSel;
     untrack(paintView);
   });
   let blockDrag: { path: Path; base: ModelDoc; cube: Cube; from: [number, number]; at: [number, number]; moved: boolean } | null = null;
@@ -689,6 +732,20 @@
     if (!picture || !texView || e.button !== 0) return;
     const [x, y] = texCell(e);
     texView.setPointerCapture(e.pointerId);
+    if (texTool === "face") {
+      // the topmost painted box whose face rectangle holds the point
+      for (const t of [...painted].reverse()) {
+        const rects = faceRects(t.c);
+        const hit = Object.entries(rects ?? {}).find(([, r]) => x >= r![0] && x < r![0] + r![2] && y >= r![1] && y < r![1] + r![3]);
+        if (!hit) continue;
+        selected = t.path;
+        texFace = { path: t.path, face: hit[0] as Face };
+        faceDrag = { path: t.path, base: doc, cube: t.c, face: hit[0] as Face, rect: [...hit[1]!] as [number, number, number, number], from: [x, y], moved: false };
+        return;
+      }
+      texFace = null;
+      return;
+    }
     if (texTool === "move") {
       for (const t of [...painted].reverse()) {
         const b = blockOf(t.c);
@@ -704,9 +761,27 @@
     beginStroke(e.shiftKey);
     paintTexel(x, y);
   }
+  let faceDrag: { path: Path; base: ModelDoc; cube: Cube; face: Face; rect: [number, number, number, number]; from: [number, number]; moved: boolean } | null = null;
+  /// Puts one face of a painted box at `rect` in the picture (or back to the automatic place with null).
+  function placeFace(base: ModelDoc, path: Path, c: Cube, face: Face, rect: [number, number, number, number] | null): ModelDoc {
+    const faces = { ...(c.texture?.faces ?? {}) };
+    if (rect) faces[face] = rect;
+    else delete faces[face];
+    const texture = { ...c.texture!, faces: Object.keys(faces).length ? faces : undefined };
+    return setCube(base, path, { ...c, texture });
+  }
   function texMove(e: PointerEvent) {
     if (!picture || !texView) return;
     const [x, y] = texCell(e);
+    if (faceDrag) {
+      const [w, h] = [faceDrag.rect[2], faceDrag.rect[3]];
+      const at: [number, number, number, number] = [Math.max(0, Math.min(picture.w - w, faceDrag.rect[0] + x - faceDrag.from[0])), Math.max(0, Math.min(picture.h - h, faceDrag.rect[1] + y - faceDrag.from[1])), w, h];
+      if (!faceDrag.moved && at[0] === faceDrag.rect[0] && at[1] === faceDrag.rect[1]) return;
+      if (!faceDrag.moved) history.record(faceDrag.base);
+      faceDrag.moved = true;
+      commit(placeFace(faceDrag.base, faceDrag.path, faceDrag.cube, faceDrag.face, at), true);
+      return;
+    }
     if (blockDrag) {
       const b = blockOf(blockDrag.cube);
       const at: [number, number] = [Math.max(0, Math.min(picture.w - b.w, blockDrag.at[0] + x - blockDrag.from[0])), Math.max(0, Math.min(picture.h - b.h, blockDrag.at[1] + y - blockDrag.from[1]))];
@@ -722,6 +797,25 @@
   function texUp() {
     stroke = null;
     blockDrag = null;
+    faceDrag = null;
+  }
+  const pickedRect = $derived.by(() => {
+    const c = selected ? cubeAt(doc, selected) : undefined;
+    return c?.texture && faceSel ? (faceRects(c)?.[faceSel] ?? null) : null;
+  });
+  function setRectPart(index: number, raw: string) {
+    const n = Number(raw);
+    if (!selected || !cube?.texture || !faceSel || !pickedRect || !Number.isFinite(n) || !picture) return;
+    const r = [...pickedRect] as [number, number, number, number];
+    r[index] = Math.round(n);
+    r[2] = Math.max(1, Math.min(picture.w, r[2]));
+    r[3] = Math.max(1, Math.min(picture.h, r[3]));
+    r[0] = Math.max(0, Math.min(picture.w - r[2], r[0]));
+    r[1] = Math.max(0, Math.min(picture.h - r[3], r[1]));
+    commit(placeFace(doc, selected, cube, faceSel, r));
+  }
+  function resetRect() {
+    if (selected && cube?.texture && faceSel) commit(placeFace(doc, selected, cube, faceSel, null));
   }
 
   // turning texturing on for the selected shape, resizing and packing
@@ -945,6 +1039,24 @@
     controls!.enabled = false;
     canvas.setPointerCapture(e.pointerId);
   }
+  /// The mesh point (not one being dragged) within a few pixels of the pointer, in the mesh's own space.
+  function nearestPoint(e: PointerEvent, c: Cube, skip: Set<number>, g: THREE.Object3D): Vec3 | null {
+    if (!camera || !canvas || !c.verts) return null;
+    const r = canvas.getBoundingClientRect();
+    let best: Vec3 | null = null;
+    let bestDist = 12;
+    c.verts.forEach((p, i) => {
+      if (skip.has(i)) return;
+      const q = new THREE.Vector3(...p).applyMatrix4(g.matrixWorld).project(camera!);
+      if (q.z > 1) return;
+      const d = Math.hypot(((q.x + 1) / 2) * r.width + r.left - e.clientX, ((1 - q.y) / 2) * r.height + r.top - e.clientY);
+      if (d < bestDist) {
+        best = p;
+        bestDist = d;
+      }
+    });
+    return best;
+  }
   function pointerMove(e: PointerEvent) {
     if (stroke && mode === "texture") {
       const t = textureHit(e);
@@ -975,7 +1087,9 @@
     const local = hit.sub(drag.start).applyMatrix3(new THREE.Matrix3().setFromMatrix4(g.matrixWorld.clone().invert()));
     const from = drag.baseCube.verts![drag.point]!;
     const step = snap ? 1 : 0.01;
-    const delta = [0, 1, 2].map((a) => Math.round((from[a]! + [local.x, local.y, local.z][a]!) / step) * step - from[a]!) as Vec3;
+    let delta = [0, 1, 2].map((a) => Math.round((from[a]! + [local.x, local.y, local.z][a]!) / step) * step - from[a]!) as Vec3;
+    const near = snapPoints ? nearestPoint(e, drag.baseCube, new Set(selVerts), g) : null;
+    if (near) delta = [near[0] - from[0], near[1] - from[1], near[2] - from[2]];
     if (!drag.moved && delta.every((d) => d === 0)) return;
     if (!drag.moved) history.record(drag.base);
     drag.moved = true;
@@ -1448,7 +1562,7 @@
           <p class="dim small">{selected && selected.cube !== undefined ? "Its colours become the first pixels of the picture, so nothing changes until you paint." : "Click a shape in the view first."}</p>
         {:else}
           <div class="tools" role="toolbar" aria-label="Painting tools">
-            {#each [["pencil", "✎", "Pencil"], ["eraser", "⌫", "Eraser"], ["fill", "▨", "Fill"], ["picker", "✚", "Pick a colour"], ["move", "✥", "Move a shape's block"]] as [id, icon, tip] (id)}
+            {#each [["pencil", "✎", "Pencil"], ["eraser", "⌫", "Eraser"], ["fill", "▨", "Fill"], ["picker", "✚", "Pick a colour"], ["move", "✥", "Move a shape's block"], ["face", "▭", "Place one face of a box"]] as [id, icon, tip] (id)}
               <button class:on={texTool === id} title={tip} aria-label={tip} onclick={() => (texTool = id as TexTool)}>{icon}</button>
             {/each}
             <span class="gap"></span>
@@ -1473,6 +1587,15 @@
             <label>Width <select value={picture.w} onchange={(e) => setTextureSize(Number(e.currentTarget.value), picture!.h)}>{#each [16, 32, 64, 128, 256, 512, 1024] as n (n)}<option value={n}>{n}</option>{/each}</select></label>
             <label>Height <select value={picture.h} onchange={(e) => setTextureSize(picture!.w, Number(e.currentTarget.value))}>{#each [16, 32, 64, 128, 256, 512, 1024] as n (n)}<option value={n}>{n}</option>{/each}</select></label>
           </div>
+          {#if texTool === "face"}
+            {#if pickedRect && faceSel}
+              <h4>{faceSel} face</h4>
+              <div class="vec4">{#each ["x", "y", "width", "height"] as lab, k (lab)}<label>{lab}<input type="number" min="0" step="1" value={pickedRect[k]} aria-label="{faceSel} {lab}" onchange={(e) => setRectPart(k, e.currentTarget.value)} /></label>{/each}</div>
+              <button onclick={resetRect} disabled={!cube?.texture?.faces?.[faceSel]} title="Back to its place in the automatic layout">Reset this face</button>
+            {:else}
+              <p class="dim small">Click a face rectangle of a painted box in the picture, then drag it or type where it goes. Faces can share the same texels.</p>
+            {/if}
+          {/if}
           {#if cube?.texture}
             <label class="inline">Texels per unit <input type="number" min="0.25" max="8" step="0.25" value={cube.texture.scale ?? 1} onchange={(e) => setScale(e.currentTarget.value)} /></label>
           {/if}
@@ -1500,7 +1623,7 @@
         {/if}
       {:else if selected && cube}
         <h3>{cube.shape === "mesh" ? "Mesh" : "Shape"}</h3>
-        {#if pickedShapes.length > 1}<p class="note small">{pickedShapes.length} shapes picked. Moving, copying, deleting and colouring act on all of them; the fields below are for the first.</p>{/if}
+        {#if pickedShapes.length > 1}<p class="note small">{pickedShapes.length} shapes picked. Moving, copying, deleting and colouring act on all of them{sameHome ? ", and so do the turn and resize handles (about the first one's middle)" : ""}; the fields below are for the first.</p>{/if}
         <label>Name <input value={cube.name ?? ""} placeholder="optional" onchange={(e) => commit(updateCube(doc, selected!, { name: e.currentTarget.value.trim() || undefined }))} /></label>
         {#if cube.shape !== "mesh"}
           <label>Shape
@@ -1543,6 +1666,7 @@
             <p class="dim small">{selVerts.length ? `${selVerts.length} points picked` : "Click a dot or a face."}</p>
           {/if}
           <label class="check"><input type="checkbox" bind:checked={snap} /> Snap to whole units</label>
+          <label class="check" title="A dragged point jumps onto another point when it comes close"><input type="checkbox" bind:checked={snapPoints} /> Snap to other points</label>
           <label>Symmetry <select bind:value={symmetry} aria-label="Symmetry"><option value="off">Off</option><option value="0">Mirror left–right (x)</option><option value="1">Mirror up–down (y)</option><option value="2">Mirror front–back (z)</option></select></label>
           <div class="row">
             <button onclick={makeFace} disabled={selVerts.length < 3} title="Fills a face between the picked points">Make face</button>
@@ -1615,9 +1739,11 @@
   .swatches { display: grid; grid-template-columns: repeat(8, 1fr); gap: 3px; } .swatch { aspect-ratio: 1; padding: 0; border-radius: 3px; }
   .texbox { overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px; max-height: 360px; display: grid; place-items: start center; } .texbox canvas { image-rendering: pixelated; cursor: crosshair; touch-action: none; }
   .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .vec4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; } .vec4 input { min-width: 0; padding: 3px 4px; }
   .row.mirror span { flex: 1; }
   select { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 2px 4px; }
   .inspector { border-left: 1px solid var(--line); }
+  .inspector > :global(*) { flex-shrink: 0; } /* a short window scrolls the panel instead of squashing the picture */
   .stage { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
   .bar { display: flex; align-items: center; gap: 8px; padding: 4px 8px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   .check { display: flex; align-items: center; gap: 4px; } .check input { margin: 0; }

@@ -48,7 +48,9 @@ export interface Cube {
   /// Present when the shape is painted with the model's texture: where its unwrapped faces sit in the picture
   /// (the top-left of its block of texels) and how many texels one model unit gets (default 1).
   /// `mirror` (a box mirrored by "Mirror copy"): bits 1, 2 and 4 for x, y and z, showing the same texels reflected.
-  texture?: { at: [number, number]; scale?: number; mirror?: number };
+  /// `faces` places single faces of a box, wedge or pyramid anywhere in the picture: `[x, y, width, height]` in texels, instead of
+  /// the automatic layout inside the block.
+  texture?: { at: [number, number]; scale?: number; mirror?: number; faces?: Partial<Record<Face, [number, number, number, number]>> };
 }
 
 export type TextureInfo = { size: [number, number] };
@@ -200,6 +202,9 @@ export function parseModel(text: string): Parsed {
         if (!t || !Array.isArray(t.at) || t.at.length !== 2 || !t.at.every((n) => typeof n === "number" && Number.isFinite(n) && n >= 0)) return `${cat}.texture.at must be two numbers, 0 or more`;
         if (t.scale !== undefined && !(typeof t.scale === "number" && t.scale > 0 && t.scale <= 64)) return `${cat}.texture.scale must be a number above 0 and at most 64`;
         if (t.mirror !== undefined && !(Number.isInteger(t.mirror) && t.mirror >= 0 && t.mirror <= 7)) return `${cat}.texture.mirror must be a whole number from 0 to 7`;
+        for (const [f, r] of Object.entries(t.faces ?? {})) {
+          if (!FACES.includes(f as Face) || !Array.isArray(r) || r.length !== 4 || !r.every((n) => typeof n === "number" && Number.isFinite(n)) || r[0]! < 0 || r[1]! < 0 || r[2]! <= 0 || r[3]! <= 0) return `${cat}.texture.faces.${f} must be a face name with [x, y, width, height] in texels, the size above 0`;
+        }
         if (!o.texture) return `${cat} has a texture but the model has none: add "texture": { "size": [64, 64] }`;
       }
       if (shape === "mesh") {
@@ -264,7 +269,7 @@ export function serializeModel(doc: ModelDoc): string {
     if (c.smooth === false) parts.push(`"smooth": false`);
     parts.push(`"color": "${c.color}"`);
     if (c.faces && Object.keys(c.faces).length) parts.push(`"faces": ${JSON.stringify(c.faces)}`);
-    if (c.texture) parts.push(`"texture": { "at": ${vec2(c.texture.at)}${c.texture.scale !== undefined && c.texture.scale !== 1 ? `, "scale": ${c.texture.scale}` : ""}${c.texture.mirror ? `, "mirror": ${c.texture.mirror}` : ""} }`);
+    if (c.texture) parts.push(`"texture": { "at": ${vec2(c.texture.at)}${c.texture.scale !== undefined && c.texture.scale !== 1 ? `, "scale": ${c.texture.scale}` : ""}${c.texture.mirror ? `, "mirror": ${c.texture.mirror}` : ""}${c.texture.faces && Object.keys(c.texture.faces).length ? `, "faces": ${JSON.stringify(c.texture.faces)}` : ""} }`);
     if (shape === "mesh") {
       const i2 = `${indent}  `;
       const verts = (c.verts ?? []).map((p) => `${i2}  ${vec(p)}`).join(",\n");

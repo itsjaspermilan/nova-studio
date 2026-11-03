@@ -60,8 +60,13 @@ it. Neither program's code was read or copied; a clone of either is not on this 
 - Sprite editor, second round: Ctrl, ⌘ and Shift pick several frames to copy, delete or move into another animation.
 - The tree's create and rename boxes no longer log an error when they close.
 
+- Third round: a dragged point can snap onto another point of the mesh; single faces of a painted box can be placed anywhere in
+  the picture (face tool, by dragging or typing the rectangle); turning and resizing work on several shapes in one part, about
+  the first one's middle (resizing is one factor on every axis).
+
 ## Still open, in the order that would help most
 
-1. Mesh: bevel at corners that are not box-like, extruding a single point, a knife; vertex snap while dragging points.
-2. Model editor: per-face UV editing, mirror painting, painting shapes and gradients, resize and turn for several shapes at once.
+1. Mesh: bevel at corners that are not box-like, extruding a single point, a knife.
+2. Painting: mirror painting, shapes and gradients; flipping or turning a placed face.
 3. Sprites: linked cels, frame duration as a multiplier, drag several frames at once.
+4. Resizing shapes in several parts at once.

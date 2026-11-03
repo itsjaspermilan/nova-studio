@@ -4,7 +4,7 @@
 // shape changes its block, and "Pack" in the editor lays every block out again.
 
 import { newRaster, setPixel, type Raster } from "./pixels";
-import type { Cube, ModelDoc, Vec3 } from "./model-doc";
+import type { Cube, Face, ModelDoc, Vec3 } from "./model-doc";
 import { hexToRgba, MAX_TEXTURE, MIN_TEXTURE } from "./model-doc";
 import { hasVolume, polyColor, segmentsOf, solidOf, unitSolid } from "./model-mesh";
 import { walk } from "./model-doc";
@@ -56,9 +56,13 @@ export function unwrap(c: Cube): Unwrap {
     const swap: Record<string, string> = { east: "west", west: "east", up: "down", down: "up", south: "north", north: "south" };
     const bitOf: Record<string, number> = { east: 1, west: 1, up: 2, down: 2, south: 4, north: 4 };
     const swapped = (face: string) => (mirror & bitOf[face]! ? swap[face]! : face);
+    const own = c.texture?.faces;
+    const [bx, by] = c.texture?.at ?? [0, 0];
     const polys = unit.polys.map((p) => {
       const face = swapped(p.face ?? "up");
-      const r = rects[face]!;
+      // a face placed by hand uses its own rectangle (given in the picture, worked here relative to the block)
+      const placed = p.face ? own?.[p.face] : undefined;
+      const r: [number, number, number, number] = placed ? [placed[0] - bx, placed[1] - by, placed[2], placed[3]] : (rects[face] as [number, number, number, number]);
       return p.v.map((i) => {
         const corner: Vec3 = [...unit.verts[i]!] as Vec3;
         for (const [bit, axis] of [[1, 0], [2, 1], [4, 2]] as const) if (mirror & bit) corner[axis] = 1 - corner[axis];
@@ -322,4 +326,29 @@ export function bakeAll(doc: ModelDoc): Raster {
 export function fitPicture(doc: ModelDoc, picture: Raster): Raster {
   const [w, h] = doc.texture?.size ?? [picture.w, picture.h];
   return picture.w === w && picture.h === h ? picture : grown(picture, w, h);
+}
+
+/// The rectangle each face of a box, wedge or pyramid takes in the picture, in texels: the one placed by hand if there is one,
+/// else its place in the automatic layout. Null for other shapes (which unwrap as strips and patches).
+export function faceRects(c: Cube): Partial<Record<Face, [number, number, number, number]>> | null {
+  const shape = c.shape ?? "box";
+  if (!c.texture || !["box", "wedge", "pyramid"].includes(shape)) return null;
+  const s = c.texture.scale ?? 1;
+  const [w, h, d] = [texels(c.size[0], s), texels(c.size[1], s), texels(c.size[2], s)];
+  const auto = boxRects(w, h, d);
+  const mirror = c.texture.mirror ?? 0;
+  const bitOf: Record<string, number> = { east: 1, west: 1, up: 2, down: 2, south: 4, north: 4 };
+  const swap: Record<string, string> = { east: "west", west: "east", up: "down", down: "up", south: "north", north: "south" };
+  const out: Partial<Record<Face, [number, number, number, number]>> = {};
+  for (const p of unitSolid(c).polys) {
+    const f = p.face;
+    if (!f || out[f]) continue;
+    const placed = c.texture.faces?.[f];
+    if (placed) out[f] = [...placed];
+    else {
+      const a = auto[mirror & bitOf[f]! ? swap[f]! : f]!;
+      out[f] = [c.texture.at[0] + a[0], c.texture.at[1] + a[1], a[2], a[3]];
+    }
+  }
+  return out;
 }

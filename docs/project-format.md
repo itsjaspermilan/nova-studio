@@ -157,7 +157,8 @@ plus caps, and a mesh as one flat patch per polygon. The layout follows the shap
 position or turn, so resizing a shape changes its block (use "Pack blocks" in the editor to lay them out again;
 painted pixels do not move with it). A shape's `color` is a tint multiplied with its texels (white after texturing is
 turned on, which also paints the shape's old colours into its block). `"mirror"` on a mirrored box's texture
-(bits 1, 2, 4 for x, y, z) makes it show the same texels reflected. In the `.glb` the picture gets one extra white
+(bits 1, 2, 4 for x, y, z) makes it show the same texels reflected. `"faces": { "up": [x, y, width, height] }` places a single face
+of a box, wedge or pyramid anywhere in the picture (texels), instead of its place in the automatic layout; faces may share texels. In the `.glb` the picture gets one extra white
 row at the bottom that unpainted shapes sample, so a model's flat-coloured shapes show exactly their colour; the
 sampler is nearest-neighbour and clamped. The runtime needs nothing new: it reads one base-colour texture with UVs.
 
