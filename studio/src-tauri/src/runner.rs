@@ -159,6 +159,40 @@ pub fn check(root: &Path) -> Result<serde_json::Value, String> {
     })
 }
 
+/// What `nova export` said, and where it put things.
+pub struct ExportOutput {
+    pub ok: bool,
+    pub text: String,
+    pub folder: PathBuf,
+}
+
+/// Runs `nova export <target> <root> --out <root>/exports` (it checks the game first) and returns what it printed.
+/// An Android export needs the Nova source tree and the Android tools, so on a machine that has them this points the
+/// program at the tree the studio was built from.
+pub fn export(root: &Path, target: &str) -> Result<ExportOutput, String> {
+    if target != "desktop" && target != "android" {
+        return Err(format!("unknown export target '{target}'"));
+    }
+    let bin = find_nova_binary()?;
+    let out = root.join("exports");
+    let mut command = Command::new(bin);
+    command.arg("export").arg(target).arg(root).arg("--out").arg(&out);
+    let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    if repo.join("scripts/build-apk.sh").is_file() {
+        command.env("NOVA_REPO", repo);
+    }
+    let done = command
+        .output()
+        .map_err(|e| format!("cannot run the exporter: {e}"))?;
+    let mut text = String::from_utf8_lossy(&done.stdout).into_owned();
+    text.push_str(&String::from_utf8_lossy(&done.stderr));
+    Ok(ExportOutput {
+        ok: done.status.success(),
+        text: text.trim().to_string(),
+        folder: out,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -168,6 +202,11 @@ mod tests {
         let mut c = Command::new("sh");
         c.arg("-c").arg(script);
         c
+    }
+
+    #[test]
+    fn export_refuses_an_unknown_target() {
+        assert!(export(Path::new("/nowhere"), "ios").is_err());
     }
 
     #[test]

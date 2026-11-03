@@ -12,7 +12,7 @@ import { moved, planRename } from "./refs";
 import { renamePlan, resolveFrom, type Resource } from "./resources";
 import { byFile } from "./diagnostics";
 import { projectSymbols, type ProjectSymbols } from "./completions";
-import type { Api, Diagnostic, ExampleInfo, FileEntry, LogLine, ProjectInfo, RecentProject, TemplateInfo } from "./types";
+import type { Api, Diagnostic, ExampleInfo, ExportReport, FileEntry, LogLine, ProjectInfo, RecentProject, TemplateInfo } from "./types";
 
 export interface Tab {
   path: string;
@@ -60,6 +60,9 @@ class Studio {
   panel: Panel = $state("problems");
   panelOpen = $state(true);
   helpOpen = $state(false);
+  exportOpen = $state(false);
+  exporting = $state(false);
+  exportReport: ExportReport | null = $state(null);
   /// Which part of the help window to show: "start", "lessons", "reference" or "keys"; lesson opens a lesson.
   helpTab: "start" | "lessons" | "reference" | "keys" = $state("start");
   helpLesson: string | null = $state(null);
@@ -610,6 +613,21 @@ class Studio {
       this.say("info", `Moved to ${where}`);
       this.#scheduleCheck();
     });
+  }
+
+  /// Saves everything, then checks the game and writes it out for `desktop` or `android` (under the project's `exports` folder).
+  async exportGame(target: "desktop" | "android") {
+    if (this.exporting || !(await this.saveAll())) return;
+    this.exporting = true;
+    this.exportReport = null;
+    try {
+      this.exportReport = await this.api!.exportGame(target);
+      if (this.exportReport.ok) void this.refreshFiles();
+    } catch (e) {
+      this.exportReport = { ok: false, text: String(e), folder: "" };
+    } finally {
+      this.exporting = false;
+    }
   }
 
   async play() {

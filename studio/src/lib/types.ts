@@ -96,6 +96,15 @@ export interface Api {
   stopProject(): Promise<boolean>;
   isRunning(): Promise<boolean>;
   checkProject(): Promise<CheckReport>;
+  /// Checks the game and writes it out for a computer or for Android under `<project>/exports`.
+  exportGame(target: "desktop" | "android"): Promise<ExportReport>;
   onPlayLog(callback: (line: LogLine) => void): Promise<() => void>;
   onPlayExit(callback: (code: number | null) => void): Promise<() => void>;
+}
+
+export interface ExportReport {
+  ok: boolean;
+  /// What the exporter printed: problems found, the files written or why it stopped.
+  text: string;
+  folder: string;
 }

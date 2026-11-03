@@ -212,6 +212,10 @@ export function createMockApi(): Api {
       return was;
     },
     isRunning: async () => running,
+    exportGame: async (target) => {
+      need();
+      return { ok: true, text: `Browser preview: nothing was written. The studio app would check the game and export it for ${target === "android" ? "Android" : "a computer"}.`, folder: "exports" };
+    },
     checkProject: async (): Promise<CheckReport> => {
       need();
       const diagnostics: Diagnostic[] = [];

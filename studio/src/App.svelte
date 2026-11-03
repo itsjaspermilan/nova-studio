@@ -61,6 +61,7 @@
       {#if studio.api?.kind === "mock"}<span class="pill">browser preview</span>{/if}
       <span class="spacer"></span>
       <button class="ghost" onclick={() => studio.openHelp()} title="Help and lessons (F1)">? Help</button>
+      <button onclick={() => { studio.exportReport = null; studio.exportOpen = true; }} title="Check the game and write it out for a computer or for Android">Export…</button>
       <button onclick={() => studio.saveAll()} disabled={!studio.dirty}>Save all</button>
       {#if studio.running}
         <button class="danger" onclick={() => studio.stop()}>■ Stop</button>
@@ -129,6 +130,26 @@
 
 <Help />
 
+{#if studio.exportOpen && studio.project}
+  <div class="backdrop" role="presentation" onclick={(e) => { if (e.target === e.currentTarget && !studio.exporting) studio.exportOpen = false; }}>
+    <div class="dialog" role="dialog" aria-label="Export the game">
+      <h2>Export {studio.project.name}</h2>
+      <p class="dim">The game is checked first; if it has errors nothing is written. Files go into this project's <code>exports</code> folder.</p>
+      <div class="choices">
+        <button class="primary" disabled={studio.exporting} onclick={() => studio.exportGame("desktop")}>For a computer</button>
+        <button disabled={studio.exporting} onclick={() => studio.exportGame("android")} title="Needs the Android tools, which only a development machine has">For Android (APK)</button>
+      </div>
+      {#if studio.exporting}<p class="dim">Working… an Android build takes a minute or two.</p>{/if}
+      {#if studio.exportReport}
+        <pre class:fail={!studio.exportReport.ok}>{studio.exportReport.text || (studio.exportReport.ok ? "Done." : "Nothing was written.")}</pre>
+        {#if studio.exportReport.ok && studio.exportReport.folder}<p class="dim small">In <code>{studio.exportReport.folder}</code></p>{/if}
+      {/if}
+      <p class="dim small">The Android file is debug-signed and has only run on the emulator. Release signing and installing it on a device are yours to do.</p>
+      <div class="end"><button onclick={() => (studio.exportOpen = false)} disabled={studio.exporting}>Close</button></div>
+    </div>
+  </div>
+{/if}
+
 {#if studio.notice}
   <div class="toast" class:error={studio.notice.kind === "error"} role="status">
     <span>{studio.notice.text}</span>
@@ -161,4 +182,11 @@
   .placeholder { height: 100%; display: grid; place-items: center; text-align: center; padding: 24px; }
   .toast { position: fixed; bottom: 16px; right: 16px; max-width: 460px; display: flex; gap: 8px; align-items: flex-start; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; box-shadow: 0 8px 24px #0006; z-index: 50; }
   .toast.error { border-color: var(--error); }
+  .backdrop { position: fixed; inset: 0; background: #0009; display: grid; place-items: center; z-index: 60; padding: 16px; }
+  .dialog { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; width: min(520px, 100%); max-height: 100%; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
+  .dialog h2 { margin: 0; font-size: 15px; }
+  .choices { display: flex; gap: 8px; flex-wrap: wrap; }
+  .dialog pre { margin: 0; padding: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; white-space: pre-wrap; font-size: 11px; max-height: 220px; overflow: auto; }
+  .dialog pre.fail { border-color: var(--error); }
+  .dialog .end { display: flex; justify-content: flex-end; }
 </style>

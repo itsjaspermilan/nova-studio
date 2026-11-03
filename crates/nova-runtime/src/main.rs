@@ -3,6 +3,8 @@
 //!   nova run <project-folder>        play a Nova project (F3 toggles the stats, Esc quits)
 //!   nova run --pak game.npk          play a packed project
 //!   nova pack <project-folder> out.npk    pack a project into one file (what the APK carries)
+//!   nova export desktop <project-folder> [--out dir]   a folder that plays the game on a computer
+//!   nova export android <project-folder> [--out dir]   a debug-signed APK (needs the Android toolchain)
 //!   nova                             the built-in M1 benchmark scene
 //!   nova --world-height 0            render the world at native resolution (default: project, or 540)
 //!   nova --headless --frames 300 --capture out.png    offscreen run and capture
@@ -13,6 +15,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use nova_runtime::app::{self, Options, PakBytes};
+use nova_runtime::export;
 use nova_runtime::pak;
 use nova_runtime::vfs::DirVfs;
 
@@ -21,6 +24,8 @@ const USAGE: &str = "usage:
   nova run --pak <file.npk> [options]    play a packed project
   nova pack <project-folder> <out.npk>   pack a project into one file
   nova info <project-folder>             print the project's name, version and id (for build scripts)
+  nova export desktop <project-folder> [--out <dir>]   check the game, then write <dir>/<id>/ that plays it on a computer
+  nova export android <project-folder> [--out <dir>]   check the game, then build a debug-signed APK (needs the Android toolchain)
   nova check <project-folder> [--json] [--frames N]   load and run a project headless, list its problems
   nova [options]                         built-in benchmark scene
 options: [--headless] [--frames N] [--capture out.png] [--size WxH] [--world-height N]
@@ -40,6 +45,11 @@ enum Command {
     },
     Info {
         folder: PathBuf,
+    },
+    Export {
+        target: String,
+        folder: PathBuf,
+        out: PathBuf,
     },
 }
 
@@ -84,12 +94,50 @@ fn parse() -> Result<Command, String> {
             frames,
         });
     }
+    if args.peek().map(String::as_str) == Some("export") {
+        args.next();
+        let target = args
+            .next()
+            .ok_or("`nova export` needs a target: desktop or android")?;
+        if target != "desktop" && target != "android" {
+            return Err(format!(
+                "`nova export`: unknown target '{target}' (desktop or android)"
+            ));
+        }
+        let folder = args
+            .next()
+            .ok_or("`nova export` needs a project folder after the target")?;
+        let mut out = PathBuf::from("build/export");
+        while let Some(arg) = args.next() {
+            match arg.as_str() {
+                "--out" => out = args.next().ok_or("--out needs a folder")?.into(),
+                other => return Err(format!("`nova export`: unexpected argument '{other}'")),
+            }
+        }
+        return Ok(Command::Export {
+            target,
+            folder: folder.into(),
+            out,
+        });
+    }
     if args.peek().map(String::as_str) == Some("info") {
         args.next();
         let folder = args.next().ok_or("`nova info` needs a project folder")?;
         return Ok(Command::Info {
             folder: folder.into(),
         });
+    }
+    // A game exported for a computer is the program with `game.npk` beside it: started with nothing, it plays that.
+    if args.peek().is_none()
+        && let Some(pak_path) = std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(|d| d.join("game.npk")))
+            .filter(|p| p.is_file())
+    {
+        let bytes = std::fs::read(&pak_path)
+            .map_err(|e| format!("cannot read {}: {e}", pak_path.display()))?;
+        opts.pak = Some(PakBytes(Arc::new(bytes)));
+        return Ok(Command::Play(Box::new(opts)));
     }
     let running = args.peek().map(String::as_str) == Some("run");
     if running {
@@ -219,67 +267,108 @@ fn info(folder: PathBuf) -> Result<(), String> {
 /// Exit status 1 when there are errors. With `--json` the report is machine-readable (the
 /// studio's Problems panel reads it).
 fn check(folder: &std::path::Path, json: bool, frames: u32) -> Result<bool, String> {
-    use nova_runtime::diagnostics::{self, Diagnostic};
-    use nova_runtime::game::{Game, NullUploader};
-    use nova_runtime::input::Actions;
-    use nova_runtime::vfs::Vfs;
-    use std::rc::Rc;
-
     log::set_max_level(log::LevelFilter::Off); // the report is the output
-    let mut problems: Vec<Diagnostic> = Vec::new();
-    let mut name = None;
-    let mut steps_run = 0;
-    match DirVfs::new(folder).and_then(|v| Game::load(Rc::new(v) as Rc<dyn Vfs>)) {
-        Err(message) => problems.push(diagnostics::parse(&message, "error")),
-        Ok(mut game) => {
-            name = Some(game.project.manifest.name.clone());
-            game.upload(&mut NullUploader::default());
-            for warning in &game.warnings {
-                problems.push(diagnostics::parse(warning, "warning"));
-            }
-            for frame in 0..frames {
-                if game.error.is_some() {
-                    break;
-                }
-                game.update(
-                    1.0 / 60.0,
-                    frame as f64 / 60.0,
-                    [960.0, 540.0],
-                    Actions::default(),
-                    false,
-                );
-                steps_run += 1;
-            }
-            if let Some(detail) = game.error_detail.take() {
-                problems.push(diagnostics::parse(&detail, "error"));
-            }
-        }
-    }
-    let ok = !problems.iter().any(|p| p.severity == "error");
+    let report = export::check_project(folder, frames);
     if json {
-        let report = serde_json::json!({
-            "ok": ok,
-            "name": name,
-            "frames_run": steps_run,
-            "diagnostics": problems,
+        let out = serde_json::json!({
+            "ok": report.ok,
+            "name": report.name,
+            "frames_run": report.frames_run,
+            "diagnostics": report.problems,
         });
         println!(
             "{}",
-            serde_json::to_string_pretty(&report).expect("report serialises")
+            serde_json::to_string_pretty(&out).expect("report serialises")
         );
     } else {
-        for p in &problems {
-            let place = match (&p.file, p.line, &p.place) {
-                (Some(f), Some(l), _) => format!("{f}:{l}: "),
-                (Some(f), None, Some(pl)) => format!("{f} ({pl}): "),
-                (Some(f), None, None) => format!("{f}: "),
-                _ => String::new(),
-            };
-            println!("{}: {place}{}", p.severity, p.message);
-        }
-        println!("{}", if ok { "no errors" } else { "errors found" });
+        print_problems(&report.problems);
+        println!(
+            "{}",
+            if report.ok {
+                "no errors"
+            } else {
+                "errors found"
+            }
+        );
     }
-    Ok(ok)
+    Ok(report.ok)
+}
+
+fn print_problems(problems: &[nova_runtime::diagnostics::Diagnostic]) {
+    for p in problems {
+        let place = match (&p.file, p.line, &p.place) {
+            (Some(f), Some(l), _) => format!("{f}:{l}: "),
+            (Some(f), None, Some(pl)) => format!("{f} ({pl}): "),
+            (Some(f), None, None) => format!("{f}: "),
+            _ => String::new(),
+        };
+        println!("{}: {place}{}", p.severity, p.message);
+    }
+}
+
+/// Checks the game, then writes what a person can hand to someone else.
+fn export_game(
+    target: &str,
+    folder: &std::path::Path,
+    out: &std::path::Path,
+) -> Result<(), String> {
+    log::set_max_level(log::LevelFilter::Off);
+    let report = export::check_project(folder, 60);
+    print_problems(&report.problems);
+    if !report.ok {
+        return Err(
+            "the game has errors, so it was not exported (fix them, or run `nova check`)".into(),
+        );
+    }
+    let exe = std::env::current_exe().map_err(|e| format!("cannot find this program: {e}"))?;
+    let notices = std::fs::read_to_string(
+        exe.parent()
+            .map(|d| d.join("THIRD-PARTY.txt"))
+            .unwrap_or_default(),
+    )
+    .ok()
+    .or_else(|| Some(include_str!("../../../licenses/rust-dependencies.txt").to_string()));
+    if target == "desktop" {
+        let done = export::export_desktop(folder, out, &exe, notices.as_deref())?;
+        println!("exported to {}:", done.dir.display());
+        for f in &done.files {
+            println!("  {f}");
+        }
+        return Ok(());
+    }
+    // Android: the APK is built by the repository's script, which needs cargo-ndk and the Android SDK.
+    let mut starts = vec![std::env::current_dir().unwrap_or_default()];
+    if let Ok(repo) = std::env::var("NOVA_REPO") {
+        starts.insert(0, repo.into());
+    }
+    starts.push(exe.clone());
+    let script = export::find_apk_script(&starts).ok_or(
+        "building an APK needs the Nova source tree with the Android toolchain (scripts/build-apk.sh): \
+         run this from inside it, or set NOVA_REPO to its folder",
+    )?;
+    let status = std::process::Command::new("bash")
+        .arg(&script)
+        .arg("--project")
+        .arg(folder)
+        .status()
+        .map_err(|e| format!("cannot run {}: {e}", script.display()))?;
+    if !status.success() {
+        return Err("the APK build failed (see the messages above)".into());
+    }
+    let root = script
+        .parent()
+        .and_then(|p| p.parent())
+        .ok_or("odd script location")?;
+    let id = export::game_id(&report.name.unwrap_or_default());
+    let apk = root.join("build/android").join(format!("{id}-debug.apk"));
+    std::fs::create_dir_all(out).map_err(|e| format!("cannot create {}: {e}", out.display()))?;
+    let dest = out.join(apk.file_name().unwrap_or_default());
+    std::fs::copy(&apk, &dest).map_err(|e| format!("cannot copy {}: {e}", apk.display()))?;
+    println!(
+        "exported {} (debug-signed: release signing and installing on a device are yours to do)",
+        dest.display()
+    );
+    Ok(())
 }
 
 fn main() {
@@ -297,6 +386,11 @@ fn main() {
     let result = match command {
         Command::Pack { folder, out } => pack(folder, out),
         Command::Info { folder } => info(folder),
+        Command::Export {
+            target,
+            folder,
+            out,
+        } => export_game(&target, &folder, &out),
         Command::Check {
             folder,
             json,

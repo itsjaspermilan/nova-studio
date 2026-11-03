@@ -2,7 +2,7 @@
 # Builds a debug-signed APK without Gradle:
 #   cargo-ndk (native library) -> aapt2 (manifest + assets) -> zip (lib) -> zipalign -> apksigner.
 # The debug keystore is generated locally under build/android/ and is never committed.
-# This is the seed of the `nova export android` command (TODO M3).
+# `nova export android <project>` checks the game and then runs this script.
 #
 #   scripts/build-apk.sh                       the M1 benchmark scene  -> build/android/nova-spike-debug.apk
 #   scripts/build-apk.sh --project examples/crate-dash   a game      -> build/android/<id>-debug.apk
@@ -34,6 +34,8 @@ LABEL="Nova Spike"
 VERSION=0.1.0
 APK_NAME=nova-spike
 rm -rf "$OUT/assets" && mkdir -p "$OUT/assets"
+# The licences of the software the runtime is built from travel with every APK.
+cp licenses/rust-dependencies.txt "$OUT/assets/THIRD-PARTY.txt"
 if [ -n "$PROJECT" ]; then
     while IFS='=' read -r key value; do
         case "$key" in

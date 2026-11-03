@@ -251,13 +251,14 @@ Spec in [docs/project-format.md](docs/project-format.md); example `examples/crat
 - [x] (script version) APK build + asset packer + signing: `scripts/build-apk.sh --project`, `nova pack`, `nova info`. Moving it into a `nova export android` command remains.
 - [ ] Template APK build + asset packer + signing. Debug keystore generated
   locally; **release signing and distribution stay the user's to do**.
-- [ ] `nova` CLI: `run` (desktop), `run --device` (adb push + live reload),
-  `export android`, `export desktop`.
-- [ ] Preflight checks (missing assets, bad manifest) before export.
-- [ ] Third-party licence notices for the Rust dependencies (wgpu, winit, cpal, mlua,
-  gltf and their transitive crates) bundled with desktop and APK outputs, and a
-  licence allow-list check (e.g. `cargo deny`). Not done yet; required before any
-  distribution.
+- [x] `nova export desktop|android <project> [--out dir]` (2026-11-02): checks the game, then writes a folder that plays it (program, `game.npk`,
+  start scripts, licence notices; started with no arguments the program plays the `game.npk` beside it) or a debug-signed APK (runs
+  `scripts/build-apk.sh`, so it needs the source tree and Android tools; `NOVA_REPO` points at it). The studio's Export… button runs the same.
+  Verified: Crate Dash exported to an APK carrying `project.npk`, the native library and the notices. [ ] `run --device` (adb push + live reload).
+- [x] Preflight checks before export: `nova check` runs first, and an export with errors writes nothing.
+- [x] Third-party licence notices (2026-11-02): `scripts/third-party.sh` writes `licenses/rust-dependencies.txt` (348 crates, grouped by licence
+  text, plus Lua and the fonts' licences) and `--check` fails on a licence outside an allow-list; every desktop export and APK carries it.
+  Not a legal review: run `scripts/third-party.sh --check` after changing dependencies.
 - [ ] Verify APK structure; never claim device behaviour from emulator checks.
 
 ## M4: Studio shell (Tauri 2 + TypeScript)
