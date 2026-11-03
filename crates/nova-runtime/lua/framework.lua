@@ -85,7 +85,7 @@ local Scene = { __kind = "scene", __flat = true, __defaults = {}, __tags = {}, _
 Scene.__index = Scene
 local bases = { entity = Entity, scene = Scene }
 
-local RESERVED = { tags = true, sprite = true, model = true, depth = true, hitbox = true, screen = true, pivot = true }
+local RESERVED = { static = true, tags = true, sprite = true, model = true, depth = true, hitbox = true, screen = true, pivot = true }
 
 local function define(kind, a, b)
   local parent, spec
@@ -131,6 +131,7 @@ local function finalize(cls)
     end
   end
   cls.__defaults, cls.__tags = defaults, tags
+  cls.__static = spec.static or parent.__static
   cls.__sprite = spec.sprite or parent.__sprite
   cls.__model = spec.model or parent.__model
   cls.__depth = spec.depth or parent.__depth or 0
@@ -468,7 +469,98 @@ function Text:draw()
 end
 nova.Entity, nova.Picture, nova.Text = Entity, Picture, Text
 
--- ------------------------------------------------------------------ the world
+-- ------------------------------------------------------------------ the static scenery
+-- Scenery that never moves (trees, road pieces, barriers) comes by the thousand, so it is not kept as live entities:
+-- each piece is a row in a grid of squares, drawn only when it is near the camera. The `colliders` circles of its model
+-- (made in the model editor, read with nova.model_colliders) stop whatever calls `nova.scenery.push`. An entity class
+-- with `static = true` and a `model` puts itself here when it is spawned (a scene file's trees and road pieces do).
+local scenery = { range = 200 }
+nova.scenery = scenery
+local CELL = 40
+local bins, solid_bins, piece_count = {}, {}, 0
+local circles_of = {}
+local eye_x, eye_z = 0, 0
+
+local set_camera = nova.camera
+function nova.camera(ex, ey, ez, tx, ty, tz, fov)
+  eye_x, eye_z = ex, ez
+  return set_camera(ex, ey, ez, tx, ty, tz, fov)
+end
+
+local function key(cx, cz) return (cx + 2048) * 4096 + (cz + 2048) end
+local function cell(v) return floor(v / CELL) end
+
+--- Forgets every piece (a scene does this by itself when it ends).
+function scenery.clear() bins, solid_bins, piece_count = {}, {}, 0 end
+--- How many pieces there are.
+function scenery.count() return piece_count end
+
+--- Puts a model into the scenery at (x, y, z); `opts` are the model options (`ry`, `scale`, `tint`, `shadow`...).
+function scenery.add(model, x, y, z, opts)
+  opts = opts or {}
+  local k = key(cell(x), cell(z))
+  local list = bins[k]
+  if not list then list = {}; bins[k] = list end
+  list[#list + 1] = { model, x, y, z, opts }
+  piece_count = piece_count + 1
+  local circles = circles_of[model]
+  if circles == nil then circles = nova.model_colliders(model); circles_of[model] = circles end
+  if #circles > 0 then
+    local ry, scale = opts.ry or 0, opts.scale or 1
+    local s, c = sin(ry), cos(ry)
+    for _, circle in ipairs(circles) do
+      local ox, oz = circle.x * scale, circle.z * scale
+      -- the model's +x is (cos, -sin) and its +z is (sin, cos) on the ground
+      local wx, wz = x + ox * c + oz * s, z - ox * s + oz * c
+      local sk = key(cell(wx), cell(wz))
+      local sl = solid_bins[sk]
+      if not sl then sl = {}; solid_bins[sk] = sl end
+      sl[#sl + 1] = { wx, wz, circle.r * scale }
+    end
+  end
+end
+
+--- Draws the pieces within `radius` metres of (cx, cz). The framework does this by itself around the camera every frame
+--- (out to `nova.scenery.range`, 200 by default; 0 turns it off).
+function scenery.draw(cx, cz, radius)
+  local r2 = radius * radius
+  for gx = cell(cx - radius), cell(cx + radius) do
+    for gz = cell(cz - radius), cell(cz + radius) do
+      local list = bins[key(gx, gz)]
+      if list then
+        for i = 1, #list do
+          local e = list[i]
+          local dx, dz = e[2] - cx, e[4] - cz
+          if dx * dx + dz * dz < r2 then nova.model(e[1], e[2], e[3], e[4], e[5]) end
+        end
+      end
+    end
+  end
+end
+
+--- A circle of radius `r` at (x, z): the push that gets it out of whatever it overlaps (dx, dz), or nil.
+function scenery.push(x, z, r)
+  local px, pz, hit = 0, 0, false
+  for gx = cell(x - 4), cell(x + 4) do
+    for gz = cell(z - 4), cell(z + 4) do
+      local list = solid_bins[key(gx, gz)]
+      if list then
+        for i = 1, #list do
+          local s = list[i]
+          local dx, dz = x - s[1], z - s[2]
+          local d2, reach = dx * dx + dz * dz, r + s[3]
+          if d2 < reach * reach then
+            local d = sqrt(d2)
+            if d < 0.001 then dx, dz, d = 1, 0, 1 end
+            px, pz, hit = px + dx / d * (reach - d), pz + dz / d * (reach - d), true
+          end
+        end
+      end
+    end
+  end
+  if hit then return px, pz end
+end
+
 local function spawn(what, x, y, props)
   local cls = finalize(resolve(what, "entity"))
   local e = setmetatable({}, cls)
@@ -476,6 +568,13 @@ local function spawn(what, x, y, props)
   e.x, e.y = x or 0, y or 0
   if props then
     for k, v in pairs(props) do e[k] = v end
+  end
+  if cls.__static then
+    -- a piece of scenery: it goes into the static scenery, not into the list of live entities
+    if not cls.__model then error("a static entity needs a model (nova.entity { model = \"pine\", static = true })", 2) end
+    local scale = rawget(e, "sx") or 1
+    scenery.add(cls.__model, e.x, e.y, rawget(e, "z") or 0, { ry = rawget(e, "ry") or 0, scale = scale })
+    return e
   end
   if rawget(e, "depth") == nil then e.depth = cls.__depth end
   e.id = W.next_id
@@ -1086,6 +1185,7 @@ local function leave_scene()
   if scene then scene._dead = true end
   for i = 1, #W.list do W.list[i]._dead = true end
   W.list, W.tags, W.counts = {}, {}, {}
+  scenery.clear()
   W.dirty, W.background, W.paused = false, nil, false
   grids = {}
   timers.clear()
@@ -1216,6 +1316,7 @@ local function frame_draw()
   local scene = W.scene
   if scene then
     if scene.draw then scene:draw() end
+    if piece_count > 0 and scenery.range > 0 then scenery.draw(eye_x, eye_z, scenery.range) end
     if scene.draw_ui then scene:draw_ui() end
   end
 end

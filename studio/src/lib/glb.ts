@@ -281,7 +281,7 @@ export function exportGlb(doc: ModelDoc, texture?: Raster): Uint8Array {
   const json = {
     asset: { version: "2.0", generator: "Nova Studio" },
     scene: 0,
-    scenes: [{ nodes: [...doc.parts.map((_, i) => nodeOf.get(String(i))!), ...skinNodes] }],
+    scenes: [{ nodes: [...doc.parts.map((_, i) => nodeOf.get(String(i))!), ...skinNodes], ...(doc.colliders?.length ? { extras: { nova: { colliders: doc.colliders.map((c) => [c.x * scale, c.z * scale, c.r * scale].map((v) => Math.round(v * 1e5) / 1e5)) } } } : {}) }],
     nodes: gltfNodes,
     meshes,
     ...(skins.length ? { skins } : {}),

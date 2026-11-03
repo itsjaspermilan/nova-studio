@@ -1,6 +1,5 @@
 -- The 3D picture behind the menus: the showroom the scene file built, the car turning, a camera drifting round it.
 local horizon = require("lib.horizon")
-local world = require("lib.world")
 
 local backdrop = {}
 
@@ -14,15 +13,13 @@ function backdrop.draw(t, mode)
   view.x, view.z = math.sin(a) * radius, math.cos(a) * radius
   nova.camera(view.x, height, view.z, 0, 1.0, 0, 48)
   horizon.draw(view.x, view.z, "forest")
-  world.draw(view.x, view.z, 140)
 end
 
 function backdrop.light()
+  nova.scenery.range = 140 -- (the engine draws the scene file's scenery around the camera by itself)
   nova.light { dir = { -0.5, -1, -0.35 }, color = { 230, 220, 196 }, ambient = { 78, 88, 112 } }
 end
 
-function backdrop.leave()
-  world.clear()
-end
+function backdrop.leave() end
 
 return backdrop

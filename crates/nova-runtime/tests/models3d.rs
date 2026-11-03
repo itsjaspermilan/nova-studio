@@ -585,3 +585,114 @@ fn the_sun_casts_shadows_and_a_model_can_opt_out() {
         "a model that does not cast leaves the ground lit: off {off:.2}, on {on:.2}, opted out {opted_out:.2}"
     );
 }
+
+/// The studio writes a model's collision circles into the glTF scene's extras; scripts read them with nova.model_colliders.
+#[test]
+fn a_models_collision_circles_are_read_from_its_file() {
+    let imported =
+        nova_runtime::model::import_parts(include_bytes!("fixtures/studio_model_colliders.glb"))
+            .expect("imports");
+    assert_eq!(
+        imported.colliders,
+        [[0.0, 0.0, 0.5], [0.25, -0.125, 0.1875]]
+    );
+    let mut g = game(
+        "nova.start('s')",
+        vec![
+            (
+                "models/post.glb",
+                include_bytes!("fixtures/studio_model_colliders.glb").to_vec(),
+            ),
+            (
+                "scenes/s.lua",
+                b"local S = nova.scene {}\nfunction S:enter()\n  local c = nova.model_colliders('post')\n  nova.log(#c .. ' ' .. c[2].x .. ' ' .. c[2].z .. ' ' .. c[2].r)\n  nova.log(#nova.model_colliders('car'))\nend\nreturn S"
+                    .to_vec(),
+            ),
+        ],
+    );
+    frame(&mut g);
+    frame(&mut g);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    assert_eq!(g.take_log(), ["2 0.25 -0.125 0.1875", "0"]);
+}
+
+/// A scene whose trees are `static` entities placed by a scene file; the camera looks from `eye_x`, and `update` is the
+/// body of the scene's update function (run every frame).
+fn world_game(eye_x: f64, update: &str) -> Game {
+    let mut g = game(
+        "nova.start('s')",
+        vec![
+            (
+                "models/post.glb",
+                include_bytes!("fixtures/studio_model_colliders.glb").to_vec(),
+            ),
+            (
+                "entities/post.lua",
+                b"return nova.entity { model = 'post', static = true }".to_vec(),
+            ),
+            (
+                "scenes/s.lua",
+                format!(
+                    "local S = nova.scene {{}}\nfunction S:draw() nova.camera({eye_x}, 5, 0, {eye_x}, 0, -10, 60) end\nfunction S:update(dt) {update} end\nreturn S"
+                )
+                .into_bytes(),
+            ),
+            (
+                "scenes/s.scene.json",
+                br#"{"version":1,"objects":[
+                    {"kind":"post","x":0,"y":0,"z":0},
+                    {"kind":"post","x":10,"y":0,"z":-3,"props":{"ry":1.5707963,"sx":2}},
+                    {"kind":"post","x":1000,"y":0,"z":0}]}"#
+                    .to_vec(),
+            ),
+        ],
+    );
+    frame(&mut g);
+    frame(&mut g);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    g
+}
+
+#[test]
+fn static_scenery_is_drawn_only_near_the_camera() {
+    // from x = 0 the first two posts are within the default 200 m, the third (1000 m away) is not
+    let g = world_game(0.0, "");
+    assert_eq!(
+        g.frame_input(0).models.len(),
+        2,
+        "two of three posts are drawn"
+    );
+    // from x = 1000 only the far post is
+    let g = world_game(1000.0, "");
+    assert_eq!(g.frame_input(0).models.len(), 1);
+    // and a game can narrow or switch off the automatic drawing
+    let g = world_game(0.0, "nova.scenery.range = 5");
+    assert_eq!(
+        g.frame_input(0).models.len(),
+        1,
+        "only the post at the origin is within 5 m"
+    );
+}
+
+#[test]
+fn static_scenery_blocks_with_the_circles_of_its_model() {
+    let probes = "if not done then done = true\n\
+        local function probe(x, z, r) local px, pz = nova.scenery.push(x, z, r); nova.log(px and string.format('%.3f %.3f', px, pz) or 'free') end\n\
+        probe(0.3, 0.0, 0.2)\n\
+        probe(50, 50, 0.2)\n\
+        probe(10, -3 + 1.0, 0.1)\n\
+        nova.log(nova.scenery.count()) end";
+    let g = world_game(0.0, probes);
+    let log = g.take_log();
+    // the first post: a circle of radius 0.5 at the origin; a small circle at x = 0.3 is pushed straight out along +x
+    // by 0.5 + 0.2 - 0.3 = 0.4 (the second circle, 0.25 across and 0.125 behind, pushes a little too)
+    assert!(
+        log[0].starts_with("0.") && !log[0].starts_with("free"),
+        "{log:?}"
+    );
+    assert_eq!(log[1], "free");
+    // the second post is turned a quarter and drawn twice the size, so its circle of 0.5 is 1.0 across: a circle one metre
+    // from its middle along +z touches it and is pushed
+    assert_ne!(log[2], "free", "{log:?}");
+    assert_eq!(log[3], "3", "all three posts are in the world");
+}

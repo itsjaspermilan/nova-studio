@@ -28,6 +28,55 @@
   "group": "Drawing"
  },
  {
+  "name": "nova.model_colliders",
+  "kind": "function",
+  "signature": "nova.model_colliders(id) -> { { x, z, r }, ... }",
+  "doc": "The collision circles made for a model in the model editor (green rings): on the ground in the model's own frame, in metres, x across and z forward. An empty list when it has none.",
+  "group": "3D"
+ },
+ {
+  "name": "nova.scenery",
+  "kind": "namespace",
+  "signature": "nova.scenery",
+  "doc": "The static scenery: trees, road pieces and barriers that never move, kept cheaply and drawn only near the camera (out to `nova.scenery.range` metres, 200 by default, 0 for none). An entity class with `static = true` and a model puts itself here.",
+  "group": "3D"
+ },
+ {
+  "name": "nova.scenery.draw",
+  "kind": "function",
+  "signature": "nova.scenery.draw(x, z, radius)",
+  "doc": "Draws the scenery within `radius` metres of a point. The framework already does this around the camera every frame; call it yourself only with nova.scenery.range = 0, to draw around somewhere else.",
+  "group": "3D"
+ },
+ {
+  "name": "nova.scenery.add",
+  "kind": "function",
+  "signature": "nova.scenery.add(model, x, y, z [, { ry, scale, ... }])",
+  "doc": "Puts a model into the static scenery: pieces that never moves. It is drawn only near the camera and its collision circles block `nova.scenery.push`. A scene file's objects whose entity class has `static = true` do this for you.",
+  "group": "3D"
+ },
+ {
+  "name": "nova.scenery.push",
+  "kind": "function",
+  "signature": "nova.scenery.push(x, z, r) -> dx, dz | nil",
+  "doc": "A circle of radius r at (x, z): how far to move it to get out of the static scenery's collision circles, or nil when it is free.",
+  "group": "3D"
+ },
+ {
+  "name": "nova.scenery.clear",
+  "kind": "function",
+  "signature": "nova.scenery.clear()",
+  "doc": "Removes everything from the static scenery (a scene does this by itself when it ends).",
+  "group": "3D"
+ },
+ {
+  "name": "nova.scenery.count",
+  "kind": "function",
+  "signature": "nova.scenery.count() -> number",
+  "doc": "How many pieces the static scenery holds.",
+  "group": "3D"
+ },
+ {
   "name": "nova.shadows",
   "kind": "function",
   "signature": "nova.shadows{ radius = 60, strength = 0.6 }",

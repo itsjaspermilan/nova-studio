@@ -1,6 +1,5 @@
 -- A rally car. It is a real entity (so it is in the scene and is drawn with the others), but its driving is done by the
 -- race scene calling `car:drive(dt)` after it has set `car.ctl` from the player's controls or from the AI.
-local world = require("lib.world")
 local fx = require("lib.fx")
 local state = require("lib.state")
 
@@ -139,7 +138,7 @@ function Car:drive(dt)
   self.x, self.z = self.x + self.velx * dt, self.z + self.velz * dt
 
   -- scenery in the way
-  local px, pz = world.push(self.x, self.z, 1.35)
+  local px, pz = nova.scenery.push(self.x, self.z, 1.35)
   if px then
     self.x, self.z = self.x + px, self.z + pz
     local nl = math.sqrt(px * px + pz * pz)

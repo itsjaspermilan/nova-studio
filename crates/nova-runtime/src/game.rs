@@ -94,6 +94,8 @@ struct Shared {
     parts: HashMap<String, Vec<PartRt>>,
     /// Each model's animation clips.
     clips: HashMap<String, Vec<model::Clip>>,
+    /// Collision circles `[x, z, r]` of each model, from its file.
+    colliders: HashMap<String, Vec<[f32; 3]>>,
     lighting: Lighting,
     world: Vec<SpriteInstance>,
     ui: Vec<SpriteInstance>,
@@ -811,6 +813,24 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 let entry = lua.create_table()?;
                 entry.set("name", c.name.clone())?;
                 entry.set("duration", c.duration as f64)?;
+                list.set(i + 1, entry)?;
+            }
+            Ok(list)
+        })?,
+    )?;
+    let s = shared.clone();
+    nova.set(
+        "model_colliders",
+        lua.create_function(move |lua, id: String| {
+            let sh = s.borrow();
+            let found = find_model(&sh.known_models, &id)
+                .ok_or_else(|| lua_err(format!("unknown model '{id}'")))?;
+            let list = lua.create_table()?;
+            for (i, c) in sh.colliders.get(&found).into_iter().flatten().enumerate() {
+                let entry = lua.create_table()?;
+                entry.set("x", c[0] as f64)?;
+                entry.set("z", c[1] as f64)?;
+                entry.set("r", c[2] as f64)?;
                 list.set(i + 1, entry)?;
             }
             Ok(list)
@@ -1593,6 +1613,7 @@ impl Game {
         let mut model_ids = Vec::new();
         let mut model_parts: HashMap<String, Vec<PartRt>> = HashMap::new();
         let mut model_clips: HashMap<String, Vec<model::Clip>> = HashMap::new();
+        let mut model_colliders: HashMap<String, Vec<[f32; 3]>> = HashMap::new();
         for asset in project.assets_of(AssetKind::Model) {
             let bytes = vfs.read(&asset.id)?;
             let mesh = model::import_glb(&bytes).map_err(|e| format!("{}: {e}", asset.id))?;
@@ -1604,6 +1625,9 @@ impl Game {
             // The same file as separate parts, used only when a script turns individual parts.
             if let Ok(imported) = model::import_parts(&bytes) {
                 model_clips.insert(asset.id.clone(), imported.clips);
+                if !imported.colliders.is_empty() {
+                    model_colliders.insert(asset.id.clone(), imported.colliders);
+                }
                 let mut runtime = Vec::with_capacity(imported.parts.len());
                 for part in imported.parts {
                     let mut skinned = None;
@@ -1717,6 +1741,7 @@ impl Game {
             known_models: model_ids,
             parts: model_parts,
             clips: model_clips,
+            colliders: model_colliders,
             lighting: Lighting::default(),
             world: Vec::new(),
             ui: Vec::new(),

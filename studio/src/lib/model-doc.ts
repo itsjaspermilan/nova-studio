@@ -111,6 +111,15 @@ export interface Clip {
   tracks: Track[];
 }
 
+/// A circle on the ground that a car or a character bumps into, in model units: `x` across, `z` forward, `r` the radius.
+export interface Collider {
+  x: number;
+  z: number;
+  r: number;
+}
+
+export const MAX_COLLIDERS = 32;
+
 export interface ModelDoc {
   version: 1;
   /// Set when the model has a texture, painted in `models/<name>.texture.png` at this size.
@@ -119,6 +128,8 @@ export interface ModelDoc {
   scale: number;
   parts: Part[];
   clips?: Clip[];
+  /// What the model blocks, as circles on the ground (the game reads them with `nova.model_colliders`).
+  colliders?: Collider[];
 }
 
 export const MAX_CLIPS = 64;
@@ -209,6 +220,15 @@ export function parseModel(text: string): Parsed {
     const side = (n: unknown) => typeof n === "number" && Number.isInteger(n) && n >= MIN_TEXTURE && n <= MAX_TEXTURE;
     if (!Array.isArray(size) || size.length !== 2 || !size.every(side)) return { ok: false, error: `"texture.size" must be two whole numbers from ${MIN_TEXTURE} to ${MAX_TEXTURE}` };
   }
+  if (o.colliders !== undefined) {
+    const list = o.colliders as unknown;
+    if (!Array.isArray(list) || list.length > MAX_COLLIDERS) return { ok: false, error: `"colliders" must be a list of up to ${MAX_COLLIDERS} circles` };
+    for (const [i, c] of list.entries()) {
+      const k = c as Partial<Collider> | null;
+      if (!k || typeof k !== "object" || !isFinite(k.x as number) || !isFinite(k.z as number) || typeof k.x !== "number" || typeof k.z !== "number") return { ok: false, error: `colliders[${i}] needs numbers x and z` };
+      if (typeof k.r !== "number" || !(k.r > 0) || !isFinite(k.r)) return { ok: false, error: `colliders[${i}].r (the radius) must be a number above 0` };
+    }
+  }
   let parts = 0;
   let cubes = 0;
   let verts = 0;
@@ -292,7 +312,7 @@ export function parseModel(text: string): Parsed {
       }
     }
   }
-  return { ok: true, doc: { version: 1, scale: o.scale ?? DEFAULT_SCALE, ...(o.texture ? { texture: { size: [...o.texture.size] as [number, number] } } : {}), parts: o.parts as Part[], ...(clips && clips.length ? { clips: clips as Clip[] } : {}) } };
+  return { ok: true, doc: { version: 1, scale: o.scale ?? DEFAULT_SCALE, ...(o.texture ? { texture: { size: [...o.texture.size] as [number, number] } } : {}), parts: o.parts as Part[], ...(clips && clips.length ? { clips: clips as Clip[] } : {}), ...(o.colliders?.length ? { colliders: o.colliders.map((c) => ({ x: c.x, z: c.z, r: c.r })) } : {}) } };
 }
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
@@ -343,7 +363,34 @@ export function serializeModel(doc: ModelDoc): string {
   };
   const clips = doc.clips?.length ? `,\n  "clips": [\n${doc.clips.map(clip).join(",\n")}\n  ]` : "";
   const texture = doc.texture ? `,\n  "texture": { "size": ${vec2(doc.texture.size)} }` : "";
-  return `{\n  "version": 1,\n  "scale": ${doc.scale}${texture},\n  "parts": ${body}${clips}\n}\n`;
+  const colliders = doc.colliders?.length ? `,\n  "colliders": [${doc.colliders.map((c) => `{ "x": ${c.x}, "z": ${c.z}, "r": ${c.r} }`).join(", ")}]` : "";
+  return `{\n  "version": 1,\n  "scale": ${doc.scale}${texture},\n  "parts": ${body}${clips}${colliders}\n}\n`;
+}
+
+// ---- collision circles ----
+
+/// A new circle at the model's origin, `r` units across (the model's own units).
+export function addCollider(doc: ModelDoc, at: Collider): ModelDoc {
+  const list = [...(doc.colliders ?? [])];
+  if (list.length >= MAX_COLLIDERS) return doc;
+  list.push({ x: at.x, z: at.z, r: Math.max(0.01, at.r) });
+  return { ...doc, colliders: list };
+}
+
+export function updateCollider(doc: ModelDoc, index: number, change: Partial<Collider>): ModelDoc {
+  const list = [...(doc.colliders ?? [])];
+  const was = list[index];
+  if (!was) return doc;
+  const next = { ...was, ...change };
+  if (!(next.r > 0) || !isFinite(next.r) || !isFinite(next.x) || !isFinite(next.z)) return doc;
+  list[index] = next;
+  return { ...doc, colliders: list };
+}
+
+export function removeCollider(doc: ModelDoc, index: number): ModelDoc {
+  const list = (doc.colliders ?? []).filter((_, i) => i !== index);
+  const { colliders: _gone, ...rest } = doc;
+  return list.length ? { ...rest, colliders: list } : rest;
 }
 
 // ---- navigating and editing ----------------------------------------------------------------------

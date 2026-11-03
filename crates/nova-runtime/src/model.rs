@@ -379,6 +379,31 @@ impl Channel {
 pub struct ModelParts {
     pub parts: Vec<Part>,
     pub clips: Vec<Clip>,
+    /// What a car or a character bumps into, as circles `[x, z, radius]` on the ground in the model's own frame (metres,
+    /// x across, z forward, before any scale the game draws it with). The studio writes them as the scene's
+    /// `extras.nova.colliders`.
+    pub colliders: Vec<[f32; 3]>,
+}
+
+/// The collision circles of a glTF's default scene (see [`ModelParts::colliders`]); anything malformed is skipped.
+fn read_colliders(scene: &gltf::Scene) -> Vec<[f32; 3]> {
+    let Some(raw) = scene.extras() else {
+        return Vec::new();
+    };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(raw.get()) else {
+        return Vec::new();
+    };
+    v["nova"]["colliders"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|c| {
+            let c = c.as_array()?;
+            let n = |i: usize| c.get(i)?.as_f64().map(|v| v as f32);
+            let (x, z, r) = (n(0)?, n(1)?, n(2)?);
+            (x.is_finite() && z.is_finite() && r.is_finite() && r > 0.0).then_some([x, z, r])
+        })
+        .collect()
 }
 
 /// Reads a glTF as a tree of parts, for models whose pieces move on their own (wheels, doors, arms).
@@ -535,7 +560,12 @@ pub fn import_parts(bytes: &[u8]) -> Result<ModelParts, String> {
             channels,
         });
     }
-    Ok(ModelParts { parts, clips })
+    let colliders = read_colliders(&scene);
+    Ok(ModelParts {
+        parts,
+        clips,
+        colliders,
+    })
 }
 
 pub fn import_glb(bytes: &[u8]) -> Result<MeshData, String> {

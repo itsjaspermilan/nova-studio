@@ -120,6 +120,28 @@ nova.point_light(x, y, z, { radius = 8, color = { 255, 160, 60 } })    -- one fr
 `dir` is the way the light travels; colours are 0 to 255 multipliers (255 = full, no gamma). Every
 field of `nova.light` is optional. A ninth point light in a frame is ignored. Sprites and text are not lit.
 
+**Static scenery.** A level has thousands of trees, road pieces and barriers that never move. Do not make them live
+entities: give the entity class `static = true` and a model, and a scene file's objects of that kind go into
+`nova.scenery`, a grid of squares drawn only near the camera (out to `nova.scenery.range` metres, 200 by default):
+
+```lua
+-- entities/pine.lua
+return nova.entity { model = "pine", static = true }
+```
+
+A scene object can set `ry` (turn, radians) and `sx` (size) as usual. The collision circles made for the model in the model
+editor (the Collision section, green rings in the view) stop whatever asks `nova.scenery.push(x, z, radius)`, which
+returns how far to move out of them (or nothing):
+
+```lua
+local dx, dz = nova.scenery.push(self.x, self.z, 1.3)   -- a car-sized circle
+if dx then self.x, self.z = self.x + dx, self.z + dz end
+```
+
+`nova.scenery.add(model, x, y, z, opts)` adds a piece from a script; the scenery is emptied when a scene ends. A static
+entity runs no code, so for a piece that also needs to do something (a lamp that gives a light), use an ordinary entity
+whose `create` calls `nova.scenery.add` and destroys itself.
+
 **Sky, fog and shadows.** Three more things set the scene's look; each stays until changed and `(nil)` turns it off:
 
 ```lua
@@ -153,7 +175,9 @@ the CPU every frame it is drawn this way (a part can be drawn up to 8 times in o
 
 **Studio model files.** The model editor keeps `models/<name>.model.json` and writes the `.glb` from it on save;
 the game only needs the `.glb`. The file is a tree: `parts` (each with `name`, `origin`, `rotation` in degrees,
-`cubes` and `children`) and optional `clips`. The `cubes` list holds solids, all in the part's own space (1 unit
+`cubes` and `children`), optional `clips` and optional `colliders` (circles on the ground that the model blocks,
+`{ "x": across, "z": forward, "r": radius }` in the same units as the cubes; the glb carries them in metres in the scene's
+`extras.nova.colliders` and a game reads them with `nova.model_colliders(id)`). The `cubes` list holds solids, all in the part's own space (1 unit
 is 1/16 of a world unit unless `scale` says otherwise):
 
 | `shape` | Notes |

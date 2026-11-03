@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FACE_CORNERS, eulerToQuaternion, exportGlb } from "./glb";
-import { History, addCube, addPart, afterRemoval, countCubes, cubeAt, duplicateNode, newModel, parseModel, partAt, removeNode, serializeModel, setFaceColor, updateCube, updatePart, walk, FACES, type ModelDoc } from "./model-doc";
+import { History, addCollider, removeCollider, updateCollider, addCube, addPart, afterRemoval, countCubes, cubeAt, duplicateNode, newModel, parseModel, partAt, removeNode, serializeModel, setFaceColor, updateCube, updatePart, walk, FACES, type ModelDoc } from "./model-doc";
 
 const sample = (): ModelDoc => {
   let d = newModel();
@@ -247,5 +247,54 @@ describe("the glow fixture for the runtime", () => {
     const fixture = new URL("../../../crates/nova-runtime/tests/fixtures/studio_model_glow.glb", import.meta.url);
     if (process.env.UPDATE_FIXTURES || !existsSync(fixture)) writeFileSync(fixture, bytes);
     expect(Array.from(readFileSync(fixture))).toEqual(Array.from(bytes));
+  });
+});
+
+describe("collision circles", () => {
+  const withCircles = () => {
+    let d = newModel();
+    d = addCollider(d, { x: 0, z: 0, r: 8 });
+    d = addCollider(d, { x: 4, z: -2, r: 3 });
+    return d;
+  };
+  it("are written only when there are some, and read back", () => {
+    expect(serializeModel(newModel())).not.toContain("colliders");
+    const text = serializeModel(withCircles());
+    expect(text).toContain('"colliders": [{ "x": 0, "z": 0, "r": 8 }, { "x": 4, "z": -2, "r": 3 }]');
+    const back = parseModel(text);
+    expect(back.ok && back.doc.colliders).toEqual([{ x: 0, z: 0, r: 8 }, { x: 4, z: -2, r: 3 }]);
+  });
+  it("are checked when a file is read", () => {
+    const text = serializeModel(withCircles());
+    for (const [bad, expected] of [
+      ['{ "x": 0, "z": 0, "r": 0 }', "radius"],
+      ['{ "x": "a", "z": 0, "r": 1 }', "x and z"],
+      ["7", "x and z"],
+    ] as const) {
+      const r = parseModel(text.replace('{ "x": 0, "z": 0, "r": 8 }', bad));
+      expect(r.ok, bad).toBe(false);
+      expect(!r.ok && r.error).toContain(expected);
+    }
+  });
+  it("can be added, changed and removed (and never made empty-radius)", () => {
+    let d = withCircles();
+    d = updateCollider(d, 1, { r: 5 });
+    expect(d.colliders![1]).toEqual({ x: 4, z: -2, r: 5 });
+    expect(updateCollider(d, 1, { r: 0 })).toBe(d);
+    expect(updateCollider(d, 9, { r: 1 })).toBe(d);
+    d = removeCollider(d, 0);
+    expect(d.colliders).toEqual([{ x: 4, z: -2, r: 5 }]);
+    expect(removeCollider(d, 0).colliders).toBeUndefined();
+  });
+  it("go into the glTF scene's extras in metres, and a fixture is kept for the runtime", async () => {
+    const d = withCircles();
+    const len = (g: Uint8Array) => new DataView(g.buffer, g.byteOffset).getUint32(12, true);
+    const glb = exportGlb(d);
+    const json = JSON.parse(new TextDecoder().decode(glb.slice(20, 20 + len(glb))));
+    expect(json.scenes[0].extras.nova.colliders).toEqual([[0, 0, 0.5], [0.25, -0.125, 0.1875]]);
+    const { existsSync, readFileSync, writeFileSync } = await import("node:fs");
+    const fixture = new URL("../../../crates/nova-runtime/tests/fixtures/studio_model_colliders.glb", import.meta.url);
+    if (process.env.UPDATE_FIXTURES || !existsSync(fixture)) writeFileSync(fixture, glb);
+    expect(Array.from(readFileSync(fixture))).toEqual(Array.from(glb));
   });
 });

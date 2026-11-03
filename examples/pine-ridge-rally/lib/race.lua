@@ -2,7 +2,7 @@
 -- pause and the finish. A circuit's own scene file (scenes/pine_ridge.lua) just says which ground, sky and music it has.
 local state = require("lib.state")
 local track = require("lib.track")
-local world = require("lib.world")
+local lamps = require("lib.lamps")
 local grid = require("lib.grid")
 local fx = require("lib.fx")
 local horizon = require("lib.horizon")
@@ -64,6 +64,7 @@ function race.define(config)
     local sun = config.sun
     nova.light { dir = sun.dir, color = sun.color, ambient = sun.ambient }
     -- the sky, and fog the colour of its horizon so that the far scenery fades out instead of popping in
+    nova.scenery.range = LOOK_FAR -- (the engine draws the scene file's scenery out to here, around the camera)
     nova.shadows(state.shadows and { radius = 42, strength = 0.55 } or nil)
     nova.sky(config.sky)
     if config.sky then nova.fog { color = config.sky.horizon, near = 70, far = 330 } end
@@ -97,7 +98,7 @@ function race.define(config)
     for _, car in ipairs(self.cars) do if car.engine then car.engine:stop() end end
     nova.music.volume(state.music_volume)
     nova.sky(nil); nova.fog(nil); nova.shadows(nil)
-    world.clear(); track.clear(); grid.clear(); fx.clear()
+    lamps.clear(); track.clear(); grid.clear(); fx.clear()
   end
 
   -- The player and three rivals on the grid; the player starts third.
@@ -473,7 +474,7 @@ function race.define(config)
     for _, car in ipairs({ a or false, b or false }) do
       if car then headlights(car, 8, HEADLIGHT); used = used + 1 end
     end
-    world.light_lamps(cam.x, cam.z, 70, 8 - used, LAMP)
+    lamps.light(cam.x, cam.z, 70, 8 - used, LAMP)
   end
 
   function Race:draw()
@@ -481,7 +482,6 @@ function race.define(config)
     nova.camera(cam.x, cam.y, cam.z, cam.tx, cam.ty, cam.tz, cam.fov)
     if config.night then self:night_lights(cam) end
     horizon.draw(cam.x, cam.z, config.horizon)
-    world.draw(cam.x, cam.z, LOOK_FAR)
     local gx, gz, gh = self:ghost_pose()
     if gx then
       self.ghost_opts = self.ghost_opts or { ry = 0, tint = { 130, 200, 255 } }

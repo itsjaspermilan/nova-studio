@@ -286,5 +286,15 @@ await withServer(async (nova) => {
     dust: spark(),
     tower: tower(),
   };
+  // What a car bumps into, as circles on the ground in metres: [across, forward, radius]. The model editor shows them as green
+  // rings; the game gets them from the file (nova.model_colliders), so scenery that is `static` blocks by itself.
+  const solid = {
+    pine: [[0, 0, 0.9]], pine_dark: [[0, 0, 0.9]], autumn_tree: [[0, 0, 0.9]], birch: [[0, 0, 0.9]], pine_snow: [[0, 0, 0.9]],
+    rock: [[0, 0, 2.3]], rock_red: [[0, 0, 2.3]], rock_ice: [[0, 0, 2.3]], cactus: [[0, 0, 0.7]],
+    mesa: [[-3, 0, 5], [3, 0, 5]], tires: [[0, 0, 1.5]], hay_bale: [[-0.8, 0, 1.2], [0.8, 0, 1.2]],
+    guardrail: [[0, -2.5, 1.1], [0, 0, 1.1], [0, 2.5, 1.1]], tower: [[0, 0, 3.3]], start_arch: [[-7.2, 0, 0.7], [7.2, 0, 0.7]],
+    lamp: [[0, 0, 0.35]],
+  };
+  for (const [name, circles] of Object.entries(solid)) all[name].colliders = circles.map(([x, z, r]) => ({ x: x * 16, z: z * 16, r: r * 16 }));
   for (const [name, doc] of Object.entries(all)) console.log(await nova.call("model_write", { name, model: doc }));
 });

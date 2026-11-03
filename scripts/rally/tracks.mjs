@@ -128,7 +128,7 @@ function layout(spec) {
     // street lamps along the outer edge every 40 m, turned to face the road (the lamp's arm points along its +z)
     if (spec.lamps && i % 8 === 3) {
       const side = i % 16 === 3 ? 1 : -1, nx = -p.tz * side, nz = p.tx * side;
-      objects.push(obj("lamp", p.x + nx * 7.2, p.z + nz * 7.2, Math.atan2(-nx, -nz)));
+      objects.push(obj("lamp", p.x + nx * 9.4, p.z + nz * 9.4, Math.atan2(-nx, -nz)));
     }
     if (i % 17 === 5 && Math.abs(k) < 0.006) objects.push(obj("hay_bale", p.x + -p.tz * 9, p.z + p.tx * 9, p.ry));
   }

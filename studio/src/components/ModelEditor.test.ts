@@ -72,4 +72,25 @@ describe("ModelEditor", () => {
     click(host.querySelector("ul.bones button.bone.on"));
     expect(host.querySelectorAll("ul.bones button.bone.on")).toHaveLength(0);
   });
+
+  it("adds, edits and removes collision circles in the model's panel, and saves them in the file", () => {
+    open(skinned());
+    // nothing is selected, so the model's own panel (scale, collision) is showing
+    expect(host.textContent).toContain("Collision");
+    const add = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("＋ Circle"));
+    expect(add).toBeTruthy();
+    click(add);
+    click(add);
+    const saved = () => JSON.parse(studio.tabs[0]!.text).colliders as { x: number; z: number; r: number }[];
+    expect(saved()).toHaveLength(2);
+    const radius = host.querySelector('input[aria-label="circle 2 radius"]') as HTMLInputElement;
+    radius.value = "3";
+    radius.dispatchEvent(new Event("change", { bubbles: true }));
+    flushSync();
+    expect(saved()[1]!.r).toBe(3);
+    click(host.querySelector('button[aria-label="remove circle 1"]'));
+    expect(saved()).toEqual([{ x: 0, z: 0, r: 3 }]);
+    click(host.querySelector('button[aria-label="remove circle 1"]'));
+    expect(JSON.parse(studio.tabs[0]!.text).colliders).toBeUndefined();
+  });
 });
