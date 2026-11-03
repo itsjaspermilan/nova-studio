@@ -3,6 +3,8 @@
 A 3D rally game for Nova: two circuits, three rivals, a chase camera, menus, music and sound. Play it with
 `nova run examples/pine-ridge-rally`, or open it in the studio (Examples in the project hub).
 
+**Modes:** a race against three rivals, or a time trial: alone on the circuit against a blue ghost of your best lap (kept in the save file).
+
 **Controls** (keyboard, gamepad and touch): steer with the arrows, A/D or the left stick; accelerate with Up, W or the
 right trigger; brake or reverse with Down, S or the left trigger; Space is the handbrake (slides); R puts you back on
 the road; C changes camera; Esc or P pauses. F9 lets the computer drive for you (for demos and tests).
@@ -35,5 +37,4 @@ assistant (or a script) drives the studio's own code: see `scripts/rally/` (`mod
 ## Not done
 
 Nothing has been played on a real device or by a person yet: the handling, the sounds and the music were tuned by
-numbers, headless pictures and a computer driver, not by ear or by hand. There is one time-trial-less race mode, no
-split screen, no pit stops, and no tyre or damage model.
+numbers, headless pictures and a computer driver, not by ear or by hand. There is no split screen, no pit stops, and no tyre or damage model.

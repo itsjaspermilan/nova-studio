@@ -44,7 +44,7 @@ end
 function Results:draw_ui()
   local w = nova.view()
   local r = self.r
-  local headline = (r.place == 1 and "YOU WIN!") or (r.place == 2 and "SECOND PLACE") or (r.place == 3 and "THIRD PLACE") or "FINISHED"
+  local headline = r.trial and "TIME TRIAL" or (r.place == 1 and "YOU WIN!") or (r.place == 2 and "SECOND PLACE") or (r.place == 3 and "THIRD PLACE") or "FINISHED"
   ui.center(headline, 22, 58, r.place == 1 and ui.color.gold or ui.color.white, { font = "comic" })
   ui.center(r.track_name .. "  ·  " .. r.laps .. (r.laps == 1 and " lap" or " laps"), 84, 20, ui.color.white)
 
@@ -55,8 +55,8 @@ function Results:draw_ui()
     local slide = (1 - math.min(1, math.max(0, self.reveal * 2.2 - (i - 1) * 0.35))) * 80
     local color = row.you and ui.color.gold or ui.color.white
     if row.you then nova.ui.rect(x + 4, ry - 2 + 0, width - 8, 42, { 245, 158, 11, 60 }) end
-    if i <= 3 then nova.ui.sprite("medal", x + 40 + slide, ry + 20, { frame = i - 1, scale = 2 }) end
-    ui.text(x + 76 + slide, ry + 6, ui.ordinal(i), 24, color)
+    if i <= 3 and not r.trial then nova.ui.sprite("medal", x + 40 + slide, ry + 20, { frame = i - 1, scale = 2 }) end
+    if not r.trial then ui.text(x + 76 + slide, ry + 6, ui.ordinal(i), 24, color) end
     ui.text(x + 150 + slide, ry + 6, row.name, 24, color)
     local time = row.time and ui.time(row.time) or "did not finish"
     ui.right(time, x + width - 18 + slide, ry + 6, 24, row.time and color or ui.color.dim)

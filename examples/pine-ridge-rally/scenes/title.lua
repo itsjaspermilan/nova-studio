@@ -64,14 +64,15 @@ function Title:update(dt)
     if choice == 2 and step ~= 0 then state.sfx_volume = math.max(0, math.min(1, state.sfx_volume + step)); state.save_options(); audio.sfx("menu_move") end
     if action == "back" or (action == "accept" and choice == 3) then audio.sfx("menu_back"); self:go("menu") end
   elseif screen == "select" then
-    local choice, action = ui.navigate(self.choice, 4)
+    local choice, action = ui.navigate(self.choice, 5)
     self.choice = choice
     local step = (action == "right" and 1) or (action == "left" and -1) or 0
     if choice == 1 and step ~= 0 then state.track = (state.track - 1 + step) % #state.tracks + 1; state.laps = state.current_track().laps; audio.sfx("menu_move") end
-    if choice == 2 and step ~= 0 then state.car = (state.car - 1 + step) % #state.cars + 1; wear(); audio.sfx("menu_move") end
-    if choice == 3 and step ~= 0 then state.laps = math.max(1, math.min(5, state.laps + step)); audio.sfx("menu_move") end
+    if choice == 2 and step ~= 0 then state.mode = state.mode == "race" and "trial" or "race"; audio.sfx("menu_move") end
+    if choice == 3 and step ~= 0 then state.car = (state.car - 1 + step) % #state.cars + 1; wear(); audio.sfx("menu_move") end
+    if choice == 4 and step ~= 0 then state.laps = math.max(1, math.min(5, state.laps + step)); audio.sfx("menu_move") end
     if action == "back" then audio.sfx("menu_back"); self:go("menu")
-    elseif action == "accept" and choice == 4 then
+    elseif action == "accept" and choice == 5 then
       audio.sfx("menu_accept")
       state.save_options()
       audio.stop_music(0.6)
@@ -122,16 +123,17 @@ function Title:draw_ui()
     ui.center("CHOOSE YOUR RACE", 30, 44, ui.color.gold, { font = "comic" })
     ui.menu({
       { "Circuit", "< " .. info.name .. " >" },
+      { "Mode", "< " .. (state.mode == "race" and "Race" or "Time trial") .. " >" },
       { "Car", "< " .. state.current_car().name .. " >" },
       { "Laps", "< " .. state.laps .. " >" },
-      "START RACE",
-    }, self.choice, 110, { width = 460 })
-    ui.panel(w / 2 - 230, 300, 460, 120, 190)
-    ui.text(w / 2 - 214, 308, info.blurb, 16, ui.color.white, { width = 430 })
+      state.mode == "race" and "START RACE" or "START TIME TRIAL",
+    }, self.choice, 100, { width = 460 })
+    ui.panel(w / 2 - 230, 330, 460, 110, 190)
+    ui.text(w / 2 - 214, 336, state.mode == "race" and info.blurb or "Alone on the circuit, racing the ghost of your best lap.", 15, ui.color.white, { width = 430 })
     local best = state.best("race" .. state.laps, info.id)
     local lap = state.best("lap", info.id)
-    ui.text(w / 2 - 214, 372, "Best " .. state.laps .. " laps  " .. ui.time(best), 18, ui.color.gold)
-    ui.text(w / 2 - 214, 396, "Best lap  " .. ui.time(lap), 18, ui.color.gold)
+    ui.text(w / 2 - 214, 382, "Best " .. state.laps .. " laps  " .. ui.time(best), 17, ui.color.gold)
+    ui.text(w / 2 - 214, 406, "Best lap  " .. ui.time(lap), 17, ui.color.gold)
     ui.center("up / down: choose     left / right: change     A: go     B: back", 490, 14, ui.color.dim)
   end
 end

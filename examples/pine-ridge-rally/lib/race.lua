@@ -80,6 +80,9 @@ function race.define(config)
     self:build_cars()
     self:build_minimap()
     self.player.engine = audio.engine(1.0)
+    self.trial = state.mode == "trial"
+    self.ghost = self.trial and nova.save.get("ghost_" .. info.id, nil) or nil
+    self.recording = { t = 0, pts = {} }
     audio.music(info.music or config.music, { volume = 0.5, fade = 0.8 })
     self:update_camera(1 / 60)
   end
@@ -114,7 +117,7 @@ function race.define(config)
     self.player.is_player = true
     self.player.name = "You"
     self.cars[1] = self.player
-    for i, r in ipairs(RIVALS) do
+    for i, r in ipairs(state.mode == "trial" and {} or RIVALS) do
       local car = put(pool[i], slots[i])
       car.name, car.skill, car.lane = r.name, r.skill, r.lane
       car.vmax = 40 * r.skill + 4
@@ -154,6 +157,31 @@ function race.define(config)
     car.progress = car.progress + delta
     car.last_s = s
     car.surface = car.off_middle > ROAD_HALF + 0.8 and "rough" or (config.surface or "road")
+  end
+
+  -- every tenth of a second of a trial lap: where the car was (x, z, heading), kept as flat numbers for the save file
+  function Race:record_ghost(dt)
+    local rec = self.recording
+    rec.t = rec.t + dt
+    local n = #rec.pts
+    if rec.t >= (n // 3) * 0.1 and n < 3 * 3000 then
+      local p = self.player
+      rec.pts[n + 1], rec.pts[n + 2], rec.pts[n + 3] = math.floor(p.x * 10 + 0.5) / 10, math.floor(p.z * 10 + 0.5) / 10, math.floor(p.heading * 100 + 0.5) / 100
+    end
+  end
+
+  -- where the ghost is now (it starts its lap when the player does), or nil when its lap is over
+  function Race:ghost_pose()
+    local g = self.ghost
+    if not g or self.phase ~= "racing" then return nil end
+    local t = self.clock - (self.player.lap_started or 0)
+    local i = t / 0.1
+    local k = math.floor(i)
+    local a, b = k * 3 + 1, (k + 1) * 3 + 1
+    if not g.pts[b + 2] then return nil end
+    local f = i - k
+    local dh = track.wrap(g.pts[b + 2] - g.pts[a + 2])
+    return g.pts[a] + (g.pts[b] - g.pts[a]) * f, g.pts[a + 1] + (g.pts[b + 1] - g.pts[a + 1]) * f, g.pts[a + 2] + dh * f
   end
 
   function Race:lap_of(car) return math.floor(car.progress / self.length) + 1 end
@@ -227,6 +255,15 @@ function race.define(config)
     local record = not self.best_lap or t < self.best_lap
     if record then self.best_lap = t end
     nova.log(string.format("lap %d done in %s", lap, ui.time(t)))
+    if self.trial then
+      -- the ghost is the best lap: keep this one's path if it beat it
+      if record and (not self.ghost or t < self.ghost.time) then
+        self.ghost = { time = t, pts = self.recording.pts }
+        nova.save.set("ghost_" .. state.current_track().id, self.ghost)
+        nova.log(string.format("ghost saved: %d points", #self.ghost.pts // 3))
+      end
+      self.recording = { t = 0, pts = {} }
+    end
     if lap < self.laps then
       audio.sfx(record and "best_lap" or "lap")
       self:say((lap + 1 == self.laps and "FINAL LAP   " or ("LAP " .. (lap + 1) .. "   ")) .. ui.time(t), 2.6)
@@ -333,6 +370,7 @@ function race.define(config)
       end
     end
 
+    if self.trial and self.phase == "racing" and not p.finish_time then self:record_ghost(dt) end
     fx.update(dt)
     self:places()
     self:update_camera(dt)
@@ -380,6 +418,12 @@ function race.define(config)
     horizon.draw(cam.x, cam.z, config.horizon)
     world.draw(cam.x, cam.z, LOOK_FAR)
     fx.draw()
+    local gx, gz, gh = self:ghost_pose()
+    if gx then
+      self.ghost_opts = self.ghost_opts or { ry = 0, tint = { 130, 200, 255 } }
+      self.ghost_opts.ry = gh
+      nova.model(self.player.model_id, gx, 0, gz, self.ghost_opts)
+    end
   end
 
   -- ---- the HUD ----------------------------------------------------------------------------------------------------------
@@ -399,8 +443,12 @@ function race.define(config)
 
     -- place and lap, top left
     ui.panel(16, 16, 190, 70, 150)
-    ui.text(28, 20, ui.ordinal(p.place or 1), 40, ui.color.gold, { font = "display" })
-    ui.text(100, 30, "/ " .. #self.cars, 22, ui.color.dim)
+    if self.trial then
+      ui.text(28, 22, "TRIAL", 34, ui.color.gold, { font = "display" })
+    else
+      ui.text(28, 20, ui.ordinal(p.place or 1), 40, ui.color.gold, { font = "display" })
+      ui.text(100, 30, "/ " .. #self.cars, 22, ui.color.dim)
+    end
     local lap = math.max(1, math.min(self.laps, self:lap_of(p)))
     ui.text(28, 62, "LAP " .. lap .. " / " .. self.laps, 18, ui.color.white)
 
@@ -481,13 +529,18 @@ function race.define(config)
     local order = self:places()
     local info = state.current_track()
     local rows = {}
-    for i, car in ipairs(order) do
-      rows[i] = { name = car.name, car = car.model_id, place = i, time = car.finish_time, you = car.is_player }
+    if self.trial then
+      -- a trial's table is the laps, fastest highlighted
+      for i, t in ipairs(self.lap_times) do rows[i] = { name = "Lap " .. i, time = t, you = t == self.best_lap } end
+    else
+      for i, car in ipairs(order) do
+        rows[i] = { name = car.name, car = car.model_id, place = i, time = car.finish_time, you = car.is_player }
+      end
     end
     local me = self.player
     state.result = {
       track = info.id, track_name = info.name, laps = self.laps, rows = rows, place = me.place, time = me.finish_time,
-      best_lap = self.best_lap, record_time = false, record_lap = false,
+      best_lap = self.best_lap, record_time = false, record_lap = false, trial = self.trial,
     }
     if me.finish_time then state.result.record_time = state.submit("race" .. self.laps, info.id, me.finish_time) end
     if self.best_lap then state.result.record_lap = state.submit("lap", info.id, self.best_lap) end

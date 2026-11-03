@@ -67,7 +67,7 @@ fn run_until(
 }
 
 /// Title, main menu, then the circuit chooser with `circuit_steps` steps of "Circuit" to the right.
-fn start_race(g: &mut Game, circuit_steps: usize) {
+fn start_race(g: &mut Game, circuit_steps: usize, trial: bool) {
     for _ in 0..30 {
         frame(g, &[]);
     }
@@ -76,15 +76,20 @@ fn start_race(g: &mut Game, circuit_steps: usize) {
     for _ in 0..circuit_steps {
         tap(g, "key:ArrowRight");
     }
-    for _ in 0..3 {
-        tap(g, "key:ArrowDown");
+    if trial {
+        tap(g, "key:ArrowDown"); // to Mode
+        tap(g, "key:ArrowRight"); // Race -> Time trial
+        tap(g, "key:ArrowUp");
     }
-    frame(g, &["key:Enter"]); // START RACE
+    for _ in 0..4 {
+        tap(g, "key:ArrowDown"); // Circuit -> Mode -> Car -> Laps -> START
+    }
+    frame(g, &["key:Enter"]); // START
 }
 
-fn play(circuit_steps: usize) -> Vec<String> {
+fn play(circuit_steps: usize, trial: bool) -> Vec<String> {
     let mut g = load();
-    start_race(&mut g, circuit_steps);
+    start_race(&mut g, circuit_steps, trial);
     let mut log = Vec::new();
     run_until(&mut g, &mut log, "the countdown ends", 60 * 8, |l| {
         l.iter().any(|x| x == "go")
@@ -103,7 +108,7 @@ fn play(circuit_steps: usize) -> Vec<String> {
 
 #[test]
 fn a_whole_race_on_pine_ridge_ends_on_the_results_screen() {
-    let log = play(0);
+    let log = play(0, false);
     let laps = log.iter().filter(|l| l.starts_with("lap ")).count();
     assert_eq!(laps, 3, "a lap line for each of the three laps: {log:?}");
     assert!(
@@ -116,7 +121,7 @@ fn a_whole_race_on_pine_ridge_ends_on_the_results_screen() {
 
 #[test]
 fn a_whole_race_on_dust_valley_ends_on_the_results_screen() {
-    let log = play(1);
+    let log = play(1, false);
     assert!(log.iter().any(|l| l.starts_with("results:")), "{log:?}");
     assert_eq!(
         log.iter().filter(|l| l.starts_with("lap ")).count(),
@@ -126,5 +131,36 @@ fn a_whole_race_on_dust_valley_ends_on_the_results_screen() {
     assert!(
         !log.iter().any(|l| l.contains("put back on the road")),
         "nobody got stuck: {log:?}"
+    );
+}
+
+#[test]
+fn a_time_trial_has_no_rivals_and_keeps_the_ghost_of_the_best_lap() {
+    let log = play(0, true);
+    let results = log
+        .iter()
+        .find(|l| l.starts_with("results:"))
+        .expect("the trial ends");
+    assert!(
+        results.contains("place 1 of 1"),
+        "alone on the circuit: {results}"
+    );
+    assert_eq!(
+        log.iter().filter(|l| l.starts_with("lap ")).count(),
+        3,
+        "{log:?}"
+    );
+    let saved: Vec<_> = log
+        .iter()
+        .filter(|l| l.starts_with("ghost saved"))
+        .collect();
+    assert!(!saved.is_empty(), "the first lap leaves a ghost: {log:?}");
+    let points: usize = saved[0]
+        .split(['(', ' '])
+        .find_map(|w| w.parse().ok())
+        .unwrap_or(0);
+    assert!(
+        points > 300,
+        "about ten points a second of a lap of half a minute or more: {saved:?}"
     );
 }

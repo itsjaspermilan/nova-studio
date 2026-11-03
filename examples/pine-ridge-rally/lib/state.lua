@@ -15,6 +15,7 @@ state.cars = {
 state.track = 1       -- index into state.tracks
 state.car = 1         -- index into state.cars
 state.laps = 3
+state.mode = "race"    -- "race" (against three rivals) or "trial" (alone, against your best lap's ghost)
 state.music_volume = 0.7
 state.sfx_volume = 0.8
 state.result = nil    -- filled in when a race ends
@@ -25,6 +26,7 @@ function state.load()
   state.sfx_volume = saved.sfx or state.sfx_volume
   state.track = nova.save.get("last_track", 1)
   state.car = nova.save.get("last_car", 1)
+  state.mode = nova.save.get("last_mode", "race")
   state.apply_volumes()
 end
 
@@ -32,6 +34,7 @@ function state.save_options()
   nova.save.set("options", { music = state.music_volume, sfx = state.sfx_volume })
   nova.save.set("last_track", state.track)
   nova.save.set("last_car", state.car)
+  nova.save.set("last_mode", state.mode)
   state.apply_volumes()
 end
 
