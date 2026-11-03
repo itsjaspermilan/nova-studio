@@ -39,6 +39,9 @@ pub struct Play {
     pub music: bool,
     /// Seconds to fade in from silence.
     pub fade_in: f32,
+    /// At most this many copies of this sound at once (0 for no limit): one more makes the oldest copy of the same sound
+    /// give way, instead of an unrelated sound.
+    pub limit: u32,
 }
 
 pub enum Command {
@@ -248,6 +251,12 @@ impl Mixer {
         self.voices.len()
     }
 
+    /// The ids of the playing voices, oldest first (for tests).
+    #[cfg(test)]
+    fn voice_ids(&self) -> Vec<u64> {
+        self.voices.iter().map(|v| v.id).collect()
+    }
+
     pub fn apply(&mut self, command: Command) {
         match command {
             Command::Play(p) => {
@@ -261,6 +270,22 @@ impl Mixer {
                         v.stopping = true;
                         v.fade_target = 0.0;
                         v.fade_step = 1.0 / (0.3 * self.device_rate as f32);
+                    }
+                } else if p.limit > 0
+                    && self
+                        .voices
+                        .iter()
+                        .filter(|v| Arc::ptr_eq(&v.sample, &p.sample))
+                        .count()
+                        >= p.limit as usize
+                {
+                    // Too many copies of this very sound (a hundred enemies dying at once): the oldest copy gives way.
+                    if let Some(i) = self
+                        .voices
+                        .iter()
+                        .position(|v| Arc::ptr_eq(&v.sample, &p.sample))
+                    {
+                        self.voices.remove(i);
                     }
                 } else if self.voices.iter().filter(|v| !v.music).count() >= MAX_VOICES {
                     // Out of voices: the oldest effect gives way.
@@ -492,6 +517,7 @@ mod tests {
             looping: false,
             music: false,
             fade_in: 0.0,
+            limit: 0,
         }
     }
 
@@ -509,6 +535,32 @@ mod tests {
                 .map(|i| [i as i16 * 10, i as i16 * 10])
                 .collect(),
         )
+    }
+
+    #[test]
+    fn a_limit_makes_copies_of_one_sound_give_way_to_each_other_not_to_other_sounds() {
+        let mut m = Mixer::new(1000);
+        let hit = ramp(2000);
+        let jingle = ramp(2000);
+        m.apply(Command::Play(Box::new(play(1, &jingle))));
+        for id in 2..=11 {
+            m.apply(Command::Play(Box::new(Play {
+                limit: 3,
+                ..play(id, &hit)
+            })));
+        }
+        let ids: Vec<u64> = m.voice_ids();
+        assert_eq!(
+            ids,
+            [1, 9, 10, 11],
+            "the jingle stays; only the newest three hits play"
+        );
+        // without a limit all of them play
+        let mut m = Mixer::new(1000);
+        for id in 1..=10 {
+            m.apply(Command::Play(Box::new(play(id, &hit))));
+        }
+        assert_eq!(m.voice_ids().len(), 10);
     }
 
     #[test]
@@ -821,6 +873,7 @@ mod tests {
             looping: false,
             music: true,
             fade_in: 0.0,
+            limit: 0,
         }
     }
 

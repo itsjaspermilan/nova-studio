@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "gem",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "name": "top", "shape": "pyramid", "from": [-3, 0, -3], "size": [6, 6, 6], "emissive": 1, "color": "#52d6ff" }
+      ],
+      "children": []
+    }
+  ]
+}

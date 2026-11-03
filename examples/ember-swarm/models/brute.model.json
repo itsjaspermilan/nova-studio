@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "body",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "name": "mass", "from": [-9, 0, -9], "size": [18, 14, 18], "color": "#7a4fb5" },
+        { "name": "horn", "from": [-8, 14, -6], "size": [3, 5, 3], "color": "#e8e0f0" },
+        { "name": "horn 2", "from": [5, 14, -6], "size": [3, 5, 3], "color": "#e8e0f0" },
+        { "name": "eye", "from": [-5, 8, 8.9], "size": [4, 3, 0.4], "emissive": 1, "color": "#ff4b4b" },
+        { "name": "eye 2", "from": [1, 8, 8.9], "size": [4, 3, 0.4], "emissive": 1, "color": "#ff4b4b" }
+      ],
+      "children": []
+    }
+  ],
+  "colliders": [{ "x": 0, "z": 0, "r": 9 }]
+}

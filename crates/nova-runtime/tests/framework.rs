@@ -1745,3 +1745,117 @@ fn next_source_reports_each_press_once() {
     press(&mut g, Some("pad:south"));
     assert_eq!(g.take_log(), ["pad:south"]);
 }
+
+/// Runs `body` as the scene's enter function in a project whose entities `a` and `b` have circle hitboxes, then steps twice.
+fn ground_game(plane: &str, body: &str) -> Game {
+    let mut g = project(vec![
+        (
+            "entities/a.lua",
+            lua(
+                "local A = nova.entity { tags = { 'a' }, hitbox = { r = 1 } }\nfunction A:on_collide_b(o) nova.log('hit ' .. self.name .. ' ' .. o.name) end\nreturn A",
+            ),
+        ),
+        (
+            "entities/b.lua",
+            lua("return nova.entity { tags = { 'b' }, hitbox = { r = 1 } }"),
+        ),
+        (
+            "scenes/s.lua",
+            lua(&format!(
+                "local S = nova.scene {{}}\nfunction S:enter()\n{body}\nend\nreturn S"
+            )),
+        ),
+        ("main.lua", lua(&format!("{plane}\nnova.start('s')"))),
+    ]);
+    steps(&mut g, 2);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    g
+}
+
+#[test]
+fn the_ground_plane_can_be_x_and_z_for_collisions_and_distances() {
+    // flat (the default): x and y decide; z is ignored
+    let flat = ground_game(
+        "",
+        "nova.spawn('a', 0, 0, { name = 'a', z = 50 })\nnova.spawn('b', 0.5, 0, { name = 'b', z = -50 })",
+    );
+    assert_eq!(
+        flat.take_log(),
+        ["hit a b", "hit a b"],
+        "z does not matter in a flat game"
+    );
+    // ground plane x, z: same x and y but far apart in z do not touch; same x, z but another height do
+    let apart = ground_game(
+        "nova.collision { plane = 'xz', cell = 4 }",
+        "nova.spawn('a', 0, 0, { name = 'a', z = 50 })\nnova.spawn('b', 0.5, 0, { name = 'b', z = -50 })",
+    );
+    assert!(apart.take_log().is_empty(), "far apart on the ground");
+    let tall = ground_game(
+        "nova.collision { plane = 'xz', cell = 4 }",
+        "nova.spawn('a', 0, 0, { name = 'a', z = 3 })\nnova.spawn('b', 0.5, 9, { name = 'b', z = 3.2 })",
+    );
+    assert_eq!(
+        tall.take_log(),
+        ["hit a b", "hit a b"],
+        "height is not part of the ground plane"
+    );
+}
+
+#[test]
+fn distances_and_neighbour_queries_follow_the_ground_plane() {
+    let g = ground_game(
+        "nova.collision { plane = 'xz' }",
+        "local a = nova.spawn('a', 0, 0, { name = 'a', z = 0 })\n\
+         local b = nova.spawn('b', 3, 100, { name = 'b', z = 4 })\n\
+         nova.log(string.format('%.2f %.2f', a:distance_to(b), a:distance_to(3, 4)))\n\
+         nova.log(string.format('%.3f', a:angle_to(b)))\n\
+         nova.log(tostring(nova.nearest(0, 0, 'b', 10) == b) .. ' ' .. tostring(nova.nearest(0, 0, 'b', 3) == nil))\n\
+         nova.log(#nova.in_radius(3, 4, 0.5, 'b') .. ' ' .. #nova.in_radius(3, 100, 0.5, 'b'))",
+    );
+    assert_eq!(
+        g.take_log(),
+        ["5.00 5.00", "0.927", "true true", "1 0"],
+        "distance and angle use x and z, never the height"
+    );
+}
+
+#[test]
+fn the_grid_behind_in_radius_and_nearest_agrees_with_looking_at_everything() {
+    // 400 entities (more than the grid threshold) at scattered places, some moved after the grid was made; every query
+    // is checked against a plain scan
+    let g = ground_game(
+        "nova.collision { plane = 'xz', cell = 3 }",
+        "local seed = 12345\n\
+         local function rnd() seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648 end\n\
+         local list = {}\n\
+         for i = 1, 400 do local x = rnd() * 80 - 40; list[i] = nova.spawn('b', x, 0, { name = 'b' .. i, z = rnd() * 80 - 40, x0 = x }) end\n\
+         local bad, queries = 0, 0\n\
+         for q = 1, 200 do\n\
+           local x, z, r = rnd() * 90 - 45, rnd() * 90 - 45, 0.5 + rnd() * 9\n\
+           if q % 3 == 0 then for i = 1, 20 do list[i].x = list[i].x0 + 1.5 * (q % 2) end end -- (moving less than a square a step)\n\
+           local fast = nova.in_radius(x, z, r, 'b')\n\
+           local want = 0\n\
+           for _, e in ipairs(list) do local dx, dz = e.x - x, e.z - z; if dx * dx + dz * dz <= r * r then want = want + 1 end end\n\
+           if #fast ~= want then bad = bad + 1 end\n\
+           local best, best_d = nil, r * r\n\
+           for _, e in ipairs(list) do local dx, dz = e.x - x, e.z - z; local d = dx * dx + dz * dz; if d <= best_d then best, best_d = e, d end end\n\
+           local near = nova.nearest(x, z, 'b', r)\n\
+           if near ~= best then bad = bad + 1 end\n\
+           queries = queries + 2\n\
+         end\n\
+         nova.log('checked ' .. queries .. ' mismatches ' .. bad)",
+    );
+    assert_eq!(g.take_log(), ["checked 400 mismatches 0"]);
+}
+
+#[test]
+fn the_collision_setting_explains_a_mistake() {
+    for (script, expected) in [
+        ("nova.collision { plane = 'yz' }", "plane is"),
+        ("nova.collision { cell = 0 }", "cell must be"),
+    ] {
+        let g = project(vec![("main.lua", lua(script))]);
+        let e = g.error.clone().unwrap_or_default();
+        assert!(e.contains(expected), "{script}: '{e}'");
+    }
+}

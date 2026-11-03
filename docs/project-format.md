@@ -120,6 +120,17 @@ nova.point_light(x, y, z, { radius = 8, color = { 255, 160, 60 } })    -- one fr
 `dir` is the way the light travels; colours are 0 to 255 multipliers (255 = full, no gamma). Every
 field of `nova.light` is optional. A ninth point light in a frame is ignored. Sprites and text are not lit.
 
+**A 3D game on the ground.** Collisions, distances and neighbour queries use `x, y` by default, which is right for a flat game
+and wrong for a 3D one, where `y` is height. Say once (in `main.lua`) which plane the ground is:
+
+```lua
+nova.collision { plane = "xz", cell = 2 }    -- cell: the size of the broad phase's squares, about the size of what collides
+```
+
+In `"xz"`, `on_collide_<tag>`, `overlaps`, `touching`, `distance_to`, `angle_to`, `move_toward`, `nova.nearest` and `nova.in_radius` use
+`x` and `z`; a hitbox `{ r = 0.6 }` is a circle on the ground (scaled by the entity's `sx`, as a model's size is); height is ignored.
+Tilemaps and `slide` stay flat.
+
 **Static scenery.** A level has thousands of trees, road pieces and barriers that never move. Do not make them live
 entities: give the entity class `static = true` and a model, and a scene file's objects of that kind go into
 `nova.scenery`, a grid of squares drawn only near the camera (out to `nova.scenery.range` metres, 200 by default):
@@ -348,7 +359,7 @@ and the timer methods below.
 
 **World functions:** `nova.spawn(kind_or_class, x, y [, props])`, `nova.each(tag, fn)`,
 `nova.all(tag)` (a fresh list of living entities), `nova.first(tag)`, `nova.count(tag)`,
-`nova.nearest(x, y, tag [, max_distance])`, `nova.in_radius(x, y, r, tag [, list_to_refill])`,
+`nova.nearest(x, y, tag [, max_distance])`, `nova.in_radius(x, y, r, tag [, list_to_refill])` (both use a grid of the tag's entities once there are about forty, so they stay cheap with hundreds; they compare where entities are *now*, so an entity that jumped further than one square within a single step may be missed until the next),
 `nova.send(entity_or_tag, "method", ...)`, `nova.pause(on)` (freezes entities, timers keep going and
 the scene keeps updating, for pause menus).
 

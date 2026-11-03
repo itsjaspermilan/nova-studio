@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "ground",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "name": "dirt", "from": [-1600, -4, -1600], "size": [3200, 4, 3200], "color": "#2d3a2f" },
+        { "name": "arena floor", "shape": "cylinder", "from": [-680, 0, -680], "size": [1360, 0.6, 1360], "segments": 48, "color": "#41503f" }
+      ],
+      "children": []
+    }
+  ]
+}

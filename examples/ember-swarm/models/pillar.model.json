@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "pillar",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "name": "stone", "shape": "cylinder", "from": [-12, 0, -12], "size": [24, 56, 24], "segments": 10, "color": "#8a8498" },
+        { "name": "cap", "from": [-14, 56, -14], "size": [28, 4, 28], "color": "#b0abc2" }
+      ],
+      "children": []
+    }
+  ],
+  "colliders": [{ "x": 0, "z": 0, "r": 13 }]
+}

@@ -18,6 +18,12 @@ local timers = require("nova.timers")
 local STEP = 1 / 60 -- the game always advances in 60 Hz steps
 local MAX_STEPS = 5 -- after a long hitch it catches up at most this far, then lets go
 local CELL = 64
+-- Which two fields are "the ground" for collisions, distances and neighbour queries: x, y (a flat game, the default) or
+-- x, z (a 3D game, where y is height). `nova.collision { plane = "xz", cell = 4 }` changes it; `cell` is the size of the
+-- squares the broad phase sorts entities into, about the size of the things that collide (in metres for a 3D game).
+local XZ, grid_cell = false, CELL
+local grids = {} -- the broad phase of each tag, by step (see grid_for)
+local function cell_key(cx, cy) return (cx + 32768) * 65536 + (cy + 32768) end
 
 local sqrt, abs, atan, cos, sin, floor = math.sqrt, math.abs, math.atan, math.cos, math.sin, math.floor
 
@@ -173,15 +179,18 @@ end
 local function bounds(e)
   local cls = getmetatable(e)
   local spec = rawget(e, "hitbox") or cls.__hitbox
-  local sx, sy = abs(e.sx), abs(e.sy)
+  local sx = abs(e.sx)
+  -- in the ground plane x, z a thing has one size (sx), as a model does, and its second coordinate is z
+  local sy, gy, esy = abs(e.sy), e.y, e.sy
+  if XZ then sy, gy, esy = sx, e.z, e.sx end
   if spec then
     if spec.r then
       local r = spec.r * math.max(sx, sy)
-      local cx, cy = e.x + (spec.x or 0) * e.sx, e.y + (spec.y or 0) * e.sy
+      local cx, cy = e.x + (spec.x or 0) * e.sx, gy + (spec.y or 0) * esy
       return cx - r, cy - r, cx + r, cy + r, r
     end
     local x0 = e.x + (spec[1] or spec.x or 0) * e.sx
-    local y0 = e.y + (spec[2] or spec.y or 0) * e.sy
+    local y0 = gy + (spec[2] or spec.y or 0) * esy
     local w, h = (spec[3] or spec.w or 0) * sx, (spec[4] or spec.h or 0) * sy
     return x0, y0, x0 + w, y0 + h
   end
@@ -230,32 +239,33 @@ function Entity:destroy()
 end
 
 local function target_xy(a, b)
-  if type(a) == "table" then return a.x, a.y end
+  if type(a) == "table" then return a.x, XZ and a.z or a.y end
   return a, b
 end
 
 function Entity:distance_to(a, b)
   local x, y = target_xy(a, b)
-  local dx, dy = x - self.x, y - self.y
+  local dx, dy = x - self.x, y - (XZ and self.z or self.y)
   return sqrt(dx * dx + dy * dy)
 end
 
 function Entity:angle_to(a, b)
   local x, y = target_xy(a, b)
-  return atan(y - self.y, x - self.x)
+  return atan(y - (XZ and self.z or self.y), x - self.x)
 end
 
 -- Step toward a point (or entity); returns true when it arrived this call.
 function Entity:move_toward(a, b, c)
   local x, y, step
-  if type(a) == "table" then x, y, step = a.x, a.y, b else x, y, step = a, b, c end
-  local dx, dy = x - self.x, y - self.y
+  if type(a) == "table" then x, y, step = a.x, XZ and a.z or a.y, b else x, y, step = a, b, c end
+  local field = XZ and "z" or "y"
+  local dx, dy = x - self.x, y - self[field]
   local d = sqrt(dx * dx + dy * dy)
   if d <= step or d == 0 then
-    self.x, self.y = x, y
+    self.x, self[field] = x, y
     return true
   end
-  self.x, self.y = self.x + dx / d * step, self.y + dy / d * step
+  self.x, self[field] = self.x + dx / d * step, self[field] + dy / d * step
   return false
 end
 
@@ -476,7 +486,7 @@ nova.Entity, nova.Picture, nova.Text = Entity, Picture, Text
 -- with `static = true` and a `model` puts itself here when it is spawned (a scene file's trees and road pieces do).
 local scenery = { range = 200 }
 nova.scenery = scenery
-local CELL = 40
+local SCENERY_CELL = 40
 local bins, solid_bins, piece_count = {}, {}, 0
 local circles_of = {}
 local eye_x, eye_z = 0, 0
@@ -488,7 +498,7 @@ function nova.camera(ex, ey, ez, tx, ty, tz, fov)
 end
 
 local function key(cx, cz) return (cx + 2048) * 4096 + (cz + 2048) end
-local function cell(v) return floor(v / CELL) end
+local function cell(v) return floor(v / SCENERY_CELL) end
 
 --- Forgets every piece (a scene does this by itself when it ends).
 function scenery.clear() bins, solid_bins, piece_count = {}, {}, 0 end
@@ -599,7 +609,7 @@ function scenery.ahead(x, z, dx, dz, length, radius)
       end
     end
     if t >= length then break end
-    t = math.min(length, t + CELL * 0.5)
+    t = math.min(length, t + SCENERY_CELL * 0.5)
   end
   if best then return best, bx, bz, br end
 end
@@ -999,41 +1009,113 @@ end
 
 function nova.count(tag) return W.counts[tag] or 0 end
 
-function nova.nearest(x, y, tag, max_distance)
-  local best, best_d = nil, (max_distance or math.huge) ^ 2
-  local list = W.tags[tag]
-  if list then
-    for i = 1, #list do
-      local e = list[i]
-      if not e._dead then
-        local dx, dy = e.x - x, e.y - y
-        local d = dx * dx + dy * dy
-        if d <= best_d then best, best_d = e, d end
-      end
+-- A grid of the entities with a tag, by where they are (a point each), built the first time it is asked for in a step. It is
+-- what makes "who is near here?" cheap when there are hundreds of entities; a few entities are just looked through.
+local pgrids = {}
+local POINT_GRID_FROM = 40
+local function point_grid(tag, list)
+  local g = pgrids[tag]
+  if g and g.step == W.step_id then return g end
+  g = { step = W.step_id, cells = {} }
+  local cells = g.cells
+  for i = 1, #list do
+    local e = list[i]
+    if not e._dead then
+      local key = cell_key(floor(e.x / grid_cell), floor((XZ and e.z or e.y) / grid_cell))
+      local cell = cells[key]
+      if not cell then cell = {}; cells[key] = cell end
+      cell[#cell + 1] = e
     end
   end
-  return best
+  pgrids[tag] = g
+  return g
 end
 
+--- The entities with `tag` within `radius` of the point (x, y) (x, z in a ground-plane game), into `out` if given.
 function nova.in_radius(x, y, radius, tag, out)
   out = out or {}
   local n = 0
   local list = W.tags[tag]
   if list then
     local r2 = radius * radius
-    for i = 1, #list do
-      local e = list[i]
-      if not e._dead then
-        local dx, dy = e.x - x, e.y - y
-        if dx * dx + dy * dy <= r2 then
-          n = n + 1
-          out[n] = e
+    if #list < POINT_GRID_FROM then
+      for i = 1, #list do
+        local e = list[i]
+        if not e._dead then
+          local dx, dy = e.x - x, (XZ and e.z or e.y) - y
+          if dx * dx + dy * dy <= r2 then
+            n = n + 1
+            out[n] = e
+          end
+        end
+      end
+    else
+      local cells = point_grid(tag, list).cells
+      -- (one square more each way: entities move a little after the grid was made)
+      for cx = floor((x - radius) / grid_cell) - 1, floor((x + radius) / grid_cell) + 1 do
+        for cy = floor((y - radius) / grid_cell) - 1, floor((y + radius) / grid_cell) + 1 do
+          local cell = cells[cell_key(cx, cy)]
+          if cell then
+            for i = 1, #cell do
+              local e = cell[i]
+              if not e._dead then
+                local dx, dy = e.x - x, (XZ and e.z or e.y) - y
+                if dx * dx + dy * dy <= r2 then
+                  n = n + 1
+                  out[n] = e
+                end
+              end
+            end
+          end
         end
       end
     end
   end
   for i = #out, n + 1, -1 do out[i] = nil end
   return out
+end
+
+local near_scratch = {}
+--- The nearest entity with `tag` to (x, y) ((x, z) in a ground-plane game), within `max_distance` if given.
+function nova.nearest(x, y, tag, max_distance)
+  local list = W.tags[tag]
+  if not list then return nil end
+  if max_distance and #list >= POINT_GRID_FROM then
+    local found = nova.in_radius(x, y, max_distance, tag, near_scratch)
+    local best, best_d = nil, max_distance * max_distance
+    for i = 1, #found do
+      local e = found[i]
+      local dx, dy = e.x - x, (XZ and e.z or e.y) - y
+      local d = dx * dx + dy * dy
+      if d <= best_d then best, best_d = e, d end
+    end
+    return best
+  end
+  local best, best_d = nil, (max_distance or math.huge) ^ 2
+  for i = 1, #list do
+    local e = list[i]
+    if not e._dead then
+      local dx, dy = e.x - x, (XZ and e.z or e.y) - y
+      local d = dx * dx + dy * dy
+      if d <= best_d then best, best_d = e, d end
+    end
+  end
+  return best
+end
+
+--- `nova.collision { plane = "xz", cell = 4 }`: which fields are the ground for collisions and distances, and how big the
+--- broad phase's squares are. Call it once, early (main.lua).
+function nova.collision(opts)
+  opts = opts or {}
+  if opts.plane ~= nil then
+    if opts.plane ~= "xy" and opts.plane ~= "xz" then error("nova.collision: plane is \"xy\" (a flat game) or \"xz\" (a 3D game on the ground), not " .. tostring(opts.plane), 2) end
+    XZ = opts.plane == "xz"
+  end
+  if opts.cell ~= nil then
+    if type(opts.cell) ~= "number" or opts.cell <= 0 then error("nova.collision: cell must be a number above 0 (the size of a square of the broad phase)", 2) end
+    grid_cell = opts.cell
+  end
+  grids, pgrids = {}, {}
 end
 
 -- nova.send(entity_or_tag, "message", ...) calls that method on one entity or on every entity with the tag.
@@ -1095,10 +1177,6 @@ local function update_camera()
 end
 
 -- ------------------------------------------------------------------ collisions
-local grids = {}
-
-local function cell_key(cx, cy) return (cx + 32768) * 65536 + (cy + 32768) end
-
 local function grid_for(tag)
   local g = grids[tag]
   if g and g.step == W.step_id then return g end
@@ -1110,8 +1188,8 @@ local function grid_for(tag)
       if not e._dead then
         local x0, y0, x1, y1 = bounds(e)
         if x0 then
-          for cx = floor(x0 / CELL), floor(x1 / CELL) do
-            for cy = floor(y0 / CELL), floor(y1 / CELL) do
+          for cx = floor(x0 / grid_cell), floor(x1 / grid_cell) do
+            for cy = floor(y0 / grid_cell), floor(y1 / grid_cell) do
               local key = cell_key(cx, cy)
               local cell = g.cells[key]
               if not cell then
@@ -1146,8 +1224,8 @@ local function collide_pass()
           local grid = grid_for(handler.tag)
           seen_mark = seen_mark + 1
           local n = 0
-          for cx = floor(x0 / CELL), floor(x1 / CELL) do
-            for cy = floor(y0 / CELL), floor(y1 / CELL) do
+          for cx = floor(x0 / grid_cell), floor(x1 / grid_cell) do
+            for cy = floor(y0 / grid_cell), floor(y1 / grid_cell) do
               local cell = grid.cells[cell_key(cx, cy)]
               if cell then
                 for j = 1, #cell do
@@ -1230,7 +1308,7 @@ local function leave_scene()
   W.list, W.tags, W.counts = {}, {}, {}
   scenery.clear()
   W.dirty, W.background, W.paused = false, nil, false
-  grids = {}
+  grids, pgrids = {}, {}
   timers.clear()
   cam.follow, cam.limit, cam.set = nil, nil, false
   W.scene, W.scene_name = nil, nil

@@ -297,7 +297,7 @@
   "name": "nova.sound.play",
   "kind": "function",
   "signature": "nova.sound.play(name [, opts]) -> id",
-  "doc": "Play a sound effect. Options: volume, pan, pitch, loop.",
+  "doc": "Play a sound effect. Options: volume, pan, pitch, loop, and limit (at most that many copies of this sound at once: one more makes the oldest copy give way, so a flood of hits cannot steal a voice from other sounds; there are 32 voices in all).",
   "group": "Sound"
  },
  {
@@ -501,6 +501,13 @@
   "kind": "function",
   "signature": "nova.count(tag) -> number",
   "doc": "How many living entities have the tag.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.collision",
+  "kind": "function",
+  "signature": "nova.collision{ plane = \"xz\", cell = 4 }",
+  "doc": "Tells the engine what \"the ground\" is for collisions, distances and neighbour queries: plane \"xy\" (a flat game, the default) or \"xz\" (a 3D game, where y is height); in \"xz\", `on_collide_<tag>`, `distance_to`, `angle_to`, `move_toward`, `nova.nearest` and `nova.in_radius` use x and z, and a hitbox { r = 1 } is a circle on the ground. `cell` is the size of the squares the broad phase sorts entities into, about the size of the things that collide (metres in 3D). Call it once, early.",
   "group": "Scenes and entities"
  },
  {

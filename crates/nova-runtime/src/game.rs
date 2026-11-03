@@ -1206,6 +1206,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     looping,
                     music: is_music,
                     fade_in: number_option(&opts, "fade")?.unwrap_or(0.0).clamp(0.0, 60.0) as f32,
+                    limit: number_option(&opts, "limit")?.unwrap_or(0.0).clamp(0.0, 32.0) as u32,
                 })));
                 Ok(id)
             })?,

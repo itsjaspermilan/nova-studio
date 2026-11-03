@@ -1,0 +1,12 @@
+{
+  "format": 1,
+  "name": "Ember Swarm",
+  "version": "0.1.0",
+  "input": {
+    "view": ["key:KeyC", "pad:l1"],
+    "pause": ["key:Escape", "key:KeyP", "pad:start"],
+    "autoplay": ["key:F9"],
+    "stress": ["key:F5"],
+    "god": ["key:F6"]
+  }
+}

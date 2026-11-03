@@ -136,7 +136,9 @@ impl Content {
                 let scale = Gfx::ui_scale(size);
                 let view = [size.0 as f32 / scale, size.1 as f32 / scale];
                 game.set_pixel_scale(scale);
+                let started = std::time::Instant::now();
                 game.update_input(dt, time, view, input);
+                let whole_update = started.elapsed().as_secs_f32() * 1000.0;
                 if let Some(atlas) = game.take_glyph_atlas() {
                     gfx.update_glyph_atlas(&atlas);
                 }
@@ -155,7 +157,9 @@ impl Content {
                     );
                     game.debug_text(8.0, view[1] - 62.0, &text);
                 }
-                (0.0, game.last_update.as_secs_f32() * 1000.0)
+                // (the first number is what the update took besides running the scripts: swapping and sorting the draw lists, saving)
+                let lua = game.last_update.as_secs_f32() * 1000.0;
+                ((whole_update - lua).max(0.0), lua)
             }
         }
     }

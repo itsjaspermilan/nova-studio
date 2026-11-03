@@ -144,6 +144,17 @@ pub fn save_png(path: &std::path::Path, size: (u32, u32), rgba: &[u8]) -> Result
 
 /// Renders a fixed number of frames offscreen (no window, no vsync) and reports timings
 /// including GPU completion. Deterministic time step, so captures are repeatable.
+/// "1.23 / 2.50": the mean and the 95th percentile of some timings.
+fn mean_p95(times: &mut [f32]) -> String {
+    if times.is_empty() {
+        return "-".into();
+    }
+    let mean = times.iter().sum::<f32>() / times.len() as f32;
+    times.sort_by(|a, b| a.total_cmp(b));
+    let p95 = times[((times.len() as f32 * 0.95) as usize).min(times.len() - 1)];
+    format!("{mean:.2} / {p95:.2}")
+}
+
 pub fn run_headless(opts: Options) -> Result<(), String> {
     let instance = new_instance(backend_candidates()[0]);
     let mut gfx = Gfx::new(&instance, None)?;
@@ -173,6 +184,8 @@ pub fn run_headless(opts: Options) -> Result<(), String> {
         gfx.adapter_info.name, gfx.adapter_info.backend
     );
     println!("content: {}", content.title());
+    // where each frame's time went, to show what part of a game is slow (Lua, the rest of the update, or drawing)
+    let (mut lua_times, mut build_times, mut render_times) = (Vec::new(), Vec::new(), Vec::new());
     for frame in 0..frames {
         let started = Instant::now();
         let (build_ms, lua_ms) = content.update(
@@ -203,9 +216,18 @@ pub fn run_headless(opts: Options) -> Result<(), String> {
         perf.times.update_ms = build_ms;
         perf.times.lua_ms = lua_ms;
         perf.times.render_ms = render_started.elapsed().as_secs_f32() * 1000.0;
+        lua_times.push(lua_ms);
+        build_times.push(build_ms);
+        render_times.push(perf.times.render_ms);
         perf.record(started.elapsed().as_secs_f32() * 1000.0);
     }
     print_summary("headless", &perf);
+    println!(
+        "where the time went (mean / p95 ms): lua {} | update {} | render {}",
+        mean_p95(&mut lua_times),
+        mean_p95(&mut build_times),
+        mean_p95(&mut render_times)
+    );
     println!(
         "last frame: draws={} sprites={} triangles={} world={}x{}",
         perf.stats.draw_calls,
