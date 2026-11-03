@@ -650,6 +650,91 @@ function scenery.line_clear(x1, z1, x2, z2, radius)
   return scenery.ahead(x1, z1, dx, dz, len, radius or 0) == nil
 end
 
+-- ------------------------------------------------------------------ the 3D camera
+-- Two ready-made cameras and the way from a point on the screen into the world. `yaw` turns the camera about the vertical
+-- (0 looks towards -z, as a game on the ground starts out; positive turns it to the left), `pitch` tilts it (positive looks up).
+local cam3 = { yaw = 0, pitch = 0, fov = 60, eye = { x = 0, y = 6, z = 10 }, target = { x = 0, y = 0, z = 0 } }
+nova.cam3 = cam3
+
+local function point_of(t)
+  if t == nil then return 0, 0, 0 end
+  return t.x or 0, t.y or 0, t.z or 0
+end
+
+--- Turns by (dyaw, dpitch) radians, a look stick or a mouse moved (pitch stays short of straight up and down).
+function cam3.look(dyaw, dpitch)
+  cam3.yaw = cam3.yaw + dyaw
+  cam3.pitch = math.max(-1.45, math.min(1.45, cam3.pitch + (dpitch or 0)))
+end
+
+--- The ground direction the camera looks along, and the one to its right: for moving "forward" and "right" on screen.
+function cam3.forward() return -sin(cam3.yaw) + 0, -cos(cam3.yaw) + 0 end -- (+ 0 turns a negative zero into 0)
+function cam3.right()
+  local fx, fz = cam3.forward()
+  return -fz, fx
+end
+
+local function aim(eye, target, fov)
+  cam3.eye, cam3.target, cam3.fov = eye, target, fov
+  nova.camera(eye.x, eye.y, eye.z, target.x, target.y, target.z, fov)
+end
+
+--- A camera behind and above `target` (an entity or { x, y, z }), looking at it, easing after it as it moves.
+--- opts: distance (9), height (8: how far above the ground the camera is), look_height (1: what it looks at above the target),
+--- smooth (6: bigger follows more tightly; 0 stays rigidly behind), fov (60), dt (1/60). Turn it with cam3.yaw or cam3.look.
+function cam3.follow(target, opts)
+  opts = opts or {}
+  local tx, ty, tz = point_of(target)
+  local dist, height = opts.distance or 9, opts.height or 8
+  local wx, wy, wz = tx + sin(cam3.yaw) * dist, ty + height, tz + cos(cam3.yaw) * dist
+  local k = (opts.smooth or 6) <= 0 and 1 or math.min(1, (opts.dt or 1 / 60) * (opts.smooth or 6))
+  local e = cam3.eye
+  aim({ x = e.x + (wx - e.x) * k, y = e.y + (wy - e.y) * k, z = e.z + (wz - e.z) * k },
+      { x = tx, y = ty + (opts.look_height or 1), z = tz }, opts.fov or 60)
+end
+
+--- A camera at `target`'s head looking where cam3.yaw and cam3.pitch say.
+--- opts: height (1.6), fov (75).
+function cam3.first_person(target, opts)
+  opts = opts or {}
+  local tx, ty, tz = point_of(target)
+  local ey = ty + (opts.height or 1.6)
+  local cp = cos(cam3.pitch)
+  aim({ x = tx, y = ey, z = tz },
+      { x = tx - sin(cam3.yaw) * cp * 10, y = ey + sin(cam3.pitch) * 10, z = tz - cos(cam3.yaw) * cp * 10 }, opts.fov or 75)
+end
+
+--- The ray from the camera through a point of the screen (x, y in the game's own units, as nova.view() measures them):
+--- `origin_x, origin_y, origin_z, dir_x, dir_y, dir_z` (the direction is of length 1). The middle of the screen is straight ahead.
+function cam3.ray(sx, sy)
+  local w, h = nova.view()
+  local e, t = cam3.eye, cam3.target
+  local fx, fy, fz = t.x - e.x, t.y - e.y, t.z - e.z
+  local fl = sqrt(fx * fx + fy * fy + fz * fz)
+  if fl < 1e-9 then return e.x, e.y, e.z, 0, 0, -1 end
+  fx, fy, fz = fx / fl, fy / fl, fz / fl
+  -- right = forward x up(0, 1, 0), and up = right x forward
+  local rx, rz = -fz, fx
+  local rl = sqrt(rx * rx + rz * rz)
+  if rl < 1e-9 then rx, rz, rl = 1, 0, 1 end
+  rx, rz = rx / rl, rz / rl
+  local ux, uy, uz = -rz * fy, rz * fx - rx * fz, rx * fy
+  local half = math.tan(math.rad(cam3.fov) / 2)
+  local nx, ny = (sx / w * 2 - 1) * half * (w / h), (1 - sy / h * 2) * half
+  local dx, dy, dz = fx + rx * nx + ux * ny, fy + uy * ny, fz + rz * nx + uz * ny
+  local dl = sqrt(dx * dx + dy * dy + dz * dz)
+  return e.x, e.y, e.z, dx / dl, dy / dl, dz / dl
+end
+
+--- Where the ray through a screen point meets the horizontal plane at `height` (default 0): `x, z`, or nothing when it looks
+--- away from it. How to aim at the ground under a mouse or a finger.
+function cam3.ground_point(sx, sy, height)
+  local ox, oy, oz, dx, dy, dz = cam3.ray(sx, sy)
+  local t = ((height or 0) - oy) / (dy ~= 0 and dy or 1e-12)
+  if t < 0 or dy == 0 then return nil end
+  return ox + dx * t, oz + dz * t
+end
+
 local function spawn(what, x, y, props)
   local cls = finalize(resolve(what, "entity"))
   local e = setmetatable({}, cls)

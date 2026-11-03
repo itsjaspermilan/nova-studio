@@ -744,3 +744,84 @@ fn scenery_can_be_shot_through_and_looked_across() {
     // straight through it: blocked; three metres to the side: clear; just past its edge with no width: clear; with width: blocked
     assert_eq!(log[2], "false true true false");
 }
+
+/// Runs `body` in a scene's update the first time, in a game with the 3D camera helper, and returns the game and its log.
+fn cam_game(body: &str) -> Game {
+    let scene = format!(
+        "local S = nova.scene {{}}\nfunction S:update(dt) if not done then done = true\n{body}\nend end\nfunction S:draw() end\nreturn S"
+    );
+    let mut g = game(
+        "nova.start('s')",
+        vec![("scenes/s.lua", scene.into_bytes())],
+    );
+    frame(&mut g);
+    frame(&mut g);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    g
+}
+
+#[test]
+fn the_follow_camera_sits_behind_and_above_and_the_first_person_camera_looks_where_it_is_turned() {
+    let g = cam_game(
+        "nova.cam3.yaw = 0\n\
+         nova.cam3.follow({ x = 2, y = 0, z = 3 }, { distance = 10, height = 5, smooth = 0 })\n\
+         local e, t = nova.cam3.eye, nova.cam3.target\n\
+         nova.log(string.format('follow %.2f %.2f %.2f -> %.2f %.2f %.2f', e.x, e.y, e.z, t.x, t.y, t.z))\n\
+         nova.cam3.yaw = math.pi / 2\n\
+         nova.cam3.follow({ x = 0, y = 0, z = 0 }, { distance = 10, height = 5, smooth = 0 })\n\
+         nova.log(string.format('turned %.2f %.2f %.2f', nova.cam3.eye.x, nova.cam3.eye.y, nova.cam3.eye.z))\n\
+         nova.cam3.yaw, nova.cam3.pitch = 0, 0\n\
+         nova.cam3.first_person({ x = 1, y = 0, z = 1 })\n\
+         local fx, fz = nova.cam3.forward()\n\
+         nova.log(string.format('eye %.2f %.2f %.2f forward %.2f %.2f', nova.cam3.eye.x, nova.cam3.eye.y, nova.cam3.eye.z, fx, fz))\n\
+         nova.cam3.look(math.pi / 2, 9)\n\
+         local rx, rz = nova.cam3.right()\n\
+         nova.log(string.format('pitch %.2f right %.2f %.2f', nova.cam3.pitch, rx, rz))",
+    );
+    let log = g.take_log();
+    assert_eq!(
+        log[0], "follow 2.00 5.00 13.00 -> 2.00 1.00 3.00",
+        "{log:?}"
+    );
+    assert_eq!(
+        log[1], "turned 10.00 5.00 0.00",
+        "turning the yaw swings the camera round to the side"
+    );
+    assert_eq!(log[2], "eye 1.00 1.60 1.00 forward 0.00 -1.00");
+    assert!(
+        log[3].starts_with("pitch 1.45"),
+        "pitch stops short of straight up: {log:?}"
+    );
+    // the camera the game really got is the last one asked for
+    let cam = g.frame_input(0).camera;
+    assert_eq!(cam.fov_y_degrees, 75.0);
+}
+
+#[test]
+fn a_point_on_the_screen_becomes_a_ray_and_a_place_on_the_ground() {
+    let g = cam_game(
+        "nova.cam3.yaw = 0\n\
+         nova.cam3.follow({ x = 0, y = 0, z = 0 }, { distance = 10, height = 10, smooth = 0, look_height = 0, fov = 60 })\n\
+         local w, h = nova.view()\n\
+         local _, _, _, dx, dy, dz = nova.cam3.ray(w / 2, h / 2)\n\
+         nova.log(string.format('centre %.3f %.3f %.3f', dx, dy, dz))\n\
+         local gx, gz = nova.cam3.ground_point(w / 2, h / 2)\n\
+         nova.log(string.format('ground %.2f %.2f', gx, gz))\n\
+         local lx, lz = nova.cam3.ground_point(w * 0.25, h / 2)\n\
+         local rx, rz = nova.cam3.ground_point(w * 0.75, h / 2)\n\
+         nova.log(string.format('left right %s %s', tostring(lx < 0 and rx > 0 and math.abs(lx + rx) < 1e-6), tostring(math.abs(lz - rz) < 1e-6)))\n\
+         nova.log(tostring(nova.cam3.ground_point(w / 2, 0.01 * h, 0)))\n\
+         nova.log(tostring(nova.cam3.ground_point(w / 2, h / 2, 50)))",
+    );
+    let log = g.take_log();
+    // looking from (0, 10, 10) at the origin: the middle of the screen is the diagonal, and meets the ground at the origin
+    assert_eq!(log[0], "centre 0.000 -0.707 -0.707", "{log:?}");
+    assert_eq!(log[1], "ground 0.00 0.00");
+    assert_eq!(
+        log[2], "left right true true",
+        "left of centre is -x, right is +x, level with each other"
+    );
+    // the very top of the screen looks (almost) at the horizon, far away but still down, so it is a place; a plane above the camera is never met
+    assert_ne!(log[3], "nil");
+    assert_eq!(log[4], "nil");
+}

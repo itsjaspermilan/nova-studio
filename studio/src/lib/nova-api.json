@@ -532,6 +532,76 @@
   "group": "Scenes and entities"
  },
  {
+  "name": "nova.cam3",
+  "kind": "namespace",
+  "signature": "nova.cam3",
+  "doc": "A ready-made 3D camera: cam3.follow, cam3.first_person, cam3.look, cam3.ray and cam3.ground_point. cam3.yaw and cam3.pitch (radians) say where it looks; yaw 0 looks towards -z, positive turns left.",
+  "group": "3D"
+ },
+ {
+  "name": "nova.cam3.eye",
+  "kind": "namespace",
+  "signature": "nova.cam3.eye",
+  "doc": "Where the camera is, as { x, y, z } (set by follow and first_person).",
+  "group": "3D"
+ },
+ {
+  "name": "nova.cam3.target",
+  "kind": "namespace",
+  "signature": "nova.cam3.target",
+  "doc": "What the camera looks at, as { x, y, z } (set by follow and first_person).",
+  "group": "3D"
+ },
+ {
+  "name": "nova.cam3.follow",
+  "kind": "function",
+  "signature": "nova.cam3.follow(target [, { distance, height, look_height, smooth, fov, dt }])",
+  "doc": "A camera behind and above `target` (an entity or { x, y, z }), looking at it and easing after it as it moves. distance 9, height 8, look_height 1, smooth 6 (0 stays rigidly behind), fov 60. Turn it with cam3.yaw or cam3.look.",
+  "group": "3D"
+ },
+ {
+  "name": "nova.cam3.first_person",
+  "kind": "function",
+  "signature": "nova.cam3.first_person(target [, { height, fov }])",
+  "doc": "A camera at `target`'s head (height 1.6, fov 75) looking where cam3.yaw and cam3.pitch say.",
+  "group": "3D"
+ },
+ {
+  "name": "nova.cam3.look",
+  "kind": "function",
+  "signature": "nova.cam3.look(dyaw [, dpitch])",
+  "doc": "Turns the camera by some radians (a look stick, a mouse moved); pitch stops short of straight up and down.",
+  "group": "3D"
+ },
+ {
+  "name": "nova.cam3.forward",
+  "kind": "function",
+  "signature": "nova.cam3.forward() -> dx, dz",
+  "doc": "The ground direction the camera looks along: what \"forward\" on a stick should mean.",
+  "group": "3D"
+ },
+ {
+  "name": "nova.cam3.right",
+  "kind": "function",
+  "signature": "nova.cam3.right() -> dx, dz",
+  "doc": "The ground direction to the camera's right.",
+  "group": "3D"
+ },
+ {
+  "name": "nova.cam3.ray",
+  "kind": "function",
+  "signature": "nova.cam3.ray(x, y) -> ox, oy, oz, dx, dy, dz",
+  "doc": "The ray from the camera through a point of the screen (in the units nova.view() measures). The middle of the screen is straight ahead.",
+  "group": "3D"
+ },
+ {
+  "name": "nova.cam3.ground_point",
+  "kind": "function",
+  "signature": "nova.cam3.ground_point(x, y [, height]) -> x, z | nil",
+  "doc": "Where the ray through a screen point meets the flat plane at `height` (default 0), or nothing when it looks away from it: aiming at the ground under a mouse or a finger.",
+  "group": "3D"
+ },
+ {
   "name": "nova.collision",
   "kind": "function",
   "signature": "nova.collision{ plane = \"xz\", cell = 4 }",
