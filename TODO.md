@@ -397,6 +397,13 @@ First slice, built (`SpriteEditor.svelte`, pure logic in `pixels.ts` and `sprite
 - [ ] Still open: painting with layers or alpha cut-outs, texture tiling, live symmetry editing, copy/paste of keys, lights/materials, a "preview in game renderer" button.
 - [ ] (original plan) Model editor: parts hierarchy, cubes then vertex/face editing, per-face UV
   and texture paint, materials, keyframed rigid-bone animation, glTF export.
+- [x] Nova MCP server and a game made with it (2026-11-03): `studio/mcp/server.ts` (bundled by `scripts/nova-mcp.sh`, registered in `.mcp.json`,
+  docs in `docs/mcp.md`, tests in `studio/mcp/server.test.ts`) writes models, sound effects, songs, pixel sprites and scene layouts with the
+  studio's own code, runs `check`, and returns screenshots. `examples/pine-ridge-rally` is a 3D rally game built that way (scripts in
+  `scripts/rally/`): two circuits, three rivals, menus, four songs, fifteen sounds, 31 models; `tests/rally.rs` plays both circuits through the
+  menus and a full race. Runtime changes it needed: translucent models are blended, `nova run --press`. **Never played by a person or on a device**:
+  handling, sound and music were judged by numbers and pictures only. Found on the way: an entity's `vx`/`vz` are built in (they move it), so a
+  game keeping its own velocity under those names moves twice as fast. [ ] Not yet: ghost laps, split screen, damage, a studio UI for the server.
 - [x] 3D scene view (2026-11-03): the scene editor has a 2D/3D switch. 3D shows each object whose entity says `model = "name"` (read from
   `models/<name>.model.json`, rest pose, vertex colours) and a wire box for the others; click to select, drag the arrows to move (snapped), orbit
   camera, a Z field, and a "Game camera" panel (eye, target, field of view, "Use this view") backed by the new scene key `camera`, which the

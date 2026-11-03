@@ -709,7 +709,12 @@
         </div>
         {#if selected.kind === "objects" && view === "3d"}
           <label>Z (towards you) <input type="number" value={positionOf(item)[2]} onchange={(e) => edit(moveTo3(scene, selected!, [item.x, item.y, Number(e.currentTarget.value) || 0]))} /></label>
-          <p class="dim small">In 3D, x goes across, y up and z towards the viewer. Turn it with the properties <code>ry</code> (radians) and <code>sx</code> (size).</p>
+          {@const props = (item.props ?? {}) as Record<string, unknown>}
+          <div class="pair">
+            <label>Turn (degrees) <input type="number" step="15" value={Math.round(((typeof props.ry === "number" ? props.ry : 0) * 180 / Math.PI) * 100) / 100} aria-label="Turn in degrees" onchange={(e) => { const d = Number(e.currentTarget.value); edit(setProp(scene, selected!, "ry", Number.isFinite(d) && d !== 0 ? Math.round((d * Math.PI / 180) * 10000) / 10000 : undefined)); }} /></label>
+            <label>Size <input type="number" step="0.1" min="0.1" value={typeof props.sx === "number" ? props.sx : 1} aria-label="Size" onchange={(e) => { const v = Number(e.currentTarget.value); edit(setProp(scene, selected!, "sx", Number.isFinite(v) && v > 0 && v !== 1 ? v : undefined)); }} /></label>
+          </div>
+          <p class="dim small">In 3D, x goes across, y is up and z comes towards you (in the 2D view, y goes down). The game keeps the turn as the property <code>ry</code> in radians and the size as <code>sx</code>.</p>
         {/if}
         {#if selected.kind !== "objects"}
           <label>Scale <input type="number" step="0.25" min="0" value={field("scale") ?? 1} onchange={(e) => setNumber("scale", e.currentTarget.value)} /></label>
@@ -792,7 +797,7 @@
   .item:hover { background: var(--panel-2); }
   .item.on { background: color-mix(in srgb, var(--accent) 20%, transparent); }
   .stage { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-  .bar { display: flex; align-items: center; gap: 8px; padding: 4px 8px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 4px 8px; background: var(--panel); border-bottom: 1px solid var(--line); }
   .bar label { display: flex; align-items: center; gap: 4px; }
   .check input { margin: 0; }
   .sep { width: 1px; height: 18px; background: var(--line); }
