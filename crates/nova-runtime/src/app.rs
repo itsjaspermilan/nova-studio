@@ -49,6 +49,8 @@ pub struct Options {
     pub headless: bool,
     /// Actions held down for the whole headless run, e.g. `throttle`, `steer=1` (testing).
     pub hold: Vec<String>,
+    /// Taps for headless runs: a source held for two frames from the frame given.
+    pub press: Vec<(String, u32)>,
     /// Height of the world render target in pixels (UI is always native); 0 = native.
     /// `None` uses the project's `world_height` (540 for the spike).
     pub world_height: Option<u32>,
@@ -70,6 +72,7 @@ impl Default for Options {
             no_audio: false,
             headless: false,
             hold: Vec::new(),
+            press: Vec::new(),
         }
     }
 }
@@ -179,6 +182,12 @@ pub fn run_headless(opts: Options) -> Result<(), String> {
             size,
             &InputFrame {
                 overrides: held.clone(),
+                sources: opts
+                    .press
+                    .iter()
+                    .filter(|(_, at)| frame >= *at && frame < at + 2)
+                    .map(|(source, _)| (source.clone(), 1.0))
+                    .collect(),
                 ..Default::default()
             },
             &perf,

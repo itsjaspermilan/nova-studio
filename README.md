@@ -23,6 +23,7 @@ results are in `docs/spike-results.md`; the plan, decisions and milestones are i
 | `examples/rally-demo/` | Immediate-mode project: sprites, 3D models, Lua, HUD |
 | `examples/font-gallery/` | All nine bundled fonts, wrapping, alignment, shadows |
 | `examples/crate-dash/` | A small 2D game using scenes, entities, collisions, timers |
+| `examples/pine-ridge-rally/` | A 3D rally game: two circuits, rivals, menus, music; made through the MCP server (`docs/mcp.md`) |
 | `docs/spike-results.md` | M1 measurements, proven pieces and open findings |
 | `docs/ux/` | UX research, workspace study, and the Pine Ridge Rally exercise |
 | `docs/archive/` | Notes from the dropped Qt components, kept for ideas |

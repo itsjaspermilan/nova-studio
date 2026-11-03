@@ -106,7 +106,9 @@ native resolution.
 `"topleft"`).
 
 **Model options:** `scale`, `rx`, `ry`, `rz` (radians), `tint` `{r,g,b[,a]}`, `parts`. Models are
-instanced: draws of the same model in a frame become one GPU draw call.
+instanced: draws of the same model in a frame become one GPU draw call. A model with see-through colours (a vertex alpha
+below 255: `#rrggbbaa` in the model editor) is drawn after the solid ones, blended and without writing depth, so a puff of
+dust or a window shows what is behind it; it does not sort against other see-through models.
 
 **Lights.** Models are lit by one sun, an ambient floor and up to eight point lights:
 
@@ -605,4 +607,5 @@ World-space text, paths, streamed music (Ogg is decoded fully into memory), synt
 
 `nova run <folder> --headless --frames N --capture out.png` renders without a window, and
 `--hold jump,move_x=0.5` holds actions down for the whole run, so a screenshot can show
-real gameplay.
+real gameplay. `--press key:Enter@30,pad:south@120` taps sources (held for two frames from the frame given), to get
+past menus and into the game before the picture is taken.

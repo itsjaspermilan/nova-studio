@@ -197,6 +197,8 @@ struct GpuMesh {
     indices: wgpu::Buffer,
     index_count: u32,
     texture: wgpu::BindGroup,
+    /// Some vertex is see-through: the mesh is drawn after the solid ones, blended.
+    translucent: bool,
 }
 
 pub struct Gfx {
@@ -224,6 +226,7 @@ pub struct Gfx {
     sprites_back: DynBuffer,
     sprites_front: DynBuffer,
     mesh_pipeline: wgpu::RenderPipeline,
+    mesh_blend_pipeline: wgpu::RenderPipeline,
     globals: wgpu::Buffer,
     globals_group: wgpu::BindGroup,
     meshes: Vec<GpuMesh>,
@@ -550,51 +553,62 @@ impl Gfx {
         let instance_attributes = wgpu::vertex_attr_array![
             4 => Float32x4, 5 => Float32x4, 6 => Float32x4, 7 => Float32x4, 8 => Float32x4
         ];
-        let mesh_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("meshes"),
-            layout: Some(&mesh_layout),
-            vertex: wgpu::VertexState {
-                module: &mesh_shader,
-                entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
-                buffers: &[
-                    Some(wgpu::VertexBufferLayout {
-                        array_stride: std::mem::size_of::<MeshVertex>() as u64,
-                        step_mode: wgpu::VertexStepMode::Vertex,
-                        attributes: &vertex_attributes,
+        // Opaque meshes write depth and overwrite; meshes with see-through colours (vertex alpha) are drawn after them, blended,
+        // without writing depth, so a puff of dust shows the ground behind it.
+        let make_mesh_pipeline =
+            |label: &'static str, blend: Option<wgpu::BlendState>, depth_write: bool| {
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some(label),
+                    layout: Some(&mesh_layout),
+                    vertex: wgpu::VertexState {
+                        module: &mesh_shader,
+                        entry_point: Some("vs_main"),
+                        compilation_options: Default::default(),
+                        buffers: &[
+                            Some(wgpu::VertexBufferLayout {
+                                array_stride: std::mem::size_of::<MeshVertex>() as u64,
+                                step_mode: wgpu::VertexStepMode::Vertex,
+                                attributes: &vertex_attributes,
+                            }),
+                            Some(wgpu::VertexBufferLayout {
+                                array_stride: std::mem::size_of::<ModelInstance>() as u64,
+                                step_mode: wgpu::VertexStepMode::Instance,
+                                attributes: &instance_attributes,
+                            }),
+                        ],
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module: &mesh_shader,
+                        entry_point: Some("fs_main"),
+                        compilation_options: Default::default(),
+                        targets: &[Some(wgpu::ColorTargetState {
+                            format,
+                            blend,
+                            write_mask: wgpu::ColorWrites::ALL,
+                        })],
                     }),
-                    Some(wgpu::VertexBufferLayout {
-                        array_stride: std::mem::size_of::<ModelInstance>() as u64,
-                        step_mode: wgpu::VertexStepMode::Instance,
-                        attributes: &instance_attributes,
+                    primitive: wgpu::PrimitiveState {
+                        cull_mode: Some(wgpu::Face::Back),
+                        ..Default::default()
+                    },
+                    depth_stencil: Some(wgpu::DepthStencilState {
+                        format: DEPTH_FORMAT,
+                        depth_write_enabled: Some(depth_write),
+                        depth_compare: Some(wgpu::CompareFunction::Less),
+                        stencil: Default::default(),
+                        bias: Default::default(),
                     }),
-                ],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &mesh_shader,
-                entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: wgpu::PrimitiveState {
-                cull_mode: Some(wgpu::Face::Back),
-                ..Default::default()
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: DEPTH_FORMAT,
-                depth_write_enabled: Some(true),
-                depth_compare: Some(wgpu::CompareFunction::Less),
-                stencil: Default::default(),
-                bias: Default::default(),
-            }),
-            multisample: wgpu::MultisampleState::default(),
-            multiview_mask: None,
-            cache: None,
-        });
+                    multisample: wgpu::MultisampleState::default(),
+                    multiview_mask: None,
+                    cache: None,
+                })
+            };
+        let mesh_pipeline = make_mesh_pipeline("meshes", None, true);
+        let mesh_blend_pipeline = make_mesh_pipeline(
+            "translucent meshes",
+            Some(wgpu::BlendState::ALPHA_BLENDING),
+            false,
+        );
 
         let sprites_back =
             DynBuffer::new(&device, "sprites back", wgpu::BufferUsages::VERTEX, 1 << 16);
@@ -638,6 +652,7 @@ impl Gfx {
             sprites_back,
             sprites_front,
             mesh_pipeline,
+            mesh_blend_pipeline,
             globals,
             globals_group,
             meshes: Vec::new(),
@@ -713,6 +728,7 @@ impl Gfx {
             indices,
             index_count: mesh.indices.len() as u32,
             texture,
+            translucent: mesh.vertices.iter().any(|v| v.color[3] < 255),
         });
         self.meshes.len() - 1
     }
@@ -966,8 +982,15 @@ impl Gfx {
             stats.draw_calls += u32::from(back > 0);
             stats.sprites += back;
 
-            if !input.models.is_empty() {
-                pass.set_pipeline(&self.mesh_pipeline);
+            for translucent in [false, true] {
+                if input.models.is_empty() {
+                    break;
+                }
+                pass.set_pipeline(if translucent {
+                    &self.mesh_blend_pipeline
+                } else {
+                    &self.mesh_pipeline
+                });
                 pass.set_bind_group(0, &self.globals_group, &[]);
                 let stride = std::mem::size_of::<ModelInstance>() as u64;
                 let mut start = 0usize;
@@ -978,6 +1001,10 @@ impl Gfx {
                         end += 1;
                     }
                     let mesh = &self.meshes[mesh_id];
+                    if mesh.translucent != translucent {
+                        start = end;
+                        continue;
+                    }
                     pass.set_bind_group(1, &mesh.texture, &[]);
                     pass.set_vertex_buffer(0, mesh.vertices.slice(..));
                     pass.set_vertex_buffer(

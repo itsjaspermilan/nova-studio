@@ -29,7 +29,8 @@ const USAGE: &str = "usage:
   nova check <project-folder> [--json] [--frames N]   load and run a project headless, list its problems
   nova [options]                         built-in benchmark scene
 options: [--headless] [--frames N] [--capture out.png] [--size WxH] [--world-height N]
-         [--uncapped] [--no-audio] [--hud] [--hold jump,move_x=1] [--save-dir folder]
+         [--uncapped] [--no-audio] [--hud] [--hold jump,move_x=1] [--press key:Enter@30,key:KeyD@45]
+         [--save-dir folder]
          [--script file.lua (benchmark scene only)]";
 
 enum Command {
@@ -159,6 +160,18 @@ fn parse() -> Result<Command, String> {
                 let path = value("--pak")?;
                 let bytes = std::fs::read(&path).map_err(|e| format!("cannot read {path}: {e}"))?;
                 opts.pak = Some(PakBytes(Arc::new(bytes)));
+            }
+            "--press" => {
+                // Source@frame: the source is held for two frames starting at that frame (a tap), for headless runs.
+                for entry in value("--press")?.split(',') {
+                    let (source, frame) = entry.rsplit_once('@').ok_or_else(|| {
+                        format!("--press {entry}: use SOURCE@FRAME, for example key:Enter@30")
+                    })?;
+                    let frame = frame
+                        .parse()
+                        .map_err(|_| format!("--press {entry}: '{frame}' is not a frame number"))?;
+                    opts.press.push((source.to_string(), frame));
+                }
             }
             "--hold" => {
                 opts.hold = value("--hold")?.split(',').map(str::to_string).collect();

@@ -23,6 +23,6 @@ the real protocol (`--list` shows them), which is how this repository's own game
 | `song_write` | `music/<name>.song.json` and the streamed `.ogg` |
 | `sprite_write` | a pixel sprite drawn with text, as `sprites/<name>.png` and `.sprite.json` |
 | `scene_write` | `scenes/<name>.scene.json`, validated and tidied |
-| `check`, `screenshot` | the Problems panel's check, and a headless picture of the running game |
+| `check`, `screenshot` | the Problems panel's check, and a headless picture of the running game (with `press` taps such as `key:Enter@30` to get past menus) |
 
 Every tool takes a `project` folder (or uses `NOVA_PROJECT`). Tool failures come back as readable text with `isError`.
