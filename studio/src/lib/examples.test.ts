@@ -83,8 +83,12 @@ describe.each(projects)("the editors on examples/%s", (name) => {
     for (const f of ending(".lua").filter((f) => f.startsWith("entities/"))) {
       const kind = f.slice("entities/".length, -".lua".length).replaceAll("/", ".");
       const look = await resolveEntity(kind, read);
+      // (only the entity's own declaration: a file may name other models elsewhere, in a particle spec for one)
       const source = text(join(base, f));
-      const declared = /\bmodel\s*=\s*["']([^"']+)["']/.exec(source)?.[1];
+      const start = source.search(/nova\.entity/);
+      const end = source.slice(Math.max(start, 0)).search(/\n(function|local|return)\b/);
+      const declaration = start < 0 ? "" : source.slice(start, end < 0 ? undefined : start + end);
+      const declared = /\bmodel\s*=\s*["']([^"']+)["']/.exec(declaration)?.[1];
       if (declared) expect(look.model, `${f}`).toBe(declared);
     }
   });
