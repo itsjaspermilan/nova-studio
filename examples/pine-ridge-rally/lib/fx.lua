@@ -1,44 +1,32 @@
--- Puffs of dust and gravel behind the cars: a small pool of dust models that grow and fade.
+-- Puffs of dust and gravel behind the cars: one 3D particle emitter (nova.particles with a model) shared by every car.
+-- All the puffs of a circuit have the same colour, so the emitter's colour is simply set when a puff is made.
 local fx = {}
 
-local MAX = 70
-local puffs = {}
-local next_slot = 1
+local emitter
 
-function fx.clear() puffs, next_slot = {}, 1 end
+function fx.clear()
+  if emitter then emitter:destroy() end
+  emitter = nil
+end
 
+-- A puff at (x, z) drifting with (vx, vz) and rising; `size` in metres, `color` an {r, g, b} table.
 function fx.puff(x, z, vx, vz, size, color)
-  local p = puffs[next_slot]
-  if not p then p = { opts = { scale = 1, tint = { 255, 255, 255, 255 } } }; puffs[next_slot] = p end
-  next_slot = next_slot % MAX + 1
-  p.x, p.y, p.z, p.vx, p.vy, p.vz = x, 0.25, z, vx, 1.2 + math.random() * 0.8, vz
-  p.age, p.life, p.size = 0, 0.5 + math.random() * 0.4, size or 1
-  p.color = color
-end
-
-function fx.update(dt)
-  for i = 1, #puffs do
-    local p = puffs[i]
-    if p.age < p.life then
-      p.age = p.age + dt
-      p.x, p.y, p.z = p.x + p.vx * dt, p.y + p.vy * dt, p.z + p.vz * dt
-      p.vx, p.vz, p.vy = p.vx * 0.94, p.vz * 0.94, p.vy * 0.96
-    end
+  if not emitter then
+    emitter = nova.particles(0, 0.25, 0, {
+      model = "dust", rate = 0, max = 70, life = { 0.5, 0.9 }, size_end = 3.2, drag = 3, gravity = 0, spread = 0.5,
+      color = { 200, 190, 160, 210 }, color_end = { 200, 190, 160, 0 },
+    })
   end
-end
-
-function fx.draw()
-  for i = 1, #puffs do
-    local p = puffs[i]
-    if p.age < p.life then
-      local t = p.age / p.life
-      local o = p.opts
-      o.scale = p.size * (0.5 + t * 1.6)
-      local c = p.color
-      o.tint[1], o.tint[2], o.tint[3], o.tint[4] = c[1], c[2], c[3], math.floor(210 * (1 - t))
-      nova.model("dust", p.x, p.y, p.z, o)
-    end
-  end
+  local spec = emitter.spec
+  spec.color[1], spec.color[2], spec.color[3] = color[1], color[2], color[3]
+  spec.color_end[1], spec.color_end[2], spec.color_end[3] = color[1], color[2], color[3]
+  spec.size = { size * 0.5, size * 0.5 }
+  local up = 1.2 + math.random() * 0.8
+  spec.dir = { vx, up, vz }
+  local speed = math.sqrt(vx * vx + up * up + vz * vz)
+  spec.speed = { speed, speed }
+  emitter.x, emitter.y, emitter.z = x, 0.25, z
+  emitter:burst(1)
 end
 
 return fx

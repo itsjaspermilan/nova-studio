@@ -379,6 +379,12 @@ cone's full width, default all directions), `area` (`{ w, h }` to spawn across),
 instead of a square), `max` (default 1000), `screen` (UI layer) and `depth`. Particles are drawn by
 the emitter, an ordinary entity, so they obey the camera and depth ordering.
 
+**In 3D** give the spec a `model` (drawn instead of a square) and a third coordinate: `nova.particles(x, y, z, spec)`
+and `nova.burst(x, y, z, spec)`. Then `y` is up, `dir = { x, y, z }` is the direction (default straight up) and `spread` the
+cone's full width in radians (default a quarter turn); `speed` and `size` are in metres, `gravity` pulls along `y` (use a
+negative number to fall), `area = { w, h, d }` spawns across a box and `color` tints the model (its alpha fades it).
+`image`, `angle` and `screen` are for flat games. `spin` turns the model about the vertical.
+
 ### Timers, tweens and scripts that wait
 
 On any entity or scene (they stop when it is destroyed or the scene changes), each returning a

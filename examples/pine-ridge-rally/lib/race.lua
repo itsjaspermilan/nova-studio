@@ -404,7 +404,6 @@ function race.define(config)
     end
 
     if self.trial and self.phase == "racing" and not p.finish_time and p.lap_started then self:record_ghost(dt) end
-    fx.update(dt)
     self:places()
     self:update_camera(dt)
 
@@ -482,7 +481,6 @@ function race.define(config)
     if config.night then self:night_lights(cam) end
     horizon.draw(cam.x, cam.z, config.horizon)
     world.draw(cam.x, cam.z, LOOK_FAR)
-    fx.draw()
     local gx, gz, gh = self:ghost_pose()
     if gx then
       self.ghost_opts = self.ghost_opts or { ry = 0, tint = { 130, 200, 255 } }

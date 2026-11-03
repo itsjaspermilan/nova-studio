@@ -518,9 +518,50 @@ function Emitter:create()
   self.emitting = true
 end
 
+-- A random direction within a cone about `axis` (a unit vector) whose full width is `width` radians.
+local function in_cone(axis, width)
+  local ax, ay, az = axis[1], axis[2], axis[3]
+  local len = sqrt(ax * ax + ay * ay + az * az)
+  if len < 1e-9 then ax, ay, az, len = 0, 1, 0, 1 end
+  ax, ay, az = ax / len, ay / len, az / len
+  -- two vectors across the axis: u = axis x helper, where the helper is whichever of up or x is further from it
+  local hx, hy, hz = 0, 1, 0
+  if abs(ay) > 0.9 then hx, hy, hz = 1, 0, 0 end
+  local ux, uy, uz = ay * hz - az * hy, az * hx - ax * hz, ax * hy - ay * hx
+  local ul = sqrt(ux * ux + uy * uy + uz * uz)
+  ux, uy, uz = ux / ul, uy / ul, uz / ul
+  local vx, vy, vz = ay * uz - az * uy, az * ux - ax * uz, ax * uy - ay * ux
+  -- uniform over the cap
+  local cosmax = cos(width * 0.5)
+  local c = 1 - math.random() * (1 - cosmax)
+  local s = sqrt(1 - c * c)
+  local phi = math.random() * math.pi * 2
+  local px, py = s * cos(phi), s * sin(phi)
+  return ax * c + ux * px + vx * py, ay * c + uy * px + vy * py, az * c + uz * px + vz * py
+end
+
 local function emit_one(e)
   local ps, spec = e.ps, e.spec
   if ps.n >= (spec.max or 1000) then return end
+  if spec.model then
+    -- 3D: y is up; the direction is a vector (default straight up) and `spread` the cone's full width
+    local life_a, life_b = range(spec.life, { 0.4, 0.9 })
+    local speed_a, speed_b = range(spec.speed, { 1, 4 })
+    local size_a, size_b = range(spec.size, 1)
+    local spin_a, spin_b = range(spec.spin, 0)
+    local dx, dy, dz = in_cone(spec.dir or { 0, 1, 0 }, spec.spread or math.pi / 2)
+    local speed = pick(speed_a, speed_b)
+    local ox, oy, oz = 0, 0, 0
+    if spec.area then
+      ox, oy, oz = (math.random() - 0.5) * (spec.area[1] or 0), (math.random() - 0.5) * (spec.area[2] or 0), (math.random() - 0.5) * (spec.area[3] or 0)
+    end
+    ps.n = ps.n + 1
+    ps[ps.n] = {
+      x = e.x + ox, y = e.y + oy, z = e.z + oz, vx = dx * speed, vy = dy * speed, vz = dz * speed,
+      age = 0, life = pick(life_a, life_b), size = pick(size_a, size_b), angle = 0, spin = pick(spin_a, spin_b),
+    }
+    return
+  end
   local life_a, life_b = range(spec.life, { 0.4, 0.9 })
   local speed_a, speed_b = range(spec.speed, { 40, 120 })
   local size_a, size_b = range(spec.size, 4)
@@ -573,6 +614,10 @@ function Emitter:update(dt)
       p.vy = p.vy + gravity * dt
       p.vx, p.vy = p.vx * damp, p.vy * damp
       p.x, p.y = p.x + p.vx * dt, p.y + p.vy * dt
+      if p.z then
+        p.vz = p.vz * damp
+        p.z = p.z + p.vz * dt
+      end
       p.angle = p.angle + p.spin * dt
       i = i + 1
     end
@@ -583,10 +628,30 @@ end
 local particle_opts = { sx = 1, sy = 1, rotation = 0, color = { 255, 255, 255, 255 } }
 local particle_color = { 255, 255, 255, 255 }
 
+local model_opts = { scale = 1, ry = 0, tint = { 255, 255, 255, 255 } }
+
 function Emitter:draw()
   if not self.visible then return end
   local ps = self.ps
   local spec = self.spec
+  if spec.model then
+    local c0 = spec.color or { 255, 255, 255, 255 }
+    local c1 = spec.color_end or c0
+    local grow = spec.size_end or 1
+    local tint = model_opts.tint
+    for i = 1, ps.n do
+      local p = ps[i]
+      local t = p.age / p.life
+      tint[1] = c0[1] + ((c1[1] or c0[1]) - c0[1]) * t
+      tint[2] = c0[2] + ((c1[2] or c0[2]) - c0[2]) * t
+      tint[3] = c0[3] + ((c1[3] or c0[3]) - c0[3]) * t
+      tint[4] = ((c0[4] or 255) + ((c1[4] or c0[4] or 255) - (c0[4] or 255)) * t) * self.alpha
+      model_opts.scale = p.size * (1 + (grow - 1) * t)
+      model_opts.ry = p.angle
+      nova.model(spec.model, p.x, p.y, p.z, model_opts)
+    end
+    return
+  end
   local c0 = spec.color or { 255, 255, 255, 255 }
   local c1 = spec.color_end or c0
   local grow = spec.size_end or 1
@@ -620,16 +685,19 @@ end
 
 --- `nova.particles(x, y, spec)`: a continuous emitter (`spec.rate` per second) you keep and move; call
 --- `:burst(n)` for a puff and `:stop()` to let it fade out.
-function nova.particles(x, y, spec)
+function nova.particles(x, y, z, spec)
+  -- (x, y, spec) for a flat game, (x, y, z, spec) in 3D with `spec.model`
+  if type(z) == "table" or z == nil then spec, z = z, 0 end
   spec = spec or {}
-  return spawn(Emitter, x, y, { spec = copy_value(spec), screen = spec.screen, depth = spec.depth })
+  return spawn(Emitter, x, y, { spec = copy_value(spec), screen = spec.screen, depth = spec.depth, z = z })
 end
 
 --- `nova.burst(x, y, spec)`: one puff of `spec.count` (default 12) particles that cleans itself up.
-function nova.burst(x, y, spec)
+function nova.burst(x, y, z, spec)
+  if type(z) == "table" or z == nil then spec, z = z, 0 end
   spec = copy_value(spec or {})
   spec.rate = 0
-  local e = spawn(Emitter, x, y, { spec = spec, screen = spec.screen, depth = spec.depth, auto_destroy = true })
+  local e = spawn(Emitter, x, y, { spec = spec, screen = spec.screen, depth = spec.depth, auto_destroy = true, z = z })
   e:burst(spec.count or 12)
   return e
 end

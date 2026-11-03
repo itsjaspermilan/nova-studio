@@ -489,3 +489,59 @@ fn a_scene_file_can_have_a_sky_and_fog() {
     let fog = lighting.fog.expect("the scene's fog is set");
     assert_eq!((fog.near, fog.far), (5.0, 50.0));
 }
+
+fn particle_positions(script: &str, frames: usize) -> Vec<[f32; 3]> {
+    let scene = format!("local S = nova.scene {{}}\nfunction S:enter() {script} end\nreturn S");
+    let mut g = game(
+        "nova.start('s')",
+        vec![("scenes/s.lua", scene.into_bytes())],
+    );
+    for _ in 0..frames {
+        frame(&mut g);
+    }
+    assert!(g.error.is_none(), "{:?}", g.error);
+    g.frame_input(0)
+        .models
+        .iter()
+        .map(|m| {
+            let c = m.instance.matrix[3];
+            [c[0], c[1], c[2]]
+        })
+        .collect()
+}
+
+#[test]
+fn particles_can_be_models_in_3d() {
+    // straight up with no spread: every particle is above the emitter, none to the side
+    let up = particle_positions(
+        "nova.burst(2, 0, 3, { model = 'car', count = 20, life = 5, speed = 4, spread = 0, size = 0.1 })",
+        6,
+    );
+    assert_eq!(up.len(), 20, "one model per particle");
+    for p in &up {
+        assert!(
+            (p[0] - 2.0).abs() < 1e-3 && (p[2] - 3.0).abs() < 1e-3,
+            "{p:?}"
+        );
+        assert!(p[1] > 0.1, "rising: {p:?}");
+    }
+    // a wide cone sends them in different directions
+    let wide = particle_positions(
+        "nova.burst(0, 0, 0, { model = 'car', count = 40, life = 5, speed = 4, spread = 3, size = 0.1 })",
+        6,
+    );
+    assert_eq!(wide.len(), 40);
+    assert!(wide.iter().any(|p| p[0] > 0.2) && wide.iter().any(|p| p[0] < -0.2));
+    assert!(wide.iter().any(|p| p[2] > 0.2) && wide.iter().any(|p| p[2] < -0.2));
+    // gravity pulls them down, and the burst cleans itself up when the particles die
+    let falling = particle_positions(
+        "nova.burst(0, 0, 0, { model = 'car', count = 5, life = 5, speed = 0, gravity = -10, size = 0.1 })",
+        60,
+    );
+    assert!(falling.iter().all(|p| p[1] < -1.0), "{falling:?}");
+    let gone = particle_positions(
+        "nova.burst(0, 0, 0, { model = 'car', count = 5, life = 0.1, speed = 1, size = 0.1 })",
+        30,
+    );
+    assert!(gone.is_empty(), "{gone:?}");
+}
