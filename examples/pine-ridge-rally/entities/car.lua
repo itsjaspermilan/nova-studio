@@ -6,6 +6,21 @@ local fx = require("lib.fx")
 local Car = nova.entity { model = "car", tags = { "car" } }
 
 local WHEEL_RADIUS = 0.34
+-- Where the wheels are, from the middle of the car: forwards, and to the left (+x is the left side when facing +z).
+local WHEELS = {
+  wheel_fl = { fwd = 1.375, left = -1.06 }, wheel_fr = { fwd = 1.375, left = 1.06 },
+  wheel_rl = { fwd = -1.375, left = -1.06 }, wheel_rr = { fwd = -1.375, left = 1.06 },
+}
+local WHEEL_NAMES = { "wheel_fl", "wheel_fr", "wheel_rl", "wheel_rr" }
+local WHEELBASE, TRACK = 2.75, 2.12
+-- How bumpy each surface is (metres of ground height), and the body's suspension (a springy, damped mass).
+local BUMPS = { road = 0.012, dirt = 0.04, rough = 0.1 }
+local SPRING, DAMPER = 140, 15
+
+-- The height of the ground at a spot: a fixed, smooth pattern of bumps.
+local function ground(x, z, size)
+  return size * (math.sin(x * 0.9 + 1.3) * math.sin(z * 0.7 + 0.4) + 0.5 * math.sin(x * 1.9 - z * 1.1) + 0.3 * math.sin(z * 2.7 + x * 0.5))
+end
 local SURFACE = {
   road = { grip = 8.5, lateral = 24, drag = 0 },
   dirt = { grip = 5.2, lateral = 18, drag = 0 },
@@ -30,10 +45,13 @@ function Car:create()
   self.waypoint = nil
   self.model_id = getmetatable(self).__model
   self.parts_table = {
-    body = { rx = 0, rz = 0 },
-    wheel_fl = { rx = 0, ry = 0 }, wheel_fr = { rx = 0, ry = 0 },
-    wheel_rl = { rx = 0 }, wheel_rr = { rx = 0 },
+    body = { rx = 0, rz = 0, y = 0 },
+    wheel_fl = { rx = 0, ry = 0, y = 0 }, wheel_fr = { rx = 0, ry = 0, y = 0 },
+    wheel_rl = { rx = 0, y = 0 }, wheel_rr = { rx = 0, y = 0 },
   }
+  -- suspension: where each corner of the body is (b) and how fast it is moving (bv), and the ground under each wheel (h)
+  self.susp = { b = { 0, 0, 0, 0 }, bv = { 0, 0, 0, 0 }, h = { 0, 0, 0, 0 } }
+  self.last_vf, self.last_yaw = 0, 0
   self.draw_opts = { ry = 0, parts = self.parts_table }
   self.shadow_opts = { ry = 0 }
   self.bump_cooldown = 0
@@ -108,13 +126,9 @@ function Car:drive(dt)
     end
   end
 
-  -- the body leans out of the bend and nods under power
-  local lateral_accel = (self.yaw_rate or 0) * vf
-  local target_roll = math.max(-0.1, math.min(0.1, lateral_accel * 0.005))
-  local target_pitch = math.max(-0.05, math.min(0.05, ((c.brake > 0 and live) and 0.03 or 0) - ((c.throttle > 0 and live) and 0.02 or 0)))
-  local ease = math.min(1, dt * 8)
-  self.roll = self.roll + (target_roll - self.roll) * ease
-  self.pitch = self.pitch + (target_pitch - self.pitch) * ease
+  -- the suspension: the wheels follow the road, the body floats on springs and leans with the forces on it
+  self:suspension(dt, vf, (vf - self.last_vf) / dt, (self.yaw_rate or 0) * vf)
+  self.last_vf = vf
   self.steer_visual = self.steer_visual + (steer - self.steer_visual) * math.min(1, dt * 12)
   self.spin = self.spin + vf / WHEEL_RADIUS * dt
   self.bump_cooldown = math.max(0, self.bump_cooldown - dt)
@@ -126,9 +140,38 @@ function Car:drive(dt)
   end
 end
 
+-- Each corner of the body is pulled towards the road under its wheel, plus the weight that braking, accelerating and
+-- cornering shift onto it. The body's height, nod and lean come from where its four corners are; each wheel stays on the road.
+function Car:suspension(dt, vf, accel, lateral_accel)
+  local sp = self.susp
+  local size = (BUMPS[self.surface] or BUMPS.road) * math.min(1, 0.3 + math.abs(vf) / 20)
+  local sinh, cosh = math.sin(self.heading), math.cos(self.heading)
+  local long_shift = math.max(-0.14, math.min(0.14, accel * 0.008))    -- braking (negative) drops the nose
+  local side_shift = math.max(-0.14, math.min(0.14, lateral_accel * 0.0062))   -- turning left (positive) loads the left side
+  for i, name in ipairs(WHEEL_NAMES) do
+    local w = WHEELS[name]
+    local wx = self.x + sinh * w.fwd + cosh * w.left
+    local wz = self.z + cosh * w.fwd - sinh * w.left
+    local h = ground(wx, wz, size)
+    sp.h[i] = h
+    local target = h + (w.fwd > 0 and long_shift or -long_shift) + (w.left > 0 and -side_shift or side_shift)
+    local pull = SPRING * (target - sp.b[i]) - DAMPER * sp.bv[i]
+    if self.hit then pull = pull + 60 * self.hit * ((i * 37) % 3 - 1) end  -- a knock sets the body rocking
+    sp.bv[i] = sp.bv[i] + pull * dt
+    sp.b[i] = sp.b[i] + sp.bv[i] * dt
+  end
+  local b = sp.b
+  self.lift = (b[1] + b[2] + b[3] + b[4]) / 4
+  -- (body pitch is about x and tips the nose down for a positive angle; roll is about z and lifts the left side)
+  self.pitch = -((b[1] + b[2]) - (b[3] + b[4])) / 2 / WHEELBASE
+  self.roll = ((b[2] + b[4]) - (b[1] + b[3])) / 2 / TRACK
+end
+
 function Car:draw()
   local pt = self.parts_table
-  pt.body.rx, pt.body.rz = self.pitch, self.roll
+  pt.body.rx, pt.body.rz, pt.body.y = self.pitch, self.roll, self.lift
+  local h = self.susp.h
+  pt.wheel_fl.y, pt.wheel_fr.y, pt.wheel_rl.y, pt.wheel_rr.y = h[1], h[2], h[3], h[4]
   local sv = -self.steer_visual * 0.45
   pt.wheel_fl.ry, pt.wheel_fr.ry = sv, sv
   pt.wheel_fl.rx, pt.wheel_fr.rx, pt.wheel_rl.rx, pt.wheel_rr.rx = self.spin, self.spin, self.spin, self.spin

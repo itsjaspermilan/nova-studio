@@ -1564,3 +1564,41 @@ fn bad_seek_times_are_explained() {
         assert!(e.contains("seek needs a time in seconds"), "{script}: {e}");
     }
 }
+
+#[test]
+fn sound_set_queues_a_change_and_explains_a_mistake() {
+    use nova_runtime::mixer::Command;
+    let g = project(vec![
+        ("sounds/engine.wav", wav_bytes(22050, 2000)),
+        (
+            "main.lua",
+            lua(
+                "local id = nova.sound.play('engine', { loop = true })\nnova.sound.set(id, { pitch = 99, volume = 0.4 })\nnova.sound.set(id, { pan = -0.5 })",
+            ),
+        ),
+    ]);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let cmds = g.take_audio();
+    assert_eq!(cmds.len(), 3);
+    assert!(
+        matches!(&cmds[1], Command::Set { id: 1, volume: Some(v), pan: None, pitch: Some(p) } if *v == 0.4 && *p == 16.0),
+        "pitch clamps to 16"
+    );
+    assert!(
+        matches!(&cmds[2], Command::Set { id: 1, volume: None, pan: Some(p), pitch: None } if *p == -0.5)
+    );
+    for (script, expected) in [
+        (
+            "nova.sound.set(1, {})",
+            "needs at least one of volume, pan or pitch",
+        ),
+        ("nova.sound.set(1, { pitch = 'high' })", "number"),
+    ] {
+        let g = project(vec![
+            ("sounds/engine.wav", wav_bytes(22050, 2000)),
+            ("main.lua", lua(script)),
+        ]);
+        let e = g.error.clone().unwrap_or_default();
+        assert!(e.contains(expected), "{script}: '{e}'");
+    }
+}

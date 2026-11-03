@@ -12,10 +12,12 @@ const sfx = {
   lap: { params: { wave: "square", freq: 523, arpSemitones: 7, arpTime: 0.09, attack: 0, sustain: 0.12, decay: 0.4, duty: 0.3, volume: 0.45 } },
   best_lap: { params: { wave: "square", freq: 659, arpSemitones: 5, arpTime: 0.08, attack: 0, sustain: 0.2, decay: 0.55, duty: 0.35, vibratoDepth: 0.1, vibratoSpeed: 10, volume: 0.45 } },
   finish: { params: { wave: "square", freq: 392, arpSemitones: 9, arpTime: 0.14, attack: 0, sustain: 0.5, decay: 0.7, duty: 0.4, punch: 0.3, volume: 0.5 } },
-  // an engine is a run of short pulses, faster as the engine revs (the game plays one per cylinder)
-  engine: { params: { wave: "saw", freq: 82, attack: 0, sustain: 0.012, decay: 0.05, lowpass: 900, punch: 0.4, volume: 0.5 } },
-  gravel: { params: { wave: "noise", freq: 900, attack: 0, sustain: 0.03, decay: 0.07, lowpass: 2600, highpass: 300, volume: 0.35 } },
-  skid: { params: { wave: "noise", freq: 1500, attack: 0.01, sustain: 0.18, decay: 0.12, lowpass: 7000, highpass: 1500, volume: 0.22 } },
+  // Loops that the game plays all the time and changes while they play (nova.sound.set): the engine's pitch follows the revs,
+  // the gravel and the tyre squeal follow how hard the car is on the loose or sliding. 0.5 s of a 100 Hz saw is exactly 50 cycles,
+  // so the engine loops without a seam.
+  engine_loop: { params: { wave: "saw", freq: 100, attack: 0, sustain: 0.5, decay: 0, lowpass: 1500, highpass: 50, volume: 0.55 } },
+  gravel_loop: { params: { wave: "noise", freq: 900, attack: 0, sustain: 0.5, decay: 0, lowpass: 3200, highpass: 400, volume: 0.5 } },
+  skid_loop: { params: { wave: "noise", freq: 1500, attack: 0, sustain: 0.5, decay: 0, lowpass: 9000, highpass: 1800, volume: 0.3 } },
   bump: { params: { wave: "noise", freq: 200, slide: -1.2, attack: 0, sustain: 0.03, decay: 0.28, punch: 0.6, lowpass: 900, volume: 0.7 } },
   whoosh: { params: { wave: "noise", freq: 1200, attack: 0.05, sustain: 0.05, decay: 0.3, lowpass: 3000, highpass: 600, volume: 0.25 } },
   pause: { preset: "blip", params: { freq: 440, arpSemitones: -5, arpTime: 0.05, volume: 0.4 } },

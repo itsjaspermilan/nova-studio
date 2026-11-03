@@ -13,9 +13,9 @@ Like any Nova project it is plain files, and most of them are what the studio's 
 
 | Folder | What is in it |
 | --- | --- |
-| `models/` | 31 models made in the model editor's format: four cars (a body with four wheels that spin and steer), pines, rocks, cacti, mesas, barriers, the start arch, road pieces, mountains. Each is a `.model.json` and the `.glb` the game loads. |
+| `models/` | 31 models made in the model editor's format: four cars (a body, and four wheels that spin, steer and ride the bumps on their own), pines, rocks, cacti, mesas, barriers, the start arch, road pieces, mountains. Each is a `.model.json` and the `.glb` the game loads. |
 | `sprites/` | Pixel sprites: the flag, the medals, the menu cursor. |
-| `sounds/`, `music/` | 15 sound effects (the sound editor's synth) and four songs (the music editor's sequencer, streamed as Ogg): menu, a theme for each circuit, and the results fanfare. |
+| `sounds/`, `music/` | 14 sound effects (the sound editor's synth; the engine, gravel and tyre squeal are loops the game steers while they play with `nova.sound.set`) and four songs (the music editor's sequencer, streamed as Ogg): menu, a theme for each circuit, and the results fanfare. |
 | `scenes/` | `pine_ridge`, `dust_valley` (a circuit each), `title` and `results`: each is a layout (`.scene.json`: road pieces, scenery, waypoints, the start grid, a camera) and the code that runs it. |
 | `entities/` | One small file per kind of thing a layout can hold (`pine.lua`, `road_dirt.lua`, `waypoint.lua`...), and the cars. |
 | `lib/` | `race.lua` (countdown, laps, places, camera, HUD, pause), `track.lua`, `world.lua`, `ui.lua`, `audio.lua`, `state.lua` (options and best times, saved). |

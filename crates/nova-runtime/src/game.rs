@@ -1064,6 +1064,35 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
     )?;
     let s = shared.clone();
     sound.set(
+        "set",
+        lua.create_function(move |_, (id, opts): (u64, Table)| {
+            let mut known = 0;
+            let mut read = |key: &str, lo: f64, hi: f64| -> mlua::Result<Option<f32>> {
+                match opts.get::<Option<f64>>(key)? {
+                    None => Ok(None),
+                    Some(v) if v.is_finite() => {
+                        known += 1;
+                        Ok(Some(v.clamp(lo, hi) as f32))
+                    }
+                    Some(_) => Err(lua_err(format!("nova.sound.set: '{key}' must be a number"))),
+                }
+            };
+            let (volume, pan, pitch) = (
+                read("volume", 0.0, 4.0)?,
+                read("pan", -1.0, 1.0)?,
+                read("pitch", 0.05, 16.0)?,
+            );
+            if known == 0 {
+                return Err(lua_err(
+                    "nova.sound.set(id, { volume = ..., pan = ..., pitch = ... }) needs at least one of volume, pan or pitch",
+                ));
+            }
+            s.borrow_mut().audio.push(mixer::Command::Set { id, volume, pan, pitch });
+            Ok(())
+        })?,
+    )?;
+    let s = shared.clone();
+    sound.set(
         "stop_all",
         lua.create_function(move |_, ()| {
             s.borrow_mut().audio.push(mixer::Command::StopAll);

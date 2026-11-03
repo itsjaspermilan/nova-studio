@@ -217,6 +217,13 @@
   "group": "Sound"
  },
  {
+  "name": "nova.sound.set",
+  "kind": "function",
+  "signature": "nova.sound.set(id, { volume, pan, pitch })",
+  "doc": "Change a sound that is playing: its volume, pan or pitch (any of them). The change glides over a few milliseconds, so call it every frame to make a looping engine follow the revs. A sound that has ended ignores it.",
+  "group": "Sound"
+},
+{
   "name": "nova.sound.stop_all",
   "kind": "function",
   "signature": "nova.sound.stop_all()",

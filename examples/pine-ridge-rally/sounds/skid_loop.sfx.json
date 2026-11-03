@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "wave": "saw",
-  "freq": 82,
+  "wave": "noise",
+  "freq": 1500,
   "freqLimit": 0,
   "slide": 0,
   "slideDelta": 0,
@@ -12,11 +12,11 @@
   "arpSemitones": 0,
   "arpTime": 0.1,
   "attack": 0,
-  "sustain": 0.012,
-  "decay": 0.05,
-  "punch": 0.4,
-  "lowpass": 900,
-  "highpass": 0,
-  "volume": 0.5,
+  "sustain": 0.5,
+  "decay": 0,
+  "punch": 0,
+  "lowpass": 9000,
+  "highpass": 1800,
+  "volume": 0.3,
   "seed": 1
 }

@@ -85,6 +85,7 @@ function race.define(config)
   end
 
   function Race:leave()
+    for _, car in ipairs(self.cars) do if car.engine then car.engine:stop() end end
     nova.music.volume(state.music_volume)
     world.clear(); track.clear(); grid.clear(); fx.clear()
   end
@@ -238,6 +239,7 @@ function race.define(config)
       self.pause_choice = 1
       nova.music.volume(state.music_volume * (self.paused and 0.35 or 1))
       audio.sfx("pause")
+      for _, car in ipairs(self.cars) do if car.engine then car.engine:silence() end end
       return
     end
     if self.paused then return self:update_pause() end
@@ -315,6 +317,8 @@ function race.define(config)
           if d < 70 then
             car.engine.volume = 0.5 * (1 - d / 70)
             car.engine:update(dt, rev, car.ctl.throttle)
+          else
+            car.engine:silence()
           end
         end
       end

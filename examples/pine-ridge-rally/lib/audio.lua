@@ -14,38 +14,43 @@ function audio.stop_music(fade)
   nova.music.stop(fade or 0.5)
 end
 
--- One engine per car that makes noise. `rev` is 0 to 1, `load` 0 to 1 (throttle).
+-- One engine per car that makes noise: three loops that play all the time while the car is on the track, and whose
+-- pitch and volume are changed every step with nova.sound.set: the engine follows the revs, the gravel follows the
+-- loose ground under the wheels, the squeal follows how much the tyres slide.
 local Engine = {}
 Engine.__index = Engine
 
 function audio.engine(volume)
-  return setmetatable({ acc = 0, volume = volume or 1, gravel = 0, skid = 0 }, Engine)
+  return setmetatable({ volume = volume or 1, ids = nil }, Engine)
 end
 
-function Engine:update(dt, rev, load, surface_rough, slip)
-  local rate = 11 + 40 * rev                       -- pulses per second
-  self.acc = self.acc + dt * rate
-  local n = 0
-  while self.acc >= 1 and n < 3 do
-    self.acc = self.acc - 1
-    n = n + 1
-    nova.sound.play("engine", { volume = self.volume * (0.28 + 0.5 * load), pitch = 0.75 + 1.1 * rev })
-  end
-  if self.acc >= 1 then self.acc = 0 end
-  if surface_rough then
-    self.gravel = self.gravel - dt
-    if self.gravel <= 0 then
-      self.gravel = 0.07
-      nova.sound.play("gravel", { volume = self.volume * 0.6, pitch = 0.8 + math.random() * 0.5 })
-    end
-  end
-  if slip and slip > 0.25 then
-    self.skid = self.skid - dt
-    if self.skid <= 0 then
-      self.skid = 0.22
-      nova.sound.play("skid", { volume = self.volume * math.min(1, slip), pitch = 0.9 + math.random() * 0.3 })
-    end
-  end
+local function start(self)
+  self.ids = {
+    engine = nova.sound.play("engine_loop", { loop = true, volume = 0, pitch = 0.6 }),
+    gravel = nova.sound.play("gravel_loop", { loop = true, volume = 0 }),
+    skid = nova.sound.play("skid_loop", { loop = true, volume = 0 }),
+  }
+end
+
+-- `rev` is 0 to 1, `load` 0 to 1 (how hard the throttle is down), `rough` true on loose ground, `slip` 0 to 1.
+function Engine:update(dt, rev, load, rough, slip)
+  if not self.ids then start(self) end
+  local v = self.volume
+  nova.sound.set(self.ids.engine, { volume = v * (0.22 + 0.55 * load), pitch = 0.6 + 2.2 * rev })
+  nova.sound.set(self.ids.gravel, { volume = rough and v * (0.15 + 0.5 * rev) or 0, pitch = 0.7 + rev })
+  local squeal = (slip or 0) > 0.25 and math.min(1, slip) or 0
+  nova.sound.set(self.ids.skid, { volume = v * squeal * 0.8, pitch = 0.9 + 0.3 * squeal })
+end
+
+function Engine:silence()
+  if not self.ids then return end
+  for _, id in pairs(self.ids) do nova.sound.set(id, { volume = 0 }) end
+end
+
+function Engine:stop()
+  if not self.ids then return end
+  for _, id in pairs(self.ids) do nova.sound.stop(id, 0.15) end
+  self.ids = nil
 end
 
 return audio

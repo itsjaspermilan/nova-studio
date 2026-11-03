@@ -9,11 +9,13 @@ const round = (shape, from, size, color, more = {}) => ({ shape, from, size, col
 /// A cylinder lying on its side with its axle along x.
 const axle = (from, size, color, segments = 12) => round("cylinder", from, size, color, { rotation: [0, 0, 90], segments });
 
-// ---- cars: a body part with four wheels that spin and steer ---------------------------------------------------------
+// ---- cars: a body and four wheels that move on their own (spin, steer, ride the bumps) ------------------------------------
+// The wheels are not part of the body: the body leans and bounces on its suspension while each wheel follows the road.
 function car({ paint, trim, stripe, glass = "#27384d", light = "#ffe9a8" }) {
   const wheel = (name, x, z) =>
     part(name, [x, 5.5, z], [axle([-5.5, -3, -5.5], [11, 6, 11], "#1b1b1b"), axle([-3.5, -3.6, -3.5], [7, 7.2, 7], "#b9c0c8", 8)]);
   return model([
+    part("chassis", [0, 0, 0], [], [
     part(
       "body",
       [0, 0, 0],
@@ -39,8 +41,10 @@ function car({ paint, trim, stripe, glass = "#27384d", light = "#ffe9a8" }) {
         box([15, 8, -5], [0.6, 6, 6], "#f8fafc"), // door roundels
         box([-15.6, 8, -5], [0.6, 6, 6], "#f8fafc"),
       ],
-      [wheel("wheel_fl", -17, 22), wheel("wheel_fr", 17, 22), wheel("wheel_rl", -17, -22), wheel("wheel_rr", 17, -22)],
+      [],
     ),
+    wheel("wheel_fl", -17, 22), wheel("wheel_fr", 17, 22), wheel("wheel_rl", -17, -22), wheel("wheel_rr", 17, -22),
+    ]),
   ]);
 }
 

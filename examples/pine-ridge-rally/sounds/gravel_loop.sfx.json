@@ -1,7 +1,7 @@
 {
   "version": 1,
   "wave": "noise",
-  "freq": 1500,
+  "freq": 900,
   "freqLimit": 0,
   "slide": 0,
   "slideDelta": 0,
@@ -11,12 +11,12 @@
   "vibratoSpeed": 8,
   "arpSemitones": 0,
   "arpTime": 0.1,
-  "attack": 0.01,
-  "sustain": 0.18,
-  "decay": 0.12,
+  "attack": 0,
+  "sustain": 0.5,
+  "decay": 0,
   "punch": 0,
-  "lowpass": 7000,
-  "highpass": 1500,
-  "volume": 0.22,
+  "lowpass": 3200,
+  "highpass": 400,
+  "volume": 0.5,
   "seed": 1
 }

@@ -48,6 +48,14 @@ pub enum Command {
         id: u64,
         fade: f32,
     },
+    /// Change a playing sound: any of its volume, pan and pitch. The change glides over a few milliseconds, so a
+    /// script can set it every frame (an engine that follows the revs) without clicks.
+    Set {
+        id: u64,
+        volume: Option<f32>,
+        pan: Option<f32>,
+        pitch: Option<f32>,
+    },
     StopAll,
     StopMusic {
         fade: f32,
@@ -85,6 +93,12 @@ struct Voice {
     step: f64,
     gain_l: f32,
     gain_r: f32,
+    /// Where `gain_l`, `gain_r` and `step` are gliding to, and what they were made from.
+    target: (f32, f32, f64),
+    volume: f32,
+    pan: f32,
+    pitch: f32,
+    source_rate: u32,
     looping: bool,
     music: bool,
     fade: f32,
@@ -275,6 +289,16 @@ impl Mixer {
                     pos: 0.0,
                     gain_l,
                     gain_r,
+                    target: (
+                        gain_l,
+                        gain_r,
+                        source_rate as f64 / self.device_rate as f64
+                            * p.pitch.clamp(0.05, 16.0) as f64,
+                    ),
+                    volume: p.volume.max(0.0),
+                    pan: p.pan,
+                    pitch: p.pitch.clamp(0.05, 16.0),
+                    source_rate,
                     looping: p.looping,
                     music: p.music,
                     fade: if fading_in { 0.0 } else { 1.0 },
@@ -295,6 +319,26 @@ impl Mixer {
                         v.stopping = true;
                         v.fade_target = 0.0;
                         v.fade_step = (v.fade.max(0.0001)) / (fade * self.device_rate as f32);
+                    }
+                }
+            }
+            Command::Set {
+                id,
+                volume,
+                pan,
+                pitch,
+            } => {
+                let device_rate = self.device_rate as f64;
+                for v in self.voices.iter_mut().filter(|v| v.id == id) {
+                    v.volume = volume.map_or(v.volume, |x| x.clamp(0.0, 4.0));
+                    v.pan = pan.map_or(v.pan, |x| x.clamp(-1.0, 1.0));
+                    if v.stream.is_none() {
+                        v.pitch = pitch.map_or(v.pitch, |x| x.clamp(0.05, 16.0));
+                    }
+                    let (l, r) = pan_gains(v.volume, v.pan);
+                    v.target = (l, r, v.source_rate as f64 / device_rate * v.pitch as f64);
+                    if v.stream.is_some() {
+                        (v.gain_l, v.gain_r) = (l, r); // streamed music changes at once
                     }
                 }
             }
@@ -357,7 +401,25 @@ impl Mixer {
             }
             let data = &voice.sample.frames;
             let last = data.len() - 1;
+            // glide towards a volume, pan or pitch a script asked for (about 10 ms)
+            let glide = 1.0 - (-1.0 / (0.01 * self.device_rate as f32)).exp();
             for frame in 0..frames {
+                if voice.gain_l != voice.target.0
+                    || voice.gain_r != voice.target.1
+                    || voice.step != voice.target.2
+                {
+                    voice.gain_l += (voice.target.0 - voice.gain_l) * glide;
+                    voice.gain_r += (voice.target.1 - voice.gain_r) * glide;
+                    voice.step += (voice.target.2 - voice.step) * glide as f64;
+                    if (voice.gain_l - voice.target.0).abs() < 1e-5
+                        && (voice.gain_r - voice.target.1).abs() < 1e-5
+                    {
+                        (voice.gain_l, voice.gain_r) = (voice.target.0, voice.target.1);
+                    }
+                    if (voice.step - voice.target.2).abs() < 1e-6 {
+                        voice.step = voice.target.2;
+                    }
+                }
                 // Fade towards the target (in or out).
                 if voice.fade != voice.fade_target {
                     if voice.fade < voice.fade_target {
@@ -437,6 +499,95 @@ mod tests {
         let mut out = vec![9.0; frames * 2];
         m.render(&mut out);
         out
+    }
+
+    /// A rising ramp that loops: the sample value says where the playhead is.
+    fn ramp(frames: usize) -> Arc<Sample> {
+        sample(
+            1000,
+            (0..frames)
+                .map(|i| [i as i16 * 10, i as i16 * 10])
+                .collect(),
+        )
+    }
+
+    #[test]
+    fn a_playing_sound_can_change_pitch_volume_and_pan_and_glides_there() {
+        let mut m = Mixer::new(1000);
+        let s = ramp(2000);
+        m.apply(Command::Play(Box::new(Play {
+            looping: true,
+            ..play(1, &s)
+        })));
+        let out = render(&mut m, 100);
+        // normal speed: one source frame per output frame (the centre pan takes the left channel to 0.707)
+        let base = out[2 * 99] - out[2 * 98];
+        assert!(
+            (base - 10.0 * std::f32::consts::FRAC_1_SQRT_2 / 32768.0).abs() < 1e-6,
+            "{base}"
+        );
+        m.apply(Command::Set {
+            id: 1,
+            volume: None,
+            pan: None,
+            pitch: Some(2.0),
+        });
+        let out = render(&mut m, 400);
+        // gliding: the step is between 1 and 2 soon after, and settles at 2 (20 units of ramp per frame)
+        let early = out[2 * 3] - out[2 * 2];
+        let late = out[2 * 399] - out[2 * 398];
+        assert!(
+            early > base * 1.0 && early < base * 2.0,
+            "glides: {early} between {base} and {}",
+            base * 2.0
+        );
+        assert!(
+            (late - base * 2.0).abs() < 1e-6,
+            "settles at twice the speed: {late}"
+        );
+
+        m.apply(Command::Set {
+            id: 1,
+            volume: Some(0.0),
+            pan: None,
+            pitch: None,
+        });
+        let out = render(&mut m, 600);
+        assert!(out[2 * 599].abs() < 1e-6, "silent once the glide is done");
+        m.apply(Command::Set {
+            id: 1,
+            volume: Some(1.0),
+            pan: Some(1.0),
+            pitch: None,
+        });
+        let out = render(&mut m, 600);
+        assert!(
+            out[2 * 599].abs() < 1e-6 && out[2 * 599 + 1].abs() > 0.01,
+            "all on the right: {:?}",
+            &out[2 * 599..]
+        );
+    }
+
+    #[test]
+    fn changing_a_sound_that_is_gone_does_nothing() {
+        let mut m = Mixer::new(1000);
+        m.apply(Command::Set {
+            id: 99,
+            volume: Some(2.0),
+            pan: None,
+            pitch: Some(3.0),
+        });
+        assert_eq!(m.active_voices(), 0);
+        let s = constant(1000, 1000, 10);
+        m.apply(Command::Play(Box::new(play(1, &s))));
+        m.apply(Command::Set {
+            id: 2,
+            volume: Some(0.0),
+            pan: None,
+            pitch: None,
+        });
+        let out = render(&mut m, 5);
+        assert!(out[0] > 0.0, "another sound's id leaves this one alone");
     }
 
     #[test]

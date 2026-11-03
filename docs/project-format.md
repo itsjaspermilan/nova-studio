@@ -527,6 +527,7 @@ heard within a few tens of milliseconds wherever it lands in the track.
 
 ```lua
 local id = nova.sound.play("jump", { volume = 0.6, pan = -0.5, pitch = 1.2, loop = false })
+nova.sound.set(id, { volume = 0.4, pitch = 1.5, pan = 0 })   -- change a playing sound (any of the three)
 nova.sound.stop(id, 0.25)            -- optional fade-out in seconds
 nova.sound.stop_all()
 nova.sound.volume(0.8)               -- master volume for effects (0 to 2)
@@ -539,7 +540,8 @@ nova.music.seek(30)                  -- jump to 30 s; true, or false when nothin
 ```
 
 `volume` 0 to 4 (default 1), `pan` -1 (left) to 1 (right) with an equal-power law, `pitch` 0.05 to 16
-(2 is an octave up; it also changes speed). Starting new music fades the old track out over 0.3
+(2 is an octave up; it also changes speed). `nova.sound.set` glides to the new values over about 10 ms, so a looping sound can be steered every frame: an engine's pitch
+following the revs, wind following speed. A sound that has ended ignores it, and so does `pitch` on streamed music. Starting new music fades the old track out over 0.3
 seconds. Up to 32 effects play at once; past that the oldest gives way. Output is soft-clipped, so a
 loud mix cannot distort harshly. Names resolve as the exact path, then `sounds/<name>.wav`, then
 `music/<name>.wav`. The mixer runs on the audio thread and costs about 0.1 ms per callback on the
