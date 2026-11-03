@@ -44,8 +44,7 @@
     else also = [...also, path];
   }
   const isPicked = (p: Path) => picked.some((q) => samePath(q, p));
-  /// Turning and resizing several shapes together needs them all in one part (they turn about the first one's middle).
-  const sameHome = $derived(pickedShapes.length > 1 && pickedShapes.every((p) => p.parts.join(".") === pickedShapes[0]!.parts.join(".")));
+  const several = $derived(pickedShapes.length > 1);
   let showGrid = $state(true);
   // how the model is drawn: with its texture, flat colours only, or as a wireframe (Z cycles them)
   let viewMode = $state<"textured" | "solid" | "wire">("textured");
@@ -494,8 +493,7 @@
     g.add(proxy);
     proxy.updateMatrix();
     proxyBase = proxy.matrix.clone();
-    // several shapes: all three handles when they share a part, otherwise only move
-    gizmo.setMode((also.length && !sameHome) || gizmoMode === "pivot" ? "translate" : gizmoMode);
+    gizmo.setMode(gizmoMode === "pivot" ? "translate" : gizmoMode);
     gizmo.setSpace(also.length ? "world" : "local");
     gizmo.attach(proxy);
   }
@@ -509,7 +507,8 @@
     for (const m of meshes) {
       if (!isPicked(m.path)) continue;
       m.mesh.matrixAutoUpdate = false;
-      if (samePath(m.path, selected) || (sameHome && also.length && gizmoMode !== "translate")) m.mesh.matrix.copy(groupDelta(delta));
+      if (samePath(m.path, selected)) m.mesh.matrix.copy(delta);
+      else if (also.length && gizmoMode !== "translate") m.mesh.matrix.copy(convertMatrix(groupDelta(delta), g, groupOf(m.path.parts)));
       else {
         // the others move by the same amount in the world, which is another amount inside their own part
         const t = convertShift(new THREE.Vector3().setFromMatrixPosition(delta), g, groupOf(m.path.parts));
@@ -525,6 +524,12 @@
     const f = (proxy.scale.x + proxy.scale.y + proxy.scale.z) / 3;
     const c = new THREE.Vector3().setFromMatrixPosition(proxyBase);
     return new THREE.Matrix4().makeTranslation(c.x, c.y, c.z).multiply(new THREE.Matrix4().makeScale(f, f, f)).multiply(new THREE.Matrix4().makeTranslation(-c.x, -c.y, -c.z));
+  }
+  /// A movement made in one part's space, as it is in another part's space (the same movement in the world).
+  function convertMatrix(d: THREE.Matrix4, from: THREE.Object3D | undefined, to: THREE.Object3D | undefined): THREE.Matrix4 {
+    if (!from || !to || from === to) return d;
+    const [f, t] = [from.matrixWorld, to.matrixWorld];
+    return t.clone().invert().multiply(f).multiply(d).multiply(f.clone().invert()).multiply(t);
   }
   /// A shift measured in one part's space, as it is in another part's space.
   function convertShift(v: THREE.Vector3, from: THREE.Object3D | undefined, to: THREE.Object3D | undefined) {
@@ -553,14 +558,16 @@
     proxy.updateMatrix();
     const delta = new THREE.Matrix4().multiplyMatrices(proxy.matrix, proxyBase.clone().invert());
     if (delta.equals(new THREE.Matrix4())) return;
-    if (also.length && sameHome && gizmoMode !== "translate") {
-      const d = groupDelta(delta);
-      const q = new THREE.Quaternion().setFromRotationMatrix(d);
+    if (also.length && gizmoMode !== "translate") {
+      const home = groupOf(selected.parts);
       const f = gizmoMode === "scale" ? (proxy.scale.x + proxy.scale.y + proxy.scale.z) / 3 : 1;
       let next = doc;
       for (const p of pickedShapes) {
         const c = cubeAt(next, p);
         if (!c) continue;
+        // each shape moves as the handle did, worked out inside its own part
+        const d = convertMatrix(groupDelta(delta), home, groupOf(p.parts));
+        const q = new THREE.Quaternion().setFromRotationMatrix(d);
         if (c.shape === "mesh") {
           next = setCube(next, p, transformMesh(c, d.toArray()));
           continue;
@@ -1703,7 +1710,7 @@
         {/if}
       {:else if selected && cube}
         <h3>{cube.shape === "mesh" ? "Mesh" : "Shape"}</h3>
-        {#if pickedShapes.length > 1}<p class="note small">{pickedShapes.length} shapes picked. Moving, copying, deleting and colouring act on all of them{sameHome ? ", and so do the turn and resize handles (about the first one's middle)" : ""}; the fields below are for the first.</p>{/if}
+        {#if pickedShapes.length > 1}<p class="note small">{pickedShapes.length} shapes picked. Moving, copying, deleting and colouring act on all of them{", and so do the turn and resize handles (about the first one's middle)"}; the fields below are for the first.</p>{/if}
         <label>Name <input value={cube.name ?? ""} placeholder="optional" onchange={(e) => commit(updateCube(doc, selected!, { name: e.currentTarget.value.trim() || undefined }))} /></label>
         {#if cube.shape !== "mesh"}
           <label>Shape
