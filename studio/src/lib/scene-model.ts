@@ -464,3 +464,32 @@ export function removeTilemap(scene: Scene, index: number): Scene {
   if (list.length === 0) delete next.tilemaps;
   return next;
 }
+
+// ---- placing scenery in a 3D level ------------------------------------------------------------------------------------
+
+/// `count` points spread evenly over a disc (radius 0 gives its centre), from random numbers 0 to 1.
+export function scatterPoints(centre: [number, number], radius: number, count: number, rng: () => number): [number, number][] {
+  if (radius <= 0 || count <= 1) return [[centre[0], centre[1]]];
+  return Array.from({ length: Math.min(count, 200) }, () => {
+    const a = rng() * Math.PI * 2;
+    const d = Math.sqrt(rng()) * radius;
+    return [centre[0] + Math.cos(a) * d, centre[1] + Math.sin(a) * d] as [number, number];
+  });
+}
+
+/// Puts a kind of object on the ground (y = 0) at each (x, z). `vary` gives each a random turn and a size of 0.8 to 1.3, so a
+/// stand of trees does not look stamped. Returns the new scene and the objects' places in the list.
+export function placeObjects(scene: Scene, kind: string, points: [number, number][], rng: () => number, vary = true): { scene: Scene; indexes: number[] } {
+  const next = clone(scene);
+  const list = (next.objects ??= []);
+  const indexes: number[] = [];
+  const r1 = (n: number) => Math.round(n * 10) / 10;
+  for (const [x, z] of points) {
+    if (!Number.isFinite(x) || !Number.isFinite(z)) continue;
+    const item: Item = { kind, x: r1(x), y: 0 };
+    if (z !== 0) item.z = r1(z);
+    if (vary) item.props = { ry: Math.round(rng() * Math.PI * 2 * 1000) / 1000, sx: Math.round((0.8 + rng() * 0.5) * 100) / 100 };
+    indexes.push(list.push(item) - 1);
+  }
+  return { scene: next, indexes };
+}

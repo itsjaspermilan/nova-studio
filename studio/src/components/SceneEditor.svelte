@@ -4,7 +4,7 @@
     History, addItem, afterRemoval, boundsOf, drawOrder, duplicateItem, hitTest, itemAt, moveTo, parseScene, removeItem, sameRef,
     serializeScene, setField, setSceneField, snap, uniqueName, worldSize, type Item, type ItemKind, type Ref, type Scene, type Sizes,
     addTilemap, cellAt, fillTiles, mapSize, paintTile, parsePropValue, propsOf, removeTilemap, renameProp, resizeTilemap, setProp, showPropValue,
-    tilemapBox, tilemaps, toggleSolid, EMPTY_TILE, type Kinds, cameraOf, moveTo3, setCamera, positionOf, type Camera3,
+    tilemapBox, tilemaps, toggleSolid, EMPTY_TILE, type Kinds, cameraOf, moveTo3, setCamera, positionOf, placeObjects, type Camera3,
   } from "../lib/scene-model";
   import Scene3D from "./Scene3D.svelte";
   import { parseModel, type ModelDoc } from "../lib/model-doc";
@@ -35,6 +35,19 @@
   // 2D is the flat level; 3D shows the objects whose entity has a model, and the game's camera
   let view: "2d" | "3d" = $state(untrack(() => ((scene.camera || (scene.objects ?? []).some((o) => o.z)) ? "3d" : "2d")));
   let modelDocs = $state(new Map<string, ModelDoc>()); // by entity kind
+  // placing scenery in the 3D view: pick a kind in the palette, then click the ground (a stamp) or drag (a brush)
+  let placing: string | null = $state(null);
+  let brushRadius = $state(0);
+  let brushCount = $state(3);
+  let vary = $state(true);
+  $effect(() => {
+    if (view !== "3d") placing = null;
+  });
+  function placeAt(points: [number, number][], first: boolean) {
+    if (!placing) return;
+    const r = placeObjects(scene, placing, points, Math.random, vary);
+    commit(r.scene, !first);
+  }
   let view3: { current: () => Camera3 } | null = null;
 
   // view: world -> screen is (world - origin) * zoom
@@ -571,8 +584,17 @@
       <h3>Add</h3>
       <button onclick={addText}>＋ Text</button>
       <h4>Objects</h4>
+      {#if view === "3d"}
+        <div class="brush">
+          {#if placing}<p class="small"><strong>{placing}</strong>: click the ground to put one down, drag to paint. Esc stops.</p>
+          {:else}<p class="dim small">Pick a kind, then click the ground in the 3D view.</p>{/if}
+          <label>Brush radius <input type="range" min="0" max="40" step="1" bind:value={brushRadius} /><span class="dim small">{brushRadius === 0 ? "one at a time" : `${brushRadius} m`}</span></label>
+          {#if brushRadius > 0}<label>Objects per dab <input type="range" min="1" max="12" step="1" bind:value={brushCount} /><span class="dim small">{brushCount}</span></label>{/if}
+          <label class="check"><input type="checkbox" bind:checked={vary} /> Vary turn and size</label>
+        </div>
+      {/if}
       {#each entities as e (e)}
-        <button class="item" onclick={() => addObject(e)}>{e}</button>
+        <button class="item" class:on={view === "3d" && placing === e} onclick={() => (view === "3d" ? (placing = placing === e ? null : e, selected = null) : addObject(e))} title={view === "3d" ? "Click the ground to put one down; drag to paint with the brush" : ""}>{e}</button>
       {:else}
         <p class="dim small">Make a file in <code>entities/</code> and it shows up here.</p>
       {/each}
@@ -637,6 +659,11 @@
           onselect={(r) => (selected = r)}
           onmove={(r, p) => edit(moveTo3(scene, r, p))}
           onready={(v) => (view3 = v)}
+          {placing}
+          {brushRadius}
+          brushCount={brushRadius > 0 ? brushCount : 1}
+          onplace={placeAt}
+          onstop={() => (placing = null)}
         />
         <p class="hint dim">Click an object to select it · drag the arrows to move it · drag to orbit, right-drag to pan, scroll to zoom · the box with lines is the game's camera</p>
       {:else}
@@ -835,6 +862,8 @@
   .prop { display: flex; gap: 4px; align-items: center; }
   .prop .k { width: 70px; min-width: 0; } .prop .v { flex: 1; min-width: 0; }
   .prop input { padding: 2px 6px; }
+  .brush { display: flex; flex-direction: column; gap: 4px; border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
+  .brush label { gap: 1px; }
   .vec3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
   .vec3 input { min-width: 0; }
   .bad { padding: 32px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }

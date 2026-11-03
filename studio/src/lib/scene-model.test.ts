@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { History, cameraOf, moveTo3, positionOf, setCamera, addItem, afterRemoval, boundsOf, drawOrder, duplicateItem, hitTest, moveTo, parseScene, removeItem, serializeScene, setField, snap, uniqueName, worldSize, type Scene } from "./scene-model";
+import { History, placeObjects, scatterPoints, cameraOf, moveTo3, positionOf, setCamera, addItem, afterRemoval, boundsOf, drawOrder, duplicateItem, hitTest, moveTo, parseScene, removeItem, serializeScene, setField, snap, uniqueName, worldSize, type Scene } from "./scene-model";
 
 const text = `{
   "version": 1,
@@ -266,5 +266,28 @@ describe("3D scenes", () => {
     expect(moveTo3(moved, ref, [5, 6, 0]).objects![0]).toEqual({ kind: "car", x: 5, y: 6 });
     expect(moveTo3(base(), ref, [NaN, 0, 0])).toEqual(base());
     expect(base().objects![0]!.x).toBe(1); // the original is untouched
+  });
+});
+
+describe("placing scenery", () => {
+  const seeded = (...v: number[]) => { let i = 0; return () => v[i++ % v.length]!; };
+  it("scatters points over a disc, or just the centre for a stamp", () => {
+    expect(scatterPoints([5, 6], 0, 9, Math.random)).toEqual([[5, 6]]);
+    expect(scatterPoints([5, 6], 10, 1, Math.random)).toEqual([[5, 6]]);
+    const pts = scatterPoints([100, -50], 8, 60, Math.random);
+    expect(pts).toHaveLength(60);
+    for (const [x, z] of pts) expect(Math.hypot(x - 100, z + 50)).toBeLessThanOrEqual(8 + 1e-9);
+    expect(scatterPoints([0, 0], 5, 9999, Math.random)).toHaveLength(200);
+  });
+  it("puts objects on the ground with a random turn and size, or plain", () => {
+    const base: Scene = { version: 1, objects: [{ kind: "rock", x: 1, y: 0 }] };
+    const r = placeObjects(base, "pine", [[10.04, 20.06], [3, 0]], seeded(0.5, 0.5), true);
+    expect(r.indexes).toEqual([1, 2]);
+    expect(r.scene.objects![1]).toEqual({ kind: "pine", x: 10, y: 0, z: 20.1, props: { ry: 3.142, sx: 1.05 } });
+    expect(r.scene.objects![2]!.z).toBeUndefined(); // z = 0 stays out of the file
+    expect(base.objects).toHaveLength(1); // the original is untouched
+    const plain = placeObjects(base, "pine", [[1, 1]], Math.random, false);
+    expect(plain.scene.objects![1]).toEqual({ kind: "pine", x: 1, y: 0, z: 1 });
+    expect(placeObjects(base, "pine", [[NaN, 1]], Math.random).indexes).toEqual([]);
   });
 });

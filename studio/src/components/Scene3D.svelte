@@ -7,7 +7,7 @@
   import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
   import type { ModelDoc } from "../lib/model-doc";
   import { ModelShapes, instanceScene, moveObject, placement, type Instanced } from "../lib/scene-three";
-  import { cameraOf, itemAt, positionOf, snap, type Camera3, type Ref, type Scene } from "../lib/scene-model";
+  import { cameraOf, itemAt, positionOf, scatterPoints, snap, type Camera3, type Ref, type Scene } from "../lib/scene-model";
 
   let {
     scene,
@@ -17,6 +17,11 @@
     onselect,
     onmove,
     onready,
+    placing = null,
+    brushRadius = 0,
+    brushCount = 1,
+    onplace = () => {},
+    onstop = () => {},
   }: {
     scene: Scene;
     selected: Ref | null;
@@ -27,6 +32,14 @@
     onmove: (ref: Ref, p: [number, number, number]) => void;
     /// Hands the parent a way to read the view, for "use this view as the game camera".
     onready: (view: { current: () => Camera3 }) => void;
+    /// The kind of object being placed (clicks and drags on the ground add it), or null.
+    placing?: string | null;
+    /// Metres of ground a stroke paints over, and how many objects each step of a stroke adds.
+    brushRadius?: number;
+    brushCount?: number;
+    /// Called with the ground points [x, z] to add; `first` is true for the first of a stroke (one undo step per stroke).
+    onplace?: (points: [number, number][], first: boolean) => void;
+    onstop?: () => void;
   } = $props();
 
   let box: HTMLDivElement | undefined = $state();
@@ -46,6 +59,10 @@
   const markers = new Map<number, THREE.Group>();
   /// What the move arrows hold on to: it stands where the picked object does, and the object follows it.
   const grip = new THREE.Group();
+  // while placing: a ring on the ground where the next objects would land
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.92, 1, 48).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: 0.9, depthTest: false }));
+  ring.visible = false;
+  ring.renderOrder = 10;
 
   onMount(() => {
     if (!canvas || !box) return;
@@ -66,6 +83,8 @@
     // (plain listeners: the orbit and move controls hold on to the pointer, which a delegated handler can miss)
     canvas.addEventListener("pointerdown", pointerdown);
     canvas.addEventListener("pointerup", pointerup);
+    canvas.addEventListener("pointermove", pointermove);
+    window.addEventListener("keydown", keydown);
     controls = new OrbitControls(camera, canvas);
     controls.target.copy(target);
     controls.update();
@@ -79,6 +98,7 @@
     gizmo.addEventListener("objectChange", follow);
     three.add(gizmo.getHelper());
     three.add(grip);
+    three.add(ring);
     three.add(new THREE.AmbientLight(0xffffff, 1.6));
     const sun = new THREE.DirectionalLight(0xffffff, 1.8);
     sun.position.set(20, 40, 30);
@@ -119,6 +139,8 @@
       cancelAnimationFrame(frameId);
       canvas?.removeEventListener("pointerdown", pointerdown);
       canvas?.removeEventListener("pointerup", pointerup);
+      canvas?.removeEventListener("pointermove", pointermove);
+      window.removeEventListener("keydown", keydown);
       observer?.disconnect();
       gizmo?.dispose();
       controls?.dispose();
@@ -223,10 +245,63 @@
   let down: { x: number; y: number } | null = null;
   function pointerdown(e: PointerEvent) {
     down = { x: e.clientX, y: e.clientY };
+    if (placing && e.button === 0) {
+      stroke = { last: null, first: true };
+      paint(e);
+    }
+  }
+
+  // ---- placing: click to stamp, drag to paint ----------------------------------------------------------------------------
+  let stroke: { last: [number, number] | null; first: boolean } | null = null;
+  const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+
+  /// Where the pointer is on the ground (y = 0), or null when it looks at the sky.
+  function groundAt(e: PointerEvent): [number, number] | null {
+    if (!camera || !canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -(((e.clientY - rect.top) / rect.height) * 2 - 1)), camera);
+    const at = ray.ray.intersectPlane(plane, new THREE.Vector3());
+    return at && Math.hypot(at.x, at.z) < 20000 ? [at.x, at.z] : null;
+  }
+
+  function paint(e: PointerEvent) {
+    if (!placing || !stroke) return;
+    const at = groundAt(e);
+    if (!at) return;
+    // along a stroke a new batch goes down each time the pointer has moved about half a brush (or a metre, for a stamp)
+    const spacing = Math.max(1, brushRadius * 0.6);
+    if (stroke.last && Math.hypot(at[0] - stroke.last[0], at[1] - stroke.last[1]) < spacing) return;
+    stroke.last = at;
+    onplace(scatterPoints(at, brushRadius, brushCount, Math.random), stroke.first);
+    stroke.first = false;
+  }
+
+  function pointermove(e: PointerEvent) {
+    if (!placing) {
+      ring.visible = false;
+      return;
+    }
+    const at = groundAt(e);
+    ring.visible = !!at;
+    if (at) {
+      ring.position.set(at[0], 0.05, at[1]);
+      const r = Math.max(0.6, brushRadius);
+      ring.scale.set(r, 1, r);
+    }
+    if (stroke) paint(e);
+  }
+
+  function keydown(e: KeyboardEvent) {
+    if (e.key === "Escape" && placing) onstop();
   }
   function pointerup(e: PointerEvent) {
     const start = down;
     down = null;
+    if (stroke) {
+      stroke = null; // the end of a stroke is not a click on an object
+      return;
+    }
     if (!start || e.button !== 0 || !camera || !canvas || gizmo?.dragging || !instanced) return;
     if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 4) return;
     const rect = canvas.getBoundingClientRect();
@@ -250,6 +325,14 @@
   $effect(() => {
     selected;
     untrack(attach);
+  });
+  // while an object is being placed the left button paints; the right button and the wheel still move the view
+  $effect(() => {
+    const on = !!placing;
+    if (controls) controls.mouseButtons.LEFT = on ? (null as unknown as THREE.MOUSE) : THREE.MOUSE.ROTATE;
+    if (!on) ring.visible = false;
+    if (on) gizmo?.detach();
+    else untrack(attach);
   });
 </script>
 
