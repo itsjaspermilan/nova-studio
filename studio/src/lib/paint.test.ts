@@ -65,3 +65,33 @@ describe("applyBrush", () => {
     expect(getPixel(e, 0, 0)).toEqual([1, 2, 3, 255]);
   });
 });
+
+import { applyGradient } from "./paint";
+
+describe("applyGradient", () => {
+  it("blends from the first colour at the start of the drag to the second at the end", () => {
+    const pic = newRaster(5, 1);
+    applyGradient(pic, cloneRaster(pic), { x: 0, y: 0 }, { x: 4, y: 0 }, [0, 0, 0, 255], [200, 100, 50, 255], 1, false);
+    expect([0, 1, 2, 3, 4].map((x) => getPixel(pic, x, 0)![0])).toEqual([0, 50, 100, 150, 200]);
+    expect(getPixel(pic, 4, 0)).toEqual([200, 100, 50, 255]);
+  });
+
+  it("goes the other way when dragged backwards or down, and stays inside the picture", () => {
+    const pic = newRaster(3, 5);
+    applyGradient(pic, cloneRaster(pic), { x: 1, y: 4 }, { x: 1, y: 0 }, [255, 0, 0, 255], [0, 0, 255, 255], 1, false);
+    expect(getPixel(pic, 1, 4)).toEqual([255, 0, 0, 255]);
+    expect(getPixel(pic, 1, 0)).toEqual([0, 0, 255, 255]);
+    expect(getPixel(pic, 0, 2)![3]).toBe(0); // only the dragged column
+    const wide = newRaster(2, 2);
+    applyGradient(wide, cloneRaster(wide), { x: -5, y: -5 }, { x: 99, y: 99 }, [9, 9, 9, 255], [9, 9, 9, 255], 1, false);
+    expect(getPixel(wide, 1, 1)).toEqual([9, 9, 9, 255]);
+  });
+
+  it("respects opacity and the alpha lock", () => {
+    const pic = newRaster(2, 1);
+    setPixel(pic, 0, 0, [0, 0, 100, 255]);
+    applyGradient(pic, cloneRaster(pic), { x: 0, y: 0 }, { x: 1, y: 0 }, [200, 0, 0, 255], [200, 0, 0, 255], 0.5, true);
+    expect(getPixel(pic, 0, 0)).toEqual([100, 0, 50, 255]);
+    expect(getPixel(pic, 1, 0)).toEqual([0, 0, 0, 0]); // locked: nothing there to recolour
+  });
+});

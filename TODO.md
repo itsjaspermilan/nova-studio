@@ -314,6 +314,7 @@ First slice, built (`SpriteEditor.svelte`, pure logic in `pixels.ts` and `sprite
 - [x] Editor usability pass (2026-11-02, from `docs/ux/editor-research.md`): model editor handles (move, turn, resize), multi-select,
   face pull arrow, taper, inset, loop cut, point symmetry, paint opacity and lock alpha; sprite onion skin counts and tint,
   frame drag to reorder, import by tile count and smart slice.
+- [x] Fourth round, painting (2026-11-02): line, rectangle, ellipse and gradient tools in the texture picture (with opacity and lock alpha) and mirror painting on the model.
 - [x] Third round (2026-11-02): vertex snap while dragging points, per-face UV rectangles for boxes, turn and resize for several shapes in one part.
 - [x] Second usability round (2026-11-02): pivot tool, edge picking with bevel and open-edge extend, sprite frame multi-select with copy, delete and
   move between animations.

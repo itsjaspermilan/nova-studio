@@ -10,8 +10,8 @@
   import { addFace, bevelEdge, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsSymmetric, setFaceColors, setSmooth, setVert, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
   import { hasVolume, meshOf, segmentsOf, shapeFaces } from "../lib/model-mesh";
   import { bakeAll, blockOf, faceRects, enableTexture, fitPicture, packModel, resizeTexture, unwrap, uvsOf } from "../lib/model-uv";
-  import { CLEAR, cloneRaster, drawLine, floodFill, getPixel, newRaster, parseHex, stamp, toHex, type Raster, type Rgba } from "../lib/pixels";
-  import { applyBrush } from "../lib/paint";
+  import { CLEAR, cloneRaster, drawEllipse, drawLine, drawRect, floodFill, getPixel, newRaster, parseHex, stamp, toHex, type Raster, type Rgba } from "../lib/pixels";
+  import { applyBrush, applyGradient } from "../lib/paint";
   import { loadRaster, rasterToDataUrl } from "../lib/png";
   import { exportGlb } from "../lib/glb";
   import { addClip, findTrack, pathKey, removeClip, removeKey, samplePose, setKey, snapTime, updateClip, KEY_STEP, type Pose } from "../lib/model-anim";
@@ -90,10 +90,14 @@
   let texData: Uint8ClampedArray | undefined;
   let texImage: ImageData | undefined;
   let threeTex: THREE.CanvasTexture | undefined;
-  type TexTool = "pencil" | "eraser" | "fill" | "picker" | "move" | "face";
+  type TexTool = "pencil" | "eraser" | "fill" | "picker" | "move" | "face" | "line" | "rect" | "ellipse" | "gradient";
+  const BRUSH_TOOLS: TexTool[] = ["pencil", "eraser", "fill", "picker"]; // what works on the model itself; the shapes need the flat picture
   let texTool = $state<TexTool>("pencil");
   let texColor = $state<Rgba>([220, 70, 70, 255]);
   let texBrush = $state(1);
+  let texColor2 = $state<Rgba>([40, 70, 200, 255]); // the far end of a gradient
+  let texFilled = $state(false); // rectangles and ellipses
+  let mirrorPaint = $state(false); // paint the same stroke on the other side of the model (left and right swapped)
   let texOpacity = $state(100); // percent
   let lockAlpha = $state(false); // paint only what is already painted, and keep its see-through-ness
   let strokeBase: Raster | null = null; // the picture as the stroke began
@@ -597,7 +601,7 @@
   }
 
   // ---- painting ----------------------------------------------------------------------------------------------
-  let stroke: { last: [number, number] | null } | null = null;
+  let stroke: { last: [number, number] | null; lastMirror: [number, number] | null } | null = null;
   function textureHit(e: PointerEvent): [number, number] | null {
     if (!camera || !canvas || !picture) return null;
     const ray = new THREE.Raycaster();
@@ -606,6 +610,24 @@
     const entry = hit && meshes.find((m) => m.mesh === hit.object);
     if (!hit?.uv || !entry || !cubeAt(doc, entry.path)?.texture) return null;
     return [Math.min(picture.w - 1, Math.max(0, Math.floor(hit.uv.x * picture.w))), Math.min(picture.h - 1, Math.max(0, Math.floor(hit.uv.y * (picture.h + 1))))];
+  }
+  /// Where the same stroke lands on the other side of the model: the pointer's hit point and the way the surface faces are
+  /// reflected across the model's centre plane (left and right swapped), and a ray sent back at the surface from there.
+  function mirrorHit(e: PointerEvent): [number, number] | null {
+    if (!camera || !picture) return null;
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(pointer(e), camera);
+    const objects = meshes.map((m) => m.mesh);
+    const hit = ray.intersectObjects(objects, false)[0];
+    if (!hit?.face) return null;
+    const flipX = (v: THREE.Vector3) => new THREE.Vector3(-v.x, v.y, v.z);
+    const normal = hit.face.normal.clone().applyMatrix3(new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld)).normalize();
+    const [p, n] = [flipX(hit.point), flipX(normal)];
+    const back = new THREE.Raycaster(p.clone().addScaledVector(n, 0.5), n.clone().negate(), 0, 2);
+    const other = back.intersectObjects(objects, false)[0];
+    const entry = other && meshes.find((m) => m.mesh === other.object);
+    if (!other?.uv || !entry || !cubeAt(doc, entry.path)?.texture) return null;
+    return [Math.min(picture.w - 1, Math.max(0, Math.floor(other.uv.x * picture.w))), Math.min(picture.h - 1, Math.max(0, Math.floor(other.uv.y * (picture.h + 1))))];
   }
   function rememberPicture() {
     if (!picture) return;
@@ -619,7 +641,7 @@
     if (texTool !== "picker") rememberPicture();
     strokeBase = picture ? cloneRaster(picture) : null;
     strokeDone = new Uint8Array(picture ? picture.w * picture.h : 0);
-    stroke = { last: straight && (texTool === "pencil" || texTool === "eraser") ? lastPaint : null };
+    stroke = { last: straight && (texTool === "pencil" || texTool === "eraser") ? lastPaint : null, lastMirror: null };
   }
   function pictureChanged() {
     picRev++;
@@ -627,26 +649,46 @@
     studio.sessions.set(filePath, { doc, picture });
     studio.markPending(filePath);
   }
-  function paintTexel(x: number, y: number) {
+  function paintTexel(x: number, y: number, mirrored = false) {
     if (!picture || !stroke) return;
     if (texTool === "picker") {
+      if (mirrored) return;
       const c = getPixel(picture, x, y);
       if (c && c[3] > 0) texColor = c;
       return;
     }
+    const last = mirrored ? stroke.lastMirror : stroke.last;
     if (texTool === "fill") floodFill(picture, x, y, texColor);
     else if (texOpacity >= 100 && !lockAlpha) {
       const colour = texTool === "eraser" ? CLEAR : texColor;
-      if (stroke.last) drawLine(picture, { x: stroke.last[0], y: stroke.last[1] }, { x, y }, texBrush, colour);
+      if (last) drawLine(picture, { x: last[0], y: last[1] }, { x, y }, texBrush, colour);
       else stamp(picture, x, y, texBrush, colour);
     } else if (strokeBase) {
       // the stroke goes into a mask, and each touched pixel is blended once from how the picture was before
       const mask = newRaster(picture.w, picture.h);
-      if (stroke.last) drawLine(mask, { x: stroke.last[0], y: stroke.last[1] }, { x, y }, texBrush, [255, 255, 255, 255]);
+      if (last) drawLine(mask, { x: last[0], y: last[1] }, { x, y }, texBrush, [255, 255, 255, 255]);
       else stamp(mask, x, y, texBrush, [255, 255, 255, 255]);
       applyBrush(picture, strokeBase, mask, strokeDone, { colour: texColor, opacity: texOpacity / 100, erase: texTool === "eraser", lockAlpha });
     }
-    stroke.last = lastPaint = [x, y];
+    if (mirrored) stroke.lastMirror = [x, y];
+    else stroke.last = lastPaint = [x, y];
+    pictureChanged();
+  }
+  /// A line, rectangle, ellipse or gradient from where the drag began to where it is now, redrawn from the picture as it was.
+  let shapeStart: [number, number] | null = null;
+  function drawShape(x: number, y: number) {
+    if (!picture || !strokeBase || !shapeStart) return;
+    picture.data.set(strokeBase.data);
+    const [a, b] = [{ x: shapeStart[0], y: shapeStart[1] }, { x, y }];
+    if (texTool === "gradient") applyGradient(picture, strokeBase, a, b, texColor, texColor2, texOpacity / 100, lockAlpha);
+    else {
+      const mask = newRaster(picture.w, picture.h);
+      const white: Rgba = [255, 255, 255, 255];
+      if (texTool === "line") drawLine(mask, a, b, texBrush, white);
+      else if (texTool === "rect") drawRect(mask, a, b, texBrush, white, texFilled);
+      else drawEllipse(mask, a, b, texBrush, white, texFilled);
+      applyBrush(picture, strokeBase, mask, new Uint8Array(picture.w * picture.h), { colour: texColor, opacity: texOpacity / 100, erase: false, lockAlpha });
+    }
     pictureChanged();
   }
   function undoTexture() {
@@ -757,6 +799,12 @@
       }
       return;
     }
+    if (["line", "rect", "ellipse", "gradient"].includes(texTool)) {
+      beginStroke();
+      shapeStart = [Math.max(0, Math.min(picture.w - 1, x)), Math.max(0, Math.min(picture.h - 1, y))];
+      drawShape(shapeStart[0], shapeStart[1]);
+      return;
+    }
     if (x < 0 || y < 0 || x >= picture.w || y >= picture.h) return;
     beginStroke(e.shiftKey);
     paintTexel(x, y);
@@ -791,11 +839,13 @@
       commit(setCube(blockDrag.base, blockDrag.path, { ...blockDrag.cube, texture: { ...blockDrag.cube.texture!, at } }), true);
       return;
     }
+    if (shapeStart) return drawShape(Math.max(0, Math.min(picture.w - 1, x)), Math.max(0, Math.min(picture.h - 1, y)));
     if (stroke && x >= 0 && y >= 0 && x < picture.w && y < picture.h) paintTexel(x, y);
     else if (stroke) stroke.last = null;
   }
   function texUp() {
     stroke = null;
+    shapeStart = null;
     blockDrag = null;
     faceDrag = null;
   }
@@ -994,11 +1044,13 @@
   let drag: { point: number; base: ModelDoc; baseCube: Cube; path: Path; start: THREE.Vector3; plane: THREE.Plane; moved: boolean } | null = null;
   function pointerDown(e: PointerEvent) {
     downAt = [e.clientX, e.clientY];
-    if (mode === "texture" && texTool !== "move" && picture && e.button === 0 && !e.altKey && canvas) {
+    if (mode === "texture" && BRUSH_TOOLS.includes(texTool) && picture && e.button === 0 && !e.altKey && canvas) {
       const t = textureHit(e);
       if (t) {
         beginStroke(e.shiftKey);
         paintTexel(t[0], t[1]);
+        const m = mirrorPaint ? mirrorHit(e) : null;
+        if (m) paintTexel(m[0], m[1], true);
         controls!.enabled = false;
         canvas.setPointerCapture(e.pointerId);
         return;
@@ -1062,6 +1114,9 @@
       const t = textureHit(e);
       if (t) paintTexel(t[0], t[1]);
       else stroke.last = null;
+      const m = mirrorPaint ? mirrorHit(e) : null;
+      if (m) paintTexel(m[0], m[1], true);
+      else stroke.lastMirror = null;
       return;
     }
     if (pull && camera) {
@@ -1562,7 +1617,7 @@
           <p class="dim small">{selected && selected.cube !== undefined ? "Its colours become the first pixels of the picture, so nothing changes until you paint." : "Click a shape in the view first."}</p>
         {:else}
           <div class="tools" role="toolbar" aria-label="Painting tools">
-            {#each [["pencil", "✎", "Pencil"], ["eraser", "⌫", "Eraser"], ["fill", "▨", "Fill"], ["picker", "✚", "Pick a colour"], ["move", "✥", "Move a shape's block"], ["face", "▭", "Place one face of a box"]] as [id, icon, tip] (id)}
+            {#each [["pencil", "✎", "Pencil"], ["eraser", "⌫", "Eraser"], ["fill", "▨", "Fill"], ["picker", "✚", "Pick a colour"], ["move", "✥", "Move a shape's block"], ["face", "▭", "Place one face of a box"], ["line", "╱", "Line (in the picture)"], ["rect", "□", "Rectangle (in the picture)"], ["ellipse", "◯", "Ellipse (in the picture)"], ["gradient", "◨", "Gradient from the colour to the second colour (in the picture)"]] as [id, icon, tip] (id)}
               <button class:on={texTool === id} title={tip} aria-label={tip} onclick={() => (texTool = id as TexTool)}>{icon}</button>
             {/each}
             <span class="gap"></span>
@@ -1574,6 +1629,12 @@
             <input class="mono" value={texHex} onchange={(e) => pickTexHex(e.currentTarget.value)} aria-label="Hex colour" />
             <label class="inline">Brush <input type="number" min="1" max="16" bind:value={texBrush} /></label>
           </div>
+          {#if texTool === "gradient"}
+            <div class="paintrow"><span class="dim small">to</span><input type="color" value={toHex([texColor2[0], texColor2[1], texColor2[2], 255])} oninput={(e) => { const c = parseHex(e.currentTarget.value); if (c) texColor2 = c; }} aria-label="Second gradient colour" /><span class="dim small grow">Drag a box in the picture: the colour at the start fades into this one.</span></div>
+          {:else if texTool === "rect" || texTool === "ellipse"}
+            <label class="check"><input type="checkbox" bind:checked={texFilled} /> Filled</label>
+          {/if}
+          <label class="check" title="Paint the same stroke on the other side of the model, left and right swapped (the mirrored half needs its own texels)"><input type="checkbox" bind:checked={mirrorPaint} /> Mirror painting (left ↔ right)</label>
           <div class="paintrow">
             <label class="inline grow">Opacity <input type="range" min="5" max="100" step="5" bind:value={texOpacity} aria-label="Opacity" /> <output>{texOpacity}%</output></label>
             <label class="check" title="Paint only pixels that are already painted, and keep their see-through-ness"><input type="checkbox" bind:checked={lockAlpha} /> Lock alpha</label>
