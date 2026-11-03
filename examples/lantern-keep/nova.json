@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "name": "Lantern Keep",
+  "version": "0.1.0",
+  "input": {
+    "attack": ["key:KeyZ", "key:Space", "pad:west", "pad:south", "touch:right"],
+    "autoplay": ["key:F9"]
+  }
+}

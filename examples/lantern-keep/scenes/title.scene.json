@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "background": [20, 18, 31],
+  "objects": [
+    { "kind": "title_hero", "x": 480, "y": 330 }
+  ]
+}
