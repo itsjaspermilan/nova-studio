@@ -1103,6 +1103,16 @@ function nova.nearest(x, y, tag, max_distance)
   return best
 end
 
+--- How the last frame went: fps, lua_ms, render_ms, draws, triangles, sprites, memory_kb (the scripts' memory), and what the
+--- framework knows: entities (live), scenery (static pieces).
+local host_stats = nova.stats
+function nova.stats()
+  local t = host_stats()
+  t.entities = #W.list
+  t.scenery = scenery.count()
+  return t
+end
+
 --- `nova.collision { plane = "xz", cell = 4 }`: which fields are the ground for collisions and distances, and how big the
 --- broad phase's squares are. Call it once, early (main.lua).
 function nova.collision(opts)

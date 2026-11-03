@@ -1859,3 +1859,31 @@ fn the_collision_setting_explains_a_mistake() {
         assert!(e.contains(expected), "{script}: '{e}'");
     }
 }
+
+#[test]
+fn stats_tell_a_game_how_the_last_frame_went() {
+    use nova_runtime::game::HostStats;
+    let mut g = project(vec![
+        ("entities/a.lua", lua("return nova.entity {}")),
+        (
+            "scenes/s.lua",
+            lua(
+                "local S = nova.scene {}\nfunction S:enter() nova.spawn('a', 0, 0); nova.spawn('a', 1, 1) end\nfunction S:update(dt)\n  local t = nova.stats()\n  if not done then done = true; nova.log(string.format('%.0f %.1f %d %d %d entities=%d lua>0=%s memory>0=%s', t.fps, t.render_ms, t.draws, t.triangles, t.sprites, t.entities, tostring(t.lua_ms >= 0), tostring(t.memory_kb > 0))) end\nend\nreturn S",
+            ),
+        ),
+        ("main.lua", lua("nova.start('s')")),
+    ]);
+    g.set_host_stats(HostStats {
+        fps: 59.6,
+        render_ms: 2.5,
+        draw_calls: 17,
+        triangles: 1234,
+        sprites: 9,
+    });
+    steps(&mut g, 3);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    assert_eq!(
+        g.take_log(),
+        ["60 2.5 17 1234 9 entities=2 lua>0=true memory>0=true"]
+    );
+}

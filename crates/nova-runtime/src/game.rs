@@ -89,6 +89,10 @@ struct Shared {
     music_position: Option<f64>,
     audio: Vec<mixer::Command>,
     rumble: Vec<Rumble>,
+    host_stats: HostStats,
+    /// What the scripts took last frame (ms) and the memory they use (KB), for `nova.stats()`.
+    lua_ms: f32,
+    lua_kb: f32,
     next_sound: u64,
     save: SaveStore,
     mesh_ids: HashMap<String, usize>,
@@ -109,6 +113,16 @@ struct Shared {
     camera: Camera,
     clear: [f64; 4],
     log: Vec<String>,
+}
+
+/// What the host measured about the previous frame, for `nova.stats()`.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct HostStats {
+    pub fps: f32,
+    pub render_ms: f32,
+    pub draw_calls: u32,
+    pub triangles: u32,
+    pub sprites: u32,
 }
 
 /// A request from a script to shake a gamepad (`nova.input.rumble`); the host passes it on where it can.
@@ -971,6 +985,24 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
         })?,
     )?;
 
+    // stats(): how the last frame went, for an on-screen profiler
+    let s = shared.clone();
+    nova.set(
+        "stats",
+        lua.create_function(move |lua, ()| {
+            let sh = s.borrow();
+            let t = lua.create_table()?;
+            t.set("fps", sh.host_stats.fps as f64)?;
+            t.set("lua_ms", sh.lua_ms as f64)?;
+            t.set("render_ms", sh.host_stats.render_ms as f64)?;
+            t.set("draws", sh.host_stats.draw_calls)?;
+            t.set("triangles", sh.host_stats.triangles)?;
+            t.set("sprites", sh.host_stats.sprites)?;
+            t.set("memory_kb", sh.lua_kb as f64)?;
+            Ok(t)
+        })?,
+    )?;
+
     // --- input: named actions, see docs/project-format.md ---
     let input = lua.create_table()?;
     fn unknown_action(sh: &Shared, name: &str) -> mlua::Error {
@@ -1815,6 +1847,9 @@ impl Game {
             music_position: None,
             audio: Vec::new(),
             rumble: Vec::new(),
+            host_stats: HostStats::default(),
+            lua_ms: 0.0,
+            lua_kb: 0.0,
             next_sound: 1,
             save: store,
             mesh_ids: HashMap::new(),
@@ -1950,6 +1985,14 @@ impl Game {
 
     pub fn take_audio(&self) -> Vec<mixer::Command> {
         std::mem::take(&mut self.shared.borrow_mut().audio)
+    }
+
+    /// What the host measured about the previous frame (the game's own time and memory are added here), for `nova.stats()`.
+    pub fn set_host_stats(&mut self, stats: HostStats) {
+        let mut sh = self.shared.borrow_mut();
+        sh.host_stats = stats;
+        sh.lua_ms = self.last_update.as_secs_f32() * 1000.0;
+        sh.lua_kb = self.lua.used_memory() as f32 / 1024.0;
     }
 
     /// Gamepad rumbles that scripts asked for since the last call.

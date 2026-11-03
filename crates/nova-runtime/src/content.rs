@@ -136,6 +136,13 @@ impl Content {
                 let scale = Gfx::ui_scale(size);
                 let view = [size.0 as f32 / scale, size.1 as f32 / scale];
                 game.set_pixel_scale(scale);
+                game.set_host_stats(crate::game::HostStats {
+                    fps: perf.fps,
+                    render_ms: perf.times.render_ms,
+                    draw_calls: perf.stats.draw_calls,
+                    triangles: perf.stats.triangles,
+                    sprites: perf.stats.sprites,
+                });
                 let started = std::time::Instant::now();
                 game.update_input(dt, time, view, input);
                 let whole_update = started.elapsed().as_secs_f32() * 1000.0;

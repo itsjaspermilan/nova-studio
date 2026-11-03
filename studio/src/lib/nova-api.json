@@ -504,6 +504,13 @@
   "group": "Scenes and entities"
  },
  {
+  "name": "nova.stats",
+  "kind": "function",
+  "signature": "nova.stats() -> { fps, lua_ms, render_ms, draws, triangles, sprites, memory_kb, entities, scenery }",
+  "doc": "How the last frame went, for an on-screen profiler: frames a second, what your scripts took and what drawing took (milliseconds), draw calls, triangles and sprites drawn, the scripts' memory (KB), live entities and static scenery pieces.",
+  "group": "Scenes and entities"
+ },
+ {
   "name": "nova.collision",
   "kind": "function",
   "signature": "nova.collision{ plane = \"xz\", cell = 4 }",
