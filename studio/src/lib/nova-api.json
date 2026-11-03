@@ -1,5 +1,40 @@
 [
  {
+  "name": "nova.ui.row",
+  "kind": "function",
+  "signature": "nova.ui.row{ count, w, h, gap, y [, x, width] } -> list of { x, y, w, h }",
+  "doc": "`count` rectangles w by h in a row, `gap` apart, centred across the view (or across `width`, or starting at `x`); `y` is the top (centred when left out).",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.ui.column",
+  "kind": "function",
+  "signature": "nova.ui.column{ count, w, h, gap [, x, y] } -> list of { x, y, w, h }",
+  "doc": "`count` rectangles w by h in a column, `gap` apart, centred down the view (or from `y`), at `x` (centred when left out).",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.ui.hit",
+  "kind": "function",
+  "signature": "nova.ui.hit(rect) or nova.ui.hit(x, y, w, h) -> boolean",
+  "doc": "Is the pointer (the mouse, or the first finger) over the rectangle?",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.ui.clicked",
+  "kind": "function",
+  "signature": "nova.ui.clicked(rect) -> boolean",
+  "doc": "Did the pointer go down on the rectangle in this step: a click or a tap?",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.ui.choose",
+  "kind": "function",
+  "signature": "nova.ui.choose{ rects, current [, vertical] } -> chosen, accepted, moved",
+  "doc": "A choice among rectangles (cards, menu rows) by the d-pad or arrow keys (up and down with `vertical`) or the pointer: moving the pointer over one chooses it; a click on it, or A or start, accepts. `moved` says the choice changed.",
+  "group": "Drawing"
+ },
+ {
   "name": "nova.sprite",
   "kind": "function",
   "signature": "nova.sprite(id, x, y [, opts])",

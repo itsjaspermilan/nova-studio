@@ -735,6 +735,78 @@ function cam3.ground_point(sx, sy, height)
   return ox + dx * t, oz + dz * t
 end
 
+-- ------------------------------------------------------------------ interface layout and hit areas
+-- Rectangles are { x, y, w, h } in the game's units (the ones nova.view() measures). The pointer is the mouse or the first
+-- finger, as the current step sees it.
+local ui = nova.ui
+
+local function rect_of(a, b, c, d)
+  if type(a) == "table" then return a.x, a.y, a.w, a.h end
+  return a, b, c, d
+end
+
+--- `count` rectangles of size w x h in a row, `gap` apart, centred across the view (or across `width`, or starting at `x`).
+--- `y` is the top (centred vertically when left out). Returns the list.
+function ui.row(o)
+  local vw, vh = nova.view()
+  local n, w, h, gap = o.count, o.w, o.h, o.gap or 0
+  local total = n * w + (n - 1) * gap
+  local x0 = o.x or (((o.width or vw) - total) / 2)
+  local y = o.y or (vh - h) / 2
+  local out = {}
+  for i = 1, n do out[i] = { x = x0 + (i - 1) * (w + gap), y = y, w = w, h = h } end
+  return out
+end
+
+--- `count` rectangles of size w x h in a column, `gap` apart, centred down the view (or from `y`), across at `x` (centred when left out).
+function ui.column(o)
+  local vw, vh = nova.view()
+  local n, w, h, gap = o.count, o.w, o.h, o.gap or 0
+  local total = n * h + (n - 1) * gap
+  local y0 = o.y or ((vh - total) / 2)
+  local x = o.x or (vw - w) / 2
+  local out = {}
+  for i = 1, n do out[i] = { x = x, y = y0 + (i - 1) * (h + gap), w = w, h = h } end
+  return out
+end
+
+--- Is the pointer over the rectangle (a table, or x, y, w, h)?
+function ui.hit(a, b, c, d)
+  local p = nova.input.pointer()
+  if not p.present then return false end
+  local x, y, w, h = rect_of(a, b, c, d)
+  return p.x >= x and p.x < x + w and p.y >= y and p.y < y + h
+end
+
+--- Did the pointer go down on the rectangle in this step (a click or a tap)?
+function ui.clicked(a, b, c, d)
+  return nova.input.pointer().pressed and ui.hit(a, b, c, d)
+end
+
+--- A choice among rectangles (cards, menu rows), by the d-pad or arrow keys, or the pointer. `o.rects` is the list, `o.current`
+--- the one chosen now, `o.vertical` for a column (up and down move it instead of left and right). Moving the pointer over one
+--- chooses it; a click on it, or A or start, accepts. Returns `chosen, accepted, moved` (moved: the choice changed).
+function ui.choose(o)
+  local rects, n = o.rects, #o.rects
+  local i = o.current or 1
+  local back, forward = "left", "right"
+  if o.vertical then back, forward = "up", "down" end
+  if nova.input.pressed(back) then i = (i - 2) % n + 1 end
+  if nova.input.pressed(forward) then i = i % n + 1 end
+  local accepted = nova.input.pressed("a") or nova.input.pressed("start")
+  local p = nova.input.pointer()
+  if p.present and (p.dx ~= 0 or p.dy ~= 0 or p.pressed) then
+    for k = 1, n do
+      local r = rects[k]
+      if p.x >= r.x and p.x < r.x + r.w and p.y >= r.y and p.y < r.y + r.h then
+        i = k
+        if p.pressed then accepted = true end
+      end
+    end
+  end
+  return i, accepted, i ~= (o.current or 1)
+end
+
 local function spawn(what, x, y, props)
   local cls = finalize(resolve(what, "entity"))
   local e = setmetatable({}, cls)

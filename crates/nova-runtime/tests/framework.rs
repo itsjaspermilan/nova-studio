@@ -2089,3 +2089,97 @@ fn the_pointer_reaches_each_step_once_and_the_mouse_can_be_locked() {
     );
     assert_eq!(g.take_grab_request(), None, "once");
 }
+
+/// Runs a scene whose update calls `body` every step, with the pointer and keys of each frame given, and returns the log of each.
+fn ui_frames(body: &str, frames: &[(Option<(f32, f32, bool, bool)>, &[&str])]) -> Vec<Vec<String>> {
+    use nova_runtime::actions::{InputFrame, PointerFrame};
+    let mut g = project(vec![
+        (
+            "scenes/s.lua",
+            lua(&format!(
+                "local S = nova.scene {{}}\nfunction S:enter() self.rects = nova.ui.row {{ count = 3, w = 200, h = 100, gap = 20, y = 50 }}; self.pick = 1 end\nfunction S:update(dt)\n{body}\nend\nreturn S"
+            )),
+        ),
+        ("main.lua", lua("nova.start('s')")),
+    ]);
+    steps(&mut g, 2);
+    g.take_log();
+    frames
+        .iter()
+        .map(|(pointer, keys)| {
+            let p = match pointer {
+                Some((x, y, moved, pressed)) => PointerFrame {
+                    present: true,
+                    x: *x,
+                    y: *y,
+                    dx: if *moved { 3.0 } else { 0.0 },
+                    pressed: *pressed,
+                    down: *pressed,
+                    ..Default::default()
+                },
+                None => PointerFrame::default(),
+            };
+            g.update_input(
+                1.0 / 60.0,
+                0.0,
+                [960.0, 540.0],
+                &InputFrame {
+                    sources: keys.iter().map(|k| (k.to_string(), 1.0)).collect(),
+                    pointer: p,
+                    ..Default::default()
+                },
+            );
+            assert!(g.error.is_none(), "{:?}", g.error);
+            g.take_log()
+        })
+        .collect()
+}
+
+#[test]
+fn rows_and_columns_lay_out_rectangles_and_the_pointer_hits_them() {
+    let g = project(vec![
+        (
+            "scenes/s.lua",
+            lua(
+                "local S = nova.scene {}\nfunction S:enter()\n  local r = nova.ui.row { count = 3, w = 200, h = 100, gap = 20, y = 50 }\n  nova.log(string.format('%d %d %d %d', r[1].x, r[2].x, r[3].x, r[3].y))\n  local c = nova.ui.column { count = 2, w = 300, h = 60, gap = 10 }\n  nova.log(string.format('%d %d %d', c[1].x, c[1].y, c[2].y))\n  local m = nova.ui.row { count = 2, w = 100, h = 40, gap = 0, x = 10, y = 0 }\n  nova.log(string.format('%d %d', m[1].x, m[2].x))\nend\nreturn S",
+            ),
+        ),
+        ("main.lua", lua("nova.start('s')")),
+    ]);
+    let mut g = g;
+    steps(&mut g, 1);
+    // (the view is 960 x 540: a row of 3 x 200 + 2 x 20 = 640 starts at 160; two 60 high rows and a gap of 10 are 130 tall, so start at 205)
+    assert_eq!(g.take_log(), ["160 380 600 50", "330 205 275", "10 110"]);
+}
+
+#[test]
+fn a_choice_moves_with_keys_and_the_pointer_and_is_accepted_by_a_key_or_a_click() {
+    let logs = ui_frames(
+        "local i, accepted, moved = nova.ui.choose { rects = self.rects, current = self.pick }\n\
+         self.pick = i\n\
+         if moved or accepted then nova.log(i .. (accepted and ' accepted' or '') .. (moved and ' moved' or '')) end\n\
+         if nova.ui.hit(self.rects[3]) then nova.log('over 3') end\n\
+         if nova.ui.clicked(self.rects[2]) then nova.log('clicked 2') end",
+        &[
+            (None, &["key:ArrowRight"]), // 1 -> 2
+            (None, &[]),
+            (None, &["key:ArrowRight"]), // 2 -> 3
+            (None, &[]),
+            (None, &["key:ArrowRight"]), // wraps to 1
+            (None, &[]),
+            (None, &["key:Enter"]),                   // accepted (start)
+            (Some((620.0, 90.0, true, false)), &[]), // the pointer moves onto card 3: chosen, and it is over 3
+            (Some((620.0, 90.0, false, false)), &[]), // resting there changes nothing, but is still over it
+            (Some((400.0, 90.0, true, true)), &[]), // a click on card 2: chosen, accepted, clicked
+            (Some((5.0, 5.0, true, true)), &[]),    // a click on nothing does nothing
+        ],
+    );
+    assert_eq!(logs[0], ["2 moved"]);
+    assert_eq!(logs[2], ["3 moved"]);
+    assert_eq!(logs[4], ["1 moved"]);
+    assert_eq!(logs[6], ["1 accepted"]);
+    assert_eq!(logs[7], ["3 moved", "over 3"]);
+    assert_eq!(logs[8], ["over 3"]);
+    assert_eq!(logs[9], ["2 accepted moved", "clicked 2"]);
+    assert!(logs[10].is_empty(), "{:?}", logs[10]);
+}
