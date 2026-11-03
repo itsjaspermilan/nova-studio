@@ -1714,3 +1714,34 @@ fn rumble_is_queued_for_the_host_and_mistakes_are_explained() {
         assert!(e.contains(expected), "{script}: '{e}'");
     }
 }
+
+#[test]
+fn next_source_reports_each_press_once() {
+    let mut g = project(vec![(
+        "main.lua",
+        lua(
+            "function update(dt)\n  local s = nova.input.next_source()\n  if s then nova.log(s) end\nend",
+        ),
+    )]);
+    let press = |g: &mut Game, id: Option<&str>| {
+        let input = nova_runtime::actions::InputFrame {
+            last_source: id.map(str::to_string),
+            ..Default::default()
+        };
+        g.update_input(1.0 / 60.0, 0.0, [960.0, 540.0], &input);
+    };
+    press(&mut g, None);
+    assert!(g.take_log().is_empty(), "nothing pressed yet");
+    press(&mut g, Some("key:KeyZ"));
+    assert_eq!(g.take_log(), ["key:KeyZ"]);
+    press(&mut g, None);
+    assert!(g.take_log().is_empty(), "reported once");
+    press(&mut g, Some("key:KeyZ"));
+    assert_eq!(
+        g.take_log(),
+        ["key:KeyZ"],
+        "pressing the same key again counts"
+    );
+    press(&mut g, Some("pad:south"));
+    assert_eq!(g.take_log(), ["pad:south"]);
+}

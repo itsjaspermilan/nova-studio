@@ -259,6 +259,13 @@
   "group": "Input"
  },
  {
+  "name": "nova.input.next_source",
+  "kind": "function",
+  "signature": "nova.input.next_source() -> string | nil",
+  "doc": "The source pressed since you last asked (each press is reported once), such as \"key:KeyZ\" or \"pad:south\", or nil. For \"press the new key\" screens: call it once when you start listening, to drop the press that opened the screen, then every frame.",
+  "group": "Input"
+ },
+ {
   "name": "nova.input.rumble",
   "kind": "function",
   "signature": "nova.input.rumble(strength, seconds) or nova.input.rumble{ strong, weak, seconds, pad }",

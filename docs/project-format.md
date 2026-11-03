@@ -243,6 +243,7 @@ inputs drive which action.
 | `nova.input.bind(name, spec)` | Rebind at run time (see below); `nova.input.reset_bindings()` undoes it. |
 | `nova.input.bindings(name)` | The sources an action uses (a list, or `{ negative, positive }` for axes). |
 | `nova.input.last_source()` | The most recently pressed source id (`"key:KeyZ"`), for "press a button to bind it" screens. |
+| `nova.input.next_source()` | The source pressed since you last asked (each press once, then `nil`): call it once to drop the press that opened your screen, then every frame until it returns something. |
 | `nova.input.rumble(strength, seconds)` | Shake a gamepad (`nova.input.rumble{ strong, weak, seconds, pad }` for the two motors and one pad). Pads that cannot rumble ignore it. |
 | `nova.time()` | Seconds since the game started. |
 | `nova.log(text)` | Write to the log. |

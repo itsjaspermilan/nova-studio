@@ -69,6 +69,8 @@ struct Shared {
     base_bindings: Bindings,
     states: ActionStates,
     last_source: Option<String>,
+    /// The newest source pressed that a script has not asked about yet (`nova.input.next_source`).
+    pending_source: Option<String>,
     fixed_steps: bool,
     view: [f32; 2],
     time: f64,
@@ -1145,6 +1147,13 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
         "last_source",
         lua.create_function(move |_, ()| Ok(s.borrow().last_source.clone()))?,
     )?;
+    // next_source(): the source pressed since the last call (and forgets it), or nil: for "press the new key" screens,
+    // which call it once when they start listening (to drop the press that opened the screen) and then every frame.
+    let s = shared.clone();
+    input.set(
+        "next_source",
+        lua.create_function(move |_, ()| Ok(s.borrow_mut().pending_source.take()))?,
+    )?;
     nova.set("input", input)?;
     // --- sound: nova.sound.* effects, nova.music.* one background track ---
     let sound = lua.create_table()?;
@@ -1789,6 +1798,7 @@ impl Game {
             base_bindings: bindings,
             states: ActionStates::default(),
             last_source: None,
+            pending_source: None,
             fixed_steps: false,
             view: [960.0, 540.0],
             time: 0.0,
@@ -2031,6 +2041,7 @@ impl Game {
                 .update(&bindings, &input.sources, &input.overrides);
             if input.last_source.is_some() {
                 sh.last_source = input.last_source.clone();
+                sh.pending_source = input.last_source.clone();
             }
             if !sh.fixed_steps {
                 sh.states.begin_step(); // without the framework every frame is one step

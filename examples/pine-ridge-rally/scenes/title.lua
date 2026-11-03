@@ -3,6 +3,7 @@
 local state = require("lib.state")
 local audio = require("lib.audio")
 local ui = require("lib.ui")
+local controls = require("lib.controls")
 local backdrop = require("lib.backdrop")
 
 local Title = nova.scene {}
@@ -57,14 +58,51 @@ function Title:update(dt)
   elseif screen == "howto" then
     if nova.input.pressed("a") or nova.input.pressed("b") or nova.input.pressed("start") then audio.sfx("menu_back"); self:go("menu") end
   elseif screen == "options" then
-    local choice, action = ui.navigate(self.choice, 5)
+    local choice, action = ui.navigate(self.choice, 6)
     self.choice = choice
     local step = (action == "right" and 0.1) or (action == "left" and -0.1) or 0
     if choice == 1 and step ~= 0 then state.music_volume = math.max(0, math.min(1, state.music_volume + step)); state.save_options(); audio.sfx("menu_move") end
     if choice == 2 and step ~= 0 then state.sfx_volume = math.max(0, math.min(1, state.sfx_volume + step)); state.save_options(); audio.sfx("menu_move") end
     if choice == 3 and (step ~= 0 or action == "accept") then state.shadows = not state.shadows; state.save_options(); audio.sfx("menu_move") end
     if choice == 4 and (step ~= 0 or action == "accept") then state.vibration = not state.vibration; state.save_options(); audio.sfx("menu_move"); if state.vibration then nova.input.rumble(0.6, 0.15) end end
-    if action == "back" or (action == "accept" and choice == 5) then audio.sfx("menu_back"); self:go("menu") end
+    if action == "accept" and choice == 5 then audio.sfx("menu_accept"); self:go("controls"); return end
+    if action == "back" or (action == "accept" and choice == 6) then audio.sfx("menu_back"); self:go("menu") end
+  elseif screen == "controls" then
+    local rows = #controls.rows
+    if self.listening then
+      -- waiting for the new key or button (it gives up after a few seconds)
+      self.listen_time = self.listen_time + dt
+      local source = nova.input.next_source()
+      if source then
+        local row = controls.rows[self.choice]
+        if controls.assign(row, source) then
+          audio.sfx("menu_accept")
+          nova.log(string.format("controls: %s %s = %s", row.action, row.side or "", controls.describe(row)))
+          self.listening = false
+        else
+          audio.sfx("menu_back")
+          self.note = "That one does not fit here."
+        end
+      elseif self.listen_time > 6 then
+        self.listening = false
+      end
+      return
+    end
+    self.note = nil
+    local choice, action = ui.navigate(self.choice, rows + 2)
+    self.choice = choice
+    if action == "accept" and choice <= rows then
+      audio.sfx("menu_accept")
+      self.listening, self.listen_time = true, 0
+      nova.input.next_source() -- (drop the press that chose this row)
+    elseif action == "accept" and choice == rows + 1 then
+      audio.sfx("menu_accept")
+      controls.reset()
+      nova.log("controls: back to the defaults")
+    elseif action == "back" or (action == "accept" and choice == rows + 2) then
+      audio.sfx("menu_back")
+      self:go("options")
+    end
   elseif screen == "select" then
     local choice, action = ui.navigate(self.choice, 5)
     self.choice = choice
@@ -120,8 +158,19 @@ function Title:draw_ui()
       { "Sound volume", string.format("< %d%% >", math.floor(state.sfx_volume * 100 + 0.5)) },
       { "Shadows", state.shadows and "< On >" or "< Off >" },
       { "Vibration", state.vibration and "< On >" or "< Off >" },
+      "Controls...",
       "Back",
     }, self.choice, 180, { width = 420 })
+  elseif screen == "controls" then
+    ui.center("CONTROLS", 24, 44, ui.color.gold, { font = "comic" })
+    local items = {}
+    for i, row in ipairs(controls.rows) do
+      items[i] = { row.label, (self.listening and self.choice == i) and "press a key or button..." or controls.describe(row) }
+    end
+    items[#items + 1] = "Back to the defaults"
+    items[#items + 1] = "Back"
+    ui.menu(items, self.choice, 84, { width = 700, row = 38 })
+    ui.center(self.note or "A: change     B: back     keys and buttons are changed separately", 492, 14, self.note and ui.color.red or ui.color.dim)
   elseif screen == "select" then
     local info = state.current_track()
     ui.center("CHOOSE YOUR RACE", 30, 44, ui.color.gold, { font = "comic" })

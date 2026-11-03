@@ -194,3 +194,54 @@ fn a_whole_race_on_harbour_lights_ends_on_the_results_screen() {
         "nobody got stuck: {log:?}"
     );
 }
+
+/// The controls screen: pick a row, press the new key, and the action uses it (and not the old key) from then on; the
+/// gamepad entries stay; "back to the defaults" undoes it.
+#[test]
+fn the_controls_screen_remaps_a_key_and_can_put_the_defaults_back() {
+    let mut g = load();
+    for _ in 0..30 {
+        frame(&mut g, &[]);
+    }
+    tap(&mut g, "key:Enter"); // the title screen
+    tap(&mut g, "key:ArrowDown");
+    tap(&mut g, "key:ArrowDown");
+    tap(&mut g, "key:Enter"); // Options
+    for _ in 0..4 {
+        tap(&mut g, "key:ArrowDown");
+    }
+    tap(&mut g, "key:Enter"); // Controls...
+    g.take_log();
+    tap(&mut g, "key:Enter"); // the first row, Accelerate: now listening
+    // a press while listening: the key I, which also reaches the script as the newest source
+    let input = InputFrame {
+        sources: [("key:KeyI".to_string(), 1.0)].into_iter().collect(),
+        last_source: Some("key:KeyI".into()),
+        ..Default::default()
+    };
+    g.update_input(DT, 0.0, [960.0, 540.0], &input);
+    for _ in 0..4 {
+        frame(&mut g, &[]);
+    }
+    let log = g.take_log();
+    let line = log
+        .iter()
+        .find(|l| l.contains("controls: throttle"))
+        .unwrap_or_else(|| panic!("the new key was taken: {log:?}"));
+    assert!(line.contains('I'), "{line}");
+    assert!(!line.contains("Up, W"), "the old keys are replaced: {line}");
+    assert!(
+        line.contains("R2") || line.contains('A'),
+        "the gamepad entries stay: {line}"
+    );
+    // down to "Back to the defaults" (after the eight rows) and choose it
+    for _ in 0..8 {
+        tap(&mut g, "key:ArrowDown");
+    }
+    tap(&mut g, "key:Enter");
+    let log = g.take_log();
+    assert!(
+        log.iter().any(|l| l.contains("back to the defaults")),
+        "{log:?}"
+    );
+}

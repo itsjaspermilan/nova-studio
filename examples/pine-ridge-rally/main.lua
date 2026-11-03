@@ -3,4 +3,5 @@
 local state = require("lib.state")
 
 state.load()
+require("lib.controls").load() -- the keys and buttons the player chose
 nova.start("title")
