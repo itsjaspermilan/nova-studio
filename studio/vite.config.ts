@@ -8,7 +8,8 @@ export default defineConfig({
   // (the examples folder next to the studio may be read in development, to try the editors on real projects)
   server: { port: 1420, strictPort: true, host: "127.0.0.1", fs: { allow: [".."] } },
   // (component tests mount Svelte components in jsdom, which needs the browser build of Svelte)
-  resolve: { conditions: process.env.VITEST ? ["browser"] : [] },
+  // (only while testing: setting `conditions` replaces Vite's own, and the app needs those)
+  ...(process.env.VITEST ? { resolve: { conditions: ["browser"] } } : {}),
   build: { target: "es2022", sourcemap: false },
   test: { environment: "node", include: ["src/**/*.test.ts", "mcp/**/*.test.ts"], setupFiles: ["src/test/dom.ts"] },
 });

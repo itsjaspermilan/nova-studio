@@ -17,7 +17,7 @@ the real protocol (`--list` shows them), which is how this repository's own game
 | --- | --- |
 | `project_create`, `project_info` | `nova.json` and `main.lua`; a listing grouped like the resource tree |
 | `read_file`, `write_file` | Lua and other text files |
-| `model_write` | `models/<name>.model.json` (the model editor's file) and `models/<name>.glb` |
+| `model_write` | `models/<name>.model.json` (the model editor's file) and `models/<name>.glb`; `bend: true` gives free-mesh limbs automatic weights, so they bend with the parts around them |
 | `model_preview` | a picture of a model from any angle, rendered by the game's own renderer |
 | `sfx_write` | `sounds/<name>.sfx.json` and `.wav` from the sound editor's synth |
 | `song_write` | `music/<name>.song.json` and the streamed `.ogg` |

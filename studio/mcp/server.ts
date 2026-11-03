@@ -14,7 +14,8 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { exportGlb } from "../src/lib/glb";
 import { bakeAll, fitPicture } from "../src/lib/model-uv";
-import { countCubes, parseModel, serializeModel, walk } from "../src/lib/model-doc";
+import { countCubes, cubeAt, parseModel, serializeModel, setCube, walk } from "../src/lib/model-doc";
+import { autoWeights } from "../src/lib/model-skin";
 import { meshOf } from "../src/lib/model-mesh";
 import { encodePng } from "../src/lib/png-encode";
 import { newRaster } from "../src/lib/pixels";
@@ -126,14 +127,33 @@ tool(
   "Write a 3D model: `models/<name>.model.json` (what the studio's model editor edits) and the `models/<name>.glb` the game loads. `model` is the studio's model document: " +
     '{ "version": 1, "scale": 0.0625, "parts": [ { "name", "origin": [x,y,z], "rotation": [degrees], "cubes": [ { "shape": "box|wedge|pyramid|cylinder|cone|sphere|mesh", "from": [x,y,z], "size": [w,h,d], "color": "#rrggbb", "faces"?: {...}, "rotation"?, "segments"?, "smooth"? } ], "children": [ ...parts ] } ], "clips"?: [...], "texture"?: { "size": [w,h] } }. ' +
     "Units: 16 model units = 1 world unit at the default scale. y is up. Parts turn about their origin (wheels, doors). See docs/project-format.md.",
-  { name: { type: "string" }, model: { type: ["object", "string"], description: "The model document (an object, or its JSON as text)." } },
+  {
+    name: { type: "string" },
+    model: { type: ["object", "string"], description: "The model document (an object, or its JSON as text)." },
+    bend: { type: "boolean", description: 'Give every free-mesh shape that has no skin automatic weights, as the editor\'s "Bend with the parts around it" button does: the shape then bends with its part, the part above it and the parts below it when they are posed or animated (a sleeve at the elbow). Make such limbs as meshes with several rings of points across the joint.' },
+  },
   ["name", "model"],
   (a) => {
     const root = projectRoot(a);
     const name = safeName(a.name, "Model");
     const parsed = parseModel(typeof a.model === "string" ? a.model : JSON.stringify(a.model));
     if (!parsed.ok) throw new Error(`the model is not valid: ${parsed.error}`);
-    const doc = parsed.doc;
+    let doc = parsed.doc;
+    let skinned = 0;
+    if (a.bend) {
+      for (const { part, parts } of walk(doc)) {
+        for (let i = 0; i < part.cubes.length; i++) {
+          const path = { parts, cube: i };
+          const cube = cubeAt(doc, path);
+          if (!cube || cube.shape !== "mesh" || cube.skin) continue;
+          const skin = autoWeights(doc, path);
+          if (skin) {
+            doc = setCube(doc, path, { ...cube, skin });
+            skinned++;
+          }
+        }
+      }
+    }
     // make everything first, so a model that cannot be exported leaves nothing half written
     const image = doc.texture ? fitPicture(doc, bakeAll(doc)) : undefined;
     const glb = exportGlb(doc, image);
@@ -142,7 +162,7 @@ tool(
     put(root, `models/${name}.glb`, glb);
     let triangles = 0;
     for (const { part } of walk(doc)) for (const c of part.cubes) triangles += meshOf(c).indices.length / 3;
-    return `models/${name}.model.json and models/${name}.glb: ${walk(doc).length} parts, ${countCubes(doc)} shapes, ${triangles} triangles, ${glb.length} bytes. In Lua: nova.model("${name}", x, y, z)`;
+    return `models/${name}.model.json and models/${name}.glb: ${walk(doc).length} parts, ${countCubes(doc)} shapes, ${triangles} triangles${skinned ? `, ${skinned} bending` : ""}, ${glb.length} bytes. In Lua: nova.model("${name}", x, y, z)`;
   },
 );
 

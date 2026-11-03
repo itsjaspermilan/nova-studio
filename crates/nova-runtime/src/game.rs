@@ -1679,13 +1679,19 @@ impl Game {
         for asset in project.assets_of(AssetKind::Model) {
             let bytes = vfs.read(&asset.id)?;
             let mesh = model::import_glb(&bytes).map_err(|e| format!("{}: {e}", asset.id))?;
+            // The same file as separate parts, used when a script turns parts or plays a clip. That importer handles skins and
+            // animation clips, so the whole-model importer's notes that it ignores them do not apply when it succeeds.
+            let as_parts = model::import_parts(&bytes);
             for note in &mesh.notes {
-                warnings.push(format!("{}: {note}", asset.id));
+                let handled = as_parts.is_ok()
+                    && (note == "animations are ignored" || note == "skins/bones are ignored");
+                if !handled {
+                    warnings.push(format!("{}: {note}", asset.id));
+                }
             }
             meshes.push((asset.id.clone(), mesh));
             model_ids.push(asset.id.clone());
-            // The same file as separate parts, used only when a script turns individual parts.
-            if let Ok(imported) = model::import_parts(&bytes) {
+            if let Ok(imported) = as_parts {
                 model_clips.insert(asset.id.clone(), imported.clips);
                 if !imported.colliders.is_empty() {
                     model_colliders.insert(asset.id.clone(), imported.colliders);

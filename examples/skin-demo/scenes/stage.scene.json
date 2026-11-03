@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "background": [140, 190, 235],
+  "camera": { "eye": [0, 1.6, 5.5], "target": [0, 0.9, 0], "fov": 45 },
+  "objects": [
+    { "kind": "walker", "name": "bendy", "x": -1.2, "y": 0, "z": 0 },
+    { "kind": "walker_stiff", "name": "stiff", "x": 1.2, "y": 0, "z": 0 }
+  ],
+  "sky": { "top": [90, 150, 225], "horizon": [200, 225, 240] }
+}

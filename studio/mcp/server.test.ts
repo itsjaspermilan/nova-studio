@@ -41,6 +41,27 @@ describe("the Nova MCP server", () => {
     expect(existsSync(join(dir, "models/bad.glb"))).toBe(false);
   });
 
+  it("gives a free-mesh limb automatic weights with bend, so it bends with its parts", () => {
+    // an arm part holding a tube of points across the elbow, and a forearm part hanging from it
+    const verts: number[][] = [];
+    for (const y of [0, -3, -6, -9, -12]) for (const [x, z] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) verts.push([x, y, z]);
+    const polys = [];
+    for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) polys.push({ v: [r * 4 + k, r * 4 + ((k + 1) % 4), (r + 1) * 4 + ((k + 1) % 4), (r + 1) * 4 + k] });
+    const arm = {
+      version: 1, scale: 0.0625,
+      parts: [{ name: "arm", origin: [0, 12, 0], rotation: [0, 0, 0], cubes: [{ shape: "mesh", from: [-1, -12, -1], size: [2, 12, 2], color: "#336699", verts, polys }], children: [{ name: "forearm", origin: [0, -6, 0], rotation: [0, 0, 0], cubes: [], children: [] }] }],
+    };
+    expect(text(use("model_write", { name: "stiff", model: arm }))).not.toMatch(/bending/);
+    expect(JSON.parse(readFileSync(join(dir, "models/stiff.model.json"), "utf8")).parts[0].cubes[0].skin).toBeUndefined();
+    expect(text(use("model_write", { name: "bendy", model: arm, bend: true }))).toMatch(/1 bending/);
+    const written = JSON.parse(readFileSync(join(dir, "models/bendy.model.json"), "utf8")).parts[0].cubes[0];
+    expect(written.skin.bones).toEqual(expect.arrayContaining(["arm", "arm/forearm"]));
+    expect(written.skin.weights).toHaveLength(20);
+    // the glb carries a skin
+    const glb = readFileSync(join(dir, "models/bendy.glb"));
+    expect(glb.toString("latin1")).toContain("JOINTS_0");
+  });
+
   it("writes a sound effect and a song", () => {
     use("sfx_write", { name: "beep", preset: "coin", params: { freq: 600 } });
     expect(readFileSync(join(dir, "sounds/beep.wav")).subarray(0, 4).toString()).toBe("RIFF");

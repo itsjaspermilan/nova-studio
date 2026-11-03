@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "ground",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "name": "grass", "from": [-800, -4, -800], "size": [1600, 4, 1600], "color": "#6f9a58" },
+        { "name": "paving", "from": [-48, 0, -48], "size": [96, 0.6, 96], "color": "#a8a08c" }
+      ],
+      "children": []
+    }
+  ]
+}
