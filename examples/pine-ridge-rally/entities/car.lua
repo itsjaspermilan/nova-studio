@@ -6,6 +6,12 @@ local fx = require("lib.fx")
 local Car = nova.entity { model = "car", tags = { "car" } }
 
 local WHEEL_RADIUS = 0.34
+-- A five-speed gearbox: the speed each gear runs out at (m/s, at the car's normal top speed), and how hard it pulls.
+-- Low gears pull hard and run out fast; fifth is long and gentle.
+local GEARS = { { top = 13, pull = 1.35 }, { top = 22, pull = 1.12 }, { top = 30, pull = 0.97 }, { top = 38, pull = 0.86 }, { top = 44, pull = 0.78 } }
+local UPSHIFT, DOWNSHIFT = 0.94, 0.45   -- changes up above this share of the gear's top speed, down below that one
+local SHIFT_TIME = 0.17                 -- seconds with no pull while the clutch is in
+local IDLE_REV = 0.16
 -- Where the wheels are, from the middle of the car: forwards, and to the left (+x is the left side when facing +z).
 local WHEELS = {
   wheel_fl = { fwd = 1.375, left = -1.06 }, wheel_fr = { fwd = 1.375, left = 1.06 },
@@ -36,8 +42,11 @@ function Car:create()
   self.steer_visual = 0
   self.roll, self.pitch = 0, 0
   self.surface = "road"        -- "road", "dirt" or "rough" (off the track)
-  self.power = 17              -- m/s squared at a standstill
-  self.top = 47                -- m/s on the flat
+  self.power = 15              -- m/s squared in first, before the gear's pull is applied
+  self.top = 44                -- m/s on the flat
+  self.gear = 1
+  self.shift_time = 0          -- while above 0 the clutch is in and the car is not pulling
+  self.rev = IDLE_REV          -- the engine's revs, 0 to 1, for the sound and the rev counter
   self.brake_power = 30
   self.enabled = false         -- cars sit still until the race starts
   self.ctl = { throttle = 0, brake = 0, steer = 0, handbrake = false }
@@ -87,9 +96,25 @@ function Car:drive(dt)
   vf = self.velx * sinh + self.velz * cosh
   local vl = self.velx * cosh - self.velz * sinh
 
+  -- the gearbox changes by itself: up near the end of a gear, down when the revs fall away
+  local scale = self.top / 44
+  self.shift_time = math.max(0, self.shift_time - dt)
+  local gear = GEARS[self.gear]
+  local share = math.max(0, vf) / (gear.top * scale)
+  if live and self.shift_time <= 0 then
+    if share > UPSHIFT and self.gear < #GEARS and c.throttle > 0 then
+      self.gear, self.shift_time, self.shifted = self.gear + 1, SHIFT_TIME, "up"
+    elseif share < DOWNSHIFT and self.gear > 1 and vf > 0 then
+      self.gear, self.shift_time, self.shifted = self.gear - 1, SHIFT_TIME * 0.5, "down"
+    end
+    gear = GEARS[self.gear]
+    share = math.max(0, vf) / (gear.top * scale)
+  end
+
   if live then
-    if c.throttle > 0 then
-      local push = vf < 0 and self.power * 1.4 or self.power * math.max(0, 1 - vf / top)
+    if c.throttle > 0 and self.shift_time <= 0 then
+      -- the pull fades towards the end of the gear; at the limiter it stops
+      local push = vf < 0 and self.power * 1.4 or self.power * gear.pull * math.max(0, 1 - 0.6 * share * share) * (share >= 1 and 0 or 1)
       vf = vf + push * c.throttle * dt
     end
     if c.brake > 0 then
@@ -125,6 +150,12 @@ function Car:drive(dt)
       end
     end
   end
+
+  -- the engine's revs follow the road speed through the current gear; they drop during a change, and flare with the throttle
+  local want = IDLE_REV + (1 - IDLE_REV) * math.min(1, share) + (live and c.throttle > 0 and 0.06 or 0)
+  if self.shift_time > 0 then want = want - 0.22 end
+  if share >= 1 and live and c.throttle > 0 then want = want - (math.sin(nova.time() * 45) > 0 and 0.05 or 0) end  -- the limiter bounces
+  self.rev = self.rev + (want - self.rev) * math.min(1, dt * (self.shift_time > 0 and 9 or 14))
 
   -- the suspension: the wheels follow the road, the body floats on springs and leans with the forces on it
   self:suspension(dt, vf, (vf - self.last_vf) / dt, (self.yaw_rate or 0) * vf)

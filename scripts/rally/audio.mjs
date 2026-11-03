@@ -18,6 +18,8 @@ const sfx = {
   engine_loop: { params: { wave: "saw", freq: 100, attack: 0, sustain: 0.5, decay: 0, lowpass: 1500, highpass: 50, volume: 0.55 } },
   gravel_loop: { params: { wave: "noise", freq: 900, attack: 0, sustain: 0.5, decay: 0, lowpass: 3200, highpass: 400, volume: 0.5 } },
   skid_loop: { params: { wave: "noise", freq: 1500, attack: 0, sustain: 0.5, decay: 0, lowpass: 9000, highpass: 1800, volume: 0.3 } },
+  // a change of gear: a short chuff of air and a click
+  shift: { params: { wave: "noise", freq: 700, attack: 0, sustain: 0.015, decay: 0.07, punch: 0.5, lowpass: 3500, highpass: 500, volume: 0.45 } },
   bump: { params: { wave: "noise", freq: 200, slide: -1.2, attack: 0, sustain: 0.03, decay: 0.28, punch: 0.6, lowpass: 900, volume: 0.7 } },
   whoosh: { params: { wave: "noise", freq: 1200, attack: 0.05, sustain: 0.05, decay: 0.3, lowpass: 3000, highpass: 600, volume: 0.25 } },
   pause: { preset: "blip", params: { freq: 440, arpSemitones: -5, arpTime: 0.05, volume: 0.4 } },

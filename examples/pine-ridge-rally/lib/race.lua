@@ -309,7 +309,12 @@ function race.define(config)
     -- the sound of every engine that is close enough to hear
     for _, car in ipairs(self.cars) do
       if car.engine then
-        local rev = math.min(1, math.abs(car.speed) / 42 * 0.8 + car.ctl.throttle * 0.2)
+        local rev = math.max(0, math.min(1, car.rev))
+        if car.shifted then
+          -- a change of gear: a short chuff, and a pop of the exhaust on the way up near the top of the rev range
+          if car.is_player then audio.sfx("shift", { volume = car.shifted == "up" and 0.5 or 0.3, pitch = car.shifted == "up" and 1.0 or 1.3 }) end
+          car.shifted = nil
+        end
         if car.is_player then
           car.engine:update(dt, rev, car.ctl.throttle, car.surface == "rough" and math.abs(car.speed) > 3, car.slip)
         else
@@ -387,6 +392,7 @@ function race.define(config)
     ui.panel(w - 200, 448, 180, 76, 150)
     ui.right(tostring(kmh), w - 74, 454, 52, ui.color.white, { font = "display" })
     ui.text(w - 68, 488, "km/h", 18, ui.color.dim)
+    ui.text(w - 190, 456, p.speed < -0.5 and "R" or (p.gear or 1) .. "", 30, p.shift_time > 0 and ui.color.dim or ui.color.gold, { font = "display" })
     local fill = math.min(1, math.abs(p.speed) / 44)
     nova.ui.rect(w - 190, 508, 160, 6, { 255, 255, 255, 50 })
     nova.ui.rect(w - 190, 508, 160 * fill, 6, fill > 0.85 and { 239, 68, 68 } or { 245, 158, 11 })
