@@ -41,6 +41,7 @@
   let brushCount = $state(3);
   let vary = $state(true);
   let erasing = $state(false);
+  let mapView = $state(false); // look straight down on a 3D level instead of orbiting it
   let onlyKind = $state(true);
   function eraseAt(at: [number, number], first: boolean) {
     const kinds = onlyKind && placing ? new Set([placing]) : null;
@@ -662,6 +663,7 @@
         <span class="spacer"></span>
         <button class:on={view === "2d"} onclick={() => (view = "2d")} title="The flat level">2D</button>
         <button class:on={view === "3d"} onclick={() => (view = "3d")} title="Objects with 3D models, and the game camera">3D</button>
+        {#if view === "3d"}<button class:on={mapView} onclick={() => (mapView = !mapView)} title="Look straight down on the level, like a map: the same tools work, and it is the best way to place scenery">Map</button>{/if}
         <button class="ghost" onclick={onjson}>JSON</button>
       </div>
       {#if view === "3d"}
@@ -673,6 +675,7 @@
           onselect={(r) => (selected = r)}
           onmove={(r, p) => edit(moveTo3(scene, r, p))}
           onready={(v) => (view3 = v)}
+          top={mapView}
           {placing}
           {erasing}
           onerase={eraseAt}
@@ -701,6 +704,7 @@
           <div class="flat3d">
             <p><strong>This level is 3D.</strong> Its objects stand at x, y (up) and z, and the game has a 3D camera, so the flat view cannot show them where they are.</p>
             <button class="primary" onclick={() => (view = "3d")}>Open the 3D view</button>
+            <button onclick={() => ((view = "3d"), (mapView = true))}>Open it as a map</button>
           </div>
         {/if}
       </div>

@@ -18,6 +18,7 @@
     onmove,
     onready,
     placing = null,
+    top = false,
     erasing = false,
     brushRadius = 0,
     brushCount = 1,
@@ -34,6 +35,8 @@
     onmove: (ref: Ref, p: [number, number, number]) => void;
     /// Hands the parent a way to read the view, for "use this view as the game camera".
     onready: (view: { current: () => Camera3 }) => void;
+    /// Look straight down on the level, like a map (the same tools work), instead of orbiting it.
+    top?: boolean;
     /// The kind of object being placed (clicks and drags on the ground add it), or null.
     placing?: string | null;
     /// Metres of ground a stroke paints over, and how many objects each step of a stroke adds.
@@ -51,7 +54,11 @@
   let canvas: HTMLCanvasElement | undefined = $state();
   let renderer: THREE.WebGLRenderer | undefined;
   let three: THREE.Scene | undefined;
-  let camera: THREE.PerspectiveCamera | undefined;
+  // two cameras: the orbit view's, and a map's (straight down, +x to the right, -z up the screen); `camera` is the one in use
+  let perspective: THREE.PerspectiveCamera | undefined;
+  let ortho: THREE.OrthographicCamera | undefined;
+  let camera: THREE.PerspectiveCamera | THREE.OrthographicCamera | undefined;
+  let mapSpan = 200; // metres across the map's shorter side at zoom 1
   let controls: OrbitControls | undefined;
   let gizmo: TransformControls | undefined;
   let content: THREE.Group | undefined;
@@ -74,7 +81,10 @@
     renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     three = new THREE.Scene();
-    camera = new THREE.PerspectiveCamera(50, 1, 0.1, 2000);
+    perspective = new THREE.PerspectiveCamera(50, 1, 0.1, 2000);
+    camera = perspective;
+    ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 6000);
+    ortho.up.set(0, 0, -1);
     // Start by looking at what the scene holds: its objects, and the game's camera when it has one.
     const points = (scene.objects ?? []).map((o) => new THREE.Vector3(...positionOf(o)));
     if (scene.camera) {
@@ -84,7 +94,8 @@
     const bounds = new THREE.Box3().setFromPoints(points.length ? points : [new THREE.Vector3()]);
     const target = bounds.getCenter(new THREE.Vector3());
     const reach = Math.max(6, bounds.getSize(new THREE.Vector3()).length());
-    camera.position.copy(target).add(new THREE.Vector3(0.5, 0.6, 1).normalize().multiplyScalar(reach * 1.2));
+    perspective.position.copy(target).add(new THREE.Vector3(0.5, 0.6, 1).normalize().multiplyScalar(reach * 1.2));
+    mapSpan = Math.max(60, Math.max(bounds.max.x - bounds.min.x, bounds.max.z - bounds.min.z) * 1.15);
     // (plain listeners: the orbit and move controls hold on to the pointer, which a delegated handler can miss)
     canvas.addEventListener("pointerdown", pointerdown);
     canvas.addEventListener("pointerup", pointerup);
@@ -120,20 +131,25 @@
       const w = Math.max(50, box!.clientWidth);
       const h = Math.max(50, box!.clientHeight);
       renderer!.setSize(w, h, false);
-      camera!.aspect = w / h;
-      camera!.updateProjectionMatrix();
+      perspective!.aspect = w / h;
+      perspective!.updateProjectionMatrix();
+      const half = mapSpan / 2;
+      const o = ortho!;
+      [o.left, o.right, o.top, o.bottom] = w >= h ? [-half * (w / h), half * (w / h), half, -half] : [-half, half, half * (h / w), -half * (h / w)];
+      o.updateProjectionMatrix();
     };
     observer = new ResizeObserver(size);
     observer.observe(box);
     size();
     onready({
       current: () => ({
-        eye: round(camera!.position.toArray() as [number, number, number]),
+        eye: round(perspective!.position.toArray() as [number, number, number]),
         target: round(controls!.target.toArray() as [number, number, number]),
         fov: cameraOf(scene).fov,
       }),
     });
     rebuild();
+    applyView();
     const loop = () => {
       frameId = requestAnimationFrame(loop);
       controls!.update();
@@ -199,6 +215,27 @@
     }
     drawCamera();
     attach();
+  }
+
+  /// Switches between orbiting the level and looking straight down on it. Both look at the same spot.
+  function applyView() {
+    if (!controls || !gizmo || !perspective || !ortho) return;
+    const aim = controls.target;
+    if (top) {
+      ortho.position.set(aim.x, 2000, aim.z);
+      ortho.zoom = 1;
+      ortho.lookAt(aim);
+      camera = ortho;
+      controls.enableRotate = false;
+      controls.screenSpacePanning = true;
+    } else {
+      camera = perspective;
+      controls.enableRotate = true;
+      controls.screenSpacePanning = false;
+    }
+    controls.object = camera;
+    gizmo.camera = camera;
+    controls.update();
   }
 
   /// The game's camera, drawn as the volume it sees.
@@ -328,6 +365,10 @@
   $effect(() => {
     scene; models; // redraw when the scene or a model changes
     if (renderer) untrack(rebuild);
+  });
+  $effect(() => {
+    top;
+    untrack(applyView);
   });
   $effect(() => {
     selected;
