@@ -176,7 +176,12 @@ pub fn export(root: &Path, target: &str) -> Result<ExportOutput, String> {
     let bin = find_nova_binary()?;
     let out = root.join("exports");
     let mut command = Command::new(bin);
-    command.arg("export").arg(target).arg(root).arg("--out").arg(&out);
+    command
+        .arg("export")
+        .arg(target)
+        .arg(root)
+        .arg("--out")
+        .arg(&out);
     let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     if repo.join("scripts/build-apk.sh").is_file() {
         command.env("NOVA_REPO", repo);

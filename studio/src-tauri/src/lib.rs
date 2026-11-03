@@ -276,12 +276,17 @@ fn check_project(state: State<AppState>) -> Result<serde_json::Value, String> {
 
 /// Checks the game and exports it (`desktop` or `android`); the report says what happened and where the files are.
 #[tauri::command]
-async fn export_game(state: State<'_, AppState>, target: String) -> Result<serde_json::Value, String> {
+async fn export_game(
+    state: State<'_, AppState>,
+    target: String,
+) -> Result<serde_json::Value, String> {
     let root = root_of(&state)?;
     let done = tauri::async_runtime::spawn_blocking(move || runner::export(&root, &target))
         .await
         .map_err(|e| format!("the export stopped unexpectedly: {e}"))??;
-    Ok(serde_json::json!({ "ok": done.ok, "text": done.text, "folder": done.folder.to_string_lossy() }))
+    Ok(
+        serde_json::json!({ "ok": done.ok, "text": done.text, "folder": done.folder.to_string_lossy() }),
+    )
 }
 
 /// Where new projects go by default: `Documents/Nova Projects`, created if it is missing.
