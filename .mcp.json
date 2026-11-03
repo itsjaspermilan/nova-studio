@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "nova": {
+      "command": "scripts/nova-mcp.sh",
+      "args": []
+    }
+  }
+}
