@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getPixel, newRaster, setPixel, type Rgba } from "./pixels";
 import {
-  addAnimation, animationOf, duplicateFrames, moveFramesTo, removeFrames, detectGrid, gridFromCounts, smartGrid, duplicateAnimation, frameAt, fromImage, fromSheet, gridTiles, importTiles, insertFrame, isPristine, moveAnimation, moveFrame, newDoc, normalizeAnimations,
+  addAnimation, animationOf, moveFramesWithin, scaleDurations, duplicateFrames, moveFramesTo, removeFrames, detectGrid, gridFromCounts, smartGrid, duplicateAnimation, frameAt, fromImage, fromSheet, gridTiles, importTiles, insertFrame, isPristine, moveAnimation, moveFrame, newDoc, normalizeAnimations,
   parseSheetJson, removeAnimation, removeFrame, setAnimationDuration, tagProblems, tagSequence, toSheet, toSheetJson, updateAnimation, type SpriteDoc, type Tag,
 } from "./sprite-doc";
 
@@ -501,5 +501,49 @@ describe("working on several frames at once", () => {
     expect(which(keep.doc)).toEqual([0, 2, 1]);
     const d = split(3, 1);
     expect(moveFramesTo(d, [0], 9).doc).toBe(d);
+  });
+});
+
+describe("moving several frames within an animation", () => {
+  // split(4, 1): frames 0..3 in a, frame 4 in b; markers by column (frame 4's marker is 0)
+  it("moves a block later, landing after the frame dropped on", () => {
+    const r = moveFramesWithin(split(3, 1), [0, 1], 2);
+    expect(which(r.doc)).toEqual([2, 0, 1, 3]);
+    expect(r.picked).toEqual([1, 2]);
+    expect(shape(r.doc)).toEqual([["a", 0, 2], ["b", 3, 3]]);
+  });
+
+  it("moves a block earlier, landing before the frame dropped on", () => {
+    const r = moveFramesWithin(split(4, 1), [2, 3], 0);
+    expect(which(r.doc).slice(0, 4)).toEqual([2, 3, 0, 1]);
+    expect(r.picked).toEqual([0, 1]);
+  });
+
+  it("keeps durations with their frames and leaves other animations alone", () => {
+    const d = split(3, 1);
+    d.durations = [10, 20, 30, 40];
+    const r = moveFramesWithin(d, [0, 1], 2);
+    expect(r.doc.durations).toEqual([30, 10, 20, 40]);
+    expect(r.doc.layers[0]!.cels).toHaveLength(4);
+  });
+
+  it("does nothing across animations, onto itself or when the order would not change", () => {
+    const d = split(3, 1);
+    expect(moveFramesWithin(d, [0, 3], 1).doc).toBe(d);
+    expect(moveFramesWithin(d, [1], 1).doc).toBe(d);
+    expect(moveFramesWithin(d, [0, 1], 1).doc).toBe(d);
+    expect(moveFramesWithin(d, [], 1).doc).toBe(d);
+  });
+});
+
+describe("scaling durations", () => {
+  it("multiplies the chosen frames, never below 10 ms, and says nothing changed when nothing did", () => {
+    const d = split(2, 1);
+    d.durations = [100, 40, 100];
+    expect(scaleDurations(d, [0, 1], 2).durations).toEqual([200, 80, 100]);
+    expect(scaleDurations(d, [1], 0.1).durations).toEqual([100, 10, 100]);
+    expect(scaleDurations(d, [0], 1)).toBe(d);
+    expect(scaleDurations(d, [0], 0)).toBe(d);
+    expect(scaleDurations(d, [9], 2)).toBe(d);
   });
 });

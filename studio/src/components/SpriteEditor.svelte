@@ -5,7 +5,7 @@
     type Point, type Raster, type Rect, type Rgba,
   } from "../lib/pixels";
   import {
-    addAnimation, animationOf, cloneDoc, duplicateFrames, moveFramesTo, removeFrames, detectGrid, duplicateAnimation, frameAt, gridFromCounts, smartGrid, framesIn, fromImage, fromSheet, gridTiles, importTiles, insertFrame, moveAnimation, isPristine, moveFrame, newDoc, parseSheetJson,
+    addAnimation, animationOf, cloneDoc, moveFramesWithin, scaleDurations, duplicateFrames, moveFramesTo, removeFrames, detectGrid, duplicateAnimation, frameAt, gridFromCounts, smartGrid, framesIn, fromImage, fromSheet, gridTiles, importTiles, insertFrame, moveAnimation, isPristine, moveFrame, newDoc, parseSheetJson,
     removeAnimation, removeFrame, setAnimationDuration, tagProblems, tagSequence, resizeDoc, toSheet, toSheetJson, updateAnimation, type Direction, type SpriteDoc,
     addLayer, applyLayers, duplicateLayer, layerSheets, layersFileText, mergeDown, moveLayer, parseLayersFile, recompose, removeLayer, updateLayer, MAX_LAYERS,
   } from "../lib/sprite-doc";
@@ -540,6 +540,19 @@
   const anim = $derived(doc.tags[animIndex]);
   const animFrames = $derived(anim ? Array.from({ length: framesIn(anim) }, (_, i) => anim.from + i) : []);
   let dragFrame: number | null = null;
+  /// Dropping a dragged frame on another: the whole picked set goes together if the dragged one is part of it.
+  function dropFrame(onto: number) {
+    const from = dragFrame;
+    dragFrame = null;
+    if (from === null || from === onto) return;
+    if (chosen.length > 1 && chosen.includes(from)) {
+      const r = moveFramesWithin(doc, chosen, onto);
+      if (r.doc === doc) return;
+      structural(r.doc, r.picked[0] ?? frame);
+      others = r.picked.slice(1);
+    } else structural(moveFrame(doc, from, onto), onto);
+  }
+  const rescale = (factor: number) => structural(scaleDurations(doc, chosen, factor));
   const addBlank = () => structural(insertFrame(doc, frame + 1), frame + 1);
   /// Frames picked with Ctrl, ⌘ or Shift besides the current one: copy, delete and move act on all of them.
   let others = $state<number[]>([]);
@@ -878,7 +891,7 @@
         <div class="frames" role="listbox" aria-label="Frames">
           {#if anim}<span class="animlabel" title="The animation these frames belong to">{anim.name || "(unnamed)"}</span>{/if}
           {#each animFrames as i (i)}
-            <button class="frame" class:on={i === frame} role="option" aria-selected={i === frame} draggable="true" ondragstart={(e) => { dragFrame = i; e.dataTransfer?.setData("text/plain", String(i)); }} ondragover={(e) => e.preventDefault()} ondrop={(e) => { e.preventDefault(); if (dragFrame !== null && dragFrame !== i) structural(moveFrame(doc, dragFrame, i), i); dragFrame = null; }} onclick={(e) => pickFrame(i, e)} class:picked={others.includes(i)} title="Frame {i - (anim?.from ?? 0) + 1} · {doc.durations[i]} ms · drag to move · ⌘ or ⇧ picks more">
+            <button class="frame" class:on={i === frame} role="option" aria-selected={i === frame} draggable="true" ondragstart={(e) => { dragFrame = i; e.dataTransfer?.setData("text/plain", String(i)); }} ondragover={(e) => e.preventDefault()} ondrop={(e) => { e.preventDefault(); dropFrame(i); }} onclick={(e) => pickFrame(i, e)} class:picked={others.includes(i)} title="Frame {i - (anim?.from ?? 0) + 1} · {doc.durations[i]} ms · drag to move · ⌘ or ⇧ picks more">
               <canvas use:drawThumb={i}></canvas>
               <span>{i - (anim?.from ?? 0) + 1}</span>
             </button>
@@ -897,6 +910,8 @@
             </select>
           {/if}
           <label class="inline">Duration <input type="number" min="10" step="10" value={doc.durations[frame]} onchange={(e) => setDuration(Number(e.currentTarget.value))} class="narrow" /> ms</label>
+          <button class="ghost" onclick={() => rescale(0.5)} title="Half as long: the picked frames play twice as fast">×½</button>
+          <button class="ghost" onclick={() => rescale(2)} title="Twice as long: the picked frames play half as fast">×2</button>
           <button class="ghost" onclick={() => structural(setAnimationDuration(doc, animIndex, doc.durations[frame]!))} title="Give every frame of this animation this duration">Apply to animation</button>
         </div>
       </div>

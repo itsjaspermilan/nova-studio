@@ -248,6 +248,36 @@ export function moveFramesTo(doc: SpriteDoc, indices: number[], target: number):
   return { doc: next, picked: moving.map((_, k) => end - moving.length + 1 + k) };
 }
 
+/// Moves several frames (all in one animation) to where `target` is in that animation, keeping their order: after it when they
+/// move later, before it when they move earlier, as `moveFrame` does for one. Returns the frames' new numbers.
+export function moveFramesWithin(doc: SpriteDoc, indices: number[], target: number): { doc: SpriteDoc; picked: number[] } {
+  const owner = animationOf(doc, target);
+  const chosen = [...new Set(indices)].sort((a, b) => a - b);
+  if (owner < 0 || !chosen.length || chosen.some((f) => animationOf(doc, f) !== owner) || chosen.includes(target) && chosen.length === 1) return { doc, picked: indices };
+  const tag = doc.tags[owner]!;
+  const rest = range(tag.from, tag.to).filter((f) => !chosen.includes(f));
+  const later = target > chosen[0]!;
+  const at = rest.filter((f) => (later ? f <= target : f < target)).length;
+  const frames = [...rest.slice(0, at), ...chosen, ...rest.slice(at)];
+  if (frames.every((f, i) => f === tag.from + i)) return { doc, picked: indices };
+  const blocks = blocksOf(doc).map((b, i) => (i === owner ? { tag: b.tag, frames } : b));
+  return { doc: assemble(doc, blocks), picked: chosen.map((_, k) => tag.from + at + k) };
+}
+
+/// Multiplies the duration of the chosen frames (at least 10 ms each after).
+export function scaleDurations(doc: SpriteDoc, indices: number[], factor: number): SpriteDoc {
+  if (!Number.isFinite(factor) || factor <= 0) return doc;
+  const next = cloneDoc(doc);
+  let changed = false;
+  for (const i of new Set(indices)) {
+    if (i < 0 || i >= next.durations.length) continue;
+    const ms = Math.max(10, Math.round(next.durations[i]! * factor));
+    if (ms !== next.durations[i]) changed = true;
+    next.durations[i] = ms;
+  }
+  return changed ? next : doc;
+}
+
 /// A new animation of one blank frame, after the others.
 export function addAnimation(doc: SpriteDoc, name = "animation"): { doc: SpriteDoc; index: number } {
   if (doc.frames.length >= MAX_FRAMES) return { doc, index: doc.tags.length - 1 };
