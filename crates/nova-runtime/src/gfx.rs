@@ -156,11 +156,12 @@ pub struct MeshWrite {
 pub enum MeshOp {
     /// The picture all voxel meshes sample (one atlas of block faces).
     SetAtlas(Image),
-    /// Makes or replaces a mesh.
+    /// Makes or replaces a mesh. `plain` meshes are drawn with a white texture (colours only), the others with the voxel atlas.
     Upload {
         id: usize,
         vertices: Vec<MeshVertex>,
         indices: Vec<u32>,
+        plain: bool,
     },
     Free(usize),
 }
@@ -1464,9 +1465,15 @@ impl Gfx {
                     id,
                     vertices,
                     indices,
+                    plain,
                 } => {
-                    let Some(atlas) = self.voxel_atlas.clone() else {
-                        continue;
+                    let atlas = if *plain {
+                        self.white_group()
+                    } else {
+                        let Some(atlas) = self.voxel_atlas.clone() else {
+                            continue;
+                        };
+                        atlas
                     };
                     if indices.is_empty() {
                         self.dyn_meshes.remove(id);

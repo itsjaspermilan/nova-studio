@@ -308,6 +308,104 @@ pub(super) fn install(lua: &Lua, shared: &Rc<RefCell<Shared>>, nova: &Table) -> 
     )?;
     nova.set("walls", walls)?;
 
+    // ---- baked light ----
+    let bake = lua.create_table()?;
+    let s = shared.clone();
+    bake.set(
+        "level",
+        lua.create_function(move |_, opts: Table| {
+            let rgb = |t: &Table, key: &str, default: [f32; 3]| -> mlua::Result<[f32; 3]> {
+                Ok(match t.get::<Option<Table>>(key)? {
+                    Some(c) => [
+                        c.get::<Option<f32>>(1)?.unwrap_or(255.0) / 255.0,
+                        c.get::<Option<f32>>(2)?.unwrap_or(255.0) / 255.0,
+                        c.get::<Option<f32>>(3)?.unwrap_or(255.0) / 255.0,
+                    ],
+                    None => default,
+                })
+            };
+            let mut boxes = Vec::new();
+            let list: Table = opts.get("boxes").map_err(|_| lua_err("nova.bake.level needs boxes = { { x0, y0, z0, x1, y1, z1, color = {r, g, b} }, ... }"))?;
+            for item in list.sequence_values::<Table>() {
+                let b = item?;
+                let n = |k: &str| -> mlua::Result<f32> {
+                    b.get::<Option<f32>>(k)?.ok_or_else(|| lua_err(format!("a box needs {k}")))
+                };
+                let (x0, y0, z0, x1, y1, z1) = (n("x0")?, n("y0")?, n("z0")?, n("x1")?, n("y1")?, n("z1")?);
+                boxes.push(crate::bake::BoxSpec {
+                    min: [x0.min(x1), y0.min(y1), z0.min(z1)],
+                    max: [x0.max(x1), y0.max(y1), z0.max(z1)],
+                    color: rgb(&b, "color", [0.7; 3])?,
+                });
+            }
+            let mut lights = Vec::new();
+            if let Some(list) = opts.get::<Option<Table>>("lights")? {
+                for item in list.sequence_values::<Table>() {
+                    let l = item?;
+                    let n = |k: &str| -> mlua::Result<f32> {
+                        l.get::<Option<f32>>(k)?.ok_or_else(|| lua_err(format!("a light needs {k}")))
+                    };
+                    lights.push(crate::bake::LightSpec {
+                        pos: [n("x")?, n("y")?, n("z")?],
+                        radius: l.get::<Option<f32>>("radius")?.unwrap_or(12.0),
+                        color: rgb(&l, "color", [1.0; 3])?,
+                        power: l.get::<Option<f32>>("power")?.unwrap_or(1.0),
+                    });
+                }
+            }
+            let options = crate::bake::BakeOptions {
+                cell: opts.get::<Option<f32>>("cell")?.unwrap_or(1.0),
+                occlusion: opts.get::<Option<f32>>("occlusion")?.unwrap_or(0.5).clamp(0.0, 1.0),
+                skip_down_at_or_below: opts.get::<Option<f32>>("skip_down_at_or_below")?.unwrap_or(f32::NEG_INFINITY),
+                skip_up_at_or_above: opts.get::<Option<f32>>("skip_up_at_or_above")?.unwrap_or(f32::INFINITY),
+            };
+            let started = std::time::Instant::now();
+            let mut sh = s.borrow_mut();
+            sh.walls.prepare();
+            let mesh = crate::bake::bake(&boxes, &lights, &sh.walls, &options);
+            let count = mesh.vertices.len();
+            let handle = sh.baked.len();
+            let id = crate::gfx::DYN_MESH_BASE + (1 << 27) + handle;
+            sh.voxel.ops.push(crate::gfx::MeshOp::Upload { id, vertices: mesh.vertices, indices: mesh.indices, plain: true });
+            sh.baked.push(Some(id));
+            let ms = started.elapsed().as_secs_f64() * 1000.0;
+            Ok((handle, count, ms))
+        })?,
+    )?;
+    let s = shared.clone();
+    bake.set(
+        "draw",
+        lua.create_function(move |_, handle: usize| {
+            let mut sh = s.borrow_mut();
+            let Some(Some(mesh)) = sh.baked.get(handle).copied() else {
+                return Ok(());
+            };
+            sh.models.push(ModelDraw {
+                casts: false,
+                mesh,
+                instance: ModelInstance {
+                    matrix: Mat4::IDENTITY.to_cols_array_2d(),
+                    tint: [1.0; 4],
+                },
+            });
+            Ok(())
+        })?,
+    )?;
+    let s = shared.clone();
+    bake.set(
+        "free",
+        lua.create_function(move |_, handle: usize| {
+            let mut sh = s.borrow_mut();
+            if let Some(slot) = sh.baked.get_mut(handle)
+                && let Some(id) = slot.take()
+            {
+                sh.voxel.ops.push(crate::gfx::MeshOp::Free(id));
+            }
+            Ok(())
+        })?,
+    )?;
+    nova.set("bake", bake)?;
+
     // ---- paths ----
     let nav = lua.create_table()?;
     let s = shared.clone();

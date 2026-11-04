@@ -882,6 +882,7 @@ fn script_made_meshes_reuse_their_gpu_buffers() {
             id,
             vertices,
             indices,
+            plain: false,
         }
     };
     let atlas = MeshOp::SetAtlas(Image {

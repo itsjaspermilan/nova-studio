@@ -15,8 +15,9 @@ function Scene:enter()
     nova.spawn(s[1], s[2], 0, props)
   end
   Level.build_nav()
-  -- a dark bunker: little light but the lamps' own
-  nova.light { dir = { -0.2, -1, -0.1 }, color = { 0, 0, 0 }, ambient = { 95, 98, 118 } }
+  Level.bake() -- (after the doors, whose walls stop the light)
+  -- a dark bunker: little light but the lamps' own, baked into the walls
+  nova.light { dir = { -0.2, -1, -0.1 }, color = { 0, 0, 0 }, ambient = { 30, 32, 42 } }
   nova.fog { color = { 8, 10, 14 }, near = 18, far = 60 }
   state.say("find the red key; the arena is below", 4)
 end
@@ -96,6 +97,7 @@ function Scene:draw_ui()
     local lines = {
       string.format("%.0f fps   lua %.1f ms   draw %.1f ms   %d draws", s.fps, s.lua_ms, s.render_ms, s.draws),
       string.format("lights wanted %d, used %d, dropped %d (worst %d)   entities %d   walls %d", L.wanted, L.used, L.dropped, L.worst, s.entities, nova.walls.count()),
+      string.format("baked light: %d vertices in %.0f ms", Level.bake_vertices or 0, Level.bake_ms or 0),
       string.format("paths %d, %.2f ms each, worst %.2f ms   grid built %d times, %.1f ms each", state.path_calls, state.path_ms / math.max(1, state.path_calls), state.path_worst, state.nav_builds, state.nav_ms / math.max(1, state.nav_builds)),
       string.format("x %.1f  z %.1f   kills %d   time %d s", p.x, p.z, state.kills, math.floor(state.time)),
     }

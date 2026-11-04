@@ -130,6 +130,8 @@ struct Shared {
     /// The walls of an indoor level and the grid creatures find their way over (`nova.walls`, `nova.nav`).
     walls: crate::walls::Walls,
     nav: crate::walls::Nav,
+    /// Meshes made by `nova.bake.level`, by the handle the script holds (None once freed).
+    baked: Vec<Option<usize>>,
     cursor: PadCursor,
     /// Typed characters that no script has read yet.
     typed: String,
@@ -2243,6 +2245,7 @@ impl Game {
             cubes: HashMap::new(),
             walls: crate::walls::Walls::default(),
             nav: crate::walls::Nav::default(),
+            baked: Vec::new(),
             cursor: PadCursor::default(),
             typed: String::new(),
             cursor_sources: HashMap::new(),

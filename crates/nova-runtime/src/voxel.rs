@@ -1170,6 +1170,7 @@ impl World {
                 id,
                 vertices: build.vertices,
                 indices: build.indices,
+                plain: false,
             });
             meshes[slot] = Some(id);
         }
@@ -2663,6 +2664,7 @@ mod tests {
                     id,
                     vertices,
                     indices,
+                    ..
                 } => {
                     alive.insert(*id, (vertices.len(), indices.len()));
                 }

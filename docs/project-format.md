@@ -753,3 +753,11 @@ once the player types (Blockfield does: the same keys are also actions). Recorde
 **Block pictures in the UI.** `nova.ui.cube(block, x, y, size)` draws a block as an isometric cube in the UI layer (over the
 UI's rectangles and sprites, under its text), for inventory icons; `nova.voxel.info(block).shape` says which blocks are
 cubes (plants, torches and items are flat tiles drawn with `nova.ui.sprite`).
+
+## Walls, paths and baked light (indoor 3D)
+
+`nova.walls` are boxes standing on the ground (with a height range) that bodies slide along (`push`, `move`), rays stop at
+(`raycast`, `line_clear`) and doors open in (`enable(id, false)`). `nova.nav.build` makes a grid from them and `nova.nav.path` finds
+a way round the walls (`ignore` lists door walls that something can open). `nova.cuboid` and `cuboid_at` draw boxes from code, `nova.quad3` flat marks
+and `nova.line3` lines. `nova.bake.level{ boxes, lights }` lights a level's boxes once, at load, by the lamps that can see them (walls stop
+the light), and gives one mesh to draw with `nova.bake.draw`; live lights (`nova.point_light`, up to sixteen) add to it. See `examples/bunker-run`.

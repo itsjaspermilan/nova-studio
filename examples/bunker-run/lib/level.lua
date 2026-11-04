@@ -105,14 +105,26 @@ function Level.build_nav()
   state.nav_ms, state.nav_builds = state.nav_ms + (nova.clock() - t0) * 1000, state.nav_builds + 1
 end
 
-function Level.draw()
+-- The level's light is baked once the walls and the doors exist (so that it stops at them): every box, and the lamps that light it.
+-- It is one mesh then; only what moves is lit live (muzzle flashes, drones, pickups).
+function Level.bake()
   local W, D = Level.width, Level.depth
-  nova.cuboid(-2, -0.4, -2, W + 2, 0, D + 2, { color = { 70, 72, 80 } })
-  nova.cuboid(-2, HEIGHT, -2, W + 2, HEIGHT + 0.4, D + 2, { color = { 50, 52, 60 } })
-  for _, b in ipairs(boxes) do nova.cuboid(b[1], b[2], b[3], b[4], b[5], b[6], { color = b[7] }) end
+  local list = {
+    { x0 = -2, y0 = -0.4, z0 = -2, x1 = W + 2, y1 = 0, z1 = D + 2, color = { 70, 72, 80 } },
+    { x0 = -2, y0 = HEIGHT, z0 = -2, x1 = W + 2, y1 = HEIGHT + 0.4, z1 = D + 2, color = { 50, 52, 60 } },
+  }
+  for _, b in ipairs(boxes) do list[#list + 1] = { x0 = b[1], y0 = b[2], z0 = b[3], x1 = b[4], y1 = b[5], z1 = b[6], color = b[7] } end
+  local lights = {}
+  for _, l in ipairs(lamps) do lights[#lights + 1] = { x = l[1], y = HEIGHT - 0.3, z = l[2], radius = 17, power = 1.25, color = l[3] } end
+  if Level.baked then nova.bake.free(Level.baked) end
+  local handle, vertices, ms = nova.bake.level { boxes = list, lights = lights, cell = 1, occlusion = 0.6, skip_down_at_or_below = 0, skip_up_at_or_above = HEIGHT + 0.3 }
+  Level.baked, Level.bake_vertices, Level.bake_ms = handle, vertices, ms
+end
+
+function Level.draw()
+  if Level.baked then nova.bake.draw(Level.baked) end
   for _, l in ipairs(lamps) do
     nova.cuboid(l[1] - 0.45, HEIGHT - 0.1, l[2] - 0.45, l[1] + 0.45, HEIGHT, l[2] + 0.45, { color = l[3], glow = true })
-    fx.want_light(l[1], HEIGHT - 0.5, l[2], 14, { l[3][1] / 255, l[3][2] / 255, l[3][3] / 255 })
   end
 end
 

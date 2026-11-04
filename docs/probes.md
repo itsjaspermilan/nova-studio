@@ -289,6 +289,25 @@ Things found that were not on the list:
 - **A bot is the best test the game has.** It found the door problem, the velocity trap and two bugs in its own aim in a few runs.
 
 
+### Baked lighting (the second step of Probe 3)
+
+The first version lit the level with an ambient floor turned well up and the lamps as live lights, which looked flat (and, asked
+about, was not proper lighting: a lamp lit floors through walls, corners were not darker, and the nearest eight lamps popped in
+and out). `nova.bake.level` fixes that the way Blockfield's blocks do, for any boxes: each face is cut into squares of a metre
+and each corner is lit once, at load, by every lamp that can see it (`nova.walls` stops the light, so a lamp lights its own room
+and not the next; rooms are lit by their own lamps, the arena red), softly by how the corner faces the lamp, with the corners and
+the bottoms of walls darkened a little by rays that feel for walls nearby. The light is stored in the vertices as a hue and an
+intensity that the mesh shader adds to the live light (box colour times ambient plus live lights plus baked light), so a muzzle
+flash and a drone's lamp still light the baked walls on top. The level is one mesh and one draw.
+
+- **Cost:** 12,264 vertices (the whole level, floor and ceiling included, cut into squares of a metre) took 6 ms to bake on an Apple
+  M4, once, at load. At run time: one draw, no cost per lamp. The 16 live lights are for what moves, so they no longer pop:
+  a frame wants 8 or fewer now (it wanted 13 to 16).
+- **Gaps left:** a door opening does not let light through (the bake is of the doors shut; the doors themselves are live-lit), nothing
+  bounces, there is no shadow from a live light, and the boxes are still flat colours.
+- **Not measured:** the bake on a handheld (a few times slower, which is still well under a second), and what the one big
+  mesh costs the Retroid's GPU.
+
 ### Next probes worth making
 
 - A **3D platformer**: height for things that are not voxels. Scenery collision is circles on the ground, so there are no

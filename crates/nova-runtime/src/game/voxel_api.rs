@@ -154,6 +154,7 @@ fn ensure_cube(sh: &mut Shared, id: u8) -> usize {
         id: mesh,
         vertices,
         indices,
+        plain: false,
     });
     sh.cubes.insert(id, mesh);
     mesh

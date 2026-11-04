@@ -2635,3 +2635,40 @@ end"),
         "a box 1 wide and 3 high"
     );
 }
+
+#[test]
+fn a_level_can_be_baked_into_one_mesh_and_drawn() {
+    let mut g = project(vec![(
+        "main.lua",
+        lua("nova.walls.add(-0.2, 0, 0, 8, 0, 3)
+nova.walls.add(0, 3.8, 8, 4.2, 0, 3)
+local handle, vertices, ms = nova.bake.level{
+  boxes = {
+    { x0 = -1, y0 = -0.2, z0 = -1, x1 = 9, y1 = 0, z1 = 9, color = { 200, 200, 200 } },
+    { x0 = 0, y0 = 0, z0 = 3.8, x1 = 8, y1 = 3, z1 = 4.2, color = { 180, 180, 190 } },
+  },
+  lights = { { x = 2, y = 2.8, z = 2, radius = 10, color = { 255, 230, 200 } } },
+  skip_down_at_or_below = 0,
+}
+nova.log(string.format('%d %s %s', handle, tostring(vertices > 100), tostring(ms >= 0)))
+function draw() nova.bake.draw(handle) end
+function update() if nova.input.pressed('b') then nova.bake.free(handle) end end"),
+    )]);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    assert_eq!(logs(&g)[0], "0 true true");
+    g.update(1.0 / 60.0, 0.0, [320.0, 180.0], Default::default(), false);
+    assert_eq!(
+        g.frame_input(540).models.len(),
+        1,
+        "the whole level is one draw"
+    );
+    // the mesh went out as a plain one (colours, no atlas)
+    let input = g.frame_input(540);
+    assert!(
+        input
+            .mesh_ops
+            .iter()
+            .any(|o| matches!(o, nova_runtime::gfx::MeshOp::Upload { plain: true, .. })),
+        "uploaded as a plain mesh"
+    );
+}

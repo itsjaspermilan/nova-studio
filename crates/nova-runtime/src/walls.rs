@@ -19,7 +19,7 @@ pub struct Wall {
     pub on: bool,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Walls {
     walls: Vec<Wall>,
     grid: HashMap<(i32, i32), Vec<u32>>,

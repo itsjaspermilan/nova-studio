@@ -1384,5 +1384,33 @@
   "signature": "nova.quad3(x, y, z, nx, ny, nz, size [, { w, h, color }])",
   "doc": "Draws a flat square at a place in the world, facing the direction nx, ny, nz, at full colour and a hair off the surface: a bullet hole, a mark on a wall.",
   "group": "3D"
+ },
+ {
+  "name": "nova.bake",
+  "kind": "namespace",
+  "signature": "nova.bake",
+  "doc": "Light baked into level geometry: lamps light the boxes of a level once, at load, and the result is one mesh that is drawn every frame at no cost per light.",
+  "group": "Walls and paths"
+ },
+ {
+  "name": "nova.bake.level",
+  "kind": "function",
+  "signature": "nova.bake.level{ boxes, lights [, cell, occlusion, skip_down_at_or_below, skip_up_at_or_above] } -> handle, vertices, ms",
+  "doc": "Makes a lit mesh of boxes. `boxes` = { { x0, y0, z0, x1, y1, z1, color = {r, g, b} }, ... }; `lights` = { { x, y, z, radius = 12, color = {r, g, b}, power = 1 }, ... }. Each face is cut into squares of `cell` metres (1) and each corner is lit by every lamp that can see it (the walls of nova.walls stop light, so add the walls first, and doors shut), softly by how it faces; `occlusion` (0 to 1, 0.5) darkens corners and the bottoms of walls. Faces against another box are left out, and so are downward faces at or below `skip_down_at_or_below` (a floor's underside) and upward ones at or above `skip_up_at_or_above` (a ceiling's top). Lights that move (a muzzle flash) still light it live on top, with nova.point_light. Gives a handle for `draw` and `free`, how many vertices, and how many milliseconds it took.",
+  "group": "Walls and paths"
+ },
+ {
+  "name": "nova.bake.draw",
+  "kind": "function",
+  "signature": "nova.bake.draw(handle)",
+  "doc": "Draws a baked level for this frame (call it every frame, from draw).",
+  "group": "Walls and paths"
+ },
+ {
+  "name": "nova.bake.free",
+  "kind": "function",
+  "signature": "nova.bake.free(handle)",
+  "doc": "Drops a baked mesh, for the next level.",
+  "group": "Walls and paths"
  }
 ]

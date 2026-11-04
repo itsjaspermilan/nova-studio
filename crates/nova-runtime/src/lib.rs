@@ -5,6 +5,7 @@ pub mod actions;
 pub mod app;
 pub mod assets;
 pub mod audio;
+pub mod bake;
 pub mod content;
 pub mod diagnostics;
 pub mod export;
