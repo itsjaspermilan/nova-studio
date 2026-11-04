@@ -704,6 +704,29 @@ function cam3.first_person(target, opts)
       { x = tx - sin(cam3.yaw) * cp * 10, y = ey + sin(cam3.pitch) * 10, z = tz - cos(cam3.yaw) * cp * 10 }, opts.fov or 75)
 end
 
+--- The camera's own directions, whatever camera was set last: forward, right and up as { x, y, z } tables of length 1.
+function cam3.basis()
+  local e, t = cam3.eye, cam3.target
+  local fx, fy, fz = t.x - e.x, t.y - e.y, t.z - e.z
+  local fl = sqrt(fx * fx + fy * fy + fz * fz)
+  if fl < 1e-9 then fx, fy, fz, fl = 0, 0, -1, 1 end
+  fx, fy, fz = fx / fl, fy / fl, fz / fl
+  local rx, rz = -fz, fx -- forward x up(0, 1, 0)
+  local rl = sqrt(rx * rx + rz * rz)
+  if rl < 1e-9 then rx, rz, rl = 1, 0, 1 end
+  rx, rz = rx / rl, rz / rl
+  local ux, uy, uz = -rz * fy, rz * fx - rx * fz, rx * fy -- right x forward
+  return { x = fx, y = fy, z = fz }, { x = rx, y = 0, z = rz }, { x = ux, y = uy, z = uz }
+end
+
+--- A place given in the camera's own terms (lx to its right, ly up, lz forward) as a place in the world: for something held in
+--- front of the eye (a weapon, a hand), or a mark a little ahead. Returns x, y, z. The camera's turn is cam3.yaw and cam3.pitch.
+function cam3.to_world(lx, ly, lz)
+  local f, r, u = cam3.basis()
+  local e = cam3.eye
+  return e.x + r.x * lx + u.x * ly + f.x * lz, e.y + r.y * lx + u.y * ly + f.y * lz, e.z + r.z * lx + u.z * ly + f.z * lz
+end
+
 --- The ray from the camera through a point of the screen (x, y in the game's own units, as nova.view() measures them):
 --- `origin_x, origin_y, origin_z, dir_x, dir_y, dir_z` (the direction is of length 1). The middle of the screen is straight ahead.
 function cam3.ray(sx, sy)
@@ -1768,10 +1791,13 @@ local function step(dt)
         if not e._dead then
           if e._anim then animate(e, dt) end
           if e._clip then advance_clip(e, dt) end
-          local vx, vy, vz = e.vx, e.vy, e.vz
-          if vx ~= 0 then e.x = e.x + vx * dt end
-          if vy ~= 0 then e.y = e.y + vy * dt end
-          if vz ~= 0 then e.z = e.z + vz * dt end
+          -- (a class that moves itself, with nova.walls.move say, sets `velocity = false`, so that its own vx and vz are its own)
+          if e.velocity ~= false then
+            local vx, vy, vz = e.vx, e.vy, e.vz
+            if vx ~= 0 then e.x = e.x + vx * dt end
+            if vy ~= 0 then e.y = e.y + vy * dt end
+            if vz ~= 0 then e.z = e.z + vz * dt end
+          end
         end
       end
     end

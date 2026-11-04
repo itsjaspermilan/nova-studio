@@ -626,15 +626,10 @@ function World:draw()
   -- the thing in hand, low at the right of the view
   local held = self.inv[self.sel]
   if held and not self.dead and self.eye then
-    local fx, fz = cam3.forward()
-    local rx, rz = cam3.right()
-    local cp = cos(cam3.pitch)
-    local e = self.eye
     local sw = self.swing > 0 and sin(self.swing * 12) or 0
-    local ox = fx * cp * 0.62 + rx * 0.34
-    local oz = fz * cp * 0.62 + rz * 0.34
-    local oy = sin(cam3.pitch) * 0.62 - 0.3 - sw * 0.1
-    voxel.cube(held.id, e[1] + ox, e[2] + oy, e[3] + oz, { scale = P[held.id].item and 0.3 or 0.26, ry = cam3.yaw + 0.5, rx = -cam3.pitch * 0.5 - sw * 0.9 })
+    -- low at the right of the view: a place in the camera's own terms
+    local x, y, z = cam3.to_world(0.34, -0.3 - sw * 0.1, 0.62)
+    voxel.cube(held.id, x, y, z, { scale = P[held.id].item and 0.3 or 0.26, ry = cam3.yaw + 0.5, rx = -cam3.pitch * 0.5 - sw * 0.9 })
   end
 end
 

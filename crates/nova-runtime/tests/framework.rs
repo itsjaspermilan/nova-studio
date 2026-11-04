@@ -2672,3 +2672,52 @@ function update() if nova.input.pressed('b') then nova.bake.free(handle) end end
         "uploaded as a plain mesh"
     );
 }
+
+#[test]
+fn the_camera_can_place_things_in_its_own_terms_and_an_entity_can_keep_its_own_velocity() {
+    let mut g = project(vec![
+        (
+            "entities/mover.lua",
+            lua("return nova.entity { velocity = false }"),
+        ),
+        ("entities/drifter.lua", lua("return nova.entity {}")),
+        (
+            "scenes/main.scene.json",
+            br#"{"version":1,"background":[0,0,0],"objects":[]}"#.to_vec(),
+        ),
+        (
+            "scenes/main.lua",
+            lua("local S = nova.scene {}
+function S:enter()
+  -- looking along -z from (10, 2, 5): one metre forward is at z = 4, right is +x, up is +y
+  nova.cam3.yaw, nova.cam3.pitch = 0, 0
+  nova.cam3.first_person({ x = 10, y = 0, z = 5 }, { height = 2 })
+  local x, y, z = nova.cam3.to_world(1, 0.5, 3)
+  nova.log(string.format('%.2f %.2f %.2f', x, y, z))
+  -- turned a quarter to the left it looks along -x: forward is -x, right is -z
+  nova.cam3.yaw = math.pi / 2
+  nova.cam3.first_person({ x = 10, y = 0, z = 5 }, { height = 2 })
+  local x2, y2, z2 = nova.cam3.to_world(1, 0, 3)
+  nova.log(string.format('%.2f %.2f %.2f', x2, y2, z2))
+  self.m = nova.spawn('mover', 0, 0, { vx = 5 })
+  self.d = nova.spawn('drifter', 0, 0, { vx = 5 })
+end
+function S:update(dt) nova.log(string.format('%.1f %.1f', self.m.x, self.d.x)) end
+return S"),
+        ),
+        ("main.lua", lua("nova.start('main')")),
+    ]);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    for _ in 0..61 {
+        g.update(1.0 / 60.0, 0.0, [320.0, 180.0], Default::default(), false);
+        assert!(g.error.is_none(), "{:?}", g.error);
+    }
+    let l = logs(&g);
+    assert_eq!(l[0], "11.00 2.50 2.00");
+    assert_eq!(l[1], "7.00 2.00 4.00");
+    let last = l.last().expect("a line").clone();
+    assert_eq!(
+        last, "0.0 5.1",
+        "the mover stayed where it was (it keeps its own vx), the other was carried 5 metres a second for 61 steps"
+    );
+}

@@ -1412,5 +1412,19 @@
   "signature": "nova.bake.free(handle)",
   "doc": "Drops a baked mesh, for the next level.",
   "group": "Walls and paths"
+ },
+ {
+  "name": "nova.cam3.basis",
+  "kind": "function",
+  "signature": "nova.cam3.basis() -> forward, right, up",
+  "doc": "The camera's own directions, whatever camera was set last, as { x, y, z } tables of length 1.",
+  "group": "3D"
+ },
+ {
+  "name": "nova.cam3.to_world",
+  "kind": "function",
+  "signature": "nova.cam3.to_world(lx, ly, lz) -> x, y, z",
+  "doc": "A place given in the camera's own terms (lx to its right, ly up, lz forward of the camera) as a place in the world: for a weapon or a hand held in front of the eye, or a mark a little ahead.",
+  "group": "3D"
  }
 ]

@@ -6,7 +6,7 @@ local cam3 = nova.cam3
 local sin, cos, tan, sqrt, max, min, abs = math.sin, math.cos, math.tan, math.sqrt, math.max, math.min, math.abs
 local EYE, SPEED = 1.6, 5.6
 
-local Player = nova.entity { tags = { "player" }, hitbox = { r = 0.35, base = 0, height = 1.8 } }
+local Player = nova.entity { tags = { "player" }, hitbox = { r = 0.35, base = 0, height = 1.8 }, velocity = false }
 
 local function approach(v, target, step)
   if v < target then return min(v + step, target) end
@@ -250,17 +250,13 @@ end
 -- the weapon in hand: boxes in front of the eye, turned with it
 function Player:draw()
   if state.dead or not state.weapon then return end
-  local eye, f, r, u = self:basis()
   local lower = self.reloading > 0 and sin((1 - self.reloading / state.weapons[state.weapon].reload) * math.pi) * 0.28 or 0
   local kick = self.kick * 0.07
   local bob = sin(self.bob * 0.5) * 0.012
   local function part(lx, ly, lz, w, h, d, color, glow)
     ly, lz = ly - lower + bob, lz - kick
-    nova.cuboid_at(
-      eye[1] + r[1] * lx + u[1] * ly + f[1] * lz,
-      eye[2] + r[2] * lx + u[2] * ly + f[2] * lz,
-      eye[3] + r[3] * lx + u[3] * ly + f[3] * lz,
-      w, h, d, { ry = cam3.yaw, rx = cam3.pitch + self.kick * 0.06, color = color, glow = glow })
+    local x, y, z = cam3.to_world(lx, ly, lz)
+    nova.cuboid_at(x, y, z, w, h, d, { ry = cam3.yaw, rx = cam3.pitch + self.kick * 0.06, color = color, glow = glow })
   end
   if state.weapon == 1 then
     part(0.2, -0.17, 0.55, 0.07, 0.09, 0.34, { 50, 54, 62 })

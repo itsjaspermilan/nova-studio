@@ -761,3 +761,7 @@ cubes (plants, torches and items are flat tiles drawn with `nova.ui.sprite`).
 a way round the walls (`ignore` lists door walls that something can open). `nova.cuboid` and `cuboid_at` draw boxes from code, `nova.quad3` flat marks
 and `nova.line3` lines. `nova.bake.level{ boxes, lights }` lights a level's boxes once, at load, by the lamps that can see them (walls stop
 the light), and gives one mesh to draw with `nova.bake.draw`; live lights (`nova.point_light`, up to sixteen) add to it. See `examples/bunker-run`.
+
+**Velocity.** Every entity has `vx`, `vy` and `vz`, which the engine adds to its place after each update. A class that moves itself
+(with `nova.walls.move`, say) and keeps a speed in fields of those names would be moved twice: give it `velocity = false`
+(`nova.entity { velocity = false }`) and the engine leaves its place alone.
