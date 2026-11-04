@@ -306,6 +306,145 @@ pub(super) fn install(lua: &Lua, shared: &Rc<RefCell<Shared>>, nova: &Table) -> 
             },
         )?,
     )?;
+    // ---- standing on things: floors, steps, ramps, platforms that move ----
+    let s = shared.clone();
+    walls.set(
+        "add_ramp",
+        lua.create_function(
+            move |_,
+                  (x0, z0, x1, z1, axis, y_start, y_end, y_base): (
+                f64,
+                f64,
+                f64,
+                f64,
+                String,
+                f64,
+                f64,
+                Option<f64>,
+            )| {
+                let axis = match axis.as_str() {
+                    "x" => 0u8,
+                    "z" => 1u8,
+                    other => {
+                        return Err(lua_err(format!(
+                            "a ramp slopes along 'x' or 'z', not '{other}'"
+                        )));
+                    }
+                };
+                let base = y_base.unwrap_or(y_start.min(y_end));
+                Ok(s.borrow_mut().walls.add_ramp(
+                    x0 as f32,
+                    z0 as f32,
+                    x1 as f32,
+                    z1 as f32,
+                    axis,
+                    y_start as f32,
+                    y_end as f32,
+                    base as f32,
+                ))
+            },
+        )?,
+    )?;
+    let s = shared.clone();
+    walls.set(
+        "set_box",
+        lua.create_function(
+            move |_,
+                  (id, x0, z0, x1, z1, y0, y1): (
+                u32,
+                f64,
+                f64,
+                f64,
+                f64,
+                Option<f64>,
+                Option<f64>,
+            )| {
+                let mut sh = s.borrow_mut();
+                let Some(w) = sh.walls.get(id).copied() else {
+                    return Err(lua_err(format!("there is no wall {id}")));
+                };
+                sh.walls.set_box(
+                    id,
+                    x0 as f32,
+                    z0 as f32,
+                    x1 as f32,
+                    z1 as f32,
+                    y0.map_or(w.y0, |v| v as f32),
+                    y1.map_or(w.y1, |v| v as f32),
+                );
+                Ok(())
+            },
+        )?,
+    )?;
+    let s = shared.clone();
+    walls.set(
+        "move3",
+        lua.create_function(
+            move |_,
+                  (x, y, z, hw, h, dx, dy, dz, step): (
+                f64,
+                f64,
+                f64,
+                f64,
+                f64,
+                f64,
+                f64,
+                f64,
+                Option<f64>,
+            )| {
+                let mut sh = s.borrow_mut();
+                sh.walls.prepare();
+                let m = sh.walls.move3(
+                    [x as f32, y as f32, z as f32],
+                    hw as f32,
+                    h as f32,
+                    [dx as f32, dy as f32, dz as f32],
+                    step.unwrap_or(0.5) as f32,
+                );
+                let (kind, id) = match m.ground {
+                    Some(crate::walls::Support::Wall(i)) => (Value::Nil, Value::Integer(i as i64)),
+                    Some(crate::walls::Support::Ramp(i)) => {
+                        (Value::Nil, Value::Integer(-(i as i64) - 1))
+                    }
+                    None => (Value::Nil, Value::Nil),
+                };
+                let _ = kind;
+                Ok(mlua::MultiValue::from_iter([
+                    Value::Number(m.pos[0] as f64),
+                    Value::Number(m.pos[1] as f64),
+                    Value::Number(m.pos[2] as f64),
+                    Value::Boolean(m.hit[0]),
+                    Value::Boolean(m.hit[1]),
+                    Value::Boolean(m.hit[2]),
+                    Value::Boolean(m.on_ground),
+                    id,
+                ]))
+            },
+        )?,
+    )?;
+    let s = shared.clone();
+    walls.set(
+        "floor_below",
+        lua.create_function(move |_, (x, y, z, r): (f64, f64, f64, Option<f64>)| {
+            let mut sh = s.borrow_mut();
+            sh.walls.prepare();
+            Ok(
+                match sh
+                    .walls
+                    .floor_below(x as f32, y as f32, z as f32, r.unwrap_or(0.1) as f32)
+                {
+                    Some((h, support)) => {
+                        let id = match support {
+                            crate::walls::Support::Wall(i) => i as i64,
+                            crate::walls::Support::Ramp(i) => -(i as i64) - 1,
+                        };
+                        mlua::MultiValue::from_iter([Value::Number(h as f64), Value::Integer(id)])
+                    }
+                    None => mlua::MultiValue::new(),
+                },
+            )
+        })?,
+    )?;
     nova.set("walls", walls)?;
 
     // ---- baked light ----

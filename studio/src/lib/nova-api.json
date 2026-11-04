@@ -1426,5 +1426,33 @@
   "signature": "nova.cam3.to_world(lx, ly, lz) -> x, y, z",
   "doc": "A place given in the camera's own terms (lx to its right, ly up, lz forward of the camera) as a place in the world: for a weapon or a hand held in front of the eye, or a mark a little ahead.",
   "group": "3D"
+ },
+ {
+  "name": "nova.walls.move3",
+  "kind": "function",
+  "signature": "nova.walls.move3(x, y, z, half_width, height, dx, dy, dz [, step]) -> x, y, z, hit_x, hit_y, hit_z, on_ground, ground",
+  "doc": "Moves a standing body (feet at x, y, z; `half_width` either side; `height` tall) by dx, dy, dz in three dimensions against the walls and ramps: up and down first (so a fall lands and a jump bumps a ceiling), then x and z, sliding along what stops it, climbing anything no higher than `step` (0.5) and staying on a slope as it goes down. Says which axes were stopped, whether it stands on something, and on what: the number of the wall (0 or more) or of a ramp (-1 for ramp 0, -2 for ramp 1, ...), nothing in the air. Add gravity to dy yourself.",
+  "group": "Walls and paths"
+ },
+ {
+  "name": "nova.walls.add_ramp",
+  "kind": "function",
+  "signature": "nova.walls.add_ramp(x0, z0, x1, z1, axis, y_start, y_end [, y_base]) -> id",
+  "doc": "Adds a slope on the ground from corner (x0, z0) to (x1, z1) that rises along `axis` (\"x\" or \"z\") from height y_start at the low coordinate to y_end at the high one (or falls, if y_end is lower), solid down to y_base (the lower of the two by default). A body walks up and down it with nova.walls.move3; its sides and high end are walls. Its number is -1 less than... see move3: ramps are counted from 0 in the order they were added.",
+  "group": "Walls and paths"
+ },
+ {
+  "name": "nova.walls.set_box",
+  "kind": "function",
+  "signature": "nova.walls.set_box(id, x0, z0, x1, z1 [, y0, y1])",
+  "doc": "Moves a wall to a new place (heights stay unless given): a platform that slides or rises. Move the wall first, then move anything standing on it by the same amount with move3 so that it is carried.",
+  "group": "Walls and paths"
+ },
+ {
+  "name": "nova.walls.floor_below",
+  "kind": "function",
+  "signature": "nova.walls.floor_below(x, y, z [, radius]) -> height, id | nothing",
+  "doc": "The first thing under a place that is no higher than y: its top, and its number as move3 gives it. For a shadow under a character, or to see where a jump will land. Nothing when there is nothing below.",
+  "group": "Walls and paths"
  }
 ]

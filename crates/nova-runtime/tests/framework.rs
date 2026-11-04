@@ -2721,3 +2721,42 @@ return S"),
         "the mover stayed where it was (it keeps its own vx), the other was carried 5 metres a second for 61 steps"
     );
 }
+
+#[test]
+fn walls_in_three_dimensions_land_climb_ramps_and_ride_platforms() {
+    let g = project(vec![(
+        "main.lua",
+        lua(
+            "local floor = nova.walls.add(-20, -20, 20, 20, -1, 0)
+local block = nova.walls.add(2, -1, 4, 1, 0, 3)
+local ramp = nova.walls.add_ramp(6, -1, 10, 1, 'x', 0, 2)
+-- fall from the air onto the floor
+local x, y, z, hx, hy, hz, ground, on = nova.walls.move3(0, 5, 0, 0.3, 1.5, 0, -10, 0)
+nova.log(string.format('land %.2f %s %s %s', y, tostring(hy), tostring(ground), tostring(on == floor)))
+-- a tall block stops a walk
+x, y, z, hx = nova.walls.move3(0, 0, 0, 0.3, 1.5, 3, 0, 0)
+nova.log(string.format('block %.2f %s', x, tostring(hx)))
+-- up the ramp
+x, y = 5.5, 0
+for i = 1, 60 do x, y = nova.walls.move3(x, y, 0, 0.3, 1.5, 0.05, -0.1, 0) end
+nova.log(string.format('ramp %.2f %.2f', x, y))
+local h, id = nova.walls.floor_below(8, 5, 0)
+nova.log(string.format('below %.2f %d', h, id))
+-- a platform that moves carries what stands on it
+local p = nova.walls.add(10, 5, 12, 7, 0, 1)
+local _, py, _, _, _, _, _, g1 = nova.walls.move3(11, 2, 6, 0.3, 1.5, 0, -1.5, 0)
+nova.walls.set_box(p, 10, 5, 12, 7, 0, 2)
+local _, py2, _, _, _, _, ongr = nova.walls.move3(11, py, 6, 0.3, 1.5, 0, 1, 0)
+nova.log(string.format('ride %.2f %.2f %s %s', py, py2, tostring(g1 == p), tostring(ongr)))
+nova.log(tostring((nova.walls.floor_below(100, 5, 100))))",
+        ),
+    )]);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let l = logs(&g);
+    assert_eq!(l[0], "land 0.00 true true true", "{l:?}");
+    assert!(l[1].starts_with("block 1.70 true"), "{l:?}");
+    assert!(l[2].starts_with("ramp 8."), "{l:?}");
+    assert!(l[3].ends_with(" -1"), "{l:?}");
+    assert_eq!(l[4], "ride 1.00 2.00 true true", "{l:?}");
+    assert_eq!(l[5], "nil", "{l:?}");
+}

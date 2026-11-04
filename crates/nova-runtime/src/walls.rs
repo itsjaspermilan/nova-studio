@@ -19,9 +19,43 @@ pub struct Wall {
     pub on: bool,
 }
 
+/// A wedge: a slope up (or down) along x or z, standing on the ground plane from `y_base` up to its sloping top, which is
+/// `y_start` at the low coordinate and `y_end` at the high one.
+#[derive(Clone, Copy, Debug)]
+pub struct Ramp {
+    pub x0: f32,
+    pub z0: f32,
+    pub x1: f32,
+    pub z1: f32,
+    /// 0 when it slopes along x, 1 along z.
+    pub axis: u8,
+    pub y_start: f32,
+    pub y_end: f32,
+    pub y_base: f32,
+}
+
+/// What a body stands on.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Support {
+    Wall(u32),
+    Ramp(u32),
+}
+
+/// Where a body ended up after a move in three dimensions.
+#[derive(Clone, Copy, Debug)]
+pub struct Moved3 {
+    /// Feet, in the middle.
+    pub pos: [f32; 3],
+    /// Stopped on x, y, z.
+    pub hit: [bool; 3],
+    pub on_ground: bool,
+    pub ground: Option<Support>,
+}
+
 #[derive(Default, Clone)]
 pub struct Walls {
     walls: Vec<Wall>,
+    ramps: Vec<Ramp>,
     grid: HashMap<(i32, i32), Vec<u32>>,
     dirty: bool,
 }
@@ -38,6 +72,7 @@ pub struct RayHit {
 impl Walls {
     pub fn clear(&mut self) {
         self.walls.clear();
+        self.ramps.clear();
         self.grid.clear();
         self.dirty = false;
     }
@@ -70,6 +105,49 @@ impl Walls {
         if let Some(w) = self.walls.get_mut(id as usize) {
             w.on = on;
         }
+    }
+
+    /// Moves a wall (a platform that slides or rises); the grid is made again before the next question.
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_box(&mut self, id: u32, x0: f32, z0: f32, x1: f32, z1: f32, y0: f32, y1: f32) {
+        if let Some(w) = self.walls.get_mut(id as usize) {
+            (w.x0, w.x1, w.z0, w.z1, w.y0, w.y1) = (
+                x0.min(x1),
+                x0.max(x1),
+                z0.min(z1),
+                z0.max(z1),
+                y0.min(y1),
+                y0.max(y1),
+            );
+            self.dirty = true;
+        }
+    }
+
+    /// Adds a ramp and gives its number: it slopes along x (`axis` 0) or z (1) from `y_start` at the low coordinate to `y_end` at
+    /// the high one, solid down to `y_base`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_ramp(
+        &mut self,
+        x0: f32,
+        z0: f32,
+        x1: f32,
+        z1: f32,
+        axis: u8,
+        y_start: f32,
+        y_end: f32,
+        y_base: f32,
+    ) -> u32 {
+        self.ramps.push(Ramp {
+            x0: x0.min(x1),
+            z0: z0.min(z1),
+            x1: x0.max(x1),
+            z1: z0.max(z1),
+            axis: axis.min(1),
+            y_start,
+            y_end,
+            y_base,
+        });
+        (self.ramps.len() - 1) as u32
     }
 
     pub fn get(&self, id: u32) -> Option<&Wall> {
@@ -270,6 +348,234 @@ impl Walls {
         }
         self.raycast(x1, z1, dx, dz, len, y1, (y2 - y1) / len)
             .is_none()
+    }
+}
+
+impl Ramp {
+    /// How high the top of the ramp is over a place on the ground (None when the place is not over it).
+    pub fn height_at(&self, x: f32, z: f32) -> Option<f32> {
+        if x < self.x0 || x > self.x1 || z < self.z0 || z > self.z1 {
+            return None;
+        }
+        let (c, lo, hi) = if self.axis == 0 {
+            (x, self.x0, self.x1)
+        } else {
+            (z, self.z0, self.z1)
+        };
+        let t = if hi > lo { (c - lo) / (hi - lo) } else { 0.0 };
+        Some(self.y_start + (self.y_end - self.y_start) * t)
+    }
+
+    /// The highest the ramp's top gets under a footprint (a box on the ground), None when they do not overlap.
+    fn top_under(&self, x0: f32, z0: f32, x1: f32, z1: f32) -> Option<f32> {
+        let (ax0, ax1, az0, az1) = (
+            x0.max(self.x0),
+            x1.min(self.x1),
+            z0.max(self.z0),
+            z1.min(self.z1),
+        );
+        if ax0 >= ax1 - 1e-5 || az0 >= az1 - 1e-5 {
+            return None;
+        }
+        let (a, b) = if self.axis == 0 {
+            (ax0, ax1)
+        } else {
+            (az0, az1)
+        };
+        let (lo, hi) = if self.axis == 0 {
+            (self.x0, self.x1)
+        } else {
+            (self.z0, self.z1)
+        };
+        let at = |c: f32| {
+            self.y_start
+                + (self.y_end - self.y_start) * if hi > lo { (c - lo) / (hi - lo) } else { 0.0 }
+        };
+        Some(at(a).max(at(b)))
+    }
+}
+
+const EPS3: f32 = 1e-5;
+
+impl Walls {
+    /// The highest thing under a footprint that is no higher than `limit`: its height and what it is.
+    fn support(
+        &self,
+        x0: f32,
+        z0: f32,
+        x1: f32,
+        z1: f32,
+        limit: f32,
+        near: &mut Vec<u32>,
+    ) -> Option<(f32, Support)> {
+        let mut best: Option<(f32, Support)> = None;
+        self.near(x0, z0, x1, z1, near);
+        for &i in near.iter() {
+            let w = &self.walls[i as usize];
+            if !w.on
+                || w.x1 <= x0 + EPS3
+                || w.x0 >= x1 - EPS3
+                || w.z1 <= z0 + EPS3
+                || w.z0 >= z1 - EPS3
+            {
+                continue;
+            }
+            if w.y1 <= limit && best.is_none_or(|b| w.y1 > b.0) {
+                best = Some((w.y1, Support::Wall(i)));
+            }
+        }
+        for (i, r) in self.ramps.iter().enumerate() {
+            if let Some(top) = r.top_under(x0, z0, x1, z1)
+                && top <= limit
+                && best.is_none_or(|b| top > b.0)
+            {
+                best = Some((top, Support::Ramp(i as u32)));
+            }
+        }
+        best
+    }
+
+    /// The first thing under a place that is no higher than `y` (a shadow, or where a jump will land): its top and what it is.
+    pub fn floor_below(&self, x: f32, y: f32, z: f32, r: f32) -> Option<(f32, Support)> {
+        let mut near = Vec::new();
+        self.support(x - r, z - r, x + r, z + r, y + 0.01, &mut near)
+    }
+
+    /// How far a body (box from `bb` = min x, y, z, max x, y, z) can move along one axis before something stops it.
+    fn clip_once(&self, bb: &[f32; 6], axis: usize, d: f32, step: f32, near: &mut Vec<u32>) -> f32 {
+        if d == 0.0 {
+            return 0.0;
+        }
+        let mut lo = [bb[0], bb[1], bb[2]];
+        let mut hi = [bb[3], bb[4], bb[5]];
+        if d > 0.0 {
+            hi[axis] += d;
+        } else {
+            lo[axis] += d;
+        }
+        self.near(lo[0], lo[2], hi[0], hi[2], near);
+        let mut allowed = d;
+        let consider = |wmin: [f32; 3], wmax: [f32; 3], allowed: &mut f32| {
+            // overlap on the two other axes
+            for a in 0..3 {
+                if a != axis && (bb[a + 3] <= wmin[a] + EPS3 || bb[a] >= wmax[a] - EPS3) {
+                    return;
+                }
+            }
+            if axis != 1 {
+                // a low edge that can be stepped onto does not stop a body that walks
+                if wmax[1] - bb[1] <= step + EPS3 {
+                    return;
+                }
+            }
+            if d > 0.0 && bb[axis + 3] <= wmin[axis] + EPS3 {
+                *allowed = allowed.min(wmin[axis] - bb[axis + 3]);
+            } else if d < 0.0 && bb[axis] >= wmax[axis] - EPS3 {
+                *allowed = allowed.max(wmax[axis] - bb[axis]);
+            }
+        };
+        for &i in near.iter() {
+            let w = &self.walls[i as usize];
+            if !w.on {
+                continue;
+            }
+            consider([w.x0, w.y0, w.z0], [w.x1, w.y1, w.z1], &mut allowed);
+        }
+        for r in &self.ramps {
+            // a ramp stops a body the way a box up to its top would: the top over where the body would be
+            let (mut fx0, mut fz0, mut fx1, mut fz1) = (bb[0], bb[2], bb[3], bb[5]);
+            match axis {
+                0 => {
+                    if d > 0.0 {
+                        fx1 += d
+                    } else {
+                        fx0 += d
+                    }
+                }
+                2 => {
+                    if d > 0.0 {
+                        fz1 += d
+                    } else {
+                        fz0 += d
+                    }
+                }
+                _ => {}
+            }
+            if let Some(top) = r.top_under(fx0, fz0, fx1, fz1) {
+                consider([r.x0, r.y_base, r.z0], [r.x1, top, r.z1], &mut allowed);
+            }
+        }
+        allowed
+    }
+
+    /// Moves along an axis in pieces no longer than 0.4 (so that nothing is tunnelled through) and says how far it got.
+    fn clip(&self, bb: &mut [f32; 6], axis: usize, d: f32, step: f32, near: &mut Vec<u32>) -> f32 {
+        let pieces = (d.abs() / 0.4).ceil().max(1.0) as usize;
+        let each = d / pieces as f32;
+        let mut total = 0.0;
+        for _ in 0..pieces {
+            let allowed = self.clip_once(bb, axis, each, step, near);
+            bb[axis] += allowed;
+            bb[axis + 3] += allowed;
+            total += allowed;
+            if (allowed - each).abs() > 1e-7 {
+                break;
+            }
+        }
+        total
+    }
+
+    /// Moves a standing body (its feet in the middle at `pos`, `hw` either side, `h` tall) by `delta` and slides it along the
+    /// boxes and over the ramps: up and down first, then each of the two ground axes, climbing what is no higher than `step`
+    /// and staying on a slope as it goes down. Says which axes were stopped, and what it stands on.
+    pub fn move3(&self, pos: [f32; 3], hw: f32, h: f32, delta: [f32; 3], step: f32) -> Moved3 {
+        let mut near = Vec::new();
+        let mut bb = [
+            pos[0] - hw,
+            pos[1],
+            pos[2] - hw,
+            pos[0] + hw,
+            pos[1] + h,
+            pos[2] + hw,
+        ];
+        let was_grounded = self.grounded(&bb, &mut near).is_some();
+        let mut hit = [false; 3];
+        for axis in [1usize, 0, 2] {
+            let got = self.clip(&mut bb, axis, delta[axis], step, &mut near);
+            hit[axis] = (got - delta[axis]).abs() > 1e-6;
+        }
+        // not jumping: climb onto what is within a step, and stay on a slope going down
+        if delta[1] <= 0.0 {
+            let limit = bb[1] + step + EPS3;
+            if let Some((top, _)) = self.support(bb[0], bb[2], bb[3], bb[5], limit, &mut near)
+                && top > bb[1] + 1e-4
+            {
+                bb[1] = top;
+                bb[4] = top + h;
+            } else if was_grounded
+                && !hit[1]
+                && let Some((top, _)) =
+                    self.support(bb[0], bb[2], bb[3], bb[5], bb[1] + 0.01, &mut near)
+                && bb[1] - top > 1e-4
+                && bb[1] - top <= step
+            {
+                bb[1] = top;
+                bb[4] = top + h;
+            }
+        }
+        let ground = self.grounded(&bb, &mut near);
+        Moved3 {
+            pos: [(bb[0] + bb[3]) * 0.5, bb[1], (bb[2] + bb[5]) * 0.5],
+            hit,
+            on_ground: ground.is_some(),
+            ground,
+        }
+    }
+
+    /// What the body stands on, if its feet are on it (within a hair).
+    fn grounded(&self, bb: &[f32; 6], near: &mut Vec<u32>) -> Option<Support> {
+        let (top, what) = self.support(bb[0], bb[2], bb[3], bb[5], bb[1] + 0.02, near)?;
+        (bb[1] - top < 0.03).then_some(what)
     }
 }
 
@@ -665,5 +971,266 @@ mod tests {
         assert!(
             nav.is_blocked(10.15, 2.0) && !nav.is_blocked(5.0, 5.0) && nav.is_blocked(-50.0, 0.0)
         );
+    }
+}
+
+#[cfg(test)]
+mod tests3d {
+    use super::*;
+
+    const DT: f32 = 1.0 / 60.0;
+
+    /// Falls and walks a body the way a game would: gravity, then the move.
+    struct Body {
+        pos: [f32; 3],
+        vy: f32,
+        on_ground: bool,
+        ground: Option<Support>,
+    }
+
+    impl Body {
+        fn new(x: f32, y: f32, z: f32) -> Self {
+            Body {
+                pos: [x, y, z],
+                vy: 0.0,
+                on_ground: false,
+                ground: None,
+            }
+        }
+
+        fn step(&mut self, w: &Walls, dx: f32, dz: f32) -> Moved3 {
+            self.vy = (self.vy - 30.0 * DT).max(-50.0);
+            let m = w.move3(self.pos, 0.3, 1.8, [dx, self.vy * DT, dz], 0.5);
+            self.pos = m.pos;
+            if m.hit[1] {
+                self.vy = 0.0;
+            }
+            self.on_ground = m.on_ground;
+            self.ground = m.ground;
+            m
+        }
+
+        fn settle(&mut self, w: &Walls) {
+            for _ in 0..240 {
+                self.step(w, 0.0, 0.0);
+            }
+        }
+    }
+
+    fn platform() -> (Walls, u32) {
+        let mut w = Walls::default();
+        // a platform 10 by 10 whose top is at 2
+        let id = w.add(0.0, 0.0, 10.0, 10.0, 1.0, 2.0);
+        w.prepare();
+        (w, id)
+    }
+
+    #[test]
+    fn a_body_falls_onto_a_platform_and_stands_on_it() {
+        let (w, id) = platform();
+        let mut b = Body::new(5.0, 6.0, 5.0);
+        b.settle(&w);
+        assert!((b.pos[1] - 2.0).abs() < 1e-3, "{:?}", b.pos);
+        assert!(b.on_ground && b.ground == Some(Support::Wall(id)));
+        // walking about on it stays at that height
+        for _ in 0..60 {
+            b.step(&w, 0.05, 0.02);
+        }
+        assert!((b.pos[1] - 2.0).abs() < 1e-3 && b.on_ground);
+    }
+
+    #[test]
+    fn walking_off_the_edge_means_falling() {
+        let (w, _) = platform();
+        let mut b = Body::new(9.5, 2.0, 5.0);
+        b.settle(&w);
+        for _ in 0..30 {
+            b.step(&w, 0.1, 0.0); // east, off the platform at x = 10 (the body's middle: its edge is 0.3 further)
+        }
+        assert!(b.pos[0] > 10.3, "{:?}", b.pos);
+        assert!(!b.on_ground && b.pos[1] < 2.0, "it fell: {:?}", b.pos);
+        // with only a toe on the edge, it still stands
+        let mut c = Body::new(10.2, 2.0, 5.0);
+        c.settle(&w);
+        assert!((c.pos[1] - 2.0).abs() < 1e-3 && c.on_ground, "{:?}", c.pos);
+    }
+
+    #[test]
+    fn a_low_step_is_climbed_and_a_high_one_stops_the_body_unless_it_jumps() {
+        let mut w = Walls::default();
+        w.add(-5.0, -5.0, 20.0, 5.0, -1.0, 0.0); // the floor
+        w.add(3.0, -5.0, 4.0, 5.0, 0.0, 0.3); // a step 0.3 high
+        w.add(8.0, -5.0, 9.0, 5.0, 0.0, 1.0); // a block 1 high
+        w.prepare();
+        let mut b = Body::new(0.0, 0.0, 0.0);
+        b.settle(&w);
+        for _ in 0..40 {
+            b.step(&w, 0.1, 0.0);
+        }
+        assert!(
+            (b.pos[1] - 0.3).abs() < 1e-3 || b.pos[0] > 4.3,
+            "over the step: {:?}",
+            b.pos
+        );
+        let mut b = Body::new(5.0, 0.0, 0.0);
+        b.settle(&w);
+        for _ in 0..40 {
+            b.step(&w, 0.1, 0.0);
+        }
+        assert!(
+            (b.pos[0] - (8.0 - 0.3)).abs() < 1e-3,
+            "stopped at the block: {:?}",
+            b.pos
+        );
+        // a jump of 8 m/s (about 1.07 m) gets onto it
+        let mut b = Body::new(7.0, 0.0, 0.0);
+        b.settle(&w);
+        b.vy = 8.0;
+        let mut on_block = false;
+        for _ in 0..60 {
+            b.step(&w, 0.1, 0.0);
+            on_block |=
+                b.on_ground && (b.pos[1] - 1.0).abs() < 1e-3 && b.pos[0] > 7.9 && b.pos[0] < 9.1;
+        }
+        assert!(
+            on_block,
+            "it landed on the block at some point on the way over: {:?}",
+            b.pos
+        );
+    }
+
+    #[test]
+    fn a_jump_stops_at_a_ceiling() {
+        let mut w = Walls::default();
+        w.add(-5.0, -5.0, 5.0, 5.0, -1.0, 0.0);
+        w.add(-5.0, -5.0, 5.0, 5.0, 2.5, 3.0); // a ceiling whose underside is at 2.5
+        w.prepare();
+        let mut b = Body::new(0.0, 0.0, 0.0);
+        b.settle(&w);
+        b.vy = 12.0;
+        let mut bumped = false;
+        let mut top = 0.0f32;
+        for _ in 0..30 {
+            let m = b.step(&w, 0.0, 0.0);
+            bumped |= m.hit[1] && b.vy == 0.0 && b.pos[1] > 0.5;
+            top = top.max(b.pos[1]);
+        }
+        assert!(bumped, "the head hit the ceiling");
+        assert!(
+            (top - (2.5 - 1.8)).abs() < 1e-3,
+            "the top of the jump: {top}"
+        );
+    }
+
+    #[test]
+    fn a_body_climbs_a_ramp_and_stays_on_it_going_down() {
+        let mut w = Walls::default();
+        w.add(-5.0, -5.0, 30.0, 5.0, -1.0, 0.0);
+        // up from 0 at x = 5 to 2 at x = 11 (a slope of a third), then a platform at 2
+        w.add_ramp(5.0, -5.0, 11.0, 5.0, 0, 0.0, 2.0, 0.0);
+        w.add(11.0, -5.0, 20.0, 5.0, 0.0, 2.0);
+        w.prepare();
+        let mut b = Body::new(2.0, 0.0, 0.0);
+        b.settle(&w);
+        let mut worst = 0.0f32;
+        for _ in 0..140 {
+            let m = b.step(&w, 0.07, 0.0);
+            // on the ramp, the feet are on its surface
+            if let Some(h) = w.ramps[0].height_at(b.pos[0], 0.0)
+                && b.pos[0] > 5.5
+                && b.pos[0] < 10.5
+            {
+                worst = worst.max((b.pos[1] - h).abs());
+                assert!(m.on_ground, "on the ramp at {:?}", b.pos);
+            }
+        }
+        assert!(
+            worst < 0.4,
+            "near the surface (the footprint is wide, so the high edge counts): {worst}"
+        );
+        assert!((b.pos[1] - 2.0).abs() < 1e-3, "at the top: {:?}", b.pos);
+        // and back down it without leaving the ground
+        let mut grounded = 0;
+        let mut steps = 0;
+        for _ in 0..200 {
+            let m = b.step(&w, -0.07, 0.0);
+            if b.pos[0] > 5.5 && b.pos[0] < 10.5 {
+                steps += 1;
+                if m.on_ground {
+                    grounded += 1;
+                }
+            }
+        }
+        assert!(
+            steps > 40 && grounded == steps,
+            "stayed on the slope going down: {grounded} of {steps}"
+        );
+        assert!(
+            b.pos[1] < 0.05 && b.pos[0] < 5.0,
+            "back at the bottom: {:?}",
+            b.pos
+        );
+    }
+
+    #[test]
+    fn the_side_of_a_ramp_is_a_wall_and_the_high_end_is_a_cliff() {
+        let mut w = Walls::default();
+        w.add(-5.0, -5.0, 30.0, 10.0, -1.0, 0.0);
+        w.add_ramp(5.0, -2.0, 11.0, 2.0, 0, 0.0, 3.0, 0.0);
+        w.prepare();
+        // from the side (z), at the middle of the ramp where it is 1.5 high: blocked
+        let mut b = Body::new(8.0, 0.0, 5.0);
+        b.settle(&w);
+        for _ in 0..60 {
+            b.step(&w, 0.0, -0.1);
+        }
+        assert!(b.pos[2] > 2.0, "stopped at the side: {:?}", b.pos);
+        // from the high end (x, moving west) it is a wall 3 high
+        let mut b = Body::new(14.0, 0.0, 0.0);
+        b.settle(&w);
+        for _ in 0..60 {
+            b.step(&w, -0.1, 0.0);
+        }
+        assert!(b.pos[0] > 11.0, "stopped at the cliff: {:?}", b.pos);
+    }
+
+    #[test]
+    fn what_is_below_a_place_and_a_moving_platform() {
+        let (mut w, id) = platform();
+        assert_eq!(
+            w.floor_below(5.0, 6.0, 5.0, 0.1),
+            Some((2.0, Support::Wall(id)))
+        );
+        assert_eq!(
+            w.floor_below(20.0, 6.0, 5.0, 0.1),
+            None,
+            "nothing below: a drop"
+        );
+        assert_eq!(
+            w.floor_below(5.0, 1.5, 5.0, 0.1),
+            None,
+            "below the platform's top, in it: nothing that is not higher than the place"
+        );
+        // the platform rises by a metre: the same place now has a top at 3, and a body on it is lifted by moving it the same
+        let mut b = Body::new(5.0, 2.0, 5.0);
+        b.settle(&w);
+        w.set_box(id, 0.0, 0.0, 10.0, 10.0, 2.0, 3.0);
+        w.prepare();
+        assert_eq!(w.floor_below(5.0, 6.0, 5.0, 0.1).map(|f| f.0), Some(3.0));
+        let m = w.move3(b.pos, 0.3, 1.8, [0.0, 1.0, 0.0], 0.5);
+        assert!(
+            (m.pos[1] - 3.0).abs() < 1e-3 && m.on_ground,
+            "carried up: {:?}",
+            m
+        );
+        // a body inside a box that has just moved onto it is not left stuck: the carry moves it out
+        assert!(w.move3([5.0, 2.5, 5.0], 0.3, 1.8, [0.0, 0.0, 0.0], 0.5).pos[1] >= 2.5);
+    }
+
+    #[test]
+    fn nothing_is_tunnelled_through_by_a_fast_fall() {
+        let (w, _) = platform();
+        let m = w.move3([5.0, 40.0, 5.0], 0.3, 1.8, [0.0, -60.0, 0.0], 0.5);
+        assert!((m.pos[1] - 2.0).abs() < 1e-3 && m.on_ground, "{m:?}");
     }
 }
