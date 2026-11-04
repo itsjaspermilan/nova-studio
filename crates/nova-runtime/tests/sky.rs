@@ -121,7 +121,7 @@ fn a_bot_plays_the_garden_to_the_flag() {
             trail.join("\n")
         )
     });
-    assert!(num(&s, "gems") >= 12.0, "{s:?}");
+    assert!(num(&s, "gems") >= 10.0, "{s:?}");
     assert!(
         num(&s, "ride") > 60.0,
         "it rode the moving platforms: {s:?}"

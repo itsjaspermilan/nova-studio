@@ -364,8 +364,14 @@ Platformer Kit (CC0; notice in `licenses/kenney-platformer-kit.txt`; `scripts/sk
 characters are skinned and carry 25 clips; the game plays `idle`, `walk`, `sprint`, `jump` and `fall` by what the body is doing. The
 engine took them without change except one thing: **a .glb that points at a texture file (`Textures/colormap.png`) does not load**
 (`external reference in slice only import`), so the script embeds the texture in each .glb. A frame now has 20 draws and 10,000 triangles
-(was 7 draws and 900), rendered in 1.1 ms (was 0.9) headless on an M4. The kit's islands (`block-grass-*`, 1 m grid) were not used: they
-would need level pieces placed on a grid; the garden's islands are boxes of any size.
+(was 7 draws and 900), rendered in 1.1 ms (was 0.9) headless on an M4. The level is built from the kit's own pieces too (`lib/level.lua`): the islands are 4 m `block-grass-large` tiles (the kit's metre is
+two of ours, so a block is 2 m tall and a jump is about one block up and one block across), the ramps are `block-grass-large-slope` and
+`-narrow` with a ramp added to the walls under each, the pillar is three `block-grass-narrow`, and every solid piece adds a box to the
+walls. Findings: (1) pieces drop in without engine changes, and the walls and the models agree if each piece's box is its nominal
+size (the models overhang by 4 cm). (2) Slopes only fit if the next island is placed at the slope's rise (1.5 m, not a block's 2 m),
+so heights are not on the block grid; the game places pieces at any height. (3) The bot needed re-timing for the wider platforms but
+nothing else. (4) The goal became 10 of 16 gems: the bot's detours miss a few off its line, which is a bot limit, not a level one.
+A frame is now about 24 draws and 12,000 triangles.
 
 ### Next probes worth making
 

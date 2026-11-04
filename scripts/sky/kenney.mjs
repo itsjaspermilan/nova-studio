@@ -8,7 +8,7 @@ const kit = process.argv[2];
 if (!kit) throw new Error("usage: node scripts/sky/kenney.mjs <unzipped kit folder>");
 const from = path.join(kit, "Models/GLB format");
 const to = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../examples/sky-garden/models");
-const NAMES = ["character-oobi", "character-oodi", "jewel", "flag", "block-moving", "platform", "sign", "tree", "rocks", "flowers", "crate"];
+const NAMES = ["block-grass-large", "block-grass-large-slope", "block-grass-large-slope-narrow", "block-grass-narrow", "block-grass-low-long", "character-oobi", "character-oodi", "jewel", "flag", "block-moving", "platform", "sign", "tree", "rocks", "flowers", "crate"];
 const pad = (b, fill) => Buffer.concat([b, Buffer.alloc((4 - (b.length % 4)) % 4, fill)]);
 
 fs.mkdirSync(to, { recursive: true });

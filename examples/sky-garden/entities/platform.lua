@@ -5,8 +5,8 @@ local Level = require("lib.level")
 local Platform = nova.entity { tags = { "platform" }, velocity = false }
 
 local PLATFORMS = {
-  slide = { w = 3, d = 3, thick = 0.9, color = { 230, 190, 70 } },
-  lift = { w = 3, d = 3, thick = 0.6, color = { 90, 190, 230 } },
+  slide = { w = 4, d = 4, thick = 1.2, color = { 230, 190, 70 } },
+  lift = { w = 4, d = 4, thick = 0.8, color = { 90, 190, 230 } },
 }
 
 function Platform:create()
@@ -31,7 +31,7 @@ end
 function Platform:draw()
   local s = self.spec
   -- Kenney's moving block (the slider) and platform (the lift), a metre across: scaled to three
-  nova.model(self.kind == "slide" and "block-moving" or "platform", self.cx, self.top - s.thick, self.cz, { scale = 3 })
+  nova.model(self.kind == "slide" and "block-moving" or "platform", self.cx, self.top - s.thick, self.cz, { scale = 4 })
 end
 
 return Platform

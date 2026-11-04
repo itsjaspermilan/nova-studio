@@ -47,11 +47,11 @@ local function top_ahead(kind, dt) local p = platform(kind); local _, top = Leve
 -- { ride = kind, ready }: stay on it until it is near where it goes next.
 local PLAN = {
   { x = 2, z = 0 }, { x = 15, z = 0 }, { x = 16.4, z = 0 },
-  { board = "slide", zone = 30, ready = function() return x_ahead("slide") <= 21.9 end },
-  { ride = "slide", zone = 30, ready = function() return x_ahead("slide", 0.1) >= 26.0 end },
+  { board = "slide", zone = 30, ready = function() return x_ahead("slide") <= 22.6 end },
+  { ride = "slide", zone = 30, ready = function() return x_ahead("slide", 0.1) >= 27.4 end },
   { x = 34, z = 0 }, { x = 43, z = 0 }, { x = 46, z = 0 }, { x = 50.4, z = 0 },
-  { board = "lift", zone = 58, ready = function() return top_ahead("lift") <= 4.9 end },
-  { ride = "lift", zone = 58, ready = function() return top_ahead("lift", 0.2) >= 7.0 end },
+  { board = "lift", zone = 58, ready = function() return top_ahead("lift") <= 3.9 end },
+  { ride = "lift", zone = 58, ready = function() return top_ahead("lift", 0.2) >= 6.0 end },
   { x = 61, z = 0 }, { x = 63, z = 2 }, { x = 65, z = 0 },
 }
 
@@ -67,11 +67,30 @@ end
 local function autoplay(self, dt)
   self.plan_i = self.plan_i or restart_plan(self)
   local step = PLAN[self.plan_i]
-  if not step then return 0, 0, false end
+  if not step then
+    -- the plan is done: the flag wants more gems, so gather the ones left on this island
+    local best, bd = nil, 144
+    nova.each("gem", function(g)
+      local gx, gz = g.x - self.x, g.z - self.z
+      local d = gx * gx + gz * gz
+      if d < bd and g.gy > self.y + 0.2 and g.gy < self.y + 2.6 then best, bd = g, d end
+    end)
+    if not best then return 0, 0, false end
+    local d = math.sqrt(bd)
+    return (best.x - self.x) / d, (best.z - self.z) / d, false
+  end
   local tx, tz = self.x, self.z -- by default, stay put
   if step.x then
     tx, tz = step.x, step.z
-    if (tx - self.x) ^ 2 + (tz - self.z) ^ 2 < 0.36 then self.plan_i = self.plan_i + 1 end
+    -- a gem close by and level with the feet is worth a short detour
+    local best, bd = nil, 16
+    nova.each("gem", function(g)
+      local gx, gz = g.x - self.x, g.z - self.z
+      local d = gx * gx + gz * gz
+      if d < bd and g.gy > self.y + 0.2 and g.gy < self.y + 2.6 and (self.ground or self.y > -1) then best, bd = g, d end
+    end)
+    if best then tx, tz = best.x, best.z end
+    if (step.x - self.x) ^ 2 + (step.z - self.z) ^ 2 < 0.36 then self.plan_i = self.plan_i + 1 end
   elseif step.board then
     local p = platform(step.board)
     if not step.go and step.ready() then step.go = true end

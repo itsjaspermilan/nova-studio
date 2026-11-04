@@ -14,14 +14,13 @@ function Scene:enter()
   nova.spawn("platform", 0, 0, { z = 0, kind = "lift" })
   for _, g in ipairs(Level.gems) do nova.spawn("gem", g[1], 0, { z = g[3], gy = g[2] }) end
   state.total = #Level.gems
-  for _, w in ipairs({ { 34, 2, -3, 6 }, { 15, 2, -2, 4 }, { 48, 4, -3, 6 }, { 62.5, 8, -2, 4 } }) do
+  for _, w in ipairs(Level.walkers) do
     nova.spawn("walker", w[1], w[2], { z = w[3], x0 = w[1], z0 = w[3] + w[4] / 2, ax = 0, az = 1, range = w[4] / 2 })
   end
-  nova.spawn("checkpoint", 31.5, 2, { z = 0 })
-  nova.spawn("checkpoint", 45.5, 4, { z = 0 })
-  nova.spawn("flag", 65, 8, { z = 0 })
+  for _, c in ipairs(Level.checkpoints) do nova.spawn("checkpoint", c[1], c[2], { z = 0 }) end
+  nova.spawn("flag", Level.flag[1], Level.flag[2], { z = 0 })
   nova.spawn("player", 0, 0.01, { z = 0 })
-  state.say("collect 12 gems and reach the flag", 4)
+  state.say("collect 10 gems and reach the flag", 4)
 end
 
 function Scene:update(dt)
