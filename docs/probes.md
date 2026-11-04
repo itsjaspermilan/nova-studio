@@ -153,7 +153,46 @@ Things found that were not on the list:
   Skeletons, spiders, cows, sheep, enchanting and the ender dragon are not here either; the three creatures there (zombie,
   creeper, pig) carry the genre's loop. No music yet (a song could be made through `song_write`).
 
-Guarded by `crates/nova-runtime/tests/blockfield.rs` (the world makes itself, a player lands on it, digging changes a
+### The follow-up round (the same day)
+
+Everything the first round left open that an engine can fix, in the order it was done:
+
+1. **A world file** (`nova.voxel.save_world`, `load_world`, `apply_saved`): the player's changes go to a binary file beside the save,
+   three bytes a changed block, up to 256 MiB instead of the save's 1 MiB; the engine also keeps the changes of chunks
+   that were dropped and puts them back when the chunk is made again, so the game no longer tracks them.
+2. **Smaller things:** mipmaps for the block atlas (five levels: a 16-pixel tile stays whole down to the last, so blocks do not
+   bleed into each other; far terrain stopped shimmering), water chunks drawn far to near, `nova.line3` and `nova.box3` (a line
+   always turned to the camera; the block outline), and a sky that draws a sun, a moon, stars and drifting clouds
+   (`nova.sky { sun, stars, clouds }`).
+3. **Threads and sections.** Meshing was about 1.2 ms a chunk and lighting 0.9 ms on the M4. Meshing now runs on a pool of
+   worker threads, in 16-high sections, on snapshots of the chunk and its eight neighbours that share the data (copy on
+   write, so an edit while a worker holds a chunk copies 32 KB, not the world). A change rebuilds only the sections it can
+   touch: its own, the one above or below when it is on an edge, and the neighbouring chunk's when it is on a border (a
+   test checks each case). The cost is more draw calls: about 8 sections a chunk at most.
+4. **Terrain as a recipe.** Lua could make a chunk in about 1.9 ms on a laptop, but Lua cannot be threaded, and a handheld
+   will be several times slower. `nova.voxel.terrain { ... }` takes the land as data (noise layers, rivers, biomes, caves,
+   ores, trees) and the engine makes the chunks on the workers: a chunk depends only on the recipe and where it is, so
+   they can be made in any order and trees across a border are found by asking the neighbours where their trees are.
+   Blockfield's generator went from 150 lines of Lua to a 60-line recipe. Anything a recipe cannot say can still be built
+   by hand with `create_chunk`, `set`, `fill` and `carve`, on the game's own thread. **Result on the M4 (release):** 113 chunks
+   in 133 ms of real time instead of 287 ms, and while they load the mean frame is 3.2 ms and the worst 9.3 ms, where it
+   was a 12 to 14 ms spike for every chunk. Lighting stays on the game thread (it spreads into neighbouring chunks); a
+   few chunks are lit and taken in each frame.
+5. **Headless runs and tests use no threads** (`Game::set_deterministic`): a run does the same thing every time. The one
+   test that wants real threads waits for them.
+
+Two of the seven things asked for were measured and **not done**, on purpose:
+
+- **A render thread.** At 1000 enemies in Ember Swarm a frame is 10.1 ms: 8.2 ms of Lua and 1.9 ms of drawing (on the M4,
+  headless; at 300 enemies 2.0 and 1.0). Drawing on its own thread overlaps at most the smaller of the two, so about a fifth
+  of the frame, and costs a frame more of input delay and a render thread that has to follow the Android surface being
+  lost and found. Not worth it until a device shows drawing on the CPU at a quarter of the frame or more with the GPU not
+  the limit.
+- **Collision, neighbour queries and raycasts for entities in Rust.** The framework's own part is 2.2 of the 8.2 microseconds
+  an enemy costs, so a port saves at most a quarter, and only if entity positions live in Rust, which is a redesign of
+  what an entity is. The voxel world's own queries (the ray, the walking box) are Rust already.
+
+Guarded by (the world makes itself, a player lands on it, digging changes a
 chunk, a long walk streams chunks and stays in a band) and 13 unit tests in `voxel.rs` (light, meshes, ray, box, saving,
 noise).
 
