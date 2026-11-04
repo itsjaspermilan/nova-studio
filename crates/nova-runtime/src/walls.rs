@@ -167,6 +167,7 @@ impl Walls {
 
     /// The first wall a ray meets: from (x, z) along the direction (dx, dz) for `length`, rising `slope` for each unit along the
     /// ground, starting `y` high, so that a wall lower than the ray is passed over.
+    #[allow(clippy::too_many_arguments)]
     pub fn raycast(
         &self,
         x: f32,
@@ -285,6 +286,7 @@ pub struct Nav {
 
 impl Nav {
     /// Marks every cell whose middle is closer to a wall than `radius`.
+    #[allow(clippy::too_many_arguments)]
     pub fn build(
         walls: &Walls,
         x0: f32,
@@ -456,7 +458,11 @@ impl Nav {
                 {
                     continue;
                 }
-                let step = if dx != 0 && dz != 0 { 1.4142 } else { 1.0 } * self.cell;
+                let step = if dx != 0 && dz != 0 {
+                    std::f32::consts::SQRT_2
+                } else {
+                    1.0
+                } * self.cell;
                 let c = base + step;
                 if cost.get(&n).is_none_or(|&old| c < old) {
                     cost.insert(n, c);
