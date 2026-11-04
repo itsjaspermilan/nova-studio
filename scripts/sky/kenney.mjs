@@ -29,6 +29,10 @@ for (const name of NAMES) {
     image.bufferView = json.bufferViews.length - 1;
     image.mimeType = "image/png";
   }
+  // KHR_texture_transform here only restates texCoord 0 (a no-op) and the runtime warns about it: drop it
+  for (const m of json.materials || []) for (const t of Object.values(m.pbrMetallicRoughness || {})) if (t && t.extensions) { delete t.extensions.KHR_texture_transform; if (!Object.keys(t.extensions).length) delete t.extensions; }
+  json.extensionsUsed = (json.extensionsUsed || []).filter((e) => e !== "KHR_texture_transform");
+  if (!json.extensionsUsed.length) delete json.extensionsUsed;
   json.buffers[0].byteLength = pad(newBin, 0).length;
   const j = pad(Buffer.from(JSON.stringify(json)), 0x20);
   const bn = pad(newBin, 0);
