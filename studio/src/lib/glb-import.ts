@@ -1,9 +1,11 @@
 // Reads a binary glTF (.glb) into an editable model: its node tree becomes parts, each mesh primitive a free mesh (points welded
 // where they coincide, a triangle per face, flat colours from vertex colours or the material), and its animations become clips.
 // A skinned mesh keeps its weights (up to four joints per point; the joints are nodes that became parts). Textures and morph targets
-// are not imported (shapes keep flat colours).
+// are not imported as such (shapes keep flat colours), but a caller that has decoded the model's picture (see `embeddedImage`) can
+// hand it in: each face then takes the colour of the picture under its points, which is how a kit's palette-textured models look right.
 
 import { boneKey, invertAffine, transformPoint, worldMatrices } from "./model-skin";
+import type { Raster } from "./pixels";
 import { DEFAULT_SCALE, MAX_CLIPS, MAX_FACES, MAX_KEYS, MAX_PARTS, MAX_TOTAL_VERTS, MAX_VERTS, fitBounds, uniqueSiblingName, type Clip, type Cube, type MeshFace, type ModelDoc, type Part, type Prop, type Skin, type Track, type Vec3 } from "./model-doc";
 
 /// Model units per glTF unit: the editor's default scale makes a 16-unit shape one glTF unit.
@@ -78,7 +80,39 @@ const toHex = (r: number, g: number, b: number, a = 255) => {
 const srgb = (c: number) => 255 * (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055);
 const round = (n: number) => Math.round(n * 1000) / 1000;
 
-export function importGlb(bytes: Uint8Array): Imported {
+/// The bytes of the first picture a binary glTF carries inside itself (a kit's palette), and its type; null when it has none.
+export function embeddedImage(bytes: Uint8Array): { bytes: Uint8Array; mime: string } | null {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (bytes.length < 20 || view.getUint32(0, true) !== 0x46546c67) return null;
+  let json: Json | null = null;
+  let bin: Uint8Array | null = null;
+  for (let at = 12; at + 8 <= bytes.length; ) {
+    const len = view.getUint32(at, true);
+    const type = view.getUint32(at + 4, true);
+    const body = bytes.subarray(at + 8, at + 8 + len);
+    if (type === 0x4e4f534a) {
+      try {
+        json = JSON.parse(new TextDecoder().decode(body));
+      } catch {
+        return null;
+      }
+    } else if (type === 0x004e4942 && !bin) bin = body;
+    at += 8 + len + ((4 - (len % 4)) % 4);
+  }
+  const image = json?.images?.[0];
+  const view0 = image?.bufferView !== undefined ? json?.bufferViews?.[image.bufferView] : undefined;
+  if (!bin || !view0) return null;
+  const start = view0.byteOffset ?? 0;
+  if (start + view0.byteLength > bin.length) return null;
+  return { bytes: bin.subarray(start, start + view0.byteLength), mime: image.mimeType ?? "image/png" };
+}
+
+export interface ImportOptions {
+  /// The model's decoded picture: faces take its colour under their UVs.
+  texture?: Raster;
+}
+
+export function importGlb(bytes: Uint8Array, options: ImportOptions = {}): Imported {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (bytes.length < 20 || view.getUint32(0, true) !== 0x46546c67) return { ok: false, error: "this is not a binary glTF (.glb) file" };
   if (view.getUint32(4, true) !== 2) return { ok: false, error: "only glTF version 2 can be read" };
@@ -141,9 +175,20 @@ export function importGlb(bytes: Uint8Array): Imported {
     const material = prim.material !== undefined ? json!.materials?.[prim.material] : undefined;
     const factor: number[] = material?.pbrMetallicRoughness?.baseColorFactor ?? [1, 1, 1, 1];
     const tint = [srgb(factor[0]!) / 255, srgb(factor[1]!) / 255, srgb(factor[2]!) / 255, factor[3]!];
+    const uvs = options.texture && prim.attributes?.TEXCOORD_0 !== undefined ? accessor(prim.attributes.TEXCOORD_0) : null;
+    /// The picture's colour at a point's UV (nearest texel, edges held), 0..1 per channel; white without a picture.
+    const texel = (vi: number): [number, number, number, number] => {
+      const tex = options.texture;
+      if (!tex || !uvs || uvs.width !== 2) return [1, 1, 1, 1];
+      const x = Math.min(tex.w - 1, Math.max(0, Math.floor(uvs.values[vi * 2]! * tex.w)));
+      const y = Math.min(tex.h - 1, Math.max(0, Math.floor(uvs.values[vi * 2 + 1]! * tex.h)));
+      const at = (y * tex.w + x) * 4;
+      return [tex.data[at]! / 255, tex.data[at + 1]! / 255, tex.data[at + 2]! / 255, tex.data[at + 3]! / 255];
+    };
     const colourAt = (vi: number): [number, number, number, number] => {
-      const c = colours ? colours.values.slice(vi * colours.width, vi * colours.width + 4) : [1, 1, 1, 1];
-      const a = colours && colours.width === 4 ? c[3]! : 1;
+      const t = texel(vi);
+      const c = (colours ? colours.values.slice(vi * colours.width, vi * colours.width + 4) : [1, 1, 1, 1]).map((v, k) => v * t[k]!);
+      const a = colours && colours.width === 4 ? c[3]! : t[3];
       // vertex colours are taken as they are (Nova's exporter stores them as the sRGB bytes); the material's tint is linear
       return [255 * c[0]! * tint[0]!, 255 * c[1]! * tint[1]!, 255 * c[2]! * tint[2]!, 255 * a * tint[3]!];
     };
@@ -239,7 +284,9 @@ export function importGlb(bytes: Uint8Array): Imported {
   if (!top.length) return { ok: false, error: "the model has nothing in it" };
   const doc: ModelDoc = { version: 1, scale: DEFAULT_SCALE, parts: top };
   if (skinnedShapes.length) attachSkins(doc, skinnedShapes);
-  if ((json.textures?.length ?? 0) > 0) notes.push("textures are not imported: shapes keep flat colours (paint a new texture in the Texture tab)");
+  if ((json.textures?.length ?? 0) > 0) {
+    notes.push(options.texture ? "the texture was turned into flat face colours (paint a new texture in the Texture tab)" : "textures are not imported: shapes keep flat colours (paint a new texture in the Texture tab)");
+  }
 
   // animations: translation, rotation and scale of nodes that became parts
   const clips: Clip[] = [];

@@ -13,6 +13,7 @@ import { parseSheetJson } from "./sprite-doc";
 import { resolveEntity } from "./entity-info";
 import { groupResources } from "./resources";
 import { buildModel } from "./model-three";
+import { importGlb } from "./glb-import";
 
 const root = new URL("../../../examples/", import.meta.url).pathname;
 const projects = readdirSync(root).filter((d) => existsSync(join(root, d, "nova.json")));
@@ -117,6 +118,10 @@ describe("a big 3D scene", () => {
       if (existsSync(file)) {
         const m = parseModel(text(file));
         if (m.ok) docs.set(kind, buildModel(m.doc));
+      } else if (existsSync(file.replace(/\.model\.json$/, ".glb"))) {
+        // a plain .glb (a kit's model): the scene view reads it into a model (see model-load.ts)
+        const g = importGlb(new Uint8Array(readFileSync(file.replace(/\.model\.json$/, ".glb"))));
+        if (g.ok) docs.set(kind, buildModel(g.doc));
       }
     }
     const started = performance.now();
@@ -131,7 +136,6 @@ describe("a big 3D scene", () => {
     }
     expect(performance.now() - started).toBeLessThan(500);
     expect(geometries.size, "geometries are shared between copies of a model").toBeLessThanOrEqual(kinds.length * 8);
-    // (the models that came from a kit are plain .glb files with no .model.json, which the studio cannot draw yet: see the TODO)
-    expect(group.length).toBeGreaterThan(200);
+    expect(group.length).toBeGreaterThan(1000);
   });
 });

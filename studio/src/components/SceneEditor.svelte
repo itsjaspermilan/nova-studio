@@ -7,10 +7,11 @@
     tilemapBox, tilemaps, toggleSolid, EMPTY_TILE, type Kinds, cameraOf, moveTo3, setCamera, positionOf, placeObjects, eraseNear, offRoad, snapToRoad, type Camera3,
   } from "../lib/scene-model";
   import Scene3D from "./Scene3D.svelte";
-  import { parseModel, type ModelDoc } from "../lib/model-doc";
+  import type { ModelDoc } from "../lib/model-doc";
   import { studio } from "../lib/store.svelte";
   import { resolveEntity } from "../lib/entity-info";
   import { parseSheetJson } from "../lib/sprite-doc";
+  import { loadModelDoc } from "../lib/model-load";
 
   let { path, text, onjson }: { path: string; text: string; onjson: () => void } = $props();
 
@@ -135,9 +136,9 @@
     const api = studio.api;
     const look = await resolveEntity(kind, (p) => api.readFile(p).then((c) => c.text).catch(() => null));
     if (look.model) {
-      const file = await api.readFile(`models/${look.model}.model.json`).catch(() => null);
-      const doc = file?.text != null ? parseModel(file.text) : null;
-      if (doc?.ok) modelDocs = new Map(modelDocs).set(kind, doc.doc);
+      // the studio's own model file, or else a plain .glb (a kit's) read into one for drawing
+      const doc = await loadModelDoc(api, look.model);
+      if (doc) modelDocs = new Map(modelDocs).set(kind, doc);
     }
     if (!look.sprite) return;
     const files = studio.files.filter((f) => !f.dir).map((f) => f.path);
