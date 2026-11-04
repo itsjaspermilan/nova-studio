@@ -202,3 +202,36 @@ fn the_world_also_makes_itself_on_worker_threads() {
         );
     }
 }
+
+#[test]
+fn a_saved_game_with_things_in_hand_starts_without_errors() {
+    // the bug this guards: with items saved in the hotbar, the first frames drew the held item before the eye had a place
+    let dir = std::env::temp_dir().join(format!("blockfield-save-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    {
+        let mut g = game();
+        g.open_save(&dir).expect("a save folder");
+        for _ in 0..400 {
+            frame(&mut g, &[]);
+        }
+        tap(&mut g, "key:KeyF"); // creative: the hotbar fills
+        tap(&mut g, "key:Escape"); // pausing saves
+        g.flush_save();
+    }
+    let mut g = game_with_threads();
+    g.open_save(&dir).expect("the same folder");
+    let started = std::time::Instant::now();
+    let mut chunks = 0usize;
+    while started.elapsed().as_secs() < 20 && chunks < 90 {
+        for _ in 0..10 {
+            frame(&mut g, &[]); // (frame() fails the test on any script error)
+        }
+        tap(&mut g, "key:F3");
+        if let Some(s) = try_status(&mut g) {
+            chunks = s["chunks"].parse().unwrap();
+        }
+        std::thread::sleep(std::time::Duration::from_millis(3));
+    }
+    assert!(chunks >= 90, "the world came up: {chunks}");
+    let _ = std::fs::remove_dir_all(&dir);
+}

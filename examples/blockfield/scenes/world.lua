@@ -591,7 +591,7 @@ function World:draw()
   for _, b in ipairs(self.bits) do voxel.cube(b.id, b.x, b.y, b.z, { scale = 0.09, ry = b.life * 5 }) end
   -- the thing in hand, low at the right of the view
   local held = self.inv[self.sel]
-  if held and not self.dead then
+  if held and not self.dead and self.eye then
     local fx, fz = cam3.forward()
     local rx, rz = cam3.right()
     local cp = cos(cam3.pitch)
