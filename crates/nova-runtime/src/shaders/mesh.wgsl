@@ -132,3 +132,56 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     }
     return vec4<f32>(rgb, base.a);
 }
+
+// ---- skinned meshes: the joints' matrices for the frame sit in a texture, four texels (columns) a matrix ----
+@group(3) @binding(0) var joint_texture: texture_2d<f32>;
+
+fn joint_matrix(index: u32) -> mat4x4<f32> {
+    let t = index * 4u;
+    let x = i32(t % 1024u);
+    let y = i32(t / 1024u);
+    return mat4x4<f32>(
+        textureLoad(joint_texture, vec2<i32>(x, y), 0),
+        textureLoad(joint_texture, vec2<i32>(x + 1, y), 0),
+        textureLoad(joint_texture, vec2<i32>(x + 2, y), 0),
+        textureLoad(joint_texture, vec2<i32>(x + 3, y), 0),
+    );
+}
+
+struct SkinVertex {
+    @location(0) position: vec3<f32>,
+    @location(1) normal: vec3<f32>,
+    @location(2) color: vec4<f32>,
+    @location(3) uv: vec2<f32>,
+    @location(9) emissive: f32,
+    @location(10) joints: vec4<u32>,
+    @location(11) weights: vec4<f32>,
+};
+
+// The instance's matrix carries where its joints start in its w slot (an affine matrix has 0 there).
+@vertex
+fn vs_skinned(v: SkinVertex, inst: Instance) -> VertexOut {
+    let base = u32(inst.m0.w + 0.5);
+    let model = mat4x4<f32>(vec4<f32>(inst.m0.xyz, 0.0), inst.m1, inst.m2, inst.m3);
+    var skin = mat4x4<f32>(vec4<f32>(0.0), vec4<f32>(0.0), vec4<f32>(0.0), vec4<f32>(0.0));
+    for (var k = 0; k < 4; k = k + 1) {
+        if (v.weights[k] > 0.0) {
+            skin = skin + joint_matrix(base + v.joints[k]) * v.weights[k];
+        }
+    }
+    let total = v.weights.x + v.weights.y + v.weights.z + v.weights.w;
+    if (total <= 0.0) {
+        skin = mat4x4<f32>(vec4<f32>(1.0, 0.0, 0.0, 0.0), vec4<f32>(0.0, 1.0, 0.0, 0.0), vec4<f32>(0.0, 0.0, 1.0, 0.0), vec4<f32>(0.0, 0.0, 0.0, 1.0));
+    }
+    let posed = skin * vec4<f32>(v.position, 1.0);
+    let normal = (skin * vec4<f32>(v.normal, 0.0)).xyz;
+    var out: VertexOut;
+    let world = model * posed;
+    out.world = world.xyz;
+    out.position = globals.view_proj * world;
+    out.normal = normalize((model * vec4<f32>(normal, 0.0)).xyz);
+    out.color = v.color * vec4<f32>(srgb_to_linear(inst.tint.rgb), inst.tint.a);
+    out.uv = v.uv;
+    out.emissive = v.emissive;
+    return out;
+}

@@ -228,6 +228,9 @@ pub struct Part {
     pub skin: Option<Skin>,
 }
 
+/// One vertex's joints (numbers within the skin) and their weights.
+pub type Influence = ([u16; 4], [f32; 4]);
+
 /// How a mesh follows the parts it hangs on (glTF skin): up to four joints per vertex.
 pub struct Skin {
     /// The part index of each joint.
@@ -235,7 +238,7 @@ pub struct Skin {
     /// Each joint's inverse rest matrix (model space to the joint's space).
     pub inverse_bind: Vec<Mat4>,
     /// Per vertex: joint numbers (into `joints`) and their weights.
-    pub influences: Vec<([u16; 4], [f32; 4])>,
+    pub influences: Vec<Influence>,
 }
 
 impl Skin {

@@ -211,8 +211,8 @@ nova.model("car", x, y, z, { ry = heading, parts = {
 ```
 
 Without `parts` a model is one instanced draw; with it each piece is drawn separately (more draw calls,
-so use it for the few things that move). A mesh with a skin bends with the parts it is weighted to: the runtime poses its points on
-the CPU every frame it is drawn this way (a part can be drawn up to 8 times in one frame). Without `parts` or a `clip` it shows at rest.
+so use it for the few things that move). A mesh with a skin bends with the parts it is weighted to: the GPU bends it from the matrices of its joints
+(one mesh, instanced like any other, so hundreds of animated characters are a few draw calls; at most 16,384 joint matrices a frame, about 680 characters of 24 joints, and a draw past that is skipped with a log line). Without `parts` or a `clip` it shows at rest.
 
 **Studio model files.** The model editor keeps `models/<name>.model.json` and writes the `.glb` from it on save;
 the game only needs the `.glb`. The file is a tree: `parts` (each with `name`, `origin`, `rotation` in degrees,

@@ -29,6 +29,29 @@ pub struct ModelInstance {
     pub tint: [f32; 4],
 }
 
+impl ModelInstance {
+    /// An instance of a skinned mesh: its joints' matrices start at `joint_base` in the frame's palette (see
+    /// [`FrameInput::joints`]). The base rides in the one slot of an affine matrix that is always zero.
+    pub fn skinned(mut matrix: [[f32; 4]; 4], tint: [f32; 4], joint_base: u32) -> Self {
+        matrix[0][3] = joint_base as f32;
+        Self { matrix, tint }
+    }
+}
+
+/// Per vertex of a skinned mesh: which joints pull it (numbers within the skin) and how hard.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct SkinVertex {
+    pub joints: [u16; 4],
+    pub weights: [f32; 4],
+}
+
+/// The joint palette is a texture of 4-texel matrices, this many texels across (256 matrices a row).
+pub const JOINT_TEXTURE_WIDTH: u32 = 1024;
+const JOINT_TEXTURE_ROWS: u32 = 64;
+/// Most joint matrices a frame can hold: 16,384, about 680 characters of 24 joints. Draws past it are skipped.
+pub const MAX_JOINT_MATRICES: usize = (JOINT_TEXTURE_WIDTH / 4 * JOINT_TEXTURE_ROWS) as usize;
+
 /// Most point lights drawn at once (a frame's extra ones are ignored).
 pub const MAX_POINT_LIGHTS: usize = 16;
 
@@ -145,12 +168,6 @@ pub struct Camera {
     pub fov_y_degrees: f32,
 }
 
-/// New vertices for a mesh made to be rewritten (a posed skinned part), written before the frame draws.
-pub struct MeshWrite {
-    pub mesh: usize,
-    pub vertices: Vec<MeshVertex>,
-}
-
 /// Meshes a script makes while it runs (a voxel world's chunks), applied before the frame draws. Their ids start at
 /// [`DYN_MESH_BASE`] so they never clash with meshes loaded from model files.
 pub enum MeshOp {
@@ -174,8 +191,9 @@ pub struct FrameInput<'a> {
     pub sprites_back: &'a [SpriteInstance],
     /// Draws using the same mesh must be contiguous; each run becomes one instanced draw.
     pub models: &'a [ModelDraw],
-    /// Vertices to put into meshes before drawing (their ids are used by `models`).
-    pub mesh_writes: &'a [MeshWrite],
+    /// Joint matrices for skinned meshes (model space of each joint, bind pose included): a skinned instance's
+    /// [`ModelInstance::skinned`] base says where its joints start. At most [`MAX_JOINT_MATRICES`].
+    pub joints: &'a [[[f32; 4]; 4]],
     /// Meshes to make or drop before drawing (see [`MeshOp`]).
     pub mesh_ops: &'a [MeshOp],
     /// Meshes drawn in the UI layer, over the UI's shapes and under its text, with an orthographic camera whose units are
@@ -297,6 +315,8 @@ struct GpuMesh {
     texture: wgpu::BindGroup,
     /// Some vertex is see-through: the mesh is drawn after the solid ones, blended.
     translucent: bool,
+    /// Joints and weights, for a skinned mesh (drawn by the skinned pipelines, never see-through).
+    skin: Option<wgpu::Buffer>,
 }
 
 pub struct Gfx {
@@ -325,6 +345,10 @@ pub struct Gfx {
     sprites_front: DynBuffer,
     mesh_pipeline: wgpu::RenderPipeline,
     mesh_blend_pipeline: wgpu::RenderPipeline,
+    skinned_pipeline: wgpu::RenderPipeline,
+    skinned_shadow_pipeline: wgpu::RenderPipeline,
+    joint_texture: wgpu::Texture,
+    joint_group: wgpu::BindGroup,
     sky_pipeline: wgpu::RenderPipeline,
     shadow_pipeline: wgpu::RenderPipeline,
     shadow_view: wgpu::TextureView,
@@ -923,6 +947,150 @@ impl Gfx {
             cache: None,
         });
         let mesh_pipeline = make_mesh_pipeline("meshes", None, true);
+        // Skinned meshes: the same shading, with the vertex stage bending the mesh by the frame's joint palette (a texture).
+        let joint_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("joints"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            }],
+        });
+        let joint_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("joint palette"),
+            size: wgpu::Extent3d {
+                width: JOINT_TEXTURE_WIDTH,
+                height: JOINT_TEXTURE_ROWS,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba32Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let joint_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("joints"),
+            layout: &joint_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(
+                    &joint_texture.create_view(&wgpu::TextureViewDescriptor::default()),
+                ),
+            }],
+        });
+        let skin_attributes = wgpu::vertex_attr_array![10 => Uint16x4, 11 => Float32x4];
+        let skinned_mesh_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("skinned mesh pipeline layout"),
+            bind_group_layouts: &[
+                Some(&globals_layout),
+                Some(&texture_layout),
+                Some(&shadow_layout),
+                Some(&joint_layout),
+            ],
+            immediate_size: 0,
+        });
+        let skinned_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("skinned meshes"),
+            layout: Some(&skinned_mesh_layout),
+            vertex: wgpu::VertexState {
+                module: &mesh_shader,
+                entry_point: Some("vs_skinned"),
+                compilation_options: Default::default(),
+                buffers: &[
+                    Some(wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<MeshVertex>() as u64,
+                        step_mode: wgpu::VertexStepMode::Vertex,
+                        attributes: &vertex_attributes,
+                    }),
+                    Some(wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<ModelInstance>() as u64,
+                        step_mode: wgpu::VertexStepMode::Instance,
+                        attributes: &instance_attributes,
+                    }),
+                    Some(wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<SkinVertex>() as u64,
+                        step_mode: wgpu::VertexStepMode::Vertex,
+                        attributes: &skin_attributes,
+                    }),
+                ],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &mesh_shader,
+                entry_point: Some("fs_main"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                cull_mode: Some(wgpu::Face::Back),
+                ..Default::default()
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(wgpu::CompareFunction::Less),
+                stencil: Default::default(),
+                bias: Default::default(),
+            }),
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+        let skinned_shadow_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("skinned shadow pipeline layout"),
+                bind_group_layouts: &[Some(&globals_layout), Some(&joint_layout)],
+                immediate_size: 0,
+            });
+        let skinned_shadow_pipeline =
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("skinned shadow"),
+                layout: Some(&skinned_shadow_layout),
+                vertex: wgpu::VertexState {
+                    module: &shadow_shader,
+                    entry_point: Some("vs_skinned"),
+                    compilation_options: Default::default(),
+                    buffers: &[
+                        Some(wgpu::VertexBufferLayout {
+                            array_stride: std::mem::size_of::<MeshVertex>() as u64,
+                            step_mode: wgpu::VertexStepMode::Vertex,
+                            attributes: &vertex_attributes,
+                        }),
+                        Some(wgpu::VertexBufferLayout {
+                            array_stride: std::mem::size_of::<ModelInstance>() as u64,
+                            step_mode: wgpu::VertexStepMode::Instance,
+                            attributes: &instance_attributes,
+                        }),
+                        Some(wgpu::VertexBufferLayout {
+                            array_stride: std::mem::size_of::<SkinVertex>() as u64,
+                            step_mode: wgpu::VertexStepMode::Vertex,
+                            attributes: &skin_attributes,
+                        }),
+                    ],
+                },
+                fragment: None,
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: DEPTH_FORMAT,
+                    depth_write_enabled: Some(true),
+                    depth_compare: Some(wgpu::CompareFunction::Less),
+                    stencil: Default::default(),
+                    bias: Default::default(),
+                }),
+                multisample: wgpu::MultisampleState::default(),
+                multiview_mask: None,
+                cache: None,
+            });
         // the same meshes drawn into the UI pass (which has no depth): see FrameInput::ui_models
         let ui_mesh_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("ui meshes"),
@@ -1032,6 +1200,10 @@ impl Gfx {
             sprites_front,
             mesh_pipeline,
             mesh_blend_pipeline,
+            skinned_pipeline,
+            skinned_shadow_pipeline,
+            joint_texture,
+            joint_group,
             sky_pipeline,
             shadow_pipeline,
             shadow_view,
@@ -1173,8 +1345,35 @@ impl Gfx {
             index_count: mesh.indices.len() as u32,
             texture,
             translucent: mesh.vertices.iter().any(|v| v.color[3] < 255),
+            skin: None,
         });
         self.meshes.len() - 1
+    }
+
+    /// Uploads a mesh that bends with joints: `influences` has, for each vertex, up to four joint numbers and weights.
+    pub fn upload_skinned_mesh(
+        &mut self,
+        mesh: &MeshData,
+        influences: &[([u16; 4], [f32; 4])],
+    ) -> usize {
+        let id = self.upload_mesh(mesh);
+        let skin: Vec<SkinVertex> = (0..mesh.vertices.len())
+            .map(|i| {
+                let (joints, weights) = influences.get(i).copied().unwrap_or(([0; 4], [0.0; 4]));
+                SkinVertex { joints, weights }
+            })
+            .collect();
+        let buffer = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("mesh skin"),
+                contents: bytemuck::cast_slice(&skin),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
+        let mesh = &mut self.meshes[id];
+        mesh.skin = Some(buffer);
+        mesh.translucent = false;
+        id
     }
 
     fn white_group(&self) -> wgpu::BindGroup {
@@ -1501,6 +1700,7 @@ impl Gfx {
                             index_count: indices.len() as u32,
                             texture: atlas,
                             translucent: vertices.iter().any(|v| v.color[3] < 255),
+                            skin: None,
                         },
                     );
                 }
@@ -1516,14 +1716,32 @@ impl Gfx {
                 }
             }
         }
-        for w in input.mesh_writes {
-            // A write for a mesh that is not there, or with a different size, is ignored.
-            if let Some(m) = self.meshes.get(w.mesh) {
-                let bytes: &[u8] = bytemuck::cast_slice(&w.vertices);
-                if bytes.len() as u64 == m.vertices.size() {
-                    self.queue.write_buffer(&m.vertices, 0, bytes);
-                }
-            }
+        if !input.joints.is_empty() {
+            // the palette: whole rows of the joint texture, only as many as are used
+            let count = input.joints.len().min(MAX_JOINT_MATRICES);
+            let per_row = (JOINT_TEXTURE_WIDTH / 4) as usize;
+            let rows = count.div_ceil(per_row);
+            let mut bytes: Vec<u8> = bytemuck::cast_slice(&input.joints[..count]).to_vec();
+            bytes.resize(rows * per_row * 64, 0);
+            self.queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &self.joint_texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                &bytes,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(JOINT_TEXTURE_WIDTH * 16),
+                    rows_per_image: Some(rows as u32),
+                },
+                wgpu::Extent3d {
+                    width: JOINT_TEXTURE_WIDTH,
+                    height: rows as u32,
+                    depth_or_array_layers: 1,
+                },
+            );
         }
         let instances: Vec<ModelInstance> = input.models.iter().map(|m| m.instance).collect();
         self.model_instances
@@ -1556,6 +1774,7 @@ impl Gfx {
             });
             pass.set_pipeline(&self.shadow_pipeline);
             pass.set_bind_group(0, &self.globals_group, &[]);
+            let mut skinned_now = false;
             let stride = std::mem::size_of::<ModelInstance>() as u64;
             let mut start = 0usize;
             while start < input.models.len() {
@@ -1572,6 +1791,19 @@ impl Gfx {
                     continue;
                 };
                 if casts && !mesh.translucent {
+                    if mesh.skin.is_some() != skinned_now {
+                        skinned_now = mesh.skin.is_some();
+                        if skinned_now {
+                            pass.set_pipeline(&self.skinned_shadow_pipeline);
+                            pass.set_bind_group(1, &self.joint_group, &[]);
+                        } else {
+                            pass.set_pipeline(&self.shadow_pipeline);
+                        }
+                        pass.set_bind_group(0, &self.globals_group, &[]);
+                    }
+                    if let Some(skin) = &mesh.skin {
+                        pass.set_vertex_buffer(2, skin.slice(..));
+                    }
                     pass.set_vertex_buffer(0, mesh.vertices.slice(..));
                     pass.set_vertex_buffer(
                         1,
@@ -1662,6 +1894,7 @@ impl Gfx {
                 });
                 pass.set_bind_group(0, &self.globals_group, &[]);
                 pass.set_bind_group(2, &self.shadow_group, &[]);
+                let mut skinned_now = false;
                 let stride = std::mem::size_of::<ModelInstance>() as u64;
                 let mut start = 0usize;
                 while start < input.models.len() {
@@ -1674,9 +1907,28 @@ impl Gfx {
                         start = end;
                         continue;
                     };
+                    // (skinned meshes are always solid)
                     if mesh.translucent != translucent {
                         start = end;
                         continue;
+                    }
+                    if mesh.skin.is_some() != skinned_now {
+                        skinned_now = mesh.skin.is_some();
+                        pass.set_pipeline(if skinned_now {
+                            &self.skinned_pipeline
+                        } else if translucent {
+                            &self.mesh_blend_pipeline
+                        } else {
+                            &self.mesh_pipeline
+                        });
+                        pass.set_bind_group(0, &self.globals_group, &[]);
+                        pass.set_bind_group(2, &self.shadow_group, &[]);
+                        if skinned_now {
+                            pass.set_bind_group(3, &self.joint_group, &[]);
+                        }
+                    }
+                    if let Some(skin) = &mesh.skin {
+                        pass.set_vertex_buffer(2, skin.slice(..));
                     }
                     pass.set_bind_group(1, &mesh.texture, &[]);
                     pass.set_vertex_buffer(0, mesh.vertices.slice(..));
@@ -1745,7 +1997,7 @@ impl Gfx {
                     while end < input.ui_models.len() && input.ui_models[end].mesh == mesh_id {
                         end += 1;
                     }
-                    if let Some(mesh) = self.mesh(mesh_id) {
+                    if let Some(mesh) = self.mesh(mesh_id).filter(|m| m.skin.is_none()) {
                         pass.set_pipeline(&self.ui_mesh_pipeline);
                         pass.set_bind_group(0, &self.ui_globals_group, &[]);
                         pass.set_bind_group(1, &mesh.texture, &[]);

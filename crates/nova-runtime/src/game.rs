@@ -18,8 +18,8 @@ use crate::actions::{self, ActionStates, Binding, Bindings, InputFrame};
 use crate::assets::{self, AtlasLayout};
 use crate::font;
 use crate::gfx::{
-    Camera, Fog, FrameInput, Gfx, Lighting, MeshOp, MeshWrite, ModelDraw, ModelInstance,
-    PointLight, Shadows, Sky, SpriteInstance,
+    Camera, Fog, FrameInput, Gfx, Lighting, MeshOp, ModelDraw, ModelInstance, PointLight, Shadows,
+    Sky, SpriteInstance,
 };
 use crate::input::Actions;
 use crate::mixer::{self, Sample};
@@ -121,9 +121,8 @@ struct Shared {
     models: Vec<ModelDraw>,
     /// Meshes drawn in the UI layer this frame (`nova.ui.cube`).
     ui_models: Vec<ModelDraw>,
-    /// Vertex rewrites for skinned parts drawn this frame, and how many pool meshes each part has used.
-    mesh_writes: Vec<MeshWrite>,
-    skin_used: HashMap<String, usize>,
+    /// Joint matrices of the skinned parts drawn this frame (see `FrameInput::joints`).
+    joints: Vec<[[f32; 4]; 4]>,
     /// The voxel world (`nova.voxel`), and the mesh of each block kind drawn as a lone cube.
     voxel: crate::voxel::World,
     cubes: HashMap<u8, usize>,
@@ -253,19 +252,15 @@ struct PartRt {
     parent: Option<usize>,
     rest: Mat4,
     mesh_key: Option<String>,
-    /// A mesh that bends with other parts, drawn through a pool of rewritable meshes.
+    /// A mesh that bends with other parts: drawn by the GPU from the joints' matrices.
     skinned: Option<Rc<SkinnedPart>>,
 }
 
-/// How many times one skinned part can be drawn in a frame (each draw needs its own mesh to write).
-const SKIN_SLOTS: usize = 8;
-
 struct SkinnedPart {
+    /// Which parts the joints are, and their inverse rest matrices.
     skin: model::Skin,
-    /// The vertices at rest (model space).
-    bind: Vec<model::MeshVertex>,
-    /// Mesh keys of the pool.
-    slots: Vec<String>,
+    /// The one mesh (at rest, model space), uploaded with its joint weights.
+    key: String,
 }
 
 /// A table of three 0-255 numbers as linear multipliers (255 is full strength).
@@ -325,6 +320,10 @@ fn part_transform(t: &Table, model: &str, part: &str) -> mlua::Result<Mat4> {
 pub trait Uploader {
     fn set_atlas(&mut self, atlas: &Image);
     fn add_mesh(&mut self, mesh: &MeshData) -> usize;
+    /// A mesh bent by joints: per vertex up to four joint numbers and weights. A target without joints draws it at rest.
+    fn add_skinned_mesh(&mut self, mesh: &MeshData, _influences: &[([u16; 4], [f32; 4])]) -> usize {
+        self.add_mesh(mesh)
+    }
 }
 
 impl Uploader for Gfx {
@@ -333,6 +332,9 @@ impl Uploader for Gfx {
     }
     fn add_mesh(&mut self, mesh: &MeshData) -> usize {
         self.upload_mesh(mesh)
+    }
+    fn add_skinned_mesh(&mut self, mesh: &MeshData, influences: &[([u16; 4], [f32; 4])]) -> usize {
+        self.upload_skinned_mesh(mesh, influences)
     }
 }
 
@@ -355,13 +357,13 @@ pub struct Game {
     lua: Lua,
     shared: Rc<RefCell<Shared>>,
     atlas: Option<Image>,
-    meshes: Vec<(String, MeshData)>,
+    meshes: Vec<(String, MeshData, Option<Vec<model::Influence>>)>,
     world: Vec<SpriteInstance>,
     ui: Vec<SpriteInstance>,
     text: Vec<SpriteInstance>,
     models: Vec<ModelDraw>,
     ui_models: Vec<ModelDraw>,
-    mesh_writes: Vec<MeshWrite>,
+    joints: Vec<[[f32; 4]; 4]>,
     /// Meshes made by scripts that the renderer has not applied yet (see `clear_mesh_ops`).
     mesh_ops: Vec<MeshOp>,
     camera: Camera,
@@ -917,26 +919,25 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     let world_matrices = world.clone();
                     for (i, p) in parts.iter().enumerate() {
                         if let Some(skinned) = &p.skinned {
-                            // The mesh follows the parts; it is drawn from the model's own place.
-                            let used = sh.skin_used.entry(format!("{found}#{}", p.name)).or_insert(0);
-                            let Some(key) = skinned.slots.get(*used) else {
+                            // The mesh follows the parts; it is drawn from the model's own place, bent on the GPU by the
+                            // matrices of its joints (each joint's place in the model times its inverse rest matrix).
+                            let Some(&mesh) = sh.mesh_ids.get(&skinned.key) else { continue };
+                            if sh.joints.len() + skinned.skin.joints.len() > crate::gfx::MAX_JOINT_MATRICES {
                                 sh.log.push(format!(
-                                    "model '{id}': '{}' is drawn more than {SKIN_SLOTS} times in a frame; the rest are skipped",
-                                    p.name
+                                    "a frame holds at most {} joints; '{id}' is not drawn",
+                                    crate::gfx::MAX_JOINT_MATRICES
                                 ));
                                 continue;
-                            };
-                            *used += 1;
-                            let Some(&mesh) = sh.mesh_ids.get(key) else { continue };
-                            let vertices = skinned.skin.pose(&skinned.bind, &world_matrices);
-                            sh.mesh_writes.push(MeshWrite { mesh, vertices });
+                            }
+                            let base = sh.joints.len() as u32;
+                            for (&part, ibm) in skinned.skin.joints.iter().zip(&skinned.skin.inverse_bind) {
+                                let m = world_matrices.get(part).copied().unwrap_or(Mat4::IDENTITY) * *ibm;
+                                sh.joints.push(m.to_cols_array_2d());
+                            }
                             sh.models.push(ModelDraw {
                                 casts,
                                 mesh,
-                                instance: ModelInstance {
-                                    matrix: matrix.to_cols_array_2d(),
-                                    tint,
-                                },
+                                instance: ModelInstance::skinned(matrix.to_cols_array_2d(), tint, base),
                             });
                             continue;
                         }
@@ -2104,7 +2105,7 @@ impl Game {
                     warnings.push(format!("{}: {note}", asset.id));
                 }
             }
-            meshes.push((asset.id.clone(), mesh));
+            meshes.push((asset.id.clone(), mesh, None));
             model_ids.push(asset.id.clone());
             if let Ok(imported) = as_parts {
                 model_clips.insert(asset.id.clone(), imported.clips);
@@ -2115,32 +2116,17 @@ impl Game {
                 for part in imported.parts {
                     let mut skinned = None;
                     let mesh_key = match (part.mesh, part.skin) {
-                        (Some(m), Some(skin)) => {
-                            // Each draw of a posed mesh needs a buffer of its own to write.
-                            let slots: Vec<String> = (0..SKIN_SLOTS)
-                                .map(|k| format!("{}#{}#skin{k}", asset.id, part.name))
-                                .collect();
-                            for key in &slots {
-                                meshes.push((
-                                    key.clone(),
-                                    MeshData {
-                                        vertices: m.vertices.clone(),
-                                        indices: m.indices.clone(),
-                                        texture: m.texture.clone(),
-                                        notes: Vec::new(),
-                                    },
-                                ));
-                            }
-                            skinned = Some(Rc::new(SkinnedPart {
-                                skin,
-                                bind: m.vertices,
-                                slots,
-                            }));
+                        (Some(m), Some(mut skin)) => {
+                            // One mesh, bent on the GPU: its joint weights go up with it.
+                            let key = format!("{}#{}#skin", asset.id, part.name);
+                            let influences = std::mem::take(&mut skin.influences);
+                            meshes.push((key.clone(), m, Some(influences)));
+                            skinned = Some(Rc::new(SkinnedPart { skin, key }));
                             None
                         }
                         (Some(m), None) => {
                             let key = format!("{}#{}", asset.id, part.name);
-                            meshes.push((key.clone(), m));
+                            meshes.push((key.clone(), m, None));
                             Some(key)
                         }
                         (None, _) => None,
@@ -2239,8 +2225,7 @@ impl Game {
             ui: Vec::new(),
             models: Vec::new(),
             ui_models: Vec::new(),
-            mesh_writes: Vec::new(),
-            skin_used: HashMap::new(),
+            joints: Vec::new(),
             voxel: crate::voxel::World::new(),
             cubes: HashMap::new(),
             walls: crate::walls::Walls::default(),
@@ -2282,7 +2267,7 @@ impl Game {
             text: Vec::new(),
             models: Vec::new(),
             ui_models: Vec::new(),
-            mesh_writes: Vec::new(),
+            joints: Vec::new(),
             mesh_ops: Vec::new(),
             camera: DEFAULT_CAMERA,
             lighting: Lighting::default(),
@@ -2348,8 +2333,12 @@ impl Game {
             walls_api::CUBE_GLOW_MESH.to_string(),
             target.add_mesh(&walls_api::cube_mesh(true)),
         );
-        for (id, mesh) in std::mem::take(&mut self.meshes) {
-            ids.insert(id, target.add_mesh(&mesh));
+        for (id, mesh, influences) in std::mem::take(&mut self.meshes) {
+            let mesh_id = match influences {
+                Some(influences) => target.add_skinned_mesh(&mesh, &influences),
+                None => target.add_mesh(&mesh),
+            };
+            ids.insert(id, mesh_id);
         }
         self.shared.borrow_mut().mesh_ids = ids;
     }
@@ -2492,14 +2481,13 @@ impl Game {
             std::mem::swap(&mut sh.text_out, &mut self.text);
             std::mem::swap(&mut sh.models, &mut self.models);
             std::mem::swap(&mut sh.ui_models, &mut self.ui_models);
-            std::mem::swap(&mut sh.mesh_writes, &mut self.mesh_writes);
+            std::mem::swap(&mut sh.joints, &mut self.joints);
             sh.ui_models.clear();
             sh.world.clear();
             sh.ui.clear();
             sh.text_out.clear();
             sh.models.clear();
-            sh.mesh_writes.clear();
-            sh.skin_used.clear();
+            sh.joints.clear();
             let bindings = sh.bindings.clone();
             sh.states
                 .update(&bindings, &input.sources, &input.overrides);
@@ -2559,7 +2547,7 @@ impl Game {
         std::mem::swap(&mut sh.text_out, &mut self.text);
         std::mem::swap(&mut sh.models, &mut self.models);
         std::mem::swap(&mut sh.ui_models, &mut self.ui_models);
-        std::mem::swap(&mut sh.mesh_writes, &mut self.mesh_writes);
+        std::mem::swap(&mut sh.joints, &mut self.joints);
         let made = std::mem::take(&mut sh.voxel.ops);
         self.mesh_ops.extend(made);
         // equal meshes become one instanced draw; meshes made by scripts (voxel chunks) stay in the order they were drawn in,
@@ -2691,7 +2679,7 @@ impl Game {
             camera: self.camera,
             sprites_back: &self.world,
             models: &self.models,
-            mesh_writes: &self.mesh_writes,
+            joints: &self.joints,
             mesh_ops: &self.mesh_ops,
             ui_models: &self.ui_models,
             lighting: self.lighting,

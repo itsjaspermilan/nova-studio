@@ -363,7 +363,7 @@ The player, the patrollers, the gems, the flag, the checkpoint sign, the two mov
 Platformer Kit (CC0; notice in `licenses/kenney-platformer-kit.txt`; `scripts/sky/kenney.mjs` copies the eleven that are used). The
 characters are skinned and carry 25 clips; the game plays `idle`, `walk`, `sprint`, `jump` and `fall` by what the body is doing. The
 engine took them without change except one thing: **a .glb that points at a texture file (`Textures/colormap.png`) does not load**
-(`external reference in slice only import`), so the script embeds the texture in each .glb. A frame now has 20 draws and 10,000 triangles
+(`external reference in slice only import`), so the script embeds the texture in each .glb. (The characters also exposed that animated models were capped at 8 draws a frame and skinned on the CPU; both fixed the same day by GPU skinning, see the TODO.) A frame now has 20 draws and 10,000 triangles
 (was 7 draws and 900), rendered in 1.1 ms (was 0.9) headless on an M4. The level is built from the kit's own pieces too (`lib/level.lua`): the islands are 4 m `block-grass-large` tiles (the kit's metre is
 two of ours, so a block is 2 m tall and a jump is about one block up and one block across), the ramps are `block-grass-large-slope` and
 `-narrow` with a ramp added to the walls under each, the pillar is three `block-grass-narrow`, and every solid piece adds a box to the

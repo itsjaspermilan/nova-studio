@@ -282,7 +282,7 @@ impl Spike {
             },
             sprites_back: &self.back,
             models: &self.models,
-            mesh_writes: &[],
+            joints: &[],
             mesh_ops: &[],
             ui_models: &[],
             sprites_front: &self.front,

@@ -866,7 +866,7 @@ fn script_made_meshes_reuse_their_gpu_buffers() {
             },
             sprites_back: &[],
             models: &[],
-            mesh_writes: &[],
+            joints: &[],
             mesh_ops: ops,
             ui_models: &[],
             lighting: Lighting::default(),
