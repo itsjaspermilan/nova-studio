@@ -142,8 +142,8 @@
  {
   "name": "nova.sky",
   "kind": "function",
-  "signature": "nova.sky{ top = {r, g, b}, horizon = {r, g, b} }",
-  "doc": "Paints a sky behind everything in 3D: `horizon` where it meets the ground (and below), blending up to `top` overhead. Colours are 0 to 255, as you would pick them on screen. Stays until changed; `nova.sky(nil)` goes back to the plain clear colour.",
+  "signature": "nova.sky{ top = {r, g, b}, horizon = {r, g, b} [, sun = {x, y, z}, stars = 0..1, clouds = 0..1] }",
+  "doc": "Paints a sky behind everything in 3D: `horizon` where it meets the ground (and below), blending up to `top` overhead. Colours are 0 to 255, as you would pick them on screen. Stays until changed; `nova.sky(nil)` goes back to the plain clear colour. `sun` is the direction towards the sun: the sky draws a sun there and a moon opposite it. `stars` (0 to 1) is how many stars show, `clouds` (0 to 1) how much of the sky is cloud, drifting slowly.",
   "group": "Drawing"
  },
  {
@@ -1153,5 +1153,19 @@
   "signature": "nova.voxel.load_world(name) -> chunks",
   "doc": "Reads a file written by `save_world` (0 when there is none). Changes come back through `apply_saved` as chunks are made.",
   "group": "Voxels"
+ },
+ {
+  "name": "nova.line3",
+  "kind": "function",
+  "signature": "nova.line3(x1, y1, z1, x2, y2, z2 [, { color, width }])",
+  "doc": "Draws a straight line in the 3D world, `width` metres across (0.02), always turned to face the camera and lit by nothing: for outlines, aiming beams and debugging. Colour is {r, g, b [, a]}.",
+  "group": "3D"
+ },
+ {
+  "name": "nova.box3",
+  "kind": "function",
+  "signature": "nova.box3(x1, y1, z1, x2, y2, z2 [, { color, width }])",
+  "doc": "Draws the twelve edges of a box with `nova.line3`: the outline of a selected block or a hit box.",
+  "group": "3D"
  }
 ]

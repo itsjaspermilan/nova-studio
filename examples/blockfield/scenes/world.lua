@@ -182,7 +182,9 @@ function World:sky(eye_water)
   horizon = mixc(horizon, { 255, 140, 70 }, glow)
   voxel.daylight(day)
   local far = VIEW * 16
-  nova.sky { top = top, horizon = horizon }
+  local a = phase * math.pi * 2
+  local sun = { cos(a), sin(a), -0.35 }
+  nova.sky { top = top, horizon = horizon, sun = sun, stars = max(0, min(1, (0.45 - day) * 3)), clouds = 0.5 }
   if eye_water then
     nova.fog { color = { 18, 44, 100 }, near = 0.5, far = 16 }
   else
@@ -578,7 +580,8 @@ function World:draw()
   local t = (not self.aimed_mob) and self.target or nil
   if t and not self.dead then
     local cx, cy, cz = t[1] + 0.5, t[2] + 0.5, t[3] + 0.5
-    voxel.cube(B.outline, cx, cy, cz, { scale = 1.004 })
+    local e = 0.003
+    nova.box3(t[1] - e, t[2] - e, t[3] - e, t[1] + 1 + e, t[2] + 1 + e, t[3] + 1 + e, { color = { 10, 10, 10 }, width = 0.015 })
     local m = self.mine
     if m.progress > 0.02 then voxel.cube(B["crack_" .. min(9, floor(m.progress * 10))], cx, cy, cz, { scale = 1.006 }) end
   end

@@ -46,6 +46,14 @@ pub struct PointLight {
 pub struct Sky {
     pub top: [f32; 3],
     pub horizon: [f32; 3],
+    /// The direction towards the sun (any length), when the sky shows a sun and, opposite it, a moon.
+    pub sun: Option<[f32; 3]>,
+    /// How many stars show, 0 to 1.
+    pub stars: f32,
+    /// How much of the sky is cloud, 0 (none) to 1.
+    pub clouds: f32,
+    /// Seconds, for twinkling and drifting; set by the game each frame.
+    pub time: f32,
 }
 
 /// The sun's shadows, in a square of ground `radius` metres either side of what the camera looks at (more is blurrier).
@@ -221,6 +229,10 @@ struct Globals {
     shadow: [f32; 4],
     /// x: sky brightness for voxel meshes (0 to 1).
     voxel: [f32; 4],
+    /// xyz: the way to the sun (unit); w: stars, 0 to 1.
+    sky_sun: [f32; 4],
+    /// x: cloud cover; y: time; z: 1 when there is a sun and moon.
+    sky_extra: [f32; 4],
 }
 
 /// Side of the (square) shadow map in texels.
@@ -317,8 +329,47 @@ pub struct Gfx {
     meshes: Vec<GpuMesh>,
     dyn_meshes: HashMap<usize, GpuMesh>,
     voxel_atlas: Option<wgpu::BindGroup>,
+    sampler_voxel: wgpu::Sampler,
     model_instances: DynBuffer,
     depth: Option<(wgpu::TextureView, (u32, u32))>,
+}
+
+/// The picture and its smaller copies, one after another (each half the size, averaged with see-through texels counting
+/// for less), for `levels` levels. A tile 16 pixels wide stays whole down to level 4, so blocks in an atlas do not
+/// bleed into each other.
+pub fn mip_chain(image: &Image, levels: u32) -> Vec<u8> {
+    let mut out = image.rgba.clone();
+    let (mut w, mut h) = (image.width as usize, image.height as usize);
+    let mut prev = image.rgba.clone();
+    for _ in 1..levels {
+        let (nw, nh) = ((w / 2).max(1), (h / 2).max(1));
+        let mut next = vec![0u8; nw * nh * 4];
+        for y in 0..nh {
+            for x in 0..nw {
+                let (mut r, mut g, mut b, mut a) = (0.0f32, 0.0f32, 0.0f32, 0.0f32);
+                for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+                    let (sx, sy) = ((x * 2 + dx).min(w - 1), (y * 2 + dy).min(h - 1));
+                    let i = (sy * w + sx) * 4;
+                    let al = prev[i + 3] as f32 / 255.0;
+                    r += prev[i] as f32 * al;
+                    g += prev[i + 1] as f32 * al;
+                    b += prev[i + 2] as f32 * al;
+                    a += al;
+                }
+                let o = (y * nw + x) * 4;
+                if a > 0.0 {
+                    next[o] = (r / a).round() as u8;
+                    next[o + 1] = (g / a).round() as u8;
+                    next[o + 2] = (b / a).round() as u8;
+                }
+                next[o + 3] = (a / 4.0 * 255.0).round() as u8;
+            }
+        }
+        out.extend_from_slice(&next);
+        prev = next;
+        (w, h) = (nw, nh);
+    }
+    out
 }
 
 fn texture_group(
@@ -329,6 +380,23 @@ fn texture_group(
     label: &str,
     image: &Image,
 ) -> wgpu::BindGroup {
+    texture_group_mips(device, queue, layout, sampler, label, image, 1)
+}
+
+fn texture_group_mips(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    layout: &wgpu::BindGroupLayout,
+    sampler: &wgpu::Sampler,
+    label: &str,
+    image: &Image,
+    levels: u32,
+) -> wgpu::BindGroup {
+    let data = if levels > 1 {
+        mip_chain(image, levels)
+    } else {
+        image.rgba.clone()
+    };
     let texture = device.create_texture_with_data(
         queue,
         &wgpu::TextureDescriptor {
@@ -338,7 +406,7 @@ fn texture_group(
                 height: image.height,
                 depth_or_array_layers: 1,
             },
-            mip_level_count: 1,
+            mip_level_count: levels,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8UnormSrgb,
@@ -346,7 +414,7 @@ fn texture_group(
             view_formats: &[],
         },
         wgpu::util::TextureDataOrder::LayerMajor,
-        &image.rgba,
+        &data,
     );
     let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
     device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -408,6 +476,14 @@ impl Gfx {
             label: Some("nearest"),
             mag_filter: wgpu::FilterMode::Nearest,
             min_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+        // pixelated up close, blended between smaller copies far away
+        let sampler_voxel = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("voxel"),
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
             ..Default::default()
         });
         let texture_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -890,6 +966,7 @@ impl Gfx {
             meshes: Vec::new(),
             dyn_meshes: HashMap::new(),
             voxel_atlas: None,
+            sampler_voxel,
             model_instances,
             depth: None,
         })
@@ -1173,6 +1250,20 @@ impl Gfx {
             light_view_proj,
             shadow,
             voxel: [lit.day, 0.0, 0.0, 0.0],
+            sky_sun: sky.map_or([0.0, 1.0, 0.0, 0.0], |k| {
+                let d = k
+                    .sun
+                    .map_or(Vec3::Y, |s| Vec3::from(s).normalize_or(Vec3::Y));
+                [d.x, d.y, d.z, k.stars]
+            }),
+            sky_extra: sky.map_or([0.0; 4], |k| {
+                [
+                    k.clouds,
+                    k.time,
+                    if k.sun.is_some() { 1.0 } else { 0.0 },
+                    0.0,
+                ]
+            }),
         };
         self.queue
             .write_buffer(&self.globals, 0, bytemuck::bytes_of(&globals));
@@ -1192,13 +1283,20 @@ impl Gfx {
         for op in input.mesh_ops {
             match op {
                 MeshOp::SetAtlas(image) => {
-                    self.voxel_atlas = Some(texture_group(
+                    // five levels: a 16-pixel tile stays whole down to the last, so far blocks blend instead of shimmering
+                    let levels = if image.width.min(image.height) >= 16 {
+                        5
+                    } else {
+                        1
+                    };
+                    self.voxel_atlas = Some(texture_group_mips(
                         &self.device,
                         &self.queue,
                         &self.texture_layout,
-                        &self.sampler_nearest,
+                        &self.sampler_voxel,
                         "voxel atlas",
                         image,
+                        levels,
                     ));
                     // meshes made earlier keep the old picture until they are rebuilt, which the game does
                 }
@@ -1543,5 +1641,35 @@ impl Gfx {
             pixels.extend_from_slice(&row[..row_bytes as usize]);
         }
         pixels
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mip_levels_halve_and_keep_atlas_tiles_apart_down_to_the_last() {
+        // a 32 x 32 atlas of two 16-pixel tiles: red and opaque on the left, see-through on the right
+        let mut rgba = vec![0u8; 32 * 32 * 4];
+        for y in 0..32 {
+            for x in 0..16 {
+                rgba[(y * 32 + x) * 4..(y * 32 + x) * 4 + 4].copy_from_slice(&[255, 0, 0, 255]);
+            }
+        }
+        let image = Image {
+            width: 32,
+            height: 32,
+            rgba,
+        };
+        let chain = mip_chain(&image, 5);
+        assert_eq!(chain.len(), (32 * 32 + 16 * 16 + 8 * 8 + 4 * 4 + 2 * 2) * 4);
+        let last = &chain[(32 * 32 + 16 * 16 + 8 * 8 + 4 * 4) * 4..];
+        assert_eq!(
+            &last[..4],
+            &[255, 0, 0, 255],
+            "the left tile is still pure red"
+        );
+        assert_eq!(last[7], 0, "the right tile is still see-through");
     }
 }

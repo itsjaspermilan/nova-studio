@@ -89,6 +89,60 @@ fn cube_mesh(world: &voxel::World, id: u8) -> (Vec<MeshVertex>, Vec<u32>) {
     (vertices, indices)
 }
 
+pub(super) const LINE_MESH: &str = "__line";
+
+/// A one-by-one strip lying across x and y, seen from both sides and shown at full colour whatever the light.
+pub(super) fn line_mesh() -> crate::model::MeshData {
+    let corners = [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]];
+    let mut vertices = Vec::new();
+    for side in [1.0f32, -1.0] {
+        for c in corners {
+            vertices.push(MeshVertex {
+                position: [c[0], c[1], 0.0],
+                normal: [0.0, 0.0, side],
+                color: [255; 4],
+                uv: [0.5, 0.5],
+                emissive: 1.0,
+            });
+        }
+    }
+    crate::model::MeshData {
+        vertices,
+        indices: vec![0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6],
+        texture: None,
+        notes: Vec::new(),
+    }
+}
+
+/// A line from a to b, `width` metres across, always turned to face the camera.
+fn push_line(sh: &mut Shared, a: Vec3, b: Vec3, width: f32, tint: [f32; 4]) {
+    let Some(&mesh) = sh.mesh_ids.get(LINE_MESH) else {
+        return;
+    };
+    let dir = b - a;
+    if dir.length() < 1e-6 {
+        return;
+    }
+    let mid = (a + b) * 0.5;
+    let view = (sh.camera.eye - mid).normalize_or_zero();
+    let side = dir.cross(view).normalize_or_zero() * width;
+    let normal = dir.cross(side).normalize_or_zero();
+    let matrix = Mat4::from_cols(
+        dir.extend(0.0),
+        side.extend(0.0),
+        normal.extend(0.0),
+        mid.extend(1.0),
+    );
+    sh.models.push(ModelDraw {
+        casts: false,
+        mesh,
+        instance: ModelInstance {
+            matrix: matrix.to_cols_array_2d(),
+            tint,
+        },
+    });
+}
+
 pub(super) fn install(
     lua: &Lua,
     shared: &Rc<RefCell<Shared>>,
@@ -145,6 +199,50 @@ pub(super) fn install(
         lua.create_function(|_, (x, y, z, seed): (f64, f64, f64, Option<u32>)| {
             Ok(voxel::hash01(cell(x), cell(y), cell(z), seed.unwrap_or(0)))
         })?,
+    )?;
+
+    let s = shared.clone();
+    nova.set(
+        "line3",
+        lua.create_function(
+            move |_, (x1, y1, z1, x2, y2, z2, opts): (f64, f64, f64, f64, f64, f64, Option<Table>)| {
+                let width = number_option(&opts, "width")?.unwrap_or(0.02) as f32;
+                let tint = color_option(&opts, "color", [255; 4])?.map(|c| c as f32 / 255.0);
+                push_line(
+                    &mut s.borrow_mut(),
+                    Vec3::new(x1 as f32, y1 as f32, z1 as f32),
+                    Vec3::new(x2 as f32, y2 as f32, z2 as f32),
+                    width,
+                    tint,
+                );
+                Ok(())
+            },
+        )?,
+    )?;
+    let s = shared.clone();
+    nova.set(
+        "box3",
+        lua.create_function(
+            move |_, (x1, y1, z1, x2, y2, z2, opts): (f64, f64, f64, f64, f64, f64, Option<Table>)| {
+                let width = number_option(&opts, "width")?.unwrap_or(0.02) as f32;
+                let tint = color_option(&opts, "color", [255; 4])?.map(|c| c as f32 / 255.0);
+                let (lo, hi) = (
+                    Vec3::new(x1.min(x2) as f32, y1.min(y2) as f32, z1.min(z2) as f32),
+                    Vec3::new(x1.max(x2) as f32, y1.max(y2) as f32, z1.max(z2) as f32),
+                );
+                let p = |i: usize| Vec3::new(if i & 1 == 0 { lo.x } else { hi.x }, if i & 2 == 0 { lo.y } else { hi.y }, if i & 4 == 0 { lo.z } else { hi.z });
+                let mut sh = s.borrow_mut();
+                // the twelve edges: corners that differ in exactly one of the three bits
+                for i in 0..8usize {
+                    for bit in [1usize, 2, 4] {
+                        if i & bit == 0 {
+                            push_line(&mut sh, p(i), p(i | bit), width, tint);
+                        }
+                    }
+                }
+                Ok(())
+            },
+        )?,
     )?;
 
     let v = lua.create_table()?;

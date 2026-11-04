@@ -818,7 +818,18 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             let top = picture_color(&opts, "top")?
                 .ok_or_else(|| lua_err("nova.sky needs top = {r, g, b}: the colour overhead (and horizon = {r, g, b} for the line where it meets the ground)"))?;
             let horizon = picture_color(&opts, "horizon")?.unwrap_or(top);
-            s.borrow_mut().lighting.sky = Some(Sky { top, horizon });
+            let sun = match opts.get::<Option<Table>>("sun")? {
+                Some(t) => Some([
+                    t.get::<Option<f32>>(1)?.unwrap_or(0.0),
+                    t.get::<Option<f32>>(2)?.unwrap_or(1.0),
+                    t.get::<Option<f32>>(3)?.unwrap_or(0.0),
+                ]),
+                None => None,
+            };
+            let opts = Some(opts);
+            let stars = number_option(&opts, "stars")?.unwrap_or(0.0).clamp(0.0, 1.0) as f32;
+            let clouds = number_option(&opts, "clouds")?.unwrap_or(0.0).clamp(0.0, 1.0) as f32;
+            s.borrow_mut().lighting.sky = Some(Sky { top, horizon, sun, stars, clouds, time: 0.0 });
             Ok(())
         })?,
     )?;
@@ -2028,6 +2039,11 @@ impl Game {
             target.set_atlas(&atlas);
         }
         let mut ids = HashMap::new();
+        // the flat strip that `nova.line3` stretches into a line (both sides, lit by nothing)
+        ids.insert(
+            voxel_api::LINE_MESH.to_string(),
+            target.add_mesh(&voxel_api::line_mesh()),
+        );
         for (id, mesh) in std::mem::take(&mut self.meshes) {
             ids.insert(id, target.add_mesh(&mesh));
         }
@@ -2219,9 +2235,20 @@ impl Game {
         std::mem::swap(&mut sh.mesh_writes, &mut self.mesh_writes);
         let made = std::mem::take(&mut sh.voxel.ops);
         self.mesh_ops.extend(made);
-        self.models.sort_by_key(|m| m.mesh); // equal meshes become one instanced draw
+        // equal meshes become one instanced draw; meshes made by scripts (voxel chunks) stay in the order they were drawn in,
+        // which is far to near, so that water blends in a sensible order
+        self.models.sort_by_key(|m| {
+            if m.mesh >= crate::gfx::DYN_MESH_BASE {
+                (true, 0)
+            } else {
+                (false, m.mesh)
+            }
+        });
         self.camera = sh.camera;
         self.lighting = sh.lighting;
+        if let Some(sky) = self.lighting.sky.as_mut() {
+            sky.time = (sh.time % 100_000.0) as f32;
+        }
         sh.lighting.point_count = 0; // point lights last one frame; the sun and ambient stay
         self.clear = sh.clear;
         let white = sh.layout.white_uv();
