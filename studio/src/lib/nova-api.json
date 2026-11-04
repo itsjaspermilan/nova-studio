@@ -1125,5 +1125,12 @@
   "signature": "nova.voxel.stats() -> { chunks, meshed, mesh_ms, light_ms, faces, drawn, dirty }",
   "doc": "What the voxel world is doing: chunks loaded, chunk pictures built so far and the milliseconds spent building and lighting, faces in the last chunk built, pictures drawn this frame and chunks waiting for a new picture.",
   "group": "Voxels"
+ },
+ {
+  "name": "nova.clock",
+  "kind": "function",
+  "signature": "nova.clock() -> seconds",
+  "doc": "A stopwatch that runs in real time (nova.time is game time, which stops when paused). For measuring how long work took, or spending a fixed share of a frame on it: `local t = nova.clock(); while nova.clock() - t < 0.004 do ... end`.",
+  "group": "3D"
  }
 ]

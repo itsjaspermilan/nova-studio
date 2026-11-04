@@ -260,3 +260,5 @@ writeFileSync(join(GAME, "textures/blocks.png"), png);
 const lua = ["-- Tile numbers in textures/blocks.png (made by scripts/blockfield/textures.mjs; do not edit).", "return {", ...Object.entries(names).map(([k, v]) => `  ${k} = ${v},`), "}", ""].join("\n");
 writeFileSync(join(GAME, "lib/tiles.lua"), lua);
 console.log(`${tiles.length} tiles, ${png.length} bytes`);
+// the same picture as a sprite sheet of 16 x 16 frames, so that the UI can draw any tile by its number (`frame`)
+writeFileSync(join(GAME, "textures/blocks.sprite.json"), JSON.stringify({ version: 1, image: "blocks.png", frame_width: T, frame_height: T }, null, 2) + "\n");

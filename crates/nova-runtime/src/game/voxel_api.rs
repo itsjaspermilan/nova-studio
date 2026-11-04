@@ -95,6 +95,12 @@ pub(super) fn install(
     vfs: &Rc<dyn Vfs>,
     nova: &Table,
 ) -> mlua::Result<()> {
+    // a stopwatch that runs in real time (nova.time is game time): for spending a fixed share of a frame on work
+    let started = std::time::Instant::now();
+    nova.set(
+        "clock",
+        lua.create_function(move |_, ()| Ok(started.elapsed().as_secs_f64()))?,
+    )?;
     // noise for terrain: smooth, repeatable, about -1 to 1
     nova.set(
         "noise2",

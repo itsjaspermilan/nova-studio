@@ -1,0 +1,27 @@
+{
+  "format": 1,
+  "name": "Blockfield",
+  "version": "0.1.0",
+  "input": {
+    "jump": ["key:Space", "pad:south"],
+    "sneak": ["key:ShiftLeft", "pad:thumb_r"],
+    "sprint": ["key:ControlLeft", "pad:thumb_l"],
+    "mine": ["mouse:left", "axis:r2", "key:KeyX"],
+    "place": ["mouse:right", "axis:l2", "key:KeyC"],
+    "inventory": ["key:KeyE", "pad:north"],
+    "pause": ["key:Escape", "pad:start"],
+    "prev_slot": ["pad:l1"],
+    "next_slot": ["pad:r1"],
+    "fly": ["key:KeyF"],
+    "stats": ["key:F3", "pad:select"],
+    "slot_1": ["key:Digit1"],
+    "slot_2": ["key:Digit2"],
+    "slot_3": ["key:Digit3"],
+    "slot_4": ["key:Digit4"],
+    "slot_5": ["key:Digit5"],
+    "slot_6": ["key:Digit6"],
+    "slot_7": ["key:Digit7"],
+    "slot_8": ["key:Digit8"],
+    "slot_9": ["key:Digit9"]
+  }
+}
