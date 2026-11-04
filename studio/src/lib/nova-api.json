@@ -157,7 +157,7 @@
   "name": "nova.point_light",
   "kind": "function",
   "signature": "nova.point_light(x, y, z [, { radius = 10, color = {r, g, b} }])",
-  "doc": "A light that fades out at `radius`. Call it every frame you want it (it lasts one frame); up to 8 are used.",
+  "doc": "A light that fades out at `radius`. Call it every frame you want it (it lasts one frame); up to 16 are used (each costs a little on every lit pixel: a game that needs fewer can use fewer).",
   "group": "Drawing"
  },
  {
@@ -1346,8 +1346,8 @@
  {
   "name": "nova.nav.build",
   "kind": "function",
-  "signature": "nova.nav.build{ x0, z0, x1, z1 [, cell, radius, y, height] }",
-  "doc": "Builds the path grid over the part of the ground from (x0, z0) to (x1, z1) from the walls as they are now: cells of `cell` metres (0.5) where a body of `radius` (0.4) and `height` (1.8) standing at height `y` can stand. Call it again when a door opens or shuts.",
+  "signature": "nova.nav.build{ x0, z0, x1, z1 [, cell, radius, y, height, ignore] }",
+  "doc": "Builds the path grid over the part of the ground from (x0, z0) to (x1, z1) from the walls as they are now: cells of `cell` metres (0.5) where a body of `radius` (0.4) and `height` (1.8) standing at height `y` can stand. Call it again when a door opens or shuts. `ignore` is a list of wall numbers to leave out of the grid: doors that something can open, so that a path leads through them (the door itself still stops a body until it is open).",
   "group": "Walls and paths"
  },
  {

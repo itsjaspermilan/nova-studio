@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "name": "Bunker Run",
+  "version": "0.1.0",
+  "input": {
+    "fire": ["mouse:left", "axis:r2", "key:KeyF"],
+    "reload": ["key:KeyR", "pad:west"],
+    "use": ["key:KeyE", "pad:north"],
+    "weapon_1": ["key:Digit1"],
+    "weapon_2": ["key:Digit2"],
+    "next_weapon": ["pad:r1"],
+    "prev_weapon": ["pad:l1"],
+    "pause": ["key:Escape", "pad:start"],
+    "stats": ["key:F3", "pad:select"],
+    "profile": ["key:F4"],
+    "god": ["key:F6"],
+    "autoplay": ["key:F9"]
+  }
+}

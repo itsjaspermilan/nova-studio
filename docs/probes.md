@@ -246,7 +246,48 @@ whole thing is about what an engine needs for *indoor* 3D that is not made of vo
 | Sound | shots, steps, doors, the boss | Positional sound exists now; the voice limit (32) will be hit by a firefight. |
 | Speed | a dozen enemies, each with a path and a ray to the player | Lua will carry the AI; paths and rays must be native or the frame will go over budget. |
 
-Results are written below as it is built.
+### What happened
+
+Built in a day: the engine pieces first (`walls.rs`, `game/walls_api.rs`), then the game (about 700 lines of Lua in
+`examples/bunker-run`: the level is a 25 by 17 map drawn in text, three metres a character; five kinds of creature; two weapons;
+doors, a key, a boss). The game ships with a bot (F9; F6 for god mode) that plays it, and a test lets the bot win it.
+
+1. **Wall collision: confirmed, built.** There were no boxes. `nova.walls` adds boxes with a height range; `push` and `move` slide a
+   round body along them (in steps shorter than the body, so a thin wall is not skipped); a door is a wall that is switched off
+   while it is open. Scenery's circles stay for what is round.
+2. **Rays: confirmed, built.** `nova.walls.raycast` stops at a wall (a ray rising over a low wall passes it; one coming down onto a
+   wall's top hits the top), `line_clear` is line of sight. The game puts a floor and a ceiling under and over that itself, and asks
+   `nova.raycast` for creatures; the nearest of the four wins. Holes are `nova.quad3` (a flat mark on a surface), tracers `nova.line3`.
+3. **Finding a way: confirmed, built, with a lesson.** `nova.nav` builds a grid from the walls and finds paths over it (A*, pulled
+   tight so a path has few corners). The first version left every creature (and the bot) stuck in its room, because a shut door
+   is a wall, so there was no way out of a room to a door that something would have opened. Fix: `nova.nav.build { ignore = {...} }`
+   leaves out the walls of doors that can be opened (not the red one before the key). A path costs 0.27 ms (worst 0.40) and the grid
+   0.4 ms to rebuild when a door changes (about 100 by 68 cells of 0.75 m), on an Apple M4.
+4. **Drawing a level: confirmed, built.** `nova.cuboid` and `cuboid_at` draw a box between two corners or by its middle: every box is
+   an instance of one mesh, so the level (about eighty boxes), the doors, lamps, pickups and every creature's parts (a man is ten
+   boxes) cost 0.55 ms of drawing. No textures: walls are flat colours, and tiling a picture along a stretched box is the
+   obvious next gap.
+5. **Lights: confirmed.** A frame wanted 13 to 16 lights (every lamp in sight, the pickups, drones, muzzle flashes) and the
+   engine took 8, so lamps popped as the nearest eight changed. The limit is 16 now. Using 15 instead of 8 cost 0.64 ms of drawing
+   against 0.55 (about 16% more, on a laptop GPU); the game uses 12. What a handheld's fragment shader makes of a loop over
+   twelve lights is the thing to measure on the device; the way out if it hurts is a light list for each object or tile.
+6. **Sound: not stressed.** Positional sound (the creatures, the doors) worked; whether a firefight reaches the 32 voices was not
+   measured.
+7. **Speed: fine here.** A whole playthrough with ten creatures, each with a path every half second and a ray to the player,
+   runs at 0.18 ms of Lua a frame (0.46 at the 95th percentile) and 0.77 ms for the frame. Not measured on a device.
+
+Things found that were not on the list:
+
+- **The framework moves entities that have a `vx` or `vz`.** The player kept his own velocity in `vx`, `vz` and also slid himself
+  with `nova.walls.move`; the engine added `vx * dt` to his position again after his update, past the walls. Found because the bot
+  kept drifting after the level was won. Not a bug (a built-in velocity is a feature), but a trap: the fields are now `walk_x` and
+  `walk_z`, and the TODO lists a warning or an opt-out.
+- **A hitbox's `base` is measured from the entity's `y`**, not from the ground: a drone that floats at 1 m with `base = 1` could not be
+  hit by a shot at its own height.
+- **Two games drew a weapon in the hand the same way** (Blockfield's block, Bunker Run's pistol): the camera's right, up and forward
+  worked out by hand. An engine helper for camera-relative placement would remove it.
+- **A bot is the best test the game has.** It found the door problem, the velocity trap and two bugs in its own aim in a few runs.
+
 
 ### Next probes worth making
 

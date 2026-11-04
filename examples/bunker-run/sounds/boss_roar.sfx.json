@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "wave": "saw",
+  "freq": 75,
+  "freqLimit": 0,
+  "slide": -0.2,
+  "slideDelta": 0,
+  "duty": 0.5,
+  "dutySweep": 0,
+  "vibratoDepth": 0,
+  "vibratoSpeed": 8,
+  "arpSemitones": 0,
+  "arpTime": 0.1,
+  "attack": 0.05,
+  "sustain": 0.6,
+  "decay": 0.9,
+  "punch": 0,
+  "lowpass": 650,
+  "highpass": 0,
+  "volume": 0.9,
+  "seed": 1
+}

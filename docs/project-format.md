@@ -110,7 +110,7 @@ instanced: draws of the same model in a frame become one GPU draw call. A model 
 below 255: `#rrggbbaa` in the model editor) is drawn after the solid ones, blended and without writing depth, so a puff of
 dust or a window shows what is behind it; it does not sort against other see-through models.
 
-**Lights.** Models are lit by one sun, an ambient floor and up to eight point lights:
+**Lights.** Models are lit by one sun, an ambient floor and up to sixteen point lights:
 
 ```lua
 nova.light { dir = { -0.4, -1, -0.3 }, color = { 255, 240, 220 }, ambient = { 97, 102, 117 } }   -- stays until changed

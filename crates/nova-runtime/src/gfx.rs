@@ -30,7 +30,7 @@ pub struct ModelInstance {
 }
 
 /// Most point lights drawn at once (a frame's extra ones are ignored).
-pub const MAX_POINT_LIGHTS: usize = 8;
+pub const MAX_POINT_LIGHTS: usize = 16;
 
 /// A light that fades to nothing at `radius` world units.
 #[derive(Clone, Copy, Debug, PartialEq)]

@@ -325,9 +325,23 @@ pub(super) fn install(lua: &Lua, shared: &Rc<RefCell<Shared>>, nova: &Table) -> 
             if (x1 - x0) / cell * ((z1 - z0) / cell) > 1.0e6 {
                 return Err(lua_err("nova.nav.build: that is more than a million cells; use a bigger `cell` or a smaller area"));
             }
+            // walls to leave out of the grid: doors that something can open, so that paths lead through them
+            let mut ignore: Vec<u32> = Vec::new();
+            if let Some(list) = opts.get::<Option<Table>>("ignore")? {
+                for id in list.sequence_values::<u32>() {
+                    ignore.push(id?);
+                }
+            }
             let mut sh = s.borrow_mut();
             sh.walls.prepare();
+            let was: Vec<(u32, bool)> = ignore.iter().filter_map(|&id| sh.walls.get(id).map(|w| (id, w.on))).collect();
+            for &(id, _) in &was {
+                sh.walls.set_on(id, false);
+            }
             sh.nav = Nav::build(&sh.walls, x0, z0, x1, z1, cell, radius, y, h);
+            for (id, on) in was {
+                sh.walls.set_on(id, on);
+            }
             Ok(())
         })?,
     )?;

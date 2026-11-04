@@ -1,0 +1,15 @@
+{"t":1793764200242,"tool":"sfx_write","files":["sounds/pistol.sfx.json","sounds/pistol.wav"],"note":"sounds/pistol.wav: 0.15 s"}
+{"t":1793764200247,"tool":"sfx_write","files":["sounds/shotgun.sfx.json","sounds/shotgun.wav"],"note":"sounds/shotgun.wav: 0.47 s"}
+{"t":1793764200248,"tool":"sfx_write","files":["sounds/reload.sfx.json","sounds/reload.wav"],"note":"sounds/reload.wav: 0.11 s"}
+{"t":1793764200249,"tool":"sfx_write","files":["sounds/click.sfx.json","sounds/click.wav"],"note":"sounds/click.wav: 0.03 s"}
+{"t":1793764200250,"tool":"sfx_write","files":["sounds/hurt.sfx.json","sounds/hurt.wav"],"note":"sounds/hurt.wav: 0.36 s"}
+{"t":1793764200251,"tool":"sfx_write","files":["sounds/enemy_hit.sfx.json","sounds/enemy_hit.wav"],"note":"sounds/enemy_hit.wav: 0.08 s"}
+{"t":1793764200255,"tool":"sfx_write","files":["sounds/enemy_die.sfx.json","sounds/enemy_die.wav"],"note":"sounds/enemy_die.wav: 0.55 s"}
+{"t":1793764200257,"tool":"sfx_write","files":["sounds/drone_die.sfx.json","sounds/drone_die.wav"],"note":"sounds/drone_die.wav: 0.36 s"}
+{"t":1793764200261,"tool":"sfx_write","files":["sounds/door.sfx.json","sounds/door.wav"],"note":"sounds/door.wav: 0.78 s"}
+{"t":1793764200265,"tool":"sfx_write","files":["sounds/pickup.sfx.json","sounds/pickup.wav"],"note":"sounds/pickup.wav: 0.33 s"}
+{"t":1793764200266,"tool":"sfx_write","files":["sounds/key.sfx.json","sounds/key.wav"],"note":"sounds/key.wav: 0.33 s"}
+{"t":1793764200266,"tool":"sfx_write","files":["sounds/step.sfx.json","sounds/step.wav"],"note":"sounds/step.wav: 0.07 s"}
+{"t":1793764200267,"tool":"sfx_write","files":["sounds/enemy_shot.sfx.json","sounds/enemy_shot.wav"],"note":"sounds/enemy_shot.wav: 0.18 s"}
+{"t":1793764200270,"tool":"sfx_write","files":["sounds/boss_roar.sfx.json","sounds/boss_roar.wav"],"note":"sounds/boss_roar.wav: 1.55 s"}
+{"t":1793764200275,"tool":"sfx_write","files":["sounds/win.sfx.json","sounds/win.wav"],"note":"sounds/win.wav: 0.45 s"}

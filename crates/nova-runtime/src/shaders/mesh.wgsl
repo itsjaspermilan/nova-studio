@@ -4,8 +4,8 @@ struct Globals {
     light_dir: vec4<f32>,      // xyz: direction the light travels, w: point light count
     light_color: vec4<f32>,
     ambient: vec4<f32>,
-    point_pos: array<vec4<f32>, 8>,   // xyz position, w radius
-    point_color: array<vec4<f32>, 8>,
+    point_pos: array<vec4<f32>, 16>,   // xyz position, w radius
+    point_color: array<vec4<f32>, 16>,
     inv_view_proj: mat4x4<f32>,
     eye: vec4<f32>,
     sky_top: vec4<f32>,
