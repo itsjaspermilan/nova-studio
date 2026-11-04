@@ -234,7 +234,7 @@
   "name": "nova.ui.text",
   "kind": "function",
   "signature": "nova.ui.text(x, y, text [, opts]) -> width, height",
-  "doc": "Draw text. Options: font, size, color, width (wrap), align, shadow. Fonts: sans, rounded, pixel, terminal, mono, serif, comic, display, script, or a project font.",
+  "doc": "Draw text. Options: font, size, color, width (wrap), align, shadow. With `width`, `align` (left, center, right) places the lines inside that width; without it, \"center\" puts the middle of the text at x and \"right\" puts its right edge there. Fonts: sans, rounded, pixel, terminal, mono, serif, comic, display, script, or a project font.",
   "group": "Drawing"
  },
  {

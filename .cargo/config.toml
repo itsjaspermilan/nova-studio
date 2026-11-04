@@ -1,0 +1,9 @@
+# Android builds abort on a panic (smaller, and a panic must not unwind into the Java/native boundary); desktop release
+# builds keep unwinding so that `cargo test --release` can build the library once, not twice (with `panic = "abort"` in
+# the release profile the library was built in two flavours that wrote the same unhashed cdylib file, which made the first
+# test run after an edit fail to link).
+[target.aarch64-linux-android]
+rustflags = ["-C", "panic=abort"]
+
+[target.x86_64-linux-android]
+rustflags = ["-C", "panic=abort"]

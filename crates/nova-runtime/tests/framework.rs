@@ -2270,3 +2270,57 @@ for _, f in ipairs(r.functions) do nova.log(string.format('%s %.2f', f.name, f.s
         .collect();
     assert!(shares.windows(2).all(|w| w[0] >= w[1]), "{shares:?}");
 }
+
+#[test]
+fn text_aligned_without_a_width_is_centred_or_right_aligned_around_the_point() {
+    // the middle of a line of text, from the quads it made
+    fn middle(align: &str) -> f32 {
+        let g = project(vec![(
+            "main.lua",
+            lua(&format!(
+                "function draw() nova.ui.text(500, 100, 'HELLO WORLD', {{ size = 24, align = '{align}' }}) end"
+            )),
+        )]);
+        let mut g = g;
+        g.update(1.0 / 60.0, 0.0, [1000.0, 600.0], Default::default(), false);
+        let quads = g.frame_input(540).text.to_vec();
+        assert!(!quads.is_empty());
+        let left = quads
+            .iter()
+            .map(|q| q.center[0] - q.size[0] * 0.5)
+            .fold(f32::MAX, f32::min);
+        let right = quads
+            .iter()
+            .map(|q| q.center[0] + q.size[0] * 0.5)
+            .fold(f32::MIN, f32::max);
+        (left + right) * 0.5
+    }
+    let (left, center) = (middle("left"), middle("center"));
+    assert!(
+        left > 520.0,
+        "left-aligned text starts at x: its middle is to the right of it ({left})"
+    );
+    assert!(
+        (center - 500.0).abs() < 8.0,
+        "centred text is centred on x ({center})"
+    );
+    // right-aligned: the text ends at x
+    let g = project(vec![(
+        "main.lua",
+        lua(
+            "function draw() nova.ui.text(500, 100, 'HELLO WORLD', { size = 24, align = 'right' }) end",
+        ),
+    )]);
+    let mut g = g;
+    g.update(1.0 / 60.0, 0.0, [1000.0, 600.0], Default::default(), false);
+    let right_edge = g
+        .frame_input(540)
+        .text
+        .iter()
+        .map(|q| q.center[0] + q.size[0] * 0.5)
+        .fold(f32::MIN, f32::max);
+    assert!(
+        (right_edge - 500.0).abs() < 8.0,
+        "right-aligned text ends at x ({right_edge})"
+    );
+}

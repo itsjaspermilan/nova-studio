@@ -611,10 +611,7 @@ function World:draw()
 end
 
 local function text(x, y, s, size, color, align)
-  -- (aligned text sits in a box: the point is its middle or its right edge)
-  local box = 900
-  if align == "center" then x = x - box / 2 elseif align == "right" then x = x - box end
-  nova.ui.text(x, y, s, { size = size or 16, color = color or { 255, 255, 255 }, shadow = true, align = align, width = align and box or nil })
+  nova.ui.text(x, y, s, { size = size or 16, color = color or { 255, 255, 255 }, shadow = true, align = align })
 end
 
 -- ---- the making menu ----

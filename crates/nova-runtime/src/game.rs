@@ -643,6 +643,12 @@ fn draw_text(
         }
     };
     let layout = sh.text.layout(font, text, px, wrap);
+    // without a `width` to align inside, "center" and "right" are around the point given
+    let x = match (align, wrap) {
+        (Align::Center, None) => x - layout.width / scale * 0.5,
+        (Align::Right, None) => x - layout.width / scale,
+        _ => x,
+    };
     if draw {
         let color = color_option(opts, "color", [255; 4])?;
         let shadow = match opts {

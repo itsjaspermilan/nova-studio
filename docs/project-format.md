@@ -593,7 +593,8 @@ local w, h = nova.ui.text(x, y, "Hello", {
   size = 24,                 -- logical units tall (default 16); the older `scale` is 8 units per step
   color = { 255, 220, 120 },
   width = 300,               -- wrap lines at this width
-  align = "center",          -- "left" (default), "center" or "right", inside `width` (or the widest line)
+  align = "center",          -- "left" (default), "center" or "right": inside `width` when there is one; without it,
+                             -- around x (x is the middle, or the right edge) so no box is needed to centre a title
   shadow = true,             -- or a colour such as { 0, 0, 0, 200 }
 })                           -- returns the size it took
 local w, h = nova.ui.text_size("Hello", { font = "mono", size = 20, width = 200 })   -- measure only
