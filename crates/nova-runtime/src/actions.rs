@@ -51,6 +51,8 @@ pub struct InputFrame {
     pub overrides: Vec<(String, f32)>,
     pub last_source: Option<String>,
     pub pointer: PointerFrame,
+    /// Characters typed on a keyboard this frame, in order (backspace is \u{8} and enter is \n): `nova.input.typed()`.
+    pub typed: String,
 }
 
 impl InputFrame {

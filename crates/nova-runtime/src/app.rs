@@ -143,6 +143,7 @@ fn merge_input(into: &mut InputFrame, from: InputFrame) {
     if from.pointer.present {
         into.pointer = from.pointer;
     }
+    into.typed.push_str(&from.typed);
 }
 
 fn print_summary(label: &str, perf: &Perf) {
@@ -417,6 +418,7 @@ impl App {
             overrides: self.held.clone(),
             last_source: self.input.last_new_source.take(),
             pointer: self.input.pointer(Gfx::ui_scale(size)),
+            typed: self.input.take_typed(),
         };
         if let Some(s) = &self.script {
             merge_input(&mut frame, s.frame(self.frames_done));

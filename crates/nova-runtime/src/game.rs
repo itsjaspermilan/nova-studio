@@ -124,6 +124,8 @@ struct Shared {
     voxel: crate::voxel::World,
     cubes: HashMap<u8, usize>,
     cursor: PadCursor,
+    /// Typed characters that no script has read yet.
+    typed: String,
     /// This frame's sources and length, for the cursor (kept only while it is on).
     cursor_sources: HashMap<String, f32>,
     frame_dt: f32,
@@ -1470,6 +1472,12 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             Ok(t)
         })?,
     )?;
+    // typed(): the characters typed on a keyboard since the last call (backspace is "\b", enter is "\n")
+    let s = shared.clone();
+    input.set(
+        "typed",
+        lua.create_function(move |_, ()| Ok(std::mem::take(&mut s.borrow_mut().typed)))?,
+    )?;
     // cursor(on, { speed, stick, draw }): a stick moves a pointer and a button clicks it, for menus built for a mouse
     let s = shared.clone();
     input.set(
@@ -2226,6 +2234,7 @@ impl Game {
             voxel: crate::voxel::World::new(),
             cubes: HashMap::new(),
             cursor: PadCursor::default(),
+            typed: String::new(),
             cursor_sources: HashMap::new(),
             frame_dt: 1.0 / 60.0,
             deadline: Rc::new(Cell::new(None)),
@@ -2466,6 +2475,7 @@ impl Game {
             sh.states
                 .update(&bindings, &input.sources, &input.overrides);
             sh.frame_dt = dt;
+            sh.typed.push_str(&input.typed);
             if sh.cursor.enabled {
                 sh.cursor_sources.clone_from(&input.sources);
             }

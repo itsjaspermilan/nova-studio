@@ -148,6 +148,7 @@ function World:enter()
   self.t_start = nova.clock()
   self.loading_frames = 0
   self.hint = 6
+  self.world_name = nova.save.get("world_name", "")
   cam3.yaw, cam3.pitch = nova.save.get("yaw", 0), nova.save.get("pitch", 0)
   nova.input.grab_mouse(true)
   nova.fog { color = { 190, 215, 255 }, near = 40, far = 90 }
@@ -387,7 +388,34 @@ function World:update(dt)
     if self.paused then self:save() end
   end
   if self.paused then
-    if nova.input.pointer().pressed then self.paused = false; nova.input.grab_mouse(true); nova.pause(false) end
+    if self.naming then
+      -- typing the world's name: on a keyboard, or on the on-screen one (a pad, a finger or a mouse)
+      local w = nova.view()
+      local typed = nova.input.typed()
+      if typed ~= "" then self.physical = true end
+      local from_keys = ""
+      if not self.physical then
+        local k = nova.ui.keyboard { x = w / 2 - 238, y = 252, current = self.key_cur, upper = self.key_upper }
+        self.key_cur, self.key_upper, self.key_cells, from_keys = k.current, k.upper, k.keys, k.typed
+      end
+      local name, done = nova.ui.text_field { text = self.world_name, max = 20, typed = typed .. from_keys, filter = "[%w _%-']" }
+      self.world_name = name
+      if done then
+        self.naming = false
+        nova.input.cursor(false)
+        nova.save.set("world_name", name)
+      end
+      return
+    end
+    if nova.input.pressed("inventory") then
+      self.naming, self.physical, self.key_cur, self.key_upper = true, false, 1, false
+      nova.input.typed() -- (drop the E that opened this)
+      nova.input.cursor(true)
+    elseif nova.input.pointer().pressed then
+      self.paused = false
+      nova.input.grab_mouse(true)
+      nova.pause(false)
+    end
     return
   end
   if nova.input.pressed("stats") then
@@ -812,6 +840,20 @@ function World:draw_ui()
     nova.ui.rect(0, 0, w, h, { 0, 0, 0, 140 })
     text(w / 2, h / 2 - 30, "Paused", 30, nil, "center")
     text(w / 2, h / 2 + 10, "click or press Escape to go on (the world is saved)", 16, nil, "center")
+    if self.naming then
+      text(w / 2, h / 2 - 90, "name this world:  " .. self.world_name .. (floor(nova.time() * 2) % 2 == 0 and "_" or ""), 22, nil, "center")
+      if not self.physical then
+        for _, k in ipairs(self.key_cells or {}) do
+          nova.ui.rect(k.x, k.y, k.w, k.h, k.selected and { 255, 255, 255, 110 } or { 20, 20, 20, 190 })
+          text(k.x + k.w / 2, k.y + k.h / 2 - 9, k.label, #k.label > 2 and 12 or 17, nil, "center")
+        end
+        text(w / 2, 494, "d-pad or stick and A: type   B: delete   ok: done", 14, { 200, 200, 200 }, "center")
+      else
+        text(w / 2, h / 2 + 50, "type a name, enter to finish", 16, { 200, 200, 200 }, "center")
+      end
+    else
+      text(w / 2, h / 2 + 40, (self.world_name ~= "" and ("world: " .. self.world_name .. "   ") or "") .. "E: name the world", 16, { 200, 200, 200 }, "center")
+    end
   end
   if self.show_stats then
     local s = nova.stats()

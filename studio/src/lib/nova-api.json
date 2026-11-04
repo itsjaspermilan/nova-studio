@@ -1251,5 +1251,26 @@
   "signature": "nova.ui.cube(block, x, y, size [, { rx, ry, tint }])",
   "doc": "Draws a block into the UI as a small cube seen from above at an angle (an isometric inventory icon), centred on x, y and about `size` units across, in the UI layer: over the UI's rectangles and sprites and under its text. `rx` and `ry` turn it (the default tips it 35 degrees and turns it 45). Use it for blocks whose `nova.voxel.info(block).shape` is \"cube\"; plants, torches and items are flat pictures (nova.ui.sprite with a frame).",
   "group": "Drawing"
+ },
+ {
+  "name": "nova.input.typed",
+  "kind": "function",
+  "signature": "nova.input.typed() -> string",
+  "doc": "The characters typed on a keyboard since the last call, in order: printable characters as they are, \"\\b\" for backspace and \"\\n\" for enter. For a name or a number to type in; a handheld has no keyboard, so offer nova.ui.keyboard too.",
+  "group": "Input"
+ },
+ {
+  "name": "nova.ui.text_field",
+  "kind": "function",
+  "signature": "nova.ui.text_field{ text, max, filter, typed } -> text, done",
+  "doc": "Typing into a line of text: applies what was typed (nova.input.typed() unless you pass `typed`, for instance from nova.ui.keyboard) to `text` and returns the new text and whether enter was pressed. `max` is how many characters (24), `filter` a Lua pattern each character must match, such as \"[%w _%-]\". Draw it yourself with nova.ui.text.",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.ui.keyboard",
+  "kind": "function",
+  "signature": "nova.ui.keyboard{ x, y [, w, h, gap, current, upper] } -> { typed, current, upper, keys }",
+  "doc": "An on-screen keyboard of ten columns for a gamepad, a finger or a mouse (it chooses with nova.ui.list, so the d-pad, arrow keys, the pointer and the pad cursor all work): digits, letters, a few marks, Aa (capitals), space, del and ok. Pass back `current` and `upper`; `typed` is the character of the key just taken (\"\\b\" for del, \"\\n\" for ok; B deletes too), to give to nova.ui.text_field; `keys` is one { x, y, w, h, label, selected } for each key, to draw.",
+  "group": "Drawing"
  }
 ]

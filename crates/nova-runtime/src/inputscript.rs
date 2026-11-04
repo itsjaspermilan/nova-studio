@@ -109,6 +109,9 @@ pub struct Event {
     pub hold: BTreeMap<String, f32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pointer: Option<PointerEvent>,
+    /// Characters typed on the first frame of the event (backspace is \b, enter is \n).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub typed: Option<String>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -151,6 +154,7 @@ impl InputScript {
     pub fn frame(&self, n: u32) -> InputFrame {
         let mut sources: HashMap<String, f32> = HashMap::new();
         let mut pointer = PointerFrame::default();
+        let mut typed = String::new();
         for e in &self.events {
             if n < e.at || n >= e.at + e.frames {
                 continue;
@@ -164,10 +168,16 @@ impl InputScript {
             if let Some(p) = &e.pointer {
                 pointer = p.to_frame();
             }
+            if n == e.at
+                && let Some(t) = &e.typed
+            {
+                typed.push_str(t);
+            }
         }
         InputFrame {
             sources,
             pointer,
+            typed,
             ..Default::default()
         }
     }
@@ -176,13 +186,14 @@ impl InputScript {
 /// Writes down the input of a session, a frame at a time, as a script.
 #[derive(Default)]
 pub struct Recorder {
-    frames: Vec<(HashMap<String, f32>, PointerFrame)>,
+    frames: Vec<(HashMap<String, f32>, PointerFrame, String)>,
 }
 
 impl Recorder {
     pub fn push(&mut self, frame: &InputFrame) {
         // actions forced by --hold are not input; only what was physically held and where the pointer was
-        self.frames.push((frame.sources.clone(), frame.pointer));
+        self.frames
+            .push((frame.sources.clone(), frame.pointer, frame.typed.clone()));
     }
 
     pub fn frames(&self) -> usize {
@@ -194,18 +205,20 @@ impl Recorder {
         let mut events: Vec<Event> = Vec::new();
         let mut i = 0;
         while i < self.frames.len() {
-            let (sources, pointer) = &self.frames[i];
+            let (sources, pointer, typed) = &self.frames[i];
             let mut j = i + 1;
-            while j < self.frames.len() && self.frames[j] == self.frames[i] {
+            // (typed text happens once: a frame with some is its own event)
+            while typed.is_empty() && j < self.frames.len() && self.frames[j] == self.frames[i] {
                 j += 1;
             }
             let empty_pointer = *pointer == PointerFrame::default();
-            if !sources.is_empty() || !empty_pointer {
+            if !sources.is_empty() || !empty_pointer || !typed.is_empty() {
                 events.push(Event {
                     at: i as u32,
                     frames: (j - i) as u32,
                     hold: sources.iter().map(|(k, v)| (k.clone(), *v)).collect(),
                     pointer: (!empty_pointer).then(|| PointerEvent::from_frame(pointer)),
+                    typed: (!typed.is_empty()).then(|| typed.clone()),
                 });
             }
             i = j;
@@ -249,6 +262,30 @@ mod tests {
             !s.frame(6).pointer.present,
             "no pointer when no event has one"
         );
+    }
+
+    #[test]
+    fn typed_text_plays_back_on_the_frame_it_was_typed_and_records_back() {
+        let s = InputScript::parse(
+            r#"[ { "at": 3, "for": 5, "typed": "hi" }, { "at": 4, "typed": "!" } ]"#,
+        )
+        .unwrap();
+        assert_eq!(s.frame(2).typed, "");
+        assert_eq!(s.frame(3).typed, "hi");
+        assert_eq!(
+            s.frame(4).typed,
+            "!",
+            "typed text is for the first frame of an event only"
+        );
+        assert_eq!(s.frame(5).typed, "");
+        let mut rec = Recorder::default();
+        for n in 0..8 {
+            rec.push(&s.frame(n));
+        }
+        let back = InputScript::parse(&rec.to_json()).unwrap();
+        for n in 0..8 {
+            assert_eq!(back.frame(n).typed, s.frame(n).typed, "frame {n}");
+        }
     }
 
     #[test]

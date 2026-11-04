@@ -60,6 +60,8 @@ pub struct Input {
     pub last_new_source: Option<String>,
     pub last_unknown_key: Option<String>,
     hud_toggle: bool,
+    /// Characters typed since the last frame (see `InputFrame::typed`).
+    typed: String,
 }
 
 /// Sticks inside this much of centre read as zero.
@@ -246,8 +248,25 @@ impl Input {
         self.width = width;
     }
 
+    /// What has been typed since the last call: printable characters as they are, backspace as \u{8} and enter as \n.
+    pub fn take_typed(&mut self) -> String {
+        std::mem::take(&mut self.typed)
+    }
+
     pub fn key(&mut self, event: &KeyEvent) {
         let down = event.state == ElementState::Pressed;
+        if down {
+            use winit::keyboard::{Key, NamedKey};
+            match &event.logical_key {
+                Key::Named(NamedKey::Backspace) => self.typed.push('\u{8}'),
+                Key::Named(NamedKey::Enter) => self.typed.push('\n'),
+                _ => {
+                    if let Some(text) = &event.text {
+                        self.typed.extend(text.chars().filter(|c| !c.is_control()));
+                    }
+                }
+            }
+        }
         match event.physical_key {
             PhysicalKey::Code(code) => {
                 if down && code == KeyCode::F3 && !event.repeat {

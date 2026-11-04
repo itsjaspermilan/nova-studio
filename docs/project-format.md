@@ -741,3 +741,15 @@ accepts), and A or start accepts. Pass back the `current` and `top` it returned;
 clicks, and `nova.input.pointer()` reports it like a mouse, so every menu built for a mouse or a finger (`nova.ui.list`,
 `nova.ui.choose`, `nova.ui.clicked`) works with a controller. A real mouse or a touch takes the pointer back. Options:
 `speed` (700 units a second), `stick` (`"right"` or `"left"`) and `draw` (a small cross while it is in use).
+
+**Text entry.** `nova.input.typed()` gives what was typed on a keyboard since the last call (backspace is `"\b"`, enter is
+`"\n"`). `nova.ui.text_field{ text, max, filter, typed }` applies it to a line of text and returns the new text and whether
+enter was pressed. A handheld has no keyboard, so `nova.ui.keyboard{ x, y, current, upper }` is an on-screen one (ten columns:
+digits, letters, a few marks, `Aa`, space, del, ok) that chooses with `nova.ui.list`, so the d-pad, arrow keys, the pointer
+and the pad cursor all work; pass its `typed` to `text_field`. A game that offers both should stop calling the on-screen one
+once the player types (Blockfield does: the same keys are also actions). Recorded input can carry typed text
+(`"typed": "hi"`, on the first frame of an event).
+
+**Block pictures in the UI.** `nova.ui.cube(block, x, y, size)` draws a block as an isometric cube in the UI layer (over the
+UI's rectangles and sprites, under its text), for inventory icons; `nova.voxel.info(block).shape` says which blocks are
+cubes (plants, torches and items are flat tiles drawn with `nova.ui.sprite`).

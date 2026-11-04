@@ -970,7 +970,12 @@ impl Gfx {
                 resource: ui_globals.as_entire_binding(),
             }],
         });
-        let ui_instances = DynBuffer::new(&device, "ui model instances", wgpu::BufferUsages::VERTEX, 1 << 12);
+        let ui_instances = DynBuffer::new(
+            &device,
+            "ui model instances",
+            wgpu::BufferUsages::VERTEX,
+            1 << 12,
+        );
         let mesh_blend_pipeline = make_mesh_pipeline(
             "translucent meshes",
             Some(wgpu::BlendState::ALPHA_BLENDING),
@@ -1364,9 +1369,12 @@ impl Gfx {
                 sky_sun: [0.0, 1.0, 0.0, 0.0],
                 sky_extra: [0.0; 4],
             };
-            self.queue.write_buffer(&self.ui_globals, 0, bytemuck::bytes_of(&ui_globals));
-            let instances: Vec<ModelInstance> = input.ui_models.iter().map(|m| m.instance).collect();
-            self.ui_instances.write(&self.device, &self.queue, bytemuck::cast_slice(&instances));
+            self.queue
+                .write_buffer(&self.ui_globals, 0, bytemuck::bytes_of(&ui_globals));
+            let instances: Vec<ModelInstance> =
+                input.ui_models.iter().map(|m| m.instance).collect();
+            self.ui_instances
+                .write(&self.device, &self.queue, bytemuck::cast_slice(&instances));
         }
 
         self.sprites_back.write(
@@ -1678,7 +1686,12 @@ impl Gfx {
                         pass.set_bind_group(1, &mesh.texture, &[]);
                         pass.set_bind_group(2, &self.shadow_group, &[]);
                         pass.set_vertex_buffer(0, mesh.vertices.slice(..));
-                        pass.set_vertex_buffer(1, self.ui_instances.buffer.slice(start as u64 * stride..end as u64 * stride));
+                        pass.set_vertex_buffer(
+                            1,
+                            self.ui_instances
+                                .buffer
+                                .slice(start as u64 * stride..end as u64 * stride),
+                        );
                         pass.set_index_buffer(mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
                         pass.draw_indexed(0..mesh.index_count, 0, 0..(end - start) as u32);
                         stats.draw_calls += 1;

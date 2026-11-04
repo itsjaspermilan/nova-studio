@@ -2475,3 +2475,64 @@ end",
     let after: usize = frame(&mut g, "key:ArrowDown", none)[0].parse().unwrap();
     assert_eq!(after, before + 3);
 }
+
+#[test]
+fn typed_text_goes_into_a_field_and_an_on_screen_keyboard_types_too() {
+    use nova_runtime::actions::InputFrame;
+    let mut g = project(vec![(
+        "main.lua",
+        lua("local text, done, cur, upper = '', false, 1, false
+local want_keyboard = false
+function update(dt)
+  if nova.input.pressed('l1') then want_keyboard = true end
+  local typed
+  if want_keyboard then
+    local k = nova.ui.keyboard{ x = 0, y = 0, current = cur, upper = upper }
+    cur, upper, typed = k.current, k.upper, k.typed
+    if #k.keys ~= 44 then nova.log('keys ' .. #k.keys) end
+  end
+  text, done = nova.ui.text_field{ text = text, max = 8, filter = \"[%w ]\", typed = typed }
+  nova.log(text .. '|' .. tostring(done) .. '|' .. cur)
+end"),
+    )]);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let frame = |g: &mut Game, typed: &str, key: &str| {
+        let input = InputFrame {
+            typed: typed.to_string(),
+            sources: if key.is_empty() {
+                Default::default()
+            } else {
+                [(key.to_string(), 1.0)].into_iter().collect()
+            },
+            ..Default::default()
+        };
+        g.update_input(1.0 / 60.0, 0.0, [1000.0, 600.0], &input);
+        assert!(g.error.is_none(), "{:?}", g.error);
+        logs(g).last().cloned().unwrap()
+    };
+    // typed on a keyboard: characters append, filtered, capped at 8, backspace removes, enter says done
+    assert_eq!(frame(&mut g, "ab", ""), "ab|false|1");
+    assert_eq!(
+        frame(&mut g, "!c", ""),
+        "abc|false|1",
+        "'!' does not match the filter"
+    );
+    assert_eq!(frame(&mut g, "\u{8}x", ""), "abx|false|1");
+    assert_eq!(
+        frame(&mut g, "123456789", ""),
+        "abx12345|false|1",
+        "at most 8"
+    );
+    assert_eq!(frame(&mut g, "\n", ""), "abx12345|true|1");
+    // the on-screen keyboard: the first key is '1'; right twice is '3'; A (the 'a' action) takes it
+    frame(&mut g, "\u{8}\u{8}\u{8}\u{8}\u{8}\u{8}\u{8}\u{8}", "");
+    frame(&mut g, "", "pad:l1");
+    frame(&mut g, "", "");
+    let moved = frame(&mut g, "", "pad:dpad_right");
+    assert!(moved.ends_with("|2"), "{moved}");
+    frame(&mut g, "", "");
+    assert!(frame(&mut g, "", "pad:dpad_right").ends_with("|3"));
+    frame(&mut g, "", "");
+    let taken = frame(&mut g, "", "pad:south");
+    assert!(taken.starts_with("3|"), "taking a key types it: {taken}");
+}

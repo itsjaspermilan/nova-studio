@@ -860,6 +860,61 @@ function ui.list(o)
            more_above = top > 1, more_below = top + vis - 1 < nrows, hover = hover }
 end
 
+--- Text typed into a field. o: text (what is there now), max (how many characters, 24), filter (a Lua pattern that each
+--- character must match, such as "[%w _%-]"), typed (the characters to apply: what nova.input.typed() gives by default, or
+--- what ui.keyboard gives). Returns the new text and whether enter was pressed. Backspace is "\b" and enter is "\n" in typed.
+function ui.text_field(o)
+  local text, max = o.text or "", o.max or 24
+  local typed = o.typed
+  if typed == nil then typed = nova.input.typed() end
+  local done = false
+  for ch in typed:gmatch(utf8.charpattern) do
+    if ch == "\b" then
+      local cut = utf8.offset(text, -1)
+      if cut then text = text:sub(1, cut - 1) end
+    elseif ch == "\n" then
+      done = true
+    elseif ch:byte() >= 32 and (utf8.len(text) or #text) < max and (not o.filter or ch:match(o.filter)) then
+      text = text .. ch
+    end
+  end
+  return text, done
+end
+
+local KEYBOARD_ROWS = { "1234567890", "qwertyuiop", "asdfghjkl'", "zxcvbnm,.-" }
+
+--- An on-screen keyboard, for a gamepad, a finger or a mouse: the choosing is ui.list over a grid of keys, so it works with
+--- the d-pad, arrows, the pointer and the pad cursor. o: x, y (top left), w (a key's width, 44), h (42), gap (4), current (the
+--- chosen key, 1), upper (capitals). Gives { typed, current, upper, keys }: `typed` is the character of the key just taken (or
+--- "\b" for del, "\n" for ok; B also deletes), "" when none; `keys` is one { x, y, w, h, label, selected } per key to draw.
+--- Feed `typed` to ui.text_field.
+function ui.keyboard(o)
+  local keys = {}
+  for _, row in ipairs(KEYBOARD_ROWS) do
+    for ch in row:gmatch(".") do keys[#keys + 1] = { ch = ch } end
+  end
+  keys[#keys + 1] = { label = "Aa", action = "shift" }
+  keys[#keys + 1] = { label = "space", ch = " " }
+  keys[#keys + 1] = { label = "del", ch = "\b" }
+  keys[#keys + 1] = { label = "ok", ch = "\n" }
+  local upper = o.upper or false
+  local r = ui.list { x = o.x, y = o.y, w = o.w or 44, h = o.h or 42, gap = o.gap or 4, count = #keys, columns = 10, current = o.current or 1 }
+  local typed = ""
+  if r.accepted then
+    local k = keys[r.current]
+    if k.action == "shift" then upper = not upper
+    elseif k.ch then typed = (upper and #k.ch == 1) and k.ch:upper() or k.ch end
+  end
+  if nova.input.pressed("b") then typed = "\b" end
+  local out = {}
+  for _, cell in ipairs(r.rows) do
+    local k = keys[cell.index]
+    local label = k.label or (upper and k.ch:upper() or k.ch)
+    out[#out + 1] = { x = cell.x, y = cell.y, w = cell.w, h = cell.h, label = label, selected = cell.index == r.current }
+  end
+  return { typed = typed, current = r.current, upper = upper, keys = out }
+end
+
 local function spawn(what, x, y, props)
   local cls = finalize(resolve(what, "entity"))
   local e = setmetatable({}, cls)

@@ -279,3 +279,30 @@ fn blocks_are_drawn_as_cubes_into_the_ui() {
     let with_menu = g.frame_input(540).ui_models.len();
     assert!(with_menu > in_hotbar + 6, "{with_menu} against {in_hotbar}");
 }
+
+#[test]
+fn the_world_can_be_named_from_the_pause_screen() {
+    // pause, press E to name it, type on a keyboard (a letter that is not allowed is dropped), press enter: the name is saved
+    let dir = std::env::temp_dir().join(format!("blockfield-name-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut g = game();
+    g.open_save(&dir).expect("a save folder");
+    for _ in 0..400 {
+        frame(&mut g, &[]);
+    }
+    tap(&mut g, "key:Escape");
+    tap(&mut g, "key:KeyE");
+    for text in ["Pine", " Ridge", "\u{8}\u{8}", "ge!", "\n"] {
+        let input = InputFrame {
+            typed: text.to_string(),
+            ..Default::default()
+        };
+        g.update_input(DT, 0.0, [960.0, 540.0], &input);
+        assert!(g.error.is_none(), "{:?}", g.error);
+        frame(&mut g, &[]);
+    }
+    g.flush_save();
+    let saved = std::fs::read_to_string(dir.join("save.json")).expect("the save file");
+    assert!(saved.contains("\"world_name\": \"Pine Ridge\""), "{saved}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
