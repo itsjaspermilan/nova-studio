@@ -2536,3 +2536,26 @@ end"),
     let taken = frame(&mut g, "", "pad:south");
     assert!(taken.starts_with("3|"), "taking a key types it: {taken}");
 }
+
+#[test]
+fn lone_cubes_of_one_kind_are_drawn_together_so_that_they_can_be_instanced() {
+    let mut g = project(vec![(
+        "main.lua",
+        lua("nova.voxel.block('a', {})
+nova.voxel.block('b', {})
+function draw()
+  for i = 1, 20 do
+    nova.voxel.cube(i % 2 == 0 and 'a' or 'b', i, 0, 0)
+  end
+end"),
+    )]);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    g.update(1.0 / 60.0, 0.0, [320.0, 180.0], Default::default(), false);
+    let models = g.frame_input(540).models.to_vec();
+    assert_eq!(models.len(), 20);
+    let runs = models.windows(2).filter(|w| w[0].mesh != w[1].mesh).count() + 1;
+    assert_eq!(
+        runs, 2,
+        "twenty cubes of two kinds are two runs, so two instanced draws"
+    );
+}

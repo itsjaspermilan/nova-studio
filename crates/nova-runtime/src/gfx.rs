@@ -334,6 +334,12 @@ pub struct Gfx {
     dyn_meshes: HashMap<usize, GpuMesh>,
     voxel_atlas: Option<wgpu::BindGroup>,
     sampler_voxel: wgpu::Sampler,
+    /// Buffers of meshes that were freed, kept for the next mesh that fits (a rebuilt chunk piece is about the same size).
+    spare_vertices: Vec<wgpu::Buffer>,
+    spare_indices: Vec<wgpu::Buffer>,
+    /// How many GPU buffers script-made meshes have needed to create, and how many uploads reused one.
+    pub mesh_buffers_created: u32,
+    pub mesh_buffers_reused: u32,
     ui_mesh_pipeline: wgpu::RenderPipeline,
     ui_globals: wgpu::Buffer,
     ui_globals_group: wgpu::BindGroup,
@@ -1035,6 +1041,10 @@ impl Gfx {
             dyn_meshes: HashMap::new(),
             voxel_atlas: None,
             sampler_voxel,
+            spare_vertices: Vec::new(),
+            spare_indices: Vec::new(),
+            mesh_buffers_created: 0,
+            mesh_buffers_reused: 0,
             ui_mesh_pipeline,
             ui_globals,
             ui_globals_group,
@@ -1077,6 +1087,47 @@ impl Gfx {
                 depth_or_array_layers: 1,
             },
         );
+    }
+
+    /// A buffer of at least `bytes` for a mesh: the one it had if that fits without being much too big, else a spare that
+    /// fits, else a new one with a little room to grow.
+    fn buffer_for(&mut self, had: Option<wgpu::Buffer>, bytes: u64, vertex: bool) -> wgpu::Buffer {
+        let fits = |b: &wgpu::Buffer| b.size() >= bytes && b.size() <= bytes * 2 + 4096;
+        let spare = if vertex {
+            &mut self.spare_vertices
+        } else {
+            &mut self.spare_indices
+        };
+        let mut had = had;
+        if let Some(b) = had.take() {
+            if fits(&b) {
+                self.mesh_buffers_reused += 1;
+                return b;
+            }
+            if spare.len() < 64 {
+                spare.push(b);
+            }
+        }
+        if let Some(i) = spare.iter().position(fits) {
+            self.mesh_buffers_reused += 1;
+            return spare.swap_remove(i);
+        }
+        self.mesh_buffers_created += 1;
+        let size = (bytes + bytes / 4 + 256).next_multiple_of(4);
+        self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(if vertex {
+                "voxel vertices"
+            } else {
+                "voxel indices"
+            }),
+            size,
+            usage: (if vertex {
+                wgpu::BufferUsages::VERTEX
+            } else {
+                wgpu::BufferUsages::INDEX
+            }) | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        })
     }
 
     /// A mesh by id: loaded from a model file, or made by a script (ids from [`DYN_MESH_BASE`]).
@@ -1421,20 +1472,20 @@ impl Gfx {
                         self.dyn_meshes.remove(id);
                         continue;
                     }
-                    let vertex_buffer =
-                        self.device
-                            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                                label: Some("voxel vertices"),
-                                contents: bytemuck::cast_slice(vertices),
-                                usage: wgpu::BufferUsages::VERTEX,
-                            });
-                    let index_buffer =
-                        self.device
-                            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                                label: Some("voxel indices"),
-                                contents: bytemuck::cast_slice(indices),
-                                usage: wgpu::BufferUsages::INDEX,
-                            });
+                    // the buffers this mesh had, if they still fit (and are not wastefully big), or a spare that fits, or new ones
+                    let old = self.dyn_meshes.remove(id);
+                    let (vbytes, ibytes): (&[u8], &[u8]) = (
+                        bytemuck::cast_slice(vertices),
+                        bytemuck::cast_slice(indices),
+                    );
+                    let (old_v, old_i) = match old {
+                        Some(m) => (Some(m.vertices), Some(m.indices)),
+                        None => (None, None),
+                    };
+                    let vertex_buffer = self.buffer_for(old_v, vbytes.len() as u64, true);
+                    let index_buffer = self.buffer_for(old_i, ibytes.len() as u64, false);
+                    self.queue.write_buffer(&vertex_buffer, 0, vbytes);
+                    self.queue.write_buffer(&index_buffer, 0, ibytes);
                     self.dyn_meshes.insert(
                         *id,
                         GpuMesh {
@@ -1447,7 +1498,14 @@ impl Gfx {
                     );
                 }
                 MeshOp::Free(id) => {
-                    self.dyn_meshes.remove(id);
+                    if let Some(m) = self.dyn_meshes.remove(id) {
+                        if self.spare_vertices.len() < 64 {
+                            self.spare_vertices.push(m.vertices);
+                        }
+                        if self.spare_indices.len() < 64 {
+                            self.spare_indices.push(m.indices);
+                        }
+                    }
                 }
             }
         }

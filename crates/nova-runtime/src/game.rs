@@ -60,6 +60,9 @@ fn builtin_module(name: &str) -> Option<&'static str> {
 
 mod voxel_api;
 
+/// Lone cubes (`nova.voxel.cube`) have mesh ids this far above the start of script-made meshes, above every chunk piece.
+const CUBE_MESH_OFFSET: usize = 1 << 28;
+
 const DEFAULT_CAMERA: Camera = Camera {
     eye: Vec3::new(0.0, 6.0, -10.0),
     target: Vec3::new(0.0, 1.0, 0.0),
@@ -2535,11 +2538,14 @@ impl Game {
         self.mesh_ops.extend(made);
         // equal meshes become one instanced draw; meshes made by scripts (voxel chunks) stay in the order they were drawn in,
         // which is far to near, so that water blends in a sensible order
+        // (lone cubes are script-made too, but one kind after another is exactly what lets them be instanced)
         self.models.sort_by_key(|m| {
-            if m.mesh >= crate::gfx::DYN_MESH_BASE {
-                (true, 0)
+            if m.mesh >= crate::gfx::DYN_MESH_BASE + CUBE_MESH_OFFSET {
+                (2, m.mesh)
+            } else if m.mesh >= crate::gfx::DYN_MESH_BASE {
+                (1, 0)
             } else {
-                (false, m.mesh)
+                (0, m.mesh)
             }
         });
         self.camera = sh.camera;

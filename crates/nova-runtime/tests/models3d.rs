@@ -825,3 +825,86 @@ fn a_point_on_the_screen_becomes_a_ray_and_a_place_on_the_ground() {
     assert_ne!(log[3], "nil");
     assert_eq!(log[4], "nil");
 }
+
+#[test]
+fn script_made_meshes_reuse_their_gpu_buffers() {
+    use nova_runtime::gfx::{Camera, DYN_MESH_BASE, FrameInput, Lighting, MeshOp};
+    use nova_runtime::model::{Image, MeshVertex};
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        backends: wgpu::Backends::PRIMARY,
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
+    });
+    let mut gfx = match Gfx::new(&instance, None) {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("skipping GPU test: {e}");
+            return;
+        }
+    };
+    let quad = |n: usize| {
+        let v = MeshVertex {
+            position: [0.0; 3],
+            normal: [0.0, 1.0, 0.0],
+            color: [255; 4],
+            uv: [0.0; 2],
+            emissive: 0.0,
+        };
+        (
+            vec![v; n * 4],
+            (0..n as u32)
+                .flat_map(|i| [i * 4, i * 4 + 1, i * 4 + 2])
+                .collect::<Vec<u32>>(),
+        )
+    };
+    let render = |gfx: &mut Gfx, ops: &[MeshOp]| {
+        let input = FrameInput {
+            clear: [0.0, 0.0, 0.0, 1.0],
+            camera: Camera {
+                eye: glam::Vec3::new(0.0, 0.0, 5.0),
+                target: glam::Vec3::ZERO,
+                fov_y_degrees: 60.0,
+            },
+            sprites_back: &[],
+            models: &[],
+            mesh_writes: &[],
+            mesh_ops: ops,
+            ui_models: &[],
+            lighting: Lighting::default(),
+            sprites_front: &[],
+            text: &[],
+            world_height: 0,
+        };
+        gfx.capture((64, 64), &input);
+    };
+    let upload = |id: usize, n: usize| {
+        let (vertices, indices) = quad(n);
+        MeshOp::Upload {
+            id,
+            vertices,
+            indices,
+        }
+    };
+    let atlas = MeshOp::SetAtlas(Image {
+        width: 16,
+        height: 16,
+        rgba: vec![255; 16 * 16 * 4],
+    });
+    render(&mut gfx, &[atlas, upload(DYN_MESH_BASE, 100)]);
+    assert_eq!(
+        (gfx.mesh_buffers_created, gfx.mesh_buffers_reused),
+        (2, 0),
+        "a new mesh needs a vertex and an index buffer"
+    );
+    // the same mesh rebuilt a little smaller, then a little bigger: the same buffers
+    render(&mut gfx, &[upload(DYN_MESH_BASE, 90)]);
+    render(&mut gfx, &[upload(DYN_MESH_BASE, 110)]);
+    assert_eq!((gfx.mesh_buffers_created, gfx.mesh_buffers_reused), (2, 4));
+    // much bigger: new buffers (with room to grow), and the old ones become spares
+    render(&mut gfx, &[upload(DYN_MESH_BASE, 1000)]);
+    assert_eq!(gfx.mesh_buffers_created, 4);
+    // a freed mesh's buffers go to the next one that fits
+    render(&mut gfx, &[MeshOp::Free(DYN_MESH_BASE)]);
+    render(&mut gfx, &[upload(DYN_MESH_BASE + 1, 980)]);
+    assert_eq!(gfx.mesh_buffers_created, 4, "the freed buffers were reused");
+    assert_eq!(gfx.mesh_buffers_reused, 6);
+}

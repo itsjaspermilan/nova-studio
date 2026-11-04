@@ -149,7 +149,7 @@ fn ensure_cube(sh: &mut Shared, id: u8) -> usize {
         return *m;
     }
     let (vertices, indices) = cube_mesh(&sh.voxel, id);
-    let mesh = DYN_MESH_BASE + (1 << 28) + id as usize;
+    let mesh = DYN_MESH_BASE + super::CUBE_MESH_OFFSET + id as usize;
     sh.voxel.ops.push(MeshOp::Upload {
         id: mesh,
         vertices,
