@@ -128,6 +128,9 @@ pub struct Stats {
     pub drawn: u32,
 }
 
+/// Light a worker has made for a chunk: (chunk x, chunk z, sky, glow, the revision of the blocks it was made for).
+type LightDone = (i32, i32, Vec<u8>, Vec<u8>, u64);
+
 pub struct World {
     pub defs: Vec<BlockDef>,
     /// The same, shared with workers.
@@ -142,7 +145,7 @@ pub struct World {
     /// Chunks that have blocks and no light yet and are not with a worker, and light the workers have finished:
     /// (chunk x, chunk z, sky, glow, the blocks' revision it was made for).
     light_pending: VecDeque<(i32, i32)>,
-    light_ready: VecDeque<(i32, i32, Vec<u8>, Vec<u8>, u64)>,
+    light_ready: VecDeque<LightDone>,
     terrain: Option<Arc<Terrain>>,
     /// Chunks asked for and not made yet (a worker has them, or they wait their turn), and those waiting their turn.
     requested: HashSet<(i32, i32)>,
@@ -1878,6 +1881,7 @@ impl Snapshot {
 /// The light of a chunk on its own, as if nothing were next to it: the sky down every column, the glow of torches and
 /// lava, and the flood across the chunk. Plain data in and out, so a worker can do it; what crosses the chunk's borders is
 /// left to `World::finish_light`.
+#[allow(clippy::needless_range_loop)] // (indexes a 16 x 16 table of heights and the cells with the same numbers)
 pub fn light_isolated(blocks: &[u8], defs: &[BlockDef]) -> (Vec<u8>, Vec<u8>) {
     let mut sky = vec![0u8; VOL];
     let mut glow = vec![0u8; VOL];
