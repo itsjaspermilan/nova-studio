@@ -1,0 +1,12 @@
+{
+  "format": 1,
+  "name": "Sky Garden",
+  "version": "0.1.0",
+  "input": {
+    "jump": ["key:Space", "pad:south"],
+    "pause": ["key:Escape", "pad:start"],
+    "stats": ["key:F3", "pad:select"],
+    "profile": ["key:F4"],
+    "autoplay": ["key:F9"]
+  }
+}
