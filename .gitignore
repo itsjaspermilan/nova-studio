@@ -39,3 +39,6 @@ signing.properties
 /studio/src-tauri/gen/
 /.claude/
 /studio/src-tauri/binaries/
+
+# downloaded asset archives (kits are unzipped into a project by a script, see scripts/kenney.mjs)
+examples/*.zip

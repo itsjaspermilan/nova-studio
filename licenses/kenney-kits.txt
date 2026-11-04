@@ -1,0 +1,39 @@
+Kenney kits used by examples/stress (all Creative Commons Zero, CC0; credit is welcome, not required):
+
+- kenney_city-kit-roads  https://kenney.nl/assets
+- kenney_city-kit-commercial_2.1  https://kenney.nl/assets
+- kenney_city-kit-suburban_20  https://kenney.nl/assets
+- kenney_car-kit  https://kenney.nl/assets
+
+Also in the project folder but not unpacked into a game yet: kenney_blaster-kit_2.1, kenney_city-kit-industrial_2.0, kenney_mini-forest_1.0, kenney_prototype-kit, kenney_racing-kit (archives in examples/, not committed), kenney_animated-characters-protagonists (FBX only).
+
+The licence text each kit ships with:
+
+	
+
+	Car Kit (3.1)
+
+	Created/distributed by Kenney (www.kenney.nl)
+	Creation date: 02-04-2026 14:03
+	
+			------------------------------
+
+	License: (Creative Commons Zero, CC0)
+	http://creativecommons.org/publicdomain/zero/1.0/
+
+	You can use this content for personal, educational, and commercial purposes.
+
+	Support by crediting 'Kenney' or 'www.kenney.nl' (this is not a requirement)
+
+			------------------------------
+
+	• Website : www.kenney.nl
+	• Donate  : www.kenney.nl/donate
+
+	• Patreon : patreon.com/kenney
+	
+	Follow on social media for updates:
+
+	• Twitter:	 twitter.com/KenneyNL
+	• BlueSky:	 kenney.bsky.social
+	• Instagram: instagram.com/kenney_nl

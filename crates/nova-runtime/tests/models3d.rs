@@ -947,3 +947,88 @@ end",
         "the solid one is another mesh, drawn in the solid pass"
     );
 }
+
+/// Draws that the camera cannot see are left out of the world pass (and cost nothing there), (skipped without a GPU).
+#[test]
+fn draws_outside_the_view_are_culled_from_the_world_pass() {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        backends: wgpu::Backends::PRIMARY,
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
+    });
+    let mut gfx = match Gfx::new(&instance, None) {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("skipping GPU test: {e}");
+            return;
+        }
+    };
+    let vfs: Rc<dyn Vfs> = Rc::new(MemVfs::new(vec![
+        ("nova.json", br#"{"format":1,"name":"T"}"#.to_vec()),
+        ("models/car.glb", CAR.to_vec()),
+        (
+            "main.lua",
+            b"function update(dt)
+  nova.camera(0, 3, 10, 0, 0, 0, 60)
+  for i = 1, 10 do nova.model('car', (i - 5.5) * 0.6, 0, 0) end          -- in front of the camera
+  for i = 1, 30 do nova.model('car', i, 0, 40 + i) end                   -- behind it
+  for i = 1, 20 do nova.model('car', 500 + i, 0, 0) end                  -- far off to the side
+end"
+            .to_vec(),
+        ),
+    ]));
+    let mut g = Game::load(vfs).expect("loads");
+    g.upload(&mut gfx);
+    g.update(1.0 / 60.0, 0.0, [320.0, 180.0], Actions::default(), false);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let input = g.frame_input(0);
+    assert_eq!(input.models.len(), 60);
+    let (_, stats) = gfx.capture_with_stats((320, 180), &input);
+    assert_eq!(stats.culled, 50, "the thirty behind and the twenty beside");
+    // the ten that remain are one instanced draw of the car's meshes
+    assert!(
+        stats.triangles > 0 && stats.triangles <= 10 * 2000,
+        "{stats:?}"
+    );
+}
+
+/// Meshes that carry the same picture share one texture on the GPU. (Skipped without a GPU.)
+#[test]
+fn meshes_with_the_same_picture_share_one_texture() {
+    use nova_runtime::model::MeshVertex;
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        backends: wgpu::Backends::PRIMARY,
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
+    });
+    let mut gfx = match Gfx::new(&instance, None) {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("skipping GPU test: {e}");
+            return;
+        }
+    };
+    let v = MeshVertex {
+        position: [0.0; 3],
+        normal: [0.0, 1.0, 0.0],
+        color: [255; 4],
+        uv: [0.0; 2],
+        emissive: 0.0,
+    };
+    let mesh = |colour: u8| MeshData {
+        vertices: vec![v; 3],
+        indices: vec![0, 1, 2],
+        texture: Some(Image {
+            width: 2,
+            height: 2,
+            rgba: vec![colour; 16],
+        }),
+        notes: Vec::new(),
+    };
+    gfx.upload_mesh(&mesh(10));
+    gfx.upload_mesh(&mesh(10));
+    gfx.upload_mesh(&mesh(10));
+    gfx.upload_mesh(&mesh(99));
+    assert_eq!(
+        gfx.textures_shared, 2,
+        "three meshes with one picture are one texture"
+    );
+}

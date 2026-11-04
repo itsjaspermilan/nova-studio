@@ -2760,3 +2760,14 @@ nova.log(tostring((nova.walls.floor_below(100, 5, 100))))",
     assert_eq!(l[4], "ride 1.00 2.00 true true", "{l:?}");
     assert_eq!(l[5], "nil", "{l:?}");
 }
+
+#[test]
+fn nova_perf_gives_the_engines_numbers_and_zeros_before_there_are_any() {
+    let g = project(vec![(
+        "main.lua",
+        lua("local p = nova.perf()
+nova.log(string.format('perf %.1f %.1f %d %s', p.fps, p.gpu_ms, p.draws, type(p.frame_p95_ms)))"),
+    )]);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    assert_eq!(logs(&g)[0], "perf 0.0 0.0 0 number");
+}

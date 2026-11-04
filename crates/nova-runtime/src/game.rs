@@ -1255,6 +1255,25 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
         "time",
         lua.create_function(move |_, ()| Ok(s.borrow().time))?,
     )?;
+    // what the engine measured over the last whole second (zeros in tests and before the first second)
+    nova.set(
+        "perf",
+        lua.create_function(|lua, ()| {
+            let p = crate::spike::last_perf();
+            let t = lua.create_table()?;
+            t.set("fps", p.fps)?;
+            t.set("update_ms", p.update_ms)?;
+            t.set("lua_ms", p.lua_ms)?;
+            t.set("render_ms", p.render_ms)?;
+            t.set("gpu_ms", p.gpu_ms)?;
+            t.set("frame_p95_ms", p.frame_p95_ms)?;
+            t.set("frame_max_ms", p.frame_max_ms)?;
+            t.set("draws", p.draws)?;
+            t.set("triangles", p.triangles)?;
+            t.set("culled", p.culled)?;
+            Ok(t)
+        })?,
+    )?;
     let s = shared.clone();
     nova.set(
         "log",

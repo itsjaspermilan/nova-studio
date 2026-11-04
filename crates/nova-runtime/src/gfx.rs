@@ -213,6 +213,11 @@ pub struct FrameInput<'a> {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct FrameStats {
+    /// How long the GPU took over a recent frame (the last one whose timing has come back), in milliseconds; 0 where the GPU
+    /// cannot say. Unlike `Perf`'s render time, which is the CPU's cost of recording the frame, this is the GPU's own.
+    pub gpu_ms: f32,
+    /// Model draws left out of the world pass because they are outside the camera's view.
+    pub culled: u32,
     pub draw_calls: u32,
     pub sprites: u32,
     pub triangles: u32,
@@ -317,6 +322,156 @@ struct GpuMesh {
     translucent: bool,
     /// Joints and weights, for a skinned mesh (drawn by the skinned pipelines, never see-through).
     skin: Option<wgpu::Buffer>,
+    /// A sphere that holds the whole mesh (centre, radius), in the mesh's own space, for culling.
+    bounds: ([f32; 3], f32),
+}
+
+/// Times the GPU's work on a frame with two timestamps (the start of the first pass, the end of the last) and reads them back a
+/// frame later, so that nothing waits. Only where the adapter has timestamp queries.
+struct GpuTimer {
+    queries: wgpu::QuerySet,
+    resolve: wgpu::Buffer,
+    readback: wgpu::Buffer,
+    /// Nanoseconds a tick is.
+    period: f32,
+    /// 0: free, 1: a read is in flight, 2: it has finished and can be read.
+    state: std::sync::Arc<std::sync::atomic::AtomicU8>,
+    last_ms: f32,
+}
+
+impl GpuTimer {
+    fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
+        Self {
+            queries: device.create_query_set(&wgpu::QuerySetDescriptor {
+                label: Some("frame timestamps"),
+                ty: wgpu::QueryType::Timestamp,
+                count: 2,
+            }),
+            resolve: device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("timestamps resolve"),
+                size: 16,
+                usage: wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC,
+                mapped_at_creation: false,
+            }),
+            readback: device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("timestamps readback"),
+                size: 16,
+                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }),
+            period: queue.get_timestamp_period(),
+            state: std::sync::Arc::new(std::sync::atomic::AtomicU8::new(0)),
+            last_ms: 0.0,
+        }
+    }
+
+    fn idle(&self) -> bool {
+        self.state.load(std::sync::atomic::Ordering::Acquire) == 0
+    }
+
+    /// Takes a finished reading, if there is one.
+    fn collect(&mut self, device: &wgpu::Device) {
+        use std::sync::atomic::Ordering;
+        if self.state.load(Ordering::Acquire) == 1 {
+            let _ = device.poll(wgpu::PollType::Poll);
+        }
+        if self.state.load(Ordering::Acquire) == 2 {
+            {
+                if let Ok(range) = self.readback.slice(..).get_mapped_range() {
+                    let t: &[u64] = bytemuck::cast_slice(&range);
+                    if t.len() >= 2 && t[1] >= t[0] {
+                        self.last_ms = (t[1] - t[0]) as f32 * self.period / 1.0e6;
+                    }
+                }
+            }
+            self.readback.unmap();
+            self.state.store(0, Ordering::Release);
+        }
+    }
+
+    /// After the frame was submitted: asks for the two timestamps.
+    fn request(&self) {
+        use std::sync::atomic::Ordering;
+        self.state.store(1, Ordering::Release);
+        let state = self.state.clone();
+        self.readback
+            .slice(..)
+            .map_async(wgpu::MapMode::Read, move |result| {
+                state.store(if result.is_ok() { 2 } else { 0 }, Ordering::Release);
+            });
+    }
+}
+
+/// A sphere around the vertices (the middle of their box and the distance to its corner): cheap and never too small.
+fn bounding_sphere(vertices: &[MeshVertex]) -> ([f32; 3], f32) {
+    if vertices.is_empty() {
+        return ([0.0; 3], 0.0);
+    }
+    let (mut lo, mut hi) = ([f32::MAX; 3], [f32::MIN; 3]);
+    for v in vertices {
+        for k in 0..3 {
+            lo[k] = lo[k].min(v.position[k]);
+            hi[k] = hi[k].max(v.position[k]);
+        }
+    }
+    let centre = [
+        (lo[0] + hi[0]) / 2.0,
+        (lo[1] + hi[1]) / 2.0,
+        (lo[2] + hi[2]) / 2.0,
+    ];
+    let half = [
+        (hi[0] - lo[0]) / 2.0,
+        (hi[1] - lo[1]) / 2.0,
+        (hi[2] - lo[2]) / 2.0,
+    ];
+    (
+        centre,
+        (half[0] * half[0] + half[1] * half[1] + half[2] * half[2]).sqrt(),
+    )
+}
+
+/// The six planes of the view volume (normals pointing in), for wgpu's 0..1 depth: from a view-projection matrix.
+fn frustum_planes(view_proj: &glam::Mat4) -> [glam::Vec4; 6] {
+    let row = |i: usize| {
+        glam::Vec4::new(
+            view_proj.x_axis[i],
+            view_proj.y_axis[i],
+            view_proj.z_axis[i],
+            view_proj.w_axis[i],
+        )
+    };
+    let (r0, r1, r2, r3) = (row(0), row(1), row(2), row(3));
+    [r3 + r0, r3 - r0, r3 + r1, r3 - r1, r2, r3 - r2].map(|p| {
+        let n = p.truncate().length();
+        if n > 0.0 { p / n } else { p }
+    })
+}
+
+/// Whether a sphere is at least partly inside the view volume.
+fn sphere_visible(planes: &[glam::Vec4; 6], centre: Vec3, radius: f32) -> bool {
+    planes
+        .iter()
+        .all(|p| p.truncate().dot(centre) + p.w >= -radius)
+}
+
+/// Whether an instance of a mesh with these bounds can be seen: its sphere moved and scaled by the instance's matrix. A skinned
+/// mesh's sphere is the rest pose's, grown by half to allow for limbs that swing out.
+fn instance_visible(
+    planes: &[glam::Vec4; 6],
+    bounds: ([f32; 3], f32),
+    skinned: bool,
+    matrix: &[[f32; 4]; 4],
+) -> bool {
+    let m = glam::Mat4::from_cols_array_2d(matrix);
+    let scale = m
+        .x_axis
+        .truncate()
+        .length()
+        .max(m.y_axis.truncate().length())
+        .max(m.z_axis.truncate().length());
+    let centre = m.transform_point3(Vec3::from(bounds.0));
+    let radius = bounds.1 * scale * if skinned { 1.5 } else { 1.0 };
+    sphere_visible(planes, centre, radius)
 }
 
 pub struct Gfx {
@@ -370,6 +525,15 @@ pub struct Gfx {
     ui_globals_group: wgpu::BindGroup,
     ui_instances: DynBuffer,
     model_instances: DynBuffer,
+    /// The instances that are in view, for the world pass (the shadow pass takes every one of `model_instances`).
+    view_instances: DynBuffer,
+    /// Texture bind groups of model meshes by the picture's contents, so that models that carry the same picture (a kit's shared
+    /// palette, embedded in every file) share one texture.
+    texture_cache: HashMap<u64, wgpu::BindGroup>,
+    /// GPU timing, where the adapter can do it.
+    gpu_timer: Option<GpuTimer>,
+    /// How many textures that sharing has saved (for the tests and the log).
+    pub textures_shared: u32,
     depth: Option<(wgpu::TextureView, (u32, u32))>,
 }
 
@@ -493,7 +657,8 @@ impl Gfx {
         );
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("nova device"),
-            required_features: wgpu::Features::empty(),
+            // timestamp queries (the GPU's own frame time) where the adapter has them
+            required_features: adapter.features() & wgpu::Features::TIMESTAMP_QUERY,
             // The lowest common denominator (GLES 3.0 class), with the texture sizes the GPU offers.
             required_limits:
                 wgpu::Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits()),
@@ -1174,6 +1339,18 @@ impl Gfx {
             1 << 16,
         );
 
+        let view_instances = DynBuffer::new(
+            &device,
+            "visible model instances",
+            wgpu::BufferUsages::VERTEX,
+            1 << 16,
+        );
+
+        let gpu_timer = device
+            .features()
+            .contains(wgpu::Features::TIMESTAMP_QUERY)
+            .then(|| GpuTimer::new(&device, &queue));
+
         Ok(Self {
             adapter,
             device,
@@ -1223,6 +1400,10 @@ impl Gfx {
             ui_globals_group,
             ui_instances,
             model_instances,
+            view_instances,
+            texture_cache: HashMap::new(),
+            gpu_timer,
+            textures_shared: 0,
             depth: None,
         })
     }
@@ -1329,14 +1510,27 @@ impl Gfx {
                 usage: wgpu::BufferUsages::INDEX,
             });
         let texture = match &mesh.texture {
-            Some(image) => texture_group(
-                &self.device,
-                &self.queue,
-                &self.texture_layout,
-                &self.sampler_nearest,
-                "mesh texture",
-                image,
-            ),
+            Some(image) => {
+                use std::hash::{Hash, Hasher};
+                let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                (image.width, image.height, &image.rgba).hash(&mut hasher);
+                let key = hasher.finish();
+                if let Some(group) = self.texture_cache.get(&key) {
+                    self.textures_shared += 1;
+                    group.clone()
+                } else {
+                    let group = texture_group(
+                        &self.device,
+                        &self.queue,
+                        &self.texture_layout,
+                        &self.sampler_nearest,
+                        "mesh texture",
+                        image,
+                    );
+                    self.texture_cache.insert(key, group.clone());
+                    group
+                }
+            }
             None => self.white_group(),
         };
         self.meshes.push(GpuMesh {
@@ -1346,6 +1540,7 @@ impl Gfx {
             texture,
             translucent: mesh.vertices.iter().any(|v| v.color[3] < 255),
             skin: None,
+            bounds: bounding_sphere(&mesh.vertices),
         });
         self.meshes.len() - 1
     }
@@ -1493,12 +1688,18 @@ impl Gfx {
         self.queue
             .write_buffer(&self.sprite_view, 0, bytemuck::bytes_of(&view));
 
+        // Where the view ends: 400 m, or just past where the fog has covered everything (what is beyond is the fog's colour
+        // already, so it is neither drawn nor missed, and the depth buffer keeps more precision).
+        let far = match input.lighting.fog {
+            Some(f) if f.far.is_finite() && f.far > 1.0 => (f.far * 1.05).clamp(20.0, 400.0),
+            _ => 400.0,
+        };
         // wgpu clip space is 0..1 in depth with y up, which is glam's "directx" projection.
         let view_proj = glam::camera::rh::proj::directx::perspective(
             input.camera.fov_y_degrees.to_radians(),
             aspect,
             0.1,
-            400.0,
+            far,
         ) * glam::camera::rh::view::look_at_mat4(
             input.camera.eye,
             input.camera.target,
@@ -1701,6 +1902,7 @@ impl Gfx {
                             texture: atlas,
                             translucent: vertices.iter().any(|v| v.color[3] < 255),
                             skin: None,
+                            bounds: bounding_sphere(vertices),
                         },
                     );
                 }
@@ -1743,13 +1945,53 @@ impl Gfx {
                 },
             );
         }
-        let instances: Vec<ModelInstance> = input.models.iter().map(|m| m.instance).collect();
-        self.model_instances
-            .write(&self.device, &self.queue, bytemuck::cast_slice(&instances));
+        // What the camera can see. The sun's shadow pass still takes everything (a thing out of view can cast a shadow into it).
+        let planes = frustum_planes(&view_proj);
+        let world_models: Vec<ModelDraw> = input
+            .models
+            .iter()
+            .filter(|m| match self.mesh(m.mesh) {
+                Some(mesh) => instance_visible(
+                    &planes,
+                    mesh.bounds,
+                    mesh.skin.is_some(),
+                    &m.instance.matrix,
+                ),
+                None => true,
+            })
+            .copied()
+            .collect();
+        let culled = (input.models.len() - world_models.len()) as u32;
+        let view_list: Vec<ModelInstance> = world_models.iter().map(|m| m.instance).collect();
+        self.view_instances
+            .write(&self.device, &self.queue, bytemuck::cast_slice(&view_list));
+        if lit.shadows.is_some() {
+            let instances: Vec<ModelInstance> = input.models.iter().map(|m| m.instance).collect();
+            self.model_instances
+                .write(&self.device, &self.queue, bytemuck::cast_slice(&instances));
+        }
 
         let mut stats = FrameStats {
             world_size,
+            culled,
             ..Default::default()
+        };
+        if let Some(t) = &mut self.gpu_timer {
+            t.collect(&self.device);
+            stats.gpu_ms = t.last_ms;
+        }
+        // time this frame only if the last reading has come back (the timer is one set of two slots)
+        let timing = self.gpu_timer.as_ref().is_some_and(GpuTimer::idle);
+        let shadow_pass = lit.shadows.is_some() && !input.models.is_empty();
+        let stamps = |begin: bool, end: bool| {
+            self.gpu_timer
+                .as_ref()
+                .filter(|_| timing && (begin || end))
+                .map(|t| wgpu::RenderPassTimestampWrites {
+                    query_set: &t.queries,
+                    beginning_of_pass_write_index: begin.then_some(0),
+                    end_of_pass_write_index: end.then_some(1),
+                })
         };
         let mut encoder = self
             .device
@@ -1768,7 +2010,7 @@ impl Gfx {
                     }),
                     stencil_ops: None,
                 }),
-                timestamp_writes: None,
+                timestamp_writes: stamps(true, false),
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
@@ -1848,7 +2090,7 @@ impl Gfx {
                     }),
                     stencil_ops: None,
                 }),
-                timestamp_writes: None,
+                timestamp_writes: stamps(!shadow_pass, false),
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
@@ -1884,7 +2126,7 @@ impl Gfx {
             stats.sprites += back;
 
             for translucent in [false, true] {
-                if input.models.is_empty() {
+                if world_models.is_empty() {
                     break;
                 }
                 pass.set_pipeline(if translucent {
@@ -1897,10 +2139,10 @@ impl Gfx {
                 let mut skinned_now = false;
                 let stride = std::mem::size_of::<ModelInstance>() as u64;
                 let mut start = 0usize;
-                while start < input.models.len() {
-                    let mesh_id = input.models[start].mesh;
+                while start < world_models.len() {
+                    let mesh_id = world_models[start].mesh;
                     let mut end = start;
-                    while end < input.models.len() && input.models[end].mesh == mesh_id {
+                    while end < world_models.len() && world_models[end].mesh == mesh_id {
                         end += 1;
                     }
                     let Some(mesh) = self.mesh(mesh_id) else {
@@ -1934,7 +2176,7 @@ impl Gfx {
                     pass.set_vertex_buffer(0, mesh.vertices.slice(..));
                     pass.set_vertex_buffer(
                         1,
-                        self.model_instances
+                        self.view_instances
                             .buffer
                             .slice(start as u64 * stride..end as u64 * stride),
                     );
@@ -1964,7 +2206,7 @@ impl Gfx {
                     },
                 })],
                 depth_stencil_attachment: None,
-                timestamp_writes: None,
+                timestamp_writes: stamps(false, true),
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
@@ -2027,12 +2269,28 @@ impl Gfx {
                 stats.sprites += input.text.len() as u32;
             }
         }
+        if let (true, Some(t)) = (timing, &self.gpu_timer) {
+            encoder.resolve_query_set(&t.queries, 0..2, &t.resolve, 0);
+            encoder.copy_buffer_to_buffer(&t.resolve, 0, &t.readback, 0, 16);
+        }
         self.queue.submit([encoder.finish()]);
+        if let (true, Some(t)) = (timing, &self.gpu_timer) {
+            t.request();
+        }
         stats
     }
 
     /// Renders one frame offscreen and returns tightly packed RGBA8 pixels.
     pub fn capture(&mut self, size: (u32, u32), input: &FrameInput) -> Vec<u8> {
+        self.capture_with_stats(size, input).0
+    }
+
+    /// [`Gfx::capture`], and what the frame drew (draw calls, triangles, how many draws were culled).
+    pub fn capture_with_stats(
+        &mut self,
+        size: (u32, u32),
+        input: &FrameInput,
+    ) -> (Vec<u8>, FrameStats) {
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("capture"),
             size: wgpu::Extent3d {
@@ -2048,7 +2306,7 @@ impl Gfx {
             view_formats: &[],
         });
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        self.render(&view, size, input);
+        let stats = self.render(&view, size, input);
         let row_bytes = size.0 * 4;
         let padded = row_bytes.div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT)
             * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
@@ -2095,12 +2353,86 @@ impl Gfx {
         for row in mapped.chunks(padded as usize).take(size.1 as usize) {
             pixels.extend_from_slice(&row[..row_bytes as usize]);
         }
-        pixels
+        (pixels, stats)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn things_outside_the_view_are_culled_and_big_or_scaled_ones_that_reach_in_are_not() {
+        use super::{frustum_planes, instance_visible};
+        // a camera at z = 5 looking down -z, 60 degrees tall, square
+        let view_proj =
+            glam::camera::rh::proj::directx::perspective(60f32.to_radians(), 1.0, 0.1, 400.0)
+                * glam::camera::rh::view::look_at_mat4(
+                    Vec3::new(0.0, 0.0, 5.0),
+                    Vec3::ZERO,
+                    Vec3::Y,
+                );
+        let planes = frustum_planes(&view_proj);
+        let at = |x: f32, y: f32, z: f32, scale: f32| {
+            glam::Mat4::from_scale_rotation_translation(
+                Vec3::splat(scale),
+                glam::Quat::IDENTITY,
+                Vec3::new(x, y, z),
+            )
+            .to_cols_array_2d()
+        };
+        let unit = ([0.0, 0.0, 0.0], 1.0);
+        assert!(
+            instance_visible(&planes, unit, false, &at(0.0, 0.0, 0.0, 1.0)),
+            "straight ahead"
+        );
+        assert!(
+            !instance_visible(&planes, unit, false, &at(0.0, 0.0, 50.0, 1.0)),
+            "behind the camera"
+        );
+        assert!(
+            !instance_visible(&planes, unit, false, &at(0.0, 0.0, -500.0, 1.0)),
+            "past the far plane"
+        );
+        assert!(
+            !instance_visible(&planes, unit, false, &at(100.0, 0.0, 0.0, 1.0)),
+            "far to the side"
+        );
+        assert!(
+            !instance_visible(&planes, unit, false, &at(0.0, 100.0, 0.0, 1.0)),
+            "far above"
+        );
+        assert!(
+            instance_visible(&planes, unit, false, &at(100.0, 0.0, 0.0, 120.0)),
+            "scaled up so that it reaches into the view"
+        );
+        // just outside the edge, but its radius reaches over it
+        let edge = 5.0 * (30f32.to_radians()).tan(); // half the view's width at the origin's distance
+        assert!(instance_visible(
+            &planes,
+            unit,
+            false,
+            &at(edge + 0.5, 0.0, 0.0, 1.0)
+        ));
+        assert!(!instance_visible(
+            &planes,
+            unit,
+            false,
+            &at(edge + 1.5, 0.0, 0.0, 1.0)
+        ));
+        // a skinned mesh is allowed half as much again for limbs that swing out
+        assert!(!instance_visible(
+            &planes,
+            unit,
+            false,
+            &at(edge + 1.3, 0.0, 0.0, 1.0)
+        ));
+        assert!(instance_visible(
+            &planes,
+            unit,
+            true,
+            &at(edge + 1.3, 0.0, 0.0, 1.0)
+        ));
+    }
+
     use super::*;
 
     #[test]

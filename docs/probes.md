@@ -360,7 +360,7 @@ Found, not fixed (also in the TODO):
 ### Kenney's Platformer Kit (added the same day)
 
 The player, the patrollers, the gems, the flag, the checkpoint sign, the two moving platforms and some scenery are models from Kenney's
-Platformer Kit (CC0; notice in `licenses/kenney-platformer-kit.txt`; `scripts/sky/kenney.mjs` copies the eleven that are used). The
+Platformer Kit (CC0; notice in `licenses/kenney-platformer-kit.txt`; `scripts/kenney.mjs` copies the eleven that are used). The
 characters are skinned and carry 25 clips; the game plays `idle`, `walk`, `sprint`, `jump` and `fall` by what the body is doing. The
 engine took them without change except one thing: **a .glb that points at a texture file (`Textures/colormap.png`) does not load**
 (`external reference in slice only import`), so the script embeds the texture in each .glb. (The characters also exposed that animated models were capped at 8 draws a frame and skinned on the CPU; both fixed the same day by GPU skinning, see the TODO.) A frame now has 20 draws and 10,000 triangles

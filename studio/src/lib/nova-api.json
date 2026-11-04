@@ -1454,5 +1454,12 @@
   "signature": "nova.walls.floor_below(x, y, z [, radius]) -> height, id | nothing",
   "doc": "The first thing under a place that is no higher than y: its top, and its number as move3 gives it. For a shadow under a character, or to see where a jump will land. Nothing when there is nothing below.",
   "group": "Walls and paths"
+ },
+ {
+  "name": "nova.perf",
+  "kind": "function",
+  "signature": "nova.perf() -> { fps, update_ms, lua_ms, render_ms, gpu_ms, frame_p95_ms, frame_max_ms, draws, triangles, culled }",
+  "doc": "What the engine measured over the last whole second: frames a second, milliseconds spent on the game's update, on its Lua and on recording the frame for the GPU (render_ms; means), the GPU's own time for a recent frame (gpu_ms, 0 where the GPU cannot be timed), the 95th percentile and the worst frame time, and what the last frame drew (draw calls, triangles, and model draws left out for being out of view). Zeros until a second has passed, and in tests. For a game that wants to show or log how it is doing (the stress benchmark) or to turn detail down.",
+  "group": "Scenes and entities"
  }
 ]

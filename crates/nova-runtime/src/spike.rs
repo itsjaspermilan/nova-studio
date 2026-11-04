@@ -295,6 +295,8 @@ impl Spike {
 /// Rolling frame statistics for the HUD and the end-of-run summary.
 pub struct Perf {
     frame_ms: Vec<f32>,
+    /// Frame times since the last whole second (for its p95 and worst).
+    window_ms: Vec<f32>,
     window_start: std::time::Instant,
     window_frames: u32,
     pub fps: f32,
@@ -306,6 +308,7 @@ impl Default for Perf {
     fn default() -> Self {
         Self {
             frame_ms: Vec::new(),
+            window_ms: Vec::new(),
             window_start: std::time::Instant::now(),
             window_frames: 0,
             fps: 0.0,
@@ -323,24 +326,83 @@ pub struct Summary {
     pub max_ms: f32,
 }
 
+/// What the last whole second looked like (see `nova.perf()`): the engine's own measurements, for a game that reports its own
+/// performance (the stress benchmark) or adapts to it.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct PerfSnapshot {
+    pub fps: f32,
+    pub update_ms: f32,
+    pub lua_ms: f32,
+    pub render_ms: f32,
+    /// The GPU's own time for a recent frame (0 where it cannot be timed).
+    pub gpu_ms: f32,
+    pub frame_p95_ms: f32,
+    pub frame_max_ms: f32,
+    pub draws: u32,
+    pub triangles: u32,
+    pub culled: u32,
+}
+
+static LAST_PERF: std::sync::Mutex<PerfSnapshot> = std::sync::Mutex::new(PerfSnapshot {
+    fps: 0.0,
+    update_ms: 0.0,
+    lua_ms: 0.0,
+    render_ms: 0.0,
+    gpu_ms: 0.0,
+    frame_p95_ms: 0.0,
+    frame_max_ms: 0.0,
+    draws: 0,
+    triangles: 0,
+    culled: 0,
+});
+
+/// The numbers of the last whole second (zeros before the first).
+pub fn last_perf() -> PerfSnapshot {
+    LAST_PERF.lock().map(|p| *p).unwrap_or_default()
+}
+
 impl Perf {
     pub fn record(&mut self, frame_ms: f32) {
         self.frame_ms.push(frame_ms);
+        self.window_ms.push(frame_ms);
         self.window_frames += 1;
         let elapsed = self.window_start.elapsed().as_secs_f32();
         if elapsed >= 1.0 {
             self.fps = self.window_frames as f32 / elapsed;
             self.window_frames = 0;
             self.window_start = std::time::Instant::now();
+            let mut sorted = std::mem::take(&mut self.window_ms);
+            sorted.sort_by(f32::total_cmp);
+            let p95 = sorted
+                .get(sorted.len().saturating_sub(1) * 95 / 100)
+                .copied()
+                .unwrap_or(0.0);
+            let max = sorted.last().copied().unwrap_or(0.0);
+            if let Ok(mut last) = LAST_PERF.lock() {
+                *last = PerfSnapshot {
+                    fps: self.fps,
+                    update_ms: self.times.update_ms,
+                    lua_ms: self.times.lua_ms,
+                    render_ms: self.times.render_ms,
+                    gpu_ms: self.stats.gpu_ms,
+                    frame_p95_ms: p95,
+                    frame_max_ms: max,
+                    draws: self.stats.draw_calls,
+                    triangles: self.stats.triangles,
+                    culled: self.stats.culled,
+                };
+            }
             log::info!(
-                "fps={:.1} upd={:.2}ms lua={:.2}ms render={:.2}ms draws={} sprites={} tris={}",
+                "fps={:.1} upd={:.2}ms lua={:.2}ms render={:.2}ms gpu={:.2}ms draws={} sprites={} tris={} culled={}",
                 self.fps,
                 self.times.update_ms,
                 self.times.lua_ms,
                 self.times.render_ms,
+                self.stats.gpu_ms,
                 self.stats.draw_calls,
                 self.stats.sprites,
-                self.stats.triangles
+                self.stats.triangles,
+                self.stats.culled
             );
         }
     }
