@@ -982,7 +982,7 @@
  {
   "name": "nova.voxel.info",
   "kind": "function",
-  "signature": "nova.voxel.info(block) -> { name, solid, opaque, liquid, glow, tile, side_tile }",
+  "signature": "nova.voxel.info(block) -> { name, solid, opaque, liquid, glow, shape, tile, side_tile }",
   "doc": "What a block is. A block is its number or its name everywhere.",
   "group": "Voxels"
  },
@@ -1243,6 +1243,13 @@
   "kind": "function",
   "signature": "nova.ui.list{ x, y, count, visible, current, top [, w, h, gap, columns] } -> { current, top, accepted, moved, rows, more_above, more_below, hover }",
   "doc": "A scrolling list or grid with the choosing done. Up and down (and left and right when `columns` is more than 1) by the d-pad or arrow keys, the wheel, and the pointer (a mouse, a finger, or the gamepad cursor of nova.input.cursor): hovering chooses, a click accepts; A or start accepts too. `visible` is how many rows show at once; pass back the `current` and `top` it gave last time. `rows` is one rectangle { x, y, w, h, index } for each cell that shows, to draw the items into; `more_above` and `more_below` say whether to draw a scroll hint; `hover` is the item under the pointer.",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.ui.cube",
+  "kind": "function",
+  "signature": "nova.ui.cube(block, x, y, size [, { rx, ry, tint }])",
+  "doc": "Draws a block into the UI as a small cube seen from above at an angle (an isometric inventory icon), centred on x, y and about `size` units across, in the UI layer: over the UI's rectangles and sprites and under its text. `rx` and `ry` turn it (the default tips it 35 degrees and turns it 45). Use it for blocks whose `nova.voxel.info(block).shape` is \"cube\"; plants, torches and items are flat pictures (nova.ui.sprite with a frame).",
   "group": "Drawing"
  }
 ]

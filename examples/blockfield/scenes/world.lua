@@ -610,6 +610,24 @@ function World:draw()
   end
 end
 
+-- a picture of a block or item: an isometric cube for blocks that are cubes, the flat tile for the rest
+local cube_cache = {}
+local function icon(id, x, y, size, flat_scale, shade)
+  local shape = cube_cache[id]
+  if not shape then
+    shape = nova.voxel.info(id).shape
+    if P[id].item then shape = "item" end
+    cube_cache[id] = shape
+  end
+  if shape == "cube" then
+    local k = shade or 255
+    nova.ui.cube(id, x, y, size * 1.15, { tint = { k, k, k, 255 } })
+  else
+    local k = shade or 255
+    nova.ui.sprite(SHEET, x, y, { frame = (blocks.icon(id)), scale = flat_scale, color = { k, k, k, 255 } })
+  end
+end
+
 local function text(x, y, s, size, color, align)
   nova.ui.text(x, y, s, { size = size or 16, color = color or { 255, 255, 255 }, shadow = true, align = align })
 end
@@ -694,7 +712,7 @@ function World:draw_menu(w, h)
     nova.ui.rect(r.x, r.y, r.w, r.h, selected and { 255, 255, 255, 70 } or { 20, 20, 20, 150 })
     if selected then nova.ui.rect(r.x, r.y, 3, r.h, { 255, 220, 120 }) end
     local dim = row.ok and 255 or 120
-    nova.ui.sprite(SHEET, r.x + 20, r.y + r.h / 2, { frame = (blocks.icon(row.r.out)), scale = 1.7, color = { dim, dim, dim, 255 } })
+    icon(row.r.out, r.x + 20, r.y + r.h / 2, 12, 1.7, dim)
     local label = (row.r.n > 1 and (row.r.n .. " ") or "") .. P[row.r.out].name .. (row.r.kind == "smelt" and "  (smelt)" or "")
     text(r.x + 44, r.y + 2, label, 15, { dim, dim, dim })
     local parts = {}
@@ -711,7 +729,7 @@ function World:draw_menu(w, h)
     nova.ui.rect(x, y, 30, 30, { 20, 20, 20, 170 })
     local s = self.inv[i]
     if s then
-      nova.ui.sprite(SHEET, x + 15, y + 15, { frame = (blocks.icon(s.id)), scale = 1.6 })
+      icon(s.id, x + 15, y + 15, 10, 1.6)
       if s.n > 1 then text(x + 29, y + 15, tostring(s.n), 11, nil, "right") end
     end
   end
@@ -755,8 +773,7 @@ function World:draw_ui()
     end
     local s = self.inv[i]
     if s then
-      local tile = blocks.icon(s.id)
-      nova.ui.sprite(SHEET, x + slot / 2, y0 + slot / 2, { frame = tile, scale = 2.3 })
+      icon(s.id, x + slot / 2, y0 + slot / 2, 17, 2.3)
       if s.n > 1 then text(x + slot - 3, y0 + slot - 17, tostring(s.n), 14, nil, "right") end
       if s.dur then
         local frac = s.dur / P[s.id].uses

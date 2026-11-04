@@ -143,6 +143,18 @@ fn push_line(sh: &mut Shared, a: Vec3, b: Vec3, width: f32, tint: [f32; 4]) {
     });
 }
 
+/// The mesh of a block drawn as a lone cube, made the first time it is asked for.
+fn ensure_cube(sh: &mut Shared, id: u8) -> usize {
+    if let Some(m) = sh.cubes.get(&id) {
+        return *m;
+    }
+    let (vertices, indices) = cube_mesh(&sh.voxel, id);
+    let mesh = DYN_MESH_BASE + (1 << 28) + id as usize;
+    sh.voxel.ops.push(MeshOp::Upload { id: mesh, vertices, indices });
+    sh.cubes.insert(id, mesh);
+    mesh
+}
+
 pub(super) fn install(
     lua: &Lua,
     shared: &Rc<RefCell<Shared>>,
@@ -378,6 +390,11 @@ pub(super) fn install(
             t.set("opaque", d.opaque)?;
             t.set("liquid", d.liquid)?;
             t.set("glow", d.glow)?;
+            t.set("shape", match d.shape {
+                Shape::Cube => "cube",
+                Shape::Cross => "cross",
+                Shape::Torch => "torch",
+            })?;
             t.set("tile", d.tiles[2])?;
             t.set("side_tile", d.tiles[0])?;
             Ok(t)
@@ -690,21 +707,8 @@ pub(super) fn install(
                 if id == 0 {
                     return Ok(());
                 }
-                let mesh = match sh.cubes.get(&id) {
-                    Some(m) => *m,
-                    None => {
-                        let (vertices, indices) = cube_mesh(&sh.voxel, id);
-                        let mesh = DYN_MESH_BASE + (1 << 28) + id as usize;
-                        sh.voxel.ops.push(MeshOp::Upload {
-                            id: mesh,
-                            vertices,
-                            indices,
-                        });
-                        sh.cubes.insert(id, mesh);
-                        mesh
-                    }
-                };
-                let scale = number_option(&opts, "scale")?.unwrap_or(1.0) as f32;
+                let mesh = ensure_cube(&mut sh, id);
+            let scale = number_option(&opts, "scale")?.unwrap_or(1.0) as f32;
                 let matrix = Mat4::from_translation(Vec3::new(x as f32, y as f32, z as f32))
                     * Mat4::from_rotation_y(number_option(&opts, "ry")?.unwrap_or(0.0) as f32)
                     * Mat4::from_rotation_x(number_option(&opts, "rx")?.unwrap_or(0.0) as f32)
@@ -796,6 +800,36 @@ pub(super) fn install(
                 sh.voxel.set_threads(n.min(8));
             }
             Ok(sh.voxel.threads())
+        })?,
+    )?;
+    // a block drawn into the UI as an isometric cube: an inventory icon
+    let s = shared.clone();
+    let ui = nova.get::<Table>("ui")?;
+    ui.set(
+        "cube",
+        lua.create_function(move |_, (id, x, y, size, opts): (Value, f64, f64, f64, Option<Table>)| {
+            let mut sh = s.borrow_mut();
+            let id = block_id(&sh, id)?;
+            if id == 0 {
+                return Ok(());
+            }
+            let mesh = ensure_cube(&mut sh, id);
+            // isometric by default: turned an eighth of a turn and tipped so that the top shows
+            let ry = number_option(&opts, "ry")?.unwrap_or(std::f64::consts::FRAC_PI_4) as f32;
+            let rx = number_option(&opts, "rx")?.unwrap_or(0.6155) as f32;
+            let size = size as f32;
+            // x right, y up on screen: a mirror (the camera's y is down), which the camera's own mirror undoes
+            let matrix = Mat4::from_translation(Vec3::new(x as f32, y as f32, 0.0))
+                * Mat4::from_scale(Vec3::new(size, -size, size))
+                * Mat4::from_rotation_x(rx)
+                * Mat4::from_rotation_y(ry);
+            let tint = color_option(&opts, "tint", [255; 4])?.map(|c| c as f32 / 255.0);
+            sh.ui_models.push(ModelDraw {
+                casts: false,
+                mesh,
+                instance: ModelInstance { matrix: matrix.to_cols_array_2d(), tint },
+            });
+            Ok(())
         })?,
     )?;
     let s = shared.clone();

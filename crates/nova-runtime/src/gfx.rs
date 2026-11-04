@@ -177,6 +177,10 @@ pub struct FrameInput<'a> {
     pub mesh_writes: &'a [MeshWrite],
     /// Meshes to make or drop before drawing (see [`MeshOp`]).
     pub mesh_ops: &'a [MeshOp],
+    /// Meshes drawn in the UI layer, over the UI's shapes and under its text, with an orthographic camera whose units are
+    /// the UI's: a model's x and y are screen right and up, its z toward the viewer. No depth: for small convex shapes
+    /// (an inventory icon of a block), whose faces do not overlap.
+    pub ui_models: &'a [ModelDraw],
     pub lighting: Lighting,
     pub sprites_front: &'a [SpriteInstance],
     /// Text quads (UI layer, native resolution, drawn after `sprites_front`); the UVs index the
@@ -330,6 +334,10 @@ pub struct Gfx {
     dyn_meshes: HashMap<usize, GpuMesh>,
     voxel_atlas: Option<wgpu::BindGroup>,
     sampler_voxel: wgpu::Sampler,
+    ui_mesh_pipeline: wgpu::RenderPipeline,
+    ui_globals: wgpu::Buffer,
+    ui_globals_group: wgpu::BindGroup,
+    ui_instances: DynBuffer,
     model_instances: DynBuffer,
     depth: Option<(wgpu::TextureView, (u32, u32))>,
 }
@@ -908,6 +916,61 @@ impl Gfx {
             cache: None,
         });
         let mesh_pipeline = make_mesh_pipeline("meshes", None, true);
+        // the same meshes drawn into the UI pass (which has no depth): see FrameInput::ui_models
+        let ui_mesh_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("ui meshes"),
+            layout: Some(&mesh_layout),
+            vertex: wgpu::VertexState {
+                module: &mesh_shader,
+                entry_point: Some("vs_main"),
+                compilation_options: Default::default(),
+                buffers: &[
+                    Some(wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<MeshVertex>() as u64,
+                        step_mode: wgpu::VertexStepMode::Vertex,
+                        attributes: &vertex_attributes,
+                    }),
+                    Some(wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<ModelInstance>() as u64,
+                        step_mode: wgpu::VertexStepMode::Instance,
+                        attributes: &instance_attributes,
+                    }),
+                ],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &mesh_shader,
+                entry_point: Some("fs_main"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                cull_mode: Some(wgpu::Face::Back),
+                ..Default::default()
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+        let ui_globals = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("ui globals"),
+            size: std::mem::size_of::<Globals>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let ui_globals_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("ui globals"),
+            layout: &globals_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: ui_globals.as_entire_binding(),
+            }],
+        });
+        let ui_instances = DynBuffer::new(&device, "ui model instances", wgpu::BufferUsages::VERTEX, 1 << 12);
         let mesh_blend_pipeline = make_mesh_pipeline(
             "translucent meshes",
             Some(wgpu::BlendState::ALPHA_BLENDING),
@@ -967,6 +1030,10 @@ impl Gfx {
             dyn_meshes: HashMap::new(),
             voxel_atlas: None,
             sampler_voxel,
+            ui_mesh_pipeline,
+            ui_globals,
+            ui_globals_group,
+            ui_instances,
             model_instances,
             depth: None,
         })
@@ -1267,6 +1334,40 @@ impl Gfx {
         };
         self.queue
             .write_buffer(&self.globals, 0, bytemuck::bytes_of(&globals));
+        if !input.ui_models.is_empty() {
+            // an orthographic camera in the UI's units (y down), looking along -z: clip x = 2X/W - 1, clip y = 1 - 2Y/H,
+            // depth from z (nearer is smaller; nothing is depth tested, but it must stay inside 0 to 1)
+            let ui_scale = Self::ui_scale(size);
+            let (uw, uh) = (size.0 as f32 / ui_scale, size.1 as f32 / ui_scale);
+            let ortho = glam::Mat4::from_cols(
+                glam::Vec4::new(2.0 / uw, 0.0, 0.0, 0.0),
+                glam::Vec4::new(0.0, -2.0 / uh, 0.0, 0.0),
+                glam::Vec4::new(0.0, 0.0, -1.0 / 2000.0, 0.0),
+                glam::Vec4::new(-1.0, 1.0, 0.5, 1.0),
+            );
+            let ui_globals = Globals {
+                view_proj: ortho.to_cols_array_2d(),
+                light_dir: [-0.3, -0.55, -0.78, 0.0],
+                light_color: [1.0, 1.0, 1.0, 1.0],
+                ambient: [0.6, 0.6, 0.6, 1.0],
+                point_pos: [[0.0; 4]; MAX_POINT_LIGHTS],
+                point_color: [[0.0; 4]; MAX_POINT_LIGHTS],
+                inv_view_proj: ortho.inverse().to_cols_array_2d(),
+                eye: [0.0; 4],
+                sky_top: [0.0; 4],
+                sky_horizon: [0.0; 4],
+                fog_color: [0.0; 4],
+                fog_range: [0.0; 4],
+                light_view_proj: [[0.0; 4]; 4],
+                shadow: [0.0; 4],
+                voxel: [1.0, 0.0, 0.0, 0.0],
+                sky_sun: [0.0, 1.0, 0.0, 0.0],
+                sky_extra: [0.0; 4],
+            };
+            self.queue.write_buffer(&self.ui_globals, 0, bytemuck::bytes_of(&ui_globals));
+            let instances: Vec<ModelInstance> = input.ui_models.iter().map(|m| m.instance).collect();
+            self.ui_instances.write(&self.device, &self.queue, bytemuck::cast_slice(&instances));
+        }
 
         self.sprites_back.write(
             &self.device,
@@ -1561,6 +1662,30 @@ impl Gfx {
                 pass.draw(0..6, 0..input.sprites_front.len() as u32);
                 stats.draw_calls += 1;
                 stats.sprites += input.sprites_front.len() as u32;
+            }
+            if !input.ui_models.is_empty() {
+                let stride = std::mem::size_of::<ModelInstance>() as u64;
+                let mut start = 0usize;
+                while start < input.ui_models.len() {
+                    let mesh_id = input.ui_models[start].mesh;
+                    let mut end = start;
+                    while end < input.ui_models.len() && input.ui_models[end].mesh == mesh_id {
+                        end += 1;
+                    }
+                    if let Some(mesh) = self.mesh(mesh_id) {
+                        pass.set_pipeline(&self.ui_mesh_pipeline);
+                        pass.set_bind_group(0, &self.ui_globals_group, &[]);
+                        pass.set_bind_group(1, &mesh.texture, &[]);
+                        pass.set_bind_group(2, &self.shadow_group, &[]);
+                        pass.set_vertex_buffer(0, mesh.vertices.slice(..));
+                        pass.set_vertex_buffer(1, self.ui_instances.buffer.slice(start as u64 * stride..end as u64 * stride));
+                        pass.set_index_buffer(mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
+                        pass.draw_indexed(0..mesh.index_count, 0, 0..(end - start) as u32);
+                        stats.draw_calls += 1;
+                        stats.triangles += mesh.index_count / 3 * (end - start) as u32;
+                    }
+                    start = end;
+                }
             }
             if !input.text.is_empty() {
                 pass.set_pipeline(&self.text_pipeline);

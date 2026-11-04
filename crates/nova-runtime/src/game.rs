@@ -115,6 +115,8 @@ struct Shared {
     world: Vec<SpriteInstance>,
     ui: Vec<SpriteInstance>,
     models: Vec<ModelDraw>,
+    /// Meshes drawn in the UI layer this frame (`nova.ui.cube`).
+    ui_models: Vec<ModelDraw>,
     /// Vertex rewrites for skinned parts drawn this frame, and how many pool meshes each part has used.
     mesh_writes: Vec<MeshWrite>,
     skin_used: HashMap<String, usize>,
@@ -347,6 +349,7 @@ pub struct Game {
     ui: Vec<SpriteInstance>,
     text: Vec<SpriteInstance>,
     models: Vec<ModelDraw>,
+    ui_models: Vec<ModelDraw>,
     mesh_writes: Vec<MeshWrite>,
     /// Meshes made by scripts that the renderer has not applied yet (see `clear_mesh_ops`).
     mesh_ops: Vec<MeshOp>,
@@ -2217,6 +2220,7 @@ impl Game {
             world: Vec::new(),
             ui: Vec::new(),
             models: Vec::new(),
+            ui_models: Vec::new(),
             mesh_writes: Vec::new(),
             skin_used: HashMap::new(),
             voxel: crate::voxel::World::new(),
@@ -2255,6 +2259,7 @@ impl Game {
             ui: Vec::new(),
             text: Vec::new(),
             models: Vec::new(),
+            ui_models: Vec::new(),
             mesh_writes: Vec::new(),
             mesh_ops: Vec::new(),
             camera: DEFAULT_CAMERA,
@@ -2448,7 +2453,9 @@ impl Game {
             std::mem::swap(&mut sh.ui, &mut self.ui);
             std::mem::swap(&mut sh.text_out, &mut self.text);
             std::mem::swap(&mut sh.models, &mut self.models);
+            std::mem::swap(&mut sh.ui_models, &mut self.ui_models);
             std::mem::swap(&mut sh.mesh_writes, &mut self.mesh_writes);
+            sh.ui_models.clear();
             sh.world.clear();
             sh.ui.clear();
             sh.text_out.clear();
@@ -2512,6 +2519,7 @@ impl Game {
         std::mem::swap(&mut sh.ui, &mut self.ui);
         std::mem::swap(&mut sh.text_out, &mut self.text);
         std::mem::swap(&mut sh.models, &mut self.models);
+        std::mem::swap(&mut sh.ui_models, &mut self.ui_models);
         std::mem::swap(&mut sh.mesh_writes, &mut self.mesh_writes);
         let made = std::mem::take(&mut sh.voxel.ops);
         self.mesh_ops.extend(made);
@@ -2643,6 +2651,7 @@ impl Game {
             models: &self.models,
             mesh_writes: &self.mesh_writes,
             mesh_ops: &self.mesh_ops,
+            ui_models: &self.ui_models,
             lighting: self.lighting,
             sprites_front: &self.ui,
             text: &self.text,

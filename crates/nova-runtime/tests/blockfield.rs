@@ -261,3 +261,21 @@ fn a_recorded_session_plays_back_and_digs() {
         "holding the mine button dug (and the place button put a block back): {s:?}"
     );
 }
+
+#[test]
+fn blocks_are_drawn_as_cubes_into_the_ui() {
+    // creative mode fills the hotbar; every cube-shaped block in it (and the make menu's rows and the carried grid) is
+    // a mesh in the UI layer, which the renderer draws under the text
+    let mut g = game();
+    for _ in 0..400 {
+        frame(&mut g, &[]);
+    }
+    tap(&mut g, "key:KeyF");
+    frame(&mut g, &[]);
+    let in_hotbar = g.frame_input(540).ui_models.len();
+    assert!(in_hotbar >= 6, "the hotbar's cubes: {in_hotbar}");
+    tap(&mut g, "key:KeyE"); // the make menu opens: rows and the carried grid add more
+    frame(&mut g, &[]);
+    let with_menu = g.frame_input(540).ui_models.len();
+    assert!(with_menu > in_hotbar + 6, "{with_menu} against {in_hotbar}");
+}

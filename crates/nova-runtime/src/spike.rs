@@ -284,6 +284,7 @@ impl Spike {
             models: &self.models,
             mesh_writes: &[],
             mesh_ops: &[],
+            ui_models: &[],
             sprites_front: &self.front,
             text: &[],
             world_height,
