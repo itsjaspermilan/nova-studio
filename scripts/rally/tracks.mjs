@@ -71,7 +71,8 @@ function layout(spec) {
   const objects = [];
 
   // the road, with the start line on the first piece
-  line.forEach((p, i) => objects.push(obj(i === 0 ? "road_start" : spec.road, p.x, p.z, p.ry)));
+  // (every other slab a hair higher: they overlap, and the kit's road has lines that would flicker where two slabs share a level)
+  line.forEach((p, i) => objects.push(obj(i === 0 ? "road_start" : spec.road, p.x, p.z, p.ry, {}, i % 2 ? 0.012 : 0)));
   objects.push(obj("start_arch", line[0].x, line[0].z, line[0].ry));
   objects.push(obj("tower", line[0].x + line[0].tz * 15, line[0].z - line[0].tx * 15, line[0].ry + Math.PI / 2));
 

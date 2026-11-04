@@ -11,6 +11,9 @@
 //   --rename a=b,c=d        rename nodes (the runtime's parts are the nodes: a script turns "wheel_fl", not "wheel-front-right")
 //   --pivot-wheels          for nodes named like wheels: move the node's origin to the wheel's middle, so that it spins and
 //                           steers about its own centre (the kit puts the origin on the car's side of the wheel)
+//   --stretch x=<m>,z=<m>   scale the footprint to exactly this size, each way on its own (for flat, axis-aligned pieces such as a
+//                           road slab: the normals are not touched)
+//   --material <name>=r,g,b set a material's colour (0..1, linear): a kit's road piece in dirt or snow
 //   --turn <degrees>        turn it about the up axis (a quarter turn at a time is exact)
 //   --centre                put the middle of its footprint (x and z) at the origin; the kit's pieces carry an offset to a tile corner
 //   --centre-axles          (with --pivot-wheels) move it along z so that the wheels' middle is the origin, as a driving script expects
@@ -31,6 +34,8 @@ for (let i = 0; i < args.length; i++) {
   else if (a === "--rename") for (const kv of args[++i].split(",")) { const [k, v] = kv.split("="); opt.rename[k] = v; }
   else if (a === "--pivot-wheels") opt.pivotWheels = true;
   else if (a === "--turn") opt.turn = Number(args[++i]);
+  else if (a === "--stretch") opt.stretch = Object.fromEntries(args[++i].split(",").map((kv) => kv.split("=")).map(([k, v]) => [k, Number(v)]));
+  else if (a === "--material") { const [k, v] = args[++i].split("="); (opt.materials ??= {})[k] = v.split(",").map(Number); }
   else if (a === "--centre") opt.centre = true;
   else if (a === "--centre-axles") opt.centreAxles = true;
   else if (a === "--collider") opt.colliders.push(args[++i].split(":").map(Number));
@@ -140,6 +145,30 @@ function scaleGeometry(json, bin, s) {
   for (const n of json.nodes) if (n.translation) n.translation = n.translation.map((v) => v * s);
 }
 
+/** Scales x and z separately so that the footprint is exactly `size.x` by `size.z` (positions and the nodes' places). */
+function stretch(json, bin, size) {
+  const { lo, hi } = bounds(json);
+  const sx = size.x ? size.x / (hi[0] - lo[0]) : 1;
+  const sz = size.z ? size.z / (hi[2] - lo[2]) : 1;
+  const done = new Set();
+  for (const mesh of json.meshes) for (const p of mesh.primitives) {
+    const idx = p.attributes.POSITION;
+    if (done.has(idx)) continue;
+    done.add(idx);
+    const acc = json.accessors[idx];
+    const view = json.bufferViews[acc.bufferView];
+    const stride = view.byteStride || 12;
+    const base = (view.byteOffset || 0) + (acc.byteOffset || 0);
+    for (let i = 0; i < acc.count; i++) for (const [k, f] of [[0, sx], [2, sz]]) {
+      const at = base + i * stride + k * 4;
+      bin.writeFloatLE(bin.readFloatLE(at) * f, at);
+    }
+    acc.min = [acc.min[0] * sx, acc.min[1], acc.min[2] * sz];
+    acc.max = [acc.max[0] * sx, acc.max[1], acc.max[2] * sz];
+  }
+  for (const n of json.nodes) if (n.translation) n.translation = [n.translation[0] * sx, n.translation[1], n.translation[2] * sz];
+}
+
 /** Each wheel node becomes a parent at the wheel's middle with the mesh node as its child, so spin and steer are about the middle. */
 function pivotWheels(json) {
   const roots = json.scenes[0].nodes;
@@ -172,6 +201,11 @@ for (const name of names) {
     const k = "xyz".indexOf(axis);
     const { lo, hi } = bounds(json);
     scaleGeometry(json, bin, Number(metres) / (hi[k] - lo[k]));
+  }
+  if (opt.stretch) stretch(json, bin, opt.stretch);
+  for (const m of json.materials || []) {
+    const c = opt.materials?.[m.name];
+    if (c) m.pbrMetallicRoughness = { ...m.pbrMetallicRoughness, baseColorFactor: [c[0], c[1], c[2], 1] };
   }
   if (opt.pivotWheels) pivotWheels(json);
   if (opt.centreAxles) centreAxles(json);
