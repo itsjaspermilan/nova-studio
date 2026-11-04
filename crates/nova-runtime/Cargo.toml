@@ -48,3 +48,5 @@ winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "
 winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "android-native-activity"] }
 android-activity = { version = "0.6.1", features = ["native-activity"] }
 android_logger = "0.15.1"
+# (already in the lockfile through other crates) hides the system bars: src/android_ui.rs
+jni = "0.21"

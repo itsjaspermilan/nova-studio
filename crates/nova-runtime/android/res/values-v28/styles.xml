@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Draw under a camera hole or notch on a short edge too: without this Android keeps a landscape window out of the cutout
+         and paints the band black (the emulator's phone profile has one; the Retroid does not). -->
+    <style name="NovaTheme" parent="@android:style/Theme.NoTitleBar.Fullscreen">
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
+</resources>

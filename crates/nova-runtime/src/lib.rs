@@ -32,6 +32,9 @@ pub mod voxel;
 pub mod walls;
 
 #[cfg(target_os = "android")]
+pub mod android_ui;
+
+#[cfg(target_os = "android")]
 #[unsafe(no_mangle)]
 fn android_main(android: android_activity::AndroidApp) {
     android_logger::init_once(
@@ -45,6 +48,8 @@ fn android_main(android: android_activity::AndroidApp) {
         android_activity::WindowManagerFlags::FULLSCREEN,
         android_activity::WindowManagerFlags::empty(),
     );
+    android_ui::init(&android);
+    android_ui::hide_system_bars();
     // An APK built for a game carries it as assets/project.npk; without one it runs the benchmark.
     let pak = {
         use std::io::Read;

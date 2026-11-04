@@ -645,6 +645,9 @@ impl ApplicationHandler for App {
             WindowEvent::AxisMotion { axis, value, .. } => {
                 self.input.native_axis(axis, value as f32)
             }
+            // the bars come back after a dialog or the shade: hide them again
+            #[cfg(target_os = "android")]
+            WindowEvent::Focused(true) => crate::android_ui::hide_system_bars(),
             WindowEvent::RedrawRequested => self.frame(event_loop),
             _ => {}
         }

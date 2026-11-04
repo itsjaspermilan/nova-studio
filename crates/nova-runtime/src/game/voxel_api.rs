@@ -90,6 +90,17 @@ fn cube_mesh(world: &voxel::World, id: u8) -> (Vec<MeshVertex>, Vec<u32>) {
 }
 
 pub(super) const LINE_MESH: &str = "__line";
+/// The same strip with a vertex alpha of 254, which is all it takes for the renderer to draw it blended (after the solid things,
+/// without writing depth): what a mark with a see-through colour (`nova.quad3`'s shadow blob) is drawn with.
+pub(super) const SOFT_MESH: &str = "__soft";
+
+pub(super) fn soft_mesh() -> crate::model::MeshData {
+    let mut mesh = line_mesh();
+    for v in &mut mesh.vertices {
+        v.color[3] = 254;
+    }
+    mesh
+}
 
 /// A one-by-one strip lying across x and y, seen from both sides and shown at full colour whatever the light.
 pub(super) fn line_mesh() -> crate::model::MeshData {

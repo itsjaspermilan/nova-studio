@@ -61,7 +61,8 @@ sed -e "s|@PACKAGE@|$PACKAGE|" -e "s|@LABEL@|$(xml_escape "$LABEL")|" \
     crates/nova-runtime/android/AndroidManifest.xml > "$MANIFEST"
 
 BASE="$OUT/base.apk"
-"$ENV" aapt2 link -o "$BASE" --manifest "$MANIFEST" -A "$OUT/assets" \
+"$ENV" aapt2 compile --dir crates/nova-runtime/android/res -o "$OUT/res.zip"
+"$ENV" aapt2 link -o "$BASE" --manifest "$MANIFEST" -A "$OUT/assets" "$OUT/res.zip" \
     -I "$JAR" --min-sdk-version 26 --target-sdk-version 34 --version-code 1 --version-name "$VERSION"
 
 # Native libraries are stored uncompressed so zipalign -p can page-align them.

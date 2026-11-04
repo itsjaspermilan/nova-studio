@@ -1382,7 +1382,7 @@
   "name": "nova.quad3",
   "kind": "function",
   "signature": "nova.quad3(x, y, z, nx, ny, nz, size [, { w, h, color }])",
-  "doc": "Draws a flat square at a place in the world, facing the direction nx, ny, nz, at full colour and a hair off the surface: a bullet hole, a mark on a wall.",
+  "doc": "Draws a flat square at a place in the world, facing the direction nx, ny, nz, at full colour and a hair off the surface: a bullet hole, a mark on a wall. A colour with an alpha below 255 (`color = { 0, 0, 0, 120 }`) is see-through: drawn blended after the solid things, without hiding what is behind it, as a blob shadow is.",
   "group": "3D"
  },
  {

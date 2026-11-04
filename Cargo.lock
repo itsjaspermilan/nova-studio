@@ -2819,6 +2819,7 @@ dependencies = [
  "glam",
  "gltf",
  "hound",
+ "jni 0.21.1",
  "lewton",
  "log",
  "mlua",

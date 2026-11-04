@@ -38,6 +38,12 @@ struct Instance {
     @location(8) tint: vec4<f32>,
 };
 
+// A direction made unit length; a zero-length one (a degenerate face in a model file) stays zero. A plain normalize() of
+// zero is NaN, which Metal quietly turns into "no sun" but Vulkan drivers carry through to black pixels.
+fn safe_normalize(v: vec3<f32>) -> vec3<f32> {
+    return v / max(length(v), 1e-6);
+}
+
 // Instance tints are sRGB values from scripts; the vertex colours stay linear (glTF).
 fn srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
     let low = c / 12.92;
@@ -62,7 +68,7 @@ fn vs_main(v: Vertex, inst: Instance) -> VertexOut {
     out.world = world.xyz;
     out.position = globals.view_proj * world;
     // voxel meshes (emissive < 0) carry their baked light levels in `normal` instead of a direction
-    out.normal = select(normalize((model * vec4<f32>(v.normal, 0.0)).xyz), v.normal, v.emissive < 0.0);
+    out.normal = select(safe_normalize((model * vec4<f32>(v.normal, 0.0)).xyz), v.normal, v.emissive < 0.0);
     out.color = v.color * vec4<f32>(srgb_to_linear(inst.tint.rgb), inst.tint.a);
     out.uv = v.uv;
     out.emissive = v.emissive;
@@ -110,7 +116,7 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
         }
         return vec4<f32>(vrgb, base.a);
     }
-    let n = normalize(in.normal);
+    let n = safe_normalize(in.normal);
     // the sun's share is dimmed in a shadow, down to `1 - strength` of it
     let visible = mix(1.0 - globals.shadow.w, 1.0, sun_visibility(in.world, n));
     let diffuse = max(dot(n, -globals.light_dir.xyz), 0.0) * visible;
@@ -179,7 +185,7 @@ fn vs_skinned(v: SkinVertex, inst: Instance) -> VertexOut {
     let world = model * posed;
     out.world = world.xyz;
     out.position = globals.view_proj * world;
-    out.normal = normalize((model * vec4<f32>(normal, 0.0)).xyz);
+    out.normal = safe_normalize((model * vec4<f32>(normal, 0.0)).xyz);
     out.color = v.color * vec4<f32>(srgb_to_linear(inst.tint.rgb), inst.tint.a);
     out.uv = v.uv;
     out.emissive = v.emissive;

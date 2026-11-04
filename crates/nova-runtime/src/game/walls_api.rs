@@ -127,7 +127,14 @@ pub(super) fn install(lua: &Lua, shared: &Rc<RefCell<Shared>>, nova: &Table) -> 
                 Option<Table>,
             )| {
                 let mut sh = s.borrow_mut();
-                let Some(&mesh) = sh.mesh_ids.get(voxel_api::LINE_MESH) else {
+                let tint = tint_of(&opts)?;
+                // a see-through colour is drawn blended; a solid one as before
+                let kind = if tint[3] < 0.999 {
+                    voxel_api::SOFT_MESH
+                } else {
+                    voxel_api::LINE_MESH
+                };
+                let Some(&mesh) = sh.mesh_ids.get(kind) else {
                     return Ok(());
                 };
                 let normal = Vec3::new(nx as f32, ny as f32, nz as f32).normalize_or_zero();
@@ -153,7 +160,6 @@ pub(super) fn install(lua: &Lua, shared: &Rc<RefCell<Shared>>, nova: &Table) -> 
                     normal.extend(0.0),
                     at.extend(1.0),
                 );
-                let tint = tint_of(&opts)?;
                 sh.models.push(ModelDraw {
                     casts: false,
                     mesh,

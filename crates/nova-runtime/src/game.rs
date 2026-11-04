@@ -2324,6 +2324,11 @@ impl Game {
             voxel_api::LINE_MESH.to_string(),
             target.add_mesh(&voxel_api::line_mesh()),
         );
+        // the same strip, drawn blended, for marks with a see-through colour
+        ids.insert(
+            voxel_api::SOFT_MESH.to_string(),
+            target.add_mesh(&voxel_api::soft_mesh()),
+        );
         // the cube `nova.cuboid` stretches into walls and parts (lit, and at full colour)
         ids.insert(
             walls_api::CUBE_MESH.to_string(),

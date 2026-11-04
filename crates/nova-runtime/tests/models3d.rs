@@ -909,3 +909,41 @@ fn script_made_meshes_reuse_their_gpu_buffers() {
     assert_eq!(gfx.mesh_buffers_created, 4, "the freed buffers were reused");
     assert_eq!(gfx.mesh_buffers_reused, 6);
 }
+
+#[test]
+fn a_quad_with_a_see_through_colour_is_drawn_blended_and_a_solid_one_is_not() {
+    let mut g = game(
+        "function update(dt)
+  nova.quad3(0, 0, 0, 0, 1, 0, 1, { color = { 0, 0, 0, 120 } })
+  nova.quad3(2, 0, 0, 0, 1, 0, 1, { color = { 255, 0, 0 } })
+  nova.quad3(4, 0, 0, 0, 1, 0, 1, { color = { 0, 0, 0, 90 } })
+end",
+        vec![],
+    );
+    frame(&mut g);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let input = g.frame_input(0);
+    assert_eq!(input.models.len(), 3);
+    // (the frame groups draws of one mesh together)
+    let see_through: Vec<usize> = input
+        .models
+        .iter()
+        .filter(|m| m.instance.tint[3] < 0.99)
+        .map(|m| m.mesh)
+        .collect();
+    let solid: Vec<usize> = input
+        .models
+        .iter()
+        .filter(|m| m.instance.tint[3] > 0.99)
+        .map(|m| m.mesh)
+        .collect();
+    assert_eq!((see_through.len(), solid.len()), (2, 1));
+    assert_eq!(
+        see_through[0], see_through[1],
+        "the two see-through ones share a mesh"
+    );
+    assert_ne!(
+        see_through[0], solid[0],
+        "the solid one is another mesh, drawn in the solid pass"
+    );
+}
