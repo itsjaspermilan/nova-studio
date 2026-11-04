@@ -19,3 +19,6 @@
 {"t":1793752429821,"tool":"sfx_write","files":["sounds/groan.sfx.json","sounds/groan.wav"],"note":"sounds/groan.wav: 0.70 s"}
 {"t":1793752429823,"tool":"sfx_write","files":["sounds/hiss.sfx.json","sounds/hiss.wav"],"note":"sounds/hiss.wav: 0.85 s"}
 {"t":1793752429824,"tool":"sfx_write","files":["sounds/oink.sfx.json","sounds/oink.wav"],"note":"sounds/oink.wav: 0.21 s"}
+{"t":1793752616726,"tool":"model_write","files":["models/zombie.model.json","models/zombie.glb"],"note":"models/zombie.model.json and models/zombie.glb: 6 parts, 9 shapes, 108 triangles, 11484 bytes. In Lua: nova.model(\"zombie\", x, y, z)"}
+{"t":1793752616727,"tool":"model_write","files":["models/creeper.model.json","models/creeper.glb"],"note":"models/creeper.model.json and models/creeper.glb: 6 parts, 9 shapes, 108 triangles, 11512 bytes. In Lua: nova.model(\"creeper\", x, y, z)"}
+{"t":1793752616728,"tool":"model_write","files":["models/pig.model.json","models/pig.glb"],"note":"models/pig.model.json and models/pig.glb: 6 parts, 9 shapes, 108 triangles, 11504 bytes. In Lua: nova.model(\"pig\", x, y, z)"}

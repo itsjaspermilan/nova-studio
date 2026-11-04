@@ -430,6 +430,7 @@ impl World {
 
     /// Light for a new chunk: sky straight down every column, torches, then the flood across the whole chunk and over its
     /// borders into (and from) the chunks that are already there.
+    #[allow(clippy::needless_range_loop)] // (the loops index a 16 x 16 table of heights and compute world places from the same numbers)
     pub fn light_chunk(&mut self, cx: i32, cz: i32) {
         let t = std::time::Instant::now();
         if !self.chunks.contains_key(&(cx, cz)) {
@@ -566,10 +567,11 @@ impl World {
             [-1, 1],
         ] {
             let (nk, _, _) = split(x + d[0], z + d[1]);
-            if nk != key && (lx == 0 || lx == SX - 1 || lz == 0 || lz == SZ - 1) {
-                if let Some(n) = self.chunks.get_mut(&nk) {
-                    n.dirty = true;
-                }
+            if nk != key
+                && (lx == 0 || lx == SX - 1 || lz == 0 || lz == SZ - 1)
+                && let Some(n) = self.chunks.get_mut(&nk)
+            {
+                n.dirty = true;
             }
         }
         let p = [x, y, z];
@@ -1148,7 +1150,7 @@ impl World {
             .chunks
             .get_mut(&(cx, cz))
             .ok_or("chunk is not loaded")?;
-        if text.len() % 6 != 0 || !text.is_ascii() {
+        if !text.len().is_multiple_of(6) || !text.is_ascii() {
             return Err("saved edits are damaged".into());
         }
         let mut n = 0;

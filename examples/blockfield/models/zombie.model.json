@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "body",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "name": "torso", "from": [-4, 12, -2], "size": [8, 12, 4], "color": "#3a6ea5" }
+      ],
+      "children": [
+        {
+          "name": "head",
+          "origin": [0, 24, 0],
+          "rotation": [0, 0, 0],
+          "cubes": [
+            { "name": "head", "from": [-4, 0, -4], "size": [8, 8, 8], "color": "#5f8f4f" },
+            { "name": "eye", "from": [-3, 4, 3.9], "size": [2, 2, 0.3], "color": "#101010" },
+            { "name": "eye 2", "from": [1, 4, 3.9], "size": [2, 2, 0.3], "color": "#101010" },
+            { "name": "mouth", "from": [-2, 1, 3.9], "size": [4, 1, 0.3], "color": "#2c4a28" }
+          ],
+          "children": []
+        },
+        {
+          "name": "arm_l",
+          "origin": [-6, 22, 0],
+          "rotation": [0, 0, 0],
+          "cubes": [
+            { "name": "left arm", "from": [-2, -10, -2], "size": [4, 12, 4], "color": "#5f8f4f" }
+          ],
+          "children": []
+        },
+        {
+          "name": "arm_r",
+          "origin": [6, 22, 0],
+          "rotation": [0, 0, 0],
+          "cubes": [
+            { "name": "right arm", "from": [-2, -10, -2], "size": [4, 12, 4], "color": "#5f8f4f" }
+          ],
+          "children": []
+        },
+        {
+          "name": "leg_l",
+          "origin": [-2, 12, 0],
+          "rotation": [0, 0, 0],
+          "cubes": [
+            { "name": "left leg", "from": [-2, -12, -2], "size": [4, 12, 4], "color": "#33337e" }
+          ],
+          "children": []
+        },
+        {
+          "name": "leg_r",
+          "origin": [2, 12, 0],
+          "rotation": [0, 0, 0],
+          "cubes": [
+            { "name": "right leg", "from": [-2, -12, -2], "size": [4, 12, 4], "color": "#33337e" }
+          ],
+          "children": []
+        }
+      ]
+    }
+  ]
+}

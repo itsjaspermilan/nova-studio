@@ -1,4 +1,6 @@
 local blocks = require("lib.blocks")
+local recipes = require("lib.recipes")
+local mobs = require("lib.mobs")
 local gen = require("lib.worldgen")
 local B, P = blocks.B, blocks.P
 
@@ -129,6 +131,7 @@ function World:enter()
   self.edits = nova.save.get("edits", {})
   self.loaded = {}
   self.drops, self.bits, self.falling = {}, {}, {}
+  mobs.reset(self)
   self.clock = nova.save.get("clock", DAY * 0.08)
   self.creative = nova.save.get("creative", false)
   self.sel = nova.save.get("sel", 1)
@@ -143,6 +146,7 @@ function World:enter()
   self.inv = {}
   for i, s in pairs(nova.save.get("inventory", {})) do self.inv[tonumber(i)] = s end
   self.ready = false
+  self.t_start = nova.clock()
   self.loading_frames = 0
   self.hint = 6
   cam3.yaw, cam3.pitch = nova.save.get("yaw", 0), nova.save.get("pitch", 0)
@@ -365,6 +369,8 @@ function World:update(dt)
     local done = self:stream(pcx, pcz, 0.012)
     if done then
       self.ready = true
+      local st = voxel.stats()
+      nova.log(string.format("blockfield-load: %d chunks made in %.0f ms over %d frames (%.1f ms each); light %.0f ms in total", st.chunks, (nova.clock() - self.t_start) * 1000, self.loading_frames, (nova.clock() - self.t_start) * 1000 / st.chunks, st.light_ms))
       if p.y == 80 then p.y = voxel.top(p.x, p.z) + 1.01 end
       if self.creative then creative_kit(self.inv) end
     end
@@ -384,7 +390,20 @@ function World:update(dt)
     if nova.input.pointer().pressed then self.paused = false; nova.input.grab_mouse(true); nova.pause(false) end
     return
   end
-  if nova.input.pressed("stats") then self.show_stats = not self.show_stats end
+  if nova.input.pressed("stats") then
+    self.show_stats = not self.show_stats
+    -- (the tests read this line)
+    nova.log(string.format("blockfield: chunks=%d edited=%d mobs=%d x=%.1f z=%.1f y=%.2f ground=%s hp=%d pitch=%.2f target=%s progress=%.2f creative=%s", voxel.stats().chunks, #voxel.modified_chunks(), #self.mobs, p.x, p.z, p.y, tostring(p.ground), p.hp, cam3.pitch, tostring(self.target ~= nil), self.mine.progress, tostring(self.creative)))
+  end
+  if self.menu then
+    self:menu_update()
+    self:sky(false)
+    return
+  end
+  if nova.input.pressed("inventory") then
+    self:open_menu()
+    return
+  end
   if nova.input.pressed("fly") then
     self.creative = not self.creative
     if self.creative then creative_kit(self.inv) else self.inv = {} end
@@ -494,8 +513,15 @@ function World:update(dt)
   self.target = bx and { bx, by, bz, nx2, ny2, nz2, blk } or nil
 
   -- mining
+  -- a creature in reach and in front of the block is hit instead (one blow a click)
+  local mob, mob_t = mobs.aim(self, self.eye, { dx, dy, dz }, 3.6)
+  self.aimed_mob = nil
+  if mob and mob_t < (dist or 99) then
+    self.aimed_mob = mob
+    if nova.input.pressed("mine") then mobs.hit(self, mob, dx, dz) end
+  end
   local m = self.mine
-  local t = self.target
+  local t = (not self.aimed_mob) and self.target or nil
   if nova.input.down("mine") and t and P[t[7]].hard >= 0 then
     if m.x ~= t[1] or m.y ~= t[2] or m.z ~= t[3] then m.x, m.y, m.z, m.progress = t[1], t[2], t[3], 0 end
     local secs = self:break_time(t[7])
@@ -522,7 +548,7 @@ function World:update(dt)
     if held and P[held.id].food and p.food < 20 then
       self.eating = 0
     elseif t and t[7] == B.crafting_table then
-      self.hint_text = "crafting menu: next step"
+      self:open_menu()
     elseif t then
       self:place(t)
     end
@@ -544,6 +570,7 @@ function World:update(dt)
     end
   end
 
+  mobs.update(self, dt)
   self:update_loose(dt)
   self:update_falls(dt)
   self:sky(underwater)
@@ -554,7 +581,8 @@ end
 function World:draw()
   if not self.ready then return end
   voxel.draw { distance = VIEW + 0.5, budget = 3 }
-  local t = self.target
+  mobs.draw(self)
+  local t = (not self.aimed_mob) and self.target or nil
   if t and not self.dead then
     local cx, cy, cz = t[1] + 0.5, t[2] + 0.5, t[3] + 0.5
     voxel.cube(B.outline, cx, cy, cz, { scale = 1.004 })
@@ -586,6 +614,131 @@ local function text(x, y, s, size, color, align)
   local box = 900
   if align == "center" then x = x - box / 2 elseif align == "right" then x = x - box end
   nova.ui.text(x, y, s, { size = size or 16, color = color or { 255, 255, 255 }, shadow = true, align = align, width = align and box or nil })
+end
+
+-- ---- the making menu ----
+
+function World:nearby_stations()
+  local p, near = self.p, {}
+  for dy = -3, 3 do
+    for dz = -4, 4 do
+      for dx = -4, 4 do
+        local id = voxel.get(p.x + dx, p.y + dy + 0.5, p.z + dz)
+        if id == B.crafting_table then near.crafting_table = true elseif id == B.furnace then near.furnace = true end
+      end
+    end
+  end
+  return near
+end
+
+function World:refresh_menu()
+  local m = self.menu
+  m.near = self:nearby_stations()
+  m.rows = {}
+  for i, r in ipairs(recipes.list) do
+    local ok, why = recipes.can_make(self.inv, r, m.near, self.p.fuel or 0)
+    m.rows[#m.rows + 1] = { r = r, ok = ok, why = why, order = i }
+  end
+  table.sort(m.rows, function(a, b)
+    if a.ok ~= b.ok then return a.ok end
+    return a.order < b.order
+  end)
+  m.sel = max(1, min(m.sel, #m.rows))
+end
+
+function World:open_menu()
+  self.menu = { sel = 1, top = 1 }
+  self:refresh_menu()
+  nova.input.grab_mouse(false)
+end
+
+local MENU_ROWS, ROW_H = 9, 38
+
+local function menu_rect(w, i)
+  return { x = w / 2 - 344, y = 96 + (i - 1) * ROW_H, w = 380, h = ROW_H - 4 }
+end
+
+function World:menu_update()
+  local m = self.menu
+  if nova.input.pressed("inventory") or nova.input.pressed("pause") then
+    self.menu = nil
+    nova.input.grab_mouse(true)
+    return
+  end
+  local w = nova.view()
+  local ptr = nova.input.pointer()
+  local ay = nova.input.axis("move_y")
+  if abs(ay) > 0.6 then
+    if not m.held then m.sel, m.held = max(1, min(#m.rows, m.sel + (ay > 0 and 1 or -1))), true end
+  else
+    m.held = false
+  end
+  if ptr.wheel ~= 0 then m.sel = max(1, min(#m.rows, m.sel - (ptr.wheel > 0 and 1 or -1))) end
+  m.top = max(1, min(m.top, m.sel))
+  if m.sel > m.top + MENU_ROWS - 1 then m.top = m.sel - MENU_ROWS + 1 end
+  local clicked
+  if ptr.present then
+    for i = 1, MENU_ROWS do
+      local r = menu_rect(w, i)
+      if ptr.x >= r.x and ptr.x <= r.x + r.w and ptr.y >= r.y and ptr.y <= r.y + r.h and m.top + i - 1 <= #m.rows then
+        if ptr.dx ~= 0 or ptr.dy ~= 0 then m.sel = m.top + i - 1 end
+        if ptr.pressed then m.sel, clicked = m.top + i - 1, true end
+      end
+    end
+  end
+  if clicked or nova.input.pressed("jump") then
+    local row = m.rows[m.sel]
+    if row and row.ok then
+      local left, fuel = recipes.make(self.inv, row.r, self.p.fuel or 0, add_to)
+      self.p.fuel = fuel
+      if left > 0 then self:drop(row.r.out, left, self.p.x, self.p.y + 1, self.p.z) end
+      nova.sound.play(row.r.kind == "smelt" and "pop" or "pickup", { volume = 0.5, pitch = 1.1 })
+      self:refresh_menu()
+    else
+      nova.sound.play("hurt", { volume = 0.15, pitch = 1.6 })
+    end
+  end
+end
+
+function World:draw_menu(w, h)
+  local m = self.menu
+  nova.ui.rect(0, 0, w, h, { 0, 0, 0, 150 })
+  local x0 = w / 2 - 344
+  text(x0, 56, "Make", 24)
+  local stations = {}
+  for k in pairs(m.near) do stations[#stations + 1] = k:gsub("_", " ") end
+  text(x0 + 90, 62, #stations > 0 and ("near: " .. table.concat(stations, ", ")) or "no crafting table or furnace near", 14, { 200, 200, 200 })
+  for i = 1, MENU_ROWS do
+    local row = m.rows[m.top + i - 1]
+    if not row then break end
+    local r = menu_rect(w, i)
+    local selected = m.top + i - 1 == m.sel
+    nova.ui.rect(r.x, r.y, r.w, r.h, selected and { 255, 255, 255, 70 } or { 20, 20, 20, 150 })
+    if selected then nova.ui.rect(r.x, r.y, 3, r.h, { 255, 220, 120 }) end
+    local dim = row.ok and 255 or 120
+    nova.ui.sprite(SHEET, r.x + 20, r.y + r.h / 2, { frame = (blocks.icon(row.r.out)), scale = 1.7, color = { dim, dim, dim, 255 } })
+    local label = (row.r.n > 1 and (row.r.n .. " ") or "") .. P[row.r.out].name .. (row.r.kind == "smelt" and "  (smelt)" or "")
+    text(r.x + 44, r.y + 2, label, 15, { dim, dim, dim })
+    local parts = {}
+    for _, n in ipairs(recipes.needs(self.inv, row.r)) do parts[#parts + 1] = n.name:gsub("_", " ") .. " " .. n.have .. "/" .. n.want end
+    text(r.x + 44, r.y + 18, row.ok and table.concat(parts, "   ") or (row.why or ""), 12, row.ok and { 170, 220, 170 } or { 220, 150, 130 })
+  end
+  if #m.rows > MENU_ROWS then text(x0 + 190, 96 + MENU_ROWS * ROW_H, (m.top + MENU_ROWS - 1 < #m.rows) and "more below" or "", 12, { 200, 200, 200 }, "center") end
+  -- what is carried
+  local gx, gy = x0 + 400, 96
+  text(gx, 66, "Carried", 16)
+  for i = 1, 36 do
+    local col, row = (i - 1) % 9, floor((i - 1) / 9)
+    local x, y = gx + col * 32, gy + row * 32
+    nova.ui.rect(x, y, 30, 30, { 20, 20, 20, 170 })
+    local s = self.inv[i]
+    if s then
+      nova.ui.sprite(SHEET, x + 15, y + 15, { frame = (blocks.icon(s.id)), scale = 1.6 })
+      if s.n > 1 then text(x + 29, y + 15, tostring(s.n), 11, nil, "right") end
+    end
+  end
+  text(gx, gy + 4 * 32 + 8, string.format("fuel stored: %.0f", self.p.fuel or 0), 14, { 220, 200, 160 })
+  text(gx, gy + 4 * 32 + 28, "up/down: choose   jump or click: make   E: close", 12, { 200, 200, 200 })
 end
 
 function World:draw_ui()
@@ -659,6 +812,7 @@ function World:draw_ui()
   if self.hint > 0 then
     text(w / 2, 40, self.creative and "creative: double-tap jump to fly, F to switch back" or "survival: F for creative mode", 16, nil, "center")
   end
+  if self.menu then self:draw_menu(w, h) end
   if self.paused then
     nova.ui.rect(0, 0, w, h, { 0, 0, 0, 140 })
     text(w / 2, h / 2 - 30, "Paused", 30, nil, "center")
