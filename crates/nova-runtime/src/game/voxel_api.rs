@@ -543,7 +543,7 @@ pub(super) fn install(
         lua.create_function(move |_, name: String| {
             let mut sh = s.borrow_mut();
             let bytes = sh.voxel.encode_world();
-            sh.save.write_blob(&name, bytes).map_err(lua_err)
+            sh.save.write_blob_background(&name, bytes).map_err(lua_err)
         })?,
     )?;
     let s = shared.clone();

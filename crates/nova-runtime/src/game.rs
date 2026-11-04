@@ -2356,6 +2356,13 @@ impl Game {
         }
     }
 
+    /// The periodic save: written by another thread, so that a big save does not hitch a frame.
+    fn flush_save_in_background(&self) {
+        if let Err(e) = self.shared.borrow_mut().save.flush_background() {
+            log::error!("{e}");
+        }
+    }
+
     /// Sound commands scripts queued since the last call, for the host to hand to the mixer.
     /// How far into the music track the audio thread is, for `nova.music.position()` (None when no music plays).
     pub fn set_music_position(&self, position: Option<f64>) {
@@ -2525,7 +2532,7 @@ impl Game {
         }
         if self.last_flush.elapsed() > Duration::from_secs(3) {
             self.last_flush = Instant::now();
-            self.flush_save();
+            self.flush_save_in_background();
         }
         let mut sh = self.shared.borrow_mut();
         std::mem::swap(&mut sh.world, &mut self.world);

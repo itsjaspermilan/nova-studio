@@ -21,6 +21,29 @@ pub struct SaveStore {
     dirty: bool,
     /// Big binary files kept beside the save (a voxel world), by name; in memory for a store with no folder.
     blobs: std::collections::HashMap<String, Vec<u8>>,
+    /// Files being written by another thread, so that a save does not stop the game: the save file (only one at a time) and
+    /// the big files.
+    json_writer: Option<Writer>,
+    blob_writers: Vec<Writer>,
+}
+
+type Writer = std::thread::JoinHandle<Result<(), String>>;
+
+/// Writes a file the safe way (a temporary file in the same folder, then a rename).
+fn write_atomically(
+    path: &std::path::Path,
+    temp: &std::path::Path,
+    bytes: &[u8],
+    what: &str,
+) -> Result<(), String> {
+    std::fs::write(temp, bytes).map_err(|e| format!("cannot write {what}: {e}"))?;
+    std::fs::rename(temp, path).map_err(|e| format!("cannot replace {what}: {e}"))
+}
+
+fn join(writer: Writer) -> Result<(), String> {
+    writer
+        .join()
+        .unwrap_or_else(|_| Err("a thread that was writing a save panicked".into()))
 }
 
 /// The most one blob file may hold.
@@ -41,6 +64,8 @@ impl SaveStore {
             data: Map::new(),
             dirty: false,
             blobs: std::collections::HashMap::new(),
+            json_writer: None,
+            blob_writers: Vec::new(),
         }
     }
 
@@ -81,6 +106,8 @@ impl SaveStore {
                 data,
                 dirty: false,
                 blobs: std::collections::HashMap::new(),
+                json_writer: None,
+                blob_writers: Vec::new(),
             },
             warning,
         ))
@@ -125,8 +152,84 @@ impl SaveStore {
         Ok(())
     }
 
-    /// A file written by `write_blob`, or None when there is none.
-    pub fn read_blob(&self, name: &str) -> Result<Option<Vec<u8>>, String> {
+    /// Like `write_blob`, but another thread writes it, so a big file does not hold up the game. An error shows up at the
+    /// next `wait`, `flush_background` or `flush`.
+    pub fn write_blob_background(&mut self, name: &str, bytes: Vec<u8>) -> Result<(), String> {
+        if bytes.len() > MAX_BLOB_BYTES {
+            return Err(format!(
+                "'{name}' would be bigger than {} MiB",
+                MAX_BLOB_BYTES >> 20
+            ));
+        }
+        match self.blob_path(name)? {
+            Some(path) => {
+                let what = format!("'{name}'");
+                self.blob_writers.push(std::thread::spawn(move || {
+                    write_atomically(&path, &path.with_extension("bin.tmp"), &bytes, &what)
+                }));
+                Ok(())
+            }
+            None => self.write_blob(name, bytes),
+        }
+    }
+
+    /// Takes in the writers that have finished (so that their errors are not lost), and gives the first error.
+    fn reap(&mut self) -> Result<(), String> {
+        let mut first = Ok(());
+        let mut keep = Vec::new();
+        for w in self.blob_writers.drain(..) {
+            if w.is_finished() {
+                first = first.and(join(w));
+            } else {
+                keep.push(w);
+            }
+        }
+        self.blob_writers = keep;
+        if self.json_writer.as_ref().is_some_and(|w| w.is_finished()) {
+            first = first.and(join(self.json_writer.take().expect("checked")));
+        }
+        first
+    }
+
+    /// Waits for every write that another thread has under way, and gives the first error.
+    pub fn wait(&mut self) -> Result<(), String> {
+        let mut first = Ok(());
+        for w in self.blob_writers.drain(..) {
+            first = first.and(join(w));
+        }
+        if let Some(w) = self.json_writer.take() {
+            first = first.and(join(w));
+        }
+        first
+    }
+
+    /// Like `flush`, but another thread writes the file: a save that has grown big does not hitch the game. When the last
+    /// write has not finished it waits for the next call (the changes stay unsaved until then).
+    pub fn flush_background(&mut self) -> Result<(), String> {
+        let reaped = self.reap();
+        let Some(path) = self.path.clone() else {
+            self.dirty = false;
+            return reaped;
+        };
+        if !self.dirty || self.json_writer.is_some() {
+            return reaped;
+        }
+        let bytes = self.serialized();
+        self.dirty = false;
+        self.json_writer = Some(std::thread::spawn(move || {
+            write_atomically(
+                &path,
+                &path.with_extension("json.tmp"),
+                &bytes,
+                "the save file",
+            )
+        }));
+        reaped
+    }
+
+    /// A file written by `write_blob`, or None when there is none (waits for a write of it that is still going).
+    pub fn read_blob(&mut self, name: &str) -> Result<Option<Vec<u8>>, String> {
+        self.wait()?;
         match self.blob_path(name)? {
             Some(path) => match std::fs::read(&path) {
                 Ok(b) => Ok(Some(b)),
@@ -181,6 +284,7 @@ impl SaveStore {
 
     /// Writes the file if anything changed. Does nothing for an in-memory store.
     pub fn flush(&mut self) -> Result<(), String> {
+        self.wait()?; // (a write in the background must not land after this one)
         let Some(path) = &self.path else {
             self.dirty = false;
             return Ok(());
@@ -194,6 +298,14 @@ impl SaveStore {
         std::fs::rename(&temp, path).map_err(|e| format!("cannot replace the save file: {e}"))?;
         self.dirty = false;
         Ok(())
+    }
+}
+
+impl Drop for SaveStore {
+    fn drop(&mut self) {
+        if let Err(e) = self.wait() {
+            log::error!("{e}");
+        }
     }
 }
 
@@ -254,6 +366,44 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn writes_in_the_background_land_in_order_and_errors_are_not_lost() {
+        let dir = scratch("background");
+        let (mut store, _) = SaveStore::open(&dir).unwrap();
+        // a big file in the background, read back at once: the read waits for the write
+        let big: Vec<u8> = (0..3_000_000u32).map(|i| (i % 251) as u8).collect();
+        store.write_blob_background("world", big.clone()).unwrap();
+        assert_eq!(store.read_blob("world").unwrap().unwrap(), big);
+        // the save file: changes, a background flush, then wait: the file has them
+        store.set("score", json!(41)).unwrap();
+        store.flush_background().unwrap();
+        store.set("score", json!(42)).unwrap();
+        store.flush_background().unwrap(); // (the first may still be running: the second then waits for the next call)
+        store.wait().unwrap();
+        store.flush().unwrap(); // whatever was left
+        let (again, _) = SaveStore::open(&dir).unwrap();
+        assert_eq!(
+            again.get("score"),
+            Some(&json!(42)),
+            "the newest value is what is in the file"
+        );
+        // dropping the store waits for writes that are going: nothing is cut short
+        let (mut store, _) = SaveStore::open(&dir).unwrap();
+        store.write_blob_background("second", big.clone()).unwrap();
+        drop(store);
+        let (mut check, _) = SaveStore::open(&dir).unwrap();
+        assert_eq!(check.read_blob("second").unwrap().unwrap().len(), big.len());
+        // an error shows up at the next wait
+        let gone = scratch("background-gone");
+        let (mut store, _) = SaveStore::open(&gone).unwrap();
+        std::fs::remove_dir_all(&gone).unwrap();
+        store.write_blob_background("world", vec![1, 2, 3]).unwrap();
+        assert!(
+            store.wait().is_err(),
+            "a write into a folder that is gone is an error, not silence"
+        );
+    }
+
+    #[test]
     fn blobs_are_files_beside_the_save_and_beat_its_size_limit() {
         let dir = scratch("blob");
         let (mut store, _) = SaveStore::open(&dir).unwrap();
@@ -261,7 +411,7 @@ mod tests {
         let big = vec![7u8; MAX_BYTES * 3];
         store.write_blob("world", big.clone()).unwrap();
         assert_eq!(store.read_blob("world").unwrap().unwrap(), big);
-        let (again, _) = SaveStore::open(&dir).unwrap();
+        let (mut again, _) = SaveStore::open(&dir).unwrap();
         assert_eq!(
             again.read_blob("world").unwrap().unwrap().len(),
             big.len(),
