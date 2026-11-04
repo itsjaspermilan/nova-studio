@@ -94,6 +94,10 @@ pub struct Chunk {
     /// Gameplay edits made since generation, as index -> block, for saving.
     pub edits: HashMap<u32, u8>,
     pub lit: bool,
+    /// Counts the changes made to the blocks, so that light worked out for older blocks can be told from current.
+    revision: u64,
+    /// A worker is working out this chunk's light.
+    light_job: bool,
 }
 
 impl Chunk {
@@ -108,6 +112,8 @@ impl Chunk {
             queued: 0,
             edits: HashMap::new(),
             lit: false,
+            revision: 0,
+            light_job: false,
         }
     }
 }
@@ -133,6 +139,10 @@ pub struct World {
     /// Finished by the workers and waiting to be taken in.
     mesh_ready: VecDeque<(i32, i32, usize, Built)>,
     gen_ready: VecDeque<(i32, i32, Vec<u8>)>,
+    /// Chunks that have blocks and no light yet and are not with a worker, and light the workers have finished:
+    /// (chunk x, chunk z, sky, glow, the blocks' revision it was made for).
+    light_pending: VecDeque<(i32, i32)>,
+    light_ready: VecDeque<(i32, i32, Vec<u8>, Vec<u8>, u64)>,
     terrain: Option<Arc<Terrain>>,
     /// Chunks asked for and not made yet (a worker has them, or they wait their turn), and those waiting their turn.
     requested: HashSet<(i32, i32)>,
@@ -193,6 +203,8 @@ impl World {
             deterministic: false,
             mesh_ready: VecDeque::new(),
             gen_ready: VecDeque::new(),
+            light_pending: VecDeque::new(),
+            light_ready: VecDeque::new(),
             terrain: None,
             requested: HashSet::new(),
             wanted: VecDeque::new(),
@@ -496,10 +508,23 @@ impl World {
         self.spread(ch, again);
     }
 
-    /// Light for a new chunk: sky straight down every column, torches, then the flood across the whole chunk and over its
-    /// borders into (and from) the chunks that are already there.
-    #[allow(clippy::needless_range_loop)] // (the loops index a 16 x 16 table of heights and compute world places from the same numbers)
+    /// Light for a new chunk: sky straight down every column, torches, the flood across the chunk, and then across its borders
+    /// into (and from) the chunks that are already there.
     pub fn light_chunk(&mut self, cx: i32, cz: i32) {
+        let Some(chunk) = self.chunks.get(&(cx, cz)) else {
+            return;
+        };
+        let t = std::time::Instant::now();
+        let (sky, glow) = light_isolated(&chunk.blocks, &self.shared_defs);
+        self.stats.light_ms += t.elapsed().as_secs_f32() * 1000.0;
+        self.finish_light(cx, cz, sky, glow);
+    }
+
+    /// The first way chunk light was made, kept as the answer the real way is checked against: sky straight down every column,
+    /// torches, then one flood across the whole chunk and over its borders into (and from) the chunks that are already there.
+    #[allow(clippy::needless_range_loop)] // (the loops index a 16 x 16 table of heights and compute world places from the same numbers)
+    #[cfg(test)]
+    pub fn light_chunk_reference(&mut self, cx: i32, cz: i32) {
         let t = std::time::Instant::now();
         if !self.chunks.contains_key(&(cx, cz)) {
             return;
@@ -623,6 +648,7 @@ impl World {
             let i = idx(lx, y as usize, lz);
             Arc::make_mut(&mut c.blocks)[i] = id;
             c.edits.insert(i as u32, id);
+            c.revision += 1;
         }
         // the sections that show it: its own, the ones above and below when it is at an edge, and those of the
         // neighbouring chunks when it is on a border (faces and light samples reach one cell over)
@@ -725,6 +751,15 @@ impl World {
             c.queued = 0;
         }
         self.mesh_ready.clear();
+        // chunks whose light a worker was making are lit again, by the new workers or by the game's thread
+        self.light_ready.clear();
+        self.light_pending.clear();
+        for (k, c) in self.chunks.iter_mut() {
+            if !c.lit {
+                c.light_job = false;
+                self.light_pending.push_back(*k);
+            }
+        }
         // chunks a worker had are asked for again
         let lost: Vec<(i32, i32)> = self
             .requested
@@ -759,6 +794,18 @@ impl World {
                 Done::Gen { cx, cz, blocks } => {
                     pool.gen_in_flight -= 1;
                     self.gen_ready.push_back((cx, cz, blocks));
+                }
+                Done::Light {
+                    cx,
+                    cz,
+                    sky,
+                    glow,
+                    revision,
+                    ms,
+                } => {
+                    pool.light_in_flight -= 1;
+                    self.stats.light_ms += ms;
+                    self.light_ready.push_back((cx, cz, sky, glow, revision));
                 }
             }
         }
@@ -891,10 +938,174 @@ impl World {
             chunk.blocks = Arc::new(blocks);
             self.chunks.insert((cx, cz), chunk);
             self.apply_saved(cx, cz);
-            self.light_chunk(cx, cz);
+            if self.pool.is_some() {
+                self.light_pending.push_back((cx, cz)); // a worker lights it; it is not drawn until it is lit
+            } else {
+                self.light_chunk(cx, cz);
+            }
             made += 1;
         }
+        self.pump_light(max);
         made
+    }
+
+    /// Lights chunks that are waiting for it: hands them to the workers (or does it here without any) and takes in what
+    /// the workers have finished.
+    fn pump_light(&mut self, max: usize) {
+        if self.pool.is_none() {
+            for _ in 0..max.max(1) {
+                let Some((cx, cz)) = self.light_pending.pop_front() else {
+                    break;
+                };
+                if self.chunks.get(&(cx, cz)).is_some_and(|c| !c.lit) {
+                    self.light_chunk(cx, cz);
+                }
+            }
+            return;
+        }
+        while self
+            .pool
+            .as_ref()
+            .is_some_and(|p| p.light_in_flight < p.size * 3)
+        {
+            let Some((cx, cz)) = self.light_pending.pop_front() else {
+                break;
+            };
+            let defs = self.shared_defs.clone();
+            let Some(c) = self.chunks.get_mut(&(cx, cz)) else {
+                continue;
+            };
+            if c.lit || c.light_job {
+                continue;
+            }
+            c.light_job = true;
+            let job = Job::Light {
+                cx,
+                cz,
+                blocks: c.blocks.clone(),
+                defs,
+                revision: c.revision,
+            };
+            let pool = self.pool.as_mut().expect("checked");
+            pool.light_in_flight += 1;
+            pool.send(job);
+        }
+        for _ in 0..max.max(1) * 2 {
+            let Some((cx, cz, sky, glow, revision)) = self.light_ready.pop_front() else {
+                break;
+            };
+            let Some(c) = self.chunks.get_mut(&(cx, cz)) else {
+                continue;
+            };
+            c.light_job = false;
+            if c.lit {
+                continue;
+            }
+            if c.revision != revision {
+                self.light_chunk(cx, cz); // the blocks changed while it was being worked out: do it again, here
+            } else {
+                self.finish_light(cx, cz, sky, glow);
+            }
+        }
+    }
+
+    /// Queues the cells on both sides of a chunk's borders whose light would brighten the cell across: the only ones the
+    /// flood across the border needs to start from (a cell next to one that is as bright already changes nothing). It reads
+    /// the two chunks' arrays side by side, with no lookups per cell.
+    fn border_seeds(
+        &self,
+        cx: i32,
+        cz: i32,
+        sky_queue: &mut VecDeque<[i32; 3]>,
+        glow_queue: &mut VecDeque<[i32; 3]>,
+    ) {
+        let Some(me) = self.chunks.get(&(cx, cz)) else {
+            return;
+        };
+        let (bx, bz) = (cx * SX as i32, cz * SZ as i32);
+        for (dx, dz) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)] {
+            // (a neighbour that is not lit yet does its own border when it is: flooding its whole volume from here would be
+            // work that its own pass does far more cheaply)
+            let Some(other) = self.chunks.get(&(cx + dx, cz + dz)).filter(|c| c.lit) else {
+                continue;
+            };
+            for i in 0..SX.max(SZ) {
+                // the cell of this chunk on the border and the cell of the other chunk next to it, inside their chunks
+                let (ix, iz, ox, oz) = match (dx, dz) {
+                    (-1, 0) => (0, i, SX - 1, i),
+                    (1, 0) => (SX - 1, i, 0, i),
+                    (0, -1) => (i, 0, i, SZ - 1),
+                    _ => (i, SZ - 1, i, 0),
+                };
+                for y in 0..SY {
+                    let (a, b) = (idx(ix, y, iz), idx(ox, y, oz));
+                    let (me_open, other_open) =
+                        (&self.def(me.blocks[a]), &self.def(other.blocks[b]));
+                    for (ch, queue) in [(0usize, &mut *sky_queue), (1, &mut *glow_queue)] {
+                        let (la, lb) = if ch == 0 {
+                            (me.sky[a], other.sky[b])
+                        } else {
+                            (me.glow[a], other.glow[b])
+                        };
+                        if la > 1
+                            && !other_open.opaque
+                            && la.saturating_sub(1 + other_open.dim) > lb
+                        {
+                            queue.push_back([bx + ix as i32, y as i32, bz + iz as i32]);
+                        }
+                        if lb > 1 && !me_open.opaque && lb.saturating_sub(1 + me_open.dim) > la {
+                            queue.push_back([
+                                (cx + dx) * SX as i32 + ox as i32,
+                                y as i32,
+                                (cz + dz) * SZ as i32 + oz as i32,
+                            ]);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Puts a worker's light for a chunk (made as if nothing were next to it) in place, and lets light cross its borders
+    /// both ways, which is the part that needs the neighbours as they are now.
+    fn finish_light(&mut self, cx: i32, cz: i32, sky: Vec<u8>, glow: Vec<u8>) {
+        let t = std::time::Instant::now();
+        {
+            let c = self.chunks.get_mut(&(cx, cz)).expect("checked");
+            // (never lower than what neighbours that were lit first have already put in)
+            for (dst, src) in [
+                (Arc::make_mut(&mut c.sky), &sky),
+                (Arc::make_mut(&mut c.glow), &glow),
+            ] {
+                for (d, s) in dst.iter_mut().zip(src) {
+                    *d = (*d).max(*s);
+                }
+            }
+            c.lit = true;
+            c.dirty = ALL;
+        }
+        let (bx, bz) = (cx * SX as i32, cz * SZ as i32);
+        let mut sky_queue: VecDeque<[i32; 3]> = VecDeque::new();
+        let mut glow_queue: VecDeque<[i32; 3]> = VecDeque::new();
+        // columns on the border that see more sky than the column next door, outside the chunk
+        for i in 0..SX.max(SZ) as i32 {
+            for (wx, wz, nx, nz) in [
+                (bx + i, bz, bx + i, bz - 1),
+                (bx + i, bz + SZ as i32 - 1, bx + i, bz + SZ as i32),
+                (bx, bz + i, bx - 1, bz + i),
+                (bx + SX as i32 - 1, bz + i, bx + SX as i32, bz + i),
+            ] {
+                let own = self.column_top(wx, wz).unwrap_or(0);
+                let other = self.column_top(nx, nz).unwrap_or(0);
+                for y in own..other.max(own) {
+                    sky_queue.push_back([wx, y, wz]);
+                }
+            }
+        }
+        self.border_seeds(cx, cz, &mut sky_queue, &mut glow_queue);
+        self.spread(0, sky_queue);
+        self.spread(1, glow_queue);
+        self.stats.light_ms += t.elapsed().as_secs_f32() * 1000.0;
     }
 
     /// Whether any mesh work is waiting or under way.
@@ -1664,6 +1875,95 @@ impl Snapshot {
     }
 }
 
+/// The light of a chunk on its own, as if nothing were next to it: the sky down every column, the glow of torches and
+/// lava, and the flood across the chunk. Plain data in and out, so a worker can do it; what crosses the chunk's borders is
+/// left to `World::finish_light`.
+pub fn light_isolated(blocks: &[u8], defs: &[BlockDef]) -> (Vec<u8>, Vec<u8>) {
+    let mut sky = vec![0u8; VOL];
+    let mut glow = vec![0u8; VOL];
+    let mut sky_queue: VecDeque<[usize; 3]> = VecDeque::new();
+    let mut glow_queue: VecDeque<[usize; 3]> = VecDeque::new();
+    let mut tops = [[0usize; SZ]; SX];
+    for lz in 0..SZ {
+        for lx in 0..SX {
+            let mut level = MAX_LIGHT;
+            let mut top = 0;
+            for y in (0..SY).rev() {
+                let i = idx(lx, y, lz);
+                let d = &defs[blocks[i] as usize];
+                if d.opaque {
+                    level = 0;
+                } else {
+                    level = level.saturating_sub(d.dim);
+                }
+                if level < MAX_LIGHT && top == 0 {
+                    top = y + 1;
+                }
+                sky[i] = level;
+                glow[i] = d.glow;
+                if d.glow > 0 {
+                    glow_queue.push_back([lx, y, lz]);
+                }
+            }
+            tops[lx][lz] = top;
+        }
+    }
+    for lz in 0..SZ {
+        for lx in 0..SX {
+            let own = tops[lx][lz];
+            for (dx, dz) in [(1i32, 0i32), (-1, 0), (0, 1), (0, -1)] {
+                let (nx, nz) = (lx as i32 + dx, lz as i32 + dz);
+                if !(0..SX as i32).contains(&nx) || !(0..SZ as i32).contains(&nz) {
+                    continue; // (outside the chunk: for finish_light)
+                }
+                for y in own..tops[nx as usize][nz as usize].max(own) {
+                    sky_queue.push_back([lx, y, lz]);
+                }
+            }
+            for y in 0..own {
+                if sky[idx(lx, y, lz)] > 1 {
+                    sky_queue.push_back([lx, y, lz]);
+                }
+            }
+        }
+    }
+    for (light, queue, is_sky) in [(&mut sky, sky_queue, true), (&mut glow, glow_queue, false)] {
+        let mut queue = queue;
+        while let Some([x, y, z]) = queue.pop_front() {
+            let level = light[idx(x, y, z)];
+            if level == 0 {
+                continue;
+            }
+            for (k, d) in DIRS.iter().enumerate() {
+                let (nx, ny, nz) = (x as i32 + d[0], y as i32 + d[1], z as i32 + d[2]);
+                if !(0..SX as i32).contains(&nx)
+                    || !(0..SY as i32).contains(&ny)
+                    || !(0..SZ as i32).contains(&nz)
+                {
+                    continue;
+                }
+                let (nx, ny, nz) = (nx as usize, ny as usize, nz as usize);
+                let def = &defs[blocks[idx(nx, ny, nz)] as usize];
+                if def.opaque {
+                    continue;
+                }
+                // sky light falls straight down without fading
+                let step = if is_sky && k == 3 {
+                    def.dim
+                } else {
+                    1 + def.dim
+                };
+                let next = level.saturating_sub(step);
+                if next > light[idx(nx, ny, nz)] {
+                    light[idx(nx, ny, nz)] = next;
+                    queue.push_back([nx, ny, nz]);
+                }
+            }
+        }
+    }
+    (sky, glow)
+}
+
 enum Job {
     Mesh {
         snap: Box<Snapshot>,
@@ -1673,6 +1973,13 @@ enum Job {
         terrain: Arc<Terrain>,
         cx: i32,
         cz: i32,
+    },
+    Light {
+        cx: i32,
+        cz: i32,
+        blocks: Arc<Vec<u8>>,
+        defs: Arc<Vec<BlockDef>>,
+        revision: u64,
     },
 }
 
@@ -1688,6 +1995,14 @@ enum Done {
         cz: i32,
         blocks: Vec<u8>,
     },
+    Light {
+        cx: i32,
+        cz: i32,
+        sky: Vec<u8>,
+        glow: Vec<u8>,
+        revision: u64,
+        ms: f32,
+    },
 }
 
 /// Threads that build meshes and chunks: jobs go in one end, finished work comes out the other.
@@ -1696,6 +2011,7 @@ struct Pool {
     done: Receiver<Done>,
     mesh_in_flight: usize,
     gen_in_flight: usize,
+    light_in_flight: usize,
     size: usize,
     workers: Vec<std::thread::JoinHandle<()>>,
 }
@@ -1730,6 +2046,24 @@ impl Pool {
                                     cz,
                                     blocks: terrain.generate(cx, cz),
                                 },
+                                Job::Light {
+                                    cx,
+                                    cz,
+                                    blocks,
+                                    defs,
+                                    revision,
+                                } => {
+                                    let t = std::time::Instant::now();
+                                    let (sky, glow) = light_isolated(&blocks, &defs);
+                                    Done::Light {
+                                        cx,
+                                        cz,
+                                        sky,
+                                        glow,
+                                        revision,
+                                        ms: t.elapsed().as_secs_f32() * 1000.0,
+                                    }
+                                }
                             };
                             if done_tx.send(done).is_err() {
                                 break;
@@ -1744,6 +2078,7 @@ impl Pool {
             done: done_rx,
             mesh_in_flight: 0,
             gen_in_flight: 0,
+            light_in_flight: 0,
             size: n,
             workers,
         }
@@ -2403,6 +2738,118 @@ mod tests {
         assert_eq!(list, vec![(-1, 0, 0), (0, 0, 0)]);
     }
 
+    /// A world of bumpy ground with torches and glass about, not yet lit: the same every time.
+    fn bumpy(radius: i32) -> World {
+        let mut w = world();
+        for cx in -radius..=radius {
+            for cz in -radius..=radius {
+                w.create_chunk(cx, cz);
+                for lz in 0..16 {
+                    for lx in 0..16 {
+                        let (x, z) = (cx * 16 + lx, cz * 16 + lz);
+                        let h = 8
+                            + (hash01(x, 0, z, 3) * 6.0) as i32
+                            + ((x as f64 * 0.3).sin() * 3.0) as i32;
+                        w.fill([x, 0, z], [x, h, z], 1);
+                        // an overhang here and there, glass roofs, a torch on the ground
+                        if hash01(x, 1, z, 4) < 0.06 {
+                            w.fill([x, h + 3, z], [x, h + 3, z], 1);
+                        }
+                        if hash01(x, 2, z, 5) < 0.03 {
+                            w.set_raw(x, h + 1, z, 3);
+                        }
+                        if hash01(x, 3, z, 6) < 0.04 {
+                            w.fill([x, h + 2, z], [x, h + 2, z], 2);
+                        }
+                    }
+                }
+            }
+        }
+        w
+    }
+
+    fn light_arrays(w: &World, key: (i32, i32)) -> (Vec<u8>, Vec<u8>) {
+        let c = &w.chunks[&key];
+        (c.sky.to_vec(), c.glow.to_vec())
+    }
+
+    #[test]
+    fn light_made_for_a_lone_chunk_is_the_same_as_the_first_way_it_was_made() {
+        let mut a = bumpy(0);
+        a.light_chunk_reference(0, 0);
+        let b = bumpy(0);
+        let (sky, glow) = light_isolated(&b.chunks[&(0, 0)].blocks, &b.defs);
+        assert_eq!((sky, glow), light_arrays(&a, (0, 0)));
+    }
+
+    #[test]
+    fn lighting_chunks_in_any_order_gives_the_light_the_first_way_it_was_made_did() {
+        let radius = 2;
+        let mut sync = bumpy(radius);
+        for cx in -radius..=radius {
+            for cz in -radius..=radius {
+                sync.light_chunk_reference(cx, cz);
+            }
+        }
+        // the same world, each chunk lit on its own (as a worker would) and then joined to its neighbours, in the opposite
+        // order, with the blocks of every chunk already there
+        let mut other = bumpy(radius);
+        for cx in (-radius..=radius).rev() {
+            for cz in (-radius..=radius).rev() {
+                let (sky, glow) = light_isolated(&other.chunks[&(cx, cz)].blocks, &other.defs);
+                other.finish_light(cx, cz, sky, glow);
+            }
+        }
+        for cx in -radius..=radius {
+            for cz in -radius..=radius {
+                let (s1, g1) = light_arrays(&sync, (cx, cz));
+                let (s2, g2) = light_arrays(&other, (cx, cz));
+                let diff = |a: &[u8], b: &[u8]| a.iter().zip(b).filter(|(x, y)| x != y).count();
+                assert_eq!(diff(&s1, &s2), 0, "sky light of chunk {cx} {cz}");
+                assert_eq!(diff(&g1, &g2), 0, "torch light of chunk {cx} {cz}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_world_lights_its_chunks_on_workers_and_gets_there() {
+        let spec: crate::terrain::Spec = serde_json::from_str(
+            r#"{ "seed": 3, "sea_level": 10, "base": 14,
+                 "layers": [ {"scale": 0.05, "octaves": 2, "amplitude": 5} ],
+                 "biomes": [ {"name": "plain", "top": "stone", "under": "stone"} ],
+                 "stone": "stone", "bedrock": "stone", "water": "glass" }"#,
+        )
+        .unwrap();
+        let build = |threads: usize| {
+            let mut w = world();
+            w.set_terrain(crate::terrain::Terrain::new(&spec, &|n| w.find(n)).unwrap());
+            w.set_threads(threads);
+            for cx in -2..=2 {
+                for cz in -2..=2 {
+                    w.request_chunk(cx, cz);
+                }
+            }
+            for _ in 0..4000 {
+                w.pump_chunks(4);
+                if w.pending_chunks() == 0
+                    && w.chunks.values().all(|c| c.lit)
+                    && w.chunks.len() == 25
+                {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            assert_eq!(w.chunks.len(), 25);
+            assert!(w.chunks.values().all(|c| c.lit), "every chunk was lit");
+            light_arrays(&w, (0, 0))
+        };
+        assert_eq!(
+            build(3),
+            build(0),
+            "a worker and the game thread light a chunk the same way"
+        );
+    }
+
     #[test]
     fn carving_leaves_air_only_where_allowed() {
         let mut w = world();
@@ -2454,6 +2901,71 @@ mod tests {
         assert!(
             !f.sees([200.0, 0.0, -10.0], [201.0, 1.0, -9.0]),
             "far to the side"
+        );
+    }
+}
+
+#[cfg(test)]
+mod bench {
+    use super::*;
+
+    #[test]
+    #[ignore = "a measurement, not a check: cargo test --release -p nova-runtime --lib bench -- --ignored --nocapture"]
+    fn light_costs() {
+        let mut w = World::new();
+        w.define(BlockDef {
+            name: "stone".into(),
+            ..Default::default()
+        })
+        .unwrap();
+        for cx in -2..=2 {
+            for cz in -2..=2 {
+                w.create_chunk(cx, cz);
+                for lz in 0..16 {
+                    for lx in 0..16 {
+                        let (x, z) = (cx * 16 + lx, cz * 16 + lz);
+                        let h = 30 + (hash01(x, 0, z, 3) * 8.0) as i32;
+                        w.fill([x, 0, z], [x, h, z], 1);
+                    }
+                }
+            }
+        }
+        let t = std::time::Instant::now();
+        for cx in -2..=2 {
+            for cz in -2..=2 {
+                w.light_chunk(cx, cz);
+            }
+        }
+        eprintln!(
+            "sync light_chunk: {:.2} ms a chunk",
+            t.elapsed().as_secs_f64() * 1000.0 / 25.0
+        );
+        let mut w2 = World::new();
+        w2.define(BlockDef {
+            name: "stone".into(),
+            ..Default::default()
+        })
+        .unwrap();
+        for k in w.chunks.keys() {
+            w2.create_chunk(k.0, k.1);
+            w2.chunks.get_mut(k).unwrap().blocks = w.chunks[k].blocks.clone();
+        }
+        let t = std::time::Instant::now();
+        let mut results = Vec::new();
+        for k in w2.chunks.keys().copied().collect::<Vec<_>>() {
+            results.push((k, light_isolated(&w2.chunks[&k].blocks, &w2.defs)));
+        }
+        eprintln!(
+            "light_isolated (worker part): {:.2} ms a chunk",
+            t.elapsed().as_secs_f64() * 1000.0 / 25.0
+        );
+        let t = std::time::Instant::now();
+        for (k, (sky, glow)) in results {
+            w2.finish_light(k.0, k.1, sky, glow);
+        }
+        eprintln!(
+            "finish_light (game thread part): {:.2} ms a chunk",
+            t.elapsed().as_secs_f64() * 1000.0 / 25.0
         );
     }
 }
