@@ -58,6 +58,8 @@ pub struct Options {
     pub input: Option<PathBuf>,
     /// Where to write the input of this run as such a file when it ends.
     pub record: Option<PathBuf>,
+    /// Profile the scripts and print the functions that took the most time when the run ends.
+    pub profile: bool,
     /// Height of the world render target in pixels (UI is always native); 0 = native.
     /// `None` uses the project's `world_height` (540 for the spike).
     pub world_height: Option<u32>,
@@ -82,6 +84,7 @@ impl Default for Options {
             press: Vec::new(),
             input: None,
             record: None,
+            profile: false,
         }
     }
 }
@@ -183,6 +186,7 @@ pub fn run_headless(opts: Options) -> Result<(), String> {
     let mut gfx = Gfx::new(&instance, None)?;
     let mut content = Content::load(&opts, &mut gfx)?;
     content.set_deterministic(true); // no worker threads: every run does the same
+    content.set_profile(opts.profile);
     let frames = opts.frames.unwrap_or(120);
     let size = opts.size;
     let target = gfx.device.create_texture(&wgpu::TextureDescriptor {
@@ -268,6 +272,11 @@ pub fn run_headless(opts: Options) -> Result<(), String> {
         );
     }
     print_summary("headless", &perf);
+    if opts.profile
+        && let Some(text) = content.profile_text(15)
+    {
+        print!("{text}");
+    }
     println!(
         "where the time went (mean / p95 ms): lua {} | update {} | render {}",
         mean_p95(&mut lua_times),

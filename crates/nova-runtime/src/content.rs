@@ -210,6 +210,32 @@ impl Content {
         }
     }
 
+    /// Starts the Lua profiler (`--profile`).
+    pub fn set_profile(&mut self, on: bool) {
+        if let Content::Game { game, .. } = self {
+            game.set_profile(on);
+        }
+    }
+
+    /// The profiler's top functions as text, if there is a game.
+    pub fn profile_text(&self, top: usize) -> Option<String> {
+        let Content::Game { game, .. } = self else {
+            return None;
+        };
+        let (rows, total) = game.profile_report(top);
+        let mut s = format!("where the script time went ({total:.0} ms sampled in all):\n");
+        for (name, ms, n) in rows {
+            s += &format!(
+                "  {:5.1}%  {:8.1} ms  {:6} samples  {}\n",
+                if total > 0.0 { ms / total * 100.0 } else { 0.0 },
+                ms,
+                n,
+                name
+            );
+        }
+        Some(s)
+    }
+
     /// Runs the voxel world without worker threads (headless runs: every run does the same).
     pub fn set_deterministic(&mut self, on: bool) {
         if let Content::Game { game, .. } = self {

@@ -27,11 +27,16 @@ end
 
 -- ---- chunks: made as the player moves, dropped when far, edits kept for saving ----
 
-local function key(cx, cz) return cx .. "," .. cz end
+-- a number for a chunk (not a string: this runs for hundreds of chunks a frame)
+local function key(cx, cz) return (cx + 32768) * 65536 + (cz + 32768) end
 
 -- asks for the missing chunks around (pcx, pcz), nearest first, and takes in those the engine has made (it lights each, about
 -- a millisecond on the game's own thread, so only a few a frame); returns whether the ring around is complete
 function World:stream(pcx, pcz, take)
+  -- nothing to do while the player stays in a chunk whose ring is whole (found with nova.profile: this loop was most of the
+  -- game's script time)
+  if self.ring and self.ring[1] == pcx and self.ring[2] == pcz and voxel.pending_chunks() == 0 then return true end
+  self.ring = nil
   local missing = {}
   for dz = -LOAD, LOAD do
     for dx = -LOAD, LOAD do
@@ -49,6 +54,7 @@ function World:stream(pcx, pcz, take)
       end
     end
   end
+  if #missing == 0 then self.ring = { pcx, pcz } end
   return #missing == 0
 end
 

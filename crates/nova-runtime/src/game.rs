@@ -121,6 +121,9 @@ struct Shared {
     /// The voxel world (`nova.voxel`), and the mesh of each block kind drawn as a lone cube.
     voxel: crate::voxel::World,
     cubes: HashMap<u8, usize>,
+    /// For the profiler: the script time limit's clock and what has been seen.
+    deadline: Rc<Cell<Option<Instant>>>,
+    profile: Rc<RefCell<Profile>>,
     camera: Camera,
     clear: [f64; 4],
     log: Vec<String>,
@@ -303,6 +306,94 @@ pub struct Game {
     checked: Instant,
     last_flush: Instant,
     save_dir: Option<std::path::PathBuf>,
+}
+
+/// What the Lua profiler has seen: time charged to the function that was running when each sample was taken.
+#[derive(Default)]
+struct Profile {
+    on: bool,
+    last: Option<Instant>,
+    /// Calls into the engine that have begun and not returned: when, and what they are called.
+    native: Vec<(Instant, String)>,
+    by_function: HashMap<String, (f64, u32)>,
+    total_ms: f64,
+}
+
+/// The hook that runs every so many VM instructions: it stops a script that has run too long in a frame, and while
+/// profiling it also charges the time since the last look to the function that is running now (time spent in the engine
+/// on that function's behalf, in nova.* calls, counts for it).
+fn install_hook(
+    lua: &Lua,
+    deadline: Rc<Cell<Option<Instant>>>,
+    profile: Rc<RefCell<Profile>>,
+    profiling: bool,
+) -> mlua::Result<()> {
+    let triggers = if profiling {
+        // calls and returns too, so that time inside the engine (nova.* functions) is charged to them by name
+        HookTriggers::new()
+            .every_nth_instruction(2_000)
+            .on_calls()
+            .on_returns()
+    } else {
+        HookTriggers::new().every_nth_instruction(20_000)
+    };
+    lua.set_global_hook(triggers, move |_, debug| {
+        let now = Instant::now();
+        if profiling {
+            let mut p = profile.borrow_mut();
+            match debug.event() {
+                mlua::debug::DebugEvent::Call => {
+                    if debug.source().what == "C" {
+                        let name = debug.names().name.as_deref().unwrap_or("?").to_string();
+                        p.native.push((now, name));
+                    }
+                }
+                mlua::debug::DebugEvent::Ret => {
+                    if debug.source().what == "C"
+                        && let Some((start, name)) = p.native.pop()
+                    {
+                        let spent = now - start;
+                        let ms = spent.as_secs_f64() * 1000.0;
+                        let entry = p
+                            .by_function
+                            .entry(format!("(engine) {name}"))
+                            .or_insert((0.0, 0));
+                        entry.0 += ms;
+                        entry.1 += 1;
+                        p.total_ms += ms;
+                        // the Lua around it did not spend that time
+                        if let Some(last) = p.last {
+                            p.last = Some(last + spent);
+                        }
+                    }
+                }
+                mlua::debug::DebugEvent::Count => {
+                    if let Some(last) = p.last {
+                        let ms = (now - last).as_secs_f64() * 1000.0;
+                        let (names, source) = (debug.names(), debug.source());
+                        let name = format!(
+                            "{} ({}:{})",
+                            names.name.as_deref().unwrap_or("?"),
+                            source.short_src.as_deref().unwrap_or("?"),
+                            source.line_defined.unwrap_or(0)
+                        );
+                        let entry = p.by_function.entry(name).or_insert((0.0, 0));
+                        entry.0 += ms;
+                        entry.1 += 1;
+                        p.total_ms += ms;
+                    }
+                    p.last = Some(now);
+                }
+                _ => {}
+            }
+        }
+        match deadline.get() {
+            Some(limit) if now > limit => Err(lua_err(
+                "the script ran for too long in one frame; is there an endless loop?",
+            )),
+            _ => Ok(VmState::Continue),
+        }
+    })
 }
 
 /// How loud a sound at a place in the world is, and how far to the left or right, for a listener at the camera:
@@ -2008,6 +2099,8 @@ impl Game {
             skin_used: HashMap::new(),
             voxel: crate::voxel::World::new(),
             cubes: HashMap::new(),
+            deadline: Rc::new(Cell::new(None)),
+            profile: Rc::new(RefCell::new(Profile::default())),
             camera: DEFAULT_CAMERA,
             clear: srgb_to_linear([0.36, 0.55, 0.78, 1.0]),
             log: Vec::new(),
@@ -2017,16 +2110,12 @@ impl Game {
             .map_err(|e| format!("cannot limit Lua memory: {e}"))?;
         // A hook every 20,000 VM instructions checks the clock. It is global, so scripts
         // started with go() (coroutines) are covered as well.
-        let deadline: Rc<Cell<Option<Instant>>> = Rc::new(Cell::new(None));
-        let hook_deadline = deadline.clone();
-        lua.set_global_hook(
-            HookTriggers::new().every_nth_instruction(20_000),
-            move |_, _| match hook_deadline.get() {
-                Some(limit) if Instant::now() > limit => Err(lua_err(
-                    "the script ran for too long in one frame; is there an endless loop?",
-                )),
-                _ => Ok(VmState::Continue),
-            },
+        let deadline = shared.borrow().deadline.clone();
+        install_hook(
+            &lua,
+            deadline.clone(),
+            shared.borrow().profile.clone(),
+            false,
         )
         .map_err(|e| format!("cannot install the script time limit: {e}"))?;
         let mut game = Game {
@@ -2259,6 +2348,13 @@ impl Game {
         if self.error.is_none() {
             let started = Instant::now();
             self.deadline.set(Some(started + FRAME_BUDGET));
+            {
+                let profile = self.shared.borrow().profile.clone();
+                let mut p = profile.borrow_mut();
+                if p.on {
+                    p.last = Some(started);
+                }
+            }
             let globals = self.lua.globals();
             let mut result = Ok(());
             if let Ok(update) = globals.get::<Function>("update") {
@@ -2270,6 +2366,7 @@ impl Game {
                 result = draw.call::<()>(());
             }
             self.deadline.set(None);
+            self.shared.borrow().profile.borrow_mut().last = None;
             self.last_update = started.elapsed();
             if let Err(e) = result {
                 log::error!("script error: {e}");
@@ -2349,6 +2446,33 @@ impl Game {
             rotation: 0.0,
         });
         font::draw_text(&mut self.ui, white, x, y, 2.0, [255, 255, 255, 255], text);
+    }
+
+    /// Starts or stops the Lua profiler (see `nova.profile`); starting clears what it had seen.
+    pub fn set_profile(&mut self, on: bool) {
+        let sh = self.shared.borrow();
+        {
+            let mut p = sh.profile.borrow_mut();
+            if on {
+                *p = Profile::default();
+            }
+            p.on = on;
+        }
+        let _ = install_hook(&self.lua, sh.deadline.clone(), sh.profile.clone(), on);
+    }
+
+    /// The functions that took the most script time, most first: (name, milliseconds, samples), and the total.
+    pub fn profile_report(&self, top: usize) -> (Vec<(String, f64, u32)>, f64) {
+        let sh = self.shared.borrow();
+        let p = sh.profile.borrow();
+        let mut v: Vec<(String, f64, u32)> = p
+            .by_function
+            .iter()
+            .map(|(k, (ms, n))| (k.clone(), *ms, *n))
+            .collect();
+        v.sort_by(|a, b| b.1.total_cmp(&a.1));
+        v.truncate(top);
+        (v, p.total_ms)
     }
 
     /// No worker threads for the voxel world, so that a run does the same thing every time (tests and headless runs).

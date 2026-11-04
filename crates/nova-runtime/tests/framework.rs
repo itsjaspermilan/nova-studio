@@ -2235,3 +2235,38 @@ nova.sound.set(id, { at = {3, 1.6, -3} })"),
         "volume 2, half the range away: 2 x (1 - 0.5) squared = 0.5: {right:?}"
     );
 }
+
+#[test]
+fn the_profiler_names_the_hot_function_and_the_engine_calls() {
+    let g = project(vec![(
+        "main.lua",
+        lua(
+            "local function busy() local x = 0 for i = 1, 400000 do x = x + math.sin(i) end return x end
+local function noisy() local x = 0 for i = 1, 60000 do x = x + nova.noise3(i * 0.1, 0, 0) end return x end
+nova.profile(true)
+busy() noisy()
+nova.profile(false)
+local r = nova.profile_report(8)
+nova.log('total ' .. (r.total_ms > 0 and 'yes' or 'no'))
+for _, f in ipairs(r.functions) do nova.log(string.format('%s %.2f', f.name, f.share)) end",
+        ),
+    )]);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let l = logs(&g);
+    assert_eq!(l[0], "total yes");
+    let names: Vec<&String> = l[1..].iter().collect();
+    assert!(
+        names.iter().any(|n| n.starts_with("busy (main.lua:")),
+        "the hot Lua function is named: {l:?}"
+    );
+    assert!(
+        names.iter().any(|n| n.starts_with("(engine) noise3")),
+        "engine calls are charged by name: {l:?}"
+    );
+    // sorted: the shares go down
+    let shares: Vec<f64> = l[1..]
+        .iter()
+        .map(|n| n.rsplit(' ').next().unwrap().parse().unwrap())
+        .collect();
+    assert!(shares.windows(2).all(|w| w[0] >= w[1]), "{shares:?}");
+}

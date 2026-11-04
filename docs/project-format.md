@@ -722,3 +722,9 @@ left out), `hold` (source id to value, like `{"key:KeyW": 1}`) and, if it has on
 covers, a pointer's `dx`, `dy` and `pressed` too, so a mouse pushed along for ten frames is one event with `for: 10` and a
 `dx`. Overlapping events add up: a source takes the biggest value and the pointer comes from the latest event that has
 one. Tests use the same format (`nova_runtime::inputscript::InputScript`): see `tests/data/blockfield-dig.json`.
+
+**Profiling the scripts.** `nova run <folder> --headless --profile` lists, at the end of the run, the script functions and the
+engine calls (`(engine) draw`, `(engine) pump_chunks`) that took the most time. Inside a game, `nova.profile(true)` starts the
+same profiler, and `nova.profile_report(15)` gives the list for an on-screen display. It looks at which function is running
+every couple of thousand VM instructions and charges it the time since the last look, and it times calls into the engine
+by name, so a slow `nova.*` call is not blamed on the Lua function around it. The scripts run somewhat slower while it is on.

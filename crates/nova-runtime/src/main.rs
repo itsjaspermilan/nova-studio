@@ -30,6 +30,7 @@ const USAGE: &str = "usage:
   nova [options]                         built-in benchmark scene
 options: [--headless] [--frames N] [--capture out.png] [--size WxH] [--world-height N]
          [--uncapped] [--no-audio] [--hud] [--hold jump,move_x=1] [--press key:Enter@30,key:KeyD@45]
+         [--profile]   (headless: list the script functions that took the most time)
          [--input play.json] [--record play.json]   (play back recorded input / write this run's input; see inputscript.rs)
          [--save-dir folder]
          [--script file.lua (benchmark scene only)]";
@@ -174,6 +175,7 @@ fn parse() -> Result<Command, String> {
                     opts.press.push((source.to_string(), frame));
                 }
             }
+            "--profile" => opts.profile = true,
             "--input" => opts.input = Some(PathBuf::from(value("--input")?)),
             "--record" => opts.record = Some(PathBuf::from(value("--record")?)),
             "--hold" => {

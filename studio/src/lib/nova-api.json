@@ -1216,5 +1216,19 @@
   "signature": "nova.voxel.terrain_biome(x, z) -> name",
   "doc": "The biome at a column, from the recipe.",
   "group": "Voxels"
+ },
+ {
+  "name": "nova.profile",
+  "kind": "function",
+  "signature": "nova.profile(on)",
+  "doc": "Turns the script profiler on (clearing what it had) or off. While it is on, every couple of thousand VM instructions it notes which function is running and charges it the time since the last look, so a function is charged for the engine calls (nova.*) it makes too. The scripts run a little slower while it is on. Read the result with nova.profile_report.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.profile_report",
+  "kind": "function",
+  "signature": "nova.profile_report([top]) -> { total_ms, functions = { { name, ms, share, samples }, ... } }",
+  "doc": "The functions that took the most script time since nova.profile(true), most first (15 by default): the name and where it is defined, the milliseconds charged to it, its share of the total and the samples. For an on-screen list of what is slow; `nova run --headless --profile` prints the same at the end of a run.",
+  "group": "Scenes and entities"
  }
 ]

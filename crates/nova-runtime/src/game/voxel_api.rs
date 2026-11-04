@@ -149,6 +149,52 @@ pub(super) fn install(
     vfs: &Rc<dyn Vfs>,
     nova: &Table,
 ) -> mlua::Result<()> {
+    // the profiler: which functions the scripts spend their time in
+    let s = shared.clone();
+    nova.set(
+        "profile",
+        lua.create_function(move |lua, on: bool| {
+            let sh = s.borrow();
+            {
+                let mut p = sh.profile.borrow_mut();
+                if on {
+                    *p = Profile::default();
+                }
+                p.on = on;
+            }
+            install_hook(lua, sh.deadline.clone(), sh.profile.clone(), on)
+        })?,
+    )?;
+    let s = shared.clone();
+    nova.set(
+        "profile_report",
+        lua.create_function(move |lua, top: Option<usize>| {
+            let sh = s.borrow();
+            let p = sh.profile.borrow();
+            let mut v: Vec<(&String, &(f64, u32))> = p.by_function.iter().collect();
+            v.sort_by(|a, b| b.1.0.total_cmp(&a.1.0));
+            let out = lua.create_table()?;
+            let list = lua.create_table()?;
+            for (name, (ms, n)) in v.into_iter().take(top.unwrap_or(15)) {
+                let row = lua.create_table()?;
+                row.set("name", name.clone())?;
+                row.set("ms", *ms)?;
+                row.set("samples", *n)?;
+                row.set(
+                    "share",
+                    if p.total_ms > 0.0 {
+                        ms / p.total_ms
+                    } else {
+                        0.0
+                    },
+                )?;
+                list.push(row)?;
+            }
+            out.set("functions", list)?;
+            out.set("total_ms", p.total_ms)?;
+            Ok(out)
+        })?,
+    )?;
     // a stopwatch that runs in real time (nova.time is game time): for spending a fixed share of a frame on work
     let started = std::time::Instant::now();
     nova.set(
