@@ -228,6 +228,26 @@ chunk; a long walk streams chunks and stays in a band; a recorded session; a sav
 unit tests in `voxel.rs` (light against its first implementation, meshes on workers and not, sections, ray, box, saving, noise), `terrain.rs`,
 `save.rs` and `inputscript.rs`.
 
+## Probe 3: Bunker Run (`examples/bunker-run`), a first-person shooter in rooms
+
+A small level of rooms, corridors and doors, three kinds of enemy that find their way round walls and see (or do not see) the
+player, two weapons with hit scan and a spread, pickups, a key and a boss room. The level is box geometry made by code, so the
+whole thing is about what an engine needs for *indoor* 3D that is not made of voxels. Programmer art; the game is not the point.
+
+### What it is meant to stress
+
+| Area | What the game does | Hypothesis (written before building) |
+| --- | --- | --- |
+| Wall collision | the player and enemies slide along walls; doors open and close | Scenery is circles on the ground, so none of this works: no boxes, no walls, no doors. |
+| Rays | hit scan stops at a wall; enemies check line of sight; bullets leave holes | `nova.raycast` finds entities and `nova.scenery.raycast` finds circles. Neither stops at a wall, and nothing can mark one. |
+| Finding a way | enemies chase round corners and through open doors | There is no path finder: enemies will walk into walls and stay there. |
+| Drawing a level | rooms of walls, floors, ceilings, lamps | `nova.model` scales evenly, so a wall of any length needs a model per length; levels would have to be authored model by model. |
+| Lights | lamps in every room, muzzle flashes, explosions | Eight point lights a frame is too few for a lit corridor: lights will pop on and off as the nearest eight change. |
+| Sound | shots, steps, doors, the boss | Positional sound exists now; the voice limit (32) will be hit by a firefight. |
+| Speed | a dozen enemies, each with a path and a ray to the player | Lua will carry the AI; paths and rays must be native or the frame will go over budget. |
+
+Results are written below as it is built.
+
 ### Next probes worth making
 
 - A **3D platformer**: height for things that are not voxels. Scenery collision is circles on the ground, so there are no
