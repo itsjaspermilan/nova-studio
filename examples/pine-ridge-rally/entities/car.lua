@@ -14,11 +14,11 @@ local SHIFT_TIME = 0.17                 -- seconds with no pull while the clutch
 local IDLE_REV = 0.16
 -- Where the wheels are, from the middle of the car: forwards, and to the left (+x is the left side when facing +z).
 local WHEELS = {
-  wheel_fl = { fwd = 1.375, left = -1.06 }, wheel_fr = { fwd = 1.375, left = 1.06 },
-  wheel_rl = { fwd = -1.375, left = -1.06 }, wheel_rr = { fwd = -1.375, left = 1.06 },
+  wheel_fl = { fwd = 1.3, left = -0.8 }, wheel_fr = { fwd = 1.3, left = 0.8 },
+  wheel_rl = { fwd = -1.3, left = -0.8 }, wheel_rr = { fwd = -1.3, left = 0.8 },
 }
 local WHEEL_NAMES = { "wheel_fl", "wheel_fr", "wheel_rl", "wheel_rr" }
-local WHEELBASE, TRACK = 2.75, 2.12
+local WHEELBASE, TRACK = 2.6, 1.7
 -- How bumpy each surface is (metres of ground height), and the body's suspension (a springy, damped mass).
 local BUMPS = { road = 0.012, dirt = 0.04, rough = 0.1 }
 local SPRING, DAMPER = 240, 30   -- stiff and well damped: the body settles at once instead of wallowing
