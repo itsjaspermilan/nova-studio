@@ -308,6 +308,25 @@ flash and a drone's lamp still light the baked walls on top. The level is one me
 - **Not measured:** the bake on a handheld (a few times slower, which is still well under a second), and what the one big
   mesh costs the Retroid's GPU.
 
+## Probe 4: Sky Garden (`examples/sky-garden`), a 3D platformer
+
+Platforms hanging in the air, stairs and ramps, platforms that slide and rise, a gem on every few, a few patrolling creatures to
+stomp, a checkpoint, a flag at the end, and a third-person camera that follows. Programmer art. Blockfield got standing, falling
+and stepping from `nova.voxel.move`; this is the same in a world that is *not* made of voxels, which the engine has never done.
+
+### What it is meant to stress
+
+| Area | What the game does | Hypothesis (written before building) |
+| --- | --- | --- |
+| Floors, ledges, steps | the player stands on a platform's top, walks off its edge and falls, steps up onto a low block, bumps his head under a high one | `nova.walls` pushes a body sideways only: there is nothing to stand on. Only voxels can be stood on. |
+| Ramps | walks up and down slopes and stays on them | There are no slopes at all. Stairs of little boxes would need a step-up that does not exist outside voxels. |
+| Moving platforms | slide and rise, and carry the player | A wall is fixed where it was added. Nothing says what a body standing on a moving thing should do. |
+| The camera | follows from behind and above, and does not go through a wall or a platform | `nova.cam3.follow` ignores geometry: the camera will end up inside things. |
+| Judging a jump | a shadow under the player on whatever is below, and the first jumps feel right (jump buffering, coyote time, a variable height) | There is no way to ask "what is under here?", so no shadow. The rest is script and should work: the step is a fixed sixtieth of a second. |
+| Many moving parts | a dozen platforms and creatures, each asking the walls things every step | Fine, if the questions are native. |
+
+Results are written below as it is built.
+
 ### Next probes worth making
 
 - A **3D platformer**: height for things that are not voxels. Scenery collision is circles on the ground, so there are no
