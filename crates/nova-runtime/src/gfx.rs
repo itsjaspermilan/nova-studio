@@ -218,6 +218,8 @@ pub struct FrameStats {
     pub gpu_ms: f32,
     /// Model draws left out of the world pass because they are outside the camera's view.
     pub culled: u32,
+    /// Model draws left out of the sun's shadow pass because they are outside the light's view volume.
+    pub shadow_culled: u32,
     pub draw_calls: u32,
     pub sprites: u32,
     pub triangles: u32,
@@ -525,7 +527,7 @@ pub struct Gfx {
     ui_globals_group: wgpu::BindGroup,
     ui_instances: DynBuffer,
     model_instances: DynBuffer,
-    /// The instances that are in view, for the world pass (the shadow pass takes every one of `model_instances`).
+    /// The instances that are in view, for the world pass (the shadow pass has its own set, `model_instances`).
     view_instances: DynBuffer,
     /// Texture bind groups of model meshes by the picture's contents, so that models that carry the same picture (a kit's shared
     /// palette, embedded in every file) share one texture.
@@ -1945,7 +1947,7 @@ impl Gfx {
                 },
             );
         }
-        // What the camera can see. The sun's shadow pass still takes everything (a thing out of view can cast a shadow into it).
+        // What the camera can see.
         let planes = frustum_planes(&view_proj);
         let world_models: Vec<ModelDraw> = input
             .models
@@ -1965,8 +1967,31 @@ impl Gfx {
         let view_list: Vec<ModelInstance> = world_models.iter().map(|m| m.instance).collect();
         self.view_instances
             .write(&self.device, &self.queue, bytemuck::cast_slice(&view_list));
+        // The sun's shadow pass takes what its own box (the light's view volume, depth included: the GPU clips by it) can
+        // see, which is a different set from the camera's: a thing behind the camera can shadow the ground in front of it.
+        let shadow_models: Vec<ModelDraw> = match lit.shadows {
+            Some(_) => {
+                let light_planes =
+                    frustum_planes(&glam::Mat4::from_cols_array_2d(&light_view_proj));
+                input
+                    .models
+                    .iter()
+                    .filter(|m| match self.mesh(m.mesh) {
+                        Some(mesh) => instance_visible(
+                            &light_planes,
+                            mesh.bounds,
+                            mesh.skin.is_some(),
+                            &m.instance.matrix,
+                        ),
+                        None => true,
+                    })
+                    .copied()
+                    .collect()
+            }
+            None => Vec::new(),
+        };
         if lit.shadows.is_some() {
-            let instances: Vec<ModelInstance> = input.models.iter().map(|m| m.instance).collect();
+            let instances: Vec<ModelInstance> = shadow_models.iter().map(|m| m.instance).collect();
             self.model_instances
                 .write(&self.device, &self.queue, bytemuck::cast_slice(&instances));
         }
@@ -1974,6 +1999,11 @@ impl Gfx {
         let mut stats = FrameStats {
             world_size,
             culled,
+            shadow_culled: if lit.shadows.is_some() {
+                (input.models.len() - shadow_models.len()) as u32
+            } else {
+                0
+            },
             ..Default::default()
         };
         if let Some(t) = &mut self.gpu_timer {
@@ -1982,7 +2012,7 @@ impl Gfx {
         }
         // time this frame only if the last reading has come back (the timer is one set of two slots)
         let timing = self.gpu_timer.as_ref().is_some_and(GpuTimer::idle);
-        let shadow_pass = lit.shadows.is_some() && !input.models.is_empty();
+        let shadow_pass = lit.shadows.is_some() && !shadow_models.is_empty();
         let stamps = |begin: bool, end: bool| {
             self.gpu_timer
                 .as_ref()
@@ -1998,7 +2028,7 @@ impl Gfx {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("frame"),
             });
-        if lit.shadows.is_some() && !input.models.is_empty() {
+        if shadow_pass {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("shadow pass"),
                 color_attachments: &[],
@@ -2019,12 +2049,12 @@ impl Gfx {
             let mut skinned_now = false;
             let stride = std::mem::size_of::<ModelInstance>() as u64;
             let mut start = 0usize;
-            while start < input.models.len() {
-                let (mesh_id, casts) = (input.models[start].mesh, input.models[start].casts);
+            while start < shadow_models.len() {
+                let (mesh_id, casts) = (shadow_models[start].mesh, shadow_models[start].casts);
                 let mut end = start;
-                while end < input.models.len()
-                    && input.models[end].mesh == mesh_id
-                    && input.models[end].casts == casts
+                while end < shadow_models.len()
+                    && shadow_models[end].mesh == mesh_id
+                    && shadow_models[end].casts == casts
                 {
                     end += 1;
                 }

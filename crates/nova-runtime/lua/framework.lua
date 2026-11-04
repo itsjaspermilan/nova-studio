@@ -91,7 +91,7 @@ local Scene = { __kind = "scene", __flat = true, __defaults = {}, __tags = {}, _
 Scene.__index = Scene
 local bases = { entity = Entity, scene = Scene }
 
-local RESERVED = { static = true, tags = true, sprite = true, model = true, depth = true, hitbox = true, screen = true, pivot = true }
+local RESERVED = { static = true, lod = true, lod_distance = true, tags = true, sprite = true, model = true, depth = true, hitbox = true, screen = true, pivot = true }
 
 local function define(kind, a, b)
   local parent, spec
@@ -138,6 +138,8 @@ local function finalize(cls)
   end
   cls.__defaults, cls.__tags = defaults, tags
   cls.__static = spec.static or parent.__static
+  cls.__lod = spec.lod or parent.__lod
+  cls.__lod_distance = spec.lod_distance or parent.__lod_distance
   cls.__sprite = spec.sprite or parent.__sprite
   cls.__model = spec.model or parent.__model
   cls.__depth = spec.depth or parent.__depth or 0
@@ -506,7 +508,7 @@ nova.Entity, nova.Picture, nova.Text = Entity, Picture, Text
 local scenery = { range = 200 }
 nova.scenery = scenery
 local SCENERY_CELL = 40
-local bins, solid_bins, piece_count = {}, {}, 0
+local solid_bins, piece_count = {}, 0
 local circles_of = {}
 local eye_x, eye_z = 0, 0
 
@@ -520,17 +522,14 @@ local function key(cx, cz) return (cx + 2048) * 4096 + (cz + 2048) end
 local function cell(v) return floor(v / SCENERY_CELL) end
 
 --- Forgets every piece (a scene does this by itself when it ends).
-function scenery.clear() bins, solid_bins, piece_count = {}, {}, 0 end
+function scenery.clear() solid_bins, piece_count = {}, 0; raw.clear_retained() end
 --- How many pieces there are.
 function scenery.count() return piece_count end
 
 --- Puts a model into the scenery at (x, y, z); `opts` are the model options (`ry`, `scale`, `tint`, `shadow`...).
 function scenery.add(model, x, y, z, opts)
   opts = opts or {}
-  local k = key(cell(x), cell(z))
-  local list = bins[k]
-  if not list then list = {}; bins[k] = list end
-  list[#list + 1] = { model, x, y, z, opts }
+  raw.retain(model, x, y, z, opts)
   piece_count = piece_count + 1
   local circles = circles_of[model]
   if circles == nil then circles = nova.model_colliders(model); circles_of[model] = circles end
@@ -552,19 +551,7 @@ end
 --- Draws the pieces within `radius` metres of (cx, cz). The framework does this by itself around the camera every frame
 --- (out to `nova.scenery.range`, 200 by default; 0 turns it off).
 function scenery.draw(cx, cz, radius)
-  local r2 = radius * radius
-  for gx = cell(cx - radius), cell(cx + radius) do
-    for gz = cell(cz - radius), cell(cz + radius) do
-      local list = bins[key(gx, gz)]
-      if list then
-        for i = 1, #list do
-          local e = list[i]
-          local dx, dz = e[2] - cx, e[4] - cz
-          if dx * dx + dz * dz < r2 then nova.model(e[1], e[2], e[3], e[4], e[5]) end
-        end
-      end
-    end
-  end
+  raw.draw_retained(cx, cz, radius)
 end
 
 --- A circle of radius `r` at (x, z): the push that gets it out of whatever it overlaps (dx, dz), or nil.
@@ -950,7 +937,7 @@ local function spawn(what, x, y, props)
     -- a piece of scenery: it goes into the static scenery, not into the list of live entities
     if not cls.__model then error("a static entity needs a model (nova.entity { model = \"pine\", static = true })", 2) end
     local scale = rawget(e, "sx") or 1
-    scenery.add(cls.__model, e.x, e.y, rawget(e, "z") or 0, { ry = rawget(e, "ry") or 0, scale = scale })
+    scenery.add(cls.__model, e.x, e.y, rawget(e, "z") or 0, { ry = rawget(e, "ry") or 0, scale = scale, lod = cls.__lod, lod_distance = cls.__lod_distance })
     return e
   end
   if rawget(e, "depth") == nil then e.depth = cls.__depth end

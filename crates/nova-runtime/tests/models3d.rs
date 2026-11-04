@@ -1032,3 +1032,98 @@ fn meshes_with_the_same_picture_share_one_texture() {
         "three meshes with one picture are one texture"
     );
 }
+
+/// The sun's shadow pass leaves out what its own box cannot see, which is not what the camera sees: a car behind the
+/// camera still shadows the ground in front of it, a car far off to the side does not. (Skipped without a GPU.)
+#[test]
+fn the_shadow_pass_culls_by_the_suns_box_not_the_cameras() {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        backends: wgpu::Backends::PRIMARY,
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
+    });
+    let mut gfx = match Gfx::new(&instance, None) {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("skipping GPU test: {e}");
+            return;
+        }
+    };
+    let vfs: Rc<dyn Vfs> = Rc::new(MemVfs::new(vec![
+        ("nova.json", br#"{"format":1,"name":"T"}"#.to_vec()),
+        ("models/car.glb", CAR.to_vec()),
+        (
+            "main.lua",
+            b"function update(dt)
+  nova.camera(0, 3, 10, 0, 0, 0, 60)
+  nova.light({ dir = {0, -1, 0} })
+  nova.shadows({ radius = 20, strength = 0.6 })
+  for i = 1, 10 do nova.model('car', (i - 5.5) * 0.6, 0, 0) end          -- under the sun's box and in view
+  for i = 1, 30 do nova.model('car', i * 0.3, 0, 12) end                 -- behind the camera, inside the box
+  for i = 1, 20 do nova.model('car', 500 + i, 0, 0) end                  -- far off to the side, outside both
+end"
+            .to_vec(),
+        ),
+    ]));
+    let mut g = Game::load(vfs).expect("loads");
+    g.upload(&mut gfx);
+    g.update(1.0 / 60.0, 0.0, [320.0, 180.0], Actions::default(), false);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let input = g.frame_input(0);
+    let (_, stats) = gfx.capture_with_stats((320, 180), &input);
+    assert_eq!(
+        stats.shadow_culled, 20,
+        "only the twenty far off the side: {stats:?}"
+    );
+    assert_eq!(
+        stats.culled,
+        20 + 30,
+        "the camera still culls the thirty behind it: {stats:?}"
+    );
+}
+
+/// A piece of scenery that names a cheaper model draws it beyond `lod_distance` (on the ground, from the camera) and
+/// the model itself nearer, in the same place; both are kept by Rust, not drawn by a Lua call each frame.
+#[test]
+fn far_scenery_draws_its_cheaper_model() {
+    let run = |eye_x: f64| {
+        let mut g = game(
+            "nova.start('s')",
+            vec![
+                (
+                    "models/hut.glb",
+                    include_bytes!("fixtures/studio_model_colliders.glb").to_vec(),
+                ),
+                (
+                    "models/hut_far.glb",
+                    include_bytes!("fixtures/studio_model_colliders.glb").to_vec(),
+                ),
+                (
+                    "entities/hut.lua",
+                    b"return nova.entity { model = 'hut', static = true, lod = 'hut_far', lod_distance = 50 }"
+                        .to_vec(),
+                ),
+                (
+                    "scenes/s.lua",
+                    format!(
+                        "local S = nova.scene {{}}\nfunction S:draw() nova.camera({eye_x}, 5, 0, {eye_x}, 0, -10, 60) end\nreturn S"
+                    )
+                    .into_bytes(),
+                ),
+                (
+                    "scenes/s.scene.json",
+                    br#"{"version":1,"objects":[{"kind":"hut","x":0,"y":0,"z":0}]}"#.to_vec(),
+                ),
+            ],
+        );
+        frame(&mut g);
+        frame(&mut g);
+        assert!(g.error.is_none(), "{:?}", g.error);
+        let input = g.frame_input(0);
+        assert_eq!(input.models.len(), 1);
+        (input.models[0].mesh, input.models[0].instance.matrix)
+    };
+    let (near, near_matrix) = run(10.0);
+    let (far, far_matrix) = run(80.0);
+    assert_ne!(near, far, "the far model is another mesh");
+    assert_eq!(near_matrix, far_matrix, "in the same place");
+}

@@ -15,6 +15,8 @@ local PHASES = {
   { name = "city 24 + 16 lights", n = 24, lights = 16 },
   { name = "city 24 + shadows", n = 24, shadows = true },
   { name = "street level, city 48", n = 48, street = true },
+  { name = "city 48, far buildings cheaper", n = 48, lod = true },
+  { name = "street level, city 48, cheaper far buildings", n = 48, street = true, lod = true },
   { name = "worst: 48 + 300 cars + 200 chars + lights + shadows", n = 48, cars = 300, chars = 200, lights = 16, shadows = true },
 }
 
@@ -67,6 +69,13 @@ function Scene:next_phase()
     local lane = (rnd(math.max(1, n // 3)) - 1) * 3
     self.cars[c] = { CARS[rnd(#CARS)], lane, rnd(1000) / 1000, rnd(2) == 1 }
   end
+  -- the city goes into the scenery, which Rust keeps and draws near the camera (no Lua call per tile per frame)
+  nova.scenery.clear()
+  for _, tile in ipairs(self.tiles) do
+    local opts = { scale = TILE, ry = tile[4] }
+    if p.lod and tile[1]:find("^building") then opts.lod, opts.lod_distance = tile[1] .. "_far", 60 end
+    nova.scenery.add(tile[1], tile[2], 0, tile[3], opts)
+  end
   self.chars = p.chars or 0
   nova.light { dir = { -0.4, -0.8, -0.3 }, color = { 255, 245, 225 }, ambient = { 95, 100, 120 } }
   nova.sky { top = { 70, 130, 220 }, horizon = { 190, 220, 245 }, clouds = 0.4 }
@@ -105,7 +114,6 @@ function Scene:draw()
     local radius = math.max(30, n * TILE * 0.3)
     nova.camera(math.sin(a) * radius, 28, math.cos(a) * radius, 0, 0, 0, 60)
   end
-  for _, tile in ipairs(self.tiles) do nova.model(tile[1], tile[2], 0, tile[3], { scale = TILE, ry = tile[4] }) end
   for _, c in ipairs(self.cars) do
     local along = ((c[3] + t * 0.02 * (c[4] and 1 or -1)) % 1) * n * TILE - n * TILE / 2
     nova.model(c[1], (c[2] - n / 2) * TILE + (c[4] and 1.2 or -1.2), 0.3, along, { scale = TILE * 0.4, ry = c[4] and 0 or math.pi })

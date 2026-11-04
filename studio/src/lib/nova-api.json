@@ -86,8 +86,8 @@
  {
   "name": "nova.scenery.add",
   "kind": "function",
-  "signature": "nova.scenery.add(model, x, y, z [, { ry, scale, ... }])",
-  "doc": "Puts a model into the static scenery: pieces that never moves. It is drawn only near the camera and its collision circles block `nova.scenery.push`. A scene file's objects whose entity class has `static = true` do this for you.",
+  "signature": "nova.scenery.add(model, x, y, z [, { ry, scale, tint, shadow, lod, lod_distance }])",
+  "doc": "Puts a model into the static scenery: pieces that never move. `lod` names a cheaper model drawn instead beyond `lod_distance` metres (100 by default). It is drawn only near the camera and its collision circles block `nova.scenery.push`. A scene file's objects whose entity class has `static = true` do this for you.",
   "group": "3D"
  },
  {

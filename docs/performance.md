@@ -19,8 +19,10 @@ a virtual one). The device numbers are estimates from stated factors and are mar
 
 - Instancing: every draw of one mesh in a frame is one GPU draw call (a city of 2,000 buildings of six kinds is eight draws).
 - **Frustum culling** of the world pass (a sphere per mesh, moved and scaled by each instance), and a far plane that follows the fog:
-  nothing past where the fog has covered everything is drawn. The sun's shadow pass still takes everything, because something
-  out of view can cast a shadow into it.
+  nothing past where the fog has covered everything is drawn. The sun's shadow pass is culled against the sun's own box (what the camera
+  cannot see can still cast a shadow into view, so it is not the camera's set).
+- **Retained scenery and level of detail**: `nova.scenery` pieces live in Rust and are put into each frame without a Lua call per
+  piece; a piece may name a cheaper model for when it is far (`lod`, `lod_distance`).
 - **GPU skinning**: hundreds of animated characters are a few draw calls.
 - Identical textures are shared (every model of a kit carries the same palette).
 - The world renders at the manifest's `world_height` (540 for the handheld) and is scaled up: fill rate is small.
@@ -30,20 +32,34 @@ a virtual one). The device numbers are estimates from stated factors and are mar
 Desktop, M4, headless, worst case of the stress benchmark (48 by 48 city, 300 cars, 200 characters, 16 lights, shadows,
 1.2 million triangles drawn after culling): GPU 6.8 ms, recording 6.7 ms, Lua 2.8 ms.
 
-Emulator (`retroid-sim`, host GPU, vsynced at 60), by phase:
+Emulator (`retroid-sim`, host GPU, vsynced at 60), by phase, after the retained scenery list, shadow culling and level of
+detail (2026-11-04; the city is now scenery; the host GPU is shared with the desktop, so a millisecond either way is noise):
 
 | Phase | Triangles | GPU | Lua | Recording |
 | --- | --- | --- | --- | --- |
-| sky only | 0 | 0.2 | 0.06 | 1.2 |
-| city 12 by 12 | 78 k | 1.0 | 0.3 | 1.2 |
-| city 24 by 24 | 211 k | 1.1 | 0.7 | 1.0 |
-| city 48 by 48 | 682 k | 4.5 | 3.0 | 1.0 |
-| city 24 + 200 cars | 547 k | 4.5 | 1.1 | 1.1 |
-| city 24 + 100 characters | 322 k | 2.0 | 1.4 | 1.4 |
-| city 24 + 16 lights | 215 k | 3.9 | 1.2 | 1.2 |
-| city 24 + shadows | 215 k | 3.9 | 0.8 | 1.3 |
-| street level, city 48 | 805 k | 3.0 | 2.7 | 1.0 |
-| worst case | 1.24 M | 9.9 | 3.6 | 1.4 |
+| sky only | 0 | 0.0 | 0.14 | 1.3 |
+| city 12 by 12 | 78 k | 0.0 | 0.07 | 1.2 |
+| city 24 by 24 | 208 k | 0.0 | 0.08 | 1.2 |
+| city 48 by 48 | 577 k | 3.3 | 0.08 | 1.3 |
+| city 24 + 200 cars | 572 k | 3.3 | 0.34 | 1.6 |
+| city 24 + 100 characters | 318 k | 3.3 | 0.30 | 1.2 |
+| city 24 + 16 lights | 216 k | 3.3 | 0.07 | 1.5 |
+| city 24 + shadows | 216 k | 3.8 | 0.08 | 1.7 |
+| street level, city 48 | 623 k | 3.6 | 0.09 | 1.1 |
+| city 48, far buildings cheaper | 154 k | 2.9 | 0.11 | 1.3 |
+| street level, city 48, cheaper far buildings | 175 k | 2.2 | 0.08 | 1.5 |
+| worst case (no LOD) | 1.13 M | 7.5 | 1.14 | 1.5 |
+
+(A GPU time of 0.0 means the timer had no fresh reading in that phase, not a free frame: the timer is read a frame late and
+skips frames while a reading is outstanding. The earlier table, before these three changes, had the city 48 at GPU 4.5 and
+Lua 3.0, the shadowed city 24 at 3.9 and the worst case at GPU 9.9 and Lua 3.6.)
+
+What changed: the city's 2,300 tiles are no longer a Lua call each per frame (Lua 3.0 ms to 0.08 in the 48-by-48 city); the
+shadow pass skips what the sun's box cannot see (the worst case's GPU 9.9 to 7.5, with the same triangles drawn);
+and a piece of scenery can name a cheaper model beyond a distance (`lod`, `lod_distance`): triangles drawn in the 48-by-48 city fell
+from 577 k to 154 k and the street-level view from 623 k to 175 k, and GPU time from 3.3 to 2.9 and 3.6 to 2.2. (The far
+buildings here are Kenney's low-detail ones stretched to the full ones' size; they are not the same buildings, which is
+visible in a close look at the horizon.)
 
 Every phase held 60 fps on the emulator. That says the engine has no gross problem, and nothing about the Retroid.
 
@@ -52,14 +68,15 @@ Every phase held 60 fps on the emulator. That says the engine has no gross probl
 The Snapdragon 8 Gen 2 is slower than an M4 by roughly 2 to 2.5 times on one CPU core and by roughly 3 to 4 times on the GPU
 (from public benchmark comparisons; I have not measured it). Applying those:
 
-- **CPU** (Lua plus recording, which run on the game's thread): about 7 to 9 ms in the city-24 range, over 12 ms in the worst
-  case. Lua's cost grows with every `nova.model` call (about 1 microsecond each on the M4), so a scene of 3,000 drawn things
-  spends 3 ms there, perhaps 8 ms on the device, and is better served by a draw list that Rust keeps between frames (a TODO).
-- **GPU**: city 24 (200,000 triangles, 1 ms here) should be comfortable, 2 to 5 ms; the shadowed and lit city 24 about 4 ms here, so
-  perhaps 12 to 16 ms on the device (borderline); the worst case (10 ms here) probably 30 ms or more.
+- **CPU** (Lua plus recording, which run on the game's thread): recording is about 1.2 to 1.7 ms here, so perhaps 3 to 4 on the
+  device; Lua is small once static things are scenery. Lua's cost still grows with every `nova.model` call (about 1 microsecond
+  each on the M4), so draw only what moves with `nova.model` and put the rest in `nova.scenery`.
+- **GPU**: the city of 24 by 24 (about 200,000 triangles) is under 4 ms here, so up to 12 to 16 ms on the device (borderline) without
+  shadows and lights; the 48 by 48 city with cheaper far buildings 2 to 3 ms here, so perhaps 8 to 10 ms; the worst case
+  (7.5 ms here, down from 9.9) is perhaps 25 ms on the device, still over.
 - So: a game on the scale of Sky Garden (12,000 triangles, 20 draws) has several times the headroom it needs; a city of a few hundred
   buildings with a dozen cars and a few characters is plausible at 60; a dense open scene with shadows and many lights is not, without
-  level of detail, a retained draw list and a lighter shadow pass. Sustained speed after minutes of heat is a separate question that
+  level of detail and a lighter shadow pass (the retained list, shadow culling and level of detail are in; the shadow pass could still be lighter, with a smaller map or fewer casters at distance). Sustained speed after minutes of heat is a separate question that
   only the device can answer.
 
 ## To do on the device

@@ -58,6 +58,7 @@ fn builtin_module(name: &str) -> Option<&'static str> {
     }
 }
 
+mod retained_api;
 mod voxel_api;
 mod walls_api;
 
@@ -108,6 +109,8 @@ struct Shared {
     next_sound: u64,
     save: SaveStore,
     mesh_ids: HashMap<String, usize>,
+    /// The static models of `nova.scenery`, kept between frames.
+    retained: retained_api::Retained,
     known_models: Vec<String>,
     /// Each model's parts, for drawing pieces that move on their own.
     parts: HashMap<String, Vec<PartRt>>,
@@ -2007,6 +2010,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             lua.to_value(&data)
         })?,
     )?;
+    retained_api::install(lua, shared, &raw)?;
     nova.set("raw", raw)?;
     lua.globals().set("nova", nova)?;
 
@@ -2250,6 +2254,7 @@ impl Game {
             walls: crate::walls::Walls::default(),
             nav: crate::walls::Nav::default(),
             baked: Vec::new(),
+            retained: Default::default(),
             cursor: PadCursor::default(),
             typed: String::new(),
             cursor_sources: HashMap::new(),

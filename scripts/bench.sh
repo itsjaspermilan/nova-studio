@@ -11,7 +11,7 @@ cd "$(dirname "$0")/.."
 ENV=scripts/env.sh
 
 if [ "${1:-}" = "--desktop" ]; then
-    RUST_LOG=info "$ENV" cargo run --release -p nova-runtime --bin nova -- run examples/stress --headless --frames 3700 2>&1 \
+    RUST_LOG=info "$ENV" cargo run --release -p nova-runtime --bin nova -- run examples/stress --headless --frames 4600 2>&1 \
         | grep -E "bench:" | sed -E 's/.*bench: //'
     exit 0
 fi
@@ -23,7 +23,7 @@ APK=build/android/nova_stress-debug.apk
 "$ENV" adb logcat -c
 "$ENV" adb shell am start -n com.nova.games.nova_stress/android.app.NativeActivity >/dev/null
 echo "running on: $("$ENV" adb shell getprop ro.product.model | tr -d '\r') (about a minute)" >&2
-for _ in $(seq 1 60); do
+for _ in $(seq 1 80); do
     "$ENV" adb logcat -d 2>/dev/null | grep -q "bench: done" && break
     sleep 5
 done
