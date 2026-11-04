@@ -28,7 +28,7 @@ function Guard:think(p, sees, d, dt)
 end
 
 function Guard:draw()
-  self:humanoid({ 70, 110, 80 }, { 200, 170, 140 }, 1, true)
+  self:figure("guard", 1.98)
 end
 
 return Guard

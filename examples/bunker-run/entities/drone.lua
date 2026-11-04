@@ -17,11 +17,8 @@ function Drone:think(p, sees, d, dt)
 end
 
 function Drone:draw()
-  self:box(0, 0.2, 0, 0.6, 0.3, 0.6, { 90, 100, 120 })
-  self:box(0, 0.2, -0.32, 0.2, 0.12, 0.05, { 120, 220, 255 }, true)
-  local t = nova.time() * 30
-  self:box(0, 0.4, 0, 0.9 + math.sin(t) * 0.08, 0.03, 0.12, { 60, 60, 70 })
-  self:box(0, 0.4, 0, 0.12, 0.03, 0.9 + math.cos(t) * 0.08, { 60, 60, 70 })
+  -- the blaster kit's grenade, spinning, with the light it has always had
+  nova.model("drone", self.x, self.y, self.z, { ry = nova.time() * 9, rz = math.sin(nova.time() * 3 + self.x) * 0.25, tint = self.flash > 0 and { 255, 120, 90 } or nil })
   fx.want_light(self.x, self.y + 0.3, self.z, 4, { 0.3, 0.7, 1 }, -20)
 end
 

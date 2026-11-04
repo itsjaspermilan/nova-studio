@@ -50,7 +50,7 @@ function Boss:on_death()
 end
 
 function Boss:draw()
-  self:humanoid({ 120, 60, 130 }, { 220, 190, 120 }, 1.9, true)
+  self:figure("boss", 3.74, { 230, 170, 255 })
   fx.want_light(self.x, 2.5, self.z, 7, { 1, 0.3, 0.9 }, -10)
 end
 

@@ -25,7 +25,7 @@ function Brute:on_wake()
 end
 
 function Brute:draw()
-  self:humanoid({ 140, 90, 70 }, { 190, 150, 120 }, 1.3, false)
+  self:figure("brute", 2.64, { 255, 200, 170 })
 end
 
 return Brute

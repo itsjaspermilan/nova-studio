@@ -373,6 +373,18 @@ so heights are not on the block grid; the game places pieces at any height. (3) 
 nothing else. (4) The goal became 10 of 16 gems: the bot's detours miss a few off its line, which is a bot limit, not a level one.
 A frame is now about 24 draws and 12,000 triangles.
 
+### Kenney's kits in the other two games (2026-11-04)
+
+**Pine Ridge Rally** (`scripts/rally/kit-models.sh`): the four cars (the car kit's race car, sports sedan, sports hatchback and future racer), the pines, birch and autumn trees, bushes and rocks (platformer kit), and the guardrail, street lamp and start arch (racing kit) are kit models. The car's own code was not touched except for four numbers: the kit's wheels are separate nodes, so the converter renames them to the `wheel_fl` and so on the suspension and steering code turns, re-centres each wheel so that it spins and steers about its middle (the kit puts the node's origin on the car's side of the wheel), and centres the car on its axles. Collision circles went into each file's `extras.nova.colliders`, where the runtime reads them. Roads, ground, mountains, tires, hay bales, desert and harbour props stay the editor's own models: the kits' road pieces would need the circuits laid out again on their grid.
+
+**Bunker Run** (`scripts/bunker/kit-models.sh`): the guards, brutes and the boss are the platformer kit's characters (one skinned figure each, clips idle, walk and sprint picked by what the creature is doing, a red-hot tint for a moment when hit), the drones are the blaster kit's grenade, the pistol and shotgun are blasters, and the health, ammunition and key pickups are a crate, a clip and a key with a point light of their old colour. The level, the doors and the exit stay boxes. The creatures' hit boxes did not change and the bot still wins.
+
+What it showed:
+- The whole conversion is one script: size, rename, pivot, turn, centre and collide. Without it a kit's model does not drop in: its origin is a tile corner, its wheels are off-centre, its front is not the game's front, and a skinned character cannot be scaled in the file (its skeleton would not follow).
+- The studio's scene view draws only models that have a `.model.json`, so the scenes' trees and cars are invisible in it now. A `.glb`-only model needs a loader there (TODO).
+- Kit models are dull in Bunker Run's dark rooms (the old boxes were flat-lit or glowing): the creatures need a faint light of their own or the ambient raised.
+- A weapon model's front, a character's front and a car's front are three different axes; each was found by looking at a frame.
+
 ### Next probes worth making
 
 - A **first-person shooter in rooms**: rays now exist, but the walls they can hit are only circles (or voxels); rooms need

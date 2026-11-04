@@ -122,18 +122,14 @@ function Enemy:box(ox, oy, oz, w, h, d, color, glow)
   fx.part(self, ox, oy, oz, w, h, d, color, glow)
 end
 
--- a man built of boxes, scaled: legs that swing as it walks, a gun that points forward
-function Enemy:humanoid(body, head, scale, gun)
-  local s = scale or 1
-  local swing = sin(self.phase) * 0.28 * s * min(1, self.speed_now / 2)
-  self:box(-0.14 * s, 0.4 * s, swing, 0.2 * s, 0.8 * s, 0.22 * s, { body[1] * 0.6, body[2] * 0.6, body[3] * 0.6 })
-  self:box(0.14 * s, 0.4 * s, -swing, 0.2 * s, 0.8 * s, 0.22 * s, { body[1] * 0.6, body[2] * 0.6, body[3] * 0.6 })
-  self:box(0, 1.1 * s, 0, 0.5 * s, 0.7 * s, 0.3 * s, body)
-  self:box(0, 1.65 * s, 0, 0.3 * s, 0.3 * s, 0.3 * s, head)
-  self:box(0, 1.65 * s, -0.16 * s, 0.22 * s, 0.07 * s, 0.03 * s, { 255, 80, 60 }, true)
-  self:box(-0.34 * s, 1.15 * s, -0.1 * s, 0.14 * s, 0.6 * s, 0.14 * s, body)
-  self:box(0.34 * s, 1.2 * s, -0.25 * s, 0.14 * s, 0.14 * s, 0.5 * s, body)
-  if gun then self:box(0.34 * s, 1.2 * s, -0.55 * s, 0.08 * s, 0.1 * s, 0.4 * s, { 40, 40, 46 }) end
+-- A character from the platformer kit (CC0, see licenses/): the model faces +z, a creature's front is -z, and the clip follows what
+-- the creature is doing. `scale` is relative to the kit's 0.91 m figure; a hit tints it red-hot for a moment.
+function Enemy:figure(model, scale, tint)
+  local speed = self.speed_now
+  local clip = speed > 3.6 and "sprint" or (speed > 0.3 and "walk" or "idle")
+  if clip ~= self.clip then self.clip, self.clip_t = clip, 0 end
+  self.clip_t = (self.clip_t or 0) + 1 / 60
+  nova.model(model, self.x, self.y, self.z, { scale = scale, ry = self.ry + math.pi, clip = clip, time = self.clip_t + self.phase, tint = self.flash > 0 and { 255, 120, 90 } or tint })
 end
 
 return Enemy

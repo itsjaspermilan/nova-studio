@@ -37,3 +37,4 @@ The licence text each kit ships with:
 	• Twitter:	 twitter.com/KenneyNL
 	• BlueSky:	 kenney.bsky.social
 	• Instagram: instagram.com/kenney_nl
+Also used by Pine Ridge Rally and Bunker Run (their scripts: scripts/rally/kit-models.sh and scripts/bunker/kit-models.sh): the Kenney Platformer Kit (see licenses/kenney-platformer-kit.txt), Car Kit, Racing Kit and Blaster Kit, all CC0.

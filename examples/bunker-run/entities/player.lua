@@ -253,19 +253,20 @@ function Player:draw()
   local lower = self.reloading > 0 and sin((1 - self.reloading / state.weapons[state.weapon].reload) * math.pi) * 0.28 or 0
   local kick = self.kick * 0.07
   local bob = sin(self.bob * 0.5) * 0.012
-  local function part(lx, ly, lz, w, h, d, color, glow)
+  -- the blaster kit's guns (CC0): their barrels point along +z, so they turn with the camera half a turn about, and pitch the other way
+  local function gun(model, lx, ly, lz, scale)
     ly, lz = ly - lower + bob, lz - kick
     local x, y, z = cam3.to_world(lx, ly, lz)
-    nova.cuboid_at(x, y, z, w, h, d, { ry = cam3.yaw, rx = cam3.pitch + self.kick * 0.06, color = color, glow = glow })
+    nova.model(model, x, y, z, { scale = scale, ry = cam3.yaw, rx = cam3.pitch + self.kick * 0.06 })
   end
   if state.weapon == 1 then
-    part(0.2, -0.17, 0.55, 0.07, 0.09, 0.34, { 50, 54, 62 })
-    part(0.2, -0.25, 0.46, 0.06, 0.15, 0.08, { 36, 38, 44 })
-    part(0.2, -0.13, 0.72, 0.03, 0.03, 0.04, { 255, 150, 60 }, self.kick > 0.5)
+    gun("pistol", 0.22, -0.24, 0.55, 0.7)
+    if self.kick > 0.5 then
+      local mx, my, mz = cam3.to_world(0.2, -0.1, 0.8)
+      nova.cuboid_at(mx, my, mz, 0.05, 0.05, 0.05, { color = { 255, 150, 60 }, glow = true })
+    end
   else
-    part(0.17, -0.15, 0.7, 0.06, 0.06, 0.62, { 60, 62, 70 })
-    part(0.17, -0.2, 0.62, 0.09, 0.07, 0.22, { 90, 60, 40 })
-    part(0.19, -0.22, 0.34, 0.08, 0.12, 0.24, { 90, 60, 40 })
+    gun("shotgun", 0.22, -0.25, 0.7, 0.6)
   end
 end
 

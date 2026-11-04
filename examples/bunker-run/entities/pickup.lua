@@ -5,10 +5,10 @@ local fx = require("lib.fx")
 local Pickup = nova.entity { tags = { "pickup" } }
 
 local KINDS = {
-  health = { color = { 80, 255, 120 }, size = 0.32 },
-  ammo = { color = { 255, 210, 70 }, size = 0.3 },
-  shotgun = { color = { 255, 140, 60 }, size = 0.4 },
-  key = { color = { 255, 60, 60 }, size = 0.3 },
+  health = { color = { 80, 255, 120 }, size = 0.32, model = "health_pack", lift = 0.35 },
+  ammo = { color = { 255, 210, 70 }, size = 0.3, model = "ammo_clip", lift = 0.45 },
+  shotgun = { color = { 255, 140, 60 }, size = 0.4, model = "shotgun", lift = 0.7 },
+  key = { color = { 255, 60, 60 }, size = 0.3, model = "key", lift = 0.5 },
 }
 
 function Pickup:update(dt)
@@ -44,7 +44,9 @@ end
 function Pickup:draw()
   local k = KINDS[self.kind]
   local a = (self.age or 0)
-  nova.cuboid_at(self.x, 0.7 + math.sin(a * 3) * 0.08, self.z, k.size, k.size, k.size, { ry = a * 2, rx = 0.5, color = k.color, glow = true })
+  -- the kit's model, turning and bobbing, with a glow of its own colour so that it can be found in the dark
+  nova.model(k.model, self.x, k.lift + math.sin(a * 3) * 0.08 - 0.2, self.z, { ry = a * 2 })
+  nova.point_light(self.x, 0.9, self.z, { radius = 3.2, color = k.color })
   fx.want_light(self.x, 1.0, self.z, 5, { k.color[1] / 255, k.color[2] / 255, k.color[3] / 255 }, -30)
 end
 
