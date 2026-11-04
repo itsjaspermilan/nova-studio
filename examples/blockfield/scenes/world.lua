@@ -31,8 +31,7 @@ local function key(cx, cz) return cx .. "," .. cz end
 
 function World:load_chunk(cx, cz)
   gen.generate(cx, cz)
-  local saved = self.edits[key(cx, cz)]
-  if saved then voxel.import_edits(cx, cz, saved) end
+  voxel.apply_saved(cx, cz)
   voxel.finish_chunk(cx, cz)
   self.loaded[key(cx, cz)] = { cx, cz }
 end
@@ -54,16 +53,10 @@ function World:stream(pcx, pcz, budget)
   end
 end
 
-function World:collect_edits()
-  for _, c in ipairs(voxel.modified_chunks()) do self.edits[key(c[1], c[2])] = voxel.export_edits(c[1], c[2]) end
-end
-
 function World:drop_far_chunks(pcx, pcz)
   for k, c in pairs(self.loaded) do
     local dx, dz = c[1] - pcx, c[2] - pcz
     if dx * dx + dz * dz > (LOAD + 2) * (LOAD + 2) then
-      local e = voxel.export_edits(c[1], c[2])
-      if e then self.edits[k] = e end
       voxel.unload_chunk(c[1], c[2])
       self.loaded[k] = nil
     end
@@ -128,7 +121,8 @@ end
 
 function World:enter()
   voxel.daylight(1)
-  self.edits = nova.save.get("edits", {})
+  -- what the player changed lives in its own file (the engine keeps the changes of chunks that are dropped, too)
+  voxel.load_world("world")
   self.loaded = {}
   self.drops, self.bits, self.falling = {}, {}, {}
   mobs.reset(self)
@@ -155,9 +149,8 @@ function World:enter()
 end
 
 function World:save()
-  self:collect_edits()
+  voxel.save_world("world")
   local p = self.p
-  nova.save.set("edits", self.edits)
   nova.save.set("player", { x = p.x, y = p.y, z = p.z, hp = p.hp, food = p.food })
   local inv = {}
   for i, s in pairs(self.inv) do inv[tostring(i)] = s end

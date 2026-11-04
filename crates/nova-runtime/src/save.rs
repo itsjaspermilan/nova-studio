@@ -19,7 +19,12 @@ pub struct SaveStore {
     path: Option<PathBuf>,
     data: Map<String, Value>,
     dirty: bool,
+    /// Big binary files kept beside the save (a voxel world), by name; in memory for a store with no folder.
+    blobs: std::collections::HashMap<String, Vec<u8>>,
 }
+
+/// The most one blob file may hold.
+pub const MAX_BLOB_BYTES: usize = 256 << 20;
 
 fn check_key(key: &str) -> Result<(), String> {
     if key.is_empty() || key.chars().count() > MAX_KEY_CHARS {
@@ -35,6 +40,7 @@ impl SaveStore {
             path: None,
             data: Map::new(),
             dirty: false,
+            blobs: std::collections::HashMap::new(),
         }
     }
 
@@ -74,9 +80,61 @@ impl SaveStore {
                 path: Some(path),
                 data,
                 dirty: false,
+                blobs: std::collections::HashMap::new(),
             },
             warning,
         ))
+    }
+
+    fn blob_path(&self, name: &str) -> Result<Option<PathBuf>, String> {
+        if name.is_empty()
+            || name.len() > 64
+            || !name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        {
+            return Err("a world file's name is 1 to 64 letters, digits, - or _".into());
+        }
+        Ok(self
+            .path
+            .as_ref()
+            .and_then(|p| p.parent())
+            .map(|d| d.join(format!("{name}.bin"))))
+    }
+
+    /// Writes a big binary file beside the save (atomically: a temporary file, then a rename). Much bigger than the
+    /// save's own limit, for data such as a voxel world.
+    pub fn write_blob(&mut self, name: &str, bytes: Vec<u8>) -> Result<(), String> {
+        if bytes.len() > MAX_BLOB_BYTES {
+            return Err(format!(
+                "'{name}' would be bigger than {} MiB",
+                MAX_BLOB_BYTES >> 20
+            ));
+        }
+        match self.blob_path(name)? {
+            Some(path) => {
+                let temp = path.with_extension("bin.tmp");
+                std::fs::write(&temp, &bytes).map_err(|e| format!("cannot write '{name}': {e}"))?;
+                std::fs::rename(&temp, &path)
+                    .map_err(|e| format!("cannot replace '{name}': {e}"))?;
+            }
+            None => {
+                self.blobs.insert(name.to_string(), bytes);
+            }
+        }
+        Ok(())
+    }
+
+    /// A file written by `write_blob`, or None when there is none.
+    pub fn read_blob(&self, name: &str) -> Result<Option<Vec<u8>>, String> {
+        match self.blob_path(name)? {
+            Some(path) => match std::fs::read(&path) {
+                Ok(b) => Ok(Some(b)),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+                Err(e) => Err(format!("cannot read '{name}': {e}")),
+            },
+            None => Ok(self.blobs.get(name).cloned()),
+        }
     }
 
     pub fn get(&self, key: &str) -> Option<&Value> {
@@ -194,6 +252,30 @@ pub fn default_dir(game_name: &str) -> Option<PathBuf> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn blobs_are_files_beside_the_save_and_beat_its_size_limit() {
+        let dir = scratch("blob");
+        let (mut store, _) = SaveStore::open(&dir).unwrap();
+        assert_eq!(store.read_blob("world").unwrap(), None);
+        let big = vec![7u8; MAX_BYTES * 3];
+        store.write_blob("world", big.clone()).unwrap();
+        assert_eq!(store.read_blob("world").unwrap().unwrap(), big);
+        let (again, _) = SaveStore::open(&dir).unwrap();
+        assert_eq!(
+            again.read_blob("world").unwrap().unwrap().len(),
+            big.len(),
+            "it survives a restart"
+        );
+        assert!(
+            store.write_blob("../x", vec![1]).is_err(),
+            "no way out of the folder"
+        );
+        assert!(store.write_blob("", vec![1]).is_err());
+        let mut memory = SaveStore::memory();
+        memory.write_blob("w", vec![1, 2]).unwrap();
+        assert_eq!(memory.read_blob("w").unwrap().unwrap(), vec![1, 2]);
+    }
 
     fn scratch(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("nova-save-{name}-{}", std::process::id()));

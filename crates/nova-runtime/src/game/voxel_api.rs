@@ -364,6 +364,33 @@ pub(super) fn install(
     )?;
     let s = shared.clone();
     v.set(
+        "apply_saved",
+        lua.create_function(move |_, (cx, cz): (i32, i32)| {
+            Ok(s.borrow_mut().voxel.apply_saved(cx, cz))
+        })?,
+    )?;
+    let s = shared.clone();
+    v.set(
+        "save_world",
+        lua.create_function(move |_, name: String| {
+            let mut sh = s.borrow_mut();
+            let bytes = sh.voxel.encode_world();
+            sh.save.write_blob(&name, bytes).map_err(lua_err)
+        })?,
+    )?;
+    let s = shared.clone();
+    v.set(
+        "load_world",
+        lua.create_function(move |_, name: String| {
+            let mut sh = s.borrow_mut();
+            match sh.save.read_blob(&name).map_err(lua_err)? {
+                Some(bytes) => sh.voxel.decode_world(&bytes).map_err(lua_err),
+                None => Ok(0),
+            }
+        })?,
+    )?;
+    let s = shared.clone();
+    v.set(
         "modified_chunks",
         lua.create_function(move |lua, ()| {
             let t = lua.create_table()?;

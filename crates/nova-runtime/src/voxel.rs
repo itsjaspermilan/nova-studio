@@ -117,6 +117,8 @@ pub struct World {
     free_ids: Vec<usize>,
     /// Mesh changes waiting for the renderer.
     pub ops: Vec<MeshOp>,
+    /// The player's changes to chunks that are not loaded (and those read from a saved world), put back when they are made.
+    pub saved: HashMap<(i32, i32), HashMap<u32, u8>>,
     pub stats: Stats,
 }
 
@@ -165,6 +167,7 @@ impl World {
             next_mesh: DYN_MESH_BASE,
             free_ids: Vec::new(),
             ops: Vec::new(),
+            saved: HashMap::new(),
             stats: Stats::default(),
         }
     }
@@ -202,6 +205,9 @@ impl World {
     /// Drops a chunk and its meshes. Neighbours are marked for rebuilding (their border faces change).
     pub fn unload_chunk(&mut self, cx: i32, cz: i32) {
         if let Some(chunk) = self.chunks.remove(&(cx, cz)) {
+            if !chunk.edits.is_empty() {
+                self.saved.insert((cx, cz), chunk.edits.clone());
+            }
             for id in chunk.meshes.into_iter().flatten() {
                 self.free_mesh(id);
             }
@@ -1167,6 +1173,84 @@ impl World {
         Ok(n)
     }
 
+    /// Puts back what the player changed in this chunk before it was dropped, or was read from a saved world.
+    pub fn apply_saved(&mut self, cx: i32, cz: i32) -> usize {
+        let Some(edits) = self.saved.get(&(cx, cz)) else {
+            return 0;
+        };
+        let Some(c) = self.chunks.get_mut(&(cx, cz)) else {
+            return 0;
+        };
+        for (&i, &id) in edits {
+            if (i as usize) < VOL {
+                c.blocks[i as usize] = id;
+                c.edits.insert(i, id);
+            }
+        }
+        edits.len()
+    }
+
+    /// Every change the player made, loaded or not, as one file: "NVX1", a count, then for each chunk its place, how many
+    /// changes it has and each as (place in the chunk: 2 bytes, block: 1 byte).
+    pub fn encode_world(&self) -> Vec<u8> {
+        let mut all: std::collections::BTreeMap<(i32, i32), &HashMap<u32, u8>> =
+            std::collections::BTreeMap::new();
+        for (k, e) in &self.saved {
+            all.insert(*k, e);
+        }
+        for (k, c) in &self.chunks {
+            if !c.edits.is_empty() {
+                all.insert(*k, &c.edits);
+            } else {
+                all.remove(k);
+            }
+        }
+        let mut out = b"NVX1".to_vec();
+        out.extend((all.len() as u32).to_le_bytes());
+        for ((cx, cz), edits) in all {
+            out.extend(cx.to_le_bytes());
+            out.extend(cz.to_le_bytes());
+            out.extend((edits.len() as u32).to_le_bytes());
+            let mut sorted: Vec<_> = edits.iter().collect();
+            sorted.sort();
+            for (i, id) in sorted {
+                out.extend((*i as u16).to_le_bytes());
+                out.push(*id);
+            }
+        }
+        out
+    }
+
+    /// Reads a file made by `encode_world` into the kept changes (replacing them); returns how many chunks it holds.
+    pub fn decode_world(&mut self, bytes: &[u8]) -> Result<usize, String> {
+        let bad = || "the world file is damaged".to_string();
+        let mut at = 0usize;
+        let mut take = |n: usize| -> Result<&[u8], String> {
+            let s = bytes.get(at..at + n).ok_or_else(bad)?;
+            at += n;
+            Ok(s)
+        };
+        if take(4)? != b"NVX1" {
+            return Err("this is not a world file".into());
+        }
+        let count = u32::from_le_bytes(take(4)?.try_into().map_err(|_| bad())?) as usize;
+        let mut saved = HashMap::new();
+        for _ in 0..count {
+            let cx = i32::from_le_bytes(take(4)?.try_into().map_err(|_| bad())?);
+            let cz = i32::from_le_bytes(take(4)?.try_into().map_err(|_| bad())?);
+            let n = u32::from_le_bytes(take(4)?.try_into().map_err(|_| bad())?) as usize;
+            let mut edits = HashMap::with_capacity(n);
+            for _ in 0..n {
+                let i = u16::from_le_bytes(take(2)?.try_into().map_err(|_| bad())?);
+                let id = take(1)?[0];
+                edits.insert(i as u32, id);
+            }
+            saved.insert((cx, cz), edits);
+        }
+        self.saved = saved;
+        Ok(count)
+    }
+
     pub fn modified_chunks(&self) -> Vec<(i32, i32)> {
         let mut v: Vec<_> = self
             .chunks
@@ -1712,6 +1796,35 @@ mod tests {
         assert_eq!(fresh.get(4, 9, 4), 0);
         assert!(fresh.import_edits(0, 0, "zz").is_err());
         assert!(w.export_edits(1, 1).is_none());
+    }
+
+    #[test]
+    fn a_world_file_keeps_edits_of_loaded_and_dropped_chunks() {
+        let mut w = world();
+        flat(&mut w, 2);
+        w.edit(3, 10, 3, 1);
+        w.edit(40, 10, 3, 1); // chunk (2, 0)
+        w.unload_chunk(2, 0);
+        w.edit(5, 9, 5, 0);
+        let bytes = w.encode_world();
+        assert_eq!(&bytes[..4], b"NVX1");
+        let mut fresh = world();
+        flat(&mut fresh, 2);
+        assert_eq!(fresh.decode_world(&bytes).unwrap(), 2);
+        assert_eq!(fresh.apply_saved(0, 0), 2);
+        assert_eq!((fresh.get(3, 10, 3), fresh.get(5, 9, 5)), (1, 0));
+        fresh.unload_chunk(2, 0);
+        fresh.create_chunk(2, 0);
+        assert_eq!(fresh.apply_saved(2, 0), 1);
+        assert_eq!(fresh.get(40, 10, 3), 1);
+        assert!(fresh.decode_world(b"NVX1\x05").is_err());
+        assert!(fresh.decode_world(b"nope").is_err());
+        // a chunk whose edits were all undone is not kept
+        let mut w2 = world();
+        flat(&mut w2, 1);
+        w2.edit(3, 10, 3, 1);
+        w2.chunks.get_mut(&(0, 0)).unwrap().edits.clear();
+        assert_eq!(w2.encode_world().len(), 8);
     }
 
     #[test]

@@ -1132,5 +1132,26 @@
   "signature": "nova.clock() -> seconds",
   "doc": "A stopwatch that runs in real time (nova.time is game time, which stops when paused). For measuring how long work took, or spending a fixed share of a frame on it: `local t = nova.clock(); while nova.clock() - t < 0.004 do ... end`.",
   "group": "3D"
+ },
+ {
+  "name": "nova.voxel.apply_saved",
+  "kind": "function",
+  "signature": "nova.voxel.apply_saved(cx, cz) -> count",
+  "doc": "Puts back the changes the player made to this chunk before it was dropped, or that were read by `load_world`. Call it after generating a chunk and before `finish_chunk`.",
+  "group": "Voxels"
+ },
+ {
+  "name": "nova.voxel.save_world",
+  "kind": "function",
+  "signature": "nova.voxel.save_world(name)",
+  "doc": "Writes every change the player has made (in loaded and dropped chunks) to a file beside the save, written whole and safely. Unlike `nova.save`, it is not limited to 1 MiB (it holds up to 256 MiB): about three bytes for each changed block. `name` is letters, digits, - and _.",
+  "group": "Voxels"
+ },
+ {
+  "name": "nova.voxel.load_world",
+  "kind": "function",
+  "signature": "nova.voxel.load_world(name) -> chunks",
+  "doc": "Reads a file written by `save_world` (0 when there is none). Changes come back through `apply_saved` as chunks are made.",
+  "group": "Voxels"
  }
 ]
