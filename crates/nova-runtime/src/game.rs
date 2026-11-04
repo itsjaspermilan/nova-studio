@@ -305,6 +305,39 @@ pub struct Game {
     save_dir: Option<std::path::PathBuf>,
 }
 
+/// How loud a sound at a place in the world is, and how far to the left or right, for a listener at the camera:
+/// the volume falls off to nothing at `range` metres (a square law, so it dies away gently), the pan is the sideways part
+/// of the way to it. Returns (gain, pan).
+fn spatial(camera: &Camera, at: [f32; 3], range: f32) -> (f32, f32) {
+    let to = Vec3::from(at) - camera.eye;
+    let d = to.length();
+    let gain = (1.0 - d / range.max(0.1)).clamp(0.0, 1.0).powi(2);
+    let forward = (camera.target - camera.eye).normalize_or_zero();
+    let right = forward.cross(Vec3::Y).normalize_or_zero();
+    // right under the listener a sound has no side
+    let pan = if d < 0.5 {
+        0.0
+    } else {
+        (to / d).dot(right) * 0.9
+    };
+    (gain, pan.clamp(-1.0, 1.0))
+}
+
+/// `at = {x, y, z}` and `range` from a table of options.
+fn spatial_options(opts: &Option<Table>) -> mlua::Result<Option<([f32; 3], f32)>> {
+    let Some(t) = opts else { return Ok(None) };
+    let Some(at) = t.get::<Option<Table>>("at")? else {
+        return Ok(None);
+    };
+    let get = |i: usize| -> mlua::Result<f32> {
+        at.get::<Option<f64>>(i)?
+            .map(|v| v as f32)
+            .ok_or_else(|| lua_err("at must be {x, y, z}: the place the sound comes from"))
+    };
+    let range = number_option(opts, "range")?.unwrap_or(32.0) as f32;
+    Ok(Some(([get(1)?, get(2)?, get(3)?], range)))
+}
+
 fn lua_err(message: impl Into<String>) -> mlua::Error {
     mlua::Error::runtime(message.into())
 }
@@ -1305,6 +1338,20 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     })?
                     .clone(),
                 };
+                // a sound at a place in the world: loudness and pan from where the camera is
+                let place = if is_music { None } else { spatial_options(&opts)? };
+                let (mut volume, mut pan) = (
+                    number_option(&opts, "volume")?.unwrap_or(1.0).clamp(0.0, 4.0) as f32,
+                    number_option(&opts, "pan")?.unwrap_or(0.0).clamp(-1.0, 1.0) as f32,
+                );
+                if let Some((at, range)) = place {
+                    let (gain, side) = spatial(&sh.camera, at, range);
+                    if gain <= 0.001 && !looping {
+                        return Ok(0); // too far to hear: not worth a voice
+                    }
+                    volume *= gain;
+                    pan = side;
+                }
                 let id = sh.next_sound;
                 sh.next_sound += 1;
                 if is_music {
@@ -1315,8 +1362,8 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     id,
                     stream: streamed.map(|src| src.start(looping)),
                     sample,
-                    volume: number_option(&opts, "volume")?.unwrap_or(1.0).clamp(0.0, 4.0) as f32,
-                    pan: number_option(&opts, "pan")?.unwrap_or(0.0).clamp(-1.0, 1.0) as f32,
+                    volume,
+                    pan,
                     pitch: number_option(&opts, "pitch")?.unwrap_or(1.0).clamp(0.05, 16.0) as f32,
                     looping,
                     music: is_music,
@@ -1366,14 +1413,21 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     Some(_) => Err(lua_err(format!("nova.sound.set: '{key}' must be a number"))),
                 }
             };
-            let (volume, pan, pitch) = (
+            let (mut volume, mut pan, pitch) = (
                 read("volume", 0.0, 4.0)?,
                 read("pan", -1.0, 1.0)?,
                 read("pitch", 0.05, 16.0)?,
             );
+            // `at`: follow a place in the world (a moving sound: call it every frame)
+            if let Some((at, range)) = spatial_options(&Some(opts.clone()))? {
+                known += 1;
+                let (gain, side) = spatial(&s.borrow().camera, at, range);
+                volume = Some(volume.unwrap_or(1.0) * gain);
+                pan = Some(side);
+            }
             if known == 0 {
                 return Err(lua_err(
-                    "nova.sound.set(id, { volume = ..., pan = ..., pitch = ... }) needs at least one of volume, pan or pitch",
+                    "nova.sound.set(id, { volume = ..., pan = ..., pitch = ..., at = {x, y, z} }) needs at least one of volume, pan, pitch or at",
                 ));
             }
             s.borrow_mut().audio.push(mixer::Command::Set { id, volume, pan, pitch });

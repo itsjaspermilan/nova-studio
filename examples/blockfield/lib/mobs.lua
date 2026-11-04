@@ -75,7 +75,7 @@ local function explode(world, m)
       end
     end
   end
-  nova.sound.play("explode", { volume = 1 })
+  nova.sound.play("explode", { volume = 1.4, range = 64, at = { m.x, m.y + 0.8, m.z } })
   local p = world.p
   local d = sqrt((p.x - m.x) ^ 2 + (p.y + 0.9 - m.y) ^ 2 + (p.z - m.z) ^ 2)
   if d < 7 then
@@ -101,10 +101,10 @@ local function step(world, m, dt)
         world:hurt(3, "was slain by a zombie")
         p.vx, p.vz = p.vx + wx * 4, p.vz + wz * 4
       end
-      if m.age % 7 < dt then nova.sound.play("groan", { volume = 0.3, pitch = 0.8 + math.random() * 0.3, limit = 2 }) end
+      if m.age % 7 < dt then nova.sound.play("groan", { volume = 0.8, pitch = 0.8 + math.random() * 0.3, limit = 2, at = { m.x, m.y + 1.6, m.z } }) end
     else
       if d < 3.2 then
-        if not m.fuse then nova.sound.play("hiss", { volume = 0.6 }) end
+        if not m.fuse then nova.sound.play("hiss", { volume = 0.9, at = { m.x, m.y + 1, m.z } }) end
         m.fuse = (m.fuse or 0) + dt
         speed = 0
         if m.fuse > 1.5 then explode(world, m) return end
@@ -118,7 +118,7 @@ local function step(world, m, dt)
       m.wait = 1 + math.random() * 3
       m.walking = math.random() < 0.6
       m.yaw = math.random() * 6.283
-      if math.random() < 0.15 then nova.sound.play("oink", { volume = 0.25, pitch = 0.8 + math.random() * 0.4, limit = 1 }) end
+      if math.random() < 0.15 then nova.sound.play("oink", { volume = 0.7, pitch = 0.8 + math.random() * 0.4, limit = 1, at = { m.x, m.y + 0.5, m.z } }) end
     end
     if m.walking then wx, wz = sin(m.yaw), cos(m.yaw) end
   end

@@ -360,7 +360,7 @@
   "name": "nova.sound.play",
   "kind": "function",
   "signature": "nova.sound.play(name [, opts]) -> id",
-  "doc": "Play a sound effect. Options: volume, pan, pitch, loop, and limit (at most that many copies of this sound at once: one more makes the oldest copy give way, so a flood of hits cannot steal a voice from other sounds; there are 32 voices in all).",
+  "doc": "Play a sound effect. Options: volume, pan, pitch, loop, and limit (at most that many copies of this sound at once: one more makes the oldest copy give way, so a flood of hits cannot steal a voice from other sounds; there are 32 voices in all). `at = {x, y, z}` puts the sound at a place in the world: it is quieter the further the camera is from it (to nothing at `range` metres, 32 by default) and comes from the left or right of where the camera looks; beyond its range a one-shot sound is not played at all (it returns 0).",
   "group": "Sound"
  },
  {
@@ -373,8 +373,8 @@
  {
   "name": "nova.sound.set",
   "kind": "function",
-  "signature": "nova.sound.set(id, { volume, pan, pitch })",
-  "doc": "Change a sound that is playing: its volume, pan or pitch (any of them). The change glides over a few milliseconds, so call it every frame to make a looping engine follow the revs. A sound that has ended ignores it.",
+  "signature": "nova.sound.set(id, { volume, pan, pitch, at, range })",
+  "doc": "Change a sound that is playing: its volume, pan or pitch (any of them). The change glides over a few milliseconds, so call it every frame to make a looping engine follow the revs. A sound that has ended ignores it. `at = {x, y, z}` (and `range`) makes it follow a place in the world as `play` does: call it every frame for a sound that moves or a camera that does.",
   "group": "Sound"
  },
  {

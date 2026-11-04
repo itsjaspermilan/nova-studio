@@ -1590,7 +1590,7 @@ fn sound_set_queues_a_change_and_explains_a_mistake() {
     for (script, expected) in [
         (
             "nova.sound.set(1, {})",
-            "needs at least one of volume, pan or pitch",
+            "needs at least one of volume, pan, pitch or at",
         ),
         ("nova.sound.set(1, { pitch = 'high' })", "number"),
     ] {
@@ -2185,4 +2185,53 @@ fn a_choice_moves_with_keys_and_the_pointer_and_is_accepted_by_a_key_or_a_click(
     assert_eq!(logs[8], ["over 3"]);
     assert_eq!(logs[9], ["2 accepted moved", "clicked 2"]);
     assert!(logs[10].is_empty(), "{:?}", logs[10]);
+}
+
+#[test]
+fn a_sound_at_a_place_is_quieter_far_away_and_panned_to_its_side() {
+    use nova_runtime::mixer::Command;
+    // the camera at the origin looking down -z (so +x is on the right)
+    let g = project(vec![
+        ("sounds/pop.wav", wav_bytes(22050, 2000)),
+        (
+            "main.lua",
+            lua("nova.camera(0, 1.6, 0, 0, 1.6, -1, 70)
+nova.sound.play('pop', { at = {0, 1.6, -2} })
+nova.sound.play('pop', { at = {0, 1.6, -20} })
+nova.sound.play('pop', { at = {8, 1.6, -0.5}, volume = 2, range = 16 })
+nova.sound.play('pop', { at = {-8, 1.6, -0.5} })
+local far = nova.sound.play('pop', { at = {0, 1.6, -100} })
+nova.log('far ' .. far)
+local id = nova.sound.play('pop', { loop = true, at = {0, 1.6, -100} })
+nova.sound.set(id, { at = {3, 1.6, -3} })"),
+        ),
+    ]);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    assert_eq!(
+        logs(&g)[0],
+        "far 0",
+        "beyond its range a sound is not played"
+    );
+    let plays: Vec<_> = g
+        .take_audio()
+        .into_iter()
+        .filter_map(|c| match c {
+            Command::Play(p) => Some((p.volume, p.pan)),
+            _ => None,
+        })
+        .collect();
+    let (near, mid, right, left) = (plays[0], plays[1], plays[2], plays[3]);
+    assert!(
+        near.0 > mid.0 && mid.0 > 0.0,
+        "volume falls with distance: {near:?} {mid:?}"
+    );
+    assert!(near.1.abs() < 0.01, "straight ahead has no side: {near:?}");
+    assert!(
+        right.1 > 0.5 && left.1 < -0.5,
+        "right and left: {right:?} {left:?}"
+    );
+    assert!(
+        (right.0 - 0.5).abs() < 0.02,
+        "volume 2, half the range away: 2 x (1 - 0.5) squared = 0.5: {right:?}"
+    );
 }
