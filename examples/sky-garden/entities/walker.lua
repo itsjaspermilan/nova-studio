@@ -13,9 +13,8 @@ function Walker:update(dt)
 end
 
 function Walker:draw()
-  local x, y, z = self.x, self.y, self.z
-  nova.cuboid_at(x, y + 0.45, z, 0.9, 0.7, 0.9, { color = { 210, 70, 70 } })
-  nova.cuboid_at(x, y + 0.9, z, 0.6, 0.25, 0.6, { color = { 240, 200, 80 } })
+  self.clip_t = (self.clip_t or 0) + 1 / 60
+  nova.model("character-oodi", self.x, self.y, self.z, { scale = 1.1, ry = (self.dir > 0 and 0 or math.pi) + 0, tint = { 255, 120, 120 }, clip = "walk", time = self.clip_t })
 end
 
 return Walker

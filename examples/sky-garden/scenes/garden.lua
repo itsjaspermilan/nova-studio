@@ -52,7 +52,7 @@ end
 function Scene:draw_ui()
   local w, h = nova.view()
   nova.ui.rect(16, 16, 150, 34, { 0, 0, 0, 130 })
-  nova.ui.rect(24, 25, 14, 14, { 90, 230, 255 })
+  nova.ui.rect(24, 25, 14, 14, { 80, 100, 200 })
   text(46, 33, string.format("%d / %d", state.gems, state.total), 20)
   if state.message_for > 0 then text(w / 2, 70, state.message, 22, nil, "center") end
   if state.won then

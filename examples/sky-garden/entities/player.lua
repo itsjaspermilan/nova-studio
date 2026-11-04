@@ -239,18 +239,15 @@ function Player:draw()
     nova.quad3(x, h + 0.02, z, 0, 1, 0, size, { color = { 0, 0, 0, 120 } })
   end
   if (self.invulnerable or 0) > 0 and math.floor(state.time * 14) % 2 == 0 then return end
-  local f = self.face
-  local s = 1 - self.land_squash * 1.5
-  local swing = sin(self.walk_phase) * 0.45 * min(1, sqrt(self.vx * self.vx + self.vz * self.vz) / 3)
-  local function part(side, up, fwd, w, hh, d, color, rx)
-    local sf, cf = sin(f), cos(f)
-    nova.cuboid_at(x + cf * side + sf * fwd * -1, y + up * s, z - sf * side + cf * fwd * -1, w, hh * s, d, { ry = f, rx = rx or 0, color = color })
-  end
-  part(0, 0.95, 0, 0.62, 0.7, 0.4, { 80, 130, 230 }) -- body
-  part(0, 1.5, 0, 0.5, 0.5, 0.5, { 245, 205, 170 }) -- head
-  part(0, 1.6, 0, 0.54, 0.2, 0.54, { 200, 60, 60 }) -- cap
-  part(-0.17, 0.35, 0, 0.22, 0.6, 0.24, { 60, 60, 120 }, swing)
-  part(0.17, 0.35, 0, 0.22, 0.6, 0.24, { 60, 60, 120 }, -swing)
+  -- Kenney's character (CC0, see licenses/): the clip follows what the body is doing
+  local speed = sqrt(self.vx * self.vx + self.vz * self.vz)
+  local clip = "idle"
+  if not self.ground then clip = self.vy > 0 and "jump" or "fall"
+  elseif speed > 4.5 then clip = "sprint"
+  elseif speed > 0.5 then clip = "walk" end
+  if clip ~= self.clip then self.clip, self.clip_t = clip, 0 end
+  self.clip_t = (self.clip_t or 0) + 1 / 60
+  nova.model("character-oobi", x, y, z, { scale = 1.8, ry = self.face + math.pi, clip = clip, time = self.clip_t, loop = clip ~= "jump" })
 end
 
 return Player

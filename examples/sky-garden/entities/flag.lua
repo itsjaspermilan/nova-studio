@@ -19,9 +19,7 @@ function Flag:update(dt)
 end
 
 function Flag:draw()
-  local wave = math.sin((self.age or 0) * 5) * 0.08
-  nova.cuboid_at(self.x, self.y + 1.5, self.z, 0.14, 3, 0.14, { color = { 220, 220, 230 } })
-  nova.cuboid_at(self.x + 0.6, self.y + 2.6 + wave, self.z, 1.1, 0.7, 0.05, { color = { 255, 90, 120 }, glow = true })
+    nova.model("flag", self.x, self.y, self.z, { scale = 3.4, ry = math.sin((self.age or 0) * 2) * 0.1 })
 end
 
 return Flag

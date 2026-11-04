@@ -15,9 +15,7 @@ function Checkpoint:update(dt)
 end
 
 function Checkpoint:draw()
-  local c = self.on and { 90, 255, 120 } or { 255, 255, 255 }
-  nova.cuboid_at(self.x, self.y + 0.9, self.z, 0.12, 1.8, 0.12, { color = { 200, 200, 210 } })
-  nova.cuboid_at(self.x + 0.35, self.y + 1.6, self.z, 0.6, 0.35, 0.05, { color = c, glow = self.on })
+  nova.model("sign", self.x, self.y, self.z, { scale = 2.6, tint = self.on and { 120, 255, 140 } or { 255, 255, 255 } })
 end
 
 return Checkpoint

@@ -18,7 +18,7 @@ end
 
 function Gem:draw()
   local y = self.gy + math.sin(self.age * 3) * 0.1
-  nova.cuboid_at(self.x, y, self.z, 0.32, 0.32, 0.32, { ry = self.age * 2, rx = 0.6, color = { 90, 230, 255 }, glow = true })
+  nova.model("jewel", self.x, y - 0.35, self.z, { scale = 2.2, ry = self.age * 2 })
 end
 
 return Gem

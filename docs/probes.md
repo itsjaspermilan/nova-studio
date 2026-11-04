@@ -357,6 +357,16 @@ Found, not fixed (also in the TODO):
 - Ground ids are numbers with a sign (ramps are negative): easy to misuse. A kind and a number would be kinder.
 - Nothing has been felt by a person with a controller; all of the above is a bot and tests.
 
+### Kenney's Platformer Kit (added the same day)
+
+The player, the patrollers, the gems, the flag, the checkpoint sign, the two moving platforms and some scenery are models from Kenney's
+Platformer Kit (CC0; notice in `licenses/kenney-platformer-kit.txt`; `scripts/sky/kenney.mjs` copies the eleven that are used). The
+characters are skinned and carry 25 clips; the game plays `idle`, `walk`, `sprint`, `jump` and `fall` by what the body is doing. The
+engine took them without change except one thing: **a .glb that points at a texture file (`Textures/colormap.png`) does not load**
+(`external reference in slice only import`), so the script embeds the texture in each .glb. A frame now has 20 draws and 10,000 triangles
+(was 7 draws and 900), rendered in 1.1 ms (was 0.9) headless on an M4. The kit's islands (`block-grass-*`, 1 m grid) were not used: they
+would need level pieces placed on a grid; the garden's islands are boxes of any size.
+
 ### Next probes worth making
 
 - A **first-person shooter in rooms**: rays now exist, but the walls they can hit are only circles (or voxels); rooms need

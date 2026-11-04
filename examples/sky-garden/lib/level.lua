@@ -7,6 +7,14 @@ Level.GOAL_GEMS = 12
 local boxes = {}
 local function box(x0, z0, x1, z1, y0, y1, color) boxes[#boxes + 1] = { x0, z0, x1, z1, y0, y1, color or GRASS } end
 
+Level.scenery = {
+  { "tree", -5, 0, -5, 2.4, 0.3 }, { "tree", -4.5, 0, 5, 2.0, 1.0 }, { "tree", 5, 0, 5, 2.2, 2.0 },
+  { "rocks", 1, 0, 4.5, 2.0, 0.5 }, { "flowers", -2, 0, -3, 2.2, 0 }, { "flowers", 2.5, 0, 3, 2.2, 1 },
+  { "crate", -1, 0, 5, 2.2, 0.4 }, { "tree", 15.5, 2, 2.2, 2.0, 0.7 }, { "rocks", 13, 2, -2.3, 2.0, 1.2 },
+  { "tree", 36, 2, 3, 2.2, 0.2 }, { "flowers", 31.5, 2, 3, 2.2, 0.6 }, { "rocks", 49.5, 4, -3, 2.0, 0.9 },
+  { "tree", 65.5, 8, -3, 2.4, 1.3 }, { "flowers", 62, 8, 3, 2.2, 0 },
+}
+
 function Level.build()
   boxes = {}
   Level.ramps = {}
@@ -55,6 +63,8 @@ function Level.draw()
     nova.cuboid(b[1], top - 0.35, b[2], b[3], top, b[4], { color = c })
   end
   for _, r in ipairs(Level.ramps) do draw_ramp(r) end
+  -- scenery from Kenney's kit (visual only, nothing here is solid)
+  for _, d in ipairs(Level.scenery) do nova.model(d[1], d[2], d[3], d[4], { scale = d[5], ry = d[6] }) end
 end
 
 -- where a moving platform is at a time t: the centre x, the top height and z (the bot looks ahead with this too)
