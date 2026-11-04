@@ -1438,7 +1438,7 @@
   "name": "nova.walls.add_ramp",
   "kind": "function",
   "signature": "nova.walls.add_ramp(x0, z0, x1, z1, axis, y_start, y_end [, y_base]) -> id",
-  "doc": "Adds a slope on the ground from corner (x0, z0) to (x1, z1) that rises along `axis` (\"x\" or \"z\") from height y_start at the low coordinate to y_end at the high one (or falls, if y_end is lower), solid down to y_base (the lower of the two by default). A body walks up and down it with nova.walls.move3; its sides and high end are walls. Its number is -1 less than... see move3: ramps are counted from 0 in the order they were added.",
+  "doc": "Adds a slope on the ground from corner (x0, z0) to (x1, z1) that rises along `axis` (\"x\" or \"z\") from height y_start at the low coordinate to y_end at the high one (or falls, if y_end is lower), solid down to y_base (the lower of the two by default). A body walks up and down it with nova.walls.move3; its sides and high end are walls. Ramps are counted from 0 in the order they were added; move3 and floor_below name ramp 0 as -1, ramp 1 as -2, and so on, so that a ramp is never taken for a wall. Returns the ramp's own number (0, 1, ...).",
   "group": "Walls and paths"
  },
  {

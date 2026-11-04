@@ -762,6 +762,13 @@ a way round the walls (`ignore` lists door walls that something can open). `nova
 and `nova.line3` lines. `nova.bake.level{ boxes, lights }` lights a level's boxes once, at load, by the lamps that can see them (walls stop
 the light), and gives one mesh to draw with `nova.bake.draw`; live lights (`nova.point_light`, up to sixteen) add to it. See `examples/bunker-run`.
 
+**Standing on things (platformers).** `nova.walls.move3(x, y, z, half_width, height, dx, dy, dz [, step])` moves a body with its feet at `y`
+in three dimensions: up and down first, then sideways, sliding, climbing anything no higher than `step`, and says which axes were
+stopped, whether the body stands on something and on what (a wall number, or -1, -2, ... for ramps). Add gravity to `dy` yourself.
+`nova.walls.add_ramp` adds a slope, `nova.walls.set_box` moves a wall (a platform: move it first, then move whatever stands on it by the
+same amount), `nova.walls.floor_below` says what is under a place (a shadow, a landing mark, a camera kept above the ground).
+See `examples/sky-garden`.
+
 **Velocity.** Every entity has `vx`, `vy` and `vz`, which the engine adds to its place after each update. A class that moves itself
 (with `nova.walls.move`, say) and keeps a speed in fields of those names would be moved twice: give it `velocity = false`
 (`nova.entity { velocity = false }`) and the engine leaves its place alone.

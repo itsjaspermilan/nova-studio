@@ -325,12 +325,40 @@ and stepping from `nova.voxel.move`; this is the same in a world that is *not* m
 | Judging a jump | a shadow under the player on whatever is below, and the first jumps feel right (jump buffering, coyote time, a variable height) | There is no way to ask "what is under here?", so no shadow. The rest is script and should work: the step is a fixed sixtieth of a second. |
 | Many moving parts | a dozen platforms and creatures, each asking the walls things every step | Fine, if the questions are native. |
 
-Results are written below as it is built.
+### Results
+
+Built 2026-11-04: `examples/sky-garden` (about 450 lines of Lua) and `crates/nova-runtime/tests/sky.rs`. Four tests: the player
+stands on the island, walking off the edge falls and respawns, the camera is pulled in by a pillar (and by nothing in the open),
+and a bot (F9) plays the garden to the flag (stairs, a ramp, two moving platforms, jumps across gaps, gems; it wins in about
+20 seconds of game time).
+
+| Hypothesis | What happened |
+| --- | --- |
+| Nothing to stand on outside voxels | **True.** Built: `nova.walls.move3` (a body with a height moves in three dimensions: up and down first so that a fall lands and a jump bumps a ceiling, then x and z, sliding, climbing anything up to `step` high, staying on a slope going down), `floor_below`, and box heights on the walls that were already there. Unit tests in `walls.rs` (14) and one Lua-level test in `framework.rs`. |
+| No slopes | **True.** Built `nova.walls.add_ramp` (a slope along x or z; its sides are walls, its high end is a cliff). One kind of slope only; no turned or curved ones. |
+| A wall is fixed; nothing says what to do on a moving thing | **True, and the answer is small.** `nova.walls.set_box` moves a wall; the *script* then moves what stands on it by the same amount (`move3` with the platform's delta). A platform that rises is handled by the step-up (the player is a little inside it and is lifted). The platforms must move before the player does: the scene does it in `update`, which runs before the entities (checked: the ride is smooth, 400 carried frames in the bot's run). A platform's *side* does not push a player (nothing here needed it). |
+| The camera ends up inside things | **True for `cam3.follow`; fixed in the game, not in the engine.** One ray from the player's head towards the camera spot (`nova.walls.raycast` with a slope), pulled in before it, and lifted over the ground with `floor_below`. A single ray does not stop the camera's corner clipping into a wall edge; a sphere or four rays would. Left as a gap. |
+| No shadow, because nothing says what is under a place | **Half true.** `floor_below` makes it a call and the jumps are readable with it. But `nova.quad3` ignores alpha, so the blob shadow is a solid grey square. |
+| Jump feel works from script at a fixed step | **True.** Coyote time (0.1 s), a buffered press (0.12 s), a shorter jump when the button is let go, gravity 30 and a jump speed of 11 (a 2 m jump, 4.4 m across at a run), air control weaker than ground control. The bot jumps by the same rules through the same code path. |
+| Many moving parts | **Fine.** Four patrollers, two platforms, 20 gems, a player: about 0.10 ms of Lua a frame (mean; 0.17 at the 95th percentile) and 0.9 ms to render, headless on an M4. Nothing here says anything about a Snapdragon. |
+
+What the bot found: it first fell off the platforms over and over because it left them at the wrong moment, and because it kept
+its plan after respawning: both bot bugs, not engine ones. They show what a person will find: **timing a jump onto or off a moving
+platform is the whole game**, and the platforms' speed (3 m/s at most) and width (3 m) are generous. Looking ahead along the
+platform's track worked for the bot, and a game can do it because the track is a function of time.
+
+Found, not fixed (also in the TODO):
+
+- `nova.quad3` has no transparency (shadows, decals that fade).
+- No sloped mesh to draw a ramp with: the game draws twelve slices of boxes. A turned or tilted box would do it.
+- Boxes still have no textures; the garden is flat colour.
+- Islands are drawn as two boxes each (rock and grass); a box with a different colour on top would halve that.
+- A body cannot be pushed by a moving platform's side or squashed under one.
+- Ground ids are numbers with a sign (ramps are negative): easy to misuse. A kind and a number would be kinder.
+- Nothing has been felt by a person with a controller; all of the above is a bot and tests.
 
 ### Next probes worth making
 
-- A **3D platformer**: height for things that are not voxels. Scenery collision is circles on the ground, so there are no
-  floors, ramps or ledges outside a voxel world.
 - A **first-person shooter in rooms**: rays now exist, but the walls they can hit are only circles (or voxels); rooms need
   boxes or wall segments, doors and line of sight around corners.
 - **Blockfield on the device**: frame rate with a 5-chunk view, the cost of meshing on a Snapdragon, and whether the engine
