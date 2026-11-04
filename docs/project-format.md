@@ -713,3 +713,12 @@ World-space text, paths, streamed music (Ogg is decoded fully into memory), synt
 `--hold jump,move_x=0.5` holds actions down for the whole run, so a screenshot can show
 real gameplay. `--press key:Enter@30,pad:south@120` taps sources (held for two frames from the frame given), to get
 past menus and into the game before the picture is taken.
+
+**Recorded input.** `--input play.json` plays back what was held and where the pointer was, frame by frame, and
+`--record play.json` writes the input of a run (headless or in a window) in the same format, so a real session can be
+replayed exactly. The file is a list of events, each with `at` (the frame it starts), `for` (how many frames it lasts, 1 if
+left out), `hold` (source id to value, like `{"key:KeyW": 1}`) and, if it has one, `pointer` (`x`, `y`, `dx`, `dy`, `down`,
+`right`, `middle`, `pressed`, `released`, `wheel`; `absent` for no pointer). Everything in an event applies on every frame it
+covers, a pointer's `dx`, `dy` and `pressed` too, so a mouse pushed along for ten frames is one event with `for: 10` and a
+`dx`. Overlapping events add up: a source takes the biggest value and the pointer comes from the latest event that has
+one. Tests use the same format (`nova_runtime::inputscript::InputScript`): see `tests/data/blockfield-dig.json`.

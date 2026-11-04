@@ -235,3 +235,29 @@ fn a_saved_game_with_things_in_hand_starts_without_errors() {
     assert!(chunks >= 90, "the world came up: {chunks}");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_recorded_session_plays_back_and_digs() {
+    // the same kind of file `nova run --headless --input` plays and `--record` writes
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/blockfield-dig.json");
+    let script =
+        nova_runtime::inputscript::InputScript::from_file(&path).expect("the script reads");
+    let mut g = game();
+    for n in 0..script.length() + 5 {
+        let mut input = script.frame(n);
+        if n == 0 {
+            input.sources.clear();
+        }
+        g.update_input(DT, 0.0, [960.0, 540.0], &input);
+        assert!(g.error.is_none(), "frame {n}: {:?}", g.error);
+    }
+    let s = status(&mut g);
+    let pitch: f64 = s["pitch"].parse().unwrap();
+    assert!(pitch < -1.0, "the mouse pushed the view down: {pitch}");
+    assert!(s["creative"] == "true", "{s:?}");
+    let edited: usize = s["edited"].parse().unwrap();
+    assert!(
+        edited >= 1,
+        "holding the mine button dug (and the place button put a block back): {s:?}"
+    );
+}

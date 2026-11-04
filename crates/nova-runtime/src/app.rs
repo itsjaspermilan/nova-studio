@@ -19,6 +19,7 @@ use crate::audio::{self, AudioOut};
 use crate::content::Content;
 use crate::gfx::Gfx;
 use crate::input::Input;
+use crate::inputscript::{InputScript, Recorder};
 use crate::spike::Perf;
 
 /// A packed project held in memory (read from an `.npk` file or from the APK's assets).
@@ -53,6 +54,10 @@ pub struct Options {
     pub hold: Vec<String>,
     /// Taps for headless runs: a source held for two frames from the frame given.
     pub press: Vec<(String, u32)>,
+    /// A recorded-input file to play back (see `inputscript.rs`): what is held and where the pointer is, frame by frame.
+    pub input: Option<PathBuf>,
+    /// Where to write the input of this run as such a file when it ends.
+    pub record: Option<PathBuf>,
     /// Height of the world render target in pixels (UI is always native); 0 = native.
     /// `None` uses the project's `world_height` (540 for the spike).
     pub world_height: Option<u32>,
@@ -75,6 +80,8 @@ impl Default for Options {
             headless: false,
             hold: Vec::new(),
             press: Vec::new(),
+            input: None,
+            record: None,
         }
     }
 }
@@ -119,6 +126,20 @@ fn held_actions(hold: &[String]) -> Result<Vec<(String, f32)>, String> {
             None => Ok((entry.clone(), 1.0)),
         })
         .collect()
+}
+
+/// Adds a script's frame to the input already there: sources take the bigger value, and the script's pointer is used when
+/// it has one.
+fn merge_input(into: &mut InputFrame, from: InputFrame) {
+    for (k, v) in from.sources {
+        let slot = into.sources.entry(k).or_insert(v);
+        if v.abs() > slot.abs() {
+            *slot = v;
+        }
+    }
+    if from.pointer.present {
+        into.pointer = from.pointer;
+    }
 }
 
 fn print_summary(label: &str, perf: &Perf) {
@@ -182,6 +203,11 @@ pub fn run_headless(opts: Options) -> Result<(), String> {
     let mut perf = Perf::default();
     let dt = 1.0 / 60.0;
     let held = held_actions(&opts.hold)?;
+    let script = match &opts.input {
+        Some(path) => Some(InputScript::from_file(path)?),
+        None => None,
+    };
+    let mut recorder = opts.record.as_ref().map(|_| Recorder::default());
     println!(
         "adapter: {} ({:?})",
         gfx.adapter_info.name, gfx.adapter_info.backend
@@ -191,21 +217,28 @@ pub fn run_headless(opts: Options) -> Result<(), String> {
     let (mut lua_times, mut build_times, mut render_times) = (Vec::new(), Vec::new(), Vec::new());
     for frame in 0..frames {
         let started = Instant::now();
+        let mut input = InputFrame {
+            overrides: held.clone(),
+            sources: opts
+                .press
+                .iter()
+                .filter(|(_, at)| frame >= *at && frame < at + 2)
+                .map(|(source, _)| (source.clone(), 1.0))
+                .collect(),
+            ..Default::default()
+        };
+        if let Some(s) = &script {
+            merge_input(&mut input, s.frame(frame));
+        }
+        if let Some(r) = recorder.as_mut() {
+            r.push(&input);
+        }
         let (build_ms, lua_ms) = content.update(
             &mut gfx,
             dt,
             frame as f64 * dt as f64,
             size,
-            &InputFrame {
-                overrides: held.clone(),
-                sources: opts
-                    .press
-                    .iter()
-                    .filter(|(_, at)| frame >= *at && frame < at + 2)
-                    .map(|(source, _)| (source.clone(), 1.0))
-                    .collect(),
-                ..Default::default()
-            },
+            &input,
             &perf,
             "off (headless)",
         );
@@ -224,6 +257,15 @@ pub fn run_headless(opts: Options) -> Result<(), String> {
         build_times.push(build_ms);
         render_times.push(perf.times.render_ms);
         perf.record(started.elapsed().as_secs_f32() * 1000.0);
+    }
+    if let (Some(r), Some(path)) = (&recorder, &opts.record) {
+        std::fs::write(path, r.to_json())
+            .map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+        println!(
+            "recorded {} frames of input to {}",
+            r.frames(),
+            path.display()
+        );
     }
     print_summary("headless", &perf);
     println!(
@@ -268,6 +310,8 @@ struct App {
     audio_started: bool,
     frames_done: u32,
     held: Vec<(String, f32)>,
+    script: Option<InputScript>,
+    recorder: Option<Recorder>,
     last_audio_log: Instant,
     finished: bool,
     failed: Option<String>,
@@ -359,12 +403,18 @@ impl App {
         self.last_frame = now;
         let size = (config.width, config.height);
 
-        let frame = InputFrame {
+        let mut frame = InputFrame {
             sources: self.input.sources(),
             overrides: self.held.clone(),
             last_source: self.input.last_new_source.take(),
             pointer: self.input.pointer(Gfx::ui_scale(size)),
         };
+        if let Some(s) = &self.script {
+            merge_input(&mut frame, s.frame(self.frames_done));
+        }
+        if let Some(r) = self.recorder.as_mut() {
+            r.push(&frame);
+        }
         let audio = self.audio_text();
         if self.last_audio_log.elapsed().as_secs() >= 2 && self.audio.is_some() {
             self.last_audio_log = Instant::now();
@@ -595,6 +645,19 @@ impl ApplicationHandler for App {
         }
     }
 
+    fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
+        if let (Some(r), Some(path)) = (&self.recorder, &self.opts.record) {
+            match std::fs::write(path, r.to_json()) {
+                Ok(()) => println!(
+                    "recorded {} frames of input to {}",
+                    r.frames(),
+                    path.display()
+                ),
+                Err(e) => eprintln!("cannot write {}: {e}", path.display()),
+            }
+        }
+    }
+
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
         if let Some(window) = &self.window {
             window.request_redraw();
@@ -617,6 +680,11 @@ pub fn run_windowed(
         .map_err(|e| format!("cannot create event loop: {e}"))?;
     event_loop.set_control_flow(ControlFlow::Poll);
     let held = held_actions(&opts.hold)?;
+    let script = match &opts.input {
+        Some(path) => Some(InputScript::from_file(path)?),
+        None => None,
+    };
+    let recorder = opts.record.as_ref().map(|_| Recorder::default());
     let mut app = App {
         opts,
         instance: new_instance(wgpu::Backends::PRIMARY),
@@ -634,6 +702,8 @@ pub fn run_windowed(
         audio_started: false,
         frames_done: 0,
         held,
+        script,
+        recorder,
         last_audio_log: Instant::now(),
         finished: false,
         failed: None,

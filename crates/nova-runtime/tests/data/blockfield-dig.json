@@ -1,0 +1,7 @@
+[
+  { "at": 300, "for": 2, "hold": { "key:KeyF": 1 } },
+  { "at": 310, "for": 40, "pointer": { "x": 640, "y": 360, "dy": 40 } },
+  { "at": 350, "for": 70, "hold": { "key:KeyX": 1 }, "pointer": { "x": 640, "y": 360, "down": true } },
+  { "at": 430, "for": 2, "hold": { "key:KeyC": 1 } },
+  { "at": 450, "for": 2, "hold": { "key:F3": 1 } }
+]
