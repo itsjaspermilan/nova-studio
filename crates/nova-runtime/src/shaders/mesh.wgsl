@@ -58,12 +58,15 @@ struct VertexOut {
     @location(2) uv: vec2<f32>,
     @location(3) world: vec3<f32>,
     @location(4) emissive: f32,
+    // 0: solid; otherwise a screen-door fade (see `ModelInstance::dissolving`)
+    @location(5) @interpolate(flat) dissolve: f32,
 };
 
 @vertex
 fn vs_main(v: Vertex, inst: Instance) -> VertexOut {
-    let model = mat4x4<f32>(inst.m0, inst.m1, inst.m2, inst.m3);
+    let model = mat4x4<f32>(inst.m0, vec4<f32>(inst.m1.xyz, 0.0), inst.m2, inst.m3);
     var out: VertexOut;
+    out.dissolve = inst.m1.w;
     let world = model * vec4<f32>(v.position, 1.0);
     out.world = world.xyz;
     out.position = globals.view_proj * world;
@@ -100,6 +103,16 @@ fn sun_visibility(world: vec3<f32>, normal: vec3<f32>) -> f32 {
 
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
+    // a piece fading with distance (scenery between two levels of detail, or at the edge of the draw range): each pixel is
+    // kept or dropped by a fixed noise, so that the near and far versions, with opposite signs, fill every pixel between them
+    if (in.dissolve != 0.0) {
+        let noise = fract(52.9829189 * fract(dot(in.position.xy, vec2<f32>(0.06711056, 0.00583715))));
+        if (in.dissolve < 0.0) {
+            if (noise < -in.dissolve) { discard; }
+        } else {
+            if (noise >= in.dissolve) { discard; }
+        }
+    }
     let base = textureSample(base_texture, base_sampler, in.uv) * in.color;
     // cut-out textures (leaves, glass, plants): see-through texels are not drawn at all
     if (base.a < 0.3) {
@@ -168,7 +181,7 @@ struct SkinVertex {
 @vertex
 fn vs_skinned(v: SkinVertex, inst: Instance) -> VertexOut {
     let base = u32(inst.m0.w + 0.5);
-    let model = mat4x4<f32>(vec4<f32>(inst.m0.xyz, 0.0), inst.m1, inst.m2, inst.m3);
+    let model = mat4x4<f32>(vec4<f32>(inst.m0.xyz, 0.0), vec4<f32>(inst.m1.xyz, 0.0), inst.m2, inst.m3);
     var skin = mat4x4<f32>(vec4<f32>(0.0), vec4<f32>(0.0), vec4<f32>(0.0), vec4<f32>(0.0));
     for (var k = 0; k < 4; k = k + 1) {
         if (v.weights[k] > 0.0) {
@@ -186,6 +199,7 @@ fn vs_skinned(v: SkinVertex, inst: Instance) -> VertexOut {
     out.world = world.xyz;
     out.position = globals.view_proj * world;
     out.normal = safe_normalize((model * vec4<f32>(normal, 0.0)).xyz);
+    out.dissolve = 0.0;
     out.color = v.color * vec4<f32>(srgb_to_linear(inst.tint.rgb), inst.tint.a);
     out.uv = v.uv;
     out.emissive = v.emissive;

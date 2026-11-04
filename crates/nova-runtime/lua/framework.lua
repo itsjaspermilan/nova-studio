@@ -505,7 +505,7 @@ nova.Entity, nova.Picture, nova.Text = Entity, Picture, Text
 -- each piece is a row in a grid of squares, drawn only when it is near the camera. The `colliders` circles of its model
 -- (made in the model editor, read with nova.model_colliders) stop whatever calls `nova.scenery.push`. An entity class
 -- with `static = true` and a `model` puts itself here when it is spawned (a scene file's trees and road pieces do).
-local scenery = { range = 200 }
+local scenery = {} -- `range` (metres) is unset: Rust draws out to where the fog has covered everything, or 300 m without fog
 nova.scenery = scenery
 local SCENERY_CELL = 40
 local solid_bins, piece_count = {}, 0
@@ -549,7 +549,7 @@ function scenery.add(model, x, y, z, opts)
 end
 
 --- Draws the pieces within `radius` metres of (cx, cz). The framework does this by itself around the camera every frame
---- (out to `nova.scenery.range`, 200 by default; 0 turns it off).
+--- (out to `nova.scenery.range`, if set, else to where the fog ends or 300 m; 0 turns it off). The last 12% of the range fades out.
 function scenery.draw(cx, cz, radius)
   raw.draw_retained(cx, cz, radius)
 end
@@ -1836,7 +1836,7 @@ local function frame_draw()
   local scene = W.scene
   if scene then
     if scene.draw then scene:draw() end
-    if piece_count > 0 and scenery.range > 0 then scenery.draw(eye_x, eye_z, scenery.range) end
+    if piece_count > 0 and (scenery.range or 1) > 0 then scenery.draw(eye_x, eye_z, scenery.range) end
     if scene.draw_ui then scene:draw_ui() end
   end
 end

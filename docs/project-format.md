@@ -160,7 +160,7 @@ first finger); `nova.ui.choose { rects, current }` runs a whole selection (keys 
 
 **Static scenery.** A level has thousands of trees, road pieces and barriers that never move. Do not make them live
 entities: give the entity class `static = true` and a model, and a scene file's objects of that kind go into
-`nova.scenery`, a grid of squares drawn only near the camera (out to `nova.scenery.range` metres, 200 by default):
+`nova.scenery`, a grid of squares drawn only near the camera (out to `nova.scenery.range` metres if you set it, else to where the fog has covered everything, or 300 m without fog; the last 12% fades out):
 
 ```lua
 -- entities/pine.lua
@@ -179,7 +179,7 @@ if dx then self.x, self.z = self.x + dx, self.z + dz end
 `nova.scenery.ahead(x, z, dx, dz, length, radius)` looks along a line, as wide as a circle of `radius`, and returns how far away the nearest solid circle is and
 where it is (`distance, cx, cz, cr`), or nothing: how a car or a character sees what is coming to steer round it.
 
-Scenery is kept in Rust and put into the frame without a Lua call for each piece (a call per model costs about a microsecond, so a town of 3,000 pieces would otherwise cost milliseconds a frame). **Level of detail:** a piece can name a cheaper model for when it is far away: `static = true, model = "building", lod = "building_far", lod_distance = 120` on the class (or `lod` and `lod_distance` in the options of `nova.scenery.add`); beyond `lod_distance` metres (on the ground, from the camera, 100 by default) the far model is drawn at the same place, turn and size, so make both models with the same pivot. Models with `clip` or `parts` are not scenery.
+Scenery is kept in Rust and put into the frame without a Lua call for each piece (a call per model costs about a microsecond, so a town of 3,000 pieces would otherwise cost milliseconds a frame). **Level of detail:** a piece can name a cheaper model for when it is far away: `static = true, model = "building", lod = "building_far", lod_distance = 120` on the class (or `lod` and `lod_distance` in the options of `nova.scenery.add`); beyond `lod_distance` metres (on the ground, from the camera, 100 by default) the far model is drawn at the same place, turn and size, so make both models with the same pivot. The two trade places over `lod_fade` metres (15% of `lod_distance` by default): both are drawn there, each fading by a fixed screen-door noise that fills every pixel once between them, so a piece does not pop. Models with `clip` or `parts` are not scenery.
 
 `nova.scenery.add(model, x, y, z, opts)` adds a piece from a script; the scenery is emptied when a scene ends. A static
 entity runs no code, so for a piece that also needs to do something (a lamp that gives a light), use an ordinary entity

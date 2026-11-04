@@ -36,6 +36,15 @@ impl ModelInstance {
         matrix[0][3] = joint_base as f32;
         Self { matrix, tint }
     }
+
+    /// The same instance fading by a screen-door: `amount` in (0, 1) is the share of its pixels dropped when negative-signed
+    /// (`-0.3` drops 30%) or the share kept when positive (`0.3` keeps 30%), by a fixed noise, so that a near copy at `-t`
+    /// and a far copy at `+t` together fill every pixel exactly once: a change of level of detail without a pop. Rides in the
+    /// w slot of the matrix's second column (zero in an affine matrix; the shaders read it and zero it).
+    pub fn dissolving(mut self, amount: f32) -> Self {
+        self.matrix[1][3] = amount;
+        self
+    }
 }
 
 /// Per vertex of a skinned mesh: which joints pull it (numbers within the skin) and how hard.

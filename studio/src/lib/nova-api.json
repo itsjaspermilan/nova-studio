@@ -73,7 +73,7 @@
   "name": "nova.scenery",
   "kind": "namespace",
   "signature": "nova.scenery",
-  "doc": "The static scenery: trees, road pieces and barriers that never move, kept cheaply and drawn only near the camera (out to `nova.scenery.range` metres, 200 by default, 0 for none). An entity class with `static = true` and a model puts itself here.",
+  "doc": "The static scenery: trees, road pieces and barriers that never move, kept cheaply and drawn only near the camera (out to `nova.scenery.range` metres if you set it, else to where the fog ends or 300 m; 0 for none; the last 12% of the range fades out instead of vanishing). An entity class with `static = true` and a model puts itself here.",
   "group": "3D"
  },
  {
@@ -87,7 +87,7 @@
   "name": "nova.scenery.add",
   "kind": "function",
   "signature": "nova.scenery.add(model, x, y, z [, { ry, scale, tint, shadow, lod, lod_distance }])",
-  "doc": "Puts a model into the static scenery: pieces that never move. `lod` names a cheaper model drawn instead beyond `lod_distance` metres (100 by default). It is drawn only near the camera and its collision circles block `nova.scenery.push`. A scene file's objects whose entity class has `static = true` do this for you.",
+  "doc": "Puts a model into the static scenery: pieces that never move. `lod` names a cheaper model drawn instead beyond `lod_distance` metres (100 by default); the two trade places over `lod_fade` metres (15% of the distance by default), each fading by a screen-door, so nothing pops. It is drawn only near the camera and its collision circles block `nova.scenery.push`. A scene file's objects whose entity class has `static = true` do this for you.",
   "group": "3D"
  },
  {

@@ -84,3 +84,24 @@ The Snapdragon 8 Gen 2 is slower than an M4 by roughly 2 to 2.5 times on one CPU
 Run `scripts/bench.sh`, then replace the estimates above with the `gpu=`, `lua=` and `fps=` columns. If `gpu` is 0, the
 adapter has no timestamp queries and the log's `fps` and `p95` are all there is. Then look at the three costs in the order
 above and decide what to build.
+
+## Pop-in
+
+Things that appear or change suddenly are the visible cost of every saving above, so each one has a rule:
+
+- **Culling** (camera and sun) uses a bounding sphere grown by the instance's scale, never smaller than the mesh, so nothing is
+  dropped while any of it is in view. A shadow can still start or stop at the edge of the sun's box (`nova.shadows` radius);
+  that is the shadow map's own limit.
+- **The far plane** follows the fog and stops 5% past where it is complete, so nothing is clipped that was still visible.
+- **Scenery range** by default reaches where the fog has covered everything (300 m without fog), not a fixed 200, and the last
+  12% fades out by a screen-door instead of vanishing. Setting `nova.scenery.range` yourself under the fog distance brings
+  the edge back, so leave it alone.
+- **Level of detail** is a crossfade: across `lod_fade` metres both models are drawn, the near one dropping the pixels the far
+  one keeps (fixed noise per pixel, so it does not shimmer), so every pixel is drawn once and the picture changes a little
+  at a time. A test measures it: the biggest step between pictures a metre apart is under a third of the whole change with the
+  fade, and nearly all of it in one step without. The stipple is visible if you look for it in a screenshot; at 540p it is small.
+- Still pops: voxel chunks and lights. A chunk appears when a worker finishes it, so a fast player outruns the world (the
+  loading radius against walking speed is the game's to choose); the 16 nearest point lights are re-picked every frame, so a
+  light can switch on as another leaves the set (fading lights in and out is in the TODO). Models that are `nova.model`, not
+  scenery, have no level of detail yet, and the far model must be made to match the near one: Kenney's low-detail buildings
+  in the stress city are stretched to size but are not the same buildings, so they change shape as they swap.

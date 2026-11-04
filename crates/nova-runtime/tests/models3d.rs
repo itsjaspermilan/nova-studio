@@ -1127,3 +1127,84 @@ fn far_scenery_draws_its_cheaper_model() {
     assert_ne!(near, far, "the far model is another mesh");
     assert_eq!(near_matrix, far_matrix, "in the same place");
 }
+
+/// Does the picture jump as a piece of scenery changes to its far model? The camera and the piece stay put and the
+/// distance at which the change happens is moved past the piece in steps, which is the same as walking away from it. The
+/// largest step between two neighbouring pictures is compared with the whole difference between the near and the far
+/// model: a hard swap does it all in one step, a crossfade spreads it over the steps. (Skipped without a GPU.)
+#[test]
+fn changing_to_the_far_model_does_not_pop_when_it_fades() {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        backends: wgpu::Backends::PRIMARY,
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
+    });
+    let mut gfx = match Gfx::new(&instance, None) {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("skipping GPU test: {e}");
+            return;
+        }
+    };
+    // the piece is 8 m away; `lod_distance` D with a fade of 10 m is all near at D = 13 and all far at D = 3
+    let mut shot = |lod_distance: f32, fade: f32| -> Vec<u8> {
+        let script = format!(
+            "local added = false
+nova.scenery.range = 0
+function update(dt)
+  if not added then
+    nova.scenery.add('car', 0, 0, -8, {{ lod = 'post', lod_distance = {lod_distance}, lod_fade = {fade}, scale = 8 }})
+    added = true
+  end
+  nova.camera(0, 2, 0, 0, 1, -8, 60)
+  nova.scenery.draw(0, 0, 100)
+end"
+        );
+        let vfs: Rc<dyn Vfs> = Rc::new(MemVfs::new(vec![
+            ("nova.json", br#"{"format":1,"name":"T"}"#.to_vec()),
+            ("models/car.glb", CAR.to_vec()),
+            (
+                "models/post.glb",
+                include_bytes!("fixtures/studio_model_colliders.glb").to_vec(),
+            ),
+            ("main.lua", script.into_bytes()),
+        ]));
+        let mut g = Game::load(vfs).expect("loads");
+        g.upload(&mut gfx);
+        for _ in 0..2 {
+            g.update(1.0 / 60.0, 0.0, [320.0, 180.0], Actions::default(), false);
+        }
+        assert!(g.error.is_none(), "{:?}", g.error);
+        gfx.capture((320, 180), &g.frame_input(0))
+    };
+    let diff = |a: &[u8], b: &[u8]| -> f64 {
+        a.iter()
+            .zip(b)
+            .map(|(x, y)| (*x as f64 - *y as f64).abs())
+            .sum::<f64>()
+            / a.len() as f64
+    };
+    let steps = |fade: f32, shot: &mut dyn FnMut(f32, f32) -> Vec<u8>| -> (f64, f64) {
+        let pictures: Vec<Vec<u8>> = (0..=10).map(|i| shot(13.0 - i as f32, fade)).collect();
+        let whole = diff(&pictures[0], &pictures[10]);
+        let biggest = pictures
+            .windows(2)
+            .map(|w| diff(&w[0], &w[1]))
+            .fold(0.0, f64::max);
+        (whole, biggest)
+    };
+    let (whole, biggest) = steps(10.0, &mut shot);
+    assert!(
+        whole > 0.5,
+        "the two models must look different for this to mean anything: {whole}"
+    );
+    assert!(
+        biggest < 0.35 * whole,
+        "a fade spreads the change over the steps: biggest step {biggest:.3} of {whole:.3}"
+    );
+    // and the same measure does see a hard swap (no fade): nearly all of it in one step
+    let (whole, biggest) = steps(0.0, &mut shot);
+    assert!(
+        biggest > 0.8 * whole,
+        "without a fade it is one jump: biggest step {biggest:.3} of {whole:.3}"
+    );
+}
