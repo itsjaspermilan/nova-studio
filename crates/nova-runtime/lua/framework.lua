@@ -807,6 +807,59 @@ function ui.choose(o)
   return i, accepted, i ~= (o.current or 1)
 end
 
+--- A scrolling list or grid, with the choosing done: up and down (and left and right in a grid) by the d-pad or arrow keys, the
+--- pointer (a mouse, a finger or the pad cursor: hovering chooses, a click accepts) and the wheel, A or start to accept.
+--- o: x, y (top left), w (width of a cell, 300), h (height, 32), gap (4), count (items), visible (how many ROWS show, all by
+--- default), columns (1), current (the chosen item, 1), top (the first row shown, 1: pass back what the last call gave).
+--- Gives { current, top, accepted, moved, rows, more_above, more_below, hover }: `rows` is one rectangle { x, y, w, h, index }
+--- for each cell that shows, in order, to draw the items into; `hover` is the item under the pointer, if any.
+function ui.list(o)
+  local n = o.count or 0
+  local cols = math.max(1, o.columns or 1)
+  local nrows = math.max(1, math.ceil(n / cols))
+  local vis = math.max(1, math.min(o.visible or nrows, nrows))
+  local w, h, gap = o.w or 300, o.h or 32, o.gap or 4
+  local start = math.max(1, math.min(o.current or 1, math.max(n, 1)))
+  local cur = start
+  local p = nova.input.pointer()
+  local accepted = nova.input.pressed("a") or nova.input.pressed("start")
+  if n > 0 then
+    local step_y = cols
+    if cols > 1 then
+      if nova.input.pressed("left") then cur = cur - 1 end
+      if nova.input.pressed("right") then cur = cur + 1 end
+    end
+    if nova.input.pressed("up") then cur = cur - step_y end
+    if nova.input.pressed("down") then cur = cur + step_y end
+    if p.wheel ~= 0 then cur = cur - (p.wheel > 0 and 1 or -1) * step_y end
+    cur = math.max(1, math.min(cur, n))
+  end
+  -- keep the chosen row in view
+  local row_of = math.ceil(cur / cols)
+  local top = math.max(1, math.min(o.top or 1, nrows - vis + 1))
+  if row_of < top then top = row_of end
+  if row_of > top + vis - 1 then top = row_of - vis + 1 end
+  local rows = {}
+  for r = top, math.min(top + vis - 1, nrows) do
+    for c = 1, cols do
+      local i = (r - 1) * cols + c
+      if i <= n then rows[#rows + 1] = { x = o.x + (c - 1) * (w + gap), y = o.y + (r - top) * (h + gap), w = w, h = h, index = i } end
+    end
+  end
+  local hover
+  if p.present then
+    for _, r in ipairs(rows) do
+      if p.x >= r.x and p.x < r.x + r.w and p.y >= r.y and p.y < r.y + r.h then
+        hover = r.index
+        if p.dx ~= 0 or p.dy ~= 0 or p.pressed then cur = r.index end
+        if p.pressed then accepted = true end
+      end
+    end
+  end
+  return { current = cur, top = top, accepted = accepted and n > 0, moved = cur ~= start, rows = rows,
+           more_above = top > 1, more_below = top + vis - 1 < nrows, hover = hover }
+end
+
 local function spawn(what, x, y, props)
   local cls = finalize(resolve(what, "entity"))
   local e = setmetatable({}, cls)

@@ -2324,3 +2324,154 @@ fn text_aligned_without_a_width_is_centred_or_right_aligned_around_the_point() {
         "right-aligned text ends at x ({right_edge})"
     );
 }
+
+#[test]
+fn a_stick_can_be_a_pointer() {
+    use nova_runtime::actions::{InputFrame, PointerFrame};
+    let mut g = project(vec![(
+        "main.lua",
+        lua(
+            "nova.input.cursor(true, { speed = 600 })
+function update(dt)
+  local p = nova.input.pointer()
+  nova.log(string.format('%s %.0f %.0f %s %s', tostring(p.present), p.x, p.y, tostring(p.pressed), tostring(p.down)))
+end",
+        ),
+    )]);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let frame = |g: &mut Game, sources: &[(&str, f32)], pointer: PointerFrame| {
+        let input = InputFrame {
+            sources: sources.iter().map(|(k, v)| (k.to_string(), *v)).collect(),
+            pointer,
+            ..Default::default()
+        };
+        g.update_input(1.0 / 60.0, 0.0, [1000.0, 600.0], &input);
+        logs(g).last().cloned().unwrap_or_default()
+    };
+    // nothing touched: there is no pointer
+    assert!(frame(&mut g, &[], PointerFrame::default()).starts_with("false"));
+    // the right stick pushed right for 30 frames: 30 x 600 / 60 = 300 units to the right of the middle (500, 300)
+    let mut last = String::new();
+    for _ in 0..30 {
+        last = frame(&mut g, &[("axis:right_x", 1.0)], PointerFrame::default());
+    }
+    let parts: Vec<&str> = last.split(' ').collect();
+    assert_eq!(parts[0], "true");
+    let x: f32 = parts[1].parse().unwrap();
+    assert!((x - 800.0).abs() < 12.0, "moved about 300 right: {last}");
+    assert_eq!(parts[2], "300");
+    // A clicks: pressed on the first frame only, down while held
+    let first = frame(&mut g, &[("pad:south", 1.0)], PointerFrame::default());
+    assert!(first.ends_with("true true"), "{first}");
+    let held = frame(&mut g, &[("pad:south", 1.0)], PointerFrame::default());
+    assert!(held.ends_with("false true"), "{held}");
+    // a stick inside the dead zone does not move it
+    let still = frame(&mut g, &[("axis:right_x", 0.1)], PointerFrame::default());
+    assert!(
+        still.starts_with("true 800 300")
+            || still.starts_with("true 799")
+            || still.starts_with("true 80"),
+        "{still}"
+    );
+    // a real pointer takes over where it is
+    let mouse = PointerFrame {
+        present: true,
+        x: 100.0,
+        y: 50.0,
+        dx: 4.0,
+        dy: 1.0,
+        ..Default::default()
+    };
+    assert!(frame(&mut g, &[], mouse).starts_with("true 100 50"));
+}
+
+#[test]
+fn a_list_scrolls_with_the_keys_the_wheel_and_the_pointer() {
+    use nova_runtime::actions::{InputFrame, PointerFrame};
+    let mut g = project(vec![(
+        "main.lua",
+        lua(
+            "local cur, top = 1, 1
+local cols = 1
+function update(dt)
+  if nova.input.pressed('l1') then cols = 3 end
+  local r = nova.ui.list{ x = 10, y = 20, w = 100, h = 20, gap = 0, count = 20, visible = 5, columns = cols, current = cur, top = top }
+  cur, top = r.current, r.top
+  nova.log(string.format('%d %d %s %d %s %s %s', cur, top, tostring(r.accepted), #r.rows, tostring(r.more_above), tostring(r.more_below), tostring(r.hover)))
+end",
+        ),
+    )]);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let frame = |g: &mut Game, key: &str, pointer: PointerFrame| {
+        let input = InputFrame {
+            sources: if key.is_empty() {
+                Default::default()
+            } else {
+                [(key.to_string(), 1.0)].into_iter().collect()
+            },
+            pointer,
+            ..Default::default()
+        };
+        g.update_input(1.0 / 60.0, 0.0, [1000.0, 600.0], &input);
+        assert!(g.error.is_none(), "{:?}", g.error);
+        let l = logs(g).last().cloned().unwrap();
+        l.split(' ').map(String::from).collect::<Vec<_>>()
+    };
+    let none = PointerFrame::default();
+    let first = frame(&mut g, "", none);
+    assert_eq!(first, ["1", "1", "false", "5", "false", "true", "nil"]);
+    // down seven times: the list scrolls to keep the chosen row in view
+    let mut last = first;
+    for _ in 0..7 {
+        frame(&mut g, "", none);
+        last = frame(&mut g, "key:ArrowDown", none);
+    }
+    assert_eq!((last[0].as_str(), last[1].as_str()), ("8", "4"), "{last:?}");
+    assert_eq!((last[4].as_str(), last[5].as_str()), ("true", "true"));
+    // up goes back, and stops at the first
+    for _ in 0..30 {
+        frame(&mut g, "", none);
+        last = frame(&mut g, "key:ArrowUp", none);
+    }
+    assert_eq!((last[0].as_str(), last[1].as_str()), ("1", "1"), "{last:?}");
+    // the pointer: over the third visible row (y 60 to 80) it chooses it, and a click accepts
+    let over = PointerFrame {
+        present: true,
+        x: 50.0,
+        y: 70.0,
+        dx: 1.0,
+        ..Default::default()
+    };
+    let hovered = frame(&mut g, "", over);
+    assert_eq!(
+        (hovered[0].as_str(), hovered[6].as_str()),
+        ("3", "3"),
+        "{hovered:?}"
+    );
+    let click = PointerFrame {
+        present: true,
+        x: 50.0,
+        y: 70.0,
+        pressed: true,
+        down: true,
+        ..Default::default()
+    };
+    assert_eq!(frame(&mut g, "", click)[2], "true");
+    // the wheel scrolls the choice
+    let wheel = PointerFrame {
+        present: true,
+        x: 900.0,
+        y: 500.0,
+        wheel: -2.0,
+        ..Default::default()
+    };
+    assert_eq!(frame(&mut g, "", wheel)[0], "4");
+    // a grid: three columns, so down moves a whole row
+    frame(&mut g, "pad:l1", none);
+    let g1 = frame(&mut g, "", none);
+    assert_eq!(g1[3], "15", "five rows of three show: {g1:?}");
+    let before: usize = g1[0].parse().unwrap();
+    frame(&mut g, "", none);
+    let after: usize = frame(&mut g, "key:ArrowDown", none)[0].parse().unwrap();
+    assert_eq!(after, before + 3);
+}

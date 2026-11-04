@@ -729,3 +729,15 @@ engine calls (`(engine) draw`, `(engine) pump_chunks`) that took the most time. 
 same profiler, and `nova.profile_report(15)` gives the list for an on-screen display. It looks at which function is running
 every couple of thousand VM instructions and charges it the time since the last look, and it times calls into the engine
 by name, so a slow `nova.*` call is not blamed on the Lua function around it. The scripts run somewhat slower while it is on.
+
+## UI helpers for menus
+
+`nova.ui.list{ x, y, count, visible, current, top, w, h, gap, columns }` is a scrolling list or grid with the choosing done:
+up and down (left and right in a grid) by the d-pad or arrow keys, the mouse wheel, and the pointer (hovering chooses, a click
+accepts), and A or start accepts. Pass back the `current` and `top` it returned; it gives `rows` (a rectangle with an
+`index` for each cell that shows, to draw the items into), `more_above` and `more_below` for scroll hints, and `hover`.
+
+`nova.input.cursor(true)` gives a gamepad a pointer: the right stick moves a cursor over the screen, A or the right trigger
+clicks, and `nova.input.pointer()` reports it like a mouse, so every menu built for a mouse or a finger (`nova.ui.list`,
+`nova.ui.choose`, `nova.ui.clicked`) works with a controller. A real mouse or a touch takes the pointer back. Options:
+`speed` (700 units a second), `stick` (`"right"` or `"left"`) and `draw` (a small cross while it is in use).

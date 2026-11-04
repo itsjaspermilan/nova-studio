@@ -1230,5 +1230,19 @@
   "signature": "nova.profile_report([top]) -> { total_ms, functions = { { name, ms, share, samples }, ... } }",
   "doc": "The functions that took the most script time since nova.profile(true), most first (15 by default): the name and where it is defined, the milliseconds charged to it, its share of the total and the samples. For an on-screen list of what is slow; `nova run --headless --profile` prints the same at the end of a run.",
   "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.input.cursor",
+  "kind": "function",
+  "signature": "nova.input.cursor(on [, { speed, stick, draw }])",
+  "doc": "A pointer for a gamepad. While it is on, the right stick (or the left with `stick = \"left\"`) moves a cursor over the screen (`speed` units a second, 700) and A or the right trigger clicks, and `nova.input.pointer()` reports it like a mouse: present, x, y, dx, dy, down, pressed, released, so menus built for a mouse or a finger work on a handheld too (`nova.ui.list`, `nova.ui.choose`, `nova.ui.clicked`). It draws a small cross (`draw = false` to draw your own) while it is in use; moving a real mouse or touching the screen hands the pointer back.",
+  "group": "Input"
+ },
+ {
+  "name": "nova.ui.list",
+  "kind": "function",
+  "signature": "nova.ui.list{ x, y, count, visible, current, top [, w, h, gap, columns] } -> { current, top, accepted, moved, rows, more_above, more_below, hover }",
+  "doc": "A scrolling list or grid with the choosing done. Up and down (and left and right when `columns` is more than 1) by the d-pad or arrow keys, the wheel, and the pointer (a mouse, a finger, or the gamepad cursor of nova.input.cursor): hovering chooses, a click accepts; A or start accepts too. `visible` is how many rows show at once; pass back the `current` and `top` it gave last time. `rows` is one rectangle { x, y, w, h, index } for each cell that shows, to draw the items into; `more_above` and `more_below` say whether to draw a scroll hint; `hover` is the item under the pointer.",
+  "group": "Drawing"
  }
 ]

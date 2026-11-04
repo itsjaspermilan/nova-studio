@@ -121,6 +121,10 @@ struct Shared {
     /// The voxel world (`nova.voxel`), and the mesh of each block kind drawn as a lone cube.
     voxel: crate::voxel::World,
     cubes: HashMap<u8, usize>,
+    cursor: PadCursor,
+    /// This frame's sources and length, for the cursor (kept only while it is on).
+    cursor_sources: HashMap<String, f32>,
+    frame_dt: f32,
     /// For the profiler: the script time limit's clock and what has been seen.
     deadline: Rc<Cell<Option<Instant>>>,
     profile: Rc<RefCell<Profile>>,
@@ -153,6 +157,58 @@ impl Shared {
             wheel: acc.wheel,
             ..self.pointer_now
         };
+        if self.cursor.enabled {
+            self.cursor_step();
+        }
+    }
+
+    /// The pad cursor's part of a step: a stick moves it, a button clicks it, and while it is in use it is the pointer.
+    fn cursor_step(&mut self) {
+        let dt = if self.fixed_steps {
+            1.0 / 60.0
+        } else {
+            self.frame_dt
+        };
+        let get = |k: &str| self.cursor_sources.get(k).copied().unwrap_or(0.0);
+        let (ax, ay) = if self.cursor.left_stick {
+            (get("axis:left_x"), get("axis:left_y"))
+        } else {
+            (get("axis:right_x"), get("axis:right_y"))
+        };
+        let dead = |v: f32| if v.abs() < 0.2 { 0.0 } else { v };
+        let (sx, sy) = (dead(ax), dead(ay));
+        let down = get("pad:south") > 0.5 || get("axis:r2") > 0.5;
+        let real_moved =
+            self.pointer_step.dx != 0.0 || self.pointer_step.dy != 0.0 || self.pointer_step.pressed;
+        let c = &mut self.cursor;
+        if c.x == 0.0 && c.y == 0.0 {
+            (c.x, c.y) = (self.view[0] * 0.5, self.view[1] * 0.5);
+        }
+        if real_moved {
+            // a mouse or a finger takes over, and the cursor will start from where it is
+            c.active = false;
+            (c.x, c.y) = (self.pointer_step.x, self.pointer_step.y);
+        } else if sx != 0.0 || sy != 0.0 {
+            c.active = true;
+        }
+        let (dx, dy) = (sx * c.speed * dt, sy * c.speed * dt);
+        if c.active {
+            c.x = (c.x + dx).clamp(0.0, self.view[0]);
+            c.y = (c.y + dy).clamp(0.0, self.view[1]);
+            self.pointer_step = actions::PointerFrame {
+                present: true,
+                x: c.x,
+                y: c.y,
+                dx,
+                dy,
+                down,
+                pressed: down && !c.was_down,
+                released: !down && c.was_down,
+                wheel: self.pointer_step.wheel,
+                ..actions::PointerFrame::default()
+            };
+        }
+        c.was_down = down;
     }
 }
 
@@ -306,6 +362,34 @@ pub struct Game {
     checked: Instant,
     last_flush: Instant,
     save_dir: Option<std::path::PathBuf>,
+}
+
+/// A pointer moved by a gamepad stick, for menus built for a mouse (`nova.input.cursor`).
+struct PadCursor {
+    enabled: bool,
+    /// The stick has been used since the real pointer last moved.
+    active: bool,
+    draw: bool,
+    left_stick: bool,
+    speed: f32,
+    x: f32,
+    y: f32,
+    was_down: bool,
+}
+
+impl Default for PadCursor {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            active: false,
+            draw: true,
+            left_stick: false,
+            speed: 700.0,
+            x: 0.0,
+            y: 0.0,
+            was_down: false,
+        }
+    }
 }
 
 /// What the Lua profiler has seen: time charged to the function that was running when each sample was taken.
@@ -1383,6 +1467,38 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             Ok(t)
         })?,
     )?;
+    // cursor(on, { speed, stick, draw }): a stick moves a pointer and a button clicks it, for menus built for a mouse
+    let s = shared.clone();
+    input.set(
+        "cursor",
+        lua.create_function(move |_, (on, opts): (bool, Option<Table>)| {
+            let mut sh = s.borrow_mut();
+            sh.cursor.enabled = on;
+            if !on {
+                sh.cursor.active = false;
+                return Ok(());
+            }
+            if let Some(v) = number_option(&opts, "speed")? {
+                sh.cursor.speed = (v as f32).clamp(50.0, 5000.0);
+            }
+            match string_option(&opts, "stick")?.as_deref() {
+                None => {}
+                Some("right") => sh.cursor.left_stick = false,
+                Some("left") => sh.cursor.left_stick = true,
+                Some(other) => {
+                    return Err(lua_err(format!(
+                        "stick must be 'right' or 'left', not '{other}'"
+                    )));
+                }
+            }
+            if let Some(o) = &opts
+                && let Some(d) = o.get::<Option<bool>>("draw")?
+            {
+                sh.cursor.draw = d;
+            }
+            Ok(())
+        })?,
+    )?;
     // grab_mouse(true): lock the cursor to the window and hide it, so that the mouse can turn a camera without end
     let s = shared.clone();
     input.set(
@@ -2105,6 +2221,9 @@ impl Game {
             skin_used: HashMap::new(),
             voxel: crate::voxel::World::new(),
             cubes: HashMap::new(),
+            cursor: PadCursor::default(),
+            cursor_sources: HashMap::new(),
+            frame_dt: 1.0 / 60.0,
             deadline: Rc::new(Cell::new(None)),
             profile: Rc::new(RefCell::new(Profile::default())),
             camera: DEFAULT_CAMERA,
@@ -2339,16 +2458,20 @@ impl Game {
             let bindings = sh.bindings.clone();
             sh.states
                 .update(&bindings, &input.sources, &input.overrides);
+            sh.frame_dt = dt;
+            if sh.cursor.enabled {
+                sh.cursor_sources.clone_from(&input.sources);
+            }
             if input.last_source.is_some() {
                 sh.last_source = input.last_source.clone();
                 sh.pending_source = input.last_source.clone();
             }
             sh.take_pointer(&input.pointer);
+            sh.view = view; // (before the pointer step, which keeps the pad cursor inside it)
             if !sh.fixed_steps {
                 sh.states.begin_step(); // without the framework every frame is one step
                 sh.begin_pointer_step();
             }
-            sh.view = view;
             sh.time = time;
         }
         if self.error.is_none() {
@@ -2409,6 +2532,27 @@ impl Game {
         sh.lighting.point_count = 0; // point lights last one frame; the sun and ambient stay
         self.clear = sh.clear;
         let white = sh.layout.white_uv();
+        // the pad cursor, drawn over everything while it is in use
+        if sh.cursor.enabled && sh.cursor.active && sh.cursor.draw {
+            let (x, y) = (sh.cursor.x, sh.cursor.y);
+            for (dx, dy, w, h, color) in [
+                (-1.0, -9.0, 2.0, 18.0, [255, 255, 255, 255]),
+                (-9.0, -1.0, 18.0, 2.0, [255, 255, 255, 255]),
+                (-2.0, -10.0, 4.0, 20.0, [0, 0, 0, 170]),
+                (-10.0, -2.0, 20.0, 4.0, [0, 0, 0, 170]),
+            ] {
+                // (the dark outline goes first so that the white lines are on top)
+                self.ui.push(SpriteInstance {
+                    center: [x + dx + w * 0.5, y + dy + h * 0.5],
+                    size: [w, h],
+                    uv: white,
+                    color,
+                    rotation: 0.0,
+                });
+            }
+            let n = self.ui.len();
+            self.ui[n - 4..].reverse();
+        }
         drop(sh);
         if let Some(error) = &self.error {
             let columns = (((view[0] - 24.0) / 12.0).floor() as usize).max(10);

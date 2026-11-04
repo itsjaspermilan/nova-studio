@@ -648,43 +648,25 @@ function World:open_menu()
   self.menu = { sel = 1, top = 1 }
   self:refresh_menu()
   nova.input.grab_mouse(false)
+  nova.input.cursor(true) -- on a handheld the stick moves a pointer over the menu
 end
 
 local MENU_ROWS, ROW_H = 9, 38
-
-local function menu_rect(w, i)
-  return { x = w / 2 - 344, y = 96 + (i - 1) * ROW_H, w = 380, h = ROW_H - 4 }
-end
 
 function World:menu_update()
   local m = self.menu
   if nova.input.pressed("inventory") or nova.input.pressed("pause") then
     self.menu = nil
+    nova.input.cursor(false)
     nova.input.grab_mouse(true)
     return
   end
+  -- the list does the choosing: keys, wheel, mouse, a finger or the pad cursor
   local w = nova.view()
-  local ptr = nova.input.pointer()
-  local ay = nova.input.axis("move_y")
-  if abs(ay) > 0.6 then
-    if not m.held then m.sel, m.held = max(1, min(#m.rows, m.sel + (ay > 0 and 1 or -1))), true end
-  else
-    m.held = false
-  end
-  if ptr.wheel ~= 0 then m.sel = max(1, min(#m.rows, m.sel - (ptr.wheel > 0 and 1 or -1))) end
-  m.top = max(1, min(m.top, m.sel))
-  if m.sel > m.top + MENU_ROWS - 1 then m.top = m.sel - MENU_ROWS + 1 end
-  local clicked
-  if ptr.present then
-    for i = 1, MENU_ROWS do
-      local r = menu_rect(w, i)
-      if ptr.x >= r.x and ptr.x <= r.x + r.w and ptr.y >= r.y and ptr.y <= r.y + r.h and m.top + i - 1 <= #m.rows then
-        if ptr.dx ~= 0 or ptr.dy ~= 0 then m.sel = m.top + i - 1 end
-        if ptr.pressed then m.sel, clicked = m.top + i - 1, true end
-      end
-    end
-  end
-  if clicked or nova.input.pressed("jump") then
+  local list = nova.ui.list { x = w / 2 - 344, y = 96, w = 380, h = ROW_H - 4, gap = 4, count = #m.rows, visible = MENU_ROWS, current = m.sel, top = m.top }
+  m.sel, m.top, m.cells = list.current, list.top, list.rows
+  m.more_below = list.more_below
+  if list.accepted or nova.input.pressed("jump") then
     local row = m.rows[m.sel]
     if row and row.ok then
       local left, fuel = recipes.make(self.inv, row.r, self.p.fuel or 0, add_to)
@@ -706,11 +688,9 @@ function World:draw_menu(w, h)
   local stations = {}
   for k in pairs(m.near) do stations[#stations + 1] = k:gsub("_", " ") end
   text(x0 + 90, 62, #stations > 0 and ("near: " .. table.concat(stations, ", ")) or "no crafting table or furnace near", 14, { 200, 200, 200 })
-  for i = 1, MENU_ROWS do
-    local row = m.rows[m.top + i - 1]
-    if not row then break end
-    local r = menu_rect(w, i)
-    local selected = m.top + i - 1 == m.sel
+  for _, r in ipairs(m.cells or {}) do
+    local row = m.rows[r.index]
+    local selected = r.index == m.sel
     nova.ui.rect(r.x, r.y, r.w, r.h, selected and { 255, 255, 255, 70 } or { 20, 20, 20, 150 })
     if selected then nova.ui.rect(r.x, r.y, 3, r.h, { 255, 220, 120 }) end
     local dim = row.ok and 255 or 120
@@ -721,7 +701,7 @@ function World:draw_menu(w, h)
     for _, n in ipairs(recipes.needs(self.inv, row.r)) do parts[#parts + 1] = n.name:gsub("_", " ") .. " " .. n.have .. "/" .. n.want end
     text(r.x + 44, r.y + 18, row.ok and table.concat(parts, "   ") or (row.why or ""), 12, row.ok and { 170, 220, 170 } or { 220, 150, 130 })
   end
-  if #m.rows > MENU_ROWS then text(x0 + 190, 96 + MENU_ROWS * ROW_H, (m.top + MENU_ROWS - 1 < #m.rows) and "more below" or "", 12, { 200, 200, 200 }, "center") end
+  if m.more_below then text(x0 + 190, 96 + MENU_ROWS * ROW_H, "more below", 12, { 200, 200, 200 }, "center") end
   -- what is carried
   local gx, gy = x0 + 400, 96
   text(gx, 66, "Carried", 16)
