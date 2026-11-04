@@ -44,7 +44,7 @@ describe("complete: nova members", () => {
   it("filters by what was typed and replaces just that part", () => {
     const text = "local x = 1\nnova.ui.te";
     const c = complete(text, symbols)!;
-    expect(labels(c)).toEqual(["text", "text_size", "text_width"]);
+    expect(labels(c)).toEqual(["text", "text_size", "text_width", "text_field"]);
     expect(c.from).toBe(text.length - 2);
     expect(c.options[0]!.detail).toContain("nova.ui.text(x, y, text");
     expect(c.options[0]!.info).toContain("font");

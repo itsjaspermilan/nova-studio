@@ -192,9 +192,41 @@ Two of the seven things asked for were measured and **not done**, on purpose:
   an enemy costs, so a port saves at most a quarter, and only if entity positions live in Rust, which is a redesign of
   what an entity is. The voxel world's own queries (the ray, the walking box) are Rust already.
 
-Guarded by (the world makes itself, a player lands on it, digging changes a
-chunk, a long walk streams chunks and stays in a band) and 13 unit tests in `voxel.rs` (light, meshes, ray, box, saving,
-noise).
+### The third round: the gaps the game showed
+
+Twelve things Blockfield ran into that an engine can fix, done in order (details in `TODO.md`):
+
+1. **Recorded input** (`--input play.json`, `--record play.json`, `inputscript.rs`): frames of held sources, the pointer and typed
+   text, played back the same every time in headless runs and tests, and written from a real session. It exists because the
+   bug that stopped Blockfield's first window (the held item drawn before the eye had a place, only with items saved) got
+   past every test: the tests could not move a pointer or hold a key for a frame.
+2. **Positional sound** (`nova.sound.play(name, { at = {x, y, z} })`): volume falls to nothing at `range` metres, pan from the
+   camera's right.
+3. **A Lua profiler** (`nova.profile`, `nova.profile_report`, `--profile`): its first run on Blockfield named a loop over 169 chunks
+   with string keys (about 80% of the game's script time) that is now skipped while the ring is whole. It first blamed engine
+   calls on whatever Lua function ran next; it now times calls into the engine by name (`(engine) pump_chunks`).
+4. **UI:** text aligned around a point without a width box; `nova.ui.list` (a scrolling list or grid for keys, wheel and
+   pointer); `nova.input.cursor` (a stick as the pointer, so every pointer menu works with a controller); `nova.ui.cube` (a block as
+   an isometric icon through a new UI mesh pass); text entry (`nova.input.typed`, `nova.ui.text_field`, an on-screen
+   `nova.ui.keyboard`). Blockfield's make menu lost its hand-written scrolling and now names the world from the pause screen.
+5. **Draw cost:** lone cubes (dropped items, particles) sort by kind so equal ones are instanced; the GPU buffers of script-made
+   meshes are reused instead of recreated for every rebuilt piece (a GPU test counts them).
+6. **Lighting and saves off the game thread.** The surprise was that the thread was not the point. A chunk's light made on a
+   worker costs 0.07 ms; the rest, on the game thread, was a border pass that flooded every neighbour that was present but not
+   lit yet (4 ms a chunk in a flat test world). Skipping unlit neighbours (each does its own border when it is lit) made the light of
+   a chunk 20 times cheaper on any thread (0.2 ms), and the workers now take most of the rest. The result is checked against the first
+   implementation, kept as a test-only oracle, for a lone chunk and for a patch of bumpy ground lit in the opposite order.
+   **Loading 113 chunks (release, M4): 40 ms of real time, a mean frame of 0.2 ms and a worst of 1.7 ms**, from 133 ms and 9.3 ms
+   before this round (287 ms and a 12 to 14 ms spike for each chunk before the first). Saves (the periodic `save.json` flush and
+   the world file) are written by another thread.
+7. **A build flake:** the first `cargo test --release` after every edit failed to link, because the release profile's
+   `panic = "abort"` made cargo build the library in two flavours that wrote the same unhashed cdylib file. `panic = "abort"` now
+   applies to the Android targets only (`.cargo/config.toml`; the Android build still gets it).
+
+Guarded by `crates/nova-runtime/tests/blockfield.rs` (the world makes itself, on threads and without; a player lands on it; digging changes a
+chunk; a long walk streams chunks and stays in a band; a recorded session; a saved game with items; icons; naming the world) and the
+unit tests in `voxel.rs` (light against its first implementation, meshes on workers and not, sections, ray, box, saving, noise), `terrain.rs`,
+`save.rs` and `inputscript.rs`.
 
 ### Next probes worth making
 
