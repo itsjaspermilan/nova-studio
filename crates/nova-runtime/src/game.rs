@@ -18,8 +18,8 @@ use crate::actions::{self, ActionStates, Binding, Bindings, InputFrame};
 use crate::assets::{self, AtlasLayout};
 use crate::font;
 use crate::gfx::{
-    Camera, Fog, FrameInput, Gfx, Lighting, MeshWrite, ModelDraw, ModelInstance, PointLight,
-    Shadows, Sky, SpriteInstance,
+    Camera, Fog, FrameInput, Gfx, Lighting, MeshOp, MeshWrite, ModelDraw, ModelInstance,
+    PointLight, Shadows, Sky, SpriteInstance,
 };
 use crate::input::Actions;
 use crate::mixer::{self, Sample};
@@ -57,6 +57,8 @@ fn builtin_module(name: &str) -> Option<&'static str> {
         _ => None,
     }
 }
+
+mod voxel_api;
 
 const DEFAULT_CAMERA: Camera = Camera {
     eye: Vec3::new(0.0, 6.0, -10.0),
@@ -116,6 +118,9 @@ struct Shared {
     /// Vertex rewrites for skinned parts drawn this frame, and how many pool meshes each part has used.
     mesh_writes: Vec<MeshWrite>,
     skin_used: HashMap<String, usize>,
+    /// The voxel world (`nova.voxel`), and the mesh of each block kind drawn as a lone cube.
+    voxel: crate::voxel::World,
+    cubes: HashMap<u8, usize>,
     camera: Camera,
     clear: [f64; 4],
     log: Vec<String>,
@@ -284,6 +289,8 @@ pub struct Game {
     text: Vec<SpriteInstance>,
     models: Vec<ModelDraw>,
     mesh_writes: Vec<MeshWrite>,
+    /// Meshes made by scripts that the renderer has not applied yet (see `clear_mesh_ops`).
+    mesh_ops: Vec<MeshOp>,
     camera: Camera,
     lighting: Lighting,
     clear: [f64; 4],
@@ -1035,6 +1042,8 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             Ok(t)
         })?,
     )?;
+
+    voxel_api::install(lua, shared, vfs, &nova)?;
 
     // --- input: named actions, see docs/project-format.md ---
     let input = lua.create_table()?;
@@ -1932,6 +1941,8 @@ impl Game {
             models: Vec::new(),
             mesh_writes: Vec::new(),
             skin_used: HashMap::new(),
+            voxel: crate::voxel::World::new(),
+            cubes: HashMap::new(),
             camera: DEFAULT_CAMERA,
             clear: srgb_to_linear([0.36, 0.55, 0.78, 1.0]),
             log: Vec::new(),
@@ -1966,6 +1977,7 @@ impl Game {
             text: Vec::new(),
             models: Vec::new(),
             mesh_writes: Vec::new(),
+            mesh_ops: Vec::new(),
             camera: DEFAULT_CAMERA,
             lighting: Lighting::default(),
             clear: srgb_to_linear([0.36, 0.55, 0.78, 1.0]),
@@ -2205,6 +2217,8 @@ impl Game {
         std::mem::swap(&mut sh.text_out, &mut self.text);
         std::mem::swap(&mut sh.models, &mut self.models);
         std::mem::swap(&mut sh.mesh_writes, &mut self.mesh_writes);
+        let made = std::mem::take(&mut sh.voxel.ops);
+        self.mesh_ops.extend(made);
         self.models.sort_by_key(|m| m.mesh); // equal meshes become one instanced draw
         self.camera = sh.camera;
         self.lighting = sh.lighting;
@@ -2256,6 +2270,11 @@ impl Game {
         font::draw_text(&mut self.ui, white, x, y, 2.0, [255, 255, 255, 255], text);
     }
 
+    /// The renderer has applied the meshes scripts made (call after drawing a frame, so each is applied once).
+    pub fn clear_mesh_ops(&mut self) {
+        self.mesh_ops.clear();
+    }
+
     pub fn frame_input(&self, world_height: u32) -> FrameInput<'_> {
         FrameInput {
             clear: self.clear,
@@ -2263,6 +2282,7 @@ impl Game {
             sprites_back: &self.world,
             models: &self.models,
             mesh_writes: &self.mesh_writes,
+            mesh_ops: &self.mesh_ops,
             lighting: self.lighting,
             sprites_front: &self.ui,
             text: &self.text,

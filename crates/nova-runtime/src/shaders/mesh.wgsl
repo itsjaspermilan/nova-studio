@@ -14,6 +14,7 @@ struct Globals {
     fog_range: vec4<f32>,   // x: start, y: complete
     light_view_proj: mat4x4<f32>,
     shadow: vec4<f32>,      // x: 1 when on, y: one texel, z: bias, w: how dark
+    voxel: vec4<f32>,       // x: how bright the sky's light is (voxel meshes)
 };
 @group(0) @binding(0) var<uniform> globals: Globals;
 @group(1) @binding(0) var base_texture: texture_2d<f32>;
@@ -60,7 +61,8 @@ fn vs_main(v: Vertex, inst: Instance) -> VertexOut {
     let world = model * vec4<f32>(v.position, 1.0);
     out.world = world.xyz;
     out.position = globals.view_proj * world;
-    out.normal = normalize((model * vec4<f32>(v.normal, 0.0)).xyz);
+    // voxel meshes (emissive < 0) carry their baked light levels in `normal` instead of a direction
+    out.normal = select(normalize((model * vec4<f32>(v.normal, 0.0)).xyz), v.normal, v.emissive < 0.0);
     out.color = v.color * vec4<f32>(srgb_to_linear(inst.tint.rgb), inst.tint.a);
     out.uv = v.uv;
     out.emissive = v.emissive;
@@ -93,6 +95,21 @@ fn sun_visibility(world: vec3<f32>, normal: vec3<f32>) -> f32 {
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     let base = textureSample(base_texture, base_sampler, in.uv) * in.color;
+    // cut-out textures (leaves, glass, plants): see-through texels are not drawn at all
+    if (base.a < 0.3) {
+        discard;
+    }
+    if (in.emissive < 0.0) {
+        // a voxel surface: light is baked per vertex (x: sky, y: torch/lava), the face shade and ambient occlusion are in the colour
+        let light = in.normal.x * globals.voxel.x * vec3<f32>(1.0) + in.normal.y * vec3<f32>(1.0, 0.86, 0.7);
+        var vrgb = base.rgb * min(light + vec3<f32>(0.03), vec3<f32>(1.0));
+        if (globals.fog_color.w > 0.5) {
+            let d = distance(in.world, globals.eye.xyz);
+            let f = clamp((d - globals.fog_range.x) / (globals.fog_range.y - globals.fog_range.x), 0.0, 1.0);
+            vrgb = mix(vrgb, globals.fog_color.rgb, f);
+        }
+        return vec4<f32>(vrgb, base.a);
+    }
     let n = normalize(in.normal);
     // the sun's share is dimmed in a shadow, down to `1 - strength` of it
     let visible = mix(1.0 - globals.shadow.w, 1.0, sun_visibility(in.world, n));

@@ -5,6 +5,7 @@
 
 use bytemuck::{Pod, Zeroable};
 use glam::Vec3;
+use std::collections::HashMap;
 use wgpu::util::DeviceExt;
 
 use crate::model::{Image, MeshData, MeshVertex};
@@ -85,6 +86,8 @@ pub struct Lighting {
     pub sky: Option<Sky>,
     pub fog: Option<Fog>,
     pub shadows: Option<Shadows>,
+    /// How bright the sky's light is for voxel worlds (`nova.voxel.daylight`): 1 at noon, near 0 at night.
+    pub day: f32,
 }
 
 impl Default for Lighting {
@@ -102,6 +105,7 @@ impl Default for Lighting {
             sky: None,
             fog: None,
             shadows: None,
+            day: 1.0,
         }
     }
 }
@@ -139,6 +143,22 @@ pub struct MeshWrite {
     pub vertices: Vec<MeshVertex>,
 }
 
+/// Meshes a script makes while it runs (a voxel world's chunks), applied before the frame draws. Their ids start at
+/// [`DYN_MESH_BASE`] so they never clash with meshes loaded from model files.
+pub enum MeshOp {
+    /// The picture all voxel meshes sample (one atlas of block faces).
+    SetAtlas(Image),
+    /// Makes or replaces a mesh.
+    Upload {
+        id: usize,
+        vertices: Vec<MeshVertex>,
+        indices: Vec<u32>,
+    },
+    Free(usize),
+}
+
+pub const DYN_MESH_BASE: usize = 1 << 30;
+
 pub struct FrameInput<'a> {
     pub clear: [f64; 4],
     pub camera: Camera,
@@ -147,6 +167,8 @@ pub struct FrameInput<'a> {
     pub models: &'a [ModelDraw],
     /// Vertices to put into meshes before drawing (their ids are used by `models`).
     pub mesh_writes: &'a [MeshWrite],
+    /// Meshes to make or drop before drawing (see [`MeshOp`]).
+    pub mesh_ops: &'a [MeshOp],
     pub lighting: Lighting,
     pub sprites_front: &'a [SpriteInstance],
     /// Text quads (UI layer, native resolution, drawn after `sprites_front`); the UVs index the
@@ -197,6 +219,8 @@ struct Globals {
     light_view_proj: [[f32; 4]; 4],
     /// x: 1 when shadows are on; y: one texel of the shadow map, as a fraction; z: bias; w: how dark a shadow is.
     shadow: [f32; 4],
+    /// x: sky brightness for voxel meshes (0 to 1).
+    voxel: [f32; 4],
 }
 
 /// Side of the (square) shadow map in texels.
@@ -291,6 +315,8 @@ pub struct Gfx {
     globals: wgpu::Buffer,
     globals_group: wgpu::BindGroup,
     meshes: Vec<GpuMesh>,
+    dyn_meshes: HashMap<usize, GpuMesh>,
+    voxel_atlas: Option<wgpu::BindGroup>,
     model_instances: DynBuffer,
     depth: Option<(wgpu::TextureView, (u32, u32))>,
 }
@@ -862,6 +888,8 @@ impl Gfx {
             globals,
             globals_group,
             meshes: Vec::new(),
+            dyn_meshes: HashMap::new(),
+            voxel_atlas: None,
             model_instances,
             depth: None,
         })
@@ -900,6 +928,15 @@ impl Gfx {
                 depth_or_array_layers: 1,
             },
         );
+    }
+
+    /// A mesh by id: loaded from a model file, or made by a script (ids from [`DYN_MESH_BASE`]).
+    fn mesh(&self, id: usize) -> Option<&GpuMesh> {
+        if id >= DYN_MESH_BASE {
+            self.dyn_meshes.get(&id)
+        } else {
+            self.meshes.get(id)
+        }
     }
 
     /// Uploads a mesh once; the returned id is used by [`ModelDraw`].
@@ -1135,6 +1172,7 @@ impl Gfx {
             fog_range: fog.map_or([0.0; 4], |f| [f.near, f.far.max(f.near + 0.001), 0.0, 0.0]),
             light_view_proj,
             shadow,
+            voxel: [lit.day, 0.0, 0.0, 0.0],
         };
         self.queue
             .write_buffer(&self.globals, 0, bytemuck::bytes_of(&globals));
@@ -1151,6 +1189,61 @@ impl Gfx {
         );
         self.sprites_text
             .write(&self.device, &self.queue, bytemuck::cast_slice(input.text));
+        for op in input.mesh_ops {
+            match op {
+                MeshOp::SetAtlas(image) => {
+                    self.voxel_atlas = Some(texture_group(
+                        &self.device,
+                        &self.queue,
+                        &self.texture_layout,
+                        &self.sampler_nearest,
+                        "voxel atlas",
+                        image,
+                    ));
+                    // meshes made earlier keep the old picture until they are rebuilt, which the game does
+                }
+                MeshOp::Upload {
+                    id,
+                    vertices,
+                    indices,
+                } => {
+                    let Some(atlas) = self.voxel_atlas.clone() else {
+                        continue;
+                    };
+                    if indices.is_empty() {
+                        self.dyn_meshes.remove(id);
+                        continue;
+                    }
+                    let vertex_buffer =
+                        self.device
+                            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                                label: Some("voxel vertices"),
+                                contents: bytemuck::cast_slice(vertices),
+                                usage: wgpu::BufferUsages::VERTEX,
+                            });
+                    let index_buffer =
+                        self.device
+                            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                                label: Some("voxel indices"),
+                                contents: bytemuck::cast_slice(indices),
+                                usage: wgpu::BufferUsages::INDEX,
+                            });
+                    self.dyn_meshes.insert(
+                        *id,
+                        GpuMesh {
+                            vertices: vertex_buffer,
+                            indices: index_buffer,
+                            index_count: indices.len() as u32,
+                            texture: atlas,
+                            translucent: vertices.iter().any(|v| v.color[3] < 255),
+                        },
+                    );
+                }
+                MeshOp::Free(id) => {
+                    self.dyn_meshes.remove(id);
+                }
+            }
+        }
         for w in input.mesh_writes {
             // A write for a mesh that is not there, or with a different size, is ignored.
             if let Some(m) = self.meshes.get(w.mesh) {
@@ -1202,7 +1295,10 @@ impl Gfx {
                 {
                     end += 1;
                 }
-                let mesh = &self.meshes[mesh_id];
+                let Some(mesh) = self.mesh(mesh_id) else {
+                    start = end;
+                    continue;
+                };
                 if casts && !mesh.translucent {
                     pass.set_vertex_buffer(0, mesh.vertices.slice(..));
                     pass.set_vertex_buffer(
@@ -1302,7 +1398,10 @@ impl Gfx {
                     while end < input.models.len() && input.models[end].mesh == mesh_id {
                         end += 1;
                     }
-                    let mesh = &self.meshes[mesh_id];
+                    let Some(mesh) = self.mesh(mesh_id) else {
+                        start = end;
+                        continue;
+                    };
                     if mesh.translucent != translucent {
                         start = end;
                         continue;

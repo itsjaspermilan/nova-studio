@@ -212,6 +212,7 @@ pub fn run_headless(opts: Options) -> Result<(), String> {
         content.take_rumble(); // nor a gamepad
         let render_started = Instant::now();
         perf.stats = gfx.render(&view, size, &content.frame_input(opts.world_height));
+        content.frame_done();
         gfx.device
             .poll(wgpu::PollType::wait_indefinitely())
             .map_err(|e| e.to_string())?;
@@ -415,6 +416,7 @@ impl App {
             .create_view(&wgpu::TextureViewDescriptor::default());
         let render_started = Instant::now();
         self.perf.stats = gfx.render(&view, size, &content.frame_input(self.opts.world_height));
+        content.frame_done();
         self.perf.times.render_ms = render_started.elapsed().as_secs_f32() * 1000.0;
         gfx.queue.present(texture);
         self.perf.times.update_ms = build_ms;

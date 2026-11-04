@@ -210,6 +210,13 @@ impl Content {
         }
     }
 
+    /// A frame has been drawn: what scripts built for it (voxel meshes) has reached the GPU.
+    pub fn frame_done(&mut self) {
+        if let Content::Game { game, .. } = self {
+            game.clear_mesh_ops();
+        }
+    }
+
     pub fn plays_sound_effects(&self) -> bool {
         matches!(self, Content::Game { .. })
     }

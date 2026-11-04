@@ -376,8 +376,8 @@
   "signature": "nova.sound.set(id, { volume, pan, pitch })",
   "doc": "Change a sound that is playing: its volume, pan or pitch (any of them). The change glides over a few milliseconds, so call it every frame to make a looping engine follow the revs. A sound that has ended ignores it.",
   "group": "Sound"
-},
-{
+ },
+ {
   "name": "nova.sound.stop_all",
   "kind": "function",
   "signature": "nova.sound.stop_all()",
@@ -929,5 +929,201 @@
   "signature": "self:draw()",
   "doc": "Draw the entity (override for custom drawing).",
   "group": "Entity methods"
+ },
+ {
+  "name": "nova.noise2",
+  "kind": "function",
+  "signature": "nova.noise2(x, z [, seed, octaves, gain]) -> number",
+  "doc": "Smooth, repeatable noise from about -1 to 1 for a place on the ground: the same answer every time for the same seed. `octaves` adds finer layers (each twice as fine, `gain` as strong; 0.5 by default).",
+  "group": "3D"
+ },
+ {
+  "name": "nova.noise3",
+  "kind": "function",
+  "signature": "nova.noise3(x, y, z [, seed, octaves, gain]) -> number",
+  "doc": "The same noise in three dimensions: for caves, clouds and anything that changes with height.",
+  "group": "3D"
+ },
+ {
+  "name": "nova.hash",
+  "kind": "function",
+  "signature": "nova.hash(x, y, z [, seed]) -> number",
+  "doc": "A repeatable random number from 0 up to 1 for a place (whole numbers: the block it is in). Use it instead of math.random when the same place must always give the same answer, like where a tree stands.",
+  "group": "3D"
+ },
+ {
+  "name": "nova.voxel",
+  "kind": "namespace",
+  "signature": "nova.voxel",
+  "doc": "A world of blocks, like a block-building game: chunks of 16 x 128 x 16 blocks, lit by the sun and torches, drawn with soft shading, with a ray and a walking box for gameplay. Block (x, y, z) fills x to x+1, y to y+1, z to z+1; y is up. Call `atlas` and `block` once at load, make chunks, then call `draw` every frame after setting the camera.",
+  "group": "Voxels"
+ },
+ {
+  "name": "nova.voxel.atlas",
+  "kind": "function",
+  "signature": "nova.voxel.atlas(path, tiles_per_row)",
+  "doc": "The picture all blocks take their faces from: a square PNG of equal square tiles, counted from the top left along each row (tile 0, 1, 2 ...). Call it before any `block`.",
+  "group": "Voxels"
+ },
+ {
+  "name": "nova.voxel.block",
+  "kind": "function",
+  "signature": "nova.voxel.block(name, opts) -> id",
+  "doc": "Defines a kind of block and gives its number (1, 2, 3 ... in order; air is 0). Options: tile (all faces) or top, bottom, side, or tiles = {+x, -x, top, bottom, +z, -z}; solid (a body cannot enter), opaque (hides what is behind and stops light), liquid, shape = \"cube\" | \"cross\" (flowers, grass) | \"torch\", glow (0-15 light it gives), dim (light it swallows: water, leaves), cull_same (no faces between two of them: glass), alpha (0-255, less is see-through).",
+  "group": "Voxels"
+ },
+ {
+  "name": "nova.voxel.id",
+  "kind": "function",
+  "signature": "nova.voxel.id(name) -> id | nil",
+  "doc": "The number of a block by name.",
+  "group": "Voxels"
+ },
+ {
+  "name": "nova.voxel.info",
+  "kind": "function",
+  "signature": "nova.voxel.info(block) -> { name, solid, opaque, liquid, glow, tile, side_tile }",
+  "doc": "What a block is. A block is its number or its name everywhere.",
+  "group": "Voxels"
+ },
+ {
+  "name": "nova.voxel.get",
+  "kind": "function",
+  "signature": "nova.voxel.get(x, y, z) -> id",
+  "doc": "The block at a place (air outside the height of the world and in chunks that are not loaded). Positions can be fractions: the block they fall in.",
+  "group": "Voxels"
+ },
+ {
+  "name": "nova.voxel.set",
+  "kind": "function",
+  "signature": "nova.voxel.set(x, y, z, block)",
+  "doc": "Puts a block in without lighting or drawing it: for building a chunk before `finish_chunk`. Use `edit` for changes during play.",
+  "group": "Voxels"
+ },
+ {
+  "name": "nova.voxel.edit",
+  "kind": "function",
+  "signature": "nova.voxel.edit(x, y, z, block) -> boolean",
+  "doc": "Changes a block during play: updates the light, the picture, and what is remembered for saving. False when the chunk is not loaded.",
+  "group": "Voxels"
+ },
+ {
+  "name": "nova.voxel.fill",
+  "kind": "function",
+  "signature": "nova.voxel.fill(x0, y0, z0, x1, y1, z1, block) -> count",
+  "doc": "Fills a box (corners included) the way `set` does, quickly.",
+  "group": "Voxels"
+ },
+ {
+  "name": "nova.voxel.carve",
+  "kind": "function",
+  "signature": "nova.voxel.carve(x0, y0, z0, x1, y1, z1, { through, seed, scale, threshold, kind, squash }) -> count",
+  "doc": "Digs caves into a box wherever 3D noise says so, but only out of the blocks listed in `through`. kind = \"tunnel\" (winding passages, the default, threshold around 0.1) or \"cavern\" (blobs, where noise is above the threshold). `scale` is how stretched the noise is (0.05), `squash` stretches it up and down.",
+  "group": "Voxels"
+ },
+ {
+  "name": "nova.voxel.create_chunk",
+  "kind": "function",
+  "signature": "nova.voxel.create_chunk(cx, cz)",
+  "doc": "Makes an empty chunk (chunk numbers: x and z divided by 16, rounded down).",
+  "group": "Voxels"
+ },
+ {
+  "name": "nova.voxel.finish_chunk",
+  "kind": "function",
+  "signature": "nova.voxel.finish_chunk(cx, cz)",
+  "doc": "Works out the light of a chunk you have filled with `set`, `fill` and `carve`. It is drawn once it and the eight chunks around it are finished.",
+  "group": "Voxels"
+ },
+ {
+  "name": "nova.voxel.has_chunk",
+  "kind": "function",
+  "signature": "nova.voxel.has_chunk(cx, cz) -> boolean",
+  "doc": "Whether the chunk is loaded.",
+  "group": "Voxels"
+ },
+ {
+  "name": "nova.voxel.unload_chunk",
+  "kind": "function",
+  "signature": "nova.voxel.unload_chunk(cx, cz)",
+  "doc": "Forgets a chunk and its picture. Save its edits first.",
+  "group": "Voxels"
+ },
+ {
+  "name": "nova.voxel.export_edits",
+  "kind": "function",
+  "signature": "nova.voxel.export_edits(cx, cz) -> string | nil",
+  "doc": "What the player changed in a chunk (by `edit`) as short text to put in a save, or nothing when it is untouched.",
+  "group": "Voxels"
+ },
+ {
+  "name": "nova.voxel.import_edits",
+  "kind": "function",
+  "signature": "nova.voxel.import_edits(cx, cz, text) -> count",
+  "doc": "Puts saved changes back into a chunk after generating it and before `finish_chunk`.",
+  "group": "Voxels"
+ },
+ {
+  "name": "nova.voxel.modified_chunks",
+  "kind": "function",
+  "signature": "nova.voxel.modified_chunks() -> { {cx, cz}, ... }",
+  "doc": "The loaded chunks that have changes to save.",
+  "group": "Voxels"
+ },
+ {
+  "name": "nova.voxel.light",
+  "kind": "function",
+  "signature": "nova.voxel.light(x, y, z) -> sky, torch",
+  "doc": "The light at a place, 0 to 15, from the sky and from torches.",
+  "group": "Voxels"
+ },
+ {
+  "name": "nova.voxel.top",
+  "kind": "function",
+  "signature": "nova.voxel.top(x, z) -> y",
+  "doc": "The height of the highest full block in a column (-1 when there is none).",
+  "group": "Voxels"
+ },
+ {
+  "name": "nova.voxel.raycast",
+  "kind": "function",
+  "signature": "nova.voxel.raycast(x, y, z, dx, dy, dz, length [, liquids]) -> bx, by, bz, nx, ny, nz, distance, block | nothing",
+  "doc": "A ray through the blocks: the first block that is not air (or water, unless `liquids`), the way the face it hit points (nx, ny, nz: to place a block beside it, add that), how far away it was and what it is. Nothing when it hits nothing.",
+  "group": "Voxels"
+ },
+ {
+  "name": "nova.voxel.move",
+  "kind": "function",
+  "signature": "nova.voxel.move(x, y, z, half_width, height, dx, dy, dz [, step]) -> x, y, z, hit_x, hit_y, hit_z, on_ground",
+  "doc": "Moves a standing box (feet at x, y, z) by dx, dy, dz and slides it along the blocks, so a body walks, falls, lands and bumps its head. `step` is how high it climbs without jumping (0.5 is a stair). It says which axes were blocked and whether it is standing on something.",
+  "group": "Voxels"
+ },
+ {
+  "name": "nova.voxel.daylight",
+  "kind": "function",
+  "signature": "nova.voxel.daylight(level)",
+  "doc": "How bright the sky's light is, 0 (night) to 1 (noon). Torch light is not affected. Set the sky and fog colours yourself.",
+  "group": "Voxels"
+ },
+ {
+  "name": "nova.voxel.draw",
+  "kind": "function",
+  "signature": "nova.voxel.draw([{ distance, budget }])",
+  "doc": "Draws the world around the camera: `distance` chunks out (6), and builds at most `budget` changed chunks this frame (2, nearest first) so the frame rate holds. Call it after nova.camera.",
+  "group": "Voxels"
+ },
+ {
+  "name": "nova.voxel.cube",
+  "kind": "function",
+  "signature": "nova.voxel.cube(block, x, y, z [, { scale, rx, ry, rz, tint }])",
+  "doc": "Draws one block as a small cube centred on a place: a dropped item, a block in the hand.",
+  "group": "Voxels"
+ },
+ {
+  "name": "nova.voxel.stats",
+  "kind": "function",
+  "signature": "nova.voxel.stats() -> { chunks, meshed, mesh_ms, light_ms, faces, drawn, dirty }",
+  "doc": "What the voxel world is doing: chunks loaded, chunk pictures built so far and the milliseconds spent building and lighting, faces in the last chunk built, pictures drawn this frame and chunks waiting for a new picture.",
+  "group": "Voxels"
  }
 ]
