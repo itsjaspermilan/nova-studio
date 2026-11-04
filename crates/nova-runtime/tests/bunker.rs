@@ -43,6 +43,7 @@ fn game() -> Game {
     let vfs: Rc<dyn Vfs> = Rc::new(DirVfs::new(&folder).expect("the example folder exists"));
     let mut g = Game::load(vfs).expect("the game loads");
     g.upload(&mut CountingGpu::default());
+    g.reseed(7); // (the bot aims with math.random: a fixed seed makes the run repeatable)
     g
 }
 
