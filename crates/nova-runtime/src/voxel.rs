@@ -7,7 +7,7 @@
 //!
 //! Coordinates: x and z are the ground, y is up, and block (x, y, z) fills [x, x+1) x [y, y+1) x [z, z+1).
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
 
@@ -15,6 +15,7 @@ use glam::{Mat4, Vec4};
 
 use crate::gfx::{DYN_MESH_BASE, MeshOp};
 use crate::model::MeshVertex;
+use crate::terrain::Terrain;
 
 pub const SX: usize = 16;
 pub const SY: usize = 128;
@@ -127,6 +128,15 @@ pub struct World {
     shared_defs: Arc<Vec<BlockDef>>,
     pool: Option<Pool>,
     threads_set: bool,
+    /// For tests and headless runs: no threads at all, so that every run does the same thing.
+    deterministic: bool,
+    /// Finished by the workers and waiting to be taken in.
+    mesh_ready: VecDeque<(i32, i32, usize, Built)>,
+    gen_ready: VecDeque<(i32, i32, Vec<u8>)>,
+    terrain: Option<Arc<Terrain>>,
+    /// Chunks asked for and not made yet (a worker has them, or they wait their turn), and those waiting their turn.
+    requested: HashSet<(i32, i32)>,
+    wanted: VecDeque<(i32, i32)>,
     pub chunks: HashMap<(i32, i32), Chunk>,
     pub tiles_per_row: u32,
     next_mesh: usize,
@@ -180,6 +190,12 @@ impl World {
             shared_defs: Arc::new(vec![air.clone()]),
             pool: None,
             threads_set: false,
+            deterministic: false,
+            mesh_ready: VecDeque::new(),
+            gen_ready: VecDeque::new(),
+            terrain: None,
+            requested: HashSet::new(),
+            wanted: VecDeque::new(),
             defs: vec![air],
             chunks: HashMap::new(),
             tiles_per_row: 16,
@@ -314,20 +330,10 @@ impl World {
                     if !c.ids[chunk.blocks[i] as usize] {
                         continue;
                     }
-                    let p = [
-                        x as f64 * c.scale[0],
-                        y as f64 * c.scale[1],
-                        z as f64 * c.scale[2],
-                    ];
-                    let open = if c.tunnels {
-                        perlin3(p[0], p[1], p[2], c.seed).abs() < c.threshold
-                            && perlin3(p[0] + 31.7, p[1] - 7.3, p[2] + 11.1, c.seed.wrapping_add(1))
-                                .abs()
-                                < c.threshold
-                    } else {
-                        perlin3(p[0], p[1], p[2], c.seed) > c.threshold
-                    };
-                    if open {
+                    if !cave_open(c.tunnels, c.seed, c.scale, c.threshold, x, y, z) {
+                        continue;
+                    }
+                    {
                         Arc::make_mut(&mut chunk.blocks)[i] = 0;
                         n += 1;
                     }
@@ -712,11 +718,23 @@ impl World {
     /// progress to finish.
     pub fn set_threads(&mut self, n: usize) {
         self.threads_set = true;
+        let n = if self.deterministic { 0 } else { n };
         self.pool = None; // (finishes and joins the old workers)
         for c in self.chunks.values_mut() {
             c.dirty |= c.queued; // whatever was in flight is built again
             c.queued = 0;
         }
+        self.mesh_ready.clear();
+        // chunks a worker had are asked for again
+        let lost: Vec<(i32, i32)> = self
+            .requested
+            .iter()
+            .filter(|k| {
+                !self.wanted.contains(k) && !self.gen_ready.iter().any(|g| (g.0, g.1) == **k)
+            })
+            .copied()
+            .collect();
+        self.wanted.extend(lost);
         if n > 0 {
             self.pool = Some(Pool::new(n));
         }
@@ -725,6 +743,25 @@ impl World {
     /// How many worker threads build meshes.
     pub fn threads(&self) -> usize {
         self.pool.as_ref().map_or(0, |p| p.size)
+    }
+
+    /// Takes in what the workers have finished: sections go to `mesh_ready`, chunks to `gen_ready`.
+    fn drain_pool(&mut self) {
+        let Some(pool) = self.pool.as_mut() else {
+            return;
+        };
+        while let Ok(done) = pool.done.try_recv() {
+            match done {
+                Done::Mesh { cx, cz, sec, built } => {
+                    pool.mesh_in_flight -= 1;
+                    self.mesh_ready.push_back((cx, cz, sec, built));
+                }
+                Done::Gen { cx, cz, blocks } => {
+                    pool.gen_in_flight -= 1;
+                    self.gen_ready.push_back((cx, cz, blocks));
+                }
+            }
+        }
     }
 
     /// One step of keeping the meshes current, once a frame: takes in what the workers have finished (at most `budget`
@@ -736,21 +773,18 @@ impl World {
             let cores = std::thread::available_parallelism().map_or(1, |n| n.get());
             self.set_threads(cores.saturating_sub(2).min(3));
         }
+        self.drain_pool();
         let mut applied = 0;
         while applied < budget.max(1) {
-            let done = match self.pool.as_mut().map(|p| p.done.try_recv()) {
-                Some(Ok(d)) => d,
-                _ => break,
+            let Some((cx, cz, sec, built)) = self.mesh_ready.pop_front() else {
+                break;
             };
-            if let Some(p) = self.pool.as_mut() {
-                p.in_flight -= 1;
-            }
-            let wanted = self
+            if self
                 .chunks
-                .get(&(done.cx, done.cz))
-                .is_some_and(|c| c.queued & (1 << done.sec) != 0);
-            if wanted {
-                self.apply_section(done.cx, done.cz, done.sec, done.built);
+                .get(&(cx, cz))
+                .is_some_and(|c| c.queued & (1 << sec) != 0)
+            {
+                self.apply_section(cx, cz, sec, built);
                 applied += 1;
             }
         }
@@ -758,7 +792,7 @@ impl World {
         if let Some(room) = self
             .pool
             .as_ref()
-            .map(|p| (p.size * 3).saturating_sub(p.in_flight))
+            .map(|p| (p.size * 3).saturating_sub(p.mesh_in_flight))
         {
             for (cx, cz, sec) in todo.into_iter().take(room) {
                 let snap = self.snapshot(cx, cz);
@@ -766,8 +800,11 @@ impl World {
                 c.queued |= 1 << sec;
                 c.dirty &= !(1 << sec);
                 let pool = self.pool.as_mut().expect("checked");
-                pool.in_flight += 1;
-                pool.send(Job { snap, sec });
+                pool.mesh_in_flight += 1;
+                pool.send(Job::Mesh {
+                    snap: Box::new(snap),
+                    sec,
+                });
             }
         } else {
             for (cx, cz, sec) in todo.into_iter().take(budget.max(1)) {
@@ -776,10 +813,95 @@ impl World {
         }
     }
 
+    /// No threads at all, whatever is asked: the same work in the same order every run (tests, headless runs).
+    pub fn set_deterministic(&mut self, on: bool) {
+        self.deterministic = on;
+        if on {
+            self.set_threads(0);
+        }
+    }
+
+    // ---- making terrain -----------------------------------------------------------------------
+
+    pub fn set_terrain(&mut self, terrain: Terrain) {
+        self.terrain = Some(Arc::new(terrain));
+    }
+
+    pub fn terrain(&self) -> Option<&Terrain> {
+        self.terrain.as_deref()
+    }
+
+    /// Asks for a chunk to be made from the terrain recipe: by a worker, or by `pump_chunks` when there are none. False
+    /// when it is there already or already asked for.
+    pub fn request_chunk(&mut self, cx: i32, cz: i32) -> bool {
+        if self.chunks.contains_key(&(cx, cz)) || !self.requested.insert((cx, cz)) {
+            return false;
+        }
+        self.wanted.push_back((cx, cz));
+        true
+    }
+
+    /// How many chunks have been asked for and are not there yet.
+    pub fn pending_chunks(&self) -> usize {
+        self.requested.len()
+    }
+
+    /// One step of making chunks, once a frame: gives the workers what is wanted, and takes in at most `max` chunks that
+    /// are made (lighting each, which is the part that stays on this thread). Without workers it makes them itself.
+    /// Returns how many it took in.
+    pub fn pump_chunks(&mut self, max: usize) -> usize {
+        let Some(terrain) = self.terrain.clone() else {
+            return 0;
+        };
+        if self.pool.is_none() && !self.threads_set {
+            let cores = std::thread::available_parallelism().map_or(1, |n| n.get());
+            self.set_threads(cores.saturating_sub(2).min(3));
+        }
+        self.drain_pool();
+        if let Some(pool) = self.pool.as_mut() {
+            while pool.gen_in_flight < pool.size * 3 {
+                let Some((cx, cz)) = self.wanted.pop_front() else {
+                    break;
+                };
+                pool.gen_in_flight += 1;
+                pool.send(Job::Gen {
+                    terrain: terrain.clone(),
+                    cx,
+                    cz,
+                });
+            }
+        } else {
+            for _ in 0..max.max(1) {
+                let Some((cx, cz)) = self.wanted.pop_front() else {
+                    break;
+                };
+                self.gen_ready.push_back((cx, cz, terrain.generate(cx, cz)));
+            }
+        }
+        let mut made = 0;
+        while made < max.max(1) {
+            let Some((cx, cz, blocks)) = self.gen_ready.pop_front() else {
+                break;
+            };
+            self.requested.remove(&(cx, cz));
+            if self.chunks.contains_key(&(cx, cz)) {
+                continue;
+            }
+            let mut chunk = Chunk::new();
+            chunk.blocks = Arc::new(blocks);
+            self.chunks.insert((cx, cz), chunk);
+            self.apply_saved(cx, cz);
+            self.light_chunk(cx, cz);
+            made += 1;
+        }
+        made
+    }
+
     /// Whether any mesh work is waiting or under way.
     pub fn meshing_busy(&self) -> bool {
         // (chunks at the edge of what is loaded stay out of date until their neighbours arrive: that is not work)
-        self.pool.as_ref().is_some_and(|p| p.in_flight > 0)
+        self.pool.as_ref().is_some_and(|p| p.mesh_in_flight > 0)
+            || !self.mesh_ready.is_empty()
             || self.chunks.values().any(|c| c.queued != 0)
             || !self.dirty_sections([0.0, 0.0]).is_empty()
     }
@@ -1542,23 +1664,38 @@ impl Snapshot {
     }
 }
 
-struct Job {
-    snap: Snapshot,
-    sec: usize,
+enum Job {
+    Mesh {
+        snap: Box<Snapshot>,
+        sec: usize,
+    },
+    Gen {
+        terrain: Arc<Terrain>,
+        cx: i32,
+        cz: i32,
+    },
 }
 
-struct Done {
-    cx: i32,
-    cz: i32,
-    sec: usize,
-    built: Built,
+enum Done {
+    Mesh {
+        cx: i32,
+        cz: i32,
+        sec: usize,
+        built: Built,
+    },
+    Gen {
+        cx: i32,
+        cz: i32,
+        blocks: Vec<u8>,
+    },
 }
 
-/// Threads that build meshes: jobs go in one end, finished sections come out the other.
+/// Threads that build meshes and chunks: jobs go in one end, finished work comes out the other.
 struct Pool {
     jobs: Option<Sender<Job>>,
     done: Receiver<Done>,
-    in_flight: usize,
+    mesh_in_flight: usize,
+    gen_in_flight: usize,
     size: usize,
     workers: Vec<std::thread::JoinHandle<()>>,
 }
@@ -1573,7 +1710,7 @@ impl Pool {
                 let rx = rx.clone();
                 let done_tx = done_tx.clone();
                 std::thread::Builder::new()
-                    .name(format!("voxel-mesh-{i}"))
+                    .name(format!("voxel-worker-{i}"))
                     .spawn(move || {
                         loop {
                             let job = match rx.lock() {
@@ -1581,12 +1718,18 @@ impl Pool {
                                 Err(_) => break,
                             };
                             let Ok(job) = job else { break };
-                            let built = job.snap.mesh_section(job.sec);
-                            let done = Done {
-                                cx: job.snap.cx,
-                                cz: job.snap.cz,
-                                sec: job.sec,
-                                built,
+                            let done = match job {
+                                Job::Mesh { snap, sec } => Done::Mesh {
+                                    cx: snap.cx,
+                                    cz: snap.cz,
+                                    sec,
+                                    built: snap.mesh_section(sec),
+                                },
+                                Job::Gen { terrain, cx, cz } => Done::Gen {
+                                    cx,
+                                    cz,
+                                    blocks: terrain.generate(cx, cz),
+                                },
                             };
                             if done_tx.send(done).is_err() {
                                 break;
@@ -1599,7 +1742,8 @@ impl Pool {
         Self {
             jobs: Some(tx),
             done: done_rx,
-            in_flight: 0,
+            mesh_in_flight: 0,
+            gen_in_flight: 0,
             size: n,
             workers,
         }
@@ -1790,6 +1934,30 @@ fn fade(t: f64) -> f64 {
 
 fn lerp(a: f64, b: f64, t: f64) -> f64 {
     a + (b - a) * t
+}
+
+/// Whether noise says a place is open in a cave: a winding passage (two noises both near zero) or a room (one above a
+/// threshold).
+pub fn cave_open(
+    tunnels: bool,
+    seed: u32,
+    scale: [f64; 3],
+    threshold: f64,
+    x: i32,
+    y: i32,
+    z: i32,
+) -> bool {
+    let p = [
+        x as f64 * scale[0],
+        y as f64 * scale[1],
+        z as f64 * scale[2],
+    ];
+    if tunnels {
+        perlin3(p[0], p[1], p[2], seed).abs() < threshold
+            && perlin3(p[0] + 31.7, p[1] - 7.3, p[2] + 11.1, seed.wrapping_add(1)).abs() < threshold
+    } else {
+        perlin3(p[0], p[1], p[2], seed) > threshold
+    }
 }
 
 /// Gradient noise, about -1 to 1, smooth, the same every time for a seed.

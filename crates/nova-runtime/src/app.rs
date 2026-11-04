@@ -161,6 +161,7 @@ pub fn run_headless(opts: Options) -> Result<(), String> {
     let instance = new_instance(backend_candidates()[0]);
     let mut gfx = Gfx::new(&instance, None)?;
     let mut content = Content::load(&opts, &mut gfx)?;
+    content.set_deterministic(true); // no worker threads: every run does the same
     let frames = opts.frames.unwrap_or(120);
     let size = opts.size;
     let target = gfx.device.create_texture(&wgpu::TextureDescriptor {

@@ -38,7 +38,14 @@ fn tap(g: &mut Game, key: &str) {
     frame(g, &[]);
 }
 
+/// The game with no worker threads, so that a test does the same thing every time.
 fn game() -> Game {
+    let mut g = game_with_threads();
+    g.set_deterministic(true);
+    g
+}
+
+fn game_with_threads() -> Game {
     let folder = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/blockfield");
     let vfs: Rc<dyn Vfs> = Rc::new(DirVfs::new(&folder).expect("the example folder exists"));
     let mut g = Game::load(vfs).expect("the game loads");
@@ -48,17 +55,23 @@ fn game() -> Game {
 
 /// The numbers of the newest `blockfield:` log line (F3 writes one).
 fn status(g: &mut Game) -> std::collections::HashMap<String, String> {
+    try_status(g).expect("a status line")
+}
+
+/// The same, or nothing while the world is still being made (the game answers F3 only once it is).
+fn try_status(g: &mut Game) -> Option<std::collections::HashMap<String, String>> {
     let line = g
         .take_log()
         .into_iter()
         .rev()
-        .find(|l| l.starts_with("blockfield:"))
-        .expect("a status line");
-    line["blockfield:".len()..]
-        .split_whitespace()
-        .filter_map(|kv| kv.split_once('='))
-        .map(|(k, v)| (k.to_string(), v.to_string()))
-        .collect()
+        .find(|l| l.starts_with("blockfield:"))?;
+    Some(
+        line["blockfield:".len()..]
+            .split_whitespace()
+            .filter_map(|kv| kv.split_once('='))
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect(),
+    )
 }
 
 #[test]
@@ -147,4 +160,45 @@ fn a_long_walk_streams_chunks_without_errors_and_within_the_budget() {
         total / frames as f64,
         worst
     );
+}
+
+#[test]
+fn the_world_also_makes_itself_on_worker_threads() {
+    // real threads and real time: the frames run until the engine has made the ring of chunks
+    let mut g = game_with_threads();
+    let started = std::time::Instant::now();
+    let mut chunks = 0usize;
+    let mut threads = 0usize;
+    let (mut worst, mut total, mut count) = (0.0f64, 0.0f64, 0u32);
+    while started.elapsed().as_secs() < 20 {
+        for _ in 0..20 {
+            let t = std::time::Instant::now();
+            frame(&mut g, &[]);
+            let ms = t.elapsed().as_secs_f64() * 1000.0;
+            (worst, total, count) = (worst.max(ms), total + ms, count + 1);
+        }
+        tap(&mut g, "key:F3");
+        if let Some(s) = try_status(&mut g) {
+            chunks = s["chunks"].parse().unwrap();
+            threads = s["threads"].parse().unwrap();
+            if chunks >= 90 && s["ground"] == "true" {
+                break;
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    eprintln!(
+        "threaded load: {chunks} chunks, {threads} workers, {count} frames in {:?}, mean {:.2} ms, worst {:.2} ms",
+        started.elapsed(),
+        total / count.max(1) as f64,
+        worst
+    );
+    assert!(chunks >= 90, "the ring was made: {chunks} chunks");
+    let cores = std::thread::available_parallelism().map_or(1, |n| n.get());
+    if cores > 2 {
+        assert!(
+            threads >= 1,
+            "with {cores} cores there are workers: {threads}"
+        );
+    }
 }

@@ -677,6 +677,70 @@ pub(super) fn install(
             },
         )?,
     )?;
+    // the terrain recipe, and chunks made from it by the engine (on worker threads where there are cores to spare)
+    let s = shared.clone();
+    v.set(
+        "terrain",
+        lua.create_function(move |lua, spec: Table| {
+            let spec: crate::terrain::Spec = lua
+                .from_value(Value::Table(spec))
+                .map_err(|e| lua_err(format!("terrain recipe: {e}")))?;
+            let mut sh = s.borrow_mut();
+            let terrain =
+                crate::terrain::Terrain::new(&spec, &|n| sh.voxel.find(n)).map_err(lua_err)?;
+            sh.voxel.set_terrain(terrain);
+            Ok(())
+        })?,
+    )?;
+    let s = shared.clone();
+    v.set(
+        "request_chunk",
+        lua.create_function(move |_, (cx, cz): (i32, i32)| {
+            let mut sh = s.borrow_mut();
+            if sh.voxel.terrain().is_none() {
+                return Err(lua_err(
+                    "request_chunk needs nova.voxel.terrain { ... } first",
+                ));
+            }
+            Ok(sh.voxel.request_chunk(cx, cz))
+        })?,
+    )?;
+    let s = shared.clone();
+    v.set(
+        "pump_chunks",
+        lua.create_function(move |_, max: Option<usize>| {
+            Ok(s.borrow_mut().voxel.pump_chunks(max.unwrap_or(2)))
+        })?,
+    )?;
+    let s = shared.clone();
+    v.set(
+        "pending_chunks",
+        lua.create_function(move |_, ()| Ok(s.borrow().voxel.pending_chunks()))?,
+    )?;
+    let s = shared.clone();
+    v.set(
+        "terrain_height",
+        lua.create_function(move |_, (x, z): (f64, f64)| {
+            let sh = s.borrow();
+            let t = sh
+                .voxel
+                .terrain()
+                .ok_or_else(|| lua_err("no terrain recipe yet"))?;
+            Ok(t.height(cell(x), cell(z)))
+        })?,
+    )?;
+    let s = shared.clone();
+    v.set(
+        "terrain_biome",
+        lua.create_function(move |_, (x, z): (f64, f64)| {
+            let sh = s.borrow();
+            let t = sh
+                .voxel
+                .terrain()
+                .ok_or_else(|| lua_err("no terrain recipe yet"))?;
+            Ok(t.biome_name(cell(x), cell(z)).to_string())
+        })?,
+    )?;
     let s = shared.clone();
     v.set(
         "threads",

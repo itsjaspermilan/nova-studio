@@ -210,6 +210,13 @@ impl Content {
         }
     }
 
+    /// Runs the voxel world without worker threads (headless runs: every run does the same).
+    pub fn set_deterministic(&mut self, on: bool) {
+        if let Content::Game { game, .. } = self {
+            game.set_deterministic(on);
+        }
+    }
+
     /// A frame has been drawn: what scripts built for it (voxel meshes) has reached the GPU.
     pub fn frame_done(&mut self) {
         if let Content::Game { game, .. } = self {

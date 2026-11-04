@@ -22,6 +22,7 @@ pub mod script;
 pub mod spike;
 pub mod sprite;
 pub mod stream;
+pub mod terrain;
 pub mod text;
 pub mod tilemap;
 pub mod vfs;

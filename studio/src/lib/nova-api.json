@@ -1174,5 +1174,47 @@
   "signature": "nova.voxel.threads([n]) -> n",
   "doc": "How many worker threads build chunk pieces. Without an argument it just says; with one it sets it (0 builds on the game's own thread, at most 8). The default is the device's cores less two, up to three.",
   "group": "Voxels"
+ },
+ {
+  "name": "nova.voxel.terrain",
+  "kind": "function",
+  "signature": "nova.voxel.terrain{ seed, sea_level, base, layers, rivers, temperature, wetness, biomes, beach, seabed, caves, ores, lava, trees, stone, bedrock, water, ice }",
+  "doc": "Describes the land as data, and the engine makes it, on worker threads where the device has cores to spare. `layers` = { { scale, octaves, gain, amplitude, seed }, ... } raise or lower the ground from `base` (blocks, by amplitude); `rivers` = { scale, octaves, width, depth, seed }; `temperature` and `wetness` = { scale, octaves, seed } are the fields that pick a biome: `biomes` = { { name, temperature = { min, max }, wetness = { min, max }, top, under, ice, trees = { { kind, count } }, plants = { { block, chance } }, cactus = { block, chance, height } }, ... } (the first whose ranges hold wins, the last is used where none does); `beach` and `seabed` = { top, under, depth }; `caves` = { { kind = \"tunnel\" | \"cavern\", ymin, ymax, scale, squash, threshold, seed, through = { blocks } } }; `ores` = { { block, tries, ymin, ymax, size } }; `lava` = the same, for pockets in caves; `trees` = { oak = { log, leaves, trunk_min, trunk_max } }. Blocks are by name. A chunk depends only on the recipe and where it is, so it is the same however and whenever it is made.",
+  "group": "Voxels"
+ },
+ {
+  "name": "nova.voxel.request_chunk",
+  "kind": "function",
+  "signature": "nova.voxel.request_chunk(cx, cz) -> boolean",
+  "doc": "Asks for a chunk to be made from the terrain recipe (false when it is there or already asked for). It appears in a later frame; `has_chunk` says when. Ask for the nearest first.",
+  "group": "Voxels"
+ },
+ {
+  "name": "nova.voxel.pump_chunks",
+  "kind": "function",
+  "signature": "nova.voxel.pump_chunks([max]) -> count",
+  "doc": "Call once a frame: takes in at most `max` (2) chunks that the workers have made, lights them and puts them in the world, and hands the workers what is wanted. Without workers it makes `max` chunks itself. Returns how many arrived.",
+  "group": "Voxels"
+ },
+ {
+  "name": "nova.voxel.pending_chunks",
+  "kind": "function",
+  "signature": "nova.voxel.pending_chunks() -> count",
+  "doc": "How many chunks have been asked for and have not arrived.",
+  "group": "Voxels"
+ },
+ {
+  "name": "nova.voxel.terrain_height",
+  "kind": "function",
+  "signature": "nova.voxel.terrain_height(x, z) -> y",
+  "doc": "The height of the ground at a column, from the recipe (it does not need the chunk to be there).",
+  "group": "Voxels"
+ },
+ {
+  "name": "nova.voxel.terrain_biome",
+  "kind": "function",
+  "signature": "nova.voxel.terrain_biome(x, z) -> name",
+  "doc": "The biome at a column, from the recipe.",
+  "group": "Voxels"
  }
 ]

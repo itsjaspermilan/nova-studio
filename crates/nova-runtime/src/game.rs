@@ -2297,6 +2297,11 @@ impl Game {
         font::draw_text(&mut self.ui, white, x, y, 2.0, [255, 255, 255, 255], text);
     }
 
+    /// No worker threads for the voxel world, so that a run does the same thing every time (tests and headless runs).
+    pub fn set_deterministic(&mut self, on: bool) {
+        self.shared.borrow_mut().voxel.set_deterministic(on);
+    }
+
     /// The renderer has applied the meshes scripts made (call after drawing a frame, so each is applied once).
     pub fn clear_mesh_ops(&mut self) {
         self.mesh_ops.clear();

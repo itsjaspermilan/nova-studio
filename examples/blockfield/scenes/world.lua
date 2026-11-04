@@ -1,7 +1,7 @@
 local blocks = require("lib.blocks")
 local recipes = require("lib.recipes")
 local mobs = require("lib.mobs")
-local gen = require("lib.worldgen")
+local gen = require("lib.terrain")
 local B, P = blocks.B, blocks.P
 
 local World = nova.scene {}
@@ -29,28 +29,27 @@ end
 
 local function key(cx, cz) return cx .. "," .. cz end
 
-function World:load_chunk(cx, cz)
-  gen.generate(cx, cz)
-  voxel.apply_saved(cx, cz)
-  voxel.finish_chunk(cx, cz)
-  self.loaded[key(cx, cz)] = { cx, cz }
-end
-
--- makes the nearest missing chunk, as many as the time allows; returns whether the ring around (pcx, pcz) is complete
-function World:stream(pcx, pcz, budget)
-  local t0 = nova.clock()
-  while true do
-    local best, bd = nil, 1e9
-    for dz = -LOAD, LOAD do
-      for dx = -LOAD, LOAD do
-        local d = dx * dx + dz * dz
-        if d <= LOAD * LOAD and d < bd and not voxel.has_chunk(pcx + dx, pcz + dz) then best, bd = { pcx + dx, pcz + dz }, d end
+-- asks for the missing chunks around (pcx, pcz), nearest first, and takes in those the engine has made (it lights each, about
+-- a millisecond on the game's own thread, so only a few a frame); returns whether the ring around is complete
+function World:stream(pcx, pcz, take)
+  local missing = {}
+  for dz = -LOAD, LOAD do
+    for dx = -LOAD, LOAD do
+      local d = dx * dx + dz * dz
+      if d <= LOAD * LOAD and not voxel.has_chunk(pcx + dx, pcz + dz) then missing[#missing + 1] = { d, pcx + dx, pcz + dz } end
+    end
+  end
+  table.sort(missing, function(a, b) return a[1] < b[1] end)
+  for i = 1, min(#missing, 24) do voxel.request_chunk(missing[i][2], missing[i][3]) end
+  voxel.pump_chunks(take)
+  for dz = -LOAD, LOAD do
+    for dx = -LOAD, LOAD do
+      if dx * dx + dz * dz <= LOAD * LOAD and not self.loaded[key(pcx + dx, pcz + dz)] and voxel.has_chunk(pcx + dx, pcz + dz) then
+        self.loaded[key(pcx + dx, pcz + dz)] = { pcx + dx, pcz + dz }
       end
     end
-    if not best then return true end
-    self:load_chunk(best[1], best[2])
-    if nova.clock() - t0 > budget then return false end
   end
+  return #missing == 0
 end
 
 function World:drop_far_chunks(pcx, pcz)
@@ -131,7 +130,7 @@ function World:enter()
   self.sel = nova.save.get("sel", 1)
   self.mine = { progress = 0 }
   self.swing, self.flash, self.save_in = 0, 0, 8
-  gen.seed = nova.save.get("seed", 20161)
+  gen.configure(nova.save.get("seed", 20161))
   self.spawn = nova.save.get("spawn") or find_spawn()
   local p = { x = self.spawn[1], y = 80, z = self.spawn[2], vx = 0, vy = 0, vz = 0, hp = 20, food = 20, air = 15, hurt_cool = 0, ground = false, peak = 0, steps = 0, eat = 0 }
   local saved = nova.save.get("player")
@@ -361,7 +360,7 @@ function World:update(dt)
   -- before there is ground under the player, only make the world
   if not self.ready then
     self.loading_frames = self.loading_frames + 1
-    local done = self:stream(pcx, pcz, 0.012)
+    local done = self:stream(pcx, pcz, 8)
     if done then
       self.ready = true
       local st = voxel.stats()
@@ -372,7 +371,7 @@ function World:update(dt)
     cam3.first_person(p, { height = 1.62, fov = 75 })
     return
   end
-  self:stream(pcx, pcz, 0.004)
+  self:stream(pcx, pcz, 2)
   self:drop_far_chunks(pcx, pcz)
 
   if nova.input.pressed("pause") then
@@ -388,7 +387,7 @@ function World:update(dt)
   if nova.input.pressed("stats") then
     self.show_stats = not self.show_stats
     -- (the tests read this line)
-    nova.log(string.format("blockfield: chunks=%d edited=%d mobs=%d x=%.1f z=%.1f y=%.2f ground=%s hp=%d pitch=%.2f target=%s progress=%.2f creative=%s meshed=%d mesh_ms=%.0f light_ms=%.0f", voxel.stats().chunks, #voxel.modified_chunks(), #self.mobs, p.x, p.z, p.y, tostring(p.ground), p.hp, cam3.pitch, tostring(self.target ~= nil), self.mine.progress, tostring(self.creative), voxel.stats().meshed, voxel.stats().mesh_ms, voxel.stats().light_ms))
+    nova.log(string.format("blockfield: chunks=%d edited=%d mobs=%d x=%.1f z=%.1f y=%.2f ground=%s hp=%d pitch=%.2f target=%s progress=%.2f creative=%s meshed=%d mesh_ms=%.0f light_ms=%.0f threads=%d", voxel.stats().chunks, #voxel.modified_chunks(), #self.mobs, p.x, p.z, p.y, tostring(p.ground), p.hp, cam3.pitch, tostring(self.target ~= nil), self.mine.progress, tostring(self.creative), voxel.stats().meshed, voxel.stats().mesh_ms, voxel.stats().light_ms, voxel.stats().threads))
   end
   if self.menu then
     self:menu_update()
