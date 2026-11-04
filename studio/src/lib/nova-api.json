@@ -1272,5 +1272,117 @@
   "signature": "nova.ui.keyboard{ x, y [, w, h, gap, current, upper] } -> { typed, current, upper, keys }",
   "doc": "An on-screen keyboard of ten columns for a gamepad, a finger or a mouse (it chooses with nova.ui.list, so the d-pad, arrow keys, the pointer and the pad cursor all work): digits, letters, a few marks, Aa (capitals), space, del and ok. Pass back `current` and `upper`; `typed` is the character of the key just taken (\"\\b\" for del, \"\\n\" for ok; B deletes too), to give to nova.ui.text_field; `keys` is one { x, y, w, h, label, selected } for each key, to draw.",
   "group": "Drawing"
+ },
+ {
+  "name": "nova.walls",
+  "kind": "namespace",
+  "signature": "nova.walls",
+  "doc": "Walls for indoor 3D: boxes standing on the ground (x and z, with a height range) that bodies slide along, rays stop at and doors open in. A door is a wall that is switched off while it is open. Rooms and corridors are a list of these; creatures find their way round them with nova.nav.",
+  "group": "Walls and paths"
+ },
+ {
+  "name": "nova.walls.add",
+  "kind": "function",
+  "signature": "nova.walls.add(x0, z0, x1, z1 [, y0, y1]) -> id",
+  "doc": "Adds a wall: the box from corner (x0, z0) to (x1, z1) on the ground, from height y0 to y1 (0 to 100 when left out). Gives its number, for `enable`.",
+  "group": "Walls and paths"
+ },
+ {
+  "name": "nova.walls.enable",
+  "kind": "function",
+  "signature": "nova.walls.enable(id, on)",
+  "doc": "Switches a wall on or off: a door that opens is a wall switched off (call nova.nav.build again when doors change, so that paths know).",
+  "group": "Walls and paths"
+ },
+ {
+  "name": "nova.walls.clear",
+  "kind": "function",
+  "signature": "nova.walls.clear()",
+  "doc": "Removes every wall (and the path grid), for the next level.",
+  "group": "Walls and paths"
+ },
+ {
+  "name": "nova.walls.count",
+  "kind": "function",
+  "signature": "nova.walls.count() -> number",
+  "doc": "How many walls there are.",
+  "group": "Walls and paths"
+ },
+ {
+  "name": "nova.walls.push",
+  "kind": "function",
+  "signature": "nova.walls.push(x, z, radius [, y, height]) -> dx, dz",
+  "doc": "How far a round body standing at x, z (feet at y, `height` tall) must move to be out of the walls (0, 0 when it is clear). Add it to the position.",
+  "group": "Walls and paths"
+ },
+ {
+  "name": "nova.walls.move",
+  "kind": "function",
+  "signature": "nova.walls.move(x, z, dx, dz, radius [, y, height]) -> x, z, hit",
+  "doc": "Moves a round body by dx, dz and slides it along the walls, in steps shorter than the body so that nothing is skipped through a thin wall. Gives the new place and whether a wall was touched.",
+  "group": "Walls and paths"
+ },
+ {
+  "name": "nova.walls.raycast",
+  "kind": "function",
+  "signature": "nova.walls.raycast(x, z, dx, dz, length [, y, slope]) -> distance, nx, nz, id | nothing",
+  "doc": "A ray along the ground from x, z in the direction dx, dz, starting `y` high (1.5) and rising `slope` for each metre along (0), so that a wall lower than the ray is passed over. The first wall it meets: how far, the way the face it hit points on the ground (0, 0 for a top or bottom), and its number. Nothing when it hits nothing.",
+  "group": "Walls and paths"
+ },
+ {
+  "name": "nova.walls.line_clear",
+  "kind": "function",
+  "signature": "nova.walls.line_clear(x1, z1, x2, z2 [, y1, y2]) -> boolean",
+  "doc": "Whether nothing stands between two places (each at a height, 1.5 by default): line of sight.",
+  "group": "Walls and paths"
+ },
+ {
+  "name": "nova.nav",
+  "kind": "namespace",
+  "signature": "nova.nav",
+  "doc": "Paths over the ground that avoid the walls: a grid built from them, for creatures that must find their way round corners and through open doors.",
+  "group": "Walls and paths"
+ },
+ {
+  "name": "nova.nav.build",
+  "kind": "function",
+  "signature": "nova.nav.build{ x0, z0, x1, z1 [, cell, radius, y, height] }",
+  "doc": "Builds the path grid over the part of the ground from (x0, z0) to (x1, z1) from the walls as they are now: cells of `cell` metres (0.5) where a body of `radius` (0.4) and `height` (1.8) standing at height `y` can stand. Call it again when a door opens or shuts.",
+  "group": "Walls and paths"
+ },
+ {
+  "name": "nova.nav.path",
+  "kind": "function",
+  "signature": "nova.nav.path(x1, z1, x2, z2) -> { {x, z}, ... } | nil",
+  "doc": "A way from one place to another round the walls: the corners to turn at, in order, the last one the goal (or the free place nearest it when it is inside a wall), pulled tight so that it has few. nil when there is no way (a door is shut).",
+  "group": "Walls and paths"
+ },
+ {
+  "name": "nova.nav.blocked",
+  "kind": "function",
+  "signature": "nova.nav.blocked(x, z) -> boolean",
+  "doc": "Whether a body cannot stand at a place (a wall is too near, or it is off the grid).",
+  "group": "Walls and paths"
+ },
+ {
+  "name": "nova.cuboid",
+  "kind": "function",
+  "signature": "nova.cuboid(x0, y0, z0, x1, y1, z1 [, { color, glow }])",
+  "doc": "Draws a box between two corners, in the colour given ({r, g, b}); `glow = true` shows it at full colour whatever the light. For walls, floors and lamps made by code: every box is one instance of the same mesh, so a thousand cost little.",
+  "group": "3D"
+ },
+ {
+  "name": "nova.cuboid_at",
+  "kind": "function",
+  "signature": "nova.cuboid_at(x, y, z, width, height, depth [, { rx, ry, rz, color, glow }])",
+  "doc": "Draws a box by its middle and its size, turned by rx, ry, rz (radians): the parts of a creature built from boxes.",
+  "group": "3D"
+ },
+ {
+  "name": "nova.quad3",
+  "kind": "function",
+  "signature": "nova.quad3(x, y, z, nx, ny, nz, size [, { w, h, color }])",
+  "doc": "Draws a flat square at a place in the world, facing the direction nx, ny, nz, at full colour and a hair off the surface: a bullet hole, a mark on a wall.",
+  "group": "3D"
  }
 ]

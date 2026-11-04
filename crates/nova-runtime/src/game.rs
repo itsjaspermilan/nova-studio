@@ -59,6 +59,7 @@ fn builtin_module(name: &str) -> Option<&'static str> {
 }
 
 mod voxel_api;
+mod walls_api;
 
 /// Lone cubes (`nova.voxel.cube`) have mesh ids this far above the start of script-made meshes, above every chunk piece.
 const CUBE_MESH_OFFSET: usize = 1 << 28;
@@ -126,6 +127,9 @@ struct Shared {
     /// The voxel world (`nova.voxel`), and the mesh of each block kind drawn as a lone cube.
     voxel: crate::voxel::World,
     cubes: HashMap<u8, usize>,
+    /// The walls of an indoor level and the grid creatures find their way over (`nova.walls`, `nova.nav`).
+    walls: crate::walls::Walls,
+    nav: crate::walls::Nav,
     cursor: PadCursor,
     /// Typed characters that no script has read yet.
     typed: String,
@@ -1277,6 +1281,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
     )?;
 
     voxel_api::install(lua, shared, vfs, &nova)?;
+    walls_api::install(lua, shared, &nova)?;
 
     // --- input: named actions, see docs/project-format.md ---
     let input = lua.create_table()?;
@@ -2236,6 +2241,8 @@ impl Game {
             skin_used: HashMap::new(),
             voxel: crate::voxel::World::new(),
             cubes: HashMap::new(),
+            walls: crate::walls::Walls::default(),
+            nav: crate::walls::Nav::default(),
             cursor: PadCursor::default(),
             typed: String::new(),
             cursor_sources: HashMap::new(),
@@ -2328,6 +2335,15 @@ impl Game {
         ids.insert(
             voxel_api::LINE_MESH.to_string(),
             target.add_mesh(&voxel_api::line_mesh()),
+        );
+        // the cube `nova.cuboid` stretches into walls and parts (lit, and at full colour)
+        ids.insert(
+            walls_api::CUBE_MESH.to_string(),
+            target.add_mesh(&walls_api::cube_mesh(false)),
+        );
+        ids.insert(
+            walls_api::CUBE_GLOW_MESH.to_string(),
+            target.add_mesh(&walls_api::cube_mesh(true)),
         );
         for (id, mesh) in std::mem::take(&mut self.meshes) {
             ids.insert(id, target.add_mesh(&mesh));

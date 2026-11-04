@@ -28,6 +28,7 @@ pub mod text;
 pub mod tilemap;
 pub mod vfs;
 pub mod voxel;
+pub mod walls;
 
 #[cfg(target_os = "android")]
 #[unsafe(no_mangle)]

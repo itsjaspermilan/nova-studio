@@ -2559,3 +2559,79 @@ end"),
         "twenty cubes of two kinds are two runs, so two instanced draws"
     );
 }
+
+#[test]
+fn walls_stop_bodies_and_rays_doors_open_and_paths_go_round() {
+    let g = project(vec![(
+        "main.lua",
+        lua(
+            "-- two rooms with a doorway (a door) between them
+nova.walls.add(0, -0.5, 20, 0); nova.walls.add(0, 10, 20, 10.5)
+nova.walls.add(-0.5, 0, 0, 10); nova.walls.add(20, 0, 20.5, 10)
+nova.walls.add(10, 0, 10.3, 4); nova.walls.add(10, 6, 10.3, 10)
+local door = nova.walls.add(10, 4, 10.3, 6, 0, 3)
+nova.log('count ' .. nova.walls.count())
+-- walking into the wall slides along it
+local x, z, hit = nova.walls.move(5, 2, 20, 0, 0.4)
+nova.log(string.format('walk %.2f %.2f %s', x, z, tostring(hit)))
+-- the door is shut: the ray stops at it, then it opens
+local d, nx, nz, id = nova.walls.raycast(5, 5, 1, 0, 30)
+nova.log(string.format('ray %.2f %d %d %s', d, nx, nz, tostring(id == door)))
+nova.walls.enable(door, false)
+local d2 = nova.walls.raycast(5, 5, 1, 0, 30)
+nova.log(string.format('open %.2f %s', d2, tostring(nova.walls.line_clear(5, 5, 15, 5))))
+nova.nav.build{ x0 = -1, z0 = -1, x1 = 21, z1 = 11 }
+local p = nova.nav.path(3, 2, 17, 2)
+nova.log('path ' .. #p .. ' ' .. tostring(p[#p].x))
+nova.walls.enable(door, true)
+nova.nav.build{ x0 = -1, z0 = -1, x1 = 21, z1 = 11 }
+nova.log('shut ' .. tostring(nova.nav.path(3, 2, 17, 2)) .. ' ' .. tostring(nova.nav.blocked(0.1, 5)))",
+        ),
+    )]);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let l = logs(&g);
+    assert_eq!(l[0], "count 7");
+    assert_eq!(
+        l[1], "walk 9.60 2.00 true",
+        "slides to the dividing wall, a body's radius short of it: {l:?}"
+    );
+    assert_eq!(l[2], "ray 5.00 -1 0 true", "{l:?}");
+    assert_eq!(
+        l[3], "open 15.00 true",
+        "through the doorway to the far wall: {l:?}"
+    );
+    assert!(
+        l[4].starts_with("path ") && l[4].ends_with(" 17.0"),
+        "{l:?}"
+    );
+    assert_eq!(l[5], "shut nil true", "{l:?}");
+}
+
+#[test]
+fn cuboids_are_instances_of_one_mesh_and_quads_are_flat() {
+    let mut g = project(vec![(
+        "main.lua",
+        lua("function draw()
+  for i = 1, 40 do nova.cuboid(i, 0, 0, i + 1, 3, 1, { color = { i * 5, 100, 100 } }) end
+  nova.cuboid_at(0, 1, 5, 1, 2, 1, { ry = 0.5, glow = true })
+  nova.quad3(1, 1, 1, 0, 0, 1, 0.2, { color = { 10, 10, 10 } })
+end"),
+    )]);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    g.update(1.0 / 60.0, 0.0, [320.0, 180.0], Default::default(), false);
+    let models = g.frame_input(540).models.to_vec();
+    assert_eq!(models.len(), 42);
+    // (this test's uploader gives every mesh the same number, so what can be checked is the instances: forty boxes, each with its
+    // own colour, a stretched matrix, and the flat quad)
+    let tints: std::collections::HashSet<u32> = models
+        .iter()
+        .take(40)
+        .map(|m| (m.instance.tint[0] * 1000.0) as u32)
+        .collect();
+    assert_eq!(tints.len(), 40);
+    assert!(
+        (models[0].instance.matrix[0][0] - 1.0).abs() < 1e-6
+            && (models[0].instance.matrix[1][1] - 3.0).abs() < 1e-6,
+        "a box 1 wide and 3 high"
+    );
+}
