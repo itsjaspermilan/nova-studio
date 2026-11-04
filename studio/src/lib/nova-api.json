@@ -1109,7 +1109,7 @@
   "name": "nova.voxel.draw",
   "kind": "function",
   "signature": "nova.voxel.draw([{ distance, budget }])",
-  "doc": "Draws the world around the camera: `distance` chunks out (6), and builds at most `budget` changed chunks this frame (2, nearest first) so the frame rate holds. Call it after nova.camera.",
+  "doc": "Draws the world around the camera: `distance` chunks out (6). Chunks are built in pieces 16 blocks high, on worker threads where the device has cores to spare: it hands the nearest pieces that changed to the workers, takes in at most `budget` finished pieces this frame (6) so that the frame rate holds, and without workers builds that many itself. Call it after nova.camera.",
   "group": "Voxels"
  },
  {
@@ -1122,8 +1122,8 @@
  {
   "name": "nova.voxel.stats",
   "kind": "function",
-  "signature": "nova.voxel.stats() -> { chunks, meshed, mesh_ms, light_ms, faces, drawn, dirty }",
-  "doc": "What the voxel world is doing: chunks loaded, chunk pictures built so far and the milliseconds spent building and lighting, faces in the last chunk built, pictures drawn this frame and chunks waiting for a new picture.",
+  "signature": "nova.voxel.stats() -> { chunks, meshed, mesh_ms, light_ms, faces, drawn, dirty, threads }",
+  "doc": "What the voxel world is doing: chunks loaded, pieces built so far and the milliseconds the builders spent (added up over all threads) and the lighting, faces in the last piece, pieces drawn this frame, pieces waiting or being built, and how many worker threads build.",
   "group": "Voxels"
  },
  {
@@ -1167,5 +1167,12 @@
   "signature": "nova.box3(x1, y1, z1, x2, y2, z2 [, { color, width }])",
   "doc": "Draws the twelve edges of a box with `nova.line3`: the outline of a selected block or a hit box.",
   "group": "3D"
+ },
+ {
+  "name": "nova.voxel.threads",
+  "kind": "function",
+  "signature": "nova.voxel.threads([n]) -> n",
+  "doc": "How many worker threads build chunk pieces. Without an argument it just says; with one it sets it (0 builds on the game's own thread, at most 8). The default is the device's cores less two, up to three.",
+  "group": "Voxels"
  }
 ]

@@ -388,7 +388,7 @@ function World:update(dt)
   if nova.input.pressed("stats") then
     self.show_stats = not self.show_stats
     -- (the tests read this line)
-    nova.log(string.format("blockfield: chunks=%d edited=%d mobs=%d x=%.1f z=%.1f y=%.2f ground=%s hp=%d pitch=%.2f target=%s progress=%.2f creative=%s", voxel.stats().chunks, #voxel.modified_chunks(), #self.mobs, p.x, p.z, p.y, tostring(p.ground), p.hp, cam3.pitch, tostring(self.target ~= nil), self.mine.progress, tostring(self.creative)))
+    nova.log(string.format("blockfield: chunks=%d edited=%d mobs=%d x=%.1f z=%.1f y=%.2f ground=%s hp=%d pitch=%.2f target=%s progress=%.2f creative=%s meshed=%d mesh_ms=%.0f light_ms=%.0f", voxel.stats().chunks, #voxel.modified_chunks(), #self.mobs, p.x, p.z, p.y, tostring(p.ground), p.hp, cam3.pitch, tostring(self.target ~= nil), self.mine.progress, tostring(self.creative), voxel.stats().meshed, voxel.stats().mesh_ms, voxel.stats().light_ms))
   end
   if self.menu then
     self:menu_update()

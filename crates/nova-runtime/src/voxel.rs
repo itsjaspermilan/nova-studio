@@ -8,6 +8,8 @@
 //! Coordinates: x and z are the ground, y is up, and block (x, y, z) fills [x, x+1) x [y, y+1) x [z, z+1).
 
 use std::collections::{HashMap, VecDeque};
+use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::{Arc, Mutex};
 
 use glam::{Mat4, Vec4};
 
@@ -69,16 +71,25 @@ impl Default for BlockDef {
     }
 }
 
+/// A chunk is meshed in pieces this high (a section), so a change rebuilds a sixteenth of the work, and what is in view is
+/// culled more tightly.
+pub const SECTION: usize = 16;
+pub const SECTIONS: usize = SY / SECTION;
+/// Every section's bit.
+pub const ALL: u8 = 0xFF;
+
 pub struct Chunk {
-    pub blocks: Vec<u8>,
-    sky: Vec<u8>,
-    glow: Vec<u8>,
-    /// The meshes of this chunk: solid and cut-out faces, and blended ones (water).
-    pub meshes: [Option<usize>; 2],
-    /// Where the mesh content is (min x, y, z, max x, y, z), for culling.
-    pub bounds: [f32; 6],
-    /// The mesh is out of date.
-    pub dirty: bool,
+    // shared with the workers that are meshing next to this chunk; a change while one holds it copies (Arc::make_mut)
+    pub blocks: Arc<Vec<u8>>,
+    sky: Arc<Vec<u8>>,
+    glow: Arc<Vec<u8>>,
+    /// The meshes of each section: solid and cut-out faces, and blended ones (water).
+    pub meshes: [[Option<usize>; 2]; SECTIONS],
+    /// Where each section's mesh content is (min x, y, z, max x, y, z), for culling.
+    pub bounds: [[f32; 6]; SECTIONS],
+    /// One bit for each section whose mesh is out of date, and those a worker is building now.
+    pub dirty: u8,
+    pub queued: u8,
     /// Gameplay edits made since generation, as index -> block, for saving.
     pub edits: HashMap<u32, u8>,
     pub lit: bool,
@@ -87,12 +98,13 @@ pub struct Chunk {
 impl Chunk {
     fn new() -> Self {
         Self {
-            blocks: vec![0; VOL],
-            sky: vec![0; VOL],
-            glow: vec![0; VOL],
-            meshes: [None, None],
-            bounds: [0.0; 6],
-            dirty: false,
+            blocks: Arc::new(vec![0; VOL]),
+            sky: Arc::new(vec![0; VOL]),
+            glow: Arc::new(vec![0; VOL]),
+            meshes: [[None, None]; SECTIONS],
+            bounds: [[0.0; 6]; SECTIONS],
+            dirty: 0,
+            queued: 0,
             edits: HashMap::new(),
             lit: false,
         }
@@ -111,6 +123,10 @@ pub struct Stats {
 
 pub struct World {
     pub defs: Vec<BlockDef>,
+    /// The same, shared with workers.
+    shared_defs: Arc<Vec<BlockDef>>,
+    pool: Option<Pool>,
+    threads_set: bool,
     pub chunks: HashMap<(i32, i32), Chunk>,
     pub tiles_per_row: u32,
     next_mesh: usize,
@@ -161,6 +177,9 @@ impl World {
             ..Default::default()
         };
         Self {
+            shared_defs: Arc::new(vec![air.clone()]),
+            pool: None,
+            threads_set: false,
             defs: vec![air],
             chunks: HashMap::new(),
             tiles_per_row: 16,
@@ -180,6 +199,7 @@ impl World {
             return Err(format!("a block called '{}' already exists", def.name));
         }
         self.defs.push(def);
+        self.shared_defs = Arc::new(self.defs.clone());
         Ok((self.defs.len() - 1) as u8)
     }
 
@@ -208,14 +228,14 @@ impl World {
             if !chunk.edits.is_empty() {
                 self.saved.insert((cx, cz), chunk.edits.clone());
             }
-            for id in chunk.meshes.into_iter().flatten() {
+            for id in chunk.meshes.into_iter().flatten().flatten() {
                 self.free_mesh(id);
             }
         }
         for dx in -1..=1 {
             for dz in -1..=1 {
                 if let Some(c) = self.chunks.get_mut(&(cx + dx, cz + dz)) {
-                    c.dirty = true;
+                    c.dirty = ALL;
                 }
             }
         }
@@ -255,7 +275,7 @@ impl World {
         let (key, lx, lz) = split(x, z);
         match self.chunks.get_mut(&key) {
             Some(c) => {
-                c.blocks[idx(lx, y as usize, lz)] = id;
+                Arc::make_mut(&mut c.blocks)[idx(lx, y as usize, lz)] = id;
                 true
             }
             None => false,
@@ -271,7 +291,7 @@ impl World {
                 let (key, lx, lz) = split(x, z);
                 if let Some(c) = self.chunks.get_mut(&key) {
                     for y in y0..=y1 {
-                        c.blocks[idx(lx, y as usize, lz)] = id;
+                        Arc::make_mut(&mut c.blocks)[idx(lx, y as usize, lz)] = id;
                         n += 1;
                     }
                 }
@@ -308,7 +328,7 @@ impl World {
                         perlin3(p[0], p[1], p[2], c.seed) > c.threshold
                     };
                     if open {
-                        chunk.blocks[i] = 0;
+                        Arc::make_mut(&mut chunk.blocks)[i] = 0;
                         n += 1;
                     }
                 }
@@ -339,6 +359,24 @@ impl World {
         }
     }
 
+    /// Marks the sections that draw or shade the block at a place as out of date.
+    fn mark_cell(&mut self, x: i32, y: i32, z: i32) {
+        let sec = |y: i32| (y.div_euclid(SECTION as i32)).clamp(0, SECTIONS as i32 - 1) as u32;
+        let mut bits = 0u8;
+        for yy in [y - 1, y, y + 1] {
+            if (0..SY as i32).contains(&yy) {
+                bits |= 1 << sec(yy);
+            }
+        }
+        for dz in -1..=1 {
+            for dx in -1..=1 {
+                if let Some(c) = self.chunks.get_mut(&split(x + dx, z + dz).0) {
+                    c.dirty |= bits;
+                }
+            }
+        }
+    }
+
     /// Sets light and marks the chunk for rebuilding when it changed. False when there is no such cell.
     fn set_light(&mut self, ch: usize, x: i32, y: i32, z: i32, v: u8) -> bool {
         if !(0..SY as i32).contains(&y) {
@@ -349,14 +387,32 @@ impl World {
             return false;
         };
         let i = idx(lx, y as usize, lz);
-        let slot = if ch == 0 {
-            &mut c.sky[i]
-        } else {
-            &mut c.glow[i]
-        };
-        if *slot != v {
-            *slot = v;
-            c.dirty = true;
+        let old = if ch == 0 { c.sky[i] } else { c.glow[i] };
+        if old != v {
+            if ch == 0 {
+                Arc::make_mut(&mut c.sky)[i] = v;
+            } else {
+                Arc::make_mut(&mut c.glow)[i] = v;
+            }
+            // the section it is in, the ones it touches, and the neighbouring chunks when it is on a border
+            let (y, sec) = (y as usize, y as usize / SECTION);
+            let mut bits = 1u8 << sec;
+            if y % SECTION == 0 && sec > 0 {
+                bits |= 1 << (sec - 1);
+            }
+            if y % SECTION == SECTION - 1 && sec + 1 < SECTIONS {
+                bits |= 1 << (sec + 1);
+            }
+            c.dirty |= bits;
+            let (nx, nz) = (lx == 0, lx == SX - 1);
+            let (pz, qz) = (lz == 0, lz == SZ - 1);
+            if nx || nz || pz || qz {
+                for (dx, dz, hit) in [(-1, 0, nx), (1, 0, nz), (0, -1, pz), (0, 1, qz)] {
+                    if hit && let Some(n) = self.chunks.get_mut(&(key.0 + dx, key.1 + dz)) {
+                        n.dirty |= bits;
+                    }
+                }
+            }
         }
         true
     }
@@ -448,8 +504,10 @@ impl World {
         // sky columns, and the height from which each column sees the whole sky
         let mut tops = [[0i32; SZ]; SX];
         {
-            let defs = self.defs.clone();
+            let defs = self.shared_defs.clone();
             let chunk = self.chunks.get_mut(&(cx, cz)).expect("checked");
+            let sky = Arc::make_mut(&mut chunk.sky);
+            let glow = Arc::make_mut(&mut chunk.glow);
             for lz in 0..SZ {
                 for lx in 0..SX {
                     let mut level = MAX_LIGHT;
@@ -465,8 +523,8 @@ impl World {
                         if level < MAX_LIGHT && top == 0 {
                             top = y as i32 + 1;
                         }
-                        chunk.sky[i] = level;
-                        chunk.glow[i] = d.glow;
+                        sky[i] = level;
+                        glow[i] = d.glow;
                         if d.glow > 0 {
                             glow_queue.push_back([bx + lx as i32, y as i32, bz + lz as i32]);
                         }
@@ -474,7 +532,7 @@ impl World {
                     tops[lx][lz] = top;
                 }
             }
-            chunk.dirty = true;
+            chunk.dirty = ALL;
             chunk.lit = true;
         }
         // where light could spill sideways out of a column that sees the sky into a neighbour that does not
@@ -557,29 +615,12 @@ impl World {
         {
             let c = self.chunks.get_mut(&key).expect("checked");
             let i = idx(lx, y as usize, lz);
-            c.blocks[i] = id;
+            Arc::make_mut(&mut c.blocks)[i] = id;
             c.edits.insert(i as u32, id);
-            c.dirty = true;
         }
-        // the neighbours' border faces and light samples change too
-        for d in [
-            [1, 0],
-            [-1, 0],
-            [0, 1],
-            [0, -1],
-            [1, 1],
-            [-1, -1],
-            [1, -1],
-            [-1, 1],
-        ] {
-            let (nk, _, _) = split(x + d[0], z + d[1]);
-            if nk != key
-                && (lx == 0 || lx == SX - 1 || lz == 0 || lz == SZ - 1)
-                && let Some(n) = self.chunks.get_mut(&nk)
-            {
-                n.dirty = true;
-            }
-        }
+        // the sections that show it: its own, the ones above and below when it is at an edge, and those of the
+        // neighbouring chunks when it is on a border (faces and light samples reach one cell over)
+        self.mark_cell(x, y, z);
         let p = [x, y, z];
         for ch in 0..2 {
             let old = self.light_at(ch, x, y, z);
@@ -624,83 +665,171 @@ impl World {
         })
     }
 
-    /// The chunks that need a new mesh and can have one, nearest to a place first.
-    pub fn dirty_chunks(&self, near: [f32; 2]) -> Vec<(i32, i32)> {
-        let mut list: Vec<((i32, i32), f32)> = self
-            .chunks
-            .iter()
-            .filter(|(k, c)| c.dirty && c.lit && self.can_mesh(k.0, k.1))
-            .map(|(k, _)| {
-                let dx = (k.0 * SX as i32 + 8) as f32 - near[0];
-                let dz = (k.1 * SZ as i32 + 8) as f32 - near[1];
-                (*k, dx * dx + dz * dz)
-            })
-            .collect();
+    /// The sections that need a new mesh and can have one, nearest to a place first: (chunk x, chunk z, section).
+    pub fn dirty_sections(&self, near: [f32; 2]) -> Vec<(i32, i32, usize)> {
+        let mut list: Vec<((i32, i32, usize), f32)> = Vec::new();
+        for (k, c) in &self.chunks {
+            let want = c.dirty & !c.queued;
+            if want == 0 || !c.lit || !self.can_mesh(k.0, k.1) {
+                continue;
+            }
+            let dx = (k.0 * SX as i32 + 8) as f32 - near[0];
+            let dz = (k.1 * SZ as i32 + 8) as f32 - near[1];
+            for sec in 0..SECTIONS {
+                if want & (1 << sec) != 0 {
+                    list.push(((k.0, k.1, sec), dx * dx + dz * dz));
+                }
+            }
+        }
         list.sort_by(|a, b| a.1.total_cmp(&b.1));
         list.into_iter().map(|(k, _)| k).collect()
     }
 
-    /// Builds the meshes of one chunk and queues them for the renderer.
-    pub fn mesh_chunk(&mut self, cx: i32, cz: i32) {
-        let t = std::time::Instant::now();
-        let mut solid = MeshBuild::default();
-        let mut blend = MeshBuild::default();
-        let (bx, bz) = (cx * SX as i32, cz * SZ as i32);
-        let mut lo = [f32::MAX; 3];
-        let mut hi = [f32::MIN; 3];
-        {
-            let me = &*self;
-            let chunk = &me.chunks[&(cx, cz)];
-            for y in 0..SY {
-                for lz in 0..SZ {
-                    for lx in 0..SX {
-                        let b = chunk.blocks[idx(lx, y, lz)];
-                        if b == 0 {
-                            continue;
-                        }
-                        let def = me.def(b);
-                        let (x, yy, z) = (bx + lx as i32, y as i32, bz + lz as i32);
-                        let target = if def.alpha < 255 {
-                            &mut blend
-                        } else {
-                            &mut solid
-                        };
-                        let before = target.vertices.len();
-                        match def.shape {
-                            Shape::Cube => me.mesh_cube(target, def, b, x, yy, z),
-                            Shape::Cross => me.mesh_cross(target, def, x, yy, z),
-                            Shape::Torch => me.mesh_torch(target, def, x, yy, z),
-                        }
-                        if target.vertices.len() > before {
-                            lo = [
-                                lo[0].min(x as f32),
-                                lo[1].min(yy as f32),
-                                lo[2].min(z as f32),
-                            ];
-                            hi = [
-                                hi[0].max(x as f32 + 1.0),
-                                hi[1].max(yy as f32 + 1.0),
-                                hi[2].max(z as f32 + 1.0),
-                            ];
-                        }
-                    }
+    fn snapshot(&self, cx: i32, cz: i32) -> Snapshot {
+        let mut snap = Snapshot {
+            cx,
+            cz,
+            blocks: Default::default(),
+            sky: Default::default(),
+            glow: Default::default(),
+            defs: self.shared_defs.clone(),
+            tiles_per_row: self.tiles_per_row,
+        };
+        for dz in -1..=1i32 {
+            for dx in -1..=1i32 {
+                if let Some(c) = self.chunks.get(&(cx + dx, cz + dz)) {
+                    let i = ((dz + 1) * 3 + (dx + 1)) as usize;
+                    snap.blocks[i] = Some(c.blocks.clone());
+                    snap.sky[i] = Some(c.sky.clone());
+                    snap.glow[i] = Some(c.glow.clone());
                 }
             }
         }
-        let faces = (solid.indices.len() + blend.indices.len()) as u32 / 6;
-        let old = self.chunks[&(cx, cz)].meshes;
+        snap
+    }
+
+    /// How many threads build meshes besides this one (0: this one does, a few a frame). Changing it waits for work in
+    /// progress to finish.
+    pub fn set_threads(&mut self, n: usize) {
+        self.threads_set = true;
+        self.pool = None; // (finishes and joins the old workers)
+        for c in self.chunks.values_mut() {
+            c.dirty |= c.queued; // whatever was in flight is built again
+            c.queued = 0;
+        }
+        if n > 0 {
+            self.pool = Some(Pool::new(n));
+        }
+    }
+
+    /// How many worker threads build meshes.
+    pub fn threads(&self) -> usize {
+        self.pool.as_ref().map_or(0, |p| p.size)
+    }
+
+    /// One step of keeping the meshes current, once a frame: takes in what the workers have finished (at most `budget`
+    /// pieces, so that one frame does not upload a great many) and hands them the nearest sections that are out of date.
+    /// Without workers it builds `budget` sections itself.
+    pub fn pump(&mut self, near: [f32; 2], budget: usize) {
+        if self.pool.is_none() && !self.threads_set {
+            // by default: all the cores but this one and one more for the game, up to three
+            let cores = std::thread::available_parallelism().map_or(1, |n| n.get());
+            self.set_threads(cores.saturating_sub(2).min(3));
+        }
+        let mut applied = 0;
+        while applied < budget.max(1) {
+            let done = match self.pool.as_mut().map(|p| p.done.try_recv()) {
+                Some(Ok(d)) => d,
+                _ => break,
+            };
+            if let Some(p) = self.pool.as_mut() {
+                p.in_flight -= 1;
+            }
+            let wanted = self
+                .chunks
+                .get(&(done.cx, done.cz))
+                .is_some_and(|c| c.queued & (1 << done.sec) != 0);
+            if wanted {
+                self.apply_section(done.cx, done.cz, done.sec, done.built);
+                applied += 1;
+            }
+        }
+        let todo = self.dirty_sections(near);
+        if let Some(room) = self
+            .pool
+            .as_ref()
+            .map(|p| (p.size * 3).saturating_sub(p.in_flight))
+        {
+            for (cx, cz, sec) in todo.into_iter().take(room) {
+                let snap = self.snapshot(cx, cz);
+                let c = self.chunks.get_mut(&(cx, cz)).expect("listed");
+                c.queued |= 1 << sec;
+                c.dirty &= !(1 << sec);
+                let pool = self.pool.as_mut().expect("checked");
+                pool.in_flight += 1;
+                pool.send(Job { snap, sec });
+            }
+        } else {
+            for (cx, cz, sec) in todo.into_iter().take(budget.max(1)) {
+                self.mesh_section(cx, cz, sec);
+            }
+        }
+    }
+
+    /// Whether any mesh work is waiting or under way.
+    pub fn meshing_busy(&self) -> bool {
+        // (chunks at the edge of what is loaded stay out of date until their neighbours arrive: that is not work)
+        self.pool.as_ref().is_some_and(|p| p.in_flight > 0)
+            || self.chunks.values().any(|c| c.queued != 0)
+            || !self.dirty_sections([0.0, 0.0]).is_empty()
+    }
+
+    /// Builds one section now, on this thread.
+    pub fn mesh_section(&mut self, cx: i32, cz: i32, sec: usize) {
+        let built = self.snapshot(cx, cz).mesh_section(sec);
+        if let Some(c) = self.chunks.get_mut(&(cx, cz)) {
+            c.dirty &= !(1 << sec);
+            c.queued |= 1 << sec;
+        }
+        self.apply_section(cx, cz, sec, built);
+    }
+
+    /// Builds every section of a chunk now, on this thread (for tools and tests; the game uses `pump`).
+    pub fn mesh_chunk(&mut self, cx: i32, cz: i32) {
+        let mut faces = 0;
+        for sec in 0..SECTIONS {
+            self.mesh_section(cx, cz, sec);
+            faces += self.stats.faces;
+        }
+        self.stats.faces = faces;
+    }
+
+    /// Puts a finished section's mesh in place and queues it for the renderer.
+    fn apply_section(&mut self, cx: i32, cz: i32, sec: usize, built: Built) {
+        let Some(chunk) = self.chunks.get_mut(&(cx, cz)) else {
+            return;
+        };
+        chunk.queued &= !(1 << sec);
+        let old = chunk.meshes[sec];
+        let faces = (built.solid.indices.len() + built.blend.indices.len()) as u32 / 6;
         let mut meshes = [None, None];
-        for (slot, build) in [solid, blend].into_iter().enumerate() {
+        let mut free = Vec::new();
+        let mut upload = Vec::new();
+        for (slot, build) in [built.solid, built.blend].into_iter().enumerate() {
             if build.indices.is_empty() {
                 if let Some(id) = old[slot] {
-                    self.free_mesh(id);
+                    free.push(id);
                 }
                 continue;
             }
-            let id = match old[slot] {
-                Some(id) => id,
-                None => self.alloc_mesh(),
-            };
+            upload.push((slot, old[slot], build));
+        }
+        chunk.bounds[sec] = built.bounds;
+        for id in free {
+            self.free_mesh(id);
+        }
+        for (slot, id, build) in upload {
+            let id = id.unwrap_or_else(|| self.alloc_mesh());
             self.ops.push(MeshOp::Upload {
                 id,
                 vertices: build.vertices,
@@ -708,234 +837,10 @@ impl World {
             });
             meshes[slot] = Some(id);
         }
-        let chunk = self.chunks.get_mut(&(cx, cz)).expect("exists");
-        chunk.meshes = meshes;
-        chunk.dirty = false;
-        chunk.bounds = if lo[0] == f32::MAX {
-            [0.0; 6]
-        } else {
-            [lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]]
-        };
+        self.chunks.get_mut(&(cx, cz)).expect("exists").meshes[sec] = meshes;
         self.stats.meshed += 1;
         self.stats.faces = faces;
-        self.stats.mesh_ms += t.elapsed().as_secs_f32() * 1000.0;
-    }
-
-    fn tile_uv(&self, tile: u16, u: f32, v: f32) -> [f32; 2] {
-        let n = self.tiles_per_row.max(1);
-        let (tx, ty) = (tile as u32 % n, tile as u32 / n);
-        let s = 1.0 / n as f32;
-        [(tx as f32 + u) * s, (ty as f32 + v) * s]
-    }
-
-    fn opaque_at(&self, x: i32, y: i32, z: i32) -> bool {
-        if y < 0 {
-            return true;
-        }
-        self.def(self.get(x, y, z)).opaque
-    }
-
-    /// Smooth light and ambient occlusion for the four corners of one face of the cell (x, y, z), from the cells in front.
-    fn face_corners(&self, p: [i32; 3], k: usize) -> ([f32; 4], [f32; 4], [u8; 4]) {
-        let d = DIRS[k];
-        let (t1, t2) = FACE_AXES[k];
-        let front = [p[0] + d[0], p[1] + d[1], p[2] + d[2]];
-        let mut sky = [0.0; 4];
-        let mut glow = [0.0; 4];
-        let mut ao = [3u8; 4];
-        for (c, (s1, s2)) in CORNERS.iter().enumerate() {
-            let at = |a: i32, b: i32| {
-                [
-                    front[0] + t1[0] * a + t2[0] * b,
-                    front[1] + t1[1] * a + t2[1] * b,
-                    front[2] + t1[2] * a + t2[2] * b,
-                ]
-            };
-            let side1 = at(*s1, 0);
-            let side2 = at(0, *s2);
-            let corner = at(*s1, *s2);
-            let o1 = self.opaque_at(side1[0], side1[1], side1[2]);
-            let o2 = self.opaque_at(side2[0], side2[1], side2[2]);
-            let oc = self.opaque_at(corner[0], corner[1], corner[2]);
-            ao[c] = if o1 && o2 {
-                0
-            } else {
-                3 - (o1 as u8 + o2 as u8 + oc as u8)
-            };
-            // average the light of the cells that are open
-            let mut cells = vec![front];
-            if !o1 {
-                cells.push(side1);
-            }
-            if !o2 {
-                cells.push(side2);
-            }
-            if !oc && !(o1 && o2) {
-                cells.push(corner);
-            }
-            let n = cells.len() as f32;
-            let (mut s, mut g) = (0.0, 0.0);
-            for q in cells {
-                let (a, b) = self.light(q[0], q[1], q[2]);
-                s += a as f32;
-                g += b as f32;
-            }
-            sky[c] = s / n;
-            glow[c] = g / n;
-        }
-        (sky, glow, ao)
-    }
-
-    fn mesh_cube(&self, out: &mut MeshBuild, def: &BlockDef, id: u8, x: i32, y: i32, z: i32) {
-        let top = if def.liquid && !self.def(self.get(x, y + 1, z)).liquid {
-            0.875
-        } else {
-            1.0
-        };
-        for k in 0..6 {
-            let d = DIRS[k];
-            let n = self.get(x + d[0], y + d[1], z + d[2]);
-            let nd = self.def(n);
-            if nd.opaque || (n == id && def.cull_same) {
-                continue;
-            }
-            if y + d[1] < 0 {
-                continue;
-            }
-            let (sky, glow, ao) = self.face_corners([x, y, z], k);
-            let (t1, t2) = FACE_AXES[k];
-            let mut verts = [[0f32; 3]; 4];
-            let mut uvs = [[0f32; 2]; 4];
-            for (c, (s1, s2)) in CORNERS.iter().enumerate() {
-                let local = [
-                    0.5 + 0.5 * (d[0] + t1[0] * s1 + t2[0] * s2) as f32,
-                    0.5 + 0.5 * (d[1] + t1[1] * s1 + t2[1] * s2) as f32,
-                    0.5 + 0.5 * (d[2] + t1[2] * s1 + t2[2] * s2) as f32,
-                ];
-                verts[c] = [
-                    x as f32 + local[0],
-                    y as f32 + local[1] * top,
-                    z as f32 + local[2],
-                ];
-                let (u, v) = match k {
-                    0 => (1.0 - local[2], 1.0 - local[1]),
-                    1 => (local[2], 1.0 - local[1]),
-                    2 => (local[0], local[2]),
-                    3 => (local[0], 1.0 - local[2]),
-                    4 => (local[0], 1.0 - local[1]),
-                    _ => (1.0 - local[0], 1.0 - local[1]),
-                };
-                uvs[c] = self.tile_uv(def.tiles[k], u, v);
-            }
-            out.quad(
-                &verts,
-                &uvs,
-                &sky,
-                &glow,
-                &ao,
-                FACE_SHADE[k],
-                def.alpha,
-                false,
-            );
-            // a water surface is seen from below too
-            if def.liquid && k == 2 {
-                out.quad(
-                    &verts,
-                    &uvs,
-                    &sky,
-                    &glow,
-                    &ao,
-                    FACE_SHADE[k],
-                    def.alpha,
-                    true,
-                );
-            }
-        }
-    }
-
-    fn own_light(&self, x: i32, y: i32, z: i32) -> ([f32; 4], [f32; 4]) {
-        let (s, g) = self.light(x, y, z);
-        ([s as f32; 4], [g as f32; 4])
-    }
-
-    fn mesh_cross(&self, out: &mut MeshBuild, def: &BlockDef, x: i32, y: i32, z: i32) {
-        let (sky, glow) = self.own_light(x, y, z);
-        let (fx, fy, fz) = (x as f32, y as f32, z as f32);
-        let uvs = [
-            self.tile_uv(def.tiles[0], 0.0, 1.0),
-            self.tile_uv(def.tiles[0], 1.0, 1.0),
-            self.tile_uv(def.tiles[0], 1.0, 0.0),
-            self.tile_uv(def.tiles[0], 0.0, 0.0),
-        ];
-        for (a, b) in [([0.0, 0.0], [1.0, 1.0]), ([1.0, 0.0], [0.0, 1.0])] {
-            let verts = [
-                [fx + a[0], fy, fz + a[1]],
-                [fx + b[0], fy, fz + b[1]],
-                [fx + b[0], fy + 1.0, fz + b[1]],
-                [fx + a[0], fy + 1.0, fz + a[1]],
-            ];
-            out.quad(&verts, &uvs, &sky, &glow, &[3; 4], 0.95, 255, false);
-            out.quad(&verts, &uvs, &sky, &glow, &[3; 4], 0.95, 255, true);
-        }
-    }
-
-    fn mesh_torch(&self, out: &mut MeshBuild, def: &BlockDef, x: i32, y: i32, z: i32) {
-        let (sky, glow) = self.own_light(x, y, z);
-        let (lo, hi, height) = (7.0 / 16.0, 9.0 / 16.0, 10.0 / 16.0);
-        let (fx, fy, fz) = (x as f32, y as f32, z as f32);
-        for k in 0..6 {
-            let d = DIRS[k];
-            let (t1, t2) = FACE_AXES[k];
-            let mut verts = [[0f32; 3]; 4];
-            let mut uvs = [[0f32; 2]; 4];
-            for (c, (s1, s2)) in CORNERS.iter().enumerate() {
-                let q = [
-                    d[0] + t1[0] * s1 + t2[0] * s2,
-                    d[1] + t1[1] * s1 + t2[1] * s2,
-                    d[2] + t1[2] * s1 + t2[2] * s2,
-                ];
-                let px = if q[0] > 0 { hi } else { lo };
-                let pz = if q[2] > 0 { hi } else { lo };
-                let py = if q[1] > 0 { height } else { 0.0 };
-                verts[c] = [fx + px, fy + py, fz + pz];
-                let (u, v) = match k {
-                    2 => (
-                        (px - lo) / (hi - lo) * 0.125 + 0.4375,
-                        0.375 + (pz - lo) / (hi - lo) * 0.125,
-                    ),
-                    3 => (0.4375, 0.9),
-                    0 | 1 => (
-                        0.4375
-                            + (if k == 0 {
-                                1.0 - (pz - lo) / (hi - lo)
-                            } else {
-                                (pz - lo) / (hi - lo)
-                            }) * 0.125,
-                        1.0 - py,
-                    ),
-                    _ => (
-                        0.4375
-                            + (if k == 4 {
-                                (px - lo) / (hi - lo)
-                            } else {
-                                1.0 - (px - lo) / (hi - lo)
-                            }) * 0.125,
-                        1.0 - py,
-                    ),
-                };
-                uvs[c] = self.tile_uv(def.tiles[0], u, v);
-            }
-            out.quad(
-                &verts,
-                &uvs,
-                &sky,
-                &glow,
-                &[3; 4],
-                FACE_SHADE[k].max(0.8),
-                255,
-                false,
-            );
-        }
+        self.stats.mesh_ms += built.ms;
     }
 
     // ---- queries ------------------------------------------------------------------------------
@@ -1165,7 +1070,7 @@ impl World {
             let i = u32::from_str_radix(&s[..4], 16).map_err(|e| e.to_string())?;
             let id = u8::from_str_radix(&s[4..], 16).map_err(|e| e.to_string())?;
             if (i as usize) < VOL {
-                c.blocks[i as usize] = id;
+                Arc::make_mut(&mut c.blocks)[i as usize] = id;
                 c.edits.insert(i, id);
                 n += 1;
             }
@@ -1183,7 +1088,7 @@ impl World {
         };
         for (&i, &id) in edits {
             if (i as usize) < VOL {
-                c.blocks[i as usize] = id;
+                Arc::make_mut(&mut c.blocks)[i as usize] = id;
                 c.edits.insert(i, id);
             }
         }
@@ -1262,7 +1167,7 @@ impl World {
         v
     }
 
-    /// Meshes to draw this frame: every chunk within `distance` chunks that the view can see.
+    /// Meshes to draw this frame: every piece of a chunk within `distance` chunks that the view can see, far to near.
     pub fn visible(
         &mut self,
         eye: [f32; 3],
@@ -1271,26 +1176,27 @@ impl World {
     ) -> Vec<(usize, bool)> {
         let frustum = Frustum::new(view_proj);
         let max2 = (distance * SX as f32).powi(2);
-        let mut out = Vec::new();
-        let mut solid_first: Vec<((i32, i32), f32)> = Vec::new();
+        let mut pieces: Vec<((i32, i32), usize, f32)> = Vec::new();
         for (key, c) in &self.chunks {
-            if c.meshes == [None, None] {
-                continue;
+            for sec in 0..SECTIONS {
+                if c.meshes[sec] == [None, None] {
+                    continue;
+                }
+                let b = c.bounds[sec];
+                let nx = eye[0].clamp(b[0], b[3]) - eye[0];
+                let nz = eye[2].clamp(b[2], b[5]) - eye[2];
+                let d2 = nx * nx + nz * nz;
+                if d2 > max2 || !frustum.sees([b[0], b[1], b[2]], [b[3], b[4], b[5]]) {
+                    continue;
+                }
+                pieces.push((*key, sec, d2));
             }
-            let b = c.bounds;
-            let nx = eye[0].clamp(b[0], b[3]) - eye[0];
-            let nz = eye[2].clamp(b[2], b[5]) - eye[2];
-            let d2 = nx * nx + nz * nz;
-            if d2 > max2 || !frustum.sees([b[0], b[1], b[2]], [b[3], b[4], b[5]]) {
-                continue;
-            }
-            solid_first.push((*key, d2));
         }
         // far to near: translucent water over water is blended in a sensible order
-        solid_first.sort_by(|a, b| b.1.total_cmp(&a.1));
-        for (key, _) in solid_first {
-            let c = &self.chunks[&key];
-            for (slot, id) in c.meshes.iter().enumerate() {
+        pieces.sort_by(|a, b| b.2.total_cmp(&a.2));
+        let mut out = Vec::new();
+        for (key, sec, _) in pieces {
+            for (slot, id) in self.chunks[&key].meshes[sec].iter().enumerate() {
                 if let Some(id) = id {
                     out.push((*id, slot == 1));
                 }
@@ -1298,6 +1204,420 @@ impl World {
         }
         self.stats.drawn = out.len() as u32;
         out
+    }
+}
+
+/// A section's surroundings as the mesher sees them: the chunk and its eight neighbours' blocks and light (shared, not
+/// copied), so that a worker thread can build the mesh while the game goes on.
+pub struct Snapshot {
+    cx: i32,
+    cz: i32,
+    blocks: [Option<Arc<Vec<u8>>>; 9],
+    sky: [Option<Arc<Vec<u8>>>; 9],
+    glow: [Option<Arc<Vec<u8>>>; 9],
+    defs: Arc<Vec<BlockDef>>,
+    tiles_per_row: u32,
+}
+
+/// What building a section gives: its two meshes, where the content is, and how long it took.
+pub struct Built {
+    solid: MeshBuild,
+    blend: MeshBuild,
+    bounds: [f32; 6],
+    ms: f32,
+}
+
+impl Snapshot {
+    fn slot(&self, x: i32, z: i32) -> Option<(usize, usize, usize)> {
+        let (key, lx, lz) = split(x, z);
+        let (dx, dz) = (key.0 - self.cx, key.1 - self.cz);
+        if !(-1..=1).contains(&dx) || !(-1..=1).contains(&dz) {
+            return None;
+        }
+        Some((((dz + 1) * 3 + (dx + 1)) as usize, lx, lz))
+    }
+
+    fn get(&self, x: i32, y: i32, z: i32) -> u8 {
+        if !(0..SY as i32).contains(&y) {
+            return 0;
+        }
+        self.slot(x, z)
+            .and_then(|(i, lx, lz)| self.blocks[i].as_ref().map(|b| b[idx(lx, y as usize, lz)]))
+            .unwrap_or_default()
+    }
+
+    fn light(&self, x: i32, y: i32, z: i32) -> (u8, u8) {
+        if y >= SY as i32 {
+            return (MAX_LIGHT, 0);
+        }
+        if y < 0 {
+            return (0, 0);
+        }
+        match self.slot(x, z) {
+            Some((i, lx, lz)) => match (&self.sky[i], &self.glow[i]) {
+                (Some(s), Some(g)) => (s[idx(lx, y as usize, lz)], g[idx(lx, y as usize, lz)]),
+                _ => (0, 0),
+            },
+            None => (0, 0),
+        }
+    }
+
+    fn def(&self, id: u8) -> &BlockDef {
+        self.defs.get(id as usize).unwrap_or(&self.defs[0])
+    }
+
+    /// Builds the meshes of one 16-high section of the centre chunk.
+    pub fn mesh_section(&self, sec: usize) -> Built {
+        let t = std::time::Instant::now();
+        let mut solid = MeshBuild::default();
+        let mut blend = MeshBuild::default();
+        let (bx, bz) = (self.cx * SX as i32, self.cz * SZ as i32);
+        let mut lo = [f32::MAX; 3];
+        let mut hi = [f32::MIN; 3];
+        if let Some(blocks) = &self.blocks[4] {
+            for y in sec * SECTION..((sec + 1) * SECTION).min(SY) {
+                for lz in 0..SZ {
+                    for lx in 0..SX {
+                        let b = blocks[idx(lx, y, lz)];
+                        if b == 0 {
+                            continue;
+                        }
+                        let def = self.def(b);
+                        let (x, yy, z) = (bx + lx as i32, y as i32, bz + lz as i32);
+                        let target = if def.alpha < 255 {
+                            &mut blend
+                        } else {
+                            &mut solid
+                        };
+                        let before = target.vertices.len();
+                        match def.shape {
+                            Shape::Cube => self.mesh_cube(target, def, b, x, yy, z),
+                            Shape::Cross => self.mesh_cross(target, def, x, yy, z),
+                            Shape::Torch => self.mesh_torch(target, def, x, yy, z),
+                        }
+                        if target.vertices.len() > before {
+                            lo = [
+                                lo[0].min(x as f32),
+                                lo[1].min(yy as f32),
+                                lo[2].min(z as f32),
+                            ];
+                            hi = [
+                                hi[0].max(x as f32 + 1.0),
+                                hi[1].max(yy as f32 + 1.0),
+                                hi[2].max(z as f32 + 1.0),
+                            ];
+                        }
+                    }
+                }
+            }
+        }
+        let bounds = if lo[0] == f32::MAX {
+            [0.0; 6]
+        } else {
+            [lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]]
+        };
+        Built {
+            solid,
+            blend,
+            bounds,
+            ms: t.elapsed().as_secs_f32() * 1000.0,
+        }
+    }
+
+    fn tile_uv(&self, tile: u16, u: f32, v: f32) -> [f32; 2] {
+        let n = self.tiles_per_row.max(1);
+        let (tx, ty) = (tile as u32 % n, tile as u32 / n);
+        let s = 1.0 / n as f32;
+        [(tx as f32 + u) * s, (ty as f32 + v) * s]
+    }
+
+    fn opaque_at(&self, x: i32, y: i32, z: i32) -> bool {
+        if y < 0 {
+            return true;
+        }
+        self.def(self.get(x, y, z)).opaque
+    }
+
+    /// Smooth light and ambient occlusion for the four corners of one face of the cell (x, y, z), from the cells in front.
+    fn face_corners(&self, p: [i32; 3], k: usize) -> ([f32; 4], [f32; 4], [u8; 4]) {
+        let d = DIRS[k];
+        let (t1, t2) = FACE_AXES[k];
+        let front = [p[0] + d[0], p[1] + d[1], p[2] + d[2]];
+        let mut sky = [0.0; 4];
+        let mut glow = [0.0; 4];
+        let mut ao = [3u8; 4];
+        for (c, (s1, s2)) in CORNERS.iter().enumerate() {
+            let at = |a: i32, b: i32| {
+                [
+                    front[0] + t1[0] * a + t2[0] * b,
+                    front[1] + t1[1] * a + t2[1] * b,
+                    front[2] + t1[2] * a + t2[2] * b,
+                ]
+            };
+            let side1 = at(*s1, 0);
+            let side2 = at(0, *s2);
+            let corner = at(*s1, *s2);
+            let o1 = self.opaque_at(side1[0], side1[1], side1[2]);
+            let o2 = self.opaque_at(side2[0], side2[1], side2[2]);
+            let oc = self.opaque_at(corner[0], corner[1], corner[2]);
+            ao[c] = if o1 && o2 {
+                0
+            } else {
+                3 - (o1 as u8 + o2 as u8 + oc as u8)
+            };
+            // average the light of the cells that are open
+            let mut cells = vec![front];
+            if !o1 {
+                cells.push(side1);
+            }
+            if !o2 {
+                cells.push(side2);
+            }
+            if !oc && !(o1 && o2) {
+                cells.push(corner);
+            }
+            let n = cells.len() as f32;
+            let (mut s, mut g) = (0.0, 0.0);
+            for q in cells {
+                let (a, b) = self.light(q[0], q[1], q[2]);
+                s += a as f32;
+                g += b as f32;
+            }
+            sky[c] = s / n;
+            glow[c] = g / n;
+        }
+        (sky, glow, ao)
+    }
+
+    fn mesh_cube(&self, out: &mut MeshBuild, def: &BlockDef, id: u8, x: i32, y: i32, z: i32) {
+        let top = if def.liquid && !self.def(self.get(x, y + 1, z)).liquid {
+            0.875
+        } else {
+            1.0
+        };
+        for k in 0..6 {
+            let d = DIRS[k];
+            let n = self.get(x + d[0], y + d[1], z + d[2]);
+            let nd = self.def(n);
+            if nd.opaque || (n == id && def.cull_same) {
+                continue;
+            }
+            if y + d[1] < 0 {
+                continue;
+            }
+            let (sky, glow, ao) = self.face_corners([x, y, z], k);
+            let (t1, t2) = FACE_AXES[k];
+            let mut verts = [[0f32; 3]; 4];
+            let mut uvs = [[0f32; 2]; 4];
+            for (c, (s1, s2)) in CORNERS.iter().enumerate() {
+                let local = [
+                    0.5 + 0.5 * (d[0] + t1[0] * s1 + t2[0] * s2) as f32,
+                    0.5 + 0.5 * (d[1] + t1[1] * s1 + t2[1] * s2) as f32,
+                    0.5 + 0.5 * (d[2] + t1[2] * s1 + t2[2] * s2) as f32,
+                ];
+                verts[c] = [
+                    x as f32 + local[0],
+                    y as f32 + local[1] * top,
+                    z as f32 + local[2],
+                ];
+                let (u, v) = match k {
+                    0 => (1.0 - local[2], 1.0 - local[1]),
+                    1 => (local[2], 1.0 - local[1]),
+                    2 => (local[0], local[2]),
+                    3 => (local[0], 1.0 - local[2]),
+                    4 => (local[0], 1.0 - local[1]),
+                    _ => (1.0 - local[0], 1.0 - local[1]),
+                };
+                uvs[c] = self.tile_uv(def.tiles[k], u, v);
+            }
+            out.quad(
+                &verts,
+                &uvs,
+                &sky,
+                &glow,
+                &ao,
+                FACE_SHADE[k],
+                def.alpha,
+                false,
+            );
+            // a water surface is seen from below too
+            if def.liquid && k == 2 {
+                out.quad(
+                    &verts,
+                    &uvs,
+                    &sky,
+                    &glow,
+                    &ao,
+                    FACE_SHADE[k],
+                    def.alpha,
+                    true,
+                );
+            }
+        }
+    }
+
+    fn own_light(&self, x: i32, y: i32, z: i32) -> ([f32; 4], [f32; 4]) {
+        let (s, g) = self.light(x, y, z);
+        ([s as f32; 4], [g as f32; 4])
+    }
+
+    fn mesh_cross(&self, out: &mut MeshBuild, def: &BlockDef, x: i32, y: i32, z: i32) {
+        let (sky, glow) = self.own_light(x, y, z);
+        let (fx, fy, fz) = (x as f32, y as f32, z as f32);
+        let uvs = [
+            self.tile_uv(def.tiles[0], 0.0, 1.0),
+            self.tile_uv(def.tiles[0], 1.0, 1.0),
+            self.tile_uv(def.tiles[0], 1.0, 0.0),
+            self.tile_uv(def.tiles[0], 0.0, 0.0),
+        ];
+        for (a, b) in [([0.0, 0.0], [1.0, 1.0]), ([1.0, 0.0], [0.0, 1.0])] {
+            let verts = [
+                [fx + a[0], fy, fz + a[1]],
+                [fx + b[0], fy, fz + b[1]],
+                [fx + b[0], fy + 1.0, fz + b[1]],
+                [fx + a[0], fy + 1.0, fz + a[1]],
+            ];
+            out.quad(&verts, &uvs, &sky, &glow, &[3; 4], 0.95, 255, false);
+            out.quad(&verts, &uvs, &sky, &glow, &[3; 4], 0.95, 255, true);
+        }
+    }
+
+    fn mesh_torch(&self, out: &mut MeshBuild, def: &BlockDef, x: i32, y: i32, z: i32) {
+        let (sky, glow) = self.own_light(x, y, z);
+        let (lo, hi, height) = (7.0 / 16.0, 9.0 / 16.0, 10.0 / 16.0);
+        let (fx, fy, fz) = (x as f32, y as f32, z as f32);
+        for k in 0..6 {
+            let d = DIRS[k];
+            let (t1, t2) = FACE_AXES[k];
+            let mut verts = [[0f32; 3]; 4];
+            let mut uvs = [[0f32; 2]; 4];
+            for (c, (s1, s2)) in CORNERS.iter().enumerate() {
+                let q = [
+                    d[0] + t1[0] * s1 + t2[0] * s2,
+                    d[1] + t1[1] * s1 + t2[1] * s2,
+                    d[2] + t1[2] * s1 + t2[2] * s2,
+                ];
+                let px = if q[0] > 0 { hi } else { lo };
+                let pz = if q[2] > 0 { hi } else { lo };
+                let py = if q[1] > 0 { height } else { 0.0 };
+                verts[c] = [fx + px, fy + py, fz + pz];
+                let (u, v) = match k {
+                    2 => (
+                        (px - lo) / (hi - lo) * 0.125 + 0.4375,
+                        0.375 + (pz - lo) / (hi - lo) * 0.125,
+                    ),
+                    3 => (0.4375, 0.9),
+                    0 | 1 => (
+                        0.4375
+                            + (if k == 0 {
+                                1.0 - (pz - lo) / (hi - lo)
+                            } else {
+                                (pz - lo) / (hi - lo)
+                            }) * 0.125,
+                        1.0 - py,
+                    ),
+                    _ => (
+                        0.4375
+                            + (if k == 4 {
+                                (px - lo) / (hi - lo)
+                            } else {
+                                1.0 - (px - lo) / (hi - lo)
+                            }) * 0.125,
+                        1.0 - py,
+                    ),
+                };
+                uvs[c] = self.tile_uv(def.tiles[0], u, v);
+            }
+            out.quad(
+                &verts,
+                &uvs,
+                &sky,
+                &glow,
+                &[3; 4],
+                FACE_SHADE[k].max(0.8),
+                255,
+                false,
+            );
+        }
+    }
+}
+
+struct Job {
+    snap: Snapshot,
+    sec: usize,
+}
+
+struct Done {
+    cx: i32,
+    cz: i32,
+    sec: usize,
+    built: Built,
+}
+
+/// Threads that build meshes: jobs go in one end, finished sections come out the other.
+struct Pool {
+    jobs: Option<Sender<Job>>,
+    done: Receiver<Done>,
+    in_flight: usize,
+    size: usize,
+    workers: Vec<std::thread::JoinHandle<()>>,
+}
+
+impl Pool {
+    fn new(n: usize) -> Self {
+        let (tx, rx) = channel::<Job>();
+        let (done_tx, done_rx) = channel::<Done>();
+        let rx = Arc::new(Mutex::new(rx));
+        let workers = (0..n)
+            .map(|i| {
+                let rx = rx.clone();
+                let done_tx = done_tx.clone();
+                std::thread::Builder::new()
+                    .name(format!("voxel-mesh-{i}"))
+                    .spawn(move || {
+                        loop {
+                            let job = match rx.lock() {
+                                Ok(guard) => guard.recv(),
+                                Err(_) => break,
+                            };
+                            let Ok(job) = job else { break };
+                            let built = job.snap.mesh_section(job.sec);
+                            let done = Done {
+                                cx: job.snap.cx,
+                                cz: job.snap.cz,
+                                sec: job.sec,
+                                built,
+                            };
+                            if done_tx.send(done).is_err() {
+                                break;
+                            }
+                        }
+                    })
+                    .expect("a thread can be made")
+            })
+            .collect();
+        Self {
+            jobs: Some(tx),
+            done: done_rx,
+            in_flight: 0,
+            size: n,
+            workers,
+        }
+    }
+
+    fn send(&self, job: Job) {
+        if let Some(tx) = &self.jobs {
+            let _ = tx.send(job);
+        }
+    }
+}
+
+impl Drop for Pool {
+    fn drop(&mut self) {
+        self.jobs = None; // the workers see the end of the queue and stop
+        for w in self.workers.drain(..) {
+            let _ = w.join();
+        }
     }
 }
 
@@ -1827,6 +2147,94 @@ mod tests {
         assert_eq!(w2.encode_world().len(), 8);
     }
 
+    /// (meshes alive, vertices, indices) after applying a list of mesh operations in order.
+    fn mesh_totals(ops: &[MeshOp]) -> (usize, usize, usize) {
+        let mut alive: HashMap<usize, (usize, usize)> = HashMap::new();
+        for op in ops {
+            match op {
+                MeshOp::Upload {
+                    id,
+                    vertices,
+                    indices,
+                } => {
+                    alive.insert(*id, (vertices.len(), indices.len()));
+                }
+                MeshOp::Free(id) => {
+                    alive.remove(id);
+                }
+                MeshOp::SetAtlas(_) => {}
+            }
+        }
+        (
+            alive.len(),
+            alive.values().map(|v| v.0).sum(),
+            alive.values().map(|v| v.1).sum(),
+        )
+    }
+
+    fn mesh_everything(threads: usize) -> (usize, usize, usize) {
+        let mut w = world();
+        flat_with(&mut w, 2, |w| {
+            w.fill([3, 10, 3], [8, 30, 8], 1);
+            w.fill([4, 11, 4], [6, 29, 6], 2);
+            w.fill([20, 10, 20], [22, 12, 22], 3);
+        });
+        w.set_threads(threads);
+        for _ in 0..4000 {
+            w.pump([0.0, 0.0], 1000);
+            if !w.meshing_busy() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        assert!(!w.meshing_busy(), "all the work finished");
+        assert_eq!(w.threads(), threads);
+        mesh_totals(&w.ops)
+    }
+
+    #[test]
+    fn workers_build_the_same_meshes_as_the_game_thread() {
+        let alone = mesh_everything(0);
+        assert!(alone.0 > 1 && alone.2 > 0, "{alone:?}");
+        assert_eq!(mesh_everything(3), alone);
+    }
+
+    #[test]
+    fn a_change_rebuilds_only_the_sections_it_touches() {
+        let mut w = world();
+        flat(&mut w, 2);
+        for cx in -1..=1 {
+            for cz in -1..=1 {
+                w.mesh_chunk(cx, cz);
+            }
+        }
+        assert!(
+            w.dirty_sections([0.0, 0.0])
+                .iter()
+                .all(|s| s.0.abs() > 1 || s.1.abs() > 1),
+            "the middle is clean"
+        );
+        // in the middle of a section: that one only
+        w.edit(5, 10, 5, 1);
+        let mut list = w.dirty_sections([0.0, 0.0]);
+        list.retain(|s| s.0.abs() <= 1 && s.1.abs() <= 1);
+        assert_eq!(list, vec![(0, 0, 0)]);
+        // at the top edge of a section: it and the one above
+        w.mesh_chunk(0, 0);
+        w.edit(5, 15, 5, 1);
+        let mut list = w.dirty_sections([0.0, 0.0]);
+        list.retain(|s| s.0.abs() <= 1 && s.1.abs() <= 1);
+        list.sort();
+        assert_eq!(list, vec![(0, 0, 0), (0, 0, 1)]);
+        // on the border of a chunk: the chunk next to it too
+        w.mesh_chunk(0, 0);
+        w.edit(0, 10, 5, 1);
+        let mut list = w.dirty_sections([0.0, 0.0]);
+        list.retain(|s| s.0.abs() <= 1 && s.1.abs() <= 1);
+        list.sort();
+        assert_eq!(list, vec![(-1, 0, 0), (0, 0, 0)]);
+    }
+
     #[test]
     fn carving_leaves_air_only_where_allowed() {
         let mut w = world();
@@ -1856,11 +2264,11 @@ mod tests {
         flat(&mut w, 2);
         w.mesh_chunk(0, 0);
         w.mesh_chunk(1, 0);
-        assert!(!w.chunks[&(1, 0)].dirty);
+        assert_eq!(w.chunks[&(1, 0)].dirty, 0);
         w.ops.clear();
         w.unload_chunk(0, 0);
         assert!(w.ops.iter().any(|o| matches!(o, MeshOp::Free(_))));
-        assert!(w.chunks[&(1, 0)].dirty);
+        assert_ne!(w.chunks[&(1, 0)].dirty, 0);
         assert!(!w.can_mesh(1, 0));
     }
 

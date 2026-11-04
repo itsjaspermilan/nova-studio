@@ -610,7 +610,7 @@ pub(super) fn install(
         lua.create_function(move |_, opts: Option<Table>| {
             let mut sh = s.borrow_mut();
             let distance = number_option(&opts, "distance")?.unwrap_or(6.0) as f32;
-            let budget = number_option(&opts, "budget")?.unwrap_or(2.0).max(0.0) as usize;
+            let budget = number_option(&opts, "budget")?.unwrap_or(6.0).max(0.0) as usize;
             let cam = sh.camera;
             let aspect = (sh.view[0] / sh.view[1].max(1.0)).max(0.1);
             let view_proj = glam::camera::rh::proj::directx::perspective(
@@ -619,14 +619,7 @@ pub(super) fn install(
                 0.1,
                 400.0,
             ) * glam::camera::rh::view::look_at_mat4(cam.eye, cam.target, Vec3::Y);
-            for key in sh
-                .voxel
-                .dirty_chunks([cam.eye.x, cam.eye.z])
-                .into_iter()
-                .take(budget)
-            {
-                sh.voxel.mesh_chunk(key.0, key.1);
-            }
+            sh.voxel.pump([cam.eye.x, cam.eye.z], budget);
             let list = sh.voxel.visible(cam.eye.to_array(), distance, &view_proj);
             for (mesh, _) in list {
                 sh.models.push(ModelDraw {
@@ -686,6 +679,17 @@ pub(super) fn install(
     )?;
     let s = shared.clone();
     v.set(
+        "threads",
+        lua.create_function(move |_, n: Option<usize>| {
+            let mut sh = s.borrow_mut();
+            if let Some(n) = n {
+                sh.voxel.set_threads(n.min(8));
+            }
+            Ok(sh.voxel.threads())
+        })?,
+    )?;
+    let s = shared.clone();
+    v.set(
         "stats",
         lua.create_function(move |lua, ()| {
             let sh = s.borrow();
@@ -697,8 +701,13 @@ pub(super) fn install(
             t.set("light_ms", w.stats.light_ms as f64)?;
             t.set("faces", w.stats.faces)?;
             t.set("drawn", w.stats.drawn)?;
-            let dirty = w.chunks.values().filter(|c| c.dirty).count();
+            let dirty: u32 = w
+                .chunks
+                .values()
+                .map(|c| (c.dirty | c.queued).count_ones())
+                .sum();
             t.set("dirty", dirty)?;
+            t.set("threads", w.threads())?;
             Ok(t)
         })?,
     )?;
