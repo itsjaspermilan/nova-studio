@@ -49,6 +49,32 @@ const AUTO_RANGE: f32 = 300.0;
 /// The last share of the draw range over which a piece fades out instead of vanishing.
 const RANGE_FADE: f32 = 0.12;
 
+/// Which model of a pair to draw at distance `d`: the near one, the far one, or both (the share `t`, in (0, 1), is how much of
+/// the far one: the near one is drawn dissolving by `-t` and the far one by `t`).
+pub(super) enum Lod {
+    Near,
+    Far,
+    Blend(f32),
+}
+
+/// The state of a pair of models at ground distance `d`, when the change is at `distance` and takes `fade` metres.
+pub(super) fn lod_state(d: f32, distance: f32, fade: f32) -> Lod {
+    let t = if fade > 0.0 {
+        ((d - (distance - fade * 0.5)) / fade).clamp(0.0, 1.0)
+    } else if d >= distance {
+        1.0
+    } else {
+        0.0
+    };
+    if t <= 0.0 {
+        Lod::Near
+    } else if t >= 1.0 {
+        Lod::Far
+    } else {
+        Lod::Blend(t)
+    }
+}
+
 /// What to draw of a piece `d` metres away (on the ground) when the range is `radius`: up to two (model slot, dissolve) pairs.
 /// Nothing past the range; the cheaper model past `lod_distance`; between the two, across `lod_fade` metres, both, each
 /// fading by a screen-door (the near one by `-t`, the far one by `t`, which fill every pixel once together); and a piece
@@ -68,19 +94,10 @@ fn pick(p: &Piece, d: f32, radius: f32) -> [Option<(u32, f32)>; 2] {
     if p.lod_slot == NO_LOD {
         return alone(p.slot);
     }
-    let t = if p.lod_fade > 0.0 {
-        ((d - (p.lod_distance - p.lod_fade * 0.5)) / p.lod_fade).clamp(0.0, 1.0)
-    } else if d >= p.lod_distance {
-        1.0
-    } else {
-        0.0
-    };
-    if t <= 0.0 {
-        alone(p.slot)
-    } else if t >= 1.0 {
-        alone(p.lod_slot)
-    } else {
-        [Some((p.slot, -t)), Some((p.lod_slot, t))]
+    match lod_state(d, p.lod_distance, p.lod_fade) {
+        Lod::Near => alone(p.slot),
+        Lod::Far => alone(p.lod_slot),
+        Lod::Blend(t) => [Some((p.slot, -t)), Some((p.lod_slot, t))],
     }
 }
 

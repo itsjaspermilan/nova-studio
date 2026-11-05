@@ -44,6 +44,21 @@ function World:stream(pcx, pcz, take)
       if d <= LOAD * LOAD and not voxel.has_chunk(pcx + dx, pcz + dz) then missing[#missing + 1] = { d, pcx + dx, pcz + dz } end
     end
   end
+  -- nearest first, but those the player is heading toward come before those behind: a fast player must not outrun the world
+  local p = self.p
+  local hx, hz = 0, 0
+  if p and self.last_x then hx, hz = p.x - self.last_x, p.z - self.last_z end
+  if p then self.last_x, self.last_z = p.x, p.z end
+  local hl = math.sqrt(hx * hx + hz * hz)
+  if hl > 0.02 then
+    hx, hz = hx / hl, hz / hl
+    for _, m in ipairs(missing) do
+      local ox, oz = m[2] - pcx, m[3] - pcz
+      local ol = math.sqrt(ox * ox + oz * oz)
+      local along = ol > 0 and (ox * hx + oz * hz) / ol or 0
+      m[1] = ol - 3 * along -- chunks: three chunks nearer when straight ahead
+    end
+  end
   table.sort(missing, function(a, b) return a[1] < b[1] end)
   for i = 1, min(#missing, 24) do voxel.request_chunk(missing[i][2], missing[i][3]) end
   voxel.pump_chunks(take)

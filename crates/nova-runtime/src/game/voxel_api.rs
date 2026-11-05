@@ -702,14 +702,24 @@ pub(super) fn install(
                 400.0,
             ) * glam::camera::rh::view::look_at_mat4(cam.eye, cam.target, Vec3::Y);
             sh.voxel.pump([cam.eye.x, cam.eye.z], budget);
-            let list = sh.voxel.visible(cam.eye.to_array(), distance, &view_proj);
-            for (mesh, _) in list {
+            // seconds over which a piece of the world that has only just been made fades in (0: it appears at once)
+            let fade = number_option(&opts, "fade")?.unwrap_or(0.4).max(0.0) as f32;
+            let now = sh.time;
+            let list = sh
+                .voxel
+                .visible(cam.eye.to_array(), distance, &view_proj, now, fade);
+            for (mesh, _, dissolve) in list {
+                let instance = ModelInstance {
+                    matrix: Mat4::IDENTITY.to_cols_array_2d(),
+                    tint: [1.0; 4],
+                };
                 sh.models.push(ModelDraw {
                     casts: false,
                     mesh,
-                    instance: ModelInstance {
-                        matrix: Mat4::IDENTITY.to_cols_array_2d(),
-                        tint: [1.0; 4],
+                    instance: if dissolve == 0.0 {
+                        instance
+                    } else {
+                        instance.dissolving(dissolve)
                     },
                 });
             }

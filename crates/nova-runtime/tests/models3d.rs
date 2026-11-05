@@ -4,7 +4,7 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 use nova_runtime::game::{Game, Uploader};
-use nova_runtime::gfx::{Gfx, MAX_POINT_LIGHTS};
+use nova_runtime::gfx::Gfx;
 use nova_runtime::input::Actions;
 use nova_runtime::model::{Image, MeshData};
 use nova_runtime::vfs::{MemVfs, Vfs};
@@ -174,16 +174,19 @@ fn the_sun_and_ambient_persist_and_point_lights_last_one_frame() {
 }
 
 #[test]
-fn only_the_first_eight_point_lights_are_used_and_bad_light_arguments_are_explained() {
+fn only_the_nearest_sixteen_point_lights_are_used_and_bad_light_arguments_are_explained() {
     let mut g = game(
-        "function update(dt) for i = 1, 20 do nova.point_light(i, 0, 0) end end",
+        "function update(dt) nova.camera(0, 0, 0, 0, 0, -1) for i = 40, 1, -1 do nova.point_light(i, 0, 0) end end",
         vec![],
     );
     frame(&mut g);
     assert!(g.error.is_none(), "{:?}", g.error);
     let l = g.frame_input(0).lighting;
-    assert_eq!(l.point_count, MAX_POINT_LIGHTS);
-    assert_eq!(l.points[7].position[0], 8.0);
+    assert_eq!(l.point_count, 16, "a budget of sixteen, asked for 40");
+    assert!(
+        l.points[..16].iter().all(|p| p.position[0] <= 16.0),
+        "the nearest, not the first asked for"
+    );
     for (script, expect) in [
         ("nova.light { dir = {0, 0, 0} }", "dir cannot be {0, 0, 0}"),
         ("nova.light { dir = {1, 2} }", "dir must be {x, y, z}"),
@@ -1206,5 +1209,49 @@ end"
     assert!(
         biggest > 0.8 * whole,
         "without a fade it is one jump: biggest step {biggest:.3} of {whole:.3}"
+    );
+}
+
+/// `nova.model` takes `lod` and `lod_distance` like scenery: the near model, the far one past the distance, and both fading
+/// over `lod_fade` metres between them. Animated models cannot have one (yet), and it says so.
+#[test]
+fn a_drawn_model_can_name_a_cheaper_one_for_when_it_is_far() {
+    let drawn = |z: f64| {
+        let mut g = game(
+            &format!(
+                "function update(dt) nova.camera(0, 2, 0, 0, 2, -1)\n  nova.model('car', 0, 0, {z}, {{ lod = 'post', lod_distance = 50, lod_fade = 10 }}) end"
+            ),
+            vec![(
+                "models/post.glb",
+                include_bytes!("fixtures/studio_model_colliders.glb").to_vec(),
+            )],
+        );
+        frame(&mut g);
+        assert!(g.error.is_none(), "{:?}", g.error);
+        let input = g.frame_input(0);
+        input
+            .models
+            .iter()
+            .map(|m| (m.mesh, m.instance.matrix[1][3]))
+            .collect::<Vec<_>>()
+    };
+    let near = drawn(-20.0);
+    let far = drawn(-80.0);
+    let between = drawn(-50.0);
+    assert_eq!((near.len(), far.len(), between.len()), (1, 1, 2));
+    assert_ne!(near[0].0, far[0].0, "another model far away");
+    assert_eq!((near[0].1, far[0].1), (0.0, 0.0), "solid at both ends");
+    assert!(between.iter().any(|m| m.1 < 0.0) && between.iter().any(|m| m.1 > 0.0));
+    let mut g = game(
+        "function update(dt) nova.model('car', 0, 0, -9, { lod = 'car', clip = 'x' }) end",
+        vec![],
+    );
+    frame(&mut g);
+    assert!(
+        g.error
+            .as_deref()
+            .is_some_and(|e| e.contains("lod works on plain models")),
+        "{:?}",
+        g.error
     );
 }

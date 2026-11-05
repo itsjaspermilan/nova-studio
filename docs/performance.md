@@ -100,8 +100,16 @@ Things that appear or change suddenly are the visible cost of every saving above
   one keeps (fixed noise per pixel, so it does not shimmer), so every pixel is drawn once and the picture changes a little
   at a time. A test measures it: the biggest step between pictures a metre apart is under a third of the whole change with the
   fade, and nearly all of it in one step without. The stipple is visible if you look for it in a screenshot; at 540p it is small.
-- Still pops: voxel chunks and lights. A chunk appears when a worker finishes it, so a fast player outruns the world (the
-  loading radius against walking speed is the game's to choose); the 16 nearest point lights are re-picked every frame, so a
-  light can switch on as another leaves the set (fading lights in and out is in the TODO). Models that are `nova.model`, not
-  scenery, have no level of detail yet, and the far model must be made to match the near one: Kenney's low-detail buildings
-  in the stress city are stretched to size but are not the same buildings, so they change shape as they swap.
+- **Voxel chunks** fade in over 0.4 s (`nova.voxel.draw { fade }`, 0 for none) the first time a section is drawn, and the last
+  tenth of the draw distance fades out; a section rebuilt by an edit keeps its age, so building does not flicker. Blockfield asks
+  for the chunks ahead of the player's heading first (three chunks nearer when straight ahead), and its fog ends at the draw
+  distance, so the edge is fog. A player who outruns what the workers can make still reaches the edge: the loading radius
+  against walking speed is the game's to choose, and the numbers for a handheld are not measured.
+- **Point lights**: a game may ask for any number; the 16 nearest the camera (by the edge of their reach) are lit, and a
+  light that moves in or out of that set fades over a quarter of a second. A new light is on at once and one that is no longer
+  asked for is off at once (a muzzle flash is the script's to time). The renderer has room for 20 so that fades overlap.
+- **`nova.model`** takes `lod`, `lod_distance` and `lod_fade` like scenery (plain models: not with `clip` or `parts`), so a
+  car or a prop that a script draws can swap to a cheaper model by the same crossfade.
+- Still pops, or not covered: a level of detail for animated (skinned or `parts`) models; the far model must be made to match the
+  near one (Kenney's low-detail buildings in the stress city change shape as they swap); the sun's shadow edge at the box's
+  limit; and anything a script itself makes appear.

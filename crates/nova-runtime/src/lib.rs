@@ -14,6 +14,7 @@ pub mod game;
 pub mod gfx;
 pub mod input;
 pub mod inputscript;
+pub mod lights;
 pub mod mixer;
 pub mod model;
 pub mod pak;

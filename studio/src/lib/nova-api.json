@@ -52,7 +52,7 @@
   "name": "nova.model",
   "kind": "function",
   "signature": "nova.model(id, x, y, z [, opts])",
-  "doc": "Draw a 3D model. Options: scale, rx, ry, rz (radians), tint, parts (turn pieces on their own: parts = { wheel = { ry = 1 } }, see nova.model_parts), clip and time (pose it from an animation clip, see nova.model_clips; loop = false holds the last pose), shadow = false (casts no shadow, see nova.shadows).",
+  "doc": "Draw a 3D model. Options: scale, rx, ry, rz (radians), tint, parts (turn pieces on their own: parts = { wheel = { ry = 1 } }, see nova.model_parts), clip and time (pose it from an animation clip, see nova.model_clips; loop = false holds the last pose), shadow = false (casts no shadow, see nova.shadows), lod = \"cheaper_model\" with lod_distance (100) and lod_fade (15% of the distance) metres (draws that model instead past that distance on the ground from the camera, the two trading places by a screen-door so nothing pops; plain models only, not with clip or parts).",
   "group": "Drawing"
  },
  {
@@ -157,7 +157,7 @@
   "name": "nova.point_light",
   "kind": "function",
   "signature": "nova.point_light(x, y, z [, { radius = 10, color = {r, g, b} }])",
-  "doc": "A light that fades out at `radius`. Call it every frame you want it (it lasts one frame); up to 16 are used (each costs a little on every lit pixel: a game that needs fewer can use fewer).",
+  "doc": "A light that fades out at `radius`. Call it every frame you want it (it lasts one frame); ask for as many as you like (up to 256 a frame): the 16 nearest the camera, by the edge of their reach, are lit. When the choice changes (you walk down a row of lamps) a light fades in or out over a quarter of a second instead of switching; a light that is new is on at once and one you stop asking for is off at once (a muzzle flash is yours to time). Each lit light costs a little on every lit pixel: a game that needs fewer can use fewer.",
   "group": "Drawing"
  },
  {
@@ -1108,8 +1108,8 @@
  {
   "name": "nova.voxel.draw",
   "kind": "function",
-  "signature": "nova.voxel.draw([{ distance, budget }])",
-  "doc": "Draws the world around the camera: `distance` chunks out (6). Chunks are built in pieces 16 blocks high, on worker threads where the device has cores to spare: it hands the nearest pieces that changed to the workers, takes in at most `budget` finished pieces this frame (6) so that the frame rate holds, and without workers builds that many itself. Call it after nova.camera.",
+  "signature": "nova.voxel.draw([{ distance, budget, fade }])",
+  "doc": "Draws the world around the camera: `distance` chunks out (6). Chunks are built in pieces 16 blocks high, on worker threads where the device has cores to spare: it hands the nearest pieces that changed to the workers, takes in at most `budget` finished pieces this frame (6) so that the frame rate holds, and without workers builds that many itself. Call it after nova.camera. A piece of the world that has only just been made fades in over `fade` seconds (0.4; 0 for none) by a screen-door, and the last tenth of `distance` fades out, so the world does not pop into view; a piece rebuilt by an edit does not fade again.",
   "group": "Voxels"
  },
  {

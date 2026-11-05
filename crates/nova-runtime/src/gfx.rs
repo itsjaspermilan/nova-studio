@@ -61,8 +61,8 @@ const JOINT_TEXTURE_ROWS: u32 = 64;
 /// Most joint matrices a frame can hold: 16,384, about 680 characters of 24 joints. Draws past it are skipped.
 pub const MAX_JOINT_MATRICES: usize = (JOINT_TEXTURE_WIDTH / 4 * JOINT_TEXTURE_ROWS) as usize;
 
-/// Most point lights drawn at once (a frame's extra ones are ignored).
-pub const MAX_POINT_LIGHTS: usize = 16;
+/// Most point lights drawn at once: [`lights::LIGHT_BUDGET`] chosen ones and room for a few that are fading out.
+pub const MAX_POINT_LIGHTS: usize = 20;
 
 /// A light that fades to nothing at `radius` world units.
 #[derive(Clone, Copy, Debug, PartialEq)]

@@ -88,6 +88,8 @@ pub struct Chunk {
     pub meshes: [[Option<usize>; 2]; SECTIONS],
     /// Where each section's mesh content is (min x, y, z, max x, y, z), for culling.
     pub bounds: [[f32; 6]; SECTIONS],
+    /// When each section was first drawn (the world's clock), for fading it in; None until it has been.
+    seen: [Option<f64>; SECTIONS],
     /// One bit for each section whose mesh is out of date, and those a worker is building now.
     pub dirty: u8,
     pub queued: u8,
@@ -108,6 +110,7 @@ impl Chunk {
             glow: Arc::new(vec![0; VOL]),
             meshes: [[None, None]; SECTIONS],
             bounds: [[0.0; 6]; SECTIONS],
+            seen: [None; SECTIONS],
             dirty: 0,
             queued: 0,
             edits: HashMap::new(),
@@ -1504,17 +1507,22 @@ impl World {
         v
     }
 
-    /// Meshes to draw this frame: every piece of a chunk within `distance` chunks that the view can see, far to near.
+    /// Meshes to draw this frame: every piece of a chunk within `distance` chunks that the view can see, far to near. Each comes
+    /// with how much of it to drop (0 solid; see [`crate::gfx::ModelInstance::dissolving`]): a section that has only just come
+    /// into the world fades in over `fade` seconds (`now` is the world's clock; a rebuilt section keeps its age, so an edit
+    /// does not flicker), and the last tenth of the draw distance fades out.
     pub fn visible(
         &mut self,
         eye: [f32; 3],
         distance: f32,
         view_proj: &Mat4,
-    ) -> Vec<(usize, bool)> {
+        now: f64,
+        fade: f32,
+    ) -> Vec<(usize, bool, f32)> {
         let frustum = Frustum::new(view_proj);
         let max2 = (distance * SX as f32).powi(2);
-        let mut pieces: Vec<((i32, i32), usize, f32)> = Vec::new();
-        for (key, c) in &self.chunks {
+        let mut pieces: Vec<((i32, i32), usize, f32, f32)> = Vec::new();
+        for (key, c) in &mut self.chunks {
             for sec in 0..SECTIONS {
                 if c.meshes[sec] == [None, None] {
                     continue;
@@ -1526,16 +1534,28 @@ impl World {
                 if d2 > max2 || !frustum.sees([b[0], b[1], b[2]], [b[3], b[4], b[5]]) {
                     continue;
                 }
-                pieces.push((*key, sec, d2));
+                let born = *c.seen[sec].get_or_insert(now);
+                let age_drop = if fade > 0.0 {
+                    (1.0 - ((now - born) as f32 / fade)).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
+                let edge = max2.sqrt();
+                let edge_drop = if fade > 0.0 {
+                    ((d2.sqrt() - edge * 0.9) / (edge * 0.1)).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
+                pieces.push((*key, sec, d2, age_drop.max(edge_drop)));
             }
         }
         // far to near: translucent water over water is blended in a sensible order
         pieces.sort_by(|a, b| b.2.total_cmp(&a.2));
         let mut out = Vec::new();
-        for (key, sec, _) in pieces {
+        for (key, sec, _, drop) in pieces {
             for (slot, id) in self.chunks[&key].meshes[sec].iter().enumerate() {
                 if let Some(id) = id {
-                    out.push((*id, slot == 1));
+                    out.push((*id, slot == 1, -drop));
                 }
             }
         }
@@ -2908,6 +2928,65 @@ mod tests {
             !f.sees([200.0, 0.0, -10.0], [201.0, 1.0, -9.0]),
             "far to the side"
         );
+    }
+
+    #[test]
+    fn new_sections_fade_in_and_a_rebuilt_one_keeps_its_age() {
+        let mut w = World::new();
+        w.define(BlockDef {
+            name: "stone".into(),
+            ..Default::default()
+        })
+        .unwrap();
+        flat(&mut w, 1);
+        w.mesh_chunk(0, 0);
+        let eye = [8.0, 14.0, 8.0];
+        let view = glam::camera::rh::proj::directx::perspective(1.2, 1.6, 0.1, 400.0)
+            * glam::camera::rh::view::look_at_mat4(
+                glam::Vec3::from(eye),
+                glam::Vec3::new(8.0, 0.0, 4.0),
+                glam::Vec3::Y,
+            );
+        let drops = |w: &mut World, now: f64| -> Vec<f32> {
+            w.visible(eye, 6.0, &view, now, 0.4)
+                .into_iter()
+                .map(|(_, _, d)| d)
+                .collect()
+        };
+        let first = drops(&mut w, 10.0);
+        assert!(!first.is_empty());
+        assert!(
+            first.iter().all(|d| *d == -1.0),
+            "just arrived: nothing of it yet: {first:?}"
+        );
+        let half = drops(&mut w, 10.2);
+        assert!(
+            half.iter().all(|d| *d > -0.6 && *d < -0.4),
+            "half way: {half:?}"
+        );
+        assert!(
+            drops(&mut w, 10.5).iter().all(|d| *d == 0.0),
+            "solid after the fade"
+        );
+        // an edit rebuilds the section but it does not fade in again
+        w.edit(5, 10, 5, 1);
+        w.mesh_chunk(0, 0);
+        assert!(drops(&mut w, 11.0).iter().all(|d| *d == 0.0));
+        // with no fade it is solid at once
+        let mut w2 = World::new();
+        w2.define(BlockDef {
+            name: "stone".into(),
+            ..Default::default()
+        })
+        .unwrap();
+        flat(&mut w2, 1);
+        w2.mesh_chunk(0, 0);
+        let solid: Vec<f32> = w2
+            .visible(eye, 6.0, &view, 5.0, 0.0)
+            .into_iter()
+            .map(|(_, _, d)| d)
+            .collect();
+        assert!(solid.iter().all(|d| *d == 0.0));
     }
 }
 

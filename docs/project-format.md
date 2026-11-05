@@ -117,6 +117,8 @@ nova.light { dir = { -0.4, -1, -0.3 }, color = { 255, 240, 220 }, ambient = { 97
 nova.point_light(x, y, z, { radius = 8, color = { 255, 160, 60 } })    -- one frame: call it every frame you want it
 ```
 
+You may ask for more than sixteen (up to 256 a frame): the sixteen nearest the camera (by the edge of their reach) are lit, and when that choice changes a light fades in or out over a quarter of a second instead of switching on or off. A light that is new is on at once and one you stop asking for is off at once, so a muzzle flash is yours to time.
+
 `dir` is the way the light travels; colours are 0 to 255 multipliers (255 = full, no gamma). Every
 field of `nova.light` is optional. A ninth point light in a frame is ignored. Sprites and text are not lit.
 
@@ -179,7 +181,7 @@ if dx then self.x, self.z = self.x + dx, self.z + dz end
 `nova.scenery.ahead(x, z, dx, dz, length, radius)` looks along a line, as wide as a circle of `radius`, and returns how far away the nearest solid circle is and
 where it is (`distance, cx, cz, cr`), or nothing: how a car or a character sees what is coming to steer round it.
 
-Scenery is kept in Rust and put into the frame without a Lua call for each piece (a call per model costs about a microsecond, so a town of 3,000 pieces would otherwise cost milliseconds a frame). **Level of detail:** a piece can name a cheaper model for when it is far away: `static = true, model = "building", lod = "building_far", lod_distance = 120` on the class (or `lod` and `lod_distance` in the options of `nova.scenery.add`); beyond `lod_distance` metres (on the ground, from the camera, 100 by default) the far model is drawn at the same place, turn and size, so make both models with the same pivot. The two trade places over `lod_fade` metres (15% of `lod_distance` by default): both are drawn there, each fading by a fixed screen-door noise that fills every pixel once between them, so a piece does not pop. Models with `clip` or `parts` are not scenery.
+Scenery is kept in Rust and put into the frame without a Lua call for each piece (a call per model costs about a microsecond, so a town of 3,000 pieces would otherwise cost milliseconds a frame). **Level of detail:** a piece can name a cheaper model for when it is far away: `static = true, model = "building", lod = "building_far", lod_distance = 120` on the class (or `lod` and `lod_distance` in the options of `nova.scenery.add`); beyond `lod_distance` metres (on the ground, from the camera, 100 by default) the far model is drawn at the same place, turn and size, so make both models with the same pivot. `nova.model` takes the same options (`lod`, `lod_distance`, `lod_fade`) for a model that is drawn by a call each frame, measured from the camera on the ground: plain models only, not with `clip` or `parts`. The two trade places over `lod_fade` metres (15% of `lod_distance` by default): both are drawn there, each fading by a fixed screen-door noise that fills every pixel once between them, so a piece does not pop. Models with `clip` or `parts` are not scenery.
 
 `nova.scenery.add(model, x, y, z, opts)` adds a piece from a script; the scenery is emptied when a scene ends. A static
 entity runs no code, so for a piece that also needs to do something (a lamp that gives a light), use an ordinary entity

@@ -109,6 +109,9 @@ struct Shared {
     next_sound: u64,
     save: SaveStore,
     mesh_ids: HashMap<String, usize>,
+    /// Point lights asked for this frame, and what the last frames made of them (which are lit, how far each has faded in).
+    light_requests: Vec<PointLight>,
+    light_fader: crate::lights::LightFader,
     /// The static models of `nova.scenery`, kept between frames.
     retained: retained_api::Retained,
     known_models: Vec<String>,
@@ -872,6 +875,12 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     None => None,
                 };
                 let clip_name = string_option(&opts, "clip")?;
+                let lod_name = string_option(&opts, "lod")?;
+                if lod_name.is_some() && (overrides.is_some() || clip_name.is_some()) {
+                    return Err(lua_err(
+                        "lod works on plain models: not with clip or parts (a far version of an animated model is not supported yet)",
+                    ));
+                }
                 if overrides.is_some() || clip_name.is_some() {
                     // Pieces that move on their own: each part is drawn separately at its turned place.
                     let parts = sh.parts.get(&found).cloned().unwrap_or_default();
@@ -957,13 +966,38 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     }
                     return Ok(());
                 }
+                let instance = ModelInstance {
+                    matrix: matrix.to_cols_array_2d(),
+                    tint,
+                };
+                // `lod = "name"`: a cheaper model past `lod_distance` metres (on the ground, from the camera), the two
+                // trading places over `lod_fade` metres (see `retained_api::lod_state`)
+                if let Some(far_name) = lod_name {
+                    let far = find_model(&sh.known_models, &far_name).ok_or_else(|| {
+                        lua_err(format!("unknown model '{far_name}' for lod (looked for '{far_name}' and 'models/{far_name}.glb')"))
+                    })?;
+                    let far_mesh = *sh.mesh_ids.get(&far).ok_or_else(|| {
+                        lua_err(format!("model '{far}' is not on the GPU yet (draw models from update/draw, not while the script loads)"))
+                    })?;
+                    let distance = number_option(&opts, "lod_distance")?.unwrap_or(100.0).max(1.0) as f32;
+                    let fade = number_option(&opts, "lod_fade")?.map_or(distance * 0.15, |f| f as f32).max(0.0);
+                    let eye = sh.camera.eye;
+                    let d = ((x as f32 - eye.x).powi(2) + (z as f32 - eye.z).powi(2)).sqrt();
+                    let draws: [Option<(usize, f32)>; 2] = match retained_api::lod_state(d, distance, fade) {
+                        retained_api::Lod::Near => [Some((mesh, 0.0)), None],
+                        retained_api::Lod::Far => [Some((far_mesh, 0.0)), None],
+                        retained_api::Lod::Blend(t) => [Some((mesh, -t)), Some((far_mesh, t))],
+                    };
+                    for (mesh, dissolve) in draws.into_iter().flatten() {
+                        let instance = if dissolve == 0.0 { instance } else { instance.dissolving(dissolve) };
+                        sh.models.push(ModelDraw { casts, mesh, instance });
+                    }
+                    return Ok(());
+                }
                 sh.models.push(ModelDraw {
                     casts,
                     mesh,
-                    instance: ModelInstance {
-                        matrix: matrix.to_cols_array_2d(),
-                        tint,
-                    },
+                    instance,
                 });
                 Ok(())
             },
@@ -1103,12 +1137,15 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 Some(o) => light_color(o, "color")?.unwrap_or([1.0; 3]),
                 None => [1.0; 3],
             };
-            // More than the renderer's limit are quietly dropped: a crowd of lights is a design problem, not a crash.
-            s.borrow_mut().lighting.push_point(PointLight {
-                position: [x as f32, y as f32, z as f32],
-                radius: radius as f32,
-                color,
-            });
+            // Any number may be asked for; the nearest sixteen are lit, and a change of which fades (see `lights.rs`).
+            let mut sh = s.borrow_mut();
+            if sh.light_requests.len() < 256 {
+                sh.light_requests.push(PointLight {
+                    position: [x as f32, y as f32, z as f32],
+                    radius: radius as f32,
+                    color,
+                });
+            }
             Ok(())
         })?,
     )?;
@@ -2255,6 +2292,8 @@ impl Game {
             nav: crate::walls::Nav::default(),
             baked: Vec::new(),
             retained: Default::default(),
+            light_requests: Vec::new(),
+            light_fader: Default::default(),
             cursor: PadCursor::default(),
             typed: String::new(),
             cursor_sources: HashMap::new(),
@@ -2591,6 +2630,17 @@ impl Game {
                 (0, m.mesh)
             }
         });
+        // the lights for the frame: the nearest of those asked for, fading in and out as the choice changes
+        let requests = std::mem::take(&mut sh.light_requests);
+        let eye = sh.camera.eye.to_array();
+        let dt = sh.frame_dt;
+        let lights = sh
+            .light_fader
+            .resolve(&requests, eye, dt, crate::gfx::MAX_POINT_LIGHTS);
+        sh.lighting.point_count = 0;
+        for light in lights {
+            sh.lighting.push_point(light);
+        }
         self.camera = sh.camera;
         self.lighting = sh.lighting;
         if let Some(sky) = self.lighting.sky.as_mut() {
