@@ -122,6 +122,20 @@ You may ask for more than sixteen (up to 256 a frame): the sixteen nearest the c
 `dir` is the way the light travels; colours are 0 to 255 multipliers (255 = full, no gamma). Every
 field of `nova.light` is optional. A ninth point light in a frame is ignored. Sprites and text are not lit.
 
+**Look.** `nova.look` sets how the finished picture is treated, and stays until changed (`nova.look()` clears it):
+
+```lua
+nova.look { toon = 3,                                        -- the sun's light in three flat bands
+            outline = { color = { 20, 25, 45 }, strength = 0.8, width = 1 },   -- a line where depth jumps
+            saturation = 1.15, vignette = 0.25, exposure = 1 }
+```
+
+The toon ramp is in the mesh shader (no cost); the outline and the colour adjustments are in the pass that puts the world on the
+screen, which reads the depth buffer (it is kept only when an outline asks for it). The outline is drawn from depth alone, so it
+marks silhouettes and creases between things at different distances, not lines inside a flat-coloured surface, and it fades with
+the fog. Not done: bloom, ambient occlusion, depth of field, a tone-mapping curve beyond the exposure shoulder, and lights are not
+banded (only the sun's). The cost on the Retroid is unmeasured.
+
 **A 3D game on the ground.** Collisions, distances and neighbour queries use `x, y` by default, which is right for a flat game
 and wrong for a 3D one, where `y` is height. Say once (in `main.lua`) which plane the ground is:
 

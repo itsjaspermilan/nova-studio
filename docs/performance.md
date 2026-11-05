@@ -113,3 +113,11 @@ Things that appear or change suddenly are the visible cost of every saving above
 - Still pops, or not covered: a level of detail for animated (skinned or `parts`) models; the far model must be made to match the
   near one (Kenney's low-detail buildings in the stress city change shape as they swap); the sun's shadow edge at the box's
   limit; and anything a script itself makes appear.
+
+## The look (`nova.look`)
+
+The toon ramp is arithmetic in the mesh shader. An outline or colour adjustment sends the world through the finishing pass with the
+depth buffer stored (normally it is discarded, which a tiled mobile GPU likes) and read five times a pixel for an outline. On the
+emulator's host GPU the stress phase "city 24 + toon, outline, grade" held 60 fps (the host GPU is far faster than the Retroid's, so
+that says it works, not what it costs). Measure it on the device before building a game on an always-on outline; the cheap way to
+cut it is a smaller `world_height`.

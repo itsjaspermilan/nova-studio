@@ -14,6 +14,7 @@ local PHASES = {
   { name = "city 24 + 100 characters", n = 24, chars = 100 },
   { name = "city 24 + 16 lights", n = 24, lights = 16 },
   { name = "city 24 + shadows", n = 24, shadows = true },
+  { name = "city 24 + toon, outline, grade", n = 24, look = true },
   { name = "street level, city 48", n = 48, street = true },
   { name = "city 48, far buildings cheaper", n = 48, lod = true },
   { name = "street level, city 48, cheaper far buildings", n = 48, street = true, lod = true },
@@ -80,6 +81,7 @@ function Scene:next_phase()
   nova.light { dir = { -0.4, -0.8, -0.3 }, color = { 255, 245, 225 }, ambient = { 95, 100, 120 } }
   nova.sky { top = { 70, 130, 220 }, horizon = { 190, 220, 245 }, clouds = 0.4 }
   nova.fog { color = { 190, 220, 245 }, near = 70, far = 200 }
+  if p.look then nova.look { toon = 3, outline = true, saturation = 1.1, vignette = 0.2 } else nova.look() end
   if p.shadows then nova.shadows { radius = 40, strength = 0.5 } else nova.shadows(nil) end
 end
 

@@ -113,6 +113,44 @@ pub struct Fog {
     pub far: f32,
 }
 
+/// How the finished picture is treated: a toon ramp on the sun's light (flat bands of light and shade, as in a cartoon), a
+/// line drawn where depth jumps (the outline of things), and a few colour adjustments. All off by default.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Look {
+    /// Bands the sun's light is cut into (2 to 8); 0 for smooth light.
+    pub toon: f32,
+    /// Colour (linear) of the outline, how dark it is (0 to 1) and how wide, in pixels of the world picture; None for none.
+    pub outline: Option<([f32; 3], f32, f32)>,
+    /// 1 leaves brightness alone; above brightens, below darkens, through a soft shoulder so that brights do not clip.
+    pub exposure: f32,
+    /// 1 leaves colour alone; 0 is grey; above 1 is more vivid.
+    pub saturation: f32,
+    /// How much the corners darken, 0 to 1.
+    pub vignette: f32,
+}
+
+impl Default for Look {
+    fn default() -> Self {
+        Self {
+            toon: 0.0,
+            outline: None,
+            exposure: 1.0,
+            saturation: 1.0,
+            vignette: 0.0,
+        }
+    }
+}
+
+impl Look {
+    /// Whether the picture needs the finishing pass (an outline or a colour adjustment; the toon ramp is in the mesh shader).
+    pub fn needs_post(&self) -> bool {
+        self.outline.is_some()
+            || (self.exposure - 1.0).abs() > 1e-4
+            || (self.saturation - 1.0).abs() > 1e-4
+            || self.vignette > 0.0
+    }
+}
+
 /// How 3D models are lit and seen: one directional light, an ambient floor, a few point lights, and optionally a sky
 /// and fog.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -128,6 +166,7 @@ pub struct Lighting {
     pub shadows: Option<Shadows>,
     /// How bright the sky's light is for voxel worlds (`nova.voxel.daylight`): 1 at noon, near 0 at night.
     pub day: f32,
+    pub look: Look,
 }
 
 impl Default for Lighting {
@@ -146,6 +185,7 @@ impl Default for Lighting {
             fog: None,
             shadows: None,
             day: 1.0,
+            look: Look::default(),
         }
     }
 }
@@ -500,6 +540,9 @@ pub struct Gfx {
     blit_pipeline: wgpu::RenderPipeline,
     blit_uniform: wgpu::Buffer,
     blit_group: wgpu::BindGroup,
+    depth_layout: wgpu::BindGroupLayout,
+    /// The depth buffer, for the finishing pass (outlines).
+    depth_group: Option<wgpu::BindGroup>,
     linear_sampler: wgpu::Sampler,
     world: Option<WorldTarget>,
     sprite_view: wgpu::Buffer,
@@ -872,7 +915,7 @@ impl Gfx {
             uniform_layout("blit uniform layout", wgpu::ShaderStages::FRAGMENT);
         let blit_uniform = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("blit uniform"),
-            size: 16,
+            size: 64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -890,9 +933,26 @@ impl Gfx {
             min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
+        let depth_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("depth layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Depth,
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            }],
+        });
         let blit_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("blit pipeline layout"),
-            bind_group_layouts: &[Some(&blit_uniform_layout), Some(&texture_layout)],
+            bind_group_layouts: &[
+                Some(&blit_uniform_layout),
+                Some(&texture_layout),
+                Some(&depth_layout),
+            ],
             immediate_size: 0,
         });
         let blit_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -1377,6 +1437,8 @@ impl Gfx {
             blit_pipeline,
             blit_uniform,
             blit_group,
+            depth_layout,
+            depth_group: None,
             linear_sampler,
             world: None,
             sprite_view,
@@ -1613,13 +1675,19 @@ impl Gfx {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: DEPTH_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
-        self.depth = Some((
-            texture.create_view(&wgpu::TextureViewDescriptor::default()),
-            size,
-        ));
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        self.depth_group = Some(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("depth for the finishing pass"),
+            layout: &self.depth_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&view),
+            }],
+        }));
+        self.depth = Some((view, size));
     }
 
     fn ensure_world(&mut self, size: (u32, u32)) {
@@ -1678,15 +1746,42 @@ impl Gfx {
         } else {
             size
         };
-        let separate = world_size != size;
+        // a look with an outline or a colour adjustment is finished in the pass that puts the world on the screen, so it
+        // always goes through the world target (at the screen's own size if no smaller one was asked for)
+        let look = input.lighting.look;
+        let separate = world_size != size || look.needs_post();
         self.ensure_depth(world_size);
         if separate {
             self.ensure_world(world_size);
+            let far = match input.lighting.fog {
+                Some(f) if f.far.is_finite() && f.far > 1.0 => (f.far * 1.05).clamp(20.0, 400.0),
+                _ => 400.0,
+            };
+            let (outline_color, outline_width, outline_dark) = match look.outline {
+                Some((c, dark, width)) => (c, width.max(1.0), dark.clamp(0.0, 1.0)),
+                None => ([0.0; 3], 1.0, 0.0),
+            };
+            let (fog_near, fog_far) = input
+                .lighting
+                .fog
+                .map_or((0.0, 0.0), |f| (f.near, f.far.max(f.near + 0.001)));
             let blit = [
                 world_size.0 as f32,
                 world_size.1 as f32,
                 size.0 as f32 / world_size.0 as f32,
                 size.1 as f32 / world_size.1 as f32,
+                look.exposure.max(0.0),
+                look.saturation.max(0.0),
+                look.vignette.clamp(0.0, 1.0),
+                outline_dark,
+                outline_color[0],
+                outline_color[1],
+                outline_color[2],
+                outline_width,
+                0.1,
+                far,
+                fog_near,
+                fog_far,
             ];
             self.queue
                 .write_buffer(&self.blit_uniform, 0, bytemuck::cast_slice(&blit));
@@ -1784,7 +1879,7 @@ impl Gfx {
             fog_range: fog.map_or([0.0; 4], |f| [f.near, f.far.max(f.near + 0.001), 0.0, 0.0]),
             light_view_proj,
             shadow,
-            voxel: [lit.day, 0.0, 0.0, 0.0],
+            voxel: [lit.day, lit.look.toon, 0.0, 0.0],
             sky_sun: sky.map_or([0.0, 1.0, 0.0, 0.0], |k| {
                 let d = k
                     .sun
@@ -2125,7 +2220,11 @@ impl Gfx {
                     view: depth_view,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Discard,
+                        store: if look.outline.is_some() {
+                            wgpu::StoreOp::Store // the finishing pass reads it
+                        } else {
+                            wgpu::StoreOp::Discard
+                        },
                     }),
                     stencil_ops: None,
                 }),
@@ -2257,6 +2356,7 @@ impl Gfx {
                     &self.world.as_ref().expect("world target exists").group,
                     &[],
                 );
+                pass.set_bind_group(2, self.depth_group.as_ref().expect("depth exists"), &[]);
                 pass.draw(0..3, 0..1);
                 stats.draw_calls += 1;
             }

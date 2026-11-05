@@ -18,8 +18,8 @@ use crate::actions::{self, ActionStates, Binding, Bindings, InputFrame};
 use crate::assets::{self, AtlasLayout};
 use crate::font;
 use crate::gfx::{
-    Camera, Fog, FrameInput, Gfx, Lighting, MeshOp, ModelDraw, ModelInstance, PointLight, Shadows,
-    Sky, SpriteInstance,
+    Camera, Fog, FrameInput, Gfx, Lighting, Look, MeshOp, ModelDraw, ModelInstance, PointLight,
+    Shadows, Sky, SpriteInstance,
 };
 use crate::input::Actions;
 use crate::mixer::{self, Sample};
@@ -1167,6 +1167,52 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 near: near as f32,
                 far: far as f32,
             });
+            Ok(())
+        })?,
+    )?;
+    // look { toon = 3, outline = { color = {r, g, b}, strength = 0.8, width = 1 }, exposure = 1, saturation = 1, vignette = 0 }
+    let s = shared.clone();
+    nova.set(
+        "look",
+        lua.create_function(move |_, opts: Option<Table>| {
+            let Some(opts) = opts else {
+                s.borrow_mut().lighting.look = Look::default();
+                return Ok(());
+            };
+            let some = Some(opts.clone());
+            let number = |key: &str, default: f64, lo: f64, hi: f64| -> mlua::Result<f64> {
+                let v = number_option(&some, key)?.unwrap_or(default);
+                if !v.is_finite() || v < lo || v > hi {
+                    return Err(lua_err(format!("look {key} must be from {lo} to {hi}, not {v}")));
+                }
+                Ok(v)
+            };
+            let toon = number("toon", 0.0, 0.0, 8.0)?;
+            if toon != 0.0 && toon < 2.0 {
+                return Err(lua_err("look toon is the number of bands of light: 2 to 8 (0 for smooth light)"));
+            }
+            let outline = match opts.get::<Value>("outline")? {
+                Value::Nil | Value::Boolean(false) => None,
+                Value::Boolean(true) => Some(([0.02, 0.02, 0.03], 0.85, 1.0)),
+                Value::Table(t) => {
+                    let t = Some(t);
+                    let color = match &t {
+                        Some(t) => picture_color(t, "color")?.unwrap_or([0.02, 0.02, 0.03]),
+                        None => unreachable!(),
+                    };
+                    let strength = number_option(&t, "strength")?.unwrap_or(0.85).clamp(0.0, 1.0);
+                    let width = number_option(&t, "width")?.unwrap_or(1.0).clamp(1.0, 4.0);
+                    Some((color, strength as f32, width as f32))
+                }
+                _ => return Err(lua_err("look outline is true, false or { color = {r, g, b}, strength = 0.85, width = 1 }")),
+            };
+            s.borrow_mut().lighting.look = Look {
+                toon: toon as f32,
+                outline,
+                exposure: number("exposure", 1.0, 0.0, 8.0)? as f32,
+                saturation: number("saturation", 1.0, 0.0, 4.0)? as f32,
+                vignette: number("vignette", 0.0, 0.0, 1.0)? as f32,
+            };
             Ok(())
         })?,
     )?;

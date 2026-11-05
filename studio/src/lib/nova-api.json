@@ -210,6 +210,13 @@
   "group": "Drawing"
  },
  {
+  "name": "nova.look",
+  "kind": "function",
+  "signature": "nova.look{ toon, outline, exposure, saturation, vignette } | nova.look()",
+  "doc": "How the picture is treated. `toon = 3` cuts the sun's light into that many flat bands (2 to 8; 0 is smooth); `outline = true` or `{ color = {r, g, b}, strength = 0.85, width = 1 }` draws a line where the distance to the surface jumps (the outline of things; it fades with the fog); `exposure` (1) brightens or darkens through a soft shoulder, `saturation` (1; 0 is grey), `vignette` (0 to 1) darkens the corners. It stays until changed; `nova.look()` clears it. An outline or a colour adjustment makes the world draw through one more pass (about one extra read of the depth per pixel and four for an outline); the toon ramp costs nothing extra.",
+  "group": "Drawing"
+ },
+ {
   "name": "nova.point_light",
   "kind": "function",
   "signature": "nova.point_light(x, y, z [, { radius = 10, color = {r, g, b} }])",

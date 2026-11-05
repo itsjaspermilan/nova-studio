@@ -1324,3 +1324,113 @@ fn solid_mistakes_are_explained() {
         assert!(error.contains(expect), "{script}: {error}");
     }
 }
+
+fn mean_brightness(p: &[u8]) -> f64 {
+    p.chunks(4)
+        .map(|c| (c[0] as f64 + c[1] as f64 + c[2] as f64) / 3.0)
+        .sum::<f64>()
+        / (p.len() / 4) as f64
+}
+
+fn dark_pixels(p: &[u8]) -> usize {
+    p.chunks(4)
+        .filter(|c| (c[0] as u32 + c[1] as u32 + c[2] as u32) < 60)
+        .count()
+}
+
+/// `nova.look`: an outline where depth jumps, a colour adjustment, and flat bands of sun. (Skipped without a GPU.)
+#[test]
+fn a_look_draws_outlines_adjusts_colour_and_cuts_the_light_into_bands() {
+    let scene = |look: &str| {
+        format!(
+            "function update(dt)
+  nova.camera(0, 10, 9, 0, 2.5, 0, 60)
+  nova.sky {{ top = {{150, 200, 255}}, horizon = {{220, 235, 255}} }}
+  nova.light {{ dir = {{0.9165, -0.4, 0}}, color = {{255, 255, 255}}, ambient = {{0, 0, 0}} }}
+  nova.model('car', 0, 0, 0, {{ scale = 5 }})
+  {look}
+end"
+        )
+    };
+    let Some(plain) = frame_pixels(&scene("")) else {
+        return;
+    };
+    let outlined = frame_pixels(&scene(
+        "nova.look { outline = { color = {0, 0, 0}, strength = 1, width = 1 } }",
+    ))
+    .unwrap();
+    assert!(
+        dark_pixels(&outlined) > dark_pixels(&plain) + 100,
+        "lines were drawn: {} dark pixels against {}",
+        dark_pixels(&outlined),
+        dark_pixels(&plain)
+    );
+    // away from edges nothing changed: the same picture except for the line
+    let same = plain
+        .chunks(4)
+        .zip(outlined.chunks(4))
+        .filter(|(a, b)| a == b)
+        .count();
+    assert!(
+        same > plain.len() / 4 * 9 / 10,
+        "{same} of {} pixels untouched",
+        plain.len() / 4
+    );
+    // exposure brightens and darkens; saturation 0 is grey
+    let dim = frame_pixels(&scene("nova.look { exposure = 0.4 }")).unwrap();
+    let bright = frame_pixels(&scene("nova.look { exposure = 2.0 }")).unwrap();
+    assert!(mean_brightness(&dim) < mean_brightness(&plain) - 5.0);
+    assert!(mean_brightness(&bright) > mean_brightness(&plain) + 5.0);
+    let grey = frame_pixels(&scene("nova.look { saturation = 0 }")).unwrap();
+    assert!(
+        grey.chunks(4)
+            .all(|c| (c[0] as i32 - c[1] as i32).abs() <= 2
+                && (c[1] as i32 - c[2] as i32).abs() <= 2),
+        "no colour left"
+    );
+    // a vignette darkens the corners and leaves the middle
+    let vignette = frame_pixels(&scene("nova.look { vignette = 1 }")).unwrap();
+    assert!(pixel(&vignette, 2, 2)[2] < pixel(&plain, 2, 2)[2] - 20);
+    assert!(
+        (pixel(&vignette, 160, 60)[0] as i32 - pixel(&plain, 160, 60)[0] as i32).abs() < 12,
+        "the middle is left alone"
+    );
+    // toon: the top of the cube is lit by a light 66 degrees off (0.4 of it), which three bands make a third
+    let top = |p: &[u8]| pixel(p, 160, 60)[0] as f64;
+    let toon = frame_pixels(&scene("nova.look { toon = 3 }")).unwrap();
+    assert!(
+        top(&toon) < top(&plain) - 6.0,
+        "banded light: {} against {}",
+        top(&toon),
+        top(&plain)
+    );
+}
+
+#[test]
+fn look_mistakes_are_explained_and_nothing_resets_it() {
+    for (script, expect) in [
+        ("nova.look { toon = 1 }", "2 to 8"),
+        ("nova.look { exposure = -1 }", "exposure must be from"),
+        ("nova.look { outline = 5 }", "outline is true, false or"),
+        ("nova.look { vignette = 2 }", "vignette must be from"),
+    ] {
+        let mut g = game(&format!("function update(dt) {script} end"), vec![]);
+        frame(&mut g);
+        let error = g.error.clone().unwrap_or_default();
+        assert!(error.contains(expect), "{script}: {error}");
+    }
+    let mut g = game(
+        "function update(dt) nova.look { toon = 4, vignette = 0.5 } end",
+        vec![],
+    );
+    frame(&mut g);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let look = g.frame_input(0).lighting.look;
+    assert_eq!((look.toon, look.vignette), (4.0, 0.5));
+    let mut g = game(
+        "function update(dt) nova.look { toon = 4 } nova.look() end",
+        vec![],
+    );
+    frame(&mut g);
+    assert!(g.frame_input(0).lighting.look == nova_runtime::gfx::Look::default());
+}

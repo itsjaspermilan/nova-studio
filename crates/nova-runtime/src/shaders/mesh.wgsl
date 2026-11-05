@@ -14,7 +14,7 @@ struct Globals {
     fog_range: vec4<f32>,   // x: start, y: complete
     light_view_proj: mat4x4<f32>,
     shadow: vec4<f32>,      // x: 1 when on, y: one texel, z: bias, w: how dark
-    voxel: vec4<f32>,       // x: how bright the sky's light is (voxel meshes)
+    voxel: vec4<f32>,       // x: how bright the sky's light is (voxel meshes); y: bands of toon light (0: smooth)
 };
 @group(0) @binding(0) var<uniform> globals: Globals;
 @group(1) @binding(0) var base_texture: texture_2d<f32>;
@@ -132,7 +132,13 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     let n = safe_normalize(in.normal);
     // the sun's share is dimmed in a shadow, down to `1 - strength` of it
     let visible = mix(1.0 - globals.shadow.w, 1.0, sun_visibility(in.world, n));
-    let diffuse = max(dot(n, -globals.light_dir.xyz), 0.0) * visible;
+    var diffuse = max(dot(n, -globals.light_dir.xyz), 0.0) * visible;
+    // a toon look cuts the sun's light into flat bands (soft only at the pixel's width, so the edges stay clean)
+    if (globals.voxel.y >= 1.5) {
+        let x = diffuse * globals.voxel.y;
+        let w = fwidth(x) * 0.75 + 0.01;
+        diffuse = (floor(x) + smoothstep(0.5 - w, 0.5 + w, fract(x))) / globals.voxel.y;
+    }
     var light = globals.ambient.rgb + globals.light_color.rgb * diffuse * (1.0 - globals.ambient.rgb);
     let count = i32(globals.light_dir.w);
     for (var i = 0; i < count; i = i + 1) {
