@@ -302,6 +302,31 @@ In a blend state the clips' cycles stay in step (walk and run put their feet dow
 uses one. Not done: IK (feet on slopes, looking at things), additive and masked layers (an upper-body wave over a run), animation
 events, root motion.
 
+**Collision against models (`nova.solid`).** For hills, caves, cliffs and buildings made in a 3D tool, whose surfaces are
+neither boxes nor ramps. Make a model's triangles solid, then move a capsule (a body with a width and a height) against them:
+
+```lua
+nova.solid.add("hills", 0, 0, 0)                 -- its triangles, placed; draw it with nova.model at the same place
+-- every frame, with the move for this frame (velocity times dt, gravity included):
+local m = nova.solid.move(self.x, self.y, self.z, 0.35, 1.8, vx * dt, vy * dt, vz * dt, { slope = 50, step = 0.35 })
+self.x, self.y, self.z = m.x, m.y, m.z
+if m.ground or m.ceiling then vy = 0 end
+if m.ground then jumps = 2 end
+if m.wall and m.wall_normal.y > 0 then          -- a slope too steep to stand on: slide down it
+  -- push along the slope away from the wall normal's horizontal part
+end
+local d, nx, ny, nz = nova.solid.raycast(x, y, z, dx, dy, dz, 100)   -- what an aim or a camera sees
+local ground_y = nova.solid.floor_below(x, y, z)                      -- where a shadow blob goes
+```
+
+The body slides along walls of any angle, walks up slopes up to `slope` degrees (50 by default) at full speed, hops ledges up
+to `step` metres (0.35) and says how far (`stepped`, so a camera can ease over it), follows ground down to `snap` metres (0.3)
+so it does not launch off a slope, and bumps its head (`ceiling`). A move goes in steps of half the width at most, so a fast fall
+does not go through a floor; the triangles are kept in a grid (4 m cells), so a level of tens of thousands of triangles is fine.
+Triangles are solid from both sides. Not done: moving solids (an elevator is `nova.walls`' `set_box`), the player being pushed
+by one, climbing and gliding (those are rules a game writes on top of `wall` and `normal`), a mesh simplified for collision
+(use the model itself or a plainer one made for it), and nothing here has run in a game yet or on a device.
+
 ### Input, time, log
 
 Games ask about named **actions**, never about devices: `nova.input.down("jump")` works the same

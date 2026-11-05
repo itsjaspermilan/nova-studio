@@ -59,6 +59,7 @@ fn builtin_module(name: &str) -> Option<&'static str> {
 }
 
 mod retained_api;
+mod solid_api;
 mod voxel_api;
 mod walls_api;
 
@@ -114,6 +115,8 @@ struct Shared {
     light_fader: crate::lights::LightFader,
     /// The static models of `nova.scenery`, kept between frames.
     retained: retained_api::Retained,
+    /// Triangle collision (`nova.solid`).
+    solid: crate::meshworld::MeshWorld,
     known_models: Vec<String>,
     /// Each model's parts, for drawing pieces that move on their own.
     parts: HashMap<String, Vec<PartRt>>,
@@ -1385,6 +1388,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
     )?;
 
     voxel_api::install(lua, shared, vfs, &nova)?;
+    solid_api::install(lua, shared, vfs, &nova)?;
     walls_api::install(lua, shared, &nova)?;
 
     // --- input: named actions, see docs/project-format.md ---
@@ -2334,6 +2338,7 @@ impl Game {
             nav: crate::walls::Nav::default(),
             baked: Vec::new(),
             retained: Default::default(),
+            solid: Default::default(),
             light_requests: Vec::new(),
             light_fader: Default::default(),
             cursor: PadCursor::default(),

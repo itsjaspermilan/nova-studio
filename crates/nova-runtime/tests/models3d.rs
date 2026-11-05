@@ -1255,3 +1255,72 @@ fn a_drawn_model_can_name_a_cheaper_one_for_when_it_is_far() {
         g.error
     );
 }
+
+/// `nova.solid`: a model's triangles are ground, walls and rays for a capsule body.
+#[test]
+fn a_model_is_solid_ground_for_a_capsule() {
+    let mut g = game(
+        "local added
+function update(dt)
+  if not added then
+    added = nova.solid.add('car', 0, 0, 0, { scale = 10 })
+    nova.log('triangles ' .. added .. ' ' .. nova.solid.count())
+    local top, nx, ny, nz = nova.solid.floor_below(0, 50, 0)
+    nova.log(string.format('top %.3f normal %.1f', top, ny))
+    -- fall onto it from above
+    local m = nova.solid.move(0, top + 3, 0, 0.3, 1.2, 0, -6, 0)
+    nova.log(string.format('landed %.3f ground=%s normal=%.1f', m.y, tostring(m.ground), m.normal and m.normal.y or -9))
+    -- in the air beside it
+    local a = nova.solid.move(300, 5, 0, 0.3, 1.2, 0, 0, 0)
+    nova.log('air ground=' .. tostring(a.ground))
+    -- a ray through the middle from the side hits its side
+    local d, hx = nova.solid.raycast(-100, top * 0.5, 0, 1, 0, 0, 200)
+    nova.log(string.format('ray %s', d and 'hit' or 'miss'))
+    local miss = nova.solid.raycast(-100, top + 50, 0, 1, 0, 0, 200)
+    nova.log('over ' .. tostring(miss))
+    nova.solid.clear()
+    nova.log('cleared ' .. nova.solid.count())
+  end
+end",
+        vec![],
+    );
+    frame(&mut g);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let log = g.take_log();
+    assert!(
+        log[0].starts_with("triangles 24 24"),
+        "the body and the wheel, 12 each: {log:?}"
+    );
+    let top: f64 = log[1].split(' ').nth(1).unwrap().parse().unwrap();
+    assert!(top > 1.0, "{log:?}");
+    assert!(log[1].ends_with("normal 1.0"));
+    let landed: f64 = log[2].split(' ').nth(1).unwrap().parse().unwrap();
+    assert!(
+        (landed - top).abs() < 0.02 && log[2].contains("ground=true normal=1.0"),
+        "{log:?}"
+    );
+    assert_eq!(log[3], "air ground=false");
+    assert_eq!(log[4], "ray hit");
+    assert_eq!(log[5], "over nil");
+    assert_eq!(log[6], "cleared 0");
+}
+
+#[test]
+fn solid_mistakes_are_explained() {
+    for (script, expect) in [
+        ("nova.solid.add('nope', 0, 0, 0)", "unknown model 'nope'"),
+        (
+            "nova.solid.move(0, 0, 0, 0, 1.8, 0, 0, 0)",
+            "radius and a height above 0",
+        ),
+        (
+            "nova.solid.move(0, 0, 0, 0.3, 1.8, 0/0, 0, 0)",
+            "must be numbers",
+        ),
+    ] {
+        let mut g = game(&format!("function update(dt) {script} end"), vec![]);
+        frame(&mut g);
+        let error = g.error.clone().unwrap_or_default();
+        assert!(error.contains(expect), "{script}: {error}");
+    }
+}

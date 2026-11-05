@@ -77,6 +77,55 @@
   "group": "3D"
  },
  {
+  "name": "nova.solid",
+  "kind": "namespace",
+  "signature": "nova.solid",
+  "doc": "Collision against the triangles of models: hills, caves, cliffs, buildings made in a 3D tool, where nova.walls' boxes and ramps are not enough. A character is a capsule that slides along walls of any angle, walks up gentle slopes (not steep ones), hops small ledges, stays on a slope going down, and bumps its head.",
+  "group": "3D"
+ },
+ {
+  "name": "nova.solid.add",
+  "kind": "function",
+  "signature": "nova.solid.add(model, x, y, z [, { ry, rx, rz, scale }]) -> triangles added",
+  "doc": "Makes a placed copy of a model's triangles solid (its whole mesh, as drawn; read from the file the first time). Draw the model yourself with nova.model at the same place. Models with thousands of triangles are fine: they are kept in a grid.",
+  "group": "3D"
+ },
+ {
+  "name": "nova.solid.move",
+  "kind": "function",
+  "signature": "nova.solid.move(x, y, z, radius, height, dx, dy, dz [, { slope = 50, step = 0.35, snap = 0.3 }]) -> { x, y, z, ground, normal, wall, wall_normal, ceiling, stepped }",
+  "doc": "Moves a capsule standing with its feet at (x, y, z), `radius` wide and `height` tall (at least twice the radius), by (dx, dy, dz), and says where it ended up. `ground` is true when it stands on something walkable (`normal` is that surface's up); `wall` when it touched a wall or a slope too steep for `slope` degrees (`wall_normal`, with a y above 0 for a steep slope: slide down it); `ceiling` when it hit its head; `stepped` is how far it hopped up a ledge of at most `step` metres. It follows ground down by up to `snap` metres so that it does not leave a slope. Give it the move for one frame (speed times dt, gravity included) and set your vertical speed to 0 when `ground` or `ceiling`; the move goes in short steps so nothing tunnels through a floor.",
+  "group": "3D"
+ },
+ {
+  "name": "nova.solid.raycast",
+  "kind": "function",
+  "signature": "nova.solid.raycast(x, y, z, dx, dy, dz, max) -> distance, nx, ny, nz | nil",
+  "doc": "The first solid triangle a ray hits within `max` metres: the distance along it (the direction need not be unit length) and the surface's normal, facing the ray; nothing if it hits none.",
+  "group": "3D"
+ },
+ {
+  "name": "nova.solid.floor_below",
+  "kind": "function",
+  "signature": "nova.solid.floor_below(x, y, z [, max_drop = 50]) -> y, nx, ny, nz | nil",
+  "doc": "The height of the first solid surface at most `max_drop` metres below a point, and its normal: where a shadow blob or an aim marker goes.",
+  "group": "3D"
+ },
+ {
+  "name": "nova.solid.count",
+  "kind": "function",
+  "signature": "nova.solid.count() -> number",
+  "doc": "How many solid triangles there are.",
+  "group": "3D"
+ },
+ {
+  "name": "nova.solid.clear",
+  "kind": "function",
+  "signature": "nova.solid.clear()",
+  "doc": "Forgets every solid triangle (for a change of level).",
+  "group": "3D"
+ },
+ {
   "name": "nova.scenery",
   "kind": "namespace",
   "signature": "nova.scenery",
