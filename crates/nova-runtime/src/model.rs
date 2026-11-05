@@ -827,7 +827,7 @@ mod studio_model_tests {
         vec![
             PartPose {
                 translation: y.map(|y| Vec3::new(0.0, y, 0.0)),
-                rotation: turn.map(|a| Quat::from_rotation_z(a)),
+                rotation: turn.map(Quat::from_rotation_z),
                 scale: None,
             },
             PartPose::default(),
