@@ -272,6 +272,36 @@ and `parts = {...}` turns still apply on top. Blending is linear, rotations blen
 holds its first and last values outside its keys. glTF cubic-spline keys are read as their values only.
 Playing a clip draws each part separately, like `parts`.
 
+**Blending and the animator.** `layers` draws several clips at once, mixed by weight (weights are relative; a clip that does
+not key a part counts as that part's authored pose; rotations are mixed the short way round):
+
+```lua
+nova.model("hero", x, y, z, { layers = { { clip = "walk", time = t, weight = 0.7 }, { clip = "run", time = t2, weight = 0.3 } } })
+```
+
+`nova.animator` keeps the bookkeeping, so a character's animation is a few lines and never snaps:
+
+```lua
+self.anim = nova.animator("hero", {
+  start = "move",
+  fade = 0.2,                                     -- seconds to crossfade between states
+  states = {
+    move = { blend = "speed", points = { { 0, "idle" }, { 2.2, "walk" }, { 5.5, "sprint" } } },   -- mixed by a number
+    jump = { clip = "jump", loop = false },
+    land = { clip = "land", loop = false, next = "move", speed = 1.5 },                         -- plays once, then goes on
+  },
+})
+-- every frame:
+self.anim:play(self.ground and "move" or "jump")  -- crossfades; does nothing if already there
+self.anim:set("speed", horizontal_speed)          -- the number the blend state reads
+self.anim:update(dt)
+self.anim:draw(x, y, z, { scale = 1.8, ry = self.face })
+```
+
+In a blend state the clips' cycles stay in step (walk and run put their feet down together), whatever the mix. Sky Garden's player
+uses one. Not done: IK (feet on slopes, looking at things), additive and masked layers (an upper-body wave over a run), animation
+events, root motion.
+
 ### Input, time, log
 
 Games ask about named **actions**, never about devices: `nova.input.down("jump")` works the same

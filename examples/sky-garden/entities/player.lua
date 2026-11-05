@@ -260,13 +260,20 @@ function Player:draw()
   if (self.invulnerable or 0) > 0 and math.floor(state.time * 14) % 2 == 0 then return end
   -- Kenney's character (CC0, see licenses/): the clip follows what the body is doing
   local speed = sqrt(self.vx * self.vx + self.vz * self.vz)
-  local clip = "idle"
-  if not self.ground then clip = self.vy > 0 and "jump" or "fall"
-  elseif speed > 4.5 then clip = "sprint"
-  elseif speed > 0.5 then clip = "walk" end
-  if clip ~= self.clip then self.clip, self.clip_t = clip, 0 end
-  self.clip_t = (self.clip_t or 0) + 1 / 60
-  nova.model("character-oobi", x, y, z, { scale = 1.8, ry = self.face + math.pi, clip = clip, time = self.clip_t, loop = clip ~= "jump" })
+  -- an animator crossfades: idle, walk and sprint are one state mixed by speed, jump and fall are their own
+  self.anim = self.anim or nova.animator("character-oobi", {
+    start = "move",
+    fade = 0.15,
+    states = {
+      move = { blend = "speed", points = { { 0, "idle" }, { 2.2, "walk" }, { 5.5, "sprint" } } },
+      jump = { clip = "jump", loop = false },
+      fall = { clip = "fall" },
+    },
+  })
+  self.anim:play(self.ground and "move" or (self.vy > 0 and "jump" or "fall"))
+  self.anim:set("speed", speed)
+  self.anim:update(1 / 60)
+  self.anim:draw(x, y, z, { scale = 1.8, ry = self.face + math.pi })
 end
 
 return Player

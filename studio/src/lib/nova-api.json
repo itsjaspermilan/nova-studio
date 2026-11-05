@@ -49,10 +49,17 @@
   "group": "Drawing"
  },
  {
+  "name": "nova.animator",
+  "kind": "function",
+  "signature": "nova.animator(model, { start, fade, states }) -> animator",
+  "doc": "A small animation state machine for a skinned or animated model. A state is `{ clip = \"walk\" }` (with `loop = false` to play once, `next = \"idle\"` for where it goes when it ends, `speed` to play faster, `fade` for its own crossfade time) or `{ blend = \"speed\", points = { { 0, \"idle\" }, { 3, \"walk\" }, { 7, \"sprint\" } } }`: the two clips nearest the number set with `anim:set(\"speed\", v)` are mixed, their cycles kept in step. Methods: `anim:play(state [, { restart, fade }])` crossfades into a state (nothing if already in it), `anim:update(dt)` once a frame, `anim:draw(x, y, z [, options of nova.model])`, `anim:state()`, `anim:finished()` (a one-shot with nowhere to go has ended), `anim:layers()` (the `layers` for nova.model), `anim.speed` (a multiplier for all of it).",
+  "group": "Drawing"
+ },
+ {
   "name": "nova.model",
   "kind": "function",
   "signature": "nova.model(id, x, y, z [, opts])",
-  "doc": "Draw a 3D model. Options: scale, rx, ry, rz (radians), tint, parts (turn pieces on their own: parts = { wheel = { ry = 1 } }, see nova.model_parts), clip and time (pose it from an animation clip, see nova.model_clips; loop = false holds the last pose), shadow = false (casts no shadow, see nova.shadows), lod = \"cheaper_model\" with lod_distance (100) and lod_fade (15% of the distance) metres (draws that model instead past that distance on the ground from the camera, the two trading places by a screen-door so nothing pops; plain models only, not with clip or parts).",
+  "doc": "Draw a 3D model. Options: scale, rx, ry, rz (radians), tint, parts (turn pieces on their own: parts = { wheel = { ry = 1 } }, see nova.model_parts), clip and time (pose it from an animation clip, see nova.model_clips; loop = false holds the last pose), layers = { { clip = \"walk\", time = t, weight = 0.7 }, { clip = \"run\", time = t2, weight = 0.3 } } (several clips mixed by weight; nova.animator does the bookkeeping), shadow = false (casts no shadow, see nova.shadows), lod = \"cheaper_model\" with lod_distance (100) and lod_fade (15% of the distance) metres (draws that model instead past that distance on the ground from the camera, the two trading places by a screen-door so nothing pops; plain models only, not with clip or parts).",
   "group": "Drawing"
  },
  {

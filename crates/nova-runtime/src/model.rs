@@ -7,7 +7,7 @@
 //! the log can say what was ignored.
 
 use bytemuck::{Pod, Zeroable};
-use glam::{Mat3, Mat4, Quat, Vec3};
+use glam::{Mat3, Mat4, Quat, Vec3, Vec4};
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
@@ -342,6 +342,47 @@ impl Clip {
         }
         out
     }
+}
+
+/// Several poses mixed by weight: what a character looks like part way between walking and running, or while one animation
+/// is fading into another. `rests` is each part's authored (scale, rotation, translation); a clip that does not animate a
+/// part counts as that rest for the part. Weights need not add up to one (they are divided by their sum); a part that no pose
+/// animates stays as authored (all `None`). Rotations are mixed along the short way round.
+pub fn blend_poses(rests: &[(Vec3, Quat, Vec3)], layers: &[(Vec<PartPose>, f32)]) -> Vec<PartPose> {
+    let total: f32 = layers.iter().map(|l| l.1.max(0.0)).sum();
+    let mut out = vec![PartPose::default(); rests.len()];
+    if total <= 0.0 {
+        return out;
+    }
+    for (i, &(s0, r0, t0)) in rests.iter().enumerate() {
+        let pick = |f: fn(&PartPose) -> bool| layers.iter().any(|l| l.0.get(i).is_some_and(f));
+        if pick(|p| p.translation.is_some()) {
+            let mut v = Vec3::ZERO;
+            for (poses, w) in layers {
+                v += poses.get(i).and_then(|p| p.translation).unwrap_or(t0) * (w.max(0.0) / total);
+            }
+            out[i].translation = Some(v);
+        }
+        if pick(|p| p.scale.is_some()) {
+            let mut v = Vec3::ZERO;
+            for (poses, w) in layers {
+                v += poses.get(i).and_then(|p| p.scale).unwrap_or(s0) * (w.max(0.0) / total);
+            }
+            out[i].scale = Some(v);
+        }
+        if pick(|p| p.rotation.is_some()) {
+            let mut q = Vec4::ZERO;
+            let mut reference: Option<Quat> = None;
+            for (poses, w) in layers {
+                let r = poses.get(i).and_then(|p| p.rotation).unwrap_or(r0);
+                let reference = *reference.get_or_insert(r);
+                let sign = if r.dot(reference) < 0.0 { -1.0 } else { 1.0 };
+                q += Vec4::from(r) * (sign * w.max(0.0) / total);
+            }
+            out[i].rotation = Some(Quat::from_vec4(q).normalize());
+        }
+    }
+    out
 }
 
 impl Channel {
@@ -776,5 +817,59 @@ mod studio_model_tests {
                 "winding disagrees with the normal"
             );
         }
+    }
+
+    fn rest() -> Vec<(Vec3, Quat, Vec3)> {
+        vec![(Vec3::ONE, Quat::IDENTITY, Vec3::new(0.0, 1.0, 0.0)); 2]
+    }
+
+    fn pose(y: Option<f32>, turn: Option<f32>) -> Vec<PartPose> {
+        vec![
+            PartPose {
+                translation: y.map(|y| Vec3::new(0.0, y, 0.0)),
+                rotation: turn.map(|a| Quat::from_rotation_z(a)),
+                scale: None,
+            },
+            PartPose::default(),
+        ]
+    }
+
+    #[test]
+    fn poses_are_mixed_by_weight_and_normalised() {
+        let a = pose(Some(0.0), Some(0.0));
+        let b = pose(Some(4.0), Some(1.0));
+        let mixed = blend_poses(&rest(), &[(a.clone(), 1.0), (b.clone(), 3.0)]);
+        assert!(
+            (mixed[0].translation.unwrap().y - 3.0).abs() < 1e-5,
+            "a quarter of 0 and three of 4"
+        );
+        let (axis, angle) = mixed[0].rotation.unwrap().to_axis_angle();
+        assert!(
+            (axis.z.abs() - 1.0).abs() < 1e-4 && (angle - 0.75).abs() < 0.02,
+            "turned about 0.75 rad: {angle}"
+        );
+        // weights of 2 and 6 are the same as 1 and 3
+        let same = blend_poses(&rest(), &[(a, 2.0), (b, 6.0)]);
+        assert!((same[0].translation.unwrap().y - 3.0).abs() < 1e-5);
+        // a part nothing animates stays as authored
+        assert!(mixed[1].translation.is_none() && mixed[1].rotation.is_none());
+    }
+
+    #[test]
+    fn a_clip_that_leaves_a_part_alone_counts_as_its_rest_and_rotations_take_the_short_way() {
+        // one pose raises the part, the other does not animate it: halfway between 4 and the rest, 1
+        let mixed = blend_poses(
+            &rest(),
+            &[(pose(Some(4.0), None), 1.0), (pose(None, None), 1.0)],
+        );
+        assert!((mixed[0].translation.unwrap().y - 2.5).abs() < 1e-5);
+        // a turn of +359 degrees and one of 1 degree are 2 degrees apart: the middle is about 0, not 180
+        let a = pose(None, Some(359f32.to_radians()));
+        let b = pose(None, Some(1f32.to_radians()));
+        let mixed = blend_poses(&rest(), &[(a, 1.0), (b, 1.0)]);
+        assert!(mixed[0].rotation.unwrap().angle_between(Quat::IDENTITY) < 0.02);
+        // no weight, no pose
+        let none = blend_poses(&rest(), &[(pose(Some(1.0), None), 0.0)]);
+        assert!(none[0].translation.is_none());
     }
 }

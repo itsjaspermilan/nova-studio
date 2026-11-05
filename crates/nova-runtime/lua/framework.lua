@@ -500,6 +500,140 @@ function Text:draw()
 end
 nova.Entity, nova.Picture, nova.Text = Entity, Picture, Text
 
+-- ------------------------------------------------------------------ the animator
+-- A small state machine for a character's animation. States name a clip (or a blend of clips by a number such as speed);
+-- `play` moves to another state and the two crossfade, so a character does not snap from walking to jumping. Drawing
+-- mixes the clips by weight (`nova.model`'s `layers`).
+local Animator = {}
+Animator.__index = Animator
+
+local function sorted_points(state, name)
+  local points = {}
+  for i, p in ipairs(state.points or {}) do points[i] = { at = p[1], clip = p[2] } end
+  table.sort(points, function(a, b) return a.at < b.at end)
+  if #points < 2 then error(("animator state '%s' needs points = { { 0, \"idle\" }, { 3, \"walk\" } } (at least two)"):format(name), 3) end
+  return points
+end
+
+--- `nova.animator(model, { start = "idle", fade = 0.2, states = { ... } })`. A state is `{ clip = "walk" }` (with `loop = false`
+--- to play once, `next = "idle"` for where it goes when it ends, `speed = 1.5` to play faster, `fade` for how long to
+--- crossfade into it), or `{ blend = "speed", points = { { 0, "idle" }, { 3, "walk" }, { 7, "sprint" } } }`: the clips are
+--- mixed by the number set with `anim:set("speed", v)`, and their cycles stay in step.
+function nova.animator(model, spec)
+  if type(spec) ~= "table" or type(spec.states) ~= "table" then
+    error("nova.animator(model, { start = \"idle\", states = { idle = { clip = \"idle\" } } })", 2)
+  end
+  local durations = {}
+  for _, c in ipairs(nova.model_clips(model)) do durations[c.name] = c.duration end
+  local a = setmetatable({ model = model, spec = spec, durations = durations, fade = spec.fade or 0.2, params = {}, speed = 1, entries = {} }, Animator)
+  for name, state in pairs(spec.states) do
+    if state.clip then
+      if not durations[state.clip] then error(("animator state '%s': model '%s' has no clip '%s'"):format(name, model, state.clip), 2) end
+    elseif state.blend then
+      state._sorted = sorted_points(state, name)
+      for _, p in ipairs(state._sorted) do
+        if not durations[p.clip] then error(("animator state '%s': model '%s' has no clip '%s'"):format(name, model, p.clip), 2) end
+      end
+    else
+      error(("animator state '%s' needs a clip = \"...\" or a blend = \"parameter\" with points"):format(name), 2)
+    end
+  end
+  local first = spec.start or "idle"
+  if not spec.states[first] then error(("animator has no state '%s' to start in (set start = ...)"):format(first), 2) end
+  a:play(first)
+  return a
+end
+
+--- Moves to another state, crossfading from the current one (nothing happens if it is already in it, unless `restart`).
+function Animator:play(name, opts)
+  local state = self.spec.states[name]
+  if not state then error(("animator has no state '%s' (its states: %s)"):format(name, table.concat((function() local t = {} for k in pairs(self.spec.states) do t[#t + 1] = k end table.sort(t) return t end)(), ", ")), 2) end
+  local current = self.entries[#self.entries]
+  if current and current.name == name and not (opts and opts.restart) then return end
+  local fade = (opts and opts.fade) or state.fade or self.fade
+  self.entries[#self.entries + 1] = { name = name, state = state, t = 0, phase = 0, w = (current and fade > 0) and 0 or 1, fade = fade }
+  if not current or fade <= 0 then
+    for i = #self.entries - 1, 1, -1 do table.remove(self.entries, i) end
+  end
+end
+
+--- A number a blend state reads (`anim:set("speed", 3.2)`).
+function Animator:set(param, value) self.params[param] = value end
+
+--- The name of the state it is moving to, or in.
+function Animator:state() return self.entries[#self.entries].name end
+
+--- Whether a state that plays once (`loop = false`) has reached its end.
+function Animator:finished()
+  local e = self.entries[#self.entries]
+  return e.done == true
+end
+
+local function blend_pair(state, value)
+  local pts = state._sorted
+  if value <= pts[1].at then return pts[1], pts[1], 0 end
+  if value >= pts[#pts].at then return pts[#pts], pts[#pts], 0 end
+  for i = 2, #pts do
+    if value <= pts[i].at then
+      local a, b = pts[i - 1], pts[i]
+      return a, b, (value - a.at) / (b.at - a.at)
+    end
+  end
+end
+
+--- Moves time on by `dt`: call it once a frame.
+function Animator:update(dt)
+  for _, e in ipairs(self.entries) do
+    local state, rate = e.state, (e.state.speed or 1) * self.speed
+    if state.clip then
+      e.t = e.t + dt * rate
+      local length = self.durations[state.clip]
+      if state.loop == false and e.t >= length then e.t = length; e.done = true end
+    else
+      local a, b, f = blend_pair(state, self.params[state.blend] or 0)
+      local length = self.durations[a.clip] * (1 - f) + self.durations[b.clip] * f
+      e.phase = (e.phase + dt * rate / math.max(length, 1e-3)) % 1
+    end
+  end
+  -- the newest state fades in; what it replaces fades out in the same time, together always adding up to one
+  local newest = self.entries[#self.entries]
+  if newest.w < 1 then newest.w = math.min(1, newest.w + dt / math.max(newest.fade, 1e-3)) end
+  local others = 0
+  for i = 1, #self.entries - 1 do others = others + self.entries[i].w end
+  local remain = 1 - newest.w
+  for i = #self.entries - 1, 1, -1 do
+    local e = self.entries[i]
+    e.w = others > 0 and e.w * remain / others or 0
+    if e.w < 0.002 then table.remove(self.entries, i) end
+  end
+  -- a state that plays once and says where to go next goes there when it ends
+  if newest.done and newest.state.next then self:play(newest.state.next) end
+end
+
+--- The clips and weights to hand to `nova.model` as `layers`.
+function Animator:layers()
+  local layers = {}
+  for _, e in ipairs(self.entries) do
+    local state = e.state
+    if state.clip then
+      layers[#layers + 1] = { clip = state.clip, time = e.t, weight = e.w, loop = state.loop ~= false }
+    else
+      local a, b, f = blend_pair(state, self.params[state.blend] or 0)
+      if f < 1 then layers[#layers + 1] = { clip = a.clip, time = e.phase * self.durations[a.clip], weight = e.w * (1 - f) } end
+      if f > 0 then layers[#layers + 1] = { clip = b.clip, time = e.phase * self.durations[b.clip], weight = e.w * f } end
+    end
+  end
+  return layers
+end
+
+--- Draws the model in its current pose: `anim:draw(x, y, z, { scale = 1.8, ry = 0 })` (the options of `nova.model`).
+function Animator:draw(x, y, z, opts)
+  local o = {}
+  for k, v in pairs(opts or {}) do o[k] = v end
+  o.layers = self:layers()
+  nova.model(self.model, x, y, z, o)
+end
+
 -- ------------------------------------------------------------------ the static scenery
 -- Scenery that never moves (trees, road pieces, barriers) comes by the thousand, so it is not kept as live entities:
 -- each piece is a row in a grid of squares, drawn only when it is near the camera. The `colliders` circles of its model

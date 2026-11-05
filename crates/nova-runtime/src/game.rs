@@ -11,7 +11,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
-use glam::{Mat4, Vec3};
+use glam::{Mat4, Quat, Vec3};
 use mlua::{Function, HookTriggers, Lua, LuaSerdeExt, Table, Value, VmState};
 
 use crate::actions::{self, ActionStates, Binding, Bindings, InputFrame};
@@ -875,13 +875,23 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     None => None,
                 };
                 let clip_name = string_option(&opts, "clip")?;
+                // `layers = { { clip = "walk", time = t, weight = 0.7 }, ... }`: several clips mixed by weight (see `nova.animator`)
+                let layers = match &opts {
+                    Some(o) => o.get::<Option<Table>>("layers")?,
+                    None => None,
+                };
+                if layers.is_some() && clip_name.is_some() {
+                    return Err(lua_err("give a model `clip` or `layers`, not both (layers = { { clip = \"walk\", weight = 1 } })"));
+                }
                 let lod_name = string_option(&opts, "lod")?;
-                if lod_name.is_some() && (overrides.is_some() || clip_name.is_some()) {
+                if lod_name.is_some()
+                    && (overrides.is_some() || clip_name.is_some() || layers.is_some())
+                {
                     return Err(lua_err(
                         "lod works on plain models: not with clip or parts (a far version of an animated model is not supported yet)",
                     ));
                 }
-                if overrides.is_some() || clip_name.is_some() {
+                if overrides.is_some() || clip_name.is_some() || layers.is_some() {
                     // Pieces that move on their own: each part is drawn separately at its turned place.
                     let parts = sh.parts.get(&found).cloned().unwrap_or_default();
                     // A clip first (it replaces what it animates of each part's authored place) ...
@@ -900,6 +910,38 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                             None => true,
                         };
                         poses = clip.pose(time, looped, parts.len());
+                    }
+                    if let Some(layers) = &layers {
+                        let clips = sh.clips.get(&found).map(Vec::as_slice).unwrap_or(&[]);
+                        let mut mixed: Vec<(Vec<model::PartPose>, f32)> = Vec::new();
+                        for entry in layers.sequence_values::<Table>() {
+                            let entry = entry?;
+                            let name: String = entry.get::<Option<String>>("clip")?.ok_or_else(|| lua_err("each layer needs a clip name: { clip = \"walk\", time = 0.5, weight = 1 }"))?;
+                            let clip = clips.iter().find(|c| c.name == name).ok_or_else(|| {
+                                lua_err(format!(
+                                    "model '{id}' has no clip '{name}' (its clips: {})",
+                                    if clips.is_empty() { "none".to_string() } else { clips.iter().map(|c| c.name.as_str()).collect::<Vec<_>>().join(", ") }
+                                ))
+                            })?;
+                            let weight = entry.get::<Option<f64>>("weight")?.unwrap_or(1.0);
+                            if !weight.is_finite() || weight < 0.0 {
+                                return Err(lua_err("a layer's weight must be 0 or more"));
+                            }
+                            if weight == 0.0 {
+                                continue;
+                            }
+                            let time = entry.get::<Option<f64>>("time")?.unwrap_or(0.0) as f32;
+                            let looped = entry.get::<Option<bool>>("loop")?.unwrap_or(true);
+                            mixed.push((clip.pose(time, looped, parts.len()), weight as f32));
+                        }
+                        let rests: Vec<(Vec3, Quat, Vec3)> = parts
+                            .iter()
+                            .map(|p| {
+                                let (s, r, t) = p.rest.to_scale_rotation_translation();
+                                (s, r, t)
+                            })
+                            .collect();
+                        poses = model::blend_poses(&rests, &mixed);
                     }
                     // ... then the script's own turns on top.
                     let mut turn = vec![Mat4::IDENTITY; parts.len()];

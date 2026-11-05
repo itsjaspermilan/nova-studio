@@ -1,4 +1,4 @@
-//! Model animation clips: read from the .glb the studio exports, sampled by `nova.model`, played by entities.
+//! Modeassert!(log[..100].iter().all(|l| l.split(' ').nth(4) == Some("false")), "a state that goes on to another has not finished"); animation clips: read from the .glb the studio exports, sampled by `nova.model`, played by entities.
 
 use std::cell::Cell;
 use std::rc::Rc;
@@ -222,4 +222,191 @@ fn stopping_a_clip_returns_to_the_authored_pose() {
         1,
         "back to the single instanced draw"
     );
+}
+
+#[test]
+fn layers_mix_clips_by_weight() {
+    let at = |t: f32| drawn_at(&format!("{{ clip = 'spin', time = {t} }}"));
+    let (body0, wheel0) = at(0.0);
+    let (body1, wheel1) = at(1.0);
+    let mid = |a: f32, b: f32, w: f32| a + (b - a) * w;
+    // equal weights: halfway between the two instants
+    let (body, wheel) = drawn_at(
+        "{ layers = { { clip = 'spin', time = 0, weight = 1 }, { clip = 'spin', time = 1, weight = 1 } } }",
+    );
+    for i in 0..4 {
+        assert!(
+            (body[3][i] - mid(body0[3][i], body1[3][i], 0.5)).abs() < 1e-4,
+            "body {i}: {body:?}"
+        );
+    }
+    // the wheel turns half as far as it does by t = 1 (its angle is linear in time): the same as t = 0.5
+    let (_, wheel_half) = at(0.5);
+    for c in 0..3 {
+        for r in 0..3 {
+            assert!(
+                (wheel[c][r] - wheel_half[c][r]).abs() < 2e-3,
+                "wheel [{c}][{r}]: {wheel:?} vs {wheel_half:?}"
+            );
+        }
+    }
+    // weights are relative: 3 to 1 is a quarter of the way
+    let (body, _) = drawn_at(
+        "{ layers = { { clip = 'spin', time = 0, weight = 3 }, { clip = 'spin', time = 1, weight = 1 } } }",
+    );
+    for i in 0..4 {
+        assert!((body[3][i] - mid(body0[3][i], body1[3][i], 0.25)).abs() < 1e-4);
+    }
+    // a layer of no weight does nothing; one layer on its own is that clip
+    let (body, wheel) = drawn_at(
+        "{ layers = { { clip = 'spin', time = 1, weight = 1 }, { clip = 'spin', time = 0, weight = 0 } } }",
+    );
+    for c in 0..4 {
+        for r in 0..4 {
+            assert!(
+                (body[c][r] - body1[c][r]).abs() < 1e-4
+                    && (wheel[c][r] - wheel1[c][r]).abs() < 1e-4
+            );
+        }
+    }
+    let _ = (body0, wheel0);
+}
+
+#[test]
+fn bad_layers_are_explained() {
+    for (opts, expect) in [
+        ("{ layers = { { clip = 'nope' } } }", "has no clip 'nope'"),
+        (
+            "{ layers = { { weight = 1 } } }",
+            "each layer needs a clip name",
+        ),
+        (
+            "{ layers = { { clip = 'spin', weight = -1 } } }",
+            "weight must be 0 or more",
+        ),
+        (
+            "{ layers = {}, clip = 'spin' }",
+            "`clip` or `layers`, not both",
+        ),
+        (
+            "{ layers = { { clip = 'spin' } }, lod = 'car' }",
+            "lod works on plain models",
+        ),
+    ] {
+        let mut g = game(vec![(
+            "main.lua",
+            &format!("function update(dt) nova.model('car', 0, 0, 0, {opts}) end"),
+        )]);
+        frame(&mut g);
+        let error = g.error.clone().unwrap_or_default();
+        assert!(error.contains(expect), "{opts}: {error}");
+    }
+}
+
+#[test]
+fn an_animator_crossfades_between_states_and_returns_when_a_one_shot_ends() {
+    let mut g = game(vec![(
+        "main.lua",
+        "local anim = nova.animator('car', { start = 'a', fade = 0.5, states = {
+  a = { clip = 'spin' },
+  b = { clip = 'spin', loop = false, speed = 2, next = 'a' },
+  c = { clip = 'spin', loop = false, speed = 2 },
+} })
+local n = 0
+function update(dt)
+  n = n + 1
+  if n == 1 then anim:play('b') end
+  if n == 100 then anim:play('c') end
+  anim:update(dt)
+  local l, total, parts = anim:layers(), 0, {}
+  for _, x in ipairs(l) do total = total + x.weight; parts[#parts + 1] = string.format('%.2f', x.weight) end
+  nova.log(string.format('%d %s %d %.3f %s %s', n, anim:state(), #l, total, tostring(anim:finished()), table.concat(parts, ',')))
+  anim:draw(0, 0, 0)
+end",
+    )]);
+    let mut log = Vec::new();
+    for _ in 0..200 {
+        frame(&mut g);
+        assert!(g.error.is_none(), "{:?}", g.error);
+        log.extend(g.take_log());
+    }
+    let row = |n: usize| -> Vec<&str> { log[n - 1].split(' ').collect() };
+    // right after play: both states, the old one nearly all of it, weights adding up to one
+    assert_eq!((row(1)[1], row(1)[2]), ("b", "2"));
+    assert!(
+        row(1)[3] == "1.000" && row(1)[5].starts_with("0.9"),
+        "{:?}",
+        row(1)
+    );
+    // half way through the fade: about half each
+    assert!(
+        row(15)[5].starts_with("0.5") || row(15)[5].starts_with("0.4"),
+        "{:?}",
+        row(15)
+    );
+    // after the fade only the new state remains
+    assert_eq!(row(40)[2], "1", "{:?}", row(40));
+    // the one-shot (2 s at double speed) ends at about frame 60 and sends it back to 'a', with another crossfade
+    assert_eq!(row(55)[1], "b");
+    assert!(
+        log.iter().any(|l| l.split(' ').nth(4) == Some("true")),
+        "it finished"
+    );
+    assert_eq!(row(80)[1], "a", "{:?}", row(80));
+    assert_eq!(row(95)[2], "1", "settled on one clip: {:?}", row(95));
+    // a one-shot with nowhere to go holds its end and says it has finished
+    assert_eq!(row(200)[1], "c");
+    assert_eq!(row(200)[4], "true", "{:?}", row(200));
+    // mistakes are explained
+    for (script, expect) in [
+        (
+            "nova.animator('car', { states = { a = { clip = 'nope' } }, start = 'a' })",
+            "has no clip 'nope'",
+        ),
+        (
+            "nova.animator('car', { states = { a = { clip = 'spin' } } })",
+            "no state 'idle' to start in",
+        ),
+        (
+            "local a = nova.animator('car', { start = 'a', states = { a = { clip = 'spin' } } }) a:play('z')",
+            "has no state 'z'",
+        ),
+        (
+            "nova.animator('car', { start = 'a', states = { a = { blend = 'v', points = { { 0, 'spin' } } } } })",
+            "at least two",
+        ),
+    ] {
+        let mut g = game(vec![(
+            "main.lua",
+            &format!("function update(dt) {script} end"),
+        )]);
+        frame(&mut g);
+        let error = g.error.clone().unwrap_or_default();
+        assert!(error.contains(expect), "{script}: {error}");
+    }
+}
+
+#[test]
+fn a_blend_state_mixes_the_two_nearest_points_by_a_number() {
+    let mut g = game(vec![(
+        "main.lua",
+        "local anim = nova.animator('car', { start = 'move', states = { move = { blend = 'speed', points = { { 0, 'spin' }, { 2, 'spin' }, { 6, 'spin' } } } } })
+local n = 0
+function update(dt)
+  n = n + 1
+  anim:set('speed', ({ 0, 1, 2, 4, 9 })[(n - 1) % 5 + 1])
+  anim:update(dt)
+  local parts = {}
+  for _, x in ipairs(anim:layers()) do parts[#parts + 1] = string.format('%.2f', x.weight) end
+  nova.log(table.concat(parts, ','))
+end",
+    )]);
+    let mut log = Vec::new();
+    for _ in 0..5 {
+        frame(&mut g);
+        assert!(g.error.is_none(), "{:?}", g.error);
+        log.extend(g.take_log());
+    }
+    // speed 0: the first point alone; 1: half and half of the first two; 2: the second alone; 4: half of the last two; 9: the last
+    assert_eq!(log, ["1.00", "0.50,0.50", "1.00", "0.50,0.50", "1.00"]);
 }
