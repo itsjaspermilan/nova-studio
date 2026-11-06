@@ -37,3 +37,13 @@ for f in impactMetal_heavy_000 impactPlate_heavy_000 impactGeneric_light_000; do
     if [ -f "$IM/$f.ogg" ]; then cp "$IM/$f.ogg" "$S/bump.ogg"; break; fi
 done
 echo "copied $(ls "$U" | wc -l | tr -d ' ') pictures and the interface sounds"
+
+# music: Kenney's loops (the menu, results and the four circuits; the game's Options > Music style chooses them or the studio-made songs)
+ML="$K/Audio/Music Loops/Loops"
+cp "$ML/Swinging Pants.ogg" "$P/music/kenney_menu.ogg"
+cp "$ML/Cheerful Annoyance.ogg" "$P/music/kenney_results.ogg"
+cp "$ML/Time Driving.ogg" "$P/music/kenney_forest.ogg"
+cp "$ML/Mission Plausible.ogg" "$P/music/kenney_desert.ogg"
+cp "$ML/Flowing Rocks.ogg" "$P/music/kenney_snow.ogg"
+cp "$ML/Space Cadet.ogg" "$P/music/kenney_night.ogg"
+echo "copied the music loops"

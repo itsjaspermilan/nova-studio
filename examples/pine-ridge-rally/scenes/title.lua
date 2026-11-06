@@ -60,16 +60,20 @@ function Title:update(dt)
   elseif screen == "howto" then
     if nova.input.pressed("a") or nova.input.pressed("b") or nova.input.pressed("start") then audio.sfx("menu_back"); self:go("menu") end
   elseif screen == "options" then
-    local choice, action = ui.navigate(self.choice, 7)
+    local choice, action = ui.navigate(self.choice, 8)
     self.choice = choice
     local step = (action == "right" and 0.1) or (action == "left" and -0.1) or 0
     if choice == 1 and step ~= 0 then state.music_volume = math.max(0, math.min(1, state.music_volume + step)); state.save_options(); audio.sfx("menu_move") end
     if choice == 2 and step ~= 0 then state.sfx_volume = math.max(0, math.min(1, state.sfx_volume + step)); state.save_options(); audio.sfx("menu_move") end
-    if choice == 3 and (step ~= 0 or action == "accept") then state.shadows = not state.shadows; state.save_options(); audio.sfx("menu_move") end
-    if choice == 4 and (step ~= 0 or action == "accept") then state.effects = not state.effects; state.save_options(); backdrop.light(); audio.sfx("menu_move") end
-    if choice == 5 and (step ~= 0 or action == "accept") then state.vibration = not state.vibration; state.save_options(); audio.sfx("menu_move"); if state.vibration then nova.input.rumble(0.6, 0.15) end end
-    if action == "accept" and choice == 6 then audio.sfx("menu_accept"); self:go("controls"); return end
-    if action == "back" or (action == "accept" and choice == 7) then audio.sfx("menu_back"); self:go("menu") end
+    if choice == 3 and (step ~= 0 or action == "accept") then
+      state.music_style = state.music_style == "kenney" and "studio" or "kenney"
+      state.save_options(); audio.restyle(); audio.sfx("menu_move")
+    end
+    if choice == 4 and (step ~= 0 or action == "accept") then state.shadows = not state.shadows; state.save_options(); audio.sfx("menu_move") end
+    if choice == 5 and (step ~= 0 or action == "accept") then state.effects = not state.effects; state.save_options(); backdrop.light(); audio.sfx("menu_move") end
+    if choice == 6 and (step ~= 0 or action == "accept") then state.vibration = not state.vibration; state.save_options(); audio.sfx("menu_move"); if state.vibration then nova.input.rumble(0.6, 0.15) end end
+    if action == "accept" and choice == 7 then audio.sfx("menu_accept"); self:go("controls"); return end
+    if action == "back" or (action == "accept" and choice == 8) then audio.sfx("menu_back"); self:go("menu") end
   elseif screen == "controls" then
     local rows = #controls.rows
     if self.listening then
@@ -164,12 +168,13 @@ function Title:draw_ui()
       ui.text(w / 2 - 14, 124 + (i - 1) * 36, row[2], 17, ui.color.white)
     end
     ui.center("Finish all the laps ahead of your rivals. The grass slows you down; the handbrake lets the back out.", 405, 14, ui.color.dim, { cx = w / 2 })
-    ui.hint("press A")
+    ui.hints({ { "pad_a", "back" } })
   elseif screen == "options" then
     ui.center("OPTIONS", 60, 52, ui.color.gold, { font = "comic" })
     ui.menu({
       { "Music volume", string.format("< %d%% >", math.floor(state.music_volume * 100 + 0.5)) },
       { "Sound volume", string.format("< %d%% >", math.floor(state.sfx_volume * 100 + 0.5)) },
+      { "Music style", state.music_style == "kenney" and "< Kenney loops >" or "< Nova Studio songs >" },
       { "Shadows", state.shadows and "< On >" or "< Off >" },
       { "Effects", state.effects and "< On >" or "< Off >" },
       { "Vibration", state.vibration and "< On >" or "< Off >" },
@@ -185,7 +190,7 @@ function Title:draw_ui()
     items[#items + 1] = "Back to the defaults"
     items[#items + 1] = "Back"
     ui.menu(items, self.choice, 84, { width = 700, row = 38 })
-    ui.hint(self.note or "A: change     B: back     keys and buttons are changed separately")
+    if self.note then ui.hint(self.note) else ui.hints({ { "pad_a", "change" }, { "pad_b", "back" } }) end
   elseif screen == "select" then
     local info = state.current_track()
     ui.center("CHOOSE YOUR RACE", 30, 44, ui.color.gold, { font = "comic", cx = 240 })
@@ -205,7 +210,7 @@ function Title:draw_ui()
     ui.text(180, 398, ui.time(best), 18, ui.color.gold, { font = "mono" })
     ui.label(56, 430, "BEST LAP")
     ui.text(180, 424, ui.time(lap), 18, ui.color.gold, { font = "mono" })
-    ui.hint("up / down: choose     left / right: change     A: go     B: back")
+    ui.hints({ { "pad_dpad", "choose and change" }, { "pad_a", "go" }, { "pad_b", "back" } })
   end
 end
 

@@ -25,6 +25,7 @@ state.music_volume = 0.7
 state.sfx_volume = 0.8
 state.shadows = true   -- the sun's shadows (a little slower on a handheld)
 state.vibration = true -- shake the gamepad when the car hits something
+state.music_style = "kenney" -- "kenney" (Kenney's music loops) or "studio" (the songs made with Nova's music editor)
 state.effects = true   -- bloom, ambient occlusion, grass and wind (a little slower on a handheld)
 state.result = nil    -- filled in when a race ends
 
@@ -35,6 +36,7 @@ function state.load()
   if saved.shadows ~= nil then state.shadows = saved.shadows end
   if saved.vibration ~= nil then state.vibration = saved.vibration end
   if saved.effects ~= nil then state.effects = saved.effects end
+  if saved.music_style then state.music_style = saved.music_style end
   state.track = nova.save.get("last_track", 1)
   state.car = nova.save.get("last_car", 1)
   state.mode = nova.save.get("last_mode", "race")
@@ -48,7 +50,7 @@ function state.apply_look(look)
 end
 
 function state.save_options()
-  nova.save.set("options", { music = state.music_volume, sfx = state.sfx_volume, shadows = state.shadows, vibration = state.vibration, effects = state.effects })
+  nova.save.set("options", { music = state.music_volume, sfx = state.sfx_volume, shadows = state.shadows, vibration = state.vibration, effects = state.effects, music_style = state.music_style })
   nova.save.set("last_track", state.track)
   nova.save.set("last_car", state.car)
   nova.save.set("last_mode", state.mode)

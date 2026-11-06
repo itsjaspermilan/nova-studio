@@ -14,11 +14,27 @@ function audio.sfx(name, opts)
   return nova.sound.play(name, opts)
 end
 
-local current_music = nil
+local state = require("lib.state")
+
+-- The music has two styles (Options > Music style): Kenney's loops, or the songs made with the music editor (music/*.song.json).
+-- A scene asks for a song by its studio name; in the Kenney style it is played as the loop that stands in for it.
+local KENNEY = {
+  menu = "kenney_menu", results = "kenney_results", race_forest = "kenney_forest", race_desert = "kenney_desert",
+  race_snow = "kenney_snow", race_night = "kenney_night",
+}
+local current_music, current_opts = nil, nil
+local function play(name, opts)
+  local file = state.music_style == "kenney" and KENNEY[name] or name
+  nova.music.play(file, opts or { volume = 0.55, fade = 0.6 })
+end
 function audio.music(name, opts)
   if current_music == name then return end
-  current_music = name
-  nova.music.play(name, opts or { volume = 0.55, fade = 0.6 })
+  current_music, current_opts = name, opts
+  play(name, opts)
+end
+-- After the style has been changed: the song that is playing starts again in the new style.
+function audio.restyle()
+  if current_music then play(current_music, current_opts) end
 end
 function audio.stop_music(fade)
   current_music = nil

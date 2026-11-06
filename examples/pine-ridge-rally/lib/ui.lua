@@ -63,6 +63,21 @@ function ui.hint(text)
   nova.ui.text(w / 2 - tw / 2, 500, text, o)
 end
 
+-- The line of help at the bottom, with the handheld's buttons drawn: items are { "pad_a", "select" } pairs (or a plain string).
+function ui.hints(items)
+  local w = nova.view()
+  local o = { size = 15, font = "future_narrow", color = ui.color.white }
+  local total = 0
+  for _, it in ipairs(items) do total = total + 30 + nova.ui.text_width(it[2], o) + 22 end
+  local x = w / 2 - total / 2
+  nova.ui.panel("ui/panel_dark", x - 14, 486, total + 22, 40, { slice = 18, scale = 0.6, color = { 255, 255, 255, 235 } })
+  for _, it in ipairs(items) do
+    ui.pad(it[1], x, 491, 30)
+    nova.ui.text(x + 36, 501, it[2], o)
+    x = x + 30 + nova.ui.text_width(it[2], o) + 22
+  end
+end
+
 -- "1:23.45"
 function ui.time(t)
   if not t then return "-:--.--" end

@@ -705,6 +705,7 @@ function race.define(config)
     nova.ui.rect(0, 0, w, 540, { 0, 0, 0, 140 })
     ui.center("PAUSED", 120, 56, ui.color.white, { font = "comic" })
     ui.menu(PAUSE_ITEMS, self.pause_choice, 220)
+    ui.hints({ { "pad_dpad", "choose" }, { "pad_a", "select" }, { "pad_plus", "resume" } })
   end
 
   -- ---- the end -----------------------------------------------------------------------------------------------------------
