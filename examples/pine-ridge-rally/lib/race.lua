@@ -123,6 +123,7 @@ function race.define(config)
     self.ghost = self.trial and nova.save.get("ghost_" .. info.id, nil) or nil
     self.recording = { t = 0, pts = {} }
     audio.music(info.music or config.music, { volume = 0.5, fade = 0.8 })
+    self.camera.heading = self.player.heading -- the chase camera starts behind the car, looking where it looks
     self:update_camera(1 / 60)
   end
 
@@ -475,16 +476,6 @@ function race.define(config)
     local p, cam = self.player, self.camera
     local sinh, cosh = math.sin(p.heading), math.cos(p.heading)
     local speed = math.abs(p.speed)
-    if self.phase == "countdown" then
-      -- a slow sweep round the car before the lights go out
-      local t = 1 - math.max(0, self.countdown) / 3.9
-      local a = p.heading + math.pi * (1.2 - 1.2 * t)
-      cam.heading = p.heading
-      cam.x, cam.z, cam.y = p.x + math.sin(a + math.pi) * 9, p.z + math.cos(a + math.pi) * 9, 3.2 - 0.5 * t
-      cam.tx, cam.ty, cam.tz = p.x, 1.0, p.z
-      cam.fov = 58
-      return
-    end
     -- the camera's own heading trails the car's a little, so a bend swings into view
     local diff = track.wrap(p.heading - cam.heading)
     cam.heading = cam.heading + diff * math.min(1, dt * 7)
@@ -656,15 +647,25 @@ function race.define(config)
     end
 
     -- countdown, messages, wrong way
-    if self.phase == "countdown" then
-      local n = math.ceil(self.countdown)
-      if n >= 1 and n <= 3 then
-        local frac = self.countdown - (n - 1)
-        ui.center(tostring(n), 70 - (1 - frac) * 10, 130 * (0.7 + 0.3 * frac), ui.color.gold, { font = "display" })
+    -- the start: three lights light one by one on a gantry at the top (red, then all green at GO!), and the number pops in big
+    local n = self.phase == "countdown" and math.ceil(self.countdown) or 0
+    local go = self.message == "GO!" and self.message_time > 0
+    if self.phase == "countdown" or go then
+      local wv = nova.view()
+      local lit = go and 3 or math.max(0, 4 - n)
+      nova.ui.panel("ui/panel_dark", wv / 2 - 120, 28, 240, 84, { slice = 18, scale = 0.8, color = { 255, 255, 255, 240 } })
+      for i = 1, 3 do
+        local image = (go and "ui/light_green") or (i <= lit and "ui/light_red") or "ui/light_off"
+        nova.ui.sprite(image, wv / 2 + (i - 2) * 70, 70, { w = 56, h = 56 })
       end
     end
+    if n >= 1 and n <= 3 then
+      local frac = self.countdown - (n - 1) -- 1 as the number appears, falling to 0
+      local pop = 1 + 0.35 * math.max(0, frac - 0.7) / 0.3
+      ui.center(tostring(n), 130, 104 * pop, ui.color.gold, { font = "thick" })
+    end
     if self.message_time > 0 then
-      ui.center(self.message, 110, 44, self.message == "GO!" and ui.color.green or ui.color.white, { font = "comic" })
+      ui.center(self.message, 130, self.message == "GO!" and 92 or 44, self.message == "GO!" and ui.color.green or ui.color.white, { font = self.message == "GO!" and "thick" or "bold" })
     end
     local here = track.point(p.waypoint or 1)
     if self.phase == "racing" and math.abs(p.speed) > 4 then

@@ -15,6 +15,9 @@ SW="$K/Icons/Input Prompts/Nintendo Switch/Default"
 cp "$UIP/Yellow/Default/button_rectangle_depth_gradient.png" "$U/btn_yellow.png"
 cp "$UIP/Grey/Default/button_rectangle_depth_gradient.png" "$U/btn_grey.png"
 cp "$UIP/Extra/Default/divider.png" "$U/divider.png" 2>/dev/null || true
+cp "$UIP/Red/Default/button_round_depth_gradient.png" "$U/light_red.png"
+cp "$UIP/Green/Default/button_round_depth_gradient.png" "$U/light_green.png"
+cp "$UIP/Grey/Default/button_round_depth_gradient.png" "$U/light_off.png"
 cp "$ADV/panel_grey_dark.png" "$U/panel_dark.png"
 cp "$ADV/panel_border_grey.png" "$U/panel_frame.png"
 cp "$ADV/progress_green.png" "$U/bar_green.png" 2>/dev/null || true

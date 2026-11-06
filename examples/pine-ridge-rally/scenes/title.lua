@@ -192,7 +192,7 @@ function Title:draw_ui()
     if self.note then ui.hint(self.note) else ui.hints({ { "pad_a", "change" }, { "pad_b", "back" } }) end
   elseif screen == "select" then
     local info = state.current_track()
-    ui.center("CHOOSE YOUR RACE", 30, 36, ui.color.gold, { font = "bold", cx = 240 })
+    ui.center("CHOOSE YOUR RACE", 40, ui.fit("CHOOSE YOUR RACE", 36, 390), ui.color.gold, { font = "bold", cx = 240 })
     ui.menu({
       { "Circuit", "< " .. info.name .. " >" },
       { "Mode", "< " .. (state.mode == "race" and "Race" or "Time trial") .. " >" },

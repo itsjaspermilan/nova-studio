@@ -19,6 +19,13 @@ function ui.center(text, y, size, color, opts)
   nova.ui.text((opts.cx or w / 2) - tw / 2, y, text, o)
 end
 
+-- The largest size, up to `size`, at which `text` is no wider than `width` (a long heading in a narrow place).
+function ui.fit(text, size, width, font)
+  local w = nova.ui.text_width(text, { size = size, font = font or "bold" })
+  if w <= width then return size end
+  return math.floor(size * width / w)
+end
+
 function ui.text(x, y, text, size, color, opts)
   opts = opts or {}
   return nova.ui.text(x, y, text, { size = size, color = color or ui.color.white, shadow = opts.shadow ~= false, font = opts.font or "rounded", align = opts.align, width = opts.width })
