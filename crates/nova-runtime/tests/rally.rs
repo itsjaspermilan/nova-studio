@@ -470,6 +470,26 @@ fn the_right_stick_picks_a_view_and_the_camera_goes_back_behind_the_car_when_it_
         }
         assert!(stat(&mut g)["orbit"].abs() < 0.1, "and it comes back");
     }
+    // any angle between the four: up and to the right is an eighth of a turn, and a stick pointing 30 degrees from the right is that
+    for _ in 0..90 {
+        frame_with(&mut g, &[("axis:right_x", 0.7), ("axis:right_y", -0.7)]);
+    }
+    let diagonal = stat(&mut g)["orbit"];
+    assert!(
+        (diagonal - std::f32::consts::FRAC_PI_4).abs() < 0.1,
+        "up and right: {diagonal}"
+    );
+    for _ in 0..90 {
+        frame_with(&mut g, &[("axis:right_x", 0.8), ("axis:right_y", 0.46)]); // to the right and a little down
+    }
+    let low = stat(&mut g)["orbit"];
+    assert!(
+        (low - 2.09).abs() < 0.2,
+        "right and down by 30 degrees is 120 degrees round: {low}"
+    );
+    for _ in 0..120 {
+        frame_with(&mut g, &[]);
+    }
     for _ in 0..90 {
         frame_with(&mut g, &[("axis:right_x", -1.0)]);
     }

@@ -482,16 +482,15 @@ function race.define(config)
     local diff = track.wrap(p.heading - cam.heading)
     cam.heading = cam.heading + diff * math.min(1, dt * 7)
     -- the right stick picks a view, as in the open-world racers: left looks out of the left, right out of the right, down looks
-    -- behind, up is the way ahead (and the diagonals in between). The camera goes to the view and stays there while the stick is held,
+    -- behind, up is the way ahead, and the camera goes to any angle in between, wherever the stick points. The camera goes to the view and stays there while the stick is held,
     -- and eases back behind the car when it is let go; a press of the stick looks back too.
     local lx, ly = nova.input.axis("look_x"), nova.input.axis("look_y")
     local orbit = self.orbit
     if not orbit then orbit = { yaw = 0, lift = 0 }; self.orbit = orbit end
     local want_yaw = 0
     if lx * lx + ly * ly > 0.4 * 0.4 then
-      -- the stick's angle from "up", in the eight directions: 0 ahead, a quarter turn to the right, a half turn behind
-      local step = math.pi / 4
-      want_yaw = math.floor(math.atan(lx, -ly) / step + 0.5) * step
+      -- the camera goes to where the stick points: its angle from "up" (0 ahead, a quarter turn to the right, a half turn behind)
+      want_yaw = math.atan(lx, -ly)
     elseif nova.input.down("look_back") then
       want_yaw = math.pi
     end

@@ -22,7 +22,7 @@ local WHEELBASE, TRACK = 2.2, 1.45
 -- How bumpy each surface is (metres of ground height), and the body's suspension (a springy, damped mass).
 local BUMPS = { road = 0.004, dirt = 0.03, rough = 0.08 }
 local WHEEL_FOLLOW = 14     -- how fast a wheel follows the ground (1 / seconds): the bumps come faster than a wheel can rise and fall, and at 40 m/s a 60 fps frame samples them so coarsely that the wheels hopped at random
-local SPRING, DAMPER = 240, 30   -- stiff and well damped: the body settles at once instead of wallowing
+local SPRING, DAMPER = 560, 47   -- stiff and critically damped (2 x the square root of the spring): the body settles at once and does not wobble
 
 -- The height of the ground at a spot: a fixed, smooth pattern of bumps.
 local function ground(x, z, size)
@@ -116,8 +116,8 @@ function Car:drive(dt)
   -- player's car; it eases in and out over a quarter of a second or so, so that it is a feel and not a jolt)
   if self.is_player then
     local target = (live and c.throttle < 0.15 and vf > 6) and 1 or 0
-    self.lift = (self.lift or 0) + (target - (self.lift or 0)) * math.min(1, dt * 5)
-    omega = omega * (1 + 0.3 * self.lift * math.min(1, (math.abs(vf) - 6) / 12))
+    self.off_throttle = (self.off_throttle or 0) + (target - (self.off_throttle or 0)) * math.min(1, dt * 5)
+    omega = omega * (1 + 0.3 * self.off_throttle * math.min(1, (math.abs(vf) - 6) / 12))
   end
   omega = omega * (1 - 0.45 * lock)
   local direction = vf >= -0.5 and 1 or -1
@@ -248,8 +248,8 @@ function Car:suspension(dt, vf, accel, lateral_accel)
   local sp = self.susp
   local size = (BUMPS[self.surface] or BUMPS.road) * math.min(1, 0.3 + math.abs(vf) / 20)
   local sinh, cosh = math.sin(self.heading), math.cos(self.heading)
-  local long_shift = math.max(-0.14, math.min(0.14, accel * 0.005))    -- braking (negative) drops the nose
-  local side_shift = math.max(-0.14, math.min(0.14, lateral_accel * 0.004))   -- turning left (positive) loads the left side
+  local long_shift = math.max(-0.07, math.min(0.07, accel * 0.0026))    -- braking (negative) drops the nose
+  local side_shift = math.max(-0.07, math.min(0.07, lateral_accel * 0.002))   -- turning left (positive) loads the left side
   for i, name in ipairs(WHEEL_NAMES) do
     local w = WHEELS[name]
     local wx = self.x + sinh * w.fwd + cosh * w.left
@@ -260,7 +260,7 @@ function Car:suspension(dt, vf, accel, lateral_accel)
     h = sp.w[i]
     local target = h + (w.fwd > 0 and long_shift or -long_shift) + (w.left > 0 and -side_shift or side_shift)
     local pull = SPRING * (target - sp.b[i]) - DAMPER * sp.bv[i]
-    if self.hit then pull = pull + 60 * self.hit * ((i * 37) % 3 - 1) end  -- a knock sets the body rocking
+    if self.hit then pull = pull + 35 * self.hit * ((i * 37) % 3 - 1) end  -- a knock sets the body rocking
     sp.bv[i] = sp.bv[i] + pull * dt
     sp.b[i] = sp.b[i] + sp.bv[i] * dt
   end
