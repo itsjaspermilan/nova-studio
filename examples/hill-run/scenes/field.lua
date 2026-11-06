@@ -20,7 +20,7 @@ function Scene:enter()
   state.total = #level.gems
   nova.spawn("flag", level.flag.x, level.flag.y, { z = level.flag.z })
   nova.spawn("player", level.start.x, level.start.y, { z = level.start.z })
-  state.say("walk or jump into a steep wall to climb it, B to leap off it, B in the air to glide: climb to the flag", 6)
+  state.say("X jumps (again in the air: glide), hold B to sprint, walk or jump into a steep wall to climb it: reach the flag", 6)
 end
 
 function Scene:update(dt)
