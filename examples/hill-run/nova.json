@@ -5,13 +5,13 @@
   "input": {
     "jump": ["key:Space", "pad:east"],
     "sprint": ["key:ShiftLeft", "pad:north"],
-    "grab": ["key:KeyE", "pad:r1"],
     "pause": ["key:Escape", "pad:start"],
     "stats": ["key:F3", "pad:select"],
     "autoplay": ["key:F9"],
     "cliff": ["key:F8"],
     "tower": ["key:F7"],
     "sky": ["key:F6"],
-    "cliff_face": ["key:F5"]
+    "cliff_face": ["key:F5"],
+    "cliff_tired": ["key:F4"]
   }
 }

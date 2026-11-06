@@ -111,12 +111,26 @@ fn the_character_stands_on_the_hills_and_a_bot_climbs_the_stairs_and_the_path_to
 }
 
 #[test]
-fn the_cliff_cannot_be_climbed_by_walking_straight_at_it() {
+fn walking_at_the_cliff_starts_a_climb_by_itself_and_ends_on_top() {
+    let s = run_script("key:F8", 40);
+    assert!(number(&s, "max_height") > 19.0, "over the cliff: {s:?}");
+    assert!(
+        number(&s, "climb") > 1.0,
+        "it climbed, without a button: {s:?}"
+    );
+    assert!(
+        number(&s, "mantles") >= 1.0 && number(&s, "falls") == 0.0,
+        "{s:?}"
+    );
+}
+
+#[test]
+fn a_player_with_no_strength_left_cannot_climb_the_cliff_and_is_pushed_back_and_slides() {
     let mut g = game();
     for _ in 0..30 {
         frame(&mut g, &[]);
     }
-    tap(&mut g, "key:F8"); // put the player on the hill below the cliff, bot walking at the peak
+    tap(&mut g, "key:F4"); // the hill below the cliff, bot walking at the peak, with no strength to climb
     let start = status(&mut g);
     let base = number(&start, "y");
     for _ in 0..60 * 40 {
@@ -153,7 +167,7 @@ fn run_script(key: &str, seconds: u32) -> std::collections::HashMap<String, Stri
 }
 
 #[test]
-fn the_bot_climbs_the_tower_by_holding_the_grab_button_at_the_wall_and_steps_over_the_top() {
+fn the_bot_climbs_the_tower_by_walking_at_it_and_steps_over_the_top() {
     let s = run_script("key:F7", 10);
     assert!(number(&s, "max_height") > 12.0, "the tower is 12 m: {s:?}");
     assert!(

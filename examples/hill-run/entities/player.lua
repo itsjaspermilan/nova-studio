@@ -41,7 +41,7 @@ function Player:respawn()
 end
 
 -- The bot: walks the route (to the stairs, up them, across to the notch in the cliff and up the path to the flag), jumping when
--- something stops it. In the tests it is also made to climb (it holds the grab button and pushes at a wall) and to glide.
+-- something stops it. In the tests it is also made to climb (it pushes at a wall, which starts a climb) and to glide.
 local function autoplay(self)
   self.plan_i = self.plan_i or 1
   local step = (self.route or level.route)[self.plan_i]
@@ -57,7 +57,7 @@ local function teleport(self, x, z, y, route, mode)
   self.y = y or ((nova.solid.floor_below(x, 200, z, 400)) or 0) + 0.2
   self.vx, self.vy, self.vz, self.ground, self.mode = 0, 0, 0, false, "walk"
   self.route, self.plan_i, self.bot, self.bot_script = route, 1, true, mode
-  self.stamina, self.wall = STAMINA, nil
+  self.stamina, self.wall, self.tired = STAMINA, nil, false
   state.max_height, state.slide_frames, state.climb_time, state.glide_dist, state.glide_time = self.y, 0, 0, 0, 0
   self.start_x, self.start_z = x, z
 end
@@ -65,6 +65,8 @@ end
 -- tests: F8 puts the player on the hill below the cliff, walking at it; F7 in front of the tower, climbing it; F6 high in the air,
 -- gliding; F5 at the foot of the cliff, climbing it
 function Player:to_the_cliff() teleport(self, level.peak.x + 26, level.peak.z, nil, { { x = level.peak.x, z = level.peak.z } }, nil) end
+-- (F4: the same with no strength left: it cannot climb, so the cliff pushes it back and it slides)
+function Player:to_the_cliff_tired() teleport(self, level.peak.x + 26, level.peak.z, nil, { { x = level.peak.x, z = level.peak.z } }, nil); self.tired, self.stamina = true, 0 end
 function Player:to_the_tower() teleport(self, level.tower.x, level.tower.z - 5, nil, { { x = level.tower.x, z = level.tower.z } }, "climb") end
 function Player:to_the_sky() teleport(self, 0, 0, 24, { { x = -300, z = 300 } }, "glide") end
 function Player:to_the_cliff_face() teleport(self, level.peak.x + 24, level.peak.z + 0.0, nil, { { x = level.peak.x, z = level.peak.z } }, "climb"); self.route_hold = true end
@@ -78,6 +80,7 @@ function Player:update(dt)
   if nova.input.pressed("tower") then self:to_the_tower() end
   if nova.input.pressed("sky") then self:to_the_sky() end
   if nova.input.pressed("cliff_face") then self:to_the_cliff_face() end
+  if nova.input.pressed("cliff_tired") then self:to_the_cliff_tired() end
 
   local ptr = nova.input.pointer()
   cam3.yaw = cam3.yaw - nova.input.axis("look_x") * 2.8 * dt - ptr.dx * 0.0022
@@ -90,12 +93,10 @@ function Player:update(dt)
   local want_jump = nova.input.pressed("jump")
   local jump_held = nova.input.down("jump")
   local sprint = nova.input.down("sprint")
-  local grab = nova.input.down("grab")
   if self.bot then
     local bx, bz, bj = autoplay(self)
     wx, wz, want_jump, sprint = bx, bz, want_jump or bj, true
     jump_held = true
-    grab = self.bot_script == "climb"
     -- the glide test: a jump in the air, once
     if self.bot_script == "glide" and self.mode == "walk" and not self.ground and self.air_time > 0.4 and not self.glided then want_jump, self.glided = true, true end
   end
@@ -103,9 +104,9 @@ function Player:update(dt)
   if len > 1 then wx, wz = wx / len, wz / len end
   self.wall_age = self.wall_age + dt
 
-  if self.mode == "climb" then self:climb(dt, wx, wz, len, grab, want_jump)
+  if self.mode == "climb" then self:climb(dt, wx, wz, len, want_jump)
   elseif self.mode == "glide" then self:glide(dt, wx, wz, len, want_jump)
-  else self:walk(dt, wx, wz, len, want_jump, jump_held, sprint, grab) end
+  else self:walk(dt, wx, wz, len, want_jump, jump_held, sprint) end
 
   state.max_height = max(state.max_height, self.y)
   if self.y < -20 then state.falls = state.falls + 1; state.say("fell", 1); self:respawn() end
@@ -113,11 +114,11 @@ function Player:update(dt)
   self.step_off = self.step_off * math.exp(-14 * dt)
   self.air_time = self.ground and 0 or self.air_time + dt
   -- stamina comes back on the ground
-  if self.mode == "walk" and self.ground then self.stamina = min(STAMINA, self.stamina + 2.5 * dt) end
+  if self.mode == "walk" and self.ground and not self.tired then self.stamina = min(STAMINA, self.stamina + 2.5 * dt) end
   self:aim_camera(dt)
 end
 
-function Player:walk(dt, wx, wz, len, want_jump, jump_held, sprint, grab)
+function Player:walk(dt, wx, wz, len, want_jump, jump_held, sprint)
   local top = sprint and SPRINT or WALK
   -- on the ground one steers sharply; in the air (and sliding) a little
   local accel = (self.ground and 55 or 18) * dt
@@ -168,8 +169,9 @@ function Player:walk(dt, wx, wz, len, want_jump, jump_held, sprint, grab)
     self.ground = false
   end
 
-  -- cling to a wall: hold the grab button and push at it
-  if grab and self.wall and self.wall_age < 0.15 and self.stamina > 0.3 and len > 0.1 then
+  -- cling to a wall: walking at a steep surface, or jumping onto one, starts a climb by itself (pushing at it, with some strength left)
+  self.climb_cool = max(0, (self.climb_cool or 0) - dt)
+  if self.wall and self.wall_age < 0.15 and self.stamina > 0.3 and not self.tired and self.climb_cool <= 0 and len > 0.1 then
     local pushing = wx * -self.wall.x + wz * -self.wall.z
     if pushing > 0.3 * sqrt(self.wall.x ^ 2 + self.wall.z ^ 2) then
       self.mode, self.cn, self.wall_lost = "climb", self.wall, 0
@@ -179,7 +181,7 @@ function Player:walk(dt, wx, wz, len, want_jump, jump_held, sprint, grab)
 end
 
 -- Climbing: gravity is off, the stick moves along the surface (pushing at it is up, pulling away is down), and the clock runs.
-function Player:climb(dt, wx, wz, len, grab, want_jump)
+function Player:climb(dt, wx, wz, len, want_jump)
   local n = self.cn
   local nl = sqrt(n.x * n.x + n.y * n.y + n.z * n.z)
   n = { x = n.x / nl, y = n.y / nl, z = n.z / nl }
@@ -219,13 +221,13 @@ function Player:climb(dt, wx, wz, len, grab, want_jump)
     return
   end
   if m.ground and vert < 0 then self.mode, self.ground = "walk", true; return end
-  -- let go, run out of strength, or jump off the wall
-  if not grab or self.stamina <= 0 then
-    self.mode, self.wall, self.wall_age = "walk", nil, 9
+  -- run out of strength (and fall), or jump off the wall (which cannot start another climb at once)
+  if self.stamina <= 0 then
+    self.mode, self.wall, self.wall_age, self.climb_cool = "walk", nil, 9, 0.6
     self.vx, self.vy, self.vz = 0, 0, 0
-    if self.stamina <= 0 then state.say("out of stamina", 1) end
+    state.say("out of stamina", 1)
   elseif want_jump then
-    self.mode, self.wall, self.wall_age = "walk", nil, 9
+    self.mode, self.wall, self.wall_age, self.climb_cool = "walk", nil, 9, 0.35
     self.vx, self.vz, self.vy = n.x * 6, n.z * 6, 9
     nova.sound.play("jump", { volume = 0.4, limit = 2 })
   end
