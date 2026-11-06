@@ -314,6 +314,8 @@ struct App {
     input: Input,
     perf: Perf,
     last_frame: Instant,
+    /// Makes the steps given to the game even (see `pacing`).
+    pacer: crate::pacing::Pacer,
     started: Instant,
     audio: Option<AudioOut>,
     audio_error: Option<String>,
@@ -409,8 +411,14 @@ impl App {
             return;
         };
         let now = Instant::now();
-        let dt = (now - self.last_frame).as_secs_f32().min(0.1);
+        let measured = (now - self.last_frame).as_secs_f32().min(0.1);
         self.last_frame = now;
+        // (an uncapped run is a benchmark: its steps are what they are)
+        let dt = if self.opts.uncapped {
+            measured
+        } else {
+            self.pacer.step(measured)
+        };
         let size = (config.width, config.height);
 
         let mut frame = InputFrame {
@@ -483,7 +491,7 @@ impl App {
         gfx.queue.present(texture);
         self.perf.times.update_ms = build_ms;
         self.perf.times.lua_ms = lua_ms;
-        self.perf.record(dt * 1000.0);
+        self.perf.record(measured * 1000.0);
 
         self.frames_done += 1;
         if self.opts.frames.is_some_and(|n| self.frames_done >= n) {
@@ -719,6 +727,7 @@ pub fn run_windowed(
         input: Input::new(),
         perf: Perf::default(),
         last_frame: Instant::now(),
+        pacer: Default::default(),
         started: Instant::now(),
         audio: None,
         audio_error: None,

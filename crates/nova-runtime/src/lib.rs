@@ -18,6 +18,7 @@ pub mod lights;
 pub mod meshworld;
 pub mod mixer;
 pub mod model;
+pub mod pacing;
 pub mod pak;
 pub mod project;
 pub mod save;
