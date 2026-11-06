@@ -149,9 +149,54 @@ const voices = {
   race_night: { room: { size: 0.75, damping: 0.5 }, lead: { wave: "saw", unison: 3, detune: 8, cutoff: 2400, vibrato: 0.1, reverb: 0.5, attack: 0.06, release: 0.6, volume: 0.28 }, bass: { ...BASS, volume: 0.42 }, pad: { ...PAD, cutoff: 1100, volume: 0.38 }, drums: { ...DRUMS, volume: 0.55 } },
   results: { room: { size: 0.6, damping: 0.4 }, lead: { ...LEAD, volume: 0.32, release: 0.35 }, pad: { ...PAD, volume: 0.45 }, bass: { ...BASS, volume: 0.4 }, drums: { ...DRUMS, volume: 0.5 } },
 };
+// ---- arrangement: each eight-bar loop above becomes four sections (so the music runs four times as long before it repeats):
+// 1 the theme; 2 the theme with the lead doubled an octave up and busier hats; 3 a breakdown (the bass and stabs wait, the drums thin
+// out, the lead plays every other note); 4 the theme again with a fifth above the lead, a crash and a snare fill into the loop.
+const LEADS = new Set(["lead", "twang", "bells"]);
+const hits = (steps, pitch, vel, at) => steps.map((st) => ({ step: at + st, len: 1, pitch, vel }));
+function arrange(song) {
+  const L = song.length;
+  const shift = (notes, by) => notes.map((n) => ({ ...n, step: n.step + by }));
+  const tracks = song.tracks.map((t) => {
+    const base = t.notes;
+    const parts = [];
+    // 1: the theme
+    parts.push(...shift(base, 0));
+    // 2: the lead doubled up an octave, extra hats
+    if (LEADS.has(t.name)) parts.push(...shift(base, L), ...shift(base.map((n) => ({ ...n, pitch: n.pitch + 12, vel: n.vel * 0.45 })), L));
+    else if (t.kind === "drums") {
+      const bars = L / 16;
+      parts.push(...shift(base, L));
+      for (let b = 0; b < bars; b++) parts.push(...hits([1, 3, 5, 7, 9, 11, 13, 15], 42, 0.16, L + b * 16));
+      parts.push(...hits([0], 49, 0.55, L));
+    } else parts.push(...shift(base, L));
+    // 3: the breakdown
+    if (LEADS.has(t.name)) parts.push(...shift(base.filter((_, i) => i % 2 === 0), 2 * L));
+    else if (t.kind === "drums") {
+      const bars = L / 16;
+      for (let b = 0; b < bars; b++) {
+        if (b >= 2) parts.push(...hits([0, 8], 36, 0.8, 2 * L + b * 16));
+        parts.push(...hits([4, 12], 42, 0.3, 2 * L + b * 16));
+        if (b >= 6) parts.push(...hits([4, 12], 38, 0.6, 2 * L + b * 16));
+      }
+    } else if (t.name === "bass") parts.push(...shift(base.filter((n) => n.step >= L / 2), 2 * L));
+    else if (t.name === "pad") parts.push(...shift(base, 2 * L));
+    // (the stabs and any other track rest)
+    // 4: the theme with a fifth above the lead, a crash, and a fill into the loop
+    if (LEADS.has(t.name)) parts.push(...shift(base, 3 * L), ...shift(base.map((n) => ({ ...n, pitch: n.pitch + 7, vel: n.vel * 0.4 })), 3 * L));
+    else if (t.kind === "drums") {
+      parts.push(...shift(base.filter((n) => n.step < L - 16), 3 * L), ...hits([0], 49, 0.6, 3 * L));
+      parts.push(...hits([0, 4, 8, 10, 12, 13, 14, 15], 38, 0.7, 3 * L + L - 16), ...hits([0, 8], 36, 0.9, 3 * L + L - 16));
+    } else parts.push(...shift(base, 3 * L));
+    return { ...t, notes: parts };
+  });
+  return { ...song, length: 4 * L, tracks };
+}
+
 function dress(name, song) {
   const v = voices[name];
-  return { ...song, room: v.room, tracks: song.tracks.map((t) => ({ ...t, ...(v[t.name] ?? {}) })) };
+  const arranged = name === "results" ? song : arrange(song);
+  return { ...arranged, room: v.room, tracks: arranged.tracks.map((t) => ({ ...t, ...(v[t.name] ?? {}) })) };
 }
 
 await withServer(async (nova) => {

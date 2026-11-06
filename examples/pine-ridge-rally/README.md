@@ -42,7 +42,7 @@ assistant (or a script) drives the studio's own code: see `scripts/rally/` (`mod
 
 **Engine features (2026-11-06).** Each circuit has a `look` in `lib/looks.lua`: bloom and ambient occlusion (`nova.look`), wind that bends the trees, bushes and flags (`nova.wind`, `sway` on the entity classes) and grass and flowers along the verges (`lib/foliage.lua`, planted over the first moments of the countdown). The night circuit's headlights are spot lights, cones on the road (`nova.point_light` with `dir` and `angle`). **Options > Effects** switches the look, the wind and the grass off. On the Retroid the night circuit ran at 59.7 fps with the effects on and the GPU at about 3.5 ms a frame (the car, 200 roadside props, 4,000 tufts, shadows and two spot lights).
 
-**Sound (2026-11-06).** The music is voiced with the studio's fuller instruments (detuned unison saws, filters that open with each note, a sub, vibrato, a shared reverb and the studio drum kit; see `docs/project-format.md`, "Songs"), by song and track in `scripts/rally/audio.mjs`. The engine is a low filtered rumble with a soft body above it. None of it has been listened to on the Retroid yet.
+**Sound (2026-11-06).** The music is voiced with the studio's fuller instruments (detuned unison saws, filters that open with each note, a sub, vibrato, a shared reverb and the studio drum kit, arranged in four sections: the theme, the theme with the lead doubled, a breakdown, and the theme with a fifth above and a fill; 52 to 80 seconds before a loop repeats; see `docs/project-format.md`, "Songs"), by song and track in `scripts/rally/audio.mjs`. The engine is a low filtered rumble with a soft body above it. None of it has been listened to on the Retroid yet.
 
 ## Not done
 

@@ -24,3 +24,26 @@
 {"t":1793982956111,"tool":"song_write","files":["music/race_snow.song.json"],"note":"music/race_snow.ogg (15.5 s, 311915 bytes)"}
 {"t":1793982957025,"tool":"song_write","files":["music/race_night.song.json"],"note":"music/race_night.ogg (17.8 s, 341565 bytes)"}
 {"t":1793982957468,"tool":"song_write","files":["music/results.song.json"],"note":"music/results.ogg (8.6 s, 177675 bytes)"}
+{"t":1793989279877,"tool":"sfx_write","files":["sounds/menu_move.sfx.json","sounds/menu_move.wav"],"note":"sounds/menu_move.wav: 0.08 s"}
+{"t":1793989279884,"tool":"sfx_write","files":["sounds/menu_accept.sfx.json","sounds/menu_accept.wav"],"note":"sounds/menu_accept.wav: 0.33 s"}
+{"t":1793989279887,"tool":"sfx_write","files":["sounds/menu_back.sfx.json","sounds/menu_back.wav"],"note":"sounds/menu_back.wav: 0.17 s"}
+{"t":1793989279892,"tool":"sfx_write","files":["sounds/beep.sfx.json","sounds/beep.wav"],"note":"sounds/beep.wav: 0.31 s"}
+{"t":1793989279894,"tool":"sfx_write","files":["sounds/go.sfx.json","sounds/go.wav"],"note":"sounds/go.wav: 0.71 s"}
+{"t":1793989279897,"tool":"sfx_write","files":["sounds/checkpoint.sfx.json","sounds/checkpoint.wav"],"note":"sounds/checkpoint.wav: 0.22 s"}
+{"t":1793989279898,"tool":"sfx_write","files":["sounds/lap.sfx.json","sounds/lap.wav"],"note":"sounds/lap.wav: 0.52 s"}
+{"t":1793989279904,"tool":"sfx_write","files":["sounds/best_lap.sfx.json","sounds/best_lap.wav"],"note":"sounds/best_lap.wav: 0.75 s"}
+{"t":1793989279907,"tool":"sfx_write","files":["sounds/finish.sfx.json","sounds/finish.wav"],"note":"sounds/finish.wav: 1.20 s"}
+{"t":1793989279912,"tool":"sfx_write","files":["sounds/engine_loop.sfx.json","sounds/engine_loop.wav"],"note":"sounds/engine_loop.wav: 0.50 s"}
+{"t":1793989279913,"tool":"sfx_write","files":["sounds/engine_body.sfx.json","sounds/engine_body.wav"],"note":"sounds/engine_body.wav: 0.50 s"}
+{"t":1793989279918,"tool":"sfx_write","files":["sounds/gravel_loop.sfx.json","sounds/gravel_loop.wav"],"note":"sounds/gravel_loop.wav: 0.50 s"}
+{"t":1793989279923,"tool":"sfx_write","files":["sounds/skid_loop.sfx.json","sounds/skid_loop.wav"],"note":"sounds/skid_loop.wav: 0.50 s"}
+{"t":1793989279923,"tool":"sfx_write","files":["sounds/shift.sfx.json","sounds/shift.wav"],"note":"sounds/shift.wav: 0.09 s"}
+{"t":1793989279924,"tool":"sfx_write","files":["sounds/bump.sfx.json","sounds/bump.wav"],"note":"sounds/bump.wav: 0.31 s"}
+{"t":1793989279925,"tool":"sfx_write","files":["sounds/whoosh.sfx.json","sounds/whoosh.wav"],"note":"sounds/whoosh.wav: 0.40 s"}
+{"t":1793989279926,"tool":"sfx_write","files":["sounds/pause.sfx.json","sounds/pause.wav"],"note":"sounds/pause.wav: 0.08 s"}
+{"t":1793989283760,"tool":"song_write","files":["music/menu.song.json"],"note":"music/menu.ogg (80.0 s, 1517570 bytes)"}
+{"t":1793989285664,"tool":"song_write","files":["music/race_forest.song.json"],"note":"music/race_forest.ogg (51.9 s, 1026339 bytes)"}
+{"t":1793989288502,"tool":"song_write","files":["music/race_desert.song.json"],"note":"music/race_desert.ogg (58.2 s, 1162551 bytes)"}
+{"t":1793989292041,"tool":"song_write","files":["music/race_snow.song.json"],"note":"music/race_snow.ogg (61.9 s, 1223381 bytes)"}
+{"t":1793989295822,"tool":"song_write","files":["music/race_night.song.json"],"note":"music/race_night.ogg (71.1 s, 1330885 bytes)"}
+{"t":1793989296280,"tool":"song_write","files":["music/results.song.json"],"note":"music/results.ogg (8.6 s, 177675 bytes)"}
