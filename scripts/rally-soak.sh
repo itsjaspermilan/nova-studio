@@ -11,7 +11,7 @@ cd "$(dirname "$0")/.."
 ENV=scripts/env.sh
 MINUTES="${1:-40}"
 PKG=com.nova.games.pine_ridge_rally
-KEY_ENTER=66; KEY_RIGHT=22; KEY_DOWN=20; KEY_F9=140
+KEY_ENTER=66; KEY_RIGHT=22; KEY_DOWN=20; KEY_F9=139   # (KEYCODE_F9 is 139; 140 is F10, which does nothing: the first soak ran with parked cars)
 
 key() { "$ENV" adb shell input keyevent "$1"; sleep "${2:-0.4}"; }
 

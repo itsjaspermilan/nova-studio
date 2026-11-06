@@ -139,7 +139,12 @@ The Snapdragon 8 Gen 2 is slower than an M4 by roughly 2 to 2.5 times on one CPU
 
 ## A 40-minute soak of the rally on the Retroid (2026-11-06)
 
-`scripts/rally-soak.sh 40` (the log is `docs/rally-soak-2026-11-06.log`): the computer drove Pine Ridge Rally race after race on all four
+**Correction, found afterwards: the first run below had the cars PARKED.** The script sent Android keycode 140 for the game's F9 ("let the
+computer drive"), but 140 is F10 (F9 is 139), so nothing drove. What it measured is a scene at rest (all the drawing, the effects, the wind
+and grass moving, and the shadows, but no driving, no steering, no loading of what comes into view), for 40 minutes; the heat is real (the
+GPU did the same work all the time), the rest is not a driving number. A run with the car driving is below (or marked as not done yet).
+
+`scripts/rally-soak.sh 40` (the first log is `docs/rally-soak-2026-11-06-parked-cars.log`): Pine Ridge Rally on all four
 circuits, with bloom, ambient occlusion, wind, grass, shadows and (at night) spot-light headlights on, and the log line `rally: perf` and
 the temperatures were read every 30 seconds. **71 readings: 59.68 fps on average (lowest 59.5), the GPU's own time 3.1 to 3.6 ms a frame
 (3.33 on average), the worst frame 20.3 ms (a 60 Hz display's 16.7 plus the log's timing), nothing slower at the end than at the start.**

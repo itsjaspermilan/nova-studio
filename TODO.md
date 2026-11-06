@@ -43,8 +43,8 @@ Everything we know is missing or unverified, in one place. "Device" means it nee
 another physical Android device) to settle; the emulator cannot.
 
 **Needs the device**
-- [~] Frame pacing (done 2026-11-05), thermals over 10+ minutes (done 2026-11-06: a 40-minute rally soak, 59.68 fps on average, GPU
-  3.1 to 3.6 ms, no throttling, hottest sensor 49.7 to 57.2 C; `docs/performance.md`), battery (not measured: the soak was on USB power),
+- [~] Frame pacing (done 2026-11-05), thermals over 10+ minutes (2026-11-06: a 40-minute soak of a PARKED rally car, 59.68 fps, GPU 3.1 to
+  3.6 ms, hottest sensor 49.7 to 57.2 C, because the script's autodrive key was wrong; a driving run follows in `docs/performance.md`), battery (not measured: the soak was on USB power),
   60/120 Hz behaviour (120 Hz not a target). The Lua framework and collision grid on a handheld CPU are measured by the rally and Hill Run runs
   (Lua about 2 ms a frame).
 - [x] Controller axes on Android (2026-11-02, code only): the workspace uses `vendor/winit` (stock winit 0.30.13 plus one patch, see its
