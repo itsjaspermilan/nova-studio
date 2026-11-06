@@ -98,6 +98,29 @@ What this says, and does not:
   controller, and the frame-time spikes of loading. The p95 frame time of 17.6 to 18.9 ms is the 60 Hz display's own 16.7 plus
   what the log's timing adds; the longest frame was 19.5 ms, well short of the 33 ms a missed vsync would show.
 
+### Eleven minutes of it (2026-11-05, `scripts/heat-run.sh`)
+
+The benchmark eight times in a row (about 80 seconds each, 11 minutes in all), on AC power, display at 60 Hz, starting from a device
+that was already warm (battery 30 C, hottest chip sensor 64 C after the earlier runs). Three phases per run:
+
+| Run | city 48 by 48 (fps / GPU ms) | city 24 + shadows | worst case | hottest sensor |
+| --- | --- | --- | --- | --- |
+| 1 | 59.7 / 4.02 | 59.8 / 4.28 | 59.7 / 14.80 | 63.5 C |
+| 2 | 59.7 / 4.03 | 59.7 / 4.28 | 59.8 / 14.74 | 64.7 C |
+| 3 | 59.7 / 4.02 | 59.7 / 4.28 | 59.7 / 14.68 | 64.7 C |
+| 4 | 59.7 / 4.03 | 59.6 / 4.29 | 59.8 / 13.29 | 65.1 C |
+| 5 | 59.9 / 4.02 | 59.7 / 4.28 | 59.7 / 13.29 | 65.5 C |
+| 6 | 59.8 / 4.02 | 59.7 / 4.29 | 59.7 / 13.28 | 65.9 C |
+| 7 | 59.7 / 4.03 | 59.8 / 4.29 | 59.7 / 14.67 | 65.5 C |
+| 8 | 59.7 / 4.02 | 59.7 / 4.27 | 59.7 / 13.32 | 65.5 C |
+
+No sign of throttling: the frame rate stayed at 59.7 to 59.9 in every phase of every run, the two lighter phases' GPU times did not
+move (4.02 to 4.03 and 4.27 to 4.29), and the worst case's GPU time jumped between about 13.3 and 14.7 ms with no trend (two clock
+states, not a drift). The battery went from 30 to 32 C and the hottest chip sensor from 64 to 67 C. The longest frame in any run
+was 19.8 ms, so no vsync was missed. What this does not show: the worst case still leaves the GPU idle for 2 to 3 ms of every
+frame, so this is not a test of a GPU run flat out, a game's own load (physics, audio, loading) is on top of it, and the device was
+charging, which warms the battery side. A longer run, a heavier scene and a run on battery are still worth doing.
+
 ## What I expected for the Retroid Pocket 6 (an estimate made before the run; see the measurements above)
 
 The Snapdragon 8 Gen 2 is slower than an M4 by roughly 2 to 2.5 times on one CPU core and by roughly 3 to 4 times on the GPU
@@ -116,7 +139,7 @@ The Snapdragon 8 Gen 2 is slower than an M4 by roughly 2 to 2.5 times on one CPU
 
 ## To do on the device
 
-Done once (above). Still to do: a 10-minute run for heat, 120 Hz, a real game on the controller. The first line of advice stands: If `gpu` is 0, the
+Done once (above), and an 11-minute heat run (no throttling seen). Still to do: a real game on the controller, a longer and heavier run on battery. The first line of advice stands: If `gpu` is 0, the
 adapter has no timestamp queries and the log's `fps` and `p95` are all there is. Then look at the three costs in the order
 above and decide what to build.
 

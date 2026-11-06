@@ -6,7 +6,7 @@ unless it is ticked.
 
 ## Where things stand
 
-**Device, 2026-11-05: the Retroid Pocket 6 arrived and the stress benchmark has run on it** (`docs/performance.md`): all 13 phases hold 60 fps, the worst (1.15 M triangles, 200 skinned characters, 16 lights, shadows) takes 13.3 ms of GPU, Lua at most 2.7 ms. Not yet done on it: a 10-minute heat run, 120 Hz (the panel offers it), pause/resume and rotation, audio. **Done on it, 2026-11-05: the controller (all 16 buttons and 6 axes, see Known gaps) and the screen (full screen, no bars or band).**
+**Device, 2026-11-05: the Retroid Pocket 6 arrived and the stress benchmark has run on it** (`docs/performance.md`): all 13 phases hold 60 fps, the worst (1.15 M triangles, 200 skinned characters, 16 lights, shadows) takes 13.3 ms of GPU, Lua at most 2.7 ms. Not yet done on it: (the 120 Hz mode is not a target; the display is set to 60) pause/resume and rotation, audio. **Done on it, 2026-11-05: an 11-minute heat run (8 benchmark runs: 59.7 fps throughout, GPU times flat, chip sensor 64 to 67 C; see `docs/performance.md`), the controller (all 16 buttons and 6 axes, see Known gaps) and the screen (full screen, no bars or band).**
 
 **Update 2026-11-05.** Since the paragraph below: probe games (Blockfield, Ember Swarm, Bunker Run, Pine Ridge Rally,
 Sky Garden) exercised the engine and are in `docs/probes.md`; the engine gained 3D collision (`nova.walls`, `nova.solid`),
