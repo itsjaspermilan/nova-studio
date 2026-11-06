@@ -247,7 +247,7 @@ fn hanging_still_on_a_wall_costs_no_stamina() {
 
 #[test]
 fn the_getting_up_starts_with_the_hands_on_the_edge() {
-    // the hands reach about 2.2 m above the feet with the arms up: the getting up begins when the ledge is that high
+    // the hands reach about 1.5 m above the feet with the arms up (these arms are short): the getting up begins when the ledge is that high
     let mut g = game();
     for _ in 0..30 {
         frame(&mut g, &[]);
@@ -268,8 +268,8 @@ fn the_getting_up_starts_with_the_hands_on_the_edge() {
         .collect();
     let (from, to) = (nums[0], nums[1]);
     assert!(
-        to - from > 1.7 && to - from < 2.3,
-        "the feet are about 2 m below the edge when the hands are on it: {line}"
+        to - from > 1.2 && to - from < 1.6,
+        "the feet are about 1.5 m below the edge when the hands are on it (these arms are short): {line}"
     );
 }
 

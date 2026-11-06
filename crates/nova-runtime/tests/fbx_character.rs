@@ -5,7 +5,7 @@
 use nova_runtime::model::import_parts;
 
 #[test]
-fn a_converted_fbx_character_has_a_skin_a_skeleton_and_its_six_clips() {
+fn a_converted_fbx_character_has_a_skin_a_skeleton_and_its_seven_clips() {
     for name in ["skater_male", "skater_female", "criminal", "cyborg"] {
         let bytes = std::fs::read(format!(
             "{}/../../examples/hill-run/models/{name}.glb",
@@ -21,7 +21,15 @@ fn a_converted_fbx_character_has_a_skin_a_skeleton_and_its_six_clips() {
         clips.sort_by(|a, b| a.0.cmp(b.0));
         assert_eq!(
             clips.iter().map(|c| c.0).collect::<Vec<_>>(),
-            ["climb", "glide", "idle", "jump", "mantle", "run"],
+            [
+                "climb",
+                "glide",
+                "idle",
+                "jump",
+                "mantle",
+                "mantle_low",
+                "run"
+            ],
             "{name}"
         );
         let duration = |n: &str| clips.iter().find(|c| c.0 == n).unwrap().1;

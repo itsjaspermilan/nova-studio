@@ -228,14 +228,15 @@ function Player:climb(dt, wx, wz, len, want_jump)
   -- over the top: no wall under the hands any more while going up, and a floor just ahead at about the height of the hands: get up on it
   local ledge, up = nil, 0
   if vert > 0.3 then ledge, up = self:ledge_ahead(n) end
-  -- the hands are on the edge (it is 1.2 m or more above the feet), or the wall has ended under them with a floor near the feet (a low one)
-  if ledge and (up >= 1.2 or self.wall_lost > 0.06) then
+  -- the hands are on the edge (it is 1 m or more above the feet), or the wall has ended under them with a floor near the feet (a low one)
+  if ledge and (up >= 1.0 or self.wall_lost > 0.06) then
     self.mode, self.mantle_t, self.mantle_n, self.mantle_h, self.mantle_y0 = "mantle", 0, n, ledge, self.y
+    self.mantle_clip = up < 1.33 and "mantle_low" or "mantle" -- a clip made for each height (a clip for one height looks wrong on another)
     nova.log(string.format("hill: mantle from %.2f to %.2f", self.y, ledge))
     self.vx, self.vz, self.vy = 0, 0, 0
     self.wall, self.wall_age = nil, 9
     state.mantles = (state.mantles or 0) + 1
-    self.anim = self.anim and (self.anim:play("mantle", { restart = true }) or self.anim)
+    if self.anim then self.anim:play(self.mantle_clip, { restart = true }) end
     return
   end
   if m.ground and vert < 0 then self.mode, self.ground = "walk", true; return end
@@ -251,13 +252,13 @@ function Player:climb(dt, wx, wz, len, want_jump)
   end
 end
 
--- Is there somewhere to stand just ahead and above the feet: a floor that faces up, at most 2.25 m higher (about where the hands reach
--- with the arms up, so that the climb ends, and the getting up begins, with the hands on the edge)? A `nova.solid.floor_below` probe
--- from above. Returns the floor's height.
+-- Is there somewhere to stand just ahead and above the feet: a floor that faces up, at most 1.55 m higher (about where the hands reach
+-- with the arms up: this character's arms are short, so that the climb ends, and the getting up begins, with the hands on the edge)?
+-- A `nova.solid.floor_below` probe from above. Returns the floor's height and how far above the feet it is.
 function Player:ledge_ahead(n)
   local px, pz = self.x - n.x * 0.55, self.z - n.z * 0.55
   local h, nx, ny = nova.solid.floor_below(px, self.y + 3.2, pz, 3.6)
-  if h ~= nil and ny > 0.6 and h >= self.y - 0.15 and h <= self.y + 2.25 then return h, h - self.y end
+  if h ~= nil and ny > 0.6 and h >= self.y - 0.15 and h <= self.y + 1.55 then return h, h - self.y end
   return nil
 end
 
@@ -359,10 +360,11 @@ function Player:draw()
       climb = { clip = "climb" },
       glide = { clip = "glide" },
       mantle = { clip = "mantle", loop = false },
+      mantle_low = { clip = "mantle_low", loop = false },
     },
   })
   local mode = self.mode
-  local playing = (mode == "mantle" and "mantle") or (mode == "climb" and "climb") or (mode == "glide" and "glide") or ((self.ground or self.air_time < 0.12) and "move" or (self.vy > 0 and "jump" or "fall"))
+  local playing = (mode == "mantle" and (self.mantle_clip or "mantle")) or (mode == "climb" and "climb") or (mode == "glide" and "glide") or ((self.ground or self.air_time < 0.12) and "move" or (self.vy > 0 and "jump" or "fall"))
   self.anim:play(playing)
   self.anim:set("speed", speed)
   self.anim.speed = mode == "climb" and (self.climb_effort or 0) or (speed > 6 and speed / 6 or math.max(0.6, speed / 6)) -- the run cycle follows the ground speed
