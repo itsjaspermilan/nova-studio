@@ -33,6 +33,7 @@
         "axis:left_x+"
       ]
     },
+    "stats": ["key:F3"],
     "pause": [
       "key:Escape",
       "key:KeyP",

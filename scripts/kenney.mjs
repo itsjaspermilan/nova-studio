@@ -11,6 +11,10 @@
 //   --rename a=b,c=d        rename nodes (the runtime's parts are the nodes: a script turns "wheel_fl", not "wheel-front-right")
 //   --pivot-wheels          for nodes named like wheels: move the node's origin to the wheel's middle, so that it spins and
 //                           steers about its own centre (the kit puts the origin on the car's side of the wheel)
+//   --scale <factor>        scale the whole model by this factor (use one factor for a family of models, such as the cars, so
+//                           that they keep the kit's sizes relative to each other; --fit sizes each one on its own)
+//   --wheel-diameter <m>    (before --pivot-wheels) shrink or grow each wheel about its middle to this diameter, keeping its bottom
+//                           on the ground (the kit's wheels are large for a car of its length)
 //   --stretch x=<m>,z=<m>   scale the footprint to exactly this size, each way on its own (for flat, axis-aligned pieces such as a
 //                           road slab: the normals are not touched)
 //   --material <name>=r,g,b set a material's colour (0..1, linear): a kit's road piece in dirt or snow
@@ -34,6 +38,8 @@ for (let i = 0; i < args.length; i++) {
   else if (a === "--rename") for (const kv of args[++i].split(",")) { const [k, v] = kv.split("="); opt.rename[k] = v; }
   else if (a === "--pivot-wheels") opt.pivotWheels = true;
   else if (a === "--turn") opt.turn = Number(args[++i]);
+  else if (a === "--scale") opt.scale = Number(args[++i]);
+  else if (a === "--wheel-diameter") opt.wheelDiameter = Number(args[++i]);
   else if (a === "--stretch") opt.stretch = Object.fromEntries(args[++i].split(",").map((kv) => kv.split("=")).map(([k, v]) => [k, Number(v)]));
   else if (a === "--material") { const [k, v] = args[++i].split("="); (opt.materials ??= {})[k] = v.split(",").map(Number); }
   else if (a === "--centre") opt.centre = true;
@@ -169,6 +175,36 @@ function stretch(json, bin, size) {
   for (const n of json.nodes) if (n.translation) n.translation = [n.translation[0] * sx, n.translation[1], n.translation[2] * sz];
 }
 
+/** Scales each wheel mesh (nodes named like wheels) about its own middle to a diameter of `d` metres, bottom kept where it was. */
+function sizeWheels(json, bin, d) {
+  const done = new Set();
+  for (const n of json.nodes) {
+    if (n.mesh == null || !/wheel/i.test(n.name)) continue;
+    for (const p of json.meshes[n.mesh].primitives) {
+      const idx = p.attributes.POSITION;
+      if (done.has(idx)) continue;
+      done.add(idx);
+      const acc = json.accessors[idx];
+      const view = json.bufferViews[acc.bufferView];
+      const stride = view.byteStride || 12;
+      const base = (view.byteOffset || 0) + (acc.byteOffset || 0);
+      const f = d / (acc.max[1] - acc.min[1]);
+      const centre = [0, 1, 2].map((k) => (acc.min[k] + acc.max[k]) / 2);
+      const bottom = acc.min[1];
+      for (let i = 0; i < acc.count; i++) for (let k = 0; k < 3; k++) {
+        const at = base + i * stride + k * 4;
+        let v = centre[k] + (bin.readFloatLE(at) - centre[k]) * f;
+        if (k === 1) v += bottom - (centre[1] - (centre[1] - bottom) * f); // keep the bottom where it was
+        bin.writeFloatLE(v, at);
+      }
+      const lo = [0, 1, 2].map((k) => centre[k] - (centre[k] - acc.min[k]) * f + (k === 1 ? bottom - (centre[1] - (centre[1] - bottom) * f) : 0));
+      const hi = [0, 1, 2].map((k) => centre[k] + (acc.max[k] - centre[k]) * f + (k === 1 ? bottom - (centre[1] - (centre[1] - bottom) * f) : 0));
+      acc.min = lo;
+      acc.max = hi;
+    }
+  }
+}
+
 /** Each wheel node becomes a parent at the wheel's middle with the mesh node as its child, so spin and steer are about the middle. */
 function pivotWheels(json) {
   const roots = json.scenes[0].nodes;
@@ -202,6 +238,8 @@ for (const name of names) {
     const { lo, hi } = bounds(json);
     scaleGeometry(json, bin, Number(metres) / (hi[k] - lo[k]));
   }
+  if (opt.scale) scaleGeometry(json, bin, opt.scale);
+  if (opt.wheelDiameter) sizeWheels(json, bin, opt.wheelDiameter);
   if (opt.stretch) stretch(json, bin, opt.stretch);
   for (const m of json.materials || []) {
     const c = opt.materials?.[m.name];

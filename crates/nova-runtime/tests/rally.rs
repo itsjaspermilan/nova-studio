@@ -346,3 +346,68 @@ fn every_circuit_has_stands_banners_billboards_and_pylons_beside_the_road() {
         assert!(n >= 20, "circuit {circuit}: only {n} roadside props");
     }
 }
+
+/// The player's car after `frames` of holding the throttle and steering to the left, from speed on the road: (slip, speed, how far it turned).
+fn cornering(car_steps: usize, frames: usize, drive_seconds: usize, steer: f32) -> (f32, f32, f32) {
+    let mut g = load();
+    // the car chooser is the first row after Circuit and Mode: step to the car, then to START
+    for _ in 0..30 {
+        frame(&mut g, &[]);
+    }
+    tap(&mut g, "key:Enter");
+    tap(&mut g, "key:Enter");
+    tap(&mut g, "key:ArrowDown"); // to Mode
+    tap(&mut g, "key:ArrowDown"); // to Car
+    for _ in 0..car_steps {
+        tap(&mut g, "key:ArrowRight");
+    }
+    for _ in 0..2 {
+        tap(&mut g, "key:ArrowDown"); // Laps, START
+    }
+    frame(&mut g, &["key:Enter"]);
+    let mut log = Vec::new();
+    run_until(&mut g, &mut log, "the countdown ends", 60 * 8, |l| {
+        l.iter().any(|x| x == "go")
+    });
+    tap(&mut g, "key:F9");
+    for _ in 0..60 * drive_seconds {
+        frame_with(&mut g, &[]);
+    }
+    tap(&mut g, "key:F9");
+    g.take_log();
+    tap(&mut g, "key:F3");
+    let before = stat(&mut g);
+    for _ in 0..frames {
+        frame_with(&mut g, &[("key:ArrowUp", 1.0), ("key:ArrowLeft", steer)]);
+    }
+    let after = stat(&mut g);
+    (after["slip"], after["speed"], (after["heading"] - before["heading"]).abs())
+}
+
+fn stat(g: &mut Game) -> std::collections::HashMap<String, f32> {
+    tap(g, "key:F3");
+    let line = g
+        .take_log()
+        .into_iter()
+        .rev()
+        .find(|l| l.starts_with("rally: speed="))
+        .expect("a status line");
+    line["rally: ".len()..]
+        .split_whitespace()
+        .filter_map(|kv| kv.split_once('='))
+        .map(|(k, v)| (k.to_string(), v.parse().unwrap()))
+        .collect()
+}
+
+#[test]
+fn the_sedan_and_hatchback_drift_under_power_in_a_bend_and_the_formula_car_grips() {
+    // Redline (0), Blue Streak (1), Green Machine (2)
+    let (formula_slip, _, _) = cornering(0, 90, 4, 0.7);
+    let (blue_slip, blue_speed, _) = cornering(1, 90, 4, 0.7);
+    let (green_slip, _, _) = cornering(2, 90, 4, 0.7);
+    let (gentle_slip, _, _) = cornering(1, 90, 4, 0.4);
+    assert!(blue_slip > 0.6 && green_slip > 0.6, "the road cars slide: {blue_slip} {green_slip}");
+    assert!(formula_slip < 0.6, "the formula car grips: {formula_slip}");
+    assert!(gentle_slip < 0.4, "a gentle bend does not make the road car slide: {gentle_slip}");
+    assert!(blue_speed > 12.0, "and a drift keeps its speed: {blue_speed}");
+}

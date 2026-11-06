@@ -5,7 +5,7 @@ local state = require("lib.state")
 
 local Car = nova.entity { model = "car", tags = { "car" } }
 
-local WHEEL_RADIUS = 0.28       -- (the car model is 3.7 m long; it was 4.53, so the sizes below are 0.82 of what they were)
+local WHEEL_RADIUS = 0.30       -- (the models' wheels are 0.6 m across; the cars are 3.5 to 3.9 m long)
 -- A five-speed gearbox: the speed each gear runs out at (m/s, at the car's normal top speed), and how hard it pulls.
 -- Low gears pull hard and run out fast; fifth is long and gentle.
 local GEARS = { { top = 13, pull = 1.35 }, { top = 22, pull = 1.12 }, { top = 30, pull = 0.97 }, { top = 38, pull = 0.86 }, { top = 44, pull = 0.78 } }
@@ -95,7 +95,7 @@ function Car:drive(dt)
   -- steering: the faster you go, the less the wheels can turn the car (and a damaged car drifts to one side)
   local steer = live and c.steer or 0
   if live and self.damage > 0.1 then steer = steer + self.pull * (self.damage - 0.1) * 0.2 * math.min(1, math.abs(vf) / 15) end
-  local steering_speed = math.min(1, math.abs(vf) / 4)
+  local steering_speed = math.min(1, math.abs(vf) / 1.5)
   -- downforce: the faster the car goes, the harder the tyres are pressed on the road, so it bites and turns better
   local downforce = 1 + math.min(0.6, math.abs(vf) / 70)
   -- a trigger pulled right through on the brake at speed locks the wheels: the front stops biting (the car understeers), the
@@ -106,7 +106,9 @@ function Car:drive(dt)
     lock = t * t * (3 - 2 * t) * math.min(1, (vf - 8) / 12)
   end
   self.lock = lock
-  local omega = math.min(2.5, kind.lateral * grip_scale * downforce / math.max(math.abs(vf), 1))
+  -- how fast the car can turn: what the tyres hold (less the faster it goes), and, below about 12 m/s, what the wheels' angle
+  -- gives (a car turns by its speed over the radius of the circle the wheels point at: parking-speed turns are slow, not a spin)
+  local omega = math.min(2.5, kind.lateral * grip_scale * downforce / math.max(math.abs(vf), 1), math.abs(vf) * 0.2)
   if c.handbrake and live then omega = omega * 1.45 end
   omega = omega * (1 - 0.45 * lock)
   local direction = vf >= -0.5 and 1 or -1
@@ -149,7 +151,13 @@ function Car:drive(dt)
   vf = vf - sign * math.min(math.abs(vf), (1.1 + kind.drag + 0.055 * math.abs(vf)) * dt)
   if vf > top then vf = vf - (vf - top) * 1.5 * dt end
 
-  local grip = kind.grip * grip_scale * downforce * (c.handbrake and live and 0.22 or 1) * (1 - 0.7 * lock)
+  -- a drift: with power on in a bend the rear tyres let go by how much this car likes to (`oversteer`, the player's car only),
+  -- and the sideways slide then dies away slowly, so the car goes on round the bend crabwise until the wheel or the throttle is eased
+  local slide = 1
+  if live and self.oversteer and vf > 9 then
+    slide = 1 - math.min(0.8, self.oversteer * c.throttle * math.min(1, math.abs(steer) * 1.4) * math.min(1, (vf - 9) / 10))
+  end
+  local grip = kind.grip * grip_scale * downforce * (c.handbrake and live and 0.22 or 1) * (1 - 0.7 * lock) * slide
   vl = vl * math.exp(-grip * dt)
   self.slip = math.min(1, math.abs(vl) / (math.abs(vf) * 0.25 + 2))
   if lock > 0.2 then self.slip = math.max(self.slip, lock) end -- (locked wheels smoke and wear the tyres)

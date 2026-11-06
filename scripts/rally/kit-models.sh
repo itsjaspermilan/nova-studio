@@ -8,8 +8,11 @@ cd "$(dirname "$0")/../.."
 KITS="${KITS:?set KITS to the folder the kits were unzipped into}"
 P=examples/pine-ridge-rally
 K() { scripts/env.sh node scripts/kenney.mjs "$@"; }
-CAR_LENGTH=3.7   # metres: 4.53 made the cars 70% as wide as the road, so they were shrunk by a fifth
-CAR=(--fit z=$CAR_LENGTH --pivot-wheels --centre-axles --rename wheel-front-right=wheel_fl,wheel-front-left=wheel_fr,wheel-back-right=wheel_rl,wheel-back-left=wheel_rr)
+# One scale for all the cars, so that they keep the kit's sizes relative to each other (the first version fitted each to the same
+# length, which made the hatchback a toy and the sedan a box): the kit's formula car (2.56 m long) comes out 3.5 m. Wheels are
+# 0.6 m across whatever the car (the kit's are 0.8 to 0.9, huge for a car this size).
+CAR_SCALE=1.37
+CAR=(--scale $CAR_SCALE --wheel-diameter 0.6 --pivot-wheels --centre-axles --rename wheel-front-right=wheel_fl,wheel-front-left=wheel_fr,wheel-back-right=wheel_rl,wheel-back-left=wheel_rr)
 K "$KITS/kenney_car-kit" $P race --as car "${CAR[@]}"
 K "$KITS/kenney_car-kit" $P sedan-sports --as car_blue "${CAR[@]}"
 K "$KITS/kenney_car-kit" $P hatchback-sports --as car_green "${CAR[@]}"

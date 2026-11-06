@@ -143,6 +143,7 @@ function race.define(config)
     end
     self.player = put(mine, 3)
     self.player.is_player = true
+    self.player.oversteer = state.current_car().oversteer
     self.player.name = "You"
     self.cars[1] = self.player
     for i, r in ipairs(state.mode == "trial" and {} or RIVALS) do
@@ -337,6 +338,10 @@ function race.define(config)
     if self.paused then return self:update_pause() end
 
     if self.message_time > 0 then self.message_time = self.message_time - dt end
+    if nova.input.pressed("stats") then
+      local c = self.player
+      nova.log(string.format("rally: speed=%.1f slip=%.2f heading=%.2f yaw=%.2f x=%.1f z=%.1f", c.speed, c.slip, c.heading, c.yaw_rate or 0, c.x, c.z))
+    end
     if nova.input.pressed("view") then self.view_mode = self.view_mode % 3 + 1 end
     -- F9 lets the computer drive for you (for demos, and for testing the circuits without a controller)
     if nova.input.pressed("autodrive") then

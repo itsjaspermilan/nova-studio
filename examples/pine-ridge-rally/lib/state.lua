@@ -8,10 +8,12 @@ state.tracks = {
   { id = "harbour_lights", name = "Harbour Lights", blurb = "Asphalt after dark. Lamps mark the way; your headlights do the rest.", laps = 3, music = "race_night" },
 }
 state.cars = {
-  { id = "car", name = "Redline" },
-  { id = "car_blue", name = "Blue Streak" },
-  { id = "car_green", name = "Green Machine" },
-  { id = "car_yellow", name = "Sunburst" },
+  -- `oversteer`: how readily the rear lets go under power in a bend (0 never, 1 a lot); the sedan and the hatchback are the
+  -- drifters, the open-wheel cars hold the road
+  { id = "car", name = "Redline", oversteer = 0.35 },
+  { id = "car_blue", name = "Blue Streak", oversteer = 0.6 },
+  { id = "car_green", name = "Green Machine", oversteer = 0.7 },
+  { id = "car_yellow", name = "Sunburst", oversteer = 0.45 },
 }
 
 state.track = 1       -- index into state.tracks
