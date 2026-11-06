@@ -26,7 +26,8 @@ end
 
 local function start(self)
   self.ids = {
-    engine = nova.sound.play("engine_loop", { loop = true, volume = 0, pitch = 0.6 }),
+    engine = nova.sound.play("engine_loop", { loop = true, volume = 0, pitch = 0.8 }),
+    body = nova.sound.play("engine_body", { loop = true, volume = 0, pitch = 0.8 }),
     gravel = nova.sound.play("gravel_loop", { loop = true, volume = 0 }),
     skid = nova.sound.play("skid_loop", { loop = true, volume = 0 }),
   }
@@ -36,7 +37,9 @@ end
 function Engine:update(dt, rev, load, rough, slip)
   if not self.ids then start(self) end
   local v = self.volume
-  nova.sound.set(self.ids.engine, { volume = v * (0.22 + 0.55 * load), pitch = 0.6 + 2.2 * rev })
+  -- a low rumble that rises gently with the revs, with a soft body above it that comes in as the engine works
+  nova.sound.set(self.ids.engine, { volume = v * (0.16 + 0.4 * load), pitch = 0.8 + 1.5 * rev })
+  nova.sound.set(self.ids.body, { volume = v * (0.04 + 0.22 * load) * (0.4 + 0.6 * rev), pitch = 0.8 + 1.5 * rev })
   nova.sound.set(self.ids.gravel, { volume = rough and v * (0.15 + 0.5 * rev) or 0, pitch = 0.7 + rev })
   local squeal = (slip or 0) > 0.25 and math.min(1, slip) or 0
   nova.sound.set(self.ids.skid, { volume = v * squeal * 0.8, pitch = 0.9 + 0.3 * squeal })

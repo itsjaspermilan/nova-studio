@@ -7,7 +7,7 @@ A 3D rally game for Nova: four circuits, three rivals, a chase camera, tyre wear
 
 **Controls** (keyboard, gamepad and touch): steer with the arrows, A/D or the left stick; accelerate with Up, W or the
 right trigger; brake or reverse with Down, S or the left trigger; Space is the handbrake (slides); R puts you back on
-the road; C changes camera; Esc or P pauses. F9 lets the computer drive for you (for demos and tests).
+the road; C changes camera; the right stick swings the camera round the car and eases back when let go (press it to look back; Q and E on a keyboard); Esc or P pauses. F9 lets the computer drive for you (for demos and tests).
 
 **The triggers are analogue**: how far you pull the right trigger is how hard the engine pulls, and the left trigger brakes by how far it is pulled. Pull it right through at speed and the wheels lock: the front stops biting, the rear lets go and the car slides (it takes about two thirds of the pull to be safe). A key or a button is all or nothing and never locks the wheels. (The Retroid's triggers report both an analogue axis and a button; the game binds only the axis, and the controls screen turns a pressed trigger into the axis.)
 
@@ -37,6 +37,10 @@ assistant (or a script) drives the studio's own code: see `scripts/rally/` (`mod
 `crates/nova-runtime/tests/rally.rs` plays the game through its menus and a full race on every circuit.
 
 **Roadside and skids (2026-11-06).** `lib/roadside.lua` lays out grandstands, long tents, banner towers and flags at the start line, billboards on the straights and pylons on the outside of the hard corners, from each circuit's own waypoints (the props are racing-kit models, `scripts/rally/kit-models.sh`). Tyres that slide on the road leave dark skid marks (`lib/fx.lua`, the last 360 are kept).
+
+**Cars and drifting (2026-11-06).** The four cars are the kit's own sizes at one scale (3.5 to 3.9 m) with 0.6 m wheels. Steering at low speed follows the wheels' angle (a parking-speed turn is slow, not a spin). The sedan and the hatchback drift: with power on in a bend their rear tyres let go (`oversteer` in `lib/state.lua`: 0.6 and 0.7; the formula cars 0.35 and 0.45, and the rivals none), and the handbrake still flicks any car sideways. Lifting off the accelerator in a bend turns the player's car in sharper (up to 30%, eased in over a quarter of a second). The menus' backdrop is dressed like the chosen circuit (`lib/looks.lua`, `lib/backdrop.lua`), with the car standing on the road.
+
+**Sound (2026-11-06).** The music is voiced with the studio's fuller instruments (detuned unison saws, filters that open with each note, a sub, vibrato, a shared reverb and the studio drum kit; see `docs/project-format.md`, "Songs"), by song and track in `scripts/rally/audio.mjs`. The engine is a low filtered rumble with a soft body above it. None of it has been listened to on the Retroid yet.
 
 ## Not done
 

@@ -255,6 +255,7 @@ tool(
   "song_write",
   "Write a song: `music/<name>.song.json` (the music editor's step sequencer) and the `music/<name>.ogg` the game streams. `song`: " +
     '{ "version": 1, "bpm": 40-240, "stepsPerBeat": 1-8, "length": steps (a bar is stepsPerBeat*4), "tracks": [ { "name", "kind": "synth"|"drums", "wave": "square|saw|triangle|sine|noise", "duty", "attack", "decay", "sustain", "release", "volume": 0-1, "pan": -1..1, "mute": false, "notes": [ { "step", "len", "pitch": midi (60 = middle C; for drums 36 kick, 38 snare, 42 hat...), "vel": 0-1 } ] } ] }. ' +
+    "Synth tracks can take a fuller voice (leave these out for the plain chip sound): \"unison\" 1-7 detuned oscillators spread \"detune\" cents (0-60) across the stereo field, \"cutoff\" Hz low-pass with \"resonance\" 0-0.9 and \"sweep\" 0-1 (the note's envelope opens the filter by up to three octaves: plucks, bass), \"sub\" 0-1 (a sine an octave down), \"vibrato\" 0-0.5 semitones, and \"reverb\" 0-1 (the share sent to the song's room). Drum tracks can set \"kit\": \"studio\" (a kick with a click and weight, a snare with a tone and rattle, metallic hats) instead of the chip kit, and a \"reverb\" send. The song can have \"room\": { \"size\": 0-1, \"damping\": 0-1, \"mix\": 0-2 } for the reverb (default 0.55, 0.4, 1). " +
     "The song loops without a gap. In Lua: nova.music.play(\"<name>\").",
   { name: { type: "string" }, song: { type: ["object", "string"] } },
   ["name", "song"],

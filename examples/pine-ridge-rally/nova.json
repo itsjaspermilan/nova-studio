@@ -47,6 +47,15 @@
       "key:KeyC",
       "pad:l1"
     ],
+    "look_x": {
+      "negative": ["axis:right_x-", "key:KeyQ"],
+      "positive": ["axis:right_x+", "key:KeyE"]
+    },
+    "look_y": {
+      "negative": ["axis:right_y-"],
+      "positive": ["axis:right_y+"]
+    },
+    "look_back": ["pad:thumb_r", "key:KeyB"],
     "autodrive": [
       "key:F9"
     ]

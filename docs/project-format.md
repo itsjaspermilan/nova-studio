@@ -717,6 +717,29 @@ call is cut. Letters are rasterised once per (font, character, pixel size) into 
 atlas; if it ever fills it is cleared and rebuilt. The engine's own overlays (the error banner, the F3
 stats) still use a small built-in pixel font.
 
+
+## Songs (`music/<name>.song.json`)
+
+The music editor's step sequencer: `bpm`, `stepsPerBeat`, `length` (steps) and `tracks` of notes. The studio renders it offline to the
+`.ogg` the game streams. A plain synth track is a chip voice (one oscillator and an envelope). A track can take a fuller voice with
+optional fields, and a song can have a room; a song with none of them renders exactly as it always did.
+
+```json
+{ "name": "pad", "kind": "synth", "wave": "saw", "attack": 0.3, "release": 0.9, "volume": 0.5, "pan": 0, "mute": false,
+  "unison": 5, "detune": 14,          // five oscillators spread 14 cents either way, panned across the stereo field
+  "cutoff": 1500, "resonance": 0.15, "sweep": 0.5,   // a low-pass filter, opened by up to three octaves by each note's envelope
+  "sub": 0.5, "vibrato": 0.08,        // a sine an octave down; vibrato depth in semitones
+  "reverb": 0.55,                      // the share sent to the song's room
+  "notes": [] }
+{ "name": "drums", "kind": "drums", "kit": "studio", "reverb": 0.12, ... }   // the studio kit: a kick with a click and weight,
+                                                                                 // a snare with a tone and rattle, metallic hats
+"room": { "size": 0.55, "damping": 0.4, "mix": 1 }   // song level: how long the reverb rings, how dull its tail is, how loud
+```
+
+Saws and squares are band-limited (no hiss from folded harmonics) in a fuller voice. The reverb is a Freeverb-style room that is run
+twice over the song, so its tail wraps round and the loop has no seam. The music editor has sliders for all of it. Not done: samples as
+instruments, per-note filter automation, a compressor or EQ on the mix (a fuller song gets only a gentle soft clip).
+
 ## Sound
 
 Put WAV or Ogg Vorbis files anywhere in the project (`sounds/` and `music/` are where short names

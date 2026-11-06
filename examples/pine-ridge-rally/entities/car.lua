@@ -110,6 +110,13 @@ function Car:drive(dt)
   -- gives (a car turns by its speed over the radius of the circle the wheels point at: parking-speed turns are slow, not a spin)
   local omega = math.min(2.5, kind.lateral * grip_scale * downforce / math.max(math.abs(vf), 1), math.abs(vf) * 0.2)
   if c.handbrake and live then omega = omega * 1.45 end
+  -- lifting off the accelerator in a bend moves the weight onto the front tyres, which bite harder: the car turns in sharper (the
+  -- player's car; it eases in and out over a quarter of a second or so, so that it is a feel and not a jolt)
+  if self.is_player then
+    local target = (live and c.throttle < 0.15 and vf > 6) and 1 or 0
+    self.lift = (self.lift or 0) + (target - (self.lift or 0)) * math.min(1, dt * 5)
+    omega = omega * (1 + 0.3 * self.lift * math.min(1, (math.abs(vf) - 6) / 12))
+  end
   omega = omega * (1 - 0.45 * lock)
   local direction = vf >= -0.5 and 1 or -1
   self.heading = self.heading - steer * omega * steering_speed * direction * dt

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "wave": "saw",
-  "freq": 100,
+  "freq": 70,
   "freqLimit": 0,
   "slide": 0,
   "slideDelta": 0,
@@ -15,8 +15,8 @@
   "sustain": 0.5,
   "decay": 0,
   "punch": 0,
-  "lowpass": 1500,
-  "highpass": 50,
-  "volume": 0.55,
+  "lowpass": 420,
+  "highpass": 40,
+  "volume": 0.6,
   "seed": 1
 }

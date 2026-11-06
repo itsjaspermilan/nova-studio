@@ -340,7 +340,7 @@ function race.define(config)
     if self.message_time > 0 then self.message_time = self.message_time - dt end
     if nova.input.pressed("stats") then
       local c = self.player
-      nova.log(string.format("rally: speed=%.1f slip=%.2f heading=%.2f yaw=%.2f x=%.1f z=%.1f", c.speed, c.slip, c.heading, c.yaw_rate or 0, c.x, c.z))
+      nova.log(string.format("rally: speed=%.1f slip=%.2f heading=%.2f yaw=%.2f x=%.1f z=%.1f orbit=%.2f lift=%.2f", c.speed, c.slip, c.heading, c.yaw_rate or 0, c.x, c.z, self.orbit and self.orbit.yaw or 0, self.orbit and self.orbit.lift or 0))
     end
     if nova.input.pressed("view") then self.view_mode = self.view_mode % 3 + 1 end
     -- F9 lets the computer drive for you (for demos, and for testing the circuits without a controller)
@@ -464,16 +464,42 @@ function race.define(config)
     -- the camera's own heading trails the car's a little, so a bend swings into view
     local diff = track.wrap(p.heading - cam.heading)
     cam.heading = cam.heading + diff * math.min(1, dt * 7)
+    -- the right stick swings the camera round the car (left and right) and raises or lowers it (up and down), as in the open-world
+    -- racers: it stays where it is pushed and eases back behind the car when the stick is let go; a press of the stick looks back
+    local lx, ly = nova.input.axis("look_x"), nova.input.axis("look_y")
+    if math.abs(lx) < 0.12 then lx = 0 end
+    if math.abs(ly) < 0.12 then ly = 0 end
+    local orbit = self.orbit
+    if not orbit then orbit = { yaw = 0, lift = 0 }; self.orbit = orbit end
+    if lx ~= 0 then
+      orbit.yaw = orbit.yaw + lx * 3.0 * dt
+      if orbit.yaw > math.pi then orbit.yaw = orbit.yaw - 2 * math.pi elseif orbit.yaw < -math.pi then orbit.yaw = orbit.yaw + 2 * math.pi end
+    end
+    if ly ~= 0 then orbit.lift = math.max(-0.4, math.min(1, orbit.lift + ly * 1.6 * dt)) end
+    local want_yaw = nova.input.down("look_back") and math.pi or 0
+    if lx == 0 then
+      -- back behind the car (the short way round)
+      orbit.yaw = orbit.yaw + track.wrap(want_yaw - orbit.yaw) * math.min(1, dt * (want_yaw ~= 0 and 9 or 3.5))
+    end
+    if ly == 0 then orbit.lift = orbit.lift * (1 - math.min(1, dt * 3)) end
     local sh, ch = math.sin(cam.heading), math.cos(cam.heading)
-    if self.view_mode == 3 then          -- bonnet
+    local oy = math.abs(orbit.yaw)
+    if self.view_mode == 3 then          -- bonnet: the stick turns the head
+      local a = p.heading + orbit.yaw * 1.3
       cam.x, cam.y, cam.z = p.x + sinh * 0.6, 1.25, p.z + cosh * 0.6
-      cam.tx, cam.ty, cam.tz = p.x + sinh * 20, 1.1, p.z + cosh * 20
+      cam.tx, cam.ty, cam.tz = cam.x + math.sin(a) * 20, 1.1 + orbit.lift * 4, cam.z + math.cos(a) * 20
       cam.fov = 70 + speed * 0.2
     else
       local near = self.view_mode == 1
       local back = (near and 6.4 or 9.5) + speed * 0.03
-      cam.x, cam.y, cam.z = p.x - sh * back, near and 2.6 or 4.2, p.z - ch * back
-      cam.tx, cam.ty, cam.tz = p.x + sh * 5, 1.1, p.z + ch * 5
+      local height = (near and 2.6 or 4.2) + orbit.lift * (near and 2.5 or 3.5)
+      -- the camera's place on a circle round the car: behind it when the angle is 0
+      local a = cam.heading + orbit.yaw
+      local ox, oz = math.sin(a), math.cos(a)
+      cam.x, cam.y, cam.z = p.x - ox * back, height, p.z - oz * back
+      -- looking ahead of the car when behind it, at the car itself as it swings away
+      local ahead = 5 * math.max(0, 1 - oy / 0.9)
+      cam.tx, cam.ty, cam.tz = p.x + sh * ahead, 1.1, p.z + ch * ahead
       cam.fov = 62 + speed * 0.2
     end
   end

@@ -16,6 +16,9 @@
       "volume": 0.3,
       "pan": 0.1,
       "mute": false,
+      "unison": 2,
+      "detune": 3,
+      "reverb": 0.65,
       "notes": [
         { "step": 0, "len": 1, "pitch": 57, "vel": 0.75 },
         { "step": 16, "len": 1, "pitch": 57, "vel": 0.75 },
@@ -150,15 +153,21 @@
     {
       "name": "bass",
       "kind": "synth",
-      "wave": "triangle",
+      "wave": "saw",
       "duty": 0.5,
-      "attack": 0.01,
+      "attack": 0.005,
       "decay": 0.1,
       "sustain": 0.7,
-      "release": 0.12,
-      "volume": 0.5,
+      "release": 0.08,
+      "volume": 0.45,
       "pan": 0,
       "mute": false,
+      "unison": 2,
+      "detune": 6,
+      "cutoff": 520,
+      "resonance": 0.15,
+      "sweep": 0.5,
+      "sub": 0.55,
       "notes": [
         { "step": 0, "len": 6, "pitch": 45, "vel": 0.85 },
         { "step": 8, "len": 3, "pitch": 45, "vel": 0.85 },
@@ -191,13 +200,18 @@
       "kind": "synth",
       "wave": "saw",
       "duty": 0.5,
-      "attack": 0.15,
+      "attack": 0.3,
       "decay": 0.1,
       "sustain": 0.6,
-      "release": 0.5,
-      "volume": 0.16,
+      "release": 0.9,
+      "volume": 0.3,
       "pan": -0.2,
       "mute": false,
+      "unison": 5,
+      "detune": 14,
+      "cutoff": 1800,
+      "sweep": 0.15,
+      "reverb": 0.7,
       "notes": [
         { "step": 0, "len": 16, "pitch": 57, "vel": 0.3 },
         { "step": 0, "len": 16, "pitch": 60, "vel": 0.3 },
@@ -234,9 +248,11 @@
       "decay": 0.1,
       "sustain": 0.6,
       "release": 0.12,
-      "volume": 0.5,
+      "volume": 0.55,
       "pan": 0,
       "mute": false,
+      "reverb": 0.12,
+      "kit": "studio",
       "notes": [
         { "step": 0, "len": 1, "pitch": 36, "vel": 0.8 },
         { "step": 6, "len": 1, "pitch": 36, "vel": 0.8 },
@@ -328,5 +344,6 @@
         { "step": 127, "len": 1, "pitch": 46, "vel": 0.2 }
       ]
     }
-  ]
+  ],
+  "room": { "size": 0.8, "damping": 0.3, "mix": 1.2 }
 }

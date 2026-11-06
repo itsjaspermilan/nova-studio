@@ -349,6 +349,16 @@ fn every_circuit_has_stands_banners_billboards_and_pylons_beside_the_road() {
 
 /// The player's car after `frames` of holding the throttle and steering to the left, from speed on the road: (slip, speed, how far it turned).
 fn cornering(car_steps: usize, frames: usize, drive_seconds: usize, steer: f32) -> (f32, f32, f32) {
+    cornering_with(car_steps, frames, drive_seconds, steer, true)
+}
+
+fn cornering_with(
+    car_steps: usize,
+    frames: usize,
+    drive_seconds: usize,
+    steer: f32,
+    throttle: bool,
+) -> (f32, f32, f32) {
     let mut g = load();
     // the car chooser is the first row after Circuit and Mode: step to the car, then to START
     for _ in 0..30 {
@@ -378,10 +388,18 @@ fn cornering(car_steps: usize, frames: usize, drive_seconds: usize, steer: f32) 
     tap(&mut g, "key:F3");
     let before = stat(&mut g);
     for _ in 0..frames {
-        frame_with(&mut g, &[("key:ArrowUp", 1.0), ("key:ArrowLeft", steer)]);
+        if throttle {
+            frame_with(&mut g, &[("key:ArrowUp", 1.0), ("key:ArrowLeft", steer)]);
+        } else {
+            frame_with(&mut g, &[("key:ArrowLeft", steer)]);
+        }
     }
     let after = stat(&mut g);
-    (after["slip"], after["speed"], (after["heading"] - before["heading"]).abs())
+    (
+        after["slip"],
+        after["speed"],
+        (after["heading"] - before["heading"]).abs(),
+    )
 }
 
 fn stat(g: &mut Game) -> std::collections::HashMap<String, f32> {
@@ -406,8 +424,73 @@ fn the_sedan_and_hatchback_drift_under_power_in_a_bend_and_the_formula_car_grips
     let (blue_slip, blue_speed, _) = cornering(1, 90, 4, 0.7);
     let (green_slip, _, _) = cornering(2, 90, 4, 0.7);
     let (gentle_slip, _, _) = cornering(1, 90, 4, 0.4);
-    assert!(blue_slip > 0.6 && green_slip > 0.6, "the road cars slide: {blue_slip} {green_slip}");
+    assert!(
+        blue_slip > 0.6 && green_slip > 0.6,
+        "the road cars slide: {blue_slip} {green_slip}"
+    );
     assert!(formula_slip < 0.6, "the formula car grips: {formula_slip}");
-    assert!(gentle_slip < 0.4, "a gentle bend does not make the road car slide: {gentle_slip}");
-    assert!(blue_speed > 12.0, "and a drift keeps its speed: {blue_speed}");
+    assert!(
+        gentle_slip < 0.4,
+        "a gentle bend does not make the road car slide: {gentle_slip}"
+    );
+    assert!(
+        blue_speed > 12.0,
+        "and a drift keeps its speed: {blue_speed}"
+    );
+}
+
+#[test]
+fn the_right_stick_swings_the_camera_round_the_car_and_it_eases_back_when_let_go() {
+    let mut g = load();
+    start_race(&mut g, 0, false);
+    let mut log = Vec::new();
+    run_until(&mut g, &mut log, "the countdown ends", 60 * 8, |l| {
+        l.iter().any(|x| x == "go")
+    });
+    for _ in 0..60 {
+        frame_with(&mut g, &[("key:ArrowUp", 1.0)]);
+    }
+    assert!(
+        stat(&mut g)["orbit"].abs() < 0.05,
+        "behind the car to start with"
+    );
+    for _ in 0..30 {
+        frame_with(&mut g, &[("axis:right_x", 1.0)]);
+    }
+    let swung = stat(&mut g)["orbit"];
+    assert!(
+        swung > 1.0 && swung < 2.0,
+        "half a second of stick is about a radian and a half: {swung}"
+    );
+    for _ in 0..30 {
+        frame_with(&mut g, &[("axis:right_y", 1.0)]);
+    }
+    assert!(stat(&mut g)["lift"] > 0.3, "pushing down raises the camera");
+    for _ in 0..180 {
+        frame_with(&mut g, &[]);
+    }
+    let after = stat(&mut g);
+    assert!(
+        after["orbit"].abs() < 0.1 && after["lift"].abs() < 0.1,
+        "it eases back behind the car: {after:?}"
+    );
+    for _ in 0..40 {
+        frame_with(&mut g, &[("pad:thumb_r", 1.0)]);
+    }
+    assert!(
+        stat(&mut g)["orbit"].abs() > 2.8,
+        "the stick press looks back"
+    );
+}
+
+#[test]
+fn lifting_off_the_accelerator_in_a_bend_turns_the_car_in_sharper() {
+    // the same speed and steering for a second, with and without the throttle: the heading changes more without it
+    let (_, _, on) = cornering_with(0, 60, 4, 0.5, true);
+    let (_, _, off) = cornering_with(0, 60, 4, 0.5, false);
+    assert!(
+        off > on * 1.08,
+        "lifting turns in sharper: {off} against {on} on the throttle"
+    );
+    assert!(off < on * 1.6, "but only slightly: {off} against {on}");
 }

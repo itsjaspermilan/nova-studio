@@ -16,6 +16,7 @@ local CONTROLS = {
   { "Handbrake (slides)", "Space  ·  B button  ·  right bumper" },
   { "Back on the road", "R  ·  Y button" },
   { "Change camera", "C  ·  left bumper" },
+  { "Look around", "right stick (press: look back)  ·  Q / E" },
   { "Pause", "Esc  ·  P  ·  Start" },
 }
 
@@ -107,7 +108,12 @@ function Title:update(dt)
     local choice, action = ui.navigate(self.choice, 5)
     self.choice = choice
     local step = (action == "right" and 1) or (action == "left" and -1) or 0
-    if choice == 1 and step ~= 0 then state.track = (state.track - 1 + step) % #state.tracks + 1; state.laps = state.current_track().laps; audio.sfx("menu_move") end
+    if choice == 1 and step ~= 0 then
+      state.track = (state.track - 1 + step) % #state.tracks + 1
+      state.laps = state.current_track().laps
+      backdrop.light() -- the backdrop is dressed like the circuit that is chosen
+      audio.sfx("menu_move")
+    end
     if choice == 2 and step ~= 0 then state.mode = state.mode == "race" and "trial" or "race"; audio.sfx("menu_move") end
     if choice == 3 and step ~= 0 then state.car = (state.car - 1 + step) % #state.cars + 1; wear(); audio.sfx("menu_move") end
     if choice == 4 and step ~= 0 then state.laps = math.max(1, math.min(5, state.laps + step)); audio.sfx("menu_move") end
@@ -151,8 +157,8 @@ function Title:draw_ui()
     ui.center("HOW TO PLAY", 40, 44, ui.color.gold, { font = "comic" })
     ui.panel(w / 2 - 330, 110, 660, 340, 200)
     for i, row in ipairs(CONTROLS) do
-      ui.text(w / 2 - 306, 124 + (i - 1) * 42, row[1], 20, ui.color.gold)
-      ui.text(w / 2 - 70, 124 + (i - 1) * 42, row[2], 18, ui.color.white)
+      ui.text(w / 2 - 306, 124 + (i - 1) * 36, row[1], 20, ui.color.gold)
+      ui.text(w / 2 - 70, 124 + (i - 1) * 36, row[2], 18, ui.color.white)
     end
     ui.center("Finish all the laps ahead of your rivals. The grass slows you down; the handbrake lets the back out.", 405, 14, ui.color.dim, { cx = w / 2 })
     ui.hint("press A")

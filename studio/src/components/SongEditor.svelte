@@ -305,6 +305,9 @@
   const setBars = (n: number) => commit(setLength(song, Math.max(1, Math.min(64, Math.round(n))) * barSteps(song)));
   const secs = $derived(songSeconds(song).toFixed(1));
   const slider = (label: string, key: "attack" | "decay" | "sustain" | "release" | "volume" | "pan" | "duty", min: number, max: number, step: number) => ({ label, key, min, max, step });
+  // the fuller voice: optional fields, shown with their defaults (0 or 1 means off)
+  const voice = (label: string, key: "unison" | "detune" | "cutoff" | "resonance" | "sweep" | "sub" | "vibrato" | "reverb", min: number, max: number, step: number, off: number) => ({ label, key, min, max, step, off });
+  const VOICE = [voice("Unison", "unison", 1, 7, 1, 1), voice("Detune", "detune", 0, 60, 1, 0), voice("Cutoff", "cutoff", 0, 12000, 50, 0), voice("Resonance", "resonance", 0, 0.9, 0.01, 0), voice("Sweep", "sweep", 0, 1, 0.01, 0), voice("Sub", "sub", 0, 1, 0.01, 0), voice("Vibrato", "vibrato", 0, 0.5, 0.01, 0), voice("Reverb", "reverb", 0, 1, 0.01, 0)];
   const SLIDERS = [slider("Attack", "attack", 0, 1, 0.005), slider("Decay", "decay", 0, 1, 0.005), slider("Sustain", "sustain", 0, 1, 0.01), slider("Release", "release", 0, 2, 0.01), slider("Volume", "volume", 0, 1, 0.01), slider("Pan", "pan", -1, 1, 0.05)];
 </script>
 
@@ -363,6 +366,17 @@
         {#each SLIDERS.slice(4) as s (s.key)}
           <label class="slider"><span>{s.label}</span><input type="range" min={s.min} max={s.max} step={s.step} value={current[s.key]} oninput={(e) => setTrack({ [s.key]: Number(e.currentTarget.value) })} /><output>{current[s.key].toFixed(2)}</output></label>
         {/each}
+        {#if current.kind === "synth"}
+          <p class="dim small">Fuller sound (0 or 1 leaves it off)</p>
+          {#each VOICE as v (v.key)}
+            <label class="slider"><span>{v.label}</span><input type="range" min={v.min} max={v.max} step={v.step} value={current[v.key] ?? v.off} oninput={(e) => setTrack({ [v.key]: Number(e.currentTarget.value) })} /><output>{(current[v.key] ?? v.off).toFixed(v.step >= 1 ? 0 : 2)}</output></label>
+          {/each}
+        {:else}
+          <label>Kit
+            <select value={current.kit ?? "chip"} onchange={(e) => setTrack({ kit: e.currentTarget.value as "chip" | "studio" })}><option value="chip">chip</option><option value="studio">studio</option></select>
+          </label>
+          <label class="slider"><span>Reverb</span><input type="range" min="0" max="1" step="0.01" value={current.reverb ?? 0} oninput={(e) => setTrack({ reverb: Number(e.currentTarget.value) })} /><output>{(current.reverb ?? 0).toFixed(2)}</output></label>
+        {/if}
         {#if current.kind === "synth"}
           <div class="row">
             <button onclick={() => commit(transpose(song, track, -12))} title="Down an octave">−8va</button>

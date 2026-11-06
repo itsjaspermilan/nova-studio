@@ -4,21 +4,17 @@ import { withServer } from "./mcp.mjs";
 
 const o = (kind, x, z, ry = 0, props = {}) => ({ kind, x, y: 0, z, ...(ry || Object.keys(props).length ? { props: { ...(ry ? { ry } : {}), ...props } } : {}) });
 
-function showroom({ turn }) {
+function showroom() {
   const objects = [];
   for (let z = -40; z <= 40; z += 5) objects.push(o("road_asphalt", 0, z));
   objects.push(o("start_arch", 0, 24));
   objects.push(o("tower", -17, 14, Math.PI / 2));
   for (const side of [-1, 1]) {
     for (let z = -35; z <= 35; z += 6) objects.push(o("guardrail", side * 8.4, z));
-    for (let i = 0; i < 18; i++) {
-      const z = -48 + i * 5.2, d = 13 + ((i * 7) % 11);
-      objects.push(o(i % 3 ? "pine" : "pine_dark", side * d, z + side, i * 0.7, { sx: 0.9 + ((i * 5) % 6) / 10 }));
-      if (i % 4 === 0) objects.push(o("bush", side * (10.5 + (i % 3)), z + 2, i));
-    }
+    // (the trees, cacti and rocks beside the road are drawn by lib/backdrop.lua, dressed like the chosen circuit)
   }
   objects.push(o("tires", 9.5, -12), o("tires", 9.5, -12.8), o("hay_bale", -9.5, -6, 0.2), o("hay_bale", -9.8, -3.5, -0.1), o("sign_chevron", 9.2, 8, Math.PI));
-  objects.push(o("show_car", 0, 0, 0.6, { turn }));
+  objects.push(o("show_car", 0, 0, 0));
   return {
     version: 1,
     background: [138, 182, 224],
@@ -28,6 +24,6 @@ function showroom({ turn }) {
 }
 
 await withServer(async (nova) => {
-  console.log(await nova.call("scene_write", { name: "title", scene: showroom({ turn: 0.35 }) }));
-  console.log(await nova.call("scene_write", { name: "results", scene: showroom({ turn: 0.2 }) }));
+  console.log(await nova.call("scene_write", { name: "title", scene: showroom() }));
+  console.log(await nova.call("scene_write", { name: "results", scene: showroom() }));
 });

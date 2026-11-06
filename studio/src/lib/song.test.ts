@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addNote, addTrack, changeNote, drumHit, drumTrack, envelope, midiFreq, newSong, noteAt, noteName, parseSong, removeNote, removeTrack, renderSong, serializeSong, setLength, setTempo, songSeconds, stepSeconds, synthTrack, transpose, updateTrack, type Song } from "./song";
+import { addNote, addTrack, changeNote, drumHit, drumTrack, envelope, midiFreq, newSong, noteAt, noteName, parseSong, removeNote, removeTrack, renderSong, serializeSong, setLength, setTempo, songSeconds, stepSeconds, studioDrumHit, synthTrack, transpose, updateTrack, type Song } from "./song";
 import { frames, peak } from "./wav";
 
 const empty = (over: Partial<Song> = {}): Song => ({ version: 1, bpm: 120, stepsPerBeat: 4, length: 16, tracks: [synthTrack("a")], ...over });
@@ -182,5 +182,75 @@ describe("editing", () => {
     const u = updateTrack(s, 0, { volume: 9, pan: -9, duty: 0, sustain: 4, name: "  " });
     expect(u.tracks[0]).toMatchObject({ volume: 1, pan: -1, duty: 0.05, sustain: 1, name: "lead" });
     expect(updateTrack(s, 99, { volume: 0 })).toBe(s);
+  });
+});
+
+describe("fuller voices", () => {
+  const rich = (over: Partial<ReturnType<typeof synthTrack>> = {}, length = 32): Song => {
+    const s = empty({ length });
+    s.tracks[0] = { ...synthTrack("a", "saw"), attack: 0.01, sustain: 1, release: 0.1, notes: [{ step: 0, len: 8, pitch: 57, vel: 1 }], ...over };
+    return s;
+  };
+  const side = (out: ReturnType<typeof renderSong>) => out.channels[0]!.reduce((s, x, i) => s + Math.abs(x - out.channels[1]![i]!), 0);
+
+  it("leaves a song without voice fields exactly as the chip renderer made it", () => {
+    const plain = renderSong(rich(), 8000);
+    expect(energy(plain.channels[0]!)).toBeGreaterThan(1);
+    // unison 1 with nothing else is the plain path: identical, mono
+    const same = renderSong(rich({ unison: 1 }), 8000);
+    expect(Array.from(same.channels[0]!)).toEqual(Array.from(plain.channels[0]!));
+  });
+
+  it("spreads unison voices across the stereo field, and detuning makes them differ", () => {
+    const wide = renderSong(rich({ unison: 5, detune: 18 }), 8000);
+    expect(side(wide)).toBeGreaterThan(5);
+    const single = renderSong(rich({ sub: 0.3 }), 8000); // one voice in the middle: left and right match
+    expect(side(single)).toBeLessThan(1e-3);
+  });
+
+  it("filters: a low cutoff takes the high harmonics away, a sweep opens it with the envelope", () => {
+    const bright = renderSong(rich({ cutoff: 20000 }), 16000).channels[0]!;
+    const dark = renderSong(rich({ cutoff: 300 }), 16000).channels[0]!;
+    // roughness: how much the signal jumps from one sample to the next, against how loud it is (a dull sound is smooth)
+    const rough = (c: Float32Array) => { let d = 0, e = 0; for (let i = 2001; i < 8000; i++) { d += (c[i]! - c[i - 1]!) ** 2; e += c[i]! ** 2; } return d / e; };
+    expect(rough(dark)).toBeLessThan(rough(bright) * 0.4);
+    expect(energy(dark)).toBeLessThan(energy(bright));
+  });
+
+  it("sends a track into the room, which rings after the note and wraps to the start", () => {
+    const dry = renderSong(rich({ cutoff: 4000 }, 16), 8000);
+    const wet = renderSong(rich({ cutoff: 4000, reverb: 0.8 }, 16), 8000);
+    const tail = (o: typeof wet) => energy(o.channels[0]!, 12000, 16000);
+    expect(tail(wet)).toBeGreaterThan(tail(dry) * 20 + 0.01); // the dry tail is only the 0.1 s release, the wet one rings on
+    expect(peak(wet)).toBeLessThanOrEqual(0.97 + 1e-6);
+    expect(Array.from(renderSong(rich({ cutoff: 4000, reverb: 0.8 }, 16), 8000).channels[0]!)).toEqual(Array.from(wet.channels[0]!));
+  });
+
+  it("has a studio drum kit with a heavier kick and a metallic hat", () => {
+    for (const pitch of [36, 38, 39, 42, 45, 46, 49]) {
+      const hit = studioDrumHit(pitch, 8000);
+      expect(hit.length).toBeGreaterThan(100);
+      expect(energy(hit)).toBeGreaterThan(0.05);
+      expect(Math.max(...hit.map(Math.abs))).toBeLessThan(1.6);
+    }
+    const s = empty({ length: 16 });
+    s.tracks[0] = { ...drumTrack("d"), kit: "studio", notes: [{ step: 0, len: 1, pitch: 36, vel: 1 }] };
+    expect(energy(renderSong(s, 8000).channels[0]!)).toBeGreaterThan(1);
+  });
+
+  it("saves and reads the voice fields and the room, and rejects bad ones", () => {
+    const s = rich({ unison: 5, detune: 14, cutoff: 900, resonance: 0.3, sweep: 0.5, sub: 0.4, vibrato: 0.1, reverb: 0.3 });
+    s.room = { size: 0.7, damping: 0.3, mix: 1.1 };
+    const parsed = parseSong(serializeSong(s));
+    expect(parsed.ok && parsed.song).toEqual(s);
+    expect(parseSong(serializeSong(rich())).ok && (parseSong(serializeSong(rich())) as { song: Song }).song.room).toBeUndefined();
+    const bad = JSON.parse(serializeSong(s));
+    bad.tracks[0].cutoff = "high";
+    expect(parseSong(JSON.stringify(bad))).toMatchObject({ ok: false });
+    const kit = JSON.parse(serializeSong(empty({ tracks: [drumTrack("d")] })));
+    kit.tracks[0].kit = "orchestral";
+    expect(parseSong(JSON.stringify(kit))).toMatchObject({ ok: false });
+    // updateTrack keeps the voice fields in range
+    expect(updateTrack(s, 0, { unison: 40, cutoff: 99999 }).tracks[0]).toMatchObject({ unison: 7, cutoff: 20000 });
   });
 });

@@ -10,11 +10,16 @@ local function wrap(a) return track.wrap(a) end
 
 -- A prop at distance `off` metres to the left (negative: right) of waypoint `i`, turned `turn` radians from the road's heading,
 -- and `along` metres further on.
-local function put(kind, i, off, turn, along)
+-- Nothing may stand on the road: where the road bends, a spot "beside" one waypoint and "further on" can be across another part
+-- of the road, so the spot's real distance from the road's middle is checked and the prop is left out if it is too near
+-- (`clear` metres: the road is 12 wide).
+local function put(kind, i, off, turn, along, clear)
   local p = track.point(i)
   local nx, nz = p.tz, -p.tx -- to the left
   local x = p.x + nx * off + p.tx * (along or 0)
   local z = p.z + nz * off + p.tz * (along or 0)
+  local _, _, _, away = track.locate(x, z)
+  if away < (clear or 8) then return nil end
   return nova.spawn(kind, x, 0, { z = z, ry = p.heading + (turn or 0) })
 end
 
@@ -42,21 +47,20 @@ function roadside.build(style)
   local look = LOOK[style] or LOOK.forest
   local bend = bends(n)
   local count = 0
-  local function add(kind, i, off, turn, along)
-    put(kind, i, off, turn, along)
-    count = count + 1
+  local function add(kind, i, off, turn, along, clear)
+    if put(kind, i, off, turn, along, clear) then count = count + 1 end
   end
   local pi = math.pi
   -- by the start line (waypoint 1): a stand on each side of the straight, facing the road, with tents and banners between
-  add(look.stand, 2, 22, pi / 2, 14)
-  add(look.stand, 2, -22, -pi / 2, 14)
-  add("tent_long", 3, 17, pi / 2, 30)
-  add("tent_long", 3, -17, -pi / 2, 30)
-  add(look.banner, 1, 9.5, 0)
-  add(look.banner, 1, -9.5, 0)
+  add(look.stand, 2, 22, pi / 2, 14, 14)
+  add(look.stand, 2, -22, -pi / 2, 14, 14)
+  add("tent_long", 3, 17, pi / 2, 30, 11)
+  add("tent_long", 3, -17, -pi / 2, 30, 11)
+  add(look.banner, 1, 9.5, 0, 0, 8.5)
+  add(look.banner, 1, -9.5, 0, 0, 8.5)
   for k = 0, 3 do
-    add(look.flag, 1 + k * 3, 8, 0, -22)
-    add(look.flag, 1 + k * 3, -8, 0, -22)
+    add(look.flag, 1 + k * 3, 8, 0, -22, 7.5)
+    add(look.flag, 1 + k * 3, -8, 0, -22, 7.5)
   end
   -- along the road: a billboard on a straight every 120 m or so, alternating sides; pylons on the outside of each hard corner
   local length = track.length
@@ -67,14 +71,14 @@ function roadside.build(style)
     if p.s > 60 and p.s < length - 40 then
       local straight = math.abs(bend[i]) < 0.08 and math.abs(bend[(i + 3) % n + 1]) < 0.08
       if straight and p.s > next_board then
-        add(i % 2 == 0 and "billboard" or "billboard_low", i, side * 13, side * pi / 2)
+        add(i % 2 == 0 and "billboard" or "billboard_low", i, side * 13, side * pi / 2, 0, 10)
         side = -side
         next_board = p.s + 120
       end
       if math.abs(bend[i]) > 0.22 and p.s - last_pylon > 2.5 then
         local out = bend[i] > 0 and 1 or -1 -- turning right: the outside is to the left
-        add("pylon", i, out * (EDGE + 0.6), 0)
-        add("pylon", i, out * (EDGE + 1.8), 0)
+        add("pylon", i, out * (EDGE + 0.6), 0, 0, 6.2)
+        add("pylon", i, out * (EDGE + 1.8), 0, 0, 6.2)
         last_pylon = p.s
       end
     end

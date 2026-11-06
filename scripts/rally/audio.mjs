@@ -15,7 +15,10 @@ const sfx = {
   // Loops that the game plays all the time and changes while they play (nova.sound.set): the engine's pitch follows the revs,
   // the gravel and the tyre squeal follow how hard the car is on the loose or sliding. 0.5 s of a 100 Hz saw is exactly 50 cycles,
   // so the engine loops without a seam.
-  engine_loop: { params: { wave: "saw", freq: 100, attack: 0, sustain: 0.5, decay: 0, lowpass: 1500, highpass: 50, volume: 0.55 } },
+  // (the first version was a bright 100 Hz saw, which buzzed: now a low, dull 70 Hz saw for the rumble and a soft triangle an octave
+  // up for the body, both filtered; 0.5 s of 70 Hz is 35 cycles and of 140 Hz 70, so each loops without a seam)
+  engine_loop: { params: { wave: "saw", freq: 70, attack: 0, sustain: 0.5, decay: 0, lowpass: 420, highpass: 40, volume: 0.6 } },
+  engine_body: { params: { wave: "triangle", freq: 140, attack: 0, sustain: 0.5, decay: 0, lowpass: 900, highpass: 70, volume: 0.35 } },
   gravel_loop: { params: { wave: "noise", freq: 900, attack: 0, sustain: 0.5, decay: 0, lowpass: 3200, highpass: 400, volume: 0.5 } },
   skid_loop: { params: { wave: "noise", freq: 1500, attack: 0, sustain: 0.5, decay: 0, lowpass: 9000, highpass: 1800, volume: 0.3 } },
   // a change of gear: a short chuff of air and a click
@@ -133,7 +136,25 @@ const results = {
   ],
 };
 
+// ---- the fuller voices of the studio (unison, filter, reverb, studio drums) given to the tracks above, by song and track name ----
+const PAD = { wave: "saw", unison: 5, detune: 14, cutoff: 1500, sweep: 0.15, attack: 0.3, release: 0.9, reverb: 0.55 };
+const BASS = { wave: "saw", unison: 2, detune: 6, cutoff: 480, resonance: 0.15, sweep: 0.5, sub: 0.55, attack: 0.005, release: 0.08 };
+const LEAD = { wave: "saw", unison: 3, detune: 9, cutoff: 3600, sweep: 0.4, vibrato: 0.08, reverb: 0.35 };
+const DRUMS = { kit: "studio", reverb: 0.12 };
+const voices = {
+  menu: { room: { size: 0.65, damping: 0.4 }, pad: { ...PAD, volume: 0.5 }, bass: { ...BASS, volume: 0.45 }, lead: { ...LEAD, volume: 0.3, cutoff: 3000, attack: 0.03, release: 0.4 }, drums: { ...DRUMS, volume: 0.55 } },
+  race_forest: { room: { size: 0.5, damping: 0.45 }, bass: { ...BASS, volume: 0.42 }, lead: { ...LEAD, volume: 0.3, release: 0.12 }, stabs: { wave: "saw", unison: 3, detune: 12, cutoff: 1800, sweep: 0.6, reverb: 0.25, volume: 0.24 }, drums: { ...DRUMS, volume: 0.65 } },
+  race_desert: { room: { size: 0.45, damping: 0.5 }, bass: { ...BASS, wave: "saw", cutoff: 560, volume: 0.45 }, twang: { wave: "saw", unison: 2, detune: 5, cutoff: 2400, resonance: 0.2, sweep: 0.7, reverb: 0.3, volume: 0.28 }, pad: { ...PAD, volume: 0.4 }, drums: { ...DRUMS, volume: 0.6 } },
+  race_snow: { room: { size: 0.8, damping: 0.3, mix: 1.2 }, bells: { unison: 2, detune: 3, reverb: 0.65, volume: 0.3 }, bass: { ...BASS, wave: "saw", cutoff: 520, volume: 0.45 }, pad: { ...PAD, cutoff: 1800, reverb: 0.7, volume: 0.3 }, drums: { ...DRUMS, volume: 0.55 } },
+  race_night: { room: { size: 0.75, damping: 0.5 }, lead: { wave: "saw", unison: 3, detune: 8, cutoff: 2400, vibrato: 0.1, reverb: 0.5, attack: 0.06, release: 0.6, volume: 0.28 }, bass: { ...BASS, volume: 0.42 }, pad: { ...PAD, cutoff: 1100, volume: 0.38 }, drums: { ...DRUMS, volume: 0.55 } },
+  results: { room: { size: 0.6, damping: 0.4 }, lead: { ...LEAD, volume: 0.32, release: 0.35 }, pad: { ...PAD, volume: 0.45 }, bass: { ...BASS, volume: 0.4 }, drums: { ...DRUMS, volume: 0.5 } },
+};
+function dress(name, song) {
+  const v = voices[name];
+  return { ...song, room: v.room, tracks: song.tracks.map((t) => ({ ...t, ...(v[t.name] ?? {}) })) };
+}
+
 await withServer(async (nova) => {
   for (const [name, a] of Object.entries(sfx)) console.log(await nova.call("sfx_write", { name, ...a }));
-  for (const [name, song] of Object.entries({ menu, race_forest: raceForest, race_desert: raceDesert, race_snow: raceSnow, race_night: raceNight, results })) console.log(await nova.call("song_write", { name, song }));
+  for (const [name, song] of Object.entries({ menu, race_forest: raceForest, race_desert: raceDesert, race_snow: raceSnow, race_night: raceNight, results })) console.log(await nova.call("song_write", { name, song: dress(name, song) }));
 });
