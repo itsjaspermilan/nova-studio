@@ -68,8 +68,11 @@ another physical Android device) to settle; the emulator cannot.
   of the meshes and textures again).
 - [x] Immersive mode on the real panel (2026-11-05): a screenshot from the Retroid (1920x1080 in landscape, from a 1080x1920 panel)
   shows the game across the whole screen: no black band, no system bars. (The emulator's phone profile is what had the cutout and the bars.)
-- [ ] Verify the Retroid's facts: SoC, Android version (assumed 13), screen size/refresh, how its
-  controller is presented, USB debugging.
+- [x] The Retroid's facts, read from the device over ADB (2026-11-06): a Retroid Pocket 6 (maker string "Moorechip"), Qualcomm QCS8550
+  (platform "kalama", Snapdragon 8 Gen 2 class; the GPU is an Adreno 740 as the Vulkan adapter reports), Android 13 (SDK 33, security
+  patch 2024-01-01), arm64-v8a, 11 GB of RAM (11,535,376 kB), CPU cores up to 2.0, 2.8 and 3.19 GHz, a 1080x1920 panel (369 dpi,
+  shown in landscape) with two modes, 60 Hz and 120 Hz (set to 60 Hz, the target), the controller arrives as a standard game controller
+  (see the input notes above), USB debugging works (serial bc8565a3).
 - [x] Keyboard and gamepad-button input on Android: `adb shell input keyevent` reached the game on the emulator (native key 96 started Crate Dash's jump)
   with the patched winit; touch unchanged. A physical keyboard is unverified.
 
