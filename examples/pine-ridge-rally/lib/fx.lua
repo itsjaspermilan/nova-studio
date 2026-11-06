@@ -4,9 +4,34 @@ local fx = {}
 
 local emitter
 
+-- Skid marks: the last 360 are kept (a ring), each a dark strip along the way the tyre slid, drawn flat on the road.
+local MARKS = 360
+local marks, next_mark, skid_opts = {}, 1, { ry = 0 }
+
 function fx.clear()
   if emitter then emitter:destroy() end
   emitter = nil
+  marks, next_mark = {}, 1
+end
+
+-- A mark at (x, z) lying along `ry` (radians).
+function fx.skid(x, z, ry)
+  local m = marks[next_mark]
+  if not m then m = {}; marks[next_mark] = m end
+  m.x, m.z, m.ry = x, z, ry
+  next_mark = next_mark % MARKS + 1
+end
+
+function fx.draw_skids(cx, cz, range)
+  local r2 = range * range
+  for i = 1, #marks do
+    local m = marks[i]
+    local dx, dz = m.x - cx, m.z - cz
+    if dx * dx + dz * dz < r2 then
+      skid_opts.ry = m.ry
+      nova.model("skid", m.x, 0.05, m.z, skid_opts)
+    end
+  end
 end
 
 -- A puff at (x, z) drifting with (vx, vz) and rising; `size` in metres, `color` an {r, g, b} table.

@@ -5,6 +5,7 @@ local track = require("lib.track")
 local lamps = require("lib.lamps")
 local grid = require("lib.grid")
 local fx = require("lib.fx")
+local roadside = require("lib.roadside")
 local horizon = require("lib.horizon")
 local audio = require("lib.audio")
 local ui = require("lib.ui")
@@ -90,6 +91,7 @@ function race.define(config)
     self.laps = state.laps
     track.ensure()
     assert(track.count() > 10, "this scene has no waypoints: place `waypoint` objects along the road")
+    nova.log("rally: roadside " .. roadside.build(config.horizon) .. " props")
     self.length = track.length
     self.phase = "countdown"
     self.clock = 0              -- time since the green light
@@ -507,6 +509,7 @@ function race.define(config)
     nova.camera(cam.x, cam.y, cam.z, cam.tx, cam.ty, cam.tz, cam.fov)
     if config.night then self:night_lights(cam) end
     horizon.draw(cam.x, cam.z, config.horizon)
+    fx.draw_skids(cam.x, cam.z, 90)
     local gx, gz, gh = self:ghost_pose()
     if gx then
       self.ghost_opts = self.ghost_opts or { ry = 0, tint = { 130, 200, 255 } }

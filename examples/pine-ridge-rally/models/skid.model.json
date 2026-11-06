@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "skid",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "from": [-3, 0, -12], "size": [6, 0.3, 24], "color": "#15151599" }
+      ],
+      "children": []
+    }
+  ]
+}

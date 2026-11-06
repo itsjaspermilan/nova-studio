@@ -36,6 +36,8 @@ assistant (or a script) drives the studio's own code: see `scripts/rally/` (`mod
 
 `crates/nova-runtime/tests/rally.rs` plays the game through its menus and a full race on every circuit.
 
+**Roadside and skids (2026-11-06).** `lib/roadside.lua` lays out grandstands, long tents, banner towers and flags at the start line, billboards on the straights and pylons on the outside of the hard corners, from each circuit's own waypoints (the props are racing-kit models, `scripts/rally/kit-models.sh`). Tyres that slide on the road leave dark skid marks (`lib/fx.lua`, the last 360 are kept).
+
 ## Not done
 
 Nothing has been played on a real device or by a person yet: the handling, the sounds and the music were tuned by

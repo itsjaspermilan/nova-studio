@@ -282,7 +282,13 @@ fn braking_locks_the_wheels(ramp: &[f32], key_instead: bool) -> bool {
     run_until(&mut g, &mut log, "the countdown ends", 60 * 8, |l| {
         l.iter().any(|x| x == "go")
     });
-    for _ in 0..60 * 16 {
+    // the computer drives to speed (on the road: straight on at full throttle runs into the roadside props), then lets go
+    tap(&mut g, "key:F9");
+    for _ in 0..60 * 10 {
+        frame_with(&mut g, &[]);
+    }
+    tap(&mut g, "key:F9");
+    for _ in 0..30 {
         frame_with(&mut g, &[("key:ArrowUp", 1.0)]);
     }
     log.clear();
@@ -321,4 +327,22 @@ fn a_trigger_pulled_right_through_at_speed_locks_the_wheels_and_a_gentle_one_or_
         !braking_locks_the_wheels(&hard, true),
         "a key is all or nothing and never locks the wheels (it would otherwise on every stop)"
     );
+}
+
+#[test]
+fn every_circuit_has_stands_banners_billboards_and_pylons_beside_the_road() {
+    for circuit in 0..4 {
+        let mut g = load();
+        start_race(&mut g, circuit, false);
+        let mut log = Vec::new();
+        run_until(&mut g, &mut log, "the roadside is built", 120, |l| {
+            l.iter().any(|x| x.starts_with("rally: roadside "))
+        });
+        let line = log
+            .iter()
+            .find_map(|l| l.strip_prefix("rally: roadside "))
+            .unwrap_or_else(|| panic!("circuit {circuit} built no roadside: {log:?}"));
+        let n: usize = line.split_whitespace().next().unwrap().parse().unwrap();
+        assert!(n >= 20, "circuit {circuit}: only {n} roadside props");
+    }
 }

@@ -1,0 +1,1 @@
+{"t":1793981938171,"tool":"model_write","files":["models/skid.model.json","models/skid.glb"],"note":"models/skid.model.json and models/skid.glb: 1 parts, 1 shapes, 12 triangles, 1788 bytes. In Lua: nova.model(\"skid\", x, y, z)"}

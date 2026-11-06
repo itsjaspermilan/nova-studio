@@ -206,6 +206,18 @@ function Car:drive(dt)
     end
   end
 
+  -- skid marks from the rear tyres while they slide on the road (every metre or so they travel)
+  if self.surface ~= "rough" and self.slip > 0.45 and math.abs(vf) > 4 then
+    self.skid_dist = (self.skid_dist or 0) + math.sqrt(self.velx * self.velx + self.velz * self.velz) * dt
+    if self.skid_dist > 1.0 then
+      self.skid_dist = 0
+      local ry = math.atan(self.velx, self.velz)
+      for _, side in ipairs({ -0.75, 0.75 }) do
+        fx.skid(self.x - sinh * 1.2 + cosh * side, self.z - cosh * 1.2 - sinh * side, ry)
+      end
+    end
+  end
+
   -- dust and gravel behind the rear wheels
   if (self.surface == "rough" or self.slip > 0.5) and math.abs(vf) > 5 and math.random() < dt * 30 then
     local colour = self.dust_color or { 200, 190, 160 }
