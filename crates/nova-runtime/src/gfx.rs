@@ -124,6 +124,52 @@ pub struct Fog {
     pub far: f32,
 }
 
+/// The hills (`nova.terrain`): the ground's height as a sum of up to [`MAX_TERRAIN_WAVES`] sine waves over the ground. Each wave is
+/// `[kx, kz, amplitude, phase]`: its height is `amplitude * sin(kx * x + kz * z + phase)`. The shaders lift every vertex of a model that
+/// stands near the ground by the height under it, so the game draws everything as if the ground were flat.
+pub const MAX_TERRAIN_WAVES: usize = 8;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Terrain {
+    pub waves: [[f32; 4]; MAX_TERRAIN_WAVES],
+    pub count: usize,
+}
+
+impl Default for Terrain {
+    fn default() -> Self {
+        Self {
+            waves: [[0.0; 4]; MAX_TERRAIN_WAVES],
+            count: 0,
+        }
+    }
+}
+
+impl Terrain {
+    /// The ground's height at a spot (the same sum the shaders make).
+    pub fn height(&self, x: f32, z: f32) -> f32 {
+        self.waves[..self.count]
+            .iter()
+            .map(|w| w[2] * (w[0] * x + w[1] * z + w[3]).sin())
+            .sum()
+    }
+
+    /// The slope there: how fast the height grows with x and with z.
+    pub fn slope(&self, x: f32, z: f32) -> [f32; 2] {
+        let mut g = [0.0f32; 2];
+        for w in &self.waves[..self.count] {
+            let c = w[2] * (w[0] * x + w[1] * z + w[3]).cos();
+            g[0] += c * w[0];
+            g[1] += c * w[1];
+        }
+        g
+    }
+
+    /// The most the ground can rise or fall: the culling of what is drawn grows by this.
+    pub fn lift(&self) -> f32 {
+        self.waves[..self.count].iter().map(|w| w[2].abs()).sum()
+    }
+}
+
 /// The wind that bends foliage (models drawn with a `sway`): the way it blows (a unit vector on the ground), how hard (0 is
 /// still), and the time the game keeps for it.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -220,6 +266,7 @@ pub struct Lighting {
     pub day: f32,
     pub look: Look,
     pub wind: Wind,
+    pub terrain: Terrain,
 }
 
 impl Default for Lighting {
@@ -242,6 +289,7 @@ impl Default for Lighting {
             day: 1.0,
             look: Look::default(),
             wind: Wind::default(),
+            terrain: Terrain::default(),
         }
     }
 }
@@ -372,6 +420,8 @@ struct Globals {
     wind: [f32; 4],
     /// xyz: the way a spot light points (zero: it shines every way); w: the cosine of half its cone.
     point_dir: [[f32; 4]; MAX_POINT_LIGHTS],
+    /// [0].x: how many hill waves; then each wave's kx, kz, amplitude and phase.
+    terrain: [[f32; 4]; MAX_TERRAIN_WAVES + 1],
 }
 
 /// Side of the (square) shadow map in texels.
@@ -572,6 +622,7 @@ fn instance_visible(
     bounds: ([f32; 3], f32),
     skinned: bool,
     matrix: &[[f32; 4]; 4],
+    lift: f32,
 ) -> bool {
     let m = glam::Mat4::from_cols_array_2d(matrix);
     let scale = m
@@ -581,7 +632,8 @@ fn instance_visible(
         .max(m.y_axis.truncate().length())
         .max(m.z_axis.truncate().length());
     let centre = m.transform_point3(Vec3::from(bounds.0));
-    let radius = bounds.1 * scale * if skinned { 1.5 } else { 1.0 };
+    // (on hills the shaders lift a model by up to `lift` metres: its sphere is grown to match)
+    let radius = bounds.1 * scale * if skinned { 1.5 } else { 1.0 } + lift;
     sphere_visible(planes, centre, radius)
 }
 
@@ -2089,6 +2141,9 @@ impl Gfx {
             point_color[i] = [p.color[0], p.color[1], p.color[2], 1.0];
             point_dir[i] = [p.direction[0], p.direction[1], p.direction[2], p.cone];
         }
+        let mut terrain_uniform = [[0.0f32; 4]; MAX_TERRAIN_WAVES + 1];
+        terrain_uniform[0][0] = lit.terrain.count as f32;
+        terrain_uniform[1..].copy_from_slice(&lit.terrain.waves);
         let (sky, fog) = (lit.sky, lit.fog);
         // The sun's view of the ground around what the camera looks at: a square box seen along the light, moved in whole
         // texels so that shadows do not crawl as the camera moves.
@@ -2159,6 +2214,7 @@ impl Gfx {
                 lit.wind.time,
             ],
             point_dir,
+            terrain: terrain_uniform,
             sky_extra: sky.map_or([0.0; 4], |k| {
                 [
                     k.clouds,
@@ -2201,6 +2257,7 @@ impl Gfx {
                 sky_extra: [0.0; 4],
                 wind: [0.0; 4],
                 point_dir: [[0.0; 4]; MAX_POINT_LIGHTS],
+                terrain: [[0.0; 4]; MAX_TERRAIN_WAVES + 1],
             };
             self.queue
                 .write_buffer(&self.ui_globals, 0, bytemuck::bytes_of(&ui_globals));
@@ -2261,6 +2318,7 @@ impl Gfx {
                     mesh.bounds,
                     mesh.skin.is_some(),
                     &m.instance.matrix,
+                    lit.terrain.lift(),
                 ),
                 None => true,
             })
@@ -2285,6 +2343,7 @@ impl Gfx {
                             mesh.bounds,
                             mesh.skin.is_some(),
                             &m.instance.matrix,
+                            lit.terrain.lift(),
                         ),
                         None => true,
                     })
@@ -2719,27 +2778,27 @@ mod tests {
         };
         let unit = ([0.0, 0.0, 0.0], 1.0);
         assert!(
-            instance_visible(&planes, unit, false, &at(0.0, 0.0, 0.0, 1.0)),
+            instance_visible(&planes, unit, false, &at(0.0, 0.0, 0.0, 1.0), 0.0),
             "straight ahead"
         );
         assert!(
-            !instance_visible(&planes, unit, false, &at(0.0, 0.0, 50.0, 1.0)),
+            !instance_visible(&planes, unit, false, &at(0.0, 0.0, 50.0, 1.0), 0.0),
             "behind the camera"
         );
         assert!(
-            !instance_visible(&planes, unit, false, &at(0.0, 0.0, -500.0, 1.0)),
+            !instance_visible(&planes, unit, false, &at(0.0, 0.0, -500.0, 1.0), 0.0),
             "past the far plane"
         );
         assert!(
-            !instance_visible(&planes, unit, false, &at(100.0, 0.0, 0.0, 1.0)),
+            !instance_visible(&planes, unit, false, &at(100.0, 0.0, 0.0, 1.0), 0.0),
             "far to the side"
         );
         assert!(
-            !instance_visible(&planes, unit, false, &at(0.0, 100.0, 0.0, 1.0)),
+            !instance_visible(&planes, unit, false, &at(0.0, 100.0, 0.0, 1.0), 0.0),
             "far above"
         );
         assert!(
-            instance_visible(&planes, unit, false, &at(100.0, 0.0, 0.0, 120.0)),
+            instance_visible(&planes, unit, false, &at(100.0, 0.0, 0.0, 120.0), 0.0),
             "scaled up so that it reaches into the view"
         );
         // just outside the edge, but its radius reaches over it
@@ -2748,26 +2807,30 @@ mod tests {
             &planes,
             unit,
             false,
-            &at(edge + 0.5, 0.0, 0.0, 1.0)
+            &at(edge + 0.5, 0.0, 0.0, 1.0),
+            0.0
         ));
         assert!(!instance_visible(
             &planes,
             unit,
             false,
-            &at(edge + 1.5, 0.0, 0.0, 1.0)
+            &at(edge + 1.5, 0.0, 0.0, 1.0),
+            0.0
         ));
         // a skinned mesh is allowed half as much again for limbs that swing out
         assert!(!instance_visible(
             &planes,
             unit,
             false,
-            &at(edge + 1.3, 0.0, 0.0, 1.0)
+            &at(edge + 1.3, 0.0, 0.0, 1.0),
+            0.0
         ));
         assert!(instance_visible(
             &planes,
             unit,
             true,
-            &at(edge + 1.3, 0.0, 0.0, 1.0)
+            &at(edge + 1.3, 0.0, 0.0, 1.0),
+            0.0
         ));
     }
 

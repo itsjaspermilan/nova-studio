@@ -47,3 +47,12 @@
 {"t":1793989292041,"tool":"song_write","files":["music/race_snow.song.json"],"note":"music/race_snow.ogg (61.9 s, 1223381 bytes)"}
 {"t":1793989295822,"tool":"song_write","files":["music/race_night.song.json"],"note":"music/race_night.ogg (71.1 s, 1330885 bytes)"}
 {"t":1793989296280,"tool":"song_write","files":["music/results.song.json"],"note":"music/results.ogg (8.6 s, 177675 bytes)"}
+{"t":1794007786387,"tool":"scene_write","files":["scenes/pine_ridge.scene.json"],"note":"scenes/pine_ridge.scene.json: 1937 objects"}
+{"t":1794007786399,"tool":"scene_write","files":["scenes/dust_valley.scene.json"],"note":"scenes/dust_valley.scene.json: 1170 objects"}
+{"t":1794007786413,"tool":"scene_write","files":["scenes/frost_pass.scene.json"],"note":"scenes/frost_pass.scene.json: 1541 objects"}
+{"t":1794007786422,"tool":"scene_write","files":["scenes/harbour_lights.scene.json"],"note":"scenes/harbour_lights.scene.json: 1161 objects"}
+{"t":1794008006762,"tool":"scene_write","files":["scenes/frost_pass.scene.json"],"note":"scenes/frost_pass.scene.json: 1531 objects"}
+{"t":1794008484999,"tool":"scene_write","files":["scenes/pine_ridge.scene.json"],"note":"scenes/pine_ridge.scene.json: 1528 objects"}
+{"t":1794008485019,"tool":"scene_write","files":["scenes/dust_valley.scene.json"],"note":"scenes/dust_valley.scene.json: 845 objects"}
+{"t":1794008485040,"tool":"scene_write","files":["scenes/frost_pass.scene.json"],"note":"scenes/frost_pass.scene.json: 1212 objects"}
+{"t":1794008485055,"tool":"scene_write","files":["scenes/harbour_lights.scene.json"],"note":"scenes/harbour_lights.scene.json: 858 objects"}

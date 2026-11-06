@@ -15,6 +15,7 @@ local ui = require("lib.ui")
 
 local race = {}
 
+local ROAD_OPTS = { shadow = false }
 local RIVALS = {
   { name = "Mika", skill = 1.0, lane = -1.8 },
   { name = "Dax", skill = 0.96, lane = 2.2 },
@@ -43,6 +44,10 @@ end
 -- Steers a car along the waypoints. `car.skill` (0.8 to 1) is how hard it dares to go.
 local function drive_itself(car)
   local c = car.ctl
+  -- how sharp the bend ahead is (the sharpest of the next 14 waypoints, about 140 m): it sets how far ahead the car aims (a tight bend is
+  -- turned into by aiming near, so as not to cut it) and how fast it takes it
+  local kmax = 0
+  for j = 1, 14 do kmax = math.max(kmax, math.abs(track.point((car.waypoint or 1) + j).k)) end
   local look = 3 + math.floor(math.abs(car.speed) / 8)
   local target = track.point((car.waypoint or 1) + look)
   local tx = target.x + target.tz * (car.lane or 0)
@@ -62,8 +67,6 @@ local function drive_itself(car)
   end
   c.steer = math.max(-1, math.min(1, -err * 2.4))
   -- slow for the sharpest bend in the next stretch
-  local kmax = 0
-  for j = 1, 14 do kmax = math.max(kmax, math.abs(track.point((car.waypoint or 1) + j).k)) end
   -- how hard it dares to corner: what the tyres can hold on this surface, less a margin for the weaker drivers
   local hold = ({ road = 21, dirt = 15, rough = 11 })[car.surface] or 21
   local a_lat = hold * car:grip_now() * (car.skill or 0.9)
@@ -88,6 +91,7 @@ function race.define(config)
     -- the sky, and fog the colour of its horizon so that the far scenery fades out instead of popping in
     nova.scenery.range = LOOK_FAR -- (the engine draws the scene file's scenery out to here, around the camera)
     nova.shadows(state.shadows and { radius = 42, strength = 0.55 } or nil)
+    nova.terrain(config.terrain) -- the hills (flat when the circuit has none)
     nova.sky(config.sky)
     if config.sky then nova.fog { color = config.sky.horizon, near = 70, far = 330 } end
     local info = state.current_track()
@@ -132,7 +136,7 @@ function race.define(config)
   function Race:leave()
     for _, car in ipairs(self.cars) do if car.engine then car.engine:stop() end end
     nova.music.volume(state.music_volume)
-    nova.sky(nil); nova.fog(nil); nova.shadows(nil)
+    nova.sky(nil); nova.fog(nil); nova.shadows(nil); nova.terrain()
     crowd.clear(); lamps.clear(); track.clear(); grid.clear(); fx.clear(); foliage.clear()
     nova.look(); nova.wind()
   end
@@ -176,7 +180,7 @@ function race.define(config)
       local car = put(pool[(i - 1) % #pool + 1], slots[i])
       -- a rival drives its own car (its top speed, its grip) as hard as the difficulty and its own skill say
       local diff = state.current_difficulty()
-      car.name, car.lane = r.name, r.lane
+      car.name, car.lane, car.base_lane = r.name, r.lane, r.lane
       car.skill = diff.corner * r.skill     -- the share of its tyres' grip it dares to use in a bend
       car.vmax_base = car.top * diff.pace * r.skill
       car.vmax = car.vmax_base
@@ -264,6 +268,43 @@ function race.define(config)
     end
     if not at or best > 15 * 15 then return nil end
     return t - at * 0.1
+  end
+
+  -- Slipstream: close behind another car, in its wake, a car is pulled along: `car.draft` (0 to 1) builds up over a second or so and fades as
+  -- the wake is left, and entities/car.lua gives that much more top speed and pull. It works the same for the rivals, who also pull out to
+  -- the side to pass when they are drafting right behind a car.
+  local DRAFT_RANGE, DRAFT_WIDTH = 26, 2.2
+  function Race:update_draft(dt)
+    for _, car in ipairs(self.cars) do
+      local sh, ch = math.sin(car.heading), math.cos(car.heading)
+      local gap, lateral
+      for _, other in ipairs(self.cars) do
+        if other ~= car then
+          local dx, dz = other.x - car.x, other.z - car.z
+          local ahead = dx * sh + dz * ch
+          if ahead > 3.5 and ahead < DRAFT_RANGE and other.speed > 20 then
+            local side = dx * ch - dz * sh -- positive: it is on this car's left
+            if math.abs(side) < DRAFT_WIDTH and (not gap or ahead < gap) then gap, lateral = ahead, side end
+          end
+        end
+      end
+      local want = 0
+      if gap and car.speed > 22 and car.enabled then
+        want = math.min(1, (DRAFT_RANGE - gap) / (DRAFT_RANGE - 9)) * (1 - math.abs(lateral) / DRAFT_WIDTH * 0.6)
+      end
+      local now = car.draft or 0
+      car.draft = now + (want - now) * math.min(1, dt * (want > now and 1.5 or 0.8))
+      if car.is_player and car.draft > 0.5 and not self.drafted then self.drafted = true; nova.log("rally: slipstream") end
+      if not car.is_player and car.base_lane then
+        -- a rival right behind a car, with the wake building, pulls out to the side to pass it, and comes back when it is clear
+        local target = car.base_lane
+        -- (not into a bend: the sharpest of the next 160 m or so must be gentle)
+        local sharpest = 0
+        for j = 1, 16 do sharpest = math.max(sharpest, math.abs(track.point((car.waypoint or 1) + j).k)) end
+        if gap and gap < 10 and car.draft > 0.35 and sharpest < 0.02 then target = math.max(-3.4, math.min(3.4, car.base_lane - (lateral >= 0 and 1 or -1) * 2.6)) end
+        car.lane = (car.lane or target) + (target - (car.lane or target)) * math.min(1, dt * 1.2)
+      end
+    end
   end
 
   function Race:lap_of(car) return math.floor(car.progress / self.length) + 1 end
@@ -419,13 +460,14 @@ function race.define(config)
       self:locate(car)
     end
     self:bump_cars()
+    if self.phase == "racing" then self:update_draft(dt) end
 
     if self.phase == "racing" then
       -- rivals try a little harder when behind the player, and a little less when far ahead
       for _, car in ipairs(self.cars) do
         if not car.is_player and not car.finish_time then
           local gap = self.player.progress - car.progress        -- positive: the rival is behind
-          car.vmax = math.min(car.top, car.vmax_base * (1 + math.max(-car.band, math.min(car.band, gap * 0.0004))))
+          car.vmax = math.min(car.top * (1 + 0.05 * (car.draft or 0)), car.vmax_base * (1 + 0.05 * (car.draft or 0)) * (1 + math.max(-car.band, math.min(car.band, gap * 0.0004))))
         end
       end
       self:update_player_lap()
@@ -445,7 +487,7 @@ function race.define(config)
         if asked or car.off_middle > 60 or ((car ~= p or p.autopilot) and car.stuck > 4) then
           self:respawn(car)
           if car == p then self:say("Back on the road", 1.5) end
-          if car ~= p or not p.autopilot then nova.log(car.name .. " put back on the road") end
+          if car ~= p or not p.autopilot then nova.log(string.format("%s put back on the road (at %.0f, %.0f; speed %.1f, %.0f m from the middle, waypoint %d)", car.name, car.x, car.z, car.speed, car.off_middle, car.waypoint or 0)) end
         end
       end
     end
@@ -515,7 +557,7 @@ function race.define(config)
     orbit.lift = orbit.lift + ((math.abs(want_yaw) > 2.5 and 0.3 or 0) - orbit.lift) * math.min(1, dt * 5)
     -- speed blur: the picture streaks toward its edges as the speed climbs past 30 m/s (and not while looking round)
     if self.look_now then
-      local want = math.max(0, math.min(1, (speed - 30) / 16)) * 0.55 * (1 - math.min(1, math.abs(orbit.yaw)))
+      local want = (math.max(0, math.min(1, (speed - 30) / 16)) * 0.55 + (p.draft or 0) * 0.3) * (1 - math.min(1, math.abs(orbit.yaw)))
       self.blur_now = self.blur_now + (want - self.blur_now) * math.min(1, dt * 3)
       self.look_now.blur = self.blur_now
       nova.look(self.look_now)
@@ -556,7 +598,8 @@ function race.define(config)
     local o = beam_opts
     o.color, o.radius, o.angle = opts.color, opts.radius, opts.angle
     o.dir[1], o.dir[2], o.dir[3] = fx + lx * side * 0.07, -0.1, fz + lz * side * 0.07
-    nova.point_light(car.x + fx * 1.7 + lx * side * 0.55, 0.75, car.z + fz * 1.7 + lz * side * 0.55, o)
+    local px, pz = car.x + fx * 1.7 + lx * side * 0.55, car.z + fz * 1.7 + lz * side * 0.55
+    nova.point_light(px, 0.75 + nova.terrain_height(px, pz), pz, o)
   end
 
   function Race:night_lights(cam)
@@ -582,9 +625,14 @@ function race.define(config)
 
   function Race:draw()
     local cam = self.camera
-    nova.camera(cam.x, cam.y, cam.z, cam.tx, cam.ty, cam.tz, cam.fov)
+    -- (the renderer lifts everything on the ground by the hills; a camera, like a light, is placed by hand: above the ground under it, and
+    -- over the crest of a hill that it is behind)
+    local ground_here, ground_there = nova.terrain_height(cam.x, cam.z), nova.terrain_height(cam.tx, cam.tz)
+    nova.camera(cam.x, math.max(cam.y + ground_here, ground_there + 1.2), cam.z, cam.tx, cam.ty + ground_there, cam.tz, cam.fov)
     if config.night then self:night_lights(cam) end
     horizon.draw(cam.x, cam.z, config.horizon)
+    -- the road: one ribbon along the whole circuit (scripts/rally/tracks.mjs), drawn from here (it casts no shadow)
+    nova.model("road_" .. state.current_track().id, 0, 0, 0, ROAD_OPTS)
     fx.draw_skids(cam.x, cam.z, 90)
     crowd.draw(cam.x, cam.z, self.crowd_time or 0)
     local gx, gz, gh = self:ghost_pose()
@@ -603,6 +651,13 @@ function race.define(config)
     -- the car, bottom right: tyres and body, then the gear and speed, then a bar for how near top speed it is
     local px, py, pw, ph = w - 232, 388, 212, 136
     ui.panel(px, py, pw, ph, 205, ui.color.sky)
+    -- slipstream: a bar above the panel while the wake of a car in front is pulling the car along
+    if (p.draft or 0) > 0.04 then
+      ui.panel(px, py - 34, pw, 30, 205)
+      ui.label(px + 12, py - 25, "SLIPSTREAM")
+      nova.ui.rect(px + 112, py - 22, 88, 7, { 255, 255, 255, 36 })
+      nova.ui.rect(px + 112, py - 22, 88 * math.min(1, p.draft), 7, ui.color.sky)
+    end
     for i, bar in ipairs({ { "TYRES", p.tyres }, { "BODY", 1 - p.damage } }) do
       local by = py + 14 + (i - 1) * 18
       ui.label(px + 12, by - 4, bar[1])

@@ -224,6 +224,27 @@
   "group": "Drawing"
  },
  {
+  "name": "nova.terrain",
+  "kind": "function",
+  "signature": "nova.terrain{ waves = { { wavelength = 400, direction = 30, height = 6, phase = 0 }, ... } } | nova.terrain()",
+  "doc": "Hills. The ground's height is the sum of up to eight sine waves over the ground: `wavelength` is metres from crest to crest, `direction` degrees on the ground (0 varies along +x, 90 along +z), `height` the metres from the middle to a crest, `phase` a shift in radians. Every model drawn near the ground (an instance whose origin is below 30 m) is lifted by the height under each of its vertices, shadows included, so a game draws on flat ground as before and the hills follow: roads, cars and trees alike. Mind the steepness: the slope of a wave is up to 2 pi x height / wavelength. `nova.terrain()` makes the ground flat again.",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.terrain_height",
+  "kind": "function",
+  "signature": "nova.terrain_height(x, z)",
+  "doc": "The height of the ground at (x, z) under nova.terrain (0 on flat ground). Add it to a camera, a light or a particle emitter that is placed by hand; models are lifted by the renderer.",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.terrain_slope",
+  "kind": "function",
+  "signature": "nova.terrain_slope(x, z)",
+  "doc": "How fast the ground rises there: two numbers, along x and along z (metres of height per metre). 0, 0 on flat ground.",
+  "group": "Drawing"
+ },
+ {
   "name": "nova.wind",
   "kind": "function",
   "signature": "nova.wind{ direction = 0, strength = 1 } | nova.wind()",

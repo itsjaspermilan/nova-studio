@@ -3,6 +3,11 @@
 local looks = {}
 
 looks.pine_ridge = {
+  -- the hills (nova.terrain; heights in metres; the steepest road grade is about 10%)
+  terrain = { waves = {
+    { wavelength = 380, direction = 20, height = 5, phase = 0.4 },
+    { wavelength = 240, direction = 110, height = 2.2, phase = 2.1 },
+  } },
   horizon = "forest",
   road = "road_asphalt",
   sky = { top = { 92, 148, 224 }, horizon = { 196, 220, 238 } },
@@ -15,6 +20,11 @@ looks.pine_ridge = {
 }
 
 looks.dust_valley = {
+  -- the hills (nova.terrain; heights in metres, the steepest road grade is about 10%): see scripts in the tests for the check
+  terrain = { waves = {
+    { wavelength = 450, direction = 70, height = 6.5, phase = 1 },
+    { wavelength = 280, direction = 160, height = 2.5, phase = 0.2 },
+  } },
   horizon = "desert",
   road = "road_dirt",
   sky = { top = { 120, 160, 215 }, horizon = { 240, 205, 160 } },
@@ -28,6 +38,11 @@ looks.dust_valley = {
 }
 
 looks.frost_pass = {
+  -- the hills (nova.terrain; heights in metres, the steepest road grade is about 10%): see scripts in the tests for the check
+  terrain = { waves = {
+    { wavelength = 500, direction = 0, height = 8, phase = 0.7 },
+    { wavelength = 320, direction = 90, height = 2.5, phase = 2.5 },
+  } },
   horizon = "snow",
   road = "road_snow",
   sky = { top = { 150, 175, 205 }, horizon = { 222, 232, 242 } },
@@ -40,6 +55,11 @@ looks.frost_pass = {
 }
 
 looks.harbour_lights = {
+  -- the hills (nova.terrain; heights in metres, the steepest road grade is about 10%): see scripts in the tests for the check
+  terrain = { waves = {
+    { wavelength = 420, direction = 30, height = 3, phase = 0.1 },
+    { wavelength = 240, direction = 120, height = 1.2, phase = 2 },
+  } },
   horizon = "night",
   road = "road_asphalt",
   night = true,

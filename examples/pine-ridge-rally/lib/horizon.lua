@@ -18,8 +18,10 @@ local ground_opts = { scale = 1, shadow = false } -- (the far scenery casts no s
 
 -- `kind`: "forest", "desert", "snow" or "night".
 function horizon.draw(cx, cz, kind)
-  local ground = (kind == "desert" and "ground_sand") or (kind == "snow" and "ground_snow") or (kind == "night" and "ground_night") or "ground_grass"
-  nova.model(ground, cx, 0, cz, ground_opts)
+  local ground = (kind == "desert" and "land_sand") or (kind == "snow" and "land_snow") or (kind == "night" and "land_night") or "land_grass"
+  -- (the ground is a grid of squares that the hills lift by their vertices: it moves a whole square at a time, so that they do not slide over the hills)
+  local sx, sz = math.floor(cx / 16 + 0.5) * 16, math.floor(cz / 16 + 0.5) * 16
+  nova.model(ground, sx, 0, sz, ground_opts)
   local peak = (kind == "desert" and "mountain_red") or (kind == "snow" and "mountain_ice") or (kind == "night" and "mountain_night") or "mountain"
   for i = 1, RING do
     local m = mountains[i]

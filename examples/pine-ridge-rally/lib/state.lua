@@ -2,10 +2,10 @@
 local state = {}
 
 state.tracks = {
-  { id = "pine_ridge", name = "Pine Ridge", blurb = "Fast asphalt through the pines. Long straights, one tight hairpin.", laps = 3, music = "race_forest" },
-  { id = "dust_valley", name = "Dust Valley", blurb = "Loose dirt and twisty bends between the mesas.", laps = 3, music = "race_desert" },
-  { id = "frost_pass", name = "Frost Pass", blurb = "Packed snow on a long, looping pass. Grip is thin: brake early and be gentle.", laps = 3, music = "race_snow" },
-  { id = "harbour_lights", name = "Harbour Lights", blurb = "Asphalt after dark. Lamps mark the way; your headlights do the rest.", laps = 3, music = "race_night" },
+  { id = "pine_ridge", name = "Pine Ridge", blurb = "Fast asphalt through the pines. Long straights, one tight hairpin.", laps = 2, music = "race_forest" },
+  { id = "dust_valley", name = "Dust Valley", blurb = "Loose dirt and twisty bends between the mesas.", laps = 2, music = "race_desert" },
+  { id = "frost_pass", name = "Frost Pass", blurb = "Packed snow on a long, looping pass. Grip is thin: brake early and be gentle.", laps = 2, music = "race_snow" },
+  { id = "harbour_lights", name = "Harbour Lights", blurb = "Asphalt after dark. Lamps mark the way; your headlights do the rest.", laps = 2, music = "race_night" },
 }
 -- The classes: you race the other cars of your own class (the grid on the car page is split by them)
 state.classes = {
@@ -45,7 +45,7 @@ state.difficulties = {
 
 state.track = 1       -- index into state.tracks
 state.car = 1         -- index into state.cars
-state.laps = 3
+state.laps = 2
 state.difficulty = "medium"
 state.mode = "race"    -- "race" (against three rivals) or "trial" (alone, against your best lap's ghost)
 state.music_volume = 0.7

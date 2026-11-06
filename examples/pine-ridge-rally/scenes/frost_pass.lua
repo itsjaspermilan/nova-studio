@@ -8,4 +8,5 @@ return require("lib.race").define {
   sky = look.sky,
   music = "race_snow",
   sun = look.sun,
+  terrain = look.terrain,
 }

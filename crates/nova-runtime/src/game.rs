@@ -1410,6 +1410,57 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             Ok(())
         })?,
     )?;
+    // terrain { waves = { { wavelength = 400, direction = 30, height = 6, phase = 0 }, ... } }: hills. The ground's height is the sum of up to eight
+    // sine waves (`wavelength` metres from crest to crest, `direction` degrees on the ground, 0 along +x and 90 along +z, `height` the metres from the
+    // middle to a crest); every model drawn near the ground is lifted by the height under each of its vertices. nova.terrain() makes it flat again.
+    let s = shared.clone();
+    nova.set(
+        "terrain",
+        lua.create_function(move |_, opts: Option<Table>| {
+            let mut terrain = crate::gfx::Terrain::default();
+            if let Some(opts) = opts {
+                let waves: Table = opts.get("waves").map_err(|_| {
+                    lua_err("terrain takes waves = { { wavelength = 400, direction = 30, height = 6 }, ... }")
+                })?;
+                for wave in waves.sequence_values::<Table>() {
+                    let wave = wave?;
+                    if terrain.count >= crate::gfx::MAX_TERRAIN_WAVES {
+                        return Err(lua_err(&format!("terrain has room for {} waves", crate::gfx::MAX_TERRAIN_WAVES)));
+                    }
+                    let some = Some(wave);
+                    let wavelength = number_option(&some, "wavelength")?.unwrap_or(400.0);
+                    let direction = number_option(&some, "direction")?.unwrap_or(0.0);
+                    let height = number_option(&some, "height")?.unwrap_or(5.0);
+                    let phase = number_option(&some, "phase")?.unwrap_or(0.0);
+                    if !wavelength.is_finite() || wavelength < 10.0 || !direction.is_finite() || !height.is_finite() || !phase.is_finite() {
+                        return Err(lua_err("a terrain wave needs a wavelength of at least 10 metres and finite numbers"));
+                    }
+                    let k = std::f32::consts::TAU / wavelength as f32;
+                    let a = (direction as f32).to_radians();
+                    terrain.waves[terrain.count] = [k * a.cos(), k * a.sin(), height as f32, phase as f32];
+                    terrain.count += 1;
+                }
+            }
+            s.borrow_mut().lighting.terrain = terrain;
+            Ok(())
+        })?,
+    )?;
+    // terrain_height(x, z): the ground's height there. terrain_slope(x, z): how fast it rises along x and along z (two numbers).
+    let s = shared.clone();
+    nova.set(
+        "terrain_height",
+        lua.create_function(move |_, (x, z): (f64, f64)| {
+            Ok(s.borrow().lighting.terrain.height(x as f32, z as f32) as f64)
+        })?,
+    )?;
+    let s = shared.clone();
+    nova.set(
+        "terrain_slope",
+        lua.create_function(move |_, (x, z): (f64, f64)| {
+            let g = s.borrow().lighting.terrain.slope(x as f32, z as f32);
+            Ok((g[0] as f64, g[1] as f64))
+        })?,
+    )?;
     let s = shared.clone();
     nova.set(
         "point_light",

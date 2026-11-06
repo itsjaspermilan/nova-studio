@@ -19,6 +19,7 @@ struct Globals {
     sky_extra: vec4<f32>,
     wind: vec4<f32>,        // xy: the way the wind blows (unit), z: how strong (0: none), w: the time
     point_dir: array<vec4<f32>, 20>,   // xyz: the way a spot light points (zero: every way), w: cosine of half its cone
+    terrain: array<vec4<f32>, 9>,      // [0].x: how many hill waves; then (kx, kz, amplitude, phase) each
 };
 @group(0) @binding(0) var<uniform> globals: Globals;
 @group(1) @binding(0) var base_texture: texture_2d<f32>;
@@ -69,6 +70,31 @@ fn wind_offset(origin: vec3<f32>, world: vec3<f32>, sway: f32) -> vec3<f32> {
     return offset;
 }
 
+
+// Hills: the ground's height as a sum of up to eight sine waves over the ground (`nova.terrain`): terrain[0].x is how many, terrain[1..]
+// are (kx, kz, amplitude, phase). Every vertex is lifted by the height under it, so a flat model laid on the ground (a road piece, a
+// car, a tree) follows the hills; things up in the sky (an instance whose origin is above 30 m: clouds) stay where they are.
+fn terrain_height(p: vec2<f32>) -> f32 {
+    let n = i32(globals.terrain[0].x);
+    var h = 0.0;
+    for (var i = 0; i < n; i = i + 1) {
+        let w = globals.terrain[i + 1];
+        h = h + w.z * sin(w.x * p.x + w.y * p.y + w.w);
+    }
+    return h;
+}
+
+// The slope of the ground there: d height / dx and d height / dz.
+fn terrain_slope(p: vec2<f32>) -> vec2<f32> {
+    let n = i32(globals.terrain[0].x);
+    var g = vec2<f32>(0.0);
+    for (var i = 0; i < n; i = i + 1) {
+        let w = globals.terrain[i + 1];
+        g = g + w.z * cos(w.x * p.x + w.y * p.y + w.w) * vec2<f32>(w.x, w.y);
+    }
+    return g;
+}
+
 // A direction made unit length; a zero-length one (a degenerate face in a model file) stays zero. A plain normalize() of
 // zero is NaN, which Metal quietly turns into "no sun" but Vulkan drivers carry through to black pixels.
 fn safe_normalize(v: vec3<f32>) -> vec3<f32> {
@@ -100,10 +126,18 @@ fn vs_main(v: Vertex, inst: Instance) -> VertexOut {
     out.dissolve = inst.m1.w;
     var world = model * vec4<f32>(v.position, 1.0);
     world = vec4<f32>(world.xyz + wind_offset(inst.m3.xyz, world.xyz, inst.m2.w), 1.0);
+    var normal = select(safe_normalize((model * vec4<f32>(v.normal, 0.0)).xyz), v.normal, v.emissive < 0.0);
+    if (globals.terrain[0].x > 0.0 && inst.m3.y < 30.0) {
+        // on the hills: lifted by the ground's height, and the normal leans with its slope (the shear's inverse transpose)
+        world = vec4<f32>(world.x, world.y + terrain_height(world.xz), world.z, 1.0);
+        if (v.emissive >= 0.0) {
+            let g = terrain_slope(world.xz);
+            normal = safe_normalize(vec3<f32>(normal.x - g.x * normal.y, normal.y, normal.z - g.y * normal.y));
+        }
+    }
     out.world = world.xyz;
     out.position = globals.view_proj * world;
-    // voxel meshes (emissive < 0) carry their baked light levels in `normal` instead of a direction
-    out.normal = select(safe_normalize((model * vec4<f32>(v.normal, 0.0)).xyz), v.normal, v.emissive < 0.0);
+    out.normal = normal;
     out.color = v.color * vec4<f32>(srgb_to_linear(inst.tint.rgb), inst.tint.a);
     out.uv = v.uv;
     out.emissive = v.emissive;
@@ -241,10 +275,16 @@ fn vs_skinned(v: SkinVertex, inst: Instance) -> VertexOut {
     let posed = skin * vec4<f32>(v.position, 1.0);
     let normal = (skin * vec4<f32>(v.normal, 0.0)).xyz;
     var out: VertexOut;
-    let world = model * posed;
+    var world = model * posed;
+    var world_normal = safe_normalize((model * vec4<f32>(normal, 0.0)).xyz);
+    if (globals.terrain[0].x > 0.0 && inst.m3.y < 30.0) {
+        world = vec4<f32>(world.x, world.y + terrain_height(world.xz), world.z, 1.0);
+        let g = terrain_slope(world.xz);
+        world_normal = safe_normalize(vec3<f32>(world_normal.x - g.x * world_normal.y, world_normal.y, world_normal.z - g.y * world_normal.y));
+    }
     out.world = world.xyz;
     out.position = globals.view_proj * world;
-    out.normal = safe_normalize((model * vec4<f32>(normal, 0.0)).xyz);
+    out.normal = world_normal;
     out.dissolve = 0.0;
     out.color = v.color * vec4<f32>(srgb_to_linear(inst.tint.rgb), inst.tint.a);
     out.uv = v.uv;

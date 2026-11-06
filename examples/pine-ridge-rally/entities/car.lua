@@ -98,7 +98,7 @@ function Car:drive(dt)
   local live = self.enabled
   local sinh, cosh = math.sin(self.heading), math.cos(self.heading)
   local vf = self.velx * sinh + self.velz * cosh
-  local top = self.top * (self.surface == "rough" and 0.5 or 1) * (1 - 0.25 * self.damage)
+  local top = self.top * (self.surface == "rough" and 0.5 or 1) * (1 - 0.25 * self.damage) * (1 + 0.05 * (self.draft or 0)) -- (a slipstream: see race.lua)
 
   -- steering: the faster you go, the less the wheels can turn the car (and a damaged car drifts to one side)
   local steer = live and c.steer or 0
@@ -153,7 +153,7 @@ function Car:drive(dt)
   if live then
     if c.throttle > 0 and self.shift_time <= 0 then
       -- the pull fades towards the end of the gear; at the limiter it stops
-      local push = vf < 0 and self.power * 1.4 or self.power * (1 - 0.2 * self.damage) * gear.pull * math.max(0, 1 - 0.6 * share * share) * (share >= 1 and 0 or 1)
+      local push = vf < 0 and self.power * 1.4 or self.power * (1 - 0.2 * self.damage) * (1 + 0.12 * (self.draft or 0)) * gear.pull * math.max(0, 1 - 0.6 * share * share) * (share >= 1 and 0 or 1)
       vf = vf + push * c.throttle * dt
     end
     if c.brake > 0 then
@@ -161,6 +161,9 @@ function Car:drive(dt)
       else vf = math.max(-10, vf - self.power * 0.5 * c.brake * dt) end
     end
   end
+  -- hills: uphill takes speed away and downhill gives it (a little less than gravity: this is a game)
+  local gx, gz = nova.terrain_slope(self.x, self.z)
+  vf = vf - (gx * sinh + gz * cosh) * 7.5 * dt
   -- rolling resistance, engine braking, and the grass dragging at the wheels
   local sign = vf >= 0 and 1 or -1
   vf = vf - sign * math.min(math.abs(vf), (1.1 + kind.drag + 0.055 * math.abs(vf)) * dt)

@@ -49,7 +49,7 @@ function lamps.light(cx, cz, radius, max, opts)
     end
     near_lamps[pick], near_lamps[best] = near_lamps[best], near_lamps[pick]
     local l = near_lamps[pick].l
-    nova.point_light(l[1], l[2], l[3], opts)
+    nova.point_light(l[1], l[2] + nova.terrain_height(l[1], l[3]), l[3], opts)
   end
 end
 

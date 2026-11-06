@@ -25,6 +25,18 @@ Hidden files and folders (starting with `.`), symbolic links and the top-level f
 `build`, `target`, `node_modules` and `dist` are never part of a project. At most 20,000
 files, 64 MiB per file and 1 GiB in total.
 
+### Hills
+
+`nova.terrain{ waves = { { wavelength = 380, direction = 20, height = 5, phase = 0.4 }, ... } }` makes the ground rise and fall: its height is a sum of
+up to eight sine waves over the ground. The shaders lift every vertex of a model that stands near the ground (an instance whose origin is under
+30 m) by the height under it, shadows included, so a game keeps drawing on flat ground (roads, cars, trees, the particles) and the hills follow;
+only a camera, a light or anything else placed by hand adds `nova.terrain_height(x, z)`, and `nova.terrain_slope(x, z)` gives the slope
+(a car's weight on a hill). Because the lifting is by vertex, a flat model must have vertices where the ground bends: a road piece every
+few metres, and a ground made of a grid of squares (`scripts/rally/land.mjs`) rather than one big quad. The slope of a wave is up to
+2 pi x height / wavelength: Pine Ridge Rally's roads keep to about 10% (`lib/looks.lua`), which a handheld game feels as a real hill.
+Pine Ridge Rally lays each circuit's road as one ribbon mesh along the curve (`scripts/rally/tracks.mjs`, with the cross-section and colours of
+the Kenney Racing Kit's straight road) instead of slabs, so that a bend has no wedges and nothing overlaps.
+
 ### Icon and box art
 
 `icon.png` (square, 512 x 512 is plenty) in the project folder becomes the Android app's launcher icon, and `boxart.png` (a cover, any size) is

@@ -34,7 +34,8 @@ local function add(r, i, off, along)
   -- facing the road (the direction from the person to the nearest road point is -side), a little off
   local face = p.heading + (off > 0 and -math.pi / 2 or math.pi / 2) + (r() - 0.5) * 0.7
   local roll = r()
-  local clip = roll < 0.45 and "jump" or (roll < 0.75 and "emote-yes" or "idle")
+  -- (Kenney's own "jump" clip is a dive that lays the person flat: the cheering hop is made here instead, by lifting the person)
+  local clip = roll < 0.5 and "emote-yes" or "idle"
   count = count + 1
   people[count] = {
     x = x, z = z,
@@ -42,6 +43,7 @@ local function add(r, i, off, along)
       ry = face, scale = SIZE, clip = clip, time = 0, shadow = false,
     },
     size = SIZE * (0.92 + r() * 0.16),
+    hop = r() < 0.45 and (0.15 + r() * 0.2) or 0,
     kind = KINDS[math.floor(r() * #KINDS) + 1],
     rate = 0.8 + r() * 0.5, phase = r() * 4,
   }
@@ -108,7 +110,8 @@ function crowd.draw(cx, cz, t)
       local grow = math.min(1, (RANGE - d) / FADE)
       grow = grow * grow * (3 - 2 * grow) -- (smooth at both ends)
       p.opts.scale = p.size * grow
-      nova.model(p.kind, p.x, 0, p.z, p.opts)
+      local lift = p.hop > 0 and p.hop * math.abs(math.sin(t * 3.2 * p.rate + p.phase * 2)) or 0
+      nova.model(p.kind, p.x, lift, p.z, p.opts)
     end
   end
 end

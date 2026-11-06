@@ -18,6 +18,8 @@ struct Globals {
     sky_sun: vec4<f32>,
     sky_extra: vec4<f32>,
     wind: vec4<f32>,
+    point_dir: array<vec4<f32>, 20>,
+    terrain: array<vec4<f32>, 9>,
 };
 @group(0) @binding(0) var<uniform> globals: Globals;
 
@@ -59,11 +61,39 @@ fn wind_offset(origin: vec3<f32>, world: vec3<f32>, sway: f32) -> vec3<f32> {
     return offset;
 }
 
+
+// Hills: the ground's height as a sum of up to eight sine waves over the ground (`nova.terrain`): terrain[0].x is how many, terrain[1..]
+// are (kx, kz, amplitude, phase). Every vertex is lifted by the height under it, so a flat model laid on the ground (a road piece, a
+// car, a tree) follows the hills; things up in the sky (an instance whose origin is above 30 m: clouds) stay where they are.
+fn terrain_height(p: vec2<f32>) -> f32 {
+    let n = i32(globals.terrain[0].x);
+    var h = 0.0;
+    for (var i = 0; i < n; i = i + 1) {
+        let w = globals.terrain[i + 1];
+        h = h + w.z * sin(w.x * p.x + w.y * p.y + w.w);
+    }
+    return h;
+}
+
+// The slope of the ground there: d height / dx and d height / dz.
+fn terrain_slope(p: vec2<f32>) -> vec2<f32> {
+    let n = i32(globals.terrain[0].x);
+    var g = vec2<f32>(0.0);
+    for (var i = 0; i < n; i = i + 1) {
+        let w = globals.terrain[i + 1];
+        g = g + w.z * cos(w.x * p.x + w.y * p.y + w.w) * vec2<f32>(w.x, w.y);
+    }
+    return g;
+}
+
 @vertex
 fn vs_main(v: Vertex, inst: Instance) -> @builtin(position) vec4<f32> {
     let model = mat4x4<f32>(inst.m0, vec4<f32>(inst.m1.xyz, 0.0), vec4<f32>(inst.m2.xyz, 0.0), inst.m3);
     var world = model * vec4<f32>(v.position, 1.0);
     world = vec4<f32>(world.xyz + wind_offset(inst.m3.xyz, world.xyz, inst.m2.w), 1.0);
+    if (globals.terrain[0].x > 0.0 && inst.m3.y < 30.0) {
+        world = vec4<f32>(world.x, world.y + terrain_height(world.xz), world.z, 1.0);
+    }
     return globals.light_view_proj * world;
 }
 
@@ -102,5 +132,9 @@ fn vs_skinned(v: SkinVertex, inst: Instance) -> @builtin(position) vec4<f32> {
     if (total <= 0.0) {
         skin = mat4x4<f32>(vec4<f32>(1.0, 0.0, 0.0, 0.0), vec4<f32>(0.0, 1.0, 0.0, 0.0), vec4<f32>(0.0, 0.0, 1.0, 0.0), vec4<f32>(0.0, 0.0, 0.0, 1.0));
     }
-    return globals.light_view_proj * (model * (skin * vec4<f32>(v.position, 1.0)));
+    var world = model * (skin * vec4<f32>(v.position, 1.0));
+    if (globals.terrain[0].x > 0.0 && inst.m3.y < 30.0) {
+        world = vec4<f32>(world.x, world.y + terrain_height(world.xz), world.z, 1.0);
+    }
+    return globals.light_view_proj * world;
 }

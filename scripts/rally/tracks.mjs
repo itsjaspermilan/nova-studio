@@ -1,7 +1,9 @@
 // Lays out the rally game's two circuits as scene files, through the Nova MCP server's `scene_write` tool: a closed curve through
 // control points, road pieces along it, waypoints for the cars to follow, a start line and grid, and scenery on both sides.
 // (In the studio this is what placing objects in the 3D scene view makes; here a script does the placing.)
-import { withServer } from "./mcp.mjs";
+import fs from "node:fs";
+import path from "node:path";
+import { withServer, GAME } from "./mcp.mjs";
 
 // ---- the curve ---------------------------------------------------------------------------------------------------------
 const catmull = (p0, p1, p2, p3, t) => {
@@ -72,7 +74,8 @@ function layout(spec) {
 
   // the road, with the start line on the first piece
   // (every other slab a hair higher: they overlap, and the kit's road has lines that would flicker where two slabs share a level)
-  line.forEach((p, i) => objects.push(obj(i === 0 ? "road_start" : spec.road, p.x, p.z, p.ry, {}, i % 2 ? 0.012 : 0)));
+  // (the road itself is one ribbon mesh, models/road_<circuit>.glb, drawn by lib/race.lua; only the start line is a piece, laid on it)
+  objects.push(obj("road_start", line[0].x, line[0].z, line[0].ry, {}, 0.03));
   objects.push(obj("start_arch", line[0].x, line[0].z, line[0].ry));
   objects.push(obj("tower", line[0].x + line[0].tz * 15, line[0].z - line[0].tx * 15, line[0].ry + Math.PI / 2));
 
@@ -148,7 +151,75 @@ function layout(spec) {
     camera: { eye: [r1(s0.x - s0.tx * 22 + 6), 9, r1(s0.z - s0.tz * 22)], target: [r1(s0.x), 1.5, r1(s0.z + 14)], fov: 62 },
     objects,
   };
-  return { scene, stats: { points: n, length, objects: objects.length, minRadius: Math.round(1 / Math.max(...curv.map(Math.abs))), line, curv } };
+  return { scene, stats: { points: n, length, objects: objects.length, minRadius: Math.round(1 / Math.max(...curv.map(Math.abs))), tightest: (() => { const i = curv.map(Math.abs).indexOf(Math.max(...curv.map(Math.abs))); return [Math.round(line[i].x), Math.round(line[i].z)]; })(), bends: curv.filter((k, i) => Math.abs(k) > 0.04 && Math.abs(curv[(i + 1) % curv.length]) <= 0.04).length, line, curv } };
+}
+
+// ---- the road as one ribbon ------------------------------------------------------------------------------------------------------
+// The road is not laid slab by slab (a straight slab on a bend leaves wedges on the outside and overlaps on the inside, and slabs that
+// overlap flicker unless one is raised a hair): it is one mesh along the curve, a row of quads every 2 m, with the cross-section of the
+// Kenney Racing Kit's `roadStraight` (12 m across: a 1 m verge, a 0.9 m line, then the asphalt) and its colours. The renderer lifts every
+// vertex by the hills (nova.terrain), which is why a row every 2 m is made, and a skirt hangs from each edge so that no gap shows under it.
+const ROAD_COLOURS = {
+  road_asphalt: { road: [0.2667, 0.2667, 0.2667], line: [0.9451, 0.949, 0.9647], verge: [0.302, 0.5608, 0.4314] },
+  road_dirt: { road: [0.5, 0.37, 0.24], line: [0.78, 0.66, 0.48], verge: [0.66, 0.48, 0.28] },
+  road_snow: { road: [0.6, 0.66, 0.74], line: [0.93, 0.96, 0.99], verge: [0.92, 0.95, 1.0] },
+};
+const CROSS = [[-6, -5.02, "verge"], [-5.02, -4.14, "line"], [-4.14, 4.14, "road"], [4.14, 5.02, "line"], [5.02, 6, "verge"]];
+
+function roadGlb(control, kind) {
+  const colours = ROAD_COLOURS[kind];
+  const rows = centreline(control, 2);
+  const n = rows.length;
+  const positions = [], normals = [], colors = [], indices = [];
+  const TOP = 0.02, SKIRT = -0.3;
+  const quad = (a, b, c, d, rgb, wantUp) => {
+    // a, b, c, d go round the quad; flip them if they face the wrong way
+    const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+    let nrm = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+    const len = Math.hypot(...nrm) || 1;
+    nrm = nrm.map((x) => x / len);
+    const flip = nrm[0] * wantUp[0] + nrm[1] * wantUp[1] + nrm[2] * wantUp[2] < 0;
+    const pts = flip ? [a, d, c, b] : [a, b, c, d];
+    if (flip) nrm = nrm.map((x) => -x);
+    const base = positions.length / 3;
+    for (const q of pts) { positions.push(...q); normals.push(...nrm); colors.push(...rgb, 1); }
+    indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  };
+  const at = (i, off, y) => { const p = rows[i % n]; return [p.x + p.tz * off, y, p.z - p.tx * off]; };
+  for (let i = 0; i < n; i++) {
+    const j = i + 1;
+    for (const [from, to, name] of CROSS) quad(at(i, from, TOP), at(i, to, TOP), at(j, to, TOP), at(j, from, TOP), colours[name], [0, 1, 0]);
+    // the skirts: down from each outer edge, in the dark of the verge
+    const dark = colours.verge.map((x) => x * 0.55);
+    for (const side of [-6, 6]) quad(at(i, side, TOP), at(j, side, TOP), at(j, side, SKIRT), at(i, side, SKIRT), dark, [side < 0 ? -rows[i].tz : rows[i].tz, 0, side < 0 ? rows[i].tx : -rows[i].tx]);
+  }
+  const P = new Float32Array(positions), N = new Float32Array(normals), C = new Float32Array(colors), I = new Uint32Array(indices);
+  const parts = [P, N, C, I].map((a) => Buffer.from(a.buffer));
+  const offsets = []; let atb = 0;
+  for (const b of parts) { offsets.push(atb); atb += b.length; }
+  const bin = Buffer.concat(parts);
+  const xs = [], ys = [], zs = [];
+  for (let k = 0; k < positions.length; k += 3) { xs.push(positions[k]); ys.push(positions[k + 1]); zs.push(positions[k + 2]); }
+  const json = {
+    asset: { version: "2.0", generator: "nova scripts/rally/tracks.mjs" },
+    scene: 0, scenes: [{ nodes: [0] }], nodes: [{ name: "road", mesh: 0 }],
+    meshes: [{ name: "road", primitives: [{ attributes: { POSITION: 0, NORMAL: 1, COLOR_0: 2 }, indices: 3, mode: 4 }] }],
+    accessors: [
+      { bufferView: 0, componentType: 5126, count: positions.length / 3, type: "VEC3", min: [Math.min(...xs), Math.min(...ys), Math.min(...zs)], max: [Math.max(...xs), Math.max(...ys), Math.max(...zs)] },
+      { bufferView: 1, componentType: 5126, count: positions.length / 3, type: "VEC3" },
+      { bufferView: 2, componentType: 5126, count: positions.length / 3, type: "VEC4" },
+      { bufferView: 3, componentType: 5125, count: indices.length, type: "SCALAR" },
+    ],
+    bufferViews: parts.map((b, k) => ({ buffer: 0, byteOffset: offsets[k], byteLength: b.length, target: k === 3 ? 34963 : 34962 })),
+    buffers: [{ byteLength: bin.length }],
+  };
+  let js = Buffer.from(JSON.stringify(json));
+  js = Buffer.concat([js, Buffer.alloc((4 - (js.length % 4)) % 4, 0x20)]);
+  const head = Buffer.alloc(12);
+  head.write("glTF", 0); head.writeUInt32LE(2, 4); head.writeUInt32LE(12 + 8 + js.length + 8 + bin.length, 8);
+  const c1 = Buffer.alloc(8); c1.writeUInt32LE(js.length, 0); c1.write("JSON", 4);
+  const c2 = Buffer.alloc(8); c2.writeUInt32LE(bin.length, 0); c2.write("BIN\0", 4);
+  return Buffer.concat([head, c1, js, c2, bin]);
 }
 
 // ---- a text map, to look at the shape ----------------------------------------------------------------------------------
@@ -177,13 +248,13 @@ function tightest(line, spacing) {
 const tracks = {
   pine_ridge: {
     seed: 7, road: "road_asphalt", rail: "guardrail", sky: [138, 182, 224],
-    control: [[0, -90], [0, 0], [0, 150], [30, 250], [110, 310], [230, 330], [330, 310], [390, 240], [378, 150], [352, 92], [366, 28], [336, -52], [268, -128], [190, -210], [80, -240], [-40, -220], [-70, -150]],
+    control: [[0, -90], [0, 0], [0, 150], [25, 240], [95, 285], [170, 265], [215, 320], [290, 348], [362, 300], [378, 225], [335, 170], [365, 112], [425, 72], [405, -8], [335, -30], [300, -98], [342, -165], [290, -232], [205, -250], [150, -192], [88, -242], [0, -262], [-82, -212], [-80, -140]],
     trees: ["pine", "pine", "pine_dark", "pine_dark", "autumn_tree", "birch"], small: ["bush", "bush", "rock"], rock: "rock", density: 0.5, rocks: 0.06,
     far: { kind: "pine_dark", density: 0.5 }, landmarks: { kind: "pine_dark", count: 0, radius: 0 },
   },
   dust_valley: {
     seed: 21, road: "road_dirt", rail: "guardrail", sky: [236, 190, 140],
-    control: [[0, -70], [0, 0], [0, 120], [50, 200], [140, 235], [230, 200], [250, 120], [190, 60], [120, 90], [80, 20], [120, -60], [190, -110], [200, -190], [120, -240], [20, -220], [-40, -150]],
+    control: [[0, -70], [0, 0], [0, 120], [45, 195], [120, 225], [190, 190], [235, 235], [300, 215], [318, 150], [290, 88], [225, 72], [180, 25], [190, -40], [250, -85], [272, -150], [240, -205], [170, -215], [135, -160], [75, -195], [10, -235], [-50, -180], [-40, -120]],
     trees: ["cactus", "cactus", "dry_bush"], small: ["dry_bush", "rock_red", "dry_bush"], rock: "rock_red", density: 0.32, rocks: 0.1,
     far: { kind: "mesa", density: 0.22 }, landmarks: { kind: "mesa", count: 14, radius: 190 },
   },
@@ -192,22 +263,29 @@ const tracks = {
 const only = process.argv[2];
 tracks.frost_pass = {
   seed: 33, road: "road_snow", rail: "guardrail", sky: [196, 216, 236],
-  control: [[0, -80], [0, 0], [0, 110], [-50, 190], [-140, 215], [-215, 165], [-205, 80], [-130, 40], [-105, -30], [-155, -105], [-135, -185], [-55, -225], [40, -195], [70, -125]],
+  control: [[0, -80], [0, 0], [0, 110], [-45, 185], [-120, 205], [-185, 250], [-270, 222], [-288, 150], [-255, 90], [-195, 74], [-172, 14], [-105, 0], [-72, -48], [-105, -95], [-180, -108], [-205, -170], [-140, -215], [-75, -170], [-20, -215], [50, -190], [60, -125]],
   trees: ["pine_snow", "pine_snow", "pine_snow", "pine_dark"], small: ["bush_snow", "rock_ice", "bush_snow"], rock: "rock_ice", density: 0.55, rocks: 0.08,
   far: { kind: "pine_snow", density: 0.6 }, landmarks: { kind: "pine_snow", count: 0, radius: 0 },
 };
 tracks.harbour_lights = {
   seed: 45, road: "road_asphalt", rail: "guardrail", sky: [12, 18, 34], lamps: true,
-  control: [[0, -80], [0, 0], [0, 130], [60, 215], [150, 245], [235, 215], [250, 130], [200, 70], [215, -10], [265, -80], [240, -165], [160, -215], [80, -195], [30, -160], [4, -120]],
+  control: [[0, -80], [0, 0], [0, 130], [55, 205], [130, 235], [190, 290], [270, 270], [285, 195], [225, 150], [260, 90], [330, 60], [320, -20], [255, -50], [275, -120], [215, -175], [140, -150], [95, -205], [20, -190], [5, -135]],
   trees: ["pine_dark", "pine_dark", "bush"], small: ["bush", "rock", "bush"], rock: "rock", density: 0.3, rocks: 0.05,
   far: { kind: "pine_dark", density: 0.3 }, landmarks: { kind: "pine_dark", count: 0, radius: 0 },
 };
-await withServer(async (nova) => {
+// DRY=1 only draws the maps and prints the numbers (nothing is written)
+const dry = !!process.env.DRY;
+const run = async (nova) => {
   for (const [name, spec] of Object.entries(tracks)) {
     if (only && only !== name) continue;
     const { scene, stats } = layout(spec);
-    console.log(`\n${name}: ${stats.length} m, ${stats.points} road pieces, ${stats.objects} objects, tightest bend radius ~${stats.minRadius} m, closest approach ${tightest(stats.line, 5)} m`);
+    console.log(`\n${name}: ${stats.length} m, ${stats.points} road pieces, ${stats.objects} objects, tightest bend radius ~${stats.minRadius} m at ${stats.tightest}, ${stats.bends} sharp bends, closest approach ${tightest(stats.line, 5)} m`);
     console.log(ascii(stats.line));
-    console.log(await nova.call("scene_write", { name, scene }));
+    if (!dry) {
+      fs.writeFileSync(path.join(GAME, "models", `road_${name}.glb`), roadGlb(spec.control, spec.road));
+      console.log(await nova.call("scene_write", { name, scene }));
+    }
   }
-});
+};
+if (dry) await run(null);
+else await withServer(run);

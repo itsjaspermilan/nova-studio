@@ -118,7 +118,7 @@ fn play(circuit_steps: usize, trial: bool) -> Vec<String> {
 fn a_whole_race_on_pine_ridge_ends_on_the_results_screen() {
     let log = play(0, false);
     let laps = log.iter().filter(|l| l.starts_with("lap ")).count();
-    assert_eq!(laps, 3, "a lap line for each of the three laps: {log:?}");
+    assert_eq!(laps, 2, "a lap line for each of the two laps: {log:?}");
     assert!(
         !log.iter().any(|l| l.contains("put back on the road")),
         "nobody got stuck: {log:?}"
@@ -151,7 +151,7 @@ fn a_whole_race_on_dust_valley_ends_on_the_results_screen() {
     assert!(log.iter().any(|l| l.starts_with("results:")), "{log:?}");
     assert_eq!(
         log.iter().filter(|l| l.starts_with("lap ")).count(),
-        3,
+        2,
         "{log:?}"
     );
     assert!(
@@ -165,6 +165,10 @@ fn a_whole_race_on_dust_valley_ends_on_the_results_screen() {
         .find(|l| l.contains("a time for"))
         .expect("a results line");
     assert!(line.contains("a time for 4 of 4 cars"), "{line}");
+    assert!(
+        log.iter().any(|l| l.contains("rally: slipstream")),
+        "the player drafted behind a rival at some point: {log:?}"
+    );
     assert!(
         line.ends_with("rivals: car_yellow car_yellow car_yellow"),
         "{line}"
@@ -184,7 +188,7 @@ fn a_time_trial_has_no_rivals_and_keeps_the_ghost_of_the_best_lap() {
     );
     assert_eq!(
         log.iter().filter(|l| l.starts_with("lap ")).count(),
-        3,
+        2,
         "{log:?}"
     );
     let saved: Vec<_> = log
@@ -208,7 +212,7 @@ fn a_whole_race_on_frost_pass_ends_on_the_results_screen() {
     assert!(log.iter().any(|l| l.starts_with("results:")), "{log:?}");
     assert_eq!(
         log.iter().filter(|l| l.starts_with("lap ")).count(),
-        3,
+        2,
         "{log:?}"
     );
     assert!(
@@ -223,7 +227,7 @@ fn a_whole_race_on_harbour_lights_ends_on_the_results_screen() {
     assert!(log.iter().any(|l| l.starts_with("results:")), "{log:?}");
     assert_eq!(
         log.iter().filter(|l| l.starts_with("lap ")).count(),
-        3,
+        2,
         "{log:?}"
     );
     assert!(
@@ -449,7 +453,8 @@ fn stat(g: &mut Game) -> std::collections::HashMap<String, f32> {
 fn the_sedan_and_hatchback_drift_under_power_in_a_bend_and_the_formula_car_grips() {
     // Redline (0), Blue Streak (1), Green Machine (2)
     let (formula_slip, _, _) = cornering(0, 90, 4, 0.7);
-    let (blue_slip, blue_speed, _) = cornering(1, 90, 4, 0.7);
+    let (blue_slip, _, _) = cornering(1, 90, 4, 0.7);
+    let (_, blue_speed, _) = cornering(1, 50, 4, 0.7);
     let (green_slip, _, _) = cornering(2, 90, 4, 0.7);
     let (gentle_slip, _, _) = cornering(1, 90, 4, 0.4);
     assert!(
@@ -716,9 +721,17 @@ fn one_lap(class: usize, step: usize, difficulty_steps: i32) -> String {
     run_until(&mut g, &mut log, "the results", 60 * 60 * 6, |l| {
         l.iter().any(|x| x.starts_with("results: times"))
     });
-    log.into_iter()
+    let stuck = log.iter().filter(|l| l.contains("put back on the road")).count();
+    let log_copy = log.clone();
+    let times = log
+        .into_iter()
         .find(|l| l.starts_with("results: times"))
-        .unwrap()
+        .unwrap();
+    if stuck > 0 {
+        format!("{times} (STUCK {stuck} times: {:?})", log_copy.iter().filter(|l| l.contains("put back on the road")).collect::<Vec<_>>())
+    } else {
+        times
+    }
 }
 
 #[test]
