@@ -50,9 +50,9 @@ function Scene:plant()
   job("bush", 260, { area = { -78, -78, 78, 78 }, seed = 7, scale = { 0.9, 1.8 }, min_normal_y = 0.8,
     sway = 0.04, max_distance = 120, filter = function(x, z, y) return clear(x, z) and (x * x + z * z) > 36 end })
   job("pine", 170, { area = { -78, -78, 78, 78 }, seed = 9, scale = { 0.9, 1.7 }, min_normal_y = 0.9,
-    sway = 0.012, filter = function(x, z, y) return clear(x, z) and (x * x + z * z) > 100 and y < 26 end })
+    sway = 0.03, filter = function(x, z, y) return clear(x, z) and (x * x + z * z) > 100 and y < 26 end })
   job("birch", 90, { area = { -78, -78, 78, 78 }, seed = 13, scale = { 0.9, 1.5 }, min_normal_y = 0.9,
-    sway = 0.015, filter = function(x, z, y) return clear(x, z) and (x * x + z * z) > 100 and y < 14 end })
+    sway = 0.035, filter = function(x, z, y) return clear(x, z) and (x * x + z * z) > 100 and y < 14 end })
 end
 
 -- (a script that runs too long in one frame is stopped, so the planting is done a little each frame: the field fills in over a quarter of a second)

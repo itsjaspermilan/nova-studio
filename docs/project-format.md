@@ -134,14 +134,15 @@ nova.model("pine", x, y, z, { sway = 0.012 })                    -- one that is 
 
 `sway` is how far the top of a thing one metre tall is pushed at full wind; the shaders bend each vertex in proportion to its height
 above the model's origin, with a slow swell that travels across the field along the wind and a quicker flutter on it (shadows bend
-too). Grass is a plain vertex-coloured model of eight thin blades drawn from both sides (16 triangles a tuft; `scripts/hills/make-foliage.mjs`
+too). Up in a tree (over a metre above its origin and away from the trunk's axis) each vertex also shakes by a little, by where it is,
+so that a crown shimmers instead of leaning like a post (a few sines a vertex: it costs nothing you can measure; pines and birches
+in Hill Run use `sway` 0.03 to 0.035). Grass is a plain vertex-coloured model of eight thin blades drawn from both sides (16 triangles a tuft; `scripts/hills/make-foliage.mjs`
 makes the three in Hill Run). `scatter` puts the copies where the ground is (by default the first `nova.solid` surface from above, or
 your own `ground(x, z) -> height, normal_y`), refusing steep spots (`min_normal_y`) and any a `filter` says no to; the same `seed` gives
 the same field. Pieces are kept in Rust and drawn near the camera (`max_distance` per piece: grass fades out at 55 m, trees at the fog),
 and a script that runs too long in one frame is stopped, so a big field is planted a few thousand at a time over several frames (Hill Run
 does it in about 0.3 s). On the Retroid, 30,000 tufts, 2,500 flowers, 260 bushes and 260 trees (180,000 triangles in view, 8,700 culled) held
-59.7 fps at 2.3 ms of GPU. Not done: grass that parts around the player, wind that varies by place (gusts you can see crossing), leaves
-that flutter on their own (only bending), a LOD for trees (a cheap far tree), trunks as colliders.
+59.7 fps at 2.3 ms of GPU. Not done: grass that parts around the player, wind that varies by place (gusts you can see crossing), a LOD for trees (a cheap far tree), trunks as colliders.
 
 **Look.** `nova.look` sets how the finished picture is treated, and stays until changed (`nova.look()` clears it):
 

@@ -209,3 +209,38 @@ fn gliding_from_high_up_covers_far_more_ground_than_falling() {
         "landed and walking again: {s:?}"
     );
 }
+
+#[test]
+fn getting_up_over_the_top_rises_only_to_the_ledge_and_stands_on_it() {
+    let s = run_script("key:F7", 10);
+    let (top, y) = (12.51, number(&s, "y"));
+    assert!(
+        number(&s, "max_height") < top + 0.6,
+        "it did not go way up over the edge and fall back: {s:?}"
+    );
+    assert!((y - top).abs() < 0.3, "standing on the tower: {s:?}");
+    assert_eq!(s["mode"], "walk", "{s:?}");
+}
+
+#[test]
+fn gliding_into_a_wall_grabs_it_and_climbs() {
+    let s = run_script("key:F2", 9);
+    assert!(number(&s, "glide_time") > 1.0, "it glided first: {s:?}");
+    assert!(
+        number(&s, "climb") > 0.5,
+        "and then climbed the tower it ran into: {s:?}"
+    );
+    assert!(
+        number(&s, "mantles") >= 1.0 && number(&s, "falls") == 0.0,
+        "all the way to the top: {s:?}"
+    );
+}
+
+#[test]
+fn hanging_still_on_a_wall_costs_no_stamina() {
+    let s = run_script("key:F1", 6);
+    assert_eq!(s["mode"], "climb", "still on the wall: {s:?}");
+    // a second of climbing costs a second of the 6; the next 4 seconds of hanging cost nothing
+    assert!(number(&s, "stamina") > 4.4, "{s:?}");
+    assert!(number(&s, "stamina") < 5.6, "{s:?}");
+}

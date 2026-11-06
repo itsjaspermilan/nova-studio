@@ -78,8 +78,8 @@ function keyed(keys) {
 }
 const mantle = keyed([
   { t: 0.0, pose: { Spine: [10, 0, 0], Head: [-15, 0, 0], LeftArm: [-90, -8, 90], RightArm: [-90, 8, -90], LeftUpLeg: [-10, 0, 0], RightUpLeg: [-10, 0, 0], LeftLeg: [20, 0, 0], RightLeg: [20, 0, 0] } },
-  { t: 0.35, pose: { Spine: [32, 0, 0], Chest: [8, 0, 0], Head: [-12, 0, 0], LeftArm: [-90, -6, 38], RightArm: [-90, 6, -38], LeftForeArm: [0, 0, 80], RightForeArm: [0, 0, -80], LeftUpLeg: [-50, 0, 0], RightUpLeg: [-12, 0, 0], LeftLeg: [75, 0, 0], RightLeg: [25, 0, 0] } },
-  { t: 0.65, pose: { Spine: [28, 0, 0], Chest: [6, 0, 0], LeftArm: [-90, 0, -20], RightArm: [-90, 0, 20], LeftForeArm: [0, 0, 10], RightForeArm: [0, 0, -10], LeftUpLeg: [-75, 0, 0], RightUpLeg: [-20, 0, 0], LeftLeg: [95, 0, 0], RightLeg: [40, 0, 0] } },
+  { t: 0.35, pose: { Spine: [58, 0, 0], Chest: [22, 0, 0], Head: [-35, 0, 0], LeftArm: [-90, -6, 30], RightArm: [-90, 6, -30], LeftForeArm: [0, 0, 95], RightForeArm: [0, 0, -95], LeftUpLeg: [-85, 0, 0], RightUpLeg: [-20, 0, 0], LeftLeg: [95, 0, 0], RightLeg: [35, 0, 0] } },
+  { t: 0.65, pose: { Spine: [48, 0, 0], Chest: [14, 0, 0], Head: [-25, 0, 0], LeftArm: [-90, 0, -35], RightArm: [-90, 0, 35], LeftForeArm: [0, 0, 20], RightForeArm: [0, 0, -20], LeftUpLeg: [-100, 0, 0], RightUpLeg: [-30, 0, 0], LeftLeg: [110, 0, 0], RightLeg: [55, 0, 0] } },
   { t: 1.0, pose: { Spine: [4, 0, 0], LeftArm: [0, 0, -75], RightArm: [0, 0, 75] } },
 ]);
 const CLIPS = [{ name: "climb", duration: 1.2, pose: climb }, { name: "glide", duration: 1.6, pose: glide }, { name: "mantle", duration: 1.0, pose: mantle }];

@@ -69,6 +69,9 @@ function Player:to_the_cliff() teleport(self, level.peak.x + 26, level.peak.z, n
 function Player:to_the_cliff_tired() teleport(self, level.peak.x + 26, level.peak.z, nil, { { x = level.peak.x, z = level.peak.z } }, nil); self.tired, self.stamina = true, 0 end
 function Player:to_the_tower() teleport(self, level.tower.x, level.tower.z - 5, nil, { { x = level.tower.x, z = level.tower.z } }, "climb") end
 function Player:to_the_sky() teleport(self, 0, 0, 24, { { x = -300, z = 300 } }, "glide") end
+-- F2: in the air, gliding at the tower: it should grab the wall and climb. F1: climbing the tower and then standing still on it.
+function Player:to_the_tower_gliding() teleport(self, level.tower.x, level.tower.z - 28, 16, { { x = level.tower.x, z = level.tower.z } }, "glide") end
+function Player:to_the_tower_hanging() teleport(self, level.tower.x, level.tower.z - 5, nil, { { x = level.tower.x, z = level.tower.z } }, "hang"); self.hang_t = 0 end
 function Player:to_the_cliff_face() teleport(self, level.peak.x + 24, level.peak.z + 0.0, nil, { { x = level.peak.x, z = level.peak.z } }, "climb"); self.route_hold = true end
 
 function Player:update(dt)
@@ -81,6 +84,8 @@ function Player:update(dt)
   if nova.input.pressed("sky") then self:to_the_sky() end
   if nova.input.pressed("cliff_face") then self:to_the_cliff_face() end
   if nova.input.pressed("cliff_tired") then self:to_the_cliff_tired() end
+  if nova.input.pressed("glide_wall") then self:to_the_tower_gliding() end
+  if nova.input.pressed("hang") then self:to_the_tower_hanging() end
 
   local ptr = nova.input.pointer()
   cam3.yaw = cam3.yaw - nova.input.axis("look_x") * 2.8 * dt - ptr.dx * 0.0022
@@ -97,6 +102,11 @@ function Player:update(dt)
     local bx, bz, bj = autoplay(self)
     wx, wz, want_jump, sprint = bx, bz, want_jump or bj, true
     jump_held = true
+    -- the hanging test: climb for a second, then stop pushing and just hold on
+    if self.bot_script == "hang" and self.mode == "climb" then
+      self.hang_t = (self.hang_t or 0) + dt
+      if self.hang_t > 1 then wx, wz = 0, 0 end
+    end
     -- the glide test: a jump in the air, once
     if self.bot_script == "glide" and self.mode == "walk" and not self.ground and self.air_time > 0.4 and not self.glided then want_jump, self.glided = true, true end
   end
@@ -202,7 +212,7 @@ function Player:climb(dt, wx, wz, len, want_jump)
   -- face the wall
   local want = math.atan(n.x, n.z)
   self.face = self.face + ((want - self.face + math.pi) % (2 * math.pi) - math.pi) * min(1, 12 * dt)
-  self.stamina = self.stamina - dt
+  if len >= 0.1 then self.stamina = self.stamina - dt end -- (hanging still is free)
   state.climb_time = (state.climb_time or 0) + dt
 
   local m = nova.solid.move(self.x, self.y, self.z, RADIUS, HEIGHT, self.vx * dt, self.vy * dt, self.vz * dt)
@@ -214,8 +224,9 @@ function Player:climb(dt, wx, wz, len, want_jump)
   self.wall_lost = (self.wall_lost or 0) + (m.wall and 0 or dt)
   self.ground = false
   -- over the top: no wall under the hands any more while going up, and a floor just ahead at about the height of the hands: get up on it
-  if vert > 0.3 and self.wall_lost > 0.06 and self:ledge_ahead(n) then
-    self.mode, self.mantle_t, self.mantle_n = "mantle", 0, n
+  local ledge = vert > 0.3 and self.wall_lost > 0.06 and self:ledge_ahead(n)
+  if ledge then
+    self.mode, self.mantle_t, self.mantle_n, self.mantle_h, self.mantle_y0 = "mantle", 0, n, ledge, self.y
     self.vx, self.vz, self.vy = 0, 0, 0
     self.wall, self.wall_age = nil, 9
     state.mantles = (state.mantles or 0) + 1
@@ -240,7 +251,8 @@ end
 function Player:ledge_ahead(n)
   local px, pz = self.x - n.x * 0.55, self.z - n.z * 0.55
   local h, nx, ny = nova.solid.floor_below(px, self.y + 1.5, pz, 1.9)
-  return h ~= nil and ny > 0.6 and h >= self.y - 0.15 and h <= self.y + 1.35
+  if h ~= nil and ny > 0.6 and h >= self.y - 0.15 and h <= self.y + 1.35 then return h end
+  return nil
 end
 
 -- Getting up over the top: the body rises to the height of the edge and then moves onto it while the clip plays (0.9 s), no input.
@@ -248,16 +260,20 @@ function Player:mantle(dt)
   local n = self.mantle_n
   self.mantle_t = self.mantle_t + dt
   local t = self.mantle_t
-  local up = t < 0.45 and 3.2 or 0.4
-  local on = t < 0.3 and 0 or 2.6
-  self.vx, self.vz, self.vy = -n.x * on, -n.z * on, up
+  -- up: to the height of the floor (and no higher: smoothly, over the first half second), then onto it
+  local rise = min(1, t / 0.5)
+  rise = rise * rise * (3 - 2 * rise)
+  local want_y = self.mantle_y0 + (self.mantle_h - self.mantle_y0) * rise
+  local on = t < 0.35 and 0 or 2.2
+  local vy = (want_y - self.y) / dt
+  self.vx, self.vz, self.vy = -n.x * on, -n.z * on, vy
   local m = nova.solid.move(self.x, self.y, self.z, RADIUS, HEIGHT, self.vx * dt, self.vy * dt, self.vz * dt)
   self.x, self.y, self.z = m.x, m.y, m.z
   self.face = math.atan(n.x, n.z)
   self.ground = false
-  if t >= 0.9 then
+  if t >= 0.95 then
     self.mode = "walk"
-    self.vx, self.vy, self.vz = -n.x * 1.5, 0, -n.z * 1.5
+    self.vx, self.vy, self.vz = -n.x * 1.2, 0, -n.z * 1.2
     self.climb_cool = 0.5
   end
 end
@@ -279,6 +295,12 @@ function Player:glide(dt, wx, wz, len, want_jump)
   self.x, self.y, self.z = m.x, m.y, m.z
   if m.wall then
     local n = m.wall_normal
+    -- a wall that is steep enough to hold on to: grab it (the glider folds away)
+    if n.y < 0.6 and self.stamina > 0.3 and not self.tired then
+      self.mode, self.cn, self.wall_lost = "climb", { x = n.x, y = n.y, z = n.z }, 0
+      self.vx, self.vy, self.vz, self.ground, self.jumping = 0, 0, 0, false, false
+      return
+    end
     local into = self.vx * n.x + self.vy * n.y + self.vz * n.z
     if into < 0 then self.vx, self.vy, self.vz = self.vx - n.x * into, self.vy - n.y * into, self.vz - n.z * into end
   end

@@ -12,6 +12,8 @@
     "tower": ["key:F7"],
     "sky": ["key:F6"],
     "cliff_face": ["key:F5"],
-    "cliff_tired": ["key:F4"]
+    "cliff_tired": ["key:F4"],
+    "glide_wall": ["key:F2"],
+    "hang": ["key:F1"]
   }
 }

@@ -43,17 +43,29 @@ struct Instance {
 
 // Wind: foliage (an instance with a sway weight in the w slot of its matrix's third column) bends with the wind, more the higher
 // the vertex is above the instance's origin. A slow swell travels across the field along the wind, with a quicker flutter on it.
+// Up in a tree (more than a metre above the origin and away from the trunk's axis) the leaves also flutter on their own: a small
+// shaking of each vertex by where it is, so that a crown shimmers instead of leaning like a post.
 fn wind_offset(origin: vec3<f32>, world: vec3<f32>, sway: f32) -> vec3<f32> {
     if (sway == 0.0 || globals.wind.z == 0.0) {
         return vec3<f32>(0.0);
     }
     let h = max(world.y - origin.y, 0.0);
     let t = globals.wind.w;
+    let strength = globals.wind.z;
     let phase = dot(origin.xz, globals.wind.xy) * 0.22;
     let swell = 0.55 + 0.45 * sin(t * 1.3 - phase);
     let flutter = sin(t * 5.1 + origin.x * 0.7 + origin.z * 0.9 + world.y * 2.0) * 0.12;
-    let bend = sway * globals.wind.z * h * (swell + flutter);
-    return vec3<f32>(globals.wind.x * bend, 0.0, globals.wind.y * bend);
+    let bend = sway * strength * h * (swell + flutter);
+    var offset = vec3<f32>(globals.wind.x * bend, 0.0, globals.wind.y * bend);
+    // leaves: how much of a crown this vertex is (high, and out from the trunk's axis)
+    let radial = length(world.xz - origin.xz);
+    let crown = smoothstep(1.0, 3.0, h) * smoothstep(0.25, 1.2, radial);
+    if (crown > 0.0) {
+        let a = t * 3.1 + world.x * 2.3 + world.z * 1.9 + world.y * 1.7;
+        let shake = crown * strength * 0.07 * (0.6 + 0.4 * swell);
+        offset = offset + shake * vec3<f32>(sin(a), 0.5 * sin(a * 1.3 + 1.0), sin(a + 2.1));
+    }
+    return offset;
 }
 
 // A direction made unit length; a zero-length one (a degenerate face in a model file) stays zero. A plain normalize() of
