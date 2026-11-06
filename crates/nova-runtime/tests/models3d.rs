@@ -1752,3 +1752,47 @@ end"
         assert!(error.contains(expect), "{script}: {error}");
     }
 }
+
+/// A lost GPU device is recovered from: after `simulate_loss` and `recover` the same frame draws the same picture, from the
+/// copies of the meshes and atlas kept on the CPU. (Skipped without a GPU.)
+#[test]
+fn a_lost_gpu_device_is_recovered_and_the_picture_is_the_same() {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        backends: wgpu::Backends::PRIMARY,
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
+    });
+    let mut gfx = match Gfx::new(&instance, None) {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("skipping GPU test: {e}");
+            return;
+        }
+    };
+    let vfs: Rc<dyn Vfs> = Rc::new(MemVfs::new(vec![
+        ("nova.json", br#"{"format":1,"name":"T"}"#.to_vec()),
+        ("models/car.glb", CAR.to_vec()),
+        (
+            "main.lua",
+            b"function update(dt)
+  nova.camera(0, 6, 9, 0, 1, 0, 60)
+  nova.sky { top = {150, 200, 255}, horizon = {220, 235, 255} }
+  nova.model('car', 0, 0, 0, { scale = 3 })
+  nova.rect(10, 10, 60, 30, { color = {255, 0, 0} })
+end"
+            .to_vec(),
+        ),
+    ]));
+    let mut g = Game::load(vfs).expect("loads");
+    g.upload(&mut gfx);
+    g.update(1.0 / 60.0, 0.0, [320.0, 180.0], Actions::default(), false);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let before = gfx.capture((320, 180), &g.frame_input(0));
+    assert!(!gfx.is_lost());
+    gfx.simulate_loss();
+    assert!(gfx.is_lost(), "the device was destroyed");
+    gfx.recover(&instance, None).expect("a new device");
+    assert!(!gfx.is_lost(), "the new device is fine");
+    g.update(1.0 / 60.0, 0.0, [320.0, 180.0], Actions::default(), false);
+    let after = gfx.capture((320, 180), &g.frame_input(0));
+    assert_eq!(before, after, "the same picture from the new device");
+}

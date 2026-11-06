@@ -60,8 +60,12 @@ another physical Android device) to settle; the emulator cannot.
   by it:** in the background the event loop spun a whole core (1,040 CPU ticks in 10 s) and the audio stream kept playing; now the loop
   waits and the stream is paused (2 ticks in 10 s, the player is "paused"). Not exercised: rotation (the device's rotation lock is on
   and changing a system setting was not mine to do; the manifest is `sensorLandscape` and handles the config change), the Back key
-  (the rally keeps running when it is pressed: whether a game should quit on Back is the game's choice), and **GPU device loss, which
-  is not handled at all** (it cannot be provoked from here).
+  (the rally keeps running when it is pressed: whether a game should quit on Back is the game's choice), and **GPU device loss, which was
+  not handled at all** (handled since 2026-11-06 in `Gfx::recover`: the device-lost callback and the uncaptured-error handler (which used to
+  panic) set a flag, the next frame makes a new device and puts back the sprite atlas, glyphs, every loaded mesh with the same ids, the voxel
+  atlas and the script-made meshes from CPU copies kept for the purpose, and reconfigures the surface; the game's state is untouched. Tested
+  with a destroyed device in `tests/models3d.rs`; a real driver reset has not been provoked on the Retroid, and the copies cost the memory
+  of the meshes and textures again).
 - [x] Immersive mode on the real panel (2026-11-05): a screenshot from the Retroid (1920x1080 in landscape, from a 1080x1920 panel)
   shows the game across the whole screen: no black band, no system bars. (The emulator's phone profile is what had the cutout and the bars.)
 - [ ] Verify the Retroid's facts: SoC, Android version (assumed 13), screen size/refresh, how its

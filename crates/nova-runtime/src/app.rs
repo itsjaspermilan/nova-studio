@@ -403,6 +403,27 @@ impl App {
         }
     }
 
+    /// The GPU's device was lost (a driver reset, or the system took the GPU away) or ran out of memory: make a new one and put
+    /// everything the game had given it back (see `Gfx::recover`), so that play goes on where it was.
+    fn recover_gpu(&mut self, event_loop: &ActiveEventLoop) {
+        log::warn!("the GPU device was lost: recovering");
+        let Some(gfx) = self.gfx.as_mut() else {
+            return;
+        };
+        match gfx.recover(&self.instance, self.surface.as_ref()) {
+            Ok(()) => {
+                log::info!("the GPU device was recovered");
+                if let Some(size) = self.window.as_ref().map(|w| w.inner_size()) {
+                    self.configure(size.width, size.height);
+                }
+            }
+            Err(e) => {
+                self.failed = Some(format!("the GPU was lost and could not be recovered: {e}"));
+                event_loop.exit();
+            }
+        }
+    }
+
     fn frame(&mut self, event_loop: &ActiveEventLoop) {
         if self.finished {
             return;
@@ -410,6 +431,10 @@ impl App {
         let (Some(config), Some(_)) = (self.config.clone(), self.surface.as_ref()) else {
             return;
         };
+        if self.gfx.as_ref().is_some_and(|g| g.is_lost()) {
+            self.recover_gpu(event_loop);
+            return;
+        }
         let now = Instant::now();
         let measured = (now - self.last_frame).as_secs_f32().min(0.1);
         self.last_frame = now;

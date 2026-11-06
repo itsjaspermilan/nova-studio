@@ -581,6 +581,18 @@ fn instance_visible(
     sphere_visible(planes, centre, radius)
 }
 
+/// Everything the game gave the GPU, kept on the CPU too, so that the picture can be rebuilt if the GPU's device is lost (a driver
+/// reset, or the system taking the GPU away): see [`Gfx::recover`].
+#[derive(Default)]
+struct Backup {
+    sprite_atlas: Option<Image>,
+    glyphs: Option<Vec<u8>>,
+    /// The loaded meshes in the order they were uploaded (their ids), with the joints and weights of a skinned one.
+    meshes: Vec<(MeshData, Option<Vec<([u16; 4], [f32; 4])>>)>,
+    voxel_atlas: Option<Image>,
+    dyn_meshes: HashMap<usize, (Vec<MeshVertex>, Vec<u32>, bool)>,
+}
+
 pub struct Gfx {
     pub adapter: wgpu::Adapter,
     pub device: wgpu::Device,
@@ -622,6 +634,9 @@ pub struct Gfx {
     globals_group: wgpu::BindGroup,
     meshes: Vec<GpuMesh>,
     dyn_meshes: HashMap<usize, GpuMesh>,
+    backup: Backup,
+    /// Set (from the driver's thread) when the device is lost or ran out of memory.
+    lost: std::sync::Arc<std::sync::atomic::AtomicBool>,
     voxel_atlas: Option<wgpu::BindGroup>,
     sampler_voxel: wgpu::Sampler,
     /// Buffers of meshes that were freed, kept for the next mesh that fits (a rebuilt chunk piece is about the same size).
@@ -775,6 +790,27 @@ impl Gfx {
             ..Default::default()
         }))
         .map_err(|e| format!("cannot create GPU device: {e}"))?;
+        // A lost device, or one that ran out of memory, is recovered from (see `recover`); the default handler would panic.
+        let lost = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        {
+            let lost = lost.clone();
+            device.set_device_lost_callback(move |reason, message| {
+                log::error!("GPU device lost ({reason:?}): {message}");
+                lost.store(true, std::sync::atomic::Ordering::SeqCst);
+            });
+        }
+        {
+            let lost = lost.clone();
+            device.on_uncaptured_error(std::sync::Arc::new(move |error: wgpu::Error| {
+                log::error!("GPU error: {error}");
+                if matches!(
+                    error,
+                    wgpu::Error::OutOfMemory { .. } | wgpu::Error::Internal { .. }
+                ) {
+                    lost.store(true, std::sync::atomic::Ordering::SeqCst);
+                }
+            }));
+        }
         let format = surface
             .map(|surface| {
                 let formats = surface.get_capabilities(&adapter).formats;
@@ -1518,6 +1554,8 @@ impl Gfx {
             globals_group,
             meshes: Vec::new(),
             dyn_meshes: HashMap::new(),
+            backup: Backup::default(),
+            lost,
             voxel_atlas: None,
             sampler_voxel,
             spare_vertices: Vec::new(),
@@ -1538,6 +1576,7 @@ impl Gfx {
     }
 
     pub fn set_sprite_atlas(&mut self, image: &Image) {
+        self.backup.sprite_atlas = Some(image.clone());
         self.atlas = texture_group(
             &self.device,
             &self.queue,
@@ -1550,6 +1589,7 @@ impl Gfx {
 
     /// Replaces the glyph atlas contents (`text::ATLAS_SIZE` squared coverage bytes).
     pub fn update_glyph_atlas(&mut self, coverage: &[u8]) {
+        self.backup.glyphs = Some(coverage.to_vec());
         let side = crate::text::ATLAS_SIZE;
         self.queue.write_texture(
             wgpu::TexelCopyTextureInfo {
@@ -1622,8 +1662,67 @@ impl Gfx {
         }
     }
 
+    /// Whether the GPU's device was lost (or ran out of memory): [`Gfx::recover`] makes a new one.
+    pub fn is_lost(&self) -> bool {
+        self.lost.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Destroys the device, as a driver reset would (for testing recovery).
+    pub fn simulate_loss(&self) {
+        self.device.destroy();
+        let _ = self.device.poll(wgpu::PollType::Poll);
+    }
+
+    /// Makes a new device and everything on it again from the copies kept on the CPU: the sprite atlas, the glyphs, every loaded
+    /// mesh (with the same ids), the voxel atlas and the script-made meshes. What the game holds (mesh ids, its state) stays
+    /// valid, so play goes on where it was. `surface` is the window's, if any; the caller configures it again afterwards.
+    pub fn recover(
+        &mut self,
+        instance: &wgpu::Instance,
+        surface: Option<&wgpu::Surface<'_>>,
+    ) -> Result<(), String> {
+        let mut fresh = Gfx::new(instance, surface)?;
+        let backup = std::mem::take(&mut self.backup);
+        if let Some(image) = &backup.sprite_atlas {
+            fresh.set_sprite_atlas(image);
+        }
+        if let Some(coverage) = &backup.glyphs {
+            fresh.update_glyph_atlas(coverage);
+        }
+        for (mesh, skin) in &backup.meshes {
+            match skin {
+                Some(influences) => fresh.upload_skinned_mesh(mesh, influences),
+                None => fresh.upload_mesh(mesh),
+            };
+        }
+        let mut ops = Vec::new();
+        if let Some(image) = backup.voxel_atlas {
+            ops.push(MeshOp::SetAtlas(image));
+        }
+        for (id, (vertices, indices, plain)) in backup.dyn_meshes {
+            ops.push(MeshOp::Upload {
+                id,
+                vertices,
+                indices,
+                plain,
+            });
+        }
+        fresh.apply_mesh_ops(&ops);
+        *self = fresh;
+        Ok(())
+    }
+
     /// Uploads a mesh once; the returned id is used by [`ModelDraw`].
     pub fn upload_mesh(&mut self, mesh: &MeshData) -> usize {
+        self.backup.meshes.push((
+            MeshData {
+                vertices: mesh.vertices.clone(),
+                indices: mesh.indices.clone(),
+                texture: mesh.texture.clone(),
+                notes: Vec::new(),
+            },
+            None,
+        ));
         let vertices = self
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -1681,6 +1780,7 @@ impl Gfx {
         influences: &[([u16; 4], [f32; 4])],
     ) -> usize {
         let id = self.upload_mesh(mesh);
+        self.backup.meshes[id].1 = Some(influences.to_vec());
         let skin: Vec<SkinVertex> = (0..mesh.vertices.len())
             .map(|i| {
                 let (joints, weights) = influences.get(i).copied().unwrap_or(([0; 4], [0.0; 4]));
@@ -1785,6 +1885,93 @@ impl Gfx {
     /// Logical height 540 maps to the target height, so 2D art keeps its size on any screen.
     pub fn ui_scale(size: (u32, u32)) -> f32 {
         size.1 as f32 / 540.0
+    }
+
+    /// Makes, replaces and frees the script-made meshes (voxel chunks, baked levels), and sets their atlas.
+    fn apply_mesh_ops(&mut self, ops: &[MeshOp]) {
+        for op in ops {
+            match op {
+                MeshOp::SetAtlas(image) => {
+                    // five levels: a 16-pixel tile stays whole down to the last, so far blocks blend instead of shimmering
+                    let levels = if image.width.min(image.height) >= 16 {
+                        5
+                    } else {
+                        1
+                    };
+                    self.backup.voxel_atlas = Some(image.clone());
+                    self.voxel_atlas = Some(texture_group_mips(
+                        &self.device,
+                        &self.queue,
+                        &self.texture_layout,
+                        &self.sampler_voxel,
+                        "voxel atlas",
+                        image,
+                        levels,
+                    ));
+                    // meshes made earlier keep the old picture until they are rebuilt, which the game does
+                }
+                MeshOp::Upload {
+                    id,
+                    vertices,
+                    indices,
+                    plain,
+                } => {
+                    let atlas = if *plain {
+                        self.white_group()
+                    } else {
+                        let Some(atlas) = self.voxel_atlas.clone() else {
+                            continue;
+                        };
+                        atlas
+                    };
+                    if indices.is_empty() {
+                        self.dyn_meshes.remove(id);
+                        self.backup.dyn_meshes.remove(id);
+                        continue;
+                    }
+                    self.backup
+                        .dyn_meshes
+                        .insert(*id, (vertices.clone(), indices.clone(), *plain));
+                    // the buffers this mesh had, if they still fit (and are not wastefully big), or a spare that fits, or new ones
+                    let old = self.dyn_meshes.remove(id);
+                    let (vbytes, ibytes): (&[u8], &[u8]) = (
+                        bytemuck::cast_slice(vertices),
+                        bytemuck::cast_slice(indices),
+                    );
+                    let (old_v, old_i) = match old {
+                        Some(m) => (Some(m.vertices), Some(m.indices)),
+                        None => (None, None),
+                    };
+                    let vertex_buffer = self.buffer_for(old_v, vbytes.len() as u64, true);
+                    let index_buffer = self.buffer_for(old_i, ibytes.len() as u64, false);
+                    self.queue.write_buffer(&vertex_buffer, 0, vbytes);
+                    self.queue.write_buffer(&index_buffer, 0, ibytes);
+                    self.dyn_meshes.insert(
+                        *id,
+                        GpuMesh {
+                            vertices: vertex_buffer,
+                            indices: index_buffer,
+                            index_count: indices.len() as u32,
+                            texture: atlas,
+                            translucent: vertices.iter().any(|v| v.color[3] < 255),
+                            skin: None,
+                            bounds: bounding_sphere(vertices),
+                        },
+                    );
+                }
+                MeshOp::Free(id) => {
+                    self.backup.dyn_meshes.remove(id);
+                    if let Some(m) = self.dyn_meshes.remove(id) {
+                        if self.spare_vertices.len() < 64 {
+                            self.spare_vertices.push(m.vertices);
+                        }
+                        if self.spare_indices.len() < 64 {
+                            self.spare_indices.push(m.indices);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     pub fn render(
@@ -2023,83 +2210,7 @@ impl Gfx {
         );
         self.sprites_text
             .write(&self.device, &self.queue, bytemuck::cast_slice(input.text));
-        for op in input.mesh_ops {
-            match op {
-                MeshOp::SetAtlas(image) => {
-                    // five levels: a 16-pixel tile stays whole down to the last, so far blocks blend instead of shimmering
-                    let levels = if image.width.min(image.height) >= 16 {
-                        5
-                    } else {
-                        1
-                    };
-                    self.voxel_atlas = Some(texture_group_mips(
-                        &self.device,
-                        &self.queue,
-                        &self.texture_layout,
-                        &self.sampler_voxel,
-                        "voxel atlas",
-                        image,
-                        levels,
-                    ));
-                    // meshes made earlier keep the old picture until they are rebuilt, which the game does
-                }
-                MeshOp::Upload {
-                    id,
-                    vertices,
-                    indices,
-                    plain,
-                } => {
-                    let atlas = if *plain {
-                        self.white_group()
-                    } else {
-                        let Some(atlas) = self.voxel_atlas.clone() else {
-                            continue;
-                        };
-                        atlas
-                    };
-                    if indices.is_empty() {
-                        self.dyn_meshes.remove(id);
-                        continue;
-                    }
-                    // the buffers this mesh had, if they still fit (and are not wastefully big), or a spare that fits, or new ones
-                    let old = self.dyn_meshes.remove(id);
-                    let (vbytes, ibytes): (&[u8], &[u8]) = (
-                        bytemuck::cast_slice(vertices),
-                        bytemuck::cast_slice(indices),
-                    );
-                    let (old_v, old_i) = match old {
-                        Some(m) => (Some(m.vertices), Some(m.indices)),
-                        None => (None, None),
-                    };
-                    let vertex_buffer = self.buffer_for(old_v, vbytes.len() as u64, true);
-                    let index_buffer = self.buffer_for(old_i, ibytes.len() as u64, false);
-                    self.queue.write_buffer(&vertex_buffer, 0, vbytes);
-                    self.queue.write_buffer(&index_buffer, 0, ibytes);
-                    self.dyn_meshes.insert(
-                        *id,
-                        GpuMesh {
-                            vertices: vertex_buffer,
-                            indices: index_buffer,
-                            index_count: indices.len() as u32,
-                            texture: atlas,
-                            translucent: vertices.iter().any(|v| v.color[3] < 255),
-                            skin: None,
-                            bounds: bounding_sphere(vertices),
-                        },
-                    );
-                }
-                MeshOp::Free(id) => {
-                    if let Some(m) = self.dyn_meshes.remove(id) {
-                        if self.spare_vertices.len() < 64 {
-                            self.spare_vertices.push(m.vertices);
-                        }
-                        if self.spare_indices.len() < 64 {
-                            self.spare_indices.push(m.indices);
-                        }
-                    }
-                }
-            }
-        }
+        self.apply_mesh_ops(input.mesh_ops);
         if !input.joints.is_empty() {
             // the palette: whole rows of the joint texture, only as many as are used
             let count = input.joints.len().min(MAX_JOINT_MATRICES);
