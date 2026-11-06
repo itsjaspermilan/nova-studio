@@ -609,7 +609,7 @@ fn the_engine_is_heard_while_racing_and_louder_as_the_throttle_goes_down() {
 }
 
 #[test]
-fn the_engine_pitch_follows_the_speed_over_a_wide_range_and_falls_at_a_gear_change() {
+fn the_engine_moves_through_its_loops_as_the_revs_climb_and_no_loop_is_bent_far() {
     use nova_runtime::mixer::Command;
     let mut g = load();
     start_race(&mut g, 0, false);
@@ -619,33 +619,35 @@ fn the_engine_pitch_follows_the_speed_over_a_wide_range_and_falls_at_a_gear_chan
     });
     tap(&mut g, "key:F9"); // the computer drives
     g.take_audio();
-    let mut pitches: Vec<f32> = Vec::new();
+    let mut loudest_ids = std::collections::BTreeSet::new();
+    let (mut lowest, mut highest) = (f32::MAX, 0.0f32);
     for _ in 0..60 * 12 {
         frame_with(&mut g, &[]);
-        let mut loudest = (0.0f32, 0.0f32);
+        let mut loudest = (0.0f32, 0u64, 1.0f32);
         for c in g.take_audio() {
             if let Command::Set {
+                id,
                 volume: Some(v),
                 pitch: Some(p),
                 ..
             } = c
                 && v > loudest.0
-                && p > 0.9
             {
-                loudest = (v, p);
+                loudest = (v, id, p);
             }
         }
         if loudest.0 > 0.0 {
-            pitches.push(loudest.1);
+            loudest_ids.insert(loudest.1);
+            lowest = lowest.min(loudest.2);
+            highest = highest.max(loudest.2);
         }
     }
-    let low = pitches.iter().cloned().fold(f32::MAX, f32::min);
-    let high = pitches.iter().cloned().fold(0.0, f32::max);
     assert!(
-        high > low * 2.2,
-        "the pitch spans a wide range as the car speeds up: {low} to {high}"
+        loudest_ids.len() >= 3,
+        "the loudest loop changes as the car speeds up: {loudest_ids:?}"
     );
-    // it falls when a gear changes (the revs drop): somewhere the pitch goes down by a good step within a few frames
-    let falls = pitches.windows(8).filter(|w| w[0] - w[7] > 0.5).count();
-    assert!(falls > 0, "and falls at a gear change");
+    assert!(
+        lowest > 0.55 && highest < 1.8,
+        "a loop is bent by under a half either way: {lowest} to {highest}"
+    );
 }

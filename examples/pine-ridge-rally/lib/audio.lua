@@ -41,46 +41,68 @@ function audio.stop_music(fade)
   nova.music.stop(fade or 0.5)
 end
 
--- One engine per car that makes noise. The engine is two recorded loops (sounds/engine_2 and engine_5: a real car at low and at high
--- revs, CC0 by domasx2, made audible on a small speaker by scripts/rally/engine-loops.mjs; licenses/opengameart-engine-loops.txt),
--- both played at one pitch that follows the revs over a wide range (about five times from idle to the limiter, so that the engine
--- audibly climbs through each gear and drops at each change) while the low one fades into the high one. The gravel and the tyre
--- squeal are loops too. Everything is changed every step with nova.sound.set.
+-- One engine per car that makes noise, and each car's engine has its own note (sounds/eng_<car>_1 to _5, made by
+-- scripts/rally/engines.mjs: combustion pulses through exhaust resonators, from a ten-cylinder's scream to a three-cylinder's lumpy
+-- buzz). Five loops per car at revs spaced evenly in ratio from idle to the limit; the two nearest the car's revs are heard,
+-- crossfaded, each played at the pitch that makes it the engine's note at those revs (so a loop is bent by under a half either way).
+-- A rival plays four of the five, to spare voices (the mixer has 32). The gravel and the tyre squeal are loops too. Everything is changed every step with
+-- nova.sound.set.
 local Engine = {}
 Engine.__index = Engine
 
-local LOW, HIGH = "engine_2", "engine_5"
+local LOOPS = 5
 
-function audio.engine(volume)
-  return setmetatable({ volume = volume or 1, ids = nil }, Engine)
+function audio.engine(volume, car_id, rival)
+  local info
+  for _, c in ipairs(state.cars) do if c.id == car_id then info = c end end
+  info = info or state.cars[1]
+  local which = rival and { 1, 2, 4, 5 } or { 1, 2, 3, 4, 5 }
+  return setmetatable({ volume = volume or 1, ids = nil, car = info, which = which }, Engine)
 end
 
 local function start(self)
   self.ids = {
-    low = nova.sound.play(LOW, { loop = true, volume = 0 }),
-    high = nova.sound.play(HIGH, { loop = true, volume = 0 }),
     gravel = nova.sound.play("gravel_loop", { loop = true, volume = 0 }),
     skid = nova.sound.play("skid_loop", { loop = true, volume = 0 }),
   }
+  for _, k in ipairs(self.which) do
+    self.ids["eng" .. k] = nova.sound.play("eng_" .. self.car.id .. "_" .. k, { loop = true, volume = 0 })
+  end
 end
 
--- the playback pitch for these revs (0 to 1; idle is about 0.16): from about 1 at idle to 3.4 at the limiter
-function audio.engine_pitch(rev) return 0.6 + 2.8 * rev end
+-- the rpm of the engine at these revs (0 to 1 from idle, about 0.16, to the limiter), and of loop k
+local function rpm_at(car, rev_norm) return car.idle_rpm * (car.max_rpm / car.idle_rpm) ^ rev_norm end
+local function loop_rpm(car, k) return rpm_at(car, (k - 1) / (LOOPS - 1)) end
+
+-- the pitch the loops are played at for these revs: the engine's rpm over the loop's own
+function audio.engine_pitch(car, rev, k)
+  local norm = math.max(0, math.min(1, (rev - 0.16) / 0.84))
+  return rpm_at(car, norm) / loop_rpm(car, k)
+end
 
 -- `rev` is 0 to 1, `load` 0 to 1 (how hard the throttle is down), `rough` true on loose ground, `slip` 0 to 1.
 function Engine:update(dt, rev, load, rough, slip)
   if not self.ids then start(self) end
-  local v = self.volume
-  -- the low loop gives way to the high one between 0.2 and 0.8 of the revs (equal power, so the loudness holds)
-  local f = math.max(0, math.min(1, (rev - 0.2) / 0.6))
-  local low, high = math.cos(f * math.pi / 2), math.sin(f * math.pi / 2)
+  local v, car = self.volume, self.car
+  local norm = math.max(0, math.min(1, (rev - 0.16) / 0.84))
+  local target = rpm_at(car, norm)
+  -- the two loops on either side of the revs (of those this car plays), blended by where between them the revs are (in ratio)
+  local list = self.which
+  local lo, hi = list[1], list[#list]
+  for i = 1, #list - 1 do
+    if target >= loop_rpm(car, list[i]) and target <= loop_rpm(car, list[i + 1]) then lo, hi = list[i], list[i + 1] end
+  end
+  local f = 0
+  if hi ~= lo then f = math.max(0, math.min(1, math.log(target / loop_rpm(car, lo)) / math.log(loop_rpm(car, hi) / loop_rpm(car, lo)))) end
   -- a little wander in the pitch so that nothing is perfectly still
   self.t = (self.t or math.random() * 10) + dt
-  local wander = 1 + 0.006 * math.sin(self.t * 3.1) + 0.004 * math.sin(self.t * 8.3 + 1.3)
-  local pitch = audio.engine_pitch(rev) * wander
-  local level = v * (0.3 + 0.6 * load) * (0.7 + 0.3 * rev)
-  nova.sound.set(self.ids.low, { volume = level * low, pitch = pitch })
-  nova.sound.set(self.ids.high, { volume = level * high, pitch = pitch })
+  local wander = 1 + 0.004 * math.sin(self.t * 3.1) + 0.003 * math.sin(self.t * 8.3 + 1.3)
+  local level = v * (0.35 + 0.55 * load) * (0.75 + 0.25 * norm)
+  for _, k in ipairs(list) do
+    local weight = (k == lo and math.cos(f * math.pi / 2)) or (k == hi and math.sin(f * math.pi / 2)) or 0
+    if hi == lo then weight = (k == lo) and 1 or 0 end
+    nova.sound.set(self.ids["eng" .. k], { volume = level * weight, pitch = (target / loop_rpm(car, k)) * wander })
+  end
   nova.sound.set(self.ids.gravel, { volume = rough and v * (0.15 + 0.5 * rev) or 0, pitch = 0.7 + rev })
   local squeal = (slip or 0) > 0.25 and math.min(1, slip) or 0
   nova.sound.set(self.ids.skid, { volume = v * squeal * 0.8, pitch = 0.9 + 0.3 * squeal })

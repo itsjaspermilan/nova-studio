@@ -7,13 +7,11 @@ const sfx = {
   beep: { params: { wave: "sine", freq: 440, attack: 0.005, sustain: 0.18, decay: 0.12, volume: 0.55 } },
   go: { params: { wave: "sine", freq: 880, attack: 0.005, sustain: 0.4, decay: 0.3, punch: 0.3, volume: 0.6 } },
   checkpoint: { params: { wave: "triangle", freq: 700, arpSemitones: 5, arpTime: 0.05, attack: 0, sustain: 0.06, decay: 0.16, volume: 0.45 } },
-  lap: { params: { wave: "square", freq: 523, arpSemitones: 7, arpTime: 0.09, attack: 0, sustain: 0.12, decay: 0.4, duty: 0.3, volume: 0.45 } },
-  best_lap: { params: { wave: "square", freq: 659, arpSemitones: 5, arpTime: 0.08, attack: 0, sustain: 0.2, decay: 0.55, duty: 0.35, vibratoDepth: 0.1, vibratoSpeed: 10, volume: 0.45 } },
   finish: { params: { wave: "square", freq: 392, arpSemitones: 9, arpTime: 0.14, attack: 0, sustain: 0.5, decay: 0.7, duty: 0.4, punch: 0.3, volume: 0.5 } },
   // Loops that the game plays all the time and changes while they play (nova.sound.set): the engine's pitch follows the revs,
   // the gravel and the tyre squeal follow how hard the car is on the loose or sliding. 0.5 s of a 100 Hz saw is exactly 50 cycles,
   // so the engine loops without a seam.
-  // (the engine is no longer synthesised: sounds/engine_1 to engine_6 are recorded loops, CC0, see licenses/opengameart-engine-loops.txt)
+  // (the engines are made by scripts/rally/engines.mjs: a different note for each car)
   gravel_loop: { params: { wave: "noise", freq: 900, attack: 0, sustain: 0.5, decay: 0, lowpass: 3200, highpass: 400, volume: 0.5 } },
   skid_loop: { params: { wave: "noise", freq: 1500, attack: 0, sustain: 0.5, decay: 0, lowpass: 9000, highpass: 1800, volume: 0.3 } },
   // a change of gear: a short chuff of air and a click

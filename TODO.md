@@ -10,7 +10,7 @@ unless it is ticked.
 
 **Kenney bundle (2026-11-06).** The user bought the Kenney Game Assets All-in-1 bundle (`/Users/jasper/Developer/Kenney Game Assets All-in-1 3.8.0`: 2D, 3D, UI, audio, icons, fonts; CC0). Used so far: UI Pack, UI Pack - Adventure, Input Prompts (Nintendo Switch set), Interface and Impact Sounds in the rally via `scripts/rally/kenney-ui.sh`, and the engine gained `nova.ui.panel` (nine-slice), `nova.image_size` and a `src` sub-rectangle for sprites to draw them. Not yet: the UI packs' spritesheet XML (individual PNGs are enough for now), Kenney's fonts (Future), Foley and Sci-Fi sounds, the the cursor packs, and the 2D and 3D packs for new games.
 
-**Update 2026-11-06 (a long day on the device).** Done and recorded in the entries below: the Retroid validated (performance, controller, screen, lifecycle,
+Engines: one synthesised note per car (`scripts/rally/engines.mjs`, researched: the racing games blend fixed-rpm loops and pitch them modestly; pulse trains through resonators give the timbre); not yet listened to on the device by the author of this note. **Update 2026-11-06 (a long day on the device).** Done and recorded in the entries below: the Retroid validated (performance, controller, screen, lifecycle,
 audio, a thermal soak); Hill Run (a third-person game on `nova.solid`: climbing, gliding, mantling, foliage and wind); the rally reworked from
 play notes (cars at one scale with fitted wheels, drifting road cars, low-speed steering, stiff suspension, roadside props, skid marks,
 analogue right-stick camera, a speed blur, spot-light headlights, circuit-matched menu backdrops, music in four sections voiced with the

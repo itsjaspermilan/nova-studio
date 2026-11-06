@@ -36,6 +36,8 @@ cp "$IS/tick_002.ogg" "$S/menu_move.ogg"
 cp "$IS/confirmation_002.ogg" "$S/menu_accept.ogg"
 cp "$IS/back_002.ogg" "$S/menu_back.ogg"
 cp "$IS/open_001.ogg" "$S/pause.ogg"
+cp "$IS/confirmation_003.ogg" "$S/lap.ogg"                                   # a soft chime for a lap
+cp "$K/Audio/Music Jingles/Audio (Steeldrum)/jingles-steel_07.ogg" "$S/best_lap.ogg"   # a steel drum flourish for the best lap
 for f in impactMetal_heavy_000 impactPlate_heavy_000 impactGeneric_light_000; do
     if [ -f "$IM/$f.ogg" ]; then cp "$IM/$f.ogg" "$S/bump.ogg"; break; fi
 done

@@ -118,7 +118,7 @@ function race.define(config)
     self.camera = { x = 0, y = 4, z = 0, heading = 0, fov = 62, tx = 0, ty = 1, tz = 0 }
     self:build_cars()
     self:build_minimap()
-    self.player.engine = audio.engine(1.0)
+    self.player.engine = audio.engine(1.0, self.player.model_id)
     self.trial = state.mode == "trial"
     self.ghost = self.trial and nova.save.get("ghost_" .. info.id, nil) or nil
     self.recording = { t = 0, pts = {} }
@@ -165,7 +165,7 @@ function race.define(config)
       car.name, car.skill, car.lane = r.name, r.skill, r.lane
       car.top = math.min(car.top, 44) -- (the rivals' driving is tuned for a top speed of 44 m/s: faster, they overshoot the bends)
       car.vmax = 40 * r.skill + 4
-      car.engine = audio.engine(0.55)
+      car.engine = audio.engine(0.55, car.model_id, true)
       self.cars[#self.cars + 1] = car
     end
   end
@@ -599,9 +599,21 @@ function race.define(config)
     ui.center(gear, py + 62, 40, p.shift_time > 0 and ui.color.dim or ui.color.gold, { font = "comic", cx = px + 33 })
     ui.right(tostring(kmh), px + pw - 62, py + 58, 58, ui.color.white, { font = "comic" })
     ui.label(px + pw - 54, py + 92, "KM/H")
-    local fill = math.min(1, math.abs(p.speed) / 44)
-    nova.ui.rect(px + 12, py + 118, pw - 24, 6, { 255, 255, 255, 36 })
-    nova.ui.rect(px + 12, py + 118, (pw - 24) * fill, 6, fill > 0.85 and { 239, 68, 68 } or { 245, 158, 11 })
+    -- the tachometer, per gear: the engine's revs from idle to the limiter, a row of segments (green, then amber, then red); it
+    -- climbs through each gear and falls back at each change. At the limiter the red segments flash.
+    local rev = math.max(0, math.min(1, ((p.rev or 0.16) - 0.16) / 0.84))
+    local segments, gap = 24, 2
+    local seg_w = (pw - 24 - (segments - 1) * gap) / segments
+    local limiter = rev > 0.985 and math.floor(nova.time() * 16) % 2 == 0
+    for i = 1, segments do
+      local on = (i - 0.5) / segments <= rev
+      local colour = { 255, 255, 255, 30 }
+      if on then
+        local at = i / segments
+        colour = at > 0.85 and (limiter and { 255, 255, 255 } or { 239, 68, 68 }) or at > 0.65 and { 245, 158, 11 } or { 74, 222, 128 }
+      end
+      nova.ui.rect(px + 12 + (i - 1) * (seg_w + gap), py + 116, seg_w, 9, colour)
+    end
 
     -- place and lap, top left
     ui.panel(16, 16, 176, 76, 205)
