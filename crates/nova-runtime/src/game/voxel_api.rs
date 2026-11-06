@@ -93,6 +93,63 @@ pub(super) const LINE_MESH: &str = "__line";
 /// The same strip with a vertex alpha of 254, which is all it takes for the renderer to draw it blended (after the solid things,
 /// without writing depth): what a mark with a see-through colour (`nova.quad3`'s shadow blob) is drawn with.
 pub(super) const SOFT_MESH: &str = "__soft";
+/// A round soft mark (a shadow blob): a disc one across, solid in the middle and fading to nothing at its edge, drawn blended.
+pub(super) const BLOB_MESH: &str = "__blob";
+
+pub(super) fn blob_mesh() -> crate::model::MeshData {
+    // rings at these shares of the radius and the alpha each has: a smooth fall-off, not a visible edge
+    const RINGS: [(f32, u8); 5] = [(0.0, 254), (0.2, 235), (0.35, 170), (0.45, 70), (0.5, 0)];
+    const SEGMENTS: usize = 28;
+    let mut vertices = Vec::new();
+    let mut indices = Vec::new();
+    for side in [1.0f32, -1.0] {
+        let base = vertices.len() as u32;
+        for (ring, &(r, alpha)) in RINGS.iter().enumerate() {
+            let count = if ring == 0 { 1 } else { SEGMENTS };
+            for k in 0..count {
+                let a = k as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
+                vertices.push(MeshVertex {
+                    position: [a.cos() * r, a.sin() * r, 0.0],
+                    normal: [0.0, 0.0, side],
+                    color: [255, 255, 255, alpha],
+                    uv: [0.5, 0.5],
+                    emissive: 1.0,
+                });
+            }
+        }
+        let ring_start = |ring: usize| {
+            base + if ring == 0 {
+                0
+            } else {
+                1 + (ring as u32 - 1) * SEGMENTS as u32
+            }
+        };
+        for k in 0..SEGMENTS as u32 {
+            let next = (k + 1) % SEGMENTS as u32;
+            let (c, a0, a1) = (ring_start(0), ring_start(1) + k, ring_start(1) + next);
+            if side > 0.0 {
+                indices.extend_from_slice(&[c, a0, a1])
+            } else {
+                indices.extend_from_slice(&[c, a1, a0])
+            }
+            for ring in 1..RINGS.len() - 1 {
+                let (i0, i1) = (ring_start(ring), ring_start(ring + 1));
+                let (p, q, r2, s) = (i0 + k, i0 + next, i1 + k, i1 + next);
+                if side > 0.0 {
+                    indices.extend_from_slice(&[p, r2, q, q, r2, s])
+                } else {
+                    indices.extend_from_slice(&[p, q, r2, q, s, r2])
+                }
+            }
+        }
+    }
+    crate::model::MeshData {
+        vertices,
+        indices,
+        texture: None,
+        notes: Vec::new(),
+    }
+}
 
 pub(super) fn soft_mesh() -> crate::model::MeshData {
     let mut mesh = line_mesh();

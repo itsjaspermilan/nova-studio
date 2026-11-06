@@ -128,8 +128,14 @@ pub(super) fn install(lua: &Lua, shared: &Rc<RefCell<Shared>>, nova: &Table) -> 
             )| {
                 let mut sh = s.borrow_mut();
                 let tint = tint_of(&opts)?;
-                // a see-through colour is drawn blended; a solid one as before
-                let kind = if tint[3] < 0.999 {
+                // a see-through colour is drawn blended; a solid one as before; `round = true` is a soft disc (a shadow blob)
+                let round = match &opts {
+                    Some(o) => o.get::<Option<bool>>("round")?.unwrap_or(false),
+                    None => false,
+                };
+                let kind = if round {
+                    voxel_api::BLOB_MESH
+                } else if tint[3] < 0.999 {
                     voxel_api::SOFT_MESH
                 } else {
                     voxel_api::LINE_MESH

@@ -2485,6 +2485,11 @@ impl Game {
             voxel_api::SOFT_MESH.to_string(),
             target.add_mesh(&voxel_api::soft_mesh()),
         );
+        // a round soft disc for shadow blobs (`nova.quad3` with `round = true`)
+        ids.insert(
+            voxel_api::BLOB_MESH.to_string(),
+            target.add_mesh(&voxel_api::blob_mesh()),
+        );
         // the cube `nova.cuboid` stretches into walls and parts (lit, and at full colour)
         ids.insert(
             walls_api::CUBE_MESH.to_string(),

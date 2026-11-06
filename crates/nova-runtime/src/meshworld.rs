@@ -353,9 +353,10 @@ impl MeshWorld {
             }
         }
         let ground = self.ground_at(pos, r, h, walkable);
+        // (a body that has just hopped up a ledge is standing on it, though its middle is still a little short of the edge)
         CapsuleMove {
             pos,
-            on_ground: ground.is_some(),
+            on_ground: ground.is_some() || stepped > 0.0,
             ground_normal: ground.unwrap_or(Vec3::Y),
             hit_wall: wall,
             wall_normal,

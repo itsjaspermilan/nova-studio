@@ -20,7 +20,8 @@ function Player:create()
   self.ground, self.coyote, self.buffer = false, 0, 0
   self.face, self.slope = math.pi, 0
   self.cam_d = CAM_DIST
-  self.step_y = 0 -- how far the camera is still catching up with a hop up a ledge
+  self.step_off = 0 -- how far below the body the picture still is after a hop up a ledge (it eases up)
+  self.air_time = 0
   cam3.yaw = math.pi
   cam3.eye = { x = self.x, y = self.y + 3, z = self.z - 6 }
   nova.input.grab_mouse(true)
@@ -99,7 +100,7 @@ function Player:update(dt)
   local m = nova.solid.move(self.x, self.y, self.z, RADIUS, HEIGHT, self.vx * dt, self.vy * dt, self.vz * dt)
   local was_air = not self.ground
   self.x, self.y, self.z = m.x, m.y, m.z
-  if m.stepped > 0 then state.hops = state.hops + 1; self.step_y = self.step_y + m.stepped end
+  if m.stepped > 0 then state.hops = state.hops + 1; self.step_off = self.step_off - m.stepped end
   -- a wall or a slope too steep to stand on: lose the speed that goes into it (on a slope that leaves the slide)
   self.blocked = 0
   if m.wall then
@@ -120,13 +121,15 @@ function Player:update(dt)
   state.max_height = max(state.max_height, self.y)
 
   if self.y < -20 then state.falls = state.falls + 1; state.say("fell", 1); self:respawn() end
-  self.step_y = max(0, self.step_y - dt * 4) -- the camera eases up a ledge the body hopped
+  -- the body hops a 0.3 m step in one frame; what is drawn (and what the camera looks at) eases up it, so a staircase is a smooth climb
+  self.step_off = self.step_off * math.exp(-14 * dt)
+  self.air_time = self.ground and 0 or self.air_time + dt
   self:aim_camera(dt)
 end
 
 -- behind and above the player, pulled in where a hill would be in the way
 function Player:aim_camera(dt)
-  local tx, ty, tz = self.x, self.y + 1.3 - self.step_y, self.z
+  local tx, ty, tz = self.x, self.y + 1.3 + self.step_off, self.z
   local e = self.elev or CAM_ELEV
   local ce, se = cos(e), sin(e)
   local hx, hz = sin(cam3.yaw), cos(cam3.yaw)
@@ -143,9 +146,13 @@ function Player:aim_camera(dt)
 end
 
 function Player:draw()
-  local x, y, z = self.x, self.y, self.z
-  local h, nx, ny, nz = nova.solid.floor_below(x, y + 0.4, z, 3)
-  if h then nova.quad3(x + nx * 0.03, h + ny * 0.03, z + nz * 0.03, nx, ny, nz, max(0.35, 1.0 - (y - h) * 0.07), { color = { 0, 0, 0, 120 } }) end
+  local x, y, z = self.x, self.y + self.step_off, self.z
+  -- a soft round shadow on whatever is underneath, flat to it, smaller and fainter the higher the feet are
+  local h, nx, ny, nz = nova.solid.floor_below(self.x, self.y + 0.4, self.z, 6)
+  if h then
+    local air = max(0, self.y - h)
+    nova.quad3(self.x + nx * 0.02, h + ny * 0.02, self.z + nz * 0.02, nx, ny, nz, max(0.6, 1.5 - air * 0.12), { color = { 0, 0, 0, max(60, 190 - air * 20) }, round = true })
+  end
   local speed = sqrt(self.vx * self.vx + self.vz * self.vz)
   self.anim = self.anim or nova.animator("character-oobi", {
     start = "move",
@@ -156,7 +163,8 @@ function Player:draw()
       fall = { clip = "fall" },
     },
   })
-  self.anim:play(self.ground and "move" or (self.vy > 0 and "jump" or "fall"))
+  -- (a hop up a step is a frame or three with no ground under the middle of the body: not a fall)
+  self.anim:play((self.ground or self.air_time < 0.12) and "move" or (self.vy > 0 and "jump" or "fall"))
   self.anim:set("speed", speed)
   self.anim:update(1 / 60)
   self.anim:draw(x, y, z, { scale = 1.8, ry = self.face + math.pi })

@@ -64,7 +64,10 @@ fn status(g: &mut Game) -> std::collections::HashMap<String, String> {
 }
 
 fn number(s: &std::collections::HashMap<String, String>, key: &str) -> f32 {
-    s[key].trim_end_matches(',').parse().unwrap_or_else(|_| panic!("{key} = {}", s[key]))
+    s[key]
+        .trim_end_matches(',')
+        .parse()
+        .unwrap_or_else(|_| panic!("{key} = {}", s[key]))
 }
 
 #[test]
@@ -75,7 +78,10 @@ fn the_character_stands_on_the_hills_and_a_bot_climbs_the_stairs_and_the_path_to
     }
     let at_rest = status(&mut g);
     let (x, y) = (number(&at_rest, "x"), number(&at_rest, "y"));
-    assert!(x.abs() < 0.1 && y > -0.5 && y < 3.0, "it settled on the meadow where it started: {at_rest:?}");
+    assert!(
+        x.abs() < 0.1 && y > -0.5 && y < 3.0,
+        "it settled on the meadow where it started: {at_rest:?}"
+    );
     tap(&mut g, "key:F9"); // the bot
     let mut log = Vec::new();
     let mut won = false;
@@ -88,10 +94,20 @@ fn the_character_stands_on_the_hills_and_a_bot_climbs_the_stairs_and_the_path_to
         }
     }
     let s = status(&mut g);
-    assert!(won, "the bot reached the flag within 150 s of game time: {s:?} {log:?}");
+    assert!(
+        won,
+        "the bot reached the flag within 150 s of game time: {s:?} {log:?}"
+    );
     assert!(number(&s, "max_height") > 25.0, "up the hill: {s:?}");
-    assert!(number(&s, "hops") >= 15.0, "it hopped up the staircase: {s:?}");
-    assert_eq!(number(&s, "falls"), 0.0, "and never fell off the world: {s:?}");
+    assert!(
+        number(&s, "hops") >= 15.0,
+        "it hopped up the staircase: {s:?}"
+    );
+    assert_eq!(
+        number(&s, "falls"),
+        0.0,
+        "and never fell off the world: {s:?}"
+    );
 }
 
 #[test]
@@ -108,8 +124,17 @@ fn the_cliff_cannot_be_climbed_by_walking_straight_at_it() {
     }
     let s = status(&mut g);
     assert_eq!(number(&s, "falls"), 0.0, "{s:?}");
-    assert!(number(&s, "max_height") > base + 3.0, "it climbed the 37 degree hill up to the cliff: {s:?} (from {base})");
+    assert!(
+        number(&s, "max_height") > base + 3.0,
+        "it climbed the 37 degree hill up to the cliff: {s:?} (from {base})"
+    );
     // the hill reaches about 15.6 m at the foot of the cliff and the cliff is 7 m more
-    assert!(number(&s, "max_height") < 19.0, "and no further: it did not walk up a 74 degree cliff: {s:?}");
-    assert!(number(&s, "slide") > 20.0, "it was pushed back by the cliff, sliding: {s:?}");
+    assert!(
+        number(&s, "max_height") < 19.0,
+        "and no further: it did not walk up a 74 degree cliff: {s:?}"
+    );
+    assert!(
+        number(&s, "slide") > 20.0,
+        "it was pushed back by the cliff, sliding: {s:?}"
+    );
 }
