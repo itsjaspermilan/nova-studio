@@ -10,30 +10,51 @@ ui.color = {
 
 function ui.view() return nova.view() end
 
+-- Kenney's big fonts (Thick, Bold) have no punctuation to speak of: a character a font lacks is drawn as a box. These are the ones
+-- each lacks (found by reading the fonts' tables); a text with one of them is set in the next font down that has it (Thick, then
+-- Bold, then Future, which has everything).
+local LACKS = {
+  thick = [[!"#$%&'()*+/:;<=>?@[\]^`{|}~]],
+  bold = [[#$%&()*+-/:;<=>@[\]^`{|}~]],
+}
+local NEXT = { thick = "bold", bold = "future" }
+function ui.font_for(text, font)
+  text = tostring(text)
+  while LACKS[font] do
+    local lacking = false
+    for ch in text:gmatch(".") do
+      if LACKS[font]:find(ch, 1, true) then lacking = true; break end
+    end
+    if not lacking then break end
+    font = NEXT[font]
+  end
+  return font
+end
+
 -- Text centred on the screen (or on `cx`).
 function ui.center(text, y, size, color, opts)
   opts = opts or {}
   local w = nova.view()
-  local o = { size = size, color = color or ui.color.white, shadow = true, font = opts.font or "rounded" }
+  local o = { size = size, color = color or ui.color.white, shadow = true, font = ui.font_for(text, opts.font or "rounded") }
   local tw = nova.ui.text_width(text, o)
   nova.ui.text((opts.cx or w / 2) - tw / 2, y, text, o)
 end
 
 -- The largest size, up to `size`, at which `text` is no wider than `width` (a long heading in a narrow place).
 function ui.fit(text, size, width, font)
-  local w = nova.ui.text_width(text, { size = size, font = font or "bold" })
+  local w = nova.ui.text_width(text, { size = size, font = ui.font_for(text, font or "bold") })
   if w <= width then return size end
   return math.floor(size * width / w)
 end
 
 function ui.text(x, y, text, size, color, opts)
   opts = opts or {}
-  return nova.ui.text(x, y, text, { size = size, color = color or ui.color.white, shadow = opts.shadow ~= false, font = opts.font or "rounded", align = opts.align, width = opts.width })
+  return nova.ui.text(x, y, text, { size = size, color = color or ui.color.white, shadow = opts.shadow ~= false, font = ui.font_for(text, opts.font or "rounded"), align = opts.align, width = opts.width })
 end
 
 function ui.right(text, rx, y, size, color, opts)
   opts = opts or {}
-  local o = { size = size, color = color or ui.color.white, shadow = true, font = opts.font or "rounded" }
+  local o = { size = size, color = color or ui.color.white, shadow = true, font = ui.font_for(text, opts.font or "rounded") }
   local tw = nova.ui.text_width(text, o)
   nova.ui.text(rx - tw, y, text, o)
 end
