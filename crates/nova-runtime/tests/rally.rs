@@ -73,12 +73,19 @@ fn start_race(g: &mut Game, circuit_steps: usize, trial: bool) {
     }
     tap(g, "key:Enter"); // title -> main menu
     tap(g, "key:Enter"); // Race -> circuit chooser
-    for _ in 0..circuit_steps {
-        tap(g, "key:ArrowRight");
+    // Circuit, Mode and Car are picked from grid pages: A opens one, the arrows move over the cards, A keeps the card
+    if circuit_steps > 0 {
+        tap(g, "key:Enter");
+        for _ in 0..circuit_steps {
+            tap(g, "key:ArrowRight");
+        }
+        tap(g, "key:Enter");
     }
     if trial {
         tap(g, "key:ArrowDown"); // to Mode
+        tap(g, "key:Enter");
         tap(g, "key:ArrowRight"); // Race -> Time trial
+        tap(g, "key:Enter");
         tap(g, "key:ArrowUp");
     }
     for _ in 0..4 {
@@ -367,11 +374,15 @@ fn cornering_with(
     tap(&mut g, "key:Enter");
     tap(&mut g, "key:Enter");
     tap(&mut g, "key:ArrowDown"); // to Mode
+    tap(&mut g, "key:Enter");
     tap(&mut g, "key:ArrowRight"); // a time trial: no rivals to bump the car
+    tap(&mut g, "key:Enter");
     tap(&mut g, "key:ArrowDown"); // to Car
+    tap(&mut g, "key:Enter");
     for _ in 0..car_steps {
         tap(&mut g, "key:ArrowRight");
     }
+    tap(&mut g, "key:Enter");
     for _ in 0..2 {
         tap(&mut g, "key:ArrowDown"); // Laps, START
     }
