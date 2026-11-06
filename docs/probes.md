@@ -395,3 +395,22 @@ What it showed:
 **Pine Ridge Rally on the Retroid Pocket 6 (2026-11-05, first play by hand).** Five things came out of it. (1) Stutters: the per-second log showed none (435 s at a mean 59.7 fps, one second under 57 at start-up), so single-frame hitches are what the average hides; the log line now carries `p95` and `max` and a frame over 25 ms logs a `hitch:` line with the update, Lua and render times of the last frame, ready for the next play. (2) The tyres bounced: the road's bumps are sampled at 60 fps while the car does 40 m/s, so each wheel's height changed by up to 1.7 cm (15 cm off the road) at random from one frame to the next; the wheels now follow the ground with a time constant of 70 ms (mean step 9.6 mm to 1.8 mm, worst 15.6 cm to 4.3 cm) and the road's own bumps are a third as big. (3) The triggers were not analogue because the Retroid reports a trigger as an axis and as a button (`pad:r2`), and the button made it all or nothing; the game now binds the axis only, the rebinding screen turns a pressed trigger into the axis, and a trigger pulled right through on the brake at speed locks the wheels (a key never does). (4) The HUD and menus were redone (one panel style, one font for numbers, readable hints, the menus on the left with the car on the right). (5) The cars are 3.7 m long instead of 4.53 (a fifth shorter), with the wheel, collision and shadow sizes to match.
 
 **The rally's stutter was frame pacing (2026-11-05, confirmed on the Retroid).** The log showed no late frames while driving (the only long ones were the first frame after each launch), but the 95th-percentile frame time was 18 to 19 ms against a 16.67 ms display period: the moments at which the game starts its frames wander by a millisecond or two, the game moved everything by the measured time, and so motion between evenly shown pictures was uneven (7 cm of jitter a frame at 40 m/s). `pacing.rs` now gives the game exactly one display period for a step within 14% of it (or a whole number of periods for a missed frame), with the period worked out from the recent steps and snapped to the panel's nominal rate; the owner played a lap after it and the stutter was gone. A genuine long frame is passed on unchanged and the diagnostics still log the raw timings.
+
+## Probe 5: Hill Run (2026-11-06): a character on a field of triangles
+
+**Built to find out** whether `nova.solid` (a capsule against model triangles) is enough for a third-person game on hills: slopes, a
+cliff, stairs, ledges, a climb. `examples/hill-run`: a 160 m field made by `scripts/hills/make-hills.mjs` (one 51,488-triangle model with
+vertex colours by slope and height, `lib/level.lua` with the start, flag, gems and the bot's route), the Kenney character with the
+animator, a camera that pulls in with `nova.solid.raycast`, a shadow blob on `nova.solid.floor_below`, gems and a flag. The field has
+rolling hills (to 12 degrees), a 24 m hill with a 7 m cliff band round its top (74 degrees) and a long ramp up through it (about 39 degrees),
+a staircase of 20 steps of 0.3 m, and blocks of 0.3, 0.8 and 1.6 m.
+
+**What happened.** The capsule worked on the first run: it stands on the meadow, hops the 0.3 m steps (37 hops for the staircase and the blocks), climbs
+the 37 to 39 degree slopes at a run, is stopped by the cliff and slides down it (a test walks a bot straight at the cliff for 40 s: it climbs
+the hill to the foot of the cliff and no higher, with the slide counted), and the F9 bot walks the route to the flag (a test does it in
+21 s of game time, with no falls). The 51,488 triangles became solid in 3 ms on the desktop and 7 ms on the Retroid. The bugs were mine, found
+by the tests: the bot first walked into the platform's side (the route was backwards), and the level's notch cut the cliff but left the top
+of the hill 7 m higher beyond it, so the path led into a trench under a second cliff (the notch is now a long ramp of the same 7 m).
+**Found missing (to do):** nothing in the API stopped it; what a game still has to write itself is the slide (project the velocity off
+`wall_normal` each frame, as `player.lua` does), the camera's ease over a hop (`stepped`), and moving ground. How it feels in the hands is
+for the owner to say.

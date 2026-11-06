@@ -1,0 +1,33 @@
+-- Made by scripts/hills/make-hills.mjs: where things are in the hill field. Do not edit by hand.
+return {
+  start = { x = 0.00, y = 0.10, z = 0.00 },
+  flag = { x = 50.00, y = 32.06, z = -50.00 },
+  gems = {
+    { x = 8.00, y = 2.05, z = -6.00 },
+    { x = -14.00, y = 0.25, z = 14.00 },
+    { x = -35, y = 6.226512396725901, z = 0 },
+    { x = -25, y = 7.426512396725901, z = 0 },
+    { x = 30.00, y = 5.69, z = -20.00 },
+    { x = 40.00, y = 26.60, z = -42.00 },
+    { x = 22.00, y = 2.99, z = -22.00 },
+    { x = 60.00, y = 14.20, z = -30.00 },
+    { x = 58.00, y = 28.28, z = -60.00 },
+    { x = 48.00, y = 32.70, z = -48.00 },
+  },
+  -- the bot: the start, the foot of the stairs, the stairs, the notch in the cliff, up the path to the flag
+  route = {
+    { x = 0, z = 0 }, { x = -15, z = -10 }, { x = -56, z = -10 }, { x = -54, z = 0 }, { x = -25, z = 0 },
+    { x = 7.6, z = -7.6 },
+    { x = 14.6, z = -14.6 },
+    { x = 21.7, z = -21.7 },
+    { x = 28.8, z = -28.8 },
+    { x = 33.0, z = -33.0 },
+    { x = 35.9, z = -35.9 },
+    { x = 38.7, z = -38.7 },
+    { x = 42.9, z = -42.9 },
+    { x = 46.5, z = -46.5 },
+    { x = 50, z = -50 },
+  },
+  peak = { x = 50, z = -50 },
+  size = 160,
+}
