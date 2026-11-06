@@ -16,9 +16,9 @@ local ui = require("lib.ui")
 local race = {}
 
 local RIVALS = {
-  { name = "Mika", skill = 0.93, lane = -1.8 },
-  { name = "Dax", skill = 0.88, lane = 2.2 },
-  { name = "Rosa", skill = 0.83, lane = 0.4 },
+  { name = "Mika", skill = 1.0, lane = -1.8 },
+  { name = "Dax", skill = 0.96, lane = 2.2 },
+  { name = "Rosa", skill = 0.92, lane = 0.4 },
 }
 local MAP_COLORS = { { 96, 165, 250 }, { 74, 222, 128 }, { 244, 114, 182 } }
 local ROAD_HALF = 6.2        -- metres from the middle to where the grass starts
@@ -112,7 +112,7 @@ function race.define(config)
     self.countdown = 3.9
     self.last_beep = 4
     self.paused, self.pause_choice = false, 1
-    self.view_mode = 1
+    self.view_mode = 2 -- the far chase view (C changes it)
     self.message, self.message_time = "", 0
     self.cars = {}
     self.lap_times = {}
@@ -174,9 +174,13 @@ function race.define(config)
     self.cars[1] = self.player
     for i, r in ipairs(state.mode == "trial" and {} or RIVALS) do
       local car = put(pool[(i - 1) % #pool + 1], slots[i])
-      car.name, car.skill, car.lane = r.name, r.skill, r.lane
-      car.top = math.min(car.top, 44) -- (the rivals' driving is tuned for a top speed of 44 m/s: faster, they overshoot the bends)
-      car.vmax = 40 * r.skill + 4
+      -- a rival drives its own car (its top speed, its grip) as hard as the difficulty and its own skill say
+      local diff = state.current_difficulty()
+      car.name, car.lane = r.name, r.lane
+      car.skill = diff.corner * r.skill     -- the share of its tyres' grip it dares to use in a bend
+      car.vmax_base = car.top * diff.pace * r.skill
+      car.vmax = car.vmax_base
+      car.band = diff.band
       car.engine = audio.engine(0.55, car.model_id, true)
       self.cars[#self.cars + 1] = car
     end
@@ -382,7 +386,7 @@ function race.define(config)
     -- F9 lets the computer drive for you (for demos, and for testing the circuits without a controller)
     if nova.input.pressed("autodrive") then
       self.player.autopilot = not self.player.autopilot
-      self.player.skill, self.player.vmax, self.player.lane = 0.95, 44, 0
+      self.player.skill, self.player.vmax, self.player.lane = 0.95, self.player.top * 0.97, 0
     end
 
     if self.phase == "countdown" then
@@ -421,7 +425,7 @@ function race.define(config)
       for _, car in ipairs(self.cars) do
         if not car.is_player and not car.finish_time then
           local gap = self.player.progress - car.progress        -- positive: the rival is behind
-          car.vmax = (40 * car.skill + 4) * (1 + math.max(-0.07, math.min(0.07, gap * 0.0004)))
+          car.vmax = math.min(car.top, car.vmax_base * (1 + math.max(-car.band, math.min(car.band, gap * 0.0004))))
         end
       end
       self:update_player_lap()
@@ -773,11 +777,13 @@ function race.define(config)
     if me.finish_time then state.result.record_time = state.submit("race" .. self.laps, info.id, me.finish_time) end
     if self.best_lap then state.result.record_lap = state.submit("lap", info.id, self.best_lap) end
     if not self.trial then
-      local timed, ids = 0, {}
+      local timed, ids, times = 0, {}, {}
       for _, car in ipairs(order) do
         if car.finish_time then timed = timed + 1 end
         if not car.is_player then ids[#ids + 1] = car.model_id end
+        times[#times + 1] = string.format("%s%s=%.1f", car.is_player and "*" or "", car.model_id, car.finish_time or 0)
       end
+      nova.log("results: times " .. table.concat(times, " "))
       nova.log(string.format("results: a time for %d of %d cars; rivals: %s", timed, #order, table.concat(ids, " ")))
     end
     nova.log(string.format("results: place %d of %d, time %s", me.place, #order, ui.time(me.finish_time)))

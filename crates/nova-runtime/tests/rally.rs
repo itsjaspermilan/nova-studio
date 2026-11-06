@@ -88,8 +88,9 @@ fn start_race(g: &mut Game, circuit_steps: usize, trial: bool) {
         tap(g, "key:Enter");
         tap(g, "key:ArrowUp");
     }
-    for _ in 0..4 {
-        tap(g, "key:ArrowDown"); // Circuit -> Mode -> Car -> Laps -> START
+    // Circuit -> Mode -> Car -> Laps -> (Difficulty, in a race) -> START
+    for _ in 0..(if trial { 4 } else { 5 }) {
+        tap(g, "key:ArrowDown");
     }
     frame(g, &["key:Enter"]); // START
 }
@@ -122,7 +123,7 @@ fn a_whole_race_on_pine_ridge_ends_on_the_results_screen() {
         !log.iter().any(|l| l.contains("put back on the road")),
         "nobody got stuck: {log:?}"
     );
-    let results = log.iter().find(|l| l.starts_with("results:")).unwrap();
+    let results = log.iter().find(|l| l.starts_with("results: place")).unwrap();
     assert!(results.contains("of 4"), "{results}");
     // the tyres wore (a little just by driving three laps) and the computer driver did not wreck the car
     let wear = log
@@ -175,7 +176,7 @@ fn a_time_trial_has_no_rivals_and_keeps_the_ghost_of_the_best_lap() {
     let log = play(0, true);
     let results = log
         .iter()
-        .find(|l| l.starts_with("results:"))
+        .find(|l| l.starts_with("results: place"))
         .expect("the trial ends");
     assert!(
         results.contains("place 1 of 1"),
@@ -676,5 +677,95 @@ fn the_engine_moves_through_its_loops_as_the_revs_climb_and_no_loop_is_bent_far(
     assert!(
         lowest > 0.55 && highest < 1.8,
         "a loop is bent by under a half either way: {lowest} to {highest}"
+    );
+}
+
+/// How the cars and the difficulties come out: one lap each, the player's car driven by the computer (F9) against three rivals of its own
+/// class. Prints the finishing times. Run on purpose: `cargo test --release -p nova-runtime --test rally ai_balance -- --ignored --nocapture`.
+fn one_lap(class: usize, step: usize, difficulty_steps: i32) -> String {
+    let mut g = load();
+    for _ in 0..30 {
+        frame(&mut g, &[]);
+    }
+    tap(&mut g, "key:Enter");
+    tap(&mut g, "key:Enter");
+    tap(&mut g, "key:ArrowDown");
+    tap(&mut g, "key:ArrowDown"); // Car
+    tap(&mut g, "key:Enter");
+    for _ in 0..class {
+        tap(&mut g, "key:KeyE");
+    }
+    for _ in 0..step {
+        tap(&mut g, "key:ArrowRight");
+    }
+    tap(&mut g, "key:Enter");
+    tap(&mut g, "key:ArrowDown"); // Laps
+    tap(&mut g, "key:ArrowLeft");
+    tap(&mut g, "key:ArrowLeft");
+    tap(&mut g, "key:ArrowDown"); // Difficulty
+    for _ in 0..difficulty_steps.abs() {
+        tap(&mut g, if difficulty_steps > 0 { "key:ArrowRight" } else { "key:ArrowLeft" });
+    }
+    tap(&mut g, "key:ArrowDown"); // START
+    frame(&mut g, &["key:Enter"]);
+    let mut log = Vec::new();
+    run_until(&mut g, &mut log, "the countdown ends", 60 * 8, |l| {
+        l.iter().any(|x| x == "go")
+    });
+    tap(&mut g, "key:F9");
+    run_until(&mut g, &mut log, "the results", 60 * 60 * 6, |l| {
+        l.iter().any(|x| x.starts_with("results: times"))
+    });
+    log.into_iter()
+        .find(|l| l.starts_with("results: times"))
+        .unwrap()
+}
+
+#[test]
+#[ignore]
+fn ai_balance() {
+    let cars = [
+        ("Redline", 0, 0),
+        ("Sunburst", 0, 1),
+        ("Blue Streak", 1, 0),
+        ("Green Machine", 1, 1),
+        ("Grand Tourer", 1, 2),
+        ("Patrol", 1, 3),
+        ("Commuter", 2, 0),
+        ("Trailblazer", 2, 1),
+        ("Cab", 2, 2),
+        ("Delivery Van", 2, 3),
+        ("Hauler", 2, 4),
+    ];
+    // AI_CARS=Redline,Cab limits the sweep to some cars
+    let only = std::env::var("AI_CARS").unwrap_or_default();
+    for (name, class, step) in cars {
+        if !only.is_empty() && !only.split(',').any(|o| o == name) {
+            continue;
+        }
+        for (label, d) in [("easy", -1), ("medium", 0), ("hard", 1)] {
+            println!("{name:14} {label:6} {}", one_lap(class, step, d));
+        }
+    }
+}
+
+/// The mean finishing time of the rivals in a "results: times" line (the player's entry starts with a star).
+fn rivals_mean(line: &str) -> f32 {
+    let times: Vec<f32> = line
+        .split_whitespace()
+        .filter(|t| t.contains('=') && !t.starts_with('*'))
+        .map(|t| t.split_once('=').unwrap().1.parse().unwrap())
+        .collect();
+    times.iter().sum::<f32>() / times.len() as f32
+}
+
+#[test]
+fn the_difficulty_sets_how_fast_the_rivals_drive() {
+    let easy = rivals_mean(&one_lap(1, 0, -1));
+    let medium = rivals_mean(&one_lap(1, 0, 0));
+    let hard = rivals_mean(&one_lap(1, 0, 1));
+    assert!(
+        easy > medium * 1.05 && medium > hard * 1.03,
+        "easy {easy} medium {medium} hard {hard}"
     );
 }

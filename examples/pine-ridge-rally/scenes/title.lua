@@ -52,7 +52,7 @@ local LEFT, RIGHT = 36, 614 -- the margins every grid page shares (the cards, th
 local GRIDS = {
   circuit = { cols = 2, card_w = 282, card_h = 176, gap = 14, x = 36, y = 100 },
   mode = { cols = 2, card_w = 282, card_h = 150, gap = 14, x = 36, y = 150 },
-  car = { cols = 3, card_w = (RIGHT - LEFT - 16) / 3, card_h = 88, gap = 8, x = LEFT, y = 160 },
+  car = { cols = 3, card_w = (RIGHT - LEFT - 16) / 3, card_h = 100, gap = 8, x = LEFT, y = 160 },
 }
 
 -- the cars of one class, as numbers into state.cars
@@ -108,6 +108,12 @@ function Title:open_pick(kind)
   self.pick = { kind = kind, old_laps = state.laps, class = state.current_car().class, tabs = false }
   self.pick.old = (kind == "car") and state.car or self:picked(kind) -- (for a car: its number in state.cars)
   self.screen = "pick"
+end
+
+-- the rows of the chooser: the difficulty is for races (a time trial has no rivals)
+function Title:select_rows()
+  if state.mode == "race" then return { "circuit", "mode", "car", "laps", "difficulty", "start" } end
+  return { "circuit", "mode", "car", "laps", "start" }
 end
 
 function Title:update_pick()
@@ -230,16 +236,25 @@ function Title:update(dt)
   elseif screen == "pick" then
     self:update_pick()
   elseif screen == "select" then
-    local choice, action = ui.navigate(self.choice, 5)
+    local rows = self:select_rows()
+    self.choice = math.min(self.choice, #rows)
+    local choice, action = ui.navigate(self.choice, #rows)
     self.choice = choice
+    local row = rows[choice]
     local step = (action == "right" and 1) or (action == "left" and -1) or 0
-    -- (Circuit, Mode and Car are chosen on their own pages: A opens one; only Laps is changed with left and right)
-    if choice == 4 and step ~= 0 then state.laps = math.max(1, math.min(5, state.laps + step)); audio.sfx("menu_move") end
+    -- (Circuit, Mode and Car are chosen on their own pages: A opens one; Laps and Difficulty are changed with left and right)
+    if row == "laps" and step ~= 0 then state.laps = math.max(1, math.min(5, state.laps + step)); audio.sfx("menu_move") end
+    if row == "difficulty" and (step ~= 0 or action == "accept") then
+      local at = 1
+      for k, d in ipairs(state.difficulties) do if d.id == state.difficulty then at = k end end
+      state.difficulty = state.difficulties[(at - 1 + (step ~= 0 and step or 1)) % #state.difficulties + 1].id
+      audio.sfx("menu_move")
+    end
     if action == "back" then audio.sfx("menu_back"); self:go("menu")
-    elseif (action == "accept" or action == "right") and choice <= 3 then
+    elseif (action == "accept" or action == "right") and (row == "circuit" or row == "mode" or row == "car") then
       audio.sfx("menu_accept")
-      self:open_pick(({ "circuit", "mode", "car" })[choice])
-    elseif action == "accept" and choice == 5 then
+      self:open_pick(row)
+    elseif action == "accept" and row == "start" then
       audio.sfx("menu_accept")
       state.save_options()
       audio.stop_music(0.6)
@@ -319,9 +334,10 @@ function Title:draw_pick()
       ui.text(x + 20, y + 74, item.blurb, 17, { 214, 224, 238 }, { width = w - 40 })
     else
       ui.text(x + 12, y + 8, item.name, ui.fit(item.name, 20, w - 24, "rounded"), ui.color.white)
-      bar(x + 12, y + 40, w - 82, "POWER", (item.power - 6) / 6.5)
-      bar(x + 12, y + 54, w - 82, "SPEED", (item.top - 34) / 18)
-      bar(x + 12, y + 68, w - 82, "DRIFT", item.oversteer)
+      bar(x + 12, y + 38, w - 82, "POWER", (item.power - 6) / 6.5)
+      bar(x + 12, y + 52, w - 82, "SPEED", (item.top - 34) / 18)
+      bar(x + 12, y + 66, w - 82, "GRIP", (item.grip - 0.75) / 0.5)
+      bar(x + 12, y + 80, w - 82, "DRIFT", item.oversteer)
     end
   end
   if pick.kind == "car" then
@@ -387,22 +403,28 @@ function Title:draw_ui()
   elseif screen == "select" then
     local info = state.current_track()
     ui.center("CHOOSE YOUR RACE", 40, ui.fit("CHOOSE YOUR RACE", 36, 390), ui.color.gold, { font = "bold", cx = 240 })
-    ui.menu({
-      { "Circuit", info.name .. "  >" },
-      { "Mode", (state.mode == "race" and "Race" or "Time trial") .. "  >" },
-      { "Car", state.current_car().name .. "  >" },
-      { "Laps", "< " .. state.laps .. " >" },
-      state.mode == "race" and "START RACE" or "START TIME TRIAL",
-    }, self.choice, 100, { width = 400, cx = 240 })
+    local labels = {
+      circuit = { "Circuit", info.name .. "  >" },
+      mode = { "Mode", (state.mode == "race" and "Race" or "Time trial") .. "  >" },
+      car = { "Car", state.current_car().name .. "  >" },
+      laps = { "Laps", "< " .. state.laps .. " >" },
+      difficulty = { "Difficulty", "< " .. state.current_difficulty().name .. " >" },
+      start = state.mode == "race" and "START RACE" or "START TIME TRIAL",
+    }
+    local rows, items = self:select_rows(), {}
+    for k, id in ipairs(rows) do items[k] = labels[id] end
+    ui.menu(items, self.choice, 100, { width = 400, cx = 240, row = 42 })
+    local on_difficulty = rows[self.choice] == "difficulty"
     -- (the menu and its notes are on the left, so that the car turning behind them can be seen on the right)
-    ui.panel(40, 340, 400, 120, 205)
-    ui.text(56, 354, state.mode == "race" and info.blurb or "Alone on the circuit, racing the ghost of your best lap.", 15, ui.color.white, { width = 370 })
+    ui.panel(40, 360, 400, 112, 205)
+    local note = on_difficulty and state.current_difficulty().blurb or (state.mode == "race" and info.blurb or "Alone on the circuit, racing the ghost of your best lap.")
+    ui.text(56, 372, note, 15, ui.color.white, { width = 370 })
     local best = state.best("race" .. state.laps, info.id)
     local lap = state.best("lap", info.id)
-    ui.label(56, 404, "BEST " .. state.laps .. " LAPS")
-    ui.text(180, 398, ui.time(best), 18, ui.color.gold, { font = "mono" })
-    ui.label(56, 430, "BEST LAP")
-    ui.text(180, 424, ui.time(lap), 18, ui.color.gold, { font = "mono" })
+    ui.label(56, 416, "BEST " .. state.laps .. " LAPS")
+    ui.text(180, 410, ui.time(best), 18, ui.color.gold, { font = "mono" })
+    ui.label(56, 442, "BEST LAP")
+    ui.text(180, 436, ui.time(lap), 18, ui.color.gold, { font = "mono" })
     ui.hints({ { "pad_dpad", "move" }, { "pad_a", "open / go" }, { "pad_b", "back" } })
   end
 end

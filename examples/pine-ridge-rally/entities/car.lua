@@ -59,6 +59,7 @@ function Car:create()
     if c.id == self.model_id then
       self.wheel_radius = c.wheel or WHEEL_RADIUS
       self.power, self.top = c.power or self.power, c.top or self.top
+      self.grip_stat, self.brake_power = c.grip or 1, 30 * (c.brake or 1)
     end
   end
   self.parts_table = {
@@ -81,7 +82,7 @@ end
 
 -- How much the tyres hold: the circuit's grip, less what the wear has taken (a bald set holds 30% less).
 function Car:grip_now()
-  return (self.grip_scale or 1) * (0.7 + 0.3 * self.tyres)
+  return (self.grip_scale or 1) * (self.grip_stat or 1) * (0.7 + 0.3 * self.tyres)
 end
 
 function Car:teleport(x, z, heading)
