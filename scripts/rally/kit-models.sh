@@ -11,13 +11,14 @@ K() { scripts/env.sh node scripts/kenney.mjs "$@"; }
 # One scale for all the cars, so that they keep the kit's sizes relative to each other (the first version fitted each to the same
 # length, which made the hatchback a toy and the sedan a box): the kit's formula car (2.56 m long) comes out 3.5 m. Wheels are
 # 0.6 m across whatever the car (the kit's are 0.8 to 0.9, huge for a car this size).
-# The wheels fit the body: 0.6 m on the open-wheel cars, 0.78 and 0.74 m under the tall bodies of the sedan and the hatchback (at 0.6 they
-# looked tiny). `wheel` in lib/state.lua must say the same, for the spin.
+# The wheels fit the body: 0.6 m on the open-wheel cars, 0.68 and 0.66 m under the taller bodies of the sedan and the hatchback. `wheel` in lib/state.lua must say the same, for the spin.
 CAR_SCALE=1.37
 CAR=(--scale $CAR_SCALE --pivot-wheels --centre-axles --rename wheel-front-right=wheel_fl,wheel-front-left=wheel_fr,wheel-back-right=wheel_rl,wheel-back-left=wheel_rr)
 K "$KITS/kenney_car-kit" $P race --as car --wheel-diameter 0.6 "${CAR[@]}"
-K "$KITS/kenney_car-kit" $P sedan-sports --as car_blue --wheel-diameter 0.78 --wheels-to-body "${CAR[@]}"
-K "$KITS/kenney_car-kit" $P hatchback-sports --as car_green --wheel-diameter 0.74 --wheels-to-body "${CAR[@]}"
+# the sedan and the hatchback are smaller as a whole than the open-wheel cars (a road car beside a formula car: 3.0 and 3.3 m long
+# against 3.5, 1.5 m wide against 1.64), with wheels 0.68 and 0.66 m across
+K "$KITS/kenney_car-kit" $P sedan-sports --as car_blue "${CAR[@]}" --scale 1.18 --wheel-diameter 0.68 --wheels-to-body
+K "$KITS/kenney_car-kit" $P hatchback-sports --as car_green "${CAR[@]}" --scale 1.15 --wheel-diameter 0.66 --wheels-to-body
 K "$KITS/kenney_car-kit" $P race-future --as car_yellow --wheel-diameter 0.62 "${CAR[@]}"
 PK="$KITS/kenney_platformer-kit"
 for m in pine pine_dark; do K "$PK" $P tree-pine --as $m --fit y=7.25 --collider 0:0:0.9; done
