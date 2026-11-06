@@ -138,3 +138,60 @@ fn the_cliff_cannot_be_climbed_by_walking_straight_at_it() {
         "it was pushed back by the cliff, sliding: {s:?}"
     );
 }
+
+/// A numbers table from the newest status line, after pressing `key` (a teleport) and letting the bot run for `seconds`.
+fn run_script(key: &str, seconds: u32) -> std::collections::HashMap<String, String> {
+    let mut g = game();
+    for _ in 0..30 {
+        frame(&mut g, &[]);
+    }
+    tap(&mut g, key);
+    for _ in 0..60 * seconds {
+        frame(&mut g, &[]);
+    }
+    status(&mut g)
+}
+
+#[test]
+fn the_bot_climbs_the_tower_by_holding_the_grab_button_at_the_wall_and_steps_over_the_top() {
+    let s = run_script("key:F7", 10);
+    assert!(number(&s, "max_height") > 12.0, "the tower is 12 m: {s:?}");
+    assert!(
+        number(&s, "climb") > 3.0 && number(&s, "climb") < 5.9,
+        "about 12 m at 2.6 m/s: {s:?}"
+    );
+    assert!(
+        number(&s, "mantles") >= 1.0,
+        "it stepped over the top: {s:?}"
+    );
+    assert!(
+        number(&s, "stamina") > 0.0 && number(&s, "falls") == 0.0,
+        "{s:?}"
+    );
+}
+
+#[test]
+fn the_bot_climbs_the_74_degree_cliff_that_walking_cannot() {
+    let s = run_script("key:F5", 40);
+    assert!(
+        number(&s, "max_height") > 19.0,
+        "past the cliff, which walking could not climb (the walking test stops below 19): {s:?}"
+    );
+    assert!(number(&s, "mantles") >= 1.0, "{s:?}");
+    assert!(number(&s, "falls") == 0.0, "{s:?}");
+}
+
+#[test]
+fn gliding_from_high_up_covers_far_more_ground_than_falling() {
+    let s = run_script("key:F6", 10); // (it lands at about 8.5 s; the bot would then walk off the edge of the field)
+    // from 24 m, falling takes 2.2 s; the glider falls at 2.4 m/s and flies at 9 m/s, so it covers some 80 m of the 24 m of height
+    assert!(number(&s, "glide_dist") > 50.0, "{s:?}");
+    assert!(
+        number(&s, "glide_time") > 6.0 && number(&s, "glide_time") < 9.0,
+        "{s:?}"
+    );
+    assert!(
+        number(&s, "falls") == 0.0 && s["mode"] == "walk",
+        "landed and walking again: {s:?}"
+    );
+}

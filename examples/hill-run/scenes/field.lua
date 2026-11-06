@@ -1,5 +1,6 @@
 local state = require("lib.state")
 local level = require("lib.level")
+local max, min = math.max, math.min
 
 local Scene = nova.scene {}
 
@@ -19,13 +20,13 @@ function Scene:enter()
   state.total = #level.gems
   nova.spawn("flag", level.flag.x, level.flag.y, { z = level.flag.z })
   nova.spawn("player", level.start.x, level.start.y, { z = level.start.z })
-  state.say("climb to the flag: the cliff is too steep, find the path (or press F9)", 5)
+  state.say("hold R1 against a wall to climb, press B in the air to glide: climb to the flag", 6)
 end
 
 function Scene:update(dt)
   if nova.input.pressed("stats") then
     local p = nova.first("player")
-    nova.log(string.format("hill: x=%.1f y=%.1f z=%.1f gems=%d falls=%d slide=%d hops=%d max_height=%.1f won=%s time=%.1f", p and p.x or 0, p and p.y or 0, p and p.z or 0, state.gems, state.falls, state.slide_frames, state.hops, state.max_height, tostring(state.won), state.time))
+    nova.log(string.format("hill: x=%.1f y=%.1f z=%.1f gems=%d falls=%d slide=%d hops=%d max_height=%.1f won=%s time=%.1f mode=%s stamina=%.1f climb=%.1f glide_dist=%.1f glide_time=%.1f mantles=%d", p and p.x or 0, p and p.y or 0, p and p.z or 0, state.gems, state.falls, state.slide_frames, state.hops, state.max_height, tostring(state.won), state.time, p and p.mode or "-", p and p.stamina or 0, state.climb_time or 0, state.glide_dist or 0, state.glide_time or 0, state.mantles or 0))
   end
   if nova.input.pressed("pause") and not state.won then
     self.paused = not self.paused
@@ -46,7 +47,15 @@ function Scene:draw_ui()
   nova.ui.rect(24, 25, 14, 14, { 80, 100, 200 })
   text(46, 33, string.format("%d / %d gems   %.0f s", state.gems, state.total, state.time), 20)
   local p = nova.first("player")
-  if p then text(w - 16, 33, string.format("height %.0f m", p.y), 18, { 220, 230, 255 }, "right") end
+  if p then
+    text(w - 16, 33, string.format("height %.0f m", p.y), 18, { 220, 230, 255 }, "right")
+    -- stamina: it runs down while climbing and gliding and comes back on the ground
+    local f = max(0, min(1, p.stamina / 6))
+    local bw = 240
+    nova.ui.rect(w / 2 - bw / 2 - 3, h - 44, bw + 6, 18, { 0, 0, 0, 130 })
+    nova.ui.rect(w / 2 - bw / 2, h - 41, bw * f, 12, f > 0.5 and { 90, 220, 120 } or (f > 0.25 and { 240, 200, 70 } or { 235, 80, 70 }))
+    text(w / 2, h - 54, p.mode == "climb" and "climbing" or (p.mode == "glide" and "gliding" or "stamina"), 14, { 230, 235, 245 }, "center")
+  end
   if state.message_for > 0 then text(w / 2, 70, state.message, 22, nil, "center") end
   if state.won then
     nova.ui.rect(0, 0, w, h, { 10, 60, 30, 170 })

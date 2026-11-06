@@ -2,11 +2,14 @@ local state = require("lib.state")
 local level = require("lib.level")
 
 local cam3 = nova.cam3
-local sin, cos, tan, sqrt, max, min, abs = math.sin, math.cos, math.tan, math.sqrt, math.max, math.min, math.abs
+local sin, cos, sqrt, max, min, abs = math.sin, math.cos, math.sqrt, math.max, math.min, math.abs
 local RADIUS, HEIGHT = 0.35, 1.7
 local WALK, SPRINT, GRAVITY, JUMP = 6, 10, 28, 10
 local COYOTE, BUFFER = 0.1, 0.12
 local CAM_DIST, CAM_ELEV = 7, 0.4
+local STAMINA = 6           -- seconds of climbing (gliding costs 0.7 of a second a second)
+local CLIMB_SPEED = 2.6
+local GLIDE_SPEED, GLIDE_FALL = 9, 2.4
 
 local CHARACTER = "skater_male" -- one of skater_male, skater_female, criminal, cyborg (Kenney's Animated Characters, CC0)
 
@@ -24,6 +27,9 @@ function Player:create()
   self.cam_d = CAM_DIST
   self.step_off = 0 -- how far below the body the picture still is after a hop up a ledge (it eases up)
   self.air_time = 0
+  self.mode = "walk"   -- "walk", "climb" or "glide"
+  self.stamina = STAMINA
+  self.wall, self.wall_age = nil, 9
   cam3.yaw = math.pi
   cam3.eye = { x = self.x, y = self.y + 3, z = self.z - 6 }
   nova.input.grab_mouse(true)
@@ -31,37 +37,47 @@ end
 
 function Player:respawn()
   self.x, self.y, self.z = level.start.x, level.start.y, level.start.z
-  self.vx, self.vy, self.vz, self.ground = 0, 0, 0, false
+  self.vx, self.vy, self.vz, self.ground, self.mode = 0, 0, 0, false, "walk"
 end
 
 -- The bot: walks the route (to the stairs, up them, across to the notch in the cliff and up the path to the flag), jumping when
--- something stops it.
+-- something stops it. In the tests it is also made to climb (it holds the grab button and pushes at a wall) and to glide.
 local function autoplay(self)
   self.plan_i = self.plan_i or 1
   local step = (self.route or level.route)[self.plan_i]
   if not step then return 0, 0, false end
   local dx, dz = step.x - self.x, step.z - self.z
   local d = sqrt(dx * dx + dz * dz)
-  if d < 1.6 then self.plan_i = self.plan_i + 1; return 0, 0, false end
-  return dx / d, dz / d, (self.blocked or 0) > 4
+  if d < 1.6 and not self.route_hold then self.plan_i = self.plan_i + 1; return 0, 0, false end
+  return dx / d, dz / d, (self.blocked or 0) > 4 and self.mode == "walk"
 end
 
--- (a test of the cliff: F8 puts the player on the hill below it, and the bot then walks straight at the cliff)
-function Player:to_the_cliff()
-  local x, z = level.peak.x + 26, level.peak.z
-  local h = nova.solid.floor_below(x, 100, z, 200)
-  self.x, self.y, self.z = x, (h or 0) + 0.2, z
-  self.vx, self.vy, self.vz, self.ground = 0, 0, 0, false
-  self.route, self.plan_i, self.bot = { { x = level.peak.x, z = level.peak.z } }, 1, true
-  state.max_height, state.slide_frames = self.y, 0
+local function teleport(self, x, z, y, route, mode)
+  self.x, self.z = x, z
+  self.y = y or ((nova.solid.floor_below(x, 200, z, 400)) or 0) + 0.2
+  self.vx, self.vy, self.vz, self.ground, self.mode = 0, 0, 0, false, "walk"
+  self.route, self.plan_i, self.bot, self.bot_script = route, 1, true, mode
+  self.stamina, self.wall = STAMINA, nil
+  state.max_height, state.slide_frames, state.climb_time, state.glide_dist, state.glide_time = self.y, 0, 0, 0, 0
+  self.start_x, self.start_z = x, z
 end
+
+-- tests: F8 puts the player on the hill below the cliff, walking at it; F7 in front of the tower, climbing it; F6 high in the air,
+-- gliding; F5 at the foot of the cliff, climbing it
+function Player:to_the_cliff() teleport(self, level.peak.x + 26, level.peak.z, nil, { { x = level.peak.x, z = level.peak.z } }, nil) end
+function Player:to_the_tower() teleport(self, level.tower.x, level.tower.z - 5, nil, { { x = level.tower.x, z = level.tower.z } }, "climb") end
+function Player:to_the_sky() teleport(self, 0, 0, 24, { { x = -300, z = 300 } }, "glide") end
+function Player:to_the_cliff_face() teleport(self, level.peak.x + 24, level.peak.z + 0.0, nil, { { x = level.peak.x, z = level.peak.z } }, "climb"); self.route_hold = true end
 
 function Player:update(dt)
   if state.won then return end
-  if nova.input.pressed("cliff") then self:to_the_cliff() end
   state.time = state.time + dt
   state.message_for = state.message_for - dt
   if nova.input.pressed("autoplay") then self.bot = not self.bot; self.plan_i = nil; state.say(self.bot and "autoplay" or "by hand") end
+  if nova.input.pressed("cliff") then self:to_the_cliff() end
+  if nova.input.pressed("tower") then self:to_the_tower() end
+  if nova.input.pressed("sky") then self:to_the_sky() end
+  if nova.input.pressed("cliff_face") then self:to_the_cliff_face() end
 
   local ptr = nova.input.pointer()
   cam3.yaw = cam3.yaw - nova.input.axis("look_x") * 2.8 * dt - ptr.dx * 0.0022
@@ -72,15 +88,37 @@ function Player:update(dt)
   local mx, my = nova.input.axis("move_x"), nova.input.axis("move_y")
   local wx, wz = rx * mx - fx_ * my, rz * mx - fz_ * my
   local want_jump = nova.input.pressed("jump")
+  local jump_held = nova.input.down("jump")
   local sprint = nova.input.down("sprint")
+  local grab = nova.input.down("grab")
   if self.bot then
     local bx, bz, bj = autoplay(self)
     wx, wz, want_jump, sprint = bx, bz, want_jump or bj, true
+    jump_held = true
+    grab = self.bot_script == "climb"
+    -- the glide test: a jump in the air, once
+    if self.bot_script == "glide" and self.mode == "walk" and not self.ground and self.air_time > 0.4 and not self.glided then want_jump, self.glided = true, true end
   end
   local len = sqrt(wx * wx + wz * wz)
   if len > 1 then wx, wz = wx / len, wz / len end
-  local top = sprint and SPRINT or WALK
+  self.wall_age = self.wall_age + dt
 
+  if self.mode == "climb" then self:climb(dt, wx, wz, len, grab, want_jump)
+  elseif self.mode == "glide" then self:glide(dt, wx, wz, len, want_jump)
+  else self:walk(dt, wx, wz, len, want_jump, jump_held, sprint, grab) end
+
+  state.max_height = max(state.max_height, self.y)
+  if self.y < -20 then state.falls = state.falls + 1; state.say("fell", 1); self:respawn() end
+  -- the body hops a 0.3 m step in one frame; what is drawn (and what the camera looks at) eases up it, so a staircase is a smooth climb
+  self.step_off = self.step_off * math.exp(-14 * dt)
+  self.air_time = self.ground and 0 or self.air_time + dt
+  -- stamina comes back on the ground
+  if self.mode == "walk" and self.ground then self.stamina = min(STAMINA, self.stamina + 2.5 * dt) end
+  self:aim_camera(dt)
+end
+
+function Player:walk(dt, wx, wz, len, want_jump, jump_held, sprint, grab)
+  local top = sprint and SPRINT or WALK
   -- on the ground one steers sharply; in the air (and sliding) a little
   local accel = (self.ground and 55 or 18) * dt
   self.vx, self.vz = approach(self.vx, wx * top, accel), approach(self.vz, wz * top, accel)
@@ -92,11 +130,18 @@ function Player:update(dt)
 
   if want_jump then self.buffer = BUFFER else self.buffer = max(0, self.buffer - dt) end
   if self.ground then self.coyote = COYOTE else self.coyote = max(0, self.coyote - dt) end
+  local jumped = false
   if self.buffer > 0 and self.coyote > 0 then
-    self.vy, self.buffer, self.coyote, self.ground, self.jumping = JUMP, 0, 0, false, true
+    self.vy, self.buffer, self.coyote, self.ground, self.jumping, jumped = JUMP, 0, 0, false, true, true
     nova.sound.play("jump", { volume = 0.4, limit = 2 })
   end
-  if self.jumping and self.vy > 0 and not (nova.input.down("jump") or self.bot) then self.vy = self.vy * 0.5; self.jumping = false end
+  -- a jump pressed in the air opens the glider
+  if want_jump and not jumped and not self.ground and self.coyote <= 0 and self.air_time > 0.3 and self.stamina > 1 then
+    self.mode, self.glide_yaw = "glide", self.face
+    self.glide_start = { x = self.x, z = self.z }
+    return
+  end
+  if self.jumping and self.vy > 0 and not (jump_held or self.bot) then self.vy = self.vy * 0.5; self.jumping = false end
   if not self.ground then self.vy = self.vy - GRAVITY * dt end
 
   local m = nova.solid.move(self.x, self.y, self.z, RADIUS, HEIGHT, self.vx * dt, self.vy * dt, self.vz * dt)
@@ -109,7 +154,9 @@ function Player:update(dt)
     local n = m.wall_normal
     local into = self.vx * n.x + self.vy * n.y + self.vz * n.z
     if into < 0 then self.vx, self.vy, self.vz = self.vx - n.x * into, self.vy - n.y * into, self.vz - n.z * into end
-    if n.y > 0.05 then state.slide_frames = state.slide_frames + 1 else self.blocked = (self.blocked_for or 0) + 1 end
+    if n.y > 0.05 then state.slide_frames = state.slide_frames + 1 end
+    if n.y < 0.6 then self.wall, self.wall_age = { x = n.x, y = n.y, z = n.z }, 0 end   -- something to cling to
+    if n.y <= 0.05 then self.blocked = (self.blocked_for or 0) + 1 end
   end
   self.blocked_for = self.blocked
   if m.ceiling and self.vy > 0 then self.vy = 0 end
@@ -120,13 +167,97 @@ function Player:update(dt)
   else
     self.ground = false
   end
-  state.max_height = max(state.max_height, self.y)
 
-  if self.y < -20 then state.falls = state.falls + 1; state.say("fell", 1); self:respawn() end
-  -- the body hops a 0.3 m step in one frame; what is drawn (and what the camera looks at) eases up it, so a staircase is a smooth climb
-  self.step_off = self.step_off * math.exp(-14 * dt)
-  self.air_time = self.ground and 0 or self.air_time + dt
-  self:aim_camera(dt)
+  -- cling to a wall: hold the grab button and push at it
+  if grab and self.wall and self.wall_age < 0.15 and self.stamina > 0.3 and len > 0.1 then
+    local pushing = wx * -self.wall.x + wz * -self.wall.z
+    if pushing > 0.3 * sqrt(self.wall.x ^ 2 + self.wall.z ^ 2) then
+      self.mode, self.cn, self.wall_lost = "climb", self.wall, 0
+      self.vx, self.vy, self.vz, self.ground, self.jumping = 0, 0, 0, false, false
+    end
+  end
+end
+
+-- Climbing: gravity is off, the stick moves along the surface (pushing at it is up, pulling away is down), and the clock runs.
+function Player:climb(dt, wx, wz, len, grab, want_jump)
+  local n = self.cn
+  local nl = sqrt(n.x * n.x + n.y * n.y + n.z * n.z)
+  n = { x = n.x / nl, y = n.y / nl, z = n.z / nl }
+  -- up the surface, and along it (the horizontal direction at right angles to the way the wall faces)
+  local ux, uy, uz = -n.x * n.y, 1 - n.y * n.y, -n.z * n.y
+  local ul = sqrt(ux * ux + uy * uy + uz * uz)
+  ux, uy, uz = ux / ul, uy / ul, uz / ul
+  local hl = sqrt(n.x * n.x + n.z * n.z)
+  local tx, tz = n.z / max(hl, 1e-4), -n.x / max(hl, 1e-4)
+  local lateral = wx * tx + wz * tz
+  local vert = (wx * -n.x + wz * -n.z) / max(hl, 1e-4)
+  if len < 0.1 then lateral, vert = 0, 0 end
+  local s = CLIMB_SPEED
+  self.vx = tx * lateral * s + ux * vert * s - n.x * 0.8
+  self.vy = uy * vert * s - n.y * 0.8
+  self.vz = tz * lateral * s + uz * vert * s - n.z * 0.8
+  -- face the wall
+  local want = math.atan(n.x, n.z)
+  self.face = self.face + ((want - self.face + math.pi) % (2 * math.pi) - math.pi) * min(1, 12 * dt)
+  self.stamina = self.stamina - dt
+  state.climb_time = (state.climb_time or 0) + dt
+
+  local m = nova.solid.move(self.x, self.y, self.z, RADIUS, HEIGHT, self.vx * dt, self.vy * dt, self.vz * dt)
+  self.x, self.y, self.z = m.x, m.y, m.z
+  if m.wall then
+    local nn = m.wall_normal
+    if nn.y < 0.6 then self.cn, self.wall_lost = { x = nn.x, y = nn.y, z = nn.z }, 0 end
+  end
+  self.wall_lost = (self.wall_lost or 0) + (m.wall and 0 or dt)
+  self.ground = false
+  -- over the top: no wall under the hands any more while going up: step onto what is there
+  if vert > 0.3 and self.wall_lost > 0.12 then
+    self.mode = "walk"
+    self.vx, self.vz, self.vy = -n.x * 4.5, -n.z * 4.5, 4
+    self.wall, self.wall_age, self.mantles = nil, 9, (self.mantles or 0) + 1
+    state.mantles = (state.mantles or 0) + 1
+    return
+  end
+  if m.ground and vert < 0 then self.mode, self.ground = "walk", true; return end
+  -- let go, run out of strength, or jump off the wall
+  if not grab or self.stamina <= 0 then
+    self.mode, self.wall, self.wall_age = "walk", nil, 9
+    self.vx, self.vy, self.vz = 0, 0, 0
+    if self.stamina <= 0 then state.say("out of stamina", 1) end
+  elseif want_jump then
+    self.mode, self.wall, self.wall_age = "walk", nil, 9
+    self.vx, self.vz, self.vy = n.x * 6, n.z * 6, 9
+    nova.sound.play("jump", { volume = 0.4, limit = 2 })
+  end
+end
+
+-- Gliding: a steady speed along the heading, a slow fall, steering with the stick, and the clock runs (slower).
+function Player:glide(dt, wx, wz, len, want_jump)
+  if len > 0.1 then
+    local want = math.atan(-wx, -wz)
+    self.glide_yaw = self.glide_yaw + ((want - self.glide_yaw + math.pi) % (2 * math.pi) - math.pi) * min(1, 2.2 * dt)
+  end
+  local dx, dz = -sin(self.glide_yaw), -cos(self.glide_yaw)
+  self.vx, self.vz = approach(self.vx, dx * GLIDE_SPEED, 30 * dt), approach(self.vz, dz * GLIDE_SPEED, 30 * dt)
+  self.vy = approach(self.vy, -GLIDE_FALL, 18 * dt)
+  self.face = self.glide_yaw
+  self.stamina = self.stamina - dt * 0.7
+  state.glide_time = (state.glide_time or 0) + dt
+
+  local m = nova.solid.move(self.x, self.y, self.z, RADIUS, HEIGHT, self.vx * dt, self.vy * dt, self.vz * dt)
+  self.x, self.y, self.z = m.x, m.y, m.z
+  if m.wall then
+    local n = m.wall_normal
+    local into = self.vx * n.x + self.vy * n.y + self.vz * n.z
+    if into < 0 then self.vx, self.vy, self.vz = self.vx - n.x * into, self.vy - n.y * into, self.vz - n.z * into end
+  end
+  state.glide_dist = max(state.glide_dist or 0, sqrt((self.x - (self.glide_start and self.glide_start.x or self.x)) ^ 2 + (self.z - (self.glide_start and self.glide_start.z or self.z)) ^ 2))
+  if m.ground or want_jump or self.stamina <= 0 then
+    self.mode = "walk"
+    self.ground = m.ground
+    if m.ground then self.vy, self.vx, self.vz = 0, self.vx * 0.5, self.vz * 0.5 end
+    if self.stamina <= 0 then state.say("out of stamina", 1) end
+  end
 end
 
 -- behind and above the player, pulled in where a hill would be in the way
@@ -160,18 +291,31 @@ function Player:draw()
     start = "move",
     fade = 0.15,
     states = {
-      -- (this character has idle, run and jump: running at a walk is a slower run)
+      -- (the kit has idle, run and jump: running at a walk is a slower run; climb and glide are made by scripts/hills/make-clips.mjs)
       move = { blend = "speed", points = { { 0, "idle" }, { 1.5, "run" }, { 6, "run" } } },
       jump = { clip = "jump", loop = false },
       fall = { clip = "jump", loop = false },
+      climb = { clip = "climb" },
+      glide = { clip = "glide" },
     },
   })
-  -- (a hop up a step is a frame or three with no ground under the middle of the body: not a fall)
-  self.anim:play((self.ground or self.air_time < 0.12) and "move" or (self.vy > 0 and "jump" or "fall"))
+  local mode = self.mode
+  local playing = (mode == "climb" and "climb") or (mode == "glide" and "glide") or ((self.ground or self.air_time < 0.12) and "move" or (self.vy > 0 and "jump" or "fall"))
+  self.anim:play(playing)
   self.anim:set("speed", speed)
-  self.anim.speed = speed > 6 and speed / 6 or math.max(0.6, speed / 6) -- the run cycle follows the ground speed
+  self.anim.speed = mode == "climb" and (speed > 0.3 and 1 or 0.02) or (speed > 6 and speed / 6 or math.max(0.6, speed / 6)) -- the run cycle follows the ground speed
   self.anim:update(1 / 60)
-  self.anim:draw(x, y, z, { ry = self.face + math.pi }) -- (this model faces the other way round from the old one: +z is its back)
+  local ry = self.face + math.pi -- (this model faces the other way round from the old one: +z is its back)
+  self.anim:draw(x, y, z, { ry = ry })
+  if mode == "glide" then
+    -- the glider: a canopy above the head on two lines
+    local cy = y + 2.7
+    nova.cuboid_at(x, cy, z, 3.0, 0.07, 1.7, { ry = self.glide_yaw, color = { 235, 90, 60 } })
+    for _, side in ipairs({ -1, 1 }) do
+      local sx, sz = cos(self.glide_yaw) * side * 1.3, -sin(self.glide_yaw) * side * 1.3
+      nova.line3(x, y + 1.4, z, x + sx, cy, z + sz, { color = { 250, 250, 250 }, width = 0.025 })
+    end
+  end
 end
 
 return Player
