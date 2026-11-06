@@ -16,7 +16,8 @@ studio's new fuller instruments, a quieter engine); and engine work: bloom, ambi
 cubic sample interpolation, GPU device-loss recovery, Android Back as Escape, masked and additive animation layers, and two-bone IK
 (`nova.model_pose`, `nova.ik`). 473 Rust tests and 508 studio tests pass; clippy and fmt are clean. **Corrections found afterwards:** the
 first thermal soak ran with parked cars (a wrong key code; fixed, see `docs/performance.md`), and so did the device frame-rate readings I
-quoted for the rally's night circuit earlier that day (a parked car; the soak with the car driving gives the real numbers). Not done:
+quoted for the rally's night circuit earlier that day (a parked car; the soak with the car driving gives the real numbers). `scripts/device-smoke.sh` builds, installs and runs every example on the Retroid for 14 s and screenshots it: all 15 examples started and drew
+(2026-11-06, with the engine as of the IK commit; it checks that a game starts and logs no error, not that it plays well). Not done:
 the other circuits' effects-off baselines, the new sounds and music have not been listened to on the device, nothing has been tried by a person
 since the last round of rally notes, and the drift feel, the stiffness and the camera are first guesses.
 
