@@ -283,3 +283,16 @@ fn landing_from_the_glider_does_not_jump() {
     );
     assert_eq!(number(&s, "jumps"), 0.0, "no jump on landing: {s:?}");
 }
+
+#[test]
+fn a_block_within_a_jump_is_jumped_onto_and_never_climbed() {
+    // the middle one of the three blocks near the start: 0.8 m high
+    let s = run_script("key:F10", 6);
+    assert_eq!(number(&s, "climb"), 0.0, "it was not climbed: {s:?}");
+    assert_eq!(number(&s, "mantles"), 0.0, "{s:?}");
+    assert!(
+        number(&s, "max_height") > 0.6 + 0.0,
+        "it got up on it (by jumping): {s:?}"
+    );
+    assert!(number(&s, "jumps") >= 1.0, "{s:?}");
+}

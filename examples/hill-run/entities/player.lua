@@ -49,7 +49,7 @@ local function autoplay(self)
   local dx, dz = step.x - self.x, step.z - self.z
   local d = sqrt(dx * dx + dz * dz)
   if d < 1.6 and not self.route_hold then self.plan_i = self.plan_i + 1; return 0, 0, false end
-  return dx / d, dz / d, (self.blocked or 0) > 4 and self.mode == "walk"
+  return dx / d, dz / d, (self.blocked or 0) > 4 and self.mode == "walk" and self.ground
 end
 
 local function teleport(self, x, z, y, route, mode)
@@ -72,6 +72,8 @@ function Player:to_the_sky() teleport(self, 0, 0, 24, { { x = -300, z = 300 } },
 -- F2: in the air, gliding at the tower: it should grab the wall and climb. F1: climbing the tower and then standing still on it.
 function Player:to_the_tower_gliding() teleport(self, level.tower.x, level.tower.z - 28, 16, { { x = level.tower.x, z = level.tower.z } }, "glide") end
 function Player:to_the_tower_hanging() teleport(self, level.tower.x, level.tower.z - 5, nil, { { x = level.tower.x, z = level.tower.z } }, "hang"); self.hang_t = 0 end
+-- F10: in front of the 0.8 m block (to be jumped onto, not climbed)
+function Player:to_the_low_block() teleport(self, 13, 2.2, nil, { { x = 13, z = 9 } }, nil) end
 function Player:to_the_cliff_face() teleport(self, level.peak.x + 24, level.peak.z + 0.0, nil, { { x = level.peak.x, z = level.peak.z } }, "climb"); self.route_hold = true end
 
 function Player:update(dt)
@@ -86,6 +88,7 @@ function Player:update(dt)
   if nova.input.pressed("cliff_tired") then self:to_the_cliff_tired() end
   if nova.input.pressed("glide_wall") then self:to_the_tower_gliding() end
   if nova.input.pressed("hang") then self:to_the_tower_hanging() end
+  if nova.input.pressed("low_block") then self:to_the_low_block() end
 
   local ptr = nova.input.pointer()
   cam3.yaw = cam3.yaw - nova.input.axis("look_x") * 2.8 * dt - ptr.dx * 0.0022
@@ -183,7 +186,13 @@ function Player:walk(dt, wx, wz, len, want_jump, jump_held, sprint)
 
   -- cling to a wall: walking at a steep surface, or jumping onto one, starts a climb by itself (pushing at it, with some strength left)
   self.climb_cool = max(0, (self.climb_cool or 0) - dt)
-  if self.wall and self.wall_age < 0.15 and self.stamina > 0.3 and not self.tired and self.climb_cool <= 0 and len > 0.1 then
+  local low = false
+  if self.wall and self.wall_age < 0.15 then
+    -- (a floor up to 0.8 m below the feet counts too: a jump that has just cleared the top of a block is still at the wall)
+    local lh = self:ledge_ahead(self.wall, 1.7, 0.8)
+    low = lh ~= nil -- a block whose top is within a jump of the feet (about 1.8 m) is jumped onto, not climbed
+  end
+  if self.wall and self.wall_age < 0.15 and not low and self.stamina > 0.3 and not self.tired and self.climb_cool <= 0 and len > 0.1 then
     local pushing = wx * -self.wall.x + wz * -self.wall.z
     if pushing > 0.3 * sqrt(self.wall.x ^ 2 + self.wall.z ^ 2) then
       self.mode, self.cn, self.wall_lost = "climb", self.wall, 0
@@ -225,11 +234,18 @@ function Player:climb(dt, wx, wz, len, want_jump)
   end
   self.wall_lost = (self.wall_lost or 0) + (m.wall and 0 or dt)
   self.ground = false
+  -- nothing to hold: the wall has ended under the hands and there is no floor to get up on: let go (and fall), instead of climbing the air
+  if self.wall_lost > 0.35 then
+    self.mode, self.wall, self.wall_age, self.climb_cool, self.buffer = "walk", nil, 9, 0.5, 0
+    self.vx, self.vy, self.vz = 0, 0, 0
+    return
+  end
+  self.ground = false
   -- over the top: no wall under the hands any more while going up, and a floor just ahead at about the height of the hands: get up on it
   local ledge, up = nil, 0
   if vert > 0.3 then ledge, up = self:ledge_ahead(n) end
-  -- the hands are on the edge (it is 1 m or more above the feet), or the wall has ended under them with a floor near the feet (a low one)
-  if ledge and (up >= 1.0 or self.wall_lost > 0.06) then
+  -- the hands are on the edge (a real ledge, over a hop above the feet), or the wall has ended under them with a floor near the feet
+  if ledge and (up >= 0.4 or self.wall_lost > 0.06) then
     self.mode, self.mantle_t, self.mantle_n, self.mantle_h, self.mantle_y0 = "mantle", 0, n, ledge, self.y
     self.mantle_clip = up < 1.33 and "mantle_low" or "mantle" -- a clip made for each height (a clip for one height looks wrong on another)
     nova.log(string.format("hill: mantle from %.2f to %.2f", self.y, ledge))
@@ -255,10 +271,11 @@ end
 -- Is there somewhere to stand just ahead and above the feet: a floor that faces up, at most 1.55 m higher (about where the hands reach
 -- with the arms up: this character's arms are short, so that the climb ends, and the getting up begins, with the hands on the edge)?
 -- A `nova.solid.floor_below` probe from above. Returns the floor's height and how far above the feet it is.
-function Player:ledge_ahead(n)
+function Player:ledge_ahead(n, reach, below)
+  reach, below = reach or 1.55, below or 0.15
   local px, pz = self.x - n.x * 0.55, self.z - n.z * 0.55
-  local h, nx, ny = nova.solid.floor_below(px, self.y + 3.2, pz, 3.6)
-  if h ~= nil and ny > 0.6 and h >= self.y - 0.15 and h <= self.y + 1.55 then return h, h - self.y end
+  local h, nx, ny = nova.solid.floor_below(px, self.y + 3.2, pz, 4.6)
+  if h ~= nil and ny > 0.6 and h >= self.y - below and h <= self.y + reach then return h, h - self.y end
   return nil
 end
 
@@ -305,7 +322,9 @@ function Player:glide(dt, wx, wz, len, want_jump)
   if m.wall then
     local n = m.wall_normal
     -- a wall that is steep enough to hold on to: grab it (the glider folds away)
-    if n.y < 0.6 and self.stamina > 0.3 and not self.tired then
+    -- (not a low block: that is landed on, as when walking)
+    local low = self:ledge_ahead(n, 1.7, 0.8) ~= nil
+    if n.y < 0.6 and self.stamina > 0.3 and not self.tired and not low then
       self.mode, self.cn, self.wall_lost = "climb", { x = n.x, y = n.y, z = n.z }, 0
       self.vx, self.vy, self.vz, self.ground, self.jumping = 0, 0, 0, false, false
       return
