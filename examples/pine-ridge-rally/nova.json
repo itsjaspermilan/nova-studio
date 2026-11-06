@@ -34,6 +34,7 @@
       ]
     },
     "stats": ["key:F3"],
+    "menu_back": ["key:Escape"],
     "pause": [
       "key:Escape",
       "key:KeyP",

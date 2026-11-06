@@ -161,6 +161,14 @@ showed in the frame rate or the GPU time. Limits: the device was on USB, so it w
 test); the screen was on and the room was ordinary; the headlights and effects are in the average, but not a worst-case city. The 120 Hz
 mode was not tried (the target is 60).
 
+**What the effects cost (2026-11-06, the rally on Frost Pass, the computer driving, 50 seconds each, the same circuit and car).** With Options > Effects on
+(bloom, ambient occlusion, the speed blur, wind, grass, and the extra pass the picture goes through): **59.7 fps and 3.06 to 3.68 ms of GPU
+(about 3.5)**. With it off: **59.7 fps and 0.91 to 1.18 ms of GPU (about 1.0)**. So the whole stack costs about 2.5 ms a frame, a quarter of the
+60 fps budget, on a scene that otherwise takes 1 ms: more than the sum of the separate benchmark numbers (bloom 1.3 and AO 0.85 in the stress city)
+because it also includes the grass, the blur, and the picture being drawn to its own target and read back. It fits, and a game that
+needs the room can drop to `world_height = 405` or leave out the ambient occlusion first (the cheapest large saving). The Effects option is what a
+player on battery would turn off.
+
 ## To do on the device
 
 Done once (above), and an 11-minute heat run (no throttling seen). Still to do: a real game on the controller, a longer and heavier run on battery. The first line of advice stands: If `gpu` is 0, the

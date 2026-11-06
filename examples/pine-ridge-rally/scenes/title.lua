@@ -169,7 +169,7 @@ function Title:draw_ui()
       { "Music volume", string.format("< %d%% >", math.floor(state.music_volume * 100 + 0.5)) },
       { "Sound volume", string.format("< %d%% >", math.floor(state.sfx_volume * 100 + 0.5)) },
       { "Shadows", state.shadows and "< On >" or "< Off >" },
-      { "Effects (glow, shading, grass, wind)", state.effects and "< On >" or "< Off >" },
+      { "Effects", state.effects and "< On >" or "< Off >" },
       { "Vibration", state.vibration and "< On >" or "< Off >" },
       "Controls...",
       "Back",

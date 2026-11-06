@@ -107,7 +107,7 @@ function ui.navigate(selected, count)
   if nova.input.pressed("up") then selected = (selected - 2) % count + 1; audio.sfx("menu_move") end
   if nova.input.pressed("down") then selected = selected % count + 1; audio.sfx("menu_move") end
   if nova.input.pressed("a") or nova.input.pressed("start") then moved = "accept"
-  elseif nova.input.pressed("b") then moved = "back"
+  elseif nova.input.pressed("b") or nova.input.pressed("menu_back") then moved = "back" -- (Android's Back key arrives as Escape)
   elseif nova.input.pressed("left") then moved = "left"
   elseif nova.input.pressed("right") then moved = "right" end
   return selected, moved
