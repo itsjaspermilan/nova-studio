@@ -19,6 +19,8 @@ function Scene:enter()
   state.shadows = true
   nova.shadows { radius = 42, strength = 0.55 } -- the sun'"'"'s shadows round the player (grass and flowers cast none)
   nova.wind { direction = 25, strength = 1.0 }
+  self.look_mode = state.look_mode or 3
+  self:apply_look()
   self:plant()
   for _, g in ipairs(level.gems) do nova.spawn("gem", g.x, 0, { z = g.z, gy = g.y }) end
   state.total = #level.gems
@@ -71,7 +73,22 @@ function Scene:plant_some()
   end
 end
 
+-- F11 cycles the finish: 0 plain, 1 ambient occlusion, 2 bloom, 3 both
+function Scene:apply_look()
+  local m = self.look_mode
+  state.look_mode = m
+  nova.look {
+    ao = (m == 1 or m == 3) and 0.7 or 0, ao_radius = 0.9,
+    bloom = (m == 2 or m == 3) and 0.5 or 0, bloom_threshold = 0.75,
+  }
+end
+
 function Scene:update(dt)
+  if nova.input.pressed("look") then
+    self.look_mode = (self.look_mode + 1) % 4
+    self:apply_look()
+    nova.log("hill: look " .. self.look_mode)
+  end
   if self.jobs and #self.jobs > 0 then self.chunk_t0 = nova.clock(); self:plant_some() end
   if nova.input.pressed("stats") then
     local p = nova.first("player")

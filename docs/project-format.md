@@ -149,14 +149,23 @@ does it in about 0.3 s). On the Retroid, 30,000 tufts, 2,500 flowers, 260 bushes
 ```lua
 nova.look { toon = 3,                                        -- the sun's light in three flat bands
             outline = { color = { 20, 25, 45 }, strength = 0.8, width = 1 },   -- a line where depth jumps
-            saturation = 1.15, vignette = 0.25, exposure = 1 }
+            saturation = 1.15, vignette = 0.25, exposure = 1,
+            bloom = 0.5, bloom_threshold = 0.75,                -- a glow round what is brighter than 0.75
+            ao = 0.7, ao_radius = 0.9 }                          -- dark creases and feet of things, within 0.9 m
 ```
 
 The toon ramp is in the mesh shader (no cost); the outline and the colour adjustments are in the pass that puts the world on the
 screen, which reads the depth buffer (it is kept only when an outline asks for it). The outline is drawn from depth alone, so it
 marks silhouettes and creases between things at different distances, not lines inside a flat-coloured surface, and it fades with
-the fog. Not done: bloom, ambient occlusion, depth of field, a tone-mapping curve beyond the exposure shoulder, and lights are not
-banded (only the sun's). The cost on the Retroid is unmeasured.
+the fog.
+
+`bloom` spreads what is brighter than `bloom_threshold` (it works on the finished 8-bit picture, so a "bright" is a pixel near white
+in the output, not a value above 1; there is no HDR). `ao` is ambient occlusion made from the depth buffer alone: on a ring
+`ao_radius` metres wide it looks at pairs of pixels either side and darkens only where both are nearer than the centre, which is
+a crease or the foot of a wall (a slope or a flat floor does not darken). It cannot see what is hidden behind things, it fades with the
+fog, and thin things such as grass blades make it grainy, so use a small `ao` (0.4 to 0.7) in a grassy scene or leave it for rooms and
+towns. On the Retroid, bloom costs about 1.3 ms and ao about 0.85 ms of GPU at 960 by 540 (`docs/performance.md`). Not done:
+depth of field, a tone-mapping curve beyond the exposure shoulder, HDR bloom, and lights are not banded (only the sun's).
 
 **A 3D game on the ground.** Collisions, distances and neighbour queries use `x, y` by default, which is right for a flat game
 and wrong for a 3D one, where `y` is height. Say once (in `main.lua`) which plane the ground is:

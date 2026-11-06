@@ -1623,3 +1623,68 @@ end"
         g.error
     );
 }
+
+/// `nova.look` bloom and ambient occlusion. (Skipped without a GPU.)
+#[test]
+fn bloom_glows_around_bright_things_and_ao_darkens_creases_and_never_brightens() {
+    let scene = |look: &str| {
+        format!(
+            "function update(dt)
+  nova.camera(0, 10, 9, 0, 2.5, 0, 60)
+  nova.sky {{ top = {{150, 200, 255}}, horizon = {{220, 235, 255}} }}
+  nova.light {{ dir = {{0.9165, -0.4, 0}}, color = {{255, 255, 255}}, ambient = {{40, 40, 40}} }}
+  nova.model('car', -1.2, 0, 0, {{ scale = 6 }})
+  nova.model('car', 0, 0, 0.8, {{ scale = 6 }})
+  nova.model('car', 1.2, 0, 0, {{ scale = 6 }})
+  {look}
+end"
+        )
+    };
+    let Some(plain) = frame_pixels(&scene("")) else {
+        return;
+    };
+    // bloom adds light and nothing else
+    let glow = frame_pixels(&scene("nova.look { bloom = 1, bloom_threshold = 0.5 }")).unwrap();
+    assert!(
+        mean_brightness(&glow) > mean_brightness(&plain) + 2.0,
+        "bloom brightened: {} against {}",
+        mean_brightness(&glow),
+        mean_brightness(&plain)
+    );
+    assert!(
+        plain
+            .chunks(4)
+            .zip(glow.chunks(4))
+            .all(|(a, b)| b[0] as i32 + 1 >= a[0] as i32),
+        "bloom never darkens"
+    );
+    // ambient occlusion darkens where things meet, and nowhere gets brighter
+    let shaded = frame_pixels(&scene("nova.look { ao = 1, ao_radius = 2 }")).unwrap();
+    let darker = plain
+        .chunks(4)
+        .zip(shaded.chunks(4))
+        .filter(|(a, b)| (a[0] as i32 - b[0] as i32) >= 4)
+        .count();
+    assert!(
+        darker > 150,
+        "ao darkened {darker} pixels where things meet"
+    );
+    assert!(
+        plain
+            .chunks(4)
+            .zip(shaded.chunks(4))
+            .all(|(a, b)| b[0] as i32 <= a[0] as i32 + 1),
+        "ao never brightens"
+    );
+    // the open sky (corner) is left alone by both
+    assert_eq!(pixel(&shaded, 2, 2), pixel(&plain, 2, 2));
+    for (script, expect) in [
+        ("nova.look { ao = 2 }", "ao must be from"),
+        ("nova.look { bloom = -1 }", "bloom must be from"),
+    ] {
+        let mut g = game(&format!("function update(dt) {script} end"), vec![]);
+        frame(&mut g);
+        let error = g.error.clone().unwrap_or_default();
+        assert!(error.contains(expect), "{script}: {error}");
+    }
+}

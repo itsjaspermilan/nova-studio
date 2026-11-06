@@ -15,6 +15,7 @@
     "cliff_tired": ["key:F4"],
     "glide_wall": ["key:F2"],
     "hang": ["key:F1"],
-    "low_block": ["key:F10"]
+    "low_block": ["key:F10"],
+    "look": ["key:F11", "pad:thumb_r"]
   }
 }

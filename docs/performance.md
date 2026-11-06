@@ -176,6 +176,8 @@ Things that appear or change suddenly are the visible cost of every saving above
 
 The toon ramp is arithmetic in the mesh shader. An outline or colour adjustment sends the world through the finishing pass with the
 depth buffer stored (normally it is discarded, which a tiled mobile GPU likes) and read five times a pixel for an outline. On the
-emulator's host GPU the stress phase "city 24 + toon, outline, grade" held 60 fps (the host GPU is far faster than the Retroid's, so
-that says it works, not what it costs). Measure it on the device before building a game on an always-on outline; the cheap way to
-cut it is a smaller `world_height`.
+Retroid (2026-11-06, `scripts/bench.sh`, GPU ms of the city of 24 blocks, which is 1.73 plain): toon, outline and grade 2.1;
+**bloom 3.0** (12 taps of the picture a pixel, so +1.3 ms); **ambient occlusion 2.6** (8 depth reads a pixel, +0.85 ms); bloom and
+ambient occlusion with shadows 5.5 (shadows alone 3.4, so the two cost about 2.1 together). All held 59.6 to 59.7 fps. The
+post pass costs by the pixel, so the cheap way to cut any of it is a smaller `world_height` (540 is the default of the
+Retroid games; 405 takes about a quarter off).

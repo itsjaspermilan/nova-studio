@@ -153,6 +153,13 @@ pub struct Look {
     pub saturation: f32,
     /// How much the corners darken, 0 to 1.
     pub vignette: f32,
+    /// Strength of the glow around bright things (0 for none, 1 is a lot).
+    pub bloom: f32,
+    /// Brightness (0 to 1) above which a thing glows.
+    pub bloom_threshold: f32,
+    /// How dark creases and the feet of things get, 0 to 1 (0 for none), and how far in metres it reaches.
+    pub ao: f32,
+    pub ao_radius: f32,
 }
 
 impl Default for Look {
@@ -163,6 +170,10 @@ impl Default for Look {
             exposure: 1.0,
             saturation: 1.0,
             vignette: 0.0,
+            bloom: 0.0,
+            bloom_threshold: 0.7,
+            ao: 0.0,
+            ao_radius: 0.8,
         }
     }
 }
@@ -174,6 +185,13 @@ impl Look {
             || (self.exposure - 1.0).abs() > 1e-4
             || (self.saturation - 1.0).abs() > 1e-4
             || self.vignette > 0.0
+            || self.bloom > 0.0
+            || self.ao > 0.0
+    }
+
+    /// Whether the finishing pass reads the depth buffer (so that it is kept).
+    pub fn reads_depth(&self) -> bool {
+        self.outline.is_some() || self.ao > 0.0
     }
 }
 
@@ -945,7 +963,7 @@ impl Gfx {
             uniform_layout("blit uniform layout", wgpu::ShaderStages::FRAGMENT);
         let blit_uniform = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("blit uniform"),
-            size: 64,
+            size: 96,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -1812,6 +1830,15 @@ impl Gfx {
                 far,
                 fog_near,
                 fog_far,
+                look.bloom.clamp(0.0, 4.0),
+                look.ao.clamp(0.0, 1.0),
+                look.ao_radius.clamp(0.05, 8.0),
+                look.bloom_threshold.clamp(0.0, 1.0),
+                // pixels of the world picture that one metre spans at one metre away
+                world_size.1 as f32 / (2.0 * (input.camera.fov_y_degrees.to_radians() * 0.5).tan()),
+                0.0,
+                0.0,
+                0.0,
             ];
             self.queue
                 .write_buffer(&self.blit_uniform, 0, bytemuck::cast_slice(&blit));
@@ -2257,7 +2284,7 @@ impl Gfx {
                     view: depth_view,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
-                        store: if look.outline.is_some() {
+                        store: if look.reads_depth() {
                             wgpu::StoreOp::Store // the finishing pass reads it
                         } else {
                             wgpu::StoreOp::Discard
