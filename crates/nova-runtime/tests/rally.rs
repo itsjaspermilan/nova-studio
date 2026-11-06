@@ -559,7 +559,7 @@ fn the_car_takes_a_few_seconds_to_reach_100_kmh() {
     });
     // the computer drives (straight on at full throttle runs into the roadside props)
     tap(&mut g, "key:F9");
-    let mut at = |g: &mut Game, frames: usize| {
+    let at = |g: &mut Game, frames: usize| {
         for _ in 0..frames {
             frame_with(g, &[]);
         }
