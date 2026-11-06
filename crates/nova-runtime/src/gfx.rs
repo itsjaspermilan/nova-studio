@@ -810,6 +810,11 @@ impl Gfx {
             let lost = lost.clone();
             device.on_uncaptured_error(std::sync::Arc::new(move |error: wgpu::Error| {
                 log::error!("GPU error: {error}");
+                // a mistake in how the engine uses the GPU should stop a development build (as wgpu's own handler does); a
+                // released build logs it and carries on
+                if cfg!(debug_assertions) && matches!(error, wgpu::Error::Validation { .. }) {
+                    panic!("wgpu validation error: {error}");
+                }
                 if matches!(
                     error,
                     wgpu::Error::OutOfMemory { .. } | wgpu::Error::Internal { .. }
