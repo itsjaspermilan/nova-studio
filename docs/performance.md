@@ -142,7 +142,15 @@ The Snapdragon 8 Gen 2 is slower than an M4 by roughly 2 to 2.5 times on one CPU
 **Correction, found afterwards: the first run below had the cars PARKED.** The script sent Android keycode 140 for the game's F9 ("let the
 computer drive"), but 140 is F10 (F9 is 139), so nothing drove. What it measured is a scene at rest (all the drawing, the effects, the wind
 and grass moving, and the shadows, but no driving, no steering, no loading of what comes into view), for 40 minutes; the heat is real (the
-GPU did the same work all the time), the rest is not a driving number. A run with the car driving is below (or marked as not done yet).
+GPU did the same work all the time), the rest is not a driving number. The run with the car driving follows.
+
+**The 35-minute soak with the car driving (2026-11-06, `docs/rally-soak-2026-11-06-driving.log`).** Seven races back to back, the computer driving
+(the key code fixed to 139), all four circuits, the same effects as above plus the speed blur. Each race lasts about two and a half minutes
+and the rest of its five-minute slot sits on the results screen (3D backdrop, still drawn), so about half the readings are of driving.
+**63 readings: 59.68 fps on average (lowest 59.6), the GPU's own time 3.2 to 3.9 ms (3.53 on average), the worst frame 19.8 ms.** The hottest
+sensor rose from 55.2 C at the start (the device was already warm from the first soak) to 58.4 C at the end; the battery sensor stayed at
+33 C. No throttling showed in the frame rate or the GPU time. The first number to compare with is the parked soak's 3.33 ms: driving costs
+about 0.2 ms more (new things coming into view, the cars' own work), not more.
 
 `scripts/rally-soak.sh 40` (the first log is `docs/rally-soak-2026-11-06-parked-cars.log`): Pine Ridge Rally on all four
 circuits, with bloom, ambient occlusion, wind, grass, shadows and (at night) spot-light headlights on, and the log line `rally: perf` and
