@@ -59,12 +59,9 @@ function ui.right(text, rx, y, size, color, opts)
   nova.ui.text(rx - tw, y, text, o)
 end
 
--- A panel: Kenney's dark grey adventure panel (a nine-slice, so any size) with an accent line inside along the top (`accent` is a colour,
--- gold by default).
+-- A panel: Kenney's dark grey adventure panel (a nine-slice, so any size). (`accent` is no longer used: the coloured line along the top is gone.)
 function ui.panel(x, y, w, h, alpha, accent)
   nova.ui.panel("ui/panel_dark", x, y, w, h, { slice = 18, scale = 0.7, color = { 255, 255, 255, math.min(255, (alpha or 205) + 30) } })
-  local a = accent or ui.color.gold
-  nova.ui.rect(x + 12, y + 7, w - 24, 2, { a[1], a[2], a[3], 235 })
 end
 
 -- A picture of a button on the handheld (pad_a, pad_x, pad_zr, pad_stick_l...), `size` units across, at (x, y) top left.
