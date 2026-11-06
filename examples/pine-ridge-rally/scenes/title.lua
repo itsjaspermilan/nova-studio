@@ -26,7 +26,7 @@ function Title:enter(screen)
   self.screen = screen or "title"
   self.choice = 1
   self.t = 0
-  audio.music("menu", { volume = 0.6, fade = 0.8 })
+  audio.music("menu", { volume = 0.95, fade = 0.8 })
   state.apply_volumes()
 end
 

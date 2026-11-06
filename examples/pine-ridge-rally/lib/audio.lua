@@ -101,7 +101,7 @@ function Engine:update(dt, rev, load, rough, slip)
   -- louder as the engine works; a gentle wander in the pitch so that nothing is perfectly still
   self.t = (self.t or math.random() * 10) + dt
   local wander = 1 + 0.006 * math.sin(self.t * 3.1) + 0.004 * math.sin(self.t * 8.3 + 1.3)
-  local level = v * (0.22 + 0.45 * load) * (0.7 + 0.3 * rev)
+  local level = v * (0.35 + 0.55 * load) * (0.75 + 0.25 * rev)
   for _, i in ipairs(self.loops) do
     nova.sound.set(self.ids["engine" .. i], { volume = level * (weights[i] or 0), pitch = pitches[i] * wander })
   end

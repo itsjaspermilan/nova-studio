@@ -14,7 +14,7 @@ function Results:enter()
   self.choice = 1
   self.r = state.result
   assert(self.r, "the results scene needs a finished race (state.result)")
-  audio.music("results", { volume = 0.55, fade = 0.5 })
+  audio.music("results", { volume = 0.95, fade = 0.5 })
   local place = self.r.place
   self.reveal = 0
   self:after(0.5, function() audio.sfx(place == 1 and "finish" or "lap") end)

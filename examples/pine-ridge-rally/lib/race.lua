@@ -122,7 +122,7 @@ function race.define(config)
     self.trial = state.mode == "trial"
     self.ghost = self.trial and nova.save.get("ghost_" .. info.id, nil) or nil
     self.recording = { t = 0, pts = {} }
-    audio.music(info.music or config.music, { volume = 0.5, fade = 0.8 })
+    audio.music(info.music or config.music, { volume = 0.95, fade = 0.8 })
     self.camera.heading = self.player.heading -- the chase camera starts behind the car, looking where it looks
     self:update_camera(1 / 60)
   end

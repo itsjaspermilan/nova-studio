@@ -8,3 +8,7 @@ http://www.pdsounds.org/sounds/start_up_car_with_seat_belt_warning_beep (public 
 adjusting the pitch. Files on the page: loop_0.wav, loop_1.wav ... loop_5.wav (mono, 16 bit, 44.1 kHz, 0.6 to 0.9 s each); they are
 engine_1 to engine_6 here, lowest revs first (about 43, 60, 65, 70, 73 and 77 Hz).
 Credit is not required; thanks to domasx2.
+
+The files in the game are processed: the originals are nearly all sub-bass (97% of the energy below 100 Hz, which a handheld's speaker
+cannot play), so scripts/rally/engine-loops.mjs drives them through a soft clipper and filters them (160 Hz to 3 kHz). They are
+derivative works of a CC0 work, so they are CC0 too.

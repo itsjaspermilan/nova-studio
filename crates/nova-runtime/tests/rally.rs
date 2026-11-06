@@ -573,3 +573,31 @@ fn the_car_takes_a_few_seconds_to_reach_100_kmh() {
     let ten = at(&mut g, 8 * 60);
     assert!(ten > 27.8, "but is by ten: {ten}");
 }
+
+#[test]
+fn the_engine_is_heard_while_racing_and_louder_as_the_throttle_goes_down() {
+    use nova_runtime::mixer::Command;
+    let mut g = load();
+    start_race(&mut g, 0, false);
+    let mut log = Vec::new();
+    run_until(&mut g, &mut log, "the countdown ends", 60 * 8, |l| {
+        l.iter().any(|x| x == "go")
+    });
+    g.take_audio();
+    let loudest = |g: &mut Game, frames: usize, held: &[(&str, f32)]| -> f32 {
+        let mut best = 0.0f32;
+        for _ in 0..frames {
+            frame_with(g, held);
+            for c in g.take_audio() {
+                if let Command::Set { volume: Some(v), .. } = c {
+                    best = best.max(v);
+                }
+            }
+        }
+        best
+    };
+    let idle = loudest(&mut g, 60, &[]);
+    let full = loudest(&mut g, 120, &[("key:ArrowUp", 1.0)]);
+    assert!(full > 0.25, "at full throttle one engine loop is set to {full}");
+    assert!(full > idle, "and louder than at idle ({idle})");
+}
