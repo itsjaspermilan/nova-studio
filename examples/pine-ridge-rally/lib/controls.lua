@@ -76,6 +76,10 @@ function controls.assign(row, source)
   local g = group(source)
   if g == "other" then return false end
   local kind, name = source:match("^(%a+):(.+)$")
+  -- a trigger reports as a button and as an axis; the axis is the one that knows how hard it is pulled
+  if kind == "pad" and (name == "l2" or name == "r2") and not row.side then
+    source, kind = "axis:" .. name, "axis"
+  end
   if kind == "axis" then
     if row.side then
       if name ~= "left_x" and name ~= "right_x" then return false end

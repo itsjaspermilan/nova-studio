@@ -6,7 +6,6 @@
     "throttle": [
       "key:ArrowUp",
       "key:KeyW",
-      "pad:r2",
       "axis:r2",
       "pad:south",
       "touch:right"
@@ -14,7 +13,6 @@
     "brake": [
       "key:ArrowDown",
       "key:KeyS",
-      "pad:l2",
       "axis:l2",
       "pad:west"
     ],

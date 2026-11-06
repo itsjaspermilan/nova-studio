@@ -5,7 +5,7 @@ local state = require("lib.state")
 
 local Car = nova.entity { model = "car", tags = { "car" } }
 
-local WHEEL_RADIUS = 0.34
+local WHEEL_RADIUS = 0.28       -- (the car model is 3.7 m long; it was 4.53, so the sizes below are 0.82 of what they were)
 -- A five-speed gearbox: the speed each gear runs out at (m/s, at the car's normal top speed), and how hard it pulls.
 -- Low gears pull hard and run out fast; fifth is long and gentle.
 local GEARS = { { top = 13, pull = 1.35 }, { top = 22, pull = 1.12 }, { top = 30, pull = 0.97 }, { top = 38, pull = 0.86 }, { top = 44, pull = 0.78 } }
@@ -14,13 +14,14 @@ local SHIFT_TIME = 0.17                 -- seconds with no pull while the clutch
 local IDLE_REV = 0.16
 -- Where the wheels are, from the middle of the car: forwards, and to the left (+x is the left side when facing +z).
 local WHEELS = {
-  wheel_fl = { fwd = 1.3, left = -0.8 }, wheel_fr = { fwd = 1.3, left = 0.8 },
-  wheel_rl = { fwd = -1.3, left = -0.8 }, wheel_rr = { fwd = -1.3, left = 0.8 },
+  wheel_fl = { fwd = 1.1, left = -0.72 }, wheel_fr = { fwd = 1.1, left = 0.72 },
+  wheel_rl = { fwd = -1.1, left = -0.72 }, wheel_rr = { fwd = -1.1, left = 0.72 },
 }
 local WHEEL_NAMES = { "wheel_fl", "wheel_fr", "wheel_rl", "wheel_rr" }
-local WHEELBASE, TRACK = 2.6, 1.7
+local WHEELBASE, TRACK = 2.2, 1.45
 -- How bumpy each surface is (metres of ground height), and the body's suspension (a springy, damped mass).
-local BUMPS = { road = 0.012, dirt = 0.04, rough = 0.1 }
+local BUMPS = { road = 0.004, dirt = 0.03, rough = 0.08 }
+local WHEEL_FOLLOW = 14     -- how fast a wheel follows the ground (1 / seconds): the bumps come faster than a wheel can rise and fall, and at 40 m/s a 60 fps frame samples them so coarsely that the wheels hopped at random
 local SPRING, DAMPER = 240, 30   -- stiff and well damped: the body settles at once instead of wallowing
 
 -- The height of the ground at a spot: a fixed, smooth pattern of bumps.
@@ -59,7 +60,7 @@ function Car:create()
     wheel_rl = { rx = 0, y = 0 }, wheel_rr = { rx = 0, y = 0 },
   }
   -- suspension: where each corner of the body is (b) and how fast it is moving (bv), and the ground under each wheel (h)
-  self.susp = { b = { 0, 0, 0, 0 }, bv = { 0, 0, 0, 0 }, h = { 0, 0, 0, 0 } }
+  self.susp = { b = { 0, 0, 0, 0 }, bv = { 0, 0, 0, 0 }, h = { 0, 0, 0, 0 }, w = { 0, 0, 0, 0 } }
   self.last_vf, self.last_yaw = 0, 0
   self.draw_opts = { ry = 0, parts = self.parts_table }
   self.shadow_opts = { ry = 0 }
@@ -97,8 +98,17 @@ function Car:drive(dt)
   local steering_speed = math.min(1, math.abs(vf) / 4)
   -- downforce: the faster the car goes, the harder the tyres are pressed on the road, so it bites and turns better
   local downforce = 1 + math.min(0.6, math.abs(vf) / 70)
+  -- a trigger pulled right through on the brake at speed locks the wheels: the front stops biting (the car understeers), the
+  -- rear lets go (it slides), and the braking gets worse. A key or a button is all or nothing, so it never does this.
+  local lock = 0
+  if live and c.brake_analog and c.brake > 0.85 and vf > 8 then
+    local t = (c.brake - 0.85) / 0.15
+    lock = t * t * (3 - 2 * t) * math.min(1, (vf - 8) / 12)
+  end
+  self.lock = lock
   local omega = math.min(2.5, kind.lateral * grip_scale * downforce / math.max(math.abs(vf), 1))
   if c.handbrake and live then omega = omega * 1.45 end
+  omega = omega * (1 - 0.45 * lock)
   local direction = vf >= -0.5 and 1 or -1
   self.heading = self.heading - steer * omega * steering_speed * direction * dt
   self.yaw_rate = -steer * omega * steering_speed * direction
@@ -130,7 +140,7 @@ function Car:drive(dt)
       vf = vf + push * c.throttle * dt
     end
     if c.brake > 0 then
-      if vf > 0.6 then vf = vf - self.brake_power * c.brake * dt
+      if vf > 0.6 then vf = vf - self.brake_power * c.brake * (1 - 0.3 * lock) * dt
       else vf = math.max(-10, vf - self.power * 0.5 * c.brake * dt) end
     end
   end
@@ -139,16 +149,17 @@ function Car:drive(dt)
   vf = vf - sign * math.min(math.abs(vf), (1.1 + kind.drag + 0.055 * math.abs(vf)) * dt)
   if vf > top then vf = vf - (vf - top) * 1.5 * dt end
 
-  local grip = kind.grip * grip_scale * downforce * (c.handbrake and live and 0.22 or 1)
+  local grip = kind.grip * grip_scale * downforce * (c.handbrake and live and 0.22 or 1) * (1 - 0.7 * lock)
   vl = vl * math.exp(-grip * dt)
   self.slip = math.min(1, math.abs(vl) / (math.abs(vf) * 0.25 + 2))
+  if lock > 0.2 then self.slip = math.max(self.slip, lock) end -- (locked wheels smoke and wear the tyres)
 
   self.speed = vf
   self.velx, self.velz = vf * sinh + vl * cosh, vf * cosh - vl * sinh
   self.x, self.z = self.x + self.velx * dt, self.z + self.velz * dt
 
   -- scenery in the way
-  local px, pz = nova.scenery.push(self.x, self.z, 1.35)
+  local px, pz = nova.scenery.push(self.x, self.z, 1.15)
   if px then
     self.x, self.z = self.x + px, self.z + pz
     local nl = math.sqrt(px * px + pz * pz)
@@ -191,7 +202,7 @@ function Car:drive(dt)
     self.smoke_carry = self.smoke_carry + dt * (4 + 22 * (self.damage - 0.45))
     while self.smoke_carry >= 1 do
       self.smoke_carry = self.smoke_carry - 1
-      fx.puff(self.x + sinh * 1.7, self.z + cosh * 1.7, self.velx * 0.1, self.velz * 0.1, 0.9, { 50, 50, 55 }, 1.0)
+      fx.puff(self.x + sinh * 1.4, self.z + cosh * 1.4, self.velx * 0.1, self.velz * 0.1, 0.9, { 50, 50, 55 }, 1.0)
     end
   end
 
@@ -216,6 +227,8 @@ function Car:suspension(dt, vf, accel, lateral_accel)
     local wz = self.z + cosh * w.fwd - sinh * w.left
     local h = ground(wx, wz, size)
     sp.h[i] = h
+    sp.w[i] = sp.w[i] + (h - sp.w[i]) * math.min(1, dt * WHEEL_FOLLOW)
+    h = sp.w[i]
     local target = h + (w.fwd > 0 and long_shift or -long_shift) + (w.left > 0 and -side_shift or side_shift)
     local pull = SPRING * (target - sp.b[i]) - DAMPER * sp.bv[i]
     if self.hit then pull = pull + 60 * self.hit * ((i * 37) % 3 - 1) end  -- a knock sets the body rocking
@@ -232,7 +245,7 @@ end
 function Car:draw()
   local pt = self.parts_table
   pt.body.rx, pt.body.rz, pt.body.y = self.pitch, self.roll, self.lift
-  local h = self.susp.h
+  local h = self.susp.w
   pt.wheel_fl.y, pt.wheel_fr.y, pt.wheel_rl.y, pt.wheel_rr.y = h[1], h[2], h[3], h[4]
   local sv = -self.steer_visual * 0.45
   pt.wheel_fl.ry, pt.wheel_fr.ry = sv, sv

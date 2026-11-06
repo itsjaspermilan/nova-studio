@@ -26,6 +26,12 @@ local function read_controls(car)
   local c = car.ctl
   c.throttle = nova.input.axis("throttle")
   c.brake = nova.input.axis("brake")
+  -- a trigger gives every value from 0 to 1 and a key or a button gives 0 or 1, so a press that starts part way is a trigger
+  -- (pulled right through at speed it locks the wheels: see Car:drive)
+  if c.brake <= 0 then car.brake_analog = nil
+  elseif (car.brake_before or 0) <= 0 then car.brake_analog = c.brake < 0.95 end
+  car.brake_before = c.brake
+  c.brake_analog = car.brake_analog
   c.steer = nova.input.axis("steer")
   c.handbrake = nova.input.down("handbrake")
 end
@@ -42,7 +48,7 @@ local function drive_itself(car)
   -- what is in the way? (a barrier on the outside of a bend, a tree on a straight): steer away from it and ease off
   local h = car.heading
   local ahead = 9 + math.abs(car.speed) * 0.8
-  local dist, ox, oz = nova.scenery.ahead(car.x, car.z, math.sin(h), math.cos(h), ahead, 1.7)
+  local dist, ox, oz = nova.scenery.ahead(car.x, car.z, math.sin(h), math.cos(h), ahead, 1.45)
   local urgency = 0
   if dist then
     urgency = 1 - dist / ahead
@@ -359,6 +365,10 @@ function race.define(config)
       if car.is_player and not car.autopilot then read_controls(car) else drive_itself(car) end
       if car.finish_time and not car.is_player then car.vmax = 26 end
       car:drive(dt)
+      if car.is_player then
+        if (car.lock or 0) > 0.3 and not self.lock_logged then self.lock_logged = true; nova.log("brake: the wheels locked") end
+        if (car.lock or 0) == 0 then self.lock_logged = nil end
+      end
       self:locate(car)
     end
     self:bump_cars()
@@ -510,52 +520,62 @@ function race.define(config)
   function Race:draw_ui()
     local w = nova.view()
     local p = self.player
-    -- speed, bottom right
-    local kmh = math.floor(math.abs(p.speed) * 3.6 + 0.5)
-    ui.panel(w - 200, 448, 180, 76, 150)
-    ui.right(tostring(kmh), w - 74, 454, 52, ui.color.white, { font = "display" })
-    ui.text(w - 68, 488, "km/h", 18, ui.color.dim)
-    ui.text(w - 190, 456, p.speed < -0.5 and "R" or (p.gear or 1) .. "", 30, p.shift_time > 0 and ui.color.dim or ui.color.gold, { font = "display" })
-    local fill = math.min(1, math.abs(p.speed) / 44)
-    nova.ui.rect(w - 190, 508, 160, 6, { 255, 255, 255, 50 })
-    nova.ui.rect(w - 190, 508, 160 * fill, 6, fill > 0.85 and { 239, 68, 68 } or { 245, 158, 11 })
-
-    -- the tyres and the body, above the speed
-    ui.panel(w - 200, 394, 180, 48, 150)
+    -- the car, bottom right: tyres and body, then the gear and speed, then a bar for how near top speed it is
+    local px, py, pw, ph = w - 232, 388, 212, 136
+    ui.panel(px, py, pw, ph, 205, ui.color.sky)
     for i, bar in ipairs({ { "TYRES", p.tyres }, { "BODY", 1 - p.damage } }) do
-      local by = 400 + (i - 1) * 20
-      ui.text(w - 192, by - 3, bar[1], 12, ui.color.dim)
-      nova.ui.rect(w - 138, by + 2, 108, 8, { 255, 255, 255, 40 })
+      local by = py + 14 + (i - 1) * 18
+      ui.label(px + 12, by - 4, bar[1])
+      nova.ui.rect(px + 66, by, 134, 7, { 255, 255, 255, 36 })
       local v = math.max(0, math.min(1, bar[2]))
-      nova.ui.rect(w - 138, by + 2, 108 * v, 8, v > 0.55 and { 74, 222, 128 } or (v > 0.25 and { 245, 158, 11 } or { 239, 68, 68 }))
+      nova.ui.rect(px + 66, by, 134 * v, 7, v > 0.55 and { 74, 222, 128 } or (v > 0.25 and { 245, 158, 11 } or { 239, 68, 68 }))
     end
+    nova.ui.rect(px + 12, py + 52, pw - 24, 1, { 255, 255, 255, 30 })
+    local kmh = math.floor(math.abs(p.speed) * 3.6 + 0.5)
+    local gear = p.speed < -0.5 and "R" or tostring(p.gear or 1)
+    nova.ui.rect(px + 12, py + 64, 42, 46, { 255, 255, 255, 22 })
+    ui.center(gear, py + 62, 40, p.shift_time > 0 and ui.color.dim or ui.color.gold, { font = "comic", cx = px + 33 })
+    ui.right(tostring(kmh), px + pw - 62, py + 58, 58, ui.color.white, { font = "comic" })
+    ui.label(px + pw - 54, py + 92, "KM/H")
+    local fill = math.min(1, math.abs(p.speed) / 44)
+    nova.ui.rect(px + 12, py + 118, pw - 24, 6, { 255, 255, 255, 36 })
+    nova.ui.rect(px + 12, py + 118, (pw - 24) * fill, 6, fill > 0.85 and { 239, 68, 68 } or { 245, 158, 11 })
 
     -- place and lap, top left
-    ui.panel(16, 16, 190, 70, 150)
+    ui.panel(16, 16, 176, 76, 205)
     if self.trial then
-      ui.text(28, 22, "TRIAL", 34, ui.color.gold, { font = "display" })
+      ui.text(30, 20, "TRIAL", 36, ui.color.gold, { font = "comic" })
       local gap = self:ghost_gap()
       if gap then
         local ahead = gap <= 0
-        ui.text(138, 28, string.format("%s%.2f", ahead and "-" or "+", math.abs(gap)), 24, ahead and ui.color.green or ui.color.red, { font = "display" })
+        ui.text(124, 28, string.format("%s%.2f", ahead and "-" or "+", math.abs(gap)), 26, ahead and ui.color.green or ui.color.red, { font = "comic" })
       end
     else
-      ui.text(28, 20, ui.ordinal(p.place or 1), 40, ui.color.gold, { font = "display" })
-      ui.text(100, 30, "/ " .. #self.cars, 22, ui.color.dim)
+      local place = p.place or 1
+      local number, suffix = tostring(place), ui.ordinal(place):gsub("^%d+", "")
+      local _, nw = nova.ui.text(30, 18, number, { size = 54, color = ui.color.gold, font = "comic", shadow = true })
+      local o = { size = 24, color = ui.color.gold, font = "comic" }
+      local width = nova.ui.text_width(number, { size = 54, font = "comic" })
+      nova.ui.text(30 + width + 2, 24, suffix, o)
+      ui.text(30 + width + 44, 36, "/ " .. #self.cars, 20, ui.color.dim)
     end
     local lap = math.max(1, math.min(self.laps, self:lap_of(p)))
-    ui.text(28, 62, "LAP " .. lap .. " / " .. self.laps, 18, ui.color.white)
+    ui.label(30, 66, "LAP")
+    ui.text(62, 62, lap .. " / " .. self.laps, 20, ui.color.white)
 
     -- times, top right
-    ui.panel(w - 210, 16, 194, 70, 150)
-    ui.text(w - 198, 22, "TIME  " .. ui.time(math.max(0, self.clock)), 20, ui.color.white)
-    ui.text(w - 198, 46, "LAST  " .. ui.time(self.lap_times[#self.lap_times]), 16, ui.color.dim)
-    ui.text(w - 198, 64, "BEST  " .. ui.time(self.best_lap), 16, ui.color.gold)
+    ui.panel(w - 212, 16, 196, 76, 205)
+    ui.label(w - 198, 24, "TIME")
+    ui.right(ui.time(math.max(0, self.clock)), w - 28, 18, 24, ui.color.white, { font = "mono" })
+    ui.label(w - 198, 50, "LAST")
+    ui.right(ui.time(self.lap_times[#self.lap_times]), w - 28, 45, 16, ui.color.dim, { font = "mono" })
+    ui.label(w - 198, 68, "BEST")
+    ui.right(ui.time(self.best_lap), w - 28, 63, 16, ui.color.gold, { font = "mono" })
 
     -- minimap, bottom left
     local m = self.map
     local mx, my = 24, 540 - 24 - m.h - 10
-    ui.panel(mx - 10, my - 8, m.w + 20, m.h + 26, 140)
+    ui.panel(mx - 10, my - 8, m.w + 20, m.h + 26, 200, ui.color.green)
     for _, d in ipairs(m.dots) do nova.ui.rect(mx + d[1] - 1, my + d[2] - 1, 3, 3, { 255, 255, 255, 140 }) end
     for i = #self.cars, 1, -1 do
       local car = self.cars[i]

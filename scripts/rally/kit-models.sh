@@ -8,7 +8,8 @@ cd "$(dirname "$0")/../.."
 KITS="${KITS:?set KITS to the folder the kits were unzipped into}"
 P=examples/pine-ridge-rally
 K() { scripts/env.sh node scripts/kenney.mjs "$@"; }
-CAR=(--fit z=4.53 --pivot-wheels --centre-axles --rename wheel-front-right=wheel_fl,wheel-front-left=wheel_fr,wheel-back-right=wheel_rl,wheel-back-left=wheel_rr)
+CAR_LENGTH=3.7   # metres: 4.53 made the cars 70% as wide as the road, so they were shrunk by a fifth
+CAR=(--fit z=$CAR_LENGTH --pivot-wheels --centre-axles --rename wheel-front-right=wheel_fl,wheel-front-left=wheel_fr,wheel-back-right=wheel_rl,wheel-back-left=wheel_rr)
 K "$KITS/kenney_car-kit" $P race --as car "${CAR[@]}"
 K "$KITS/kenney_car-kit" $P sedan-sports --as car_blue "${CAR[@]}"
 K "$KITS/kenney_car-kit" $P hatchback-sports --as car_green "${CAR[@]}"

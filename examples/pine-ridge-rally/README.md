@@ -9,6 +9,8 @@ A 3D rally game for Nova: four circuits, three rivals, a chase camera, tyre wear
 right trigger; brake or reverse with Down, S or the left trigger; Space is the handbrake (slides); R puts you back on
 the road; C changes camera; Esc or P pauses. F9 lets the computer drive for you (for demos and tests).
 
+**The triggers are analogue**: how far you pull the right trigger is how hard the engine pulls, and the left trigger brakes by how far it is pulled. Pull it right through at speed and the wheels lock: the front stops biting, the rear lets go and the car slides (it takes about two thirds of the pull to be safe). A key or a button is all or nothing and never locks the wheels. (The Retroid's triggers report both an analogue axis and a button; the game binds only the axis, and the controls screen turns a pressed trigger into the axis.)
+
 ## How it is put together
 
 Like any Nova project it is plain files, and most of them are what the studio's editors write:

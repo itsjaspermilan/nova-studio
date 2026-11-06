@@ -123,7 +123,12 @@ function Title:update(dt)
 end
 
 function Title:draw()
-  backdrop.draw(self.t, "title")
+  -- on the menu and the chooser the menu is on the left and the car moves to the right (easing across when the screen changes)
+  local dt = self.t - (self.last_t or self.t)
+  self.last_t = self.t
+  local want = (self.screen == "menu" or self.screen == "select") and 2.6 or 0
+  self.shift = (self.shift or 0) + (want - (self.shift or 0)) * math.min(1, dt * 5)
+  backdrop.draw(self.t, "title", self.shift)
 end
 
 local function logo(t)
@@ -141,7 +146,7 @@ function Title:draw_ui()
     ui.center("four circuits  ·  three rivals  ·  one chance to get it right", 484, 16, ui.color.dim)
   elseif screen == "menu" then
     logo(self.t)
-    ui.menu(MENU, self.choice, 270)
+    ui.menu(MENU, self.choice, 270, { width = 340, cx = 230 })
   elseif screen == "howto" then
     ui.center("HOW TO PLAY", 40, 44, ui.color.gold, { font = "comic" })
     ui.panel(w / 2 - 330, 110, 660, 340, 200)
@@ -150,7 +155,7 @@ function Title:draw_ui()
       ui.text(w / 2 - 70, 124 + (i - 1) * 42, row[2], 18, ui.color.white)
     end
     ui.center("Finish all the laps ahead of your rivals. The grass slows you down; the handbrake lets the back out.", 405, 14, ui.color.dim, { cx = w / 2 })
-    ui.center("press A", 480, 18, ui.color.dim)
+    ui.hint("press A")
   elseif screen == "options" then
     ui.center("OPTIONS", 60, 52, ui.color.gold, { font = "comic" })
     ui.menu({
@@ -170,24 +175,27 @@ function Title:draw_ui()
     items[#items + 1] = "Back to the defaults"
     items[#items + 1] = "Back"
     ui.menu(items, self.choice, 84, { width = 700, row = 38 })
-    ui.center(self.note or "A: change     B: back     keys and buttons are changed separately", 492, 14, self.note and ui.color.red or ui.color.dim)
+    ui.hint(self.note or "A: change     B: back     keys and buttons are changed separately")
   elseif screen == "select" then
     local info = state.current_track()
-    ui.center("CHOOSE YOUR RACE", 30, 44, ui.color.gold, { font = "comic" })
+    ui.center("CHOOSE YOUR RACE", 30, 44, ui.color.gold, { font = "comic", cx = 240 })
     ui.menu({
       { "Circuit", "< " .. info.name .. " >" },
       { "Mode", "< " .. (state.mode == "race" and "Race" or "Time trial") .. " >" },
       { "Car", "< " .. state.current_car().name .. " >" },
       { "Laps", "< " .. state.laps .. " >" },
       state.mode == "race" and "START RACE" or "START TIME TRIAL",
-    }, self.choice, 100, { width = 460 })
-    ui.panel(w / 2 - 230, 330, 460, 110, 190)
-    ui.text(w / 2 - 214, 336, state.mode == "race" and info.blurb or "Alone on the circuit, racing the ghost of your best lap.", 15, ui.color.white, { width = 430 })
+    }, self.choice, 100, { width = 400, cx = 240 })
+    -- (the menu and its notes are on the left, so that the car turning behind them can be seen on the right)
+    ui.panel(40, 340, 400, 120, 205)
+    ui.text(56, 354, state.mode == "race" and info.blurb or "Alone on the circuit, racing the ghost of your best lap.", 15, ui.color.white, { width = 370 })
     local best = state.best("race" .. state.laps, info.id)
     local lap = state.best("lap", info.id)
-    ui.text(w / 2 - 214, 382, "Best " .. state.laps .. " laps  " .. ui.time(best), 17, ui.color.gold)
-    ui.text(w / 2 - 214, 406, "Best lap  " .. ui.time(lap), 17, ui.color.gold)
-    ui.center("up / down: choose     left / right: change     A: go     B: back", 490, 14, ui.color.dim)
+    ui.label(56, 404, "BEST " .. state.laps .. " LAPS")
+    ui.text(180, 398, ui.time(best), 18, ui.color.gold, { font = "mono" })
+    ui.label(56, 430, "BEST LAP")
+    ui.text(180, 424, ui.time(lap), 18, ui.color.gold, { font = "mono" })
+    ui.hint("up / down: choose     left / right: change     A: go     B: back")
   end
 end
 

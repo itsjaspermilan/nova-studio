@@ -363,6 +363,16 @@ pub fn last_perf() -> PerfSnapshot {
 
 impl Perf {
     pub fn record(&mut self, frame_ms: f32) {
+        // a frame that took well over a vsync is a stutter: say so at once, with what the engine knew of its parts
+        if frame_ms > 25.0 && self.frame_ms.len() > 180 {
+            log::warn!(
+                "hitch: a frame took {:.1} ms (last update {:.2} ms, lua {:.2} ms, render {:.2} ms)",
+                frame_ms,
+                self.times.update_ms,
+                self.times.lua_ms,
+                self.times.render_ms
+            );
+        }
         self.frame_ms.push(frame_ms);
         self.window_ms.push(frame_ms);
         self.window_frames += 1;
@@ -393,8 +403,10 @@ impl Perf {
                 };
             }
             log::info!(
-                "fps={:.1} upd={:.2}ms lua={:.2}ms render={:.2}ms gpu={:.2}ms draws={} sprites={} tris={} culled={}",
+                "fps={:.1} p95={:.1}ms max={:.1}ms upd={:.2}ms lua={:.2}ms render={:.2}ms gpu={:.2}ms draws={} sprites={} tris={} culled={}",
                 self.fps,
+                p95,
+                max,
                 self.times.update_ms,
                 self.times.lua_ms,
                 self.times.render_ms,

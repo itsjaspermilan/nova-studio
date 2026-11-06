@@ -263,3 +263,62 @@ fn the_controls_screen_remaps_a_key_and_can_put_the_defaults_back() {
         "{log:?}"
     );
 }
+
+/// A frame with analogue values (a trigger part way down) as well as held keys.
+fn frame_with(g: &mut Game, held: &[(&str, f32)]) {
+    let input = InputFrame {
+        sources: held.iter().map(|(k, v)| (k.to_string(), *v)).collect(),
+        ..Default::default()
+    };
+    g.update_input(DT, 0.0, [960.0, 540.0], &input);
+    assert!(g.error.is_none(), "the game raised an error: {:?}", g.error);
+}
+
+/// Drives to speed on the throttle, then brakes the way `ramp` says (trigger values, one a frame): did the wheels lock?
+fn braking_locks_the_wheels(ramp: &[f32], key_instead: bool) -> bool {
+    let mut g = load();
+    start_race(&mut g, 0, false);
+    let mut log = Vec::new();
+    run_until(&mut g, &mut log, "the countdown ends", 60 * 8, |l| {
+        l.iter().any(|x| x == "go")
+    });
+    for _ in 0..60 * 16 {
+        frame_with(&mut g, &[("key:ArrowUp", 1.0)]);
+    }
+    log.clear();
+    for v in ramp {
+        if key_instead {
+            frame_with(&mut g, &[("key:ArrowDown", 1.0)]);
+        } else {
+            frame_with(&mut g, &[("axis:l2", *v)]);
+        }
+        log.extend(g.take_log());
+    }
+    log.iter().any(|l| l == "brake: the wheels locked")
+}
+
+#[test]
+fn a_trigger_pulled_right_through_at_speed_locks_the_wheels_and_a_gentle_one_or_a_key_does_not() {
+    let hard: Vec<f32> = [0.3, 0.6, 0.9, 1.0]
+        .iter()
+        .copied()
+        .chain(std::iter::repeat_n(1.0, 40))
+        .collect();
+    let gentle: Vec<f32> = [0.2, 0.4, 0.6]
+        .iter()
+        .copied()
+        .chain(std::iter::repeat_n(0.6, 40))
+        .collect();
+    assert!(
+        braking_locks_the_wheels(&hard, false),
+        "a trigger pulled right through locks the wheels"
+    );
+    assert!(
+        !braking_locks_the_wheels(&gentle, false),
+        "a trigger half way does not"
+    );
+    assert!(
+        !braking_locks_the_wheels(&hard, true),
+        "a key is all or nothing and never locks the wheels (it would otherwise on every stop)"
+    );
+}

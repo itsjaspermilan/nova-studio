@@ -6,12 +6,16 @@ local backdrop = {}
 local view = { x = 0, z = 0 }
 
 -- `mode` "title" or "results" picks the camera. Call from the scene's draw().
-function backdrop.draw(t, mode)
+function backdrop.draw(t, mode, shift)
   local radius, height, speed = 8.5, 2.6, 0.12
   if mode == "results" then radius, height, speed = 11, 3.2, 0.07 end
   local a = t * speed + 0.6
   view.x, view.z = math.sin(a) * radius, math.cos(a) * radius
-  nova.camera(view.x, height, view.z, 0, 1.0, 0, 48)
+  -- `shift` metres moves where the camera looks to the left of the car, so that the car sits to the right of the screen (the menus
+  -- are on the left): the camera's right is (-fz, fx) for a forward of (fx, fz)
+  local fx, fz = -view.x / radius, -view.z / radius
+  local s = shift or 0
+  nova.camera(view.x, height, view.z, s * fz, 1.0, -s * fx, 48)
   horizon.draw(view.x, view.z, "forest")
 end
 
