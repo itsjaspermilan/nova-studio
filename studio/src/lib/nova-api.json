@@ -437,7 +437,7 @@
   "name": "nova.sound.play",
   "kind": "function",
   "signature": "nova.sound.play(name [, opts]) -> id",
-  "doc": "Play a sound effect. Options: volume, pan, pitch, loop, and limit (at most that many copies of this sound at once: one more makes the oldest copy give way, so a flood of hits cannot steal a voice from other sounds; there are 32 voices in all). `at = {x, y, z}` puts the sound at a place in the world: it is quieter the further the camera is from it (to nothing at `range` metres, 32 by default) and comes from the left or right of where the camera looks; beyond its range a one-shot sound is not played at all (it returns 0).",
+  "doc": "Play a sound effect. Options: volume, pan, pitch, loop, `reverb` (0 to 1: how much of it goes to the room set with `nova.sound.room`), and limit (at most that many copies of this sound at once: one more makes the oldest copy give way, so a flood of hits cannot steal a voice from other sounds; there are 32 voices in all). `at = {x, y, z}` puts the sound at a place in the world: it is quieter the further the camera is from it (to nothing at `range` metres, 32 by default) and comes from the left or right of where the camera looks; beyond its range a one-shot sound is not played at all (it returns 0).",
   "group": "Sound"
  },
  {
@@ -450,8 +450,15 @@
  {
   "name": "nova.sound.set",
   "kind": "function",
-  "signature": "nova.sound.set(id, { volume, pan, pitch, at, range })",
-  "doc": "Change a sound that is playing: its volume, pan or pitch (any of them). The change glides over a few milliseconds, so call it every frame to make a looping engine follow the revs. A sound that has ended ignores it. `at = {x, y, z}` (and `range`) makes it follow a place in the world as `play` does: call it every frame for a sound that moves or a camera that does.",
+  "signature": "nova.sound.set(id, { volume, pan, pitch, reverb, at, range })",
+  "doc": "Change a sound that is playing: its volume, pan, pitch or reverb send (any of them). The change glides over a few milliseconds, so call it every frame to make a looping engine follow the revs. A sound that has ended ignores it. `at = {x, y, z}` (and `range`) makes it follow a place in the world as `play` does: call it every frame for a sound that moves or a camera that does.",
+  "group": "Sound"
+ },
+ {
+  "name": "nova.sound.room",
+  "kind": "function",
+  "signature": "nova.sound.room({ size = 0.5, damping = 0.4, mix = 1 }) | nova.sound.room()",
+  "doc": "Sets the reverb that sounds go to when they are played (or set) with `reverb = 0.3` (0 to 1, how much of the sound is sent): `size` (0 to 1) is how long it rings, `damping` (0 to 1) how dull the tail is, `mix` (0 to 2) how loud the reverb is. One room is shared by all sounds; `nova.sound.room()` takes it away. It is a Freeverb-style room (eight comb filters and four all-passes a side), and costs a little CPU on the audio thread while it is on. Music (streamed Ogg) can be sent to it too with `nova.music.play(name, { reverb = ... })`.",
   "group": "Sound"
  },
  {

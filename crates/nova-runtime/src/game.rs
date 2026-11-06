@@ -1822,6 +1822,14 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     fade_in: number_option(&opts, "fade")?.unwrap_or(0.0).clamp(0.0, 60.0) as f32,
                     limit: number_option(&opts, "limit")?.unwrap_or(0.0).clamp(0.0, 32.0) as u32,
                 })));
+                // how much of it goes to the room's reverb (see nova.sound.room)
+                let send = number_option(&opts, "reverb")?.unwrap_or(0.0);
+                if !send.is_finite() || !(0.0..=1.0).contains(&send) {
+                    return Err(lua_err(format!("reverb must be from 0 to 1, not {send}")));
+                }
+                if send > 0.0 {
+                    sh.audio.push(mixer::Command::Send { id, send: send as f32 });
+                }
                 Ok(id)
             })?,
         )?;
@@ -1870,6 +1878,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 read("pan", -1.0, 1.0)?,
                 read("pitch", 0.05, 16.0)?,
             );
+            let reverb = read("reverb", 0.0, 1.0)?;
             // `at`: follow a place in the world (a moving sound: call it every frame)
             if let Some((at, range)) = spatial_options(&Some(opts.clone()))? {
                 known += 1;
@@ -1879,10 +1888,45 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             }
             if known == 0 {
                 return Err(lua_err(
-                    "nova.sound.set(id, { volume = ..., pan = ..., pitch = ..., at = {x, y, z} }) needs at least one of volume, pan, pitch or at",
+                    "nova.sound.set(id, { volume = ..., pan = ..., pitch = ..., reverb = ..., at = {x, y, z} }) needs at least one of volume, pan, pitch, reverb or at",
                 ));
             }
-            s.borrow_mut().audio.push(mixer::Command::Set { id, volume, pan, pitch });
+            let mut sh = s.borrow_mut();
+            if let Some(send) = reverb {
+                sh.audio.push(mixer::Command::Send { id, send });
+            }
+            if volume.is_some() || pan.is_some() || pitch.is_some() {
+                sh.audio.push(mixer::Command::Set { id, volume, pan, pitch });
+            }
+            Ok(())
+        })?,
+    )?;
+    // room { size = 0.5, damping = 0.4, mix = 1 }: the reverb that sounds played with `reverb = ...` go to; nova.sound.room() takes it away
+    let s = shared.clone();
+    sound.set(
+        "room",
+        lua.create_function(move |_, opts: Option<Table>| {
+            let room = match opts {
+                None => None,
+                Some(t) => {
+                    let some = Some(t);
+                    let read = |key: &str, default: f64, hi: f64| -> mlua::Result<f32> {
+                        let v = number_option(&some, key)?.unwrap_or(default);
+                        if !v.is_finite() || !(0.0..=hi).contains(&v) {
+                            return Err(lua_err(format!(
+                                "room {key} must be from 0 to {hi}, not {v}"
+                            )));
+                        }
+                        Ok(v as f32)
+                    };
+                    Some(mixer::Room {
+                        size: read("size", 0.5, 1.0)?,
+                        damping: read("damping", 0.4, 1.0)?,
+                        mix: read("mix", 1.0, 2.0)?,
+                    })
+                }
+            };
+            s.borrow_mut().audio.push(mixer::Command::Room(room));
             Ok(())
         })?,
     )?;

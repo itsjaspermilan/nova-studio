@@ -1,7 +1,18 @@
 -- Sound for the game: menu sounds, music, and the engine (a run of short pulses, faster as the engine revs).
 local audio = {}
 
-function audio.sfx(name, opts) return nova.sound.play(name, opts) end
+-- One room for the sound effects (nova.sound.room): how much of each is sent to it, by name. Menu sounds stay dry.
+nova.sound.room { size = 0.5, damping = 0.5, mix = 0.9 }
+local REVERB = { bump = 0.25, lap = 0.3, best_lap = 0.4, finish = 0.45, checkpoint = 0.2, go = 0.2, beep = 0.1, shift = 0.1, whoosh = 0.2 }
+
+function audio.sfx(name, opts)
+  local send = REVERB[name]
+  if send and not (opts and opts.reverb) then
+    opts = opts or {}
+    opts.reverb = send
+  end
+  return nova.sound.play(name, opts)
+end
 
 local current_music = nil
 function audio.music(name, opts)

@@ -1590,7 +1590,7 @@ fn sound_set_queues_a_change_and_explains_a_mistake() {
     for (script, expected) in [
         (
             "nova.sound.set(1, {})",
-            "needs at least one of volume, pan, pitch or at",
+            "needs at least one of volume, pan, pitch, reverb or at",
         ),
         ("nova.sound.set(1, { pitch = 'high' })", "number"),
     ] {
@@ -2770,4 +2770,49 @@ nova.log(string.format('perf %.1f %.1f %d %s', p.fps, p.gpu_ms, p.draws, type(p.
     )]);
     assert!(g.error.is_none(), "{:?}", g.error);
     assert_eq!(logs(&g)[0], "perf 0.0 0.0 0 number");
+}
+
+#[test]
+fn a_room_and_a_reverb_send_are_queued_and_mistakes_are_explained() {
+    use nova_runtime::mixer::{Command, Room};
+    let g = project(vec![
+        ("sounds/hit.wav", wav_bytes(22050, 2000)),
+        (
+            "main.lua",
+            lua(
+                "nova.sound.room { size = 0.8, damping = 0.2, mix = 1.5 }\nlocal id = nova.sound.play('hit', { reverb = 0.4 })\nnova.sound.set(id, { reverb = 0.9 })\nnova.sound.room()",
+            ),
+        ),
+    ]);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let cmds = g.take_audio();
+    assert!(
+        matches!(&cmds[0], Command::Room(Some(r)) if *r == Room { size: 0.8, damping: 0.2, mix: 1.5 }),
+        "the room"
+    );
+    assert!(matches!(&cmds[1], Command::Play(_)));
+    assert!(matches!(&cmds[2], Command::Send { id: 1, send } if (*send - 0.4).abs() < 1e-6));
+    assert!(matches!(&cmds[3], Command::Send { id: 1, send } if (*send - 0.9).abs() < 1e-6));
+    assert!(matches!(&cmds[4], Command::Room(None)), "and taken away");
+    for (script, expected) in [
+        (
+            "nova.sound.room { size = 2 }",
+            "room size must be from 0 to 1",
+        ),
+        (
+            "nova.sound.room { mix = -1 }",
+            "room mix must be from 0 to 2",
+        ),
+        (
+            "nova.sound.play('hit', { reverb = 3 })",
+            "reverb must be from 0 to 1",
+        ),
+    ] {
+        let g = project(vec![
+            ("sounds/hit.wav", wav_bytes(22050, 2000)),
+            ("main.lua", lua(script)),
+        ]);
+        let e = g.error.clone().unwrap_or_default();
+        assert!(e.contains(expected), "{script}: {e}");
+    }
 }

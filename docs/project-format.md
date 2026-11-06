@@ -769,6 +769,8 @@ nova.sound.volume(0.8)               -- master volume for effects (0 to 2)
 nova.music.play("theme", { volume = 0.4, fade = 1.0 })   -- loops by default; one track at a time
 nova.music.stop(0.5)                 -- optional fade-out
 nova.music.volume(0.5)               -- master volume for music (0 to 2)
+nova.sound.room { size = 0.5, damping = 0.4, mix = 1 }   -- one shared reverb room; nova.sound.room() takes it away
+nova.sound.play("hit", { reverb = 0.3 })                  -- how much of a sound goes to the room (0 to 1; nova.sound.set changes it)
 nova.music.position()                -- seconds into the track (nil when no music plays; wraps on loops)
 nova.music.seek(30)                  -- jump to 30 s; true, or false when nothing is playing
 ```

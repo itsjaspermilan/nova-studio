@@ -82,7 +82,7 @@ another physical Android device) to settle; the emulator cannot.
 - [x] GPU timestamps (2026-11-04): `gpu_ms` in `nova.perf()` and the log line, where the adapter has timestamp queries.
 - [~] 3D (updated 2026-11-05): collision exists (`nova.walls` boxes and ramps, `nova.solid` triangle meshes, voxels), models animate (clips, skins, blending, `nova.animator`), there are point lights (the 16 nearest), the sun's shadows and `nova.look`. Still none: rigid-body physics, runtime IK, normal maps or PBR.
 - [ ] Text is UI layer only and draws on top of UI sprites.
-- [ ] The mixer resamples with four-point cubic interpolation since 2026-11-06 (it was linear; streamed music is still linear since it plays at its own rate; a sound sped up past about 1.5 times can still alias, with no low-pass before the step) and has no buses or effects; the C
+- [ ] The mixer resamples with four-point cubic interpolation since 2026-11-06 (it was linear; streamed music is still linear since it plays at its own rate; a sound sped up past about 1.5 times can still alias, with no low-pass before the step) and has one shared reverb room since 2026-11-06 (`nova.sound.room`, `reverb = 0.3` on a sound; the rally's effects use it) but no other buses or effects; the C
   audio core's synthesis and DSP are not connected to game audio (M6).
 - [ ] Hot reload restarts the whole project (no state-preserving reload).
 - [x] Lua errors carry their call stack as data (2026-11-02): `nova check --json` gives each diagnostic a `stack` (file, line, function, internal), and

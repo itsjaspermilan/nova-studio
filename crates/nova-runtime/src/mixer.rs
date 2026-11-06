@@ -67,12 +67,105 @@ pub enum Command {
     },
     SfxVolume(f32),
     MusicVolume(f32),
+    /// How much of a playing sound goes to the room's reverb (0 to 1).
+    Send {
+        id: u64,
+        send: f32,
+    },
+    /// The room that sends go to (`None` takes it away).
+    Room(Option<Room>),
     /// Jump the playing music to `seconds` into the track. A streamed track needs a fresh `feed` that starts there; a
     /// track held in memory just moves its playhead.
     SeekMusic {
         seconds: f64,
         feed: Option<StreamFeed>,
     },
+}
+
+/// The reverb room: how long it rings (0 to 1), how dull its tail is (0 to 1) and how loud it is (0 to 2).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Room {
+    pub size: f32,
+    pub damping: f32,
+    pub mix: f32,
+}
+
+/// A Freeverb-style room: eight comb filters and four all-passes a side, fed the mix of both channels. It allocates once, when the
+/// room is made, and never while rendering.
+struct Reverb {
+    combs: [Vec<(Vec<f32>, usize, f32)>; 2],
+    allpass: [Vec<(Vec<f32>, usize)>; 2],
+    feedback: f32,
+    damp: f32,
+    mix: f32,
+}
+
+impl Reverb {
+    fn new(rate: u32, room: Room) -> Self {
+        let scale = rate as f32 / 44100.0;
+        let side = |spread: usize| {
+            (
+                [1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617]
+                    .iter()
+                    .map(|n| {
+                        (
+                            vec![0.0; (((n + spread) as f32) * scale).round().max(1.0) as usize],
+                            0,
+                            0.0,
+                        )
+                    })
+                    .collect::<Vec<_>>(),
+                [556, 441, 341, 225]
+                    .iter()
+                    .map(|n| {
+                        (
+                            vec![0.0; (((n + spread) as f32) * scale).round().max(1.0) as usize],
+                            0,
+                        )
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        };
+        let (cl, al) = side(0);
+        let (cr, ar) = side(23);
+        Self {
+            combs: [cl, cr],
+            allpass: [al, ar],
+            feedback: 0.72 + room.size.clamp(0.0, 1.0) * 0.26,
+            damp: 0.05 + room.damping.clamp(0.0, 1.0) * 0.5,
+            mix: room.mix.clamp(0.0, 2.0),
+        }
+    }
+
+    /// Adds the reverb of `wet` (interleaved stereo sends) to `out`.
+    fn process(&mut self, wet: &[f32], out: &mut [f32]) {
+        for (frame, pair) in wet.chunks_exact(2).enumerate() {
+            let input = (pair[0] + pair[1]) * 0.015;
+            for ch in 0..2 {
+                let mut y = 0.0;
+                for c in &mut self.combs[ch] {
+                    let v = c.0[c.1];
+                    c.2 = v * (1.0 - self.damp) + c.2 * self.damp;
+                    c.0[c.1] = input + c.2 * self.feedback;
+                    c.1 += 1;
+                    if c.1 >= c.0.len() {
+                        c.1 = 0;
+                    }
+                    y += v;
+                }
+                for a in &mut self.allpass[ch] {
+                    let v = a.0[a.1];
+                    a.0[a.1] = y + v * 0.5;
+                    y = v - y;
+                    a.1 += 1;
+                    if a.1 >= a.0.len() {
+                        a.1 = 0;
+                    }
+                }
+                out[frame * 2 + ch] += y * 3.0 * self.mix;
+            }
+        }
+    }
 }
 
 /// Where a streamed voice is: the two decoded frames around the playhead.
@@ -110,10 +203,16 @@ struct Voice {
     fade_step: f32,
     fade_target: f32,
     stopping: bool,
+    /// How much of this voice goes to the reverb (0 to 1).
+    send: f32,
 }
 
 pub struct Mixer {
     voices: Vec<Voice>,
+    reverb: Option<Reverb>,
+    /// Scratch for the voices that send to the reverb, and the sends themselves (grown once to the callback's size).
+    tmp: Vec<f32>,
+    wet: Vec<f32>,
     device_rate: u32,
     sfx_volume: f32,
     music_volume: f32,
@@ -223,10 +322,97 @@ fn cubic(p0: f32, p1: f32, p2: f32, p3: f32, t: f32) -> f32 {
         + (3.0 * p1 - p0 - 3.0 * p2 + p3) * t * t * t)
 }
 
+/// Draws one voice into `out` (stereo, `frames` long): a streamed one from its decoder, a loaded one by cubic interpolation. Returns the
+/// frames of silence a streamed voice had to play because its decoder was behind.
+fn render_voice(voice: &mut Voice, volume: f32, glide: f32, frames: usize, out: &mut [f32]) -> u64 {
+    if voice.stream.is_some() {
+        return render_stream(voice, volume, out);
+    }
+    let data = &voice.sample.frames;
+    let last = data.len() - 1;
+    for frame in 0..frames {
+        if voice.gain_l != voice.target.0
+            || voice.gain_r != voice.target.1
+            || voice.step != voice.target.2
+        {
+            voice.gain_l += (voice.target.0 - voice.gain_l) * glide;
+            voice.gain_r += (voice.target.1 - voice.gain_r) * glide;
+            voice.step += (voice.target.2 - voice.step) * glide as f64;
+            if (voice.gain_l - voice.target.0).abs() < 1e-5
+                && (voice.gain_r - voice.target.1).abs() < 1e-5
+            {
+                (voice.gain_l, voice.gain_r) = (voice.target.0, voice.target.1);
+            }
+            if (voice.step - voice.target.2).abs() < 1e-6 {
+                voice.step = voice.target.2;
+            }
+        }
+        // Fade towards the target (in or out).
+        if voice.fade != voice.fade_target {
+            if voice.fade < voice.fade_target {
+                voice.fade = (voice.fade + voice.fade_step).min(voice.fade_target);
+            } else {
+                voice.fade = (voice.fade - voice.fade_step).max(voice.fade_target);
+            }
+            if voice.stopping && voice.fade <= 0.0 {
+                voice.pos = f64::INFINITY; // finished: removed below
+                break;
+            }
+        }
+        let i = voice.pos as usize;
+        if i > last {
+            if voice.looping {
+                voice.pos -= data.len() as f64;
+                if voice.pos as usize > last {
+                    voice.pos = 0.0;
+                }
+            } else {
+                voice.pos = f64::INFINITY;
+                break;
+            }
+        }
+        let i = voice.pos as usize;
+        let t = (voice.pos - i as f64) as f32;
+        // the four frames round the playhead: a looping sound wraps; a one-shot carries its first and last slopes on
+        // (so that a ramp stays straight to its ends)
+        let len = data.len() as isize;
+        let at = |k: isize| -> [f32; 2] {
+            let f = |j: usize| [data[j][0] as f32, data[j][1] as f32];
+            if voice.looping {
+                f(k.rem_euclid(len) as usize)
+            } else if k < 0 && len > 1 {
+                let (a, b) = (f(0), f(1));
+                [2.0 * a[0] - b[0], 2.0 * a[1] - b[1]]
+            } else if k > last as isize && len > 1 {
+                let (a, b) = (f(last), f(last - 1));
+                [2.0 * a[0] - b[0], 2.0 * a[1] - b[1]]
+            } else {
+                f(k.clamp(0, last as isize) as usize)
+            }
+        };
+        let (p0, p1, p2, p3) = (
+            at(i as isize - 1),
+            at(i as isize),
+            at(i as isize + 1),
+            at(i as isize + 2),
+        );
+        let l = cubic(p0[0], p1[0], p2[0], p3[0], t);
+        let r = cubic(p0[1], p1[1], p2[1], p3[1], t);
+        let g = volume * voice.fade / 32768.0;
+        out[frame * 2] += l * g * voice.gain_l;
+        out[frame * 2 + 1] += r * g * voice.gain_r;
+        voice.pos += voice.step;
+    }
+    0
+}
+
 impl Mixer {
     pub fn new(device_rate: u32) -> Self {
         Self {
             voices: Vec::with_capacity(MAX_VOICES + 1),
+            reverb: None,
+            tmp: Vec::new(),
+            wet: Vec::new(),
             device_rate: device_rate.max(1),
             sfx_volume: 1.0,
             music_volume: 1.0,
@@ -345,7 +531,16 @@ impl Mixer {
                     },
                     fade_target: 1.0,
                     stopping: false,
+                    send: 0.0,
                 });
+            }
+            Command::Send { id, send } => {
+                for v in self.voices.iter_mut().filter(|v| v.id == id) {
+                    v.send = send.clamp(0.0, 1.0);
+                }
+            }
+            Command::Room(room) => {
+                self.reverb = room.map(|r| Reverb::new(self.device_rate, r));
             }
             Command::Stop { id, fade } => {
                 if fade <= 0.0 {
@@ -425,93 +620,38 @@ impl Mixer {
     pub fn render(&mut self, out: &mut [f32]) {
         out.fill(0.0);
         let frames = out.len() / 2;
+        let room = self.reverb.is_some();
+        if room {
+            if self.wet.len() != out.len() {
+                self.wet.resize(out.len(), 0.0);
+                self.tmp.resize(out.len(), 0.0);
+            }
+            self.wet.fill(0.0);
+        }
+        // glide towards a volume, pan or pitch a script asked for (about 10 ms)
+        let glide = 1.0 - (-1.0 / (0.01 * self.device_rate as f32)).exp();
         for voice in &mut self.voices {
             let volume = if voice.music {
                 self.music_volume
             } else {
                 self.sfx_volume
             };
-            if voice.stream.is_some() {
-                self.underruns += render_stream(voice, volume, out);
-                continue;
+            if room && voice.send > 0.0 {
+                // a voice that sends to the room is drawn into the scratch first, then added to the output and (by its send) to the room
+                self.tmp.fill(0.0);
+                self.underruns += render_voice(voice, volume, glide, frames, &mut self.tmp);
+                for (o, t) in out.iter_mut().zip(&self.tmp) {
+                    *o += t;
+                }
+                for (w, t) in self.wet.iter_mut().zip(&self.tmp) {
+                    *w += t * voice.send;
+                }
+            } else {
+                self.underruns += render_voice(voice, volume, glide, frames, out);
             }
-            let data = &voice.sample.frames;
-            let last = data.len() - 1;
-            // glide towards a volume, pan or pitch a script asked for (about 10 ms)
-            let glide = 1.0 - (-1.0 / (0.01 * self.device_rate as f32)).exp();
-            for frame in 0..frames {
-                if voice.gain_l != voice.target.0
-                    || voice.gain_r != voice.target.1
-                    || voice.step != voice.target.2
-                {
-                    voice.gain_l += (voice.target.0 - voice.gain_l) * glide;
-                    voice.gain_r += (voice.target.1 - voice.gain_r) * glide;
-                    voice.step += (voice.target.2 - voice.step) * glide as f64;
-                    if (voice.gain_l - voice.target.0).abs() < 1e-5
-                        && (voice.gain_r - voice.target.1).abs() < 1e-5
-                    {
-                        (voice.gain_l, voice.gain_r) = (voice.target.0, voice.target.1);
-                    }
-                    if (voice.step - voice.target.2).abs() < 1e-6 {
-                        voice.step = voice.target.2;
-                    }
-                }
-                // Fade towards the target (in or out).
-                if voice.fade != voice.fade_target {
-                    if voice.fade < voice.fade_target {
-                        voice.fade = (voice.fade + voice.fade_step).min(voice.fade_target);
-                    } else {
-                        voice.fade = (voice.fade - voice.fade_step).max(voice.fade_target);
-                    }
-                    if voice.stopping && voice.fade <= 0.0 {
-                        voice.pos = f64::INFINITY; // finished: removed below
-                        break;
-                    }
-                }
-                let i = voice.pos as usize;
-                if i > last {
-                    if voice.looping {
-                        voice.pos -= data.len() as f64;
-                        if voice.pos as usize > last {
-                            voice.pos = 0.0;
-                        }
-                    } else {
-                        voice.pos = f64::INFINITY;
-                        break;
-                    }
-                }
-                let i = voice.pos as usize;
-                let t = (voice.pos - i as f64) as f32;
-                // the four frames round the playhead: a looping sound wraps; a one-shot carries its first and last slopes on
-                // (so that a ramp stays straight to its ends)
-                let len = data.len() as isize;
-                let at = |k: isize| -> [f32; 2] {
-                    let f = |j: usize| [data[j][0] as f32, data[j][1] as f32];
-                    if voice.looping {
-                        f(k.rem_euclid(len) as usize)
-                    } else if k < 0 && len > 1 {
-                        let (a, b) = (f(0), f(1));
-                        [2.0 * a[0] - b[0], 2.0 * a[1] - b[1]]
-                    } else if k > last as isize && len > 1 {
-                        let (a, b) = (f(last), f(last - 1));
-                        [2.0 * a[0] - b[0], 2.0 * a[1] - b[1]]
-                    } else {
-                        f(k.clamp(0, last as isize) as usize)
-                    }
-                };
-                let (p0, p1, p2, p3) = (
-                    at(i as isize - 1),
-                    at(i as isize),
-                    at(i as isize + 1),
-                    at(i as isize + 2),
-                );
-                let l = cubic(p0[0], p1[0], p2[0], p3[0], t);
-                let r = cubic(p0[1], p1[1], p2[1], p3[1], t);
-                let g = volume * voice.fade / 32768.0;
-                out[frame * 2] += l * g * voice.gain_l;
-                out[frame * 2 + 1] += r * g * voice.gain_r;
-                voice.pos += voice.step;
-            }
+        }
+        if let Some(reverb) = self.reverb.as_mut() {
+            reverb.process(&self.wet, out);
         }
         self.voices.retain(|v| v.pos.is_finite());
         for s in out.iter_mut() {
@@ -1123,6 +1263,92 @@ mod tests {
             late.active_voices(),
             0,
             "a stream with no audio ends instead of counting underruns forever"
+        );
+    }
+}
+
+#[cfg(test)]
+mod reverb_tests {
+    use super::*;
+
+    fn click() -> Arc<Sample> {
+        let mut frames = vec![[0i16; 2]; 64];
+        frames[0] = [20000, 20000];
+        Arc::new(Sample { rate: 8000, frames })
+    }
+
+    fn play(id: u64, sample: &Arc<Sample>) -> Command {
+        Command::Play(Box::new(Play {
+            id,
+            stream: None,
+            sample: sample.clone(),
+            volume: 1.0,
+            pan: 0.0,
+            pitch: 1.0,
+            looping: false,
+            music: false,
+            fade_in: 0.0,
+            limit: 0,
+        }))
+    }
+
+    fn tail_energy(room: Option<Room>, send: f32) -> f32 {
+        let mut m = Mixer::new(8000);
+        m.apply(Command::Room(room));
+        m.apply(play(1, &click()));
+        m.apply(Command::Send { id: 1, send });
+        let mut out = vec![0.0f32; 2 * 4000];
+        m.render(&mut out);
+        // the click itself is over in 64 frames: what is heard after that is the room
+        out[2 * 200..].iter().map(|x| x * x).sum()
+    }
+
+    #[test]
+    fn a_sound_sent_to_a_room_rings_on_after_it_ends_and_only_then() {
+        let room = Some(Room {
+            size: 0.6,
+            damping: 0.4,
+            mix: 1.0,
+        });
+        let wet = tail_energy(room, 1.0);
+        assert!(wet > 0.001, "the room rings: {wet}");
+        assert_eq!(
+            tail_energy(room, 0.0),
+            0.0,
+            "nothing is sent, nothing rings"
+        );
+        assert_eq!(tail_energy(None, 1.0), 0.0, "no room, no ring");
+        // a bigger room rings longer and a dull one is quieter
+        let big = tail_energy(
+            Some(Room {
+                size: 1.0,
+                damping: 0.4,
+                mix: 1.0,
+            }),
+            1.0,
+        );
+        let small = tail_energy(
+            Some(Room {
+                size: 0.1,
+                damping: 0.4,
+                mix: 1.0,
+            }),
+            1.0,
+        );
+        assert!(big > small, "{big} against {small}");
+        // the dry sound is untouched by the room
+        let mut dry = Mixer::new(8000);
+        dry.apply(play(1, &click()));
+        let mut wet_mixer = Mixer::new(8000);
+        wet_mixer.apply(Command::Room(room));
+        wet_mixer.apply(play(1, &click()));
+        wet_mixer.apply(Command::Send { id: 1, send: 1.0 });
+        let (mut a, mut b) = (vec![0.0f32; 2 * 4], vec![0.0f32; 2 * 4]);
+        dry.render(&mut a);
+        wet_mixer.render(&mut b);
+        assert_eq!(
+            a, b,
+            "the first frames, before the room has anything to say, are the same"
         );
     }
 }
