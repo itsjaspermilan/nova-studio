@@ -51,7 +51,7 @@ end
 
 -- A heading: big, gold, with a short bar under it.
 function ui.heading(text, y, size)
-  ui.center(text, y, size or 46, ui.color.gold, { font = "comic" })
+  ui.center(text, y, size or 38, ui.color.gold, { font = "bold" })
 end
 
 -- The line of help at the bottom of a screen, on its own dark strip so that it reads over any picture.

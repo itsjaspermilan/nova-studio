@@ -13,3 +13,4 @@ by scripts/rally/kenney-ui.sh.
 - Fonts (Other/Fonts): fonts/future.ttf (Kenney Future) and fonts/future_narrow.ttf (Kenney Future Narrow), CC0, used for the HUD's small labels and hints.
 - Music Loops (Music Loops/Loops): music/kenney_menu.ogg (Swinging Pants), kenney_results.ogg (Cheerful Annoyance), kenney_forest.ogg (Time Driving),
   kenney_desert.ogg (Mission Plausible), kenney_snow.ogg (Flowing Rocks), kenney_night.ogg (Space Cadet). Chosen by their titles, not yet listened to.
+- Fonts (Other/Fonts): also fonts/thick.ttf (Kenney Thick, the logo), fonts/bold.ttf (Kenney Bold, headings) and fonts/rocket.ttf (Kenney Rocket).

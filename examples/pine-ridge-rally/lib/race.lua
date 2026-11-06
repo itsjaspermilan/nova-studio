@@ -669,7 +669,7 @@ function race.define(config)
     local here = track.point(p.waypoint or 1)
     if self.phase == "racing" and math.abs(p.speed) > 4 then
       local facing = math.sin(p.heading) * here.tx + math.cos(p.heading) * here.tz
-      if facing < -0.3 then ui.center("WRONG WAY", 190, 40, ui.color.red, { font = "comic" }) end
+      if facing < -0.3 then ui.center("WRONG WAY", 190, 34, ui.color.red, { font = "bold" }) end
     end
     if p.surface == "rough" and self.phase == "racing" and p.off_middle > 14 then
       ui.center("Press R to get back on the road", 470, 18, ui.color.dim)
@@ -703,7 +703,7 @@ function race.define(config)
   function Race:draw_pause()
     local w = nova.view()
     nova.ui.rect(0, 0, w, 540, { 0, 0, 0, 140 })
-    ui.center("PAUSED", 120, 56, ui.color.white, { font = "comic" })
+    ui.center("PAUSED", 120, 46, ui.color.white, { font = "bold" })
     ui.menu(PAUSE_ITEMS, self.pause_choice, 220)
     ui.hints({ { "pad_dpad", "choose" }, { "pad_a", "select" }, { "pad_plus", "resume" } })
   end

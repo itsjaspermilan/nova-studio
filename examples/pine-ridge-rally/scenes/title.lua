@@ -144,23 +144,22 @@ function Title:draw()
 end
 
 local function logo(t)
-  ui.center("PINE RIDGE", 70 + math.sin(t * 1.3) * 3, 84, ui.color.gold, { font = "comic" })
-  ui.center("RALLY", 150, 64, ui.color.white, { font = "comic" })
+  ui.center("PINE RIDGE", 70 + math.sin(t * 1.3) * 3, 70, ui.color.gold, { font = "thick" })
+  ui.center("RALLY", 150, 60, ui.color.white, { font = "bold" })
 end
 
 function Title:draw_ui()
   local w = nova.view()
   local screen = self.screen
   if screen == "title" or screen == "starting" then
-    ui.letterbox()
     logo(self.t)
     if screen == "title" and math.floor(self.t * 1.6) % 2 == 0 then ui.center("PRESS START", 420, 28, ui.color.white) end
-    ui.center("four circuits  ·  three rivals  ·  one chance to get it right", 484, 16, ui.color.dim)
+    ui.center("Made by Jasper Milan", 496, 16, ui.color.white, { font = "future_narrow" })
   elseif screen == "menu" then
     logo(self.t)
     ui.menu(MENU, self.choice, 270, { width = 340, cx = 230 })
   elseif screen == "howto" then
-    ui.center("HOW TO PLAY", 40, 44, ui.color.gold, { font = "comic" })
+    ui.center("HOW TO PLAY", 40, 38, ui.color.gold, { font = "bold" })
     ui.panel(w / 2 - 330, 110, 660, 340, 200)
     for i, row in ipairs(CONTROLS) do
       ui.text(w / 2 - 306, 124 + (i - 1) * 36, row[1], 20, ui.color.gold)
@@ -170,7 +169,7 @@ function Title:draw_ui()
     ui.center("Finish all the laps ahead of your rivals. The grass slows you down; the handbrake lets the back out.", 405, 14, ui.color.dim, { cx = w / 2 })
     ui.hints({ { "pad_a", "back" } })
   elseif screen == "options" then
-    ui.center("OPTIONS", 60, 52, ui.color.gold, { font = "comic" })
+    ui.center("OPTIONS", 60, 44, ui.color.gold, { font = "bold" })
     ui.menu({
       { "Music volume", string.format("< %d%% >", math.floor(state.music_volume * 100 + 0.5)) },
       { "Sound volume", string.format("< %d%% >", math.floor(state.sfx_volume * 100 + 0.5)) },
@@ -182,7 +181,7 @@ function Title:draw_ui()
       "Back",
     }, self.choice, 180, { width = 420 })
   elseif screen == "controls" then
-    ui.center("CONTROLS", 24, 44, ui.color.gold, { font = "comic" })
+    ui.center("CONTROLS", 24, 38, ui.color.gold, { font = "bold" })
     local items = {}
     for i, row in ipairs(controls.rows) do
       items[i] = { row.label, (self.listening and self.choice == i) and "press a key or button..." or controls.describe(row) }
@@ -193,7 +192,7 @@ function Title:draw_ui()
     if self.note then ui.hint(self.note) else ui.hints({ { "pad_a", "change" }, { "pad_b", "back" } }) end
   elseif screen == "select" then
     local info = state.current_track()
-    ui.center("CHOOSE YOUR RACE", 30, 44, ui.color.gold, { font = "comic", cx = 240 })
+    ui.center("CHOOSE YOUR RACE", 30, 36, ui.color.gold, { font = "bold", cx = 240 })
     ui.menu({
       { "Circuit", "< " .. info.name .. " >" },
       { "Mode", "< " .. (state.mode == "race" and "Race" or "Time trial") .. " >" },

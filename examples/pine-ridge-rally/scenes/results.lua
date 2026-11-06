@@ -45,7 +45,7 @@ function Results:draw_ui()
   local w = nova.view()
   local r = self.r
   local headline = r.trial and "TIME TRIAL" or (r.place == 1 and "YOU WIN!") or (r.place == 2 and "SECOND PLACE") or (r.place == 3 and "THIRD PLACE") or "FINISHED"
-  ui.center(headline, 22, 58, r.place == 1 and ui.color.gold or ui.color.white, { font = "comic" })
+  ui.center(headline, 22, 46, r.place == 1 and ui.color.gold or ui.color.white, { font = "bold" })
   ui.center(r.track_name .. "  ·  " .. r.laps .. (r.laps == 1 and " lap" or " laps"), 84, 20, ui.color.white)
 
   local x, y, width = w / 2 - 270, 118, 540
