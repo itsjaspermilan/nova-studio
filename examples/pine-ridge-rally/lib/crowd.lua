@@ -6,8 +6,9 @@ local track = require("lib.track")
 local crowd = {}
 
 local KINDS = { "crowd_fa", "crowd_fb", "crowd_fc", "crowd_fd", "crowd_ma", "crowd_mb", "crowd_mc", "crowd_md" }
-local SIZE = 4.0          -- the characters are about half a metre tall as made: this makes them people
-local RANGE = 80          -- metres: further than this from the camera nobody is drawn
+local SIZE = 2.6          -- the characters are 0.67 m tall as made (big heads): this makes them about 1.75 m
+local RANGE = 125         -- metres: further than this from the camera nobody is drawn
+local FADE = 40           -- ...and over the last FADE metres they grow from nothing, so that nobody pops into being
 local people, count = {}, 0
 
 function crowd.clear() people, count = {}, 0 end
@@ -38,8 +39,9 @@ local function add(r, i, off, along)
   people[count] = {
     x = x, z = z,
     opts = {
-      ry = face, scale = SIZE * (0.9 + r() * 0.2), clip = clip, time = 0, shadow = false,
+      ry = face, scale = SIZE, clip = clip, time = 0, shadow = false,
     },
+    size = SIZE * (0.92 + r() * 0.16),
     kind = KINDS[math.floor(r() * #KINDS) + 1],
     rate = 0.8 + r() * 0.5, phase = r() * 4,
   }
@@ -102,6 +104,10 @@ function crowd.draw(cx, cz, t)
     local dx, dz = p.x - cx, p.z - cz
     if dx * dx + dz * dz < r2 then
       p.opts.time = t * p.rate + p.phase
+      local d = math.sqrt(dx * dx + dz * dz)
+      local grow = math.min(1, (RANGE - d) / FADE)
+      grow = grow * grow * (3 - 2 * grow) -- (smooth at both ends)
+      p.opts.scale = p.size * grow
       nova.model(p.kind, p.x, 0, p.z, p.opts)
     end
   end
