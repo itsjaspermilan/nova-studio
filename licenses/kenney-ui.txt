@@ -9,3 +9,5 @@ not required). From the "Kenney Game Assets All-in-1 3.8.0" bundle (https://kenn
 
 Each pack's own License.txt (CC0, http://creativecommons.org/publicdomain/zero/1.0/) is in its folder of the bundle. The files are copied
 by scripts/rally/kenney-ui.sh.
+
+- Fonts (Other/Fonts): fonts/future.ttf (Kenney Future) and fonts/future_narrow.ttf (Kenney Future Narrow), CC0, used for the HUD's small labels and hints.

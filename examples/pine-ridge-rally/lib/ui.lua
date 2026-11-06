@@ -46,7 +46,7 @@ end
 
 -- A small dim label above or beside a value ("LAP", "TIME").
 function ui.label(x, y, text, color)
-  nova.ui.text(x, y, text, { size = 12, color = color or ui.color.dim, font = "sans" })
+  nova.ui.text(x, y, text, { size = 13, color = color or ui.color.dim, font = "future_narrow" })
 end
 
 -- A heading: big, gold, with a short bar under it.
@@ -57,10 +57,10 @@ end
 -- The line of help at the bottom of a screen, on its own dark strip so that it reads over any picture.
 function ui.hint(text)
   local w = nova.view()
-  local o = { size = 14, color = ui.color.white, font = "sans" }
+  local o = { size = 15, color = ui.color.white, font = "future_narrow" }
   local tw = nova.ui.text_width(text, o)
-  nova.ui.rect(w / 2 - tw / 2 - 18, 496, tw + 36, 28, { 8, 12, 24, 200 })
-  nova.ui.text(w / 2 - tw / 2, 502, text, o)
+  nova.ui.panel("ui/panel_dark", w / 2 - tw / 2 - 22, 490, tw + 44, 36, { slice = 18, scale = 0.6, color = { 255, 255, 255, 235 } })
+  nova.ui.text(w / 2 - tw / 2, 500, text, o)
 end
 
 -- "1:23.45"
