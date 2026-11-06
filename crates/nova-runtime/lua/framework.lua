@@ -633,6 +633,11 @@ function Animator:draw(x, y, z, opts)
   local o = {}
   for k, v in pairs(opts or {}) do o[k] = v end
   o.layers = self:layers()
+  -- `extra = { { clip = "aim", time = t, weight = 1, mask = { "Spine" } } }`: layers laid over the animator's own (see nova.model)
+  if o.extra then
+    for _, layer in ipairs(o.extra) do o.layers[#o.layers + 1] = layer end
+    o.extra = nil
+  end
   nova.model(self.model, x, y, z, o)
 end
 

@@ -917,6 +917,8 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     if let Some(layers) = &layers {
                         let clips = sh.clips.get(&found).map(Vec::as_slice).unwrap_or(&[]);
                         let mut mixed: Vec<(Vec<model::PartPose>, f32)> = Vec::new();
+                        // layers with a `mask` are laid over the mix afterwards, on those parts only
+                        let mut overlays: Vec<(Vec<model::PartPose>, f32, Vec<bool>)> = Vec::new();
                         for entry in layers.sequence_values::<Table>() {
                             let entry = entry?;
                             let name: String = entry.get::<Option<String>>("clip")?.ok_or_else(|| lua_err("each layer needs a clip name: { clip = \"walk\", time = 0.5, weight = 1 }"))?;
@@ -935,7 +937,30 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                             }
                             let time = entry.get::<Option<f64>>("time")?.unwrap_or(0.0) as f32;
                             let looped = entry.get::<Option<bool>>("loop")?.unwrap_or(true);
-                            mixed.push((clip.pose(time, looped, parts.len()), weight as f32));
+                            if let Some(names) = entry.get::<Option<Table>>("mask")? {
+                                // the named parts and everything below them (parents come before their children)
+                                let mut mask = vec![false; parts.len()];
+                                for name in names.sequence_values::<String>() {
+                                    let name = name?;
+                                    let index = parts.iter().position(|p| p.name == name).ok_or_else(|| {
+                                        lua_err(format!(
+                                            "model '{id}' has no part '{name}' for a layer's mask (its parts: {})",
+                                            parts.iter().map(|p| p.name.as_str()).collect::<Vec<_>>().join(", ")
+                                        ))
+                                    })?;
+                                    mask[index] = true;
+                                }
+                                for j in 0..parts.len() {
+                                    if let Some(parent) = parts[j].parent {
+                                        if mask[parent] {
+                                            mask[j] = true;
+                                        }
+                                    }
+                                }
+                                overlays.push((clip.pose(time, looped, parts.len()), (weight as f32).min(1.0), mask));
+                            } else {
+                                mixed.push((clip.pose(time, looped, parts.len()), weight as f32));
+                            }
                         }
                         let rests: Vec<(Vec3, Quat, Vec3)> = parts
                             .iter()
@@ -945,6 +970,9 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                             })
                             .collect();
                         poses = model::blend_poses(&rests, &mixed);
+                        for (overlay, amount, mask) in &overlays {
+                            poses = model::overlay_poses(&rests, &poses, overlay, mask, *amount);
+                        }
                     }
                     // ... then the script's own turns on top.
                     let mut turn = vec![Mat4::IDENTITY; parts.len()];

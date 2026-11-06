@@ -328,6 +328,13 @@ not key a part counts as that part's authored pose; rotations are mixed the shor
 nova.model("hero", x, y, z, { layers = { { clip = "walk", time = t, weight = 0.7 }, { clip = "run", time = t2, weight = 0.3 } } })
 ```
 
+**Masked layers.** A layer with a `mask` (a list of part names) is laid over the mix on those parts and everything below them, and nowhere else; its `weight` (0 to 1) is how much of it, 1 replacing the mix on those parts. A character can run with the legs of the run clip and the arms of an aiming one:
+
+```lua
+nova.model("hero", x, y, z, { layers = { { clip = "run", time = t }, { clip = "aim", time = 0, weight = 1, mask = { "Spine" } } } })
+self.anim:draw(x, y, z, { extra = { { clip = "aim", time = 0, weight = 1, mask = { "Spine" } } } })   -- over a nova.animator's own layers
+```
+
 `nova.animator` keeps the bookkeeping, so a character's animation is a few lines and never snaps:
 
 ```lua

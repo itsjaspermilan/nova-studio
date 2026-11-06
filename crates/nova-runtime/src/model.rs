@@ -385,6 +385,39 @@ pub fn blend_poses(rests: &[(Vec3, Quat, Vec3)], layers: &[(Vec<PartPose>, f32)]
     out
 }
 
+/// Lays `overlay` over `base` on the parts `mask` names (and nothing else), by `amount` (0 leaves the base alone, 1 replaces it): a
+/// character that runs with the legs of the run clip and the arms of an aiming clip. What the overlay does not animate of a part
+/// is left as it is; a part the base did not animate is taken from `rests` to mix with.
+pub fn overlay_poses(
+    rests: &[(Vec3, Quat, Vec3)],
+    base: &[PartPose],
+    overlay: &[PartPose],
+    mask: &[bool],
+    amount: f32,
+) -> Vec<PartPose> {
+    let amount = amount.clamp(0.0, 1.0);
+    let mut out: Vec<PartPose> = base.to_vec();
+    out.resize(rests.len(), PartPose::default());
+    for (i, &(s0, r0, t0)) in rests.iter().enumerate() {
+        if !mask.get(i).copied().unwrap_or(false) {
+            continue;
+        }
+        let Some(top) = overlay.get(i) else {
+            continue;
+        };
+        if let Some(t) = top.translation {
+            out[i].translation = Some(out[i].translation.unwrap_or(t0).lerp(t, amount));
+        }
+        if let Some(sc) = top.scale {
+            out[i].scale = Some(out[i].scale.unwrap_or(s0).lerp(sc, amount));
+        }
+        if let Some(r) = top.rotation {
+            out[i].rotation = Some(out[i].rotation.unwrap_or(r0).slerp(r, amount).normalize());
+        }
+    }
+    out
+}
+
 impl Channel {
     fn sample(&self, t: f32) -> [f32; 4] {
         let n = self.times.len();

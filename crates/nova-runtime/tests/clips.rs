@@ -410,3 +410,57 @@ end",
     // speed 0: the first point alone; 1: half and half of the first two; 2: the second alone; 4: half of the last two; 9: the last
     assert_eq!(log, ["1.00", "0.50,0.50", "1.00", "0.50,0.50", "1.00"]);
 }
+
+#[test]
+fn a_masked_layer_is_laid_over_the_mix_on_its_own_parts_only() {
+    let at = |t: f32| drawn_at(&format!("{{ clip = 'spin', time = {t} }}"));
+    let (body0, wheel0) = at(0.0);
+    let (body1, wheel1) = at(1.0);
+    // the wheel turns as the overlay's wheel does (t = 1); the body is the base's (t = 0). (The wheel is the body's child, so its place
+    // in the world is the base body's carrying the overlay's wheel: its turn is what to compare.)
+    let (body, wheel) = drawn_at(
+        "{ layers = { { clip = 'spin', time = 0, weight = 1 }, { clip = 'spin', time = 1, weight = 1, mask = { 'wheel' } } } }",
+    );
+    for c in 0..4 {
+        for r in 0..4 {
+            assert!(
+                (body[c][r] - body0[c][r]).abs() < 1e-4,
+                "the body is the base's: {body:?} vs {body0:?}"
+            );
+        }
+    }
+    for c in 0..3 {
+        for r in 0..3 {
+            assert!(
+                (wheel[c][r] - wheel1[c][r]).abs() < 2e-3,
+                "the wheel turns as the overlay's: {wheel:?} vs {wheel1:?}"
+            );
+        }
+    }
+    assert!(
+        (wheel[3][1] - wheel0[3][1]).abs() < 2e-3,
+        "and stands where the base's body puts it: {wheel:?} vs {wheel0:?}"
+    );
+    // half an amount is half way (the wheel at t = 0.5, which is half its turn)
+    let (_, half) = drawn_at(
+        "{ layers = { { clip = 'spin', time = 0, weight = 1 }, { clip = 'spin', time = 1, weight = 0.5, mask = { 'wheel' } } } }",
+    );
+    let (_, wheel_half) = at(0.5);
+    for c in 0..3 {
+        for r in 0..3 {
+            assert!(
+                (half[c][r] - wheel_half[c][r]).abs() < 5e-3,
+                "half way: {half:?} vs {wheel_half:?}"
+            );
+        }
+    }
+    let _ = body1;
+    // a mask naming a part the model does not have is explained
+    let mut g = game(vec![(
+        "main.lua",
+        "function update(dt) nova.model('car', 0, 0, 0, { layers = { { clip = 'spin', mask = { 'tail' } } } }) end",
+    )]);
+    frame(&mut g);
+    let e = g.error.clone().unwrap_or_default();
+    assert!(e.contains("has no part 'tail' for a layer's mask"), "{e}");
+}
