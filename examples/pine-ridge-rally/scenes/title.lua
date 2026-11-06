@@ -5,6 +5,7 @@ local audio = require("lib.audio")
 local ui = require("lib.ui")
 local controls = require("lib.controls")
 local backdrop = require("lib.backdrop")
+local previews = require("lib.previews")
 
 local Title = nova.scene {}
 
@@ -39,6 +40,72 @@ end
 local function wear()
   local car = nova.first("show")
   if car then car:wear() end
+end
+
+-- The pages that list the choices for Circuit, Mode and Car as a grid (from the chooser, A on one of those rows). Moving over a card
+-- tries it (the backdrop and the car change behind), A keeps it and B puts back what there was.
+local MODES = {
+  { id = "race", name = "Race", blurb = "Three rivals on the road with you." },
+  { id = "trial", name = "Time trial", blurb = "Alone, against the ghost of your best lap." },
+}
+local GRIDS = {
+  circuit = { cols = 2, card_w = 282, card_h = 176, gap = 14, x = 36, y = 100 },
+  mode = { cols = 2, card_w = 282, card_h = 150, gap = 14, x = 36, y = 150 },
+  car = { cols = 3, card_w = 170, card_h = 88, gap = 8, x = 36, y = 92 },
+}
+
+function Title:items(kind)
+  if kind == "circuit" then return state.tracks elseif kind == "mode" then return MODES else return state.cars end
+end
+
+function Title:picked(kind)
+  if kind == "circuit" then return state.track end
+  if kind == "car" then return state.car end
+  return state.mode == "race" and 1 or 2
+end
+
+function Title:set_pick(kind, i)
+  if kind == "circuit" then
+    state.track = i
+    state.laps = state.current_track().laps
+    backdrop.light()
+  elseif kind == "car" then
+    state.car = i
+    wear()
+  else
+    state.mode = MODES[i].id
+  end
+end
+
+function Title:open_pick(kind)
+  self.pick = { kind = kind, old = self:picked(kind), old_laps = state.laps }
+  self.screen = "pick"
+end
+
+function Title:update_pick()
+  local pick = self.pick
+  local items, grid = self:items(pick.kind), GRIDS[pick.kind]
+  local i = self:picked(pick.kind)
+  local n, cols = #items, grid.cols
+  local moved = i
+  if nova.input.pressed("left") then moved = i - 1 end
+  if nova.input.pressed("right") then moved = i + 1 end
+  if nova.input.pressed("up") then moved = i - cols end
+  if nova.input.pressed("down") then moved = i + cols end
+  if moved < 1 or moved > n then
+    -- off an edge: along a row it wraps, down a column it stays
+    if nova.input.pressed("left") then moved = n elseif nova.input.pressed("right") then moved = 1 else moved = i end
+  end
+  if moved ~= i then self:set_pick(pick.kind, moved); audio.sfx("menu_move") end
+  if nova.input.pressed("a") or nova.input.pressed("start") then
+    audio.sfx("menu_accept")
+    self.screen = "select"
+  elseif nova.input.pressed("b") or nova.input.pressed("menu_back") then
+    audio.sfx("menu_back")
+    self:set_pick(pick.kind, pick.old)
+    state.laps = pick.old_laps
+    self.screen = "select"
+  end
 end
 
 function Title:update(dt)
@@ -110,6 +177,8 @@ function Title:update(dt)
       audio.sfx("menu_back")
       self:go("options")
     end
+  elseif screen == "pick" then
+    self:update_pick()
   elseif screen == "select" then
     local choice, action = ui.navigate(self.choice, 5)
     self.choice = choice
@@ -124,6 +193,9 @@ function Title:update(dt)
     if choice == 3 and step ~= 0 then state.car = (state.car - 1 + step) % #state.cars + 1; wear(); audio.sfx("menu_move") end
     if choice == 4 and step ~= 0 then state.laps = math.max(1, math.min(5, state.laps + step)); audio.sfx("menu_move") end
     if action == "back" then audio.sfx("menu_back"); self:go("menu")
+    elseif action == "accept" and choice <= 3 then
+      audio.sfx("menu_accept")
+      self:open_pick(({ "circuit", "mode", "car" })[choice])
     elseif action == "accept" and choice == 5 then
       audio.sfx("menu_accept")
       state.save_options()
@@ -138,7 +210,7 @@ function Title:draw()
   -- on the menu and the chooser the menu is on the left and the car moves to the right (easing across when the screen changes)
   local dt = self.t - (self.last_t or self.t)
   self.last_t = self.t
-  local want = (self.screen == "menu" or self.screen == "select") and 2.6 or 0
+  local want = (self.screen == "menu" or self.screen == "select" or self.screen == "pick") and 2.6 or 0
   self.shift = (self.shift or 0) + (want - (self.shift or 0)) * math.min(1, dt * 5)
   backdrop.draw(self.t, "title", self.shift)
 end
@@ -146,6 +218,54 @@ end
 local function logo(t)
   ui.center("PINE RIDGE", 70 + math.sin(t * 1.3) * 3, 70, ui.color.gold, { font = "thick" })
   ui.center("RALLY", 150, 60, ui.color.white, { font = "bold" })
+end
+
+-- a course drawn small: its waypoints as dots in a box (the start in gold)
+local function course(id, x, y, size)
+  local c = previews[id]
+  if not c then return end
+  local ox, oy = x + (size - c.w * size) / 2, y + (size - c.h * size) / 2
+  for _, p in ipairs(c.pts) do nova.ui.rect(ox + p[1] * size - 1.5, oy + p[2] * size - 1.5, 3, 3, { 255, 255, 255, 235 }) end
+  local s = c.pts[1]
+  nova.ui.rect(ox + s[1] * size - 4, oy + s[2] * size - 4, 8, 8, ui.color.gold)
+end
+
+local function bar(x, y, w, label, value)
+  ui.label(x, y - 4, label)
+  nova.ui.rect(x + 58, y, w, 7, { 255, 255, 255, 50 })
+  nova.ui.rect(x + 58, y, w * math.max(0, math.min(1, value)), 7, ui.color.gold)
+end
+
+function Title:draw_pick()
+  local pick = self.pick
+  local items, grid = self:items(pick.kind), GRIDS[pick.kind]
+  local title = ({ circuit = "CHOOSE A CIRCUIT", mode = "CHOOSE A MODE", car = "CHOOSE A CAR" })[pick.kind]
+  ui.text(grid.x, 30, title, ui.fit(title, 36, 560), ui.color.gold, { font = "bold" })
+  local on = self:picked(pick.kind)
+  for i, item in ipairs(items) do
+    local col, row = (i - 1) % grid.cols, (i - 1) // grid.cols
+    local x = grid.x + col * (grid.card_w + grid.gap)
+    local y = grid.y + row * (grid.card_h + grid.gap)
+    local w, h = grid.card_w, grid.card_h
+    if i == on then nova.ui.panel("ui/btn_yellow", x - 5, y - 5, w + 10, h + 10, { slice = { 14, 14, 14, 22 }, scale = 0.75 }) end
+    ui.panel(x, y, w, h, 235)
+    if pick.kind == "circuit" then
+      course(item.id, x + 12, y + 12, h - 56)
+      ui.text(x + h - 36, y + 18, item.name, ui.fit(item.name, 22, w - h + 20, "rounded"), ui.color.white)
+      ui.text(x + h - 36, y + 50, item.blurb, 13, { 214, 224, 238 }, { width = w - h + 24 })
+      ui.label(x + 14, y + h - 30, "BEST LAP")
+      ui.text(x + 14, y + h - 22, ui.time(state.best("lap", item.id)), 16, ui.color.gold, { font = "mono" })
+    elseif pick.kind == "mode" then
+      ui.text(x + 20, y + 24, item.name, 30, ui.color.white, { font = "bold" })
+      ui.text(x + 20, y + 74, item.blurb, 17, { 214, 224, 238 }, { width = w - 40 })
+    else
+      ui.text(x + 12, y + 8, item.name, ui.fit(item.name, 20, w - 24, "rounded"), ui.color.white)
+      bar(x + 12, y + 40, w - 82, "POWER", (item.power - 6) / 6.5)
+      bar(x + 12, y + 54, w - 82, "SPEED", (item.top - 34) / 18)
+      bar(x + 12, y + 68, w - 82, "DRIFT", item.oversteer)
+    end
+  end
+  ui.hints({ { "pad_dpad", "look" }, { "pad_a", "choose" }, { "pad_b", "cancel" } })
 end
 
 function Title:draw_ui()
@@ -190,6 +310,8 @@ function Title:draw_ui()
     items[#items + 1] = "Back"
     ui.menu(items, self.choice, 84, { width = 700, row = 38 })
     if self.note then ui.hint(self.note) else ui.hints({ { "pad_a", "change" }, { "pad_b", "back" } }) end
+  elseif screen == "pick" then
+    self:draw_pick()
   elseif screen == "select" then
     local info = state.current_track()
     ui.center("CHOOSE YOUR RACE", 40, ui.fit("CHOOSE YOUR RACE", 36, 390), ui.color.gold, { font = "bold", cx = 240 })
@@ -209,7 +331,7 @@ function Title:draw_ui()
     ui.text(180, 398, ui.time(best), 18, ui.color.gold, { font = "mono" })
     ui.label(56, 430, "BEST LAP")
     ui.text(180, 424, ui.time(lap), 18, ui.color.gold, { font = "mono" })
-    ui.hints({ { "pad_dpad", "choose and change" }, { "pad_a", "go" }, { "pad_b", "back" } })
+    ui.hints({ { "pad_dpad", "choose and change" }, { "pad_a", "open / go" }, { "pad_b", "back" } })
   end
 end
 
