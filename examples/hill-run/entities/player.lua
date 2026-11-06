@@ -104,7 +104,8 @@ function Player:update(dt)
   if len > 1 then wx, wz = wx / len, wz / len end
   self.wall_age = self.wall_age + dt
 
-  if self.mode == "climb" then self:climb(dt, wx, wz, len, want_jump)
+  if self.mode == "mantle" then self:mantle(dt)
+  elseif self.mode == "climb" then self:climb(dt, wx, wz, len, want_jump)
   elseif self.mode == "glide" then self:glide(dt, wx, wz, len, want_jump)
   else self:walk(dt, wx, wz, len, want_jump, jump_held, sprint) end
 
@@ -212,12 +213,13 @@ function Player:climb(dt, wx, wz, len, want_jump)
   end
   self.wall_lost = (self.wall_lost or 0) + (m.wall and 0 or dt)
   self.ground = false
-  -- over the top: no wall under the hands any more while going up: step onto what is there
-  if vert > 0.3 and self.wall_lost > 0.12 then
-    self.mode = "walk"
-    self.vx, self.vz, self.vy = -n.x * 4.5, -n.z * 4.5, 4
-    self.wall, self.wall_age, self.mantles = nil, 9, (self.mantles or 0) + 1
+  -- over the top: no wall under the hands any more while going up, and a floor just ahead at about the height of the hands: get up on it
+  if vert > 0.3 and self.wall_lost > 0.06 and self:ledge_ahead(n) then
+    self.mode, self.mantle_t, self.mantle_n = "mantle", 0, n
+    self.vx, self.vz, self.vy = 0, 0, 0
+    self.wall, self.wall_age = nil, 9
     state.mantles = (state.mantles or 0) + 1
+    self.anim = self.anim and (self.anim:play("mantle", { restart = true }) or self.anim)
     return
   end
   if m.ground and vert < 0 then self.mode, self.ground = "walk", true; return end
@@ -230,6 +232,33 @@ function Player:climb(dt, wx, wz, len, want_jump)
     self.mode, self.wall, self.wall_age, self.climb_cool = "walk", nil, 9, 0.35
     self.vx, self.vz, self.vy = n.x * 6, n.z * 6, 9
     nova.sound.play("jump", { volume = 0.4, limit = 2 })
+  end
+end
+
+-- Is there somewhere to stand just ahead and a little above the feet (0 to 1.3 m): a floor that faces up (0.6 of the way to the top of
+-- the climb, the body is not touching the wall any more because it has come to its edge)? A `nova.solid.floor_below` probe from above.
+function Player:ledge_ahead(n)
+  local px, pz = self.x - n.x * 0.55, self.z - n.z * 0.55
+  local h, nx, ny = nova.solid.floor_below(px, self.y + 1.5, pz, 1.9)
+  return h ~= nil and ny > 0.6 and h >= self.y - 0.15 and h <= self.y + 1.35
+end
+
+-- Getting up over the top: the body rises to the height of the edge and then moves onto it while the clip plays (0.9 s), no input.
+function Player:mantle(dt)
+  local n = self.mantle_n
+  self.mantle_t = self.mantle_t + dt
+  local t = self.mantle_t
+  local up = t < 0.45 and 3.2 or 0.4
+  local on = t < 0.3 and 0 or 2.6
+  self.vx, self.vz, self.vy = -n.x * on, -n.z * on, up
+  local m = nova.solid.move(self.x, self.y, self.z, RADIUS, HEIGHT, self.vx * dt, self.vy * dt, self.vz * dt)
+  self.x, self.y, self.z = m.x, m.y, m.z
+  self.face = math.atan(n.x, n.z)
+  self.ground = false
+  if t >= 0.9 then
+    self.mode = "walk"
+    self.vx, self.vy, self.vz = -n.x * 1.5, 0, -n.z * 1.5
+    self.climb_cool = 0.5
   end
 end
 
@@ -299,10 +328,11 @@ function Player:draw()
       fall = { clip = "jump", loop = false },
       climb = { clip = "climb" },
       glide = { clip = "glide" },
+      mantle = { clip = "mantle", loop = false },
     },
   })
   local mode = self.mode
-  local playing = (mode == "climb" and "climb") or (mode == "glide" and "glide") or ((self.ground or self.air_time < 0.12) and "move" or (self.vy > 0 and "jump" or "fall"))
+  local playing = (mode == "mantle" and "mantle") or (mode == "climb" and "climb") or (mode == "glide" and "glide") or ((self.ground or self.air_time < 0.12) and "move" or (self.vy > 0 and "jump" or "fall"))
   self.anim:play(playing)
   self.anim:set("speed", speed)
   self.anim.speed = mode == "climb" and (speed > 0.3 and 1 or 0.02) or (speed > 6 and speed / 6 or math.max(0.6, speed / 6)) -- the run cycle follows the ground speed

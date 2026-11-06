@@ -45,6 +45,13 @@ impl ModelInstance {
         self.matrix[1][3] = amount;
         self
     }
+
+    /// The same instance swaying in the wind: `amount` is how far the top of a thing one metre tall is pushed at full wind (the
+    /// shaders bend a vertex in proportion to its height above the instance's origin). Rides in the w slot of the third column.
+    pub fn swaying(mut self, amount: f32) -> Self {
+        self.matrix[2][3] = amount;
+        self
+    }
 }
 
 /// Per vertex of a skinned mesh: which joints pull it (numbers within the skin) and how hard.
@@ -113,6 +120,25 @@ pub struct Fog {
     pub far: f32,
 }
 
+/// The wind that bends foliage (models drawn with a `sway`): the way it blows (a unit vector on the ground), how hard (0 is
+/// still), and the time the game keeps for it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Wind {
+    pub direction: [f32; 2],
+    pub strength: f32,
+    pub time: f32,
+}
+
+impl Default for Wind {
+    fn default() -> Self {
+        Self {
+            direction: [1.0, 0.0],
+            strength: 0.0,
+            time: 0.0,
+        }
+    }
+}
+
 /// How the finished picture is treated: a toon ramp on the sun's light (flat bands of light and shade, as in a cartoon), a
 /// line drawn where depth jumps (the outline of things), and a few colour adjustments. All off by default.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -167,6 +193,7 @@ pub struct Lighting {
     /// How bright the sky's light is for voxel worlds (`nova.voxel.daylight`): 1 at noon, near 0 at night.
     pub day: f32,
     pub look: Look,
+    pub wind: Wind,
 }
 
 impl Default for Lighting {
@@ -186,6 +213,7 @@ impl Default for Lighting {
             shadows: None,
             day: 1.0,
             look: Look::default(),
+            wind: Wind::default(),
         }
     }
 }
@@ -312,6 +340,8 @@ struct Globals {
     sky_sun: [f32; 4],
     /// x: cloud cover; y: time; z: 1 when there is a sun and moon.
     sky_extra: [f32; 4],
+    /// xy: the way the wind blows (unit); z: how strong (0: none); w: the time (seconds).
+    wind: [f32; 4],
 }
 
 /// Side of the (square) shadow map in texels.
@@ -1886,6 +1916,12 @@ impl Gfx {
                     .map_or(Vec3::Y, |s| Vec3::from(s).normalize_or(Vec3::Y));
                 [d.x, d.y, d.z, k.stars]
             }),
+            wind: [
+                lit.wind.direction[0],
+                lit.wind.direction[1],
+                lit.wind.strength,
+                lit.wind.time,
+            ],
             sky_extra: sky.map_or([0.0; 4], |k| {
                 [
                     k.clouds,
@@ -1926,6 +1962,7 @@ impl Gfx {
                 voxel: [1.0, 0.0, 0.0, 0.0],
                 sky_sun: [0.0, 1.0, 0.0, 0.0],
                 sky_extra: [0.0; 4],
+                wind: [0.0; 4],
             };
             self.queue
                 .write_buffer(&self.ui_globals, 0, bytemuck::bytes_of(&ui_globals));

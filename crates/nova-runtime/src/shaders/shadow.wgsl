@@ -15,6 +15,9 @@ struct Globals {
     light_view_proj: mat4x4<f32>,
     shadow: vec4<f32>,
     voxel: vec4<f32>,
+    sky_sun: vec4<f32>,
+    sky_extra: vec4<f32>,
+    wind: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> globals: Globals;
 
@@ -29,10 +32,27 @@ struct Instance {
     @location(7) m3: vec4<f32>,
 };
 
+// Wind: foliage (an instance with a sway weight in the w slot of its matrix's third column) bends with the wind, more the higher
+// the vertex is above the instance's origin. A slow swell travels across the field along the wind, with a quicker flutter on it.
+fn wind_offset(origin: vec3<f32>, world: vec3<f32>, sway: f32) -> vec3<f32> {
+    if (sway == 0.0 || globals.wind.z == 0.0) {
+        return vec3<f32>(0.0);
+    }
+    let h = max(world.y - origin.y, 0.0);
+    let t = globals.wind.w;
+    let phase = dot(origin.xz, globals.wind.xy) * 0.22;
+    let swell = 0.55 + 0.45 * sin(t * 1.3 - phase);
+    let flutter = sin(t * 5.1 + origin.x * 0.7 + origin.z * 0.9 + world.y * 2.0) * 0.12;
+    let bend = sway * globals.wind.z * h * (swell + flutter);
+    return vec3<f32>(globals.wind.x * bend, 0.0, globals.wind.y * bend);
+}
+
 @vertex
 fn vs_main(v: Vertex, inst: Instance) -> @builtin(position) vec4<f32> {
-    let model = mat4x4<f32>(inst.m0, vec4<f32>(inst.m1.xyz, 0.0), inst.m2, inst.m3);
-    return globals.light_view_proj * (model * vec4<f32>(v.position, 1.0));
+    let model = mat4x4<f32>(inst.m0, vec4<f32>(inst.m1.xyz, 0.0), vec4<f32>(inst.m2.xyz, 0.0), inst.m3);
+    var world = model * vec4<f32>(v.position, 1.0);
+    world = vec4<f32>(world.xyz + wind_offset(inst.m3.xyz, world.xyz, inst.m2.w), 1.0);
+    return globals.light_view_proj * world;
 }
 
 // skinned meshes: see mesh.wgsl (the joints' matrices are in a texture; the instance's w slot says where they start)
@@ -59,7 +79,7 @@ struct SkinVertex {
 @vertex
 fn vs_skinned(v: SkinVertex, inst: Instance) -> @builtin(position) vec4<f32> {
     let base = u32(inst.m0.w + 0.5);
-    let model = mat4x4<f32>(vec4<f32>(inst.m0.xyz, 0.0), vec4<f32>(inst.m1.xyz, 0.0), inst.m2, inst.m3);
+    let model = mat4x4<f32>(vec4<f32>(inst.m0.xyz, 0.0), vec4<f32>(inst.m1.xyz, 0.0), vec4<f32>(inst.m2.xyz, 0.0), inst.m3);
     var skin = mat4x4<f32>(vec4<f32>(0.0), vec4<f32>(0.0), vec4<f32>(0.0), vec4<f32>(0.0));
     for (var k = 0; k < 4; k = k + 1) {
         if (v.weights[k] > 0.0) {

@@ -1434,3 +1434,134 @@ fn look_mistakes_are_explained_and_nothing_resets_it() {
     frame(&mut g);
     assert!(g.frame_input(0).lighting.look == nova_runtime::gfx::Look::default());
 }
+
+/// Wind bends foliage (a model drawn with `sway`) and nothing else, more at the top, and the swell moves with time. (Skipped
+/// without a GPU.)
+#[test]
+fn wind_bends_what_sways_and_leaves_the_rest_alone() {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        backends: wgpu::Backends::PRIMARY,
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
+    });
+    let mut gfx = match Gfx::new(&instance, None) {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("skipping GPU test: {e}");
+            return;
+        }
+    };
+    let shot = |gfx: &mut Gfx, wind: &str, sway: &str, time: f64| -> Vec<u8> {
+        let script = format!(
+            "function update(dt)
+  nova.camera(0, 6, 26, 0, 4, 0, 50)
+  nova.sky {{ top = {{150, 200, 255}}, horizon = {{220, 235, 255}} }}
+  {wind}
+  nova.model('car', -6, 0, 0, {{ scale = 8 }})
+  nova.model('car', 6, 0, 0, {{ scale = 8 {sway} }})
+end"
+        );
+        let vfs: Rc<dyn Vfs> = Rc::new(MemVfs::new(vec![
+            ("nova.json", br#"{"format":1,"name":"T"}"#.to_vec()),
+            ("models/car.glb", CAR.to_vec()),
+            ("main.lua", script.into_bytes()),
+        ]));
+        let mut g = Game::load(vfs).expect("loads");
+        g.upload(gfx);
+        g.update(1.0 / 60.0, time, [320.0, 180.0], Actions::default(), false);
+        assert!(g.error.is_none(), "{:?}", g.error);
+        gfx.capture((320, 180), &g.frame_input(0))
+    };
+    let differ = |a: &[u8], b: &[u8], left: bool| -> usize {
+        a.chunks(4)
+            .zip(b.chunks(4))
+            .enumerate()
+            .filter(|(i, (p, q))| (i % 320 < 160) == left && p != q)
+            .count()
+    };
+    let still = shot(&mut gfx, "", ", sway = 0.4", 3.0);
+    let blowing = shot(
+        &mut gfx,
+        "nova.wind { direction = 0, strength = 1 }",
+        ", sway = 0.4",
+        3.0,
+    );
+    // the model that sways (on the right) moves; the other (on the left) does not
+    assert!(
+        differ(&still, &blowing, false) > 200,
+        "the swaying model bends: {}",
+        differ(&still, &blowing, false)
+    );
+    assert_eq!(
+        differ(&still, &blowing, true),
+        0,
+        "the model with no sway is untouched"
+    );
+    // a later moment is another bend (the swell travels)
+    let later = shot(
+        &mut gfx,
+        "nova.wind { direction = 0, strength = 1 }",
+        ", sway = 0.4",
+        4.7,
+    );
+    assert!(
+        differ(&blowing, &later, false) > 100,
+        "the wind changes with time: {}",
+        differ(&blowing, &later, false)
+    );
+    // no wind, no bend, whatever the sway; and a model with sway 0 under wind does not bend
+    let none = shot(
+        &mut gfx,
+        "nova.wind { direction = 0, strength = 1 }",
+        ", sway = 0",
+        3.0,
+    );
+    assert_eq!(differ(&still, &none, false), differ(&still, &none, false));
+    assert_eq!(
+        differ(&none, &still, false) > 0,
+        false,
+        "sway 0 is not blown about"
+    );
+    // a stronger wind bends more
+    let gale = shot(
+        &mut gfx,
+        "nova.wind { direction = 0, strength = 3 }",
+        ", sway = 0.4",
+        3.0,
+    );
+    assert!(
+        differ(&still, &gale, false) > differ(&still, &blowing, false),
+        "a gale bends it more"
+    );
+}
+
+#[test]
+fn wind_mistakes_are_explained_and_it_can_be_cleared() {
+    let mut g = game(
+        "function update(dt) nova.wind { direction = 90, strength = 9 } end",
+        vec![],
+    );
+    frame(&mut g);
+    assert!(
+        g.error
+            .as_deref()
+            .is_some_and(|e| e.contains("strength from 0 to 4")),
+        "{:?}",
+        g.error
+    );
+    let mut g = game(
+        "function update(dt) nova.wind { direction = 90, strength = 2 } end",
+        vec![],
+    );
+    frame(&mut g);
+    let w = g.frame_input(0).lighting.wind;
+    assert_eq!(
+        (w.strength, w.direction[0].round(), w.direction[1].round()),
+        (2.0, 0.0, 1.0)
+    );
+    let mut g = game(
+        "function update(dt) nova.wind { strength = 2 } nova.wind() end",
+        vec![],
+    );
+    frame(&mut g);
+    assert_eq!(g.frame_input(0).lighting.wind.strength, 0.0);
+}

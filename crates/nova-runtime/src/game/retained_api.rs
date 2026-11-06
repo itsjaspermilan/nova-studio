@@ -16,6 +16,8 @@ struct Piece {
     x: f32,
     z: f32,
     casts: bool,
+    /// Beyond this many metres from the camera it is not drawn (it fades out over the last 12% of it): grass is not worth drawing far off.
+    max_distance: f32,
     instance: ModelInstance,
 }
 
@@ -80,6 +82,7 @@ pub(super) fn lod_state(d: f32, distance: f32, fade: f32) -> Lod {
 /// fading by a screen-door (the near one by `-t`, the far one by `t`, which fill every pixel once together); and a piece
 /// that is alone fades out over the last [`RANGE_FADE`] of the range. A dissolve of 0 means solid.
 fn pick(p: &Piece, d: f32, radius: f32) -> [Option<(u32, f32)>; 2] {
+    let radius = radius.min(p.max_distance);
     if d >= radius {
         return [None, None];
     }
@@ -135,8 +138,14 @@ pub(super) fn install(lua: &Lua, shared: &Rc<RefCell<Shared>>, raw: &Table) -> m
                     None => true,
                 };
                 let distance = number_option(&opts, "lod_distance")?.unwrap_or(100.0).max(1.0) as f32;
+                let sway = number_option(&opts, "sway")?.unwrap_or(0.0) as f32;
+                let max_distance = number_option(&opts, "max_distance")?.map_or(f32::INFINITY, |d| d as f32);
                 // the metres over which the two models trade places (they are both drawn, each fading by a screen-door)
                 let fade = number_option(&opts, "lod_fade")?.map_or(distance * 0.15, |f| f as f32).max(0.0);
+                let instance = ModelInstance {
+                    matrix: matrix.to_cols_array_2d(),
+                    tint,
+                };
                 let slot = sh.retained.slot(&found);
                 let lod_slot = lod.map_or(NO_LOD, |name| sh.retained.slot(&name));
                 sh.retained
@@ -151,9 +160,11 @@ pub(super) fn install(lua: &Lua, shared: &Rc<RefCell<Shared>>, raw: &Table) -> m
                         x: x as f32,
                         z: z as f32,
                         casts,
-                        instance: ModelInstance {
-                            matrix: matrix.to_cols_array_2d(),
-                            tint,
+                        max_distance,
+                        instance: if sway != 0.0 {
+                            instance.swaying(sway)
+                        } else {
+                            instance
                         },
                     });
                 sh.retained.count += 1;
@@ -239,6 +250,7 @@ mod tests {
             x: 0.0,
             z: 0.0,
             casts: true,
+            max_distance: f32::INFINITY,
             instance: ModelInstance {
                 matrix: [[0.0; 4]; 4],
                 tint: [1.0; 4],

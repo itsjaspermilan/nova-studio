@@ -59,7 +59,30 @@ function glide(t) {
     _move: { Hips: [0, 0.015 * s, 0] },
   };
 }
-const CLIPS = [{ name: "climb", duration: 1.2, pose: climb }, { name: "glide", duration: 1.6, pose: glide }];
+// getting up over the top of a climb: hanging by the hands, pulling the chest up to the edge, a knee over, standing. Crude on purpose: key poses
+// with a straight line between them (the owner can tune them in Nova's editor)
+function keyed(keys) {
+  return (t) => {
+    let i = 0;
+    while (i + 2 < keys.length && t > keys[i + 1].t) i++;
+    const a = keys[i], b = keys[i + 1];
+    const f = Math.min(1, Math.max(0, (t - a.t) / (b.t - a.t)));
+    const out = {};
+    for (const bone of new Set([...Object.keys(a.pose), ...Object.keys(b.pose)])) {
+      if (bone.startsWith("_")) continue;
+      const p = a.pose[bone] ?? [0, 0, 0], q = b.pose[bone] ?? [0, 0, 0];
+      out[bone] = p.map((v, k) => v + (q[k] - v) * f);
+    }
+    return out;
+  };
+}
+const mantle = keyed([
+  { t: 0.0, pose: { Spine: [10, 0, 0], Head: [-15, 0, 0], LeftArm: [-90, -8, 90], RightArm: [-90, 8, -90], LeftUpLeg: [-10, 0, 0], RightUpLeg: [-10, 0, 0], LeftLeg: [20, 0, 0], RightLeg: [20, 0, 0] } },
+  { t: 0.35, pose: { Spine: [32, 0, 0], Chest: [8, 0, 0], Head: [-12, 0, 0], LeftArm: [-90, -6, 38], RightArm: [-90, 6, -38], LeftForeArm: [0, 0, 80], RightForeArm: [0, 0, -80], LeftUpLeg: [-50, 0, 0], RightUpLeg: [-12, 0, 0], LeftLeg: [75, 0, 0], RightLeg: [25, 0, 0] } },
+  { t: 0.65, pose: { Spine: [28, 0, 0], Chest: [6, 0, 0], LeftArm: [-90, 0, -20], RightArm: [-90, 0, 20], LeftForeArm: [0, 0, 10], RightForeArm: [0, 0, -10], LeftUpLeg: [-75, 0, 0], RightUpLeg: [-20, 0, 0], LeftLeg: [95, 0, 0], RightLeg: [40, 0, 0] } },
+  { t: 1.0, pose: { Spine: [4, 0, 0], LeftArm: [0, 0, -75], RightArm: [0, 0, 75] } },
+]);
+const CLIPS = [{ name: "climb", duration: 1.2, pose: climb }, { name: "glide", duration: 1.6, pose: glide }, { name: "mantle", duration: 1.0, pose: mantle }];
 
 for (const file of files) {
   const b = fs.readFileSync(file);

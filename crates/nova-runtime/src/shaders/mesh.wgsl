@@ -15,6 +15,9 @@ struct Globals {
     light_view_proj: mat4x4<f32>,
     shadow: vec4<f32>,      // x: 1 when on, y: one texel, z: bias, w: how dark
     voxel: vec4<f32>,       // x: how bright the sky's light is (voxel meshes); y: bands of toon light (0: smooth)
+    sky_sun: vec4<f32>,
+    sky_extra: vec4<f32>,
+    wind: vec4<f32>,        // xy: the way the wind blows (unit), z: how strong (0: none), w: the time
 };
 @group(0) @binding(0) var<uniform> globals: Globals;
 @group(1) @binding(0) var base_texture: texture_2d<f32>;
@@ -37,6 +40,21 @@ struct Instance {
     @location(7) m3: vec4<f32>,
     @location(8) tint: vec4<f32>,
 };
+
+// Wind: foliage (an instance with a sway weight in the w slot of its matrix's third column) bends with the wind, more the higher
+// the vertex is above the instance's origin. A slow swell travels across the field along the wind, with a quicker flutter on it.
+fn wind_offset(origin: vec3<f32>, world: vec3<f32>, sway: f32) -> vec3<f32> {
+    if (sway == 0.0 || globals.wind.z == 0.0) {
+        return vec3<f32>(0.0);
+    }
+    let h = max(world.y - origin.y, 0.0);
+    let t = globals.wind.w;
+    let phase = dot(origin.xz, globals.wind.xy) * 0.22;
+    let swell = 0.55 + 0.45 * sin(t * 1.3 - phase);
+    let flutter = sin(t * 5.1 + origin.x * 0.7 + origin.z * 0.9 + world.y * 2.0) * 0.12;
+    let bend = sway * globals.wind.z * h * (swell + flutter);
+    return vec3<f32>(globals.wind.x * bend, 0.0, globals.wind.y * bend);
+}
 
 // A direction made unit length; a zero-length one (a degenerate face in a model file) stays zero. A plain normalize() of
 // zero is NaN, which Metal quietly turns into "no sun" but Vulkan drivers carry through to black pixels.
@@ -64,10 +82,11 @@ struct VertexOut {
 
 @vertex
 fn vs_main(v: Vertex, inst: Instance) -> VertexOut {
-    let model = mat4x4<f32>(inst.m0, vec4<f32>(inst.m1.xyz, 0.0), inst.m2, inst.m3);
+    let model = mat4x4<f32>(inst.m0, vec4<f32>(inst.m1.xyz, 0.0), vec4<f32>(inst.m2.xyz, 0.0), inst.m3);
     var out: VertexOut;
     out.dissolve = inst.m1.w;
-    let world = model * vec4<f32>(v.position, 1.0);
+    var world = model * vec4<f32>(v.position, 1.0);
+    world = vec4<f32>(world.xyz + wind_offset(inst.m3.xyz, world.xyz, inst.m2.w), 1.0);
     out.world = world.xyz;
     out.position = globals.view_proj * world;
     // voxel meshes (emissive < 0) carry their baked light levels in `normal` instead of a direction
@@ -187,7 +206,7 @@ struct SkinVertex {
 @vertex
 fn vs_skinned(v: SkinVertex, inst: Instance) -> VertexOut {
     let base = u32(inst.m0.w + 0.5);
-    let model = mat4x4<f32>(vec4<f32>(inst.m0.xyz, 0.0), vec4<f32>(inst.m1.xyz, 0.0), inst.m2, inst.m3);
+    let model = mat4x4<f32>(vec4<f32>(inst.m0.xyz, 0.0), vec4<f32>(inst.m1.xyz, 0.0), vec4<f32>(inst.m2.xyz, 0.0), inst.m3);
     var skin = mat4x4<f32>(vec4<f32>(0.0), vec4<f32>(0.0), vec4<f32>(0.0), vec4<f32>(0.0));
     for (var k = 0; k < 4; k = k + 1) {
         if (v.weights[k] > 0.0) {

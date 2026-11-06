@@ -19,7 +19,7 @@ use crate::assets::{self, AtlasLayout};
 use crate::font;
 use crate::gfx::{
     Camera, Fog, FrameInput, Gfx, Lighting, Look, MeshOp, ModelDraw, ModelInstance, PointLight,
-    Shadows, Sky, SpriteInstance,
+    Shadows, Sky, SpriteInstance, Wind,
 };
 use crate::input::Actions;
 use crate::mixer::{self, Sample};
@@ -1015,6 +1015,10 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     matrix: matrix.to_cols_array_2d(),
                     tint,
                 };
+                let instance = match number_option(&opts, "sway")? {
+                    Some(sway) if sway != 0.0 => instance.swaying(sway as f32),
+                    _ => instance,
+                };
                 // `lod = "name"`: a cheaper model past `lod_distance` metres (on the ground, from the camera), the two
                 // trading places over `lod_fade` metres (see `retained_api::lod_state`)
                 if let Some(far_name) = lod_name {
@@ -1213,6 +1217,28 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 saturation: number("saturation", 1.0, 0.0, 4.0)? as f32,
                 vignette: number("vignette", 0.0, 0.0, 1.0)? as f32,
             };
+            Ok(())
+        })?,
+    )?;
+    // wind { direction = 45, strength = 1 }: the way it blows (degrees on the ground, 0 towards +x, 90 towards +z) and how hard
+    let s = shared.clone();
+    nova.set(
+        "wind",
+        lua.create_function(move |_, opts: Option<Table>| {
+            let Some(opts) = opts else {
+                s.borrow_mut().lighting.wind = Wind::default();
+                return Ok(());
+            };
+            let some = Some(opts);
+            let degrees = number_option(&some, "direction")?.unwrap_or(0.0);
+            let strength = number_option(&some, "strength")?.unwrap_or(1.0);
+            if !degrees.is_finite() || !strength.is_finite() || !(0.0..=4.0).contains(&strength) {
+                return Err(lua_err("wind takes direction (degrees) and strength from 0 to 4: nova.wind { direction = 45, strength = 1 }"));
+            }
+            let a = (degrees as f32).to_radians();
+            let mut sh = s.borrow_mut();
+            sh.lighting.wind.direction = [a.cos(), a.sin()];
+            sh.lighting.wind.strength = strength as f32;
             Ok(())
         })?,
     )?;
@@ -2744,6 +2770,7 @@ impl Game {
         if let Some(sky) = self.lighting.sky.as_mut() {
             sky.time = (sh.time % 100_000.0) as f32;
         }
+        self.lighting.wind.time = (sh.time % 100_000.0) as f32;
         sh.lighting.point_count = 0; // point lights last one frame; the sun and ambient stay
         self.clear = sh.clear;
         let white = sh.layout.white_uv();
