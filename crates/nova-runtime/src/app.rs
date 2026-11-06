@@ -645,7 +645,8 @@ impl ApplicationHandler for App {
                     .as_ref()
                     .is_some_and(|c| c.uses_source("key:Escape"));
                 if event.state == ElementState::Pressed
-                    && event.physical_key == PhysicalKey::Code(KeyCode::Escape)
+                    && crate::input::back_as_escape(event.physical_key)
+                        == PhysicalKey::Code(KeyCode::Escape)
                     && !used
                 {
                     event_loop.exit();

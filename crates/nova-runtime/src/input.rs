@@ -30,6 +30,18 @@ impl Actions {
     }
 }
 
+/// Android's Back key arrives as the browser-back key or as native key 4. A game sees it as
+/// `key:Escape`, which most games use to pause or go back; one that does not use Escape is closed by it, as an Android app is.
+pub fn back_as_escape(key: PhysicalKey) -> PhysicalKey {
+    match key {
+        PhysicalKey::Code(KeyCode::BrowserBack)
+        | PhysicalKey::Unidentified(NativeKeyCode::Android(4)) => {
+            PhysicalKey::Code(KeyCode::Escape)
+        }
+        other => other,
+    }
+}
+
 #[derive(Default)]
 pub struct Input {
     keys: HashSet<KeyCode>,
@@ -253,6 +265,7 @@ impl Input {
         std::mem::take(&mut self.typed)
     }
 
+    /// A key press or release (see [`back_as_escape`]: Android's Back key is Escape).
     pub fn key(&mut self, event: &KeyEvent) {
         let down = event.state == ElementState::Pressed;
         if down {
@@ -267,7 +280,7 @@ impl Input {
                 }
             }
         }
-        match event.physical_key {
+        match back_as_escape(event.physical_key) {
             PhysicalKey::Code(code) => {
                 if down && code == KeyCode::F3 && !event.repeat {
                     self.hud_toggle = true;
@@ -748,5 +761,31 @@ mod tests {
         input.touch(2, TouchPhase::Started, 50.0, 100.0);
         input.sources();
         assert_eq!(input.last_new_source.as_deref(), Some("touch:left"));
+    }
+}
+
+#[cfg(test)]
+mod back_key_tests {
+    use super::*;
+
+    #[test]
+    fn android_back_is_escape_and_other_keys_are_left_alone() {
+        let escape = PhysicalKey::Code(KeyCode::Escape);
+        assert_eq!(
+            back_as_escape(PhysicalKey::Code(KeyCode::BrowserBack)),
+            escape
+        );
+        assert_eq!(
+            back_as_escape(PhysicalKey::Unidentified(NativeKeyCode::Android(4))),
+            escape
+        );
+        assert_eq!(
+            back_as_escape(PhysicalKey::Code(KeyCode::KeyA)),
+            PhysicalKey::Code(KeyCode::KeyA)
+        );
+        assert_eq!(
+            back_as_escape(PhysicalKey::Unidentified(NativeKeyCode::Android(96))),
+            PhysicalKey::Unidentified(NativeKeyCode::Android(96))
+        );
     }
 }

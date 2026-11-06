@@ -583,12 +583,15 @@ fn instance_visible(
 
 /// Everything the game gave the GPU, kept on the CPU too, so that the picture can be rebuilt if the GPU's device is lost (a driver
 /// reset, or the system taking the GPU away): see [`Gfx::recover`].
+/// A vertex's four joints and their weights.
+type Influence = ([u16; 4], [f32; 4]);
+
 #[derive(Default)]
 struct Backup {
     sprite_atlas: Option<Image>,
     glyphs: Option<Vec<u8>>,
     /// The loaded meshes in the order they were uploaded (their ids), with the joints and weights of a skinned one.
-    meshes: Vec<(MeshData, Option<Vec<([u16; 4], [f32; 4])>>)>,
+    meshes: Vec<(MeshData, Option<Vec<Influence>>)>,
     voxel_atlas: Option<Image>,
     dyn_meshes: HashMap<usize, (Vec<MeshVertex>, Vec<u32>, bool)>,
 }
