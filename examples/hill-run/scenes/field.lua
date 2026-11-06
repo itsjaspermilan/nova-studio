@@ -16,6 +16,8 @@ function Scene:enter()
   nova.sky { top = { 80, 140, 225 }, horizon = { 200, 225, 245 }, sun = { 0.4, 0.8, 0.3 }, clouds = 0.5 }
   nova.light { dir = { -0.45, -0.8, -0.35 }, color = { 255, 245, 225 }, ambient = { 100, 106, 125 } }
   nova.fog { color = { 200, 225, 245 }, near = 90, far = 230 }
+  nova.wind { direction = 25, strength = 1.0 }
+  self:plant()
   for _, g in ipairs(level.gems) do nova.spawn("gem", g.x, 0, { z = g.z, gy = g.y }) end
   state.total = #level.gems
   nova.spawn("flag", level.flag.x, level.flag.y, { z = level.flag.z })
@@ -23,7 +25,52 @@ function Scene:enter()
   state.say("X jump (again in the air: glide)   hold B: sprint   walk into a steep wall: climb", 6)
 end
 
+-- Grass, flowers, bushes and trees over the field: kept in Rust by nova.scenery, drawn near the camera, bent by the wind. None of it
+-- is solid (the capsule walks through it; a tree would need a trunk collider of its own).
+function Scene:plant()
+  self.plant_t0, self.planted, self.jobs = nova.clock(), {}, {}
+  local function clear(x, z) -- not on the stairs, the platform, the blocks or the tower
+    for _, b in ipairs(level.boxes) do
+      if x > b[1] - 0.8 and x < b[3] + 0.8 and z > b[2] - 0.8 and z < b[4] + 0.8 then return false end
+    end
+    return true
+  end
+  local function job(model, count, opts)
+    for i = 1, math.ceil(count / 2500) do
+      local o = {}
+      for k, v in pairs(opts) do o[k] = v end
+      o.count, o.seed = math.min(2500, count - (i - 1) * 2500), (opts.seed or 1) * 100 + i
+      self.jobs[#self.jobs + 1] = { model, o }
+    end
+  end
+  job("grass", 30000, { area = { -78, -78, 78, 78 }, seed = 3, scale = { 0.8, 1.5 }, min_normal_y = 0.82,
+    sway = 0.55, max_distance = 55, shadow = false, filter = clear, tints = { { 255, 255, 255 }, { 232, 255, 220 }, { 255, 246, 205 } } })
+  job("flowers", 2500, { area = { -78, -78, 78, 78 }, seed = 5, scale = { 0.9, 1.3 }, min_normal_y = 0.85,
+    sway = 0.4, max_distance = 45, shadow = false, filter = clear })
+  job("bush", 260, { area = { -78, -78, 78, 78 }, seed = 7, scale = { 0.9, 1.8 }, min_normal_y = 0.8,
+    sway = 0.04, max_distance = 120, filter = function(x, z, y) return clear(x, z) and (x * x + z * z) > 36 end })
+  job("pine", 170, { area = { -78, -78, 78, 78 }, seed = 9, scale = { 0.9, 1.7 }, min_normal_y = 0.9,
+    sway = 0.012, filter = function(x, z, y) return clear(x, z) and (x * x + z * z) > 100 and y < 26 end })
+  job("birch", 90, { area = { -78, -78, 78, 78 }, seed = 13, scale = { 0.9, 1.5 }, min_normal_y = 0.9,
+    sway = 0.015, filter = function(x, z, y) return clear(x, z) and (x * x + z * z) > 100 and y < 14 end })
+end
+
+-- (a script that runs too long in one frame is stopped, so the planting is done a little each frame: the field fills in over a quarter of a second)
+function Scene:plant_some()
+  local job = table.remove(self.jobs, 1)
+  while job do
+    self.planted[job[1]] = (self.planted[job[1]] or 0) + nova.scenery.scatter(job[1], job[2])
+    if nova.clock() - self.chunk_t0 > 0.03 then break end
+    job = table.remove(self.jobs, 1)
+  end
+  if #self.jobs == 0 and not self.plant_done then
+    self.plant_done = true
+    nova.log(string.format("hill: planted %d grass, %d flowers, %d bushes, %d pines, %d birches in %.0f ms over several frames", self.planted.grass or 0, self.planted.flowers or 0, self.planted.bush or 0, self.planted.pine or 0, self.planted.birch or 0, (nova.clock() - self.plant_t0) * 1000))
+  end
+end
+
 function Scene:update(dt)
+  if self.jobs and #self.jobs > 0 then self.chunk_t0 = nova.clock(); self:plant_some() end
   if nova.input.pressed("stats") then
     local p = nova.first("player")
     nova.log(string.format("hill: x=%.1f y=%.1f z=%.1f gems=%d falls=%d slide=%d hops=%d max_height=%.1f won=%s time=%.1f mode=%s stamina=%.1f climb=%.1f glide_dist=%.1f glide_time=%.1f mantles=%d", p and p.x or 0, p and p.y or 0, p and p.z or 0, state.gems, state.falls, state.slide_frames, state.hops, state.max_height, tostring(state.won), state.time, p and p.mode or "-", p and p.stamina or 0, state.climb_time or 0, state.glide_dist or 0, state.glide_time or 0, state.mantles or 0))

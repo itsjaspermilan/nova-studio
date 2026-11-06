@@ -59,7 +59,7 @@
   "name": "nova.model",
   "kind": "function",
   "signature": "nova.model(id, x, y, z [, opts])",
-  "doc": "Draw a 3D model. Options: scale, rx, ry, rz (radians), tint, parts (turn pieces on their own: parts = { wheel = { ry = 1 } }, see nova.model_parts), clip and time (pose it from an animation clip, see nova.model_clips; loop = false holds the last pose), layers = { { clip = \"walk\", time = t, weight = 0.7 }, { clip = \"run\", time = t2, weight = 0.3 } } (several clips mixed by weight; nova.animator does the bookkeeping), shadow = false (casts no shadow, see nova.shadows), lod = \"cheaper_model\" with lod_distance (100) and lod_fade (15% of the distance) metres (draws that model instead past that distance on the ground from the camera, the two trading places by a screen-door so nothing pops; plain models only, not with clip or parts).",
+  "doc": "Draw a 3D model. Options: scale, rx, ry, rz (radians), tint, parts (turn pieces on their own: parts = { wheel = { ry = 1 } }, see nova.model_parts), clip and time (pose it from an animation clip, see nova.model_clips; loop = false holds the last pose), layers = { { clip = \"walk\", time = t, weight = 0.7 }, { clip = \"run\", time = t2, weight = 0.3 } } (several clips mixed by weight; nova.animator does the bookkeeping), shadow = false (casts no shadow, see nova.shadows), sway = 0.3 (bends in the wind: see nova.wind), lod = \"cheaper_model\" with lod_distance (100) and lod_fade (15% of the distance) metres (draws that model instead past that distance on the ground from the camera, the two trading places by a screen-door so nothing pops; plain models only, not with clip or parts).",
   "group": "Drawing"
  },
  {
@@ -140,10 +140,17 @@
   "group": "3D"
  },
  {
+  "name": "nova.scenery.scatter",
+  "kind": "function",
+  "signature": "nova.scenery.scatter(model, { count, area, seed, scale, ground, min_normal_y, filter, tints, sway, max_distance, shadow, lod... }) -> placed",
+  "doc": "Scatters copies of a model over an area, on the ground: grass, flowers, bushes, trees, into the static scenery (kept in Rust, drawn near the camera). `area` is { x0, z0, x1, z1 } or { x, z, radius }; `seed` makes the same field every time; `scale` is a number or { min, max }; `ground(x, z) -> height, normal_y` says where the ground is (by default the first nova.solid surface from above); spots on slopes steeper than `min_normal_y` (0.7) are refused, and so are those `filter(x, z, y, normal_y)` says no to; `tints` is a list of colours, one chosen for each. The other options are those of nova.scenery.add: `sway` (see nova.wind), `max_distance` (grass is not worth drawing far off), `shadow = false` (it casts none), `lod`. Returns how many were placed.",
+  "group": "3D"
+ },
+ {
   "name": "nova.scenery.add",
   "kind": "function",
-  "signature": "nova.scenery.add(model, x, y, z [, { ry, scale, tint, shadow, lod, lod_distance }])",
-  "doc": "Puts a model into the static scenery: pieces that never move. `lod` names a cheaper model drawn instead beyond `lod_distance` metres (100 by default); the two trade places over `lod_fade` metres (15% of the distance by default), each fading by a screen-door, so nothing pops. It is drawn only near the camera and its collision circles block `nova.scenery.push`. A scene file's objects whose entity class has `static = true` do this for you.",
+  "signature": "nova.scenery.add(model, x, y, z [, { ry, scale, tint, shadow, sway, max_distance, lod, lod_distance }])",
+  "doc": "Puts a model into the static scenery: pieces that never move. `max_distance` stops it being drawn beyond that many metres (it fades out over the last 12%); `sway` bends it in the wind (nova.wind). `lod` names a cheaper model drawn instead beyond `lod_distance` metres (100 by default); the two trade places over `lod_fade` metres (15% of the distance by default), each fading by a screen-door, so nothing pops. It is drawn only near the camera and its collision circles block `nova.scenery.push`. A scene file's objects whose entity class has `static = true` do this for you.",
   "group": "3D"
  },
  {
@@ -214,6 +221,13 @@
   "kind": "function",
   "signature": "nova.look{ toon, outline, exposure, saturation, vignette } | nova.look()",
   "doc": "How the picture is treated. `toon = 3` cuts the sun's light into that many flat bands (2 to 8; 0 is smooth); `outline = true` or `{ color = {r, g, b}, strength = 0.85, width = 1 }` draws a line where the distance to the surface jumps (the outline of things; it fades with the fog); `exposure` (1) brightens or darkens through a soft shoulder, `saturation` (1; 0 is grey), `vignette` (0 to 1) darkens the corners. It stays until changed; `nova.look()` clears it. An outline or a colour adjustment makes the world draw through one more pass (about one extra read of the depth per pixel and four for an outline); the toon ramp costs nothing extra.",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.wind",
+  "kind": "function",
+  "signature": "nova.wind{ direction = 0, strength = 1 } | nova.wind()",
+  "doc": "The wind that bends foliage: `direction` is degrees on the ground (0 blows towards +x, 90 towards +z), `strength` 0 to 4 (1 is a breeze). It bends models drawn with a `sway` (nova.model, nova.scenery.add, nova.scenery.scatter), more the higher a part is above the model's origin, with a slow swell that travels across the field along the wind and a quicker flutter; shadows bend with it. It stays until changed; `nova.wind()` stills it.",
   "group": "Drawing"
  },
  {

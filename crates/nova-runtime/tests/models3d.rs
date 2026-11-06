@@ -1565,3 +1565,66 @@ fn wind_mistakes_are_explained_and_it_can_be_cleared() {
     frame(&mut g);
     assert_eq!(g.frame_input(0).lighting.wind.strength, 0.0);
 }
+
+/// `nova.scenery.scatter` puts copies on the ground where the ground allows it, the same ones every time, and a piece with a
+/// `max_distance` is not drawn beyond it.
+#[test]
+fn scattering_fills_an_area_on_ground_that_is_flat_enough_the_same_way_every_time() {
+    let run = |camera_x: f64| {
+        let mut g = game(
+            &format!(
+                "local placed
+function update(dt)
+  nova.camera({camera_x}, 3, 40, {camera_x}, 0, 0, 60)
+  if not placed then
+    placed = nova.scenery.scatter('car', {{ count = 60, area = {{ -30, -10, 30, 10 }}, seed = 4, scale = {{ 0.5, 1 }},
+      ground = function(x, z) return 0, x < 0 and 1 or 0.3 end, max_distance = 25 }})
+    nova.log('placed ' .. placed .. ' of ' .. nova.scenery.count())
+  end
+  nova.scenery.draw({camera_x}, 0, 200)
+end"
+            ),
+            vec![],
+        );
+        frame(&mut g);
+        assert!(g.error.is_none(), "{:?}", g.error);
+        let log = g.take_log();
+        let xs: Vec<f32> = g
+            .frame_input(0)
+            .models
+            .iter()
+            .map(|m| m.instance.matrix[3][0])
+            .collect();
+        (log, xs)
+    };
+    let (log, xs) = run(-15.0);
+    let placed: usize = log[0].split(' ').nth(1).unwrap().parse().unwrap();
+    assert!(
+        (45..=59).contains(&placed),
+        "half the area is flat enough and each spot is tried up to 3 times (about 7 in 8 find a place): {log:?}"
+    );
+    assert!(
+        !xs.is_empty() && xs.iter().all(|x| *x < 0.0),
+        "only on the flat half: {xs:?}"
+    );
+    let (log2, xs2) = run(-15.0);
+    assert_eq!(
+        (log, xs.len()),
+        (log2, xs2.len()),
+        "the same field every time"
+    );
+    // from far off to the right nothing is near enough (max_distance 25)
+    let (_, far) = run(120.0);
+    assert!(far.is_empty(), "{far:?}");
+    // the bad calls are explained
+    let mut g = game(
+        "function update(dt) nova.scenery.scatter('car', {}) end",
+        vec![],
+    );
+    frame(&mut g);
+    assert!(
+        g.error.as_deref().is_some_and(|e| e.contains("needs area")),
+        "{:?}",
+        g.error
+    );
+}

@@ -60,7 +60,9 @@ for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
 }
 
 // ---- boxes (with real vertical faces) ----
+const BOXES = [];
 function box(x0, y0, z0, x1, y1, z1, rgb) {
+  BOXES.push([x0, z0, x1, z1]);
   const faces = [
     [[x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1], [1, 0, 0]],
     [[x0, y0, z1], [x0, y1, z1], [x0, y1, z0], [x0, y0, z0], [-1, 0, 0]],
@@ -130,6 +132,7 @@ const toStart = Math.atan2(-PEAK[1], -PEAK[0]);
 const pathPoints = [];
 for (const r of [60, 50, 40, 30, 24, 20, 16, 10, 5]) pathPoints.push([PEAK[0] + Math.cos(toStart) * r, PEAK[1] + Math.sin(toStart) * r]);
 let lua = "-- Made by scripts/hills/make-hills.mjs: where things are in the hill field. Do not edit by hand.\nreturn {\n";
+lua += `  boxes = {\n` + BOXES.map(([a, b, c, d]) => `    { ` + [a, b, c, d].map((v) => v.toFixed(1)).join(", ") + ` },`).join("\n") + `\n  },\n`;
 lua += `  tower = { x = ${TOWER.x}, z = ${TOWER.z}, base = ${TOWER.base.toFixed(2)}, top = ${TOWER.top.toFixed(2)} },\n`;
 lua += `  start = ${at(0, 0, 0.1)},\n  flag = ${at(PEAK[0], PEAK[1], 0)},\n`;
 lua += "  gems = {\n" + gems.map(([x, z, y]) => `    ${y ? `{ x = ${x}, y = ${y}, z = ${z} }` : at(x, z)},`).join("\n") + "\n  },\n";

@@ -122,6 +122,27 @@ You may ask for more than sixteen (up to 256 a frame): the sixteen nearest the c
 `dir` is the way the light travels; colours are 0 to 255 multipliers (255 = full, no gamma). Every
 field of `nova.light` is optional. A ninth point light in a frame is ignored. Sprites and text are not lit.
 
+**Foliage and wind.** Grass, flowers, bushes and trees are ordinary models scattered into the static scenery and bent by a wind in the
+shader:
+
+```lua
+nova.wind { direction = 25, strength = 1 }                       -- degrees on the ground (0 towards +x); 0 to 4; nova.wind() stills it
+nova.scenery.scatter("grass", { count = 5000, area = { -80, -80, 80, 80 }, seed = 3, scale = { 0.8, 1.5 }, min_normal_y = 0.82,
+  sway = 0.55, max_distance = 55, shadow = false, tints = { { 255, 255, 255 }, { 232, 255, 220 } } })
+nova.model("pine", x, y, z, { sway = 0.012 })                    -- one that is drawn by a call each frame can sway too
+```
+
+`sway` is how far the top of a thing one metre tall is pushed at full wind; the shaders bend each vertex in proportion to its height
+above the model's origin, with a slow swell that travels across the field along the wind and a quicker flutter on it (shadows bend
+too). Grass is a plain vertex-coloured model of eight thin blades drawn from both sides (16 triangles a tuft; `scripts/hills/make-foliage.mjs`
+makes the three in Hill Run). `scatter` puts the copies where the ground is (by default the first `nova.solid` surface from above, or
+your own `ground(x, z) -> height, normal_y`), refusing steep spots (`min_normal_y`) and any a `filter` says no to; the same `seed` gives
+the same field. Pieces are kept in Rust and drawn near the camera (`max_distance` per piece: grass fades out at 55 m, trees at the fog),
+and a script that runs too long in one frame is stopped, so a big field is planted a few thousand at a time over several frames (Hill Run
+does it in about 0.3 s). On the Retroid, 30,000 tufts, 2,500 flowers, 260 bushes and 260 trees (180,000 triangles in view, 8,700 culled) held
+59.7 fps at 2.3 ms of GPU. Not done: grass that parts around the player, wind that varies by place (gusts you can see crossing), leaves
+that flutter on their own (only bending), a LOD for trees (a cheap far tree), trunks as colliders.
+
 **Look.** `nova.look` sets how the finished picture is treated, and stays until changed (`nova.look()` clears it):
 
 ```lua

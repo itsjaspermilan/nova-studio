@@ -682,6 +682,53 @@ function scenery.add(model, x, y, z, opts)
   end
 end
 
+--- Scatters copies of a model over an area, on the ground: grass, flowers, bushes, trees. `opts`: count (100); area = { x0, z0, x1, z1 }
+--- (a rectangle) or { x, z, radius } (a disc); seed (1: the same field every time); scale = n or { min, max }; ground = function(x, z)
+--- -> height, normal_y (by default the first surface of `nova.solid` from above); min_normal_y (0.7: not on slopes steeper than this);
+--- filter = function(x, z, y, normal_y) -> boolean; tints = { { r, g, b }, ... } (one chosen for each); and the options of
+--- `nova.scenery.add` (sway, max_distance, shadow, lod...). Returns how many were placed (some spots are refused).
+function scenery.scatter(model, opts)
+  opts = opts or {}
+  local area = opts.area or error("nova.scenery.scatter needs area = { x0, z0, x1, z1 } or { x, z, radius }", 2)
+  local seed = (opts.seed or 1) * 2654435761 % 4294967296
+  local function rnd()
+    seed = (seed * 1664525 + 1013904223) % 4294967296
+    return seed / 4294967296
+  end
+  local smin, smax = 1, 1
+  if type(opts.scale) == "number" then smin, smax = opts.scale, opts.scale
+  elseif type(opts.scale) == "table" then smin, smax = opts.scale[1], opts.scale[2] end
+  local ground = opts.ground or function(x, z)
+    local y, _, ny = nova.solid.floor_below(x, 2000, z, 4000)
+    return y, ny
+  end
+  local min_ny = opts.min_normal_y or 0.7
+  local placed = 0
+  for _ = 1, opts.count or 100 do
+    for _ = 1, 3 do -- a spot that is refused is tried again, a few times
+      local x, z
+      if area[3] and not area[4] then
+        local a, r = rnd() * 2 * math.pi, area[3] * sqrt(rnd())
+        x, z = area[1] + cos(a) * r, area[2] + sin(a) * r
+      else
+        x, z = area[1] + (area[3] - area[1]) * rnd(), area[2] + (area[4] - area[2]) * rnd()
+      end
+      local y, ny = ground(x, z)
+      if y and (ny or 1) >= min_ny and (not opts.filter or opts.filter(x, z, y, ny or 1)) then
+        local o = { ry = rnd() * 2 * math.pi, scale = smin + (smax - smin) * rnd() }
+        for k, v in pairs(opts) do
+          if k == "sway" or k == "max_distance" or k == "shadow" or k == "lod" or k == "lod_distance" or k == "lod_fade" then o[k] = v end
+        end
+        if opts.tints then o.tint = opts.tints[1 + floor(rnd() * #opts.tints)] end
+        scenery.add(model, x, y, z, o)
+        placed = placed + 1
+        break
+      end
+    end
+  end
+  return placed
+end
+
 --- Draws the pieces within `radius` metres of (cx, cz). The framework does this by itself around the camera every frame
 --- (out to `nova.scenery.range`, if set, else to where the fog ends or 300 m; 0 turns it off). The last 12% of the range fades out.
 function scenery.draw(cx, cz, radius)
