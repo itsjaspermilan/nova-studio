@@ -121,13 +121,27 @@ pub struct AudioStats {
 }
 
 pub struct AudioOut {
-    _stream: cpal::Stream,
+    stream: cpal::Stream,
     pub stats: Arc<AudioStats>,
     pub description: String,
     sender: Option<SyncSender<Command>>,
 }
 
 impl AudioOut {
+    /// Stops the output while the app is in the background (music and sounds hold where they are and nothing runs).
+    pub fn pause(&self) {
+        if let Err(e) = self.stream.pause() {
+            log::warn!("cannot pause audio: {e}");
+        }
+    }
+
+    /// Starts it again when the app comes back.
+    pub fn resume(&self) {
+        if let Err(e) = self.stream.play() {
+            log::warn!("cannot resume audio: {e}");
+        }
+    }
+
     /// Hands a sound command to the audio thread. Dropped (and counted) if the queue is full,
     /// which only happens when scripts queue hundreds of sounds faster than they play.
     pub fn send(&self, command: Command) {
@@ -269,7 +283,7 @@ pub fn start(game: bool) -> Result<AudioOut, String> {
     let description = format!("{rate} Hz {} ch {format:?}", config.channels);
     log::info!("audio started: {description}");
     Ok(AudioOut {
-        _stream: stream,
+        stream,
         stats,
         description,
         sender,

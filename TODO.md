@@ -6,7 +6,7 @@ unless it is ticked.
 
 ## Where things stand
 
-**Device, 2026-11-05: the Retroid Pocket 6 arrived and the stress benchmark has run on it** (`docs/performance.md`): all 13 phases hold 60 fps, the worst (1.15 M triangles, 200 skinned characters, 16 lights, shadows) takes 13.3 ms of GPU, Lua at most 2.7 ms. Not yet done on it: (the 120 Hz mode is not a target; the display is set to 60) pause/resume and rotation, audio. **Done on it, 2026-11-05: an 11-minute heat run (8 benchmark runs: 59.7 fps throughout, GPU times flat, chip sensor 64 to 67 C; see `docs/performance.md`), the controller (all 16 buttons and 6 axes, see Known gaps) and the screen (full screen, no bars or band).**
+**Device, 2026-11-05: the Retroid Pocket 6 arrived and the stress benchmark has run on it** (`docs/performance.md`): all 13 phases hold 60 fps, the worst (1.15 M triangles, 200 skinned characters, 16 lights, shadows) takes 13.3 ms of GPU, Lua at most 2.7 ms. Not yet done on it: (the 120 Hz mode is not a target; the display is set to 60) rotation and the sound itself. **Done on it, 2026-11-05: lifecycle over adb (Home, screen off, app switch, 15 quick cycles, kill and relaunch; it found and fixed a background busy loop and music that kept playing), an 11-minute heat run (8 benchmark runs: 59.7 fps throughout, GPU times flat, chip sensor 64 to 67 C; see `docs/performance.md`), the controller (all 16 buttons and 6 axes, see Known gaps) and the screen (full screen, no bars or band).**
 
 **Update 2026-11-05.** Since the paragraph below: probe games (Blockfield, Ember Swarm, Bunker Run, Pine Ridge Rally,
 Sky Garden) exercised the engine and are in `docs/probes.md`; the engine gained 3D collision (`nova.walls`, `nova.solid`),
@@ -54,8 +54,14 @@ another physical Android device) to settle; the emulator cannot.
   separately). Not tried: Back and Home (the system takes them), a second pad. [ ] Rumble, several pads and remapping are not implemented.
 - [ ] Audio latency and underruns on real output (AAudio low-latency mode is not requested; only
   callback time was measured, about 0.1 ms on the emulator).
-- [ ] Android lifecycle: pause/resume, rotation, process death are coded (surface dropped and rebuilt)
-  but not exercised; **GPU device loss is not handled at all**.
+- [~] Android lifecycle, exercised on the Retroid Pocket 6 over `adb` (2026-11-05, Pine Ridge Rally): Home and back, screen off and on,
+  another app over it and back, 15 quick Home-and-back cycles (same process, 59.6 fps after, no crash in the log, memory 179.5 to
+  183.2 MB), and the process killed in the background then relaunched (fresh start, audio and surface back) all work. **Found and fixed
+  by it:** in the background the event loop spun a whole core (1,040 CPU ticks in 10 s) and the audio stream kept playing; now the loop
+  waits and the stream is paused (2 ticks in 10 s, the player is "paused"). Not exercised: rotation (the device's rotation lock is on
+  and changing a system setting was not mine to do; the manifest is `sensorLandscape` and handles the config change), the Back key
+  (the rally keeps running when it is pressed: whether a game should quit on Back is the game's choice), and **GPU device loss, which
+  is not handled at all** (it cannot be provoked from here).
 - [x] Immersive mode on the real panel (2026-11-05): a screenshot from the Retroid (1920x1080 in landscape, from a 1080x1920 panel)
   shows the game across the whole screen: no black band, no system bars. (The emulator's phone profile is what had the cutout and the bars.)
 - [ ] Verify the Retroid's facts: SoC, Android version (assumed 13), screen size/refresh, how its

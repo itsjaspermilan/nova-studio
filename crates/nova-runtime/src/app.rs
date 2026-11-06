@@ -496,6 +496,10 @@ impl App {
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        event_loop.set_control_flow(ControlFlow::Poll);
+        if let Some(audio) = &self.audio {
+            audio.resume();
+        }
         if self.window.is_some() {
             return;
         }
@@ -585,8 +589,13 @@ impl ApplicationHandler for App {
         self.last_frame = Instant::now();
     }
 
-    fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
-        // Android destroys the native window while the app is in the background.
+    fn suspended(&mut self, event_loop: &ActiveEventLoop) {
+        // Android destroys the native window while the app is in the background. With no window there is nothing to draw, so
+        // the loop waits for the system (it spun a whole core at Poll), and the sound is held.
+        event_loop.set_control_flow(ControlFlow::Wait);
+        if let Some(audio) = &self.audio {
+            audio.pause();
+        }
         self.surface = None;
         self.config = None;
         self.window = None;
