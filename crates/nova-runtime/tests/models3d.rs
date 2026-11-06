@@ -1515,12 +1515,7 @@ end"
         ", sway = 0",
         3.0,
     );
-    assert_eq!(differ(&still, &none, false), differ(&still, &none, false));
-    assert_eq!(
-        differ(&none, &still, false) > 0,
-        false,
-        "sway 0 is not blown about"
-    );
+    assert_eq!(differ(&none, &still, false), 0, "sway 0 is not blown about");
     // a stronger wind bends more
     let gale = shot(
         &mut gfx,
