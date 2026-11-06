@@ -49,8 +49,15 @@ function Engine:update(dt, rev, load, rough, slip)
   if not self.ids then start(self) end
   local v = self.volume
   -- a low rumble that rises gently with the revs, with a soft body above it that comes in as the engine works
-  nova.sound.set(self.ids.engine, { volume = v * (0.16 + 0.4 * load), pitch = 0.8 + 1.5 * rev })
-  nova.sound.set(self.ids.body, { volume = v * (0.04 + 0.22 * load) * (0.4 + 0.6 * rev), pitch = 0.8 + 1.5 * rev })
+  -- a steady loop drones: an engine's pitch and loudness are never quite still, so both wander a little (slowly) and pulse with the
+  -- revs (the cylinders firing), more when the engine is working
+  self.t = (self.t or math.random() * 10) + dt
+  local t = self.t
+  local wander = 1 + 0.012 * math.sin(t * 3.1) + 0.008 * math.sin(t * 7.9 + 1.3) + 0.005 * math.sin(t * 13.3)
+  local pulse = 1 + (0.05 + 0.08 * load) * math.sin(t * (14 + 40 * rev)) + 0.04 * math.sin(t * 2.3)
+  local pitch = (0.8 + 1.5 * rev) * wander
+  nova.sound.set(self.ids.engine, { volume = v * (0.16 + 0.4 * load) * pulse, pitch = pitch })
+  nova.sound.set(self.ids.body, { volume = v * (0.04 + 0.22 * load) * (0.4 + 0.6 * rev) * (2 - pulse), pitch = pitch * 1.003 })
   nova.sound.set(self.ids.gravel, { volume = rough and v * (0.15 + 0.5 * rev) or 0, pitch = 0.7 + rev })
   local squeal = (slip or 0) > 0.25 and math.min(1, slip) or 0
   nova.sound.set(self.ids.skid, { volume = v * squeal * 0.8, pitch = 0.9 + 0.3 * squeal })

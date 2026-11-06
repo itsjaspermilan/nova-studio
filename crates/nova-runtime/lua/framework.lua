@@ -1853,6 +1853,8 @@ local function build_scene(scene, data, file)
   if sky then nova.sky { top = sky.top, horizon = sky.horizon } end
   local fog = data.fog
   if fog then nova.fog { color = fog.color, near = fog.near, far = fog.far } end
+  if data.look then nova.look(data.look) end
+  if data.wind then nova.wind(data.wind) end
   local function named(item, e)
     local name = item.name
     if not name then return end

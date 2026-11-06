@@ -43,7 +43,7 @@ function Car:create()
   self.steer_visual = 0
   self.roll, self.pitch = 0, 0
   self.surface = "road"        -- "road", "dirt" or "rough" (off the track)
-  self.power = 15              -- m/s squared in first, before the gear's pull is applied
+  self.power = 8               -- m/s squared in first, before the gear's pull is applied (it was 15: 100 km/h in 1.4 s)
   self.top = 44                -- m/s on the flat
   self.gear = 1
   self.shift_time = 0          -- while above 0 the clutch is in and the car is not pulling

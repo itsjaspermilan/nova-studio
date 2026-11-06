@@ -548,3 +548,28 @@ fn a_player_who_has_stopped_on_the_road_is_left_alone() {
         "the player was moved though they were only waiting: {log:?}"
     );
 }
+
+#[test]
+fn the_car_takes_a_few_seconds_to_reach_100_kmh() {
+    let mut g = load();
+    start_race(&mut g, 0, false);
+    let mut log = Vec::new();
+    run_until(&mut g, &mut log, "the countdown ends", 60 * 8, |l| {
+        l.iter().any(|x| x == "go")
+    });
+    // the computer drives (straight on at full throttle runs into the roadside props)
+    tap(&mut g, "key:F9");
+    let mut at = |g: &mut Game, frames: usize| {
+        for _ in 0..frames {
+            frame_with(g, &[]);
+        }
+        stat(g)["speed"]
+    };
+    let two = at(&mut g, 90);
+    assert!(
+        two < 27.8,
+        "100 km/h (27.8 m/s) is not reached in two seconds: {two}"
+    );
+    let ten = at(&mut g, 8 * 60);
+    assert!(ten > 27.8, "but is by ten: {ten}");
+}

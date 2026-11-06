@@ -205,6 +205,96 @@ fn fog(v: &Value, at: &str) -> Result<Value, String> {
     Ok(Value::Object(out))
 }
 
+/// `look`: what `nova.look{...}` takes (its own ranges are checked when the scene is built).
+fn look(v: &Value, at: &str) -> Result<Value, String> {
+    let o = v.as_object().ok_or_else(|| {
+        err(
+            at,
+            "\"look\" must be an object like {\"bloom\": 0.4, \"ao\": 0.5, \"saturation\": 1.1}",
+        )
+    })?;
+    check_keys(
+        o,
+        at,
+        &[
+            "toon",
+            "outline",
+            "exposure",
+            "saturation",
+            "vignette",
+            "bloom",
+            "bloom_threshold",
+            "ao",
+            "ao_radius",
+            "blur",
+        ],
+    )?;
+    let mut out = Map::new();
+    for (key, value) in o {
+        if key == "outline" {
+            match value {
+                Value::Bool(_) => {
+                    out.insert(key.clone(), value.clone());
+                }
+                Value::Object(t) => {
+                    let here = format!("{at}.outline");
+                    check_keys(t, &here, &["color", "strength", "width"])?;
+                    let mut line = Map::new();
+                    if let Some(c) = color(t.get("color"), &format!("{here}.color"))? {
+                        line.insert("color".into(), c);
+                    }
+                    for k in ["strength", "width"] {
+                        if let Some(n) = t.get(k) {
+                            line.insert(
+                                k.into(),
+                                num(number(n, &format!("{here}.{k}"), &format!("\"{k}\""))?),
+                            );
+                        }
+                    }
+                    out.insert(key.clone(), Value::Object(line));
+                }
+                _ => {
+                    return Err(err(
+                        &format!("{at}.outline"),
+                        "\"outline\" must be true, false or {\"color\": [r, g, b], \"strength\": 0.85, \"width\": 1}",
+                    ));
+                }
+            }
+        } else {
+            out.insert(
+                key.clone(),
+                num(number(
+                    value,
+                    &format!("{at}.{key}"),
+                    &format!("\"{key}\""),
+                )?),
+            );
+        }
+    }
+    Ok(Value::Object(out))
+}
+
+/// `wind`: what `nova.wind{...}` takes.
+fn wind(v: &Value, at: &str) -> Result<Value, String> {
+    let o = v.as_object().ok_or_else(|| {
+        err(
+            at,
+            "\"wind\" must be an object like {\"direction\": 30, \"strength\": 1}",
+        )
+    })?;
+    check_keys(o, at, &["direction", "strength"])?;
+    let mut out = Map::new();
+    for key in ["direction", "strength"] {
+        if let Some(n) = o.get(key) {
+            out.insert(
+                key.into(),
+                num(number(n, &format!("{at}.{key}"), &format!("\"{key}\""))?),
+            );
+        }
+    }
+    Ok(Value::Object(out))
+}
+
 fn num(n: f64) -> Value {
     Value::Number(Number::from_f64(n).expect("finite"))
 }
@@ -252,6 +342,8 @@ pub fn parse_scene(text: &str, file: &str) -> Result<Value, String> {
             "camera",
             "sky",
             "fog",
+            "look",
+            "wind",
             "objects",
             "images",
             "texts",
@@ -286,6 +378,12 @@ pub fn parse_scene(text: &str, file: &str) -> Result<Value, String> {
     }
     if let Some(v) = root.get("fog") {
         out.insert("fog".into(), fog(v, &format!("{file}.fog"))?);
+    }
+    if let Some(v) = root.get("look") {
+        out.insert("look".into(), look(v, &format!("{file}.look"))?);
+    }
+    if let Some(v) = root.get("wind") {
+        out.insert("wind".into(), wind(v, &format!("{file}.wind"))?);
     }
 
     let list = |key: &str| -> Result<Vec<&Value>, String> {
@@ -779,6 +877,40 @@ mod tests {
                 e.starts_with("scenes/t.scene.json"),
                 "messages begin with the file: {e}"
             );
+        }
+    }
+
+    #[test]
+    fn look_and_wind_are_checked_and_kept() {
+        let v = parse(
+            r#"{"version":1,"look":{"bloom":0.4,"ao":0.5,"outline":{"color":[1,2,3],"strength":0.5}},"wind":{"direction":30,"strength":1.5}}"#,
+        )
+        .unwrap();
+        assert_eq!(v["look"]["bloom"].as_f64(), Some(0.4));
+        assert_eq!(
+            v["look"]["outline"]["color"],
+            serde_json::json!([1.0, 2.0, 3.0])
+        );
+        assert_eq!(v["wind"]["strength"].as_f64(), Some(1.5));
+        for (body, expected) in [
+            (r#"{"version":1,"look":{"glow":1}}"#, "unknown key \"glow\""),
+            (r#"{"version":1,"look":{"bloom":"a lot"}}"#, "look.bloom"),
+            (
+                r#"{"version":1,"look":{"outline":5}}"#,
+                "\"outline\" must be",
+            ),
+            (r#"{"version":1,"look":3}"#, "\"look\" must be an object"),
+            (
+                r#"{"version":1,"wind":{"speed":1}}"#,
+                "unknown key \"speed\"",
+            ),
+            (
+                r#"{"version":1,"wind":{"direction":"north"}}"#,
+                "wind.direction",
+            ),
+        ] {
+            let e = parse(body).unwrap_err();
+            assert!(e.contains(expected), "{body}: {e}");
         }
     }
 }

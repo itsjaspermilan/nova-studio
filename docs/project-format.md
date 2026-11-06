@@ -550,6 +550,8 @@ Data only: loading it never runs code. Defaults are shown; unknown keys are erro
   "background": [92, 150, 214],
   "sky": { "top": [40, 90, 200], "horizon": [200, 220, 240] },
   "fog": { "color": [200, 220, 240], "near": 40, "far": 250 },
+  "look": { "bloom": 0.4, "ao": 0.5, "saturation": 1.1 },
+  "wind": { "direction": 30, "strength": 1 },
   "width": 2000, "height": 540,
   "camera": { "eye": [0, 6, 12], "target": [0, 1, 0], "fov": 60 },
   "objects": [ { "kind": "player", "name": "hero", "x": 480, "y": 440, "z": 0, "props": { "hp": 5 } } ],
@@ -564,7 +566,9 @@ camera's limits. `camera` (optional) is the 3D camera the scene starts with, the
 `nova.camera(eye, target, fov)` when the scene is built; each part is optional (eye `[0, 5, 10]`, target
 `[0, 0, 0]`, `fov` 60, allowed 10 to 150). `sky` and `fog` (optional) do what `nova.sky{...}` and `nova.fog{...}` do when
 the scene is built: a gradient behind the 3D view (`horizon` defaults to `top`), and models fading into a colour between `near`
-(default 40) and `far` (default 250) metres. In a 3D scene an object's `x` goes across, `y` up and `z` towards the
+(default 40) and `far` (default 250) metres. `look` and `wind` (optional) do what `nova.look{...}` and `nova.wind{...}` do (the same
+options and ranges; they stay until changed, so a scene that wants none says `"look": {}`): bloom, ambient occlusion, colour, and the wind that bends
+the models drawn with a `sway`. In a 3D scene an object's `x` goes across, `y` up and `z` towards the
 viewer, and the props `ry`, `rx`, `rz` (radians) and `sx` (size) turn and scale a model entity. **A `name` becomes a field of the scene** (`self.hero`); names must be unique,
 start with a letter and not collide with the scene's own methods. Errors are reported with the file
 and the exact place, for example `scenes/play.scene.json.objects[2]: missing "kind"`.
