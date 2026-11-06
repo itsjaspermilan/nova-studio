@@ -1,8 +1,10 @@
 -- Made by scripts/hills/make-hills.mjs: where things are in the hill field. Do not edit by hand.
 return {
+  tower = { x = 26, z = 14, base = 0.51, top = 12.51 },
   start = { x = 0.00, y = 0.10, z = 0.00 },
   flag = { x = 50.00, y = 32.06, z = -50.00 },
   gems = {
+    { x = 26, y = 13.505999735307137, z = 14 },
     { x = 8.00, y = 2.05, z = -6.00 },
     { x = -14.00, y = 0.25, z = 14.00 },
     { x = -35, y = 6.226512396725901, z = 0 },

@@ -8,6 +8,8 @@ local WALK, SPRINT, GRAVITY, JUMP = 6, 10, 28, 10
 local COYOTE, BUFFER = 0.1, 0.12
 local CAM_DIST, CAM_ELEV = 7, 0.4
 
+local CHARACTER = "skater_male" -- one of skater_male, skater_female, criminal, cyborg (Kenney's Animated Characters, CC0)
+
 local Player = nova.entity { tags = { "player" }, velocity = false }
 
 local function approach(v, target, step)
@@ -154,20 +156,22 @@ function Player:draw()
     nova.quad3(self.x + nx * 0.02, h + ny * 0.02, self.z + nz * 0.02, nx, ny, nz, max(0.6, 1.5 - air * 0.12), { color = { 0, 0, 0, max(60, 190 - air * 20) }, round = true })
   end
   local speed = sqrt(self.vx * self.vx + self.vz * self.vz)
-  self.anim = self.anim or nova.animator("character-oobi", {
+  self.anim = self.anim or nova.animator(CHARACTER, {
     start = "move",
     fade = 0.15,
     states = {
-      move = { blend = "speed", points = { { 0, "idle" }, { 2.2, "walk" }, { 5.5, "sprint" } } },
+      -- (this character has idle, run and jump: running at a walk is a slower run)
+      move = { blend = "speed", points = { { 0, "idle" }, { 1.5, "run" }, { 6, "run" } } },
       jump = { clip = "jump", loop = false },
-      fall = { clip = "fall" },
+      fall = { clip = "jump", loop = false },
     },
   })
   -- (a hop up a step is a frame or three with no ground under the middle of the body: not a fall)
   self.anim:play((self.ground or self.air_time < 0.12) and "move" or (self.vy > 0 and "jump" or "fall"))
   self.anim:set("speed", speed)
+  self.anim.speed = speed > 6 and speed / 6 or math.max(0.6, speed / 6) -- the run cycle follows the ground speed
   self.anim:update(1 / 60)
-  self.anim:draw(x, y, z, { scale = 1.8, ry = self.face + math.pi })
+  self.anim:draw(x, y, z, { ry = self.face })
 end
 
 return Player

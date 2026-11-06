@@ -84,6 +84,9 @@ box(-30, base - 1, -5, -20, base + 6, 5, STONE);                     // the plat
 box(6, height(6, 6) - 1, 4, 8, height(6, 6) + 0.3, 6, STONE2);
 box(12, height(12, 6) - 1, 4, 14, height(12, 6) + 0.8, 6, STONE);
 box(18, height(18, 6) - 1, 4, 20, height(18, 6) + 1.6, 6, STONE2);
+// a tower to climb: 4 m across and 12 m high, with a gem on top
+const TOWER = { x: 26, z: 14, base: height(26, 14), top: height(26, 14) + 12 };
+box(24, height(24, 12) - 1, 12, 28, TOWER.top, 16, STONE);
 
 // ---- the glb ----
 const f32 = (a) => Buffer.from(new Float32Array(a).buffer);
@@ -122,11 +125,12 @@ fs.writeFileSync("examples/hill-run/models/hills.glb", Buffer.concat([header, ch
 const at = (x, z, up = 1.0) => `{ x = ${x.toFixed(2)}, y = ${(height(x, z) + up).toFixed(2)}, z = ${z.toFixed(2)} }`;
 
 const stairH = (x) => base + 0.3 * (Math.floor(x + 50) + 1);
-const gems = [[8, -6], [-14, 14], [-35, 0, stairH(-35) + 1], [-25, 0, base + 7], [30, -20], [40, -42], [22, -22], [60, -30], [58, -60], [48, -48]];
+const gems = [[26, 14, TOWER.top + 1], [8, -6], [-14, 14], [-35, 0, stairH(-35) + 1], [-25, 0, base + 7], [30, -20], [40, -42], [22, -22], [60, -30], [58, -60], [48, -48]];
 const toStart = Math.atan2(-PEAK[1], -PEAK[0]);
 const pathPoints = [];
 for (const r of [60, 50, 40, 30, 24, 20, 16, 10, 5]) pathPoints.push([PEAK[0] + Math.cos(toStart) * r, PEAK[1] + Math.sin(toStart) * r]);
 let lua = "-- Made by scripts/hills/make-hills.mjs: where things are in the hill field. Do not edit by hand.\nreturn {\n";
+lua += `  tower = { x = ${TOWER.x}, z = ${TOWER.z}, base = ${TOWER.base.toFixed(2)}, top = ${TOWER.top.toFixed(2)} },\n`;
 lua += `  start = ${at(0, 0, 0.1)},\n  flag = ${at(PEAK[0], PEAK[1], 0)},\n`;
 lua += "  gems = {\n" + gems.map(([x, z, y]) => `    ${y ? `{ x = ${x}, y = ${y}, z = ${z} }` : at(x, z)},`).join("\n") + "\n  },\n";
 lua += "  -- the bot: the start, the foot of the stairs, the stairs, the notch in the cliff, up the path to the flag\n  route = {\n";
