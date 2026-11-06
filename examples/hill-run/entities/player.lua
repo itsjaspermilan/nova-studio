@@ -123,7 +123,7 @@ function Player:update(dt)
   if self.y < -20 then state.falls = state.falls + 1; state.say("fell", 1); self:respawn() end
   -- the body hops a 0.3 m step in one frame; what is drawn (and what the camera looks at) eases up it, so a staircase is a smooth climb
   self.step_off = self.step_off * math.exp(-14 * dt)
-  self.air_time = self.ground and 0 or self.air_time + dt
+  self.air_time = (self.ground or self.mode ~= "walk") and 0 or self.air_time + dt
   -- stamina comes back on the ground
   if self.mode == "walk" and self.ground and not self.tired then self.stamina = min(STAMINA, self.stamina + 2.5 * dt) end
   self:aim_camera(dt)
@@ -146,10 +146,11 @@ function Player:walk(dt, wx, wz, len, want_jump, jump_held, sprint)
   if self.buffer > 0 and self.coyote > 0 then
     self.vy, self.buffer, self.coyote, self.ground, self.jumping, jumped = JUMP, 0, 0, false, true, true
     nova.sound.play("jump", { volume = 0.4, limit = 2 })
+    state.jumps = (state.jumps or 0) + 1
   end
   -- a jump pressed in the air opens the glider
   if want_jump and not jumped and not self.ground and self.coyote <= 0 and self.air_time > 0.3 and self.stamina > 1 then
-    self.mode, self.glide_yaw = "glide", self.face
+    self.mode, self.glide_yaw, self.buffer = "glide", self.face, 0 -- (the press that opened the glider must not be a jump waiting to happen on landing)
     self.glide_start = { x = self.x, z = self.z }
     return
   end
@@ -212,6 +213,7 @@ function Player:climb(dt, wx, wz, len, want_jump)
   -- face the wall
   local want = math.atan(n.x, n.z)
   self.face = self.face + ((want - self.face + math.pi) % (2 * math.pi) - math.pi) * min(1, 12 * dt)
+  self.climb_effort = (len >= 0.1) and sqrt(lateral * lateral + vert * vert) or 0
   if len >= 0.1 then self.stamina = self.stamina - dt end -- (hanging still is free)
   state.climb_time = (state.climb_time or 0) + dt
 
@@ -224,9 +226,12 @@ function Player:climb(dt, wx, wz, len, want_jump)
   self.wall_lost = (self.wall_lost or 0) + (m.wall and 0 or dt)
   self.ground = false
   -- over the top: no wall under the hands any more while going up, and a floor just ahead at about the height of the hands: get up on it
-  local ledge = vert > 0.3 and self.wall_lost > 0.06 and self:ledge_ahead(n)
-  if ledge then
+  local ledge, up = nil, 0
+  if vert > 0.3 then ledge, up = self:ledge_ahead(n) end
+  -- the hands are on the edge (it is 1.2 m or more above the feet), or the wall has ended under them with a floor near the feet (a low one)
+  if ledge and (up >= 1.2 or self.wall_lost > 0.06) then
     self.mode, self.mantle_t, self.mantle_n, self.mantle_h, self.mantle_y0 = "mantle", 0, n, ledge, self.y
+    nova.log(string.format("hill: mantle from %.2f to %.2f", self.y, ledge))
     self.vx, self.vz, self.vy = 0, 0, 0
     self.wall, self.wall_age = nil, 9
     state.mantles = (state.mantles or 0) + 1
@@ -240,18 +245,19 @@ function Player:climb(dt, wx, wz, len, want_jump)
     self.vx, self.vy, self.vz = 0, 0, 0
     state.say("out of stamina", 1)
   elseif want_jump then
-    self.mode, self.wall, self.wall_age, self.climb_cool = "walk", nil, 9, 0.35
+    self.mode, self.wall, self.wall_age, self.climb_cool, self.buffer = "walk", nil, 9, 0.35, 0
     self.vx, self.vz, self.vy = n.x * 6, n.z * 6, 9
     nova.sound.play("jump", { volume = 0.4, limit = 2 })
   end
 end
 
--- Is there somewhere to stand just ahead and a little above the feet (0 to 1.3 m): a floor that faces up (0.6 of the way to the top of
--- the climb, the body is not touching the wall any more because it has come to its edge)? A `nova.solid.floor_below` probe from above.
+-- Is there somewhere to stand just ahead and above the feet: a floor that faces up, at most 2.25 m higher (about where the hands reach
+-- with the arms up, so that the climb ends, and the getting up begins, with the hands on the edge)? A `nova.solid.floor_below` probe
+-- from above. Returns the floor's height.
 function Player:ledge_ahead(n)
   local px, pz = self.x - n.x * 0.55, self.z - n.z * 0.55
-  local h, nx, ny = nova.solid.floor_below(px, self.y + 1.5, pz, 1.9)
-  if h ~= nil and ny > 0.6 and h >= self.y - 0.15 and h <= self.y + 1.35 then return h end
+  local h, nx, ny = nova.solid.floor_below(px, self.y + 3.2, pz, 3.6)
+  if h ~= nil and ny > 0.6 and h >= self.y - 0.15 and h <= self.y + 2.25 then return h, h - self.y end
   return nil
 end
 
@@ -261,20 +267,22 @@ function Player:mantle(dt)
   self.mantle_t = self.mantle_t + dt
   local t = self.mantle_t
   -- up: to the height of the floor (and no higher: smoothly, over the first half second), then onto it
-  local rise = min(1, t / 0.5)
+  local rise = min(1, t / 0.65)
   rise = rise * rise * (3 - 2 * rise)
   local want_y = self.mantle_y0 + (self.mantle_h - self.mantle_y0) * rise
-  local on = t < 0.35 and 0 or 2.2
+  local on = t < 0.5 and 0 or 2.2
   local vy = (want_y - self.y) / dt
   self.vx, self.vz, self.vy = -n.x * on, -n.z * on, vy
   local m = nova.solid.move(self.x, self.y, self.z, RADIUS, HEIGHT, self.vx * dt, self.vy * dt, self.vz * dt)
   self.x, self.y, self.z = m.x, m.y, m.z
   self.face = math.atan(n.x, n.z)
   self.ground = false
-  if t >= 0.95 then
+  if t >= 1.0 then
     self.mode = "walk"
     self.vx, self.vy, self.vz = -n.x * 1.2, 0, -n.z * 1.2
     self.climb_cool = 0.5
+    self.buffer = 0
+    self.ground, self.air_time = true, 0 -- standing on the floor it got up on (the animator must not take this for a jump)
   end
 end
 
@@ -306,7 +314,7 @@ function Player:glide(dt, wx, wz, len, want_jump)
   end
   state.glide_dist = max(state.glide_dist or 0, sqrt((self.x - (self.glide_start and self.glide_start.x or self.x)) ^ 2 + (self.z - (self.glide_start and self.glide_start.z or self.z)) ^ 2))
   if m.ground or want_jump or self.stamina <= 0 then
-    self.mode = "walk"
+    self.mode, self.buffer = "walk", 0
     self.ground = m.ground
     if m.ground then self.vy, self.vx, self.vz = 0, self.vx * 0.5, self.vz * 0.5 end
     if self.stamina <= 0 then state.say("out of stamina", 1) end
@@ -333,9 +341,9 @@ end
 
 function Player:draw()
   local x, y, z = self.x, self.y + self.step_off, self.z
-  -- a soft round shadow on whatever is underneath, flat to it, smaller and fainter the higher the feet are
+  -- (with the sun'"'"'s shadows on, the character casts a real one; the soft round blob is for when they are off)
   local h, nx, ny, nz = nova.solid.floor_below(self.x, self.y + 0.4, self.z, 6)
-  if h then
+  if h and not state.shadows then
     local air = max(0, self.y - h)
     nova.quad3(self.x + nx * 0.02, h + ny * 0.02, self.z + nz * 0.02, nx, ny, nz, max(0.6, 1.5 - air * 0.12), { color = { 0, 0, 0, max(60, 190 - air * 20) }, round = true })
   end
@@ -357,7 +365,7 @@ function Player:draw()
   local playing = (mode == "mantle" and "mantle") or (mode == "climb" and "climb") or (mode == "glide" and "glide") or ((self.ground or self.air_time < 0.12) and "move" or (self.vy > 0 and "jump" or "fall"))
   self.anim:play(playing)
   self.anim:set("speed", speed)
-  self.anim.speed = mode == "climb" and (speed > 0.3 and 1 or 0.02) or (speed > 6 and speed / 6 or math.max(0.6, speed / 6)) -- the run cycle follows the ground speed
+  self.anim.speed = mode == "climb" and (self.climb_effort or 0) or (speed > 6 and speed / 6 or math.max(0.6, speed / 6)) -- the run cycle follows the ground speed
   self.anim:update(1 / 60)
   local ry = self.face + math.pi -- (this model faces the other way round from the old one: +z is its back)
   self.anim:draw(x, y, z, { ry = ry })

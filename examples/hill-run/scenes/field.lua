@@ -16,6 +16,8 @@ function Scene:enter()
   nova.sky { top = { 80, 140, 225 }, horizon = { 200, 225, 245 }, sun = { 0.4, 0.8, 0.3 }, clouds = 0.5 }
   nova.light { dir = { -0.45, -0.8, -0.35 }, color = { 255, 245, 225 }, ambient = { 100, 106, 125 } }
   nova.fog { color = { 200, 225, 245 }, near = 90, far = 230 }
+  state.shadows = true
+  nova.shadows { radius = 42, strength = 0.55 } -- the sun'"'"'s shadows round the player (grass and flowers cast none)
   nova.wind { direction = 25, strength = 1.0 }
   self:plant()
   for _, g in ipairs(level.gems) do nova.spawn("gem", g.x, 0, { z = g.z, gy = g.y }) end
@@ -73,7 +75,7 @@ function Scene:update(dt)
   if self.jobs and #self.jobs > 0 then self.chunk_t0 = nova.clock(); self:plant_some() end
   if nova.input.pressed("stats") then
     local p = nova.first("player")
-    nova.log(string.format("hill: x=%.1f y=%.1f z=%.1f gems=%d falls=%d slide=%d hops=%d max_height=%.1f won=%s time=%.1f mode=%s stamina=%.1f climb=%.1f glide_dist=%.1f glide_time=%.1f mantles=%d", p and p.x or 0, p and p.y or 0, p and p.z or 0, state.gems, state.falls, state.slide_frames, state.hops, state.max_height, tostring(state.won), state.time, p and p.mode or "-", p and p.stamina or 0, state.climb_time or 0, state.glide_dist or 0, state.glide_time or 0, state.mantles or 0))
+    nova.log(string.format("hill: x=%.1f y=%.1f z=%.1f gems=%d falls=%d slide=%d hops=%d max_height=%.1f won=%s time=%.1f mode=%s stamina=%.1f climb=%.1f glide_dist=%.1f glide_time=%.1f mantles=%d jumps=%d", p and p.x or 0, p and p.y or 0, p and p.z or 0, state.gems, state.falls, state.slide_frames, state.hops, state.max_height, tostring(state.won), state.time, p and p.mode or "-", p and p.stamina or 0, state.climb_time or 0, state.glide_dist or 0, state.glide_time or 0, state.mantles or 0, state.jumps or 0))
   end
   if nova.input.pressed("pause") and not state.won then
     self.paused = not self.paused

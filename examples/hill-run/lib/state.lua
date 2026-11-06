@@ -5,6 +5,7 @@ function S.reset()
   S.gems, S.total = 0, 0
   S.time, S.falls, S.slide_frames, S.hops, S.max_height = 0, 0, 0, 0, 0
   S.won = false
+  S.shadows = false
   S.message, S.message_for = "", 0
 end
 

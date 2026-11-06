@@ -244,3 +244,42 @@ fn hanging_still_on_a_wall_costs_no_stamina() {
     assert!(number(&s, "stamina") > 4.4, "{s:?}");
     assert!(number(&s, "stamina") < 5.6, "{s:?}");
 }
+
+#[test]
+fn the_getting_up_starts_with_the_hands_on_the_edge() {
+    // the hands reach about 2.2 m above the feet with the arms up: the getting up begins when the ledge is that high
+    let mut g = game();
+    for _ in 0..30 {
+        frame(&mut g, &[]);
+    }
+    tap(&mut g, "key:F7");
+    let mut log = Vec::new();
+    for _ in 0..60 * 10 {
+        frame(&mut g, &[]);
+        log.extend(g.take_log());
+    }
+    let line = log
+        .iter()
+        .find(|l| l.starts_with("hill: mantle from"))
+        .expect("it got up over the top");
+    let nums: Vec<f32> = line
+        .split_whitespace()
+        .filter_map(|w| w.parse().ok())
+        .collect();
+    let (from, to) = (nums[0], nums[1]);
+    assert!(
+        to - from > 1.7 && to - from < 2.3,
+        "the feet are about 2 m below the edge when the hands are on it: {line}"
+    );
+}
+
+#[test]
+fn landing_from_the_glider_does_not_jump() {
+    // the bot opens the glider with a jump press and never jumps otherwise: when it lands, that press must not be waiting as a jump
+    let s = run_script("key:F6", 11);
+    assert!(
+        number(&s, "glide_time") > 3.0 && s["mode"] == "walk",
+        "it glided and landed: {s:?}"
+    );
+    assert_eq!(number(&s, "jumps"), 0.0, "no jump on landing: {s:?}");
+}
