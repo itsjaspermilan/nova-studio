@@ -163,7 +163,7 @@ function race.define(config)
       local car = put(pool[i], slots[i])
       car.name, car.skill, car.lane = r.name, r.skill, r.lane
       car.vmax = 40 * r.skill + 4
-      car.engine = audio.engine(0.55)
+      car.engine = audio.engine(0.55, true)
       self.cars[#self.cars + 1] = car
     end
   end

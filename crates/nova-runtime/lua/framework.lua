@@ -943,6 +943,46 @@ local function rect_of(a, b, c, d)
   return a, b, c, d
 end
 
+--- A panel or button that stretches without stretching its corners and edges (a nine-slice): `id` is the picture, `slice` how many pixels of
+--- it are border: a number, or { left, top, right, bottom } (also named l, t, r, b). The corners are drawn as they are (times `scale`), the
+--- edges stretch along one way and the middle both. `opts`: slice, scale (1), and the options of `nova.ui.sprite` (`color` tints it).
+function ui.panel(id, x, y, w, h, opts)
+  opts = opts or {}
+  local iw, ih = nova.image_size(id)
+  local sl = opts.slice or math.floor(math.min(iw, ih) / 3)
+  local l, t, r, b
+  if type(sl) == "table" then l, t, r, b = sl.left or sl.l or sl[1], sl.top or sl.t or sl[2], sl.right or sl.r or sl[3], sl.bottom or sl.b or sl[4]
+  else l, t, r, b = sl, sl, sl, sl end
+  if not (l and t and r and b) then error("nova.ui.panel: slice is a number or { left, top, right, bottom }", 2) end
+  if l + r > iw or t + b > ih then error("nova.ui.panel: the slice is wider than the picture '" .. id .. "'", 2) end
+  local k = opts.scale or 1
+  local cw, ch = iw - l - r, ih - t - b            -- the middle of the picture, in pixels
+  local mw, mh = math.max(0, w - (l + r) * k), math.max(0, h - (t + b) * k) -- the middle of the panel, in the game's units
+  if mw == 0 or mh == 0 then
+    -- smaller than its borders: squeeze them to fit
+    local fx, fy = w / ((l + r) * k), h / ((t + b) * k)
+    if mw == 0 then k = k * math.min(1, fx) end
+    if mh == 0 then k = k * math.min(1, fy) end
+  end
+  local o = { anchor = "topleft", src = {} }
+  for key, v in pairs(opts) do if key ~= "slice" and key ~= "scale" then o[key] = v end end
+  local xs = { x, x + l * k, x + w - r * k }
+  local ys = { y, y + t * k, y + h - b * k }
+  local ws = { l * k, w - (l + r) * k, r * k }
+  local hs = { t * k, h - (t + b) * k, b * k }
+  local sxs, sws = { 0, l, iw - r }, { l, cw, r }
+  local sys, shs = { 0, t, ih - b }, { t, ch, b }
+  for row = 1, 3 do
+    for col = 1, 3 do
+      if sws[col] > 0 and shs[row] > 0 and ws[col] > 0 and hs[row] > 0 then
+        o.src = { x = sxs[col], y = sys[row], w = sws[col], h = shs[row] }
+        o.w, o.h = ws[col], hs[row]
+        ui.sprite(id, xs[col], ys[row], o)
+      end
+    end
+  end
+end
+
 --- `count` rectangles of size w x h in a row, `gap` apart, centred across the view (or across `width`, or starting at `x`).
 --- `y` is the top (centred vertically when left out). Returns the list.
 function ui.row(o)

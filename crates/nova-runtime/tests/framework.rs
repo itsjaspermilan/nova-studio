@@ -2816,3 +2816,79 @@ fn a_room_and_a_reverb_send_are_queued_and_mistakes_are_explained() {
         assert!(e.contains(expected), "{script}: {e}");
     }
 }
+
+#[test]
+fn a_nine_slice_panel_keeps_its_corners_and_stretches_the_rest_and_image_size_and_src_work() {
+    let mut g = project(vec![
+        ("sprites/frame.png", png(20, 20)),
+        (
+            "main.lua",
+            lua("function update(dt)
+  local w, h = nova.image_size('frame')
+  nova.log(w .. 'x' .. h)
+  nova.ui.panel('frame', 10, 20, 100, 50, { slice = 5 })
+  nova.ui.sprite('frame', 200, 20, { anchor = 'topleft', src = { x = 5, y = 5, w = 10, h = 10 } })
+end"),
+        ),
+    ]);
+    g.update(1.0 / 60.0, 0.0, [960.0, 540.0], Actions::default(), false);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    assert_eq!(g.take_log(), ["20x20"]);
+    let input = g.frame_input(0);
+    let ui = input.sprites_front;
+    assert_eq!(ui.len(), 10, "nine pieces and the one with a src");
+    // the corners are 5 x 5 as they are; the pieces fill the panel exactly
+    let area: f32 = ui[..9].iter().map(|s| s.size[0] * s.size[1]).sum();
+    assert!(
+        (area - 5000.0).abs() < 1e-2,
+        "the pieces cover the 100 x 50 panel: {area}"
+    );
+    assert!(
+        ui[..9]
+            .iter()
+            .filter(|s| (s.size[0] - 5.0).abs() < 1e-4 && (s.size[1] - 5.0).abs() < 1e-4)
+            .count()
+            == 4
+    );
+    // the middle is the biggest piece: 90 x 40
+    assert!(
+        ui[..9]
+            .iter()
+            .any(|s| (s.size[0] - 90.0).abs() < 1e-3 && (s.size[1] - 40.0).abs() < 1e-3)
+    );
+    // the src piece shows 10 x 10 of the picture's pixels: its picture rectangle is smaller than the whole one
+    let whole = ui[0].uv;
+    let part = ui[9].uv;
+    let width = |uv: [f32; 4]| (uv[2] - uv[0]).abs().max((uv[3] - uv[1]).abs());
+    assert!(
+        width(part) > 0.0 && width(part) != width(whole),
+        "a part of the picture: {part:?} against {whole:?}"
+    );
+    // mistakes are explained
+    for (script, expected) in [
+        (
+            "nova.ui.sprite('frame', 0, 0, { src = { x = 15, y = 0, w = 10, h = 10 } })",
+            "is not inside the 20 x 20",
+        ),
+        (
+            "nova.ui.sprite('frame', 0, 0, { src = { x = 0, y = 0 } })",
+            "src must be",
+        ),
+        (
+            "nova.ui.panel('frame', 0, 0, 10, 10, { slice = 15 })",
+            "slice is wider than the picture",
+        ),
+        ("nova.image_size('nope')", "unknown image"),
+    ] {
+        let mut g = project(vec![
+            ("sprites/frame.png", png(20, 20)),
+            (
+                "main.lua",
+                lua(&format!("function update(dt) {script} end")),
+            ),
+        ]);
+        g.update(1.0 / 60.0, 0.0, [960.0, 540.0], Actions::default(), false);
+        let e = g.error.clone().unwrap_or_default();
+        assert!(e.contains(expected), "{script}: {e}");
+    }
+}

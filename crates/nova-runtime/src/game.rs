@@ -880,6 +880,39 @@ fn sprite_instance(
         }
         None => *rect,
     };
+    // `src = { x, y, w, h }`: draw only that part of the picture (pixels from its top left), as a nine-slice panel does
+    let cell = match &opts {
+        Some(o) => {
+            match o.get::<Option<Table>>("src")? {
+                Some(t) => {
+                    let part = |k: &str| -> mlua::Result<u32> {
+                        let v = t.get::<Option<f64>>(k)?.ok_or_else(|| {
+                        lua_err("src must be { x = 0, y = 0, w = 16, h = 16 }: pixels of the picture")
+                    })?;
+                        if !v.is_finite() || v < 0.0 {
+                            return Err(lua_err("src numbers must be 0 or more"));
+                        }
+                        Ok(v as u32)
+                    };
+                    let (sx, sy, sw, sh_) = (part("x")?, part("y")?, part("w")?, part("h")?);
+                    if sw == 0 || sh_ == 0 || sx + sw > cell.w || sy + sh_ > cell.h {
+                        return Err(lua_err(format!(
+                            "src ({sx}, {sy}, {sw} x {sh_}) is not inside the {} x {} picture '{id}'",
+                            cell.w, cell.h
+                        )));
+                    }
+                    assets::AtlasRect {
+                        x: cell.x + sx,
+                        y: cell.y + sy,
+                        w: sw,
+                        h: sh_,
+                    }
+                }
+                None => cell,
+            }
+        }
+        None => cell,
+    };
     let rect = &cell;
     let scale = number_option(opts, "scale")?.unwrap_or(1.0);
     let sx = number_option(opts, "sx")?.unwrap_or(scale);
@@ -1012,6 +1045,20 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
     let nova = lua.create_table()?;
 
     // --- drawing ---
+    // image_size(id) -> w, h: the size in pixels of a picture (one frame of a sprite sheet)
+    let s = shared.clone();
+    nova.set(
+        "image_size",
+        lua.create_function(move |_, id: String| {
+            let sh = s.borrow();
+            let (rect, sheet) = resolve_sprite(&sh.layout, &sh.sheets, &id)
+                .ok_or_else(|| lua_err(format!("unknown image '{id}'")))?;
+            Ok(match sheet {
+                Some(def) => (def.frame_width, def.frame_height),
+                None => (rect.w, rect.h),
+            })
+        })?,
+    )?;
     let s = shared.clone();
     nova.set(
         "sprite",

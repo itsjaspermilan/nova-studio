@@ -38,7 +38,7 @@
   "name": "nova.sprite",
   "kind": "function",
   "signature": "nova.sprite(id, x, y [, opts])",
-  "doc": "Draw an image or one frame of a sprite sheet, centred on x, y, in the world layer. Options: scale, sx, sy, w, h, rotation, color, anchor, frame.",
+  "doc": "Draw an image or one frame of a sprite sheet, centred on x, y, in the world layer. Options: scale, sx, sy, w, h, rotation, color, anchor, frame, and `src = { x, y, w, h }` (draw only that part of the picture, in pixels from its top left).",
   "group": "Drawing"
  },
  {
@@ -308,10 +308,24 @@
   "group": "Drawing"
  },
  {
+  "name": "nova.image_size",
+  "kind": "function",
+  "signature": "nova.image_size(id) -> w, h",
+  "doc": "The size in pixels of a picture in `sprites/` (one frame of it, for a sprite sheet): for laying out panels and buttons around the art you have.",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.ui.panel",
+  "kind": "function",
+  "signature": "nova.ui.panel(id, x, y, w, h [, { slice, scale, color }])",
+  "doc": "Draws a panel or button of any size from one picture without stretching its corners (a nine-slice): `slice` is how many pixels of the picture are border (a number, or { left, top, right, bottom }); the corners are drawn as they are (times `scale`), the edges stretch one way and the middle both. Ready-made panels, buttons and frames (Kenney's UI packs, for one) are nine-slices. Without `slice` a third of the picture is border. `color` tints it.",
+  "group": "Drawing"
+ },
+ {
   "name": "nova.ui.sprite",
   "kind": "function",
   "signature": "nova.ui.sprite(id, x, y [, opts])",
-  "doc": "Like nova.sprite, in the UI layer.",
+  "doc": "Like nova.sprite, in the UI layer. `src = { x, y, w, h }` draws only that part of the picture (pixels from its top left).",
   "group": "Drawing"
  },
  {

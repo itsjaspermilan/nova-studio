@@ -15,10 +15,7 @@ const sfx = {
   // Loops that the game plays all the time and changes while they play (nova.sound.set): the engine's pitch follows the revs,
   // the gravel and the tyre squeal follow how hard the car is on the loose or sliding. 0.5 s of a 100 Hz saw is exactly 50 cycles,
   // so the engine loops without a seam.
-  // (the first version was a bright 100 Hz saw, which buzzed: now a low, dull 70 Hz saw for the rumble and a soft triangle an octave
-  // up for the body, both filtered; 0.5 s of 70 Hz is 35 cycles and of 140 Hz 70, so each loops without a seam)
-  engine_loop: { params: { wave: "saw", freq: 70, attack: 0, sustain: 0.5, decay: 0, lowpass: 420, highpass: 40, volume: 0.6 } },
-  engine_body: { params: { wave: "triangle", freq: 140, attack: 0, sustain: 0.5, decay: 0, lowpass: 900, highpass: 70, volume: 0.35 } },
+  // (the engine is no longer synthesised: sounds/engine_1 to engine_6 are recorded loops, CC0, see licenses/opengameart-engine-loops.txt)
   gravel_loop: { params: { wave: "noise", freq: 900, attack: 0, sustain: 0.5, decay: 0, lowpass: 3200, highpass: 400, volume: 0.5 } },
   skid_loop: { params: { wave: "noise", freq: 1500, attack: 0, sustain: 0.5, decay: 0, lowpass: 9000, highpass: 1800, volume: 0.3 } },
   // a change of gear: a short chuff of air and a click
