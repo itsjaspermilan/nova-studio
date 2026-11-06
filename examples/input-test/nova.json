@@ -1,0 +1,13 @@
+{
+  "format": 1,
+  "name": "Input Test",
+  "version": "0.1.0",
+  "input": {
+    "south": ["pad:south"], "east": ["pad:east"], "west": ["pad:west"], "north": ["pad:north"],
+    "l1": ["pad:l1"], "r1": ["pad:r1"], "l2": ["pad:l2"], "r2": ["pad:r2"],
+    "start": ["pad:start"], "select": ["pad:select"], "thumb_l": ["pad:thumb_l"], "thumb_r": ["pad:thumb_r"],
+    "dpad_up": ["pad:dpad_up"], "dpad_down": ["pad:dpad_down"], "dpad_left": ["pad:dpad_left"], "dpad_right": ["pad:dpad_right"],
+    "left_x": ["axis:left_x"], "left_y": ["axis:left_y"], "right_x": ["axis:right_x"], "right_y": ["axis:right_y"],
+    "trigger_l": ["axis:l2"], "trigger_r": ["axis:r2"]
+  }
+}

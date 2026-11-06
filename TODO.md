@@ -6,7 +6,7 @@ unless it is ticked.
 
 ## Where things stand
 
-**Device, 2026-11-05: the Retroid Pocket 6 arrived and the stress benchmark has run on it** (`docs/performance.md`): all 13 phases hold 60 fps, the worst (1.15 M triangles, 200 skinned characters, 16 lights, shadows) takes 13.3 ms of GPU, Lua at most 2.7 ms. Not yet done on it: a 10-minute heat run, 120 Hz (the panel offers it), the controller in the games, lifecycle, the screen bars and cutout, audio.
+**Device, 2026-11-05: the Retroid Pocket 6 arrived and the stress benchmark has run on it** (`docs/performance.md`): all 13 phases hold 60 fps, the worst (1.15 M triangles, 200 skinned characters, 16 lights, shadows) takes 13.3 ms of GPU, Lua at most 2.7 ms. Not yet done on it: a 10-minute heat run, 120 Hz (the panel offers it), pause/resume and rotation, audio. **Done on it, 2026-11-05: the controller (all 16 buttons and 6 axes, see Known gaps) and the screen (full screen, no bars or band).**
 
 **Update 2026-11-05.** Since the paragraph below: probe games (Blockfield, Ember Swarm, Bunker Run, Pine Ridge Rally,
 Sky Garden) exercised the engine and are in `docs/probes.md`; the engine gained 3D collision (`nova.walls`, `nova.solid`),
@@ -47,15 +47,17 @@ another physical Android device) to settle; the emulator cannot.
   device speed; the Lua framework and collision grid are unmeasured on handheld CPUs).
 - [x] Controller axes on Android (2026-11-02, code only): the workspace uses `vendor/winit` (stock winit 0.30.13 plus one patch, see its
   `NOVA-PATCH.md`) which reports a controller's sticks, triggers and d-pad hat as `AxisMotion`; `input.rs` turns them into `axis:left_x`,
-  `axis:right_y`, `axis:l2`..., `pad:dpad_*` (tested with synthetic values; compiles for arm64). **Not verified with a real controller**:
-  the emulator cannot send controller motion events, so which axes the Retroid uses is unconfirmed (Z/RZ or RX/RY for the right stick,
-  LTRIGGER/RTRIGGER or BRAKE/GAS for triggers are both handled). [ ] Rumble, several pads and remapping are not implemented.
+  `axis:right_y`, `axis:l2`..., `pad:dpad_*` (tested with synthetic values; compiles for arm64). **Verified on the Retroid Pocket 6 (2026-11-05, `examples/input-test`)**:
+  its "Retroid Pocket Controller" sends the left stick as X/Y, the right stick as Z/RZ, the triggers as BRAKE/GAS (and also as the
+  L2/R2 buttons, keys 104 and 105, so a game bound to both `pad:l2` and `axis:l2` sees both) and the d-pad as HAT_X/HAT_Y; all 16
+  buttons and all 6 axes arrived as the right sources and each axis reached full deflection (the negative side was not recorded
+  separately). Not tried: Back and Home (the system takes them), a second pad. [ ] Rumble, several pads and remapping are not implemented.
 - [ ] Audio latency and underruns on real output (AAudio low-latency mode is not requested; only
   callback time was measured, about 0.1 ms on the emulator).
 - [ ] Android lifecycle: pause/resume, rotation, process death are coded (surface dropped and rebuilt)
   but not exercised; **GPU device loss is not handled at all**.
-- [ ] Immersive mode: the emulator profile reserves a 136 px system-bar strip; the real panel is
-  believed to be a plain 16:9 with no cutout. Verify, then hide the bars properly.
+- [x] Immersive mode on the real panel (2026-11-05): a screenshot from the Retroid (1920x1080 in landscape, from a 1080x1920 panel)
+  shows the game across the whole screen: no black band, no system bars. (The emulator's phone profile is what had the cutout and the bars.)
 - [ ] Verify the Retroid's facts: SoC, Android version (assumed 13), screen size/refresh, how its
   controller is presented, USB debugging.
 - [x] Keyboard and gamepad-button input on Android: `adb shell input keyevent` reached the game on the emulator (native key 96 started Crate Dash's jump)
