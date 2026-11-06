@@ -641,11 +641,11 @@ function race.define(config)
       local o = { size = 24, color = ui.color.gold, font = "comic" }
       local width = nova.ui.text_width(number, { size = 54, font = "comic" })
       nova.ui.text(30 + width + 2, 24, suffix, o)
-      ui.text(30 + width + 44, 36, "/ " .. #self.cars, 20, ui.color.dim)
+      ui.text(30 + width + 2 + nova.ui.text_width(suffix, o) + 10, 36, "/ " .. #self.cars, 20, ui.color.dim)
     end
     local lap = math.max(1, math.min(self.laps, self:lap_of(p)))
     ui.label(30, 66, "LAP")
-    ui.text(62, 62, lap .. " / " .. self.laps, 20, ui.color.white)
+    ui.text(30 + nova.ui.text_width("LAP", { size = 13, font = "future_narrow" }) + 12, 62, lap .. " / " .. self.laps, 20, ui.color.white)
 
     -- times, top right
     ui.panel(w - 212, 16, 196, 76, 205)

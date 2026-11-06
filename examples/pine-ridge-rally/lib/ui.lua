@@ -128,10 +128,11 @@ function ui.menu(items, selected, y, opts)
     nova.ui.panel(on and "ui/btn_yellow" or "ui/btn_grey", x, ry, width, row - 2, { slice = { 14, 14, 14, 22 }, scale = 0.75 })
     local label = type(item) == "table" and item[1] or item
     local color = ui.color.ink
-    nova.ui.text(x + 22, ry + 7, label, { size = 22, color = color, font = "rounded", shadow = false })
+    local ty = ry + math.floor((row - 2 - 22) / 2) - 3 -- (the label is centred in the button, above its depth)
+    nova.ui.text(x + 22, ty, label, { size = 22, color = color, font = "rounded", shadow = false })
     if type(item) == "table" and item[2] then
       local o = { size = 22, color = color, font = "rounded" }
-      nova.ui.text(x + width - 16 - nova.ui.text_width(item[2], o), ry + 7, item[2], o)
+      nova.ui.text(x + width - 16 - nova.ui.text_width(item[2], o), ty, item[2], o)
     end
   end
 end

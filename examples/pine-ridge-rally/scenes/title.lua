@@ -51,7 +51,7 @@ local MODES = {
 local GRIDS = {
   circuit = { cols = 2, card_w = 282, card_h = 176, gap = 14, x = 36, y = 100 },
   mode = { cols = 2, card_w = 282, card_h = 150, gap = 14, x = 36, y = 150 },
-  car = { cols = 3, card_w = 170, card_h = 88, gap = 8, x = 36, y = 144 },
+  car = { cols = 3, card_w = 170, card_h = 88, gap = 8, x = 36, y = 160 },
 }
 
 -- the cars of one class, as numbers into state.cars
@@ -295,8 +295,9 @@ function Title:draw_pick()
       if on and pick.tabs then nova.ui.panel("ui/panel_frame", x - 3, 55, tw + 6, 40, { slice = 18, scale = 0.5 }) end
     end
     local class = state.class_of({ class = pick.class })
-    ui.panel(grid.x - 6, 98, 560, 36, 215)
-    ui.text(grid.x + 6, 108, class.blurb .. " Your rivals are other " .. class.name .. " cars.", 14, ui.color.white, { width = 540 })
+    ui.panel(grid.x - 6, 98, 560, 52, 215)
+    ui.text(grid.x + 6, 106, class.blurb, 14, ui.color.white, { width = 540 })
+    ui.text(grid.x + 6, 127, "Your rivals are other " .. class.name .. " cars.", 14, ui.color.gold, { width = 540 })
   end
   local on = pick.tabs and 0 or self:picked(pick.kind)
   for i, item in ipairs(items) do
@@ -355,7 +356,8 @@ function Title:draw_ui()
       for k, icon in ipairs(row[3] or {}) do ui.pad(icon, w / 2 - 90 + (k - 1) * 32, 120 + (i - 1) * 36, 30) end
       ui.text(w / 2 - 14, 124 + (i - 1) * 36, row[2], 17, ui.color.white)
     end
-    ui.center("Finish all the laps ahead of your rivals. The grass slows you down; the handbrake lets the back out.", 405, 14, ui.color.dim, { cx = w / 2 })
+    ui.center("Finish all the laps ahead of your rivals.", 404, 16, ui.color.white, { cx = w / 2 })
+    ui.center("The grass slows you down; the handbrake lets the back out.", 424, 16, ui.color.white, { cx = w / 2 })
     ui.hints({ { "pad_a", "back" } })
   elseif screen == "options" then
     ui.center("OPTIONS", 60, 44, ui.color.gold, { font = "bold" })
