@@ -5,7 +5,7 @@ A 3D rally game for Nova: four circuits, three rivals, a chase camera, tyre wear
 
 **Modes:** a race against three rivals, or a time trial: alone on the circuit against a blue ghost of your best lap (kept in the save file).
 
-**Controls** (keyboard, gamepad and touch): steer with the arrows, A/D or the left stick; accelerate with Up, W or the
+**Controls** (keyboard and gamepad): steer with the arrows, A/D or the left stick; accelerate with Up, W or the
 right trigger; brake or reverse with Down, S or the left trigger; Space is the handbrake (slides); R puts you back on
 the road; C changes camera; the right stick points the camera: wherever the stick points (left, right, behind, any angle between) the camera goes round the car and stays there, easing back when let go (press the stick to look back; Q and E on a keyboard); Esc or P pauses. F9 lets the computer drive for you (for demos and tests).
 

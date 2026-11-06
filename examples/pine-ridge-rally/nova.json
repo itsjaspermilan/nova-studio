@@ -7,8 +7,7 @@
       "key:ArrowUp",
       "key:KeyW",
       "axis:r2",
-      "pad:south",
-      "touch:right"
+      "pad:south"
     ],
     "brake": [
       "key:ArrowDown",
