@@ -31,16 +31,17 @@ function ui.right(text, rx, y, size, color, opts)
   nova.ui.text(rx - tw, y, text, o)
 end
 
--- A panel: a soft shadow, a dark body, a thin light edge and an accent line along the top (`accent` is a colour, gold by default).
+-- A panel: Kenney's dark grey adventure panel (a nine-slice, so any size) with an accent line inside along the top (`accent` is a colour,
+-- gold by default).
 function ui.panel(x, y, w, h, alpha, accent)
-  nova.ui.rect(x + 3, y + 4, w, h, { 0, 0, 0, 70 })
-  nova.ui.rect(x, y, w, h, { 10, 16, 32, alpha or 205 })
-  nova.ui.rect(x, y, w, 1, { 255, 255, 255, 36 })
-  nova.ui.rect(x, y + h - 1, w, 1, { 255, 255, 255, 18 })
-  nova.ui.rect(x, y, 1, h, { 255, 255, 255, 24 })
-  nova.ui.rect(x + w - 1, y, 1, h, { 255, 255, 255, 24 })
+  nova.ui.panel("ui/panel_dark", x, y, w, h, { slice = 18, scale = 0.7, color = { 255, 255, 255, math.min(255, (alpha or 205) + 30) } })
   local a = accent or ui.color.gold
-  nova.ui.rect(x, y, w, 3, { a[1], a[2], a[3], 235 })
+  nova.ui.rect(x + 12, y + 7, w - 24, 2, { a[1], a[2], a[3], 235 })
+end
+
+-- A picture of a button on the handheld (pad_a, pad_x, pad_zr, pad_stick_l...), `size` units across, at (x, y) top left.
+function ui.pad(name, x, y, size)
+  nova.ui.sprite("ui/" .. name, x, y, { anchor = "topleft", w = size or 28, h = size or 28 })
 end
 
 -- A small dim label above or beside a value ("LAP", "TIME").
@@ -83,17 +84,11 @@ function ui.menu(items, selected, y, opts)
   for i, item in ipairs(items) do
     local ry = y + (i - 1) * row
     local on = i == selected
-    if on then
-      nova.ui.rect(x + 3, ry + 4, width, row - 6, { 0, 0, 0, 80 })
-      nova.ui.rect(x, ry, width, row - 6, { 250, 190, 40, 245 })
-      nova.ui.rect(x, ry, 6, row - 6, { 255, 255, 255, 230 })
-    else
-      nova.ui.rect(x, ry, width, row - 6, { 10, 16, 32, 205 })
-      nova.ui.rect(x, ry, 3, row - 6, { 255, 255, 255, 30 })
-    end
+    -- Kenney's buttons: yellow for the chosen one, grey for the rest (nine-slices: the corners and the depth at the bottom stay as drawn)
+    nova.ui.panel(on and "ui/btn_yellow" or "ui/btn_grey", x, ry, width, row - 2, { slice = { 14, 14, 14, 22 }, scale = 0.75 })
     local label = type(item) == "table" and item[1] or item
-    local color = on and ui.color.ink or ui.color.white
-    nova.ui.text(x + 22, ry + 7, label, { size = 22, color = color, font = "rounded", shadow = not on })
+    local color = ui.color.ink
+    nova.ui.text(x + 22, ry + 7, label, { size = 22, color = color, font = "rounded", shadow = false })
     if type(item) == "table" and item[2] then
       local o = { size = 22, color = color, font = "rounded" }
       nova.ui.text(x + width - 16 - nova.ui.text_width(item[2], o), ry + 7, item[2], o)

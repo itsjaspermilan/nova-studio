@@ -88,8 +88,17 @@ ratio). `nova.view()` returns the current width and height as whole numbers (rou
 | `nova.clear(r, g, b)` | world | Background colour, 0 to 255. |
 | `nova.ui.sprite(id, x, y [, opts])` | UI | Same as `nova.sprite`, at native resolution. |
 | `nova.ui.rect(x, y, w, h [, color])` | UI | Same as `nova.rect`, at native resolution. |
+| `nova.ui.panel(id, x, y, w, h [, opts])` | UI | A panel or button of any size from one picture, a nine-slice (below). |
+| `nova.image_size(id)` | any | The size in pixels of a picture in `sprites/`. |
 | `nova.ui.text(x, y, text [, opts])` | UI | Vector text, top-left `x, y` (see "Text and fonts"). |
 | `nova.ui.text_size(text [, opts])`, `nova.ui.text_width(text [, opts_or_scale])` | | Measure text in logical units. |
+
+**Ready-made UI art and nine-slices.** Kenney's UI packs (and most UI art) draw a panel or button as one small picture whose corners must stay
+the same size while the middle stretches. `nova.ui.panel("ui/btn_grey", x, y, w, h, { slice = { 14, 14, 14, 22 }, scale = 0.75 })` draws that picture at
+any size: `slice` is how many pixels of it are border (a number, or { left, top, right, bottom }), `scale` how big the border is drawn, and
+`color` tints it (and fades it, with an alpha). It is nine sprites, so it costs nine instances of the UI batch. `nova.ui.sprite(id, x, y, { src = { x, y, w, h } })`
+draws only that part of a picture (pixels from its top left), which a nine-slice uses and a sheet of icons can too. Pine Ridge Rally's menus, panels
+and pad button icons are Kenney's UI Pack, UI Pack - Adventure and Input Prompts (CC0; `licenses/kenney-ui.txt`).
 
 **Layers.** Draw order within a frame is: world sprites (behind), then 3D models (depth
 tested), then the UI layer. World sprites and models render into the world target

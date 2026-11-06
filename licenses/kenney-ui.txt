@@ -1,0 +1,11 @@
+Kenney assets used by examples/pine-ridge-rally's menus, HUD and interface sounds (all Creative Commons Zero, CC0 1.0; credit is welcome,
+not required). From the "Kenney Game Assets All-in-1 3.8.0" bundle (https://kenney.nl/assets), bought by the project's owner:
+
+- UI Pack (2.0): sprites/ui/btn_yellow.png, btn_grey.png, divider.png
+- UI Pack - Adventure: sprites/ui/panel_dark.png, panel_frame.png, bar_green.png
+- Input Prompts (Nintendo Switch set): sprites/ui/pad_*.png (the handheld labels its buttons like a Nintendo pad)
+- Interface Sounds: sounds/menu_move.ogg (tick_002), menu_accept.ogg (confirmation_002), menu_back.ogg (back_002), pause.ogg (open_001)
+- Impact Sounds: sounds/bump.ogg
+
+Each pack's own License.txt (CC0, http://creativecommons.org/publicdomain/zero/1.0/) is in its folder of the bundle. The files are copied
+by scripts/rally/kenney-ui.sh.

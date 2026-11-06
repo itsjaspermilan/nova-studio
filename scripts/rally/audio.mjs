@@ -2,10 +2,8 @@
 import { withServer } from "./mcp.mjs";
 
 // ---- sound effects: the sound editor's settings, by name --------------------------------------------------------------
+// (menu_move, menu_accept, menu_back, pause and bump are Kenney's interface and impact sounds now: scripts/rally/kenney-ui.sh)
 const sfx = {
-  menu_move: { preset: "blip", params: { freq: 620, volume: 0.35 } },
-  menu_accept: { preset: "coin", params: { freq: 523, arpSemitones: 7, arpTime: 0.06, volume: 0.45 } },
-  menu_back: { preset: "blip", params: { freq: 330, slide: -0.8, sustain: 0.05, decay: 0.12, volume: 0.4 } },
   beep: { params: { wave: "sine", freq: 440, attack: 0.005, sustain: 0.18, decay: 0.12, volume: 0.55 } },
   go: { params: { wave: "sine", freq: 880, attack: 0.005, sustain: 0.4, decay: 0.3, punch: 0.3, volume: 0.6 } },
   checkpoint: { params: { wave: "triangle", freq: 700, arpSemitones: 5, arpTime: 0.05, attack: 0, sustain: 0.06, decay: 0.16, volume: 0.45 } },
@@ -20,9 +18,7 @@ const sfx = {
   skid_loop: { params: { wave: "noise", freq: 1500, attack: 0, sustain: 0.5, decay: 0, lowpass: 9000, highpass: 1800, volume: 0.3 } },
   // a change of gear: a short chuff of air and a click
   shift: { params: { wave: "noise", freq: 700, attack: 0, sustain: 0.015, decay: 0.07, punch: 0.5, lowpass: 3500, highpass: 500, volume: 0.45 } },
-  bump: { params: { wave: "noise", freq: 200, slide: -1.2, attack: 0, sustain: 0.03, decay: 0.28, punch: 0.6, lowpass: 900, volume: 0.7 } },
   whoosh: { params: { wave: "noise", freq: 1200, attack: 0.05, sustain: 0.05, decay: 0.3, lowpass: 3000, highpass: 600, volume: 0.25 } },
-  pause: { preset: "blip", params: { freq: 440, arpSemitones: -5, arpTime: 0.05, volume: 0.4 } },
 };
 
 // ---- music -----------------------------------------------------------------------------------------------------------

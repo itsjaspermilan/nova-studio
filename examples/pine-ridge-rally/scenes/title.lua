@@ -9,15 +9,16 @@ local backdrop = require("lib.backdrop")
 local Title = nova.scene {}
 
 local MENU = { "Race", "How to play", "Options" }
+-- (the pictures are the handheld's buttons, as a Nintendo-style pad labels them)
 local CONTROLS = {
-  { "Steer", "Left / Right  ·  A / D  ·  left stick" },
-  { "Accelerate", "Up  ·  W  ·  right trigger  ·  A button" },
-  { "Brake / reverse", "Down  ·  S  ·  left trigger  ·  X button" },
-  { "Handbrake (slides)", "Space  ·  B button  ·  right bumper" },
-  { "Back on the road", "R  ·  Y button" },
-  { "Change camera", "C  ·  left bumper" },
-  { "Look around", "right stick (press: look back)  ·  Q / E" },
-  { "Pause", "Esc  ·  P  ·  Start" },
+  { "Steer", "Left / Right  ·  A / D", { "pad_stick_l" } },
+  { "Accelerate", "Up  ·  W", { "pad_zr", "pad_a" } },
+  { "Brake / reverse", "Down  ·  S", { "pad_zl", "pad_x" } },
+  { "Handbrake (slides)", "Space", { "pad_b", "pad_r" } },
+  { "Back on the road", "R", { "pad_y" } },
+  { "Change camera", "C", { "pad_l" } },
+  { "Look around", "Q / E  (press the stick: look back)", { "pad_stick_r" } },
+  { "Pause", "Esc  ·  P", { "pad_plus" } },
 }
 
 function Title:enter(screen)
@@ -159,7 +160,8 @@ function Title:draw_ui()
     ui.panel(w / 2 - 330, 110, 660, 340, 200)
     for i, row in ipairs(CONTROLS) do
       ui.text(w / 2 - 306, 124 + (i - 1) * 36, row[1], 20, ui.color.gold)
-      ui.text(w / 2 - 70, 124 + (i - 1) * 36, row[2], 18, ui.color.white)
+      for k, icon in ipairs(row[3] or {}) do ui.pad(icon, w / 2 - 90 + (k - 1) * 32, 120 + (i - 1) * 36, 30) end
+      ui.text(w / 2 - 14, 124 + (i - 1) * 36, row[2], 17, ui.color.white)
     end
     ui.center("Finish all the laps ahead of your rivals. The grass slows you down; the handbrake lets the back out.", 405, 14, ui.color.dim, { cx = w / 2 })
     ui.hint("press A")
