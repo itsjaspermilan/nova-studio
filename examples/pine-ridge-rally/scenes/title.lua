@@ -183,17 +183,10 @@ function Title:update(dt)
     local choice, action = ui.navigate(self.choice, 5)
     self.choice = choice
     local step = (action == "right" and 1) or (action == "left" and -1) or 0
-    if choice == 1 and step ~= 0 then
-      state.track = (state.track - 1 + step) % #state.tracks + 1
-      state.laps = state.current_track().laps
-      backdrop.light() -- the backdrop is dressed like the circuit that is chosen
-      audio.sfx("menu_move")
-    end
-    if choice == 2 and step ~= 0 then state.mode = state.mode == "race" and "trial" or "race"; audio.sfx("menu_move") end
-    if choice == 3 and step ~= 0 then state.car = (state.car - 1 + step) % #state.cars + 1; wear(); audio.sfx("menu_move") end
+    -- (Circuit, Mode and Car are chosen on their own pages: A opens one; only Laps is changed with left and right)
     if choice == 4 and step ~= 0 then state.laps = math.max(1, math.min(5, state.laps + step)); audio.sfx("menu_move") end
     if action == "back" then audio.sfx("menu_back"); self:go("menu")
-    elseif action == "accept" and choice <= 3 then
+    elseif (action == "accept" or action == "right") and choice <= 3 then
       audio.sfx("menu_accept")
       self:open_pick(({ "circuit", "mode", "car" })[choice])
     elseif action == "accept" and choice == 5 then
@@ -210,7 +203,7 @@ function Title:draw()
   -- on the menu and the chooser the menu is on the left and the car moves to the right (easing across when the screen changes)
   local dt = self.t - (self.last_t or self.t)
   self.last_t = self.t
-  local want = (self.screen == "menu" or self.screen == "select" or self.screen == "pick") and 2.6 or 0
+  local want = (self.screen == "menu" or self.screen == "select" or self.screen == "pick") and ((self.screen == "pick") and 3.4 or 2.6) or 0
   self.shift = (self.shift or 0) + (want - (self.shift or 0)) * math.min(1, dt * 5)
   backdrop.draw(self.t, "title", self.shift)
 end
@@ -316,9 +309,9 @@ function Title:draw_ui()
     local info = state.current_track()
     ui.center("CHOOSE YOUR RACE", 40, ui.fit("CHOOSE YOUR RACE", 36, 390), ui.color.gold, { font = "bold", cx = 240 })
     ui.menu({
-      { "Circuit", "< " .. info.name .. " >" },
-      { "Mode", "< " .. (state.mode == "race" and "Race" or "Time trial") .. " >" },
-      { "Car", "< " .. state.current_car().name .. " >" },
+      { "Circuit", info.name .. "  >" },
+      { "Mode", (state.mode == "race" and "Race" or "Time trial") .. "  >" },
+      { "Car", state.current_car().name .. "  >" },
       { "Laps", "< " .. state.laps .. " >" },
       state.mode == "race" and "START RACE" or "START TIME TRIAL",
     }, self.choice, 100, { width = 400, cx = 240 })
@@ -331,7 +324,7 @@ function Title:draw_ui()
     ui.text(180, 398, ui.time(best), 18, ui.color.gold, { font = "mono" })
     ui.label(56, 430, "BEST LAP")
     ui.text(180, 424, ui.time(lap), 18, ui.color.gold, { font = "mono" })
-    ui.hints({ { "pad_dpad", "choose and change" }, { "pad_a", "open / go" }, { "pad_b", "back" } })
+    ui.hints({ { "pad_dpad", "move" }, { "pad_a", "open / go" }, { "pad_b", "back" } })
   end
 end
 
