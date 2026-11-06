@@ -171,7 +171,7 @@ function Player:draw()
   self.anim:set("speed", speed)
   self.anim.speed = speed > 6 and speed / 6 or math.max(0.6, speed / 6) -- the run cycle follows the ground speed
   self.anim:update(1 / 60)
-  self.anim:draw(x, y, z, { ry = self.face })
+  self.anim:draw(x, y, z, { ry = self.face + math.pi }) -- (this model faces the other way round from the old one: +z is its back)
 end
 
 return Player
