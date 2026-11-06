@@ -82,11 +82,11 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     let offset = (within - clamp(within, -blend_region, blend_region)) * blit.scale + vec2<f32>(0.5, 0.5);
     var color = textureSample(source, source_sampler, (base + offset) / blit.tex_size);
     var rgb = color.rgb;
-    // speed blur: a short streak toward the middle of the picture (a little below its centre, where the car is), stronger near the
-    // edges and none in the middle
+    // speed blur: a short streak toward the middle of the picture, only on the left and right sides (by how far across the picture a
+    // pixel is, whatever its height), so that the road ahead and the car stay sharp
     if (blit.lens.y > 0.0) {
         let d = in.uv - vec2<f32>(0.5, 0.62);
-        let edge = smoothstep(0.1, 0.55, length(d * vec2<f32>(1.0, 1.4)));
+        let edge = smoothstep(0.24, 0.5, abs(d.x));
         var acc = rgb;
         for (var k = 1; k <= 6; k = k + 1) {
             acc = acc + textureSample(source, source_sampler, in.uv - d * (f32(k) / 6.0) * blit.lens.y * 0.2 * edge).rgb;

@@ -1797,7 +1797,7 @@ end"
     assert_eq!(before, after, "the same picture from the new device");
 }
 
-/// `nova.look { blur }`: streaks at the edges, a sharp middle, the same overall brightness. (Skipped without a GPU.)
+/// `nova.look { blur }`: streaks at the left and right edges, a sharp middle (also above and below it), the same overall brightness. (Skipped without a GPU.)
 #[test]
 fn speed_blur_smears_the_edges_and_leaves_the_middle() {
     let scene = |look: &str| {
@@ -1831,6 +1831,12 @@ end"
         differ(145, 175, 100..125) < 20,
         "the middle is not: {}",
         differ(145, 175, 100..125)
+    );
+    // the whole middle band, top to bottom (the road ahead), is untouched
+    assert_eq!(
+        differ(95, 225, 0..180),
+        0,
+        "nothing in the middle band is blurred"
     );
     assert!((mean_brightness(&plain) - mean_brightness(&blurred)).abs() < 3.0);
     let mut g = game("function update(dt) nova.look { blur = 2 } end", vec![]);
