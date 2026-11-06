@@ -3,8 +3,10 @@
 //! It is plain data in, samples out: no audio device, no allocation while rendering (voices
 //! live in a vector reserved up front), so it can be driven from a real-time audio callback
 //! and tested anywhere. Scripts queue [`Command`]s; the host forwards them to the mixer on the
-//! audio thread. Samples are 16-bit stereo, played with linear interpolation, so any source
-//! rate plays at any device rate and `pitch` is just a faster or slower step.
+//! audio thread. Samples are 16-bit stereo, played with four-point cubic (Catmull-Rom) interpolation, so any source
+//! rate plays at any device rate and `pitch` is just a faster or slower step. (Cubic keeps the highs that linear
+//! interpolation dulls and the images it adds when a sound is slowed down; a sound sped up past about 1.5 times can still
+//! alias, since there is no low-pass before the step.) Streamed music is still linear: it plays at its own rate.
 
 use std::sync::Arc;
 
@@ -210,6 +212,15 @@ fn render_stream(voice: &mut Voice, volume: f32, out: &mut [f32]) -> u64 {
         }
     }
     underruns
+}
+
+/// Catmull-Rom interpolation between `p1` and `p2` (`t` 0 to 1), with `p0` and `p3` the frames either side. It passes through
+/// the frames themselves and reproduces a straight line exactly.
+fn cubic(p0: f32, p1: f32, p2: f32, p3: f32, t: f32) -> f32 {
+    0.5 * (2.0 * p1
+        + (p2 - p0) * t
+        + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t * t
+        + (3.0 * p1 - p0 - 3.0 * p2 + p3) * t * t * t)
 }
 
 impl Mixer {
@@ -471,16 +482,31 @@ impl Mixer {
                 }
                 let i = voice.pos as usize;
                 let t = (voice.pos - i as f64) as f32;
-                let a = data[i];
-                let b = if i < last {
-                    data[i + 1]
-                } else if voice.looping {
-                    data[0]
-                } else {
-                    a
+                // the four frames round the playhead: a looping sound wraps; a one-shot carries its first and last slopes on
+                // (so that a ramp stays straight to its ends)
+                let len = data.len() as isize;
+                let at = |k: isize| -> [f32; 2] {
+                    let f = |j: usize| [data[j][0] as f32, data[j][1] as f32];
+                    if voice.looping {
+                        f(k.rem_euclid(len) as usize)
+                    } else if k < 0 && len > 1 {
+                        let (a, b) = (f(0), f(1));
+                        [2.0 * a[0] - b[0], 2.0 * a[1] - b[1]]
+                    } else if k > last as isize && len > 1 {
+                        let (a, b) = (f(last), f(last - 1));
+                        [2.0 * a[0] - b[0], 2.0 * a[1] - b[1]]
+                    } else {
+                        f(k.clamp(0, last as isize) as usize)
+                    }
                 };
-                let l = a[0] as f32 + (b[0] as f32 - a[0] as f32) * t;
-                let r = a[1] as f32 + (b[1] as f32 - a[1] as f32) * t;
+                let (p0, p1, p2, p3) = (
+                    at(i as isize - 1),
+                    at(i as isize),
+                    at(i as isize + 1),
+                    at(i as isize + 2),
+                );
+                let l = cubic(p0[0], p1[0], p2[0], p3[0], t);
+                let r = cubic(p0[1], p1[1], p2[1], p3[1], t);
                 let g = volume * voice.fade / 32768.0;
                 out[frame * 2] += l * g * voice.gain_l;
                 out[frame * 2 + 1] += r * g * voice.gain_r;
@@ -1098,5 +1124,71 @@ mod tests {
             0,
             "a stream with no audio ends instead of counting underruns forever"
         );
+    }
+}
+
+#[cfg(test)]
+mod interpolation_tests {
+    use super::*;
+
+    #[test]
+    fn cubic_passes_through_the_frames_and_keeps_a_straight_line_straight() {
+        assert_eq!(cubic(3.0, 5.0, 9.0, 4.0, 0.0), 5.0);
+        assert_eq!(cubic(3.0, 5.0, 9.0, 4.0, 1.0), 9.0);
+        // a line: 0, 10, 20, 30
+        assert!((cubic(0.0, 10.0, 20.0, 30.0, 0.3) - 13.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn a_sine_slowed_down_is_closer_to_the_sine_than_linear_interpolation() {
+        // a 4 kHz sine at 16 kHz (four frames to a cycle), played at half speed: the in-between frames lie on the same sine
+        let rate = 16000;
+        let freq = 3000.0f32; // 5.3 frames a cycle: linear interpolation cuts the peaks
+        let frames: Vec<[i16; 2]> = (0..400)
+            .map(|i| {
+                let v = (2.0 * std::f32::consts::PI * freq * i as f32 / rate as f32).sin();
+                [(v * 20000.0) as i16; 2]
+            })
+            .collect();
+        let sample = Arc::new(Sample {
+            rate,
+            frames: frames.clone(),
+        });
+        let mut m = Mixer::new(rate);
+        m.apply(Command::Play(Box::new(Play {
+            id: 1,
+            stream: None,
+            sample,
+            volume: 1.0,
+            pan: -1.0,
+            pitch: 0.5,
+            looping: false,
+            music: false,
+            fade_in: 0.0,
+            limit: 0,
+        })));
+        let mut out = vec![0.0f32; 2 * 200];
+        m.render(&mut out);
+        // pan -1 is all left: gain 1. Output frame k reads position k / 2.
+        let (mut cubic_error, mut linear_error) = (0.0f32, 0.0f32);
+        for k in 10..190 {
+            let pos = k as f32 / 2.0;
+            let truth = (2.0 * std::f32::consts::PI * freq * pos / rate as f32).sin();
+            let got = out[2 * k] * 32768.0 / 20000.0 / soft_clip_gain();
+            cubic_error += (got - truth).powi(2);
+            let i = pos as usize;
+            let t = pos - i as f32;
+            let lin = (frames[i][0] as f32 * (1.0 - t) + frames[i + 1][0] as f32 * t) / 20000.0;
+            linear_error += (lin - truth).powi(2);
+        }
+        assert!(
+            cubic_error < linear_error * 0.5,
+            "cubic {cubic_error} against linear {linear_error}"
+        );
+    }
+
+    /// The mixer's soft clip leaves a signal below about 0.6 almost alone; this is its gain at 0.6 of full scale.
+    fn soft_clip_gain() -> f32 {
+        soft_clip(0.6) / 0.6
     }
 }
