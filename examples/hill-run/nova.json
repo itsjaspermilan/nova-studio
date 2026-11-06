@@ -3,8 +3,8 @@
   "name": "Hill Run",
   "version": "0.1.0",
   "input": {
-    "jump": ["key:Space", "pad:south"],
-    "sprint": ["key:ShiftLeft", "pad:west"],
+    "jump": ["key:Space", "pad:east"],
+    "sprint": ["key:ShiftLeft", "pad:north"],
     "pause": ["key:Escape", "pad:start"],
     "stats": ["key:F3", "pad:select"],
     "autoplay": ["key:F9"],
