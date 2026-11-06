@@ -34,7 +34,7 @@ impl Pacer {
             }
         }
         self.frames += 1;
-        if self.recent.len() >= 12 && (self.period.is_none() || self.frames % RECOMPUTE == 0) {
+        if self.recent.len() >= 12 && (self.period.is_none() || self.frames.is_multiple_of(RECOMPUTE)) {
             let mut sorted = self.recent.clone();
             sorted.sort_by(f32::total_cmp);
             let median = sorted[sorted.len() / 2];
