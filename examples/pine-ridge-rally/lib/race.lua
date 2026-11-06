@@ -96,6 +96,13 @@ function race.define(config)
     nova.log("rally: roadside " .. roadside.build(config.horizon) .. " props")
     local look = looks[state.current_track().id]
     state.apply_look(look)
+    -- the circuit's look with a speed blur added each frame (see Race:update_camera)
+    self.look_now = nil
+    if state.effects and look.look then
+      self.look_now = {}
+      for k, v in pairs(look.look) do self.look_now[k] = v end
+      self.blur_now = 0
+    end
     foliage.start(look, state.effects and 1 or 0)
     self.length = track.length
     self.phase = "countdown"
@@ -497,6 +504,13 @@ function race.define(config)
     orbit.yaw = orbit.yaw + track.wrap(want_yaw - orbit.yaw) * math.min(1, dt * (want_yaw ~= 0 and 8 or 4))
     -- a little higher when looking behind, to see over the car
     orbit.lift = orbit.lift + ((math.abs(want_yaw) > 2.5 and 0.3 or 0) - orbit.lift) * math.min(1, dt * 5)
+    -- speed blur: the picture streaks toward its edges as the speed climbs past 30 m/s (and not while looking round)
+    if self.look_now then
+      local want = math.max(0, math.min(1, (speed - 30) / 16)) * 0.55 * (1 - math.min(1, math.abs(orbit.yaw)))
+      self.blur_now = self.blur_now + (want - self.blur_now) * math.min(1, dt * 3)
+      self.look_now.blur = self.blur_now
+      nova.look(self.look_now)
+    end
     local sh, ch = math.sin(cam.heading), math.cos(cam.heading)
     local oy = math.abs(orbit.yaw)
     if self.view_mode == 3 then          -- bonnet: the stick turns the head

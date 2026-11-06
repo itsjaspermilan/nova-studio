@@ -11,7 +11,7 @@ struct Blit {
     outline_color: vec4<f32>, // rgb linear, w: width in world texels
     depth: vec4<f32>,         // x: near, y: far of the camera, z: fog starts, w: fog is complete (0: no fog)
     glow: vec4<f32>,          // x: bloom strength, y: ambient occlusion strength, z: its reach in metres, w: bloom threshold
-    lens: vec4<f32>,          // x: pixels of the world picture one metre spans at one metre away
+    lens: vec4<f32>,          // x: pixels of the world picture one metre spans at one metre away, y: speed blur (0: none)
 };
 @group(0) @binding(0) var<uniform> blit: Blit;
 @group(1) @binding(0) var source: texture_2d<f32>;
@@ -82,6 +82,17 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     let offset = (within - clamp(within, -blend_region, blend_region)) * blit.scale + vec2<f32>(0.5, 0.5);
     var color = textureSample(source, source_sampler, (base + offset) / blit.tex_size);
     var rgb = color.rgb;
+    // speed blur: a short streak toward the middle of the picture (a little below its centre, where the car is), stronger near the
+    // edges and none in the middle
+    if (blit.lens.y > 0.0) {
+        let d = in.uv - vec2<f32>(0.5, 0.62);
+        let edge = smoothstep(0.1, 0.55, length(d * vec2<f32>(1.0, 1.4)));
+        var acc = rgb;
+        for (var k = 1; k <= 6; k = k + 1) {
+            acc = acc + textureSample(source, source_sampler, in.uv - d * (f32(k) / 6.0) * blit.lens.y * 0.2 * edge).rgb;
+        }
+        rgb = acc / 7.0;
+    }
     // an outline where the distance to the surface jumps between this texel and its neighbours (relative to how far it is,
     // so that a far hill does not get a line for every ripple), fading with the fog
     if (blit.grade.w > 0.0) {

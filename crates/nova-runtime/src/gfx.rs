@@ -164,6 +164,8 @@ pub struct Look {
     /// How dark creases and the feet of things get, 0 to 1 (0 for none), and how far in metres it reaches.
     pub ao: f32,
     pub ao_radius: f32,
+    /// Speed blur: streaks toward the edges of the picture, as if rushing past (0 for none, 1 is a lot); the middle stays sharp.
+    pub blur: f32,
 }
 
 impl Default for Look {
@@ -178,6 +180,7 @@ impl Default for Look {
             bloom_threshold: 0.7,
             ao: 0.0,
             ao_radius: 0.8,
+            blur: 0.0,
         }
     }
 }
@@ -191,6 +194,7 @@ impl Look {
             || self.vignette > 0.0
             || self.bloom > 0.0
             || self.ao > 0.0
+            || self.blur > 0.0
     }
 
     /// Whether the finishing pass reads the depth buffer (so that it is kept).
@@ -2034,7 +2038,7 @@ impl Gfx {
                 look.bloom_threshold.clamp(0.0, 1.0),
                 // pixels of the world picture that one metre spans at one metre away
                 world_size.1 as f32 / (2.0 * (input.camera.fov_y_degrees.to_radians() * 0.5).tan()),
-                0.0,
+                look.blur.clamp(0.0, 1.0),
                 0.0,
                 0.0,
             ];

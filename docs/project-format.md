@@ -167,8 +167,9 @@ in the output, not a value above 1; there is no HDR). `ao` is ambient occlusion 
 `ao_radius` metres wide it looks at pairs of pixels either side and darkens only where both are nearer than the centre, which is
 a crease or the foot of a wall (a slope or a flat floor does not darken). It cannot see what is hidden behind things, it fades with the
 fog, and thin things such as grass blades make it grainy, so use a small `ao` (0.4 to 0.7) in a grassy scene or leave it for rooms and
-towns. On the Retroid, bloom costs about 1.3 ms and ao about 0.85 ms of GPU at 960 by 540 (`docs/performance.md`). Not done:
-depth of field, a tone-mapping curve beyond the exposure shoulder, HDR bloom, and lights are not banded (only the sun's).
+towns. On the Retroid, bloom costs about 1.3 ms and ao about 0.85 ms of GPU at 960 by 540 (`docs/performance.md`). `blur` (0 to 1) is a speed blur: the picture streaks toward its edges, as if rushing past, and the middle (a little below the centre, where a
+chase-camera car is) stays sharp; set it each frame from the speed (the rally does, from 30 to 46 m/s). It is six more reads of the picture a pixel.
+Not done: depth of field, a tone-mapping curve beyond the exposure shoulder, HDR bloom, and lights are not banded (only the sun's).
 
 **A 3D game on the ground.** Collisions, distances and neighbour queries use `x, y` by default, which is right for a flat game
 and wrong for a 3D one, where `y` is height. Say once (in `main.lua`) which plane the ground is:

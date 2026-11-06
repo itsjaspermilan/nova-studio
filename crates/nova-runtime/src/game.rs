@@ -1174,7 +1174,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             Ok(())
         })?,
     )?;
-    // look { toon = 3, outline = { color = {r, g, b}, strength = 0.8, width = 1 }, exposure = 1, saturation = 1, vignette = 0, bloom = 0, ao = 0 }
+    // look { toon = 3, outline = { color = {r, g, b}, strength = 0.8, width = 1 }, exposure = 1, saturation = 1, vignette = 0, bloom = 0, ao = 0, blur = 0 }
     let s = shared.clone();
     nova.set(
         "look",
@@ -1220,6 +1220,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 bloom_threshold: number("bloom_threshold", 0.7, 0.0, 1.0)? as f32,
                 ao: number("ao", 0.0, 0.0, 1.0)? as f32,
                 ao_radius: number("ao_radius", 0.8, 0.05, 8.0)? as f32,
+                blur: number("blur", 0.0, 0.0, 1.0)? as f32,
             };
             Ok(())
         })?,

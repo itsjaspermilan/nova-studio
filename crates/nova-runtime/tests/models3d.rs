@@ -1796,3 +1796,49 @@ end"
     let after = gfx.capture((320, 180), &g.frame_input(0));
     assert_eq!(before, after, "the same picture from the new device");
 }
+
+/// `nova.look { blur }`: streaks at the edges, a sharp middle, the same overall brightness. (Skipped without a GPU.)
+#[test]
+fn speed_blur_smears_the_edges_and_leaves_the_middle() {
+    let scene = |look: &str| {
+        format!(
+            "function update(dt)
+  nova.camera(0, 6, 9, 0, 1, 0, 60)
+  nova.sky {{ top = {{150, 200, 255}}, horizon = {{220, 235, 255}} }}
+  nova.model('car', 0, 0, 0, {{ scale = 3 }})
+  nova.model('car', -7.5, 0, 0, {{ scale = 3 }})
+  nova.model('car', 7.5, 0, 0, {{ scale = 3 }})
+  {look}
+end"
+        )
+    };
+    let Some(plain) = frame_pixels(&scene("")) else {
+        return;
+    };
+    let blurred = frame_pixels(&scene("nova.look { blur = 1 }")).unwrap();
+    let differ = |from: usize, to: usize, rows: std::ops::Range<usize>| {
+        rows.flat_map(|y| (from..to).map(move |x| (x, y)))
+            .filter(|&(x, y)| {
+                let (a, b) = (pixel(&plain, x, y), pixel(&blurred, x, y));
+                (a[0] as i32 - b[0] as i32).abs() > 6
+            })
+            .count()
+    };
+    assert!(differ(0, 60, 0..180) > 150, "the left edge is smeared");
+    assert!(differ(260, 320, 0..180) > 150, "and the right");
+    // the middle of the picture, where the car is, is sharp
+    assert!(
+        differ(145, 175, 100..125) < 20,
+        "the middle is not: {}",
+        differ(145, 175, 100..125)
+    );
+    assert!((mean_brightness(&plain) - mean_brightness(&blurred)).abs() < 3.0);
+    let mut g = game("function update(dt) nova.look { blur = 2 } end", vec![]);
+    frame(&mut g);
+    assert!(
+        g.error
+            .clone()
+            .unwrap_or_default()
+            .contains("blur must be from")
+    );
+}
