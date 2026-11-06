@@ -10,10 +10,11 @@ state.tracks = {
 state.cars = {
   -- `oversteer`: how readily the rear lets go under power in a bend (0 never, 1 a lot); the sedan and the hatchback are the
   -- drifters, the open-wheel cars hold the road
-  { id = "car", name = "Redline", oversteer = 0.35 },
-  { id = "car_blue", name = "Blue Streak", oversteer = 0.6 },
-  { id = "car_green", name = "Green Machine", oversteer = 0.7 },
-  { id = "car_yellow", name = "Sunburst", oversteer = 0.45 },
+  -- `wheel`: the wheels' radius in metres (the models' wheels are 0.6, 0.78, 0.74 and 0.62 m across), for how fast they spin
+  { id = "car", name = "Redline", oversteer = 0.35, wheel = 0.30 },
+  { id = "car_blue", name = "Blue Streak", oversteer = 0.6, wheel = 0.39 },
+  { id = "car_green", name = "Green Machine", oversteer = 0.7, wheel = 0.37 },
+  { id = "car_yellow", name = "Sunburst", oversteer = 0.45, wheel = 0.31 },
 }
 
 state.track = 1       -- index into state.tracks
@@ -24,6 +25,7 @@ state.music_volume = 0.7
 state.sfx_volume = 0.8
 state.shadows = true   -- the sun's shadows (a little slower on a handheld)
 state.vibration = true -- shake the gamepad when the car hits something
+state.effects = true   -- bloom, ambient occlusion, grass and wind (a little slower on a handheld)
 state.result = nil    -- filled in when a race ends
 
 function state.load()
@@ -32,14 +34,21 @@ function state.load()
   state.sfx_volume = saved.sfx or state.sfx_volume
   if saved.shadows ~= nil then state.shadows = saved.shadows end
   if saved.vibration ~= nil then state.vibration = saved.vibration end
+  if saved.effects ~= nil then state.effects = saved.effects end
   state.track = nova.save.get("last_track", 1)
   state.car = nova.save.get("last_car", 1)
   state.mode = nova.save.get("last_mode", "race")
   state.apply_volumes()
 end
 
+-- The picture's finish for a circuit's look (see lib/looks.lua): bloom and ambient occlusion, and the wind; plain when effects are off.
+function state.apply_look(look)
+  if state.effects and look.look then nova.look(look.look) else nova.look() end
+  if state.effects and look.wind then nova.wind(look.wind) else nova.wind() end
+end
+
 function state.save_options()
-  nova.save.set("options", { music = state.music_volume, sfx = state.sfx_volume, shadows = state.shadows, vibration = state.vibration })
+  nova.save.set("options", { music = state.music_volume, sfx = state.sfx_volume, shadows = state.shadows, vibration = state.vibration, effects = state.effects })
   nova.save.set("last_track", state.track)
   nova.save.set("last_car", state.car)
   nova.save.set("last_mode", state.mode)

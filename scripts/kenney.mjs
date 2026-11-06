@@ -15,6 +15,8 @@
 //                           that they keep the kit's sizes relative to each other; --fit sizes each one on its own)
 //   --wheel-diameter <m>    (before --pivot-wheels) shrink or grow each wheel about its middle to this diameter, keeping its bottom
 //                           on the ground (the kit's wheels are large for a car of its length)
+//   --wheels-to-body        (after --pivot-wheels) move the wheels sideways so that their outer faces are level with the body's sides
+//                           (the kit's hatchback and sedan have their wheels tucked in)
 //   --stretch x=<m>,z=<m>   scale the footprint to exactly this size, each way on its own (for flat, axis-aligned pieces such as a
 //                           road slab: the normals are not touched)
 //   --material <name>=r,g,b set a material's colour (0..1, linear): a kit's road piece in dirt or snow
@@ -40,6 +42,7 @@ for (let i = 0; i < args.length; i++) {
   else if (a === "--turn") opt.turn = Number(args[++i]);
   else if (a === "--scale") opt.scale = Number(args[++i]);
   else if (a === "--wheel-diameter") opt.wheelDiameter = Number(args[++i]);
+  else if (a === "--wheels-to-body") opt.wheelsToBody = true;
   else if (a === "--stretch") opt.stretch = Object.fromEntries(args[++i].split(",").map((kv) => kv.split("=")).map(([k, v]) => [k, Number(v)]));
   else if (a === "--material") { const [k, v] = args[++i].split("="); (opt.materials ??= {})[k] = v.split(",").map(Number); }
   else if (a === "--centre") opt.centre = true;
@@ -223,6 +226,26 @@ function pivotWheels(json) {
   }
 }
 
+/** Moves each wheel (nodes named wheel_*, parents of the mesh nodes) out so that its outer face is level with the widest body part. */
+function wheelsToBody(json) {
+  const roots = json.scenes[0].nodes.map((i) => json.nodes[i]);
+  let half = 0;
+  for (const n of roots) {
+    if (n.mesh == null) continue;
+    const a = json.accessors[json.meshes[n.mesh].primitives[0].attributes.POSITION];
+    const t = n.translation || [0, 0, 0];
+    half = Math.max(half, Math.abs(a.min[0] + t[0]), Math.abs(a.max[0] + t[0]));
+  }
+  for (const n of roots) {
+    if (n.mesh != null || !/^wheel/i.test(n.name) || !n.children?.length) continue;
+    const child = json.nodes[n.children[0]];
+    const a = json.accessors[json.meshes[child.mesh].primitives[0].attributes.POSITION];
+    const wheelHalf = (a.max[0] - a.min[0]) / 2;
+    const side = Math.sign(n.translation[0]) || 1;
+    n.translation[0] = side * (half - wheelHalf);
+  }
+}
+
 fs.mkdirSync(out, { recursive: true });
 for (const name of names) {
   const file = find(name);
@@ -246,6 +269,7 @@ for (const name of names) {
     if (c) m.pbrMetallicRoughness = { ...m.pbrMetallicRoughness, baseColorFactor: [c[0], c[1], c[2], 1] };
   }
   if (opt.pivotWheels) pivotWheels(json);
+  if (opt.wheelsToBody) wheelsToBody(json);
   if (opt.centreAxles) centreAxles(json);
   if (opt.turn) turn(json, opt.turn);
   if (opt.centre) centre(json);

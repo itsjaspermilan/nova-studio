@@ -1688,3 +1688,67 @@ end"
         assert!(error.contains(expect), "{script}: {error}");
     }
 }
+
+/// A spot light lights a cone and not what is behind or beside it. (Skipped without a GPU.)
+#[test]
+fn a_spot_light_lights_a_cone_and_a_point_light_lights_both_sides() {
+    let scene = |light: &str| {
+        format!(
+            "function update(dt)
+  nova.camera(0, 9, 16, 0, 1, 0, 70)
+  nova.sky {{ top = {{0, 0, 0}}, horizon = {{0, 0, 0}} }}
+  nova.light {{ dir = {{0, -1, 0}}, color = {{0, 0, 0}}, ambient = {{0, 0, 0}} }}
+  nova.model('car', -6, 0, 0, {{ scale = 3 }})
+  nova.model('car', 6, 0, 0, {{ scale = 3 }})
+  {light}
+end"
+        )
+    };
+    let half = |p: &[u8], right: bool| {
+        let (from, to) = if right { (160, 240) } else { (80, 160) };
+        let mut sum = 0.0;
+        for y in 0..180 {
+            for x in from..to {
+                sum += pixel(p, x, y)[0] as f64;
+            }
+        }
+        sum / (80.0 * 180.0)
+    };
+    let Some(spot) = frame_pixels(&scene(
+        "nova.point_light(0, 3, 0, { radius = 30, dir = {-1, 0, 0}, angle = 50 })",
+    )) else {
+        return;
+    };
+    let omni = frame_pixels(&scene("nova.point_light(0, 3, 0, { radius = 30 })")).unwrap();
+    assert!(
+        half(&spot, false) > half(&spot, true) * 4.0 + 0.3,
+        "the cone lit the car it points at and not the other: {} against {}",
+        half(&spot, false),
+        half(&spot, true)
+    );
+    assert!(
+        (half(&omni, false) - half(&omni, true)).abs() < half(&omni, false) * 0.35 + 0.3,
+        "a point light lights both: {} and {}",
+        half(&omni, false),
+        half(&omni, true)
+    );
+    for (script, expect) in [
+        (
+            "nova.point_light(0, 3, 0, { dir = {0, 0, 0} })",
+            "must not be all zeros",
+        ),
+        (
+            "nova.point_light(0, 3, 0, { dir = {1, 0} })",
+            "must be {dx, dy, dz}",
+        ),
+        (
+            "nova.point_light(0, 3, 0, { dir = {1, 0, 0}, angle = 400 })",
+            "from 1 to 170",
+        ),
+    ] {
+        let mut g = game(&format!("function update(dt) {script} end"), vec![]);
+        frame(&mut g);
+        let error = g.error.clone().unwrap_or_default();
+        assert!(error.contains(expect), "{script}: {error}");
+    }
+}

@@ -91,7 +91,7 @@ local Scene = { __kind = "scene", __flat = true, __defaults = {}, __tags = {}, _
 Scene.__index = Scene
 local bases = { entity = Entity, scene = Scene }
 
-local RESERVED = { static = true, lod = true, lod_distance = true, tags = true, sprite = true, model = true, depth = true, hitbox = true, screen = true, pivot = true }
+local RESERVED = { static = true, lod = true, lod_distance = true, sway = true, max_distance = true, tags = true, sprite = true, model = true, depth = true, hitbox = true, screen = true, pivot = true }
 
 local function define(kind, a, b)
   local parent, spec
@@ -140,6 +140,8 @@ local function finalize(cls)
   cls.__static = spec.static or parent.__static
   cls.__lod = spec.lod or parent.__lod
   cls.__lod_distance = spec.lod_distance or parent.__lod_distance
+  cls.__sway = spec.sway or parent.__sway
+  cls.__max_distance = spec.max_distance or parent.__max_distance
   cls.__sprite = spec.sprite or parent.__sprite
   cls.__model = spec.model or parent.__model
   cls.__depth = spec.depth or parent.__depth or 0
@@ -1118,7 +1120,7 @@ local function spawn(what, x, y, props)
     -- a piece of scenery: it goes into the static scenery, not into the list of live entities
     if not cls.__model then error("a static entity needs a model (nova.entity { model = \"pine\", static = true })", 2) end
     local scale = rawget(e, "sx") or 1
-    scenery.add(cls.__model, e.x, e.y, rawget(e, "z") or 0, { ry = rawget(e, "ry") or 0, scale = scale, lod = cls.__lod, lod_distance = cls.__lod_distance })
+    scenery.add(cls.__model, e.x, e.y, rawget(e, "z") or 0, { ry = rawget(e, "ry") or 0, scale = scale, lod = cls.__lod, lod_distance = cls.__lod_distance, sway = cls.__sway, max_distance = cls.__max_distance })
     return e
   end
   if rawget(e, "depth") == nil then e.depth = cls.__depth end

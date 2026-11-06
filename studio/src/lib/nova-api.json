@@ -233,8 +233,8 @@
  {
   "name": "nova.point_light",
   "kind": "function",
-  "signature": "nova.point_light(x, y, z [, { radius = 10, color = {r, g, b} }])",
-  "doc": "A light that fades out at `radius`. Call it every frame you want it (it lasts one frame); ask for as many as you like (up to 256 a frame): the 16 nearest the camera, by the edge of their reach, are lit. When the choice changes (you walk down a row of lamps) a light fades in or out over a quarter of a second instead of switching; a light that is new is on at once and one you stop asking for is off at once (a muzzle flash is yours to time). Each lit light costs a little on every lit pixel: a game that needs fewer can use fewer.",
+  "signature": "nova.point_light(x, y, z [, { radius = 10, color = {r, g, b}, dir = {dx, dy, dz}, angle = 50 }])",
+  "doc": "A light that fades out at `radius`. Give it `dir` (the way it points) and it is a spot light: a cone `angle` degrees wide (1 to 170; 50 by default) that is full in the middle and fades to nothing at its edge, for headlights and torches (tilt it a little down so that the cone lands on the ground). Call it every frame you want it (it lasts one frame); ask for as many as you like (up to 256 a frame): the 16 nearest the camera, by the edge of their reach, are lit. When the choice changes (you walk down a row of lamps) a light fades in or out over a quarter of a second instead of switching; a light that is new is on at once and one you stop asking for is off at once (a muzzle flash is yours to time). Each lit light costs a little on every lit pixel: a game that needs fewer can use fewer.",
   "group": "Drawing"
  },
  {

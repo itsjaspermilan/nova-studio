@@ -54,6 +54,8 @@ function Car:create()
   self.progress = 0
   self.waypoint = nil
   self.model_id = getmetatable(self).__model
+  self.wheel_radius = WHEEL_RADIUS
+  for _, c in ipairs(state.cars) do if c.id == self.model_id then self.wheel_radius = c.wheel or WHEEL_RADIUS end end
   self.parts_table = {
     body = { rx = 0, rz = 0, y = 0 },
     wheel_fl = { rx = 0, ry = 0, y = 0 }, wheel_fr = { rx = 0, ry = 0, y = 0 },
@@ -204,7 +206,7 @@ function Car:drive(dt)
   self:suspension(dt, vf, (vf - self.last_vf) / dt, (self.yaw_rate or 0) * vf)
   self.last_vf = vf
   self.steer_visual = self.steer_visual + (steer - self.steer_visual) * math.min(1, dt * 12)
-  self.spin = self.spin + vf / WHEEL_RADIUS * dt
+  self.spin = self.spin + vf / self.wheel_radius * dt
   self.bump_cooldown = math.max(0, self.bump_cooldown - dt)
 
   -- the tyres wear: a little all the time, a lot when sliding or on the rough

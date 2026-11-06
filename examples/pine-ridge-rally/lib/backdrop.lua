@@ -10,6 +10,7 @@ local view = { x = 0, z = 0 }
 local dressing = {}   -- by circuit id: the things beside the road, made once from a fixed seed (the same every time)
 local lamp_opts = { ry = 0, shadow = false }
 local overlay_opts = { ry = 0, shadow = false }
+local SWAY = { pine = 0.03, pine_dark = 0.03, pine_snow = 0.025, birch = 0.035, autumn_tree = 0.035, bush = 0.06, bush_snow = 0.05, dry_bush = 0.08 }
 
 -- A fixed pseudo-random sequence for a circuit, so that its backdrop is always the same.
 local function rng(seed)
@@ -28,7 +29,7 @@ local function dress(id, look)
       local z = -48 + i * 5.4 + (r() - 0.5) * 2
       local d = 12 + r() * 20
       local kinds = look.trees
-      list[#list + 1] = { model = kinds[math.floor(r() * #kinds) + 1], x = side * d, z = z, opts = { ry = r() * 6.28, scale = 0.85 + r() * 0.55 } }
+      list[#list + 1] = { model = kinds[math.floor(r() * #kinds) + 1], x = side * d, z = z, opts = { ry = r() * 6.28, scale = 0.85 + r() * 0.55, sway = SWAY[kinds[1]] and 0.03 or 0 } }
       if i % 2 == 0 then
         local low = look.low
         list[#list + 1] = { model = low[math.floor(r() * #low) + 1], x = side * (10 + r() * 4), z = z + 2.5, opts = { ry = r() * 6.28, scale = 0.8 + r() * 0.5 } }
@@ -93,11 +94,14 @@ function backdrop.light()
   nova.light { dir = look.sun.dir, color = look.sun.color, ambient = look.sun.ambient }
   nova.sky(look.sky)
   nova.fog { color = look.sky.horizon, near = 60, far = 230 }
+  state.apply_look(look)
 end
 
 function backdrop.leave()
   nova.sky(nil)
   nova.fog(nil)
+  nova.look()
+  nova.wind()
 end
 
 return backdrop

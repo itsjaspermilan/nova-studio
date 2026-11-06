@@ -225,7 +225,7 @@ fn the_controls_screen_remaps_a_key_and_can_put_the_defaults_back() {
     tap(&mut g, "key:ArrowDown");
     tap(&mut g, "key:ArrowDown");
     tap(&mut g, "key:Enter"); // Options
-    for _ in 0..4 {
+    for _ in 0..5 {
         tap(&mut g, "key:ArrowDown");
     }
     tap(&mut g, "key:Enter"); // Controls...
@@ -440,7 +440,7 @@ fn the_sedan_and_hatchback_drift_under_power_in_a_bend_and_the_formula_car_grips
 }
 
 #[test]
-fn the_right_stick_swings_the_camera_round_the_car_and_it_eases_back_when_let_go() {
+fn the_right_stick_picks_a_view_and_the_camera_goes_back_behind_the_car_when_it_is_let_go() {
     let mut g = load();
     start_race(&mut g, 0, false);
     let mut log = Vec::new();
@@ -454,32 +454,46 @@ fn the_right_stick_swings_the_camera_round_the_car_and_it_eases_back_when_let_go
         stat(&mut g)["orbit"].abs() < 0.05,
         "behind the car to start with"
     );
-    for _ in 0..30 {
-        frame_with(&mut g, &[("axis:right_x", 1.0)]);
+    let half_turn = std::f32::consts::FRAC_PI_2;
+    // each view is a place, not a speed: holding the stick longer does not go further
+    for frames in [90, 240] {
+        for _ in 0..frames {
+            frame_with(&mut g, &[("axis:right_x", 1.0)]);
+        }
+        let right = stat(&mut g)["orbit"];
+        assert!(
+            (right - half_turn).abs() < 0.1,
+            "right looks out of the right ({frames} frames): {right}"
+        );
+        for _ in 0..120 {
+            frame_with(&mut g, &[]);
+        }
+        assert!(stat(&mut g)["orbit"].abs() < 0.1, "and it comes back");
     }
-    let swung = stat(&mut g)["orbit"];
+    for _ in 0..90 {
+        frame_with(&mut g, &[("axis:right_x", -1.0)]);
+    }
+    let left = stat(&mut g)["orbit"];
     assert!(
-        swung > 1.0 && swung < 2.0,
-        "half a second of stick is about a radian and a half: {swung}"
+        (left + half_turn).abs() < 0.1,
+        "left looks out of the left: {left}"
     );
-    for _ in 0..30 {
+    for _ in 0..120 {
         frame_with(&mut g, &[("axis:right_y", 1.0)]);
     }
-    assert!(stat(&mut g)["lift"] > 0.3, "pushing down raises the camera");
-    for _ in 0..180 {
+    let behind = stat(&mut g);
+    assert!(behind["orbit"].abs() > 3.0, "down looks behind: {behind:?}");
+    assert!(behind["lift"] > 0.1, "from a little higher: {behind:?}");
+    for _ in 0..120 {
         frame_with(&mut g, &[]);
     }
-    let after = stat(&mut g);
-    assert!(
-        after["orbit"].abs() < 0.1 && after["lift"].abs() < 0.1,
-        "it eases back behind the car: {after:?}"
-    );
-    for _ in 0..40 {
+    assert!(stat(&mut g)["orbit"].abs() < 0.1, "and back again");
+    for _ in 0..60 {
         frame_with(&mut g, &[("pad:thumb_r", 1.0)]);
     }
     assert!(
-        stat(&mut g)["orbit"].abs() > 2.8,
-        "the stick press looks back"
+        stat(&mut g)["orbit"].abs() > 3.0,
+        "a press of the stick looks back too"
     );
 }
 
@@ -493,4 +507,24 @@ fn lifting_off_the_accelerator_in_a_bend_turns_the_car_in_sharper() {
         "lifting turns in sharper: {off} against {on} on the throttle"
     );
     assert!(off < on * 1.6, "but only slightly: {off} against {on}");
+}
+
+#[test]
+fn a_player_who_has_stopped_on_the_road_is_left_alone() {
+    let mut g = load();
+    start_race(&mut g, 0, false);
+    let mut log = Vec::new();
+    run_until(&mut g, &mut log, "the countdown ends", 60 * 8, |l| {
+        l.iter().any(|x| x == "go")
+    });
+    log.clear();
+    // twenty seconds of doing nothing: the player stays where they are (no "Back on the road"), and nobody else is wedged yet
+    for _ in 0..60 * 20 {
+        frame(&mut g, &[]);
+        log.extend(g.take_log());
+    }
+    assert!(
+        !log.iter().any(|l| l.starts_with("You put back")),
+        "the player was moved though they were only waiting: {log:?}"
+    );
 }

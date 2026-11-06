@@ -1258,6 +1258,39 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 Some(o) => light_color(o, "color")?.unwrap_or([1.0; 3]),
                 None => [1.0; 3],
             };
+            // a spot light: `dir = {dx, dy, dz}` is the way it points, `angle` the whole width of the cone in degrees (50 by default)
+            let (direction, cone) = match &opts {
+                Some(o) => match o.get::<Option<Table>>("dir")? {
+                    Some(d) => {
+                        let mut v = [0.0f64; 3];
+                        for (i, slot) in v.iter_mut().enumerate() {
+                            *slot = d.get::<Option<f64>>(i + 1)?.ok_or_else(|| {
+                                lua_err("light dir must be {dx, dy, dz}, the way the light points")
+                            })?;
+                        }
+                        let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+                        if !len.is_finite() || len < 1e-6 {
+                            return Err(lua_err("light dir must not be all zeros"));
+                        }
+                        let angle = number_option(&opts, "angle")?.unwrap_or(50.0);
+                        if !angle.is_finite() || !(1.0..=170.0).contains(&angle) {
+                            return Err(lua_err(format!(
+                                "light angle must be from 1 to 170 degrees, not {angle}"
+                            )));
+                        }
+                        (
+                            [
+                                (v[0] / len) as f32,
+                                (v[1] / len) as f32,
+                                (v[2] / len) as f32,
+                            ],
+                            (angle.to_radians() / 2.0).cos() as f32,
+                        )
+                    }
+                    None => ([0.0; 3], 0.0),
+                },
+                None => ([0.0; 3], 0.0),
+            };
             // Any number may be asked for; the nearest sixteen are lit, and a change of which fades (see `lights.rs`).
             let mut sh = s.borrow_mut();
             if sh.light_requests.len() < 256 {
@@ -1265,6 +1298,8 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     position: [x as f32, y as f32, z as f32],
                     radius: radius as f32,
                     color,
+                    direction,
+                    cone,
                 });
             }
             Ok(())

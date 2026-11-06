@@ -6,6 +6,8 @@ local lamps = require("lib.lamps")
 local grid = require("lib.grid")
 local fx = require("lib.fx")
 local roadside = require("lib.roadside")
+local foliage = require("lib.foliage")
+local looks = require("lib.looks")
 local horizon = require("lib.horizon")
 local audio = require("lib.audio")
 local ui = require("lib.ui")
@@ -92,6 +94,9 @@ function race.define(config)
     track.ensure()
     assert(track.count() > 10, "this scene has no waypoints: place `waypoint` objects along the road")
     nova.log("rally: roadside " .. roadside.build(config.horizon) .. " props")
+    local look = looks[state.current_track().id]
+    state.apply_look(look)
+    foliage.start(look, state.effects and 1 or 0)
     self.length = track.length
     self.phase = "countdown"
     self.clock = 0              -- time since the green light
@@ -118,7 +123,8 @@ function race.define(config)
     for _, car in ipairs(self.cars) do if car.engine then car.engine:stop() end end
     nova.music.volume(state.music_volume)
     nova.sky(nil); nova.fog(nil); nova.shadows(nil)
-    lamps.clear(); track.clear(); grid.clear(); fx.clear()
+    lamps.clear(); track.clear(); grid.clear(); fx.clear(); foliage.clear()
+    nova.look(); nova.wind()
   end
 
   -- The player and three rivals on the grid; the player starts third.
@@ -338,6 +344,14 @@ function race.define(config)
     if self.paused then return self:update_pause() end
 
     if self.message_time > 0 then self.message_time = self.message_time - dt end
+    foliage.plant_some()
+    -- every five seconds of racing: how the device is doing (read from the log when measuring; fps and the GPU's own milliseconds)
+    self.perf_t = (self.perf_t or 0) + dt
+    if self.perf_t >= 5 and self.phase ~= "countdown" then
+      self.perf_t = 0
+      local m = nova.perf()
+      nova.log(string.format("rally: perf effects=%s fps=%.1f gpu=%.2f p95=%.1f max=%.1f draws=%d triangles=%d", tostring(state.effects), m.fps, m.gpu_ms, m.frame_p95_ms, m.frame_max_ms, m.draws, m.triangles))
+    end
     if nova.input.pressed("stats") then
       local c = self.player
       nova.log(string.format("rally: speed=%.1f slip=%.2f heading=%.2f yaw=%.2f x=%.1f z=%.1f orbit=%.2f lift=%.2f", c.speed, c.slip, c.heading, c.yaw_rate or 0, c.x, c.z, self.orbit and self.orbit.yaw or 0, self.orbit and self.orbit.lift or 0))
@@ -394,15 +408,18 @@ function race.define(config)
       end
     end
 
-    -- help for every car: far off the road, or stuck against something
+    -- help: the player (unless the computer is driving for them) is put back only when they ask, or are far from the road (a car that has simply stopped on the road, or
+    -- that is waiting, is left alone; there is no way to be upside down in this game's cars). The rivals are also put back when they
+    -- are stuck against something, so that a race is never held up.
     local p = self.player
     if self.phase == "racing" then
       for _, car in ipairs(self.cars) do
         local asked = car == p and not p.autopilot and nova.input.pressed("reset")
         if math.abs(car.speed) < 1.5 and car.enabled then car.stuck = (car.stuck or 0) + dt else car.stuck = 0 end
-        if asked or car.off_middle > 60 or car.stuck > 4 then
+        if asked or car.off_middle > 60 or ((car ~= p or p.autopilot) and car.stuck > 4) then
           self:respawn(car)
-          if car == p then self:say("Back on the road", 1.5) else nova.log(car.name .. " put back on the road") end
+          if car == p then self:say("Back on the road", 1.5) end
+          if car ~= p or not p.autopilot then nova.log(car.name .. " put back on the road") end
         end
       end
     end
@@ -464,24 +481,23 @@ function race.define(config)
     -- the camera's own heading trails the car's a little, so a bend swings into view
     local diff = track.wrap(p.heading - cam.heading)
     cam.heading = cam.heading + diff * math.min(1, dt * 7)
-    -- the right stick swings the camera round the car (left and right) and raises or lowers it (up and down), as in the open-world
-    -- racers: it stays where it is pushed and eases back behind the car when the stick is let go; a press of the stick looks back
+    -- the right stick picks a view, as in the open-world racers: left looks out of the left, right out of the right, down looks
+    -- behind, up is the way ahead (and the diagonals in between). The camera goes to the view and stays there while the stick is held,
+    -- and eases back behind the car when it is let go; a press of the stick looks back too.
     local lx, ly = nova.input.axis("look_x"), nova.input.axis("look_y")
-    if math.abs(lx) < 0.12 then lx = 0 end
-    if math.abs(ly) < 0.12 then ly = 0 end
     local orbit = self.orbit
     if not orbit then orbit = { yaw = 0, lift = 0 }; self.orbit = orbit end
-    if lx ~= 0 then
-      orbit.yaw = orbit.yaw + lx * 3.0 * dt
-      if orbit.yaw > math.pi then orbit.yaw = orbit.yaw - 2 * math.pi elseif orbit.yaw < -math.pi then orbit.yaw = orbit.yaw + 2 * math.pi end
+    local want_yaw = 0
+    if lx * lx + ly * ly > 0.4 * 0.4 then
+      -- the stick's angle from "up", in the eight directions: 0 ahead, a quarter turn to the right, a half turn behind
+      local step = math.pi / 4
+      want_yaw = math.floor(math.atan(lx, -ly) / step + 0.5) * step
+    elseif nova.input.down("look_back") then
+      want_yaw = math.pi
     end
-    if ly ~= 0 then orbit.lift = math.max(-0.4, math.min(1, orbit.lift + ly * 1.6 * dt)) end
-    local want_yaw = nova.input.down("look_back") and math.pi or 0
-    if lx == 0 then
-      -- back behind the car (the short way round)
-      orbit.yaw = orbit.yaw + track.wrap(want_yaw - orbit.yaw) * math.min(1, dt * (want_yaw ~= 0 and 9 or 3.5))
-    end
-    if ly == 0 then orbit.lift = orbit.lift * (1 - math.min(1, dt * 3)) end
+    orbit.yaw = orbit.yaw + track.wrap(want_yaw - orbit.yaw) * math.min(1, dt * (want_yaw ~= 0 and 8 or 4))
+    -- a little higher when looking behind, to see over the car
+    orbit.lift = orbit.lift + ((math.abs(want_yaw) > 2.5 and 0.3 or 0) - orbit.lift) * math.min(1, dt * 5)
     local sh, ch = math.sin(cam.heading), math.cos(cam.heading)
     local oy = math.abs(orbit.yaw)
     if self.view_mode == 3 then          -- bonnet: the stick turns the head
@@ -506,18 +522,25 @@ function race.define(config)
 
   -- After dark the renderer has room for eight point lights a frame: two pools of light in front of the player, one
   -- in front of each of the two nearest rivals, and whatever is left goes to the street lamps nearest the camera.
-  local HEADLIGHT = { color = { 255, 238, 190 }, radius = 22 }
-  local PLAYER_BEAM = { color = { 255, 238, 190 }, radius = 34 }
+  -- Headlights are spot lights: a cone from each lamp, tilted a little down so that it lands on the road and fades out along it.
+  local HEADLIGHT = { color = { 255, 238, 190 }, radius = 28, angle = 46 }
+  local PLAYER_BEAM = { color = { 255, 238, 190 }, radius = 60, angle = 36 }
   local LAMP = { color = { 255, 226, 150 }, radius = 26 }
-  local function headlights(car, far, opts)
+  local beam_opts = { color = HEADLIGHT.color, radius = 0, angle = 0, dir = { 0, 0, 0 } }
+  -- One headlight: `side` is -1 (right lamp), 1 (left) or 0 (one lamp in the middle); the beams point a little outwards.
+  local function headlight(car, side, opts)
     local fx, fz = math.sin(car.heading), math.cos(car.heading)
-    nova.point_light(car.x + fx * far, 1.2, car.z + fz * far, opts)
+    local lx, lz = fz, -fx -- to the car's left
+    local o = beam_opts
+    o.color, o.radius, o.angle = opts.color, opts.radius, opts.angle
+    o.dir[1], o.dir[2], o.dir[3] = fx + lx * side * 0.07, -0.1, fz + lz * side * 0.07
+    nova.point_light(car.x + fx * 1.7 + lx * side * 0.55, 0.75, car.z + fz * 1.7 + lz * side * 0.55, o)
   end
 
   function Race:night_lights(cam)
     local p = self.player
-    headlights(p, 8, HEADLIGHT)
-    headlights(p, 20, PLAYER_BEAM)
+    headlight(p, 1, PLAYER_BEAM)
+    headlight(p, -1, PLAYER_BEAM)
     local used = 2
     local a, b, da, db
     for _, car in ipairs(self.cars) do
@@ -530,7 +553,7 @@ function race.define(config)
       end
     end
     for _, car in ipairs({ a or false, b or false }) do
-      if car then headlights(car, 8, HEADLIGHT); used = used + 1 end
+      if car then headlight(car, 0, HEADLIGHT); used = used + 1 end
     end
     lamps.light(cam.x, cam.z, 70, 8 - used, LAMP)
   end

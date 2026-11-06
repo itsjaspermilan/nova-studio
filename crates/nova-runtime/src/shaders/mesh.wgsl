@@ -18,6 +18,7 @@ struct Globals {
     sky_sun: vec4<f32>,
     sky_extra: vec4<f32>,
     wind: vec4<f32>,        // xy: the way the wind blows (unit), z: how strong (0: none), w: the time
+    point_dir: array<vec4<f32>, 20>,   // xyz: the way a spot light points (zero: every way), w: cosine of half its cone
 };
 @group(0) @binding(0) var<uniform> globals: Globals;
 @group(1) @binding(0) var base_texture: texture_2d<f32>;
@@ -176,8 +177,16 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
         let to_light = globals.point_pos[i].xyz - in.world;
         let dist = length(to_light);
         let falloff = clamp(1.0 - dist / globals.point_pos[i].w, 0.0, 1.0);
-        let lambert = max(dot(n, to_light / max(dist, 0.0001)), 0.0);
-        light = light + globals.point_color[i].rgb * (falloff * falloff * lambert);
+        let towards = to_light / max(dist, 0.0001);
+        let lambert = max(dot(n, towards), 0.0);
+        var cone = 1.0;
+        let aim = globals.point_dir[i];
+        if (dot(aim.xyz, aim.xyz) > 0.25) {
+            // a spot light: full inside the middle of the cone, fading to nothing at its edge
+            let across = dot(-towards, aim.xyz);
+            cone = smoothstep(aim.w, mix(aim.w, 1.0, 0.45), across);
+        }
+        light = light + globals.point_color[i].rgb * (falloff * falloff * lambert * cone);
     }
     // a glowing surface shows its colour at full brightness however dark the scene is
     var rgb = base.rgb * (light + vec3<f32>(in.emissive));

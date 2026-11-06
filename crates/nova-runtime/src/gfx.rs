@@ -71,13 +71,17 @@ pub const MAX_JOINT_MATRICES: usize = (JOINT_TEXTURE_WIDTH / 4 * JOINT_TEXTURE_R
 /// Most point lights drawn at once: [`lights::LIGHT_BUDGET`] chosen ones and room for a few that are fading out.
 pub const MAX_POINT_LIGHTS: usize = 20;
 
-/// A light that fades to nothing at `radius` world units.
+/// A light that fades to nothing at `radius` world units. Given a `direction` it is a spot light: it lights a cone.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PointLight {
     pub position: [f32; 3],
     pub radius: f32,
     /// Linear multipliers, 1.0 = full.
     pub color: [f32; 3],
+    /// The way a spot light points (unit length); all zeros for a light that shines every way.
+    pub direction: [f32; 3],
+    /// For a spot light: the cosine of half the cone's angle (the light fades out at the edge of the cone).
+    pub cone: f32,
 }
 
 /// A sky behind everything: `horizon` at and below the horizon line, blending up to `top` overhead. Colours are linear.
@@ -224,6 +228,8 @@ impl Default for Lighting {
                 position: [0.0; 3],
                 radius: 1.0,
                 color: [0.0; 3],
+                direction: [0.0; 3],
+                cone: 0.0,
             }; MAX_POINT_LIGHTS],
             point_count: 0,
             sky: None,
@@ -360,6 +366,8 @@ struct Globals {
     sky_extra: [f32; 4],
     /// xy: the way the wind blows (unit); z: how strong (0: none); w: the time (seconds).
     wind: [f32; 4],
+    /// xyz: the way a spot light points (zero: it shines every way); w: the cosine of half its cone.
+    point_dir: [[f32; 4]; MAX_POINT_LIGHTS],
 }
 
 /// Side of the (square) shadow map in texels.
@@ -1871,6 +1879,7 @@ impl Gfx {
         let lit = &input.lighting;
         let mut point_pos = [[0.0f32; 4]; MAX_POINT_LIGHTS];
         let mut point_color = [[0.0f32; 4]; MAX_POINT_LIGHTS];
+        let mut point_dir = [[0.0f32; 4]; MAX_POINT_LIGHTS];
         for (i, p) in lit.points.iter().take(lit.point_count).enumerate() {
             point_pos[i] = [
                 p.position[0],
@@ -1879,6 +1888,7 @@ impl Gfx {
                 p.radius.max(0.0001),
             ];
             point_color[i] = [p.color[0], p.color[1], p.color[2], 1.0];
+            point_dir[i] = [p.direction[0], p.direction[1], p.direction[2], p.cone];
         }
         let (sky, fog) = (lit.sky, lit.fog);
         // The sun's view of the ground around what the camera looks at: a square box seen along the light, moved in whole
@@ -1949,6 +1959,7 @@ impl Gfx {
                 lit.wind.strength,
                 lit.wind.time,
             ],
+            point_dir,
             sky_extra: sky.map_or([0.0; 4], |k| {
                 [
                     k.clouds,
@@ -1990,6 +2001,7 @@ impl Gfx {
                 sky_sun: [0.0, 1.0, 0.0, 0.0],
                 sky_extra: [0.0; 4],
                 wind: [0.0; 4],
+                point_dir: [[0.0; 4]; MAX_POINT_LIGHTS],
             };
             self.queue
                 .write_buffer(&self.ui_globals, 0, bytemuck::bytes_of(&ui_globals));

@@ -1,4 +1,4 @@
-//! Which point out.iter().find(|l| l.position[1] == 3.0)ights a frame uses, and how they come and go. A script may ask for any number of lights each frame; the
+//! Which point lights a frame uses, and how they come and go. A script may ask for any number of lights each frame; the
 //! renderer takes a budget of the ones that matter most (nearest the camera, by the edge of their reach) and fades a light
 //! in or out over a quarter of a second when the choice changes, so that walking past a row of lamps does not make them
 //! flick on and off. A light that is new is on at once and one that is no longer asked for is off at once: a muzzle flash
@@ -144,6 +144,8 @@ mod tests {
             position: [x, 2.0, 0.0],
             radius: 5.0,
             color: [1.0, 1.0, 1.0],
+            direction: [0.0; 3],
+            cone: 0.0,
         }
     }
 
