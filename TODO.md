@@ -1,12 +1,24 @@
 # Nova Studio: reset plan and TODO
 
-Last updated: 2026-11-05 (the roadmap entries below carry their own dates). This replaces the earlier C11/raylib/Qt plan (M0 has
+Last updated: 2026-11-06 (the roadmap entries below carry their own dates). This replaces the earlier C11/raylib/Qt plan (M0 has
 rewritten `AGENTS.md` and `README.md` to match). Nothing below is implemented
 unless it is ticked.
 
 ## Where things stand
 
 **Device, 2026-11-05: the Retroid Pocket 6 arrived and the stress benchmark has run on it** (`docs/performance.md`): all 13 phases hold 60 fps, the worst (1.15 M triangles, 200 skinned characters, 16 lights, shadows) takes 13.3 ms of GPU, Lua at most 2.7 ms. Not yet done on it: (the 120 Hz mode is not a target; the display is set to 60) rotation and the sound itself. **Audio, 2026-11-06:** the stream asks Android for 256-frame callbacks (it was about 980, 20 ms); on the Retroid 26,000 callbacks in a Sound Check session had a worst time of 0.9 ms, 0 underruns, 0 stream errors, and the owner listened to it (clicks, a metronome, music, twelve sounds at once, a trigger-driven tone) and was happy. Not measured: the real button-to-speaker delay. **Done on it, 2026-11-05: the rally played by hand (analogue triggers with brake lock-up, tyres, car size and HUD fixed from the owner's notes; a frame-pacing stutter found and fixed, `pacing.rs`), Bunker Run and Sky Garden played (fine, unpolished), the games listed under Android Games in Lantern (the manifest now says `isGame`), lifecycle over adb (Home, screen off, app switch, 15 quick cycles, kill and relaunch; it found and fixed a background busy loop and music that kept playing), an 11-minute heat run (8 benchmark runs: 59.7 fps throughout, GPU times flat, chip sensor 64 to 67 C; see `docs/performance.md`), the controller (all 16 buttons and 6 axes, see Known gaps) and the screen (full screen, no bars or band).**
+
+**Update 2026-11-06 (a long day on the device).** Done and recorded in the entries below: the Retroid validated (performance, controller, screen, lifecycle,
+audio, a thermal soak); Hill Run (a third-person game on `nova.solid`: climbing, gliding, mantling, foliage and wind); the rally reworked from
+play notes (cars at one scale with fitted wheels, drifting road cars, low-speed steering, stiff suspension, roadside props, skid marks,
+analogue right-stick camera, a speed blur, spot-light headlights, circuit-matched menu backdrops, music in four sections voiced with the
+studio's new fuller instruments, a quieter engine); and engine work: bloom, ambient occlusion, speed blur, spot lights, a shared reverb room,
+cubic sample interpolation, GPU device-loss recovery, Android Back as Escape, masked and additive animation layers, and two-bone IK
+(`nova.model_pose`, `nova.ik`). 473 Rust tests and 508 studio tests pass; clippy and fmt are clean. **Corrections found afterwards:** the
+first thermal soak ran with parked cars (a wrong key code; fixed, see `docs/performance.md`), and so did the device frame-rate readings I
+quoted for the rally's night circuit earlier that day (a parked car; the soak with the car driving gives the real numbers). Not done:
+the other circuits' effects-off baselines, the new sounds and music have not been listened to on the device, nothing has been tried by a person
+since the last round of rally notes, and the drift feel, the stiffness and the camera are first guesses.
 
 **Update 2026-11-05.** Since the paragraph below: probe games (Blockfield, Ember Swarm, Bunker Run, Pine Ridge Rally,
 Sky Garden) exercised the engine and are in `docs/probes.md`; the engine gained 3D collision (`nova.walls`, `nova.solid`),
