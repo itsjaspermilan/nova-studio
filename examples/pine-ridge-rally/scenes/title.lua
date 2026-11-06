@@ -158,7 +158,9 @@ end
 function Title:update(dt)
   self.t = self.t + dt
   local screen = self.screen
-  if screen == "title" then
+  if screen == "title" and nova.input.pressed("art_box") then self.screen = "boxart"
+  elseif screen == "title" and nova.input.pressed("art_icon") then self.screen = "icon"
+  elseif screen == "title" then
     if nova.input.pressed("start") or nova.input.pressed("a") then
       audio.sfx("menu_accept")
       self:go("menu")
@@ -252,6 +254,7 @@ function Title:draw()
   self.last_t = self.t
   local want = (self.screen == "menu" or self.screen == "select" or self.screen == "pick") and ((self.screen == "pick") and 3.9 or 2.6) or 0
   self.shift = (self.shift or 0) + (want - (self.shift or 0)) * math.min(1, dt * 5)
+  if self.screen == "boxart" or self.screen == "icon" then backdrop.draw(0, self.screen, 0) return end
   backdrop.draw(self.t, "title", self.shift)
 end
 
@@ -329,6 +332,14 @@ end
 function Title:draw_ui()
   local w = nova.view()
   local screen = self.screen
+  if screen == "icon" then return end
+  if screen == "boxart" then
+    -- the box art: the title large at the top, the car below (the picture is made 3 wide to 4 tall)
+    local size = ui.fit("PINE RIDGE", 70, w * 0.92, "thick")
+    ui.center("PINE RIDGE", 26, size, ui.color.gold, { font = "thick" })
+    ui.center("RALLY", 26 + size * 1.05, size * 0.85, ui.color.white, { font = "bold" })
+    return
+  end
   if screen == "title" or screen == "starting" then
     logo(self.t)
     if screen == "title" and math.floor(self.t * 1.6) % 2 == 0 then ui.center("PRESS START", 420, 28, ui.color.white) end

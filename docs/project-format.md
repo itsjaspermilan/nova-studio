@@ -25,6 +25,12 @@ Hidden files and folders (starting with `.`), symbolic links and the top-level f
 `build`, `target`, `node_modules` and `dist` are never part of a project. At most 20,000
 files, 64 MiB per file and 1 GiB in total.
 
+### Icon and box art
+
+`icon.png` (square, 512 x 512 is plenty) in the project folder becomes the Android app's launcher icon, and `boxart.png` (a cover, any size) is
+copied into the APK's `assets/` for launchers that show a cover (Lantern reads it). Both are optional; `scripts/build-apk.sh` does this. Pine Ridge
+Rally's are rendered by the game itself (`scripts/rally/art.sh`).
+
 ### `nova.json`
 
 ```json

@@ -55,6 +55,9 @@ function backdrop.draw(t, mode, shift)
   local id, look = current()
   local radius, height = 8.5, 2.4
   if mode == "results" then radius, height = 10, 3.0 end
+  -- the store pictures (scripts/rally/art.sh): the box art from a little further, the icon close in; the camera does not sway
+  if mode == "boxart" then radius, height, t = 6.8, 2.2, 0 end
+  if mode == "icon" then radius, height, t = 5.4, 1.5, 0 end
   -- the camera swings a little to and fro in front of the car, a three-quarter view from the front left, never all the way round
   local a = 0.75 + math.sin(t * 0.18) * 0.38
   view.x, view.z = math.sin(a) * radius, math.cos(a) * radius

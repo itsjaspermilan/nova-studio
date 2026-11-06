@@ -10,6 +10,7 @@
 
     <application
         android:label="@LABEL@"
+        @ICON@
         android:hasCode="false"
         android:allowBackup="false"
         android:appCategory="game"

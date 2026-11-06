@@ -57,11 +57,24 @@ JAR=$("$ENV" bash -c 'echo "$ANDROID_HOME/platforms/android-36/android.jar"')
 # Fill the manifest template (XML-escaping the label).
 xml_escape() { local s=$1; s=${s//&/&amp;}; s=${s//</&lt;}; s=${s//>/&gt;}; s=${s//\"/&quot;}; printf '%s' "$s"; }
 MANIFEST="$OUT/AndroidManifest.xml"
-sed -e "s|@PACKAGE@|$PACKAGE|" -e "s|@LABEL@|$(xml_escape "$LABEL")|" \
+# A project's icon.png (square) becomes the app's launcher icon, and its boxart.png travels in the APK's assets for launchers that
+# show a cover (Lantern reads it with the package manager).
+ICON_ATTR=""
+rm -rf "$OUT/res" && mkdir -p "$OUT/res"
+cp -R crates/nova-runtime/android/res/. "$OUT/res/"
+if [ -n "$PROJECT" ] && [ -f "$PROJECT/icon.png" ]; then
+    for spec in mdpi:48 hdpi:72 xhdpi:96 xxhdpi:144 xxxhdpi:192; do
+        mkdir -p "$OUT/res/mipmap-${spec%%:*}"
+        sips -z "${spec##*:}" "${spec##*:}" "$PROJECT/icon.png" --out "$OUT/res/mipmap-${spec%%:*}/ic_launcher.png" >/dev/null
+    done
+    ICON_ATTR='android:icon="@mipmap/ic_launcher"'
+fi
+if [ -n "$PROJECT" ] && [ -f "$PROJECT/boxart.png" ]; then cp "$PROJECT/boxart.png" "$OUT/assets/boxart.png"; fi
+sed -e "s|@PACKAGE@|$PACKAGE|" -e "s|@LABEL@|$(xml_escape "$LABEL")|" -e "s|@ICON@|$ICON_ATTR|" \
     crates/nova-runtime/android/AndroidManifest.xml > "$MANIFEST"
 
 BASE="$OUT/base.apk"
-"$ENV" aapt2 compile --dir crates/nova-runtime/android/res -o "$OUT/res.zip"
+"$ENV" aapt2 compile --dir "$OUT/res" -o "$OUT/res.zip"
 "$ENV" aapt2 link -o "$BASE" --manifest "$MANIFEST" -A "$OUT/assets" "$OUT/res.zip" \
     -I "$JAR" --min-sdk-version 26 --target-sdk-version 34 --version-code 1 --version-name "$VERSION"
 
