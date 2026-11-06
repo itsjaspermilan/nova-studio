@@ -336,8 +336,8 @@ function Title:draw_ui()
   if screen == "boxart" then
     -- the box art: the title large at the top, the car below (the picture is made 3 wide to 4 tall)
     local size = ui.fit("PINE RIDGE", 70, w * 0.92, "thick")
-    ui.center("PINE RIDGE", 26, size, ui.color.gold, { font = "thick" })
-    ui.center("RALLY", 26 + size * 1.05, size * 0.85, ui.color.white, { font = "bold" })
+    ui.center("PINE RIDGE", 62, size, ui.color.gold, { font = "thick" })
+    ui.center("RALLY", 62 + size * 1.05, size * 0.85, ui.color.white, { font = "bold" })
     return
   end
   if screen == "title" or screen == "starting" then

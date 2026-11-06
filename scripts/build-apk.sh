@@ -58,7 +58,7 @@ JAR=$("$ENV" bash -c 'echo "$ANDROID_HOME/platforms/android-36/android.jar"')
 xml_escape() { local s=$1; s=${s//&/&amp;}; s=${s//</&lt;}; s=${s//>/&gt;}; s=${s//\"/&quot;}; printf '%s' "$s"; }
 MANIFEST="$OUT/AndroidManifest.xml"
 # A project's icon.png (square) becomes the app's launcher icon, and its boxart.png travels in the APK's assets for launchers that
-# show a cover (Lantern reads it with the package manager).
+# show a cover (a launcher can read it from the APK).
 ICON_ATTR=""
 rm -rf "$OUT/res" && mkdir -p "$OUT/res"
 cp -R crates/nova-runtime/android/res/. "$OUT/res/"
