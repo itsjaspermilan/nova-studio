@@ -12,6 +12,8 @@
         android:label="@LABEL@"
         android:hasCode="false"
         android:allowBackup="false"
+        android:appCategory="game"
+        android:isGame="true"
         android:theme="@style/NovaTheme">
         <activity
             android:name="android.app.NativeActivity"
