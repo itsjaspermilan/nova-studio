@@ -396,6 +396,20 @@ What it showed:
 
 **The rally's stutter was frame pacing (2026-11-05, confirmed on the Retroid).** The log showed no late frames while driving (the only long ones were the first frame after each launch), but the 95th-percentile frame time was 18 to 19 ms against a 16.67 ms display period: the moments at which the game starts its frames wander by a millisecond or two, the game moved everything by the measured time, and so motion between evenly shown pictures was uneven (7 cm of jitter a frame at 40 m/s). `pacing.rs` now gives the game exactly one display period for a step within 14% of it (or a whole number of periods for a missed frame), with the period worked out from the recent steps and snapped to the panel's nominal rate; the owner played a lap after it and the stutter was gone. A genuine long frame is passed on unchanged and the diagnostics still log the raw timings.
 
+**Pine Ridge Rally, second round of play notes (2026-11-06).** Seven notes and then a stream of small ones, all fixed and put back on the Retroid:
+the music sounded like chiptunes (the cause was the studio's song renderer, which had only raw oscillators: it now has unison, filters that
+follow the note, a sub, vibrato, a shared reverb and a studio drum kit, and the six songs were re-voiced and arranged in four sections each); the cars were different
+sizes and had wheels that were too big (one kit scale for all, wheels fitted per car, the road cars narrower and smaller than the open-wheel
+ones); steering was too sensitive at low speed (the turn rate now follows the wheels' angle); the engine droned (a low, dull saw with a soft
+body above it); a flag stood in the road (a roadside prop on a bend: every prop now checks its real distance from the road); the title car spun
+the wrong way (it stands on the road and the camera sways); the menu backdrop did not follow the circuit (it is dressed like the chosen one);
+the road cars could not drift (each car has an `oversteer`; the formula cars hold); lifting off turned the car in sharper (added), a stiffer
+suspension, a right-stick camera that picks a view at any angle, headlights as cones (a new engine feature, spot lights), and "Back on the road"
+no longer fires for a player who has only stopped. What it taught the engine: spot lights, bloom, ambient occlusion, a speed blur, a shared
+reverb, cubic sample interpolation, scene classes that sway in the wind (`sway` on a static class), Android's Back as Escape, and GPU
+device-loss recovery were all added on the way or after. **A lesson in measuring:** the soak and the frame-rate readings made that day with
+the computer driving were taken with a parked car, because the script sent the wrong key code (F10 for F9); a driving run followed.
+
 ## Probe 5: Hill Run (2026-11-06): a character on a field of triangles
 
 **Built to find out** whether `nova.solid` (a capsule against model triangles) is enough for a third-person game on hills: slopes, a
