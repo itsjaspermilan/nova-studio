@@ -629,10 +629,10 @@ fn the_engine_pitch_follows_the_speed_over_a_wide_range_and_falls_at_a_gear_chan
                 pitch: Some(p),
                 ..
             } = c
+                && v > loudest.0
+                && p > 0.9
             {
-                if v > loudest.0 && p > 0.9 {
-                    loudest = (v, p);
-                }
+                loudest = (v, p);
             }
         }
         if loudest.0 > 0.0 {
