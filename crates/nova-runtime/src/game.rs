@@ -919,6 +919,8 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                         let mut mixed: Vec<(Vec<model::PartPose>, f32)> = Vec::new();
                         // layers with a `mask` are laid over the mix afterwards, on those parts only
                         let mut overlays: Vec<(Vec<model::PartPose>, f32, Vec<bool>)> = Vec::new();
+                        // layers with `additive = true` add how far they are from the rest pose, on top of everything else
+                        let mut additives: Vec<(Vec<model::PartPose>, f32, Option<Vec<bool>>)> = Vec::new();
                         for entry in layers.sequence_values::<Table>() {
                             let entry = entry?;
                             let name: String = entry.get::<Option<String>>("clip")?.ok_or_else(|| lua_err("each layer needs a clip name: { clip = \"walk\", time = 0.5, weight = 1 }"))?;
@@ -937,6 +939,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                             }
                             let time = entry.get::<Option<f64>>("time")?.unwrap_or(0.0) as f32;
                             let looped = entry.get::<Option<bool>>("loop")?.unwrap_or(true);
+                            let additive = entry.get::<Option<bool>>("additive")?.unwrap_or(false);
                             if let Some(names) = entry.get::<Option<Table>>("mask")? {
                                 // the named parts and everything below them (parents come before their children)
                                 let mut mask = vec![false; parts.len()];
@@ -957,7 +960,13 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                                         }
                                     }
                                 }
-                                overlays.push((clip.pose(time, looped, parts.len()), (weight as f32).min(1.0), mask));
+                                if additive {
+                                    additives.push((clip.pose(time, looped, parts.len()), weight as f32, Some(mask)));
+                                } else {
+                                    overlays.push((clip.pose(time, looped, parts.len()), (weight as f32).min(1.0), mask));
+                                }
+                            } else if additive {
+                                additives.push((clip.pose(time, looped, parts.len()), weight as f32, None));
                             } else {
                                 mixed.push((clip.pose(time, looped, parts.len()), weight as f32));
                             }
@@ -972,6 +981,9 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                         poses = model::blend_poses(&rests, &mixed);
                         for (overlay, amount, mask) in &overlays {
                             poses = model::overlay_poses(&rests, &poses, overlay, mask, *amount);
+                        }
+                        for (delta, amount, mask) in &additives {
+                            poses = model::additive_poses(&rests, &poses, delta, mask.as_deref(), *amount);
                         }
                     }
                     // ... then the script's own turns on top.

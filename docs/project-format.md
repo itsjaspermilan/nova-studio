@@ -335,6 +335,8 @@ nova.model("hero", x, y, z, { layers = { { clip = "run", time = t }, { clip = "a
 self.anim:draw(x, y, z, { extra = { { clip = "aim", time = 0, weight = 1, mask = { "Spine" } } } })   -- over a nova.animator's own layers
 ```
 
+**Additive layers.** A layer with `additive = true` adds how far its clip is from the model's authored (rest) pose, on top of everything else, by its `weight` (it may be more than 1), on the parts of its `mask` or on all of them: a breathing, a lean or a flinch over any walk or run (the clip is made as a pose or a loop that starts at rest). Plain, masked and additive layers can be mixed in one `layers` list: the plain ones are mixed first, then each masked one is laid over, then each additive one is added.
+
 `nova.animator` keeps the bookkeeping, so a character's animation is a few lines and never snaps:
 
 ```lua

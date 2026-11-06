@@ -464,3 +464,38 @@ fn a_masked_layer_is_laid_over_the_mix_on_its_own_parts_only() {
     let e = g.error.clone().unwrap_or_default();
     assert!(e.contains("has no part 'tail' for a layer's mask"), "{e}");
 }
+
+#[test]
+fn an_additive_layer_adds_how_far_it_is_from_the_rest_pose() {
+    let at = |t: f32| drawn_at(&format!("{{ clip = 'spin', time = {t} }}"));
+    // no layer of any weight: the authored pose
+    let (rest_body, _) = drawn_at("{ layers = { { clip = 'spin', time = 0, weight = 0 } } }");
+    let (body0, _) = at(0.0);
+    let (body1, _) = at(1.0);
+    let (added, _) = drawn_at(
+        "{ layers = { { clip = 'spin', time = 0 }, { clip = 'spin', time = 1, weight = 1, additive = true } } }",
+    );
+    // the place: the base's plus the overlay's distance from the rest
+    for i in 0..3 {
+        let expected = body0[3][i] + (body1[3][i] - rest_body[3][i]);
+        assert!(
+            (added[3][i] - expected).abs() < 1e-4,
+            "axis {i}: {added:?} expected {expected}"
+        );
+    }
+    // half the weight, half the distance
+    let (half, _) = drawn_at(
+        "{ layers = { { clip = 'spin', time = 0 }, { clip = 'spin', time = 1, weight = 0.5, additive = true } } }",
+    );
+    for i in 0..3 {
+        let expected = body0[3][i] + (body1[3][i] - rest_body[3][i]) * 0.5;
+        assert!((half[3][i] - expected).abs() < 1e-4, "half, axis {i}");
+    }
+    // an additive layer of no weight does nothing
+    let (none, _) = drawn_at(
+        "{ layers = { { clip = 'spin', time = 0 }, { clip = 'spin', time = 1, weight = 0, additive = true } } }",
+    );
+    for i in 0..4 {
+        assert!((none[3][i] - body0[3][i]).abs() < 1e-4);
+    }
+}

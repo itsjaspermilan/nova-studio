@@ -418,6 +418,46 @@ pub fn overlay_poses(
     out
 }
 
+/// Adds `delta` (a pose measured from the parts' authored rests: how far the clip turns, moves and scales each part away from its
+/// rest) to `base`, by `amount`, on the parts `mask` names (all of them when `mask` is empty): a breathing or a lean laid over any
+/// walk or run. A part the base did not animate starts from its rest.
+pub fn additive_poses(
+    rests: &[(Vec3, Quat, Vec3)],
+    base: &[PartPose],
+    delta: &[PartPose],
+    mask: Option<&[bool]>,
+    amount: f32,
+) -> Vec<PartPose> {
+    let mut out: Vec<PartPose> = base.to_vec();
+    out.resize(rests.len(), PartPose::default());
+    for (i, &(s0, r0, t0)) in rests.iter().enumerate() {
+        if mask.is_some_and(|m| !m.get(i).copied().unwrap_or(false)) {
+            continue;
+        }
+        let Some(top) = delta.get(i) else {
+            continue;
+        };
+        if let Some(t) = top.translation {
+            out[i].translation = Some(out[i].translation.unwrap_or(t0) + (t - t0) * amount);
+        }
+        if let Some(sc) = top.scale {
+            let ratio = Vec3::new(
+                sc.x / s0.x.max(1e-6),
+                sc.y / s0.y.max(1e-6),
+                sc.z / s0.z.max(1e-6),
+            );
+            let factor = Vec3::ONE.lerp(ratio, amount);
+            out[i].scale = Some(out[i].scale.unwrap_or(s0) * factor);
+        }
+        if let Some(r) = top.rotation {
+            let turn = r * r0.conjugate();
+            let part = Quat::IDENTITY.slerp(turn, amount);
+            out[i].rotation = Some((part * out[i].rotation.unwrap_or(r0)).normalize());
+        }
+    }
+    out
+}
+
 impl Channel {
     fn sample(&self, t: f32) -> [f32; 4] {
         let n = self.times.len();
