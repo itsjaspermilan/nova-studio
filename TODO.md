@@ -43,8 +43,10 @@ Everything we know is missing or unverified, in one place. "Device" means it nee
 another physical Android device) to settle; the emulator cannot.
 
 **Needs the device**
-- [ ] Frame pacing, thermals over 10+ minutes, battery, 60/120 Hz behaviour (emulator speed is not
-  device speed; the Lua framework and collision grid are unmeasured on handheld CPUs).
+- [~] Frame pacing (done 2026-11-05), thermals over 10+ minutes (done 2026-11-06: a 40-minute rally soak, 59.68 fps on average, GPU
+  3.1 to 3.6 ms, no throttling, hottest sensor 49.7 to 57.2 C; `docs/performance.md`), battery (not measured: the soak was on USB power),
+  60/120 Hz behaviour (120 Hz not a target). The Lua framework and collision grid on a handheld CPU are measured by the rally and Hill Run runs
+  (Lua about 2 ms a frame).
 - [x] Controller axes on Android (2026-11-02, code only): the workspace uses `vendor/winit` (stock winit 0.30.13 plus one patch, see its
   `NOVA-PATCH.md`) which reports a controller's sticks, triggers and d-pad hat as `AxisMotion`; `input.rs` turns them into `axis:left_x`,
   `axis:right_y`, `axis:l2`..., `pad:dpad_*` (tested with synthetic values; compiles for arm64). **Verified on the Retroid Pocket 6 (2026-11-05, `examples/input-test`)**:

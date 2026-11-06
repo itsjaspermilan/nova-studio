@@ -137,6 +137,17 @@ The Snapdragon 8 Gen 2 is slower than an M4 by roughly 2 to 2.5 times on one CPU
   level of detail and a lighter shadow pass (the retained list, shadow culling and level of detail are in; the shadow pass could still be lighter, with a smaller map or fewer casters at distance). Sustained speed after minutes of heat is a separate question that
   only the device can answer.
 
+## A 40-minute soak of the rally on the Retroid (2026-11-06)
+
+`scripts/rally-soak.sh 40` (the log is `docs/rally-soak-2026-11-06.log`): the computer drove Pine Ridge Rally race after race on all four
+circuits, with bloom, ambient occlusion, wind, grass, shadows and (at night) spot-light headlights on, and the log line `rally: perf` and
+the temperatures were read every 30 seconds. **71 readings: 59.68 fps on average (lowest 59.5), the GPU's own time 3.1 to 3.6 ms a frame
+(3.33 on average), the worst frame 20.3 ms (a 60 Hz display's 16.7 plus the log's timing), nothing slower at the end than at the start.**
+The hottest chip sensor went from 49.7 C to a peak of 57.2 C and sat at 54 to 55 C; the battery sensor went from 28 to 32 C. No throttling
+showed in the frame rate or the GPU time. Limits: the device was on USB, so it was charging (this is a soak on power, not a battery-drain
+test); the screen was on and the room was ordinary; the headlights and effects are in the average, but not a worst-case city. The 120 Hz
+mode was not tried (the target is 60).
+
 ## To do on the device
 
 Done once (above), and an 11-minute heat run (no throttling seen). Still to do: a real game on the controller, a longer and heavier run on battery. The first line of advice stands: If `gpu` is 0, the
