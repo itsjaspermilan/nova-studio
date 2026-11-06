@@ -59,7 +59,8 @@ function Results:draw_ui()
     if not r.trial then ui.text(x + 76 + slide, ry + 6, ui.ordinal(i), 24, color) end
     ui.text(x + 150 + slide, ry + 6, row.name, 24, color)
     local time = row.time and ui.time(row.time) or "did not finish"
-    ui.right(time, x + width - 18 + slide, ry + 6, 24, row.time and color or ui.color.dim)
+    ui.right(time, x + width - 18 + slide, ry + 6, 24, row.estimated and ui.color.dim or (row.time and color or ui.color.dim), { font = "mono" })
+    if row.estimated then ui.label(x + width - 232 + slide, ry + 14, "ESTIMATED") end
   end
 
   local by = y + 4 + #r.rows * 46 + 22

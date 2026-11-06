@@ -51,17 +51,43 @@ local MODES = {
 local GRIDS = {
   circuit = { cols = 2, card_w = 282, card_h = 176, gap = 14, x = 36, y = 100 },
   mode = { cols = 2, card_w = 282, card_h = 150, gap = 14, x = 36, y = 150 },
-  car = { cols = 3, card_w = 170, card_h = 88, gap = 8, x = 36, y = 92 },
+  car = { cols = 3, card_w = 170, card_h = 88, gap = 8, x = 36, y = 144 },
 }
 
-function Title:items(kind)
-  if kind == "circuit" then return state.tracks elseif kind == "mode" then return MODES else return state.cars end
+-- the cars of one class, as numbers into state.cars
+local function class_cars(class)
+  local list = {}
+  for i, c in ipairs(state.cars) do if c.class == class then list[#list + 1] = i end end
+  return list
 end
 
+function Title:items(kind)
+  if kind == "circuit" then return state.tracks elseif kind == "mode" then return MODES end
+  local items = {}
+  for k, i in ipairs(class_cars(self.pick.class)) do items[k] = state.cars[i] end
+  return items
+end
+
+-- which card is the chosen one (a number among the cards on this page)
 function Title:picked(kind)
   if kind == "circuit" then return state.track end
-  if kind == "car" then return state.car end
+  if kind == "car" then
+    for k, i in ipairs(class_cars(self.pick.class)) do if i == state.car then return k end end
+    return 0
+  end
   return state.mode == "race" and 1 or 2
+end
+
+-- a class's tab on the car page: tries its first car
+function Title:set_class(n)
+  local pick = self.pick
+  local count = #state.classes
+  local index
+  for k, c in ipairs(state.classes) do if c.id == pick.class then index = k end end
+  index = (index - 1 + n) % count + 1
+  pick.class = state.classes[index].id
+  state.car = class_cars(pick.class)[1]
+  wear()
 end
 
 function Title:set_pick(kind, i)
@@ -70,7 +96,7 @@ function Title:set_pick(kind, i)
     state.laps = state.current_track().laps
     backdrop.light()
   elseif kind == "car" then
-    state.car = i
+    state.car = class_cars(self.pick.class)[i]
     wear()
   else
     state.mode = MODES[i].id
@@ -78,7 +104,8 @@ function Title:set_pick(kind, i)
 end
 
 function Title:open_pick(kind)
-  self.pick = { kind = kind, old = self:picked(kind), old_laps = state.laps }
+  self.pick = { kind = kind, old_laps = state.laps, class = state.current_car().class, tabs = false }
+  self.pick.old = (kind == "car") and state.car or self:picked(kind) -- (for a car: its number in state.cars)
   self.screen = "pick"
 end
 
@@ -87,6 +114,22 @@ function Title:update_pick()
   local items, grid = self:items(pick.kind), GRIDS[pick.kind]
   local i = self:picked(pick.kind)
   local n, cols = #items, grid.cols
+  if pick.kind == "car" then
+    -- the classes are tabs along the top: L and R change class, and so do left and right with the tabs selected (up from the top row)
+    local handled = false
+    local step = (nova.input.pressed("tab_next") and 1) or (nova.input.pressed("tab_prev") and -1) or 0
+    if pick.tabs then
+      step = step ~= 0 and step or ((nova.input.pressed("right") and 1) or (nova.input.pressed("left") and -1) or 0)
+      if nova.input.pressed("down") then pick.tabs = false; handled = true; audio.sfx("menu_move") end
+    elseif nova.input.pressed("up") and i <= cols then
+      pick.tabs = true; audio.sfx("menu_move")
+    end
+    if step ~= 0 then self:set_class(step); audio.sfx("menu_move") end
+    if pick.tabs or step ~= 0 or handled then
+      self:pick_buttons(pick)
+      return
+    end
+  end
   local moved = i
   if nova.input.pressed("left") then moved = i - 1 end
   if nova.input.pressed("right") then moved = i + 1 end
@@ -97,12 +140,16 @@ function Title:update_pick()
     if nova.input.pressed("left") then moved = n elseif nova.input.pressed("right") then moved = 1 else moved = i end
   end
   if moved ~= i then self:set_pick(pick.kind, moved); audio.sfx("menu_move") end
+  self:pick_buttons(pick)
+end
+
+function Title:pick_buttons(pick)
   if nova.input.pressed("a") or nova.input.pressed("start") then
     audio.sfx("menu_accept")
     self.screen = "select"
   elseif nova.input.pressed("b") or nova.input.pressed("menu_back") then
     audio.sfx("menu_back")
-    self:set_pick(pick.kind, pick.old)
+    if pick.kind == "car" then state.car = pick.old; wear() else self:set_pick(pick.kind, pick.old) end
     state.laps = pick.old_laps
     self.screen = "select"
   end
@@ -233,8 +280,22 @@ function Title:draw_pick()
   local pick = self.pick
   local items, grid = self:items(pick.kind), GRIDS[pick.kind]
   local title = ({ circuit = "CHOOSE A CIRCUIT", mode = "CHOOSE A MODE", car = "CHOOSE A CAR" })[pick.kind]
-  ui.text(grid.x, 30, title, ui.fit(title, 36, 560), ui.color.gold, { font = "bold" })
-  local on = self:picked(pick.kind)
+  ui.text(grid.x, pick.kind == "car" and 12 or 30, title, ui.fit(title, pick.kind == "car" and 30 or 36, 560), ui.color.gold, { font = "bold" })
+  if pick.kind == "car" then
+    -- a tab for each class (the chosen class is yellow; with the tabs selected it has a frame round it)
+    local tw = 178
+    for k, c in ipairs(state.classes) do
+      local x = grid.x + (k - 1) * (tw + 6)
+      local on = c.id == pick.class
+      nova.ui.panel(on and "ui/btn_yellow" or "ui/btn_grey", x, 58, tw, 34, { slice = { 14, 14, 14, 22 }, scale = 0.75 })
+      nova.ui.text(x + 14, 64, c.name, { size = 20, color = ui.color.ink, font = "rounded", shadow = false })
+      if on and pick.tabs then nova.ui.panel("ui/panel_frame", x - 3, 55, tw + 6, 40, { slice = 18, scale = 0.5 }) end
+    end
+    local class = state.class_of({ class = pick.class })
+    ui.panel(grid.x - 6, 98, 560, 36, 215)
+    ui.text(grid.x + 6, 108, class.blurb .. " Your rivals are other " .. class.name .. " cars.", 14, ui.color.white, { width = 540 })
+  end
+  local on = pick.tabs and 0 or self:picked(pick.kind)
   for i, item in ipairs(items) do
     local col, row = (i - 1) % grid.cols, (i - 1) // grid.cols
     local x = grid.x + col * (grid.card_w + grid.gap)
@@ -258,7 +319,11 @@ function Title:draw_pick()
       bar(x + 12, y + 68, w - 82, "DRIFT", item.oversteer)
     end
   end
-  ui.hints({ { "pad_dpad", "look" }, { "pad_a", "choose" }, { "pad_b", "cancel" } })
+  if pick.kind == "car" then
+    ui.hints({ { "pad_dpad", "look" }, { "pad_l", "class" }, { "pad_r", "class" }, { "pad_a", "choose" }, { "pad_b", "cancel" } })
+  else
+    ui.hints({ { "pad_dpad", "look" }, { "pad_a", "choose" }, { "pad_b", "cancel" } })
+  end
 end
 
 function Title:draw_ui()

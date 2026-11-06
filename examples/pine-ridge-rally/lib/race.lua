@@ -138,8 +138,11 @@ function race.define(config)
   -- The player and three rivals on the grid; the player starts third.
   function Race:build_cars()
     local mine = state.current_car().id
+    -- the rivals drive the other cars of your class (a class with fewer than three others repeats them)
     local pool = {}
-    for _, c in ipairs(state.cars) do if c.id ~= mine then pool[#pool + 1] = c.id end end
+    local class = state.current_car().class
+    for _, c in ipairs(state.cars) do if c.id ~= mine and c.class == class then pool[#pool + 1] = c.id end end
+    if #pool == 0 then for _, c in ipairs(state.cars) do if c.id ~= mine then pool[#pool + 1] = c.id end end end
     -- which cars the rivals drive: a different three for each circuit and each car of yours (the same every time)
     local turn = (state.track * 3 + state.car * 5) % #pool
     for _ = 1, turn do
@@ -159,6 +162,7 @@ function race.define(config)
       car.waypoint = idx
       car.last_s = s
       car.progress = s - length   -- behind the line: negative until it is crossed
+      car.start_progress = car.progress
       return car
     end
     self.player = put(mine, 3)
@@ -167,7 +171,7 @@ function race.define(config)
     self.player.name = "You"
     self.cars[1] = self.player
     for i, r in ipairs(state.mode == "trial" and {} or RIVALS) do
-      local car = put(pool[i], slots[i])
+      local car = put(pool[(i - 1) % #pool + 1], slots[i])
       car.name, car.skill, car.lane = r.name, r.skill, r.lane
       car.top = math.min(car.top, 44) -- (the rivals' driving is tuned for a top speed of 44 m/s: faster, they overshoot the bends)
       car.vmax = 40 * r.skill + 4
@@ -730,7 +734,22 @@ function race.define(config)
 
   -- ---- the end -----------------------------------------------------------------------------------------------------------
 
+  -- A rival still on the road when the player finishes is not "did not finish": its time is worked out from how far it has to go at its
+  -- average pace so far (the table says it is an estimate).
+  function Race:estimate_finishes()
+    local goal = self.laps * self.length
+    for _, car in ipairs(self.cars) do
+      if not car.finish_time then
+        local covered = math.max(1, car.progress - (car.start_progress or -self.length * 0.02))
+        local pace = math.max(8, covered / math.max(1, self.clock))
+        car.finish_time = self.clock + math.max(0, goal - car.progress) / pace
+        car.estimated = true
+      end
+    end
+  end
+
   function Race:to_results()
+    if not self.trial then self:estimate_finishes() end
     local order = self:places()
     local info = state.current_track()
     local rows = {}
@@ -739,7 +758,7 @@ function race.define(config)
       for i, t in ipairs(self.lap_times) do rows[i] = { name = "Lap " .. i, time = t, you = t == self.best_lap } end
     else
       for i, car in ipairs(order) do
-        rows[i] = { name = car.name, car = car.model_id, place = i, time = car.finish_time, you = car.is_player }
+        rows[i] = { name = car.name, car = car.model_id, place = i, time = car.finish_time, you = car.is_player, estimated = car.estimated }
       end
     end
     local me = self.player
@@ -749,6 +768,14 @@ function race.define(config)
     }
     if me.finish_time then state.result.record_time = state.submit("race" .. self.laps, info.id, me.finish_time) end
     if self.best_lap then state.result.record_lap = state.submit("lap", info.id, self.best_lap) end
+    if not self.trial then
+      local timed, ids = 0, {}
+      for _, car in ipairs(order) do
+        if car.finish_time then timed = timed + 1 end
+        if not car.is_player then ids[#ids + 1] = car.model_id end
+      end
+      nova.log(string.format("results: a time for %d of %d cars; rivals: %s", timed, #order, table.concat(ids, " ")))
+    end
     nova.log(string.format("results: place %d of %d, time %s", me.place, #order, ui.time(me.finish_time)))
     nova.log(string.format("wear: tyres %.2f, body %.2f", me.tyres, 1 - me.damage))
     audio.stop_music(0.5)

@@ -157,6 +157,17 @@ fn a_whole_race_on_dust_valley_ends_on_the_results_screen() {
         !log.iter().any(|l| l.contains("put back on the road")),
         "nobody got stuck: {log:?}"
     );
+    // every car has a time when the player finishes (the ones still racing get an estimate, not "did not finish"), and a Formula
+    // car's rivals are the other Formula car
+    let line = log
+        .iter()
+        .find(|l| l.contains("a time for"))
+        .expect("a results line");
+    assert!(line.contains("a time for 4 of 4 cars"), "{line}");
+    assert!(
+        line.ends_with("rivals: car_yellow car_yellow car_yellow"),
+        "{line}"
+    );
 }
 
 #[test]
@@ -379,8 +390,12 @@ fn cornering_with(
     tap(&mut g, "key:Enter");
     tap(&mut g, "key:ArrowDown"); // to Car
     tap(&mut g, "key:Enter");
-    for _ in 0..car_steps {
-        tap(&mut g, "key:ArrowRight");
+    // 0 is Redline (the Formula class); 1 and 2 are the first two of the Sport class (Blue Streak, Green Machine): E changes class
+    if car_steps > 0 {
+        tap(&mut g, "key:KeyE");
+        for _ in 1..car_steps {
+            tap(&mut g, "key:ArrowRight");
+        }
     }
     tap(&mut g, "key:Enter");
     for _ in 0..2 {

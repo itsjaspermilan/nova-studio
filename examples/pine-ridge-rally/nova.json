@@ -55,6 +55,8 @@
       "negative": ["axis:right_y-"],
       "positive": ["axis:right_y+"]
     },
+    "tab_prev": ["key:KeyQ", "pad:l1"],
+    "tab_next": ["key:KeyE", "pad:r1"],
     "look_back": ["pad:thumb_r", "key:KeyB"],
     "autodrive": [
       "key:F9"
