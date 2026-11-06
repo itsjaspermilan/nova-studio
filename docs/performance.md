@@ -1,8 +1,8 @@
 # Performance: what we can say about 60 fps, and how to find out
 
-Written 2026-11-04, with no handheld at hand yet. **Nothing here is measured on the Retroid Pocket 6.** What is measured is the
-desktop (an Apple M4) and the Android emulator (arm64 guest, which on this Mac runs on the host CPU, with the host GPU behind
-a virtual one). The device numbers are estimates from stated factors and are marked as such.
+Written 2026-11-04 with no handheld at hand; **the first Retroid Pocket 6 run (2026-11-05) is in its own section below** and replaced the
+estimates for the stress benchmark. Everything else was measured on the desktop (an Apple M4) or the Android emulator (arm64 guest on
+this Mac's CPU, with the host GPU behind a virtual one); the section "What that suggests" is the old estimate, kept to show how far off it was.
 
 ## The tools
 
@@ -63,7 +63,42 @@ visible in a close look at the horizon.)
 
 Every phase held 60 fps on the emulator. That says the engine has no gross problem, and nothing about the Retroid.
 
-## What that suggests for the Retroid Pocket 6 (an estimate, not a measurement)
+## Measured on the Retroid Pocket 6 (2026-11-05, first run)
+
+Device: Retroid Pocket 6, Android 13, Snapdragon 8 Gen 2 (`kalama`), adapter "Adreno (TM) 740 (Vulkan, IntegratedGpu)", 1080x1920
+panel run in landscape, display in its 60 Hz mode (it also offers 120 Hz: not tried), on AC power at about 37 C. Debug APK,
+`scripts/bench.sh`, one cold run of about 80 seconds. `gpu` is the GPU's own time from timestamp queries (they work on this
+driver); the frame budget at 60 fps is 16.7.
+
+| Phase | Triangles | GPU | Lua | Recording | fps |
+| --- | --- | --- | --- | --- | --- |
+| sky only | 0 | 0.26 | 0.09 | 0.74 | 59.7 |
+| city 12 by 12 | 78 k | 0.95 | 0.07 | 0.82 | 59.7 |
+| city 24 by 24 | 210 k | 1.73 | 0.08 | 0.83 | 59.7 |
+| city 48 by 48 | 625 k | 4.05 | 0.15 | 0.89 | 59.7 |
+| city 24 + 200 cars | 566 k | 3.47 | 1.03 | 1.18 | 59.6 |
+| city 24 + 100 characters | 316 k | 2.46 | 0.85 | 0.86 | 59.7 |
+| city 24 + 16 lights | 209 k | 4.61 | 0.11 | 0.91 | 59.7 |
+| city 24 + shadows | 209 k | 4.25 | 0.06 | 1.15 | 59.7 |
+| city 24 + toon, outline, grade | 209 k | 2.10 | 0.12 | 0.71 | 59.7 |
+| street level, city 48 | 669 k | 3.80 | 0.09 | 1.03 | 59.6 |
+| city 48, far buildings cheaper | 177 k | 1.59 | 0.16 | 0.97 | 59.7 |
+| street level, city 48, cheaper far buildings | 188 k | 1.50 | 0.18 | 1.07 | 59.7 |
+| worst: 48 + 300 cars + 200 characters + lights + shadows | 1.15 M | 13.30 | 2.69 | 1.12 | 59.7 |
+
+What this says, and does not:
+
+- **Every phase held 60 fps, including the worst case**, whose GPU time (13.3 ms) is under the 16.7 ms budget with 1.15 million
+  triangles, 200 skinned characters, 16 lights and shadows. The estimate below (25 to 30 ms for that phase) was about twice too
+  pessimistic: on this load the Adreno 740 took 13.3 ms against 6.8 on the M4 and 7.2 on the emulator's host GPU, so about 2 times
+  slower than the M4, not the 3 to 4 times I had assumed. The CPU side is tiny (Lua 0.1 to 2.7 ms, recording about 1 ms).
+- **The headroom is thin only in the worst phase**: 13.3 ms of GPU leaves about 3 ms. Lights (4.6 ms for the city of 24) and shadows
+  (4.3) are the most expensive single features here; the toon, outline and grade phase cost no more than the plain city.
+- **Not measured**: sustained speed after minutes of heat (this was one cold run), 120 Hz, battery use, a real game on the
+  controller, and the frame-time spikes of loading. The p95 frame time of 17.6 to 18.9 ms is the 60 Hz display's own 16.7 plus
+  what the log's timing adds; the longest frame was 19.5 ms, well short of the 33 ms a missed vsync would show.
+
+## What I expected for the Retroid Pocket 6 (an estimate made before the run; see the measurements above)
 
 The Snapdragon 8 Gen 2 is slower than an M4 by roughly 2 to 2.5 times on one CPU core and by roughly 3 to 4 times on the GPU
 (from public benchmark comparisons; I have not measured it). Applying those:
@@ -81,7 +116,7 @@ The Snapdragon 8 Gen 2 is slower than an M4 by roughly 2 to 2.5 times on one CPU
 
 ## To do on the device
 
-Run `scripts/bench.sh`, then replace the estimates above with the `gpu=`, `lua=` and `fps=` columns. If `gpu` is 0, the
+Done once (above). Still to do: a 10-minute run for heat, 120 Hz, a real game on the controller. The first line of advice stands: If `gpu` is 0, the
 adapter has no timestamp queries and the log's `fps` and `p95` are all there is. Then look at the three costs in the order
 above and decide what to build.
 
