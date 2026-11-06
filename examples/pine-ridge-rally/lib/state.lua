@@ -11,10 +11,11 @@ state.cars = {
   -- `oversteer`: how readily the rear lets go under power in a bend (0 never, 1 a lot); the sedan and the hatchback are the
   -- drifters, the open-wheel cars hold the road
   -- `wheel`: the wheels' radius in metres (the models' wheels are 0.6, 0.68, 0.66 and 0.62 m across), for how fast they spin
-  { id = "car", name = "Redline", oversteer = 0.35, wheel = 0.30 },
-  { id = "car_blue", name = "Blue Streak", oversteer = 0.6, wheel = 0.34 },
-  { id = "car_green", name = "Green Machine", oversteer = 0.7, wheel = 0.33 },
-  { id = "car_yellow", name = "Sunburst", oversteer = 0.45, wheel = 0.31 },
+  -- `power` is the pull in first gear (m/s squared) and `top` the top speed (m/s): the open-wheel cars are the quick ones
+  { id = "car", name = "Redline", oversteer = 0.35, wheel = 0.30, power = 11.5, top = 50 },
+  { id = "car_blue", name = "Blue Streak", oversteer = 0.6, wheel = 0.34, power = 8.5, top = 44 },
+  { id = "car_green", name = "Green Machine", oversteer = 0.7, wheel = 0.33, power = 8, top = 42 },
+  { id = "car_yellow", name = "Sunburst", oversteer = 0.45, wheel = 0.31, power = 11, top = 48 },
 }
 
 state.track = 1       -- index into state.tracks

@@ -163,8 +163,9 @@ function race.define(config)
     for i, r in ipairs(state.mode == "trial" and {} or RIVALS) do
       local car = put(pool[i], slots[i])
       car.name, car.skill, car.lane = r.name, r.skill, r.lane
+      car.top = math.min(car.top, 44) -- (the rivals' driving is tuned for a top speed of 44 m/s: faster, they overshoot the bends)
       car.vmax = 40 * r.skill + 4
-      car.engine = audio.engine(0.55, true)
+      car.engine = audio.engine(0.55)
       self.cars[#self.cars + 1] = car
     end
   end

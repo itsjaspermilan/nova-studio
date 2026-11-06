@@ -589,7 +589,10 @@ fn the_engine_is_heard_while_racing_and_louder_as_the_throttle_goes_down() {
         for _ in 0..frames {
             frame_with(g, held);
             for c in g.take_audio() {
-                if let Command::Set { volume: Some(v), .. } = c {
+                if let Command::Set {
+                    volume: Some(v), ..
+                } = c
+                {
                     best = best.max(v);
                 }
             }
@@ -598,6 +601,51 @@ fn the_engine_is_heard_while_racing_and_louder_as_the_throttle_goes_down() {
     };
     let idle = loudest(&mut g, 60, &[]);
     let full = loudest(&mut g, 120, &[("key:ArrowUp", 1.0)]);
-    assert!(full > 0.25, "at full throttle one engine loop is set to {full}");
+    assert!(
+        full > 0.25,
+        "at full throttle one engine loop is set to {full}"
+    );
     assert!(full > idle, "and louder than at idle ({idle})");
+}
+
+#[test]
+fn the_engine_pitch_follows_the_speed_over_a_wide_range_and_falls_at_a_gear_change() {
+    use nova_runtime::mixer::Command;
+    let mut g = load();
+    start_race(&mut g, 0, false);
+    let mut log = Vec::new();
+    run_until(&mut g, &mut log, "the countdown ends", 60 * 8, |l| {
+        l.iter().any(|x| x == "go")
+    });
+    tap(&mut g, "key:F9"); // the computer drives
+    g.take_audio();
+    let mut pitches: Vec<f32> = Vec::new();
+    for _ in 0..60 * 12 {
+        frame_with(&mut g, &[]);
+        let mut loudest = (0.0f32, 0.0f32);
+        for c in g.take_audio() {
+            if let Command::Set {
+                volume: Some(v),
+                pitch: Some(p),
+                ..
+            } = c
+            {
+                if v > loudest.0 && p > 0.9 {
+                    loudest = (v, p);
+                }
+            }
+        }
+        if loudest.0 > 0.0 {
+            pitches.push(loudest.1);
+        }
+    }
+    let low = pitches.iter().cloned().fold(f32::MAX, f32::min);
+    let high = pitches.iter().cloned().fold(0.0, f32::max);
+    assert!(
+        high > low * 2.2,
+        "the pitch spans a wide range as the car speeds up: {low} to {high}"
+    );
+    // it falls when a gear changes (the revs drop): somewhere the pitch goes down by a good step within a few frames
+    let falls = pitches.windows(8).filter(|w| w[0] - w[7] > 0.5).count();
+    assert!(falls > 0, "and falls at a gear change");
 }

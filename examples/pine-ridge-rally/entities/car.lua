@@ -55,7 +55,12 @@ function Car:create()
   self.waypoint = nil
   self.model_id = getmetatable(self).__model
   self.wheel_radius = WHEEL_RADIUS
-  for _, c in ipairs(state.cars) do if c.id == self.model_id then self.wheel_radius = c.wheel or WHEEL_RADIUS end end
+  for _, c in ipairs(state.cars) do
+    if c.id == self.model_id then
+      self.wheel_radius = c.wheel or WHEEL_RADIUS
+      self.power, self.top = c.power or self.power, c.top or self.top
+    end
+  end
   self.parts_table = {
     body = { rx = 0, rz = 0, y = 0 },
     wheel_fl = { rx = 0, ry = 0, y = 0 }, wheel_fr = { rx = 0, ry = 0, y = 0 },
