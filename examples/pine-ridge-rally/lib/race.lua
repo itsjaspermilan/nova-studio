@@ -140,6 +140,12 @@ function race.define(config)
     local mine = state.current_car().id
     local pool = {}
     for _, c in ipairs(state.cars) do if c.id ~= mine then pool[#pool + 1] = c.id end end
+    -- which cars the rivals drive: a different three for each circuit and each car of yours (the same every time)
+    local turn = (state.track * 3 + state.car * 5) % #pool
+    for _ = 1, turn do
+      local first = table.remove(pool, 1) -- (not `pool[#pool + 1] = table.remove(pool, 1)`: the index is worked out before the removal)
+      pool[#pool + 1] = first
+    end
     local slots = { 1, 2, 4 }  -- the rivals' places; the player has slot 3
     local length = self.length
     local function put(kind, slot)

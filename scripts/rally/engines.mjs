@@ -28,6 +28,34 @@ const CARS = {
     idle: 1000, max: 6800, cylinders: 3, unevenness: 0.22, noise: 0.3, pattern: [1, 0.7, 0.85],
     resonators: [{ f: 90, tau: 0.04, g: 1 }, { f: 210, tau: 0.025, g: 0.9 }, { f: 560, tau: 0.014, g: 0.8 }, { f: 1400, tau: 0.008, g: 0.55 }, { f: 2800, tau: 0.004, g: 0.35 }],
   },
+  car_sedan: { // Commuter: an ordinary four-cylinder
+    idle: 800, max: 6500, cylinders: 4, unevenness: 0.09, noise: 0.28, pattern: [1, 0.92, 0.96, 0.88],
+    resonators: [{ f: 120, tau: 0.03, g: 1 }, { f: 300, tau: 0.018, g: 0.8 }, { f: 800, tau: 0.01, g: 0.7 }, { f: 1900, tau: 0.006, g: 0.45 }, { f: 3500, tau: 0.003, g: 0.25 }],
+  },
+  car_suv: { // Trailblazer: a smooth, deep six
+    idle: 700, max: 5800, cylinders: 6, unevenness: 0.05, noise: 0.22, pattern: [1],
+    resonators: [{ f: 85, tau: 0.04, g: 1 }, { f: 200, tau: 0.025, g: 0.9 }, { f: 520, tau: 0.014, g: 0.7 }, { f: 1300, tau: 0.008, g: 0.45 }, { f: 2600, tau: 0.004, g: 0.3 }],
+  },
+  car_suvl: { // Grand Tourer: a V8 burble
+    idle: 600, max: 5500, cylinders: 8, unevenness: 0.1, noise: 0.3, pattern: [1, 0.8, 0.95, 0.75],
+    resonators: [{ f: 75, tau: 0.045, g: 1 }, { f: 170, tau: 0.03, g: 0.95 }, { f: 430, tau: 0.016, g: 0.75 }, { f: 1100, tau: 0.009, g: 0.5 }, { f: 2300, tau: 0.004, g: 0.3 }],
+  },
+  car_taxi: { // Cab: a tired, rattly four
+    idle: 850, max: 6000, cylinders: 4, unevenness: 0.16, noise: 0.4, pattern: [1, 0.8, 0.9, 0.7],
+    resonators: [{ f: 130, tau: 0.028, g: 1 }, { f: 340, tau: 0.016, g: 0.85 }, { f: 900, tau: 0.01, g: 0.8 }, { f: 2100, tau: 0.007, g: 0.6 }, { f: 3800, tau: 0.004, g: 0.4 }],
+  },
+  car_police: { // Patrol: an aggressive V8
+    idle: 700, max: 6800, cylinders: 8, unevenness: 0.07, noise: 0.35, pattern: [1, 0.85, 0.95, 0.8],
+    resonators: [{ f: 95, tau: 0.04, g: 1 }, { f: 230, tau: 0.025, g: 0.9 }, { f: 620, tau: 0.014, g: 0.85 }, { f: 1500, tau: 0.009, g: 0.6 }, { f: 3000, tau: 0.004, g: 0.4 }],
+  },
+  car_van: { // Delivery Van: a diesel four, clattering
+    idle: 800, max: 4800, cylinders: 4, unevenness: 0.18, noise: 0.5, pattern: [1, 0.85, 0.95, 0.8],
+    resonators: [{ f: 140, tau: 0.025, g: 1 }, { f: 420, tau: 0.014, g: 0.9 }, { f: 1100, tau: 0.01, g: 0.85 }, { f: 2400, tau: 0.007, g: 0.6 }, { f: 4200, tau: 0.004, g: 0.4 }],
+  },
+  car_pickup: { // Hauler: a gruff V6
+    idle: 700, max: 5500, cylinders: 6, unevenness: 0.12, noise: 0.32, pattern: [1, 0.9],
+    resonators: [{ f: 90, tau: 0.04, g: 1 }, { f: 220, tau: 0.024, g: 0.9 }, { f: 580, tau: 0.013, g: 0.75 }, { f: 1400, tau: 0.008, g: 0.5 }, { f: 2700, tau: 0.004, g: 0.3 }],
+  },
   car_yellow: { // Sunburst: a six-cylinder with a turbo whine: smooth, with a rising whistle
     idle: 2500, max: 9800, cylinders: 6, unevenness: 0.03, noise: 0.15, pattern: [1], whine: 14,
     resonators: [{ f: 300, tau: 0.02, g: 0.9 }, { f: 900, tau: 0.012, g: 0.8 }, { f: 2000, tau: 0.008, g: 0.7 }, { f: 3600, tau: 0.004, g: 0.5 }],

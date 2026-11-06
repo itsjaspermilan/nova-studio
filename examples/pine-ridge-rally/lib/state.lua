@@ -12,11 +12,18 @@ state.cars = {
   -- drifters, the open-wheel cars hold the road
   -- `wheel`: the wheels' radius in metres (the models' wheels are 0.6, 0.68, 0.66 and 0.62 m across), for how fast they spin
   -- `idle_rpm` and `max_rpm` are the engine's range (the same numbers as in scripts/rally/engines.mjs, which makes its sound).
--- `power` is the pull in first gear (m/s squared) and `top` the top speed (m/s): the open-wheel cars are the quick ones
+  -- `power` is the pull in first gear (m/s squared) and `top` the top speed (m/s): the open-wheel cars are the quick ones
   { id = "car", name = "Redline", oversteer = 0.35, wheel = 0.30, power = 11.5, top = 50, idle_rpm = 3500, max_rpm = 12500 },
   { id = "car_blue", name = "Blue Streak", oversteer = 0.6, wheel = 0.34, power = 8.5, top = 44, idle_rpm = 900, max_rpm = 7000 },
   { id = "car_green", name = "Green Machine", oversteer = 0.7, wheel = 0.33, power = 8, top = 42, idle_rpm = 1000, max_rpm = 6800 },
   { id = "car_yellow", name = "Sunburst", oversteer = 0.45, wheel = 0.31, power = 11, top = 48, idle_rpm = 2500, max_rpm = 9800 },
+  { id = "car_sedan", name = "Commuter", oversteer = 0.5, wheel = 0.335, power = 8, top = 42, idle_rpm = 800, max_rpm = 6500 },
+  { id = "car_suv", name = "Trailblazer", oversteer = 0.4, wheel = 0.395, power = 8.5, top = 42, idle_rpm = 700, max_rpm = 5800 },
+  { id = "car_suvl", name = "Grand Tourer", oversteer = 0.5, wheel = 0.4, power = 9.5, top = 46, idle_rpm = 600, max_rpm = 5500 },
+  { id = "car_taxi", name = "Cab", oversteer = 0.6, wheel = 0.335, power = 7.5, top = 40, idle_rpm = 850, max_rpm = 6000 },
+  { id = "car_police", name = "Patrol", oversteer = 0.55, wheel = 0.375, power = 9.5, top = 46, idle_rpm = 700, max_rpm = 6800 },
+  { id = "car_van", name = "Delivery Van", oversteer = 0.3, wheel = 0.355, power = 7, top = 38, idle_rpm = 800, max_rpm = 4800 },
+  { id = "car_pickup", name = "Hauler", oversteer = 0.45, wheel = 0.41, power = 8.5, top = 40, idle_rpm = 700, max_rpm = 5500 },
 }
 
 state.track = 1       -- index into state.tracks

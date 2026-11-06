@@ -367,6 +367,7 @@ fn cornering_with(
     tap(&mut g, "key:Enter");
     tap(&mut g, "key:Enter");
     tap(&mut g, "key:ArrowDown"); // to Mode
+    tap(&mut g, "key:ArrowRight"); // a time trial: no rivals to bump the car
     tap(&mut g, "key:ArrowDown"); // to Car
     for _ in 0..car_steps {
         tap(&mut g, "key:ArrowRight");

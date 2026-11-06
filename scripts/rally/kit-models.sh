@@ -57,3 +57,17 @@ K "$RK" $P barrierWhite --as barrier_white --fit x=4 --centre --collider -1:0:0.
 K "$RK" $P pylon --as pylon --fit y=1.1 --centre --collider 0:0:0.4
 K "$RK" $P fenceStraight --as fence --fit x=5 --centre --collider -1.7:0:0.4 --collider 0:0:0.4 --collider 1.7:0:0.4
 K "$RK" $P pitsGarage --as garage --fit x=12 --centre --collider -4:0:2 --collider 0:0:2 --collider 4:0:2
+
+# more road cars, from the Car Kit in the Kenney All-in-1 bundle (set CARKIT to its folder: ".../3D assets/Car Kit"): one scale (1.18, the sports sedan's) for all of the road cars, so that they keep the kit's sizes relative to each other; the same scale as the
+# sports cars above (the kit's road cars are wider, so a little less), wheels fitted to each body. \`--rename\` names the four wheels as
+# the game's car code expects; a part the kit has beyond them (the SUV's spare wheel, the police car's grill) is left as it is.
+if [ -n "${CARKIT:-}" ]; then
+    ROADCAR=(--pivot-wheels --centre-axles --wheels-to-body --rename wheel-front-right=wheel_fl,wheel-front-left=wheel_fr,wheel-back-right=wheel_rl,wheel-back-left=wheel_rr)
+    K "$CARKIT" $P sedan --as car_sedan --scale 1.18 --wheel-diameter 0.67 "${ROADCAR[@]}"
+    K "$CARKIT" $P suv --as car_suv --scale 1.18 --wheel-diameter 0.79 "${ROADCAR[@]}"
+    K "$CARKIT" $P suv-luxury --as car_suvl --scale 1.18 --wheel-diameter 0.8 "${ROADCAR[@]}"
+    K "$CARKIT" $P taxi --as car_taxi --scale 1.18 --wheel-diameter 0.67 "${ROADCAR[@]}"
+    K "$CARKIT" $P police --as car_police --scale 1.18 --wheel-diameter 0.75 "${ROADCAR[@]}"
+    K "$CARKIT" $P van --as car_van --scale 1.18 --wheel-diameter 0.71 "${ROADCAR[@]}"
+    K "$CARKIT" $P truck --as car_pickup --scale 1.18 --wheel-diameter 0.82 "${ROADCAR[@]}"
+fi
