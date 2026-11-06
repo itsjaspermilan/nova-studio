@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "upper",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "from": [-3, -16, -3], "size": [6, 16, 6], "color": "#d9824a" }
+      ],
+      "children": [
+        {
+          "name": "lower",
+          "origin": [0, -16, 0],
+          "rotation": [0, 0, 0],
+          "cubes": [
+            { "from": [-2.5, -16, -2.5], "size": [5, 16, 5], "color": "#e8b07a" }
+          ],
+          "children": [
+            {
+              "name": "hand",
+              "origin": [0, -16, 0],
+              "rotation": [0, 0, 0],
+              "cubes": [
+                { "from": [-3.5, -3, -3.5], "size": [7, 3, 7], "color": "#4a8f5c" }
+              ],
+              "children": []
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+{"t":1793992077992,"tool":"model_write","files":["models/limb.model.json","models/limb.glb"],"note":"models/limb.model.json and models/limb.glb: 3 parts, 3 shapes, 36 triangles, 4776 bytes. In Lua: nova.model(\"limb\", x, y, z)"}
