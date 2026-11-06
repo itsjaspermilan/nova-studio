@@ -154,6 +154,10 @@ pub(super) fn install(lua: &Lua, shared: &Rc<RefCell<Shared>>, nova: &Table) -> 
                 };
                 let right = up.cross(normal).normalize();
                 let up = normal.cross(right);
+                // `rot` turns the square about its normal (radians), so that a long mark can lie along any way on the ground
+                let rot = number_option(&opts, "rot")?.unwrap_or(0.0) as f32;
+                let (sin, cos) = rot.sin_cos();
+                let (right, up) = (right * cos + up * sin, up * cos - right * sin);
                 let (w, h) = (
                     number_option(&opts, "w")?.unwrap_or(size) as f32,
                     number_option(&opts, "h")?.unwrap_or(size) as f32,

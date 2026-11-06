@@ -57,8 +57,7 @@ JAR=$("$ENV" bash -c 'echo "$ANDROID_HOME/platforms/android-36/android.jar"')
 # Fill the manifest template (XML-escaping the label).
 xml_escape() { local s=$1; s=${s//&/&amp;}; s=${s//</&lt;}; s=${s//>/&gt;}; s=${s//\"/&quot;}; printf '%s' "$s"; }
 MANIFEST="$OUT/AndroidManifest.xml"
-# A project's icon.png (square) becomes the app's launcher icon, and its boxart.png travels in the APK's assets for launchers that
-# show a cover (a launcher can read it from the APK).
+# A project's icon.png (square) becomes the app's launcher icon (its boxart.png is for launchers, and is not packed into the APK).
 ICON_ATTR=""
 rm -rf "$OUT/res" && mkdir -p "$OUT/res"
 cp -R crates/nova-runtime/android/res/. "$OUT/res/"
@@ -69,7 +68,6 @@ if [ -n "$PROJECT" ] && [ -f "$PROJECT/icon.png" ]; then
     done
     ICON_ATTR='android:icon="@mipmap/ic_launcher"'
 fi
-if [ -n "$PROJECT" ] && [ -f "$PROJECT/boxart.png" ]; then cp "$PROJECT/boxart.png" "$OUT/assets/boxart.png"; fi
 sed -e "s|@PACKAGE@|$PACKAGE|" -e "s|@LABEL@|$(xml_escape "$LABEL")|" -e "s|@ICON@|$ICON_ATTR|" \
     crates/nova-runtime/android/AndroidManifest.xml > "$MANIFEST"
 

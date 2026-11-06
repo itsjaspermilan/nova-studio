@@ -4,22 +4,40 @@ local fx = {}
 
 local emitter
 
--- Skid marks: the last 360 are kept (a ring), each a dark strip along the way the tyre slid, drawn flat on the road.
-local MARKS = 360
-local marks, next_mark, skid_opts = {}, 1, { ry = 0 }
+-- Skid marks: each tyre lays one continuous dark ribbon (a run of short strips, each from the last point to the next, so a bend is
+-- smooth); the last 500 strips are kept (a ring), drawn flat on the road.
+local MARKS = 500
+local marks, next_mark = {}, 1
+local last = setmetatable({}, { __mode = "k" }) -- where each tyre's ribbon ended: last[car][side] = { x, z }
+local SKID_COLOR = { 14, 14, 17, 150 }
+local STEP, WIDTH = 0.6, 0.3
 
 function fx.clear()
   if emitter then emitter:destroy() end
   emitter = nil
   marks, next_mark = {}, 1
+  last = setmetatable({}, { __mode = "k" })
 end
 
--- A mark at (x, z) lying along `ry` (radians).
-function fx.skid(x, z, ry)
+-- The tyre `side` (1 or 2) of `owner` (the car) is at (x, z) and sliding: the ribbon grows to here.
+function fx.skid(owner, side, x, z)
+  local mine = last[owner]
+  if not mine then mine = {}; last[owner] = mine end
+  local p = mine[side]
+  if not p then mine[side] = { x, z }; return end
+  local dx, dz = x - p[1], z - p[2]
+  local len = math.sqrt(dx * dx + dz * dz)
+  if len < STEP then return end
   local m = marks[next_mark]
   if not m then m = {}; marks[next_mark] = m end
-  m.x, m.z, m.ry = x, z, ry
+  m.x, m.z, m.ry, m.len = (x + p[1]) / 2, (z + p[2]) / 2, math.atan(dx, dz), len + 0.04
   next_mark = next_mark % MARKS + 1
+  p[1], p[2] = x, z
+end
+
+-- The tyre has stopped sliding: its next mark starts a new ribbon.
+function fx.skid_end(owner)
+  last[owner] = nil
 end
 
 function fx.draw_skids(cx, cz, range)
@@ -28,8 +46,7 @@ function fx.draw_skids(cx, cz, range)
     local m = marks[i]
     local dx, dz = m.x - cx, m.z - cz
     if dx * dx + dz * dz < r2 then
-      skid_opts.ry = m.ry
-      nova.model("skid", m.x, 0.05, m.z, skid_opts)
+      nova.quad3(m.x, 0.04, m.z, 0, 1, 0, 1, { w = m.len, h = WIDTH, rot = m.ry, color = SKID_COLOR })
     end
   end
 end
