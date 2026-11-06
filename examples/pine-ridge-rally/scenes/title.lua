@@ -203,7 +203,7 @@ function Title:draw()
   -- on the menu and the chooser the menu is on the left and the car moves to the right (easing across when the screen changes)
   local dt = self.t - (self.last_t or self.t)
   self.last_t = self.t
-  local want = (self.screen == "menu" or self.screen == "select" or self.screen == "pick") and ((self.screen == "pick") and 3.4 or 2.6) or 0
+  local want = (self.screen == "menu" or self.screen == "select" or self.screen == "pick") and ((self.screen == "pick") and 3.9 or 2.6) or 0
   self.shift = (self.shift or 0) + (want - (self.shift or 0)) * math.min(1, dt * 5)
   backdrop.draw(self.t, "title", self.shift)
 end
