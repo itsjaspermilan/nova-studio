@@ -1,0 +1,14 @@
+{
+  "format": 1,
+  "name": "Sound Check",
+  "version": "0.1.0",
+  "input": {
+    "click": ["pad:south", "key:Space"],
+    "music": ["pad:west", "key:KeyM"],
+    "metronome": ["pad:east", "key:KeyB"],
+    "burst": ["pad:north", "key:KeyN"],
+    "louder": ["pad:r1", "key:ArrowUp"],
+    "quieter": ["pad:l1", "key:ArrowDown"],
+    "tone": ["axis:r2", "key:KeyT"]
+  }
+}

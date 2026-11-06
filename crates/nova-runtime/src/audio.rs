@@ -244,6 +244,10 @@ where
         .map_err(|e| format!("cannot open audio stream: {e}"))
 }
 
+/// Frames the audio callback asks for on Android (see `start`).
+#[cfg(target_os = "android")]
+const ANDROID_CALLBACK_FRAMES: u32 = 256;
+
 /// `game` selects the mixer for project games; otherwise the benchmark's demo score plays.
 pub fn start(game: bool) -> Result<AudioOut, String> {
     let host = cpal::default_host();
@@ -271,6 +275,13 @@ pub fn start(game: bool) -> Result<AudioOut, String> {
             ));
         }
         (Source::Demo(DemoRenderer::new(rate)?), None)
+    };
+    // On Android the default callback was about 980 frames (20 ms) and the device buffers a few of those on top; asking for a small
+    // one (256 frames, 5 ms at 48 kHz) brings a sound closer to the button that made it.
+    #[cfg(target_os = "android")]
+    let config = cpal::StreamConfig {
+        buffer_size: cpal::BufferSize::Fixed(ANDROID_CALLBACK_FRAMES),
+        ..config
     };
     let stream = match format {
         cpal::SampleFormat::F32 => build::<f32>(&device, config, source, stats.clone())?,
