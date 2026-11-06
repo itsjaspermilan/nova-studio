@@ -1,4 +1,4 @@
-//! Modeassert!(log[..100].iter().all(|l| l.split(' ').nth(4) == Some("false")), "a state that goes on to another has not finished"); animation clips: read from the .glb the studio exports, sampled by `nova.model`, played by entities.
+//! Model animation clips: read from the .glb the studio exports, sampled by `nova.model`, played by entities.
 
 use std::cell::Cell;
 use std::rc::Rc;

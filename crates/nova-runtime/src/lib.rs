@@ -12,6 +12,7 @@ pub mod export;
 pub mod font;
 pub mod game;
 pub mod gfx;
+pub mod ik;
 pub mod input;
 pub mod inputscript;
 pub mod lights;

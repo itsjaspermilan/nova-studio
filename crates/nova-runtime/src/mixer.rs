@@ -139,8 +139,8 @@ impl Reverb {
 
     /// Adds the reverb of `wet` (interleaved stereo sends) to `out`.
     fn process(&mut self, wet: &[f32], out: &mut [f32]) {
-        for (frame, pair) in wet.chunks_exact(2).enumerate() {
-            let input = (pair[0] + pair[1]) * 0.015;
+        for frame in 0..wet.len() / 2 {
+            let input = (wet[frame * 2] + wet[frame * 2 + 1]) * 0.015;
             for ch in 0..2 {
                 let mut y = 0.0;
                 for c in &mut self.combs[ch] {

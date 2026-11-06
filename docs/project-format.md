@@ -328,6 +328,18 @@ not key a part counts as that part's authored pose; rotations are mixed the shor
 nova.model("hero", x, y, z, { layers = { { clip = "walk", time = t, weight = 0.7 }, { clip = "run", time = t2, weight = 0.3 } } })
 ```
 
+**Joints and inverse kinematics.** `nova.model_pose(id, opts)` says where each part's joint is in a pose (in the model's own space), and `nova.ik(id, opts, { "Thigh", "Shin", "Foot" }, target, pole)` solves a two-bone limb: it returns the `parts` turns (`quat`s) that put the end of the limb on `target`, bending the middle joint toward `pole`, and whether the target was within reach. A character's foot can stand on a stair or a slope, a hand can rest on a ledge:
+
+```lua
+local opts = { clip = "run", time = t }                         -- the pose the legs would have
+local knee = { x = 0, y = 0.5, z = 1 }                          -- in model space: the knee bends toward the front
+local parts = nova.ik("hero", opts, { "Thigh_L", "Shin_L", "Foot_L" }, foot_target_in_model_space, knee)
+opts.parts = parts
+nova.model("hero", x, y, z, opts)
+```
+
+Targets are in the model's own space: take a place in the world, subtract where the model stands, undo its turn `ry` and its `scale`. The foot's own turn (to lie flat on the slope) is the script's to add. The chain's turns in `opts.parts` are replaced by the solver's; a part's `parts` entry can also give its turn as `quat = { x, y, z, w }`.
+
 **Masked layers.** A layer with a `mask` (a list of part names) is laid over the mix on those parts and everything below them, and nowhere else; its `weight` (0 to 1) is how much of it, 1 replacing the mix on those parts. A character can run with the legs of the run clip and the arms of an aiming one:
 
 ```lua

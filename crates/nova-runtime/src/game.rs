@@ -297,6 +297,174 @@ fn light_color(table: &Table, key: &str) -> mlua::Result<Option<[f32; 3]>> {
     Ok(Some(out))
 }
 
+/// Where each part of a model is, in the model's own space, for the pose the options of `nova.model` describe: a `clip`, mixed
+/// `layers` (with their masks and additive ones) and the script's own turns in `parts`. Returns the parts and a matrix for each.
+#[allow(clippy::too_many_arguments)]
+fn part_worlds(
+    sh: &Shared,
+    found: &str,
+    id: &str,
+    opts: &Option<Table>,
+    clip_name: &Option<String>,
+    layers: &Option<Table>,
+    overrides: &Option<Table>,
+    ignore_turns: &[&str],
+) -> mlua::Result<(Vec<PartRt>, Vec<Mat4>)> {
+    let parts = sh.parts.get(found).cloned().unwrap_or_default();
+    // A clip first (it replaces what it animates of each part's authored place) ...
+    let mut poses = vec![model::PartPose::default(); parts.len()];
+    if let Some(name) = &clip_name {
+        let clips = sh.clips.get(found).map(Vec::as_slice).unwrap_or(&[]);
+        let clip = clips.iter().find(|c| &c.name == name).ok_or_else(|| {
+            lua_err(format!(
+                "model '{id}' has no clip '{name}' (its clips: {})",
+                if clips.is_empty() {
+                    "none".to_string()
+                } else {
+                    clips
+                        .iter()
+                        .map(|c| c.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                }
+            ))
+        })?;
+        let time = number_option(opts, "time")?.unwrap_or(0.0) as f32;
+        let looped = match &opts {
+            Some(o) => o.get::<Option<bool>>("loop")?.unwrap_or(true),
+            None => true,
+        };
+        poses = clip.pose(time, looped, parts.len());
+    }
+    if let Some(layers) = &layers {
+        let clips = sh.clips.get(found).map(Vec::as_slice).unwrap_or(&[]);
+        let mut mixed: Vec<(Vec<model::PartPose>, f32)> = Vec::new();
+        // layers with a `mask` are laid over the mix afterwards, on those parts only
+        let mut overlays: Vec<(Vec<model::PartPose>, f32, Vec<bool>)> = Vec::new();
+        // layers with `additive = true` add how far they are from the rest pose, on top of everything else
+        let mut additives: Vec<(Vec<model::PartPose>, f32, Option<Vec<bool>>)> = Vec::new();
+        for entry in layers.sequence_values::<Table>() {
+            let entry = entry?;
+            let name: String = entry.get::<Option<String>>("clip")?.ok_or_else(|| {
+                lua_err("each layer needs a clip name: { clip = \"walk\", time = 0.5, weight = 1 }")
+            })?;
+            let clip = clips.iter().find(|c| c.name == name).ok_or_else(|| {
+                lua_err(format!(
+                    "model '{id}' has no clip '{name}' (its clips: {})",
+                    if clips.is_empty() {
+                        "none".to_string()
+                    } else {
+                        clips
+                            .iter()
+                            .map(|c| c.name.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    }
+                ))
+            })?;
+            let weight = entry.get::<Option<f64>>("weight")?.unwrap_or(1.0);
+            if !weight.is_finite() || weight < 0.0 {
+                return Err(lua_err("a layer's weight must be 0 or more"));
+            }
+            if weight == 0.0 {
+                continue;
+            }
+            let time = entry.get::<Option<f64>>("time")?.unwrap_or(0.0) as f32;
+            let looped = entry.get::<Option<bool>>("loop")?.unwrap_or(true);
+            let additive = entry.get::<Option<bool>>("additive")?.unwrap_or(false);
+            if let Some(names) = entry.get::<Option<Table>>("mask")? {
+                // the named parts and everything below them (parents come before their children)
+                let mut mask = vec![false; parts.len()];
+                for name in names.sequence_values::<String>() {
+                    let name = name?;
+                    let index = parts.iter().position(|p| p.name == name).ok_or_else(|| {
+                        lua_err(format!(
+                            "model '{id}' has no part '{name}' for a layer's mask (its parts: {})",
+                            parts
+                                .iter()
+                                .map(|p| p.name.as_str())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ))
+                    })?;
+                    mask[index] = true;
+                }
+                for j in 0..parts.len() {
+                    if parts[j].parent.is_some_and(|parent| mask[parent]) {
+                        mask[j] = true;
+                    }
+                }
+                if additive {
+                    additives.push((
+                        clip.pose(time, looped, parts.len()),
+                        weight as f32,
+                        Some(mask),
+                    ));
+                } else {
+                    overlays.push((
+                        clip.pose(time, looped, parts.len()),
+                        (weight as f32).min(1.0),
+                        mask,
+                    ));
+                }
+            } else if additive {
+                additives.push((clip.pose(time, looped, parts.len()), weight as f32, None));
+            } else {
+                mixed.push((clip.pose(time, looped, parts.len()), weight as f32));
+            }
+        }
+        let rests: Vec<(Vec3, Quat, Vec3)> = parts
+            .iter()
+            .map(|p| {
+                let (s, r, t) = p.rest.to_scale_rotation_translation();
+                (s, r, t)
+            })
+            .collect();
+        poses = model::blend_poses(&rests, &mixed);
+        for (overlay, amount, mask) in &overlays {
+            poses = model::overlay_poses(&rests, &poses, overlay, mask, *amount);
+        }
+        for (delta, amount, mask) in &additives {
+            poses = model::additive_poses(&rests, &poses, delta, mask.as_deref(), *amount);
+        }
+    }
+    // ... then the script's own turns on top.
+    let mut turn = vec![Mat4::IDENTITY; parts.len()];
+    let named: Vec<(String, Table)> = match &overrides {
+        Some(t) => t.pairs::<String, Table>().collect::<mlua::Result<_>>()?,
+        None => Vec::new(),
+    };
+    for (name, t) in named {
+        let index = parts.iter().position(|p| p.name == name).ok_or_else(|| {
+            lua_err(format!(
+                "model '{id}' has no part '{name}' (its parts: {})",
+                parts
+                    .iter()
+                    .map(|p| p.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ))
+        })?;
+        if ignore_turns.contains(&name.as_str()) {
+            continue;
+        }
+        turn[index] = part_transform(&t, id, &name)?;
+    }
+    let mut world = vec![Mat4::IDENTITY; parts.len()];
+    for (i, p) in parts.iter().enumerate() {
+        let (s0, r0, t0) = p.rest.to_scale_rotation_translation();
+        let pose = poses[i];
+        let authored = Mat4::from_scale_rotation_translation(
+            pose.scale.unwrap_or(s0),
+            pose.rotation.unwrap_or(r0),
+            pose.translation.unwrap_or(t0),
+        );
+        let local = authored * turn[i];
+        world[i] = p.parent.map_or(local, |parent| world[parent] * local);
+    }
+    Ok((parts, world))
+}
+
 /// A turn, shift and scale applied to one model part on top of its authored place.
 fn part_transform(t: &Table, model: &str, part: &str) -> mlua::Result<Mat4> {
     let n = |key: &str| -> mlua::Result<f64> {
@@ -315,11 +483,35 @@ fn part_transform(t: &Table, model: &str, part: &str) -> mlua::Result<Mat4> {
             "parts.{part}.scale of model '{model}' must be greater than 0"
         )));
     }
+    // `quat = {x, y, z, w}` is a turn as a quaternion (what `nova.ik` returns), instead of rx, ry and rz
+    let turn = match t.get::<Option<Table>>("quat")? {
+        Some(q) => {
+            let mut v = [0.0f32; 4];
+            for (i, slot) in v.iter_mut().enumerate() {
+                let k = ["x", "y", "z", "w"][i];
+                let c = q.get::<Option<f64>>(k)?.ok_or_else(|| {
+                    lua_err(format!(
+                        "parts.{part}.quat of model '{model}' must be {{x, y, z, w}}"
+                    ))
+                })?;
+                if !c.is_finite() {
+                    return Err(lua_err(format!(
+                        "parts.{part}.quat of model '{model}' must be finite numbers"
+                    )));
+                }
+                *slot = c as f32;
+            }
+            Mat4::from_quat(Quat::from_xyzw(v[0], v[1], v[2], v[3]).normalize())
+        }
+        None => {
+            Mat4::from_rotation_y(n("ry")? as f32)
+                * Mat4::from_rotation_x(n("rx")? as f32)
+                * Mat4::from_rotation_z(n("rz")? as f32)
+        }
+    };
     Ok(
         Mat4::from_translation(Vec3::new(n("x")? as f32, n("y")? as f32, n("z")? as f32))
-            * Mat4::from_rotation_y(n("ry")? as f32)
-            * Mat4::from_rotation_x(n("rx")? as f32)
-            * Mat4::from_rotation_z(n("rz")? as f32)
+            * turn
             * Mat4::from_scale(Vec3::splat(scale as f32)),
     )
 }
@@ -896,123 +1088,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 }
                 if overrides.is_some() || clip_name.is_some() || layers.is_some() {
                     // Pieces that move on their own: each part is drawn separately at its turned place.
-                    let parts = sh.parts.get(&found).cloned().unwrap_or_default();
-                    // A clip first (it replaces what it animates of each part's authored place) ...
-                    let mut poses = vec![model::PartPose::default(); parts.len()];
-                    if let Some(name) = &clip_name {
-                        let clips = sh.clips.get(&found).map(Vec::as_slice).unwrap_or(&[]);
-                        let clip = clips.iter().find(|c| &c.name == name).ok_or_else(|| {
-                            lua_err(format!(
-                                "model '{id}' has no clip '{name}' (its clips: {})",
-                                if clips.is_empty() { "none".to_string() } else { clips.iter().map(|c| c.name.as_str()).collect::<Vec<_>>().join(", ") }
-                            ))
-                        })?;
-                        let time = number_option(&opts, "time")?.unwrap_or(0.0) as f32;
-                        let looped = match &opts {
-                            Some(o) => o.get::<Option<bool>>("loop")?.unwrap_or(true),
-                            None => true,
-                        };
-                        poses = clip.pose(time, looped, parts.len());
-                    }
-                    if let Some(layers) = &layers {
-                        let clips = sh.clips.get(&found).map(Vec::as_slice).unwrap_or(&[]);
-                        let mut mixed: Vec<(Vec<model::PartPose>, f32)> = Vec::new();
-                        // layers with a `mask` are laid over the mix afterwards, on those parts only
-                        let mut overlays: Vec<(Vec<model::PartPose>, f32, Vec<bool>)> = Vec::new();
-                        // layers with `additive = true` add how far they are from the rest pose, on top of everything else
-                        let mut additives: Vec<(Vec<model::PartPose>, f32, Option<Vec<bool>>)> = Vec::new();
-                        for entry in layers.sequence_values::<Table>() {
-                            let entry = entry?;
-                            let name: String = entry.get::<Option<String>>("clip")?.ok_or_else(|| lua_err("each layer needs a clip name: { clip = \"walk\", time = 0.5, weight = 1 }"))?;
-                            let clip = clips.iter().find(|c| c.name == name).ok_or_else(|| {
-                                lua_err(format!(
-                                    "model '{id}' has no clip '{name}' (its clips: {})",
-                                    if clips.is_empty() { "none".to_string() } else { clips.iter().map(|c| c.name.as_str()).collect::<Vec<_>>().join(", ") }
-                                ))
-                            })?;
-                            let weight = entry.get::<Option<f64>>("weight")?.unwrap_or(1.0);
-                            if !weight.is_finite() || weight < 0.0 {
-                                return Err(lua_err("a layer's weight must be 0 or more"));
-                            }
-                            if weight == 0.0 {
-                                continue;
-                            }
-                            let time = entry.get::<Option<f64>>("time")?.unwrap_or(0.0) as f32;
-                            let looped = entry.get::<Option<bool>>("loop")?.unwrap_or(true);
-                            let additive = entry.get::<Option<bool>>("additive")?.unwrap_or(false);
-                            if let Some(names) = entry.get::<Option<Table>>("mask")? {
-                                // the named parts and everything below them (parents come before their children)
-                                let mut mask = vec![false; parts.len()];
-                                for name in names.sequence_values::<String>() {
-                                    let name = name?;
-                                    let index = parts.iter().position(|p| p.name == name).ok_or_else(|| {
-                                        lua_err(format!(
-                                            "model '{id}' has no part '{name}' for a layer's mask (its parts: {})",
-                                            parts.iter().map(|p| p.name.as_str()).collect::<Vec<_>>().join(", ")
-                                        ))
-                                    })?;
-                                    mask[index] = true;
-                                }
-                                for j in 0..parts.len() {
-                                    if let Some(parent) = parts[j].parent {
-                                        if mask[parent] {
-                                            mask[j] = true;
-                                        }
-                                    }
-                                }
-                                if additive {
-                                    additives.push((clip.pose(time, looped, parts.len()), weight as f32, Some(mask)));
-                                } else {
-                                    overlays.push((clip.pose(time, looped, parts.len()), (weight as f32).min(1.0), mask));
-                                }
-                            } else if additive {
-                                additives.push((clip.pose(time, looped, parts.len()), weight as f32, None));
-                            } else {
-                                mixed.push((clip.pose(time, looped, parts.len()), weight as f32));
-                            }
-                        }
-                        let rests: Vec<(Vec3, Quat, Vec3)> = parts
-                            .iter()
-                            .map(|p| {
-                                let (s, r, t) = p.rest.to_scale_rotation_translation();
-                                (s, r, t)
-                            })
-                            .collect();
-                        poses = model::blend_poses(&rests, &mixed);
-                        for (overlay, amount, mask) in &overlays {
-                            poses = model::overlay_poses(&rests, &poses, overlay, mask, *amount);
-                        }
-                        for (delta, amount, mask) in &additives {
-                            poses = model::additive_poses(&rests, &poses, delta, mask.as_deref(), *amount);
-                        }
-                    }
-                    // ... then the script's own turns on top.
-                    let mut turn = vec![Mat4::IDENTITY; parts.len()];
-                    let named: Vec<(String, Table)> = match &overrides {
-                        Some(t) => t.pairs::<String, Table>().collect::<mlua::Result<_>>()?,
-                        None => Vec::new(),
-                    };
-                    for (name, t) in named {
-                        let index = parts.iter().position(|p| p.name == name).ok_or_else(|| {
-                            lua_err(format!(
-                                "model '{id}' has no part '{name}' (its parts: {})",
-                                parts.iter().map(|p| p.name.as_str()).collect::<Vec<_>>().join(", ")
-                            ))
-                        })?;
-                        turn[index] = part_transform(&t, &id, &name)?;
-                    }
-                    let mut world = vec![Mat4::IDENTITY; parts.len()];
-                    for (i, p) in parts.iter().enumerate() {
-                        let (s0, r0, t0) = p.rest.to_scale_rotation_translation();
-                        let pose = poses[i];
-                        let authored = Mat4::from_scale_rotation_translation(
-                            pose.scale.unwrap_or(s0),
-                            pose.rotation.unwrap_or(r0),
-                            pose.translation.unwrap_or(t0),
-                        );
-                        let local = authored * turn[i];
-                        world[i] = p.parent.map_or(local, |parent| world[parent] * local);
-                    }
+                    let (parts, world) = part_worlds(&sh, &found, &id, &opts, &clip_name, &layers, &overrides, &[])?;
                     let world_matrices = world.clone();
                     for (i, p) in parts.iter().enumerate() {
                         if let Some(skinned) = &p.skinned {
@@ -1362,6 +1438,140 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             }
             Ok(list)
         })?,
+    )?;
+    // model_pose(id, opts) -> { [part] = { x, y, z } }: where each part's own origin (its joint) is, in the model's own space, in the pose
+    // that `nova.model(id, ..., opts)` would draw (a clip, layers, parts)
+    let s = shared.clone();
+    nova.set(
+        "model_pose",
+        lua.create_function(move |lua, (id, opts): (String, Option<Table>)| {
+            let sh = s.borrow();
+            let found = find_model(&sh.known_models, &id)
+                .ok_or_else(|| lua_err(format!("unknown model '{id}'")))?;
+            let clip_name = string_option(&opts, "clip")?;
+            let layers = match &opts {
+                Some(o) => o.get::<Option<Table>>("layers")?,
+                None => None,
+            };
+            let overrides = match &opts {
+                Some(o) => o.get::<Option<Table>>("parts")?,
+                None => None,
+            };
+            let (parts, world) = part_worlds(
+                &sh,
+                &found,
+                &id,
+                &opts,
+                &clip_name,
+                &layers,
+                &overrides,
+                &[],
+            )?;
+            let out = lua.create_table()?;
+            for (p, m) in parts.iter().zip(&world) {
+                let at = m.w_axis;
+                let entry = lua.create_table()?;
+                entry.set("x", at.x as f64)?;
+                entry.set("y", at.y as f64)?;
+                entry.set("z", at.z as f64)?;
+                out.set(p.name.clone(), entry)?;
+            }
+            Ok(out)
+        })?,
+    )?;
+    // ik(id, opts, { root, mid, tip }, { x, y, z } [, pole]) -> parts, reached: the turns (a `parts` table with `quat`s) that make a
+    // limb of two bones reach the target, in the model's own space; the chain's own entries in `opts.parts` are ignored
+    let s = shared.clone();
+    nova.set(
+        "ik",
+        lua.create_function(
+            move |lua,
+                  (id, opts, chain, target, pole): (
+                String,
+                Option<Table>,
+                Table,
+                Table,
+                Option<Table>,
+            )| {
+                let sh = s.borrow();
+                let found = find_model(&sh.known_models, &id)
+                    .ok_or_else(|| lua_err(format!("unknown model '{id}'")))?;
+                let names: Vec<String> = chain.sequence_values::<String>().collect::<mlua::Result<_>>()?;
+                if names.len() != 3 {
+                    return Err(lua_err("nova.ik's chain is three part names: the top of the limb, its middle joint and its end ({ \"Thigh\", \"Shin\", \"Foot\" })"));
+                }
+                let point = |t: &Table, what: &str| -> mlua::Result<Vec3> {
+                    let mut v = [0.0f32; 3];
+                    for (i, k) in ["x", "y", "z"].iter().enumerate() {
+                        let c = t.get::<Option<f64>>(*k)?.or(t.get::<Option<f64>>(i + 1)?).ok_or_else(|| {
+                            lua_err(format!("nova.ik's {what} must be {{x, y, z}} (or {{x, y, z}} as a list)"))
+                        })?;
+                        if !c.is_finite() {
+                            return Err(lua_err(format!("nova.ik's {what} must be finite numbers")));
+                        }
+                        v[i] = c as f32;
+                    }
+                    Ok(Vec3::from(v))
+                };
+                let target = point(&target, "target")?;
+                let pole = match &pole {
+                    Some(t) => Some(point(t, "pole")?),
+                    None => None,
+                };
+                let clip_name = string_option(&opts, "clip")?;
+                let layers = match &opts {
+                    Some(o) => o.get::<Option<Table>>("layers")?,
+                    None => None,
+                };
+                let overrides = match &opts {
+                    Some(o) => o.get::<Option<Table>>("parts")?,
+                    None => None,
+                };
+                let ignore: Vec<&str> = names.iter().map(String::as_str).collect();
+                let (parts, world) =
+                    part_worlds(&sh, &found, &id, &opts, &clip_name, &layers, &overrides, &ignore)?;
+                let index = |name: &str| -> mlua::Result<usize> {
+                    parts.iter().position(|p| p.name == name).ok_or_else(|| {
+                        lua_err(format!(
+                            "model '{id}' has no part '{name}' (its parts: {})",
+                            parts.iter().map(|p| p.name.as_str()).collect::<Vec<_>>().join(", ")
+                        ))
+                    })
+                };
+                let (ir, im, it) = (index(&names[0])?, index(&names[1])?, index(&names[2])?);
+                if parts[im].parent != Some(ir) || parts[it].parent != Some(im) {
+                    return Err(lua_err(format!(
+                        "nova.ik's chain must be a part, its child and that one's child; '{}' is not under '{}' under '{}'",
+                        names[2], names[1], names[0]
+                    )));
+                }
+                let place = |i: usize| world[i].w_axis.truncate();
+                let spin = |i: usize| world[i].to_scale_rotation_translation().1;
+                let (root, mid, tip) = (place(ir), place(im), place(it));
+                let (new_mid, new_tip, reached) = crate::ik::two_bone(root, mid, tip, target, pole);
+                // the top bone turns about the root so that the middle joint goes to its new place ...
+                let turn_root = crate::ik::arc(mid - root, new_mid - root);
+                // ... carrying the end with it; the lower bone then turns about the middle joint to the end's new place
+                let carried_tip = root + turn_root * (tip - root);
+                let turn_mid = crate::ik::arc(carried_tip - new_mid, new_tip - new_mid);
+                // a world turn as the part's own: its place at rest here is `spin`, and the middle part has the root's turn on it too
+                let local = |world_turn: Quat, spin: Quat| (spin.conjugate() * world_turn * spin).normalize();
+                let q_root = local(turn_root, spin(ir));
+                let q_mid = local(turn_mid, turn_root * spin(im));
+                let out = lua.create_table()?;
+                for (name, q) in [(&names[0], q_root), (&names[1], q_mid)] {
+                    let entry = lua.create_table()?;
+                    let quat = lua.create_table()?;
+                    quat.set("x", q.x as f64)?;
+                    quat.set("y", q.y as f64)?;
+                    quat.set("z", q.z as f64)?;
+                    quat.set("w", q.w as f64)?;
+                    entry.set("quat", quat)?;
+                    out.set(name.clone(), entry)?;
+                }
+                Ok((out, reached))
+            },
+        )?,
     )?;
     let s = shared.clone();
     nova.set(

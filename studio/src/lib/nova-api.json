@@ -245,6 +245,20 @@
   "group": "Drawing"
  },
  {
+  "name": "nova.model_pose",
+  "kind": "function",
+  "signature": "nova.model_pose(id [, opts]) -> { [part] = { x, y, z }, ... }",
+  "doc": "Where each part of a model is (the place of its own origin: its joint), in the model's own space (before the scale and turn you draw it with), in the pose `nova.model(id, ..., opts)` would draw: a `clip` and `time`, `layers`, and the `parts` turns. For aiming a hand, finding a foot's height, or feeding `nova.ik`.",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.ik",
+  "kind": "function",
+  "signature": "nova.ik(id, opts, { root, mid, tip }, target [, pole]) -> parts, reached",
+  "doc": "Two-bone inverse kinematics: the turns that make a limb (three parts, each the child of the one before: a thigh, shin and foot; an upper arm, forearm and hand) reach `target` ({x, y, z} in the model's own space). It returns a `parts` table (a `quat` for the top two parts) to give `nova.model` with the same `opts`, and whether the target was within reach (if not, the limb stretches toward it). `pole` ({x, y, z}) is the point the middle joint bends toward (a knee toward the front); without one it bends the way it does in the pose. The bones keep their lengths. `opts` are the options you draw the model with (a clip, layers, parts); turns you give the chain's own parts there are replaced. Needs the pose, so call it every frame after choosing the clip: `local parts = nova.ik('hero', opts, { 'Thigh_L', 'Shin_L', 'Foot_L' }, target, knee); opts.parts = parts` (merge it with other turns of yours).",
+  "group": "Drawing"
+ },
+ {
   "name": "nova.model_clips",
   "kind": "function",
   "signature": "nova.model_clips(id) -> { { name, duration }, ... }",

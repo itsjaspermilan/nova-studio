@@ -156,7 +156,7 @@ impl AudioOut {
 /// What the audio thread renders: the C core's demo score (the M1 benchmark) or the game mixer.
 enum Source {
     Demo(DemoRenderer),
-    Mixer(Mixer, Receiver<Command>),
+    Mixer(Box<Mixer>, Receiver<Command>),
 }
 
 fn build<T>(
@@ -267,7 +267,7 @@ pub fn start(game: bool) -> Result<AudioOut, String> {
         .store(config.channels as u32, Ordering::Relaxed);
     let (source, sender) = if game {
         let (tx, rx) = sync_channel::<Command>(512);
-        (Source::Mixer(Mixer::new(rate), rx), Some(tx))
+        (Source::Mixer(Box::new(Mixer::new(rate)), rx), Some(tx))
     } else {
         if rate != 44100 && rate != 48000 {
             return Err(format!(
