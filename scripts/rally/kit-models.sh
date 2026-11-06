@@ -71,3 +71,11 @@ if [ -n "${CARKIT:-}" ]; then
     K "$CARKIT" $P van --as car_van --scale 1.18 --wheel-diameter 0.71 "${ROADCAR[@]}"
     K "$CARKIT" $P truck --as car_pickup --scale 1.18 --wheel-diameter 0.82 "${ROADCAR[@]}"
 fi
+
+# the spectators (lib/crowd.lua): eight of Kenney's Mini Characters, with their animations (the Mini Characters pack, CC0; set MINICHARS to its folder:
+# ".../3D assets/Mini Characters")
+if [ -n "${MINICHARS:-}" ]; then
+    for c in female-a:fa female-b:fb female-c:fc female-d:fd male-a:ma male-b:mb male-c:mc male-d:md; do
+        K "$MINICHARS" $P character-${c%%:*} --as crowd_${c##*:}
+    done
+fi

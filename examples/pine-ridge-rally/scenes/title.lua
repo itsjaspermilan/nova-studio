@@ -48,10 +48,11 @@ local MODES = {
   { id = "race", name = "Race", blurb = "Three rivals on the road with you." },
   { id = "trial", name = "Time trial", blurb = "Alone, against the ghost of your best lap." },
 }
+local LEFT, RIGHT = 36, 614 -- the margins every grid page shares (the cards, the tabs and the notes all run from LEFT to RIGHT)
 local GRIDS = {
   circuit = { cols = 2, card_w = 282, card_h = 176, gap = 14, x = 36, y = 100 },
   mode = { cols = 2, card_w = 282, card_h = 150, gap = 14, x = 36, y = 150 },
-  car = { cols = 3, card_w = 170, card_h = 88, gap = 8, x = 36, y = 160 },
+  car = { cols = 3, card_w = (RIGHT - LEFT - 16) / 3, card_h = 88, gap = 8, x = LEFT, y = 160 },
 }
 
 -- the cars of one class, as numbers into state.cars
@@ -252,7 +253,7 @@ function Title:draw()
   -- on the menu and the chooser the menu is on the left and the car moves to the right (easing across when the screen changes)
   local dt = self.t - (self.last_t or self.t)
   self.last_t = self.t
-  local want = (self.screen == "menu" or self.screen == "select" or self.screen == "pick") and ((self.screen == "pick") and 3.9 or 2.6) or 0
+  local want = (self.screen == "menu" or self.screen == "select" or self.screen == "pick") and ((self.screen == "pick") and 4.4 or 2.6) or 0
   self.shift = (self.shift or 0) + (want - (self.shift or 0)) * math.min(1, dt * 5)
   if self.screen == "boxart" or self.screen == "icon" then backdrop.draw(0, self.screen, 0) return end
   backdrop.draw(self.t, "title", self.shift)
@@ -286,7 +287,7 @@ function Title:draw_pick()
   ui.text(grid.x, pick.kind == "car" and 12 or 30, title, ui.fit(title, pick.kind == "car" and 30 or 36, 560), ui.color.gold, { font = "bold" })
   if pick.kind == "car" then
     -- a tab for each class (the chosen class is yellow; with the tabs selected it has a frame round it)
-    local tw = 178
+    local tw = (RIGHT - LEFT - 12) / 3
     for k, c in ipairs(state.classes) do
       local x = grid.x + (k - 1) * (tw + 6)
       local on = c.id == pick.class
@@ -295,9 +296,9 @@ function Title:draw_pick()
       if on and pick.tabs then nova.ui.panel("ui/panel_frame", x - 3, 55, tw + 6, 40, { slice = 18, scale = 0.5 }) end
     end
     local class = state.class_of({ class = pick.class })
-    ui.panel(grid.x - 6, 98, 560, 52, 215)
-    ui.text(grid.x + 6, 106, class.blurb, 14, ui.color.white, { width = 540 })
-    ui.text(grid.x + 6, 127, "Your rivals are other " .. class.name .. " cars.", 14, ui.color.gold, { width = 540 })
+    ui.panel(LEFT, 98, RIGHT - LEFT, 52, 215)
+    ui.text(LEFT + 14, 106, class.blurb, 14, ui.color.white, { width = RIGHT - LEFT - 28 })
+    ui.text(LEFT + 14, 127, "Your rivals are other " .. class.name .. " cars.", 14, ui.color.gold, { width = RIGHT - LEFT - 28 })
   end
   local on = pick.tabs and 0 or self:picked(pick.kind)
   for i, item in ipairs(items) do

@@ -40,3 +40,4 @@ The licence text each kit ships with:
 Also used by Pine Ridge Rally and Bunker Run (their scripts: scripts/rally/kit-models.sh and scripts/bunker/kit-models.sh): the Kenney Platformer Kit (see licenses/kenney-platformer-kit.txt), Car Kit, Racing Kit and Blaster Kit, all CC0.
 
 examples/hill-run: kenney_animated-characters-protagonists (1.1, CC0, https://kenney.nl/assets/animated-characters-protagonists): the four skins and the model and animations in `models/skater_male.glb`, `skater_female.glb`, `criminal.glb` and `cyborg.glb` were made from its FBX files by `scripts/fbx2glb.mjs` (the converter is ours; the art is Kenney's).
+Kenney Mini Characters (CC0): the spectators in Pine Ridge Rally (models/crowd_*.glb), from the Kenney Game Assets All-in-1 bundle.

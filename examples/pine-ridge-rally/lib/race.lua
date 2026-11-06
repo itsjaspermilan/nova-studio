@@ -6,6 +6,7 @@ local lamps = require("lib.lamps")
 local grid = require("lib.grid")
 local fx = require("lib.fx")
 local roadside = require("lib.roadside")
+local crowd = require("lib.crowd")
 local foliage = require("lib.foliage")
 local looks = require("lib.looks")
 local horizon = require("lib.horizon")
@@ -94,6 +95,7 @@ function race.define(config)
     track.ensure()
     assert(track.count() > 10, "this scene has no waypoints: place `waypoint` objects along the road")
     nova.log("rally: roadside " .. roadside.build(config.horizon) .. " props")
+    nova.log("rally: crowd " .. crowd.build() .. " people")
     local look = looks[state.current_track().id]
     state.apply_look(look)
     -- the circuit's look with a speed blur added each frame (see Race:update_camera)
@@ -131,7 +133,7 @@ function race.define(config)
     for _, car in ipairs(self.cars) do if car.engine then car.engine:stop() end end
     nova.music.volume(state.music_volume)
     nova.sky(nil); nova.fog(nil); nova.shadows(nil)
-    lamps.clear(); track.clear(); grid.clear(); fx.clear(); foliage.clear()
+    crowd.clear(); lamps.clear(); track.clear(); grid.clear(); fx.clear(); foliage.clear()
     nova.look(); nova.wind()
   end
 
@@ -352,6 +354,7 @@ function race.define(config)
   end
 
   function Race:update(dt)
+    self.crowd_time = (self.crowd_time or 0) + dt
     if self.phase ~= "countdown" and not self.player_finished_at and nova.input.pressed("pause") then
       self.paused = not self.paused
       self.pause_choice = 1
@@ -579,6 +582,7 @@ function race.define(config)
     if config.night then self:night_lights(cam) end
     horizon.draw(cam.x, cam.z, config.horizon)
     fx.draw_skids(cam.x, cam.z, 90)
+    crowd.draw(cam.x, cam.z, self.crowd_time or 0)
     local gx, gz, gh = self:ghost_pose()
     if gx then
       self.ghost_opts = self.ghost_opts or { ry = 0, tint = { 130, 200, 255 } }
