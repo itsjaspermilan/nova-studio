@@ -54,16 +54,16 @@ data.biomes = {
 --   i ice (slippery)   m mud (slow)   L lava (burns)   v lava that comes and goes   > < ^ w  a belt that carries you east, west, north or south
 data.levels = {
   -- the Meadow: a small square room with a counter in the middle; two rooms joined by a doorway; a big island with a walkway round it
-  { id = "m1", biome = 1, name = "Cottage Garden", time = 150, interval = 24, patience = 80, stars = { 180, 290, 395 }, recipes = { "heal" }, crates = { "glowcap", "sunpetal" },
+  { id = "m1", biome = 1, name = "Cottage Garden", time = 150, interval = 24, patience = 80, stars = { 230, 365, 500 }, recipes = { "heal" }, crates = { "glowcap", "sunpetal" },
     map = {
       "#################",
-      "#TTaTTbTTTMTTCTT#",
+      "#TTaTTbTTSMTTCTT#",
       "#...............#",
       "#...............#",
       "#..@...TTTTT....#",
       "#...............#",
       "#...............#",
-      "#TTBTTTTTSTTTTXT#",
+      "#TTBTTTTTTTTTTXT#",
       "#################",
     } },
   { id = "m2", biome = 1, name = "Market Day", time = 180, interval = 22, patience = 75, stars = { 165, 260, 360 }, recipes = { "heal", "night" }, crates = { "glowcap", "sunpetal", "moonberry" },
@@ -153,16 +153,16 @@ data.levels = {
       "#......LLL........T",
       "###################",
     } },
-  { id = "e3", biome = 3, name = "Stepping Stones", time = 200, interval = 20, patience = 70, stars = { 310, 490, 670 }, recipes = { "fire", "heal", "ember" }, crates = { "embergourd", "sunpetal", "glowcap" },
+  { id = "e3", biome = 3, name = "Stepping Stones", time = 200, interval = 20, patience = 70, stars = { 290, 460, 630 }, recipes = { "fire", "heal", "ember" }, crates = { "embergourd", "sunpetal", "glowcap" },
     map = {
       "###################",
-      "#aTTTb#cTTTT#XTTTT#",
+      "#aTTTb#cTTTT#XTTTS#",
       "#.....L.....L.....#",
       "#.@...L.....L.....#",
       "#.....L.....L.....#",
       "#.................#",
       "#.....L.....L.....#",
-      "#TMTTT#TCTTT#TBTTS#",
+      "#TMTTT#TCTTT#TBTTT#",
       "###################",
     } },
   -- the Mire: mud and belts. A roundabout round a mud pit; a ring of conveyor belts round an island of stations; an L-shaped bog with a belt down the long arm
@@ -199,8 +199,8 @@ data.levels = {
       "#..mmm..###########",
       "#.................c",
       "#.@..>>>>>>>>.....d",
-      "#.................X",
-      "#TMTTTTCTTTTCTTBTS#",
+      "#.................S",
+      "#TMTTTTCTTTTCTTBTX#",
       "###################",
     } },
 }

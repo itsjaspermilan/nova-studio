@@ -1,5 +1,4 @@
--- Drawing and input helpers in the parchment-and-ink skin: Kenney's UI Adventure Pack (parchment, leather, indigo), the built-in Cinzel capitals for headings and Lora for the
--- rest. Sizes are real sizes, in the game's 540-high units: the game is made for a 5.5 inch screen, so nothing is set smaller than SMALL (about 3 mm tall on the handheld) and
+-- Drawing and input helpers: parchment, indigo and leather panels (scripts/potion/hd-ui.mjs) and one typeface, the built-in Fredoka. Sizes are real sizes, in the game's 540-high units: the game is made for a 5.5 inch screen, so nothing is set smaller than SMALL (about 3 mm tall on the handheld) and
 -- body text is MEDIUM. `ui.ox`, `ui.oy` and `ui.alpha` move and fade everything drawn through these functions, which is how a screen settles into place.
 local audio = require("lib.audio")
 
@@ -16,32 +15,19 @@ ui.ox, ui.oy, ui.alpha = 0, 0, 1
 local function tint(c, a) return { c[1], c[2], c[3], math.floor((c[4] or 255) * (a or 1) * ui.alpha) } end
 ui.tint = tint
 
--- One typeface, Fredoka (the built-in "rounded"): round, friendly and heavy enough for a thick outline. Headings are the same face, only bigger and outlined.
+-- One typeface, Fredoka (the built-in "rounded"): round and friendly. From MEDIUM up it is drawn bold (the engine thickens each letter), and
+-- `opts.shadow` puts a dark outline round it (white-on-dark lettering, readable over any picture), in one piece with the letters.
 local HEAD, BODY = "rounded", "rounded"
--- (where the letters sit in the line the engine gives them: a text is nudged this much of its size to look centred in a bar)
-local DY = { rounded = -0.1 }
 
--- `opts.shadow` draws the text with a dark outline round it (white-on-dark lettering, readable over any picture)
+-- `opts.valign` = "middle" puts the middle of the capitals at y (what centres a label in a box); `opts.thin` keeps a big text light.
 function ui.text(x, y, text, size, color, opts)
   opts = opts or {}
   local font = opts.font or BODY
   if font == "display" or font == "serif" then font = BODY end
-  if opts.shadow then
-    local d = math.max(1.5, size / 13)
-    local o = tint(ui.color.shadow, 0.95)
-    for _, p in ipairs({ { -d, -d }, { d, -d }, { -d, d }, { d, d }, { 0, d * 1.5 }, { -d, 0 }, { d, 0 } }) do
-      nova.ui.text(x + ui.ox + p[1], y + ui.oy + p[2], text, { size = size, color = o, font = font, shadow = false, align = opts.align, width = opts.width })
-    end
-  end
-  local c = tint(color or ui.color.ink)
-  -- (the face is light: from medium size up it is drawn again a hair to each side, which makes it heavy, like a bold weight)
-  if size >= ui.MEDIUM and not opts.thin then
-    local b = size / 46
-    for _, p in ipairs({ { -b, 0 }, { b, 0 }, { 0, -b }, { 0, b } }) do
-      nova.ui.text(x + ui.ox + p[1], y + ui.oy + p[2], text, { size = size, color = c, font = font, shadow = false, align = opts.align, width = opts.width })
-    end
-  end
-  return nova.ui.text(x + ui.ox, y + ui.oy, text, { size = size, color = c, font = font, shadow = false, align = opts.align, width = opts.width })
+  local o = { size = size, color = tint(color or ui.color.ink), font = font, shadow = false, align = opts.align, width = opts.width, valign = opts.valign }
+  if size >= ui.MEDIUM and not opts.thin then o.bold = size >= ui.HEAD and 1.1 or 0.8 end
+  if opts.shadow then o.outline = { color = tint(ui.color.shadow, 0.95), width = math.max(1.6, size / 12) } end
+  return nova.ui.text(x + ui.ox, y + ui.oy, text, o)
 end
 
 function ui.width(text, size, font)
@@ -73,7 +59,10 @@ function ui.in_box(text, x, y, w, h, size, color, opts)
   opts = opts or {}
   local font = opts.font or BODY
   local tw = ui.width(text, size, font)
-  return ui.text(x + (w - tw) / 2, y + (h - size) / 2 + size * (DY[font] or 0), text, size, color, opts)
+  local o = {}
+  for key, v in pairs(opts) do o[key] = v end
+  o.valign = "middle"
+  return ui.text(x + (w - tw) / 2, y + h / 2, text, size, color, o)
 end
 
 -- the largest size, up to `size`, at which `text` is no wider than `width`
@@ -197,13 +186,10 @@ function ui.menu(items, selected, y, opts)
     ui.button(bx, by, bw, bh, on and { 255, 244, 220 } or { 92, 90, 196 }, 255 * a)
     local c = on and ui.color.ink or ui.color.cream
     local label = type(item) == "table" and item[1] or item
-    local ty = by + (bh - size) / 2 + size * (DY[HEAD] or 0) - 1
-    for _, p in ipairs({ { 0, 0 }, { -0.7, 0 }, { 0.7, 0 }, { 0, -0.7 }, { 0, 0.7 } }) do
-      nova.ui.text(bx + 26 + 40 * s + ui.ox + p[1], ty + ui.oy + p[2], label, { size = size, color = tint(c, a), font = HEAD, shadow = false })
-    end
+    nova.ui.text(bx + 26 + 40 * s + ui.ox, by + bh / 2 + ui.oy, label, { size = size, color = tint(c, a), font = HEAD, shadow = false, bold = 0.9, valign = "middle" })
     if type(item) == "table" and item[2] then
       local vs = opts.value_size or ui.MEDIUM
-      nova.ui.text(bx + bw - 22 - ui.width(item[2], vs) + ui.ox, by + (bh - vs) / 2 + vs * DY[BODY] - 1 + ui.oy, item[2], { size = vs, color = tint(c, a), font = BODY, shadow = false })
+      nova.ui.text(bx + bw - 22 - ui.width(item[2], vs) + ui.ox, by + bh / 2 + ui.oy, item[2], { size = vs, color = tint(c, a), font = BODY, shadow = false, valign = "middle" })
     end
     if i == selected then
       local bob = math.sin(now * 6) * 3

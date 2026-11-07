@@ -40,7 +40,7 @@ function View.camera(k, lower, w, h, shiftx, orbit, zoom)
   local aspect = (w or 960) / (h or 540)
   local half = math.tan(math.rad(cam.fov / 2))
   -- far enough away that the whole workshop fits across and up the screen
-  local need_w = (k.cols + 1.4) / (2 * half * aspect)
+  local need_w = (k.cols + 2.4) / (2 * half * aspect) -- (the near rows look wider: room for stations on the side walls)
   local need_h = (k.rows + 0.4) / (2 * half) * 1.1
   local d = math.max(need_w, need_h, 9) * (zoom or 1)
   cam.ex, cam.ey, cam.ez = cx + (orbit or 0), d * 0.93, cz + d * 0.46
@@ -198,28 +198,42 @@ function View.draw_station(st, k, biome, t)
   end
 end
 
--- the people waiting for their potions: one stands behind each hatch, in a different coat, waves when served and shakes a head when an order runs out
-local COATS = { { 255, 150, 150 }, { 150, 200, 255 }, { 190, 255, 160 }, { 255, 225, 140 }, { 220, 170, 255 } }
+-- the people waiting for their potions: a short queue (one for each open order, up to three) behind every hatch in an outer wall, each one of Kenney's
+-- Mini Characters. The one at the front nods and cheers when served and shakes their head when an order runs out; a new one walks up into the gap.
+local CUSTOMERS = { "customer-male-a", "customer-female-b", "customer-male-d", "customer-female-e" }
 function View.draw_customers(k, t)
   for hi, st in ipairs(k.stations) do
     if st.kind == "hatch" then
-      if not st.out then
-        -- outward: the neighbour cell that is not part of the kitchen
+      if st.out == nil then
+        -- outward: a neighbour cell that is neither floor nor a station (a wall, or past the edge); a hatch inside the kitchen has none
+        st.out = false
         for _, d in ipairs({ { 0, -1 }, { 0, 1 }, { -1, 0 }, { 1, 0 } }) do
-          local row = k.floor[st.z + d[2]]
-          if not (row and row[st.x + d[1]]) then st.out = d; break end
+          local fx, fz = st.x + d[1], st.z + d[2]
+          local floor = k.floor[fz] and k.floor[fz][fx]
+          local station = k.station[fz] and k.station[fz][fx]
+          if not floor and not station then st.out = d; break end
         end
-        st.out = st.out or { 0, -1 }
       end
       local d = st.out
-      local n = #k.orders
-      local mood = k.customer_mood or 0
-      local clip, time = "idle", t + hi
-      if k.t - (k.last_serve or -9) < 1.0 then clip, time = "emote-yes", k.t - k.last_serve
-      elseif k.t - (k.last_expire or -9) < 0.8 then clip, time = "emote-no", k.t - k.last_expire end
-      if n > 0 or clip ~= "idle" then
-        local who = (k.stats.served + hi) % #COATS + 1
-        nova.model("character-human", st.cx + d[1] * 1.15, 0, st.cz + d[2] * 1.15, { ry = math.atan(-d[1], -d[2]), scale = 1.5, clip = clip, time = time, tint = COATS[who] })
+      if d then
+        local n = math.min(3, #k.orders)
+        local since_serve, since_expire = k.t - (k.last_serve or -9), k.t - (k.last_expire or -9)
+        -- the queue moves up after a serve: everyone walks one place forward over half a second
+        local shuffle = math.max(0, 1 - since_serve / 0.6)
+        for i = 1, math.max(n, since_serve < 1.2 and 1 or 0) do
+          local who = CUSTOMERS[(k.stats.served + k.stats.expired + i + hi) % #CUSTOMERS + 1]
+          local place = 1.05 + (i - 1) * 0.85 + shuffle * 0.85
+          local side = ((i % 2 == 0) and 0.22 or -0.12)
+          local px = st.cx + d[1] * place + (d[2] ~= 0 and side or 0)
+          local pz = st.cz + d[2] * place + (d[1] ~= 0 and side or 0)
+          local clip, time = "idle", t * (0.9 + 0.1 * i) + i
+          if shuffle > 0 then clip, time = "walk", t * 1.4 end
+          if i == 1 then
+            if since_serve < 1.2 and shuffle <= 0 then clip, time = "emote-yes", since_serve
+            elseif since_expire < 0.9 then clip, time = "emote-no", since_expire end
+          end
+          nova.model(who, px, 0, pz, { ry = math.atan(-d[1], -d[2]), scale = 1.55, clip = clip, time = time })
+        end
       end
     end
   end
@@ -234,11 +248,11 @@ function View.draw_chef(k, t)
     if act and act.clip == "die" then nova.model("character-human", c.x, 0, c.z, { ry = math.atan(c.fx, c.fz), scale = 1.6, clip = "die", time = math.min(1.2, k.t - act.t0), loop = false }) end
     return
   end
-  local ry = math.atan(c.fx, c.fz)
+  local ry = c.ry or math.atan(c.fx, c.fz)
   -- Kenney's character has clips for idle, walk, sprint, pick-up, holding, interact, die and the emotes
   local speed = math.sqrt(c.vx * c.vx + c.vz * c.vz)
   local base = (c.dash_t > 0) and "sprint" or ((speed > 0.5) and "walk" or "idle")
-  local layers = { { clip = base, time = t * ((c.dash_t > 0) and 1.2 or math.max(0.7, speed / 3)), weight = 1 } }
+  local layers = { { clip = base, time = c.phase or t, weight = 1 } }
   -- a one-off action (taking, serving, a no) replaces the walk; carrying keeps the arms out in front; grinding and stirring work the right hand
   local act = c.act
   if act and k.t - act.t0 < act.dur then
@@ -258,7 +272,7 @@ function View.draw_chef(k, t)
   local bob = (c.moving and math.abs(math.sin(t * 14)) * 0.04 or 0)
   nova.cuboid(c.x - 0.16, 1.0 + bob, c.z - 0.16, c.x + 0.16, 1.08 + bob, c.z + 0.16, { color = { 250, 250, 252 } })
   nova.cuboid(c.x - 0.21, 1.08 + bob, c.z - 0.21, c.x + 0.21, 1.3 + bob, c.z + 0.21, { color = { 255, 255, 255 } })
-  if c.held then View.item(c.held, c.x + c.fx * 0.5, 0.82, c.z + c.fz * 0.5, t) end
+  if c.held then View.item(c.held, c.x + math.sin(ry) * 0.5, 0.82, c.z + math.cos(ry) * 0.5, t) end
   -- which station they face: a bright frame round its top
   local st = c.target_st
   if st and k.playing then
@@ -456,28 +470,6 @@ end
 -- (the old ring of scenery is gone: View.environment draws the place now)
 function View.scenery() end
 
--- ---- the scenery outside ------------------------------------------------------------------------------------------------------------
-
--- a ring of trees, rocks and the like round the workshop, the same every time for a biome and a size
-function View.scenery(k, biome, t)
-  local cols, rows = k.cols, k.rows
-  local seed = (#biome.id * 7919 + cols * 31 + rows) % 2147483647
-  local function rand(n)
-    seed = (seed * 48271) % 2147483647
-    return seed % n + 1
-  end
-  local list = biome.decor
-  for i = 1, 70 do
-    local side = rand(4)
-    local x, z
-    if side == 1 then x, z = -rand(70) / 8 - 0.5, rand(rows + 24) - 12
-    elseif side == 2 then x, z = cols + rand(70) / 8 + 0.5, rand(rows + 24) - 12
-    elseif side == 3 then x, z = rand(cols + 24) - 12, -rand(70) / 8 - 0.5
-    else x, z = rand(cols + 24) - 12, rows + rand(40) / 8 + 0.6 end
-    local m = list[rand(#list)]
-    nova.model(m, x, 0, z, { ry = rand(628) / 100, scale = 0.8 + rand(50) / 100, shadow = false })
-  end
-end
 
 -- ---- the apothecary: the backdrop of the menus, the title and the book ------------------------------------------------------------------
 

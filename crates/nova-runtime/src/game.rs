@@ -1060,7 +1060,61 @@ fn draw_text(
             },
             None => None,
         };
+        // `bold` = true (or a number, 1 = the usual bold): the letters thickened. `outline` = a colour, or { color, width } (width in
+        // logical units, default an eleventh of the size): a band of that colour round every letter, drawn behind it in one piece
+        let bold = match opts {
+            Some(t) => match t.get::<Value>("bold")? {
+                Value::Boolean(true) => 1.0,
+                Value::Integer(n) => n as f32,
+                Value::Number(n) => n as f32,
+                _ => 0.0,
+            },
+            None => 0.0,
+        }
+        .clamp(0.0, 3.0);
+        let grow = px * 0.04 * bold;
+        let outline = match opts {
+            Some(t) => match t.get::<Value>("outline")? {
+                Value::Table(o) => {
+                    let has_color = o.contains_key("color")?;
+                    let c = if has_color {
+                        color_option(&Some(o.clone()), "color", [0, 0, 0, 255])?
+                    } else {
+                        color_option(opts, "outline", [0, 0, 0, 255])?
+                    };
+                    let w = number_option(&Some(o), "width")?
+                        .map(|w| w as f32)
+                        .unwrap_or(size / 11.0);
+                    Some((c, (w * scale).clamp(0.5, 48.0)))
+                }
+                Value::Boolean(true) => {
+                    Some(([0, 0, 0, 255], (size / 11.0 * scale).clamp(0.5, 48.0)))
+                }
+                _ => None,
+            },
+            None => None,
+        };
         let mut out = std::mem::take(&mut sh.text_out);
+        if let Some((oc, ow)) = outline {
+            let oc = [
+                oc[0],
+                oc[1],
+                oc[2],
+                ((oc[3] as u32 * color[3] as u32) / 255) as u8,
+            ];
+            sh.text.draw(
+                &mut out,
+                font,
+                &layout,
+                px,
+                (x, y),
+                scale,
+                oc,
+                align,
+                wrap,
+                grow + ow,
+            );
+        }
         if let Some(shadow) = shadow {
             let offset = (size / 16.0).max(1.0);
             sh.text.draw(
@@ -1073,6 +1127,7 @@ fn draw_text(
                 shadow,
                 align,
                 wrap,
+                grow,
             );
         }
         sh.text.draw(
@@ -1085,6 +1140,7 @@ fn draw_text(
             color,
             align,
             wrap,
+            grow,
         );
         sh.text_out = out;
     }

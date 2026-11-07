@@ -260,6 +260,14 @@ function Kitchen:move_chef(dt, mx, mz, dash)
   if hit_x then c.vx = 0 end
   if hit_z then c.vz = 0 end
   c.moving = len > 0.15 or c.dash_t > 0
+  -- what the model shows (lib/view.lua): the walk cycle moves on by its own clock, so a change of speed while turning never makes it jump, and
+  -- the body turns toward the stick quickly but smoothly, by the shorter way round
+  local spd = math.sqrt(c.vx * c.vx + c.vz * c.vz)
+  c.phase = (c.phase or 0) + dt * ((c.dash_t > 0) and 1.2 or math.max(0.7, spd / 3))
+  local want = math.atan(c.fx, c.fz)
+  c.ry = c.ry or want
+  local diff = (want - c.ry + math.pi) % (2 * math.pi) - math.pi
+  c.ry = c.ry + diff * math.min(1, dt * 18)
   if c.moving then
     c.step_t = c.step_t + dt * (c.dash_t > 0 and 12 or 8)
     if c.step_t >= 1 then c.step_t = 0; self:emit({ type = "step", ice = floor == "ice" }) end

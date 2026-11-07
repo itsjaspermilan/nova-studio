@@ -227,6 +227,22 @@
       ]
     },
     {
+      "name": "harmony",
+      "kind": "synth",
+      "wave": "triangle",
+      "duty": 0.5,
+      "attack": 0.07,
+      "decay": 0.1,
+      "sustain": 0.7,
+      "release": 0.22,
+      "volume": 0.18,
+      "pan": -0.25,
+      "mute": false,
+      "vibrato": 0.12,
+      "reverb": 0.4,
+      "notes": []
+    },
+    {
       "name": "drums",
       "kind": "drums",
       "wave": "noise",

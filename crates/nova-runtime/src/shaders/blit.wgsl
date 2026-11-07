@@ -157,13 +157,17 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
         rgb = rgb * ao;
     }
     if (blit.glow.x > 0.0) {
-        // glow: what is brighter than the threshold, spread by two rings of six taps (nearer and wider)
+        // glow: what is brighter than the threshold, spread by two rings of six taps (nearer and wider). The rings are turned and
+        // stretched by a different amount at every pixel (interleaved gradient noise), so a small bright spot spreads into a soft halo
+        // instead of being stamped out as twelve copies of itself
         let unit = blit.tex_size.y / 540.0;
+        let turn = hash(base) * 6.2831853;
+        let stretch = 0.55 + 0.9 * hash(base.yx + vec2<f32>(17.0, 31.0));
         var glow = vec3<f32>(0.0);
         for (var ring = 0; ring < 2; ring = ring + 1) {
-            let radius = (select(4.0, 13.0, ring == 1)) * unit;
+            let radius = (select(4.0, 13.0, ring == 1)) * unit * stretch;
             for (var k = 0; k < 6; k = k + 1) {
-                let a = (f32(k) + 0.5 * f32(ring)) * 1.0471976;
+                let a = (f32(k) + 0.5 * f32(ring)) * 1.0471976 + turn;
                 let uv = in.uv + vec2<f32>(cos(a), sin(a)) * radius / blit.tex_size;
                 let s = textureSample(source, source_sampler, uv).rgb;
                 let l = dot(s, vec3<f32>(0.2126, 0.7152, 0.0722));

@@ -468,15 +468,34 @@ function Play:draw_recipes(w)
   ui.center("A dark tile means: grind it in the mortar first.", y + rows * rh + 24, ui.SMALL, ui.color.cream, { shadow = true })
 end
 
+-- the start of a level: its name on the biome's ribbon, the tip on a slim card, and the count as big lettering over the kitchen (no box: each
+-- number drops in, settles and fades as the next one comes)
+local COUNT_COLOURS = { [3] = { 255, 120, 110 }, [2] = { 255, 186, 80 }, [1] = { 255, 230, 100 }, [0] = { 150, 236, 120 } }
 function Play:draw_intro(w)
   local n = math.ceil(self.intro)
-  local name = string.upper(self.level.name)
-  ui.panel(w / 2 - 330, 150, 660, 270, "page")
-  ui.center(name, 168, ui.fit(name, ui.HEAD - 8, 580, "display"), ui.color.ink, { font = "display" })
+  local name = self.level.name
+  local enter = math.min(1, (3.6 - self.intro) / 0.35)
+  local e = 1 - (1 - enter) ^ 3
+  local rw = math.min(560, ui.width(name, ui.HEAD - 6) + 90)
+  ui.ribbon(w / 2 - rw / 2, 96 - (1 - e) * 60, rw, 66, self.biome.banner or { 120, 90, 160 }, name, ui.HEAD - 6)
   local tip = data.tips[self.level.id]
-  if tip then ui.text(w / 2 - 300, 232, tip, ui.MEDIUM, ui.color.ink, { width = 600, align = "center" }) end
-  local count = (n >= 1 and n <= 3) and tostring(n) or (n < 1 and "BREW!" or "")
-  if count ~= "" then ui.center(count, 340, ui.NUMBER + 10, ui.color.wine, { font = "display" }) end
+  if tip then
+    local old = ui.alpha
+    ui.alpha = old * e
+    ui.panel(w / 2 - 320, 172, 640, 74, "light")
+    ui.text(w / 2 - 300, 184, tip, ui.SMALL + 1, ui.color.ink, { width = 600, align = "center" })
+    ui.alpha = old
+  end
+  if n >= 0 and n <= 3 then
+    local frac = n - self.intro -- (0 when a number appears, up to 1 when it goes)
+    local drop = (1 - math.min(1, frac / 0.18)) ^ 2
+    local fade = frac > 0.7 and (1 - (frac - 0.7) / 0.3) or 1
+    local text = n >= 1 and tostring(n) or "Brew!"
+    local old = ui.alpha
+    ui.alpha = old * fade
+    ui.text(w / 2 - ui.width(text, 120) / 2, 350 - drop * 40, text, 120, COUNT_COLOURS[n], { shadow = true, valign = "middle" })
+    ui.alpha = old
+  end
 end
 
 function Play:draw_over(w)

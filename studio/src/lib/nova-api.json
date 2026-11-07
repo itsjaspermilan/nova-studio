@@ -367,7 +367,7 @@
   "name": "nova.ui.text",
   "kind": "function",
   "signature": "nova.ui.text(x, y, text [, opts]) -> width, height",
-  "doc": "Draw text. Options: font, size, color, width (wrap), align, shadow, valign (\"top\", the default: y is the top of the line; \"middle\": y is the middle of the capital letters, so a label in a button looks centred; \"baseline\"), fallback (a font name or a list of them: if the font lacks a character of the text, the first of these that has them all draws it, instead of a box). With `width`, `align` (left, center, right) places the lines inside that width; without it, \"center\" puts the middle of the text at x and \"right\" puts its right edge there. Fonts: sans, rounded, pixel, terminal, mono, serif, comic, display, script, or a project font.",
+  "doc": "Draw text. Options: font, size, color, width (wrap), align, shadow, valign (\"top\", the default: y is the top of the line; \"middle\": y is the middle of the capital letters, so a label in a button looks centred; \"baseline\"), fallback (a font name or a list of them: if the font lacks a character of the text, the first of these that has them all draws it, instead of a box), bold (true, or a number: 1 is the usual bold; the letters are thickened, not drawn twice), outline (a colour, or { color, width } with width in logical units, default an eleventh of the size: one band round every letter, behind it). With `width`, `align` (left, center, right) places the lines inside that width; without it, \"center\" puts the middle of the text at x and \"right\" puts its right edge there. Fonts: sans, rounded, pixel, terminal, mono, serif, comic, display, script, or a project font.",
   "group": "Drawing"
  },
  {

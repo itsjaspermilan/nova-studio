@@ -70,7 +70,8 @@ pub struct Layout {
 pub struct TextEngine {
     fonts: Vec<Font>,
     names: HashMap<String, usize>,
-    glyphs: HashMap<(usize, char, u16), Glyph>,
+    /// (font, character, pixel size in quarters, growth in quarter pixels)
+    glyphs: HashMap<(usize, char, u16, u16), Glyph>,
     atlas: Vec<u8>,
     dirty: bool,
     shelf: (u32, u32, u32), // x, y, row height
@@ -258,20 +259,59 @@ impl TextEngine {
         }
     }
 
-    fn glyph(&mut self, font: usize, ch: char, px: f32) -> Glyph {
-        let key = (font, ch, (px * 4.0).round() as u16);
+    /// A glyph's coverage, grown outward by `grow` physical pixels when `grow` > 0 (bold letters, and the band behind them that an
+    /// outline is): each pixel takes the strongest coverage within that distance, faded over the last pixel so the edge stays smooth.
+    fn glyph(&mut self, font: usize, ch: char, px: f32, grow: f32) -> Glyph {
+        let grow_q = (grow.clamp(0.0, 64.0) * 4.0).round() as u16;
+        let key = (font, ch, (px * 4.0).round() as u16, grow_q);
         if let Some(g) = self.glyphs.get(&key) {
             return *g;
         }
-        let (m, bitmap) = self.fonts[font].rasterize(ch, px);
-        let (w, h) = (m.width as u32, m.height as u32);
+        let (m, mut bitmap) = self.fonts[font].rasterize(ch, px);
+        let (mut w, mut h) = (m.width as u32, m.height as u32);
+        let (mut xmin, mut ymin) = (m.xmin, m.ymin);
+        if grow_q > 0 && w > 0 && h > 0 {
+            let r = grow_q as f32 / 4.0;
+            let pad = r.ceil() as i32;
+            let (ow, oh) = (w as i32 + 2 * pad, h as i32 + 2 * pad);
+            // the distance from every pixel to the nearest one at least half covered (an exact Euclidean distance transform, so the cost
+            // does not grow with the width), then coverage that falls off over one pixel at `r` beyond the letter's edge
+            let (uw, uh) = (ow as usize, oh as usize);
+            let mut grid = vec![f32::INFINITY; uw * uh];
+            for y in 0..h as usize {
+                for x in 0..w as usize {
+                    if bitmap[y * w as usize + x] >= 128 {
+                        grid[(y + pad as usize) * uw + x + pad as usize] = 0.0;
+                    }
+                }
+            }
+            distance_transform(&mut grid, uw, uh);
+            let mut out = vec![0u8; uw * uh];
+            for y in 0..uh {
+                for x in 0..uw {
+                    let d = grid[y * uw + x].sqrt();
+                    let grown = (r + 1.0 - d).clamp(0.0, 1.0) * 255.0;
+                    let (sx, sy) = (x as i32 - pad, y as i32 - pad);
+                    let own = if sx >= 0 && sy >= 0 && sx < w as i32 && sy < h as i32 {
+                        bitmap[(sy * w as i32 + sx) as usize] as f32
+                    } else {
+                        0.0
+                    };
+                    out[y * uw + x] = grown.max(own) as u8;
+                }
+            }
+            bitmap = out;
+            (w, h) = (ow as u32, oh as u32);
+            xmin -= pad;
+            ymin -= pad;
+        }
         let mut glyph = Glyph {
             x: 0,
             y: 0,
             w,
             h,
-            xmin: m.xmin,
-            ymin: m.ymin,
+            xmin,
+            ymin,
         };
         if w > 0 && h > 0 {
             let (mut x, mut y, mut row) = self.shelf;
@@ -307,7 +347,7 @@ impl TextEngine {
 
     /// Appends one quad per visible letter. `origin` is the text block's top-left in logical
     /// units, `scale` is physical pixels per logical unit, `box_width` (physical px) is what
-    /// `align` aligns within (the widest line when None).
+    /// `align` aligns within (the widest line when None). `grow` (physical pixels) thickens the letters (see `glyph`).
     #[allow(clippy::too_many_arguments)]
     pub fn draw(
         &mut self,
@@ -320,6 +360,7 @@ impl TextEngine {
         color: [u8; 4],
         align: Align,
         box_width: Option<f32>,
+        grow: f32,
     ) {
         let block = box_width.unwrap_or(layout.width);
         let atlas = ATLAS_SIZE as f32;
@@ -334,7 +375,7 @@ impl TextEngine {
             let baseline =
                 origin_px.1 + layout.ascent.round() + i as f32 * layout.line_height.round();
             for &(ch, pen) in &line.glyphs {
-                let g = self.glyph(font, ch, px);
+                let g = self.glyph(font, ch, px, grow);
                 if g.w == 0 || g.h == 0 {
                     continue;
                 }
@@ -360,8 +401,112 @@ impl TextEngine {
     }
 }
 
+/// Squared Euclidean distances, in place: `grid` holds 0 where a pixel is inside and infinity elsewhere (Felzenszwalb and Huttenlocher's
+/// two passes of the one-dimensional lower envelope of parabolas).
+fn distance_transform(grid: &mut [f32], w: usize, h: usize) {
+    fn pass(f: &[f32], out: &mut [f32], v: &mut [usize], z: &mut [f32]) {
+        let n = f.len();
+        let mut k = 0usize;
+        v[0] = 0;
+        z[0] = f32::NEG_INFINITY;
+        z[1] = f32::INFINITY;
+        for q in 1..n {
+            if f[q].is_infinite() && f[v[k]].is_infinite() {
+                continue;
+            }
+            loop {
+                let p = v[k];
+                let s = ((f[q] + (q * q) as f32) - (f[p] + (p * p) as f32))
+                    / (2.0 * q as f32 - 2.0 * p as f32);
+                if s <= z[k] && k > 0 {
+                    k -= 1;
+                    continue;
+                }
+                if s <= z[k] {
+                    // (k is 0: this one replaces the first parabola outright)
+                    v[0] = q;
+                    z[0] = f32::NEG_INFINITY;
+                    z[1] = f32::INFINITY;
+                    break;
+                }
+                k += 1;
+                v[k] = q;
+                z[k] = s;
+                z[k + 1] = f32::INFINITY;
+                break;
+            }
+        }
+        k = 0;
+        for (q, o) in out.iter_mut().enumerate() {
+            while z[k + 1] < q as f32 {
+                k += 1;
+            }
+            let p = v[k];
+            let d = q as f32 - p as f32;
+            *o = if f[p].is_infinite() {
+                f32::INFINITY
+            } else {
+                d * d + f[p]
+            };
+        }
+    }
+    let n = w.max(h);
+    let (mut f, mut out, mut v, mut z) = (
+        vec![0.0f32; n],
+        vec![0.0f32; n],
+        vec![0usize; n],
+        vec![0.0f32; n + 1],
+    );
+    for x in 0..w {
+        for y in 0..h {
+            f[y] = grid[y * w + x];
+        }
+        pass(&f[..h], &mut out[..h], &mut v, &mut z);
+        for y in 0..h {
+            grid[y * w + x] = out[y];
+        }
+    }
+    for y in 0..h {
+        f[..w].copy_from_slice(&grid[y * w..(y + 1) * w]);
+        pass(&f[..w], &mut out[..w], &mut v, &mut z);
+        grid[y * w..(y + 1) * w].copy_from_slice(&out[..w]);
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_distance_transform_is_euclidean() {
+        let (w, h) = (9, 7);
+        let mut g = vec![f32::INFINITY; w * h];
+        g[3 * w + 4] = 0.0;
+        g[w + w - 1] = 0.0;
+        super::distance_transform(&mut g, w, h);
+        for y in 0..h {
+            for x in 0..w {
+                let a = ((x as f32 - 4.0).powi(2) + (y as f32 - 3.0).powi(2))
+                    .min((x as f32 - 8.0).powi(2) + (y as f32 - 1.0).powi(2));
+                assert!(
+                    (g[y * w + x] - a).abs() < 1e-3,
+                    "{x},{y}: {} vs {a}",
+                    g[y * w + x]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn bold_letters_are_wider_and_an_outline_wider_still() {
+        let mut e = super::TextEngine::new().unwrap();
+        let f = e.resolve("rounded").unwrap();
+        let plain = e.glyph(f, 'o', 40.0, 0.0);
+        let bold = e.glyph(f, 'o', 40.0, 2.0);
+        let ring = e.glyph(f, 'o', 40.0, 6.0);
+        assert_eq!(bold.w, plain.w + 4);
+        assert_eq!(ring.w, plain.w + 12);
+        assert_eq!(bold.xmin, plain.xmin - 2);
+    }
+
     use super::*;
 
     fn engine() -> TextEngine {
@@ -389,6 +534,7 @@ mod tests {
                 [255; 4],
                 Align::Left,
                 None,
+                0.0,
             );
             assert_eq!(out.len(), 2, "{name} draws both letters");
             assert!(
@@ -415,6 +561,7 @@ mod tests {
             [255; 4],
             Align::Left,
             None,
+            0.0,
         );
         let atlas = e
             .take_atlas_if_dirty()
@@ -437,6 +584,7 @@ mod tests {
             [255; 4],
             Align::Left,
             None,
+            0.0,
         );
         assert!(
             e.take_atlas_if_dirty().is_none(),
@@ -525,6 +673,7 @@ mod tests {
                 [255; 4],
                 align,
                 Some(200.0),
+                0.0,
             );
             out[0].center[0] - out[0].size[0] / 2.0
         };
@@ -556,6 +705,7 @@ mod tests {
             [255; 4],
             Align::Left,
             None,
+            0.0,
         );
         for s in &out {
             let (x0, y0) = (

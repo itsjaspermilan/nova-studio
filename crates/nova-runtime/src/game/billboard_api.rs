@@ -14,7 +14,9 @@ pub(super) fn mesh_key(image: &str, frame: u32) -> String {
 }
 
 /// A quad one across, facing +z and -z, showing the window `uv` (u0, v0, u1, v1) of `image`. The vertex alpha of 254 is what
-/// makes the renderer draw it blended.
+/// makes the renderer draw it blended. Both sides take their texture by position, not by winding, so the two show the same
+/// picture the same way round: blended things are drawn without back-face culling, and a mirrored back side would lay a
+/// mirror image over any picture that is not symmetric.
 pub(super) fn quad_mesh(image: &Image, uv: [f32; 4]) -> MeshData {
     let mut vertices = Vec::new();
     let mut indices = Vec::new();
@@ -22,7 +24,7 @@ pub(super) fn quad_mesh(image: &Image, uv: [f32; 4]) -> MeshData {
         let base = vertices.len() as u32;
         for (sx, sy) in [(-0.5f32, -0.5f32), (0.5, -0.5), (0.5, 0.5), (-0.5, 0.5)] {
             let (u, v) = (
-                if sx < 0.0 { uv[0] } else { uv[2] },
+                if sx * side < 0.0 { uv[0] } else { uv[2] },
                 if sy < 0.0 { uv[3] } else { uv[1] },
             );
             vertices.push(MeshVertex {
@@ -157,4 +159,27 @@ pub(super) fn install(lua: &Lua, shared: &Rc<RefCell<Shared>>, nova: &Table) -> 
         })?,
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn both_sides_of_a_billboard_show_the_picture_the_same_way_round() {
+        let image = Image {
+            width: 2,
+            height: 2,
+            rgba: vec![255; 16],
+        };
+        let mesh = quad_mesh(&image, [0.0, 0.0, 1.0, 1.0]);
+        // the same corner in space has the same texture place on the front and on the back
+        for front in &mesh.vertices[0..4] {
+            let back = mesh.vertices[4..8]
+                .iter()
+                .find(|b| b.position == front.position)
+                .unwrap();
+            assert_eq!(front.uv, back.uv);
+        }
+    }
 }

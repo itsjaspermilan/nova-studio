@@ -17,23 +17,76 @@ const PIZZ = { wave: "triangle", attack: 0.002, decay: 0.22, sustain: 0.05, rele
 const PAD = { wave: "saw", unison: 5, detune: 12, cutoff: 1100, sweep: 0.12, attack: 0.5, release: 1.0, reverb: 0.7, volume: 0.22 };
 const DRUMS = { kit: "studio", reverb: 0.12, volume: 0.4 };
 
-// a section's chords, one bar each (a bar is `bar` steps), as [root bass pitch, [chord tones]]
+// The arranger. A song is a list of bars, each belonging to a section ({ name, i (its bar within the section), n (the section's length), lead,
+// chords, lift, energy, ... }). So that a song keeps moving instead of looping:
+//  - a section may bring its own chord progression (`chords`), and starts it on its first bar;
+//  - a tune that comes back is varied: the second time with turns round its long notes, from the third time with a harmony a chord tone below;
+//    over chords that are not its own (`fit`) its notes are moved to the nearest chord tone;
+//  - `energy` 0, 1 or 2 thins or fills the drums and the plucked chords; every section ends on a drum fill and the next opens with a crash;
+//  - `lift` moves a section up (a key change for the last chorus).
+const nearest = (p, tones) => {
+  let best = p, d = 99;
+  for (const t of tones) for (let o = -36; o <= 36; o += 12) { const q = t + o; if (Math.abs(q - p) < d) { d = Math.abs(q - p); best = q; } }
+  return best;
+};
 function build({ bars, bar, chords, pad = true, bass, pluck, arp, lead, drums }) {
-  const tracks = { pad: [], bass: [], pluck: [], arp: [], lead: [], drums: [] };
+  const tracks = { pad: [], bass: [], pluck: [], arp: [], lead: [], harmony: [], drums: [] };
+  const seen = {};
   for (let b = 0; b < bars.length; b++) {
     const sec = bars[b];
-    const [root, tones] = chords[b % chords.length];
+    if (sec.i === 0 && sec.lead) seen[sec.lead] = (seen[sec.lead] || 0) + 1;
+    const prog = sec.chords || chords;
+    const [root0, tones0] = prog[sec.i % prog.length];
+    const lift = sec.lift || 0;
+    const root = root0 + lift, tones = tones0.map((p) => p + lift);
     const at = b * bar;
-    if (pad && sec.pad !== false) for (const p of tones) tracks.pad.push(N(at, p - 12, bar - 1, 0.35));
-    if (sec.bass !== false && bass) tracks.bass.push(...bass(at, root, tones, b));
-    if (sec.pluck !== false && pluck) tracks.pluck.push(...pluck(at, root, tones, b));
-    if (sec.arp !== false && arp) tracks.arp.push(...arp(at, root, tones, b));
-    if (sec.lead && lead) tracks.lead.push(...lead(sec.lead, at, b));
-    if (sec.drums !== false && drums) tracks.drums.push(...drums(at, b, sec));
+    const energy = sec.energy ?? 1;
+    const up = (list) => list.map((n) => ({ ...n, pitch: n.pitch + lift }));
+    if (pad && sec.pad !== false) for (const p of tones) tracks.pad.push(N(at, p - 12, bar - 1, energy === 0 ? 0.42 : 0.35));
+    if (sec.bass !== false && bass) tracks.bass.push(...bass(at, root, tones, sec.i, sec));
+    if (sec.pluck !== false && pluck) {
+      const notes = pluck(at, root, tones, sec.i, sec);
+      tracks.pluck.push(...(energy === 0 ? notes.filter((n, k) => k % 2 === 0) : notes));
+    }
+    if (sec.arp !== false && arp) tracks.arp.push(...arp(at, root, tones, sec.i, sec));
+    if (sec.lead && lead) {
+      let notes = up(lead(sec.lead, at, sec.i, sec));
+      if (sec.fit) notes = notes.map((n) => ({ ...n, pitch: nearest(n.pitch, tones) }));
+      const time = seen[sec.lead];
+      if (time === 2) {
+        // a turn round each long note: the note, the chord tone above, back
+        notes = notes.flatMap((n) => {
+          if (n.len < 4) return [n];
+          const above = nearest(n.pitch + 3, tones) > n.pitch ? nearest(n.pitch + 3, tones) : n.pitch + 2;
+          return [{ ...n, len: n.len - 2 }, { ...n, step: n.step + n.len - 2, len: 1, pitch: above, vel: n.vel * 0.8 }, { ...n, step: n.step + n.len - 1, len: 1, vel: n.vel * 0.85 }];
+        });
+      }
+      if (time >= 3) {
+        for (const n of notes) {
+          let h = nearest(n.pitch - 4, tones);
+          if (h >= n.pitch) h -= 12;
+          tracks.harmony.push({ ...n, pitch: h, vel: n.vel * 0.7 });
+        }
+      }
+      tracks.lead.push(...notes);
+    }
+    if (sec.drums !== false && drums) {
+      let hits = drums(at, sec.i, sec);
+      if (energy === 0) hits = hits.filter((n) => n.pitch === DRUM.kick && (n.step - at) % (bar / 2) === 0);
+      if (energy === 2) for (let st = 1; st < bar; st += 2) hits.push(N(at + st, DRUM.hat, 1, 0.12));
+      if (sec.i === 0 && b > 0 && sec.name !== "outro" && energy > 0) hits.push(N(at, DRUM.crash, 1, 0.32));
+      if (sec.i === sec.n - 1 && b < bars.length - 1 && energy > 0) {
+        // a fill over the last beat: toms coming down, a snare
+        const from = at + bar - 4;
+        hits = hits.filter((n) => n.step < from);
+        hits.push(N(from, DRUM.snare, 1, 0.35), N(from + 1, DRUM.tom, 1, 0.4), N(from + 2, DRUM.tom, 1, 0.45), N(from + 3, DRUM.snare, 1, 0.5));
+      }
+      tracks.drums.push(...hits);
+    }
   }
   return tracks;
 }
-const section = (name, count, o = {}) => Array.from({ length: count }, (_, i) => ({ name, i, ...o }));
+const section = (name, n, o = {}) => Array.from({ length: n }, (_, i) => ({ name, i, n, ...o }));
 
 // ---- the apothecary's waltz (the menus and the book): D minor, three beats to the bar ----------------------------------------------------
 const waltz = (() => {
@@ -47,8 +100,9 @@ const waltz = (() => {
     ...section("A", 4, { lead: "A" }), ...section("A", 4, { lead: "A" }), ...section("B", 4, { lead: "B" }),
     ...section("A", 4, { lead: "A" }), ...section("B", 4, { lead: "B" }),
     ...section("break", 4, { lead: null, bass: false, pluck: false }),
-    ...section("A", 4, { lead: "A8" }), ...section("B", 4, { lead: "B" }), ...section("A", 4, { lead: "A" }), ...section("B", 4, { lead: "B" }),
-    ...section("outro", 4, { lead: "A" }),
+    ...section("bridge", 4, { lead: "B", fit: true, chords: [[53, [65, 69, 72]], [48, [64, 67, 72]], [58, [65, 70, 74]], [52, [64, 68, 71]]], energy: 0 }),
+    ...section("A", 4, { lead: "A8", energy: 2 }), ...section("B", 4, { lead: "B", energy: 2 }), ...section("A", 4, { lead: "A", lift: 2 }), ...section("B", 4, { lead: "B", lift: 2 }),
+    ...section("outro", 4, { lead: "A", energy: 0 }),
   ];
   const t = build({
     bars, bar: 12, chords,
@@ -64,6 +118,7 @@ const waltz = (() => {
     track("pluck", "synth", "triangle", t.pluck, { ...HARP, volume: 0.24, decay: 0.16 }),
     track("arp", "synth", "triangle", t.arp, { ...HARP, pan: -0.2 }),
     track("lead", "synth", "sine", t.lead, { ...FLUTE, pan: 0.15 }),
+    track("harmony", "synth", "sine", t.harmony, { ...{ ...FLUTE, pan: 0.15 }, volume: 0.18, pan: -0.25 }),
     track("drums", "drums", "noise", t.drums, DRUMS),
   ] };
 })();
@@ -75,9 +130,13 @@ const meadow = (() => {
   const B = [[[0, 84, 4], [4, 81, 2], [6, 79, 2], [8, 76, 8]], [[0, 81, 4], [4, 79, 2], [6, 76, 2], [8, 72, 8]], [[0, 77, 2], [2, 79, 2], [4, 81, 4], [8, 84, 4], [12, 86, 4]], [[0, 84, 6], [6, 79, 2], [8, 79, 8]]];
   const tunes = { A, B };
   const bars = [
-    ...section("intro", 4, { lead: null }), ...section("A", 4, { lead: "A" }), ...section("A", 4, { lead: "A" }), ...section("B", 4, { lead: "B" }),
-    ...section("A", 4, { lead: "A" }), ...section("B", 4, { lead: "B" }), ...section("A", 4, { lead: "A" }), ...section("B", 4, { lead: "B" }),
-    ...section("A", 4, { lead: "A" }), ...section("B", 4, { lead: "B" }), ...section("A", 4, { lead: "A" }), ...section("outro", 4, { lead: "B" }),
+    ...section("intro", 4, { lead: null, energy: 0 }), ...section("A", 4, { lead: "A" }), ...section("A", 4, { lead: "A" }), ...section("B", 4, { lead: "B", energy: 2 }),
+    ...section("bridge", 4, { lead: "A", fit: true, chords: [[53, [57, 60, 65]], [55, [59, 62, 67]], [52, [55, 59, 64]], [57, [60, 64, 69]]], energy: 0 }),
+    ...section("bridge", 4, { lead: "B", fit: true, chords: [[50, [57, 62, 65]], [55, [59, 62, 67]], [53, [57, 60, 65]], [55, [59, 62, 65]]] }),
+    ...section("A", 4, { lead: "A", energy: 2 }), ...section("B", 4, { lead: "B", energy: 2 }),
+    ...section("breakdown", 4, { lead: "B", energy: 0, pluck: false, chords: [[45, [57, 60, 64]], [53, [57, 60, 65]], [48, [55, 60, 64]], [55, [59, 62, 67]]], fit: true }),
+    ...section("breakdown", 4, { lead: "A", energy: 1, chords: [[45, [57, 60, 64]], [53, [57, 60, 65]], [48, [55, 60, 64]], [55, [59, 62, 67]]], fit: true }),
+    ...section("A", 4, { lead: "A", lift: 2, energy: 2 }), ...section("B", 4, { lead: "B", lift: 2, energy: 2 }), ...section("A", 4, { lead: "A", lift: 2 }), ...section("outro", 4, { lead: "B", lift: 2, energy: 0 }),
   ];
   const t = build({
     bars, bar: 16, chords,
@@ -92,6 +151,7 @@ const meadow = (() => {
     track("bass", "synth", "triangle", t.bass, PIZZ),
     track("pluck", "synth", "triangle", t.pluck, { ...HARP, volume: 0.26, decay: 0.14, pan: -0.15 }),
     track("lead", "synth", "triangle", t.lead, { ...FLUTE, volume: 0.34, pan: 0.15 }),
+    track("harmony", "synth", "triangle", t.harmony, { ...{ ...FLUTE, volume: 0.34, pan: 0.15 }, volume: 0.18, pan: -0.25 }),
     track("drums", "drums", "noise", t.drums, DRUMS),
   ] };
 })();
@@ -100,7 +160,9 @@ const meadow = (() => {
 const frost = (() => {
   const chords = [[45, [57, 60, 64, 71]], [41, [53, 57, 60, 64]], [48, [55, 59, 64, 67]], [43, [55, 59, 62, 64]]]; // Am9 Fmaj7 Cmaj7 G6
   const bells = [76, 79, 83, 86, 83, 79, 76, 74, 76, 79, 81, 79];
-  const bars = [...section("intro", 4, { lead: null }), ...section("A", 8, { lead: "bell" }), ...section("B", 8, { lead: "bell2" }), ...section("A", 8, { lead: "bell" }), ...section("B", 8, { lead: "bell2" }), ...section("outro", 4, { lead: null })];
+  const bars = [...section("intro", 4, { lead: null, energy: 0 }), ...section("A", 8, { lead: "bell" }), ...section("B", 8, { lead: "bell2" }),
+    ...section("bridge", 8, { lead: "bell", fit: true, energy: 0, chords: [[50, [53, 57, 60, 64]], [43, [55, 59, 62, 65]], [40, [55, 59, 62, 64]], [45, [57, 60, 64, 67]]] }),
+    ...section("A", 8, { lead: "bell", energy: 2 }), ...section("B", 8, { lead: "bell2", lift: 2 }), ...section("outro", 4, { lead: null, energy: 0 })];
   const t = build({
     bars, bar: 16, chords,
     bass: (at, root) => [N(at, root, 12, 0.6)],
@@ -117,6 +179,7 @@ const frost = (() => {
     track("bass", "synth", "sine", t.bass, { wave: "sine", attack: 0.03, decay: 0.5, sustain: 0.4, release: 0.4, volume: 0.4 }),
     track("arp", "synth", "sine", t.arp, { ...CELESTA, volume: 0.28 }),
     track("lead", "synth", "sine", t.lead, { ...CELESTA, volume: 0.32, pan: 0.2, decay: 0.9 }),
+    track("harmony", "synth", "sine", t.harmony, { ...{ ...CELESTA, volume: 0.32, pan: 0.2, decay: 0.9 }, volume: 0.18, pan: -0.25 }),
     track("drums", "drums", "noise", t.drums, { ...DRUMS, volume: 0.28 }),
   ] };
 })();
@@ -126,7 +189,11 @@ const ember = (() => {
   const chords = [[40, [52, 55, 59]], [41, [53, 56, 60]], [40, [52, 55, 59]], [38, [50, 54, 57]]]; // Em F Em D
   const riff = (at, root) => [[0, 0], [3, 0], [4, 1], [6, 0], [8, 0], [11, 12], [12, 1], [14, 0]].map(([s, o]) => N(at + s, root + o, 2, 0.8));
   const mel = [[[0, 71, 4], [4, 72, 2], [6, 71, 2], [8, 67, 8]], [[0, 72, 4], [4, 75, 2], [6, 72, 2], [8, 68, 8]], [[0, 71, 4], [4, 76, 4], [8, 75, 4], [12, 71, 4]], [[0, 69, 8], [8, 66, 4], [12, 69, 4]]];
-  const bars = [...section("intro", 4, { lead: null }), ...section("A", 8, { lead: "m" }), ...section("A", 8, { lead: "m" }), ...section("break", 4, { lead: null, bass: false }), ...section("A", 8, { lead: "m" }), ...section("A", 8, { lead: "m" }), ...section("outro", 4, { lead: null })];
+  const bars = [...section("intro", 4, { lead: null, energy: 0 }), ...section("A", 8, { lead: "m" }), ...section("A", 8, { lead: "m", energy: 2 }), ...section("break", 4, { lead: null, bass: false, energy: 0 }),
+    ...section("bridge", 8, { lead: "m", fit: true, chords: [[36, [48, 52, 55]], [38, [50, 53, 57]], [35, [47, 50, 54]], [40, [52, 55, 59]]] }),
+    ...section("A", 8, { lead: "m", energy: 2 }), ...section("break", 4, { lead: null, bass: false, energy: 0, chords: [[41, [53, 56, 60]], [40, [52, 55, 59]]] }),
+    ...section("bridge", 8, { lead: "m", fit: true, energy: 2, chords: [[43, [55, 59, 62]], [41, [53, 57, 60]], [36, [48, 52, 55]], [35, [47, 51, 54]]] }),
+    ...section("A", 8, { lead: "m", lift: 1, energy: 2 }), ...section("outro", 4, { lead: null, energy: 0 })];
   const t = build({
     bars, bar: 16, chords,
     bass: riff,
@@ -139,6 +206,7 @@ const ember = (() => {
     track("pad", "synth", "saw", t.pad, { ...PAD, cutoff: 900, volume: 0.2 }),
     track("bass", "synth", "saw", t.bass, { wave: "saw", unison: 2, detune: 6, cutoff: 520, resonance: 0.2, sweep: 0.5, sub: 0.5, attack: 0.004, decay: 0.15, sustain: 0.4, release: 0.08, volume: 0.45 }),
     track("lead", "synth", "saw", t.lead, { wave: "saw", unison: 3, detune: 9, cutoff: 2400, sweep: 0.5, attack: 0.02, release: 0.3, vibrato: 0.1, reverb: 0.4, volume: 0.24, pan: 0.1 }),
+    track("harmony", "synth", "saw", t.harmony, { ...{ wave: "saw", unison: 3, detune: 9, cutoff: 2400, sweep: 0.5, attack: 0.02, release: 0.3, vibrato: 0.1, reverb: 0.4, volume: 0.24, pan: 0.1 }, volume: 0.18, pan: -0.25 }),
     track("drums", "drums", "noise", t.drums, { ...DRUMS, volume: 0.55 }),
   ] };
 })();
@@ -147,7 +215,9 @@ const ember = (() => {
 const mire = (() => {
   const chords = [[37, [49, 52, 56]], [37, [49, 52, 55]], [34, [46, 49, 53]], [35, [47, 50, 54]]]; // C#m C#dim A#m B
   const notes = [[[4, 85, 6], [12, 82, 4]], [[2, 80, 8]], [[6, 83, 6], [13, 80, 3]], [[0, 85, 10]]];
-  const bars = [...section("intro", 4, { lead: null }), ...section("A", 8, { lead: "n" }), ...section("A", 8, { lead: "n" }), ...section("A", 8, { lead: "n" }), ...section("outro", 4, { lead: null })];
+  const bars = [...section("intro", 4, { lead: null, energy: 0 }), ...section("A", 8, { lead: "n" }),
+    ...section("B", 8, { lead: "n", fit: true, chords: [[42, [54, 57, 61]], [40, [52, 56, 59]], [44, [56, 59, 63]], [37, [49, 52, 56]]], energy: 2 }),
+    ...section("A", 8, { lead: "n" }), ...section("break", 4, { lead: null, energy: 0 }), ...section("A", 8, { lead: "n", energy: 2 }), ...section("outro", 4, { lead: null, energy: 0 })];
   const t = build({
     bars, bar: 16, chords,
     bass: (at, root) => [N(at, root, 14, 0.7)],
@@ -161,6 +231,7 @@ const mire = (() => {
     track("bass", "synth", "sine", t.bass, { wave: "sine", attack: 0.2, decay: 0.2, sustain: 0.7, release: 0.5, volume: 0.45, sub: 0.4 }),
     track("arp", "synth", "sine", t.arp, { ...CELESTA, volume: 0.24, pan: -0.3 }),
     track("lead", "synth", "triangle", t.lead, { wave: "triangle", unison: 3, detune: 18, attack: 0.05, decay: 0.4, sustain: 0.2, release: 1.0, vibrato: 0.2, reverb: 0.75, volume: 0.24, pan: 0.25 }),
+    track("harmony", "synth", "triangle", t.harmony, { ...{ wave: "triangle", unison: 3, detune: 18, attack: 0.05, decay: 0.4, sustain: 0.2, release: 1.0, vibrato: 0.2, reverb: 0.75, volume: 0.24, pan: 0.25 }, volume: 0.18, pan: -0.25 }),
     track("drums", "drums", "noise", t.drums, { ...DRUMS, volume: 0.35 }),
   ] };
 })();
@@ -184,6 +255,7 @@ const results = (() => {
     track("pluck", "synth", "triangle", t.pluck, { ...HARP, volume: 0.26 }),
     track("arp", "synth", "sine", t.arp, { ...CELESTA, volume: 0.26 }),
     track("lead", "synth", "triangle", t.lead, { ...FLUTE, volume: 0.36 }),
+    track("harmony", "synth", "triangle", t.harmony, { ...{ ...FLUTE, volume: 0.36 }, volume: 0.18, pan: -0.25 }),
     track("drums", "drums", "noise", t.drums, DRUMS),
   ] };
 })();
