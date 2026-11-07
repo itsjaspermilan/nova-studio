@@ -38,8 +38,18 @@ fn wav(bytes: &[u8]) -> Vec<f32> {
         } else if id == b"data" {
             let _ = ch;
             return match (fmt, bits) {
-                (3, 32) => body.chunks_exact(4).map(|b| f32::from_le_bytes(b.try_into().unwrap())).collect(),
-                (_, 16) => body.chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0).collect(),
+                (3, 32) => body
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .map(|b| f32::from_le_bytes(*b))
+                    .collect(),
+                (_, 16) => body
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
+                    .map(|b| i16::from_le_bytes(*b) as f32 / 32768.0)
+                    .collect(),
                 _ => vec![],
             };
         }
@@ -49,7 +59,8 @@ fn wav(bytes: &[u8]) -> Vec<f32> {
 }
 
 fn ogg(path: &Path) -> Vec<f32> {
-    let mut r = lewton::inside_ogg::OggStreamReader::new(std::fs::File::open(path).unwrap()).unwrap();
+    let mut r =
+        lewton::inside_ogg::OggStreamReader::new(std::fs::File::open(path).unwrap()).unwrap();
     let mut out = vec![];
     while let Some(p) = r.read_dec_packet_itl().unwrap() {
         out.extend(p.iter().map(|s| *s as f32 / 32768.0));
@@ -61,9 +72,14 @@ fn ogg(path: &Path) -> Vec<f32> {
 #[ignore]
 fn loudness() {
     let project = std::env::var("LOUDNESS_PROJECT").unwrap_or_else(|_| "pine-ridge-rally".into());
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples").join(project);
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples")
+        .join(project);
     for dir in ["sounds", "music"] {
-        let mut names: Vec<_> = std::fs::read_dir(root.join(dir)).unwrap().map(|e| e.unwrap().path()).collect();
+        let mut names: Vec<_> = std::fs::read_dir(root.join(dir))
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .collect();
         names.sort();
         for p in names {
             let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
@@ -76,7 +92,10 @@ fn loudness() {
                 continue;
             }
             let name = p.file_name().unwrap().to_str().unwrap();
-            if name.starts_with("eng_") && !name.starts_with("eng_car_sedan") && !name.starts_with("eng_car_1") {
+            if name.starts_with("eng_")
+                && !name.starts_with("eng_car_sedan")
+                && !name.starts_with("eng_car_1")
+            {
                 continue;
             }
             let (rms, peak) = stats(&s);

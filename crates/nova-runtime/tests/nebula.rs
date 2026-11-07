@@ -32,7 +32,10 @@ fn load() -> Game {
 const DT: f32 = 1.0 / 60.0;
 
 fn frame(g: &mut Game, held: &[&str]) {
-    let input = InputFrame { sources: held.iter().map(|k| (k.to_string(), 1.0)).collect(), ..Default::default() };
+    let input = InputFrame {
+        sources: held.iter().map(|k| (k.to_string(), 1.0)).collect(),
+        ..Default::default()
+    };
     g.update_input(DT, 0.0, [960.0, 540.0], &input);
     assert!(g.error.is_none(), "the game raised an error: {:?}", g.error);
 }
@@ -50,7 +53,13 @@ fn wait(g: &mut Game, frames: usize) {
     }
 }
 
-fn run_until(g: &mut Game, log: &mut Vec<String>, what: &str, limit: usize, done: impl Fn(&[String]) -> bool) {
+fn run_until(
+    g: &mut Game,
+    log: &mut Vec<String>,
+    what: &str,
+    limit: usize,
+    done: impl Fn(&[String]) -> bool,
+) {
     for _ in 0..limit {
         frame(g, &[]);
         log.extend(g.take_log());
@@ -84,7 +93,9 @@ fn the_rules_pass_their_own_checks() {
     wait(&mut g, 20);
     let mut log = vec![];
     frame(&mut g, &["key:F10"]);
-    run_until(&mut g, &mut log, "the self-test", 200, |l| has(l, "selftest: ok") || has(l, "selftest: FAIL"));
+    run_until(&mut g, &mut log, "the self-test", 200, |l| {
+        has(l, "selftest: ok") || has(l, "selftest: FAIL")
+    });
     assert!(has(&log, "selftest: ok"), "the self-test failed: {log:?}");
 }
 
@@ -93,12 +104,17 @@ fn endless_starts_after_the_countdown_and_plays_on_its_own() {
     let mut g = load();
     start(&mut g, 0, true);
     let mut log = vec![];
-    run_until(&mut g, &mut log, "the countdown", 60 * 8, |l| has(l, "nebula: go"));
+    run_until(&mut g, &mut log, "the countdown", 60 * 8, |l| {
+        has(l, "nebula: go")
+    });
     frame(&mut g, &["key:F9"]);
     wait(&mut g, 60 * 20);
     log.extend(g.take_log());
     assert!(has(&log, "nebula: autoplay true"), "{log:?}");
-    assert!(!has(&log, "over mode=endless won=false score=0"), "the computer should have scored in 20 seconds: {log:?}");
+    assert!(
+        !has(&log, "over mode=endless won=false score=0"),
+        "the computer should have scored in 20 seconds: {log:?}"
+    );
 }
 
 #[test]
@@ -107,7 +123,9 @@ fn a_puzzle_starts_from_the_list_and_the_pause_menu_leads_back_to_the_title() {
     start(&mut g, 1, false); // Puzzle -> the list
     tap(&mut g, "key:Enter"); // puzzle 1
     let mut log = vec![];
-    run_until(&mut g, &mut log, "the puzzle intro", 60 * 8, |l| has(l, "nebula: go"));
+    run_until(&mut g, &mut log, "the puzzle intro", 60 * 8, |l| {
+        has(l, "nebula: go")
+    });
     tap(&mut g, "key:Escape"); // pause
     tap(&mut g, "key:ArrowDown");
     tap(&mut g, "key:ArrowDown"); // Quit to menu
@@ -122,7 +140,9 @@ fn a_garbage_battle_runs_with_both_boards_playing() {
     let mut g = load();
     start(&mut g, 2, true);
     let mut log = vec![];
-    run_until(&mut g, &mut log, "the countdown", 60 * 8, |l| has(l, "nebula: go"));
+    run_until(&mut g, &mut log, "the countdown", 60 * 8, |l| {
+        has(l, "nebula: go")
+    });
     frame(&mut g, &["key:F9"]);
     wait(&mut g, 60 * 40);
 }
@@ -132,8 +152,12 @@ fn doing_nothing_in_endless_ends_the_game_and_the_results_lead_on() {
     let mut g = load();
     start(&mut g, 0, true);
     let mut log = vec![];
-    run_until(&mut g, &mut log, "game over", 60 * 140, |l| has(l, "nebula: over mode=endless"));
+    run_until(&mut g, &mut log, "game over", 60 * 140, |l| {
+        has(l, "nebula: over mode=endless")
+    });
     wait(&mut g, 120);
     tap(&mut g, "key:Enter"); // Play again
-    run_until(&mut g, &mut log, "the new game", 60 * 8, |l| l.iter().filter(|x| x.contains("nebula: go")).count() >= 2);
+    run_until(&mut g, &mut log, "the new game", 60 * 8, |l| {
+        l.iter().filter(|x| x.contains("nebula: go")).count() >= 2
+    });
 }
