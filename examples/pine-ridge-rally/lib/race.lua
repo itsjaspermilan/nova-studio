@@ -415,6 +415,12 @@ function race.define(config)
     end
     if self.paused then return self:update_pause() end
     self.crowd_time = (self.crowd_time or 0) + dt -- (the crowd keeps still while the game is paused)
+    -- a frame that took too long is written to the log with what was going on, so that a hitch can be found from a play session
+    if dt > 0.026 and self.phase == "racing" then
+      local p = self.player
+      self.hitches = (self.hitches or 0) + 1
+      nova.log(string.format("rally: hitch %.1f ms at %.0f s: speed %.0f steer %.2f slip %.2f %s lua %.0f KB view %d orbit %.2f", dt * 1000, self.clock, p.speed, p.ctl.steer, p.slip, tostring(p.surface), collectgarbage("count"), self.view_mode, self.orbit and self.orbit.yaw or 0))
+    end
 
     if self.message_time > 0 then self.message_time = self.message_time - dt end
     foliage.plant_some()
@@ -599,6 +605,7 @@ function race.define(config)
   -- Headlights are spot lights: a cone from each lamp, tilted a little down so that it lands on the road and fades out along it.
   local HEADLIGHT = { color = { 255, 238, 190 }, radius = 28, angle = 46 }
   local PLAYER_BEAM = { color = { 255, 238, 190 }, radius = 60, angle = 36 }
+  local rival_beam = { color = { 0, 0, 0 }, radius = HEADLIGHT.radius, angle = HEADLIGHT.angle }
   local LAMP = { color = { 255, 226, 150 }, radius = 26 }
   local beam_opts = { color = HEADLIGHT.color, radius = 0, angle = 0, dir = { 0, 0, 0 } }
   -- One headlight: `side` is -1 (right lamp), 1 (left) or 0 (one lamp in the middle); the beams point a little outwards.
@@ -627,10 +634,16 @@ function race.define(config)
         end
       end
     end
+    -- (a rival's lamps fade in over its last 15 m before the 60 m, and the street lamps always have the same four lights, so that a lamp
+    -- never switches on because a rival came near)
     for _, car in ipairs({ a or false, b or false }) do
-      if car then headlight(car, 0, HEADLIGHT); used = used + 1 end
+      if car then
+        local fade = math.min(1, (60 - math.sqrt((car.x - p.x) ^ 2 + (car.z - p.z) ^ 2)) / 15)
+        rival_beam.color[1], rival_beam.color[2], rival_beam.color[3] = HEADLIGHT.color[1] * fade, HEADLIGHT.color[2] * fade, HEADLIGHT.color[3] * fade
+        headlight(car, 0, rival_beam)
+      end
     end
-    lamps.light(cam.x, cam.z, 70, 8 - used, LAMP)
+    lamps.light(cam.x, cam.z, 70, 4, LAMP)
   end
 
   function Race:draw()

@@ -41,3 +41,4 @@ Also used by Pine Ridge Rally and Bunker Run (their scripts: scripts/rally/kit-m
 
 examples/hill-run: kenney_animated-characters-protagonists (1.1, CC0, https://kenney.nl/assets/animated-characters-protagonists): the four skins and the model and animations in `models/skater_male.glb`, `skater_female.glb`, `criminal.glb` and `cyborg.glb` were made from its FBX files by `scripts/fbx2glb.mjs` (the converter is ours; the art is Kenney's).
 Kenney Mini Characters (CC0): the spectators in Pine Ridge Rally (models/crowd_*.glb), from the Kenney Game Assets All-in-1 bundle.
+Kenney Nature Kit (CC0): trees, cacti, rocks, stumps and bushes in Pine Ridge Rally (models/nk_*.glb), from the Kenney Game Assets All-in-1 bundle; recoloured by scripts/rally/kit-models.sh.

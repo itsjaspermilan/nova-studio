@@ -56,3 +56,13 @@
 {"t":1794008485019,"tool":"scene_write","files":["scenes/dust_valley.scene.json"],"note":"scenes/dust_valley.scene.json: 845 objects"}
 {"t":1794008485040,"tool":"scene_write","files":["scenes/frost_pass.scene.json"],"note":"scenes/frost_pass.scene.json: 1212 objects"}
 {"t":1794008485055,"tool":"scene_write","files":["scenes/harbour_lights.scene.json"],"note":"scenes/harbour_lights.scene.json: 858 objects"}
+{"t":1794010780055,"tool":"model_preview","files":[],"note":"preview of nk_pinetall_a (saved at /var/folders/dw/tlxcl4_560s0fm4ckt2ms26r0000gn/T/nova-preview-nk_pinetall_a-1794010780054.png)"}
+{"t":1794010780135,"tool":"model_preview","files":[],"note":"preview of nk_oak (saved at /var/folders/dw/tlxcl4_560s0fm4ckt2ms26r0000gn/T/nova-preview-nk_oak-1794010780134.png)"}
+{"t":1794010780199,"tool":"model_preview","files":[],"note":"preview of nk_snow_pinetall_a (saved at /var/folders/dw/tlxcl4_560s0fm4ckt2ms26r0000gn/T/nova-preview-nk_snow_pinetall_a-1794010780198.png)"}
+{"t":1794010820791,"tool":"model_preview","files":[],"note":"preview of nk_oak_fall (saved at /var/folders/dw/tlxcl4_560s0fm4ckt2ms26r0000gn/T/nova-preview-nk_oak_fall-1794010820790.png)"}
+{"t":1794010820860,"tool":"model_preview","files":[],"note":"preview of nk_pinetall_c (saved at /var/folders/dw/tlxcl4_560s0fm4ckt2ms26r0000gn/T/nova-preview-nk_pinetall_c-1794010820859.png)"}
+{"t":1794010820930,"tool":"model_preview","files":[],"note":"preview of nk_rockred_largeC (saved at /var/folders/dw/tlxcl4_560s0fm4ckt2ms26r0000gn/T/nova-preview-nk_rockred_largeC-1794010820929.png)"}
+{"t":1794010847407,"tool":"scene_write","files":["scenes/pine_ridge.scene.json"],"note":"scenes/pine_ridge.scene.json: 1521 objects"}
+{"t":1794010847429,"tool":"scene_write","files":["scenes/dust_valley.scene.json"],"note":"scenes/dust_valley.scene.json: 902 objects"}
+{"t":1794010847451,"tool":"scene_write","files":["scenes/frost_pass.scene.json"],"note":"scenes/frost_pass.scene.json: 1239 objects"}
+{"t":1794010847467,"tool":"scene_write","files":["scenes/harbour_lights.scene.json"],"note":"scenes/harbour_lights.scene.json: 893 objects"}

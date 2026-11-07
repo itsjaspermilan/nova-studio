@@ -35,7 +35,7 @@ local function add(r, i, off, along)
   local face = p.heading + (off > 0 and -math.pi / 2 or math.pi / 2) + (r() - 0.5) * 0.7
   local roll = r()
   -- (Kenney's own "jump" clip is a dive that lays the person flat: the cheering hop is made here instead, by lifting the person)
-  local clip = roll < 0.5 and "emote-yes" or "idle"
+  local clip = "idle" -- ("emote-yes" nods so far that the person lies flat)
   count = count + 1
   people[count] = {
     x = x, z = z,
@@ -43,7 +43,7 @@ local function add(r, i, off, along)
       ry = face, scale = SIZE, clip = clip, time = 0, shadow = false,
     },
     size = SIZE * (0.92 + r() * 0.16),
-    hop = r() < 0.45 and (0.15 + r() * 0.2) or 0,
+    hop = r() < 0.7 and (0.15 + r() * 0.2) or 0,
     kind = KINDS[math.floor(r() * #KINDS) + 1],
     rate = 0.8 + r() * 0.5, phase = r() * 4,
   }

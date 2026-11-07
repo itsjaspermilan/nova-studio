@@ -70,6 +70,7 @@ function layout(spec) {
   const n = line.length;
   const length = n * spacing;
   const rand = rng(spec.seed);
+  const pick = (v) => (Array.isArray(v) ? v[Math.floor(rand() * v.length)] : v);
   const objects = [];
 
   // the road, with the start line on the first piece
@@ -114,8 +115,8 @@ function layout(spec) {
         place(kind, p.x + nx * d + (rand() - 0.5) * 6, p.z + nz * d + (rand() - 0.5) * 6, 10.5);
       }
       if (rand() < spec.density * 0.7) place(spec.small[Math.floor(rand() * spec.small.length)], p.x + nx * (8 + rand() * 12), p.z + nz * (8 + rand() * 12), 8);
-      if (rand() < spec.rocks) place(spec.rock, p.x + nx * (9 + rand() * 20), p.z + nz * (9 + rand() * 20), 8.5);
-      if (spec.far && rand() < spec.far.density) place(spec.far.kind, p.x + nx * (60 + rand() * 90), p.z + nz * (60 + rand() * 90), 40);
+      if (rand() < spec.rocks) place(pick(spec.rock), p.x + nx * (9 + rand() * 20), p.z + nz * (9 + rand() * 20), 8.5);
+      if (spec.far && rand() < spec.far.density) place(pick(spec.far.kind), p.x + nx * (60 + rand() * 90), p.z + nz * (60 + rand() * 90), 40);
     }
     // on a bend the outside gets a barrier, tyres at the tightest part, and chevron signs before it
     const k = curv[i];
@@ -141,7 +142,7 @@ function layout(spec) {
   for (let i = 0; i < spec.landmarks.count; i++) {
     const a = rand() * Math.PI * 2, d = spec.landmarks.radius + rand() * 40;
     const cx = spec.control.reduce((s, c) => s + c[0], 0) / spec.control.length, cz = spec.control.reduce((s, c) => s + c[1], 0) / spec.control.length;
-    place(spec.landmarks.kind, cx + Math.cos(a) * d * 1.3, cz + Math.sin(a) * d, 50);
+    place(pick(spec.landmarks.kind), cx + Math.cos(a) * d * 1.3, cz + Math.sin(a) * d, 50);
   }
 
   const s0 = line[0];
@@ -249,13 +250,14 @@ const tracks = {
   pine_ridge: {
     seed: 7, road: "road_asphalt", rail: "guardrail", sky: [138, 182, 224],
     control: [[0, -90], [0, 0], [0, 150], [25, 240], [95, 285], [170, 265], [215, 320], [290, 348], [362, 300], [378, 225], [335, 170], [365, 112], [425, 72], [405, -8], [335, -30], [300, -98], [342, -165], [290, -232], [205, -250], [150, -192], [88, -242], [0, -262], [-82, -212], [-80, -140]],
-    trees: ["pine", "pine", "pine_dark", "pine_dark", "autumn_tree", "birch"], small: ["bush", "bush", "rock"], rock: "rock", density: 0.5, rocks: 0.06,
-    far: { kind: "pine_dark", density: 0.5 }, landmarks: { kind: "pine_dark", count: 0, radius: 0 },
+    trees: ["nk_pinetall_a", "nk_pinetall_b", "nk_pinetall_c", "nk_pinetall_d", "nk_pineround_a", "nk_pineround_c", "nk_pineround_e", "nk_pinesmall_a", "nk_pinesmall_c", "nk_oak", "nk_default", "nk_tall", "nk_fat", "nk_thin", "nk_oak_fall", "pine", "pine_dark", "birch"],
+    small: ["nk_bush_large", "nk_bush_detailed", "nk_bush_tri", "bush", "nk_stump", "nk_log", "nk_rock_largeC"], rock: ["nk_rock_largeA", "nk_rock_largeC", "nk_rock_largeE", "nk_rock_tallB", "nk_rock_tallF", "nk_rock_tallH"], density: 0.5, rocks: 0.08,
+    far: { kind: ["nk_pinetall_a", "nk_pinetall_d", "nk_pineround_e", "pine_dark"], density: 0.5 }, landmarks: { kind: "pine_dark", count: 0, radius: 0 },
   },
   dust_valley: {
     seed: 21, road: "road_dirt", rail: "guardrail", sky: [236, 190, 140],
     control: [[0, -70], [0, 0], [0, 120], [45, 195], [120, 225], [190, 190], [235, 235], [300, 215], [318, 150], [290, 88], [225, 72], [180, 25], [190, -40], [250, -85], [272, -150], [240, -205], [170, -215], [135, -160], [75, -195], [10, -235], [-50, -180], [-40, -120]],
-    trees: ["cactus", "cactus", "dry_bush"], small: ["dry_bush", "rock_red", "dry_bush"], rock: "rock_red", density: 0.32, rocks: 0.1,
+    trees: ["nk_cactus_tall", "nk_cactus_tall", "nk_cactus_short", "nk_cactus_short", "cactus", "nk_dead_thin", "nk_dead_tall", "dry_bush"], small: ["dry_bush", "nk_rockred_largeC", "dry_bush", "nk_stump", "nk_rockred_tallF"], rock: ["nk_rockred_largeA", "nk_rockred_largeC", "nk_rockred_largeE", "nk_rockred_tallB", "nk_rockred_tallF", "nk_rockred_tallH"], density: 0.34, rocks: 0.12,
     far: { kind: "mesa", density: 0.22 }, landmarks: { kind: "mesa", count: 14, radius: 190 },
   },
 };
@@ -264,14 +266,14 @@ const only = process.argv[2];
 tracks.frost_pass = {
   seed: 33, road: "road_snow", rail: "guardrail", sky: [196, 216, 236],
   control: [[0, -80], [0, 0], [0, 110], [-45, 185], [-120, 205], [-185, 250], [-270, 222], [-288, 150], [-255, 90], [-195, 74], [-172, 14], [-105, 0], [-72, -48], [-105, -95], [-180, -108], [-205, -170], [-140, -215], [-75, -170], [-20, -215], [50, -190], [60, -125]],
-  trees: ["pine_snow", "pine_snow", "pine_snow", "pine_dark"], small: ["bush_snow", "rock_ice", "bush_snow"], rock: "rock_ice", density: 0.55, rocks: 0.08,
-  far: { kind: "pine_snow", density: 0.6 }, landmarks: { kind: "pine_snow", count: 0, radius: 0 },
+  trees: ["nk_snow_pinetall_a", "nk_snow_pinetall_c", "nk_snow_pinetall_d", "nk_snow_pineround_a", "nk_snow_pineround_e", "nk_snow_pinesmall_a", "pine_snow", "pine_snow", "nk_pinetall_a", "nk_pineround_c"], small: ["bush_snow", "nk_rockice_largeC", "bush_snow", "nk_stump"], rock: ["nk_rockice_largeA", "nk_rockice_largeC", "nk_rockice_largeE", "nk_rockice_tallB", "nk_rockice_tallF", "nk_rockice_tallH"], density: 0.55, rocks: 0.1,
+  far: { kind: ["pine_snow", "nk_snow_pinetall_d", "nk_snow_pineround_e"], density: 0.6 }, landmarks: { kind: "pine_snow", count: 0, radius: 0 },
 };
 tracks.harbour_lights = {
   seed: 45, road: "road_asphalt", rail: "guardrail", sky: [12, 18, 34], lamps: true,
   control: [[0, -80], [0, 0], [0, 130], [55, 205], [130, 235], [190, 290], [270, 270], [285, 195], [225, 150], [260, 90], [330, 60], [320, -20], [255, -50], [275, -120], [215, -175], [140, -150], [95, -205], [20, -190], [5, -135]],
-  trees: ["pine_dark", "pine_dark", "bush"], small: ["bush", "rock", "bush"], rock: "rock", density: 0.3, rocks: 0.05,
-  far: { kind: "pine_dark", density: 0.3 }, landmarks: { kind: "pine_dark", count: 0, radius: 0 },
+  trees: ["nk_night_pinetall_a", "nk_night_pinetall_c", "nk_night_pineround_a", "nk_night_pineround_e", "nk_night_pinesmall_a", "pine_dark", "bush"], small: ["bush", "nk_rock_largeC", "bush", "nk_stump"], rock: ["nk_rock_largeA", "nk_rock_largeC", "nk_rock_tallB", "nk_rock_tallF"], density: 0.32, rocks: 0.06,
+  far: { kind: ["pine_dark", "nk_night_pinetall_a", "nk_night_pineround_e"], density: 0.3 }, landmarks: { kind: "pine_dark", count: 0, radius: 0 },
 };
 // DRY=1 only draws the maps and prints the numbers (nothing is written)
 const dry = !!process.env.DRY;

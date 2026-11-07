@@ -20,7 +20,11 @@ end
 
 local near_lamps = {}
 
--- Switches on the `max` lamps nearest (cx, cz) that are within `radius` metres, as point lights.
+local faded = { color = { 255, 255, 255 }, radius = 10 }
+
+-- Switches on the `max` lamps nearest (cx, cz) that are within `radius` metres, as point lights. A light does not switch on or off: it
+-- fades in as its lamp comes into the nearest few (the farthest one that is lit is the dimmest, nothing at the distance of the next
+-- lamp that is left out) and out as it leaves them.
 function lamps.light(cx, cz, radius, max, opts)
   local n = 0
   for gx = cell(cx - radius), cell(cx + radius) do
@@ -42,14 +46,26 @@ function lamps.light(cx, cz, radius, max, opts)
     end
   end
   -- a few candidates at most, so a simple selection is enough
-  for pick = 1, math.min(max, n) do
+  for pick = 1, math.min(max + 1, n) do
     local best = pick
     for j = pick + 1, n do
       if near_lamps[j].d2 < near_lamps[best].d2 then best = j end
     end
     near_lamps[pick], near_lamps[best] = near_lamps[best], near_lamps[pick]
-    local l = near_lamps[pick].l
-    nova.point_light(l[1], l[2] + nova.terrain_height(l[1], l[3]), l[3], opts)
+  end
+  -- (the lamps beyond the lit ones come in at the distance of the first that is left out, or at the edge of the radius)
+  local cut = radius
+  if n > max and max >= 0 then cut = math.min(radius, math.sqrt(near_lamps[max + 1].d2)) end
+  faded.radius = opts.radius
+  for pick = 1, math.min(max, n) do
+    local e = near_lamps[pick]
+    local l = e.l
+    local fade = math.max(0, math.min(1, (cut - math.sqrt(e.d2)) / (cut * 0.35)))
+    fade = fade * fade * (3 - 2 * fade)
+    if fade > 0.01 then
+      faded.color[1], faded.color[2], faded.color[3] = opts.color[1] * fade, opts.color[2] * fade, opts.color[3] * fade
+      nova.point_light(l[1], l[2] + nova.terrain_height(l[1], l[3]), l[3], faded)
+    end
   end
 end
 
