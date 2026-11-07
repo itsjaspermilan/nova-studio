@@ -5,7 +5,18 @@ local audio = {}
 nova.sound.room { size = 0.5, damping = 0.5, mix = 0.9 }
 local REVERB = { bump = 0.25, lap = 0.3, best_lap = 0.4, finish = 0.45, checkpoint = 0.2, go = 0.2, beep = 0.1, shift = 0.1, whoosh = 0.2 }
 
+-- The balance (found by measuring each file's loudness: cargo test -p nova-runtime --test loudness -- --ignored --nocapture): each effect's own gain, so that
+-- the beeps, the finish and the menu clicks sit just above the music and the engine, not over it. The effects were up to 12 dB louder than the music.
+local SFX_GAIN = { beep = 0.7, go = 0.6, finish = 0.6, lap = 1.0, best_lap = 1.0, bump = 1.0, checkpoint = 1.0, menu_accept = 0.7, menu_move = 1.0, menu_back = 1.0, pause = 0.8 }
+-- and each song's gain, to bring them to about the same loudness (-16 dB RMS before the volume setting)
+local MUSIC_GAIN = {
+  kenney_desert = 0.9, kenney_forest = 1.0, kenney_menu = 1.0, kenney_night = 0.85, kenney_results = 0.85, kenney_snow = 1.0,
+  menu = 0.9, race_desert = 0.85, race_forest = 0.7, race_night = 0.85, race_snow = 0.7, results = 1.0,
+}
+
 function audio.sfx(name, opts)
+  opts = opts or {}
+  if SFX_GAIN[name] then opts.volume = (opts.volume or 1) * SFX_GAIN[name] end
   local send = REVERB[name]
   if send and not (opts and opts.reverb) then
     opts = opts or {}
@@ -26,7 +37,11 @@ local KENNEY = {
 local current_music, current_opts = nil, nil
 local function play(name, opts)
   local file = state.music_style == "kenney" and KENNEY[name] or name
-  nova.music.play(file, opts or { volume = 0.55, fade = 0.6 })
+  opts = opts or { volume = 0.55, fade = 0.6 }
+  local o = {}
+  for k, v in pairs(opts) do o[k] = v end
+  o.volume = (o.volume or 1) * (MUSIC_GAIN[file] or 1)
+  nova.music.play(file, o)
 end
 function audio.music(name, opts)
   if current_music == name then return end

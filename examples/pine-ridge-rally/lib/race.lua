@@ -147,7 +147,7 @@ function race.define(config)
     self.camera = { x = 0, y = 4, z = 0, heading = 0, fov = 62, tx = 0, ty = 1, tz = 0 }
     self:build_cars()
     self:build_minimap()
-    self.player.engine = audio.engine(1.0, self.player.model_id)
+    self.player.engine = audio.engine(0.6, self.player.model_id)
     self.trial = state.mode == "trial"
     self.ghost = self.trial and nova.save.get("ghost_" .. info.id, nil) or nil
     self.recording = { t = 0, pts = {} }
@@ -209,7 +209,7 @@ function race.define(config)
       car.vmax_base = car.top * diff.pace * r.skill
       car.vmax = car.vmax_base
       car.band = diff.band
-      car.engine = audio.engine(0.55, car.model_id, true)
+      car.engine = audio.engine(0.3, car.model_id, true)
       self.cars[#self.cars + 1] = car
     end
   end
