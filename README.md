@@ -23,6 +23,17 @@ could not have typed.
 - **Android export:** `scripts/build-apk.sh` builds a debug APK of any project without Gradle; the studio's Export button does too.
 - **Example games** in `examples/`, from a tiny 2D crate game to a full 3D rally game.
 
+### The studio
+
+Shown in its browser preview (an in-memory project; the desktop app is the same screens with real files).
+
+| | |
+| --- | --- |
+| ![The project hub](docs/images/studio-hub.png) | ![The Lua editor with the resource tree](docs/images/studio-code.png) |
+| ![The scene editor](docs/images/studio-scene.png) | ![The pixel sprite studio](docs/images/studio-sprite.png) |
+| ![The 3D model editor](docs/images/studio-model.png) | ![The track and rally-stage editor](docs/images/studio-track.png) |
+| ![The sound-effect generator](docs/images/studio-sound.png) | ![The music editor](docs/images/studio-music.png) |
+
 ### The engine
 
 | | |
