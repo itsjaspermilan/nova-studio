@@ -24,6 +24,8 @@ import { encodeWav } from "../src/lib/wav";
 import { parseSong, renderSong, serializeSong, songSeconds } from "../src/lib/song";
 import { parseScene, serializeScene } from "../src/lib/scene-model";
 import { parseSheetJson } from "../src/lib/sprite-doc";
+// @ts-ignore (plain JavaScript, shared with Pine Ridge Rally's track script)
+import { layout as layoutTrack, roadGlb, ascii as trackMap, tightest as closestApproach } from "../../scripts/lib/trackgen.mjs";
 
 // ---- where things are ----------------------------------------------------------------------------------------------
 const here = dirname(fileURLToPath(import.meta.url));
@@ -349,6 +351,72 @@ tool(
     if (!parsed.ok) throw new Error(`the scene is not valid: ${parsed.error}`);
     put(root, `scenes/${name}.scene.json`, serializeScene(parsed.scene));
     return `scenes/${name}.scene.json: ${parsed.scene.objects?.length ?? 0} objects`;
+  },
+);
+
+tool(
+  "track_write",
+  "Lay out a racing route from control points: a closed circuit, or an open rally stage (`open`: true), as the plain files a person could edit. It writes `scenes/<name>.scene.json` (the start line and arch, a finish arch and section gates on a stage, waypoints every 10 m for the cars and the pace notes, the starting grid, and scenery along the route: trees, bushes, rocks, guardrails with chevron signs at the bends, tyres, optional street lamps) and the road as one ribbon mesh, `models/road_<name>.glb` (draw it with nova.model(\"road_<name>\", 0, 0, 0)). " +
+    "`control` is a list of [x, z] points the curve passes through (metres; the route starts at the first heading to the second: for a stage give a straight lead-in). It reports the length, the tightest bend's radius (keep it above about 15 m) and the closest approach between distant parts of the route (keep it above about 40 m), and draws a map. Scenery kinds are entity names in entities/.",
+  {
+    name: { type: "string" },
+    control: { type: "array", items: { type: "array", items: { type: "number" } } },
+    open: { type: "boolean", description: "A point-to-point stage instead of a loop." },
+    road: { type: "string", description: "road_asphalt (default), road_dirt, road_snow, road_gravel or road_sand: the ribbon's colours." },
+    sections: { type: "number", description: "Sections of a stage (gates between them; the last is the finish). Default 5." },
+    lead_in: { type: "number", description: "Metres of road before a stage's start line (40)." },
+    runout: { type: "number", description: "Metres of road after a stage's finish line (90)." },
+    seed: { type: "number" },
+    trees: { type: "array", items: { type: "string" } },
+    small: { type: "array", items: { type: "string" } },
+    rock: { type: "array", items: { type: "string" } },
+    density: { type: "number", description: "Trees per piece of road, 0 to 1 (0.4)." },
+    rocks: { type: "number" },
+    rail: { type: "string", description: "The barrier entity on the outside of bends (guardrail)." },
+    lamps: { type: "boolean" },
+    sky: { type: "array", items: { type: "number" } },
+  },
+  ["name", "control"],
+  (a) => {
+    const root = projectRoot(a);
+    const name = safeName(a.name, "Track");
+    const control = a.control as number[][];
+    if (!Array.isArray(control) || control.length < 4 || control.some((p) => !Array.isArray(p) || p.length !== 2)) throw new Error("control needs at least four [x, z] points");
+    const spec = {
+      seed: a.seed ?? 1, control, open: !!a.open, road: a.road ?? "road_asphalt", rail: a.rail ?? "guardrail", sky: a.sky ?? [138, 182, 224],
+      sections: a.sections ?? 5, leadIn: a.lead_in ?? 40, runout: a.runout ?? 90, lamps: !!a.lamps,
+      trees: a.trees ?? [], small: a.small ?? [], rock: a.rock ?? [], density: a.density ?? 0.4, rocks: a.rocks ?? 0.05,
+      landmarks: { kind: a.trees?.[0] ?? "", count: 0, radius: 0 },
+    };
+    if (!(spec.trees as string[]).length) spec.density = 0;
+    const { scene, stats } = layoutTrack(spec);
+    const parsed = parseScene(JSON.stringify(scene));
+    if (!parsed.ok) throw new Error(`the layout is not a valid scene: ${parsed.error}`);
+    put(root, `scenes/${name}.scene.json`, serializeScene(parsed.scene));
+    put(root, `models/road_${name}.glb`, roadGlb(control, spec.road, spec.open));
+    return `${name}: ${stats.length} m, ${stats.points} road points, ${stats.objects} objects, tightest bend radius ~${stats.minRadius} m, closest approach ${closestApproach(stats.line, 5)} m\n${trackMap(stats.line)}`;
+  },
+);
+
+tool(
+  "store_art",
+  "Render the game's icon (512x512, `icon.png`) or box art (768x1024, `boxart.png`) into the project by running it headless: give the keys that get to the screen you want (`press`, like the screenshot tool) and how many `frames` to run. `scripts/build-apk.sh` makes the Android launcher icon from icon.png; a launcher can use boxart.png as the cover. Returns the picture.",
+  {
+    kind: { type: "string", enum: ["icon", "boxart"] },
+    frames: { type: "number" },
+    press: { type: "array", items: { type: "string" } },
+    hold: { type: "array", items: { type: "string" } },
+  },
+  ["kind"],
+  (a) => {
+    const root = projectRoot(a);
+    const icon = a.kind === "icon";
+    const out = join(root, icon ? "icon.png" : "boxart.png");
+    const extra = [...(a.press?.length ? ["--press", a.press.join(",")] : []), ...(a.hold?.length ? ["--hold", a.hold.join(",")] : [])];
+    const r = run(novaBin, ["run", root, "--headless", "--frames", String(a.frames ?? 90), "--size", icon ? "512x512" : "768x1024", ...extra, "--capture", out]);
+    if (!existsSync(out)) throw new Error(`no picture was made:\n${r.out}`);
+    written.push(icon ? "icon.png" : "boxart.png");
+    return { text: `${icon ? "icon.png (512x512)" : "boxart.png (768x1024)"} written`, images: [out] };
   },
 );
 

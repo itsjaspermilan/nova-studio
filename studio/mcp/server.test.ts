@@ -123,3 +123,19 @@ describe("the Nova MCP server", () => {
     expect(() => call("project_create", { project: dir })).toThrow(/'name' is required/);
   });
 });
+
+describe("the track and store art tools", () => {
+  it("lays out a rally stage from control points: scene, gates, waypoints and a road ribbon", () => {
+    use("project_create", { name: "Race" });
+    const control = [[0, -100], [0, 0], [0, 120], [60, 200], [160, 230], [260, 200], [300, 120], [260, 40]];
+    const r = text(use("track_write", { name: "stage1", control, open: true, sections: 4, trees: ["pine"], road: "road_gravel" }));
+    expect(r).toMatch(/tightest bend radius/);
+    const scene = JSON.parse(readFileSync(join(dir, "scenes/stage1.scene.json"), "utf8"));
+    const kinds = scene.objects.map((o: { kind: string }) => o.kind);
+    expect(kinds.filter((k: string) => k === "section_gate")).toHaveLength(4);
+    expect(kinds).toContain("waypoint");
+    expect(kinds.filter((k: string) => k === "start_arch")).toHaveLength(2); // the start and the finish
+    expect(existsSync(join(dir, "models/road_stage1.glb"))).toBe(true);
+    expect(() => use("track_write", { name: "bad", control: [[0, 0]] })).toThrow(/four/);
+  });
+});
