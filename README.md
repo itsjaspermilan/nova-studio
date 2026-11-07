@@ -61,6 +61,11 @@ camera, right stick look around, + pause (keyboard: arrows or WASD, Space, R, C,
 
 ## Getting started
 
+```sh
+git clone https://github.com/itsjaspermilan/nova-studio.git
+cd nova-studio
+```
+
 You need Rust (via `rustup`; `rust-toolchain.toml` picks the toolchain and the Android targets), CMake, Node 22 for the studio, and
 for Android builds the Android SDK with NDK 29 and a JDK 17. `scripts/env.sh` sets all of that for one command on the author's
 machine (Homebrew and asdf paths); **edit it for yours**, or put the same variables in your shell.
