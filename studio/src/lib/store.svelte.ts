@@ -7,6 +7,7 @@ import { importGlb } from "./glb-import";
 import { newModel, serializeModel } from "./model-doc";
 import { PRESETS, render, toJson } from "./sfx";
 import { newSong, renderSong, serializeSong } from "./song";
+import { newTrack, serializeTrack, trackOf } from "./track-doc";
 import { newDoc, toSheetJson } from "./sprite-doc";
 import { encodeWav, fromBase64, toBase64 } from "./wav";
 import { moved, planRename } from "./refs";
@@ -429,6 +430,19 @@ class Studio {
       await this.openFile(json);
       const kept = original.slice(original.lastIndexOf("/") + 1);
       this.say("info", `Made ${json.slice(json.lastIndexOf("/") + 1)} editable. The original is kept as ${kept}.${result.notes.length ? ` Not carried over: ${result.notes.slice(0, 3).join("; ")}${result.notes.length > 3 ? "…" : ""}` : ""}`);
+    });
+  }
+
+  /// A new track: `tracks/<name>.track.json`, a starting oval you reshape in the track editor (Generate makes its scene and road).
+  async createTrack(name: string) {
+    const clean = name.trim().replace(/\.track\.json$/i, "");
+    if (!/^[A-Za-z0-9_-]+$/.test(clean)) return this.say("error", "Track names use letters, numbers, - and _.");
+    await this.#guard(async () => {
+      const json = trackOf(clean);
+      if (this.files.some((f) => f.path === json)) throw `'${clean}' already exists in tracks/`;
+      await this.api!.createFile(json, serializeTrack(newTrack()));
+      await this.refreshFiles();
+      await this.openFile(json);
     });
   }
 

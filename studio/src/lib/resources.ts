@@ -5,7 +5,7 @@
 
 import type { FileEntry } from "./types";
 
-export type ResourceKind = "sprite" | "model" | "scene" | "entity" | "sound" | "song" | "script" | "image" | "font" | "project" | "file";
+export type ResourceKind = "sprite" | "model" | "scene" | "track" | "entity" | "sound" | "song" | "script" | "image" | "font" | "project" | "file";
 
 export interface Resource {
   kind: ResourceKind;
@@ -32,6 +32,7 @@ const GROUPS: { id: string; title: string; icon: string; folder?: string; always
   { id: "sprites", title: "Sprites", icon: "◫", folder: "sprites", always: true },
   { id: "models", title: "3D Models", icon: "◆", folder: "models", always: true },
   { id: "scenes", title: "Scenes", icon: "▦", folder: "scenes", always: true },
+  { id: "tracks", title: "Tracks", icon: "⌇", folder: "tracks", always: false },
   { id: "entities", title: "Entities", icon: "☺", folder: "entities", always: true },
   { id: "sounds", title: "Sounds", icon: "♪", folder: "sounds", always: true },
   { id: "music", title: "Music", icon: "♫", folder: "music", always: true },
@@ -85,6 +86,8 @@ export function groupResources(entries: FileEntry[], images: Map<string, string>
     } else if (lower.endsWith(".song.json")) {
       const stem = path.slice(0, -".song.json".length);
       add("music", { kind: "song", name: within(stem, "music"), path, files: [path, ...existing(`${stem}.ogg`, `${stem}.wav`)] });
+    } else if (lower.endsWith(".track.json")) {
+      add("tracks", { kind: "track", name: within(path.slice(0, -".track.json".length), "tracks"), path, files: [path] });
     } else if (lower.endsWith(".scene.json")) {
       const stem = path.slice(0, -".scene.json".length);
       const lua = existing(`${stem}.lua`)[0];
@@ -118,7 +121,7 @@ export function groupResources(entries: FileEntry[], images: Map<string, string>
 /// after the item follow it; a picture with another name (a sprite's `hero_sheet.png`) keeps its name, which the
 /// sprite's JSON refers to.
 export function renamePlan(resource: Resource, name: string): [string, string][] {
-  const stem = (p: string) => p.slice(0, p.length - (p.toLowerCase().endsWith(".sprite.json") ? ".sprite.json".length : p.toLowerCase().endsWith(".model.json") ? ".model.json".length : p.toLowerCase().endsWith(".sfx.json") ? ".sfx.json".length : p.toLowerCase().endsWith(".song.json") ? ".song.json".length : p.toLowerCase().endsWith(".scene.json") ? ".scene.json".length : p.includes(".") ? p.length - p.lastIndexOf(".") : 0));
+  const stem = (p: string) => p.slice(0, p.length - (p.toLowerCase().endsWith(".sprite.json") ? ".sprite.json".length : p.toLowerCase().endsWith(".model.json") ? ".model.json".length : p.toLowerCase().endsWith(".sfx.json") ? ".sfx.json".length : p.toLowerCase().endsWith(".song.json") ? ".song.json".length : p.toLowerCase().endsWith(".track.json") ? ".track.json".length : p.toLowerCase().endsWith(".scene.json") ? ".scene.json".length : p.includes(".") ? p.length - p.lastIndexOf(".") : 0));
   const primaryStem = stem(resource.path);
   const dir = primaryStem.includes("/") ? primaryStem.slice(0, primaryStem.lastIndexOf("/") + 1) : "";
   const oldBase = primaryStem.slice(dir.length);
