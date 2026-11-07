@@ -22,12 +22,8 @@ function horizon.draw(cx, cz, kind)
   -- (the ground is a grid of squares that the hills lift by their vertices: it moves a whole square at a time, so that they do not slide over the hills)
   local sx, sz = math.floor(cx / 16 + 0.5) * 16, math.floor(cz / 16 + 0.5) * 16
   nova.model(ground, sx, 0, sz, ground_opts)
-  local peak = (kind == "desert" and "mountain_red") or (kind == "snow" and "mountain_ice") or (kind == "night" and "mountain_night") or "mountain"
-  for i = 1, RING do
-    local m = mountains[i]
-    m.opts.ry, m.opts.scale = m.turn, m.scale
-    nova.model(peak, cx + math.cos(m.a) * m.r, -3, cz + math.sin(m.a) * m.r, m.opts)
-  end
+  -- the mountains: two rings of faceted ridges round the camera (scripts/rally/skyline.mjs), a different range for each country
+  nova.model("skyline_" .. (kind == "desert" and "desert" or kind == "snow" and "snow" or kind == "night" and "night" or "forest"), cx, -2, cz, ground_opts)
   local t = nova.time() * 0.012
   for i = 1, #clouds do
     local c = clouds[i]

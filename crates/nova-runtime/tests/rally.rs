@@ -782,3 +782,91 @@ fn the_difficulty_sets_how_fast_the_rivals_drive() {
         "easy {easy} medium {medium} hard {hard}"
     );
 }
+
+/// A rally stage driven by the computer (F9): from the title screen choose the Rally mode, a stage (0 to 3), a car (its class tab and its place in
+/// the class) and the difficulty (steps from Medium), start, and run to the results. Returns the log.
+fn stage_run(stage: usize, class: usize, step: usize, difficulty_steps: i32) -> Vec<String> {
+    let mut g = load();
+    for _ in 0..30 {
+        frame(&mut g, &[]);
+    }
+    tap(&mut g, "key:Enter");
+    tap(&mut g, "key:Enter");
+    tap(&mut g, "key:ArrowDown"); // Mode
+    tap(&mut g, "key:Enter");
+    tap(&mut g, "key:ArrowRight");
+    tap(&mut g, "key:ArrowRight"); // Race -> Time trial -> Rally
+    tap(&mut g, "key:Enter");
+    tap(&mut g, "key:ArrowUp"); // Stage
+    tap(&mut g, "key:Enter");
+    for _ in 0..stage {
+        tap(&mut g, "key:ArrowRight");
+    }
+    tap(&mut g, "key:Enter");
+    tap(&mut g, "key:ArrowDown");
+    tap(&mut g, "key:ArrowDown"); // Car
+    tap(&mut g, "key:Enter");
+    for _ in 0..class {
+        tap(&mut g, "key:KeyE");
+    }
+    for _ in 0..step {
+        tap(&mut g, "key:ArrowRight");
+    }
+    tap(&mut g, "key:Enter");
+    tap(&mut g, "key:ArrowDown"); // Difficulty
+    for _ in 0..difficulty_steps.abs() {
+        tap(&mut g, if difficulty_steps > 0 { "key:ArrowRight" } else { "key:ArrowLeft" });
+    }
+    tap(&mut g, "key:ArrowDown"); // START
+    frame(&mut g, &["key:Enter"]);
+    let mut log = Vec::new();
+    run_until(&mut g, &mut log, "the countdown ends", 60 * 8, |l| {
+        l.iter().any(|x| x == "go")
+    });
+    tap(&mut g, "key:F9");
+    run_until(&mut g, &mut log, "the stage's results", 60 * 60 * 8, |l| {
+        l.iter().any(|x| x.starts_with("results: rally score"))
+    });
+    log
+}
+
+#[test]
+fn a_rally_stage_is_driven_in_sections_and_scored() {
+    let log = stage_run(0, 0, 0, 0);
+    let sections = log.iter().filter(|l| l.starts_with("section ")).count();
+    assert_eq!(sections, 5, "five sections: {log:?}");
+    let notes = log
+        .iter()
+        .find(|l| l.contains("pace notes"))
+        .expect("the stage is built");
+    assert!(notes.contains("5 sections"), "{notes}");
+    let score = log
+        .iter()
+        .find(|l| l.starts_with("results: rally score"))
+        .unwrap();
+    assert!(score.contains("of 5000"), "{score}");
+    assert!(
+        !log.iter().any(|l| l.contains("put back on the road")),
+        "the computer driver stayed on the road: {log:?}"
+    );
+}
+
+/// The section times of a good run in each class on each stage (for lib/pars.lua). Run on purpose:
+/// `cargo test --release -p nova-runtime --test rally rally_pars -- --ignored --nocapture`.
+#[test]
+#[ignore]
+fn rally_pars() {
+    let cars = [("formula", 0, 0), ("sport", 1, 0), ("everyday", 2, 0)];
+    for stage in 0..4 {
+        for (class, class_tab, step) in cars {
+            let log = stage_run(stage, class_tab, step, 0);
+            let times: Vec<String> = log
+                .iter()
+                .filter(|l| l.starts_with("section "))
+                .map(|l| l.rsplit("t=").next().unwrap().to_string())
+                .collect();
+            let total: f32 = times.iter().map(|t| t.parse::<f32>().unwrap()).sum();
+            println!("PAR stage {stage} {class} {} total {total:.1}", times.join(" "));
+        }
+    }
+}

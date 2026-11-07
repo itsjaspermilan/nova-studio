@@ -6,6 +6,8 @@ local lamps = require("lib.lamps")
 local grid = require("lib.grid")
 local fx = require("lib.fx")
 local roadside = require("lib.roadside")
+local stage_lib = require("lib.stage")
+local pars = require("lib.pars")
 local crowd = require("lib.crowd")
 local foliage = require("lib.foliage")
 local looks = require("lib.looks")
@@ -16,6 +18,8 @@ local ui = require("lib.ui")
 local race = {}
 
 local ROAD_OPTS = { shadow = false }
+-- rally: how fast a class of car covers a stage, on average (m/s), for a section's par when no driven pars are recorded
+local TYPICAL_SPEED = { formula = 31, sport = 25, everyday = 22 }
 local RIVALS = {
   { name = "Mika", skill = 1.0, lane = -1.8 },
   { name = "Dax", skill = 0.96, lane = 2.2 },
@@ -101,12 +105,14 @@ function race.define(config)
     nova.sky(config.sky)
     if config.sky then nova.fog { color = config.sky.horizon, near = 70, far = 330 } end
     local info = state.current_track()
-    self.laps = state.laps
+    self.stage = config.stage and true or false   -- a rally stage: from A to B, in sections
+    self.laps = self.stage and 1 or state.laps
+    track.open = self.stage
     track.ensure()
     assert(track.count() > 10, "this scene has no waypoints: place `waypoint` objects along the road")
     nova.log("rally: roadside " .. roadside.build(config.horizon) .. " props")
     nova.log("rally: crowd " .. crowd.build() .. " people")
-    local look = looks[state.current_track().id]
+    local look = looks[state.look_id()]
     state.apply_look(look)
     -- the circuit's look with a speed blur added each frame (see Race:update_camera)
     self.look_now = nil
@@ -117,6 +123,7 @@ function race.define(config)
     end
     foliage.start(look, state.effects and 1 or 0)
     self.length = track.length
+    if self.stage then self:build_stage() end
     self.phase = "countdown"
     self.clock = 0              -- time since the green light
     self.countdown = 3.9
@@ -143,7 +150,7 @@ function race.define(config)
     for _, car in ipairs(self.cars) do if car.engine then car.engine:stop() end end
     nova.music.volume(state.music_volume)
     nova.sky(nil); nova.fog(nil); nova.shadows(nil); nova.terrain()
-    crowd.clear(); lamps.clear(); track.clear(); grid.clear(); fx.clear(); foliage.clear()
+    crowd.clear(); stage_lib.clear(); lamps.clear(); track.clear(); grid.clear(); fx.clear(); foliage.clear()
     nova.look(); nova.wind()
   end
 
@@ -173,7 +180,7 @@ function race.define(config)
       local idx, s = track.locate(car.x, car.z)
       car.waypoint = idx
       car.last_s = s
-      car.progress = s - length   -- behind the line: negative until it is crossed
+      car.progress = self.stage and s or s - length   -- (a circuit: behind the line, negative until it is crossed; a stage starts at its first point)
       car.start_progress = car.progress
       return car
     end
@@ -182,7 +189,7 @@ function race.define(config)
     self.player.oversteer = state.current_car().oversteer
     self.player.name = "You"
     self.cars[1] = self.player
-    for i, r in ipairs(state.mode == "trial" and {} or RIVALS) do
+    for i, r in ipairs(state.mode == "race" and RIVALS or {}) do
       local car = put(pool[(i - 1) % #pool + 1], slots[i])
       -- a rival drives its own car (its top speed, its grip) as hard as the difficulty and its own skill say
       local diff = state.current_difficulty()
@@ -222,8 +229,10 @@ function race.define(config)
     car.left, car.off_middle = left, dist
     -- progress is the running total of distance covered (it goes down when driving backwards)
     local delta = s - car.last_s
-    if delta > self.length / 2 then delta = delta - self.length
-    elseif delta < -self.length / 2 then delta = delta + self.length end
+    if not self.stage then
+      if delta > self.length / 2 then delta = delta - self.length
+      elseif delta < -self.length / 2 then delta = delta + self.length end
+    end
     car.progress = car.progress + delta
     car.last_s = s
     car.surface = car.off_middle > ROAD_HALF + 0.8 and "rough" or (config.surface or "road")
@@ -313,6 +322,88 @@ function race.define(config)
     end
   end
 
+  -- ---- rally stages ----------------------------------------------------------------------------------------------------------
+
+  -- The corners of the stage as pace notes: where each starts (metres along the stage), which way it turns, and how hard (1 is a hairpin,
+  -- 6 a gentle bend), from how sharply the waypoints say the road turns.
+  local function pace_notes()
+    local notes = {}
+    local n = track.count()
+    local open_corner
+    local function close(at)
+      if open_corner then
+        local peak = open_corner.peak
+        local grade = (peak > 0.060 and 1) or (peak > 0.042 and 2) or (peak > 0.030 and 3) or (peak > 0.021 and 4) or (peak > 0.014 and 5) or 6
+        notes[#notes + 1] = { s = open_corner.s, left = open_corner.sign > 0, grade = grade }
+        open_corner = nil
+      end
+    end
+    for i = 1, n do
+      local p = track.point(i)
+      local k = p.k or 0
+      local a = math.abs(k)
+      if open_corner and k * open_corner.sign < 0 and a > 0.0085 then close(p.s) end
+      if not open_corner then
+        if a > 0.0085 then open_corner = { s = p.s, sign = k > 0 and 1 or -1, peak = a } end
+      else
+        if a > open_corner.peak then open_corner.peak = a end
+        if a < 0.0045 then close(p.s) end
+      end
+    end
+    close(0)
+    return notes
+  end
+
+  -- The sections of the stage (the scene's gates, the last of them the finish), their times to beat and the pace notes.
+  function Race:build_stage()
+    local info = state.current_track()
+    local class = state.current_car().class
+    local driven = (pars[info.id] or {})[class]
+    self.sections = {}
+    local from = 0
+    for k, g in ipairs(stage_lib.gates()) do
+      local _, s = track.locate(g.x, g.z)
+      self.sections[k] = { from = from, to = s, par = driven and driven[k] or ((s - from) / TYPICAL_SPEED[class]) }
+      from = s
+    end
+    assert(#self.sections > 0, "a rally stage needs section_gate objects (the last is the finish)")
+    self.section, self.section_start, self.section_log, self.score = 1, 0, {}, 0
+    self.notes = pace_notes()
+    nova.log(string.format("rally: stage %s, %.0f m, %d sections, %d pace notes", info.id, track.length, #self.sections, #self.notes))
+  end
+
+  -- A section's score: 1000 for a time well under its par (the difficulty allows more or less time), less as it gets slower, nothing at
+  -- 1.45 times the par.
+  function Race:section_score(time, par)
+    local ratio = time / (par * state.current_difficulty().allow)
+    return math.floor(1000 * math.max(0, math.min(1, (1.45 - ratio) / 0.55)) + 0.5)
+  end
+
+  function Race:update_stage()
+    local p = self.player
+    local sec = self.sections[self.section]
+    if p.finish_time or not sec or p.progress < sec.to then return end
+    local t = self.clock - self.section_start
+    local score = self:section_score(t, sec.par)
+    local delta = t - sec.par * state.current_difficulty().allow
+    self.section_log[#self.section_log + 1] = { time = t, par = sec.par, score = score }
+    self.score = self.score + score
+    self.section_start = self.clock
+    nova.log(string.format("section %d done in %s (par %s), %d points t=%.3f", self.section, ui.time(t), ui.time(sec.par), score, t))
+    if self.section >= #self.sections then
+      p.finish_time = self.clock
+      audio.sfx("finish")
+      self.player_finished_at = self.clock
+      self:say("FINISH!", 4)
+      p.autopilot = true
+      p.skill, p.vmax, p.lane = 0.8, 16, 0
+    else
+      self.section = self.section + 1
+      audio.sfx(delta <= 0 and "best_lap" or "lap")
+      self:say(string.format("SECTION %d   %s   %s%.1f   %d pts", self.section - 1, ui.time(t), delta <= 0 and "-" or "+", math.abs(delta), score), 3)
+    end
+  end
+
   function Race:lap_of(car) return math.floor(car.progress / self.length) + 1 end
 
   function Race:places()
@@ -336,16 +427,22 @@ function race.define(config)
     car.off_middle = 0
   end
 
+  -- Cars touch as two circles each (front and rear, 1 m either side of the middle, 0.95 m across): side by side they pass at 1.9 m, not 3.6.
   function Race:bump_cars()
     for i = 1, #self.cars do
       for j = i + 1, #self.cars do
         local a, b = self.cars[i], self.cars[j]
-        local dx, dz = b.x - a.x, b.z - a.z
-        local d2 = dx * dx + dz * dz
-        if d2 < 3.6 * 3.6 then
+        local near = (b.x - a.x) ^ 2 + (b.z - a.z) ^ 2 < 6 * 6
+        local asin, acos, bsin, bcos = math.sin(a.heading), math.cos(a.heading), math.sin(b.heading), math.cos(b.heading)
+        for ka = -1, 1, 2 do
+          for kb = -1, 1, 2 do
+            if not near then break end
+            local dx, dz = (b.x + bsin * kb) - (a.x + asin * ka), (b.z + bcos * kb) - (a.z + acos * ka)
+            local d2 = dx * dx + dz * dz
+            if d2 < 1.9 * 1.9 then
           local d = math.max(0.01, math.sqrt(d2))
           local nx, nz = dx / d, dz / d
-          local push = (3.6 - d) / 2
+          local push = (1.9 - d) / 2
           a.x, a.z, b.x, b.z = a.x - nx * push, a.z - nz * push, b.x + nx * push, b.z + nz * push
           local rel = (b.velx - a.velx) * nx + (b.velz - a.velz) * nz
           if rel < 0 then
@@ -355,6 +452,8 @@ function race.define(config)
               a.bump_cooldown, b.bump_cooldown = 0.4, 0.4
               audio.sfx("bump", { volume = math.min(1, -rel / 8) })
             end
+          end
+        end
           end
         end
       end
@@ -482,9 +581,13 @@ function race.define(config)
           car.vmax = math.min(car.top * (1 + 0.05 * (car.draft or 0)), car.vmax_base * (1 + 0.05 * (car.draft or 0)) * (1 + math.max(-car.band, math.min(car.band, gap * 0.0004))))
         end
       end
-      self:update_player_lap()
-      for _, car in ipairs(self.cars) do
-        if not car.finish_time and car.progress >= self.laps * self.length then self:finish_car(car) end
+      if self.stage then
+        self:update_stage()
+      else
+        self:update_player_lap()
+        for _, car in ipairs(self.cars) do
+          if not car.finish_time and car.progress >= self.laps * self.length then self:finish_car(car) end
+        end
       end
     end
 
@@ -502,7 +605,10 @@ function race.define(config)
         end
         if asked or car.off_middle > 60 or ((car ~= p or p.autopilot) and car.stuck > 4) then
           self:respawn(car)
-          if car == p then self:say("Back on the road", 1.5) end
+          if car == p and self.stage and asked then
+            self.clock = self.clock + 5 -- (a stage is timed: being put back costs five seconds)
+            self:say("Back on the road   +5 s", 1.8)
+          elseif car == p then self:say("Back on the road", 1.5) end
           if car ~= p or not p.autopilot then nova.log(string.format("%s put back on the road (at %.0f, %.0f; speed %.1f, %.0f m from the middle, waypoint %d)", car.name, car.x, car.z, car.speed, car.off_middle, car.waypoint or 0)) end
         end
       end
@@ -668,6 +774,54 @@ function race.define(config)
 
   -- ---- the HUD ----------------------------------------------------------------------------------------------------------
 
+  -- a small triangle pointing left or right (the pace notes' arrows)
+  local function arrow(x, y, left, size, colour)
+    local half = (size - 1) / 2
+    for row = 0, size - 1 do
+      local w = math.max(1, math.floor((1 - math.abs(row - half) / half) * size * 0.75 + 0.5))
+      nova.ui.rect(left and (x + size * 0.75 - w) or x, y + row, w, 1, colour)
+    end
+  end
+
+  -- The rally's screen: the section and how the time is going against its par (top left), the times and the score (top right), and the
+  -- pace notes (the next corners: which way, how hard, how far) under them.
+  function Race:draw_stage_hud(w)
+    local p = self.player
+    local sec = self.sections[math.min(self.section, #self.sections)]
+    ui.panel(16, 16, 176, 76, 205)
+    ui.label(30, 22, "SECTION")
+    ui.text(30, 30, self.section .. "", 44, ui.color.gold, { font = "comic" })
+    ui.text(30 + nova.ui.text_width(self.section .. "", { size = 44, font = "comic" }) + 6, 50, "/ " .. #self.sections, 20, ui.color.dim)
+    -- against par: the time so far in this section, less the share of the par that the distance covered would have taken
+    local through = math.max(0, math.min(1, (p.progress - sec.from) / math.max(1, sec.to - sec.from)))
+    local delta = (self.clock - self.section_start) - sec.par * state.current_difficulty().allow * through
+    if self.phase == "racing" and not p.finish_time then
+      ui.text(112, 44, string.format("%s%.1f", delta <= 0 and "-" or "+", math.abs(delta)), 26, delta <= 0 and ui.color.green or ui.color.red, { font = "comic" })
+      ui.label(112, 30, "VS PAR")
+    end
+    ui.panel(w - 212, 16, 196, 76, 205)
+    ui.label(w - 198, 24, "TIME")
+    ui.right(ui.time(math.max(0, self.clock)), w - 28, 18, 24, ui.color.white, { font = "mono" })
+    ui.label(w - 198, 50, "SECTION")
+    ui.right(ui.time(math.max(0, self.clock - self.section_start)), w - 28, 45, 16, ui.color.dim, { font = "mono" })
+    ui.label(w - 198, 68, "SCORE")
+    ui.right(tostring(self.score), w - 28, 63, 16, ui.color.gold, { font = "mono" })
+    -- the pace notes
+    local shown = 0
+    for _, note in ipairs(self.notes) do
+      local away = note.s - p.progress
+      if away > -25 and away < 450 and shown < 3 then
+        local y = 104 + shown * 40
+        ui.panel(16, y, 176, 34, 200)
+        local colour = note.grade <= 2 and ui.color.red or (note.grade <= 4 and ui.color.gold or ui.color.white)
+        arrow(26, y + 9, note.left, 16, colour)
+        ui.text(52, y + 2, note.grade == 1 and "HAIRPIN" or ("TURN " .. note.grade), 20, colour, { font = "comic" })
+        ui.right(math.max(0, math.floor(away / 10 + 0.5) * 10) .. " m", 182, y + 7, 16, ui.color.white)
+        shown = shown + 1
+      end
+    end
+  end
+
   function Race:draw_ui()
     local w = nova.view()
     local p = self.player
@@ -711,36 +865,41 @@ function race.define(config)
       nova.ui.rect(px + 12 + (i - 1) * (seg_w + gap), py + 116, seg_w, 9, colour)
     end
 
-    -- place and lap, top left
-    ui.panel(16, 16, 176, 76, 205)
-    if self.trial then
-      ui.text(30, 20, "TRIAL", 36, ui.color.gold, { font = "comic" })
-      local gap = self:ghost_gap()
-      if gap then
-        local ahead = gap <= 0
-        ui.text(124, 28, string.format("%s%.2f", ahead and "-" or "+", math.abs(gap)), 26, ahead and ui.color.green or ui.color.red, { font = "comic" })
-      end
+    if self.stage then
+      self:draw_stage_hud(w)
     else
-      local place = p.place or 1
-      local number, suffix = tostring(place), ui.ordinal(place):gsub("^%d+", "")
-      local _, nw = nova.ui.text(30, 18, number, { size = 54, color = ui.color.gold, font = "comic", shadow = true })
-      local o = { size = 24, color = ui.color.gold, font = "comic" }
-      local width = nova.ui.text_width(number, { size = 54, font = "comic" })
-      nova.ui.text(30 + width + 2, 24, suffix, o)
-      ui.text(30 + width + 2 + nova.ui.text_width(suffix, o) + 10, 36, "/ " .. #self.cars, 20, ui.color.dim)
-    end
-    local lap = math.max(1, math.min(self.laps, self:lap_of(p)))
-    ui.label(30, 66, "LAP")
-    ui.text(30 + nova.ui.text_width("LAP", { size = 13, font = "future_narrow" }) + 12, 62, lap .. " / " .. self.laps, 20, ui.color.white)
+      -- place and lap, top left
+      ui.panel(16, 16, 176, 76, 205)
+      if self.trial then
+        ui.text(30, 20, "TRIAL", 36, ui.color.gold, { font = "comic" })
+        local gap = self:ghost_gap()
+        if gap then
+          local ahead = gap <= 0
+          ui.text(124, 28, string.format("%s%.2f", ahead and "-" or "+", math.abs(gap)), 26, ahead and ui.color.green or ui.color.red, { font = "comic" })
+        end
+      else
+        local place = p.place or 1
+        local number, suffix = tostring(place), ui.ordinal(place):gsub("^%d+", "")
+        local _, nw = nova.ui.text(30, 18, number, { size = 54, color = ui.color.gold, font = "comic", shadow = true })
+        local o = { size = 24, color = ui.color.gold, font = "comic" }
+        local width = nova.ui.text_width(number, { size = 54, font = "comic" })
+        nova.ui.text(30 + width + 2, 24, suffix, o)
+        ui.text(30 + width + 2 + nova.ui.text_width(suffix, o) + 10, 36, "/ " .. #self.cars, 20, ui.color.dim)
+      end
+      local lap = math.max(1, math.min(self.laps, self:lap_of(p)))
+      ui.label(30, 66, "LAP")
+      ui.text(30 + nova.ui.text_width("LAP", { size = 13, font = "future_narrow" }) + 12, 62, lap .. " / " .. self.laps, 20, ui.color.white)
 
-    -- times, top right
-    ui.panel(w - 212, 16, 196, 76, 205)
-    ui.label(w - 198, 24, "TIME")
-    ui.right(ui.time(math.max(0, self.clock)), w - 28, 18, 24, ui.color.white, { font = "mono" })
-    ui.label(w - 198, 50, "LAST")
-    ui.right(ui.time(self.lap_times[#self.lap_times]), w - 28, 45, 16, ui.color.dim, { font = "mono" })
-    ui.label(w - 198, 68, "BEST")
-    ui.right(ui.time(self.best_lap), w - 28, 63, 16, ui.color.gold, { font = "mono" })
+      -- times, top right
+      ui.panel(w - 212, 16, 196, 76, 205)
+      ui.label(w - 198, 24, "TIME")
+      ui.right(ui.time(math.max(0, self.clock)), w - 28, 18, 24, ui.color.white, { font = "mono" })
+      ui.label(w - 198, 50, "LAST")
+      ui.right(ui.time(self.lap_times[#self.lap_times]), w - 28, 45, 16, ui.color.dim, { font = "mono" })
+      ui.label(w - 198, 68, "BEST")
+      ui.right(ui.time(self.best_lap), w - 28, 63, 16, ui.color.gold, { font = "mono" })
+
+    end
 
     -- minimap, bottom left
     local m = self.map
@@ -839,6 +998,20 @@ function race.define(config)
     local order = self:places()
     local info = state.current_track()
     local rows = {}
+    if self.stage then
+      local total_time = self.player.finish_time
+      local stars = (self.score >= 4500 and 3) or (self.score >= 3500 and 2) or (self.score >= 2250 and 1) or 0
+      state.result = {
+        track = info.id, track_name = info.name, laps = 1, rows = {}, place = 1, time = total_time, trial = false,
+        rally = { sections = self.section_log, score = self.score, time = total_time, stars = stars, max = 1000 * #self.sections },
+      }
+      state.result.record_time = state.submit("rally", info.id, total_time)
+      state.result.record_score = state.submit_score(info.id, self.score)
+      nova.log(string.format("results: rally score %d of %d in %s, %d stars", self.score, 1000 * #self.sections, ui.time(total_time), stars))
+      audio.stop_music(0.5)
+      nova.goto_scene("results")
+      return
+    end
     if self.trial then
       -- a trial's table is the laps, fastest highlighted
       for i, t in ipairs(self.lap_times) do rows[i] = { name = "Lap " .. i, time = t, you = t == self.best_lap } end

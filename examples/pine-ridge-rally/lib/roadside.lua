@@ -52,8 +52,8 @@ function roadside.build(style)
   end
   local pi = math.pi
   -- by the start line (waypoint 1): a stand on each side of the straight, facing the road, with tents and banners between
-  add(look.stand, 2, 22, pi / 2, 14, 14)
-  add(look.stand, 2, -22, -pi / 2, 14, 14)
+  add(look.stand, 2, 22, -pi / 2, 14, 14)
+  add(look.stand, 2, -22, pi / 2, 14, 14)
   add("tent_long", 3, 17, pi / 2, 30, 11)
   add("tent_long", 3, -17, -pi / 2, 30, 11)
   add(look.banner, 1, 9.5, 0, 0, 8.5)

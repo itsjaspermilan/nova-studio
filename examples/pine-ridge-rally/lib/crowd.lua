@@ -6,7 +6,7 @@ local track = require("lib.track")
 local crowd = {}
 
 local KINDS = { "crowd_fa", "crowd_fb", "crowd_fc", "crowd_fd", "crowd_ma", "crowd_mb", "crowd_mc", "crowd_md" }
-local SIZE = 2.6          -- the characters are 0.67 m tall as made (big heads): this makes them about 1.75 m
+local SIZE = 2.0          -- the characters are 0.67 m tall as made (big heads): this makes them about 1.35 m, a little under a car's roof (a door reaches their waist)
 local RANGE = 125         -- metres: further than this from the camera nobody is drawn
 local FADE = 40           -- ...and over the last FADE metres they grow from nothing, so that nobody pops into being
 local people, count = {}, 0

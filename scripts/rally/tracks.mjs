@@ -12,13 +12,16 @@ const catmull = (p0, p1, p2, p3, t) => {
 };
 
 /// Points every `spacing` metres along the closed curve through `control`, from the first control point, with headings.
-function centreline(control, spacing) {
+function centreline(control, spacing, open = false) {
   const dense = [];
   const n = control.length;
-  for (let i = 0; i < n; i++) for (let s = 0; s < 80; s++) dense.push(catmull(control[(i + n - 1) % n], control[i], control[(i + 1) % n], control[(i + 2) % n], s / 80));
+  // (an open route, a rally stage, is not a loop: its ends repeat the first and last control points, and it stops at the last one)
+  const at = (i) => control[open ? Math.max(0, Math.min(n - 1, i)) : (i + n) % n];
+  for (let i = 0; i < (open ? n - 1 : n); i++) for (let s = 0; s < 80; s++) dense.push(catmull(at(i - 1), at(i), at(i + 1), at(i + 2), s / 80));
+  if (open) dense.push([...control[n - 1]]);
   const out = [dense[0]];
   let carried = 0;
-  for (let i = 1; i <= dense.length; i++) {
+  for (let i = 1; i <= (open ? dense.length - 1 : dense.length); i++) {
     const a = dense[i - 1], b = dense[i % dense.length];
     let d = Math.hypot(b[0] - a[0], b[1] - a[1]);
     while (carried + d >= spacing) {
@@ -32,9 +35,9 @@ function centreline(control, spacing) {
     carried += d;
   }
   // the last point may sit very close to the first: drop it
-  if (Math.hypot(out.at(-1)[0] - out[0][0], out.at(-1)[1] - out[0][1]) < spacing * 0.5) out.pop();
+  if (!open && Math.hypot(out.at(-1)[0] - out[0][0], out.at(-1)[1] - out[0][1]) < spacing * 0.5) out.pop();
   return out.map((p, i) => {
-    const q = out[(i + 1) % out.length], r = out[(i + out.length - 1) % out.length];
+    const q = out[open ? Math.min(i + 1, out.length - 1) : (i + 1) % out.length], r = out[open ? Math.max(i - 1, 0) : (i + out.length - 1) % out.length];
     const dx = q[0] - r[0], dz = q[1] - r[1];
     const len = Math.hypot(dx, dz);
     return { x: p[0], z: p[1], tx: dx / len, tz: dz / len, ry: Math.atan2(dx, dz) };
@@ -42,8 +45,8 @@ function centreline(control, spacing) {
 }
 
 /// Signed turning (radians per metre) at each point; positive turns towards +x when heading +z.
-const curvature = (pts, spacing) => pts.map((p, i) => {
-  const a = pts[(i + pts.length - 2) % pts.length], b = pts[(i + 2) % pts.length];
+const curvature = (pts, spacing, open = false) => pts.map((p, i) => {
+  const a = pts[open ? Math.max(0, i - 2) : (i + pts.length - 2) % pts.length], b = pts[open ? Math.min(pts.length - 1, i + 2) : (i + 2) % pts.length];
   let d = b.ry - a.ry;
   while (d > Math.PI) d -= 2 * Math.PI;
   while (d < -Math.PI) d += 2 * Math.PI;
@@ -65,10 +68,14 @@ const obj = (kind, x, z, ry = 0, extra = {}, y = 0) => ({ kind, x: r1(x), y, z: 
 
 function layout(spec) {
   const spacing = 5;
-  const line = centreline(spec.control, spacing);
-  const curv = curvature(line, spacing);
+  const open = !!spec.open;
+  const line = centreline(spec.control, spacing, open);
+  const curv = curvature(line, spacing, open);
   const n = line.length;
   const length = n * spacing;
+  // an open stage: the road starts `leadIn` metres before the start line (index L), and runs on `runout` metres past the finish line (index F)
+  const L = open ? Math.round((spec.leadIn ?? 40) / spacing) : 0;
+  const F = open ? n - 1 - Math.round((spec.runout ?? 90) / spacing) : n;
   const rand = rng(spec.seed);
   const pick = (v) => (Array.isArray(v) ? v[Math.floor(rand() * v.length)] : v);
   const objects = [];
@@ -76,19 +83,34 @@ function layout(spec) {
   // the road, with the start line on the first piece
   // (every other slab a hair higher: they overlap, and the kit's road has lines that would flicker where two slabs share a level)
   // (the road itself is one ribbon mesh, models/road_<circuit>.glb, drawn by lib/race.lua; only the start line is a piece, laid on it)
-  objects.push(obj("road_start", line[0].x, line[0].z, line[0].ry, {}, 0.03));
-  objects.push(obj("start_arch", line[0].x, line[0].z, line[0].ry));
-  objects.push(obj("tower", line[0].x + line[0].tz * 15, line[0].z - line[0].tx * 15, line[0].ry + Math.PI / 2));
+  objects.push(obj("road_start", line[L].x, line[L].z, line[L].ry, {}, 0.03));
+  objects.push(obj("start_arch", line[L].x, line[L].z, line[L].ry));
+  objects.push(obj("tower", line[L].x + line[L].tz * 15, line[L].z - line[L].tx * 15, line[L].ry + Math.PI / 2));
+  if (open) {
+    // the finish: an arch, with the flags of the finish on both sides; and the section gates between: two banners and a flag each side
+    objects.push(obj("start_arch", line[F].x, line[F].z, line[F].ry));
+    for (const side of [-1, 1]) objects.push(obj("flag_checkers", line[F].x + line[F].tz * side * 8, line[F].z - line[F].tx * side * 8, 0));
+    const sections = spec.sections ?? 5;
+    for (let k = 1; k <= sections; k++) {
+      const g = line[L + Math.round(((F - L) * k) / sections)];
+      objects.push({ kind: "section_gate", x: r1(g.x), y: 0, z: r1(g.z), props: { i: k, ry: Math.round(g.ry * 1000) / 1000 } });
+      if (k === sections) continue; // (the last gate is the finish, which has its arch)
+      for (const side of [-1, 1]) {
+        objects.push(obj(spec.gateBanner ?? "banner_green", g.x + g.tz * side * 9.5, g.z - g.tx * side * 9.5, g.ry));
+        objects.push(obj("flag_checkers", g.x + g.tz * side * 8, g.z - g.tx * side * 8, 0));
+      }
+    }
+  }
 
   // waypoints every 10 m: the way the cars drive, and the order that counts laps
   const wp = [];
-  for (let i = 0; i < n; i += 2) wp.push(i);
+  for (let i = open ? L : 0; i < n; i += 2) wp.push(i);
   wp.forEach((i, k) => objects.push({ kind: "waypoint", x: r1(line[i].x), y: 0, z: r1(line[i].z), props: { i: k + 1, k: Math.round(curv[i] * 10000) / 10000 } }));
 
   // the grid: two columns behind the line, facing the way the road goes
   for (let s = 0; s < 4; s++) {
-    const back = 9 + s * 8, side = s % 2 ? 3 : -3;
-    const p = line[(n - Math.ceil(back / spacing)) % n];
+    const back = open ? 5 : 9 + s * 8, side = open ? 0 : s % 2 ? 3 : -3;
+    const p = open ? line[L - Math.ceil(back / spacing)] : line[(n - Math.ceil(back / spacing)) % n];
     objects.push({ kind: "grid_slot", x: r1(p.x + p.tz * side * -1), y: 0, z: r1(p.z + p.tx * side), props: { slot: s + 1, ry: Math.round(p.ry * 1000) / 1000 } });
   }
 
@@ -167,9 +189,9 @@ const ROAD_COLOURS = {
 };
 const CROSS = [[-6, -5.02, "verge"], [-5.02, -4.14, "line"], [-4.14, 4.14, "road"], [4.14, 5.02, "line"], [5.02, 6, "verge"]];
 
-function roadGlb(control, kind) {
+function roadGlb(control, kind, open = false) {
   const colours = ROAD_COLOURS[kind];
-  const rows = centreline(control, 2);
+  const rows = centreline(control, 2, open);
   const n = rows.length;
   const positions = [], normals = [], colors = [], indices = [];
   const TOP = 0.02, SKIRT = -0.3;
@@ -187,7 +209,7 @@ function roadGlb(control, kind) {
     indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
   };
   const at = (i, off, y) => { const p = rows[i % n]; return [p.x + p.tz * off, y, p.z - p.tx * off]; };
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < (open ? n - 1 : n); i++) {
     const j = i + 1;
     for (const [from, to, name] of CROSS) quad(at(i, from, TOP), at(i, to, TOP), at(j, to, TOP), at(j, from, TOP), colours[name], [0, 1, 0]);
     // the skirts: down from each outer edge, in the dark of the verge
@@ -276,15 +298,28 @@ tracks.harbour_lights = {
   far: { kind: ["pine_dark", "nk_night_pinetall_a", "nk_night_pineround_e"], density: 0.3 }, landmarks: { kind: "pine_dark", count: 0, radius: 0 },
 };
 // DRY=1 only draws the maps and prints the numbers (nothing is written)
+// ---- the rally stages: open routes, one in each circuit's country (each has the same scenery, sky and hills as its circuit)
+const stageControl = {
+  stage_pine_ridge: [[0, -140], [0, -60], [0, 60], [20, 160], [90, 215], [170, 200], [215, 255], [300, 285], [385, 250], [400, 170], [350, 115], [380, 45], [455, 5], [478, -70], [425, -112], [385, -85], [365, -150], [435, -185], [360, -250], [430, -285], [520, -260], [575, -195], [560, -115], [620, -60], [690, -75], [735, -30], [700, 10], [740, 70], [690, 120], [620, 130], [610, 225], [650, 300], [735, 330]],
+  stage_dust_valley: [[0, -140], [0, -60], [0, 70], [-40, 150], [-130, 175], [-190, 235], [-170, 320], [-90, 360], [0, 330], [60, 270], [150, 255], [220, 300], [300, 290], [340, 220], [305, 160], [228, 148], [205, 100], [260, 78], [320, 90], [350, 40], [310, -10], [240, -5], [250, -75], [330, -100], [350, -180], [270, -215], [200, -270], [215, -350], [300, -390], [390, -370], [450, -310], [520, -290], [590, -330], [640, -400]],
+  stage_frost_pass: [[0, -140], [0, -50], [0, 60], [60, 140], [160, 150], [230, 100], [300, 120], [330, 200], [280, 270], [190, 300], [120, 320], [100, 380], [160, 410], [240, 395], [270, 450], [330, 470], [380, 390], [470, 380], [520, 440], [510, 520], [440, 570], [370, 590], [350, 640], [410, 670], [470, 650], [490, 710], [430, 760], [350, 745]],
+  stage_harbour_lights: [[0, -140], [0, -50], [0, 90], [50, 190], [140, 230], [240, 210], [300, 270], [290, 360], [220, 420], [150, 430], [92, 482], [165, 530], [95, 585], [120, 640], [190, 660], [270, 630], [340, 570], [420, 550], [490, 600], [500, 690], [450, 745], [380, 770], [380, 825], [320, 850], [270, 920]],
+};
+const stageOf = { stage_pine_ridge: "pine_ridge", stage_dust_valley: "dust_valley", stage_frost_pass: "frost_pass", stage_harbour_lights: "harbour_lights" };
+const stages = {};
+for (const [name, control] of Object.entries(stageControl)) {
+  const base = tracks[stageOf[name]];
+  stages[name] = { ...base, open: true, control, seed: base.seed + 100, sections: 5, leadIn: 40, runout: 90, landmarks: { ...base.landmarks, count: base.landmarks.count } };
+}
 const dry = !!process.env.DRY;
 const run = async (nova) => {
-  for (const [name, spec] of Object.entries(tracks)) {
+  for (const [name, spec] of Object.entries({ ...tracks, ...stages })) {
     if (only && only !== name) continue;
     const { scene, stats } = layout(spec);
     console.log(`\n${name}: ${stats.length} m, ${stats.points} road pieces, ${stats.objects} objects, tightest bend radius ~${stats.minRadius} m at ${stats.tightest}, ${stats.bends} sharp bends, closest approach ${tightest(stats.line, 5)} m`);
     console.log(ascii(stats.line));
     if (!dry) {
-      fs.writeFileSync(path.join(GAME, "models", `road_${name}.glb`), roadGlb(spec.control, spec.road));
+      fs.writeFileSync(path.join(GAME, "models", `road_${name}.glb`), roadGlb(spec.control, spec.road, !!spec.open));
       console.log(await nova.call("scene_write", { name, scene }));
     }
   }

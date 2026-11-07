@@ -13,6 +13,14 @@ state.classes = {
   { id = "sport", name = "Sport", blurb = "Fast road cars that slide under power." },
   { id = "everyday", name = "Everyday", blurb = "Family cars and workhorses: slower, and heavy in the bends." },
 }
+-- The rally stages: point to point, each in the country of one of the circuits (`look`), five sections each (see lib/race.lua). The scene of
+-- a stage is the stage's id.
+state.stages = {
+  { id = "stage_pine_ridge", look = "pine_ridge", name = "Pine Ridge Stage", blurb = "Forest roads from the valley to the ridge, with hairpins on the way up.", laps = 1, music = "race_forest", km = 2.6 },
+  { id = "stage_dust_valley", look = "dust_valley", name = "Dust Valley Stage", blurb = "Switchbacks through the canyons as the sun goes down.", laps = 1, music = "race_desert", km = 2.7 },
+  { id = "stage_frost_pass", look = "frost_pass", name = "Frost Pass Stage", blurb = "A long climb over packed snow: the hairpins are slippery.", laps = 1, music = "race_snow", km = 2.2 },
+  { id = "stage_harbour_lights", look = "harbour_lights", name = "Harbour Night Stage", blurb = "Along the quay after dark: chicanes, then a hairpin at the end.", laps = 1, music = "race_night", km = 2.1 },
+}
 state.cars = {
   -- `oversteer`: how readily the rear lets go under power in a bend (0 never, 1 a lot); the sedan and the hatchback are the
   -- drifters, the open-wheel cars hold the road
@@ -38,16 +46,17 @@ state.cars = {
 -- hold that it dares in a bend, and `band` how much it eases off when it is well ahead of you or pushes when well behind (a share of its speed).
 -- Each rival also has a driver's skill (race.lua), so the three of a race are never level.
 state.difficulties = {
-  { id = "easy", name = "Easy", blurb = "Rivals drive carefully and give up the chase.", pace = 0.72, corner = 0.68, band = 0.03 },
-  { id = "medium", name = "Medium", blurb = "Rivals drive well and stay in touch.", pace = 0.88, corner = 0.86, band = 0.06 },
-  { id = "hard", name = "Hard", blurb = "Rivals drive to the limit of their cars and chase you down.", pace = 1.0, corner = 1.03, band = 0.10 },
+  { id = "easy", name = "Easy", blurb = "Rivals drive carefully and give up the chase. In a rally the section times to beat are generous.", pace = 0.72, corner = 0.68, band = 0.03, allow = 1.3 },
+  { id = "medium", name = "Medium", blurb = "Rivals drive well and stay in touch. In a rally the section times to beat are fair.", pace = 0.88, corner = 0.86, band = 0.06, allow = 1.1 },
+  { id = "hard", name = "Hard", blurb = "Rivals drive to the limit of their cars and chase you down. In a rally the section times to beat are tight.", pace = 1.0, corner = 1.03, band = 0.10, allow = 0.98 },
 }
 
 state.track = 1       -- index into state.tracks
+state.stage = 1       -- index into state.stages (in rally mode)
 state.car = 1         -- index into state.cars
 state.laps = 2
 state.difficulty = "medium"
-state.mode = "race"    -- "race" (against three rivals) or "trial" (alone, against your best lap's ghost)
+state.mode = "race"    -- "race" (against three rivals), "trial" (alone, against your best lap's ghost) or "rally" (a stage, against the section times)
 state.music_volume = 0.7
 state.sfx_volume = 0.8
 state.shadows = true   -- the sun's shadows (a little slower on a handheld)
@@ -65,6 +74,7 @@ function state.load()
   if saved.effects ~= nil then state.effects = saved.effects end
   if saved.music_style then state.music_style = saved.music_style end
   state.track = nova.save.get("last_track", 1)
+  state.stage = nova.save.get("last_stage", 1)
   state.car = nova.save.get("last_car", 1)
   state.mode = nova.save.get("last_mode", "race")
   state.difficulty = nova.save.get("last_difficulty", "medium")
@@ -80,6 +90,7 @@ end
 function state.save_options()
   nova.save.set("options", { music = state.music_volume, sfx = state.sfx_volume, shadows = state.shadows, vibration = state.vibration, effects = state.effects, music_style = state.music_style })
   nova.save.set("last_track", state.track)
+  nova.save.set("last_stage", state.stage)
   nova.save.set("last_car", state.car)
   nova.save.set("last_mode", state.mode)
   nova.save.set("last_difficulty", state.difficulty)
@@ -95,7 +106,20 @@ function state.current_difficulty()
   for _, d in ipairs(state.difficulties) do if d.id == state.difficulty then return d end end
   return state.difficulties[2]
 end
-function state.current_track() return state.tracks[state.track] end
+-- The circuit that is chosen, or in rally mode the stage.
+function state.current_track()
+  if state.mode == "rally" then return state.stages[state.stage] end
+  return state.tracks[state.track]
+end
+-- The id of the look (sky, sun, trees, hills) of what is chosen: a stage has the look of its circuit.
+function state.look_id() local t = state.current_track(); return t.look or t.id end
+
+-- The best total score of a rally stage (higher is better); true if `score` is a new best.
+function state.submit_score(id, score)
+  local old = nova.save.get("rally_score_" .. id, nil)
+  if old == nil or score > old then nova.save.set("rally_score_" .. id, score); return true end
+  return false
+end
 function state.class_of(car) for _, c in ipairs(state.classes) do if c.id == car.class then return c end end end
 function state.current_car() return state.cars[state.car] end
 

@@ -47,6 +47,7 @@ end
 local MODES = {
   { id = "race", name = "Race", blurb = "Three rivals on the road with you." },
   { id = "trial", name = "Time trial", blurb = "Alone, against the ghost of your best lap." },
+  { id = "rally", name = "Rally", blurb = "A point-to-point stage in sections, scored on each section's time." },
 }
 local LEFT, RIGHT = 36, 614 -- the margins every grid page shares (the cards, the tabs and the notes all run from LEFT to RIGHT)
 local GRIDS = {
@@ -63,7 +64,7 @@ local function class_cars(class)
 end
 
 function Title:items(kind)
-  if kind == "circuit" then return state.tracks elseif kind == "mode" then return MODES end
+  if kind == "circuit" then return state.mode == "rally" and state.stages or state.tracks elseif kind == "mode" then return MODES end
   local items = {}
   for k, i in ipairs(class_cars(self.pick.class)) do items[k] = state.cars[i] end
   return items
@@ -71,12 +72,13 @@ end
 
 -- which card is the chosen one (a number among the cards on this page)
 function Title:picked(kind)
-  if kind == "circuit" then return state.track end
+  if kind == "circuit" then return state.mode == "rally" and state.stage or state.track end
   if kind == "car" then
     for k, i in ipairs(class_cars(self.pick.class)) do if i == state.car then return k end end
     return 0
   end
-  return state.mode == "race" and 1 or 2
+  for k, m in ipairs(MODES) do if m.id == state.mode then return k end end
+  return 1
 end
 
 -- a class's tab on the car page: tries its first car
@@ -93,14 +95,19 @@ end
 
 function Title:set_pick(kind, i)
   if kind == "circuit" then
-    state.track = i
-    state.laps = state.current_track().laps
+    if state.mode == "rally" then
+      state.stage = i
+    else
+      state.track = i
+      state.laps = state.current_track().laps
+    end
     backdrop.light()
   elseif kind == "car" then
     state.car = class_cars(self.pick.class)[i]
     wear()
   else
     state.mode = MODES[i].id
+    backdrop.light() -- (a rally's stage has its own look)
   end
 end
 
@@ -113,6 +120,7 @@ end
 -- the rows of the chooser: the difficulty is for races (a time trial has no rivals)
 function Title:select_rows()
   if state.mode == "race" then return { "circuit", "mode", "car", "laps", "difficulty", "start" } end
+  if state.mode == "rally" then return { "circuit", "mode", "car", "difficulty", "start" } end
   return { "circuit", "mode", "car", "laps", "start" }
 end
 
@@ -287,6 +295,10 @@ local function course(id, x, y, size)
   for _, p in ipairs(c.pts) do nova.ui.rect(ox + p[1] * size - 1.5, oy + p[2] * size - 1.5, 3, 3, { 255, 255, 255, 235 }) end
   local s = c.pts[1]
   nova.ui.rect(ox + s[1] * size - 4, oy + s[2] * size - 4, 8, 8, ui.color.gold)
+  if c.open then -- (a stage ends somewhere else: the finish is green)
+    local e = c.pts[#c.pts]
+    nova.ui.rect(ox + e[1] * size - 4, oy + e[2] * size - 4, 8, 8, ui.color.green)
+  end
 end
 
 local function bar(x, y, w, label, value)
@@ -298,7 +310,7 @@ end
 function Title:draw_pick()
   local pick = self.pick
   local items, grid = self:items(pick.kind), GRIDS[pick.kind]
-  local title = ({ circuit = "CHOOSE A CIRCUIT", mode = "CHOOSE A MODE", car = "CHOOSE A CAR" })[pick.kind]
+  local title = ({ circuit = state.mode == "rally" and "CHOOSE A STAGE" or "CHOOSE A CIRCUIT", mode = "CHOOSE A MODE", car = "CHOOSE A CAR" })[pick.kind]
   ui.text(grid.x, pick.kind == "car" and 12 or 30, title, ui.fit(title, pick.kind == "car" and 30 or 36, 560), ui.color.gold, { font = "bold" })
   if pick.kind == "car" then
     -- a tab for each class (the chosen class is yellow; with the tabs selected it has a frame round it)
@@ -327,8 +339,13 @@ function Title:draw_pick()
       course(item.id, x + 12, y + 12, h - 56)
       ui.text(x + h - 36, y + 18, item.name, ui.fit(item.name, 22, w - h + 20, "rounded"), ui.color.white)
       ui.text(x + h - 36, y + 50, item.blurb, 13, { 214, 224, 238 }, { width = w - h + 24 })
-      ui.label(x + 14, y + h - 30, "BEST LAP")
-      ui.text(x + 14, y + h - 22, ui.time(state.best("lap", item.id)), 16, ui.color.gold, { font = "mono" })
+      if item.km then
+        ui.label(x + 14, y + h - 40, item.km .. " KM  ·  5 SECTIONS")
+        ui.text(x + 14, y + h - 22, "BEST " .. tostring(nova.save.get("rally_score_" .. item.id, "-")), 16, ui.color.gold, { font = "mono" })
+      else
+        ui.label(x + 14, y + h - 40, "BEST LAP")
+        ui.text(x + 14, y + h - 22, ui.time(state.best("lap", item.id)), 16, ui.color.gold, { font = "mono" })
+      end
     elseif pick.kind == "mode" then
       ui.text(x + 20, y + 24, item.name, 30, ui.color.white, { font = "bold" })
       ui.text(x + 20, y + 74, item.blurb, 17, { 214, 224, 238 }, { width = w - 40 })
@@ -404,12 +421,12 @@ function Title:draw_ui()
     local info = state.current_track()
     ui.center("CHOOSE YOUR RACE", 40, ui.fit("CHOOSE YOUR RACE", 36, 390), ui.color.gold, { font = "bold", cx = 240 })
     local labels = {
-      circuit = { "Circuit", info.name .. "  >" },
-      mode = { "Mode", (state.mode == "race" and "Race" or "Time trial") .. "  >" },
+      circuit = { state.mode == "rally" and "Stage" or "Circuit", info.name .. "  >" },
+      mode = { "Mode", ({ race = "Race", trial = "Time trial", rally = "Rally" })[state.mode] .. "  >" },
       car = { "Car", state.current_car().name .. "  >" },
       laps = { "Laps", "< " .. state.laps .. " >" },
       difficulty = { "Difficulty", "< " .. state.current_difficulty().name .. " >" },
-      start = state.mode == "race" and "START RACE" or "START TIME TRIAL",
+      start = ({ race = "START RACE", trial = "START TIME TRIAL", rally = "START RALLY" })[state.mode],
     }
     local rows, items = self:select_rows(), {}
     for k, id in ipairs(rows) do items[k] = labels[id] end
@@ -417,14 +434,23 @@ function Title:draw_ui()
     local on_difficulty = rows[self.choice] == "difficulty"
     -- (the menu and its notes are on the left, so that the car turning behind them can be seen on the right)
     ui.panel(40, 360, 400, 112, 205)
-    local note = on_difficulty and state.current_difficulty().blurb or (state.mode == "race" and info.blurb or "Alone on the circuit, racing the ghost of your best lap.")
+    local note = on_difficulty and state.current_difficulty().blurb
+      or (state.mode == "race" and info.blurb) or (state.mode == "rally" and info.blurb)
+      or "Alone on the circuit, racing the ghost of your best lap."
     ui.text(56, 372, note, 15, ui.color.white, { width = 370 })
-    local best = state.best("race" .. state.laps, info.id)
-    local lap = state.best("lap", info.id)
-    ui.label(56, 416, "BEST " .. state.laps .. " LAPS")
-    ui.text(180, 410, ui.time(best), 18, ui.color.gold, { font = "mono" })
-    ui.label(56, 442, "BEST LAP")
-    ui.text(180, 436, ui.time(lap), 18, ui.color.gold, { font = "mono" })
+    if state.mode == "rally" then
+      ui.label(56, 416, "BEST SCORE")
+      ui.text(180, 410, tostring(nova.save.get("rally_score_" .. info.id, "-")), 18, ui.color.gold, { font = "mono" })
+      ui.label(56, 442, "BEST TIME")
+      ui.text(180, 436, ui.time(state.best("rally", info.id)), 18, ui.color.gold, { font = "mono" })
+    else
+      local best = state.best("race" .. state.laps, info.id)
+      local lap = state.best("lap", info.id)
+      ui.label(56, 416, "BEST " .. state.laps .. " LAPS")
+      ui.text(180, 410, ui.time(best), 18, ui.color.gold, { font = "mono" })
+      ui.label(56, 442, "BEST LAP")
+      ui.text(180, 436, ui.time(lap), 18, ui.color.gold, { font = "mono" })
+    end
     ui.hints({ { "pad_dpad", "move" }, { "pad_a", "open / go" }, { "pad_b", "back" } })
   end
 end

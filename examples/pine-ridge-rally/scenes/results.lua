@@ -7,6 +7,7 @@ local backdrop = require("lib.backdrop")
 local Results = nova.scene {}
 
 local CHOICES = { "Race again", "Change circuit", "Main menu" }
+local RALLY_CHOICES = { "Run the stage again", "Change stage", "Main menu" }
 
 function Results:enter()
   backdrop.light()
@@ -27,6 +28,7 @@ function Results:update(dt)
   self.reveal = math.min(1, self.reveal + dt * 1.6)
   if self.t < 0.7 then return end
   local choice, action = ui.navigate(self.choice, #CHOICES)
+  choice = math.min(choice, #CHOICES)
   self.choice = choice
   if action == "accept" then
     audio.sfx("menu_accept")
@@ -41,9 +43,47 @@ function Results:draw()
   backdrop.draw(self.t, "results")
 end
 
+-- the rally's results: each section's time against its par and the points it earned, the total and the stars
+function Results:draw_rally(w)
+  local r = self.r
+  local rally = r.rally
+  local headline = rally.stars == 3 and "STAGE WON!" or "STAGE COMPLETE"
+  ui.center(headline, 18, ui.fit(headline, 44, 520, "bold"), ui.color.gold, { font = "bold" })
+  ui.center(r.track_name, 74, 18, ui.color.white)
+  for k = 1, 3 do
+    nova.ui.sprite("medal", w / 2 + (k - 2) * 44, 116, { frame = 0, scale = 2.2, color = k <= rally.stars and { 255, 255, 255, 255 } or { 90, 90, 100, 150 } })
+  end
+  local x, y, width = w / 2 - 270, 134, 540
+  local rows = #rally.sections
+  ui.panel(x, y, width, 36 + rows * 34 + 76, 205)
+  ui.label(x + 24, y + 12, "SECTION")
+  ui.label(x + 190, y + 12, "TIME")
+  ui.label(x + 310, y + 12, "TO BEAT")
+  ui.label(x + width - 90, y + 12, "POINTS")
+  for i, sec in ipairs(rally.sections) do
+    local ry = y + 34 + (i - 1) * 34
+    local slide = (1 - math.min(1, math.max(0, self.reveal * 2.2 - (i - 1) * 0.3))) * 80
+    local good = sec.time <= sec.par * 1.1
+    ui.text(x + 28 + slide, ry, tostring(i), 22, ui.color.white)
+    ui.text(x + 190 + slide, ry + 2, ui.time(sec.time), 20, good and ui.color.green or ui.color.white, { font = "mono" })
+    ui.text(x + 310 + slide, ry + 2, ui.time(sec.par), 20, ui.color.dim, { font = "mono" })
+    ui.right(tostring(sec.score), x + width - 22 + slide, ry, 22, ui.color.gold, { font = "mono" })
+  end
+  local ty = y + 34 + rows * 34 + 4
+  nova.ui.rect(x + 16, ty - 2, width - 32, 1, { 255, 255, 255, 60 })
+  ui.text(x + 28, ty + 6, "TOTAL", 22, ui.color.white)
+  ui.text(x + 190, ty + 8, ui.time(rally.time), 20, ui.color.white, { font = "mono" })
+  ui.right(rally.score .. " / " .. rally.max, x + width - 22, ty + 6, 22, ui.color.gold, { font = "mono" })
+  local by = ty + 40
+  if r.record_score then ui.text(x + 28, by, "NEW BEST SCORE", 16, ui.color.green) end
+  if r.record_time then ui.text(x + 290, by, "NEW BEST TIME", 16, ui.color.green) end
+  ui.menu(RALLY_CHOICES, self.choice, 428, { width = 300, row = 34 })
+end
+
 function Results:draw_ui()
   local w = nova.view()
   local r = self.r
+  if r.rally then return self:draw_rally(w) end
   local headline = r.trial and "TIME TRIAL" or (r.place == 1 and "YOU WIN!") or (r.place == 2 and "SECOND PLACE") or (r.place == 3 and "THIRD PLACE") or "FINISHED"
   ui.center(headline, 22, 46, r.place == 1 and ui.color.gold or ui.color.white, { font = "bold" })
   ui.center(r.track_name .. "  ·  " .. r.laps .. (r.laps == 1 and " lap" or " laps"), 92, 20, ui.color.white)

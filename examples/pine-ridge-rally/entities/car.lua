@@ -5,6 +5,7 @@ local state = require("lib.state")
 
 local Car = nova.entity { model = "car", tags = { "car" } }
 
+local HIT_POINTS = { 1.0, -1.0 } -- where the car's two collision circles are, along it from the middle (metres)
 local WHEEL_RADIUS = 0.30       -- (the models' wheels are 0.6 m across; the cars are 3.5 to 3.9 m long)
 -- A five-speed gearbox: the speed each gear runs out at (m/s, at the car's normal top speed), and how hard it pulls.
 -- Low gears pull hard and run out fast; fifth is long and gentle.
@@ -184,22 +185,25 @@ function Car:drive(dt)
   self.velx, self.velz = vf * sinh + vl * cosh, vf * cosh - vl * sinh
   self.x, self.z = self.x + self.velx * dt, self.z + self.velz * dt
 
-  -- scenery in the way
-  local px, pz = nova.scenery.push(self.x, self.z, 1.15)
-  if px then
-    self.x, self.z = self.x + px, self.z + pz
-    local nl = math.sqrt(px * px + pz * pz)
-    if nl > 0 then
-      local nx, nz = px / nl, pz / nl
-      local into = self.velx * nx + self.velz * nz
-      if into < 0 then
-        self.velx, self.velz = self.velx - nx * into * 1.25, self.velz - nz * into * 1.25
-        self.velx, self.velz = self.velx * 0.82, self.velz * 0.82
-        if -into > 4 then
-          self.hit = math.min(1, -into / 20)
-          if self.damage < 0.1 and self.pull == 0 then self.pull = math.random() < 0.5 and -1 or 1 end
-          -- scrapes cost nothing: only hard hits (a 15 m/s one is a tenth of the body, a 30 m/s one a third)
-          self.damage = math.min(1, self.damage + math.max(0, -into - 6) * 0.0125)
+  -- scenery in the way: the car is two circles (the front and the rear, a metre either side of the middle), not one big one, so that its length
+  -- touches a barrier and a corner glances off. A hit takes the speed into the object away (with a little bounce) and scrapes the rest along.
+  for _, off in ipairs(HIT_POINTS) do
+    local px, pz = nova.scenery.push(self.x + sinh * off, self.z + cosh * off, 0.9)
+    if px then
+      self.x, self.z = self.x + px, self.z + pz
+      local nl = math.sqrt(px * px + pz * pz)
+      if nl > 0 then
+        local nx, nz = px / nl, pz / nl
+        local into = self.velx * nx + self.velz * nz
+        if into < 0 then
+          self.velx, self.velz = self.velx - nx * into * 1.2, self.velz - nz * into * 1.2
+          self.velx, self.velz = self.velx * 0.95, self.velz * 0.95
+          if -into > 4 then
+            self.hit = math.min(1, -into / 20)
+            if self.damage < 0.1 and self.pull == 0 then self.pull = math.random() < 0.5 and -1 or 1 end
+            -- scrapes cost nothing: only hard hits (a 15 m/s one is a tenth of the body, a 30 m/s one a third)
+            self.damage = math.min(1, self.damage + math.max(0, -into - 6) * 0.0125)
+          end
         end
       end
     end

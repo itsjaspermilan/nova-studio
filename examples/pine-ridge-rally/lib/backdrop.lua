@@ -46,7 +46,7 @@ end
 
 -- The circuit the menus show: the one that is chosen.
 local function current()
-  local id = state.current_track().id
+  local id = state.look_id()
   return id, looks[id]
 end
 
