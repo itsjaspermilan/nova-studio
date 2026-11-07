@@ -500,6 +500,11 @@ pub struct ModelParts {
     /// x across, z forward, before any scale the game draws it with). The studio writes them as the scene's
     /// `extras.nova.colliders`.
     pub colliders: Vec<[f32; 3]>,
+    /// Capsules `[ax, az, bx, bz, radius]`: a segment from (ax, az) to (bx, bz) made `radius` thick (`extras.nova.capsules`).
+    pub capsules: Vec<[f32; 5]>,
+    /// Boxes `[x, z, half_width, half_length, turn]` (`extras.nova.boxes`): centred on (x, z), `half_width` across and
+    /// `half_length` along the model's z axis, turned by `turn` radians.
+    pub boxes: Vec<[f32; 5]>,
     /// How big the model is drawn by default: `extras.nova.scale` (1 when absent). A skinned model cannot be resized by its geometry (the skeleton and
     /// the animations would not follow), so the importer script writes this instead and the game multiplies its `scale` by it.
     pub scale: f32,
@@ -515,23 +520,34 @@ fn read_scale(scene: &gltf::Scene) -> f32 {
         .map_or(1.0, |s| (s as f32).clamp(0.01, 100.0))
 }
 
-/// The collision circles of a glTF's default scene (see [`ModelParts::colliders`]); anything malformed is skipped.
-fn read_colliders(scene: &gltf::Scene) -> Vec<[f32; 3]> {
+/// The list `extras.nova.<key>` of a glTF's default scene, each entry a list of `N` finite numbers; malformed entries and
+/// those `ok` refuses (radii not above zero) are skipped.
+fn read_shapes<const N: usize>(
+    scene: &gltf::Scene,
+    key: &str,
+    ok: impl Fn(&[f32; N]) -> bool,
+) -> Vec<[f32; N]> {
     let Some(raw) = scene.extras() else {
         return Vec::new();
     };
     let Ok(v) = serde_json::from_str::<serde_json::Value>(raw.get()) else {
         return Vec::new();
     };
-    v["nova"]["colliders"]
+    v["nova"][key]
         .as_array()
         .into_iter()
         .flatten()
         .filter_map(|c| {
             let c = c.as_array()?;
-            let n = |i: usize| c.get(i)?.as_f64().map(|v| v as f32);
-            let (x, z, r) = (n(0)?, n(1)?, n(2)?);
-            (x.is_finite() && z.is_finite() && r.is_finite() && r > 0.0).then_some([x, z, r])
+            let mut out = [0.0f32; N];
+            for (i, slot) in out.iter_mut().enumerate() {
+                let n = c.get(i)?.as_f64()? as f32;
+                if !n.is_finite() {
+                    return None;
+                }
+                *slot = n;
+            }
+            ok(&out).then_some(out)
         })
         .collect()
 }
@@ -690,12 +706,16 @@ pub fn import_parts(bytes: &[u8]) -> Result<ModelParts, String> {
             channels,
         });
     }
-    let colliders = read_colliders(&scene);
+    let colliders = read_shapes(&scene, "colliders", |c: &[f32; 3]| c[2] > 0.0);
+    let capsules = read_shapes(&scene, "capsules", |c: &[f32; 5]| c[4] > 0.0);
+    let boxes = read_shapes(&scene, "boxes", |c: &[f32; 5]| c[2] > 0.0 && c[3] > 0.0);
     let scale = read_scale(&scene);
     Ok(ModelParts {
         parts,
         clips,
         colliders,
+        capsules,
+        boxes,
         scale,
     })
 }

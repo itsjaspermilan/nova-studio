@@ -4,7 +4,7 @@
   import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
   import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
   import {
-    FACES, History, MAX_COLLIDERS, SHAPES, addCollider, addCube, addPart, afterRemoval, countCubes, cubeAt, duplicateNode, faceColor, newModel, parseModel, partAt, removeNode, samePath, serializeModel,
+    FACES, History, MAX_COLLIDERS, SHAPES, addBox, addCapsule, addCollider, removeBox, removeCapsule, updateBox, updateCapsule, addCube, addPart, afterRemoval, countCubes, cubeAt, duplicateNode, faceColor, newModel, parseModel, partAt, removeNode, samePath, serializeModel,
     removeCollider, setCube, setFaceColor, updateCollider, updateCube, updatePart, walk, namesOf, PROPS, MAX_SEGMENTS, MIN_SEGMENTS, DEFAULT_SEGMENTS, type Cube, type Ease, type Face, type ModelDoc, type Path, type Prop, type Shape, type Vec3,
   } from "../lib/model-doc";
   import { addFace, bevelEdge, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsSymmetric, setFaceColors, setSmooth, setVert, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
@@ -338,16 +338,29 @@
       });
       rings = undefined;
     }
-    if (!doc.colliders?.length) return;
+    if (!doc.colliders?.length && !doc.capsules?.length && !doc.boxes?.length) return;
     rings = new THREE.Group();
-    for (const c of doc.colliders) {
-      const points = Array.from({ length: 49 }, (_, i) => {
-        const a = (i / 48) * Math.PI * 2;
-        return new THREE.Vector3(c.x + Math.cos(a) * c.r, 0.05, c.z + Math.sin(a) * c.r);
-      });
-      const ring = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({ color: 0x4ade80, depthTest: false }));
-      ring.renderOrder = 6;
-      rings.add(ring);
+    const outline = (points: THREE.Vector3[]) => {
+      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({ color: 0x4ade80, depthTest: false }));
+      line.renderOrder = 6;
+      rings!.add(line);
+    };
+    const arc = (cx: number, cz: number, r: number, from: number, to: number, steps = 24) => Array.from({ length: steps + 1 }, (_, i) => {
+      const a = from + ((to - from) * i) / steps;
+      return new THREE.Vector3(cx + Math.cos(a) * r, 0.05, cz + Math.sin(a) * r);
+    });
+    for (const c of doc.colliders ?? []) outline(arc(c.x, c.z, c.r, 0, Math.PI * 2, 48));
+    for (const c of doc.capsules ?? []) {
+      // the outline of a segment made thick: a half circle round each end and a straight side joining them
+      const heading = Math.atan2(c.bz - c.az, c.bx - c.ax);
+      const ring = [...arc(c.bx, c.bz, c.r, heading - Math.PI / 2, heading + Math.PI / 2), ...arc(c.ax, c.az, c.r, heading + Math.PI / 2, heading + (3 * Math.PI) / 2)];
+      outline([...ring, ring[0]!]);
+    }
+    for (const b of doc.boxes ?? []) {
+      // the box's own +z is (sin, cos) on the ground and its +x is (cos, -sin), as for a model turned by `ry`
+      const t = (b.turn * Math.PI) / 180;
+      const at = (u: number, v: number) => new THREE.Vector3(b.x + u * Math.cos(t) + v * Math.sin(t), 0.05, b.z - u * Math.sin(t) + v * Math.cos(t));
+      outline([at(-b.hw, -b.hl), at(b.hw, -b.hl), at(b.hw, b.hl), at(-b.hw, b.hl), at(-b.hw, -b.hl)]);
     }
     scene.add(rings);
   }
@@ -1924,7 +1937,7 @@
         <label>Export scale <input type="number" step="0.001" min="0.0001" value={doc.scale} onchange={(e) => commit({ ...doc, scale: Math.max(0.0001, num(e.currentTarget.value, doc.scale)) })} /></label>
         <p class="dim small">World units per model unit. 1/16 = 0.0625 makes a 16-unit cube one world unit.</p>
         <h4>Collision</h4>
-        <p class="dim small">Circles on the ground that a car or a character bumps into (green in the view). A game reads them with <code>nova.model_colliders("{modelName}")</code>; scenery marked <code>static</code> uses them automatically.</p>
+        <p class="dim small">Shapes on the ground that a car or a character bumps into (green in the view): circles for trunks and posts, capsules for long round things, boxes for walls and buildings. A game reads them with <code>nova.model_shapes("{modelName}")</code>; scenery marked <code>static</code> uses them automatically (a box is covered with circles, so its corners are a little rounded).</p>
         {#each doc.colliders ?? [] as c, i (i)}
           <div class="collider">
             <label class="inline">x <input type="number" step="0.5" value={c.x} aria-label={`circle ${i + 1} x`} onchange={(e) => commit(updateCollider(doc, i, { x: num(e.currentTarget.value, c.x) }))} /></label>
@@ -1933,7 +1946,30 @@
             <button class="danger" title="Remove this circle" aria-label={`remove circle ${i + 1}`} onclick={() => commit(removeCollider(doc, i))}>✕</button>
           </div>
         {/each}
-        <div class="row"><button onclick={() => commit(addCollider(doc, { x: 0, z: 0, r: 8 }))} disabled={(doc.colliders?.length ?? 0) >= MAX_COLLIDERS}>＋ Circle</button></div>
+        {#each doc.capsules ?? [] as c, i (i)}
+          <div class="collider">
+            <span class="dim small">capsule</span>
+            {#each [["ax", "from x"], ["az", "from z"], ["bx", "to x"], ["bz", "to z"]] as const as [key, label] (key)}
+              <label class="inline">{label} <input type="number" step="0.5" value={c[key]} aria-label={`capsule ${i + 1} ${label}`} onchange={(e) => commit(updateCapsule(doc, i, { [key]: num(e.currentTarget.value, c[key]) }))} /></label>
+            {/each}
+            <label class="inline">radius <input type="number" step="0.5" min="0.1" value={c.r} aria-label={`capsule ${i + 1} radius`} onchange={(e) => commit(updateCapsule(doc, i, { r: num(e.currentTarget.value, c.r) }))} /></label>
+            <button class="danger" title="Remove this capsule" aria-label={`remove capsule ${i + 1}`} onclick={() => commit(removeCapsule(doc, i))}>✕</button>
+          </div>
+        {/each}
+        {#each doc.boxes ?? [] as c, i (i)}
+          <div class="collider">
+            <span class="dim small">box</span>
+            {#each [["x", "x"], ["z", "z"], ["hw", "half width"], ["hl", "half length"], ["turn", "turn°"]] as const as [key, label] (key)}
+              <label class="inline">{label} <input type="number" step="0.5" value={c[key]} aria-label={`box ${i + 1} ${label}`} onchange={(e) => commit(updateBox(doc, i, { [key]: num(e.currentTarget.value, c[key]) }))} /></label>
+            {/each}
+            <button class="danger" title="Remove this box" aria-label={`remove box ${i + 1}`} onclick={() => commit(removeBox(doc, i))}>✕</button>
+          </div>
+        {/each}
+        <div class="row">
+          <button onclick={() => commit(addCollider(doc, { x: 0, z: 0, r: 8 }))} disabled={(doc.colliders?.length ?? 0) >= MAX_COLLIDERS}>＋ Circle</button>
+          <button onclick={() => commit(addCapsule(doc, { ax: 0, az: -8, bx: 0, bz: 8, r: 4 }))} disabled={(doc.capsules?.length ?? 0) >= MAX_COLLIDERS}>＋ Capsule</button>
+          <button onclick={() => commit(addBox(doc, { x: 0, z: 0, hw: 4, hl: 8, turn: 0 }))} disabled={(doc.boxes?.length ?? 0) >= MAX_COLLIDERS}>＋ Box</button>
+        </div>
         <p class="dim small">Saving writes <code>{glbPath}</code>. In Lua: <code>nova.model("{modelName}", x, y, z)</code>.</p>
         <p class="dim small">Click a shape in the view or the list to edit it. Shapes: box, wedge, pyramid, cylinder, cone, sphere, or a free mesh you pull into shape point by point. Colours are flat per face.</p>
       {/if}

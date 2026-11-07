@@ -13,6 +13,7 @@ import { moved, planRename } from "./refs";
 import { renamePlan, resolveFrom, type Resource } from "./resources";
 import { byFile } from "./diagnostics";
 import { projectSymbols, type ProjectSymbols } from "./completions";
+import { PerfTracker, type Hitch, type PerfSample } from "./perf";
 import { ACTIVITY_FILE, parseActivity, type Activity } from "./activity";
 import type { Api, Diagnostic, ExampleInfo, ExportReport, FileEntry, LogLine, ProjectInfo, RecentProject, TemplateInfo } from "./types";
 
@@ -62,6 +63,11 @@ class Studio {
   panel: Panel = $state("problems");
   panelOpen = $state(true);
   helpOpen = $state(false);
+  /// A tool that takes over the window: store art or the simulation harness.
+  tool: "art" | "sim" | null = $state(null);
+  /// The numbers the running game reports about its speed (see perf.ts).
+  perf: { latest: PerfSample | null; history: PerfSample[]; hitches: Hitch[]; worst: number } = $state({ latest: null, history: [], hitches: [], worst: 0 });
+  #perf = new PerfTracker();
   exportOpen = $state(false);
   exporting = $state(false);
   exportReport: ExportReport | null = $state(null);
@@ -118,6 +124,11 @@ class Studio {
     const api = this.api;
     this.#unlisten.push(
       await api.onPlayLog((line) => {
+        if (this.#perf.feed(line.line)) {
+          this.perf = { latest: this.#perf.latest, history: this.#perf.history, hitches: this.#perf.hitches, worst: this.#perf.worst };
+          // the once-a-second speed line is shown in the speed strip, not in the log (a hitch line stays in both)
+          if (!line.line.includes("hitch:")) return;
+        }
         this.log.push(line);
         if (this.log.length > MAX_LOG) this.log.splice(0, this.log.length - MAX_LOG);
       }),
@@ -683,13 +694,16 @@ class Studio {
     }
   }
 
-  async play() {
+  /// Runs the game in its own window; with `record` (a project path) what is pressed is written there when the window is closed.
+  async play(record?: string) {
     if (!(await this.saveAll())) return;
     this.log = [];
+    this.#perf = new PerfTracker();
+    this.perf = { latest: null, history: [], hitches: [], worst: 0 };
     this.panel = "play";
     this.panelOpen = true;
     await this.#guard(async () => {
-      await this.api!.runProject();
+      await this.api!.runProject(record);
       this.running = true;
     });
   }

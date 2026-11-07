@@ -1,4 +1,4 @@
-import type { Api, CheckReport, ExampleInfo, ExportReport, FileContent, FileEntry, LogLine, ProjectInfo, RecentProject, TemplateInfo } from "./types";
+import type { Api, CheckReport, ExampleInfo, ExportReport, FileContent, FileEntry, HeadlessReport, LogLine, ProjectInfo, RecentProject, TemplateInfo } from "./types";
 
 /// The desktop app: every call goes to the Rust backend (studio/src-tauri).
 async function tauriApi(): Promise<Api> {
@@ -35,7 +35,8 @@ async function tauriApi(): Promise<Api> {
     createDir: (path) => invoke("create_dir", { path }),
     renameFile: (from, to) => invoke("rename_file", { from, to }),
     deleteFile: (path) => invoke<string>("delete_file", { path }),
-    runProject: () => invoke("run_project"),
+    runProject: (record) => invoke("run_project", { record: record ?? null }),
+    runHeadless: (options) => invoke<HeadlessReport>("run_headless", { options }),
     stopProject: () => invoke<boolean>("stop_project"),
     isRunning: () => invoke<boolean>("is_running"),
     checkProject: () => invoke<CheckReport>("check_project"),

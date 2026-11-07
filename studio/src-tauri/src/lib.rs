@@ -3,6 +3,7 @@
 //! project root held in the app state and is confined to it (`paths`).
 
 pub mod audio_files;
+mod headless;
 mod paths;
 mod project_files;
 mod recent;
@@ -246,11 +247,23 @@ fn delete_file(state: State<AppState>, path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn run_project(app: AppHandle, state: State<AppState>) -> Result<(), String> {
+fn run_project(
+    app: AppHandle,
+    state: State<AppState>,
+    record: Option<String>,
+) -> Result<(), String> {
     let root = root_of(&state)?;
     let bin = runner::find_nova_binary()?;
     let mut command = std::process::Command::new(bin);
     command.arg("run").arg(&root);
+    // `--record` writes what was pressed when the game's window is closed, for the simulation screen to play back
+    if let Some(rel) = record {
+        let path = paths::confine(&root, &rel)?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("cannot make the folder: {e}"))?;
+        }
+        command.arg("--record").arg(path);
+    }
     let (lines, exits) = (app.clone(), app.clone());
     state.runner.start(
         command,
@@ -277,6 +290,18 @@ fn is_running(state: State<AppState>) -> bool {
 #[tauri::command]
 fn check_project(state: State<AppState>) -> Result<serde_json::Value, String> {
     runner::check(&root_of(&state)?)
+}
+
+/// Runs the game headless once (a picture of a screen, or a scripted session) and returns what it printed.
+#[tauri::command]
+async fn run_headless(
+    state: State<'_, AppState>,
+    options: headless::HeadlessOptions,
+) -> Result<headless::HeadlessReport, String> {
+    let root = root_of(&state)?;
+    tauri::async_runtime::spawn_blocking(move || headless::run(&root, &options))
+        .await
+        .map_err(|e| format!("the run stopped unexpectedly: {e}"))?
 }
 
 /// Checks the game and exports it (`desktop` or `android`); the report says what happened and where the files are.
@@ -348,6 +373,7 @@ pub fn run() {
             is_running,
             check_project,
             export_game,
+            run_headless,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Nova Studio");

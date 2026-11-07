@@ -111,6 +111,24 @@ export interface Clip {
   tracks: Track[];
 }
 
+/// A capsule on the ground: the segment from (ax, az) to (bx, bz) made `r` thick (a car's length, a long fence).
+export interface Capsule {
+  ax: number;
+  az: number;
+  bx: number;
+  bz: number;
+  r: number;
+}
+
+/// A box on the ground, centred on (x, z): `hw` is half its width (across, x) and `hl` half its length (along z); `turn` is in degrees.
+export interface BoxShape {
+  x: number;
+  z: number;
+  hw: number;
+  hl: number;
+  turn: number;
+}
+
 /// A circle on the ground that a car or a character bumps into, in model units: `x` across, `z` forward, `r` the radius.
 export interface Collider {
   x: number;
@@ -130,6 +148,9 @@ export interface ModelDoc {
   clips?: Clip[];
   /// What the model blocks, as circles on the ground (the game reads them with `nova.model_colliders`).
   colliders?: Collider[];
+  /// Capsules and boxes the model blocks too (the file keeps circles as `colliders` and the other shapes under their own keys).
+  capsules?: Capsule[];
+  boxes?: BoxShape[];
 }
 
 export const MAX_CLIPS = 64;
@@ -229,6 +250,16 @@ export function parseModel(text: string): Parsed {
       if (typeof k.r !== "number" || !(k.r > 0) || !isFinite(k.r)) return { ok: false, error: `colliders[${i}].r (the radius) must be a number above 0` };
     }
   }
+  for (const [key, label, fields, positive] of [["capsules", "capsules", ["ax", "az", "bx", "bz", "r"], ["r"]], ["boxes", "boxes", ["x", "z", "hw", "hl", "turn"], ["hw", "hl"]]] as const) {
+    const list = (o as Record<string, unknown>)[key];
+    if (list === undefined) continue;
+    if (!Array.isArray(list) || list.length > MAX_COLLIDERS) return { ok: false, error: `"${key}" must be a list of up to ${MAX_COLLIDERS} ${label}` };
+    for (const [i, c] of list.entries()) {
+      const k = c as Record<string, unknown> | null;
+      if (!k || typeof k !== "object" || fields.some((f) => typeof k[f] !== "number" || !isFinite(k[f] as number))) return { ok: false, error: `${key}[${i}] needs numbers ${fields.join(", ")}` };
+      if (positive.some((f) => !((k[f] as number) > 0))) return { ok: false, error: `${key}[${i}]: ${positive.join(" and ")} must be above 0` };
+    }
+  }
   let parts = 0;
   let cubes = 0;
   let verts = 0;
@@ -312,7 +343,7 @@ export function parseModel(text: string): Parsed {
       }
     }
   }
-  return { ok: true, doc: { version: 1, scale: o.scale ?? DEFAULT_SCALE, ...(o.texture ? { texture: { size: [...o.texture.size] as [number, number] } } : {}), parts: o.parts as Part[], ...(clips && clips.length ? { clips: clips as Clip[] } : {}), ...(o.colliders?.length ? { colliders: o.colliders.map((c) => ({ x: c.x, z: c.z, r: c.r })) } : {}) } };
+  return { ok: true, doc: { version: 1, scale: o.scale ?? DEFAULT_SCALE, ...(o.texture ? { texture: { size: [...o.texture.size] as [number, number] } } : {}), parts: o.parts as Part[], ...(clips && clips.length ? { clips: clips as Clip[] } : {}), ...(o.colliders?.length ? { colliders: o.colliders.map((c) => ({ x: c.x, z: c.z, r: c.r })) } : {}), ...(o.capsules?.length ? { capsules: o.capsules.map((c) => ({ ax: c.ax, az: c.az, bx: c.bx, bz: c.bz, r: c.r })) } : {}), ...(o.boxes?.length ? { boxes: o.boxes.map((c) => ({ x: c.x, z: c.z, hw: c.hw, hl: c.hl, turn: c.turn })) } : {}) } };
 }
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
@@ -364,7 +395,9 @@ export function serializeModel(doc: ModelDoc): string {
   const clips = doc.clips?.length ? `,\n  "clips": [\n${doc.clips.map(clip).join(",\n")}\n  ]` : "";
   const texture = doc.texture ? `,\n  "texture": { "size": ${vec2(doc.texture.size)} }` : "";
   const colliders = doc.colliders?.length ? `,\n  "colliders": [${doc.colliders.map((c) => `{ "x": ${c.x}, "z": ${c.z}, "r": ${c.r} }`).join(", ")}]` : "";
-  return `{\n  "version": 1,\n  "scale": ${doc.scale}${texture},\n  "parts": ${body}${clips}${colliders}\n}\n`;
+  const capsules = doc.capsules?.length ? `,\n  "capsules": [${doc.capsules.map((c) => `{ "ax": ${c.ax}, "az": ${c.az}, "bx": ${c.bx}, "bz": ${c.bz}, "r": ${c.r} }`).join(", ")}]` : "";
+  const boxes = doc.boxes?.length ? `,\n  "boxes": [${doc.boxes.map((c) => `{ "x": ${c.x}, "z": ${c.z}, "hw": ${c.hw}, "hl": ${c.hl}, "turn": ${c.turn} }`).join(", ")}]` : "";
+  return `{\n  "version": 1,\n  "scale": ${doc.scale}${texture},\n  "parts": ${body}${clips}${colliders}${capsules}${boxes}\n}\n`;
 }
 
 // ---- collision circles ----
@@ -672,3 +705,51 @@ export function hexToRgba(hex: string): [number, number, number, number] {
 }
 
 export const faceColor = (c: Cube, f: Face) => c.faces?.[f] ?? c.color;
+
+// ---- capsules and boxes ----
+
+export function addCapsule(doc: ModelDoc, c: Capsule): ModelDoc {
+  const list = [...(doc.capsules ?? [])];
+  if (list.length >= MAX_COLLIDERS) return doc;
+  list.push({ ...c, r: Math.max(0.01, c.r) });
+  return { ...doc, capsules: list };
+}
+
+export function updateCapsule(doc: ModelDoc, index: number, change: Partial<Capsule>): ModelDoc {
+  const list = [...(doc.capsules ?? [])];
+  const was = list[index];
+  if (!was) return doc;
+  const next = { ...was, ...change };
+  if (!(next.r > 0) || ![next.ax, next.az, next.bx, next.bz, next.r].every(isFinite)) return doc;
+  list[index] = next;
+  return { ...doc, capsules: list };
+}
+
+export function removeCapsule(doc: ModelDoc, index: number): ModelDoc {
+  const list = (doc.capsules ?? []).filter((_, i) => i !== index);
+  const { capsules: _gone, ...rest } = doc;
+  return list.length ? { ...rest, capsules: list } : rest;
+}
+
+export function addBox(doc: ModelDoc, b: BoxShape): ModelDoc {
+  const list = [...(doc.boxes ?? [])];
+  if (list.length >= MAX_COLLIDERS) return doc;
+  list.push({ ...b, hw: Math.max(0.01, b.hw), hl: Math.max(0.01, b.hl) });
+  return { ...doc, boxes: list };
+}
+
+export function updateBox(doc: ModelDoc, index: number, change: Partial<BoxShape>): ModelDoc {
+  const list = [...(doc.boxes ?? [])];
+  const was = list[index];
+  if (!was) return doc;
+  const next = { ...was, ...change };
+  if (!(next.hw > 0) || !(next.hl > 0) || ![next.x, next.z, next.hw, next.hl, next.turn].every(isFinite)) return doc;
+  list[index] = next;
+  return { ...doc, boxes: list };
+}
+
+export function removeBox(doc: ModelDoc, index: number): ModelDoc {
+  const list = (doc.boxes ?? []).filter((_, i) => i !== index);
+  const { boxes: _gone, ...rest } = doc;
+  return list.length ? { ...rest, boxes: list } : rest;
+}

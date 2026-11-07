@@ -3,6 +3,7 @@
   import { summary } from "../lib/diagnostics";
   import { studio } from "../lib/store.svelte";
   import { ago, toolWords } from "../lib/activity";
+  import PerfStrip from "./PerfStrip.svelte";
 
   // "5 s ago" moves on by itself
   let now = $state(Date.now());
@@ -81,6 +82,7 @@
       {/each}
     </ul>
   {:else}
+    <PerfStrip />
     <div class="log mono" bind:this={logBox}>
       {#each studio.log as l, i (i)}
         <div class:err={l.stream === "stderr"}>{l.line}</div>
@@ -117,7 +119,7 @@
   .msg { flex: 1; min-width: 0; }
   .where { font-size: 11px; white-space: nowrap; }
   .empty { padding: 12px; }
-  .log { overflow: auto; flex: 1; padding: 8px 12px; font-size: 12px; white-space: pre-wrap; }
+  .log { overflow: auto; flex: 1; min-height: 0; padding: 8px 12px; font-size: 12px; white-space: pre-wrap; }
   .log .err { color: var(--warn); }
   .stack { list-style: none; margin: 0 0 4px 26px; padding: 0; display: flex; flex-direction: column; font-size: 11px; }
   .frame { text-align: left; padding: 0 6px; border: none; }

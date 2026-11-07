@@ -2028,3 +2028,72 @@ fn a_sprite_particle_rests_on_the_ground_by_its_lower_edge() {
     let y = g.frame_input(0).models[0].instance.matrix[3][1];
     assert!((y - 0.4).abs() < 1e-3, "{y}");
 }
+
+/// The studio writes capsules and boxes next to the circles (their own `extras.nova` keys): a circle at the origin, a
+/// capsule along z from -0.5 to 0.5 (0.25 thick) and a box centred 1 m along x, 0.125 across and 0.5 long, turned a quarter
+/// so that its length runs along x.
+#[test]
+fn a_models_capsules_and_boxes_are_read_and_block_scenery() {
+    let bytes = include_bytes!("fixtures/studio_model_collider_shapes.glb");
+    let imported = nova_runtime::model::import_parts(bytes).expect("imports");
+    assert_eq!(imported.colliders, [[0.0, 0.0, 0.5]]);
+    assert_eq!(imported.capsules, [[0.0, -0.5, 0.0, 0.5, 0.25]]);
+    // (the file keeps five decimals of the quarter turn)
+    let [x, z, hw, hl, turn] = imported.boxes[0];
+    assert_eq!(imported.boxes.len(), 1);
+    assert_eq!([x, z, hw, hl], [1.0, 0.0, 0.125, 0.5]);
+    assert!((turn - std::f32::consts::FRAC_PI_2).abs() < 1e-4, "{turn}");
+    // an older model (circles only) has no other shapes
+    let old =
+        nova_runtime::model::import_parts(include_bytes!("fixtures/studio_model_colliders.glb"))
+            .expect("imports");
+    assert!(old.capsules.is_empty() && old.boxes.is_empty());
+
+    let probes = "if not done then done = true\n\
+        nova.scenery.add('post', 100, 0, 100)\n\
+        local s = nova.model_shapes('post')\n\
+        nova.log(#s.circles .. ' ' .. #s.capsules .. ' ' .. #s.boxes .. ' ' .. s.boxes[1].hw)\n\
+        local function probe(x, z, r) local px, pz = nova.scenery.push(100 + x, 100 + z, r); nova.log(px and string.format('%.2f %.2f', px, pz) or 'free') end\n\
+        probe(1.4, 0, 0.05)\n\
+        probe(1.0, 0.3, 0.05)\n\
+        probe(0, 0.7, 0.05)\n\
+        probe(0.2, -0.3, 0.05)\n\
+        probe(0, 1.5, 0.05)\n\
+        local px, pz = nova.scenery.push_capsule(101, 99.5, 101, 100.5, 0.05)\n\
+        nova.log(px and string.format('%.2f %.2f', px, pz) or 'free')\n\
+        nova.log(tostring((nova.scenery.push_capsule(103, 99.5, 103, 100.5, 0.05))))\n\
+        end";
+    let mut g = game(
+        "nova.start('s')",
+        vec![
+            ("models/post.glb", bytes.to_vec()),
+            (
+                "scenes/s.lua",
+                format!("local S = nova.scene {{}}\nfunction S:update(dt) {probes} end\nreturn S")
+                    .into_bytes(),
+            ),
+        ],
+    );
+    frame(&mut g);
+    frame(&mut g);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let log = g.take_log();
+    assert_eq!(log[0], "1 1 1 0.125");
+    // beside the far end of the box (it reaches x = 1.5): pushed out along +x
+    assert_ne!(log[1], "free", "{log:?}");
+    assert!(
+        log[1].starts_with("0.") || log[1].starts_with("-0."),
+        "{log:?}"
+    );
+    // 0.3 off the box's middle, which is only 0.125 across: free
+    assert_eq!(log[2], "free", "{log:?}");
+    // past the circle (0.5) but inside the capsule's rounded end (0.75): pushed straight along +z
+    assert_ne!(log[3], "free", "{log:?}");
+    assert!(log[3].starts_with("0.00 0."), "{log:?}");
+    // inside the capsule beside its length
+    assert_ne!(log[4], "free", "{log:?}");
+    assert_eq!(log[5], "free", "1.5 m on: nothing there");
+    // a capsule laid across the box is pushed out; one beyond everything is not
+    assert_ne!(log[6], "free", "{log:?}");
+    assert_eq!(log[7], "nil");
+}

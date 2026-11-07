@@ -93,4 +93,24 @@ describe("ModelEditor", () => {
     click(host.querySelector('button[aria-label="remove circle 1"]'));
     expect(JSON.parse(studio.tabs[0]!.text).colliders).toBeUndefined();
   });
+
+  it("adds, edits and removes capsules and boxes, saved under their own keys", () => {
+    open(skinned());
+    const button = (text: string) => [...host.querySelectorAll("button")].find((b) => b.textContent?.includes(text));
+    click(button("＋ Capsule"));
+    click(button("＋ Box"));
+    const saved = () => JSON.parse(studio.tabs[0]!.text);
+    expect(saved().capsules).toEqual([{ ax: 0, az: -8, bx: 0, bz: 8, r: 4 }]);
+    expect(saved().boxes).toEqual([{ x: 0, z: 0, hw: 4, hl: 8, turn: 0 }]);
+    expect(saved().colliders).toBeUndefined();
+    const turn = host.querySelector('input[aria-label="box 1 turn°"]') as HTMLInputElement;
+    turn.value = "90";
+    turn.dispatchEvent(new Event("change", { bubbles: true }));
+    flushSync();
+    expect(saved().boxes[0].turn).toBe(90);
+    click(host.querySelector('button[aria-label="remove capsule 1"]'));
+    click(host.querySelector('button[aria-label="remove box 1"]'));
+    expect(saved().capsules).toBeUndefined();
+    expect(saved().boxes).toBeUndefined();
+  });
 });

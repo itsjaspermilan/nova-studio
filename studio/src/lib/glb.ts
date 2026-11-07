@@ -278,10 +278,19 @@ export function exportGlb(doc: ModelDoc, texture?: Raster): Uint8Array {
     if (channels.length) animations.push({ name: clip.name, samplers, channels });
   }
 
+  // Circles stay `[x, z, r]` under `colliders`; capsules and boxes have keys of their own (older readers ignore them). Lengths are in metres,
+  // a box's turn in radians.
+  const metres = (list: number[]) => list.map((v) => Math.round(v * 1e5) / 1e5);
+  const shapeExtras = {
+    ...(doc.colliders?.length ? { colliders: doc.colliders.map((c) => metres([c.x * scale, c.z * scale, c.r * scale])) } : {}),
+    ...(doc.capsules?.length ? { capsules: doc.capsules.map((c) => metres([c.ax * scale, c.az * scale, c.bx * scale, c.bz * scale, c.r * scale])) } : {}),
+    ...(doc.boxes?.length ? { boxes: doc.boxes.map((c) => metres([c.x * scale, c.z * scale, c.hw * scale, c.hl * scale, (c.turn * Math.PI) / 180])) } : {}),
+  };
+  const hasShapes = Object.keys(shapeExtras).length > 0;
   const json = {
     asset: { version: "2.0", generator: "Nova Studio" },
     scene: 0,
-    scenes: [{ nodes: [...doc.parts.map((_, i) => nodeOf.get(String(i))!), ...skinNodes], ...(doc.colliders?.length ? { extras: { nova: { colliders: doc.colliders.map((c) => [c.x * scale, c.z * scale, c.r * scale].map((v) => Math.round(v * 1e5) / 1e5)) } } } : {}) }],
+    scenes: [{ nodes: [...doc.parts.map((_, i) => nodeOf.get(String(i))!), ...skinNodes], ...(hasShapes ? { extras: { nova: shapeExtras } } : {}) }],
     nodes: gltfNodes,
     meshes,
     ...(skins.length ? { skins } : {}),

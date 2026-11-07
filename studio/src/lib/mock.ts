@@ -1,4 +1,40 @@
-import type { Api, CheckReport, Diagnostic, FileContent, FileEntry, LogLine } from "./types";
+import type { Api, CheckReport, Diagnostic, FileContent, FileEntry, HeadlessOptions, HeadlessReport, LogLine } from "./types";
+
+// 1x1 transparent PNG, for tests that have no canvas
+const TINY_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
+/// A picture standing in for a screenshot of the game (a browser has no runtime): a gradient with the size and what was pressed.
+function placeholderPicture(name: string, size: [number, number], options: HeadlessOptions): string {
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = size[0];
+    canvas.height = size[1];
+    const g = canvas.getContext("2d");
+    if (!g) return TINY_PNG;
+    const grad = g.createLinearGradient(0, 0, size[0], size[1]);
+    grad.addColorStop(0, "#1b2a49");
+    grad.addColorStop(1, "#e6b450");
+    g.fillStyle = grad;
+    g.fillRect(0, 0, size[0], size[1]);
+    g.fillStyle = "#fff";
+    g.textAlign = "center";
+    g.font = `bold ${Math.round(size[0] / 9)}px sans-serif`;
+    g.fillText(name, size[0] / 2, size[1] / 2);
+    g.font = `${Math.round(size[0] / 24)}px sans-serif`;
+    g.fillText(`browser preview · ${size[0]}x${size[1]} · ${options.frames ?? 90} frames`, size[0] / 2, size[1] / 2 + size[0] / 10);
+    if (options.press?.length) g.fillText(`after ${options.press.join(" ")}`, size[0] / 2, size[1] / 2 + size[0] / 6);
+    return canvas.toDataURL("image/png");
+  } catch {
+    return TINY_PNG;
+  }
+}
+
+/// A small deterministic number from text, so that the same run gives the same fake result.
+function hashOf(text: string): number {
+  let h = 2166136261;
+  for (const c of text) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0;
+  return h;
+}
 
 const STARTER: Record<string, string> = {
   "nova.json": JSON.stringify({ format: 1, name: "Mock Project", entry: "main.lua", world_height: 540, version: "0.1.0", input: { jump: ["key:Space", "pad:south"] } }, null, 2) + "\n",
@@ -206,13 +242,21 @@ export function createMockApi(): Api {
       for (const d of [...dirs]) if (d === path || d.startsWith(`${path}/`)) dirs.delete(d);
       return `.nova/trash/${path}`;
     },
-    runProject: async () => {
+    runProject: async (record) => {
       need();
+      if (record) emit("stderr", `[mock] a real run would write what you press to ${record} when its window is closed`);
       if (running) throw "the game is already running";
       running = true;
       let n = 0;
       emit("stderr", "[mock] there is no native runtime in a browser; this is a simulated run");
-      timer = setInterval(() => emit("stdout", `tick ${++n}`), 1000);
+      // what the real runtime writes: a speed line every second and a hitch line for a slow frame
+      timer = setInterval(() => {
+        n++;
+        emit("stdout", `tick ${n}`);
+        const fps = 58 + (n % 3) * 0.7;
+        emit("stderr", `[mock INFO nova_runtime::spike] fps=${fps.toFixed(1)} p95=${(17 + (n % 4)).toFixed(1)}ms max=${(19 + (n % 5) * 2).toFixed(1)}ms upd=0.40ms lua=${(0.3 + (n % 3) / 10).toFixed(2)}ms render=1.20ms gpu=${(3 + (n % 4) / 2).toFixed(2)}ms draws=${120 + n} sprites=4 tris=${88000 + n * 400} culled=12`);
+        if (n % 6 === 0) emit("stdout", `hitch: ${(31 + n).toFixed(1)} ms (scene title; gpu 4.0 ms, ${120 + n} draws, lua 0.50 ms)`);
+      }, 1000);
     },
     stopProject: async () => {
       const was = running;
@@ -221,6 +265,20 @@ export function createMockApi(): Api {
       return was;
     },
     isRunning: async () => running,
+    runHeadless: async (options): Promise<HeadlessReport> => {
+      need();
+      if (options.input && !files.has(options.input)) throw `the input script '${options.input}' does not exist`;
+      const name = root?.split("/").pop() ?? "Game";
+      const log = [`[mock] a browser has no runtime: this is a simulated headless run of ${options.frames ?? 90} frames`];
+      if (options.input) {
+        // fake results that depend on the script's text, so that different options give different rows
+        const h = hashOf(files.get(options.input) ?? "");
+        for (let lap = 1; lap <= 3; lap++) log.push(`lap ${lap}: ${(70 + (h % 900) / 100 + lap * 0.3).toFixed(2)}`);
+        log.push(`finished: place ${1 + (h % 4)}`);
+      }
+      const size = options.size ?? [960, 540];
+      return { ok: true, exit: 0, log, image: options.capture ? placeholderPicture(name, size, options) : null, timed_out: false };
+    },
     exportGame: async (target) => {
       need();
       return { ok: true, text: `Browser preview: nothing was written. The studio app would check the game and export it for ${target === "android" ? "Android" : "a computer"}.`, folder: "exports" };
