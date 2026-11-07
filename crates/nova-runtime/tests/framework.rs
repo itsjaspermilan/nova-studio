@@ -2941,5 +2941,9 @@ fn a_slow_frame_is_written_to_the_log_by_nova_hitch() {
     run(&mut game, 5, 1.0 / 60.0);
     game.update(0.08, 1.0, [960.0, 540.0], Actions::default(), false);
     let l = logs(&game);
-    assert!(l.iter().any(|x| x.starts_with("hitch: 80.0 ms") && x.ends_with("context")), "{l:?}");
+    assert!(
+        l.iter()
+            .any(|x| x.starts_with("hitch: 80.0 ms") && x.ends_with("context")),
+        "{l:?}"
+    );
 }

@@ -53,6 +53,7 @@ const RANGE_FADE: f32 = 0.12;
 
 /// Which model of a pair to draw at distance `d`: the near one, the far one, or both (the share `t`, in (0, 1), is how much of
 /// the far one: the near one is drawn dissolving by `-t` and the far one by `t`).
+#[derive(Clone, Copy)]
 pub(super) enum Lod {
     Near,
     Far,

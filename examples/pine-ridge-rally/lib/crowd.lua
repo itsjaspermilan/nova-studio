@@ -9,6 +9,8 @@ local KINDS = { "crowd_fa", "crowd_fb", "crowd_fc", "crowd_fd", "crowd_ma", "cro
 local SIZE = 2.0          -- the characters are 0.67 m tall as made (big heads): this makes them about 1.35 m, a little under a car's roof (a door reaches their waist)
 local RANGE = 125         -- metres: further than this from the camera nobody is drawn
 local FADE = 40           -- ...and over the last FADE metres they grow from nothing, so that nobody pops into being
+local POSE_STEP = 1 / 15 -- seconds: people at the same moment of a clip share one pose (one set of joint matrices for all of them)
+local LOD_DISTANCE = 70 -- metres: further than this a person is drawn as the plain model (rest pose, no joints), crossfading over a few metres
 local people, count = {}, 0
 
 function crowd.clear() people, count = {}, 0 end
@@ -36,16 +38,18 @@ local function add(r, i, off, along)
   local roll = r()
   -- (Kenney's own "jump" clip is a dive that lays the person flat: the cheering hop is made here instead, by lifting the person)
   local clip = "idle" -- ("emote-yes" nods so far that the person lies flat)
+  local kind = KINDS[math.floor(r() * #KINDS) + 1]
   count = count + 1
   people[count] = {
     x = x, z = z,
     opts = {
       ry = face, scale = SIZE, clip = clip, time = 0, shadow = false,
+      pose_step = POSE_STEP, lod = kind, lod_distance = LOD_DISTANCE,
     },
     size = SIZE * (0.92 + r() * 0.16),
     hop = r() < 0.7 and (0.15 + r() * 0.2) or 0,
-    kind = KINDS[math.floor(r() * #KINDS) + 1],
-    rate = 0.8 + r() * 0.5, phase = r() * 4,
+    kind = kind,
+    rate = r() < 0.5 and 0.9 or 1.1, phase = math.floor(r() * 8) * 0.5, -- (a few rates and phases, so that people share poses)
   }
 end
 

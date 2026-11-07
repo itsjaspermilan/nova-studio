@@ -21,6 +21,11 @@ local PHASES = {
   { name = "street level, city 48", n = 48, street = true },
   { name = "city 48, far buildings cheaper", n = 48, lod = true },
   { name = "street level, city 48, cheaper far buildings", n = 48, street = true, lod = true },
+  -- 300 animated characters: every one posed on its own (as before pose sharing), then at 1/15 s steps sharing poses, then with the
+  -- far ones drawn as the plain model (lod) and nobody drawn past 70 m (max_distance)
+  { name = "city 24 + 300 characters, own pose each", n = 24, chars = 300 },
+  { name = "city 24 + 300 characters, shared poses", n = 24, chars = 300, pose_step = 1 / 15 },
+  { name = "city 24 + 300 characters, shared + lod + max_distance", n = 24, chars = 300, pose_step = 1 / 15, char_lod = 30, char_max = 70 },
   { name = "worst: 48 + 300 cars + 200 chars + lights + shadows", n = 48, cars = 300, chars = 200, lights = 16, shadows = true },
 }
 
@@ -127,7 +132,7 @@ function Scene:draw()
   end
   for i = 1, self.chars do
     local a = i * 0.7
-    nova.model("character-oobi", math.sin(a) * (6 + i * 0.3), 0, math.cos(a) * (6 + i * 0.3), { scale = 1.8, clip = "walk", time = t + i * 0.13, ry = a })
+    nova.model("character-oobi", math.sin(a) * (6 + i * 0.3), 0, math.cos(a) * (6 + i * 0.3), { scale = 1.8, clip = "walk", time = t + i * 0.13, ry = a, pose_step = p.pose_step, lod = p.char_lod and "character-oobi" or nil, lod_distance = p.char_lod, max_distance = p.char_max })
   end
   for i = 1, (p.lights or 0) do
     local a = i * 0.4 + t * 0.2

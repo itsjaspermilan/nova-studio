@@ -288,10 +288,6 @@ fn bad_layers_are_explained() {
             "{ layers = {}, clip = 'spin' }",
             "`clip` or `layers`, not both",
         ),
-        (
-            "{ layers = { { clip = 'spin' } }, lod = 'car' }",
-            "lod works on plain models",
-        ),
     ] {
         let mut g = game(vec![(
             "main.lua",
