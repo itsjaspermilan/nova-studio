@@ -14,8 +14,8 @@ state.result = nil -- what the last game ended with (the results screen reads it
 
 state.DIFFICULTIES = {
   { id = "easy", name = "Easy", level = 1, blurb = "A slow start. Time to look around." },
-  { id = "normal", name = "Normal", level = 4, blurb = "The pace of the classic. Chains pay." },
-  { id = "hard", name = "Hard", level = 8, blurb = "Fast from the first row." },
+  { id = "normal", name = "Normal", level = 3, blurb = "The pace of the classic. Chains pay." },
+  { id = "hard", name = "Hard", level = 6, blurb = "Fast from the first row." },
 }
 
 function state.apply_volumes()

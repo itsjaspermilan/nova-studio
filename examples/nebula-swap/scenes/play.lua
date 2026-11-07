@@ -327,7 +327,7 @@ function Play:draw_ui()
     end
     local d = state.DIFFICULTIES[state.difficulty]
     local head = ({ endless = "ENDLESS  " .. string.upper(d.name), puzzle = "PUZZLE " .. state.puzzle, versus = "YOU" })[self.mode]
-    local meter = self.mode == "endless" and (self.board.level / 20) or nil
+    local meter = self.mode == "endless" and (self.board:speed() / 0.7) or nil
     local hide = ((self.phase == "over" and self.result_t > 0.7) or self.phase == "paused") and "all" or false
     self.view:draw_ui(head, self.mode == "versus" and self.board.incoming or nil, meter, hide)
     if self.rview then self.rview:draw_ui("CPU  " .. string.upper(d.name), self.rival.incoming, nil, hide) end

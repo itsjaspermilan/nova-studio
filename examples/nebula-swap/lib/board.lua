@@ -463,7 +463,7 @@ end
 -- ---- rising --------------------------------------------------------------------------------------------------------------------
 
 function Board:speed()
-  return math.min(0.85, 0.09 + 0.032 * (self.level - 1))
+  return math.min(0.7, 0.09 + 0.024 * (self.level - 1))
 end
 
 function Board:raise_row()
@@ -547,7 +547,8 @@ function Board:update(dt, raising)
   self:update_garbage(dt)
   self:scan()
   if self.mode == "endless" or self.mode == "versus" then
-    self.level = self.start_level + math.floor(self.time / 24) + math.floor(self.cleared / 60)
+    -- a level every minute, and one more for every hundred blocks cleared
+    self.level = self.start_level + math.floor(self.time / 60) + math.floor(self.cleared / 100)
   end
   self:update_rise(dt, raising)
   -- garbage that was sent here comes in one piece at a time, once the chain has settled
