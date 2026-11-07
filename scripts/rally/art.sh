@@ -6,3 +6,5 @@ cd "$(dirname "$0")/../.."
 P=examples/pine-ridge-rally
 scripts/env.sh cargo run -q --release -p nova-runtime --bin nova -- run $P --headless --frames 80 --size 768x1024 --press key:F12@30 --capture $P/boxart.png
 scripts/env.sh cargo run -q --release -p nova-runtime --bin nova -- run $P --headless --frames 80 --size 512x512 --press key:F11@30 --capture $P/icon.png
+# the landscape cover (1600 x 900), for Lantern's cards on the handheld: copy it to /sdcard/Lantern/art/androidgames/com.nova.games.pine_ridge_rally.png
+scripts/env.sh cargo run -q --release -p nova-runtime --bin nova -- run $P --headless --frames 80 --size 1600x900 --press key:F12@30 --capture $P/boxart-wide.png

@@ -286,7 +286,12 @@ function Title:draw()
   self.last_t = self.t
   local want = (self.screen == "menu" or self.screen == "select" or self.screen == "pick") and ((self.screen == "pick") and 4.4 or 2.6) or 0
   self.shift = (self.shift or 0) + (want - (self.shift or 0)) * math.min(1, dt * 5)
-  if self.screen == "boxart" or self.screen == "icon" then backdrop.draw(0, self.screen, 0) return end
+  if self.screen == "boxart" or self.screen == "icon" then
+    -- (a landscape cover: the car moves over to the right, and the name is set on the left)
+    local w, h = nova.view()
+    backdrop.draw(0, self.screen, (self.screen == "boxart" and w > h) and 2.6 or 0)
+    return
+  end
   backdrop.draw(self.t, "title", self.shift)
 end
 
@@ -383,6 +388,13 @@ function Title:draw_screens()
   if screen == "icon" then return end
   if screen == "boxart" then
     -- the box art: the title large at the top, the car below (the picture is made 3 wide to 4 tall)
+    local _, h = nova.view()
+    if w > h then
+      local size = ui.fit("PINE RIDGE", 78, w * 0.45, "thick")
+      ui.text(w * 0.05, h * 0.64, "PINE RIDGE", size, ui.color.gold, { font = "thick" })
+      ui.text(w * 0.05 + size * 0.1, h * 0.64 + size * 1.08, "RALLY", size * 0.95, ui.color.white, { font = "bold" })
+      return
+    end
     local size = ui.fit("PINE RIDGE", 70, w * 0.92, "thick")
     ui.center("PINE RIDGE", 62, size, ui.color.gold, { font = "thick" })
     ui.center("RALLY", 62 + size * 1.05, size * 0.85, ui.color.white, { font = "bold" })
