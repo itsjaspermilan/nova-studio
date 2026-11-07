@@ -122,7 +122,9 @@ function layout(spec) {
   };
   const place = (kind, x, z, minRoad, extra = {}) => {
     if (near(x, z) < minRoad) return false;
-    objects.push(obj(kind, x, z, rand() * Math.PI * 2, { sx: Math.round((0.8 + rand() * 0.6) * 100) / 100, ...extra }));
+    // every piece gets its own size and a slight tint (the scene object's `tint`: sRGB multipliers), so that two of one model are never quite alike
+    const v = 218 + Math.floor(rand() * 37), warm = Math.floor(rand() * 18);
+    objects.push(obj(kind, x, z, rand() * Math.PI * 2, { sx: Math.round((0.8 + rand() * 0.6) * 100) / 100, tint: [v, v - warm / 2, v - warm], ...extra }));
     return true;
   };
 
@@ -136,7 +138,7 @@ function layout(spec) {
         const kind = spec.trees[Math.floor(rand() * spec.trees.length)];
         place(kind, p.x + nx * d + (rand() - 0.5) * 6, p.z + nz * d + (rand() - 0.5) * 6, 10.5);
       }
-      if (rand() < spec.density * 0.7) place(spec.small[Math.floor(rand() * spec.small.length)], p.x + nx * (8 + rand() * 12), p.z + nz * (8 + rand() * 12), 8);
+      if (rand() < spec.density * 0.7) place(spec.small[Math.floor(rand() * spec.small.length)], p.x + nx * (8 + rand() * 12), p.z + nz * (8 + rand() * 12), 11);
       if (rand() < spec.rocks) place(pick(spec.rock), p.x + nx * (9 + rand() * 20), p.z + nz * (9 + rand() * 20), 8.5);
       if (spec.far && rand() < spec.far.density) place(pick(spec.far.kind), p.x + nx * (60 + rand() * 90), p.z + nz * (60 + rand() * 90), 40);
     }
@@ -157,7 +159,7 @@ function layout(spec) {
       const side = i % 16 === 3 ? 1 : -1, nx = -p.tz * side, nz = p.tx * side;
       objects.push(obj("lamp", p.x + nx * 9.4, p.z + nz * 9.4, Math.atan2(-nx, -nz)));
     }
-    if (i % 17 === 5 && Math.abs(k) < 0.006) objects.push(obj("hay_bale", p.x + -p.tz * 9, p.z + p.tx * 9, p.ry));
+    if (i % 17 === 5 && Math.abs(k) < 0.006) objects.push(obj("hay_bale", p.x + -p.tz * 11.5, p.z + p.tx * 11.5, p.ry));
   }
 
   // some tall features well away from the road

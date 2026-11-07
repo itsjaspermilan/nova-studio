@@ -102,6 +102,7 @@ function race.define(config)
     nova.scenery.range = LOOK_FAR -- (the engine draws the scene file's scenery out to here, around the camera)
     nova.shadows(state.shadows and { radius = 42, strength = 0.55 } or nil)
     nova.terrain(config.terrain) -- the hills (flat when the circuit has none)
+    if config.weather then nova.weather(config.weather) end
     nova.sky(config.sky)
     if config.sky then nova.fog { color = config.sky.horizon, near = 70, far = 330 } end
     local info = state.current_track()
@@ -155,7 +156,7 @@ function race.define(config)
   function Race:leave()
     for _, car in ipairs(self.cars) do if car.engine then car.engine:stop() end end
     nova.music.volume(state.music_volume)
-    nova.hitch(0); nova.sky(nil); nova.fog(nil); nova.shadows(nil); nova.terrain()
+    nova.hitch(0); nova.weather(); nova.sky(nil); nova.fog(nil); nova.shadows(nil); nova.terrain()
     crowd.clear(); stage_lib.clear(); lamps.clear(); track.clear(); grid.clear(); fx.clear(); foliage.clear()
     nova.look(); nova.wind()
   end

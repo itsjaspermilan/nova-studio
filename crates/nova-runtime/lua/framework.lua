@@ -651,11 +651,11 @@ nova.scenery = scenery
 local SCENERY_CELL = 40
 local solid_bins, piece_count = {}, 0
 local circles_of = {}
-local eye_x, eye_z = 0, 0
+local eye_x, eye_y, eye_z = 0, 0, 0
 
 local set_camera = nova.camera
 function nova.camera(ex, ey, ez, tx, ty, tz, fov)
-  eye_x, eye_z = ex, ez
+  eye_x, eye_y, eye_z = ex, ey, ez
   return set_camera(ex, ey, ez, tx, ty, tz, fov)
 end
 
@@ -707,6 +707,11 @@ function scenery.scatter(model, opts)
   elseif type(opts.scale) == "table" then smin, smax = opts.scale[1], opts.scale[2] end
   local ground = opts.ground or function(x, z)
     local y, _, ny = nova.solid.floor_below(x, 2000, z, 4000)
+    if y == nil then
+      -- no solid ground: on hills (nova.terrain) things stand at height 0, which the renderer lifts to the ground, and steep spots are refused
+      local gx, gz = nova.terrain_slope(x, z)
+      if gx ~= 0 or gz ~= 0 then return 0, 1 / sqrt(1 + gx * gx + gz * gz) end
+    end
     return y, ny
   end
   local min_ny = opts.min_normal_y or 0.7
@@ -740,6 +745,34 @@ end
 --- (out to `nova.scenery.range`, if set, else to where the fog ends or 300 m; 0 turns it off). The last 12% of the range fades out.
 function scenery.draw(cx, cz, radius)
   raw.draw_retained(cx, cz, radius)
+end
+
+--- A capsule (a segment from (ax, az) to (bx, bz) thickened by `r`: a car's length, a long barrier) against the scenery: the push that gets it out
+--- of whatever it overlaps (dx, dz), or nil. `nova.scenery.push` is the same for a single circle.
+function scenery.push_capsule(ax, az, bx, bz, r)
+  local px, pz, hit = 0, 0, false
+  local sx, sz = bx - ax, bz - az
+  local len2 = sx * sx + sz * sz
+  for gx = cell(math.min(ax, bx) - 4), cell(math.max(ax, bx) + 4) do
+    for gz = cell(math.min(az, bz) - 4), cell(math.max(az, bz) + 4) do
+      local list = solid_bins[key(gx, gz)]
+      if list then
+        for i = 1, #list do
+          local s = list[i]
+          local t = len2 > 0 and ((s[1] - ax) * sx + (s[2] - az) * sz) / len2 or 0
+          if t < 0 then t = 0 elseif t > 1 then t = 1 end
+          local dx, dz = ax + sx * t - s[1], az + sz * t - s[2]
+          local d2, reach = dx * dx + dz * dz, r + s[3]
+          if d2 < reach * reach then
+            local d = sqrt(d2)
+            if d < 0.001 then dx, dz, d = 1, 0, 1 end
+            px, pz, hit = px + dx / d * (reach - d), pz + dz / d * (reach - d), true
+          end
+        end
+      end
+    end
+  end
+  if hit then return px, pz end
 end
 
 --- A circle of radius `r` at (x, z): the push that gets it out of whatever it overlaps (dx, dz), or nil.
@@ -1165,7 +1198,7 @@ local function spawn(what, x, y, props)
     -- a piece of scenery: it goes into the static scenery, not into the list of live entities
     if not cls.__model then error("a static entity needs a model (nova.entity { model = \"pine\", static = true })", 2) end
     local scale = rawget(e, "sx") or 1
-    scenery.add(cls.__model, e.x, e.y, rawget(e, "z") or 0, { ry = rawget(e, "ry") or 0, scale = scale, lod = cls.__lod, lod_distance = cls.__lod_distance, sway = cls.__sway, max_distance = cls.__max_distance })
+    scenery.add(cls.__model, e.x, e.y, rawget(e, "z") or 0, { ry = rawget(e, "ry") or 0, scale = scale, tint = rawget(e, "tint"), lod = cls.__lod, lod_distance = cls.__lod_distance, sway = cls.__sway, max_distance = cls.__max_distance })
     return e
   end
   if rawget(e, "depth") == nil then e.depth = cls.__depth end
@@ -2066,6 +2099,53 @@ local function by_depth(a, b)
   return a.id < b.id
 end
 
+-- Weather: `nova.weather{ kind = "snow", count = 300 }` fills the air around the camera with falling flakes (small soft squares that face the camera) or
+-- rain (streaks); the flakes are a fixed pattern that wraps round the camera as it moves and falls with `nova.time()`, so nothing is spawned or
+-- kept, and they stop while the game is paused. `nova.weather()` clears it. Options: kind, count (300), radius (22 m round the camera), height (16 m),
+-- fall (m/s: 2.2 for snow, 20 for rain), drift (sideways, m/s), size (0.07 for snow), color ({255, 255, 255, 210}).
+local weather = nil
+function nova.weather(opts)
+  if not opts then weather = nil return end
+  local kind = opts.kind or "snow"
+  local snow = kind ~= "rain"
+  weather = {
+    snow = snow, count = opts.count or 300, radius = opts.radius or 22, height = opts.height or 16,
+    fall = opts.fall or (snow and 2.2 or 20), drift = opts.drift or (snow and 1.0 or 3), size = opts.size or 0.07,
+    color = opts.color or (snow and { 255, 255, 255, 210 } or { 200, 215, 235, 150 }), seed = {},
+  }
+  local s = 12345
+  for i = 1, weather.count do
+    s = (s * 1103515245 + 12345) % 2147483648; local a = s / 2147483648
+    s = (s * 1103515245 + 12345) % 2147483648; local b = s / 2147483648
+    s = (s * 1103515245 + 12345) % 2147483648; local c = s / 2147483648
+    weather.seed[i] = { a, b, c }
+  end
+end
+
+local function draw_weather()
+  local w = weather
+  local t = nova.time()
+  local d = 2 * w.radius
+  local fall = w.fall * t
+  local qopts = { color = w.color, w = w.size, h = w.size }
+  for i = 1, w.count do
+    local p = w.seed[i]
+    -- a cell of the pattern: the flake's place wraps round the camera, so the box always surrounds it
+    local x = ((p[1] * d - eye_x + w.drift * t * 0.5) % d) - w.radius + eye_x
+    local z = ((p[2] * d - eye_z) % d) - w.radius + eye_z
+    local y = eye_y - w.height * 0.4 + ((p[3] * w.height - fall) % w.height)
+    if w.snow then
+      -- (it sways a little as it falls)
+      x = x + math.sin(t * 1.3 + p[3] * 40) * 0.4
+      local dx, dz = eye_x - x, eye_z - z
+      local len = sqrt(dx * dx + dz * dz) + 1e-3
+      nova.quad3(x, y, z, dx / len, 0, dz / len, w.size, qopts)
+    else
+      nova.line3(x, y, z, x + w.drift * 0.05, y + 0.9, z, { color = w.color })
+    end
+  end
+end
+
 local function frame_draw()
   local bg = W.background
   if bg then nova.clear(bg[1], bg[2], bg[3]) end
@@ -2088,6 +2168,7 @@ local function frame_draw()
   if scene then
     if scene.draw then scene:draw() end
     if piece_count > 0 and (scenery.range or 1) > 0 then scenery.draw(eye_x, eye_z, scenery.range) end
+    if weather then draw_weather() end
     if scene.draw_ui then scene:draw_ui() end
   end
 end

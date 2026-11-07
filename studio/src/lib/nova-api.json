@@ -819,6 +819,20 @@
   "group": "Scenes and entities"
  },
  {
+  "name": "nova.weather",
+  "kind": "function",
+  "signature": "nova.weather{ kind = \"snow\", count = 300, radius = 22, height = 16, fall = 2.2, drift = 1, size = 0.07, color = {r, g, b, a} } | nova.weather()",
+  "doc": "Fills the air around the camera with snow (small soft squares that face you) or rain (streaks: kind = \\\"rain\\\"). The flakes are a fixed pattern that wraps round the camera as it moves and falls with nova.time(), so nothing is spawned or kept, and they stop while the game is paused. `nova.weather()` clears it. Drawn by the framework after the scene's draw.",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.scenery.push_capsule",
+  "kind": "function",
+  "signature": "nova.scenery.push_capsule(ax, az, bx, bz, r) -> dx, dz | nil",
+  "doc": "A capsule (the segment from (ax, az) to (bx, bz) thickened by `r`: a car's length, a long barrier) against the scenery's collision circles: the push that gets it out of whatever it overlaps, or nil. `nova.scenery.push` is the same for one circle.",
+  "group": "Scenes and entities"
+ },
+ {
   "name": "nova.pause",
   "kind": "function",
   "signature": "nova.pause([on])",

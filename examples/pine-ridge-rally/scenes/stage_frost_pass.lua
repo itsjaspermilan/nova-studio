@@ -11,4 +11,5 @@ return require("lib.race").define {
   music = "race_snow",
   sun = look.sun,
   terrain = look.terrain,
+  weather = { kind = "snow", count = 360, fall = 2.6, drift = 1.6 },
 }
