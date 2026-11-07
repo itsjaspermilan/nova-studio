@@ -85,7 +85,7 @@ function ui.hint(text)
   local o = { size = 15, color = ui.color.white, font = "future_narrow" }
   local tw = nova.ui.text_width(text, o)
   nova.ui.panel("ui/panel_dark", w / 2 - tw / 2 - 22, 490, tw + 44, 36, { slice = 18, scale = 0.6, color = { 255, 255, 255, 235 } })
-  nova.ui.text(w / 2 - tw / 2, 500, text, o)
+  nova.ui.text(w / 2 - tw / 2, 497, text, o)
 end
 
 -- The line of help at the bottom, with the handheld's buttons drawn: items are { "pad_a", "select" } pairs (or a plain string).
@@ -98,7 +98,7 @@ function ui.hints(items)
   nova.ui.panel("ui/panel_dark", x - 14, 486, total + 22, 40, { slice = 18, scale = 0.6, color = { 255, 255, 255, 235 } })
   for _, it in ipairs(items) do
     ui.pad(it[1], x, 491, 30)
-    nova.ui.text(x + 36, 501, it[2], o)
+    nova.ui.text(x + 36, 497, it[2], o)
     x = x + 30 + nova.ui.text_width(it[2], o) + 22
   end
 end
@@ -128,7 +128,7 @@ function ui.menu(items, selected, y, opts)
     nova.ui.panel(on and "ui/btn_yellow" or "ui/btn_grey", x, ry, width, row - 2, { slice = { 14, 14, 14, 22 }, scale = 0.75 })
     local label = type(item) == "table" and item[1] or item
     local color = ui.color.ink
-    local ty = ry + math.floor((row - 2 - 22) / 2) - 3 -- (the label is centred in the button, above its depth)
+    local ty = ry + math.floor((row - 2 - 22) / 2) - 6 -- (the label is centred in the button, above its depth)
     nova.ui.text(x + 22, ty, label, { size = 22, color = color, font = "rounded", shadow = false })
     if type(item) == "table" and item[2] then
       local o = { size = 22, color = color, font = "rounded" }

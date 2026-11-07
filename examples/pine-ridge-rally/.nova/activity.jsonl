@@ -90,3 +90,4 @@
 {"t":1794012173276,"tool":"scene_write","files":["scenes/stage_dust_valley.scene.json"],"note":"scenes/stage_dust_valley.scene.json: 1464 objects"}
 {"t":1794012173304,"tool":"scene_write","files":["scenes/stage_frost_pass.scene.json"],"note":"scenes/stage_frost_pass.scene.json: 1753 objects"}
 {"t":1794012173322,"tool":"scene_write","files":["scenes/stage_harbour_lights.scene.json"],"note":"scenes/stage_harbour_lights.scene.json: 1181 objects"}
+{"t":1794012612917,"tool":"model_preview","files":[],"note":"preview of car_pickup (saved at /var/folders/dw/tlxcl4_560s0fm4ckt2ms26r0000gn/T/nova-preview-car_pickup-1794012612916.png)"}

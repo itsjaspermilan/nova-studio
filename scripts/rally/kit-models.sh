@@ -69,7 +69,7 @@ if [ -n "${CARKIT:-}" ]; then
     K "$CARKIT" $P taxi --as car_taxi --scale 1.18 --wheel-diameter 0.67 "${ROADCAR[@]}"
     K "$CARKIT" $P police --as car_police --scale 1.18 --wheel-diameter 0.75 "${ROADCAR[@]}"
     K "$CARKIT" $P van --as car_van --scale 1.18 --wheel-diameter 0.71 "${ROADCAR[@]}"
-    K "$CARKIT" $P truck --as car_pickup --scale 1.18 --wheel-diameter 0.82 "${ROADCAR[@]}"
+    K "$CARKIT" $P truck --as car_pickup --scale 1.18 --wheel-diameter 0.66 "${ROADCAR[@]}"
 fi
 
 # the spectators (lib/crowd.lua): eight of Kenney's Mini Characters, with their animations (the Mini Characters pack, CC0; set MINICHARS to its folder:
