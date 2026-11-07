@@ -138,4 +138,20 @@ describe("the track and store art tools", () => {
     expect(existsSync(join(dir, "models/road_stage1.glb"))).toBe(true);
     expect(() => use("track_write", { name: "bad", control: [[0, 0]] })).toThrow(/four/);
   });
+
+  it("makes a heightmap for a route: a 16-bit png, the nova.terrain line, and a bounded grade", () => {
+    use("project_create", { name: "Race" });
+    const control = [[0, -100], [0, 0], [0, 120], [60, 200], [160, 230], [260, 200], [300, 120], [260, 40]];
+    const r = text(use("terrain_write", { name: "stage1", control, open: true, profile: [[0, 0], [400, 20], [500, 22], [800, 2]], max_grade: 0.1, margin: 100, cell: 5 }));
+    expect(r).toMatch(/nova\.terrain\{ heightmap = "terrain\/stage1\.png", x = -?[\d.]+, z = -?[\d.]+, size = [\d.]+, height = [\d.]+ \}/);
+    const png = readFileSync(join(dir, "terrain/stage1.png"));
+    expect(png.subarray(1, 4).toString()).toBe("PNG");
+    expect(png[24]).toBe(16); // bit depth
+    expect(png[25]).toBe(0); // greyscale
+    const grade = Number(/steepest grade ([\d.]+) %/.exec(r)?.[1]);
+    expect(grade).toBeLessThanOrEqual(10);
+    expect(grade).toBeGreaterThan(3); // it does climb
+    expect(() => use("terrain_write", { name: "bad", control: [[0, 0]] })).toThrow(/four/);
+    expect(() => use("terrain_write", { name: "bad", control, profile: [["x", 1]] })).toThrow(/profile/);
+  });
 });

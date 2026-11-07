@@ -25,6 +25,7 @@ import { parseSong, renderSong, serializeSong, songSeconds } from "../src/lib/so
 import { parseScene, serializeScene } from "../src/lib/scene-model";
 import { parseSheetJson } from "../src/lib/sprite-doc";
 // @ts-ignore (plain JavaScript, shared with Pine Ridge Rally's track script)
+import { heightmapFromTrack } from "../../scripts/lib/heightmap.mjs";
 import { layout as layoutTrack, roadGlb, ascii as trackMap, tightest as closestApproach } from "../../scripts/lib/trackgen.mjs";
 
 // ---- where things are ----------------------------------------------------------------------------------------------
@@ -395,6 +396,45 @@ tool(
     put(root, `scenes/${name}.scene.json`, serializeScene(parsed.scene));
     put(root, `models/road_${name}.glb`, roadGlb(control, spec.road, spec.open));
     return `${name}: ${stats.length} m, ${stats.points} road points, ${stats.objects} objects, tightest bend radius ~${stats.minRadius} m, closest approach ${closestApproach(stats.line, 5)} m\n${trackMap(stats.line)}`;
+  },
+);
+
+tool(
+  "terrain_write",
+  "Make designed ground for a route: a heightmap picture `terrain/<name>.png` (16-bit grey) from the route's control points (the same `control` and `open` as track_write) and an elevation profile along it, with the land around the road blended smoothly into rolling hills. " +
+    "`profile` is a list of [metres along the route, road elevation in metres]: [[0, 0], [400, 20], [600, 24], [1000, 4]] is a road that climbs 20 m over its first 400 m, crests at 24 m and drops away (the elevations are smooth between the points, a closed circuit wraps round, and the grade is held to `max_grade`). " +
+    "It returns the line to put in the scene's code: nova.terrain{ heightmap = \"terrain/<name>.png\", x = ..., z = ..., size = ..., height = ... } (the engine lifts everything drawn on the ground, the road ribbon included, by it). Heights below 0 cannot be stored, so if the land dips below 0 the whole map is raised and the report says by how much.",
+  {
+    name: { type: "string" },
+    control: { type: "array", items: { type: "array", items: { type: "number" } } },
+    open: { type: "boolean", description: "A point-to-point stage instead of a loop." },
+    profile: { type: "array", items: { type: "array", items: { type: "number" } }, description: "[[distance m, elevation m], ...] along the route. Default flat at 0." },
+    max_grade: { type: "number", description: "The steepest the road may climb, rise over run (0.12 is 12 %). Default 0.12." },
+    hills: { type: "number", description: "How tall the surrounding hills are, metres (12)." },
+    hill_wavelength: { type: "number", description: "Metres between hill crests, roughly (220)." },
+    flat: { type: "number", description: "Metres from the centreline that stay level with the road (9)." },
+    blend: { type: "number", description: "Metres over which the road's ground blends into the hills (80)." },
+    margin: { type: "number", description: "Metres of land beyond the route's bounds (150)." },
+    cell: { type: "number", description: "Metres between samples (4)." },
+    seed: { type: "number" },
+  },
+  ["name", "control"],
+  (a) => {
+    const root = projectRoot(a);
+    const name = safeName(a.name, "Terrain");
+    const control = a.control as number[][];
+    if (!Array.isArray(control) || control.length < 4 || control.some((p) => !Array.isArray(p) || p.length !== 2)) throw new Error("control needs at least four [x, z] points");
+    const r = heightmapFromTrack({
+      control, open: !!a.open, profile: a.profile ?? [[0, 0]], maxGrade: a.max_grade, hills: a.hills, hillWavelength: a.hill_wavelength,
+      flat: a.flat, blend: a.blend, margin: a.margin, cell: a.cell, seed: a.seed ?? 1,
+    });
+    put(root, `terrain/${name}.png`, r.png);
+    const n = (v: number) => Math.round(v * 10) / 10;
+    return `terrain/${name}.png: ${r.width} x ${r.rows} samples, ${r.cell} m apart\n` +
+      `nova.terrain{ heightmap = "terrain/${name}.png", x = ${r.x}, z = ${r.z}, size = ${r.size}, height = ${r.height} }\n` +
+      `road: ${n(r.report.roadStart)} m at the start, ${n(r.report.roadEnd)} m at the end, from ${n(r.report.roadMin)} to ${n(r.report.roadMax)} m, steepest grade ${Math.round(r.report.maxGrade * 1000) / 10} %` +
+      (r.shift > 0 ? `\nthe whole land was raised ${n(r.shift)} m so that nothing is below 0` : "") +
+      `\nroad elevation every 100 m: ${r.report.profile.map((p: number[]) => p[1]).join(", ")}`;
   },
 );
 

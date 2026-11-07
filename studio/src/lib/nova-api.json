@@ -226,8 +226,8 @@
  {
   "name": "nova.terrain",
   "kind": "function",
-  "signature": "nova.terrain{ waves = { { wavelength = 400, direction = 30, height = 6, phase = 0 }, ... } } | nova.terrain()",
-  "doc": "Hills. The ground's height is the sum of up to eight sine waves over the ground: `wavelength` is metres from crest to crest, `direction` degrees on the ground (0 varies along +x, 90 along +z), `height` the metres from the middle to a crest, `phase` a shift in radians. Every model drawn near the ground (an instance whose origin is below 30 m) is lifted by the height under each of its vertices, shadows included, so a game draws on flat ground as before and the hills follow: roads, cars and trees alike. Mind the steepness: the slope of a wave is up to 2 pi x height / wavelength. `nova.terrain()` makes the ground flat again.",
+  "signature": "nova.terrain{ waves = { { wavelength = 400, direction = 30, height = 6, phase = 0 }, ... }, heightmap = \"terrain/hills.png\", x = -500, z = -500, size = 1000, height = 40 } | nova.terrain()",
+  "doc": "Hills. The ground's height is the sum of up to eight sine waves over the ground: `wavelength` is metres from crest to crest, `direction` degrees on the ground (0 varies along +x, 90 along +z), `height` the metres from the middle to a crest, `phase` a shift in radians. Every model drawn near the ground (an instance whose origin is below 30 m) is lifted by the height under each of its vertices, shadows included, so a game draws on flat ground as before and the hills follow: roads, cars and trees alike. Mind the steepness: the slope of a wave is up to 2 pi x height / wavelength. `heightmap` is designed ground from a project PNG (16-bit grey is full precision; 8-bit RGB packs red as the high byte and green as the low one): `x`, `z` are the ground position of its top-left pixel, `size` the metres across (or `cell`, metres per pixel), `height` the metres white stands for; the ground between pixels is blended bilinearly, and outside the picture it keeps the edge's height. Waves given too are added on top. `nova.terrain()` makes the ground flat again.",
   "group": "Drawing"
  },
  {
