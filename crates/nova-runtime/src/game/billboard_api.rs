@@ -112,18 +112,36 @@ pub(super) fn install(lua: &Lua, shared: &Rc<RefCell<Shared>>, nova: &Table) -> 
                 if tint[3] <= 0.0 {
                     return Ok(());
                 }
-                // the camera's own axes: the quad lies across the view, whichever way the camera looks
-                let cam = sh.camera;
-                let forward = (cam.target - cam.eye).normalize_or_zero();
-                if forward == Vec3::ZERO {
-                    return Ok(());
-                }
-                let mut right = forward.cross(Vec3::Y);
-                if right.length_squared() < 1e-8 {
-                    right = Vec3::X;
-                }
-                let right = right.normalize();
-                let up = right.cross(forward);
+                // the camera's own axes: the quad lies across the view, whichever way the camera looks. With `face` = { x, y, z } it
+                // lies flat instead, facing that way (a sticker on a crate, a mark on the floor): the picture's top points up, or
+                // away from the camera's side (-z) when it faces up or down
+                let face = match &opts {
+                    Some(o) => match o.get::<Value>("face")? {
+                        Value::Table(t) => Some(Vec3::new(t.get::<f32>(1)?, t.get::<f32>(2)?, t.get::<f32>(3)?)),
+                        _ => None,
+                    },
+                    None => None,
+                };
+                let (right, up, forward) = if let Some(n) = face.map(|n| n.normalize_or_zero()).filter(|n| *n != Vec3::ZERO) {
+                    let up = if n.y.abs() > 0.95 {
+                        Vec3::new(0.0, 0.0, -n.y.signum())
+                    } else {
+                        (Vec3::Y - n * n.y).normalize()
+                    };
+                    (up.cross(n).normalize(), up, -n)
+                } else {
+                    let cam = sh.camera;
+                    let forward = (cam.target - cam.eye).normalize_or_zero();
+                    if forward == Vec3::ZERO {
+                        return Ok(());
+                    }
+                    let mut right = forward.cross(Vec3::Y);
+                    if right.length_squared() < 1e-8 {
+                        right = Vec3::X;
+                    }
+                    let right = right.normalize();
+                    (right, right.cross(forward), forward)
+                };
                 let rot = number_option(&opts, "rot")?.unwrap_or(0.0) as f32;
                 let (sin, cos) = rot.sin_cos();
                 let (right, up) = (right * cos + up * sin, up * cos - right * sin);

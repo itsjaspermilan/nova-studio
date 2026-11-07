@@ -728,6 +728,8 @@ pub struct Gfx {
     lost: std::sync::Arc<std::sync::atomic::AtomicBool>,
     voxel_atlas: Option<wgpu::BindGroup>,
     sampler_voxel: wgpu::Sampler,
+    /// Trilinear, for the pictures of blended meshes (billboards: smoke, sparks, stickers), which are drawn at every size.
+    sampler_smooth: wgpu::Sampler,
     /// Buffers of meshes that were freed, kept for the next mesh that fits (a rebuilt chunk piece is about the same size).
     spare_vertices: Vec<wgpu::Buffer>,
     spare_indices: Vec<wgpu::Buffer>,
@@ -990,6 +992,13 @@ impl Gfx {
             label: Some("voxel"),
             mag_filter: wgpu::FilterMode::Nearest,
             min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
+            ..Default::default()
+        });
+        let sampler_smooth = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("smooth"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
             mipmap_filter: wgpu::MipmapFilterMode::Linear,
             ..Default::default()
         });
@@ -1731,6 +1740,7 @@ impl Gfx {
             lost,
             voxel_atlas: None,
             sampler_voxel,
+            sampler_smooth,
             spare_vertices: Vec::new(),
             spare_indices: Vec::new(),
             mesh_buffers_created: 0,
@@ -1937,24 +1947,45 @@ impl Gfx {
                 contents: bytemuck::cast_slice(&mesh.indices),
                 usage: wgpu::BufferUsages::INDEX,
             });
+        let translucent = mesh.vertices.iter().any(|v| v.color[3] < 255);
         let texture = match &mesh.texture {
             Some(image) => {
                 use std::hash::{Hash, Hasher};
                 let mut hasher = std::collections::hash_map::DefaultHasher::new();
-                (image.width, image.height, &image.rgba).hash(&mut hasher);
+                (image.width, image.height, &image.rgba, translucent).hash(&mut hasher);
                 let key = hasher.finish();
                 if let Some(group) = self.texture_cache.get(&key) {
                     self.textures_shared += 1;
                     group.clone()
                 } else {
-                    let group = texture_group(
-                        &self.device,
-                        &self.queue,
-                        &self.texture_layout,
-                        &self.sampler_nearest,
-                        "mesh texture",
-                        image,
-                    );
+                    // a blended mesh's picture (a billboard) is filtered smoothly, with mipmaps when its sides are powers of two; a solid
+                    // model's (usually a palette of flat colours) keeps sharp texels
+                    let pow2 = image.width.is_power_of_two() && image.height.is_power_of_two();
+                    let group = if translucent {
+                        let levels = if pow2 {
+                            32 - image.width.min(image.height).leading_zeros()
+                        } else {
+                            1
+                        };
+                        texture_group_mips(
+                            &self.device,
+                            &self.queue,
+                            &self.texture_layout,
+                            &self.sampler_smooth,
+                            "billboard texture",
+                            image,
+                            levels,
+                        )
+                    } else {
+                        texture_group(
+                            &self.device,
+                            &self.queue,
+                            &self.texture_layout,
+                            &self.sampler_nearest,
+                            "mesh texture",
+                            image,
+                        )
+                    };
                     self.texture_cache.insert(key, group.clone());
                     group
                 }
@@ -1966,7 +1997,7 @@ impl Gfx {
             indices,
             index_count: mesh.indices.len() as u32,
             texture,
-            translucent: mesh.vertices.iter().any(|v| v.color[3] < 255),
+            translucent,
             skin: None,
             bounds: bounding_sphere(&mesh.vertices),
         });

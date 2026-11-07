@@ -17,7 +17,12 @@ Kitchen.RADIUS = RADIUS
 -- Free Brew's rules and the campaign's (which is the first of each choice)
 Kitchen.DEFAULT_RULES = { time = 0, pace = 2, burn = true, value = 1, hazards = true, slippery = false, recipes = "level" }
 
-local STATION = { T = "counter", B = "bottles", M = "mortar", C = "cauldron", S = "hatch", X = "bin" }
+local STATION = { T = "counter", B = "bottles", M = "mortar", C = "cauldron", S = "hatch", X = "bin", W = "wash" }
+-- Bottles go round: the open crate starts with four; a served potion's bottle (and one that breaks or is lost) comes back empty to the washing window
+-- a few seconds later, where holding B washes it by magic; a clean bottle is taken from there, or put back in the crate.
+local BOTTLES = 4
+local RETURN_AFTER = 5
+local WASH_TIME = 1.3
 local BELT = { [">"] = { 1, 0 }, ["<"] = { -1, 0 }, ["^"] = { 0, -1 }, w = { 0, 1 } }
 
 -- a small random generator of our own, so that a level with a seed plays out the same way (the tests rely on it)
@@ -133,6 +138,8 @@ function Kitchen.new(level, rules, seed)
         end
         if st.kind == "cauldron" then st.items, st.state, st.timer = {}, "idle", 0 end
         if st.kind == "mortar" then st.progress = 0 end
+        if st.kind == "bottles" then st.count = BOTTLES end
+        if st.kind == "wash" then st.dirty, st.clean, st.progress = 0, 0, 0 end
         k.station[z][x] = st
         k.stations[#k.stations + 1] = st
         floor = nil
@@ -157,6 +164,7 @@ function Kitchen.new(level, rules, seed)
   k.temper = temper
   k.burn_after = BURN_AFTER * temper.burn
   k.drops, k.shots = {}, {}
+  k.returns = {} -- (when each bottle on its way back reaches the window)
   k.last_recipe = nil
   -- which brews could still be added to (so that the cauldron does not start too early)
   k.recipe_keys = {}
@@ -348,7 +356,13 @@ function Kitchen:prompt()
   if kind == "crate" then
     return { a = (not held) and ("Take " .. data.ingredients[st.ing].name) or nil }
   elseif kind == "bottles" then
-    return { a = (not held) and "Take a bottle" or nil }
+    if not held and st.count > 0 then return { a = "Take a bottle" } end
+    if held and held.k == "bottle" and st.count < BOTTLES then return { a = "Put the bottle back" } end
+    return {}
+  elseif kind == "wash" then
+    if not held and st.clean > 0 then return { a = "Take a clean bottle" } end
+    if st.dirty > 0 then return { b = "Hold to wash" } end
+    return {}
   elseif kind == "counter" then
     if held and not st.item then return { a = "Put down" } end
     if not held and st.item then return { a = "Pick up " .. name(st.item) } end
@@ -408,7 +422,25 @@ function Kitchen:grab()
   if kind == "crate" then
     if not held then c.held = ing(st.ing); self:emit({ type = "grab", st = st }) else self:emit({ type = "nope" }) end
   elseif kind == "bottles" then
-    if not held then c.held = { k = "bottle" }; self:emit({ type = "grab", st = st }) else self:emit({ type = "nope" }) end
+    if not held and st.count > 0 then
+      st.count = st.count - 1
+      c.held = { k = "bottle" }
+      self:emit({ type = "grab", st = st })
+    elseif held and held.k == "bottle" and st.count < BOTTLES then
+      st.count = st.count + 1
+      c.held = nil
+      self:emit({ type = "drop", st = st })
+    else
+      self:emit({ type = "nope" })
+    end
+  elseif kind == "wash" then
+    if not held and st.clean > 0 then
+      st.clean = st.clean - 1
+      c.held = { k = "bottle" }
+      self:emit({ type = "grab", st = st })
+    else
+      self:emit({ type = "nope" })
+    end
   elseif kind == "counter" then
     if held and not st.item then st.item, c.held = held, nil; self:emit({ type = "drop", st = st })
     elseif not held and st.item then c.held, st.item = st.item, nil; self:emit({ type = "grab", st = st })
@@ -446,11 +478,19 @@ function Kitchen:grab()
       self:emit({ type = "nope" })
     end
   elseif kind == "bin" then
-    if held then
+    if held and held.k == "bottle" then
+      self:emit({ type = "nope" })
+    elseif held then
       self:emit({ type = "bin", item = held })
-      c.held = nil
+      -- (a potion is poured away: the bottle stays in hand)
+      c.held = (held.k == "potion") and { k = "bottle" } or nil
     end
   end
+end
+
+-- a bottle on its way back to the washing window (after a serve, or one broken or lost)
+function Kitchen:bottle_returns()
+  self.returns[#self.returns + 1] = self.t + RETURN_AFTER
 end
 
 function Kitchen:serve(potion)
@@ -477,6 +517,7 @@ function Kitchen:serve(potion)
   self.stats.served = self.stats.served + 1
   self.stats.tips = self.stats.tips + tip
   c.held = nil
+  self:bottle_returns()
   self:emit({ type = "serve", recipe = o.recipe, points = base + tip, tip = tip, streak = self.streak, bonus = bonus })
   return true
 end
@@ -488,7 +529,12 @@ function Kitchen:put_item(st, item)
   if kind == "mortar" and not st.item and is_ing(item) and not item.ground then st.item, st.progress = item, 0; self:emit({ type = "drop", st = st }); return true end
   if kind == "cauldron" and is_ing(item) and st.state == "idle" and #st.items < 3 then self:add_to_cauldron(st, item); return true end
   if kind == "hatch" and item.k == "potion" then return self:serve(item) end
-  if kind == "bin" then self:emit({ type = "bin", item = item }); return true end
+  if kind == "bin" then
+    if item.k ~= "ing" then self:bottle_returns() end
+    self:emit({ type = "bin", item = item })
+    return true
+  end
+  if kind == "bottles" and item.k == "bottle" and st.count < BOTTLES then st.count = st.count + 1; self:emit({ type = "drop", st = st }); return true end
   return false
 end
 
@@ -506,12 +552,17 @@ end
 
 function Kitchen:land(x, z, item)
   local floor = self:floor_at(x, z)
-  if floor == "lava" then self:emit({ type = "lost", x = x, z = z }); return end
+  if floor == "lava" then
+    if item.k ~= "ing" then self:bottle_returns() end
+    self:emit({ type = "lost", x = x, z = z })
+    return
+  end
   if item.k == "ing" then
     if #self.drops >= 8 then table.remove(self.drops, 1) end
     self.drops[#self.drops + 1] = { x = x, z = z, item = item }
     self:emit({ type = "drop" })
   else
+    self:bottle_returns()
     self:emit({ type = "shatter", x = x, z = z })
   end
 end
@@ -548,6 +599,18 @@ function Kitchen:work(dt, down)
     st.timer = st.timer + dt * 1.2 -- (stirring brews faster)
     st.stirred = self.t
     self.stirring = st
+  end
+  if st and st.kind == "wash" and st.dirty > 0 then
+    c.work = 3
+    st.progress = st.progress + dt / WASH_TIME
+    self.washing = st
+    self.wash_t = self.t
+    if st.progress >= 1 then
+      st.progress = 0
+      st.dirty, st.clean = st.dirty - 1, st.clean + 1
+      self.stats.washed = (self.stats.washed or 0) + 1
+      self:emit({ type = "washed", st = st })
+    end
   end
   if st and st.kind == "mortar" and st.item and not st.item.ground then
     c.work = 1
@@ -605,7 +668,10 @@ function Kitchen:update(dt, input)
     if burning and c.dash_t <= 0 then
       c.dead = 1.4
       self:act("die", 1.4)
-      if c.held then c.held = nil end
+      if c.held then
+        if c.held.k ~= "ing" then self:bottle_returns() end
+        c.held = nil
+      end
       self.stats.fell = self.stats.fell + 1
       self:emit({ type = "lava" })
     end
@@ -624,6 +690,19 @@ function Kitchen:update(dt, input)
     self:work(dt, input.work)
   end
   self:update_shots(dt)
+  -- bottles coming back to the window (a kitchen without one gets them straight back in the crate)
+  for i = #self.returns, 1, -1 do
+    if self.t >= self.returns[i] then
+      table.remove(self.returns, i)
+      local wash, crate
+      for _, st in ipairs(self.stations) do
+        if st.kind == "wash" and not wash then wash = st end
+        if st.kind == "bottles" and not crate then crate = st end
+      end
+      if wash then wash.dirty = wash.dirty + 1; self:emit({ type = "bottle_back", st = wash })
+      elseif crate then crate.count = math.min(BOTTLES, crate.count + 1) end
+    end
+  end
   -- the stations
   for _, st in ipairs(self.stations) do
     if st.kind == "cauldron" then
@@ -683,5 +762,7 @@ function Kitchen:stars()
   for i, s in ipairs(self.level.stars) do if self.score >= s then n = i end end
   return n
 end
+
+Kitchen.BOTTLES = BOTTLES
 
 return Kitchen

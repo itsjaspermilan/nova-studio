@@ -95,8 +95,7 @@ function Bot:make_plan(order)
     plan[#plan + 1] = { st = cauldron, act = "grab" }
   end
   plan[#plan + 1] = { st = cauldron, act = "wait" }
-  local bottles = self:find("bottles")
-  plan[#plan + 1] = { st = bottles, act = "grab" }
+  plan[#plan + 1] = { act = "bottle" } -- (from the crate, or washed at the window: decided when it comes to it)
   plan[#plan + 1] = { st = cauldron, act = "grab" }
   local hatch = self:find("hatch")
   plan[#plan + 1] = { st = hatch, act = "grab" }
@@ -118,9 +117,14 @@ function Bot:update(dt)
       if not oldest or o.t < oldest.t then oldest = o end
     end
     if c.held then
-      -- (something left in hand: put it in the bin)
-      local bin = self:find("bin")
-      if bin then self.plan = { { st = bin, act = "grab" } } end
+      -- (something left in hand: a bottle goes back in its crate, anything else in the bin)
+      if c.held.k == "bottle" then
+        local crate = self:find("bottles", function(st) return st.count < 4 end)
+        if crate then self.plan = { { st = crate, act = "grab" } } end
+      else
+        local bin = self:find("bin")
+        if bin then self.plan = { { st = bin, act = "grab" } } end
+      end
     elseif oldest then
       self.plan = self:make_plan(oldest) or {}
       self.order = oldest
@@ -128,6 +132,16 @@ function Bot:update(dt)
     return out
   end
   local step = self.plan[1]
+  -- a bottle: the crate while it has some, else a clean one at the window, else wash one there, else wait for one to come back
+  if step.act == "bottle" then
+    local crate = self:find("bottles", function(b) return b.count > 0 end)
+    local clean = self:find("wash", function(w) return w.clean > 0 end)
+    local dirty = self:find("wash", function(w) return w.dirty > 0 end)
+    if crate then step.st, step.act = crate, "grab"
+    elseif clean then step.st, step.act = clean, "grab"
+    elseif dirty then table.insert(self.plan, 1, { st = dirty, act = "work" }); return out
+    else return out end
+  end
   local st = step.st
   if Bot.debug and math.floor(k.t * 2) ~= self.dbg then
     self.dbg = math.floor(k.t * 2)
@@ -139,7 +153,7 @@ function Bot:update(dt)
     return out
   end
   if step.act == "work" then
-    if st.item and st.item.ground then table.remove(self.plan, 1); return out end
+    if (st.kind == "mortar" and st.item and st.item.ground) or (st.kind == "wash" and st.clean > 0) then table.remove(self.plan, 1); return out end
     -- stand and face the mortar, holding B
     local goals = self:stands(st)
     local cx, cz = math.floor(c.x) + 1, math.floor(c.z) + 1

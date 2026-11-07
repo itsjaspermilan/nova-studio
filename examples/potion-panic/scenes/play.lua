@@ -68,6 +68,26 @@ function Play:pop(text, st_or_pos, color)
   self.pops[#self.pops + 1] = { text = text, x = x, y = 1.7, z = z, age = 0, color = color or ui.color.cream }
 end
 
+-- The apprentice talks: a line in a speech bubble over their head, and a burble of a voice (a few quick high bloops), now and then (never two
+-- lines within a couple of seconds, so it stays a treat rather than chatter)
+local SAY = {
+  serve = { "Order up!", "Here you go!", "One potion!", "Fresh brew!" },
+  streak = { "On a roll!", "Keep 'em coming!", "Brew-tiful!" },
+  burnt = { "Oh no!", "Pew, smoke!", "Too long!" },
+  lava = { "Yowch!", "Hot hot hot!" },
+  expire = { "Sorry!", "Too slow..." },
+  reject = { "Not that one..." },
+  ready = { "It's ready!", "Done!" },
+  washed = { "Sparkly!", "Squeaky clean!" },
+}
+function Play:say(kind, force)
+  if not force and self.t - (self.said_at or -9) < 2.6 then return end
+  local list = SAY[kind]
+  self.said_at = self.t
+  self.speech = { text = list[math.random(#list)], t = 0 }
+  self.voice = { left = 5 + math.random(3), t = 0 }
+end
+
 function Play:handle_events(events)
   local k = self.k
   self.fx:events(events)
@@ -75,29 +95,32 @@ function Play:handle_events(events)
     local t = e.type
     if t == "grab" then
       audio.sfx("grab")
-      if e.st and e.st.kind == "crate" then self:pop(data.ingredients[e.st.ing].name, e.st, ui.color.cream) end
+      if e.st and e.st.kind == "crate" then e.st.bump = k.t end
     elseif t == "drop" then audio.sfx("drop")
     elseif t == "nope" then audio.sfx("nope")
     elseif t == "pot_add" then audio.sfx("pot_add")
     elseif t == "brew_start" then audio.sfx("brew_start"); audio.sfx("pour")
-    elseif t == "brew_done" then audio.sfx("ding"); self:pop("Ready!", e.st, ui.color.gold)
-    elseif t == "burnt" then audio.sfx("fail"); self:pop("Burnt!", e.st, ui.color.wine)
+    elseif t == "brew_done" then audio.sfx("ding"); self:say("ready")
+    elseif t == "burnt" then audio.sfx("fail"); self:pop("Burnt!", e.st, ui.color.wine); self:say("burnt", true)
     elseif t == "warn" then audio.sfx("beep", { pitch = 0.7 }); self:pop("Hurry!", e.st, { 255, 150, 110 })
     elseif t == "fill" then audio.sfx("bottle")
+    elseif t == "washed" then audio.sfx("ding", { pitch = 1.6, volume = 0.7 }); self:say("washed")
+    elseif t == "bottle_back" then audio.sfx("bottle", { pitch = 0.8, volume = 0.6 })
     elseif t == "serve" then
       audio.sfx("coins"); audio.sfx("ding", { pitch = 1.2 })
-      for _, st in ipairs(k.stations) do if st.kind == "hatch" then self:pop("+" .. e.points, st, ui.color.gold) end end
+      for _, st in ipairs(k.stations) do if st.kind == "hatch" then self:pop("+" .. e.points, st, ui.color.gold); st.rung = k.t end end
       self.streak_pulse = 1
       if e.streak >= 2 then self:pop("Streak x" .. e.streak, { x = k.chef.x, z = k.chef.z }, { 255, 190, 80 }) end
+      self:say(e.streak >= 3 and "streak" or "serve", true)
       self.zoom_kick = 0.05
-    elseif t == "reject" then audio.sfx("nope")
+    elseif t == "reject" then audio.sfx("nope"); self:say("reject")
     elseif t == "bin" then audio.sfx("drop", { pitch = 0.7 }); if e.item and e.item.k == "potion" then audio.sfx("shatter") end
-    elseif t == "expire" then audio.sfx("fail"); self:pop("-10", { x = 0.5, z = 0.5 }, ui.color.wine)
+    elseif t == "expire" then audio.sfx("fail"); self:pop("-10", { x = 0.5, z = 0.5 }, ui.color.wine); self:say("expire")
     elseif t == "order" then audio.sfx("order")
     elseif t == "lava" then
       audio.sfx("splash"); if state.vibration then nova.input.rumble(0.7, 0.25) end
       self.flash, self.shake = 1, 0.5
-      self:pop("Ouch!", { x = k.chef.x, z = k.chef.z }, { 255, 140, 100 })
+      self:say("lava", true)
     elseif t == "dash" then audio.sfx("dash")
     elseif t == "throw" then audio.sfx("whoosh", { pitch = 1.3 })
     elseif t == "shatter" then audio.sfx("shatter"); self:pop("Crash!", e, ui.color.wine)
@@ -109,7 +132,11 @@ function Play:handle_events(events)
   -- grinding and stirring sounds while B is held
   if k.chef.work >= 1 then
     self.work_t = self.work_t - 1 / 60
-    if self.work_t <= 0 then audio.sfx(k.chef.work == 2 and "bubble" or "grind"); self.work_t = k.chef.work == 2 and 0.3 or 0.34 end
+    if self.work_t <= 0 then
+      local w = k.chef.work
+      if w == 3 then audio.sfx("bubble", { pitch = 1.5 + math.random() * 0.3, volume = 0.6 }) else audio.sfx(w == 2 and "bubble" or "grind") end
+      self.work_t = (w == 1) and 0.34 or 0.3
+    end
   else
     self.work_t = 0
   end
@@ -196,6 +223,16 @@ function Play:update(dt)
     nova.log(string.format("potion: perf fps=%.1f gpu=%.2f p95=%.1f max=%.1f draws=%d triangles=%d", m.fps, m.gpu_ms, m.frame_p95_ms, m.frame_max_ms, m.draws, m.triangles))
   end
   self.fx:update(dt)
+  if self.speech then self.speech.t = self.speech.t + dt; if self.speech.t > 1.7 then self.speech = nil end end
+  if self.voice then
+    self.voice.t = self.voice.t - dt
+    if self.voice.t <= 0 then
+      audio.sfx("bubble", { pitch = 1.7 + math.random() * 0.7, volume = 0.42 })
+      self.voice.t = 0.065 + math.random() * 0.03
+      self.voice.left = self.voice.left - 1
+      if self.voice.left <= 0 then self.voice = nil end
+    end
+  end
   self.shown = self.shown + (self.k.score - self.shown) * math.min(1, dt * 7)
   self.streak_pulse = math.max(0, self.streak_pulse - dt * 3)
   self.zoom_kick = math.max(0, self.zoom_kick - dt * 0.25)
@@ -290,6 +327,7 @@ function Play:draw()
   View.scenery(self.k, self.biome, self.t)
   View.draw(self.k, self.biome, self.t)
   View.draw_customers(self.k, self.t)
+  View.passersby(self.k, self.biome, self.t)
   self.fx:lights(self.t)
 end
 
@@ -396,17 +434,23 @@ function Play:draw_hud(w)
     ui.right(ui.time(k.time_left), w - 26, 480, ui.LARGE + 2, k.time_left <= 10 and { 255, 130, 110 } or ui.color.white, { shadow = true })
     ui.bar(w - pw - 2, 509, pw - 20, k.time_left / (self.k.rules.time > 0 and self.k.rules.time or self.level.time), k.time_left <= 10 and "red" or "green")
   end
-  -- what the button at hand would do, over the station faced
-  if self.phase == "play" then
-    local st = k.chef.target_st
-    local pr = k:prompt()
-    if st and (pr.a or pr.b) then
-      local sx, sy = View.project(st.cx, 0.75, st.cz + 0.55, w, 540)
-      local text = pr.a or pr.b
-      ui.text(sx - ui.width(text, 18) / 2, sy, text, 18, ui.color.white, { shadow = true })
-    end
-  end
   self:draw_bubbles(w)
+  -- what the apprentice says, in a bubble over their head that pops up and bobs
+  if self.speech and k.chef.dead <= 0 then
+    local s = self.speech
+    local sx, sy = View.project(k.chef.x, 1.75, k.chef.z, w, 540)
+    local pop = math.min(1, s.t / 0.12)
+    local tw = ui.width(s.text, ui.SMALL + 1)
+    local bw, bh = tw + 28, 38
+    local bx, by = sx - bw / 2, sy - bh - 10 - (1 - pop) * 10 + math.sin(s.t * 6) * 1.5
+    local old = ui.alpha
+    ui.alpha = old * (s.t > 1.45 and (1.7 - s.t) / 0.25 or 1)
+    ui.panel(bx, by, bw, bh, "light")
+    nova.ui.rect(sx - 5 + ui.ox, by + bh - 3 + ui.oy, 10, 8, ui.tint({ 252, 246, 232 }))
+    nova.ui.rect(sx - 2 + ui.ox, by + bh + 5 + ui.oy, 4, 4, ui.tint({ 252, 246, 232 }))
+    ui.in_box(s.text, bx, by, bw, bh, ui.SMALL + 1, ui.color.ink)
+    ui.alpha = old
+  end
   -- floating text
   for _, p in ipairs(self.pops) do
     local sx, sy = View.project(p.x, p.y + p.age * 0.7, p.z, w, 540)

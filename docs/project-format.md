@@ -659,7 +659,7 @@ depth-tested but not writing depth, unlit, with fog and the hills (`nova.terrain
 tint best: `color` and `color_end` tint and fade it, `size` is its width in metres and `size_end` grows it. Sheets: `frame = 2` is a fixed
 frame (from 0), `frame = "random"` picks one per particle, `animate = true` plays all the frames over each particle's life. Keep `max`
 low (a few dozen on a handheld: every particle is a blended quad, so overdraw is the cost, not the count). The same picture can be drawn
-by hand with `nova.billboard(sprite, x, y, z, size [, { frame, w, h, rot, color }])` from `draw`.
+by hand with `nova.billboard(sprite, x, y, z, size [, { frame, w, h, rot, color, face }])` from `draw`. `face = { x, y, z }` lays the picture flat, facing that way, instead of turning it to the camera: a sticker on a crate (`{ 0, 0, 1 }`), a mark on the floor (`{ 0, 1, 0 }`, its top towards -z). Pictures of billboards are filtered smoothly, with mipmaps when their sides are powers of two.
 
 **Ground.** For 3D particles `ground = true` stops them at the ground: the height is `ground_y` (default 0), not `nova.terrain_height`, because
 the hills lift everything near the ground by themselves (see Hills). `ground = function(x, z) return height end` is any other floor

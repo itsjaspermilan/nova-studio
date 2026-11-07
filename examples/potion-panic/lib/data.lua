@@ -50,7 +50,7 @@ data.biomes = {
 -- Maps, top row first. Each cell is one step wide. Kitchens are about 15 to 17 cells across inside, as roomy as a co-op kitchen game's; stars are 0.6, 0.95 and 1.3
 -- times what the computer apprentice (lib/bot.lua, F9 on the title screen) scores, so three stars means beating it.
 --   # wall   (space) nothing   . floor   @ where the apprentice starts   T counter   a b c d  ingredient crates (see `crates`)   B bottles
---   M mortar   C cauldron   S serving hatch   X bin
+--   M mortar   C cauldron   S serving hatch   X bin   W the washing window (empty bottles come back here)
 --   i ice (slippery)   m mud (slow)   L lava (burns)   v lava that comes and goes   > < ^ w  a belt that carries you east, west, north or south
 data.levels = {
   -- the Meadow: a small square room with a counter in the middle; two rooms joined by a doorway; a big island with a walkway round it
@@ -63,10 +63,10 @@ data.levels = {
       "#..@...TTTTT....#",
       "#...............#",
       "#...............#",
-      "#TTBTTTTTTTTTTXT#",
+      "#TTBWTTTTTTTTTXT#",
       "#################",
     } },
-  { id = "m2", biome = 1, name = "Market Day", time = 180, interval = 22, patience = 75, stars = { 165, 260, 360 }, recipes = { "heal", "night" }, crates = { "glowcap", "sunpetal", "moonberry" },
+  { id = "m2", biome = 1, name = "Market Day", time = 180, interval = 22, patience = 75, stars = { 125, 200, 270 }, recipes = { "heal", "night" }, crates = { "glowcap", "sunpetal", "moonberry" },
     map = {
       "###################",
       "#aTTbTTMT#TCTTTTCS#",
@@ -76,7 +76,7 @@ data.levels = {
       "#..TTTT..#..TTTT..#",
       "#.................#",
       "#........#........#",
-      "#cTTBTTTT#TTTTXTTT#",
+      "#cTTBWTTT#TTTTXTTT#",
       "###################",
     } },
   { id = "m3", biome = 1, name = "The Crowded Stall", time = 180, interval = 20, patience = 70, stars = { 160, 250, 340 }, recipes = { "heal", "night", "swift" }, crates = { "glowcap", "sunpetal", "moonberry" },
@@ -88,7 +88,7 @@ data.levels = {
       "B.......@.........S",
       "#..TTTCTTTTTCTTM..#",
       "#.................#",
-      "#TTTTTTTTTTTTTTTTT#",
+      "#TWTTTTTTTTTTTTTTT#",
       "###################",
     } },
   -- the Frost: icy floors. Stations down the two long walls and the rink between; a rink dotted with posts; a block of counters on the ice
@@ -98,7 +98,7 @@ data.levels = {
       "a..iiiiiiiiiiiii..C",
       "#..iiiiiiiiiiiii..T",
       "b..iiiiiiiiiiiii..S",
-      "#..iiii@iiiiiiii..T",
+      "#..iiii@iiiiiiii..W",
       "M..iiiiiiiiiiiii..X",
       "#..iiiiiiiiiiiii..T",
       "B..iiiiiiiiiiiii..T",
@@ -111,7 +111,7 @@ data.levels = {
       "#..iiTiiiiiiTiii..C",
       "b..iiiiiiiiiiiii..T",
       "#..iiiii@iiiiiii..S",
-      "c..iiiiiiiiiiiii..T",
+      "c..iiiiiiiiiiiii..W",
       "#..iiTiiiiiiTiii..B",
       "#..iiiiiiiiiiiii..X",
       "###################",
@@ -124,7 +124,7 @@ data.levels = {
       "#iiiiiiiiiiiiiiiii#",
       "#iiiiiii@iiiiiiiii#",
       "#iiiiiiiiiiiiiiiii#",
-      "#iiiXTCTTTBTTSTCii#",
+      "#iiiXTCTWTBTTSTCii#",
       "#iiiiiiiiiiiiiiiii#",
       "###################",
     } },
@@ -137,7 +137,7 @@ data.levels = {
       "c.....LLL.........B",
       "#.@...LLL.........S",
       "#.....LLL.........X",
-      "#.................T",
+      "#.................W",
       "#TTTTTTTTTTTTTTTTT#",
       "###################",
     } },
@@ -150,10 +150,10 @@ data.levels = {
       "#......vvv........S",
       "c......LLL........X",
       "#.@....vvv........B",
-      "#......LLL........T",
+      "#......LLL........W",
       "###################",
     } },
-  { id = "e3", biome = 3, name = "Stepping Stones", time = 200, interval = 20, patience = 70, stars = { 290, 460, 630 }, recipes = { "fire", "heal", "ember" }, crates = { "embergourd", "sunpetal", "glowcap" },
+  { id = "e3", biome = 3, name = "Stepping Stones", time = 200, interval = 20, patience = 70, stars = { 240, 380, 515 }, recipes = { "fire", "heal", "ember" }, crates = { "embergourd", "sunpetal", "glowcap" },
     map = {
       "###################",
       "#aTTTb#cTTTT#XTTTS#",
@@ -162,7 +162,7 @@ data.levels = {
       "#.....L.....L.....#",
       "#.................#",
       "#.....L.....L.....#",
-      "#TMTTT#TCTTT#TBTTT#",
+      "#TMTTT#TCTTT#TBWTT#",
       "###################",
     } },
   -- the Mire: mud and belts. A roundabout round a mud pit; a ring of conveyor belts round an island of stations; an L-shaped bog with a belt down the long arm
@@ -171,7 +171,7 @@ data.levels = {
       "#########M#########",
       "#.@...............#",
       "a...mmmmmmmmmmm...C",
-      "#...mmmmmmmmmmm...T",
+      "#...mmmmmmmmmmm...W",
       "b...mmmmmmmmmmm...S",
       "#...mmmmmmmmmmm...T",
       "c...mmmmmmmmmmm...X",
@@ -185,7 +185,7 @@ data.levels = {
       "#^...............w#",
       "#^..aTTbTTcTTd...w#",
       "#^.......@.......w#",
-      "#^..BTTCTTCTMTXS.w#",
+      "#^..BWTCTTCTMTXS.w#",
       "#^...............w#",
       "#^<<<<<<<<<<<<<<<<#",
       "###################",
@@ -200,7 +200,7 @@ data.levels = {
       "#.................c",
       "#.@..>>>>>>>>.....d",
       "#.................S",
-      "#TMTTTTCTTTTCTTBTX#",
+      "#TMTTTTCTTTTCTTBWX#",
       "###################",
     } },
 }
@@ -210,12 +210,12 @@ data.tutorial = {
   id = "tut", biome = 1, name = "The Primer", tutorial = true, time = 3600, interval = 9999, patience = 99999, stars = { 0, 0, 0 }, recipes = { "heal" }, crates = { "glowcap", "sunpetal" },
   map = {
       "###############",
-      "#aTTbTTMTTCTTX#",
+      "#aTTbTTMTSCTTX#",
       "#.............#",
       "#.............#",
       "#..@..........#",
       "#.............#",
-      "#TTTTBTTTTSTTT#",
+      "#TTTTBWTTTTTTT#",
       "###############",
   },
 }

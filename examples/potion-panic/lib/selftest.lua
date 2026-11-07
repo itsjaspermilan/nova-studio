@@ -133,7 +133,8 @@ function selftest.run()
     k.orders = { { id = 1, recipe = "heal", t = 60, total = 60, age = 1 } }
     local hatch
     for _, st in ipairs(k.stations) do if st.kind == "hatch" then hatch = st end end
-    c.x, c.z, c.fx, c.fz = hatch.cx, hatch.cz - 2.0, 0, 1
+    local side = (hatch.z < k.rows / 2) and 1 or -1 -- (throw at it from the floor in front of it)
+    c.x, c.z, c.fx, c.fz = hatch.cx, hatch.cz + 2.0 * side, 0, -side
     c.held = { k = "potion", recipe = "heal" }
     k:update(1 / 60, { throw = true })
     run_for(k, nil, 1, 1 / 60)
@@ -166,6 +167,36 @@ function selftest.run()
     check(c2.timer > 1.15, "stirring speeds a brew up (the timer is at " .. string.format("%.2f", c2.timer) .. " after a second)")
   end
   do
+    -- bottles go round: four in the crate, none when they are taken; a served bottle comes back to the window, is washed there and taken again
+    local k = Kitchen.new(data.tutorial, nil, 3)
+    local crate, wash, hatch
+    for _, st in ipairs(k.stations) do
+      if st.kind == "bottles" then crate = st elseif st.kind == "wash" then wash = st elseif st.kind == "hatch" then hatch = st end
+    end
+    local c = k.chef
+    local function face(st) c.x, c.z, c.fx, c.fz = st.cx, st.cz + 1.0, 0, -1; c.vx, c.vz = 0, 0 end
+    for _ = 1, 4 do face(crate); c.held = nil; k:update(1 / 60, { grab = true }) end
+    check(crate.count == 0 and c.held and c.held.k == "bottle", "the crate holds four bottles")
+    c.held = nil
+    face(crate)
+    k:update(1 / 60, { grab = true })
+    check(c.held == nil, "and gives none when it is empty")
+    face(hatch)
+    c.held = { k = "potion", recipe = "heal" }
+    k:update(1 / 60, { grab = true })
+    check(k.stats.served == 1, "a potion is served")
+    run_for(k, nil, 6, 1 / 20)
+    check(wash.dirty == 1, "its bottle comes back to the washing window")
+    face(wash)
+    for _ = 1, 100 do k:update(1 / 60, { work = true }) end
+    check(wash.clean == 1 and wash.dirty == 0, "holding B there washes it")
+    k:update(1 / 60, { grab = true })
+    check(c.held and c.held.k == "bottle" and wash.clean == 0, "and A takes the clean bottle")
+    face(crate)
+    k:update(1 / 60, { grab = true })
+    check(crate.count == 1 and c.held == nil, "which goes back in the crate")
+  end
+  do
     -- the biomes' cauldrons: slow in the frost, fast in the caverns
     local f = Kitchen.new(data.levels[4], nil, 1)
     local e = Kitchen.new(data.levels[7], nil, 1)
@@ -180,18 +211,30 @@ function selftest.run()
     local done, last = false, 1
     local injected = false
     for step = 1, 20 * 120 do
+      -- (after the one order is served the lesson is about bottles: no more orders for the computer to brew)
+      if k.stats.served >= 1 then k.orders = {} end
       local input = bot:update(1 / 20)
       -- from the throw step on, the lesson wants a throw and a dash that the computer does not make
       local events = {}
-      if tut.i >= 12 and not injected then k:emit({ type = "throw" }); injected = true end
-      if tut.i >= 13 then k:emit({ type = "dash" }) end
+      local text = tut:text()
+      if text:find("wash it") and #bot.plan == 0 then
+        local wash, crate
+        for _, st in ipairs(k.stations) do
+          if st.kind == "wash" then wash = st elseif st.kind == "bottles" then crate = st end
+        end
+        if wash.dirty > 0 then bot.plan = { { st = wash, act = "work" }, { st = wash, act = "grab" }, { st = crate, act = "grab" } } end
+      end
+      if text:find("Y to throw") and not injected then k:emit({ type = "throw" }); injected = true end
+      if text:find("dash") then k:emit({ type = "dash" }) end
       k:update(1 / 20, input)
       for _, e in ipairs(k:take_events()) do events[#events + 1] = e end
       for _ = 1, 3 do if tut:update(events) then done = true end end
       if tut.i > last + 0 then last = tut.i end
       if done then break end
     end
-    check(done, "the tutorial can be finished (it got as far as step " .. tut.i .. " of " .. Tutorial.COUNT .. ")")
+    local crate_n, held_k, plan_n = -1, tostring(k.chef.held and k.chef.held.k), #bot.plan
+    for _, st in ipairs(k.stations) do if st.kind == "bottles" then crate_n = st.count end end
+    check(done, "the tutorial can be finished (it got as far as step " .. tut.i .. " of " .. Tutorial.COUNT .. "; crate " .. crate_n .. ", holding " .. held_k .. ", plan " .. plan_n .. ")")
   end
   do
     -- lava burns

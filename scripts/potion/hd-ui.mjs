@@ -258,4 +258,77 @@ if (ICONS) {
     writePng(`${OUT}/ing_${name}.png`, out);
   });
 }
+
+// ---- pictures for the 3D world (sprites/fx, drawn by nova.billboard): stickers for the crates and the bin, the arrow over the station at hand,
+// the rune circle of the washing window, and eyes for the cauldrons ---------------------------------------------------------------------------
+const FX = `${OUT}/../fx`;
+{
+  // a round label: white with a coloured rim, the picture in the middle
+  const label = (name, rim, draw) => {
+    const im = img(128, 128);
+    paint(im, circle(64, 67, 60), [0, 0, 0, 70]);
+    paint(im, circle(64, 64, 60), rim);
+    paint(im, circle(64, 64, 52), [255, 250, 238]);
+    draw(im);
+    writePng(`${FX}/${name}.png`, im);
+  };
+  for (const name of ['glowcap', 'embergourd', 'frostroot', 'moonberry', 'sunpetal', 'bogbulb']) {
+    const icon = readPng(`${OUT}/ing_${name}.png`);
+    label(`sticker_${name}`, [120, 82, 56], (im) => {
+      // the icon scaled into the middle 84 x 84 (box filter from 256)
+      const k = icon.w / 84;
+      for (let y = 0; y < 84; y++) for (let x = 0; x < 84; x++) {
+        let a = 0, r = 0, g = 0, b = 0;
+        for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) {
+          const sx = Math.min(icon.w - 1, Math.floor((x + (i + 0.5) / 3) * k)), sy = Math.min(icon.h - 1, Math.floor((y + (j + 0.5) / 3) * k));
+          const o = (sy * icon.w + sx) * 4, al = icon.px[o + 3] / 255;
+          a += al; r += icon.px[o] * al; g += icon.px[o + 1] * al; b += icon.px[o + 2] * al;
+        }
+        if (a <= 0) continue;
+        const o = ((y + 22) * im.w + x + 22) * 4, sa = a / 9, da = im.px[o + 3] / 255, oa = sa + da * (1 - sa);
+        im.px[o] = (r / a * sa + im.px[o] * da * (1 - sa)) / oa; im.px[o + 1] = (g / a * sa + im.px[o + 1] * da * (1 - sa)) / oa; im.px[o + 2] = (b / a * sa + im.px[o + 2] * da * (1 - sa)) / oa; im.px[o + 3] = oa * 255;
+      }
+    });
+  }
+  // the bin: a cross on a grey-rimmed label
+  label('sticker_bin', [80, 76, 90], (im) => {
+    const bar = (a) => { const c = Math.cos(a), sn = Math.sin(a); return (x, y) => { const dx = x - 64, dy = y - 64; return rrect(-30, -8, 30, 8, 8)(dx * c + dy * sn, -dx * sn + dy * c); }; };
+    paint(im, union(bar(Math.PI / 4), bar(-Math.PI / 4)), [200, 70, 70]);
+  });
+  // the arrow that floats over the station at hand: gold, pointing down
+  {
+    const im = img(128, 128);
+    const arrow = inset(polygon([[64, 118], [114, 58], [84, 58], [84, 10], [44, 10], [44, 58], [14, 58]]), 6);
+    paint(im, arrow, [70, 40, 30]);
+    paint(im, inset(arrow, 7), vgrad([255, 232, 120], [246, 160, 40], 10, 118));
+    paint(im, and(inset(arrow, 12), (x, y) => 40 - x + 20), [255, 255, 230, 90]);
+    writePng(`${FX}/arrow_down.png`, im);
+  }
+  // a rune circle: two rings and six marks, white so that a tint colours it
+  {
+    const im = img(256, 256);
+    const ring = (r0, r1) => cut(circle(128, 128, r1), circle(128, 128, r0));
+    paint(im, ring(112, 120), [255, 255, 255, 230]);
+    paint(im, ring(88, 93), [255, 255, 255, 200]);
+    for (let i = 0; i < 6; i++) {
+      const a = i * Math.PI / 3, cx = 128 + Math.cos(a) * 102, cy = 128 + Math.sin(a) * 102;
+      paint(im, circle(cx, cy, 7), [255, 255, 255, 240]);
+    }
+    const tri = (rot) => polygon([0, 1, 2].map((k) => { const a = rot + k * 2 * Math.PI / 3; return [128 + Math.cos(a) * 80, 128 + Math.sin(a) * 80]; }));
+    paint(im, cut(tri(-Math.PI / 2), inset(tri(-Math.PI / 2), 5)), [255, 255, 255, 170]);
+    paint(im, cut(tri(Math.PI / 2), inset(tri(Math.PI / 2), 5)), [255, 255, 255, 170]);
+    writePng(`${FX}/rune.png`, im);
+  }
+  // eyes: the white with a dark rim, and the pupil with a glint
+  {
+    const eye = img(64, 64);
+    paint(eye, circle(32, 32, 30), [40, 28, 40]);
+    paint(eye, circle(32, 32, 25), [255, 255, 255]);
+    writePng(`${FX}/eye.png`, eye);
+    const pupil = img(64, 64);
+    paint(pupil, circle(32, 32, 30), [30, 22, 34]);
+    paint(pupil, circle(22, 22, 9), [255, 255, 255, 230]);
+    writePng(`${FX}/pupil.png`, pupil);
+  }
+}
 console.log('wrote the HD interface pictures to', OUT);

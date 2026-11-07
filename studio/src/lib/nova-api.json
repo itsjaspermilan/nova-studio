@@ -1542,8 +1542,8 @@
  {
   "name": "nova.billboard",
   "kind": "function",
-  "signature": "nova.billboard(sprite, x, y, z, size [, { frame, w, h, rot, color }])",
-  "doc": "Draws a picture from sprites/fx/ (a PNG, or a sheet with a .sprite.json) in the world, always facing the camera: soft dust, spray, snow, smoke. size is its width in metres (w and h for another shape), frame picks a frame of a sheet (from 0), rot turns it (radians) and a colour tints it, its alpha fading it. Drawn unlit and blended after the solid things, depth-tested but not writing depth; fog and the hills apply. nova.particles with spec.sprite does this for each particle.",
+  "signature": "nova.billboard(sprite, x, y, z, size [, { frame, w, h, rot, color, face }])",
+  "doc": "Draws a picture from sprites/fx/ (a PNG, or a sheet with a .sprite.json) in the world, facing the camera (or, with face = { x, y, z }, lying flat facing that way: a sticker, a mark on the floor): soft dust, spray, snow, smoke. size is its width in metres (w and h for another shape), frame picks a frame of a sheet (from 0), rot turns it (radians) and a colour tints it, its alpha fading it. Drawn unlit and blended after the solid things, depth-tested but not writing depth; fog and the hills apply. nova.particles with spec.sprite does this for each particle.",
   "group": "3D"
  },
  {
