@@ -1,5 +1,7 @@
 // Shapes shared between the studio's front end and its backend (see studio/src-tauri/src).
 
+import type { TrackDoc } from "./track-doc";
+
 export interface RecentProject {
   path: string;
   name: string;
@@ -109,6 +111,8 @@ export interface Api {
   /// A project PNG as a data: URL.
   readImage(path: string): Promise<string>;
   writeFile(path: string, text: string): Promise<void>;
+  /// Lays out a track's scene and road from its control points and settings and writes `tracks/<name>.track.json`, `scenes/<name>.scene.json` and `models/road_<name>.glb`. Returns a one-line report.
+  generateTrack(name: string, track: TrackDoc): Promise<string>;
   /// A project WAV as a data: URL.
   readAudio(path: string): Promise<string>;
   /// Saves a sound as Ogg Vorbis at an `.ogg` path; the sound is given as a WAV data: URL and encoded by the backend.

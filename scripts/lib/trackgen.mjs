@@ -66,6 +66,44 @@ export function rng(seed) {
 const r1 = (n) => Math.round(n * 10) / 10;
 const obj = (kind, x, z, ry = 0, extra = {}, y = 0) => ({ kind, x: r1(x), y, z: r1(z), ...(ry || Object.keys(extra).length ? { props: { ...(ry ? { ry: Math.round(ry * 1000) / 1000 } : {}), ...extra } } : {}) });
 
+/// Where an open stage's start line (index L) and finish line (index F) are among `n` road points (a circuit starts at 0 and has no finish).
+export function stageMarks(n, spacing, open, leadIn = 40, runout = 90) {
+  return open ? { L: Math.round(leadIn / spacing), F: n - 1 - Math.round(runout / spacing) } : { L: 0, F: n };
+}
+
+/// The road points the section gates stand on (the last is the finish): the same spacing `layout` uses.
+export function gateIndices(L, F, sections) {
+  return Array.from({ length: sections }, (_, k) => L + Math.round(((F - L) * (k + 1)) / sections));
+}
+
+/// The corners of a route as pace notes, as the rally game reads them from the waypoints (every 10 m): `s` is the metres from the start line,
+/// `left` the way it turns, `grade` 1 (a hairpin) to 6 (a gentle bend). Thresholds are those of `pace_notes` in examples/pine-ridge-rally/lib/race.lua.
+export function paceNotes(line, curv, open = false, leadIn = 40, spacing = 5) {
+  const L = open ? stageMarks(line.length, spacing, true, leadIn).L : 0;
+  const notes = [];
+  let cur = null;
+  const close = () => {
+    if (!cur) return;
+    const peak = cur.peak;
+    const grade = peak > 0.06 ? 1 : peak > 0.042 ? 2 : peak > 0.03 ? 3 : peak > 0.021 ? 4 : peak > 0.014 ? 5 : 6;
+    notes.push({ s: cur.s, left: cur.sign > 0, grade });
+    cur = null;
+  };
+  for (let i = L, w = 0; i < line.length; i += 2, w++) {
+    const k = Math.round(curv[i] * 10000) / 10000; // (the scene stores each waypoint's k to four places)
+    const a = Math.abs(k), s = w * spacing * 2;
+    if (cur && k * cur.sign < 0 && a > 0.0085) close();
+    if (!cur) {
+      if (a > 0.0085) cur = { s, sign: k > 0 ? 1 : -1, peak: a };
+    } else {
+      if (a > cur.peak) cur.peak = a;
+      if (a < 0.0045) close();
+    }
+  }
+  close();
+  return notes;
+}
+
 export function layout(spec) {
   const spacing = 5;
   const open = !!spec.open;
@@ -74,8 +112,7 @@ export function layout(spec) {
   const n = line.length;
   const length = n * spacing;
   // an open stage: the road starts `leadIn` metres before the start line (index L), and runs on `runout` metres past the finish line (index F)
-  const L = open ? Math.round((spec.leadIn ?? 40) / spacing) : 0;
-  const F = open ? n - 1 - Math.round((spec.runout ?? 90) / spacing) : n;
+  const { L, F } = stageMarks(n, spacing, open, spec.leadIn, spec.runout);
   const rand = rng(spec.seed);
   const pick = (v) => (Array.isArray(v) ? v[Math.floor(rand() * v.length)] : v);
   const objects = [];
@@ -223,10 +260,10 @@ export function roadGlb(control, kind, open = false) {
     for (const side of [-6, 6]) quad(at(i, side, TOP), at(j, side, TOP), at(j, side, SKIRT), at(i, side, SKIRT), dark, [side < 0 ? -rows[i].tz : rows[i].tz, 0, side < 0 ? rows[i].tx : -rows[i].tx]);
   }
   const P = new Float32Array(positions), N = new Float32Array(normals), C = new Float32Array(colors), I = new Uint32Array(indices);
-  const parts = [P, N, C, I].map((a) => Buffer.from(a.buffer));
+  const parts = [P, N, C, I].map((a) => new Uint8Array(a.buffer));
   const offsets = []; let atb = 0;
   for (const b of parts) { offsets.push(atb); atb += b.length; }
-  const bin = Buffer.concat(parts);
+  const binLength = atb;
   const xs = [], ys = [], zs = [];
   for (let k = 0; k < positions.length; k += 3) { xs.push(positions[k]); ys.push(positions[k + 1]); zs.push(positions[k + 2]); }
   const json = {
@@ -240,15 +277,21 @@ export function roadGlb(control, kind, open = false) {
       { bufferView: 3, componentType: 5125, count: indices.length, type: "SCALAR" },
     ],
     bufferViews: parts.map((b, k) => ({ buffer: 0, byteOffset: offsets[k], byteLength: b.length, target: k === 3 ? 34963 : 34962 })),
-    buffers: [{ byteLength: bin.length }],
+    buffers: [{ byteLength: binLength }],
   };
-  let js = Buffer.from(JSON.stringify(json));
-  js = Buffer.concat([js, Buffer.alloc((4 - (js.length % 4)) % 4, 0x20)]);
-  const head = Buffer.alloc(12);
-  head.write("glTF", 0); head.writeUInt32LE(2, 4); head.writeUInt32LE(12 + 8 + js.length + 8 + bin.length, 8);
-  const c1 = Buffer.alloc(8); c1.writeUInt32LE(js.length, 0); c1.write("JSON", 4);
-  const c2 = Buffer.alloc(8); c2.writeUInt32LE(bin.length, 0); c2.write("BIN\0", 4);
-  return Buffer.concat([head, c1, js, c2, bin]);
+  // (plain typed arrays, not Node's Buffer: the studio makes the road in the browser too)
+  const text = new TextEncoder().encode(JSON.stringify(json));
+  const js = new Uint8Array(text.length + ((4 - (text.length % 4)) % 4)).fill(0x20);
+  js.set(text);
+  const out = new Uint8Array(12 + 8 + js.length + 8 + binLength);
+  const view = new DataView(out.buffer);
+  out.set([0x67, 0x6c, 0x54, 0x46], 0); view.setUint32(4, 2, true); view.setUint32(8, out.length, true);
+  view.setUint32(12, js.length, true); out.set([0x4a, 0x53, 0x4f, 0x4e], 16); out.set(js, 20);
+  const bin = 20 + js.length;
+  view.setUint32(bin, binLength, true); out.set([0x42, 0x49, 0x4e, 0], bin + 4);
+  let o = bin + 8;
+  for (const b of parts) { out.set(b, o); o += b.length; }
+  return out;
 }
 
 // ---- a text map, to look at the shape ----------------------------------------------------------------------------------

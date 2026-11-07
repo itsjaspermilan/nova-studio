@@ -8,6 +8,7 @@
   import SoundEditor from "./components/SoundEditor.svelte";
   import ModelEditor from "./components/ModelEditor.svelte";
   import SongEditor from "./components/SongEditor.svelte";
+  import TrackEditor from "./components/TrackEditor.svelte";
   import Help from "./components/Help.svelte";
   import BottomPanel from "./components/BottomPanel.svelte";
   import StoreArt from "./components/StoreArt.svelte";
@@ -111,6 +112,8 @@
               <ModelEditor path={studio.tab.path} text={studio.tab.text} onjson={() => toggleJson(studio.tab!.path, true)} />
             {:else if studio.tab.path.endsWith(".song.json") && !jsonView.has(studio.tab.path)}
               <SongEditor path={studio.tab.path} text={studio.tab.text} onjson={() => toggleJson(studio.tab!.path, true)} />
+            {:else if studio.tab.path.endsWith(".track.json") && !jsonView.has(studio.tab.path)}
+              <TrackEditor path={studio.tab.path} text={studio.tab.text} onjson={() => toggleJson(studio.tab!.path, true)} />
             {:else if studio.tab.binary}
               <div class="placeholder dim">{base(studio.tab.path)} · {fileKind(studio.tab.path)} · {studio.tab.size.toLocaleString()} bytes<br />Binary files open in their own editors (coming later).</div>
             {:else if isScene(studio.tab.path) && !jsonView.has(studio.tab.path)}
