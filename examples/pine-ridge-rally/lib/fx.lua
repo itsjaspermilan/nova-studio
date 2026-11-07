@@ -1,4 +1,4 @@
--- Puffs of dust and gravel behind the cars: one 3D particle emitter (nova.particles with a model) shared by every car.
+-- Puffs of dust and gravel behind the cars: one 3D particle emitter (nova.particles with the soft picture sprites/fx/dust.png, four clouds in a row) shared by every car.
 -- All the puffs of a circuit have the same colour, so the emitter's colour is simply set when a puff is made.
 local fx = {}
 
@@ -55,14 +55,15 @@ end
 function fx.puff(x, z, vx, vz, size, color, lift)
   if not emitter then
     emitter = nova.particles(0, 0.25, 0, {
-      model = "dust", rate = 0, max = 70, life = { 0.5, 0.9 }, size_end = 3.2, drag = 3, gravity = 0, spread = 0.5,
-      color = { 200, 190, 160, 210 }, color_end = { 200, 190, 160, 0 },
+      sprite = "fx/dust", frame = "random", rate = 0, max = 70, life = { 0.5, 0.9 }, size_end = 2.2, drag = 3, gravity = -0.6, spread = 0.5,
+      ground = true, spin = { -1.5, 1.5 },
+      color = { 200, 190, 160, 170 }, color_end = { 200, 190, 160, 0 },
     })
   end
   local spec = emitter.spec
   spec.color[1], spec.color[2], spec.color[3] = color[1], color[2], color[3]
   spec.color_end[1], spec.color_end[2], spec.color_end[3] = color[1], color[2], color[3]
-  spec.size = { size * 0.5, size * 0.5 }
+  spec.size = { size * 1.1, size * 1.5 }
   local up = (lift or 1) * (1.2 + math.random() * 0.8)
   spec.dir = { vx, up, vz }
   local speed = math.sqrt(vx * vx + up * up + vz * vz)

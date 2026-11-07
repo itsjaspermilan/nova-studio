@@ -1848,3 +1848,183 @@ end"
             .contains("blur must be from")
     );
 }
+
+// ---- sprite particles (nova.billboard, spec.sprite) ----
+
+fn fx_png() -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut e = png::Encoder::new(&mut out, 8, 4);
+    e.set_color(png::ColorType::Rgba);
+    e.set_depth(png::BitDepth::Eight);
+    e.write_header()
+        .unwrap()
+        .write_image_data(&[255u8; 8 * 4 * 4])
+        .unwrap();
+    out
+}
+
+fn fx_game(script: &str) -> Game {
+    let scene = format!(
+        "local S = nova.scene {{}}\nfunction S:enter() nova.camera(0, 5, 10, 0, 0, 0, 55) {script} end\nreturn S"
+    );
+    game(
+        "nova.start('s')",
+        vec![
+            ("sprites/fx/puff.png", fx_png()),
+            ("sprites/fx/sheet.png", fx_png()),
+            (
+                "sprites/fx/sheet.sprite.json",
+                br#"{"version":1,"image":"sheet.png","frame_width":2,"frame_height":4,"columns":4,"frames":4}"#.to_vec(),
+            ),
+            ("scenes/s.lua", scene.into_bytes()),
+        ],
+    )
+}
+
+#[test]
+fn a_sprite_particle_is_a_blended_quad_facing_the_camera() {
+    let mut g = fx_game(
+        "nova.burst(0, 1, 0, { sprite = 'fx/puff', count = 6, life = 5, speed = 1, size = 0.5 })",
+    );
+    for _ in 0..3 {
+        frame(&mut g);
+    }
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let draws = g.frame_input(0).models;
+    assert_eq!(draws.len(), 6, "one quad per particle");
+    let view = {
+        let d = [0.0f32, -5.0, -10.0];
+        let l = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+        [d[0] / l, d[1] / l, d[2] / l]
+    };
+    for d in draws.iter() {
+        let m = d.instance.matrix;
+        // the quad's normal (third column) points back at the camera: against the way it looks
+        let dot = m[2][0] * view[0] + m[2][1] * view[1] + m[2][2] * view[2];
+        assert!(dot < -0.99, "faces the camera: {dot}");
+        assert!(!d.casts, "a particle casts no shadow");
+    }
+    // all six share one mesh (one picture, one frame): the renderer draws them as one instanced call
+    assert!(draws.iter().all(|d| d.mesh == draws[0].mesh));
+}
+
+#[test]
+fn sprite_particles_fade_pick_and_play_the_frames_of_a_sheet() {
+    // animated over the life: the first frame at the start, the last at the end
+    let mut g = fx_game(
+        "nova.particles(0, 1, 0, { sprite = 'fx/sheet', animate = true, rate = 0, max = 1, life = 1, speed = 0 }):burst(1)",
+    );
+    frame(&mut g);
+    let first = g.frame_input(0).models[0].mesh;
+    for _ in 0..50 {
+        frame(&mut g);
+    }
+    let late = g.frame_input(0).models[0].mesh;
+    assert_ne!(first, late, "the frame moved on over the life");
+    // a random frame each: with 40 particles more than one frame is drawn
+    let mut g = fx_game(
+        "nova.burst(0, 1, 0, { sprite = 'fx/sheet', frame = 'random', count = 40, life = 5, speed = 0 })",
+    );
+    frame(&mut g);
+    let mut meshes: Vec<usize> = g.frame_input(0).models.iter().map(|m| m.mesh).collect();
+    meshes.sort_unstable();
+    meshes.dedup();
+    assert!(meshes.len() > 1 && meshes.len() <= 4, "{meshes:?}");
+    // alpha fades by colour_end
+    let mut g = fx_game(
+        "nova.burst(0, 1, 0, { sprite = 'fx/puff', count = 1, life = 1, speed = 0, color = {255,255,255,200}, color_end = {255,255,255,0} })",
+    );
+    frame(&mut g);
+    let early = g.frame_input(0).models[0].instance.tint[3];
+    for _ in 0..40 {
+        frame(&mut g);
+    }
+    let late = g.frame_input(0).models[0].instance.tint[3];
+    assert!(early > 0.7 && late < early * 0.5, "{early} -> {late}");
+}
+
+#[test]
+fn particles_stop_bounce_or_die_at_the_ground() {
+    let low = |script: &str, frames| -> Vec<f32> {
+        let mut g = fx_game(script);
+        for _ in 0..frames {
+            frame(&mut g);
+        }
+        assert!(g.error.is_none(), "{:?}", g.error);
+        g.frame_input(0)
+            .models
+            .iter()
+            .map(|m| m.instance.matrix[3][1])
+            .collect()
+    };
+    // falling for a long time with ground = true: they lie on the ground (y = 0), not below
+    let landed = low(
+        "nova.burst(0, 2, 0, { sprite = 'fx/puff', count = 5, life = 9, speed = 0, gravity = -10, ground = true, ground_radius = 0 })",
+        120,
+    );
+    assert_eq!(landed.len(), 5);
+    assert!(landed.iter().all(|&y| y.abs() < 1e-4), "{landed:?}");
+    // a ground from a function (a floor at 1.5)
+    let floor = low(
+        "nova.burst(0, 3, 0, { sprite = 'fx/puff', count = 5, life = 9, speed = 0, gravity = -10, ground = function(x, z) return 1.5 end, ground_radius = 0 })",
+        120,
+    );
+    assert!(floor.iter().all(|&y| (y - 1.5).abs() < 1e-4), "{floor:?}");
+    // a bounce: some come up again after the first landing
+    let bounced = low(
+        "nova.burst(0, 1, 0, { sprite = 'fx/puff', count = 1, life = 9, speed = 0, gravity = -10, ground = true, ground_radius = 0, bounce = 0.6 })",
+        40,
+    );
+    assert!(
+        bounced[0] > 0.0,
+        "up again after the first landing: {bounced:?}"
+    );
+    // land = 'die': gone once they land
+    let gone = low(
+        "nova.burst(0, 1, 0, { sprite = 'fx/puff', count = 5, life = 9, speed = 0, gravity = -10, ground = true, land = 'die' })",
+        60,
+    );
+    assert!(gone.is_empty(), "{gone:?}");
+    // without ground nothing changes: they fall through
+    let through = low(
+        "nova.burst(0, 1, 0, { sprite = 'fx/puff', count = 2, life = 9, speed = 0, gravity = -10 })",
+        60,
+    );
+    assert!(through.iter().all(|&y| y < -1.0), "{through:?}");
+}
+
+#[test]
+fn a_picture_that_is_not_in_sprites_fx_is_explained() {
+    let mut g = fx_game("nova.burst(0, 1, 0, { sprite = 'fx/nope', count = 1 })");
+    frame(&mut g);
+    let e = g.error.clone().unwrap_or_default();
+    assert!(e.contains("sprites/fx") && e.contains("puff"), "{e}");
+}
+
+#[test]
+fn weather_is_flakes_that_face_the_camera_and_can_use_a_picture() {
+    let mut g = fx_game("nova.weather{ kind = 'snow', count = 50 }");
+    for _ in 0..3 {
+        frame(&mut g);
+    }
+    assert!(g.error.is_none(), "{:?}", g.error);
+    assert_eq!(g.frame_input(0).models.len(), 50);
+    let mut g = fx_game("nova.weather{ kind = 'snow', count = 50, sprite = 'fx/puff' }");
+    for _ in 0..3 {
+        frame(&mut g);
+    }
+    assert!(g.error.is_none(), "{:?}", g.error);
+    assert_eq!(g.frame_input(0).models.len(), 50);
+}
+
+#[test]
+fn a_sprite_particle_rests_on_the_ground_by_its_lower_edge() {
+    let mut g = fx_game(
+        "nova.burst(0, 2, 0, { sprite = 'fx/puff', count = 1, life = 9, speed = 0, gravity = -10, ground = true, size = 1 })",
+    );
+    for _ in 0..120 {
+        frame(&mut g);
+    }
+    let y = g.frame_input(0).models[0].instance.matrix[3][1];
+    assert!((y - 0.4).abs() < 1e-3, "{y}");
+}

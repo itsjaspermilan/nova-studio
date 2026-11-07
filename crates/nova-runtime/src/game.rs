@@ -59,6 +59,7 @@ fn builtin_module(name: &str) -> Option<&'static str> {
 }
 
 mod animated;
+mod billboard_api;
 mod retained_api;
 mod solid_api;
 mod voxel_api;
@@ -119,6 +120,8 @@ struct Shared {
     /// Triangle collision (`nova.solid`).
     solid: crate::meshworld::MeshWorld,
     known_models: Vec<String>,
+    /// The pictures `nova.billboard` can draw (images in `sprites/fx/`) and how many frames each has.
+    fx_sprites: HashMap<String, u32>,
     /// The default drawing scale of each model (`extras.nova.scale`), in the order of `known_models`.
     model_scales: HashMap<String, f32>,
     /// Each model's parts, for drawing pieces that move on their own.
@@ -2002,6 +2005,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
     voxel_api::install(lua, shared, vfs, &nova)?;
     solid_api::install(lua, shared, vfs, &nova)?;
     walls_api::install(lua, shared, &nova)?;
+    billboard_api::install(lua, shared, &nova)?;
 
     // --- input: named actions, see docs/project-format.md ---
     let input = lua.create_table()?;
@@ -2844,9 +2848,13 @@ impl Game {
         }
 
         let mut images = Vec::new();
+        let mut fx_images = Vec::new();
         for asset in project.assets_of(AssetKind::Image) {
             let bytes = vfs.read(&asset.id)?;
             let image = assets::decode_png(&bytes).map_err(|e| format!("{}: {e}", asset.id))?;
+            if asset.id.starts_with(billboard_api::FOLDER) {
+                fx_images.push((asset.id.clone(), image.clone()));
+            }
             images.push((asset.id.clone(), image));
         }
         let (atlas, layout) = assets::build_atlas(images, assets::MAX_ATLAS)?;
@@ -2866,6 +2874,16 @@ impl Game {
         }
 
         let mut meshes = Vec::new();
+        // pictures for `nova.billboard`: a textured quad per frame
+        let mut fx_sprites = HashMap::new();
+        for (id, image) in &fx_images {
+            let sheet = sheets.values().find(|d| &d.image == id);
+            let quads = billboard_api::frame_meshes(image, sheet);
+            fx_sprites.insert(id.clone(), quads.len() as u32);
+            for (frame, mesh) in quads.into_iter().enumerate() {
+                meshes.push((billboard_api::mesh_key(id, frame as u32), mesh, None));
+            }
+        }
         let mut model_ids = Vec::new();
         let mut model_parts: HashMap<String, Vec<PartRt>> = HashMap::new();
         let mut model_clips: HashMap<String, Vec<model::Clip>> = HashMap::new();
@@ -2999,6 +3017,7 @@ impl Game {
             save: store,
             mesh_ids: HashMap::new(),
             known_models: model_ids,
+            fx_sprites,
             model_scales,
             parts: model_parts,
             clips: model_clips,
