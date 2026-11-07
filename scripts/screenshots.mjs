@@ -24,10 +24,12 @@ function script(taps, then = []) {
 const START = [E, E]; // title -> main menu -> chooser (Mode is the first row)
 const startRace = (circuit) => [...START, ...(circuit ? [D, E, ...Array(circuit).fill(R), E, U] : []), U, E];
 const startRally = (stage) => [...START, E, R, R, E, ...(stage ? [D, E, ...Array(stage).fill(R), E, U] : []), U, E];
-const countdown = 330;
+const countdown = 420; // (the wipe going into a race holds the countdown for a moment)
 
 const shots = {
   "title": script([]),
+  "options": script([E, D, D, E]),
+  "transition": script(startRace(0), [[20, null, 0]]),
   "chooser": script(START),
   "circuits": script([...START, D, E]),
   "cars": script([...START, D, D, E, "key:KeyE"]),
@@ -39,7 +41,9 @@ const shots = {
   "rally-results": script(startRally(0), [[countdown, null, 0], [0, { "key:F9": 1 }, 2], [60 * 140, null, 0]]),
 };
 
+const only = process.argv.slice(2);
 for (const [name, { ev, frames }] of Object.entries(shots)) {
+  if (only.length && !only.includes(name)) continue;
   const input = join(work, `${name}.json`);
   writeFileSync(input, JSON.stringify(ev));
   const r = spawnSync(bin, ["run", game, "--headless", "--frames", String(frames), "--size", "1280x720", "--input", input, "--capture", join(out, `${name}.png`)], { encoding: "utf8" });

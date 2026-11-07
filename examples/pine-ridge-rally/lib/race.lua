@@ -7,6 +7,7 @@ local grid = require("lib.grid")
 local fx = require("lib.fx")
 local roadside = require("lib.roadside")
 local stage_lib = require("lib.stage")
+local transition = require("lib.transition")
 local pars = require("lib.pars")
 local crowd = require("lib.crowd")
 local foliage = require("lib.foliage")
@@ -131,6 +132,8 @@ function race.define(config)
     self.countdown = 3.9
     self.last_beep = 4
     self.paused, self.pause_choice = false, 1
+    self.leaving = false
+    transition.reveal(1.0) -- (coming from the wipe that the chooser started: stay covered a moment more, then wipe off; the countdown waits)
     -- a frame that takes more than 26 ms is written to the log with what was going on (read it with adb logcat after a play session)
     nova.hitch(26, function()
       local p = self.player
@@ -512,6 +515,7 @@ function race.define(config)
   end
 
   function Race:update(dt)
+    transition.update(dt)
     if self.phase ~= "countdown" and not self.player_finished_at and nova.input.pressed("pause") then
       self.paused = not self.paused
       self.pause_choice = 1
@@ -563,7 +567,9 @@ function race.define(config)
       self.player.skill, self.player.vmax, self.player.lane = 0.95, self.player.top * 0.97, 0
     end
 
-    if self.phase == "countdown" then
+    if self.phase == "countdown" and transition.covering() then
+      -- (the countdown starts when the wipe starts to go)
+    elseif self.phase == "countdown" then
       self.countdown = self.countdown - dt
       local whole = math.ceil(self.countdown)
       if whole < self.last_beep and whole >= 1 and whole <= 3 then
@@ -671,7 +677,13 @@ function race.define(config)
     self:update_camera(dt)
 
     -- the race is over a few seconds after the player finishes
-    if self.player_finished_at and self.clock - self.player_finished_at > 4 then self:to_results() end
+    if self.player_finished_at and self.clock - self.player_finished_at > 2.6 and not self.leaving then
+      self.leaving = true
+      local place = self.player.place or 1
+      local spec = { palette = "finish", finish = true }
+      if self.stage then spec.title, spec.sub = "STAGE COMPLETE", "" else spec.title, spec.sub = (place == 1 and "YOU WIN!" or "FINISH!"), string.upper(ui.ordinal(place)) .. " PLACE" end
+      transition.cover(spec, function() self:to_results() end)
+    end
   end
 
   -- ---- camera ---------------------------------------------------------------------------------------------------------
@@ -810,24 +822,21 @@ function race.define(config)
   function Race:draw_stage_hud(w)
     local p = self.player
     local sec = self.sections[math.min(self.section, #self.sections)]
-    ui.panel(16, 16, 176, 76, 205)
-    ui.label(30, 22, "SECTION")
-    ui.text(30, 36, self.section .. "", 40, ui.color.gold, { font = "comic" })
-    ui.text(30 + nova.ui.text_width(self.section .. "", { size = 40, font = "comic" }) + 4, 52, "/" .. #self.sections, 18, ui.color.dim)
+    ui.olabel(28, 14, "SECTION")
+    local sn = ui.otext(26, 28, self.section .. "", 56, ui.color.gold, { font = "comic" })
+    ui.otext(26 + sn + 4, 56, "/" .. #self.sections, 22, { 226, 232, 240 })
     -- against par: the time so far in this section, less the share of the par that the distance covered would have taken
     local through = math.max(0, math.min(1, (p.progress - sec.from) / math.max(1, sec.to - sec.from)))
     local delta = (self.clock - self.section_start) - sec.par * state.current_difficulty().allow * through
     if self.phase == "racing" and not p.finish_time then
-      ui.right(string.format("%s%.1f", delta <= 0 and "-" or "+", math.abs(delta)), 180, 40, 28, delta <= 0 and ui.color.green or ui.color.red, { font = "comic" })
-      ui.label(120, 22, "VS PAR")
+      ui.olabel(150, 18, "VS PAR")
+      ui.otext(150, 34, string.format("%s%.1f", delta <= 0 and "-" or "+", math.abs(delta)), 34, delta <= 0 and ui.color.green or ui.color.red, { font = "comic" })
     end
-    ui.panel(w - 212, 16, 196, 76, 205)
-    ui.label(w - 198, 24, "TIME")
-    ui.right(ui.time(math.max(0, self.clock)), w - 28, 18, 24, ui.color.white, { font = "mono" })
-    ui.label(w - 198, 50, "SECTION")
-    ui.right(ui.time(math.max(0, self.clock - self.section_start)), w - 28, 45, 16, ui.color.dim, { font = "mono" })
-    ui.label(w - 198, 68, "SCORE")
-    ui.right(tostring(self.score), w - 28, 63, 16, ui.color.gold, { font = "mono" })
+    ui.oright(ui.time(math.max(0, self.clock)), w - 26, 14, 34, ui.color.white, { font = "mono" })
+    ui.olabel(w - 26 - 215, 60, "SECTION")
+    ui.oright(ui.time(math.max(0, self.clock - self.section_start)), w - 26, 54, 22, { 226, 232, 240 }, { font = "mono" })
+    ui.olabel(w - 26 - 215, 86, "SCORE")
+    ui.oright(tostring(self.score), w - 26, 80, 22, ui.color.gold, { font = "mono" })
     -- the pace notes, top middle: the next corner big, the one after it small beneath (only while racing, and when a corner is near)
     if self.phase == "racing" and not p.finish_time then
       local shown = 0
@@ -837,7 +846,7 @@ function race.define(config)
           local big = shown == 0
           local pw, ph = big and 230 or 150, big and 50 or 30
           local x, y = w / 2 - pw / 2, big and 16 or 70
-          ui.panel(x, y, pw, ph, 205)
+          ui.panel(x, y, pw, ph, 150)
           local colour = note.grade <= 2 and ui.color.red or (note.grade <= 4 and ui.color.gold or ui.color.white)
           local text = note.grade == 1 and "HAIRPIN" or ("TURN " .. note.grade)
           if big then
@@ -856,88 +865,78 @@ function race.define(config)
   end
 
   function Race:draw_ui()
+    -- (text is drawn over the wipe, so the HUD waits until the wipe has gone)
+    if not transition.busy() then self:draw_hud() end
+    transition.draw()
+  end
+
+  function Race:draw_hud()
     local w = nova.view()
     local p = self.player
-    -- the car, bottom right: tyres and body, then the gear and speed, then a bar for how near top speed it is
-    local px, py, pw, ph = w - 232, 388, 212, 136
-    ui.panel(px, py, pw, ph, 205, ui.color.sky)
-    -- slipstream: a bar above the panel while the wake of a car in front is pulling the car along
-    if (p.draft or 0) > 0.04 then
-      ui.panel(px, py - 34, pw, 30, 205)
-      ui.label(px + 12, py - 25, "SLIPSTREAM")
-      nova.ui.rect(px + 112, py - 22, 88, 7, { 255, 255, 255, 36 })
-      nova.ui.rect(px + 112, py - 22, 88 * math.min(1, p.draft), 7, ui.color.sky)
-    end
-    for i, bar in ipairs({ { "TYRES", p.tyres }, { "BODY", 1 - p.damage } }) do
-      local by = py + 14 + (i - 1) * 18
-      ui.label(px + 12, by - 4, bar[1])
-      nova.ui.rect(px + 66, by, 134, 7, { 255, 255, 255, 36 })
-      local v = math.max(0, math.min(1, bar[2]))
-      nova.ui.rect(px + 66, by, 134 * v, 7, v > 0.55 and { 74, 222, 128 } or (v > 0.25 and { 245, 158, 11 } or { 239, 68, 68 }))
-    end
-    nova.ui.rect(px + 12, py + 52, pw - 24, 1, { 255, 255, 255, 30 })
+    -- the car, bottom right, with no panel (outlined): the speed big, the gear beside it, a row of rev segments under them
+    local right = w - 26
     local kmh = math.floor(math.abs(p.speed) * 3.6 + 0.5)
     local gear = p.speed < -0.5 and "R" or tostring(p.gear or 1)
-    nova.ui.rect(px + 12, py + 64, 42, 46, { 255, 255, 255, 22 })
-    ui.center(gear, py + 62, 40, p.shift_time > 0 and ui.color.dim or ui.color.gold, { font = "comic", cx = px + 33 })
-    ui.right(tostring(kmh), px + pw - 62, py + 58, 58, ui.color.white, { font = "comic" })
-    ui.label(px + pw - 54, py + 92, "KM/H")
-    -- the tachometer, per gear: the engine's revs from idle to the limiter, a row of segments (green, then amber, then red); it
-    -- climbs through each gear and falls back at each change. At the limiter the red segments flash.
+    local sw = ui.oright(tostring(kmh), right, 408, 66, ui.color.white, { font = "comic" })
+    ui.oright("KM/H", right, 478, 14, { 226, 232, 240 }, { font = "future_narrow" })
+    local gx = right - math.max(sw, 110) - 18 -- (the gear sits left of the speed, whatever the number's width)
+    local gw = ui.oright(gear, gx, 424, 44, p.shift_time > 0 and { 190, 200, 214 } or ui.color.gold, { font = "comic" })
+    ui.oright("GEAR", gx, 478, 14, { 226, 232, 240 }, { font = "future_narrow" })
+    -- the tachometer: the engine's revs from idle to the limiter (green, amber, red); at the limiter the red segments flash
     local rev = math.max(0, math.min(1, ((p.rev or 0.16) - 0.16) / 0.84))
-    local segments, gap = 24, 2
-    local seg_w = (pw - 24 - (segments - 1) * gap) / segments
+    local segments, gap, tw = 24, 2, 220
+    local seg_w = (tw - (segments - 1) * gap) / segments
     local limiter = rev > 0.985 and math.floor(nova.time() * 16) % 2 == 0
+    local tx = right - tw
     for i = 1, segments do
+      local sx = tx + (i - 1) * (seg_w + gap)
+      nova.ui.rect(sx - 1, 501, seg_w + 2, 13, { 8, 12, 26, 170 })
       local on = (i - 0.5) / segments <= rev
-      local colour = { 255, 255, 255, 30 }
+      local colour = { 255, 255, 255, 40 }
       if on then
         local at = i / segments
         colour = at > 0.85 and (limiter and { 255, 255, 255 } or { 239, 68, 68 }) or at > 0.65 and { 245, 158, 11 } or { 74, 222, 128 }
       end
-      nova.ui.rect(px + 12 + (i - 1) * (seg_w + gap), py + 116, seg_w, 9, colour)
+      nova.ui.rect(sx, 503, seg_w, 9, colour)
     end
+    -- a word or two above it only when something needs saying
+    local say = 384
+    if (p.draft or 0) > 0.04 then ui.oright("SLIPSTREAM", right, say, 18, ui.color.sky, { font = "future_narrow" }); say = say - 22 end
+    if p.damage > 0.5 then ui.oright("CAR DAMAGED", right, say, 18, ui.color.red, { font = "future_narrow" }); say = say - 22 end
+    if p.tyres < 0.35 then ui.oright("TYRES WORN", right, say, 18, { 245, 158, 11 }, { font = "future_narrow" }) end
 
     if self.stage then
       self:draw_stage_hud(w)
     else
       -- place and lap, top left
-      ui.panel(16, 16, 176, 76, 205)
       if self.trial then
-        ui.text(30, 20, "TRIAL", 36, ui.color.gold, { font = "comic" })
+        ui.otext(26, 16, "TRIAL", 44, ui.color.gold, { font = "comic" })
         local gap = self:ghost_gap()
         if gap then
           local ahead = gap <= 0
-          ui.text(124, 28, string.format("%s%.2f", ahead and "-" or "+", math.abs(gap)), 26, ahead and ui.color.green or ui.color.red, { font = "comic" })
+          ui.otext(170, 26, string.format("%s%.2f", ahead and "-" or "+", math.abs(gap)), 30, ahead and ui.color.green or ui.color.red, { font = "comic" })
         end
       else
         local place = p.place or 1
         local number, suffix = tostring(place), ui.ordinal(place):gsub("^%d+", "")
-        local _, nw = nova.ui.text(30, 18, number, { size = 54, color = ui.color.gold, font = "comic", shadow = true })
-        local o = { size = 24, color = ui.color.gold, font = "comic" }
-        local width = nova.ui.text_width(number, { size = 54, font = "comic" })
-        nova.ui.text(30 + width + 2, 24, suffix, o)
-        ui.text(30 + width + 2 + nova.ui.text_width(suffix, o) + 10, 36, "/ " .. #self.cars, 20, ui.color.dim)
+        local nw = ui.otext(26, 8, number, 66, ui.color.gold, { font = "comic" })
+        ui.otext(26 + nw + 3, 18, suffix, 28, ui.color.gold, { font = "comic" })
+        ui.otext(26 + nw + 3, 52, "/ " .. #self.cars, 20, { 226, 232, 240 })
       end
       local lap = math.max(1, math.min(self.laps, self:lap_of(p)))
-      ui.label(30, 66, "LAP")
-      ui.text(30 + nova.ui.text_width("LAP", { size = 13, font = "future_narrow" }) + 12, 62, lap .. " / " .. self.laps, 20, ui.color.white)
+      local lw = ui.olabel(28, 82, "LAP")
+      ui.otext(28 + lw + 8, 76, lap .. " / " .. self.laps, 24, ui.color.white)
 
-      -- times, top right
-      ui.panel(w - 212, 16, 196, 76, 205)
-      ui.label(w - 198, 24, "TIME")
-      ui.right(ui.time(math.max(0, self.clock)), w - 28, 18, 24, ui.color.white, { font = "mono" })
-      ui.label(w - 198, 50, "LAST")
-      ui.right(ui.time(self.lap_times[#self.lap_times]), w - 28, 45, 16, ui.color.dim, { font = "mono" })
-      ui.label(w - 198, 68, "BEST")
-      ui.right(ui.time(self.best_lap), w - 28, 63, 16, ui.color.gold, { font = "mono" })
-
+      -- the time, top right (and the best lap under it)
+      ui.oright(ui.time(math.max(0, self.clock)), w - 26, 14, 34, ui.color.white, { font = "mono" })
+      ui.olabel(w - 26 - 150, 58, "BEST")
+      ui.oright(ui.time(self.best_lap), w - 26, 54, 22, ui.color.gold, { font = "mono" })
     end
 
-    -- minimap, bottom left
+    -- minimap, bottom left (this one keeps a soft panel: a map needs the contrast)
     local m = self.map
     local mx, my = 24, 540 - 24 - m.h - 10
-    ui.panel(mx - 10, my - 8, m.w + 20, m.h + 26, 200, ui.color.green)
+    ui.panel(mx - 10, my - 8, m.w + 20, m.h + 26, 150, ui.color.green)
     for _, d in ipairs(m.dots) do nova.ui.rect(mx + d[1] - 1, my + d[2] - 1, 3, 3, { 255, 255, 255, 140 }) end
     for i = #self.cars, 1, -1 do
       local car = self.cars[i]

@@ -6,6 +6,7 @@ local ui = require("lib.ui")
 local controls = require("lib.controls")
 local backdrop = require("lib.backdrop")
 local previews = require("lib.previews")
+local transition = require("lib.transition")
 
 local Title = nova.scene {}
 
@@ -27,6 +28,7 @@ function Title:enter(screen)
   self.screen = screen or "title"
   self.choice = 1
   self.t = 0
+  self.entered = 0
   audio.music("menu", { volume = 0.95, fade = 0.8 })
   state.apply_volumes()
 end
@@ -34,7 +36,7 @@ end
 function Title:leave() backdrop.leave() end
 
 function Title:go(screen)
-  self.screen, self.choice = screen, 1
+  self.screen, self.choice, self.entered = screen, 1, 0
 end
 
 local function wear()
@@ -115,6 +117,7 @@ function Title:open_pick(kind)
   self.pick = { kind = kind, old_laps = state.laps, class = state.current_car().class, tabs = false }
   self.pick.old = (kind == "car") and state.car or self:picked(kind) -- (for a car: its number in state.cars)
   self.screen = "pick"
+  self.entered = 0
 end
 
 -- the rows of the chooser: the difficulty is for races (a time trial has no rivals)
@@ -162,17 +165,20 @@ end
 function Title:pick_buttons(pick)
   if nova.input.pressed("a") or nova.input.pressed("start") then
     audio.sfx("menu_accept")
-    self.screen = "select"
+    self.screen, self.entered = "select", 0
   elseif nova.input.pressed("b") or nova.input.pressed("menu_back") then
     audio.sfx("menu_back")
     if pick.kind == "car" then state.car = pick.old; wear() else self:set_pick(pick.kind, pick.old) end
     state.laps = pick.old_laps
-    self.screen = "select"
+    self.screen, self.entered = "select", 0
   end
 end
 
 function Title:update(dt)
   self.t = self.t + dt
+  self.entered = (self.entered or 0) + dt
+  ui.tick(dt)
+  transition.update(dt)
   local screen = self.screen
   if screen == "title" and nova.input.pressed("art_box") then self.screen = "boxart"
   elseif screen == "title" and nova.input.pressed("art_icon") then self.screen = "icon"
@@ -192,7 +198,7 @@ function Title:update(dt)
   elseif screen == "howto" then
     if nova.input.pressed("a") or nova.input.pressed("b") or nova.input.pressed("start") then audio.sfx("menu_back"); self:go("menu") end
   elseif screen == "options" then
-    local choice, action = ui.navigate(self.choice, 9)
+    local choice, action = ui.navigate(self.choice, 8)
     self.choice = choice
     local step = (action == "right" and 0.1) or (action == "left" and -0.1) or 0
     if choice == 1 and step ~= 0 then state.music_volume = math.max(0, math.min(1, state.music_volume + step)); state.save_options(); audio.sfx("menu_move") end
@@ -206,7 +212,7 @@ function Title:update(dt)
     if choice == 6 and (step ~= 0 or action == "accept") then state.smooth = not state.smooth; state.save_options(); backdrop.light(); audio.sfx("menu_move") end
     if choice == 7 and (step ~= 0 or action == "accept") then state.vibration = not state.vibration; state.save_options(); audio.sfx("menu_move"); if state.vibration then nova.input.rumble(0.6, 0.15) end end
     if action == "accept" and choice == 8 then audio.sfx("menu_accept"); self:go("controls"); return end
-    if action == "back" or (action == "accept" and choice == 9) then audio.sfx("menu_back"); self:go("menu") end
+    if action == "back" then audio.sfx("menu_back"); self:go("menu") end
   elseif screen == "controls" then
     local rows = #controls.rows
     if self.listening then
@@ -229,7 +235,7 @@ function Title:update(dt)
       return
     end
     self.note = nil
-    local choice, action = ui.navigate(self.choice, rows + 2)
+    local choice, action = ui.navigate(self.choice, rows + 1)
     self.choice = choice
     if action == "accept" and choice <= rows then
       audio.sfx("menu_accept")
@@ -239,7 +245,7 @@ function Title:update(dt)
       audio.sfx("menu_accept")
       controls.reset()
       nova.log("controls: back to the defaults")
-    elseif action == "back" or (action == "accept" and choice == rows + 2) then
+    elseif action == "back" then
       audio.sfx("menu_back")
       self:go("options")
     end
@@ -268,7 +274,7 @@ function Title:update(dt)
       audio.sfx("menu_accept")
       state.save_options()
       audio.stop_music(0.6)
-      self:after(0.35, function() nova.goto_scene(state.current_track().id) end)
+      transition.cover(transition.race_spec(), function() nova.goto_scene(state.current_track().id) end)
       self.screen = "starting"
     end
   end
@@ -360,13 +366,18 @@ function Title:draw_pick()
     end
   end
   if pick.kind == "car" then
-    ui.hints({ { "pad_dpad", "look" }, { "pad_l", "class" }, { "pad_r", "class" }, { "pad_a", "choose" }, { "pad_b", "cancel" } })
+    ui.hints({ { "pad_dpad", "Look" }, { "pad_l", "Class" }, { "pad_r", "Class" }, { "pad_a", "Accept" }, { "pad_b", "Cancel" } })
   else
-    ui.hints({ { "pad_dpad", "look" }, { "pad_a", "choose" }, { "pad_b", "cancel" } })
+    ui.hints({ { "pad_dpad", "Look" }, { "pad_a", "Accept" }, { "pad_b", "Cancel" } })
   end
 end
 
 function Title:draw_ui()
+  if not transition.busy() then self:draw_screens() end
+  transition.draw()
+end
+
+function Title:draw_screens()
   local w = nova.view()
   local screen = self.screen
   if screen == "icon" then return end
@@ -380,10 +391,12 @@ function Title:draw_ui()
   if screen == "title" or screen == "starting" then
     logo(self.t)
     if screen == "title" and math.floor(self.t * 1.6) % 2 == 0 then ui.center("PRESS START", 420, 28, ui.color.white) end
+    if screen == "title" then ui.hints({ { "pad_a", "Accept" } }) end
     ui.center("Made by Jasper Milan", 496, 16, ui.color.white, { font = "future_narrow" })
   elseif screen == "menu" then
     logo(self.t)
-    ui.menu(MENU, self.choice, 270, { width = 340, cx = 230 })
+    ui.menu(MENU, self.choice, 270, { width = 340, cx = 230, id = "main", enter = self.entered })
+    ui.hints({ { "pad_a", "Accept" }, { "pad_b", "Back" } })
   elseif screen == "howto" then
     ui.center("HOW TO PLAY", 40, 38, ui.color.gold, { font = "bold" })
     ui.panel(w / 2 - 330, 110, 660, 340, 200)
@@ -394,7 +407,7 @@ function Title:draw_ui()
     end
     ui.center("Finish all the laps ahead of your rivals.", 404, 16, ui.color.white, { cx = w / 2 })
     ui.center("The grass slows you down; the handbrake lets the back out.", 424, 16, ui.color.white, { cx = w / 2 })
-    ui.hints({ { "pad_a", "back" } })
+    ui.hints({ { "pad_a", "Back" } })
   elseif screen == "options" then
     ui.center("OPTIONS", 60, 44, ui.color.gold, { font = "bold" })
     ui.menu({
@@ -406,8 +419,8 @@ function Title:draw_ui()
       { "Smooth edges", state.smooth and "< On >" or "< Off >" },
       { "Vibration", state.vibration and "< On >" or "< Off >" },
       "Controls...",
-      "Back",
-    }, self.choice, 124, { width = 420, row = 40 })
+    }, self.choice, 124, { width = 420, row = 44, id = "options", enter = self.entered })
+    ui.hints({ { "pad_a", "Change" }, { "pad_b", "Back" } })
   elseif screen == "controls" then
     ui.center("CONTROLS", 24, 38, ui.color.gold, { font = "bold" })
     local items = {}
@@ -415,9 +428,8 @@ function Title:draw_ui()
       items[i] = { row.label, (self.listening and self.choice == i) and "press a key or button..." or controls.describe(row) }
     end
     items[#items + 1] = "Back to the defaults"
-    items[#items + 1] = "Back"
-    ui.menu(items, self.choice, 84, { width = 700, row = 38 })
-    if self.note then ui.hint(self.note) else ui.hints({ { "pad_a", "change" }, { "pad_b", "back" } }) end
+    ui.menu(items, self.choice, 80, { width = 700, row = 38, id = "controls", enter = self.entered })
+    if self.note then ui.hint(self.note) else ui.hints({ { "pad_a", "Change" }, { "pad_b", "Back" } }) end
   elseif screen == "pick" then
     self:draw_pick()
   elseif screen == "select" then
@@ -433,7 +445,7 @@ function Title:draw_ui()
     }
     local rows, items = self:select_rows(), {}
     for k, id in ipairs(rows) do items[k] = labels[id] end
-    ui.menu(items, self.choice, 100, { width = 400, cx = 240, row = 42 })
+    ui.menu(items, self.choice, 100, { width = 400, cx = 240, row = 44, id = "select", enter = self.entered })
     local on_difficulty = rows[self.choice] == "difficulty"
     -- (the menu and its notes are on the left, so that the car turning behind them can be seen on the right)
     ui.panel(40, 360, 400, 112, 205)
@@ -454,8 +466,11 @@ function Title:draw_ui()
       ui.label(56, 442, "BEST LAP")
       ui.text(180, 436, ui.time(lap), 18, ui.color.gold, { font = "mono" })
     end
-    ui.hints({ { "pad_dpad", "move" }, { "pad_a", "open / go" }, { "pad_b", "back" } })
+    ui.hints({ { "pad_dpad", "Move" }, { "pad_a", "Accept" }, { "pad_b", "Back" } })
   end
+  -- every screen fades up out of the backdrop when it opens
+  local fade = 1 - math.min(1, (self.entered or 1) / 0.22)
+  if fade > 0 then nova.ui.rect(0, 0, w, 540, { 0, 0, 0, math.floor(120 * fade * fade) }) end
 end
 
 return Title

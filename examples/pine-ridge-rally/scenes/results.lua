@@ -3,6 +3,7 @@ local state = require("lib.state")
 local audio = require("lib.audio")
 local ui = require("lib.ui")
 local backdrop = require("lib.backdrop")
+local transition = require("lib.transition")
 
 local Results = nova.scene {}
 
@@ -16,6 +17,7 @@ function Results:enter()
   self.r = state.result
   assert(self.r, "the results scene needs a finished race (state.result)")
   audio.music("results", { volume = 0.95, fade = 0.5 })
+  transition.reveal(0.35) -- (coming out of the finish wipe)
   local place = self.r.place
   self.reveal = 0
   self:after(0.5, function() audio.sfx(place == 1 and "finish" or "lap") end)
@@ -25,6 +27,8 @@ function Results:leave() backdrop.leave() end
 
 function Results:update(dt)
   self.t = self.t + dt
+  transition.update(dt)
+  if transition.busy() then return end
   self.reveal = math.min(1, self.reveal + dt * 1.6)
   if self.t < 0.7 then return end
   local choice, action = ui.navigate(self.choice, #CHOICES)
@@ -33,7 +37,7 @@ function Results:update(dt)
   if action == "accept" then
     audio.sfx("menu_accept")
     audio.stop_music(0.4)
-    if choice == 1 then nova.goto_scene(state.current_track().id)
+    if choice == 1 then transition.cover(transition.race_spec(), function() nova.goto_scene(state.current_track().id) end)
     elseif choice == 2 then nova.goto_scene("title", "select")
     else nova.goto_scene("title", "menu") end
   end
@@ -81,6 +85,11 @@ function Results:draw_rally(w)
 end
 
 function Results:draw_ui()
+  if not transition.busy() then self:draw_screens() end
+  transition.draw()
+end
+
+function Results:draw_screens()
   local w = nova.view()
   local r = self.r
   if r.rally then return self:draw_rally(w) end

@@ -17,9 +17,10 @@ end
 local state = require("lib.state")
 
 -- The music has two styles (Options > Music style): Kenney's loops, or the songs made with the music editor (music/*.song.json).
+-- (the menu always plays its own smooth techno song, in either style)
 -- A scene asks for a song by its studio name; in the Kenney style it is played as the loop that stands in for it.
 local KENNEY = {
-  menu = "kenney_menu", results = "kenney_results", race_forest = "kenney_forest", race_desert = "kenney_desert",
+  results = "kenney_results", race_forest = "kenney_forest", race_desert = "kenney_desert",
   race_snow = "kenney_snow", race_night = "kenney_night",
 }
 local current_music, current_opts = nil, nil

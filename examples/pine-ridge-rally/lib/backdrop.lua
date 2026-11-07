@@ -66,7 +66,10 @@ function backdrop.draw(t, mode, shift)
   -- are on the left): the camera's right is (-fz, fx) for a forward of (fx, fz)
   local fx, fz = -view.x / radius, -view.z / radius
   local s = shift or 0
-  nova.camera(view.x, height, view.z, s * fz, 1.0, -s * fx, 48)
+  -- on the title card the car sits low in the picture (under the name); as the menus slide it over, it comes back up
+  local aim = 1.0
+  if mode == "title" then aim = 1.0 + 1.15 * math.max(0, 1 - s / 2.6) end
+  nova.camera(view.x, height, view.z, s * fz, aim, -s * fx, 48)
   horizon.draw(view.x, view.z, look.horizon)
   -- the road surface of the circuit: the scene file's road is asphalt, so the others are laid over it
   if look.road ~= "road_asphalt" then

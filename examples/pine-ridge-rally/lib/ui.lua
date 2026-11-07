@@ -94,7 +94,7 @@ function ui.hints(items)
   local o = { size = 15, font = "future_narrow", color = ui.color.white }
   local total = 0
   for _, it in ipairs(items) do total = total + 30 + nova.ui.text_width(it[2], o) + 22 end
-  local x = w / 2 - total / 2
+  local x = w - 24 - total -- (in the bottom right corner)
   nova.ui.panel("ui/panel_dark", x - 14, 486, total + 22, 40, { slice = 18, scale = 0.6, color = { 255, 255, 255, 235 } })
   for _, it in ipairs(items) do
     ui.pad(it[1], x, 491, 30)
@@ -102,6 +102,29 @@ function ui.hints(items)
     x = x + 30 + nova.ui.text_width(it[2], o) + 22
   end
 end
+
+-- Text with no panel behind it: a dark outline (four copies a little off to the corners) keeps it readable over snow, sand and night alike.
+local OUTLINE = { 8, 12, 26, 235 }
+function ui.otext(x, y, text, size, color, opts)
+  opts = opts or {}
+  local font = ui.font_for(text, opts.font or "rounded")
+  local d = math.max(1.5, size / 14)
+  for _, o in ipairs({ { -d, -d }, { d, -d }, { -d, d }, { d, d }, { 0, d * 1.4 } }) do
+    nova.ui.text(x + o[1], y + o[2], text, { size = size, color = OUTLINE, font = font, shadow = false })
+  end
+  nova.ui.text(x, y, text, { size = size, color = color or ui.color.white, font = font, shadow = false })
+  return nova.ui.text_width(text, { size = size, font = font })
+end
+function ui.oright(text, rx, y, size, color, opts)
+  local font = ui.font_for(text, (opts or {}).font or "rounded")
+  return ui.otext(rx - nova.ui.text_width(text, { size = size, font = font }), y, text, size, color, opts)
+end
+function ui.ocenter(text, cx, y, size, color, opts)
+  local font = ui.font_for(text, (opts or {}).font or "rounded")
+  return ui.otext(cx - nova.ui.text_width(text, { size = size, font = font }) / 2, y, text, size, color, opts)
+end
+-- a small label (LAP, KM/H) in the outlined style
+function ui.olabel(x, y, text, color) return ui.otext(x, y, text, 14, color or { 226, 232, 240 }, { font = "future_narrow" }) end
 
 -- "1:23.45"
 function ui.time(t)
@@ -115,24 +138,59 @@ function ui.ordinal(n)
   return n .. suffix
 end
 
--- A vertical list of choices. Each item is a string or { label, value } (value shows on the right).
+-- Time for the menus' own movement (the highlight slides between rows; rows slide in when a screen opens). Called from the scene's update.
+ui.clock = 0
+local hl = {}
+function ui.tick(dt)
+  ui.clock = ui.clock + dt
+  for id, v in pairs(hl) do v.dt = dt end
+end
+local function ease_out(x) x = math.max(0, math.min(1, x)); return 1 - (1 - x) ^ 3 end
+
+-- A vertical list of choices. Each item is a string or { label, value } (value shows on the right). Every row is a dark rounded bar; the chosen
+-- one is a gold bar that slides to its row (with a small arrow, and pushed out a little), and the dark rows' words are cream. `opts.enter` is the
+-- seconds since the screen opened: the rows slide in from the left one after another. `opts.id` keeps the highlight between frames.
 function ui.menu(items, selected, y, opts)
   opts = opts or {}
   local w = nova.view()
   local width, row = opts.width or 360, opts.row or 44
   local x = (opts.cx or w / 2) - width / 2
+  local id = opts.id or "menu"
+  local st = hl[id]
+  if not st then st = { at = selected, dt = 0 }; hl[id] = st end
+  st.at = st.at + (selected - st.at) * math.min(1, (st.dt > 0 and st.dt or 1 / 60) * 18)
+  local enter = opts.enter or 99
+  local function slide(i) return ease_out((enter - (i - 1) * 0.045) / 0.28) end
+  local h = row - 6
+  -- the dark bars
   for i, item in ipairs(items) do
-    local ry = y + (i - 1) * row
-    local on = i == selected
-    -- Kenney's buttons: yellow for the chosen one, grey for the rest (nine-slices: the corners and the depth at the bottom stay as drawn)
-    nova.ui.panel(on and "ui/btn_yellow" or "ui/btn_grey", x, ry, width, row - 2, { slice = { 14, 14, 14, 22 }, scale = 0.75 })
+    local e = slide(i)
+    local rx, ry = x - (1 - e) * 60, y + (i - 1) * row
+    local near = math.max(0, 1 - math.abs(i - st.at))
+    if near < 0.6 then nova.ui.panel("ui/panel_dark", rx, ry, width, h, { slice = 18, scale = 0.55, color = { 255, 255, 255, math.floor((185 + 30 * (1 - near)) * e) } }) end
+  end
+  -- the gold bar, sliding
+  local e = slide(selected)
+  local gy = y + (st.at - 1) * row
+  local gx = x - (1 - e) * 60 + 10
+  nova.ui.panel("ui/btn_yellow", gx, gy - 2, width, h + 4, { slice = { 14, 14, 14, 22 }, scale = 0.75, color = { 255, 255, 255, math.floor(255 * e) } })
+  -- a small arrow before the label
+  local ay = gy + h / 2 - 1
+  local bob = math.sin(ui.clock * 7) * 2
+  for k = 0, 5 do nova.ui.rect(gx + 12 + bob + k, ay - 6 + k, 1 + 0, 12 - k * 2, { 15, 23, 42, math.floor(255 * e) }) end
+  -- the words
+  for i, item in ipairs(items) do
+    local ei = slide(i)
+    local near = math.max(0, 1 - math.abs(i - st.at))
+    local rx, ry = x - (1 - ei) * 60 + 10 * near, y + (i - 1) * row
+    local ink, cream = ui.color.ink, { 238, 242, 248 }
+    local c = { math.floor(cream[1] + (ink[1] - cream[1]) * near), math.floor(cream[2] + (ink[2] - cream[2]) * near), math.floor(cream[3] + (ink[3] - cream[3]) * near), math.floor(255 * ei) }
     local label = type(item) == "table" and item[1] or item
-    local color = ui.color.ink
-    local ty = ry + math.floor((row - 2 - 22) / 2) - 6 -- (the label is centred in the button, above its depth)
-    nova.ui.text(x + 22, ty, label, { size = 22, color = color, font = "rounded", shadow = false })
+    local ty = ry + math.floor((h - 22) / 2) - 3
+    nova.ui.text(rx + (near > 0.5 and 34 or 22), ty, label, { size = 22, color = c, font = "rounded", shadow = false })
     if type(item) == "table" and item[2] then
-      local o = { size = 22, color = color, font = "rounded" }
-      nova.ui.text(x + width - 16 - nova.ui.text_width(item[2], o), ty, item[2], o)
+      local o = { size = 22, color = c, font = "rounded", shadow = false }
+      nova.ui.text(rx + width - 16 - nova.ui.text_width(item[2], o), ty, item[2], o)
     end
   end
 end
