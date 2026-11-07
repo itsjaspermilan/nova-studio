@@ -78,7 +78,11 @@
   let drag: Drag | null = null;
   function down(e: PointerEvent) {
     if (e.button !== 0) return;
-    svg!.setPointerCapture(e.pointerId);
+    try {
+      svg!.setPointerCapture(e.pointerId); // (keeps the drag going outside the map)
+    } catch {
+      // (a pointer that is already gone)
+    }
     svg!.focus();
     const [x, z] = world(e);
     const hit = pointAt(doc, x, z, 11 / scale);

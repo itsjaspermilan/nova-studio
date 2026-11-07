@@ -53,7 +53,7 @@ describe("groupResources", () => {
     expect(new Set(all).size).toBe(all.length);
     expect(all.sort()).toEqual(files.map((x) => x.path).sort());
     const empty = groupResources([]);
-    expect(empty.map((g) => g.title)).toEqual(["Sprites", "3D Models", "Scenes", "Entities", "Sounds", "Music"]);
+    expect(empty.map((g) => g.title)).toEqual(["Sprites", "3D Models", "Scenes", "Tracks", "Entities", "Sounds", "Music"]);
   });
 
   it("falls back to name.png for a sprite whose file has not been read yet", () => {
@@ -83,5 +83,13 @@ describe("renaming a resource", () => {
   it("resolves a picture named relative to its JSON", () => {
     expect(resolveFrom("sprites/a.sprite.json", "a.png")).toBe("sprites/a.png");
     expect(resolveFrom("sprites/x/a.sprite.json", "../shared/a.png")).toBe("sprites/shared/a.png");
+  });
+});
+
+describe("tracks", () => {
+  it("a .track.json is a Tracks item, apart from the scene it makes", () => {
+    const g = groupResources(f("tracks/oval.track.json", "scenes/oval.scene.json", "models/road_oval.glb"));
+    expect(find(g, "tracks").items.map((i) => [i.kind, i.name, i.path])).toEqual([["track", "oval", "tracks/oval.track.json"]]);
+    expect(find(g, "scenes").items.map((i) => i.name)).toEqual(["oval"]);
   });
 });

@@ -561,6 +561,6 @@ Not done yet:
 - MSAA (blocked by the AO and outline passes reading depth; FXAA covers it for now) and a render-scale option in the studio.
 - Skinned instancing and a level of detail for skinned models (a crowd is drawn one character at a time).
 - Terrain from a heightmap (the hills are a sum of eight sine waves), and ground contact for particles; textured, soft particle sprites.
-- Studio screens (Svelte) for a track editor, store-art export and the perf/hitch overlay: only the MCP tools exist so far.
+- Studio screens (Svelte) for store-art export and the perf/hitch overlay: only the MCP tools exist so far. The track editor is done (`docs/track-editor.md`); not yet: dragging gates or the start line, a map of the scenery, making the entities the generated scene needs, hills.
 - A simulation test harness that is part of the studio (the `ai_balance` and `rally_pars` tests show the pattern).
 - Colliders that are capsules or boxes in the model editor (only circles are written to `extras.nova.colliders`).

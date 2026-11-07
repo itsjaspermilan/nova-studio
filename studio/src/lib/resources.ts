@@ -32,7 +32,7 @@ const GROUPS: { id: string; title: string; icon: string; folder?: string; always
   { id: "sprites", title: "Sprites", icon: "◫", folder: "sprites", always: true },
   { id: "models", title: "3D Models", icon: "◆", folder: "models", always: true },
   { id: "scenes", title: "Scenes", icon: "▦", folder: "scenes", always: true },
-  { id: "tracks", title: "Tracks", icon: "⌇", folder: "tracks", always: false },
+  { id: "tracks", title: "Tracks", icon: "⌇", folder: "tracks", always: true },
   { id: "entities", title: "Entities", icon: "☺", folder: "entities", always: true },
   { id: "sounds", title: "Sounds", icon: "♪", folder: "sounds", always: true },
   { id: "music", title: "Music", icon: "♫", folder: "music", always: true },
