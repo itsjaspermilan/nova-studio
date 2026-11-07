@@ -550,3 +550,17 @@ First slice, built (`SpriteEditor.svelte`, pure logic in `pixels.ts` and `sprite
 Networking, full DAW features beyond M6, WebView
 gameplay, iOS, Glow/GameStudio compatibility, app-store publishing, personal
 signing, device installation without the user's go-ahead.
+
+## Found while making Pine Ridge Rally (2026-11)
+
+Done in the engine: FXAA (`nova.look{ fxaa }`), `nova.terrain` hills, a sun-driven sky, `nova.pause` that stills the clock too, `valign` and `fallback` on
+`nova.ui.text`, `nova.hitch`, scenery `tint`, terrain-aware `nova.scenery.scatter`, `nova.scenery.push_capsule`, `nova.weather`, default draw scale for
+skinned models; in the studio's MCP server `track_write` and `store_art`; in the importer `--draw-scale`, `--material-srgb`, skinned `--fit`.
+
+Not done yet:
+- MSAA (blocked by the AO and outline passes reading depth; FXAA covers it for now) and a render-scale option in the studio.
+- Skinned instancing and a level of detail for skinned models (a crowd is drawn one character at a time).
+- Terrain from a heightmap (the hills are a sum of eight sine waves), and ground contact for particles; textured, soft particle sprites.
+- Studio screens (Svelte) for a track editor, store-art export and the perf/hitch overlay: only the MCP tools exist so far.
+- A simulation test harness that is part of the studio (the `ai_balance` and `rally_pars` tests show the pattern).
+- Colliders that are capsules or boxes in the model editor (only circles are written to `extras.nova.colliders`).

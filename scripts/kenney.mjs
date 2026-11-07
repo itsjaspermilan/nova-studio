@@ -20,6 +20,8 @@
 //   --stretch x=<m>,z=<m>   scale the footprint to exactly this size, each way on its own (for flat, axis-aligned pieces such as a
 //                           road slab: the normals are not touched)
 //   --material <name>=r,g,b set a material's colour (0..1, linear): a kit's road piece in dirt or snow
+//   --material-srgb <name>=r,g,b   the same with the colour as you pick it on screen (0..255, sRGB): converted to linear for the file
+//   --draw-scale <factor>   write extras.nova.scale: the game draws the model this much bigger (what --scale and --fit do for a skinned model)
 //   --turn <degrees>        turn it about the up axis (a quarter turn at a time is exact)
 //   --centre                put the middle of its footprint (x and z) at the origin; the kit's pieces carry an offset to a tile corner
 //   --centre-axles          (with --pivot-wheels) move it along z so that the wheels' middle is the origin, as a driving script expects
@@ -45,6 +47,7 @@ for (let i = 0; i < args.length; i++) {
   else if (a === "--wheel-diameter") opt.wheelDiameter = Number(args[++i]);
   else if (a === "--wheels-to-body") opt.wheelsToBody = true;
   else if (a === "--stretch") opt.stretch = Object.fromEntries(args[++i].split(",").map((kv) => kv.split("=")).map(([k, v]) => [k, Number(v)]));
+  else if (a === "--material-srgb") { const [k, v] = args[++i].split("="); const lin = (c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4); (opt.materials ??= {})[k] = v.split(",").map(Number).map((x) => lin(x / 255)); } // 0..255 as picked on screen: converted to linear
   else if (a === "--material") { const [k, v] = args[++i].split("="); (opt.materials ??= {})[k] = v.split(",").map(Number); }
   else if (a === "--centre") opt.centre = true;
   else if (a === "--centre-axles") opt.centreAxles = true;
