@@ -83,6 +83,21 @@ and **Garbage battle** against the computer (combos and chains send grey garbage
 
 **Controls:** d-pad or stick moves the cursor, A / B swap, L / R raise the stack, + pause (keyboard: arrows, Space or Z, Shift, Esc).
 
+## Potion Panic
+
+`examples/potion-panic` is a rush-hour kitchen game, but with potions: one apprentice, a workshop in 3D (Kenney's Mini Dungeon, Food, Nature, Graveyard and Fantasy Town models), orders that run out, and a stack of things
+to do at once. Grind ingredients in the mortar, drop them in the cauldron (stir it to brew faster), bottle the brew before it burns, serve it at the hatch, and **throw** things across the room when walking is too slow.
+A **story campaign** runs through four biomes (a meadow, a frozen hollow with icy floors, lava caverns and a boggy mire with mud and belts), twelve levels, with each biome's cauldrons behaving differently.
+**Free Brew** lets you set your own rules (the clock, the pace of orders, which potions, burning, icy floors, hazards, potion value) on any level you have beaten. The look is parchment and wood (Kenney's UI Adventure Pack).
+
+| | |
+| --- | --- |
+| ![Title](docs/images/potion/title.png) | ![The campaign map](docs/images/potion/map.png) |
+| ![The meadow](docs/images/potion/meadow.png) | ![The frozen hollow](docs/images/potion/frost.png) |
+| ![The lava caverns](docs/images/potion/ember.png) | ![Free Brew rules](docs/images/potion/free-rules.png) |
+
+**Controls:** stick or d-pad moves, A grabs and puts down, hold B to grind or stir, X dashes, Y throws (keyboard: arrows or WASD, Space, F, Shift, G).
+
 ## Getting started
 
 ```sh
@@ -151,6 +166,7 @@ timers) or `examples/rally-demo` (sprites, 3D models, HUD).
 | --- | --- |
 | `pine-ridge-rally` | the 3D rally game above |
 | `nebula-swap` | the Panel de Pon-style puzzle game above |
+| `potion-panic` | the potion-brewing rush game above |
 | `crate-dash`, `font-gallery`, `sound-check`, `input-test` | small 2D and tooling examples |
 | `rally-demo`, `stress` | the renderer's benchmark scenes: sprites, hundreds of models, lights and shadows |
 | `skin-demo`, `ik-demo` | skeletons, clips, animation layers and two-bone IK |
