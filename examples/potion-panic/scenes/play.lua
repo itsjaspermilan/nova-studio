@@ -262,7 +262,7 @@ end
 
 local function order_card(o, x, y, k, t)
   local recipe = data.recipes[o.recipe]
-  local w, h = 122, 84
+  local w, h = 156, 96
   local frac0 = o.t / o.total
   local e = math.min(1, (o.age or 1) / 0.35)
   y = y - (1 - (1 - (1 - e) ^ 3)) * 100
@@ -274,26 +274,26 @@ local function order_card(o, x, y, k, t)
     ui.icon("ui/iconCheck_bronze", x + w - 22, y + 8, 18)
   end
   ui.panel(x, y, w, h, "beige")
-  ui.flask(x + 10, y + 12, 20, recipe.color)
+  ui.flask(x + 10, y + 12, 22, recipe.color)
   local name = recipe.name
-  ui.text(x + 38, y + 10, name, ui.fit(name, 12, w - 46), ui.color.ink)
+  ui.text(x + 42, y + 9, name, ui.fit(name, 12, w - 52), ui.color.ink)
   -- the ingredients, a small picture each; a ground one is on a dark tile with a little dust
-  local ix = x + 36
+  local ix = x + 12
   for _, it in ipairs(recipe.items) do
     local ing = data.ingredients[it[1]]
     if it[2] then
-      ui.icon("ui/panelInset_brown", ix - 1, y + 30, 32)
-      ui.icon(ing.icon, ix + 1, y + 29, 30)
-      nova.ui.rect(ix + 3 + ui.ox, y + 54 + ui.oy, 4, 3, { 232, 214, 168, math.floor(255 * ui.alpha) })
-      nova.ui.rect(ix + 9 + ui.ox, y + 55 + ui.oy, 3, 3, { 232, 214, 168, math.floor(255 * ui.alpha) })
-      nova.ui.rect(ix + 17 + ui.ox, y + 54 + ui.oy, 4, 3, { 232, 214, 168, math.floor(255 * ui.alpha) })
+      ui.icon("ui/panelInset_brown", ix - 1, y + 32, 40)
+      ui.icon(ing.icon, ix + 1, y + 31, 38)
+      nova.ui.rect(ix + 4 + ui.ox, y + 64 + ui.oy, 5, 3, { 232, 214, 168, math.floor(255 * ui.alpha) })
+      nova.ui.rect(ix + 12 + ui.ox, y + 65 + ui.oy, 4, 3, { 232, 214, 168, math.floor(255 * ui.alpha) })
+      nova.ui.rect(ix + 22 + ui.ox, y + 64 + ui.oy, 5, 3, { 232, 214, 168, math.floor(255 * ui.alpha) })
     else
-      ui.icon(ing.icon, ix, y + 28, 32)
+      ui.icon(ing.icon, ix, y + 30, 40)
     end
-    ix = ix + 28
+    ix = ix + 46
   end
   local frac = o.t / o.total
-  ui.bar(x + 10, y + 62, w - 20, frac, frac > 0.5 and "green" or (frac > 0.25 and "yellow" or "red"))
+  ui.bar(x + 10, y + 76, w - 20, frac, frac > 0.5 and "green" or (frac > 0.25 and "yellow" or "red"))
 end
 
 function Play:draw_hud(w)
@@ -301,35 +301,36 @@ function Play:draw_hud(w)
   local x = 14
   for _, o in ipairs(k.orders) do
     order_card(o, x, 8, k, self.t)
-    x = x + 130
+    x = x + 164
   end
   if #k.orders == 0 then
-    ui.panel(14, 8, 200, 40, "beige")
+    ui.panel(14, 8, 290, 56, "beige")
     ui.text(30, 20, "Waiting for orders...", 13, ui.color.ink)
   end
   -- the clock and the score, on a wooden plaque, with the stars to reach
-  local pw = 200
-  local px = w - pw - 14
-  ui.panel(px, 8, pw, 84, "brown")
-  ui.text(px + 18, 16, "TIME", 11, { 226, 204, 170 })
-  ui.text(px + 18, 28, ui.time(k.time_left), 26, k.time_left <= 10 and { 255, 130, 110 } or ui.color.cream, { font = "display" })
-  ui.text(px + 110, 16, "SCORE", 11, { 226, 204, 170 })
-  ui.text(px + 110, 28, tostring(k.score), 26, ui.color.gold, { font = "display" })
-  for i = 1, 3 do ui.star(px + 28 + (i - 1) * 24, 74, 20, k.score >= self.level.stars[i]) end
-  ui.text(px + 112, 66, "next star " .. self.level.stars[math.min(3, k:stars() + 1)], 11, { 226, 204, 170 })
+  local pw = 232
+  local px = w - pw - 12
+  ui.panel(px, 8, pw, 112, "brown")
+  ui.text(px + 18, 14, "TIME", 11, { 200, 210, 240 })
+  ui.text(px + 18, 32, ui.time(k.time_left), 26, k.time_left <= 10 and { 255, 130, 110 } or ui.color.cream, { font = "display" })
+  ui.text(px + 124, 14, "SCORE", 11, { 200, 210, 240 })
+  ui.text(px + 124, 32, tostring(k.score), 26, ui.color.gold, { font = "display" })
+  for i = 1, 3 do ui.star(px + 36 + (i - 1) * 28, 90, 24, k.score >= self.level.stars[i]) end
+  local nxt = k:stars() >= 3 and "all stars!" or ("next " .. self.level.stars[k:stars() + 1])
+  ui.text(px + pw - 16 - ui.width(nxt, 11), 82, nxt, 11, { 200, 210, 240 })
   -- what A and B would do where the apprentice is facing
   if self.phase == "play" then
     local pr = k:prompt()
     if pr.a or pr.b then
       local line = 0
       local text_a, text_b = pr.a, pr.b
-      local wa = text_a and (ui.width(text_a, 14) + 40) or 0
-      local wb = text_b and (ui.width(text_b, 14) + 40) or 0
+      local wa = text_a and (ui.width(text_a, 14) + 46) or 0
+      local wb = text_b and (ui.width(text_b, 14) + 46) or 0
       local pw = wa + wb + 28
-      ui.panel(14, 492, pw, 40, "brown")
+      ui.panel(12, 484, pw + 14, 46, "brown")
       local x0 = 30
-      if text_a then ui.pad("pad_a", x0, 499, 26); ui.text(x0 + 34, 506, text_a, 14, ui.color.cream); x0 = x0 + wa + 8 end
-      if text_b then ui.pad("pad_b", x0, 499, 26); ui.text(x0 + 34, 506, text_b, 14, ui.color.cream) end
+      if text_a then ui.pad("pad_a", x0, 492, 30); ui.text(x0 + 38, 500, text_a, 14, ui.color.cream); x0 = x0 + wa + 14 end
+      if text_b then ui.pad("pad_b", x0, 492, 30); ui.text(x0 + 38, 500, text_b, 14, ui.color.cream) end
     end
   end
   -- floating text
@@ -354,7 +355,7 @@ function Play:draw_ui()
       ui.hints({ { "pad_a", "Close" } })
     else
       ui.center("PAUSED", 90, 40, ui.color.cream, { font = "display", shadow = true })
-      ui.menu(PAUSE_ITEMS, self.pause_choice, 170, { width = 320, id = "pause", row = 56 })
+      ui.menu(PAUSE_ITEMS, self.pause_choice, 160, { width = 360, id = "pause", row = 62, size = 16 })
       ui.hints({ { "pad_dpad", "Choose" }, { "pad_a", "Accept" }, { "pad_plus", "Resume" } })
     end
   elseif phase == "over" then
@@ -374,35 +375,35 @@ function Play:draw_recipes(w)
   ui.center("RECIPES", 28, 34, ui.color.cream, { font = "display", shadow = true })
   local list = self.k.recipes
   local rows = #list
-  local rh = math.min(64, math.floor(380 / math.max(1, rows)))
-  local y = 90
-  ui.panel(w / 2 - 330, y - 14, 660, rows * rh + 28, "beige")
+  local rh = math.min(74, math.floor(340 / math.max(1, rows)))
+  local y = 96
+  ui.panel(w / 2 - 360, y - 14, 720, rows * rh + 28, "beige")
   for i, id in ipairs(list) do
     local r = data.recipes[id]
     local ry = y + (i - 1) * rh
-    ui.flask(w / 2 - 308, ry + 6, 22, r.color)
-    ui.text(w / 2 - 270, ry + 8, r.name, 15, ui.color.ink, { font = "display" })
-    local ix = w / 2 - 20
+    ui.flask(w / 2 - 338, ry + 8, 24, r.color)
+    ui.text(w / 2 - 296, ry + 8, r.name, 13, ui.color.ink, { font = "display" })
+    local ix = w / 2 + 10
     for _, it in ipairs(r.items) do
       local ing = data.ingredients[it[1]]
       if it[2] then ui.icon("ui/panelInset_brown", ix - 1, ry - 2, 40) end
       ui.icon(ing.icon, ix + (it[2] and 1 or 0), ry - (it[2] and 3 or 2), 38)
       ix = ix + 46
     end
-    ui.text(w / 2 + 250, ry + 10, r.brew .. " s", 13, ui.color.dim)
+    ui.text(w / 2 + 292, ry + 10, r.brew .. " s", 12, ui.color.dim)
   end
-  ui.center("A dark tile means: grind it in the mortar first.", y + rows * rh + 30, 13, ui.color.cream, { shadow = true })
+  ui.center("A dark tile means: grind it in the mortar first.", y + rows * rh + 28, 11, ui.color.cream, { shadow = true })
 end
 
 function Play:draw_intro(w)
   local n = math.ceil(self.intro)
   local name = string.upper(self.level.name)
-  ui.panel(w / 2 - 250, 190, 500, 150, "beige")
-  ui.center(name, 206, ui.fit(name, 30, 440, "display"), ui.color.ink, { font = "display" })
+  ui.panel(w / 2 - 290, 150, 580, 250, "beige")
+  ui.center(name, 164, ui.fit(name, 30, 500, "display"), ui.color.ink, { font = "display" })
   local tip = data.tips[self.level.id]
-  if tip then ui.text(w / 2 - 220, 252, tip, 14, ui.color.ink, { width = 440, align = "center" }) end
+  if tip then ui.text(w / 2 - 260, 222, tip, 14, ui.color.ink, { width = 520, align = "center" }) end
   local count = (n >= 1 and n <= 3) and tostring(n) or (n < 1 and "BREW!" or "")
-  if count ~= "" then ui.center(count, 292, 36, ui.color.wine, { font = "display" }) end
+  if count ~= "" then ui.center(count, 328, 36, ui.color.wine, { font = "display" }) end
 end
 
 function Play:draw_over(w)
@@ -414,19 +415,19 @@ function Play:draw_over(w)
   local head = (r.stars >= 1) and (self.free and "WELL BREWED!" or "LEVEL CLEARED!") or "THE SHOP IS QUIET"
   if self.free and r.stars < 1 then head = "TIME'S UP" end
   ui.center(head, 22, ui.fit(head, 38, 700, "display"), ui.color.cream, { font = "display", shadow = true })
-  ui.panel(w / 2 - 200, 74, 400, 224, "beige")
+  ui.panel(w / 2 - 230, 80, 460, 262, "beige")
   -- the stars appear one by one
   for i = 1, 3 do
     local on = r.stars >= i and self.result_t > 0.5 + i * 0.35
     local size = on and (46 + 14 * math.max(0, 1 - (self.result_t - 0.5 - i * 0.35) * 5)) or 46
-    ui.star(w / 2 + (i - 2) * 64, 118, size, on)
+    ui.star(w / 2 + (i - 2) * 64, 122, size, on)
     if on and math.abs(self.result_t - 0.5 - i * 0.35) < 0.02 then audio.sfx("star", { pitch = 0.9 + i * 0.12 }) end
   end
-  ui.center(tostring(r.score), 156, 40, ui.color.ink, { font = "display" })
-  ui.center("SCORE", 202, 11, ui.color.dim)
+  ui.center(tostring(r.score), 158, 40, ui.color.ink, { font = "display" })
+  ui.center("SCORE", 214, 11, ui.color.dim)
   local line = string.format("%d served  ·  %d missed  ·  %d burnt", r.served, r.expired, r.burnt)
-  ui.center(line, 224, 13, ui.color.ink)
-  if r.record then ui.center("A NEW BEST!", 242, 12, ui.color.wine, { font = "display" }) else ui.center("BEST  " .. r.best, 242, 12, ui.color.dim) end
+  ui.center(line, 238, 13, ui.color.ink)
+  if r.record then ui.center("A NEW BEST!", 266, 12, ui.color.wine, { font = "display" }) else ui.center("BEST  " .. r.best, 266, 12, ui.color.dim) end
   -- one line of advice, from how it went
   local tip
   if r.burnt > 0 then tip = "A finished brew burns after nine seconds: bottle it first."
@@ -435,10 +436,10 @@ function Play:draw_over(w)
     local goal = self.level.stars[math.min(3, r.stars + 1)]
     tip = string.format("%d more points for the next star. Grinding while a pot brews saves time.", math.max(0, goal - r.score))
   else tip = "A perfect shift!" end
-  ui.text(w / 2 - 184, 266, tip, 12, ui.color.ink, { width = 368, align = "center" })
+  ui.text(w / 2 - 208, 290, tip, 11, ui.color.ink, { width = 416, align = "center" })
   if self.result_t > 1.4 then
     local items = self:results_items()
-    ui.menu(items, self.choice, 318, { width = 300, id = "results", enter = self.result_t - 1.4, row = 44, size = 15 })
+    ui.menu(items, self.choice, 358, { width = 340, id = "results", enter = self.result_t - 1.4, row = 46, size = 13 })
     ui.hints({ { "pad_dpad", "Choose" }, { "pad_a", "Accept" } })
   end
   ui.oy, ui.alpha = 0, 1

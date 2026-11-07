@@ -5,8 +5,8 @@ local audio = require("lib.audio")
 local ui = {}
 
 ui.color = {
-  ink = { 62, 40, 28 }, cream = { 250, 238, 208 }, gold = { 232, 176, 60 }, wine = { 156, 50, 62 }, leaf = { 72, 128, 70 }, sky = { 70, 120, 170 }, shadow = { 30, 18, 12 },
-  paper = { 232, 214, 168 }, dim = { 150, 126, 96 }, white = { 255, 252, 244 },
+  ink = { 52, 38, 46 }, cream = { 252, 244, 224 }, gold = { 244, 190, 70 }, wine = { 176, 52, 80 }, leaf = { 72, 128, 70 }, sky = { 70, 120, 170 }, shadow = { 20, 14, 36 },
+  paper = { 232, 214, 168 }, dim = { 128, 112, 124 }, white = { 255, 252, 244 },
 }
 ui.ox, ui.oy, ui.alpha = 0, 0, 1
 
@@ -14,13 +14,20 @@ local function tint(c, a) return { c[1], c[2], c[3], math.floor((c[4] or 255) * 
 
 local HEAD, BODY = "display", "serif"
 
+-- Every size asked for is made bigger, small type most: the handheld's screen is small and the type has to be read at arm's length.
+local function big(size)
+  if size <= 24 then return size * 1.42 end
+  return size * 1.16
+end
+ui.big = big
+
 function ui.text(x, y, text, size, color, opts)
   opts = opts or {}
   local font = opts.font or BODY
-  return nova.ui.text(x + ui.ox, y + ui.oy, text, { size = size, color = tint(color or ui.color.ink), font = font, shadow = opts.shadow and tint(ui.color.shadow, 0.6) or false, align = opts.align, width = opts.width })
+  return nova.ui.text(x + ui.ox, y + ui.oy, text, { size = big(size), color = tint(color or ui.color.ink), font = font, shadow = opts.shadow and tint(ui.color.shadow, 0.6) or false, align = opts.align, width = opts.width })
 end
 
-function ui.width(text, size, font) return nova.ui.text_width(text, { size = size, font = font or BODY }) end
+function ui.width(text, size, font) return nova.ui.text_width(text, { size = big(size), font = font or BODY }) end
 
 function ui.heading(text, x, y, size, color, opts)
   opts = opts or {}
@@ -43,8 +50,9 @@ end
 
 -- wood and parchment panels: kind is "brown" (dark wood), "beige" (parchment) or "light" (pale paper)
 function ui.panel(x, y, w, h, kind, alpha)
-  local sprite = ({ brown = "ui/panel_brown", beige = "ui/panel_beige", light = "ui/panel_beigeLight", inset = "ui/panelInset_beige", blue = "ui/panel_blue" })[kind or "beige"]
-  nova.ui.panel(sprite, x + ui.ox, y + ui.oy, w, h, { slice = 22, scale = 0.7, color = tint({ 255, 255, 255, alpha or 255 }) })
+  local sprite = ({ brown = "ui/panel_blue", blue = "ui/panel_blue", beige = "ui/panel_beige", light = "ui/panel_beigeLight", inset = "ui/panelInset_beige", blue = "ui/panel_blue" })[kind or "beige"]
+  local c = (sprite == "ui/panel_blue") and { 150, 160, 255 } or { 255, 255, 255 } -- (the blue one is a grey-lilac: pushed towards indigo)
+  nova.ui.panel(sprite, x + ui.ox, y + ui.oy, w, h, { slice = 22, scale = 0.7, color = tint({ c[1], c[2], c[3], alpha or 255 }) })
 end
 
 function ui.pad(name, x, y, size)
@@ -90,16 +98,16 @@ function ui.hints(items)
   local w = nova.view()
   local size = 13
   local total = 0
-  for _, it in ipairs(items) do total = total + 26 + 8 + ui.width(it[2], size) + 18 end
-  total = total - 18
-  local pw = total + 32
-  local x0 = w - 14 - pw
-  ui.panel(x0, 494, pw, 38, "brown")
-  local x = x0 + 16
+  for _, it in ipairs(items) do total = total + 30 + 8 + ui.width(it[2], size) + 20 end
+  total = total - 20
+  local pw = total + 36
+  local x0 = w - 12 - pw
+  ui.panel(x0, 484, pw, 46, "brown")
+  local x = x0 + 18
   for _, it in ipairs(items) do
-    ui.pad(it[1], x, 500, 26)
-    ui.text(x + 34, 507, it[2], size, ui.color.cream)
-    x = x + 34 + ui.width(it[2], size) + 18
+    ui.pad(it[1], x, 492, 30)
+    ui.text(x + 38, 500, it[2], size, ui.color.cream)
+    x = x + 38 + ui.width(it[2], size) + 20
   end
 end
 
@@ -134,13 +142,13 @@ function ui.menu(items, selected, y, opts)
     local bw, bh = width + 22 * s, row - 8 + 8 * s
     local bx, by = x - 11 * s, y + (i - 1) * row - 4 * s - (1 - e) * 26
     local a = e
-    nova.ui.panel(s > 0.5 and "ui/buttonLong_beige" or "ui/buttonLong_brown", bx + ui.ox, by + ui.oy, bw, bh, { slice = { 14, 14, 14, 14 }, scale = 0.9, color = tint({ 255, 255, 255, 255 * a }) })
+    nova.ui.panel(s > 0.5 and "ui/buttonLong_beige" or "ui/buttonLong_blue", bx + ui.ox, by + ui.oy, bw, bh, { slice = { 14, 14, 14, 14 }, scale = 0.9, color = tint(s > 0.5 and { 255, 255, 255, 255 * a } or { 160, 170, 255, 255 * a }) })
     local c = s > 0.5 and ui.color.ink or ui.color.cream
     local label = type(item) == "table" and item[1] or item
-    local ty = by + (bh - size) / 2 - 3
-    nova.ui.text(bx + 22 + ui.ox, ty + ui.oy, label, { size = size, color = tint(c, a), font = HEAD, shadow = false })
+    local ty = by + (bh - big(size)) / 2 - 4
+    nova.ui.text(bx + 22 + ui.ox, ty + ui.oy, label, { size = big(size), color = tint(c, a), font = HEAD, shadow = false })
     if type(item) == "table" and item[2] then
-      nova.ui.text(bx + bw - 22 - ui.width(item[2], size) + ui.ox, ty + ui.oy, item[2], { size = size, color = tint(c, a), font = BODY, shadow = false })
+      nova.ui.text(bx + bw - 22 - ui.width(item[2], size) + ui.ox, ty + ui.oy, item[2], { size = big(size), color = tint(c, a), font = BODY, shadow = false })
     end
     if i == selected then
       local bob = math.sin(now * 6) * 3

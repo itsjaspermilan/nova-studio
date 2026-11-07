@@ -333,10 +333,10 @@ function Title:draw_ui()
     ui.hints({ { "pad_a", "Start" } })
   elseif screen == "menu" then
     ui.heading("POTION PANIC", 60, 34, 38, ui.color.cream, { shadow = true })
-    ui.menu(MENU, self.choice, 130, { width = 340, cx = 230, id = "main", enter = enter, row = 58 })
-    ui.panel(60, 330, 340, 130, "beige")
-    ui.text(80, 346, BLURB[self.choice], 14, ui.color.ink, { width = 300 })
-    if self.choice == 1 then ui.text(80, 424, "Cleared " .. state.cleared_count() .. " of " .. #data.levels, 13, ui.color.wine, { font = "display" }) end
+    ui.menu(MENU, self.choice, 120, { width = 380, cx = 240, id = "main", enter = enter, row = 62, size = 15 })
+    ui.panel(40, 316, 400, 160, "beige")
+    ui.text(60, 332, BLURB[self.choice], 12, ui.color.ink, { width = 360 })
+    if self.choice == 1 then ui.text(60, 436, "Cleared " .. state.cleared_count() .. " of " .. #data.levels, 11, ui.color.wine, { font = "display" }) end
     ui.hints({ { "pad_a", "Accept" }, { "pad_b", "Back" } })
   elseif screen == "story" then
     self:draw_story(w)
@@ -355,7 +355,7 @@ function Title:draw_ui()
       { "Sound volume", pct(state.sfx_volume) },
       { "Smooth edges", onoff(state.smooth) },
       { "Vibration", onoff(state.vibration) },
-    }, self.choice, 120, { width = 480, id = "options", enter = enter, row = 56 })
+    }, self.choice, 120, { width = 560, id = "options", enter = enter, row = 64, size = 15 })
     ui.hints({ { "pad_a", "Change" }, { "pad_b", "Back" } })
   end
   ui.oy, ui.alpha = 0, 1
@@ -366,12 +366,12 @@ function Title:draw_story(w)
   local s = self.story
   if not s then return end
   local card = s.cards[s.i]
-  ui.panel(w / 2 - 340, 330, 680, 160, "beige")
-  ui.panel(w / 2 - 340, 300, 230, 40, "brown")
-  ui.text(w / 2 - 322, 309, card[1], 15, ui.color.cream, { font = "display" })
+  ui.panel(w / 2 - 360, 312, 720, 168, "beige")
+  ui.panel(w / 2 - 360, 270, 300, 52, "brown")
+  ui.text(w / 2 - 338, 284, card[1], 11, ui.color.cream, { font = "display" })
   local shown = card[2]:sub(1, math.floor(s.chars))
-  ui.text(w / 2 - 310, 352, shown, 17, ui.color.ink, { width = 620 })
-  ui.text(w / 2 + 300, 462, (s.i < #s.cards) and ">" or "", 14, ui.color.wine)
+  ui.text(w / 2 - 334, 336, shown, 14, ui.color.ink, { width = 668 })
+  ui.text(w / 2 + 320, 440, (s.i < #s.cards) and ">" or "", 14, ui.color.wine)
   ui.hints({ { "pad_a", "Next" }, { "pad_b", "Skip" } })
 end
 
@@ -407,40 +407,40 @@ function Title:draw_map(w, enter)
   -- the card of the level
   local lv = data.levels[self.choice]
   local biome = data.biomes[lv.biome]
-  ui.panel(w / 2 - 320, 300, 640, 190, "beige")
-  ui.text(w / 2 - 296, 316, lv.name, ui.fit(lv.name, 24, 400, "display"), ui.color.ink, { font = "display" })
-  ui.text(w / 2 - 296, 346, biome.name, 12, ui.color.dim)
-  local x = w / 2 - 296
-  ui.text(x, 372, "BREWS", 11, ui.color.dim)
+  ui.panel(24, 268, 912, 208, "beige")
+  ui.text(48, 280, lv.name, ui.fit(lv.name, 22, 520, "display"), ui.color.ink, { font = "display" })
+  ui.text(48, 322, biome.name .. "  ·  " .. biome.quirk, 11, ui.color.dim)
+  local x = 48
+  ui.text(x, 358, "BREWS", 10, ui.color.dim)
   for _, id in ipairs(lv.recipes) do
     local r = data.recipes[id]
-    ui.flask(x, 390, 18, r.color)
-    ui.text(x + 26, 392, r.name, 13, ui.color.ink)
-    x = x + 26 + ui.width(r.name, 13) + 22
+    ui.flask(x, 380, 22, r.color)
+    ui.text(x + 32, 380, r.name, 11, ui.color.ink)
+    x = x + 32 + ui.width(r.name, 11) + 26
   end
   local goal = lv.stars
-  ui.text(w / 2 - 296, 430, "STARS AT", 11, ui.color.dim)
+  ui.text(48, 424, "STARS AT", 10, ui.color.dim)
   for i = 1, 3 do
-    ui.star(w / 2 - 296 + 66 + (i - 1) * 96, 436, 16, state.stars(self.choice) >= i)
-    ui.text(w / 2 - 296 + 80 + (i - 1) * 96, 429, tostring(goal[i]), 14, ui.color.ink, { font = "display" })
+    ui.star(48 + 110 + (i - 1) * 130, 436, 24, state.stars(self.choice) >= i)
+    ui.text(48 + 130 + (i - 1) * 130, 422, tostring(goal[i]), 12, ui.color.ink, { font = "display" })
   end
-  ui.text(w / 2 + 130, 316, "BEST", 11, ui.color.dim)
-  ui.text(w / 2 + 130, 332, tostring(state.best(self.choice)), 24, ui.color.wine, { font = "display" })
-  if not state.unlocked(self.choice) then ui.text(w / 2 + 70, 440, "Earn a star on the level before.", 12, ui.color.wine, { width = 230 }) end
+  ui.text(w - 190, 280, "BEST", 10, ui.color.dim)
+  ui.text(w - 190, 300, tostring(state.best(self.choice)), 24, ui.color.wine, { font = "display" })
+  if not state.unlocked(self.choice) then ui.text(w - 300, 356, "Earn a star on the level before.", 11, ui.color.wine, { width = 260 }) end
   ui.hints({ { "pad_dpad", "Move" }, { "pad_a", "Brew" }, { "pad_b", "Back" } })
 end
 
 function Title:draw_free(w, enter)
   ui.heading("FREE BREW", w / 2 - ui.width("FREE BREW", 36, "display") / 2, 22, 36, ui.color.cream, { shadow = true })
   local cleared = state.cleared_count()
-  local cw, ch, gap = 150, 100, 14
+  local cw, ch, gap = 190, 112, 14
   local cols = 4
   local total = cols * cw + (cols - 1) * gap
   local x0 = (w - total) / 2
   for i, lv in ipairs(data.levels) do
     local col, row = (i - 1) % cols, (i - 1) // cols
     local a = ease_out((enter - (i - 1) * 0.03) / 0.3)
-    local x, y = x0 + col * (cw + gap), 80 + row * (ch + gap)
+    local x, y = x0 + col * (cw + gap), 70 + row * (ch + gap)
     local open = state.stars(i) >= 1
     local sel = i == self.choice
     local old = ui.alpha
@@ -448,19 +448,19 @@ function Title:draw_free(w, enter)
     if sel then ui.panel(x - 5, y - 5, cw + 10, ch + 10, "light") end
     ui.panel(x, y, cw, ch, open and "beige" or "brown")
     local c = open and ui.color.ink or ui.color.dim
-    ui.text(x + 14, y + 12, tostring(i), 24, c, { font = "display" })
-    ui.text(x + 14, y + 46, lv.name, ui.fit(lv.name, 13, cw - 24), c, { width = cw - 24 })
+    ui.text(x + 14, y + 8, tostring(i), 18, c, { font = "display" })
+    ui.text(x + 14, y + 46, lv.name, ui.fit(lv.name, 11, cw - 28), c)
     if open then
-      for s = 1, 3 do ui.star(x + 20 + (s - 1) * 18, y + 82, 15, s <= state.stars(i)) end
-      ui.text(x + cw - 14 - ui.width(tostring(state.free_best(i)), 12), y + 76, tostring(state.free_best(i)), 12, ui.color.wine)
+      for s = 1, 3 do ui.star(x + 24 + (s - 1) * 26, y + 90, 22, s <= state.stars(i)) end
+      ui.text(x + cw - 14 - ui.width(tostring(state.free_best(i)), 11), y + 80, tostring(state.free_best(i)), 11, ui.color.wine)
     else
-      ui.text(x + 14, y + 76, "locked", 12, ui.color.dim)
+      ui.text(x + 14, y + 80, "locked", 11, ui.color.dim)
     end
     ui.alpha = old
   end
   if cleared == 0 then
-    ui.panel(w / 2 - 250, 440, 500, 40, "beige")
-    ui.center("Beat a level in the campaign to brew it here.", 450, 14, ui.color.ink)
+    ui.panel(w / 2 - 300, 416, 600, 56, "beige")
+    ui.center("Beat a level in the campaign to brew it here.", 428, 12, ui.color.ink)
   end
   ui.hints({ { "pad_dpad", "Move" }, { "pad_a", "Choose" }, { "pad_b", "Back" } })
 end
@@ -476,13 +476,13 @@ function Title:draw_rules(w, enter)
     items[i] = { def[2], text }
   end
   items[#items + 1] = "Start brewing"
-  ui.menu(items, self.choice, 84, { width = 520, cx = 310, id = "rules", enter = enter, row = 48, size = 15 })
-  ui.panel(600, 84, 330, 190, "beige")
-  ui.text(620, 100, lv.name, ui.fit(lv.name, 22, 290, "display"), ui.color.ink, { font = "display" })
-  ui.text(620, 130, data.biomes[lv.biome].name, 12, ui.color.dim)
-  ui.text(620, 158, "BEST HERE", 11, ui.color.dim)
-  ui.text(620, 174, tostring(state.free_best(state.level)), 28, ui.color.wine, { font = "display" })
-  ui.text(620, 220, "Rules change what a game is worth to you, not your stars.", 12, ui.color.ink, { width = 290 })
+  ui.menu(items, self.choice, 74, { width = 560, cx = 330, id = "rules", enter = enter, row = 50, size = 13 })
+  ui.panel(634, 80, 306, 250, "beige")
+  ui.text(652, 94, lv.name, ui.fit(lv.name, 18, 270, "display"), ui.color.ink, { font = "display" })
+  ui.text(652, 134, data.biomes[lv.biome].name, 10, ui.color.dim)
+  ui.text(652, 168, "BEST HERE", 10, ui.color.dim)
+  ui.text(652, 188, tostring(state.free_best(state.level)), 24, ui.color.wine, { font = "display" })
+  ui.text(652, 238, "Rules change what a game is worth to you, not your stars.", 10, ui.color.ink, { width = 270 })
   ui.hints({ { "pad_dpad", "Choose" }, { "pad_a", "Change" }, { "pad_b", "Back" } })
 end
 

@@ -32,17 +32,17 @@ data.recipes = {
 -- floor and wall are tints for the Mini Dungeon floor and wall models; counter is the colour of the worktops; sky and fog are the colours behind
 -- and in the distance; music is in music/. `decor` lists models scattered round the outside (from Kenney's Nature, Graveyard and Fantasy Town kits).
 data.biomes = {
-  { id = "meadow", name = "Greenhollow Meadow", short = "Meadow", floor = { 150, 190, 110 }, wall = { 196, 164, 120 }, counter = { 188, 140, 88 }, top = { 226, 192, 142 },
-    sky = { 150, 206, 240 }, fog = { 190, 226, 244 }, sun = { 255, 244, 214 }, ambient = { 120, 126, 120 }, music = "meadow", banner = { 96, 168, 84 }, cauldron = { brew = 1, burn = 1 }, quirk = "Ordinary cauldrons.",
+  { id = "meadow", name = "Greenhollow Meadow", short = "Meadow", floor = { 240, 230, 206 }, floor2 = { 224, 212, 184 }, ground = { 112, 168, 118 }, wall = { 104, 132, 150 }, counter = { 150, 98, 76 }, top = { 236, 206, 168 },
+    sky = { 150, 206, 240 }, fog = { 176, 214, 226 }, sun = { 255, 246, 224 }, ambient = { 136, 140, 150 }, music = "meadow", banner = { 96, 168, 84 }, cauldron = { brew = 1, burn = 1 }, quirk = "Ordinary cauldrons.",
     decor = { "tree_default", "tree_oak", "flower_redA", "flower_yellowA", "flower_purpleA", "mushroom_redGroup", "plant_bush" }, fence = "fence_simple" },
-  { id = "frost", name = "Frostpeak Hollow", short = "Frost", floor = { 190, 214, 236 }, wall = { 170, 190, 214 }, counter = { 120, 150, 196 }, top = { 190, 214, 240 },
-    sky = { 170, 196, 230 }, fog = { 214, 228, 244 }, sun = { 230, 238, 255 }, ambient = { 120, 134, 160 }, music = "frost", banner = { 110, 170, 220 }, cauldron = { brew = 1.3, burn = 1.7 }, quirk = "Cauldrons brew slowly but forgive a late bottle.",
+  { id = "frost", name = "Frostpeak Hollow", short = "Frost", floor = { 214, 232, 246 }, floor2 = { 190, 214, 234 }, ground = { 226, 238, 248 }, wall = { 84, 112, 170 }, counter = { 70, 98, 156 }, top = { 176, 200, 232 },
+    sky = { 170, 196, 230 }, fog = { 214, 228, 244 }, sun = { 232, 240, 255 }, ambient = { 134, 146, 172 }, music = "frost", banner = { 110, 170, 220 }, cauldron = { brew = 1.3, burn = 1.7 }, quirk = "Cauldrons brew slowly but forgive a late bottle.",
     decor = { "tree_pineTallA", "tree_pineRoundA", "rock_largeA", "rock_tallA", "campfire_logs", "tent_smallClosed" }, fence = "fence_simple", snow = true },
-  { id = "ember", name = "Emberdeep Caverns", short = "Ember", floor = { 150, 112, 96 }, wall = { 120, 84, 72 }, counter = { 110, 84, 80 }, top = { 168, 124, 108 },
-    sky = { 52, 28, 28 }, fog = { 96, 44, 32 }, sun = { 255, 170, 110 }, ambient = { 150, 96, 80 }, music = "ember", banner = { 220, 108, 52 }, cauldron = { brew = 0.75, burn = 0.65 }, quirk = "Hot cauldrons brew fast and burn fast.",
+  { id = "ember", name = "Emberdeep Caverns", short = "Ember", floor = { 96, 76, 84 }, floor2 = { 82, 64, 72 }, ground = { 44, 30, 38 }, wall = { 70, 48, 58 }, counter = { 132, 66, 56 }, top = { 196, 112, 86 },
+    sky = { 52, 28, 28 }, fog = { 70, 36, 34 }, sun = { 255, 190, 140 }, ambient = { 150, 110, 110 }, music = "ember", banner = { 220, 108, 52 }, cauldron = { brew = 0.75, burn = 0.65 }, quirk = "Hot cauldrons brew fast and burn fast.",
     decor = { "rock_tallA", "stone_tallB", "rock_largeA", "cactus_tall", "campfire_logs" }, fence = "fence_simple" },
-  { id = "mire", name = "Gloomwater Mire", short = "Mire", floor = { 120, 134, 110 }, wall = { 96, 102, 92 }, counter = { 84, 92, 86 }, top = { 130, 142, 124 },
-    sky = { 40, 44, 70 }, fog = { 70, 80, 96 }, sun = { 170, 190, 230 }, ambient = { 96, 108, 140 }, music = "mire", banner = { 130, 100, 190 }, cauldron = { brew = 1, burn = 1 }, quirk = "Ordinary cauldrons, awful floors.",
+  { id = "mire", name = "Gloomwater Mire", short = "Mire", floor = { 110, 126, 124 }, floor2 = { 96, 110, 110 }, ground = { 44, 58, 66 }, wall = { 50, 64, 74 }, counter = { 96, 76, 120 }, top = { 150, 126, 176 },
+    sky = { 40, 44, 70 }, fog = { 58, 70, 88 }, sun = { 186, 200, 240 }, ambient = { 110, 120, 156 }, music = "mire", banner = { 130, 100, 190 }, cauldron = { brew = 1, burn = 1 }, quirk = "Ordinary cauldrons, awful floors.",
     decor = { "pine", "gravestone-cross", "candle-multiple", "lantern-candle", "fire-basket", "pumpkin-carved", "crypt-small" }, fence = "iron-fence" },
 }
 

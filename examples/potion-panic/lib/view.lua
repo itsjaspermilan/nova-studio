@@ -22,7 +22,7 @@ function View.setup(biome, smooth)
   nova.fog { color = biome.fog, near = 28, far = 80 }
   nova.shadows { radius = 22, strength = 0.55 }
   -- a storybook look: three bands of light, a warm brown line round things, a little glow, a soft vignette
-  nova.look { toon = 3, outline = { color = { 46, 30, 24 }, strength = 0.75, width = 1 }, saturation = 1.12, vignette = 0.3, bloom = 0.3, bloom_threshold = 0.82, fxaa = smooth and 1 or 0 }
+  nova.look { toon = 3, outline = { color = { 36, 26, 40 }, strength = 0.7, width = 1 }, saturation = 1.0, vignette = 0.3, bloom = 0.3, bloom_threshold = 0.82, fxaa = smooth and 1 or 0 }
   if biome.snow then nova.weather({ kind = "snow", count = 260, fall = 2.2, drift = 1.2 }) else nova.weather() end
 end
 
@@ -231,8 +231,8 @@ function View.draw_chef(k, t)
 end
 
 local function tint_of(floor, biome, cx, cz, k, t)
-  local base = biome.floor
-  local shade = ((cx + cz) % 2 == 0) and 1 or 0.93
+  local base = ((cx + cz) % 2 == 0) and biome.floor or biome.floor2
+  local shade = 1
   if floor == "ice" then return mix({ 150, 206, 250 }, { 214, 238, 255 }, ((cx + cz) % 2) * 0.5) end
   if floor == "mud" then return { 96, 74, 52 } end
   if floor == "pulse" then
@@ -248,7 +248,7 @@ end
 function View.draw(k, biome, t)
   local cols, rows = k.cols, k.rows
   -- the ground under and round it all
-  nova.cuboid(-40, -0.3, -40, cols + 40, -0.02, rows + 40, { color = mul(biome.floor, 0.78) })
+  nova.cuboid(-40, -0.3, -40, cols + 40, -0.02, rows + 40, { color = biome.ground })
   for z = 1, rows do
     for x = 1, cols do
       local floor = k.floor[z][x]
@@ -338,8 +338,8 @@ function View.showcase(biome, t, kind, w, h)
     st("counter", 8, { item = { k = "potion", recipe = "swift" } }), st("counter", 9, { item = { k = "potion", recipe = "panacea" } }),
     st("bottles", 10), st("hatch", 11),
   }
-  nova.cuboid(-40, -0.3, -40, 60, -0.02, 40, { color = mul(biome.floor, 0.85) })
-  nova.cuboid(0, -0.06, 1.0, 11, 0.0, 4, { color = mul(biome.floor, 1.12) })
+  nova.cuboid(-40, -0.3, -40, 60, -0.02, 40, { color = biome.ground })
+  nova.cuboid(0, -0.06, 1.0, 11, 0.0, 4, { color = biome.floor })
   for _, s in ipairs(list) do View.draw_station(s, k, biome, t) end
   nova.model("character-human", 5.5, 0, 2.3, { ry = 0.15, scale = 1.7 })
   View.item({ k = "potion", recipe = "heal" }, 5.62, 1.05, 2.2, t)
