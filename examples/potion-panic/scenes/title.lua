@@ -487,7 +487,7 @@ function Title:draw_book(w, h)
   -- the spine's shadow and a ribbon
   nova.ui.rect(PX_R - 6 + ui.ox, PY + 6 + ui.oy, 6, PAGE_H - 12, ui.tint({ 60, 40, 50 }, 0.35))
   nova.ui.rect(PX_R + ui.ox, PY + 6 + ui.oy, 5, PAGE_H - 12, ui.tint({ 255, 255, 255 }, 0.12))
-  nova.ui.rect(PX_R + 56 + ui.ox, PY + PAGE_H - 6 + ui.oy, 22, 40, ui.tint(ui.color.wine))
+  nova.ui.rect(PX_R + 300 + ui.ox, PY + PAGE_H - 6 + ui.oy, 22, 30, ui.tint(ui.color.wine))
   -- a page turning
   if self.flip then
     local t = self.flip.t
