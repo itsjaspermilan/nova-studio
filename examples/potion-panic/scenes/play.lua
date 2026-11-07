@@ -5,6 +5,7 @@ local ui = require("lib.ui")
 local data = require("lib.data")
 local Kitchen = require("lib.kitchen")
 local View = require("lib.view")
+local Fx = require("lib.fx")
 local Bot = require("lib.bot")
 local Tutorial = require("lib.tutorial")
 local transition = require("lib.transition")
@@ -37,6 +38,8 @@ function Play:enter()
   self.choice = 1
   self.result_t = 0
   self.pops = {}
+  self.fx = Fx.new(self.k)
+  self.streak_pulse, self.zoom_kick, self.shown = 0, 0, 0
   self.work_t = 0
   self.bot = nil
   self.flash, self.shake, self.bubble_t = 0, 0, 1
@@ -67,6 +70,7 @@ end
 
 function Play:handle_events(events)
   local k = self.k
+  self.fx:events(events)
   for _, e in ipairs(events) do
     local t = e.type
     if t == "grab" then
@@ -83,6 +87,9 @@ function Play:handle_events(events)
     elseif t == "serve" then
       audio.sfx("coins"); audio.sfx("ding", { pitch = 1.2 })
       for _, st in ipairs(k.stations) do if st.kind == "hatch" then self:pop("+" .. e.points, st, ui.color.gold) end end
+      self.streak_pulse = 1
+      if e.streak >= 2 then self:pop("Streak x" .. e.streak, { x = k.chef.x, z = k.chef.z }, { 255, 190, 80 }) end
+      self.zoom_kick = 0.05
     elseif t == "reject" then audio.sfx("nope")
     elseif t == "bin" then audio.sfx("drop", { pitch = 0.7 }); if e.item and e.item.k == "potion" then audio.sfx("shatter") end
     elseif t == "expire" then audio.sfx("fail"); self:pop("-10", { x = 0.5, z = 0.5 }, ui.color.wine)
@@ -181,6 +188,10 @@ function Play:update(dt)
     p.age = p.age + dt
     if p.age > 1.1 then table.remove(self.pops, i) end
   end
+  self.fx:update(dt)
+  self.shown = self.shown + (self.k.score - self.shown) * math.min(1, dt * 7)
+  self.streak_pulse = math.max(0, self.streak_pulse - dt * 3)
+  self.zoom_kick = math.max(0, self.zoom_kick - dt * 0.25)
   self.flash = math.max(0, self.flash - dt * 2.5)
   self.shake = math.max(0, self.shake - dt * 2)
   -- the pots murmur while they brew
@@ -268,9 +279,11 @@ function Play:draw()
     orbit = k * 2.5
   end
   if self.shake > 0 then orbit = orbit + math.sin(self.t * 60) * self.shake * 0.25 end
-  View.camera(self.k, 0.9, w, h, 0, orbit, zoom * 0.9)
+  View.camera(self.k, 0.35, w, h, 0, orbit, zoom * (0.84 + self.zoom_kick))
   View.scenery(self.k, self.biome, self.t)
   View.draw(self.k, self.biome, self.t)
+  View.draw_customers(self.k, self.t)
+  self.fx:lights(self.t)
 end
 
 -- an order as a paper ticket: a bar of the time left along the top, the potion, and a bubble for each ingredient (a brown one is ground first)
@@ -363,8 +376,13 @@ function Play:draw_hud(w)
     ui.panel(40, 468, 220, 60, "ink")
     nova.ui.sprite("ui/iconCircle_beige", 56 + ui.ox, 498 + ui.oy, { w = 76, h = 76, color = ui.tint({ 250, 196, 60, 255 }) })
     nova.ui.sprite("ui/star", 56 + ui.ox, 498 + ui.oy, { w = 40, h = 40, color = ui.tint({ 255, 240, 180, 255 }) })
-    ui.text(106, 472, tostring(k.score), ui.NUMBER, ui.color.white, { shadow = true })
+    ui.text(106, 472 - self.streak_pulse * 4, tostring(math.floor(self.shown + 0.5)), ui.NUMBER, self.streak_pulse > 0.3 and ui.color.gold or ui.color.white, { shadow = true })
     for i = 1, 3 do ui.star(176 + (i - 1) * 24, 508, 20, k.score >= self.level.stars[i]) end
+    -- the streak: a badge over the score that jumps on every serve
+    if k.streak >= 2 then
+      local j = self.streak_pulse
+      ui.ribbon(40, 430 - j * 8, 200, 34, { 240, 120, 50 }, "Streak x" .. k.streak, ui.SMALL + 4)
+    end
     -- the clock, bottom right
     local pw = 200
     ui.panel(w - pw - 10, 462, pw, 66, "ink")

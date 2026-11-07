@@ -89,6 +89,7 @@ function Kitchen.new(level, rules, seed)
   k.events = {}
   k.t = 0
   k.score = 0
+  k.streak, k.best_streak = 0, 0
   k.stats = { served = 0, expired = 0, burnt = 0, sludge = 0, fell = 0, tips = 0 }
   k.over = false
   k.orders = {}
@@ -458,11 +459,17 @@ function Kitchen:serve(potion)
   local o = table.remove(self.orders, best)
   local base = math.floor(data.recipes[o.recipe].value * self.rules.value)
   local tip = math.floor(base * 0.5 * math.max(0, o.t / o.total))
+  -- every order in a row (none lost, nothing burnt) adds a tenth of its price, up to half
+  self.last_serve = self.t
+  self.streak = self.streak + 1
+  self.best_streak = math.max(self.best_streak, self.streak)
+  local bonus = math.floor(base * 0.1 * math.min(5, self.streak - 1))
+  tip = tip + bonus
   self.score = self.score + base + tip
   self.stats.served = self.stats.served + 1
   self.stats.tips = self.stats.tips + tip
   c.held = nil
-  self:emit({ type = "serve", recipe = o.recipe, points = base + tip, tip = tip })
+  self:emit({ type = "serve", recipe = o.recipe, points = base + tip, tip = tip, streak = self.streak, bonus = bonus })
   return true
 end
 
@@ -627,6 +634,7 @@ function Kitchen:update(dt, input)
         if st.timer >= self.burn_after then
           st.state, st.timer = "burnt", 0
           self.stats.burnt = self.stats.burnt + 1
+          self.streak = 0
           self:emit({ type = "burnt", st = st })
         end
       end
@@ -640,6 +648,8 @@ function Kitchen:update(dt, input)
     if o.t <= 0 then
       table.remove(self.orders, i)
       self.stats.expired = self.stats.expired + 1
+      self.streak = 0
+      self.last_expire = self.t
       self.score = self.score - 10
       self:emit({ type = "expire", order = o })
     end

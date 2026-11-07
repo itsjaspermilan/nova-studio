@@ -197,6 +197,33 @@ function View.draw_station(st, k, biome, t)
   end
 end
 
+-- the people waiting for their potions: one stands behind each hatch, in a different coat, waves when served and shakes a head when an order runs out
+local COATS = { { 255, 150, 150 }, { 150, 200, 255 }, { 190, 255, 160 }, { 255, 225, 140 }, { 220, 170, 255 } }
+function View.draw_customers(k, t)
+  for hi, st in ipairs(k.stations) do
+    if st.kind == "hatch" then
+      if not st.out then
+        -- outward: the neighbour cell that is not part of the kitchen
+        for _, d in ipairs({ { 0, -1 }, { 0, 1 }, { -1, 0 }, { 1, 0 } }) do
+          local row = k.floor[st.z + d[2]]
+          if not (row and row[st.x + d[1]]) then st.out = d; break end
+        end
+        st.out = st.out or { 0, -1 }
+      end
+      local d = st.out
+      local n = #k.orders
+      local mood = k.customer_mood or 0
+      local clip, time = "idle", t + hi
+      if k.t - (k.last_serve or -9) < 1.0 then clip, time = "emote-yes", k.t - k.last_serve
+      elseif k.t - (k.last_expire or -9) < 0.8 then clip, time = "emote-no", k.t - k.last_expire end
+      if n > 0 or clip ~= "idle" then
+        local who = (k.stats.served + hi) % #COATS + 1
+        nova.model("character-human", st.cx + d[1] * 1.15, 0, st.cz + d[2] * 1.15, { ry = math.atan(-d[1], -d[2]), scale = 1.5, clip = clip, time = time, tint = COATS[who] })
+      end
+    end
+  end
+end
+
 -- the apprentice
 function View.draw_chef(k, t)
   local c = k.chef
@@ -505,6 +532,14 @@ function View.apothecary(t, shift, w, h)
   nova.cuboid(-8, 0, -1.5, -7.8, 0.82, 1.7, { color = dark })
   -- the cauldron, bubbling
   nova.model("cauldron", 0, 1.0, 0, { scale = 2.7 })
+  -- the apprentice, waving from the table, and a plume over the pot
+  nova.model("character-human", -1.7, 1.0, 0.7, { scale = 2.6, ry = 0.5, clip = "emote-yes", time = t % 1.4 })
+  local tick = math.floor(t * 7)
+  if tick ~= View.plume_tick then
+    View.plume_tick = tick
+    nova.burst(0, 2.1, 0, { sprite = "fx/puff", count = 1, life = { 1.2, 2.0 }, speed = { 0.5, 1.0 }, spread = 0.5, gravity = 0.2, size = 0.5, size_end = 2.4, color = { 200, 150, 255, 140 }, color_end = { 200, 150, 255, 0 }, max = 24 })
+    if tick % 3 == 0 then nova.burst(math.sin(t) * 0.5, 2.0, 0, { sprite = "fx/spark", count = 1, life = { 1.0, 1.8 }, speed = { 0.8, 1.6 }, spread = 0.6, gravity = 0, size = 0.3, size_end = 0.05, color = { 255, 240, 160, 255 }, color_end = { 255, 240, 160, 0 }, max = 16 }) end
+  end
   local top = 1.0 + 0.36 * 2.7
   local pulse = 0.5 + 0.5 * math.sin(t * 2.2)
   nova.cuboid(-0.5, top - 0.06, -0.64, 0.5, top + 0.02 + 0.03 * pulse, 0.64, { color = { 130 + 60 * pulse, 70, 230 }, glow = true })
