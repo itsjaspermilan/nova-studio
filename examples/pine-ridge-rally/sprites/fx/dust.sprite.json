@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "image": "dust.png",
+  "frame_width": 64,
+  "frame_height": 64,
+  "columns": 4,
+  "frames": 4,
+  "frame_duration_ms": 120
+}

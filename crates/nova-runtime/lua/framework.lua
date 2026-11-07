@@ -1237,6 +1237,10 @@ nova.Emitter = Emitter
 
 function Emitter:create()
   self.spec = self.spec or {}
+  if self.spec.sprite then
+    self.frames = nova.billboard_frames(self.spec.sprite)
+    if not self.frames then nova.billboard(self.spec.sprite, 0, 0, 0, 1) end -- raises the error that names the pictures there are
+  end
   self.ps = { n = 0 } -- one small table per particle: plain, and fast enough for the 1000 default cap
   self.carry = 0
   self.emitting = true
@@ -1267,7 +1271,7 @@ end
 local function emit_one(e)
   local ps, spec = e.ps, e.spec
   if ps.n >= (spec.max or 1000) then return end
-  if spec.model then
+  if spec.model or spec.sprite then
     -- 3D: y is up; the direction is a vector (default straight up) and `spread` the cone's full width
     local life_a, life_b = range(spec.life, { 0.4, 0.9 })
     local speed_a, speed_b = range(spec.speed, { 1, 4 })
@@ -1283,6 +1287,7 @@ local function emit_one(e)
     ps[ps.n] = {
       x = e.x + ox, y = e.y + oy, z = e.z + oz, vx = dx * speed, vy = dy * speed, vz = dz * speed,
       age = 0, life = pick(life_a, life_b), size = pick(size_a, size_b), angle = 0, spin = pick(spin_a, spin_b),
+      frame = spec.frame == "random" and math.random(0, (e.frames or 1) - 1) or nil,
     }
     return
   end
@@ -1325,6 +1330,9 @@ function Emitter:update(dt)
   end
   local ps = self.ps
   local gravity, drag = spec.gravity or 0, spec.drag or 0
+  local ground = spec.ground
+  local ground_fn = type(ground) == "function" and ground or nil
+  local ground_y, bounce, ground_drag = spec.ground_y or 0, spec.bounce or 0, spec.ground_drag or 6
   local damp = drag > 0 and math.max(0, 1 - drag * dt) or 1
   local i = 1
   while i <= ps.n do
@@ -1341,6 +1349,20 @@ function Emitter:update(dt)
       if p.z then
         p.vz = p.vz * damp
         p.z = p.z + p.vz * dt
+        if ground then
+          local gy = ground_y
+          if ground_fn then gy = ground_fn(p.x, p.z) end
+          if p.y < gy then
+            if spec.land == "die" then
+              p.age = p.life
+            else
+              p.y = gy
+              if p.vy < 0 then p.vy = -p.vy * bounce end
+              local f = math.max(0, 1 - ground_drag * dt)
+              p.vx, p.vz = p.vx * f, p.vz * f
+            end
+          end
+        end
       end
       p.angle = p.angle + p.spin * dt
       i = i + 1
@@ -1352,12 +1374,33 @@ end
 local particle_opts = { sx = 1, sy = 1, rotation = 0, color = { 255, 255, 255, 255 } }
 local particle_color = { 255, 255, 255, 255 }
 
+local billboard_opts = { color = { 255, 255, 255, 255 }, frame = 0, rot = 0 }
 local model_opts = { scale = 1, ry = 0, tint = { 255, 255, 255, 255 } }
 
 function Emitter:draw()
   if not self.visible then return end
   local ps = self.ps
   local spec = self.spec
+  if spec.sprite then
+    local c0 = spec.color or { 255, 255, 255, 255 }
+    local c1 = spec.color_end or c0
+    local grow = spec.size_end or 1
+    local col = billboard_opts.color
+    local frames = self.frames
+    local animate = spec.animate and frames > 1
+    for i = 1, ps.n do
+      local p = ps[i]
+      local t = p.age / p.life
+      col[1] = c0[1] + ((c1[1] or c0[1]) - c0[1]) * t
+      col[2] = c0[2] + ((c1[2] or c0[2]) - c0[2]) * t
+      col[3] = c0[3] + ((c1[3] or c0[3]) - c0[3]) * t
+      col[4] = ((c0[4] or 255) + ((c1[4] or c0[4] or 255) - (c0[4] or 255)) * t) * self.alpha
+      billboard_opts.frame = animate and math.min(frames - 1, math.floor(t * frames)) or p.frame or (type(spec.frame) == "number" and spec.frame) or 0
+      billboard_opts.rot = p.angle
+      nova.billboard(spec.sprite, p.x, p.y, p.z, p.size * (1 + (grow - 1) * t), billboard_opts)
+    end
+    return
+  end
   if spec.model then
     local c0 = spec.color or { 255, 255, 255, 255 }
     local c1 = spec.color_end or c0
@@ -2099,10 +2142,10 @@ local function by_depth(a, b)
   return a.id < b.id
 end
 
--- Weather: `nova.weather{ kind = "snow", count = 300 }` fills the air around the camera with falling flakes (small soft squares that face the camera) or
+-- Weather: `nova.weather{ kind = "snow", count = 300 }` fills the air around the camera with falling flakes (soft round flakes that face the camera, or your own `sprite`) or
 -- rain (streaks); the flakes are a fixed pattern that wraps round the camera as it moves and falls with `nova.time()`, so nothing is spawned or
 -- kept, and they stop while the game is paused. `nova.weather()` clears it. Options: kind, count (300), radius (22 m round the camera), height (16 m),
--- fall (m/s: 2.2 for snow, 20 for rain), drift (sideways, m/s), size (0.07 for snow), color ({255, 255, 255, 210}).
+-- fall (m/s: 2.2 for snow, 20 for rain), drift (sideways, m/s), size (0.07 for snow), sprite (a picture in sprites/fx/ for each flake, else a soft disc), color ({255, 255, 255, 210}).
 local weather = nil
 function nova.weather(opts)
   if not opts then weather = nil return end
@@ -2112,6 +2155,7 @@ function nova.weather(opts)
     snow = snow, count = opts.count or 300, radius = opts.radius or 22, height = opts.height or 16,
     fall = opts.fall or (snow and 2.2 or 20), drift = opts.drift or (snow and 1.0 or 3), size = opts.size or 0.07,
     color = opts.color or (snow and { 255, 255, 255, 210 } or { 200, 215, 235, 150 }), seed = {},
+    sprite = opts.sprite,
   }
   local s = 12345
   for i = 1, weather.count do
@@ -2127,7 +2171,8 @@ local function draw_weather()
   local t = nova.time()
   local d = 2 * w.radius
   local fall = w.fall * t
-  local qopts = { color = w.color, w = w.size, h = w.size }
+  local qopts = { color = w.color, w = w.size, h = w.size, round = true }
+  local sprite = w.sprite
   for i = 1, w.count do
     local p = w.seed[i]
     -- a cell of the pattern: the flake's place wraps round the camera, so the box always surrounds it
@@ -2137,9 +2182,13 @@ local function draw_weather()
     if w.snow then
       -- (it sways a little as it falls)
       x = x + math.sin(t * 1.3 + p[3] * 40) * 0.4
-      local dx, dz = eye_x - x, eye_z - z
-      local len = sqrt(dx * dx + dz * dz) + 1e-3
-      nova.quad3(x, y, z, dx / len, 0, dz / len, w.size, qopts)
+      if sprite then
+        nova.billboard(sprite, x, y, z, w.size, qopts)
+      else
+        local dx, dz = eye_x - x, eye_z - z
+        local len = sqrt(dx * dx + dz * dz) + 1e-3
+        nova.quad3(x, y, z, dx / len, 0, dz / len, w.size, qopts)
+      end
     else
       nova.line3(x, y, z, x + w.drift * 0.05, y + 0.9, z, { color = w.color })
     end
