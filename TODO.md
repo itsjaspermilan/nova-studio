@@ -130,7 +130,7 @@ games** (no WebView, no streamed rendering) for powerful handhelds, first the
 Retroid Pocket 6, in 2D and 3D. One app holds a scene/layout editor, a sprite and
 animation editor, a 3D model editor and a sound/music studio. Games are written in
 an easy language (Lua), not drag-and-drop blocks. Beginner wording, few choices,
-good defaults. No fantasy-console limits: native resolution, real GPU, real audio.
+good defaults. Native resolution, real GPU, real audio.
 
 ## Decisions (made with the user, 2026-11-02)
 
@@ -150,7 +150,6 @@ good defaults. No fantasy-console limits: native resolution, real GPU, real audi
 | Scene files (decided 2026-11-02) | JSON data in `scenes/<name>.scene.json` beside the scene's Lua code in `scenes/<name>.lua`. Loading data never executes code; the studio edits and diffs the JSON. |
 | Reuse | Nova: audio core, docs/UX research, Pine Ridge Rally, Android notes. GameStudio (read/copy only, never modify it): editors, Lua API design, help, MCP server. Nova's old "no GameStudio" rule is superseded; copy deliberately, record what came from where. |
 | Repo | This repo. Rebuild on `main`. Old Copilot work is salvaged from branches, then branches are deleted. |
-| Fantasy consoles | Dropped: no console specs, budgets or fixed resolutions. |
 
 References to study (read-only; MIT Pixelorama is safe to learn from, GPL-3
 Blockbench is for workflow ideas only, do not copy its code):

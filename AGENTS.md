@@ -11,7 +11,7 @@ A simple, original, Game Maker 8-style studio for making **native Android games*
 (2D and 3D, no WebView, no streamed rendering), first for the Retroid Pocket 6.
 Games are written in Lua. The studio covers scenes/layouts, sprites and
 animation, 3D models and scenes, and sound/music. Beginners come first: plain
-words, few choices, good defaults. There are no fantasy-console limits.
+words, few choices, good defaults.
 
 ## Architecture (decided; see TODO.md for the table)
 
