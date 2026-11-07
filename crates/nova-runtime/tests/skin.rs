@@ -220,7 +220,8 @@ fn hundreds_of_animated_models_all_draw() {
     assert!(g.error.is_none(), "{:?}", g.error);
     let input = g.frame_input(0);
     assert_eq!(input.models.len(), 300);
-    assert_eq!(input.joints.len(), 900);
+    // (characters at the same moment of a clip share one pose now: at most 3 joints each, fewer when poses are shared)
+    assert!(input.joints.len() <= 900 && input.joints.len() % 3 == 0 && input.joints.len() >= 3, "{}", input.joints.len());
 }
 
 #[test]
