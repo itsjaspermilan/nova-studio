@@ -131,7 +131,7 @@ function glb(tris) {
 
 let seed = 11;
 for (const kind of Object.keys(KINDS)) {
-  const tris = [...ring(kind, 330, 1.25, seed, 180), ...ring(kind, 255, 0.8, seed + 50, 150)];
+  const tris = [...ring(kind, 330, 0.5, seed, 180), ...ring(kind, 255, 0.3, seed + 50, 150)];
   fs.writeFileSync(path.join(project, "models", `skyline_${kind}.glb`), glb(tris));
   seed += 7;
 }

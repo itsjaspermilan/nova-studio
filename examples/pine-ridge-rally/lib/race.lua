@@ -400,7 +400,7 @@ function race.define(config)
     else
       self.section = self.section + 1
       audio.sfx(delta <= 0 and "best_lap" or "lap")
-      self:say(string.format("SECTION %d   %s   %s%.1f   %d pts", self.section - 1, ui.time(t), delta <= 0 and "-" or "+", math.abs(delta), score), 3)
+      self:say(string.format("SECTION %d\n%s   %s%.1f   %d pts", self.section - 1, ui.time(t), delta <= 0 and "-" or "+", math.abs(delta), score), 3)
     end
   end
 
@@ -507,6 +507,8 @@ function race.define(config)
     if self.phase ~= "countdown" and not self.player_finished_at and nova.input.pressed("pause") then
       self.paused = not self.paused
       self.pause_choice = 1
+      -- (the grass and the trees keep still while the game is paused)
+      if self.paused then nova.wind() else state.apply_look(looks[state.look_id()]) end
       nova.music.volume(state.music_volume * (self.paused and 0.35 or 1))
       audio.sfx("pause")
       for _, car in ipairs(self.cars) do if car.engine then car.engine:silence() end end
@@ -790,14 +792,14 @@ function race.define(config)
     local sec = self.sections[math.min(self.section, #self.sections)]
     ui.panel(16, 16, 176, 76, 205)
     ui.label(30, 22, "SECTION")
-    ui.text(30, 30, self.section .. "", 44, ui.color.gold, { font = "comic" })
-    ui.text(30 + nova.ui.text_width(self.section .. "", { size = 44, font = "comic" }) + 6, 50, "/ " .. #self.sections, 20, ui.color.dim)
+    ui.text(30, 36, self.section .. "", 40, ui.color.gold, { font = "comic" })
+    ui.text(30 + nova.ui.text_width(self.section .. "", { size = 40, font = "comic" }) + 4, 52, "/" .. #self.sections, 18, ui.color.dim)
     -- against par: the time so far in this section, less the share of the par that the distance covered would have taken
     local through = math.max(0, math.min(1, (p.progress - sec.from) / math.max(1, sec.to - sec.from)))
     local delta = (self.clock - self.section_start) - sec.par * state.current_difficulty().allow * through
     if self.phase == "racing" and not p.finish_time then
-      ui.text(112, 44, string.format("%s%.1f", delta <= 0 and "-" or "+", math.abs(delta)), 26, delta <= 0 and ui.color.green or ui.color.red, { font = "comic" })
-      ui.label(112, 30, "VS PAR")
+      ui.right(string.format("%s%.1f", delta <= 0 and "-" or "+", math.abs(delta)), 180, 40, 28, delta <= 0 and ui.color.green or ui.color.red, { font = "comic" })
+      ui.label(120, 22, "VS PAR")
     end
     ui.panel(w - 212, 16, 196, 76, 205)
     ui.label(w - 198, 24, "TIME")
@@ -806,18 +808,29 @@ function race.define(config)
     ui.right(ui.time(math.max(0, self.clock - self.section_start)), w - 28, 45, 16, ui.color.dim, { font = "mono" })
     ui.label(w - 198, 68, "SCORE")
     ui.right(tostring(self.score), w - 28, 63, 16, ui.color.gold, { font = "mono" })
-    -- the pace notes
-    local shown = 0
-    for _, note in ipairs(self.notes) do
-      local away = note.s - p.progress
-      if away > -25 and away < 450 and shown < 3 then
-        local y = 104 + shown * 40
-        ui.panel(16, y, 176, 34, 200)
-        local colour = note.grade <= 2 and ui.color.red or (note.grade <= 4 and ui.color.gold or ui.color.white)
-        arrow(26, y + 9, note.left, 16, colour)
-        ui.text(52, y + 2, note.grade == 1 and "HAIRPIN" or ("TURN " .. note.grade), 20, colour, { font = "comic" })
-        ui.right(math.max(0, math.floor(away / 10 + 0.5) * 10) .. " m", 182, y + 7, 16, ui.color.white)
-        shown = shown + 1
+    -- the pace notes, top middle: the next corner big, the one after it small beneath (only while racing, and when a corner is near)
+    if self.phase == "racing" and not p.finish_time then
+      local shown = 0
+      for _, note in ipairs(self.notes) do
+        local away = note.s - p.progress
+        if away > -20 and away < 450 and shown < 2 then
+          local big = shown == 0
+          local pw, ph = big and 230 or 150, big and 50 or 30
+          local x, y = w / 2 - pw / 2, big and 16 or 70
+          ui.panel(x, y, pw, ph, 205)
+          local colour = note.grade <= 2 and ui.color.red or (note.grade <= 4 and ui.color.gold or ui.color.white)
+          local text = note.grade == 1 and "HAIRPIN" or ("TURN " .. note.grade)
+          if big then
+            arrow(x + 14, y + 13, note.left, 24, colour)
+            ui.text(x + 48, y + 6, text, 28, colour, { font = "comic" })
+            ui.right(math.max(0, math.floor(away / 10 + 0.5) * 10) .. " m", x + pw - 12, y + 16, 18, ui.color.white)
+          else
+            arrow(x + 10, y + 7, note.left, 16, colour)
+            ui.text(x + 34, y + 3, text, 20, colour, { font = "comic" })
+            ui.right(math.floor(away / 10 + 0.5) * 10 .. " m", x + pw - 10, y + 8, 14, ui.color.dim)
+          end
+          shown = shown + 1
+        end
       end
     end
   end
@@ -933,7 +946,14 @@ function race.define(config)
       ui.center(tostring(n), 130, 104 * pop, ui.color.gold, { font = "thick" })
     end
     if self.message_time > 0 then
-      ui.center(self.message, 130, self.message == "GO!" and 92 or 44, self.message == "GO!" and ui.color.green or ui.color.white, { font = self.message == "GO!" and "thick" or "bold" })
+      local go_message = self.message == "GO!"
+      -- (a message may have a second line, in smaller type; both are fitted to the screen)
+      local first, second = self.message:match("^(.-)\n(.*)$")
+      first = first or self.message
+      local width = nova.view() - 60
+      local size = ui.fit(first, go_message and 92 or 38, width, go_message and "thick" or "bold")
+      ui.center(first, 130, size, go_message and ui.color.green or ui.color.white, { font = go_message and "thick" or "bold" })
+      if second then ui.center(second, 130 + size * 1.45, ui.fit(second, 24, width, "rounded"), ui.color.gold) end
     end
     local here = track.point(p.waypoint or 1)
     if self.phase == "racing" and math.abs(p.speed) > 4 then
@@ -957,6 +977,7 @@ function race.define(config)
     if action == "back" or (action == "accept" and choice == 1) then
       if action == "accept" then audio.sfx("menu_accept") end
       self.paused = false
+      state.apply_look(looks[state.look_id()]) -- (the wind blows again)
       nova.music.volume(state.music_volume)
     elseif action == "accept" then
       audio.sfx("menu_accept")
