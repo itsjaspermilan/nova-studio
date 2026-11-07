@@ -48,17 +48,28 @@ pub(super) fn quad_mesh(image: &Image, uv: [f32; 4]) -> MeshData {
 }
 
 /// The meshes of every frame of an image: the whole picture, or a window per frame of its sheet.
-pub(super) fn frame_meshes(image: &Image, sheet: Option<&crate::sprite::SpriteDef>) -> Vec<MeshData> {
+pub(super) fn frame_meshes(
+    image: &Image,
+    sheet: Option<&crate::sprite::SpriteDef>,
+) -> Vec<MeshData> {
     let (w, h) = (image.width as f32, image.height as f32);
     match sheet {
         None => vec![quad_mesh(image, [0.0, 0.0, 1.0, 1.0])],
         Some(def) => (0..def.frames.max(1))
             .map(|f| {
                 let (col, row) = def.cell(f);
-                let (x, y) = ((col * def.frame_width) as f32, (row * def.frame_height) as f32);
+                let (x, y) = (
+                    (col * def.frame_width) as f32,
+                    (row * def.frame_height) as f32,
+                );
                 quad_mesh(
                     image,
-                    [x / w, y / h, (x + def.frame_width as f32) / w, (y + def.frame_height as f32) / h],
+                    [
+                        x / w,
+                        y / h,
+                        (x + def.frame_width as f32) / w,
+                        (y + def.frame_height as f32) / h,
+                    ],
                 )
             })
             .collect(),

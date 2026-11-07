@@ -58,9 +58,9 @@ fn builtin_module(name: &str) -> Option<&'static str> {
     }
 }
 
+mod billboard_api;
 mod retained_api;
 mod solid_api;
-mod billboard_api;
 mod voxel_api;
 mod walls_api;
 

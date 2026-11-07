@@ -661,7 +661,7 @@
   "name": "nova.particles",
   "kind": "function",
   "signature": "nova.particles(x, y, [z,] spec) -> emitter",
-  "doc": "A particle emitter. spec: rate (per second), life, speed, size, size_end, color, color_end, gravity, drag, angle, spread, spin, area, image, max, screen, depth. Ranges are {min, max}. In 3D (spec.model = a model name, with a z) y is up and spec.dir / spread aim a cone. Call emitter:burst(n) for a puff, emitter:stop() to stop and let the rest fade.",
+  "doc": "A particle emitter. spec: rate (per second), life, speed, size, size_end, color, color_end, gravity, drag, angle, spread, spin, area, image, max, screen, depth. Ranges are {min, max}. In 3D (spec.model = a model name, with a z) y is up and spec.dir / spread aim a cone. Soft sprites: spec.sprite = a PNG in sprites/fx/ (frame = n | \"random\", animate = true for a sheet) draws camera-facing blended quads instead of models. Ground: ground = true (floor at ground_y, 0), or a function(x, z) -> height; bounce, ground_drag, land = \"die\", ground_radius. Call emitter:burst(n) for a puff, emitter:stop() to stop and let the rest fade.",
   "group": "Scenes and entities"
  },
  {
@@ -821,8 +821,8 @@
  {
   "name": "nova.weather",
   "kind": "function",
-  "signature": "nova.weather{ kind = \"snow\", count = 300, radius = 22, height = 16, fall = 2.2, drift = 1, size = 0.07, color = {r, g, b, a} } | nova.weather()",
-  "doc": "Fills the air around the camera with snow (small soft squares that face you) or rain (streaks: kind = \\\"rain\\\"). The flakes are a fixed pattern that wraps round the camera as it moves and falls with nova.time(), so nothing is spawned or kept, and they stop while the game is paused. `nova.weather()` clears it. Drawn by the framework after the scene's draw.",
+  "signature": "nova.weather{ kind = \"snow\", count = 300, radius = 22, height = 16, fall = 2.2, drift = 1, size = 0.07, sprite = \"fx/flake\", color = {r, g, b, a} } | nova.weather()",
+  "doc": "Fills the air around the camera with snow (soft round flakes that face you, or a `sprite` from sprites/fx/) or rain (streaks: kind = \\\"rain\\\"). The flakes are a fixed pattern that wraps round the camera as it moves and falls with nova.time(), so nothing is spawned or kept, and they stop while the game is paused. `nova.weather()` clears it. Drawn by the framework after the scene's draw.",
   "group": "Drawing"
  },
  {
@@ -1530,6 +1530,20 @@
   "kind": "function",
   "signature": "nova.cuboid_at(x, y, z, width, height, depth [, { rx, ry, rz, color, glow }])",
   "doc": "Draws a box by its middle and its size, turned by rx, ry, rz (radians): the parts of a creature built from boxes.",
+  "group": "3D"
+ },
+ {
+  "name": "nova.billboard",
+  "kind": "function",
+  "signature": "nova.billboard(sprite, x, y, z, size [, { frame, w, h, rot, color }])",
+  "doc": "Draws a picture from sprites/fx/ (a PNG, or a sheet with a .sprite.json) in the world, always facing the camera: soft dust, spray, snow, smoke. size is its width in metres (w and h for another shape), frame picks a frame of a sheet (from 0), rot turns it (radians) and a colour tints it, its alpha fading it. Drawn unlit and blended after the solid things, depth-tested but not writing depth; fog and the hills apply. nova.particles with spec.sprite does this for each particle.",
+  "group": "3D"
+ },
+ {
+  "name": "nova.billboard_frames",
+  "kind": "function",
+  "signature": "nova.billboard_frames(sprite) -> number | nil",
+  "doc": "How many frames a picture in sprites/fx/ has (1 for a plain PNG), or nil when there is no such picture.",
   "group": "3D"
  },
  {

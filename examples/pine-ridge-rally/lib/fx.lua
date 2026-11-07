@@ -57,7 +57,7 @@ function fx.puff(x, z, vx, vz, size, color, lift)
     emitter = nova.particles(0, 0.25, 0, {
       sprite = "fx/dust", frame = "random", rate = 0, max = 70, life = { 0.5, 0.9 }, size_end = 2.2, drag = 3, gravity = -0.6, spread = 0.5,
       ground = true, spin = { -1.5, 1.5 },
-      color = { 200, 190, 160, 210 }, color_end = { 200, 190, 160, 0 },
+      color = { 200, 190, 160, 170 }, color_end = { 200, 190, 160, 0 },
     })
   end
   local spec = emitter.spec

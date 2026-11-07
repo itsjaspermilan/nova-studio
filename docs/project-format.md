@@ -633,6 +633,20 @@ cone's full width in radians (default a quarter turn); `speed` and `size` are in
 negative number to fall), `area = { w, h, d }` spawns across a box and `color` tints the model (its alpha fades it).
 `image`, `angle` and `screen` are for flat games. `spin` turns the model about the vertical.
 
+**Soft sprites.** `sprite = "fx/puff"` (instead of `model`) draws each particle as a picture that always faces the camera: a PNG in
+`sprites/fx/` (only that folder; a sheet is a `.sprite.json` beside the PNG, as for any sprite). It is drawn blended after the solid things,
+depth-tested but not writing depth, unlit, with fog and the hills (`nova.terrain`) working as for models. White pictures with a soft alpha
+tint best: `color` and `color_end` tint and fade it, `size` is its width in metres and `size_end` grows it. Sheets: `frame = 2` is a fixed
+frame (from 0), `frame = "random"` picks one per particle, `animate = true` plays all the frames over each particle's life. Keep `max`
+low (a few dozen on a handheld: every particle is a blended quad, so overdraw is the cost, not the count). The same picture can be drawn
+by hand with `nova.billboard(sprite, x, y, z, size [, { frame, w, h, rot, color }])` from `draw`.
+
+**Ground.** For 3D particles `ground = true` stops them at the ground: the height is `ground_y` (default 0), not `nova.terrain_height`, because
+the hills lift everything near the ground by themselves (see Hills). `ground = function(x, z) return height end` is any other floor
+(a track, a roof); `bounce` (0 to 1, default 0) is how much speed a landing keeps, `ground_drag` (default 6 per second) slows what lies on
+it, `land = "die"` removes a particle that lands, and `ground_radius` (default 0.4 of the size for sprites, 0 for models) is how far above
+the ground its middle rests so that a picture does not sink in.
+
 ### Timers, tweens and scripts that wait
 
 On any entity or scene (they stop when it is destroyed or the scene changes), each returning a

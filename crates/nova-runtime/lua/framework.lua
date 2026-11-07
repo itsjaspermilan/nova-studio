@@ -1333,6 +1333,7 @@ function Emitter:update(dt)
   local ground = spec.ground
   local ground_fn = type(ground) == "function" and ground or nil
   local ground_y, bounce, ground_drag = spec.ground_y or 0, spec.bounce or 0, spec.ground_drag or 6
+  local radius, grow = spec.ground_radius or (spec.sprite and 0.4 or 0), spec.size_end or 1
   local damp = drag > 0 and math.max(0, 1 - drag * dt) or 1
   local i = 1
   while i <= ps.n do
@@ -1352,6 +1353,8 @@ function Emitter:update(dt)
         if ground then
           local gy = ground_y
           if ground_fn then gy = ground_fn(p.x, p.z) end
+          -- a picture is as big as its size: it rests on the ground by its lower edge, not its middle
+          if radius > 0 then gy = gy + radius * p.size * (1 + (grow - 1) * p.age / p.life) end
           if p.y < gy then
             if spec.land == "die" then
               p.age = p.life

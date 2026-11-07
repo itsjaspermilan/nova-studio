@@ -49,8 +49,7 @@ function cloud(size, seed, lumps) {
     const u = (x + 0.5) / size, v = (y + 0.5) / size;
     let a = 0;
     for (const b of blobs) { const d = Math.hypot(u - b.x, v - b.y) / b.r; a += smooth(1 - d) ** 1.5; }
-    // a tiny grain so a big puff is not a plain gradient
-    a = smooth(a * 0.85) * (0.94 + r() * 0.06);
+    a = smooth(a * 0.6) * 0.8;
     const i = (y * size + x) * 4;
     px[i] = px[i + 1] = px[i + 2] = 255; px[i + 3] = Math.round(a * 255);
   }
