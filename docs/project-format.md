@@ -298,7 +298,7 @@ so use it for the few things that move). A mesh with a skin bends with the parts
 the game only needs the `.glb`. The file is a tree: `parts` (each with `name`, `origin`, `rotation` in degrees,
 `cubes` and `children`), optional `clips` and optional `colliders` (circles on the ground that the model blocks,
 `{ "x": across, "z": forward, "r": radius }` in the same units as the cubes; the glb carries them in metres in the scene's
-`extras.nova.colliders` and a game reads them with `nova.model_colliders(id)`). The `cubes` list holds solids, all in the part's own space (1 unit
+`extras.nova.colliders` and a game reads them with `nova.model_colliders(id)`), plus optional `capsules` (`{ "ax", "az", "bx", "bz", "r" }`: the segment from a to b made `r` thick) and `boxes` (`{ "x", "z", "hw": half the width across, "hl": half the length along z, "turn": degrees }`). Circles keep the `[x, z, r]` form, so older files and readers are unchanged; capsules are `extras.nova.capsules` = `[[ax, az, bx, bz, r], ...]` and boxes `extras.nova.boxes` = `[[x, z, hw, hl, turn], ...]` (metres, `turn` in radians), and `nova.model_shapes(id)` returns all three. Static scenery blocks with all of them: a capsule is a chain of circles of its radius, a box a chain of circles as wide as its narrow side along its long side (its corners are cut a little). The `cubes` list holds solids, all in the part's own space (1 unit
 is 1/16 of a world unit unless `scale` says otherwise):
 
 | `shape` | Notes |

@@ -126,6 +126,9 @@ struct Shared {
     clips: HashMap<String, Vec<model::Clip>>,
     /// Collision circles `[x, z, r]` of each model, from its file.
     colliders: HashMap<String, Vec<[f32; 3]>>,
+    /// Capsules `[ax, az, bx, bz, r]` and boxes `[x, z, half_width, half_length, turn]` of each model.
+    capsules: HashMap<String, Vec<[f32; 5]>>,
+    boxes: HashMap<String, Vec<[f32; 5]>>,
     lighting: Lighting,
     world: Vec<SpriteInstance>,
     ui: Vec<SpriteInstance>,
@@ -1732,6 +1735,44 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
     )?;
     let s = shared.clone();
     nova.set(
+        "model_shapes",
+        lua.create_function(move |lua, id: String| {
+            let sh = s.borrow();
+            let found = find_model(&sh.known_models, &id)
+                .ok_or_else(|| lua_err(format!("unknown model '{id}'")))?;
+            let out = lua.create_table()?;
+            let circles = lua.create_table()?;
+            for (i, c) in sh.colliders.get(&found).into_iter().flatten().enumerate() {
+                let e = lua.create_table()?;
+                e.set("x", c[0] as f64)?;
+                e.set("z", c[1] as f64)?;
+                e.set("r", c[2] as f64)?;
+                circles.set(i + 1, e)?;
+            }
+            out.set("circles", circles)?;
+            let capsules = lua.create_table()?;
+            for (i, c) in sh.capsules.get(&found).into_iter().flatten().enumerate() {
+                let e = lua.create_table()?;
+                for (k, v) in ["ax", "az", "bx", "bz", "r"].iter().zip(c) {
+                    e.set(*k, *v as f64)?;
+                }
+                capsules.set(i + 1, e)?;
+            }
+            out.set("capsules", capsules)?;
+            let boxes = lua.create_table()?;
+            for (i, c) in sh.boxes.get(&found).into_iter().flatten().enumerate() {
+                let e = lua.create_table()?;
+                for (k, v) in ["x", "z", "hw", "hl", "turn"].iter().zip(c) {
+                    e.set(*k, *v as f64)?;
+                }
+                boxes.set(i + 1, e)?;
+            }
+            out.set("boxes", boxes)?;
+            Ok(out)
+        })?,
+    )?;
+    let s = shared.clone();
+    nova.set(
         "model_parts",
         lua.create_function(move |lua, id: String| {
             let sh = s.borrow();
@@ -2759,6 +2800,8 @@ impl Game {
         let mut model_parts: HashMap<String, Vec<PartRt>> = HashMap::new();
         let mut model_clips: HashMap<String, Vec<model::Clip>> = HashMap::new();
         let mut model_colliders: HashMap<String, Vec<[f32; 3]>> = HashMap::new();
+        let mut model_capsules: HashMap<String, Vec<[f32; 5]>> = HashMap::new();
+        let mut model_boxes: HashMap<String, Vec<[f32; 5]>> = HashMap::new();
         let mut model_scales: HashMap<String, f32> = HashMap::new();
         for asset in project.assets_of(AssetKind::Model) {
             let bytes = vfs.read(&asset.id)?;
@@ -2782,6 +2825,12 @@ impl Game {
                 model_clips.insert(asset.id.clone(), imported.clips);
                 if !imported.colliders.is_empty() {
                     model_colliders.insert(asset.id.clone(), imported.colliders);
+                }
+                if !imported.capsules.is_empty() {
+                    model_capsules.insert(asset.id.clone(), imported.capsules);
+                }
+                if !imported.boxes.is_empty() {
+                    model_boxes.insert(asset.id.clone(), imported.boxes);
                 }
                 let mut runtime = Vec::with_capacity(imported.parts.len());
                 for part in imported.parts {
@@ -2892,6 +2941,8 @@ impl Game {
             parts: model_parts,
             clips: model_clips,
             colliders: model_colliders,
+            capsules: model_capsules,
+            boxes: model_boxes,
             lighting: Lighting::default(),
             world: Vec::new(),
             ui: Vec::new(),

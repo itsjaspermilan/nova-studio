@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FACE_CORNERS, eulerToQuaternion, exportGlb } from "./glb";
-import { History, addCollider, removeCollider, updateCollider, addCube, addPart, afterRemoval, countCubes, cubeAt, duplicateNode, newModel, parseModel, partAt, removeNode, serializeModel, setFaceColor, updateCube, updatePart, walk, FACES, type ModelDoc } from "./model-doc";
+import { History, addBox, addCapsule, removeBox, removeCapsule, updateBox, updateCapsule, addCollider, removeCollider, updateCollider, addCube, addPart, afterRemoval, countCubes, cubeAt, duplicateNode, newModel, parseModel, partAt, removeNode, serializeModel, setFaceColor, updateCube, updatePart, walk, FACES, type ModelDoc } from "./model-doc";
 
 const sample = (): ModelDoc => {
   let d = newModel();
@@ -294,6 +294,60 @@ describe("collision circles", () => {
     expect(json.scenes[0].extras.nova.colliders).toEqual([[0, 0, 0.5], [0.25, -0.125, 0.1875]]);
     const { existsSync, readFileSync, writeFileSync } = await import("node:fs");
     const fixture = new URL("../../../crates/nova-runtime/tests/fixtures/studio_model_colliders.glb", import.meta.url);
+    if (process.env.UPDATE_FIXTURES || !existsSync(fixture)) writeFileSync(fixture, glb);
+    expect(Array.from(readFileSync(fixture))).toEqual(Array.from(glb));
+  });
+});
+
+describe("collision capsules and boxes", () => {
+  const withShapes = () => {
+    let d = addCollider(newModel(), { x: 0, z: 0, r: 8 });
+    d = addCapsule(d, { ax: 0, az: -8, bx: 0, bz: 8, r: 4 });
+    d = addBox(d, { x: 16, z: 0, hw: 2, hl: 8, turn: 90 });
+    return d;
+  };
+  it("are written under their own keys, only when there are some, and read back", () => {
+    const text = serializeModel(withShapes());
+    expect(text).toContain('"capsules": [{ "ax": 0, "az": -8, "bx": 0, "bz": 8, "r": 4 }]');
+    expect(text).toContain('"boxes": [{ "x": 16, "z": 0, "hw": 2, "hl": 8, "turn": 90 }]');
+    expect(serializeModel(addCollider(newModel(), { x: 0, z: 0, r: 1 }))).not.toMatch(/capsules|boxes/);
+    const back = parseModel(text);
+    expect(back.ok && back.doc.capsules).toEqual(withShapes().capsules);
+    expect(back.ok && back.doc.boxes).toEqual(withShapes().boxes);
+  });
+  it("are checked when a file is read", () => {
+    const text = serializeModel(withShapes());
+    const bad1 = parseModel(text.replace('"r": 4 }', '"r": 0 }'));
+    expect(!bad1.ok && bad1.error).toContain("capsules[0]");
+    const bad2 = parseModel(text.replace('"hw": 2', '"hw": "x"'));
+    expect(!bad2.ok && bad2.error).toContain("boxes[0]");
+    const bad3 = parseModel(text.replace('"hl": 8', '"hl": -1'));
+    expect(!bad3.ok && bad3.error).toContain("above 0");
+  });
+  it("can be added, changed and removed", () => {
+    let d = withShapes();
+    d = updateCapsule(d, 0, { r: 5 });
+    expect(d.capsules![0].r).toBe(5);
+    expect(updateCapsule(d, 0, { r: 0 })).toBe(d);
+    d = updateBox(d, 0, { turn: 45 });
+    expect(d.boxes![0].turn).toBe(45);
+    expect(updateBox(d, 0, { hw: 0 })).toBe(d);
+    expect(updateBox(d, 3, { hw: 1 })).toBe(d);
+    d = removeCapsule(removeBox(d, 0), 0);
+    expect(d.capsules).toBeUndefined();
+    expect(d.boxes).toBeUndefined();
+    expect(d.colliders).toHaveLength(1);
+  });
+  it("go into the glTF extras (circles keep their shape) and a fixture is kept for the runtime", async () => {
+    const d = withShapes();
+    const len = (g: Uint8Array) => new DataView(g.buffer, g.byteOffset).getUint32(12, true);
+    const glb = exportGlb(d);
+    const json = JSON.parse(new TextDecoder().decode(glb.slice(20, 20 + len(glb))));
+    expect(json.scenes[0].extras.nova.colliders).toEqual([[0, 0, 0.5]]);
+    expect(json.scenes[0].extras.nova.capsules).toEqual([[0, -0.5, 0, 0.5, 0.25]]);
+    expect(json.scenes[0].extras.nova.boxes).toEqual([[1, 0, 0.125, 0.5, 1.5708]]);
+    const { existsSync, readFileSync, writeFileSync } = await import("node:fs");
+    const fixture = new URL("../../../crates/nova-runtime/tests/fixtures/studio_model_collider_shapes.glb", import.meta.url);
     if (process.env.UPDATE_FIXTURES || !existsSync(fixture)) writeFileSync(fixture, glb);
     expect(Array.from(readFileSync(fixture))).toEqual(Array.from(glb));
   });

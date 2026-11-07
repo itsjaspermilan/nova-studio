@@ -77,6 +77,13 @@
   "group": "3D"
  },
  {
+  "name": "nova.model_shapes",
+  "kind": "function",
+  "signature": "nova.model_shapes(id) -> { circles = { { x, z, r } }, capsules = { { ax, az, bx, bz, r } }, boxes = { { x, z, hw, hl, turn } } }",
+  "doc": "Everything the model editor says a model blocks, on the ground in the model's own frame, in metres: circles (the same as nova.model_colliders), capsules (a segment from a to b made r thick) and boxes (centred on x, z; hw across, hl along z; turn in radians). Scenery marked static uses all three for nova.scenery.push.",
+  "group": "3D"
+ },
+ {
   "name": "nova.solid",
   "kind": "namespace",
   "signature": "nova.solid",

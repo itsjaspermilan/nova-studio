@@ -643,14 +643,43 @@ end
 
 -- ------------------------------------------------------------------ the static scenery
 -- Scenery that never moves (trees, road pieces, barriers) comes by the thousand, so it is not kept as live entities:
--- each piece is a row in a grid of squares, drawn only when it is near the camera. The `colliders` circles of its model
--- (made in the model editor, read with nova.model_colliders) stop whatever calls `nova.scenery.push`. An entity class
+-- each piece is a row in a grid of squares, drawn only when it is near the camera. The collision shapes of its model (circles, capsules
+-- and boxes made in the model editor, read with nova.model_shapes) stop whatever calls `nova.scenery.push`. An entity class
 -- with `static = true` and a `model` puts itself here when it is spawned (a scene file's trees and road pieces do).
 local scenery = {} -- `range` (metres) is unset: Rust draws out to where the fog has covered everything, or 300 m without fog
 nova.scenery = scenery
 local SCENERY_CELL = 40
 local solid_bins, piece_count = {}, 0
 local circles_of = {}
+
+-- Capsules and boxes from the model editor become chains of circles in the model's own frame: a capsule is circles of its radius
+-- along its segment, a box is circles as wide as its narrow side along its long side (its corners are cut a little).
+local function chain(circles, ax, az, bx, bz, r)
+  local len = sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
+  local n = math.min(32, math.max(1, math.ceil(len / r)))
+  for i = 0, n do
+    local t = n > 0 and i / n or 0
+    circles[#circles + 1] = { x = ax + (bx - ax) * t, z = az + (bz - az) * t, r = r }
+  end
+end
+
+--- The circles that stand for everything a model blocks (nova.model_shapes): its circles, its capsules and its boxes.
+local function shape_circles(model)
+  local shapes = nova.model_shapes(model)
+  local out = {}
+  for _, c in ipairs(shapes.circles) do out[#out + 1] = c end
+  for _, c in ipairs(shapes.capsules) do chain(out, c.ax, c.az, c.bx, c.bz, c.r) end
+  for _, b in ipairs(shapes.boxes) do
+    local sn, cs = sin(b.turn), cos(b.turn)
+    -- the box's own +z is (sin, cos) and its +x is (cos, -sin), as for a model turned by `ry`
+    local r = math.min(b.hw, b.hl)
+    local ex, ez = 0, 0 -- half of the line the circles are strung along, in the box's own frame
+    if b.hl >= b.hw then ez = b.hl - r else ex = b.hw - r end
+    local ux, uz = ex * cs + ez * sn, -ex * sn + ez * cs
+    chain(out, b.x - ux, b.z - uz, b.x + ux, b.z + uz, r)
+  end
+  return out
+end
 local eye_x, eye_y, eye_z = 0, 0, 0
 
 local set_camera = nova.camera
@@ -673,7 +702,7 @@ function scenery.add(model, x, y, z, opts)
   raw.retain(model, x, y, z, opts)
   piece_count = piece_count + 1
   local circles = circles_of[model]
-  if circles == nil then circles = nova.model_colliders(model); circles_of[model] = circles end
+  if circles == nil then circles = shape_circles(model); circles_of[model] = circles end
   if #circles > 0 then
     local ry, scale = opts.ry or 0, opts.scale or 1
     local s, c = sin(ry), cos(ry)
