@@ -2079,7 +2079,7 @@ local function frame_update(dt)
       local ok, text = pcall(hitch_describe)
       extra = ok and (" " .. tostring(text)) or ""
     end
-    nova.log(string.format("hitch: %.1f ms (scene %s; gpu %.1f ms, %d draws, lua %.0f KB)%s", dt * 1000, W.scene_name or "?", p.gpu_ms or 0, p.draws or 0, collectgarbage("count"), extra))
+    nova.log(string.format("hitch: %.1f ms (scene %s; gpu %.1f ms, %d draws, lua %.2f ms)%s", dt * 1000, W.scene_name or "?", p.gpu_ms or 0, p.draws or 0, p.lua_ms or 0, extra))
   end
   switch_if_pending()
   W.acc = W.acc + dt

@@ -2924,3 +2924,22 @@ fn pausing_stills_the_engines_clock_and_it_carries_on_from_where_it_stopped() {
     assert!(at("120 ") - at("91 ") > 0.4, "{l:?}");
     assert!(at("91 ") - at("89 ") < 0.1, "{l:?}");
 }
+
+#[test]
+fn a_slow_frame_is_written_to_the_log_by_nova_hitch() {
+    let mut game = project(vec![
+        (
+            "main.lua",
+            lua(r#"
+                nova.hitch(30, function() return "context" end)
+                nova.start("home")
+            "#),
+        ),
+        ("scenes/home.lua", lua("return nova.scene {}")),
+    ]);
+    // frames of 16 ms, then one of 80 ms
+    run(&mut game, 5, 1.0 / 60.0);
+    game.update(0.08, 1.0, [960.0, 540.0], Actions::default(), false);
+    let l = logs(&game);
+    assert!(l.iter().any(|x| x.starts_with("hitch: 80.0 ms") && x.ends_with("context")), "{l:?}");
+}
