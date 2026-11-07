@@ -126,7 +126,8 @@ pub(super) fn install(lua: &Lua, shared: &Rc<RefCell<Shared>>, raw: &Table) -> m
                     Some(name) => Some(find(&sh, &name)?),
                     None => None,
                 };
-                let scale = number_option(&opts, "scale")?.unwrap_or(1.0) as f32;
+                let scale = number_option(&opts, "scale")?.unwrap_or(1.0) as f32
+                    * sh.model_scales.get(&found).copied().unwrap_or(1.0);
                 let matrix = Mat4::from_translation(Vec3::new(x as f32, y as f32, z as f32))
                     * Mat4::from_rotation_y(number_option(&opts, "ry")?.unwrap_or(0.0) as f32)
                     * Mat4::from_rotation_x(number_option(&opts, "rx")?.unwrap_or(0.0) as f32)

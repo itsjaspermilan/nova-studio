@@ -41,6 +41,7 @@ for (let i = 0; i < args.length; i++) {
   else if (a === "--pivot-wheels") opt.pivotWheels = true;
   else if (a === "--turn") opt.turn = Number(args[++i]);
   else if (a === "--scale") opt.scale = Number(args[++i]);
+  else if (a === "--draw-scale") opt.drawScale = Number(args[++i]); // the model keeps its size; the game draws it this much bigger
   else if (a === "--wheel-diameter") opt.wheelDiameter = Number(args[++i]);
   else if (a === "--wheels-to-body") opt.wheelsToBody = true;
   else if (a === "--stretch") opt.stretch = Object.fromEntries(args[++i].split(",").map((kv) => kv.split("=")).map(([k, v]) => [k, Number(v)]));
@@ -255,13 +256,20 @@ for (const name of names) {
   const binStart = 20 + jsonLen + 8;
   let bin = Buffer.from(b.subarray(binStart, binStart + b.readUInt32LE(20 + jsonLen)));
   for (const n of json.nodes) if (n.name in opt.rename) n.name = opt.rename[n.name];
+  // A skinned model cannot be resized by its geometry (its skeleton and animations would stay the old size and tear it): --scale and --fit then write
+  // `extras.nova.scale`, which the runtime multiplies the model's drawn scale by. `--draw-scale` does so for any model.
+  const skinned = (json.skins || []).length > 0;
+  let skinnedScale = 1;
   if (opt.fit) {
     const [axis, metres] = opt.fit.split("=");
     const k = "xyz".indexOf(axis);
     const { lo, hi } = bounds(json);
-    scaleGeometry(json, bin, Number(metres) / (hi[k] - lo[k]));
+    const factor = Number(metres) / (hi[k] - lo[k]);
+    if (skinned) skinnedScale *= factor; else scaleGeometry(json, bin, factor);
   }
-  if (opt.scale) scaleGeometry(json, bin, opt.scale);
+  if (opt.scale) { if (skinned) skinnedScale *= opt.scale; else scaleGeometry(json, bin, opt.scale); }
+  const drawScale = opt.drawScale ?? (skinned && skinnedScale !== 1 ? skinnedScale : undefined);
+  if (drawScale) json.scenes[0].extras = { ...(json.scenes[0].extras || {}), nova: { ...((json.scenes[0].extras || {}).nova || {}), scale: drawScale } };
   if (opt.wheelDiameter) sizeWheels(json, bin, opt.wheelDiameter);
   if (opt.stretch) stretch(json, bin, opt.stretch);
   for (const m of json.materials || []) {
@@ -273,7 +281,7 @@ for (const name of names) {
   if (opt.centreAxles) centreAxles(json);
   if (opt.turn) turn(json, opt.turn);
   if (opt.centre) centre(json);
-  if (opt.colliders.length) json.scenes[0].extras = { nova: { colliders: opt.colliders } };
+  if (opt.colliders.length) json.scenes[0].extras = { nova: { ...((json.scenes[0].extras || {}).nova || {}), colliders: opt.colliders } };
   for (const image of json.images || []) {
     if (!image.uri) continue;
     const candidates = [path.join(path.dirname(file), image.uri), path.join(kit, image.uri)];

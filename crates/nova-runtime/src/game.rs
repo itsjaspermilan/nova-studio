@@ -118,6 +118,8 @@ struct Shared {
     /// Triangle collision (`nova.solid`).
     solid: crate::meshworld::MeshWorld,
     known_models: Vec<String>,
+    /// The default drawing scale of each model (`extras.nova.scale`), in the order of `known_models`.
+    model_scales: HashMap<String, f32>,
     /// Each model's parts, for drawing pieces that move on their own.
     parts: HashMap<String, Vec<PartRt>>,
     /// Each model's animation clips.
@@ -1135,7 +1137,8 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             let mesh = *sh.mesh_ids.get(&found).ok_or_else(|| {
                 lua_err(format!("model '{found}' is not on the GPU yet (draw models from update/draw, not while the script loads)"))
             })?;
-            let scale = number_option(&opts, "scale")?.unwrap_or(1.0) as f32;
+            let scale = number_option(&opts, "scale")?.unwrap_or(1.0) as f32
+                * sh.model_scales.get(&found).copied().unwrap_or(1.0);
                 let rotation =
                     Mat4::from_rotation_y(number_option(&opts, "ry")?.unwrap_or(0.0) as f32)
                         * Mat4::from_rotation_x(number_option(&opts, "rx")?.unwrap_or(0.0) as f32)
@@ -2756,6 +2759,7 @@ impl Game {
         let mut model_parts: HashMap<String, Vec<PartRt>> = HashMap::new();
         let mut model_clips: HashMap<String, Vec<model::Clip>> = HashMap::new();
         let mut model_colliders: HashMap<String, Vec<[f32; 3]>> = HashMap::new();
+        let mut model_scales: HashMap<String, f32> = HashMap::new();
         for asset in project.assets_of(AssetKind::Model) {
             let bytes = vfs.read(&asset.id)?;
             let mesh = model::import_glb(&bytes).map_err(|e| format!("{}: {e}", asset.id))?;
@@ -2772,6 +2776,9 @@ impl Game {
             meshes.push((asset.id.clone(), mesh, None));
             model_ids.push(asset.id.clone());
             if let Ok(imported) = as_parts {
+                if (imported.scale - 1.0).abs() > 1e-6 {
+                    model_scales.insert(asset.id.clone(), imported.scale);
+                }
                 model_clips.insert(asset.id.clone(), imported.clips);
                 if !imported.colliders.is_empty() {
                     model_colliders.insert(asset.id.clone(), imported.colliders);
@@ -2881,6 +2888,7 @@ impl Game {
             save: store,
             mesh_ids: HashMap::new(),
             known_models: model_ids,
+            model_scales,
             parts: model_parts,
             clips: model_clips,
             colliders: model_colliders,

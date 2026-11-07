@@ -500,6 +500,19 @@ pub struct ModelParts {
     /// x across, z forward, before any scale the game draws it with). The studio writes them as the scene's
     /// `extras.nova.colliders`.
     pub colliders: Vec<[f32; 3]>,
+    /// How big the model is drawn by default: `extras.nova.scale` (1 when absent). A skinned model cannot be resized by its geometry (the skeleton and
+    /// the animations would not follow), so the importer script writes this instead and the game multiplies its `scale` by it.
+    pub scale: f32,
+}
+
+/// The default drawing scale of a glTF's default scene (see [`ModelParts::scale`]).
+fn read_scale(scene: &gltf::Scene) -> f32 {
+    scene
+        .extras()
+        .as_ref()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw.get()).ok())
+        .and_then(|v| v["nova"]["scale"].as_f64())
+        .map_or(1.0, |s| (s as f32).clamp(0.01, 100.0))
 }
 
 /// The collision circles of a glTF's default scene (see [`ModelParts::colliders`]); anything malformed is skipped.
@@ -678,10 +691,12 @@ pub fn import_parts(bytes: &[u8]) -> Result<ModelParts, String> {
         });
     }
     let colliders = read_colliders(&scene);
+    let scale = read_scale(&scene);
     Ok(ModelParts {
         parts,
         clips,
         colliders,
+        scale,
     })
 }
 

@@ -957,3 +957,10 @@ See `examples/sky-garden`.
 **Velocity.** Every entity has `vx`, `vy` and `vz`, which the engine adds to its place after each update. A class that moves itself
 (with `nova.walls.move`, say) and keeps a speed in fields of those names would be moved twice: give it `velocity = false`
 (`nova.entity { velocity = false }`) and the engine leaves its place alone.
+
+### Model scale for skinned models
+
+A skinned model (a character with a skeleton) cannot be resized by its geometry: its bones and animations would stay the old size. `scripts/kenney.mjs`
+`--scale`, `--fit` and `--draw-scale` therefore write `extras.nova.scale` into the file instead, and the game multiplies the `scale` it draws the
+model with (`nova.model`, `nova.scenery.add`) by it: a character fitted to 1.7 m is 1.7 m whatever `scale` a script passes. Plain models are still resized
+in the geometry.
