@@ -1213,7 +1213,7 @@ end"
 }
 
 /// `nova.model` takes `lod` and `lod_distance` like scenery: the near model, the far one past the distance, and both fading
-/// over `lod_fade` metres between them. Animated models cannot have one (yet), and it says so.
+/// over `lod_fade` metres between them. Animated ones can too (tests/crowd.rs).
 #[test]
 fn a_drawn_model_can_name_a_cheaper_one_for_when_it_is_far() {
     let drawn = |z: f64| {
@@ -1250,7 +1250,7 @@ fn a_drawn_model_can_name_a_cheaper_one_for_when_it_is_far() {
     assert!(
         g.error
             .as_deref()
-            .is_some_and(|e| e.contains("lod works on plain models")),
+            .is_some_and(|e| e.contains("has no clip 'x'")),
         "{:?}",
         g.error
     );

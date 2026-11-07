@@ -121,7 +121,10 @@ fn a_whole_race_on_pine_ridge_ends_on_the_results_screen() {
         !log.iter().any(|l| l.contains("put back on the road")),
         "nobody got stuck: {log:?}"
     );
-    let results = log.iter().find(|l| l.starts_with("results: place")).unwrap();
+    let results = log
+        .iter()
+        .find(|l| l.starts_with("results: place"))
+        .unwrap();
     assert!(results.contains("of 4"), "{results}");
     // the tyres wore (a little just by driving three laps) and the computer driver did not wreck the car
     let wear = log
@@ -707,7 +710,14 @@ fn one_lap(class: usize, step: usize, difficulty_steps: i32) -> String {
     tap(&mut g, "key:ArrowLeft");
     tap(&mut g, "key:ArrowDown"); // Difficulty
     for _ in 0..difficulty_steps.abs() {
-        tap(&mut g, if difficulty_steps > 0 { "key:ArrowRight" } else { "key:ArrowLeft" });
+        tap(
+            &mut g,
+            if difficulty_steps > 0 {
+                "key:ArrowRight"
+            } else {
+                "key:ArrowLeft"
+            },
+        );
     }
     tap(&mut g, "key:ArrowDown"); // START
     frame(&mut g, &["key:Enter"]);
@@ -719,14 +729,23 @@ fn one_lap(class: usize, step: usize, difficulty_steps: i32) -> String {
     run_until(&mut g, &mut log, "the results", 60 * 60 * 6, |l| {
         l.iter().any(|x| x.starts_with("results: times"))
     });
-    let stuck = log.iter().filter(|l| l.contains("put back on the road")).count();
+    let stuck = log
+        .iter()
+        .filter(|l| l.contains("put back on the road"))
+        .count();
     let log_copy = log.clone();
     let times = log
         .into_iter()
         .find(|l| l.starts_with("results: times"))
         .unwrap();
     if stuck > 0 {
-        format!("{times} (STUCK {stuck} times: {:?})", log_copy.iter().filter(|l| l.contains("put back on the road")).collect::<Vec<_>>())
+        format!(
+            "{times} (STUCK {stuck} times: {:?})",
+            log_copy
+                .iter()
+                .filter(|l| l.contains("put back on the road"))
+                .collect::<Vec<_>>()
+        )
     } else {
         times
     }
@@ -811,7 +830,14 @@ fn stage_run(stage: usize, class: usize, step: usize, difficulty_steps: i32) -> 
     tap(&mut g, "key:Enter");
     tap(&mut g, "key:ArrowDown"); // Difficulty
     for _ in 0..difficulty_steps.abs() {
-        tap(&mut g, if difficulty_steps > 0 { "key:ArrowRight" } else { "key:ArrowLeft" });
+        tap(
+            &mut g,
+            if difficulty_steps > 0 {
+                "key:ArrowRight"
+            } else {
+                "key:ArrowLeft"
+            },
+        );
     }
     tap(&mut g, "key:ArrowDown"); // START
     frame(&mut g, &["key:Enter"]);
@@ -862,7 +888,51 @@ fn rally_pars() {
                 .map(|l| l.rsplit("t=").next().unwrap().to_string())
                 .collect();
             let total: f32 = times.iter().map(|t| t.parse::<f32>().unwrap()).sum();
-            println!("PAR stage {stage} {class} {} total {total:.1}", times.join(" "));
+            println!(
+                "PAR stage {stage} {class} {} total {total:.1}",
+                times.join(" ")
+            );
         }
     }
+}
+
+/// What the crowd costs in a race: `cargo test --release -p nova-runtime --test rally -- --ignored --nocapture crowd_cost`
+/// prints, over 40 seconds of the computer driving a lap, the mean script time of a frame, the joint matrices uploaded, the model
+/// instances and the draw runs (equal meshes side by side are one instanced draw) of the frames.
+#[test]
+#[ignore]
+fn crowd_cost() {
+    let mut g = load();
+    start_race(&mut g, 0, false);
+    let mut log = Vec::new();
+    run_until(&mut g, &mut log, "the countdown ends", 60 * 8, |l| {
+        l.iter().any(|x| x == "go")
+    });
+    tap(&mut g, "key:F9");
+    let (mut ms, mut joints, mut instances, mut runs, mut peak) =
+        (0.0, 0usize, 0usize, 0usize, 0usize);
+    let frames = 60 * 40;
+    for _ in 0..frames {
+        frame(&mut g, &[]);
+        ms += g.last_update.as_secs_f64() * 1000.0;
+        let input = g.frame_input(0);
+        joints += input.joints.len();
+        peak = peak.max(input.joints.len());
+        instances += input.models.len();
+        let mut last = usize::MAX;
+        for m in input.models {
+            if m.mesh != last {
+                runs += 1;
+                last = m.mesh;
+            }
+        }
+    }
+    let n = frames as f64;
+    println!(
+        "crowd_cost: update {:.3} ms, joint matrices {:.0} a frame (peak {peak}), instances {:.0}, draw runs {:.1}",
+        ms / n,
+        joints as f64 / n,
+        instances as f64 / n,
+        runs as f64 / n
+    );
 }

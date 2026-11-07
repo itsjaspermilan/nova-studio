@@ -58,6 +58,7 @@ fn builtin_module(name: &str) -> Option<&'static str> {
     }
 }
 
+mod animated;
 mod retained_api;
 mod solid_api;
 mod voxel_api;
@@ -134,6 +135,8 @@ struct Shared {
     ui_models: Vec<ModelDraw>,
     /// Joint matrices of the skinned parts drawn this frame (see `FrameInput::joints`).
     joints: Vec<[[f32; 4]; 4]>,
+    /// The poses made this frame by `nova.model` with a `clip`, by model: characters at the same moment of a clip share one.
+    pose_cache: HashMap<String, HashMap<animated::PoseKey, Rc<PosedModel>>>,
     /// The voxel world (`nova.voxel`), and the mesh of each block kind drawn as a lone cube.
     voxel: crate::voxel::World,
     cubes: HashMap<u8, usize>,
@@ -273,6 +276,13 @@ struct PartRt {
     skinned: Option<Rc<SkinnedPart>>,
 }
 
+/// A model in one pose: its parts, where each is, and where the joints of its skinned parts start in the frame's palette.
+struct PosedModel {
+    parts: Vec<PartRt>,
+    world: Vec<Mat4>,
+    joint_base: Vec<Option<u32>>,
+}
+
 struct SkinnedPart {
     /// Which parts the joints are, and their inverse rest matrices.
     skin: model::Skin,
@@ -317,6 +327,7 @@ fn part_worlds(
     layers: &Option<Table>,
     overrides: &Option<Table>,
     ignore_turns: &[&str],
+    time_override: Option<f32>,
 ) -> mlua::Result<(Vec<PartRt>, Vec<Mat4>)> {
     let parts = sh.parts.get(found).cloned().unwrap_or_default();
     // A clip first (it replaces what it animates of each part's authored place) ...
@@ -337,7 +348,10 @@ fn part_worlds(
                 }
             ))
         })?;
-        let time = number_option(opts, "time")?.unwrap_or(0.0) as f32;
+        let time = match time_override {
+            Some(t) => t,
+            None => number_option(opts, "time")?.unwrap_or(0.0) as f32,
+        };
         let looped = match &opts {
             Some(o) => o.get::<Option<bool>>("loop")?.unwrap_or(true),
             None => true,
@@ -1166,38 +1180,105 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     return Err(lua_err("give a model `clip` or `layers`, not both (layers = { { clip = \"walk\", weight = 1 } })"));
                 }
                 let lod_name = string_option(&opts, "lod")?;
-                if lod_name.is_some()
-                    && (overrides.is_some() || clip_name.is_some() || layers.is_some())
-                {
-                    return Err(lua_err(
-                        "lod works on plain models: not with clip or parts (a far version of an animated model is not supported yet)",
-                    ));
+                // how far this is from the camera, on the ground (what `lod_distance` and `max_distance` measure)
+                let ground = {
+                    let eye = sh.camera.eye;
+                    ((x as f32 - eye.x).powi(2) + (z as f32 - eye.z).powi(2)).sqrt()
+                };
+                // `max_distance = N`: nothing is drawn (and no pose made) beyond N metres
+                if number_option(&opts, "max_distance")?.is_some_and(|m| ground >= m as f32) {
+                    return Ok(());
                 }
+                // `lod = "name"`: a cheaper model past `lod_distance` metres, the two trading places over `lod_fade` metres
+                // (see `retained_api::lod_state`). It works for animated models too (`clip`, `layers`, `parts`): the far one is
+                // a plain model, drawn in its own rest pose.
+                let lod = match lod_name {
+                    Some(far_name) => {
+                        let far = find_model(&sh.known_models, &far_name).ok_or_else(|| {
+                            lua_err(format!("unknown model '{far_name}' for lod (looked for '{far_name}' and 'models/{far_name}.glb')"))
+                        })?;
+                        let far_mesh = *sh.mesh_ids.get(&far).ok_or_else(|| {
+                            lua_err(format!("model '{far}' is not on the GPU yet (draw models from update/draw, not while the script loads)"))
+                        })?;
+                        let distance = number_option(&opts, "lod_distance")?.unwrap_or(100.0).max(1.0) as f32;
+                        let fade = number_option(&opts, "lod_fade")?.map_or(distance * 0.15, |f| f as f32).max(0.0);
+                        Some((far_mesh, animated::lod_dissolve(retained_api::lod_state(ground, distance, fade))))
+                    }
+                    None => None,
+                };
+                // what the near (full) model is drawn with: `None` when only the far one is
+                let near_dissolve = lod.map_or(Some(0.0), |(_, d)| d.near);
+                if let Some((far_mesh, animated::LodDissolve { far: Some(far), .. })) = lod {
+                        let instance = ModelInstance { matrix: matrix.to_cols_array_2d(), tint };
+                        let instance = if far == 0.0 { instance } else { instance.dissolving(far) };
+                        sh.models.push(ModelDraw { casts, mesh: far_mesh, instance });
+                }
+                let Some(near_dissolve) = near_dissolve else { return Ok(()) };
+                let dissolve = |i: ModelInstance| if near_dissolve == 0.0 { i } else { i.dissolving(near_dissolve) };
                 if overrides.is_some() || clip_name.is_some() || layers.is_some() {
-                    // Pieces that move on their own: each part is drawn separately at its turned place.
-                    let (parts, world) = part_worlds(&sh, &found, &id, &opts, &clip_name, &layers, &overrides, &[])?;
-                    let world_matrices = world.clone();
-                    for (i, p) in parts.iter().enumerate() {
+                    // Pieces that move on their own: each part is drawn separately at its turned place. A model that only plays a
+                    // clip (no layers, no parts) is posed once for every draw of the same moment: `pose_step` (seconds, 0 = exact
+                    // times) snaps the time, and the joint matrices of that pose go to the GPU once, whoever uses them.
+                    let shareable = clip_name.is_some() && layers.is_none() && overrides.is_none();
+                    let mut key = None;
+                    let mut time_used = None;
+                    if shareable {
+                        let name = clip_name.as_deref().unwrap_or_default();
+                        let clips = sh.clips.get(&found).map(Vec::as_slice).unwrap_or(&[]);
+                        if let Some(index) = clips.iter().position(|c| c.name == name) {
+                            let t = number_option(&opts, "time")?.unwrap_or(0.0) as f32;
+                            let looped = match &opts {
+                                Some(o) => o.get::<Option<bool>>("loop")?.unwrap_or(true),
+                                None => true,
+                            };
+                            let step = number_option(&opts, "pose_step")?.unwrap_or(0.0) as f32;
+                            let (k, snapped) =
+                                animated::PoseKey::new(index, clips[index].local_time(t, looped), step);
+                            key = Some(k);
+                            time_used = Some(snapped);
+                        }
+                    }
+                    let sh = &mut *sh;
+                    let cached = key.and_then(|k| sh.pose_cache.get(found.as_str())?.get(&k).cloned());
+                    let posed = match cached {
+                        Some(p) => p,
+                        None => {
+                            let (parts, world) =
+                                part_worlds(sh, &found, &id, &opts, &clip_name, &layers, &overrides, &[], time_used)?;
+                            let mut joint_base = vec![None; parts.len()];
+                            for (i, p) in parts.iter().enumerate() {
+                                let Some(skinned) = &p.skinned else { continue };
+                                if sh.joints.len() + skinned.skin.joints.len() > crate::gfx::MAX_JOINT_MATRICES {
+                                    sh.log.push(format!(
+                                        "a frame holds at most {} joints; '{id}' is not drawn",
+                                        crate::gfx::MAX_JOINT_MATRICES
+                                    ));
+                                    continue;
+                                }
+                                // the mesh is bent on the GPU by the matrices of its joints (each joint's place in the model
+                                // times its inverse rest matrix)
+                                joint_base[i] = Some(sh.joints.len() as u32);
+                                for (&part, ibm) in skinned.skin.joints.iter().zip(&skinned.skin.inverse_bind) {
+                                    let m = world.get(part).copied().unwrap_or(Mat4::IDENTITY) * *ibm;
+                                    sh.joints.push(m.to_cols_array_2d());
+                                }
+                            }
+                            let posed = Rc::new(PosedModel { parts, world, joint_base });
+                            if let Some(k) = key {
+                                sh.pose_cache.entry(found.clone()).or_default().insert(k, posed.clone());
+                            }
+                            posed
+                        }
+                    };
+                    for (i, p) in posed.parts.iter().enumerate() {
                         if let Some(skinned) = &p.skinned {
-                            // The mesh follows the parts; it is drawn from the model's own place, bent on the GPU by the
-                            // matrices of its joints (each joint's place in the model times its inverse rest matrix).
-                            let Some(&mesh) = sh.mesh_ids.get(&skinned.key) else { continue };
-                            if sh.joints.len() + skinned.skin.joints.len() > crate::gfx::MAX_JOINT_MATRICES {
-                                sh.log.push(format!(
-                                    "a frame holds at most {} joints; '{id}' is not drawn",
-                                    crate::gfx::MAX_JOINT_MATRICES
-                                ));
+                            let (Some(&mesh), Some(base)) = (sh.mesh_ids.get(&skinned.key), posed.joint_base[i]) else {
                                 continue;
-                            }
-                            let base = sh.joints.len() as u32;
-                            for (&part, ibm) in skinned.skin.joints.iter().zip(&skinned.skin.inverse_bind) {
-                                let m = world_matrices.get(part).copied().unwrap_or(Mat4::IDENTITY) * *ibm;
-                                sh.joints.push(m.to_cols_array_2d());
-                            }
+                            };
                             sh.models.push(ModelDraw {
                                 casts,
                                 mesh,
-                                instance: ModelInstance::skinned(matrix.to_cols_array_2d(), tint, base),
+                                instance: dissolve(ModelInstance::skinned(matrix.to_cols_array_2d(), tint, base)),
                             });
                             continue;
                         }
@@ -1206,10 +1287,10 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                         sh.models.push(ModelDraw {
                             casts,
                             mesh,
-                            instance: ModelInstance {
-                                matrix: (matrix * world[i]).to_cols_array_2d(),
+                            instance: dissolve(ModelInstance {
+                                matrix: (matrix * posed.world[i]).to_cols_array_2d(),
                                 tint,
-                            },
+                            }),
                         });
                     }
                     return Ok(());
@@ -1222,34 +1303,10 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     Some(sway) if sway != 0.0 => instance.swaying(sway as f32),
                     _ => instance,
                 };
-                // `lod = "name"`: a cheaper model past `lod_distance` metres (on the ground, from the camera), the two
-                // trading places over `lod_fade` metres (see `retained_api::lod_state`)
-                if let Some(far_name) = lod_name {
-                    let far = find_model(&sh.known_models, &far_name).ok_or_else(|| {
-                        lua_err(format!("unknown model '{far_name}' for lod (looked for '{far_name}' and 'models/{far_name}.glb')"))
-                    })?;
-                    let far_mesh = *sh.mesh_ids.get(&far).ok_or_else(|| {
-                        lua_err(format!("model '{far}' is not on the GPU yet (draw models from update/draw, not while the script loads)"))
-                    })?;
-                    let distance = number_option(&opts, "lod_distance")?.unwrap_or(100.0).max(1.0) as f32;
-                    let fade = number_option(&opts, "lod_fade")?.map_or(distance * 0.15, |f| f as f32).max(0.0);
-                    let eye = sh.camera.eye;
-                    let d = ((x as f32 - eye.x).powi(2) + (z as f32 - eye.z).powi(2)).sqrt();
-                    let draws: [Option<(usize, f32)>; 2] = match retained_api::lod_state(d, distance, fade) {
-                        retained_api::Lod::Near => [Some((mesh, 0.0)), None],
-                        retained_api::Lod::Far => [Some((far_mesh, 0.0)), None],
-                        retained_api::Lod::Blend(t) => [Some((mesh, -t)), Some((far_mesh, t))],
-                    };
-                    for (mesh, dissolve) in draws.into_iter().flatten() {
-                        let instance = if dissolve == 0.0 { instance } else { instance.dissolving(dissolve) };
-                        sh.models.push(ModelDraw { casts, mesh, instance });
-                    }
-                    return Ok(());
-                }
                 sh.models.push(ModelDraw {
                     casts,
                     mesh,
-                    instance,
+                    instance: dissolve(instance),
                 });
                 Ok(())
             },
@@ -1605,6 +1662,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 &layers,
                 &overrides,
                 &[],
+                None,
             )?;
             let out = lua.create_table()?;
             for (p, m) in parts.iter().zip(&world) {
@@ -1668,7 +1726,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 };
                 let ignore: Vec<&str> = names.iter().map(String::as_str).collect();
                 let (parts, world) =
-                    part_worlds(&sh, &found, &id, &opts, &clip_name, &layers, &overrides, &ignore)?;
+                    part_worlds(&sh, &found, &id, &opts, &clip_name, &layers, &overrides, &ignore, None)?;
                 let index = |name: &str| -> mlua::Result<usize> {
                     parts.iter().position(|p| p.name == name).ok_or_else(|| {
                         lua_err(format!(
@@ -2898,6 +2956,7 @@ impl Game {
             models: Vec::new(),
             ui_models: Vec::new(),
             joints: Vec::new(),
+            pose_cache: HashMap::new(),
             voxel: crate::voxel::World::new(),
             cubes: HashMap::new(),
             walls: crate::walls::Walls::default(),
@@ -3178,6 +3237,7 @@ impl Game {
             sh.text_out.clear();
             sh.models.clear();
             sh.joints.clear();
+            sh.pose_cache.clear();
             let bindings = sh.bindings.clone();
             sh.states
                 .update(&bindings, &input.sources, &input.overrides);

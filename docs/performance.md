@@ -198,9 +198,12 @@ Things that appear or change suddenly are the visible cost of every saving above
 - **Point lights**: a game may ask for any number; the 16 nearest the camera (by the edge of their reach) are lit, and a
   light that moves in or out of that set fades over a quarter of a second. A new light is on at once and one that is no longer
   asked for is off at once (a muzzle flash is the script's to time). The renderer has room for 20 so that fades overlap.
-- **`nova.model`** takes `lod`, `lod_distance` and `lod_fade` like scenery (plain models: not with `clip` or `parts`), so a
-  car or a prop that a script draws can swap to a cheaper model by the same crossfade.
-- Still pops, or not covered: a level of detail for animated (skinned or `parts`) models; the far model must be made to match the
+- **`nova.model`** takes `lod`, `lod_distance` and `lod_fade` like scenery, also for models with a `clip` (the far one
+  is then a plain model in its rest pose, and no pose is made for it), and `max_distance` draws nothing beyond it.
+- **Crowds of skinned characters**: draws of one model, clip and moment (`pose_step`, e.g. 1/15 s, snaps the time) share one set of
+  joint matrices, so 300 characters upload a few dozen sets instead of 300 (1800 matrices became 60 in `tests/crowd.rs`
+  `crowd_cost`), and are one instanced draw per mesh as before.
+- Still pops, or not covered: a far model for animated models is a rest-pose or other plain model, not an animated one; the far model must be made to match the
   near one (Kenney's low-detail buildings in the stress city change shape as they swap); the sun's shadow edge at the box's
   limit; and anything a script itself makes appear.
 

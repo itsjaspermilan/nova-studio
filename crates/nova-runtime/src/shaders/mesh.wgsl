@@ -285,7 +285,7 @@ fn vs_skinned(v: SkinVertex, inst: Instance) -> VertexOut {
     out.world = world.xyz;
     out.position = globals.view_proj * world;
     out.normal = world_normal;
-    out.dissolve = 0.0;
+    out.dissolve = inst.m1.w;
     out.color = v.color * vec4<f32>(srgb_to_linear(inst.tint.rgb), inst.tint.a);
     out.uv = v.uv;
     out.emissive = v.emissive;
