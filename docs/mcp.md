@@ -34,3 +34,4 @@ answer, and whether it failed); the newest 200 are kept. The studio shows them i
 every few seconds and when the window gets focus: the tab shows a count of what is new, each row says what was done in words, and
 the file names open in the editors. `.nova/` is a hidden folder, so the log does not show in the resource tree.
 
+The studio has the same renders as screens: see `docs/studio-tools.md` (Store art, the speed strip, Simulate).

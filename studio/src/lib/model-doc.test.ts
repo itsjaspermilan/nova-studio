@@ -327,10 +327,10 @@ describe("collision capsules and boxes", () => {
   it("can be added, changed and removed", () => {
     let d = withShapes();
     d = updateCapsule(d, 0, { r: 5 });
-    expect(d.capsules![0].r).toBe(5);
+    expect(d.capsules![0]!.r).toBe(5);
     expect(updateCapsule(d, 0, { r: 0 })).toBe(d);
     d = updateBox(d, 0, { turn: 45 });
-    expect(d.boxes![0].turn).toBe(45);
+    expect(d.boxes![0]!.turn).toBe(45);
     expect(updateBox(d, 0, { hw: 0 })).toBe(d);
     expect(updateBox(d, 3, { hw: 1 })).toBe(d);
     d = removeCapsule(removeBox(d, 0), 0);

@@ -1858,7 +1858,11 @@ fn a_models_capsules_and_boxes_are_read_and_block_scenery() {
     let imported = nova_runtime::model::import_parts(bytes).expect("imports");
     assert_eq!(imported.colliders, [[0.0, 0.0, 0.5]]);
     assert_eq!(imported.capsules, [[0.0, -0.5, 0.0, 0.5, 0.25]]);
-    assert_eq!(imported.boxes, [[1.0, 0.0, 0.125, 0.5, 1.5708]]);
+    // (the file keeps five decimals of the quarter turn)
+    let [x, z, hw, hl, turn] = imported.boxes[0];
+    assert_eq!(imported.boxes.len(), 1);
+    assert_eq!([x, z, hw, hl], [1.0, 0.0, 0.125, 0.5]);
+    assert!((turn - std::f32::consts::FRAC_PI_2).abs() < 1e-4, "{turn}");
     // an older model (circles only) has no other shapes
     let old =
         nova_runtime::model::import_parts(include_bytes!("fixtures/studio_model_colliders.glb"))
