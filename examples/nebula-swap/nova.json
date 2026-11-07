@@ -5,7 +5,7 @@
   "world_height": 540,
   "input": {
     "raise": ["key:ShiftLeft", "key:KeyX", "pad:l1", "pad:r1", "pad:west", "pad:l2", "axis:l2", "axis:r2"],
-    "swap": ["key:Space", "key:KeyZ", "pad:south", "pad:east"],
+    "swap": ["key:Space", "key:KeyZ"],
     "pause": ["key:Escape", "key:KeyP", "pad:start"],
     "menu_back": ["key:Escape"],
     "stats": ["key:F3"],

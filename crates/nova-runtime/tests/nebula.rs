@@ -161,3 +161,18 @@ fn doing_nothing_in_endless_ends_the_game_and_the_results_lead_on() {
         l.iter().filter(|x| x.contains("nebula: go")).count() >= 2
     });
 }
+
+#[test]
+fn the_b_button_goes_back_in_the_menus_and_a_goes_on() {
+    let mut g = load();
+    wait(&mut g, 20);
+    let mut log = vec![];
+    tap(&mut g, "pad:east"); // A: title -> menu
+    tap(&mut g, "pad:south"); // B: back to the title (if it were taken for A, it would open Endless)
+    tap(&mut g, "pad:east"); // A: title -> menu again
+    tap(&mut g, "pad:east"); // A: Endless -> pace
+    tap(&mut g, "pad:south"); // B: back to the menu, not a start
+    wait(&mut g, 60 * 10); // (a game would have counted down and started by now)
+    log.extend(g.take_log());
+    assert!(!has(&log, "nebula: go"), "B started a game: {log:?}");
+}
