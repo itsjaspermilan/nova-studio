@@ -1384,6 +1384,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 ao: number("ao", 0.0, 0.0, 1.0)? as f32,
                 ao_radius: number("ao_radius", 0.8, 0.05, 8.0)? as f32,
                 blur: number("blur", 0.0, 0.0, 1.0)? as f32,
+                fxaa: number("fxaa", 0.0, 0.0, 1.0)? as f32,
             };
             Ok(())
         })?,

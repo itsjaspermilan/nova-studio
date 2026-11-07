@@ -62,6 +62,7 @@ state.sfx_volume = 0.8
 state.shadows = true   -- the sun's shadows (a little slower on a handheld)
 state.vibration = true -- shake the gamepad when the car hits something
 state.music_style = "kenney" -- "kenney" (Kenney's music loops) or "studio" (the songs made with Nova's music editor)
+state.smooth = true    -- edges smoothed (FXAA at 540p, before the picture is scaled up)
 state.effects = true   -- bloom, ambient occlusion, grass and wind (a little slower on a handheld)
 state.result = nil    -- filled in when a race ends
 
@@ -72,6 +73,7 @@ function state.load()
   if saved.shadows ~= nil then state.shadows = saved.shadows end
   if saved.vibration ~= nil then state.vibration = saved.vibration end
   if saved.effects ~= nil then state.effects = saved.effects end
+  if saved.smooth ~= nil then state.smooth = saved.smooth end
   if saved.music_style then state.music_style = saved.music_style end
   state.track = nova.save.get("last_track", 1)
   state.stage = nova.save.get("last_stage", 1)
@@ -82,13 +84,18 @@ function state.load()
 end
 
 -- The picture's finish for a circuit's look (see lib/looks.lua): bloom and ambient occlusion, and the wind; plain when effects are off.
-function state.apply_look(look)
-  if state.effects and look.look then nova.look(look.look) else nova.look() end
+-- The picture's finish for a look, with edges smoothed (FXAA, if the player has it on) and any `extra` fields (the menus add a vignette).
+function state.apply_look(look, extra)
+  local l = {}
+  if state.effects and look.look then for k, v in pairs(look.look) do l[k] = v end end
+  for k, v in pairs(extra or {}) do l[k] = v end
+  l.fxaa = state.smooth and 1 or 0
+  nova.look(l)
   if state.effects and look.wind then nova.wind(look.wind) else nova.wind() end
 end
 
 function state.save_options()
-  nova.save.set("options", { music = state.music_volume, sfx = state.sfx_volume, shadows = state.shadows, vibration = state.vibration, effects = state.effects, music_style = state.music_style })
+  nova.save.set("options", { music = state.music_volume, sfx = state.sfx_volume, shadows = state.shadows, vibration = state.vibration, effects = state.effects, smooth = state.smooth, music_style = state.music_style })
   nova.save.set("last_track", state.track)
   nova.save.set("last_stage", state.stage)
   nova.save.set("last_car", state.car)

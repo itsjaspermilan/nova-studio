@@ -1,6 +1,7 @@
 -- The 3D picture behind the menus: a piece of road with the car standing on it, dressed like the circuit that is chosen (its sky,
 -- sun, ground, mountains, road surface and the trees, cacti or snowy pines beside it). The camera sways gently in front of the car.
 local horizon = require("lib.horizon")
+local skylib = require("lib.sky")
 local looks = require("lib.looks")
 local state = require("lib.state")
 
@@ -94,13 +95,18 @@ end
 function backdrop.light()
   local _, look = current()
   nova.scenery.range = 140 -- (the engine draws the scene file's scenery around the camera by itself)
-  nova.light { dir = look.sun.dir, color = look.sun.color, ambient = look.sun.ambient }
-  nova.sky(look.sky)
-  nova.fog { color = look.sky.horizon, near = 60, far = 230 }
-  state.apply_look(look)
+  local menu_sky, menu_sun = skylib.menu(look)
+  nova.light { dir = menu_sun.dir, color = menu_sun.color, ambient = menu_sun.ambient }
+  nova.sky(menu_sky)
+  nova.fog { color = menu_sky.horizon, near = 60, far = 230 }
+  -- the menus are lit like a showroom: the sun throws shadows (the car's on the road, the trees' across it), the fill is lower so that the
+  -- shapes read, and the corners darken a little
+  nova.shadows(state.shadows and { radius = 26, strength = 0.6 } or nil)
+  state.apply_look(look, { vignette = 0.3, ao = 0.5, ao_radius = 1.0 })
 end
 
 function backdrop.leave()
+  nova.shadows(nil)
   nova.sky(nil)
   nova.fog(nil)
   nova.look()

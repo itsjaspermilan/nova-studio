@@ -11,7 +11,7 @@ struct Blit {
     outline_color: vec4<f32>, // rgb linear, w: width in world texels
     depth: vec4<f32>,         // x: near, y: far of the camera, z: fog starts, w: fog is complete (0: no fog)
     glow: vec4<f32>,          // x: bloom strength, y: ambient occlusion strength, z: its reach in metres, w: bloom threshold
-    lens: vec4<f32>,          // x: pixels of the world picture one metre spans at one metre away, y: speed blur (0: none)
+    lens: vec4<f32>,          // x: pixels of the world picture one metre spans at one metre away, y: speed blur (0: none), z: FXAA strength (0: none)
 };
 @group(0) @binding(0) var<uniform> blit: Blit;
 @group(1) @binding(0) var source: texture_2d<f32>;
@@ -73,6 +73,41 @@ fn occlusion(c: vec2<i32>, z: f32) -> f32 {
     return 1.0 - sum * 0.25;
 }
 
+// FXAA (Lottes' first version) at the world picture's resolution: where the four corners of a texel differ in brightness there is an edge, and
+// the colour there is the average of taps along it, kept only if that stays within the corners' range. Pixels that are not on an edge cost
+// four extra reads and are left alone. (The world is drawn at a low resolution and scaled up, so the stairs on an edge are whole texels
+// wide: this smooths them before the scale-up; the colour taps are bilinear, so they land between texels.)
+fn perceptual_luma(c: vec3<f32>) -> f32 {
+    return dot(sqrt(max(c, vec3<f32>(0.0))), vec3<f32>(0.299, 0.587, 0.114));
+}
+
+fn fxaa(uv: vec2<f32>, centre: vec3<f32>) -> vec3<f32> {
+    let px = vec2<f32>(1.0, 1.0) / blit.tex_size;
+    let nw = textureSample(source, source_sampler, uv + vec2<f32>(-0.5, -0.5) * px).rgb;
+    let ne = textureSample(source, source_sampler, uv + vec2<f32>(0.5, -0.5) * px).rgb;
+    let sw = textureSample(source, source_sampler, uv + vec2<f32>(-0.5, 0.5) * px).rgb;
+    let se = textureSample(source, source_sampler, uv + vec2<f32>(0.5, 0.5) * px).rgb;
+    let l_nw = perceptual_luma(nw);
+    let l_ne = perceptual_luma(ne);
+    let l_sw = perceptual_luma(sw);
+    let l_se = perceptual_luma(se);
+    let l_m = perceptual_luma(centre);
+    let l_min = min(l_m, min(min(l_nw, l_ne), min(l_sw, l_se)));
+    let l_max = max(l_m, max(max(l_nw, l_ne), max(l_sw, l_se)));
+    // no edge: leave the pixel as it is
+    if (l_max - l_min < max(0.04, l_max * 0.125)) {
+        return centre;
+    }
+    var dir = vec2<f32>(-((l_nw + l_ne) - (l_sw + l_se)), (l_nw + l_sw) - (l_ne + l_se));
+    let reduce = max((l_nw + l_ne + l_sw + l_se) * 0.25 * 0.125, 1.0 / 128.0);
+    let rcp = 1.0 / (min(abs(dir.x), abs(dir.y)) + reduce);
+    dir = clamp(dir * rcp, vec2<f32>(-6.0), vec2<f32>(6.0)) * px;
+    let a = 0.5 * (textureSample(source, source_sampler, uv + dir * (1.0 / 3.0 - 0.5)).rgb + textureSample(source, source_sampler, uv + dir * (2.0 / 3.0 - 0.5)).rgb);
+    let b = a * 0.5 + 0.25 * (textureSample(source, source_sampler, uv + dir * -0.5).rgb + textureSample(source, source_sampler, uv + dir * 0.5).rgb);
+    let l_b = perceptual_luma(b);
+    return select(b, a, l_b < l_min || l_b > l_max);
+}
+
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     let texel = in.uv * blit.tex_size;
@@ -82,6 +117,9 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     let offset = (within - clamp(within, -blend_region, blend_region)) * blit.scale + vec2<f32>(0.5, 0.5);
     var color = textureSample(source, source_sampler, (base + offset) / blit.tex_size);
     var rgb = color.rgb;
+    if (blit.lens.z > 0.0) {
+        rgb = mix(rgb, fxaa(in.uv, rgb), blit.lens.z);
+    }
     // speed blur: a short streak toward the middle of the picture, only on the left and right sides (by how far across the picture a
     // pixel is, whatever its height), so that the road ahead and the car stay sharp
     if (blit.lens.y > 0.0) {

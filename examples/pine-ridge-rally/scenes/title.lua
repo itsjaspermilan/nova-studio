@@ -192,7 +192,7 @@ function Title:update(dt)
   elseif screen == "howto" then
     if nova.input.pressed("a") or nova.input.pressed("b") or nova.input.pressed("start") then audio.sfx("menu_back"); self:go("menu") end
   elseif screen == "options" then
-    local choice, action = ui.navigate(self.choice, 8)
+    local choice, action = ui.navigate(self.choice, 9)
     self.choice = choice
     local step = (action == "right" and 0.1) or (action == "left" and -0.1) or 0
     if choice == 1 and step ~= 0 then state.music_volume = math.max(0, math.min(1, state.music_volume + step)); state.save_options(); audio.sfx("menu_move") end
@@ -203,9 +203,10 @@ function Title:update(dt)
     end
     if choice == 4 and (step ~= 0 or action == "accept") then state.shadows = not state.shadows; state.save_options(); audio.sfx("menu_move") end
     if choice == 5 and (step ~= 0 or action == "accept") then state.effects = not state.effects; state.save_options(); backdrop.light(); audio.sfx("menu_move") end
-    if choice == 6 and (step ~= 0 or action == "accept") then state.vibration = not state.vibration; state.save_options(); audio.sfx("menu_move"); if state.vibration then nova.input.rumble(0.6, 0.15) end end
-    if action == "accept" and choice == 7 then audio.sfx("menu_accept"); self:go("controls"); return end
-    if action == "back" or (action == "accept" and choice == 8) then audio.sfx("menu_back"); self:go("menu") end
+    if choice == 6 and (step ~= 0 or action == "accept") then state.smooth = not state.smooth; state.save_options(); backdrop.light(); audio.sfx("menu_move") end
+    if choice == 7 and (step ~= 0 or action == "accept") then state.vibration = not state.vibration; state.save_options(); audio.sfx("menu_move"); if state.vibration then nova.input.rumble(0.6, 0.15) end end
+    if action == "accept" and choice == 8 then audio.sfx("menu_accept"); self:go("controls"); return end
+    if action == "back" or (action == "accept" and choice == 9) then audio.sfx("menu_back"); self:go("menu") end
   elseif screen == "controls" then
     local rows = #controls.rows
     if self.listening then
@@ -402,10 +403,11 @@ function Title:draw_ui()
       { "Music style", state.music_style == "kenney" and "< Kenney loops >" or "< Nova Studio songs >" },
       { "Shadows", state.shadows and "< On >" or "< Off >" },
       { "Effects", state.effects and "< On >" or "< Off >" },
+      { "Smooth edges", state.smooth and "< On >" or "< Off >" },
       { "Vibration", state.vibration and "< On >" or "< Off >" },
       "Controls...",
       "Back",
-    }, self.choice, 180, { width = 420 })
+    }, self.choice, 124, { width = 420, row = 40 })
   elseif screen == "controls" then
     ui.center("CONTROLS", 24, 38, ui.color.gold, { font = "bold" })
     local items = {}

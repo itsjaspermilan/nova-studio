@@ -119,6 +119,7 @@ function race.define(config)
     if state.effects and look.look then
       self.look_now = {}
       for k, v in pairs(look.look) do self.look_now[k] = v end
+      self.look_now.fxaa = state.smooth and 1 or 0
       self.blur_now = 0
     end
     foliage.start(look, state.effects and 1 or 0)

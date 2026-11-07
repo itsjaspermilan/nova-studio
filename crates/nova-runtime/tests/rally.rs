@@ -246,7 +246,7 @@ fn the_controls_screen_remaps_a_key_and_can_put_the_defaults_back() {
     tap(&mut g, "key:ArrowDown");
     tap(&mut g, "key:ArrowDown");
     tap(&mut g, "key:Enter"); // Options
-    for _ in 0..6 {
+    for _ in 0..7 {
         tap(&mut g, "key:ArrowDown");
     }
     tap(&mut g, "key:Enter"); // Controls...

@@ -43,7 +43,7 @@ function sky.sunlight(e)
   return mix3(LIGHT[a][2], LIGHT[b][2], t), mix(LIGHT[a][3], LIGHT[b][3], t)
 end
 
-local function scaled(c, k) return { c[1] * (k[1] or 1), c[2] * (k[2] or 1), c[3] * (k[3] or 1) } end
+local function scaled(c, k) return { math.min(255, c[1] * (k[1] or 1)), math.min(255, c[2] * (k[2] or 1)), math.min(255, c[3] * (k[3] or 1)) } end
 
 -- Fills in a look's `sky` (for nova.sky and the fog) and, in the day, its `sun` (for nova.light) from its `sun_to`. A look's `tint`
 -- ({ top = {r, g, b}, horizon = {r, g, b} }, multipliers) gives a place its own air: red desert dust, the blue of snow.
@@ -66,6 +66,28 @@ function sky.make(look)
       ambient = { ambient[1] * 0.42 + 18, ambient[2] * 0.42 + 18, ambient[3] * 0.42 + 22 },
     }
   end
+end
+
+-- The menus' own light: the circuit's sun brought down to the golden hour (about 17 degrees up) so that it rakes across the scene, throwing long
+-- shadows and lighting the car from the side; a night circuit keeps its moon. Returns the sky and the sun for nova.sky and nova.light.
+function sky.menu(look)
+  if look.night then return look.sky, look.sun end
+  local to = look.sun_to
+  local len = math.sqrt(to[1] ^ 2 + to[3] ^ 2)
+  local e = 0.42
+  local flat = { to[1] / len * math.sqrt(1 - e * e), e, to[3] / len * math.sqrt(1 - e * e) }
+  local top, horizon = sky.palette(e)
+  local tint = look.tint or {}
+  if tint.top then top = scaled(top, tint.top) end
+  if tint.horizon then horizon = scaled(horizon, tint.horizon) end
+  local colour, strength = sky.sunlight(e)
+  local ambient = mix3(top, horizon, 0.5)
+  return { top = top, horizon = horizon, sun = flat, clouds = look.clouds or 0.35, stars = 0 },
+    {
+      dir = { -flat[1], -flat[2], -flat[3] },
+      color = scaled(colour, { strength * 1.35, strength * 1.3, strength * 1.2 }),
+      ambient = { ambient[1] * 0.45 + 26, ambient[2] * 0.45 + 28, ambient[3] * 0.5 + 36 },
+    }
 end
 
 return sky
