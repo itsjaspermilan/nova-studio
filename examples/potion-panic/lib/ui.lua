@@ -16,17 +16,38 @@ ui.ox, ui.oy, ui.alpha = 0, 0, 1
 local function tint(c, a) return { c[1], c[2], c[3], math.floor((c[4] or 255) * (a or 1) * ui.alpha) } end
 ui.tint = tint
 
-local HEAD, BODY = "display", "serif"
--- (where the letters sit in the line the engine gives them: a text is nudged this much of its size down to look centred in a bar)
-local DY = { display = -0.02, serif = -0.1 }
+-- One typeface, Fredoka (the built-in "rounded"): round, friendly and heavy enough for a thick outline. Headings are the same face, only bigger and outlined.
+local HEAD, BODY = "rounded", "rounded"
+-- (where the letters sit in the line the engine gives them: a text is nudged this much of its size to look centred in a bar)
+local DY = { rounded = -0.1 }
 
+-- `opts.shadow` draws the text with a dark outline round it (white-on-dark lettering, readable over any picture)
 function ui.text(x, y, text, size, color, opts)
   opts = opts or {}
   local font = opts.font or BODY
-  return nova.ui.text(x + ui.ox, y + ui.oy, text, { size = size, color = tint(color or ui.color.ink), font = font, shadow = opts.shadow and tint(ui.color.shadow, 0.7) or false, align = opts.align, width = opts.width })
+  if font == "display" or font == "serif" then font = BODY end
+  if opts.shadow then
+    local d = math.max(1.5, size / 13)
+    local o = tint(ui.color.shadow, 0.95)
+    for _, p in ipairs({ { -d, -d }, { d, -d }, { -d, d }, { d, d }, { 0, d * 1.5 }, { -d, 0 }, { d, 0 } }) do
+      nova.ui.text(x + ui.ox + p[1], y + ui.oy + p[2], text, { size = size, color = o, font = font, shadow = false, align = opts.align, width = opts.width })
+    end
+  end
+  local c = tint(color or ui.color.ink)
+  -- (the face is light: from medium size up it is drawn again a hair to each side, which makes it heavy, like a bold weight)
+  if size >= ui.MEDIUM and not opts.thin then
+    local b = size / 46
+    for _, p in ipairs({ { -b, 0 }, { b, 0 }, { 0, -b }, { 0, b } }) do
+      nova.ui.text(x + ui.ox + p[1], y + ui.oy + p[2], text, { size = size, color = c, font = font, shadow = false, align = opts.align, width = opts.width })
+    end
+  end
+  return nova.ui.text(x + ui.ox, y + ui.oy, text, { size = size, color = c, font = font, shadow = false, align = opts.align, width = opts.width })
 end
 
-function ui.width(text, size, font) return nova.ui.text_width(text, { size = size, font = font or BODY }) end
+function ui.width(text, size, font)
+  if font == "display" or font == "serif" then font = nil end
+  return nova.ui.text_width(text, { size = size, font = font or BODY })
+end
 
 function ui.heading(text, x, y, size, color, opts)
   opts = opts or {}
@@ -64,12 +85,25 @@ end
 
 -- panels: "ink" (dark indigo), "page" (parchment), "light" (pale paper), "inset" (a darker mat for a picture)
 local PANEL = { ink = "ui/panel_blue", page = "ui/panel_beige", light = "ui/panel_beigeLight", inset = "ui/panelInset_brown", leather = "ui/panel_brown", brown = "ui/panel_blue", beige = "ui/panel_beige", blue = "ui/panel_blue" }
-function ui.panel(x, y, w, h, kind, alpha)
+function ui.panel(x, y, w, h, kind, alpha, tint_color)
   local sprite = PANEL[kind or "page"]
   local c = { 255, 255, 255 }
   if kind == "ink" or kind == "brown" or kind == "blue" then c = { 150, 160, 255 } end -- (the blue is a grey-lilac: pushed towards indigo)
   if kind == "leather" then c = { 150, 100, 86 } end
+  if tint_color then c = tint_color end
   nova.ui.panel(sprite, x + ui.ox, y + ui.oy, w, h, { slice = 22, scale = 0.7, color = tint({ c[1], c[2], c[3], alpha or 255 }) })
+end
+
+-- a ribbon of a colour (Kenney's long button, tinted) with white outlined lettering centred on it
+function ui.ribbon(x, y, w, h, color, text, size)
+  nova.ui.panel("ui/buttonLong_beige", x + ui.ox, y + ui.oy, w, h, { slice = { 14, 14, 14, 14 }, scale = 1.0, color = tint({ color[1], color[2], color[3], 255 }) })
+  if text then ui.in_box(text, x, y, w, h - 4, size or ui.LARGE, ui.color.white, { shadow = true }) end
+end
+
+-- a round badge: a coloured disc with a number or letter on it
+function ui.badge(cx, cy, d, color, text, size)
+  nova.ui.sprite("ui/iconCircle_beige", cx + ui.ox, cy + ui.oy, { w = d, h = d, color = tint({ color[1], color[2], color[3], 255 }) })
+  if text then ui.in_box(text, cx - d / 2, cy - d / 2, d, d, size or ui.LARGE, ui.color.white, { shadow = true }) end
 end
 
 function ui.pad(name, x, y, size)
@@ -113,17 +147,18 @@ end
 -- the buttons of the handheld and what they do, in the bottom right corner on an indigo strap
 function ui.hints(items)
   local w = nova.view()
+  local size = 15
   local total = 0
-  for _, it in ipairs(items) do total = total + 34 + 8 + ui.width(it[2], ui.SMALL) + 22 end
-  total = total - 22
-  local pw = total + 36
-  local x0 = w - 10 - pw
-  ui.panel(x0, 484, pw, 50, "ink")
-  local x = x0 + 18
+  for _, it in ipairs(items) do total = total + 30 + 8 + ui.width(it[2], size) + 20 end
+  total = total - 20
+  local pw = total + 32
+  local x0 = w - 12 - pw
+  ui.panel(x0, 488, pw, 42, "ink")
+  local x = x0 + 16
   for _, it in ipairs(items) do
-    ui.pad(it[1], x, 492, 34)
-    ui.text(x + 42, 495, it[2], ui.SMALL, ui.color.cream)
-    x = x + 42 + ui.width(it[2], ui.SMALL) + 22
+    ui.pad(it[1], x, 494, 30)
+    ui.text(x + 38, 498, it[2], size, ui.color.cream)
+    x = x + 38 + ui.width(it[2], size) + 20
   end
 end
 
@@ -164,7 +199,9 @@ function ui.menu(items, selected, y, opts)
     local c = on and ui.color.ink or ui.color.cream
     local label = type(item) == "table" and item[1] or item
     local ty = by + (bh - size) / 2 + size * (DY[HEAD] or 0) - 1
-    nova.ui.text(bx + 26 + 40 * s + ui.ox, ty + ui.oy, label, { size = size, color = tint(c, a), font = HEAD, shadow = false })
+    for _, p in ipairs({ { 0, 0 }, { -0.7, 0 }, { 0.7, 0 }, { 0, -0.7 }, { 0, 0.7 } }) do
+      nova.ui.text(bx + 26 + 40 * s + ui.ox + p[1], ty + ui.oy + p[2], label, { size = size, color = tint(c, a), font = HEAD, shadow = false })
+    end
     if type(item) == "table" and item[2] then
       local vs = opts.value_size or ui.MEDIUM
       nova.ui.text(bx + bw - 22 - ui.width(item[2], vs) + ui.ox, by + (bh - vs) / 2 + vs * DY[BODY] - 1 + ui.oy, item[2], { size = vs, color = tint(c, a), font = BODY, shadow = false })

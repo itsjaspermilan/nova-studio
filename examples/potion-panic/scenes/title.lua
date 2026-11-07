@@ -324,7 +324,7 @@ function Title:draw()
   local screen = self.screen
   local shift = 0
   if screen == "menu" or screen == "options" then shift = 2.6 end
-  if screen == "icon" or screen == "boxart" then shift = (screen == "boxart" and w > h) and -2.4 or 0 end
+  if screen == "icon" or screen == "boxart" then shift = (screen == "boxart" and w > h) and 3.2 or 0 end
   View.apothecary(self.t, shift, w, h)
 end
 
@@ -357,15 +357,13 @@ function Title:draw_ui()
   end
   local enter = self.entered
   if screen == "title" then
-    ui.panel(w / 2 - 300, 14, 600, 212, "ink", 235)
-    self:draw_logo(24 + math.sin(self.t * 1.2) * 2, ui.TITLE)
+    self:draw_logo(10 + math.sin(self.t * 1.2) * 2, 84)
     if math.floor(self.t * 1.6) % 2 == 0 then ui.center("PRESS START", 440, ui.LARGE, ui.color.cream, { font = "display", shadow = true }) end
     ui.center("Made by Jasper Milan", 508, ui.SMALL, ui.color.lilac, { shadow = true })
     ui.hints({ { "pad_a", "Start" } })
   elseif screen == "menu" then
-    ui.panel(30, 20, 420, 130, "ink", 235)
-    ui.text(52, 24, "POTION", ui.HEAD, ui.color.cream, { font = "display", shadow = true })
-    ui.text(52, 76, "PANIC", ui.HEAD, ui.color.gold, { font = "display", shadow = true })
+    ui.text(40, 16, "POTION", 62, ui.color.cream, { shadow = true })
+    ui.text(40, 76, "PANIC", 62, ui.color.gold, { shadow = true })
     ui.menu(MENU, self.choice, 176, { width = 400, cx = 240, id = "main", enter = enter, row = 78 })
     ui.panel(30, 408, 440, 70, "ink", 235)
     ui.text(46, 418, BLURB[self.choice], ui.SMALL, ui.color.cream, { width = 408 })
@@ -397,16 +395,25 @@ end
 
 -- ---- the story ----------------------------------------------------------------------------------------------------------------------
 
+-- the speaker's colours for the story cards
+local SPEAKER = { NARRATOR = { 120, 90, 160 }, WREN = { 70, 150, 110 }, ["GUILDMASTER VEX"] = { 170, 60, 80 }, ["OLD MARROW"] = { 200, 140, 60 } }
+
 function Title:draw_story(w)
   local s = self.story
   if not s then return end
   local card = s.cards[s.i]
-  ui.panel(36, 286, w - 72, 190, "page")
-  ui.panel(36, 240, 330, 58, "ink")
-  ui.in_box(card[1], 36, 240, 330, 58, ui.MEDIUM, ui.color.cream, { font = "display" })
+  local col = SPEAKER[card[1]] or { 120, 90, 160 }
+  ui.panel(30, 300, w - 60, 172, "light")
+  -- the speaker: a coloured badge with their initial, and their name on a ribbon that sticks out over the card
+  local bob = math.sin(self.t * 5) * 3
+  ui.badge(92, 296 + bob, 92, col, card[1]:sub(1, 1), ui.HEAD)
+  ui.ribbon(150, 262, 300, 48, col, card[1], ui.MEDIUM)
   local shown = card[2]:sub(1, math.floor(s.chars))
-  ui.text(66, 312, shown, ui.MEDIUM, ui.color.ink, { width = w - 132 })
-  if s.chars >= #card[2] then ui.right((s.i < #s.cards) and ">" or "", w - 70, 430, ui.LARGE, ui.color.wine) end
+  ui.text(150, 322, shown, ui.MEDIUM, ui.color.ink, { width = w - 210 })
+  if s.chars >= #card[2] then
+    local pulse = math.sin(self.t * 8) * 4
+    ui.icon("ui/arrowBrown_right", w - 76 + pulse, 428, 34)
+  end
   ui.hints({ { "pad_a", "Next" }, { "pad_b", "Skip" } })
 end
 
@@ -415,71 +422,109 @@ end
 local PAGE_W, PAGE_H = 420, 414
 local PX_L, PX_R, PY = 58, 482, 36
 
+-- faint pictures of a page's ingredients on the paper, so that it is not a flat tan sheet
+local function watermark(x, y, w, ings)
+  for i, id in ipairs(ings) do
+    local ix = x + 26 + ((i - 1) % 3) * 134 + (i > 3 and 60 or 0)
+    local iy = y + 120 + ((i - 1) // 3) * 150 + ((i % 2) * 30)
+    ui.icon(data.ingredients[id].icon, ix, iy, 120, { 255, 255, 255, 40 })
+  end
+end
+
+local function biome_ingredients(b)
+  local seen, list = {}, {}
+  for _, lv in ipairs(data.levels) do
+    if lv.biome == b then for _, ing in ipairs(lv.crates) do if not seen[ing] then seen[ing] = true; list[#list + 1] = ing end end end
+  end
+  return list
+end
+
 -- one page: its content, for the spread being shown
 function Title:draw_page(p, x, y)
   local w = PAGE_W
   ui.panel(x, y, w, PAGE_H, "page")
   if p == 1 then
-    ui.text(x + 28, y + 22, "The Primer", ui.HEAD - 8, ui.color.ink, { font = "display" })
-    nova.ui.rect(x + 28 + ui.ox, y + 72 + ui.oy, w - 56, 3, ui.tint(ui.color.wine, 0.6))
-    ui.text(x + 28, y + 90, "Every trick of the craft, one step at a time. Start here.", ui.MEDIUM, ui.color.ink, { width = w - 56 })
-    self:draw_entry(x + 16, y + 236, w - 32, 96, "T", "The Primer", state.tutorial_done() and 3 or 0, nil, true, self.page == 1 and self.entry == 1, not state.tutorial_done() and "Start here" or nil)
+    watermark(x, y, w, { "glowcap", "sunpetal", "moonberry", "frostroot", "embergourd", "bogbulb" })
+    ui.ribbon(x + 12, y + 14, w - 24, 62, { 232, 170, 60 }, "The Primer", ui.HEAD - 10)
+    -- the craft in four pictures: take, grind, brew, serve
+    local steps = { { "glowcap", "Take" }, { "moonberry", "Grind" }, { "bogbulb", "Brew" }, { "sunpetal", "Serve" } }
+    for i, st in ipairs(steps) do
+      local bx = x + 20 + (i - 1) * 98
+      ui.badge(bx + 36, y + 128, 72, { 140, 100, 70 }, nil)
+      ui.icon(data.ingredients[st[1]].icon, bx + 8, y + 100, 56)
+      ui.in_box(st[2], bx - 8, y + 164, 88, 28, ui.SMALL + 2, ui.color.ink)
+      if i < #steps then ui.icon("ui/arrowBrown_right", bx + 74, y + 114, 26) end
+    end
+    ui.text(x + 24, y + 206, "Every trick of the craft, step by step.", ui.SMALL + 2, ui.color.ink, { width = w - 48, align = "center" })
+    self:draw_entry(x + 14, y + 262, w - 28, 104, 0, "The Primer", state.tutorial_done() and 3 or 0, nil, true, self.page == 1 and self.entry == 1, { 232, 170, 60 }, nil, not state.tutorial_done() and "START HERE" or nil)
   elseif p >= 2 and p <= 5 then
     local biome = data.biomes[p - 1]
-    ui.text(x + 28, y + 18, biome.short, ui.HEAD - 8, ui.color.ink, { font = "display" })
-    nova.ui.rect(x + 28 + ui.ox, y + 68 + ui.oy, w - 56, 3, ui.tint(ui.color.wine, 0.6))
-    ui.text(x + 28, y + 76, biome.quirk, ui.SMALL, ui.color.dim, { width = w - 56 })
+    watermark(x, y, w, biome_ingredients(p - 1))
+    ui.ribbon(x + 12, y + 14, w - 24, 62, biome.banner, biome.short, ui.HEAD - 10)
+    ui.text(x + 24, y + 84, biome.quirk, ui.SMALL + 1, ui.color.dim, { width = w - 48, align = "center" })
     for k, i in ipairs(page_levels(p)) do
       local lv = data.levels[i]
       local open = state.unlocked(i)
-      self:draw_entry(x + 16, y + 112 + (k - 1) * 98, w - 32, 90, tostring(k), open and lv.name or "???", state.stars(i), open and state.best(i) or nil, open, self.page == p and self.entry == k)
+      self:draw_entry(x + 14, y + 116 + (k - 1) * 86, w - 28, 80, k, open and lv.name or "???", state.stars(i), open and state.best(i) or nil, open, self.page == p and self.entry == k, biome.banner, open and lv.recipes or nil)
     end
   else
-    ui.text(x + 28, y + 18, "Notebook", ui.HEAD - 8, ui.color.ink, { font = "display" })
-    nova.ui.rect(x + 28 + ui.ox, y + 68 + ui.oy, w - 56, 3, ui.tint(ui.color.wine, 0.6))
-    ui.text(x + 28, y + 90, "Stars", ui.MEDIUM, ui.color.dim)
-    ui.right(total_stars() .. " / " .. #data.levels * 3, x + w - 28, y + 90, ui.MEDIUM, ui.color.ink, { font = "display" })
-    ui.text(x + 28, y + 128, "Levels cleared", ui.MEDIUM, ui.color.dim)
-    ui.right(state.cleared_count() .. " / " .. #data.levels, x + w - 28, y + 128, ui.MEDIUM, ui.color.ink, { font = "display" })
-    ui.text(x + 28, y + 180, "Guild seals", ui.MEDIUM, ui.color.dim)
+    watermark(x, y, w, { "moonberry", "glowcap", "sunpetal" })
+    ui.ribbon(x + 12, y + 14, w - 24, 62, { 140, 100, 190 }, "Notebook", ui.HEAD - 10)
+    -- the stars so far, as a bar, with a big number
+    local got, all = total_stars(), #data.levels * 3
+    nova.ui.sprite("ui/star", x + 62 + ui.ox, y + 132 + ui.oy, { w = 64, h = 64, color = ui.tint({ 255, 255, 255, 255 }) })
+    ui.text(x + 108, y + 100, got .. " / " .. all, ui.NUMBER, ui.color.ink)
+    ui.bar(x + 108, y + 150, w - 140, got / all, "yellow")
+    ui.text(x + 28, y + 190, "Guild seals", ui.SMALL + 2, ui.color.dim)
     for b, biome in ipairs(data.biomes) do
-      local done = false
       local last
       for i, lv in ipairs(data.levels) do if lv.biome == b then last = i end end
-      done = state.stars(last) >= 1
-      local sx = x + 40 + (b - 1) * 92
-      nova.ui.sprite("ui/iconCircle_brown", sx + 26 + ui.ox, y + 262 + ui.oy, { w = 64, h = 64, color = ui.tint(done and { biome.banner[1] + 40, biome.banner[2] + 40, biome.banner[3] + 40, 255 } or { 90, 80, 90, 200 }) })
-      ui.in_box(biome.short:sub(1, 1), sx - 6, y + 236, 64, 52, ui.LARGE, done and ui.color.white or ui.color.dim, { font = "display" })
-      ui.in_box(biome.short, sx - 20, y + 304, 92, 30, ui.SMALL, ui.color.ink)
+      local done = state.stars(last) >= 1
+      local sx = x + 60 + (b - 1) * 100
+      ui.badge(sx, y + 252, 74, done and biome.banner or { 100, 90, 100 }, done and biome.short:sub(1, 1) or "?", ui.HEAD - 8)
+      ui.in_box(biome.short, sx - 46, y + 296, 92, 26, ui.SMALL, done and ui.color.ink or ui.color.dim)
     end
-    ui.text(x + 28, y + 354, "Beaten levels open in Free Brew.", ui.SMALL, ui.color.dim, { width = w - 56 })
+    ui.text(x + 24, y + 344, state.cleared_count() .. " of " .. #data.levels .. " levels cleared. Beaten levels open in Free Brew.", ui.SMALL, ui.color.dim, { width = w - 48, align = "center" })
   end
+  -- the page number
+  ui.in_box(tostring(p), x + w / 2 - 20, y + PAGE_H - 24, 40, 20, ui.SMALL, ui.color.dim)
 end
 
--- a line in the book: a numeral, a name, stars, the best score; `open` false for a sealed level
-function Title:draw_entry(x, y, w, h, numeral, name, stars, best, open, selected, note)
-  if selected then
-    ui.panel(x, y, w, h, "light")
-    local bob = math.sin(self.t * 6) * 3
-    nova.ui.sprite("ui/cursorGauntlet_bronze", x + 28 + bob + ui.ox, y + h / 2 + ui.oy, { w = 38, h = 38, color = ui.tint({ 255, 255, 255, 255 }) })
-  end
-  local nx = x + 58
-  ui.in_box(numeral, nx, y + (h - 56) / 2, 56, 56, ui.LARGE, open and ui.color.ink or ui.color.dim, { font = "display" })
-  local tx = nx + 70
-  ui.text(tx, y + 12, name, ui.fit(name, ui.MEDIUM + 2, x + w - tx - 70, "serif"), open and ui.color.ink or ui.color.dim)
+-- a card in the book: a coloured number disc, the name, three stars, the flasks it brews, the best score. A sealed level is a dark card with a seal.
+function Title:draw_entry(x, y, w, h, numeral, name, stars, best, open, selected, color, recipes, note)
+  local bounce = selected and math.abs(math.sin(self.t * 5)) * -3 or 0
+  y = y + bounce
+  if selected then ui.panel(x - 5, y - 5, w + 10, h + 10, "light", 255, { 255, 214, 90 }) end
+  ui.panel(x, y, w, h, open and "light" or "ink", open and 255 or 200)
+  local d = h - 22
   if open then
-    for s = 1, 3 do ui.star(tx + 14 + (s - 1) * 34, y + 62, 30, s <= stars) end
-    if best and best > 0 then ui.right(tostring(best), x + w - 14, y + 18, ui.SMALL, ui.color.wine) end
-    if note then ui.right(note, x + w - 14, y + h - 30, ui.SMALL, ui.color.wine) end
+    ui.badge(x + 14 + d / 2, y + h / 2, d, stars > 0 and color or { 150, 130, 120 }, numeral == 0 and "!" or tostring(numeral), ui.HEAD - 10)
   else
-    nova.ui.sprite("ui/iconCircle_brown", tx + 14 + ui.ox, y + 70 + ui.oy, { w = 28, h = 28, color = ui.tint({ 170, 48, 78, 255 }) })
-    ui.text(tx + 36, y + 56, "Sealed", ui.SMALL, ui.color.wine)
+    ui.badge(x + 14 + d / 2, y + h / 2, d, { 100, 90, 110 }, "?", ui.HEAD - 10)
+  end
+  local tx = x + d + 28
+  ui.text(tx, y + 8, name, ui.fit(name, ui.MEDIUM + 3, x + w - tx - 16), open and ui.color.ink or ui.color.lilac)
+  if open then
+    for s = 1, 3 do ui.star(tx + 14 + (s - 1) * 30, y + h - 28, 26, s <= stars) end
+    if recipes then
+      for k, id in ipairs(recipes) do ui.flask(x + w - 18 - k * 30, y + h - 40, 18, data.recipes[id].color) end
+    end
+    if best and best > 0 then ui.right(tostring(best), x + w - 14, y + 10, ui.SMALL, ui.color.wine) end
+    if note then ui.right(note, x + w - 14, y + 10, ui.SMALL, ui.color.wine) end
+  else
+    ui.text(tx, y + h - 34, "Sealed", ui.SMALL + 2, ui.color.lilac)
+  end
+  if selected then
+    local bob = math.sin(self.t * 6) * 3
+    nova.ui.sprite("ui/cursorGauntlet_bronze", x + 6 + bob + ui.ox, y + h - 8 + ui.oy, { w = 34, h = 34, color = ui.tint({ 255, 255, 255, 255 }) })
   end
 end
 
 function Title:draw_book(w, h)
   -- the covers
   ui.panel(PX_L - 18, PY - 14, PAGE_W * 2 + 66, PAGE_H + 28, "leather")
+  nova.ui.rect(PX_L - 12 + ui.ox, PY - 8 + ui.oy, PAGE_W * 2 + 54, 3, ui.tint({ 244, 190, 70 }, 0.8))
+  nova.ui.rect(PX_L - 12 + ui.ox, PY + PAGE_H + 11 + ui.oy, PAGE_W * 2 + 54, 3, ui.tint({ 244, 190, 70 }, 0.8))
   local spread = self.spread
   local left, right = spread * 2 - 1, spread * 2
   self:draw_page(left, PX_L, PY)
@@ -510,27 +555,31 @@ end
 -- ---- free brew -----------------------------------------------------------------------------------------------------------------------
 
 function Title:draw_free(w, enter)
-  ui.text(36, 14, "FREE BREW", ui.HEAD - 8, ui.color.cream, { font = "display", shadow = true })
+  ui.text(36, 10, "FREE BREW", ui.HEAD - 6, ui.color.cream, { shadow = true })
   local cw, ch, gap = 214, 118, 12
   local cols = 4
   local x0 = (w - (cols * cw + (cols - 1) * gap)) / 2
   for i, lv in ipairs(data.levels) do
     local col, row = (i - 1) % cols, (i - 1) // cols
     local a = ease_out((enter - (i - 1) * 0.03) / 0.3)
-    local x, y = x0 + col * (cw + gap), 74 + row * (ch + gap)
+    local x, y = x0 + col * (cw + gap), 70 + row * (ch + gap) + (1 - a) * 30
     local open = state.stars(i) >= 1
     local sel = i == self.choice
+    local biome = data.biomes[lv.biome]
     local old = ui.alpha
     ui.alpha = old * a
-    if sel then ui.panel(x - 6, y - 6, cw + 12, ch + 12, "light") end
-    ui.panel(x, y, cw, ch, open and "page" or "ink")
-    local c = open and ui.color.ink or ui.color.lilac
-    ui.text(x + 16, y + 10, tostring(i), ui.LARGE, c, { font = "display" })
-    ui.text(x + 16, y + 48, open and lv.name or "???", ui.fit(open and lv.name or "???", ui.SMALL + 1, cw - 32), c)
+    if sel then
+      y = y - math.abs(math.sin(self.t * 5)) * 4
+      ui.panel(x - 6, y - 6, cw + 12, ch + 12, "light", 255, { 255, 214, 90 })
+    end
+    ui.panel(x, y, cw, ch, open and "light" or "ink", open and 255 or 200)
+    ui.ribbon(x + 6, y + 6, cw - 12, 36, open and biome.banner or { 100, 90, 110 }, open and lv.name or "???", ui.SMALL + 3)
     if open then
-      for s = 1, 3 do ui.star(x + 30 + (s - 1) * 30, y + 92, 26, s <= state.stars(i)) end
+      for s = 1, 3 do ui.star(x + 20 + (s - 1) * 34, y + 56, 30, s <= state.stars(i)) end
+      for k, id in ipairs(lv.recipes) do ui.flask(x + cw - 12 - k * 30, y + 70, 20, data.recipes[id].color) end
+      ui.text(x + 18, y + 90, state.free_best(i) > 0 and ("Best " .. state.free_best(i)) or "Not tried", ui.SMALL, ui.color.wine)
     else
-      ui.text(x + 16, y + 82, "Sealed", ui.SMALL, ui.color.lilac)
+      ui.in_box("Sealed", x, y + 50, cw, 50, ui.MEDIUM, ui.color.lilac)
     end
     ui.alpha = old
   end

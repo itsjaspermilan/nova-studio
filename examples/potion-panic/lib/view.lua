@@ -20,9 +20,9 @@ function View.setup(biome, smooth)
   nova.light { dir = { -0.35, -1, -0.55 }, color = biome.sun, ambient = biome.ambient }
   nova.sky { top = mul(biome.sky, 0.9), horizon = biome.fog }
   nova.fog { color = biome.fog, near = 28, far = 80 }
-  nova.shadows { radius = 22, strength = 0.55 }
-  -- a storybook look: three bands of light, a warm brown line round things, a little glow, a soft vignette
-  nova.look { toon = 3, outline = { color = { 36, 26, 40 }, strength = 0.7, width = 1 }, saturation = 1.0, vignette = 0.3, bloom = 0.3, bloom_threshold = 0.82, fxaa = smooth and 1 or 0 }
+  nova.shadows { radius = 26, strength = 0.5 }
+  -- a cartoon look: soft bands of light, a thin dark line round things, ambient occlusion in the corners, a little glow
+  nova.look { toon = 4, outline = { color = { 40, 28, 44 }, strength = 0.55, width = 1 }, saturation = 1.18, vignette = 0.18, bloom = 0.25, bloom_threshold = 0.85, ao = 0.55, ao_radius = 0.7, fxaa = smooth and 1 or 0 }
   if biome.snow then nova.weather({ kind = "snow", count = 260, fall = 2.2, drift = 1.2 }) else nova.weather() end
 end
 
@@ -32,7 +32,7 @@ end
 
 -- ---- the camera -------------------------------------------------------------------------------------------------------------------
 
-local cam = { ex = 0, ey = 10, ez = 8, tx = 0, ty = 0, tz = 0, fov = 40 }
+local cam = { ex = 0, ey = 10, ez = 8, tx = 0, ty = 0, tz = 0, fov = 36 }
 
 -- `lower` moves the picture down the screen (room for the orders along the top)
 function View.camera(k, lower, w, h, shiftx, orbit, zoom)
@@ -43,7 +43,7 @@ function View.camera(k, lower, w, h, shiftx, orbit, zoom)
   local need_w = (k.cols + 0.5) / (2 * half * aspect)
   local need_h = (k.rows + 0.4) / (2 * half) * 1.1
   local d = math.max(need_w, need_h, 9) * (zoom or 1)
-  cam.ex, cam.ey, cam.ez = cx + (orbit or 0), d * 0.84, cz + d * 0.66
+  cam.ex, cam.ey, cam.ez = cx + (orbit or 0), d * 0.93, cz + d * 0.46
   cam.tx, cam.ty, cam.tz = cx, 0, cz - (lower or 0.8)
   nova.camera(cam.ex, cam.ey, cam.ez, cam.tx, cam.ty, cam.tz, cam.fov)
   cam.aspect = aspect
@@ -70,7 +70,7 @@ end
 -- ---- items ------------------------------------------------------------------------------------------------------------------------
 
 local function flask(x, y, z, color, s, glow)
-  s = s or 1
+  s = (s or 1) * 1.5
   nova.cuboid(x - 0.1 * s, y, z - 0.1 * s, x + 0.1 * s, y + 0.15 * s, z + 0.1 * s, { color = color, glow = glow })
   nova.cuboid(x - 0.045 * s, y + 0.15 * s, z - 0.045 * s, x + 0.045 * s, y + 0.25 * s, z + 0.045 * s, { color = mul(color, 0.85) })
   nova.cuboid(x - 0.055 * s, y + 0.25 * s, z - 0.055 * s, x + 0.055 * s, y + 0.3 * s, z + 0.055 * s, { color = { 176, 122, 70 } })
@@ -81,13 +81,13 @@ function View.item(item, x, y, z, t)
   if item.k == "ing" then
     if item.ground then
       local c = POWDER[item.id] or { 220, 220, 220 }
-      nova.cuboid(x - 0.15, y, z - 0.15, x + 0.15, y + 0.06, z + 0.15, { color = mul(c, 0.8) })
-      nova.cuboid(x - 0.09, y + 0.06, z - 0.09, x + 0.09, y + 0.13, z + 0.09, { color = c })
+      nova.cuboid(x - 0.24, y, z - 0.24, x + 0.24, y + 0.09, z + 0.24, { color = mul(c, 0.8) })
+      nova.cuboid(x - 0.15, y + 0.09, z - 0.15, x + 0.15, y + 0.2, z + 0.15, { color = c })
     else
-      nova.model(data.ingredients[item.id].model, x, y, z, { ry = (t or 0) * 0.0 })
+      nova.model(data.ingredients[item.id].model, x, y, z, { scale = 1.8 })
     end
   elseif item.k == "bottle" then
-    nova.model("potion", x, y, z, { scale = 0.8 })
+    nova.model("potion", x, y, z, { scale = 1.4 })
   elseif item.k == "potion" then
     local c = (item.recipe == "sludge") and { 70, 64, 40 } or data.recipes[item.recipe].color
     flask(x, y, z, c, 1.2)
@@ -97,8 +97,15 @@ end
 -- ---- the workshop -----------------------------------------------------------------------------------------------------------------
 
 local function counter(st, biome)
-  nova.cuboid(st.cx - 0.5, 0, st.cz - 0.5, st.cx + 0.5, COUNTER_H, st.cz + 0.5, { color = biome.counter })
-  nova.cuboid(st.cx - 0.5, COUNTER_H, st.cz - 0.5, st.cx + 0.5, TOP_H, st.cz + 0.5, { color = biome.top })
+  local x, z = st.cx, st.cz
+  nova.cuboid(x - 0.48, 0, z - 0.48, x + 0.48, 0.08, z + 0.48, { color = mul(biome.counter, 0.55) }) -- a plinth
+  nova.cuboid(x - 0.5, 0.08, z - 0.5, x + 0.5, COUNTER_H, z + 0.5, { color = biome.counter })
+  nova.cuboid(x - 0.53, COUNTER_H, z - 0.53, x + 0.53, TOP_H, z + 0.53, { color = biome.top }) -- the top, a little proud of the body
+  -- two drawers on the face that looks at the camera
+  for i = -1, 1, 2 do
+    nova.cuboid(x + i * 0.25 - 0.18, 0.18, z + 0.5, x + i * 0.25 + 0.18, 0.44, z + 0.515, { color = mul(biome.counter, 0.8) })
+    nova.cuboid(x + i * 0.25 - 0.07, 0.3, z + 0.515, x + i * 0.25 + 0.07, 0.34, z + 0.54, { color = { 220, 210, 190 } })
+  end
 end
 
 -- a thin bar floating over a station, for a grind or a brew
@@ -115,13 +122,14 @@ function View.draw_station(st, k, biome, t)
     View.item(st.item, x, TOP_H, z, t)
   elseif kind == "crate" then
     counter(st, biome)
-    nova.model("chest", x, TOP_H - 0.04, z, { scale = 1.2 })
+    nova.model("chest", x, TOP_H - 0.04, z, { scale = 1.6 })
     local m = data.ingredients[st.ing].model
-    nova.model(m, x - 0.16, TOP_H + 0.36, z + 0.02)
-    nova.model(m, x + 0.16, TOP_H + 0.36, z - 0.06)
+    nova.model(m, x - 0.22, TOP_H + 0.5, z + 0.02, { scale = 2.0 })
+    nova.model(m, x + 0.22, TOP_H + 0.5, z - 0.08, { scale = 2.0 })
+    nova.model(m, x, TOP_H + 0.62, z + 0.12, { scale = 2.0 })
   elseif kind == "bottles" then
     counter(st, biome)
-    for i = -1, 1 do nova.model("potion", x + i * 0.27, TOP_H, z + (i % 2) * 0.1, { scale = 0.9 }) end
+    for i = -1, 1 do nova.model("potion", x + i * 0.3, TOP_H, z + (i % 2) * 0.1, { scale = 1.5 }) end
   elseif kind == "mortar" then
     counter(st, biome)
     nova.cuboid(x - 0.2, TOP_H, z - 0.2, x + 0.2, TOP_H + 0.08, z + 0.2, { color = { 150, 146, 156 } })
@@ -132,18 +140,17 @@ function View.draw_station(st, k, biome, t)
         local c = POWDER[st.item.id]
         nova.cuboid(x - 0.17, TOP_H + 0.22, z - 0.17, x + 0.17, TOP_H + 0.3, z + 0.17, { color = c })
       else
-        nova.model(data.ingredients[st.item.id].model, x, TOP_H + 0.2, z, { scale = 0.8 })
+        nova.model(data.ingredients[st.item.id].model, x, TOP_H + 0.2, z, { scale = 1.4 })
         if st.progress > 0 then
           local wobble = math.sin(t * 30) * 0.06
-          nova.model("mortar", x + wobble, TOP_H + 0.16, z, { scale = 0.55, rz = wobble * 2 })
-          bar(x, TOP_H + 0.95, z, st.progress, { 250, 214, 90 })
+          nova.model("mortar", x + wobble, TOP_H + 0.16, z, { scale = 0.9, rz = wobble * 2 })
         end
       end
     end
   elseif kind == "cauldron" then
     counter(st, biome)
-    nova.model("cauldron", x, TOP_H, z, { scale = 0.95 })
-    local top = TOP_H + 0.36
+    nova.model("cauldron", x, TOP_H, z, { scale = 1.2 })
+    local top = TOP_H + 0.45
     local liquid = { 96, 128, 110 }
     local glow = false
     local recipe = st.recipe and data.recipes[st.recipe]
@@ -156,13 +163,10 @@ function View.draw_station(st, k, biome, t)
       liquid = { 150, 160, 140 }
     end
     local pulse = 0.5 + 0.5 * math.sin(t * (st.state == "brewing" and 9 or 3))
-    nova.cuboid(x - 0.2, top - 0.03, z - 0.25, x + 0.2, top + 0.0 + 0.02 * pulse, z + 0.25, { color = liquid, glow = glow or st.state == "brewing" })
+    nova.cuboid(x - 0.27, top - 0.04, z - 0.33, x + 0.27, top + 0.0 + 0.02 * pulse, z + 0.33, { color = liquid, glow = glow or st.state == "brewing" })
     if st.state == "idle" then
-      for i, it in ipairs(st.items) do
-        View.item(it, x + (i - 2) * 0.22, TOP_H + 0.62 + 0.04 * math.sin(t * 3 + i), z, t)
-      end
+      -- (what is in it is shown on the screen)
     elseif st.state == "brewing" then
-      bar(x, TOP_H + 0.85, z, st.timer / st.total, recipe and recipe.color or { 200, 200, 200 })
       if st.stirred and k.t - st.stirred < 0.15 then
         local a = k.t * 14
         nova.cuboid(x + math.cos(a) * 0.12 - 0.03, top - 0.05, z + math.sin(a) * 0.12 - 0.03, x + math.cos(a) * 0.12 + 0.03, top + 0.5, z + math.sin(a) * 0.12 + 0.03, { color = { 190, 140, 90 } })
@@ -173,13 +177,6 @@ function View.draw_station(st, k, biome, t)
         nova.cuboid(x + (i - 2) * 0.14 - 0.035, top + 0.05 + ph * 0.28, z - 0.035 + 0.05 * i, x + (i - 2) * 0.14 + 0.035, top + 0.11 + ph * 0.28, z + 0.035 + 0.05 * i, { color = mul(liquid, 1.25), glow = true })
       end
     elseif st.state == "done" then
-      -- ready: a bouncing flask over it, and a shrinking bar of time before it burns
-      flask(x, TOP_H + 0.75 + 0.06 * math.sin(t * 6), z, recipe and recipe.color or { 200, 200, 200 }, 1.1)
-      if k.rules.burn then
-        local left = 1 - st.timer / k.burn_after
-        local hot = left < 0.34 and math.floor(t * 8) % 2 == 0
-        bar(x, TOP_H + 1.2, z, left, hot and { 255, 255, 255 } or { 235, 96, 70 })
-      end
       for i = 1, 3 do
         local ph = (t * 0.7 + i * 0.33) % 1
         nova.cuboid(x - 0.08 + (i - 2) * 0.12, TOP_H + 0.4 + ph * 0.3, z - 0.08, x + 0.08 + (i - 2) * 0.12, TOP_H + 0.5 + ph * 0.3, z + 0.08, { color = { 245, 245, 250 }, glow = true })
@@ -192,11 +189,11 @@ function View.draw_station(st, k, biome, t)
     end
   elseif kind == "hatch" then
     counter(st, biome)
-    nova.model("hatch", x, TOP_H - 0.04, z, { scale = 0.8, ry = math.pi })
+    nova.model("hatch", x, TOP_H - 0.04, z, { scale = 1.0, ry = math.pi })
     nova.cuboid(x - 0.46, TOP_H, z - 0.46, x + 0.46, TOP_H + 0.03, z + 0.46, { color = { 250, 222, 130 }, glow = true })
   elseif kind == "bin" then
     counter(st, biome)
-    nova.model("barrel", x, TOP_H - 0.04, z, { scale = 1.3, tint = { 120, 110, 120 } })
+    nova.model("barrel", x, TOP_H - 0.04, z, { scale = 1.6, tint = { 120, 110, 120 } })
   end
 end
 
@@ -206,7 +203,7 @@ function View.draw_chef(k, t)
   if c.dead > 0 then
     -- the burn: down they go
     local act = c.act
-    if act and act.clip == "die" then nova.model("character-human", c.x, 0, c.z, { ry = math.atan(c.fx, c.fz), scale = 1.35, clip = "die", time = math.min(1.2, k.t - act.t0), loop = false }) end
+    if act and act.clip == "die" then nova.model("character-human", c.x, 0, c.z, { ry = math.atan(c.fx, c.fz), scale = 1.6, clip = "die", time = math.min(1.2, k.t - act.t0), loop = false }) end
     return
   end
   local ry = math.atan(c.fx, c.fz)
@@ -223,8 +220,17 @@ function View.draw_chef(k, t)
   elseif c.held then
     layers[#layers + 1] = { clip = "holding-both", time = 0, weight = 1, mask = { "arm-left", "arm-right" } }
   end
-  nova.model("character-human", c.x, 0, c.z, { ry = ry, scale = 1.35, layers = layers })
-  if c.held then View.item(c.held, c.x + c.fx * 0.42, 0.62, c.z + c.fz * 0.42, t) end
+  nova.model("character-human", c.x, 0, c.z, { ry = ry, scale = 1.6, layers = layers })
+  -- the ring that says who is who, and the hat
+  for i = 0, 15 do
+    local a = i / 16 * math.pi * 2
+    local px, pz = c.x + math.cos(a) * 0.55, c.z + math.sin(a) * 0.55
+    nova.cuboid(px - 0.07, 0.01, pz - 0.07, px + 0.07, 0.05, pz + 0.07, { color = { 70, 150, 255 }, glow = true })
+  end
+  local bob = (c.moving and math.abs(math.sin(t * 14)) * 0.04 or 0)
+  nova.cuboid(c.x - 0.16, 1.0 + bob, c.z - 0.16, c.x + 0.16, 1.08 + bob, c.z + 0.16, { color = { 250, 250, 252 } })
+  nova.cuboid(c.x - 0.21, 1.08 + bob, c.z - 0.21, c.x + 0.21, 1.3 + bob, c.z + 0.21, { color = { 255, 255, 255 } })
+  if c.held then View.item(c.held, c.x + c.fx * 0.5, 0.82, c.z + c.fz * 0.5, t) end
   -- which station they face: a bright frame round its top
   local st = c.target_st
   if st and k.playing then
@@ -263,8 +269,7 @@ end
 -- everything: `t` is the time in seconds
 function View.draw(k, biome, t)
   local cols, rows = k.cols, k.rows
-  -- the ground under and round it all
-  nova.cuboid(-40, -0.3, -40, cols + 40, -0.02, rows + 40, { color = biome.ground })
+  View.environment(k, biome, t)
   for z = 1, rows do
     for x = 1, cols do
       local floor = k.floor[z][x]
@@ -273,8 +278,16 @@ function View.draw(k, biome, t)
         if floor == "lava" then
           nova.cuboid(x - 1, -0.12, z - 1, x, 0.0, z, { color = { 255, 110 + 40 * math.sin(t * 3 + x), 30 }, glow = true })
         else
-          nova.cuboid(x - 1, -0.06, z - 1, x, 0.0, z, { color = mul(tint_of(floor, biome, x, z, k, t), 0.7) })
-          nova.cuboid(x - 0.97, -0.01, z - 0.97, x - 0.03, 0.012, z - 0.03, { color = tint_of(floor, biome, x, z, k, t) })
+          local tn = tint_of(floor, biome, x, z, k, t)
+          -- a stone tile: a darker body, a lighter face a little smaller, a few chips in it
+          nova.cuboid(x - 1, -0.06, z - 1, x, -0.005, z, { color = mul(tn, 0.68) })
+          nova.cuboid(x - 0.965, -0.01, z - 0.965, x - 0.035, 0.012, z - 0.035, { color = mul(tn, 1 + (((x * 5 + z * 11) % 5) - 2) * 0.012) })
+          local h = (x * 31 + z * 17) % 7
+          if h < 3 and floor == "floor" then
+            local ox, oz = 0.2 + h * 0.18, 0.25 + ((x + z) % 3) * 0.2
+            nova.cuboid(x - 1 + ox, 0.012, z - 1 + oz, x - 1 + ox + 0.12, 0.02, z - 1 + oz + 0.09, { color = mul(tn, 0.86) })
+          end
+          if floor == "ice" then nova.cuboid(x - 0.9, 0.013, z - 0.9, x - 0.1, 0.02, z - 0.1, { color = { 196, 230, 255 }, glow = true }) end
           if floor:sub(1, 5) == "belt:" then
             local dir = ({ [">"] = { 1, 0 }, ["<"] = { -1, 0 }, ["^"] = { 0, -1 }, w = { 0, 1 } })[floor:sub(6)]
             for i = 0, 2 do
@@ -288,12 +301,16 @@ function View.draw(k, biome, t)
         local line = k.level.map[z]
         local ch = line:sub(x, x)
         if ch == "#" then
-          local wc = mul(biome.wall, 0.78)
+          local wc = biome.wall
           if z == rows then
-            nova.cuboid(x - 1, 0, z - 0.62, x, 0.16, z - 0.38, { color = wc })
+            nova.cuboid(x - 1, 0, z - 0.64, x, 0.22, z - 0.36, { color = mul(wc, 0.9) })
           else
-            nova.cuboid(x - 1, 0, z - 1, x, 0.62, z, { color = wc })
-            nova.cuboid(x - 1, 0.62, z - 1, x, 0.7, z, { color = mul(biome.wall, 0.95) })
+            nova.cuboid(x - 1, 0, z - 1, x, 0.78, z, { color = mul(wc, 0.9) })
+            nova.cuboid(x - 1.02, 0.78, z - 1.02, x + 0.02, 0.9, z + 0.02, { color = mul(wc, 1.15) })
+            for hgt = 0.26, 0.52, 0.26 do nova.cuboid(x - 1, hgt, z, x, hgt + 0.025, z + 0.012, { color = mul(wc, 0.62) }) end
+            nova.cuboid(x - 0.5, 0, z, x - 0.475, 0.26, z + 0.012, { color = mul(wc, 0.62) })
+            nova.cuboid(x - 0.25, 0.26, z, x - 0.225, 0.52, z + 0.012, { color = mul(wc, 0.62) })
+            nova.cuboid(x - 0.75, 0.26, z, x - 0.725, 0.52, z + 0.012, { color = mul(wc, 0.62) })
           end
         end
       end
@@ -322,6 +339,94 @@ function View.draw(k, biome, t)
   k.chef.target_st = k:target()
   View.draw_chef(k, t)
 end
+
+-- ---- the place round the kitchen: a platform in water, a house behind it, bridges, lily pads (and the other biomes' versions) -----------------------------------
+
+local WATER = { meadow = { 58, 128, 204 }, frost = { 150, 204, 238 }, ember = { 255, 104, 30 }, mire = { 46, 84, 70 } }
+
+local function rand_for(seed)
+  return function(n)
+    seed = (seed * 48271) % 2147483647
+    return seed % n + 1
+  end
+end
+
+-- a row of house along the north edge: two storeys of Kenney's town walls, a roof, a chimney
+local function house(x0, x1, z, tint, roof_tint, t)
+  local panels = { "wall-window-shutters", "wall-wood", "wall-window-glass", "wall-door", "wall-wood", "wall-window-shutters" }
+  local i = 0
+  for x = math.floor(x0), math.ceil(x1) do
+    i = i + 1
+    local p = panels[(i + 1) % #panels + 1]
+    nova.model(p, x + 0.5, 0, z, { ry = math.pi / 2, tint = tint, shadow = false })
+    nova.model(i % 3 == 0 and "wall-window-shutters" or "wall-wood", x + 0.5, 1, z, { ry = math.pi / 2, tint = tint, shadow = false })
+    nova.model("roof", x + 0.5, 2, z, { ry = 0, tint = roof_tint, shadow = false })
+  end
+  nova.model("chimney", x0 + 2.5, 2.4, z - 0.2, { scale = 1.4, tint = { 150, 120, 110 }, shadow = false })
+end
+
+function View.environment(k, biome, t)
+  local cols, rows = k.cols, k.rows
+  local id = biome.id
+  local rand = rand_for(#id * 977 + cols * 31 + rows)
+  local water = WATER[id]
+  -- the water, a little alive
+  nova.cuboid(-60, -1.2, -60, cols + 60, -0.42, rows + 60, { color = mul(water, 0.7) })
+  nova.cuboid(-60, -0.42, -60, cols + 60, -0.38, rows + 60, { color = water, glow = id == "ember" })
+  for i = 1, 18 do
+    local x = (i * 3.7 + t * 0.15 * (i % 3 + 1)) % (cols + 24) - 12
+    local z = rand(rows + 18) - 9
+    nova.cuboid(x, -0.37, z, x + 0.9 + (i % 3) * 0.4, -0.355, z + 0.05, { color = mix(water, { 255, 255, 255 }, 0.35) })
+  end
+  -- the platform the kitchen stands on: a stone rim all round
+  nova.cuboid(-0.35, -0.7, -0.35, cols + 0.35, -0.03, rows + 0.35, { color = mul(biome.wall, 1.1) })
+  nova.cuboid(-0.3, -0.08, -0.3, cols + 0.3, -0.03, rows + 0.3, { color = mul(biome.wall, 1.3) })
+  if id == "meadow" or id == "frost" then
+    local snow = id == "frost"
+    local wall_tint = snow and { 225, 232, 245 } or { 255, 240, 220 }
+    local roof_tint = snow and { 240, 244, 255 } or { 214, 120, 90 }
+    house(-3, cols + 3, -1.4, wall_tint, roof_tint, t)
+    -- two bridges leading away on the sides
+    for side = -1, 1, 2 do
+      for i = 1, 5 do
+        local x = side < 0 and (-0.5 - i) or (cols + 0.5 + i)
+        nova.model(snow and "bridge_stone" or "bridge_wood", x, -0.05, rows / 2, { ry = math.pi / 2 })
+      end
+    end
+  elseif id == "ember" then
+    for i = -4, cols + 4 do
+      nova.model((i % 2 == 0) and "rock_tallA" or "stone_tallB", i + 0.5, -0.1, -1.6 - (i % 3) * 0.4, { scale = 1.8, ry = i, shadow = false })
+    end
+  else
+    nova.model("crypt-small", cols / 2, -0.1, -2.4, { scale = 1.6, shadow = false })
+    for i = -3, cols + 3, 2 do nova.model("iron-fence", i + 0.5, -0.1, -0.7, { shadow = false }) end
+    nova.model("lantern-candle", -0.5, -0.1, -0.5, { scale = 2.2 })
+    nova.model("lantern-candle", cols + 0.5, -0.1, -0.5, { scale = 2.2 })
+  end
+  -- lily pads and flowers (or whatever floats), and the scenery round about
+  for i = 1, 22 do
+    local x, z = rand(cols + 26) - 13, rand(rows + 20) - 8
+    local inside = x > -1 and x < cols + 1 and z > -1.5 and z < rows + 1
+    if not inside then
+      if id == "meadow" or id == "mire" then
+        nova.model(rand(2) == 1 and "lily_large" or "lily_small", x, -0.38, z, { scale = 2.4, ry = rand(628) / 100, shadow = false })
+      else
+        nova.cuboid(x - 0.4, -0.4, z - 0.4, x + 0.4, -0.3, z + 0.4, { color = id == "frost" and { 240, 246, 255 } or { 90, 60, 50 } })
+      end
+    end
+  end
+  local list = biome.decor
+  for i = 1, 26 do
+    local x, z = rand(cols + 30) - 15, rand(rows + 26) - 12
+    local inside = x > -3 and x < cols + 3 and z > -4 and z < rows + 2
+    if not inside then
+      nova.model(list[rand(#list)], x, -0.4, z, { ry = rand(628) / 100, scale = 1.4 + rand(60) / 100, shadow = false })
+    end
+  end
+end
+
+-- (the old ring of scenery is gone: View.environment draws the place now)
+function View.scenery() end
 
 -- ---- the scenery outside ------------------------------------------------------------------------------------------------------------
 
@@ -432,7 +537,7 @@ function View.apothecary(t, shift, w, h)
   nova.model("mushroom_redGroup", 3.5, 1.0, -0.6, { scale = 2.2, shadow = true })
   nova.model("lantern-candle", 4.6, 1.0, 0.2, { scale = 1.8 })
   -- the camera
-  nova.camera(-(shift or 0) + math.sin(t * 0.25) * 0.35, 4.1, 5.6, -(shift or 0) * 0.9, 1.5, 0.2, 40)
+  nova.camera(-(shift or 0) + math.sin(t * 0.25) * 0.35, 4.3, 7.0, -(shift or 0) * 0.9, 1.7, 0.2, 40)
 end
 
 -- ---- the pictures for the store (icon and box art) ------------------------------------------------------------------------------

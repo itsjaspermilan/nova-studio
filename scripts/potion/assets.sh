@@ -23,6 +23,9 @@ $N "$F" $P beet --as ing_bogbulb --fit y=0.32
 $N "$F" $P cutting-board --as board --scale 0.9
 $N "$T" $P stall --as hatch --scale 1.5
 $N "$T" $P lantern --as lantern --scale 0.9
+# the house behind the kitchen and the bridges (Fantasy Town and Nature kits)
+$N "$T" $P roof roof-corner roof-left roof-right roof-high wall wall-window-shutters wall-wood wall-door wall-window-glass chimney stairs-stone
+$N "$NK" $P bridge_wood bridge_stone lily_small lily_large
 # outside: meadow
 $N "$NK" $P tree_default --scale 1.5
 $N "$NK" $P tree_oak --scale 1.5
@@ -58,7 +61,7 @@ $N "$G" $P iron-fence
 UI="$K/UI assets/UI Adventure Pack/PNG"
 U=$P/sprites/ui
 for n in buttonLong_brown buttonLong_brown_pressed buttonLong_beige buttonLong_beige_pressed buttonLong_blue panel_brown panel_beige panel_beigeLight panel_blue panelInset_brown panelInset_beige panelInset_beigeLight \
-  buttonSquare_brown buttonSquare_beige iconCheck_bronze iconCheck_beige iconCross_brown iconCircle_brown arrowBrown_left arrowBrown_right arrowBeige_left arrowBeige_right \
+  buttonSquare_brown buttonSquare_beige iconCheck_bronze iconCheck_beige iconCross_brown iconCircle_brown iconCircle_beige arrowBrown_left arrowBrown_right arrowBeige_left arrowBeige_right \
   barBack_horizontalLeft barBack_horizontalMid barBack_horizontalRight barGreen_horizontalLeft barGreen_horizontalMid barGreen_horizontalRight barRed_horizontalLeft barRed_horizontalMid barRed_horizontalRight \
   barYellow_horizontalLeft barYellow_horizontalMid barYellow_horizontalRight cursorGauntlet_bronze; do cp "$UI/$n.png" "$U/$n.png" 2>/dev/null || echo "missing $n"; done
 FP="$K/3D assets/Food Kit/Previews"
