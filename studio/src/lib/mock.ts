@@ -51,7 +51,7 @@ export function createMockApi(): Api {
     running = false;
   };
 
-  return {
+  const api: Api = {
     kind: "mock",
     recentProjects: async () => recent.slice(),
     forgetProject: async (path) => void recent.splice(0, recent.length, ...recent.filter((r) => r.path !== path)),
@@ -167,6 +167,13 @@ export function createMockApi(): Api {
       need();
       bad(path);
       files.set(path, text);
+      const parts = path.split("/");
+      for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join("/"));
+    },
+    generateTrack: async (name, track) => {
+      need();
+      const { writeTrack } = await import("./track-write");
+      return writeTrack({ writeFile: (p, t) => api.writeFile(p, t), writeModel: (p, u) => api.writeModel(p, u) }, name, track);
     },
     createFile: async (path, contents) => {
       need();
@@ -245,4 +252,5 @@ export function createMockApi(): Api {
       return () => void exitSubs.delete(cb);
     },
   };
+  return api;
 }
