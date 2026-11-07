@@ -3,9 +3,10 @@ local look = require("lib.looks").pine_ridge
 return require("lib.race").define {
   stage = true,
   horizon = look.horizon,
-  surface = "road",
-  grip = 1.0,
-  dust = { 170, 160, 130 },
+  surface = "dirt", -- gravel
+  grip = 0.88,
+  loose = true,
+  dust = { 150, 138, 120 },
   sky = look.sky,
   music = "race_forest",
   sun = look.sun,

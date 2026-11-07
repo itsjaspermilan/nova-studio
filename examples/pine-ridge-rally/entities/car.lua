@@ -246,6 +246,17 @@ function Car:drive(dt)
   end
   self.skidding = self.surface ~= "rough" and self.slip > 0.45 and math.abs(vf) > 4
 
+  -- a loose road (gravel, sand, snow) is thrown up by the rear wheels all the time, more the faster the car goes and the harder it is driven
+  if self.loose and self.surface ~= "rough" and math.abs(vf) > 6 and live then
+    local rate = (6 + math.abs(vf) * 0.7) * (0.6 + 0.8 * math.min(1, math.max(self.slip, c.throttle * 0.5)))
+    if math.random() < dt * rate then
+      local colour = self.dust_color or { 200, 190, 160 }
+      local side = math.random() < 0.5 and -0.75 or 0.75
+      -- (thrown up and back: a little of the car's speed, and a lot of lift)
+      fx.puff(self.x - sinh * 1.4 + cosh * side, self.z - cosh * 1.4 - sinh * side, -self.velx * 0.12 + cosh * side * 0.8, -self.velz * 0.12 - sinh * side * 0.8, 0.4 + math.random() * 0.35, colour, 1.6)
+    end
+  end
+
   -- dust and gravel behind the rear wheels
   if (self.surface == "rough" or self.slip > 0.5) and math.abs(vf) > 5 and math.random() < dt * 30 then
     local colour = self.dust_color or { 200, 190, 160 }

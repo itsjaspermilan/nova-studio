@@ -119,9 +119,10 @@ end
 
 -- the rows of the chooser: the difficulty is for races (a time trial has no rivals)
 function Title:select_rows()
-  if state.mode == "race" then return { "circuit", "mode", "car", "laps", "difficulty", "start" } end
-  if state.mode == "rally" then return { "circuit", "mode", "car", "difficulty", "start" } end
-  return { "circuit", "mode", "car", "laps", "start" }
+  -- (the mode comes first: it decides what the circuit row lists)
+  if state.mode == "race" then return { "mode", "circuit", "car", "laps", "difficulty", "start" } end
+  if state.mode == "rally" then return { "mode", "circuit", "car", "difficulty", "start" } end
+  return { "mode", "circuit", "car", "laps", "start" }
 end
 
 function Title:update_pick()

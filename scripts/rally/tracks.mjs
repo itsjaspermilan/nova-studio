@@ -186,6 +186,9 @@ const ROAD_COLOURS = {
   road_asphalt: { road: [0.2667, 0.2667, 0.2667], line: [0.9451, 0.949, 0.9647], verge: [0.302, 0.5608, 0.4314] },
   road_dirt: { road: [0.5, 0.37, 0.24], line: [0.78, 0.66, 0.48], verge: [0.66, 0.48, 0.28] },
   road_snow: { road: [0.6, 0.66, 0.74], line: [0.93, 0.96, 0.99], verge: [0.92, 0.95, 1.0] },
+  // the rally stages: gravel (a grey-brown road with pale edges) and sand
+  road_gravel: { road: [0.3, 0.26, 0.21], line: [0.5, 0.45, 0.38], verge: [0.2, 0.28, 0.12] },
+  road_sand: { road: [0.82, 0.66, 0.42], line: [0.92, 0.8, 0.56], verge: [0.7, 0.54, 0.31] },
 };
 const CROSS = [[-6, -5.02, "verge"], [-5.02, -4.14, "line"], [-4.14, 4.14, "road"], [4.14, 5.02, "line"], [5.02, 6, "verge"]];
 
@@ -309,7 +312,9 @@ const stageOf = { stage_pine_ridge: "pine_ridge", stage_dust_valley: "dust_valle
 const stages = {};
 for (const [name, control] of Object.entries(stageControl)) {
   const base = tracks[stageOf[name]];
-  stages[name] = { ...base, open: true, control, seed: base.seed + 100, sections: 5, leadIn: 40, runout: 90, landmarks: { ...base.landmarks, count: base.landmarks.count } };
+  // a stage is loose underfoot: gravel in the forest, sand in the desert, snow on the pass; the harbour's is tarmac
+  const road = { stage_pine_ridge: "road_gravel", stage_dust_valley: "road_sand" }[name] ?? base.road;
+  stages[name] = { ...base, road, open: true, control, seed: base.seed + 100, sections: 5, leadIn: 40, runout: 90, landmarks: { ...base.landmarks, count: base.landmarks.count } };
 }
 const dry = !!process.env.DRY;
 const run = async (nova) => {

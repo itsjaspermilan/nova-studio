@@ -73,25 +73,23 @@ fn start_race(g: &mut Game, circuit_steps: usize, trial: bool) {
     }
     tap(g, "key:Enter"); // title -> main menu
     tap(g, "key:Enter"); // Race -> circuit chooser
-    // Circuit, Mode and Car are picked from grid pages: A opens one, the arrows move over the cards, A keeps the card
+    // Mode, Circuit and Car are picked from grid pages: A opens one, the arrows move over the cards, A keeps the card. The rows are Mode,
+    // Circuit, Car, Laps, (Difficulty, in a race), START: up from the first one wraps round to START.
+    if trial {
+        tap(g, "key:Enter");
+        tap(g, "key:ArrowRight"); // Race -> Time trial
+        tap(g, "key:Enter");
+    }
     if circuit_steps > 0 {
+        tap(g, "key:ArrowDown"); // to Circuit
         tap(g, "key:Enter");
         for _ in 0..circuit_steps {
             tap(g, "key:ArrowRight");
         }
         tap(g, "key:Enter");
-    }
-    if trial {
-        tap(g, "key:ArrowDown"); // to Mode
-        tap(g, "key:Enter");
-        tap(g, "key:ArrowRight"); // Race -> Time trial
-        tap(g, "key:Enter");
         tap(g, "key:ArrowUp");
     }
-    // Circuit -> Mode -> Car -> Laps -> (Difficulty, in a race) -> START
-    for _ in 0..(if trial { 4 } else { 5 }) {
-        tap(g, "key:ArrowDown");
-    }
+    tap(g, "key:ArrowUp"); // START
     frame(g, &["key:Enter"]); // START
 }
 
@@ -389,10 +387,10 @@ fn cornering_with(
     }
     tap(&mut g, "key:Enter");
     tap(&mut g, "key:Enter");
-    tap(&mut g, "key:ArrowDown"); // to Mode
-    tap(&mut g, "key:Enter");
+    tap(&mut g, "key:Enter"); // Mode
     tap(&mut g, "key:ArrowRight"); // a time trial: no rivals to bump the car
     tap(&mut g, "key:Enter");
+    tap(&mut g, "key:ArrowDown");
     tap(&mut g, "key:ArrowDown"); // to Car
     tap(&mut g, "key:Enter");
     // 0 is Redline (the Formula class); 1 and 2 are the first two of the Sport class (Blue Streak, Green Machine): E changes class
@@ -792,18 +790,16 @@ fn stage_run(stage: usize, class: usize, step: usize, difficulty_steps: i32) -> 
     }
     tap(&mut g, "key:Enter");
     tap(&mut g, "key:Enter");
-    tap(&mut g, "key:ArrowDown"); // Mode
-    tap(&mut g, "key:Enter");
+    tap(&mut g, "key:Enter"); // Mode
     tap(&mut g, "key:ArrowRight");
     tap(&mut g, "key:ArrowRight"); // Race -> Time trial -> Rally
     tap(&mut g, "key:Enter");
-    tap(&mut g, "key:ArrowUp"); // Stage
+    tap(&mut g, "key:ArrowDown"); // Stage
     tap(&mut g, "key:Enter");
     for _ in 0..stage {
         tap(&mut g, "key:ArrowRight");
     }
     tap(&mut g, "key:Enter");
-    tap(&mut g, "key:ArrowDown");
     tap(&mut g, "key:ArrowDown"); // Car
     tap(&mut g, "key:Enter");
     for _ in 0..class {

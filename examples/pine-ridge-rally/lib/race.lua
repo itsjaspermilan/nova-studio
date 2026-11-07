@@ -177,6 +177,7 @@ function race.define(config)
       car.slot = slot
       car.grip_scale = config.grip or 1
       car.dust_color = config.dust or { 200, 190, 160 }
+      car.loose = config.loose -- gravel, sand or snow: it kicks up with every metre
       local idx, s = track.locate(car.x, car.z)
       car.waypoint = idx
       car.last_s = s

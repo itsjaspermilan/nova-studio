@@ -3,8 +3,9 @@ local look = require("lib.looks").dust_valley
 return require("lib.race").define {
   stage = true,
   horizon = look.horizon,
-  surface = "dirt",
-  grip = 0.9,
+  surface = "dirt", -- sand
+  grip = 0.82,
+  loose = true,
   dust = { 214, 178, 124 },
   sky = look.sky,
   music = "race_desert",
