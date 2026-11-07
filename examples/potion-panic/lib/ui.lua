@@ -83,26 +83,29 @@ function ui.fit(text, size, width, font)
   return math.max(ui.SMALL, math.floor(size * width / w))
 end
 
--- panels: "ink" (dark indigo), "page" (parchment), "light" (pale paper), "inset" (a darker mat for a picture)
-local PANEL = { ink = "ui/panel_blue", page = "ui/panel_beige", light = "ui/panel_beigeLight", inset = "ui/panelInset_brown", leather = "ui/panel_brown", brown = "ui/panel_blue", beige = "ui/panel_beige", blue = "ui/panel_blue" }
+-- panels: "ink" (dark indigo), "page" (parchment), "light" (pale paper), "inset" (a darker mat), "leather" (the book's cover). The pictures are drawn at twice
+-- their shown size with smooth edges (scripts/potion/hd-ui.mjs), so they stay sharp on the handheld's 1080-line screen.
+local PANEL = { ink = "ui/hd_ink", page = "ui/hd_page", light = "ui/hd_light", inset = "ui/hd_inset", leather = "ui/hd_leather", brown = "ui/hd_ink", beige = "ui/hd_page", blue = "ui/hd_ink" }
 function ui.panel(x, y, w, h, kind, alpha, tint_color)
   local sprite = PANEL[kind or "page"]
-  local c = { 255, 255, 255 }
-  if kind == "ink" or kind == "brown" or kind == "blue" then c = { 150, 160, 255 } end -- (the blue is a grey-lilac: pushed towards indigo)
-  if kind == "leather" then c = { 150, 100, 86 } end
-  if tint_color then c = tint_color end
-  nova.ui.panel(sprite, x + ui.ox, y + ui.oy, w, h, { slice = 22, scale = 0.7, color = tint({ c[1], c[2], c[3], alpha or 255 }) })
+  local c = tint_color or { 255, 255, 255 }
+  nova.ui.panel(sprite, x + ui.ox, y + ui.oy, w, h, { slice = 32, scale = 0.5, color = tint({ c[1], c[2], c[3], alpha or 255 }) })
 end
 
--- a ribbon of a colour (Kenney's long button, tinted) with white outlined lettering centred on it
+-- a button face of any colour (a white picture, tinted)
+function ui.button(x, y, w, h, color, alpha)
+  nova.ui.panel("ui/hd_button", x + ui.ox, y + ui.oy, w, h, { slice = 30, scale = 0.5, color = tint({ color[1], color[2], color[3], alpha or 255 }) })
+end
+
+-- a ribbon of a colour with white outlined lettering centred on it
 function ui.ribbon(x, y, w, h, color, text, size)
-  nova.ui.panel("ui/buttonLong_beige", x + ui.ox, y + ui.oy, w, h, { slice = { 14, 14, 14, 14 }, scale = 1.0, color = tint({ color[1], color[2], color[3], 255 }) })
+  ui.button(x, y, w, h, color)
   if text then ui.in_box(text, x, y, w, h - 4, size or ui.LARGE, ui.color.white, { shadow = true }) end
 end
 
 -- a round badge: a coloured disc with a number or letter on it
 function ui.badge(cx, cy, d, color, text, size)
-  nova.ui.sprite("ui/iconCircle_beige", cx + ui.ox, cy + ui.oy, { w = d, h = d, color = tint({ color[1], color[2], color[3], 255 }) })
+  nova.ui.sprite("ui/disc", cx + ui.ox, cy + ui.oy, { w = d, h = d, color = tint({ color[1], color[2], color[3], 255 }) })
   if text then ui.in_box(text, cx - d / 2, cy - d / 2, d, d, size or ui.LARGE, ui.color.white, { shadow = true }) end
 end
 
@@ -114,51 +117,47 @@ function ui.icon(sprite, x, y, size, color)
   nova.ui.sprite(sprite, x + ui.ox, y + ui.oy, { anchor = "topleft", w = size, h = size, color = tint(color or { 255, 255, 255, 255 }) })
 end
 
--- a star (gold when earned, dark when not)
+-- a star (gold when earned, a dark shape when not)
 function ui.star(x, y, size, on)
-  nova.ui.sprite("ui/star", x + ui.ox, y + ui.oy, { w = size, h = size, color = on and tint({ 255, 255, 255, 255 }) or tint({ 70, 50, 70, 170 }) })
+  nova.ui.sprite("ui/star", x + ui.ox, y + ui.oy, { w = size, h = size, color = on and tint({ 255, 255, 255, 255 }) or tint({ 70, 50, 70, 150 }) })
 end
 
--- a flask of a potion's colour, drawn from rectangles (size: the width of its body)
+-- a flask of a potion's colour (size: about the width of its body): the liquid, tinted, under the glass
 function ui.flask(x, y, size, color)
-  local s = size / 18
-  local function r(rx, ry, rw, rh, c) nova.ui.rect(x + ui.ox + rx * s, y + ui.oy + ry * s, rw * s, rh * s, tint(c)) end
-  local dark = { color[1] * 0.7, color[2] * 0.7, color[3] * 0.7 }
-  r(5, 0, 8, 3, { 176, 122, 70 })
-  r(6, 3, 6, 5, { 230, 232, 240, 230 })
-  r(2, 9, 14, 9, color)
-  r(3, 8, 12, 1, color)
-  r(4, 18, 10, 1, dark)
-  r(3, 11, 3, 5, { 255, 255, 255, 110 })
-  r(1, 9, 1, 8, { 90, 70, 60, 150 })
-  r(16, 9, 1, 8, { 90, 70, 60, 150 })
+  local w = size * 1.25
+  local h = w * 1.25
+  local fx, fy = x + (size - w) / 2 + ui.ox, y - size * 0.12 + ui.oy
+  nova.ui.sprite("ui/flask_fill", fx, fy, { anchor = "topleft", w = w, h = h, color = tint({ color[1], color[2], color[3], 255 }) })
+  nova.ui.sprite("ui/flask_glass", fx, fy, { anchor = "topleft", w = w, h = h, color = tint({ 255, 255, 255, 255 }) })
 end
 
--- a bar from Kenney's bars: color is "green", "yellow" or "red"
+-- a bar: color is "green", "yellow" or "red"
+local BAR = { green = { 120, 214, 92 }, yellow = { 250, 202, 64 }, red = { 236, 88, 72 }, blue = { 96, 160, 255 } }
 function ui.bar(x, y, w, frac, color)
   local h = 16
-  nova.ui.panel("ui/barBack_horizontalMid", x + ui.ox, y + ui.oy, w, h, { slice = { 6, 0, 6, 0 }, scale = 1, color = tint({ 255, 255, 255, 255 }) })
+  nova.ui.panel("ui/hd_bar_back", x + ui.ox, y + ui.oy, w, h, { slice = { 16, 0, 16, 0 }, scale = 0.5, color = tint({ 255, 255, 255, 255 }) })
   frac = math.max(0, math.min(1, frac))
   if frac > 0.02 then
-    nova.ui.panel("ui/bar" .. color:sub(1, 1):upper() .. color:sub(2) .. "_horizontalMid", x + ui.ox, y + ui.oy, math.max(8, w * frac), h, { slice = { 6, 0, 6, 0 }, scale = 1, color = tint({ 255, 255, 255, 255 }) })
+    local c = BAR[color] or BAR.green
+    nova.ui.panel("ui/hd_bar_fill", x + ui.ox, y + ui.oy, math.max(h, w * frac), h, { slice = { 16, 0, 16, 0 }, scale = 0.5, color = tint({ c[1], c[2], c[3], 255 }) })
   end
 end
 
--- the buttons of the handheld and what they do, in the bottom right corner on an indigo strap
+-- the buttons of the handheld and what they do, in the bottom right corner on an indigo strap that fits them snugly
 function ui.hints(items)
   local w = nova.view()
-  local size = 15
+  local size, glyph, gap, pad, strap = ui.SMALL, 30, 18, 12, 42
   local total = 0
-  for _, it in ipairs(items) do total = total + 30 + 8 + ui.width(it[2], size) + 20 end
-  total = total - 20
-  local pw = total + 32
-  local x0 = w - 12 - pw
-  ui.panel(x0, 488, pw, 42, "ink")
-  local x = x0 + 16
+  for i, it in ipairs(items) do total = total + glyph + 7 + ui.width(it[2], size) + (i < #items and gap or 0) end
+  local pw = total + pad * 2
+  local x0, y0 = w - 12 - pw, 540 - 12 - strap
+  ui.panel(x0, y0, pw, strap, "ink")
+  local x = x0 + pad
   for _, it in ipairs(items) do
-    ui.pad(it[1], x, 494, 30)
-    ui.text(x + 38, 498, it[2], size, ui.color.cream)
-    x = x + 38 + ui.width(it[2], size) + 20
+    local tw = ui.width(it[2], size)
+    ui.pad(it[1], x, y0 + (strap - glyph) / 2, glyph)
+    ui.in_box(it[2], x + glyph + 7, y0, tw, strap, size, ui.color.cream)
+    x = x + glyph + 7 + tw + gap
   end
 end
 
@@ -195,7 +194,7 @@ function ui.menu(items, selected, y, opts)
     local bx, by = x - 5 * s, y + (i - 1) * row - 3 * s - (1 - e) * 26
     local a = e
     local on = s > 0.5
-    nova.ui.panel(on and "ui/buttonLong_beige" or "ui/buttonLong_blue", bx + ui.ox, by + ui.oy, bw, bh, { slice = { 14, 14, 14, 14 }, scale = 1.0, color = tint(on and { 255, 255, 255, 255 * a } or { 160, 170, 255, 255 * a }) })
+    ui.button(bx, by, bw, bh, on and { 255, 244, 220 } or { 92, 90, 196 }, 255 * a)
     local c = on and ui.color.ink or ui.color.cream
     local label = type(item) == "table" and item[1] or item
     local ty = by + (bh - size) / 2 + size * (DY[HEAD] or 0) - 1
@@ -208,7 +207,7 @@ function ui.menu(items, selected, y, opts)
     end
     if i == selected then
       local bob = math.sin(now * 6) * 3
-      nova.ui.sprite("ui/cursorGauntlet_bronze", bx + 30 + bob + ui.ox, by + bh / 2 + ui.oy, { w = 38, h = 38, color = tint({ 255, 255, 255, 255 * a }) })
+      nova.ui.sprite("ui/pointer", bx + 30 + bob + ui.ox, by + bh / 2 + ui.oy, { w = 34, h = 34, color = tint({ 255, 255, 255, 255 * a }) })
     end
   end
 end

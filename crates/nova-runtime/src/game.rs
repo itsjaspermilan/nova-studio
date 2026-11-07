@@ -548,6 +548,11 @@ fn part_transform(t: &Table, model: &str, part: &str) -> mlua::Result<Mat4> {
 /// logic can be exercised without a GPU.
 pub trait Uploader {
     fn set_atlas(&mut self, atlas: &Image);
+    /// The atlas, drawn with bilinear filtering when `smooth` (`"sprite_filter": "smooth"`).
+    fn set_atlas_filtered(&mut self, atlas: &Image, smooth: bool) {
+        let _ = smooth;
+        self.set_atlas(atlas);
+    }
     fn add_mesh(&mut self, mesh: &MeshData) -> usize;
     /// A mesh bent by joints: per vertex up to four joint numbers and weights. A target without joints draws it at rest.
     fn add_skinned_mesh(&mut self, mesh: &MeshData, _influences: &[([u16; 4], [f32; 4])]) -> usize {
@@ -557,7 +562,10 @@ pub trait Uploader {
 
 impl Uploader for Gfx {
     fn set_atlas(&mut self, atlas: &Image) {
-        self.set_sprite_atlas(atlas);
+        self.set_sprite_atlas(atlas, false);
+    }
+    fn set_atlas_filtered(&mut self, atlas: &Image, smooth: bool) {
+        self.set_sprite_atlas(atlas, smooth);
     }
     fn add_mesh(&mut self, mesh: &MeshData) -> usize {
         self.upload_mesh(mesh)
@@ -2898,7 +2906,8 @@ impl Game {
             }
             images.push((asset.id.clone(), image));
         }
-        let (atlas, layout) = assets::build_atlas(images, assets::MAX_ATLAS)?;
+        let (atlas, layout) =
+            assets::build_atlas_with(images, assets::MAX_ATLAS, project.manifest.smooth_sprites)?;
 
         let mut sheets = HashMap::new();
         for asset in project.assets_of(AssetKind::Sheet) {
@@ -3178,7 +3187,7 @@ impl Game {
     /// Uploads the atlas and meshes (to the GPU). Call once after `load`, before `update`.
     pub fn upload<U: Uploader>(&mut self, target: &mut U) {
         if let Some(atlas) = self.atlas.take() {
-            target.set_atlas(&atlas);
+            target.set_atlas_filtered(&atlas, self.project.manifest.smooth_sprites);
         }
         let mut ids = HashMap::new();
         // the flat strip that `nova.line3` stretches into a line (both sides, lit by nothing)

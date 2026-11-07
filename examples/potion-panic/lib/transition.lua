@@ -75,7 +75,7 @@ function transition.draw()
       local rise = (s.age * (30 + i * 4) + i * 40) % (h * 0.9)
       local by = h - rise
       local size = 6 + (i * 7) % 14
-      if by > h - top_h + 10 then nova.ui.sprite("ui/iconCircle_brown", bx, by, { w = size, h = size, color = { 255, 255, 255, 70 } }) end
+      if by > h - top_h + 10 then nova.ui.sprite("ui/disc", bx, by, { w = size, h = size, color = { 150, 100, 80, 70 } }) end
     end
   end
   local show = (s.phase == "covered" or s.phase == "holding") and math.min(1, s.t / 0.25 + (s.phase == "holding" and 1 or 0)) or (s.phase == "filling" and math.max(0, (p - 0.75) / 0.25) or math.max(0, (p - 0.5) * 2))

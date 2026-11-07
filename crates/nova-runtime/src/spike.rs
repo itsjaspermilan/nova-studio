@@ -103,7 +103,7 @@ pub struct Spike {
 
 impl Spike {
     pub fn new(gfx: &mut Gfx) -> Result<Self, String> {
-        gfx.set_sprite_atlas(&make_atlas());
+        gfx.set_sprite_atlas(&make_atlas(), false);
         let car = model::import_glb(CAR_GLB)?;
         let notes = car.notes.clone();
         for note in &notes {

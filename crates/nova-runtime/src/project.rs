@@ -61,6 +61,8 @@ pub struct Manifest {
     pub name: String,
     pub entry: String,
     pub world_height: u32,
+    /// `"sprite_filter": "smooth"`: pictures are drawn with bilinear filtering (for drawn, not pixel-art, interfaces).
+    pub smooth_sprites: bool,
     pub version: Option<String>,
     /// The raw `"input"` section (validated when the manifest is read).
     pub input: Option<serde_json::Value>,
@@ -136,6 +138,16 @@ pub fn parse_manifest(text: &str, warnings: &mut Vec<String>) -> Result<Manifest
             }
         },
     };
+    let smooth_sprites = match object.get("sprite_filter") {
+        None => false,
+        Some(Value::String(s)) if s == "pixel" => false,
+        Some(Value::String(s)) if s == "smooth" => true,
+        Some(_) => {
+            return Err(field_error(
+                "\"sprite_filter\" must be \"pixel\" (sharp pixels, the default) or \"smooth\"",
+            ));
+        }
+    };
     let version = match object.get("version") {
         None => None,
         Some(Value::String(s)) => Some(s.clone()),
@@ -151,6 +163,7 @@ pub fn parse_manifest(text: &str, warnings: &mut Vec<String>) -> Result<Manifest
             "name",
             "entry",
             "world_height",
+            "sprite_filter",
             "version",
             "input",
         ]
@@ -167,6 +180,7 @@ pub fn parse_manifest(text: &str, warnings: &mut Vec<String>) -> Result<Manifest
         name,
         entry,
         world_height,
+        smooth_sprites,
         version,
         input,
     })

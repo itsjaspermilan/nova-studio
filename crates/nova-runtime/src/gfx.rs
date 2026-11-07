@@ -671,6 +671,7 @@ type Influence = ([u16; 4], [f32; 4]);
 #[derive(Default)]
 struct Backup {
     sprite_atlas: Option<Image>,
+    smooth_atlas: bool,
     glyphs: Option<Vec<u8>>,
     /// The loaded meshes in the order they were uploaded (their ids), with the joints and weights of a skinned one.
     meshes: Vec<(MeshData, Option<Vec<Influence>>)>,
@@ -1747,13 +1748,19 @@ impl Gfx {
         })
     }
 
-    pub fn set_sprite_atlas(&mut self, image: &Image) {
+    /// `smooth`: bilinear filtering (the atlas then has extruded borders, see `assets::build_atlas_with`).
+    pub fn set_sprite_atlas(&mut self, image: &Image, smooth: bool) {
         self.backup.sprite_atlas = Some(image.clone());
+        self.backup.smooth_atlas = smooth;
         self.atlas = texture_group(
             &self.device,
             &self.queue,
             &self.texture_layout,
-            &self.sampler_nearest,
+            if smooth {
+                &self.linear_sampler
+            } else {
+                &self.sampler_nearest
+            },
             "atlas",
             image,
         );
@@ -1856,7 +1863,7 @@ impl Gfx {
         let mut fresh = Gfx::new(instance, surface)?;
         let backup = std::mem::take(&mut self.backup);
         if let Some(image) = &backup.sprite_atlas {
-            fresh.set_sprite_atlas(image);
+            fresh.set_sprite_atlas(image, backup.smooth_atlas);
         }
         if let Some(coverage) = &backup.glyphs {
             fresh.update_glyph_atlas(coverage);

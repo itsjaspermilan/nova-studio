@@ -28,7 +28,7 @@ The six blocks, the garbage plate, the cursor and the ring are drawn by scripts/
 Potion Panic (examples/potion-panic), all CC0 from the same bundle, copied by scripts/potion/assets.sh:
 - 3D models (converted by scripts/kenney.mjs): Mini Dungeon (chest, barrel, table, potion, character-human, ...), Food Kit (the ingredients, pot-stew as the cauldron), Nature Kit (trees, flowers, rocks,
   mushrooms, cactus, tent, campfire), Graveyard Kit (pine, gravestone, candles, lanterns, pumpkin, crypt, fence), Fantasy Town Kit (the stall as the serving hatch, lantern)
-- UI Adventure Pack: sprites/ui/button*, panel*, bar*, arrow*, icon*, cursorGauntlet_bronze; the Food Kit's previews as the ingredient icons; Simple Space star_large as the star;
-  Input Prompts (Nintendo Switch set) as pad_*.png
+- Input Prompts (Nintendo Switch set) as pad_*.png. The other interface pictures (panels, buttons, discs, stars, arrows, flasks, bars) are drawn by
+  scripts/potion/hd-ui.mjs, and the ingredient icons are renders of the Food Kit models above (scripts/potion/hd-ui.sh)
 - Sounds: Interface Sounds, RPG Audio, Impact Sounds, Foley Sounds (water, woosh), Digital Audio. The music is original (scripts/potion/music.mjs), MIT like the rest of the repository
 - Fonts: the built-in Cinzel (headings) and Lora (text), SIL OFL

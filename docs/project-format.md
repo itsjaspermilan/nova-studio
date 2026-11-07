@@ -72,6 +72,7 @@ Rally's are rendered by the game itself (`scripts/rally/art.sh`).
 | `name` | yes | Game title, 1 to 80 characters. |
 | `entry` | no | Entry script, default `main.lua`. Must be a project-relative `.lua` path that exists. |
 | `world_height` | no | Height in pixels of the world render target, default `540`; `0` means native screen resolution; at most 4320. The width follows the screen's aspect. UI always renders at native resolution. |
+| `sprite_filter` | no | `"pixel"` (default): pictures are drawn with sharp pixels, as pixel art wants. `"smooth"`: bilinear filtering, for drawn (not pixel-art) pictures shown larger or smaller than they are; each picture then gets a one-pixel border copied from its edge in the atlas so that edges do not bleed. Draw such pictures at about twice the size they are shown in the game's units, since a handheld's screen has about two pixels to each. |
 | `version` | no | Free-form version string. |
 
 Unknown keys produce a warning and are ignored. Malformed manifests are rejected with an

@@ -57,19 +57,11 @@ $N "$G" $P character-ghost
 $N "$G" $P crypt-small --scale 1.2
 $N "$G" $P iron-fence
 
-# the parchment and wood UI, and the ingredients' pictures
-UI="$K/UI assets/UI Adventure Pack/PNG"
+# the pad glyphs (Kenney Input Prompts); every other interface picture is drawn by scripts/potion/hd-ui.sh
 U=$P/sprites/ui
-for n in buttonLong_brown buttonLong_brown_pressed buttonLong_beige buttonLong_beige_pressed buttonLong_blue panel_brown panel_beige panel_beigeLight panel_blue panelInset_brown panelInset_beige panelInset_beigeLight \
-  buttonSquare_brown buttonSquare_beige iconCheck_bronze iconCheck_beige iconCross_brown iconCircle_brown iconCircle_beige arrowBrown_left arrowBrown_right arrowBeige_left arrowBeige_right \
-  barBack_horizontalLeft barBack_horizontalMid barBack_horizontalRight barGreen_horizontalLeft barGreen_horizontalMid barGreen_horizontalRight barRed_horizontalLeft barRed_horizontalMid barRed_horizontalRight \
-  barYellow_horizontalLeft barYellow_horizontalMid barYellow_horizontalRight cursorGauntlet_bronze; do cp "$UI/$n.png" "$U/$n.png" 2>/dev/null || echo "missing $n"; done
-FP="$K/3D assets/Food Kit/Previews"
-for pair in mushroom:glowcap pumpkin:embergourd radish:frostroot grapes:moonberry lemon:sunpetal beet:bogbulb; do cp "$FP/${pair%%:*}.png" "$U/ing_${pair##*:}.png"; done
 SW="$K/Icons/Input Prompts/Nintendo Switch/Default"
 for n in a b x y l r zl zr plus minus; do cp "$SW/switch_button_$n.png" "$U/pad_$n.png"; done
 cp "$SW/switch_dpad.png" "$U/pad_dpad.png"; cp "$SW/switch_stick_l.png" "$U/pad_stick_l.png"
-cp "$K/2D assets/Simple Space/PNG/Default/star_large.png" "$U/star.png"
 
 # sounds and music
 S=$P/sounds

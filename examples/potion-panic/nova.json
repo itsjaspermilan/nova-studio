@@ -2,7 +2,8 @@
   "format": 1,
   "name": "Potion Panic",
   "version": "0.1.0",
-  "world_height": 540,
+  "world_height": 810,
+  "sprite_filter": "smooth",
   "input": {
     "move_x": {
       "negative": ["key:ArrowLeft", "key:KeyA", "axis:left_x-", "pad:dpad_left"],

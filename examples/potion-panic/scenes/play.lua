@@ -65,7 +65,7 @@ end
 
 function Play:pop(text, st_or_pos, color)
   local x, z = st_or_pos.cx or st_or_pos.x, st_or_pos.cz or st_or_pos.z
-  self.pops[#self.pops + 1] = { text = text, x = x, y = 1.2, z = z, age = 0, color = color or ui.color.cream }
+  self.pops[#self.pops + 1] = { text = text, x = x, y = 1.7, z = z, age = 0, color = color or ui.color.cream }
 end
 
 function Play:handle_events(events)
@@ -188,6 +188,13 @@ function Play:update(dt)
     p.age = p.age + dt
     if p.age > 1.1 then table.remove(self.pops, i) end
   end
+  -- every five seconds of play: how the device is doing (read from the log when measuring)
+  self.perf_t = (self.perf_t or 0) + dt
+  if self.perf_t >= 5 then
+    self.perf_t = 0
+    local m = nova.perf()
+    nova.log(string.format("potion: perf fps=%.1f gpu=%.2f p95=%.1f max=%.1f draws=%d triangles=%d", m.fps, m.gpu_ms, m.frame_p95_ms, m.frame_max_ms, m.draws, m.triangles))
+  end
   self.fx:update(dt)
   self.shown = self.shown + (self.k.score - self.shown) * math.min(1, dt * 7)
   self.streak_pulse = math.max(0, self.streak_pulse - dt * 3)
@@ -279,7 +286,7 @@ function Play:draw()
     orbit = k * 2.5
   end
   if self.shake > 0 then orbit = orbit + math.sin(self.t * 60) * self.shake * 0.25 end
-  View.camera(self.k, 0.35, w, h, 0, orbit, zoom * (0.84 + self.zoom_kick))
+  View.camera(self.k, 0.45, w, h, 0, orbit, zoom * (1.0 - self.zoom_kick))
   View.scenery(self.k, self.biome, self.t)
   View.draw(self.k, self.biome, self.t)
   View.draw_customers(self.k, self.t)
@@ -288,7 +295,7 @@ end
 
 -- an order as a paper ticket: a bar of the time left along the top, the potion, and a bubble for each ingredient (a brown one is ground first)
 local function bubble(x, y, size, ing, ground)
-  ui.icon("ui/iconCircle_beige", x, y, size, ground and { 190, 140, 100, 255 } or { 255, 255, 255, 255 })
+  ui.icon("ui/disc", x, y, size, ground and { 190, 140, 100, 255 } or { 255, 255, 255, 255 })
   ui.icon(data.ingredients[ing].icon, x + size * 0.12, y + size * 0.1, size * 0.76)
   if ground then
     -- a little pestle in the corner says "grind it"
@@ -299,24 +306,24 @@ end
 
 local function order_card(o, x, y, k, t)
   local recipe = data.recipes[o.recipe]
-  local w, h = 128, 150
+  local w, h = 96, 92
   local frac0 = o.t / o.total
   local e = math.min(1, (o.age or 1) / 0.35)
-  y = y - (1 - (1 - (1 - e) ^ 3)) * 170
+  y = y - (1 - (1 - (1 - e) ^ 3)) * 110
   if frac0 < 0.2 then x = x + math.sin(t * 38) * 1.6 end
   local held = k.chef.held
   if held and held.k == "potion" and held.recipe == o.recipe then
-    ui.panel(x - 5, y - 5, w + 10, h + 10, "light")
+    ui.panel(x - 4, y - 4, w + 8, h + 8, "light", 255, { 255, 214, 90 })
   end
   ui.panel(x, y, w, h, "light")
-  ui.bar(x + 10, y + 10, w - 20, frac0, frac0 > 0.5 and "green" or (frac0 > 0.25 and "yellow" or "red"))
-  ui.flask(x + (w - 36) / 2, y + 36, 36, recipe.color)
+  ui.bar(x + 8, y + 7, w - 16, frac0, frac0 > 0.5 and "green" or (frac0 > 0.25 and "yellow" or "red"))
+  ui.flask(x + (w - 26) / 2, y + 28, 26, recipe.color)
   local n = #recipe.items
-  local bs = 36
-  local bx = x + (w - n * (bs + 4) + 4) / 2
+  local bs = 27
+  local bx = x + (w - n * (bs + 2) + 2) / 2
   for _, it in ipairs(recipe.items) do
-    bubble(bx, y + h - bs - 12, bs, it[1], it[2])
-    bx = bx + bs + 4
+    bubble(bx, y + h - bs - 6, bs, it[1], it[2])
+    bx = bx + bs + 2
   end
 end
 
@@ -329,28 +336,28 @@ function Play:draw_bubbles(w)
     if st.kind == "cauldron" then
       if st.state == "idle" and #st.items > 0 then
         local n = #st.items
-        local bs = 44
-        local x0 = sx - (n * (bs + 4) - 4) / 2
-        for i, it in ipairs(st.items) do bubble(x0 + (i - 1) * (bs + 4), sy - bs, bs, it.id, it.ground) end
+        local bs = 34
+        local x0 = sx - (n * (bs + 3) - 3) / 2
+        for i, it in ipairs(st.items) do bubble(x0 + (i - 1) * (bs + 3), sy - bs, bs, it.id, it.ground) end
       elseif st.state == "brewing" or st.state == "done" then
         local recipe = data.recipes[st.recipe] or { color = { 90, 80, 50 } }
         local bob = (st.state == "done") and math.sin(self.t * 6) * 4 or 0
-        ui.icon("ui/iconCircle_beige", sx - 30, sy - 70 + bob, 60)
-        ui.flask(sx - 14, sy - 62 + bob, 28, recipe.color)
+        ui.icon("ui/disc", sx - 23, sy - 54 + bob, 46)
+        ui.flask(sx - 11, sy - 46 + bob, 22, recipe.color)
         if st.state == "brewing" then
-          ui.bar(sx - 40, sy - 6, 80, st.timer / st.total, "green")
+          ui.bar(sx - 30, sy - 6, 60, st.timer / st.total, "green")
         elseif k.rules.burn then
           local left = 1 - st.timer / k.burn_after
-          ui.bar(sx - 40, sy - 6, 80, left, (left < 0.34 and math.floor(self.t * 8) % 2 == 0) and "yellow" or "red")
+          ui.bar(sx - 30, sy - 6, 60, left, (left < 0.34 and math.floor(self.t * 8) % 2 == 0) and "yellow" or "red")
         end
       elseif st.state == "burnt" then
-        ui.icon("ui/iconCircle_beige", sx - 30, sy - 70, 60, { 120, 110, 110, 255 })
-        ui.icon("ui/iconCross_brown", sx - 18, sy - 58, 36)
+        ui.icon("ui/disc", sx - 23, sy - 54, 46, { 120, 110, 110, 255 })
+        ui.icon("ui/cross", sx - 14, sy - 45, 28)
       end
     elseif st.kind == "mortar" and st.item and st.item.k == "ing" then
-      local bs = 48
+      local bs = 38
       bubble(sx - bs / 2, sy - bs - 4, bs, st.item.id, st.item.ground)
-      if not st.item.ground and st.progress > 0 then ui.bar(sx - 40, sy + 2, 80, st.progress, "yellow") end
+      if not st.item.ground and st.progress > 0 then ui.bar(sx - 30, sy + 2, 60, st.progress, "yellow") end
     end
   end
 end
@@ -359,35 +366,35 @@ function Play:draw_hud(w)
   local k = self.k
   if self.tut then
     local text, n = self.tut:text()
-    ui.panel(10, 8, 640, 112, "page")
-    ui.text(28, 16, "THE PRIMER  " .. n .. " / " .. Tutorial.COUNT, ui.SMALL, ui.color.wine)
-    ui.text(28, 44, text, ui.MEDIUM, ui.color.ink, { width = 604 })
+    ui.panel(10, 8, 560, 86, "page")
+    ui.text(26, 14, "THE PRIMER  " .. n .. " / " .. Tutorial.COUNT, ui.SMALL - 2, ui.color.wine)
+    ui.text(26, 38, text, ui.MEDIUM - 2, ui.color.ink, { width = 528 })
   else
     local x = 10
     for _, o in ipairs(k.orders) do
       order_card(o, x, 8, k, self.t)
-      x = x + 136
+      x = x + 102
     end
     if #k.orders == 0 then
-      ui.panel(10, 8, 300, 60, "light")
-      ui.in_box("Waiting for orders...", 10, 8, 300, 60, ui.MEDIUM, ui.color.ink)
+      ui.panel(10, 8, 250, 44, "light")
+      ui.in_box("Waiting for orders...", 10, 8, 250, 44, ui.SMALL, ui.color.ink)
     end
     -- the score, bottom left, with a gold coin
-    ui.panel(40, 468, 220, 60, "ink")
-    nova.ui.sprite("ui/iconCircle_beige", 56 + ui.ox, 498 + ui.oy, { w = 76, h = 76, color = ui.tint({ 250, 196, 60, 255 }) })
-    nova.ui.sprite("ui/star", 56 + ui.ox, 498 + ui.oy, { w = 40, h = 40, color = ui.tint({ 255, 240, 180, 255 }) })
-    ui.text(106, 472 - self.streak_pulse * 4, tostring(math.floor(self.shown + 0.5)), ui.NUMBER, self.streak_pulse > 0.3 and ui.color.gold or ui.color.white, { shadow = true })
-    for i = 1, 3 do ui.star(176 + (i - 1) * 24, 508, 20, k.score >= self.level.stars[i]) end
+    ui.panel(30, 490, 176, 40, "ink")
+    nova.ui.sprite("ui/disc", 34 + ui.ox, 510 + ui.oy, { w = 54, h = 54, color = ui.tint({ 250, 196, 60, 255 }) })
+    nova.ui.sprite("ui/star", 34 + ui.ox, 510 + ui.oy, { w = 30, h = 30, color = ui.tint({ 255, 240, 180, 255 }) })
+    ui.text(68, 494 - self.streak_pulse * 4, tostring(math.floor(self.shown + 0.5)), ui.LARGE + 2, self.streak_pulse > 0.3 and ui.color.gold or ui.color.white, { shadow = true })
+    for i = 1, 3 do ui.star(146 + (i - 1) * 20, 510, 17, k.score >= self.level.stars[i]) end
     -- the streak: a badge over the score that jumps on every serve
     if k.streak >= 2 then
       local j = self.streak_pulse
-      ui.ribbon(40, 430 - j * 8, 200, 34, { 240, 120, 50 }, "Streak x" .. k.streak, ui.SMALL + 4)
+      ui.ribbon(30, 458 - j * 6, 140, 28, { 240, 120, 50 }, "Streak x" .. k.streak, ui.SMALL)
     end
     -- the clock, bottom right
-    local pw = 200
-    ui.panel(w - pw - 10, 462, pw, 66, "ink")
-    ui.right(ui.time(k.time_left), w - 28, 468, ui.NUMBER, k.time_left <= 10 and { 255, 130, 110 } or ui.color.white, { shadow = true })
-    ui.bar(w - pw + 4, 512, pw - 28, k.time_left / (self.k.rules.time > 0 and self.k.rules.time or self.level.time), k.time_left <= 10 and "red" or "green")
+    local pw = 132
+    ui.panel(w - pw - 12, 478, pw, 52, "ink")
+    ui.right(ui.time(k.time_left), w - 26, 480, ui.LARGE + 2, k.time_left <= 10 and { 255, 130, 110 } or ui.color.white, { shadow = true })
+    ui.bar(w - pw - 2, 509, pw - 20, k.time_left / (self.k.rules.time > 0 and self.k.rules.time or self.level.time), k.time_left <= 10 and "red" or "green")
   end
   -- what the button at hand would do, over the station faced
   if self.phase == "play" then
@@ -396,7 +403,7 @@ function Play:draw_hud(w)
     if st and (pr.a or pr.b) then
       local sx, sy = View.project(st.cx, 0.75, st.cz + 0.55, w, 540)
       local text = pr.a or pr.b
-      ui.text(sx - ui.width(text, 20) / 2, sy, text, 20, ui.color.white, { shadow = true })
+      ui.text(sx - ui.width(text, 18) / 2, sy, text, 18, ui.color.white, { shadow = true })
     end
   end
   self:draw_bubbles(w)
@@ -452,7 +459,7 @@ function Play:draw_recipes(w)
     local ix = w / 2 + 6
     for _, it in ipairs(r.items) do
       local ing = data.ingredients[it[1]]
-      if it[2] then ui.icon("ui/panelInset_brown", ix - 2, ry + (rh - icon) / 2 - 2, icon + 4) end
+      if it[2] then ui.icon("ui/disc", ix - 2, ry + (rh - icon) / 2 - 2, icon + 4, { 190, 140, 100, 255 }) end
       ui.icon(ing.icon, ix, ry + (rh - icon) / 2, icon)
       ix = ix + icon + 10
     end

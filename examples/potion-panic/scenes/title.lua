@@ -412,7 +412,7 @@ function Title:draw_story(w)
   ui.text(150, 322, shown, ui.MEDIUM, ui.color.ink, { width = w - 210 })
   if s.chars >= #card[2] then
     local pulse = math.sin(self.t * 8) * 4
-    ui.icon("ui/arrowBrown_right", w - 76 + pulse, 428, 34)
+    ui.icon("ui/arrow", w - 76 + pulse, 428, 34)
   end
   ui.hints({ { "pad_a", "Next" }, { "pad_b", "Skip" } })
 end
@@ -427,7 +427,7 @@ local function watermark(x, y, w, ings)
   for i, id in ipairs(ings) do
     local ix = x + 26 + ((i - 1) % 3) * 134 + (i > 3 and 60 or 0)
     local iy = y + 120 + ((i - 1) // 3) * 150 + ((i % 2) * 30)
-    ui.icon(data.ingredients[id].icon, ix, iy, 120, { 255, 255, 255, 40 })
+    ui.icon(data.ingredients[id].icon, ix, iy, 120, { 255, 255, 255, 22 })
   end
 end
 
@@ -453,7 +453,7 @@ function Title:draw_page(p, x, y)
       ui.badge(bx + 36, y + 128, 72, { 140, 100, 70 }, nil)
       ui.icon(data.ingredients[st[1]].icon, bx + 8, y + 100, 56)
       ui.in_box(st[2], bx - 8, y + 164, 88, 28, ui.SMALL + 2, ui.color.ink)
-      if i < #steps then ui.icon("ui/arrowBrown_right", bx + 74, y + 114, 26) end
+      if i < #steps then ui.icon("ui/arrow", bx + 72, y + 112, 30, { 150, 110, 80, 255 }) end
     end
     ui.text(x + 24, y + 206, "Every trick of the craft, step by step.", ui.SMALL + 2, ui.color.ink, { width = w - 48, align = "center" })
     self:draw_entry(x + 14, y + 262, w - 28, 104, 0, "The Primer", state.tutorial_done() and 3 or 0, nil, true, self.page == 1 and self.entry == 1, { 232, 170, 60 }, nil, not state.tutorial_done() and "START HERE" or nil)
@@ -516,7 +516,7 @@ function Title:draw_entry(x, y, w, h, numeral, name, stars, best, open, selected
   end
   if selected then
     local bob = math.sin(self.t * 6) * 3
-    nova.ui.sprite("ui/cursorGauntlet_bronze", x + 6 + bob + ui.ox, y + h - 8 + ui.oy, { w = 34, h = 34, color = ui.tint({ 255, 255, 255, 255 }) })
+    nova.ui.sprite("ui/pointer", x - 4 + bob + ui.ox, y + h / 2 + ui.oy, { w = 40, h = 40, color = ui.tint({ 255, 255, 255, 255 }) })
   end
 end
 

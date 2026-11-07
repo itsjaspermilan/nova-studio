@@ -40,7 +40,7 @@ function View.camera(k, lower, w, h, shiftx, orbit, zoom)
   local aspect = (w or 960) / (h or 540)
   local half = math.tan(math.rad(cam.fov / 2))
   -- far enough away that the whole workshop fits across and up the screen
-  local need_w = (k.cols + 0.5) / (2 * half * aspect)
+  local need_w = (k.cols + 1.4) / (2 * half * aspect)
   local need_h = (k.rows + 0.4) / (2 * half) * 1.1
   local d = math.max(need_w, need_h, 9) * (zoom or 1)
   cam.ex, cam.ey, cam.ez = cx + (orbit or 0), d * 0.93, cz + d * 0.46
@@ -174,12 +174,13 @@ function View.draw_station(st, k, biome, t)
       -- bubbles
       for i = 1, 3 do
         local ph = (t * 0.9 + i * 0.33) % 1
-        nova.cuboid(x + (i - 2) * 0.14 - 0.035, top + 0.05 + ph * 0.28, z - 0.035 + 0.05 * i, x + (i - 2) * 0.14 + 0.035, top + 0.11 + ph * 0.28, z + 0.035 + 0.05 * i, { color = mul(liquid, 1.25), glow = true })
+        local c = mul(liquid, 1.3)
+        nova.billboard("fx/bubble", x + (i - 2) * 0.14, top + 0.08 + ph * 0.3, z + 0.05 * i, 0.12 + 0.04 * ph, { color = { c[1], c[2], c[3], math.floor(255 * (1 - ph * 0.6)) } })
       end
     elseif st.state == "done" then
       for i = 1, 3 do
         local ph = (t * 0.7 + i * 0.33) % 1
-        nova.cuboid(x - 0.08 + (i - 2) * 0.12, TOP_H + 0.4 + ph * 0.3, z - 0.08, x + 0.08 + (i - 2) * 0.12, TOP_H + 0.5 + ph * 0.3, z + 0.08, { color = { 245, 245, 250 }, glow = true })
+        nova.billboard("fx/puff", x + (i - 2) * 0.12, TOP_H + 0.45 + ph * 0.4, z, 0.3 + 0.2 * ph, { color = { 250, 250, 255, math.floor(200 * (1 - ph)) } })
       end
     elseif st.state == "burnt" then
       for i = 1, 3 do
@@ -249,10 +250,10 @@ function View.draw_chef(k, t)
   end
   nova.model("character-human", c.x, 0, c.z, { ry = ry, scale = 1.6, layers = layers })
   -- the ring that says who is who, and the hat
-  for i = 0, 15 do
-    local a = i / 16 * math.pi * 2
-    local px, pz = c.x + math.cos(a) * 0.55, c.z + math.sin(a) * 0.55
-    nova.cuboid(px - 0.07, 0.01, pz - 0.07, px + 0.07, 0.05, pz + 0.07, { color = { 70, 150, 255 }, glow = true })
+  local n = 32
+  for i = 0, n - 1 do
+    local a, b = i / n * math.pi * 2, (i + 1) / n * math.pi * 2
+    nova.line3(c.x + math.cos(a) * 0.55, 0.03, c.z + math.sin(a) * 0.55, c.x + math.cos(b) * 0.55, 0.03, c.z + math.sin(b) * 0.55, { color = { 90, 170, 255 }, width = 0.08 })
   end
   local bob = (c.moving and math.abs(math.sin(t * 14)) * 0.04 or 0)
   nova.cuboid(c.x - 0.16, 1.0 + bob, c.z - 0.16, c.x + 0.16, 1.08 + bob, c.z + 0.16, { color = { 250, 250, 252 } })
@@ -548,7 +549,7 @@ function View.apothecary(t, shift, w, h)
     local bx = math.sin(i * 2.3) * 0.38
     local bz = math.cos(i * 1.7) * 0.4
     local s = 0.07 + 0.05 * math.sin(i)
-    nova.cuboid(bx - s, top + 0.1 + ph * 1.6, bz - s, bx + s, top + 0.1 + ph * 1.6 + s * 2, bz + s, { color = { 190, 150, 255 }, glow = true })
+    nova.billboard("fx/bubble", bx, top + 0.1 + ph * 1.6, bz, s * 3, { color = { 210, 170, 255, math.floor(255 * (1 - ph)) } })
   end
   -- sparkles drifting round it
   for i = 1, 16 do
@@ -557,7 +558,8 @@ function View.apothecary(t, shift, w, h)
     local y = 1.8 + ((t * 0.25 + i * 0.13) % 1) * 2.4
     local x, z = math.cos(a) * r, math.sin(a) * r * 0.6
     local s = 0.035 + 0.02 * ((i % 3) / 2)
-    nova.cuboid(x - s, y, z - s, x + s, y + s * 2, z + s, { color = (i % 2 == 0) and { 255, 230, 140 } or { 200, 170, 255 }, glow = true })
+    local c = (i % 2 == 0) and { 255, 230, 140 } or { 210, 180, 255 }
+    nova.billboard("fx/spark", x, y, z, s * 7, { color = { c[1], c[2], c[3], math.floor(200 + 55 * math.sin(t * 5 + i)) } })
   end
   -- the things on the table
   nova.cuboid(-3.4, 1.0, 0.2, -2.0, 1.12, 0.9, { color = { 150, 60, 80 } })

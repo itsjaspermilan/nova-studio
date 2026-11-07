@@ -119,6 +119,88 @@ fn try_pack(items: &[(usize, u32, u32)], side: u32) -> Option<Vec<(usize, u32, u
 
 /// Packs the images (plus the built-in white block) into one atlas of at most `max` pixels square.
 pub fn build_atlas(images: Vec<(String, Image)>, max: u32) -> Result<(Image, AtlasLayout), String> {
+    build_atlas_with(images, max, false)
+}
+
+/// Gives a picture a one-pixel border copied from its edge, and paints the colour of the nearest seen pixels into the
+/// see-through ones (their alpha stays 0). Both keep smooth (bilinear) sampling from blending in black at the edges.
+fn extrude(image: &Image) -> Image {
+    let (w, h) = (image.width as usize, image.height as usize);
+    let mut rgba = image.rgba.clone();
+    // which pixels have a colour worth spreading: the ones that can be seen, then the ones each pass fills
+    let mut known: Vec<bool> = rgba.as_chunks::<4>().0.iter().map(|p| p[3] != 0).collect();
+    for _ in 0..4 {
+        let was = known.clone();
+        let mut changed = false;
+        for y in 0..h {
+            for x in 0..w {
+                if was[y * w + x] {
+                    continue;
+                }
+                let (mut sum, mut n) = ([0u32; 3], 0u32);
+                for (dx, dy) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)] {
+                    let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                    if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 {
+                        continue;
+                    }
+                    let j = ny as usize * w + nx as usize;
+                    if was[j] {
+                        for (c, total) in sum.iter_mut().enumerate() {
+                            *total += rgba[j * 4 + c] as u32;
+                        }
+                        n += 1;
+                    }
+                }
+                if n > 0 {
+                    let i = (y * w + x) * 4;
+                    for (c, total) in sum.iter().enumerate() {
+                        rgba[i + c] = total.checked_div(n).unwrap_or(0) as u8;
+                    }
+                    known[y * w + x] = true;
+                    changed = true;
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    let (ow, oh) = (w + 2, h + 2);
+    let mut out = vec![0u8; ow * oh * 4];
+    for y in 0..oh {
+        let sy = y.saturating_sub(1).min(h - 1);
+        for x in 0..ow {
+            let sx = x.saturating_sub(1).min(w - 1);
+            let (d, s) = ((y * ow + x) * 4, (sy * w + sx) * 4);
+            out[d..d + 4].copy_from_slice(&rgba[s..s + 4]);
+        }
+    }
+    Image {
+        width: ow as u32,
+        height: oh as u32,
+        rgba: out,
+    }
+}
+
+/// As `build_atlas`; with `smooth` each picture gets an extruded border (see `extrude`) so that it can be drawn with
+/// bilinear filtering, as a project with `"sprite_filter": "smooth"` asks.
+pub fn build_atlas_with(
+    images: Vec<(String, Image)>,
+    max: u32,
+    smooth: bool,
+) -> Result<(Image, AtlasLayout), String> {
+    let border = u32::from(smooth);
+    let images: Vec<(String, Image)> = if smooth {
+        images
+            .into_iter()
+            .map(|(id, im)| {
+                let e = extrude(&im);
+                (id, e)
+            })
+            .collect()
+    } else {
+        images
+    };
     let mut all: Vec<(String, Image)> = Vec::with_capacity(images.len() + 1);
     all.push((
         WHITE.to_string(),
@@ -175,10 +257,10 @@ pub fn build_atlas(images: Vec<(String, Image)>, max: u32) -> Result<(Image, Atl
         rects.insert(
             id.clone(),
             AtlasRect {
-                x,
-                y,
-                w: image.width,
-                h: image.height,
+                x: x + if index == 0 { 0 } else { border },
+                y: y + if index == 0 { 0 } else { border },
+                w: image.width - if index == 0 { 0 } else { 2 * border },
+                h: image.height - if index == 0 { 0 } else { 2 * border },
             },
         );
     }
@@ -198,6 +280,30 @@ pub fn build_atlas(images: Vec<(String, Image)>, max: u32) -> Result<(Image, Atl
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn smooth_atlas_extrudes_edges_and_keeps_rects() {
+        let mut im = solid(3, 2, [200, 100, 50, 255]);
+        // a see-through corner takes its neighbours' colour but stays see-through
+        im.rgba[0..4].copy_from_slice(&[0, 0, 0, 0]);
+        let (atlas, layout) =
+            build_atlas_with(vec![("a.png".into(), im)], MAX_ATLAS, true).unwrap();
+        let r = &layout.rects["a.png"];
+        assert_eq!((r.w, r.h), (3, 2));
+        let px = |x: u32, y: u32| {
+            let i = ((y * atlas.width + x) * 4) as usize;
+            [
+                atlas.rgba[i],
+                atlas.rgba[i + 1],
+                atlas.rgba[i + 2],
+                atlas.rgba[i + 3],
+            ]
+        };
+        assert_eq!(px(r.x, r.y), [200, 100, 50, 0]);
+        // the border copies the edge: left of the right-hand top pixel, above it
+        assert_eq!(px(r.x + 2, r.y - 1), [200, 100, 50, 255]);
+        assert_eq!(px(r.x + 3, r.y + 1), [200, 100, 50, 255]);
+    }
 
     fn solid(w: u32, h: u32, c: [u8; 4]) -> Image {
         Image {
