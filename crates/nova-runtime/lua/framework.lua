@@ -2066,6 +2066,13 @@ local function enter_scene(name, args)
   if scene.enter then scene:enter(table.unpack(args, 1, args.n or #args)) end
 end
 
+-- A scene file's data (scenes/<name>.scene.json, checked as when the scene is built) without going to it, or nil when there is none: for a game whose
+-- levels are scene files that one scene plays (`nova.scene_data("levels.3")` reads scenes/levels/3.scene.json).
+function nova.scene_data(name)
+  if type(name) ~= "string" then error("scene_data(name): the scene name must be a string", 2) end
+  return raw.scene_data((name:gsub("^scenes%.", "")))
+end
+
 function nova.goto_scene(name, ...)
   if type(name) ~= "string" then error("goto_scene(name, ...): the scene name must be a string", 2) end
   W.pending = { name = name, args = table.pack(...) }

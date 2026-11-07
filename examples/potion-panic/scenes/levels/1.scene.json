@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "tilemaps": [
+    {
+      "name": "kitchen",
+      "tileset": {
+        "image": "sprites/kitchen/tiles.png",
+        "tile_width": 32,
+        "tile_height": 32
+      },
+      "x": 0,
+      "y": 0,
+      "tiles": [
+        [ 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        [ 1, 3, 3, 4, 3, 3, 5, 3, 3,11, 9, 3, 3,10, 3, 3, 1],
+        [ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        [ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        [ 1, 0, 0, 2, 0, 0, 0, 3, 3, 3, 3, 3, 0, 0, 0, 0, 1],
+        [ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        [ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        [ 1, 3, 3, 8,13, 3, 3, 3, 3, 3, 3, 3, 3, 3,12, 3, 1],
+        [ 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+      ]
+    }
+  ],
+  "objects": [
+    {
+      "kind": "level",
+      "name": "level",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "id": "m1",
+        "biome": 1,
+        "name": "Cottage Garden",
+        "time": 150,
+        "interval": 24,
+        "patience": 80,
+        "stars": [
+          230,
+          365,
+          500
+        ],
+        "recipes": [
+          "heal"
+        ],
+        "crates": [
+          "glowcap",
+          "sunpetal"
+        ],
+        "tip": "A takes and puts down. Hold B at the mortar to grind. Fill a bottle from the finished cauldron."
+      }
+    }
+  ]
+}

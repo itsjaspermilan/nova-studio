@@ -637,6 +637,13 @@
   "group": "Scenes and entities"
  },
  {
+  "name": "nova.scene_data",
+  "kind": "function",
+  "signature": "nova.scene_data(name) -> table or nil",
+  "doc": "A scene file's data (scenes/<name>.scene.json, checked as when the scene is built: objects, images, texts, tilemaps, camera...) without going to that scene, or nil when the file does not exist. For levels kept as scene files and played by one scene: nova.scene_data(\"levels.3\") reads scenes/levels/3.scene.json.",
+  "group": "Scenes and entities"
+ },
+ {
   "name": "nova.goto_scene",
   "kind": "function",
   "signature": "nova.goto_scene(name, ...)",

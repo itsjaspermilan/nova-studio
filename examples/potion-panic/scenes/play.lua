@@ -543,7 +543,7 @@ function Play:draw_intro(w)
   local e = 1 - (1 - enter) ^ 3
   local rw = math.min(560, ui.width(name, ui.HEAD - 6) + 90)
   ui.ribbon(w / 2 - rw / 2, 96 - (1 - e) * 60, rw, 66, self.biome.banner or { 120, 90, 160 }, name, ui.HEAD - 6)
-  local tip = data.tips[self.level.id]
+  local tip = self.level.tip
   if tip then
     local old = ui.alpha
     ui.alpha = old * e

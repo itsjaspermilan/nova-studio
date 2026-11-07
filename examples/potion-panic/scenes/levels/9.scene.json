@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "tilemaps": [
+    {
+      "name": "kitchen",
+      "tileset": {
+        "image": "sprites/kitchen/tiles.png",
+        "tile_width": 32,
+        "tile_height": 32
+      },
+      "x": 0,
+      "y": 0,
+      "tiles": [
+        [ 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        [ 1, 4, 3, 3, 3, 5, 1, 6, 3, 3, 3, 3, 1,12, 3, 3, 3,11, 1],
+        [ 1, 0, 0, 0, 0, 0,16, 0, 0, 0, 0, 0,16, 0, 0, 0, 0, 0, 1],
+        [ 1, 0, 2, 0, 0, 0,16, 0, 0, 0, 0, 0,16, 0, 0, 0, 0, 0, 1],
+        [ 1, 0, 0, 0, 0, 0,16, 0, 0, 0, 0, 0,16, 0, 0, 0, 0, 0, 1],
+        [ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        [ 1, 0, 0, 0, 0, 0,16, 0, 0, 0, 0, 0,16, 0, 0, 0, 0, 0, 1],
+        [ 1, 3, 9, 3, 3, 3, 1, 3,10, 3, 3, 3, 1, 3, 8,13, 3, 3, 1],
+        [ 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+      ]
+    }
+  ],
+  "objects": [
+    {
+      "kind": "level",
+      "name": "level",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "id": "e3",
+        "biome": 3,
+        "name": "Stepping Stones",
+        "time": 200,
+        "interval": 20,
+        "patience": 70,
+        "stars": [
+          240,
+          380,
+          515
+        ],
+        "recipes": [
+          "fire",
+          "heal",
+          "ember"
+        ],
+        "crates": [
+          "embergourd",
+          "sunpetal",
+          "glowcap"
+        ],
+        "tip": "A single stripe of lava can be dashed over with X. Do not stop in the middle."
+      }
+    }
+  ]
+}

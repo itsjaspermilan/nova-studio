@@ -583,7 +583,7 @@ function Play:leave()       end      -- before the next scene replaces this one
 return Play
 ```
 
-`nova.goto_scene("over", ...)` replaces the scene at the start of the next frame (every entity is
+`nova.scene_data("levels.3")` returns the data of `scenes/levels/3.scene.json` (checked as when a scene is built) without going to it, or `nil` when there is no such file: a game can keep each level as a scene file, painted and edited in the studio, and play them all in one scene. `nova.goto_scene("over", ...)` replaces the scene at the start of the next frame (every entity is
 destroyed and every timer cancelled); `nova.restart_scene()` rebuilds the current one from its
 file; `nova.current_scene()` names it. Scenes have `self:after/every/go/tween` too.
 

@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "tilemaps": [
+    {
+      "name": "kitchen",
+      "tileset": {
+        "image": "sprites/kitchen/tiles.png",
+        "tile_width": 32,
+        "tile_height": 32
+      },
+      "x": 0,
+      "y": 0,
+      "tiles": [
+        [ 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        [ 1, 4, 3, 3, 5, 3, 3, 6, 3, 3, 3, 9, 3, 3, 3, 3, 3,12, 1],
+        [ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        [ 1, 0, 0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 1],
+        [ 8, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0,11],
+        [ 1, 0, 0, 3, 3, 3,10, 3, 3, 3, 3, 3,10, 3, 3, 9, 0, 0, 1],
+        [ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        [ 1, 3,13, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 1],
+        [ 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+      ]
+    }
+  ],
+  "objects": [
+    {
+      "kind": "level",
+      "name": "level",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "id": "m3",
+        "biome": 1,
+        "name": "The Crowded Stall",
+        "time": 180,
+        "interval": 20,
+        "patience": 70,
+        "stars": [
+          160,
+          250,
+          340
+        ],
+        "recipes": [
+          "heal",
+          "night",
+          "swift"
+        ],
+        "crates": [
+          "glowcap",
+          "sunpetal",
+          "moonberry"
+        ],
+        "tip": "Two pots, two mortars. Start the next brew while one is cooking."
+      }
+    }
+  ]
+}
