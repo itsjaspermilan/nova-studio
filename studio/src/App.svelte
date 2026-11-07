@@ -10,6 +10,8 @@
   import SongEditor from "./components/SongEditor.svelte";
   import Help from "./components/Help.svelte";
   import BottomPanel from "./components/BottomPanel.svelte";
+  import StoreArt from "./components/StoreArt.svelte";
+  import Simulate from "./components/Simulate.svelte";
   import { fileKind } from "./lib/tree";
   import { isDirty, studio } from "./lib/store.svelte";
 
@@ -67,6 +69,8 @@
       {#if studio.api?.kind === "mock"}<span class="pill">browser preview</span>{/if}
       <span class="spacer"></span>
       <button class="ghost" onclick={() => studio.openHelp()} title="Help and lessons (F1)">? Help</button>
+      <button class="ghost" onclick={() => (studio.tool = "sim")} title="Play the game many times with no window and collect numbers into a table">Simulate</button>
+      <button class="ghost" onclick={() => (studio.tool = "art")} title="Make the app icon and the cover picture from the game">Store art</button>
       <button onclick={() => { studio.exportReport = null; studio.exportOpen = true; }} title="Check the game and write it out for a computer or for Android">Export…</button>
       <button onclick={() => studio.saveAll()} disabled={!studio.dirty}>Save all</button>
       {#if studio.running}
@@ -136,6 +140,12 @@
 
 <Help />
 
+{#if studio.tool && studio.project}
+  <div class="tool" role="dialog" aria-label={studio.tool === "art" ? "Store art" : "Simulate"}>
+    {#if studio.tool === "art"}<StoreArt />{:else}<Simulate />{/if}
+  </div>
+{/if}
+
 {#if studio.exportOpen && studio.project}
   <div class="backdrop" role="presentation" onclick={(e) => { if (e.target === e.currentTarget && !studio.exporting) studio.exportOpen = false; }}>
     <div class="dialog" role="dialog" aria-label="Export the game">
@@ -164,6 +174,7 @@
 {/if}
 
 <style>
+  .tool { position: fixed; inset: 0; z-index: 40; background: var(--bg); }
   .boot { height: 100%; display: grid; place-items: center; }
   .shell { height: 100%; display: grid; grid-template-columns: 240px minmax(0, 1fr); grid-template-rows: auto 1fr 220px; grid-template-areas: "top top" "tree center" "bottom bottom"; }
   .shell.no-panel { grid-template-rows: auto 1fr auto; }

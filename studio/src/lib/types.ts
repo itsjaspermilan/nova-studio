@@ -67,6 +67,29 @@ export interface LogLine {
   line: string;
 }
 
+/// One headless run of the game (see `runHeadless`). Keys are `source@frame` taps like `key:Enter@30`; 60 frames are a second.
+export interface HeadlessOptions {
+  frames?: number;
+  size?: [number, number];
+  press?: string[];
+  hold?: string[];
+  /// A recorded input script in the project, for example `sims/play.json`.
+  input?: string;
+  /// Return a picture of the last frame.
+  capture?: boolean;
+  hud?: boolean;
+}
+
+export interface HeadlessReport {
+  ok: boolean;
+  exit: number | null;
+  /// Everything the game and the runtime printed, a line each.
+  log: string[];
+  /// With `capture`: the last frame as a PNG data: URL.
+  image: string | null;
+  timed_out: boolean;
+}
+
 /// Everything the front end needs from the outside world. The desktop app implements it with the
 /// Rust backend; a browser preview implements it with an in-memory project.
 export interface Api {
@@ -104,7 +127,10 @@ export interface Api {
   createDir(path: string): Promise<void>;
   renameFile(from: string, to: string): Promise<void>;
   deleteFile(path: string): Promise<string>;
-  runProject(): Promise<void>;
+  /// Starts the game in its own window. With `record` (a project path such as `sims/play.json`) what is pressed is written there when the window is closed.
+  runProject(record?: string): Promise<void>;
+  /// Runs the game with no window for some frames, and returns what it printed (and a picture of the last frame if asked).
+  runHeadless(options: HeadlessOptions): Promise<HeadlessReport>;
   stopProject(): Promise<boolean>;
   isRunning(): Promise<boolean>;
   checkProject(): Promise<CheckReport>;
