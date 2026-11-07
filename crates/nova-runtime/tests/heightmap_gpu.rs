@@ -71,9 +71,11 @@ fn the_shader_lifts_vertices_by_the_same_heights_the_cpu_reports() {
         .collect();
     let map =
         Arc::new(HeightMap::from_png(&png16(16, 16, &values), -30.0, -30.0, 60.0, 25.0).unwrap());
-    let mut lighting = Lighting::default();
-    lighting.terrain = Terrain {
-        map: Some(map),
+    let lighting = Lighting {
+        terrain: Terrain {
+            map: Some(map),
+            ..Default::default()
+        },
         ..Default::default()
     };
     let thick = 0.3;
