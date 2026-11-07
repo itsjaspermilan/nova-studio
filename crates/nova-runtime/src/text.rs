@@ -127,6 +127,13 @@ impl TextEngine {
         }
     }
 
+    /// Whether a font has a picture for every character of `text` (a character a font lacks is drawn as a box, or as nothing).
+    pub fn supports(&self, font: usize, text: &str) -> bool {
+        let f = &self.fonts[font];
+        text.chars()
+            .all(|c| c.is_whitespace() || f.lookup_glyph_index(c) != 0)
+    }
+
     /// Lays text out at `px` pixels tall. `wrap` is a width in pixels to break lines at.
     pub fn layout(&self, font: usize, text: &str, px: f32, wrap: Option<f32>) -> Layout {
         let f = &self.fonts[font];

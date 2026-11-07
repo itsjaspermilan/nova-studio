@@ -146,6 +146,12 @@ struct Shared {
     /// This frame's sources and length, for the cursor (kept only while it is on).
     cursor_sources: HashMap<String, f32>,
     frame_dt: f32,
+    /// `nova.pause` also stills the engine's own clock (`nova.time`, the wind, the clouds and the stars): while frozen the time stays at `frozen_at`,
+    /// and `offset` is how much of the real time has been spent frozen (so that time carries on from where it stopped).
+    frozen: bool,
+    frozen_at: f64,
+    real_time: f64,
+    time_offset: f64,
     /// For the profiler: the script time limit's clock and what has been seen.
     deadline: Rc<Cell<Option<Instant>>>,
     profile: Rc<RefCell<Profile>>,
@@ -959,12 +965,33 @@ fn draw_text(
     .clamp(4.0, 400.0) as f32;
     let px = (size * scale).round().max(1.0);
     let font_name = string_option(opts, "font")?.unwrap_or_else(|| vtext::DEFAULT_FONT.to_string());
-    let font = sh.text.resolve(&font_name).ok_or_else(|| {
+    let mut font = sh.text.resolve(&font_name).ok_or_else(|| {
         lua_err(format!(
             "unknown font '{font_name}' (fonts available: {}; project fonts are TTF or OTF files, for example fonts/title.ttf)",
             sh.text.font_names().join(", ")
         ))
     })?;
+    // `fallback` = "name" or { "name", ... }: if the font lacks a character of the text, the first of these that has them all draws it
+    if !sh.text.supports(font, text)
+        && let Some(o) = opts
+    {
+        let names: Vec<String> = match o.get::<Value>("fallback")? {
+            Value::String(s) => vec![s.to_str()?.to_string()],
+            Value::Table(t) => t.sequence_values::<String>().collect::<mlua::Result<_>>()?,
+            _ => Vec::new(),
+        };
+        for name in names {
+            if let Some(f) = sh.text.resolve(&name)
+                && sh.text.supports(f, text)
+            {
+                font = f;
+                break;
+            }
+        }
+    }
+    // `valign`: where `y` is on the text: "top" (the top of the line's box: the default), "middle" (the middle of the capital letters: so that a
+    // label centred in a button looks centred) or "baseline"
+    let valign = string_option(opts, "valign")?;
     let wrap = number_option(opts, "width")?.map(|w| (w as f32 * scale).max(1.0));
     let align = match string_option(opts, "align")?.as_deref() {
         None | Some("left") => Align::Left,
@@ -977,6 +1004,16 @@ fn draw_text(
         }
     };
     let layout = sh.text.layout(font, text, px, wrap);
+    let y = match valign.as_deref() {
+        None | Some("top") => y,
+        Some("baseline") => y - layout.ascent / scale,
+        Some("middle") => y + 0.35 * size - layout.ascent / scale,
+        Some(other) => {
+            return Err(lua_err(format!(
+                "valign must be 'top', 'middle' or 'baseline', not '{other}'"
+            )));
+        }
+    };
     // without a `width` to align inside, "center" and "right" are around the point given
     let x = match (align, wrap) {
         (Align::Center, None) => x - layout.width / scale * 0.5,
@@ -2575,6 +2612,22 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             Ok(())
         })?,
     )?;
+    // freeze_time(on): the engine's clock stops (nova.pause calls this) and carries on from the same moment when it is let go
+    let s = shared.clone();
+    raw.set(
+        "freeze_time",
+        lua.create_function(move |_, on: bool| {
+            let mut sh = s.borrow_mut();
+            if on && !sh.frozen {
+                sh.frozen = true;
+                sh.frozen_at = sh.time;
+            } else if !on && sh.frozen {
+                sh.frozen = false;
+                sh.time_offset = sh.real_time - sh.frozen_at;
+            }
+            Ok(())
+        })?,
+    )?;
     let s = shared.clone();
     raw.set(
         "use_fixed_steps",
@@ -2850,6 +2903,10 @@ impl Game {
             typed: String::new(),
             cursor_sources: HashMap::new(),
             frame_dt: 1.0 / 60.0,
+            frozen: false,
+            frozen_at: 0.0,
+            real_time: 0.0,
+            time_offset: 0.0,
             deadline: Rc::new(Cell::new(None)),
             profile: Rc::new(RefCell::new(Profile::default())),
             camera: DEFAULT_CAMERA,
@@ -3131,7 +3188,12 @@ impl Game {
                 sh.states.begin_step(); // without the framework every frame is one step
                 sh.begin_pointer_step();
             }
-            sh.time = time;
+            sh.real_time = time;
+            sh.time = if sh.frozen {
+                sh.frozen_at
+            } else {
+                time - sh.time_offset
+            };
         }
         if self.error.is_none() {
             let started = Instant::now();

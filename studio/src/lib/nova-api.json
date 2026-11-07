@@ -360,7 +360,7 @@
   "name": "nova.ui.text",
   "kind": "function",
   "signature": "nova.ui.text(x, y, text [, opts]) -> width, height",
-  "doc": "Draw text. Options: font, size, color, width (wrap), align, shadow. With `width`, `align` (left, center, right) places the lines inside that width; without it, \"center\" puts the middle of the text at x and \"right\" puts its right edge there. Fonts: sans, rounded, pixel, terminal, mono, serif, comic, display, script, or a project font.",
+  "doc": "Draw text. Options: font, size, color, width (wrap), align, shadow, valign (\"top\", the default: y is the top of the line; \"middle\": y is the middle of the capital letters, so a label in a button looks centred; \"baseline\"), fallback (a font name or a list of them: if the font lacks a character of the text, the first of these that has them all draws it, instead of a box). With `width`, `align` (left, center, right) places the lines inside that width; without it, \"center\" puts the middle of the text at x and \"right\" puts its right edge there. Fonts: sans, rounded, pixel, terminal, mono, serif, comic, display, script, or a project font.",
   "group": "Drawing"
  },
  {
@@ -812,10 +812,17 @@
   "group": "Scenes and entities"
  },
  {
+  "name": "nova.hitch",
+  "kind": "function",
+  "signature": "nova.hitch(ms [, describe])",
+  "doc": "Writes a line to the log for every frame that took longer than `ms` milliseconds (0 turns it off): the frame's time, the scene, the GPU's time, the draw calls and the script's memory, then whatever `describe()` returns (a string: the car's speed, what was on screen). It is how a stutter found on a device is traced from its log (adb logcat).",
+  "group": "Scenes and entities"
+ },
+ {
   "name": "nova.pause",
   "kind": "function",
   "signature": "nova.pause([on])",
-  "doc": "Freeze entities (the scene and timers keep running), for pause menus.",
+  "doc": "Freeze entities (the scene and timers keep running), for pause menus. The engine's own clock stops too (nova.time, the wind, the clouds and stars) and carries on from the same moment when you call nova.pause(false).",
   "group": "Scenes and entities"
  },
  {

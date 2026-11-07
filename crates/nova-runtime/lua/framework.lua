@@ -1682,7 +1682,10 @@ function nova.send(target, message, ...)
   end
 end
 
-function nova.pause(on) W.paused = on ~= false end
+function nova.pause(on)
+  W.paused = on ~= false
+  raw.freeze_time(W.paused) -- (the wind, the clouds and nova.time() stop too, and carry on from the same moment)
+end
 function nova.count_alive() return #W.list end
 nova.wait, nova.wait_until, nova.ease = timers.wait, timers.wait_until, timers.ease
 
@@ -1934,6 +1937,7 @@ local function leave_scene()
   W.list, W.tags, W.counts = {}, {}, {}
   scenery.clear()
   W.dirty, W.background, W.paused = false, nil, false
+  raw.freeze_time(false)
   grids, pgrids = {}, {}
   timers.clear()
   cam.follow, cam.limit, cam.set = nil, nil, false
@@ -2026,7 +2030,24 @@ local function step(dt)
   compact()
 end
 
+-- Hitches: `nova.hitch(ms [, describe])` writes a line to the log for every frame that took longer than `ms` milliseconds (0 turns it off), with
+-- the engine's last measurements, the scene's name and whatever the optional `describe()` returns (a string: the car's speed, what was on screen), so
+-- that a stutter found on a device can be traced from its log.
+local hitch_ms, hitch_describe = 0, nil
+function nova.hitch(ms, describe)
+  hitch_ms, hitch_describe = ms or 0, describe
+end
+
 local function frame_update(dt)
+  if hitch_ms > 0 and dt * 1000 > hitch_ms and not W.paused then
+    local p = nova.perf()
+    local extra = ""
+    if hitch_describe then
+      local ok, text = pcall(hitch_describe)
+      extra = ok and (" " .. tostring(text)) or ""
+    end
+    nova.log(string.format("hitch: %.1f ms (scene %s; gpu %.1f ms, %d draws, lua %.0f KB)%s", dt * 1000, W.scene_name or "?", p.gpu_ms or 0, p.draws or 0, collectgarbage("count"), extra))
+  end
   switch_if_pending()
   W.acc = W.acc + dt
   local steps = 0

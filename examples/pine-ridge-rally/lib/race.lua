@@ -130,6 +130,11 @@ function race.define(config)
     self.countdown = 3.9
     self.last_beep = 4
     self.paused, self.pause_choice = false, 1
+    -- a frame that takes more than 26 ms is written to the log with what was going on (read it with adb logcat after a play session)
+    nova.hitch(26, function()
+      local p = self.player
+      return string.format("speed %.0f steer %.2f slip %.2f %s view %d", p.speed, p.ctl.steer, p.slip, tostring(p.surface), self.view_mode)
+    end)
     self.view_mode = 2 -- the far chase view (C changes it)
     self.message, self.message_time = "", 0
     self.cars = {}
@@ -150,7 +155,7 @@ function race.define(config)
   function Race:leave()
     for _, car in ipairs(self.cars) do if car.engine then car.engine:stop() end end
     nova.music.volume(state.music_volume)
-    nova.sky(nil); nova.fog(nil); nova.shadows(nil); nova.terrain()
+    nova.hitch(0); nova.sky(nil); nova.fog(nil); nova.shadows(nil); nova.terrain()
     crowd.clear(); stage_lib.clear(); lamps.clear(); track.clear(); grid.clear(); fx.clear(); foliage.clear()
     nova.look(); nova.wind()
   end
@@ -510,7 +515,19 @@ function race.define(config)
       self.paused = not self.paused
       self.pause_choice = 1
       -- (the grass and the trees keep still while the game is paused)
-      if self.paused then nova.wind() else state.apply_look(looks[state.look_id()]) end
+      nova.pause(self.paused)
+      nova.music.volume(state.music_volume * (self.paused and 0.35 or 1))
+      audio.sfx("pause")
+      for _, car in ipairs(self.cars) do if car.engine then car.engine:silence() end end
+      return
+    end
+    if self.paused then return self:update_pause() end
+    self.crowd_time = (self.crowd_time or 0) + dt -- (the crowd keeps still while the game is paused)
+    if self.phase ~= "countdown" and not self.player_finished_at and nova.input.pressed("pause") then
+      self.paused = not self.paused
+      self.pause_choice = 1
+      -- (the grass and the trees keep still while the game is paused)
+      nova.pause(self.paused)
       nova.music.volume(state.music_volume * (self.paused and 0.35 or 1))
       audio.sfx("pause")
       for _, car in ipairs(self.cars) do if car.engine then car.engine:silence() end end
@@ -979,7 +996,7 @@ function race.define(config)
     if action == "back" or (action == "accept" and choice == 1) then
       if action == "accept" then audio.sfx("menu_accept") end
       self.paused = false
-      state.apply_look(looks[state.look_id()]) -- (the wind blows again)
+      nova.pause(false) -- (the wind blows again)
       nova.music.volume(state.music_volume)
     elseif action == "accept" then
       audio.sfx("menu_accept")

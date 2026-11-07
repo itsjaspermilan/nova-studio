@@ -2892,3 +2892,35 @@ end"),
         assert!(e.contains(expected), "{script}: {e}");
     }
 }
+
+#[test]
+fn pausing_stills_the_engines_clock_and_it_carries_on_from_where_it_stopped() {
+    let mut game = project(vec![(
+        "main.lua",
+        lua(r#"
+            local frame = 0
+            function update(dt)
+                frame = frame + 1
+                if frame == 30 then nova.pause(true) end
+                if frame == 90 then nova.pause(false) end
+                if frame == 29 or frame == 89 or frame == 91 or frame == 120 then nova.log(string.format("%d %.3f", frame, nova.time())) end
+            end
+        "#),
+    )]);
+    run(&mut game, 121, 1.0 / 60.0);
+    let l = logs(&game);
+    let at = |n: &str| -> f64 {
+        l.iter()
+            .find(|x| x.starts_with(n))
+            .unwrap()
+            .split(' ')
+            .nth(1)
+            .unwrap()
+            .parse()
+            .unwrap()
+    };
+    // frame 29 to 89 passed while paused: the clock did not move; after the pause it ticks again from there
+    assert!((at("89 ") - at("29 ")).abs() < 0.02, "{l:?}");
+    assert!(at("120 ") - at("91 ") > 0.4, "{l:?}");
+    assert!(at("91 ") - at("89 ") < 0.1, "{l:?}");
+}
