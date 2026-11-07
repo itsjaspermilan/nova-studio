@@ -157,8 +157,18 @@ function ui.menu(items, selected, y, opts)
   local x = (opts.cx or w / 2) - width / 2
   local id = opts.id or "menu"
   local st = hl[id]
-  if not st then st = { at = selected, dt = 0 }; hl[id] = st end
-  st.at = st.at + (selected - st.at) * math.min(1, (st.dt > 0 and st.dt or 1 / 60) * 18)
+  if not st then st = { at = selected, last = nova.time(), off = {} }; hl[id] = st end
+  -- (real time, so that the pause menu moves too while the game is frozen)
+  local now = nova.time()
+  local dt = math.max(0, math.min(0.1, now - st.last))
+  if dt == 0 then dt = 1 / 60 end
+  st.last = now
+  st.at = st.at + (selected - st.at) * math.min(1, dt * 18)
+  -- each row's own slide to the right: out while it is the chosen one, back again when it is not
+  for i = 1, #items do
+    local o = st.off[i] or (i == selected and 1 or 0)
+    st.off[i] = o + ((i == selected and 1 or 0) - o) * math.min(1, dt * 14)
+  end
   local enter = opts.enter or 99
   local function slide(i) return ease_out((enter - (i - 1) * 0.045) / 0.28) end
   local h = row - 6
@@ -166,8 +176,8 @@ function ui.menu(items, selected, y, opts)
   for i, item in ipairs(items) do
     local e = slide(i)
     local rx, ry = x - (1 - e) * 60, y + (i - 1) * row
-    local near = math.max(0, 1 - math.abs(i - st.at))
-    if near < 0.6 then nova.ui.panel("ui/panel_dark", rx, ry, width, h, { slice = 18, scale = 0.55, color = { 255, 255, 255, math.floor((185 + 30 * (1 - near)) * e) } }) end
+    rx = rx + 10 * st.off[i]
+    nova.ui.panel("ui/panel_dark", rx, ry, width, h, { slice = 18, scale = 0.55, color = { 255, 255, 255, math.floor(215 * e) } })
   end
   -- the gold bar, sliding
   local e = slide(selected)
@@ -182,12 +192,12 @@ function ui.menu(items, selected, y, opts)
   for i, item in ipairs(items) do
     local ei = slide(i)
     local near = math.max(0, 1 - math.abs(i - st.at))
-    local rx, ry = x - (1 - ei) * 60 + 10 * near, y + (i - 1) * row
+    local rx, ry = x - (1 - ei) * 60 + 10 * st.off[i], y + (i - 1) * row
     local ink, cream = ui.color.ink, { 238, 242, 248 }
     local c = { math.floor(cream[1] + (ink[1] - cream[1]) * near), math.floor(cream[2] + (ink[2] - cream[2]) * near), math.floor(cream[3] + (ink[3] - cream[3]) * near), math.floor(255 * ei) }
     local label = type(item) == "table" and item[1] or item
     local ty = ry + math.floor((h - 22) / 2) - 3
-    nova.ui.text(rx + (near > 0.5 and 34 or 22), ty, label, { size = 22, color = c, font = "rounded", shadow = false })
+    nova.ui.text(rx + 22 + 12 * st.off[i], ty, label, { size = 22, color = c, font = "rounded", shadow = false })
     if type(item) == "table" and item[2] then
       local o = { size = 22, color = c, font = "rounded", shadow = false }
       nova.ui.text(rx + width - 16 - nova.ui.text_width(item[2], o), ty, item[2], o)

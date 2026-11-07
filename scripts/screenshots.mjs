@@ -37,6 +37,7 @@ const shots = {
   "race-dust-valley": script(startRace(1), [[countdown, null, 0], [0, { "key:F9": 1 }, 2], [60 * 9, null, 0]]),
   "race-frost-pass": script(startRace(2), [[countdown, null, 0], [0, { "key:F9": 1 }, 2], [60 * 9, null, 0]]),
   "race-harbour-lights": script(startRace(3), [[countdown, null, 0], [0, { "key:F9": 1 }, 2], [60 * 9, null, 0]]),
+  "pause": script(startRace(0), [[countdown, null, 0], [0, { "key:F9": 1 }, 2], [60 * 5, null, 0], [0, { "key:Escape": 1 }, 2], [10, { "key:ArrowDown": 1 }, 2], [30, null, 0]]),
   "rally-stage": script(startRally(0), [[countdown, null, 0], [0, { "key:F9": 1 }, 2], [60 * 13, null, 0]]),
   "rally-results": script(startRally(0), [[countdown, null, 0], [0, { "key:F9": 1 }, 2], [60 * 140, null, 0]]),
 };

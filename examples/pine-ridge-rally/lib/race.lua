@@ -866,7 +866,7 @@ function race.define(config)
 
   function Race:draw_ui()
     -- (text is drawn over the wipe, so the HUD waits until the wipe has gone)
-    if not transition.busy() then self:draw_hud() end
+    if self.paused then self:draw_pause() elseif not transition.busy() then self:draw_hud() end
     transition.draw()
   end
 
@@ -983,7 +983,6 @@ function race.define(config)
       ui.center("Press R to get back on the road", 470, 18, ui.color.dim)
     end
 
-    if self.paused then self:draw_pause() end
   end
 
   -- ---- pause -----------------------------------------------------------------------------------------------------------
