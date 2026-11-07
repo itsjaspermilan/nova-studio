@@ -30,5 +30,5 @@ Potion Panic (examples/potion-panic), all CC0 from the same bundle, copied by sc
   mushrooms, cactus, tent, campfire), Graveyard Kit (pine, gravestone, candles, lanterns, pumpkin, crypt, fence), Fantasy Town Kit (the stall as the serving hatch, lantern)
 - UI Adventure Pack: sprites/ui/button*, panel*, bar*, arrow*, icon*, cursorGauntlet_bronze; the Food Kit's previews as the ingredient icons; Simple Space star_large as the star;
   Input Prompts (Nintendo Switch set) as pad_*.png
-- Sounds: Interface Sounds, RPG Audio, Impact Sounds, Foley Sounds (water, woosh), Digital Audio; music: Music Loops (Mishief Stroll, Farm Frolics, Flowing Rocks, Mission Plausible, Sad Descent, Wacky Waiting)
+- Sounds: Interface Sounds, RPG Audio, Impact Sounds, Foley Sounds (water, woosh), Digital Audio. The music is original (scripts/potion/music.mjs), MIT like the rest of the repository
 - Fonts: the built-in Cinzel (headings) and Lora (text), SIL OFL

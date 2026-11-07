@@ -174,11 +174,12 @@ function Bot:walk(out, dt)
   if not path or #path < 1 then return out end
   local nxt = path[2] or path[1]
   local cx, cz = nxt[1], nxt[2]
-  -- a flickering tile that will burn soon: wait
-  if k.floor[cz][cx] == "pulse" then
-    local burning = k:pulse_burning(cx, cz, k.t + 0.9)
-    local now = k:pulse_burning(cx, cz, k.t)
-    if burning or now then return out end
+  -- a flickering tile that will burn soon (this step or any of the next few): wait
+  for i = 2, math.min(#path, 5) do
+    local p = path[i]
+    if k.floor[p[2]][p[1]] == "pulse" then
+      if k:pulse_burning(p[1], p[2], k.t + 0.3 * (i - 1) + 0.25) or k:pulse_burning(p[1], p[2], k.t + 0.3 * (i - 1) - 0.1) or k:pulse_burning(p[1], p[2], k.t) then return out end
+    end
   end
   local tx, tz = cx - 0.5, cz - 0.5
   local dx, dz = tx - c.x, tz - c.z

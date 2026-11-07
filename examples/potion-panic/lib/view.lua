@@ -69,9 +69,9 @@ end
 
 -- ---- items ------------------------------------------------------------------------------------------------------------------------
 
-local function flask(x, y, z, color, s)
+local function flask(x, y, z, color, s, glow)
   s = s or 1
-  nova.cuboid(x - 0.1 * s, y, z - 0.1 * s, x + 0.1 * s, y + 0.15 * s, z + 0.1 * s, { color = color })
+  nova.cuboid(x - 0.1 * s, y, z - 0.1 * s, x + 0.1 * s, y + 0.15 * s, z + 0.1 * s, { color = color, glow = glow })
   nova.cuboid(x - 0.045 * s, y + 0.15 * s, z - 0.045 * s, x + 0.045 * s, y + 0.25 * s, z + 0.045 * s, { color = mul(color, 0.85) })
   nova.cuboid(x - 0.055 * s, y + 0.25 * s, z - 0.055 * s, x + 0.055 * s, y + 0.3 * s, z + 0.055 * s, { color = { 176, 122, 70 } })
 end
@@ -203,12 +203,28 @@ end
 -- the apprentice
 function View.draw_chef(k, t)
   local c = k.chef
-  if c.dead > 0 then return end
+  if c.dead > 0 then
+    -- the burn: down they go
+    local act = c.act
+    if act and act.clip == "die" then nova.model("character-human", c.x, 0, c.z, { ry = math.atan(c.fx, c.fz), scale = 1.35, clip = "die", time = math.min(1.2, k.t - act.t0), loop = false }) end
+    return
+  end
   local ry = math.atan(c.fx, c.fz)
-  local bob = c.moving and math.abs(math.sin(t * 14)) * 0.06 or 0
-  local lean = c.moving and 0.12 or 0
-  nova.model("character-human", c.x, bob, c.z, { ry = ry, rx = lean, scale = 1.35 })
-  if c.held then View.item(c.held, c.x + c.fx * 0.4, 0.5 + bob, c.z + c.fz * 0.4, t) end
+  -- Kenney's character has clips for idle, walk, sprint, pick-up, holding, interact, die and the emotes
+  local speed = math.sqrt(c.vx * c.vx + c.vz * c.vz)
+  local base = (c.dash_t > 0) and "sprint" or ((speed > 0.5) and "walk" or "idle")
+  local layers = { { clip = base, time = t * ((c.dash_t > 0) and 1.2 or math.max(0.7, speed / 3)), weight = 1 } }
+  -- a one-off action (taking, serving, a no) replaces the walk; carrying keeps the arms out in front; grinding and stirring work the right hand
+  local act = c.act
+  if act and k.t - act.t0 < act.dur then
+    layers = { { clip = act.clip, time = k.t - act.t0, weight = 1 } }
+  elseif c.work and c.work >= 1 then
+    layers = { { clip = "interact-right", time = t * 1.5, weight = 1 } }
+  elseif c.held then
+    layers[#layers + 1] = { clip = "holding-both", time = 0, weight = 1, mask = { "arm-left", "arm-right" } }
+  end
+  nova.model("character-human", c.x, 0, c.z, { ry = ry, scale = 1.35, layers = layers })
+  if c.held then View.item(c.held, c.x + c.fx * 0.42, 0.62, c.z + c.fz * 0.42, t) end
   -- which station they face: a bright frame round its top
   local st = c.target_st
   if st and k.playing then
@@ -284,6 +300,16 @@ function View.draw(k, biome, t)
     end
   end
   for _, st in ipairs(k.stations) do View.draw_station(st, k, biome, t) end
+  for st in pairs(k.marks or {}) do
+    local pulse = 0.5 + 0.5 * math.sin(t * 6)
+    local a, b = 0.52, 0.44 - 0.02 * pulse
+    local col = { color = { 255, 214, 90 }, glow = true }
+    nova.cuboid(st.cx - a, TOP_H, st.cz - a, st.cx + a, TOP_H + 0.05, st.cz - b, col)
+    nova.cuboid(st.cx - a, TOP_H, st.cz + b, st.cx + a, TOP_H + 0.05, st.cz + a, col)
+    nova.cuboid(st.cx - a, TOP_H, st.cz - b, st.cx - b, TOP_H + 0.05, st.cz + b, col)
+    nova.cuboid(st.cx + b, TOP_H, st.cz - b, st.cx + a, TOP_H + 0.05, st.cz + b, col)
+    nova.cuboid(st.cx - 0.07, TOP_H + 1.1 + 0.1 * pulse, st.cz - 0.07, st.cx + 0.07, TOP_H + 1.5 + 0.1 * pulse, st.cz + 0.07, col)
+  end
   for _, d in ipairs(k.drops) do
     nova.cuboid(d.x - 0.16, 0.0, d.z - 0.16, d.x + 0.16, 0.02, d.z + 0.16, { color = { 30, 24, 20 } })
     View.item(d.item, d.x, 0.04 + 0.03 * math.sin(t * 4 + d.x), d.z, t)
@@ -318,6 +344,95 @@ function View.scenery(k, biome, t)
     local m = list[rand(#list)]
     nova.model(m, x, 0, z, { ry = rand(628) / 100, scale = 0.8 + rand(50) / 100, shadow = false })
   end
+end
+
+-- ---- the apothecary: the backdrop of the menus, the title and the book ------------------------------------------------------------------
+
+function View.setup_apothecary(smooth)
+  nova.light { dir = { -0.35, -0.8, -0.5 }, color = { 150, 130, 200 }, ambient = { 84, 70, 120 } }
+  nova.sky { top = { 22, 16, 46 }, horizon = { 58, 38, 78 } }
+  nova.fog { color = { 40, 28, 62 }, near = 16, far = 46 }
+  nova.shadows { radius = 14, strength = 0.5 }
+  nova.look { toon = 3, outline = { color = { 20, 12, 30 }, strength = 0.6, width = 1 }, saturation = 1.05, vignette = 0.38, bloom = 0.45, bloom_threshold = 0.7, fxaa = smooth and 1 or 0 }
+  nova.weather()
+end
+
+local SHELF_COLOURS = { "heal", "night", "swift", "frost", "fire", "bog", "ember", "mire", "panacea" }
+
+-- a wizard's workbench at night: the cauldron bubbling over in the middle, shelves of glowing potions, books, a candle, the moon in the window.
+-- shift moves the whole picture sideways on the screen (room for the menus).
+function View.apothecary(t, shift, w, h)
+  nova.point_light(-1.6, 2.4, -0.4, { radius = 8, color = { 255, 186, 110 } })
+  nova.point_light(0, 2.9, 0.8, { radius = 6, color = { 170, 110, 255 } })
+  nova.point_light(4.2, 4.6, -1.0, { radius = 9, color = { 130, 160, 255 } })
+  local wood, dark = { 148, 98, 74 }, { 96, 62, 52 }
+  -- the room
+  nova.cuboid(-14, -0.1, -4, 14, 0.0, 9, { color = { 66, 46, 56 } })
+  nova.cuboid(-14, 0, -2.3, 14, 8, -2.1, { color = { 62, 46, 92 } })
+  for i = -10, 10 do nova.cuboid(i * 1.3 - 0.03, 0, -2.08, i * 1.3 + 0.03, 8, -2.05, { color = { 44, 32, 70 } }) end
+  -- the window and the moon
+  nova.cuboid(3.4, 3.6, -2.08, 5.2, 5.6, -2.0, { color = { 190, 204, 255 }, glow = true })
+  nova.cuboid(4.25, 3.6, -2.0, 4.35, 5.6, -1.95, { color = dark })
+  nova.cuboid(3.4, 4.55, -2.0, 5.2, 4.65, -1.95, { color = dark })
+  nova.cuboid(3.3, 3.5, -2.0, 5.3, 3.6, -1.9, { color = wood })
+  nova.cuboid(3.3, 5.6, -2.0, 5.3, 5.7, -1.9, { color = wood })
+  -- the shelves with the potions
+  nova.cuboid(-6.4, 3.0, -2.1, 3.0, 3.12, -1.3, { color = wood })
+  for i, id in ipairs(SHELF_COLOURS) do
+    local c = data.recipes[id].color
+    local x = -5.6 + (i - 1) * 0.95
+    flask(x, 3.12, -1.7, c, 2.2, true)
+  end
+  nova.cuboid(-6.4, 4.5, -2.1, 3.0, 4.62, -1.3, { color = wood })
+  local spines = { { 150, 60, 80 }, { 70, 100, 150 }, { 90, 130, 90 }, { 180, 140, 60 }, { 110, 80, 150 } }
+  for i = 0, 17 do
+    local c = spines[i % #spines + 1]
+    local hgt = 0.7 + (i * 37 % 5) * 0.08
+    nova.cuboid(-6.2 + i * 0.3, 4.62, -2.0, -5.95 + i * 0.3, 4.62 + hgt, -1.5, { color = c })
+  end
+  -- herbs hanging on the wall
+  for i, id in ipairs({ "glowcap", "moonberry", "sunpetal", "frostroot", "embergourd", "bogbulb" }) do
+    nova.model(data.ingredients[id].model, -5.6 + (i - 1) * 1.1, 5.4 + 0.08 * math.sin(t * 1.5 + i), -2.0, { scale = 2.4, ry = 0.3 * math.sin(t + i) })
+  end
+  -- the table
+  nova.cuboid(-8, 0.82, -1.5, 8, 1.0, 1.9, { color = wood })
+  nova.cuboid(-8, 0, 1.7, 8, 0.82, 1.9, { color = dark })
+  nova.cuboid(-8, 0, -1.5, -7.8, 0.82, 1.7, { color = dark })
+  -- the cauldron, bubbling
+  nova.model("cauldron", 0, 1.0, 0, { scale = 2.7 })
+  local top = 1.0 + 0.36 * 2.7
+  local pulse = 0.5 + 0.5 * math.sin(t * 2.2)
+  nova.cuboid(-0.5, top - 0.06, -0.64, 0.5, top + 0.02 + 0.03 * pulse, 0.64, { color = { 130 + 60 * pulse, 70, 230 }, glow = true })
+  for i = 1, 7 do
+    local ph = (t * 0.45 + i * 0.143) % 1
+    local bx = math.sin(i * 2.3) * 0.38
+    local bz = math.cos(i * 1.7) * 0.4
+    local s = 0.07 + 0.05 * math.sin(i)
+    nova.cuboid(bx - s, top + 0.1 + ph * 1.6, bz - s, bx + s, top + 0.1 + ph * 1.6 + s * 2, bz + s, { color = { 190, 150, 255 }, glow = true })
+  end
+  -- sparkles drifting round it
+  for i = 1, 16 do
+    local a = t * (0.3 + (i % 4) * 0.08) + i * 0.7
+    local r = 1.2 + 0.5 * math.sin(i)
+    local y = 1.8 + ((t * 0.25 + i * 0.13) % 1) * 2.4
+    local x, z = math.cos(a) * r, math.sin(a) * r * 0.6
+    local s = 0.035 + 0.02 * ((i % 3) / 2)
+    nova.cuboid(x - s, y, z - s, x + s, y + s * 2, z + s, { color = (i % 2 == 0) and { 255, 230, 140 } or { 200, 170, 255 }, glow = true })
+  end
+  -- the things on the table
+  nova.cuboid(-3.4, 1.0, 0.2, -2.0, 1.12, 0.9, { color = { 150, 60, 80 } })
+  nova.cuboid(-3.3, 1.12, 0.25, -2.1, 1.24, 0.85, { color = { 70, 100, 150 } })
+  nova.cuboid(-3.2, 1.24, 0.3, -2.2, 1.36, 0.8, { color = { 90, 130, 90 } })
+  nova.cuboid(-2.0, 1.0, -0.7, -1.2, 1.12, 0.1, { color = { 176, 172, 184 } })
+  nova.cuboid(-1.9, 1.12, -0.6, -1.3, 1.34, 0.0, { color = { 150, 146, 156 } })
+  nova.model("candle-multiple", -1.6, 1.0, -0.95, { scale = 2.2 })
+  for i, id in ipairs({ "heal", "frost", "panacea", "mire" }) do
+    flask(2.0 + (i - 1) * 0.62, 1.0, 0.5 + (i % 2) * 0.35, data.recipes[id].color, 2.4, true)
+  end
+  nova.model("mushroom_redGroup", 3.5, 1.0, -0.6, { scale = 2.2, shadow = true })
+  nova.model("lantern-candle", 4.6, 1.0, 0.2, { scale = 1.8 })
+  -- the camera
+  nova.camera(-(shift or 0) + math.sin(t * 0.25) * 0.35, 4.1, 5.6, -(shift or 0) * 0.9, 1.5, 0.2, 40)
 end
 
 -- ---- the pictures for the store (icon and box art) ------------------------------------------------------------------------------

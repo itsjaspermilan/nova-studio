@@ -8,7 +8,8 @@ local GAIN = {
   menu_move = 0.45, menu_accept = 0.35, menu_back = 0.45, nope = 0.4, page = 1.3, book_open = 1.9, grab = 1.9, drop = 0.42, grind = 0.35, pot_add = 0.23, brew_start = 0.27,
   coins = 1.7, step = 0.3, bottle = 0.47, shatter = 0.55, order = 0.7, pour = 0.6, bubble = 0.4, dash = 0.28, whoosh = 0.3, ding = 2.4, fail = 0.72, star = 2.2, splash = 2.0, beep = 1.5,
 }
-local MUSIC_GAIN = { menu = 0.95, meadow = 1.0, frost = 1.0, ember = 1.0, mire = 1.0, results = 0.75 }
+-- (the songs are our own, written by scripts/potion/music.mjs: about -20 dB RMS each, ember a little louder)
+local MUSIC_GAIN = { menu = 1.8, meadow = 1.7, frost = 1.8, ember = 1.1, mire = 1.7, results = 1.6 }
 
 function audio.sfx(name, opts)
   opts = opts or {}

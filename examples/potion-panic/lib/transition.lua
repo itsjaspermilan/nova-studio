@@ -83,8 +83,8 @@ function transition.draw()
     local old = ui.alpha
     ui.alpha = show
     local title = s.spec.title or ""
-    if title ~= "" then ui.center(title, h / 2 - 44, ui.fit(title, 38, w * 0.82, "display"), ui.color.cream, { font = "display", shadow = true }) end
-    if (s.spec.sub or "") ~= "" then ui.center(s.spec.sub, h / 2 + 12, 20, ui.color.cream, { shadow = true }) end
+    if title ~= "" then ui.center(title, h / 2 - 54, ui.fit(title, ui.HEAD + 6, w * 0.84, "display"), ui.color.cream, { font = "display", shadow = true }) end
+    if (s.spec.sub or "") ~= "" then ui.center(s.spec.sub, h / 2 + 22, ui.LARGE, ui.color.cream, { shadow = true }) end
     ui.alpha = old
   end
 end

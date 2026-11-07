@@ -87,12 +87,12 @@ and **Garbage battle** against the computer (combos and chains send grey garbage
 
 `examples/potion-panic` is a rush-hour kitchen game, but with potions: one apprentice, a workshop in 3D (Kenney's Mini Dungeon, Food, Nature, Graveyard and Fantasy Town models), orders that run out, and a stack of things
 to do at once. Grind ingredients in the mortar, drop them in the cauldron (stir it to brew faster), bottle the brew before it burns, serve it at the hatch, and **throw** things across the room when walking is too slow.
-A **story campaign** runs through four biomes (a meadow, a frozen hollow with icy floors, lava caverns and a boggy mire with mud and belts), twelve levels, with each biome's cauldrons behaving differently.
+A **story campaign** is a potion book you flip through, a page for each of four biomes (a meadow, a frozen hollow with icy floors, lava caverns and a boggy mire with mud and belts), twelve levels with different layouts, each biome's cauldrons behaving differently, and a **Primer** that teaches every trick first. The music is original (`scripts/potion/music.mjs`).
 **Free Brew** lets you set your own rules (the clock, the pace of orders, which potions, burning, icy floors, hazards, potion value) on any level you have beaten. The look is parchment and wood (Kenney's UI Adventure Pack).
 
 | | |
 | --- | --- |
-| ![Title](docs/images/potion/title.png) | ![The campaign map](docs/images/potion/map.png) |
+| ![Title](docs/images/potion/title.png) | ![The potion book](docs/images/potion/book.png) |
 | ![The meadow](docs/images/potion/meadow.png) | ![The frozen hollow](docs/images/potion/frost.png) |
 | ![The lava caverns](docs/images/potion/ember.png) | ![Free Brew rules](docs/images/potion/free-rules.png) |
 

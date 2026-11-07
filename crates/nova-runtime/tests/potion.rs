@@ -73,6 +73,12 @@ fn run_until(
     );
 }
 
+/// In the book: F9 marks the Primer as done (a shortcut for these tests), and the book reopens at the first level.
+fn skip_primer(g: &mut Game) {
+    frame(g, &["key:F9"]);
+    wait(g, 20);
+}
+
 fn count(log: &[String], needle: &str) -> usize {
     log.iter().filter(|l| l.contains(needle)).count()
 }
@@ -116,7 +122,8 @@ fn the_campaign_goes_from_the_story_to_a_level_and_on_to_the_next() {
     let mut log = vec![];
     tap(&mut g, "key:Enter"); // title -> menu
     tap(&mut g, "key:Enter"); // Story campaign -> the opening story
-    tap(&mut g, "key:Escape"); // skip it: the map
+    tap(&mut g, "key:Escape"); // skip it: the book, open at the Primer
+    skip_primer(&mut g);
     tap(&mut g, "key:Enter"); // level 1: the meadow's story card
     tap(&mut g, "key:Escape"); // skip it: the level starts
     run_until(
@@ -152,6 +159,7 @@ fn the_pause_menu_leads_back_to_the_map_and_b_goes_back() {
     tap(&mut g, "pad:south"); // A: the menu again
     tap(&mut g, "pad:south"); // A: the story
     tap(&mut g, "pad:east"); // B: skip it
+    skip_primer(&mut g);
     tap(&mut g, "pad:south"); // A: level 1's story
     tap(&mut g, "pad:east"); // B: skip it
     run_until(&mut g, &mut log, "the countdown", 60 * 10, |l| {
@@ -175,6 +183,7 @@ fn free_brew_needs_a_beaten_level_and_takes_rules_of_its_own() {
     tap(&mut g, "key:Enter");
     tap(&mut g, "key:Enter");
     tap(&mut g, "key:Escape");
+    skip_primer(&mut g);
     tap(&mut g, "key:Enter");
     tap(&mut g, "key:Escape");
     run_until(&mut g, &mut log, "the countdown", 60 * 10, |l| {
@@ -215,4 +224,27 @@ fn free_brew_needs_a_beaten_level_and_takes_rules_of_its_own() {
         60 * 140,
         |l| count(l, "potion: over level=m1") >= 2,
     );
+}
+
+#[test]
+fn the_primer_starts_from_the_book_and_can_be_left_from_the_pause_menu() {
+    let mut g = load();
+    wait(&mut g, 20);
+    let mut log = vec![];
+    tap(&mut g, "key:Enter"); // title -> menu
+    tap(&mut g, "key:Enter"); // Story -> the opening story
+    tap(&mut g, "key:Escape"); // skip it: the book opens at the Primer
+    tap(&mut g, "key:Enter"); // the Primer
+    run_until(&mut g, &mut log, "the Primer's countdown", 60 * 10, |l| {
+        count(l, "potion: go") >= 1
+    });
+    wait(&mut g, 120);
+    tap(&mut g, "key:Escape"); // pause
+    tap(&mut g, "key:ArrowDown"); // Recipes
+    tap(&mut g, "key:Enter");
+    tap(&mut g, "key:Enter"); // close them
+    tap(&mut g, "key:ArrowDown");
+    tap(&mut g, "key:ArrowDown"); // Leave
+    tap(&mut g, "key:Enter");
+    wait(&mut g, 120);
 }

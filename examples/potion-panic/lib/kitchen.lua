@@ -145,6 +145,13 @@ function Kitchen.new(level, rules, seed)
   assert(k.start, "level " .. level.id .. " has no start (@)")
   k.chef = { x = k.start.x, z = k.start.z, vx = 0, vz = 0, fx = 0, fz = 1, held = nil, dash_t = 0, dash_cd = 0, dead = 0, work = 0, target = nil, step_t = 0 }
   k.order_wait = 3
+  k.marks = {}
+  if level.tutorial then
+    -- (the tutorial: no clock, and one order that never runs out)
+    k.time_left = 1e9
+    k.order_wait = 1e9
+    k.orders[1] = { id = 0, recipe = "heal", t = 1e9, total = 1e9, age = 1 }
+  end
   local temper = data.biomes[level.biome].cauldron or { brew = 1, burn = 1 }
   k.temper = temper
   k.burn_after = BURN_AFTER * temper.burn
@@ -160,6 +167,11 @@ function Kitchen:emit(e)
   self.events[#self.events + 1] = e
 end
 
+-- the apprentice does something with their body: a clip of Kenney's character, from now for `dur` seconds
+function Kitchen:act(clip, dur)
+  self.chef.act = { clip = clip, t0 = self.t, dur = dur }
+end
+
 function Kitchen:take_events()
   local e = self.events
   self.events = {}
@@ -170,7 +182,7 @@ end
 
 -- whether a pulsing lava cell is burning now (it comes and goes: 4 seconds safe, 3 burning, each cell a little out of step with the next)
 function Kitchen:pulse_burning(x, z, t)
-  local phase = (t + x * 0.45) % 7
+  local phase = (t + z * 1.1) % 7 -- (a whole row flickers together, so that a bridge can be crossed in one go)
   return phase >= 4, phase >= 3.2 and phase < 4 -- (burning, about to)
 end
 
@@ -577,12 +589,23 @@ function Kitchen:update(dt, input)
     if floor == "pulse" then burning = self:pulse_burning(cx, cz, self.t) end
     if burning and c.dash_t <= 0 then
       c.dead = 1.4
+      self:act("die", 1.4)
       if c.held then c.held = nil end
       self.stats.fell = self.stats.fell + 1
       self:emit({ type = "lava" })
     end
-    if input.grab then self:grab() end
-    if input.throw then self:throw() end
+    if input.grab then
+      local before = #self.events
+      self:grab()
+      for i = before + 1, #self.events do
+        local t = self.events[i].type
+        if t == "grab" or t == "drop" or t == "bin" then self:act("pick-up", 0.55)
+        elseif t == "fill" then self:act("interact-right", 0.5)
+        elseif t == "serve" then self:act("emote-yes", 0.9)
+        elseif t == "reject" or t == "nope" then self:act("emote-no", 0.7) end
+      end
+    end
+    if input.throw then self:throw(); if self.chef.act == nil or self.chef.act.clip ~= "attack-melee-right" then self:act("attack-melee-right", 0.45) end end
     self:work(dt, input.work)
   end
   self:update_shots(dt)

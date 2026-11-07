@@ -121,7 +121,7 @@ function selftest.run()
   end
   do
     -- throwing: an ingredient into the cauldron from a distance, a potion through the hatch, a loose one onto the floor (and back into the hands), a bottle that breaks
-    local k = Kitchen.new(data.levels[1], nil, 8)
+    local k = Kitchen.new(data.tutorial, nil, 8)
     local cauldron
     for _, st in ipairs(k.stations) do if st.kind == "cauldron" then cauldron = st end end
     local c = k.chef
@@ -156,7 +156,7 @@ function selftest.run()
     end
     check(broke, "a bottle thrown at nothing breaks")
     -- stirring brews faster
-    local k2 = Kitchen.new(data.levels[1], nil, 9)
+    local k2 = Kitchen.new(data.tutorial, nil, 9)
     local c2
     for _, st in ipairs(k2.stations) do if st.kind == "cauldron" then c2 = st end end
     k2:add_to_cauldron(c2, { k = "ing", id = "glowcap", ground = true })
@@ -170,6 +170,28 @@ function selftest.run()
     local f = Kitchen.new(data.levels[4], nil, 1)
     local e = Kitchen.new(data.levels[7], nil, 1)
     check(f.burn_after > e.burn_after and f.temper.brew > e.temper.brew, "frost cauldrons are slower and more forgiving than ember ones")
+  end
+  do
+    -- the tutorial: the computer apprentice brews the potion, and the last steps get the events they wait for; every step is passed, in order
+    local Tutorial = require("lib.tutorial")
+    local k = Kitchen.new(data.tutorial, nil, 11)
+    local tut = Tutorial.new(k)
+    local bot = Bot.new(k)
+    local done, last = false, 1
+    local injected = false
+    for step = 1, 20 * 120 do
+      local input = bot:update(1 / 20)
+      -- from the throw step on, the lesson wants a throw and a dash that the computer does not make
+      local events = {}
+      if tut.i >= 12 and not injected then k:emit({ type = "throw" }); injected = true end
+      if tut.i >= 13 then k:emit({ type = "dash" }) end
+      k:update(1 / 20, input)
+      for _, e in ipairs(k:take_events()) do events[#events + 1] = e end
+      for _ = 1, 3 do if tut:update(events) then done = true end end
+      if tut.i > last + 0 then last = tut.i end
+      if done then break end
+    end
+    check(done, "the tutorial can be finished (it got as far as step " .. tut.i .. " of " .. Tutorial.COUNT .. ")")
   end
   do
     -- lava burns

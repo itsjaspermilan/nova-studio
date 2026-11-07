@@ -63,6 +63,9 @@ function state.record(i, score, stars)
   return newbest
 end
 
+function state.tutorial_done() return nova.save.get("tutorial_done", false) end
+function state.set_tutorial_done() nova.save.set("tutorial_done", true) end
+
 function state.seen(name) return nova.save.get("seen_" .. name, false) end
 function state.set_seen(name) nova.save.set("seen_" .. name, true) end
 

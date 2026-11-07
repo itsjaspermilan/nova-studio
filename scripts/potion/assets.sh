@@ -81,5 +81,4 @@ cp "$FO/Water/sinkWater2.ogg" $S/pour.ogg; cp "$FO/Water/drip2.ogg" $S/bubble.og
 cp "$K/Audio/Digital Audio/Audio/powerUp7.ogg" $S/ding.ogg; cp "$K/Audio/Digital Audio/Audio/lowDown.ogg" $S/fail.ogg
 cp "$K/Audio/Digital Audio/Audio/threeTone1.ogg" $S/star.ogg; cp "$K/Audio/Digital Audio/Audio/phaserDown2.ogg" $S/splash.ogg
 cp "$K/Audio/Digital Audio/Audio/tone1.ogg" $S/beep.ogg
-cp "$ML/Mishief Stroll.ogg" $P/music/menu.ogg; cp "$ML/Farm Frolics.ogg" $P/music/meadow.ogg; cp "$ML/Flowing Rocks.ogg" $P/music/frost.ogg
-cp "$ML/Mission Plausible.ogg" $P/music/ember.ogg; cp "$ML/Sad Descent.ogg" $P/music/mire.ogg; cp "$ML/Wacky Waiting.ogg" $P/music/results.ogg
+# (the music is our own: scripts/potion/music.mjs)

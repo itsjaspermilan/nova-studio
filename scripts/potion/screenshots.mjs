@@ -23,33 +23,36 @@ function script(taps, then = []) {
 const story = Array(12).fill(E); // (Enter through a story card)
 const intro = 60 * 4.2;
 // the campaign from the title: Enter (title), Enter (Story campaign), then the intro story (3 cards: skip with Escape), then the map
-const toMap = [E, E, ESC];
+const toMap = [E, E, ESC]; // (title, Story, skip the intro: the book opens at the Primer)
 // saves to start from: the levels beaten so far (all three stars) and the story seen
 const ids = ["m1", "m2", "m3", "f1", "f2", "f3", "e1", "e2", "e3", "r1", "r2", "r3"];
 const save = (cleared, seen = true) => {
   const o = { options: { music: 0.8, sfx: 0.9, smooth: true, vibration: true } };
   for (let i = 0; i < cleared; i++) { o["stars_" + ids[i]] = 3; o["best_" + ids[i]] = 500; o["free_" + ids[i]] = 400 + i * 20; }
-  if (seen) { o.seen_intro = true; for (let b = 1; b <= 4; b++) o["seen_biome" + b] = true; }
+  if (seen) { o.tutorial_done = true; o.seen_intro = true; for (let b = 1; b <= 4; b++) o["seen_biome" + b] = true; }
   return o;
 };
 const shots = {
   "title": script([]),
   "menu": script([E]),
-  "map": { ...script([E, E]), save: save(2) },
-  "map-frost": { ...script([E, E, R, R, R]), save: save(5) },
+  "book": { ...script([E, E]), save: save(2) },
+  "pause-recipes": { ...script([E, E, E], [[intro, null, 0], [60 * 5, { [ESC]: 1 }, 2], [30, null, 0], [0, { "key:ArrowDown": 1 }, 2], [20, { [E]: 1 }, 2], [30, null, 0]]), save: save(0) },
+  "book-frost": { ...script([E, E, R, R, R]), save: save(5) },
+  "book-first": script([E, E, ESC]),
+  "tutorial": script([E, E, ESC, E], [[300, null, 0]]),
   "free": { ...script([E, D, E]), save: save(7) },
   "options": script([E, D, D, E]),
   "story": script([E, E], [[120, null, 0]]),
-  "meadow": script([...toMap, E, ESC], [[intro, { [AUTO]: 1 }, 2], [60 * 55, null, 0]]),
+  "meadow": { ...script([E, E, E], [[intro, { [AUTO]: 1 }, 2], [60 * 55, null, 0]]), save: save(0) },
   "frost": { ...script([E, E, E], [[intro, { [AUTO]: 1 }, 2], [60 * 50, null, 0]]), save: save(3) },
   "ember": { ...script([E, E, E], [[intro, { [AUTO]: 1 }, 2], [60 * 50, null, 0]]), save: save(6) },
   "mire": { ...script([E, E, E], [[intro, { [AUTO]: 1 }, 2], [60 * 50, null, 0]]), save: save(9) },
   "free-rules": { ...script([E, D, E, E], [[40, null, 0]]), save: save(7) },
   "free-picked": { ...script([E, D, E], [[40, null, 0]]), save: save(7) },
-  "pause": script([...toMap, E, ESC], [[intro, null, 0], [60 * 5, { [ESC]: 1 }, 2], [30, null, 0]]),
-  "intro": script([...toMap, E, ESC], [[90, null, 0]]),
-  "results": script([...toMap, E, ESC], [[intro, { [AUTO]: 1 }, 2], [60 * 190, null, 0]]),
-  "transition": script([...toMap, E, ESC], [[20, null, 0]]),
+  "pause": { ...script([E, E, E], [[intro, null, 0], [60 * 5, { [ESC]: 1 }, 2], [30, null, 0]]), save: save(0) },
+  "intro": { ...script([E, E, E], [[90, null, 0]]), save: save(0) },
+  "results": { ...script([E, E, E], [[intro, { [AUTO]: 1 }, 2], [60 * 190, null, 0]]), save: save(0) },
+  "transition": { ...script([E, E, E], [[20, null, 0]]), save: save(0) },
 };
 const only = process.argv.slice(2);
 for (const [name, { ev, frames, save: saved }] of Object.entries(shots)) {

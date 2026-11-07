@@ -1,6 +1,6 @@
--- The front of the game: the title card, the main menu, the campaign map, the story cards, Free Brew (a level to pick, then the rules) and the options.
--- They are screens of one scene, so the music carries on; a screen settles down into place as it opens and lifts away as it closes. Behind them stands a
--- live workshop of the biome you are looking at.
+-- The front of the game: the title card, the main menu, the potion book (every level, a page for each biome), the story cards, Free Brew (a level to pick, then the rules) and the
+-- options. They are screens of one scene, so the music carries on; a screen settles into place as it opens and lifts away as it closes. Behind them is a wizard's workbench at night,
+-- with the cauldron bubbling: nothing of any level is shown before you play it.
 local state = require("lib.state")
 local audio = require("lib.audio")
 local ui = require("lib.ui")
@@ -11,10 +11,10 @@ local transition = require("lib.transition")
 
 local Title = nova.scene {}
 
-local MENU = { "Story campaign", "Free brew", "Options" }
+local MENU = { "Story", "Free brew", "Options" }
 local BLURB = {
-  "Four regions, twelve levels and a shop to save. Earn a star on a level to open the next.",
-  "Any level you have beaten, with rules of your own: the clock, the orders, the potions, the floor.",
+  "Twelve levels in four regions, and a shop to save. Begin with the Primer.",
+  "Any level you have beaten, with rules of your own.",
   "Volume, anti-aliasing and vibration.",
 }
 
@@ -26,16 +26,41 @@ local function default_rules()
   return r
 end
 
--- the options of Free Brew's rules: { key, label, values = { { value, text } ... } }
+-- the rules of Free Brew: { key, label, values = { { value, text } ... } }
 local RULES = {
   { "time", "Time", { { 0, "Level's own" }, { 120, "2 minutes" }, { 180, "3 minutes" }, { 300, "5 minutes" }, { 600, "10 minutes" } } },
   { "pace", "Orders", { { 1, "Relaxed" }, { 2, "Normal" }, { 3, "Rush" } } },
-  { "recipes", "Potions", { { "level", "The level's" }, { "easy", "Easy ones only" }, { "all", "Anything the crates make" } } },
-  { "burn", "Burning", { { true, "Brews can burn" }, { false, "Brews wait" } } },
+  { "recipes", "Potions", { { "level", "The level's" }, { "easy", "Easy ones" }, { "all", "Anything" } } },
+  { "burn", "Burning", { { true, "On" }, { false, "Off" } } },
   { "slippery", "Floors", { { false, "As they are" }, { true, "All icy" } } },
   { "hazards", "Hazards", { { true, "On" }, { false, "Off" } } },
   { "value", "Potion value", { { 1, "x1" }, { 2, "x2" }, { 3, "x3" } } },
 }
+
+-- ---- the book's pages ------------------------------------------------------------------------------------------------------------
+-- 1 the Primer, 2 to 5 a biome each (three levels), 6 the notebook. Pages 1 and 2 are a spread, 3 and 4, 5 and 6.
+local PAGES = 6
+
+local function page_levels(p)
+  if p < 2 or p > 5 then return nil end
+  local list = {}
+  for i, lv in ipairs(data.levels) do if lv.biome == p - 1 then list[#list + 1] = i end end
+  return list
+end
+
+local function entries_on(p)
+  if p == 1 then return 1 end
+  if p >= 2 and p <= 5 then return 3 end
+  return 0
+end
+
+local function total_stars()
+  local n = 0
+  for i = 1, #data.levels do n = n + state.stars(i) end
+  return n
+end
+
+-- ---- entering and leaving ----------------------------------------------------------------------------------------------------------
 
 function Title:enter(screen)
   self.screen = screen or "title"
@@ -44,13 +69,14 @@ function Title:enter(screen)
   self.entered = 0
   self.lifting = nil
   self.pending = nil
-  self.previews = {}
-  self.biome = 1
   state.rules = state.rules or default_rules()
-  if self.screen == "map" then self.choice = state.level or state.next_level() end
+  self.page, self.entry = 1, 1
+  self.spread = 1
+  self.flip = nil
+  if self.screen == "book" or self.screen == "map" then self.screen = "book"; self:open_book() end
   if self.screen == "rules" then self.choice = 1 end
-  if self.screen == "story" then self:begin_story(state.pending_story or "intro", "map") end
-  self:set_biome(self.screen == "map" and data.levels[self.choice].biome or 1)
+  if self.screen == "story" then self:begin_story(state.pending_story or "intro", "book") end
+  View.setup_apothecary(state.smooth)
   audio.music("menu", { fade = 0.8 })
   state.apply_volumes()
   transition.reveal(0.35)
@@ -58,32 +84,26 @@ end
 
 function Title:leave() View.leave() end
 
--- a live workshop for the backdrop: the first level of a biome, with a brew bubbling
-function Title:set_biome(b)
-  self.biome = b
-  local biome = data.biomes[b]
-  local first
-  for _, lv in ipairs(data.levels) do if lv.biome == b then first = lv; break end end
-  if not self.previews[b] then
-    local k = Kitchen.new(first, nil, b)
-    for _, st in ipairs(k.stations) do
-      if st.kind == "cauldron" then st.state, st.recipe, st.timer, st.total = "brewing", first.recipes[1], 0, 1e9; st.items = {} end
-      if st.kind == "counter" and not st.item then st.item = { k = "bottle" } break end
-    end
-    self.previews[b] = k
+-- the book opens at the page of the level to play next (the Primer first of all)
+function Title:open_book()
+  if not state.tutorial_done() then self.page, self.entry = 1, 1
+  else
+    local n = state.next_level()
+    local lv = data.levels[n]
+    self.page = lv.biome + 1
+    local list = page_levels(self.page)
+    for k, i in ipairs(list) do if i == n then self.entry = k end end
   end
-  self.kitchen = self.previews[b]
-  View.setup(biome, state.smooth)
+  self.spread = (self.page + 1) // 2
 end
 
--- go to another screen: this one lifts away first
 function Title:go(screen, choice)
   if self.lifting then return end
   self.pending, self.pending_choice = screen, choice
   self.lifting = 0
 end
 
--- ---- the story --------------------------------------------------------------------------------------------------------------------
+-- ---- the story ---------------------------------------------------------------------------------------------------------------------
 
 function Title:begin_story(key, after)
   self.story = { key = key, cards = data.story[key], i = 1, chars = 0, after = after }
@@ -97,7 +117,7 @@ function Title:end_story()
   state.pending_story = nil
   self.story = nil
   if s.after == "start" then self:start_level()
-  elseif s.after == "map" then self:go("map", state.level or state.next_level())
+  elseif s.after == "book" then self:go("book")
   else self:go("menu") end
 end
 
@@ -105,7 +125,7 @@ function Title:update_story(dt)
   local s = self.story
   local text = s.cards[s.i][2]
   local before = math.floor(s.chars)
-  s.chars = math.min(#text, s.chars + dt * 60)
+  s.chars = math.min(#text, s.chars + dt * 55)
   if math.floor(s.chars) ~= before and math.floor(s.chars) % 4 == 0 then audio.sfx("menu_move", { volume = 0.25, pitch = 1.5 }) end
   if nova.input.pressed("a") or nova.input.pressed("start") then
     if s.chars < #text then s.chars = #text
@@ -114,30 +134,29 @@ function Title:update_story(dt)
       if s.i < #s.cards then s.i, s.chars = s.i + 1, 0 else self:end_story() end
     end
   elseif nova.input.pressed("b") or nova.input.pressed("menu_back") then
-    -- skip the lot
     self:end_story()
   end
 end
 
--- ---- starting ----------------------------------------------------------------------------------------------------------------------
+-- ---- starting ------------------------------------------------------------------------------------------------------------------------
 
 function Title:start_level()
-  local level = data.levels[state.level]
+  local level = (state.level == 0) and data.tutorial or data.levels[state.level]
   local biome = data.biomes[level.biome]
   audio.stop_music(0.6)
   audio.sfx("whoosh")
-  transition.cover({ title = string.upper(level.name), sub = biome.name, color = biome.banner }, function() nova.goto_scene("play") end)
+  transition.cover({ title = string.upper(level.name), sub = (state.level == 0) and "Learn the craft" or biome.name, color = biome.banner }, function() nova.goto_scene("play") end)
   self.screen = "starting"
 end
 
--- the first level of a biome opens with its story card, once
 local function first_of_biome(i)
   return i == 1 or data.levels[i - 1].biome ~= data.levels[i].biome
 end
 
--- ---- the update ---------------------------------------------------------------------------------------------------------------------
+-- ---- the update ----------------------------------------------------------------------------------------------------------------------
 
-function Title:update(dt)  self.t = self.t + dt
+function Title:update(dt)
+  self.t = self.t + dt
   self.entered = self.entered + dt
   transition.update(dt)
   if nova.input.pressed("selftest") then require("lib.selftest").run() end
@@ -155,10 +174,14 @@ function Title:update(dt)  self.t = self.t + dt
     if self.lifting >= 1 then
       self.screen, self.choice, self.entered, self.lifting = self.pending, self.pending_choice or 1, 0, nil
       self.pending = nil
-      if self.screen == "map" then self:set_biome(data.levels[self.choice].biome) end
-      if self.screen ~= "map" and self.screen ~= "story" and self.biome ~= 1 then self:set_biome(1) end
+      if self.screen == "book" then self:open_book() end
     end
     return
+  end
+  if self.flip then
+    self.flip.t = self.flip.t + dt / 0.5
+    if self.flip.t >= 0.5 and self.spread ~= self.flip.to then self.spread = self.flip.to end
+    if self.flip.t >= 1 then self.flip = nil end
   end
   local screen = self.screen
   if screen == "title" then
@@ -171,19 +194,18 @@ function Title:update(dt)  self.t = self.t + dt
       audio.sfx("menu_accept")
       if choice == 1 then
         state.mode = "campaign"
-        state.level = math.min(state.next_level(), #data.levels)
-        if not state.seen("intro") then self:begin_story("intro", "map") else self:go("map", state.level) end
+        if not state.seen("intro") then self:begin_story("intro", "book") else self:go("book") end
       elseif choice == 2 then
         state.mode = "free"
-        self:go("free", math.min(state.level or 1, #data.levels))
+        self:go("free", math.max(1, math.min(state.level or 1, #data.levels)))
       else
         self:go("options")
       end
     end
   elseif screen == "story" then
     self:update_story(dt)
-  elseif screen == "map" then
-    self:update_map()
+  elseif screen == "book" then
+    self:update_book()
   elseif screen == "free" then
     self:update_free()
   elseif screen == "rules" then
@@ -195,35 +217,59 @@ function Title:update(dt)  self.t = self.t + dt
     local flip = action == "accept" or step ~= 0
     if choice == 1 and step ~= 0 then state.music_volume = math.max(0, math.min(1, state.music_volume + step)); state.save_options(); audio.sfx("menu_move") end
     if choice == 2 and step ~= 0 then state.sfx_volume = math.max(0, math.min(1, state.sfx_volume + step)); state.save_options(); audio.sfx("menu_move") end
-    if choice == 3 and flip then state.smooth = not state.smooth; state.save_options(); View.setup(data.biomes[self.biome], state.smooth); audio.sfx("menu_move") end
+    if choice == 3 and flip then state.smooth = not state.smooth; state.save_options(); View.setup_apothecary(state.smooth); audio.sfx("menu_move") end
     if choice == 4 and flip then state.vibration = not state.vibration; state.save_options(); audio.sfx("menu_move"); if state.vibration then nova.input.rumble(0.6, 0.15) end end
     if action == "back" then audio.sfx("menu_back"); self:go("menu", 3) end
   end
 end
 
-function Title:update_map()
-  local n = #data.levels
-  local i = self.choice
-  local moved = i
-  if nova.input.pressed("right") then moved = i + 1 end
-  if nova.input.pressed("left") then moved = i - 1 end
-  if nova.input.pressed("r1") or nova.input.pressed("down") then moved = math.min(n, i + 3) end
-  if nova.input.pressed("l1") or nova.input.pressed("up") then moved = math.max(1, i - 3) end
-  if moved ~= i and moved >= 1 and moved <= n then
-    self.choice = moved
-    audio.sfx("menu_move")
-    local b = data.levels[moved].biome
-    if b ~= self.biome then self:set_biome(b) end
+-- turning to another page (the book flips when the page is on another spread)
+function Title:turn_to(p)
+  p = math.max(1, math.min(PAGES, p))
+  if p == self.page then return end
+  local old_spread = (self.page + 1) // 2
+  local new_spread = (p + 1) // 2
+  self.page = p
+  self.entry = math.max(1, math.min(self.entry, math.max(1, entries_on(p))))
+  audio.sfx("menu_move")
+  if new_spread ~= old_spread then
+    self.flip = { t = 0, to = new_spread, dir = new_spread > old_spread and 1 or -1 }
+    audio.sfx("page")
+  end
+end
+
+function Title:update_book()
+  if self.flip then return end
+  -- (a shortcut for the tests: F9 in the book marks the Primer as done)
+  if nova.input.pressed("autoplay") and not state.tutorial_done() then
+    state.set_tutorial_done()
+    nova.log("potion: primer skipped")
+    self:open_book()
+    return
+  end
+  if nova.input.pressed("left") or nova.input.pressed("l1") then self:turn_to(self.page - 1) end
+  if nova.input.pressed("right") or nova.input.pressed("r1") then self:turn_to(self.page + 1) end
+  local n = entries_on(self.page)
+  if n > 0 then
+    if nova.input.pressed("up") then self.entry = (self.entry - 2) % n + 1; audio.sfx("menu_move") end
+    if nova.input.pressed("down") then self.entry = self.entry % n + 1; audio.sfx("menu_move") end
   end
   if nova.input.pressed("b") or nova.input.pressed("menu_back") then audio.sfx("menu_back"); self:go("menu", 1); return end
   if nova.input.pressed("a") or nova.input.pressed("start") then
-    if state.unlocked(self.choice) then
+    if self.page == 1 then
       audio.sfx("menu_accept")
-      state.level = self.choice
-      local b = data.levels[self.choice].biome
-      if first_of_biome(self.choice) and not state.seen("biome" .. b) then self:begin_story("biome" .. b, "start") else self:start_level() end
-    else
-      audio.sfx("nope")
+      state.level = 0
+      self:start_level()
+    elseif self.page >= 2 and self.page <= 5 then
+      local i = page_levels(self.page)[self.entry]
+      if state.unlocked(i) then
+        audio.sfx("menu_accept")
+        state.level = i
+        local b = data.levels[i].biome
+        if first_of_biome(i) and not state.seen("biome" .. b) then self:begin_story("biome" .. b, "start") else self:start_level() end
+      else
+        audio.sfx("nope")
+      end
     end
   end
 end
@@ -236,12 +282,7 @@ function Title:update_free()
   if nova.input.pressed("left") then moved = i - 1 end
   if nova.input.pressed("down") then moved = i + 4 end
   if nova.input.pressed("up") then moved = i - 4 end
-  if moved ~= i and moved >= 1 and moved <= n then
-    self.choice = moved
-    audio.sfx("menu_move")
-    local b = data.levels[moved].biome
-    if b ~= self.biome then self:set_biome(b) end
-  end
+  if moved ~= i and moved >= 1 and moved <= n then self.choice = moved; audio.sfx("menu_move") end
   if nova.input.pressed("b") or nova.input.pressed("menu_back") then audio.sfx("menu_back"); self:go("menu", 2); return end
   if nova.input.pressed("a") or nova.input.pressed("start") then
     if state.stars(self.choice) >= 1 then
@@ -280,41 +321,30 @@ end
 
 function Title:draw()
   local w, h = nova.view()
-  if self.screen == "icon" or self.screen == "boxart" then
-    -- (the store pictures: the workshop of the meadow, close in, with the cauldron bubbling)
-    View.setup(data.biomes[1], state.smooth)
-    View.showcase(data.biomes[1], 2.3, self.screen == "icon" and "icon" or (w > h and "wide" or "portrait"), w, h)
-    return
-  end
-  local k = self.kitchen
-  local shift = (self.screen == "title" or self.screen == "starting") and 0 or ((self.screen == "map" or self.screen == "story") and 0 or 2.2)
-  View.camera(k, self.screen == "map" and 1.6 or 0.9, w, h, shift, math.sin(self.t * 0.25) * 1.6)
-  View.scenery(k, data.biomes[self.biome], self.t)
-  View.draw(k, data.biomes[self.biome], self.t)
+  local screen = self.screen
+  local shift = 0
+  if screen == "menu" or screen == "options" then shift = 2.6 end
+  if screen == "icon" or screen == "boxart" then shift = (screen == "boxart" and w > h) and -2.4 or 0 end
+  View.apothecary(self.t, shift, w, h)
 end
 
-local function logo(t, y)
-  local w = nova.view()
-  ui.panel(w / 2 - 330, y - 10, 660, 150, "brown")
-  ui.center("POTION", y + 8, 58, ui.color.cream, { font = "display", shadow = true })
-  ui.center("PANIC", y + 68, 58, ui.color.gold, { font = "display", shadow = true })
+function Title:draw_logo(y, size)
+  ui.center("POTION", y, size, ui.color.cream, { font = "display", shadow = true })
+  ui.center("PANIC", y + size * 1.05, size, ui.color.gold, { font = "display", shadow = true })
 end
 
 function Title:draw_ui()
-  local w = nova.view()
+  local w, h = nova.view()
   if transition.busy() then transition.draw(); return end
   local screen = self.screen
   if screen == "icon" then return end
   if screen == "boxart" then
-    local _, h = nova.view()
     if w > h then
-      ui.panel(w * 0.04, h * 0.1, 410, 200, "brown")
-      ui.text(w * 0.04 + 36, h * 0.1 + 18, "POTION", 74, ui.color.cream, { font = "display", shadow = true })
-      ui.text(w * 0.04 + 36, h * 0.1 + 96, "PANIC", 74, ui.color.gold, { font = "display", shadow = true })
+      ui.text(w * 0.06, h * 0.12, "POTION", 84, ui.color.cream, { font = "display", shadow = true })
+      ui.text(w * 0.06, h * 0.12 + 92, "PANIC", 84, ui.color.gold, { font = "display", shadow = true })
     else
-      ui.panel(w / 2 - 230, h * 0.06, 460, 190, "brown")
-      ui.center("POTION", h * 0.06 + 16, 60, ui.color.cream, { font = "display", shadow = true })
-      ui.center("PANIC", h * 0.06 + 88, 60, ui.color.gold, { font = "display", shadow = true })
+      ui.center("POTION", h * 0.05, 70, ui.color.cream, { font = "display", shadow = true })
+      ui.center("PANIC", h * 0.05 + 76, 70, ui.color.gold, { font = "display", shadow = true })
     end
     return
   end
@@ -327,147 +357,193 @@ function Title:draw_ui()
   end
   local enter = self.entered
   if screen == "title" then
-    logo(self.t, 90 + math.sin(self.t * 1.2) * 3)
-    if math.floor(self.t * 1.6) % 2 == 0 then ui.center("PRESS START", 320, 20, ui.color.cream, { font = "display", shadow = true }) end
-    ui.center("Made by Jasper Milan", 504, 11, ui.color.cream, { shadow = true })
+    ui.panel(w / 2 - 300, 14, 600, 212, "ink", 235)
+    self:draw_logo(24 + math.sin(self.t * 1.2) * 2, ui.TITLE)
+    if math.floor(self.t * 1.6) % 2 == 0 then ui.center("PRESS START", 440, ui.LARGE, ui.color.cream, { font = "display", shadow = true }) end
+    ui.center("Made by Jasper Milan", 508, ui.SMALL, ui.color.lilac, { shadow = true })
     ui.hints({ { "pad_a", "Start" } })
   elseif screen == "menu" then
-    ui.heading("POTION PANIC", 60, 34, 38, ui.color.cream, { shadow = true })
-    ui.menu(MENU, self.choice, 120, { width = 380, cx = 240, id = "main", enter = enter, row = 62, size = 15 })
-    ui.panel(40, 316, 400, 160, "beige")
-    ui.text(60, 332, BLURB[self.choice], 12, ui.color.ink, { width = 360 })
-    if self.choice == 1 then ui.text(60, 436, "Cleared " .. state.cleared_count() .. " of " .. #data.levels, 11, ui.color.wine, { font = "display" }) end
+    ui.panel(30, 20, 420, 130, "ink", 235)
+    ui.text(52, 24, "POTION", ui.HEAD, ui.color.cream, { font = "display", shadow = true })
+    ui.text(52, 76, "PANIC", ui.HEAD, ui.color.gold, { font = "display", shadow = true })
+    ui.menu(MENU, self.choice, 176, { width = 400, cx = 240, id = "main", enter = enter, row = 78 })
+    ui.panel(30, 408, 440, 70, "ink", 235)
+    ui.text(46, 418, BLURB[self.choice], ui.SMALL, ui.color.cream, { width = 408 })
     ui.hints({ { "pad_a", "Accept" }, { "pad_b", "Back" } })
   elseif screen == "story" then
     self:draw_story(w)
-  elseif screen == "map" then
-    self:draw_map(w, enter)
+  elseif screen == "book" then
+    self:draw_book(w, h)
   elseif screen == "free" then
     self:draw_free(w, enter)
   elseif screen == "rules" then
     self:draw_rules(w, enter)
   elseif screen == "options" then
-    ui.heading("OPTIONS", w / 2 - ui.width("OPTIONS", 38, "display") / 2, 36, 38, ui.color.cream, { shadow = true })
+    ui.panel(30, 20, 420, 70, "ink", 235)
+    ui.in_box("OPTIONS", 30, 20, 420, 70, ui.HEAD - 6, ui.color.cream, { font = "display" })
     local function pct(v) return string.format("< %d >", math.floor(v * 10 + 0.5)) end
     local function onoff(v) return v and "< On >" or "< Off >" end
     ui.menu({
-      { "Music volume", pct(state.music_volume) },
-      { "Sound volume", pct(state.sfx_volume) },
+      { "Music", pct(state.music_volume) },
+      { "Sounds", pct(state.sfx_volume) },
       { "Smooth edges", onoff(state.smooth) },
       { "Vibration", onoff(state.vibration) },
-    }, self.choice, 120, { width = 560, id = "options", enter = enter, row = 64, size = 15 })
+    }, self.choice, 110, { width = 520, cx = 300, id = "options", enter = enter, row = 78, size = ui.LARGE })
     ui.hints({ { "pad_a", "Change" }, { "pad_b", "Back" } })
   end
   ui.oy, ui.alpha = 0, 1
   transition.draw()
 end
 
+-- ---- the story ----------------------------------------------------------------------------------------------------------------------
+
 function Title:draw_story(w)
   local s = self.story
   if not s then return end
   local card = s.cards[s.i]
-  ui.panel(w / 2 - 360, 312, 720, 168, "beige")
-  ui.panel(w / 2 - 360, 270, 300, 52, "brown")
-  ui.text(w / 2 - 338, 284, card[1], 11, ui.color.cream, { font = "display" })
+  ui.panel(36, 286, w - 72, 190, "page")
+  ui.panel(36, 240, 330, 58, "ink")
+  ui.in_box(card[1], 36, 240, 330, 58, ui.MEDIUM, ui.color.cream, { font = "display" })
   local shown = card[2]:sub(1, math.floor(s.chars))
-  ui.text(w / 2 - 334, 336, shown, 14, ui.color.ink, { width = 668 })
-  ui.text(w / 2 + 320, 440, (s.i < #s.cards) and ">" or "", 14, ui.color.wine)
+  ui.text(66, 312, shown, ui.MEDIUM, ui.color.ink, { width = w - 132 })
+  if s.chars >= #card[2] then ui.right((s.i < #s.cards) and ">" or "", w - 70, 430, ui.LARGE, ui.color.wine) end
   ui.hints({ { "pad_a", "Next" }, { "pad_b", "Skip" } })
 end
 
-function Title:draw_map(w, enter)
-  ui.heading("THE MAP", 36, 18, 30, ui.color.cream, { shadow = true })
-  local n = #data.levels
-  local perb = 3
-  -- the four regions across the screen, three levels each
-  for b, biome in ipairs(data.biomes) do
-    local cx = 120 + (b - 1) * 240
-    local on = biome == data.biomes[self.biome]
-    ui.panel(cx - 100, 62, 200, 34, on and "beige" or "brown")
-    ui.text(cx - 100 + (200 - ui.width(biome.short, 14, "display")) / 2, 70, biome.short, 14, on and ui.color.ink or ui.color.cream, { font = "display" })
-  end
-  for i = 1, n do
-    local lv = data.levels[i]
-    local b = lv.biome
-    local cx = 120 + (b - 1) * 240 + ((i - 1) % perb - 1) * 66
-    local cy = 150 + math.sin(i * 1.3) * 12 + ((i - 1) % perb) * 6
-    local locked = not state.unlocked(i)
-    local stars = state.stars(i)
-    local sel = i == self.choice
-    local size = sel and 50 + math.sin(self.t * 5) * 2 or 42
-    local c = locked and { 120, 100, 86, 255 } or { 255, 255, 255, 255 }
-    ui.icon("ui/buttonSquare_" .. (sel and "beige" or "brown"), cx - size / 2, cy - size / 2, size, c)
-    ui.text(cx - ui.width(tostring(i), 16, "display") / 2, cy - 11, tostring(i), 16, (sel and not locked) and ui.color.ink or ui.color.cream, { font = "display" })
-    if stars > 0 then
-      for s = 1, 3 do ui.star(cx + (s - 2) * 14, cy + size / 2 + 8, 14, s <= stars) end
-    elseif locked then
-      ui.icon("ui/iconCross_brown", cx - 8, cy + size / 2 - 2, 16, { 255, 255, 255, 200 })
+-- ---- the potion book ---------------------------------------------------------------------------------------------------------------
+
+local PAGE_W, PAGE_H = 420, 414
+local PX_L, PX_R, PY = 58, 482, 36
+
+-- one page: its content, for the spread being shown
+function Title:draw_page(p, x, y)
+  local w = PAGE_W
+  ui.panel(x, y, w, PAGE_H, "page")
+  if p == 1 then
+    ui.text(x + 28, y + 22, "The Primer", ui.HEAD - 8, ui.color.ink, { font = "display" })
+    nova.ui.rect(x + 28 + ui.ox, y + 72 + ui.oy, w - 56, 3, ui.tint(ui.color.wine, 0.6))
+    ui.text(x + 28, y + 90, "Every trick of the craft, one step at a time. Start here.", ui.MEDIUM, ui.color.ink, { width = w - 56 })
+    self:draw_entry(x + 16, y + 236, w - 32, 96, "T", "The Primer", state.tutorial_done() and 3 or 0, nil, true, self.page == 1 and self.entry == 1, not state.tutorial_done() and "Start here" or nil)
+  elseif p >= 2 and p <= 5 then
+    local biome = data.biomes[p - 1]
+    ui.text(x + 28, y + 18, biome.short, ui.HEAD - 8, ui.color.ink, { font = "display" })
+    nova.ui.rect(x + 28 + ui.ox, y + 68 + ui.oy, w - 56, 3, ui.tint(ui.color.wine, 0.6))
+    ui.text(x + 28, y + 76, biome.quirk, ui.SMALL, ui.color.dim, { width = w - 56 })
+    for k, i in ipairs(page_levels(p)) do
+      local lv = data.levels[i]
+      local open = state.unlocked(i)
+      self:draw_entry(x + 16, y + 112 + (k - 1) * 98, w - 32, 90, tostring(k), open and lv.name or "???", state.stars(i), open and state.best(i) or nil, open, self.page == p and self.entry == k)
     end
+  else
+    ui.text(x + 28, y + 18, "Notebook", ui.HEAD - 8, ui.color.ink, { font = "display" })
+    nova.ui.rect(x + 28 + ui.ox, y + 68 + ui.oy, w - 56, 3, ui.tint(ui.color.wine, 0.6))
+    ui.text(x + 28, y + 90, "Stars", ui.MEDIUM, ui.color.dim)
+    ui.right(total_stars() .. " / " .. #data.levels * 3, x + w - 28, y + 90, ui.MEDIUM, ui.color.ink, { font = "display" })
+    ui.text(x + 28, y + 128, "Levels cleared", ui.MEDIUM, ui.color.dim)
+    ui.right(state.cleared_count() .. " / " .. #data.levels, x + w - 28, y + 128, ui.MEDIUM, ui.color.ink, { font = "display" })
+    ui.text(x + 28, y + 180, "Guild seals", ui.MEDIUM, ui.color.dim)
+    for b, biome in ipairs(data.biomes) do
+      local done = false
+      local last
+      for i, lv in ipairs(data.levels) do if lv.biome == b then last = i end end
+      done = state.stars(last) >= 1
+      local sx = x + 40 + (b - 1) * 92
+      nova.ui.sprite("ui/iconCircle_brown", sx + 26 + ui.ox, y + 262 + ui.oy, { w = 64, h = 64, color = ui.tint(done and { biome.banner[1] + 40, biome.banner[2] + 40, biome.banner[3] + 40, 255 } or { 90, 80, 90, 200 }) })
+      ui.in_box(biome.short:sub(1, 1), sx - 6, y + 236, 64, 52, ui.LARGE, done and ui.color.white or ui.color.dim, { font = "display" })
+      ui.in_box(biome.short, sx - 20, y + 304, 92, 30, ui.SMALL, ui.color.ink)
+    end
+    ui.text(x + 28, y + 354, "Beaten levels open in Free Brew.", ui.SMALL, ui.color.dim, { width = w - 56 })
   end
-  -- the card of the level
-  local lv = data.levels[self.choice]
-  local biome = data.biomes[lv.biome]
-  ui.panel(24, 268, 912, 208, "beige")
-  ui.text(48, 280, lv.name, ui.fit(lv.name, 22, 520, "display"), ui.color.ink, { font = "display" })
-  ui.text(48, 322, biome.name .. "  ·  " .. biome.quirk, 11, ui.color.dim)
-  local x = 48
-  ui.text(x, 358, "BREWS", 10, ui.color.dim)
-  for _, id in ipairs(lv.recipes) do
-    local r = data.recipes[id]
-    ui.flask(x, 380, 22, r.color)
-    ui.text(x + 32, 380, r.name, 11, ui.color.ink)
-    x = x + 32 + ui.width(r.name, 11) + 26
-  end
-  local goal = lv.stars
-  ui.text(48, 424, "STARS AT", 10, ui.color.dim)
-  for i = 1, 3 do
-    ui.star(48 + 110 + (i - 1) * 130, 436, 24, state.stars(self.choice) >= i)
-    ui.text(48 + 130 + (i - 1) * 130, 422, tostring(goal[i]), 12, ui.color.ink, { font = "display" })
-  end
-  ui.text(w - 190, 280, "BEST", 10, ui.color.dim)
-  ui.text(w - 190, 300, tostring(state.best(self.choice)), 24, ui.color.wine, { font = "display" })
-  if not state.unlocked(self.choice) then ui.text(w - 300, 356, "Earn a star on the level before.", 11, ui.color.wine, { width = 260 }) end
-  ui.hints({ { "pad_dpad", "Move" }, { "pad_a", "Brew" }, { "pad_b", "Back" } })
 end
 
+-- a line in the book: a numeral, a name, stars, the best score; `open` false for a sealed level
+function Title:draw_entry(x, y, w, h, numeral, name, stars, best, open, selected, note)
+  if selected then
+    ui.panel(x, y, w, h, "light")
+    local bob = math.sin(self.t * 6) * 3
+    nova.ui.sprite("ui/cursorGauntlet_bronze", x + 28 + bob + ui.ox, y + h / 2 + ui.oy, { w = 38, h = 38, color = ui.tint({ 255, 255, 255, 255 }) })
+  end
+  local nx = x + 58
+  ui.in_box(numeral, nx, y + (h - 56) / 2, 56, 56, ui.LARGE, open and ui.color.ink or ui.color.dim, { font = "display" })
+  local tx = nx + 70
+  ui.text(tx, y + 12, name, ui.fit(name, ui.MEDIUM + 2, x + w - tx - 70, "serif"), open and ui.color.ink or ui.color.dim)
+  if open then
+    for s = 1, 3 do ui.star(tx + 14 + (s - 1) * 34, y + 62, 30, s <= stars) end
+    if best and best > 0 then ui.right(tostring(best), x + w - 14, y + 18, ui.SMALL, ui.color.wine) end
+    if note then ui.right(note, x + w - 14, y + h - 30, ui.SMALL, ui.color.wine) end
+  else
+    nova.ui.sprite("ui/iconCircle_brown", tx + 14 + ui.ox, y + 70 + ui.oy, { w = 28, h = 28, color = ui.tint({ 170, 48, 78, 255 }) })
+    ui.text(tx + 36, y + 56, "Sealed", ui.SMALL, ui.color.wine)
+  end
+end
+
+function Title:draw_book(w, h)
+  -- the covers
+  ui.panel(PX_L - 18, PY - 14, PAGE_W * 2 + 66, PAGE_H + 28, "leather")
+  local spread = self.spread
+  local left, right = spread * 2 - 1, spread * 2
+  self:draw_page(left, PX_L, PY)
+  self:draw_page(right, PX_R, PY)
+  -- the spine's shadow and a ribbon
+  nova.ui.rect(PX_R - 6 + ui.ox, PY + 6 + ui.oy, 6, PAGE_H - 12, ui.tint({ 60, 40, 50 }, 0.35))
+  nova.ui.rect(PX_R + ui.ox, PY + 6 + ui.oy, 5, PAGE_H - 12, ui.tint({ 255, 255, 255 }, 0.12))
+  nova.ui.rect(PX_R + 56 + ui.ox, PY + PAGE_H - 6 + ui.oy, 22, 40, ui.tint(ui.color.wine))
+  -- a page turning
+  if self.flip then
+    local t = self.flip.t
+    local dir = self.flip.dir
+    local c = math.cos(math.pi * t)
+    local wd = math.max(2, math.abs(c) * PAGE_W)
+    local on_right = (dir > 0) == (t < 0.5)
+    local x = on_right and PX_R or (PX_R - wd)
+    ui.panel(x, PY, wd, PAGE_H, "light")
+    nova.ui.rect(x + ui.ox, PY + 4 + ui.oy, wd, PAGE_H - 8, ui.tint({ 60, 40, 50 }, 0.1 + 0.25 * (1 - math.abs(c))))
+  end
+  -- the pips of the pages
+  for p = 1, PAGES do
+    local on = p == self.page
+    nova.ui.rect(w / 2 - PAGES * 11 + (p - 1) * 22 + ui.ox, PY + PAGE_H + 20 + ui.oy, on and 14 or 8, on and 14 or 8, ui.tint(on and ui.color.gold or ui.color.lilac, on and 1 or 0.5))
+  end
+  ui.hints({ { "pad_dpad", "Page" }, { "pad_a", "Brew" }, { "pad_b", "Back" } })
+end
+
+-- ---- free brew -----------------------------------------------------------------------------------------------------------------------
+
 function Title:draw_free(w, enter)
-  ui.heading("FREE BREW", w / 2 - ui.width("FREE BREW", 36, "display") / 2, 22, 36, ui.color.cream, { shadow = true })
-  local cleared = state.cleared_count()
-  local cw, ch, gap = 190, 112, 14
+  ui.text(36, 14, "FREE BREW", ui.HEAD - 8, ui.color.cream, { font = "display", shadow = true })
+  local cw, ch, gap = 214, 118, 12
   local cols = 4
-  local total = cols * cw + (cols - 1) * gap
-  local x0 = (w - total) / 2
+  local x0 = (w - (cols * cw + (cols - 1) * gap)) / 2
   for i, lv in ipairs(data.levels) do
     local col, row = (i - 1) % cols, (i - 1) // cols
     local a = ease_out((enter - (i - 1) * 0.03) / 0.3)
-    local x, y = x0 + col * (cw + gap), 70 + row * (ch + gap)
+    local x, y = x0 + col * (cw + gap), 74 + row * (ch + gap)
     local open = state.stars(i) >= 1
     local sel = i == self.choice
     local old = ui.alpha
     ui.alpha = old * a
-    if sel then ui.panel(x - 5, y - 5, cw + 10, ch + 10, "light") end
-    ui.panel(x, y, cw, ch, open and "beige" or "brown")
-    local c = open and ui.color.ink or ui.color.dim
-    ui.text(x + 14, y + 8, tostring(i), 18, c, { font = "display" })
-    ui.text(x + 14, y + 46, lv.name, ui.fit(lv.name, 11, cw - 28), c)
+    if sel then ui.panel(x - 6, y - 6, cw + 12, ch + 12, "light") end
+    ui.panel(x, y, cw, ch, open and "page" or "ink")
+    local c = open and ui.color.ink or ui.color.lilac
+    ui.text(x + 16, y + 10, tostring(i), ui.LARGE, c, { font = "display" })
+    ui.text(x + 16, y + 48, open and lv.name or "???", ui.fit(open and lv.name or "???", ui.SMALL + 1, cw - 32), c)
     if open then
-      for s = 1, 3 do ui.star(x + 24 + (s - 1) * 26, y + 90, 22, s <= state.stars(i)) end
-      ui.text(x + cw - 14 - ui.width(tostring(state.free_best(i)), 11), y + 80, tostring(state.free_best(i)), 11, ui.color.wine)
+      for s = 1, 3 do ui.star(x + 30 + (s - 1) * 30, y + 92, 26, s <= state.stars(i)) end
     else
-      ui.text(x + 14, y + 80, "locked", 11, ui.color.dim)
+      ui.text(x + 16, y + 82, "Sealed", ui.SMALL, ui.color.lilac)
     end
     ui.alpha = old
   end
-  if cleared == 0 then
-    ui.panel(w / 2 - 300, 416, 600, 56, "beige")
-    ui.center("Beat a level in the campaign to brew it here.", 428, 12, ui.color.ink)
+  if state.cleared_count() == 0 then
+    ui.panel(w / 2 - 330, 440, 660, 56, "ink")
+    ui.in_box("Beat a level in the Story first.", w / 2 - 330, 440, 660, 56, ui.MEDIUM, ui.color.cream)
   end
   ui.hints({ { "pad_dpad", "Move" }, { "pad_a", "Choose" }, { "pad_b", "Back" } })
 end
 
 function Title:draw_rules(w, enter)
   local lv = data.levels[state.level]
-  ui.heading("YOUR RULES", 40, 24, 32, ui.color.cream, { shadow = true })
+  ui.text(36, 8, "YOUR RULES", ui.HEAD - 8, ui.color.cream, { font = "display", shadow = true })
   local r = state.rules
   local items = {}
   for i, def in ipairs(RULES) do
@@ -476,13 +552,11 @@ function Title:draw_rules(w, enter)
     items[i] = { def[2], text }
   end
   items[#items + 1] = "Start brewing"
-  ui.menu(items, self.choice, 74, { width = 560, cx = 330, id = "rules", enter = enter, row = 50, size = 13 })
-  ui.panel(634, 80, 306, 250, "beige")
-  ui.text(652, 94, lv.name, ui.fit(lv.name, 18, 270, "display"), ui.color.ink, { font = "display" })
-  ui.text(652, 134, data.biomes[lv.biome].name, 10, ui.color.dim)
-  ui.text(652, 168, "BEST HERE", 10, ui.color.dim)
-  ui.text(652, 188, tostring(state.free_best(state.level)), 24, ui.color.wine, { font = "display" })
-  ui.text(652, 238, "Rules change what a game is worth to you, not your stars.", 10, ui.color.ink, { width = 270 })
+  ui.menu(items, self.choice, 64, { width = 600, cx = 346, id = "rules", enter = enter, row = 53, size = ui.MEDIUM, value_size = ui.MEDIUM })
+  ui.panel(660, 70, 270, 214, "page")
+  ui.text(678, 86, lv.name, ui.fit(lv.name, ui.MEDIUM, 236, "display"), ui.color.ink, { font = "display", width = 240 })
+  ui.text(678, 150, "BEST", ui.SMALL, ui.color.dim)
+  ui.text(678, 176, tostring(state.free_best(state.level)), ui.NUMBER, ui.color.wine, { font = "display" })
   ui.hints({ { "pad_dpad", "Choose" }, { "pad_a", "Change" }, { "pad_b", "Back" } })
 end
 
