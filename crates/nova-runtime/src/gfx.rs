@@ -129,10 +129,12 @@ pub struct Fog {
 /// stands near the ground by the height under it, so the game draws everything as if the ground were flat.
 pub const MAX_TERRAIN_WAVES: usize = 8;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Terrain {
     pub waves: [[f32; 4]; MAX_TERRAIN_WAVES],
     pub count: usize,
+    /// Designed ground from a picture (`nova.terrain{ heightmap = ... }`); the waves are added on top of it.
+    pub map: Option<std::sync::Arc<crate::heightmap::HeightMap>>,
 }
 
 impl Default for Terrain {
@@ -140,6 +142,7 @@ impl Default for Terrain {
         Self {
             waves: [[0.0; 4]; MAX_TERRAIN_WAVES],
             count: 0,
+            map: None,
         }
     }
 }
@@ -147,10 +150,16 @@ impl Default for Terrain {
 impl Terrain {
     /// The ground's height at a spot (the same sum the shaders make).
     pub fn height(&self, x: f32, z: f32) -> f32 {
-        self.waves[..self.count]
+        let waves: f32 = self.waves[..self.count]
             .iter()
             .map(|w| w[2] * (w[0] * x + w[1] * z + w[3]).sin())
-            .sum()
+            .sum();
+        waves + self.map.as_ref().map_or(0.0, |m| m.height(x, z))
+    }
+
+    /// Whether there is any ground to lift things by.
+    pub fn active(&self) -> bool {
+        self.count > 0 || self.map.is_some()
     }
 
     /// The slope there: how fast the height grows with x and with z.
@@ -161,12 +170,22 @@ impl Terrain {
             g[0] += c * w[0];
             g[1] += c * w[1];
         }
+        if let Some(m) = &self.map {
+            let d = m.slope(x, z);
+            g[0] += d[0];
+            g[1] += d[1];
+        }
         g
     }
 
     /// The most the ground can rise or fall: the culling of what is drawn grows by this.
     pub fn lift(&self) -> f32 {
-        self.waves[..self.count].iter().map(|w| w[2].abs()).sum()
+        let waves: f32 = self.waves[..self.count].iter().map(|w| w[2].abs()).sum();
+        waves
+            + self
+                .map
+                .as_ref()
+                .map_or(0.0, |m| m.max.abs().max(m.min.abs()))
     }
 }
 
@@ -256,7 +275,7 @@ impl Look {
 
 /// How 3D models are lit and seen: one directional light, an ambient floor, a few point lights, and optionally a sky
 /// and fog.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Lighting {
     /// Direction the light travels (normalised).
     pub direction: [f32; 3],
@@ -427,6 +446,8 @@ struct Globals {
     point_dir: [[f32; 4]; MAX_POINT_LIGHTS],
     /// [0].x: how many hill waves; then each wave's kx, kz, amplitude and phase.
     terrain: [[f32; 4]; MAX_TERRAIN_WAVES + 1],
+    /// The heightmap: [0] is x0, z0, 1 / cell, 0; [1] is the samples across minus 1, the rows minus 1, 0, 0. (`terrain[0].y` is 1 when there is one.)
+    terrain_map: [[f32; 4]; 2],
 }
 
 /// Side of the (square) shadow map in texels.
@@ -696,6 +717,9 @@ pub struct Gfx {
     shadow_group: wgpu::BindGroup,
     globals: wgpu::Buffer,
     globals_group: wgpu::BindGroup,
+    globals_layout: wgpu::BindGroupLayout,
+    /// The heightmap now on the GPU (a fresh device has none, so a recovered one uploads it again at the next frame).
+    terrain_loaded: Option<std::sync::Arc<crate::heightmap::HeightMap>>,
     meshes: Vec<GpuMesh>,
     dyn_meshes: HashMap<usize, GpuMesh>,
     backup: Backup,
@@ -762,6 +786,69 @@ pub fn mip_chain(image: &Image, levels: u32) -> Vec<u8> {
         (w, h) = (nw, nh);
     }
     out
+}
+
+/// An `R32Float` texture of heights (metres), for the vertex shaders' `textureLoad`.
+fn terrain_texture_view(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    heights: &[f32],
+    width: u32,
+    rows: u32,
+) -> wgpu::TextureView {
+    let size = wgpu::Extent3d {
+        width,
+        height: rows,
+        depth_or_array_layers: 1,
+    };
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("heightmap"),
+        size,
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::R32Float,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    queue.write_texture(
+        wgpu::TexelCopyTextureInfo {
+            texture: &texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        bytemuck::cast_slice(heights),
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(width * 4),
+            rows_per_image: Some(rows),
+        },
+        size,
+    );
+    texture.create_view(&wgpu::TextureViewDescriptor::default())
+}
+
+fn globals_bind_group(
+    device: &wgpu::Device,
+    layout: &wgpu::BindGroupLayout,
+    buffer: &wgpu::Buffer,
+    terrain: &wgpu::TextureView,
+) -> wgpu::BindGroup {
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("globals"),
+        layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::TextureView(terrain),
+            },
+        ],
+    })
 }
 
 fn texture_group(
@@ -942,7 +1029,34 @@ impl Gfx {
             })
         };
         let sprite_view_layout = uniform_layout("sprite view layout", wgpu::ShaderStages::VERTEX);
-        let globals_layout = uniform_layout("globals layout", wgpu::ShaderStages::VERTEX_FRAGMENT);
+        // The globals, and (binding 1) the heightmap for `nova.terrain{ heightmap }`: an R32Float texture read with textureLoad in the
+        // vertex stage (a 1 x 1 one when there is no map). Every pipeline that takes the globals has this layout.
+        let globals_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("globals layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+            ],
+        });
+        let terrain_view = terrain_texture_view(&device, &queue, &[0.0], 1, 1);
 
         let sprite_view = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("sprite view"),
@@ -964,14 +1078,7 @@ impl Gfx {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let globals_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("globals"),
-            layout: &globals_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: globals.as_entire_binding(),
-            }],
-        });
+        let globals_group = globals_bind_group(&device, &globals_layout, &globals, &terrain_view);
 
         let white = Image {
             width: 1,
@@ -1534,14 +1641,8 @@ impl Gfx {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let ui_globals_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("ui globals"),
-            layout: &globals_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: ui_globals.as_entire_binding(),
-            }],
-        });
+        let ui_globals_group =
+            globals_bind_group(&device, &globals_layout, &ui_globals, &terrain_view);
         let ui_instances = DynBuffer::new(
             &device,
             "ui model instances",
@@ -1621,6 +1722,8 @@ impl Gfx {
             shadow_group,
             globals,
             globals_group,
+            globals_layout,
+            terrain_loaded: None,
             meshes: Vec::new(),
             dyn_meshes: HashMap::new(),
             backup: Backup::default(),
@@ -1779,6 +1882,27 @@ impl Gfx {
         fresh.apply_mesh_ops(&ops);
         *self = fresh;
         Ok(())
+    }
+
+    /// Puts the game's heightmap on the GPU when it changed (one upload per map, by identity), and points both globals groups at it.
+    fn sync_heightmap(&mut self, wanted: Option<&std::sync::Arc<crate::heightmap::HeightMap>>) {
+        let same = match (&self.terrain_loaded, wanted) {
+            (None, None) => true,
+            (Some(a), Some(b)) => std::sync::Arc::ptr_eq(a, b),
+            _ => false,
+        };
+        if same {
+            return;
+        }
+        let view = match wanted {
+            Some(m) => terrain_texture_view(&self.device, &self.queue, &m.heights, m.width, m.rows),
+            None => terrain_texture_view(&self.device, &self.queue, &[0.0], 1, 1),
+        };
+        self.globals_group =
+            globals_bind_group(&self.device, &self.globals_layout, &self.globals, &view);
+        self.ui_globals_group =
+            globals_bind_group(&self.device, &self.globals_layout, &self.ui_globals, &view);
+        self.terrain_loaded = wanted.cloned();
     }
 
     /// Uploads a mesh once; the returned id is used by [`ModelDraw`].
@@ -2149,6 +2273,14 @@ impl Gfx {
         let mut terrain_uniform = [[0.0f32; 4]; MAX_TERRAIN_WAVES + 1];
         terrain_uniform[0][0] = lit.terrain.count as f32;
         terrain_uniform[1..].copy_from_slice(&lit.terrain.waves);
+        let mut terrain_map = [[0.0f32; 4]; 2];
+        if let Some(m) = &lit.terrain.map {
+            terrain_uniform[0][1] = 1.0;
+            terrain_map = [
+                [m.x0, m.z0, 1.0 / m.cell, 0.0],
+                [(m.width - 1) as f32, (m.rows - 1) as f32, 0.0, 0.0],
+            ];
+        }
         let (sky, fog) = (lit.sky, lit.fog);
         // The sun's view of the ground around what the camera looks at: a square box seen along the light, moved in whole
         // texels so that shadows do not crawl as the camera moves.
@@ -2220,6 +2352,7 @@ impl Gfx {
             ],
             point_dir,
             terrain: terrain_uniform,
+            terrain_map,
             sky_extra: sky.map_or([0.0; 4], |k| {
                 [
                     k.clouds,
@@ -2229,6 +2362,7 @@ impl Gfx {
                 ]
             }),
         };
+        self.sync_heightmap(lit.terrain.map.as_ref());
         self.queue
             .write_buffer(&self.globals, 0, bytemuck::bytes_of(&globals));
         if !input.ui_models.is_empty() {
@@ -2263,6 +2397,7 @@ impl Gfx {
                 wind: [0.0; 4],
                 point_dir: [[0.0; 4]; MAX_POINT_LIGHTS],
                 terrain: [[0.0; 4]; MAX_TERRAIN_WAVES + 1],
+                terrain_map: [[0.0; 4]; 2],
             };
             self.queue
                 .write_buffer(&self.ui_globals, 0, bytemuck::bytes_of(&ui_globals));

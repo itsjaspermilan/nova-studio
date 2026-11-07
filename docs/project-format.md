@@ -37,6 +37,23 @@ few metres, and a ground made of a grid of squares (`scripts/rally/land.mjs`) ra
 Pine Ridge Rally lays each circuit's road as one ribbon mesh along the curve (`scripts/rally/tracks.mjs`, with the cross-section and colours of
 the Kenney Racing Kit's straight road) instead of slabs, so that a bend has no wedges and nothing overlaps.
 
+### Designed ground (a heightmap)
+
+`nova.terrain{ heightmap = "terrain/hills.png", x = -500, z = -500, size = 1000, height = 40 }` lifts the ground by a picture instead of (or
+under) the waves: `x`, `z` are the ground's coordinates of the picture's top-left pixel, `size` the metres from its first pixel to its last along x
+(or give `cell`, the metres between pixels), `height` the metres that white stands for; `waves = {...}` in the same call are added on top. Rows go
+along +z. The picture is read like this (the first rule that fits): 16-bit grey (or grey with alpha) is `v / 65535`, full 16-bit precision; 8-bit
+RGB or RGBA is `(R * 256 + G) / 65535` (red the high byte, green the low one, so an ordinary grey picture with R = G is `grey / 255`); 16-bit RGB
+is the red channel; 8-bit grey is `v / 255`. A side may be 2 to 4096 pixels. Each pixel is a sample at a grid point and the ground between four
+samples is their bilinear blend; outside the picture the ground keeps the height of the nearest edge sample (no cliff at the border).
+
+The GPU gets the heights as an `R32Float` texture (one upload per map, when the game calls `nova.terrain` with a different one; recovered with the
+device) that the vertex shaders (`mesh.wgsl`, `shadow.wgsl`) read with `textureLoad` and blend by hand: vertex-stage filtering is not dependable on
+every mobile GPU. `nova.terrain_height` / `nova.terrain_slope` and the culling margin use the same numbers on the CPU (`heightmap.rs`). With no map
+nothing changes. `scripts/lib/heightmap.mjs` (and the MCP tool `terrain_write`) makes a heightmap from a route's centreline and an elevation
+profile along it (`[[0, 0], [400, 20], [600, 24], [1000, 4]]`: climb 20 m over 400 m, crest, drop), keeps the road's grade under `max_grade`, and
+blends the land around the road into hills. Pine Ridge Rally's Frost Pass stage uses one (`examples/pine-ridge-rally/terrain/frost_pass.png`).
+
 ### Icon and box art
 
 `icon.png` (square, 512 x 512 is plenty) in the project folder becomes the Android app's launcher icon, and `boxart.png` (a cover, any size) is

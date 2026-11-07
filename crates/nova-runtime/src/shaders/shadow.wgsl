@@ -20,8 +20,10 @@ struct Globals {
     wind: vec4<f32>,
     point_dir: array<vec4<f32>, 20>,
     terrain: array<vec4<f32>, 9>,
+    terrain_map: array<vec4<f32>, 2>,  // [0]: x0, z0, 1 / cell; [1]: samples across - 1, rows - 1
 };
 @group(0) @binding(0) var<uniform> globals: Globals;
+@group(0) @binding(1) var heightmap: texture_2d<f32>;  // the heightmap (R32Float, metres); 1 x 1 when there is none
 
 struct Vertex {
     @location(0) position: vec3<f32>,
@@ -65,9 +67,48 @@ fn wind_offset(origin: vec3<f32>, world: vec3<f32>, sway: f32) -> vec3<f32> {
 // Hills: the ground's height as a sum of up to eight sine waves over the ground (`nova.terrain`): terrain[0].x is how many, terrain[1..]
 // are (kx, kz, amplitude, phase). Every vertex is lifted by the height under it, so a flat model laid on the ground (a road piece, a
 // car, a tree) follows the hills; things up in the sky (an instance whose origin is above 30 m: clouds) stay where they are.
+// With a heightmap (terrain[0].y is 1) its bilinear height is added to the waves; outside the picture it keeps the nearest edge's height.
+// Same maths as `HeightMap::height` in heightmap.rs.
+fn terrain_active() -> bool {
+    return globals.terrain[0].x > 0.0 || globals.terrain[0].y > 0.0;
+}
+
+fn map_height(p: vec2<f32>) -> f32 {
+    let dims = globals.terrain_map[1].xy;
+    let f = clamp((p - globals.terrain_map[0].xy) * globals.terrain_map[0].z, vec2<f32>(0.0), dims);
+    let i = min(vec2<i32>(floor(f)), vec2<i32>(dims) - vec2<i32>(1));
+    let t = f - vec2<f32>(i);
+    let a = textureLoad(heightmap, i, 0).x;
+    let b = textureLoad(heightmap, i + vec2<i32>(1, 0), 0).x;
+    let c = textureLoad(heightmap, i + vec2<i32>(0, 1), 0).x;
+    let d = textureLoad(heightmap, i + vec2<i32>(1, 1), 0).x;
+    let top = a + (b - a) * t.x;
+    let bottom = c + (d - c) * t.x;
+    return top + (bottom - top) * t.y;
+}
+
+fn map_slope(p: vec2<f32>) -> vec2<f32> {
+    let dims = globals.terrain_map[1].xy;
+    let raw = (p - globals.terrain_map[0].xy) * globals.terrain_map[0].z;
+    let f = clamp(raw, vec2<f32>(0.0), dims);
+    let i = min(vec2<i32>(floor(f)), vec2<i32>(dims) - vec2<i32>(1));
+    let t = f - vec2<f32>(i);
+    let a = textureLoad(heightmap, i, 0).x;
+    let b = textureLoad(heightmap, i + vec2<i32>(1, 0), 0).x;
+    let c = textureLoad(heightmap, i + vec2<i32>(0, 1), 0).x;
+    let d = textureLoad(heightmap, i + vec2<i32>(1, 1), 0).x;
+    let inside = vec2<f32>(select(0.0, 1.0, raw.x > 0.0 && raw.x < dims.x), select(0.0, 1.0, raw.y > 0.0 && raw.y < dims.y));
+    return inside * vec2<f32>(
+        ((b - a) * (1.0 - t.y) + (d - c) * t.y) * globals.terrain_map[0].z,
+        ((c - a) * (1.0 - t.x) + (d - b) * t.x) * globals.terrain_map[0].z);
+}
+
 fn terrain_height(p: vec2<f32>) -> f32 {
     let n = i32(globals.terrain[0].x);
     var h = 0.0;
+    if (globals.terrain[0].y > 0.0) {
+        h = map_height(p);
+    }
     for (var i = 0; i < n; i = i + 1) {
         let w = globals.terrain[i + 1];
         h = h + w.z * sin(w.x * p.x + w.y * p.y + w.w);
@@ -79,6 +120,9 @@ fn terrain_height(p: vec2<f32>) -> f32 {
 fn terrain_slope(p: vec2<f32>) -> vec2<f32> {
     let n = i32(globals.terrain[0].x);
     var g = vec2<f32>(0.0);
+    if (globals.terrain[0].y > 0.0) {
+        g = map_slope(p);
+    }
     for (var i = 0; i < n; i = i + 1) {
         let w = globals.terrain[i + 1];
         g = g + w.z * cos(w.x * p.x + w.y * p.y + w.w) * vec2<f32>(w.x, w.y);
@@ -91,7 +135,7 @@ fn vs_main(v: Vertex, inst: Instance) -> @builtin(position) vec4<f32> {
     let model = mat4x4<f32>(inst.m0, vec4<f32>(inst.m1.xyz, 0.0), vec4<f32>(inst.m2.xyz, 0.0), inst.m3);
     var world = model * vec4<f32>(v.position, 1.0);
     world = vec4<f32>(world.xyz + wind_offset(inst.m3.xyz, world.xyz, inst.m2.w), 1.0);
-    if (globals.terrain[0].x > 0.0 && inst.m3.y < 30.0) {
+    if (terrain_active() && inst.m3.y < 30.0) {
         world = vec4<f32>(world.x, world.y + terrain_height(world.xz), world.z, 1.0);
     }
     return globals.light_view_proj * world;
@@ -133,7 +177,7 @@ fn vs_skinned(v: SkinVertex, inst: Instance) -> @builtin(position) vec4<f32> {
         skin = mat4x4<f32>(vec4<f32>(1.0, 0.0, 0.0, 0.0), vec4<f32>(0.0, 1.0, 0.0, 0.0), vec4<f32>(0.0, 0.0, 1.0, 0.0), vec4<f32>(0.0, 0.0, 0.0, 1.0));
     }
     var world = model * (skin * vec4<f32>(v.position, 1.0));
-    if (globals.terrain[0].x > 0.0 && inst.m3.y < 30.0) {
+    if (terrain_active() && inst.m3.y < 30.0) {
         world = vec4<f32>(world.x, world.y + terrain_height(world.xz), world.z, 1.0);
     }
     return globals.light_view_proj * world;

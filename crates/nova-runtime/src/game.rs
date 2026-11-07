@@ -1454,19 +1454,72 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
     // terrain { waves = { { wavelength = 400, direction = 30, height = 6, phase = 0 }, ... } }: hills. The ground's height is the sum of up to eight
     // sine waves (`wavelength` metres from crest to crest, `direction` degrees on the ground, 0 along +x and 90 along +z, `height` the metres from the
     // middle to a crest); every model drawn near the ground is lifted by the height under each of its vertices. nova.terrain() makes it flat again.
+    // terrain { heightmap = "terrain/hills.png", x = -500, z = -500, size = 1000, height = 40 }: designed ground from a picture (see heightmap.rs);
+    // the waves, if given, are added on top. `cell` (metres between pixels) can stand in for `size`.
     let s = shared.clone();
+    let terrain_vfs = vfs.clone();
+    type LoadedMap = Option<(String, Arc<crate::heightmap::HeightMap>)>;
+    let loaded_map: Rc<RefCell<LoadedMap>> = Rc::new(RefCell::new(None));
     nova.set(
         "terrain",
         lua.create_function(move |_, opts: Option<Table>| {
             let mut terrain = crate::gfx::Terrain::default();
             if let Some(opts) = opts {
-                let waves: Table = opts.get("waves").map_err(|_| {
-                    lua_err("terrain takes waves = { { wavelength = 400, direction = 30, height = 6 }, ... }")
-                })?;
-                for wave in waves.sequence_values::<Table>() {
-                    let wave = wave?;
+                let path: Option<String> = opts.get("heightmap")?;
+                let waves: Option<Table> = opts.get("waves")?;
+                if path.is_none() && waves.is_none() {
+                    return Err(lua_err("terrain takes waves = { { wavelength = 400, direction = 30, height = 6 }, ... } and/or heightmap = \"terrain/hills.png\" with size and height"));
+                }
+                if let Some(path) = path {
+                    let some = Some(opts.clone());
+                    let x = number_option(&some, "x")?.unwrap_or(0.0);
+                    let z = number_option(&some, "z")?.unwrap_or(0.0);
+                    let size = number_option(&some, "size")?;
+                    let cell = number_option(&some, "cell")?;
+                    let height = number_option(&some, "height")?
+                        .ok_or_else(|| lua_err("terrain heightmap needs height = the metres that white stands for"))?;
+                    if size.is_none() && cell.is_none() {
+                        return Err(lua_err("terrain heightmap needs size = the metres across (or cell = metres per pixel)"));
+                    }
+                    for v in [x, z, height, size.unwrap_or(1.0), cell.unwrap_or(1.0)] {
+                        if !v.is_finite() {
+                            return Err(lua_err("terrain heightmap numbers must be finite"));
+                        }
+                    }
+                    if size.is_some_and(|v| v <= 0.0) || cell.is_some_and(|v| v <= 0.0) {
+                        return Err(lua_err("terrain heightmap size and cell must be more than 0"));
+                    }
+                    let key = format!("{path}|{x}|{z}|{size:?}|{cell:?}|{height}");
+                    let cached = loaded_map.borrow().as_ref().filter(|(k, _)| *k == key).map(|(_, m)| m.clone());
+                    let map = match cached {
+                        Some(m) => m,
+                        None => {
+                            if !terrain_vfs.exists(&path) {
+                                return Err(lua_err(format!("terrain heightmap '{path}' is not in the project")));
+                            }
+                            let bytes = terrain_vfs.read(&path).map_err(lua_err)?;
+                            // size is the metres from the first sample to the last; with only `cell`, it follows from the picture's width
+                            let probe = crate::heightmap::HeightMap::from_png(&bytes, x as f32, z as f32, 1.0, height as f32)
+                                .map_err(|e| lua_err(format!("terrain heightmap '{path}': {e}")))?;
+                            let size = size.unwrap_or_else(|| cell.unwrap_or(1.0) * (probe.width - 1) as f64);
+                            let m = Arc::new(crate::heightmap::HeightMap {
+                                cell: size as f32 / (probe.width - 1) as f32,
+                                ..probe
+                            });
+                            *loaded_map.borrow_mut() = Some((key, m.clone()));
+                            m
+                        }
+                    };
+                    terrain.map = Some(map);
+                }
+                let wave_list: Vec<Table> = match waves {
+                    Some(w) => w.sequence_values::<Table>().collect::<mlua::Result<_>>()?,
+                    None => Vec::new(),
+                };
+                for wave in wave_list {
+
                     if terrain.count >= crate::gfx::MAX_TERRAIN_WAVES {
-                        return Err(lua_err(&format!("terrain has room for {} waves", crate::gfx::MAX_TERRAIN_WAVES)));
+                        return Err(lua_err(format!("terrain has room for {} waves", crate::gfx::MAX_TERRAIN_WAVES)));
                     }
                     let some = Some(wave);
                     let wavelength = number_option(&some, "wavelength")?.unwrap_or(400.0);
@@ -3269,7 +3322,7 @@ impl Game {
             sh.lighting.push_point(light);
         }
         self.camera = sh.camera;
-        self.lighting = sh.lighting;
+        self.lighting = sh.lighting.clone();
         if let Some(sky) = self.lighting.sky.as_mut() {
             sky.time = (sh.time % 100_000.0) as f32;
         }
@@ -3389,7 +3442,7 @@ impl Game {
             joints: &self.joints,
             mesh_ops: &self.mesh_ops,
             ui_models: &self.ui_models,
-            lighting: self.lighting,
+            lighting: self.lighting.clone(),
             sprites_front: &self.ui,
             text: &self.text,
             world_height,
