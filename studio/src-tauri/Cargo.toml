@@ -6,6 +6,7 @@ publish.workspace = true
 license.workspace = true
 description = "Nova Studio: the desktop app for making Nova games"
 build = "build.rs"
+default-run = "nova-studio" # (the app; src/bin/nova-ogg.rs is a helper the music scripts use)
 
 [lib]
 name = "studio_lib"
