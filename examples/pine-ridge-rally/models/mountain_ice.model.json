@@ -7,7 +7,7 @@
       "origin": [0, 0, 0],
       "rotation": [0, 0, 0],
       "cubes": [
-        { "shape": "pyramid", "from": [-1500, 0, -1300], "size": [3000, 1500, 2600], "color": "#8aa2bd" },
+        { "shape": "pyramid", "from": [-1500, 0, -1300], "size": [3000, 1500, 2600], "color": "#c2d1df" },
         { "shape": "pyramid", "from": [-460, 1050, -400], "size": [920, 450, 800], "color": "#ffffff" }
       ],
       "children": []

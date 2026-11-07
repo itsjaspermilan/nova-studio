@@ -30,7 +30,8 @@ const colours = (doc: NonNullable<Awaited<ReturnType<typeof loadModelDoc>>>) => 
 
 describe("a model the scene view can draw", () => {
   it("is read from a plain .glb when there is no .model.json, with the picture's colours when it is decoded", async () => {
-    const car = glb("car");
+    // (a kit model kept as the kit made it, picture and all: see src/tools/keep-original.txt)
+    const car = glb("fence");
     const image = embeddedImage(car);
     expect(image?.mime).toBe("image/png");
     expect([...image!.bytes.subarray(1, 4)]).toEqual([0x50, 0x4e, 0x47]); // "PNG"
@@ -44,7 +45,8 @@ describe("a model the scene view can draw", () => {
     expect(seen.size).toBeGreaterThan(0);
     for (const c of seen) {
       const [r, g, b] = [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16));
-      expect([r, g, b], `colour ${c} should be the picture's red`).toEqual([200, 20, 10]);
+      // the picture's red, times the material's own colour factor (up to about 0.95 here) in linear light, as the game draws it
+      [r, g, b].forEach((v, k) => expect(Math.abs(v! - [200, 20, 10][k]!), `colour ${c} should be the picture's red`).toBeLessThanOrEqual(6));
     }
     expect(colours(flat!).has("#c8140a")).toBe(false);
   });

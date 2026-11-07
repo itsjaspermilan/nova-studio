@@ -78,6 +78,7 @@ const toHex = (r: number, g: number, b: number, a = 255) => {
   return `#${h(r)}${h(g)}${h(b)}${a < 255 ? h(a) : ""}`;
 };
 const srgb = (c: number) => 255 * (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055);
+const linear = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
 const round = (n: number) => Math.round(n * 1000) / 1000;
 
 /// The bytes of the first picture a binary glTF carries inside itself (a kit's palette), and its type; null when it has none.
@@ -186,11 +187,13 @@ export function importGlb(bytes: Uint8Array, options: ImportOptions = {}): Impor
       return [tex.data[at]! / 255, tex.data[at + 1]! / 255, tex.data[at + 2]! / 255, tex.data[at + 3]! / 255];
     };
     const colourAt = (vi: number): [number, number, number, number] => {
+      // as the game draws it: the picture (sRGB, so made linear), the vertex colour and the material's factor (both linear, as glTF has
+      // them) multiplied in linear light, then shown as sRGB, the colour the editor keeps
       const t = texel(vi);
-      const c = (colours ? colours.values.slice(vi * colours.width, vi * colours.width + 4) : [1, 1, 1, 1]).map((v, k) => v * t[k]!);
-      const a = colours && colours.width === 4 ? c[3]! : t[3];
-      // vertex colours are taken as they are (Nova's exporter stores them as the sRGB bytes); the material's tint is linear
-      return [255 * c[0]! * tint[0]!, 255 * c[1]! * tint[1]!, 255 * c[2]! * tint[2]!, 255 * a * tint[3]!];
+      const v = colours ? colours.values.slice(vi * colours.width, vi * colours.width + 4) : [1, 1, 1, 1];
+      const rgb = [0, 1, 2].map((k) => srgb(linear(t[k]!) * v[k]! * factor[k]!));
+      const a = (colours && colours.width === 4 ? v[3]! : 1) * t[3] * factor[3]!;
+      return [rgb[0]!, rgb[1]!, rgb[2]!, 255 * a];
     };
     // a skin's weights: per point, the joints (as numbers into the skin's joint list) and what each holds
     const jointAttr = joints && prim.attributes?.JOINTS_0 !== undefined ? accessor(prim.attributes.JOINTS_0) : null;

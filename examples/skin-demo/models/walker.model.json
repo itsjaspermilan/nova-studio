@@ -7,7 +7,7 @@
       "origin": [0, 15, 0],
       "rotation": [0, 0, 0],
       "cubes": [
-        { "name": "pelvis", "from": [-4, -2, -2.2], "size": [8, 4, 4.4], "color": "#3b4a8c" }
+        { "name": "pelvis", "from": [-4, -2, -2.2], "size": [8, 4, 4.4], "color": "#8493c4" }
       ],
       "children": [
         {
@@ -15,7 +15,7 @@
           "origin": [0, 2, 0],
           "rotation": [0, 0, 0],
           "cubes": [
-            { "name": "chest", "from": [-4, 0, -2.2], "size": [8, 9, 4.4], "color": "#d9534f" }
+            { "name": "chest", "from": [-4, 0, -2.2], "size": [8, 9, 4.4], "color": "#ee9b97" }
           ],
           "children": [
             {
@@ -23,10 +23,10 @@
               "origin": [0, 9, 0],
               "rotation": [0, 0, 0],
               "cubes": [
-                { "name": "head", "from": [-3, 0, -3], "size": [6, 6.4, 6], "color": "#f0c8a0" },
-                { "name": "hair", "from": [-3.2, 4.2, -3.2], "size": [6.4, 2.6, 6.4], "color": "#3a2a20" },
-                { "name": "eye right", "from": [-2, 2.4, 2.9], "size": [1.2, 1.2, 0.4], "color": "#1a1a24" },
-                { "name": "eye left", "from": [0.8, 2.4, 2.9], "size": [1.2, 1.2, 0.4], "color": "#1a1a24" }
+                { "name": "head", "from": [-3, 0, -3], "size": [6, 6.4, 6], "color": "#f8e5d0" },
+                { "name": "hair", "from": [-3.2, 4.2, -3.2], "size": [6.4, 2.6, 6.4], "color": "#837163" },
+                { "name": "eye right", "from": [-2, 2.4, 2.9], "size": [1.2, 1.2, 0.4], "color": "#5a5a69" },
+                { "name": "eye left", "from": [0.8, 2.4, 2.9], "size": [1.2, 1.2, 0.4], "color": "#5a5a69" }
               ],
               "children": []
             },
@@ -38,7 +38,7 @@
                 {
                   "name": "limb",
                   "shape": "mesh",
-                  "color": "#d9534f",
+                  "color": "#ee9b97",
                   "verts": [
                     [-1.6, 0, -1.6],
                     [1.6, 0, -1.6],
@@ -133,7 +133,7 @@
                   "origin": [0, -6, 0],
                   "rotation": [0, 0, 0],
                   "cubes": [
-                    { "name": "hand", "from": [-1.7, -6.8, -1.7], "size": [3.4, 3.4, 3.4], "color": "#f0c8a0" }
+                    { "name": "hand", "from": [-1.7, -6.8, -1.7], "size": [3.4, 3.4, 3.4], "color": "#f8e5d0" }
                   ],
                   "children": []
                 }
@@ -147,7 +147,7 @@
                 {
                   "name": "limb",
                   "shape": "mesh",
-                  "color": "#d9534f",
+                  "color": "#ee9b97",
                   "verts": [
                     [-1.6, 0, -1.6],
                     [1.6, 0, -1.6],
@@ -242,7 +242,7 @@
                   "origin": [0, -6, 0],
                   "rotation": [0, 0, 0],
                   "cubes": [
-                    { "name": "hand", "from": [-1.7, -6.8, -1.7], "size": [3.4, 3.4, 3.4], "color": "#f0c8a0" }
+                    { "name": "hand", "from": [-1.7, -6.8, -1.7], "size": [3.4, 3.4, 3.4], "color": "#f8e5d0" }
                   ],
                   "children": []
                 }
@@ -258,7 +258,7 @@
             {
               "name": "limb",
               "shape": "mesh",
-              "color": "#3b4a8c",
+              "color": "#8493c4",
               "verts": [
                 [-1.9, 0, -1.9],
                 [1.9, 0, -1.9],
@@ -353,7 +353,7 @@
               "origin": [0, -6.5, 0],
               "rotation": [0, 0, 0],
               "cubes": [
-                { "name": "shoe", "from": [-2, -7.5, -3], "size": [4, 2.4, 6], "color": "#2b2b33" }
+                { "name": "shoe", "from": [-2, -7.5, -3], "size": [4, 2.4, 6], "color": "#72727c" }
               ],
               "children": []
             }
@@ -367,7 +367,7 @@
             {
               "name": "limb",
               "shape": "mesh",
-              "color": "#3b4a8c",
+              "color": "#8493c4",
               "verts": [
                 [-1.9, 0, -1.9],
                 [1.9, 0, -1.9],
@@ -462,7 +462,7 @@
               "origin": [0, -6.5, 0],
               "rotation": [0, 0, 0],
               "cubes": [
-                { "name": "shoe", "from": [-2, -7.5, -3], "size": [4, 2.4, 6], "color": "#2b2b33" }
+                { "name": "shoe", "from": [-2, -7.5, -3], "size": [4, 2.4, 6], "color": "#72727c" }
               ],
               "children": []
             }

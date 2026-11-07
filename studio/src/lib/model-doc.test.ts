@@ -140,7 +140,8 @@ describe("glTF export", () => {
     expect(pos.min).toEqual([-0.5, 0, -0.5]);
     expect(pos.max).toEqual([0.5, 1, 0.5]);
     expect(json.accessors[prim.indices].count).toBe(36);
-    expect(json.accessors[prim.attributes.COLOR_0]).toMatchObject({ componentType: 5121, normalized: true, type: "VEC4" });
+    // (16-bit, linear light: see glb.ts)
+    expect(json.accessors[prim.attributes.COLOR_0]).toMatchObject({ componentType: 5123, normalized: true, type: "VEC4" });
   });
 
   it("winds every face counter-clockwise seen from outside and keeps normals unit length", () => {
@@ -164,10 +165,11 @@ describe("glTF export", () => {
     const { json, bin } = parse(exportGlb(d));
     const prim = json.meshes[0].primitives[0];
     const view = json.bufferViews[json.accessors[prim.attributes.COLOR_0].bufferView];
-    const colours = bin.slice(view.byteOffset, view.byteOffset + view.byteLength);
+    // 16-bit linear light: full red and blue stay full, #80 alpha is 128 * 257 (alpha is not a colour, so it is not made linear)
+    const colours = new Uint16Array(bin.slice(view.byteOffset, view.byteOffset + view.byteLength).buffer);
     const upFace = FACES.indexOf("up") * 4;
-    expect(Array.from(colours.slice(upFace * 4, upFace * 4 + 4))).toEqual([255, 0, 0, 255]);
-    expect(Array.from(colours.slice(0, 4))).toEqual([0, 0, 255, 128]);
+    expect(Array.from(colours.slice(upFace * 4, upFace * 4 + 4))).toEqual([65535, 0, 0, 65535]);
+    expect(Array.from(colours.slice(0, 4))).toEqual([0, 0, 65535, 128 * 257]);
   });
 
   it("refuses an empty model and skips cubes without volume", () => {

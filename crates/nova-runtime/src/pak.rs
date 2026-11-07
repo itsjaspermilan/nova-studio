@@ -13,9 +13,26 @@ use crate::vfs::{MAX_FILE_BYTES, MAX_FILES, Vfs, VfsEntry, normalize};
 
 const MAGIC: &[u8; 4] = b"NPK1";
 
-/// Reads every project file through `source` and packs them. The manifest must be present.
+/// The files a game never reads, only the studio: the editable sources of what the game does load (a model's `.model.json`
+/// beside its `.glb`, a song's `.song.json` beside its `.ogg`, a generated sound's `.sfx.json` beside its `.wav`, a track's
+/// `.track.json` beside the scene and road made from it) and the studio's own folder (`.nova/`: its trash and notes).
+/// A packed game leaves them out.
+pub fn editor_only(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    lower.starts_with(".nova/")
+        || [".model.json", ".song.json", ".sfx.json", ".track.json"]
+            .iter()
+            .any(|ext| lower.ends_with(ext))
+}
+
+/// Reads every project file the game uses through `source` and packs them (not the studio's sources: see `editor_only`). The
+/// manifest must be present.
 pub fn pack(source: &dyn Vfs) -> Result<Vec<u8>, String> {
-    let entries = source.list()?;
+    let entries: Vec<VfsEntry> = source
+        .list()?
+        .into_iter()
+        .filter(|e| !editor_only(&e.path))
+        .collect();
     if !entries.iter().any(|e| e.path == crate::project::MANIFEST) {
         return Err(format!(
             "not a Nova project: no {} found",
@@ -214,6 +231,36 @@ mod tests {
         assert!(
             crate::project::Project::open(&vfs).is_ok(),
             "a packed project opens like a folder"
+        );
+    }
+
+    #[test]
+    fn the_studios_sources_stay_out_of_a_packed_game() {
+        let project = MemVfs::new([
+            ("nova.json", br#"{"format":1,"name":"P"}"#.to_vec()),
+            ("main.lua", b"".to_vec()),
+            ("models/hat.glb", vec![1]),
+            ("models/hat.model.json", b"{}".to_vec()),
+            ("music/theme.ogg", vec![2]),
+            ("music/theme.song.json", b"{}".to_vec()),
+            ("sounds/coin.wav", vec![3]),
+            ("sounds/coin.sfx.json", b"{}".to_vec()),
+            ("tracks/oval.track.json", b"{}".to_vec()),
+            ("scenes/levels/1.scene.json", b"{}".to_vec()),
+            (".nova/trash/old.lua", b"".to_vec()),
+        ]);
+        let vfs = PakVfs::new(Arc::new(pack(&project).unwrap())).unwrap();
+        let listed: Vec<_> = vfs.list().unwrap().into_iter().map(|e| e.path).collect();
+        assert_eq!(
+            listed,
+            [
+                "main.lua",
+                "models/hat.glb",
+                "music/theme.ogg",
+                "nova.json",
+                "scenes/levels/1.scene.json",
+                "sounds/coin.wav"
+            ]
         );
     }
 

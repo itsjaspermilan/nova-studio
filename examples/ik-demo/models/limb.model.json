@@ -7,7 +7,7 @@
       "origin": [0, 0, 0],
       "rotation": [0, 0, 0],
       "cubes": [
-        { "from": [-3, -16, -3], "size": [6, 16, 6], "color": "#d9824a" }
+        { "from": [-3, -16, -3], "size": [6, 16, 6], "color": "#eebd93" }
       ],
       "children": [
         {
@@ -15,7 +15,7 @@
           "origin": [0, -16, 0],
           "rotation": [0, 0, 0],
           "cubes": [
-            { "from": [-2.5, -16, -2.5], "size": [5, 16, 5], "color": "#e8b07a" }
+            { "from": [-2.5, -16, -2.5], "size": [5, 16, 5], "color": "#f5d8b8" }
           ],
           "children": [
             {
@@ -23,7 +23,7 @@
               "origin": [0, -16, 0],
               "rotation": [0, 0, 0],
               "cubes": [
-                { "from": [-3.5, -3, -3.5], "size": [7, 3, 7], "color": "#4a8f5c" }
+                { "from": [-3.5, -3, -3.5], "size": [7, 3, 7], "color": "#93c5a2" }
               ],
               "children": []
             }

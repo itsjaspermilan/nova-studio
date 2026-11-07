@@ -800,6 +800,23 @@ mod tests {
 
 #[cfg(test)]
 mod studio_model_tests {
+    /// The studio writes a model's colours (sRGB, as the editor shows them) into COLOR_0 as linear light, as glTF has it; the loader keeps
+    /// linear bytes. Whether a vertex has the colour `srgb` (within one step of rounding).
+    fn has_colour(c: [u8; 4], srgb: [u8; 4]) -> bool {
+        let lin = |v: u8| {
+            let x = v as f32 / 255.0;
+            (255.0
+                * if x <= 0.04045 {
+                    x / 12.92
+                } else {
+                    ((x + 0.055) / 1.055).powf(2.4)
+                })
+            .round() as i32
+        };
+        (0..3).all(|k| (c[k] as i32 - lin(srgb[k])).abs() <= 1)
+            && (c[3] as i32 - srgb[3] as i32).abs() <= 1
+    }
+
     use super::*;
 
     /// `studio/src/lib/model-doc.test.ts` pins this file to what the studio's exporter writes for its
@@ -828,7 +845,9 @@ mod studio_model_tests {
             assert!((n.length() - 1.0).abs() < 1e-4, "unit normals, got {n:?}");
         }
         assert!(
-            mesh.vertices.iter().any(|v| v.color == [255, 136, 0, 255]),
+            mesh.vertices
+                .iter()
+                .any(|v| has_colour(v.color, [255, 136, 0, 255])),
             "the cone's colour survived"
         );
     }
@@ -880,7 +899,10 @@ mod studio_model_tests {
                 assert!(quad.iter().all(|v| v.color == [255, 255, 255, 255]));
             } else {
                 assert_eq!(sampled, [255; 4], "the plain box samples the white texel");
-                assert!(quad.iter().all(|v| v.color == [51, 102, 153, 255]));
+                assert!(
+                    quad.iter()
+                        .all(|v| has_colour(v.color, [51, 102, 153, 255]))
+                );
             }
         }
     }
@@ -912,7 +934,7 @@ mod studio_model_tests {
         let dark = mesh
             .vertices
             .iter()
-            .filter(|v| v.color == [32, 32, 32, 255])
+            .filter(|v| has_colour(v.color, [32, 32, 32, 255]))
             .count();
         assert_eq!(dark, 24, "the wheel's dark colour survived");
         // Triangles face outward: for every triangle the geometric normal agrees with the stored one.

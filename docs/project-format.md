@@ -315,7 +315,11 @@ so use it for the few things that move). A mesh with a skin bends with the parts
 (one mesh, instanced like any other, so hundreds of animated characters are a few draw calls; at most 16,384 joint matrices a frame, about 680 characters of 24 joints, and a draw past that is skipped with a log line). Without `parts` or a `clip` it shows at rest.
 
 **Studio model files.** The model editor keeps `models/<name>.model.json` and writes the `.glb` from it on save;
-the game only needs the `.glb`. The file is a tree: `parts` (each with `name`, `origin`, `rotation` in degrees,
+the game only needs the `.glb`. Colours in the file are sRGB, as the editor shows them; the `.glb` carries them as linear light in 16-bit COLOR_0, as glTF
+has it, so the game draws exactly the colours the editor shows. Every model of the example projects has a `.model.json`, made with the
+studio's importer (`studio/src/tools/make-editable.test.ts`, the same step as the file tree's ✎ Edit) and checked by drawing each one beside the
+kit's original; the few whose look is a painted picture or whose skeleton the importer gets wrong keep the kit's file (`studio/src/tools/keep-original.txt`),
+and meshes made by other editors (a track's roads, a flat ground) are edited where they come from. The file is a tree: `parts` (each with `name`, `origin`, `rotation` in degrees,
 `cubes` and `children`), optional `clips` and optional `colliders` (circles on the ground that the model blocks,
 `{ "x": across, "z": forward, "r": radius }` in the same units as the cubes; the glb carries them in metres in the scene's
 `extras.nova.colliders` and a game reads them with `nova.model_colliders(id)`), plus optional `capsules` (`{ "ax", "az", "bx", "bz", "r" }`: the segment from a to b made `r` thick) and `boxes` (`{ "x", "z", "hw": half the width across, "hl": half the length along z, "turn": degrees }`). Circles keep the `[x, z, r]` form, so older files and readers are unchanged; capsules are `extras.nova.capsules` = `[[ax, az, bx, bz, r], ...]` and boxes `extras.nova.boxes` = `[[x, z, hw, hl, turn], ...]` (metres, `turn` in radians), and `nova.model_shapes(id)` returns all three. Static scenery blocks with all of them: a capsule is a chain of circles of its radius, a box a chain of circles as wide as its narrow side along its long side (its corners are cut a little). The `cubes` list holds solids, all in the part's own space (1 unit
@@ -900,7 +904,9 @@ too long in one frame; is there an endless loop?" and the error banner shows. Co
 
 `nova pack <folder> <out.npk>` validates a project and packs it into one file (`NPK1`: a file table
 and the data, using the same path rules as everywhere; a damaged or hostile file is rejected, never
-trusted). `nova run --pak game.npk` plays it, exactly like the folder minus hot reload.
+trusted). The studio's editable sources stay out of it, because the game reads what is made from them: `.model.json` (the game
+loads the `.glb` saved beside it), `.song.json` (the `.ogg`), `.sfx.json` (the `.wav`), `.track.json` (the scene and road
+generated from it), and the `.nova/` folder. So a project can keep every model editable without the game getting bigger. `nova run --pak game.npk` plays it, exactly like the folder minus hot reload.
 
 `scripts/build-apk.sh --project <folder>` builds a debug-signed APK of a game without Gradle: the
 runtime library, a manifest filled from `nova.json` (package `com.nova.games.<id>`, the game's name

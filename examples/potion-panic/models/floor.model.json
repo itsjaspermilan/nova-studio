@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "floor",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        {
+          "name": "floor",
+          "shape": "mesh",
+          "color": "#7d829c",
+          "verts": [
+            [-8, 0, -8],
+            [8, 0, 8],
+            [8, 0, -8],
+            [-8, 0, 8]
+          ],
+          "polys": [
+            {"v":[0,1,2]},
+            {"v":[1,0,3]}
+          ]
+        }
+      ],
+      "children": []
+    }
+  ]
+}

@@ -93,6 +93,14 @@ function holdEnds(track: Track, clip: Clip) {
 
 /// `texture` is the painted picture (`models/<name>.texture.png`); without it a model that has textured shapes
 /// gets their colours baked into a fresh one.
+
+/// The model's colours are sRGB (what the editor shows); glTF's COLOR_0 is linear light, and the game reads it so. They are written as 16-bit
+/// numbers, so that dark colours come back exactly (eight bits of linear light are too coarse near black). Alpha stays as it is.
+const LINEAR = Array.from({ length: 256 }, (_, v) => {
+  const c = v / 255;
+  return Math.round(65535 * (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+});
+const linearColours = (colors: number[]) => new Uint16Array(colors.map((v, i) => (i % 4 === 3 ? v * 257 : LINEAR[v]!)));
 export function exportGlb(doc: ModelDoc, texture?: Raster): Uint8Array {
   const scale = doc.scale;
   const gltfNodes: Record<string, unknown>[] = [];
@@ -154,14 +162,14 @@ export function exportGlb(doc: ModelDoc, texture?: Raster): Uint8Array {
       const wide = vertexCount > 65535;
       const posView = addView(bytesOf(pos), 34962);
       const nrmView = addView(bytesOf(new Float32Array(m.normals)), 34962);
-      const colView = addView(bytesOf(new Uint8Array(m.colors)), 34962);
+      const colView = addView(bytesOf(linearColours(m.colors)), 34962);
       const idxView = addView(bytesOf(wide ? new Uint32Array(m.indices) : new Uint16Array(m.indices)), 34963);
       const accessor = (a: Record<string, unknown>) => accessors.push(a) - 1;
       primitives.push({
         attributes: {
           POSITION: accessor({ bufferView: posView, componentType: 5126, count: vertexCount, type: "VEC3", min, max }),
           NORMAL: accessor({ bufferView: nrmView, componentType: 5126, count: vertexCount, type: "VEC3" }),
-          COLOR_0: accessor({ bufferView: colView, componentType: 5121, normalized: true, count: vertexCount, type: "VEC4" }),
+          COLOR_0: accessor({ bufferView: colView, componentType: 5123, normalized: true, count: vertexCount, type: "VEC4" }),
           ...(tex ? { TEXCOORD_0: accessor({ bufferView: addView(bytesOf(new Float32Array(m.uvs)), 34962), componentType: 5126, count: vertexCount, type: "VEC2" }) } : {}),
         },
         indices: accessor({ bufferView: idxView, componentType: wide ? 5125 : 5123, count: m.indices.length, type: "SCALAR" }),
@@ -232,7 +240,7 @@ export function exportGlb(doc: ModelDoc, texture?: Raster): Uint8Array {
         attributes: {
           POSITION: accessor({ bufferView: addView(bytesOf(pos), 34962), componentType: 5126, count, type: "VEC3", min, max }),
           NORMAL: accessor({ bufferView: addView(bytesOf(nrm), 34962), componentType: 5126, count, type: "VEC3" }),
-          COLOR_0: accessor({ bufferView: addView(bytesOf(new Uint8Array(m.colors)), 34962), componentType: 5121, normalized: true, count, type: "VEC4" }),
+          COLOR_0: accessor({ bufferView: addView(bytesOf(linearColours(m.colors)), 34962), componentType: 5123, normalized: true, count, type: "VEC4" }),
           ...(tex ? { TEXCOORD_0: accessor({ bufferView: addView(bytesOf(uv), 34962), componentType: 5126, count, type: "VEC2" }) } : {}),
           JOINTS_0: accessor({ bufferView: addView(bytesOf(joints), 34962), componentType: 5121, count, type: "VEC4" }),
           WEIGHTS_0: accessor({ bufferView: addView(bytesOf(weights), 34962), componentType: 5126, count, type: "VEC4" }),

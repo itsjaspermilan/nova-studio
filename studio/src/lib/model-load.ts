@@ -12,15 +12,19 @@ export type Decode = (mime: string, bytes: Uint8Array) => Promise<Raster | undef
 
 const browserDecode: Decode = (mime, bytes) => loadRaster(`data:${mime};base64,${toBase64(bytes)}`).catch(() => undefined);
 
+/// A binary glTF read into an editable model, with each face taking the colour of the model's own picture (a kit's palette) when it has one.
+export async function importWithColours(bytes: Uint8Array, decode: Decode = browserDecode) {
+  const image = embeddedImage(bytes);
+  const texture = image ? await decode(image.mime, image.bytes) : undefined;
+  return importGlb(bytes, texture ? { texture } : {});
+}
+
 export async function loadModelDoc(api: Pick<Api, "readFile" | "readModel">, name: string, decode: Decode = browserDecode): Promise<ModelDoc | null> {
   const file = await api.readFile(`models/${name}.model.json`).catch(() => null);
   const own = file?.text != null ? parseModel(file.text) : null;
   if (own?.ok) return own.doc;
   const url = await api.readModel(`models/${name}.glb`).catch(() => null);
   if (!url) return null;
-  const bytes = fromBase64(url.slice(url.indexOf(",") + 1));
-  const image = embeddedImage(bytes);
-  const texture = image ? await decode(image.mime, image.bytes) : undefined;
-  const imported = importGlb(bytes, texture ? { texture } : {});
+  const imported = await importWithColours(fromBase64(url.slice(url.indexOf(",") + 1)), decode);
   return imported.ok ? imported.doc : null;
 }

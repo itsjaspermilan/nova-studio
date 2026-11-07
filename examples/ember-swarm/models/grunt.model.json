@@ -7,9 +7,9 @@
       "origin": [0, 0, 0],
       "rotation": [0, 0, 0],
       "cubes": [
-        { "name": "blob", "from": [-5, 0, -5], "size": [10, 8, 10], "color": "#d9534f" },
-        { "name": "eye", "from": [-3.5, 4, 4.9], "size": [2, 2, 0.4], "color": "#1a1a24" },
-        { "name": "eye 2", "from": [1.5, 4, 4.9], "size": [2, 2, 0.4], "color": "#1a1a24" }
+        { "name": "blob", "from": [-5, 0, -5], "size": [10, 8, 10], "color": "#ee9b97" },
+        { "name": "eye", "from": [-3.5, 4, 4.9], "size": [2, 2, 0.4], "color": "#5a5a69" },
+        { "name": "eye 2", "from": [1.5, 4, 4.9], "size": [2, 2, 0.4], "color": "#5a5a69" }
       ],
       "children": []
     }

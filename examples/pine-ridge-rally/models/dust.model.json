@@ -7,7 +7,7 @@
       "origin": [0, 0, 0],
       "rotation": [0, 0, 0],
       "cubes": [
-        { "shape": "sphere", "from": [-8, 0, -8], "size": [16, 12, 16], "segments": 6, "smooth": false, "color": "#d9c7a3cc" }
+        { "shape": "sphere", "from": [-8, 0, -8], "size": [16, 12, 16], "segments": 6, "smooth": false, "color": "#eee5d1cc" }
       ],
       "children": []
     }

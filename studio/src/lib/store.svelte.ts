@@ -3,7 +3,7 @@ import { editorStates } from "./editor-state";
 import { newRaster } from "./pixels";
 import { rasterToDataUrl } from "./png";
 import { exportGlb } from "./glb";
-import { importGlb } from "./glb-import";
+import { importWithColours } from "./model-load";
 import { newModel, serializeModel } from "./model-doc";
 import { PRESETS, render, toJson } from "./sfx";
 import { newSong, renderSong, serializeSong } from "./song";
@@ -430,7 +430,8 @@ class Studio {
       const json = `${stem}.model.json`;
       if (this.files.some((f) => f.path === json)) throw `'${json}' already exists`;
       const url = await this.api!.readModel(glb);
-      const result = importGlb(fromBase64(url.slice(url.indexOf(",") + 1)));
+      // (with the colours of the model's own picture: a kit's palette-textured model would otherwise come out white)
+      const result = await importWithColours(fromBase64(url.slice(url.indexOf(",") + 1)));
       if (!result.ok) throw `${glb}: ${result.error}`;
       let original = `${stem}-original.glb`;
       for (let n = 2; this.files.some((f) => f.path === original); n++) original = `${stem}-original${n}.glb`;

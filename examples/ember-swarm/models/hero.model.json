@@ -7,9 +7,9 @@
       "origin": [0, 0, 0],
       "rotation": [0, 0, 0],
       "cubes": [
-        { "name": "body", "from": [-5, 0, -4], "size": [10, 11, 8], "color": "#3aa6a0" },
-        { "name": "left pack", "from": [-6, 2, -3], "size": [1.5, 6, 6], "color": "#2b7f7a" },
-        { "name": "right pack", "from": [4.5, 2, -3], "size": [1.5, 6, 6], "color": "#2b7f7a" }
+        { "name": "body", "from": [-5, 0, -4], "size": [10, 11, 8], "color": "#83d3d0" },
+        { "name": "left pack", "from": [-6, 2, -3], "size": [1.5, 6, 6], "color": "#72bbb8" },
+        { "name": "right pack", "from": [4.5, 2, -3], "size": [1.5, 6, 6], "color": "#72bbb8" }
       ],
       "children": [
         {
@@ -17,9 +17,9 @@
           "origin": [0, 11, 0],
           "rotation": [0, 0, 0],
           "cubes": [
-            { "name": "head", "from": [-4, 0, -4], "size": [8, 6, 8], "color": "#cfe9e7" },
-            { "name": "visor", "from": [-3, 2, 3.9], "size": [6, 2, 0.4], "emissive": 1, "color": "#ff9b3b" },
-            { "name": "barrel", "from": [-1.2, 1.5, 4], "size": [2.4, 2.4, 9], "color": "#22343a" }
+            { "name": "head", "from": [-4, 0, -4], "size": [8, 6, 8], "color": "#e9f5f4" },
+            { "name": "visor", "from": [-3, 2, 3.9], "size": [6, 2, 0.4], "emissive": 1, "color": "#ffcd84" },
+            { "name": "barrel", "from": [-1.2, 1.5, 4], "size": [2.4, 2.4, 9], "color": "#667d83" }
           ],
           "children": []
         }
