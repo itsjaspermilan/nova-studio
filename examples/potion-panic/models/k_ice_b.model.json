@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "piece",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "from": [-8, -0.96, -8], "size": [16, 0.88, 16], "color": "#7c97ab" },
+        { "from": [-7.44, -0.16, -7.44], "size": [14.88, 0.35, 14.88], "color": "#b6defc" },
+        { "from": [-6.4, 0.2, -6.4], "size": [12.8, 0.11, 12.8], "emissive": 0.6, "color": "#d2eeff" }
+      ],
+      "children": []
+    }
+  ]
+}

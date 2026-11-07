@@ -6,6 +6,7 @@ import * as THREE from "three";
 import type { ModelDoc } from "./model-doc";
 import { buildModel, disposeModel } from "./model-three";
 import { positionOf, type Item, type Scene } from "./scene-model";
+import { gridCellCenter, gridsOf } from "./scene-grid";
 
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 
@@ -95,4 +96,27 @@ export function moveObject(instanced: Instanced, index: number, placed: THREE.Ma
     touched.add(s.mesh);
   }
   for (const mesh of touched) mesh.instanceMatrix.needsUpdate = true;
+}
+
+/// The grids' cells as instanced copies of their models (one mesh per model shape for all the cells that show that model). Not pickable: a
+/// grid is painted, not selected.
+export function instanceGrids(scene: Scene, models: ReadonlyMap<string, ModelDoc>, shapes: ModelShapes): THREE.InstancedMesh[] {
+  const out: THREE.InstancedMesh[] = [];
+  for (const g of gridsOf(scene)) {
+    const at = new Map<string, [number, number, number][]>();
+    g.tiles.forEach((row, r) => row.forEach((t, c) => {
+      const name = t >= 0 ? g.models[t] : undefined;
+      if (name && models.has(name)) (at.get(name) ?? at.set(name, []).get(name)!).push(gridCellCenter(g, c, r));
+    }));
+    for (const [name, spots] of at) {
+      for (const part of shapes.of(models.get(name)!)) {
+        const mesh = new THREE.InstancedMesh(part.geometry, part.material, spots.length);
+        mesh.frustumCulled = false;
+        spots.forEach((p, i) => mesh.setMatrixAt(i, new THREE.Matrix4().makeTranslation(p[0], p[1], p[2]).multiply(part.matrix)));
+        mesh.instanceMatrix.needsUpdate = true;
+        out.push(mesh);
+      }
+    }
+  }
+  return out;
 }

@@ -97,17 +97,6 @@ end
 
 -- ---- the workshop -----------------------------------------------------------------------------------------------------------------
 
-local function counter(st, biome)
-  local x, z = st.cx, st.cz
-  nova.cuboid(x - 0.48, 0, z - 0.48, x + 0.48, 0.08, z + 0.48, { color = mul(biome.counter, 0.55) }) -- a plinth
-  nova.cuboid(x - 0.5, 0.08, z - 0.5, x + 0.5, COUNTER_H, z + 0.5, { color = biome.counter })
-  nova.cuboid(x - 0.53, COUNTER_H, z - 0.53, x + 0.53, TOP_H, z + 0.53, { color = biome.top }) -- the top, a little proud of the body
-  -- two drawers on the face that looks at the camera
-  for i = -1, 1, 2 do
-    nova.cuboid(x + i * 0.25 - 0.18, 0.18, z + 0.5, x + i * 0.25 + 0.18, 0.44, z + 0.515, { color = mul(biome.counter, 0.8) })
-    nova.cuboid(x + i * 0.25 - 0.07, 0.3, z + 0.515, x + i * 0.25 + 0.07, 0.34, z + 0.54, { color = { 220, 210, 190 } })
-  end
-end
 
 -- a thin bar floating over a station, for a grind or a brew
 local function bar(x, y, z, frac, color)
@@ -128,70 +117,51 @@ local function outward(k, st)
 end
 View.outward = outward
 
--- a block the height of a counter, of one colour, with a lighter top (a crate's lid, a bin's rim)
-local function block(x, z, body, top)
-  nova.cuboid(x - 0.48, 0, z - 0.48, x + 0.48, 0.06, z + 0.48, { color = mul(body, 0.55) })
-  nova.cuboid(x - 0.5, 0.06, z - 0.5, x + 0.5, COUNTER_H, z + 0.5, { color = body })
-  nova.cuboid(x - 0.52, COUNTER_H, z - 0.52, x + 0.52, TOP_H, z + 0.52, { color = top })
-end
 
-local CRATE_WOOD, CRATE_LID = { 176, 120, 74 }, { 214, 162, 104 }
 
+-- What moves on a station: the grid (the level's scene file) draws its body, so this is the items, stickers, bottles, a brew, the bell...
 function View.draw_station(st, k, biome, t)
   local x, z = st.cx, st.cz
   local kind = st.kind
   if kind == "counter" then
-    counter(st, biome)
     View.item(st.item, x, TOP_H, z, t)
   elseif kind == "crate" then
-    -- the crate is the counter: a wooden box with slats, its lid on top, the ingredient's sticker on the lid and the front
+    -- the ingredient's sticker on the lid (it hops when something is taken) and on the front
     local bump = (st.bump and k.t - st.bump < 0.25) and math.sin((k.t - st.bump) / 0.25 * math.pi) * 0.05 or 0
-    block(x, z, CRATE_WOOD, CRATE_LID)
-    for i = 0, 2 do nova.cuboid(x - 0.5, 0.14 + i * 0.13, z + 0.5, x + 0.5, 0.17 + i * 0.13, z + 0.512, { color = mul(CRATE_WOOD, 0.72) }) end
-    nova.cuboid(x - 0.44, TOP_H, z - 0.44, x + 0.44, TOP_H + 0.02 + bump, z + 0.44, { color = mul(CRATE_LID, 1.08) })
-    nova.billboard("fx/sticker_" .. st.ing, x, TOP_H + 0.025 + bump, z, 0.86, { face = { 0, 1, 0 } })
+    nova.billboard("fx/sticker_" .. st.ing, x, TOP_H + 0.026 + bump, z, 0.86, { face = { 0, 1, 0 } })
     nova.billboard("fx/sticker_" .. st.ing, x, 0.3, z + 0.52, 0.46, { face = { 0, 0, 1 } })
   elseif kind == "bottles" then
-    -- an open crate on the counter, with as many bottles standing in it as are left (four when full)
-    counter(st, biome)
-    local wood = CRATE_WOOD
-    nova.cuboid(x - 0.42, TOP_H, z - 0.42, x + 0.42, TOP_H + 0.03, z + 0.42, { color = mul(wood, 0.7) })
-    for _, w in ipairs({ { -0.42, -0.42, 0.42, -0.36 }, { -0.42, 0.36, 0.42, 0.42 }, { -0.42, -0.42, -0.36, 0.42 }, { 0.36, -0.42, 0.42, 0.42 } }) do
-      nova.cuboid(x + w[1], TOP_H, z + w[2], x + w[3], TOP_H + 0.2, z + w[4], { color = wood })
-    end
+    -- as many bottles standing in the open crate as are left (four when full)
     local spots = { { -0.18, -0.16 }, { 0.18, -0.16 }, { -0.18, 0.18 }, { 0.18, 0.18 } }
     for i = 1, st.count or 4 do nova.model("potion", x + spots[i][1], TOP_H + 0.02, z + spots[i][2], { scale = 1.05, tint = { 220, 236, 255 } }) end
   elseif kind == "wash" then
     -- the washing window: a rune circle on the sill that glows and turns while B is held, and the bottles that came back (brown) and are washed (pale)
-    counter(st, biome)
+    local sill = TOP_H + 0.02
     local busy = k.washing == st and k.chef.work == 3 and k.t - (k.wash_t or -1) < 0.1
-    nova.billboard("fx/rune", x, TOP_H + 0.006, z, 0.86, { face = { 0, 1, 0 }, rot = t * (busy and 2.4 or 0.3), color = busy and { 140, 220, 255, 255 } or { 120, 170, 255, 150 } })
+    nova.billboard("fx/rune", x, sill + 0.006, z, 0.86, { face = { 0, 1, 0 }, rot = t * (busy and 2.4 or 0.3), color = busy and { 140, 220, 255, 255 } or { 120, 170, 255, 150 } })
     local n = 0
     for _ = 1, math.min(4, st.dirty) do
       n = n + 1
-      nova.model("potion", x - 0.3 + (n - 1) * 0.2, TOP_H + 0.02, z - 0.1, { scale = 1.0, tint = { 150, 120, 90 } })
+      nova.model("potion", x - 0.3 + (n - 1) * 0.2, sill, z - 0.1, { scale = 1.0, tint = { 150, 120, 90 } })
     end
     for _ = 1, math.min(4, st.clean) do
       n = n + 1
-      nova.model("potion", x - 0.3 + (n - 1) * 0.2, TOP_H + 0.02, z + 0.12, { scale = 1.0, tint = { 230, 244, 255 } })
+      nova.model("potion", x - 0.3 + (n - 1) * 0.2, sill, z + 0.12, { scale = 1.0, tint = { 230, 244, 255 } })
     end
     if busy and math.floor(t * 12) % 2 == 0 then nova.billboard("fx/spark", x + math.sin(t * 9) * 0.3, TOP_H + 0.3 + (t * 1.7) % 0.5, z + math.cos(t * 7) * 0.2, 0.22, { color = { 170, 230, 255, 255 } }) end
   elseif kind == "mortar" then
-    counter(st, biome)
+    -- what is in the bowl; it shakes while it is ground
     local grinding = st.item and not st.item.ground and st.progress > 0 and k.grinding == st and k.chef.work == 1
-    local wobble = grinding and math.sin(t * 30) * 0.08 or 0
-    nova.model("mortar_round", x, TOP_H, z, { scale = 1.1, rz = wobble })
+    local shake = grinding and math.sin(t * 34) * 0.03 or 0
     if st.item then
       if st.item.ground then
         nova.model("powder", x, TOP_H + 0.36, z, { scale = 1.1, tint = POWDER[st.item.id] })
       else
-        nova.model(data.ingredients[st.item.id].model, x, TOP_H + 0.34, z, { scale = 1.2 })
+        nova.model(data.ingredients[st.item.id].model, x + shake, TOP_H + 0.36, z, { scale = 1.2, rz = shake * 4 })
       end
     end
   elseif kind == "cauldron" then
-    counter(st, biome)
-    nova.model("cauldron", x, TOP_H, z, { scale = 1.2 })
-    local top = TOP_H + 0.45
+    local top = TOP_H + 0.44
     local liquid = { 96, 128, 110 }
     local glow = false
     local recipe = st.recipe and data.recipes[st.recipe]
@@ -204,7 +174,7 @@ function View.draw_station(st, k, biome, t)
       liquid = { 150, 160, 140 }
     end
     local pulse = 0.5 + 0.5 * math.sin(t * (st.state == "brewing" and 9 or 3))
-    nova.cuboid(x - 0.27, top - 0.04, z - 0.33, x + 0.27, top + 0.0 + 0.02 * pulse, z + 0.33, { color = liquid, glow = glow or st.state == "brewing" })
+    nova.model((glow or st.state == "brewing") and "k_liquid_glow" or "k_liquid", x, top - 0.02 + 0.02 * pulse, z, { tint = liquid })
     View.cauldron_eyes(st, k, t, x, z)
     if st.state == "idle" then
       -- (what is in it is shown on the screen)
@@ -231,9 +201,7 @@ function View.draw_station(st, k, biome, t)
       end
     end
   elseif kind == "hatch" then
-    -- the serving hatch: a counter with a brass plate, a bell to ring, and a striped awning over the side the customers stand on
-    counter(st, biome)
-    nova.cuboid(x - 0.34, TOP_H, z - 0.22, x + 0.1, TOP_H + 0.015, z + 0.22, { color = { 214, 170, 80 } }) -- (a brass plate to set the potion on)
+    -- the serving hatch: a bell to ring, and a striped awning over the side the customers stand on
     local ring = st.rung and k.t - st.rung < 0.4 and math.sin((k.t - st.rung) * 40) * 0.25 or 0
     nova.model("bell", x + 0.26, TOP_H + 0.02, z + 0.24, { scale = 1.3, rz = ring })
     local d = outward(k, st)
@@ -251,9 +219,7 @@ function View.draw_station(st, k, biome, t)
       end
     end
   elseif kind == "bin" then
-    -- the bin is the counter too: a metal box with a dark mouth and a sticker
-    block(x, z, { 112, 116, 130 }, { 150, 156, 170 })
-    nova.cuboid(x - 0.38, TOP_H, z - 0.38, x + 0.38, TOP_H + 0.012, z + 0.38, { color = { 28, 26, 34 } })
+    -- the bin's sticker
     nova.billboard("fx/sticker_bin", x, 0.3, z + 0.512, 0.46, { face = { 0, 0, 1 } })
   end
 end
@@ -421,52 +387,51 @@ local function tint_of(floor, biome, cx, cz, k, t)
   return mul(base, shade)
 end
 
+-- The level's grid with the floors the rules give (Free Brew can turn the hazards into plain floor, or every floor to ice): a copy, made once.
+local FLOOR_TILES = { [0] = "floor", [2] = "floor", [22] = "floor", [14] = "ice", [24] = "ice", [15] = "mud", [16] = "lava", [17] = "pulse", [18] = "belt:>", [19] = "belt:<", [20] = "belt:^", [21] = "belt:w" }
+function View.kitchen_grid(k)
+  if k.drawn_grid then return k.drawn_grid end
+  local g = k.level.grid
+  local tiles = {}
+  for r, row in ipairs(g.tiles) do
+    tiles[r] = {}
+    for c, tile in ipairs(row) do
+      -- (the start's marker is for the editor: in the game it is floor)
+      if tile == 2 then tile = ((r + c) % 2 == 1) and 22 or 0 end
+      local want = k.floor[r] and k.floor[r][c]
+      local kind = FLOOR_TILES[tile]
+      if kind and want and want ~= kind and tile ~= 2 then
+        local checker = (r + c) % 2 == 1
+        if want == "ice" then tile = checker and 24 or 14 else tile = checker and 22 or 0 end
+      end
+      tiles[r][c] = tile
+    end
+  end
+  k.drawn_grid = { cell = g.cell, x = g.x, y = g.y, z = g.z, models = g.models, tiles = tiles }
+  return k.drawn_grid
+end
+
 -- everything: `t` is the time in seconds
 function View.draw(k, biome, t)
   local cols, rows = k.cols, k.rows
   View.environment(k, biome, t)
+  -- the kitchen's floor, walls and the stations' bodies: the level's grid (its scene file), as the rules have it now
+  nova.draw_grid(View.kitchen_grid(k), { skip = { [17] = true } })
+  -- and what moves on the floor: the lava that comes and goes, and the belts' arrows
   for z = 1, rows do
     for x = 1, cols do
       local floor = k.floor[z][x]
       local cx, cz = x - 0.5, z - 0.5
-      if floor then
-        if floor == "lava" then
-          nova.cuboid(x - 1, -0.12, z - 1, x, 0.0, z, { color = { 255, 110 + 40 * math.sin(t * 3 + x), 30 }, glow = true })
-        else
-          local tn = tint_of(floor, biome, x, z, k, t)
-          -- a stone tile: a darker body, a lighter face a little smaller, a few chips in it
-          nova.cuboid(x - 1, -0.06, z - 1, x, -0.005, z, { color = mul(tn, 0.68) })
-          nova.cuboid(x - 0.965, -0.01, z - 0.965, x - 0.035, 0.012, z - 0.035, { color = mul(tn, 1 + (((x * 5 + z * 11) % 5) - 2) * 0.012) })
-          local h = (x * 31 + z * 17) % 7
-          if h < 3 and floor == "floor" then
-            local ox, oz = 0.2 + h * 0.18, 0.25 + ((x + z) % 3) * 0.2
-            nova.cuboid(x - 1 + ox, 0.012, z - 1 + oz, x - 1 + ox + 0.12, 0.02, z - 1 + oz + 0.09, { color = mul(tn, 0.86) })
-          end
-          if floor == "ice" then nova.cuboid(x - 0.9, 0.013, z - 0.9, x - 0.1, 0.02, z - 0.1, { color = { 196, 230, 255 }, glow = true }) end
-          if floor:sub(1, 5) == "belt:" then
-            local dir = ({ [">"] = { 1, 0 }, ["<"] = { -1, 0 }, ["^"] = { 0, -1 }, w = { 0, 1 } })[floor:sub(6)]
-            for i = 0, 2 do
-              local ph = ((t * 0.9 + i / 3) % 1) - 0.5
-              local px, pz = cx + dir[1] * ph * 0.9, cz + dir[2] * ph * 0.9
-              nova.cuboid(px - 0.2 + math.abs(dir[2]) * 0.0, 0.005, pz - 0.2, px + 0.2, 0.03, pz + 0.2, { color = { 250, 214, 90 } })
-            end
-          end
-        end
-      elseif k.solid[z][x] and not k.station[z][x] then
-        local line = k.level.map[z]
-        local ch = line:sub(x, x)
-        if ch == "#" then
-          local wc = biome.wall
-          if z == rows then
-            nova.cuboid(x - 1, 0, z - 0.64, x, 0.22, z - 0.36, { color = mul(wc, 0.9) })
-          else
-            nova.cuboid(x - 1, 0, z - 1, x, 0.78, z, { color = mul(wc, 0.9) })
-            nova.cuboid(x - 1.02, 0.78, z - 1.02, x + 0.02, 0.9, z + 0.02, { color = mul(wc, 1.15) })
-            for hgt = 0.26, 0.52, 0.26 do nova.cuboid(x - 1, hgt, z, x, hgt + 0.025, z + 0.012, { color = mul(wc, 0.62) }) end
-            nova.cuboid(x - 0.5, 0, z, x - 0.475, 0.26, z + 0.012, { color = mul(wc, 0.62) })
-            nova.cuboid(x - 0.25, 0.26, z, x - 0.225, 0.52, z + 0.012, { color = mul(wc, 0.62) })
-            nova.cuboid(x - 0.75, 0.26, z, x - 0.725, 0.52, z + 0.012, { color = mul(wc, 0.62) })
-          end
+      if floor == "pulse" then
+        local tn = tint_of(floor, biome, x, z, k, t)
+        nova.cuboid(x - 1, -0.06, z - 1, x, -0.005, z, { color = mul(tn, 0.68) })
+        nova.cuboid(x - 0.965, -0.01, z - 0.965, x - 0.035, 0.012, z - 0.035, { color = tn, glow = tn[1] > 200 })
+      elseif floor and floor:sub(1, 5) == "belt:" then
+        local dir = ({ [">"] = { 1, 0 }, ["<"] = { -1, 0 }, ["^"] = { 0, -1 }, w = { 0, 1 } })[floor:sub(6)]
+        for i = 0, 2 do
+          local ph = ((t * 0.9 + i / 3) % 1) - 0.5
+          local px, pz = cx + dir[1] * ph * 0.9, cz + dir[2] * ph * 0.9
+          nova.cuboid(px - 0.2, 0.02, pz - 0.2, px + 0.2, 0.035, pz + 0.2, { color = { 250, 214, 90 } })
         end
       end
     end
@@ -735,6 +700,12 @@ function View.showcase(biome, t, kind, w, h)
   }
   nova.cuboid(-40, -0.3, -40, 60, -0.02, 40, { color = biome.ground })
   nova.cuboid(0, -0.06, 1.0, 11, 0.0, 4, { color = biome.floor })
+  -- the stations' bodies, from the kitchen models of the biome (the palette its levels' grids use)
+  local palette
+  for _, lv in ipairs(data.levels) do
+    if data.biomes[lv.biome] == biome then palette = lv.grid.models; break end
+  end
+  if palette then nova.draw_grid({ cell = 1, x = 0, y = 0, z = 0, models = palette, tiles = { { 4, 5, 9, 10, 10, 3, 3, 3, 3, 8, 11 } } }) end
   for _, s in ipairs(list) do View.draw_station(s, k, biome, t) end
   nova.model("character-human", 5.5, 0, 2.3, { ry = 0.15, scale = 1.7 })
   View.item({ k = "potion", recipe = "heal" }, 5.62, 1.05, 2.2, t)

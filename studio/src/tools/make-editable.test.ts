@@ -13,29 +13,31 @@ import type { Raster } from "../lib/pixels";
 
 /// A PNG decoded to RGBA (8-bit, greyscale, RGB, palette with any bit depth up to 8, and their alpha forms), as a kit's palette needs.
 export function decodePng(bytes: Uint8Array): Raster | undefined {
+  // (a byte of an array, 0 past its end: the arrays here are read by index throughout)
+  const at = (arr: Uint8Array | null, i: number) => (arr ? arr[i] ?? 0 : 0);
   const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let w = 0, h = 0, depth = 8, type = 6;
   let palette: Uint8Array | null = null, trns: Uint8Array | null = null;
   const idat: Uint8Array[] = [];
-  for (let at = 8; at + 8 <= bytes.length; ) {
-    const len = v.getUint32(at), kind = String.fromCharCode(...bytes.subarray(at + 4, at + 8)), body = bytes.subarray(at + 8, at + 8 + len);
-    if (kind === "IHDR") { w = v.getUint32(at + 8); h = v.getUint32(at + 12); depth = body[8]; type = body[9]; if (body[12]) return undefined; }
+  for (let p = 8; p + 8 <= bytes.length; ) {
+    const len = v.getUint32(p), kind = String.fromCharCode(...bytes.subarray(p + 4, p + 8)), body = bytes.subarray(p + 8, p + 8 + len);
+    if (kind === "IHDR") { w = v.getUint32(p + 8); h = v.getUint32(p + 12); depth = at(body, 8); type = at(body, 9); if (at(body, 12)) return undefined; }
     else if (kind === "PLTE") palette = body;
     else if (kind === "tRNS") trns = body;
     else if (kind === "IDAT") idat.push(body);
-    at += 12 + len;
+    p += 12 + len;
   }
-  const channels = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }[type as 0 | 2 | 3 | 4 | 6];
+  const channels = ({ 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 } as Record<number, number>)[type];
   if (!channels || (depth !== 8 && type !== 3 && type !== 0)) return undefined;
-  const raw = inflateSync(Buffer.concat(idat));
+  const raw = new Uint8Array(inflateSync(Buffer.concat(idat)));
   const bpp = Math.max(1, (channels * depth) / 8);
   const stride = Math.ceil((w * channels * depth) / 8);
   const out = new Uint8Array(stride * h);
   for (let y = 0; y < h; y++) {
-    const f = raw[y * (stride + 1)];
+    const f = at(raw, y * (stride + 1));
     for (let x = 0; x < stride; x++) {
-      const c = raw[y * (stride + 1) + 1 + x];
-      const a = x >= bpp ? out[y * stride + x - bpp] : 0, b = y > 0 ? out[(y - 1) * stride + x] : 0, d = x >= bpp && y > 0 ? out[(y - 1) * stride + x - bpp] : 0;
+      const c = at(raw, y * (stride + 1) + 1 + x);
+      const a = x >= bpp ? at(out, y * stride + x - bpp) : 0, b = y > 0 ? at(out, (y - 1) * stride + x) : 0, d = x >= bpp && y > 0 ? at(out, (y - 1) * stride + x - bpp) : 0;
       const pa = Math.abs(b - d), pb = Math.abs(a - d), pc = Math.abs(a + b - 2 * d);
       const p = f === 1 ? a : f === 2 ? b : f === 3 ? (a + b) >> 1 : f === 4 ? (pa <= pb && pa <= pc ? a : pb <= pc ? b : d) : 0;
       out[y * stride + x] = (c + p) & 255;
@@ -44,16 +46,16 @@ export function decodePng(bytes: Uint8Array): Raster | undefined {
   const data = new Uint8ClampedArray(w * h * 4);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const o = (y * w + x) * 4, row = y * stride;
-    const sample = (i: number) => depth === 8 ? out[row + i] : (out[row + ((i * depth) >> 3)] >> (8 - depth - ((i * depth) & 7))) & ((1 << depth) - 1);
+    const sample = (i: number) => (depth === 8 ? at(out, row + i) : (at(out, row + ((i * depth) >> 3)) >> (8 - depth - ((i * depth) & 7))) & ((1 << depth) - 1));
     if (type === 3) {
       const k = sample(x);
-      data[o] = palette![k * 3]; data[o + 1] = palette![k * 3 + 1]; data[o + 2] = palette![k * 3 + 2]; data[o + 3] = trns && k < trns.length ? trns[k] : 255;
+      data[o] = at(palette, k * 3); data[o + 1] = at(palette, k * 3 + 1); data[o + 2] = at(palette, k * 3 + 2); data[o + 3] = trns && k < trns.length ? at(trns, k) : 255;
     } else if (type === 0 || type === 4) {
-      const g = type === 0 && depth < 8 ? Math.round((sample(x) * 255) / ((1 << depth) - 1)) : out[row + x * channels];
-      data[o] = data[o + 1] = data[o + 2] = g; data[o + 3] = type === 4 ? out[row + x * 2 + 1] : 255;
+      const g = type === 0 && depth < 8 ? Math.round((sample(x) * 255) / ((1 << depth) - 1)) : at(out, row + x * channels);
+      data[o] = data[o + 1] = data[o + 2] = g; data[o + 3] = type === 4 ? at(out, row + x * 2 + 1) : 255;
     } else {
-      data[o] = out[row + x * channels]; data[o + 1] = out[row + x * channels + 1]; data[o + 2] = out[row + x * channels + 2];
-      data[o + 3] = type === 6 ? out[row + x * 4 + 3] : 255;
+      data[o] = at(out, row + x * channels); data[o + 1] = at(out, row + x * channels + 1); data[o + 2] = at(out, row + x * channels + 2);
+      data[o + 3] = type === 6 ? at(out, row + x * 4 + 3) : 255;
     }
   }
   return { w, h, data };
@@ -103,9 +105,9 @@ describe.skipIf(!check)("export converted models for a look", () => {
   it("writes their .glb", async () => {
     const { parseModel } = await import("../lib/model-doc");
     const { exportGlb } = await import("../lib/glb");
-    const [dir, list] = check!.split(":");
+    const [dir = "", list = ""] = check!.split(":");
     for (const item of list.split(",")) {
-      const [project, name] = item.split("/");
+      const [project = "", name = ""] = item.split("/");
       const parsed = parseModel(readFileSync(join(__dirname, "../../../examples", project, "models", `${name}.model.json`), "utf8"));
       expect(parsed.ok).toBe(true);
       if (parsed.ok) writeFileSync(join(dir, `${name}.glb`), exportGlb(parsed.doc));

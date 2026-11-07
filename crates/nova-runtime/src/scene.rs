@@ -348,6 +348,7 @@ pub fn parse_scene(text: &str, file: &str) -> Result<Value, String> {
             "images",
             "texts",
             "tilemaps",
+            "grids",
         ],
     )?;
 
@@ -643,12 +644,123 @@ pub fn parse_scene(text: &str, file: &str) -> Result<Value, String> {
     }
     out.insert("tilemaps".into(), Value::Array(tilemaps));
 
+    // grids: 3D tilemaps, a model in each cell (as a GridMap): rows of numbers into `models`, -1 for an empty cell. Cell (column c,
+    // row r, from 0) stands at x + (c + 0.5) * cell, y, z + (r + 0.5) * cell: rows go towards +z (towards the viewer)
+    let mut grids = Vec::new();
+    for (i, item) in list("grids")?.into_iter().enumerate() {
+        let at = format!("{file}.grids[{i}]");
+        let o = item
+            .as_object()
+            .ok_or_else(|| err(&at, "each grid must be a JSON object"))?;
+        check_keys(o, &at, &["name", "cell", "x", "y", "z", "models", "tiles"])?;
+        let name = optional_name(o, &at)?;
+        take_name(&name, &at)?;
+        let cell = optional_number(o, "cell", &at, 1.0)?;
+        if !(0.01..=1000.0).contains(&cell) {
+            return Err(err(
+                &format!("{at}.cell"),
+                "\"cell\" (the size of a cell, in metres) must be from 0.01 to 1000",
+            ));
+        }
+        let models = match o.get("models") {
+            Some(Value::Array(list)) if !list.is_empty() && list.len() <= 32768 => {
+                for (k, m) in list.iter().enumerate() {
+                    if !m.as_str().is_some_and(|m| m.len() <= 200) {
+                        return Err(err(
+                            &format!("{at}.models[{k}]"),
+                            "each model is a name such as \"counter\" or \"models/counter.glb\" (\"\" draws nothing)",
+                        ));
+                    }
+                }
+                list.clone()
+            }
+            _ => {
+                return Err(err(
+                    &at,
+                    "\"models\" must be a non-empty list of model names: tile 0 is the first",
+                ));
+            }
+        };
+        let rows = match o.get("tiles") {
+            Some(Value::Array(rows)) if !rows.is_empty() => rows,
+            _ => {
+                return Err(err(
+                    &at,
+                    "\"tiles\" must be a non-empty list of rows, each a list of tile numbers (-1 for empty)",
+                ));
+            }
+        };
+        let mut checked_rows = Vec::with_capacity(rows.len());
+        for (r, row) in rows.iter().enumerate() {
+            let cells = row.as_array().ok_or_else(|| {
+                err(
+                    &format!("{at}.tiles[{r}]"),
+                    "each row must be a list of tile numbers",
+                )
+            })?;
+            for (c, v) in cells.iter().enumerate() {
+                match v.as_i64() {
+                    Some(n) if n >= -1 && n < models.len() as i64 => {}
+                    _ => {
+                        return Err(err(
+                            &format!("{at}.tiles[{r}][{c}]"),
+                            format!(
+                                "tiles are -1 (empty) or a number into \"models\" (0 to {})",
+                                models.len() - 1
+                            ),
+                        ));
+                    }
+                }
+            }
+            checked_rows.push(Value::Array(cells.clone()));
+        }
+        let mut obj = Map::new();
+        if let Some(n) = name {
+            obj.insert("name".into(), Value::String(n));
+        }
+        obj.insert("cell".into(), num(cell));
+        for key in ["x", "y", "z"] {
+            obj.insert(key.into(), num(optional_number(o, key, &at, 0.0)?));
+        }
+        obj.insert("models".into(), Value::Array(models));
+        obj.insert("tiles".into(), Value::Array(checked_rows));
+        grids.push(Value::Object(obj));
+    }
+    out.insert("grids".into(), Value::Array(grids));
+
     Ok(Value::Object(out))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn grids_are_rows_of_models() {
+        let v = parse_scene(
+            r#"{"version":1,"grids":[{"name":"kitchen","cell":1,"models":["floor","counter"],"tiles":[[1,1],[0,-1]]}]}"#,
+            "k.scene.json",
+        )
+        .unwrap();
+        let g = &v["grids"][0];
+        assert_eq!(g["name"], "kitchen");
+        assert_eq!(g["models"], serde_json::json!(["floor", "counter"]));
+        assert_eq!(g["tiles"], serde_json::json!([[1, 1], [0, -1]]));
+        assert_eq!(g["x"], 0.0);
+        let bad = |body: &str| {
+            parse_scene(
+                &format!(r#"{{"version":1,"grids":[{body}]}}"#),
+                "k.scene.json",
+            )
+            .unwrap_err()
+        };
+        assert!(
+            bad(r#"{"models":["a"],"tiles":[[1]]}"#).contains("k.scene.json.grids[0].tiles[0][0]")
+        );
+        assert!(bad(r#"{"models":[],"tiles":[[0]]}"#).contains("\"models\""));
+        assert!(bad(r#"{"models":["a"],"tiles":[[0]],"cell":0}"#).contains("cell"));
+        assert!(bad(r#"{"models":["a"],"tiles":[[0]],"tile":1}"#).contains("unknown key"));
+    }
 
     fn parse(text: &str) -> Result<Value, String> {
         parse_scene(text, "scenes/t.scene.json")

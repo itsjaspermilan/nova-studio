@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "liquid",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "shape": "cylinder", "from": [-5.5, 0, -5.5], "size": [11, 0.4, 11], "segments": 28, "emissive": 0.8, "color": "#ffffff" }
+      ],
+      "children": []
+    }
+  ]
+}

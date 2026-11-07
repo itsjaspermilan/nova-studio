@@ -332,37 +332,4 @@ const FX = `${OUT}/../fx`;
   }
 }
 
-// ---- the kitchen tileset: what the scene editor paints a level with (scenes/levels/*.scene.json). One 32 x 32 picture for each kind of cell, in the
-// order lib/levels.lua reads them: 0 floor, 1 wall, 2 start, 3 counter, 4 to 7 the crates a to d, 8 bottles, 9 mortar, 10 cauldron, 11 hatch,
-// 12 bin, 13 washing window, 14 ice, 15 mud, 16 lava, 17 flickering lava, 18 to 21 belts east, west, north, south ----------------------------------
-{
-  const T = 32, COLS = 8;
-  const im = img(T * COLS, T * 3);
-  const at = (n) => [(n % COLS) * T, Math.floor(n / COLS) * T];
-  const tile = (n, draw) => { const [ox, oy] = at(n); draw((sh) => (x, y) => sh(x - ox, y - oy), ox, oy); };
-  const sq = rrect(1, 1, 31, 31, 3);
-  const top = (color, rim) => (p) => { paint(im, p(sq), rim); paint(im, p(rrect(3, 3, 29, 26, 2)), color); };
-  tile(0, (p) => { paint(im, p(rrect(0, 0, 32, 32, 0)), [236, 226, 204]); paint(im, p(rrect(1, 1, 31, 31, 0)), [244, 236, 218]); });
-  tile(1, (p) => { paint(im, p(rrect(0, 0, 32, 32, 0)), [86, 104, 124]); for (let r = 0; r < 4; r++) paint(im, p(rrect(0, r * 8 + 7, 32, r * 8 + 8, 0)), [62, 78, 96]); });
-  tile(2, (p) => { paint(im, p(rrect(0, 0, 32, 32, 0)), [244, 236, 218]); paint(im, p(cut(circle(16, 16, 12), circle(16, 16, 8))), [70, 150, 255]); paint(im, p(circle(16, 16, 4)), [70, 150, 255]); });
-  tile(3, top([236, 206, 168], [150, 98, 76]));
-  const crate = (n, dots) => tile(n, (p) => {
-    top([214, 162, 104], [140, 90, 54])(p);
-    for (let i = 0; i < dots; i++) paint(im, p(circle(16 + (i - (dots - 1) / 2) * 7, 15, 2.6)), [90, 50, 30]);
-  });
-  crate(4, 1); crate(5, 2); crate(6, 3); crate(7, 4);
-  tile(8, (p) => { top([236, 206, 168], [150, 98, 76])(p); for (const x of [10, 16, 22]) { paint(im, p(rrect(x - 2, 9, x + 2, 13, 1)), [140, 100, 70]); paint(im, p(rrect(x - 3, 13, x + 3, 22, 2)), [200, 230, 255]); } });
-  tile(9, (p) => { top([236, 206, 168], [150, 98, 76])(p); paint(im, p(circle(16, 15, 9)), [150, 146, 160]); paint(im, p(circle(16, 15, 6)), [80, 72, 90]); });
-  tile(10, (p) => { top([236, 206, 168], [150, 98, 76])(p); paint(im, p(circle(16, 15, 10)), [80, 86, 100]); paint(im, p(circle(16, 15, 7)), [120, 220, 120]); });
-  tile(11, (p) => { top([236, 206, 168], [150, 98, 76])(p); paint(im, p(rrect(9, 19, 23, 22, 1)), [110, 80, 50]); paint(im, p(circle(16, 16, 6)), [240, 194, 74]); });
-  tile(12, (p) => { top([150, 156, 170], [90, 94, 110])(p); paint(im, p(rrect(7, 7, 25, 22, 2)), [30, 28, 36]); });
-  tile(13, (p) => { top([236, 206, 168], [150, 98, 76])(p); paint(im, p(cut(circle(16, 15, 10), circle(16, 15, 7))), [110, 170, 255]); });
-  tile(14, (p) => { paint(im, p(rrect(0, 0, 32, 32, 0)), [200, 228, 250]); paint(im, p(rrect(5, 5, 14, 8, 1)), [255, 255, 255]); paint(im, p(rrect(17, 20, 27, 23, 1)), [255, 255, 255]); });
-  tile(15, (p) => { paint(im, p(rrect(0, 0, 32, 32, 0)), [112, 80, 56]); for (const [x, y] of [[8, 9], [22, 14], [12, 23]]) paint(im, p(circle(x, y, 3)), [86, 60, 42]); });
-  tile(16, (p) => { paint(im, p(rrect(0, 0, 32, 32, 0)), [255, 120, 30]); paint(im, p(circle(10, 12, 4)), [255, 220, 90]); paint(im, p(circle(22, 22, 3)), [255, 200, 70]); });
-  tile(17, (p) => { paint(im, p(rrect(0, 0, 32, 32, 0)), [96, 76, 84]); for (let i = 0; i < 4; i++) paint(im, p(rrect(i * 8, 0, i * 8 + 4, 32, 0)), [255, 120, 30]); });
-  const belt = (n, pts) => tile(n, (p) => { paint(im, p(rrect(0, 0, 32, 32, 0)), [70, 64, 74]); paint(im, p(polygon(pts)), [250, 210, 90]); });
-  belt(18, [[8, 8], [24, 16], [8, 24]]); belt(19, [[24, 8], [8, 16], [24, 24]]); belt(20, [[8, 24], [16, 8], [24, 24]]); belt(21, [[8, 8], [16, 24], [24, 8]]);
-  writePng(`${OUT}/../kitchen/tiles.png`, im);
-}
 console.log('wrote the HD interface pictures to', OUT);
