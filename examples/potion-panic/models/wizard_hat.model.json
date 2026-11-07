@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "hat",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "shape": "cylinder", "from": [-4.6, 0, -4.6], "size": [9.2, 0.7, 9.2], "segments": 28, "color": "#5b3c9e" },
+        { "shape": "cylinder", "from": [-3, 0.7, -3], "size": [6, 1, 6], "segments": 24, "color": "#f2c14e" },
+        { "shape": "cone", "from": [-3, 1.7, -3], "size": [6, 6.4, 6], "segments": 24, "color": "#6a47b8" }
+      ],
+      "children": [
+        {
+          "name": "tip",
+          "origin": [0, 7.6, 0],
+          "rotation": [-22, 0, 0],
+          "cubes": [
+            { "shape": "cone", "from": [-1.4, 0, -1.4], "size": [2.8, 3, 2.8], "segments": 16, "color": "#6a47b8" },
+            { "shape": "sphere", "from": [-0.8, 2.6, -0.8], "size": [1.6, 1.6, 1.6], "segments": 12, "color": "#f7d873" }
+          ],
+          "children": []
+        }
+      ]
+    }
+  ]
+}

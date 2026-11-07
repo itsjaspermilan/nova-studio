@@ -5,10 +5,12 @@ local data = require("lib.data")
 local View = {}
 
 local COUNTER_H, TOP_H = 0.52, 0.6
+local HAT_LIFT = 0.42 -- (from the head's joint, at the neck, to the top of the head)
 
 -- the colour of an ingredient once it is ground to a powder
 local POWDER = {
-  glowcap = { 214, 150, 240 }, embergourd = { 250, 150, 60 }, frostroot = { 170, 226, 255 }, moonberry = { 130, 100, 210 }, sunpetal = { 255, 226, 110 }, bogbulb = { 120, 196, 110 },
+  -- (the average colour of each ingredient's own picture, a little brighter: the powder looks like what it was ground from)
+  glowcap = { 184, 104, 66 }, embergourd = { 255, 140, 30 }, frostroot = { 206, 178, 218 }, moonberry = { 140, 92, 210 }, sunpetal = { 250, 182, 36 }, bogbulb = { 220, 136, 214 },
 }
 
 local function mul(c, k) return { math.min(255, c[1] * k), math.min(255, c[2] * k), math.min(255, c[3] * k) } end
@@ -80,9 +82,8 @@ function View.item(item, x, y, z, t)
   if not item then return end
   if item.k == "ing" then
     if item.ground then
-      local c = POWDER[item.id] or { 220, 220, 220 }
-      nova.cuboid(x - 0.24, y, z - 0.24, x + 0.24, y + 0.09, z + 0.24, { color = mul(c, 0.8) })
-      nova.cuboid(x - 0.15, y + 0.09, z - 0.15, x + 0.15, y + 0.2, z + 0.15, { color = c })
+      -- a round heap of powder in the ingredient's colour
+      nova.model("powder", x, y + 0.04, z, { scale = 1.4, tint = POWDER[item.id] or { 220, 220, 220 } })
     else
       nova.model(data.ingredients[item.id].model, x, y, z, { scale = 1.8 })
     end
@@ -148,8 +149,8 @@ function View.draw_station(st, k, biome, t)
     block(x, z, CRATE_WOOD, CRATE_LID)
     for i = 0, 2 do nova.cuboid(x - 0.5, 0.14 + i * 0.13, z + 0.5, x + 0.5, 0.17 + i * 0.13, z + 0.512, { color = mul(CRATE_WOOD, 0.72) }) end
     nova.cuboid(x - 0.44, TOP_H, z - 0.44, x + 0.44, TOP_H + 0.02 + bump, z + 0.44, { color = mul(CRATE_LID, 1.08) })
-    nova.billboard("fx/sticker_" .. st.ing, x, TOP_H + 0.025 + bump, z, 0.62, { face = { 0, 1, 0 } })
-    nova.billboard("fx/sticker_" .. st.ing, x, 0.32, z + 0.52, 0.36, { face = { 0, 0, 1 } })
+    nova.billboard("fx/sticker_" .. st.ing, x, TOP_H + 0.025 + bump, z, 0.86, { face = { 0, 1, 0 } })
+    nova.billboard("fx/sticker_" .. st.ing, x, 0.3, z + 0.52, 0.46, { face = { 0, 0, 1 } })
   elseif kind == "bottles" then
     -- an open crate on the counter, with as many bottles standing in it as are left (four when full)
     counter(st, biome)
@@ -182,8 +183,7 @@ function View.draw_station(st, k, biome, t)
     nova.model("mortar_round", x, TOP_H, z, { scale = 1.1, rz = wobble })
     if st.item then
       if st.item.ground then
-        local c = POWDER[st.item.id]
-        nova.billboard("fx/puff", x, TOP_H + 0.42, z, 0.36, { face = { 0, 1, 0 }, color = { c[1], c[2], c[3], 255 } })
+        nova.model("powder", x, TOP_H + 0.36, z, { scale = 1.1, tint = POWDER[st.item.id] })
       else
         nova.model(data.ingredients[st.item.id].model, x, TOP_H + 0.34, z, { scale = 1.2 })
       end
@@ -254,7 +254,7 @@ function View.draw_station(st, k, biome, t)
     -- the bin is the counter too: a metal box with a dark mouth and a sticker
     block(x, z, { 112, 116, 130 }, { 150, 156, 170 })
     nova.cuboid(x - 0.38, TOP_H, z - 0.38, x + 0.38, TOP_H + 0.012, z + 0.38, { color = { 28, 26, 34 } })
-    nova.billboard("fx/sticker_bin", x, 0.32, z + 0.512, 0.36, { face = { 0, 0, 1 } })
+    nova.billboard("fx/sticker_bin", x, 0.3, z + 0.512, 0.46, { face = { 0, 0, 1 } })
   end
 end
 
@@ -371,15 +371,20 @@ function View.draw_chef(k, t)
     layers[#layers + 1] = { clip = "holding-both", time = 0, weight = 1, mask = { "arm-left", "arm-right" } }
   end
   nova.model("character-human", c.x, 0, c.z, { ry = ry, scale = 1.6, layers = layers })
-  -- the ring that says who is who, and the hat
+  -- the apprentice's pointed hat, on the head wherever the animation puts it (the head joint of the same pose, turned and scaled as the model is)
+  local pose = nova.model_pose("character-human", { layers = layers })
+  local head = pose and pose.head
+  if head then
+    local cs, sn = math.cos(ry), math.sin(ry)
+    local hx, hz = head.x * cs + head.z * sn, -head.x * sn + head.z * cs
+    nova.model("wizard_hat", c.x + hx * 1.6, head.y * 1.6 + HAT_LIFT, c.z + hz * 1.6, { ry = ry, scale = 1.25, rx = -0.12 })
+  end
+  -- the ring that says who is who
   local n = 32
   for i = 0, n - 1 do
     local a, b = i / n * math.pi * 2, (i + 1) / n * math.pi * 2
     nova.line3(c.x + math.cos(a) * 0.55, 0.03, c.z + math.sin(a) * 0.55, c.x + math.cos(b) * 0.55, 0.03, c.z + math.sin(b) * 0.55, { color = { 90, 170, 255 }, width = 0.08 })
   end
-  local bob = (c.moving and math.abs(math.sin(t * 14)) * 0.04 or 0)
-  nova.cuboid(c.x - 0.16, 1.0 + bob, c.z - 0.16, c.x + 0.16, 1.08 + bob, c.z + 0.16, { color = { 250, 250, 252 } })
-  nova.cuboid(c.x - 0.21, 1.08 + bob, c.z - 0.21, c.x + 0.21, 1.3 + bob, c.z + 0.21, { color = { 255, 255, 255 } })
   if c.held then View.item(c.held, c.x + math.sin(ry) * 0.5, 0.82, c.z + math.cos(ry) * 0.5, t) end
   -- which station they face: a bright frame round its top
   local st = c.target_st
@@ -662,6 +667,12 @@ function View.apothecary(t, shift, w, h)
   nova.model("cauldron", 0, 1.0, 0, { scale = 2.7 })
   -- the apprentice, waving from the table, and a plume over the pot
   nova.model("character-human", -1.7, 1.0, 0.7, { scale = 2.6, ry = 0.5, clip = "emote-yes", time = t % 1.4 })
+  local pose = nova.model_pose("character-human", { clip = "emote-yes", time = t % 1.4 })
+  if pose and pose.head then
+    local cs, sn = math.cos(0.5), math.sin(0.5)
+    local h = pose.head
+    nova.model("wizard_hat", -1.7 + (h.x * cs + h.z * sn) * 2.6, 1.0 + h.y * 2.6 + HAT_LIFT * 2.6 / 1.6 - 0.2, 0.7 + (-h.x * sn + h.z * cs) * 2.6, { ry = 0.5, scale = 1.25 * 2.6 / 1.6, rx = -0.12 })
+  end
   local tick = math.floor(t * 7)
   if tick ~= View.plume_tick then
     View.plume_tick = tick

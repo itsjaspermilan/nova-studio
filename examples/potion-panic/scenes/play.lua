@@ -403,10 +403,31 @@ end
 function Play:draw_hud(w)
   local k = self.k
   if self.tut then
+    -- the step's card: when the step changes the old card lifts away and fades, then the new one drops in with a little bounce
     local text, n = self.tut:text()
-    ui.panel(10, 8, 560, 86, "page")
-    ui.text(26, 14, "THE PRIMER  " .. n .. " / " .. Tutorial.COUNT, ui.SMALL - 2, ui.color.wine)
-    ui.text(26, 38, text, ui.MEDIUM - 2, ui.color.ink, { width = 528 })
+    local card = self.tut_card
+    if not card or card.n ~= n then
+      self.tut_card = { n = n, text = text, t = 0, old = card and card.text, old_n = card and card.n }
+      card = self.tut_card
+      if card.old then audio.sfx("page", { volume = 0.5 }) end
+    end
+    card.t = card.t + 1 / 60
+    local function draw_card(txt, num, dy, alpha)
+      local old = ui.alpha
+      ui.alpha = old * alpha
+      ui.panel(10, 8 + dy, 560, 86, "page")
+      ui.text(26, 14 + dy, "THE PRIMER  " .. num .. " / " .. Tutorial.COUNT, ui.SMALL - 2, ui.color.wine)
+      ui.text(26, 38 + dy, txt, ui.MEDIUM - 2, ui.color.ink, { width = 528 })
+      ui.alpha = old
+    end
+    if card.old and card.t < 0.22 then
+      local u = card.t / 0.22
+      draw_card(card.old, card.old_n, -u * u * 60, 1 - u)
+    else
+      local u = math.min(1, (card.t - (card.old and 0.22 or 0)) / 0.35)
+      local back = 1 + 2.2 * (u - 1) ^ 3 + 1.2 * (u - 1) ^ 2 -- (an ease that overshoots a little and settles)
+      draw_card(text, n, (1 - back) * -70, math.min(1, u * 2))
+    end
   else
     local x = 10
     for _, o in ipairs(k.orders) do

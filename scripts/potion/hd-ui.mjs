@@ -268,16 +268,16 @@ const FX = `${OUT}/../fx`;
     const im = img(128, 128);
     paint(im, circle(64, 67, 60), [0, 0, 0, 70]);
     paint(im, circle(64, 64, 60), rim);
-    paint(im, circle(64, 64, 52), [255, 250, 238]);
+    paint(im, circle(64, 64, 55), [255, 250, 238]);
     draw(im);
     writePng(`${FX}/${name}.png`, im);
   };
   for (const name of ['glowcap', 'embergourd', 'frostroot', 'moonberry', 'sunpetal', 'bogbulb']) {
     const icon = readPng(`${OUT}/ing_${name}.png`);
     label(`sticker_${name}`, [120, 82, 56], (im) => {
-      // the icon scaled into the middle 84 x 84 (box filter from 256)
-      const k = icon.w / 84;
-      for (let y = 0; y < 84; y++) for (let x = 0; x < 84; x++) {
+      // the icon scaled into the middle 98 x 98 (box filter from 256)
+      const k = icon.w / 98;
+      for (let y = 0; y < 98; y++) for (let x = 0; x < 98; x++) {
         let a = 0, r = 0, g = 0, b = 0;
         for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) {
           const sx = Math.min(icon.w - 1, Math.floor((x + (i + 0.5) / 3) * k)), sy = Math.min(icon.h - 1, Math.floor((y + (j + 0.5) / 3) * k));
@@ -285,7 +285,7 @@ const FX = `${OUT}/../fx`;
           a += al; r += icon.px[o] * al; g += icon.px[o + 1] * al; b += icon.px[o + 2] * al;
         }
         if (a <= 0) continue;
-        const o = ((y + 22) * im.w + x + 22) * 4, sa = a / 9, da = im.px[o + 3] / 255, oa = sa + da * (1 - sa);
+        const o = ((y + 15) * im.w + x + 15) * 4, sa = a / 9, da = im.px[o + 3] / 255, oa = sa + da * (1 - sa);
         im.px[o] = (r / a * sa + im.px[o] * da * (1 - sa)) / oa; im.px[o + 1] = (g / a * sa + im.px[o + 1] * da * (1 - sa)) / oa; im.px[o + 2] = (b / a * sa + im.px[o + 2] * da * (1 - sa)) / oa; im.px[o + 3] = oa * 255;
       }
     });
