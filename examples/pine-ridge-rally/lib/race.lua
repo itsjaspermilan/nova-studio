@@ -44,14 +44,16 @@ end
 -- Steers a car along the waypoints. `car.skill` (0.8 to 1) is how hard it dares to go.
 local function drive_itself(car)
   local c = car.ctl
-  -- how sharp the bend ahead is (the sharpest of the next 14 waypoints, about 140 m): it sets how far ahead the car aims (a tight bend is
-  -- turned into by aiming near, so as not to cut it) and how fast it takes it
-  local kmax = 0
-  for j = 1, 14 do kmax = math.max(kmax, math.abs(track.point((car.waypoint or 1) + j).k)) end
   local look = 3 + math.floor(math.abs(car.speed) / 8)
   local target = track.point((car.waypoint or 1) + look)
-  local tx = target.x + target.tz * (car.lane or 0)
-  local tz = target.z - target.tx * (car.lane or 0)
+  -- the car's own line (its lane) is for the straights: into a bend it comes to the middle, where there is room to slide
+  -- how sharp the bend ahead is: the sharpest of the next 14 waypoints, about 140 m (it also sets how fast the car takes it)
+  local bend = 0
+  for j = 1, 14 do bend = math.max(bend, math.abs(track.point((car.waypoint or 1) + j).k)) end
+  local lane = (car.lane or 0) * (1 - math.min(1, bend / 0.012))
+  local kmax = bend
+  local tx = target.x + target.tz * lane
+  local tz = target.z - target.tx * lane
   local want = math.atan(tx - car.x, tz - car.z)
   local err = track.wrap(want - car.heading)
   -- what is in the way? (a barrier on the outside of a bend, a tree on a straight): steer away from it and ease off
@@ -68,7 +70,7 @@ local function drive_itself(car)
   c.steer = math.max(-1, math.min(1, -err * 2.4))
   -- slow for the sharpest bend in the next stretch
   -- how hard it dares to corner: what the tyres can hold on this surface, less a margin for the weaker drivers
-  local hold = ({ road = 21, dirt = 15, rough = 11 })[car.surface] or 21
+  local hold = ({ road = 21, dirt = 12, rough = 11 })[car.surface] or 21
   local a_lat = hold * car:grip_now() * (car.skill or 0.9)
   local want_speed = math.min(car.vmax or 40, math.sqrt(a_lat / math.max(kmax, 0.0008)))
   want_speed = math.max(want_speed, 13)
@@ -78,6 +80,10 @@ local function drive_itself(car)
   c.brake = diff < -2 and math.min(1, (-diff - 2) / 8) or 0
   c.handbrake = false
   if math.abs(err) > 1.0 then c.throttle = math.min(c.throttle, 0.4) end
+  -- pinned against something (a barrier on the outside of a bend): back away from it, the wheel turned the other way, and try again
+  if (car.reversing or 0) > 0 then
+    c.throttle, c.brake, c.steer = 0, 1, -c.steer
+  end
 end
 
 -- ---- the scene ---------------------------------------------------------------------------------------------------------
@@ -399,7 +405,6 @@ function race.define(config)
   end
 
   function Race:update(dt)
-    self.crowd_time = (self.crowd_time or 0) + dt
     if self.phase ~= "countdown" and not self.player_finished_at and nova.input.pressed("pause") then
       self.paused = not self.paused
       self.pause_choice = 1
@@ -409,6 +414,7 @@ function race.define(config)
       return
     end
     if self.paused then return self:update_pause() end
+    self.crowd_time = (self.crowd_time or 0) + dt -- (the crowd keeps still while the game is paused)
 
     if self.message_time > 0 then self.message_time = self.message_time - dt end
     foliage.plant_some()
@@ -484,6 +490,10 @@ function race.define(config)
       for _, car in ipairs(self.cars) do
         local asked = car == p and not p.autopilot and nova.input.pressed("reset")
         if math.abs(car.speed) < 1.5 and car.enabled then car.stuck = (car.stuck or 0) + dt else car.stuck = 0 end
+        if car ~= p or p.autopilot then
+          if car.stuck > 1.0 and (car.reversing or 0) <= 0 then car.reversing = 1.4 end
+          if (car.reversing or 0) > 0 then car.reversing = car.reversing - dt end
+        end
         if asked or car.off_middle > 60 or ((car ~= p or p.autopilot) and car.stuck > 4) then
           self:respawn(car)
           if car == p then self:say("Back on the road", 1.5) end

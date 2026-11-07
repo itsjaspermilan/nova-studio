@@ -75,10 +75,10 @@ function roadside.build(style)
         side = -side
         next_board = p.s + 120
       end
-      if math.abs(bend[i]) > 0.22 and p.s - last_pylon > 2.5 then
+      -- (one pylon every 20 m or so on the outside of a hard bend: a pair side by side looked like one made twice)
+      if math.abs(bend[i]) > 0.22 and p.s - last_pylon > 20 then
         local out = bend[i] > 0 and 1 or -1 -- turning right: the outside is to the left
-        add("pylon", i, out * (EDGE + 0.6), 0, 0, 6.2)
-        add("pylon", i, out * (EDGE + 1.8), 0, 0, 6.2)
+        add("pylon", i, out * (EDGE + 1.4), 0, 0, 6.2)
         last_pylon = p.s
       end
     end

@@ -49,11 +49,13 @@ local function add(r, i, off, along)
   }
 end
 
--- a group of `n` people in two loose rows at `off` metres from the middle of the road, from waypoint `i`
+-- a few people scattered along a stretch of the road's edge (they stand apart, 2.5 to 5 m: a crowd is not one clump), at `off` metres from
+-- the middle of the road, from waypoint `i`
 local function group(r, i, side, off, n)
+  local along = r() * 2
   for k = 1, n do
-    local row = k % 2
-    add(r, i, side * (off + row * 1.4 + r() * 0.6), (k // 2) * 1.5 + r() * 0.5)
+    add(r, i, side * (off + r() * 4), along)
+    along = along + 2.5 + r() * 2.5
   end
 end
 
@@ -70,19 +72,19 @@ function crowd.build()
   if n < 20 then return 0 end
   local r = rng(n * 31 + 7)
   local bend = bends(n)
-  -- the start: a thick crowd along both sides of the straight, in front of the stands
-  for i = 1, 9, 2 do
-    group(r, i, 1, 11, 7)
-    group(r, i, -1, 11, 7)
+  -- the start: the biggest crowd, along both sides of the straight in front of the stands
+  for i = 1, 9, 3 do
+    group(r, i, 1, 11, 5)
+    group(r, i, -1, 11, 5)
   end
   -- the hard corners: the outside
   local length = track.length
   local last = -1e9
   for i = 1, n do
     local p = track.point(i)
-    if p.s > 40 and math.abs(bend[i]) > 0.16 and p.s - last > 24 then
+    if p.s > 40 and math.abs(bend[i]) > 0.16 and p.s - last > 40 then
       local out = bend[i] > 0 and 1 or -1 -- turning right: the outside is to the left
-      group(r, i, out, 10.5, 6 + math.floor(r() * 4))
+      group(r, i, out, 10.5, 4 + math.floor(r() * 3))
       last = p.s
     end
   end
@@ -91,9 +93,9 @@ function crowd.build()
   for i = 1, n do
     local p = track.point(i)
     if p.s > next_spot and p.s < length - 30 then
-      group(r, i, side, 11 + r() * 2, 3 + math.floor(r() * 3))
+      group(r, i, side, 11 + r() * 2, 2 + math.floor(r() * 3))
       side = -side
-      next_spot = p.s + 55 + r() * 40
+      next_spot = p.s + 90 + r() * 60
     end
   end
   return count

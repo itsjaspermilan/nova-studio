@@ -1,5 +1,6 @@
 -- How each circuit looks: the sky, the sun, the ground and mountains (horizon), the road and what stands beside it. The circuit
 -- scenes use it for the race and the menus use it for the backdrop, so the title screen changes with the circuit that is chosen.
+local sky = require("lib.sky")
 local looks = {}
 
 looks.pine_ridge = {
@@ -10,8 +11,8 @@ looks.pine_ridge = {
   } },
   horizon = "forest",
   road = "road_asphalt",
-  sky = { top = { 92, 148, 224 }, horizon = { 196, 220, 238 } },
-  sun = { dir = { -0.5, -1, -0.35 }, color = { 230, 220, 196 }, ambient = { 78, 88, 112 } },
+  sun_to = { 0.55, 0.62, 0.38 }, -- mid-morning
+  clouds = 0.4,
   trees = { "pine", "pine", "pine_dark", "birch", "autumn_tree" },
   low = { "bush", "bush", "rock" },
   wind = { direction = 30, strength = 1.0 },
@@ -20,15 +21,16 @@ looks.pine_ridge = {
 }
 
 looks.dust_valley = {
-  -- the hills (nova.terrain; heights in metres, the steepest road grade is about 10%): see scripts in the tests for the check
+  -- the hills (nova.terrain; heights in metres; the steepest road grade is about 10%)
   terrain = { waves = {
     { wavelength = 450, direction = 70, height = 6.5, phase = 1 },
     { wavelength = 280, direction = 160, height = 2.5, phase = 0.2 },
   } },
   horizon = "desert",
   road = "road_dirt",
-  sky = { top = { 120, 160, 215 }, horizon = { 240, 205, 160 } },
-  sun = { dir = { -0.35, -0.8, -0.5 }, color = { 232, 206, 170 }, ambient = { 96, 86, 84 } },
+  sun_to = { 0.78, 0.2, 0.5 }, -- the golden hour: a low sun
+  tint = { top = { 1.0, 0.96, 0.9 }, horizon = { 1.0, 0.95, 0.88 } },
+  clouds = 0.3,
   trees = { "cactus", "cactus", "dry_bush" },
   low = { "rock_red", "dry_bush", "rock" },
   tall = { "mesa" },
@@ -38,15 +40,16 @@ looks.dust_valley = {
 }
 
 looks.frost_pass = {
-  -- the hills (nova.terrain; heights in metres, the steepest road grade is about 10%): see scripts in the tests for the check
+  -- the hills (nova.terrain; heights in metres; the steepest road grade is about 10%)
   terrain = { waves = {
     { wavelength = 500, direction = 0, height = 8, phase = 0.7 },
     { wavelength = 320, direction = 90, height = 2.5, phase = 2.5 },
   } },
   horizon = "snow",
   road = "road_snow",
-  sky = { top = { 150, 175, 205 }, horizon = { 222, 232, 242 } },
-  sun = { dir = { -0.3, -0.9, -0.4 }, color = { 215, 225, 240 }, ambient = { 100, 110, 132 } },
+  sun_to = { -0.7, 0.28, -0.55 }, -- early morning, the sun low behind the pass
+  tint = { top = { 0.96, 1.0, 1.06 }, horizon = { 0.96, 0.99, 1.04 } },
+  clouds = 0.6,
   trees = { "pine_snow", "pine_snow", "pine_snow", "pine" },
   low = { "bush_snow", "rock_ice" },
   wind = { direction = 200, strength = 0.8 },
@@ -55,7 +58,7 @@ looks.frost_pass = {
 }
 
 looks.harbour_lights = {
-  -- the hills (nova.terrain; heights in metres, the steepest road grade is about 10%): see scripts in the tests for the check
+  -- the hills (nova.terrain; heights in metres; the steepest road grade is about 10%)
   terrain = { waves = {
     { wavelength = 420, direction = 30, height = 3, phase = 0.1 },
     { wavelength = 240, direction = 120, height = 1.2, phase = 2 },
@@ -63,13 +66,16 @@ looks.harbour_lights = {
   horizon = "night",
   road = "road_asphalt",
   night = true,
-  sky = { top = { 6, 10, 26 }, horizon = { 26, 34, 62 } },
+  sun_to = { 0.3, -0.45, -0.5 }, -- night: the sun is under the horizon, and the moon opposite it lights the scene:
   sun = { dir = { 0.35, -0.8, -0.45 }, color = { 70, 90, 140 }, ambient = { 26, 32, 52 } },
+  clouds = 0.2,
   trees = { "pine_dark", "pine_dark" },
   low = { "rock", "bush" },
   wind = { direction = 60, strength = 0.7 },
   look = { ao = 0.4, ao_radius = 1.0, bloom = 0.7, bloom_threshold = 0.6, saturation = 1.0, vignette = 0.2 },
   foliage = { { "grass", 4000, 0.5, { 110, 140, 130 }, { 100, 125, 120 } } },
 }
+
+for _, look in pairs(looks) do sky.make(look) end
 
 return looks
