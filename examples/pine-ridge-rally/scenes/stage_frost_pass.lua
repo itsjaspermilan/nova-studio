@@ -10,6 +10,7 @@ return require("lib.race").define {
   sky = look.sky,
   music = "race_snow",
   sun = look.sun,
-  terrain = look.terrain,
+  -- designed ground: a heightmap made by the terrain_write tool from this stage's route (the road climbs, crests, drops), see terrain/frost_pass.png
+  terrain = { heightmap = "terrain/frost_pass.png", x = -154.44, z = -290, size = 824, height = 29.937 },
   weather = { kind = "snow", count = 360, fall = 2.6, drift = 1.6 },
 }
