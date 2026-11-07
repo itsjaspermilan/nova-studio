@@ -57,6 +57,8 @@ animation and simple lights; streamed music; the C audio core's synthesis for th
 Everything we know is missing or unverified, in one place. "Device" means it needs the Retroid (or
 another physical Android device) to settle; the emulator cannot.
 
+**Nebula Swap (2026-11-07; `examples/nebula-swap`, `scripts/nebula/`):** a Panel de Pon-style game in Lua, sci-fi, with Kenney's UI, planets, skyboxes, sounds and music. Endless (three paces), Puzzle (16 puzzles made and checked by a solver, `scripts/nebula/puzzles.mjs`, each also replayed through the game's own rules by the self-test) and Garbage battle against a computer rival (`lib/ai.lua`). Blocks, cursor and sparkles are in the world layer so FXAA covers them. Tests: `tests/nebula.rs` and the F10 self-test (77 checks). Built, installed and run on the Retroid (59.7 fps, 2 ms GPU at 1080p); **not yet played by a person**: the feel of the cursor and rise speed, the sound balance (set from measured loudness only), the CPU's difficulty, and whether Lantern shows the cover (`/sdcard/Lantern/art/androidgames/com.nova.games.nebula_swap.png`). Not done: a hard-drop or stop-time rules like the original's exact numbers, a two-player mode, puzzle progress beyond "cleared".
+
 **Needs the device**
 - [~] Frame pacing (done 2026-11-05), thermals over 10+ minutes (2026-11-06: a 40-minute soak of a PARKED rally car, because the script's autodrive key was wrong, and then a
   35-minute soak with the car driving: 59.68 fps on average, GPU 3.2 to 3.9 ms, no throttling, hottest sensor 55.2 to 58.4 C; `docs/performance.md`), battery (not measured: the soak was on USB power),

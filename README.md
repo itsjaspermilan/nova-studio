@@ -70,6 +70,19 @@ controller-first (Nintendo-style button labels), runs at 60 fps on a Retroid Poc
 **Controls:** left stick steer, ZR / A accelerate, ZL / X brake and reverse, B / R handbrake (slides), Y back on the road, L change
 camera, right stick look around, + pause (keyboard: arrows or WASD, Space, R, C, Q/E, Esc).
 
+## Nebula Swap
+
+`examples/nebula-swap` is a sci-fi block-swapping puzzle game in the spirit of Panel de Pon (Tetris Attack), made for the Retroid Pocket 6 with Kenney's CC0 UI, planets, skyboxes, sounds and music. Six blocks with six shapes
+rise from below; swap two neighbours to line up three or more; blocks fall, chains and combos score big. **Endless** (three paces), **Puzzle** (sixteen puzzles with a limited number of swaps, each checked by a solver)
+and **Garbage battle** against the computer (combos and chains send grey garbage to its board; a match beside garbage breaks it open). The blocks are drawn into the world layer, so the engine's FXAA covers them.
+
+| | |
+| --- | --- |
+| ![Menu](docs/images/nebula/menu.png) | ![Endless](docs/images/nebula/endless.png) |
+| ![Garbage battle](docs/images/nebula/versus.png) | ![Puzzles](docs/images/nebula/puzzles.png) |
+
+**Controls:** d-pad or stick moves the cursor, A / B swap, L / R raise the stack, + pause (keyboard: arrows, Space or Z, Shift, Esc).
+
 ## Getting started
 
 ```sh
@@ -137,6 +150,7 @@ timers) or `examples/rally-demo` (sprites, 3D models, HUD).
 | Folder | What |
 | --- | --- |
 | `pine-ridge-rally` | the 3D rally game above |
+| `nebula-swap` | the Panel de Pon-style puzzle game above |
 | `crate-dash`, `font-gallery`, `sound-check`, `input-test` | small 2D and tooling examples |
 | `rally-demo`, `stress` | the renderer's benchmark scenes: sprites, hundreds of models, lights and shadows |
 | `skin-demo`, `ik-demo` | skeletons, clips, animation layers and two-bone IK |

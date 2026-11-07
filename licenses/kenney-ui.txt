@@ -15,3 +15,12 @@ by scripts/rally/kenney-ui.sh.
   kenney_desert.ogg (Mission Plausible), kenney_snow.ogg (Flowing Rocks), kenney_night.ogg (Space Cadet). Chosen by their titles, not yet listened to.
 - Fonts (Other/Fonts): also fonts/thick.ttf (Kenney Thick, the logo), fonts/bold.ttf (Kenney Bold, headings) and fonts/rocket.ttf (Kenney Rocket).
 - sounds/lap.ogg (Interface Sounds, confirmation_003) and sounds/best_lap.ogg (Music Jingles, Steeldrum, jingles-steel_07).
+
+Nebula Swap (examples/nebula-swap), all CC0 from the same bundle, copied by scripts/nebula/assets.sh:
+- UI Pack - Sci-fi: sprites/ui/btn_blue, btn_yellow, btn_grey, glass, metal, dot, bar_* (the buttons, panels and bars of the menus)
+- Input Prompts (Nintendo Switch set): sprites/ui/pad_*.png
+- Planets and Skyboxes Space (shrunk): sprites/bg/planet*.png, nebula.png, galaxy.png; Simple Space: sprites/bg/star_*.png
+- Interface Sounds, Digital Audio, Sci-Fi Sounds: sounds/*.ogg
+- Music Loops: music/menu.ogg (Space Cadet), play.ogg (Infinite Descent), versus.ogg (Alpha Dance), puzzle.ogg (Mission Plausible), over.ogg (Game Over)
+- Fonts: fonts/future.ttf and future_narrow.ttf (Kenney Future)
+The six blocks, the garbage plate, the cursor and the ring are drawn by scripts/nebula/gems.mjs (original, MIT like the rest of the repository).

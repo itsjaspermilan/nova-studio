@@ -1,0 +1,17 @@
+{
+  "format": 1,
+  "name": "Nebula Swap",
+  "version": "0.1.0",
+  "world_height": 540,
+  "input": {
+    "raise": ["key:ShiftLeft", "key:KeyX", "pad:l1", "pad:r1", "pad:west", "pad:l2", "axis:l2", "axis:r2"],
+    "swap": ["key:Space", "key:KeyZ", "pad:south", "pad:east"],
+    "pause": ["key:Escape", "key:KeyP", "pad:start"],
+    "menu_back": ["key:Escape"],
+    "stats": ["key:F3"],
+    "autoplay": ["key:F9"],
+    "art_box": ["key:F12"],
+    "art_icon": ["key:F11"],
+    "selftest": ["key:F10"]
+  }
+}

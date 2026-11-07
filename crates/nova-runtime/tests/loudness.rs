@@ -60,7 +60,8 @@ fn ogg(path: &Path) -> Vec<f32> {
 #[test]
 #[ignore]
 fn loudness() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/pine-ridge-rally");
+    let project = std::env::var("LOUDNESS_PROJECT").unwrap_or_else(|_| "pine-ridge-rally".into());
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples").join(project);
     for dir in ["sounds", "music"] {
         let mut names: Vec<_> = std::fs::read_dir(root.join(dir)).unwrap().map(|e| e.unwrap().path()).collect();
         names.sort();
