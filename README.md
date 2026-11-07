@@ -3,7 +3,7 @@
 **A simple, original studio for making native Android games in 2D and 3D, in the spirit of Game Maker 8.**
 Games are written in Lua. The studio has editors for scenes, sprites, 3D models, sound effects, music and race tracks.
 Everything you make is a folder of plain files (Lua, JSON, PNG, glTF, WAV/OGG) that the runtime plays directly:
-no WebView, no streamed video, no fantasy-console limits. The first target is the Retroid Pocket 6, a handheld with a controller.
+no WebView and no streamed video. The first target is the Retroid Pocket 6, a handheld with a controller.
 
 ![Pine Ridge Rally: racing at a mid-morning forest circuit](docs/images/race-pine-ridge.png)
 
