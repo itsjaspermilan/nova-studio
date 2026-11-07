@@ -3,6 +3,7 @@ name = "nova-studio"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+license.workspace = true
 description = "Nova Studio: the desktop app for making Nova games"
 build = "build.rs"
 

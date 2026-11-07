@@ -42,3 +42,6 @@ signing.properties
 
 # downloaded asset archives (kits are unzipped into a project by a script, see scripts/kenney.mjs)
 examples/*.zip
+
+# the studio's activity logs (they hold local paths)
+.nova/

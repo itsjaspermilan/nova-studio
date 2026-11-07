@@ -1,6 +1,0 @@
-{"t":1793812363986,"tool":"sfx_write","files":["sounds/gem.sfx.json","sounds/gem.wav"],"note":"sounds/gem.wav: 0.33 s"}
-{"t":1793812363990,"tool":"sfx_write","files":["sounds/jump.sfx.json","sounds/jump.wav"],"note":"sounds/jump.wav: 0.19 s"}
-{"t":1793812363992,"tool":"sfx_write","files":["sounds/land.sfx.json","sounds/land.wav"],"note":"sounds/land.wav: 0.09 s"}
-{"t":1793812363993,"tool":"sfx_write","files":["sounds/stomp.sfx.json","sounds/stomp.wav"],"note":"sounds/stomp.wav: 0.16 s"}
-{"t":1793812363997,"tool":"sfx_write","files":["sounds/hurt.sfx.json","sounds/hurt.wav"],"note":"sounds/hurt.wav: 0.30 s"}
-{"t":1793812364001,"tool":"sfx_write","files":["sounds/win.sfx.json","sounds/win.wav"],"note":"sounds/win.wav: 0.45 s"}
