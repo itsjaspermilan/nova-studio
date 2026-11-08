@@ -59,7 +59,7 @@
   "name": "nova.model",
   "kind": "function",
   "signature": "nova.model(id, x, y, z [, opts])",
-  "doc": "Draw a 3D model. Options: scale, rx, ry, rz (radians), tint, parts (turn pieces on their own: parts = { wheel = { ry = 1 } }, see nova.model_parts), layers (clips mixed by weight; a layer with `mask = { \"Spine\" }` is laid over the mix on those parts and their children only; `additive = true` adds how far the clip is from the rest pose instead), clip and time (pose it from an animation clip, see nova.model_clips; loop = false holds the last pose), layers = { { clip = \"walk\", time = t, weight = 0.7 }, { clip = \"run\", time = t2, weight = 0.3 } } (several clips mixed by weight; nova.animator does the bookkeeping), shadow = false (casts no shadow, see nova.shadows), sway = 0.3 (bends in the wind: see nova.wind), lod = \"cheaper_model\" with lod_distance (100) and lod_fade (15% of the distance) metres (draws that model instead past that distance on the ground from the camera, the two trading places by a screen-door so nothing pops; also with clip, layers or parts: the far model is then a plain model in its rest pose and no pose is made), max_distance = 80 (nothing is drawn beyond that many metres on the ground from the camera, a pose is not made either), pose_step = 0.0667 (with clip: seconds; snaps time down to a multiple, so characters at the same moment of a clip share one pose and one set of GPU joint matrices; 0 = exact times only. A crowd of 300 with random phases becomes a few dozen poses), shader = \"water\" (draw it with shaders/water.wgsl, with params = { up to 8 numbers }, textures = { up to 2 pictures } and blend = true for see-through; see nova.post and docs/shaders.md).",
+  "doc": "Draw a 3D model. Options: scale, rx, ry, rz (radians), quat = { x, y, z, w } (a turn as a quaternion, as a physics body gives it, in place of rx, ry, rz), tint, parts (turn pieces on their own: parts = { wheel = { ry = 1 } }, see nova.model_parts), layers (clips mixed by weight; a layer with `mask = { \"Spine\" }` is laid over the mix on those parts and their children only; `additive = true` adds how far the clip is from the rest pose instead), clip and time (pose it from an animation clip, see nova.model_clips; loop = false holds the last pose), layers = { { clip = \"walk\", time = t, weight = 0.7 }, { clip = \"run\", time = t2, weight = 0.3 } } (several clips mixed by weight; nova.animator does the bookkeeping), shadow = false (casts no shadow, see nova.shadows), sway = 0.3 (bends in the wind: see nova.wind), lod = \"cheaper_model\" with lod_distance (100) and lod_fade (15% of the distance) metres (draws that model instead past that distance on the ground from the camera, the two trading places by a screen-door so nothing pops; also with clip, layers or parts: the far model is then a plain model in its rest pose and no pose is made), max_distance = 80 (nothing is drawn beyond that many metres on the ground from the camera, a pose is not made either), pose_step = 0.0667 (with clip: seconds; snaps time down to a multiple, so characters at the same moment of a clip share one pose and one set of GPU joint matrices; 0 = exact times only. A crowd of 300 with random phases becomes a few dozen poses), shader = \"water\" (draw it with shaders/water.wgsl, with params = { up to 8 numbers }, textures = { up to 2 pictures } and blend = true for see-through; see nova.post and docs/shaders.md).",
   "group": "Drawing"
  },
  {
@@ -898,8 +898,8 @@
  {
   "name": "nova.stats",
   "kind": "function",
-  "signature": "nova.stats() -> { fps, lua_ms, render_ms, draws, triangles, sprites, memory_kb, entities, scenery }",
-  "doc": "How the last frame went, for an on-screen profiler: frames a second, what your scripts took and what drawing took (milliseconds), draw calls, triangles and sprites drawn, the scripts' memory (KB), live entities and static scenery pieces.",
+  "signature": "nova.stats() -> { fps, lua_ms, render_ms, draws, triangles, sprites, memory_kb, entities, scenery, physics_ms, bodies }",
+  "doc": "How the last frame went, for an on-screen profiler: frames a second, what your scripts took and what drawing took (milliseconds), draw calls, triangles and sprites drawn, the scripts' memory (KB), live entities and static scenery pieces, and the last physics step (milliseconds, within the scripts' time) and how many bodies there are.",
   "group": "Scenes and entities"
  },
  {
@@ -1809,7 +1809,7 @@
   "name": "nova.cuboid_at",
   "kind": "function",
   "signature": "nova.cuboid_at(x, y, z, width, height, depth [, { rx, ry, rz, color, glow }])",
-  "doc": "Draws a box by its middle and its size, turned by rx, ry, rz (radians): the parts of a creature built from boxes.",
+  "doc": "Draws a box by its middle and its size, turned by rx, ry, rz (radians), or by quat = { x, y, z, w } (a physics body's turn): the parts of a creature built from boxes, a crate or a door with a body.",
   "group": "3D"
  },
  {
@@ -1909,5 +1909,285 @@
   "signature": "nova.perf() -> { fps, update_ms, lua_ms, render_ms, gpu_ms, frame_p95_ms, frame_max_ms, draws, triangles, culled }",
   "doc": "What the engine measured over the last whole second: frames a second, milliseconds spent on the game's update, on its Lua and on recording the frame for the GPU (render_ms; means), the GPU's own time for a recent frame (gpu_ms, 0 where the GPU cannot be timed), the 95th percentile and the worst frame time, and what the last frame drew (draw calls, triangles, and model draws left out for being out of view). Zeros until a second has passed, and in tests. For a game that wants to show or log how it is doing (the stress benchmark) or to turn detail down.",
   "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.physics",
+  "kind": "namespace",
+  "signature": "nova.physics",
+  "doc": "Rigid bodies: things that fall, bounce, stack, roll, get knocked over and swing on hinges, in 2D and 3D (Rapier inside). The easy way is a field on an entity: `nova.entity { sprite = \"crate\", body = \"dynamic\" }` (or `body` in a scene object's props) gives it a body when it is spawned, and from then on its x, y (z), angle (2D) or quat (3D), vx, vy (vz) follow the body. Kinds: \"dynamic\" (moved by the world), \"static\" (never moves: ground, walls), \"kinematic\" (moved by your code, shoves what it meets: a lift, a door) and \"character\" (walked with self:walk). Fields: shape (\"box\", \"circle\", \"sphere\", \"capsule\", \"model\", \"hull\", \"points\"), w, h, d, radius, height, mass (kg), density, bounce (0 to 1), friction, damping, spin_damping, gravity (1 = normal, 0 = floats), sensor = true (reports what passes through, stops nothing), fixed_rotation, bullet (fast small things that must not pass through thin walls), offset, dim = 2 or 3 (otherwise 3 when it has a model or the game uses nova.collision { plane = \"xz\" }). A 2D box or circle takes its size from the hitbox or the sprite; a 3D one from the model. Every tilemap's solid tiles are solid to 2D bodies. Contacts call `on_hit(other, hit)` and `on_leave(other)` on the entity. 2D is in pixels (50 to a metre; see settings) with y down and angles clockwise on the screen; 3D in metres with y up. The world steps with the framework's fixed 60 Hz step, so a headless run gives the same numbers every time.",
+  "group": "Physics"
+ },
+ {
+  "name": "nova.physics.settings",
+  "kind": "function",
+  "signature": "nova.physics.settings{ scale = 50, gravity = { 0, 490.5 }, gravity3 = { 0, -9.81, 0 } } -> scale, gx, gy",
+  "doc": "Pixels in a metre for the 2D world (set it before the first 2D body; 50 makes a 32-pixel crate 64 cm across) and the gravity of each world (2D in pixels a second squared, down the screen by default; 3D in metres). Gives back the scale and the 2D gravity.",
+  "group": "Physics"
+ },
+ {
+  "name": "nova.physics.body",
+  "kind": "function",
+  "signature": "nova.physics.body{ kind, shape, x, y [, z], ... } -> id | nil",
+  "doc": "Makes a body without an entity (the framework calls this for `body = ...`): the same fields as on an entity, plus `angle` (2D) or `quat` / rx, ry, rz (3D), `model` with `scale`, `points` for a hull, `map` and `solid` for shape \"tiles\" (a tilemap's solid tiles as boxes), shape \"solid\" (every nova.solid triangle as one static body) and shape \"walls\" (every nova.walls box and ramp). Ids name their world: use them with the calls below.",
+  "group": "Physics"
+ },
+ {
+  "name": "nova.physics.remove",
+  "kind": "function",
+  "signature": "nova.physics.remove(id) -> boolean",
+  "doc": "Takes a body out of its world (destroying an entity does this for its body).",
+  "group": "Physics"
+ },
+ {
+  "name": "nova.physics.clear",
+  "kind": "function",
+  "signature": "nova.physics.clear()",
+  "doc": "Empties both worlds (a new scene does this).",
+  "group": "Physics"
+ },
+ {
+  "name": "nova.physics.count",
+  "kind": "function",
+  "signature": "nova.physics.count() -> number",
+  "doc": "How many bodies there are in both worlds.",
+  "group": "Physics"
+ },
+ {
+  "name": "nova.physics.step",
+  "kind": "function",
+  "signature": "nova.physics.step([dt = 1/60])",
+  "doc": "Advances both worlds. The framework calls it once a fixed step, between the entities' updates and the scene's; call it yourself only in a game that does not use nova.start.",
+  "group": "Physics"
+ },
+ {
+  "name": "nova.physics.moved",
+  "kind": "function",
+  "signature": "nova.physics.moved(out) -> n",
+  "doc": "Fills `out` with the bodies the last step moved, eleven numbers each (id, x, y, z, the turn as angle, 0, 0, 0 in 2D or qx, qy, qz, qw in 3D, then vx, vy, vz) and gives how many numbers. Sleeping bodies are left out, so a settled pile costs nothing. The framework uses it to move entities.",
+  "group": "Physics"
+ },
+ {
+  "name": "nova.physics.contacts",
+  "kind": "function",
+  "signature": "nova.physics.contacts() -> { { a, b, started, sensor, x, y, z, nx, ny, nz, speed }, ... }",
+  "doc": "The touches that began (started = true) or ended since the last call: the two bodies, where (x, y, z) and the direction from a to b (nx, ny, nz; zero for sensors), and how fast they met along it (game units a second: for how loud a knock is). The framework turns these into on_hit and on_leave.",
+  "group": "Physics"
+ },
+ {
+  "name": "nova.physics.pose",
+  "kind": "function",
+  "signature": "nova.physics.pose(id) -> x, y, angle | x, y, z, qx, qy, qz, qw",
+  "doc": "Where a body is and how it is turned.",
+  "group": "Physics"
+ },
+ {
+  "name": "nova.physics.velocity",
+  "kind": "function",
+  "signature": "nova.physics.velocity(id) -> vx, vy, spin | vx, vy, vz, wx, wy, wz",
+  "doc": "How fast a body moves and turns.",
+  "group": "Physics"
+ },
+ {
+  "name": "nova.physics.set_velocity",
+  "kind": "function",
+  "signature": "nova.physics.set_velocity(id, vx, vy [, vz])",
+  "doc": "Sets a body's speed (setting an entity's vx, vy, vz does this).",
+  "group": "Physics"
+ },
+ {
+  "name": "nova.physics.impulse",
+  "kind": "function",
+  "signature": "nova.physics.impulse(id, x, y [, z])",
+  "doc": "A sudden knock, mass times velocity (kg times game units a second): heavier things move less.",
+  "group": "Physics"
+ },
+ {
+  "name": "nova.physics.impulse_at",
+  "kind": "function",
+  "signature": "nova.physics.impulse_at(id, jx, jy, jz, px, py, pz)",
+  "doc": "A knock at a point of the body, so it starts to turn as well (2D: give jz and pz as 0).",
+  "group": "Physics"
+ },
+ {
+  "name": "nova.physics.force",
+  "kind": "function",
+  "signature": "nova.physics.force(id, x, y [, z])",
+  "doc": "A steady push (newtons, in game units) for the next step only: call it every step for wind, thrust or a magnet.",
+  "group": "Physics"
+ },
+ {
+  "name": "nova.physics.set_spin",
+  "kind": "function",
+  "signature": "nova.physics.set_spin(id, w) | (id, wx, wy, wz)",
+  "doc": "Sets how fast a body turns (radians a second; in 2D clockwise on the screen).",
+  "group": "Physics"
+ },
+ {
+  "name": "nova.physics.spin_impulse",
+  "kind": "function",
+  "signature": "nova.physics.spin_impulse(id, t) | (id, tx, ty, tz)",
+  "doc": "A sudden twist.",
+  "group": "Physics"
+ },
+ {
+  "name": "nova.physics.place",
+  "kind": "function",
+  "signature": "nova.physics.place(id, x, y [, z [, turn]])",
+  "doc": "Puts a body there at once (moving an entity's x, y, z does this); turn is an angle (2D) or a { x, y, z, w } quaternion (3D). A kinematic body glides there over the next step instead.",
+  "group": "Physics"
+ },
+ {
+  "name": "nova.physics.target",
+  "kind": "function",
+  "signature": "nova.physics.target(id, x, y [, z [, turn]])",
+  "doc": "Where a kinematic body should be after the next step: it moves there and shoves what is in the way (moving a kinematic entity does this).",
+  "group": "Physics"
+ },
+ {
+  "name": "nova.physics.teleport",
+  "kind": "function",
+  "signature": "nova.physics.teleport(id, x, y [, z])",
+  "doc": "Puts a kinematic body or a character there with no sweep (a respawn).",
+  "group": "Physics"
+ },
+ {
+  "name": "nova.physics.wake",
+  "kind": "function",
+  "signature": "nova.physics.wake(id)",
+  "doc": "Wakes a sleeping body (bodies at rest sleep and cost nothing until something touches them).",
+  "group": "Physics"
+ },
+ {
+  "name": "nova.physics.sleeping",
+  "kind": "function",
+  "signature": "nova.physics.sleeping(id) -> boolean",
+  "doc": "True while a body is at rest and asleep.",
+  "group": "Physics"
+ },
+ {
+  "name": "nova.physics.mass",
+  "kind": "function",
+  "signature": "nova.physics.mass(id) -> kg",
+  "doc": "A body's mass (0 for static and kinematic bodies).",
+  "group": "Physics"
+ },
+ {
+  "name": "nova.physics.ray",
+  "kind": "function",
+  "signature": "nova.physics.ray(x, y, dx, dy, length [, { ignore = id, sensors = false }]) -> { body, distance, x, y, nx, ny } | nil",
+  "doc": "The first 2D body a ray meets within `length` pixels (the direction need not be of unit length). nova.physics.raycast gives the entity.",
+  "group": "Physics"
+ },
+ {
+  "name": "nova.physics.ray3",
+  "kind": "function",
+  "signature": "nova.physics.ray3(x, y, z, dx, dy, dz, length [, opts]) -> { body, distance, x, y, z, nx, ny, nz } | nil",
+  "doc": "The first 3D body a ray meets.",
+  "group": "Physics"
+ },
+ {
+  "name": "nova.physics.raycast",
+  "kind": "function",
+  "signature": "nova.physics.raycast(x, y, dx, dy, length [, { ignore = entity, sensors = false }]) -> entity, hit | nil",
+  "doc": "The first 2D body on a line and its entity (a tilemap for its solid tiles; nil for a body made with nova.physics.body), with the hit as from nova.physics.ray.",
+  "group": "Physics"
+ },
+ {
+  "name": "nova.physics.raycast3",
+  "kind": "function",
+  "signature": "nova.physics.raycast3(x, y, z, dx, dy, dz, length [, opts]) -> entity, hit | nil",
+  "doc": "The first 3D body on a line and its entity: what a shot hits, what is under a cursor.",
+  "group": "Physics"
+ },
+ {
+  "name": "nova.physics.entity",
+  "kind": "function",
+  "signature": "nova.physics.entity(id) -> entity | nil",
+  "doc": "The entity a body belongs to.",
+  "group": "Physics"
+ },
+ {
+  "name": "nova.physics.joint",
+  "kind": "function",
+  "signature": "nova.physics.joint(kind, a, b | nil, { x, y, z, axis, min, max, motor, strength, length, stiffness, damping, collide }) -> joint",
+  "doc": "Joins two bodies (b = nil: to the world) at the world point x, y, z (a's position by default): \"fixed\" (glued as they are), \"hinge\" (a door, a wheel, a seesaw; turns about `axis`, in 2D about the screen's), \"ball\" (turns any way: a chain; a hinge in 2D), \"rope\" (no further apart than `length`, slack nearer; bx, by, bz for the end on b), \"spring\" (pulled back to `length` with `stiffness` and `damping`) or \"slider\" (along `axis`). min and max limit a hinge (radians) or a slider (game units); motor turns or slides it at that speed with `strength`. Entity:join is the same from an entity.",
+  "group": "Physics"
+ },
+ {
+  "name": "nova.physics.unjoint",
+  "kind": "function",
+  "signature": "nova.physics.unjoint(joint)",
+  "doc": "Breaks a joint.",
+  "group": "Physics"
+ },
+ {
+  "name": "nova.physics.move",
+  "kind": "function",
+  "signature": "nova.physics.move(id, dx, dy [, dz [, { slope = 45, step, snap, mass = 70 }]]) -> { x, y, z, ground }",
+  "doc": "Walks a character body (the framework's self:walk). Use it for a player that runs about among physics things; nova.walls.move and nova.solid.move stay the lighter choice for a level with no loose bodies.",
+  "group": "Physics"
+ },
+ {
+  "name": "push",
+  "kind": "method",
+  "signature": "self:push(vx, vy [, vz])",
+  "doc": "Adds a velocity to the entity's body (the same for a pebble and a boulder): a kick, a jump, a bounce pad.",
+  "group": "Entity methods"
+ },
+ {
+  "name": "impulse",
+  "kind": "method",
+  "signature": "self:impulse(x, y [, z])",
+  "doc": "Knocks the body (mass times velocity: heavy things move less).",
+  "group": "Entity methods"
+ },
+ {
+  "name": "force",
+  "kind": "method",
+  "signature": "self:force(x, y [, z])",
+  "doc": "Pushes the body steadily for this step (call it every step).",
+  "group": "Entity methods"
+ },
+ {
+  "name": "spin",
+  "kind": "method",
+  "signature": "self:spin(w) | self:spin(wx, wy, wz)",
+  "doc": "Sets how fast the body turns.",
+  "group": "Entity methods"
+ },
+ {
+  "name": "wake",
+  "kind": "method",
+  "signature": "self:wake()",
+  "doc": "Wakes the body if it is asleep.",
+  "group": "Entity methods"
+ },
+ {
+  "name": "sleeping",
+  "kind": "method",
+  "signature": "self:sleeping() -> boolean",
+  "doc": "True while the body is at rest and asleep.",
+  "group": "Entity methods"
+ },
+ {
+  "name": "body_id",
+  "kind": "method",
+  "signature": "self:body_id() -> id | nil",
+  "doc": "The entity's body, for the nova.physics calls.",
+  "group": "Entity methods"
+ },
+ {
+  "name": "walk",
+  "kind": "method",
+  "signature": "self:walk(dx, dy [, dz [, opts]]) -> { x, y, z, ground }",
+  "doc": "Walks a character (body = \"character\") by this much this step: it slides along walls, climbs small steps and gentle slopes, follows the ground down a little and shoves loose bodies. Sets x, y, z and on_ground. Add your own gravity to dy.",
+  "group": "Entity methods"
+ },
+ {
+  "name": "join",
+  "kind": "method",
+  "signature": "self:join(other | nil, kind, opts) -> joint",
+  "doc": "Joins this entity's body to another's (or to the world): see nova.physics.joint.",
+  "group": "Entity methods"
  }
 ]

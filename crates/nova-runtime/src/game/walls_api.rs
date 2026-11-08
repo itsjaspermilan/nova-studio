@@ -98,10 +98,36 @@ pub(super) fn install(lua: &Lua, shared: &Rc<RefCell<Shared>>, nova: &Table) -> 
         "cuboid_at",
         lua.create_function(
             move |_, (x, y, z, w, h, d, opts): (f64, f64, f64, f64, f64, f64, Option<Table>)| {
+                // `quat = { x, y, z, w }` (a physics body's turn) instead of ry, rx, rz
+                let quat = match &opts {
+                    Some(o) => o.get::<Option<Table>>("quat")?,
+                    None => None,
+                };
+                let turn = match quat {
+                    Some(q) => {
+                        let g = |k: &str, d: f64| -> mlua::Result<f32> {
+                            Ok(q.get::<Option<f64>>(k)?.unwrap_or(d) as f32)
+                        };
+                        let q =
+                            Quat::from_xyzw(g("x", 0.0)?, g("y", 0.0)?, g("z", 0.0)?, g("w", 1.0)?);
+                        Mat4::from_quat(if q.length_squared() > 1e-12 {
+                            q.normalize()
+                        } else {
+                            Quat::IDENTITY
+                        })
+                    }
+                    None => {
+                        Mat4::from_rotation_y(number_option(&opts, "ry")?.unwrap_or(0.0) as f32)
+                            * Mat4::from_rotation_x(
+                                number_option(&opts, "rx")?.unwrap_or(0.0) as f32
+                            )
+                            * Mat4::from_rotation_z(
+                                number_option(&opts, "rz")?.unwrap_or(0.0) as f32
+                            )
+                    }
+                };
                 let matrix = Mat4::from_translation(Vec3::new(x as f32, y as f32, z as f32))
-                    * Mat4::from_rotation_y(number_option(&opts, "ry")?.unwrap_or(0.0) as f32)
-                    * Mat4::from_rotation_x(number_option(&opts, "rx")?.unwrap_or(0.0) as f32)
-                    * Mat4::from_rotation_z(number_option(&opts, "rz")?.unwrap_or(0.0) as f32)
+                    * turn
                     * Mat4::from_scale(Vec3::new(w as f32, h as f32, d as f32));
                 let glow = match &opts {
                     Some(o) => o.get::<Option<bool>>("glow")?.unwrap_or(false),

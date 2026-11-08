@@ -28,6 +28,7 @@ pub mod net;
 pub mod pacing;
 pub mod pak;
 pub mod players;
+pub mod physics;
 pub mod project;
 pub mod save;
 pub mod scene;

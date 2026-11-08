@@ -414,9 +414,11 @@ function Entity:bounds() return bounds(self) end
 function Entity:overlaps(other) return overlap(self, other) end
 function Entity:is_alive() return not self._dead end
 
+local drop_body
 function Entity:destroy()
   if self._dead then return end
   self._dead = true
+  if self._body then drop_body(self) end
   W.dirty = true
   for tag in pairs(getmetatable(self).__tags) do W.counts[tag] = (W.counts[tag] or 1) - 1 end
   if self.on_destroy then self:on_destroy() end
@@ -601,6 +603,7 @@ function Entity:draw()
     model_opts.ry = self.ry or self.angle
     model_opts.rx = self.rx
     model_opts.rz = self.rz
+    model_opts.quat = rawget(self, "quat") -- a body's turn
     model_opts.parts = self.parts -- pieces turned on their own, e.g. { wheel = { rx = t } }
     model_opts.clip, model_opts.time, model_opts.loop = self.clip, self.clip_time, self.clip_loop
     model_opts.scale = self.sx
@@ -1388,6 +1391,266 @@ function ui.keyboard(o)
   return { typed = typed, current = r.current, upper = upper, keys = out }
 end
 
+-- ------------------------------------------------------------------ physics
+-- An entity with `body = "dynamic"` (or "static", "kinematic", "character") gets a rigid body in nova.physics when it is
+-- spawned, from its fields: shape ("box", "circle", "sphere", "capsule", "model", "hull", "points"; a 2D box or circle is
+-- sized from the hitbox or the sprite, a 3D one from the model), w, h, d, radius, height, mass, bounce, friction, damping,
+-- sensor, fixed_rotation, bullet, gravity. Every step the framework moves the body where the game put the entity (a
+-- kinematic body glides there, a dynamic one jumps there and keeps its new vx, vy, vz), steps the world, then copies the
+-- bodies the world moved back to x, y, z, vx, vy, vz and the turn (angle in 2D, quat in 3D), and calls on_hit(other, hit)
+-- and on_leave(other) on the entities that started and stopped touching. The solid tiles of every tilemap are solid to
+-- 2D bodies.
+local physics = nova.physics
+local bodies = {} -- body id -> entity
+local body_list = {} -- entities with a body, in the order they got it
+local moved_buf = {}
+local tiles_ready = false -- the tilemaps' solid tiles have bodies (made with the first 2D body of a scene)
+local KINDS = { dynamic = true, static = true, kinematic = true, character = true }
+
+local function body_is_3d(e)
+  local dim = e.dim
+  if dim then return dim == 3 end
+  return XZ or (rawget(e, "model") or getmetatable(e).__model) ~= nil
+end
+
+local function tile_body(tm)
+  if tm._body then physics.remove(tm._body); bodies[tm._body] = nil; tm._body = nil end
+  local solid = {}
+  for t in pairs(tm.solid) do solid[#solid + 1] = t end
+  if #solid == 0 then return end
+  local id = physics.body { dim = 2, kind = "static", shape = "tiles", map = tm.map, solid = solid, x = tm.x, y = tm.y, friction = tm.friction }
+  if id then tm._body = id; bodies[id] = tm end
+end
+
+local function ready_tiles()
+  if tiles_ready then return end
+  tiles_ready = true
+  for _, tm in ipairs(W.tags.nova_tilemap or {}) do
+    if not tm._dead then tile_body(tm) end
+  end
+end
+
+-- a 3D turn about y only, as a quaternion (what a kinematic body gets from `ry` / `angle`)
+local function yaw_quat(ry, q)
+  q = q or {}
+  q.x, q.y, q.z, q.w = 0, sin(ry * 0.5), 0, cos(ry * 0.5)
+  return q
+end
+
+local function make_body(e)
+  local kind = e.body
+  if kind == true then kind = "dynamic" end
+  if not KINDS[kind] then
+    error("body = \"" .. tostring(kind) .. "\": a body is \"dynamic\", \"static\", \"kinematic\" or \"character\"", 3)
+  end
+  local cls = getmetatable(e)
+  local three = body_is_3d(e)
+  local o = {
+    kind = kind, dim = three and 3 or 2, x = e.x, y = e.y, z = e.z, shape = e.shape, w = e.w, h = e.h, d = e.d,
+    radius = e.radius, height = e.height, mass = e.mass, density = e.density, bounce = e.bounce, friction = e.friction,
+    damping = e.damping, spin_damping = e.spin_damping, gravity = e.gravity, sensor = e.sensor,
+    fixed_rotation = e.fixed_rotation, bullet = e.bullet, offset = e.offset, points = e.points,
+  }
+  if three then
+    o.model = rawget(e, "model") or cls.__model
+    o.scale = abs(e.sx)
+    if e.quat then o.quat = e.quat else o.rx, o.ry, o.rz = e.rx, e.ry or e.angle, e.rz end
+  else
+    o.angle = e.angle
+    local shape = o.shape or "box"
+    if (shape == "box" or shape == "circle") and not o.w and not o.h and not o.radius then
+      -- the hitbox or the sprite gives the size, and its centre where the shape sits from the entity
+      local x0, y0, x1, y1, r = bounds(e)
+      if x0 then
+        if r then
+          o.shape, o.radius = "circle", r
+        else
+          o.w, o.h = x1 - x0, y1 - y0
+        end
+        if not o.offset then o.offset = { (x0 + x1) * 0.5 - e.x, (y0 + y1) * 0.5 - e.y } end
+      end
+    end
+  end
+  local id = physics.body(o)
+  if not id then error("could not make a body of shape '" .. tostring(o.shape) .. "' (too few points?)", 3) end
+  e._body, e._dyn, e._3d = id, kind == "dynamic", three
+  bodies[id] = e
+  body_list[#body_list + 1] = e
+  e._bx, e._by, e._bz, e._ba = e.x, e.y, e.z, e.angle
+  e._bvx, e._bvy, e._bvz = e.vx, e.vy, e.vz
+  if e._dyn and (e.vx ~= 0 or e.vy ~= 0 or e.vz ~= 0) then physics.set_velocity(id, e.vx, e.vy, e.vz) end
+  if not three then ready_tiles() end
+end
+
+function drop_body(e)
+  local id = e._body
+  if not id then return end
+  physics.remove(id)
+  bodies[id] = nil
+  e._body = nil
+end
+
+-- before a step: what the game did to the entities goes to their bodies
+local q_tmp = {}
+local function push_bodies()
+  local j = 0
+  for i = 1, #body_list do
+    local e = body_list[i]
+    if not e._dead and e._body then
+      j = j + 1
+      body_list[j] = e
+      local id = e._body
+      if e.x ~= e._bx or e.y ~= e._by or e.z ~= e._bz or e.angle ~= e._ba then
+        local turn
+        if e._3d then
+          turn = e.quat or ((e.ry or e.angle) ~= 0 and yaw_quat(e.ry or e.angle, q_tmp)) or nil
+        else
+          turn = e.angle
+        end
+        if e._dyn or e.body == "static" then physics.place(id, e.x, e.y, e.z, turn)
+        elseif e.body == "kinematic" then physics.target(id, e.x, e.y, e.z, turn)
+        else physics.teleport(id, e.x, e.y, e.z) end
+        e._bx, e._by, e._bz, e._ba = e.x, e.y, e.z, e.angle
+      end
+      if e._dyn and (e.vx ~= e._bvx or e.vy ~= e._bvy or e.vz ~= e._bvz) then
+        physics.set_velocity(id, e.vx, e.vy, e.vz)
+        e._bvx, e._bvy, e._bvz = e.vx, e.vy, e.vz
+      end
+    end
+  end
+  for i = #body_list, j + 1, -1 do body_list[i] = nil end
+end
+
+local hit_b = {}
+local function pull_bodies()
+  local n = physics.moved(moved_buf)
+  local buf = moved_buf
+  for k = 1, n, 11 do
+    local e = bodies[buf[k]]
+    if e and not e._dead then
+      e.x, e.y = buf[k + 1], buf[k + 2]
+      e.vx, e.vy = buf[k + 8], buf[k + 9]
+      if e._3d then
+        -- 3D: z, a quaternion (kept in one table per entity) and vz
+        e.z, e.vz = buf[k + 3], buf[k + 10]
+        local q = rawget(e, "quat")
+        if not q then q = {}; e.quat = q end
+        q.x, q.y, q.z, q.w = buf[k + 4], buf[k + 5], buf[k + 6], buf[k + 7]
+      else
+        e.angle = buf[k + 4]
+      end
+      e._bx, e._by, e._bz, e._ba = e.x, e.y, e.z, e.angle
+      e._bvx, e._bvy, e._bvz = e.vx, e.vy, e.vz
+    end
+  end
+  local contacts = physics.contacts()
+  for i = 1, #contacts do
+    local c = contacts[i]
+    local a, b = bodies[c.a], bodies[c.b]
+    if c.started then
+      if a and not a._dead and a.on_hit then c.entity = b; a:on_hit(b, c) end
+      if b and not b._dead and b.on_hit then
+        -- the same touch seen from b: the normal points the other way
+        for k, v in pairs(c) do hit_b[k] = v end
+        hit_b.a, hit_b.b, hit_b.entity = c.b, c.a, a
+        hit_b.nx, hit_b.ny, hit_b.nz = -(c.nx or 0), -(c.ny or 0), c.nz and -c.nz
+        b:on_hit(a, hit_b)
+        hit_b = {}
+      end
+    else
+      if a and not a._dead and a.on_leave then a:on_leave(b) end
+      if b and not b._dead and b.on_leave then b:on_leave(a) end
+    end
+  end
+end
+
+local function physics_step(dt)
+  if #body_list == 0 and not tiles_ready then return end
+  push_bodies()
+  physics.step(dt)
+  pull_bodies()
+end
+
+local function physics_clear()
+  physics.clear()
+  bodies, body_list, tiles_ready = {}, {}, false
+end
+
+-- What every entity with a body can do. push adds a velocity (the same for a pebble and a boulder), impulse is a
+-- real knock (mass times velocity), force a steady push for one step (call it every step), spin sets the turning speed
+-- (2D: radians a second; 3D: wx, wy, wz).
+function Entity:push(x, y, z)
+  local id = self._body
+  if not id then return end
+  local m = physics.mass(id)
+  physics.impulse(id, x * m, y * m, (z or 0) * m)
+end
+function Entity:impulse(x, y, z) if self._body then physics.impulse(self._body, x, y, z or 0) end end
+function Entity:force(x, y, z) if self._body then physics.force(self._body, x, y, z or 0) end end
+function Entity:spin(a, b, c) if self._body then physics.set_spin(self._body, a, b, c) end end
+function Entity:wake() if self._body then physics.wake(self._body) end end
+function Entity:sleeping() return self._body ~= nil and physics.sleeping(self._body) end
+function Entity:body_id() return self._body end
+-- A character (`body = "character"`) walks by dx, dy, dz this step: it slides along walls, climbs small steps and gentle
+-- slopes and shoves loose bodies. Its x, y, z become where it got to; `on_ground` says whether it stands on something.
+function Entity:walk(dx, dy, dz, opts)
+  local id = self._body
+  if not id then error("walk: this entity has no body (give it body = \"character\")", 2) end
+  local r = physics.move(id, dx, dy, dz, opts)
+  self.x, self.y = r.x, r.y
+  if r.z then self.z = r.z end
+  self._bx, self._by, self._bz = self.x, self.y, self.z
+  self.on_ground = r.ground
+  return r
+end
+-- Join this body to another (or to the world, other = nil): kind is "fixed", "hinge", "ball", "rope", "spring" or "slider";
+-- opts x, y, z (the anchor, in the world; this entity's position by default), axis, min, max, motor, strength, length,
+-- stiffness, damping, collide. Returns the joint (nova.physics.unjoint(joint) breaks it).
+local function settle(e)
+  -- a place given since the last step (in create, say) reaches the body now, so that the joint is made where the game sees it
+  if e.x ~= e._bx or e.y ~= e._by or e.z ~= e._bz or e.angle ~= e._ba then
+    local turn = e.angle
+    if e._3d then turn = e.quat or ((e.ry or e.angle) ~= 0 and yaw_quat(e.ry or e.angle)) or nil end
+    physics.place(e._body, e.x, e.y, e.z, turn)
+    if e.body == "kinematic" or e.body == "character" then physics.teleport(e._body, e.x, e.y, e.z) end
+    e._bx, e._by, e._bz, e._ba = e.x, e.y, e.z, e.angle
+  end
+end
+
+function Entity:join(other, kind, opts)
+  if not self._body then error("join: this entity has no body", 2) end
+  settle(self)
+  local b = nil
+  if other ~= nil then
+    b = other._body
+    if not b then error("join: the other entity has no body", 2) end
+    settle(other)
+  end
+  return physics.joint(kind or "hinge", self._body, b, opts)
+end
+
+-- The entity a body belongs to.
+function physics.entity(id) return bodies[id] end
+-- raycast(x, y, dx, dy, length [, opts]) in 2D / raycast3(x, y, z, dx, dy, dz, length [, opts]) in 3D: the first body on the
+-- line, as entity (nil for a body that is not an entity's), hit { body, distance, x, y, z, nx, ny, nz }; opts ignore (an entity
+-- or a body id), sensors (true to see sensors too).
+local ray_opts = {}
+local function ray_ignore(opts)
+  if not opts then return nil end
+  local ig = opts.ignore
+  ray_opts.ignore = type(ig) == "table" and ig._body or ig
+  ray_opts.sensors = opts.sensors
+  return ray_opts
+end
+function physics.raycast(x, y, dx, dy, length, opts)
+  local hit = physics.ray(x, y, dx, dy, length, ray_ignore(opts))
+  if hit then return bodies[hit.body], hit end
+end
+function physics.raycast3(x, y, z, dx, dy, dz, length, opts)
+  local hit = physics.ray3(x, y, z, dx, dy, dz, length, ray_ignore(opts))
+  if hit then return bodies[hit.body], hit end
+end
+
 local function spawn(what, x, y, props)
   local cls = finalize(resolve(what, "entity"))
   local e = setmetatable({}, cls)
@@ -1408,6 +1671,8 @@ local function spawn(what, x, y, props)
     if not cls.__model then error("a static entity needs a model (nova.entity { model = \"pine\", static = true })", 2) end
     local scale = rawget(e, "sx") or 1
     scenery.add(cls.__model, e.x, e.y, rawget(e, "z") or 0, { ry = rawget(e, "ry") or 0, scale = scale, tint = rawget(e, "tint"), lod = cls.__lod, lod_distance = cls.__lod_distance, sway = cls.__sway, max_distance = cls.__max_distance })
+    -- (scenery that things bump into: a static body, never moved)
+    if e.body then e.body = "static"; make_body(e) end
     return e
   end
   if rawget(e, "depth") == nil then e.depth = cls.__depth end
@@ -1425,7 +1690,11 @@ local function spawn(what, x, y, props)
     W.counts[tag] = W.counts[tag] + 1
   end
   if e.anim then e:play(e.anim) end
+  -- the body is made before create, so that create can join it to others or push it (a place create gives it moves it there)
+  if e.body and not e._body then make_body(e) end
   if e.create then e:create() end
+  -- a tilemap made after the first 2D body is solid to bodies too
+  if tiles_ready and rawget(e, "map") and cls.__tags.nova_tilemap then tile_body(e) end
   return e
 end
 nova.spawn = spawn
@@ -1689,7 +1958,10 @@ Tilemap.map = -1
 Tilemap.solid = {}
 
 function Tilemap:get(col, row) return raw.tilemap_get(self.map, col, row) end
-function Tilemap:set(col, row, tile) raw.tilemap_set(self.map, col, row, tile) end
+function Tilemap:set(col, row, tile)
+  raw.tilemap_set(self.map, col, row, tile)
+  if self._body then tile_body(self) end -- (a block broken or built: the tiles' body is made again)
+end
 function Tilemap:size() return raw.tilemap_size(self.map) end -- columns, rows, tile width, tile height
 -- The cell (column, row) that contains a world point.
 function Tilemap:cell_at(x, y)
@@ -2240,6 +2512,7 @@ local function leave_scene()
   for i = 1, #W.list do W.list[i]._dead = true end
   W.list, W.tags, W.counts = {}, {}, {}
   scenery.clear()
+  physics_clear()
   W.dirty, W.background, W.paused = false, nil, false
   raw.freeze_time(false)
   grids, pgrids = {}, {}
@@ -2336,7 +2609,7 @@ local function step(dt)
           if e._anim then animate(e, dt) end
           if e._clip then advance_clip(e, dt) end
           -- (a class that moves itself, with nova.walls.move say, sets `velocity = false`, so that its own vx and vz are its own)
-          if e.velocity ~= false then
+          if e.velocity ~= false and not e._dyn then
             local vx, vy, vz = e.vx, e.vy, e.vz
             if vx ~= 0 then e.x = e.x + vx * dt end
             if vy ~= 0 then e.y = e.y + vy * dt end
@@ -2345,6 +2618,7 @@ local function step(dt)
         end
       end
     end
+    physics_step(dt)
     collide_pass()
   end
   local scene = W.scene
