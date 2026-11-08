@@ -27,7 +27,7 @@ function runOne(id) {
   writeFileSync(join(dir, "save.json"), JSON.stringify({ format: 1, data }));
   // A (menu), A (Play: the map, on this level), A (play it), then F9: the computer plays
   const ev = [40, 70, 170].map((at) => ({ at, for: 2, hold: { "pad:south": 1 } }));
-  ev.push({ at: 280, for: 2, hold: { "key:F9": 1 } });
+  ev.push({ at: +(process.env.BOT_START || 280), for: 2, hold: { "key:F9": 1 } });
   writeFileSync(join(dir, "input.json"), JSON.stringify(ev));
   return new Promise((done) => {
     const p = spawn(bin, ["run", game, "--headless", "--frames", String(60 * 60 * 6), "--size", "320x180", "--input", join(dir, "input.json"), "--save-dir", dir], { stdio: ["ignore", "ignore", "pipe"] });

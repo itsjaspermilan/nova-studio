@@ -9,7 +9,7 @@
       "x": 24,
       "y": 24,
       "props": {
-        "target": 60,
+        "target": 135,
         "name": "Lava Moat",
         "music": "castle",
         "sky": "castle"

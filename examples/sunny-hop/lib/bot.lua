@@ -212,7 +212,7 @@ local function simulate(st, act, t0)
   local b = st.b
   local dt = 1 / 60
   for f = 1, MACRO do
-    local t = t0 + (st.frames + f) * dt
+    local t = t0 + (st.frames + f - 1) * dt -- (this frame's step happens at the time the clock already set)
     world.set_time(t)
     sim_inp.x, sim_inp.y = act.x, act.y or 0
     sim_inp.jump = act.j
