@@ -16,6 +16,8 @@
   "sky": [196, 216, 236],
   "far": { "kind": ["pine_snow", "nk_snow_pinetall_d", "nk_snow_pineround_e"], "density": 0.6 },
   "landmarks": { "kind": ["pine_snow"], "count": 0, "radius": 0 },
+  "roadside": { "stand": "grandstand_covered", "tent": "tent_long", "banner": "banner_red", "flag": "flag_checkers", "boards": ["billboard", "billboard_low"], "pylon": "pylon" },
+  "crowd": { "kind": ["crowd_fa", "crowd_fb", "crowd_fc", "crowd_fd", "crowd_ma", "crowd_mb", "crowd_mc", "crowd_md"], "size": 2 },
   "control": [
     [0, -140],
     [0, -50],

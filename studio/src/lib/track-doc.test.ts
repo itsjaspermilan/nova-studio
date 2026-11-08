@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  addPoint, analyse, buildTrack, callOut, movePoint, newTrack, parseTrack, pointAt, removePoint, serializeTrack, setField, trackName, drawable, type TrackDoc,
+  ROADSIDE, addPoint, analyse, buildTrack, callOut, movePoint, newTrack, parseTrack, pointAt, removePoint, serializeTrack, setField, trackName, drawable, type Point, type TrackDoc,
 } from "./track-doc";
 import { writeTrack } from "./track-write";
 import { parseScene } from "./scene-model";
@@ -141,12 +141,42 @@ describe("generating", () => {
   it("writes the track, the scene and the road through the backend's file calls", async () => {
     const written = new Map<string, string>();
     const report = await writeTrack(
-      { writeFile: async (p, t) => void written.set(p, t), writeModel: async (p, u) => void written.set(p, u.slice(0, 30)) },
+      { readFile: async (p) => written.get(p) ?? null, writeFile: async (p, t) => void written.set(p, t), writeModel: async (p, u) => void written.set(p, u.slice(0, 30)) },
       "my_stage", { ...stage(), trees: ["pine"] },
     );
     expect([...written.keys()]).toEqual(["tracks/my_stage.track.json", "scenes/my_stage.scene.json", "models/road_my_stage.glb"]);
     expect(report).toMatch(/^my_stage: /);
     expect(parseTrack(written.get("tracks/my_stage.track.json")!).ok).toBe(true);
-    await expect(writeTrack({ writeFile: async () => {}, writeModel: async () => {} }, "../x", stage())).rejects.toMatch(/Track names/);
+    await expect(writeTrack({ readFile: async () => null, writeFile: async () => {}, writeModel: async () => {} }, "../x", stage())).rejects.toMatch(/Track names/);
+  });
+  it("keeps the named objects of the scene it replaces, and nothing else of it", () => {
+    const d = { ...stage(), trees: ["pine"] };
+    const first = JSON.parse(buildTrack(d).scene);
+    first.objects.push({ kind: "race", name: "race", x: 1, y: 0, props: { grip: 0.8, sky: { top: [1, 2, 3] } } }, { kind: "pine", x: 500, y: 0 });
+    const again = JSON.parse(buildTrack({ ...d, sections: 3 }, JSON.stringify(first)).scene);
+    expect(again.objects[0]).toEqual({ kind: "race", name: "race", x: 1, y: 0, props: { grip: 0.8, sky: { top: [1, 2, 3] } } });
+    expect(again.objects.filter((o: { x: number }) => o.x === 500)).toHaveLength(0);
+    expect(again.objects.filter((o: { kind: string }) => o.kind === "section_gate")).toHaveLength(3);
+    expect(buildTrack(d, "not a scene").scene).toBe(buildTrack(d).scene);
+  });
+  it("lays out the roadside and a crowd from the waypoints, clear of the road", () => {
+    const loop = { ...newTrack(), control: [[0, -200], [0, 300], [40, 380], [120, 420], [300, 420], [380, 380], [420, 300], [420, -200], [380, -280], [300, -320], [120, -320], [40, -280]] as Point[] };
+    const kinds = ["fan_a", "fan_b"];
+    const d = { ...loop, roadside: { ...ROADSIDE }, crowd: { kind: kinds, size: 2 } };
+    const scene = JSON.parse(buildTrack(d).scene);
+    const objects: { kind: string; x: number; z: number; props?: Record<string, number> }[] = scene.objects;
+    for (const k of ["grandstand", "tent_long", "banner_green", "flag_green", "billboard", "pylon"]) expect(objects.some((o) => o.kind === k), k).toBe(true);
+    const people = objects.filter((o) => kinds.includes(o.kind));
+    expect(people.length).toBeGreaterThan(40);
+    const line = analyse(d)!.line;
+    for (const p of people) {
+      expect(Math.min(...line.map((q) => Math.hypot(q.x - p.x, q.z - p.z)))).toBeGreaterThan(8.5);
+      expect(p.props!.sx).toBeGreaterThan(1.8);
+      expect([0.9, 1.1]).toContain(p.props!.rate);
+    }
+    // the rest of the scene is as it was without them
+    const plain = JSON.parse(buildTrack(loop).scene).objects;
+    expect(objects.slice(0, plain.length)).toEqual(plain);
+    expect(JSON.parse(buildTrack({ ...d, roadside: null, crowd: { kind: [], size: 1 } }).scene).objects).toEqual(plain);
   });
 });

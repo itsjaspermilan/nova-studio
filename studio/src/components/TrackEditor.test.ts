@@ -84,6 +84,21 @@ describe("TrackEditor", () => {
     expect(parseTrack(studio.tabs[0]!.text)).toMatchObject({ ok: true, doc: { far: { kind: ["pine"], density: 0.3 }, sky: [16, 32, 48], rail: "guardrail" } });
     expect(button("Far (1)")).toBeDefined();
   });
+  it("switches the roadside on with the rally's kinds, and Generate keeps the old scene's named objects", async () => {
+    const api = await open();
+    const box = [...host.querySelectorAll("label")].find((l) => l.textContent?.trim() === "Stands, flags and billboards")!.querySelector("input")!;
+    box.click();
+    flushSync();
+    expect(parseTrack(studio.tabs[0]!.text)).toMatchObject({ ok: true, doc: { roadside: { stand: "grandstand", boards: ["billboard", "billboard_low"] } } });
+    expect(host.textContent).toContain("Billboard 2");
+    await api.writeFile("scenes/oval.scene.json", JSON.stringify({ version: 1, objects: [{ kind: "race", name: "race", x: 0, y: 0, props: { grip: 0.7 } }, { kind: "pine", x: 9, y: 0 }] }));
+    button("Generate scene and road")!.click();
+    await new Promise((r) => setTimeout(r, 50));
+    const scene = JSON.parse((await api.readFile("scenes/oval.scene.json")).text!);
+    expect(scene.objects[0]).toEqual({ kind: "race", name: "race", x: 0, y: 0, props: { grip: 0.7 } });
+    expect(scene.objects.some((o: { kind: string }) => o.kind === "grandstand")).toBe(true);
+    expect(scene.objects.some((o: { kind: string; x: number }) => o.kind === "pine" && o.x === 9)).toBe(false);
+  });
   it("says so when the file is not a track", async () => {
     await open("not json");
     expect(host.textContent).toContain("is not a track file");

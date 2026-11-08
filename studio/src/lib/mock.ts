@@ -209,7 +209,7 @@ export function createMockApi(): Api {
     generateTrack: async (name, track) => {
       need();
       const { writeTrack } = await import("./track-write");
-      return writeTrack({ writeFile: (p, t) => api.writeFile(p, t), writeModel: (p, u) => api.writeModel(p, u) }, name, track);
+      return writeTrack({ readFile: (p) => api.readFile(p).then((c) => c.text, () => null), writeFile: (p, t) => api.writeFile(p, t), writeModel: (p, u) => api.writeModel(p, u) }, name, track);
     },
     createFile: async (path, contents) => {
       need();

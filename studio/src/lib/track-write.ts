@@ -5,6 +5,8 @@ import { buildTrack, roadOf, sceneOf, serializeTrack, trackOf } from "./track-do
 import { toBase64 } from "./wav";
 
 export interface TrackIo {
+  /// A project file's text, or null when there is none.
+  readFile(path: string): Promise<string | null>;
   writeFile(path: string, text: string): Promise<void>;
   writeModel(path: string, dataUrl: string): Promise<void>;
 }
@@ -12,7 +14,7 @@ export interface TrackIo {
 /// Generates the scene and the road for a track and writes all three files. Returns a one-line report.
 export async function writeTrack(io: TrackIo, name: string, doc: TrackDoc): Promise<string> {
   if (!/^[A-Za-z0-9_-]+$/.test(name)) throw "Track names use letters, numbers, - and _.";
-  const files = buildTrack(doc); // (everything is made before anything is written)
+  const files = buildTrack(doc, await io.readFile(sceneOf(name))); // (everything is made before anything is written; the old scene's named objects are kept)
   await io.writeFile(trackOf(name), serializeTrack(doc));
   await io.writeFile(sceneOf(name), files.scene);
   await io.writeModel(roadOf(name), `data:model/gltf-binary;base64,${toBase64(files.glb)}`);

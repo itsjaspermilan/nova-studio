@@ -1,6 +1,7 @@
 -- Grass and flowers along the road, planted when a race starts: kept in Rust by nova.scenery.add, drawn only near the camera, and
 -- bent by the wind (`nova.wind`). Planted a little each frame (a script that runs too long in one frame is stopped), so the verges
--- fill in over the first moments of the countdown. None of it is solid.
+-- fill in over the first moments of the countdown. None of it is solid. What is planted, and how much, is the `plants` of the course
+-- scene's `foliage` object (entities/foliage.lua); the spots are random, a scatter along the verges.
 local track = require("lib.track")
 
 local foliage = {}
@@ -8,6 +9,9 @@ local foliage = {}
 local CELL = 16
 local bins -- waypoints by 16 m square, to find the distance to the road cheaply
 local plan, planted, next_point
+local plants -- from the scene's foliage object
+
+function foliage.set(list) plants = list end
 
 local function key(cx, cz) return cx * 100003 + cz end
 
@@ -41,17 +45,16 @@ local function road_distance(x, z)
   return math.sqrt(best)
 end
 
--- `look.foliage` is a list of { model, count, sway, tint, tint, ... }; `density` (0 to 1) scales the counts.
-function foliage.start(look, density)
+-- Starts planting the scene's plants; `density` (0 to 1) scales the counts.
+function foliage.start(density)
   plan, planted, next_point = nil, 0, 1
-  if not look.foliage or density <= 0 then return end
+  if not plants or density <= 0 then return end
   build_bins()
   plan = {}
   local n = track.count()
-  for _, spec in ipairs(look.foliage) do
-    local tints = {}
-    for i = 4, #spec do tints[#tints + 1] = spec[i] end
-    plan[#plan + 1] = { model = spec[1], per = spec[2] * density / n, sway = spec[3] or 0.5, tints = tints, carry = 0, opts = { ry = 0, scale = 1, sway = spec[3] or 0.5, max_distance = 55, shadow = false } }
+  for _, spec in ipairs(plants) do
+    local sway = spec.sway or 0.5
+    plan[#plan + 1] = { model = spec.model, per = (spec.count or 0) * density / n, tints = spec.tints or {}, carry = 0, opts = { ry = 0, scale = 1, sway = sway, max_distance = 55, shadow = false } }
   end
 end
 
@@ -90,6 +93,6 @@ function foliage.plant_some()
   end
 end
 
-function foliage.clear() plan, bins = nil, nil end
+function foliage.clear() plan, bins, plants = nil, nil, nil end
 
 return foliage

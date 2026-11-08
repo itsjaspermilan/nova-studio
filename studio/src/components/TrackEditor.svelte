@@ -1,8 +1,8 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import {
-    ROADS, ROAD_WIDTH, WARN_CLOSE, WARN_RADIUS, MIN_POINTS, addPoint, analyse, callOut, curvatureColour, movePoint, newTrack, parseTrack, pointAt, removePoint,
-    roadOf, sceneOf, serializeTrack, setField, trackName, type TrackDoc,
+    ROADS, ROADSIDE, ROAD_WIDTH, WARN_CLOSE, WARN_RADIUS, MIN_POINTS, addPoint, analyse, callOut, curvatureColour, movePoint, newTrack, parseTrack, pointAt, removePoint,
+    roadOf, sceneOf, serializeTrack, setField, trackName, type Roadside, type TrackDoc,
   } from "../lib/track-doc";
   import { studio } from "../lib/store.svelte";
 
@@ -165,7 +165,7 @@
 
   // ---- the scenery panel ------------------------------------------------------------------------------------
   const entities = $derived(studio.files.filter((f) => !f.dir && f.path.startsWith("entities/") && f.path.endsWith(".lua")).map((f) => f.path.slice(9, -4).replaceAll("/", ".")).sort());
-  type Group = "trees" | "small" | "rock" | "far" | "landmarks";
+  type Group = "trees" | "small" | "rock" | "far" | "landmarks" | "crowd";
   let group: Group = $state("trees");
   let filter = $state("");
   const GROUPS = [
@@ -174,14 +174,27 @@
     { id: "rock", label: "Rocks", hint: "Big things, now and then." },
     { id: "far", label: "Far", hint: "Distant scenery, 60 to 150 m from the road." },
     { id: "landmarks", label: "Landmarks", hint: "A few tall features well away from the road." },
+    { id: "crowd", label: "Crowd", hint: "Spectators in groups by the start, at the hard bends and along the straights." },
   ] as const;
   // the kinds picked in a group (the distant scenery and the landmarks keep theirs inside their settings)
-  const kindsOf = (d: TrackDoc, g: Group): string[] => (g === "far" ? d.far.kind : g === "landmarks" ? d.landmarks.kind : d[g]);
+  const kindsOf = (d: TrackDoc, g: Group): string[] => (g === "far" ? d.far.kind : g === "landmarks" ? d.landmarks.kind : g === "crowd" ? d.crowd.kind : d[g]);
   function withKinds(d: TrackDoc, g: Group, list: string[]): TrackDoc {
     if (g === "far") return setField(d, "far", { ...d.far, kind: list });
     if (g === "landmarks") return setField(d, "landmarks", { ...d.landmarks, kind: list });
+    if (g === "crowd") return setField(d, "crowd", { ...d.crowd, kind: list });
     return setField(d, g, list);
   }
+  // the roadside's kinds: one entity each (an empty one is left out)
+  const ROADSIDE_PARTS = [
+    { key: "stand", label: "Stands" }, { key: "tent", label: "Tents" }, { key: "banner", label: "Banners" }, { key: "flag", label: "Flags" }, { key: "pylon", label: "Pylons" },
+  ] as const;
+  const setRoadside = (part: Partial<Roadside>) => doc.roadside && set("roadside", { ...doc.roadside, ...part });
+  const setBoard = (i: number, kind: string) => {
+    if (!doc.roadside) return;
+    const boards = [doc.roadside.boards[0] ?? "", doc.roadside.boards[1] ?? ""];
+    boards[i] = kind;
+    setRoadside({ boards: boards.filter(Boolean) });
+  };
   const hex = (c: number[]) => `#${c.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
   const fromHex = (h: string): [number, number, number] => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)) as [number, number, number];
   const shown = $derived(entities.filter((e) => e.toLowerCase().includes(filter.trim().toLowerCase())));
@@ -362,7 +375,29 @@
             {#each entities.includes(doc.rail) ? entities : [doc.rail, ...entities] as k (k)}<option value={k}>{k}</option>{/each}
           </select>
         </label>
+        <label>Crowd size
+          <input type="number" min="0.05" max="20" step="0.1" value={doc.crowd.size} onchange={(e) => set("crowd", { ...doc.crowd, size: Math.max(0.05, Math.min(20, number(e) || 1)) })} disabled={!doc.crowd.kind.length} title="The spectators' scale" />
+        </label>
         <label class="row"><input type="checkbox" checked={doc.lamps} onchange={(e) => set("lamps", e.currentTarget.checked)} /> Street lamps</label>
+        <label class="row"><input type="checkbox" checked={!!doc.roadside} onchange={(e) => set("roadside", e.currentTarget.checked ? { ...ROADSIDE } : null)} /> Stands, flags and billboards</label>
+        {#if doc.roadside}
+          {#each ROADSIDE_PARTS as part (part.key)}
+            <label>{part.label}
+              <select value={doc.roadside[part.key]} onchange={(e) => setRoadside({ [part.key]: e.currentTarget.value })}>
+                <option value="">(none)</option>
+                {#each entities.includes(doc.roadside[part.key]) || !doc.roadside[part.key] ? entities : [doc.roadside[part.key], ...entities] as k (k)}<option value={k}>{k}</option>{/each}
+              </select>
+            </label>
+          {/each}
+          {#each [0, 1] as i (i)}
+            <label>Billboard {i + 1}
+              <select value={doc.roadside.boards[i] ?? ""} onchange={(e) => setBoard(i, e.currentTarget.value)}>
+                <option value="">(none)</option>
+                {#each entities.includes(doc.roadside.boards[i] ?? "") || !doc.roadside.boards[i] ? entities : [doc.roadside.boards[i]!, ...entities] as k (k)}<option value={k}>{k}</option>{/each}
+              </select>
+            </label>
+          {/each}
+        {/if}
         <label>Sky <input type="color" value={hex(doc.sky)} onchange={(e) => set("sky", fromHex(e.currentTarget.value))} title="The scene's background colour" /></label>
         <label>Seed
           <span class="unit">

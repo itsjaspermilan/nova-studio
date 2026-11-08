@@ -43,7 +43,15 @@ export interface TrackDoc {
   far: { kind: string[]; density: number };
   /// A few tall features well away from the road: `count` of them at about `radius` metres from the route's middle (0 for none).
   landmarks: { kind: string[]; count: number; radius: number };
+  /// The life beside the road (null for none): the kinds of the stands, long tents, banners and flags at the start, the two billboards
+  /// that take turns on the straights, and the pylons on the outside of the hard bends. An empty kind is left out.
+  roadside: Roadside | null;
+  /// Spectators in groups beside the road (by the start, at the hard bends, along the straights): the kinds they are picked from (none: no
+  /// crowd) and their size (the models' scale).
+  crowd: { kind: string[]; size: number };
 }
+
+export interface Roadside { stand: string; tent: string; banner: string; flag: string; boards: string[]; pylon: string }
 
 export type Rgb = [number, number, number];
 
@@ -60,6 +68,7 @@ export function newTrack(): TrackDoc {
     control: [[0, -60], [0, 40], [30, 110], [100, 140], [170, 110], [200, 40], [170, -30], [100, -60]],
     sections: 5, leadIn: 40, runout: 90, seed: 1, trees: [], small: [], rock: [], density: 0.4, rocks: 0.05, lamps: false,
     rail: "guardrail", sky: [138, 182, 224], far: { kind: [], density: 0 }, landmarks: { kind: [], count: 0, radius: 150 },
+    roadside: null, crowd: { kind: [], size: 1 },
   };
 }
 
@@ -108,9 +117,19 @@ export function parseTrack(text: string): Parsed {
       sky: rgb(o.sky, d.sky),
       far: { kind: names(record(o.far).kind), density: num(record(o.far).density, 0, 0, 1) },
       landmarks: { kind: names(record(o.landmarks).kind), count: Math.round(num(record(o.landmarks).count, 0, 0, 200)), radius: num(record(o.landmarks).radius, d.landmarks.radius, 0, 2000) },
+      roadside: o.roadside && typeof o.roadside === "object" && !Array.isArray(o.roadside) ? roadsideOf(record(o.roadside)) : null,
+      crowd: { kind: names(record(o.crowd).kind), size: num(record(o.crowd).size, 1, 0.05, 20) },
     },
   };
 }
+
+const kindOf = (v: unknown) => (typeof v === "string" ? v : "");
+const roadsideOf = (o: Record<string, unknown>): Roadside => ({
+  stand: kindOf(o.stand), tent: kindOf(o.tent), banner: kindOf(o.banner), flag: kindOf(o.flag), boards: names(o.boards).slice(0, 2), pylon: kindOf(o.pylon),
+});
+
+/// What a new track's roadside starts as when it is switched on (the kinds Pine Ridge Rally has).
+export const ROADSIDE: Roadside = { stand: "grandstand", tent: "tent_long", banner: "banner_green", flag: "flag_green", boards: ["billboard", "billboard_low"], pylon: "pylon" };
 
 export function serializeTrack(doc: TrackDoc): string {
   const { control, ...rest } = doc;
@@ -256,20 +275,31 @@ export const roadOf = (name: string) => `models/road_${name}.glb`;
 export const trackOf = (name: string) => `tracks/${name}.track.json`;
 export const trackName = (path: string) => path.slice(path.lastIndexOf("/") + 1).replace(/\.track\.json$/i, "");
 
-/// What the track becomes: the scene (start and finish, gates, waypoints, grid, scenery) and the road ribbon.
-export function buildTrack(doc: TrackDoc): TrackFiles {
+/// What the track becomes: the scene (start and finish, gates, waypoints, grid, scenery, roadside, crowd) and the road ribbon. `previous` is the
+/// scene being replaced, if there is one: its named objects (settings a person keeps in the scene, such as a game's `race` object; the
+/// generator names nothing it places) are kept, first in the new scene.
+export function buildTrack(doc: TrackDoc, previous?: string | null): TrackFiles {
   if (doc.control.length < MIN_POINTS) throw `a track needs at least ${MIN_POINTS} points`;
   const spec = {
     seed: doc.seed, control: doc.control, open: doc.open, road: doc.road, rail: doc.rail, sky: doc.sky,
     sections: doc.sections, leadIn: doc.leadIn, runout: doc.runout, lamps: doc.lamps,
     trees: doc.trees, small: doc.small, rock: doc.rock, density: doc.trees.length ? doc.density : 0, rocks: doc.rocks,
     far: doc.far, landmarks: doc.landmarks.kind.length ? doc.landmarks : { kind: [], count: 0, radius: 0 },
+    roadside: doc.roadside, crowd: doc.crowd, keep: keptObjects(previous),
   };
   const { scene, stats } = layout(spec);
   const parsed = parseScene(JSON.stringify(scene));
   if (!parsed.ok) throw `the layout is not a valid scene: ${parsed.error}`;
   const glb: Uint8Array = roadGlb(doc.control, doc.road, doc.open);
   return { scene: serializeScene(parsed.scene), glb, report: `${stats.length} m, ${stats.objects} objects, tightest bend ~${stats.minRadius} m` };
+}
+
+/// The named objects of a scene file (none if it is missing or not a scene).
+export function keptObjects(scene: string | null | undefined): unknown[] {
+  if (!scene) return [];
+  const parsed = parseScene(scene);
+  if (!parsed.ok) return [];
+  return (parsed.scene.objects ?? []).filter((o) => typeof (o as { name?: unknown }).name === "string");
 }
 
 export { ROAD_COLOURS };

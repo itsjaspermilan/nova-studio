@@ -19,6 +19,11 @@ A screen in the studio for laying out a racing circuit or a rally stage without 
   Landmarks (a few tall features well away from the road); a slider each for trees, rocks and the distant scenery, and how many landmarks at
   how many metres from the route's middle; the barrier on the outside of the bends; street lamps; the sky colour (the scene's background); a
   seed (**Shuffle** gives different scenery on the same road). A kind listed twice (in the file) is picked twice as often.
+- **Crowd**: tick the spectator kinds (the Crowd group) and their size: groups of people by the start, on the outside of the hard bends and
+  along the straights, turned to the road, each with its own size, hop, clip speed and phase as props (the crowd has its own random sequence,
+  so the same road always gets the same crowd).
+- **Stands, flags and billboards**: a stand each side of the start straight, long tents and banners there, flags along it, billboards on the
+  straights (two kinds, taking turns) and pylons on the outside of the hard bends, each kept clear of the road. Pick the kind of each part.
 - **Generate scene and road** writes the output (see below) and saves the track. Run it again after any change; it replaces them.
 - **Pace notes**: the corners along the route as a co-driver would call them ("Left 3"): direction and grade 1 (hairpin) to 6 (gentle),
   with the metres from the start line. The thresholds are those of `pace_notes` in `examples/pine-ridge-rally/lib/race.lua`.
@@ -27,13 +32,15 @@ A screen in the studio for laying out a racing circuit or a rally stage without 
 
 | File | What |
 |---|---|
-| `tracks/<name>.track.json` | What the editor edits: `open`, `road`, `control` ([x, z] metres), `sections`, `leadIn`, `runout`, `seed`, `trees`, `small`, `rock`, `density`, `rocks`, `lamps`, `rail` (the barrier's kind), `sky` ([r, g, b]), `far` (`{ kind: [...], density }`), `landmarks` (`{ kind: [...], count, radius }`). Pine Ridge Rally's eight courses are examples. |
+| `tracks/<name>.track.json` | What the editor edits: `open`, `road`, `control` ([x, z] metres), `sections`, `leadIn`, `runout`, `seed`, `trees`, `small`, `rock`, `density`, `rocks`, `lamps`, `rail` (the barrier's kind), `sky` ([r, g, b]), `far` (`{ kind: [...], density }`), `landmarks` (`{ kind: [...], count, radius }`), `roadside` (`{ stand, tent, banner, flag, boards: [two kinds], pylon }` or null), `crowd` (`{ kind: [...], size }`). Pine Ridge Rally's eight courses are examples. |
 | `scenes/<name>.scene.json` | Generated: start line and arch, finish arch and section gates (stage), waypoints every 10 m, the grid, scenery. Open it in the scene editor. |
 | `models/road_<name>.glb` | Generated: the road as one ribbon mesh. Draw it with `nova.model("road_<name>", 0, 0, 0)`. |
 
-The scene is the output: editing it by hand is lost the next time you generate. The scene refers to entity kinds the game must have
+The scene is the output: editing it by hand is lost the next time you generate, except for its **named** objects (an object with a `name`),
+which are kept, first in the new scene: that is where a game keeps a course's settings (Pine Ridge Rally's `race` and `foliage` objects).
+The generator names nothing it places. The scene refers to entity kinds the game must have
 (`road_start`, `start_arch`, `tower`, `section_gate`, `waypoint`, `grid_slot`, `flag_checkers`, `banner_green`, `guardrail`, `sign_chevron`,
-`tires`, `hay_bale`, `lamp`); the editor does not make them.
+`tires`, `hay_bale`, `lamp`, and the roadside and crowd kinds chosen); the editor does not make them.
 
 ## How it is built
 

@@ -5,7 +5,6 @@ local track = require("lib.track")
 local lamps = require("lib.lamps")
 local grid = require("lib.grid")
 local fx = require("lib.fx")
-local roadside = require("lib.roadside")
 local stage_lib = require("lib.stage")
 local transition = require("lib.transition")
 local pars = require("lib.pars")
@@ -112,8 +111,7 @@ function race.define(config)
     track.open = self.stage
     track.ensure()
     assert(track.count() > 10, "this scene has no waypoints: place `waypoint` objects along the road")
-    nova.log("rally: roadside " .. roadside.build(config.horizon) .. " props")
-    nova.log("rally: crowd " .. crowd.build() .. " people")
+    nova.log("rally: crowd " .. crowd.count() .. " people") -- (the stands, flags, billboards and spectators are objects of the scene file)
     local look = looks[state.look_id()]
     state.apply_look(look)
     -- the circuit's look with a speed blur added each frame (see Race:update_camera)
@@ -124,7 +122,7 @@ function race.define(config)
       self.look_now.fxaa = state.smooth and 1 or 0
       self.blur_now = 0
     end
-    foliage.start(look, state.effects and 1 or 0)
+    foliage.start(state.effects and 1 or 0)
     self.length = track.length
     if self.stage then self:build_stage() end
     self.phase = "countdown"

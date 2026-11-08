@@ -17,7 +17,6 @@ looks.pine_ridge = {
   low = { "nk_bush_large", "nk_rock_largeC", "nk_stump", "bush" },
   wind = { direction = 30, strength = 1.0 },
   look = { ao = 0.45, ao_radius = 1.0, bloom = 0.3, bloom_threshold = 0.78, saturation = 1.08 },
-  foliage = { { "grass", 7000, 0.55, { 255, 255, 255 }, { 232, 255, 220 }, { 255, 246, 205 } }, { "flowers", 700, 0.4 } },
 }
 
 looks.dust_valley = {
@@ -36,7 +35,6 @@ looks.dust_valley = {
   tall = { "mesa" },
   wind = { direction = 100, strength = 1.5 },
   look = { ao = 0.4, ao_radius = 1.0, bloom = 0.4, bloom_threshold = 0.74, saturation = 1.06 },
-  foliage = { { "grass", 3500, 0.5, { 255, 226, 150 }, { 240, 205, 140 }, { 255, 240, 190 } } },
 }
 
 looks.frost_pass = {
@@ -54,7 +52,6 @@ looks.frost_pass = {
   low = { "bush_snow", "nk_rockice_largeC", "nk_rockice_largeA" },
   wind = { direction = 200, strength = 0.8 },
   look = { ao = 0.35, ao_radius = 1.0, bloom = 0.35, bloom_threshold = 0.8, saturation = 1.0 },
-  foliage = { { "grass", 1800, 0.4, { 235, 245, 240 }, { 220, 235, 225 } } },
 }
 
 looks.harbour_lights = {
@@ -73,7 +70,6 @@ looks.harbour_lights = {
   low = { "nk_rock_largeC", "bush" },
   wind = { direction = 60, strength = 0.7 },
   look = { ao = 0.4, ao_radius = 1.0, bloom = 0.7, bloom_threshold = 0.6, saturation = 1.0, vignette = 0.2 },
-  foliage = { { "grass", 4000, 0.5, { 110, 140, 130 }, { 100, 125, 120 } } },
 }
 
 for _, look in pairs(looks) do sky.make(look) end

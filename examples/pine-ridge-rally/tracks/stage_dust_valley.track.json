@@ -16,6 +16,8 @@
   "sky": [236, 190, 140],
   "far": { "kind": ["mesa"], "density": 0.22 },
   "landmarks": { "kind": ["mesa"], "count": 14, "radius": 190 },
+  "roadside": { "stand": "grandstand_covered", "tent": "tent_long", "banner": "banner_red", "flag": "flag_red", "boards": ["billboard", "billboard_low"], "pylon": "pylon" },
+  "crowd": { "kind": ["crowd_fa", "crowd_fb", "crowd_fc", "crowd_fd", "crowd_ma", "crowd_mb", "crowd_mc", "crowd_md"], "size": 2 },
   "control": [
     [0, -140],
     [0, -60],

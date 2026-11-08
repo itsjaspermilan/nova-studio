@@ -102,6 +102,157 @@ export function paceNotes(line, curv, open = false, leadIn = 40, spacing = 5) {
   return notes;
 }
 
+// ---- the course as the game sees it ------------------------------------------------------------------------------------
+// The roadside and the crowd are laid out from the scene's own waypoints (rounded as they are stored), with the sums of Pine Ridge Rally's
+// lib/track.lua, so that they land where the game used to put them when it placed them itself at the start of a race.
+export function courseOf(waypoints, open) {
+  const pts = waypoints.map((w) => ({ x: w.x, z: w.z }));
+  const n = pts.length;
+  let total = 0;
+  pts.forEach((p, k) => {
+    const i = k + 1;
+    const a = open ? pts[Math.max(i - 1, 1) - 1] : pts[(((i - 2) % n) + n) % n];
+    const b = open ? pts[Math.min(i + 1, n) - 1] : pts[i % n];
+    const dx = b.x - a.x, dz = b.z - a.z;
+    const len = Math.max(Math.sqrt(dx * dx + dz * dz), 1e-6);
+    p.tx = dx / len; p.tz = dz / len;
+    p.heading = Math.atan2(dx, dz);
+    const nx = open ? pts[Math.min(i + 1, n) - 1] : pts[i % n];
+    p.s = total;
+    p.seg = open && i === n ? 0 : Math.sqrt((nx.x - p.x) ** 2 + (nx.z - p.z) ** 2);
+    total += p.seg;
+  });
+  /// Waypoint `i` (from 1; a circuit wraps round, a stage stops at its ends).
+  const point = (i) => (open ? pts[Math.max(1, Math.min(n, i)) - 1] : pts[(((i - 1) % n) + n) % n]);
+  /// How far (x, z) is from the middle of the road.
+  const away = (x, z) => {
+    let best = 1e18;
+    for (let i = 1; i <= (open ? n - 1 : n); i++) {
+      const a = pts[i - 1], nx = open ? pts[Math.min(i + 1, n) - 1] : pts[i % n];
+      const dx = x - a.x, dz = z - a.z;
+      const sx = nx.x - a.x, sz = nx.z - a.z;
+      const len2 = Math.max(sx * sx + sz * sz, 1e-6);
+      let t = (dx * sx + dz * sz) / len2;
+      if (t < 0) t = 0; else if (t > 1) t = 1;
+      const qx = a.x + sx * t - x, qz = a.z + sz * t - z;
+      best = Math.min(best, qx * qx + qz * qz);
+    }
+    return Math.sqrt(best);
+  };
+  const wrap = (a) => {
+    while (a > Math.PI) a -= 2 * Math.PI;
+    while (a < -Math.PI) a += 2 * Math.PI;
+    return a;
+  };
+  /// How the road turns over the ~40 m after each waypoint (radians, positive to the right), by waypoint from 1.
+  const bends = [0];
+  for (let i = 1; i <= n; i++) bends[i] = wrap(point(i + 4).heading - point(i).heading);
+  return { n, length: total, point, away, bends };
+}
+
+/// The life beside the road: a stand on each side of the start straight, long tents and banners there, flags along it, a billboard on a
+/// straight every 120 m or so (alternating sides and the two kinds of board) and pylons on the outside of the hard bends. Nothing is put
+/// nearer the road than its `clear` distance (where the road bends, a spot beside one waypoint can be across another part of the road).
+function roadside(course, kinds, out) {
+  const { n, length, point, away, bends } = course;
+  if (n < 20) return;
+  const add = (kind, i, off, turn, along, clear) => {
+    if (!kind) return;
+    const p = point(i);
+    const nx = p.tz, nz = -p.tx; // to the left
+    const x = p.x + nx * off + p.tx * along, z = p.z + nz * off + p.tz * along;
+    if (away(x, z) < clear) return;
+    out.push(obj(kind, x, z, p.heading + turn));
+  };
+  const pi = Math.PI;
+  add(kinds.stand, 2, 22, -pi / 2, 14, 14);
+  add(kinds.stand, 2, -22, pi / 2, 14, 14);
+  add(kinds.tent, 3, 17, pi / 2, 30, 11);
+  add(kinds.tent, 3, -17, -pi / 2, 30, 11);
+  add(kinds.banner, 1, 9.5, 0, 0, 8.5);
+  add(kinds.banner, 1, -9.5, 0, 0, 8.5);
+  for (let k = 0; k <= 3; k++) {
+    add(kinds.flag, 1 + k * 3, 8, 0, -22, 7.5);
+    add(kinds.flag, 1 + k * 3, -8, 0, -22, 7.5);
+  }
+  const boards = kinds.boards ?? [];
+  let nextBoard = 130, side = 1, lastPylon = -1e9;
+  for (let i = 1; i <= n; i++) {
+    const p = point(i);
+    if (p.s > 60 && p.s < length - 40) {
+      const straight = Math.abs(bends[i]) < 0.08 && Math.abs(bends[((i + 3) % n) + 1]) < 0.08;
+      if (straight && p.s > nextBoard && boards.length) {
+        add(boards[i % 2 === 0 ? 0 : boards.length - 1], i, side * 13, (side * pi) / 2, 0, 10);
+        side = -side;
+        nextBoard = p.s + 120;
+      }
+      if (Math.abs(bends[i]) > 0.22 && p.s - lastPylon > 20) {
+        const outside = bends[i] > 0 ? 1 : -1; // turning right: the outside is to the left
+        add(kinds.pylon, i, outside * (6 + 1.4), 0, 0, 6.2);
+        lastPylon = p.s;
+      }
+    }
+  }
+}
+
+/// The people watching: groups beside the road by the start, on the outside of the hard bends and here and there along the straights, each
+/// turned to the road, with their own size, hop, clip speed and phase (the game animates them). A sequence of its own, seeded by the number
+/// of waypoints, so the same road always gets the same crowd.
+function crowd(course, spec, out) {
+  const { n, length, point, away, bends } = course;
+  if (n < 20 || !spec.kind.length) return;
+  let seed = n * 31 + 7;
+  const r = () => {
+    seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff;
+    return seed / 2147483648;
+  };
+  const size = spec.size ?? 1;
+  const r3 = (v) => Math.round(v * 1000) / 1000;
+  const add = (i, off, along) => {
+    const p = point(i);
+    const x = p.x + p.tz * off + p.tx * along, z = p.z - p.tx * off + p.tz * along;
+    if (away(x, z) < 9.5) return;
+    const face = p.heading + (off > 0 ? -Math.PI / 2 : Math.PI / 2) + (r() - 0.5) * 0.7;
+    r(); // (a draw the game once made and did not use: kept, so that the crowd stays as it was)
+    const kind = spec.kind[Math.floor(r() * spec.kind.length)];
+    const sx = r3(size * (0.92 + r() * 0.16));
+    const hop = r() < 0.7 ? r3(0.15 + r() * 0.2) : 0;
+    const rate = r() < 0.5 ? 0.9 : 1.1;
+    const phase = Math.floor(r() * 8) * 0.5;
+    out.push(obj(kind, x, z, face, { sx, ...(hop ? { hop } : {}), rate, phase }));
+  };
+  const group = (i, side, off, count) => {
+    let along = r() * 2;
+    for (let k = 1; k <= count; k++) {
+      add(i, side * (off + r() * 4), along);
+      along = along + 2.5 + r() * 2.5;
+    }
+  };
+  for (let i = 1; i <= 9; i += 3) {
+    group(i, 1, 11, 5);
+    group(i, -1, 11, 5);
+  }
+  let last = -1e9;
+  for (let i = 1; i <= n; i++) {
+    const p = point(i);
+    if (p.s > 40 && Math.abs(bends[i]) > 0.16 && p.s - last > 40) {
+      const outside = bends[i] > 0 ? 1 : -1;
+      group(i, outside, 10.5, 4 + Math.floor(r() * 3));
+      last = p.s;
+    }
+  }
+  let nextSpot = 90, side = 1;
+  for (let i = 1; i <= n; i++) {
+    const p = point(i);
+    if (p.s > nextSpot && p.s < length - 30) {
+      const off = 11 + r() * 2;
+      group(i, side, off, 2 + Math.floor(r() * 3));
+      side = -side;
+      nextSpot = p.s + 90 + r() * 60;
+    }
+  }
+}
+
 export function layout(spec) {
   const spacing = 5;
   const open = !!spec.open;
@@ -207,6 +358,16 @@ export function layout(spec) {
     const cx = spec.control.reduce((s, c) => s + c[0], 0) / spec.control.length, cz = spec.control.reduce((s, c) => s + c[1], 0) / spec.control.length;
     place(pick(landmarks.kind), cx + Math.cos(a) * d * 1.3, cz + Math.sin(a) * d, 50);
   }
+
+  // the roadside and the crowd, from the waypoints as the game reads them
+  if (spec.roadside || spec.crowd?.kind?.length) {
+    const course = courseOf(objects.filter((o) => o.kind === "waypoint"), open);
+    if (spec.roadside) roadside(course, spec.roadside, objects);
+    if (spec.crowd) crowd(course, spec.crowd, objects);
+  }
+
+  // objects carried over from the scene this one replaces (the named ones: settings a person keeps in the scene) go first
+  if (spec.keep?.length) objects.unshift(...spec.keep);
 
   const s0 = line[0];
   const scene = {

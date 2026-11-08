@@ -353,22 +353,81 @@ fn a_trigger_pulled_right_through_at_speed_locks_the_wheels_and_a_gentle_one_or_
     );
 }
 
-#[test]
-fn every_circuit_has_stands_banners_billboards_and_pylons_beside_the_road() {
-    for circuit in 0..4 {
-        let mut g = load();
-        start_race(&mut g, circuit, false);
-        let mut log = Vec::new();
-        run_until(&mut g, &mut log, "the roadside is built", 120, |l| {
-            l.iter().any(|x| x.starts_with("rally: roadside "))
-        });
-        let line = log
-            .iter()
-            .find_map(|l| l.strip_prefix("rally: roadside "))
-            .unwrap_or_else(|| panic!("circuit {circuit} built no roadside: {log:?}"));
-        let n: usize = line.split_whitespace().next().unwrap().parse().unwrap();
-        assert!(n >= 20, "circuit {circuit}: only {n} roadside props");
+/// The objects of a course's scene file, by kind.
+fn scene_kinds(course: &str) -> std::collections::HashMap<String, usize> {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!(
+        "../../examples/pine-ridge-rally/scenes/{course}.scene.json"
+    ));
+    let scene: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).expect("the scene file")).unwrap();
+    let mut out = std::collections::HashMap::new();
+    for o in scene["objects"].as_array().unwrap() {
+        *out.entry(o["kind"].as_str().unwrap().to_string())
+            .or_insert(0) += 1;
     }
+    out
+}
+
+const COURSES: [&str; 8] = [
+    "pine_ridge",
+    "dust_valley",
+    "frost_pass",
+    "harbour_lights",
+    "stage_pine_ridge",
+    "stage_dust_valley",
+    "stage_frost_pass",
+    "stage_harbour_lights",
+];
+
+#[test]
+fn every_course_has_stands_banners_billboards_pylons_and_a_crowd_beside_the_road() {
+    for course in COURSES {
+        let kinds = scene_kinds(course);
+        let count = |prefix: &str| -> usize {
+            kinds
+                .iter()
+                .filter(|(k, _)| k.starts_with(prefix))
+                .map(|(_, n)| n)
+                .sum()
+        };
+        assert_eq!(
+            count("grandstand"),
+            2,
+            "{course}: a stand each side of the start"
+        );
+        assert!(count("banner_") >= 2, "{course}: banners");
+        let props = count("grandstand")
+            + count("tent")
+            + count("banner_")
+            + count("flag_")
+            + count("billboard")
+            + count("pylon");
+        assert!(props >= 20, "{course}: only {props} roadside props");
+        assert!(count("pylon") >= 3, "{course}: pylons");
+        assert!(count("crowd_") >= 150, "{course}: a crowd");
+        assert_eq!(
+            kinds.get("foliage"),
+            Some(&1),
+            "{course}: the grass's settings"
+        );
+    }
+    // and the game draws them: the crowd is counted as the race is built
+    let mut g = load();
+    start_race(&mut g, 0, false);
+    let mut log = Vec::new();
+    run_until(&mut g, &mut log, "the crowd is in place", 120, |l| {
+        l.iter().any(|x| x.starts_with("rally: crowd "))
+    });
+    let people = scene_kinds("pine_ridge")
+        .iter()
+        .filter(|(k, _)| k.starts_with("crowd_"))
+        .map(|(_, n)| n)
+        .sum::<usize>();
+    assert!(
+        log.iter()
+            .any(|l| *l == format!("rally: crowd {people} people")),
+        "{log:?}"
+    );
 }
 
 /// The player's car after `frames` of holding the throttle and steering to the left, from speed on the road: (slip, speed, how far it turned).

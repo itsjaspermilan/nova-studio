@@ -359,7 +359,7 @@ tool(
 tool(
   "track_write",
   "Lay out a racing route from control points: a closed circuit, or an open rally stage (`open`: true), as the plain files a person could edit, the same files the studio's track editor makes. It writes `tracks/<name>.track.json` (the route and its settings, what the track editor opens), `scenes/<name>.scene.json` (the start line and arch, a finish arch and section gates on a stage, waypoints every 10 m for the cars and the pace notes, the starting grid, and scenery along the route: trees, bushes, rocks, guardrails with chevron signs at the bends, tyres, optional street lamps, distant scenery and landmarks) and the road as one ribbon mesh, `models/road_<name>.glb` (draw it with nova.model(\"road_<name>\", 0, 0, 0)). " +
-    "When `tracks/<name>.track.json` already exists it is the starting point and only the settings given here change: `{ name }` alone makes the scene and road again from the saved track. " +
+    "When `tracks/<name>.track.json` already exists it is the starting point and only the settings given here change: `{ name }` alone makes the scene and road again from the saved track. The objects of the old scene that have a `name` (settings kept in the scene, such as a game's race object) are kept; everything else in it is made anew. " +
     "`control` is a list of [x, z] points the curve passes through (metres; the route starts at the first heading to the second: for a stage give a straight lead-in). It reports the length, the tightest bend's radius (keep it above about 15 m) and the closest approach between distant parts of the route (keep it above about 40 m), and draws a map. Scenery kinds are entity names in entities/. The same settings and seed always give the same scene.",
   {
     name: { type: "string" },
@@ -380,6 +380,8 @@ tool(
     sky: { type: "array", items: { type: "number" }, description: "The scene's background colour [r, g, b]." },
     far: { type: "object", description: "Distant scenery 60 to 150 m from the road: { kind: [entity names], density: 0 to 1 per piece of road }." },
     landmarks: { type: "object", description: "Tall features well away from the road: { kind: [entity names], count, radius: metres from the route's middle }." },
+    roadside: { type: ["object", "null"], description: "The life beside the road, or null for none: { stand, tent, banner, flag, boards: [two billboard kinds that take turns], pylon } (entity names): stands, tents and banners by the start, flags along the start straight, billboards on the straights, pylons on the outside of hard bends." },
+    crowd: { type: "object", description: "Spectators in groups by the start, at the hard bends and along the straights: { kind: [entity names to pick from], size: their scale }." },
   },
   ["name"],
   (a) => {
@@ -393,7 +395,7 @@ tool(
       base = { ...p.doc };
     } else if (a.control === undefined) throw new Error(`there is no ${trackOf(name)}: give the route's \`control\` points`);
     const given: Record<string, unknown> = { ...a, leadIn: a.lead_in };
-    for (const key of ["control", "open", "road", "sections", "leadIn", "runout", "seed", "trees", "small", "rock", "density", "rocks", "rail", "lamps", "sky", "far", "landmarks"]) {
+    for (const key of ["control", "open", "road", "sections", "leadIn", "runout", "seed", "trees", "small", "rock", "density", "rocks", "rail", "lamps", "sky", "far", "landmarks", "roadside", "crowd"]) {
       if (given[key] !== undefined) base[key] = given[key];
     }
     const control = base.control as unknown[];
@@ -403,7 +405,8 @@ tool(
     const doc = parsed.doc;
     let files;
     try {
-      files = buildTrack(doc);
+      const scenePath = join(root, sceneOf(name));
+      files = buildTrack(doc, existsSync(scenePath) ? readFileSync(scenePath, "utf8") : null); // (the old scene's named objects are kept)
     } catch (e) {
       throw new Error(String(e));
     }
