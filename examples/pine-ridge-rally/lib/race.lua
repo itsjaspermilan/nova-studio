@@ -113,6 +113,7 @@ function race.scene()
     nova.sky(config.sky)
     if config.sky then nova.fog { color = config.sky.horizon, near = 70, far = 330 } end
     local info = state.current_track()
+    nova.log("rally: course " .. info.id)
     self.stage = config.stage and true or false   -- a rally stage: from A to B, in sections
     self.laps = self.stage and 1 or state.laps
     track.open = self.stage
@@ -211,6 +212,7 @@ function race.scene()
       local diff = state.current_difficulty()
       car.name, car.lane, car.base_lane = r.name, r.lane, r.lane
       car.skill = diff.corner * r.skill     -- the share of its tyres' grip it dares to use in a bend
+      car.skill_base = car.skill
       car.vmax_base = car.top * diff.pace * r.skill
       car.vmax = car.vmax_base
       car.band = diff.band
@@ -254,6 +256,10 @@ function race.scene()
     -- (a zone of the course can change the road: its width, and its surface, gravel into tarmac)
     local wp = track.point(idx)
     if wp.road then car.surface, car.loose = surface_of(wp.road) else car.surface, car.loose = config.surface or "road", config.loose end
+    if car.is_player and car.road_kind ~= (wp.road or "course") then
+      if car.road_kind then nova.log("rally: the road turns to " .. (wp.road or "the course's own")) end
+      car.road_kind = wp.road or "course"
+    end
     if car.off_middle > wp.w + ROAD_EDGE + 0.8 then car.surface = "rough" end
   end
 
@@ -610,11 +616,14 @@ function race.scene()
     if self.phase == "racing" then self:update_draft(dt) end
 
     if self.phase == "racing" then
-      -- rivals try a little harder when behind the player, and a little less when far ahead
+      -- rivals try a little harder when behind the player, and a little less when far ahead: on the straights, and in the bends (where
+      -- the twisty courses are won), up to what their tyres hold
       for _, car in ipairs(self.cars) do
         if not car.is_player and not car.finish_time then
           local gap = self.player.progress - car.progress        -- positive: the rival is behind
-          car.vmax = math.min(car.top * (1 + 0.05 * (car.draft or 0)), car.vmax_base * (1 + 0.05 * (car.draft or 0)) * (1 + math.max(-car.band, math.min(car.band, gap * 0.0004))))
+          local push = math.max(-car.band, math.min(car.band, gap * 0.0004))
+          car.vmax = math.min(car.top * (1 + 0.05 * (car.draft or 0)), car.vmax_base * (1 + 0.05 * (car.draft or 0)) * (1 + push))
+          if car.skill_base then car.skill = math.min(1.03, car.skill_base * (1 + push)) end
         end
       end
       if self.stage then

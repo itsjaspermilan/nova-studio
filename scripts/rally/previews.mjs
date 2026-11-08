@@ -6,7 +6,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 const project = process.argv[2] ?? "examples/pine-ridge-rally";
-const circuits = ["pine_ridge", "dust_valley", "frost_pass", "harbour_lights", "stage_pine_ridge", "stage_dust_valley", "stage_frost_pass", "stage_harbour_lights"];
+// every course: the tracks/ folder's track files, in name order
+const circuits = fs.readdirSync(path.join(project, "tracks")).filter((f) => f.endsWith(".track.json")).map((f) => f.replace(".track.json", "")).sort();
 let out = "-- Made by scripts/rally/previews.mjs from the circuits' waypoints: each course as points in a box 1 across at most, {x, y} from the top left.\nreturn {\n";
 for (const id of circuits) {
   const scene = JSON.parse(fs.readFileSync(path.join(project, "scenes", id + ".scene.json"), "utf8"));

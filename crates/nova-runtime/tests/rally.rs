@@ -22,10 +22,64 @@ impl Uploader for CountingGpu {
     }
 }
 
+thread_local! {
+    /// Set by a test that drives the courses and cars a new player has not opened yet: `load` then gives the game a save in which every
+    /// course has been won with three stars and three races have been won.
+    static UNLOCKED: Cell<bool> = const { Cell::new(false) };
+}
+
+/// The course ids in the order of the game's lists (lib/state.lua): circuits, then stages.
+const CIRCUITS: [&str; 10] = [
+    "pine_ridge",
+    "dust_valley",
+    "frost_pass",
+    "harbour_lights",
+    "autumn_glen",
+    "ridge_gp",
+    "copper_canyon",
+    "glacier_ring",
+    "neon_docks",
+    "autumn_summit",
+];
+const STAGES: [&str; 10] = [
+    "stage_pine_ridge",
+    "stage_dust_valley",
+    "stage_frost_pass",
+    "stage_harbour_lights",
+    "stage_autumn_glen",
+    "stage_mesa_run",
+    "stage_canyon",
+    "stage_glacier_night",
+    "stage_harbour_sprint",
+    "stage_marathon",
+];
+
 fn load() -> Game {
     let folder = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/pine-ridge-rally");
     let vfs: Rc<dyn Vfs> = Rc::new(DirVfs::new(&folder).expect("the example folder exists"));
-    let mut g = Game::load(vfs).expect("the game loads");
+    let mut g = if UNLOCKED.with(|u| u.get()) {
+        let dir = std::env::temp_dir().join(format!(
+            "nova-rally-unlocked-{:?}-{}",
+            std::thread::current().id(),
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut save = serde_json::Map::new();
+        for id in CIRCUITS.iter().chain(STAGES.iter()) {
+            save.insert(
+                format!("done_{id}"),
+                serde_json::json!({ "done": true, "place": 1, "stars": 3 }),
+            );
+        }
+        save.insert("wins".into(), serde_json::json!(3));
+        // (the save file's own shape: see crates/nova-runtime/src/save.rs)
+        let file = serde_json::json!({ "format": 1, "data": serde_json::Value::Object(save) });
+        std::fs::write(dir.join("save.json"), file.to_string()).unwrap();
+        Game::load_with(vfs, &|_| Some(dir.clone())).expect("the game loads")
+    } else {
+        Game::load(vfs).expect("the game loads")
+    };
     g.upload(&mut CountingGpu::default());
     g
 }
@@ -943,15 +997,22 @@ fn a_rally_stage_is_driven_in_sections_and_scored() {
     );
 }
 
-/// The section times of a good run in each class on each stage (for lib/pars.lua). Run on purpose:
-/// `cargo test --release -p nova-runtime --test rally rally_pars -- --ignored --nocapture`.
+/// The classes of car in the order of their tabs on the car page (lib/state.lua).
+const CLASSES: [&str; 5] = ["formula", "sport", "everyday", "kart", "fun"];
+
+/// The section times of a good run by the first car of each class on each stage (for lib/pars.lua). Run on purpose:
+/// `cargo test --release -p nova-runtime --test rally rally_pars -- --ignored --nocapture` (COURSES=stage_canyon,... for some).
 #[test]
 #[ignore]
 fn rally_pars() {
-    let cars = [("formula", 0, 0), ("sport", 1, 0), ("everyday", 2, 0)];
-    for stage in 0..4 {
-        for (class, class_tab, step) in cars {
-            let log = stage_run(stage, class_tab, step, 0);
+    let only = std::env::var("COURSES").unwrap_or_default();
+    UNLOCKED.with(|u| u.set(true));
+    for (stage, id) in STAGES.iter().enumerate() {
+        if !only.is_empty() && !only.split(',').any(|o| o == *id) {
+            continue;
+        }
+        for (class_tab, class) in CLASSES.iter().enumerate() {
+            let log = stage_run(stage, class_tab, 0, 0);
             let times: Vec<String> = log
                 .iter()
                 .filter(|l| l.starts_with("section "))
@@ -959,9 +1020,73 @@ fn rally_pars() {
                 .collect();
             let total: f32 = times.iter().map(|t| t.parse::<f32>().unwrap()).sum();
             println!(
-                "PAR stage {stage} {class} {} total {total:.1}",
+                "PAR stage {id} {class} {} total {total:.1}",
                 times.join(" ")
             );
+        }
+    }
+}
+
+/// The best lap of a time trial driven by the computer, in the first car of each class on each circuit (the par laps in lib/pars.lua).
+/// Run on purpose: `cargo test --release -p nova-runtime --test rally lap_pars -- --ignored --nocapture`.
+#[test]
+#[ignore]
+fn lap_pars() {
+    let only = std::env::var("COURSES").unwrap_or_default();
+    UNLOCKED.with(|u| u.set(true));
+    for (circuit, id) in CIRCUITS.iter().enumerate() {
+        if !only.is_empty() && !only.split(',').any(|o| o == *id) {
+            continue;
+        }
+        for (class_tab, class) in CLASSES.iter().enumerate() {
+            let mut g = load();
+            for _ in 0..30 {
+                frame(&mut g, &[]);
+            }
+            tap(&mut g, "key:Enter");
+            tap(&mut g, "key:Enter");
+            tap(&mut g, "key:Enter"); // Mode
+            tap(&mut g, "key:ArrowRight"); // Race -> Time trial
+            tap(&mut g, "key:Enter");
+            tap(&mut g, "key:ArrowDown"); // Circuit
+            tap(&mut g, "key:Enter");
+            for _ in 0..circuit {
+                tap(&mut g, "key:ArrowRight");
+            }
+            tap(&mut g, "key:Enter");
+            tap(&mut g, "key:ArrowDown"); // Car
+            tap(&mut g, "key:Enter");
+            for _ in 0..class_tab {
+                tap(&mut g, "key:KeyE");
+            }
+            tap(&mut g, "key:Enter");
+            tap(&mut g, "key:ArrowDown"); // Laps
+            tap(&mut g, "key:ArrowDown"); // START
+            frame(&mut g, &["key:Enter"]);
+            let mut log = Vec::new();
+            run_until(&mut g, &mut log, "the countdown ends", 60 * 8, |l| {
+                l.iter().any(|x| x == "go")
+            });
+            tap(&mut g, "key:F9");
+            run_until(&mut g, &mut log, "the results", 60 * 60 * 10, |l| {
+                l.iter().any(|x| x.starts_with("results:"))
+            });
+            assert!(
+                log.iter().any(|l| *l == format!("rally: course {id}")),
+                "{id}"
+            );
+            let best = log
+                .iter()
+                .filter_map(|l| {
+                    l.strip_prefix("lap ")
+                        .and_then(|r| r.split(" done in ").nth(1))
+                })
+                .map(|t| {
+                    let (m, s) = t.split_once(':').unwrap();
+                    m.parse::<f32>().unwrap() * 60.0 + s.parse::<f32>().unwrap()
+                })
+                .fold(f32::MAX, f32::min);
+            println!("LAPPAR {id} {class} {best:.2}");
         }
     }
 }
@@ -1013,19 +1138,190 @@ fn crowd_cost() {
 #[test]
 #[ignore]
 fn course_times() {
-    for circuit in 0..4 {
+    // COURSES=autumn_glen,stage_canyon limits it to some courses
+    let only = std::env::var("COURSES").unwrap_or_default();
+    let wanted = |id: &str| only.is_empty() || only.split(',').any(|o| o == id);
+    UNLOCKED.with(|u| u.set(true));
+    for (circuit, id) in CIRCUITS.iter().enumerate() {
+        if !wanted(id) {
+            continue;
+        }
         let log = play(circuit, false);
+        assert!(
+            log.iter().any(|l| *l == format!("rally: course {id}")),
+            "{id}: {log:?}"
+        );
         let laps: Vec<&String> = log.iter().filter(|l| l.starts_with("lap ")).collect();
-        let times = log.iter().find(|l| l.starts_with("results:")).unwrap();
-        println!("COURSE circuit {circuit}: {times} | {laps:?}");
+        let times = log
+            .iter()
+            .find(|l| l.starts_with("results: times"))
+            .unwrap();
+        let stuck = log
+            .iter()
+            .filter(|l| l.contains("put back on the road"))
+            .count();
+        println!("COURSE circuit {circuit} {id}: {times} | {laps:?} | put back {stuck}");
     }
-    for stage in 0..4 {
+    for (stage, id) in STAGES.iter().enumerate() {
+        if !wanted(id) {
+            continue;
+        }
         let log = stage_run(stage, 0, 0, 0);
+        assert!(
+            log.iter().any(|l| *l == format!("rally: course {id}")),
+            "{id}: {log:?}"
+        );
         let sections: Vec<&String> = log.iter().filter(|l| l.starts_with("section ")).collect();
         let score = log
             .iter()
             .find(|l| l.starts_with("results: rally score"))
             .unwrap();
-        println!("COURSE stage {stage}: {score} | {sections:?}");
+        let stuck = log
+            .iter()
+            .filter(|l| l.contains("put back on the road"))
+            .count();
+        println!("COURSE stage {stage} {id}: {score} | {sections:?} | put back {stuck}");
     }
+}
+
+/// A new circuit in a new car: Autumn Glen (Medium, open from the start) in a kart, against three karts. Finishing it opens the
+/// Hard circuits: from the results, Change circuit, two cards on is Copper Canyon, and that race starts.
+#[test]
+fn a_new_circuit_in_a_kart_and_finishing_it_opens_the_hard_circuits() {
+    let mut g = load();
+    for _ in 0..30 {
+        frame(&mut g, &[]);
+    }
+    tap(&mut g, "key:Enter");
+    tap(&mut g, "key:Enter");
+    tap(&mut g, "key:ArrowDown"); // Circuit
+    tap(&mut g, "key:Enter");
+    for _ in 0..4 {
+        tap(&mut g, "key:ArrowRight"); // Autumn Glen
+    }
+    tap(&mut g, "key:Enter");
+    tap(&mut g, "key:ArrowDown"); // Car
+    tap(&mut g, "key:Enter");
+    for _ in 0..3 {
+        tap(&mut g, "key:KeyE"); // Formula -> Sport -> Everyday -> Kart
+    }
+    tap(&mut g, "key:Enter");
+    for _ in 0..3 {
+        tap(&mut g, "key:ArrowDown"); // Laps, Difficulty, START
+    }
+    frame(&mut g, &["key:Enter"]);
+    let mut log = Vec::new();
+    run_until(&mut g, &mut log, "the countdown ends", 60 * 8, |l| {
+        l.iter().any(|x| x == "go")
+    });
+    assert!(
+        log.iter().any(|l| l == "rally: course autumn_glen"),
+        "{log:?}"
+    );
+    tap(&mut g, "key:F9");
+    run_until(&mut g, &mut log, "the results", 60 * 60 * 6, |l| {
+        l.iter().any(|x| x.starts_with("results: place"))
+    });
+    assert_eq!(
+        log.iter().filter(|l| l.starts_with("lap ")).count(),
+        2,
+        "{log:?}"
+    );
+    assert!(
+        !log.iter().any(|l| l.contains("put back on the road")),
+        "{log:?}"
+    );
+    let rivals = log.iter().find(|l| l.contains("a time for")).unwrap();
+    assert!(rivals.contains("a time for 4 of 4 cars"), "{rivals}");
+    for r in rivals.rsplit("rivals: ").next().unwrap().split(' ') {
+        assert!(
+            r.starts_with("kart_"),
+            "a kart's rivals drive karts: {rivals}"
+        );
+    }
+    let times = log
+        .iter()
+        .find(|l| l.starts_with("results: times"))
+        .unwrap();
+    assert!(times.contains("*kart_oobi="), "{times}");
+    // the results: Change circuit, then Copper Canyon (Hard) is open
+    for _ in 0..120 {
+        frame(&mut g, &[]);
+    }
+    tap(&mut g, "key:ArrowDown"); // Change circuit
+    tap(&mut g, "key:Enter");
+    for _ in 0..30 {
+        frame(&mut g, &[]);
+    }
+    tap(&mut g, "key:ArrowDown"); // Circuit
+    tap(&mut g, "key:Enter");
+    tap(&mut g, "key:ArrowRight");
+    tap(&mut g, "key:ArrowRight"); // Copper Canyon
+    tap(&mut g, "key:Enter");
+    tap(&mut g, "key:ArrowUp");
+    tap(&mut g, "key:ArrowUp"); // START
+    frame(&mut g, &["key:Enter"]);
+    let mut log = Vec::new();
+    run_until(&mut g, &mut log, "Copper Canyon starts", 60 * 8, |l| {
+        l.iter().any(|x| x == "go")
+    });
+    assert!(
+        log.iter().any(|l| l == "rally: course copper_canyon"),
+        "{log:?}"
+    );
+}
+
+/// A course that has not been opened cannot be chosen: a new player who moves to Copper Canyon (Hard) and presses A stays on the page,
+/// and START then races on the circuit chosen before.
+#[test]
+fn a_locked_course_cannot_be_chosen() {
+    let mut g = load();
+    for _ in 0..30 {
+        frame(&mut g, &[]);
+    }
+    tap(&mut g, "key:Enter");
+    tap(&mut g, "key:Enter");
+    tap(&mut g, "key:ArrowDown"); // Circuit
+    tap(&mut g, "key:Enter");
+    for _ in 0..6 {
+        tap(&mut g, "key:ArrowRight"); // Copper Canyon, locked
+    }
+    tap(&mut g, "key:Enter"); // refused
+    tap(&mut g, "key:Escape"); // back: the circuit chosen before
+    tap(&mut g, "key:ArrowUp");
+    tap(&mut g, "key:ArrowUp"); // START
+    frame(&mut g, &["key:Enter"]);
+    let mut log = Vec::new();
+    run_until(&mut g, &mut log, "the race starts", 60 * 8, |l| {
+        l.iter().any(|x| x == "go")
+    });
+    assert!(
+        log.iter().any(|l| l == "rally: course pine_ridge"),
+        "{log:?}"
+    );
+}
+
+/// The Autumn Glen stage is gravel, then tarmac from its halfway hairpin (a zone of its track): six sections, the road changes under the
+/// car once, and the computer driver gets through without being put back.
+#[test]
+fn a_stage_turns_from_gravel_to_tarmac() {
+    let log = stage_run(4, 0, 0, 0);
+    assert!(
+        log.iter().any(|l| l == "rally: course stage_autumn_glen"),
+        "{log:?}"
+    );
+    assert_eq!(
+        log.iter().filter(|l| l.starts_with("section ")).count(),
+        6,
+        "{log:?}"
+    );
+    assert!(
+        log.iter()
+            .any(|l| l == "rally: the road turns to road_asphalt"),
+        "{log:?}"
+    );
+    assert!(
+        !log.iter().any(|l| l.contains("put back on the road")),
+        "{log:?}"
+    );
 }

@@ -57,6 +57,13 @@ animation and simple lights; streamed music; the C audio core's synthesis for th
 Everything we know is missing or unverified, in one place. "Device" means it needs the Retroid (or
 another physical Android device) to settle; the emulator cannot.
 
+**Pine Ridge Rally: twelve more courses and fourteen more cars (2026-11-07).** Six circuits and six stages (`tracks/*.track.json`, Medium to Expert:
+hairpins, chicanes, tightening corners, narrow walled sections and gravel into tarmac, the generator's new track `zones`; a new autumn country), the
+racing kit's four racers, five karts and five service vehicles (a Fun class that opens after three wins), more racing-kit dressing (pit row, gantries, light
+posts), a scrolling course page with each course's level, par lap and locks (Hard opens after a Medium, Expert after a Hard in the top three or with two
+stars). Rivals corner harder at every difficulty (the old courses were too easy); every course is driven to the finish in `course_times`, pars from
+`rally_pars` and `lap_pars`. Not played by hand or on the Retroid yet beyond an install.
+
 **Pine Ridge Rally's courses are files (2026-11-07).** The eight courses are track files (`tracks/<course>.track.json`, made into scenes and roads by the
 studio's track editor or the MCP tool `track_write`; `scripts/rally/tracks.mjs` is gone; the track format gained `rail`, `sky`, `far`, `landmarks`, `roadside`
 and `crowd`). The stands, tents, banners, flags, billboards, pylons and spectators are objects in the scenes (placed by the generator where `lib/roadside.lua`

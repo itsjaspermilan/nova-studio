@@ -52,9 +52,9 @@ Measured results (and the honest list of what is *not* verified) are in `docs/sp
 `examples/pine-ridge-rally` is a 3D rally game made with the studio's tools, and the project that shaped most of the engine. It is
 controller-first (Nintendo-style button labels), runs at 60 fps on a Retroid Pocket 6, and has:
 
-- four circuits (forest, desert at golden hour, snowy pass, a harbour at night) with hills, weather and a crowd,
-- **Race** (three rivals, easy / medium / hard), **Time trial** (against your best lap's ghost) and **Rally** (point-to-point stages in five sections, pace notes, a score per section from its time),
-- eleven cars in three classes (Formula, Sport, Everyday), each with its own power, top speed, grip, brakes, drift and its own synthesised engine note,
+- ten circuits and ten rally stages, from Easy to Expert (forest, autumn, desert at golden hour and at sunset, snow by day and by night, a harbour at night), with hills, weather, a crowd, narrow walled sections and gravel turning to tarmac; the Hard and Expert ones open as you finish the ones before,
+- **Race** (three rivals, easy / medium / hard), **Time trial** (against your best lap's ghost) and **Rally** (point-to-point stages in five to eight sections, pace notes, a score per section from its time),
+- twenty-five cars in five classes (Formula, Sport, Everyday, Kart, and Fun: service vehicles that open after three wins), each with its own power, top speed, grip, brakes, drift and its own synthesised engine note,
 - slipstreaming, tyre wear and damage, skid marks and kicked-up dust, gravel, sand and snow,
 - a custom UI built from Kenney's UI pack and Input Prompts, with remappable controls.
 
@@ -64,6 +64,8 @@ controller-first (Nintendo-style button labels), runs at 60 fps on a Retroid Poc
 | ![Choosing a circuit with a drawing of each course](docs/images/circuits.png) | ![Choosing a car by class, with its stats](docs/images/cars.png) |
 | ![Dust Valley at golden hour](docs/images/race-dust-valley.png) | ![Frost Pass in the snow](docs/images/race-frost-pass.png) |
 | ![Harbour Lights at night](docs/images/race-harbour-lights.png) | ![A rally stage with pace notes](docs/images/rally-stage.png) |
+| ![Autumn Glen](docs/images/race-autumn-glen.png) | ![Copper Canyon at sunset](docs/images/race-copper-canyon.png) |
+| ![Neon Docks at night](docs/images/race-neon-docks.png) | ![Glacier by Night, a rally stage](docs/images/rally-glacier-night.png) |
 
 ![Rally stage results: time, par and points for each of five sections](docs/images/rally-results.png)
 

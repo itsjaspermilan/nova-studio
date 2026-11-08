@@ -7,6 +7,7 @@ local controls = require("lib.controls")
 local backdrop = require("lib.backdrop")
 local previews = require("lib.previews")
 local transition = require("lib.transition")
+local pars = require("lib.pars")
 
 local Title = nova.scene {}
 
@@ -53,7 +54,7 @@ local MODES = {
 }
 local LEFT, RIGHT = 36, 614 -- the margins every grid page shares (the cards, the tabs and the notes all run from LEFT to RIGHT)
 local GRIDS = {
-  circuit = { cols = 2, card_w = 282, card_h = 176, gap = 14, x = 36, y = 100 },
+  circuit = { cols = 2, card_w = 282, card_h = 112, gap = 10, x = 36, y = 96, rows = 3 }, -- (three rows show at once; the page scrolls)
   mode = { cols = 2, card_w = 282, card_h = 150, gap = 14, x = 36, y = 150 },
   car = { cols = 3, card_w = (RIGHT - LEFT - 16) / 3, card_h = 100, gap = 8, x = LEFT, y = 160 },
 }
@@ -97,6 +98,15 @@ function Title:set_class(n)
 end
 
 local function class_locked(id) return not state.class_open(state.class_of({ class = id })) end
+
+-- the courses of the list the mode shows, and whether one of them is open
+local function course_list() return state.mode == "rally" and state.stages or state.tracks end
+local function course_locked(i)
+  local list = course_list()
+  return not state.course_open(list, list[i])
+end
+-- each level's colour on the cards
+local LEVEL_COLOR = { { 74, 222, 128 }, { 56, 189, 248 }, { 251, 146, 60 }, { 239, 68, 68 } }
 
 function Title:set_pick(kind, i)
   if kind == "circuit" then
@@ -172,6 +182,10 @@ function Title:update_pick()
 end
 
 function Title:pick_buttons(pick)
+  if (nova.input.pressed("a") or nova.input.pressed("start")) and pick.kind == "circuit" and course_locked(self:picked("circuit")) then
+    audio.sfx("menu_back") -- (a locked course can be looked at, not chosen)
+    return
+  end
   if nova.input.pressed("a") or nova.input.pressed("start") then
     audio.sfx("menu_accept")
     self.screen, self.entered = "select", 0
@@ -355,23 +369,44 @@ function Title:draw_pick()
   end
   local locked = pick.kind == "car" and class_locked(pick.class)
   local on = pick.tabs and 0 or self:picked(pick.kind)
+  -- a page with more rows than fit scrolls so that the chosen card is in view
+  local first_row = 0
+  if grid.rows then
+    local rows = (#items + grid.cols - 1) // grid.cols
+    local at = math.max(0, on - 1) // grid.cols
+    pick.scroll = math.max(0, math.min(rows - grid.rows, math.max(math.min(pick.scroll or 0, at), at - grid.rows + 1)))
+    first_row = pick.scroll
+    if first_row > 0 then ui.center("MORE ABOVE", grid.y - 20, 13, ui.color.gold, { cx = (LEFT + RIGHT) / 2, font = "mono" }) end
+    if first_row + grid.rows < rows then ui.center("MORE BELOW", grid.y + grid.rows * (grid.card_h + grid.gap) - 2, 13, ui.color.gold, { cx = (LEFT + RIGHT) / 2, font = "mono" }) end
+  end
   for i, item in ipairs(items) do
-    local col, row = (i - 1) % grid.cols, (i - 1) // grid.cols
+    local col, row = (i - 1) % grid.cols, (i - 1) // grid.cols - first_row
     local x = grid.x + col * (grid.card_w + grid.gap)
     local y = grid.y + row * (grid.card_h + grid.gap)
     local w, h = grid.card_w, grid.card_h
+    if row < 0 or (grid.rows and row >= grid.rows) then goto continue end
     if i == on then nova.ui.panel("ui/btn_yellow", x - 5, y - 5, w + 10, h + 10, { slice = { 14, 14, 14, 22 }, scale = 0.75 }) end
     ui.panel(x, y, w, h, 235)
     if pick.kind == "circuit" then
-      course(item.id, x + 12, y + 12, h - 56)
-      ui.text(x + h - 36, y + 18, item.name, ui.fit(item.name, 22, w - h + 20, "rounded"), ui.color.white)
-      ui.text(x + h - 36, y + 50, item.blurb, 13, { 214, 224, 238 }, { width = w - h + 24 })
+      local size = h - 24
+      course(item.id, x + 10, y + 12, size)
+      local tx, tw = x + size + 20, w - size - 30
+      ui.text(tx, y + 8, item.name, ui.fit(item.name, 20, tw, "rounded"), ui.color.white)
+      local level = item.level or 1
+      ui.text(tx, y + 34, string.upper(state.levels[level]), 13, LEVEL_COLOR[level], { font = "mono" })
+      local par = not item.km and (pars.laps[item.id] or {})[state.current_car().class]
+      ui.label(tx + 76, y + 30, item.km and (item.km .. " KM · " .. (item.sections or 5) .. " SECT.") or (item.laps .. " LAPS" .. (par and ("  ·  PAR " .. ui.time(par)) or "")))
       if item.km then
-        ui.label(x + 14, y + h - 40, item.km .. " KM  ·  5 SECTIONS")
-        ui.text(x + 14, y + h - 22, "BEST " .. tostring(nova.save.get("rally_score_" .. item.id, "-")), 16, ui.color.gold, { font = "mono" })
+        ui.text(tx, y + 52, "BEST " .. tostring(nova.save.get("rally_score_" .. item.id, "-")), 14, ui.color.gold, { font = "mono" })
       else
-        ui.label(x + 14, y + h - 40, "BEST LAP")
-        ui.text(x + 14, y + h - 22, ui.time(state.best("lap", item.id)), 16, ui.color.gold, { font = "mono" })
+        ui.text(tx, y + 52, "BEST LAP " .. ui.time(state.best("lap", item.id)), 14, ui.color.gold, { font = "mono" })
+      end
+      ui.text(tx, y + 72, item.blurb, 11, { 214, 224, 238 }, { width = tw })
+      local open, why = state.course_open(items, item)
+      if not open then
+        nova.ui.rect(x + 4, y + 4, w - 8, h - 8, { 20, 24, 36, 230 })
+        ui.text(x + 14, y + h / 2 - 22, "LOCKED", 20, ui.color.white, { font = "bold" })
+        ui.text(x + 14, y + h / 2 + 4, why, 13, ui.color.gold, { width = w - 28 })
       end
     elseif pick.kind == "mode" then
       ui.text(x + 20, y + 24, item.name, 30, ui.color.white, { font = "bold" })
@@ -384,6 +419,7 @@ function Title:draw_pick()
       bar(x + 12, y + 80, w - 82, "DRIFT", item.oversteer)
       if locked then nova.ui.rect(x, y, w, h, { 0, 0, 0, 150 }) end
     end
+    ::continue::
   end
   if pick.kind == "car" then
     ui.hints({ { "pad_dpad", "Look" }, { "pad_l", "Class" }, { "pad_r", "Class" }, { "pad_a", "Accept" }, { "pad_b", "Cancel" } })

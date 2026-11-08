@@ -23,7 +23,13 @@ A screen in the studio for laying out a racing circuit or a rally stage without 
   along the straights, turned to the road, each with its own size, hop, clip speed and phase as props (the crowd has its own random sequence,
   so the same road always gets the same crowd).
 - **Stands, flags and billboards**: a stand each side of the start straight, long tents and banners there, flags along it, billboards on the
-  straights (two kinds, taking turns) and pylons on the outside of the hard bends, each kept clear of the road. Pick the kind of each part.
+  straights (two kinds, taking turns) and pylons on the outside of the hard bends, each kept clear of the road. Pick the kind of each part;
+  optionally a row of pit garages behind the start line with an office at its end, a gantry over the road after the line, and light posts
+  along the straights.
+- **Zones**: stretches of the route (metres from point 1, a stage's lead-in included) with another road kind (gravel into tarmac), another
+  width (a narrow section: 8 or 9 m instead of 12) and a wall entity along both edges. The road mesh narrows (easing over 15 m) and changes
+  colour, the barriers, tyres, chevrons and lamps follow the edge, and the waypoints carry `w` (half the width) and `road` where they differ,
+  for a game to read (Pine Ridge Rally's cars feel the surface and the edge from them). Zones are drawn on the map.
 - **Generate scene and road** writes the output (see below) and saves the track. Run it again after any change; it replaces them.
 - **Pace notes**: the corners along the route as a co-driver would call them ("Left 3"): direction and grade 1 (hairpin) to 6 (gentle),
   with the metres from the start line. The thresholds are those of `pace_notes` in `examples/pine-ridge-rally/lib/race.lua`.
@@ -32,7 +38,7 @@ A screen in the studio for laying out a racing circuit or a rally stage without 
 
 | File | What |
 |---|---|
-| `tracks/<name>.track.json` | What the editor edits: `open`, `road`, `control` ([x, z] metres), `sections`, `leadIn`, `runout`, `seed`, `trees`, `small`, `rock`, `density`, `rocks`, `lamps`, `rail` (the barrier's kind), `sky` ([r, g, b]), `far` (`{ kind: [...], density }`), `landmarks` (`{ kind: [...], count, radius }`), `roadside` (`{ stand, tent, banner, flag, boards: [two kinds], pylon }` or null), `crowd` (`{ kind: [...], size }`). Pine Ridge Rally's eight courses are examples. |
+| `tracks/<name>.track.json` | What the editor edits: `open`, `road`, `control` ([x, z] metres), `sections`, `leadIn`, `runout`, `seed`, `trees`, `small`, `rock`, `density`, `rocks`, `lamps`, `rail` (the barrier's kind), `sky` ([r, g, b]), `far` (`{ kind: [...], density }`), `landmarks` (`{ kind: [...], count, radius }`), `roadside` (`{ stand, tent, banner, flag, boards: [two kinds], pylon, garage?, garages?, office?, gantry?, post? }` or null), `crowd` (`{ kind: [...], size }`), `zones` (`[{ from, to, road?, width?, wall? }]`, written only when there are any). Pine Ridge Rally's eight courses are examples. |
 | `scenes/<name>.scene.json` | Generated: start line and arch, finish arch and section gates (stage), waypoints every 10 m, the grid, scenery. Open it in the scene editor. |
 | `models/road_<name>.glb` | Generated: the road as one ribbon mesh. Draw it with `nova.model("road_<name>", 0, 0, 0)`. |
 

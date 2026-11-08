@@ -1,11 +1,21 @@
 -- What the game remembers: the player's choices, options and best times (saved between runs).
 local state = {}
 
+-- The courses as the menus list them (the courses themselves are their files: tracks/<id>.track.json and scenes/<id>.scene.json), easiest
+-- first. `level` is how hard the course is: Easy and Medium are open from the start, a Hard one opens once a Medium one of the same kind
+-- has been finished, an Expert one once a Hard one has been finished in the top three (a race) or with two stars (a stage).
+state.levels = { "Easy", "Medium", "Hard", "Expert" }
 state.tracks = {
-  { id = "pine_ridge", name = "Pine Ridge", blurb = "Fast asphalt through the pines. Long straights, one tight hairpin.", laps = 2 },
-  { id = "dust_valley", name = "Dust Valley", blurb = "Loose dirt and twisty bends between the mesas.", laps = 2 },
-  { id = "frost_pass", name = "Frost Pass", blurb = "Packed snow on a long, looping pass. Grip is thin: brake early and be gentle.", laps = 2 },
-  { id = "harbour_lights", name = "Harbour Lights", blurb = "Asphalt after dark. Lamps mark the way; your headlights do the rest.", laps = 2 },
+  { id = "pine_ridge", name = "Pine Ridge", blurb = "Fast asphalt through the pines. Long straights, one tight hairpin.", laps = 2, level = 1 },
+  { id = "dust_valley", name = "Dust Valley", blurb = "Loose dirt and twisty bends between the mesas.", laps = 2, level = 1 },
+  { id = "frost_pass", name = "Frost Pass", blurb = "Packed snow on a long, looping pass. Grip is thin: brake early and be gentle.", laps = 2, level = 2 },
+  { id = "harbour_lights", name = "Harbour Lights", blurb = "Asphalt after dark. Lamps mark the way; your headlights do the rest.", laps = 2, level = 2 },
+  { id = "autumn_glen", name = "Autumn Glen", blurb = "Asphalt under the turning leaves: sweepers, a hairpin, and a corner that tightens.", laps = 2, level = 2 },
+  { id = "ridge_gp", name = "Ridge Grand Prix", blurb = "A proper circuit with pits: a long straight into a hairpin, esses, a long right that tightens.", laps = 3, level = 2 },
+  { id = "copper_canyon", name = "Copper Canyon", blurb = "Dirt at sunset: chicanes, two hairpins and a narrow walled gorge.", laps = 2, level = 3 },
+  { id = "glacier_ring", name = "Glacier Ring", blurb = "Fast sweeping bends on snow. Brake early: the hairpin after the long straight bites.", laps = 2, level = 3 },
+  { id = "neon_docks", name = "Neon Docks", blurb = "The docks at night: square corners, walled chicanes and a hairpin. Precision wins.", laps = 3, level = 4 },
+  { id = "autumn_summit", name = "Autumn Summit", blurb = "A long mountain lap: a bend that closes into a hairpin, switchbacks on a narrow bridge.", laps = 2, level = 4 },
 }
 -- The classes: you race the other cars of your own class (the grid on the car page is split by them)
 state.classes = {
@@ -18,10 +28,16 @@ state.classes = {
 -- The rally stages: point to point, each in the country of one of the circuits (`look`), five sections each (see lib/race.lua). The scene of
 -- a stage is the stage's id.
 state.stages = {
-  { id = "stage_pine_ridge", look = "pine_ridge", name = "Pine Ridge Stage", blurb = "Forest roads from the valley to the ridge, with hairpins on the way up.", laps = 1, km = 2.6 },
-  { id = "stage_dust_valley", look = "dust_valley", name = "Dust Valley Stage", blurb = "Switchbacks through the canyons as the sun goes down.", laps = 1, km = 2.7 },
-  { id = "stage_frost_pass", look = "frost_pass", name = "Frost Pass Stage", blurb = "A long climb over packed snow: the hairpins are slippery.", laps = 1, km = 2.2 },
-  { id = "stage_harbour_lights", look = "harbour_lights", name = "Harbour Night Stage", blurb = "Along the quay after dark: chicanes, then a hairpin at the end.", laps = 1, km = 2.1 },
+  { id = "stage_pine_ridge", look = "pine_ridge", name = "Pine Ridge Stage", blurb = "Forest roads from the valley to the ridge, with hairpins on the way up.", laps = 1, km = 2.6, sections = 5, level = 1 },
+  { id = "stage_dust_valley", look = "dust_valley", name = "Dust Valley Stage", blurb = "Switchbacks through the canyons as the sun goes down.", laps = 1, km = 2.7, sections = 5, level = 1 },
+  { id = "stage_frost_pass", look = "frost_pass", name = "Frost Pass Stage", blurb = "A long climb over packed snow: the hairpins are slippery.", laps = 1, km = 2.2, sections = 5, level = 2 },
+  { id = "stage_harbour_lights", look = "harbour_lights", name = "Harbour Night Stage", blurb = "Along the quay after dark: chicanes, then a hairpin at the end.", laps = 1, km = 2.1, sections = 5, level = 2 },
+  { id = "stage_autumn_glen", look = "stage_autumn_glen", name = "Autumn Glen Stage", blurb = "Gravel through the woods, then tarmac from the halfway hairpin: mind the change of grip.", laps = 1, km = 3.2, sections = 6, level = 2 },
+  { id = "stage_mesa_run", look = "stage_mesa_run", name = "Mesa Run", blurb = "Fast sand between the mesas, with two tight turns to catch you out.", laps = 1, km = 3.3, sections = 6, level = 2 },
+  { id = "stage_canyon", look = "stage_canyon", name = "Canyon Climb", blurb = "Hairpin after hairpin up a sandy canyon, through a narrow walled gorge.", laps = 1, km = 2.6, sections = 7, level = 3 },
+  { id = "stage_glacier_night", look = "stage_glacier_night", name = "Glacier by Night", blurb = "Snow in the dark: long slippery sweeps and three hairpins under the lamps.", laps = 1, km = 3.1, sections = 7, level = 3 },
+  { id = "stage_harbour_sprint", look = "stage_harbour_sprint", name = "Harbour Sprint", blurb = "Square turns, chicanes and narrow walled alleys along the quays at night.", laps = 1, km = 2.6, sections = 7, level = 4 },
+  { id = "stage_marathon", look = "stage_marathon", name = "Forest Marathon", blurb = "The long one: gravel, a tarmac middle, gravel again. Eight sections.", laps = 1, km = 4.6, sections = 8, level = 4 },
 }
 state.cars = {
   -- `oversteer`: how readily the rear lets go under power in a bend (0 never, 1 a lot); the sedan and the hatchback are the
@@ -64,9 +80,9 @@ state.cars = {
 -- hold that it dares in a bend, and `band` how much it eases off when it is well ahead of you or pushes when well behind (a share of its speed).
 -- Each rival also has a driver's skill (race.lua), so the three of a race are never level.
 state.difficulties = {
-  { id = "easy", name = "Easy", blurb = "Rivals drive carefully and give up the chase. In a rally the section times to beat are generous.", pace = 0.72, corner = 0.68, band = 0.03, allow = 1.3 },
-  { id = "medium", name = "Medium", blurb = "Rivals drive well and stay in touch. In a rally the section times to beat are fair.", pace = 0.88, corner = 0.86, band = 0.06, allow = 1.1 },
-  { id = "hard", name = "Hard", blurb = "Rivals drive to the limit of their cars and chase you down. In a rally the section times to beat are tight.", pace = 1.0, corner = 1.03, band = 0.10, allow = 0.98 },
+  { id = "easy", name = "Easy", blurb = "Rivals drive carefully and give up the chase. In a rally the section times to beat are generous.", pace = 0.72, corner = 0.74, band = 0.03, allow = 1.3 },
+  { id = "medium", name = "Medium", blurb = "Rivals drive well and stay in touch. In a rally the section times to beat are fair.", pace = 0.88, corner = 0.92, band = 0.06, allow = 1.1 },
+  { id = "hard", name = "Hard", blurb = "Rivals drive to the limit of their cars and chase you down. In a rally the section times to beat are tight.", pace = 1.0, corner = 1.06, band = 0.10, allow = 0.98 },
 }
 
 state.track = 1       -- index into state.tracks
@@ -168,6 +184,22 @@ function state.finished(id, how)
   nova.save.set("done_" .. id, d)
 end
 function state.done(id) return nova.save.get("done_" .. id, nil) end
+
+-- Whether a course of a list (state.tracks or state.stages) can be picked, and if not, what it takes.
+function state.course_open(list, course)
+  local level = course.level or 1
+  if level <= 2 then return true end
+  local stage = list == state.stages
+  for _, c in ipairs(list) do
+    local d = state.done(c.id)
+    if d and (c.level or 1) == level - 1 then
+      if level == 3 then return true end
+      if (d.place and d.place <= 3) or (d.stars and d.stars >= 2) then return true end
+    end
+  end
+  if level == 3 then return false, "Finish a Medium " .. (stage and "stage" or "circuit") .. " to open." end
+  return false, stage and "Score two stars on a Hard stage to open." or "Finish a Hard circuit in the top three to open."
+end
 function state.current_car() return state.cars[state.car] end
 
 -- Best race time and best lap per track, saved with the track's id.
