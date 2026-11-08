@@ -160,7 +160,7 @@ fn a_whole_race_on_dust_valley_ends_on_the_results_screen() {
         "nobody got stuck: {log:?}"
     );
     // every car has a time when the player finishes (the ones still racing get an estimate, not "did not finish"), and a Formula
-    // car's rivals are the other Formula car
+    // car's rivals drive other Formula cars
     let line = log
         .iter()
         .find(|l| l.contains("a time for"))
@@ -170,10 +170,21 @@ fn a_whole_race_on_dust_valley_ends_on_the_results_screen() {
         log.iter().any(|l| l.contains("rally: slipstream")),
         "the player drafted behind a rival at some point: {log:?}"
     );
-    assert!(
-        line.ends_with("rivals: car_yellow car_yellow car_yellow"),
-        "{line}"
-    );
+    let rivals: Vec<&str> = line.rsplit("rivals: ").next().unwrap().split(' ').collect();
+    assert_eq!(rivals.len(), 3, "{line}");
+    for r in rivals {
+        assert!(
+            [
+                "car_yellow",
+                "racecar_green",
+                "racecar_orange",
+                "racecar_red",
+                "racecar_white"
+            ]
+            .contains(&r),
+            "{line}"
+        );
+    }
 }
 
 #[test]

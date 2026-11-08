@@ -159,6 +159,30 @@ describe("generating", () => {
     expect(again.objects.filter((o: { kind: string }) => o.kind === "section_gate")).toHaveLength(3);
     expect(buildTrack(d, "not a scene").scene).toBe(buildTrack(d).scene);
   });
+  it("narrows the road and changes its surface in a zone: the waypoints, the barriers, a wall and the road mesh follow", () => {
+    const loop = { ...newTrack(), control: [[0, -200], [0, 300], [40, 380], [120, 420], [300, 420], [380, 380], [420, 300], [420, -200], [380, -280], [300, -320], [120, -320], [40, -280]] as Point[] };
+    const zoned = { ...loop, zones: [{ from: 100, to: 300, width: 8, road: "road_gravel" as const, wall: "barrier_wall" }] };
+    const parsed = parseTrack(serializeTrack(zoned));
+    expect(parsed.ok && parsed.doc.zones).toEqual(zoned.zones);
+    expect(serializeTrack(loop)).not.toContain("zones"); // (a track without zones keeps its text)
+    const objects: { kind: string; x: number; z: number; props?: Record<string, unknown> }[] = JSON.parse(buildTrack(zoned).scene).objects;
+    const wps = objects.filter((o) => o.kind === "waypoint");
+    const inZone = wps.filter((o) => o.props!.road === "road_gravel");
+    expect(inZone.length).toBeGreaterThan(15);
+    expect(inZone.every((o) => o.props!.w === 4)).toBe(true);
+    expect(wps.filter((o) => o.props!.w === undefined).length).toBeGreaterThan(wps.length / 2); // (elsewhere the road is as it was)
+    const walls = objects.filter((o) => o.kind === "barrier_wall");
+    expect(walls.length).toBeGreaterThan(60);
+    const line = analyse(zoned)!.line;
+    for (const w of walls) expect(Math.min(...line.map((q) => Math.hypot(q.x - w.x, q.z - w.z)))).toBeLessThan(5.5);
+    // the road mesh: narrower and gravel-coloured in the zone, so not the plain one
+    expect(buildTrack(zoned).glb.length).toBe(buildTrack(loop).glb.length);
+    expect(Buffer.compare(Buffer.from(buildTrack(zoned).glb), Buffer.from(buildTrack(loop).glb))).not.toBe(0);
+    // a pit row, a gantry and light posts when the roadside has them
+    const dressed = JSON.parse(buildTrack({ ...loop, roadside: { ...ROADSIDE, garage: "garage", garages: 4, office: "pits_office", gantry: "gantry", post: "light_post" } }).scene).objects as { kind: string }[];
+    expect(dressed.filter((o) => o.kind === "garage")).toHaveLength(4);
+    for (const k of ["pits_office", "gantry", "light_post"]) expect(dressed.some((o) => o.kind === k), k).toBe(true);
+  });
   it("lays out the roadside and a crowd from the waypoints, clear of the road", () => {
     const loop = { ...newTrack(), control: [[0, -200], [0, 300], [40, 380], [120, 420], [300, 420], [380, 380], [420, 300], [420, -200], [380, -280], [300, -320], [120, -320], [40, -280]] as Point[] };
     const kinds = ["fan_a", "fan_b"];

@@ -60,6 +60,63 @@ const CARS = {
     idle: 2500, max: 9800, cylinders: 6, unevenness: 0.03, noise: 0.15, pattern: [1], whine: 14,
     resonators: [{ f: 300, tau: 0.02, g: 0.9 }, { f: 900, tau: 0.012, g: 0.8 }, { f: 2000, tau: 0.008, g: 0.7 }, { f: 3600, tau: 0.004, g: 0.5 }],
   },
+  // (added 2026-11-07, after the others so that their loops come out as before: the seed runs on through the list)
+  racecar_green: { // Verde GP: a classic V8 racer, a hard bark
+    idle: 3000, max: 11000, cylinders: 8, unevenness: 0.04, noise: 0.3, pattern: [1],
+    resonators: [{ f: 160, tau: 0.03, g: 0.5 }, { f: 448, tau: 0.02, g: 1 }, { f: 1040, tau: 0.012, g: 0.85 }, { f: 2080, tau: 0.008, g: 0.7 }, { f: 3520, tau: 0.004, g: 0.5 }],
+  },
+  racecar_orange: { // Tangerine: a V12, smooth and very high
+    idle: 3800, max: 13500, cylinders: 12, unevenness: 0.04, noise: 0.3, pattern: [1],
+    resonators: [{ f: 200, tau: 0.03, g: 0.5 }, { f: 560, tau: 0.02, g: 1 }, { f: 1300, tau: 0.012, g: 0.85 }, { f: 2600, tau: 0.008, g: 0.7 }, { f: 4400, tau: 0.004, g: 0.5 }],
+  },
+  racecar_red: { // Rosso: a flat twelve, a deep howl
+    idle: 3200, max: 12000, cylinders: 12, unevenness: 0.04, noise: 0.3, pattern: [1],
+    resonators: [{ f: 150, tau: 0.03, g: 0.5 }, { f: 420, tau: 0.02, g: 1 }, { f: 975, tau: 0.012, g: 0.85 }, { f: 1950, tau: 0.008, g: 0.7 }, { f: 3300, tau: 0.004, g: 0.5 }],
+  },
+  racecar_white: { // Phantom: a turbo V6 with a whistle
+    idle: 3000, max: 11500, cylinders: 6, unevenness: 0.04, noise: 0.3, pattern: [1], whine: 12,
+    resonators: [{ f: 175, tau: 0.03, g: 0.5 }, { f: 489.99999999999994, tau: 0.02, g: 1 }, { f: 1137.5, tau: 0.012, g: 0.85 }, { f: 2275, tau: 0.008, g: 0.7 }, { f: 3850, tau: 0.004, g: 0.5 }],
+  },
+  kart_oobi: { // Oobi: a kart's single-cylinder two-stroke: a high, buzzy rasp
+    idle: 2200, max: 13000, cylinders: 2, unevenness: 0.12, noise: 0.45, pattern: [1, 0.2],
+    resonators: [{ f: 240, tau: 0.02, g: 0.8 }, { f: 576, tau: 0.014, g: 1 }, { f: 1320, tau: 0.008, g: 0.7 }, { f: 2640, tau: 0.004, g: 0.45 }],
+  },
+  kart_oodi: { // Oodi: a kart's single-cylinder two-stroke: a high, buzzy rasp
+    idle: 2400, max: 13500, cylinders: 2, unevenness: 0.12, noise: 0.45, pattern: [1, 0.2],
+    resonators: [{ f: 260, tau: 0.02, g: 0.8 }, { f: 624, tau: 0.014, g: 1 }, { f: 1430, tau: 0.008, g: 0.7 }, { f: 2860, tau: 0.004, g: 0.45 }],
+  },
+  kart_ooli: { // Ooli: a kart's single-cylinder two-stroke: a high, buzzy rasp
+    idle: 2000, max: 12500, cylinders: 2, unevenness: 0.12, noise: 0.45, pattern: [1, 0.2],
+    resonators: [{ f: 225, tau: 0.02, g: 0.8 }, { f: 540, tau: 0.014, g: 1 }, { f: 1237.5, tau: 0.008, g: 0.7 }, { f: 2475, tau: 0.004, g: 0.45 }],
+  },
+  kart_oopi: { // Oopi: a kart's single-cylinder two-stroke: a high, buzzy rasp
+    idle: 2300, max: 13200, cylinders: 2, unevenness: 0.12, noise: 0.45, pattern: [1, 0.2],
+    resonators: [{ f: 250, tau: 0.02, g: 0.8 }, { f: 600, tau: 0.014, g: 1 }, { f: 1375, tau: 0.008, g: 0.7 }, { f: 2750, tau: 0.004, g: 0.45 }],
+  },
+  kart_oozi: { // Oozi: a kart's single-cylinder two-stroke: a high, buzzy rasp
+    idle: 2500, max: 14000, cylinders: 2, unevenness: 0.12, noise: 0.45, pattern: [1, 0.2],
+    resonators: [{ f: 275, tau: 0.02, g: 0.8 }, { f: 660, tau: 0.014, g: 1 }, { f: 1512.5, tau: 0.008, g: 0.7 }, { f: 3025, tau: 0.004, g: 0.45 }],
+  },
+  ambulance: { // Ambulance: a busy V8 van engine
+    idle: 750, max: 5200, cylinders: 8, unevenness: 0.08, noise: 0.3, pattern: [1, 0.85, 0.95, 0.8],
+    resonators: [{ f: 95, tau: 0.045, g: 1 }, { f: 218.49999999999997, tau: 0.025, g: 0.85 }, { f: 570, tau: 0.014, g: 0.6 }, { f: 1425, tau: 0.007, g: 0.4 }, { f: 2850, tau: 0.003, g: 0.25 }],
+  },
+  firetruck: { // Fire engine: a big diesel six, a rumble
+    idle: 600, max: 3600, cylinders: 6, unevenness: 0.1, noise: 0.45, pattern: [1, 0.85, 0.95, 0.8],
+    resonators: [{ f: 70, tau: 0.045, g: 1 }, { f: 161, tau: 0.025, g: 0.85 }, { f: 420, tau: 0.014, g: 0.6 }, { f: 1050, tau: 0.007, g: 0.4 }, { f: 2100, tau: 0.003, g: 0.25 }],
+  },
+  garbage_truck: { // Garbage truck: a clattering diesel
+    idle: 600, max: 3400, cylinders: 6, unevenness: 0.16, noise: 0.55, pattern: [1, 0.85, 0.95, 0.8],
+    resonators: [{ f: 65, tau: 0.045, g: 1 }, { f: 149.5, tau: 0.025, g: 0.85 }, { f: 390, tau: 0.014, g: 0.6 }, { f: 975, tau: 0.007, g: 0.4 }, { f: 1950, tau: 0.003, g: 0.25 }],
+  },
+  delivery: { // Courier: a diesel four
+    idle: 750, max: 4600, cylinders: 4, unevenness: 0.17, noise: 0.5, pattern: [1, 0.85, 0.95, 0.8],
+    resonators: [{ f: 90, tau: 0.045, g: 1 }, { f: 206.99999999999997, tau: 0.025, g: 0.85 }, { f: 540, tau: 0.014, g: 0.6 }, { f: 1350, tau: 0.007, g: 0.4 }, { f: 2700, tau: 0.003, g: 0.25 }],
+  },
+  tractor: { // Tractor: a slow, lumpy two-cylinder thump
+    idle: 500, max: 2600, cylinders: 2, unevenness: 0.22, noise: 0.5, pattern: [1, 0.85, 0.95, 0.8],
+    resonators: [{ f: 60, tau: 0.045, g: 1 }, { f: 138, tau: 0.025, g: 0.85 }, { f: 360, tau: 0.014, g: 0.6 }, { f: 900, tau: 0.007, g: 0.4 }, { f: 1800, tau: 0.003, g: 0.25 }],
+  },
 };
 
 function rng(seed) { let s = seed >>> 0; return () => ((s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296); }

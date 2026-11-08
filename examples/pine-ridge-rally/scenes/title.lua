@@ -91,9 +91,12 @@ function Title:set_class(n)
   for k, c in ipairs(state.classes) do if c.id == pick.class then index = k end end
   index = (index - 1 + n) % count + 1
   pick.class = state.classes[index].id
-  state.car = class_cars(pick.class)[1]
+  -- (a locked class can be looked at, but its cars are not tried on: the car on show stays the one you have)
+  if state.class_open(state.classes[index]) then state.car = class_cars(pick.class)[1] else state.car = pick.old end
   wear()
 end
+
+local function class_locked(id) return not state.class_open(state.class_of({ class = id })) end
 
 function Title:set_pick(kind, i)
   if kind == "circuit" then
@@ -148,6 +151,12 @@ function Title:update_pick()
       self:pick_buttons(pick)
       return
     end
+  end
+  if pick.kind == "car" and class_locked(pick.class) then
+    -- a locked class: nothing to move over, and A does not keep anything
+    if nova.input.pressed("a") or nova.input.pressed("start") then audio.sfx("menu_back"); return end
+    self:pick_buttons(pick)
+    return
   end
   local moved = i
   if nova.input.pressed("left") then moved = i - 1 end
@@ -327,19 +336,24 @@ function Title:draw_pick()
   ui.text(grid.x, pick.kind == "car" and 12 or 30, title, ui.fit(title, pick.kind == "car" and 30 or 36, 560), ui.color.gold, { font = "bold" })
   if pick.kind == "car" then
     -- a tab for each class (the chosen class is yellow; with the tabs selected it has a frame round it)
-    local tw = (RIGHT - LEFT - 12) / 3
+    local count = #state.classes
+    local tw = (RIGHT - LEFT - 6 * (count - 1)) / count
     for k, c in ipairs(state.classes) do
       local x = grid.x + (k - 1) * (tw + 6)
       local on = c.id == pick.class
+      local open = state.class_open(c)
       nova.ui.panel(on and "ui/btn_yellow" or "ui/btn_grey", x, 58, tw, 34, { slice = { 14, 14, 14, 22 }, scale = 0.75 })
-      nova.ui.text(x + 14, 64, c.name, { size = 20, color = ui.color.ink, font = "rounded", shadow = false })
+      local label = open and c.name or (c.name .. " *")
+      nova.ui.text(x + 10, 65, label, { size = ui.fit(label, 18, tw - 18, "rounded"), color = ui.color.ink, font = "rounded", shadow = false })
       if on and pick.tabs then nova.ui.panel("ui/panel_frame", x - 3, 55, tw + 6, 40, { slice = 18, scale = 0.5 }) end
     end
     local class = state.class_of({ class = pick.class })
     ui.panel(LEFT, 98, RIGHT - LEFT, 52, 215)
     ui.text(LEFT + 14, 106, class.blurb, 14, ui.color.white, { width = RIGHT - LEFT - 28 })
-    ui.text(LEFT + 14, 127, "Your rivals are other " .. class.name .. " cars.", 14, ui.color.gold, { width = RIGHT - LEFT - 28 })
+    local open, why = state.class_open(class)
+    ui.text(LEFT + 14, 127, open and ("Your rivals are other " .. class.name .. " cars.") or ("LOCKED: " .. why), 14, open and ui.color.gold or ui.color.red, { width = RIGHT - LEFT - 28 })
   end
+  local locked = pick.kind == "car" and class_locked(pick.class)
   local on = pick.tabs and 0 or self:picked(pick.kind)
   for i, item in ipairs(items) do
     local col, row = (i - 1) % grid.cols, (i - 1) // grid.cols
@@ -365,9 +379,10 @@ function Title:draw_pick()
     else
       ui.text(x + 12, y + 8, item.name, ui.fit(item.name, 20, w - 24, "rounded"), ui.color.white)
       bar(x + 12, y + 38, w - 82, "POWER", (item.power - 6) / 6.5)
-      bar(x + 12, y + 52, w - 82, "SPEED", (item.top - 34) / 18)
-      bar(x + 12, y + 66, w - 82, "GRIP", (item.grip - 0.75) / 0.5)
+      bar(x + 12, y + 52, w - 82, "SPEED", (item.top - 28) / 24)
+      bar(x + 12, y + 66, w - 82, "GRIP", (item.grip - 0.75) / 0.7)
       bar(x + 12, y + 80, w - 82, "DRIFT", item.oversteer)
+      if locked then nova.ui.rect(x, y, w, h, { 0, 0, 0, 150 }) end
     end
   end
   if pick.kind == "car" then

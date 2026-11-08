@@ -12,8 +12,8 @@ function track.clear()
 end
 
 -- Called by each waypoint as the scene is built.
-function track.add(order, x, z, curvature)
-  pts[#pts + 1] = { order = order, x = x, z = z, k = curvature or 0 }
+function track.add(order, x, z, curvature, half, road)
+  pts[#pts + 1] = { order = order, x = x, z = z, k = curvature or 0, w = half or 6, road = road }
   ready = false
 end
 

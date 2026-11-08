@@ -62,6 +62,27 @@ export function rng(seed) {
 }
 
 const r1 = (n) => Math.round(n * 10) / 10;
+
+// ---- zones: stretches of the route with their own surface or width ---------------------------------------------------------------
+// A zone is { from, to } in metres along the route from its first point, with `road` (another road kind: gravel into tarmac on a stage),
+// `width` (metres across, instead of 12: a narrow section) and `wall` (an entity lining both edges, every 6 m). A width eases in and out
+// over RAMP metres either side; a surface changes at the zone's edge.
+export const ROAD_WIDTH = 12;
+const RAMP = 15;
+export function halfAt(zones, s) {
+  let half = ROAD_WIDTH / 2;
+  for (const z of zones ?? []) {
+    if (!z.width) continue;
+    const f = s < z.from ? 1 - (z.from - s) / RAMP : s > z.to ? 1 - (s - z.to) / RAMP : 1;
+    if (f > 0) half += (z.width / 2 - ROAD_WIDTH / 2) * Math.min(1, f);
+  }
+  return half;
+}
+export function roadAt(zones, s, road) {
+  let kind = road;
+  for (const z of zones ?? []) if (z.road && s >= z.from && s < z.to) kind = z.road;
+  return kind;
+}
 const obj = (kind, x, z, ry = 0, extra = {}, y = 0) => ({ kind, x: r1(x), y, z: r1(z), ...(ry || Object.keys(extra).length ? { props: { ...(ry ? { ry: Math.round(ry * 1000) / 1000 } : {}), ...extra } } : {}) });
 
 /// Where an open stage's start line (index L) and finish line (index F) are among `n` road points (a circuit starts at 0 and has no finish).
@@ -106,7 +127,7 @@ export function paceNotes(line, curv, open = false, leadIn = 40, spacing = 5) {
 // The roadside and the crowd are laid out from the scene's own waypoints (rounded as they are stored), with the sums of Pine Ridge Rally's
 // lib/track.lua, so that they land where the game used to put them when it placed them itself at the start of a race.
 export function courseOf(waypoints, open) {
-  const pts = waypoints.map((w) => ({ x: w.x, z: w.z }));
+  const pts = waypoints.map((w) => ({ x: w.x, z: w.z, w: w.props?.w ?? ROAD_WIDTH / 2 }));
   const n = pts.length;
   let total = 0;
   pts.forEach((p, k) => {
@@ -188,8 +209,31 @@ function roadside(course, kinds, out) {
       }
       if (Math.abs(bends[i]) > 0.22 && p.s - lastPylon > 20) {
         const outside = bends[i] > 0 ? 1 : -1; // turning right: the outside is to the left
-        add(kinds.pylon, i, outside * (6 + 1.4), 0, 0, 6.2);
+        add(kinds.pylon, i, outside * (p.w + 1.4), 0, 0, p.w + 0.2);
         lastPylon = p.s;
+      }
+    }
+  }
+  // (2026-11-07, for the courses that ask for them) a row of pit garages behind the start line on the right, their doors to the road, with
+  // the office at its end; a gantry of start lights over the road 60 m after the line; light posts along the straights, every 60 m
+  if (kinds.garage) {
+    const count = kinds.garages ?? 5;
+    for (let k = 0; k < count; k++) add(kinds.garage, 1, -(point(1).w + 13), pi / 2, -26 - 12.2 * k, point(1).w + 6);
+    add(kinds.office, 1, -(point(1).w + 13), pi / 2, -26 - 12.2 * count, point(1).w + 6);
+  }
+  if (kinds.gantry) {
+    const p = point(7);
+    out.push(obj(kinds.gantry, p.x, p.z, p.heading));
+  }
+  if (kinds.post) {
+    let next = 40, sidePost = 1;
+    for (let i = 1; i <= n; i++) {
+      const p = point(i);
+      if (p.s > next && p.s < length - 30 && Math.abs(bends[i]) < 0.1) {
+        // (the post's arm reaches along its +z: turned to the road)
+        add(kinds.post, i, sidePost * (p.w + 2.6), sidePost > 0 ? -pi / 2 : pi / 2, 0, p.w + 1.5);
+        sidePost = -sidePost;
+        next = p.s + 60;
       }
     }
   }
@@ -294,7 +338,15 @@ export function layout(spec) {
   // waypoints every 10 m: the way the cars drive, and the order that counts laps
   const wp = [];
   for (let i = open ? L : 0; i < n; i += 2) wp.push(i);
-  wp.forEach((i, k) => objects.push({ kind: "waypoint", x: r1(line[i].x), y: 0, z: r1(line[i].z), props: { i: k + 1, k: Math.round(curv[i] * 10000) / 10000 } }));
+  const zones = spec.zones ?? [];
+  const half = (i) => halfAt(zones, i * spacing);
+  wp.forEach((i, k) => {
+    const props = { i: k + 1, k: Math.round(curv[i] * 10000) / 10000 };
+    const h = half(i), kind = roadAt(zones, i * spacing, spec.road);
+    if (Math.abs(h - ROAD_WIDTH / 2) > 0.01) props.w = Math.round(h * 100) / 100; // (half the road's width here, metres)
+    if (kind !== spec.road) props.road = kind;
+    objects.push({ kind: "waypoint", x: r1(line[i].x), y: 0, z: r1(line[i].z), props });
+  });
 
   // the grid: two columns behind the line, facing the way the road goes
   for (let s = 0; s < 4; s++) {
@@ -337,19 +389,30 @@ export function layout(spec) {
     if (Math.abs(k) > 0.0075 && i % 2 === 0) {
       const side = k > 0 ? 1 : -1; // a bend that turns towards +x (left, heading +z) has its outside on the right: (-tz, tx)
       const nx = -p.tz * side, nz = p.tx * side;
-      objects.push(obj(spec.rail ?? "guardrail", p.x + nx * 8.2, p.z + nz * 8.2, p.ry));
-      if (Math.abs(k) > 0.014 && i % 4 === 0) objects.push(obj("tires", p.x + nx * 9.6, p.z + nz * 9.6, 0));
+      const e = half(i) - ROAD_WIDTH / 2; // (how much wider than 12 m the road is here: negative where it is narrow)
+      objects.push(obj(spec.rail ?? "guardrail", p.x + nx * (8.2 + e), p.z + nz * (8.2 + e), p.ry));
+      if (Math.abs(k) > 0.014 && i % 4 === 0) objects.push(obj("tires", p.x + nx * (9.6 + e), p.z + nz * (9.6 + e), 0));
     }
     if (Math.abs(k) > 0.011 && Math.abs(curv[(i + n - 4) % n]) < 0.008 && i % 3 === 0) {
       const side = k > 0 ? 1 : -1;
-      objects.push(obj("sign_chevron", p.x + -p.tz * side * 8, p.z + p.tx * side * 8, p.ry + (k > 0 ? Math.PI : Math.PI)));
+      const e = half(i) - ROAD_WIDTH / 2;
+      objects.push(obj("sign_chevron", p.x + -p.tz * side * (8 + e), p.z + p.tx * side * (8 + e), p.ry + (k > 0 ? Math.PI : Math.PI)));
     }
     // street lamps along the outer edge every 40 m, turned to face the road (the lamp's arm points along its +z)
     if (spec.lamps && i % 8 === 3) {
-      const side = i % 16 === 3 ? 1 : -1, nx = -p.tz * side, nz = p.tx * side;
-      objects.push(obj("lamp", p.x + nx * 9.4, p.z + nz * 9.4, Math.atan2(-nx, -nz)));
+      const side = i % 16 === 3 ? 1 : -1, nx = -p.tz * side, nz = p.tx * side, d = 9.4 + (half(i) - ROAD_WIDTH / 2);
+      objects.push(obj("lamp", p.x + nx * d, p.z + nz * d, Math.atan2(-nx, -nz)));
     }
-    if (i % 17 === 5 && Math.abs(k) < 0.006) objects.push(obj("hay_bale", p.x + -p.tz * 11.5, p.z + p.tx * 11.5, p.ry));
+    if (i % 17 === 5 && Math.abs(k) < 0.006) objects.push(obj("hay_bale", p.x + -p.tz * (11.5 + (half(i) - ROAD_WIDTH / 2)), p.z + p.tx * (11.5 + (half(i) - ROAD_WIDTH / 2)), p.ry));
+  }
+
+  // a zone's walls: both edges lined every 6 m (a narrow, walled section)
+  for (const z of zones) {
+    if (!z.wall) continue;
+    for (let sd = Math.max(0, z.from); sd <= Math.min(z.to, (n - 1) * spacing); sd += 6) {
+      const i = Math.round(sd / spacing), p = line[i], d = half(i) + 0.9;
+      for (const side of [-1, 1]) objects.push(obj(z.wall, p.x - p.tz * side * d, p.z + p.tx * side * d, p.ry));
+    }
   }
 
   // some tall features well away from the road
@@ -394,8 +457,7 @@ export const ROAD_COLOURS = {
 };
 const CROSS = [[-6, -5.02, "verge"], [-5.02, -4.14, "line"], [-4.14, 4.14, "road"], [4.14, 5.02, "line"], [5.02, 6, "verge"]];
 
-export function roadGlb(control, kind, open = false) {
-  const colours = ROAD_COLOURS[kind];
+export function roadGlb(control, kind, open = false, zones = []) {
   const rows = centreline(control, 2, open);
   const n = rows.length;
   const positions = [], normals = [], colors = [], indices = [];
@@ -413,9 +475,12 @@ export function roadGlb(control, kind, open = false) {
     for (const q of pts) { positions.push(...q); normals.push(...nrm); colors.push(...rgb, 1); }
     indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
   };
-  const at = (i, off, y) => { const p = rows[i % n]; return [p.x + p.tz * off, y, p.z - p.tx * off]; };
+  // (a row's offsets are scaled by the road's half-width there: a zone narrows or widens the whole cross-section)
+  const scale = (i) => halfAt(zones, (i % n) * 2) / (ROAD_WIDTH / 2);
+  const at = (i, off, y) => { const p = rows[i % n]; const o = off * scale(i); return [p.x + p.tz * o, y, p.z - p.tx * o]; };
   for (let i = 0; i < (open ? n - 1 : n); i++) {
     const j = i + 1;
+    const colours = ROAD_COLOURS[roadAt(zones, i * 2, kind)];
     for (const [from, to, name] of CROSS) quad(at(i, from, TOP), at(i, to, TOP), at(j, to, TOP), at(j, from, TOP), colours[name], [0, 1, 0]);
     // the skirts: down from each outer edge, in the dark of the verge
     const dark = colours.verge.map((x) => x * 0.55);

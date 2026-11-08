@@ -49,9 +49,20 @@ export interface TrackDoc {
   /// Spectators in groups beside the road (by the start, at the hard bends, along the straights): the kinds they are picked from (none: no
   /// crowd) and their size (the models' scale).
   crowd: { kind: string[]; size: number };
+  /// Stretches of the route with their own surface or width: gravel into tarmac on a stage, a narrow walled section.
+  zones: Zone[];
 }
 
-export interface Roadside { stand: string; tent: string; banner: string; flag: string; boards: string[]; pylon: string }
+export interface Roadside {
+  stand: string; tent: string; banner: string; flag: string; boards: string[]; pylon: string;
+  /// A row of `garages` pit garages behind the start line (and an office at its end), a gantry over the road after the line, and light
+  /// posts along the straights: empty for none.
+  garage?: string; garages?: number; office?: string; gantry?: string; post?: string;
+}
+
+/// Metres along the route from its first point (a stage's lead-in counts), and what changes there: another road kind, another width
+/// (metres across; the road is 12), and a wall entity along both edges.
+export interface Zone { from: number; to: number; road?: RoadKind; width?: number; wall?: string }
 
 export type Rgb = [number, number, number];
 
@@ -68,7 +79,7 @@ export function newTrack(): TrackDoc {
     control: [[0, -60], [0, 40], [30, 110], [100, 140], [170, 110], [200, 40], [170, -30], [100, -60]],
     sections: 5, leadIn: 40, runout: 90, seed: 1, trees: [], small: [], rock: [], density: 0.4, rocks: 0.05, lamps: false,
     rail: "guardrail", sky: [138, 182, 224], far: { kind: [], density: 0 }, landmarks: { kind: [], count: 0, radius: 150 },
-    roadside: null, crowd: { kind: [], size: 1 },
+    roadside: null, crowd: { kind: [], size: 1 }, zones: [],
   };
 }
 
@@ -119,6 +130,7 @@ export function parseTrack(text: string): Parsed {
       landmarks: { kind: names(record(o.landmarks).kind), count: Math.round(num(record(o.landmarks).count, 0, 0, 200)), radius: num(record(o.landmarks).radius, d.landmarks.radius, 0, 2000) },
       roadside: o.roadside && typeof o.roadside === "object" && !Array.isArray(o.roadside) ? roadsideOf(record(o.roadside)) : null,
       crowd: { kind: names(record(o.crowd).kind), size: num(record(o.crowd).size, 1, 0.05, 20) },
+      zones: Array.isArray(o.zones) ? o.zones.map(record).map(zoneOf).filter((z): z is Zone => z !== null) : [],
     },
   };
 }
@@ -126,13 +138,26 @@ export function parseTrack(text: string): Parsed {
 const kindOf = (v: unknown) => (typeof v === "string" ? v : "");
 const roadsideOf = (o: Record<string, unknown>): Roadside => ({
   stand: kindOf(o.stand), tent: kindOf(o.tent), banner: kindOf(o.banner), flag: kindOf(o.flag), boards: names(o.boards).slice(0, 2), pylon: kindOf(o.pylon),
+  ...(kindOf(o.garage) ? { garage: kindOf(o.garage), garages: Math.round(num(o.garages, 5, 1, 20)), office: kindOf(o.office) } : {}),
+  ...(kindOf(o.gantry) ? { gantry: kindOf(o.gantry) } : {}),
+  ...(kindOf(o.post) ? { post: kindOf(o.post) } : {}),
 });
+const zoneOf = (o: Record<string, unknown>): Zone | null => {
+  const from = num(o.from, NaN, 0, 1e6), to = num(o.to, NaN, 0, 1e6);
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return null;
+  const z: Zone = { from, to };
+  if (ROADS.some((r) => r.id === o.road)) z.road = o.road as RoadKind;
+  if (typeof o.width === "number" && Number.isFinite(o.width)) z.width = Math.min(30, Math.max(6, o.width));
+  if (kindOf(o.wall)) z.wall = kindOf(o.wall);
+  return z;
+};
 
 /// What a new track's roadside starts as when it is switched on (the kinds Pine Ridge Rally has).
 export const ROADSIDE: Roadside = { stand: "grandstand", tent: "tent_long", banner: "banner_green", flag: "flag_green", boards: ["billboard", "billboard_low"], pylon: "pylon" };
 
 export function serializeTrack(doc: TrackDoc): string {
-  const { control, ...rest } = doc;
+  const { control, zones, ...rest } = doc;
+  if (zones.length) (rest as Record<string, unknown>).zones = zones;
   const lines = control.map((p) => `    [${round(p[0])}, ${round(p[1])}]`).join(",\n");
   // (each setting on a line of its own; a list of kinds or a colour stays on that line)
   const fields = Object.entries(rest).map(([k, v]) => `  ${JSON.stringify(k)}: ${inline(v)}`);
@@ -285,12 +310,12 @@ export function buildTrack(doc: TrackDoc, previous?: string | null): TrackFiles 
     sections: doc.sections, leadIn: doc.leadIn, runout: doc.runout, lamps: doc.lamps,
     trees: doc.trees, small: doc.small, rock: doc.rock, density: doc.trees.length ? doc.density : 0, rocks: doc.rocks,
     far: doc.far, landmarks: doc.landmarks.kind.length ? doc.landmarks : { kind: [], count: 0, radius: 0 },
-    roadside: doc.roadside, crowd: doc.crowd, keep: keptObjects(previous),
+    roadside: doc.roadside, crowd: doc.crowd, zones: doc.zones, keep: keptObjects(previous),
   };
   const { scene, stats } = layout(spec);
   const parsed = parseScene(JSON.stringify(scene));
   if (!parsed.ok) throw `the layout is not a valid scene: ${parsed.error}`;
-  const glb: Uint8Array = roadGlb(doc.control, doc.road, doc.open);
+  const glb: Uint8Array = roadGlb(doc.control, doc.road, doc.open, doc.zones);
   return { scene: serializeScene(parsed.scene), glb, report: `${stats.length} m, ${stats.objects} objects, tightest bend ~${stats.minRadius} m` };
 }
 

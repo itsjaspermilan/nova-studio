@@ -382,6 +382,7 @@ tool(
     landmarks: { type: "object", description: "Tall features well away from the road: { kind: [entity names], count, radius: metres from the route's middle }." },
     roadside: { type: ["object", "null"], description: "The life beside the road, or null for none: { stand, tent, banner, flag, boards: [two billboard kinds that take turns], pylon } (entity names): stands, tents and banners by the start, flags along the start straight, billboards on the straights, pylons on the outside of hard bends." },
     crowd: { type: "object", description: "Spectators in groups by the start, at the hard bends and along the straights: { kind: [entity names to pick from], size: their scale }." },
+    zones: { type: "array", items: { type: "object" }, description: "Stretches of the route with their own surface or width: [{ from, to (metres along the route from its first point), road?: a road kind, width?: metres across (the road is 12; 8 is narrow), wall?: an entity lining both edges }]. The roadside can also have garage, garages (how many), office, gantry and post kinds: a pit row, a gantry over the road after the line, light posts along the straights." },
   },
   ["name"],
   (a) => {
@@ -395,7 +396,7 @@ tool(
       base = { ...p.doc };
     } else if (a.control === undefined) throw new Error(`there is no ${trackOf(name)}: give the route's \`control\` points`);
     const given: Record<string, unknown> = { ...a, leadIn: a.lead_in };
-    for (const key of ["control", "open", "road", "sections", "leadIn", "runout", "seed", "trees", "small", "rock", "density", "rocks", "rail", "lamps", "sky", "far", "landmarks", "roadside", "crowd"]) {
+    for (const key of ["control", "open", "road", "sections", "leadIn", "runout", "seed", "trees", "small", "rock", "density", "rocks", "rail", "lamps", "sky", "far", "landmarks", "roadside", "crowd", "zones"]) {
       if (given[key] !== undefined) base[key] = given[key];
     }
     const control = base.control as unknown[];

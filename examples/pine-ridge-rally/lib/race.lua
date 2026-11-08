@@ -19,14 +19,16 @@ local race = {}
 
 local ROAD_OPTS = { shadow = false }
 -- rally: how fast a class of car covers a stage, on average (m/s), for a section's par when no driven pars are recorded
-local TYPICAL_SPEED = { formula = 31, sport = 25, everyday = 22 }
+local TYPICAL_SPEED = { formula = 31, sport = 25, everyday = 22, kart = 22, fun = 18 }
 local RIVALS = {
   { name = "Mika", skill = 1.0, lane = -1.8 },
   { name = "Dax", skill = 0.96, lane = 2.2 },
   { name = "Rosa", skill = 0.92, lane = 0.4 },
 }
 local MAP_COLORS = { { 96, 165, 250 }, { 74, 222, 128 }, { 244, 114, 182 } }
-local ROAD_HALF = 6.2        -- metres from the middle to where the grass starts
+local ROAD_EDGE = 0.2        -- metres from the edge of the road's surface (a waypoint's `w`, 6 on most of a course) to where the grass starts
+-- what a road kind is under the tyres: asphalt is a road, the rest is loose (gravel, sand, snow, dirt)
+local function surface_of(road) if road == "road_asphalt" then return "road", false end return "dirt", true end
 local LOOK_FAR = 240         -- metres of scenery drawn around the camera (fog hides its edge)
 
 -- ---- driving: the player's controls and the other drivers ---------------------------------------------------------------
@@ -55,6 +57,7 @@ local function drive_itself(car)
   local bend = 0
   for j = 1, 14 do bend = math.max(bend, math.abs(track.point((car.waypoint or 1) + j).k)) end
   local lane = (car.lane or 0) * (1 - math.min(1, bend / 0.012))
+  if target.w < 6 then lane = lane * target.w / 6 end -- (a narrow stretch: the lanes close up)
   local kmax = bend
   local tx = target.x + target.tz * lane
   local tz = target.z - target.tx * lane
@@ -248,7 +251,10 @@ function race.scene()
     end
     car.progress = car.progress + delta
     car.last_s = s
-    car.surface = car.off_middle > ROAD_HALF + 0.8 and "rough" or (config.surface or "road")
+    -- (a zone of the course can change the road: its width, and its surface, gravel into tarmac)
+    local wp = track.point(idx)
+    if wp.road then car.surface, car.loose = surface_of(wp.road) else car.surface, car.loose = config.surface or "road", config.loose end
+    if car.off_middle > wp.w + ROAD_EDGE + 0.8 then car.surface = "rough" end
   end
 
   -- every tenth of a second of a trial lap: where the car was (x, z, heading), kept as flat numbers for the save file
@@ -1048,6 +1054,7 @@ function race.scene()
       }
       state.result.record_time = state.submit("rally", info.id, total_time)
       state.result.record_score = state.submit_score(info.id, self.score)
+      state.finished(info.id, { stars = stars })
       nova.log(string.format("results: rally score %d of %d in %s, %d stars", self.score, 1000 * #self.sections, ui.time(total_time), stars))
       audio.stop_music(0.5)
       nova.goto_scene("results")
@@ -1067,6 +1074,8 @@ function race.scene()
       best_lap = self.best_lap, record_time = false, record_lap = false, trial = self.trial,
     }
     if me.finish_time then state.result.record_time = state.submit("race" .. self.laps, info.id, me.finish_time) end
+    if me.finish_time then state.finished(info.id, { place = (not self.trial) and me.place or nil }) end
+    if not self.trial and me.place == 1 and me.finish_time then state.add_win() end
     if self.best_lap then state.result.record_lap = state.submit("lap", info.id, self.best_lap) end
     if not self.trial then
       local timed, ids, times = 0, {}, {}

@@ -139,3 +139,39 @@ if [ -n "${NATURE:-}" ]; then
     NK plant_bushDetailed --as nk_bush_detailed --fit x=2.0
     NK plant_bushLargeTriangle --as nk_bush_tri --fit x=2.0
 fi
+
+# (2026-11-07) More cars and more of the racing kit, from the Kenney All-in-1 bundle (set CARKIT and RACINGKIT to its "3D assets/Car Kit" and
+# "3D assets/Racing Kit" folders). Then: cd studio && NOVA_MAKE_EDITABLE=1 NOVA_MAKE_EDITABLE_PROJECT=pine-ridge-rally npx vitest run
+# src/tools/make-editable.test.ts gives each its .model.json, and each .glb is replaced by the one its .model.json saves (checked beside the
+# kit's: under 1% of the pixels differ). The kit's closed garage and double billboard were left out: their logo picture does not survive.
+if [ -n "${CARKIT:-}" ] && [ -n "${RACINGKIT:-}" ]; then
+    WHEELS=wheel-front-right=wheel_fl,wheel-front-left=wheel_fr,wheel-back-right=wheel_rl,wheel-back-left=wheel_rr
+    # the karts (each with its driver aboard), 1.86 m long
+    for k in oobi oodi ooli oopi oozi; do K "$CARKIT" $P kart-$k --as kart_$k --scale 1.3 --pivot-wheels --centre-axles --rename $WHEELS; done
+    # the service vehicles (the Fun class), at the road cars' scale
+    ROADCAR=(--pivot-wheels --centre-axles --wheels-to-body --rename $WHEELS)
+    K "$CARKIT" $P ambulance --as ambulance --scale 1.18 --wheel-diameter 0.75 "${ROADCAR[@]}"
+    K "$CARKIT" $P firetruck --as firetruck --scale 1.18 --wheel-diameter 0.85 "${ROADCAR[@]}"
+    K "$CARKIT" $P garbage-truck --as garbage_truck --scale 1.18 --wheel-diameter 0.85 "${ROADCAR[@]}"
+    K "$CARKIT" $P delivery --as delivery --scale 1.18 --wheel-diameter 0.75 "${ROADCAR[@]}"
+    K "$CARKIT" $P tractor --as tractor --scale 1.18 --pivot-wheels --centre-axles --rename $WHEELS
+    # the racing kit's classic racers, 3.6 m long: their parts made roots first (scripts/rally/flatten-kit-car.mjs)
+    FLAT=$(mktemp -d)
+    scripts/env.sh node scripts/rally/flatten-kit-car.mjs "$RACINGKIT/Models/GLTF format" "$FLAT" raceCarGreen raceCarOrange raceCarRed raceCarWhite
+    for c in Green Orange Red White; do
+        K "$FLAT" $P raceCar$c --as racecar_$(echo $c | tr A-Z a-z) --scale 2.7 --wheel-diameter 0.62 --pivot-wheels --centre-axles --wheels-to-body --move y=0.09 \
+            --rename wheelFrontRight=wheel_fl,wheelFrontLeft=wheel_fr,wheelBackRight=wheel_rl,wheelBackLeft=wheel_rr
+    done
+    # dressing for the circuits and stages (the track generator's roadside: pit row, gantry, light posts; zones' walls)
+    K "$RACINGKIT" $P pitsOffice --as pits_office --fit x=12 --centre --collider -4:0:2 --collider 0:0:2 --collider 4:0:2
+    K "$RACINGKIT" $P pitsOfficeRoof --as pits_office_roof --fit x=12 --centre --collider -4:0:2 --collider 0:0:2 --collider 4:0:2
+    K "$RACINGKIT" $P grandStandAwning --as grandstand_awning --fit x=11 --centre --collider -4:0:1.8 --collider 0:0:1.8 --collider 4:0:1.8
+    K "$RACINGKIT" $P overheadLights --as gantry --fit x=14.85 --centre --collider -7.2:0:0.7 --collider 7.2:0:0.7
+    K "$RACINGKIT" $P overheadRoundColored --as gantry_round --scale 11.8 --centre --collider -9.5:0:1.4 --collider 9.5:0:1.4
+    K "$RACINGKIT" $P lightPostModern --as light_post --fit y=7 --centre --collider 0:0:0.3
+    K "$RACINGKIT" $P barrierWall --as barrier_wall --fit x=6 --turn 90 --centre --collider 0:-2.2:0.6 --collider 0:0:0.6 --collider 0:2.2:0.6
+    K "$RACINGKIT" $P railDouble --as rail_double --fit x=6 --turn 90 --centre --collider 0:-2.5:1.1 --collider 0:0:1.1 --collider 0:2.5:1.1
+    K "$RACINGKIT" $P tentClosedLong --as tent_closed --fit x=10 --centre --collider -3:0:1.8 --collider 3:0:1.8
+    K "$RACINGKIT" $P camera_exclusive --as camera_tower --fit y=4 --centre --collider 0:0:0.6
+    K "$RACINGKIT" $P radarEquipment --as radar --fit x=3 --centre --collider 0:0:1.2
+fi

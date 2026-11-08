@@ -12,6 +12,8 @@ state.classes = {
   { id = "formula", name = "Formula", blurb = "Open-wheel racers: the quickest, and they hold the road." },
   { id = "sport", name = "Sport", blurb = "Fast road cars that slide under power." },
   { id = "everyday", name = "Everyday", blurb = "Family cars and workhorses: slower, and heavy in the bends." },
+  { id = "kart", name = "Kart", blurb = "Tiny and nimble: quick off the line and glued to the road, but slow at the top end." },
+  { id = "fun", name = "Fun", blurb = "Service vehicles: heavy, slow and silly. Just for fun.", unlock = "wins", need = 3 },
 }
 -- The rally stages: point to point, each in the country of one of the circuits (`look`), five sections each (see lib/race.lua). The scene of
 -- a stage is the stage's id.
@@ -40,6 +42,22 @@ state.cars = {
   { id = "car_police", grip = 1, brake = 1.05, class = "sport", name = "Patrol", oversteer = 0.55, wheel = 0.375, power = 9.5, top = 46, idle_rpm = 700, max_rpm = 6800 },
   { id = "car_van", grip = 0.8, brake = 0.8, class = "everyday", name = "Delivery Van", oversteer = 0.3, wheel = 0.355, power = 7, top = 38, idle_rpm = 800, max_rpm = 4800 },
   { id = "car_pickup", grip = 0.85, brake = 0.85, class = "everyday", name = "Hauler", oversteer = 0.45, wheel = 0.33, power = 8.5, top = 40, idle_rpm = 700, max_rpm = 5500 },
+  -- (added 2026-11-07) the racing kit's four classic racers, five karts from the car kit (each with its own driver aboard) and, once the player has
+  -- won three races, the car kit's service vehicles
+  { id = "racecar_green", grip = 1.18, brake = 1.2, class = "formula", name = "Verde GP", oversteer = 0.3, wheel = 0.31, power = 11, top = 48.5, idle_rpm = 3000, max_rpm = 11000 },
+  { id = "racecar_orange", grip = 1.12, brake = 1.15, class = "formula", name = "Tangerine", oversteer = 0.5, wheel = 0.31, power = 11.8, top = 49.5, idle_rpm = 3800, max_rpm = 13500 },
+  { id = "racecar_red", grip = 1.22, brake = 1.25, class = "formula", name = "Rosso", oversteer = 0.25, wheel = 0.31, power = 10.8, top = 47.5, idle_rpm = 3200, max_rpm = 12000 },
+  { id = "racecar_white", grip = 1.15, brake = 1.2, class = "formula", name = "Phantom", oversteer = 0.4, wheel = 0.31, power = 11.4, top = 50.5, idle_rpm = 3000, max_rpm = 11500 },
+  { id = "kart_oobi", grip = 1.35, brake = 1.3, class = "kart", name = "Oobi", oversteer = 0.5, wheel = 0.27, power = 10, top = 33, idle_rpm = 2200, max_rpm = 13000 },
+  { id = "kart_oodi", grip = 1.3, brake = 1.3, class = "kart", name = "Oodi", oversteer = 0.6, wheel = 0.27, power = 10.5, top = 34, idle_rpm = 2400, max_rpm = 13500 },
+  { id = "kart_ooli", grip = 1.4, brake = 1.35, class = "kart", name = "Ooli", oversteer = 0.4, wheel = 0.27, power = 9.5, top = 32.5, idle_rpm = 2000, max_rpm = 12500 },
+  { id = "kart_oopi", grip = 1.32, brake = 1.3, class = "kart", name = "Oopi", oversteer = 0.55, wheel = 0.27, power = 10.2, top = 33.5, idle_rpm = 2300, max_rpm = 13200 },
+  { id = "kart_oozi", grip = 1.28, brake = 1.25, class = "kart", name = "Oozi", oversteer = 0.65, wheel = 0.27, power = 10.8, top = 34.5, idle_rpm = 2500, max_rpm = 14000 },
+  { id = "ambulance", grip = 0.85, brake = 0.85, class = "fun", name = "Ambulance", oversteer = 0.35, wheel = 0.375, power = 8, top = 41, idle_rpm = 750, max_rpm = 5200 },
+  { id = "firetruck", grip = 0.8, brake = 0.8, class = "fun", name = "Fire Engine", oversteer = 0.25, wheel = 0.425, power = 7, top = 37, idle_rpm = 600, max_rpm = 3600 },
+  { id = "garbage_truck", grip = 0.78, brake = 0.78, class = "fun", name = "Bin Lorry", oversteer = 0.2, wheel = 0.425, power = 6.5, top = 35, idle_rpm = 600, max_rpm = 3400 },
+  { id = "delivery", grip = 0.82, brake = 0.82, class = "fun", name = "Courier", oversteer = 0.3, wheel = 0.375, power = 7.5, top = 39, idle_rpm = 750, max_rpm = 4600 },
+  { id = "tractor", grip = 0.9, brake = 0.9, class = "fun", name = "Tractor", oversteer = 0.45, wheel = 0.38, power = 6, top = 30, idle_rpm = 500, max_rpm = 2600 },
 }
 
 -- How hard the rivals drive (race mode). `pace` is the share of its car's top speed a rival runs at, `corner` the share of what its tyres can
@@ -128,6 +146,28 @@ function state.submit_score(id, score)
   return false
 end
 function state.class_of(car) for _, c in ipairs(state.classes) do if c.id == car.class then return c end end end
+
+-- ---- what the player has unlocked (saved) -----------------------------------------------------------------------------------------
+-- Races won (first place in a race against rivals), counted for the Fun class.
+function state.wins() return nova.save.get("wins", 0) end
+function state.add_win() nova.save.set("wins", state.wins() + 1) end
+
+-- Whether a class of car can be picked, and if not, what it takes.
+function state.class_open(class)
+  if class.unlock == "wins" then return state.wins() >= class.need, string.format("Win %d races to unlock (%d so far).", class.need, state.wins()) end
+  return true
+end
+function state.car_open(car) return (state.class_open(state.class_of(car))) end
+
+-- A course finished: kept as the best of what was done there (`done_<id>`: finished at all, the best place in a race, the most stars on a stage).
+function state.finished(id, how)
+  local d = nova.save.get("done_" .. id, {})
+  d.done = true
+  if how.place and (d.place == nil or how.place < d.place) then d.place = how.place end
+  if how.stars and (d.stars == nil or how.stars > d.stars) then d.stars = how.stars end
+  nova.save.set("done_" .. id, d)
+end
+function state.done(id) return nova.save.get("done_" .. id, nil) end
 function state.current_car() return state.cars[state.car] end
 
 -- Best race time and best lap per track, saved with the track's id.

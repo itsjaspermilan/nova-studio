@@ -2,7 +2,7 @@
   import { untrack } from "svelte";
   import {
     ROADS, ROADSIDE, ROAD_WIDTH, WARN_CLOSE, WARN_RADIUS, MIN_POINTS, addPoint, analyse, callOut, curvatureColour, movePoint, newTrack, parseTrack, pointAt, removePoint,
-    roadOf, sceneOf, serializeTrack, setField, trackName, type Roadside, type TrackDoc,
+    SPACING, roadOf, sceneOf, serializeTrack, setField, trackName, type Roadside, type TrackDoc, type Zone,
   } from "../lib/track-doc";
   import { studio } from "../lib/store.svelte";
 
@@ -195,6 +195,15 @@
     boards[i] = kind;
     setRoadside({ boards: boards.filter(Boolean) });
   };
+  function setZone(i: number, part: Partial<Zone>) {
+    const zones = doc.zones.map((z, k) => {
+      if (k !== i) return z;
+      const next: Zone = { ...z, ...part };
+      for (const key of ["road", "width", "wall"] as const) if (next[key] === undefined) delete next[key];
+      return next;
+    });
+    set("zones", zones);
+  }
   const hex = (c: number[]) => `#${c.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
   const fromHex = (h: string): [number, number, number] => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)) as [number, number, number];
   const shown = $derived(entities.filter((e) => e.toLowerCase().includes(filter.trim().toLowerCase())));
@@ -257,6 +266,14 @@
           {/each}
           {#if stats}
             <path d={linePath} fill="none" stroke={roadColour} stroke-width={Math.max(3, ROAD_WIDTH * scale)} stroke-linejoin="round" stroke-linecap="butt" opacity="0.75" />
+            <!-- each zone over the road: in its road's colour, as wide as it makes the road -->
+            {#each doc.zones as z, zi (zi)}
+              {@const pts = stats.line.filter((_, i) => i * SPACING >= z.from && i * SPACING <= z.to)}
+              {#if pts.length > 1}
+                <polyline points={pts.map((p) => `${sx(p.x).toFixed(1)},${sy(p.z).toFixed(1)}`).join(" ")} fill="none" class="zone" class:walled={!!z.wall}
+                  stroke={ROADS.find((r) => r.id === (z.road ?? doc.road))?.colour ?? roadColour} stroke-width={Math.max(3, (z.width ?? ROAD_WIDTH) * scale)} />
+              {/if}
+            {/each}
             {#each stats.line as p, i (i)}
               {@const q = stats.line[(i + 1) % stats.line.length]!}
               {#if doc.open ? i < stats.line.length - 1 : true}
@@ -389,6 +406,15 @@
               </select>
             </label>
           {/each}
+          {#each [["garage", "Pit garages"], ["office", "Pit office"], ["gantry", "Gantry"], ["post", "Light posts"]] as [key, label] (key)}
+            {@const k = key as "garage" | "office" | "gantry" | "post"}
+            <label>{label}
+              <select value={doc.roadside[k] ?? ""} onchange={(e) => setRoadside({ [k]: e.currentTarget.value || undefined, ...(k === "garage" && !doc.roadside?.garages ? { garages: 5 } : {}) })}>
+                <option value="">(none)</option>
+                {#each entities as name (name)}<option value={name}>{name}</option>{/each}
+              </select>
+            </label>
+          {/each}
           {#each [0, 1] as i (i)}
             <label>Billboard {i + 1}
               <select value={doc.roadside.boards[i] ?? ""} onchange={(e) => setBoard(i, e.currentTarget.value)}>
@@ -405,6 +431,29 @@
             <button class="ghost" onclick={() => set("seed", Math.floor(Math.random() * 100000))} title="Different scenery, same road">Shuffle</button>
           </span>
         </label>
+      </section>
+
+      <section>
+        <h3>Zones</h3>
+        <p class="dim small">Stretches of the route with their own road or width (metres along the route from point 1).</p>
+        {#each doc.zones as z, zi (zi)}
+          <div class="zone-row">
+            <input type="number" min="0" step="10" value={z.from} aria-label="Zone {zi + 1} starts at" onchange={(e) => setZone(zi, { from: Math.max(0, number(e)) })} />
+            <span>to</span>
+            <input type="number" min="0" step="10" value={z.to} aria-label="Zone {zi + 1} ends at" onchange={(e) => setZone(zi, { to: Math.max(0, number(e)) })} />
+            <select value={z.road ?? ""} aria-label="Zone {zi + 1} road" onchange={(e) => setZone(zi, { road: (e.currentTarget.value || undefined) as Zone["road"] })}>
+              <option value="">same road</option>
+              {#each ROADS as r (r.id)}<option value={r.id}>{r.name}</option>{/each}
+            </select>
+            <input type="number" min="6" max="30" step="1" value={z.width ?? ROAD_WIDTH} aria-label="Zone {zi + 1} width" title="Metres across (12 is the usual road)" onchange={(e) => setZone(zi, { width: number(e) === ROAD_WIDTH ? undefined : Math.min(30, Math.max(6, number(e))) })} />
+            <select value={z.wall ?? ""} aria-label="Zone {zi + 1} wall" onchange={(e) => setZone(zi, { wall: e.currentTarget.value || undefined })}>
+              <option value="">no wall</option>
+              {#each entities as k (k)}<option value={k}>{k}</option>{/each}
+            </select>
+            <button class="ghost danger" aria-label="Remove zone {zi + 1}" onclick={() => set("zones", doc.zones.filter((_, i) => i !== zi))}>✕</button>
+          </div>
+        {/each}
+        <button class="ghost" onclick={() => { const end = stats ? stats.length : 400; set("zones", [...doc.zones, { from: Math.round(end / 3 / 10) * 10, to: Math.round(end / 2 / 10) * 10, width: 9 }]); }}>＋ Zone</button>
       </section>
 
       <section>
@@ -436,6 +485,8 @@
 {/if}
 
 <style>
+  .zone { opacity: 0.85; stroke-linecap: butt; } .zone.walled { stroke-dasharray: 6 3; }
+  .zone-row { display: flex; gap: 4px; align-items: center; margin-bottom: 4px; } .zone-row input { width: 52px; } .zone-row select { min-width: 0; flex: 1; }
   .track { display: grid; grid-template-columns: minmax(0, 1fr) 300px; height: 100%; min-height: 0; }
   .map { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
   .bar { display: flex; gap: 4px; align-items: center; padding: 3px 8px; background: var(--panel); border-bottom: 1px solid var(--line); }

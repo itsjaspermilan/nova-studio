@@ -99,6 +99,19 @@ describe("TrackEditor", () => {
     expect(scene.objects.some((o: { kind: string }) => o.kind === "grandstand")).toBe(true);
     expect(scene.objects.some((o: { kind: string; x: number }) => o.kind === "pine" && o.x === 9)).toBe(false);
   });
+  it("adds a zone and changes its road", async () => {
+    await open();
+    button("＋ Zone")!.click();
+    flushSync();
+    const road = host.querySelector<HTMLSelectElement>('select[aria-label="Zone 1 road"]')!;
+    road.value = "road_gravel";
+    road.dispatchEvent(new Event("change", { bubbles: true }));
+    flushSync();
+    const parsed = parseTrack(studio.tabs[0]!.text);
+    expect(parsed.ok && parsed.doc.zones).toHaveLength(1);
+    expect(parsed.ok && parsed.doc.zones[0]).toMatchObject({ road: "road_gravel", width: 9 });
+    expect(host.querySelectorAll("polyline.zone")).toHaveLength(1);
+  });
   it("says so when the file is not a track", async () => {
     await open("not json");
     expect(host.textContent).toContain("is not a track file");
