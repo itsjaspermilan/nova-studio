@@ -104,7 +104,9 @@ pub struct Spike {
 impl Spike {
     pub fn new(gfx: &mut Gfx) -> Result<Self, String> {
         gfx.set_sprite_atlas(&make_atlas(), false);
-        let car = model::import_glb(CAR_GLB)?;
+        let mut car = model::import_glb(CAR_GLB)?;
+        // the plain look, as a project that does not opt in to glTF materials
+        car.material = None;
         let notes = car.notes.clone();
         for note in &notes {
             log::warn!("car.glb: {note}");
@@ -284,6 +286,11 @@ impl Spike {
             models: &self.models,
             joints: &[],
             mesh_ops: &[],
+            shaded_models: &[],
+            shaded_sprites: &[],
+            post: None,
+            texture_ops: &[],
+            time: 0.0,
             ui_models: &[],
             sprites_front: &self.front,
             text: &[],

@@ -61,6 +61,7 @@ fn builtin_module(name: &str) -> Option<&'static str> {
 mod animated;
 mod billboard_api;
 mod retained_api;
+mod shader_api;
 mod solid_api;
 mod voxel_api;
 mod walls_api;
@@ -169,6 +170,8 @@ struct Shared {
     camera: Camera,
     clear: [f64; 4],
     log: Vec<String>,
+    /// Custom shaders: the project's, and this frame's draws that use them.
+    shading: shader_api::ShaderState,
 }
 
 impl Shared {
@@ -558,6 +561,10 @@ pub trait Uploader {
     fn add_skinned_mesh(&mut self, mesh: &MeshData, _influences: &[([u16; 4], [f32; 4])]) -> usize {
         self.add_mesh(mesh)
     }
+    /// A custom shader (already checked); its id for draws. A target without a GPU keeps nothing.
+    fn add_shader(&mut self, _source: &str) -> Result<usize, String> {
+        Ok(0)
+    }
 }
 
 impl Uploader for Gfx {
@@ -572,6 +579,9 @@ impl Uploader for Gfx {
     }
     fn add_skinned_mesh(&mut self, mesh: &MeshData, influences: &[([u16; 4], [f32; 4])]) -> usize {
         self.upload_skinned_mesh(mesh, influences)
+    }
+    fn add_shader(&mut self, source: &str) -> Result<usize, String> {
+        Gfx::add_shader(self, source)
     }
 }
 
@@ -610,6 +620,10 @@ pub struct Game {
     /// The complete error text including any Lua traceback (the banner shows only `error`).
     pub error_detail: Option<String>,
     pub warnings: Vec<String>,
+    /// Shader files that did not compile (`shaders/x.wgsl:3:5: message`): errors in `nova check`.
+    pub shader_errors: Vec<String>,
+    /// This frame's custom-shaded draws, for the renderer.
+    shading: shader_api::FrameShading,
     pub last_update: Duration,
     stamp: Option<SystemTime>,
     checked: Instant,
@@ -1182,14 +1196,16 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             })
         })?,
     )?;
-    let s = shared.clone();
+    let (s, v) = (shared.clone(), vfs.clone());
     nova.set(
         "sprite",
         lua.create_function(
             move |_, (id, x, y, opts): (String, f64, f64, Option<Table>)| {
                 let mut sh = s.borrow_mut();
                 let inst = sprite_instance(&sh, &id, x, y, &opts)?;
+                let shading = shader_api::shading_option(&mut sh, v.as_ref(), &opts)?;
                 sh.world.push(inst);
+                shader_api::mark_sprite(&mut sh, false, shading);
                 Ok(())
             },
         )?,
@@ -1206,12 +1222,14 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             },
         )?,
     )?;
-    let s = shared.clone();
+    let (s, v) = (shared.clone(), vfs.clone());
     nova.set(
         "model",
         lua.create_function(
             move |_, (id, x, y, z, opts): (String, f64, f64, f64, Option<Table>)| {
                 let mut sh = s.borrow_mut();
+                // `shader = "water"` (with `params`, `textures`, `blend`): drawn with a custom shader (docs/shaders.md)
+                let shading = shader_api::shading_option(&mut sh, v.as_ref(), &opts)?;
                 let found = find_model(&sh.known_models, &id).ok_or_else(|| {
                 lua_err(format!(
                     "unknown model '{id}' (looked for '{id}' and 'models/{id}.glb'; models in this project: {})",
@@ -1281,7 +1299,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 if let Some((far_mesh, animated::LodDissolve { far: Some(far), .. })) = lod {
                         let instance = ModelInstance { matrix: matrix.to_cols_array_2d(), tint };
                         let instance = if far == 0.0 { instance } else { instance.dissolving(far) };
-                        sh.models.push(ModelDraw { casts, mesh: far_mesh, instance });
+                        shader_api::push_model(&mut sh, ModelDraw { casts, mesh: far_mesh, instance }, shading);
                 }
                 let Some(near_dissolve) = near_dissolve else { return Ok(()) };
                 let dissolve = |i: ModelInstance| if near_dissolve == 0.0 { i } else { i.dissolving(near_dissolve) };
@@ -1345,23 +1363,23 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                             let (Some(&mesh), Some(base)) = (sh.mesh_ids.get(&skinned.key), posed.joint_base[i]) else {
                                 continue;
                             };
-                            sh.models.push(ModelDraw {
+                            shader_api::push_model(sh, ModelDraw {
                                 casts,
                                 mesh,
                                 instance: dissolve(ModelInstance::skinned(matrix.to_cols_array_2d(), tint, base)),
-                            });
+                            }, shading);
                             continue;
                         }
                         let Some(key) = &p.mesh_key else { continue };
                         let Some(&mesh) = sh.mesh_ids.get(key) else { continue };
-                        sh.models.push(ModelDraw {
+                        shader_api::push_model(sh, ModelDraw {
                             casts,
                             mesh,
                             instance: dissolve(ModelInstance {
                                 matrix: (matrix * posed.world[i]).to_cols_array_2d(),
                                 tint,
                             }),
-                        });
+                        }, shading);
                     }
                     return Ok(());
                 }
@@ -1373,11 +1391,11 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     Some(sway) if sway != 0.0 => instance.swaying(sway as f32),
                     _ => instance,
                 };
-                sh.models.push(ModelDraw {
+                shader_api::push_model(&mut sh, ModelDraw {
                     casts,
                     mesh,
                     instance: dissolve(instance),
-                });
+                }, shading);
                 Ok(())
             },
         )?,
@@ -1974,14 +1992,16 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
 
     // --- UI layer (always native resolution) ---
     let ui = lua.create_table()?;
-    let s = shared.clone();
+    let (s, v) = (shared.clone(), vfs.clone());
     ui.set(
         "sprite",
         lua.create_function(
             move |_, (id, x, y, opts): (String, f64, f64, Option<Table>)| {
                 let mut sh = s.borrow_mut();
                 let inst = sprite_instance(&sh, &id, x, y, &opts)?;
+                let shading = shader_api::shading_option(&mut sh, v.as_ref(), &opts)?;
                 sh.ui.push(inst);
+                shader_api::mark_sprite(&mut sh, true, shading);
                 Ok(())
             },
         )?,
@@ -2109,6 +2129,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
 
     voxel_api::install(lua, shared, vfs, &nova)?;
     solid_api::install(lua, shared, vfs, &nova)?;
+    shader_api::install(lua, shared, vfs, &nova)?;
     walls_api::install(lua, shared, &nova)?;
     billboard_api::install(lua, shared, &nova)?;
 
@@ -3120,6 +3141,22 @@ impl Game {
                 .map_err(|e| format!("{}: {e}", asset.id))?;
         }
 
+        // custom shaders (`shaders/*.wgsl`), checked now; and the glTF materials, kept only for the models the project lights by them
+        let mut shading_state = shader_api::ShaderState::default();
+        let shader_errors = shader_api::load_shaders(&project, vfs.as_ref(), &mut shading_state);
+        for (id, mesh, _) in &mut meshes {
+            let model = id.split('#').next().unwrap_or(id);
+            if !project.manifest.lit_by_material(model) {
+                mesh.material = None;
+            }
+        }
+        if let Some(names) = &project.manifest.materials {
+            for name in names {
+                if find_model(&model_ids, name).is_none() {
+                    warnings.push(format!("nova.json: \"materials\" names '{name}', which is not a model of this project"));
+                }
+            }
+        }
         let shared = Rc::new(RefCell::new(Shared {
             bindings: bindings.clone(),
             base_bindings: bindings,
@@ -3188,6 +3225,7 @@ impl Game {
             camera: DEFAULT_CAMERA,
             clear: srgb_to_linear([0.36, 0.55, 0.78, 1.0]),
             log: Vec::new(),
+            shading: shading_state,
         }));
         let lua = new_lua();
         lua.set_memory_limit(LUA_MEMORY_LIMIT)
@@ -3223,6 +3261,8 @@ impl Game {
             error: None,
             error_detail: None,
             warnings,
+            shader_errors,
+            shading: Default::default(),
             last_update: Duration::ZERO,
             checked: Instant::now(),
             last_flush: Instant::now(),
@@ -3298,7 +3338,19 @@ impl Game {
             };
             ids.insert(id, mesh_id);
         }
-        self.shared.borrow_mut().mesh_ids = ids;
+        let mut sh = self.shared.borrow_mut();
+        sh.mesh_ids = ids;
+        for (name, source) in std::mem::take(&mut sh.shading.sources) {
+            match target.add_shader(&source) {
+                Ok(id) => {
+                    sh.shading.ids.insert(name, id);
+                }
+                Err(e) => {
+                    log::error!("shaders/{name}.wgsl: {e}");
+                    sh.shading.broken.insert(name, e);
+                }
+            }
+        }
     }
 
     /// Keeps this game's save data in `dir` (read now, written as it changes). Without it the
@@ -3446,6 +3498,8 @@ impl Game {
             sh.text_out.clear();
             sh.models.clear();
             sh.joints.clear();
+            sh.shading.models.clear();
+            sh.shading.sprites.clear();
             sh.pose_cache.clear();
             let bindings = sh.bindings.clone();
             sh.states
@@ -3514,6 +3568,12 @@ impl Game {
         std::mem::swap(&mut sh.joints, &mut self.joints);
         let made = std::mem::take(&mut sh.voxel.ops);
         self.mesh_ops.extend(made);
+        self.shading.models = std::mem::take(&mut sh.shading.models);
+        self.shading.sprites = std::mem::take(&mut sh.shading.sprites);
+        self.shading.post = sh.shading.post;
+        self.shading.time = sh.time as f32;
+        let pictures = std::mem::take(&mut sh.shading.pending_textures);
+        self.shading.texture_ops.extend(pictures);
         // equal meshes become one instanced draw; meshes made by scripts (voxel chunks) stay in the order they were drawn in,
         // which is far to near, so that water blends in a sensible order
         // (lone cubes are script-made too, but one kind after another is exactly what lets them be instanced)
@@ -3647,6 +3707,7 @@ impl Game {
     /// The renderer has applied the meshes scripts made (call after drawing a frame, so each is applied once).
     pub fn clear_mesh_ops(&mut self) {
         self.mesh_ops.clear();
+        self.shading.texture_ops.clear();
     }
 
     pub fn frame_input(&self, world_height: u32) -> FrameInput<'_> {
@@ -3657,6 +3718,11 @@ impl Game {
             models: &self.models,
             joints: &self.joints,
             mesh_ops: &self.mesh_ops,
+            shaded_models: &self.shading.models,
+            shaded_sprites: &self.shading.sprites,
+            post: self.shading.post,
+            texture_ops: &self.shading.texture_ops,
+            time: self.shading.time,
             ui_models: &self.ui_models,
             lighting: self.lighting.clone(),
             sprites_front: &self.ui,

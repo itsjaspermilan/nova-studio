@@ -285,6 +285,7 @@ end"
         .unwrap()
         .pose(&mesh.vertices, &world_at(&imported, 0.5));
     let id = gfx.upload_mesh(&MeshData {
+        material: None,
         vertices: posed,
         indices: mesh.indices.clone(),
         texture: mesh.texture.clone(),
@@ -309,6 +310,11 @@ end"
         models: &draw,
         joints: &[],
         mesh_ops: &[],
+        shaded_models: &[],
+        shaded_sprites: &[],
+        post: None,
+        texture_ops: &[],
+        time: 0.0,
         ui_models: &[],
         lighting: input.lighting,
         sprites_front: &[],

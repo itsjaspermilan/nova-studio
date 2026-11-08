@@ -55,13 +55,16 @@ fn snippets() -> Vec<(u32, String, String, String)> {
     let mut all = Vec::new();
     for entry in std::fs::read_dir(dir).unwrap() {
         let path = entry.unwrap().path();
-        if path.extension().is_some_and(|e| e == "lua") {
+        if path.extension().is_some_and(|e| e == "lua" || e == "wgsl") {
             let name = path.file_name().unwrap().to_string_lossy().into_owned();
             let text = std::fs::read_to_string(&path).unwrap();
             let target = text
                 .lines()
                 .next()
-                .and_then(|l| l.strip_prefix("-- file: "))
+                .and_then(|l| {
+                    l.strip_prefix("-- file: ")
+                        .or_else(|| l.strip_prefix("// file: "))
+                })
                 .unwrap_or_else(|| panic!("{name} must start with '-- file: <path>'"))
                 .trim()
                 .to_string();
@@ -150,9 +153,16 @@ fn every_lesson_runs_on_top_of_the_ones_before_it() {
             g.error,
             g.error_detail
         );
+        assert!(
+            g.shader_errors.is_empty(),
+            "after lesson {upto}: {:?}",
+            g.shader_errors
+        );
         let input = g.frame_input(0);
         assert!(
-            !input.sprites_back.is_empty() || !input.models.is_empty(),
+            !input.sprites_back.is_empty()
+                || !input.models.is_empty()
+                || !input.shaded_models.is_empty(),
             "after lesson {upto} something is drawn"
         );
     }

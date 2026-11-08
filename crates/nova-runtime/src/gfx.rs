@@ -10,6 +10,9 @@ use wgpu::util::DeviceExt;
 
 use crate::model::{Image, MeshData, MeshVertex, Wrap};
 
+mod custom;
+pub use custom::{MAX_SHADED_DRAWS, MaterialVertex};
+
 pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
 #[repr(C)]
@@ -362,6 +365,33 @@ pub enum MeshOp {
 
 pub const DYN_MESH_BASE: usize = 1 << 30;
 
+/// A custom shader on a draw (`shader = "water"` in `nova.model`, `nova.sprite` or `nova.post`): which shader (an id from
+/// [`Gfx::add_shader`]), its eight numbers (`params`) and up to two pictures (ids given to [`FrameInput::texture_ops`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Shading {
+    pub shader: usize,
+    pub params: [f32; 8],
+    pub textures: [Option<usize>; 2],
+}
+
+/// A model drawn with a custom shader: one draw each, after the plain models (opaque) or after the see-through ones (`blend`:
+/// alpha-blended, not writing depth).
+#[derive(Clone, Copy)]
+pub struct ShadedModel {
+    pub draw: ModelDraw,
+    pub shading: Shading,
+    pub blend: bool,
+}
+
+/// A sprite drawn with a custom shader: the sprite at `index` of its layer's list (`sprites_back`, or `sprites_front` when `ui`)
+/// is drawn with this shading, in its place in the order.
+#[derive(Clone, Copy)]
+pub struct ShadedSprite {
+    pub index: usize,
+    pub ui: bool,
+    pub shading: Shading,
+}
+
 pub struct FrameInput<'a> {
     pub clear: [f64; 4],
     pub camera: Camera,
@@ -382,6 +412,16 @@ pub struct FrameInput<'a> {
     /// Text quads (UI layer, native resolution, drawn after `sprites_front`); the UVs index the
     /// glyph atlas set with [`Gfx::update_glyph_atlas`].
     pub text: &'a [SpriteInstance],
+    /// Models drawn with custom shaders (see [`ShadedModel`]).
+    pub shaded_models: &'a [ShadedModel],
+    /// Sprites of `sprites_back` / `sprites_front` drawn with custom shaders, sorted by layer then index.
+    pub shaded_sprites: &'a [ShadedSprite],
+    /// A full-screen custom shader over the world picture (before the finishing pass and the UI).
+    pub post: Option<Shading>,
+    /// Pictures for custom shaders to put on the GPU before drawing (id, picture); an id can be given again to replace it.
+    pub texture_ops: &'a [(usize, Image)],
+    /// Seconds of game time, for custom shaders.
+    pub time: f32,
     /// Height in pixels of the world (sprites_back + models) render target; 0 or >= the
     /// screen height renders the world at native resolution. The width follows the screen
     /// aspect. `sprites_front` (HUD/UI) always renders at native resolution.
@@ -511,6 +551,8 @@ struct GpuMesh {
     skin: Option<wgpu::Buffer>,
     /// A sphere that holds the whole mesh (centre, radius), in the mesh's own space, for culling.
     bounds: ([f32; 3], f32),
+    /// Drawn lit by its glTF material (the project opted in).
+    material: Option<custom::GpuMaterial>,
 }
 
 /// Times the GPU's work on a frame with two timestamps (the start of the first pass, the end of the last) and reads them back a
@@ -677,6 +719,9 @@ struct Backup {
     meshes: Vec<(MeshData, Option<Vec<Influence>>)>,
     voxel_atlas: Option<Image>,
     dyn_meshes: HashMap<usize, (Vec<MeshVertex>, Vec<u32>, bool)>,
+    /// Custom shaders' sources in the order they were added (their ids), and their pictures.
+    shaders: Vec<String>,
+    shader_textures: HashMap<usize, Image>,
 }
 
 pub struct Gfx {
@@ -751,6 +796,8 @@ pub struct Gfx {
     /// How many textures that sharing has saved (for the tests and the log).
     pub textures_shared: u32,
     depth: Option<(wgpu::TextureView, (u32, u32))>,
+    /// Materials and custom shaders.
+    extras: custom::Extras,
 }
 
 /// The picture and its smaller copies, one after another (each half the size, averaged with see-through texels counting
@@ -1687,6 +1734,18 @@ impl Gfx {
             .contains(wgpu::Features::TIMESTAMP_QUERY)
             .then(|| GpuTimer::new(&device, &queue));
 
+        let extras = custom::Extras::new(
+            &device,
+            &queue,
+            format,
+            &custom::Shared {
+                globals: &globals_layout,
+                texture: &texture_layout,
+                shadow: &shadow_layout,
+                sprite_view: &sprite_view_layout,
+                mesh_shader: &mesh_shader,
+            },
+        );
         Ok(Self {
             adapter,
             device,
@@ -1748,6 +1807,7 @@ impl Gfx {
             gpu_timer,
             textures_shared: 0,
             depth: None,
+            extras,
         })
     }
 
@@ -1890,6 +1950,13 @@ impl Gfx {
             });
         }
         fresh.apply_mesh_ops(&ops);
+        for source in &backup.shaders {
+            // (the same ids again; a shader that failed before fails again and keeps its place)
+            let _ = fresh.add_shader(source);
+        }
+        for (id, image) in &backup.shader_textures {
+            fresh.set_shader_texture(*id, image);
+        }
         *self = fresh;
         Ok(())
     }
@@ -1919,6 +1986,7 @@ impl Gfx {
     pub fn upload_mesh(&mut self, mesh: &MeshData) -> usize {
         self.backup.meshes.push((
             MeshData {
+                material: mesh.material.clone(),
                 vertices: mesh.vertices.clone(),
                 indices: mesh.indices.clone(),
                 texture: mesh.texture.clone(),
@@ -2022,6 +2090,7 @@ impl Gfx {
             }
             None => self.white_group(),
         };
+        let material = self.upload_material(mesh);
         self.meshes.push(GpuMesh {
             vertices,
             indices,
@@ -2030,6 +2099,7 @@ impl Gfx {
             translucent,
             skin: None,
             bounds: bounding_sphere(&mesh.vertices),
+            material,
         });
         self.meshes.len() - 1
     }
@@ -2217,6 +2287,7 @@ impl Gfx {
                             translucent: vertices.iter().any(|v| v.color[3] < 255),
                             skin: None,
                             bounds: bounding_sphere(vertices),
+                            material: None,
                         },
                     );
                 }
@@ -2253,7 +2324,8 @@ impl Gfx {
         // a look with an outline or a colour adjustment is finished in the pass that puts the world on the screen, so it
         // always goes through the world target (at the screen's own size if no smaller one was asked for)
         let look = input.lighting.look;
-        let separate = world_size != size || look.needs_post();
+        // (a post effect is drawn over the world picture, so it needs one too)
+        let separate = world_size != size || look.needs_post() || input.post.is_some();
         self.ensure_depth(world_size);
         if separate {
             self.ensure_world(world_size);
@@ -2488,6 +2560,9 @@ impl Gfx {
         self.sprites_text
             .write(&self.device, &self.queue, bytemuck::cast_slice(input.text));
         self.apply_mesh_ops(input.mesh_ops);
+        for (id, image) in input.texture_ops {
+            self.set_shader_texture(*id, image);
+        }
         if !input.joints.is_empty() {
             // the palette: whole rows of the joint texture, only as many as are used
             let count = input.joints.len().min(MAX_JOINT_MATRICES);
@@ -2532,19 +2607,74 @@ impl Gfx {
             })
             .copied()
             .collect();
-        let culled = (input.models.len() - world_models.len()) as u32;
+        // models with a custom shader: culled the same way, one draw each
+        let shaded_models: Vec<ShadedModel> = input
+            .shaded_models
+            .iter()
+            .filter(|m| match self.mesh(m.draw.mesh) {
+                Some(mesh) => instance_visible(
+                    &planes,
+                    mesh.bounds,
+                    mesh.skin.is_some(),
+                    &m.draw.instance.matrix,
+                    lit.terrain.lift(),
+                ),
+                None => false,
+            })
+            .copied()
+            .collect();
+        let culled = (input.models.len() + input.shaded_models.len()
+            - world_models.len()
+            - shaded_models.len()) as u32;
+        let custom_slots = if shaded_models.is_empty()
+            && input.shaded_sprites.is_empty()
+            && input.post.is_none()
+        {
+            Vec::new()
+        } else {
+            let list: Vec<ModelInstance> = shaded_models.iter().map(|m| m.draw.instance).collect();
+            self.extras.shaded_instances.write(
+                &self.device,
+                &self.queue,
+                bytemuck::cast_slice(&list),
+            );
+            self.prepare_custom(input, &shaded_models, world_size, size)
+        };
+        let (model_slots, rest) =
+            custom_slots.split_at(shaded_models.len().min(custom_slots.len()));
+        let (sprite_slots, post_slot) = rest.split_at(input.shaded_sprites.len().min(rest.len()));
+        let post_slot = post_slot.first().and_then(Option::as_ref);
+        let sprite_runs = |ui: bool| -> Vec<(usize, &ShadedSprite, &custom::Slot)> {
+            input
+                .shaded_sprites
+                .iter()
+                .zip(sprite_slots)
+                .filter(|(s, _)| s.ui == ui)
+                .filter_map(|(s, slot)| slot.as_ref().map(|slot| (s.index, s, slot)))
+                .collect()
+        };
+        let world_runs = sprite_runs(false);
+        let ui_runs = sprite_runs(true);
         let view_list: Vec<ModelInstance> = world_models.iter().map(|m| m.instance).collect();
         self.view_instances
             .write(&self.device, &self.queue, bytemuck::cast_slice(&view_list));
         // The sun's shadow pass takes what its own box (the light's view volume, depth included: the GPU clips by it) can
         // see, which is a different set from the camera's: a thing behind the camera can shadow the ground in front of it.
+        // (opaque custom-shaded models cast shadows as plain ones do)
+        let casters = || {
+            input.models.iter().chain(
+                input
+                    .shaded_models
+                    .iter()
+                    .filter(|m| !m.blend)
+                    .map(|m| &m.draw),
+            )
+        };
         let shadow_models: Vec<ModelDraw> = match lit.shadows {
             Some(_) => {
                 let light_planes =
                     frustum_planes(&glam::Mat4::from_cols_array_2d(&light_view_proj));
-                input
-                    .models
-                    .iter()
+                casters()
                     .filter(|m| match self.mesh(m.mesh) {
                         Some(mesh) => instance_visible(
                             &light_planes,
@@ -2570,7 +2700,7 @@ impl Gfx {
             world_size,
             culled,
             shadow_culled: if lit.shadows.is_some() {
-                (input.models.len() - shadow_models.len()) as u32
+                (casters().count() - shadow_models.len()) as u32
             } else {
                 0
             },
@@ -2720,17 +2850,29 @@ impl Gfx {
                 pass.draw(0..3, 0..1);
                 stats.draw_calls += 1;
             }
-            let back = draw_sprites(
-                &mut pass,
-                &self.sprite_pipeline,
-                &self.sprites_back,
-                input.sprites_back.len(),
-            );
-            stats.draw_calls += u32::from(back > 0);
-            stats.sprites += back;
+            if world_runs.is_empty() {
+                let back = draw_sprites(
+                    &mut pass,
+                    &self.sprite_pipeline,
+                    &self.sprites_back,
+                    input.sprites_back.len(),
+                );
+                stats.draw_calls += u32::from(back > 0);
+                stats.sprites += back;
+            } else {
+                stats.draw_calls += self.draw_sprite_runs(
+                    &mut pass,
+                    &self.sprite_pipeline,
+                    &self.sprites_back,
+                    input.sprites_back.len(),
+                    &world_runs,
+                    custom::Variant::SpriteWorld,
+                );
+                stats.sprites += input.sprites_back.len() as u32;
+            }
 
             for translucent in [false, true] {
-                if world_models.is_empty() {
+                if world_models.is_empty() && shaded_models.is_empty() {
                     break;
                 }
                 pass.set_pipeline(if translucent {
@@ -2741,6 +2883,7 @@ impl Gfx {
                 pass.set_bind_group(0, &self.globals_group, &[]);
                 pass.set_bind_group(2, &self.shadow_group, &[]);
                 let mut skinned_now = false;
+                let mut material_now = false;
                 let stride = std::mem::size_of::<ModelInstance>() as u64;
                 let mut start = 0usize;
                 while start < world_models.len() {
@@ -2758,23 +2901,33 @@ impl Gfx {
                         start = end;
                         continue;
                     }
-                    if mesh.skin.is_some() != skinned_now {
+                    if mesh.skin.is_some() != skinned_now || mesh.material.is_some() != material_now
+                    {
                         skinned_now = mesh.skin.is_some();
-                        pass.set_pipeline(if skinned_now {
-                            &self.skinned_pipeline
-                        } else if translucent {
-                            &self.mesh_blend_pipeline
-                        } else {
-                            &self.mesh_pipeline
+                        material_now = mesh.material.is_some();
+                        let x = &self.extras;
+                        pass.set_pipeline(match (skinned_now, material_now) {
+                            (true, false) => &self.skinned_pipeline,
+                            (true, true) => &x.skinned_material_pipeline,
+                            (false, true) if translucent => &x.material_blend_pipeline,
+                            (false, true) => &x.material_pipeline,
+                            (false, false) if translucent => &self.mesh_blend_pipeline,
+                            (false, false) => &self.mesh_pipeline,
                         });
                         pass.set_bind_group(0, &self.globals_group, &[]);
                         pass.set_bind_group(2, &self.shadow_group, &[]);
-                        if skinned_now {
+                        if skinned_now && !material_now {
                             pass.set_bind_group(3, &self.joint_group, &[]);
                         }
                     }
                     if let Some(skin) = &mesh.skin {
                         pass.set_vertex_buffer(2, skin.slice(..));
+                    }
+                    if let Some(material) = &mesh.material {
+                        // (its maps, with the joint palette, are group 3; its tangents and factors follow the other buffers)
+                        pass.set_bind_group(3, &material.group, &[]);
+                        let slot = if mesh.skin.is_some() { 3 } else { 2 };
+                        pass.set_vertex_buffer(slot, material.buffer.slice(..));
                     }
                     pass.set_bind_group(1, &mesh.texture, &[]);
                     pass.set_vertex_buffer(0, mesh.vertices.slice(..));
@@ -2790,8 +2943,26 @@ impl Gfx {
                     stats.triangles += mesh.index_count / 3 * (end - start) as u32;
                     start = end;
                 }
+                if !shaded_models.is_empty() {
+                    let (calls, triangles) = self.draw_shaded_models(
+                        &mut pass,
+                        &shaded_models,
+                        model_slots,
+                        translucent,
+                    );
+                    stats.draw_calls += calls;
+                    stats.triangles += triangles;
+                }
             }
         }
+        let post_drawn = match (&input.post, post_slot) {
+            (Some(post), Some(slot)) if separate => {
+                let drawn = self.draw_post(&mut encoder, post, slot);
+                stats.draw_calls += u32::from(drawn);
+                drawn
+            }
+            _ => false,
+        };
         {
             // UI pass: always at native resolution, after the (possibly upscaled) world.
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -2817,16 +2988,32 @@ impl Gfx {
             if separate {
                 pass.set_pipeline(&self.blit_pipeline);
                 pass.set_bind_group(0, &self.blit_group, &[]);
-                pass.set_bind_group(
-                    1,
-                    &self.world.as_ref().expect("world target exists").group,
-                    &[],
-                );
+                let picture = if post_drawn {
+                    &self
+                        .extras
+                        .post_target
+                        .as_ref()
+                        .expect("post target exists")
+                        .group
+                } else {
+                    &self.world.as_ref().expect("world target exists").group
+                };
+                pass.set_bind_group(1, picture, &[]);
                 pass.set_bind_group(2, self.depth_group.as_ref().expect("depth exists"), &[]);
                 pass.draw(0..3, 0..1);
                 stats.draw_calls += 1;
             }
-            if !input.sprites_front.is_empty() {
+            if !ui_runs.is_empty() {
+                stats.draw_calls += self.draw_sprite_runs(
+                    &mut pass,
+                    &self.sprite_ui_pipeline,
+                    &self.sprites_front,
+                    input.sprites_front.len(),
+                    &ui_runs,
+                    custom::Variant::SpriteUi,
+                );
+                stats.sprites += input.sprites_front.len() as u32;
+            } else if !input.sprites_front.is_empty() {
                 pass.set_pipeline(&self.sprite_ui_pipeline);
                 pass.set_bind_group(0, &self.sprite_view_group, &[]);
                 pass.set_bind_group(1, &self.atlas, &[]);

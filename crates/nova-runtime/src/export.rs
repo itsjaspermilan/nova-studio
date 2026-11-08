@@ -32,6 +32,9 @@ pub fn check_project(folder: &Path, frames: u32) -> CheckReport {
             for warning in &game.warnings {
                 problems.push(diagnostics::parse(warning, "warning"));
             }
+            for error in &game.shader_errors {
+                problems.push(diagnostics::parse(error, "error"));
+            }
             for frame in 0..frames {
                 if game.error.is_some() {
                     break;

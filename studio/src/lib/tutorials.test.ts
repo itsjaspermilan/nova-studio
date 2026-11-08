@@ -36,7 +36,7 @@ describe("lesson code", () => {
 
   it("every snippet targets a project path inside the project", () => {
     for (const s of Object.values(snippets)) {
-      expect(s.path).toMatch(/^[\w-]+(\/[\w.-]+)*\.(lua|json)$/);
+      expect(s.path).toMatch(/^[\w-]+(\/[\w.-]+)*\.(lua|json|wgsl)$/);
       expect(s.path.includes("..")).toBe(false);
       expect(s.code.trim().length).toBeGreaterThan(20);
     }

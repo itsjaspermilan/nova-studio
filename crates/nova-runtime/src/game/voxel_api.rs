@@ -144,6 +144,7 @@ pub(super) fn blob_mesh() -> crate::model::MeshData {
         }
     }
     crate::model::MeshData {
+        material: None,
         vertices,
         indices,
         texture: None,
@@ -176,6 +177,7 @@ pub(super) fn line_mesh() -> crate::model::MeshData {
         }
     }
     crate::model::MeshData {
+        material: None,
         vertices,
         indices: vec![0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6],
         texture: None,

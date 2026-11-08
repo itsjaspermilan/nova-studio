@@ -64,6 +64,143 @@ pub struct MeshData {
     pub wrap: [Wrap; 2],
     /// Features present in the file that this importer does not support.
     pub notes: Vec<String>,
+    /// The file's surface (glTF metallic-roughness, normal map, emission), per vertex and as pictures. Read for every glTF model;
+    /// a project draws it only where it opts in (`"materials"` in `nova.json`), so the game drops it otherwise.
+    pub material: Option<Material>,
+}
+
+/// What a glTF material says about a surface beyond its colour, for the lit-by-material look (see `docs/materials.md`). Every list
+/// has one entry per vertex of the mesh; the pictures are the first of each kind in the file (like the base colour's).
+#[derive(Clone, Debug, Default)]
+pub struct Material {
+    /// The tangent (xyz, along +u of the texture) and its handedness (w, +1 or -1), for the normal map: the file's `TANGENT`, or
+    /// worked out from the positions and UVs when it has none. Zero where there is no normal map.
+    pub tangents: Vec<[f32; 4]>,
+    /// metallic (0 to 1), roughness (0 to 1), how strongly the normal map bends the light (its `scale`; 0: this vertex's part has
+    /// no normal map), and 1 where the part reads `surface_map` (0: its factors alone).
+    pub surface: Vec<[f32; 4]>,
+    /// The emitted light: rgb (linear, from `emissiveFactor`) and how it is used (w): 1 multiplies it by `emissive_map`; 0 adds
+    /// the colour as it is; -1 is Nova's own glow, the surface's colour at the strength of the vertex's `emissive` (what the studio
+    /// writes: a grey factor and no picture).
+    pub emission: Vec<[f32; 4]>,
+    /// The tangent-space normal map (`normalTexture`, linear values).
+    pub normal_map: Option<Image>,
+    /// `metallicRoughnessTexture` (linear: green is roughness, blue is metallic).
+    pub surface_map: Option<Image>,
+    /// `emissiveTexture` (sRGB).
+    pub emissive_map: Option<Image>,
+}
+
+/// The pictures a mesh's primitives refer to (indices into the file's images): the first of each kind is the one used.
+#[derive(Default)]
+struct MeshTextures {
+    base: Option<(usize, [Wrap; 2])>,
+    normal: Option<usize>,
+    surface: Option<usize>,
+    emissive: Option<usize>,
+    /// The vertices of parts without a picture.
+    plain: Vec<std::ops::Range<usize>>,
+}
+
+impl MeshTextures {
+    /// Puts the chosen pictures on `out`.
+    fn apply(&self, out: &mut MeshData, images: &[gltf::image::Data]) -> Result<(), String> {
+        let image = |index: usize| -> Result<Image, String> {
+            let data = &images[index];
+            Ok(Image {
+                width: data.width,
+                height: data.height,
+                rgba: to_rgba(data)?,
+            })
+        };
+        if let Some((index, wrap)) = self.base {
+            out.wrap = wrap;
+            out.texture = Some(image(index)?);
+            for range in &self.plain {
+                for v in &mut out.vertices[range.clone()] {
+                    v.uv = NO_TEXTURE_UV;
+                }
+            }
+        }
+        if let Some(material) = &mut out.material {
+            if let Some(i) = self.normal {
+                material.normal_map = Some(image(i)?);
+            }
+            if let Some(i) = self.surface {
+                material.surface_map = Some(image(i)?);
+            }
+            if let Some(i) = self.emissive {
+                material.emissive_map = Some(image(i)?);
+            }
+        }
+        Ok(())
+    }
+}
+
+/// The first picture of a kind: `slot` takes `index` when it is empty; it is used when it holds that one.
+fn choose(slot: &mut Option<usize>, index: usize, what: &str, notes: &mut Vec<String>) -> bool {
+    match *slot {
+        None => {
+            *slot = Some(index);
+            true
+        }
+        Some(first) if first == index => true,
+        Some(_) => {
+            notes.push(format!("more than one {what}: only the first is used"));
+            false
+        }
+    }
+}
+
+/// Tangents for a normal map from the triangles' positions and UVs (Lengyel's method: each triangle's direction of +u, summed at
+/// its corners, made square to the normal; w says which way +v runs). A vertex with no usable UVs gets a zero tangent.
+pub fn generate_tangents(vertices: &[MeshVertex], indices: &[u32]) -> Vec<[f32; 4]> {
+    let mut tan = vec![Vec3::ZERO; vertices.len()];
+    let mut bit = vec![Vec3::ZERO; vertices.len()];
+    for tri in indices.as_chunks::<3>().0 {
+        let [a, b, c] = tri.map(|i| i as usize);
+        if a.max(b).max(c) >= vertices.len() {
+            continue;
+        }
+        let (pa, pb, pc) = (
+            Vec3::from(vertices[a].position),
+            Vec3::from(vertices[b].position),
+            Vec3::from(vertices[c].position),
+        );
+        let (ua, ub, uc) = (vertices[a].uv, vertices[b].uv, vertices[c].uv);
+        let (e1, e2) = (pb - pa, pc - pa);
+        let (du1, dv1) = (ub[0] - ua[0], ub[1] - ua[1]);
+        let (du2, dv2) = (uc[0] - ua[0], uc[1] - ua[1]);
+        let det = du1 * dv2 - du2 * dv1;
+        if det.abs() < 1e-12 || !det.is_finite() {
+            continue;
+        }
+        let r = 1.0 / det;
+        let t = (e1 * dv2 - e2 * dv1) * r;
+        let bt = (e2 * du1 - e1 * du2) * r;
+        for i in [a, b, c] {
+            tan[i] += t;
+            bit[i] += bt;
+        }
+    }
+    vertices
+        .iter()
+        .enumerate()
+        .map(|(i, v)| {
+            let n = Vec3::from(v.normal);
+            let t = (tan[i] - n * n.dot(tan[i])).normalize_or_zero();
+            if t == Vec3::ZERO {
+                return [0.0; 4];
+            }
+            // glTF's bitangent runs up the picture (towards smaller v: its normal maps are green-up), so it is minus d(position)/dv
+            let w = if n.cross(t).dot(bit[i]) > 0.0 {
+                -1.0
+            } else {
+                1.0
+            };
+            [t.x, t.y, t.z, w]
+        })
+        .collect()
 }
 
 impl MeshData {
@@ -148,7 +285,7 @@ fn append_mesh(
     mesh: &gltf::Mesh,
     world: Mat4,
     buffers: &[gltf::buffer::Data],
-    texture_index: &mut Option<(usize, [Wrap; 2])>,
+    textures: &mut MeshTextures,
 ) {
     let normal_matrix = Mat3::from_mat4(world).inverse().transpose();
     for primitive in mesh.primitives() {
@@ -183,8 +320,8 @@ fn append_mesh(
             let index = info.texture().source().index();
             let sampler = info.texture().sampler();
             let wrap = [sampler.wrap_s().into(), sampler.wrap_t().into()];
-            match *texture_index {
-                None => *texture_index = Some((index, wrap)),
+            match textures.base {
+                None => textures.base = Some((index, wrap)),
                 Some((first, _)) if first != index => out
                     .notes
                     .push("more than one base colour texture: only the first is used".into()),
@@ -202,6 +339,73 @@ fn append_mesh(
             .into_iter()
             .fold(0.0f32, f32::max)
             .clamp(0.0, 1.0);
+        // the surface beyond its colour (drawn only where a project opts in)
+        let material = primitive.material();
+        // (a primitive with no material at all is Nova's plain surface: not metal, fully rough; glTF's default would be metal)
+        let (metallic, roughness) = if material.index().is_some() {
+            (
+                pbr.metallic_factor().clamp(0.0, 1.0),
+                pbr.roughness_factor().clamp(0.0, 1.0),
+            )
+        } else {
+            (0.0, 1.0)
+        };
+        let mut normal_scale = 0.0f32;
+        if let Some(info) = material.normal_texture() {
+            if !textured || uvs.is_none() {
+                out.notes.push(
+                    "a normal map on a part without a base colour picture or UVs is ignored".into(),
+                );
+            } else if choose(
+                &mut textures.normal,
+                info.texture().source().index(),
+                "normal map",
+                &mut out.notes,
+            ) {
+                normal_scale = info.scale();
+                if info.tex_coord() != 0 {
+                    out.notes.push("only UV set 0 is supported".into());
+                }
+            }
+        }
+        let mut uses_surface_map = 0.0f32;
+        if let Some(info) = pbr.metallic_roughness_texture()
+            && textured
+            && choose(
+                &mut textures.surface,
+                info.texture().source().index(),
+                "metallic-roughness picture",
+                &mut out.notes,
+            )
+        {
+            uses_surface_map = 1.0;
+        }
+        if material.occlusion_texture().is_some() {
+            out.notes.push("occlusion maps are ignored".into());
+        }
+        let factor_e = material.emissive_factor();
+        let mut emission = [factor_e[0], factor_e[1], factor_e[2], 0.0];
+        if material.emissive_texture().is_some_and(|info| {
+            textured
+                && choose(
+                    &mut textures.emissive,
+                    info.texture().source().index(),
+                    "emissive picture",
+                    &mut out.notes,
+                )
+        }) {
+            emission[3] = 1.0;
+        } else if (factor_e[0] - factor_e[1]).abs() < 1e-3
+            && (factor_e[1] - factor_e[2]).abs() < 1e-3
+        {
+            // a grey glow and no picture: Nova's meaning, the surface's own colour at that strength
+            emission[3] = -1.0;
+        }
+        let file_tangents: Option<Vec<[f32; 4]>> = if normal_scale != 0.0 && normals.is_some() {
+            reader.read_tangents().map(|t| t.collect())
+        } else {
+            None
+        };
         let base = out.vertices.len() as u32;
         let mut verts: Vec<MeshVertex> = (0..positions.len())
             .map(|i| {
@@ -221,11 +425,9 @@ fn append_mesh(
                         mul(c[2], tint[2]),
                         mul(c[3], tint[3]),
                     ],
-                    uv: if textured {
-                        uvs.as_ref().map(|u| u[i]).unwrap_or([0.0, 0.0])
-                    } else {
-                        NO_TEXTURE_UV
-                    },
+                    // (a part without a picture keeps its UVs for custom shaders; `MeshTextures::apply` moves them out of the way
+                    // when another part of the model has a picture)
+                    uv: uvs.as_ref().map(|u| u[i]).unwrap_or([0.0, 0.0]),
                     emissive,
                 }
             })
@@ -245,6 +447,39 @@ fn append_mesh(
             }
             verts = flat;
             indices = (0..verts.len() as u32).collect();
+        }
+        let tangents = if normal_scale == 0.0 {
+            vec![[0.0; 4]; verts.len()]
+        } else if let Some(t) = file_tangents.filter(|t| t.len() == verts.len()) {
+            t.iter()
+                .map(|t| {
+                    let d = world
+                        .transform_vector3(Vec3::new(t[0], t[1], t[2]))
+                        .normalize_or_zero();
+                    [d.x, d.y, d.z, if t[3] < 0.0 { -1.0 } else { 1.0 }]
+                })
+                .collect()
+        } else {
+            generate_tangents(&verts, &indices)
+        };
+        let before = out.vertices.len();
+        let m = out.material.get_or_insert_with(|| Material {
+            tangents: vec![[0.0; 4]; before],
+            surface: vec![[0.0, 1.0, 0.0, 0.0]; before],
+            emission: vec![[0.0, 0.0, 0.0, -1.0]; before],
+            ..Default::default()
+        });
+        m.tangents.extend(tangents);
+        m.surface.extend(std::iter::repeat_n(
+            [metallic, roughness, normal_scale, uses_surface_map],
+            verts.len(),
+        ));
+        m.emission
+            .extend(std::iter::repeat_n(emission, verts.len()));
+        if !textured {
+            textures
+                .plain
+                .push(out.vertices.len()..out.vertices.len() + verts.len());
         }
         out.vertices.extend(verts);
         out.indices.extend(indices.iter().map(|i| i + base));
@@ -618,18 +853,10 @@ pub fn import_parts(bytes: &[u8]) -> Result<ModelParts, String> {
         let mut skin_source = None;
         if let Some(source) = node.mesh() {
             let mut data = MeshData::default();
-            let mut texture: Option<(usize, [Wrap; 2])> = None;
-            append_mesh(&mut data, &source, Mat4::IDENTITY, &buffers, &mut texture);
+            let mut textures = MeshTextures::default();
+            append_mesh(&mut data, &source, Mat4::IDENTITY, &buffers, &mut textures);
             if !data.vertices.is_empty() {
-                if let Some((index, wrap)) = texture {
-                    let image = &images[index];
-                    data.wrap = wrap;
-                    data.texture = Some(Image {
-                        width: image.width,
-                        height: image.height,
-                        rgba: to_rgba(image)?,
-                    });
-                }
+                textures.apply(&mut data, &images)?;
                 if let Some(skin) = node.skin() {
                     let influences = read_influences(&source, &buffers);
                     match influences {
@@ -774,7 +1001,7 @@ pub fn import_glb(bytes: &[u8]) -> Result<MeshData, String> {
         .default_scene()
         .or_else(|| document.scenes().next())
         .ok_or("glTF has no scene")?;
-    let mut texture_index: Option<(usize, [Wrap; 2])> = None;
+    let mut textures = MeshTextures::default();
     let mut stack: Vec<(gltf::Node, Mat4)> = scene.nodes().map(|n| (n, Mat4::IDENTITY)).collect();
     while let Some((node, parent)) = stack.pop() {
         let world = parent * Mat4::from_cols_array_2d(&node.transform().matrix());
@@ -782,20 +1009,12 @@ pub fn import_glb(bytes: &[u8]) -> Result<MeshData, String> {
             stack.push((child, world));
         }
         let Some(mesh) = node.mesh() else { continue };
-        append_mesh(&mut out, &mesh, world, &buffers, &mut texture_index);
+        append_mesh(&mut out, &mesh, world, &buffers, &mut textures);
     }
     if out.vertices.is_empty() {
         return Err("glTF contains no triangle geometry".into());
     }
-    if let Some((index, wrap)) = texture_index {
-        let data = &images[index];
-        out.wrap = wrap;
-        out.texture = Some(Image {
-            width: data.width,
-            height: data.height,
-            rgba: to_rgba(data)?,
-        });
-    }
+    textures.apply(&mut out, &images)?;
     out.notes.sort();
     out.notes.dedup();
     Ok(out)

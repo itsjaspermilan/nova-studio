@@ -922,6 +922,11 @@ fn script_made_meshes_reuse_their_gpu_buffers() {
             models: &[],
             joints: &[],
             mesh_ops: ops,
+            shaded_models: &[],
+            shaded_sprites: &[],
+            post: None,
+            texture_ops: &[],
+            time: 0.0,
             ui_models: &[],
             lighting: Lighting::default(),
             sprites_front: &[],
@@ -1068,6 +1073,7 @@ fn meshes_with_the_same_picture_share_one_texture() {
         emissive: 0.0,
     };
     let mesh = |colour: u8| MeshData {
+        material: None,
         vertices: vec![v; 3],
         indices: vec![0, 1, 2],
         texture: Some(Image {

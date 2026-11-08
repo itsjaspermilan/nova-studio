@@ -1,7 +1,7 @@
 // The help window's lessons. Code in a lesson lives in `tutorials/*.lua`, and the runtime's tests play every one of those
 // files on top of the Starter template (crates/nova-runtime/tests/tutorials.rs), so what a lesson shows really works.
 
-const files = import.meta.glob("./tutorials/*.lua", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
+const files = import.meta.glob("./tutorials/*.{lua,wgsl}", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 
 export interface Snippet {
   id: string;
@@ -10,17 +10,17 @@ export interface Snippet {
   code: string;
 }
 
-/// `-- file: <path>` on the first line says where the code goes; the rest is what is shown.
+/// `-- file: <path>` (or `// file: <path>` in a shader) on the first line says where the code goes; the rest is what is shown.
 export function parseSnippet(id: string, text: string): Snippet {
   const [first = "", ...rest] = text.split("\n");
-  const m = /^--\s*file:\s*(\S+)\s*$/.exec(first);
+  const m = /^(?:--|\/\/)\s*file:\s*(\S+)\s*$/.exec(first);
   if (!m) throw new Error(`lesson code '${id}' must start with "-- file: <path>"`);
   return { id, path: m[1]!, code: rest.join("\n").replace(/^\n+/, "").trimEnd() + "\n" };
 }
 
 export const snippets: Record<string, Snippet> = Object.fromEntries(
   Object.entries(files).map(([path, text]) => {
-    const id = path.slice(path.lastIndexOf("/") + 1).replace(/\.lua$/, "");
+    const id = path.slice(path.lastIndexOf("/") + 1).replace(/\.(lua|wgsl)$/, "");
     return [id, parseSnippet(id, text)];
   }),
 );
@@ -306,6 +306,43 @@ Add it, then press **▶ Play**. Your robot spins.
 > In a bigger game you would give an entity \`model = "robot"\` and call \`self:play_clip("spin")\`.
 `,
         snippet: "05-model__1-main",
+      },
+    ],
+  },
+  {
+    id: "shader",
+    title: "Write a shader",
+    summary: "Give a model your own look: a band of light that runs up it, in a few lines of WGSL.",
+    minutes: 8,
+    needs: "The robot from the 3D model lesson (or any model: change the name in main.lua).",
+    steps: [
+      {
+        title: "What a shader is",
+        body: `
+A **shader** is a small program the graphics chip runs for every pixel. Nova shaders are files in the \`shaders/\` folder, written in WGSL, and each has one function, \`shade\`, that returns the pixel's colour: red, green, blue and alpha, 0 to 1.
+
+What the pixel is about is in \`s\`: \`s.color\` (the model's own colour), \`s.uv\` (its picture coordinates), \`s.world\` (where it is, in metres), \`s.normal\`, \`s.time\` (seconds) and \`s.param\` (numbers you pass in). \`nova_light(s, colour)\` lights a colour the way Nova lights models.
+
+> Shaders can also go on sprites, and \`nova.post\` puts one over the whole picture. The Help reference lists everything under **Drawing**.
+`,
+      },
+      {
+        title: "Make the shader file",
+        body: `
+Add this file. It makes a cyan band that climbs up the model once a second: \`fract\` keeps only what is after the decimal point, so the band starts again at the bottom.
+`,
+        snippet: "06-shader__1-wave",
+      },
+      {
+        title: "Draw with it",
+        body: `
+Name the shader in the model's options. This replaces \`main.lua\`. Press **▶ Play**.
+
+If the shader has a mistake, the **Problems** panel shows it with its line, and the model is drawn without it until you fix it.
+
+> Try changing \`1.5\` (how far apart the bands are) or the colour \`vec3<f32>(0.2, 0.9, 1.0)\`, save, and play again.
+`,
+        snippet: "06-shader__2-main",
       },
     ],
   },
