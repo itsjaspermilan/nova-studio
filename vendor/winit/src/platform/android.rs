@@ -186,3 +186,17 @@ pub mod activity {
     #[doc(hidden)]
     pub struct AndroidApp;
 }
+
+/// NOVA PATCH: the Android input device id behind a [`crate::event::DeviceId`] (`InputEvent.getDeviceId()`), so that a game
+/// can tell its controllers apart and find a controller's vibrator through `InputDevice.getDevice(id)`.
+pub trait DeviceIdExtAndroid {
+    /// The Android input device id. Events that come from no real device (`adb shell input`, the virtual keyboard) have
+    /// an id of -1 or 0.
+    fn android_device_id(&self) -> i32;
+}
+
+impl DeviceIdExtAndroid for crate::event::DeviceId {
+    fn android_device_id(&self) -> i32 {
+        self.0.android_id()
+    }
+}

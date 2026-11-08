@@ -278,6 +278,14 @@ fn info(folder: PathBuf) -> Result<(), String> {
         project.manifest.version.as_deref().unwrap_or("0.0.0")
     );
     println!("id={id}");
+    println!(
+        "network={}",
+        if project.manifest.local_network {
+            "yes"
+        } else {
+            "no"
+        }
+    );
     Ok(())
 }
 

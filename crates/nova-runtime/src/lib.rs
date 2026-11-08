@@ -20,8 +20,10 @@ pub mod lights;
 pub mod meshworld;
 pub mod mixer;
 pub mod model;
+pub mod net;
 pub mod pacing;
 pub mod pak;
+pub mod players;
 pub mod project;
 pub mod save;
 pub mod scene;
@@ -36,6 +38,8 @@ pub mod vfs;
 pub mod voxel;
 pub mod walls;
 
+#[cfg(target_os = "android")]
+pub mod android_input;
 #[cfg(target_os = "android")]
 pub mod android_ui;
 

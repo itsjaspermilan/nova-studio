@@ -394,28 +394,28 @@
  {
   "name": "nova.input.down",
   "kind": "function",
-  "signature": "nova.input.down(action) -> boolean",
+  "signature": "nova.input.down(action [, player]) -> boolean",
   "doc": "True while the action is held.",
   "group": "Input"
  },
  {
   "name": "nova.input.pressed",
   "kind": "function",
-  "signature": "nova.input.pressed(action) -> boolean",
+  "signature": "nova.input.pressed(action [, player]) -> boolean",
   "doc": "True in the one game step after the action went down.",
   "group": "Input"
  },
  {
   "name": "nova.input.released",
   "kind": "function",
-  "signature": "nova.input.released(action) -> boolean",
+  "signature": "nova.input.released(action [, player]) -> boolean",
   "doc": "True in the one game step after the action was let go.",
   "group": "Input"
  },
  {
   "name": "nova.input.axis",
   "kind": "function",
-  "signature": "nova.input.axis(action) -> number",
+  "signature": "nova.input.axis(action [, player]) -> number",
   "doc": "-1 to 1 for axes such as move_x; 0 to 1 for buttons.",
   "group": "Input"
  },
@@ -429,28 +429,28 @@
  {
   "name": "nova.input.bind",
   "kind": "function",
-  "signature": "nova.input.bind(action, sources)",
+  "signature": "nova.input.bind(action, sources [, player])",
   "doc": "Change what drives an action. A list of sources makes a button; { negative = {...}, positive = {...} } makes an axis.",
   "group": "Input"
  },
  {
   "name": "nova.input.bindings",
   "kind": "function",
-  "signature": "nova.input.bindings(action) -> list",
+  "signature": "nova.input.bindings(action [, player]) -> list",
   "doc": "The sources an action uses.",
   "group": "Input"
  },
  {
   "name": "nova.input.reset_bindings",
   "kind": "function",
-  "signature": "nova.input.reset_bindings()",
+  "signature": "nova.input.reset_bindings([player])",
   "doc": "Restore the project's own bindings.",
   "group": "Input"
  },
  {
   "name": "nova.input.next_source",
   "kind": "function",
-  "signature": "nova.input.next_source() -> string | nil",
+  "signature": "nova.input.next_source() -> source | nil, player",
   "doc": "The source pressed since you last asked (each press is reported once), such as \"key:KeyZ\" or \"pad:south\", or nil. For \"press the new key\" screens: call it once when you start listening, to drop the press that opened the screen, then every frame.",
   "group": "Input"
  },
@@ -471,9 +471,156 @@
  {
   "name": "nova.input.rumble",
   "kind": "function",
-  "signature": "nova.input.rumble(strength, seconds) or nova.input.rumble{ strong, weak, seconds, pad }",
-  "doc": "Shakes a gamepad for a moment: strength from 0 to 1 (strong is the big motor, weak the small one), up to 5 seconds. `pad` picks the first to fourth pad (0, the default, shakes all). Pads that cannot rumble ignore it, so it is always safe to call. Not wired up on Android yet.",
+  "signature": "nova.input.rumble(strength, seconds [, player]) or nova.input.rumble{ strong, weak, seconds, player }",
+  "doc": "Shakes a player's controller for a moment: strength from 0 to 1 (strong is the big motor, weak the small one), up to 5 seconds. Without a player every pad shakes. On Android a controller with a motor shakes, and the handheld itself shakes for its built-in controls; a player on another device (local co-op) feels it too. Pads that cannot rumble ignore it, so it is always safe to call.",
   "group": "Input"
+ },
+ {
+  "name": "nova.input.players",
+  "kind": "function",
+  "signature": "nova.input.players() -> { { player, name, connected, remote, rumble }, ... }",
+  "doc": "The players seated now: each pad keeps its player number while connected and gets it back when it reconnects; player 1 is always this device (keyboard too). Players on another device (local co-op) are listed with remote = true.",
+  "group": "Input"
+ },
+ {
+  "name": "nova.input.player_events",
+  "kind": "function",
+  "signature": "nova.input.player_events() -> { { player, kind, name }, ... }",
+  "doc": "What happened to the players since the last call: kind is \"joined\", \"left\" (its seat is kept) or \"back\".",
+  "group": "Input"
+ },
+ {
+  "name": "nova.input.player",
+  "kind": "function",
+  "signature": "nova.input.player(n) -> { down, pressed, released, axis, prompt, bindings, bind, rumble, number }",
+  "doc": "The input calls for one player: local p = nova.input.player(2); if p.pressed(\"jump\") then ... end.",
+  "group": "Input"
+ },
+ {
+  "name": "nova.input.glyph",
+  "kind": "function",
+  "signature": "nova.input.glyph(source) -> label, icon",
+  "doc": "What a button says on a Nintendo-style pad (pad:south is \"B\", pad:east \"A\") and an icon name (\"button_b\"; Kenney's Switch prompts are \"switch_\" .. icon). Keys are named as on the keyboard.",
+  "group": "Input"
+ },
+ {
+  "name": "nova.input.prompt",
+  "kind": "function",
+  "signature": "nova.input.prompt(action [, player [, keys]]) -> label, icon, source",
+  "doc": "The button to show for an action (its first gamepad source, or with keys = true its first key), as nova.input.glyph names it.",
+  "group": "Input"
+ },
+ {
+  "name": "nova.input.save_controls",
+  "kind": "function",
+  "signature": "nova.input.save_controls()",
+  "doc": "Keeps the bindings the player chose (nova.input.bind, for everyone or one player) for the next run; they are read back when the game starts.",
+  "group": "Input"
+ },
+ {
+  "name": "nova.net",
+  "kind": "namespace",
+  "signature": "nova.net",
+  "doc": "Local co-op over wifi: one device hosts, others on the same network find it and join (needs \"local_network\": true in nova.json).",
+  "group": "Network"
+ },
+ {
+  "name": "nova.net.host",
+  "kind": "function",
+  "signature": "nova.net.host{ name, players } -> ok, error",
+  "doc": "Starts hosting: other devices on this wifi can find the game and join, up to `players` (2 to 4) in all. The host runs the game; joined players are more players (nova.input.down(\"jump\", 2)).",
+  "group": "Network"
+ },
+ {
+  "name": "nova.net.find",
+  "kind": "function",
+  "signature": "nova.net.find() -> { { id, name, players, max, full }, ... }",
+  "doc": "The games of this kind on this wifi; keeps looking while it is called (every frame on a \"Join\" screen).",
+  "group": "Network"
+ },
+ {
+  "name": "nova.net.join",
+  "kind": "function",
+  "signature": "nova.net.join(id) -> ok, error",
+  "doc": "Joins a game from nova.net.find() (or an address typed by hand, such as \"192.168.1.20\"). Watch nova.net.status() for \"joined\" or \"lost\".",
+  "group": "Network"
+ },
+ {
+  "name": "nova.net.leave",
+  "kind": "function",
+  "signature": "nova.net.leave()",
+  "doc": "Stops hosting, looking or playing (the others are told).",
+  "group": "Network"
+ },
+ {
+  "name": "nova.net.status",
+  "kind": "function",
+  "signature": "nova.net.status() -> role, text",
+  "doc": "\"off\", \"hosting\", \"finding\", \"joining\", \"joined\" or \"lost\", and a sentence to show (\"Waiting for players\", \"Lost the connection to Jasper's Retroid\").",
+  "group": "Network"
+ },
+ {
+  "name": "nova.net.is_host",
+  "kind": "function",
+  "signature": "nova.net.is_host() -> boolean",
+  "doc": "True while this device hosts the game.",
+  "group": "Network"
+ },
+ {
+  "name": "nova.net.me",
+  "kind": "function",
+  "signature": "nova.net.me() -> number",
+  "doc": "This device's player number in the game (1 on the host and when not connected).",
+  "group": "Network"
+ },
+ {
+  "name": "nova.net.name",
+  "kind": "function",
+  "signature": "nova.net.name() -> string",
+  "doc": "What this device is called to the others (its name as the owner set it, or the name given to host/join).",
+  "group": "Network"
+ },
+ {
+  "name": "nova.net.address",
+  "kind": "function",
+  "signature": "nova.net.address() -> string | nil",
+  "doc": "This device's address on the local network, to type into another device by hand.",
+  "group": "Network"
+ },
+ {
+  "name": "nova.net.players",
+  "kind": "function",
+  "signature": "nova.net.players() -> { { player, name, me, host, ping }, ... }",
+  "doc": "Everyone in the game; ping is the time there and back in milliseconds.",
+  "group": "Network"
+ },
+ {
+  "name": "nova.net.events",
+  "kind": "function",
+  "signature": "nova.net.events() -> { { kind, player, name }, ... }",
+  "doc": "Since the last call: \"joined\" and \"left\" players, \"connected\" (this device joined) and \"lost\" (the host went away).",
+  "group": "Network"
+ },
+ {
+  "name": "nova.net.send",
+  "kind": "function",
+  "signature": "nova.net.send(name, data [, player])",
+  "doc": "A message that arrives, in order: the host sends to one player or everyone; a joined device sends to the host. Numbers, strings, booleans and tables of those; under 32 KB.",
+  "group": "Network"
+ },
+ {
+  "name": "nova.net.receive",
+  "kind": "function",
+  "signature": "nova.net.receive() -> { { from, name, data }, ... }",
+  "doc": "The messages that arrived since the last call.",
+  "group": "Network"
+ },
+ {
+  "name": "nova.net.state",
+  "kind": "function",
+  "signature": "nova.net.state(t) on the host; nova.net.state() -> t, age on a joined device",
+  "doc": "The host sets what the joined devices draw, sent every frame (newest wins); a joined device reads the newest and how many seconds old it is. Use lists, not tables keyed by player numbers.",
+  "group": "Network"
  },
  {
   "name": "nova.input.last_source",

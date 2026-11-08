@@ -42,6 +42,7 @@ if [ -n "$PROJECT" ]; then
             name) LABEL=$value ;;
             version) VERSION=$value ;;
             id) PACKAGE="com.nova.games.$value"; APK_NAME=$value ;;
+            network) NETWORK=$value ;;
         esac
     done < <("$ENV" cargo run -q --release -p nova-runtime --bin nova -- info "$PROJECT")
     "$ENV" cargo run -q --release -p nova-runtime --bin nova -- pack "$PROJECT" "$OUT/assets/project.npk"
@@ -68,7 +69,14 @@ if [ -n "$PROJECT" ] && [ -f "$PROJECT/icon.png" ]; then
     done
     ICON_ATTR='android:icon="@mipmap/ic_launcher"'
 fi
+# A game with "local_network": true plays with other devices on the same wifi: it may use the network, and it takes the
+# wifi multicast lock so that broadcast packets (how a host is found) reach it. Nothing else asks for network access.
+PERMISSIONS=""
+if [ "${NETWORK:-no}" = yes ]; then
+    PERMISSIONS='<uses-permission android:name="android.permission.INTERNET" /> <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />'
+fi
 sed -e "s|@PACKAGE@|$PACKAGE|" -e "s|@LABEL@|$(xml_escape "$LABEL")|" -e "s|@ICON@|$ICON_ATTR|" \
+    -e "s|@PERMISSIONS@|$PERMISSIONS|" \
     crates/nova-runtime/android/AndroidManifest.xml > "$MANIFEST"
 
 BASE="$OUT/base.apk"

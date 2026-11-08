@@ -446,12 +446,15 @@ impl App {
         };
         let size = (config.width, config.height);
 
+        let (sources, pads, last_pad) = self.input.poll();
         let mut frame = InputFrame {
-            sources: self.input.sources(),
+            sources,
             overrides: self.held.clone(),
             last_source: self.input.last_new_source.take(),
             pointer: self.input.pointer(Gfx::ui_scale(size)),
             typed: self.input.take_typed(),
+            pads,
+            last_pad,
         };
         if let Some(s) = &self.script {
             merge_input(&mut frame, s.frame(self.frames_done));
@@ -638,7 +641,12 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => self.configure(size.width, size.height),
-            WindowEvent::KeyboardInput { event, .. } => {
+            WindowEvent::KeyboardInput {
+                event,
+                #[cfg(target_os = "android")]
+                device_id,
+                ..
+            } => {
                 // Escape closes the window unless the game uses it (to pause, say)
                 let used = self
                     .content
@@ -651,6 +659,12 @@ impl ApplicationHandler for App {
                 {
                     event_loop.exit();
                 }
+                #[cfg(target_os = "android")]
+                {
+                    use winit::platform::android::DeviceIdExtAndroid;
+                    self.input.key_from(device_id.android_device_id(), &event);
+                }
+                #[cfg(not(target_os = "android"))]
                 self.input.key(&event);
             }
             WindowEvent::CursorMoved { position, .. } => {
@@ -685,8 +699,14 @@ impl ApplicationHandler for App {
             }
             // Android game controllers: sticks, triggers and the d-pad hat (see vendor/winit/NOVA-PATCH.md).
             #[cfg(target_os = "android")]
-            WindowEvent::AxisMotion { axis, value, .. } => {
-                self.input.native_axis(axis, value as f32)
+            WindowEvent::AxisMotion {
+                device_id,
+                axis,
+                value,
+            } => {
+                use winit::platform::android::DeviceIdExtAndroid;
+                self.input
+                    .native_axis_from(device_id.android_device_id(), axis, value as f32)
             }
             // the bars come back after a dialog or the shade: hide them again
             #[cfg(target_os = "android")]

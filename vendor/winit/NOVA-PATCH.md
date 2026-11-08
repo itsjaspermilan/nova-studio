@@ -13,3 +13,9 @@ as the axis id, and is not turned into a touch. `crates/nova-runtime/src/input.r
 
 Not verified on a device: the emulator cannot send controller motion events. Remove this folder and the `[patch.crates-io]`
 entry in the root `Cargo.toml` to go back to stock winit (and lose analogue input on Android).
+
+## Second change (2026-11-08): the Android device id
+
+`src/platform/android.rs` adds `DeviceIdExtAndroid::android_device_id()` (and `src/platform_impl/android/mod.rs` a
+`DeviceId::android_id()` behind it), both marked `NOVA PATCH`: the Android input device id an event came from. Nova uses it
+to tell several controllers apart (players 1, 2...) and to find a controller's vibrator. Stock winit keeps the id private.
