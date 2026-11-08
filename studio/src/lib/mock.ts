@@ -1,4 +1,4 @@
-import type { Api, CheckReport, Diagnostic, FileContent, FileEntry, HeadlessOptions, HeadlessReport, LogLine } from "./types";
+import type { AndroidDevice, Api, CheckReport, Diagnostic, FileContent, FileEntry, HeadlessOptions, HeadlessReport, LogLine } from "./types";
 
 // 1x1 transparent PNG, for tests that have no canvas
 const TINY_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
@@ -56,7 +56,16 @@ class Stamped extends Map<string, string> {
   }
 }
 
-export function createMockApi(): Api {
+/// The devices the browser preview pretends are plugged in.
+export const MOCK_DEVICES: AndroidDevice[] = [
+  { serial: "bc8565a3", state: "device", name: "Retroid Pocket 6", emulator: false },
+  { serial: "emulator-5554", state: "device", name: "retroid-sim (emulator)", emulator: true },
+];
+
+export function createMockApi(options: { devices?: AndroidDevice[] } = {}): Api {
+  const devices = options.devices ?? MOCK_DEVICES;
+  const stepSubs = new Set<(step: string) => void>();
+  let onDevice: string | null = null;
   const files = new Stamped();
   const images = new Map<string, string>(); // saved PNGs as data URLs
   const audio = new Map<string, string>(); // saved WAVs as data URLs
@@ -95,6 +104,18 @@ export function createMockApi(): Api {
   const stop = () => {
     clearInterval(timer);
     running = false;
+    onDevice = null;
+  };
+  // what the real runtime writes: a speed line every second and a hitch line for a slow frame
+  const tick = () => {
+    let n = 0;
+    timer = setInterval(() => {
+      n++;
+      emit("stdout", onDevice ? `lua: tick ${n} (on ${onDevice})` : `tick ${n}`);
+      const fps = 58 + (n % 3) * 0.7;
+      emit("stderr", `[mock INFO nova_runtime::spike] fps=${fps.toFixed(1)} p95=${(17 + (n % 4)).toFixed(1)}ms max=${(19 + (n % 5) * 2).toFixed(1)}ms upd=0.40ms lua=${(0.3 + (n % 3) / 10).toFixed(2)}ms render=1.20ms gpu=${(3 + (n % 4) / 2).toFixed(2)}ms draws=${120 + n} sprites=4 tris=${88000 + n * 400} culled=12`);
+      if (n % 6 === 0) emit("stdout", `hitch: ${(31 + n).toFixed(1)} ms (scene title; gpu 4.0 ms, ${120 + n} draws, lua 0.50 ms)`);
+    }, 1000);
   };
 
   const api: Api = {
@@ -264,16 +285,39 @@ export function createMockApi(): Api {
       if (record) emit("stderr", `[mock] a real run would write what you press to ${record} when its window is closed`);
       if (running) throw "the game is already running";
       running = true;
-      let n = 0;
       emit("stderr", "[mock] there is no native runtime in a browser; this is a simulated run");
-      // what the real runtime writes: a speed line every second and a hitch line for a slow frame
-      timer = setInterval(() => {
-        n++;
-        emit("stdout", `tick ${n}`);
-        const fps = 58 + (n % 3) * 0.7;
-        emit("stderr", `[mock INFO nova_runtime::spike] fps=${fps.toFixed(1)} p95=${(17 + (n % 4)).toFixed(1)}ms max=${(19 + (n % 5) * 2).toFixed(1)}ms upd=0.40ms lua=${(0.3 + (n % 3) / 10).toFixed(2)}ms render=1.20ms gpu=${(3 + (n % 4) / 2).toFixed(2)}ms draws=${120 + n} sprites=4 tris=${88000 + n * 400} culled=12`);
-        if (n % 6 === 0) emit("stdout", `hitch: ${(31 + n).toFixed(1)} ms (scene title; gpu 4.0 ms, ${120 + n} draws, lua 0.50 ms)`);
-      }, 1000);
+      tick();
+    },
+    listDevices: async () => devices.map((d) => ({ ...d })),
+    playOnDevice: async (serial) => {
+      need();
+      if (running) throw "a game is already running; stop it first";
+      const device = devices.find((d) => d.serial === serial);
+      if (!device) throw devices.length ? `The device ${serial} is not connected any more. Plug it in, or pick another.` : "No device is connected. Plug the handheld in with a USB cable and turn on USB debugging (Settings › System › Developer options), then look again.";
+      if (device.state === "unauthorized") throw `${device.name} has not allowed this computer yet. Look at its screen, tick "Always allow" and accept "Allow USB debugging?", then try again.`;
+      if (device.state !== "device") throw `${device.name} is not ready (${device.state}).`;
+      running = true;
+      const step = (text: string) => stepSubs.forEach((cb) => cb(text));
+      step("Building the game for Android");
+      if ([...files.values()].some((t) => /\bTODO_BREAK\b/.test(t))) {
+        running = false;
+        emit("stdout", "error: main.lua:2: mock problem (TODO_BREAK)");
+        throw "The game has errors, so it was not put on the device. The Problems list shows them.";
+      }
+      for (const text of ["Packing the game", "The engine for Android is up to date (only the game is repacked)", "Signing the APK (debug key)"]) {
+        step(text);
+        emit("stdout", `[step] ${text}`);
+      }
+      emit("stdout", "[mock] a browser cannot build or install anything; this is a simulated run on the device");
+      step(`Installing on ${device.name}`);
+      step(`Starting the game on ${device.name}`);
+      onDevice = serial;
+      tick();
+      return `com.nova.games.${(root ?? "game").split("/").pop()!.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`;
+    },
+    onDeviceStep: async (cb) => {
+      stepSubs.add(cb);
+      return () => void stepSubs.delete(cb);
     },
     stopProject: async () => {
       const was = running;

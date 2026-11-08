@@ -14,7 +14,7 @@ MCP tool `store_art` does: `nova run <project> --headless --frames N --size WxH 
   scene directly is not possible yet: the runtime has no option to start in a given scene, so the keys are the way.
 - **Take the picture** shows the result; **Save as icon.png** writes it into the project (through `writeImage`, so the file
   is confined to the project like every other). The icon is also shown the way an Android launcher shows it (circle and
-  rounded square at 192, 96, 72 and 48 px) and the box art as a cover tile. `scripts/build-apk.sh` makes the launcher icon
+  rounded square at 192, 96, 72 and 48 px) and the box art as a cover tile. `nova export android` (and so Play on device) makes the launcher icon
   from `icon.png`.
 - Backend: the `run_headless` command (`studio/src-tauri/src/headless.rs`) runs the `nova` binary once and returns its
   log lines and, with `capture`, the last frame as a PNG data URL. It validates every option, stops a run that takes more

@@ -17,7 +17,8 @@ import { byFile } from "./diagnostics";
 import { projectSymbols, type ProjectSymbols } from "./completions";
 import { PerfTracker, type Hitch, type PerfSample } from "./perf";
 import { ACTIVITY_FILE, parseActivity, type Activity } from "./activity";
-import type { Api, Diagnostic, ExampleInfo, ExportReport, FileEntry, LogLine, ProjectInfo, RecentProject, TemplateInfo } from "./types";
+import { deviceHint, lastDevice, NO_DEVICE, preferredDevice, rememberDevice } from "./devices";
+import type { AndroidDevice, Api, Diagnostic, ExampleInfo, ExportReport, FileEntry, LogLine, ProjectInfo, RecentProject, TemplateInfo } from "./types";
 
 export interface Tab {
   path: string;
@@ -67,6 +68,14 @@ class Studio {
   checkedAt: number | null = $state(null);
 
   running = $state(false);
+  /// Play on device: the devices found last time the menu was opened, why none can be used, and while the game is
+  /// being built, installed and started, the step it is on.
+  devices: AndroidDevice[] = $state([]);
+  devicesProblem: string | null = $state(null);
+  lookingForDevices = $state(false);
+  /// The device the game runs (or is being put) on; null while it runs on this computer or not at all.
+  playingOn: AndroidDevice | null = $state(null);
+  deviceStep: string | null = $state(null);
   log: LogLine[] = $state([]);
   panel: Panel = $state("problems");
   panelOpen = $state(true);
@@ -147,8 +156,13 @@ class Studio {
         this.log.push(line);
         if (this.log.length > MAX_LOG) this.log.splice(0, this.log.length - MAX_LOG);
       }),
+      await api.onDeviceStep((step) => {
+        if (this.playingOn) this.deviceStep = step;
+      }),
       await api.onPlayExit((code) => {
         this.running = false;
+        this.playingOn = null;
+        this.deviceStep = null;
         this.log.push({ stream: "stderr", line: code === null || code === 0 ? "— game closed —" : `— game exited with code ${code} —` });
       }),
     );
@@ -790,7 +804,69 @@ class Studio {
     await this.#guard(async () => {
       await this.api!.stopProject();
       this.running = false;
+      this.playingOn = null;
+      this.deviceStep = null;
     });
+  }
+
+  /// Looks for Android devices (the menu beside Play calls this each time it opens).
+  async findDevices() {
+    this.lookingForDevices = true;
+    try {
+      this.devices = await this.api!.listDevices();
+      this.devicesProblem = this.devices.length ? null : NO_DEVICE;
+    } catch (e) {
+      this.devices = [];
+      this.devicesProblem = message(e);
+    } finally {
+      this.lookingForDevices = false;
+    }
+  }
+
+  /// The device Play on device goes to without asking: the last one used, if it is still there.
+  get preferredDevice(): AndroidDevice | null {
+    return preferredDevice(this.devices, lastDevice());
+  }
+
+  /// Play on the device used last (or the only one there): ⌘⇧↩.
+  async playOnPreferredDevice() {
+    if (this.running) return;
+    await this.findDevices();
+    const device = this.preferredDevice;
+    if (device) return this.playOnDevice(device);
+    const waiting = this.devices.find((d) => d.state !== "device");
+    this.say("error", this.devicesProblem ?? (waiting ? `${waiting.name}: ${deviceHint(waiting)}` : NO_DEVICE));
+  }
+
+  /// Saves, builds the game for Android, installs it on `device` and starts it; its log comes into the Play panel.
+  async playOnDevice(device: AndroidDevice) {
+    if (this.running || !(await this.saveAll())) return;
+    rememberDevice(device.serial);
+    this.log = [];
+    this.#perf = new PerfTracker();
+    this.perf = { latest: null, history: [], hitches: [], worst: 0 };
+    this.panel = "play";
+    this.panelOpen = true;
+    this.running = true;
+    this.playingOn = device;
+    this.deviceStep = "Getting ready";
+    try {
+      await this.api!.playOnDevice(device.serial);
+      // (unless it already ended: then play-exit has said so)
+      if (this.playingOn === device) {
+        this.deviceStep = null;
+        this.log.push({ stream: "stdout", line: `— running on ${device.name} —` });
+      }
+    } catch (e) {
+      const why = message(e);
+      this.running = false;
+      this.playingOn = null;
+      this.deviceStep = null;
+      if (why === "Stopped.") return;
+      this.log.push({ stream: "stderr", line: why });
+      this.say("error", why);
+      if (/errors, so it was not put/.test(why)) void this.check();
+    }
   }
 }
 

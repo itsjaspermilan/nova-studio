@@ -124,6 +124,10 @@ fn export_checks_its_arguments() {
         vec!["export", "ios", "x"],
         vec!["export", "desktop"],
         vec!["export", "desktop", "x", "--nope"],
+        vec!["export", "desktop", "x", "--rebuild"],
+        vec!["export", "android"],
+        vec!["export", "android", "x", "--benchmark"],
+        vec!["export", "android", "x", "y"],
     ] {
         let result = Command::new(env!("CARGO_BIN_EXE_nova"))
             .args(&args)
@@ -139,18 +143,4 @@ fn ids_are_safe_file_and_package_names() {
     assert_eq!(export::game_id("2 Fast"), "g2_fast");
     assert_eq!(export::game_id("!!!"), "game");
     assert_eq!(export::game_id("Crate Dash"), "crate_dash");
-}
-
-#[test]
-fn the_apk_script_is_found_above_where_you_are() {
-    let root = scratch("repo");
-    write(&root, "scripts/build-apk.sh", "#!/bin/bash\n");
-    let deep = root.join("a/b/c");
-    std::fs::create_dir_all(&deep).unwrap();
-    assert_eq!(
-        export::find_apk_script(&[deep]),
-        Some(root.join("scripts/build-apk.sh"))
-    );
-    let elsewhere = scratch("nowhere");
-    assert_eq!(export::find_apk_script(&[elsewhere]), None);
 }

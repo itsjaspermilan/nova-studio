@@ -1,5 +1,5 @@
 //! `nova export`: checking a game before it leaves the studio, and the folder a finished desktop game is handed over in.
-//! (The Android APK is built by `scripts/build-apk.sh`, which needs the Android toolchain; `nova export android` finds and runs it.)
+//! (The Android APK is built by `android.rs`, which needs the Android SDK.)
 
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -156,19 +156,4 @@ pub fn export_desktop(
         }
     }
     Ok(Exported { dir, files })
-}
-
-/// Looks for `scripts/build-apk.sh` in each of `starts` and the folders above them (the Nova source tree).
-pub fn find_apk_script(starts: &[PathBuf]) -> Option<PathBuf> {
-    for start in starts {
-        let mut at: Option<&Path> = Some(start.as_path());
-        while let Some(dir) = at {
-            let script = dir.join("scripts").join("build-apk.sh");
-            if script.is_file() {
-                return Some(script);
-            }
-            at = dir.parent();
-        }
-    }
-    None
 }

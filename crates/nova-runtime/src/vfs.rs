@@ -101,7 +101,8 @@ pub struct DirVfs {
     root: PathBuf,
 }
 
-const SKIPPED_DIRECTORIES: [&str; 4] = ["build", "target", "node_modules", "dist"];
+/// Build output, and `exports` (where the studio writes exported games: an APK must not be packed into the next one).
+const SKIPPED_DIRECTORIES: [&str; 5] = ["build", "target", "node_modules", "dist", "exports"];
 
 impl DirVfs {
     pub fn new(root: &Path) -> Result<Self, String> {
@@ -280,6 +281,8 @@ mod tests {
         std::fs::write(dir.join("sprites/a.png"), "y").unwrap();
         std::fs::write(dir.join(".nova/notes.json"), "z").unwrap();
         std::fs::write(dir.join("build/out.bin"), "z").unwrap();
+        std::fs::create_dir_all(dir.join("exports")).unwrap();
+        std::fs::write(dir.join("exports/game-debug.apk"), "z").unwrap();
         let vfs = DirVfs::new(&dir).unwrap();
         let paths: Vec<_> = vfs.list().unwrap().into_iter().map(|e| e.path).collect();
         assert_eq!(paths, ["main.lua", "sprites/a.png"]);

@@ -140,7 +140,7 @@ white pole, like the rebuild. No shipped model had a repeating picture or such a
 
 **Delivery and product**
 - [ ] APKs are debug-signed only; release signing, distribution and installing on a device are the
-  user's to do. `nova export android` does not exist yet (a script does the work).
+  user's to do. (`nova export android` builds the APK itself since 2026-11-08; the studio's Play on device installs it.)
 - [ ] Third-party licence notices for Rust dependencies are not bundled into outputs (fonts' notices are
   in `licenses/fonts/`).
 - [ ] The studio now has every editor in a first version (code, scene, sprite with layers, sound effects, music,
@@ -323,7 +323,8 @@ Spec in [docs/project-format.md](docs/project-format.md); example `examples/crat
 
 ## M3: Packaging and device loop
 
-- [x] (script version) APK build + asset packer + signing: `scripts/build-apk.sh --project`, `nova pack`, `nova info`. Moving it into a `nova export android` command remains.
+- [x] (script version) APK build + asset packer + signing: `scripts/build-apk.sh --project`, `nova pack`, `nova info`. Moved into `nova export android` (2026-11-08, `android.rs`; the script is a thin wrapper).
+- [x] Play on device (2026-11-08, `docs/play-on-device.md`): ▾ beside Play lists adb devices, builds (engine reused unless the runtime changed; base APK reused, so a game change is about 0.5 s), installs, copies the Lantern cover, starts the game and streams its logcat into Play; Stop stops it. Checked on the Retroid through the studio backend's code path (ignored test), not through the app window. [ ] Live reload on the device (push changed files instead of reinstalling). [ ] Pick a device when two are ready without opening the menu (⌘⇧↩ uses the last one).
 - [ ] Template APK build + asset packer + signing. Debug keystore generated
   locally; **release signing and distribution stay the user's to do**.
 - [x] `nova export desktop|android <project> [--out dir]` (2026-11-02): checks the game, then writes a folder that plays it (program, `game.npk`,

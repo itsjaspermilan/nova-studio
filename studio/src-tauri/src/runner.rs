@@ -168,22 +168,30 @@ pub struct ExportOutput {
 
 /// Runs `nova export <target> <root> --out <root>/exports` (it checks the game first) and returns what it printed.
 /// An Android export needs the Nova source tree and the Android tools, so on a machine that has them this points the
-/// program at the tree the studio was built from.
+/// program at the tree the studio was built from and runs it through that tree's `scripts/env.sh`.
 pub fn export(root: &Path, target: &str) -> Result<ExportOutput, String> {
     if target != "desktop" && target != "android" {
         return Err(format!("unknown export target '{target}'"));
     }
     let bin = find_nova_binary()?;
     let out = root.join("exports");
-    let mut command = Command::new(bin);
+    let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let env = repo.join("scripts/env.sh");
+    // in the source tree, scripts/env.sh sets up the Android tools (SDK, NDK, Java, cargo) for the APK build
+    let mut command = if target == "android" && env.is_file() {
+        let mut c = Command::new("bash");
+        c.arg(env).arg(bin);
+        c
+    } else {
+        Command::new(bin)
+    };
     command
         .arg("export")
         .arg(target)
         .arg(root)
         .arg("--out")
         .arg(&out);
-    let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    if repo.join("scripts/build-apk.sh").is_file() {
+    if repo.join("crates/nova-runtime/Cargo.toml").is_file() {
         command.env("NOVA_REPO", repo);
     }
     let done = command

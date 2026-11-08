@@ -70,6 +70,7 @@
         <h3>What the buttons do</h3>
         <ul class="plain">
           <li><strong>▶ Play</strong> (⌘↩) saves everything and opens your game in its own window. Edit and save while it runs and it reloads.</li>
+          <li><strong>▾ beside Play</strong> plays the game on a device: the handheld plugged in with a USB cable (or an Android emulator). Pick it from the list and the studio builds the game for Android, installs it, starts it and shows its log in Play; <strong>■ Stop</strong> ends it there. ⌘⇧↩ plays on the device you used last. The first time takes a few minutes; after that only your game is repacked, which takes seconds.</li>
           <li><strong>◩ New sprite</strong> makes a picture to draw on, with frames for animation.</li>
           <li><strong>♪ New sound effect</strong> makes a sound like a coin, a jump or an explosion.</li>
           <li><strong>♫ New song</strong> makes music you place note by note.</li>
@@ -84,6 +85,7 @@
           <li>Everything is saved as plain files in your project folder, so you can use git, or open the files in any other program. The studio notices changes made elsewhere.</li>
           <li>Deleted files go to a <code>.nova/trash</code> folder inside the project, not away for good.</li>
           <li>The game never runs inside the studio: Play starts the real thing.</li>
+          <li>To play on the handheld, turn on its USB debugging once (Settings › System › Developer options; tap <em>Build number</em> seven times to show them), plug it in and accept <em>Allow USB debugging?</em> on its screen. The list beside Play says what is missing if it cannot be used yet. The cover picture (<code>boxart-wide.png</code>) is copied for the Lantern launcher when the handheld has it.</li>
         </ul>
       {:else if studio.helpTab === "lessons" && !lesson}
         <h1>Lessons</h1>

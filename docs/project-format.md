@@ -58,7 +58,8 @@ blends the land around the road into hills. Pine Ridge Rally's Frost Pass stage 
 ### Icon and box art
 
 `icon.png` (square, 512 x 512 is plenty) in the project folder becomes the Android app's launcher icon, and `boxart.png` (a cover, any size) is
-copied into the APK's `assets/` for launchers that show a cover (Lantern reads it). Both are optional; `scripts/build-apk.sh` does this. They (and `boxart-wide.png`) are not sprites: the game never draws them, so they are left out of the sprite atlas. Pine Ridge
+for launchers that show a cover: it is not in the APK; Play on device copies `boxart-wide.png` (else `boxart.png`) to Lantern's
+`/sdcard/Lantern/art/androidgames/<package>.png` (see `docs/play-on-device.md`). Both are optional; `nova export android` makes the icon. They (and `boxart-wide.png`) are not sprites: the game never draws them, so they are left out of the sprite atlas. Pine Ridge
 Rally's are rendered by the game itself (`scripts/rally/art.sh`).
 
 ### `nova.json`
@@ -965,7 +966,7 @@ trusted). The studio's editable sources stay out of it, because the game reads w
 loads the `.glb` saved beside it), `.song.json` (the `.ogg`), `.sfx.json` (the `.wav`), `.track.json` (the scene and road
 generated from it), and the `.nova/` folder. So a project can keep every model editable without the game getting bigger. `nova run --pak game.npk` plays it, exactly like the folder minus hot reload.
 
-`scripts/build-apk.sh --project <folder>` builds a debug-signed APK of a game without Gradle: the
+`nova export android <folder>` (or `scripts/build-apk.sh --project <folder>`, without the check; `docs/play-on-device.md`) builds a debug-signed APK of a game without Gradle: the
 runtime library, a manifest filled from `nova.json` (package `com.nova.games.<id>`, the game's name
 as the label), and the packed project as `assets/project.npk`. On Android the runtime loads that
 file; an APK without one runs the benchmark scene. Save data goes to the app's private storage.

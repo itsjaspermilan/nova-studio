@@ -322,6 +322,7 @@ export const shortcuts: { area: string; tips: Tip[] }[] = [
     tips: [
       { keys: "⌘S", what: "Save the open file" },
       { keys: "⌘↩", what: "Save everything and Play (again to Stop)" },
+      { keys: "⇧⌘↩", what: "Play on the device used last (the handheld over USB)" },
       { keys: "⌘Z / ⇧⌘Z", what: "Undo / redo in the picture, sound, model, scene and song editors" },
     ],
   },

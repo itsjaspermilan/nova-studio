@@ -1,4 +1,4 @@
-import type { Api, CheckReport, ExampleInfo, ExportReport, FileContent, FileEntry, HeadlessReport, LogLine, ProjectInfo, RecentProject, TemplateInfo } from "./types";
+import type { AndroidDevice, Api, CheckReport, ExampleInfo, ExportReport, FileContent, FileEntry, HeadlessReport, LogLine, ProjectInfo, RecentProject, TemplateInfo } from "./types";
 
 /// The desktop app: every call goes to the Rust backend (studio/src-tauri).
 async function tauriApi(): Promise<Api> {
@@ -43,6 +43,9 @@ async function tauriApi(): Promise<Api> {
     isRunning: () => invoke<boolean>("is_running"),
     checkProject: () => invoke<CheckReport>("check_project"),
     exportGame: (target) => invoke<ExportReport>("export_game", { target }),
+    listDevices: () => invoke<AndroidDevice[]>("list_devices"),
+    playOnDevice: (serial) => invoke<string>("play_on_device", { serial }),
+    onDeviceStep: (callback) => listen<string>("device-step", (e) => callback(e.payload)),
     onPlayLog: (callback) => listen<LogLine>("play-log", (e) => callback(e.payload)),
     onPlayExit: (callback) => listen<number | null>("play-exit", (e) => callback(e.payload)),
   };
