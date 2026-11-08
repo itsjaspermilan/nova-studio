@@ -4,7 +4,10 @@ local world = require("lib.world")
 local fx = require("lib.fx")
 local audio = require("lib.audio")
 local run = require("lib.run")
-local QBlock = nova.entity { sprite = "items/block_coin", sx = 0.5, sy = 0.5, tags = { "qblock" }, depth = 20, gives = "coin", n = 1, left = 1, bounce = 0, used = false }
+local QBlock = nova.entity { sprite = "items/block_coin", sx = 0.5, sy = 0.5, tags = { "qblock" }, depth = 20, settings = {
+  gives = { "coin", choices = { "coin", "coins", "heart", "gem" }, help = "What is inside: a coin, five coins (one a bump), a heart or a gem" },
+  n = { 1, min = 1, max = 3, step = 1, help = "The gem's number, when it gives a gem" },
+}, left = 1, bounce = 0, used = false }
 function QBlock:create()
   if self.gives == "coins" then self.left = 5 end
   self.solid = world.add_box({ x0 = self.x - 24, y0 = self.y - 24, x1 = self.x + 24, y1 = self.y + 24, owner = self })

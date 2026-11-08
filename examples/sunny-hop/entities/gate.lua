@@ -2,7 +2,7 @@
 local world = require("lib.world")
 local fx = require("lib.fx")
 local run = require("lib.run")
-local Gate = nova.entity { sprite = "items/block_blue", sx = 0.5, sy = 0.5, depth = 20, color = "blue", open = false, fade = 0 }
+local Gate = nova.entity { sprite = "items/block_blue", sx = 0.5, sy = 0.5, depth = 20, settings = { color = { "blue", choices = { "blue", "green", "red", "yellow" }, help = "Opens (or is opened by) everything of this colour" } }, open = false, fade = 0 }
 function Gate:create()
   self.solid = world.add_box({ x0 = self.x - 24, y0 = self.y - 24, x1 = self.x + 24, y1 = self.y + 24, owner = self })
   run.on(function(what, color)

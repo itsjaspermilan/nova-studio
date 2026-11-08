@@ -3076,6 +3076,13 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             } else {
                 value
             };
+            // an entity or scene class remembers its file, so the framework's messages can name it
+            if let Value::Table(t) = &value
+                && t.raw_get::<Value>("__kind")?.is_string()
+                && t.raw_get::<Value>("__file")?.is_nil()
+            {
+                t.raw_set("__file", path.as_str())?;
+            }
             loaded.set(name, value.clone())?;
             Ok(value)
         })?,

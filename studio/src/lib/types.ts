@@ -30,6 +30,8 @@ export interface FileEntry {
   path: string;
   dir: boolean;
   size: number;
+  /// When the file was last written (milliseconds since 1970; 0 for a folder or when unknown).
+  modified?: number;
 }
 
 export interface FileContent {

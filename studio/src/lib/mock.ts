@@ -40,14 +40,24 @@ const STARTER: Record<string, string> = {
   "nova.json": JSON.stringify({ format: 1, name: "Mock Project", entry: "main.lua", world_height: 540, version: "0.1.0", input: { jump: ["key:Space", "pad:south"] } }, null, 2) + "\n",
   "main.lua": `-- Entry point: start the first scene.\nnova.start("title")\n`,
   "scenes/title.lua": `local Title = nova.scene {}\n\nfunction Title:enter()\n  self.t = 0\n  self:spawn("player", { x = 480, y = 270 })\nend\n\nfunction Title:update(dt)\n  self.t = self.t + dt\nend\n\nfunction Title:draw_ui()\n  nova.ui.text(24, 24, "Hello, Nova!", { size = 48, font = "rounded" })\nend\n\nreturn Title\n`,
-  "scenes/title.scene.json": `{\n  "version": 1,\n  "background": [40, 60, 90],\n  "objects": [\n    { "kind": "player", "name": "hero", "x": 480, "y": 400 }\n  ],\n  "images": [\n    { "image": "sprites/player_sheet.png", "x": 120, "y": 200, "scale": 2 }\n  ],\n  "texts": [\n    { "text": "MY GAME", "x": 24, "y": 24, "scale": 5 }\n  ]\n}\n`,
+  "scenes/title.scene.json": `{\n  "version": 1,\n  "background": [40, 60, 90],\n  "objects": [\n    { "kind": "player", "name": "hero", "x": 480, "y": 400 },\n    { "kind": "player", "name": "buddy", "x": 300, "y": 400, "props": { "speed": 90, "follow": "hero", "score": 0 } }\n  ],\n  "images": [\n    { "image": "sprites/player_sheet.png", "x": 120, "y": 200, "scale": 2 }\n  ],\n  "texts": [\n    { "text": "MY GAME", "x": 24, "y": 24, "scale": 5 }\n  ]\n}\n`,
   "sprites/player_sheet.png": "",
   "sprites/player.sprite.json": `{\n  "version": 1,\n  "image": "player_sheet.png",\n  "frame_width": 16,\n  "frame_height": 32,\n  "durations_ms": [200, 200, 100],\n  "tags": [\n    { "name": "idle", "from": 0, "to": 1 },\n    { "name": "run", "from": 1, "to": 2 }\n  ]\n}\n`,
-  "entities/player.lua": `local Player = nova.entity { sprite = "player", w = 32, h = 32 }\n\nfunction Player:update(dt)\n  self.x = self.x + nova.input.axis("move_x") * 160 * dt\n  if nova.input.pressed("jump") then\n    nova.sound.play("jump")\n  end\nend\n\nreturn Player\n`,
+  "entities/player.lua": `local Player = nova.entity {\n  sprite = "player",\n  settings = {\n    speed = { 160, min = 0, max = 400, step = 10, help = "How fast it walks, in units a second" },\n    lives = { 3, min = 1, max = 9, step = 1 },\n    tint = { "#ffffff", type = "colour", help = "A colour the sprite is drawn in" },\n    mood = { "calm", choices = { "calm", "angry" } },\n    double_jump = { false, help = "Can it jump again in the air?" },\n    offset = { { 0, 0 } },\n    follow = { type = "object", help = "Another object to walk after" },\n    jump_sound = { "jump", type = "sound" },\n  },\n}\n\nfunction Player:update(dt)\n  self.x = self.x + nova.input.axis("move_x") * self.speed * dt\n  if nova.input.pressed("jump") then\n    nova.sound.play(self.jump_sound)\n  end\nend\n\nreturn Player\n`,
 };
 
+/// A map that notes when each entry was last set, as a file system notes when a file was last written.
+class Stamped extends Map<string, string> {
+  times = new Map<string, number>();
+  #clock = Date.now();
+  override set(key: string, value: string) {
+    this.times?.set(key, ++this.#clock);
+    return super.set(key, value);
+  }
+}
+
 export function createMockApi(): Api {
-  const files = new Map<string, string>();
+  const files = new Stamped();
   const images = new Map<string, string>(); // saved PNGs as data URLs
   const audio = new Map<string, string>(); // saved WAVs as data URLs
   const models = new Map<string, string>(); // saved .glb files as data URLs
@@ -118,7 +128,7 @@ export function createMockApi(): Api {
     listFiles: async () => {
       need();
       const out: FileEntry[] = [...dirs].map((path) => ({ path, dir: true, size: 0 }));
-      for (const [path, text] of files) out.push({ path, dir: false, size: text.length });
+      for (const [path, text] of files) out.push({ path, dir: false, size: text.length, modified: files.times.get(path) ?? 0 });
       return out.sort((a, b) => a.path.localeCompare(b.path));
     },
     readFile: async (path): Promise<FileContent> => {
@@ -310,5 +320,7 @@ export function createMockApi(): Api {
       return () => void exitSubs.delete(cb);
     },
   };
+  // the browser preview's project, for trying the studio by hand (in the console: novaMockApi.writeImage(...) is a change "outside")
+  if (typeof window !== "undefined") (window as unknown as { novaMockApi?: Api }).novaMockApi = api;
   return api;
 }

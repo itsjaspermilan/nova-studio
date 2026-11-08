@@ -3,7 +3,7 @@ local world = require("lib.world")
 local fx = require("lib.fx")
 local audio = require("lib.audio")
 local run = require("lib.run")
-local Door = nova.entity { sprite = "items/door_closed", sx = 0.5, sy = 0.5, pivot = { 0.5, 1 }, depth = 30, color = "blue", open = false }
+local Door = nova.entity { sprite = "items/door_closed", sx = 0.5, sy = 0.5, pivot = { 0.5, 1 }, depth = 30, settings = { color = { "blue", choices = { "blue", "green", "red", "yellow" }, help = "Opens (or is opened by) everything of this colour" } }, open = false }
 function Door:create()
   self.solid = world.add_box({ x0 = self.x - 24, y0 = self.y - 96, x1 = self.x + 24, y1 = self.y, owner = self })
   run.on(function(what, color)

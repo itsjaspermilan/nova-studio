@@ -11,7 +11,8 @@ import { newTrack, serializeTrack, trackOf } from "./track-doc";
 import { newDoc, toSheetJson } from "./sprite-doc";
 import { encodeWav, fromBase64, toBase64 } from "./wav";
 import { moved, planRename } from "./refs";
-import { renamePlan, resolveFrom, type Resource } from "./resources";
+import { groupResources, renamePlan, resolveFrom, type Resource } from "./resources";
+import { diffFiles, stampsOf, type FileDiff } from "./file-changes";
 import { byFile } from "./diagnostics";
 import { projectSymbols, type ProjectSymbols } from "./completions";
 import { PerfTracker, type Hitch, type PerfSample } from "./perf";
@@ -39,6 +40,8 @@ const MAX_LOG = 2000;
 const RESOURCE_NAME = /^[A-Za-z0-9_-]+(\/[A-Za-z0-9_-]+)*$/;
 /// The last part of such a name (what a scene's or entity's Lua variable and a sprite's picture are named after).
 const leaf = (name: string) => name.slice(name.lastIndexOf("/") + 1);
+/// Files an editor reads as pictures, sounds or models, not as text: a change is told by their size and time.
+const ASSET_FILE = /\.(png|wav|ogg|glb|gltf|ttf|otf)$/i;
 
 function message(e: unknown): string {
   return typeof e === "string" ? e : e instanceof Error ? e.message : JSON.stringify(e);
@@ -86,6 +89,13 @@ class Studio {
   /// Per-file editor sessions (a sprite's pixels and undo history) that outlive switching tabs.
   sessions = new Map<string, unknown>();
   #unlisten: (() => void)[] = [];
+  /// The size and time of every file when the studio last looked, to tell what changed on disk since.
+  #stamps = new Map<string, string>();
+  /// Saves in flight: a look at the disk waits, so the studio's own writes are not taken for someone else's.
+  #writing = 0;
+  /// Files changed, added or removed on disk (outside the studio, or by its own saves), newest first: views that
+  /// keep pictures, sounds or models (the scene canvas, the asset lists) watch `n` and reload what is in `paths`.
+  fileChanges: { n: number; paths: string[] } = $state({ n: 0, paths: [] });
   #checkTimer: ReturnType<typeof setTimeout> | undefined;
 
   get tab(): Tab | undefined {
@@ -161,6 +171,7 @@ class Studio {
     this.activity = [];
     this.activitySeen = 0;
     void this.refreshActivity().then(() => this.markActivitySeen());
+    this.#stamps = new Map();
     await this.refreshFiles();
     for (const first of ["main.lua", "nova.json"]) {
       if (this.files.some((f) => f.path === first)) {
@@ -238,12 +249,23 @@ class Studio {
     this.activitySeen = this.activity[0]?.t ?? this.activitySeen;
   }
 
-  async refreshFiles() {
+  async refreshFiles(): Promise<FileDiff | null> {
     const files = await this.#guard(() => this.api!.listFiles());
-    if (files) {
+    if (!files) return null;
+    const first = this.#stamps.size === 0;
+    const diff = diffFiles(this.#stamps, files);
+    this.#stamps = stampsOf(files);
+    // (the same listing again changes nothing, so the tree and everything built on the file list stay as they are)
+    if (first || diff.all.length) {
       this.files = files;
       void this.#readSpriteImages();
     }
+    this.#announce(diff.all);
+    return diff;
+  }
+
+  #announce(paths: string[]) {
+    if (paths.length) this.fileChanges = { n: this.fileChanges.n + 1, paths };
   }
 
   /// Which picture each sprite file cuts up (its "image" key), so the resource tree can show the pair as one sprite.
@@ -301,11 +323,16 @@ class Studio {
     if (!tab || !isDirty(tab) || (tab.binary && !this.saveHooks.has(tab.path))) return true;
     if (tab.conflict && !confirm(`${tab.path} was changed outside the studio since you opened it. Save anyway and replace that version?`)) return false;
     const text = tab.text;
+    this.#writing++;
     const ok = await this.#guard(async () => {
       await this.saveHooks.get(tab.path)?.();
       if (!tab.binary) await this.api!.writeFile(tab.path, text);
       return true;
     });
+    // what the save wrote (the text, a sprite's picture, a model's .glb) is the new baseline, and news for other views
+    // (a scene showing the sprite); it is not a change to reload the saving editor for
+    if (ok) await this.refreshFiles();
+    this.#writing--;
     if (ok) {
       tab.saved = text;
       tab.pending = false;
@@ -604,28 +631,57 @@ class Studio {
 
   /// Looks for files changed outside the studio (another editor, git, a script): tabs with nothing unsaved
   /// are reloaded, tabs with unsaved work are flagged so nothing is overwritten by surprise.
-  async checkExternal() {
-    if (!this.project || !this.api) return;
+  ///
+  /// Pictures, sounds and models count too: an open sprite, sound, song or model whose files changed (its PNG, WAV, OGG, GLB)
+  /// is reopened from disk when it has nothing unsaved, and flagged when it has. With `quick` (the studio asks every few
+  /// seconds) only files whose size or time changed are read; on focus every open text file is compared.
+  async checkExternal(quick = false) {
+    if (!this.project || !this.api || this.#writing) return;
+    const diff = await this.refreshFiles();
+    if (!diff || (quick && !diff.all.length)) return;
+    const changed = new Set(diff.changed);
+    // the files of each open tab's resource (a sprite's JSON and PNG), so a picture changed outside reopens its sprite
+    const related = new Map<string, string[]>();
+    for (const group of groupResources(this.files, this.spriteImages)) for (const r of group.items) for (const f of r.files) related.set(f, r.files);
     let reloaded = false;
     for (const tab of [...this.tabs]) {
-      if (tab.binary) continue;
+      const files = related.get(tab.path) ?? [tab.path];
+      const touched = files.some((f) => changed.has(f));
+      if (tab.binary || ASSET_FILE.test(tab.path)) {
+        if (!touched) continue;
+        if (isDirty(tab)) tab.conflict = true;
+        else {
+          const disk = await this.api.readFile(tab.path).catch(() => null);
+          if (disk) tab.size = disk.size;
+          this.#adoptDisk(tab, disk?.text ?? tab.text);
+          reloaded = true;
+        }
+        continue;
+      }
+      if (quick && !touched) continue;
       const disk = await this.api.readFile(tab.path).catch(() => null);
-      if (!disk || disk.text == null || disk.text === tab.saved) continue;
+      if (!disk || disk.text == null) continue;
+      const textChanged = disk.text !== tab.saved;
+      const assetChanged = files.some((f) => f !== tab.path && changed.has(f));
+      if (!textChanged && !assetChanged) continue;
       if (isDirty(tab)) tab.conflict = true;
       else {
         this.#adoptDisk(tab, disk.text);
         reloaded = true;
       }
     }
-    const before = this.files.length;
-    await this.refreshFiles();
     if (reloaded) this.#remount();
     // Re-check the project only when something actually changed under us.
-    if (reloaded || this.files.length !== before) void this.check();
+    if (reloaded || diff.all.length) void this.check();
   }
 
   async useDiskVersion(path: string) {
     const tab = this.tabs.find((t) => t.path === path);
+    if (tab?.binary) {
+      this.#adoptDisk(tab, tab.text);
+      this.#remount();
+      return;
+    }
     const disk = tab && (await this.#guard(() => this.api!.readFile(path)));
     if (!tab || !disk || disk.text == null) return;
     this.#adoptDisk(tab, disk.text);
@@ -635,6 +691,10 @@ class Studio {
   /// Keeps the tab's text; the next save will replace what is on disk.
   async keepMine(path: string) {
     const tab = this.tabs.find((t) => t.path === path);
+    if (tab?.binary) {
+      tab.conflict = false;
+      return;
+    }
     const disk = tab && (await this.#guard(() => this.api!.readFile(path)));
     if (!tab || !disk || disk.text == null) return;
     tab.saved = disk.text; // the new baseline, so it is not flagged again

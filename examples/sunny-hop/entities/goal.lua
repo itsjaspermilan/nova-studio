@@ -1,7 +1,7 @@
 -- The goal: a big flag; touch it to finish the level. Prop: after_boss (true: it appears when the level's boss is beaten). Place it by its foot.
 local fx = require("lib.fx")
 local run = require("lib.run")
-local Goal = nova.entity { sprite = "items/goal_a", sx = 0.5, sy = 0.5, pivot = { 0.5, 1 }, tags = { "touch", "goal" }, depth = 25, after_boss = false, t = 0, shown = 1 }
+local Goal = nova.entity { sprite = "items/goal_a", sx = 0.5, sy = 0.5, pivot = { 0.5, 1 }, tags = { "touch", "goal" }, depth = 25, settings = { after_boss = { false, help = "Appears only when the level's boss is beaten" } }, t = 0, shown = 1 }
 function Goal:create()
   if self.after_boss then self.shown = 0 end
   run.on(function(what)

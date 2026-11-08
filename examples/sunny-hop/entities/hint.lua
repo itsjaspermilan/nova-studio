@@ -1,7 +1,13 @@
 -- A sign with a tip: when the hero comes near, a bubble with the text pops up over it (and goes when the hero walks on). Props: text, and
 -- button (a pad picture shown before the text, such as "pad_a" or "pad_dpad").
 local fx = require("lib.fx")
-local Hint = nova.entity { sprite = "items/sign", sx = 0.5, sy = 0.5, pivot = { 0.5, 1 }, tags = { "hint_sign" }, depth = 40, text = "", button = "", near = 0, t = 0 }
+local Hint = nova.entity {
+  sprite = "items/sign", sx = 0.5, sy = 0.5, pivot = { 0.5, 1 }, tags = { "hint_sign" }, depth = 40, near = 0, t = 0,
+  settings = {
+    text = { "", help = "The tip shown in the bubble" },
+    button = { "", choices = { "", "pad_a", "pad_b", "pad_x", "pad_y", "pad_dpad", "pad_dpad_up", "pad_dpad_down", "pad_dpad_left", "pad_dpad_right", "pad_dpad_horizontal", "pad_dpad_vertical", "pad_stick_l", "pad_l", "pad_r", "pad_plus", "pad_minus" }, help = "A pad picture shown before the text" },
+  },
+}
 function Hint:update(dt)
   self.t = self.t + dt
   local hero = nova.first("hero")

@@ -17,7 +17,7 @@ describe("parseEntitySource", () => {
   });
 
   it("notes the parent class and says nothing when there is no entity", () => {
-    expect(parseEntitySource(`return nova.entity(require("entities.enemy"), { hp = 500 })`)).toEqual({ look: {}, parent: "entities.enemy" });
+    expect(parseEntitySource(`return nova.entity(require("entities.enemy"), { hp = 500 })`)).toEqual({ look: {}, parent: "entities.enemy", fields: { hp: 500 } });
     expect(parseEntitySource(`return {}`)).toBeNull();
     expect(parseEntitySource(`local x = nova.entity {`)).toBeNull();
     expect(parseEntitySource("")).toBeNull();

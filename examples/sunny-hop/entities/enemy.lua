@@ -9,7 +9,12 @@ local Enemy = nova.entity {
   sprite = "enemies/slime", sx = 0.5, sy = 0.5, pivot = { 0.5, 1 },
   tags = { "enemy" }, depth = 5, velocity = false,
   bw = 38, bh = 30,           -- the body, in units
-  speed = 55, dir = "left", ledges = "turn", walker = true, gravity = true,
+  walker = true, gravity = true,
+  settings = {
+    speed = { 55, min = 0, max = 400, step = 5, help = "How fast it walks, in units a second" },
+    dir = { "left", choices = { "left", "right" }, help = "The way it walks first" },
+    ledges = { "turn", choices = { "turn", "fall" }, help = "At the edge of a ledge: turn round, or walk off" },
+  },
   stompable = true,           -- false: hurts from above too (spikes on its head)
   anim_rate = 6,
   dead = false, squash_x = 1, squash_y = 1, flash = 0,

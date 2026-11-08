@@ -6,7 +6,7 @@ local state = require("lib.state")
 
 local COLORS = { "blue", "green", "red" }
 local TINT = { { 90, 170, 255 }, { 90, 230, 130 }, { 255, 90, 110 } }
-local Gem = nova.entity { sprite = "items/gem_blue", sx = 0.5, sy = 0.5, tags = { "pickup", "gem" }, depth = 10, n = 1, r = 24 }
+local Gem = nova.entity { sprite = "items/gem_blue", sx = 0.5, sy = 0.5, tags = { "pickup", "gem" }, depth = 10, r = 24, settings = { n = { 1, min = 1, max = 3, step = 1, help = "Which of the level's three gems" } } }
 
 function Gem:create()
   self.n = math.max(1, math.min(3, math.floor(self.n)))

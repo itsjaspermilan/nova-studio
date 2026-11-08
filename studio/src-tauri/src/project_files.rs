@@ -16,6 +16,9 @@ pub struct FileEntry {
     pub path: String,
     pub dir: bool,
     pub size: u64,
+    /// When the file was last written, in milliseconds since 1970 (0 when the system cannot say): with the size, how the
+    /// studio notices a picture, sound or model changed outside it.
+    pub modified: u64,
 }
 
 #[derive(Debug, Serialize, PartialEq)]
@@ -55,17 +58,24 @@ pub fn list_files(root: &Path) -> Result<Vec<FileEntry>, String> {
                     path: rel.clone(),
                     dir: true,
                     size: 0,
+                    modified: 0,
                 });
                 walk(&entry.path(), &rel, out)?;
             } else if kind.is_file() {
                 if out.len() >= MAX_FILES {
                     return Err(format!("the project has more than {MAX_FILES} files"));
                 }
-                let size = entry.metadata().map_err(|e| e.to_string())?.len();
+                let meta = entry.metadata().map_err(|e| e.to_string())?;
+                let modified = meta
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map_or(0, |d| d.as_millis() as u64);
                 out.push(FileEntry {
                     path: rel,
                     dir: false,
-                    size,
+                    size: meta.len(),
+                    modified,
                 });
             }
         }
@@ -445,6 +455,37 @@ mod tests {
         std::fs::write(root.join(".nova/notes.json"), "{}").unwrap();
         std::fs::write(root.join("build/out.bin"), "z").unwrap();
         root
+    }
+
+    #[test]
+    fn listing_gives_each_file_its_time_so_a_change_outside_the_studio_shows() {
+        let root = project("stamp");
+        let stamp = |root: &Path| {
+            let e = list_files(root)
+                .unwrap()
+                .into_iter()
+                .find(|e| e.path == "main.lua")
+                .unwrap();
+            (e.size, e.modified)
+        };
+        let (size, before) = stamp(&root);
+        assert!(before > 1_600_000_000_000, "{before}");
+        let file = std::fs::File::options()
+            .write(true)
+            .open(root.join("main.lua"))
+            .unwrap();
+        file.set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_millis(before + 5_000))
+            .unwrap();
+        drop(file);
+        assert_eq!(stamp(&root), (size, before + 5_000));
+        assert!(
+            list_files(&root)
+                .unwrap()
+                .iter()
+                .filter(|e| e.dir)
+                .all(|e| e.modified == 0)
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

@@ -239,3 +239,56 @@ describe("music as Ogg", () => {
     expect(studio.files.map((f) => f.path)).toContain("music/a.wav");
   });
 });
+
+describe("pictures, sounds and models changed outside the studio", () => {
+  const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+  const WAV = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
+
+  it("reopen a sprite whose picture changed, and tell the views which files changed", async () => {
+    await openProject();
+    await studio.openFile("sprites/player.sprite.json");
+    studio.sessions.set("sprites/player.sprite.json", { pixels: "old" });
+    const before = studio.fileChanges.n;
+    await studio.api!.writeImage("sprites/player_sheet.png", PNG); // another program draws on the sheet
+    await studio.checkExternal(true);
+    expect(studio.fileChanges.n).toBe(before + 1);
+    expect(studio.fileChanges.paths).toEqual(["sprites/player_sheet.png"]);
+    expect(studio.sessions.has("sprites/player.sprite.json")).toBe(false); // the editor starts again from the disk
+    expect(studio.tabs[0]!.conflict).toBeFalsy();
+    await studio.checkExternal(true);
+    expect(studio.fileChanges.n).toBe(before + 1); // nothing new: nothing announced
+  });
+
+  it("flag an open sound with unsaved work instead of replacing it", async () => {
+    await openProject();
+    await studio.api!.writeAudio("sounds/jump.wav", WAV);
+    await studio.refreshFiles();
+    await studio.openFile("sounds/jump.wav");
+    const tab = () => studio.tabs.find((t) => t.path === "sounds/jump.wav")!;
+    studio.markPending("sounds/jump.wav");
+    await studio.api!.writeAudio("sounds/jump.wav", WAV);
+    await studio.checkExternal(true);
+    expect(tab().conflict).toBe(true);
+    await studio.useDiskVersion("sounds/jump.wav");
+    expect(tab().conflict).toBe(false);
+    expect(tab().pending).toBe(false);
+  });
+
+  it("show files added and removed outside in the tree, and the studio's own saves are not taken for someone else's", async () => {
+    await openProject();
+    await studio.api!.createFile("entities/coin.lua", "return nova.entity {}\n");
+    await studio.api!.deleteFile("main.lua");
+    await studio.checkExternal(true);
+    const paths = studio.files.map((f) => f.path);
+    expect(paths).toContain("entities/coin.lua");
+    expect(paths).not.toContain("main.lua");
+    expect(studio.fileChanges.paths).toEqual(expect.arrayContaining(["entities/coin.lua", "main.lua"]));
+
+    await studio.openFile("entities/coin.lua");
+    studio.edit("entities/coin.lua", "return nova.entity { settings = { n = 1 } }\n");
+    expect(await studio.save("entities/coin.lua")).toBe(true);
+    expect(studio.fileChanges.paths).toEqual(["entities/coin.lua"]); // news for the scene editor's settings
+    await studio.checkExternal(true);
+    expect(studio.tabs.find((t) => t.path === "entities/coin.lua")!.conflict).toBeFalsy();
+  });
+});
