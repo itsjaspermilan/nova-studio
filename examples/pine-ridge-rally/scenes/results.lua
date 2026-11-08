@@ -2,16 +2,16 @@
 local state = require("lib.state")
 local audio = require("lib.audio")
 local ui = require("lib.ui")
-local backdrop = require("lib.backdrop")
+local menu_bg = require("lib.menu_bg")
 local transition = require("lib.transition")
 
 local Results = nova.scene {}
 
-local CHOICES = { "Race again", "Change circuit", "Main menu" }
-local RALLY_CHOICES = { "Run the stage again", "Change stage", "Main menu" }
+-- (2026-11-08: just two, as asked: the same race again, or back to the main menu)
+local CHOICES = { "Restart", "Return" }
 
 function Results:enter()
-  backdrop.light()
+  menu_bg.setup()
   self.t = 0
   nova.ui.forget("results") -- (every results screen opens on "Race again")
   self.r = state.result
@@ -31,9 +31,7 @@ function Results:update(dt)
   self.reveal = math.min(1, self.reveal + dt * 1.6)
 end
 
-function Results:draw()
-  backdrop.draw(self.t, "results")
-end
+function Results:leave() menu_bg.leave() end
 
 
 
@@ -137,8 +135,9 @@ end
 function Results:draw_screens()
   local r = self.r
   local left, rows, cards, label = self:content()
+  menu_bg.flags(self.t)
   ui.side_panel(390, 1, C.orange)
-  local choices = r.rally and RALLY_CHOICES or CHOICES
+  local choices = CHOICES
   local col = { "column", anchor = "topleft", x = 6, w = 285, gap = 0,
     { "text", left.kicker, font = F.bold, size = 18, spacing = 0.2, color = C.ink },
     { "row", h = 104, align = "end", gap = 0,
@@ -151,6 +150,12 @@ function Results:draw_screens()
   if left.badge then
     col[#col + 1] = { "row", { "text", left.badge, font = F.heavy, size = 28.5, color = C.green, panel = { color = C.ink }, pad = { 13.5, 3 } }, { "space", grow = 1 } }
   end
+  -- the coins this race paid, and a track it opened
+  if r.coins then
+    col[#col + 1] = { "space", h = 8 }
+    col[#col + 1] = { "text", "+" .. state.money(r.coins) .. " COINS", font = F.heavy, size = 27, color = C.ink }
+  end
+  if r.opened then col[#col + 1] = { "text", "Opened: " .. r.opened.name, font = F.semi, size = 16.5, color = C.ink } end
   col[#col + 1] = { "space", grow = 1 }
   for i, c in ipairs(choices) do col[#col + 1] = { "button", string.upper(c), id = i, look = "dark", h = 36 } end
   local right = { "column", anchor = "topright", w = RIGHT_W, gap = 4.5,
@@ -173,7 +178,6 @@ function Results:choose(m)
   audio.stop_music(0.4)
   local choice = tonumber(m.pressed)
   if choice == 1 then transition.cover(transition.race_spec(), function() nova.goto_scene(state.current_track().id) end)
-  elseif choice == 2 then nova.goto_scene("title", "select")
   else nova.goto_scene("title", "menu") end
 end
 

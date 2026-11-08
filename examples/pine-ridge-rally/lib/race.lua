@@ -209,6 +209,7 @@ function race.scene()
     self.player.oversteer = state.current_car().oversteer
     self.player.name = "You"
     self.cars[1] = self.player
+    if state.mode == "race" then nova.log("rivals: difficulty " .. state.current_difficulty().id) end
     for i, r in ipairs(state.mode == "race" and RIVALS or {}) do
       local car = put(pool[(i - 1) % #pool + 1], slots[i])
       -- a rival drives its own car (its top speed, its grip) as hard as the difficulty and its own skill say
@@ -1137,7 +1138,7 @@ function race.scene()
       { "button", "RESUME", id = "resume", h = 51 }, { "button", "RESTART " .. (self.stage and "STAGE" or "RACE"), id = "restart", h = 51 },
       { "button", "QUIT TO MENU", id = "quit", h = 51, danger = true },
     }
-    ui.hints({ { "pad_a", "Select" }, { "pad_plus", "Resume" } })
+    ui.hints({ { "pad_a", "Select" }, { "pad_start", "Resume" } })
     if r.back or r.pressed == "resume" then
       if r.pressed then audio.sfx("menu_accept") end
       self.paused = false
@@ -1149,7 +1150,7 @@ function race.scene()
         nova.restart_scene()
       else
         audio.stop_music(0.4)
-        nova.goto_scene("title", "select")
+        nova.goto_scene("title", "menu")
       end
     end
   end
@@ -1184,8 +1185,11 @@ function race.scene()
       }
       state.result.record_time = state.submit("rally", info.id, total_time)
       state.result.record_score = state.submit_score(info.id, self.score)
-      state.finished(info.id, { stars = stars })
+      state.result.opened = state.record(state.stages, info.id, stars)
+      state.result.coins = state.reward(info, { stars = stars })
+      state.add_coins(state.result.coins)
       nova.log(string.format("results: rally score %d of %d in %s, %d stars", self.score, 1000 * #self.sections, ui.time(total_time), stars))
+      nova.log(string.format("results: %d coins, %d in all%s", state.result.coins, state.coins(), state.result.opened and (", opened " .. state.result.opened.id) or ""))
       audio.stop_music(0.5)
       nova.goto_scene("results")
       return
@@ -1204,9 +1208,14 @@ function race.scene()
       best_lap = self.best_lap, record_time = false, record_lap = false, trial = self.trial,
     }
     if me.finish_time then state.result.record_time = state.submit("race" .. self.laps, info.id, me.finish_time) end
-    if me.finish_time then state.finished(info.id, { place = (not self.trial) and me.place or nil }) end
     if not self.trial and me.place == 1 and me.finish_time then state.add_win() end
     if self.best_lap then state.result.record_lap = state.submit("lap", info.id, self.best_lap) end
+    -- the circuit's progress (a race against rivals) and the coins it pays
+    if me.finish_time then
+      if not self.trial then state.result.opened = state.record(state.tracks, info.id, me.place) end
+      state.result.coins = state.reward(info, self.trial and { trial = true, record = state.result.record_lap } or { place = me.place, laps = self.laps })
+      state.add_coins(state.result.coins)
+    end
     if not self.trial then
       local timed, ids, times = 0, {}, {}
       for _, car in ipairs(order) do
@@ -1218,6 +1227,7 @@ function race.scene()
       nova.log(string.format("results: a time for %d of %d cars; rivals: %s", timed, #order, table.concat(ids, " ")))
     end
     nova.log(string.format("results: place %d of %d, time %s", me.place, #order, ui.time(me.finish_time)))
+    nova.log(string.format("results: %d coins, %d in all%s", state.result.coins or 0, state.coins(), state.result.opened and (", opened " .. state.result.opened.id) or ""))
     nova.log(string.format("wear: tyres %.2f, body %.2f", me.tyres, 1 - me.damage))
     audio.stop_music(0.5)
     nova.goto_scene("results")

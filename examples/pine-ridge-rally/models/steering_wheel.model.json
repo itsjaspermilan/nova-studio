@@ -1,0 +1,198 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "rim0",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "from": [-2.375, 12.5, -1], "size": [4.75, 3, 2], "color": "#28313c" }
+      ],
+      "children": []
+    },
+    {
+      "name": "rim1",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 18],
+      "cubes": [
+        { "from": [-2.375, 12.5, -1], "size": [4.75, 3, 2], "color": "#28313c" }
+      ],
+      "children": []
+    },
+    {
+      "name": "rim2",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 36],
+      "cubes": [
+        { "from": [-2.375, 12.5, -1], "size": [4.75, 3, 2], "color": "#28313c" }
+      ],
+      "children": []
+    },
+    {
+      "name": "rim3",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 54],
+      "cubes": [
+        { "from": [-2.375, 12.5, -1], "size": [4.75, 3, 2], "color": "#28313c" }
+      ],
+      "children": []
+    },
+    {
+      "name": "rim4",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 72],
+      "cubes": [
+        { "from": [-2.375, 12.5, -1], "size": [4.75, 3, 2], "color": "#28313c" }
+      ],
+      "children": []
+    },
+    {
+      "name": "rim5",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 90],
+      "cubes": [
+        { "from": [-2.375, 12.5, -1], "size": [4.75, 3, 2], "color": "#28313c" }
+      ],
+      "children": []
+    },
+    {
+      "name": "rim6",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 108],
+      "cubes": [
+        { "from": [-2.375, 12.5, -1], "size": [4.75, 3, 2], "color": "#28313c" }
+      ],
+      "children": []
+    },
+    {
+      "name": "rim7",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 126],
+      "cubes": [
+        { "from": [-2.375, 12.5, -1], "size": [4.75, 3, 2], "color": "#28313c" }
+      ],
+      "children": []
+    },
+    {
+      "name": "rim8",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 144],
+      "cubes": [
+        { "from": [-2.375, 12.5, -1], "size": [4.75, 3, 2], "color": "#28313c" }
+      ],
+      "children": []
+    },
+    {
+      "name": "rim9",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 162],
+      "cubes": [
+        { "from": [-2.375, 12.5, -1], "size": [4.75, 3, 2], "color": "#28313c" }
+      ],
+      "children": []
+    },
+    {
+      "name": "rim10",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 180],
+      "cubes": [
+        { "from": [-2.375, 12.5, -1], "size": [4.75, 3, 2], "color": "#28313c" }
+      ],
+      "children": []
+    },
+    {
+      "name": "rim11",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 198],
+      "cubes": [
+        { "from": [-2.375, 12.5, -1], "size": [4.75, 3, 2], "color": "#28313c" }
+      ],
+      "children": []
+    },
+    {
+      "name": "rim12",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 216],
+      "cubes": [
+        { "from": [-2.375, 12.5, -1], "size": [4.75, 3, 2], "color": "#28313c" }
+      ],
+      "children": []
+    },
+    {
+      "name": "rim13",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 234],
+      "cubes": [
+        { "from": [-2.375, 12.5, -1], "size": [4.75, 3, 2], "color": "#28313c" }
+      ],
+      "children": []
+    },
+    {
+      "name": "rim14",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 252],
+      "cubes": [
+        { "from": [-2.375, 12.5, -1], "size": [4.75, 3, 2], "color": "#28313c" }
+      ],
+      "children": []
+    },
+    {
+      "name": "rim15",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 270],
+      "cubes": [
+        { "from": [-2.375, 12.5, -1], "size": [4.75, 3, 2], "color": "#28313c" }
+      ],
+      "children": []
+    },
+    {
+      "name": "rim16",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 288],
+      "cubes": [
+        { "from": [-2.375, 12.5, -1], "size": [4.75, 3, 2], "color": "#28313c" }
+      ],
+      "children": []
+    },
+    {
+      "name": "rim17",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 306],
+      "cubes": [
+        { "from": [-2.375, 12.5, -1], "size": [4.75, 3, 2], "color": "#28313c" }
+      ],
+      "children": []
+    },
+    {
+      "name": "rim18",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 324],
+      "cubes": [
+        { "from": [-2.375, 12.5, -1], "size": [4.75, 3, 2], "color": "#28313c" }
+      ],
+      "children": []
+    },
+    {
+      "name": "rim19",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 342],
+      "cubes": [
+        { "from": [-2.375, 12.5, -1], "size": [4.75, 3, 2], "color": "#28313c" }
+      ],
+      "children": []
+    },
+    {
+      "name": "hub",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "from": [-13, -2, -0.8], "size": [10, 4, 1.6], "color": "#28313c" },
+        { "from": [3, -2, -0.8], "size": [10, 4, 1.6], "color": "#28313c" },
+        { "from": [-2, -13, -0.8], "size": [4, 10, 1.6], "color": "#28313c" },
+        { "from": [-4.5, -4, -1.2], "size": [9, 8, 2.4], "color": "#28313c" }
+      ],
+      "children": []
+    }
+  ]
+}

@@ -11,6 +11,7 @@ local WHEEL_RADIUS = 0.30       -- (the models' wheels are 0.6 m across; the car
 -- Low gears pull hard and run out fast; fifth is long and gentle.
 local GEARS = { { top = 13, pull = 1.35 }, { top = 22, pull = 1.12 }, { top = 30, pull = 0.97 }, { top = 38, pull = 0.86 }, { top = 44, pull = 0.78 } }
 local UPSHIFT, DOWNSHIFT = 0.94, 0.45   -- changes up above this share of the gear's top speed, down below that one
+local KICKDOWN = 0.8                    -- throttle pressed well down: down to the lowest gear the speed is below this share of
 local SHIFT_TIME = 0.17                 -- seconds with no pull while the clutch is in
 local IDLE_REV = 0.16
 -- Where the wheels are, from the middle of the car: forwards, and to the left (+x is the left side when facing +z).
@@ -144,8 +145,19 @@ function Car:drive(dt)
   if live and self.shift_time <= 0 then
     if share > UPSHIFT and self.gear < #GEARS and c.throttle > 0 then
       self.gear, self.shift_time, self.shifted = self.gear + 1, SHIFT_TIME, "up"
-    elseif share < DOWNSHIFT and self.gear > 1 and vf > 0 then
-      self.gear, self.shift_time, self.shifted = self.gear - 1, SHIFT_TIME * 0.5, "down"
+    elseif self.gear > 1 and vf > 0 then
+      -- down when the revs fall away; and with the throttle pressed well down, straight to the lowest gear that still has room to
+      -- pull (a kick-down: a car slowed in fifth does not crawl back up in it). (Coming into a gear from the one below, its own share
+      -- is near UPSHIFT, above KICKDOWN, so the two never fight.)
+      local want = self.gear
+      while want > 1 do
+        local here = vf / (GEARS[want].top * scale)
+        local below = vf / (GEARS[want - 1].top * scale)
+        if here < DOWNSHIFT or (c.throttle > 0.5 and below < KICKDOWN) then want = want - 1 else break end
+      end
+      if want < self.gear then
+        self.gear, self.shift_time, self.shifted = want, SHIFT_TIME * 0.5, "down"
+      end
     end
     gear = GEARS[self.gear]
     share = math.max(0, vf) / (gear.top * scale)
@@ -307,6 +319,46 @@ function Car:draw()
   self.shadow_opts.ry = self.heading
   if not state.shadows then nova.model("shadow", self.x, 0, self.z, self.shadow_opts) end -- (a flat blob when there are no real shadows)
   nova.model(self.model_id, self.x, 0, self.z, self.draw_opts)
+  self:draw_tail_lights()
+end
+
+-- Where each model's rear lamps are, in its own metres: `z` the back of the body, `y` the height, `x` how far out to each side (0: one
+-- lamp in the middle, as on an open-wheel car or a kart). Measured from the red at the back of each model (2026-11-08).
+local TAIL = {
+  car = { z = -1.6, y = 0.55, x = 0 }, car_yellow = { z = -1.6, y = 0.55, x = 0 },
+  racecar_green = { z = -1.67, y = 0.5, x = 0 }, racecar_orange = { z = -1.67, y = 0.5, x = 0 },
+  racecar_red = { z = -1.67, y = 0.5, x = 0 }, racecar_white = { z = -1.67, y = 0.5, x = 0 },
+  car_blue = { z = -1.49, y = 0.65, x = 0.6 }, car_green = { z = -1.5, y = 0.92, x = 0.6 },
+  car_sedan = { z = -1.49, y = 0.71, x = 0.6 }, car_suv = { z = -1.48, y = 0.71, x = 0.6 },
+  car_suvl = { z = -1.72, y = 0.88, x = 0.6 }, car_taxi = { z = -1.6, y = 0.77, x = 0.6 },
+  car_police = { z = -1.78, y = 0.82, x = 0.6 }, car_van = { z = -1.6, y = 0.77, x = 0.6 },
+  car_pickup = { z = -1.78, y = 0.77, x = 0.6 },
+  ambulance = { z = -2.02, y = 0.6, x = 0.7 }, firetruck = { z = -2.19, y = 0.6, x = 0.8 },
+  garbage_truck = { z = -2.37, y = 0.59, x = 0.5 }, delivery = { z = -2.19, y = 0.53, x = 0.7 },
+  tractor = { z = -1.14, y = 0.8, x = 0.4 },
+}
+local KART_TAIL = { z = -0.79, y = 0.45, x = 0 }
+local LENS = { color = { 255, 40, 30, 255 } }
+local GLOW = { color = { 255, 30, 20, 110 } }
+
+-- The brake lights: bright red while the brake is on, and dim tail lights after dark. (Drawn as two small glows facing the camera:
+-- the models' lamps are only painted on.)
+function Car:draw_tail_lights()
+  if self.night == nil then self.night = require("lib.course").current().night and true or false end
+  local braking = self.enabled and (self.ctl.brake or 0) > 0.1
+  if not braking and not self.night then return end
+  local t = TAIL[self.model_id] or (self.model_id:match("^kart") and KART_TAIL) or TAIL.car_sedan
+  local k = braking and 1 or 0.35
+  local sinh, cosh = math.sin(self.heading), math.cos(self.heading)
+  local y = t.y + 0.06 + (self.lift or 0) - (self.pitch or 0) * t.z
+  LENS.color[4] = math.floor(255 * (braking and 1 or 0.7))
+  GLOW.color[4] = math.floor(110 * k)
+  for _, side in ipairs(t.x > 0 and { -t.x * 0.92, t.x * 0.92 } or { 0 }) do
+    local x = self.x + sinh * t.z + cosh * side
+    local z = self.z + cosh * t.z - sinh * side
+    nova.billboard("puff", x, y, z, 0.2 * (0.7 + 0.3 * k), LENS)
+    nova.billboard("puff", x, y, z, 0.75 * k + 0.25, GLOW)
+  end
 end
 
 return Car

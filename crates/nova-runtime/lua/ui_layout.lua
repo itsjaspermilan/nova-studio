@@ -779,7 +779,8 @@ function ui.menu(root)
   local T = theme_for(root)
   local id = root.id or "menu"
   local st = state_of(id)
-  local now = nova.time()
+  -- (the clock nova.pause does not stop: a pause menu still moves)
+  local now = raw.real_time and raw.real_time() or nova.time()
   local frame_dt = math.max(0, math.min(0.1, now - (st.last or now)))
   -- (it was not on screen: it opens again, and takes no input in the frame it opens, so the press that opened it does not
   -- press its first button too)

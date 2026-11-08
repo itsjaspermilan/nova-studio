@@ -158,6 +158,8 @@ function ui.say(x, y, text, font, size, colour, opts)
   return nova.ui.text(x, y, text, o)
 end
 
+ui.cards = {} -- the garage's cards as last drawn: index -> rectangle (see the "car" look)
+
 -- the rows of every menu (n.look picks how): a label (and a value on the right); the focused one is drawn by the focus below
 local function draw_button(r, n, ctx)
   local a, near = ctx.alpha, ctx.near
@@ -167,6 +169,24 @@ local function draw_button(r, n, ctx)
     nova.ui.rect(r.x, r.y, r.w, r.h, with_alpha(n.on and C.orange or C.panel2, a))
     ui.say(r.x + 6, r.y + r.h / 2, label, n.on and F.heavy or F.bold, 19.5, with_alpha(n.on and C.ink or C.white, a),
       { width = r.w - 12, align = "center", valign = "middle", fit = "shrink", spacing = 0.06 })
+    return
+  end
+  if look == "car" then
+    -- a card of the garage's grid: a thin frame (the car itself is a 3D model drawn behind it, lib/menu_bg.lua), the name on a band along the
+    -- bottom, and the price or OWNED in the top corner. Each card says where it was drawn, for the model.
+    ui.cards[n.index] = { x = r.x, y = r.y, w = r.w, h = r.h }
+    local on = near > 0.5
+    nova.ui.rect(r.x, r.y, r.w, 1.5, with_alpha(C.divider, a)); nova.ui.rect(r.x, r.y + r.h - 1.5, r.w, 1.5, with_alpha(C.divider, a))
+    nova.ui.rect(r.x, r.y, 1.5, r.h, with_alpha(C.divider, a)); nova.ui.rect(r.x + r.w - 1.5, r.y, 1.5, r.h, with_alpha(C.divider, a))
+    nova.ui.rect(r.x, r.y + r.h - 24, r.w, 24, with_alpha(on and C.orange or C.panel, a * (on and 1 or 0.92)))
+    ui.say(r.x + 8, r.y + r.h - 12, label, on and F.heavy or F.bold, 16.5, with_alpha(on and C.ink or (n.owned and C.white or C.dim), a),
+      { valign = "middle", width = r.w - 16, fit = "shrink", spacing = 0.03 })
+    if n.value then
+      local o = { font = F.bold, size = 13.5, color = with_alpha(n.owned and C.green or C.gold, a), shadow = false, spacing = 0.06 }
+      local tw = nova.ui.text_width(n.value, o)
+      nova.ui.rect(r.x + 4, r.y + 4, tw + 10, 18, with_alpha(C.ground, a * 0.85))
+      ui.say(r.x + 9, r.y + 13, n.value, o.font, o.size, o.color, { valign = "middle", spacing = 0.06 })
+    end
     return
   end
   if look == "dot" then
@@ -227,6 +247,12 @@ local function draw_focus(r, n, ctx)
     return
   end
   if n.look == "dot" then return end
+  if n.look == "car" then
+    local c = with_alpha(C.orange, a)
+    nova.ui.rect(r.x - 2, r.y - 2, r.w + 4, 3, c); nova.ui.rect(r.x - 2, r.y + r.h - 1, r.w + 4, 3, c)
+    nova.ui.rect(r.x - 2, r.y, 3, r.h, c); nova.ui.rect(r.x + r.w - 1, r.y, 3, r.h, c)
+    return
+  end
   if n.look == "dark" then
     nova.ui.slant(r.x, r.y, r.w, r.h, 15, with_alpha(C.ink, a))
     ui.chevron(r.x + r.w - 30, r.y + r.h / 2, 16, with_alpha(C.orange, a))
@@ -244,7 +270,7 @@ local function draw_focus(r, n, ctx)
 end
 
 local GLYPHS = {}
-for _, name in ipairs({ "pad_a", "pad_b", "pad_x", "pad_y", "pad_l", "pad_r", "pad_zl", "pad_zr", "pad_dpad", "pad_plus", "pad_minus", "pad_stick_l", "pad_stick_r" }) do
+for _, name in ipairs({ "pad_a", "pad_b", "pad_x", "pad_y", "pad_l", "pad_r", "pad_zl", "pad_zr", "pad_dpad", "pad_plus", "pad_minus", "pad_start", "pad_select", "pad_stick_l", "pad_stick_r" }) do
   GLYPHS[name] = "ui/" .. name
 end
 
@@ -322,7 +348,7 @@ end
 
 -- the big dark panel down the left of a screen, its right edge leaning in at the bottom
 function ui.side_panel(w, alpha, colour)
-  nova.ui.slant(0, 0, w, 486, 67, with_alpha(colour or C.ground, alpha or 0.9))
+  nova.ui.slant(0, 0, w, 486, 67, with_alpha(colour or C.ground, alpha or 0.98))
 end
 
 -- ---- pace-note icons (the mockup's set, drawn as strokes on a 24-unit grid) ----------------------------------------------

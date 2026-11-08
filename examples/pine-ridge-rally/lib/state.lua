@@ -2,8 +2,10 @@
 local state = {}
 
 -- The courses as the menus list them (the courses themselves are their files: tracks/<id>.track.json and scenes/<id>.scene.json), easiest
--- first. `level` is how hard the course is: Easy and Medium are open from the start, a Hard one opens once a Medium one of the same kind
--- has been finished, an Expert one once a Hard one has been finished in the top three (a race) or with two stars (a stage).
+-- first. `level` is how hard the course is, and so how hard its rivals drive and how tight a stage's times are (state.difficulties).
+-- They open one after another: the first of each list from the start, the next once the one before it is done (a circuit finished in
+-- the top three, a stage with a star). The circuits and the stages each have their own progress; a time trial goes round the circuits
+-- the circuit progress has opened.
 state.levels = { "Easy", "Medium", "Hard", "Expert" }
 state.tracks = {
   { id = "pine_ridge", name = "Pine Ridge", blurb = "Fast asphalt through the pines. Long straights, one tight hairpin.", laps = 2, level = 1 },
@@ -23,7 +25,7 @@ state.classes = {
   { id = "sport", name = "Sport", blurb = "Fast road cars that slide under power." },
   { id = "everyday", name = "Everyday", blurb = "Family cars and workhorses: slower, and heavy in the bends." },
   { id = "kart", name = "Kart", blurb = "Tiny and nimble: quick off the line and glued to the road, but slow at the top end." },
-  { id = "fun", name = "Fun", blurb = "Service vehicles: heavy, slow and silly. Just for fun.", unlock = "wins", need = 3 },
+  { id = "fun", name = "Fun", blurb = "Service vehicles: heavy, slow and silly. Just for fun." },
 }
 -- The rally stages: point to point, each in the country of one of the circuits (`look`), five sections each (see lib/race.lua). The scene of
 -- a stage is the stage's id.
@@ -39,6 +41,8 @@ state.stages = {
   { id = "stage_harbour_sprint", look = "stage_harbour_sprint", name = "Harbour Sprint", blurb = "Square turns, chicanes and narrow walled alleys along the quays at night.", laps = 1, km = 2.6, sections = 7, level = 4 },
   { id = "stage_marathon", look = "stage_marathon", name = "Forest Marathon", blurb = "The long one: gravel, a tarmac middle, gravel again. Eight sections.", laps = 1, km = 4.6, sections = 8, level = 4 },
 }
+-- `price` is what a car costs in the garage, in coins; a new player has STARTING_COINS, enough for one of the three `starter` cars (one
+-- each of Sport, Everyday and Kart), and earns more by racing (state.reward).
 state.cars = {
   -- `oversteer`: how readily the rear lets go under power in a bend (0 never, 1 a lot); the sedan and the hatchback are the
   -- drifters, the open-wheel cars hold the road
@@ -47,33 +51,33 @@ state.cars = {
   -- open-wheel cars have most of both, a van or a pickup the least. The rivals drive their cars up to what these allow.
   -- `idle_rpm` and `max_rpm` are the engine's range (the same numbers as in scripts/rally/engines.mjs, which makes its sound).
   -- `power` is the pull in first gear (m/s squared) and `top` the top speed (m/s): the open-wheel cars are the quick ones
-  { id = "car", grip = 1.2, brake = 1.25, class = "formula", name = "Redline", oversteer = 0.35, wheel = 0.30, power = 11.5, top = 50, idle_rpm = 3500, max_rpm = 12500 },
-  { id = "car_blue", grip = 1, brake = 1, class = "sport", name = "Blue Streak", oversteer = 0.6, wheel = 0.34, power = 8.5, top = 44, idle_rpm = 900, max_rpm = 7000 },
-  { id = "car_green", grip = 0.98, brake = 0.95, class = "sport", name = "Green Machine", oversteer = 0.7, wheel = 0.33, power = 8, top = 42, idle_rpm = 1000, max_rpm = 6800 },
-  { id = "car_yellow", grip = 1.15, brake = 1.2, class = "formula", name = "Sunburst", oversteer = 0.45, wheel = 0.31, power = 11, top = 48, idle_rpm = 2500, max_rpm = 9800 },
-  { id = "car_sedan", grip = 0.92, brake = 0.9, class = "everyday", name = "Commuter", oversteer = 0.5, wheel = 0.335, power = 8, top = 42, idle_rpm = 800, max_rpm = 6500 },
-  { id = "car_suv", grip = 0.88, brake = 0.9, class = "everyday", name = "Trailblazer", oversteer = 0.4, wheel = 0.395, power = 8.5, top = 42, idle_rpm = 700, max_rpm = 5800 },
-  { id = "car_suvl", grip = 0.95, brake = 0.95, class = "sport", name = "Grand Tourer", oversteer = 0.5, wheel = 0.4, power = 9.5, top = 46, idle_rpm = 600, max_rpm = 5500 },
-  { id = "car_taxi", grip = 0.9, brake = 0.9, class = "everyday", name = "Cab", oversteer = 0.6, wheel = 0.335, power = 7.5, top = 40, idle_rpm = 850, max_rpm = 6000 },
-  { id = "car_police", grip = 1, brake = 1.05, class = "sport", name = "Patrol", oversteer = 0.55, wheel = 0.375, power = 9.5, top = 46, idle_rpm = 700, max_rpm = 6800 },
-  { id = "car_van", grip = 0.8, brake = 0.8, class = "everyday", name = "Delivery Van", oversteer = 0.3, wheel = 0.355, power = 7, top = 38, idle_rpm = 800, max_rpm = 4800 },
-  { id = "car_pickup", grip = 0.85, brake = 0.85, class = "everyday", name = "Hauler", oversteer = 0.45, wheel = 0.33, power = 8.5, top = 40, idle_rpm = 700, max_rpm = 5500 },
+  { id = "car", price = 25000, grip = 1.2, brake = 1.25, class = "formula", name = "Redline", oversteer = 0.35, wheel = 0.30, power = 11.5, top = 50, idle_rpm = 3500, max_rpm = 12500 },
+  { id = "car_blue", price = 6000, grip = 1, brake = 1, class = "sport", name = "Blue Streak", oversteer = 0.6, wheel = 0.34, power = 8.5, top = 44, idle_rpm = 900, max_rpm = 7000 },
+  { id = "car_green", price = 1000, starter = true, grip = 0.98, brake = 0.95, class = "sport", name = "Green Machine", oversteer = 0.7, wheel = 0.33, power = 8, top = 42, idle_rpm = 1000, max_rpm = 6800 },
+  { id = "car_yellow", price = 12000, grip = 1.15, brake = 1.2, class = "formula", name = "Sunburst", oversteer = 0.45, wheel = 0.31, power = 11, top = 48, idle_rpm = 2500, max_rpm = 9800 },
+  { id = "car_sedan", price = 1000, starter = true, grip = 0.92, brake = 0.9, class = "everyday", name = "Commuter", oversteer = 0.5, wheel = 0.335, power = 8, top = 42, idle_rpm = 800, max_rpm = 6500 },
+  { id = "car_suv", price = 3000, grip = 0.88, brake = 0.9, class = "everyday", name = "Trailblazer", oversteer = 0.4, wheel = 0.395, power = 8.5, top = 42, idle_rpm = 700, max_rpm = 5800 },
+  { id = "car_suvl", price = 9000, grip = 0.95, brake = 0.95, class = "sport", name = "Grand Tourer", oversteer = 0.5, wheel = 0.4, power = 9.5, top = 46, idle_rpm = 600, max_rpm = 5500 },
+  { id = "car_taxi", price = 1500, grip = 0.9, brake = 0.9, class = "everyday", name = "Cab", oversteer = 0.6, wheel = 0.335, power = 7.5, top = 40, idle_rpm = 850, max_rpm = 6000 },
+  { id = "car_police", price = 7500, grip = 1, brake = 1.05, class = "sport", name = "Patrol", oversteer = 0.55, wheel = 0.375, power = 9.5, top = 46, idle_rpm = 700, max_rpm = 6800 },
+  { id = "car_van", price = 2000, grip = 0.8, brake = 0.8, class = "everyday", name = "Delivery Van", oversteer = 0.3, wheel = 0.355, power = 7, top = 38, idle_rpm = 800, max_rpm = 4800 },
+  { id = "car_pickup", price = 2500, grip = 0.85, brake = 0.85, class = "everyday", name = "Hauler", oversteer = 0.45, wheel = 0.33, power = 8.5, top = 40, idle_rpm = 700, max_rpm = 5500 },
   -- (added 2026-11-07) the racing kit's four classic racers, five karts from the car kit (each with its own driver aboard) and, once the player has
   -- won three races, the car kit's service vehicles
-  { id = "racecar_green", grip = 1.18, brake = 1.2, class = "formula", name = "Verde GP", oversteer = 0.3, wheel = 0.31, power = 11, top = 48.5, idle_rpm = 3000, max_rpm = 11000 },
-  { id = "racecar_orange", grip = 1.12, brake = 1.15, class = "formula", name = "Tangerine", oversteer = 0.5, wheel = 0.31, power = 11.8, top = 49.5, idle_rpm = 3800, max_rpm = 13500 },
-  { id = "racecar_red", grip = 1.22, brake = 1.25, class = "formula", name = "Rosso", oversteer = 0.25, wheel = 0.31, power = 10.8, top = 47.5, idle_rpm = 3200, max_rpm = 12000 },
-  { id = "racecar_white", grip = 1.15, brake = 1.2, class = "formula", name = "Phantom", oversteer = 0.4, wheel = 0.31, power = 11.4, top = 50.5, idle_rpm = 3000, max_rpm = 11500 },
-  { id = "kart_oobi", grip = 1.35, brake = 1.3, class = "kart", name = "Oobi", oversteer = 0.5, wheel = 0.27, power = 10, top = 33, idle_rpm = 2200, max_rpm = 13000 },
-  { id = "kart_oodi", grip = 1.3, brake = 1.3, class = "kart", name = "Oodi", oversteer = 0.6, wheel = 0.27, power = 10.5, top = 34, idle_rpm = 2400, max_rpm = 13500 },
-  { id = "kart_ooli", grip = 1.4, brake = 1.35, class = "kart", name = "Ooli", oversteer = 0.4, wheel = 0.27, power = 9.5, top = 32.5, idle_rpm = 2000, max_rpm = 12500 },
-  { id = "kart_oopi", grip = 1.32, brake = 1.3, class = "kart", name = "Oopi", oversteer = 0.55, wheel = 0.27, power = 10.2, top = 33.5, idle_rpm = 2300, max_rpm = 13200 },
-  { id = "kart_oozi", grip = 1.28, brake = 1.25, class = "kart", name = "Oozi", oversteer = 0.65, wheel = 0.27, power = 10.8, top = 34.5, idle_rpm = 2500, max_rpm = 14000 },
-  { id = "ambulance", grip = 0.85, brake = 0.85, class = "fun", name = "Ambulance", oversteer = 0.35, wheel = 0.375, power = 8, top = 41, idle_rpm = 750, max_rpm = 5200 },
-  { id = "firetruck", grip = 0.8, brake = 0.8, class = "fun", name = "Fire Engine", oversteer = 0.25, wheel = 0.425, power = 7, top = 37, idle_rpm = 600, max_rpm = 3600 },
-  { id = "garbage_truck", grip = 0.78, brake = 0.78, class = "fun", name = "Bin Lorry", oversteer = 0.2, wheel = 0.425, power = 6.5, top = 35, idle_rpm = 600, max_rpm = 3400 },
-  { id = "delivery", grip = 0.82, brake = 0.82, class = "fun", name = "Courier", oversteer = 0.3, wheel = 0.375, power = 7.5, top = 39, idle_rpm = 750, max_rpm = 4600 },
-  { id = "tractor", grip = 0.9, brake = 0.9, class = "fun", name = "Tractor", oversteer = 0.45, wheel = 0.38, power = 6, top = 30, idle_rpm = 500, max_rpm = 2600 },
+  { id = "racecar_green", price = 14000, grip = 1.18, brake = 1.2, class = "formula", name = "Verde GP", oversteer = 0.3, wheel = 0.31, power = 11, top = 48.5, idle_rpm = 3000, max_rpm = 11000 },
+  { id = "racecar_orange", price = 16000, grip = 1.12, brake = 1.15, class = "formula", name = "Tangerine", oversteer = 0.5, wheel = 0.31, power = 11.8, top = 49.5, idle_rpm = 3800, max_rpm = 13500 },
+  { id = "racecar_red", price = 20000, grip = 1.22, brake = 1.25, class = "formula", name = "Rosso", oversteer = 0.25, wheel = 0.31, power = 10.8, top = 47.5, idle_rpm = 3200, max_rpm = 12000 },
+  { id = "racecar_white", price = 18000, grip = 1.15, brake = 1.2, class = "formula", name = "Phantom", oversteer = 0.4, wheel = 0.31, power = 11.4, top = 50.5, idle_rpm = 3000, max_rpm = 11500 },
+  { id = "kart_oobi", price = 1000, starter = true, grip = 1.35, brake = 1.3, class = "kart", name = "Oobi", oversteer = 0.5, wheel = 0.27, power = 10, top = 33, idle_rpm = 2200, max_rpm = 13000 },
+  { id = "kart_oodi", price = 4000, grip = 1.3, brake = 1.3, class = "kart", name = "Oodi", oversteer = 0.6, wheel = 0.27, power = 10.5, top = 34, idle_rpm = 2400, max_rpm = 13500 },
+  { id = "kart_ooli", price = 3000, grip = 1.4, brake = 1.35, class = "kart", name = "Ooli", oversteer = 0.4, wheel = 0.27, power = 9.5, top = 32.5, idle_rpm = 2000, max_rpm = 12500 },
+  { id = "kart_oopi", price = 3500, grip = 1.32, brake = 1.3, class = "kart", name = "Oopi", oversteer = 0.55, wheel = 0.27, power = 10.2, top = 33.5, idle_rpm = 2300, max_rpm = 13200 },
+  { id = "kart_oozi", price = 4500, grip = 1.28, brake = 1.25, class = "kart", name = "Oozi", oversteer = 0.65, wheel = 0.27, power = 10.8, top = 34.5, idle_rpm = 2500, max_rpm = 14000 },
+  { id = "ambulance", price = 5000, grip = 0.85, brake = 0.85, class = "fun", name = "Ambulance", oversteer = 0.35, wheel = 0.375, power = 8, top = 41, idle_rpm = 750, max_rpm = 5200 },
+  { id = "firetruck", price = 8000, grip = 0.8, brake = 0.8, class = "fun", name = "Fire Engine", oversteer = 0.25, wheel = 0.425, power = 7, top = 37, idle_rpm = 600, max_rpm = 3600 },
+  { id = "garbage_truck", price = 6000, grip = 0.78, brake = 0.78, class = "fun", name = "Bin Lorry", oversteer = 0.2, wheel = 0.425, power = 6.5, top = 35, idle_rpm = 600, max_rpm = 3400 },
+  { id = "delivery", price = 3500, grip = 0.82, brake = 0.82, class = "fun", name = "Courier", oversteer = 0.3, wheel = 0.375, power = 7.5, top = 39, idle_rpm = 750, max_rpm = 4600 },
+  { id = "tractor", price = 2500, grip = 0.9, brake = 0.9, class = "fun", name = "Tractor", oversteer = 0.45, wheel = 0.38, power = 6, top = 30, idle_rpm = 500, max_rpm = 2600 },
 }
 
 -- How hard the rivals drive (race mode). `pace` is the share of its car's top speed a rival runs at, `corner` the share of what its tyres can
@@ -83,14 +87,15 @@ state.difficulties = {
   { id = "easy", name = "Easy", blurb = "Rivals drive carefully and give up the chase. In a rally the section times to beat are generous.", pace = 0.72, corner = 0.74, band = 0.03, allow = 1.3 },
   { id = "medium", name = "Medium", blurb = "Rivals drive well and stay in touch. In a rally the section times to beat are fair.", pace = 0.88, corner = 0.92, band = 0.06, allow = 1.1 },
   { id = "hard", name = "Hard", blurb = "Rivals drive to the limit of their cars and chase you down. In a rally the section times to beat are tight.", pace = 1.0, corner = 1.06, band = 0.10, allow = 0.98 },
+  { id = "expert", name = "Expert", blurb = "Rivals drive at the limit and never give up. In a rally the section times to beat leave nothing spare.", pace = 1.03, corner = 1.1, band = 0.12, allow = 0.93 },
 }
+-- (each course's level picks its difficulty: Easy, Medium, Hard or Expert, in the order of state.levels)
 
 state.track = 1       -- index into state.tracks
 state.stage = 1       -- index into state.stages (in rally mode)
 state.car = 1         -- index into state.cars
 state.laps = 2
-state.difficulty = "medium"
-state.mode = "race"    -- "race" (against three rivals), "trial" (alone, against your best lap's ghost) or "rally" (a stage, against the section times)
+state.mode = "rally"   -- "rally" (a stage, against the section times), "race" (a circuit, against three rivals) or "trial" (alone, against your best lap's ghost)
 state.music_volume = 0.7
 state.sfx_volume = 0.8
 state.shadows = true   -- the sun's shadows (a little slower on a handheld)
@@ -112,8 +117,13 @@ function state.load()
   state.track = nova.save.get("last_track", 1)
   state.stage = nova.save.get("last_stage", 1)
   state.car = nova.save.get("last_car", 1)
-  state.mode = nova.save.get("last_mode", "race")
-  state.difficulty = nova.save.get("last_difficulty", "medium")
+  state.mode = nova.save.get("last_mode", "rally")
+  if not state.cars[state.car] then state.car = 1 end
+  -- a new player's garage opens on the first starter car (they have none yet)
+  if not state.owns(state.current_car().id) then
+    for i, c in ipairs(state.garage()) do if state.owns(c.id) then state.car = state.index_of(c.id); break end end
+    if not state.owns(state.current_car().id) then state.car = state.index_of(state.garage()[1].id) end
+  end
   state.apply_volumes()
 end
 
@@ -134,7 +144,6 @@ function state.save_options()
   nova.save.set("last_stage", state.stage)
   nova.save.set("last_car", state.car)
   nova.save.set("last_mode", state.mode)
-  nova.save.set("last_difficulty", state.difficulty)
   state.apply_volumes()
 end
 
@@ -143,10 +152,9 @@ function state.apply_volumes()
   nova.sound.volume(state.sfx_volume)
 end
 
-function state.current_difficulty()
-  for _, d in ipairs(state.difficulties) do if d.id == state.difficulty then return d end end
-  return state.difficulties[2]
-end
+-- How hard the rivals drive and how tight a stage's times are: the chosen course's level.
+function state.difficulty_of(course) return state.difficulties[math.max(1, math.min(#state.difficulties, (course and course.level) or 1))] end
+function state.current_difficulty() return state.difficulty_of(state.current_track()) end
 -- The circuit that is chosen, or in rally mode the stage.
 function state.current_track()
   if state.mode == "rally" then return state.stages[state.stage] end
@@ -163,42 +171,105 @@ function state.submit_score(id, score)
 end
 function state.class_of(car) for _, c in ipairs(state.classes) do if c.id == car.class then return c end end end
 
--- ---- what the player has unlocked (saved) -----------------------------------------------------------------------------------------
--- Races won (first place in a race against rivals), counted for the Fun class.
+-- ---- what the player has done and owns (saved) --------------------------------------------------------------------------------
+-- Races won (first place in a race against rivals): counted, and shown nowhere yet.
 function state.wins() return nova.save.get("wins", 0) end
 function state.add_win() nova.save.set("wins", state.wins() + 1) end
 
--- Whether a class of car can be picked, and if not, what it takes.
-function state.class_open(class)
-  if class.unlock == "wins" then return state.wins() >= class.need, string.format("Win %d races to unlock (%d so far).", class.need, state.wins()) end
+-- Every class of car can be driven (the garage sells them all); kept for the menus that ask.
+function state.class_open(class) return true end
+function state.car_open(car) return true end
+
+-- ---- coins and the garage ---------------------------------------------------------------------------------------------------------
+state.STARTING_COINS = 1000
+function state.coins() return nova.save.get("coins", state.STARTING_COINS) end
+function state.add_coins(n) nova.save.set("coins", state.coins() + math.floor(n + 0.5)) end
+function state.owned() return nova.save.get("owned", {}) end
+function state.owns(id)
+  for _, o in ipairs(state.owned()) do if o == id then return true end end
+  return false
+end
+-- Buys car `car` (one of state.cars) if there are coins enough; true when it is now the player's.
+function state.buy(car)
+  if state.owns(car.id) then return true end
+  if state.coins() < car.price then return false end
+  nova.save.set("coins", state.coins() - car.price)
+  local list = state.owned()
+  list[#list + 1] = car.id
+  nova.save.set("owned", list)
+  nova.log(string.format("garage: bought %s for %d coins, %d left", car.id, car.price, state.coins()))
   return true
 end
-function state.car_open(car) return (state.class_open(state.class_of(car))) end
-
--- A course finished: kept as the best of what was done there (`done_<id>`: finished at all, the best place in a race, the most stars on a stage).
-function state.finished(id, how)
-  local d = nova.save.get("done_" .. id, {})
-  d.done = true
-  if how.place and (d.place == nil or how.place < d.place) then d.place = how.place end
-  if how.stars and (d.stars == nil or how.stars > d.stars) then d.stars = how.stars end
-  nova.save.set("done_" .. id, d)
+function state.index_of(id) for i, c in ipairs(state.cars) do if c.id == id then return i end end end
+-- The garage's grid: every car, cheapest first (the three starters lead), by name within a price.
+local garage_list
+function state.garage()
+  if not garage_list then
+    garage_list = {}
+    for _, c in ipairs(state.cars) do garage_list[#garage_list + 1] = c end
+    table.sort(garage_list, function(a, b) if a.price ~= b.price then return a.price < b.price end return a.name < b.name end)
+  end
+  return garage_list
 end
-function state.done(id) return nova.save.get("done_" .. id, nil) end
+-- "12,500"
+function state.money(n)
+  local s = tostring(math.floor(n))
+  while true do
+    local r, k = s:gsub("^(%d+)(%d%d%d)", "%1,%2")
+    s = r
+    if k == 0 then return s end
+  end
+end
 
+-- What a finished course pays. `how`: { place } (a race against rivals, with `laps`), { stars } (a rally stage) or { trial = true,
+-- record = a new best lap }. A harder course pays more; a longer race (more laps than the course's own) pays more, a shorter one less.
+local PURSE = { 600, 900, 1400, 2000 }
+local PLACE_SHARE = { 1, 0.6, 0.4, 0.2 }
+local STAR_SHARE = { [0] = 0.15, 0.4, 0.7, 1 }
+function state.reward(course, how)
+  local purse = PURSE[course.level or 1] or PURSE[1]
+  if how.stars then return math.floor(purse * 1.2 * STAR_SHARE[how.stars] / 10 + 0.5) * 10 end
+  if how.trial then return math.floor((purse * 0.15 + (how.record and purse * 0.25 or 0)) / 10 + 0.5) * 10 end
+  local laps = math.max(0.5, math.min(2.5, (how.laps or course.laps) / (course.laps or 2)))
+  return math.floor(purse * (PLACE_SHARE[how.place] or 0.1) * laps / 10 + 0.5) * 10
+end
+
+-- ---- progress through the courses -------------------------------------------------------------------------------------------------
+-- (saved apart for the circuits and the stages: `career_circuit` holds the best place on each circuit, `career_rally` the most stars on each stage)
+local function career(list) return list == state.stages and "career_rally" or "career_circuit" end
+function state.progress(list, id) return nova.save.get(career(list), {})[id] end
+-- A course finished: `result` is the place (a circuit) or the stars (a stage). Returns the course this opened, if it opened one.
+function state.record(list, id, result)
+  local before = {}
+  for i, c in ipairs(list) do before[i] = state.course_open(list, c) end
+  local t = nova.save.get(career(list), {})
+  local old = t[id]
+  if list == state.stages then
+    if old == nil or result > old then t[id] = result end
+  elseif old == nil or result < old then t[id] = result end
+  nova.save.set(career(list), t)
+  for i, c in ipairs(list) do if not before[i] and state.course_open(list, c) then return c end end
+end
+local function passed(list, c)
+  local r = state.progress(list, c.id)
+  if r == nil then return false end
+  if list == state.stages then return r >= 1 end
+  return r <= 3
+end
 -- Whether a course of a list (state.tracks or state.stages) can be picked, and if not, what it takes.
 function state.course_open(list, course)
-  local level = course.level or 1
-  if level <= 2 then return true end
-  local stage = list == state.stages
-  for _, c in ipairs(list) do
-    local d = state.done(c.id)
-    if d and (c.level or 1) == level - 1 then
-      if level == 3 then return true end
-      if (d.place and d.place <= 3) or (d.stars and d.stars >= 2) then return true end
-    end
-  end
-  if level == 3 then return false, "Finish a Medium " .. (stage and "stage" or "circuit") .. " to open." end
-  return false, stage and "Score two stars on a Hard stage to open." or "Finish a Hard circuit in the top three to open."
+  local at
+  for i, c in ipairs(list) do if c == course or c.id == course.id then at = i end end
+  if not at or at == 1 then return true end
+  local before = list[at - 1]
+  if passed(list, before) then return true end
+  if list == state.stages then return false, "Score a star on " .. before.name .. " to open." end
+  return false, "Finish " .. before.name .. " in the top three to open."
+end
+function state.courses_done(list)
+  local n = 0
+  for _, c in ipairs(list) do if passed(list, c) then n = n + 1 end end
+  return n
 end
 function state.current_car() return state.cars[state.car] end
 

@@ -3109,6 +3109,12 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             Ok(())
         })?,
     )?;
+    // real_time(): the clock that nova.pause does not stop (the menus move by it, so that a pause menu still slides and repeats)
+    let s = shared.clone();
+    raw.set(
+        "real_time",
+        lua.create_function(move |_, ()| Ok(s.borrow().real_time))?,
+    )?;
     // freeze_time(on): the engine's clock stops (nova.pause calls this) and carries on from the same moment when it is let go
     let s = shared.clone();
     raw.set(

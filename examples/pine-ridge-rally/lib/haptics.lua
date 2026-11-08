@@ -12,9 +12,10 @@ local PULSE_LONG = 0.10     -- how long each pulse lasts (a little longer than t
 -- how strongly each surface shakes at full speed (a little of it even when slow), and how much it varies pulse to pulse
 -- (a whole race on a dirt course is spent on "dirt", so it is a gentle texture, not a buzz)
 local SURFACE = {
-  loose = { 0.05, 0.12, 0.04 },  -- a gravel, sand or snow road
-  dirt = { 0.06, 0.14, 0.05 },   -- a dirt road
-  rough = { 0.25, 0.40, 0.15 },  -- off the track: grass, stones, ruts
+  -- (2026-11-08, felt on the Retroid: gravel was a little too strong, so loose and dirt are about a third softer)
+  loose = { 0.03, 0.08, 0.025 }, -- a gravel, sand or snow road
+  dirt = { 0.04, 0.09, 0.03 },   -- a dirt road
+  rough = { 0.22, 0.36, 0.13 },  -- off the track: grass, stones, ruts
 }
 local SLIDE = 0.10          -- added while the tyres are sliding
 local THUMP_GAP = 0.4       -- seconds between two thumps (a car that weaves along the edge does not drum)
