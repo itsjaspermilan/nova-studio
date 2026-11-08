@@ -372,7 +372,11 @@ fn native_library(
         .join(TRIPLE)
         .join(profile)
         .join("libnova_runtime.so");
-    let built = std::fs::metadata(&lib).and_then(|m| m.modified()).ok();
+    // cargo can leave the library untouched when the changed file is not part of the Android build: a stamp beside it
+    // records when cargo last said it was up to date
+    let stamp = lib.with_extension("so.checked");
+    let mtime = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    let built = mtime(&lib).map(|l| mtime(&stamp).map_or(l, |s| s.max(l)));
     if !build.rebuild && !library_is_stale(built, newest_change(&runtime_sources(repo))) {
         progress("The engine for Android is up to date (only the game is repacked)");
         return Ok((lib, false));
@@ -380,7 +384,7 @@ fn native_library(
     progress(if built.is_none() {
         "Building the engine for Android (the first time takes several minutes)"
     } else {
-        "Rebuilding the engine for Android (the runtime changed)"
+        "Updating the engine for Android (the runtime changed)"
     });
     let mut cargo = Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()));
     cargo.current_dir(repo).args([
@@ -401,6 +405,7 @@ fn native_library(
     if !lib.is_file() {
         return Err(format!("the engine build did not make {}", lib.display()));
     }
+    let _ = std::fs::write(&stamp, b"");
     Ok((lib, true))
 }
 
