@@ -4,13 +4,15 @@
   import {
     History, addItem, afterRemoval, boundsOf, drawOrder, duplicateItem, hitTest, itemAt, moveTo, parseScene, removeItem, sameRef,
     serializeScene, setField, setSceneField, snap, uniqueName, worldSize, type Item, type ItemKind, type Ref, type Scene, type Sizes,
-    addTilemap, cellAt, fillTiles, mapSize, tileSize, paintTile, parsePropValue, propsOf, removeTilemap, renameProp, resizeTilemap, setProp, showPropValue,
+    addTilemap, cellAt, fillTiles, mapSize, tileSize, paintTile, parsePropValue, propsOf, removeTilemap, renameProp, resizeTilemap, setProp, showPropValue, type PropValue,
     tilemapBox, tilemaps, toggleSolid, EMPTY_TILE, type Kinds, cameraOf, moveTo3, setCamera, positionOf, placeObjects, eraseNear, offRoad, snapToRoad, snapToGrid, type Camera3,
   } from "../lib/scene-model";
   import Scene3D from "./Scene3D.svelte";
   import type { ModelDoc } from "../lib/model-doc";
   import { studio } from "../lib/store.svelte";
-  import { resolveEntity } from "../lib/entity-info";
+  import { entityPath, resolveEntity } from "../lib/entity-info";
+  import EntitySettings from "./EntitySettings.svelte";
+  import type { Setting } from "../lib/entity-settings";
   import { parseSheetJson } from "../lib/sprite-doc";
   import { loadModelDoc } from "../lib/model-load";
 
@@ -134,6 +136,8 @@
 
   // What each entity kind in the scene looks like, learned by reading its Lua file (sprite and pivot).
   let kindSizes = $state(new Map<string, { w: number; h: number; px: number; py: number }>());
+  // the typed settings each kind declares (`settings = { ... }` in its file), shown as sliders, lists and pickers
+  let kindSettings = $state(new Map<string, Setting[]>());
   const kindPics = new Map<string, { image: string; sx: number; sy: number; sw: number; sh: number }>();
   const asked = new Set<string>();
   const dirOf = (p: string) => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
@@ -148,6 +152,8 @@
     asked.add(kind);
     const api = studio.api;
     const look = await resolveEntity(kind, (p) => api.readFile(p).then((c) => c.text).catch(() => null));
+    if (look.settings?.length) kindSettings = new Map(kindSettings).set(kind, look.settings);
+    else if (kindSettings.has(kind)) { const next = new Map(kindSettings); next.delete(kind); kindSettings = next; }
     if (look.model) {
       // the studio's own model file, or else a plain .glb (a kit's) read into one for drawing
       const doc = await loadModelDoc(api, look.model);
@@ -536,6 +542,8 @@
 
   const images = $derived(studio.files.filter((f) => !f.dir && f.path.toLowerCase().endsWith(".png")).map((f) => f.path));
   const entities = $derived(studio.symbols.entities.map((s) => s.label));
+  // the names of the scene's objects, for settings that point at another object
+  const objectNames = $derived((scene.objects ?? []).map((o) => o.name).filter((n): n is string => typeof n === "string" && n !== ""));
 
   // ---- tile maps ----------------------------------------------------------------------------
   const maps = $derived(tilemaps(scene));
@@ -825,9 +833,15 @@
           <button class="danger" onclick={remove}>Delete</button>
         </div>
         {#if selected.kind === "objects"}
-          <h4>Properties</h4>
+          {@const declared = kindSettings.get(String(field("kind") ?? "")) ?? []}
+          {#if declared.length}
+            <h4>Settings</h4>
+            <p class="dim small">Declared in <code>{entityPath(String(field("kind")))}</code>. A highlighted one differs from the default; hover for help.</p>
+            <EntitySettings settings={declared} props={(item.props ?? {}) as Record<string, unknown>} files={studio.files.filter((f) => !f.dir).map((f) => f.path)} objectNames={objectNames.filter((n) => n !== field("name"))} onset={(k, v) => edit(setProp(scene, selected!, k, v as PropValue | undefined))} />
+          {/if}
+          <h4>{declared.length ? "Other properties" : "Properties"}</h4>
           <p class="dim small">Become fields on the object, like <code>self.hp</code>.</p>
-          {#each propsOf(scene, selected) as p (p.key)}
+          {#each propsOf(scene, selected).filter((p) => !declared.some((s) => s.name === p.key)) as p (p.key)}
             <div class="prop">
               <input class="k" value={p.key} aria-label="Property name" onchange={(e) => edit(renameProp(scene, selected!, p.key, e.currentTarget.value))} />
               <input class="v" class:table={!p.simple} value={showPropValue(p.value)} aria-label="Value of {p.key}" title={p.simple ? "" : "A list or table, as JSON (a mistake keeps the old value)"} onchange={(e) => {
