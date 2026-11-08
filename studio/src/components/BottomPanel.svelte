@@ -4,6 +4,9 @@
   import { studio } from "../lib/store.svelte";
   import { ago, toolWords } from "../lib/activity";
   import PerfStrip from "./PerfStrip.svelte";
+  import DebugPanel from "./DebugPanel.svelte";
+  import ObjectsPanel from "./ObjectsPanel.svelte";
+  import { debug } from "../lib/debugger.svelte";
 
   // "5 s ago" moves on by itself
   let now = $state(Date.now());
@@ -30,6 +33,12 @@
     <button role="tab" aria-selected={studio.panel === "play"} class:on={studio.panel === "play"} onclick={() => (studio.panel = "play")}>
       Play {#if studio.running}<span class="live">●</span>{/if}
     </button>
+    <button role="tab" aria-selected={studio.panel === "debug"} class:on={studio.panel === "debug"} onclick={() => (studio.panel = "debug")} title="Breakpoints, steps, the call stack and variables of the running game">
+      Debugger {#if debug.paused}<span class="badge" class:err={debug.paused.reason === "error"}>paused</span>{/if}
+    </button>
+    <button role="tab" aria-selected={studio.panel === "objects"} class:on={studio.panel === "objects"} onclick={() => (studio.panel = "objects")} title="The running scene's objects, live">
+      Objects
+    </button>
     <button role="tab" aria-selected={studio.panel === "activity"} class:on={studio.panel === "activity"} onclick={() => ((studio.panel = "activity"), studio.markActivitySeen())} title="What an assistant using the Nova MCP server has done to this project">
       Activity {#if unseen > 0 && studio.panel !== "activity"}<span class="badge new">{unseen}</span>{/if}
     </button>
@@ -39,6 +48,8 @@
     {:else if studio.panel === "problems"}
       <span class="dim">{studio.checking ? "Checking…" : summary(studio.diagnostics)}</span>
       <button class="ghost" onclick={() => studio.check()} disabled={studio.checking}>Check now</button>
+    {:else if studio.panel === "debug" || studio.panel === "objects"}
+      {#if debug.reload}<span class="dim reload" class:bad={debug.reload.failed} title={debug.reload.text}>{debug.reload.kept ? "↻ kept running" : "↻ restarted"}</span>{/if}
     {:else}
       <button class="ghost" onclick={() => (studio.log = [])}>Clear</button>
     {/if}
@@ -81,7 +92,12 @@
         <li class="empty dim">Nothing yet. When an assistant uses the Nova MCP server on this project (see docs/mcp.md), what it does shows up here as it happens.</li>
       {/each}
     </ul>
+  {:else if studio.panel === "debug"}
+    <DebugPanel />
+  {:else if studio.panel === "objects"}
+    <ObjectsPanel />
   {:else}
+    {#if debug.reload}<p class="reload-line" class:bad={debug.reload.failed}>{debug.reload.kept ? "↻" : "⟲"} {debug.reload.text}</p>{/if}
     <PerfStrip />
     <div class="log mono" bind:this={logBox}>
       {#each studio.log as l, i (i)}
@@ -123,4 +139,7 @@
   .log .err { color: var(--warn); }
   .stack { list-style: none; margin: 0 0 4px 26px; padding: 0; display: flex; flex-direction: column; font-size: 11px; }
   .frame { text-align: left; padding: 0 6px; border: none; }
+  .reload { font-size: 11px; }
+  .reload.bad, .reload-line.bad { color: var(--warn); }
+  .reload-line { margin: 0; padding: 4px 12px; font-size: 12px; border-bottom: 1px solid var(--line); }
 </style>

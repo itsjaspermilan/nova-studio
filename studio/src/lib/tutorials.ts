@@ -331,6 +331,15 @@ export const shortcuts: { area: string; tips: Tip[] }[] = [
       { keys: "Ctrl+Space", what: "Show suggestions" },
       { keys: "Hover a name", what: "See what a Nova function does" },
       { keys: "Click a problem", what: "Jump to the file and line" },
+      { keys: "Click left of a line number", what: "Set or remove a breakpoint (the game stops there)" },
+    ],
+  },
+  {
+    area: "Debugger (while the game is paused)",
+    tips: [
+      { keys: "F8", what: "Continue" },
+      { keys: "F10", what: "Step over: run this line, stop at the next" },
+      { keys: "F11 / ⇧F11", what: "Step into the function this line calls / step out of this one" },
     ],
   },
   {

@@ -60,6 +60,7 @@ fn builtin_module(name: &str) -> Option<&'static str> {
 
 mod animated;
 mod billboard_api;
+mod debug_api;
 mod retained_api;
 mod solid_api;
 mod voxel_api;
@@ -615,6 +616,30 @@ pub struct Game {
     checked: Instant,
     last_flush: Instant,
     save_dir: Option<std::path::PathBuf>,
+    /// The debugger connection (`nova run --debug`); the host hands the same one to a restarted game.
+    debugger: Option<crate::debug::DebugHandle>,
+    /// The devtools error guard: while a debugger is attached, entry points are called through it so an error pauses.
+    guard: Option<Function>,
+    /// Are the debugger's line hooks on?
+    lines_on: bool,
+    profiling: bool,
+    /// Every project file's modification time at load (folder projects), to tell what a hot reload changed.
+    files: HashMap<String, Option<SystemTime>>,
+    /// The scripts stopped while the project was loading (a reload then restarts instead of swapping code in).
+    error_at_load: bool,
+}
+
+/// What a hot reload did (see `Game::hot_reload`).
+#[derive(Clone, Debug, PartialEq)]
+pub enum Reload {
+    /// Nothing that matters changed.
+    Nothing,
+    /// The changed modules' functions were swapped in; entities, the scene and timers carry on.
+    Kept { files: Vec<String> },
+    /// New code could not be loaded (a syntax error, an error at its top level): the old code keeps running.
+    Failed { file: String, error: String },
+    /// The game has to start again (the host does it), for this reason.
+    Restart { reason: String },
 }
 
 /// A pointer moved by a gamepad stick, for menus built for a mouse (`nova.input.cursor`).
@@ -665,7 +690,21 @@ fn install_hook(
     profile: Rc<RefCell<Profile>>,
     profiling: bool,
 ) -> mlua::Result<()> {
-    let triggers = if profiling {
+    install_hook_with(lua, deadline, profile, profiling, None, false, &[])
+}
+
+/// `install_hook` with the debugger's line events (`lines`: only while there are breakpoints or a step is under way),
+/// also put on the coroutines given (Lua copies the main thread's hook into a coroutine only when it is made).
+fn install_hook_with(
+    lua: &Lua,
+    deadline: Rc<Cell<Option<Instant>>>,
+    profile: Rc<RefCell<Profile>>,
+    profiling: bool,
+    debugger: Option<crate::debug::DebugHandle>,
+    lines: bool,
+    threads: &[mlua::Thread],
+) -> mlua::Result<()> {
+    let mut triggers = if profiling {
         // calls and returns too, so that time inside the engine (nova.* functions) is charged to them by name
         HookTriggers::new()
             .every_nth_instruction(2_000)
@@ -674,7 +713,14 @@ fn install_hook(
     } else {
         HookTriggers::new().every_nth_instruction(20_000)
     };
-    lua.set_global_hook(triggers, move |_, debug| {
+    if lines && debugger.is_some() {
+        triggers = triggers.every_line();
+    }
+    let hook = move |lua: &Lua, debug: &mlua::debug::Debug| {
+        if let (mlua::debug::DebugEvent::Line, Some(dbg)) = (debug.event(), &debugger) {
+            debug_api::on_line(lua, debug, dbg, &deadline)?;
+            return Ok(VmState::Continue);
+        }
         let now = Instant::now();
         if profiling {
             let mut p = profile.borrow_mut();
@@ -730,7 +776,11 @@ fn install_hook(
             )),
             _ => Ok(VmState::Continue),
         }
-    })
+    };
+    for thread in threads {
+        thread.set_hook(triggers, hook.clone())?;
+    }
+    lua.set_global_hook(triggers, hook)
 }
 
 /// How loud a sound at a place in the world is, and how far to the left or right, for a listener at the camera:
@@ -2898,6 +2948,10 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
     // --- require: modules come only from inside the project ---
     let loaded: Table = lua.create_table()?;
     let loading: Table = lua.create_table()?;
+    // (the reload and the debugger look modules up: name -> value, and name -> the file it came from)
+    let paths: Table = lua.create_table()?;
+    lua.set_named_registry_value("nova.loaded", &loaded)?;
+    lua.set_named_registry_value("nova.module_paths", &paths)?;
     let vfs = vfs.clone();
     lua.globals().set(
         "require",
@@ -2933,6 +2987,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             } else {
                 value
             };
+            paths.set(name.clone(), path)?;
             loaded.set(name, value.clone())?;
             Ok(value)
         })?,
@@ -2954,6 +3009,18 @@ impl Game {
         vfs: Rc<dyn Vfs>,
         save_dir: &dyn Fn(&str) -> Option<std::path::PathBuf>,
     ) -> Result<Game, String> {
+        Self::load_debug(vfs, save_dir, None)
+    }
+
+    /// Like `load_with`, attached to a debugger (`nova run --debug`): breakpoints, steps and errors pause the game and
+    /// the studio can look at its entities. With `wait_at_start` set on the debugger, waits for the studio before the
+    /// entry script runs, so breakpoints in it and in `init` work.
+    pub fn load_debug(
+        vfs: Rc<dyn Vfs>,
+        save_dir: &dyn Fn(&str) -> Option<std::path::PathBuf>,
+        debugger: Option<crate::debug::DebugHandle>,
+    ) -> Result<Game, String> {
+        let files = debug_api::file_times(vfs.as_ref());
         let project = Project::open(vfs.as_ref())?;
         let mut warnings = project.warnings.clone();
         let mut store = SaveStore::memory();
@@ -3227,6 +3294,12 @@ impl Game {
             checked: Instant::now(),
             last_flush: Instant::now(),
             save_dir: chosen_dir,
+            debugger,
+            guard: None,
+            lines_on: false,
+            profiling: false,
+            files,
+            error_at_load: false,
             project,
         };
         for warning in &game.warnings {
@@ -3236,19 +3309,30 @@ impl Game {
         game.deadline.set(Some(Instant::now() + LOAD_BUDGET));
         let result = (|| -> mlua::Result<()> {
             register_api(&game.lua, &shared, &vfs)?;
+            if let Some(dbg) = game.debugger.clone() {
+                // before the framework, which keeps coroutine.create in a local
+                let d = debug_api::devtools(&game.lua)?;
+                d.get::<Function>("track_coroutines")?.call::<()>(())?;
+                let pauser = debug_api::error_pauser(&game.lua, dbg, game.deadline.clone())?;
+                game.guard = Some(d.get::<Function>("guard")?.call(pauser)?);
+            }
             game.lua
                 .load(FRAMEWORK)
                 .set_name("=nova.framework")
                 .exec()?;
+            game.wait_for_studio();
+            game.deadline.set(Some(Instant::now() + LOAD_BUDGET));
             let source = vfs.read(&entry).map_err(lua_err)?;
             let source = String::from_utf8(source)
                 .map_err(|_| lua_err(format!("{entry} is not valid UTF-8")))?;
-            game.lua
+            let chunk = game
+                .lua
                 .load(&source)
                 .set_name(format!("@{entry}"))
-                .exec()?;
+                .into_function()?;
+            debug_api::call_guarded(&game.lua, game.guard.as_ref(), &chunk, ())?;
             if let Ok(init) = game.lua.globals().get::<Function>("init") {
-                init.call::<()>(())?;
+                debug_api::call_guarded(&game.lua, game.guard.as_ref(), &init, ())?;
             }
             Ok(())
         })();
@@ -3257,6 +3341,7 @@ impl Game {
             log::error!("script error: {e}");
             game.error_detail = Some(e.to_string());
             game.error = Some(first_line(&e.to_string()));
+            game.error_at_load = true;
         }
         Ok(game)
     }
@@ -3432,6 +3517,9 @@ impl Game {
 
     /// Runs one frame of scripts with this frame's input and collects what they asked to draw.
     pub fn update_input(&mut self, dt: f32, time: f64, view: [f32; 2], input: &InputFrame) {
+        if self.debugger.is_some() {
+            self.debug_frame();
+        }
         {
             let mut sh = self.shared.borrow_mut();
             std::mem::swap(&mut sh.world, &mut self.world);
@@ -3484,13 +3572,17 @@ impl Game {
             }
             let globals = self.lua.globals();
             let mut result = Ok(());
+            let guard = self.guard.as_ref();
             if let Ok(update) = globals.get::<Function>("update") {
-                result = update.call::<()>(dt);
+                result = debug_api::call_guarded(&self.lua, guard, &update, dt);
             }
             if result.is_ok()
                 && let Ok(draw) = globals.get::<Function>("draw")
             {
-                result = draw.call::<()>(());
+                result = debug_api::call_guarded(&self.lua, guard, &draw, ());
+            }
+            if result.is_ok() && self.debugger.is_some() {
+                self.draw_highlight();
             }
             self.deadline.set(None);
             self.shared.borrow().profile.borrow_mut().last = None;
@@ -3622,7 +3714,9 @@ impl Game {
             }
             p.on = on;
         }
-        let _ = install_hook(&self.lua, sh.deadline.clone(), sh.profile.clone(), on);
+        drop(sh);
+        self.profiling = on;
+        self.reinstall_hook(self.lines_on);
     }
 
     /// The functions that took the most script time, most first: (name, milliseconds, samples), and the total.

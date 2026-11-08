@@ -7,6 +7,7 @@ pub mod assets;
 pub mod audio;
 pub mod bake;
 pub mod content;
+pub mod debug;
 pub mod diagnostics;
 pub mod export;
 pub mod font;

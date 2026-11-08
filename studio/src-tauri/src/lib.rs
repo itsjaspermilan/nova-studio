@@ -3,6 +3,7 @@
 //! project root held in the app state and is confined to it (`paths`).
 
 pub mod audio_files;
+mod debug_link;
 mod headless;
 mod paths;
 mod project_files;
@@ -20,6 +21,7 @@ struct AppState {
     root: Mutex<Option<PathBuf>>,
     runner: runner::Runner,
     recent: recent::RecentStore,
+    debug: debug_link::DebugLink,
 }
 
 #[derive(Serialize)]
@@ -256,6 +258,8 @@ fn run_project(
     let bin = runner::find_nova_binary()?;
     let mut command = std::process::Command::new(bin);
     command.arg("run").arg(&root);
+    // the debugger: the game listens on a free port, says which, and waits a moment for the studio before its scripts run
+    command.arg("--debug").arg("0").arg("--debug-wait");
     // `--record` writes what was pressed when the game's window is closed, for the simulation screen to play back
     if let Some(rel) = record {
         let path = paths::confine(&root, &rel)?;
@@ -265,15 +269,40 @@ fn run_project(
         command.arg("--record").arg(path);
     }
     let (lines, exits) = (app.clone(), app.clone());
+    let link = state.debug.clone();
+    link.close();
+    let closer = link.clone();
     state.runner.start(
         command,
         move |line| {
+            if let Some(port) = debug_link::port_in(&line.line) {
+                let to_front = lines.clone();
+                if let Err(e) = link.connect(port, move |m| {
+                    let _ = to_front.emit("debug-message", m);
+                }) {
+                    let _ = lines.emit(
+                        "play-log",
+                        runner::LogLine {
+                            stream: "stderr",
+                            line: e,
+                        },
+                    );
+                }
+                return; // (the line is for the studio, not the person)
+            }
             let _ = lines.emit("play-log", line);
         },
         move |code| {
+            closer.close();
             let _ = exits.emit("play-exit", code);
         },
     )
+}
+
+/// Sends one request to the running game's debugger (`docs/debugger.md`).
+#[tauri::command]
+fn debug_send(state: State<AppState>, message: serde_json::Value) -> Result<(), String> {
+    state.debug.send(&message)
 }
 
 #[tauri::command]
@@ -339,6 +368,7 @@ pub fn run() {
             app.manage(AppState {
                 root: Mutex::new(None),
                 runner: runner::Runner::default(),
+                debug: debug_link::DebugLink::default(),
                 recent: recent::RecentStore::new(&config),
             });
             Ok(())
@@ -370,6 +400,7 @@ pub fn run() {
             delete_file,
             run_project,
             stop_project,
+            debug_send,
             is_running,
             check_project,
             export_game,

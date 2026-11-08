@@ -132,7 +132,7 @@ white pole, like the rebuild. No shipped model had a repeating picture or such a
 - [ ] Text is UI layer only and draws on top of UI sprites.
 - [ ] The mixer resamples with four-point cubic interpolation since 2026-11-06 (it was linear; streamed music is still linear since it plays at its own rate; a sound sped up past about 1.5 times can still alias, with no low-pass before the step) and has one shared reverb room since 2026-11-06 (`nova.sound.room`, `reverb = 0.3` on a sound; the rally's effects use it) but no other buses or effects; the C
   audio core's synthesis and DSP are not connected to game audio (M6).
-- [ ] Hot reload restarts the whole project (no state-preserving reload).
+- [x] Hot reload keeps the game running when only modules' Lua code changed (2026-11-08, `docs/debugger.md`): their functions are swapped in and entities, the scene and timers carry on; `main.lua`, scenes, assets and modules that change shape restart it, and the studio says which happened. With it, a debugger (breakpoints, steps, the stack and variables, errors that stop at the failing line, a live Objects view that edits fields and outlines the entity in the game) over a localhost socket (`nova run --debug`). Not tried in the studio app's own window against a real game or on the Retroid; Android has no way to turn `--debug` on yet.
 - [x] Lua errors carry their call stack as data (2026-11-02): `nova check --json` gives each diagnostic a `stack` (file, line, function, internal), and
   the studio's Problems panel lists the frames of the person's own code, each opening its file at the line.
 - [ ] Released builds: the native library is not stripped or size-optimised, and 16 KB page-size

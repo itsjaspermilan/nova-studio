@@ -1,4 +1,4 @@
-import type { Api, CheckReport, ExampleInfo, ExportReport, FileContent, FileEntry, HeadlessReport, LogLine, ProjectInfo, RecentProject, TemplateInfo } from "./types";
+import type { Api, CheckReport, DebugMessage, ExampleInfo, ExportReport, FileContent, FileEntry, HeadlessReport, LogLine, ProjectInfo, RecentProject, TemplateInfo } from "./types";
 
 /// The desktop app: every call goes to the Rust backend (studio/src-tauri).
 async function tauriApi(): Promise<Api> {
@@ -45,6 +45,8 @@ async function tauriApi(): Promise<Api> {
     exportGame: (target) => invoke<ExportReport>("export_game", { target }),
     onPlayLog: (callback) => listen<LogLine>("play-log", (e) => callback(e.payload)),
     onPlayExit: (callback) => listen<number | null>("play-exit", (e) => callback(e.payload)),
+    debugSend: (message) => invoke("debug_send", { message }),
+    onDebugMessage: (callback) => listen<DebugMessage>("debug-message", (e) => callback(e.payload)),
   };
 }
 
