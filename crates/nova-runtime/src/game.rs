@@ -2065,6 +2065,33 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             },
         )?,
     )?;
+    // line(x1, y1, x2, y2, width [, color]): a straight stroke, `width` units thick, from one point to the other (one turned rectangle,
+    // for icons drawn as strokes)
+    let s = shared.clone();
+    ui.set(
+        "line",
+        lua.create_function(
+            move |_, (x1, y1, x2, y2, width, color): (f64, f64, f64, f64, f64, Option<Table>)| {
+                let mut sh = s.borrow_mut();
+                let (dx, dy) = (x2 - x1, y2 - y1);
+                let len = (dx * dx + dy * dy).sqrt();
+                if len <= 0.0 || width <= 0.0 {
+                    return Ok(());
+                }
+                let mut inst = rect_instance(
+                    &sh,
+                    (x1 + x2) * 0.5 - len * 0.5,
+                    (y1 + y2) * 0.5 - width * 0.5,
+                    len,
+                    width,
+                    rgba(color)?,
+                );
+                inst.rotation = dy.atan2(dx) as f32;
+                sh.ui.push(inst);
+                Ok(())
+            },
+        )?,
+    )?;
     // slant(x, y, w, h, cut [, color]): a panel whose right edge leans: `w` wide at the top and `w - cut` at the bottom (a negative cut
     // leans it the other way). One rectangle for the straight part and a strip one screen pixel tall for each row of the leaning part.
     let s = shared.clone();

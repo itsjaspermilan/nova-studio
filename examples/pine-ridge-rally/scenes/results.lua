@@ -35,112 +35,98 @@ function Results:draw()
   backdrop.draw(self.t, "results")
 end
 
--- The screen is two columns, so that nothing can run into anything else however many rows there are: the table on the left (the finishing
--- order, a trial's laps or a stage's sections), and on the right a summary (your time, best lap or score and stars, any new records) with
--- the choices under it. It is one nova.ui.menu tree: the engine places every row from the panel it sits in, and every name and time
--- is fitted to its own cell.
-local TABLE_W, SIDE_W, BETWEEN = 560, 304, 24
-local TABLE_H = 476 - 108
+
+
+-- The screen, as the mockup has it: an orange panel down the left with the place, your time and the choices, and on the right the table
+-- (the finishing order, a trial's laps or a stage's sections) with three facts under it. It is one nova.ui.menu tree: the engine places
+-- every row, and fits every name and time to its cell.
+local C, F = ui.color, ui.font
+local RIGHT_W = 489
 
 local function add(list, items) for _, it in ipairs(items) do list[#list + 1] = it end return list end
 
 -- (each row slides in from the right a little after the one above; every row arrives, however many there are)
 local function slide(self, i) return (1 - math.min(1, math.max(0, self.t * 3.5 - 0.4 - (i - 1) * 0.25))) * 60 end
 
--- a medal from the sheet, as a picture in a row
-local function medal(frame, scale, colour)
-  return { "box", w = 16 * scale, h = 16 * scale, draw = function(r)
-    nova.ui.sprite("medal", r.x + r.w / 2, r.y + r.h / 2, { frame = frame, scale = scale, color = colour })
-  end }
-end
-
--- the summary on the right: { label, value, colour } lines, then any new records (green) under them, then the choices
-local function side(self, lines, records, top, choices)
-  local summary = { "panel", pad = { 18, 12 }, gap = 4 }
-  if top then summary[#summary + 1] = top end
-  for _, l in ipairs(lines) do
-    summary[#summary + 1] = { "row", h = 36, { "text", l[1], style = "label", w = 110 }, { "text", l[2], size = 26, font = "mono", color = l[3] or ui.color.white, align = "right", grow = 1 } }
+-- a row of the table: { number, name, extra, value } cells; `you` is the light row
+local function table_row(self, i, h, cells, you)
+  local ink = you and C.ink or C.white
+  local row = { "row", h = h, pad = { 15, 0 }, gap = 9, dx = slide(self, i), panel = { color = you and C.white or C.panel } }
+  for _, c in ipairs(cells) do
+    local cellnode = { "text", c.text, font = c.font or (you and F.heavy or F.bold), size = (c.size or 22.5) + (you and 2 or 0),
+                       color = c.color or ink, w = c.w, grow = (not c.w) and 1 or nil, align = c.align, spacing = c.spacing }
+    row[#row + 1] = cellnode
   end
-  for _, rec in ipairs(records) do summary[#summary + 1] = { "text", rec, size = 16, color = ui.color.green } end
-  local col = { "column", w = SIDE_W, gap = 6, summary, { "space", h = 16 } }
-  for i, label in ipairs(choices) do col[#col + 1] = { "button", label, id = i, w = SIDE_W - 14 } end
-  return col
+  return row
 end
 
-local function heading(text, sub, colour)
-  return { "column", gap = 2, { "text", text, style = "heading", color = colour }, { "text", sub, style = "sub" } }
+-- a fact under the table: a coloured line along its top, a quiet label, the value big
+local function card(label, value, colour)
+  return { "panel", grow = 1, pad = { 13.5, 9 }, gap = 0,
+    { "box", h = 4.5, draw = function(r) nova.ui.rect(r.x - 13.5, r.y - 9, r.w + 27, 4.5, colour) end },
+    { "text", label, font = F.body, size = 16.5, color = C.dim },
+    { "text", value, font = F.heavy, size = 33 } }
 end
 
--- what the choices do
-function Results:choose(r)
-  if not r.pressed then return end
-  audio.sfx("menu_accept")
-  audio.stop_music(0.4)
-  local choice = tonumber(r.pressed)
-  if choice == 1 then transition.cover(transition.race_spec(), function() nova.goto_scene(state.current_track().id) end)
-  elseif choice == 2 then nova.goto_scene("title", "select")
-  else nova.goto_scene("title", "menu") end
+local function gap_text(d)
+  if not d then return nil end
+  if d <= 0.005 then return "Fastest" end
+  return string.format("+%.2f to leader", d)
 end
 
--- the rally's results: each section's time against its par and the points it earned, the total and the stars
-function Results:rally_tree()
+-- what the left panel says, and the table and facts on the right, for each kind of result
+function Results:content()
   local r = self.r
-  local rally = r.rally
-  -- the sections, as many as there are: the rows close up to fit the panel
-  local rows = #rally.sections
-  local rh = math.min(34, math.floor((TABLE_H - 46) / math.max(1, rows)))
-  local size = rh >= 30 and 20 or 17
-  local tbl = { "panel", w = TABLE_W, pad = { 16, 8 }, gap = 0,
-    { "row", h = 32, pad = { 8, 0 }, { "text", "SECTION", style = "label", w = 106 }, { "text", "TIME", style = "label", w = 170 },
-      { "text", "TO BEAT", style = "label", grow = 1 }, { "text", "POINTS", style = "label", align = "right", w = 90 } } }
-  for i, sec in ipairs(rally.sections) do
-    local good = sec.time <= sec.par * 1.1
-    tbl[#tbl + 1] = { "row", h = rh, pad = { 8, 0 }, dx = slide(self, i),
-      panel = i % 2 == 0 and { sprite = false, color = { 255, 255, 255, 14 }, border = false } or nil,
-      { "text", tostring(i), size = size, font = "mono", w = 106 },
-      { "text", ui.time(sec.time), size = size, font = "mono", color = good and ui.color.green or ui.color.white, w = 170 },
-      { "text", ui.time(sec.par), size = size, font = "mono", color = ui.color.dim, grow = 1 },
-      { "text", tostring(sec.score), size = size, font = "mono", color = ui.color.gold, align = "right", w = 90 } }
-  end
-  local records = {}
-  if r.record_score then records[#records + 1] = "New best score" end
-  if r.record_time then records[#records + 1] = "New best time" end
-  local stars = { "row", h = 50, justify = "center", gap = 16 }
-  for k = 1, 3 do stars[#stars + 1] = medal(0, 2.2, k <= rally.stars and { 255, 255, 255, 255 } or { 90, 90, 100, 150 }) end
-  return heading(rally.stars == 3 and "STAGE WON!" or "STAGE COMPLETE", r.track_name, ui.color.gold), tbl,
-    side(self, { { "SCORE", rally.score .. " / " .. rally.max, ui.color.gold }, { "TIME", ui.time(rally.time) } }, records, stars, RALLY_CHOICES)
-end
-
--- a race or a time trial: the finishing order (a trial: its laps, the fastest picked out)
-function Results:race_tree()
-  local r = self.r
-  local headline = r.trial and "TIME TRIAL" or (r.place == 1 and "YOU WIN!") or (r.place == 2 and "SECOND PLACE") or (r.place == 3 and "THIRD PLACE") or "FINISHED"
-  local rh = math.min(46, math.floor((TABLE_H - 16) / math.max(1, #r.rows)))
-  local tbl = { "panel", w = TABLE_W, pad = { 6, 8 }, gap = 0 }
-  for i, row in ipairs(r.rows) do
-    local color = row.you and ui.color.gold or ui.color.white
-    local line = { "row", h = rh, pad = { 18, 0, 14, 0 }, gap = 10, dx = slide(self, i),
-      panel = row.you and { sprite = false, color = { 245, 158, 11, 60 }, border = false } or nil }
-    if not r.trial then
-      add(line, { i <= 3 and medal(i - 1, 2) or { "space", w = 32 }, { "text", ui.ordinal(i), size = 24, color = color, w = 60 } })
+  local left, rows, cards, label = {}, {}, {}, "STANDINGS"
+  if r.rally then
+    local rally = r.rally
+    left = { kicker = "STAGE COMPLETE", big = tostring(rally.stars), small = rally.stars == 1 and " star" or " stars",
+             time = ui.time(rally.time), badge = (r.record_score and "New best score") or (r.record_time and "New best time") or (rally.score .. " points") }
+    label = "SECTIONS"
+    local n = #rally.sections
+    local h = math.min(40, math.floor(270 / math.max(1, n)) - 3)
+    rows[#rows + 1] = { "row", h = 24, pad = { 15, 0 }, gap = 9,
+      { "text", "#", style = "label", size = 15, w = 30 }, { "text", "TIME", style = "label", size = 15, grow = 1 },
+      { "text", "TO BEAT", style = "label", size = 15, w = 110 }, { "text", "POINTS", style = "label", size = 15, w = 80, align = "right" } }
+    for i, sec in ipairs(rally.sections) do
+      local good = sec.time <= sec.par * 1.1
+      rows[#rows + 1] = table_row(self, i, h, {
+        { text = tostring(i), font = F.heavy, w = 30 },
+        { text = ui.time(sec.time), font = F.semi, size = 19.5, color = good and C.green or C.white },
+        { text = ui.time(sec.par), font = F.medium, size = 18, color = C.dim, w = 110 },
+        { text = tostring(sec.score), font = F.heavy, color = C.gold, w = 80, align = "right" } })
     end
-    local time = row.time and ui.time(row.time) or "did not finish"
-    add(line, { { "text", row.name, size = 24, color = color, grow = 1 } })
-    if row.estimated then add(line, { { "text", "ESTIMATED", style = "label", w = 70 } }) end
-    add(line, { { "text", time, size = 24, font = "mono", align = "right", w = 140,
-                  color = row.estimated and ui.color.dim or (row.time and color or ui.color.dim) } })
-    tbl[#tbl + 1] = line
+    cards = { card("Score", rally.score .. " / " .. rally.max, C.orange), card("Stars", rally.stars .. " of 3", C.gold),
+              card("Best time", ui.time(state.best("rally", r.track)), C.green) }
+  elseif r.trial then
+    left = { kicker = "TIME TRIAL", big = tostring(#r.rows), small = #r.rows == 1 and " lap" or " laps", time = ui.time(r.best_lap),
+             time_label = "BEST LAP", badge = r.record_lap and "New lap record" or nil }
+    label = "LAPS"
+    for i, row in ipairs(r.rows) do
+      rows[#rows + 1] = table_row(self, i, row.you and 45 or 39, {
+        { text = tostring(i), font = F.heavy, w = 36 }, { text = string.upper(row.name) },
+        { text = row.time and ui.time(row.time) or "-", font = row.you and F.semi or F.medium, size = 18, w = 110, align = "right" } }, row.you)
+    end
+    cards = { card("Best lap", ui.time(r.best_lap), C.gold), card("Laps", tostring(#r.rows), C.orange),
+              card("Lap record", ui.time(state.best("lap", r.track)), C.green) }
+  else
+    local first = r.rows[1] and r.rows[1].time
+    left = { kicker = "RACE COMPLETE", big = tostring(r.place), small = ui.ordinal(r.place):gsub("^%d+", ""),
+             time = r.time and ui.time(r.time) or "-:--.--", badge = gap_text(r.time and first and (r.time - first)) }
+    for i, row in ipairs(r.rows) do
+      local time = row.time and ui.time(row.time) or "did not finish"
+      local cells = { { text = tostring(i), font = F.heavy, w = 36 }, { text = string.upper(row.name) } }
+      if row.estimated then cells[#cells + 1] = { text = "ESTIMATED", font = F.bold, size = 13.5, color = C.dim, w = 72, spacing = 0.12 } end
+      cells[#cells + 1] = { text = time, font = row.you and F.semi or F.medium, size = 18, w = 110, align = "right",
+                            color = (row.estimated or not row.time) and (row.you and C.ink or C.dim) or nil }
+      rows[#rows + 1] = table_row(self, i, row.you and 49.5 or 43.5, cells, row.you)
+    end
+    cards = { card("Best lap", ui.time(r.best_lap), r.record_lap and C.green or C.gold),
+              card("Best " .. r.laps .. (r.laps == 1 and " lap" or " laps"), ui.time(state.best("race" .. r.laps, r.track)), r.record_time and C.green or C.orange),
+              card("Laps", tostring(r.laps), C.orange) }
+    if r.record_time then cards[2][#cards[2]].text = "New!" end
   end
-  -- your time and best lap on the right, with any new records
-  local lines = {}
-  if not r.trial then lines[#lines + 1] = { "YOUR TIME", r.time and ui.time(r.time) or "-:--.--", ui.color.gold } end
-  lines[#lines + 1] = { "BEST LAP", ui.time(r.best_lap), r.record_lap and ui.color.green or ui.color.white }
-  if r.trial then lines[#lines + 1] = { "LAPS", tostring(#r.rows) } end
-  local records = {}
-  if r.record_lap then records[#records + 1] = "New lap record" end
-  if r.record_time then records[#records + 1] = "New race record" end
-  return heading(headline, r.track_name .. "  ·  " .. r.laps .. (r.laps == 1 and " lap" or " laps"), r.place == 1 and not r.trial and ui.color.gold or ui.color.white),
-    tbl, side(self, lines, records, nil, CHOICES)
+  return left, rows, cards, label
 end
 
 function Results:draw_ui()
@@ -149,16 +135,46 @@ function Results:draw_ui()
 end
 
 function Results:draw_screens()
-  local head, tbl, right
-  if self.r.rally then head, tbl, right = self:rally_tree() else head, tbl, right = self:race_tree() end
+  local r = self.r
+  local left, rows, cards, label = self:content()
+  ui.side_panel(390, 1, C.orange)
+  local choices = r.rally and RALLY_CHOICES or CHOICES
+  local col = { "column", anchor = "topleft", x = 6, w = 285, gap = 0,
+    { "text", left.kicker, font = F.bold, size = 18, spacing = 0.2, color = C.ink },
+    { "row", h = 104, align = "end", gap = 0,
+      { "text", left.big, font = F.title, size = 112, color = C.ink, h = 104 },
+      { "text", left.small, font = F.title, size = 48, color = C.ink, h = 60, align_self = "start", grow = 1 } },
+    { "text", string.upper(r.track_name), font = F.heavy, size = 30, color = C.ink },
+    { "space", h = 14 },
+    { "text", left.time_label or "YOUR TIME", font = F.semi, size = 16.5, spacing = 0.1, color = C.ink },
+    { "text", left.time, font = F.heavy, size = 66, color = C.ink, h = 62 } }
+  if left.badge then
+    col[#col + 1] = { "row", { "text", left.badge, font = F.heavy, size = 28.5, color = C.green, panel = { color = C.ink }, pad = { 13.5, 3 } }, { "space", grow = 1 } }
+  end
+  col[#col + 1] = { "space", grow = 1 }
+  for i, c in ipairs(choices) do col[#col + 1] = { "button", string.upper(c), id = i, look = "dark", h = 36 } end
+  local right = { "column", anchor = "topright", w = RIGHT_W, gap = 4.5,
+    { "text", label, style = "label", h = 26 } }
+  add(right, rows)
+  add(right, { { "space", h = 15 }, { "row", gap = 7.5, cards[1], cards[2], cards[3] } })
+  col.h = 444
   local m = nova.ui.menu {
-    id = "results", anchor = "top", margin = 12, w = TABLE_W + BETWEEN + SIDE_W, gap = 14, enter = false,
-    active = self.t >= 0.7,
-    head,
-    { "row", gap = BETWEEN, align = "start", tbl, right },
+    id = "results", kind = "stack", w = "100%", h = 444, margin = 33, enter = false, active = self.t >= 0.7,
+    col, right,
   }
-  ui.hints({ { "pad_dpad", "Move" }, { "pad_a", "Accept" } })
+  ui.hints({ { "pad_dpad", "Move" }, { "pad_a", "Select" } })
   self:choose(m)
+end
+
+-- what the choices do
+function Results:choose(m)
+  if not m.pressed then return end
+  audio.sfx("menu_accept")
+  audio.stop_music(0.4)
+  local choice = tonumber(m.pressed)
+  if choice == 1 then transition.cover(transition.race_spec(), function() nova.goto_scene(state.current_track().id) end)
+  elseif choice == 2 then nova.goto_scene("title", "select")
+  else nova.goto_scene("title", "menu") end
 end
 
 return Results

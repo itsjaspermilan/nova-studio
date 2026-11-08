@@ -90,7 +90,7 @@ drives it from your own clock).
 
 The d-pad and the left stick move to the nearest focusable thing in that direction: the one most in line, then the nearest. With
 nothing that way the focus wraps round to the far end of the same line (a menu's `wrap = false` stops that). In a grid with
-`flow = true`, left and right go to the one before or after in reading order, across the rows (a card chooser). A button with
+`flow = true` (or a column with it), left and right go to the one before or after in reading order, across the rows (a card chooser, a list that left and right also step through). A button with
 `adjust = true` takes left and right itself (`r.step`), for volumes and choices. `disabled = true` shows a button greyed and skips
 it; `focusable = false` skips it without greying it. `focus = true` on an item makes it the first focus.
 
@@ -143,6 +143,11 @@ nova.ui.theme {
 }
 ```
 
+A panel, a button or the focus can lean: `slant = 12` draws it with its right edge leaning in by 12 units at the bottom
+(`nova.ui.slant(x, y, w, h, cut, color)` draws one directly, a screen pixel row at a time). A text style can space its letters out:
+`spacing = 0.2` is CSS's `letter-spacing: 0.2em` (also an option of `nova.ui.text`). `nova.ui.line(x1, y1, x2, y2, width, color)`
+draws a stroke, for icons drawn as lines (Pine Ridge's pace-note icons are).
+
 Colours can name the theme's own (`"accent"`, `"ink"`, `"dim"`). The focus slides to the focused button (`slide`, 0 jumps); a
 focused card (a focusable panel, box or button with children) gets a ring `grow` thick round it, or the `focus.sprite` behind it.
 A button's words turn from `button.text` to `focus.text` as the highlight arrives.
@@ -150,7 +155,8 @@ A button's words turn from `button.text` to `focus.text` as the highlight arrive
 `draw` hooks replace the drawing of buttons, the focus or panels for a game with a look of its own: `r` is the rectangle, `node`
 the table (with its own fields, so `look = "tab"` can pick a style), and `ctx` has `text`, `kind`, `card`, `focused`, `near` (0 to
 1, how near the sliding highlight is), `alpha`, `disabled` and `theme`. Pine Ridge Rally's theme (`lib/ui.lua`) draws its Kenney
-bars, the gold bar with its bobbing arrow and the class tabs this way. Text is always drawn over the UI's rectangles and pictures,
+look this way: the orange focus bar with a slanted end, list rows with a number and a best time, class tabs, the garage's car
+dots and dark buttons on the results' orange panel. Text is always drawn over the UI's rectangles and pictures,
 so a hook can draw in any order.
 
 ## Menus as files

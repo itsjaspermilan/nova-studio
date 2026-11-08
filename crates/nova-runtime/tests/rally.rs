@@ -311,8 +311,7 @@ fn the_controls_screen_remaps_a_key_and_can_put_the_defaults_back() {
         frame(&mut g, &[]);
     }
     tap(&mut g, "key:Enter"); // the title screen
-    tap(&mut g, "key:ArrowDown");
-    tap(&mut g, "key:ArrowDown");
+    tap(&mut g, "key:ArrowUp"); // (up from Race wraps round to Options, the last of the main menu)
     tap(&mut g, "key:Enter"); // Options
     for _ in 0..7 {
         tap(&mut g, "key:ArrowDown");

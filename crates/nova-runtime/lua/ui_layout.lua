@@ -161,7 +161,7 @@ end
 local function text_style(n, T, base)
   -- (most texts say only their style: those share one table per style and theme, made once)
   local plain = n.font == nil and n.size == nil and n.color == nil and n.align == nil and n.shadow == nil and n.bold == nil
-    and n.outline == nil and n.fallback == nil
+    and n.outline == nil and n.fallback == nil and n.spacing == nil
   local cache, ckey
   if plain then
     cache = rawget(T, "_styles")
@@ -179,7 +179,7 @@ local function text_style(n, T, base)
   if shadow == nil then shadow = st.shadow end
   if shadow == nil then shadow = T.shadow end
   local out = { font = font, size = size, color = col, align = align, shadow = shadow, bold = n.bold or st.bold, outline = n.outline or st.outline,
-                fallback = n.fallback or st.fallback or T.fallback }
+                fallback = n.fallback or st.fallback or T.fallback, spacing = n.spacing or st.spacing }
   if cache then cache[ckey] = out end
   return out
 end
@@ -191,7 +191,7 @@ local function measure_text(text, st, wrap_w)
   local fb = st.fallback
   if type(fb) == "table" then fb = table.concat(fb, ",") end
   local face = st.font or ""
-  if fb or st.bold then face = face .. "|" .. tostring(fb) .. "|" .. tostring(st.bold) end
+  if fb or st.bold or st.spacing then face = face .. "|" .. tostring(fb) .. "|" .. tostring(st.bold) .. "|" .. tostring(st.spacing) end
   local by_face = sizes[face]
   if not by_face then by_face = {}; sizes[face] = by_face end
   local wrap_key = st.size * 100000 + (wrap_w and math.floor(wrap_w * 4) + 1 or 0)
@@ -199,7 +199,7 @@ local function measure_text(text, st, wrap_w)
   if not by_size then by_size = {}; by_face[wrap_key] = by_size end
   local hit = by_size[text]
   if hit then return hit[1], hit[2] end
-  local o = { font = st.font, size = st.size, fallback = st.fallback, bold = st.bold }
+  local o = { font = st.font, size = st.size, fallback = st.fallback, bold = st.bold, spacing = st.spacing }
   if wrap_w then o.width = math.max(1, wrap_w) end
   local w, h = ui.text_size(text, o)
   if sizes_count >= 4000 then sizes, sizes_count = {}, 0; return w, h end
@@ -503,9 +503,9 @@ end
 -- the nearest focusable thing from `cur` in direction `d` (the one most in line, then nearest); with nothing that way, the one at the
 -- far end in line (the focus wraps round)
 local function nearest(list, cur, d, wrap)
-  -- in a grid with `flow`, left and right go to the one before or after in reading order (round from the last to the first)
+  -- in a grid or column with `flow`, left and right go to the one before or after in reading order (round from the last to the first)
   local p = cur._parent
-  if p and p._kind == "grid" and p.flow and (d == "left" or d == "right") then
+  if p and (p._kind == "grid" or p._kind == "column" or p._kind == "panel") and p.flow and (d == "left" or d == "right") then
     local mine = {}
     for _, c in ipairs(list) do if c._parent == p then mine[#mine + 1] = c end end
     for i, c in ipairs(mine) do
@@ -572,7 +572,7 @@ end
 
 local function draw_text_in(text, st, x, y, w, h, a, col, wrap)
   local o = { font = st.font, size = st.size, color = fade(col or st.color, a), shadow = st.shadow and (a >= 1 or nil) and st.shadow,
-              bold = st.bold, outline = st.outline, fallback = st.fallback, align = st.align, width = math.max(1, w) }
+              bold = st.bold, outline = st.outline, fallback = st.fallback, align = st.align, width = math.max(1, w), spacing = st.spacing }
   if wrap then
     o.fit, o.height = "wrap", h
     ui.text(x, y, text, o)

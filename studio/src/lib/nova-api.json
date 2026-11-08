@@ -371,6 +371,13 @@
   "group": "Drawing"
  },
  {
+  "name": "nova.ui.line",
+  "kind": "function",
+  "signature": "nova.ui.line(x1, y1, x2, y2, width [, color])",
+  "doc": "A straight stroke `width` units thick from one point to the other, in the UI layer (one turned rectangle): for icons and arrows drawn as strokes.",
+  "group": "Drawing"
+ },
+ {
   "name": "nova.ui.text",
   "kind": "function",
   "signature": "nova.ui.text(x, y, text [, opts]) -> width, height, size",
