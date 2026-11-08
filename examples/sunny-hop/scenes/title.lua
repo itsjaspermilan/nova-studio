@@ -32,6 +32,7 @@ function Title:enter()
   audio.music("title")
   transition.reveal(0.2)
   self.art = nil
+  nova.log("sunny: title")
 end
 
 function Title:update(dt)
@@ -63,6 +64,7 @@ function Title:update(dt)
     self.sel = sel
     if act == "accept" then
       audio.sfx("accept")
+      nova.log("sunny: menu " .. ITEMS[sel])
       if sel == 1 then
         transition.cover({ title = "Sunny Hop", sub = "The world map", color = { 255, 200, 50 } }, function() nova.goto_scene("map") end)
       elseif sel == 2 then self.phase, self.menu_t, self.opt_sel = "options", 0, 1
@@ -178,7 +180,7 @@ function Title:draw_art()
   if self.art == "icon" then
     nova.ui.rect(0, 0, w, h, { 110, 196, 255, 255 })
     ui.icon("fx/glow", w / 2, h * 0.62, h * 1.2, { 255, 240, 160, 200 })
-    nova.ui.sprite("hero", w / 2, h * 0.5, { frame = 4, w = h * 1.05, h = h * 1.05 })
+    nova.ui.sprite("ui/hero_icon", w / 2, h * 0.5, { w = h * 1.05, h = h * 1.05 })
     return
   end
   local size = math.floor(math.min(w * 0.17, h * 0.2))

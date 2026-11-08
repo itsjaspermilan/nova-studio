@@ -30,8 +30,11 @@ function Crusher:act(dt)
     if self.y <= self.home_y then self.mode = "wait" end
   end
 end
-function Crusher:predict(dt)
-  if self.mode == "fall" then return self.x, math.min(self.home_y + self.reach * 48, self.y + 1000 * dt) end
+-- (for the computer player: hx, hy is where its copy of the hero is; a waiting block falls as soon as the hero is under it)
+function Crusher:predict(dt, hx, hy)
+  local floor = self.home_y + self.reach * 48
+  if self.mode == "fall" then return self.x, math.min(floor, self.y + 1000 * dt) end
+  if self.mode == "wait" and hx and math.abs(hx - self.x) < 110 and hy > self.y then return self.x, math.min(floor, self.y + 1500 * dt * dt) end
   return self.x, self.y
 end
 function Crusher:frame_now() return self.mode == "fall" and 2 or (self.mode == "wait" and 1 or 0) end

@@ -10,7 +10,7 @@ local hero = {}
 
 local H = {
   run = 270, acc = 2100, dec = 2600, turn = 3800, air_acc = 1500, air_dec = 420,
-  ice_acc = 620, ice_dec = 230, ice_turn = 1150,
+  ice_acc = 950, ice_dec = 520, ice_turn = 1700,
   jump = 950, jump_run = 0.1, grav_up = 2200, grav = 3400, apex = 0.55, apex_speed = 150, max_fall = 960, cut = 0.42,
   coyote = 0.1, buffer = 0.13, climb = 170,
   spring = 1380, spring_hold = 1540, stomp = 640, stomp_hold = 940,
@@ -102,7 +102,7 @@ function hero.step(b, inp, dt)
   -- ---- across
   b.duck = b.ground and inp.y > 0.6 and math.abs(inp.x) < 0.5
   local target = b.duck and 0 or inp.x * H.run
-  local ice = world.slippery and b.ground
+  local ice = world.slippery and b.ground and b.ground_kind ~= "platform" and not (b.ground_box and b.ground_box.oneway) -- (only solid ground is icy)
   local rate
   if b.ground then
     if target == 0 then rate = ice and H.ice_dec or H.dec
@@ -161,7 +161,7 @@ function hero.step(b, inp, dt)
     for _, s in ipairs(world.springs) do
       if b.x + hw > s.x0 and b.x - hw < s.x1 and b.y >= s.y0 and b.y <= s.y1 then
         b.vy = -(inp.jump and H.spring_hold or H.spring)
-        b.rising, b.ground = inp.jump, false
+        b.rising, b.ground = false, false -- (a spring's throw is not cut short by letting go of jump)
         b.y = s.y0
         event(b, "spring", s.owner)
         break

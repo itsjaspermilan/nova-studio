@@ -83,14 +83,16 @@ function world.remove_box(b)
   for i, x in ipairs(world.movers) do if x == b then table.remove(world.movers, i); break end end
 end
 
--- Move the moving boxes to time t; each remembers how far it went (dx, dy) so that what stands on it goes along.
+-- Move the moving boxes to time t; each remembers how far it went in the last 60th of a second (dx, dy) so that what stands on it goes along.
+-- (from its path, not from where it was before: the computer player's look-ahead visits times out of order)
 function world.set_time(t)
   world.t = t
   for _, b in ipairs(world.movers) do
     local x0, y0 = b.path(t)
-    b.dx, b.dy = x0 - b.x0, y0 - b.y0
-    b.x1, b.y1 = b.x1 + b.dx, b.y1 + b.dy
-    b.x0, b.y0 = x0, y0
+    local px, py = b.path(t - 1 / 60)
+    local w, h = b.x1 - b.x0, b.y1 - b.y0
+    b.dx, b.dy = x0 - px, y0 - py
+    b.x0, b.y0, b.x1, b.y1 = x0, y0, x0 + w, y0 + h
   end
 end
 

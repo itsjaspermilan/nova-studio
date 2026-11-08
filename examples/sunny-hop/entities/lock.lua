@@ -1,9 +1,10 @@
--- A lock block: solid until the hero touches it holding a key of its colour. Prop: color.
+-- A lock block: solid until the hero touches it holding a key of its colour; the key opens the whole wall of locks it belongs to (the
+-- same colour, touching) and is used up. Prop: color.
 local world = require("lib.world")
 local fx = require("lib.fx")
 local audio = require("lib.audio")
 local run = require("lib.run")
-local Lock = nova.entity { sprite = "items/lock_yellow", sx = 0.5, sy = 0.5, tags = { "touch", "lock" }, depth = 20, color = "yellow", opening = -1 }
+local Lock = nova.entity { sprite = "items/lock_yellow", sx = 0.5, sy = 0.5, tags = { "touch", "lock" }, depth = 20, color = "yellow", opening = -1, waiting = false }
 function Lock:create()
   self.solid = world.add_box({ x0 = self.x - 24, y0 = self.y - 24, x1 = self.x + 24, y1 = self.y + 24, owner = self })
 end
@@ -22,10 +23,21 @@ end
 function Lock:touch(hero)
   if self.opening >= 0 or not run.keys[self.color] then return end
   run.use_key(self.color)
-  self.opening = 0
-  world.remove_box(self.solid)
   audio.sfx("unlock")
-  fx.sparkle(self.x, self.y, 14)
+  self:open(0)
+end
+function Lock:open(delay)
+  if self.opening >= 0 or self.waiting then return end
+  self.waiting = true
+  self:after(delay, function()
+    self.opening = 0
+    world.remove_box(self.solid)
+    fx.sparkle(self.x, self.y, 10)
+  end)
+  world.remove_box(self.solid)
+  for _, other in ipairs(nova.all("lock")) do
+    if other ~= self and other.color == self.color and math.abs(other.x - self.x) + math.abs(other.y - self.y) < 60 then other:open(delay + 0.08) end
+  end
 end
 function Lock:on_destroy() world.remove_box(self.solid) end
 return Lock

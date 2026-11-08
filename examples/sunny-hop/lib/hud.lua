@@ -17,6 +17,12 @@ end
 function hud.draw(slide)
   local w = nova.view()
   local oy = -(1 - (slide or 1)) * 90
+  -- soft plates behind the counters and the stopwatch, so that they read over any sky
+  local keys = 0
+  for _, c in ipairs({ "yellow", "blue", "green", "red" }) do if run.keys[c] then keys = keys + 1 end end
+  local left_w = 30 + run.max_hearts * 40 + 26 + 26 + ui.width(tostring(math.max(run.coins, 100)), ui.LARGE) + 26 + 3 * 38 + keys * 36
+  ui.shade(8, 8 + oy, left_w, 54, 110)
+  ui.shade(w - (run.mode == "trial" and 236 or 210), 8 + oy, (run.mode == "trial" and 228 or 202), run.mode == "trial" and 76 or 54, 110)
   -- hearts
   local x, y = 30, 34 + oy
   local hb = bounce(run.pulse.hearts)
@@ -35,7 +41,7 @@ function hud.draw(slide)
   local gb = bounce(run.pulse.gems)
   for i = 1, 3 do
     local got = run.gems[i]
-    ui.icon(GEM[i], gx + (i - 1) * 38, y, (got and 40 or 32) * (got and gb or 1), got and { 255, 255, 255, 255 } or { 40, 40, 70, 120 })
+    ui.icon(GEM[i], gx + (i - 1) * 38, y, (got and 40 or 32) * (got and gb or 1), got and { 255, 255, 255, 255 } or { 255, 255, 255, 80 })
   end
   -- keys
   local kx = gx + 3 * 38 + 14

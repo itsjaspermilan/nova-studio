@@ -53,6 +53,8 @@ function Map:enter()
     state.result = nil
   end
   transition.reveal(0.35)
+  local stars, max = state.total_stars()
+  nova.log("sunny: map at " .. n.lv.id .. " stars=" .. stars .. "/" .. max)
 end
 
 function Map:camera(dt, snap)
@@ -82,6 +84,7 @@ function Map:update(dt)
     if k >= 1 then
       self.walk = nil
       self.at = wk.to
+      nova.log("sunny: map at " .. self.nodes[self.at].lv.id)
       self.panel_t = 0
       audio.sfx("land", { volume = 0.6 })
       local wd = self.nodes[self.at].lv.world
@@ -196,7 +199,7 @@ function Map:draw_ui()
     local _, got = state.stars(lv)
     for k2 = 1, 3 do ui.star(px + 112 + (k2 - 1) * 36, py + 80, 32, got[k2]) end
     local GEM = { "ui/gem_blue", "ui/gem_green", "ui/gem_red" }
-    for g = 1, 3 do ui.icon(GEM[g], px + 236 + (g - 1) * 34, py + 80, rec.gems[g] and 32 or 26, rec.gems[g] and nil or { 60, 60, 80, 90 }) end
+    for g = 1, 3 do ui.icon(GEM[g], px + 236 + (g - 1) * 34, py + 80, rec.gems[g] and 32 or 26, rec.gems[g] and nil or { 40, 40, 60, 110 }) end
     ui.right("Best " .. (rec.best and ui.time(rec.best) or "--"), px + pw - 24, py + 38, ui.MEDIUM, ui.color.ink, { valign = "middle", outline = false })
     if lv.target then ui.right("Star time " .. ui.time(lv.target), px + pw - 24, py + 78, ui.SMALL, ui.color.dim, { valign = "middle", outline = false }) end
   end

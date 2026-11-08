@@ -112,7 +112,7 @@ fn the_title_menu_leads_to_the_map_and_options_and_back() {
     wait(&mut g, 60, &mut log);
     // only the first level is open: walking right does nothing
     tap(&mut g, "key:ArrowRight", &mut log);
-    wait(&mut g, 40, &mut log);
+    wait(&mut g, 90, &mut log);
     assert_eq!(count(&log, "sunny: map at grass-1"), 0, "{log:?}");
     tap(&mut g, "pad:east", &mut log); // B: the title
     run_until(&mut g, &mut log, "back to the title", 120, "sunny: title");
@@ -135,7 +135,7 @@ fn a_level_is_played_finished_saved_and_the_next_one_opens() {
         120,
         "sunny: play grass-0 normal",
     );
-    wait(&mut g, 40, &mut log);
+    wait(&mut g, 90, &mut log);
     // the pause menu: Resume
     tap(&mut g, "key:Escape", &mut log);
     tap(&mut g, "pad:south", &mut log);
@@ -167,7 +167,7 @@ fn a_level_is_played_finished_saved_and_the_next_one_opens() {
         120,
         "sunny: play grass-1 normal",
     );
-    wait(&mut g, 40, &mut log);
+    wait(&mut g, 90, &mut log);
     // pause, World map: the map stands on the new level, with the stars earned so far
     tap(&mut g, "key:Escape", &mut log);
     tap(&mut g, "key:ArrowDown", &mut log);

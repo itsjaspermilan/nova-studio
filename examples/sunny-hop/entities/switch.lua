@@ -11,7 +11,6 @@ end
 function Switch:zone() return self.x - 30, self.y - 22, self.x + 30, self.y end
 function Switch:touch(hero)
   if self.pressed or hero.b.vy < -10 then return end
-  if hero.b.y > self.y - 4 then return end
   self.pressed, self.squash = true, 0.7
   run.press(self.color)
   audio.sfx("switch")

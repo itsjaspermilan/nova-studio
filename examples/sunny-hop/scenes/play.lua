@@ -71,6 +71,7 @@ function Play:enter(id, mode)
   end)
   audio.music(props.music or lv.world.music or "grass")
   transition.reveal(0.3)
+  nova.log("sunny: play " .. lv.id .. " " .. self.mode)
   if bot.active then bot.begin(self, lv) end
 end
 
@@ -104,7 +105,7 @@ function Play:update(dt)
   transition.update(dt)
   fx.update(dt)
   self.t = self.t + dt
-  self.banner_t = self.banner_t + dt
+  if self.phase ~= "paused" then self.banner_t = self.banner_t + dt end
   self.menu_t = self.menu_t + dt
   local h = self.hero
   if self.phase == "paused" then return self:update_pause() end
@@ -123,6 +124,8 @@ function Play:update(dt)
   if self.phase == "play" then
     if run.clock and not run.finished then run.time = run.time + dt end
     if bot.active then bot.update(self, dt) end
+    -- F9: the computer finishes this level (for tests and screenshots)
+    if nova.input.pressed("autoplay") and not bot.active then bot.start_one(); bot.begin(self, self.lv) end
     if nova.input.pressed("pause") and not transition.busy() and h.mode == "play" then
       self.phase, self.pause_sel, self.menu_t = "paused", 1, 0
       nova.pause(true)
@@ -197,6 +200,9 @@ end
 function Play:show_results()
   self.phase, self.menu_t, self.res_sel = "results", 0, 1
   self.result = state.finish(self.lv, { gems = run.gems, time = run.time, coins = run.coins })
+  local rec = state.record(self.lv.id)
+  nova.log(string.format("sunny: finished %s %s time=%.2f gems=%d/3 stars=%d saved=%s best=%.2f", self.lv.id, self.mode, run.time,
+    (run.gems[1] and 1 or 0) + (run.gems[2] and 1 or 0) + (run.gems[3] and 1 or 0), self.result.stars, tostring(rec.done), rec.best or -1))
   state.result = { id = self.lv.id, result = self.result }
   local nxt = levels.next(self.lv)
   self.res_items = {}
@@ -205,6 +211,7 @@ function Play:show_results()
   if self.mode ~= "trial" then self.res_items[#self.res_items + 1] = { "Play again", "again" } end
   self.res_items[#self.res_items + 1] = { "World map", "map" }
   self.stars_shown = 0
+  if self.result.new_best then self:after(1.6, function() audio.sfx("new_best") end) end
   if bot.active then bot.finished(self, self.lv) end
 end
 
@@ -267,7 +274,7 @@ function Play:draw_ui()
   fx.draw_floaters(ui)
   local slide = math.min(1, self.t / 0.5)
   if self.phase ~= "results" then hud.draw(ui.ease_out(slide)) end
-  self:draw_banner()
+  if self.phase ~= "paused" and self.phase ~= "results" then self:draw_banner() end
   if self.phase == "count" then
     local n = math.ceil(self.count)
     local k = self.count - math.floor(self.count)
@@ -298,7 +305,7 @@ function Play:draw_banner()
   local tw = ui.width(name, size)
   local bw = tw + 150
   local x = -bw + k * (bw + 40)
-  local y = 380
+  local y = 92
   ui.shade(x - 20, y, bw + 20, 86, 175)
   ui.icon("ui/disc", x + 56, y + 43, 70, Play.color_of(self.lv))
   ui.in_box(self.lv.label, x + 21, y + 8, 70, 70, ui.fit(self.lv.label, ui.LARGE, 60), ui.color.white)
@@ -363,7 +370,7 @@ function Play:draw_results()
     local new = false
     for _, n in ipairs(res.new_gems) do if n == i then new = true end end
     local s = new and (1 + math.max(0, math.sin(t * 6)) * 0.15) or 1
-    ui.icon(GEM[i], x1 - 22 - (3 - i) * 46, y + 16, (got and 40 or 30) * s, got and { 255, 255, 255, 255 } or { 60, 60, 80, 90 })
+    ui.icon(GEM[i], x1 - 22 - (3 - i) * 46, y + 16, (got and 40 or 30) * s, got and { 255, 255, 255, 255 } or { 40, 40, 60, 110 })
   end
   -- the choices
   if t > 0.8 then

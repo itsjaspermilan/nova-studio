@@ -51,6 +51,8 @@ const parts = {
       { name: "idle", from: 0, to: 0 }, { name: "front", from: 1, to: 1 }, { name: "walk", from: 2, to: 3 }, { name: "jump", from: 4, to: 4 },
       { name: "duck", from: 5, to: 5 }, { name: "hit", from: 6, to: 6 }, { name: "climb", from: 7, to: 8 },
     ], 120);
+    // the hero, big, for the app's icon
+    save("ui/hero_icon.png", draw(charSvg("character_yellow_jump"), { size: [512, 512] }));
     // the hero's friends on the title screen (front and jump)
     const friends = ["green", "pink", "purple", "beige"].flatMap((c) => ["front", "jump"].map((f) => draw(charSvg(`character_${c}_${f}`), { size: [192, 192] })));
     sheet("friends", friends, 192, [{ name: "green", from: 0, to: 1 }, { name: "pink", from: 2, to: 3 }, { name: "purple", from: 4, to: 5 }, { name: "beige", from: 6, to: 7 }], 400);
@@ -74,7 +76,9 @@ const parts = {
       crusher: ["block_rest", "block_idle", "block_fall", "block_rest"],
     };
     const tags = [{ name: "rest", from: 0, to: 0 }, { name: "walk", from: 1, to: 2 }, { name: "squashed", from: 3, to: 3 }];
-    for (const [name, list] of Object.entries(E)) sheet("enemies/" + name, list.map((n) => draw(enemySvg(n), { size: [96, 96] })), 96, tags, 160);
+    // the crusher is the pack's grass block, cut from castle stone instead
+    const stone = recolorWith({ "#20B860": "#6B5A8E", "#2ECC71": "#8A79AE", "#46E087": "#A493C6", "#C66A3E": "#7F8496", "#DE7E4F": "#99A0B2", "#EE9366": "#B3B9C9" });
+    for (const [name, list] of Object.entries(E)) sheet("enemies/" + name, list.map((n) => draw(enemySvg(n), { size: [96, 96], recolor: name === "crusher" ? stone : undefined })), 96, tags, 160);
   },
 
   boss() {

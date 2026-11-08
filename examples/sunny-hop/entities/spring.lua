@@ -4,7 +4,8 @@ local fx = require("lib.fx")
 local audio = require("lib.audio")
 local Spring = nova.entity { sprite = "items/spring", sx = 0.5, sy = 0.5, pivot = { 0.5, 1 }, depth = 20, out = 0, squash = 1 }
 function Spring:create()
-  world.springs[#world.springs + 1] = { x0 = self.x - 22, y0 = self.y - 26, x1 = self.x + 22, y1 = self.y - 6, owner = self }
+  -- (feet anywhere from its top down to the ground it stands on: landing on it or walking onto it both launch)
+  world.springs[#world.springs + 1] = { x0 = self.x - 18, y0 = self.y - 26, x1 = self.x + 18, y1 = self.y + 1, owner = self }
 end
 function Spring:update(dt)
   self.out = math.max(0, self.out - dt)
