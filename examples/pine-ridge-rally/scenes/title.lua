@@ -27,7 +27,9 @@ local CONTROLS = {
 function Title:enter(screen)
   backdrop.light()
   self.screen = screen or "title"
-  self.choice = 1
+  -- (the menus remember their focus while the title scene is up, going between its screens; coming back from a race they start again
+  -- on their first row)
+  for _, id in ipairs({ "main", "select", "options", "controls" }) do nova.ui.forget(id) end
   self.t = 0
   self.entered = 0
   audio.music("menu", { volume = 0.95, fade = 0.8 })
@@ -37,7 +39,7 @@ end
 function Title:leave() backdrop.leave() end
 
 function Title:go(screen)
-  self.screen, self.choice, self.entered = screen, 1, 0
+  self.screen, self.entered = screen, 0
 end
 
 local function wear()
@@ -131,6 +133,8 @@ function Title:open_pick(kind)
   self.pick.old = (kind == "car") and state.car or self:picked(kind) -- (for a car: its number in state.cars)
   self.screen = "pick"
   self.entered = 0
+  -- the page opens on the card chosen now (on the car page, a class that does not have the car opens on its tab)
+  nova.ui.focus("pick_" .. kind, "card" .. self:picked(kind))
 end
 
 -- the rows of the chooser: the difficulty is for races (a time trial has no rivals)
@@ -141,62 +145,7 @@ function Title:select_rows()
   return { "mode", "circuit", "car", "laps", "start" }
 end
 
-function Title:update_pick()
-  local pick = self.pick
-  local items, grid = self:items(pick.kind), GRIDS[pick.kind]
-  local i = self:picked(pick.kind)
-  local n, cols = #items, grid.cols
-  if pick.kind == "car" then
-    -- the classes are tabs along the top: L and R change class, and so do left and right with the tabs selected (up from the top row)
-    local handled = false
-    local step = (nova.input.pressed("tab_next") and 1) or (nova.input.pressed("tab_prev") and -1) or 0
-    if pick.tabs then
-      step = step ~= 0 and step or ((nova.input.pressed("right") and 1) or (nova.input.pressed("left") and -1) or 0)
-      if nova.input.pressed("down") then pick.tabs = false; handled = true; audio.sfx("menu_move") end
-    elseif nova.input.pressed("up") and i <= cols then
-      pick.tabs = true; audio.sfx("menu_move")
-    end
-    if step ~= 0 then self:set_class(step); audio.sfx("menu_move") end
-    if pick.tabs or step ~= 0 or handled then
-      self:pick_buttons(pick)
-      return
-    end
-  end
-  if pick.kind == "car" and class_locked(pick.class) then
-    -- a locked class: nothing to move over, and A does not keep anything
-    if nova.input.pressed("a") or nova.input.pressed("start") then audio.sfx("menu_back"); return end
-    self:pick_buttons(pick)
-    return
-  end
-  local moved = i
-  if nova.input.pressed("left") then moved = i - 1 end
-  if nova.input.pressed("right") then moved = i + 1 end
-  if nova.input.pressed("up") then moved = i - cols end
-  if nova.input.pressed("down") then moved = i + cols end
-  if moved < 1 or moved > n then
-    -- off an edge: along a row it wraps, down a column it stays
-    if nova.input.pressed("left") then moved = n elseif nova.input.pressed("right") then moved = 1 else moved = i end
-  end
-  if moved ~= i then self:set_pick(pick.kind, moved); audio.sfx("menu_move") end
-  self:pick_buttons(pick)
-end
-
-function Title:pick_buttons(pick)
-  if (nova.input.pressed("a") or nova.input.pressed("start")) and pick.kind == "circuit" and course_locked(self:picked("circuit")) then
-    audio.sfx("menu_back") -- (a locked course can be looked at, not chosen)
-    return
-  end
-  if nova.input.pressed("a") or nova.input.pressed("start") then
-    audio.sfx("menu_accept")
-    self.screen, self.entered = "select", 0
-  elseif nova.input.pressed("b") or nova.input.pressed("menu_back") then
-    audio.sfx("menu_back")
-    if pick.kind == "car" then state.car = pick.old; wear() else self:set_pick(pick.kind, pick.old) end
-    state.laps = pick.old_laps
-    self.screen, self.entered = "select", 0
-  end
-end
-
+-- (the menus themselves, and what their buttons do, are in draw_ui: nova.ui.menu reads the pad as it draws. This is the rest.)
 function Title:update(dt)
   self.t = self.t + dt
   self.entered = (self.entered or 0) + dt
@@ -210,95 +159,32 @@ function Title:update(dt)
       audio.sfx("menu_accept")
       self:go("menu")
     end
-  elseif screen == "menu" then
-    local choice, action = ui.navigate(self.choice, #MENU)
-    self.choice = choice
-    if action == "back" then audio.sfx("menu_back"); self:go("title")
-    elseif action == "accept" then
-      audio.sfx("menu_accept")
-      self:go(({ "select", "howto", "options" })[choice])
-    end
   elseif screen == "howto" then
     if nova.input.pressed("a") or nova.input.pressed("b") or nova.input.pressed("start") then audio.sfx("menu_back"); self:go("menu") end
-  elseif screen == "options" then
-    local choice, action = ui.navigate(self.choice, 8)
-    self.choice = choice
-    local step = (action == "right" and 0.1) or (action == "left" and -0.1) or 0
-    if choice == 1 and step ~= 0 then state.music_volume = math.max(0, math.min(1, state.music_volume + step)); state.save_options(); audio.sfx("menu_move") end
-    if choice == 2 and step ~= 0 then state.sfx_volume = math.max(0, math.min(1, state.sfx_volume + step)); state.save_options(); audio.sfx("menu_move") end
-    if choice == 3 and (step ~= 0 or action == "accept") then
-      state.music_style = state.music_style == "kenney" and "studio" or "kenney"
-      state.save_options(); audio.restyle(); audio.sfx("menu_move")
-    end
-    if choice == 4 and (step ~= 0 or action == "accept") then state.shadows = not state.shadows; state.save_options(); audio.sfx("menu_move") end
-    if choice == 5 and (step ~= 0 or action == "accept") then state.effects = not state.effects; state.save_options(); backdrop.light(); audio.sfx("menu_move") end
-    if choice == 6 and (step ~= 0 or action == "accept") then state.smooth = not state.smooth; state.save_options(); backdrop.light(); audio.sfx("menu_move") end
-    if choice == 7 and (step ~= 0 or action == "accept") then state.vibration = not state.vibration; state.save_options(); audio.sfx("menu_move"); if state.vibration then nova.input.rumble(0.6, 0.15) end end
-    if action == "accept" and choice == 8 then audio.sfx("menu_accept"); self:go("controls"); return end
-    if action == "back" then audio.sfx("menu_back"); self:go("menu") end
-  elseif screen == "controls" then
-    local rows = #controls.rows
-    if self.listening then
-      -- waiting for the new key or button (it gives up after a few seconds)
-      self.listen_time = self.listen_time + dt
-      local source = nova.input.next_source()
-      if source then
-        local row = controls.rows[self.choice]
-        if controls.assign(row, source) then
-          audio.sfx("menu_accept")
-          nova.log(string.format("controls: %s %s = %s", row.action, row.side or "", controls.describe(row)))
-          self.listening = false
-        else
-          audio.sfx("menu_back")
-          self.note = "That one does not fit here."
-        end
-      elseif self.listen_time > 6 then
-        self.listening = false
+  elseif screen == "controls" and self.listening then
+    -- waiting for the new key or button (it gives up after a few seconds)
+    self.listen_time = self.listen_time + dt
+    local source = nova.input.next_source()
+    if source then
+      local row = controls.rows[self.listen_row]
+      if controls.assign(row, source) then
+        audio.sfx("menu_accept")
+        nova.log(string.format("controls: %s %s = %s", row.action, row.side or "", controls.describe(row)))
+        self.listening, self.just_listened = false, true
+      else
+        audio.sfx("menu_back")
+        self.note = "That one does not fit here."
       end
-      return
+    elseif self.listen_time > 6 then
+      self.listening, self.just_listened = false, true
     end
-    self.note = nil
-    local choice, action = ui.navigate(self.choice, rows + 1)
-    self.choice = choice
-    if action == "accept" and choice <= rows then
-      audio.sfx("menu_accept")
-      self.listening, self.listen_time = true, 0
-      nova.input.next_source() -- (drop the press that chose this row)
-    elseif action == "accept" and choice == rows + 1 then
-      audio.sfx("menu_accept")
-      controls.reset()
-      nova.log("controls: back to the defaults")
-    elseif action == "back" then
-      audio.sfx("menu_back")
-      self:go("options")
-    end
-  elseif screen == "pick" then
-    self:update_pick()
-  elseif screen == "select" then
-    local rows = self:select_rows()
-    self.choice = math.min(self.choice, #rows)
-    local choice, action = ui.navigate(self.choice, #rows)
-    self.choice = choice
-    local row = rows[choice]
-    local step = (action == "right" and 1) or (action == "left" and -1) or 0
-    -- (Circuit, Mode and Car are chosen on their own pages: A opens one; Laps and Difficulty are changed with left and right)
-    if row == "laps" and step ~= 0 then state.laps = math.max(1, math.min(5, state.laps + step)); audio.sfx("menu_move") end
-    if row == "difficulty" and (step ~= 0 or action == "accept") then
-      local at = 1
-      for k, d in ipairs(state.difficulties) do if d.id == state.difficulty then at = k end end
-      state.difficulty = state.difficulties[(at - 1 + (step ~= 0 and step or 1)) % #state.difficulties + 1].id
+  elseif screen == "pick" and self.pick.kind == "car" then
+    -- L and R change the class from anywhere on the car page (left and right do it on the class tab)
+    local step = (nova.input.pressed("tab_next") and 1) or (nova.input.pressed("tab_prev") and -1) or 0
+    if step ~= 0 then
+      self:set_class(step)
       audio.sfx("menu_move")
-    end
-    if action == "back" then audio.sfx("menu_back"); self:go("menu")
-    elseif (action == "accept" or action == "right") and (row == "circuit" or row == "mode" or row == "car") then
-      audio.sfx("menu_accept")
-      self:open_pick(row)
-    elseif action == "accept" and row == "start" then
-      audio.sfx("menu_accept")
-      state.save_options()
-      audio.stop_music(0.6)
-      transition.cover(transition.race_spec(), function() nova.goto_scene(state.current_track().id) end)
-      self.screen = "starting"
+      if nova.ui.focus("pick_car") ~= "tab" then nova.ui.focus("pick_car", "card1") end
     end
   end
 end
@@ -343,122 +229,270 @@ local function bar(x, y, w, label, value)
   nova.ui.rect(x + 58, y, w * math.max(0, math.min(1, value)), 7, ui.color.gold)
 end
 
-function Title:draw_pick()
+-- ---- the menus -------------------------------------------------------------------------------------------------------
+-- Each screen is a nova.ui.menu tree: what is on it, top to bottom, and where it sits on the screen. The engine lays it out, moves
+-- the gold bar with the d-pad or the stick, remembers where it was, and says which button was pressed.
+
+local function add(list, items) for _, it in ipairs(items) do list[#list + 1] = it end return list end
+local function on_off(v) return v and "< On >" or "< Off >" end
+
+function Title:main_menu()
+  logo(self.t)
+  local r = nova.ui.menu {
+    id = "main", anchor = "left", margin = 60, y = 63, w = 340, enter = self.entered,
+    { "button", "Race", id = "select" },
+    { "button", "How to play", id = "howto" },
+    { "button", "Options", id = "options" },
+  }
+  if r.back then self:go("title")
+  elseif r.pressed then audio.sfx("menu_accept"); self:go(r.pressed) end
+  ui.hints({ { "pad_a", "Accept" }, { "pad_b", "Back" } })
+end
+
+function Title:options_menu()
+  local r = nova.ui.menu {
+    id = "options", anchor = "top", y = 36, w = 420, enter = self.entered,
+    { "text", "OPTIONS", style = "heading", size = 44 },
+    { "space", h = 4 },
+    { "button", "Music volume", value = string.format("< %d%% >", math.floor(state.music_volume * 100 + 0.5)), id = "music", adjust = true },
+    { "button", "Sound volume", value = string.format("< %d%% >", math.floor(state.sfx_volume * 100 + 0.5)), id = "sound", adjust = true },
+    { "button", "Music style", value = state.music_style == "kenney" and "< Kenney loops >" or "< Nova Studio songs >", id = "style", adjust = true },
+    { "button", "Shadows", value = on_off(state.shadows), id = "shadows", adjust = true },
+    { "button", "Effects", value = on_off(state.effects), id = "effects", adjust = true },
+    { "button", "Smooth edges", value = on_off(state.smooth), id = "smooth", adjust = true },
+    { "button", "Vibration", value = on_off(state.vibration), id = "vibration", adjust = true },
+    { "button", "Controls...", id = "controls" },
+  }
+  ui.hints({ { "pad_a", "Change" }, { "pad_b", "Back" } })
+  if r.back then self:go("menu") return end
+  if r.pressed == "controls" then audio.sfx("menu_accept"); self:go("controls") return end
+  local id, step = r.changed or r.pressed, (r.step or 0) / 10
+  if not id then return end
+  if r.pressed then audio.sfx("menu_move") end -- (a step has made its sound already)
+  if id == "music" and step ~= 0 then state.music_volume = math.max(0, math.min(1, state.music_volume + step)) end
+  if id == "sound" and step ~= 0 then state.sfx_volume = math.max(0, math.min(1, state.sfx_volume + step)) end
+  if id == "style" then state.music_style = state.music_style == "kenney" and "studio" or "kenney"; audio.restyle() end
+  if id == "shadows" then state.shadows = not state.shadows end
+  if id == "effects" then state.effects = not state.effects; backdrop.light() end
+  if id == "smooth" then state.smooth = not state.smooth; backdrop.light() end
+  if id == "vibration" then
+    state.vibration = not state.vibration
+    if state.vibration then nova.input.rumble(0.6, 0.15) end
+  end
+  state.save_options()
+end
+
+function Title:controls_menu()
+  local root = { id = "controls", anchor = "top", y = 0, w = 700, enter = self.entered,
+                 active = not self.listening and not self.just_listened,
+                 { "text", "CONTROLS", style = "heading", size = 38 }, { "space", h = 4 } }
+  self.just_listened = false
+  for i, row in ipairs(controls.rows) do
+    local waiting = self.listening and self.listen_row == i
+    root[#root + 1] = { "button", row.label, value = waiting and "press a key or button..." or controls.describe(row), id = i, h = 32 }
+  end
+  root[#root + 1] = { "button", "Back to the defaults", id = "defaults", h = 32 }
+  local r = nova.ui.menu(root)
+  if self.note then ui.hint(self.note) else ui.hints({ { "pad_a", "Change" }, { "pad_b", "Back" } }) end
+  if r.back then self:go("options")
+  elseif r.pressed == "defaults" then
+    audio.sfx("menu_accept")
+    controls.reset()
+    nova.log("controls: back to the defaults")
+  elseif r.pressed then
+    audio.sfx("menu_accept")
+    self.note = nil
+    self.listening, self.listen_time, self.listen_row = true, 0, tonumber(r.pressed)
+    nova.input.next_source() -- (drop the press that chose this row)
+  end
+end
+
+function Title:howto_screen()
+  local panel = { "panel", pad = { 24, 12 }, gap = 6 }
+  for _, row in ipairs(CONTROLS) do
+    local pads = { "row", w = 100, gap = 2 }
+    for _, icon in ipairs(row[3] or {}) do pads[#pads + 1] = { "image", "ui/" .. icon, w = 30, h = 30 } end
+    panel[#panel + 1] = { "row", h = 30, gap = 0,
+      { "text", row[1], size = 20, color = ui.color.gold, w = 216 }, pads, { "space", w = 16 }, { "text", row[2], size = 17 } }
+  end
+  add(panel, {
+    { "space", h = 2 },
+    { "text", "Finish all the laps ahead of your rivals.", size = 16, align = "center" },
+    { "text", "The grass slows you down; the handbrake lets the back out.", size = 16, align = "center" },
+  })
+  nova.ui.layout { anchor = "top", margin = 40, w = 660, gap = 14, { "text", "HOW TO PLAY", style = "heading", size = 38 }, panel }
+  ui.hints({ { "pad_a", "Back" } })
+end
+
+function Title:select_menu()
+  local info = state.current_track()
+  local labels = {
+    circuit = { state.mode == "rally" and "Stage" or "Circuit", info.name .. "  >" },
+    mode = { "Mode", ({ race = "Race", trial = "Time trial", rally = "Rally" })[state.mode] .. "  >" },
+    car = { "Car", state.current_car().name .. "  >" },
+    laps = { "Laps", "< " .. state.laps .. " >" },
+    difficulty = { "Difficulty", "< " .. state.current_difficulty().name .. " >" },
+    start = { ({ race = "START RACE", trial = "START TIME TRIAL", rally = "START RALLY" })[state.mode] },
+  }
+  -- (the menu and its notes are on the left, so that the car turning behind them can be seen on the right)
+  local root = { id = "select", anchor = "topleft", margin = 40, w = 400, enter = self.entered,
+                 { "text", "CHOOSE YOUR RACE", style = "title", align = "center" }, { "space", h = 5 } }
+  for _, id in ipairs(self:select_rows()) do
+    local l = labels[id]
+    root[#root + 1] = { "button", l[1], value = l[2], id = id, adjust = id ~= "start" }
+  end
+  local on_difficulty = nova.ui.focus("select") == "difficulty"
+  local note = on_difficulty and state.current_difficulty().blurb
+    or (state.mode == "race" and info.blurb) or (state.mode == "rally" and info.blurb)
+    or "Alone on the circuit, racing the ghost of your best lap."
+  local bests
+  if state.mode == "rally" then
+    bests = { { "BEST SCORE", tostring(nova.save.get("rally_score_" .. info.id, "-")) }, { "BEST TIME", ui.time(state.best("rally", info.id)) } }
+  else
+    bests = { { "BEST " .. state.laps .. " LAPS", ui.time(state.best("race" .. state.laps, info.id)) }, { "BEST LAP", ui.time(state.best("lap", info.id)) } }
+  end
+  local notes = { "panel", h = 112, pad = { 16, 10 }, gap = 2, { "text", note, wrap = true, h = 44, color = ui.color.white } }
+  for _, b in ipairs(bests) do
+    notes[#notes + 1] = { "row", h = 26, { "text", b[1], style = "label", w = 124 }, { "text", b[2], style = "mono" } }
+  end
+  add(root, { { "space", h = 6 }, notes })
+  local r = nova.ui.menu(root)
+  ui.hints({ { "pad_dpad", "Move" }, { "pad_a", "Accept" }, { "pad_b", "Back" } })
+
+  if r.back then self:go("menu") return end
+  local id = r.changed or r.pressed
+  if id == "laps" and r.step then state.laps = math.max(1, math.min(5, state.laps + r.step)) end
+  if id == "difficulty" then
+    local at = 1
+    for k, d in ipairs(state.difficulties) do if d.id == state.difficulty then at = k end end
+    state.difficulty = state.difficulties[(at - 1 + (r.step or 1)) % #state.difficulties + 1].id
+    if r.pressed then audio.sfx("menu_move") end
+  end
+  -- (Circuit, Mode and Car are chosen on their own pages: A or right opens one; Laps and Difficulty change with left and right)
+  if (id == "circuit" or id == "mode" or id == "car") and (r.pressed or r.step == 1) then
+    audio.sfx("menu_accept")
+    self:open_pick(id)
+  elseif r.pressed == "start" then
+    audio.sfx("menu_accept")
+    state.save_options()
+    audio.stop_music(0.6)
+    transition.cover(transition.race_spec(), function() nova.goto_scene(state.current_track().id) end)
+    self.screen = "starting"
+  end
+end
+
+-- the cards of the three pick pages, drawn into the rectangle the grid gives each one (on an opaque panel, so that the gold of the
+-- chosen card shows only round its edge)
+local CARDS = {}
+local CARD_PANEL = { tint = { 255, 255, 255, 255 } }
+
+function CARDS.circuit(r, n)
+  -- the course's shape on the left; on the right its name, then one line each for the level and length, the best, and the par or
+  -- sections (each line fitted to the card: nothing runs past its edge). The blurb is under the grid, for the chosen card.
+  local item, items = n.item, n.items
+  local x, y, w, h = r.x, r.y, r.w, r.h
+  local size = h - 22
+  local open = state.course_open(items, item)
+  local tx, tw = x + size + 22, w - size - 34
+  if open then
+    course(item.id, x + 11, y + 11, size)
+  else
+    nova.ui.rect(x + 11, y + 11, size, size, { 20, 24, 36, 160 })
+    ui.center("LOCKED", y + h / 2 - 8, ui.fit("LOCKED", 14, size - 8, "mono"), ui.color.dim, { cx = x + 11 + size / 2, font = "mono" })
+  end
+  nova.ui.text(tx, y + 9, item.name, { size = 20, width = tw, fit = "shrink", color = open and ui.color.white or ui.color.dim, shadow = true, font = "rounded" })
+  local level = item.level or 1
+  local mono = function(text, ty, colour)
+    nova.ui.text(tx, ty, text, { size = 13, width = tw, fit = "shrink", color = colour, shadow = true, font = "mono" })
+  end
+  local length = item.km and (item.km .. " KM") or (item.laps .. " LAPS")
+  ui.text(tx, y + 37, string.upper(state.levels[level]), 13, LEVEL_COLOR[level], { font = "mono" })
+  ui.right(length, tx + tw, y + 37, 13, ui.color.dim, { font = "mono" })
+  if not open then
+    mono("Not open yet", y + 58, ui.color.gold)
+  elseif item.km then
+    mono("BEST " .. tostring(nova.save.get("rally_score_" .. item.id, "-")), y + 58, ui.color.gold)
+    mono((item.sections or 5) .. " SECTIONS", y + 75, ui.color.dim)
+  else
+    mono("BEST " .. ui.time(state.best("lap", item.id)), y + 58, ui.color.gold)
+    local par = (pars.laps[item.id] or {})[state.current_car().class]
+    if par then mono("PAR  " .. ui.time(par), y + 75, ui.color.dim) end
+  end
+end
+
+function CARDS.mode(r, n)
+  ui.text(r.x + 20, r.y + 24, n.item.name, 30, ui.color.white, { font = "bold" })
+  nova.ui.text(r.x + 20, r.y + 74, n.item.blurb, { size = 17, color = { 214, 224, 238 }, width = r.w - 40, fit = "wrap", height = r.h - 84, shadow = true, font = "rounded" })
+end
+
+function CARDS.car(r, n)
+  local item, x, y, w, h = n.item, r.x, r.y, r.w, r.h
+  nova.ui.text(x + 12, y + 8, item.name, { size = 20, width = w - 24, fit = "shrink", color = ui.color.white, shadow = true, font = "rounded" })
+  bar(x + 12, y + 38, w - 82, "POWER", (item.power - 6) / 6.5)
+  bar(x + 12, y + 52, w - 82, "SPEED", (item.top - 28) / 24)
+  bar(x + 12, y + 66, w - 82, "GRIP", (item.grip - 0.75) / 0.7)
+  bar(x + 12, y + 80, w - 82, "DRIFT", item.oversteer)
+  if n.locked then nova.ui.rect(x, y, w, h, { 0, 0, 0, 150 }) end
+end
+
+-- The pages that list the choices for Circuit, Mode and Car as a grid (from the chooser, A on one of those rows). Moving over a card
+-- tries it (the backdrop and the car change behind), A keeps it and B puts back what there was.
+function Title:pick_menu()
   local pick = self.pick
-  local items, grid = self:items(pick.kind), GRIDS[pick.kind]
-  local title = ({ circuit = state.mode == "rally" and "CHOOSE A STAGE" or "CHOOSE A CIRCUIT", mode = "CHOOSE A MODE", car = "CHOOSE A CAR" })[pick.kind]
-  ui.text(grid.x, pick.kind == "car" and 12 or 30, title, ui.fit(title, pick.kind == "car" and 30 or 36, 560), ui.color.gold, { font = "bold" })
-  if pick.kind == "car" then
-    -- a tab for each class (the chosen class is yellow; with the tabs selected it has a frame round it)
+  local kind = pick.kind
+  local items, g = self:items(kind), GRIDS[kind]
+  local title = ({ circuit = state.mode == "rally" and "CHOOSE A STAGE" or "CHOOSE A CIRCUIT", mode = "CHOOSE A MODE", car = "CHOOSE A CAR" })[kind]
+  local locked = kind == "car" and class_locked(pick.class)
+  local root = { id = "pick_" .. kind, anchor = "topleft", margin = 34, w = RIGHT - LEFT, wrap = false, enter = false, gap = 8,
+                 { "text", title, style = "title", size = kind == "car" and 30 or 36 } }
+  if kind == "car" then
+    -- a tab for each class (the chosen class is yellow; with the focus on it, it has a frame round it and left and right change class)
+    local tabs = { "row", gap = 6 }
     local count = #state.classes
-    local tw = (RIGHT - LEFT - 6 * (count - 1)) / count
     for k, c in ipairs(state.classes) do
-      local x = grid.x + (k - 1) * (tw + 6)
       local on = c.id == pick.class
-      local open = state.class_open(c)
-      nova.ui.panel(on and "ui/btn_yellow" or "ui/btn_grey", x, 58, tw, 34, { slice = { 14, 14, 14, 22 }, scale = 0.75 })
-      local label = open and c.name or (c.name .. " *")
-      local lo = { size = ui.fit(label, 18, tw - 18, "rounded"), color = ui.color.ink, font = "rounded", shadow = false }
-      nova.ui.text(x + (tw - nova.ui.text_width(label, lo)) / 2, 65, label, lo) -- (centred on its tab)
-      if on and pick.tabs then nova.ui.panel("ui/panel_frame", x - 3, 55, tw + 6, 40, { slice = 18, scale = 0.5 }) end
+      tabs[#tabs + 1] = { "button", state.class_open(c) and c.name or (c.name .. " *"), look = "tab", on = on, id = on and "tab" or ("class" .. k),
+                          focusable = on, adjust = true, w = (RIGHT - LEFT - 6 * (count - 1)) / count, h = 34 }
     end
     local class = state.class_of({ class = pick.class })
-    ui.panel(LEFT, 98, RIGHT - LEFT, 52, 215)
-    ui.text(LEFT + 14, 106, class.blurb, 14, ui.color.white, { width = RIGHT - LEFT - 28 })
     local open, why = state.class_open(class)
-    ui.text(LEFT + 14, 127, open and ("Your rivals are other " .. class.name .. " cars.") or ("LOCKED: " .. why), 14, open and ui.color.gold or ui.color.red, { width = RIGHT - LEFT - 28 })
+    add(root, { tabs, { "panel", h = 52, pad = { 14, 6 }, gap = 2,
+      { "text", class.blurb, size = 14 },
+      { "text", open and ("Your rivals are other " .. class.name .. " cars.") or ("LOCKED: " .. why), size = 14, color = open and ui.color.gold or ui.color.red } } })
   end
-  local locked = pick.kind == "car" and class_locked(pick.class)
-  local on = pick.tabs and 0 or self:picked(pick.kind)
-  -- a page with more rows than fit scrolls so that the chosen card is in view
-  local first_row = 0
-  if grid.rows then
-    local rows = (#items + grid.cols - 1) // grid.cols
-    local at = math.max(0, on - 1) // grid.cols
-    pick.scroll = math.max(0, math.min(rows - grid.rows, math.max(math.min(pick.scroll or 0, at), at - grid.rows + 1)))
-    first_row = pick.scroll
-    -- (a small gold arrow above or below the grid says there are more cards that way; it bobs)
-    -- (drawn at the right end of the strip under the grid: up and down, bright when there are more cards that way)
-    local mid, sy = RIGHT - 26, grid.y + grid.rows * (grid.card_h + grid.gap) + 8
-    local function tri(cy, up, on)
-      local c = on and ui.color.gold or { 255, 255, 255, 50 }
-      for k = 0, 6 do
-        local half = up and k or (6 - k)
-        nova.ui.rect(mid - half - 1, cy + k, half * 2 + 2, 1, c)
-      end
-    end
-    pick.more = function()
-      tri(sy + 14, true, first_row > 0)
-      tri(sy + 33, false, first_row + grid.rows < rows)
-    end
-  end
+  root[#root + 1] = { "space", h = kind == "mode" and 52 or 2 }
+  local grid = { "grid", columns = g.cols, cell_w = g.card_w, cell_h = g.card_h, gap = g.gap, flow = true, visible = g.rows }
   for i, item in ipairs(items) do
-    local col, row = (i - 1) % grid.cols, (i - 1) // grid.cols - first_row
-    local x = grid.x + col * (grid.card_w + grid.gap)
-    local y = grid.y + row * (grid.card_h + grid.gap)
-    local w, h = grid.card_w, grid.card_h
-    if row < 0 or (grid.rows and row >= grid.rows) then goto continue end
-    if i == on then nova.ui.panel("ui/btn_yellow", x - 5, y - 5, w + 10, h + 10, { slice = { 14, 14, 14, 22 }, scale = 0.75 }) end
-    ui.panel(x, y, w, h, 235)
-    if pick.kind == "circuit" then
-      -- a card: the course's shape on the left; on the right its name, then one line each for the level and length, the best, and the
-      -- par or sections (each line fitted to the card: nothing runs past its edge). The blurb is under the grid, for the chosen card.
-      local size = h - 22
-      local open = state.course_open(items, item)
-      local tx, tw = x + size + 22, w - size - 34
-      if open then
-        course(item.id, x + 11, y + 11, size)
-      else
-        nova.ui.rect(x + 11, y + 11, size, size, { 20, 24, 36, 160 })
-        ui.center("LOCKED", y + h / 2 - 8, ui.fit("LOCKED", 14, size - 8, "mono"), ui.color.dim, { cx = x + 11 + size / 2, font = "mono" })
-      end
-      ui.text(tx, y + 9, item.name, ui.fit(item.name, 20, tw, "rounded"), open and ui.color.white or ui.color.dim)
-      local level = item.level or 1
-      local mono = function(text, ty, colour)
-        ui.text(tx, ty, text, ui.fit(text, 13, tw, "mono"), colour, { font = "mono" })
-      end
-      local lvl = string.upper(state.levels[level])
-      local length = item.km and (item.km .. " KM") or (item.laps .. " LAPS")
-      ui.text(tx, y + 37, lvl, 13, LEVEL_COLOR[level], { font = "mono" })
-      ui.right(length, tx + tw, y + 37, 13, ui.color.dim, { font = "mono" })
-      if not open then
-        mono("Not open yet", y + 58, ui.color.gold)
-      elseif item.km then
-        mono("BEST " .. tostring(nova.save.get("rally_score_" .. item.id, "-")), y + 58, ui.color.gold)
-        mono((item.sections or 5) .. " SECTIONS", y + 75, ui.color.dim)
-      else
-        mono("BEST " .. ui.time(state.best("lap", item.id)), y + 58, ui.color.gold)
-        local par = (pars.laps[item.id] or {})[state.current_car().class]
-        if par then mono("PAR  " .. ui.time(par), y + 75, ui.color.dim) end
-      end
-    elseif pick.kind == "mode" then
-      ui.text(x + 20, y + 24, item.name, 30, ui.color.white, { font = "bold" })
-      ui.text(x + 20, y + 74, item.blurb, 17, { 214, 224, 238 }, { width = w - 40 })
-    else
-      ui.text(x + 12, y + 8, item.name, ui.fit(item.name, 20, w - 24, "rounded"), ui.color.white)
-      bar(x + 12, y + 38, w - 82, "POWER", (item.power - 6) / 6.5)
-      bar(x + 12, y + 52, w - 82, "SPEED", (item.top - 28) / 24)
-      bar(x + 12, y + 66, w - 82, "GRIP", (item.grip - 0.75) / 0.7)
-      bar(x + 12, y + 80, w - 82, "DRIFT", item.oversteer)
-      if locked then nova.ui.rect(x, y, w, h, { 0, 0, 0, 150 }) end
-    end
-    ::continue::
+    grid[#grid + 1] = { "box", id = "card" .. i, focusable = not locked, panel = CARD_PANEL, item = item, items = items, locked = locked, draw = CARDS[kind] }
   end
-  if pick.kind == "circuit" then
+  root[#root + 1] = grid
+  if kind == "circuit" then
     -- the chosen course's blurb (or what opens it), under the grid
-    local item = items[on]
-    if item then
-      local open, why = state.course_open(items, item)
-      local sy = grid.y + grid.rows * (grid.card_h + grid.gap) + 8
-      ui.panel(LEFT, sy, RIGHT - LEFT, 476 - sy, 215)
-      ui.text(LEFT + 14, sy + 10, open and item.blurb or ("Locked: " .. why), 15, open and ui.color.white or ui.color.gold, { width = RIGHT - LEFT - 64 })
-      if pick.more then pick.more() end
-    end
+    local item = items[self:picked("circuit")]
+    local open, why = state.course_open(items, item)
+    root.h = 476 - 34
+    add(root, { { "space", h = 8 }, { "panel", grow = 1, pad = { 14, 10 }, { "text", open and item.blurb or ("Locked: " .. why), wrap = true, size = 15, color = open and ui.color.white or ui.color.gold } } })
   end
-  if pick.kind == "car" then
+  local r = nova.ui.menu(root)
+  if kind == "car" then
     ui.hints({ { "pad_dpad", "Look" }, { "pad_l", "Class" }, { "pad_r", "Class" }, { "pad_a", "Accept" }, { "pad_b", "Cancel" } })
   else
     ui.hints({ { "pad_dpad", "Look" }, { "pad_a", "Accept" }, { "pad_b", "Cancel" } })
+  end
+
+  if r.moved and r.focus and r.focus:match("^card") then self:set_pick(kind, tonumber(r.focus:sub(5))) end
+  if r.changed == "tab" then self:set_class(r.step) end
+  if r.pressed then
+    if (kind == "circuit" and course_locked(self:picked("circuit"))) or locked then
+      audio.sfx("menu_back") -- (a locked course or class can be looked at, not chosen)
+    else
+      audio.sfx("menu_accept")
+      self.screen, self.entered = "select", 0
+    end
+  elseif r.back then
+    if kind == "car" then state.car = pick.old; wear() else self:set_pick(kind, pick.old) end
+    state.laps = pick.old_laps
+    self.screen, self.entered = "select", 0
   end
 end
 
@@ -490,80 +524,12 @@ function Title:draw_screens()
     if screen == "title" and math.floor(self.t * 1.6) % 2 == 0 then ui.center("PRESS START", 420, 28, ui.color.white) end
     if screen == "title" then ui.hints({ { "pad_a", "Accept" } }) end
     ui.center("Made by Jasper Milan", 496, 16, ui.color.white, { font = "future_narrow" })
-  elseif screen == "menu" then
-    logo(self.t)
-    ui.menu(MENU, self.choice, 270, { width = 340, cx = 230, id = "main", enter = self.entered })
-    ui.hints({ { "pad_a", "Accept" }, { "pad_b", "Back" } })
-  elseif screen == "howto" then
-    ui.center("HOW TO PLAY", 40, 38, ui.color.gold, { font = "bold" })
-    ui.panel(w / 2 - 330, 110, 660, 340, 200)
-    for i, row in ipairs(CONTROLS) do
-      ui.text(w / 2 - 306, 124 + (i - 1) * 36, row[1], 20, ui.color.gold)
-      for k, icon in ipairs(row[3] or {}) do ui.pad(icon, w / 2 - 90 + (k - 1) * 32, 120 + (i - 1) * 36, 30) end
-      ui.text(w / 2 - 14, 124 + (i - 1) * 36, row[2], 17, ui.color.white)
-    end
-    ui.center("Finish all the laps ahead of your rivals.", 404, 16, ui.color.white, { cx = w / 2 })
-    ui.center("The grass slows you down; the handbrake lets the back out.", 424, 16, ui.color.white, { cx = w / 2 })
-    ui.hints({ { "pad_a", "Back" } })
-  elseif screen == "options" then
-    ui.center("OPTIONS", 60, 44, ui.color.gold, { font = "bold" })
-    ui.menu({
-      { "Music volume", string.format("< %d%% >", math.floor(state.music_volume * 100 + 0.5)) },
-      { "Sound volume", string.format("< %d%% >", math.floor(state.sfx_volume * 100 + 0.5)) },
-      { "Music style", state.music_style == "kenney" and "< Kenney loops >" or "< Nova Studio songs >" },
-      { "Shadows", state.shadows and "< On >" or "< Off >" },
-      { "Effects", state.effects and "< On >" or "< Off >" },
-      { "Smooth edges", state.smooth and "< On >" or "< Off >" },
-      { "Vibration", state.vibration and "< On >" or "< Off >" },
-      "Controls...",
-    }, self.choice, 124, { width = 420, row = 44, id = "options", enter = self.entered })
-    ui.hints({ { "pad_a", "Change" }, { "pad_b", "Back" } })
-  elseif screen == "controls" then
-    ui.center("CONTROLS", 24, 38, ui.color.gold, { font = "bold" })
-    local items = {}
-    for i, row in ipairs(controls.rows) do
-      items[i] = { row.label, (self.listening and self.choice == i) and "press a key or button..." or controls.describe(row) }
-    end
-    items[#items + 1] = "Back to the defaults"
-    ui.menu(items, self.choice, 80, { width = 700, row = 38, id = "controls", enter = self.entered })
-    if self.note then ui.hint(self.note) else ui.hints({ { "pad_a", "Change" }, { "pad_b", "Back" } }) end
-  elseif screen == "pick" then
-    self:draw_pick()
-  elseif screen == "select" then
-    local info = state.current_track()
-    ui.center("CHOOSE YOUR RACE", 40, ui.fit("CHOOSE YOUR RACE", 36, 390), ui.color.gold, { font = "bold", cx = 240 })
-    local labels = {
-      circuit = { state.mode == "rally" and "Stage" or "Circuit", info.name .. "  >" },
-      mode = { "Mode", ({ race = "Race", trial = "Time trial", rally = "Rally" })[state.mode] .. "  >" },
-      car = { "Car", state.current_car().name .. "  >" },
-      laps = { "Laps", "< " .. state.laps .. " >" },
-      difficulty = { "Difficulty", "< " .. state.current_difficulty().name .. " >" },
-      start = ({ race = "START RACE", trial = "START TIME TRIAL", rally = "START RALLY" })[state.mode],
-    }
-    local rows, items = self:select_rows(), {}
-    for k, id in ipairs(rows) do items[k] = labels[id] end
-    ui.menu(items, self.choice, 100, { width = 400, cx = 240, row = 44, id = "select", enter = self.entered })
-    local on_difficulty = rows[self.choice] == "difficulty"
-    -- (the menu and its notes are on the left, so that the car turning behind them can be seen on the right)
-    ui.panel(40, 360, 400, 112, 205)
-    local note = on_difficulty and state.current_difficulty().blurb
-      or (state.mode == "race" and info.blurb) or (state.mode == "rally" and info.blurb)
-      or "Alone on the circuit, racing the ghost of your best lap."
-    ui.text(56, 372, note, 15, ui.color.white, { width = 370 })
-    if state.mode == "rally" then
-      ui.label(56, 416, "BEST SCORE")
-      ui.text(180, 410, tostring(nova.save.get("rally_score_" .. info.id, "-")), 18, ui.color.gold, { font = "mono" })
-      ui.label(56, 442, "BEST TIME")
-      ui.text(180, 436, ui.time(state.best("rally", info.id)), 18, ui.color.gold, { font = "mono" })
-    else
-      local best = state.best("race" .. state.laps, info.id)
-      local lap = state.best("lap", info.id)
-      ui.label(56, 416, "BEST " .. state.laps .. " LAPS")
-      ui.text(180, 410, ui.time(best), 18, ui.color.gold, { font = "mono" })
-      ui.label(56, 442, "BEST LAP")
-      ui.text(180, 436, ui.time(lap), 18, ui.color.gold, { font = "mono" })
-    end
-    ui.hints({ { "pad_dpad", "Move" }, { "pad_a", "Accept" }, { "pad_b", "Back" } })
+  elseif screen == "menu" then self:main_menu()
+  elseif screen == "howto" then self:howto_screen()
+  elseif screen == "options" then self:options_menu()
+  elseif screen == "controls" then self:controls_menu()
+  elseif screen == "pick" then self:pick_menu()
+  elseif screen == "select" then self:select_menu()
   end
   -- every screen fades up out of the backdrop when it opens
   local fade = 1 - math.min(1, (self.entered or 1) / 0.22)

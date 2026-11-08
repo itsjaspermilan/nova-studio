@@ -88,21 +88,6 @@ function ui.hint(text)
   nova.ui.text(w / 2 - tw / 2, 497, text, o)
 end
 
--- The line of help at the bottom, with the handheld's buttons drawn: items are { "pad_a", "select" } pairs (or a plain string).
-function ui.hints(items)
-  local w = nova.view()
-  local o = { size = 15, font = "future_narrow", color = ui.color.white }
-  local total = 0
-  for _, it in ipairs(items) do total = total + 30 + nova.ui.text_width(it[2], o) + 22 end
-  local x = w - 24 - total -- (in the bottom right corner)
-  nova.ui.panel("ui/panel_dark", x - 14, 486, total + 22, 40, { slice = 18, scale = 0.6, color = { 255, 255, 255, 235 } })
-  for _, it in ipairs(items) do
-    ui.pad(it[1], x, 491, 30)
-    nova.ui.text(x + 36, 497, it[2], o)
-    x = x + 30 + nova.ui.text_width(it[2], o) + 22
-  end
-end
-
 -- Text with no panel behind it: a dark outline (four copies a little off to the corners) keeps it readable over snow, sand and night alike.
 local OUTLINE = { 8, 12, 26, 235 }
 local faded = { 8, 12, 26, 235 }
@@ -146,83 +131,97 @@ function ui.ordinal(n)
   return n .. suffix
 end
 
--- Time for the menus' own movement (the highlight slides between rows; rows slide in when a screen opens). Called from the scene's update.
+-- Time for the menus' own movement (the arrow on the chosen row bobs). Called from the scene's update.
 ui.clock = 0
-local hl = {}
-function ui.tick(dt)
-  ui.clock = ui.clock + dt
-  for id, v in pairs(hl) do v.dt = dt end
-end
-local function ease_out(x) x = math.max(0, math.min(1, x)); return 1 - (1 - x) ^ 3 end
+function ui.tick(dt) ui.clock = ui.clock + dt end
 
--- A vertical list of choices. Each item is a string or { label, value } (value shows on the right). Every row is a dark rounded bar; the chosen
--- one is a gold bar that slides to its row (with a small arrow, and pushed out a little), and the dark rows' words are cream. `opts.enter` is the
--- seconds since the screen opened: the rows slide in from the left one after another. `opts.id` keeps the highlight between frames.
-function ui.menu(items, selected, y, opts)
-  opts = opts or {}
-  local w = nova.view()
-  local width, row = opts.width or 360, opts.row or 44
-  local x = (opts.cx or w / 2) - width / 2
-  local id = opts.id or "menu"
-  local st = hl[id]
-  if not st then st = { at = selected, last = nova.time(), off = {} }; hl[id] = st end
-  -- (real time, so that the pause menu moves too while the game is frozen)
-  local now = nova.time()
-  local dt = math.max(0, math.min(0.1, now - st.last))
-  if dt == 0 then dt = 1 / 60 end
-  st.last = now
-  st.at = st.at + (selected - st.at) * math.min(1, dt * 18)
-  -- each row's own slide to the right: out while it is the chosen one, back again when it is not
-  for i = 1, #items do
-    local o = st.off[i] or (i == selected and 1 or 0)
-    st.off[i] = o + ((i == selected and 1 or 0) - o) * math.min(1, dt * 14)
+-- ---- the menus' look --------------------------------------------------------------------------------------------------
+-- Every menu is a nova.ui.menu tree (rows, columns, grids, buttons): the engine lays it out, moves the focus with the d-pad or the
+-- stick, scrolls and remembers it. This is the game's look for all of them: Kenney's dark panels, the gold bar that slides to the
+-- chosen row (with a small arrow, the row pushed out a little) and cream words that turn ink as the bar arrives.
+local function tint(a, alpha) return { 255, 255, 255, math.floor(a * alpha) } end
+
+-- a row of a menu (and the class tabs on the car page)
+local function draw_button(r, n, ctx)
+  local a = ctx.alpha
+  if n.look == "tab" then
+    nova.ui.panel(n.on and "ui/btn_yellow" or "ui/btn_grey", r.x, r.y, r.w, r.h, { slice = { 14, 14, 14, 22 }, scale = 0.75, color = tint(255, a) })
+    local o = { size = 18, color = { 15, 23, 42, math.floor(255 * a) }, font = "rounded", shadow = false, align = "center", width = r.w - 18, fit = "shrink", valign = "middle" }
+    nova.ui.text(r.x + 9, r.y + r.h / 2 - 2, ctx.text or "", o)
+    return
   end
-  local enter = opts.enter or 99
-  local function slide(i) return ease_out((enter - (i - 1) * 0.045) / 0.28) end
-  local h = row - 6
-  -- the dark bars
-  for i, item in ipairs(items) do
-    local e = slide(i)
-    local rx, ry = x - (1 - e) * 60, y + (i - 1) * row
-    rx = rx + 10 * st.off[i]
-    nova.ui.panel("ui/panel_dark", rx, ry, width, h, { slice = 18, scale = 0.55, color = { 255, 255, 255, math.floor(215 * e) } })
+  local off = ctx.near
+  local x = r.x + 10 * off
+  nova.ui.panel("ui/panel_dark", x, r.y, r.w, r.h, { slice = 18, scale = 0.55, color = tint(215, a) })
+  local ink, cream = ui.color.ink, { 238, 242, 248 }
+  local c = { math.floor(cream[1] + (ink[1] - cream[1]) * off), math.floor(cream[2] + (ink[2] - cream[2]) * off), math.floor(cream[3] + (ink[3] - cream[3]) * off), math.floor(255 * a) }
+  local o = { size = 22, color = c, font = "rounded", shadow = false, valign = "middle", fit = "shrink" }
+  local room = r.w - 34 - 12 * off
+  if n.value then
+    local vo = { size = 22, font = "rounded" }
+    local vw = math.min(nova.ui.text_width(n.value, vo), room * 0.6)
+    nova.ui.text(x + r.w - 16 - vw, r.y + r.h / 2 - 1, n.value, { size = 22, color = c, font = "rounded", shadow = false, valign = "middle", fit = "shrink", width = vw, align = "right" })
+    room = room - vw - 16
   end
-  -- the gold bar, sliding
-  local e = slide(selected)
-  local gy = y + (st.at - 1) * row
-  local gx = x - (1 - e) * 60 + 10
-  nova.ui.panel("ui/btn_yellow", gx, gy - 2, width, h + 4, { slice = { 14, 14, 14, 22 }, scale = 0.75, color = { 255, 255, 255, math.floor(255 * e) } })
-  -- a small arrow before the label
-  local ay = gy + h / 2 - 1
+  o.width = room
+  nova.ui.text(x + 22 + 12 * off, r.y + r.h / 2 - 1, ctx.text or "", o)
+end
+
+-- the focus: on a row, the gold bar (with its arrow); on a card, a gold frame behind it; on a class tab, a frame round it
+local function draw_focus(r, n, ctx)
+  local a = ctx.alpha
+  if n.look == "tab" then
+    nova.ui.panel("ui/panel_frame", r.x - 3, r.y - 3, r.w + 6, r.h + 6, { slice = 18, scale = 0.5, color = tint(255, a) })
+    return
+  end
+  if ctx.card then
+    nova.ui.panel("ui/btn_yellow", r.x - 5, r.y - 5, r.w + 10, r.h + 10, { slice = { 14, 14, 14, 22 }, scale = 0.75, color = tint(255, a) })
+    return
+  end
+  local gx = r.x + 10
+  nova.ui.panel("ui/btn_yellow", gx, r.y - 2, r.w, r.h + 4, { slice = { 14, 14, 14, 22 }, scale = 0.75, color = tint(255, a) })
+  local ay = r.y + r.h / 2 - 1
   local bob = math.sin(ui.clock * 7) * 2
-  for k = 0, 5 do nova.ui.rect(gx + 12 + bob + k, ay - 6 + k, 1 + 0, 12 - k * 2, { 15, 23, 42, math.floor(255 * e) }) end
-  -- the words
-  for i, item in ipairs(items) do
-    local ei = slide(i)
-    local near = math.max(0, 1 - math.abs(i - st.at))
-    local rx, ry = x - (1 - ei) * 60 + 10 * st.off[i], y + (i - 1) * row
-    local ink, cream = ui.color.ink, { 238, 242, 248 }
-    local c = { math.floor(cream[1] + (ink[1] - cream[1]) * near), math.floor(cream[2] + (ink[2] - cream[2]) * near), math.floor(cream[3] + (ink[3] - cream[3]) * near), math.floor(255 * ei) }
-    local label = type(item) == "table" and item[1] or item
-    local ty = ry + math.floor((h - 22) / 2) - 3
-    nova.ui.text(rx + 22 + 12 * st.off[i], ty, label, { size = 22, color = c, font = "rounded", shadow = false })
-    if type(item) == "table" and item[2] then
-      local o = { size = 22, color = c, font = "rounded", shadow = false }
-      nova.ui.text(rx + width - 16 - nova.ui.text_width(item[2], o), ty, item[2], o)
-    end
-  end
+  for k = 0, 5 do nova.ui.rect(gx + 12 + bob + k, ay - 6 + k, 1, 12 - k * 2, { 15, 23, 42, math.floor(255 * a) }) end
 end
 
--- Reads the menu keys. Returns the new selection and what happened: "accept", "back", "left", "right" or nil.
-function ui.navigate(selected, count)
-  local moved = nil
-  if nova.input.pressed("up") then selected = (selected - 2) % count + 1; audio.sfx("menu_move") end
-  if nova.input.pressed("down") then selected = selected % count + 1; audio.sfx("menu_move") end
-  if nova.input.pressed("a") or nova.input.pressed("start") then moved = "accept"
-  elseif nova.input.pressed("b") or nova.input.pressed("menu_back") then moved = "back" -- (Android's Back key arrives as Escape)
-  elseif nova.input.pressed("left") then moved = "left"
-  elseif nova.input.pressed("right") then moved = "right" end
-  return selected, moved
+local GLYPHS = {}
+for _, name in ipairs({ "pad_a", "pad_b", "pad_x", "pad_y", "pad_l", "pad_r", "pad_zl", "pad_zr", "pad_dpad", "pad_plus", "pad_minus", "pad_stick_l", "pad_stick_r" }) do
+  GLYPHS[name] = "ui/" .. name
+end
+
+nova.ui.theme {
+  font = "rounded", size = 18, color = ui.color.white, dim = ui.color.dim, accent = ui.color.gold, ink = ui.color.ink,
+  gap = 6, margin = 24,
+  styles = {
+    title = { size = 36, font = "bold", color = "accent", align = "left", fallback = "future" },
+    heading = { size = 42, font = "bold", color = "accent", align = "center", fallback = "future" },
+    body = { size = 15 },
+    sub = { size = 18, align = "center" },
+    label = { size = 13, font = "future_narrow", color = "dim", shadow = false },
+    mono = { size = 18, font = "mono", color = "accent" },
+  },
+  panel = { sprite = "ui/panel_dark", slice = 18, scale = 0.7, tint = { 255, 255, 255, 235 }, pad = 14 },
+  button = { h = 38, size = 22 },
+  focus = { slide = 18 },
+  enter = { dx = -60, time = 0.28, stagger = 0.045 },
+  glyphs = GLYPHS,
+  prompt = { size = 15, font = "future_narrow", color = ui.color.white, glyph = 30 },
+  -- (moving and going back sound here; a screen plays its own sound for A, which may be a refusal)
+  sounds = function(kind) if kind ~= "accept" then audio.sfx(kind == "move" and "menu_move" or "menu_back") end end,
+  actions = { accept = { "a", "start" }, back = { "b", "menu_back" } }, -- (Android's Back key arrives as Escape: menu_back)
+  draw = { button = draw_button, focus = draw_focus },
+}
+
+-- The line of help at the bottom right, with the handheld's buttons drawn: items are { "pad_a", "select" } pairs.
+function ui.hints(items)
+  local list = {}
+  for i, it in ipairs(items) do list[i] = { it[1], it[2] } end
+  nova.ui.layout {
+    kind = "row", id = "hints", anchor = "bottomright", margin = 14,
+    panel = { scale = 0.6 }, pad = { 14, 5 },
+    { "hints", gap = 22, items = list },
+  }
 end
 
 -- A dark band across the top and bottom, for title cards.

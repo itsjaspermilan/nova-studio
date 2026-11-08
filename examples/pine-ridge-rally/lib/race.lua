@@ -1084,31 +1084,35 @@ function race.scene()
 
   local PAUSE_ITEMS = { "Resume", "Restart race", "Quit to menu" }
 
-  function Race:update_pause()
-    local choice, action = ui.navigate(self.pause_choice, #PAUSE_ITEMS)
-    self.pause_choice = choice
-    if action == "back" or (action == "accept" and choice == 1) then
-      if action == "accept" then audio.sfx("menu_accept") end
+  -- (the pause menu reads the pad as it draws: see draw_pause)
+  function Race:update_pause() end
+
+  function Race:draw_pause()
+    local w = nova.view()
+    nova.ui.rect(0, 0, w, 540, { 0, 0, 0, 140 })
+    ui.center("PAUSED", 120, 46, ui.color.white, { font = "bold" })
+    -- (it opens on Resume, and the press that paused is not also taken by the menu: Escape is both pause and back)
+    local fresh = self.pause_choice == 1
+    if fresh then nova.ui.focus("pause", "resume"); self.pause_choice = 0 end
+    local r = nova.ui.menu {
+      id = "pause", anchor = "top", y = 196, w = 360, active = not fresh,
+      { "button", "Resume", id = "resume" }, { "button", "Restart race", id = "restart" }, { "button", "Quit to menu", id = "quit" },
+    }
+    ui.hints({ { "pad_dpad", "choose" }, { "pad_a", "select" }, { "pad_plus", "resume" } })
+    if r.back or r.pressed == "resume" then
+      if r.pressed then audio.sfx("menu_accept") end
       self.paused = false
       nova.pause(false) -- (the wind blows again)
       nova.music.volume(state.music_volume)
-    elseif action == "accept" then
+    elseif r.pressed then
       audio.sfx("menu_accept")
-      if choice == 2 then
+      if r.pressed == "restart" then
         nova.restart_scene()
       else
         audio.stop_music(0.4)
         nova.goto_scene("title", "select")
       end
     end
-  end
-
-  function Race:draw_pause()
-    local w = nova.view()
-    nova.ui.rect(0, 0, w, 540, { 0, 0, 0, 140 })
-    ui.center("PAUSED", 120, 46, ui.color.white, { font = "bold" })
-    ui.menu(PAUSE_ITEMS, self.pause_choice, 220)
-    ui.hints({ { "pad_dpad", "choose" }, { "pad_a", "select" }, { "pad_plus", "resume" } })
   end
 
   -- ---- the end -----------------------------------------------------------------------------------------------------------
