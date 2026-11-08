@@ -289,10 +289,7 @@
     { "kind": "waypoint", "x": 372.2, "y": 0, "z": 751.5, "props": { "i": 214, "k": -0.0012 } },
     { "kind": "waypoint", "x": 362.7, "y": 0, "z": 748.5, "props": { "i": 215, "k": 0.0011 } },
     { "kind": "waypoint", "x": 353.1, "y": 0, "z": 745.7, "props": { "i": 216, "k": 0.0013 } },
-    { "kind": "grid_slot", "x": 0, "y": 0, "z": -105, "props": { "slot": 1, "ry": 0 } },
-    { "kind": "grid_slot", "x": 0, "y": 0, "z": -105, "props": { "slot": 2, "ry": 0 } },
-    { "kind": "grid_slot", "x": 0, "y": 0, "z": -105, "props": { "slot": 3, "ry": 0 } },
-    { "kind": "grid_slot", "x": 0, "y": 0, "z": -105, "props": { "slot": 4, "ry": 0 } },
+    { "kind": "grid_slot", "x": 0, "y": 0, "z": -106, "props": { "slot": 1, "ry": 0 } },
     {
       "kind": "nk_snow_pinetall_d",
       "x": -61.8,

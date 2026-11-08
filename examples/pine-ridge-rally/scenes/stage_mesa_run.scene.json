@@ -410,10 +410,7 @@
     { "kind": "waypoint", "x": 58.1, "y": 0, "z": 1794.8, "props": { "i": 319, "k": 0 } },
     { "kind": "waypoint", "x": 58.8, "y": 0, "z": 1804.7, "props": { "i": 320, "k": 0 } },
     { "kind": "waypoint", "x": 59.6, "y": 0, "z": 1814.7, "props": { "i": 321, "k": 0 } },
-    { "kind": "grid_slot", "x": 0, "y": 0, "z": -105, "props": { "slot": 1, "ry": 0 } },
-    { "kind": "grid_slot", "x": 0, "y": 0, "z": -105, "props": { "slot": 2, "ry": 0 } },
-    { "kind": "grid_slot", "x": 0, "y": 0, "z": -105, "props": { "slot": 3, "ry": 0 } },
-    { "kind": "grid_slot", "x": 0, "y": 0, "z": -105, "props": { "slot": 4, "ry": 0 } },
+    { "kind": "grid_slot", "x": 0, "y": 0, "z": -106, "props": { "slot": 1, "ry": 0 } },
     {
       "kind": "cactus",
       "x": 24.6,

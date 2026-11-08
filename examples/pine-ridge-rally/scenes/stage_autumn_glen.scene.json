@@ -1647,10 +1647,7 @@
       "z": 1558,
       "props": { "i": 316, "k": 0, "road": "road_asphalt" }
     },
-    { "kind": "grid_slot", "x": 0, "y": 0, "z": -105, "props": { "slot": 1, "ry": 0 } },
-    { "kind": "grid_slot", "x": 0, "y": 0, "z": -105, "props": { "slot": 2, "ry": 0 } },
-    { "kind": "grid_slot", "x": 0, "y": 0, "z": -105, "props": { "slot": 3, "ry": 0 } },
-    { "kind": "grid_slot", "x": 0, "y": 0, "z": -105, "props": { "slot": 4, "ry": 0 } },
+    { "kind": "grid_slot", "x": 0, "y": 0, "z": -106, "props": { "slot": 1, "ry": 0 } },
     {
       "kind": "nk_default_fall",
       "x": 16,

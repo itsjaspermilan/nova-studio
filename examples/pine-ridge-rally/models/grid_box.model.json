@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "box",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "from": [-20.8, 0, 35.4], "size": [41.6, 0.32, 3], "color": "#eef1f5" },
+        { "from": [-20.8, 0, 12.4], "size": [3, 0.32, 23], "color": "#eef1f5" },
+        { "from": [17.8, 0, 12.4], "size": [3, 0.32, 23], "color": "#eef1f5" }
+      ],
+      "children": []
+    }
+  ]
+}

@@ -105,14 +105,22 @@ end
 
 -- Text with no panel behind it: a dark outline (four copies a little off to the corners) keeps it readable over snow, sand and night alike.
 local OUTLINE = { 8, 12, 26, 235 }
+local faded = { 8, 12, 26, 235 }
+-- (`opts.alpha`, 0 to 1, fades the text and its outline together: text sliding in or out)
 function ui.otext(x, y, text, size, color, opts)
   opts = opts or {}
   local font = ui.font_for(text, opts.font or "rounded")
   local d = math.max(1.5, size / 14)
-  for _, o in ipairs({ { -d, -d }, { d, -d }, { -d, d }, { d, d }, { 0, d * 1.4 } }) do
-    nova.ui.text(x + o[1], y + o[2], text, { size = size, color = OUTLINE, font = font, shadow = false })
+  local outline, fill = OUTLINE, color or ui.color.white
+  if opts.alpha then
+    faded[4] = math.floor(235 * opts.alpha)
+    outline = faded
+    fill = { fill[1], fill[2], fill[3], math.floor((fill[4] or 255) * opts.alpha) }
   end
-  nova.ui.text(x, y, text, { size = size, color = color or ui.color.white, font = font, shadow = false })
+  for _, o in ipairs({ { -d, -d }, { d, -d }, { -d, d }, { d, d }, { 0, d * 1.4 } }) do
+    nova.ui.text(x + o[1], y + o[2], text, { size = size, color = outline, font = font, shadow = false })
+  end
+  nova.ui.text(x, y, text, { size = size, color = fill, font = font, shadow = false })
   return nova.ui.text_width(text, { size = size, font = font })
 end
 function ui.oright(text, rx, y, size, color, opts)

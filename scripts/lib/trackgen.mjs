@@ -4,6 +4,7 @@
 // its statistics; `roadGlb(control, kind, open)` is the road as one ribbon mesh. The same spec and seed always give the same scene.
 
 // ---- the curve ---------------------------------------------------------------------------------------------------------
+import { slots as gridSlots } from "../rally/grid.mjs";
 const catmull = (p0, p1, p2, p3, t) => {
   const t2 = t * t, t3 = t2 * t;
   return [0, 1].map((k) => 0.5 * (2 * p1[k] + (-p0[k] + p2[k]) * t + (2 * p0[k] - 5 * p1[k] + 4 * p2[k] - p3[k]) * t2 + (-p0[k] + 3 * p1[k] - 3 * p2[k] + p3[k]) * t3));
@@ -348,11 +349,10 @@ export function layout(spec) {
     objects.push({ kind: "waypoint", x: r1(line[i].x), y: 0, z: r1(line[i].z), props });
   });
 
-  // the grid: two columns behind the line, facing the way the road goes
-  for (let s = 0; s < 4; s++) {
-    const back = open ? 5 : 9 + s * 8, side = open ? 0 : s % 2 ? 3 : -3;
-    const p = open ? line[L - Math.ceil(back / spacing)] : line[(n - Math.ceil(back / spacing)) % n];
-    objects.push({ kind: "grid_slot", x: r1(p.x + p.tz * side * -1), y: 0, z: r1(p.z + p.tx * side), props: { slot: s + 1, ry: Math.round(p.ry * 1000) / 1000 } });
+  // the grid: a circuit's four boxes in two staggered columns just behind the line, a stage's one (scripts/rally/grid.mjs, which also
+  // re-lays the grids of scenes already made)
+  for (const s of gridSlots(line[L], open ? [] : line.map((p) => ({ x: p.x, z: p.z })), open)) {
+    objects.push({ kind: "grid_slot", x: r1(s.x), y: 0, z: r1(s.z), props: { slot: s.slot, ry: Math.round(s.ry * 1000) / 1000 } });
   }
 
   // how close the nearest road is to a spot

@@ -338,10 +338,7 @@
     { "kind": "waypoint", "x": 713.5, "y": 0, "z": 324.4, "props": { "i": 258, "k": 0.0005 } },
     { "kind": "waypoint", "x": 723.2, "y": 0, "z": 326.8, "props": { "i": 259, "k": -0.0017 } },
     { "kind": "waypoint", "x": 732.9, "y": 0, "z": 329.3, "props": { "i": 260, "k": -0.0015 } },
-    { "kind": "grid_slot", "x": 0, "y": 0, "z": -105, "props": { "slot": 1, "ry": 0 } },
-    { "kind": "grid_slot", "x": 0, "y": 0, "z": -105, "props": { "slot": 2, "ry": 0 } },
-    { "kind": "grid_slot", "x": 0, "y": 0, "z": -105, "props": { "slot": 3, "ry": 0 } },
-    { "kind": "grid_slot", "x": 0, "y": 0, "z": -105, "props": { "slot": 4, "ry": 0 } },
+    { "kind": "grid_slot", "x": 0, "y": 0, "z": -106, "props": { "slot": 1, "ry": 0 } },
     {
       "kind": "nk_bush_detailed",
       "x": -18.7,

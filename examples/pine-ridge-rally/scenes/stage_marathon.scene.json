@@ -1091,10 +1091,7 @@
     { "kind": "waypoint", "x": -57.2, "y": 0, "z": 2772.3, "props": { "i": 456, "k": 0 } },
     { "kind": "waypoint", "x": -58.2, "y": 0, "z": 2782.2, "props": { "i": 457, "k": 0 } },
     { "kind": "waypoint", "x": -59.2, "y": 0, "z": 2792.2, "props": { "i": 458, "k": 0 } },
-    { "kind": "grid_slot", "x": 0, "y": 0, "z": -105, "props": { "slot": 1, "ry": 0 } },
-    { "kind": "grid_slot", "x": 0, "y": 0, "z": -105, "props": { "slot": 2, "ry": 0 } },
-    { "kind": "grid_slot", "x": 0, "y": 0, "z": -105, "props": { "slot": 3, "ry": 0 } },
-    { "kind": "grid_slot", "x": 0, "y": 0, "z": -105, "props": { "slot": 4, "ry": 0 } },
+    { "kind": "grid_slot", "x": 0, "y": 0, "z": -106, "props": { "slot": 1, "ry": 0 } },
     {
       "kind": "nk_pineround_c",
       "x": -27.5,

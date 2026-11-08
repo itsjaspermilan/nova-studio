@@ -134,6 +134,7 @@ function race.scene()
     self.length = track.length
     if self.stage then self:build_stage() end
     self.phase = "countdown"
+    self.notes_live, self.note_fx = false, nil
     self.clock = 0              -- time since the green light
     self.countdown = 3.9
     self.last_beep = 4
@@ -170,7 +171,7 @@ function race.scene()
     nova.look(); nova.wind()
   end
 
-  -- The player and three rivals on the grid; the player starts third.
+  -- The player and three rivals on the grid; the player starts at the back (the rivals ahead are in view, none under the camera).
   function Race:build_cars()
     local mine = state.current_car().id
     -- the rivals drive the other cars of your class (a class with fewer than three others repeats them)
@@ -184,7 +185,7 @@ function race.scene()
       local first = table.remove(pool, 1) -- (not `pool[#pool + 1] = table.remove(pool, 1)`: the index is worked out before the removal)
       pool[#pool + 1] = first
     end
-    local slots = { 1, 2, 4 }  -- the rivals' places; the player has slot 3
+    local slots = { 1, 2, 3 }  -- the rivals' places; the player has slot 4
     local length = self.length
     local function put(kind, slot)
       local g = grid.slots[slot] or grid.slots[1]
@@ -201,7 +202,7 @@ function race.scene()
       car.start_progress = car.progress
       return car
     end
-    self.player = put(mine, 3)
+    self.player = put(mine, 4)
     self.player.is_player = true
     self.player.oversteer = state.current_car().oversteer
     self.player.name = "You"
@@ -718,13 +719,18 @@ function race.scene()
     local lx, ly = nova.input.axis("look_x"), nova.input.axis("look_y")
     local orbit = self.orbit
     if not orbit then orbit = { yaw = 0, lift = 0 }; self.orbit = orbit end
-    local want_yaw = 0
-    if lx * lx + ly * ly > 0.4 * 0.4 then
-      -- the camera goes to where the stick points: its angle from "up" (0 ahead, a quarter turn to the right, a half turn behind)
-      want_yaw = math.atan(lx, -ly)
-    elseif nova.input.down("look_back") then
-      want_yaw = math.pi
+    -- (a stick let go springs back through the middle and its direction swings about on the way: the view is only taken from a stick pushed
+    -- well over, is kept while it is half way, and lets go once it is near the middle, so that letting go never flicks the camera)
+    local push = math.sqrt(lx * lx + ly * ly)
+    if push > 0.6 then
+      -- the camera goes to where the stick points: its angle from "up" (0 ahead, negative a quarter turn to the right, a half turn behind;
+      -- a car's left is +x, so right is the negative turn)
+      orbit.held = math.atan(-lx, -ly)
+    elseif push < 0.3 then
+      orbit.held = nil
     end
+    local want_yaw = orbit.held or 0
+    if not orbit.held and nova.input.down("look_back") then want_yaw = math.pi end
     orbit.yaw = orbit.yaw + track.wrap(want_yaw - orbit.yaw) * math.min(1, dt * (want_yaw ~= 0 and 8 or 4))
     -- a little higher when looking behind, to see over the car
     orbit.lift = orbit.lift + ((math.abs(want_yaw) > 2.5 and 0.3 or 0) - orbit.lift) * math.min(1, dt * 5)
@@ -742,6 +748,7 @@ function race.scene()
       cam.x, cam.y, cam.z = p.x + sinh * 0.6, 1.25, p.z + cosh * 0.6
       cam.tx, cam.ty, cam.tz = cam.x + math.sin(a) * 20, 1.1 + orbit.lift * 4, cam.z + math.cos(a) * 20
       cam.fov = 70 + speed * 0.2
+      cam.bonnet = true
     else
       local near = self.view_mode == 1
       local back = (near and 6.4 or 9.5) + speed * 0.03
@@ -754,6 +761,7 @@ function race.scene()
       local ahead = 5 * math.max(0, 1 - oy / 0.9)
       cam.tx, cam.ty, cam.tz = p.x + sh * ahead, 1.1, p.z + ch * ahead
       cam.fov = 62 + speed * 0.2
+      cam.bonnet = false
     end
   end
 
@@ -808,7 +816,13 @@ function race.scene()
     -- (the renderer lifts everything on the ground by the hills; a camera, like a light, is placed by hand: above the ground under it, and
     -- over the crest of a hill that it is behind)
     local ground_here, ground_there = nova.terrain_height(cam.x, cam.z), nova.terrain_height(cam.tx, cam.tz)
-    nova.camera(cam.x, math.max(cam.y + ground_here, ground_there + 1.2), cam.z, cam.tx, cam.ty + ground_there, cam.tz, cam.fov)
+    if cam.bonnet then
+      -- on the bonnet the camera rides with the car: the ground under the car, never lifted over a crest ahead (the road ahead may climb)
+      local p = self.player
+      nova.camera(cam.x, cam.y + (p.lift or 0) + nova.terrain_height(p.x, p.z), cam.z, cam.tx, cam.ty + ground_there, cam.tz, cam.fov)
+    else
+      nova.camera(cam.x, math.max(cam.y + ground_here, ground_there + 1.2), cam.z, cam.tx, cam.ty + ground_there, cam.tz, cam.fov)
+    end
     if config.night then self:night_lights(cam) end
     horizon.draw(cam.x, cam.z, config.horizon)
     -- the road: one ribbon along the whole circuit (made from tracks/<course>.track.json with the scene), drawn from here (it casts no shadow)
@@ -855,28 +869,77 @@ function race.scene()
     ui.olabel(w - 26 - 215, 86, "SCORE")
     ui.oright(tostring(self.score), w - 26, 80, 22, ui.color.gold, { font = "mono" })
     -- the pace notes, top middle: the next corner big, the one after it small beneath (only while racing, and when a corner is near)
-    if self.phase == "racing" and not p.finish_time then
+    -- (they wait until the car is under way, a moment after GO!, so that they never sit on the start lights)
+    if self.phase == "racing" and not self.notes_live and self.clock > 1.2 and math.abs(p.speed) > 6 then self.notes_live = true end
+    self:draw_pace_notes(w, self.notes_live and not p.finish_time)
+  end
+
+  -- The pace notes: no box, outlined words like the rest of the HUD, the next corner big and the one after it smaller under it. Each slides
+  -- up and fades in as it comes on, moves up into the big place when the corner before it is passed, and slides on up and fades out when
+  -- its own corner is behind the car.
+  local GANTRY_Y, MESSAGE_Y = 104, 196
+  local NOTE_Y = { 66, 116 }    -- the big note's top, the small one's
+  local NOTE_SIZE = { 34, 22 }
+  function Race:draw_pace_notes(w, live)
+    local p = self.player
+    local now = nova.time()
+    local dt = math.max(0, math.min(0.1, now - (self.notes_t or now)))
+    self.notes_t = now
+    local fx = self.note_fx or {}
+    self.note_fx = fx
+    -- which notes are up: the next two corners within 450 m
+    local want = {}
+    if live then
       local shown = 0
-      for _, note in ipairs(self.notes) do
+      for k, note in ipairs(self.notes) do
         local away = note.s - p.progress
         if away > -20 and away < 450 and shown < 2 then
-          local big = shown == 0
-          local pw, ph = big and 230 or 150, big and 50 or 30
-          local x, y = w / 2 - pw / 2, big and 16 or 70
-          ui.panel(x, y, pw, ph, 150)
-          local colour = note.grade <= 2 and ui.color.red or (note.grade <= 4 and ui.color.gold or ui.color.white)
-          local text = note.grade == 1 and "HAIRPIN" or ("TURN " .. note.grade)
-          if big then
-            arrow(x + 14, y + 13, note.left, 24, colour)
-            ui.text(x + 48, y + 6, text, 28, colour, { font = "comic" })
-            ui.right(math.max(0, math.floor(away / 10 + 0.5) * 10) .. " m", x + pw - 12, y + 16, 18, ui.color.white)
-          else
-            arrow(x + 10, y + 7, note.left, 16, colour)
-            ui.text(x + 34, y + 3, text, 20, colour, { font = "comic" })
-            ui.right(math.floor(away / 10 + 0.5) * 10 .. " m", x + pw - 10, y + 8, 14, ui.color.dim)
-          end
           shown = shown + 1
+          want[k] = shown
         end
+      end
+    end
+    for k, place in pairs(want) do
+      if not fx[k] then fx[k] = { a = 0, y = NOTE_Y[place] + 22, size = NOTE_SIZE[place] } end
+    end
+    for k, f in pairs(fx) do
+      local place = want[k]
+      local ease = math.min(1, dt * 9)
+      if place then
+        f.a = f.a + (1 - f.a) * ease
+        f.y = f.y + (NOTE_Y[place] - f.y) * ease
+        f.size = f.size + (NOTE_SIZE[place] - f.size) * ease
+      else
+        -- done: on up and away
+        f.a = f.a - dt * 4
+        f.y = f.y - dt * 60
+      end
+      if f.a <= 0 then
+        fx[k] = nil
+      else
+        local note = self.notes[k]
+        local away = note.s - p.progress
+        local size = f.size
+        local big = size > 28
+        local colour = note.grade <= 2 and ui.color.red or (note.grade <= 4 and ui.color.gold or ui.color.white)
+        local text = note.grade == 1 and "HAIRPIN" or ("TURN " .. note.grade)
+        local dist = math.max(0, math.floor(away / 10 + 0.5) * 10) .. " m"
+        local dsize = big and 20 or 15
+        local font = ui.font_for(text, "comic")
+        local aw = math.floor(size * 0.72)
+        local tw = nova.ui.text_width(text, { size = size, font = font })
+        local dw = nova.ui.text_width(dist, { size = dsize, font = "rounded" })
+        local gap = size * 0.35
+        -- the arrow, the words and the distance, centred as one line
+        local x = math.floor(w / 2 - (aw + gap + tw + gap + dw) / 2)
+        local y = f.y
+        local a = f.a
+        local ay = y + (size - aw) / 2 + size * 0.1
+        local ink = { 8, 12, 26, math.floor(220 * a) }
+        for _, o in ipairs({ { -2, 0 }, { 2, 0 }, { 0, -2 }, { 0, 2 } }) do arrow(x + o[1], ay + o[2], note.left, aw, ink) end
+        arrow(x, ay, note.left, aw, { colour[1], colour[2], colour[3], math.floor(255 * a) })
+        ui.otext(x + aw + gap, y, text, size, colour, { font = "comic", alpha = a })
+        ui.otext(x + aw + gap + tw + gap, y + size - dsize - size * 0.05, dist, dsize, big and ui.color.white or { 226, 232, 240 }, { alpha = a })
       end
     end
   end
@@ -964,22 +1027,23 @@ function race.scene()
     end
 
     -- countdown, messages, wrong way
+    -- (below the pace notes and the top corners: the lights at GANTRY_Y, the number and the messages under them)
     -- the start: three lights light one by one on a gantry at the top (red, then all green at GO!), and the number pops in big
     local n = self.phase == "countdown" and math.ceil(self.countdown) or 0
     local go = self.message == "GO!" and self.message_time > 0
     if self.phase == "countdown" or go then
       local wv = nova.view()
       local lit = go and 3 or math.max(0, 4 - n)
-      nova.ui.panel("ui/panel_dark", wv / 2 - 120, 28, 240, 84, { slice = 18, scale = 0.8, color = { 255, 255, 255, 240 } })
+      nova.ui.panel("ui/panel_dark", wv / 2 - 120, GANTRY_Y, 240, 84, { slice = 18, scale = 0.8, color = { 255, 255, 255, 240 } })
       for i = 1, 3 do
         local image = (go and "ui/light_green") or (i <= lit and "ui/light_red") or "ui/light_off"
-        nova.ui.sprite(image, wv / 2 + (i - 2) * 70, 70, { w = 56, h = 56 })
+        nova.ui.sprite(image, wv / 2 + (i - 2) * 70, GANTRY_Y + 42, { w = 56, h = 56 })
       end
     end
     if n >= 1 and n <= 3 then
       local frac = self.countdown - (n - 1) -- 1 as the number appears, falling to 0
       local pop = 1 + 0.35 * math.max(0, frac - 0.7) / 0.3
-      ui.center(tostring(n), 130, 104 * pop, ui.color.gold, { font = "thick" })
+      ui.center(tostring(n), MESSAGE_Y + 40 - 40 * pop, 80 * pop, ui.color.gold, { font = "thick" })
     end
     if self.message_time > 0 then
       local go_message = self.message == "GO!"
@@ -988,13 +1052,13 @@ function race.scene()
       first = first or self.message
       local width = nova.view() - 60
       local size = ui.fit(first, go_message and 92 or 38, width, go_message and "thick" or "bold")
-      ui.center(first, 130, size, go_message and ui.color.green or ui.color.white, { font = go_message and "thick" or "bold" })
-      if second then ui.center(second, 130 + size * 1.45, ui.fit(second, 24, width, "rounded"), ui.color.gold) end
+      ui.center(first, MESSAGE_Y, size, go_message and ui.color.green or ui.color.white, { font = go_message and "thick" or "bold" })
+      if second then ui.center(second, MESSAGE_Y + size * 1.45, ui.fit(second, 24, width, "rounded"), ui.color.gold) end
     end
     local here = track.point(p.waypoint or 1)
     if self.phase == "racing" and math.abs(p.speed) > 4 then
       local facing = math.sin(p.heading) * here.tx + math.cos(p.heading) * here.tz
-      if facing < -0.3 then ui.center("WRONG WAY", 190, 34, ui.color.red, { font = "bold" }) end
+      if facing < -0.3 then ui.center("WRONG WAY", MESSAGE_Y + 96, 34, ui.color.red, { font = "bold" }) end
     end
     if p.surface == "rough" and self.phase == "racing" and p.off_middle > 14 then
       ui.center("Press R to get back on the road", 470, 18, ui.color.dim)

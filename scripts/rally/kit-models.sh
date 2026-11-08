@@ -37,7 +37,8 @@ ROAD="--stretch x=12,z=6.25 --centre"
 K "$RK" $P roadStraight --as road_asphalt $ROAD
 K "$RK" $P roadStraight --as road_dirt $ROAD --material road=0.50,0.37,0.24 --material grey=0.78,0.66,0.48 --material grass=0.66,0.48,0.28
 K "$RK" $P roadStraight --as road_snow $ROAD --material road=0.60,0.66,0.74 --material grey=0.93,0.96,0.99 --material grass=0.92,0.95,1.0
-K "$RK" $P roadStartPositions --as road_start $ROAD
+# (road_start is no longer the kit's roadStartPositions, which painted four grid boxes into one 6 m slab: it is a checkered line made in the
+# studio, models/road_start.model.json, and each grid_slot paints its own box, models/grid_box; see scripts/rally/grid.mjs)
 
 # the roadside (lib/roadside.lua places these from the circuit's waypoints): stands, tents, banner towers, billboards, flags,
 # pylons and the rest, from the racing kit
