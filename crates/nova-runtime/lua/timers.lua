@@ -20,6 +20,22 @@ local ease = {
   in_cubic = function(t) return t * t * t end,
   out_cubic = function(t) return 1 - (1 - t) ^ 3 end,
   in_out_cubic = function(t) return t < 0.5 and 4 * t * t * t or 1 - (-2 * t + 2) ^ 3 / 2 end,
+  in_sine = function(t) return 1 - math.cos(t * math.pi / 2) end,
+  out_sine = function(t) return math.sin(t * math.pi / 2) end,
+  in_out_sine = function(t) return -(math.cos(math.pi * t) - 1) / 2 end,
+  in_back = function(t)
+    local c1, c3 = 1.70158, 2.70158
+    return c3 * t * t * t - c1 * t * t
+  end,
+  in_out_back = function(t)
+    local c2 = 1.70158 * 1.525
+    if t < 0.5 then return (2 * t) ^ 2 * ((c2 + 1) * 2 * t - c2) / 2 end
+    return ((2 * t - 2) ^ 2 * ((c2 + 1) * (t * 2 - 2) + c2) + 2) / 2
+  end,
+  out_elastic = function(t)
+    if t <= 0 then return 0 elseif t >= 1 then return 1 end
+    return 2 ^ (-10 * t) * math.sin((t * 10 - 0.75) * (2 * math.pi) / 3) + 1
+  end,
   out_back = function(t)
     local c1, c3 = 1.70158, 2.70158
     return 1 + c3 * (t - 1) ^ 3 + c1 * (t - 1) ^ 2

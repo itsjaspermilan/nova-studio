@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "length": 1,
+  "loop": false,
+  "tracks": [
+    {
+      "target": "title",
+      "field": "y",
+      "keys": [
+        { "time": 0, "value": -80, "ease": "out_back" },
+        { "time": 0.6, "value": 24 }
+      ]
+    },
+    {
+      "target": "title",
+      "field": "alpha",
+      "keys": [
+        { "time": 0, "value": 0, "ease": "out_quad" },
+        { "time": 0.4, "value": 1 }
+      ]
+    },
+    {
+      "target": "title",
+      "field": "color",
+      "keys": [
+        { "time": 0.6, "value": [255, 220, 120], "ease": "in_out_sine" },
+        { "time": 1, "value": [255, 255, 255] }
+      ]
+    }
+  ]
+}

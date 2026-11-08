@@ -11,6 +11,7 @@
   let selected = $state("");
   let editing: Editing | null = $state(null);
   let track: string | null = $state(null);
+  let animation: string | null = $state(null);
   let sprite: { name: string; side: number } | null = $state(null);
   let sfx: string | null = $state(null);
   let model: string | null = $state(null);
@@ -54,8 +55,8 @@
     if (!next.delete(id)) next.add(id);
     opened = next;
   };
-  const SINGLE: Record<string, string> = { sprites: "sprite", models: "3D model", sounds: "sound effect", music: "song", scenes: "scene", tracks: "track", entities: "entity" };
-  const RES_ICON: Record<string, string> = { sprite: "◫", model: "◆", scene: "▦", track: "⌇", entity: "☺", sound: "♪", song: "♫", script: "☾", image: "▣", font: "A", project: "⚙", file: "·" };
+  const SINGLE: Record<string, string> = { sprites: "sprite", models: "3D model", sounds: "sound effect", music: "song", scenes: "scene", tracks: "track", animations: "animation", entities: "entity" };
+  const RES_ICON: Record<string, string> = { sprite: "◫", model: "◆", scene: "▦", track: "⌇", anim: "◷", entity: "☺", sound: "♪", song: "♫", script: "☾", image: "▣", font: "A", project: "⚙", file: "·" };
   const add = (id: string) => {
     shut.has(id) && foldGroup(id);
     const into = lastFolder?.group === id ? `${lastFolder.path}/` : "";
@@ -65,6 +66,7 @@
     else if (id === "music") song = into;
     else if (id === "scenes") scene = into;
     else if (id === "tracks") track = "";
+    else if (id === "animations") animation = into;
     else if (id === "entities") entity = into;
   };
   const isActive = (r: Resource) => r.files.includes(studio.active ?? "");
@@ -153,6 +155,7 @@
       <button class="ghost" title="New song" aria-label="New song" onclick={() => (song = "")}>♫</button>
       <button class="ghost" title="New 3D model" aria-label="New 3D model" onclick={() => (model = "")}>◆</button>
       <button class="ghost" title="New race track" aria-label="New race track" onclick={() => (track = "")}>⌇</button>
+      <button class="ghost" title="New animation (a timeline of keys)" aria-label="New animation" onclick={() => (animation = "")}>◷</button>
       <button class="ghost" title="New folder" aria-label="New folder" onclick={() => begin("dir")}>▤</button>
     {:else}
       <button class="ghost" title="New file" aria-label="New file" onclick={() => { setView("files"); begin("file"); }}>＋</button>
@@ -181,6 +184,13 @@
       <input use:focusOnMount bind:value={() => song ?? "", (x) => (song = x)} placeholder="song name" aria-label="Song name" />
       <button class="primary" disabled={!song.trim()}>Create</button>
       <button type="button" class="ghost" aria-label="Cancel" onclick={() => (song = null)}>✕</button>
+    </form>
+  {/if}
+  {#if animation !== null}
+    <form class="sprite" onsubmit={(e) => { e.preventDefault(); const n = animation!; animation = null; void studio.createAnimation(n); }}>
+      <input use:focusOnMount bind:value={() => animation ?? "", (x) => (animation = x)} placeholder="animation name (door_open, menus/slide)" aria-label="Animation name" />
+      <button class="primary" disabled={!animation.trim()}>Create</button>
+      <button type="button" class="ghost" aria-label="Cancel" onclick={() => (animation = null)}>✕</button>
     </form>
   {/if}
   {#if track !== null}
@@ -222,7 +232,7 @@
             <span class="icon dir">{shut.has(g.id) ? "▸" : "▾"}</span>
             <span class="gtitle">{g.title}</span>
             <span class="count dim">{g.items.length || ""}</span>
-            {#if ["sprites", "models", "sounds", "music", "scenes", "tracks", "entities"].includes(g.id)}
+            {#if ["sprites", "models", "sounds", "music", "scenes", "tracks", "animations", "entities"].includes(g.id)}
               <button class="ghost add" title="New {SINGLE[g.id]}" aria-label="New {SINGLE[g.id]}" onclick={(e) => { e.stopPropagation(); add(g.id); }}>＋</button>
             {/if}
           </div>

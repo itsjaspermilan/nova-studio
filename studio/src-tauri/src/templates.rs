@@ -51,6 +51,10 @@ pub const TEMPLATES: &[Template] = &[
                 "sprites/player_sheet.png",
                 include_bytes!("../templates/starter/sprites/player_sheet.png"),
             ),
+            (
+                "animations/title_in.anim.json",
+                include_bytes!("../templates/starter/animations/title_in.anim.json"),
+            ),
         ],
     },
 ];

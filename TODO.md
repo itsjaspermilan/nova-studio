@@ -57,6 +57,20 @@ animation and simple lights; streamed music; the C audio core's synthesis for th
 Everything we know is missing or unverified, in one place. "Device" means it needs the Retroid (or
 another physical Android device) to settle; the emulator cannot.
 
+**Keyframe animations and the timeline editor (2026-11-08; Godot's AnimationPlayer for Nova).** `animations/<name>.anim.json` (documented in
+`docs/project-format.md`, checked at load by `anim.rs` so `nova check` finds a broken file): value tracks move any number or list field (`x`, `angle`,
+`alpha`, `tint`, `hud.alpha`...) of `self`, a named scene object, a tag, the scene or the 2D/3D camera, with per-key easing (16 named curves, `step`, or a
+cubic-bezier), and `relative` tracks so one "door opens" works for every door; event tracks call a function; sound tracks play a sound.
+`nova.play_anim(name, opts)` / `self:play_anim(name)` returns a player (pause, resume, stop, seek, speed, backwards, loop, `on_finish`), several play at once,
+in the framework's 60 Hz steps after the timers (`lua/anim.lua`), so headless runs repeat exactly; an entity's animations hold under `nova.pause`, the scene's
+do not. The studio's timeline editor (Animations in the tree): tracks, keys on a ruler (drag, double-click or K to add, Delete), snapping and zoom, a scrubbable
+2D preview of a scene with the animation applied, an inspector with a curve graph, undo/redo, resizable panels. A Help lesson (6) and a "Timeline editor"
+shortcuts block; the Starter template has `animations/title_in.anim.json`. Crate Dash's title and game-over screens are animations now. Tests:
+`tests/anim.rs` (8), `anim.rs` unit tests, `tests/tutorials.rs` (lesson 6), `anim-doc.test.ts`, `TimelineEditor.test.ts`. **Not done**: the preview is 2D
+only (no 3D scene or model view; 3D camera tracks show as numbers), entity sprites draw as boxes in the preview, no curve (graph) editor for values, no
+copy/paste of keys or multi-select, no "record" mode that keys what you drag in the scene editor, no blending between animations or animating a model's
+bones (clips do that), and the timeline was checked in the browser preview, not in the Tauri app or on the Retroid.
+
 **Pine Ridge Rally: twelve more courses and fourteen more cars (2026-11-07).** Six circuits and six stages (`tracks/*.track.json`, Medium to Expert:
 hairpins, chicanes, tightening corners, narrow walled sections and gravel into tarmac, the generator's new track `zones`; a new autumn country), the
 racing kit's four racers, five karts and five service vehicles (a Fun class that opens after three wins), more racing-kit dressing (pit row, gantries, light

@@ -53,7 +53,7 @@ describe("groupResources", () => {
     expect(new Set(all).size).toBe(all.length);
     expect(all.sort()).toEqual(files.map((x) => x.path).sort());
     const empty = groupResources([]);
-    expect(empty.map((g) => g.title)).toEqual(["Sprites", "3D Models", "Scenes", "Tracks", "Entities", "Sounds", "Music"]);
+    expect(empty.map((g) => g.title)).toEqual(["Sprites", "3D Models", "Scenes", "Tracks", "Animations", "Entities", "Sounds", "Music"]);
   });
 
   it("falls back to name.png for a sprite whose file has not been read yet", () => {
@@ -64,6 +64,13 @@ describe("groupResources", () => {
 });
 
 describe("renaming a resource", () => {
+  it("keeps an animation one item and renames its file", () => {
+    const g = groupResources(f("animations/door_open.anim.json", "animations/menus/slide.anim.json"));
+    const items = find(g, "animations").items;
+    expect(items.map((i) => [i.kind, i.name])).toEqual([["anim", "door_open"], ["anim", "menus/slide"]]);
+    expect(renamePlan(items[0]!, "gate_open")).toEqual([["animations/door_open.anim.json", "animations/gate_open.anim.json"]]);
+  });
+
   it("moves every file named after it and leaves a differently named picture alone", () => {
     const g = groupResources(f("sprites/player.sprite.json", "sprites/player_sheet.png", "sprites/player.layers.json", "models/car.model.json", "models/car.glb", "models/car.texture.png"), new Map([["sprites/player.sprite.json", "sprites/player_sheet.png"]]));
     const player = find(g, "sprites").items[0]!;

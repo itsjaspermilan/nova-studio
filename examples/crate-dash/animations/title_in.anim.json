@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "length": 1.2,
+  "loop": false,
+  "notes": "The title screen's opening: the name drops in, the stars spin up beside it, the tagline fades in, then the prompt starts blinking.",
+  "tracks": [
+    {
+      "target": "title", "field": "y",
+      "keys": [
+        { "time": 0, "value": -90, "ease": "out_back" },
+        { "time": 0.7, "value": 120 }
+      ]
+    },
+    {
+      "target": "title", "field": "color",
+      "keys": [
+        { "time": 0.7, "value": [255, 255, 255], "ease": "out_quad" },
+        { "time": 1.1, "value": [255, 218, 74] }
+      ]
+    },
+    {
+      "target": "star_left", "field": "sx",
+      "keys": [
+        { "time": 0.3, "value": 0, "ease": "out_back" },
+        { "time": 0.8, "value": 3 }
+      ]
+    },
+    {
+      "target": "star_left", "field": "sy",
+      "keys": [
+        { "time": 0.3, "value": 0, "ease": "out_back" },
+        { "time": 0.8, "value": 3 }
+      ]
+    },
+    {
+      "target": "star_left", "field": "angle",
+      "keys": [
+        { "time": 0.3, "value": -6.2832, "ease": "out_cubic" },
+        { "time": 0.9, "value": 0 }
+      ]
+    },
+    {
+      "target": "star_right", "field": "sx",
+      "keys": [
+        { "time": 0.4, "value": 0, "ease": "out_back" },
+        { "time": 0.9, "value": 3 }
+      ]
+    },
+    {
+      "target": "star_right", "field": "sy",
+      "keys": [
+        { "time": 0.4, "value": 0, "ease": "out_back" },
+        { "time": 0.9, "value": 3 }
+      ]
+    },
+    {
+      "target": "star_right", "field": "angle",
+      "keys": [
+        { "time": 0.4, "value": 6.2832, "ease": "out_cubic" },
+        { "time": 1, "value": 0 }
+      ]
+    },
+    {
+      "target": "tagline", "field": "alpha",
+      "keys": [
+        { "time": 0.6, "value": 0, "ease": "in_out_sine" },
+        { "time": 1.1, "value": 1 }
+      ]
+    },
+    {
+      "type": "sound",
+      "keys": [
+        { "time": 0.7, "sound": "star", "volume": 0.7 }
+      ]
+    },
+    {
+      "type": "event", "target": "scene",
+      "keys": [
+        { "time": 1.2, "call": "ready" }
+      ]
+    }
+  ]
+}

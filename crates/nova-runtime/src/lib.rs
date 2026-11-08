@@ -4,6 +4,7 @@
 pub mod actions;
 #[cfg(not(target_os = "android"))]
 pub mod android;
+pub mod anim;
 pub mod app;
 pub mod assets;
 pub mod audio;

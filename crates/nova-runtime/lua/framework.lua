@@ -14,6 +14,7 @@
 --   return Play
 local raw = nova.raw
 local timers = require("nova.timers")
+local anim = require("nova.anim")
 
 local STEP = 1 / 60 -- the game always advances in 60 Hz steps
 local MAX_STEPS = 5 -- after a long hitch it catches up at most this far, then lets go
@@ -461,6 +462,11 @@ function Entity:after(seconds, fn) return timers.after(self, seconds, fn) end
 function Entity:every(seconds, fn) return timers.every(self, seconds, fn) end
 function Entity:go(fn) return timers.go(self, fn) end
 function Entity:tween(props, seconds, easing, on_done) return timers.tween(self, self, props, seconds, easing, on_done) end
+function Entity:play_anim(name, opts)
+  opts = opts or {}
+  if opts.target == nil then opts.target = self end
+  return anim.play(name, opts)
+end
 
 -- The first living entity with this tag that overlaps this one, or nil.
 function Entity:touching(tag)
@@ -652,7 +658,7 @@ function Text:draw()
   if not self.visible then return end
   local c, col = text_color, self.color
   c[1], c[2], c[3] = col and col[1] or 255, col and col[2] or 255, col and col[3] or 255
-  c[4] = col and col[4] or 255
+  c[4] = floor((col and col[4] or 255) * (self.alpha or 1))
   text_opts.size = (self.size or 2) * 8 -- scene files give "scale" steps of 8 units; use `size` in code
   text_opts.font = self.font
   text_opts.width = self.width
@@ -841,10 +847,14 @@ local function shape_circles(model)
   return out
 end
 local eye_x, eye_y, eye_z = 0, 0, 0
+-- the last 3D camera set, as fields an animation can move (camera tracks: eye_x .. target_z, fov)
+local camera3 = { eye_x = 0, eye_y = 0, eye_z = 0, target_x = 0, target_y = 0, target_z = -1, fov = 60 }
 
 local set_camera = nova.camera
 function nova.camera(ex, ey, ez, tx, ty, tz, fov)
   eye_x, eye_y, eye_z = ex, ey, ez
+  local c = camera3
+  c.eye_x, c.eye_y, c.eye_z, c.target_x, c.target_y, c.target_z, c.fov = ex, ey, ez, tx, ty, tz, fov or 60
   return set_camera(ex, ey, ez, tx, ty, tz, fov)
 end
 
@@ -1964,6 +1974,21 @@ end
 function nova.count_alive() return #W.list end
 nova.wait, nova.wait_until, nova.ease = timers.wait, timers.wait_until, timers.ease
 
+-- Keyframe animations (animations/<name>.anim.json, played by lua/anim.lua in the same steps as timers).
+anim.bind {
+  world = W, cam = W.cam, camera3 = camera3,
+  apply_camera3 = function()
+    local c = camera3
+    nova.camera(c.eye_x, c.eye_y, c.eye_z, c.target_x, c.target_y, c.target_z, c.fov)
+  end,
+}
+function nova.play_anim(name, opts) return anim.play(name, opts) end
+function nova.stop_anims(target) anim.stop_all(target) end
+function nova.anim_data(name) return anim.data(name) end
+-- (a game that does not use nova.start can step its animations itself, from its own update)
+function nova.update_anims(dt) anim.update(dt) end
+nova.anims_playing = anim.count
+
 -- ------------------------------------------------------------------ camera (2D)
 local cam = W.cam
 nova.cam = {}
@@ -2155,12 +2180,13 @@ local function collide_pass()
 end
 
 -- ------------------------------------------------------------------ scenes
-local RESERVED_SCENE_NAMES = { enter = true, leave = true, update = true, draw = true, draw_ui = true, after = true, every = true, go = true, tween = true }
+local RESERVED_SCENE_NAMES = { enter = true, leave = true, update = true, draw = true, draw_ui = true, after = true, every = true, go = true, tween = true, play_anim = true }
 
 function Scene:after(seconds, fn) return timers.after(self, seconds, fn) end
 function Scene:every(seconds, fn) return timers.every(self, seconds, fn) end
 function Scene:go(fn) return timers.go(self, fn) end
 function Scene:tween(props, seconds, easing, on_done) return timers.tween(self, self, props, seconds, easing, on_done) end
+Scene.play_anim = Entity.play_anim
 
 local function build_scene(scene, data, file)
   if data.background then W.background = data.background end
@@ -2215,6 +2241,7 @@ local function leave_scene()
   raw.freeze_time(false)
   grids, pgrids = {}, {}
   timers.clear()
+  anim.clear()
   cam.follow, cam.limit, cam.set = nil, nil, false
   W.scene, W.scene_name = nil, nil
 end
@@ -2294,6 +2321,7 @@ local function step(dt)
   W.step_id = W.step_id + 1
   W.time = W.time + dt
   timers.update(dt)
+  anim.update(dt)
   if not W.paused then
     local list = W.list
     for i = 1, #list do
