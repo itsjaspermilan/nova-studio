@@ -3,6 +3,7 @@
 //! project root held in the app state and is confined to it (`paths`).
 
 pub mod audio_files;
+mod device;
 mod headless;
 mod paths;
 mod project_files;
@@ -19,6 +20,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 struct AppState {
     root: Mutex<Option<PathBuf>>,
     runner: runner::Runner,
+    device: device::DeviceRunner,
     recent: recent::RecentStore,
 }
 
@@ -278,12 +280,62 @@ fn run_project(
 
 #[tauri::command]
 fn stop_project(state: State<AppState>) -> bool {
-    state.runner.stop()
+    // (`|` so both are stopped)
+    state.runner.stop() | state.device.stop()
 }
 
 #[tauri::command]
 fn is_running(state: State<AppState>) -> bool {
-    state.runner.is_running()
+    state.runner.is_running() || state.device.is_running()
+}
+
+/// The Android devices adb can see (the handheld over USB, emulators).
+#[tauri::command]
+async fn list_devices() -> Result<Vec<device::Device>, String> {
+    tauri::async_runtime::spawn_blocking(device::list_devices)
+        .await
+        .map_err(|e| format!("could not look for devices: {e}"))?
+}
+
+/// Builds the game for Android, installs it on the device `serial` and starts it. Steps arrive as `device-step`
+/// events, the build's and then the game's log as `play-log`, and the end as `play-exit`. Returns the package.
+#[tauri::command]
+async fn play_on_device(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    serial: String,
+) -> Result<String, String> {
+    let root = root_of(&state)?;
+    if state.runner.is_running() {
+        return Err("the game is already running on this computer; stop it first".into());
+    }
+    let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let repo = repo
+        .join("crates/nova-runtime/Cargo.toml")
+        .is_file()
+        .then(|| repo.canonicalize().unwrap_or(repo));
+    let out = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| format!("no cache folder: {e}"))?
+        .join("device");
+    let with = device::BuildWith {
+        nova: runner::find_nova_binary()?,
+        repo,
+        out,
+    };
+    let runner = state.device.clone();
+    let emit: std::sync::Arc<dyn Fn(device::Event) + Send + Sync> =
+        std::sync::Arc::new(move |event| {
+            let _ = match event {
+                device::Event::Log(line) => app.emit("play-log", line),
+                device::Event::Step(step) => app.emit("device-step", step),
+                device::Event::Exit(code) => app.emit("play-exit", code),
+            };
+        });
+    tauri::async_runtime::spawn_blocking(move || runner.play(&root, &serial, &with, emit))
+        .await
+        .map_err(|e| format!("playing on the device stopped unexpectedly: {e}"))?
 }
 
 /// Runs the project headless and returns the checker's report (see `nova check --json`).
@@ -339,6 +391,7 @@ pub fn run() {
             app.manage(AppState {
                 root: Mutex::new(None),
                 runner: runner::Runner::default(),
+                device: device::DeviceRunner::default(),
                 recent: recent::RecentStore::new(&config),
             });
             Ok(())
@@ -371,6 +424,8 @@ pub fn run() {
             run_project,
             stop_project,
             is_running,
+            list_devices,
+            play_on_device,
             check_project,
             export_game,
             run_headless,

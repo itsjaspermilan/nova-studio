@@ -425,6 +425,14 @@ fn fresh_dir(dir: &Path) -> Result<(), String> {
     std::fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))
 }
 
+/// The debug key already made for this tree, or for a Nova tree around it (a git worktree inside the main checkout
+/// signs with the main checkout's key, so a game installed from either can be updated from the other).
+pub fn existing_debug_key(repo: &Path) -> Option<PathBuf> {
+    repo.ancestors()
+        .map(|d| d.join("build/android/debug.keystore"))
+        .find(|k| k.is_file())
+}
+
 /// Builds the APK. `progress` hears a plain sentence at the start of each step.
 pub fn build_apk(build: &AndroidBuild, progress: &mut dyn FnMut(&str)) -> Result<Built, String> {
     // The game first: a project that does not open is not worth an engine build.
@@ -568,7 +576,11 @@ pub fn build_apk(build: &AndroidBuild, progress: &mut dyn FnMut(&str)) -> Result
             .arg(&aligned),
         "aligning the APK (zipalign)",
     )?;
-    let keystore = root.join("debug.keystore");
+    let keystore = build
+        .repo
+        .as_deref()
+        .and_then(existing_debug_key)
+        .unwrap_or_else(|| root.join("debug.keystore"));
     if !keystore.is_file() {
         run(
             Command::new(&tools.keytool)
@@ -668,6 +680,22 @@ mod tests {
             std::fs::create_dir_all(dir.join(name)).unwrap();
         }
         assert_eq!(newest(&dir, "").unwrap(), dir.join("36.1.0"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_worktree_signs_with_the_key_of_the_tree_around_it() {
+        let dir = std::env::temp_dir().join(format!("nova-android-key-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let worktree = dir.join(".claude/worktrees/x");
+        std::fs::create_dir_all(&worktree).unwrap();
+        assert_eq!(existing_debug_key(&worktree), None);
+        std::fs::create_dir_all(dir.join("build/android")).unwrap();
+        std::fs::write(dir.join("build/android/debug.keystore"), "k").unwrap();
+        assert_eq!(
+            existing_debug_key(&worktree),
+            Some(dir.join("build/android/debug.keystore"))
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
