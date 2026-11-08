@@ -2,14 +2,16 @@
   // Play, Stop and "Play on device": the menu beside Play lists the Android devices adb can see (the handheld over
   // USB, emulators); picking one builds the game for Android, installs it there and starts it.
   import { studio } from "../lib/store.svelte";
-  import { deviceHint } from "../lib/devices";
+  import { deviceHint, lastDevice } from "../lib/devices";
   import type { AndroidDevice } from "../lib/types";
 
   let open = $state(false);
   let box: HTMLElement | undefined = $state();
 
+  let last = $state(lastDevice());
   const toggle = () => {
     open = !open;
+    last = lastDevice();
     if (open) void studio.findDevices();
   };
   const pick = (d: AndroidDevice) => {
@@ -44,7 +46,7 @@
           {@const hint = deviceHint(d)}
           <button class="device" role="menuitem" disabled={!!hint} onclick={() => pick(d)}>
             <span class="name">▶ {d.name}</span>
-            <span class="dim small">{d.serial}{d.serial === studio.preferredDevice?.serial ? " · last used" : ""}</span>
+            <span class="dim small">{d.serial}{d.serial === last ? " · last used" : ""}</span>
             {#if hint}<span class="hint small">{hint}</span>{/if}
           </button>
         {/each}

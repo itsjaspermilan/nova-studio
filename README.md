@@ -20,7 +20,7 @@ could not have typed.
   generator, a music editor, a track and rally-stage editor, store-art export, a performance strip and a simulation runner.
 - **An MCP server** (`studio/mcp/server.ts`, `docs/mcp.md`) so an AI assistant can make the same files the editors make: models, sounds,
   songs, sprites, scenes, race tracks, screenshots and store art.
-- **Android export:** `scripts/build-apk.sh` builds a debug APK of any project without Gradle; the studio's Export button does too.
+- **Android export:** `nova export android <project>` (or `scripts/build-apk.sh`) builds a debug APK of any project without Gradle; the studio's Export button does too, and **Play on device** (▾ beside Play) builds, installs, starts and shows the log on the handheld (`docs/play-on-device.md`).
 - **Example games** in `examples/`, from a tiny 2D crate game to a full 3D rally game.
 
 ### The studio
