@@ -1,0 +1,12 @@
+{
+  "kind": "panel",
+  "id": "pause",
+  "anchor": "center",
+  "w": 360,
+  "children": [
+    { "kind": "text", "text": "PAUSED", "style": "heading", "align": "center" },
+    { "kind": "button", "text": "Resume", "id": "resume" },
+    { "kind": "button", "text": "Restart", "id": "restart" },
+    { "kind": "button", "text": "Back to the title", "id": "title" }
+  ]
+}

@@ -18,3 +18,15 @@ Each font's own licence text sits beside this file. They are used unmodified.
 Downloaded 2026-11-02 from `https://raw.githubusercontent.com/google/fonts/main/ofl/<name>/`.
 Inter, Fredoka, JetBrains Mono, Lora and Cinzel are variable fonts: the rasteriser uses their default
 weight (it does not apply weight axes).
+
+## Fonts in example projects
+
+| Project file | Font | Source |
+| --- | --- | --- |
+| `examples/pine-ridge-rally/fonts/barlow_cond_italic.ttf` | Barlow Condensed ExtraBold Italic | ofl/barlowcondensed |
+| `examples/pine-ridge-rally/fonts/barlow_cond_heavy.ttf` | Barlow Condensed ExtraBold | ofl/barlowcondensed |
+| `examples/pine-ridge-rally/fonts/barlow_cond.ttf` | Barlow Condensed Bold | ofl/barlowcondensed |
+| `examples/pine-ridge-rally/fonts/barlow.ttf`, `barlow_medium.ttf`, `barlow_semibold.ttf` | Barlow Regular, Medium, SemiBold | ofl/barlow |
+
+Barlow (Copyright 2017 The Barlow Project Authors, SIL Open Font License 1.1, no reserved font name; `Barlow-OFL.txt`), static
+instances, downloaded 2026-11-08 from the same Google Fonts repository and used unmodified (renamed files only).

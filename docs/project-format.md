@@ -813,6 +813,10 @@ local w, h = nova.ui.text_size("Hello", { font = "mono", size = 20, width = 200 
 local w = nova.ui.text_width("Hello", 2)                                              -- older form
 ```
 
+Text can fit a box: `fit = "shrink"` makes one line smaller until it is no wider than `width` (and no taller than `height`, if
+given); `fit = "wrap"` wraps it at `width` and makes it smaller until it is no taller than `height`; never below `min_size` (8).
+`nova.ui.text` and `nova.ui.text_size` return the size used as a third result (see `docs/menus.md`).
+
 Built-in fonts (SIL Open Font License; see `licenses/fonts/`): `sans` (Inter), `rounded` (Fredoka),
 `pixel` (Press Start 2P), `terminal` (VT323), `mono` (JetBrains Mono), `serif` (Lora), `comic`
 (Bangers), `display` (Cinzel), `script` (Pacifico). `examples/font-gallery` shows all of them.
@@ -970,6 +974,12 @@ every couple of thousand VM instructions and charges it the time since the last 
 by name, so a slow `nova.*` call is not blamed on the Lua function around it. The scripts run somewhat slower while it is on.
 
 ## UI helpers for menus
+
+**Menus and HUDs laid out for you:** `nova.ui.menu { ... }` (a tree of rows, columns, grids, panels, text and buttons, placed from the
+screen's edges and middle, with the focus moved by the d-pad and stick, A to press, B to go back, scrolling and focus memory),
+`nova.ui.layout { ... }` (the same with no focus, for HUDs), `nova.ui.theme { ... }` (the game's look), `nova.ui.load(name)`
+(`menus/<name>.menu.json`), `nova.ui.focus` and `nova.ui.forget`. All of it is described in `docs/menus.md`. The helpers below are
+the older, lower-level way.
 
 `nova.ui.list{ x, y, count, visible, current, top, w, h, gap, columns }` is a scrolling list or grid with the choosing done:
 up and down (left and right in a grid) by the d-pad or arrow keys, the mouse wheel, and the pointer (hovering chooses, a click
