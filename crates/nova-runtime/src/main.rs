@@ -4,7 +4,7 @@
 //!   nova run --pak game.npk          play a packed project
 //!   nova pack <project-folder> out.npk    pack a project into one file (what the APK carries)
 //!   nova export desktop <project-folder> [--out dir]   a folder that plays the game on a computer
-//!   nova export android <project-folder> [--out dir]   a debug-signed APK (needs the Android toolchain)
+//!   nova export android <project-folder> [--out dir]   a debug-signed APK (needs the Android SDK: see android.rs)
 //!   nova                             the built-in M1 benchmark scene
 //!   nova --world-height 0            render the world at native resolution (default: project, or 540)
 //!   nova --headless --frames 300 --capture out.png    offscreen run and capture
@@ -14,6 +14,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use nova_runtime::android;
 use nova_runtime::app::{self, Options, PakBytes};
 use nova_runtime::export;
 use nova_runtime::pak;
@@ -25,7 +26,11 @@ const USAGE: &str = "usage:
   nova pack <project-folder> <out.npk>   pack a project into one file
   nova info <project-folder>             print the project's name, version and id (for build scripts)
   nova export desktop <project-folder> [--out <dir>]   check the game, then write <dir>/<id>/ that plays it on a computer
-  nova export android <project-folder> [--out <dir>]   check the game, then build a debug-signed APK (needs the Android toolchain)
+  nova export android <project-folder> [--out <dir>] [--rebuild] [--debug-build]
+                                         check the game, then build a debug-signed APK (needs the Android SDK; the
+                                         engine is built with cargo ndk in the Nova source tree when it changed)
+  nova export android --benchmark [--out <dir>]   the built-in benchmark scene as an APK
+                                         (--no-check: build without running the game first)
   nova check <project-folder> [--json] [--frames N]   load and run a project headless, list its problems
   nova [options]                         built-in benchmark scene
 options: [--headless] [--frames N] [--capture out.png] [--size WxH] [--world-height N]
@@ -51,9 +56,20 @@ enum Command {
     },
     Export {
         target: String,
-        folder: PathBuf,
+        /// `None` only for `--benchmark` (android).
+        folder: Option<PathBuf>,
         out: PathBuf,
+        android: AndroidFlags,
     },
+}
+
+#[derive(Default)]
+struct AndroidFlags {
+    debug_build: bool,
+    rebuild: bool,
+    benchmark: bool,
+    /// Skip `nova check` (scripts that test the engine on a device build games as they are).
+    no_check: bool,
 }
 
 fn parse() -> Result<Command, String> {
@@ -107,20 +123,33 @@ fn parse() -> Result<Command, String> {
                 "`nova export`: unknown target '{target}' (desktop or android)"
             ));
         }
-        let folder = args
-            .next()
-            .ok_or("`nova export` needs a project folder after the target")?;
+        let mut folder = None;
         let mut out = PathBuf::from("build/export");
+        let mut android = AndroidFlags::default();
         while let Some(arg) = args.next() {
             match arg.as_str() {
                 "--out" => out = args.next().ok_or("--out needs a folder")?.into(),
+                "--debug-build" if target == "android" => android.debug_build = true,
+                "--rebuild" if target == "android" => android.rebuild = true,
+                "--benchmark" if target == "android" => android.benchmark = true,
+                "--no-check" if target == "android" => android.no_check = true,
+                other if folder.is_none() && !other.starts_with("--") => {
+                    folder = Some(PathBuf::from(other))
+                }
                 other => return Err(format!("`nova export`: unexpected argument '{other}'")),
             }
         }
+        if folder.is_none() && !android.benchmark {
+            return Err("`nova export` needs a project folder after the target".into());
+        }
+        if folder.is_some() && android.benchmark {
+            return Err("give either a project folder or --benchmark, not both".into());
+        }
         return Ok(Command::Export {
             target,
-            folder: folder.into(),
+            folder,
             out,
+            android,
         });
     }
     if args.peek().map(String::as_str) == Some("info") {
@@ -327,26 +356,33 @@ fn print_problems(problems: &[nova_runtime::diagnostics::Diagnostic]) {
 /// Checks the game, then writes what a person can hand to someone else.
 fn export_game(
     target: &str,
-    folder: &std::path::Path,
+    folder: Option<&std::path::Path>,
     out: &std::path::Path,
+    android: &AndroidFlags,
 ) -> Result<(), String> {
     log::set_max_level(log::LevelFilter::Off);
-    let report = export::check_project(folder, 60);
-    print_problems(&report.problems);
-    if !report.ok {
-        return Err(
-            "the game has errors, so it was not exported (fix them, or run `nova check`)".into(),
-        );
+    let report = folder
+        .filter(|_| !android.no_check)
+        .map(|f| export::check_project(f, 60));
+    if let Some(report) = &report {
+        print_problems(&report.problems);
+        if !report.ok {
+            return Err(
+                "the game has errors, so it was not exported (fix them, or run `nova check`)"
+                    .into(),
+            );
+        }
     }
     let exe = std::env::current_exe().map_err(|e| format!("cannot find this program: {e}"))?;
-    let notices = std::fs::read_to_string(
-        exe.parent()
-            .map(|d| d.join("THIRD-PARTY.txt"))
-            .unwrap_or_default(),
-    )
-    .ok()
-    .or_else(|| Some(include_str!("../../../licenses/rust-dependencies.txt").to_string()));
     if target == "desktop" {
+        let folder = folder.ok_or("`nova export desktop` needs a project folder")?;
+        let notices = std::fs::read_to_string(
+            exe.parent()
+                .map(|d| d.join("THIRD-PARTY.txt"))
+                .unwrap_or_default(),
+        )
+        .ok()
+        .or_else(|| Some(include_str!("../../../licenses/rust-dependencies.txt").to_string()));
         let done = export::export_desktop(folder, out, &exe, notices.as_deref())?;
         println!("exported to {}:", done.dir.display());
         for f in &done.files {
@@ -354,38 +390,81 @@ fn export_game(
         }
         return Ok(());
     }
-    // Android: the APK is built by the repository's script, which needs cargo-ndk and the Android SDK.
-    let mut starts = vec![std::env::current_dir().unwrap_or_default()];
-    if let Ok(repo) = std::env::var("NOVA_REPO") {
-        starts.insert(0, repo.into());
+    export_android(folder, out, android, &exe)
+}
+
+/// The Nova source tree (where the engine is built for Android): `NOVA_REPO`, or a folder above the working
+/// directory or this program that has the runtime's crate.
+fn find_repo(exe: &std::path::Path) -> Option<PathBuf> {
+    let is_repo = |d: &std::path::Path| d.join("crates/nova-runtime/Cargo.toml").is_file();
+    if let Some(repo) = std::env::var_os("NOVA_REPO").map(PathBuf::from) {
+        return is_repo(&repo).then_some(repo);
     }
-    starts.push(exe.clone());
-    let script = export::find_apk_script(&starts).ok_or(
-        "building an APK needs the Nova source tree with the Android toolchain (scripts/build-apk.sh): \
-         run this from inside it, or set NOVA_REPO to its folder",
-    )?;
-    let status = std::process::Command::new("bash")
-        .arg(&script)
-        .arg("--project")
-        .arg(folder)
-        .status()
-        .map_err(|e| format!("cannot run {}: {e}", script.display()))?;
-    if !status.success() {
-        return Err("the APK build failed (see the messages above)".into());
-    }
-    let root = script
+    let starts = [
+        std::env::current_dir().unwrap_or_default(),
+        exe.to_path_buf(),
+    ];
+    starts
+        .iter()
+        .flat_map(|s| s.ancestors())
+        .find(|d| is_repo(d))
+        .map(std::path::Path::to_path_buf)
+}
+
+/// Builds the APK. Each step is printed as `[step] ...` (the studio shows these as progress), and the last lines
+/// name the file and the package (`scripts/device-smoke.sh` reads the `package:` line).
+fn export_android(
+    folder: Option<&std::path::Path>,
+    out: &std::path::Path,
+    flags: &AndroidFlags,
+    exe: &std::path::Path,
+) -> Result<(), String> {
+    use std::io::Write as _;
+    let repo = find_repo(exe);
+    // A studio bundle can carry a prebuilt engine beside the program instead of the source tree.
+    let library = exe
         .parent()
-        .and_then(|p| p.parent())
-        .ok_or("odd script location")?;
-    let id = export::game_id(&report.name.unwrap_or_default());
-    let apk = root.join("build/android").join(format!("{id}-debug.apk"));
-    std::fs::create_dir_all(out).map_err(|e| format!("cannot create {}: {e}", out.display()))?;
-    let dest = out.join(apk.file_name().unwrap_or_default());
-    std::fs::copy(&apk, &dest).map_err(|e| format!("cannot copy {}: {e}", apk.display()))?;
+        .map(|d| {
+            d.join("android")
+                .join(android::ABI)
+                .join("libnova_runtime.so")
+        })
+        .filter(|p| repo.is_none() && p.is_file());
+    if repo.is_none() && library.is_none() {
+        return Err(
+            "building an APK needs the Nova source tree (to build the engine for Android): run this from \
+             inside it, or set NOVA_REPO to its folder"
+                .into(),
+        );
+    }
+    let build = android::AndroidBuild {
+        project: folder.map(std::path::Path::to_path_buf),
+        out: out.to_path_buf(),
+        repo,
+        library,
+        debug_build: flags.debug_build,
+        rebuild: flags.rebuild,
+    };
+    let started = std::time::Instant::now();
+    let built = android::build_apk(&build, &mut |step| {
+        println!("[step] {step}");
+        let _ = std::io::stdout().flush();
+    })?;
     println!(
-        "exported {} (debug-signed: release signing and installing on a device are yours to do)",
-        dest.display()
+        "built in {:.1} s{}",
+        started.elapsed().as_secs_f32(),
+        if built.base_reused {
+            " (only the game was repacked)"
+        } else {
+            ""
+        }
     );
+    println!("apk: {}", built.apk.display());
+    println!(
+        "package: {}   label: {}   version: {}",
+        built.package, built.label, built.version
+    );
+    println!("(debug-signed: release signing is yours to do)");
     Ok(())
 }
 
@@ -408,7 +487,8 @@ fn main() {
             target,
             folder,
             out,
-        } => export_game(&target, &folder, &out),
+            android,
+        } => export_game(&target, folder.as_deref(), &out, &android),
         Command::Check {
             folder,
             json,

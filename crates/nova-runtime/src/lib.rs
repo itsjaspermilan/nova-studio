@@ -2,6 +2,8 @@
 //! (2D sprites + low-poly 3D), a Lua gameplay host, an input action layer and audio.
 
 pub mod actions;
+#[cfg(not(target_os = "android"))]
+pub mod android;
 pub mod app;
 pub mod assets;
 pub mod audio;
