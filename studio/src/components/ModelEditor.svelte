@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { resizable } from "../lib/resize";
   import { onMount, untrack } from "svelte";
   import * as THREE from "three";
   import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -1645,8 +1646,8 @@
     <button onclick={onjson}>Edit as JSON</button>
   </div>
 {:else}
-  <div class="editor3d" style:grid-template-columns={mode === "texture" ? "190px minmax(0, 1fr) 380px" : "190px minmax(0, 1fr) 230px"}>
-    <aside class="outliner">
+  <div class="editor3d" style:grid-template-columns="auto minmax(0, 1fr) auto">
+    <aside class="outliner" use:resizable={{ key: "model.outliner", edge: "right", size: 190, min: 140, max: 480 }}>
       <div class="adder">
         <button onclick={() => newPart(selected?.parts ?? [])} title={selected ? `A new part inside "${partAt(doc, selected.parts)?.name ?? "the selected part"}"` : "A new part at the top level (select a part first to put it inside that one)"}>＋ Part{selected ? "" : " (top)"}</button>
         <div class="row">
@@ -1742,7 +1743,7 @@
       {/if}
     </div>
 
-    <aside class="inspector">
+    <aside class="inspector" use:resizable={mode === "texture" ? { key: "model.inspector.texture", edge: "left", size: 380, min: 240, max: 900 } : { key: "model.inspector", edge: "left", size: 230, min: 180, max: 560 }}>
       {#if mode === "texture"}
         <h3>Texture</h3>
         {#if !doc.texture || !picture}
@@ -1978,7 +1979,7 @@
 {/if}
 
 <style>
-  .editor3d { height: 100%; display: grid; grid-template-columns: 190px minmax(0, 1fr) 230px; min-height: 0; }
+  .editor3d { height: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; min-height: 0; }
   .outliner, .inspector { background: var(--panel); overflow: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
   .outliner { border-right: 1px solid var(--line); padding: 0; }
   .outliner ul { list-style: none; margin: 0; padding: 4px 0; overflow: auto; }

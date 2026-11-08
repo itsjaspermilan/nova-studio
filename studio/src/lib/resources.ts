@@ -130,3 +130,43 @@ export function renamePlan(resource: Resource, name: string): [string, string][]
     .map((f) => [f, `${dir}${name}${f.slice(dir.length + oldBase.length)}`] as [string, string])
     .filter(([a, b]) => a !== b);
 }
+
+/// One line of a resource group in the tree: a folder (from the "/" in its items' names) or an item.
+export type ResourceRow =
+  | { kind: "folder"; key: string; name: string; depth: number; count: number; open: boolean }
+  | { kind: "item"; item: Resource; label: string; depth: number };
+
+/// The lines of a group's items as folders and items, the way they sit in the group's folder on disk: `levels/castle-1` is the item
+/// `castle-1` inside the folder `levels`. Folders come first, then items, each by name; a folder shows its contents only when its key
+/// (`<group>:<folder path>`) is in `open`, so with an empty `open` every folder is collapsed.
+export function resourceRows(items: Resource[], group: string, open: Set<string>): ResourceRow[] {
+  type Folder = { folders: Map<string, Folder>; items: Resource[]; count: number };
+  const root: Folder = { folders: new Map(), items: [], count: 0 };
+  for (const item of items) {
+    const parts = item.name.split("/");
+    let at = root;
+    at.count++;
+    for (const p of parts.slice(0, -1)) {
+      let next = at.folders.get(p);
+      if (!next) at.folders.set(p, (next = { folders: new Map(), items: [], count: 0 }));
+      next.count++;
+      at = next;
+    }
+    at.items.push(item);
+  }
+  const rows: ResourceRow[] = [];
+  const byName = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
+  const walk = (f: Folder, path: string, depth: number) => {
+    for (const name of [...f.folders.keys()].sort(byName)) {
+      const sub = f.folders.get(name)!;
+      const p = path ? `${path}/${name}` : name;
+      const key = `${group}:${p}`;
+      const isOpen = open.has(key);
+      rows.push({ kind: "folder", key, name, depth, count: sub.count, open: isOpen });
+      if (isOpen) walk(sub, p, depth + 1);
+    }
+    for (const item of [...f.items].sort((a, b) => byName(a.name, b.name))) rows.push({ kind: "item", item, label: item.name.slice(item.name.lastIndexOf("/") + 1), depth });
+  };
+  walk(root, "", 0);
+  return rows;
+}

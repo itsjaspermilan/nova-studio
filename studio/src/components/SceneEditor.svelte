@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { resizable } from "../lib/resize";
   import { untrack } from "svelte";
   import {
     History, addItem, afterRemoval, boundsOf, drawOrder, duplicateItem, hitTest, itemAt, moveTo, parseScene, removeItem, sameRef,
@@ -623,7 +624,7 @@
   </div>
 {:else}
   <div class="scene">
-    <aside class="palette">
+    <aside class="palette" use:resizable={{ key: "scene.palette", edge: "right", size: 190, min: 140, max: 480 }}>
       <h3>Add</h3>
       <button onclick={addText}>＋ Text</button>
       <h4>Objects</h4>
@@ -746,7 +747,7 @@
       {/if}
     </div>
 
-    <aside class="inspector">
+    <aside class="inspector" use:resizable={{ key: "scene.inspector", edge: "left", size: 220, min: 170, max: 560 }}>
       {#if mode === "tiles" && activeMap}
         <h3>Tile map</h3>
         <label>Map
@@ -878,7 +879,7 @@
 {/if}
 
 <style>
-  .scene { height: 100%; display: grid; grid-template-columns: 190px minmax(0, 1fr) 220px; min-height: 0; }
+  .scene { height: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; min-height: 0; }
   .palette, .inspector { background: var(--panel); overflow: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
   .palette { border-right: 1px solid var(--line); }
   /* a long list of entities must scroll, not squash its buttons to nothing */

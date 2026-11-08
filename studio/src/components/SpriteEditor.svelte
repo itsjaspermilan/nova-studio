@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { resizable } from "../lib/resize";
   import { onMount, untrack } from "svelte";
   import {
     CLEAR, cloneRaster, crop, drawEllipse, drawLine, drawRect, floodFill, getPixel, inRect, inside, isClear, lift, linePoints, parseHex, pixelPerfect, place, rectBetween, stamp, toHex,
@@ -922,7 +923,7 @@
       </div>
     </section>
 
-    <aside class="side">
+    <aside class="side" use:resizable={{ key: "sprite.side", edge: "left", size: 220, min: 170, max: 560 }}>
       <h3>Colour</h3>
       <div class="current">
         <input type="color" value={hex(color)} oninput={(e) => pickHex(e.currentTarget.value)} aria-label="Current colour" />
@@ -1071,7 +1072,7 @@
 {/if}
 
 <style>
-  .studio { height: 100%; display: grid; grid-template-columns: 44px minmax(0, 1fr) 220px; min-height: 0; }
+  .studio { height: 100%; display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; min-height: 0; }
   .tools { background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; padding: 6px; align-items: center; }
   .tools button { width: 30px; height: 30px; padding: 0; font-size: 15px; }
   .tools button.on { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }

@@ -13,8 +13,21 @@
   import BottomPanel from "./components/BottomPanel.svelte";
   import StoreArt from "./components/StoreArt.svelte";
   import Simulate from "./components/Simulate.svelte";
+  import WindowButtons from "./components/WindowButtons.svelte";
   import { fileKind } from "./lib/tree";
+  import { markChrome } from "./lib/chrome";
+  import { resizable } from "./lib/resize";
   import { isDirty, studio } from "./lib/store.svelte";
+
+  // (the window's own buttons sit in the studio's top bar: see lib/chrome.ts)
+  const chrome = markChrome();
+  // the project tree can be folded away for more room (the button at the left of the top bar, or ⌘B); remembered
+  let treeOpen = $state((() => { try { return localStorage.getItem("nova.treeOpen") !== "0"; } catch { return true; } })());
+  const toggleTree = () => {
+    treeOpen = !treeOpen;
+    try { localStorage.setItem("nova.treeOpen", treeOpen ? "1" : "0"); } catch { /* not remembered */ }
+    window.dispatchEvent(new Event("resize"));
+  };
 
   onMount(() => {
     void studio.init();
@@ -22,6 +35,9 @@
       if (e.key === "F1") {
         e.preventDefault();
         studio.helpOpen ? (studio.helpOpen = false) : studio.openHelp();
+      } else if ((e.metaKey || e.ctrlKey) && e.key === "b" && studio.project) {
+        e.preventDefault();
+        toggleTree();
       } else if ((e.metaKey || e.ctrlKey) && e.key === "s") {
         e.preventDefault();
         void studio.save();
@@ -61,14 +77,20 @@
 {#if !studio.ready}
   <div class="boot dim">Starting…</div>
 {:else if !studio.project}
-  <Hub />
+  <div class="hubwrap">
+    {#if chrome !== "none"}<div class="hubbar winbar-pad" data-tauri-drag-region><span class="spacer" data-tauri-drag-region></span><WindowButtons /></div>{/if}
+    <Hub />
+  </div>
 {:else}
   <div class="shell" class:no-panel={!studio.panelOpen}>
-    <header class="top">
+    <header class="top winbar-pad" data-tauri-drag-region>
+      <button class="ghost treebtn" class:on={treeOpen} onclick={toggleTree} title={treeOpen ? "Hide the project tree (⌘B)" : "Show the project tree (⌘B)"} aria-label={treeOpen ? "Hide the project tree" : "Show the project tree"} aria-pressed={treeOpen}>
+        <svg viewBox="0 0 16 14" aria-hidden="true"><rect x="0.75" y="0.75" width="14.5" height="12.5" rx="2" /><path d="M5.5 1v12" />{#if treeOpen}<path class="fill" d="M1.5 1.5h3.2v11h-3.2z" />{/if}</svg>
+      </button>
       <button class="ghost" onclick={() => studio.closeProject()} title="Back to projects">‹ Projects</button>
-      <strong>{studio.project.name}</strong>
+      <strong data-tauri-drag-region>{studio.project.name}</strong>
       {#if studio.api?.kind === "mock"}<span class="pill">browser preview</span>{/if}
-      <span class="spacer"></span>
+      <span class="spacer" data-tauri-drag-region></span>
       <button class="ghost" onclick={() => studio.openHelp()} title="Help and lessons (F1)">? Help</button>
       <button class="ghost" onclick={() => (studio.tool = "sim")} title="Play the game many times with no window and collect numbers into a table">Simulate</button>
       <button class="ghost" onclick={() => (studio.tool = "art")} title="Make the app icon and the cover picture from the game">Store art</button>
@@ -79,9 +101,10 @@
       {:else}
         <button class="primary" onclick={() => studio.play()} title="Save and run (⌘↩)">▶ Play</button>
       {/if}
+      <WindowButtons />
     </header>
 
-    <FileTree />
+    {#if treeOpen}<FileTree />{/if}
 
     <main class="center">
       <div class="tabbar" role="tablist">
@@ -132,7 +155,7 @@
     </main>
 
     {#if studio.panelOpen}
-      <div class="bottom"><BottomPanel /></div>
+      <div class="bottom" use:resizable={{ key: "bottom", edge: "top", size: 220, min: 90, max: 640 }}><BottomPanel /></div>
     {:else}
       <footer class="status">
         <button class="ghost" onclick={() => (studio.panelOpen = true)}>▴ {errors ? `${errors} problem${errors === 1 ? "" : "s"}` : "Problems · Play"}</button>
@@ -179,8 +202,13 @@
 <style>
   .tool { position: fixed; inset: 0; z-index: 40; background: var(--bg); }
   .boot { height: 100%; display: grid; place-items: center; }
-  .shell { height: 100%; display: grid; grid-template-columns: 240px minmax(0, 1fr); grid-template-rows: auto 1fr 220px; grid-template-areas: "top top" "tree center" "bottom bottom"; }
-  .shell.no-panel { grid-template-rows: auto 1fr auto; }
+  .shell { height: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: "top top" "tree center" "bottom bottom"; }
+  .hubwrap { height: 100%; display: flex; flex-direction: column; }
+  .hubwrap > :global(.hub) { flex: 1; min-height: 0; }
+  .hubbar { display: flex; align-items: center; min-height: 38px; padding: 6px 10px; flex: none; }
+  .treebtn { padding: 3px 6px; display: grid; place-items: center; }
+  .treebtn svg { width: 16px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.3; }
+  .treebtn svg .fill { fill: currentColor; stroke: none; opacity: 0.55; }
   .top { grid-area: top; display: flex; align-items: center; gap: 10px; padding: 6px 10px; background: var(--panel); border-bottom: 1px solid var(--line); }
   .shell > :global(.tree) { grid-area: tree; }
   .center { grid-area: center; display: flex; flex-direction: column; min-width: 0; min-height: 0; }

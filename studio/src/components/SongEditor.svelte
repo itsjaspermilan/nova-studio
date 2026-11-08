@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { resizable } from "../lib/resize";
   import { onMount, untrack } from "svelte";
   import {
     DRUMS, WAVES, addNote, addTrack, barSteps, changeNote, isBlack, newSong, noteAt, noteName, parseSong, removeNote, removeTrack, renderSong, serializeSong, setLength,
@@ -331,7 +332,7 @@
     </div>
 
     <div class="body">
-      <aside class="tracks">
+      <aside class="tracks" use:resizable={{ key: "song.tracks", edge: "right", size: 150, min: 110, max: 400 }}>
         {#each song.tracks as t, i (i)}
           <div class="trk" class:on={i === track}>
             <button class="pick" onclick={() => { track = i; selected = null; }}>{t.kind === "drums" ? "🥁" : "♪"} {t.name}</button>
@@ -349,7 +350,7 @@
         <canvas bind:this={canvas} style:width="{KEYS_W + song.length * STEP_W}px" style:height="{rows.length * ROW_H}px" aria-label="Piano roll" onpointerdown={down} onpointermove={move} onpointerup={up} onpointercancel={up}></canvas>
       </div>
 
-      <aside class="inspector">
+      <aside class="inspector" use:resizable={{ key: "song.inspector", edge: "left", size: 210, min: 160, max: 520 }}>
         <h3>Track</h3>
         <label>Name <input value={current.name} onchange={(e) => setTrack({ name: e.currentTarget.value })} /></label>
         {#if current.kind === "synth"}
@@ -399,7 +400,7 @@
   .check input { margin: 0; }
   .narrow { width: 62px; padding: 2px 6px; }
   .spacer { flex: 1; }
-  .body { flex: 1; min-height: 0; display: grid; grid-template-columns: 150px minmax(0, 1fr) 210px; }
+  .body { flex: 1; min-height: 0; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; }
   .tracks { background: var(--panel); border-right: 1px solid var(--line); padding: 6px; display: flex; flex-direction: column; gap: 4px; overflow: auto; }
   .trk { display: flex; align-items: center; border-radius: 6px; }
   .trk.on { background: color-mix(in srgb, var(--accent) 22%, transparent); }

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { resizable } from "../lib/resize";
   import { untrack } from "svelte";
   import {
     ROADS, ROADSIDE, ROAD_WIDTH, WARN_CLOSE, WARN_RADIUS, MIN_POINTS, addPoint, analyse, callOut, curvatureColour, movePoint, newTrack, parseTrack, pointAt, removePoint,
@@ -312,7 +313,7 @@
       </div>
     </div>
 
-    <aside class="side">
+    <aside class="side" use:resizable={{ key: "track.side", edge: "left", size: 300, min: 220, max: 640 }}>
       <section>
         <h3>Route</h3>
         <div class="seg" role="group" aria-label="Kind of route">
@@ -487,7 +488,7 @@
 <style>
   .zone { opacity: 0.85; stroke-linecap: butt; } .zone.walled { stroke-dasharray: 6 3; }
   .zone-row { display: flex; gap: 4px; align-items: center; margin-bottom: 4px; } .zone-row input { width: 52px; } .zone-row select { min-width: 0; flex: 1; }
-  .track { display: grid; grid-template-columns: minmax(0, 1fr) 300px; height: 100%; min-height: 0; }
+  .track { display: grid; grid-template-columns: minmax(0, 1fr) auto; height: 100%; min-height: 0; }
   .map { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
   .bar { display: flex; gap: 4px; align-items: center; padding: 3px 8px; background: var(--panel); border-bottom: 1px solid var(--line); }
   .hint { font-size: 11px; }

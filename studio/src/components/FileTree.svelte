@@ -1,11 +1,13 @@
 <script lang="ts">
   import { buildTree, fileKind, visibleRows } from "../lib/tree";
-  import { groupResources, type Resource } from "../lib/resources";
+  import { groupResources, resourceRows, type Resource } from "../lib/resources";
+  import { resizable } from "../lib/resize";
   import { studio } from "../lib/store.svelte";
 
   type Editing = { mode: "file" | "dir" | "rename"; base: string; value: string };
 
-  let open = $state(new Set<string>(["scenes", "entities", "sprites"]));
+  // (every folder starts collapsed, in both views)
+  let open = $state(new Set<string>());
   let selected = $state("");
   let editing: Editing | null = $state(null);
   let track: string | null = $state(null);
@@ -32,25 +34,38 @@
       // not remembered
     }
   };
-  let shut = $state(new Set<string>()); // resource groups folded away
+  // the resource groups that are open (all start folded), and the folders inside them that are open (keys from resourceRows)
+  let opened = $state(new Set<string>());
+  let folders = $state(new Set<string>());
+  const shut = { has: (id: string) => !opened.has(id) };
+  // the folder clicked last in each group: a new item there starts with its path (levels/...)
+  let lastFolder: { group: string; path: string } | null = $state(null);
+  const foldFolder = (key: string) => {
+    const at = key.indexOf(":");
+    lastFolder = { group: key.slice(0, at), path: key.slice(at + 1) };
+    const next = new Set(folders);
+    if (!next.delete(key)) next.add(key);
+    folders = next;
+  };
   let renamingResource: { path: string; value: string } | null = $state(null);
   const groups = $derived(groupResources(studio.files, studio.spriteImages));
   const foldGroup = (id: string) => {
-    const next = new Set(shut);
+    const next = new Set(opened);
     if (!next.delete(id)) next.add(id);
-    shut = next;
+    opened = next;
   };
   const SINGLE: Record<string, string> = { sprites: "sprite", models: "3D model", sounds: "sound effect", music: "song", scenes: "scene", tracks: "track", entities: "entity" };
   const RES_ICON: Record<string, string> = { sprite: "◫", model: "◆", scene: "▦", track: "⌇", entity: "☺", sound: "♪", song: "♫", script: "☾", image: "▣", font: "A", project: "⚙", file: "·" };
   const add = (id: string) => {
     shut.has(id) && foldGroup(id);
-    if (id === "sprites") sprite = { name: "", side: 32 };
-    else if (id === "models") model = "";
-    else if (id === "sounds") sfx = "";
-    else if (id === "music") song = "";
-    else if (id === "scenes") scene = "";
+    const into = lastFolder?.group === id ? `${lastFolder.path}/` : "";
+    if (id === "sprites") sprite = { name: into, side: 32 };
+    else if (id === "models") model = into;
+    else if (id === "sounds") sfx = into;
+    else if (id === "music") song = into;
+    else if (id === "scenes") scene = into;
     else if (id === "tracks") track = "";
-    else if (id === "entities") entity = "";
+    else if (id === "entities") entity = into;
   };
   const isActive = (r: Resource) => r.files.includes(studio.active ?? "");
   async function commitResourceRename() {
@@ -117,7 +132,9 @@
 
   function focusOnMount(node: HTMLInputElement) {
     node.focus();
-    node.select();
+    // (a name that starts in a folder keeps the folder: the caret goes after it; any other name is selected, to be typed over)
+    if (node.value.endsWith("/")) node.setSelectionRange(node.value.length, node.value.length);
+    else node.select();
   }
 
   function keydown(e: KeyboardEvent) {
@@ -126,7 +143,7 @@
   }
 </script>
 
-<aside class="tree">
+<aside class="tree" use:resizable={{ key: "tree", edge: "right", size: 240, min: 160, max: 560 }}>
   <header>
     <span class="title">{studio.project?.name}</span>
     {#if view === "files"}
@@ -147,7 +164,7 @@
   </header>
   {#if scene !== null}
     <form class="sprite" onsubmit={(e) => { e.preventDefault(); const n = scene!; scene = null; void studio.createScene(n); }}>
-      <input use:focusOnMount bind:value={() => scene ?? "", (x) => (scene = x)} placeholder="scene name" aria-label="Scene name" />
+      <input use:focusOnMount bind:value={() => scene ?? "", (x) => (scene = x)} placeholder="scene name (folder/name for a folder)" aria-label="Scene name" />
       <button class="primary" disabled={!scene.trim()}>Create</button>
       <button type="button" class="ghost" aria-label="Cancel" onclick={() => (scene = null)}>✕</button>
     </form>
@@ -210,15 +227,23 @@
             {/if}
           </div>
           {#if !shut.has(g.id)}
-            {#each g.items as item (item.path)}
+            {#each resourceRows(g.items, g.id, folders) as r (r.kind === "folder" ? r.key : r.item.path)}
+              {#if r.kind === "folder"}
+                <div class="row folder" style:padding-left="{26 + r.depth * 14}px" role="presentation" onclick={() => foldFolder(r.key)}>
+                  <span class="icon dir">{r.open ? "▾" : "▸"}</span>
+                  <span class="name">{r.name}</span>
+                  <span class="count dim">{r.count}</span>
+                </div>
+              {:else}
+              {@const item = r.item}
               {#if renamingResource?.path === item.path}
-                <div class="edit" style:padding-left="26px">
+                <div class="edit" style:padding-left="{26 + r.depth * 14}px">
                   <input use:focusOnMount bind:value={() => renamingResource?.value ?? "", (x) => { if (renamingResource) renamingResource.value = x; }} onkeydown={(e) => { if (e.key === "Enter") void commitResourceRename(); else if (e.key === "Escape") renamingResource = null; }} onblur={commitResourceRename} />
                 </div>
               {:else}
-                <div class="row item" class:active={isActive(item)} class:selected={selected === item.path} style:padding-left="26px" role="presentation" onclick={() => { selected = item.path; void studio.openFile(item.path); }}>
+                <div class="row item" class:active={isActive(item)} class:selected={selected === item.path} style:padding-left="{26 + r.depth * 14}px" role="presentation" onclick={() => { selected = item.path; void studio.openFile(item.path); }}>
                   <span class="icon">{RES_ICON[item.kind]}</span>
-                  <span class="name" class:bad={item.files.some((f) => errorFiles.has(f))} title={item.files.join("\n")}>{item.name}</span>
+                  <span class="name" class:bad={item.files.some((f) => errorFiles.has(f))} title={item.files.join("\n")}>{r.label}</span>
                   <span class="actions">
                     {#if item.kind === "model" && item.files.length === 1 && item.path.endsWith(".glb")}<button class="ghost" title="Make this model editable in the studio (its parts, colours and animations are read in; the original is kept)" aria-label="Make {item.name} editable" onclick={(e) => { e.stopPropagation(); void studio.makeModelEditable(item.path); }}>✎ Edit</button>{/if}
                     {#if item.code}<button class="ghost" title="Open the code" aria-label="Code of {item.name}" onclick={(e) => { e.stopPropagation(); void studio.openFile(item.code!); }}>&lt;/&gt;</button>{/if}
@@ -226,6 +251,7 @@
                     <button class="ghost danger" title="Delete" aria-label="Delete {item.name}" onclick={(e) => { e.stopPropagation(); void removeResource(item); }}>✕</button>
                   </span>
                 </div>
+              {/if}
               {/if}
             {:else}
               <div class="empty dim">Nothing yet</div>
@@ -282,7 +308,7 @@
 
 <style>
   .tree { background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
-  header { display: flex; align-items: center; gap: 2px; padding: 8px 8px 8px 12px; border-bottom: 1px solid var(--line); }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 8px 8px 8px 12px; border-bottom: 1px solid var(--line); }
   .title { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   ul { list-style: none; margin: 0; padding: 4px 0; overflow: auto; flex: 1; }
   .row { display: flex; align-items: center; gap: 6px; padding: 2px 6px 2px 10px; cursor: pointer; white-space: nowrap; }
@@ -302,6 +328,7 @@
   .seg button.on { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
   .group { display: flex; align-items: center; gap: 6px; padding: 4px 6px 2px 10px; cursor: pointer; font-weight: 600; font-size: 12px; }
   .group:hover { background: var(--panel-2); } .gtitle { flex: 1; } .count { font-size: 11px; font-weight: 400; } .group .add { padding: 0 6px; }
+  .row.folder .name { color: var(--text); } .row.folder .count { font-size: 11px; }
   .empty { padding: 1px 6px 3px 26px; font-size: 11px; }
   .edit { padding: 2px 8px 2px 10px; }
   .edit input { width: 100%; padding: 2px 6px; }

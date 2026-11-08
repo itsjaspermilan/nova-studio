@@ -35,6 +35,10 @@ export const isDirty = (t: Tab) => t.text !== t.saved || !!t.pending;
 export type Panel = "problems" | "play" | "activity";
 
 const MAX_LOG = 2000;
+/// A new resource's name: letters, numbers, - and _, with / between folders (`levels/castle-1` is `castle-1` in the group's `levels` folder).
+const RESOURCE_NAME = /^[A-Za-z0-9_-]+(\/[A-Za-z0-9_-]+)*$/;
+/// The last part of such a name (what a scene's or entity's Lua variable and a sprite's picture are named after).
+const leaf = (name: string) => name.slice(name.lastIndexOf("/") + 1);
 
 function message(e: unknown): string {
   return typeof e === "string" ? e : e instanceof Error ? e.message : JSON.stringify(e);
@@ -347,12 +351,12 @@ class Studio {
   /// A new scene: its Lua in `scenes/<name>.lua` and its layout in `scenes/<name>.scene.json` (opened in the scene editor).
   async createScene(name: string) {
     const clean = name.trim().replace(/\.scene\.json$|\.lua$/i, "");
-    if (!/^[A-Za-z0-9_-]+$/.test(clean)) return this.say("error", "Scene names use letters, numbers, - and _.");
+    if (!RESOURCE_NAME.test(clean)) return this.say("error", "Scene names use letters, numbers, - and _ (and / to put it in a folder, as in levels/castle-1).");
     await this.#guard(async () => {
       const lua = `scenes/${clean}.lua`;
       const json = `scenes/${clean}.scene.json`;
       if (this.files.some((f) => f.path === lua || f.path === json)) throw `'${clean}' already exists in scenes/`;
-      const id = clean.split(/[-_]+/).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join("") || "Scene";
+      const id = leaf(clean).split(/[-_]+/).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join("") || "Scene";
       await this.api!.createFile(lua, `-- A scene. Everything in ${clean}.scene.json is built before enter() runs.\nlocal ${/^[A-Za-z]/.test(id) ? id : `Scene${id}`} = nova.scene {}\n\nfunction ${/^[A-Za-z]/.test(id) ? id : `Scene${id}`}:enter()\nend\n\nreturn ${/^[A-Za-z]/.test(id) ? id : `Scene${id}`}\n`);
       await this.api!.createFile(json, '{\n  "version": 1,\n  "background": [40, 60, 90],\n  "objects": [],\n  "texts": []\n}\n');
       await this.refreshFiles();
@@ -363,11 +367,11 @@ class Studio {
   /// A new entity: `entities/<name>.lua`.
   async createEntity(name: string) {
     const clean = name.trim().replace(/\.lua$/i, "");
-    if (!/^[A-Za-z0-9_-]+$/.test(clean)) return this.say("error", "Entity names use letters, numbers, - and _.");
+    if (!RESOURCE_NAME.test(clean)) return this.say("error", "Entity names use letters, numbers, - and _ (and / to put it in a folder, as in levels/castle-1).");
     await this.#guard(async () => {
       const lua = `entities/${clean}.lua`;
       if (this.files.some((f) => f.path === lua)) throw `'${clean}' already exists in entities/`;
-      const id = clean.split(/[-_]+/).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join("");
+      const id = leaf(clean).split(/[-_]+/).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join("");
       const ident = /^[A-Za-z]/.test(id) ? id : `Entity${id}`;
       await this.api!.createFile(lua, `-- An entity: something in a scene that updates and draws itself.\nlocal ${ident} = nova.entity {}\n\nfunction ${ident}:update(dt)\nend\n\nreturn ${ident}\n`);
       await this.refreshFiles();
@@ -378,13 +382,13 @@ class Studio {
   /// A new blank sprite: `sprites/<name>.png` and `sprites/<name>.sprite.json`, opened in the sprite studio.
   async createSprite(name: string, side: number) {
     const clean = name.trim().replace(/\.sprite\.json$|\.png$/i, "");
-    if (!/^[A-Za-z0-9_-]+$/.test(clean)) return this.say("error", "Sprite names use letters, numbers, - and _.");
+    if (!RESOURCE_NAME.test(clean)) return this.say("error", "Sprite names use letters, numbers, - and _ (and / to put it in a folder, as in levels/castle-1).");
     await this.#guard(async () => {
       const json = `sprites/${clean}.sprite.json`;
       const png = `sprites/${clean}.png`;
       if (this.files.some((f) => f.path === json || f.path === png)) throw `'${clean}' already exists in sprites/`;
       await this.api!.writeImage(png, rasterToDataUrl(newRaster(side, side)));
-      await this.api!.createFile(json, toSheetJson(newDoc(side, side), `${clean}.png`));
+      await this.api!.createFile(json, toSheetJson(newDoc(side, side), `${leaf(clean)}.png`)); // (the picture beside it: a path from the sheet's folder)
       await this.refreshFiles();
       await this.openFile(json);
     });
@@ -393,7 +397,7 @@ class Studio {
   /// A new sound effect: settings in `sounds/<name>.sfx.json` and the rendered `sounds/<name>.wav`.
   async createSound(name: string) {
     const clean = name.trim().replace(/\.sfx\.json$|\.wav$/i, "");
-    if (!/^[A-Za-z0-9_-]+$/.test(clean)) return this.say("error", "Sound names use letters, numbers, - and _.");
+    if (!RESOURCE_NAME.test(clean)) return this.say("error", "Sound names use letters, numbers, - and _ (and / to put it in a folder, as in levels/castle-1).");
     await this.#guard(async () => {
       const json = `sounds/${clean}.sfx.json`;
       const wav = `sounds/${clean}.wav`;
@@ -408,7 +412,7 @@ class Studio {
   /// A new model: `models/<name>.model.json` (what the editor edits) and the exported `models/<name>.glb`.
   async createModel(name: string) {
     const clean = name.trim().replace(/\.model\.json$|\.glb$/i, "");
-    if (!/^[A-Za-z0-9_-]+$/.test(clean)) return this.say("error", "Model names use letters, numbers, - and _.");
+    if (!RESOURCE_NAME.test(clean)) return this.say("error", "Model names use letters, numbers, - and _ (and / to put it in a folder, as in levels/castle-1).");
     await this.#guard(async () => {
       const json = `models/${clean}.model.json`;
       const glb = `models/${clean}.glb`;
@@ -461,7 +465,7 @@ class Studio {
   /// A new song: `music/<name>.song.json` (what the editor edits) and the rendered `music/<name>.ogg` (small, and streamed by the game).
   async createSong(name: string) {
     const clean = name.trim().replace(/\.song\.json$|\.wav$/i, "");
-    if (!/^[A-Za-z0-9_-]+$/.test(clean)) return this.say("error", "Song names use letters, numbers, - and _.");
+    if (!RESOURCE_NAME.test(clean)) return this.say("error", "Song names use letters, numbers, - and _ (and / to put it in a folder, as in levels/castle-1).");
     await this.#guard(async () => {
       const json = `music/${clean}.song.json`;
       const ogg = `music/${clean}.ogg`;
