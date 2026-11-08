@@ -58,7 +58,7 @@ describe("complete: nova members", () => {
 
   it("completes entity methods after self:", () => {
     const c = complete("function Player:update(dt)\n  self:pl", symbols)!;
-    expect(labels(c)).toEqual(["play", "play_clip"]);
+    expect(labels(c)).toEqual(["play", "play_clip", "play_anim"]);
     expect(labels(complete("self:", symbols))).toEqual(expect.arrayContaining(["destroy", "tween", "slide", "after"]));
     expect(complete("self.", symbols)).toBeNull();
   });

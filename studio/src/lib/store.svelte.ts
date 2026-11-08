@@ -8,6 +8,7 @@ import { newModel, serializeModel } from "./model-doc";
 import { PRESETS, render, toJson } from "./sfx";
 import { newSong, renderSong, serializeSong } from "./song";
 import { newTrack, serializeTrack, trackOf } from "./track-doc";
+import { animOf, newAnim, serializeAnim } from "./anim-doc";
 import { newDoc, toSheetJson } from "./sprite-doc";
 import { encodeWav, fromBase64, toBase64 } from "./wav";
 import { moved, planRename } from "./refs";
@@ -457,6 +458,19 @@ class Studio {
       const json = trackOf(clean);
       if (this.files.some((f) => f.path === json)) throw `'${clean}' already exists in tracks/`;
       await this.api!.createFile(json, serializeTrack(newTrack()));
+      await this.refreshFiles();
+      await this.openFile(json);
+    });
+  }
+
+  /// A new keyframe animation: `animations/<name>.anim.json`, one track to start from, edited in the timeline editor.
+  async createAnimation(name: string) {
+    const clean = name.trim().replace(/\.anim\.json$/i, "");
+    if (!RESOURCE_NAME.test(clean)) return this.say("error", "Animation names use letters, numbers, - and _ (and / to put it in a folder, as in doors/open).");
+    await this.#guard(async () => {
+      const json = animOf(clean);
+      if (this.files.some((f) => f.path === json)) throw `'${clean}' already exists in animations/`;
+      await this.api!.createFile(json, serializeAnim(newAnim()));
       await this.refreshFiles();
       await this.openFile(json);
     });
