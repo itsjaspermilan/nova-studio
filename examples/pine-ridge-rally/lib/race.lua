@@ -134,7 +134,7 @@ function race.scene()
     self.length = track.length
     if self.stage then self:build_stage() end
     self.phase = "countdown"
-    self.notes_live, self.note_fx = false, nil
+    self.notes_live, self.note_fx, self.split = false, nil, nil
     self.clock = 0              -- time since the green light
     self.countdown = 3.9
     self.last_beep = 4
@@ -426,7 +426,8 @@ function race.scene()
     else
       self.section = self.section + 1
       audio.sfx(delta <= 0 and "best_lap" or "lap")
-      self:say(string.format("SECTION %d\n%s   %s%.1f   %d pts", self.section - 1, ui.time(t), delta <= 0 and "-" or "+", math.abs(delta), score), 3)
+      -- (no message in the middle of the road: the split shows small in the top right, under the score; see draw_stage_hud)
+      self.split = { n = self.section - 1, delta = delta, score = score, at = self.clock }
     end
   end
 
@@ -868,6 +869,22 @@ function race.scene()
     ui.oright(ui.time(math.max(0, self.clock - self.section_start)), w - 26, 54, 22, { 226, 232, 240 }, { font = "mono" })
     ui.olabel(w - 26 - 215, 86, "SCORE")
     ui.oright(tostring(self.score), w - 26, 80, 22, ui.color.gold, { font = "mono" })
+    -- the section just done: its time against par and its points, fading in under the score and out again after four seconds
+    local split = self.split
+    if split then
+      local age = self.clock - split.at
+      local a = math.min(1, age / 0.25) * math.min(1, math.max(0, (4 - age) / 0.5))
+      if a > 0 then
+        local y = 108 - (1 - math.min(1, age / 0.25)) * 8
+        local delta = string.format("%s%.1f", split.delta <= 0 and "-" or "+", math.abs(split.delta))
+        local pts = "+" .. split.score
+        local pw = nova.ui.text_width(pts, { size = 20, font = "mono" })
+        ui.otext(w - 26 - 215, y + 4, "SPLIT " .. split.n, 14, { 226, 232, 240 }, { font = "future_narrow", alpha = a })
+        ui.otext(w - 26 - pw, y, pts, 20, ui.color.gold, { font = "mono", alpha = a })
+        local dw = nova.ui.text_width(delta, { size = 20, font = "mono" })
+        ui.otext(w - 26 - pw - 16 - dw, y, delta, 20, split.delta <= 0 and ui.color.green or ui.color.red, { font = "mono", alpha = a })
+      end
+    end
     -- the pace notes, top middle: the next corner big, the one after it small beneath (only while racing, and when a corner is near)
     -- (they wait until the car is under way, a moment after GO!, so that they never sit on the start lights)
     if self.phase == "racing" and not self.notes_live and self.clock > 1.2 and math.abs(p.speed) > 6 then self.notes_live = true end
