@@ -452,6 +452,9 @@ fn model_pipeline(
     })
 }
 
+/// What one custom-shaded draw needs: (shading, pipeline, for a model, the picture's size, a sprite's atlas rectangle).
+type Wanted = (Shading, Variant, bool, (u32, u32), [f32; 4]);
+
 /// One custom-shaded draw this frame: which slot of the uniform buffer holds its numbers.
 pub(super) struct Slot {
     pub offset: u32,
@@ -776,7 +779,8 @@ impl Gfx {
             info: [input.time, picture.0 as f32, picture.1 as f32, 0.0],
             rect,
         };
-        let mut wanted: Vec<(Shading, Variant, bool, (u32, u32), [f32; 4])> = Vec::new();
+        // (shading, pipeline, for a model, the picture's size, a sprite's atlas rectangle)
+        let mut wanted: Vec<Wanted> = Vec::new();
         for m in models {
             let skinned = self.mesh(m.draw.mesh).is_some_and(|g| g.skin.is_some());
             wanted.push((

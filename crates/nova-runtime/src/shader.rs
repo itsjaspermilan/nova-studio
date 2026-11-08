@@ -285,7 +285,7 @@ fn tidy(message: &str) -> String {
 pub fn validate_kind(kind: Kind, user: &str) -> Result<naga::Module, ShaderError> {
     let (composed, first_line) = compose(kind, user);
     let module = naga::front::wgsl::parse_str(&composed).map_err(|e| {
-        let message = renamed_hint(&e.message().to_string());
+        let message = renamed_hint(e.message());
         match e
             .location(&composed)
             .and_then(|l| user_place(&composed, first_line, l.offset as usize))
