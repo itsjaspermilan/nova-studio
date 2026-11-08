@@ -891,7 +891,7 @@ function race.scene()
     self:draw_pace_notes(w, self.notes_live and not p.finish_time)
   end
 
-  -- The pace notes: no box, outlined words like the rest of the HUD, the next corner big and the one after it smaller under it. Each slides
+  -- The pace notes: no box, outlined words like the rest of the HUD, an arrow on the side the corner turns to (no distance), the next corner big and the one after it smaller under it. Each slides
   -- up and fades in as it comes on, moves up into the big place when the corner before it is passed, and slides on up and fades out when
   -- its own corner is behind the car.
   local GANTRY_Y, MESSAGE_Y = 104, 196
@@ -940,23 +940,20 @@ function race.scene()
         local big = size > 28
         local colour = note.grade <= 2 and ui.color.red or (note.grade <= 4 and ui.color.gold or ui.color.white)
         local text = note.grade == 1 and "HAIRPIN" or ("TURN " .. note.grade)
-        local dist = math.max(0, math.floor(away / 10 + 0.5) * 10) .. " m"
-        local dsize = big and 20 or 15
         local font = ui.font_for(text, "comic")
         local aw = math.floor(size * 0.72)
         local tw = nova.ui.text_width(text, { size = size, font = font })
-        local dw = nova.ui.text_width(dist, { size = dsize, font = "rounded" })
         local gap = size * 0.35
-        -- the arrow, the words and the distance, centred as one line
-        local x = math.floor(w / 2 - (aw + gap + tw + gap + dw) / 2)
+        -- the words centred, the arrow on the side the road turns to (left of the words for a left, right of them for a right)
+        local tx = math.floor(w / 2 - tw / 2)
+        local x = note.left and (tx - gap - aw * 0.75) or (tx + tw + gap)
         local y = f.y
         local a = f.a
         local ay = y + (size - aw) / 2 + size * 0.1
         local ink = { 8, 12, 26, math.floor(220 * a) }
         for _, o in ipairs({ { -2, 0 }, { 2, 0 }, { 0, -2 }, { 0, 2 } }) do arrow(x + o[1], ay + o[2], note.left, aw, ink) end
         arrow(x, ay, note.left, aw, { colour[1], colour[2], colour[3], math.floor(255 * a) })
-        ui.otext(x + aw + gap, y, text, size, colour, { font = "comic", alpha = a })
-        ui.otext(x + aw + gap + tw + gap, y + size - dsize - size * 0.05, dist, dsize, big and ui.color.white or { 226, 232, 240 }, { alpha = a })
+        ui.otext(tx, y, text, size, colour, { font = "comic", alpha = a })
       end
     end
   end
