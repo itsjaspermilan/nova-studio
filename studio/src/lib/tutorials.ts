@@ -379,7 +379,7 @@ What the pixel is about is in \`s\`: \`s.color\` (the model's own colour), \`s.u
         body: `
 Add this file. It makes a cyan band that climbs up the model once a second: \`fract\` keeps only what is after the decimal point, so the band starts again at the bottom.
 `,
-        snippet: "06-shader__1-wave",
+        snippet: "07-shader__1-wave",
       },
       {
         title: "Draw with it",
@@ -390,7 +390,7 @@ If the shader has a mistake, the **Problems** panel shows it with its line, and 
 
 > Try changing \`1.5\` (how far apart the bands are) or the colour \`vec3<f32>(0.2, 0.9, 1.0)\`, save, and play again.
 `,
-        snippet: "06-shader__2-main",
+        snippet: "07-shader__2-main",
       },
     ],
   },
