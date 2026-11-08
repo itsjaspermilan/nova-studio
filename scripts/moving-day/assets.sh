@@ -58,4 +58,4 @@ cp "$SW/switch_dpad.png" "$U/pad_dpad.png"; cp "$SW/switch_stick_l.png" "$U/pad_
 # kit pieces, and a check of every model against the kit's (scripts/moving-day/check-models.sh)
 (cd studio && NOVA_MAKE_EDITABLE=1 NOVA_MAKE_EDITABLE_PROJECT=moving-day ../scripts/env.sh npx vitest run src/tools/make-editable.test.ts)
 scripts/env.sh node scripts/moving-day/tv.mjs
-(cd studio && NOVA_EXPORT_CHECK="$PWD/../$P/models:moving-day/tv" ../scripts/env.sh npx vitest run src/tools/make-editable.test.ts)
+(cd studio && NOVA_EXPORT_ALL=1 NOVA_MAKE_EDITABLE_PROJECT=moving-day ../scripts/env.sh npx vitest run src/tools/make-editable.test.ts)

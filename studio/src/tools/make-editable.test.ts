@@ -135,14 +135,15 @@ describe.skipIf(!lighten)("keep the colours the game showed", () => {
   });
 });
 
-// NOVA_EXPORT_ALL=1: writes every example's models/<name>.glb from its .model.json, as the studio saves it.
+// NOVA_EXPORT_ALL=1: writes every example's models/<name>.glb from its .model.json, as the studio saves it (NOVA_MAKE_EDITABLE_PROJECT=<example> for one).
 describe.skipIf(process.env.NOVA_EXPORT_ALL !== "1")("save every model's glb", () => {
   it("exports them", async () => {
     const { parseModel } = await import("../lib/model-doc");
     const { exportGlb } = await import("../lib/glb");
     const root = join(__dirname, "../../../examples");
     let n = 0;
-    for (const project of readdirSync(root)) {
+    const only = process.env.NOVA_MAKE_EDITABLE_PROJECT;
+    for (const project of readdirSync(root).filter((p) => !only || p === only)) {
       const dir = join(root, project, "models");
       if (!existsSync(dir)) continue;
       for (const file of readdirSync(dir).filter((f) => f.endsWith(".model.json"))) {
@@ -150,6 +151,8 @@ describe.skipIf(process.env.NOVA_EXPORT_ALL !== "1")("save every model's glb", (
         if (!parsed.ok) throw new Error(`${project}/${file}: ${parsed.error}`);
         const { bakeAll, fitPicture } = await import("../lib/model-uv");
         const texture = parsed.doc.texture ? fitPicture(parsed.doc, bakeAll(parsed.doc)) : undefined;
+        // (the .model.json is saved back as the studio writes it too: a file made by a script is tidied)
+        writeFileSync(join(dir, file), serializeModel(parsed.doc));
         writeFileSync(join(dir, file.replace(/\.model\.json$/, ".glb")), exportGlb(parsed.doc, texture));
         n++;
       }

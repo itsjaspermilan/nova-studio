@@ -1,0 +1,1 @@
+{ "format": 1, "name": "Moving Day icons", "entry": "main.lua", "world_height": 0, "input": { "white": ["key:F1"], "faces": ["key:F2"] } }
