@@ -50,8 +50,12 @@
       void studio.checkExternal();
       void studio.refreshActivity();
     };
-    // an assistant working through the MCP server writes files and a log; look for new entries every few seconds
-    const watch = setInterval(() => void studio.refreshActivity(), 3000);
+    // an assistant working through the MCP server writes files and a log, and another program may change a picture or a
+    // sound while the studio is on screen: look every few seconds (only what changed size or time is read)
+    const watch = setInterval(() => {
+      void studio.refreshActivity();
+      if (document.visibilityState === "visible") void studio.checkExternal(true);
+    }, 3000);
     window.addEventListener("keydown", keys);
     window.addEventListener("focus", refocus);
     return () => {

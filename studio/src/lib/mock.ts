@@ -46,8 +46,18 @@ const STARTER: Record<string, string> = {
   "entities/player.lua": `local Player = nova.entity {\n  sprite = "player",\n  settings = {\n    speed = { 160, min = 0, max = 400, step = 10, help = "How fast it walks, in units a second" },\n    lives = { 3, min = 1, max = 9, step = 1 },\n    tint = { "#ffffff", type = "colour", help = "A colour the sprite is drawn in" },\n    mood = { "calm", choices = { "calm", "angry" } },\n    double_jump = { false, help = "Can it jump again in the air?" },\n    offset = { { 0, 0 } },\n    follow = { type = "object", help = "Another object to walk after" },\n    jump_sound = { "jump", type = "sound" },\n  },\n}\n\nfunction Player:update(dt)\n  self.x = self.x + nova.input.axis("move_x") * self.speed * dt\n  if nova.input.pressed("jump") then\n    nova.sound.play(self.jump_sound)\n  end\nend\n\nreturn Player\n`,
 };
 
+/// A map that notes when each entry was last set, as a file system notes when a file was last written.
+class Stamped extends Map<string, string> {
+  times = new Map<string, number>();
+  #clock = Date.now();
+  override set(key: string, value: string) {
+    this.times?.set(key, ++this.#clock);
+    return super.set(key, value);
+  }
+}
+
 export function createMockApi(): Api {
-  const files = new Map<string, string>();
+  const files = new Stamped();
   const images = new Map<string, string>(); // saved PNGs as data URLs
   const audio = new Map<string, string>(); // saved WAVs as data URLs
   const models = new Map<string, string>(); // saved .glb files as data URLs
@@ -118,7 +128,7 @@ export function createMockApi(): Api {
     listFiles: async () => {
       need();
       const out: FileEntry[] = [...dirs].map((path) => ({ path, dir: true, size: 0 }));
-      for (const [path, text] of files) out.push({ path, dir: false, size: text.length });
+      for (const [path, text] of files) out.push({ path, dir: false, size: text.length, modified: files.times.get(path) ?? 0 });
       return out.sort((a, b) => a.path.localeCompare(b.path));
     },
     readFile: async (path): Promise<FileContent> => {
@@ -310,5 +320,7 @@ export function createMockApi(): Api {
       return () => void exitSubs.delete(cb);
     },
   };
+  // the browser preview's project, for trying the studio by hand (in the console: novaMockApi.writeImage(...) is a change "outside")
+  if (typeof window !== "undefined") (window as unknown as { novaMockApi?: Api }).novaMockApi = api;
   return api;
 }

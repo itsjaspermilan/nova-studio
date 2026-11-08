@@ -190,6 +190,33 @@
     for (const map of (scene.tilemaps as { tileset?: { image?: string } }[] | undefined) ?? []) if (map.tileset?.image) loadPicture(map.tileset.image);
   });
 
+  // Files changed on disk (in another program, or saved from another tab): pictures are read again, and each kind is
+  // looked at again when an entity file, a sprite or a model changed, so the canvas, the 3D view and the settings follow.
+  let changesSeen = untrack(() => studio.fileChanges.n);
+  $effect(() => {
+    const { n, paths } = studio.fileChanges;
+    if (n === changesSeen) return;
+    changesSeen = n;
+    untrack(() => refreshFrom(paths));
+  });
+  function refreshFrom(paths: string[]) {
+    let kinds = false;
+    for (const p of paths) {
+      if (loading.has(p)) {
+        loading.delete(p);
+        pictures.delete(p);
+      }
+      if (p.startsWith("entities/") || /\.(png|glb|gltf|sprite\.json|model\.json)$/i.test(p)) kinds = true;
+    }
+    for (const item of scene.images ?? []) if (typeof item.image === "string") void loadPicture(item.image);
+    for (const map of (scene.tilemaps as { tileset?: { image?: string } }[] | undefined) ?? []) if (map.tileset?.image) void loadPicture(map.tileset.image);
+    if (kinds) {
+      asked.clear();
+      for (const o of scene.objects ?? []) if (typeof o.kind === "string") void learnKind(o.kind);
+    }
+    pictureTick++;
+  }
+
   function commit(next: Scene, keepHistory = false) {
     if (!keepHistory) history.record($state.snapshot(scene) as Scene);
     scene = next;
