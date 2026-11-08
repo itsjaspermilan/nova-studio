@@ -13,6 +13,7 @@ local foliage = require("lib.foliage")
 local course = require("lib.course")
 local horizon = require("lib.horizon")
 local audio = require("lib.audio")
+local haptics = require("lib.haptics")
 local ui = require("lib.ui")
 
 local race = {}
@@ -138,6 +139,7 @@ function race.scene()
     self.clock = 0              -- time since the green light
     self.countdown = 3.9
     self.last_beep = 4
+    haptics.reset()
     self.paused, self.pause_choice = false, 1
     self.leaving = false
     transition.reveal(1.0) -- (coming from the wipe that the chooser started: stay covered a moment more, then wipe off; the countdown waits)
@@ -419,6 +421,7 @@ function race.scene()
     if self.section >= #self.sections then
       p.finish_time = self.clock
       audio.sfx("finish")
+      haptics.event("finish")
       self.player_finished_at = self.clock
       self:say("FINISH!", 4)
       p.autopilot = true
@@ -491,6 +494,7 @@ function race.scene()
     car.finish_time = self.clock
     if car.is_player then
       audio.sfx("finish")
+      haptics.event("finish")
       self.player_finished_at = self.clock
       self:say("FINISH!", 4)
       car.autopilot = true
@@ -544,18 +548,6 @@ function race.scene()
     end
     if self.paused then return self:update_pause() end
     self.crowd_time = (self.crowd_time or 0) + dt -- (the crowd keeps still while the game is paused)
-    if self.phase ~= "countdown" and not self.player_finished_at and nova.input.pressed("pause") then
-      self.paused = not self.paused
-      self.pause_choice = 1
-      -- (the grass and the trees keep still while the game is paused)
-      nova.pause(self.paused)
-      nova.music.volume(state.music_volume * (self.paused and 0.35 or 1))
-      audio.sfx("pause")
-      for _, car in ipairs(self.cars) do if car.engine then car.engine:silence() end end
-      return
-    end
-    if self.paused then return self:update_pause() end
-    self.crowd_time = (self.crowd_time or 0) + dt -- (the crowd keeps still while the game is paused)
     -- a frame that took too long is written to the log with what was going on, so that a hitch can be found from a play session
     if dt > 0.026 and self.phase == "racing" then
       local p = self.player
@@ -590,12 +582,14 @@ function race.scene()
       local whole = math.ceil(self.countdown)
       if whole < self.last_beep and whole >= 1 and whole <= 3 then
         audio.sfx("beep")
+        haptics.event("light")
         self.last_beep = whole
       end
       if self.countdown <= 0 then
         nova.log("go")
         self.phase = "racing"
         audio.sfx("go")
+        haptics.event("go")
         for _, c in ipairs(self.cars) do c.enabled = true end
         self.clock = 0
         self:say("GO!", 1.2)
@@ -685,11 +679,13 @@ function race.scene()
       if car.hit then
         if car.is_player then
           audio.sfx("bump", { volume = car.hit })
-          if state.vibration then nova.input.rumble { strong = math.min(1, car.hit * 1.2), weak = math.min(1, car.hit), seconds = 0.12 + 0.2 * car.hit } end
+          haptics.event("hit", car.hit)
         end
         car.hit = nil
       end
     end
+    -- what the player's car feels through the controller (the road only while racing; the finish's second beat after it)
+    haptics.drive(p, dt, self.phase == "racing" and not self.player_finished_at)
 
     if self.trial and self.phase == "racing" and not p.finish_time and p.lap_started then self:record_ghost(dt) end
     self:places()
