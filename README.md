@@ -160,6 +160,33 @@ The format and the whole Lua API are in `docs/project-format.md`; the API is als
 (a test keeps it in sync with the runtime). Start from `examples/crate-dash` (a small 2D game with scenes, entities, collisions and
 timers) or `examples/rally-demo` (sprites, 3D models, HUD).
 
+## Sunny Hop
+
+`examples/sunny-hop` is a bright run-and-jump platformer in the spirit of the classics, made with Kenney's **New Platformer Pack**: every picture is drawn
+from the pack's vectors at exactly the size the handheld shows it (`scripts/sunny/art.mjs`, a small SVG rasteriser), so tiles, characters and
+backgrounds stay sharp at 1080p. Sunny runs, jumps (higher the longer A is held, with coyote time, a jump buffer and a little float at the top),
+climbs ladders, bounces on springs, rides moving platforms and stomps slimes, snails, bees, frogs and fish. After a first level that teaches the moves come **four worlds**:
+Green Hills, Sunny Dunes, Frosty Peaks (icy ground) and the Purple Keep (crushers, saws and lava), six levels each with a **boss** at the end
+(King Slime, the Sand Snail, the Frost Block and the Fire King). Every level hides **three gems** (behind walls that are not there, up a spring,
+inside a ? block, on a ledge in a pit...), and has keys and locks, switches with gates and doors, checkpoints and a **stopwatch**: three stars per
+level for finishing, for every gem and for beating its star time, and a **time trial** (Y on the map) for any cleared level. The music is original (`scripts/sunny/music.mjs`).
+
+**Levels are scene files** (`scenes/levels/<world>-<n>.scene.json`), painted in the studio's scene editor: the tilemaps are layers named by what their
+tiles do (`ground`, `platforms`, `ladders`, `hazards`, `water`, `lava`, `back`, `front`, `secret`; one HD tileset at half size, a new `scale` of
+tilesets in the engine), and enemies, items, springs, checkpoints, the start and the goal are placed objects. A level's name, star time, music and sky are
+the props of its `level` object; the map is `scenes/map.scene.json`. The computer player (`lib/bot.lua`, F9 on the title) plays every level through the
+controls and finds every gem: that is the proof each level can be done, and the star times come from its times.
+
+| | |
+| --- | --- |
+| ![Title](docs/images/sunny-hop/title.png) | ![The map](docs/images/sunny-hop/map.png) |
+| ![Sunny Meadow](docs/images/sunny-hop/meadow.png) | ![Oasis Leap](docs/images/sunny-hop/dunes.png) |
+| ![Frozen Lake](docs/images/sunny-hop/frozen-lake.png) | ![Lava Moat](docs/images/sunny-hop/lava.png) |
+| ![King Slime](docs/images/sunny-hop/king-slime.png) | ![Results](docs/images/sunny-hop/results.png) |
+
+**Controls:** stick or d-pad moves (up and down climb; down and A drops through a platform), A or B jumps, + pauses, Y starts a time trial on
+the map, − restarts a time trial (keyboard: arrows or WASD, Space or Z, Escape, T, R).
+
 ## Examples
 
 | Folder | What |
@@ -167,6 +194,7 @@ timers) or `examples/rally-demo` (sprites, 3D models, HUD).
 | `pine-ridge-rally` | the 3D rally game above |
 | `nebula-swap` | the Panel de Pon-style puzzle game above |
 | `potion-panic` | the potion-brewing rush game above |
+| `sunny-hop` | the 2D platformer above |
 | `crate-dash`, `font-gallery`, `sound-check`, `input-test` | small 2D and tooling examples |
 | `rally-demo`, `stress` | the renderer's benchmark scenes: sprites, hundreds of models, lights and shadows |
 | `skin-demo`, `ik-demo` | skeletons, clips, animation layers and two-bone IK |

@@ -310,7 +310,6 @@ function Play:draw_banner()
   ui.icon("ui/disc", x + 56, y + 43, 70, Play.color_of(self.lv))
   ui.in_box(self.lv.label, x + 21, y + 8, 70, 70, ui.fit(self.lv.label, ui.LARGE, 60), ui.color.white)
   ui.text(x + 104, y + 43, name, size, ui.color.white, { valign = "middle" })
-  if self.mode == "trial" then ui.text(x + 106, y + 86, "Time trial", ui.MEDIUM, ui.color.sun) end
 end
 
 function Play:draw_pause()
@@ -355,8 +354,8 @@ function Play:draw_results()
   ui.text(x0 + 48, y + 16, "Time", ui.MEDIUM, ui.color.ink, { valign = "middle", outline = false })
   ui.right(ui.time(run.time), x1, y + 16, ui.LARGE, ui.color.ink, { valign = "middle", outline = false })
   if res.new_best then ui.text(x0 + 140, y + 16, "New best!", ui.MEDIUM, ui.color.berry, { valign = "middle", outline = false }) end
-  if self.lv.target then ui.right("Star time " .. ui.time(self.lv.target), x1, y + 44, ui.SMALL, ui.color.dim, { outline = false }) end
-  y = y + 58
+  if self.lv.target then ui.right("Star time " .. ui.time(self.lv.target), x1, y + 46, ui.SMALL, ui.color.dim, { outline = false }) end
+  y = y + 76
   ui.icon("ui/hud_coin", x0 + 18, y + 16, 36)
   ui.text(x0 + 48, y + 16, "Coins", ui.MEDIUM, ui.color.ink, { valign = "middle", outline = false })
   ui.right(tostring(run.coins), x1, y + 16, ui.LARGE, ui.color.ink, { valign = "middle", outline = false })

@@ -64,12 +64,12 @@ function hud.draw(slide)
   -- the boss's hearts
   local boss = run.boss
   if boss and boss:is_alive() and not boss.dead and boss.phase ~= "intro" then
-    local bw = 64 + boss.max_hp * 44
+    local bw = 120 + boss.max_hp * 44
     local bx = w / 2 - bw / 2
     ui.shade(bx, 470, bw, 52, 170)
     ui.text(bx + 16, 496, "BOSS", ui.MEDIUM, ui.color.white, { valign = "middle" })
     for i = 1, boss.max_hp do
-      ui.icon(i <= boss.hp and "ui/hud_heart" or "ui/hud_heart_empty", bx + 90 + (i - 1) * 44, 496, 40)
+      ui.icon(i <= boss.hp and "ui/hud_heart" or "ui/hud_heart_empty", bx + 112 + (i - 1) * 44, 496, 40)
     end
   end
 end

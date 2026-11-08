@@ -47,7 +47,7 @@ const shots = {
   "frozen-lake": play("snow-3", 10),
   "castle": play("castle-1", 8),
   "lava": play("castle-2", 7),
-  "king-slime": play("grass-6", 30),
+  "king-slime": play("grass-6", 22),
   "fire-king": play("castle-6", 34),
   "pause": { ...script([A, A], [[100, A], [140, ESC], [30, null]]), save: save("grass-2") },
   "trial": { ...script([A, A], [[100, Y], [120, null]]), save: save("grass-2", { last: "grass-1" }) },
