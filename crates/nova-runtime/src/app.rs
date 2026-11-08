@@ -63,6 +63,10 @@ pub struct Options {
     /// Height of the world render target in pixels (UI is always native); 0 = native.
     /// `None` uses the project's `world_height` (540 for the spike).
     pub world_height: Option<u32>,
+    /// Listen for the studio's debugger on this port of 127.0.0.1 (0 = any free one; the port is printed).
+    pub debug: Option<u16>,
+    /// With `debug`: wait a few seconds for the studio before the first script runs, so its breakpoints are in place.
+    pub debug_wait: bool,
 }
 
 impl Default for Options {
@@ -85,6 +89,8 @@ impl Default for Options {
             input: None,
             record: None,
             profile: false,
+            debug: None,
+            debug_wait: false,
         }
     }
 }

@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 use crate::actions::InputFrame;
 use crate::app::Options;
-use crate::game::Game;
+use crate::game::{Game, Reload};
 use crate::gfx::{FrameInput, Gfx};
 use crate::pak::PakVfs;
 use crate::script::{ScriptHost, ScriptState};
@@ -35,6 +35,42 @@ fn save_location(opts: &Options, game_name: &str) -> Option<std::path::PathBuf> 
     })
 }
 
+/// Files changed: swap new module code into the running game when that is safe, else start the game again. The log line
+/// says which happened (the studio shows it; `docs/debugger.md`).
+pub fn reload<U: crate::game::Uploader>(game: &mut Box<Game>, gpu: &mut U) {
+    use serde_json::json;
+    match game.hot_reload() {
+        Reload::Nothing => {}
+        Reload::Kept { files } => {
+            log::info!(
+                "reload: kept the game running with the new code of {}",
+                files.join(", ")
+            );
+            game.debug_event("reloaded", json!({ "kept": true, "files": files }));
+        }
+        Reload::Failed { file, error } => {
+            log::warn!("reload: not applied, the old code keeps running: {file}: {error}");
+            game.debug_event(
+                "reloaded",
+                json!({ "kept": true, "files": [], "failed": { "file": file, "error": error } }),
+            );
+        }
+        Reload::Restart { reason } => {
+            game.flush_save(); // the reloaded game reads the file, so write first
+            let dir = game.save_dir().map(std::path::Path::to_path_buf);
+            match Game::load_debug(game.vfs(), &|_| dir.clone(), game.debugger()) {
+                Ok(mut reloaded) => {
+                    reloaded.upload(gpu);
+                    log::info!("reload: restarted the game ({reason})");
+                    reloaded.debug_event("reloaded", json!({ "kept": false, "reason": reason }));
+                    **game = reloaded;
+                }
+                Err(e) => game.set_error(e),
+            }
+        }
+    }
+}
+
 impl Content {
     pub fn load(opts: &Options, gfx: &mut Gfx) -> Result<Content, String> {
         if opts.project.is_some() || opts.pak.is_some() {
@@ -43,7 +79,23 @@ impl Content {
                 (None, Some(dir)) => Rc::new(DirVfs::new(dir)?),
                 (None, None) => unreachable!("checked above"),
             };
-            let mut game = Game::load_with(vfs, &|name| save_location(opts, name))?;
+            let debugger = match opts.debug {
+                Some(port) => {
+                    let mut d = crate::debug::Debugger::listen(port).map_err(|e| {
+                        format!("cannot listen for the debugger on port {port}: {e}")
+                    })?;
+                    if opts.debug_wait {
+                        d.wait_at_start = Some(std::time::Duration::from_secs(5));
+                    }
+                    // (the studio reads this line to know where to connect)
+                    println!("nova debug: listening on 127.0.0.1:{}", d.port);
+                    use std::io::Write;
+                    let _ = std::io::stdout().flush();
+                    Some(Rc::new(std::cell::RefCell::new(d)))
+                }
+                None => None,
+            };
+            let mut game = Game::load_debug(vfs, &|name| save_location(opts, name), debugger)?;
             game.upload(gfx);
             log::info!(
                 "project '{}': {} assets, world height {}",
@@ -122,16 +174,7 @@ impl Content {
             }
             Content::Game { game, hud } => {
                 if game.changed_on_disk() {
-                    game.flush_save(); // the reloaded game reads the file, so write first
-                    let dir = game.save_dir().map(std::path::Path::to_path_buf);
-                    match Game::load_with(game.vfs(), &|_| dir.clone()) {
-                        Ok(mut reloaded) => {
-                            reloaded.upload(gfx);
-                            log::info!("project reloaded");
-                            **game = reloaded;
-                        }
-                        Err(e) => game.set_error(e),
-                    }
+                    reload(game, gfx);
                 }
                 let scale = Gfx::ui_scale(size);
                 let view = [size.0 as f32 / scale, size.1 as f32 / scale];

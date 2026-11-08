@@ -25,6 +25,10 @@ pub trait Vfs {
     fn stamp(&self) -> Option<SystemTime> {
         None
     }
+    /// When one file was last changed, if the source can tell (what a hot reload changed).
+    fn modified(&self, _path: &str) -> Option<SystemTime> {
+        None
+    }
     fn exists(&self, path: &str) -> bool {
         self.read(path).is_ok()
     }
@@ -155,6 +159,13 @@ impl DirVfs {
 }
 
 impl Vfs for DirVfs {
+    fn modified(&self, path: &str) -> Option<SystemTime> {
+        let path = normalize(path).ok()?;
+        std::fs::metadata(self.root.join(path))
+            .and_then(|m| m.modified())
+            .ok()
+    }
+
     fn read(&self, path: &str) -> Result<Vec<u8>, String> {
         let path = normalize(path)?;
         let full = self.root.join(&path);

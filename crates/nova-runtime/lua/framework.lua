@@ -320,6 +320,7 @@ local function finalize(cls)
   return cls
 end
 
+W.finalize = finalize -- (for the keep-state reload, which works a changed class out again: lua/devtools.lua)
 function nova.entity(a, b) return define("entity", a, b) end
 function nova.scene(a, b) return define("scene", a, b) end
 

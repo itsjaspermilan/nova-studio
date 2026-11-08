@@ -17,6 +17,7 @@ import { byFile } from "./diagnostics";
 import { projectSymbols, type ProjectSymbols } from "./completions";
 import { PerfTracker, type Hitch, type PerfSample } from "./perf";
 import { ACTIVITY_FILE, parseActivity, type Activity } from "./activity";
+import { debug } from "./debugger.svelte";
 import { deviceHint, lastDevice, NO_DEVICE, preferredDevice, rememberDevice } from "./devices";
 import type { AndroidDevice, Api, Diagnostic, ExampleInfo, ExportReport, FileEntry, LogLine, ProjectInfo, RecentProject, TemplateInfo } from "./types";
 
@@ -34,7 +35,7 @@ export interface Tab {
 
 export const isDirty = (t: Tab) => t.text !== t.saved || !!t.pending;
 
-export type Panel = "problems" | "play" | "activity";
+export type Panel = "problems" | "play" | "debug" | "objects" | "activity";
 
 const MAX_LOG = 2000;
 /// A new resource's name: letters, numbers, - and _, with / between folders (`levels/castle-1` is `castle-1` in the group's `levels` folder).
@@ -148,6 +149,9 @@ class Studio {
     const api = this.api;
     this.#unlisten.push(
       await api.onPlayLog((line) => {
+        // what a reload did (kept the game running, or started it again) is said in the studio, not only in the log
+        const reload = debug.noteLog(line.line);
+        if (reload) this.say(reload.failed ? "error" : "info", reload.text);
         if (this.#perf.feed(line.line)) {
           this.perf = { latest: this.#perf.latest, history: this.#perf.history, hitches: this.#perf.hitches, worst: this.#perf.worst };
           // the once-a-second speed line is shown in the speed strip, not in the log (a hitch line stays in both)
@@ -158,6 +162,14 @@ class Studio {
       }),
       await api.onDeviceStep((step) => {
         if (this.playingOn) this.deviceStep = step;
+      }),
+      await debug.attach(api, (file, line) => {
+        void this.openFile(file, line);
+        // a pause shows the debugger
+        if (debug.paused && this.panel !== "debug") {
+          this.panel = "debug";
+          this.panelOpen = true;
+        }
       }),
       await api.onPlayExit((code) => {
         this.running = false;
@@ -175,6 +187,7 @@ class Studio {
 
   async #enter(info: ProjectInfo) {
     this.project = info;
+    debug.useProject(info.root);
     this.tabs = [];
     this.active = null;
     this.diagnostics = [];

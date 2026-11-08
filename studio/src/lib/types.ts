@@ -151,6 +151,27 @@ export interface Api {
   onDeviceStep(callback: (step: string) => void): Promise<() => void>;
   onPlayLog(callback: (line: LogLine) => void): Promise<() => void>;
   onPlayExit(callback: (code: number | null) => void): Promise<() => void>;
+  /// Sends one request to the running game's debugger (see docs/debugger.md); answers come through `onDebugMessage`.
+  debugSend(message: DebugRequest): Promise<void>;
+  /// What the game's debugger says (replies and events), and `connected` / `disconnected` from the studio itself.
+  onDebugMessage(callback: (message: DebugMessage) => void): Promise<() => void>;
+}
+
+/// A request to the game's debugger: `{ id, cmd, ...arguments }` (docs/debugger.md lists them).
+export interface DebugRequest {
+  id: number;
+  cmd: string;
+  [argument: string]: unknown;
+}
+
+/// A message from the game's debugger: a reply (`reply` is the request's id) or an event (`event` names it).
+export interface DebugMessage {
+  reply?: number;
+  ok?: boolean;
+  result?: unknown;
+  error?: string;
+  event?: string;
+  [field: string]: unknown;
 }
 
 /// A device adb can see (see studio/src-tauri/src/device.rs).

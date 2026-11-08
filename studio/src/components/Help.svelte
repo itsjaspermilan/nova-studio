@@ -80,6 +80,14 @@
         </ul>
         <h3>New here?</h3>
         <p>Do <button class="link" onclick={() => go("lessons", "first-game")}>lesson 1: collect the coins</button>. It takes about ten minutes and you end up with a small game.</p>
+        <h3 id="debugger">Finding out what your game is doing</h3>
+        <ul class="plain">
+          <li><strong>Breakpoints:</strong> click just left of a line number in the code (a red dot appears) and press Play. When the game reaches that line it stops, the line lights up, and the <strong>Debugger</strong> tab at the bottom shows how it got there (the call stack) and what every variable holds. Tables open with ▸.</li>
+          <li><strong>Step over</strong> (F10) runs the line and stops at the next one, <strong>Step into</strong> (F11) follows a function call, <strong>Step out</strong> (⇧F11) finishes the function, <strong>Continue</strong> (F8) carries on. <strong>Pause</strong> stops at the next line of your code.</li>
+          <li>When your code has an error, the game stops at the line where it happened, so you can look at the variables before it ends. Untick <em>Stop at errors</em> to turn that off.</li>
+          <li><strong>Objects</strong> lists what is in the running scene. Click one to outline it in the game and see its fields; change a number, text or tick box and the game uses it straight away (changes last until the game restarts; to keep one, put it in the code or the scene).</li>
+          <li>Save a Lua file while the game runs: when only the code of files your game loads with <code>require</code> changed, the new code goes in and the game <strong>keeps running</strong> where it was. Changing <code>main.lua</code>, a scene, a picture or a sound <strong>restarts</strong> it. The studio says which happened.</li>
+        </ul>
         <h3>Good to know</h3>
         <ul class="plain">
           <li>Everything is saved as plain files in your project folder, so you can use git, or open the files in any other program. The studio notices changes made elsewhere.</li>

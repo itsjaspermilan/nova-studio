@@ -38,6 +38,7 @@ options: [--headless] [--frames N] [--capture out.png] [--size WxH] [--world-hei
          [--profile]   (headless: list the script functions that took the most time)
          [--input play.json] [--record play.json]   (play back recorded input / write this run's input; see inputscript.rs)
          [--save-dir folder]
+         [--debug PORT [--debug-wait]]   (listen for the studio's debugger on 127.0.0.1; 0 = any port; see docs/debugger.md)
          [--script file.lua (benchmark scene only)]";
 
 enum Command {
@@ -205,6 +206,14 @@ fn parse() -> Result<Command, String> {
                 }
             }
             "--profile" => opts.profile = true,
+            "--debug" => {
+                opts.debug = Some(
+                    value("--debug")?
+                        .parse()
+                        .map_err(|_| "--debug needs a port number (0 = any free port)")?,
+                )
+            }
+            "--debug-wait" => opts.debug_wait = true,
             "--input" => opts.input = Some(PathBuf::from(value("--input")?)),
             "--record" => opts.record = Some(PathBuf::from(value("--record")?)),
             "--hold" => {

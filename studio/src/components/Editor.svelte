@@ -14,6 +14,8 @@
   import { complete, identifierAt, lookup } from "../lib/completions";
   import { markersFor } from "../lib/diagnostics";
   import { studio } from "../lib/store.svelte";
+  import { debug } from "../lib/debugger.svelte";
+  import { breakpointGutter, breakpointLines, setBreakpoints, setPausedLine } from "../lib/breakpoints";
 
   let { path, text }: { path: string; text: string } = $props();
 
@@ -79,6 +81,8 @@
     const isLua = path.endsWith(".lua");
     const isJson = path.endsWith(".json");
     return [
+      // (breakpoints: click left of a line number; only code can have them)
+      ...(isLua ? [breakpointGutter(debug.linesOf(path), (lines) => debug.setBreakpoints(path, lines))] : []),
       lineNumbers(),
       highlightActiveLineGutter(),
       highlightActiveLine(),
@@ -130,6 +134,25 @@
     const doc = view.state.doc.toString();
     const markers = markersFor(doc, problems).map((m) => ({ from: Math.min(m.from, doc.length), to: Math.min(m.to, doc.length), severity: m.severity, message: m.message }));
     view.dispatch(setDiagnostics(view.state, markers));
+  });
+
+  // Breakpoints changed outside the editor (Remove all, another project's): show the debugger's.
+  $effect(() => {
+    const lines = debug.linesOf(path);
+    if (!view || !path.endsWith(".lua")) return;
+    const shown = breakpointLines(view.state);
+    if (shown.length !== lines.length || shown.some((l, i) => l !== [...lines].sort((a, b) => a - b)[i])) {
+      view.dispatch({ effects: setBreakpoints.of(lines) });
+    }
+  });
+
+  // The line the game is paused at, when it is in this file.
+  $effect(() => {
+    const p = debug.paused;
+    const frame = p?.stack.find((f) => f.depth === debug.frame);
+    const line = frame && frame.file === path ? frame.line : null;
+    if (!view) return;
+    view.dispatch({ effects: setPausedLine.of(line) });
   });
 
   // Jump to a line when a problem is clicked.

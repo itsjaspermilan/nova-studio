@@ -1,4 +1,5 @@
-import type { AndroidDevice, Api, CheckReport, Diagnostic, FileContent, FileEntry, HeadlessOptions, HeadlessReport, LogLine } from "./types";
+import { createMockDebugger } from "./mock-debug";
+import type { AndroidDevice, Api, CheckReport, DebugMessage, Diagnostic, FileContent, FileEntry, HeadlessOptions, HeadlessReport, LogLine } from "./types";
 
 // 1x1 transparent PNG, for tests that have no canvas
 const TINY_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
@@ -76,6 +77,8 @@ export function createMockApi(options: { devices?: AndroidDevice[] } = {}): Api 
   let timer: ReturnType<typeof setInterval> | undefined;
   const logSubs = new Set<(l: LogLine) => void>();
   const exitSubs = new Set<(c: number | null) => void>();
+  const debugSubs = new Set<(m: DebugMessage) => void>();
+  const debuggee = createMockDebugger(files, (m) => debugSubs.forEach((cb) => cb(m)));
   const recent: { path: string; name: string; opened: number }[] = [];
 
   const seed = (name: string) => {
@@ -103,6 +106,7 @@ export function createMockApi(options: { devices?: AndroidDevice[] } = {}): Api 
   const emit = (stream: LogLine["stream"], line: string) => logSubs.forEach((cb) => cb({ stream, line }));
   const stop = () => {
     clearInterval(timer);
+    if (running) debuggee.stop();
     running = false;
     onDevice = null;
   };
@@ -233,9 +237,12 @@ export function createMockApi(options: { devices?: AndroidDevice[] } = {}): Api 
     writeFile: async (path, text) => {
       need();
       bad(path);
+      const changed = files.get(path) !== text;
       files.set(path, text);
       const parts = path.split("/");
       for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join("/"));
+      // a running game picks up saved code (the real runtime decides between keeping it running and restarting)
+      if (running && changed) emit("stderr", debuggee.saved(path));
     },
     generateTrack: async (name, track) => {
       need();
@@ -286,6 +293,7 @@ export function createMockApi(options: { devices?: AndroidDevice[] } = {}): Api 
       if (running) throw "the game is already running";
       running = true;
       emit("stderr", "[mock] there is no native runtime in a browser; this is a simulated run");
+      debuggee.start();
       tick();
     },
     listDevices: async () => devices.map((d) => ({ ...d })),
@@ -362,6 +370,14 @@ export function createMockApi(options: { devices?: AndroidDevice[] } = {}): Api 
     onPlayExit: async (cb) => {
       exitSubs.add(cb);
       return () => void exitSubs.delete(cb);
+    },
+    debugSend: async (message) => {
+      if (!running) throw "the game's debugger is not connected";
+      debuggee.send(message);
+    },
+    onDebugMessage: async (cb) => {
+      debugSubs.add(cb);
+      return () => void debugSubs.delete(cb);
     },
   };
   // the browser preview's project, for trying the studio by hand (in the console: novaMockApi.writeImage(...) is a change "outside")
