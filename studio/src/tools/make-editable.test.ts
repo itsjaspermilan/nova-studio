@@ -2,7 +2,7 @@
 // the editable model the studio's model editor opens (parts, shapes, colours from the model's own palette picture, skins and clips). The `.glb` itself is
 // left alone, so the games look exactly as before; when a model is edited and saved, the studio writes its `.glb` from the `.model.json`. Packed games
 // leave `.model.json` out (they read the `.glb`).
-//   cd studio && NOVA_MAKE_EDITABLE=1 npx vitest run src/tools/make-editable.test.ts
+//   cd studio && NOVA_MAKE_EDITABLE=1 npx vitest run src/tools/make-editable.test.ts   (NOVA_MAKE_EDITABLE_PROJECT=<example> for one)
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
@@ -69,7 +69,9 @@ describe.skipIf(!run)("make every example model editable", () => {
     // side by side with what their .model.json would save, more than 1% of their pixels differed, so they keep the kit's file (keep-original.txt)
     const keep = new Set(readFileSync(join(__dirname, "keep-original.txt"), "utf8").split("\n").filter(Boolean));
     const done: string[] = [], failed: string[] = [], notes: string[] = [];
-    for (const project of readdirSync(root)) {
+    // (NOVA_MAKE_EDITABLE_PROJECT=moving-day limits it to one example)
+    const only = process.env.NOVA_MAKE_EDITABLE_PROJECT;
+    for (const project of readdirSync(root).filter((p) => !only || p === only)) {
       const dir = join(root, project, "models");
       if (!existsSync(dir)) continue;
       for (const file of readdirSync(dir).filter((f) => f.endsWith(".glb") && !/-original\d*\.glb$/.test(f))) {

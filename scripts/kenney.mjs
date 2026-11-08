@@ -24,6 +24,7 @@
 //   --draw-scale <factor>   write extras.nova.scale: the game draws the model this much bigger (what --scale and --fit do for a skinned model)
 //   --turn <degrees>        turn it about the up axis (a quarter turn at a time is exact)
 //   --centre                put the middle of its footprint (x and z) at the origin; the kit's pieces carry an offset to a tile corner
+//   --move x=<m>,y=<m>,z=<m>  (after --centre) move the model by this much: a piece two cells wide whose origin is the middle of its first cell
 //   --centre-axles          (with --pivot-wheels) move it along z so that the wheels' middle is the origin, as a driving script expects
 //   --collider x:z:r        a circle on the ground the model blocks (metres, after the scale); repeat it for more
 //
@@ -50,6 +51,7 @@ for (let i = 0; i < args.length; i++) {
   else if (a === "--material-srgb") { const [k, v] = args[++i].split("="); const lin = (c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4); (opt.materials ??= {})[k] = v.split(",").map(Number).map((x) => lin(x / 255)); } // 0..255 as picked on screen: converted to linear
   else if (a === "--material") { const [k, v] = args[++i].split("="); (opt.materials ??= {})[k] = v.split(",").map(Number); }
   else if (a === "--centre") opt.centre = true;
+  else if (a === "--move") opt.move = Object.fromEntries(args[++i].split(",").map((kv) => kv.split("=")).map(([k, v]) => [k, Number(v)]));
   else if (a === "--centre-axles") opt.centreAxles = true;
   else if (a === "--collider") opt.colliders.push(args[++i].split(":").map(Number));
   else positional.push(a);
@@ -284,6 +286,7 @@ for (const name of names) {
   if (opt.centreAxles) centreAxles(json);
   if (opt.turn) turn(json, opt.turn);
   if (opt.centre) centre(json);
+  if (opt.move) for (const i of json.scenes[0].nodes) { const n = json.nodes[i]; const t = n.translation || [0, 0, 0]; n.translation = [t[0] + (opt.move.x || 0), t[1] + (opt.move.y || 0), t[2] + (opt.move.z || 0)]; }
   if (opt.colliders.length) json.scenes[0].extras = { nova: { ...((json.scenes[0].extras || {}).nova || {}), colliders: opt.colliders } };
   for (const image of json.images || []) {
     if (!image.uri) continue;

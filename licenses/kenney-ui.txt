@@ -32,3 +32,13 @@ Potion Panic (examples/potion-panic), all CC0 from the same bundle, copied by sc
   scripts/potion/hd-ui.mjs, and the ingredient icons are renders of the Food Kit models above (scripts/potion/hd-ui.sh)
 - Sounds: Interface Sounds, RPG Audio, Impact Sounds, Foley Sounds (water, woosh), Digital Audio. The music is original (scripts/potion/music.mjs), MIT like the rest of the repository
 - Fonts: the built-in Cinzel (headings) and Lora (text), SIL OFL
+
+Moving Day (examples/moving-day), all CC0 from the same bundle:
+- 3D models (scripts/moving-day/assets.sh, converted by scripts/kenney.mjs): the Furniture Kit (sofa, chairs, TV cabinet and screen, bed, plant,
+  bookcase, lamp, fridge, stove, desk, table, box, bathtub, washer, floors recoloured for the rooms, walls, windows, doorways, rugs) and the Mini Characters
+  (the mover and the clients). Each has an editable models/<name>.model.json made by the studio's importer, except the characters and the plant (listed
+  in studio/src/tools/keep-original.txt), checked against the kit's files by scripts/moving-day/check-models.sh
+- Input Prompts (Nintendo Switch set) as pad_*.png. Every other interface picture is drawn by scripts/moving-day/hd-ui.mjs, and the wish card's icons and
+  the clients' faces are renders of the models above (scripts/moving-day/hd-ui.sh)
+- Sounds (scripts/moving-day/sounds.sh): Interface Sounds, Impact Sounds, Foley Sounds (stone drag, woosh), RPG Audio (creak, page), Digital Audio, a
+  Music Jingles pizzicato. The music is original (scripts/moving-day/music.mjs), MIT like the rest of the repository
