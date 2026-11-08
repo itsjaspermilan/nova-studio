@@ -129,13 +129,24 @@ describe("the track and store art tools", () => {
     use("project_create", { name: "Race" });
     const control = [[0, -100], [0, 0], [0, 120], [60, 200], [160, 230], [260, 200], [300, 120], [260, 40]];
     const r = text(use("track_write", { name: "stage1", control, open: true, sections: 4, trees: ["pine"], road: "road_gravel" }));
-    expect(r).toMatch(/tightest bend radius/);
+    expect(r).toMatch(/tightest bend ~\d+ m/);
     const scene = JSON.parse(readFileSync(join(dir, "scenes/stage1.scene.json"), "utf8"));
     const kinds = scene.objects.map((o: { kind: string }) => o.kind);
     expect(kinds.filter((k: string) => k === "section_gate")).toHaveLength(4);
     expect(kinds).toContain("waypoint");
     expect(kinds.filter((k: string) => k === "start_arch")).toHaveLength(2); // the start and the finish
     expect(existsSync(join(dir, "models/road_stage1.glb"))).toBe(true);
+    // the track file is what the track editor opens; the name alone makes the scene again from it, and a setting given changes just that
+    const track = JSON.parse(readFileSync(join(dir, "tracks/stage1.track.json"), "utf8"));
+    expect(track).toMatchObject({ open: true, sections: 4, road: "road_gravel", trees: ["pine"], control });
+    const before = readFileSync(join(dir, "scenes/stage1.scene.json"), "utf8");
+    use("track_write", { name: "stage1" });
+    expect(readFileSync(join(dir, "scenes/stage1.scene.json"), "utf8")).toBe(before);
+    use("track_write", { name: "stage1", sections: 3, far: { kind: ["pine"], density: 0.5 } });
+    const again = JSON.parse(readFileSync(join(dir, "scenes/stage1.scene.json"), "utf8"));
+    expect(again.objects.filter((o: { kind: string }) => o.kind === "section_gate")).toHaveLength(3);
+    expect(JSON.parse(readFileSync(join(dir, "tracks/stage1.track.json"), "utf8"))).toMatchObject({ sections: 3, road: "road_gravel", far: { kind: ["pine"], density: 0.5 } });
+    expect(() => use("track_write", { name: "nothing" })).toThrow(/control/);
     expect(() => use("track_write", { name: "bad", control: [[0, 0]] })).toThrow(/four/);
   });
 

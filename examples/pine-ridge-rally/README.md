@@ -31,8 +31,13 @@ Thousands of fixed things (road pieces, trees, barriers) would be slow as live e
 
 The models, sounds, songs, sprites and layouts were made through the Nova MCP server (`docs/mcp.md`), the way an
 assistant (or a script) drives the studio's own code: see `scripts/rally/` (`models.mjs`, `audio.mjs`, `sprites.mjs`,
-`tracks.mjs`, `showroom.mjs`). Each script is a list of tool calls whose results are the files in this folder. Running
+`showroom.mjs`). Each script is a list of tool calls whose results are the files in this folder. Running
 `node scripts/rally/models.mjs` (and the others) writes them again; the Lua is hand-written.
+
+The eight courses are track files, `tracks/<course>.track.json` (control points, road, seed, scenery kinds and densities, barrier, sky,
+distant scenery and landmarks): open one in the studio's track editor and press **Generate scene and road**, or call the MCP tool
+`track_write` with just the course's `name`, to make `scenes/<course>.scene.json` and `models/road_<course>.glb` again. The same file and seed
+give the same layout.
 
 `crates/nova-runtime/tests/rally.rs` plays the game through its menus and a full race on every circuit.
 

@@ -34,7 +34,8 @@ only a camera, a light or anything else placed by hand adds `nova.terrain_height
 (a car's weight on a hill). Because the lifting is by vertex, a flat model must have vertices where the ground bends: a road piece every
 few metres, and a ground made of a grid of squares (`scripts/rally/land.mjs`) rather than one big quad. The slope of a wave is up to
 2 pi x height / wavelength: Pine Ridge Rally's roads keep to about 10% (`lib/looks.lua`), which a handheld game feels as a real hill.
-Pine Ridge Rally lays each circuit's road as one ribbon mesh along the curve (`scripts/rally/tracks.mjs`, with the cross-section and colours of
+Pine Ridge Rally lays each course's road as one ribbon mesh along the curve (made with its scene from `tracks/<course>.track.json` by the studio's
+track editor, `docs/track-editor.md`, with the cross-section and colours of
 the Kenney Racing Kit's straight road) instead of slabs, so that a bend has no wedges and nothing overlaps.
 
 ### Designed ground (a heightmap)

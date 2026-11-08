@@ -1,9 +1,7 @@
-// Lays out a racing route as a scene: a closed circuit or an open rally stage, from a list of control points. Used by Pine Ridge Rally's script
-// (scripts/rally/tracks.mjs) and by the studio's MCP server (the `track_write` tool). `layout(spec)` returns the scene (road start, arches, section
-// gates, waypoints, grid, scenery along the route) and its statistics; `roadGlb(control, kind, open)` is the road as one ribbon mesh.
-// Lays out the rally game's two circuits as scene files, through the Nova MCP server's `scene_write` tool: a closed curve through
-// control points, road pieces along it, waypoints for the cars to follow, a start line and grid, and scenery on both sides.
-// (In the studio this is what placing objects in the 3D scene view makes; here a script does the placing.)
+// Lays out a racing route as a scene: a closed circuit or an open rally stage, from a list of control points. Used by the studio's track editor
+// (studio/src/lib/track-doc.ts, which reads and writes `tracks/<name>.track.json`) and by its MCP server (the `track_write` tool), which make
+// Pine Ridge Rally's courses. `layout(spec)` returns the scene (road start, arches, section gates, waypoints, grid, scenery along the route) and
+// its statistics; `roadGlb(control, kind, open)` is the road as one ribbon mesh. The same spec and seed always give the same scene.
 
 // ---- the curve ---------------------------------------------------------------------------------------------------------
 const catmull = (p0, p1, p2, p3, t) => {
@@ -114,7 +112,10 @@ export function layout(spec) {
   // an open stage: the road starts `leadIn` metres before the start line (index L), and runs on `runout` metres past the finish line (index F)
   const { L, F } = stageMarks(n, spacing, open, spec.leadIn, spec.runout);
   const rand = rng(spec.seed);
-  const pick = (v) => (Array.isArray(v) ? v[Math.floor(rand() * v.length)] : v);
+  // (one kind, or a list of one, is taken without a draw: the same scene as when the kind was given on its own)
+  const pick = (v) => (Array.isArray(v) ? (v.length > 1 ? v[Math.floor(rand() * v.length)] : v[0]) : v);
+  const far = spec.far && (Array.isArray(spec.far.kind) ? spec.far.kind.length : spec.far.kind) && spec.far.density > 0 ? spec.far : null;
+  const landmarks = spec.landmarks ?? { kind: [], count: 0, radius: 0 };
   const objects = [];
 
   // the road, with the start line on the first piece
@@ -178,14 +179,14 @@ export function layout(spec) {
       }
       if (rand() < spec.density * 0.7) place(spec.small[Math.floor(rand() * spec.small.length)], p.x + nx * (8 + rand() * 12), p.z + nz * (8 + rand() * 12), 11);
       if (rand() < spec.rocks) place(pick(spec.rock), p.x + nx * (9 + rand() * 20), p.z + nz * (9 + rand() * 20), 8.5);
-      if (spec.far && rand() < spec.far.density) place(pick(spec.far.kind), p.x + nx * (60 + rand() * 90), p.z + nz * (60 + rand() * 90), 40);
+      if (far && rand() < far.density) place(pick(far.kind), p.x + nx * (60 + rand() * 90), p.z + nz * (60 + rand() * 90), 40);
     }
     // on a bend the outside gets a barrier, tyres at the tightest part, and chevron signs before it
     const k = curv[i];
     if (Math.abs(k) > 0.0075 && i % 2 === 0) {
       const side = k > 0 ? 1 : -1; // a bend that turns towards +x (left, heading +z) has its outside on the right: (-tz, tx)
       const nx = -p.tz * side, nz = p.tx * side;
-      objects.push(obj(spec.rail, p.x + nx * 8.2, p.z + nz * 8.2, p.ry));
+      objects.push(obj(spec.rail ?? "guardrail", p.x + nx * 8.2, p.z + nz * 8.2, p.ry));
       if (Math.abs(k) > 0.014 && i % 4 === 0) objects.push(obj("tires", p.x + nx * 9.6, p.z + nz * 9.6, 0));
     }
     if (Math.abs(k) > 0.011 && Math.abs(curv[(i + n - 4) % n]) < 0.008 && i % 3 === 0) {
@@ -201,16 +202,16 @@ export function layout(spec) {
   }
 
   // some tall features well away from the road
-  for (let i = 0; i < spec.landmarks.count; i++) {
-    const a = rand() * Math.PI * 2, d = spec.landmarks.radius + rand() * 40;
+  for (let i = 0; i < landmarks.count; i++) {
+    const a = rand() * Math.PI * 2, d = landmarks.radius + rand() * 40;
     const cx = spec.control.reduce((s, c) => s + c[0], 0) / spec.control.length, cz = spec.control.reduce((s, c) => s + c[1], 0) / spec.control.length;
-    place(pick(spec.landmarks.kind), cx + Math.cos(a) * d * 1.3, cz + Math.sin(a) * d, 50);
+    place(pick(landmarks.kind), cx + Math.cos(a) * d * 1.3, cz + Math.sin(a) * d, 50);
   }
 
   const s0 = line[0];
   const scene = {
     version: 1,
-    background: spec.sky,
+    background: spec.sky ?? [138, 182, 224],
     camera: { eye: [r1(s0.x - s0.tx * 22 + 6), 9, r1(s0.z - s0.tz * 22)], target: [r1(s0.x), 1.5, r1(s0.z + 14)], fov: 62 },
     objects,
   };
@@ -267,7 +268,7 @@ export function roadGlb(control, kind, open = false) {
   const xs = [], ys = [], zs = [];
   for (let k = 0; k < positions.length; k += 3) { xs.push(positions[k]); ys.push(positions[k + 1]); zs.push(positions[k + 2]); }
   const json = {
-    asset: { version: "2.0", generator: "nova scripts/rally/tracks.mjs" },
+    asset: { version: "2.0", generator: "nova scripts/lib/trackgen.mjs" },
     scene: 0, scenes: [{ nodes: [0] }], nodes: [{ name: "road", mesh: 0 }],
     meshes: [{ name: "road", primitives: [{ attributes: { POSITION: 0, NORMAL: 1, COLOR_0: 2 }, indices: 3, mode: 4 }] }],
     accessors: [

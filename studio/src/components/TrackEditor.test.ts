@@ -64,6 +64,26 @@ describe("TrackEditor", () => {
     expect(paths).toEqual(expect.arrayContaining(["scenes/oval.scene.json", "models/road_oval.glb"]));
     expect(host.textContent).toContain("Open the scene");
   });
+  it("picks distant scenery and sets how much of it, the barrier and the sky", async () => {
+    const api = await open();
+    await api.writeFile("entities/pine.lua", 'return nova.entity { model = "pine", static = true }');
+    studio.files = await api.listFiles();
+    flushSync();
+    button("Far")!.click();
+    flushSync();
+    const pine = [...host.querySelectorAll<HTMLInputElement>("ul.kinds input")].find((i) => i.parentElement?.textContent?.trim() === "pine")!;
+    pine.click();
+    flushSync();
+    const slider = [...host.querySelectorAll("label")].find((l) => l.textContent?.trim().startsWith("Far"))!.querySelector("input")!;
+    slider.value = "0.3";
+    slider.dispatchEvent(new Event("input", { bubbles: true }));
+    const sky = host.querySelector<HTMLInputElement>('input[type="color"]')!;
+    sky.value = "#102030";
+    sky.dispatchEvent(new Event("change", { bubbles: true }));
+    flushSync();
+    expect(parseTrack(studio.tabs[0]!.text)).toMatchObject({ ok: true, doc: { far: { kind: ["pine"], density: 0.3 }, sky: [16, 32, 48], rail: "guardrail" } });
+    expect(button("Far (1)")).toBeDefined();
+  });
   it("says so when the file is not a track", async () => {
     await open("not json");
     expect(host.textContent).toContain("is not a track file");

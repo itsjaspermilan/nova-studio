@@ -14,6 +14,7 @@ import { resolveEntity } from "./entity-info";
 import { groupResources } from "./resources";
 import { buildModel } from "./model-three";
 import { importGlb } from "./glb-import";
+import { buildTrack, parseTrack, roadOf, sceneOf, serializeTrack, trackName } from "./track-doc";
 
 const root = new URL("../../../examples/", import.meta.url).pathname;
 const projects = readdirSync(root).filter((d) => existsSync(join(root, d, "nova.json")));
@@ -50,6 +51,21 @@ describe.each(projects)("the editors on examples/%s", (name) => {
       // nothing is lost on a save; a file made by the studio's own tools also keeps its exact text (a hand-written one may be re-ordered)
       expect(JSON.parse(saved), `${f} keeps all its data`).toEqual(JSON.parse(text(join(base, f))));
       if (name === "pine-ridge-rally") expect(saved, `${f} saves back as it was`).toBe(text(join(base, f)));
+    }
+  });
+
+  it("open every track, save it back unchanged, and make the committed road and the scene's route from it", () => {
+    const route = (scene: string) => (JSON.parse(scene).objects as { kind: string }[]).filter((o) => ["waypoint", "grid_slot", "section_gate", "start_arch", "road_start"].includes(o.kind));
+    for (const f of ending(".track.json")) {
+      const parsed = parseTrack(text(join(base, f)));
+      expect(parsed.ok, `${f}: ${parsed.ok ? "" : parsed.error}`).toBe(true);
+      if (!parsed.ok) continue;
+      expect(serializeTrack(parsed.doc), `${f} saves back as it was`).toBe(text(join(base, f)));
+      const track = trackName(f);
+      const made = buildTrack(parsed.doc);
+      // the scene may have been edited since it was made (scenery moved, added or taken away), but the route the cars drive is the track's
+      expect(route(made.scene), `${f}: the scene's waypoints, grid and gates are the track's`).toEqual(route(text(join(base, sceneOf(track)))));
+      expect(Buffer.compare(Buffer.from(made.glb), readFileSync(join(base, roadOf(track)))), `${f} makes the committed road`).toBe(0);
     }
   });
 

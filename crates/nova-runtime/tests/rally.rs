@@ -936,3 +936,26 @@ fn crowd_cost() {
         runs as f64 / n
     );
 }
+
+/// Every course driven by the computer (F9): the results line of a race on each circuit and of a rally stage on each stage, to compare
+/// before and after a change to the courses. Run on purpose:
+/// `cargo test --release -p nova-runtime --test rally course_times -- --ignored --nocapture`.
+#[test]
+#[ignore]
+fn course_times() {
+    for circuit in 0..4 {
+        let log = play(circuit, false);
+        let laps: Vec<&String> = log.iter().filter(|l| l.starts_with("lap ")).collect();
+        let times = log.iter().find(|l| l.starts_with("results:")).unwrap();
+        println!("COURSE circuit {circuit}: {times} | {laps:?}");
+    }
+    for stage in 0..4 {
+        let log = stage_run(stage, 0, 0, 0);
+        let sections: Vec<&String> = log.iter().filter(|l| l.starts_with("section ")).collect();
+        let score = log
+            .iter()
+            .find(|l| l.starts_with("results: rally score"))
+            .unwrap();
+        println!("COURSE stage {stage}: {score} | {sections:?}");
+    }
+}

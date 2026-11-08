@@ -794,7 +794,7 @@ function race.define(config)
     nova.camera(cam.x, math.max(cam.y + ground_here, ground_there + 1.2), cam.z, cam.tx, cam.ty + ground_there, cam.tz, cam.fov)
     if config.night then self:night_lights(cam) end
     horizon.draw(cam.x, cam.z, config.horizon)
-    -- the road: one ribbon along the whole circuit (scripts/rally/tracks.mjs), drawn from here (it casts no shadow)
+    -- the road: one ribbon along the whole circuit (made from tracks/<course>.track.json with the scene), drawn from here (it casts no shadow)
     nova.model("road_" .. state.current_track().id, 0, 0, 0, ROAD_OPTS)
     fx.draw_skids(cam.x, cam.z, 90)
     crowd.draw(cam.x, cam.z, self.crowd_time or 0)

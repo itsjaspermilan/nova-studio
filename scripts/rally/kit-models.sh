@@ -31,7 +31,7 @@ K "$RK" $P rail --as guardrail --fit x=6.0 --turn 90 --centre --collider 0:-2.5:
 K "$RK" $P lightPostLarge --as lamp --fit y=6.0 --turn 90 --centre --collider 0:0:0.35
 K "$RK" $P overhead --as start_arch --fit x=14.85 --centre --collider -7.2:0:0.7 --collider 7.2:0:0.7
 
-# the road: slabs 12 m across and 6.25 m long, as the editor-made ones were (scripts/rally/tracks.mjs lays one every 5 m), with the
+# the road: slabs 12 m across and 6.25 m long, as the editor-made ones were (the track generator, scripts/lib/trackgen.mjs, lays one every 5 m), with the
 # kit's lines and verges; dirt and snow are the same slab in other colours
 ROAD="--stretch x=12,z=6.25 --centre"
 K "$RK" $P roadStraight --as road_asphalt $ROAD

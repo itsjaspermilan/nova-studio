@@ -35,7 +35,17 @@ export interface TrackDoc {
   density: number;
   rocks: number;
   lamps: boolean;
+  /// The barrier entity on the outside of the bends.
+  rail: string;
+  /// The scene's background colour, [r, g, b] 0 to 255 (what the scene editor shows behind it).
+  sky: Rgb;
+  /// Distant scenery, 60 to 150 m from the road: kinds and how many per piece of road (0 to 1; 0 for none).
+  far: { kind: string[]; density: number };
+  /// A few tall features well away from the road: `count` of them at about `radius` metres from the route's middle (0 for none).
+  landmarks: { kind: string[]; count: number; radius: number };
 }
+
+export type Rgb = [number, number, number];
 
 export const SPACING = 5; // metres between road points, as the generator lays them
 export const MIN_POINTS = 4; // what `track_write` asks for
@@ -49,11 +59,15 @@ export function newTrack(): TrackDoc {
     version: 1, open: false, road: "road_asphalt",
     control: [[0, -60], [0, 40], [30, 110], [100, 140], [170, 110], [200, 40], [170, -30], [100, -60]],
     sections: 5, leadIn: 40, runout: 90, seed: 1, trees: [], small: [], rock: [], density: 0.4, rocks: 0.05, lamps: false,
+    rail: "guardrail", sky: [138, 182, 224], far: { kind: [], density: 0 }, landmarks: { kind: [], count: 0, radius: 150 },
   };
 }
 
 const num = (v: unknown, d: number, lo: number, hi: number) => (typeof v === "number" && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d);
-const names = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+// (a kind may be given alone, as a string, or as a list)
+const names = (v: unknown) => (typeof v === "string" ? [v] : Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+const record = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
+const rgb = (v: unknown, d: Rgb): Rgb => (Array.isArray(v) && v.length === 3 && v.every((x) => typeof x === "number" && Number.isFinite(x)) ? (v.map((x) => Math.min(255, Math.max(0, Math.round(x)))) as Rgb) : d);
 
 export type Parsed = { ok: true; doc: TrackDoc } | { ok: false; error: string };
 
@@ -90,6 +104,10 @@ export function parseTrack(text: string): Parsed {
       density: num(o.density, d.density, 0, 1),
       rocks: num(o.rocks, d.rocks, 0, 1),
       lamps: o.lamps === true,
+      rail: typeof o.rail === "string" && o.rail ? o.rail : d.rail,
+      sky: rgb(o.sky, d.sky),
+      far: { kind: names(record(o.far).kind), density: num(record(o.far).density, 0, 0, 1) },
+      landmarks: { kind: names(record(o.landmarks).kind), count: Math.round(num(record(o.landmarks).count, 0, 0, 200)), radius: num(record(o.landmarks).radius, d.landmarks.radius, 0, 2000) },
     },
   };
 }
@@ -97,11 +115,19 @@ export function parseTrack(text: string): Parsed {
 export function serializeTrack(doc: TrackDoc): string {
   const { control, ...rest } = doc;
   const lines = control.map((p) => `    [${round(p[0])}, ${round(p[1])}]`).join(",\n");
-  const head = JSON.stringify(rest, null, 2).slice(0, -2); // (without the closing brace)
-  return `${head},\n  "control": [\n${lines}\n  ]\n}\n`;
+  // (each setting on a line of its own; a list of kinds or a colour stays on that line)
+  const fields = Object.entries(rest).map(([k, v]) => `  ${JSON.stringify(k)}: ${inline(v)}`);
+  return `{\n${fields.join(",\n")},\n  "control": [\n${lines}\n  ]\n}\n`;
 }
 
 const round = (n: number) => Math.round(n * 10) / 10;
+
+/// JSON on one line, spaced as a person would type it.
+function inline(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(inline).join(", ")}]`;
+  if (v && typeof v === "object") return `{ ${Object.entries(v).map(([k, x]) => `${JSON.stringify(k)}: ${inline(x)}`).join(", ")} }`;
+  return JSON.stringify(v);
+}
 
 // ---- editing: every function returns a new document ---------------------------------------------------------------
 
@@ -234,10 +260,10 @@ export const trackName = (path: string) => path.slice(path.lastIndexOf("/") + 1)
 export function buildTrack(doc: TrackDoc): TrackFiles {
   if (doc.control.length < MIN_POINTS) throw `a track needs at least ${MIN_POINTS} points`;
   const spec = {
-    seed: doc.seed, control: doc.control, open: doc.open, road: doc.road, rail: "guardrail", sky: [138, 182, 224],
+    seed: doc.seed, control: doc.control, open: doc.open, road: doc.road, rail: doc.rail, sky: doc.sky,
     sections: doc.sections, leadIn: doc.leadIn, runout: doc.runout, lamps: doc.lamps,
     trees: doc.trees, small: doc.small, rock: doc.rock, density: doc.trees.length ? doc.density : 0, rocks: doc.rocks,
-    landmarks: { kind: doc.trees[0] ?? "", count: 0, radius: 0 },
+    far: doc.far, landmarks: doc.landmarks.kind.length ? doc.landmarks : { kind: [], count: 0, radius: 0 },
   };
   const { scene, stats } = layout(spec);
   const parsed = parseScene(JSON.stringify(scene));

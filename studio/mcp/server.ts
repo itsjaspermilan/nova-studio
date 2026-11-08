@@ -26,7 +26,8 @@ import { parseScene, serializeScene } from "../src/lib/scene-model";
 import { parseSheetJson } from "../src/lib/sprite-doc";
 // @ts-ignore (plain JavaScript, shared with Pine Ridge Rally's track script)
 import { heightmapFromTrack } from "../../scripts/lib/heightmap.mjs";
-import { layout as layoutTrack, roadGlb, ascii as trackMap, tightest as closestApproach } from "../../scripts/lib/trackgen.mjs";
+import { ascii as trackMap } from "../../scripts/lib/trackgen.mjs";
+import { analyse as analyseTrack, buildTrack, newTrack, parseTrack, roadOf, sceneOf, serializeTrack, trackOf } from "../src/lib/track-doc";
 
 // ---- where things are ----------------------------------------------------------------------------------------------
 const here = dirname(fileURLToPath(import.meta.url));
@@ -357,8 +358,9 @@ tool(
 
 tool(
   "track_write",
-  "Lay out a racing route from control points: a closed circuit, or an open rally stage (`open`: true), as the plain files a person could edit. It writes `scenes/<name>.scene.json` (the start line and arch, a finish arch and section gates on a stage, waypoints every 10 m for the cars and the pace notes, the starting grid, and scenery along the route: trees, bushes, rocks, guardrails with chevron signs at the bends, tyres, optional street lamps) and the road as one ribbon mesh, `models/road_<name>.glb` (draw it with nova.model(\"road_<name>\", 0, 0, 0)). " +
-    "`control` is a list of [x, z] points the curve passes through (metres; the route starts at the first heading to the second: for a stage give a straight lead-in). It reports the length, the tightest bend's radius (keep it above about 15 m) and the closest approach between distant parts of the route (keep it above about 40 m), and draws a map. Scenery kinds are entity names in entities/.",
+  "Lay out a racing route from control points: a closed circuit, or an open rally stage (`open`: true), as the plain files a person could edit, the same files the studio's track editor makes. It writes `tracks/<name>.track.json` (the route and its settings, what the track editor opens), `scenes/<name>.scene.json` (the start line and arch, a finish arch and section gates on a stage, waypoints every 10 m for the cars and the pace notes, the starting grid, and scenery along the route: trees, bushes, rocks, guardrails with chevron signs at the bends, tyres, optional street lamps, distant scenery and landmarks) and the road as one ribbon mesh, `models/road_<name>.glb` (draw it with nova.model(\"road_<name>\", 0, 0, 0)). " +
+    "When `tracks/<name>.track.json` already exists it is the starting point and only the settings given here change: `{ name }` alone makes the scene and road again from the saved track. " +
+    "`control` is a list of [x, z] points the curve passes through (metres; the route starts at the first heading to the second: for a stage give a straight lead-in). It reports the length, the tightest bend's radius (keep it above about 15 m) and the closest approach between distant parts of the route (keep it above about 40 m), and draws a map. Scenery kinds are entity names in entities/. The same settings and seed always give the same scene.",
   {
     name: { type: "string" },
     control: { type: "array", items: { type: "array", items: { type: "number" } } },
@@ -375,27 +377,41 @@ tool(
     rocks: { type: "number" },
     rail: { type: "string", description: "The barrier entity on the outside of bends (guardrail)." },
     lamps: { type: "boolean" },
-    sky: { type: "array", items: { type: "number" } },
+    sky: { type: "array", items: { type: "number" }, description: "The scene's background colour [r, g, b]." },
+    far: { type: "object", description: "Distant scenery 60 to 150 m from the road: { kind: [entity names], density: 0 to 1 per piece of road }." },
+    landmarks: { type: "object", description: "Tall features well away from the road: { kind: [entity names], count, radius: metres from the route's middle }." },
   },
-  ["name", "control"],
+  ["name"],
   (a) => {
     const root = projectRoot(a);
     const name = safeName(a.name, "Track");
-    const control = a.control as number[][];
+    const saved = join(root, trackOf(name));
+    let base: Record<string, unknown> = { ...newTrack() };
+    if (existsSync(saved)) {
+      const p = parseTrack(readFileSync(saved, "utf8"));
+      if (!p.ok) throw new Error(`${trackOf(name)}: ${p.error}`);
+      base = { ...p.doc };
+    } else if (a.control === undefined) throw new Error(`there is no ${trackOf(name)}: give the route's \`control\` points`);
+    const given: Record<string, unknown> = { ...a, leadIn: a.lead_in };
+    for (const key of ["control", "open", "road", "sections", "leadIn", "runout", "seed", "trees", "small", "rock", "density", "rocks", "rail", "lamps", "sky", "far", "landmarks"]) {
+      if (given[key] !== undefined) base[key] = given[key];
+    }
+    const control = base.control as unknown[];
     if (!Array.isArray(control) || control.length < 4 || control.some((p) => !Array.isArray(p) || p.length !== 2)) throw new Error("control needs at least four [x, z] points");
-    const spec = {
-      seed: a.seed ?? 1, control, open: !!a.open, road: a.road ?? "road_asphalt", rail: a.rail ?? "guardrail", sky: a.sky ?? [138, 182, 224],
-      sections: a.sections ?? 5, leadIn: a.lead_in ?? 40, runout: a.runout ?? 90, lamps: !!a.lamps,
-      trees: a.trees ?? [], small: a.small ?? [], rock: a.rock ?? [], density: a.density ?? 0.4, rocks: a.rocks ?? 0.05,
-      landmarks: { kind: a.trees?.[0] ?? "", count: 0, radius: 0 },
-    };
-    if (!(spec.trees as string[]).length) spec.density = 0;
-    const { scene, stats } = layoutTrack(spec);
-    const parsed = parseScene(JSON.stringify(scene));
-    if (!parsed.ok) throw new Error(`the layout is not a valid scene: ${parsed.error}`);
-    put(root, `scenes/${name}.scene.json`, serializeScene(parsed.scene));
-    put(root, `models/road_${name}.glb`, roadGlb(control, spec.road, spec.open));
-    return `${name}: ${stats.length} m, ${stats.points} road points, ${stats.objects} objects, tightest bend radius ~${stats.minRadius} m, closest approach ${closestApproach(stats.line, 5)} m\n${trackMap(stats.line)}`;
+    const parsed = parseTrack(JSON.stringify(base));
+    if (!parsed.ok) throw new Error(parsed.error);
+    const doc = parsed.doc;
+    let files;
+    try {
+      files = buildTrack(doc);
+    } catch (e) {
+      throw new Error(String(e));
+    }
+    put(root, trackOf(name), serializeTrack(doc));
+    put(root, sceneOf(name), files.scene);
+    put(root, roadOf(name), files.glb);
+    const stats = analyseTrack(doc)!;
+    return `${name}: ${files.report}, ${doc.control.length} control points, closest approach ${stats.closest ?? "–"} m${stats.warnings.length ? `\n${stats.warnings.join("\n")}` : ""}\n${trackMap(stats.line)}`;
   },
 );
 

@@ -165,17 +165,29 @@
 
   // ---- the scenery panel ------------------------------------------------------------------------------------
   const entities = $derived(studio.files.filter((f) => !f.dir && f.path.startsWith("entities/") && f.path.endsWith(".lua")).map((f) => f.path.slice(9, -4).replaceAll("/", ".")).sort());
-  let group: "trees" | "small" | "rock" = $state("trees");
+  type Group = "trees" | "small" | "rock" | "far" | "landmarks";
+  let group: Group = $state("trees");
   let filter = $state("");
   const GROUPS = [
     { id: "trees", label: "Trees", hint: "Tall things that line the road." },
     { id: "small", label: "Bushes", hint: "Small things close to the road." },
     { id: "rock", label: "Rocks", hint: "Big things, now and then." },
+    { id: "far", label: "Far", hint: "Distant scenery, 60 to 150 m from the road." },
+    { id: "landmarks", label: "Landmarks", hint: "A few tall features well away from the road." },
   ] as const;
+  // the kinds picked in a group (the distant scenery and the landmarks keep theirs inside their settings)
+  const kindsOf = (d: TrackDoc, g: Group): string[] => (g === "far" ? d.far.kind : g === "landmarks" ? d.landmarks.kind : d[g]);
+  function withKinds(d: TrackDoc, g: Group, list: string[]): TrackDoc {
+    if (g === "far") return setField(d, "far", { ...d.far, kind: list });
+    if (g === "landmarks") return setField(d, "landmarks", { ...d.landmarks, kind: list });
+    return setField(d, g, list);
+  }
+  const hex = (c: number[]) => `#${c.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+  const fromHex = (h: string): [number, number, number] => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)) as [number, number, number];
   const shown = $derived(entities.filter((e) => e.toLowerCase().includes(filter.trim().toLowerCase())));
   function toggle(kind: string) {
-    const list = doc[group];
-    commit(setField(doc, group, list.includes(kind) ? list.filter((k) => k !== kind) : [...list, kind]));
+    const list = kindsOf(doc, group);
+    commit(withKinds(doc, group, list.includes(kind) ? list.filter((k) => k !== kind) : [...list, kind]));
   }
   const number = (e: Event) => Number((e.currentTarget as HTMLInputElement).value);
   const set = <K extends keyof TrackDoc>(key: K, value: TrackDoc[K]) => commit(setField(doc, key, value));
@@ -316,14 +328,14 @@
         <h3>Scenery</h3>
         <div class="seg" role="group" aria-label="Kinds of scenery">
           {#each GROUPS as g (g.id)}
-            <button class:on={group === g.id} onclick={() => (group = g.id)} title={g.hint}>{g.label}{doc[g.id].length ? ` (${doc[g.id].length})` : ""}</button>
+            <button class:on={group === g.id} onclick={() => (group = g.id)} title={g.hint}>{g.label}{kindsOf(doc, g.id).length ? ` (${kindsOf(doc, g.id).length})` : ""}</button>
           {/each}
         </div>
         {#if entities.length}
           <input class="find" placeholder="find an entity…" aria-label="Find an entity" bind:value={filter} />
           <ul class="kinds">
             {#each shown as k (k)}
-              <li><label><input type="checkbox" checked={doc[group].includes(k)} onchange={() => toggle(k)} /> {k}</label></li>
+              <li><label><input type="checkbox" checked={kindsOf(doc, group).includes(k)} onchange={() => toggle(k)} /> {k}</label></li>
             {/each}
           </ul>
         {:else}
@@ -335,7 +347,23 @@
         <label>Rocks
           <input type="range" min="0" max="0.5" step="0.01" value={doc.rocks} oninput={(e) => set("rocks", number(e))} disabled={!doc.rock.length} />
         </label>
+        <label>Far
+          <input type="range" min="0" max="1" step="0.02" value={doc.far.density} oninput={(e) => set("far", { ...doc.far, density: number(e) })} disabled={!doc.far.kind.length} />
+        </label>
+        <label>Landmarks
+          <span class="unit">
+            <input type="number" min="0" max="200" value={doc.landmarks.count} aria-label="How many landmarks" onchange={(e) => set("landmarks", { ...doc.landmarks, count: Math.max(0, Math.min(200, Math.round(number(e)) || 0)) })} disabled={!doc.landmarks.kind.length} />
+            at
+            <input type="number" min="0" max="2000" step="10" value={doc.landmarks.radius} aria-label="Landmarks' distance from the middle" onchange={(e) => set("landmarks", { ...doc.landmarks, radius: Math.max(0, number(e) || 0) })} disabled={!doc.landmarks.kind.length} /> m
+          </span>
+        </label>
+        <label>Barrier on the bends
+          <select value={doc.rail} onchange={(e) => set("rail", e.currentTarget.value)}>
+            {#each entities.includes(doc.rail) ? entities : [doc.rail, ...entities] as k (k)}<option value={k}>{k}</option>{/each}
+          </select>
+        </label>
         <label class="row"><input type="checkbox" checked={doc.lamps} onchange={(e) => set("lamps", e.currentTarget.checked)} /> Street lamps</label>
+        <label>Sky <input type="color" value={hex(doc.sky)} onchange={(e) => set("sky", fromHex(e.currentTarget.value))} title="The scene's background colour" /></label>
         <label>Seed
           <span class="unit">
             <input type="number" min="0" value={doc.seed} onchange={(e) => set("seed", Math.max(0, Math.round(number(e))))} />
