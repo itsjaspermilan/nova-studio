@@ -296,10 +296,18 @@ pub struct Net {
 
 /// A number no other device is likely to pick: the clock and this process, mixed.
 fn random_id() -> u64 {
+    // The clock alone is not enough: macOS gives it in microseconds, and two connections made in one microsecond (two
+    // games in one test) would share an id, so that a host took the second for the first asking again. A count of the
+    // ids this process has made keeps them apart; the clock and the process keep different devices apart.
+    static MADE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = MADE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let t = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_nanos() as u64);
-    let mut x = t ^ (u64::from(std::process::id()) << 32) ^ 0x9e37_79b9_7f4a_7c15;
+    let mut x = t
+        ^ (u64::from(std::process::id()) << 32)
+        ^ n.wrapping_mul(0xd6e8_feb8_6659_fd93)
+        ^ 0x9e37_79b9_7f4a_7c15;
     // splitmix64
     x = (x ^ (x >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
     x = (x ^ (x >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
@@ -1200,6 +1208,7 @@ mod tests {
         std::thread::sleep(Duration::from_millis(5));
     }
 
+    #[track_caller]
     fn run_until(
         devices: &mut [&mut Device],
         bindings: &Bindings,
@@ -1212,7 +1221,18 @@ mod tests {
                 return;
             }
         }
-        panic!("timed out");
+        let roles: Vec<_> = devices
+            .iter()
+            .map(|d| (d.net.role(), d.net.status().to_string()))
+            .collect();
+        panic!("timed out at {}: {roles:?}", std::panic::Location::caller());
+    }
+
+    #[test]
+    fn connections_made_at_the_same_moment_have_different_ids() {
+        // two devices made in the same microsecond (as a test makes them) must not look like one device to a host
+        let ids: std::collections::HashSet<u64> = (0..10_000).map(|_| random_id()).collect();
+        assert_eq!(ids.len(), 10_000);
     }
 
     #[test]
