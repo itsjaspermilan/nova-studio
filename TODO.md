@@ -96,7 +96,7 @@ white pole, like the rebuild. No shipped model had a repeating picture or such a
   its "Retroid Pocket Controller" sends the left stick as X/Y, the right stick as Z/RZ, the triggers as BRAKE/GAS (and also as the
   L2/R2 buttons, keys 104 and 105, so a game bound to both `pad:l2` and `axis:l2` sees both) and the d-pad as HAT_X/HAT_Y; all 16
   buttons and all 6 axes arrived as the right sources and each axis reached full deflection (the negative side was not recorded
-  separately). Not tried: Back and Home (the system takes them), a second pad. [ ] Rumble, several pads and remapping are not implemented.
+  separately). Not tried: Back and Home (the system takes them), a second pad. Rumble, several pads and saved remapping: done 2026-11-08 in code (see Players and local co-op), not yet on the device.
 - [ ] Audio latency and underruns on real output (AAudio low-latency mode is not requested; only
   callback time was measured, about 0.1 ms on the emulator).
 - [~] Android lifecycle, exercised on the Retroid Pocket 6 over `adb` (2026-11-05, Pine Ridge Rally): Home and back, screen off and on,
@@ -572,9 +572,35 @@ First slice, built (`SpriteEditor.svelte`, pure logic in `pixels.ts` and `sprite
 - Emulator speed is not device speed; do not tune from it.
 - Copying GameStudio/Pixelorama/Blockbench ideas: record provenance; respect licences.
 
+## Players and local co-op (2026-11-08; `docs/local-coop.md`)
+
+For two Retroids at home (the owner's and Arya's). Decided 2026-11-08: networking is in for **local wifi play only** (one
+device hosts, others on the same network join; no internet servers, no accounts).
+
+- [x] Several pads with stable player numbers (`players.rs`): a pad keeps its seat while connected and gets it back on
+  reconnect; player 1 has the keyboard. Android controllers are told apart by device id (second `vendor/winit` patch)
+  and listed through JNI once a second (`android_input.rs`). `nova.input.down(action, player)`, `nova.input.player(n)`,
+  `players()`, `player_events()`; one-player calls unchanged (anyone's input).
+- [x] Rumble per player: gilrs on desktop (no force feedback on macOS); on Android the controller's vibrator, or the
+  handheld's own for built-in controls (`VIBRATE` in every APK). Joined players feel it through the host.
+- [x] Remapping per player and saved (`nova.input.bind(action, sources, player)`, `save_controls`, read back at start);
+  `next_source()` names the player; Nintendo-style glyphs (`glyph`, `prompt`).
+- [x] Local wifi co-op (`net.rs`, `nova.net`, std UDP only): the host runs the game, joined devices send actions (with
+  press counts) and draw the host's state; broadcast discovery with the Android multicast lock; reliable ordered
+  messages; drop after 3 s with the seat kept; goodbye on close. `"local_network": true` in nova.json gates it and adds
+  `INTERNET` and `CHANGE_WIFI_MULTICAST_STATE` to the APK.
+- [x] `examples/coop-test` (up to four players, arena from a scene file, lobby, controls screen); `tests/coop.rs` (two
+  copies over loopback; two pads; a saved remap). Two separate desktop processes on this Mac found each other over the
+  wifi address (192.168.2.236), joined, and the guest's input moved player 2 on the host (headless, `--input` scripts).
+- [ ] **Not checked on the Retroid** (it was not on adb this session): the JNI controller list, vibration (built-in
+  controls through the handheld's motor), the multicast lock and broadcast on its wifi, a desktop joining it, and the
+  APK's permissions on the device. Then two Retroids together once Arya's arrives: latency on wifi, a dropped wifi.
+- [ ] Not done: more than one player on a joined device; the Retroid's button labels assumed Nintendo by position
+  (south = B); check against what it prints and its Xbox/Nintendo layout setting.
+
 ## Not now
 
-Networking, full DAW features beyond M6, WebView
+Online networking (internet servers, accounts, matchmaking; local wifi co-op is in, see Players below), full DAW features beyond M6, WebView
 gameplay, iOS, Glow/GameStudio compatibility, app-store publishing, personal
 signing, device installation without the user's go-ahead.
 

@@ -377,26 +377,26 @@ impl Net {
         }
     }
 
-    /// Stops whatever it was doing (saying goodbye first).
-    pub fn leave(&mut self, seats: &mut Seats) {
+    fn say_goodbye(&self) {
         for p in &self.peers {
             self.send_to(p.addr, &Packet::Bye);
         }
-        if let Some(h) = &self.host {
+        if let Some(h) = self.host.as_ref().filter(|_| self.role == Role::Joined) {
             self.send_to(h.addr, &Packet::Bye);
         }
+    }
+
+    /// Stops whatever it was doing (saying goodbye first: see the `Drop` below, which runs as the old value is replaced).
+    pub fn leave(&mut self, seats: &mut Seats) {
         if self.role == Role::Hosting {
             seats.forget_remotes();
         }
         #[cfg(target_os = "android")]
         crate::android_input::multicast_lock(false);
-        *self = Self {
-            name: std::mem::take(&mut self.name),
-            game: std::mem::take(&mut self.game),
-            port: self.port,
-            id: self.id,
-            ..Self::new("", "")
-        };
+        let mut fresh = Self::new(&self.game, &self.name);
+        fresh.port = self.port;
+        fresh.id = self.id;
+        drop(std::mem::replace(self, fresh));
     }
 
     /// Starts hosting: other devices can find this game and join, up to `max_players` players in all.
@@ -1105,6 +1105,13 @@ impl Net {
     }
 }
 
+/// A game that closes says goodbye, so that the others know at once rather than after [`DROP_AFTER`].
+impl Drop for Net {
+    fn drop(&mut self) {
+        self.say_goodbye();
+    }
+}
+
 /// This device's address on the local network, as others would reach it (None without a network). Asks the system
 /// which address it would send from; nothing is sent.
 pub fn local_address() -> Option<Ipv4Addr> {
@@ -1353,6 +1360,32 @@ mod tests {
             d[1].net.role() == Role::Joined
         });
         assert_eq!(a.net.me(), 2);
+    }
+
+    #[test]
+    fn a_game_that_closes_says_goodbye_at_once() {
+        let port = NEXT_PORT.fetch_add(1, Ordering::Relaxed);
+        let bindings = Bindings::defaults();
+        let mut host = device("Host", port);
+        let mut a = device("A", port);
+        host.net.host(2, &mut host.seats).unwrap();
+        a.net
+            .join(&format!("127.0.0.1:{port}"), &mut a.seats)
+            .unwrap();
+        run_until(&mut [&mut host, &mut a], &bindings, |d| {
+            d[1].net.role() == Role::Joined
+        });
+        host.net.take_events();
+        drop(a);
+        let started = Instant::now();
+        run_until(&mut [&mut host], &bindings, |d| {
+            d[0].net.remote_players().is_empty()
+        });
+        assert!(
+            started.elapsed() < Duration::from_secs(1),
+            "not after the time-out"
+        );
+        assert_eq!(host.net.take_events()[0].kind, "left");
     }
 
     #[test]
