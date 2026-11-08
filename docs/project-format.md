@@ -611,12 +611,6 @@ Data only: loading it never runs code. Defaults are shown; unknown keys are erro
 }
 ```
 
-`grids` (optional) are 3D tilemaps, like a GridMap: `{ "name": "kitchen", "cell": 1, "x": 0, "y": 0, "z": 0, "models": ["floor", "counter", "crate"], "tiles": [[1, 1, 2], [0, 0, 0]] }`.
-Each number is a model in `models` (from 0; `-1` is an empty cell, `""` a tile that draws nothing); cell (column c, row r, from 1) stands at
-x + (c - 0.5) × cell, y, z + (r - 0.5) × cell, rows going towards +z. A grid becomes an entity of the scene that draws its models (`self.kitchen`, with
-`get(c, r)`, `set(c, r, tile)` and `cell_at(x, z)`); a game that keeps its levels as scene files and reads one with `nova.scene_data` draws it
-with `nova.draw_grid(grid, { tint, skip })`. The studio's scene editor shows grids in its 3D view and paints them there.
-
 `objects` spawn `entities/<kind>.lua` with `props` as field values. `images` are pictures
 (`"layer"`: `"world"`, the default, or `"ui"`). `texts` are UI text. `width` and `height` set the
 camera's limits. `camera` (optional) is the 3D camera the scene starts with, the same as calling

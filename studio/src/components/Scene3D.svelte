@@ -6,8 +6,7 @@
   import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
   import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
   import type { ModelDoc } from "../lib/model-doc";
-  import { ModelShapes, instanceGrids, instanceScene, moveObject, placement, type Instanced } from "../lib/scene-three";
-  import { gridCellAt, gridCellCenter, gridsOf } from "../lib/scene-grid";
+  import { ModelShapes, instanceScene, moveObject, placement, type Instanced } from "../lib/scene-three";
   import { cameraOf, itemAt, positionOf, scatterPoints, snap, type Camera3, type Ref, type Scene } from "../lib/scene-model";
 
   let {
@@ -26,9 +25,6 @@
     onplace = () => {},
     onerase = () => {},
     onstop = () => {},
-    gridModels = new Map(),
-    painting = null,
-    onpaint = () => {},
   }: {
     scene: Scene;
     selected: Ref | null;
@@ -52,12 +48,6 @@
     erasing?: boolean;
     onerase?: (at: [number, number], first: boolean) => void;
     onstop?: () => void;
-    /// The models the scene's grids name, by name.
-    gridModels?: ReadonlyMap<string, ModelDoc>;
-    /// Painting a grid: which grid, and the tile (-1 empties a cell). Clicks and drags on the grid's floor paint cells.
-    painting?: { grid: number; tile: number } | null;
-    /// Called with each cell a stroke passes over (0-based column and row; outside the grid it grows); `first` starts a stroke (one undo step).
-    onpaint?: (grid: number, col: number, row: number, first: boolean) => void;
   } = $props();
 
   let box: HTMLDivElement | undefined = $state();
@@ -85,16 +75,6 @@
   const ring = new THREE.Mesh(new THREE.RingGeometry(0.92, 1, 48).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: 0.9, depthTest: false }));
   ring.visible = false;
   ring.renderOrder = 10;
-  // while painting a grid: a square round the cell under the pointer
-  const cellMark = new THREE.LineSegments(
-    new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 0.02, 1)),
-    new THREE.LineBasicMaterial({ color: 0xffd166, depthTest: false }),
-  );
-  cellMark.visible = false;
-  cellMark.renderOrder = 11;
-  let gridMeshes: THREE.InstancedMesh[] = [];
-  let gridShapesFor: ReadonlyMap<string, unknown> | undefined;
-  let gridShapes = new ModelShapes();
 
   onMount(() => {
     if (!canvas || !box) return;
@@ -105,12 +85,8 @@
     camera = perspective;
     ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 6000);
     ortho.up.set(0, 0, -1);
-    // Start by looking at what the scene holds: its objects, its grids, and the game's camera when it has one.
+    // Start by looking at what the scene holds: its objects, and the game's camera when it has one.
     const points = (scene.objects ?? []).map((o) => new THREE.Vector3(...positionOf(o)));
-    for (const g of gridsOf(scene)) {
-      const cols = Math.max(1, ...g.tiles.map((row) => row.length));
-      points.push(new THREE.Vector3(g.x, g.y, g.z), new THREE.Vector3(g.x + cols * g.cell, g.y, g.z + g.tiles.length * g.cell));
-    }
     if (scene.camera) {
       const game = cameraOf(scene);
       points.push(new THREE.Vector3(...game.eye), new THREE.Vector3(...game.target));
@@ -139,7 +115,6 @@
     three.add(gizmo.getHelper());
     three.add(grip);
     three.add(ring);
-    three.add(cellMark);
     three.add(new THREE.AmbientLight(0xffffff, 1.6));
     const sun = new THREE.DirectionalLight(0xffffff, 1.8);
     sun.position.set(20, 40, 30);
@@ -192,7 +167,6 @@
       controls?.dispose();
       if (content) clear();
       shapes.dispose();
-      gridShapes.dispose();
       renderer?.dispose();
     };
   });
@@ -204,8 +178,6 @@
     gizmo?.detach();
     for (const m of instanced?.meshes ?? []) m.dispose();
     instanced = undefined;
-    for (const m of gridMeshes) m.dispose();
-    gridMeshes = [];
     content.traverse((o) => {
       if (o instanceof THREE.LineSegments || (o instanceof THREE.Mesh && o.userData.marker)) {
         o.geometry.dispose();
@@ -228,13 +200,6 @@
     three.background = Array.isArray(bg) && bg.length >= 3 ? new THREE.Color().setRGB(bg[0]! / 255, bg[1]! / 255, bg[2]! / 255, THREE.SRGBColorSpace) : new THREE.Color(0x5c96d6);
     instanced = instanceScene(scene, models, shapes);
     for (const m of instanced.meshes) content.add(m);
-    if (gridShapesFor !== gridModels) {
-      gridShapes.dispose();
-      gridShapes = new ModelShapes();
-      gridShapesFor = gridModels;
-    }
-    gridMeshes = instanceGrids(scene, gridModels, gridShapes);
-    for (const m of gridMeshes) content.add(m);
     for (const index of instanced.markers) {
       const g = new THREE.Group();
       g.applyMatrix4(placement(scene.objects![index]!));
@@ -322,7 +287,7 @@
   let down: { x: number; y: number } | null = null;
   function pointerdown(e: PointerEvent) {
     down = { x: e.clientX, y: e.clientY };
-    if ((placing || erasing || painting) && e.button === 0) {
+    if ((placing || erasing) && e.button === 0) {
       stroke = { last: null, first: true };
       paint(e);
     }
@@ -333,9 +298,8 @@
   const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 
   /// Where the pointer is on the ground (y = 0), or null when it looks at the sky.
-  function groundAt(e: PointerEvent, height = 0): [number, number] | null {
+  function groundAt(e: PointerEvent): [number, number] | null {
     if (!camera || !canvas) return null;
-    plane.constant = -height;
     const rect = canvas.getBoundingClientRect();
     const ray = new THREE.Raycaster();
     ray.setFromCamera(new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -(((e.clientY - rect.top) / rect.height) * 2 - 1)), camera);
@@ -343,23 +307,7 @@
     return at && Math.hypot(at.x, at.z) < 20000 ? [at.x, at.z] : null;
   }
 
-  // the last cell a grid stroke painted, so that it paints each cell once
-  let lastCell = "";
-  function paintGrid(e: PointerEvent) {
-    const g = painting ? gridsOf(scene)[painting.grid] : undefined;
-    if (!g || !stroke || !painting) return;
-    const at = groundAt(e, g.y);
-    if (!at) return;
-    const { col, row } = gridCellAt(g, at[0], at[1]);
-    const key = `${col},${row}`;
-    if (!stroke.first && key === lastCell) return;
-    lastCell = key;
-    onpaint(painting.grid, col, row, stroke.first);
-    stroke.first = false;
-  }
-
   function paint(e: PointerEvent) {
-    if (painting) return paintGrid(e);
     if (!(placing || erasing) || !stroke) return;
     const at = groundAt(e);
     if (!at) return;
@@ -373,21 +321,6 @@
   }
 
   function pointermove(e: PointerEvent) {
-    if (painting) {
-      const g = gridsOf(scene)[painting.grid];
-      const at = g ? groundAt(e, g.y) : null;
-      cellMark.visible = !!(g && at);
-      if (g && at) {
-        const { col, row } = gridCellAt(g, at[0], at[1]);
-        const [x, y, z] = gridCellCenter(g, col, row);
-        cellMark.position.set(x, y + 0.02, z);
-        cellMark.scale.set(g.cell, 1, g.cell);
-        (cellMark.material as THREE.LineBasicMaterial).color.set(painting.tile < 0 ? 0xef4444 : 0xffd166);
-      }
-      if (stroke) paint(e);
-      return;
-    }
-    cellMark.visible = false;
     if (!placing && !erasing) {
       ring.visible = false;
       return;
@@ -404,7 +337,7 @@
   }
 
   function keydown(e: KeyboardEvent) {
-    if (e.key === "Escape" && (placing || erasing || painting)) onstop();
+    if (e.key === "Escape" && (placing || erasing)) onstop();
   }
   function pointerup(e: PointerEvent) {
     const start = down;
@@ -430,7 +363,7 @@
   }
 
   $effect(() => {
-    scene; models; gridModels; // redraw when the scene or a model changes
+    scene; models; // redraw when the scene or a model changes
     if (renderer) untrack(rebuild);
   });
   $effect(() => {
@@ -443,10 +376,9 @@
   });
   // while an object is being placed the left button paints; the right button and the wheel still move the view
   $effect(() => {
-    const on = !!placing || erasing || !!painting;
+    const on = !!placing || erasing;
     if (controls) controls.mouseButtons.LEFT = on ? (null as unknown as THREE.MOUSE) : THREE.MOUSE.ROTATE;
     if (!on) ring.visible = false;
-    if (!painting) cellMark.visible = false;
     if (on) gizmo?.detach();
     else untrack(attach);
   });

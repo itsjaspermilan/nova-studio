@@ -34,7 +34,7 @@ words, few choices, good defaults.
 - A project is a folder of plain files (Lua, JSON, PNG, glTF, WAV/OGG). The studio
   must never write code a person could not have typed, and the format must not
   depend on the runtime's internals.
-- Levels, maps and layouts are scene files (`scenes/**/*.scene.json`: grids, tilemaps,
+- Levels, maps and layouts are scene files (`scenes/**/*.scene.json`: objects placed on the scene's snapping grid, tilemaps,
   objects and their props), edited in the studio's scene editor, never Lua tables
   or strings in code. Lua reads them (`nova.scene_data`) and plays them.
 - `docs/ux/`: retained UX research and the Pine Ridge Rally Lua exercise.

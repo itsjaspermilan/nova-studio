@@ -387,37 +387,31 @@ local function tint_of(floor, biome, cx, cz, k, t)
   return mul(base, shade)
 end
 
--- The level's grid with the floors the rules give (Free Brew can turn the hazards into plain floor, or every floor to ice): a copy, made once.
-local FLOOR_TILES = { [0] = "floor", [2] = "floor", [22] = "floor", [14] = "ice", [24] = "ice", [15] = "mud", [16] = "lava", [17] = "pulse", [18] = "belt:>", [19] = "belt:<", [20] = "belt:^", [21] = "belt:w" }
-function View.kitchen_grid(k)
-  if k.drawn_grid then return k.drawn_grid end
-  local g = k.level.grid
-  local tiles = {}
-  for r, row in ipairs(g.tiles) do
-    tiles[r] = {}
-    for c, tile in ipairs(row) do
-      -- (the start's marker is for the editor: in the game it is floor)
-      if tile == 2 then tile = ((r + c) % 2 == 1) and 22 or 0 end
-      local want = k.floor[r] and k.floor[r][c]
-      local kind = FLOOR_TILES[tile]
-      if kind and want and want ~= kind and tile ~= 2 then
-        local checker = (r + c) % 2 == 1
-        if want == "ice" then tile = checker and 24 or 14 else tile = checker and 22 or 0 end
-      end
-      tiles[r][c] = tile
+-- The kitchen's pieces (the level's scene file: lib/levels.lua) handed to the engine's scenery once, as a level starts: it draws them with no
+-- script running for them each frame. The rules can change the floor (Free Brew can turn the hazards into plain floor, or every floor to ice), so a
+-- floor piece is drawn as the floor the kitchen has; the lava that comes and goes is drawn each frame instead (it changes), and the start is floor.
+local FLOOR_PIECES = { floor = true, floor_b = true, start = true, ice = true, ice_b = true, mud = true, lava = true, pulse = true, belt_e = true, belt_w = true, belt_n = true, belt_s = true }
+function View.place_kitchen(k, biome)
+  nova.scenery.clear()
+  for _, p in ipairs(k.level.pieces) do
+    local model = "k_" .. p.kind
+    if FLOOR_PIECES[p.piece] then
+      local col, row = math.floor(p.x) + 1, math.floor(p.z) + 1
+      local want = k.floor[row] and k.floor[row][col]
+      local checker = (col + row) % 2 == 1
+      if want == "ice" and p.piece ~= "ice" and p.piece ~= "ice_b" then model = checker and "k_ice_b" or "k_ice"
+      elseif want == "floor" and (p.piece ~= "floor" and p.piece ~= "floor_b") then model = "k_" .. biome.id .. (checker and "_floor_b" or "_floor")
+      elseif p.piece == "pulse" then model = nil end
     end
+    if model then nova.scenery.add(model, p.x, 0, p.z, { ry = p.ry }) end
   end
-  k.drawn_grid = { cell = g.cell, x = g.x, y = g.y, z = g.z, models = g.models, tiles = tiles }
-  return k.drawn_grid
 end
 
 -- everything: `t` is the time in seconds
 function View.draw(k, biome, t)
   local cols, rows = k.cols, k.rows
   View.environment(k, biome, t)
-  -- the kitchen's floor, walls and the stations' bodies: the level's grid (its scene file), as the rules have it now
-  nova.draw_grid(View.kitchen_grid(k), { skip = { [17] = true } })
-  -- and what moves on the floor: the lava that comes and goes, and the belts' arrows
+  -- (the floor, walls and the stations' bodies are the engine's scenery: View.place_kitchen) and what moves on the floor: the lava that comes and goes, and the belts' arrows
   for z = 1, rows do
     for x = 1, cols do
       local floor = k.floor[z][x]
@@ -700,12 +694,11 @@ function View.showcase(biome, t, kind, w, h)
   }
   nova.cuboid(-40, -0.3, -40, 60, -0.02, 40, { color = biome.ground })
   nova.cuboid(0, -0.06, 1.0, 11, 0.0, 4, { color = biome.floor })
-  -- the stations' bodies, from the kitchen models of the biome (the palette its levels' grids use)
-  local palette
-  for _, lv in ipairs(data.levels) do
-    if data.biomes[lv.biome] == biome then palette = lv.grid.models; break end
+  -- the stations' bodies: the biome's kitchen pieces
+  local id = biome.id
+  for i, piece in ipairs({ "crate_1", "crate_2", id .. "_mortar", id .. "_cauldron", id .. "_cauldron", id .. "_counter", id .. "_counter", id .. "_counter", id .. "_counter", id .. "_bottles", id .. "_hatch" }) do
+    nova.model("k_" .. piece, i - 0.5, 0, 0.5)
   end
-  if palette then nova.draw_grid({ cell = 1, x = 0, y = 0, z = 0, models = palette, tiles = { { 4, 5, 9, 10, 10, 3, 3, 3, 3, 8, 11 } } }) end
   for _, s in ipairs(list) do View.draw_station(s, k, biome, t) end
   nova.model("character-human", 5.5, 0, 2.3, { ry = 0.15, scale = 1.7 })
   View.item({ k = "potion", recipe = "heal" }, 5.62, 1.05, 2.2, t)

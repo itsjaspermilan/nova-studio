@@ -637,20 +637,6 @@
   "group": "Scenes and entities"
  },
  {
-  "name": "nova.draw_grid",
-  "kind": "function",
-  "signature": "nova.draw_grid(grid [, { tint, skip }])",
-  "doc": "Draws a grid (a scene file's 3D tilemap: { cell, x, y, z, models, tiles }) as models, one in each cell: tile t is models[t + 1], cell (column c, row r) stands at x + (c - 0.5) * cell, y, z + (r - 0.5) * cell. A scene's own grids draw themselves; this is for a grid read with nova.scene_data. tint colours every model; skip = { [tile] = true } leaves those tiles out (for a game that draws them its own way).",
-  "group": "Scenes and entities"
- },
- {
-  "name": "nova.grid_cell",
-  "kind": "function",
-  "signature": "nova.grid_cell(grid, x, z) -> column, row (or nil)",
-  "doc": "The cell of a grid (column and row, from 1) that holds a point on the ground, or nil outside it.",
-  "group": "Scenes and entities"
- },
- {
   "name": "nova.scene_data",
   "kind": "function",
   "signature": "nova.scene_data(name) -> table or nil",

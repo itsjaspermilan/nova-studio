@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { ModelShapes, instanceGrids, instanceScene, moveObject, placement } from "./scene-three";
+import { ModelShapes, instanceScene, moveObject, placement } from "./scene-three";
 import { addPart, newModel, updatePart } from "./model-doc";
 import type { Scene } from "./scene-model";
 
@@ -82,21 +82,5 @@ describe("picking in the 3D scene view", () => {
     const miss = new THREE.Raycaster(new THREE.Vector3(500, 20, 500), new THREE.Vector3(0, -1, 0));
     expect(miss.intersectObjects(r.meshes, false)).toHaveLength(0);
     shapes.dispose();
-  });
-});
-
-describe("grids in the 3D scene view", () => {
-  it("put a copy of a tile's model in each of its cells, at the cell's middle, and nothing in an empty one", () => {
-    const models = new Map([["floor", newModel()], ["counter", newModel()]]);
-    const scene = { version: 1, grids: [{ cell: 2, x: 10, z: 0, models: ["floor", "counter", "missing"], tiles: [[1, 0, -1], [0, 2, 1]] }] } as unknown as Scene;
-    const meshes = instanceGrids(scene, models, new ModelShapes());
-    // one shape each for the two models that exist; the counter is in two cells, the floor in two, "missing" (no model) draws nothing
-    expect(meshes.map((m) => m.count).sort()).toEqual([2, 2]);
-    const where = meshes.flatMap((m) => Array.from({ length: m.count }, (_, i) => {
-      const at = new THREE.Matrix4();
-      m.getMatrixAt(i, at);
-      return new THREE.Vector3().setFromMatrixPosition(at).toArray();
-    }));
-    expect(where).toEqual(expect.arrayContaining([[11, 0, 1], [13, 0, 1], [11, 0, 3], [15, 0, 3]]));
   });
 });

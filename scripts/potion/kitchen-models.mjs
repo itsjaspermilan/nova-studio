@@ -1,6 +1,7 @@
-// Potion Panic's kitchen pieces as models, one for each kind of cell, written through the MCP server's model_write (so each is a
-// models/<name>.model.json the studio's model editor opens, and the .glb the game loads). The levels' grids (scenes/levels/*.scene.json) name them;
-// the game draws them and adds what moves (items, stickers, bottles, a brew's liquid and eyes, the bell). Each biome has its own floor, walls and
+// Potion Panic's kitchen pieces: a model for each (written through the MCP server's model_write, so each is a models/<name>.model.json the studio's
+// model editor opens and the .glb the game loads) and an entity kind for each (entities/<kind>.lua, the model's name without "k_"), which is what
+// the scene editor's palette offers: a level (scenes/levels/*.scene.json) is pieces placed on the grid. The game draws them and adds what moves
+// (items, stickers, bottles, a brew's liquid and eyes, the bell). Each biome has its own floor, walls and
 // counters in its colours (from lib/data.lua); crates, the bin, ice, mud, lava and belts are the same everywhere.
 //   scripts/env.sh node scripts/potion/kitchen-models.mjs
 import { readFileSync } from "node:fs";
@@ -102,15 +103,6 @@ pieces.k_belt_w = model(floorTile([70, 64, 74]), arrow(1, 0));
 pieces.k_belt_n = model(floorTile([70, 64, 74]), arrow(0, 1));
 pieces.k_belt_s = model(floorTile([70, 64, 74]), arrow(0, 1));
 
-/// The grid's palette for a biome, in tile order (the same numbers the levels' scene files use; see lib/levels.lua).
-export function palette(id) {
-  return [
-    `k_${id}_floor`, `k_${id}_wall`, `k_${id}_start`, `k_${id}_counter`, "k_crate_1", "k_crate_2", "k_crate_3", "k_crate_4", `k_${id}_bottles`,
-    `k_${id}_mortar`, `k_${id}_cauldron`, `k_${id}_hatch`, "k_bin", `k_${id}_wash`, "k_ice", "k_mud", "k_lava", "k_pulse",
-    "k_belt_e", "k_belt_w", "k_belt_n", "k_belt_s", `k_${id}_floor_b`, `k_${id}_wall_low`, "k_ice_b",
-  ];
-}
-
 if (import.meta.url === `file://${process.argv[1]}`) {
   const nova = await connect(PROJECT);
   try {
@@ -119,6 +111,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       if (!/glb/.test(r)) console.log(name, r);
     }
     console.log(`wrote ${Object.keys(pieces).length} kitchen models`);
+    // and the entity kinds the scene editor places
+    const { writeFileSync } = await import("node:fs");
+    for (const name of Object.keys(pieces)) {
+      const kind = name.slice(2);
+      writeFileSync(join(PROJECT, "entities", `${kind}.lua`), `-- A kitchen piece (scripts/potion/kitchen-models.mjs): place it on the grid in a level's scene file.\nreturn nova.entity(require("entities.piece"), { model = "${name}" })\n`);
+    }
+    console.log(`wrote ${Object.keys(pieces).length} kitchen piece kinds`);
   } finally {
     nova.close();
   }

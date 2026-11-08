@@ -481,6 +481,20 @@ export function scatterPoints(centre: [number, number], radius: number, count: n
 /// stand of trees does not look stamped. Returns the new scene and the objects' places in the list.
 /// `turns` (in radians, one per point) sets an object's turn instead of a random one: it is how objects snapped to a road
 /// stand parallel to it, and they are not resized.
+/// Building on the grid: ground points moved to the nearest grid point (`step` metres apart), each once, leaving out the points where an object
+/// of this kind already stands. So a click puts one piece on a cell, and a drag lays a row without stacking two.
+export function snapToGrid(scene: Scene, kind: string, points: [number, number][], step: number): [number, number][] {
+  const taken = new Set((scene.objects ?? []).filter((o) => o.kind === kind).map((o) => { const [x, , z] = positionOf(o); return `${Math.round(x / step)},${Math.round(z / step)}`; }));
+  const out: [number, number][] = [];
+  for (const [x, z] of points) {
+    const key = `${Math.round(x / step)},${Math.round(z / step)}`;
+    if (taken.has(key)) continue;
+    taken.add(key);
+    out.push([Math.round(x / step) * step, Math.round(z / step) * step]);
+  }
+  return out;
+}
+
 export function placeObjects(scene: Scene, kind: string, points: [number, number][], rng: () => number, vary = true, turns?: (number | undefined)[]): { scene: Scene; indexes: number[] } {
   const next = clone(scene);
   const list = (next.objects ??= []);
@@ -498,10 +512,10 @@ export function placeObjects(scene: Scene, kind: string, points: [number, number
   return { scene: next, indexes };
 }
 
-/// Removes the objects standing within `radius` of the ground point (x, z) (at least 1 m, so a click can pick off one).
+/// Removes the objects standing within `radius` of the ground point (x, z) (at least `least`, 1 m unless said, so a click can pick off one).
 /// `kinds` limits it to those kinds; null takes anything. Returns the new scene and how many went.
-export function eraseNear(scene: Scene, at: [number, number], radius: number, kinds: ReadonlySet<string> | null): { scene: Scene; removed: number } {
-  const reach = Math.max(1, radius);
+export function eraseNear(scene: Scene, at: [number, number], radius: number, kinds: ReadonlySet<string> | null, least = 1): { scene: Scene; removed: number } {
+  const reach = Math.max(least, radius);
   const keep = (scene.objects ?? []).filter((o) => {
     if (kinds && !kinds.has(String(o.kind))) return true;
     const [x, , z] = positionOf(o);

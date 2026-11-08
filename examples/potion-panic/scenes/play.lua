@@ -38,6 +38,7 @@ function Play:enter()
   self.choice = 1
   self.result_t = 0
   self.pops = {}
+  View.place_kitchen(self.k, self.biome)
   self.fx = Fx.new(self.k)
   self.streak_pulse, self.zoom_kick, self.shown = 0, 0, 0
   self.work_t = 0

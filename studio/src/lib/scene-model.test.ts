@@ -351,3 +351,13 @@ describe("snapping to the edge of the road", () => {
     expect(lamps[1]!.props).toHaveProperty("sx");
   });
 });
+
+describe("building on the grid", () => {
+  it("moves dropped points to grid points, once each, and not where that kind already stands", async () => {
+    const { snapToGrid } = await import("./scene-model");
+    const scene = { version: 1, objects: [{ kind: "counter", x: 2, y: 0, z: 1 }] } as unknown as import("./scene-model").Scene;
+    expect(snapToGrid(scene, "counter", [[2.2, 0.9], [3.4, 1.1], [3.1, 0.8], [0.6, 3.4]], 1)).toEqual([[3, 1], [1, 3]]);
+    // another kind may share the spot
+    expect(snapToGrid(scene, "floor", [[2.2, 0.9]], 1)).toEqual([[2, 1]]);
+  });
+});

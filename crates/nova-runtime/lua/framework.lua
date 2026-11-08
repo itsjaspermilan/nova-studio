@@ -1504,40 +1504,6 @@ end
 -- ------------------------------------------------------------------ tilemaps
 -- A grid of tiles from a tileset PNG. The data lives in native code; tile numbers count across the
 -- tileset row by row from 0, and -1 is empty. Solid tiles stop entities that slide().
--- ------------------------------------------------------------------ grids (3D tilemaps)
--- A grid is rows of tile numbers, each the index (from 0) of a model in `models`; cell (column c, row r, from 1) stands at
--- x + (c - 0.5) * cell, y, z + (r - 0.5) * cell. A scene file's grids are built as entities that draw themselves; a game that reads a
--- scene file's data (nova.scene_data) can draw one with nova.draw_grid.
-function nova.draw_grid(g, opts)
-  local cell, models, tiles = g.cell or 1, g.models, g.tiles
-  local x0, y0, z0 = g.x or 0, g.y or 0, g.z or 0
-  local tint = opts and opts.tint
-  local skip = opts and opts.skip
-  local o = tint and { tint = tint } or nil
-  for r, row in ipairs(tiles) do
-    for c, t in ipairs(row) do
-      if t >= 0 and not (skip and skip[t]) then
-        local m = models[t + 1]
-        if m and m ~= "" then nova.model(m, x0 + (c - 0.5) * cell, y0, z0 + (r - 0.5) * cell, o) end
-      end
-    end
-  end
-end
-
--- the cell (column, row, from 1) of a grid that holds a point on the ground, or nil outside it
-function nova.grid_cell(g, x, z)
-  local cell = g.cell or 1
-  local c, r = floor((x - (g.x or 0)) / cell) + 1, floor((z - (g.z or 0)) / cell) + 1
-  if r < 1 or r > #g.tiles or c < 1 or c > #g.tiles[r] then return nil end
-  return c, r
-end
-
-local Grid = nova.entity { tags = { "nova_grid" }, screen = false }
-function Grid:get(col, row) local line = self.tiles[row]; return line and line[col] or -1 end
-function Grid:set(col, row, tile) local line = self.tiles[row]; if line and line[col] then line[col] = tile end end
-function Grid:cell_at(x, z) return nova.grid_cell(self, x, z) end
-function Grid:draw() nova.draw_grid(self, self.tint and { tint = self.tint } or nil) end
-
 local Tilemap = nova.entity { tags = { "nova_tilemap" }, screen = false }
 Tilemap.map = -1
 Tilemap.solid = {}
@@ -2068,9 +2034,6 @@ local function build_scene(scene, data, file)
   end
   for _, t in ipairs(data.texts) do
     named(t, spawn(Text, t.x, t.y, { text = t.text, size = t.scale, color = t.color, depth = t.depth }))
-  end
-  for _, g in ipairs(data.grids or {}) do
-    named(g, spawn(Grid, g.x, g.y, { z = g.z, cell = g.cell, models = g.models, tiles = g.tiles }))
   end
 end
 

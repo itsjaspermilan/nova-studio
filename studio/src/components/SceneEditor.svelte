@@ -4,7 +4,7 @@
     History, addItem, afterRemoval, boundsOf, drawOrder, duplicateItem, hitTest, itemAt, moveTo, parseScene, removeItem, sameRef,
     serializeScene, setField, setSceneField, snap, uniqueName, worldSize, type Item, type ItemKind, type Ref, type Scene, type Sizes,
     addTilemap, cellAt, fillTiles, mapSize, paintTile, parsePropValue, propsOf, removeTilemap, renameProp, resizeTilemap, setProp, showPropValue,
-    tilemapBox, tilemaps, toggleSolid, EMPTY_TILE, type Kinds, cameraOf, moveTo3, setCamera, positionOf, placeObjects, eraseNear, offRoad, snapToRoad, type Camera3,
+    tilemapBox, tilemaps, toggleSolid, EMPTY_TILE, type Kinds, cameraOf, moveTo3, setCamera, positionOf, placeObjects, eraseNear, offRoad, snapToRoad, snapToGrid, type Camera3,
   } from "../lib/scene-model";
   import Scene3D from "./Scene3D.svelte";
   import type { ModelDoc } from "../lib/model-doc";
@@ -12,7 +12,6 @@
   import { resolveEntity } from "../lib/entity-info";
   import { parseSheetJson } from "../lib/sprite-doc";
   import { loadModelDoc } from "../lib/model-load";
-  import { addGrid, addGridModel, gridsOf, paintGridCell } from "../lib/scene-grid";
 
   let { path, text, onjson }: { path: string; text: string; onjson: () => void } = $props();
 
@@ -48,38 +47,14 @@
   let erasing = $state(false);
   let mapView = $state(false); // look straight down on a 3D level instead of orbiting it
   let onlyKind = $state(true);
-  // painting a grid (a 3D tilemap) in the 3D view: the grid, the tile (-1 empties a cell), and whether the brush is on
-  let gridIndex = $state(0);
-  let gridTile = $state(0);
-  let gridPainting = $state(false);
-  let newGridModel = $state("");
-  let gridModelDocs = $state(new Map<string, ModelDoc>()); // by model name
-  const gridAsked = new Set<string>();
-  const grids = $derived(gridsOf(scene));
-  const modelNames = $derived(
-    studio.files
-      .filter((f) => !f.dir && /^models\/[^/]+\.glb$/i.test(f.path))
-      .map((f) => f.path.slice(7, -4))
-      .filter((n) => !/-original\d*$/.test(n))
-      .sort(),
-  );
-  $effect(() => {
-    // the models the grids name, read once each (the studio's own file, or a kit's .glb)
-    const api = studio.api;
-    if (!api) return;
-    for (const g of grids) for (const name of g.models) {
-      if (!name || gridAsked.has(name)) continue;
-      gridAsked.add(name);
-      void loadModelDoc(api, name).then((doc) => { if (doc) gridModelDocs = new Map(gridModelDocs).set(name, doc); });
-    }
-  });
-  function paintCell(grid: number, col: number, row: number, first: boolean) {
-    const next = paintGridCell(scene, grid, col, row, gridTile);
-    if (next !== scene) commit(next, !first);
-  }
+  // with Snap on, the 3D view builds on the grid: one metre to 8 of the 2D grid's pixels, as the move arrows snap
+  const buildStep = $derived(gridSize > 1 ? gridSize / 8 : 0);
   function eraseAt(at: [number, number], first: boolean) {
     const kinds = onlyKind && placing ? new Set([placing]) : null;
-    const r = eraseNear(scene, at, brushRadius, kinds);
+    // (on the grid the eraser takes what stands on the cell under the pointer, not its neighbours)
+    const r = buildStep && brushRadius === 0
+      ? eraseNear(scene, [Math.round(at[0] / buildStep) * buildStep, Math.round(at[1] / buildStep) * buildStep], buildStep * 0.45, kinds, 0)
+      : eraseNear(scene, at, brushRadius, kinds);
     if (!r.removed) return;
     selected = null;
     commit(r.scene, !first);
@@ -100,6 +75,13 @@
       if (!found.length) return;
       const r = placeObjects(scene, placing, found.map((h) => [h.x, h.z]), Math.random, false, found.map((h) => h.ry));
       commit(r.scene, !first);
+      return;
+    }
+    if (buildStep) {
+      // building on the grid: each piece on a grid point, square to it and at its own size
+      const spots = snapToGrid(scene, placing, points, buildStep);
+      if (!spots.length) return;
+      commit(placeObjects(scene, placing, spots, Math.random, false).scene, !first);
       return;
     }
     const spots = keepOff && !placing.includes("road") ? offRoad(scene, points) : points;
@@ -649,7 +631,8 @@
           {:else}<p class="dim small">Pick a kind, then click the ground in the 3D view.</p>{/if}
           <label>Brush radius <input type="range" min="0" max="40" step="1" bind:value={brushRadius} /><span class="dim small">{brushRadius === 0 ? "one at a time" : `${brushRadius} m`}</span></label>
           {#if brushRadius > 0}<label>Objects per dab <input type="range" min="1" max="12" step="1" bind:value={brushCount} /><span class="dim small">{brushCount}</span></label>{/if}
-          <label class="check"><input type="checkbox" bind:checked={vary} /> Vary turn and size</label>
+          {#if buildStep}<p class="dim small">Snap is on: each piece lands on a grid point ({buildStep} m apart), square and at its own size. Turn Snap off to scatter.</p>
+          {:else}<label class="check"><input type="checkbox" bind:checked={vary} /> Vary turn and size</label>{/if}
           <label class="check" title="Skips spots within 8 m of a road piece (any object with road in its kind)"><input type="checkbox" bind:checked={keepOff} disabled={snapRoad} /> Keep off the road</label>
           <label class="check" title="Puts each object at the edge of the nearest road piece, turned to stand along it (lamps, barriers, signs)"><input type="checkbox" bind:checked={snapRoad} /> Snap to the road edge</label>
           {#if snapRoad}<label>Distance from the middle <input type="range" min="3" max="20" step="0.5" bind:value={roadEdge} /><span class="dim small">{roadEdge} m</span></label>{/if}
@@ -668,35 +651,6 @@
       {:else}
         <p class="dim small">No PNG files yet.</p>
       {/each}
-      {#if view === "3d"}
-        <h4>Grids</h4>
-        {#each grids as g, i (i)}
-          <button class="item" class:on={gridIndex === i && gridPainting} onclick={() => { gridIndex = i; gridPainting = !(gridPainting && gridIndex === i); placing = null; erasing = false; selected = null; }}>▦ {g.name ?? `grid ${i + 1}`}</button>
-        {/each}
-        {#if grids[gridIndex]}
-          <div class="brush">
-            {#if gridPainting}<p class="small">Click or drag on the grid to paint; painting past its edge makes it bigger. Esc stops.</p>
-            {:else}<p class="dim small">Pick the grid above to paint it, then a tile.</p>{/if}
-            <div class="tiles">
-              <button class="item" class:on={gridTile === -1} onclick={() => ((gridTile = -1), (gridPainting = true))} title="Empty the cells you paint">⌫ Empty</button>
-              {#each grids[gridIndex]?.models ?? [] as m, t (t)}
-                <button class="item" class:on={gridTile === t} onclick={() => ((gridTile = t), (gridPainting = true))} title="Tile {t}">{t} · {m || "(nothing)"}</button>
-              {/each}
-            </div>
-            <label>Add a model <select bind:value={newGridModel}><option value="">choose…</option>{#each modelNames as n (n)}<option value={n}>{n}</option>{/each}</select></label>
-            <button disabled={!newGridModel} onclick={() => { edit(addGridModel(scene, gridIndex, newGridModel)); newGridModel = ""; }}>Add to the palette</button>
-          </div>
-        {/if}
-        <details class="newmap">
-          <summary>New grid…</summary>
-          <label>First model <select bind:value={newGridModel}><option value="">choose…</option>{#each modelNames as n (n)}<option value={n}>{n}</option>{/each}</select></label>
-          <div class="pair">
-            <label>Cells <input type="number" min="1" bind:value={newCols} /></label>
-            <label>Rows <input type="number" min="1" bind:value={newRows} /></label>
-          </div>
-          <button disabled={!newGridModel} onclick={() => { edit(addGrid(scene, uniqueName(scene, "grid"), [newGridModel], newCols, newRows)); gridIndex = grids.length; gridTile = 0; gridPainting = true; newGridModel = ""; }}>Create</button>
-        </details>
-      {/if}
       <h4>Tile maps</h4>
       {#each maps as m, i (i)}
         <button class="item" class:on={mode === "tiles" && mapIndex === i} onclick={() => { mapIndex = i; mode = "tiles"; }}>▦ {m.name ?? `map ${i + 1}`}</button>
@@ -760,10 +714,7 @@
           {brushRadius}
           brushCount={brushRadius > 0 ? brushCount : 1}
           onplace={placeAt}
-          onstop={() => ((placing = null), (erasing = false), (gridPainting = false))}
-          gridModels={gridModelDocs}
-          painting={gridPainting && grids[gridIndex] ? { grid: gridIndex, tile: gridTile } : null}
-          onpaint={paintCell}
+          onstop={() => ((placing = null), (erasing = false))}
         />
         <p class="hint dim">Click an object to select it · drag the arrows to move it · drag to orbit, right-drag to pan, scroll to zoom · the box with lines is the game's camera</p>
       {:else}
