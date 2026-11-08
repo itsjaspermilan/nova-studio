@@ -1,0 +1,29 @@
+{
+  "format": 1,
+  "name": "Sunny Hop",
+  "version": "0.1.0",
+  "world_height": 1080,
+  "sprite_filter": "smooth",
+  "input": {
+    "move_x": {
+      "negative": ["key:ArrowLeft", "key:KeyA", "axis:left_x-", "pad:dpad_left"],
+      "positive": ["key:ArrowRight", "key:KeyD", "axis:left_x+", "pad:dpad_right"]
+    },
+    "move_y": {
+      "negative": ["key:ArrowUp", "key:KeyW", "axis:left_y-", "pad:dpad_up"],
+      "positive": ["key:ArrowDown", "key:KeyS", "axis:left_y+", "pad:dpad_down"]
+    },
+    "jump": ["key:Space", "key:KeyZ", "key:KeyK", "pad:south", "pad:east"],
+    "a": ["key:Enter", "key:Space", "key:KeyZ", "pad:south"],
+    "b": ["key:Backspace", "key:KeyX", "pad:east"],
+    "pause": ["key:Escape", "key:KeyP", "pad:start"],
+    "restart": ["key:KeyR", "pad:select"],
+    "trial": ["key:KeyT", "pad:north", "pad:west"],
+    "menu_back": ["key:Escape"],
+    "stats": ["key:F3"],
+    "selftest": ["key:F10"],
+    "autoplay": ["key:F9"],
+    "art_box": ["key:F12"],
+    "art_icon": ["key:F11"]
+  }
+}

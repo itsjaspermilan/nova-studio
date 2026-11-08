@@ -11,6 +11,8 @@ describe("parseEntitySource", () => {
   it("ignores comments, nested tables and other mentions of 'sprite'", () => {
     expect(parseEntitySource(`-- sprite = "old"\nlocal E = nova.entity { tags = { sprite = "nope" }, hp = 1 }`)?.look).toEqual({});
     expect(parseEntitySource(`--[[ sprite = "x" ]]\nlocal E = nova.entity { sprite = "y" }`)?.look.sprite).toBe("y");
+    expect(parseEntitySource(`local E = nova.entity { sprite = "hd", sx = 0.5, sy = 0.5 }`)?.look.scale).toEqual([0.5, 0.5]);
+    expect(parseEntitySource(`local E = nova.entity { sprite = "hd", sx = 0.25 }`)?.look.scale).toEqual([0.25, 0.25]);
     expect(parseEntitySource(`local E = nova.entity { }\nfunction E:draw() nova.sprite("other", 1, 2) end`)?.look).toEqual({});
   });
 

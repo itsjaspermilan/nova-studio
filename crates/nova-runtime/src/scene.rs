@@ -550,7 +550,11 @@ pub fn parse_scene(text: &str, file: &str) -> Result<Value, String> {
             }
         };
         let tat = format!("{at}.tileset");
-        check_keys(tileset, &tat, &["image", "tile_width", "tile_height"])?;
+        check_keys(
+            tileset,
+            &tat,
+            &["image", "tile_width", "tile_height", "scale"],
+        )?;
         let image = string(tileset, "image", &tat)?;
         let mut ts = Map::new();
         ts.insert("image".into(), Value::String(image.to_string()));
@@ -566,6 +570,19 @@ pub fn parse_scene(text: &str, file: &str) -> Result<Value, String> {
                     return Err(err(
                         &format!("{tat}.{key}"),
                         format!("\"{key}\" must be a whole number from 1 to 4096"),
+                    ));
+                }
+            }
+        }
+        if let Some(v) = tileset.get("scale") {
+            match v.as_f64() {
+                Some(n) if (0.05..=16.0).contains(&n) => {
+                    ts.insert("scale".into(), num(n));
+                }
+                _ => {
+                    return Err(err(
+                        &format!("{tat}.scale"),
+                        "\"scale\" (how big a tile is drawn for each of its pixels) must be a number from 0.05 to 16",
                     ));
                 }
             }
@@ -676,6 +693,17 @@ mod tests {
         assert_eq!(t["x"].as_f64(), Some(0.0));
         assert_eq!(t["solid"], serde_json::json!([1, 2]));
         assert_eq!(t["tiles"][1][0], -1);
+        assert!(t["tileset"].get("scale").is_none());
+        let v = parse(
+            r#"{"version":1,"tilemaps":[{"tileset":{"image":"t.png","tile_width":96,"tile_height":96,"scale":0.5},"tiles":[[0]]}]}"#,
+        )
+        .unwrap();
+        assert_eq!(v["tilemaps"][0]["tileset"]["scale"].as_f64(), Some(0.5));
+        let e = parse(
+            r#"{"version":1,"tilemaps":[{"tileset":{"image":"t.png","tile_width":96,"tile_height":96,"scale":0},"tiles":[[0]]}]}"#,
+        )
+        .unwrap_err();
+        assert!(e.contains("tileset.scale"), "{e}");
     }
 
     #[test]

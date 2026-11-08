@@ -42,3 +42,13 @@ Moving Day (examples/moving-day), all CC0 from the same bundle:
   the clients' faces are renders of the models above (scripts/moving-day/hd-ui.sh)
 - Sounds (scripts/moving-day/sounds.sh): Interface Sounds, Impact Sounds, Foley Sounds (stone drag, woosh), RPG Audio (creak, page), Digital Audio, a
   Music Jingles pizzicato. The music is original (scripts/moving-day/music.mjs), MIT like the rest of the repository
+
+Sunny Hop (examples/sunny-hop), all CC0 from the same bundle:
+- New Platformer Pack (1.1): every picture of the game is rasterised from its vectors (Vector/Tiles, Characters, Enemies, Backgrounds) by
+  scripts/sunny/art.mjs: sprites/tiles.png, hero, friends, enemies/*, boss/* (the pack's enemies drawn three times as big), items/*, bg/*,
+  ui/hud_* and ui/gem_*. Its sounds (Sounds/sfx_*.ogg) are sounds/jump, jump_high, coin, gem, hurt, bump, magic, disappear, select, throw, splash.
+- Input Prompts (Nintendo Switch set): sprites/ui/pad_*.png
+- Impact Sounds, Digital Audio, Interface Sounds, Retro Sounds 2, Music Jingles (Steeldrum, jingles-steel_06) and the Voiceover Pack (female:
+  ready, set, go, new_highscore): sounds/*.ogg, copied by scripts/sunny/sounds.sh (its list says which file is which).
+The panels, buttons, stars, the stopwatch, the pointer, the crown, the skies' gradients and the particle pictures are drawn by
+scripts/sunny/art.mjs (original). The music (music/*.song.json, rendered to .ogg) is written by scripts/sunny/music.mjs (original).

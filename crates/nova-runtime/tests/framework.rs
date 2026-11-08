@@ -689,6 +689,33 @@ fn tilemap_cells_can_be_read_and_changed_from_lua() {
 }
 
 #[test]
+fn a_scaled_tileset_draws_and_collides_at_its_shown_size() {
+    // 16-pixel tiles at scale 0.5 are 8 units: cells, solids and the drawn sprites all use 8
+    let scene = r#"{"version":1,"tilemaps":[{"name":"ground","tileset":{"image":"sprites/tiles.png","tile_width":16,"tile_height":16,"scale":0.5},"x":0,"y":100,"solid":[1],"tiles":[[1,1,1,1],[1,1,1,1]]}]}"#;
+    let mut g = tile_project(vec![
+        ("scenes/s.scene.json", lua(scene)),
+        (
+            "scenes/s.lua",
+            lua(
+                "local S = nova.scene {}\nfunction S:enter()\n  nova.log(table.concat({ self.ground:size() }, ' '))\n  nova.log(table.concat({ self.ground:cell_at(17, 109) }, ','))\n  nova.log(tostring(nova.solid_at(31, 101)) .. ' ' .. tostring(nova.solid_at(33, 101)))\n  local box = nova.spawn(nova.entity { hitbox = { -2, -2, 4, 4 } }, 4, 60)\n  local _, hy = box:slide(0, 100)\n  nova.log(box.y .. ' ' .. tostring(hy ~= nil))\n  self.ground.alpha = 0.5\nend\nreturn S",
+            ),
+        ),
+        ("main.lua", lua("nova.start('s')")),
+    ]);
+    steps(&mut g, 2);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    assert_eq!(logs(&g), ["4 2 8 8", "2,1", "true false", "98.0 true"]);
+    let sprites = &g.frame_input(540).sprites_back;
+    assert_eq!(sprites.len(), 8);
+    assert_eq!(sprites[0].size, [8.0, 8.0]);
+    assert_eq!(
+        sprites[0].color,
+        [255, 255, 255, 128],
+        "a tilemap's alpha fades its tiles"
+    );
+}
+
+#[test]
 fn bad_tilemap_data_is_explained() {
     for (spec, expected) in [
         (
@@ -2946,4 +2973,23 @@ fn a_slow_frame_is_written_to_the_log_by_nova_hitch() {
             .any(|x| x.starts_with("hitch: 80.0 ms") && x.ends_with("context")),
         "{l:?}"
     );
+}
+
+#[test]
+fn the_store_pictures_stay_out_of_the_sprite_atlas() {
+    // a broken box art would fail the load if it were decoded for the atlas; the icon is not a sprite
+    let mut g = project(vec![
+        ("icon.png", png(512, 512)),
+        ("boxart.png", b"not a png".to_vec()),
+        ("sprites/hero.png", png(8, 8)),
+        (
+            "main.lua",
+            lua(
+                "function update() nova.log(tostring(pcall(nova.image_size, 'icon.png')) .. ' ' .. table.concat({ nova.image_size('hero') }, 'x')) end",
+            ),
+        ),
+    ]);
+    steps(&mut g, 1);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    assert_eq!(logs(&g)[0], "false 8x8");
 }

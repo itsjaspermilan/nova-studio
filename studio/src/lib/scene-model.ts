@@ -365,7 +365,8 @@ export function renameProp(scene: Scene, ref: Ref, from: string, to: string): Sc
 
 export interface Tilemap {
   name?: string;
-  tileset: { image: string; tile_width: number; tile_height: number };
+  /// `scale`: how big a tile is drawn for each of its pixels (0.5 for a tileset painted at twice its shown size); 1 when absent.
+  tileset: { image: string; tile_width: number; tile_height: number; scale?: number };
   x?: number;
   y?: number;
   depth?: number;
@@ -382,17 +383,25 @@ export function mapSize(m: Tilemap): { cols: number; rows: number } {
   return { cols: Math.max(0, ...m.tiles.map((r) => r.length)), rows: m.tiles.length };
 }
 
+/// A tile's size in the world (its pixel size times the tileset's scale).
+export function tileSize(m: Tilemap): { w: number; h: number } {
+  const s = m.tileset.scale ?? 1;
+  return { w: m.tileset.tile_width * s, h: m.tileset.tile_height * s };
+}
+
 /// The grid cell under a world point, or null outside the map.
 export function cellAt(m: Tilemap, x: number, y: number): { col: number; row: number } | null {
   const { cols, rows } = mapSize(m);
-  const col = Math.floor((x - (m.x ?? 0)) / m.tileset.tile_width);
-  const row = Math.floor((y - (m.y ?? 0)) / m.tileset.tile_height);
+  const t = tileSize(m);
+  const col = Math.floor((x - (m.x ?? 0)) / t.w);
+  const row = Math.floor((y - (m.y ?? 0)) / t.h);
   return col >= 0 && row >= 0 && col < cols && row < rows ? { col, row } : null;
 }
 
 export function tilemapBox(m: Tilemap): Box {
   const { cols, rows } = mapSize(m);
-  return { x: m.x ?? 0, y: m.y ?? 0, w: cols * m.tileset.tile_width, h: rows * m.tileset.tile_height };
+  const t = tileSize(m);
+  return { x: m.x ?? 0, y: m.y ?? 0, w: cols * t.w, h: rows * t.h };
 }
 
 /// An empty map, named uniquely, appended to the scene.

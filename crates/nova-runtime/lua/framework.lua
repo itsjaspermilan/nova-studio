@@ -1526,12 +1526,12 @@ function Tilemap:is_solid_at(x, y)
   return t >= 0 and self.solid[t] == true
 end
 function Tilemap:draw()
-  if not self.visible then return end
+  if not self.visible or self.alpha <= 0 then return end
   if self.screen then
-    raw.tilemap_draw(self.map, self.x, self.y, "ui")
+    raw.tilemap_draw(self.map, self.x, self.y, "ui", self.alpha)
   else
     local w, h = nova.view()
-    raw.tilemap_draw(self.map, self.x - (W.cam.x - w * 0.5), self.y - (W.cam.y - h * 0.5), "world")
+    raw.tilemap_draw(self.map, self.x - (W.cam.x - w * 0.5), self.y - (W.cam.y - h * 0.5), "world", self.alpha)
   end
 end
 
@@ -2029,7 +2029,7 @@ local function build_scene(scene, data, file)
     local solid = {}
     for _, t in ipairs(tm.solid) do solid[t] = true end
     local ts = tm.tileset
-    local map = raw.tilemap_create({ image = ts.image, tile_width = ts.tile_width, tile_height = ts.tile_height, tiles = tm.tiles })
+    local map = raw.tilemap_create({ image = ts.image, tile_width = ts.tile_width, tile_height = ts.tile_height, scale = ts.scale, tiles = tm.tiles })
     named(tm, spawn(Tilemap, tm.x, tm.y, { map = map, solid = solid, depth = tm.depth }))
   end
   for _, t in ipairs(data.texts) do

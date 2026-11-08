@@ -12,6 +12,9 @@ pub struct TileMap {
     pub image: String,
     pub tile_w: u32,
     pub tile_h: u32,
+    /// How big a tile is drawn (and collides) for each of its pixels: 1 by default, 0.5 for a
+    /// tileset painted at twice the size it is shown (sharp on a 1080-line screen).
+    pub scale: f32,
     /// Tiles per row in the tileset image.
     pub columns: u32,
     pub tile_count: u32,
@@ -69,6 +72,7 @@ impl TileMap {
             image: image.to_string(),
             tile_w,
             tile_h,
+            scale: 1.0,
             columns,
             tile_count,
             width,

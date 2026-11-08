@@ -3,7 +3,7 @@
   import {
     History, addItem, afterRemoval, boundsOf, drawOrder, duplicateItem, hitTest, itemAt, moveTo, parseScene, removeItem, sameRef,
     serializeScene, setField, setSceneField, snap, uniqueName, worldSize, type Item, type ItemKind, type Ref, type Scene, type Sizes,
-    addTilemap, cellAt, fillTiles, mapSize, paintTile, parsePropValue, propsOf, removeTilemap, renameProp, resizeTilemap, setProp, showPropValue,
+    addTilemap, cellAt, fillTiles, mapSize, tileSize, paintTile, parsePropValue, propsOf, removeTilemap, renameProp, resizeTilemap, setProp, showPropValue,
     tilemapBox, tilemaps, toggleSolid, EMPTY_TILE, type Kinds, cameraOf, moveTo3, setCamera, positionOf, placeObjects, eraseNear, offRoad, snapToRoad, snapToGrid, type Camera3,
   } from "../lib/scene-model";
   import Scene3D from "./Scene3D.svelte";
@@ -171,7 +171,8 @@
     if (!picture) return;
     const f = frame ?? { sx: 0, sy: 0, sw: picture.naturalWidth, sh: picture.naturalHeight };
     kindPics.set(kind, { image, ...f });
-    kindSizes = new Map(kindSizes).set(kind, { w: f.sw, h: f.sh, px: look.pivot?.[0] ?? 0.5, py: look.pivot?.[1] ?? 0.5 });
+    const [scx, scy] = look.scale ?? [1, 1];
+    kindSizes = new Map(kindSizes).set(kind, { w: f.sw * scx, h: f.sh * scy, px: look.pivot?.[0] ?? 0.5, py: look.pivot?.[1] ?? 0.5 });
   }
   $effect(() => {
     for (const o of scene.objects ?? []) if (typeof o.kind === "string") void learnKind(o.kind);
@@ -234,20 +235,21 @@
     ctx.imageSmoothingEnabled = false;
 
     // tilemaps sit behind everything (the runtime's default depth puts them with the world)
-    for (const map of (scene.tilemaps as { x?: number; y?: number; tileset?: { image?: string; tile_width?: number; tile_height?: number }; tiles?: number[][] }[] | undefined) ?? []) {
+    for (const map of (scene.tilemaps as { x?: number; y?: number; tileset?: { image?: string; tile_width?: number; tile_height?: number; scale?: number }; tiles?: number[][] }[] | undefined) ?? []) {
       const set = map.tileset;
       const picture = set?.image ? pictures.get(set.image) : undefined;
       const tw = set?.tile_width ?? 16;
       const th = set?.tile_height ?? 16;
+      const ts = set?.scale ?? 1; // a tile's world size per pixel
       const perRow = picture?.naturalWidth ? Math.floor(picture.naturalWidth / tw) : 0;
       (map.tiles ?? []).forEach((row, r) =>
         row.forEach((n, c) => {
           if (n < 0) return;
-          const [sx, sy] = toScreen((map.x ?? 0) + c * tw, (map.y ?? 0) + r * th);
-          if (picture?.complete && perRow > 0) ctx.drawImage(picture, (n % perRow) * tw, Math.floor(n / perRow) * th, tw, th, sx, sy, tw * zoom, th * zoom);
+          const [sx, sy] = toScreen((map.x ?? 0) + c * tw * ts, (map.y ?? 0) + r * th * ts);
+          if (picture?.complete && perRow > 0) ctx.drawImage(picture, (n % perRow) * tw, Math.floor(n / perRow) * th, tw, th, sx, sy, tw * ts * zoom, th * ts * zoom);
           else {
             ctx.fillStyle = "rgba(0,0,0,.25)";
-            ctx.fillRect(sx, sy, tw * zoom, th * zoom);
+            ctx.fillRect(sx, sy, tw * ts * zoom, th * ts * zoom);
           }
         }),
       );
@@ -324,8 +326,7 @@
         ctx.lineWidth = 2;
         ctx.strokeRect(bx, by, box.w * zoom, box.h * zoom);
         ctx.lineWidth = 1;
-        const tw = m.tileset.tile_width;
-        const th = m.tileset.tile_height;
+        const { w: tw, h: th } = tileSize(m);
         ctx.strokeStyle = "rgba(111,207,142,.25)";
         ctx.beginPath();
         for (let x = 1; x < mapSize(m).cols; x++) { ctx.moveTo(bx + x * tw * zoom + 0.5, by); ctx.lineTo(bx + x * tw * zoom + 0.5, by + box.h * zoom); }
@@ -383,8 +384,9 @@
     const m = tilemaps(scene)[mapIndex];
     if (!m) return null;
     const [x, y] = toWorld(...pointer(e));
-    const col = Math.floor((x - (m.x ?? 0)) / m.tileset.tile_width);
-    const row = Math.floor((y - (m.y ?? 0)) / m.tileset.tile_height);
+    const t = tileSize(m);
+    const col = Math.floor((x - (m.x ?? 0)) / t.w);
+    const row = Math.floor((y - (m.y ?? 0)) / t.h);
     return col >= 0 && row >= 0 ? { col, row } : null;
   }
 

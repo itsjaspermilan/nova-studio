@@ -2724,7 +2724,13 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     .expect("rect came from the layout");
                 (id, (rect.w, rect.h))
             };
-            let map = TileMap::new(&id, tile_w, tile_h, size, rows).map_err(|e| lua_err(format!("tilemap: {e}")))?;
+            let mut map = TileMap::new(&id, tile_w, tile_h, size, rows).map_err(|e| lua_err(format!("tilemap: {e}")))?;
+            if let Some(scale) = spec.get::<Option<f64>>("scale")? {
+                if !(0.05..=16.0).contains(&scale) {
+                    return Err(lua_err("tilemap: 'scale' must be from 0.05 to 16"));
+                }
+                map.scale = scale as f32;
+            }
             sh.tilemaps.push(map);
             Ok(sh.tilemaps.len() - 1)
         })?,
@@ -2763,15 +2769,25 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 .tilemaps
                 .get(id)
                 .ok_or_else(|| lua_err("unknown tilemap"))?;
-            Ok((map.width, map.height, map.tile_w, map.tile_h))
+            // a whole size stays a Lua integer (as it was before tilesets had a scale)
+            let size = |px: u32| {
+                let v = px as f64 * map.scale as f64;
+                if v.fract() == 0.0 {
+                    mlua::Value::Integer(v as i64)
+                } else {
+                    mlua::Value::Number(v)
+                }
+            };
+            Ok((map.width, map.height, size(map.tile_w), size(map.tile_h)))
         })?,
     )?;
-    // tilemap_draw(id, x, y, layer): x, y is where the map's top-left corner is on screen.
+    // tilemap_draw(id, x, y, layer [, alpha]): x, y is where the map's top-left corner is on screen; alpha (0 to 1) fades every tile.
     let s = shared.clone();
     raw.set(
         "tilemap_draw",
         lua.create_function(
-            move |_, (id, ox, oy, layer): (usize, f64, f64, Option<String>)| {
+            move |_, (id, ox, oy, layer, alpha): (usize, f64, f64, Option<String>, Option<f64>)| {
+                let alpha = (alpha.unwrap_or(1.0).clamp(0.0, 1.0) * 255.0).round() as u8;
                 let mut sh = s.borrow_mut();
                 let ui = match layer.as_deref() {
                     None | Some("world") => false,
@@ -2790,9 +2806,10 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                         .tilemaps
                         .get(id)
                         .ok_or_else(|| lua_err("unknown tilemap"))?;
-                    if let Some((c0, c1, r0, r1)) = map.visible(ox, oy, 1.0, view) {
+                    if let Some((c0, c1, r0, r1)) = map.visible(ox, oy, map.scale, view) {
                         let rect = sh.layout.rects[&map.image];
-                        let (tw, th) = (map.tile_w as f32, map.tile_h as f32);
+                        let (tw, th) =
+                            (map.tile_w as f32 * map.scale, map.tile_h as f32 * map.scale);
                         for row in r0..=r1 {
                             for col in c0..=c1 {
                                 let tile = map.get(col as i64, row as i64);
@@ -2813,7 +2830,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                                     ],
                                     size: [tw, th],
                                     uv: sh.layout.uv(&cell),
-                                    color: [255; 4],
+                                    color: [255, 255, 255, alpha],
                                     rotation: 0.0,
                                 });
                             }
@@ -2955,6 +2972,10 @@ impl Game {
         let mut images = Vec::new();
         let mut fx_images = Vec::new();
         for asset in project.assets_of(AssetKind::Image) {
+            // the store's pictures (the launcher icon and the box art) are for the APK and launchers, not for drawing: they stay out of the atlas
+            if assets::STORE_ART.contains(&asset.id.as_str()) {
+                continue;
+            }
             let bytes = vfs.read(&asset.id)?;
             let image = assets::decode_png(&bytes).map_err(|e| format!("{}: {e}", asset.id))?;
             if asset.id.starts_with(billboard_api::FOLDER) {
