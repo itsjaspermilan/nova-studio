@@ -32,6 +32,7 @@ pub mod project;
 pub mod save;
 pub mod scene;
 pub mod script;
+pub mod shader;
 pub mod spike;
 pub mod sprite;
 pub mod stream;

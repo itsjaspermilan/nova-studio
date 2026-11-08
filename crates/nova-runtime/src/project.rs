@@ -64,6 +64,10 @@ pub struct Manifest {
     /// `"sprite_filter": "smooth"`: pictures are drawn with bilinear filtering (for drawn, not pixel-art, interfaces).
     pub smooth_sprites: bool,
     pub version: Option<String>,
+    /// `"materials"`: which models are lit by their glTF material (normal map, metallic, roughness, emission; `docs/materials.md`).
+    /// None (the default): every model keeps Nova's plain look. An empty list (`"materials": true`): every model. Otherwise the
+    /// models named (short names or paths, as `nova.model` takes them).
+    pub materials: Option<Vec<String>>,
     /// The raw `"input"` section (validated when the manifest is read).
     pub input: Option<serde_json::Value>,
     /// `"local_network": true`: the game plays with other devices on the same wifi (`nova.net`); an Android build then
@@ -169,8 +173,23 @@ pub fn parse_manifest(text: &str, warnings: &mut Vec<String>) -> Result<Manifest
             ));
         }
     };
+    let materials = match object.get("materials") {
+        None | Some(Value::Bool(false)) => None,
+        Some(Value::Bool(true)) => Some(Vec::new()),
+        Some(Value::Array(list)) if list.iter().all(Value::is_string) && !list.is_empty() => Some(
+            list.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect(),
+        ),
+        Some(_) => {
+            return Err(field_error(
+                "\"materials\" must be true (every model is lit by its glTF material) or a list of model names such as [\"rock\", \"knight\"]",
+            ));
+        }
+    };
     for key in object.keys() {
         if ![
+            "materials",
             "format",
             "name",
             "entry",
@@ -195,9 +214,23 @@ pub fn parse_manifest(text: &str, warnings: &mut Vec<String>) -> Result<Manifest
         world_height,
         smooth_sprites,
         version,
+        materials,
         input,
         local_network,
     })
+}
+
+impl Manifest {
+    /// Whether the model `id` (a path such as `models/rock.glb`) is drawn with its glTF material (see [`Manifest::materials`]).
+    pub fn lit_by_material(&self, id: &str) -> bool {
+        match &self.materials {
+            None => false,
+            Some(list) if list.is_empty() => true,
+            Some(list) => list
+                .iter()
+                .any(|name| name == id || format!("models/{name}.glb") == id),
+        }
+    }
 }
 
 impl Project {

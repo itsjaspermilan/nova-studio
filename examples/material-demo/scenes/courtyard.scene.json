@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "background": [120, 170, 225],
+  "camera": { "eye": [0, 3.2, 9.5], "target": [0, 1, 0], "fov": 50 },
+  "sky": { "top": [70, 130, 215], "horizon": [205, 225, 240] },
+  "fog": { "color": [205, 225, 240], "near": 30, "far": 90 },
+  "objects": [
+    { "kind": "bricks", "name": "bricks", "x": -3.2, "y": 0, "z": 0, "props": { "ry": 0.5 } },
+    { "kind": "orb", "name": "orb", "x": 0, "y": 0, "z": 0.8 },
+    { "kind": "glow", "name": "glow", "x": 1.4, "y": 0, "z": 2.2 },
+    { "kind": "pillar", "name": "pillar", "x": 3.2, "y": 0, "z": -0.4 },
+    { "kind": "pool", "name": "pool", "x": 0, "y": 0.04, "z": -6 }
+  ]
+}

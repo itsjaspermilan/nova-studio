@@ -128,7 +128,7 @@ fn data_location(text: &str) -> Option<(String, Option<String>, String)> {
     }
     let is_file = |s: &str| {
         [
-            ".json", ".png", ".ttf", ".otf", ".wav", ".ogg", ".glb", ".lua", ".npk",
+            ".json", ".png", ".ttf", ".otf", ".wav", ".ogg", ".glb", ".lua", ".npk", ".wgsl",
         ]
         .iter()
         .any(|ext| s.ends_with(ext))
@@ -148,9 +148,31 @@ fn data_location(text: &str) -> Option<(String, Option<String>, String)> {
     None
 }
 
+/// `shaders/water.wgsl:3:15: message` (a custom shader's mistake, `crate::shader::ShaderError::describe`): file, line, column, message.
+fn wgsl_location(text: &str) -> Option<(String, u32, u32, String)> {
+    let end = text.find(".wgsl:")? + 5;
+    let file = &text[..end];
+    let mut rest = text[end + 1..].splitn(3, ':');
+    let line = rest.next()?.trim().parse().ok()?;
+    let column = rest.next()?.trim().parse().ok()?;
+    let message = rest.next()?.trim().to_string();
+    safe_path(file).then(|| (file.to_string(), line, column, message))
+}
+
 pub fn parse(message: &str, severity: &'static str) -> Diagnostic {
     let detail = message.to_string();
     let first = message.lines().next().unwrap_or("").trim();
+    if let Some((file, line, column, text)) = wgsl_location(first) {
+        return Diagnostic {
+            severity,
+            file: Some(file),
+            line: Some(line),
+            place: Some(format!("column {column}")),
+            message: text,
+            stack: Vec::new(),
+            detail,
+        };
+    }
 
     if let Some((file, line, after)) = lua_location(message) {
         // The location is in the first line ("runtime error: scenes/play.lua:8: bad argument")
@@ -215,6 +237,24 @@ pub fn parse(message: &str, severity: &'static str) -> Diagnostic {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_shader_mistake_points_at_its_line() {
+        let d = parse(
+            "shaders/water.wgsl:3:15: invalid field accessor `colour`",
+            "error",
+        );
+        assert_eq!(d.file.as_deref(), Some("shaders/water.wgsl"));
+        assert_eq!(d.line, Some(3));
+        assert_eq!(d.place.as_deref(), Some("column 15"));
+        assert_eq!(d.message, "invalid field accessor `colour`");
+        let d = parse(
+            "shaders/water.wgsl: no `fn shade(s: Surface) -> vec4<f32>` in the file",
+            "error",
+        );
+        assert_eq!(d.file.as_deref(), Some("shaders/water.wgsl"));
+        assert_eq!(d.line, None);
+    }
 
     #[test]
     fn the_traceback_becomes_a_call_stack_innermost_first() {

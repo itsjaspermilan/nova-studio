@@ -165,6 +165,11 @@ struct VertexOut {
 
 @vertex
 fn vs_main(v: Vertex, inst: Instance) -> VertexOut {
+    return mesh_vertex(v, inst);
+}
+
+// (vs_main's work, shared with the material and custom-shader entry points)
+fn mesh_vertex(v: Vertex, inst: Instance) -> VertexOut {
     let model = mat4x4<f32>(inst.m0, vec4<f32>(inst.m1.xyz, 0.0), vec4<f32>(inst.m2.xyz, 0.0), inst.m3);
     var out: VertexOut;
     out.dissolve = inst.m1.w;
@@ -307,8 +312,11 @@ struct SkinVertex {
 // The instance's matrix carries where its joints start in its w slot (an affine matrix has 0 there).
 @vertex
 fn vs_skinned(v: SkinVertex, inst: Instance) -> VertexOut {
-    let base = u32(inst.m0.w + 0.5);
-    let model = mat4x4<f32>(vec4<f32>(inst.m0.xyz, 0.0), vec4<f32>(inst.m1.xyz, 0.0), vec4<f32>(inst.m2.xyz, 0.0), inst.m3);
+    return skinned_vertex(v, inst);
+}
+
+// The joints' pull on a vertex, mixed by its weights (the identity when it has none).
+fn skin_matrix(v: SkinVertex, base: u32) -> mat4x4<f32> {
     var skin = mat4x4<f32>(vec4<f32>(0.0), vec4<f32>(0.0), vec4<f32>(0.0), vec4<f32>(0.0));
     for (var k = 0; k < 4; k = k + 1) {
         if (v.weights[k] > 0.0) {
@@ -319,6 +327,14 @@ fn vs_skinned(v: SkinVertex, inst: Instance) -> VertexOut {
     if (total <= 0.0) {
         skin = mat4x4<f32>(vec4<f32>(1.0, 0.0, 0.0, 0.0), vec4<f32>(0.0, 1.0, 0.0, 0.0), vec4<f32>(0.0, 0.0, 1.0, 0.0), vec4<f32>(0.0, 0.0, 0.0, 1.0));
     }
+    return skin;
+}
+
+// (vs_skinned's work, shared with the material and custom-shader entry points)
+fn skinned_vertex(v: SkinVertex, inst: Instance) -> VertexOut {
+    let base = u32(inst.m0.w + 0.5);
+    let model = mat4x4<f32>(vec4<f32>(inst.m0.xyz, 0.0), vec4<f32>(inst.m1.xyz, 0.0), vec4<f32>(inst.m2.xyz, 0.0), inst.m3);
+    let skin = skin_matrix(v, base);
     let posed = skin * vec4<f32>(v.position, 1.0);
     let normal = (skin * vec4<f32>(v.normal, 0.0)).xyz;
     var out: VertexOut;
@@ -337,4 +353,172 @@ fn vs_skinned(v: SkinVertex, inst: Instance) -> VertexOut {
     out.uv = v.uv;
     out.emissive = v.emissive;
     return out;
+}
+
+// ---- surfaces lit by their glTF material (a project opts in: "materials" in nova.json; docs/materials.md) ----
+// A cheap stand-in for physically based light that keeps Nova's sun, shadows, point and spot lights, toon bands and fog: the diffuse
+// light is the plain look's, a metal gives up its diffuse colour for a tinted shine, a normalised Blinn-Phong highlight (sharper as
+// the roughness falls) stands in for GGX, and the sky's colours (or the ambient light when there is no sky) are what a shiny surface
+// reflects, by a Fresnel term.
+@group(3) @binding(1) var normal_map: texture_2d<f32>;
+@group(3) @binding(2) var surface_map: texture_2d<f32>;
+@group(3) @binding(3) var emissive_map: texture_2d<f32>;
+@group(3) @binding(4) var map_sampler: sampler;
+
+struct MaterialVertex {
+    @location(12) tangent: vec4<f32>,
+    @location(13) surface: vec4<f32>,
+    @location(14) emission: vec4<f32>,
+};
+
+struct MaterialOut {
+    @builtin(position) position: vec4<f32>,
+    @location(0) normal: vec3<f32>,
+    @location(1) color: vec4<f32>,
+    @location(2) uv: vec2<f32>,
+    @location(3) world: vec3<f32>,
+    @location(4) emissive: f32,
+    @location(5) @interpolate(flat) dissolve: f32,
+    @location(6) tangent: vec4<f32>,
+    @location(7) surface: vec4<f32>,
+    @location(8) emission: vec4<f32>,
+};
+
+// The tangent in the world, leaning with the hills like the normal does (the lift's forward shear).
+fn material_out(o: VertexOut, tangent: vec3<f32>, m: MaterialVertex, ground: bool) -> MaterialOut {
+    var out: MaterialOut;
+    out.position = o.position;
+    out.normal = o.normal;
+    out.color = o.color;
+    out.uv = o.uv;
+    out.world = o.world;
+    out.emissive = o.emissive;
+    out.dissolve = o.dissolve;
+    var t = tangent;
+    if (ground && terrain_active()) {
+        let g = terrain_slope(o.world.xz);
+        t = vec3<f32>(t.x, t.y + g.x * t.x + g.y * t.z, t.z);
+    }
+    out.tangent = vec4<f32>(safe_normalize(t), m.tangent.w);
+    out.surface = m.surface;
+    out.emission = m.emission;
+    return out;
+}
+
+@vertex
+fn vs_material(v: Vertex, inst: Instance, m: MaterialVertex) -> MaterialOut {
+    let o = mesh_vertex(v, inst);
+    let model = mat3x3<f32>(inst.m0.xyz, inst.m1.xyz, inst.m2.xyz);
+    return material_out(o, model * m.tangent.xyz, m, inst.m3.y < 30.0);
+}
+
+@vertex
+fn vs_skinned_material(v: SkinVertex, inst: Instance, m: MaterialVertex) -> MaterialOut {
+    let o = skinned_vertex(v, inst);
+    let skin = skin_matrix(v, u32(inst.m0.w + 0.5));
+    let model = mat3x3<f32>(inst.m0.xyz, inst.m1.xyz, inst.m2.xyz);
+    return material_out(o, model * (skin * vec4<f32>(m.tangent.xyz, 0.0)).xyz, m, inst.m3.y < 30.0);
+}
+
+// The highlight of one light: a normalised Blinn-Phong lobe (its sharpness from the roughness, as GGX's would be) times Schlick's
+// Fresnel, times the light's angle on the surface.
+fn highlight(n: vec3<f32>, v: vec3<f32>, l: vec3<f32>, rough: f32, f0: vec3<f32>) -> vec3<f32> {
+    let nl = dot(n, l);
+    if (nl <= 0.0) {
+        return vec3<f32>(0.0);
+    }
+    let h = safe_normalize(v + l);
+    let a = rough * rough;
+    let shine = clamp(2.0 / max(a * a, 1e-4) - 2.0, 1.0, 2048.0);
+    let lobe = (shine + 8.0) / 25.132741 * pow(max(dot(n, h), 0.0), shine);
+    let f = f0 + (vec3<f32>(1.0) - f0) * pow(1.0 - max(dot(v, h), 0.0), 5.0);
+    return f * (lobe * nl);
+}
+
+@fragment
+fn fs_material(in: MaterialOut) -> @location(0) vec4<f32> {
+    if (in.dissolve != 0.0) {
+        let noise = fract(52.9829189 * fract(dot(in.position.xy, vec2<f32>(0.06711056, 0.00583715))));
+        if (in.dissolve < 0.0) {
+            if (noise < -in.dissolve) { discard; }
+        } else {
+            if (noise >= in.dissolve) { discard; }
+        }
+    }
+    let picture = textureSample(base_texture, base_sampler, in.uv);
+    let base = select(picture, vec4<f32>(1.0), in.uv.x > 1.0e6) * in.color;
+    // (every map is sampled by every pixel alike; a part without one ignores what it read)
+    let bump = textureSample(normal_map, map_sampler, in.uv).xyz * 2.0 - vec3<f32>(1.0);
+    let packed = textureSample(surface_map, map_sampler, in.uv);
+    let glow_map = textureSample(emissive_map, map_sampler, in.uv).rgb;
+    if (base.a < 0.3) {
+        discard;
+    }
+    let geo = safe_normalize(in.normal);
+    var n = geo;
+    if (in.surface.z != 0.0 && dot(in.tangent.xyz, in.tangent.xyz) > 0.01) {
+        // tangent space to the world: the tangent made square to the normal, the bitangent by the file's handedness
+        let t = safe_normalize(in.tangent.xyz - geo * dot(geo, in.tangent.xyz));
+        let b = cross(geo, t) * in.tangent.w;
+        n = safe_normalize(t * (bump.x * in.surface.z) + b * (bump.y * in.surface.z) + geo * bump.z);
+    }
+    var metallic = in.surface.x;
+    var rough = in.surface.y;
+    if (in.surface.w > 0.5) {
+        rough = rough * packed.g;
+        metallic = metallic * packed.b;
+    }
+    rough = clamp(rough, 0.045, 1.0);
+    let v = safe_normalize(globals.eye.xyz - in.world);
+    let to_sun = -globals.light_dir.xyz;
+    let visible = mix(1.0 - globals.shadow.w, 1.0, sun_visibility(in.world, geo));
+    var diffuse = max(dot(n, to_sun), 0.0) * visible;
+    if (globals.voxel.y >= 1.5) {
+        let x = diffuse * globals.voxel.y;
+        let w = fwidth(x) * 0.75 + 0.01;
+        diffuse = (floor(x) + smoothstep(0.5 - w, 0.5 + w, fract(x))) / globals.voxel.y;
+    }
+    var light = globals.ambient.rgb + globals.light_color.rgb * diffuse * (1.0 - globals.ambient.rgb);
+    let f0 = mix(vec3<f32>(0.04), base.rgb, metallic);
+    var shine = globals.light_color.rgb * highlight(n, v, to_sun, rough, f0) * visible;
+    let count = i32(globals.light_dir.w);
+    for (var i = 0; i < count; i = i + 1) {
+        let to_light = globals.point_pos[i].xyz - in.world;
+        let dist = length(to_light);
+        let falloff = clamp(1.0 - dist / globals.point_pos[i].w, 0.0, 1.0);
+        let towards = to_light / max(dist, 0.0001);
+        var cone = 1.0;
+        let aim = globals.point_dir[i];
+        if (dot(aim.xyz, aim.xyz) > 0.25) {
+            cone = smoothstep(aim.w, mix(aim.w, 1.0, 0.45), dot(-towards, aim.xyz));
+        }
+        let reach = globals.point_color[i].rgb * (falloff * falloff * cone);
+        light = light + reach * max(dot(n, towards), 0.0);
+        shine = shine + reach * highlight(n, v, towards, rough, f0);
+    }
+    // what a shiny surface reflects: the sky along the reflection (the ground below the horizon is its horizon, darker), or the
+    // ambient light with no sky; a rough one shows little of it (its blurred average is in the ambient already)
+    let r = reflect(-v, n);
+    var around = globals.ambient.rgb;
+    if (globals.sky_top.w > 0.5) {
+        let up = mix(globals.sky_horizon.rgb, globals.sky_top.rgb, clamp(r.y, 0.0, 1.0));
+        around = mix(globals.sky_horizon.rgb * 0.45, up, smoothstep(-0.25, 0.0, r.y));
+    }
+    let nv = max(dot(n, v), 0.0);
+    let fresnel = f0 + (max(vec3<f32>(1.0 - rough), f0) - f0) * pow(1.0 - nv, 5.0);
+    let mirror = around * fresnel * (1.0 - rough * 0.85);
+    var rgb = base.rgb * (1.0 - metallic) * light + shine + mirror;
+    if (in.emission.w < -0.5) {
+        rgb = rgb + base.rgb * in.emissive;
+    } else if (in.emission.w > 0.5) {
+        rgb = rgb + in.emission.rgb * glow_map;
+    } else {
+        rgb = rgb + in.emission.rgb;
+    }
+    if (globals.fog_color.w > 0.5) {
+        let d = distance(in.world, globals.eye.xyz);
+        let f = clamp((d - globals.fog_range.x) / (globals.fog_range.y - globals.fog_range.x), 0.0, 1.0);
+        rgb = mix(rgb, globals.fog_color.rgb, f);
+    }
+    return vec4<f32>(rgb, base.a);
 }

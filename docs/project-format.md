@@ -18,8 +18,12 @@ my-game/
   entities/*.lua   one entity class per file (entities/enemies/grub.lua is "enemies.grub")
   scenes/*.lua     one scene class per file, with an optional scenes/<name>.scene.json
   lib/util.lua     modules, loaded with require("lib.util")
+  shaders/*.wgsl   custom shaders: one `fn shade(s: Surface) -> vec4<f32>` each (docs/shaders.md)
   anything else    ignored for now (audio and fonts are recognised by extension but not used yet)
 ```
+
+`nova.json` can also say `"materials": true` (or a list of model names) to light models by their glTF material: normal maps,
+metallic, roughness and emission (docs/materials.md). Without it every model keeps the plain look.
 
 Hidden files and folders (starting with `.`), symbolic links and the top-level folders
 `build`, `target`, `node_modules` and `dist` are never part of a project. At most 20,000

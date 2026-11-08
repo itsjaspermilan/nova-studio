@@ -2823,6 +2823,7 @@ dependencies = [
  "lewton",
  "log",
  "mlua",
+ "naga",
  "png",
  "pollster",
  "serde",

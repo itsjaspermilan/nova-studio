@@ -607,6 +607,8 @@ function Entity:draw()
     local tint = self.tint
     model_opts.tint[1], model_opts.tint[2], model_opts.tint[3] = tint and tint[1] or 255, tint and tint[2] or 255, tint and tint[3] or 255
     model_opts.tint[4] = floor(255 * self.alpha)
+    -- a custom shader (shaders/<name>.wgsl), its numbers and pictures, and whether it is see-through (docs/shaders.md)
+    model_opts.shader, model_opts.params, model_opts.textures, model_opts.blend = self.shader, self.shader_params, self.shader_textures, self.blend
     nova.model(model_id(model), self.x, self.y, self.z, model_opts)
   end
   local sprite = rawget(self, "sprite") or cls.__sprite
@@ -617,6 +619,7 @@ function Entity:draw()
     local c, tint = draw_opts.color, self.tint
     c[1], c[2], c[3] = tint and tint[1] or 255, tint and tint[2] or 255, tint and tint[3] or 255
     c[4] = floor(255 * self.alpha)
+    draw_opts.shader, draw_opts.params, draw_opts.textures = self.shader, self.shader_params, self.shader_textures
     local id = sprite_id(sprite)
     local x, y = self.x, self.y
     local pivot = rawget(self, "pivot") or cls.__pivot
