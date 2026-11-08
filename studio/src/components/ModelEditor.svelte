@@ -8,7 +8,8 @@
     FACES, History, MAX_COLLIDERS, SHAPES, addBox, addCapsule, addCollider, removeBox, removeCapsule, updateBox, updateCapsule, addCube, addPart, afterRemoval, countCubes, cubeAt, duplicateNode, faceColor, newModel, parseModel, partAt, removeNode, samePath, serializeModel,
     removeCollider, setCube, setFaceColor, updateCollider, updateCube, updatePart, walk, namesOf, PROPS, MAX_SEGMENTS, MIN_SEGMENTS, DEFAULT_SEGMENTS, type Cube, type Ease, type Face, type ModelDoc, type Path, type Prop, type Shape, type Vec3,
   } from "../lib/model-doc";
-  import { addFace, bevelEdge, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsSymmetric, setFaceColors, setSmooth, setVert, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
+  import { AXIS_COLOURS, AXIS_CSS, AXIS_NAMES, centreOf, constrain, describeLock, describeMove, freePlane, lockForKey, type Lock } from "../lib/point-move";
+  import { addFace, bevelEdge, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsSymmetric, setFaceColors, setSmooth, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
   import { hasVolume, meshOf, segmentsOf, shapeFaces, solidOf } from "../lib/model-mesh";
   import { autoWeights, boneHeat, dominantBones, heatColor, invertAffine, reskin, setWeight, skinnedPoints, transformPoint, worldMatrices } from "../lib/model-skin";
   import { bakeAll, blockOf, faceRects, flippedRect, normRect, rectAt, enableTexture, fitPicture, packModel, resizeTexture, unwrap, uvsOf } from "../lib/model-uv";
@@ -234,6 +235,25 @@
     });
     gizmo.addEventListener("objectChange", liveGizmo);
     scene.add(gizmo.getHelper());
+    // the picked points' own move handle (arrows and squares only: see stripFreeHandle)
+    pointGizmo = new TransformControls(camera, canvas!);
+    pointGizmo.setSize(0.9);
+    pointGizmo.setMode("translate");
+    pointGizmo.setSpace("local");
+    stripFreeHandle(pointGizmo);
+    pointGizmo.addEventListener("dragging-changed", (e) => {
+      if (controls) controls.enabled = !e.value;
+      if (e.value) {
+        gizmoDown = true;
+        beginPointGizmo();
+      } else if (gizmoMove) {
+        gizmoMove = null;
+        endPointMove();
+      }
+    });
+    pointGizmo.addEventListener("objectChange", livePointGizmo);
+    pointGizmo.getHelper().visible = false;
+    scene.add(pointGizmo.getHelper());
     scene.add(new THREE.AmbientLight(0xffffff, 1.6));
     const sun = new THREE.DirectionalLight(0xffffff, 1.8);
     sun.position.set(20, 40, 30);
@@ -490,6 +510,8 @@
       cancelAnimationFrame(frameId);
       gizmo?.dispose();
       gizmo = undefined;
+      pointGizmo?.dispose();
+      pointGizmo = undefined;
       controls?.dispose();
       disposeMeshes();
       clearHandles();
@@ -1079,6 +1101,126 @@
   }
   const PULL_LENGTH = 9;
 
+  // ---- moving points: a move handle on the picked points, and what a move shows while it happens ------------------------------
+  // The picked points carry a move handle like a shape's: drag an arrow to move along that axis only, a square to move on that flat plane.
+  // (Its free centre is taken off: a point dragged by itself moves on the grid plane the camera faces most; see freeDragTo.) While points
+  // move, coloured lines show the axes they may move along, a grey dot stays where they started, and a label by them says what changes.
+  let pointGizmo: TransformControls | undefined;
+  let pointProxy: THREE.Object3D | undefined;
+  let gizmoMove: (PointMove & { start: THREE.Vector3 }) | null = null;
+  let guides: THREE.Object3D[] = [];
+  let moveHint = $state<{ x: number; y: number; text: string; how: string } | null>(null);
+  let snapRing = $state<{ x: number; y: number } | null>(null);
+
+  /// Takes the handle's free centre off (its "XYZ" piece, which moves on a plane facing the camera).
+  function stripFreeHandle(t: TransformControls) {
+    const g = (t as unknown as { _gizmo?: { gizmo: Record<string, THREE.Object3D>; picker: Record<string, THREE.Object3D> } })._gizmo;
+    for (const set of [g?.gizmo.translate, g?.picker.translate]) for (const c of [...(set?.children ?? [])]) if (c.name === "XYZ") c.removeFromParent();
+  }
+  function attachPointGizmo() {
+    if (!pointGizmo || gizmoMove) return; // (while it is dragged it stays where it is)
+    pointGizmo.detach();
+    pointProxy?.removeFromParent();
+    pointProxy = undefined;
+    const live = inEdit && !!selected && !!cube?.verts && selVerts.length > 0;
+    pointGizmo.getHelper().visible = live;
+    if (!live) return;
+    const g = groupOf(selected!.parts);
+    if (!g) return;
+    pointProxy = new THREE.Object3D();
+    pointProxy.position.set(...centreOf(cube!.verts as Vec3[], selVerts));
+    g.add(pointProxy);
+    pointProxy.updateMatrixWorld();
+    pointGizmo.attach(pointProxy);
+  }
+  function beginPointGizmo() {
+    if (!pointProxy || !selected || !cube?.verts) return;
+    gizmoMove = { base: doc, baseCube: cube, path: selected, from: centreOf(cube.verts as Vec3[], selVerts), start: pointProxy.position.clone(), moved: false };
+  }
+  /// The handle's axis or plane as a lock ("X" is "x", "XZ" is "xz").
+  const handleLock = (axis: string | null): Lock => (axis && /^[XYZ]{1,2}$/.test(axis) ? (axis.toLowerCase() as Lock) : "xyz");
+  function livePointGizmo() {
+    if (!gizmoMove || !pointProxy) return;
+    const raw = pointProxy.position.clone().sub(gizmoMove.start);
+    const lock = handleLock(pointGizmo?.axis ?? null);
+    movePointsBy(gizmoMove, constrain([raw.x, raw.y, raw.z], lock, snap ? 1 : null, gizmoMove.from), lock, false);
+  }
+  /// Moves the picked points of a move's shape by `delta` (from where they were when it began), and shows the move.
+  function movePointsBy(m: PointMove, delta: Vec3, lock: Lock, free: boolean) {
+    showMove(m, delta, lock, free);
+    if (!m.moved && delta.every((d) => d === 0)) return;
+    if (!m.moved) history.record(m.base);
+    m.moved = true;
+    commit(setCube(m.base, m.path, symmetry === "off" ? moveVerts(m.baseCube, selVerts, delta) : moveVertsSymmetric(m.baseCube, selVerts, delta, Number(symmetry) as Axis)), true);
+  }
+  /// Where a point in the world is on the page.
+  function screenOf(w: THREE.Vector3): { x: number; y: number } | null {
+    if (!camera || !canvas) return null;
+    const r = canvas.getBoundingClientRect();
+    const p = w.clone().project(camera);
+    if (p.z > 1) return null;
+    return { x: r.left + ((p.x + 1) / 2) * r.width, y: r.top + ((1 - p.y) / 2) * r.height };
+  }
+  function clearGuides() {
+    for (const o of guides) {
+      o.removeFromParent();
+      const any = o as THREE.Object3D & { geometry?: THREE.BufferGeometry; material?: THREE.Material };
+      any.geometry?.dispose();
+      any.material?.dispose();
+    }
+    guides = [];
+  }
+  /// The lines a move may follow (one per axis it may change, in that axis's colour, through where it started), a grey dot where it
+  /// started, and the label by the moved points.
+  function showMove(m: PointMove, delta: Vec3, lock: Lock, free: boolean) {
+    const g = groupOf(m.path.parts);
+    if (!g || !scene) return;
+    if (!guides.length || (guides[0]!.userData.lock as string) !== lock) {
+      clearGuides();
+      const axes = lock === "xyz" ? [] : [0, 1, 2].filter((i) => lock.includes(AXIS_NAMES[i]!));
+      for (const i of axes) {
+        const a = [...m.from] as Vec3, b = [...m.from] as Vec3;
+        a[i] = a[i]! - 400;
+        b[i] = b[i]! + 400;
+        const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...a).applyMatrix4(g.matrixWorld), new THREE.Vector3(...b).applyMatrix4(g.matrixWorld)]), new THREE.LineBasicMaterial({ color: AXIS_COLOURS[i], transparent: true, opacity: 0.85, depthTest: false }));
+        line.renderOrder = 13;
+        scene.add(line); // (in the world: the part's group is made again with every change while the points move)
+        guides.push(line);
+      }
+      const ghost = new THREE.Points(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...m.from).applyMatrix4(g.matrixWorld)]), new THREE.PointsMaterial({ size: 11, sizeAttenuation: false, color: 0x8b93a3, transparent: true, opacity: 0.8, depthTest: false }));
+      ghost.renderOrder = 9;
+      scene.add(ghost);
+      guides.push(ghost);
+      guides[0]!.userData.lock = lock;
+    }
+    const at = screenOf(new THREE.Vector3(m.from[0] + delta[0], m.from[1] + delta[1], m.from[2] + delta[2]).applyMatrix4(g.matrixWorld));
+    const how = lock === "xyz" ? "" : `Moving ${describeLock(lock)}${free ? " · X, Y or Z keeps to one axis, ⇧ with it to a plane · Esc puts it back" : ""}`;
+    moveHint = at ? { x: at.x, y: at.y, text: describeMove(m.from, delta), how } : null;
+  }
+  function endPointMove() {
+    clearGuides();
+    moveHint = null;
+    snapRing = null;
+    if (controls) controls.enabled = true;
+    attachPointGizmo();
+  }
+  /// Esc while points are dragged: they go back to where they were.
+  function cancelPointMove() {
+    const m = drag ?? gizmoMove;
+    if (!m) return;
+    if (m.moved) {
+      commit(m.base, true);
+      history.drop();
+    }
+    if (gizmoMove) {
+      gizmoMove = null;
+      pointGizmo?.detach(); // (lets go of the handle; attachPointGizmo puts a fresh one on)
+    }
+    drag = null;
+    gizmoDown = false;
+    endPointMove();
+  }
+
   const pointer = (e: PointerEvent) => {
     const r = canvas!.getBoundingClientRect();
     return new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
@@ -1140,7 +1282,9 @@
     const denom = a * c - b * b;
     return Math.abs(denom) < 1e-6 ? null : (b * f - c * d) / denom;
   }
-  let drag: { point: number; base: ModelDoc; baseCube: Cube; path: Path; start: THREE.Vector3; plane: THREE.Plane; moved: boolean } | null = null;
+  // a point dragged by itself: where it started (in the world, and in the part's units), the plane it is free on and the lock it keeps to now
+  type PointMove = { base: ModelDoc; baseCube: Cube; path: Path; from: Vec3; moved: boolean };
+  let drag: (PointMove & { point: number; start: THREE.Vector3; free: Lock; lock: Lock; last: PointerEvent }) | null = null;
   function pointerDown(e: PointerEvent) {
     downAt = [e.clientX, e.clientY];
     if (mode === "texture" && BRUSH_TOOLS.includes(texTool) && picture && e.button === 0 && !e.altKey && canvas) {
@@ -1156,6 +1300,8 @@
       }
     }
     if (!inEdit || !camera || !canvas || !selected || !cube || e.button !== 0) return;
+    // (an arrow or square of the points' move handle is its own business, before the face's pull-out arrow)
+    if (pointGizmo?.axis) return;
     const frame = faceFrame();
     if (frame && selFace !== null && camera) {
       const r = canvas.getBoundingClientRect();
@@ -1184,9 +1330,13 @@
     selFace = null;
     selEdge = null;
     if (!selVerts.includes(point)) return;
-    const start = worldVerts()[point]!;
-    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(camera.getWorldDirection(new THREE.Vector3()), start);
-    drag = { point, base: doc, baseCube: cube, path: selected, start, plane, moved: false };
+    const g = groupOf(selected.parts);
+    if (!g) return;
+    // a point dragged by itself moves on the grid plane the camera faces most (the floor from above, a wall from the front), in the
+    // part's own axes; X, Y or Z while dragging keeps it to one axis
+    const view = camera.getWorldDirection(new THREE.Vector3()).applyMatrix3(new THREE.Matrix3().setFromMatrix4(g.matrixWorld.clone().invert()));
+    const free = freePlane([view.x, view.y, view.z]);
+    drag = { point, base: doc, baseCube: cube, path: selected, start: worldVerts()[point]!, from: [...cube.verts![point]!] as Vec3, free, lock: free, moved: false, last: e };
     controls!.enabled = false;
     canvas.setPointerCapture(e.pointerId);
   }
@@ -1232,22 +1382,37 @@
       return;
     }
     if (!drag || !camera) return;
+    drag.last = e;
+    freeDragTo(e);
+  }
+  /// The free drag of a point, to where the pointer is: along its locked axis, or on its plane, in the part's own axes.
+  function freeDragTo(e: PointerEvent) {
+    if (!drag || !camera) return;
     const g = groupOf(drag.path.parts);
     if (!g) return;
-    const ray = new THREE.Raycaster();
-    ray.setFromCamera(pointer(e), camera);
-    const hit = ray.ray.intersectPlane(drag.plane, new THREE.Vector3());
-    if (!hit) return;
-    const local = hit.sub(drag.start).applyMatrix3(new THREE.Matrix3().setFromMatrix4(g.matrixWorld.clone().invert()));
-    const from = drag.baseCube.verts![drag.point]!;
-    const step = snap ? 1 : 0.01;
-    let delta = [0, 1, 2].map((a) => Math.round((from[a]! + [local.x, local.y, local.z][a]!) / step) * step - from[a]!) as Vec3;
-    const near = snapPoints ? nearestPoint(e, drag.baseCube, new Set(selVerts), g) : null;
-    if (near) delta = [near[0] - from[0], near[1] - from[1], near[2] - from[2]];
-    if (!drag.moved && delta.every((d) => d === 0)) return;
-    if (!drag.moved) history.record(drag.base);
-    drag.moved = true;
-    commit(setCube(drag.base, drag.path, symmetry === "off" ? moveVerts(drag.baseCube, selVerts, delta) : moveVertsSymmetric(drag.baseCube, selVerts, delta, Number(symmetry) as Axis)), true);
+    const toWorld = new THREE.Matrix3().setFromMatrix4(g.matrixWorld);
+    const axisWorld = (i: number) => new THREE.Vector3(i === 0 ? 1 : 0, i === 1 ? 1 : 0, i === 2 ? 1 : 0).applyMatrix3(toWorld).normalize();
+    let moved: THREE.Vector3 | null = null;
+    if (drag.lock.length === 1) {
+      const dir = axisWorld(AXIS_NAMES.indexOf(drag.lock as "x"));
+      const t = lineParameter(e, drag.start, dir);
+      if (t !== null) moved = dir.multiplyScalar(t);
+    } else {
+      const across = [0, 1, 2].find((i) => !drag!.lock.includes(AXIS_NAMES[i]!))!;
+      const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(axisWorld(across), drag.start);
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(pointer(e), camera);
+      const hit = ray.ray.intersectPlane(plane, new THREE.Vector3());
+      if (hit) moved = hit.sub(drag.start);
+    }
+    if (!moved) return;
+    const local = moved.applyMatrix3(new THREE.Matrix3().setFromMatrix4(g.matrixWorld.clone().invert()));
+    let delta = constrain([local.x, local.y, local.z], drag.lock, snap ? 1 : null, drag.from);
+    // onto another point that is close on screen (only while the drag is free: a locked drag keeps to its axis); a ring shows which
+    const near = snapPoints && drag.lock === drag.free ? nearestPoint(e, drag.baseCube, new Set(selVerts), g) : null;
+    snapRing = near ? screenOf(new THREE.Vector3(...near).applyMatrix4(g.matrixWorld)) : null;
+    if (near) delta = [near[0] - drag.from[0], near[1] - drag.from[1], near[2] - drag.from[2]];
+    movePointsBy(drag, delta, drag.lock, true);
   }
   function pointerUp(e: PointerEvent) {
     if (gizmoDown) {
@@ -1270,7 +1435,7 @@
     if (drag) {
       drag = null;
       downAt = null;
-      if (controls) controls.enabled = true;
+      endPointMove();
       return;
     }
     if (!downAt || !camera || !canvas) return;
@@ -1330,6 +1495,7 @@
   $effect(() => {
     doc; selected; selVerts; selFace; selEdge; inEdit; mode; heatBone;
     untrack(drawHandles);
+    untrack(attachPointGizmo);
   });
   const part = $derived(selected && selected.cube === undefined ? partAt(doc, selected.parts) : selected ? partAt(doc, selected.parts) : undefined);
 
@@ -1499,12 +1665,14 @@
   function removePointsPicked() {
     if (cube && selVerts.length) change(deleteVerts(cube, selVerts), true);
   }
-  const vert = (i: number) => cube?.verts?.[selVerts[0]!]?.[i] ?? 0;
-  function setVertAxis(i: number, raw: string) {
-    if (!cube?.verts || selVerts.length !== 1 || raw.trim() === "" || !Number.isFinite(Number(raw))) return;
-    const p = [...cube.verts[selVerts[0]!]!] as Vec3;
-    p[i] = Number(raw);
-    change(setVert(cube, selVerts[0]!, p));
+  // the picked point, or the middle of the picked points, which the number boxes show and set (moving every picked point by as much)
+  const pickedCentre = $derived(cube?.verts && selVerts.length ? centreOf(cube.verts as Vec3[], selVerts) : ([0, 0, 0] as Vec3));
+  function setCentreAxis(i: number, raw: string) {
+    if (!cube?.verts || !selVerts.length || raw.trim() === "" || !Number.isFinite(Number(raw))) return;
+    const delta: Vec3 = [0, 0, 0];
+    delta[i] = Math.round((Number(raw) - pickedCentre[i]!) * 100) / 100;
+    if (delta[i] === 0) return;
+    change(symmetry === "off" ? moveVerts(cube, selVerts, delta) : moveVertsSymmetric(cube, selVerts, delta, Number(symmetry) as Axis));
   }
   const weldCount = $derived(cube?.shape === "mesh" ? weldable(cube) : 0);
   function mirrorCopy(axis: Axis) {
@@ -1596,6 +1764,22 @@
   function key(e: KeyboardEvent) {
     const t = e.target as HTMLElement;
     if (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA") return;
+    // while a point is dragged: X, Y or Z keeps it to that axis (⇧ to the plane across it), the same key again frees it; Esc puts it back
+    if (drag || gizmoMove) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        cancelPointMove();
+        return;
+      }
+      const lock = drag ? lockForKey(e.key, e.shiftKey, drag.lock === drag.free ? null : drag.lock) : undefined;
+      if (drag && lock !== undefined) {
+        e.preventDefault();
+        drag.lock = lock ?? drag.free;
+        clearGuides();
+        freeDragTo(drag.last);
+      }
+      return;
+    }
     const mod = e.metaKey || e.ctrlKey;
     const step = e.shiftKey ? 4 : 1;
     if (!mod && mode === "model" && !inEdit && selected && ["w", "e", "r", "p"].includes(e.key.toLowerCase())) {
@@ -1709,6 +1893,12 @@
           <p class="dim pad">3D drawing is not available in this window (WebGL could not start).</p>
         {/if}
         <canvas bind:this={canvas} tabindex="0" aria-label="3D view" onpointerdown={pointerDown} onpointermove={pointerMove} onpointerup={pointerUp}></canvas>
+        {#if moveHint}
+          <div class="movehint" style:left="{moveHint.x + 16}px" style:top="{moveHint.y - 14}px" role="status">
+            <strong>{moveHint.text}</strong>{#if moveHint.how}<span>{moveHint.how}</span>{/if}
+          </div>
+        {/if}
+        {#if snapRing}<div class="snapring" style:left="{snapRing.x}px" style:top="{snapRing.y}px" title="Snaps onto this point"></div>{/if}
       </div>
       {#if mode === "animate" && clip}
         <div class="timeline">
@@ -1737,7 +1927,7 @@
       {#if mode === "texture"}
         <p class="hint dim">Texture: drag on the model to paint it, or paint in the picture on the right · ⇧-click draws a straight line from the last point · ✥ moves a shape's block · ⌘Z undoes painting · Z changes the view · right-drag pans, scroll zooms (⌥-drag orbits)</p>
       {:else if inEdit}
-        <p class="hint dim">Points: click a face or an edge to pick it · click or drag a dot to move it (⇧-click adds more) · arrows and PageUp/PageDown nudge the picked points · Esc leaves point mode</p>
+        <p class="hint dim">Points: click a face or an edge to pick it (⇧-click a dot adds it) · drag a handle's <b style="color:#ff6b6b">X</b> <b style="color:#7ad67a">Y</b> <b style="color:#6cb2ff">Z</b> arrow to move along one axis, or a square to move on that plane · drag a dot itself to move it on the grid plane you are looking at (X, Y or Z while dragging keeps it to one axis) · arrows and PageUp/PageDown nudge · Esc leaves point mode</p>
       {:else}
         <p class="hint dim">Drag to orbit · right-drag to pan · scroll to zoom · click a shape to select (⌘ or ⇧ adds more) · drag the handles, or W E R P for move, turn, resize, pivot · arrows and PageUp/PageDown nudge (⇧ for 4) · ⌘D duplicates · Delete removes · Z changes the view</p>
       {/if}
@@ -1884,10 +2074,11 @@
         </div>
         {#if inEdit}
           <h4>Points</h4>
-          {#if selVerts.length === 1}
-            <div class="vec">{#each [0, 1, 2] as i (i)}<input type="number" step="0.5" value={vert(i)} aria-label={"xyz"[i] + " point"} onchange={(e) => setVertAxis(i, e.currentTarget.value)} />{/each}</div>
+          {#if selVerts.length}
+            <p class="dim small">{selVerts.length === 1 ? "The picked point" : `The middle of ${selVerts.length} picked points`}: type a number, or drag the arrows (one axis) or squares (a flat plane) of its handle.</p>
+            <div class="vec axes">{#each [0, 1, 2] as i (i)}<label style:--axis={AXIS_CSS[i]}><span>{"XYZ"[i]}</span><input type="number" step="0.5" value={pickedCentre[i]} aria-label={"xyz"[i] + (selVerts.length === 1 ? " of the point" : " of the points' middle")} onchange={(e) => setCentreAxis(i, e.currentTarget.value)} /></label>{/each}</div>
           {:else}
-            <p class="dim small">{selVerts.length ? `${selVerts.length} points picked` : "Click a dot or a face."}</p>
+            <p class="dim small">Click a dot or a face.</p>
           {/if}
           <label class="check"><input type="checkbox" bind:checked={snap} /> Snap to whole units</label>
           <label class="check" title="A dragged point jumps onto another point when it comes close"><input type="checkbox" bind:checked={snapPoints} /> Snap to other points</label>
@@ -2022,6 +2213,10 @@
   label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--dim); }
   label input { color: var(--text); }
   .vec { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; } .vec input { min-width: 0; padding: 3px 4px; }
+  .vec.axes label { display: flex; flex-direction: row; align-items: center; gap: 3px; min-width: 0; } .vec.axes span { color: var(--axis); font-weight: 700; font-size: 11px; width: 9px; flex: none; } .vec.axes input { flex: 1; width: 100%; border-color: color-mix(in srgb, var(--axis) 45%, var(--line)); }
+  .movehint { position: fixed; z-index: 30; pointer-events: none; display: flex; flex-direction: column; gap: 2px; background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font-size: 12px; box-shadow: 0 4px 14px #0007; max-width: 420px; }
+  .movehint strong { font-variant-numeric: tabular-nums; font-weight: 600; } .movehint span { color: var(--dim); font-size: 11px; }
+  .snapring { position: fixed; z-index: 29; pointer-events: none; width: 22px; height: 22px; margin: -11px 0 0 -11px; border: 2px solid #ffd166; border-radius: 50%; box-shadow: 0 0 0 2px #0008; }
   .colour { flex-direction: row; align-items: center; justify-content: space-between; } .colour input { width: 44px; height: 24px; padding: 0; }
   .row { display: flex; gap: 6px; }
   .bar button.on { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }

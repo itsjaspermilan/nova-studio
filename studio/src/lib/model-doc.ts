@@ -685,6 +685,10 @@ export class History {
     if (this.#past.length > 200) this.#past.shift();
     this.#future = [];
   }
+  /// Forgets the last change recorded (a move that was put back with Esc leaves nothing to undo).
+  drop() {
+    this.#past.pop();
+  }
   undo(current: ModelDoc): ModelDoc | null {
     const p = this.#past.pop();
     if (!p) return null;
