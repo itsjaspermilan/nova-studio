@@ -620,8 +620,8 @@ fn the_right_stick_picks_a_view_and_the_camera_goes_back_behind_the_car_when_it_
         }
         let right = stat(&mut g)["orbit"];
         assert!(
-            (right - half_turn).abs() < 0.1,
-            "right looks out of the right ({frames} frames): {right}"
+            (right + half_turn).abs() < 0.1,
+            "right looks out of the right (a car's left is +x, so the turn is negative) ({frames} frames): {right}"
         );
         for _ in 0..120 {
             frame_with(&mut g, &[]);
@@ -634,7 +634,7 @@ fn the_right_stick_picks_a_view_and_the_camera_goes_back_behind_the_car_when_it_
     }
     let diagonal = stat(&mut g)["orbit"];
     assert!(
-        (diagonal - std::f32::consts::FRAC_PI_4).abs() < 0.1,
+        (diagonal + std::f32::consts::FRAC_PI_4).abs() < 0.1,
         "up and right: {diagonal}"
     );
     for _ in 0..90 {
@@ -642,7 +642,7 @@ fn the_right_stick_picks_a_view_and_the_camera_goes_back_behind_the_car_when_it_
     }
     let low = stat(&mut g)["orbit"];
     assert!(
-        (low - 2.09).abs() < 0.2,
+        (low + 2.09).abs() < 0.2,
         "right and down by 30 degrees is 120 degrees round: {low}"
     );
     for _ in 0..120 {
@@ -653,7 +653,7 @@ fn the_right_stick_picks_a_view_and_the_camera_goes_back_behind_the_car_when_it_
     }
     let left = stat(&mut g)["orbit"];
     assert!(
-        (left + half_turn).abs() < 0.1,
+        (left - half_turn).abs() < 0.1,
         "left looks out of the left: {left}"
     );
     for _ in 0..120 {
