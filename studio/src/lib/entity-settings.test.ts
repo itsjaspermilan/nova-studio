@@ -53,10 +53,11 @@ describe("declareSetting", () => {
 describe("values", () => {
   const speed: Setting = { name: "speed", type: "number", default: 4, min: 0, max: 10 };
   const tint: Setting = { name: "tint", type: "colour", default: "#ff8800" };
-  it("leaves a default out of the scene file and writes colours as #rrggbb", () => {
-    expect(propFor(speed, 4)).toBeUndefined();
+  it("writes what is picked, even the default, and colours as #rrggbb", () => {
+    expect(propFor(speed, 4)).toBe(4);
     expect(propFor(speed, 6)).toBe(6);
-    expect(propFor(tint, "#FF8800")).toBeUndefined();
+    expect(propFor(speed, undefined)).toBeUndefined();
+    expect(propFor(tint, "#FF8800")).toBe("#ff8800");
     expect(propFor(tint, [0, 170, 0])).toBe("#00aa00");
     expect(propFor({ name: "f", type: "object" }, "")).toBeUndefined();
     expect(colourOf("#00000080")).toEqual([0, 0, 0, 128]);

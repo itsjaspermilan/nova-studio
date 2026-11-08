@@ -137,16 +137,15 @@ export function settingProblem(s: Setting, v: unknown): string | null {
 /// Keeps a number within the setting's limits, as the game will.
 export const clampTo = (s: Setting, v: number) => Math.min(s.max ?? Infinity, Math.max(s.min ?? -Infinity, v));
 
-const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
-/// The prop to write for a new value: undefined (leave it out) when it is the default, so a scene file says only what differs.
+/// The prop to write for a new value (a colour as "#rrggbb"). A value equal to the default is still written: some games read a
+/// level's props straight from the file (`nova.scene_data`), where nothing fills in defaults. Undefined leaves the prop out.
 export function propFor(s: Setting, v: unknown): unknown {
+  if (v === undefined) return undefined;
   if (s.type === "colour") {
     const c = colourOf(v);
-    if (c && s.default !== undefined && same(colourOf(s.default), c)) return undefined;
     return c ? colourHex(c) : v;
   }
-  if (s.default !== undefined && same(v, s.default)) return undefined;
   if ((s.type === "object" || s.type === "sprite" || s.type === "sound" || s.type === "music" || s.type === "model") && v === "" && s.default === undefined) return undefined;
   return v;
 }

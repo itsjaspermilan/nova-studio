@@ -3015,7 +3015,7 @@ fn settings_fill_defaults_inherit_convert_colours_and_clamp() {
         { "kind": "car", "name": "plain", "x": 0, "y": 0 },
         { "kind": "car", "name": "set", "x": 0, "y": 0, "props": { "speed": 12, "colour": "#0a0", "mood": "angry", "offset": [9, -2], "follow": "plain", "extra": { "any": 1 } } }
     ] }"##;
-    let enter = "  local a, b = self.plain, self.set\n  nova.log(string.format('%s %s %s %s %s %s %s %s', a.speed, a.wheels, table.concat(a.colour, ','), a.mood, tostring(a.lights), table.concat(a.offset, ','), tostring(a.follow), a.honk))\n  nova.log(string.format('%s %s %s %s %s', b.speed, table.concat(b.colour, ','), b.mood, table.concat(b.offset, ','), b.follow .. ' ' .. b.extra.any))\n  a.colour[1] = 1\n  nova.log(tostring(nova.spawn('car').colour[1]))";
+    let enter = "  local a, b = self.plain, self.set\n  nova.log('named ' .. tostring(nova.named(b.follow) == a) .. ' ' .. tostring(nova.named('nobody')))\n  nova.log(string.format('%s %s %s %s %s %s %s %s', a.speed, a.wheels, table.concat(a.colour, ','), a.mood, tostring(a.lights), table.concat(a.offset, ','), tostring(a.follow), a.honk))\n  nova.log(string.format('%s %s %s %s %s', b.speed, table.concat(b.colour, ','), b.mood, table.concat(b.offset, ','), b.follow .. ' ' .. b.extra.any))\n  a.colour[1] = 1\n  nova.log(tostring(nova.spawn('car').colour[1]))";
     let mut g = settings_game(CAR, scene, enter);
     steps(&mut g, 2);
     assert!(g.error.is_none(), "{:?}", g.error);
@@ -3037,6 +3037,7 @@ fn settings_fill_defaults_inherit_convert_colours_and_clamp() {
         .find(|x| x.starts_with("10 "))
         .expect("the second car");
     assert_eq!(b, "10 0,170,0 angry 5,-2 plain 1");
+    assert!(l.iter().any(|x| x == "named true nil"), "{l:?}");
     // a table default is copied per instance
     assert_eq!(l.last().unwrap(), "255");
 }

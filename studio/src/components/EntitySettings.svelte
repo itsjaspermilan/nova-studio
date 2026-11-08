@@ -1,7 +1,7 @@
 <script lang="ts">
   // The typed settings of a placed object, as its entity file declares them (`settings = { speed = { 4, min = 0, max = 10 } }`):
   // a slider or number box, a checkbox, a list, a colour picker, a vector or a pick of an object, sprite, sound or model.
-  // A value equal to the default is left out of the scene file; ↺ takes a setting back to its default.
+  // What is picked is written to the scene file (even the default); ↺ leaves the setting out again, so the default applies.
   import { clampTo, colourHex, colourOf, propFor, referenceNames, settingProblem, type Setting } from "../lib/entity-settings";
 
   let {
@@ -51,18 +51,18 @@
         {#if isSet(s)}<button class="ghost reset" title="Back to the default ({JSON.stringify(s.default ?? "none")})" aria-label="Reset {s.name} to its default" onclick={() => onset(s.name, undefined)}>↺</button>{/if}
       </div>
       {#if s.type === "number"}
-        {@const n = typeof v === "number" ? v : 0}
+        {@const n = typeof v === "number" ? v : undefined}
         <div class="line">
           {#if s.min !== undefined && s.max !== undefined}
-            <input type="range" min={s.min} max={s.max} step={stepOf(s)} value={live[s.name] ?? n} aria-label="{s.name} slider" oninput={(e) => (live[s.name] = Number(e.currentTarget.value))} onchange={(e) => { delete live[s.name]; change(s, Number(e.currentTarget.value)); }} />
+            <input type="range" min={s.min} max={s.max} step={stepOf(s)} value={live[s.name] ?? n ?? s.min} aria-label="{s.name} slider" oninput={(e) => (live[s.name] = Number(e.currentTarget.value))} onchange={(e) => { delete live[s.name]; change(s, Number(e.currentTarget.value)); }} />
           {/if}
-          <input class="number" type="number" min={s.min} max={s.max} step={stepOf(s)} value={live[s.name] ?? n} aria-label={s.name} onchange={(e) => change(s, clampTo(s, num(e.currentTarget.value, n)))} />
+          <input class="number" type="number" min={s.min} max={s.max} step={stepOf(s)} value={live[s.name] ?? n ?? ""} placeholder="none" aria-label={s.name} onchange={(e) => { const x = num(e.currentTarget.value, NaN); change(s, Number.isNaN(x) ? undefined : clampTo(s, x)); }} />
         </div>
       {:else if s.type === "boolean"}
         <label class="check"><input type="checkbox" checked={v === true} aria-label={s.name} onchange={(e) => change(s, e.currentTarget.checked)} /> {v === true ? "yes" : "no"}</label>
       {:else if s.type === "choice"}
         <select value={String(v)} aria-label={s.name} onchange={(e) => change(s, (s.choices ?? []).find((c) => String(c) === e.currentTarget.value))}>
-          {#each s.choices ?? [] as c (c)}<option value={String(c)}>{c}</option>{/each}
+          {#each s.choices ?? [] as c (c)}<option value={String(c)}>{c === "" ? "(none)" : c}</option>{/each}
           {#if !(s.choices ?? []).includes(v as string)}<option value={String(v)}>{String(v)} (not a choice)</option>{/if}
         </select>
       {:else if s.type === "colour"}

@@ -2,7 +2,7 @@
 local fx = require("lib.fx")
 local audio = require("lib.audio")
 local run = require("lib.run")
-local Switch = nova.entity { sprite = "items/switch_blue", sx = 0.5, sy = 0.5, pivot = { 0.5, 1 }, tags = { "touch", "switch" }, depth = 20, color = "blue", pressed = false, squash = 1 }
+local Switch = nova.entity { sprite = "items/switch_blue", sx = 0.5, sy = 0.5, pivot = { 0.5, 1 }, tags = { "touch", "switch" }, depth = 20, settings = { color = { "blue", choices = { "blue", "green", "red", "yellow" }, help = "Opens (or is opened by) everything of this colour" } }, pressed = false, squash = 1 }
 function Switch:update(dt) self.squash = self.squash + (1 - self.squash) * math.min(1, dt * 10) end
 function Switch:draw()
   local img = "items/switch_" .. self.color .. (self.pressed and "_pressed" or "")

@@ -547,7 +547,7 @@ return Player                                      -- the file must return the c
 return nova.entity(require("entities.enemy"), { hp = 500, tags = { "boss" } })
 ```
 
-- A spec's `sprite`, `model`, `tags`, `depth`, `hitbox`, `pivot` and `screen` are read by the engine; every
+- A spec's `sprite`, `model`, `tags`, `depth`, `hitbox`, `pivot`, `screen` and `settings` (below) are read by the engine; every
   other field is a default value for new instances (tables are copied per instance).
 - Inherited methods, defaults and tags come from the parent; a child can override any of them.
 - Built-in fields: `x`, `y`, `z`, `vx`, `vy`, `vz` (velocity moves the entity each step), `sx`,
@@ -572,10 +572,49 @@ return nova.entity(require("entities.enemy"), { hp = 500, tags = { "boss" } })
 and the timer methods below.
 
 **World functions:** `nova.spawn(kind_or_class, x, y [, props])`, `nova.each(tag, fn)`,
-`nova.all(tag)` (a fresh list of living entities), `nova.first(tag)`, `nova.count(tag)`,
+`nova.all(tag)` (a fresh list of living entities), `nova.first(tag)`, `nova.count(tag)`, `nova.named(name)` (the living entity the scene file named so),
 `nova.nearest(x, y, tag [, max_distance])`, `nova.in_radius(x, y, r, tag [, list_to_refill])` (both use a grid of the tag's entities once there are about forty, so they stay cheap with hundreds; they compare where entities are *now*, so an entity that jumped further than one square within a single step may be missed until the next),
 `nova.send(entity_or_tag, "method", ...)`, `nova.pause(on)` (freezes entities, timers keep going and
 the scene keeps updating, for pause menus).
+
+### Settings (what a scene may set on an entity)
+
+An entity can declare the fields a scene file may give it, each with a default, a type and limits, in its spec's
+`settings`. The studio's scene editor reads them and shows a slider, a list, a colour picker and so on instead of a
+plain box; the framework fills in the defaults and checks what a scene (or `nova.spawn`'s props) gives.
+
+```lua
+-- entities/car.lua
+local Car = nova.entity {
+  sprite = "car",
+  settings = {
+    speed  = { 4, min = 0, max = 10, step = 0.5, help = "How fast it drives, in tiles a second" },
+    lives  = 3,                                            -- a plain value is { 3 }: a number box
+    paint  = { "#ff8800", type = "colour" },               -- self.paint is { 255, 136, 0 }
+    mood   = { "calm", choices = { "calm", "angry" } },     -- a list to pick from
+    lights = { true },                                     -- a checkbox
+    offset = { { 0, 1 } },                                 -- a vector: x and y boxes (2 to 4 numbers)
+    follow = { type = "object", help = "Another object in the scene, by its name" },
+    honk   = { "beep", type = "sound" },                   -- also sprite, music and model
+  },
+}
+```
+
+- The first entry is the default; the type follows from it (a number, true/false, text, a list of numbers is a
+  `vector`, `choices` make a `choice`) or is given: `colour` (or `color`), `vector`, `object`, `sprite`, `sound`, `music`,
+  `model`, `text`, `number`, `boolean`. A setting with a type and no default (`{ type = "object" }`) is nil until a scene sets it.
+- `min` and `max` keep a number (each number of a vector) within limits: a value outside is brought inside and the log says
+  so once. With both, the studio shows a slider. `step` is the studio's step. `help` is the tooltip in the studio.
+- A value of the wrong kind stops the game with a message naming the file: `entities/car.lua: the setting 'mood' must be one
+  of "calm", "angry", not "sad"`. So does a mistake in the declaration (an unknown key such as `minn`, `min` above `max`).
+- Colours are written `"#rrggbb"` (or `"#rgb"`, `"#rrggbbaa"`, or `{ r, g, b }`) and arrive as `{ r, g, b [, a] }`, 0 to 255.
+  A reference (`object`, `sprite`, `sound`, `music`, `model`) is the name as text (`"hero"`, `"jump"`); the framework does
+  not look the object up (it may not exist yet when this one is built): `nova.named(self.follow)` gives the living entity, asked in `update`.
+- Settings are inherited: a child's setting of the same name replaces the parent's, and a child's plain field of that name
+  (`speed = 80`) is a new default for it, checked the same way. A field may not be both a setting and a plain field of one spec.
+- Props that are not settings still pass through as plain fields (and the studio shows them as before, below the settings).
+- The studio writes what is picked, the default included, so games that read an object's props straight from the file with
+  `nova.scene_data` (a level's settings) see every value; ↺ takes a setting out of the scene file again.
 
 ### Scenes
 
@@ -615,7 +654,7 @@ Data only: loading it never runs code. Defaults are shown; unknown keys are erro
 ```
 
 `objects` spawn `entities/<kind>.lua` with `props` as field values; a value may be text, a number, true/false, or a list or table (any JSON),
-which the studio's inspector shows and takes as JSON (`[170, 160, 130]`). A game keeps a level's or a course's settings as the props of one
+which the studio's inspector shows and takes as JSON (`[170, 160, 130]`). Props the entity declares as `settings` (above) are checked and shown by their type. A game keeps a level's or a course's settings as the props of one
 object in its scene file, read by its entity when the scene is built or with `nova.scene_data` (Potion Panic's `level`, Pine Ridge Rally's
 `race`), so that nothing about a level is written in code. `images` are pictures
 (`"layer"`: `"world"`, the default, or `"ui"`). `texts` are UI text. `width` and `height` set the

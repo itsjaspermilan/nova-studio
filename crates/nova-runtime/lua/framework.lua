@@ -2251,6 +2251,16 @@ end
 
 function nova.current_scene() return W.scene_name and (W.scene_name:gsub("^scenes%.", "")) end
 
+-- The living entity a scene file named (its object's "name"), for settings of type "object": nova.named(self.follow). Nil when there is none
+-- (or it is gone). The running scene's names are set once its whole file is built, so ask in update, not in create.
+function nova.named(name)
+  if name == nil or name == "" then return nil end
+  local scene = W.scene
+  local e = scene and rawget(scene, name)
+  if type(e) == "table" and rawget(getmetatable(e) or {}, "__kind") == "entity" and not e._dead then return e end
+  return nil
+end
+
 local function switch_if_pending()
   local p = W.pending
   if p then

@@ -836,7 +836,7 @@
           {@const declared = kindSettings.get(String(field("kind") ?? "")) ?? []}
           {#if declared.length}
             <h4>Settings</h4>
-            <p class="dim small">Declared in <code>{entityPath(String(field("kind")))}</code>. A highlighted one differs from the default; hover for help.</p>
+            <p class="dim small">Declared in <code>{entityPath(String(field("kind")))}</code>. A highlighted one is set in this scene (↺ goes back to the default); hover for help.</p>
             <EntitySettings settings={declared} props={(item.props ?? {}) as Record<string, unknown>} files={studio.files.filter((f) => !f.dir).map((f) => f.path)} objectNames={objectNames.filter((n) => n !== field("name"))} onset={(k, v) => edit(setProp(scene, selected!, k, v as PropValue | undefined))} />
           {/if}
           <h4>{declared.length ? "Other properties" : "Properties"}</h4>

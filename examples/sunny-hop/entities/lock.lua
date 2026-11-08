@@ -4,7 +4,7 @@ local world = require("lib.world")
 local fx = require("lib.fx")
 local audio = require("lib.audio")
 local run = require("lib.run")
-local Lock = nova.entity { sprite = "items/lock_yellow", sx = 0.5, sy = 0.5, tags = { "touch", "lock" }, depth = 20, color = "yellow", opening = -1, waiting = false }
+local Lock = nova.entity { sprite = "items/lock_yellow", sx = 0.5, sy = 0.5, tags = { "touch", "lock" }, depth = 20, settings = { color = { "yellow", choices = { "blue", "green", "red", "yellow" }, help = "Opens (or is opened by) everything of this colour" } }, opening = -1, waiting = false }
 function Lock:create()
   self.solid = world.add_box({ x0 = self.x - 24, y0 = self.y - 24, x1 = self.x + 24, y1 = self.y + 24, owner = self })
 end

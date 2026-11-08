@@ -12,8 +12,11 @@ local Enemy = require("entities.enemy")
 
 local SIZE = { king_slime = { 110, 84 }, sand_snail = { 120, 92 }, frost_block = { 128, 128 }, fire_king = { 110, 84 } }
 local Boss = nova.entity(Enemy, {
-  sprite = "boss/king_slime", sx = 0.5, sy = 0.5, kind = "king_slime", hp = 3, max_hp = 3, walker = false, boss = true, depth = 4,
+  sprite = "boss/king_slime", sx = 0.5, sy = 0.5, hp = 3, max_hp = 3, walker = false, boss = true, depth = 4,
   phase = "intro", timer = 1.6, inv = 0, spins = 0,
+  settings = {
+    kind = { "king_slime", choices = { "king_slime", "sand_snail", "frost_block", "fire_king" }, help = "Which boss: how it moves and attacks" },
+  },
 })
 
 function Boss:init()

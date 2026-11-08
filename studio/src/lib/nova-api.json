@@ -626,7 +626,7 @@
   "name": "nova.entity",
   "kind": "function",
   "signature": "nova.entity([parent,] spec)",
-  "doc": "Define an entity class. Spec: sprite, model, tags, depth, hitbox, screen, and default fields.",
+  "doc": "Define an entity class. Spec: sprite, model, tags, depth, hitbox, screen, settings, and default fields. settings = { speed = { 4, min = 0, max = 10, help = \"...\" }, paint = { \"#ff8800\", type = \"colour\" }, mood = { \"calm\", choices = { \"calm\", \"angry\" } } } declares what a scene may set: a default, a type (number, boolean, text, choice, colour, vector, object, sprite, sound, music, model), limits, a step and help; values are checked and colours arrive as { r, g, b }.",
   "group": "Scenes and entities"
  },
  {
@@ -662,6 +662,13 @@
   "kind": "function",
   "signature": "nova.current_scene() -> name",
   "doc": "The name of the running scene.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.named",
+  "kind": "function",
+  "signature": "nova.named(name) -> entity or nil",
+  "doc": "The living entity that the running scene file names so (an object's \"name\"): for a setting of type \"object\", nova.named(self.follow). Ask in update; names are set once the whole scene is built.",
   "group": "Scenes and entities"
  },
  {

@@ -3,7 +3,16 @@
 -- snow, stone, purple; or logs or plank). Place it by its left end's top.
 local world = require("lib.world")
 local fx = require("lib.fx")
-local Platform = nova.entity { sprite = "items/plat_grass_m", sx = 0.5, sy = 0.5, depth = 15, width = 3, dx = 4, dy = 0, period = 5, phase = 0, style = "grass" }
+local Platform = nova.entity { sprite = "items/plat_grass_m", sx = 0.5, sy = 0.5, depth = 15,
+  settings = {
+    width = { 3, min = 1, max = 12, step = 1, help = "How long it is, in tiles" },
+    dx = { 4, step = 1, help = "Tiles across to the far end of its path (minus: to the left)" },
+    dy = { 0, step = 1, help = "Tiles down to the far end of its path (minus: up)" },
+    period = { 5, min = 0.5, max = 20, step = 0.1, help = "Seconds for a round trip" },
+    phase = { 0, min = 0, max = 1, step = 0.05, help = "Where on its path it starts (0 to 1)" },
+    style = { "grass", choices = { "grass", "dirt", "sand", "snow", "stone", "purple", "logs", "plank" } },
+  },
+}
 function Platform:create()
   self.home_x, self.home_y = self.x, self.y
   local w = self.width * 48
