@@ -3,8 +3,8 @@
 //! project root held in the app state and is confined to it (`paths`).
 
 pub mod audio_files;
-mod device;
 mod debug_link;
+mod device;
 mod headless;
 mod paths;
 mod project_files;

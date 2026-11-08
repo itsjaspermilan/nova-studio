@@ -676,7 +676,13 @@ mod tests {
         // only a game that plays over wifi asks for the network; every game may rumble
         assert!(!text.contains("@PERMISSIONS@") && !text.contains("INTERNET"));
         assert!(text.contains("android.permission.VIBRATE"));
-        let online = manifest(&Identity { network: true, ..id }, true);
+        let online = manifest(
+            &Identity {
+                network: true,
+                ..id
+            },
+            true,
+        );
         assert!(online.contains("android.permission.INTERNET"));
         assert!(online.contains("android.permission.CHANGE_WIFI_MULTICAST_STATE"));
     }

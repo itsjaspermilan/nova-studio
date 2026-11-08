@@ -65,8 +65,8 @@ fn builtin_module(name: &str) -> Option<&'static str> {
 mod animated;
 mod billboard_api;
 mod debug_api;
-mod players_api;
 mod physics_api;
+mod players_api;
 mod retained_api;
 mod shader_api;
 mod solid_api;
