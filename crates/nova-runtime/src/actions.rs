@@ -53,6 +53,12 @@ pub struct InputFrame {
     pub pointer: PointerFrame,
     /// Characters typed on a keyboard this frame, in order (backspace is \u{8} and enter is \n): `nova.input.typed()`.
     pub typed: String,
+    /// The gamepads connected now, in the order they were plugged in, and what each is doing. The game seats each one as a
+    /// player (`players.rs`) and adds its numbered sources (`pad2:south`); the plain `pad:` and `axis:` sources are
+    /// already in `sources`.
+    pub pads: Vec<crate::input::PadState>,
+    /// The pad that pressed `last_source`, by its key (see [`crate::input::PadState::key`]).
+    pub last_pad: Option<String>,
 }
 
 impl InputFrame {
@@ -303,6 +309,37 @@ impl Source {
 
     /// Strength 0 to 1 when used as `direction` (+1 for a positive list, -1 for a negative one).
     fn strength(&self, sources: &Sources, direction: i8) -> f32 {
+        self.strength_for(sources, direction, Seat::Anyone)
+    }
+
+    /// The strength as one player feels it: `pad:` and `axis:` (any pad) read that player's own pad, and keys, the mouse
+    /// and touch count only when `seat` says the player has them.
+    fn strength_for(&self, sources: &Sources, direction: i8, seat: Seat) -> f32 {
+        if let Seat::Player { number, keyboard } = seat {
+            match self {
+                Source::Pad { player: 0, name } => {
+                    return Source::Pad {
+                        player: number,
+                        name: name.clone(),
+                    }
+                    .strength(sources, direction);
+                }
+                Source::Axis {
+                    player: 0,
+                    name,
+                    sign,
+                } => {
+                    return Source::Axis {
+                        player: number,
+                        name: name.clone(),
+                        sign: *sign,
+                    }
+                    .strength(sources, direction);
+                }
+                Source::Key(_) | Source::Touch(_) | Source::Mouse(_) if !keyboard => return 0.0,
+                _ => {}
+            }
+        }
         let get = |id: &str| sources.get(id).copied().unwrap_or(0.0);
         match self {
             Source::Key(_) | Source::Pad { .. } => get(&self.id()).clamp(0.0, 1.0),
@@ -336,24 +373,49 @@ pub enum Binding {
     },
 }
 
+/// Whose input a binding is read for.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Seat {
+    /// Every source as written (`pad:` is any pad): what `nova.input.down("jump")` reads.
+    Anyone,
+    /// One player: `pad:` and `axis:` mean this player's pad; keys, mouse and touch count only with `keyboard`.
+    Player { number: u8, keyboard: bool },
+}
+
 impl Binding {
     pub fn value(&self, sources: &Sources) -> f32 {
+        self.value_for(sources, Seat::Anyone)
+    }
+
+    /// The value as one player feels it (see [`Seat`]).
+    pub fn value_for(&self, sources: &Sources, seat: Seat) -> f32 {
         match self {
             Binding::Button(list) => list
                 .iter()
-                .map(|s| s.strength(sources, 1))
+                .map(|s| s.strength_for(sources, 1, seat))
                 .fold(0.0, f32::max),
             Binding::Axis { negative, positive } => {
                 let neg = negative
                     .iter()
-                    .map(|s| s.strength(sources, -1))
+                    .map(|s| s.strength_for(sources, -1, seat))
                     .fold(0.0, f32::max);
                 let pos = positive
                     .iter()
-                    .map(|s| s.strength(sources, 1))
+                    .map(|s| s.strength_for(sources, 1, seat))
                     .fold(0.0, f32::max);
                 pos - neg
             }
+        }
+    }
+
+    /// The binding as JSON, the way `nova.json` and `nova.input.bind` write it.
+    pub fn to_json(&self) -> Value {
+        match self {
+            Binding::Button(l) => Value::from(l.iter().map(Source::id).collect::<Vec<_>>()),
+            Binding::Axis { negative, positive } => serde_json::json!({
+                "negative": negative.iter().map(Source::id).collect::<Vec<_>>(),
+                "positive": positive.iter().map(Source::id).collect::<Vec<_>>(),
+            }),
         }
     }
 
@@ -586,7 +648,19 @@ impl Bindings {
     pub fn names(&self) -> Vec<&str> {
         self.map.keys().map(String::as_str).collect()
     }
+
+    /// Every action and its binding, in name order.
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &Binding)> {
+        self.map.iter().map(|(k, v)| (k.as_str(), v))
+    }
 }
+
+/// Every action's value that is not zero, and how many times each went down and came up (see `ActionStates::counts`).
+pub type Counts<'a> = (
+    HashMap<String, f32>,
+    &'a HashMap<String, u32>,
+    &'a HashMap<String, u32>,
+);
 
 /// The current value of every action plus edge detection.
 ///
@@ -601,9 +675,89 @@ pub struct ActionStates {
     latched_released: HashSet<String>,
     step_pressed: HashSet<String>,
     step_released: HashSet<String>,
+    /// How many times each action has gone down and come up since the start (sent over the network, so that a tap whose
+    /// packets were lost still arrives as a press).
+    presses: HashMap<String, u32>,
+    releases: HashMap<String, u32>,
 }
 
 impl ActionStates {
+    /// Re-evaluates every action as one player feels it (see [`Seat`]). `own` holds the actions bound for this player alone
+    /// (`nova.input.bind(name, sources, player)`): those read every source, keys included, with `pad:` meaning this
+    /// player's pad.
+    pub fn update_player(
+        &mut self,
+        bindings: &Bindings,
+        own: &BTreeMap<String, Binding>,
+        sources: &Sources,
+        number: u8,
+        keyboard: bool,
+    ) {
+        for (name, binding) in &bindings.map {
+            let (binding, keyboard) = match own.get(name) {
+                Some(b) => (b, true),
+                None => (binding, keyboard),
+            };
+            let v = binding.value_for(sources, Seat::Player { number, keyboard });
+            self.set_value(name, v, binding.is_axis());
+        }
+    }
+
+    /// Sets every action from values that arrived from elsewhere (another device's player): actions missing from
+    /// `values` are let go. `presses` and `releases` are that device's counts (see [`ActionStates::counts`]): a count that
+    /// went up is an edge even when the value never showed it.
+    pub fn update_remote(
+        &mut self,
+        bindings: &Bindings,
+        values: &HashMap<String, f32>,
+        presses: &HashMap<String, u32>,
+        releases: &HashMap<String, u32>,
+    ) {
+        for (name, binding) in &bindings.map {
+            let v = values.get(name).copied().unwrap_or(0.0);
+            self.set_value(name, v, binding.is_axis());
+            for (theirs, ours, latch) in [
+                (presses, &mut self.presses, &mut self.latched_pressed),
+                (releases, &mut self.releases, &mut self.latched_released),
+            ] {
+                let count = theirs.get(name).copied().unwrap_or(0);
+                let seen = ours.entry(name.clone()).or_insert(0);
+                if count > *seen {
+                    latch.insert(name.clone());
+                }
+                *seen = count.max(*seen);
+            }
+        }
+    }
+
+    /// Mixes another state in (the any-player state takes every remote player's actions): a value is the bigger of the two,
+    /// and its presses and releases count here too.
+    pub fn absorb(&mut self, other: &ActionStates, bindings: &Bindings) {
+        for (name, binding) in &bindings.map {
+            let theirs = other.value(name);
+            if theirs.abs() > self.value(name).abs() {
+                self.set_value(name, theirs, binding.is_axis());
+            }
+            if other.latched_pressed.contains(name) {
+                self.latched_pressed.insert(name.clone());
+            }
+            if other.latched_released.contains(name) {
+                self.latched_released.insert(name.clone());
+            }
+        }
+    }
+
+    /// Every action's value that is not zero, and how many times each has gone down and come up.
+    pub fn counts(&self) -> Counts<'_> {
+        let values = self
+            .values
+            .iter()
+            .filter(|(_, v)| **v != 0.0)
+            .map(|(k, v)| (k.clone(), *v))
+            .collect();
+        (values, &self.presses, &self.releases)
+    }
+
     /// Re-evaluates every action from this frame's sources, then applies `overrides` (used by
     /// `--hold` and tests) on top.
     pub fn update(&mut self, bindings: &Bindings, sources: &Sources, overrides: &[(String, f32)]) {
@@ -630,10 +784,12 @@ impl ActionStates {
             (false, true) => {
                 self.down.insert(name.to_string());
                 self.latched_pressed.insert(name.to_string());
+                *self.presses.entry(name.to_string()).or_insert(0) += 1;
             }
             (true, false) => {
                 self.down.remove(name);
                 self.latched_released.insert(name.to_string());
+                *self.releases.entry(name.to_string()).or_insert(0) += 1;
             }
             _ => {}
         }

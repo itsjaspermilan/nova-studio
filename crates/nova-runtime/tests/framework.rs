@@ -1733,7 +1733,8 @@ fn rumble_is_queued_for_the_host_and_mistakes_are_explained() {
     for (script, expected) in [
         ("nova.input.rumble(2)", "from 0 to 1"),
         ("nova.input.rumble(0.5, 0)", "greater than 0"),
-        ("nova.input.rumble { pad = 9 }", "pad must be"),
+        ("nova.input.rumble { pad = 9 }", "player must be"),
+        ("nova.input.rumble(0.5, 0.2, 5)", "player must be"),
         ("nova.input.rumble('hard')", "takes a strength"),
     ] {
         let g = project(vec![("main.lua", lua(script))]);

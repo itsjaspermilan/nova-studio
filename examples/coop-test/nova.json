@@ -1,0 +1,12 @@
+{
+  "format": 1,
+  "name": "Coop Test",
+  "version": "0.1.0",
+  "local_network": true,
+  "input": {
+    "ok": ["pad:east", "key:Enter", "key:Space"],
+    "back": ["pad:south", "key:Escape", "key:Backspace"],
+    "dash": ["pad:east", "key:Space", "key:KeyZ"],
+    "menu": ["pad:start", "key:Tab"]
+  }
+}

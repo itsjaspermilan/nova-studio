@@ -7,6 +7,9 @@
     <uses-feature android:name="android.hardware.vulkan.version" android:version="0x400003" android:required="false" />
     <uses-feature android:name="android.hardware.gamepad" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <!-- nova.input.rumble shakes the handheld when its own controls have no motor -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    @PERMISSIONS@
 
     <application
         android:label="@LABEL@"

@@ -66,6 +66,9 @@ pub struct Manifest {
     pub version: Option<String>,
     /// The raw `"input"` section (validated when the manifest is read).
     pub input: Option<serde_json::Value>,
+    /// `"local_network": true`: the game plays with other devices on the same wifi (`nova.net`); an Android build then
+    /// asks for network access.
+    pub local_network: bool,
 }
 
 pub struct Project {
@@ -157,6 +160,15 @@ pub fn parse_manifest(text: &str, warnings: &mut Vec<String>) -> Result<Manifest
             ));
         }
     };
+    let local_network = match object.get("local_network") {
+        None => false,
+        Some(Value::Bool(b)) => *b,
+        Some(_) => {
+            return Err(field_error(
+                "\"local_network\" must be true (the game plays with other devices on the same wifi) or false",
+            ));
+        }
+    };
     for key in object.keys() {
         if ![
             "format",
@@ -166,6 +178,7 @@ pub fn parse_manifest(text: &str, warnings: &mut Vec<String>) -> Result<Manifest
             "sprite_filter",
             "version",
             "input",
+            "local_network",
         ]
         .contains(&key.as_str())
         {
@@ -183,6 +196,7 @@ pub fn parse_manifest(text: &str, warnings: &mut Vec<String>) -> Result<Manifest
         smooth_sprites,
         version,
         input,
+        local_network,
     })
 }
 

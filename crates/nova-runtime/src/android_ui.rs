@@ -20,6 +20,11 @@ pub fn init(app: &AndroidApp) {
     let _ = APP.set(app.clone());
 }
 
+/// The app, once [`init`] has run (for other JNI calls: `android_input.rs`).
+pub fn app() -> Option<&'static AndroidApp> {
+    APP.get()
+}
+
 /// Hides the status and navigation bars. Failures are logged and otherwise ignored (the game still runs, with bars).
 pub fn hide_system_bars() {
     let Some(app) = APP.get() else { return };

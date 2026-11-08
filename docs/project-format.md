@@ -76,6 +76,7 @@ Rally's are rendered by the game itself (`scripts/rally/art.sh`).
 | `world_height` | no | Height in pixels of the world render target, default `540`; `0` means native screen resolution; at most 4320. The width follows the screen's aspect. UI always renders at native resolution. |
 | `sprite_filter` | no | `"pixel"` (default): pictures are drawn with sharp pixels, as pixel art wants. `"smooth"`: bilinear filtering, for drawn (not pixel-art) pictures shown larger or smaller than they are; each picture then gets a one-pixel border copied from its edge in the atlas so that edges do not bleed. Draw such pictures at about twice the size they are shown in the game's units, since a handheld's screen has about two pixels to each. |
 | `version` | no | Free-form version string. |
+| `local_network` | no | `true`: the game plays with other devices on the same wifi (`nova.net`, see `docs/local-coop.md`); an Android build then has network access. Default `false`: `nova.net` refuses and the APK asks for none. |
 
 Unknown keys produce a warning and are ignored. Malformed manifests are rejected with an
 explanation (invalid JSON with line and column, wrong types, paths that escape the project,
@@ -507,13 +508,30 @@ name is added:
 `ShiftLeft`, `F5`...), `pad:<button>` (`south east west north l1 r1 l2 r2 start select thumb_l thumb_r
 dpad_up dpad_down dpad_left dpad_right`), `axis:<name>` (`left_x left_y right_x right_y l2 r2`; add `+`
 or `-` to take only one direction), `mouse:<button>` (`left right middle`) and `touch:<zone>` (`left`, `right`, `drag_x`, `drag_y`). **Several gamepads:** `pad:south` is held on any pad and `axis:left_x` follows the stick that moves most, which is what a
-one-player game wants; `pad2:south` and `axis2:left_x` (up to `pad4`/`axis4`) are only the second pad, counting in the
-order the pads were plugged in (`pad1:` is the first), for a game with several players. Numbered pads work on desktop;
-Android reports every controller as one pad for now. Analogue
+one-player game wants; `pad2:south` and `axis2:left_x` (up to `pad4`/`axis4`) are only player 2's pad (each pad keeps
+its player number while it is connected and gets it back when it reconnects; see "Players" below), for a game with several
+players. Numbered pads work on desktop and on Android. Analogue
 sources have a 20% dead zone. A mistake in `nova.json` stops the project from loading and names the
 exact place, for example `nova.json.input.fire[0]: 'Nope' is not a key name`. At run time,
 `nova.input.bind("jump", { "key:KeyM", "pad:east" })` changes an action for the rest of the run; save
-the player's choice with `nova.save` and bind again at start-up.
+the player's choice with `nova.input.save_controls()` (read back at start-up).
+
+**Players** (2026-11-08; the whole story is `docs/local-coop.md`). Every controller is a player, 1 to 4; player 1 also
+has the keyboard. `nova.input.down("jump", 2)` (and `pressed`, `released`, `axis`) reads an action as player 2 feels it:
+`pad:` and `axis:` in the binding mean that player's pad; without the number, anyone's input counts, as before.
+`nova.input.player(2)` is the same as an object (`p.pressed("jump")`). `nova.input.players()` lists the seats
+(`{ player, name, connected, remote, rumble }`) and `nova.input.player_events()` says who joined, left or came back.
+`nova.input.bind(action, sources, player)` changes an action for one player; `nova.input.save_controls()` keeps the
+choices; `nova.input.next_source()` returns the source and the player who pressed it. `nova.input.rumble(strength,
+seconds, player)` shakes one player's pad (on Android, the handheld itself for its built-in controls). Button prompts:
+`nova.input.glyph("pad:south")` is `"B", "button_b"` (Nintendo-style labels by position: south B, east A, north X, west
+Y) and `nova.input.prompt("jump", player)` gives what to show for an action.
+
+**Local co-op** (`nova.net`, needs `"local_network": true` in `nova.json`): one device hosts (`nova.net.host{ players
+= 2 }`), others on the same wifi find it (`nova.net.find()`) and join (`nova.net.join(id)`). The host runs the game and
+sees each joined player as another player (`nova.input.down("jump", 2)`); it sets `nova.net.state(t)` every frame and
+the joined devices draw `nova.net.state()`. `nova.net.send` / `receive` carry messages that arrive in order;
+`status`, `players`, `events`, `me`, `name`, `address` and `leave` tell and do the rest. See `docs/local-coop.md`.
 
 Android: gamepad *buttons* and the D-pad work (as key events). Analogue sticks and triggers do not
 reach the game on Android yet.

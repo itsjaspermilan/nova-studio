@@ -810,6 +810,11 @@ impl DeviceId {
     pub const fn dummy() -> Self {
         DeviceId(0)
     }
+
+    // NOVA PATCH: read by `platform::android::DeviceIdExtAndroid`.
+    pub const fn android_id(&self) -> i32 {
+        self.0
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

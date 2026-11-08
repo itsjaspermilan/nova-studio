@@ -45,9 +45,15 @@ pub fn back_as_escape(key: PhysicalKey) -> PhysicalKey {
 #[derive(Default)]
 pub struct Input {
     keys: HashSet<KeyCode>,
-    native: HashSet<u32>,
-    /// Latest value of each Android motion axis from a game controller, by axis code.
-    native_axes: HashMap<u32, f32>,
+    /// Android: the native key codes held, and the latest value of each motion axis (by axis code), for each input device
+    /// (by its Android id; desktop tests use 0).
+    native: HashMap<i32, HashSet<u32>>,
+    native_axes: HashMap<i32, HashMap<u32, f32>>,
+    /// Android: the game controllers the system lists (asked about once a second), and when it was last asked.
+    #[cfg(target_os = "android")]
+    controllers: Vec<crate::android_input::Controller>,
+    #[cfg(target_os = "android")]
+    controllers_checked: Option<std::time::Instant>,
     touches: HashMap<u64, ([f32; 2], [f32; 2])>,
     width: f32,
     #[cfg(not(target_os = "android"))]
@@ -136,30 +142,100 @@ pub struct PadSnapshot {
     pub axes: Vec<(&'static str, f32)>,
 }
 
-/// Turns the connected pads (first plugged in first) into sources: `pad1:south`, `axis2:left_x` for each pad (up to
-/// `MAX_PADS`), and the combined `pad:south` (any pad holds it) and `axis:left_x` (the pad that moves it most) that a
+/// One connected gamepad.
+#[derive(Default, Clone, Debug, PartialEq)]
+pub struct PadState {
+    /// Who it is, stable while it stays connected (and, on Android, across reconnects: the system's device descriptor).
+    /// Empty for input from no particular controller (`adb shell input keyevent`), which counts as player 1's.
+    pub key: String,
+    /// What the system calls it ("Retroid Pocket Controller", "Xbox Wireless Controller").
+    pub name: String,
+    /// It can shake (or, for a handheld's own controls, the handheld can).
+    pub rumble: bool,
+    pub snap: PadSnapshot,
+}
+
+/// The combined sources of all pads: `pad:south` (any pad holds it) and `axis:left_x` (the pad that moves it most), which a
 /// one-player game binds to.
-pub fn pads_to_sources(pads: &[PadSnapshot], out: &mut Sources) {
-    use crate::actions::{MAX_PADS, pad_kind};
-    for (i, snap) in pads.iter().enumerate() {
-        let player = (i + 1).min(MAX_PADS as usize + 1) as u8;
-        for name in &snap.buttons {
+pub fn any_pad_sources(pads: &[PadState], out: &mut Sources) {
+    for pad in pads {
+        for name in &pad.snap.buttons {
             out.insert(format!("pad:{name}"), 1.0);
-            if player <= MAX_PADS {
-                out.insert(format!("{}:{name}", pad_kind("pad", player)), 1.0);
-            }
         }
-        for (name, value) in &snap.axes {
+        for (name, value) in &pad.snap.axes {
             let any = out.entry(format!("axis:{name}")).or_insert(0.0);
             if value.abs() > any.abs() {
                 *any = *value;
             }
-            if player <= MAX_PADS {
-                out.insert(format!("{}:{name}", pad_kind("axis", player)), *value);
-            }
         }
     }
 }
+
+/// One player's pad as numbered sources: `pad2:south`, `axis2:left_x` (several pads seated as one player add up, as the
+/// plain sources do).
+pub fn seated_pad_sources(player: u8, snap: &PadSnapshot, out: &mut Sources) {
+    use crate::actions::pad_kind;
+    for name in &snap.buttons {
+        out.insert(format!("{}:{name}", pad_kind("pad", player)), 1.0);
+    }
+    for (name, value) in &snap.axes {
+        let v = out
+            .entry(format!("{}:{name}", pad_kind("axis", player)))
+            .or_insert(0.0);
+        if value.abs() > v.abs() {
+            *v = *value;
+        }
+    }
+}
+
+/// An Android device's held key codes and axes as one pad's buttons and axes.
+fn native_snapshot(keys: Option<&HashSet<u32>>, axes: Option<&HashMap<u32, f32>>) -> PadSnapshot {
+    let mut snap = PadSnapshot::default();
+    for code in keys.into_iter().flatten() {
+        if let Some(name) = native_pad_name(*code)
+            && !snap.buttons.contains(&name)
+        {
+            snap.buttons.push(name);
+        }
+    }
+    if let Some(axes) = axes {
+        for (name, value) in native_axis_sources(axes) {
+            if let Some(button) = name.strip_prefix("pad:") {
+                if let Some(b) = PAD_NAMES.iter().find(|b| **b == button)
+                    && !snap.buttons.contains(b)
+                {
+                    snap.buttons.push(b);
+                }
+            } else if let Some(axis) = name.strip_prefix("axis:")
+                && let Some(a) = AXIS_NAMES.iter().find(|a| **a == axis)
+                && value != 0.0
+            {
+                snap.axes.push((a, value));
+            }
+        }
+    }
+    snap
+}
+
+const PAD_NAMES: [&str; 16] = [
+    "south",
+    "east",
+    "west",
+    "north",
+    "l1",
+    "r1",
+    "l2",
+    "r2",
+    "start",
+    "select",
+    "thumb_l",
+    "thumb_r",
+    "dpad_up",
+    "dpad_down",
+    "dpad_left",
+    "dpad_right",
+];
+const AXIS_NAMES: [&str; 6] = ["left_x", "left_y", "right_x", "right_y", "l2", "r2"];
 
 /// Android `KeyEvent` codes for game controllers and the D-pad.
 fn native_pad_name(code: u32) -> Option<&'static str> {
@@ -211,9 +287,11 @@ impl Input {
             connected.sort_by_key(|(id, _)| usize::from(*id));
             let ids: Vec<_> = connected
                 .iter()
-                .enumerate()
-                .filter(|(i, (_, ff))| *ff && (r.pad == 0 || usize::from(r.pad) == i + 1))
-                .map(|(_, (id, _))| *id)
+                .filter(|(id, ff)| {
+                    *ff && (r.pad == 0
+                        || r.devices.contains(&format!("gilrs:{}", usize::from(*id))))
+                })
+                .map(|(id, _)| *id)
                 .collect();
             if ids.is_empty() {
                 return;
@@ -248,7 +326,30 @@ impl Input {
             }
         }
         #[cfg(target_os = "android")]
-        log::debug!("rumble is not wired up on Android yet: {r:?}");
+        {
+            // the pads asked for (all when none is named); a pad with no motor of its own that is part of the handheld
+            // shakes the handheld, and so does input from no particular controller
+            let strength = r.strong.max(r.weak);
+            let ms = (r.seconds * 1000.0) as i64;
+            let mut handheld = false;
+            for c in &self.controllers {
+                if r.pad != 0 && !r.devices.contains(&c.descriptor) {
+                    continue;
+                }
+                if c.vibrator {
+                    crate::android_input::vibrate(Some(c.id), strength, ms);
+                } else if !c.external {
+                    handheld = true;
+                }
+            }
+            if r.devices.iter().any(String::is_empty) || (self.controllers.is_empty() && r.pad == 0)
+            {
+                handheld = true;
+            }
+            if handheld {
+                crate::android_input::vibrate(None, strength, ms);
+            }
+        }
     }
 
     /// True once after F3 is pressed.
@@ -267,6 +368,11 @@ impl Input {
 
     /// A key press or release (see [`back_as_escape`]: Android's Back key is Escape).
     pub fn key(&mut self, event: &KeyEvent) {
+        self.key_from(0, event);
+    }
+
+    /// A key press or release from one input device (on Android, its id: a controller's buttons are keys).
+    pub fn key_from(&mut self, device: i32, event: &KeyEvent) {
         let down = event.state == ElementState::Pressed;
         if down {
             use winit::keyboard::{Key, NamedKey};
@@ -292,13 +398,7 @@ impl Input {
                 }
             }
             PhysicalKey::Unidentified(NativeKeyCode::Android(code)) => {
-                if down {
-                    if self.native.insert(code) {
-                        log::info!("native key down: {code}");
-                    }
-                } else {
-                    self.native.remove(&code);
-                }
+                self.native_key(device, code, down)
             }
             PhysicalKey::Unidentified(other) => {
                 self.last_unknown_key = Some(format!("{other:?}"));
@@ -306,9 +406,106 @@ impl Input {
         }
     }
 
+    /// An Android key code went down or up on one input device.
+    pub fn native_key(&mut self, device: i32, code: u32, down: bool) {
+        let held = self.native.entry(device).or_default();
+        if down {
+            if held.insert(code) {
+                log::info!("native key down: {code} (device {device})");
+            }
+        } else {
+            held.remove(&code);
+        }
+    }
+
     /// A controller's motion axis changed (Android axis code and value).
     pub fn native_axis(&mut self, code: u32, value: f32) {
-        self.native_axes.insert(code, value);
+        self.native_axis_from(0, code, value);
+    }
+
+    /// A motion axis of one input device changed.
+    pub fn native_axis_from(&mut self, device: i32, code: u32, value: f32) {
+        self.native_axes
+            .entry(device)
+            .or_default()
+            .insert(code, value);
+    }
+
+    /// The Android controllers as pads: those the system lists (asked again once a second), and any other device that sent
+    /// controller input. A device that is not a controller (`adb shell input`, a keyboard) has an empty key: player 1's.
+    fn native_pads(&mut self) -> Vec<PadState> {
+        #[cfg(target_os = "android")]
+        if self
+            .controllers_checked
+            .is_none_or(|t| t.elapsed() >= std::time::Duration::from_secs(1))
+        {
+            self.controllers_checked = Some(std::time::Instant::now());
+            match crate::android_input::controllers() {
+                Ok(list) => {
+                    if list != self.controllers {
+                        log::info!("controllers: {list:?}");
+                    }
+                    self.controllers = list;
+                }
+                Err(e) => log::warn!("cannot list the controllers: {e}"),
+            }
+        }
+        #[cfg(target_os = "android")]
+        let listed: Vec<(i32, String, String, bool)> = self
+            .controllers
+            .iter()
+            .map(|c| {
+                (
+                    c.id,
+                    c.descriptor.clone(),
+                    c.name.clone(),
+                    c.vibrator || !c.external,
+                )
+            })
+            .collect();
+        #[cfg(not(target_os = "android"))]
+        let listed: Vec<(i32, String, String, bool)> = Vec::new();
+        let mut pads: Vec<PadState> = listed
+            .iter()
+            .map(|(id, key, name, rumble)| PadState {
+                key: key.clone(),
+                name: name.clone(),
+                rumble: *rumble,
+                snap: native_snapshot(self.native.get(id), self.native_axes.get(id)),
+            })
+            .collect();
+        let mut others: Vec<i32> = self
+            .native
+            .keys()
+            .chain(self.native_axes.keys())
+            .copied()
+            .filter(|id| listed.iter().all(|l| l.0 != *id))
+            .collect();
+        others.sort_unstable();
+        others.dedup();
+        for id in others {
+            let snap = native_snapshot(self.native.get(&id), self.native_axes.get(&id));
+            if snap == PadSnapshot::default() {
+                continue;
+            }
+            // with the system's list at hand, a device not on it is not a controller; without it, every device is one
+            let known = cfg!(target_os = "android") && !listed.is_empty();
+            pads.push(PadState {
+                key: if known || id <= 0 {
+                    String::new()
+                } else {
+                    format!("android:{id}")
+                },
+                name: if id <= 0 {
+                    "keys".into()
+                } else {
+                    format!("device {id}")
+                },
+                rumble: false,
+                snap,
+            });
+        }
+        pads
     }
 
     pub fn touch(&mut self, id: u64, phase: TouchPhase, x: f32, y: f32) {
@@ -427,22 +624,21 @@ impl Input {
         frame
     }
 
-    /// Everything held right now. Call once per frame.
+    /// Everything held right now, and the pads that are connected (see [`InputFrame::pads`]). Call once per frame.
+    ///
+    /// [`InputFrame::pads`]: crate::actions::InputFrame::pads
     pub fn sources(&mut self) -> Sources {
+        self.poll().0
+    }
+
+    /// The sources held now, the connected pads, and the pad that pressed the newest source. Call once per frame.
+    pub fn poll(&mut self) -> (Sources, Vec<PadState>, Option<String>) {
         let mut s = Sources::new();
         for code in &self.keys {
             s.insert(format!("key:{code:?}"), 1.0);
         }
-        for code in &self.native {
-            if let Some(name) = native_pad_name(*code) {
-                s.insert(format!("pad:{name}"), 1.0);
-            }
-        }
-        for (name, value) in native_axis_sources(&self.native_axes) {
-            if value != 0.0 {
-                s.insert(name, value);
-            }
-        }
+        #[cfg_attr(target_os = "android", allow(unused_mut))]
+        let mut pads = self.native_pads();
         for (i, name) in ["left", "right", "middle"].iter().enumerate() {
             if self.mouse_down[i] {
                 s.insert(format!("mouse:{name}"), 1.0);
@@ -493,9 +689,11 @@ impl Input {
             // Every connected pad, in the order they were plugged in (gilrs ids count up).
             let mut connected: Vec<_> = pad.gamepads().collect();
             connected.sort_by_key(|(id, _)| usize::from(*id));
-            let snapshots: Vec<PadSnapshot> = connected
-                .iter()
-                .map(|(_, gamepad)| {
+            pads.extend(connected.iter().map(|(id, gamepad)| PadState {
+                key: format!("gilrs:{}", usize::from(*id)),
+                name: gamepad.name().to_string(),
+                rumble: gamepad.is_ff_supported(),
+                snap: {
                     let mut snap = PadSnapshot::default();
                     for (button, name) in BUTTONS {
                         if gamepad.is_pressed(button) {
@@ -516,23 +714,43 @@ impl Input {
                         snap.axes.push((name, v));
                     }
                     snap
-                })
-                .collect();
-            pads_to_sources(&snapshots, &mut s);
+                },
+            }));
         }
+        any_pad_sources(&pads, &mut s);
 
-        let active: HashSet<String> = s
+        // The newest source, by its plain name (`pad:south`), and which pad pressed it. A pad's source is told apart by
+        // its key in `previous_active` (`pad:south@gilrs:1`), so that a second pad pressing a button the first holds is new.
+        let mut active: HashSet<String> = s
             .iter()
-            .filter(|(_, v)| v.abs() >= DOWN_THRESHOLD)
+            .filter(|(k, v)| {
+                v.abs() >= DOWN_THRESHOLD && !k.starts_with("pad:") && !k.starts_with("axis:")
+            })
             .map(|(k, _)| k.clone())
             .collect();
+        let mut by_pad = Sources::new();
+        for pad in &pads {
+            by_pad.clear();
+            seated_pad_sources(0, &pad.snap, &mut by_pad);
+            for (k, v) in &by_pad {
+                if v.abs() >= DOWN_THRESHOLD {
+                    active.insert(format!("{k}@{}", pad.key));
+                }
+            }
+        }
         let mut fresh: Vec<&String> = active.difference(&self.previous_active).collect();
         fresh.sort();
+        let mut last_pad = None;
         if let Some(first) = fresh.first() {
-            self.last_new_source = Some((*first).clone());
+            let (source, pad) = match first.split_once('@') {
+                Some((source, pad)) => (source.to_string(), Some(pad.to_string())),
+                None => ((*first).clone(), None),
+            };
+            self.last_new_source = Some(source);
+            last_pad = pad;
         }
         self.previous_active = active;
-        s
+        (s, pads, last_pad)
     }
 }
 
@@ -595,47 +813,78 @@ mod tests {
         assert!(p.released && !p.pressed);
     }
 
+    fn pad(key: &str, buttons: Vec<&'static str>, axes: Vec<(&'static str, f32)>) -> PadState {
+        PadState {
+            key: key.into(),
+            name: key.into(),
+            rumble: false,
+            snap: PadSnapshot { buttons, axes },
+        }
+    }
+
     #[test]
-    fn several_pads_make_numbered_and_combined_sources() {
-        let first = PadSnapshot {
-            buttons: vec!["south"],
-            axes: vec![("left_x", -0.3), ("r2", 0.0)],
-        };
-        let second = PadSnapshot {
-            buttons: vec!["east"],
-            axes: vec![("left_x", 0.8), ("r2", 1.0)],
-        };
+    fn several_pads_make_combined_sources_and_seated_ones_numbered_sources() {
+        let first = pad("one", vec!["south"], vec![("left_x", -0.3), ("r2", 0.0)]);
+        let second = pad("two", vec!["east"], vec![("left_x", 0.8), ("r2", 1.0)]);
         let mut s = Sources::new();
-        pads_to_sources(&[first, second], &mut s);
-        // numbered by the order plugged in
-        assert_eq!(s["pad1:south"], 1.0);
-        assert_eq!(s["pad2:east"], 1.0);
-        assert!(!s.contains_key("pad1:east") && !s.contains_key("pad2:south"));
-        assert_eq!(s["axis1:left_x"], -0.3);
-        assert_eq!(s["axis2:left_x"], 0.8);
+        any_pad_sources(&[first.clone(), second.clone()], &mut s);
         // combined: any pad holds a button; the stick moved furthest wins
         assert_eq!(s["pad:south"], 1.0);
         assert_eq!(s["pad:east"], 1.0);
         assert_eq!(s["axis:left_x"], 0.8);
         assert_eq!(s["axis:r2"], 1.0);
+        assert!(
+            s.keys()
+                .all(|k| k.starts_with("pad:") || k.starts_with("axis:"))
+        );
+        // numbered by the seat the game gave each pad (here the second pad plugged in is player 1)
+        seated_pad_sources(1, &second.snap, &mut s);
+        seated_pad_sources(2, &first.snap, &mut s);
+        assert_eq!(s["pad1:east"], 1.0);
+        assert_eq!(s["pad2:south"], 1.0);
+        assert!(!s.contains_key("pad1:south") && !s.contains_key("pad2:east"));
+        assert_eq!(s["axis1:left_x"], 0.8);
+        assert_eq!(s["axis2:left_x"], -0.3);
         // no pad: nothing
         let mut none = Sources::new();
-        pads_to_sources(&[], &mut none);
+        any_pad_sources(&[], &mut none);
         assert!(none.is_empty());
     }
 
     #[test]
-    fn a_fifth_pad_still_counts_for_any_pad_but_has_no_number() {
-        let pads: Vec<PadSnapshot> = (0..5)
-            .map(|i| PadSnapshot {
-                buttons: if i == 4 { vec!["start"] } else { vec![] },
-                axes: vec![],
-            })
-            .collect();
-        let mut s = Sources::new();
-        pads_to_sources(&pads, &mut s);
-        assert_eq!(s["pad:start"], 1.0);
-        assert!(s.keys().all(|k| !k.starts_with("pad5")));
+    fn android_devices_are_separate_pads_and_the_newest_press_names_its_pad() {
+        let mut input = Input::default();
+        input.native_key(5, 96, true);
+        let (s, pads, last) = input.poll();
+        assert_eq!(s["pad:south"], 1.0);
+        assert_eq!(pads.len(), 1);
+        assert_eq!(pads[0].key, "android:5");
+        assert_eq!(input.last_new_source.as_deref(), Some("pad:south"));
+        assert_eq!(last.as_deref(), Some("android:5"));
+        // a second controller presses the same button: it is new, and it is that pad's
+        input.native_key(9, 96, true);
+        input.native_axis_from(9, 0, -1.0);
+        let (_, pads, last) = input.poll();
+        assert_eq!(pads.len(), 2);
+        assert_eq!(pads[1].snap.buttons, ["south"]);
+        assert_eq!(
+            pads[1]
+                .snap
+                .axes
+                .iter()
+                .find(|a| a.0 == "left_x")
+                .unwrap()
+                .1,
+            -1.0
+        );
+        assert_eq!(last.as_deref(), Some("android:9"));
+        // input from no particular device (adb) is the empty key: player 1's
+        input.native_key(-1, 97, true);
+        let (_, pads, _) = input.poll();
+        assert!(
+            pads.iter()
+                .any(|p| p.key.is_empty() && p.snap.buttons == ["east"])
+        );
     }
 
     #[test]

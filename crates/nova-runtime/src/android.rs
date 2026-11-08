@@ -89,6 +89,9 @@ pub struct Identity {
     pub version: String,
     /// The APK's file name stem (`<id>-debug.apk`).
     pub id: String,
+    /// `"local_network": true` in `nova.json`: the game plays with other devices on the same wifi, so it may use the
+    /// network and takes the wifi multicast lock (broadcasts are how a host is found). Nothing else asks for network access.
+    pub network: bool,
 }
 
 impl Identity {
@@ -98,6 +101,7 @@ impl Identity {
             label: "Nova Spike".into(),
             version: "0.1.0".into(),
             id: "nova-spike".into(),
+            network: false,
         }
     }
 
@@ -112,6 +116,7 @@ impl Identity {
                 .clone()
                 .unwrap_or_else(|| "0.0.0".into()),
             id,
+            network: project.manifest.local_network,
         }
     }
 }
@@ -244,6 +249,14 @@ pub fn manifest(identity: &Identity, icon: bool) -> String {
             "@ICON@",
             if icon {
                 "android:icon=\"@mipmap/ic_launcher\""
+            } else {
+                ""
+            },
+        )
+        .replace(
+            "@PERMISSIONS@",
+            if identity.network {
+                "<uses-permission android:name=\"android.permission.INTERNET\" />\n    <uses-permission android:name=\"android.permission.CHANGE_WIFI_MULTICAST_STATE\" />"
             } else {
                 ""
             },
@@ -650,6 +663,7 @@ mod tests {
             label: "Tom & \"Jerry\" <3".into(),
             version: "1.0".into(),
             id: "tom_jerry".into(),
+            network: false,
         };
         let text = manifest(&id, true);
         assert!(text.contains("package=\"com.nova.games.tom_jerry\""));
@@ -659,6 +673,12 @@ mod tests {
         assert!(
             !text.contains("@PACKAGE@") && !text.contains("@LABEL@") && !text.contains("@ICON@")
         );
+        // only a game that plays over wifi asks for the network; every game may rumble
+        assert!(!text.contains("@PERMISSIONS@") && !text.contains("INTERNET"));
+        assert!(text.contains("android.permission.VIBRATE"));
+        let online = manifest(&Identity { network: true, ..id }, true);
+        assert!(online.contains("android.permission.INTERNET"));
+        assert!(online.contains("android.permission.CHANGE_WIFI_MULTICAST_STATE"));
     }
 
     #[test]

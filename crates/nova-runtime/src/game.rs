@@ -14,7 +14,7 @@ use std::time::{Duration, Instant, SystemTime};
 use glam::{Mat4, Quat, Vec3};
 use mlua::{Function, HookTriggers, Lua, LuaSerdeExt, Table, Value, VmState};
 
-use crate::actions::{self, ActionStates, Binding, Bindings, InputFrame};
+use crate::actions::{self, Binding, Bindings, InputFrame};
 use crate::anim;
 use crate::assets::{self, AtlasLayout};
 use crate::font;
@@ -65,6 +65,7 @@ fn builtin_module(name: &str) -> Option<&'static str> {
 mod animated;
 mod billboard_api;
 mod debug_api;
+mod players_api;
 mod retained_api;
 mod solid_api;
 mod voxel_api;
@@ -82,7 +83,10 @@ const DEFAULT_CAMERA: Camera = Camera {
 struct Shared {
     bindings: Bindings,
     base_bindings: Bindings,
-    states: ActionStates,
+    /// Every action for anyone and for each player (`players.rs`).
+    states: crate::players::PlayerStates,
+    /// Seats, per-player bindings and the local co-op connection (`game/players_api.rs`).
+    players: players_api::PlayersShared,
     last_source: Option<String>,
     /// The newest source pressed that a script has not asked about yet (`nova.input.next_source`).
     pending_source: Option<String>,
@@ -266,14 +270,17 @@ pub struct HostStats {
 }
 
 /// A request from a script to shake a gamepad (`nova.input.rumble`); the host passes it on where it can.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Rumble {
-    /// The pad to shake, 1 up to `actions::MAX_PADS`; 0 shakes them all.
+    /// The player whose pad shakes, 1 up to `players::MAX_PLAYERS`; 0 shakes them all.
     pub pad: u8,
     /// The big (low) motor and the small (high) one, 0 to 1.
     pub strong: f32,
     pub weak: f32,
     pub seconds: f32,
+    /// The pads to shake, by `PadState::key`, filled in by `Game::take_rumble`: for player 0 (empty) all of them; for a
+    /// player, that player's pad (empty when the player has none here); an empty key is the handheld itself.
+    pub devices: Vec<String>,
 }
 
 /// A model part as the game draws it: its place in the tree and the GPU mesh key of its triangles.
@@ -2306,45 +2313,49 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
     let s = shared.clone();
     input.set(
         "axis",
-        lua.create_function(move |_, name: String| {
+        lua.create_function(move |_, (name, player): (String, Option<f64>)| {
+            let player = players_api::player_arg(player, "nova.input.axis")?;
             let sh = s.borrow();
             sh.bindings
                 .get(&name)
                 .ok_or_else(|| unknown_action(&sh, &name))?;
-            Ok(sh.states.value(&name) as f64)
+            Ok(sh.states.player(player).value(&name) as f64)
         })?,
     )?;
     let s = shared.clone();
     input.set(
         "down",
-        lua.create_function(move |_, name: String| {
+        lua.create_function(move |_, (name, player): (String, Option<f64>)| {
+            let player = players_api::player_arg(player, "nova.input.down")?;
             let sh = s.borrow();
             sh.bindings
                 .get(&name)
                 .ok_or_else(|| unknown_action(&sh, &name))?;
-            Ok(sh.states.is_down(&name))
+            Ok(sh.states.player(player).is_down(&name))
         })?,
     )?;
     let s = shared.clone();
     input.set(
         "pressed",
-        lua.create_function(move |_, name: String| {
+        lua.create_function(move |_, (name, player): (String, Option<f64>)| {
+            let player = players_api::player_arg(player, "nova.input.pressed")?;
             let sh = s.borrow();
             sh.bindings
                 .get(&name)
                 .ok_or_else(|| unknown_action(&sh, &name))?;
-            Ok(sh.states.was_pressed(&name))
+            Ok(sh.states.player(player).was_pressed(&name))
         })?,
     )?;
     let s = shared.clone();
     input.set(
         "released",
-        lua.create_function(move |_, name: String| {
+        lua.create_function(move |_, (name, player): (String, Option<f64>)| {
+            let player = players_api::player_arg(player, "nova.input.released")?;
             let sh = s.borrow();
             sh.bindings
                 .get(&name)
                 .ok_or_else(|| unknown_action(&sh, &name))?;
-            Ok(sh.states.was_released(&name))
+            Ok(sh.states.player(player).was_released(&name))
         })?,
     )?;
     let s = shared.clone();
@@ -2363,23 +2374,39 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
     let s = shared.clone();
     input.set(
         "bind",
-        lua.create_function(move |lua, (name, spec): (String, Value)| {
-            let json: serde_json::Value = lua
-                .from_value(spec)
-                .map_err(|e| lua_err(format!("bind('{name}'): {e}")))?;
-            let binding =
-                actions::parse_binding(&json, &format!("bind('{name}')")).map_err(lua_err)?;
-            s.borrow_mut().bindings.set(&name, binding).map_err(lua_err)
-        })?,
+        lua.create_function(
+            move |lua, (name, spec, player): (String, Value, Option<f64>)| {
+                let player = players_api::player_arg(player, "nova.input.bind")?;
+                let json: serde_json::Value = lua
+                    .from_value(spec)
+                    .map_err(|e| lua_err(format!("bind('{name}'): {e}")))?;
+                let binding =
+                    actions::parse_binding(&json, &format!("bind('{name}')")).map_err(lua_err)?;
+                let mut sh = s.borrow_mut();
+                if player == 0 {
+                    return sh.bindings.set(&name, binding).map_err(lua_err);
+                }
+                // for one player alone: the action must exist for everyone already
+                if sh.bindings.get(&name).is_none() {
+                    return Err(unknown_action(&sh, &name));
+                }
+                sh.players.own[usize::from(player)].insert(name, binding);
+                Ok(())
+            },
+        )?,
     )?;
     let s = shared.clone();
     input.set(
         "bindings",
-        lua.create_function(move |lua, name: String| {
+        lua.create_function(move |lua, (name, player): (String, Option<f64>)| {
+            let player = players_api::player_arg(player, "nova.input.bindings")?;
             let sh = s.borrow();
             let binding = sh
-                .bindings
-                .get(&name)
+                .players
+                .own
+                .get(usize::from(player))
+                .and_then(|m| m.get(&name))
+                .or_else(|| sh.bindings.get(&name))
                 .ok_or_else(|| unknown_action(&sh, &name))?;
             match binding {
                 Binding::Button(_) => lua.to_value(&binding.source_ids()),
@@ -2401,9 +2428,17 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
     let s = shared.clone();
     input.set(
         "reset_bindings",
-        lua.create_function(move |_, ()| {
+        lua.create_function(move |_, player: Option<f64>| {
+            let player = players_api::player_arg(player, "nova.input.reset_bindings")?;
             let mut sh = s.borrow_mut();
-            sh.bindings = sh.base_bindings.clone();
+            if player == 0 {
+                sh.bindings = sh.base_bindings.clone();
+                for m in &mut sh.players.own {
+                    m.clear();
+                }
+            } else {
+                sh.players.own[usize::from(player)].clear();
+            }
             Ok(())
         })?,
     )?;
@@ -2411,7 +2446,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
     let s = shared.clone();
     input.set(
         "rumble",
-        lua.create_function(move |_, (a, b): (Value, Option<f64>)| {
+        lua.create_function(move |_, (a, b, player): (Value, Option<f64>, Option<f64>)| {
             let (strong, weak, seconds, pad) = match a {
                 Value::Table(t) => {
                     let o = Some(t);
@@ -2422,14 +2457,16 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                         strong.or(both).unwrap_or(0.0),
                         weak.or(both).unwrap_or(0.0),
                         number_option(&o, "seconds")?.unwrap_or(0.2),
-                        number_option(&o, "pad")?.unwrap_or(0.0),
+                        number_option(&o, "player")?
+                            .or(number_option(&o, "pad")?)
+                            .unwrap_or(0.0),
                     )
                 }
-                Value::Number(n) => (n, n, b.unwrap_or(0.2), 0.0),
-                Value::Integer(n) => (n as f64, n as f64, b.unwrap_or(0.2), 0.0),
+                Value::Number(n) => (n, n, b.unwrap_or(0.2), player.unwrap_or(0.0)),
+                Value::Integer(n) => (n as f64, n as f64, b.unwrap_or(0.2), player.unwrap_or(0.0)),
                 _ => {
                     return Err(lua_err(
-                        "nova.input.rumble(strength, seconds) takes a strength from 0 to 1, or a table like { strong = 1, weak = 0.3, seconds = 0.4, pad = 1 }",
+                        "nova.input.rumble(strength, seconds, player) takes a strength from 0 to 1, or a table like { strong = 1, weak = 0.3, seconds = 0.4, player = 1 }",
                     ))
                 }
             };
@@ -2441,18 +2478,14 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             if !seconds.is_finite() || seconds <= 0.0 {
                 return Err(lua_err(format!("rumble seconds must be greater than 0, not {seconds}")));
             }
-            if pad.fract() != 0.0 || !(0.0..=f64::from(actions::MAX_PADS)).contains(&pad) {
-                return Err(lua_err(format!(
-                    "rumble pad must be a whole number from 1 to {} (or 0 for all pads), not {pad}",
-                    actions::MAX_PADS
-                )));
-            }
+            let pad = players_api::player_arg(Some(pad), "nova.input.rumble")? as f64;
             // a long rumble is cut short: a stuck motor is no fun
             s.borrow_mut().rumble.push(Rumble {
                 pad: pad as u8,
                 strong: strong as f32,
                 weak: weak as f32,
                 seconds: seconds.min(5.0) as f32,
+                devices: Vec::new(),
             });
             Ok(())
         })?,
@@ -2537,9 +2570,15 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
     let s = shared.clone();
     input.set(
         "next_source",
-        lua.create_function(move |_, ()| Ok(s.borrow_mut().pending_source.take()))?,
+        lua.create_function(move |_, ()| {
+            let mut sh = s.borrow_mut();
+            let source = sh.pending_source.take();
+            let player = players_api::take_pending_player(&mut sh);
+            Ok((source.clone(), source.and(player)))
+        })?,
     )?;
     nova.set("input", input)?;
+    players_api::install(lua, shared, &nova)?;
     // --- sound: nova.sound.* effects, nova.music.* one background track ---
     let sound = lua.create_table()?;
     let music = lua.create_table()?;
@@ -3367,7 +3406,11 @@ impl Game {
         let shared = Rc::new(RefCell::new(Shared {
             bindings: bindings.clone(),
             base_bindings: bindings,
-            states: ActionStates::default(),
+            states: Default::default(),
+            players: players_api::PlayersShared::new(
+                &project.manifest.name,
+                project.manifest.local_network,
+            ),
             last_source: None,
             pending_source: None,
             fixed_steps: false,
@@ -3571,7 +3614,10 @@ impl Game {
     /// save data lives in memory only. Returns a warning when an unreadable save was set aside.
     pub fn open_save(&mut self, dir: &std::path::Path) -> Result<Option<String>, String> {
         let (store, warning) = SaveStore::open(dir)?;
-        self.shared.borrow_mut().save = store;
+        let mut sh = self.shared.borrow_mut();
+        sh.save = store;
+        players_api::load_controls(&mut sh);
+        drop(sh);
         self.save_dir = Some(dir.to_path_buf());
         Ok(warning)
     }
@@ -3626,9 +3672,16 @@ impl Game {
         self.shared.borrow().bindings.uses_source(id)
     }
 
+    /// The UDP port local co-op uses (`nova.net`; tests run several games on one machine, each pair on its own port).
+    pub fn set_net_port(&mut self, port: u16) {
+        self.shared.borrow_mut().players.set_net_port(port);
+    }
+
     /// Gamepad rumbles that scripts asked for since the last call.
     pub fn take_rumble(&self) -> Vec<Rumble> {
-        std::mem::take(&mut self.shared.borrow_mut().rumble)
+        let mut sh = self.shared.borrow_mut();
+        let list = std::mem::take(&mut sh.rumble);
+        players_api::resolve_rumble(&mut sh, list)
     }
 
     /// Physical pixels per logical unit of the screen the game is drawn on (text is rasterised at
@@ -3716,9 +3769,7 @@ impl Game {
             sh.models.clear();
             sh.joints.clear();
             sh.pose_cache.clear();
-            let bindings = sh.bindings.clone();
-            sh.states
-                .update(&bindings, &input.sources, &input.overrides);
+            players_api::update(&mut sh, input);
             sh.frame_dt = dt;
             sh.typed.push_str(&input.typed);
             if sh.cursor.enabled {
@@ -3779,6 +3830,7 @@ impl Game {
             self.flush_save_in_background();
         }
         let mut sh = self.shared.borrow_mut();
+        players_api::after_frame(&mut sh);
         std::mem::swap(&mut sh.world, &mut self.world);
         std::mem::swap(&mut sh.ui, &mut self.ui);
         std::mem::swap(&mut sh.text_out, &mut self.text);
