@@ -4,6 +4,37 @@
   "camera": { "eye": [15.6, 9, -99.8], "target": [0, 1.5, -66], "fov": 62 },
   "objects": [
     {
+      "kind": "race",
+      "name": "race",
+      "x": 4,
+      "y": 0,
+      "z": -80,
+      "props": {
+        "surface": "dirt",
+        "grip": 0.72,
+        "dust": [235, 240, 248],
+        "music": "race_snow",
+        "weather": { "kind": "snow", "count": 360, "fall": 2.6, "drift": 1.6 },
+        "horizon": "snow",
+        "sun_to": [-0.7, 0.28, -0.55],
+        "tint": { "top": [0.96, 1, 1.06], "horizon": [0.96, 0.99, 1.04] },
+        "clouds": 0.6,
+        "terrain": {
+          "waves": [
+            { "height": 8, "wavelength": 500, "direction": 0, "phase": 0.7 },
+            { "height": 2.5, "wavelength": 320, "direction": 90, "phase": 2.5 }
+          ]
+        },
+        "wind": { "direction": 200, "strength": 0.8 },
+        "look": { "ao": 0.35, "ao_radius": 1, "bloom": 0.35, "bloom_threshold": 0.8, "saturation": 1 },
+        "menu": {
+          "road": "road_snow",
+          "trees": ["nk_snow_pinetall_a", "nk_snow_pineround_a", "pine_snow", "nk_snow_pinetall_c", "nk_snow_pinesmall_a", "nk_snow_pineround_e"],
+          "low": ["bush_snow", "nk_rockice_largeC", "nk_rockice_largeA"]
+        }
+      }
+    },
+    {
       "kind": "foliage",
       "name": "foliage",
       "x": -4,

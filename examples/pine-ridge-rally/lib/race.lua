@@ -10,7 +10,7 @@ local transition = require("lib.transition")
 local pars = require("lib.pars")
 local crowd = require("lib.crowd")
 local foliage = require("lib.foliage")
-local looks = require("lib.looks")
+local course = require("lib.course")
 local horizon = require("lib.horizon")
 local audio = require("lib.audio")
 local ui = require("lib.ui")
@@ -92,10 +92,14 @@ end
 
 -- ---- the scene ---------------------------------------------------------------------------------------------------------
 
-function race.define(config)
+-- The scene of a course: everything about the course is in its scene file (the road's waypoints, the grid, the scenery, and the `race`
+-- object's settings, read by lib/course.lua), so a course's own script is just `return require("lib.race").scene()`.
+function race.scene()
   local Race = nova.scene {}
+  local config -- the course's settings (lib/course.lua), from its scene's race object
 
   function Race:enter()
+    config = course.current()
     local sun = config.sun
     nova.light { dir = sun.dir, color = sun.color, ambient = sun.ambient }
     -- the sky, and fog the colour of its horizon so that the far scenery fades out instead of popping in
@@ -112,7 +116,7 @@ function race.define(config)
     track.ensure()
     assert(track.count() > 10, "this scene has no waypoints: place `waypoint` objects along the road")
     nova.log("rally: crowd " .. crowd.count() .. " people") -- (the stands, flags, billboards and spectators are objects of the scene file)
-    local look = looks[state.look_id()]
+    local look = config
     state.apply_look(look)
     -- the circuit's look with a speed blur added each frame (see Race:update_camera)
     self.look_now = nil
@@ -149,7 +153,7 @@ function race.define(config)
     self.trial = state.mode == "trial"
     self.ghost = self.trial and nova.save.get("ghost_" .. info.id, nil) or nil
     self.recording = { t = 0, pts = {} }
-    audio.music(info.music or config.music, { volume = 0.95, fade = 0.8 })
+    audio.music(config.music, { volume = 0.95, fade = 0.8 })
     self.camera.heading = self.player.heading -- the chase camera starts behind the car, looking where it looks
     self:update_camera(1 / 60)
   end
@@ -158,7 +162,7 @@ function race.define(config)
     for _, car in ipairs(self.cars) do if car.engine then car.engine:stop() end end
     nova.music.volume(state.music_volume)
     nova.hitch(0); nova.weather(); nova.sky(nil); nova.fog(nil); nova.shadows(nil); nova.terrain()
-    crowd.clear(); stage_lib.clear(); lamps.clear(); track.clear(); grid.clear(); fx.clear(); foliage.clear()
+    crowd.clear(); course.clear(); stage_lib.clear(); lamps.clear(); track.clear(); grid.clear(); fx.clear(); foliage.clear()
     nova.look(); nova.wind()
   end
 

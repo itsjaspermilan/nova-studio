@@ -34,10 +34,18 @@ assistant (or a script) drives the studio's own code: see `scripts/rally/` (`mod
 `showroom.mjs`). Each script is a list of tool calls whose results are the files in this folder. Running
 `node scripts/rally/models.mjs` (and the others) writes them again; the Lua is hand-written.
 
+**Courses (2026-11-07).** Everything about a course is in its files, none of it in code: its scene, `scenes/<course>.scene.json`, holds the
+waypoints, the grid, the gates, the scenery, the roadside and the crowd, and a `race` object whose props are the course's settings:
+`stage`, `surface`, `grip`, `loose`, `dust`, `music`, `weather`, `horizon`, `night`, `sun_to`, `tint`, `clouds`, `sun`, `terrain`,
+`wind`, `look` and, for a circuit, `menu` (the menus' backdrop dressing); see `entities/race.lua`. A `foliage` object's `plants` say
+what grass and flowers are scattered along the verges. `lib/course.lua` reads the race object (the menus read the chosen circuit's with
+`nova.scene_data`), and each `scenes/<course>.lua` is one line, `return require("lib.race").scene()`. Change a course in the studio's
+scene editor (select the race object; lists and tables are typed as JSON) and the game follows.
+
 The eight courses are track files, `tracks/<course>.track.json` (control points, road, seed, scenery kinds and densities, barrier, sky,
 distant scenery and landmarks): open one in the studio's track editor and press **Generate scene and road**, or call the MCP tool
 `track_write` with just the course's `name`, to make `scenes/<course>.scene.json` and `models/road_<course>.glb` again. The same file and seed
-give the same layout.
+give the same layout; the scene's named objects (the `race` and `foliage` objects) are kept when it is made again.
 
 `crates/nova-runtime/tests/rally.rs` plays the game through its menus and a full race on every circuit.
 
@@ -47,7 +55,7 @@ give the same layout.
 
 **Kenney UI art and sounds (2026-11-06).** The menus' buttons and the panels are Kenney's UI Pack and Adventure pack drawn as nine-slices (`nova.ui.panel`), the How to play screen shows the handheld's buttons from the Input Prompts pack (Nintendo-style labels), and the menu, pause and bump sounds are Kenney's Interface and Impact sounds (CC0, `licenses/kenney-ui.txt`, copied by `scripts/rally/kenney-ui.sh` from the bundle). Each car has its own engine note, made by `scripts/rally/engines.mjs` (combustion pulses through exhaust resonators: a ten-cylinder scream for Redline, a four-cylinder growl, a lumpy three-cylinder, a six with a turbo whine), five loops per car crossfaded by the revs; the tachometer segments in the HUD show the revs per gear. (The first try, six recorded loops from OpenGameArt, turned out to be almost all sub-bass a handheld speaker cannot play, and the second a drone: both dropped.) The music has two styles in Options > Music style: Kenney's loops (the default; chosen by title, not yet listened to) and the songs made with the music editor.
 
-**Engine features (2026-11-06).** Each circuit has a `look` in `lib/looks.lua`: bloom and ambient occlusion (`nova.look`), wind that bends the trees, bushes and flags (`nova.wind`, `sway` on the entity classes) and grass and flowers along the verges (`lib/foliage.lua`, planted over the first moments of the countdown). The night circuit's headlights are spot lights, cones on the road (`nova.point_light` with `dir` and `angle`). **Options > Effects** switches the look, the wind and the grass off. On the Retroid, racing with the effects on (200 roadside props, 3,500 to 7,700 tufts, shadows, and at night two spot lights), it held 59.68 fps on average over a 35-minute soak (and Options > Effects costs about 2.5 ms of GPU: 3.5 ms on, 1.0 ms off) with the GPU at 3.2 to 3.9 ms a frame (`docs/performance.md`).
+**Engine features (2026-11-06).** Each course has a `look` (now in its scene's `race` object, see Courses below): bloom and ambient occlusion (`nova.look`), wind that bends the trees, bushes and flags (`nova.wind`, `sway` on the entity classes) and grass and flowers along the verges (`lib/foliage.lua`, planted over the first moments of the countdown). The night circuit's headlights are spot lights, cones on the road (`nova.point_light` with `dir` and `angle`). **Options > Effects** switches the look, the wind and the grass off. On the Retroid, racing with the effects on (200 roadside props, 3,500 to 7,700 tufts, shadows, and at night two spot lights), it held 59.68 fps on average over a 35-minute soak (and Options > Effects costs about 2.5 ms of GPU: 3.5 ms on, 1.0 ms off) with the GPU at 3.2 to 3.9 ms a frame (`docs/performance.md`).
 
 **Sound (2026-11-06).** The music is voiced with the studio's fuller instruments (detuned unison saws, filters that open with each note, a sub, vibrato, a shared reverb and the studio drum kit, arranged in four sections: the theme, the theme with the lead doubled, a breakdown, and the theme with a fifth above and a fill; 52 to 80 seconds before a loop repeats; see `docs/project-format.md`, "Songs"), by song and track in `scripts/rally/audio.mjs`. The engine is a low filtered rumble with a soft body above it. None of it has been listened to on the Retroid yet.
 

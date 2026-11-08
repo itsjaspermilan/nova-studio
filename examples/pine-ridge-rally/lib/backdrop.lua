@@ -1,8 +1,9 @@
 -- The 3D picture behind the menus: a piece of road with the car standing on it, dressed like the circuit that is chosen (its sky,
--- sun, ground, mountains, road surface and the trees, cacti or snowy pines beside it). The camera sways gently in front of the car.
+-- sun, ground, mountains, road surface and the trees, cacti or snowy pines beside it: the settings of the circuit's race object, its `menu`
+-- for the dressing). The camera sways gently in front of the car.
 local horizon = require("lib.horizon")
 local skylib = require("lib.sky")
-local looks = require("lib.looks")
+local course = require("lib.course")
 local state = require("lib.state")
 
 local backdrop = {}
@@ -29,16 +30,16 @@ local function dress(id, look)
     for i = 0, 17 do
       local z = -48 + i * 5.4 + (r() - 0.5) * 2
       local d = 12 + r() * 20
-      local kinds = look.trees
+      local kinds = look.menu.trees
       list[#list + 1] = { model = kinds[math.floor(r() * #kinds) + 1], x = side * d, z = z, opts = { ry = r() * 6.28, scale = 0.85 + r() * 0.55, sway = SWAY[kinds[1]] and 0.03 or 0 } }
       if i % 2 == 0 then
-        local low = look.low
+        local low = look.menu.low
         list[#list + 1] = { model = low[math.floor(r() * #low) + 1], x = side * (10 + r() * 4), z = z + 2.5, opts = { ry = r() * 6.28, scale = 0.8 + r() * 0.5 } }
       end
     end
-    if look.tall then
+    if look.menu.tall then
       for i = 0, 3 do
-        list[#list + 1] = { model = look.tall[1], x = side * (40 + i * 9), z = -30 + i * 22 + side * 6, opts = { ry = r() * 6.28, scale = 1 + r() * 0.4 } }
+        list[#list + 1] = { model = look.menu.tall[1], x = side * (40 + i * 9), z = -30 + i * 22 + side * 6, opts = { ry = r() * 6.28, scale = 1 + r() * 0.4 } }
       end
     end
   end
@@ -48,7 +49,7 @@ end
 -- The circuit the menus show: the one that is chosen.
 local function current()
   local id = state.look_id()
-  return id, looks[id]
+  return id, course.of(id)
 end
 
 -- `mode` "title" or "results" picks the camera. Call from the scene's draw().
@@ -72,8 +73,8 @@ function backdrop.draw(t, mode, shift)
   nova.camera(view.x, height, view.z, s * fz, aim, -s * fx, 48)
   horizon.draw(view.x, view.z, look.horizon)
   -- the road surface of the circuit: the scene file's road is asphalt, so the others are laid over it
-  if look.road ~= "road_asphalt" then
-    for z = -40, 40, 5 do nova.model(look.road, 0, 0.03 + (z % 10 == 0 and 0 or 0.012), z, overlay_opts) end
+  if look.menu.road ~= "road_asphalt" then
+    for z = -40, 40, 5 do nova.model(look.menu.road, 0, 0.03 + (z % 10 == 0 and 0 or 0.012), z, overlay_opts) end
   end
   local list = dressing[id]
   if not list then list = dress(id, look); dressing[id] = list end

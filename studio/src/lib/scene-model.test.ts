@@ -144,6 +144,12 @@ describe("object properties", () => {
     expect(showPropValue("42")).toBe('"42"');
     expect(showPropValue("hello")).toBe("hello");
     expect(showPropValue(7)).toBe("7");
+    // a list or a table, as JSON (a course's dust colour, its weather); text that only looks like one stays text
+    expect(parsePropValue("[170, 160, 130]")).toEqual([170, 160, 130]);
+    expect(parsePropValue(' { "kind": "snow", "count": 360 } ')).toEqual({ kind: "snow", count: 360 });
+    expect(parsePropValue("[not json]")).toBe("[not json]");
+    expect(showPropValue([170, 160, 130])).toBe("[170,160,130]");
+    expect(parsePropValue(showPropValue({ a: [1, { b: 2 }] }))).toEqual({ a: [1, { b: 2 }] });
   });
 
   it("lists, sets, renames and removes props, dropping an empty table", () => {

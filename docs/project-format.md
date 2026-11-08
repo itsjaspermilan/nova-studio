@@ -33,7 +33,7 @@ up to eight sine waves over the ground. The shaders lift every vertex of a model
 only a camera, a light or anything else placed by hand adds `nova.terrain_height(x, z)`, and `nova.terrain_slope(x, z)` gives the slope
 (a car's weight on a hill). Because the lifting is by vertex, a flat model must have vertices where the ground bends: a road piece every
 few metres, and a ground made of a grid of squares (`scripts/rally/land.mjs`) rather than one big quad. The slope of a wave is up to
-2 pi x height / wavelength: Pine Ridge Rally's roads keep to about 10% (`lib/looks.lua`), which a handheld game feels as a real hill.
+2 pi x height / wavelength: Pine Ridge Rally's roads keep to about 10% (the `terrain` of each course's `race` object), which a handheld game feels as a real hill.
 Pine Ridge Rally lays each course's road as one ribbon mesh along the curve (made with its scene from `tracks/<course>.track.json` by the studio's
 track editor, `docs/track-editor.md`, with the cross-section and colours of
 the Kenney Racing Kit's straight road) instead of slabs, so that a bend has no wedges and nothing overlaps.
@@ -612,7 +612,10 @@ Data only: loading it never runs code. Defaults are shown; unknown keys are erro
 }
 ```
 
-`objects` spawn `entities/<kind>.lua` with `props` as field values. `images` are pictures
+`objects` spawn `entities/<kind>.lua` with `props` as field values; a value may be text, a number, true/false, or a list or table (any JSON),
+which the studio's inspector shows and takes as JSON (`[170, 160, 130]`). A game keeps a level's or a course's settings as the props of one
+object in its scene file, read by its entity when the scene is built or with `nova.scene_data` (Potion Panic's `level`, Pine Ridge Rally's
+`race`), so that nothing about a level is written in code. `images` are pictures
 (`"layer"`: `"world"`, the default, or `"ui"`). `texts` are UI text. `width` and `height` set the
 camera's limits. `camera` (optional) is the 3D camera the scene starts with, the same as calling
 `nova.camera(eye, target, fov)` when the scene is built; each part is optional (eye `[0, 5, 10]`, target

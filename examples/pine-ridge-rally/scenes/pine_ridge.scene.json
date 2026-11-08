@@ -4,6 +4,35 @@
   "camera": { "eye": [-5.9, 9, -108.5], "target": [0, 1.5, -76], "fov": 62 },
   "objects": [
     {
+      "kind": "race",
+      "name": "race",
+      "x": 4,
+      "y": 0,
+      "z": -90,
+      "props": {
+        "surface": "road",
+        "grip": 1,
+        "dust": [170, 160, 130],
+        "music": "race_forest",
+        "horizon": "forest",
+        "sun_to": [0.55, 0.62, 0.38],
+        "clouds": 0.4,
+        "terrain": {
+          "waves": [
+            { "height": 5, "wavelength": 380, "direction": 20, "phase": 0.4 },
+            { "height": 2.2, "wavelength": 240, "direction": 110, "phase": 2.1 }
+          ]
+        },
+        "wind": { "direction": 30, "strength": 1 },
+        "look": { "ao": 0.45, "ao_radius": 1, "bloom": 0.3, "bloom_threshold": 0.78, "saturation": 1.08 },
+        "menu": {
+          "road": "road_asphalt",
+          "trees": ["nk_pinetall_a", "nk_pineround_a", "nk_oak", "nk_pinetall_c", "nk_default", "nk_pinesmall_a", "nk_oak_fall", "nk_pineround_e", "pine"],
+          "low": ["nk_bush_large", "nk_rock_largeC", "nk_stump", "bush"]
+        }
+      }
+    },
+    {
       "kind": "foliage",
       "name": "foliage",
       "x": -4,

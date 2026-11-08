@@ -4,6 +4,32 @@
   "camera": { "eye": [6, 9, -162], "target": [0, 1.5, -126], "fov": 62 },
   "objects": [
     {
+      "kind": "race",
+      "name": "race",
+      "x": 4,
+      "y": 0,
+      "z": -100,
+      "props": {
+        "stage": true,
+        "surface": "dirt",
+        "grip": 0.88,
+        "loose": true,
+        "dust": [150, 138, 120],
+        "music": "race_forest",
+        "horizon": "forest",
+        "sun_to": [0.55, 0.62, 0.38],
+        "clouds": 0.4,
+        "terrain": {
+          "waves": [
+            { "height": 5, "wavelength": 380, "direction": 20, "phase": 0.4 },
+            { "height": 2.2, "wavelength": 240, "direction": 110, "phase": 2.1 }
+          ]
+        },
+        "wind": { "direction": 30, "strength": 1 },
+        "look": { "ao": 0.45, "ao_radius": 1, "bloom": 0.3, "bloom_threshold": 0.78, "saturation": 1.08 }
+      }
+    },
+    {
       "kind": "foliage",
       "name": "foliage",
       "x": -4,

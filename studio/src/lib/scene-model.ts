@@ -304,7 +304,8 @@ export class History {
 
 // ---- properties of objects ---------------------------------------------------------------------
 
-export type PropValue = string | number | boolean;
+/// A prop's value: text, a number, true/false, or a list or table (typed as JSON: `[170, 160, 130]`, `{ "kind": "snow" }`).
+export type PropValue = string | number | boolean | unknown[] | { [key: string]: unknown };
 
 /// What a person typed into a property box: a number, true/false, or text (put quotes round
 /// something that looks like a number to keep it text).
@@ -314,6 +315,13 @@ export function parsePropValue(raw: string): PropValue {
   if (t === "true") return true;
   if (t === "false") return false;
   if (t.length >= 2 && (t[0] === '"' || t[0] === "'") && t.at(-1) === t[0]) return t.slice(1, -1);
+  if ((t[0] === "[" && t.at(-1) === "]") || (t[0] === "{" && t.at(-1) === "}")) {
+    try {
+      return JSON.parse(t) as PropValue;
+    } catch {
+      // (not JSON: kept as the text it is)
+    }
+  }
   return raw;
 }
 
@@ -321,7 +329,7 @@ export function showPropValue(v: unknown): string {
   return typeof v === "string" ? (parsePropValue(v) === v ? v : JSON.stringify(v)) : JSON.stringify(v);
 }
 
-/// The simple (text, number, true/false) properties of an object; nested tables are left to the JSON view.
+/// The properties of an object; `simple` ones are text, a number or true/false (a list or table is shown and typed as JSON).
 export function propsOf(scene: Scene, ref: Ref): { key: string; value: unknown; simple: boolean }[] {
   const props = itemAt(scene, ref)?.props;
   if (!props || typeof props !== "object") return [];

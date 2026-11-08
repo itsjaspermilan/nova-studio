@@ -4,6 +4,29 @@
   "camera": { "eye": [6, 9, -162], "target": [0, 1.5, -126], "fov": 62 },
   "objects": [
     {
+      "kind": "race",
+      "name": "race",
+      "x": 4,
+      "y": 0,
+      "z": -100,
+      "props": {
+        "stage": true,
+        "surface": "dirt",
+        "grip": 0.72,
+        "loose": true,
+        "dust": [235, 240, 248],
+        "music": "race_snow",
+        "weather": { "kind": "snow", "count": 360, "fall": 2.6, "drift": 1.6 },
+        "terrain": { "height": 29.937, "x": -154.44, "z": -290, "heightmap": "terrain/frost_pass.png", "size": 824 },
+        "horizon": "snow",
+        "sun_to": [-0.7, 0.28, -0.55],
+        "tint": { "top": [0.96, 1, 1.06], "horizon": [0.96, 0.99, 1.04] },
+        "clouds": 0.6,
+        "wind": { "direction": 200, "strength": 0.8 },
+        "look": { "ao": 0.35, "ao_radius": 1, "bloom": 0.35, "bloom_threshold": 0.8, "saturation": 1 }
+      }
+    },
+    {
       "kind": "foliage",
       "name": "foliage",
       "x": -4,

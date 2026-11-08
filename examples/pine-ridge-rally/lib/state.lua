@@ -2,10 +2,10 @@
 local state = {}
 
 state.tracks = {
-  { id = "pine_ridge", name = "Pine Ridge", blurb = "Fast asphalt through the pines. Long straights, one tight hairpin.", laps = 2, music = "race_forest" },
-  { id = "dust_valley", name = "Dust Valley", blurb = "Loose dirt and twisty bends between the mesas.", laps = 2, music = "race_desert" },
-  { id = "frost_pass", name = "Frost Pass", blurb = "Packed snow on a long, looping pass. Grip is thin: brake early and be gentle.", laps = 2, music = "race_snow" },
-  { id = "harbour_lights", name = "Harbour Lights", blurb = "Asphalt after dark. Lamps mark the way; your headlights do the rest.", laps = 2, music = "race_night" },
+  { id = "pine_ridge", name = "Pine Ridge", blurb = "Fast asphalt through the pines. Long straights, one tight hairpin.", laps = 2 },
+  { id = "dust_valley", name = "Dust Valley", blurb = "Loose dirt and twisty bends between the mesas.", laps = 2 },
+  { id = "frost_pass", name = "Frost Pass", blurb = "Packed snow on a long, looping pass. Grip is thin: brake early and be gentle.", laps = 2 },
+  { id = "harbour_lights", name = "Harbour Lights", blurb = "Asphalt after dark. Lamps mark the way; your headlights do the rest.", laps = 2 },
 }
 -- The classes: you race the other cars of your own class (the grid on the car page is split by them)
 state.classes = {
@@ -16,10 +16,10 @@ state.classes = {
 -- The rally stages: point to point, each in the country of one of the circuits (`look`), five sections each (see lib/race.lua). The scene of
 -- a stage is the stage's id.
 state.stages = {
-  { id = "stage_pine_ridge", look = "pine_ridge", name = "Pine Ridge Stage", blurb = "Forest roads from the valley to the ridge, with hairpins on the way up.", laps = 1, music = "race_forest", km = 2.6 },
-  { id = "stage_dust_valley", look = "dust_valley", name = "Dust Valley Stage", blurb = "Switchbacks through the canyons as the sun goes down.", laps = 1, music = "race_desert", km = 2.7 },
-  { id = "stage_frost_pass", look = "frost_pass", name = "Frost Pass Stage", blurb = "A long climb over packed snow: the hairpins are slippery.", laps = 1, music = "race_snow", km = 2.2 },
-  { id = "stage_harbour_lights", look = "harbour_lights", name = "Harbour Night Stage", blurb = "Along the quay after dark: chicanes, then a hairpin at the end.", laps = 1, music = "race_night", km = 2.1 },
+  { id = "stage_pine_ridge", look = "pine_ridge", name = "Pine Ridge Stage", blurb = "Forest roads from the valley to the ridge, with hairpins on the way up.", laps = 1, km = 2.6 },
+  { id = "stage_dust_valley", look = "dust_valley", name = "Dust Valley Stage", blurb = "Switchbacks through the canyons as the sun goes down.", laps = 1, km = 2.7 },
+  { id = "stage_frost_pass", look = "frost_pass", name = "Frost Pass Stage", blurb = "A long climb over packed snow: the hairpins are slippery.", laps = 1, km = 2.2 },
+  { id = "stage_harbour_lights", look = "harbour_lights", name = "Harbour Night Stage", blurb = "Along the quay after dark: chicanes, then a hairpin at the end.", laps = 1, km = 2.1 },
 }
 state.cars = {
   -- `oversteer`: how readily the rear lets go under power in a bend (0 never, 1 a lot); the sedan and the hatchback are the
@@ -83,7 +83,7 @@ function state.load()
   state.apply_volumes()
 end
 
--- The picture's finish for a circuit's look (see lib/looks.lua): bloom and ambient occlusion, and the wind; plain when effects are off.
+-- The picture's finish for a course's look (the `look` and `wind` of its race object, lib/course.lua): bloom and ambient occlusion, and the wind; plain when effects are off.
 -- The picture's finish for a look, with edges smoothed (FXAA, if the player has it on) and any `extra` fields (the menus add a vignette).
 function state.apply_look(look, extra)
   local l = {}

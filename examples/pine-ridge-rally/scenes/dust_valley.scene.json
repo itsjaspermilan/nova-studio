@@ -4,6 +4,37 @@
   "camera": { "eye": [-0.8, 9, -90.9], "target": [0, 1.5, -56], "fov": 62 },
   "objects": [
     {
+      "kind": "race",
+      "name": "race",
+      "x": 4,
+      "y": 0,
+      "z": -70,
+      "props": {
+        "surface": "dirt",
+        "grip": 0.9,
+        "dust": [214, 178, 124],
+        "music": "race_desert",
+        "horizon": "desert",
+        "sun_to": [0.78, 0.2, 0.5],
+        "tint": { "top": [1, 0.96, 0.9], "horizon": [1, 0.95, 0.88] },
+        "clouds": 0.3,
+        "terrain": {
+          "waves": [
+            { "height": 6.5, "wavelength": 450, "direction": 70, "phase": 1 },
+            { "height": 2.5, "wavelength": 280, "direction": 160, "phase": 0.2 }
+          ]
+        },
+        "wind": { "direction": 100, "strength": 1.5 },
+        "look": { "ao": 0.4, "ao_radius": 1, "bloom": 0.4, "bloom_threshold": 0.74, "saturation": 1.06 },
+        "menu": {
+          "road": "road_dirt",
+          "trees": ["nk_cactus_tall", "nk_cactus_short", "nk_dead_thin", "cactus", "nk_dead_tall"],
+          "low": ["nk_rockred_largeC", "dry_bush", "nk_rockred_largeA"],
+          "tall": ["mesa"]
+        }
+      }
+    },
+    {
       "kind": "foliage",
       "name": "foliage",
       "x": -4,

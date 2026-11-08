@@ -827,11 +827,11 @@
           {#each propsOf(scene, selected) as p (p.key)}
             <div class="prop">
               <input class="k" value={p.key} aria-label="Property name" onchange={(e) => edit(renameProp(scene, selected!, p.key, e.currentTarget.value))} />
-              {#if p.simple}
-                <input class="v" value={showPropValue(p.value)} aria-label="Value of {p.key}" onchange={(e) => edit(setProp(scene, selected!, p.key, parsePropValue(e.currentTarget.value)))} />
-              {:else}
-                <span class="v dim" title="Edit tables in the JSON view">{"{ … }"}</span>
-              {/if}
+              <input class="v" class:table={!p.simple} value={showPropValue(p.value)} aria-label="Value of {p.key}" title={p.simple ? "" : "A list or table, as JSON (a mistake keeps the old value)"} onchange={(e) => {
+                const v = parsePropValue(e.currentTarget.value);
+                if (!p.simple && typeof v === "string") { studio.say("error", `${p.key}: not valid JSON, so it was not changed`); e.currentTarget.value = showPropValue(p.value); return; }
+                edit(setProp(scene, selected!, p.key, v));
+              }} />
               <button class="ghost danger" aria-label="Remove {p.key}" onclick={() => edit(setProp(scene, selected!, p.key, undefined))}>✕</button>
             </div>
           {/each}
@@ -912,7 +912,7 @@
   .newmap summary { cursor: pointer; }
   .newmap input, .newmap select { min-width: 0; width: 100%; }
   .prop { display: flex; gap: 4px; align-items: center; }
-  .prop .k { width: 70px; min-width: 0; } .prop .v { flex: 1; min-width: 0; }
+  .prop .k { width: 70px; min-width: 0; } .prop .v { flex: 1; min-width: 0; } .prop .v.table { font-family: var(--mono, monospace); font-size: 11px; }
   .prop input { padding: 2px 6px; }
   .brush { display: flex; flex-direction: column; gap: 4px; border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
   .brush label { gap: 1px; }
