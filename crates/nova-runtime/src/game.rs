@@ -2972,6 +2972,10 @@ impl Game {
         let mut images = Vec::new();
         let mut fx_images = Vec::new();
         for asset in project.assets_of(AssetKind::Image) {
+            // the store's pictures (the launcher icon and the box art) are for the APK and launchers, not for drawing: they stay out of the atlas
+            if assets::STORE_ART.contains(&asset.id.as_str()) {
+                continue;
+            }
             let bytes = vfs.read(&asset.id)?;
             let image = assets::decode_png(&bytes).map_err(|e| format!("{}: {e}", asset.id))?;
             if asset.id.starts_with(billboard_api::FOLDER) {

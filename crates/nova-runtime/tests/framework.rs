@@ -2974,3 +2974,22 @@ fn a_slow_frame_is_written_to_the_log_by_nova_hitch() {
         "{l:?}"
     );
 }
+
+#[test]
+fn the_store_pictures_stay_out_of_the_sprite_atlas() {
+    // a broken box art would fail the load if it were decoded for the atlas; the icon is not a sprite
+    let mut g = project(vec![
+        ("icon.png", png(512, 512)),
+        ("boxart.png", b"not a png".to_vec()),
+        ("sprites/hero.png", png(8, 8)),
+        (
+            "main.lua",
+            lua(
+                "function update() nova.log(tostring(pcall(nova.image_size, 'icon.png')) .. ' ' .. table.concat({ nova.image_size('hero') }, 'x')) end",
+            ),
+        ),
+    ]);
+    steps(&mut g, 1);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    assert_eq!(logs(&g)[0], "false 8x8");
+}

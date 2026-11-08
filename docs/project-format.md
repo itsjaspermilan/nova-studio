@@ -58,7 +58,7 @@ blends the land around the road into hills. Pine Ridge Rally's Frost Pass stage 
 ### Icon and box art
 
 `icon.png` (square, 512 x 512 is plenty) in the project folder becomes the Android app's launcher icon, and `boxart.png` (a cover, any size) is
-copied into the APK's `assets/` for launchers that show a cover (Lantern reads it). Both are optional; `scripts/build-apk.sh` does this. Pine Ridge
+copied into the APK's `assets/` for launchers that show a cover (Lantern reads it). Both are optional; `scripts/build-apk.sh` does this. They (and `boxart-wide.png`) are not sprites: the game never draws them, so they are left out of the sprite atlas. Pine Ridge
 Rally's are rendered by the game itself (`scripts/rally/art.sh`).
 
 ### `nova.json`
