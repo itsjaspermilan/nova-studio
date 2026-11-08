@@ -1,4 +1,5 @@
 import type { Api, CheckReport, Diagnostic, FileContent, FileEntry, HeadlessOptions, HeadlessReport, LogLine } from "./types";
+import starterTitleIn from "../../src-tauri/templates/starter/animations/title_in.anim.json?raw";
 
 // 1x1 transparent PNG, for tests that have no canvas
 const TINY_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
@@ -40,7 +41,8 @@ const STARTER: Record<string, string> = {
   "nova.json": JSON.stringify({ format: 1, name: "Mock Project", entry: "main.lua", world_height: 540, version: "0.1.0", input: { jump: ["key:Space", "pad:south"] } }, null, 2) + "\n",
   "main.lua": `-- Entry point: start the first scene.\nnova.start("title")\n`,
   "scenes/title.lua": `local Title = nova.scene {}\n\nfunction Title:enter()\n  self.t = 0\n  self:spawn("player", { x = 480, y = 270 })\nend\n\nfunction Title:update(dt)\n  self.t = self.t + dt\nend\n\nfunction Title:draw_ui()\n  nova.ui.text(24, 24, "Hello, Nova!", { size = 48, font = "rounded" })\nend\n\nreturn Title\n`,
-  "scenes/title.scene.json": `{\n  "version": 1,\n  "background": [40, 60, 90],\n  "objects": [\n    { "kind": "player", "name": "hero", "x": 480, "y": 400 }\n  ],\n  "images": [\n    { "image": "sprites/player_sheet.png", "x": 120, "y": 200, "scale": 2 }\n  ],\n  "texts": [\n    { "text": "MY GAME", "x": 24, "y": 24, "scale": 5 }\n  ]\n}\n`,
+  "scenes/title.scene.json": `{\n  "version": 1,\n  "background": [40, 60, 90],\n  "objects": [\n    { "kind": "player", "name": "hero", "x": 480, "y": 400 }\n  ],\n  "images": [\n    { "image": "sprites/player_sheet.png", "x": 120, "y": 200, "scale": 2 }\n  ],\n  "texts": [\n    { "text": "MY GAME", "name": "title", "x": 24, "y": 24, "scale": 5 }\n  ]\n}\n`,
+  "animations/title_in.anim.json": starterTitleIn,
   "animations/hero_hop.anim.json": `{\n  "version": 1,\n  "length": 1.5,\n  "loop": true,\n  "tracks": [\n    {\n      "target": "hero", "field": "y", "relative": true,\n      "keys": [\n        { "time": 0, "value": 0, "ease": "out_quad" },\n        { "time": 0.4, "value": -120, "ease": "in_quad" },\n        { "time": 0.8, "value": 0, "ease": "out_bounce" },\n        { "time": 1.5, "value": 0 }\n      ]\n    },\n    {\n      "target": "hero", "field": "x", "relative": true,\n      "keys": [\n        { "time": 0, "value": -200, "ease": "in_out_sine" },\n        { "time": 1.5, "value": 200 }\n      ]\n    },\n    {\n      "target": "hero", "field": "tint",\n      "keys": [\n        { "time": 0, "value": [255, 255, 255] },\n        { "time": 0.4, "value": [255, 200, 80] },\n        { "time": 0.8, "value": [255, 255, 255] }\n      ]\n    },\n    {\n      "type": "event", "target": "scene",\n      "keys": [\n        { "time": 0.8, "call": "landed", "args": [1] }\n      ]\n    }\n  ]\n}\n`,
   "sprites/player_sheet.png": "",
   "sprites/player.sprite.json": `{\n  "version": 1,\n  "image": "player_sheet.png",\n  "frame_width": 16,\n  "frame_height": 32,\n  "durations_ms": [200, 200, 100],\n  "tags": [\n    { "name": "idle", "from": 0, "to": 1 },\n    { "name": "run", "from": 1, "to": 2 }\n  ]\n}\n`,

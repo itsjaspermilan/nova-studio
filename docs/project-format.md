@@ -102,6 +102,7 @@ case-insensitive systems.
   WEIGHTS_0, up to four joints per point) are read when a model is drawn with `parts` or a `clip`. Morph
   targets and extensions are reported as warnings in the log, not silently dropped.
 - **Scripts:** Lua 5.4.
+- **Keyframe animations:** `animations/<name>.anim.json` (see [Keyframe animations](#keyframe-animations-animationsnameanimjson)), checked when the project loads.
 
 ## Lua API v1
 

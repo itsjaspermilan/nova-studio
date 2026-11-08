@@ -230,3 +230,35 @@ fn the_sound_lesson_plays_a_sound_when_a_coin_is_picked_up() {
     let (_, _, sounds) = run_to_the_right(files);
     assert!(sounds > 0, "a coin pickup should start a sound");
 }
+
+#[test]
+fn lesson_six_drops_the_starters_title_in_with_its_animation() {
+    // (lesson 6 starts from a fresh Starter project: lesson 5 replaced main.lua)
+    let mut files = starter();
+    assert!(
+        files.contains_key("animations/title_in.anim.json"),
+        "the Starter template has the animation the lesson opens"
+    );
+    for (n, _, target, code) in snippets() {
+        if n == 6 {
+            files.insert(target, code.into_bytes());
+        }
+    }
+    let mut g = play(files, 30);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    assert!(
+        g.take_log().is_empty(),
+        "half a second in, the title is still coming in"
+    );
+    for i in 30..90 {
+        g.update(
+            1.0 / 60.0,
+            i as f64 / 60.0,
+            [960.0, 540.0],
+            Actions::default(),
+            false,
+        );
+    }
+    assert!(g.error.is_none(), "{:?}", g.error);
+    assert_eq!(g.take_log(), vec!["the title is in"]);
+}

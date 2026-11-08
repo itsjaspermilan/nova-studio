@@ -309,6 +309,54 @@ Add it, then press **▶ Play**. Your robot spins.
       },
     ],
   },
+  {
+    id: "timeline",
+    title: "Animate with the timeline",
+    summary: "Make the title drop in with keys on a timeline, then play it from the scene, like a door, a menu or a camera move.",
+    minutes: 8,
+    needs: "A fresh project from the Starter template (lesson 5 replaced main.lua).",
+    steps: [
+      {
+        title: "Open the animation",
+        body: `
+In the file list open **Animations** and click \`title_in\`. This is the **timeline editor**: the tracks are listed at the bottom left, and each track's keys sit on the time ruler beside them. Each track changes one thing: \`title.y\` moves the text named \`title\` down, \`title.alpha\` fades it in, \`title.color\` warms it up and back.
+
+Press **▶ Play** in the editor's own bar (or Space). The picture above shows the scene with the animation applied. Click or drag on the ruler to look at any moment.
+
+> A key says "at this time, the value is this". Between two keys the value travels along the first key's **Then** curve.
+`,
+      },
+      {
+        title: "Change the keys",
+        body: `
+Drag the last key of \`title.y\` to the right: the drop gets slower. Click the first key of \`title.y\` and set **Then** to *Bounce*. Double-click a lane to add a key there; select a key and press Delete to remove it. ⌘Z undoes.
+
+Change **Length** to make room, and tick **Loop** for something that repeats (a lamp flickering, a platform going back and forth).
+
+Press ⌘S.
+`,
+      },
+      {
+        title: "Play it from the scene",
+        body: `
+An animation does nothing until a scene or an entity plays it. This scene plays \`title_in\` when it starts and writes a line in the log when it ends. It replaces \`scenes/title.lua\`.
+
+Add it and press **▶ Play**: the title drops in.
+
+> \`self:play_anim("door_open")\` on an entity makes the entity the animation's \`self\`. The player it returns can \`:pause()\`, \`:resume()\`, \`:seek(0.5)\` and \`:stop()\`; see \`nova.play_anim\` in Look something up.
+`,
+        snippet: "06-timeline__1-title",
+      },
+      {
+        title: "Make things happen at a moment",
+        body: `
+Press **＋ Event** under the tracks. In the inspector set **Target** to \`scene\`, double-click the new lane where the title lands, and set **Call** to \`title_landed\`. The scene from the last step has a function of that name, so the game calls it at that moment.
+
+**＋ Sound** makes a track that plays sounds at its keys. Every \`.wav\` in \`sounds/\` is in its list.
+`,
+      },
+    ],
+  },
 ];
 
 export interface Tip {
@@ -322,7 +370,7 @@ export const shortcuts: { area: string; tips: Tip[] }[] = [
     tips: [
       { keys: "⌘S", what: "Save the open file" },
       { keys: "⌘↩", what: "Save everything and Play (again to Stop)" },
-      { keys: "⌘Z / ⇧⌘Z", what: "Undo / redo in the picture, sound, model, scene and song editors" },
+      { keys: "⌘Z / ⇧⌘Z", what: "Undo / redo in the picture, sound, model, scene, song and timeline editors" },
     ],
   },
   {
@@ -348,6 +396,15 @@ export const shortcuts: { area: string; tips: Tip[] }[] = [
       { keys: "[ ]", what: "Smaller / bigger brush" },
       { keys: "← →", what: "Previous / next frame" },
       { keys: "Space", what: "Play the animation" },
+    ],
+  },
+  {
+    area: "Timeline editor",
+    tips: [
+      { keys: "Space", what: "Play / pause the preview" },
+      { keys: "Double-click a lane / K", what: "Add a key there / at the playhead" },
+      { keys: "Drag a key, ← →", what: "Move it in time (Alt ignores snapping)" },
+      { keys: "Delete, Home, End", what: "Remove the key; go to the start or the end" },
     ],
   },
   {
