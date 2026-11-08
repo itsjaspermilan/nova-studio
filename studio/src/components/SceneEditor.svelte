@@ -171,7 +171,8 @@
     if (!picture) return;
     const f = frame ?? { sx: 0, sy: 0, sw: picture.naturalWidth, sh: picture.naturalHeight };
     kindPics.set(kind, { image, ...f });
-    kindSizes = new Map(kindSizes).set(kind, { w: f.sw, h: f.sh, px: look.pivot?.[0] ?? 0.5, py: look.pivot?.[1] ?? 0.5 });
+    const [scx, scy] = look.scale ?? [1, 1];
+    kindSizes = new Map(kindSizes).set(kind, { w: f.sw * scx, h: f.sh * scy, px: look.pivot?.[0] ?? 0.5, py: look.pivot?.[1] ?? 0.5 });
   }
   $effect(() => {
     for (const o of scene.objects ?? []) if (typeof o.kind === "string") void learnKind(o.kind);

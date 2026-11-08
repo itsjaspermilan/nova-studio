@@ -7,6 +7,8 @@ export interface EntityLook {
   /// A 3D model: `models/<name>.glb`, drawn in the scene's 3D view.
   model?: string;
   pivot?: [number, number];
+  /// The sprite's drawn size per pixel (`sx`, `sy` in the spec): 0.5 for a picture made at twice the size it is shown.
+  scale?: [number, number];
   screen?: boolean;
 }
 
@@ -47,6 +49,9 @@ export function parseEntitySource(source: string): { look: EntityLook; parent?: 
   if (model) look.model = model[1];
   const pivot = /\bpivot\s*=\s*\{\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\}/.exec(found.spec);
   if (pivot) look.pivot = [Number(pivot[1]), Number(pivot[2])];
+  const sx = /\bsx\s*=\s*([\d.]+)/.exec(topLevel(found.spec));
+  const sy = /\bsy\s*=\s*([\d.]+)/.exec(topLevel(found.spec));
+  if (sx || sy) look.scale = [Number((sx ?? sy)![1]), Number((sy ?? sx)![1])];
   const screen = /\bscreen\s*=\s*(true|false)/.exec(topLevel(found.spec));
   if (screen) look.screen = screen[1] === "true";
   return { look, parent: found.parent };
