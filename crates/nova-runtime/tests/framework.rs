@@ -689,6 +689,28 @@ fn tilemap_cells_can_be_read_and_changed_from_lua() {
 }
 
 #[test]
+fn a_scaled_tileset_draws_and_collides_at_its_shown_size() {
+    // 16-pixel tiles at scale 0.5 are 8 units: cells, solids and the drawn sprites all use 8
+    let scene = r#"{"version":1,"tilemaps":[{"name":"ground","tileset":{"image":"sprites/tiles.png","tile_width":16,"tile_height":16,"scale":0.5},"x":0,"y":100,"solid":[1],"tiles":[[1,1,1,1],[1,1,1,1]]}]}"#;
+    let mut g = tile_project(vec![
+        ("scenes/s.scene.json", lua(scene)),
+        (
+            "scenes/s.lua",
+            lua(
+                "local S = nova.scene {}\nfunction S:enter()\n  nova.log(table.concat({ self.ground:size() }, ' '))\n  nova.log(table.concat({ self.ground:cell_at(17, 109) }, ','))\n  nova.log(tostring(nova.solid_at(31, 101)) .. ' ' .. tostring(nova.solid_at(33, 101)))\n  local box = nova.spawn(nova.entity { hitbox = { -2, -2, 4, 4 } }, 4, 60)\n  local _, hy = box:slide(0, 100)\n  nova.log(box.y .. ' ' .. tostring(hy ~= nil))\nend\nreturn S",
+            ),
+        ),
+        ("main.lua", lua("nova.start('s')")),
+    ]);
+    steps(&mut g, 2);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    assert_eq!(logs(&g), ["4 2 8 8", "2,1", "true false", "98.0 true"]);
+    let sprites = &g.frame_input(540).sprites_back;
+    assert_eq!(sprites.len(), 8);
+    assert_eq!(sprites[0].size, [8.0, 8.0]);
+}
+
+#[test]
 fn bad_tilemap_data_is_explained() {
     for (spec, expected) in [
         (

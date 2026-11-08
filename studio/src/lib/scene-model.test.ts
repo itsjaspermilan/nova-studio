@@ -131,7 +131,7 @@ describe("history", () => {
   });
 });
 
-import { addTilemap, cellAt, fillTiles, mapSize, paintTile, parsePropValue, propsOf, removeTilemap, renameProp, resizeTilemap, setProp, showPropValue, tilemapBox, tilemaps, toggleSolid } from "./scene-model";
+import { addTilemap, cellAt, fillTiles, mapSize, tileSize, paintTile, parsePropValue, propsOf, removeTilemap, renameProp, resizeTilemap, setProp, showPropValue, tilemapBox, tilemaps, toggleSolid } from "./scene-model";
 
 describe("object properties", () => {
   it("parses what people type", () => {
@@ -183,6 +183,13 @@ describe("tile maps", () => {
     expect(cellAt(tilemaps(s)[0]!, 40, 3)).toBeNull();
     expect(cellAt(tilemaps(s)[0]!, -1, 3)).toBeNull();
     expect(tilemaps({ version: 1 })).toEqual([]);
+  });
+
+  it("measures a tileset drawn at half its pixel size", () => {
+    const m = { ...tilemaps(scene())[0]!, tileset: { image: "t.png", tile_width: 96, tile_height: 96, scale: 0.5 } };
+    expect(tileSize(m)).toEqual({ w: 48, h: 48 });
+    expect(tilemapBox(m)).toEqual({ x: 0, y: 0, w: 96, h: 96 });
+    expect(cellAt(m, 50, 10)).toEqual({ col: 1, row: 0 });
   });
 
   it("adds an empty map with a fresh name, and removes it again", () => {

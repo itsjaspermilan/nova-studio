@@ -2029,7 +2029,7 @@ local function build_scene(scene, data, file)
     local solid = {}
     for _, t in ipairs(tm.solid) do solid[t] = true end
     local ts = tm.tileset
-    local map = raw.tilemap_create({ image = ts.image, tile_width = ts.tile_width, tile_height = ts.tile_height, tiles = tm.tiles })
+    local map = raw.tilemap_create({ image = ts.image, tile_width = ts.tile_width, tile_height = ts.tile_height, scale = ts.scale, tiles = tm.tiles })
     named(tm, spawn(Tilemap, tm.x, tm.y, { map = map, solid = solid, depth = tm.depth }))
   end
   for _, t in ipairs(data.texts) do

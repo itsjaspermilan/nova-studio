@@ -781,7 +781,14 @@ local hit_x, hit_y = self:slide(dx, dy)                                   -- ent
 
 In a scene file, add `"tilemaps": [ { "name": "ground", "tileset": { "image": "sprites/tiles.png",
 "tile_width": 16, "tile_height": 16 }, "x": 0, "y": 456, "depth": 90, "solid": [0, 1], "tiles":
-[[0, 0], [1, 1]] } ]`; the tilemap becomes `self.ground`. `slide` moves one axis at a time (so
+[[0, 0], [1, 1]] } ]`; the tilemap becomes `self.ground`.
+
+**HD tilesets.** `tile_width` and `tile_height` are pixels of the tileset, and a tile is that many units big unless the tileset
+has a `scale` (0.05 to 16, in the scene file's `tileset` or in `nova.tilemap{...}`): a tileset of 96-pixel tiles with `"scale": 0.5`
+makes tiles 48 units square, drawn from twice as many pixels, which is sharp on a 1080-line screen when the project's
+`world_height` is 1080 (Sunny Hop's tilesets are made so by `scripts/sunny/art.mjs`). Collisions, `cell_at` and `size()` use the
+drawn size. Keep such a camera on whole screen pixels (half units at `world_height` 1080) so that smooth filtering never reads
+the next tile's edge. `slide` moves one axis at a time (so
 entities glide along walls) in sub-steps no bigger than half a tile, so a fast entity cannot jump a
 thin wall. It uses the entity's hitbox box. Tile numbers outside the tileset, ragged rows and
 unknown tilesets are errors that say which cell.

@@ -920,7 +920,7 @@
   "name": "nova.tilemap",
   "kind": "function",
   "signature": "nova.tilemap(spec) -> tilemap",
-  "doc": "Create a tile grid. Spec: image, tile_width, tile_height, tiles, solid, x, y, depth.",
+  "doc": "Create a tile grid. Spec: image, tile_width, tile_height, tiles, solid, x, y, depth, scale (how big a tile is drawn for each of its pixels: 0.5 for a tileset painted at twice its shown size).",
   "group": "Scenes and entities"
  },
  {

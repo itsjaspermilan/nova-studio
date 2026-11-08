@@ -2724,7 +2724,13 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     .expect("rect came from the layout");
                 (id, (rect.w, rect.h))
             };
-            let map = TileMap::new(&id, tile_w, tile_h, size, rows).map_err(|e| lua_err(format!("tilemap: {e}")))?;
+            let mut map = TileMap::new(&id, tile_w, tile_h, size, rows).map_err(|e| lua_err(format!("tilemap: {e}")))?;
+            if let Some(scale) = spec.get::<Option<f64>>("scale")? {
+                if !(0.05..=16.0).contains(&scale) {
+                    return Err(lua_err("tilemap: 'scale' must be from 0.05 to 16"));
+                }
+                map.scale = scale as f32;
+            }
             sh.tilemaps.push(map);
             Ok(sh.tilemaps.len() - 1)
         })?,
@@ -2763,7 +2769,16 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 .tilemaps
                 .get(id)
                 .ok_or_else(|| lua_err("unknown tilemap"))?;
-            Ok((map.width, map.height, map.tile_w, map.tile_h))
+            // a whole size stays a Lua integer (as it was before tilesets had a scale)
+            let size = |px: u32| {
+                let v = px as f64 * map.scale as f64;
+                if v.fract() == 0.0 {
+                    mlua::Value::Integer(v as i64)
+                } else {
+                    mlua::Value::Number(v)
+                }
+            };
+            Ok((map.width, map.height, size(map.tile_w), size(map.tile_h)))
         })?,
     )?;
     // tilemap_draw(id, x, y, layer): x, y is where the map's top-left corner is on screen.
@@ -2790,9 +2805,10 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                         .tilemaps
                         .get(id)
                         .ok_or_else(|| lua_err("unknown tilemap"))?;
-                    if let Some((c0, c1, r0, r1)) = map.visible(ox, oy, 1.0, view) {
+                    if let Some((c0, c1, r0, r1)) = map.visible(ox, oy, map.scale, view) {
                         let rect = sh.layout.rects[&map.image];
-                        let (tw, th) = (map.tile_w as f32, map.tile_h as f32);
+                        let (tw, th) =
+                            (map.tile_w as f32 * map.scale, map.tile_h as f32 * map.scale);
                         for row in r0..=r1 {
                             for col in c0..=c1 {
                                 let tile = map.get(col as i64, row as i64);
