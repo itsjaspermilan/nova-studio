@@ -5,43 +5,10 @@
 //   scripts/env.sh node scripts/rally/grid.mjs
 import { readFileSync, writeFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { centreline, stageMarks } from "../lib/trackgen.mjs";
+import { centreline, stageMarks, gridSlots as slots } from "../lib/trackgen.mjs";
 
 const DIR = join(new URL("../..", import.meta.url).pathname, "examples/pine-ridge-rally/scenes");
-export const GAP = 6, FIRST = 6, SIDE = 2.2;
 const r1 = (v) => Math.round(v * 10) / 10;
-
-/// The point `back` metres behind the start of `pts` (a closed loop that starts at the line, in driving order), with the road's heading there.
-export function behind(pts, back) {
-  let left = back;
-  for (let k = 0; k < pts.length; k++) {
-    const a = pts[(pts.length - k) % pts.length], b = pts[pts.length - k - 1];
-    const len = Math.hypot(a.x - b.x, a.z - b.z);
-    if (left <= len) {
-      const t = left / len;
-      return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t, ry: Math.atan2(a.x - b.x, a.z - b.z) };
-    }
-    left -= len;
-  }
-  throw new Error("the loop is shorter than the grid");
-}
-
-/// The grid_slot objects for a course: `line` is the start line ({x, z, ry}), `pts` the waypoints in order (a circuit's loop), `open` a stage.
-export function slots(line, pts, open) {
-  const out = [];
-  if (open) {
-    const x = line.x - Math.sin(line.ry) * FIRST, z = line.z - Math.cos(line.ry) * FIRST;
-    out.push({ slot: 1, x, z, ry: line.ry });
-    return out;
-  }
-  for (let s = 0; s < 4; s++) {
-    const p = behind(pts, FIRST + s * GAP);
-    const side = s % 2 ? SIDE : -SIDE;
-    // (sideways: the same side trackgen has always used, -tz/+tx)
-    out.push({ slot: s + 1, x: p.x - Math.cos(p.ry) * side, z: p.z + Math.sin(p.ry) * side, ry: p.ry });
-  }
-  return out;
-}
 
 const slotLine = (s) => `    { "kind": "grid_slot", "x": ${r1(s.x)}, "y": 0, "z": ${r1(s.z)}, "props": { "slot": ${s.slot}, "ry": ${Math.round(s.ry * 1000) / 1000} } },`;
 

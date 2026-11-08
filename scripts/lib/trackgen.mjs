@@ -4,7 +4,6 @@
 // its statistics; `roadGlb(control, kind, open)` is the road as one ribbon mesh. The same spec and seed always give the same scene.
 
 // ---- the curve ---------------------------------------------------------------------------------------------------------
-import { slots as gridSlots } from "../rally/grid.mjs";
 const catmull = (p0, p1, p2, p3, t) => {
   const t2 = t * t, t3 = t2 * t;
   return [0, 1].map((k) => 0.5 * (2 * p1[k] + (-p0[k] + p2[k]) * t + (2 * p0[k] - 5 * p1[k] + 4 * p2[k] - p3[k]) * t2 + (-p0[k] + 3 * p1[k] - 3 * p2[k] + p3[k]) * t3));
@@ -544,3 +543,39 @@ export function tightest(line, spacing) {
   return Math.round(best);
 }
 
+
+// ---- the starting grid (scripts/rally/grid.mjs re-lays the grids of scenes already made with these) ----------------------------------------
+// A circuit gets four boxes in two staggered columns, GAP m apart along the road (the front one FIRST m behind the line), SIDE m either side of
+// the middle; a stage, which the player drives alone, one box in the middle of the road. The road is followed through bends.
+export const GRID_GAP = 6, GRID_FIRST = 6, GRID_SIDE = 2.2;
+/// The point `back` metres behind the start of `pts` (a closed loop that starts at the line, in driving order), with the road's heading there.
+function behindLine(pts, back) {
+  let left = back;
+  for (let k = 0; k < pts.length; k++) {
+    const a = pts[(pts.length - k) % pts.length], b = pts[pts.length - k - 1];
+    const len = Math.hypot(a.x - b.x, a.z - b.z);
+    if (left <= len) {
+      const t = left / len;
+      return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t, ry: Math.atan2(a.x - b.x, a.z - b.z) };
+    }
+    left -= len;
+  }
+  throw new Error("the loop is shorter than the grid");
+}
+
+/// The grid_slot objects for a course: `line` is the start line ({x, z, ry}), `pts` the waypoints in order (a circuit's loop), `open` a stage.
+export function gridSlots(line, pts, open) {
+  const out = [];
+  if (open) {
+    const x = line.x - Math.sin(line.ry) * GRID_FIRST, z = line.z - Math.cos(line.ry) * GRID_FIRST;
+    out.push({ slot: 1, x, z, ry: line.ry });
+    return out;
+  }
+  for (let s = 0; s < 4; s++) {
+    const p = behindLine(pts, GRID_FIRST + s * GRID_GAP);
+    const side = s % 2 ? GRID_SIDE : -GRID_SIDE;
+    // (sideways: the same side trackgen has always used, -tz/+tx)
+    out.push({ slot: s + 1, x: p.x - Math.cos(p.ry) * side, z: p.z + Math.sin(p.ry) * side, ry: p.ry });
+  }
+  return out;
+}
