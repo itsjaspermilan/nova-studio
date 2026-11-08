@@ -364,17 +364,24 @@
   "group": "Drawing"
  },
  {
+  "name": "nova.ui.slant",
+  "kind": "function",
+  "signature": "nova.ui.slant(x, y, w, h, cut [, color])",
+  "doc": "A panel or button with a leaning right edge: `w` wide at the top and `w - cut` at the bottom (a negative cut leans it the other way), in the UI layer. The lean is drawn a screen pixel at a time, so it is smooth at any resolution. Themes use it with `slant = cut` on a panel, a button or the focus.",
+  "group": "Drawing"
+ },
+ {
   "name": "nova.ui.text",
   "kind": "function",
-  "signature": "nova.ui.text(x, y, text [, opts]) -> width, height",
-  "doc": "Draw text. Options: font, size, color, width (wrap), align, shadow, valign (\"top\", the default: y is the top of the line; \"middle\": y is the middle of the capital letters, so a label in a button looks centred; \"baseline\"), fallback (a font name or a list of them: if the font lacks a character of the text, the first of these that has them all draws it, instead of a box), bold (true, or a number: 1 is the usual bold; the letters are thickened, not drawn twice), outline (a colour, or { color, width } with width in logical units, default an eleventh of the size: one band round every letter, behind it). With `width`, `align` (left, center, right) places the lines inside that width; without it, \"center\" puts the middle of the text at x and \"right\" puts its right edge there. Fonts: sans, rounded, pixel, terminal, mono, serif, comic, display, script, or a project font.",
+  "signature": "nova.ui.text(x, y, text [, opts]) -> width, height, size",
+  "doc": "Draw text. Options: font, size, color, width (wrap), align, shadow, valign (\"top\", the default: y is the top of the line; \"middle\": y is the middle of the capital letters, so a label in a button looks centred; \"baseline\"), fallback (a font name or a list of them: if the font lacks a character of the text, the first of these that has them all draws it, instead of a box), bold (true, or a number: 1 is the usual bold; the letters are thickened, not drawn twice), outline (a colour, or { color, width } with width in logical units, default an eleventh of the size: one band round every letter, behind it). With `width`, `align` (left, center, right) places the lines inside that width; without it, \"center\" puts the middle of the text at x and \"right\" puts its right edge there. fit: \"shrink\" makes one line smaller until it is no wider than `width` (and no taller than `height`); \"wrap\" wraps it at `width` and makes it smaller until it is no taller than `height`; never below `min_size` (8); the third result is the size it was drawn at. spacing: room after every letter as a share of the size (0.2 spaces a label out like CSS letter-spacing 0.2em). Fonts: sans, rounded, pixel, terminal, mono, serif, comic, display, script, or a project font.",
   "group": "Drawing"
  },
  {
   "name": "nova.ui.text_size",
   "kind": "function",
-  "signature": "nova.ui.text_size(text [, opts]) -> width, height",
-  "doc": "Measure text without drawing it.",
+  "signature": "nova.ui.text_size(text [, opts]) -> width, height, size",
+  "doc": "Measure text without drawing it (the same options as nova.ui.text, `fit` too: the third result is the size it would be drawn at).",
   "group": "Drawing"
  },
  {
@@ -1440,6 +1447,48 @@
   "signature": "nova.ui.keyboard{ x, y [, w, h, gap, current, upper] } -> { typed, current, upper, keys }",
   "doc": "An on-screen keyboard of ten columns for a gamepad, a finger or a mouse (it chooses with nova.ui.list, so the d-pad, arrow keys, the pointer and the pad cursor all work): digits, letters, a few marks, Aa (capitals), space, del and ok. Pass back `current` and `upper`; `typed` is the character of the key just taken (\"\\b\" for del, \"\\n\" for ok; B deletes too), to give to nova.ui.text_field; `keys` is one { x, y, w, h, label, selected } for each key, to draw.",
   "group": "Drawing"
+ },
+ {
+  "name": "nova.ui.menu",
+  "kind": "function",
+  "signature": "nova.ui.menu{ id, anchor, ...items } -> { pressed, back, step, changed, focus, moved, rects }",
+  "doc": "A menu laid out, focused and drawn for you. The table is a column of items: { \"text\", \"MY GAME\", style = \"title\" }, { \"button\", \"Play\", id = \"play\" }, and containers (row, column, grid, stack, panel) holding more. It is placed by `anchor` (center, top, bottomleft...) inside the screen less `margin`; sizes are numbers, \"50%\" or \"fill\"; text shrinks or wraps to fit its box. The d-pad and left stick move the focus to the nearest button that way (wrapping round), A presses (`pressed` is its id), B sets `back`; left and right on a button with `adjust = true` give `step` (-1 or 1) and `changed`. A column or grid with `visible = n` scrolls to keep the focus in view. Each menu remembers its focus by `id`. Call it every frame. A string loads menus/<name>.menu.json. See docs/menus.md.",
+  "group": "Menus and HUD"
+ },
+ {
+  "name": "nova.ui.layout",
+  "kind": "function",
+  "signature": "nova.ui.layout{ anchor, ...items } -> rects",
+  "doc": "Lays out and draws a tree like nova.ui.menu with no focus and no input: a HUD or a score table. A stack the size of the screen ({ kind = \"stack\", w = \"100%\", h = \"100%\" }) places each child by its own anchor (topleft, topright, bottom...). Returns { [id] = { x, y, w, h } } for each item with an id.",
+  "group": "Menus and HUD"
+ },
+ {
+  "name": "nova.ui.theme",
+  "kind": "function",
+  "signature": "nova.ui.theme([{ font, size, color, dim, accent, ink, gap, margin, styles, panel, button, focus, enter, glyphs, sounds, actions, hold, draw }]) -> theme",
+  "doc": "The look of every menu in the game: fonts and sizes, colours, text styles (title, heading, body, small, label, or your own), panels and buttons as colours or nine-slice sprites (sprite, slice, scale), the focus (a colour or a sprite; `slide` is how fast it follows), buttons sliding in when a menu opens (`enter`), pictures of the pad's buttons for prompts (`glyphs`), sounds for move/accept/back, and `draw` hooks to draw buttons, the focus or panels yourself. What you give replaces those parts of the default (so calling it twice does not pile up); with no theme a menu still looks good.",
+  "group": "Menus and HUD"
+ },
+ {
+  "name": "nova.ui.load",
+  "kind": "function",
+  "signature": "nova.ui.load(name) -> tree",
+  "doc": "Reads menus/<name>.menu.json (dots are folders): the same tree as in Lua, written with kind, text and children. Gives a fresh copy each call, so values can be filled in before giving it to nova.ui.menu or nova.ui.layout.",
+  "group": "Menus and HUD"
+ },
+ {
+  "name": "nova.ui.focus",
+  "kind": "function",
+  "signature": "nova.ui.focus(menu_id [, item_id]) -> item_id",
+  "doc": "Moves a menu's focus to the item with this id (the next time the menu is drawn, scrolling it into view), or with no item says which item the menu's focus is on.",
+  "group": "Menus and HUD"
+ },
+ {
+  "name": "nova.ui.forget",
+  "kind": "function",
+  "signature": "nova.ui.forget(menu_id)",
+  "doc": "Forgets a menu's focus, scrolling and highlight, so it opens as if for the first time (on its first button).",
+  "group": "Menus and HUD"
  },
  {
   "name": "nova.walls",

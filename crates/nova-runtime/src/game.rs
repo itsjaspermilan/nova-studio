@@ -50,6 +50,8 @@ pub const LUA_MEMORY_LIMIT: usize = 256 << 20;
 /// The entity/scene/timer framework, written in Lua and loaded before every project's
 /// entry script. It only takes over the frame when a game calls `nova.start`.
 const FRAMEWORK: &str = include_str!("../lua/framework.lua");
+/// Menus and HUDs: containers, focus moved by the pad, themes (`nova.ui.menu`, `nova.ui.layout`), loaded after the framework.
+const UI_LAYOUT: &str = include_str!("../lua/ui_layout.lua");
 
 fn builtin_module(name: &str) -> Option<&'static str> {
     match name {
@@ -985,7 +987,7 @@ fn draw_text(
     y: f32,
     opts: &Option<Table>,
     draw: bool,
-) -> mlua::Result<(f32, f32)> {
+) -> mlua::Result<(f32, f32, f32)> {
     let scale = sh.pixel_scale.max(0.25);
     let size = match (number_option(opts, "size")?, number_option(opts, "scale")?) {
         (Some(s), _) => s,
@@ -1033,7 +1035,72 @@ fn draw_text(
             )));
         }
     };
-    let layout = sh.text.layout(font, text, px, wrap);
+    // `fit`: "shrink" keeps the text on its lines and makes it smaller until it is no wider than `width` (and no taller than
+    // `height`, when given); "wrap" wraps it at `width` and makes it smaller until it is no taller than `height`. Never below
+    // `min_size` (8). The third result of nova.ui.text is the size it was drawn at.
+    // `spacing`: room added after every letter, as a share of the size (0.2 is the "0.2em" tracking of a spaced-out label)
+    let spacing = number_option(opts, "spacing")?.unwrap_or(0.0) as f32;
+    let spaced = |mut layout: vtext::Layout, px: f32| {
+        if spacing != 0.0 {
+            let extra = spacing * px;
+            for line in &mut layout.lines {
+                for (i, g) in line.glyphs.iter_mut().enumerate() {
+                    g.1 += extra * i as f32;
+                }
+                line.width += extra * line.glyphs.len().saturating_sub(1) as f32;
+            }
+            layout.width = layout.lines.iter().fold(0.0, |w: f32, l| w.max(l.width));
+        }
+        layout
+    };
+    let fit = string_option(opts, "fit")?;
+    let box_h = number_option(opts, "height")?.map(|h| (h as f32 * scale).max(1.0));
+    let (mut size, mut px) = (size, px);
+    let (layout, wrap) = match fit.as_deref() {
+        None => (spaced(sh.text.layout(font, text, px, wrap), px), wrap),
+        Some(mode @ ("shrink" | "wrap")) => {
+            let Some(box_w) = wrap else {
+                return Err(lua_err(format!(
+                    "fit = \"{mode}\" needs a `width` to fit in"
+                )));
+            };
+            let min = (number_option(opts, "min_size")?.unwrap_or(8.0) as f32).clamp(1.0, size);
+            let line_wrap = if mode == "wrap" { Some(box_w) } else { None };
+            let mut layout = spaced(sh.text.layout(font, text, px, line_wrap), px);
+            for _ in 0..10 {
+                let over_w = if mode == "shrink" {
+                    layout.width / box_w
+                } else {
+                    1.0
+                };
+                let over_h = box_h.map_or(1.0, |h| layout.height / h);
+                let over = over_w.max(over_h);
+                if over <= 1.0 || size <= min {
+                    break;
+                }
+                // wrapped text grows in two directions as it grows, so its height goes about with the square of the size
+                let k = if mode == "wrap" && over_w <= 1.0 {
+                    over.sqrt()
+                } else {
+                    over
+                };
+                let next = (size / k * 0.99).max(min);
+                size = if next < size - 0.25 {
+                    next
+                } else {
+                    (size - 0.5).max(min)
+                };
+                px = (size * scale).round().max(1.0);
+                layout = spaced(sh.text.layout(font, text, px, line_wrap), px);
+            }
+            (layout, Some(box_w))
+        }
+        Some(other) => {
+            return Err(lua_err(format!(
+                "fit must be 'shrink' or 'wrap', not '{other}'"
+            )));
+        }
+    };
     let y = match valign.as_deref() {
         None | Some("top") => y,
         Some("baseline") => y - layout.ascent / scale,
@@ -1144,7 +1211,7 @@ fn draw_text(
         );
         sh.text_out = out;
     }
-    Ok((layout.width / scale, layout.height / scale))
+    Ok((layout.width / scale, layout.height / scale, size))
 }
 
 fn rect_instance(
@@ -1998,14 +2065,44 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             },
         )?,
     )?;
+    // slant(x, y, w, h, cut [, color]): a panel whose right edge leans: `w` wide at the top and `w - cut` at the bottom (a negative cut
+    // leans it the other way). One rectangle for the straight part and a strip one screen pixel tall for each row of the leaning part.
+    let s = shared.clone();
+    ui.set(
+        "slant",
+        lua.create_function(
+            move |_, (x, y, w, h, cut, color): (f64, f64, f64, f64, f64, Option<Table>)| {
+                let mut sh = s.borrow_mut();
+                let c = rgba(color)?;
+                if w <= 0.0 || h <= 0.0 {
+                    return Ok(());
+                }
+                let narrow = w.min(w - cut).max(0.0);
+                let inst = rect_instance(&sh, x, y, narrow, h, c);
+                sh.ui.push(inst);
+                let scale = f64::from(sh.pixel_scale.max(0.25));
+                let rows = (h * scale).ceil().clamp(1.0, 4096.0) as usize;
+                let dy = h / rows as f64;
+                for i in 0..rows {
+                    let t = (i as f64 + 0.5) / rows as f64;
+                    let extra = (w - cut * t).max(0.0) - narrow;
+                    if extra > 0.0 {
+                        let inst = rect_instance(&sh, x + narrow, y + i as f64 * dy, extra, dy, c);
+                        sh.ui.push(inst);
+                    }
+                }
+                Ok(())
+            },
+        )?,
+    )?;
     let s = shared.clone();
     ui.set(
         "text",
         lua.create_function(
             move |_, (x, y, text, opts): (f64, f64, String, Option<Table>)| {
                 let mut sh = s.borrow_mut();
-                let (w, h) = draw_text(&mut sh, &text, x as f32, y as f32, &opts, true)?;
-                Ok((w as f64, h as f64))
+                let (w, h, size) = draw_text(&mut sh, &text, x as f32, y as f32, &opts, true)?;
+                Ok((w as f64, h as f64, size as f64))
             },
         )?,
     )?;
@@ -2015,8 +2112,8 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
         "text_size",
         lua.create_function(move |_, (text, opts): (String, Option<Table>)| {
             let mut sh = s.borrow_mut();
-            let (w, h) = draw_text(&mut sh, &text, 0.0, 0.0, &opts, false)?;
-            Ok((w as f64, h as f64))
+            let (w, h, size) = draw_text(&mut sh, &text, 0.0, 0.0, &opts, false)?;
+            Ok((w as f64, h as f64, size as f64))
         })?,
     )?;
     // text_width(text, opts_or_scale): the older form took a number (scale, 8 logical units per step).
@@ -2891,6 +2988,25 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             lua.to_value(&data)
         })?,
     )?;
+    // menu_data(name): `menus/<name>.menu.json` (dots are folders) as plain Lua tables, for nova.ui.load; nil when there is none
+    let menu_vfs = vfs.clone();
+    raw.set(
+        "menu_data",
+        lua.create_function(move |lua, name: String| {
+            let path = format!("menus/{}.menu.json", name.replace('.', "/"));
+            if !menu_vfs.exists(&path) {
+                return Ok(Value::Nil);
+            }
+            let bytes = menu_vfs.read(&path).map_err(lua_err)?;
+            let data: serde_json::Value = serde_json::from_slice(&bytes)
+                .map_err(|e| lua_err(format!("{path} is not valid JSON: {e}")))?;
+            let options = mlua::serde::SerializeOptions::new()
+                .serialize_none_to_null(false)
+                .serialize_unit_to_null(false)
+                .set_array_metatable(false);
+            lua.to_value_with(&data, options)
+        })?,
+    )?;
     retained_api::install(lua, shared, &raw)?;
     nova.set("raw", raw)?;
     lua.globals().set("nova", nova)?;
@@ -3239,6 +3355,10 @@ impl Game {
             game.lua
                 .load(FRAMEWORK)
                 .set_name("=nova.framework")
+                .exec()?;
+            game.lua
+                .load(UI_LAYOUT)
+                .set_name("=nova.ui_layout")
                 .exec()?;
             let source = vfs.read(&entry).map_err(lua_err)?;
             let source = String::from_utf8(source)
