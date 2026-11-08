@@ -1,0 +1,312 @@
+{
+  "version": 1,
+  "objects": [
+    {
+      "kind": "level",
+      "name": "level",
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "props": {
+        "name": "Against the Wall",
+        "client": "character-male-a",
+        "wishes": [
+          {
+            "piece": "bookcase",
+            "wish": "wall"
+          },
+          {
+            "piece": "plant",
+            "wish": "window"
+          }
+        ],
+        "tips": [
+          {
+            "pads": [
+              "pad_dpad"
+            ],
+            "text": "Walk into furniture to push it",
+            "until": "push"
+          },
+          {
+            "pads": [
+              "pad_x"
+            ],
+            "text": "Stuck? Hold X to start again",
+            "until": "turn"
+          }
+        ],
+        "par": 12,
+        "stars": [
+          14,
+          22
+        ],
+        "solution": "lulydrlyullur"
+      }
+    },
+    {
+      "kind": "floor_carpet",
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "floor_carpet",
+      "x": 1,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "floor_carpet",
+      "x": 2,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "floor_carpet",
+      "x": 3,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "floor_carpet",
+      "x": 4,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "floor_carpet",
+      "x": 0,
+      "y": 0,
+      "z": 1
+    },
+    {
+      "kind": "floor_carpet",
+      "x": 1,
+      "y": 0,
+      "z": 1
+    },
+    {
+      "kind": "floor_carpet",
+      "x": 2,
+      "y": 0,
+      "z": 1
+    },
+    {
+      "kind": "floor_carpet",
+      "x": 3,
+      "y": 0,
+      "z": 1
+    },
+    {
+      "kind": "floor_carpet",
+      "x": 4,
+      "y": 0,
+      "z": 1
+    },
+    {
+      "kind": "floor_carpet",
+      "x": 0,
+      "y": 0,
+      "z": 2
+    },
+    {
+      "kind": "floor_carpet",
+      "x": 1,
+      "y": 0,
+      "z": 2
+    },
+    {
+      "kind": "floor_carpet",
+      "x": 2,
+      "y": 0,
+      "z": 2
+    },
+    {
+      "kind": "floor_carpet",
+      "x": 3,
+      "y": 0,
+      "z": 2
+    },
+    {
+      "kind": "floor_carpet",
+      "x": 4,
+      "y": 0,
+      "z": 2
+    },
+    {
+      "kind": "wall",
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "wall",
+      "x": 1,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "window",
+      "x": 2,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "wall",
+      "x": 3,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "wall",
+      "x": 4,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "wall",
+      "x": 0,
+      "y": 0,
+      "z": 2,
+      "props": {
+        "ry": 3.1416
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 1,
+      "y": 0,
+      "z": 2,
+      "props": {
+        "ry": 3.1416
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 2,
+      "y": 0,
+      "z": 2,
+      "props": {
+        "ry": 3.1416
+      }
+    },
+    {
+      "kind": "doorway",
+      "x": 3,
+      "y": 0,
+      "z": 2,
+      "props": {
+        "ry": 3.1416
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 4,
+      "y": 0,
+      "z": 2,
+      "props": {
+        "ry": 3.1416
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "props": {
+        "ry": 1.5708
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 4,
+      "y": 0,
+      "z": 0,
+      "props": {
+        "ry": 4.7124
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 0,
+      "y": 0,
+      "z": 1,
+      "props": {
+        "ry": 1.5708
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 4,
+      "y": 0,
+      "z": 1,
+      "props": {
+        "ry": 4.7124
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 0,
+      "y": 0,
+      "z": 2,
+      "props": {
+        "ry": 1.5708
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 4,
+      "y": 0,
+      "z": 2,
+      "props": {
+        "ry": 4.7124
+      }
+    },
+    {
+      "kind": "bookcase",
+      "x": 0,
+      "y": 0,
+      "z": 1
+    },
+    {
+      "kind": "plant",
+      "x": 1,
+      "y": 0,
+      "z": 0,
+      "props": {
+        "ry": 3.1416
+      }
+    },
+    {
+      "kind": "armchair",
+      "x": 3,
+      "y": 0,
+      "z": 1,
+      "props": {
+        "ry": 4.7124
+      }
+    },
+    {
+      "kind": "mover",
+      "name": "mover",
+      "x": 3,
+      "y": 0,
+      "z": 2,
+      "props": {
+        "ry": 3.1416
+      }
+    },
+    {
+      "kind": "client",
+      "name": "client",
+      "x": 3,
+      "y": 0,
+      "z": 3,
+      "props": {
+        "who": "character-male-a",
+        "ry": 3.1416
+      }
+    }
+  ]
+}

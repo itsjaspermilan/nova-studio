@@ -1,0 +1,452 @@
+{
+  "version": 1,
+  "objects": [
+    {
+      "kind": "level",
+      "name": "level",
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "props": {
+        "name": "Reading Nook",
+        "client": "character-female-a",
+        "wishes": [
+          {
+            "piece": "armchair",
+            "wish": "window"
+          },
+          {
+            "piece": "lamp",
+            "wish": "next",
+            "target": "armchair"
+          },
+          {
+            "piece": "bookcase",
+            "wish": "wall"
+          },
+          {
+            "piece": "bookcase",
+            "wish": "room",
+            "target": "living"
+          },
+          {
+            "piece": "sofa",
+            "wish": "faces",
+            "target": "tv"
+          }
+        ],
+        "par": 15,
+        "stars": [
+          17,
+          27
+        ],
+        "solution": "uylrruuylruyurddru"
+      }
+    },
+    {
+      "kind": "floor_wood",
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "floor_wood",
+      "x": 1,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "floor_wood",
+      "x": 2,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "floor_wood",
+      "x": 3,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "floor_carpet",
+      "x": 4,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "floor_carpet",
+      "x": 5,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "floor_wood",
+      "x": 0,
+      "y": 0,
+      "z": 1
+    },
+    {
+      "kind": "floor_wood",
+      "x": 1,
+      "y": 0,
+      "z": 1
+    },
+    {
+      "kind": "floor_wood",
+      "x": 2,
+      "y": 0,
+      "z": 1
+    },
+    {
+      "kind": "floor_wood",
+      "x": 3,
+      "y": 0,
+      "z": 1
+    },
+    {
+      "kind": "floor_carpet",
+      "x": 4,
+      "y": 0,
+      "z": 1
+    },
+    {
+      "kind": "floor_carpet",
+      "x": 5,
+      "y": 0,
+      "z": 1
+    },
+    {
+      "kind": "floor_wood",
+      "x": 0,
+      "y": 0,
+      "z": 2
+    },
+    {
+      "kind": "floor_wood",
+      "x": 1,
+      "y": 0,
+      "z": 2
+    },
+    {
+      "kind": "floor_wood",
+      "x": 2,
+      "y": 0,
+      "z": 2
+    },
+    {
+      "kind": "floor_wood",
+      "x": 3,
+      "y": 0,
+      "z": 2
+    },
+    {
+      "kind": "floor_carpet",
+      "x": 4,
+      "y": 0,
+      "z": 2
+    },
+    {
+      "kind": "floor_carpet",
+      "x": 5,
+      "y": 0,
+      "z": 2
+    },
+    {
+      "kind": "floor_wood",
+      "x": 0,
+      "y": 0,
+      "z": 3
+    },
+    {
+      "kind": "floor_wood",
+      "x": 1,
+      "y": 0,
+      "z": 3
+    },
+    {
+      "kind": "floor_wood",
+      "x": 2,
+      "y": 0,
+      "z": 3
+    },
+    {
+      "kind": "floor_wood",
+      "x": 3,
+      "y": 0,
+      "z": 3
+    },
+    {
+      "kind": "floor_carpet",
+      "x": 4,
+      "y": 0,
+      "z": 3
+    },
+    {
+      "kind": "floor_carpet",
+      "x": 5,
+      "y": 0,
+      "z": 3
+    },
+    {
+      "kind": "wall",
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "wall",
+      "x": 1,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "wall",
+      "x": 2,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "wall",
+      "x": 3,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "wall",
+      "x": 4,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "wall",
+      "x": 5,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "wall",
+      "x": 0,
+      "y": 0,
+      "z": 3,
+      "props": {
+        "ry": 3.1416
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 1,
+      "y": 0,
+      "z": 3,
+      "props": {
+        "ry": 3.1416
+      }
+    },
+    {
+      "kind": "doorway",
+      "x": 2,
+      "y": 0,
+      "z": 3,
+      "props": {
+        "ry": 3.1416
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 3,
+      "y": 0,
+      "z": 3,
+      "props": {
+        "ry": 3.1416
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 4,
+      "y": 0,
+      "z": 3,
+      "props": {
+        "ry": 3.1416
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 5,
+      "y": 0,
+      "z": 3,
+      "props": {
+        "ry": 3.1416
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "props": {
+        "ry": 1.5708
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 4,
+      "y": 0,
+      "z": 0,
+      "props": {
+        "ry": 1.5708
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 5,
+      "y": 0,
+      "z": 0,
+      "props": {
+        "ry": 4.7124
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 0,
+      "y": 0,
+      "z": 1,
+      "props": {
+        "ry": 1.5708
+      }
+    },
+    {
+      "kind": "doorway",
+      "x": 4,
+      "y": 0,
+      "z": 1,
+      "props": {
+        "ry": 1.5708
+      }
+    },
+    {
+      "kind": "window",
+      "x": 5,
+      "y": 0,
+      "z": 1,
+      "props": {
+        "ry": 4.7124
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 0,
+      "y": 0,
+      "z": 2,
+      "props": {
+        "ry": 1.5708
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 4,
+      "y": 0,
+      "z": 2,
+      "props": {
+        "ry": 1.5708
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 5,
+      "y": 0,
+      "z": 2,
+      "props": {
+        "ry": 4.7124
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 0,
+      "y": 0,
+      "z": 3,
+      "props": {
+        "ry": 1.5708
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 4,
+      "y": 0,
+      "z": 3,
+      "props": {
+        "ry": 1.5708
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 5,
+      "y": 0,
+      "z": 3,
+      "props": {
+        "ry": 4.7124
+      }
+    },
+    {
+      "kind": "armchair",
+      "x": 5,
+      "y": 0,
+      "z": 2
+    },
+    {
+      "kind": "bookcase",
+      "x": 4,
+      "y": 0,
+      "z": 1,
+      "props": {
+        "ry": 3.1416
+      }
+    },
+    {
+      "kind": "lamp",
+      "x": 5,
+      "y": 0,
+      "z": 0,
+      "props": {
+        "ry": 4.7124
+      }
+    },
+    {
+      "kind": "tv",
+      "x": 1,
+      "y": 0,
+      "z": 3,
+      "props": {
+        "ry": 1.5708
+      }
+    },
+    {
+      "kind": "sofa",
+      "x": 3,
+      "y": 0,
+      "z": 2,
+      "props": {
+        "ry": 3.1416
+      }
+    },
+    {
+      "kind": "mover",
+      "name": "mover",
+      "x": 2,
+      "y": 0,
+      "z": 3,
+      "props": {
+        "ry": 3.1416
+      }
+    },
+    {
+      "kind": "client",
+      "name": "client",
+      "x": 2,
+      "y": 0,
+      "z": 4,
+      "props": {
+        "who": "character-female-a",
+        "ry": 3.1416
+      }
+    }
+  ]
+}

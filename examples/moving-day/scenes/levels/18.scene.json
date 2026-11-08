@@ -1,0 +1,623 @@
+{
+  "version": 1,
+  "objects": [
+    {
+      "kind": "level",
+      "name": "level",
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "props": {
+        "name": "Moving In Together",
+        "client": "character-female-e",
+        "wishes": [
+          {
+            "piece": "sofa",
+            "wish": "faces",
+            "target": "tv"
+          },
+          {
+            "piece": "bookcase",
+            "wish": "wall"
+          },
+          {
+            "piece": "table",
+            "wish": "room",
+            "target": "kitchen"
+          },
+          {
+            "piece": "chair",
+            "wish": "faces",
+            "target": "table"
+          },
+          {
+            "piece": "bed",
+            "wish": "wall"
+          }
+        ],
+        "par": 13,
+        "stars": [
+          15,
+          24
+        ],
+        "solution": "ryuuadllluraurda"
+      }
+    },
+    {
+      "kind": "floor_wood",
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "floor_wood",
+      "x": 1,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "floor_wood",
+      "x": 2,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "floor_wood",
+      "x": 3,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "floor_tile",
+      "x": 4,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "floor_tile",
+      "x": 5,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "floor_tile",
+      "x": 6,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "floor_carpet",
+      "x": 7,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "floor_carpet",
+      "x": 8,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "floor_wood",
+      "x": 0,
+      "y": 0,
+      "z": 1
+    },
+    {
+      "kind": "floor_wood",
+      "x": 1,
+      "y": 0,
+      "z": 1
+    },
+    {
+      "kind": "floor_wood",
+      "x": 2,
+      "y": 0,
+      "z": 1
+    },
+    {
+      "kind": "floor_wood",
+      "x": 3,
+      "y": 0,
+      "z": 1
+    },
+    {
+      "kind": "floor_tile",
+      "x": 4,
+      "y": 0,
+      "z": 1
+    },
+    {
+      "kind": "floor_tile",
+      "x": 5,
+      "y": 0,
+      "z": 1
+    },
+    {
+      "kind": "floor_tile",
+      "x": 6,
+      "y": 0,
+      "z": 1
+    },
+    {
+      "kind": "floor_carpet",
+      "x": 7,
+      "y": 0,
+      "z": 1
+    },
+    {
+      "kind": "floor_carpet",
+      "x": 8,
+      "y": 0,
+      "z": 1
+    },
+    {
+      "kind": "floor_wood",
+      "x": 0,
+      "y": 0,
+      "z": 2
+    },
+    {
+      "kind": "floor_wood",
+      "x": 1,
+      "y": 0,
+      "z": 2
+    },
+    {
+      "kind": "floor_wood",
+      "x": 2,
+      "y": 0,
+      "z": 2
+    },
+    {
+      "kind": "floor_wood",
+      "x": 3,
+      "y": 0,
+      "z": 2
+    },
+    {
+      "kind": "floor_tile",
+      "x": 4,
+      "y": 0,
+      "z": 2
+    },
+    {
+      "kind": "floor_tile",
+      "x": 5,
+      "y": 0,
+      "z": 2
+    },
+    {
+      "kind": "floor_tile",
+      "x": 6,
+      "y": 0,
+      "z": 2
+    },
+    {
+      "kind": "floor_carpet",
+      "x": 7,
+      "y": 0,
+      "z": 2
+    },
+    {
+      "kind": "floor_carpet",
+      "x": 8,
+      "y": 0,
+      "z": 2
+    },
+    {
+      "kind": "floor_wood",
+      "x": 0,
+      "y": 0,
+      "z": 3
+    },
+    {
+      "kind": "floor_wood",
+      "x": 1,
+      "y": 0,
+      "z": 3
+    },
+    {
+      "kind": "floor_wood",
+      "x": 2,
+      "y": 0,
+      "z": 3
+    },
+    {
+      "kind": "floor_wood",
+      "x": 3,
+      "y": 0,
+      "z": 3
+    },
+    {
+      "kind": "floor_tile",
+      "x": 4,
+      "y": 0,
+      "z": 3
+    },
+    {
+      "kind": "floor_tile",
+      "x": 5,
+      "y": 0,
+      "z": 3
+    },
+    {
+      "kind": "floor_tile",
+      "x": 6,
+      "y": 0,
+      "z": 3
+    },
+    {
+      "kind": "floor_carpet",
+      "x": 7,
+      "y": 0,
+      "z": 3
+    },
+    {
+      "kind": "floor_carpet",
+      "x": 8,
+      "y": 0,
+      "z": 3
+    },
+    {
+      "kind": "wall",
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "wall",
+      "x": 1,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "wall",
+      "x": 2,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "wall",
+      "x": 3,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "wall",
+      "x": 4,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "wall",
+      "x": 5,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "wall",
+      "x": 6,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "wall",
+      "x": 7,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "wall",
+      "x": 8,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "kind": "wall",
+      "x": 0,
+      "y": 0,
+      "z": 3,
+      "props": {
+        "ry": 3.1416
+      }
+    },
+    {
+      "kind": "doorway",
+      "x": 1,
+      "y": 0,
+      "z": 3,
+      "props": {
+        "ry": 3.1416
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 2,
+      "y": 0,
+      "z": 3,
+      "props": {
+        "ry": 3.1416
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 3,
+      "y": 0,
+      "z": 3,
+      "props": {
+        "ry": 3.1416
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 4,
+      "y": 0,
+      "z": 3,
+      "props": {
+        "ry": 3.1416
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 5,
+      "y": 0,
+      "z": 3,
+      "props": {
+        "ry": 3.1416
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 6,
+      "y": 0,
+      "z": 3,
+      "props": {
+        "ry": 3.1416
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 7,
+      "y": 0,
+      "z": 3,
+      "props": {
+        "ry": 3.1416
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 8,
+      "y": 0,
+      "z": 3,
+      "props": {
+        "ry": 3.1416
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "props": {
+        "ry": 1.5708
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 4,
+      "y": 0,
+      "z": 0,
+      "props": {
+        "ry": 1.5708
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 7,
+      "y": 0,
+      "z": 0,
+      "props": {
+        "ry": 1.5708
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 8,
+      "y": 0,
+      "z": 0,
+      "props": {
+        "ry": 4.7124
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 0,
+      "y": 0,
+      "z": 1,
+      "props": {
+        "ry": 1.5708
+      }
+    },
+    {
+      "kind": "doorway",
+      "x": 4,
+      "y": 0,
+      "z": 1,
+      "props": {
+        "ry": 1.5708
+      }
+    },
+    {
+      "kind": "doorway",
+      "x": 7,
+      "y": 0,
+      "z": 1,
+      "props": {
+        "ry": 1.5708
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 8,
+      "y": 0,
+      "z": 1,
+      "props": {
+        "ry": 4.7124
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 0,
+      "y": 0,
+      "z": 2,
+      "props": {
+        "ry": 1.5708
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 4,
+      "y": 0,
+      "z": 2,
+      "props": {
+        "ry": 1.5708
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 7,
+      "y": 0,
+      "z": 2,
+      "props": {
+        "ry": 1.5708
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 8,
+      "y": 0,
+      "z": 2,
+      "props": {
+        "ry": 4.7124
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 0,
+      "y": 0,
+      "z": 3,
+      "props": {
+        "ry": 1.5708
+      }
+    },
+    {
+      "kind": "doorway",
+      "x": 4,
+      "y": 0,
+      "z": 3,
+      "props": {
+        "ry": 1.5708
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 7,
+      "y": 0,
+      "z": 3,
+      "props": {
+        "ry": 1.5708
+      }
+    },
+    {
+      "kind": "wall",
+      "x": 8,
+      "y": 0,
+      "z": 3,
+      "props": {
+        "ry": 4.7124
+      }
+    },
+    {
+      "kind": "tv",
+      "x": 1,
+      "y": 0,
+      "z": 1
+    },
+    {
+      "kind": "sofa",
+      "x": 2,
+      "y": 0,
+      "z": 2
+    },
+    {
+      "kind": "bookcase",
+      "x": 1,
+      "y": 0,
+      "z": 3,
+      "props": {
+        "ry": 1.5708
+      }
+    },
+    {
+      "kind": "table",
+      "x": 4,
+      "y": 0,
+      "z": 2,
+      "props": {
+        "ry": 1.5708
+      }
+    },
+    {
+      "kind": "chair",
+      "x": 5,
+      "y": 0,
+      "z": 3,
+      "props": {
+        "ry": 1.5708
+      }
+    },
+    {
+      "kind": "bed",
+      "x": 7,
+      "y": 0,
+      "z": 1
+    },
+    {
+      "kind": "box",
+      "x": 3,
+      "y": 0,
+      "z": 1
+    },
+    {
+      "kind": "box",
+      "x": 5,
+      "y": 0,
+      "z": 0,
+      "props": {
+        "ry": 1.5708
+      }
+    },
+    {
+      "kind": "mover",
+      "name": "mover",
+      "x": 3,
+      "y": 0,
+      "z": 3,
+      "props": {
+        "ry": 3.1416
+      }
+    },
+    {
+      "kind": "client",
+      "name": "client",
+      "x": 1,
+      "y": 0,
+      "z": 4,
+      "props": {
+        "who": "character-female-e",
+        "ry": 3.1416
+      }
+    }
+  ]
+}

@@ -100,6 +100,29 @@ A **story campaign** is a potion book you flip through, a page for each of four 
 
 **Controls:** stick or d-pad moves, A grabs and puts down, hold B to grind or stir, X dashes, Y throws (keyboard: arrows or WASD, Space, F, Shift, G).
 
+## Moving Day
+
+`examples/moving-day` is a cosy push-and-turn furniture puzzle in 3D (Kenney's Furniture Kit and Mini Characters). You are the mover; each client waits
+by the front door with a **wish card** in pictures: the sofa facing the TV, the plant by a window, the bed with its back to a wall, the coffee table on
+the rug, the stove next to the fridge, the desk in the bedroom. Walk into a piece to push it one cell, face it and press A or Y to turn it about the
+end you hold; wide pieces take two cells, walls and windows stop everything, doorways let furniture through if it fits. B undoes a move (as many as you
+like), holding X starts again. The flat is done when every wish holds; the stars count your moves against the fewest the solver found.
+Twenty-six flats on five streets, from one small room to whole flats of four rooms, a short tutorial on the first flats, a level select with each
+flat's floor plan, and original music (`scripts/moving-day/music.mjs`).
+
+Every level is a scene file (`scenes/levels/<n>.scene.json`): floors, walls, windows, doorways, rugs and furniture placed on the 1 m grid in the
+studio's 3D view, and a `level` object whose props are the wish card. `scripts/moving-day/solve.mjs` searches every level for the fewest moves (exhaustively on 24 of the 26; on the two biggest flats it keeps
+the best of searches steered towards the wishes), writes the par, the star limits and the solution into the level object, and the game's F10 self-test replays each solution through the game's own
+rules (`crates/nova-runtime/tests/moving_day.rs`).
+
+| | |
+| --- | --- |
+| ![Title](docs/images/moving-day/title.png) | ![The level select](docs/images/moving-day/streets.png) |
+| ![The first flat](docs/images/moving-day/tutorial.png) | ![A townhouse](docs/images/moving-day/play-townhouse.png) |
+| ![A whole flat](docs/images/moving-day/play-penthouse.png) | ![Flat finished](docs/images/moving-day/results.png) |
+
+**Controls:** d-pad or stick walks and pushes, A turns clockwise, Y anticlockwise, B undoes, hold X to start again, + pauses (keyboard: arrows, Space, Q, Backspace, R, Esc).
+
 ## Getting started
 
 ```sh
@@ -169,6 +192,7 @@ timers) or `examples/rally-demo` (sprites, 3D models, HUD).
 | `pine-ridge-rally` | the 3D rally game above |
 | `nebula-swap` | the Panel de Pon-style puzzle game above |
 | `potion-panic` | the potion-brewing rush game above |
+| `moving-day` | the furniture puzzle above |
 | `crate-dash`, `font-gallery`, `sound-check`, `input-test` | small 2D and tooling examples |
 | `rally-demo`, `stress` | the renderer's benchmark scenes: sprites, hundreds of models, lights and shadows |
 | `skin-demo`, `ik-demo` | skeletons, clips, animation layers and two-bone IK |
