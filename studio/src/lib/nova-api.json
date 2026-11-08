@@ -826,6 +826,41 @@
   "group": "Scenes and entities"
  },
  {
+  "name": "nova.play_anim",
+  "kind": "function",
+  "signature": "nova.play_anim(name [, { target, targets, speed, loop, from, on_finish, pausable }]) -> player",
+  "doc": "Play the keyframe animation `animations/<name>.anim.json` (made in the studio's timeline editor). `target` is what the file's \"self\" means (the scene when left out); `targets` names other things. Returns a player: `:pause()`, `:resume()`, `:stop()`, `:seek(seconds)`, `:playing()`, `:finished()`, `:length()`, and the fields `time` and `speed` (below 0 plays backwards). `on_finish(target, player)` runs when a one-shot animation reaches its end. Playing the same animation on the same target again replaces it. Animations on an entity hold while `nova.pause` is on; on the scene they keep going.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.stop_anims",
+  "kind": "function",
+  "signature": "nova.stop_anims([target])",
+  "doc": "Stop every animation playing on `target`, or every animation when none is given.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.anim_data",
+  "kind": "function",
+  "signature": "nova.anim_data(name) -> { length, loop, tracks }",
+  "doc": "The checked contents of `animations/<name>.anim.json`, with every default filled in, without playing it.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.anims_playing",
+  "kind": "function",
+  "signature": "nova.anims_playing() -> number",
+  "doc": "How many keyframe animations are playing.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.update_anims",
+  "kind": "function",
+  "signature": "nova.update_anims(dt)",
+  "doc": "Advance the keyframe animations by `dt` seconds. Only for a game that does not use `nova.start` (the framework does this every step).",
+  "group": "Scenes and entities"
+ },
+ {
   "name": "nova.hitch",
   "kind": "function",
   "signature": "nova.hitch(ms [, describe])",
@@ -878,7 +913,7 @@
   "name": "nova.ease",
   "kind": "namespace",
   "signature": "nova.ease",
-  "doc": "Easing functions for tweens: linear, in_quad, out_quad, in_out_quad, in_cubic, out_cubic, in_out_cubic, out_back, out_bounce.",
+  "doc": "Easing functions for tweens and keyframes: linear, in_quad, out_quad, in_out_quad, in_cubic, out_cubic, in_out_cubic, in_sine, out_sine, in_out_sine, in_back, out_back, in_out_back, out_bounce, out_elastic.",
   "group": "Scenes and entities"
  },
  {
@@ -1089,6 +1124,13 @@
   "kind": "method",
   "signature": "self:tween(props, seconds [, easing [, on_done]])",
   "doc": "Glide fields to new values.",
+  "group": "Entity methods"
+ },
+ {
+  "name": "play_anim",
+  "kind": "method",
+  "signature": "self:play_anim(name [, opts]) -> player",
+  "doc": "Play a keyframe animation with this entity (or scene) as its \"self\": the same as `nova.play_anim(name, { target = self, ... })`.",
   "group": "Entity methods"
  },
  {

@@ -690,7 +690,8 @@ self:tween({ x = 100, alpha = 0 }, 0.4, "out_quad", function() ... end)   -- gli
 ```
 
 Easings: `linear`, `in_quad`, `out_quad`, `in_out_quad`, `in_cubic`, `out_cubic`, `in_out_cubic`,
-`out_back`, `out_bounce`. All of it runs in game time.
+`in_sine`, `out_sine`, `in_out_sine`, `in_back`, `out_back`, `in_out_back`, `out_bounce`, `out_elastic`.
+All of it runs in game time. For longer, many-part motion, see keyframe animations below.
 
 ### Camera (2D)
 
@@ -760,6 +761,73 @@ self.anim_speed = 2                 -- playback speed multiplier (default 1)
 ```
 
 `self.frame` is the frame being shown. A default hitbox uses the frame size.
+
+## Keyframe animations (`animations/<name>.anim.json`)
+
+For anything that is not a sprite's frames or a model's clip: a door opening, a camera move, a menu
+sliding in, a short cutscene. A file is data (loading it runs no code); the studio's **timeline editor**
+makes it (Animations in the project tree), hand edits are fine, and every file is checked when the
+project loads, so `nova check` finds a broken one before anything plays it.
+
+```json
+{
+  "version": 1,
+  "length": 1.2,
+  "loop": false,
+  "tracks": [
+    { "target": "self", "field": "y", "relative": true,
+      "keys": [ { "time": 0, "value": 0, "ease": "out_back" }, { "time": 0.6, "value": -64 } ] },
+    { "target": "lamp", "field": "tint",
+      "keys": [ { "time": 0, "value": [255, 255, 255] }, { "time": 1.2, "value": [255, 180, 60] } ] },
+    { "target": "camera", "field": "x", "keys": [ { "time": 0, "value": 480 }, { "time": 1.2, "value": 640, "ease": [0.4, 0, 0.2, 1] } ] },
+    { "type": "event", "target": "self", "keys": [ { "time": 1.2, "call": "opened", "args": [1] } ] },
+    { "type": "sound", "keys": [ { "time": 0, "sound": "door", "volume": 0.8, "pitch": 1, "pan": 0 } ] }
+  ]
+}
+```
+
+- `length` is in seconds (more than 0, at most an hour; it defaults to the last key's time). `loop`
+  plays it round and round. `notes` is free text for people.
+- A **value track** (`"type": "value"`, the default) moves one `field` of one `target` through its
+  keys. `field` is any number field (`x`, `y`, `z`, `angle`, `ry`, `sx`, `sy`, `alpha`, a field of your
+  own...) or a list of numbers (`tint`, `color`), and may be a path into tables (`hud.alpha`). Every key of
+  a track has the same kind of value. Before the first key the field holds the first key's value, after the
+  last key the last's. `"relative": true` adds the keys to what the field held when the animation started,
+  so one "door opens" file works for every door wherever it is placed.
+- A key's `ease` is how the value travels **from that key to the next**: `linear` (the default), `step`
+  (holds until the next key), `in_quad`, `out_quad`, `in_out_quad`, `in_cubic`, `out_cubic`,
+  `in_out_cubic`, `in_sine`, `out_sine`, `in_out_sine`, `in_back`, `out_back`, `in_out_back`,
+  `out_bounce`, `out_elastic`, or a curve `[x1, y1, x2, y2]` like CSS's `cubic-bezier` (x1 and x2
+  from 0 to 1). The last key's ease is not used.
+- An **event track** calls the function `call` on its target at each key's `time`, with `args` (a list,
+  default none): `function Door:opened(n) ... end`. A **sound track** plays `sound` (as `nova.sound.play`)
+  with `volume` (1), `pitch` (1) and `pan` (0).
+- `target` (default `"self"`) is: `self`, the thing given as `target` when it is played; `scene`, the
+  running scene (for values your `draw_ui` reads: `self.menu_x`); `camera`, the 2D camera's `x` and `y`
+  (it stops following) or the 3D camera's `eye_x`, `eye_y`, `eye_z`, `target_x`, `target_y`,
+  `target_z` and `fov` (as last given to `nova.camera`); a name given in `targets`; the name of a named
+  scene object (`self.door`); or a tag (the first living entity with it). A name that finds nothing is an
+  error when the animation starts.
+- Keys are sorted by time when read; two keys at the same time make a jump.
+
+```lua
+local p = self:play_anim("door_open", { on_finish = function(door) door.solid = false end })
+nova.play_anim("menu_in", { target = self, speed = 2 })       -- from a scene: "self" is the scene
+nova.play_anim("intro", { targets = { hero = self.hero } })   -- name things in code
+p:pause()  p:resume()  p:seek(0.5)  p.speed = -1  p:stop()  p:playing()  p:finished()  p.time
+nova.stop_anims(self)   nova.anims_playing()   nova.anim_data("door_open")
+```
+
+Options: `target`, `targets`, `speed` (1; below 0 plays backwards from the end), `loop` (the file's by
+default), `from` (a start time), `on_finish(target, player)` (one-shot animations, when they reach the end;
+not after `stop()`), `pausable`. Animations advance in the framework's 60 Hz steps after the timers, so a
+headless run gives the same numbers every time. Values are set when it starts, keys at the start time
+happen at once, and each step sets the values before it calls that step's event keys. `seek` sets the values
+without firing the keys it jumps over. Several animations play at once (the last to set a field wins);
+playing the same animation on the same target again replaces the first. An animation stops when the entity
+it was played on is destroyed or the scene changes. It holds while `nova.pause` is on when its target is
+an entity, and keeps going when its target is the scene (so a pause menu can slide in);
+`pausable = true/false` decides. A game that does not use `nova.start` calls `nova.update_anims(dt)` itself.
 
 ## Tilemaps
 

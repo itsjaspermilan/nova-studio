@@ -15,6 +15,7 @@ use glam::{Mat4, Quat, Vec3};
 use mlua::{Function, HookTriggers, Lua, LuaSerdeExt, Table, Value, VmState};
 
 use crate::actions::{self, ActionStates, Binding, Bindings, InputFrame};
+use crate::anim;
 use crate::assets::{self, AtlasLayout};
 use crate::font;
 use crate::gfx::{
@@ -54,6 +55,7 @@ const FRAMEWORK: &str = include_str!("../lua/framework.lua");
 fn builtin_module(name: &str) -> Option<&'static str> {
     match name {
         "nova.timers" => Some(include_str!("../lua/timers.lua")),
+        "nova.anim" => Some(include_str!("../lua/anim.lua")),
         _ => None,
     }
 }
@@ -2891,6 +2893,21 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             lua.to_value(&data)
         })?,
     )?;
+    let anim_vfs = vfs.clone();
+    raw.set(
+        "anim_data",
+        lua.create_function(move |lua, name: String| {
+            let path = anim::path_of(&name);
+            if !anim_vfs.exists(&path) {
+                return Ok(Value::Nil);
+            }
+            let bytes = anim_vfs.read(&path).map_err(lua_err)?;
+            let text = String::from_utf8(bytes)
+                .map_err(|_| lua_err(format!("{path} is not valid UTF-8")))?;
+            let data = anim::parse_anim(&text, &path).map_err(lua_err)?;
+            lua.to_value(&data)
+        })?,
+    )?;
     retained_api::install(lua, shared, &raw)?;
     nova.set("raw", raw)?;
     lua.globals().set("nova", nova)?;
@@ -2998,6 +3015,16 @@ impl Game {
                     .map(|r| (r.w, r.h))
             })?;
             sheets.insert(asset.id.clone(), def);
+        }
+        // animation files are checked now, so a broken one is found by `nova check` even before a script plays it
+        for asset in &project.assets {
+            if asset.id.starts_with(anim::FOLDER)
+                && asset.id.to_ascii_lowercase().ends_with(anim::SUFFIX)
+            {
+                let text = String::from_utf8(vfs.read(&asset.id)?)
+                    .map_err(|_| format!("{}: not valid UTF-8", asset.id))?;
+                anim::parse_anim(&text, &asset.id)?;
+            }
         }
 
         let mut meshes = Vec::new();
