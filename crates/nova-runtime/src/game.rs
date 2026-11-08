@@ -2781,12 +2781,13 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             Ok((map.width, map.height, size(map.tile_w), size(map.tile_h)))
         })?,
     )?;
-    // tilemap_draw(id, x, y, layer): x, y is where the map's top-left corner is on screen.
+    // tilemap_draw(id, x, y, layer [, alpha]): x, y is where the map's top-left corner is on screen; alpha (0 to 1) fades every tile.
     let s = shared.clone();
     raw.set(
         "tilemap_draw",
         lua.create_function(
-            move |_, (id, ox, oy, layer): (usize, f64, f64, Option<String>)| {
+            move |_, (id, ox, oy, layer, alpha): (usize, f64, f64, Option<String>, Option<f64>)| {
+                let alpha = (alpha.unwrap_or(1.0).clamp(0.0, 1.0) * 255.0).round() as u8;
                 let mut sh = s.borrow_mut();
                 let ui = match layer.as_deref() {
                     None | Some("world") => false,
@@ -2829,7 +2830,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                                     ],
                                     size: [tw, th],
                                     uv: sh.layout.uv(&cell),
-                                    color: [255; 4],
+                                    color: [255, 255, 255, alpha],
                                     rotation: 0.0,
                                 });
                             }

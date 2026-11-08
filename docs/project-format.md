@@ -787,7 +787,8 @@ In a scene file, add `"tilemaps": [ { "name": "ground", "tileset": { "image": "s
 has a `scale` (0.05 to 16, in the scene file's `tileset` or in `nova.tilemap{...}`): a tileset of 96-pixel tiles with `"scale": 0.5`
 makes tiles 48 units square, drawn from twice as many pixels, which is sharp on a 1080-line screen when the project's
 `world_height` is 1080 (Sunny Hop's tilesets are made so by `scripts/sunny/art.mjs`). Collisions, `cell_at` and `size()` use the
-drawn size. Keep such a camera on whole screen pixels (half units at `world_height` 1080) so that smooth filtering never reads
+drawn size. A tilemap entity's `alpha` (0 to 1) fades all its tiles, as for any entity (Sunny Hop fades the tiles that hide a secret
+passage when the player walks in). Keep such a camera on whole screen pixels (half units at `world_height` 1080) so that smooth filtering never reads
 the next tile's edge. `slide` moves one axis at a time (so
 entities glide along walls) in sub-steps no bigger than half a tile, so a fast entity cannot jump a
 thin wall. It uses the entity's hitbox box. Tile numbers outside the tileset, ragged rows and

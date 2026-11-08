@@ -1526,12 +1526,12 @@ function Tilemap:is_solid_at(x, y)
   return t >= 0 and self.solid[t] == true
 end
 function Tilemap:draw()
-  if not self.visible then return end
+  if not self.visible or self.alpha <= 0 then return end
   if self.screen then
-    raw.tilemap_draw(self.map, self.x, self.y, "ui")
+    raw.tilemap_draw(self.map, self.x, self.y, "ui", self.alpha)
   else
     local w, h = nova.view()
-    raw.tilemap_draw(self.map, self.x - (W.cam.x - w * 0.5), self.y - (W.cam.y - h * 0.5), "world")
+    raw.tilemap_draw(self.map, self.x - (W.cam.x - w * 0.5), self.y - (W.cam.y - h * 0.5), "world", self.alpha)
   end
 end
 

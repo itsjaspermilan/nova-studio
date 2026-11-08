@@ -697,7 +697,7 @@ fn a_scaled_tileset_draws_and_collides_at_its_shown_size() {
         (
             "scenes/s.lua",
             lua(
-                "local S = nova.scene {}\nfunction S:enter()\n  nova.log(table.concat({ self.ground:size() }, ' '))\n  nova.log(table.concat({ self.ground:cell_at(17, 109) }, ','))\n  nova.log(tostring(nova.solid_at(31, 101)) .. ' ' .. tostring(nova.solid_at(33, 101)))\n  local box = nova.spawn(nova.entity { hitbox = { -2, -2, 4, 4 } }, 4, 60)\n  local _, hy = box:slide(0, 100)\n  nova.log(box.y .. ' ' .. tostring(hy ~= nil))\nend\nreturn S",
+                "local S = nova.scene {}\nfunction S:enter()\n  nova.log(table.concat({ self.ground:size() }, ' '))\n  nova.log(table.concat({ self.ground:cell_at(17, 109) }, ','))\n  nova.log(tostring(nova.solid_at(31, 101)) .. ' ' .. tostring(nova.solid_at(33, 101)))\n  local box = nova.spawn(nova.entity { hitbox = { -2, -2, 4, 4 } }, 4, 60)\n  local _, hy = box:slide(0, 100)\n  nova.log(box.y .. ' ' .. tostring(hy ~= nil))\n  self.ground.alpha = 0.5\nend\nreturn S",
             ),
         ),
         ("main.lua", lua("nova.start('s')")),
@@ -708,6 +708,11 @@ fn a_scaled_tileset_draws_and_collides_at_its_shown_size() {
     let sprites = &g.frame_input(540).sprites_back;
     assert_eq!(sprites.len(), 8);
     assert_eq!(sprites[0].size, [8.0, 8.0]);
+    assert_eq!(
+        sprites[0].color,
+        [255, 255, 255, 128],
+        "a tilemap's alpha fades its tiles"
+    );
 }
 
 #[test]
