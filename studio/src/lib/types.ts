@@ -140,8 +140,25 @@ export interface Api {
   checkProject(): Promise<CheckReport>;
   /// Checks the game and writes it out for a computer or for Android under `<project>/exports`.
   exportGame(target: "desktop" | "android"): Promise<ExportReport>;
+  /// The Android devices adb can see: the handheld over USB, emulators.
+  listDevices(): Promise<AndroidDevice[]>;
+  /// Builds the game for Android, installs it on the device and starts it (the log arrives through `onPlayLog`, the
+  /// end through `onPlayExit`, steps through `onDeviceStep`; `stopProject` stops it). Resolves with the game's package
+  /// once it runs, or rejects with what went wrong in plain words.
+  playOnDevice(serial: string): Promise<string>;
+  onDeviceStep(callback: (step: string) => void): Promise<() => void>;
   onPlayLog(callback: (line: LogLine) => void): Promise<() => void>;
   onPlayExit(callback: (code: number | null) => void): Promise<() => void>;
+}
+
+/// A device adb can see (see studio/src-tauri/src/device.rs).
+export interface AndroidDevice {
+  serial: string;
+  /// `device` when it is ready; otherwise adb's word: `unauthorized`, `offline`, `no permissions`, ...
+  state: string;
+  /// The model in words (`Retroid Pocket 6`), or the serial.
+  name: string;
+  emulator: boolean;
 }
 
 export interface ExportReport {

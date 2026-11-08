@@ -14,6 +14,7 @@
   import StoreArt from "./components/StoreArt.svelte";
   import Simulate from "./components/Simulate.svelte";
   import WindowButtons from "./components/WindowButtons.svelte";
+  import PlayButton from "./components/PlayButton.svelte";
   import { fileKind } from "./lib/tree";
   import { markChrome } from "./lib/chrome";
   import { resizable } from "./lib/resize";
@@ -43,7 +44,8 @@
         void studio.save();
       } else if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && studio.project) {
         e.preventDefault();
-        void (studio.running ? studio.stop() : studio.play());
+        // ⌘⇧↩ plays on the device used last
+        void (studio.running ? studio.stop() : e.shiftKey ? studio.playOnPreferredDevice() : studio.play());
       }
     };
     const refocus = () => {
@@ -96,11 +98,7 @@
       <button class="ghost" onclick={() => (studio.tool = "art")} title="Make the app icon and the cover picture from the game">Store art</button>
       <button onclick={() => { studio.exportReport = null; studio.exportOpen = true; }} title="Check the game and write it out for a computer or for Android">Export…</button>
       <button onclick={() => studio.saveAll()} disabled={!studio.dirty}>Save all</button>
-      {#if studio.running}
-        <button class="danger" onclick={() => studio.stop()}>■ Stop</button>
-      {:else}
-        <button class="primary" onclick={() => studio.play()} title="Save and run (⌘↩)">▶ Play</button>
-      {/if}
+      <PlayButton />
       <WindowButtons />
     </header>
 
@@ -186,7 +184,7 @@
         <pre class:fail={!studio.exportReport.ok}>{studio.exportReport.text || (studio.exportReport.ok ? "Done." : "Nothing was written.")}</pre>
         {#if studio.exportReport.ok && studio.exportReport.folder}<p class="dim small">In <code>{studio.exportReport.folder}</code></p>{/if}
       {/if}
-      <p class="dim small">The Android file is debug-signed and has only run on the emulator. Release signing and installing it on a device are yours to do.</p>
+      <p class="dim small">The Android file is debug-signed (release signing is yours to do). To try it on the handheld, use the ▾ beside Play: Play on a device.</p>
       <div class="end"><button onclick={() => (studio.exportOpen = false)} disabled={studio.exporting}>Close</button></div>
     </div>
   </div>
