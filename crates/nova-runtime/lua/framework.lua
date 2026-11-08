@@ -84,14 +84,153 @@ local function copy_value(v, depth)
   return out
 end
 
+-- ------------------------------------------------------------------ settings
+-- An entity's settings are the fields a scene may set on it, declared with a type, a default and limits:
+--   settings = { speed = { 4, min = 0, max = 10 }, colour = { "#ff8800", type = "colour" }, mood = { "calm", choices = { "calm", "angry" } } }
+-- The first entry is the default (a plain value, `hp = 3`, is the same as `hp = { 3 }`). The studio's inspector reads the
+-- declaration to show a slider, a colour picker or a list; the framework fills in the default and checks what a scene gives.
+local SETTING_KEYS = { type = true, min = true, max = true, step = true, choices = true, help = true }
+local SETTING_TYPES = { number = true, boolean = true, text = true, choice = true, colour = true, vector = true,
+  object = true, sprite = true, sound = true, music = true, model = true }
+local REF_TYPES = { text = true, object = true, sprite = true, sound = true, music = true, model = true }
+
+local function show(v)
+  if type(v) == "string" then return string.format("%q", v) end
+  if type(v) == "table" then
+    local parts = {}
+    for i = 1, math.min(#v, 6) do parts[i] = show(v[i]) end
+    return "{ " .. table.concat(parts, ", ") .. " }"
+  end
+  return tostring(v)
+end
+
+-- The file a class came from, for messages (`require` names each class a project file returns).
+local function where(cls) return rawget(cls, "__file") or "an entity" end
+
+-- "#f80", "#ff8800" or "#ff8800cc" -> { 255, 136, 0 [, 204] }; a list of 3 or 4 numbers 0 to 255 is copied.
+local function colour_of(v)
+  if type(v) == "string" then
+    local h = v:match("^#(%x+)$")
+    if not h then return nil end
+    if #h == 3 then h = h:gsub(".", "%0%0") end
+    if #h ~= 6 and #h ~= 8 then return nil end
+    local out = {}
+    for i = 1, #h, 2 do out[#out + 1] = tonumber(h:sub(i, i + 1), 16) end
+    return out
+  end
+  if type(v) == "table" and (#v == 3 or #v == 4) then
+    local out = {}
+    for i = 1, #v do
+      if type(v[i]) ~= "number" then return nil end
+      out[i] = math.max(0, math.min(255, v[i]))
+    end
+    return out
+  end
+  return nil
+end
+
+local warned = {}
+local function clamp(cls, name, s, v)
+  local c = v
+  if s.min and c < s.min then c = s.min end
+  if s.max and c > s.max then c = s.max end
+  if c ~= v then
+    local key = where(cls) .. "." .. name
+    if not warned[key] then
+      warned[key] = true
+      nova.log(("%s: the setting '%s' is %s, outside %s to %s, so it is %s"):format(where(cls), name, show(v), tostring(s.min or "any"), tostring(s.max or "any"), show(c)))
+    end
+  end
+  return c
+end
+
+-- The value checked against its setting (a colour made into { r, g, b }, a number kept within its limits), or an error.
+local function check_setting(cls, name, s, v)
+  local t = s.type
+  local function wrong(want)
+    error(("%s: the setting '%s' must be %s, not %s"):format(where(cls), name, want, show(v)), 0)
+  end
+  if t == "number" then
+    if type(v) ~= "number" then wrong("a number") end
+    return clamp(cls, name, s, v)
+  elseif t == "boolean" then
+    if type(v) ~= "boolean" then wrong("true or false") end
+  elseif t == "choice" then
+    for _, c in ipairs(s.choices) do if c == v then return v end end
+    local names = {}
+    for i, c in ipairs(s.choices) do names[i] = show(c) end
+    wrong("one of " .. table.concat(names, ", "))
+  elseif t == "colour" then
+    return colour_of(v) or wrong('a colour ("#ff8800" or { 255, 136, 0 })')
+  elseif t == "vector" then
+    if type(v) ~= "table" or #v ~= s.size then wrong(("a list of %d numbers"):format(s.size)) end
+    local out = {}
+    for i = 1, s.size do
+      if type(v[i]) ~= "number" then wrong(("a list of %d numbers"):format(s.size)) end
+      out[i] = clamp(cls, name, s, v[i])
+    end
+    return out
+  elseif REF_TYPES[t] then
+    if type(v) ~= "string" then wrong(t == "text" and "text" or ((t == "object" and "the name of an " or "the name of a ") .. t)) end
+  end
+  return v
+end
+
+-- A setting's declaration, checked, as { type, default, min, max, step, choices, help, size }.
+local function declare_setting(cls, name, decl)
+  local function bad(msg) error(("%s: settings.%s: %s"):format(where(cls), name, msg), 0) end
+  if type(name) ~= "string" then bad("a setting needs a name (settings = { speed = { 4 } })") end
+  if type(decl) ~= "table" then decl = { decl } end
+  if decl[2] ~= nil then bad("only the default comes first; a list as the default goes in its own braces: { { 0, 0 } }") end
+  for k in pairs(decl) do
+    if k ~= 1 and not SETTING_KEYS[k] then bad(("unknown '%s' (a setting may have a default first, then type, min, max, step, choices and help)"):format(tostring(k))) end
+  end
+  local default, t = decl[1], decl.type
+  if t == "color" then t = "colour" end
+  if t == nil then
+    if decl.choices then t = "choice"
+    elseif type(default) == "number" then t = "number"
+    elseif type(default) == "boolean" then t = "boolean"
+    elseif type(default) == "string" then t = "text"
+    elseif type(default) == "table" then t = "vector"
+    else bad("give it a default ({ 4 }) or a type ({ type = \"sprite\" })") end
+  end
+  if not SETTING_TYPES[t] then bad(("unknown type '%s' (number, boolean, text, choice, colour, vector, object, sprite, sound, music or model)"):format(tostring(t))) end
+  for _, k in ipairs({ "min", "max", "step" }) do
+    if decl[k] ~= nil and type(decl[k]) ~= "number" then bad(k .. " must be a number") end
+  end
+  if decl.min and decl.max and decl.min > decl.max then bad("min is bigger than max") end
+  if decl.step and decl.step <= 0 then bad("step must be more than 0") end
+  if decl.help ~= nil and type(decl.help) ~= "string" then bad("help must be text") end
+  local s = { type = t, min = decl.min, max = decl.max, step = decl.step, help = decl.help }
+  if t == "choice" then
+    if type(decl.choices) ~= "table" or #decl.choices == 0 then bad("choices must be a list ({ \"calm\", \"angry\" })") end
+    s.choices = {}
+    for i, c in ipairs(decl.choices) do
+      if type(c) ~= "string" and type(c) ~= "number" then bad("each choice must be text or a number") end
+      s.choices[i] = c
+    end
+    if default == nil then default = s.choices[1] end
+  elseif decl.choices ~= nil then
+    bad("choices are for a list to pick from; leave out the type")
+  end
+  if t == "vector" then
+    s.size = type(default) == "table" and #default or 2
+    if s.size < 2 or s.size > 4 then bad("a vector has 2 to 4 numbers ({ { 0, 0 } })") end
+  end
+  if default ~= nil then default = check_setting(cls, name, s, default) end
+  s.default = default
+  return s
+end
+
 -- ------------------------------------------------------------------ classes
-local Entity = { __kind = "entity", __flat = true, __defaults = {}, __tags = {}, __collide = {}, __depth = 0 }
+local Entity = { __kind = "entity", __flat = true, __defaults = {}, __settings = {}, __settings_n = 0, __tags = {}, __collide = {}, __depth = 0 }
 Entity.__index = Entity
-local Scene = { __kind = "scene", __flat = true, __defaults = {}, __tags = {}, __collide = {}, __depth = 0 }
+local Scene = { __kind = "scene", __flat = true, __defaults = {}, __settings = {}, __settings_n = 0, __tags = {}, __collide = {}, __depth = 0 }
 Scene.__index = Scene
 local bases = { entity = Entity, scene = Scene }
 
-local RESERVED = { static = true, lod = true, lod_distance = true, sway = true, max_distance = true, tags = true, sprite = true, model = true, depth = true, hitbox = true, screen = true, pivot = true }
+local RESERVED = { static = true, lod = true, lod_distance = true, sway = true, max_distance = true, tags = true, sprite = true, model = true, depth = true, hitbox = true, screen = true, pivot = true, settings = true }
 
 local function define(kind, a, b)
   local parent, spec
@@ -119,6 +258,19 @@ local function finalize(cls)
   local defaults, tags = {}, {}
   for k, v in pairs(parent.__defaults) do defaults[k] = v end
   for t in pairs(parent.__tags) do tags[t] = true end
+  -- settings: the parent's, then this class's own (a plain field of the same name below changes only the default)
+  local settings = {}
+  for k, s in pairs(parent.__settings) do settings[k] = s end
+  local own = cls.__spec.settings
+  if own ~= nil then
+    if type(own) ~= "table" then error(where(cls) .. ": settings must be a table (settings = { speed = { 4, min = 0 } })", 0) end
+    for k, decl in pairs(own) do
+      if rawget(cls.__spec, k) ~= nil then error(("%s: '%s' is both a setting and a field; give its default in the setting"):format(where(cls), tostring(k)), 0) end
+      local s = declare_setting(cls, k, decl)
+      settings[k] = s
+      defaults[k] = s.default
+    end
+  end
   local spec = cls.__spec
   for k, v in pairs(spec) do
     if k == "tags" then
@@ -136,6 +288,13 @@ local function finalize(cls)
       error(("this %s has a field and a method both called '%s': the field hides the method. Rename one of them."):format(cls.__kind, k), 0)
     end
   end
+  -- a child that gives a parent's setting a new default as a plain field (`speed = 80`) has that default checked too
+  local count = 0
+  for k, s in pairs(settings) do
+    count = count + 1
+    if defaults[k] ~= nil and defaults[k] ~= s.default then defaults[k] = check_setting(cls, k, s, defaults[k]) end
+  end
+  cls.__settings, cls.__settings_n = settings, count
   cls.__defaults, cls.__tags = defaults, tags
   cls.__static = spec.static or parent.__static
   cls.__lod = spec.lod or parent.__lod
@@ -1222,6 +1381,13 @@ local function spawn(what, x, y, props)
   e.x, e.y = x or 0, y or 0
   if props then
     for k, v in pairs(props) do e[k] = v end
+    if cls.__settings_n > 0 then
+      local settings = cls.__settings
+      for k, v in pairs(props) do
+        local s = settings[k]
+        if s then e[k] = check_setting(cls, k, s, v) end
+      end
+    end
   end
   if cls.__static then
     -- a piece of scenery: it goes into the static scenery, not into the list of live entities

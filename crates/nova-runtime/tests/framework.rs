@@ -2993,3 +2993,130 @@ fn the_store_pictures_stay_out_of_the_sprite_atlas() {
     assert!(g.error.is_none(), "{:?}", g.error);
     assert_eq!(logs(&g)[0], "false 8x8");
 }
+
+/// A game whose `entities/car.lua` (and its parent `entities/vehicle.lua`) declare settings; `scenes/main.scene.json` places cars.
+fn settings_game(car: &str, scene_json: &str, enter: &str) -> Game {
+    let vehicle = "return nova.entity { settings = {\n  speed = { 4, min = 0, max = 10, step = 0.5, help = 'How fast it drives' },\n  wheels = 4,\n} }";
+    let scene = format!("local S = nova.scene {{}}\nfunction S:enter()\n{enter}\nend\nreturn S");
+    project(vec![
+        ("entities/vehicle.lua", lua(vehicle)),
+        ("entities/car.lua", lua(car)),
+        ("scenes/main.lua", lua(&scene)),
+        ("scenes/main.scene.json", lua(scene_json)),
+        ("main.lua", lua("nova.start('main')")),
+    ])
+}
+
+const CAR: &str = "return nova.entity(require('entities.vehicle'), {\n  speed = 6,\n  settings = {\n    colour = { '#ff8800', type = 'colour' },\n    mood = { 'calm', choices = { 'calm', 'angry' } },\n    lights = { true },\n    offset = { { 0, 1 }, min = -5, max = 5 },\n    follow = { type = 'object' },\n    honk = { 'beep', type = 'sound' },\n  },\n})";
+
+#[test]
+fn settings_fill_defaults_inherit_convert_colours_and_clamp() {
+    let scene = r##"{ "version": 1, "objects": [
+        { "kind": "car", "name": "plain", "x": 0, "y": 0 },
+        { "kind": "car", "name": "set", "x": 0, "y": 0, "props": { "speed": 12, "colour": "#0a0", "mood": "angry", "offset": [9, -2], "follow": "plain", "extra": { "any": 1 } } }
+    ] }"##;
+    let enter = "  local a, b = self.plain, self.set\n  nova.log(string.format('%s %s %s %s %s %s %s %s', a.speed, a.wheels, table.concat(a.colour, ','), a.mood, tostring(a.lights), table.concat(a.offset, ','), tostring(a.follow), a.honk))\n  nova.log(string.format('%s %s %s %s %s', b.speed, table.concat(b.colour, ','), b.mood, table.concat(b.offset, ','), b.follow .. ' ' .. b.extra.any))\n  a.colour[1] = 1\n  nova.log(tostring(nova.spawn('car').colour[1]))";
+    let mut g = settings_game(CAR, scene, enter);
+    steps(&mut g, 2);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let l = logs(&g);
+    // the parent's speed 4 is the car's 6; the colour is { r, g, b }; nothing declared stays nil
+    assert!(
+        l.iter()
+            .any(|x| x == "6 4 255,136,0 calm true 0,1 nil beep"),
+        "{l:?}"
+    );
+    // 12 is above max 10: clamped, and said once
+    assert!(
+        l.iter().any(|x| x
+            .contains("entities/car.lua: the setting 'speed' is 12, outside 0 to 10, so it is 10")),
+        "{l:?}"
+    );
+    let b = l
+        .iter()
+        .find(|x| x.starts_with("10 "))
+        .expect("the second car");
+    assert_eq!(b, "10 0,170,0 angry 5,-2 plain 1");
+    // a table default is copied per instance
+    assert_eq!(l.last().unwrap(), "255");
+}
+
+#[test]
+fn a_wrong_setting_names_the_file_and_what_it_wants() {
+    let cases = [
+        (
+            r#"{ "speed": "fast" }"#,
+            "entities/car.lua: the setting 'speed' must be a number, not \"fast\"",
+        ),
+        (
+            r#"{ "mood": "sad" }"#,
+            "the setting 'mood' must be one of \"calm\", \"angry\", not \"sad\"",
+        ),
+        (
+            r#"{ "colour": "orange" }"#,
+            "the setting 'colour' must be a colour",
+        ),
+        (
+            r#"{ "offset": [1] }"#,
+            "the setting 'offset' must be a list of 2 numbers",
+        ),
+        (
+            r#"{ "lights": 1 }"#,
+            "the setting 'lights' must be true or false",
+        ),
+        (
+            r#"{ "follow": 3 }"#,
+            "the setting 'follow' must be the name of an object",
+        ),
+    ];
+    for (props, want) in cases {
+        let scene = format!(
+            r#"{{ "version": 1, "objects": [ {{ "kind": "car", "x": 0, "y": 0, "props": {props} }} ] }}"#
+        );
+        let mut g = settings_game(CAR, &scene, "");
+        steps(&mut g, 2);
+        let err = g.error.clone().unwrap_or_default();
+        assert!(err.contains(want), "{props}: {err}");
+    }
+}
+
+#[test]
+fn a_mistake_in_a_settings_declaration_is_reported() {
+    let cases = [
+        (
+            "return nova.entity { settings = { speed = { 4, minn = 0 } } }",
+            "entities/car.lua: settings.speed: unknown 'minn'",
+        ),
+        (
+            "return nova.entity { settings = { speed = { 4, min = 5, max = 1 } } }",
+            "min is bigger than max",
+        ),
+        (
+            "return nova.entity { settings = { look = { 1, type = 'shape' } } }",
+            "unknown type 'shape'",
+        ),
+        (
+            "return nova.entity { settings = { at = { 0, 0 } } }",
+            "a list as the default goes in its own braces",
+        ),
+        (
+            "return nova.entity { settings = { mood = { 'x', choices = { 'a', 'b' } } } }",
+            "must be one of \"a\", \"b\"",
+        ),
+        (
+            "return nova.entity { hp = 3, settings = { hp = { 3 } } }",
+            "'hp' is both a setting and a field",
+        ),
+        (
+            "return nova.entity { settings = { who = {} } }",
+            "give it a default",
+        ),
+    ];
+    for (car, want) in cases {
+        let scene = r#"{ "version": 1, "objects": [ { "kind": "car", "x": 0, "y": 0 } ] }"#;
+        let mut g = settings_game(car, scene, "");
+        steps(&mut g, 2);
+        let err = g.error.clone().unwrap_or_default();
+        assert!(err.contains(want), "{car}: {err}");
+    }
+}
