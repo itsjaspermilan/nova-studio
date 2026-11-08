@@ -1018,3 +1018,65 @@ A skinned model (a character with a skeleton) cannot be resized by its geometry:
 `--scale`, `--fit` and `--draw-scale` therefore write `extras.nova.scale` into the file instead, and the game multiplies the `scale` it draws the
 model with (`nova.model`, `nova.scenery.add`) by it: a character fitted to 1.7 m is 1.7 m whatever `scale` a script passes. Plain models are still resized
 in the geometry.
+
+## Physics (rigid bodies)
+
+`nova.physics` adds things that fall, bounce, stack, roll, get knocked over and swing on joints, in 2D and in 3D (Rapier inside,
+`crates/nova-runtime/src/physics.rs`). The world steps with the framework's fixed 60 Hz step, after the entities' updates and
+before the scene's, so a headless run gives the same numbers every time.
+
+**An entity with a body.** A field says it: `nova.entity { sprite = "crate", body = "dynamic" }`. From then on the entity's
+`x`, `y` (and `z`), `angle` (2D) or `quat` (3D, `{ x, y, z, w }`, which `Entity:draw` hands to `nova.model`) and `vx`, `vy`
+(`vz`) follow the body, and the engine no longer adds the velocity itself. Setting `x`, `y`, `z` or the velocity from code moves the
+body (a respawn, a bounce pad). Kinds:
+
+| `body` | What it is |
+|---|---|
+| `"dynamic"` | moved by the world: crates, balls, planks, ragdoll bits |
+| `"static"` | never moves: ground, walls, the level's model |
+| `"kinematic"` | moved by your code (set `x`, `y`, `z`, `ry`/`angle` each step); it glides there and shoves what is in the way: a lift, a door, a windmill |
+| `"character"` | a walking player or creature: `self:walk(dx, dy, dz)` slides it along walls, up steps and gentle slopes and shoves loose bodies (`on_ground` says whether it stands); add gravity to `dy` yourself |
+
+Fields (all optional): `shape` (`"box"`, `"circle"`/`"sphere"`, `"capsule"`, `"model"` (the model's own triangles for a static body,
+the hull round them for a moving one), `"hull"`, `"points"` with `points = { {x, y[, z]}, ... }`), `w`, `h`, `d`, `radius`, `height`,
+`mass` (kg; otherwise from `density`, 1000 kg a cubic metre, or a square metre in 2D), `bounce` (0 to 1, 0.1), `friction` (0.6),
+`damping`, `spin_damping`, `gravity` (1; 0 floats), `sensor = true` (reports what passes through it, stops nothing: a goal, a trap,
+a pick-up), `fixed_rotation` (never turns: a 2D hero), `bullet` (a fast small thing that must not pass through thin walls),
+`offset` (where the shape sits from the entity), `dim` (2 or 3; otherwise 3 when the entity has a `model` or the game uses
+`nova.collision { plane = "xz" }`). A 2D box or circle is sized from the hitbox or the sprite (and centred as it is drawn), a
+3D one from the model's corners (and set over the model, so a crate whose origin is at its foot rests on the ground). Static scenery
+(`static = true`) with a `body` is solid too. The body is made just before the entity's `create`, so `create` can join it to others or push it; moving the entity there moves the body.
+
+**Units.** 2D is in pixels with y down the screen and angles clockwise, 50 pixels to a metre (`nova.physics.settings { scale = 64 }`
+before the first body), gravity 9.81 m/s² down the screen. 3D is in metres with y up. Masses are kilograms.
+
+**Tilemaps.** Every tilemap's solid tiles are solid to 2D bodies (each row's runs of solid tiles become boxes, made with the scene's first
+2D body); `tilemap:set` makes them again, so a broken block stops being solid.
+
+**Hits.** `function Crate:on_hit(other, hit)` is called when the entity's body starts touching another (`other` is that entity: a
+tilemap for its tiles; `hit` has `x`, `y` (`z`), the normal `nx`, `ny` (`nz`) pointing from this entity to the other, `speed`, how
+fast they met in game units a second, for the loudness of a knock, and `sensor`), and `on_leave(other)` when they part.
+
+**From code.** `self:push(vx, vy[, vz])` adds a velocity (the same for a pebble and a boulder), `self:impulse(...)` knocks with
+mass times velocity, `self:force(...)` pushes steadily for one step, `self:spin(...)` sets the turning speed, `self:join(other, kind, opts)`
+makes a joint (`"fixed"`, `"hinge"`, `"ball"`, `"rope"`, `"spring"`, `"slider"`; see `nova.physics.joint`), and
+`nova.physics.raycast(x, y, dx, dy, length)` / `raycast3(...)` find the first body on a line and its entity. The lower calls
+(`nova.physics.body`, `pose`, `place`, `moved`, `contacts`, ...) are in the studio's Help.
+
+**In scene files.** A body is props, so a level stays data:
+
+```json
+{ "kind": "crate", "x": 2, "y": 0, "z": -1, "props": { "body": "dynamic", "mass": 20, "bounce": 0.2 } }
+```
+
+works with any entity file (`entities/crate.lua` can be just `return nova.entity { model = "crate" }`), and the class may say
+`body = "dynamic"` itself so that every crate placed in the studio falls.
+
+**With `nova.walls` and `nova.solid`.** They stay the light way to collide a player with a level that has no loose things in it.
+To have physics bodies land on such a level, add it to the physics world once it is built: `nova.physics.body { kind = "static",
+shape = "walls" }` (every wall box and ramp) or `shape = "solid"` (every `nova.solid` triangle). A player that should shove crates is
+a `character` body walked with `self:walk`; one moved with `nova.walls.move` passes through bodies (make it a `kinematic` body as well
+to have it push them). See `examples/physics-toybox`.
+
+Not done: collision groups (what may touch what), contact forces as events, compound bodies from several entities, a 2D character's
+slope limits being checked, a joint's motor in 3D other than a hinge or slider's, and the studio showing bodies in the scene editor.

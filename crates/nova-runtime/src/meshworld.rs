@@ -83,6 +83,13 @@ impl MeshWorld {
         self.tris.len()
     }
 
+    /// Every triangle's corners, in world space (for `nova.physics`, which makes them into a static body).
+    pub fn triangles(&self) -> impl Iterator<Item = [[f32; 3]; 3]> + '_ {
+        self.tris
+            .iter()
+            .map(|t| [t.a.to_array(), t.b.to_array(), t.c.to_array()])
+    }
+
     pub fn is_empty(&self) -> bool {
         self.tris.is_empty()
     }

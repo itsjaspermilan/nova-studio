@@ -60,6 +60,7 @@ fn builtin_module(name: &str) -> Option<&'static str> {
 
 mod animated;
 mod billboard_api;
+mod physics_api;
 mod retained_api;
 mod solid_api;
 mod voxel_api;
@@ -119,6 +120,9 @@ struct Shared {
     retained: retained_api::Retained,
     /// Triangle collision (`nova.solid`).
     solid: crate::meshworld::MeshWorld,
+    /// Rigid bodies (`nova.physics`), and what the last step took.
+    physics: crate::physics::Physics,
+    physics_ms: f32,
     known_models: Vec<String>,
     /// The pictures `nova.billboard` can draw (images in `sprites/fx/`) and how many frames each has.
     fx_sprites: HashMap<String, u32>,
@@ -1223,10 +1227,23 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             })?;
             let scale = number_option(&opts, "scale")?.unwrap_or(1.0) as f32
                 * sh.model_scales.get(&found).copied().unwrap_or(1.0);
-                let rotation =
-                    Mat4::from_rotation_y(number_option(&opts, "ry")?.unwrap_or(0.0) as f32)
-                        * Mat4::from_rotation_x(number_option(&opts, "rx")?.unwrap_or(0.0) as f32)
-                        * Mat4::from_rotation_z(number_option(&opts, "rz")?.unwrap_or(0.0) as f32);
+                // `quat = { x, y, z, w }` (a physics body's turn) instead of ry, rx, rz
+                let quat = match &opts {
+                    Some(o) => o.get::<Option<Table>>("quat")?,
+                    None => None,
+                };
+                let rotation = match quat {
+                    Some(q) => {
+                        let g = |k: &str, d: f64| -> mlua::Result<f32> { Ok(q.get::<Option<f64>>(k)?.unwrap_or(d) as f32) };
+                        let q = Quat::from_xyzw(g("x", 0.0)?, g("y", 0.0)?, g("z", 0.0)?, g("w", 1.0)?);
+                        Mat4::from_quat(if q.length_squared() > 1e-12 { q.normalize() } else { Quat::IDENTITY })
+                    }
+                    None => {
+                        Mat4::from_rotation_y(number_option(&opts, "ry")?.unwrap_or(0.0) as f32)
+                            * Mat4::from_rotation_x(number_option(&opts, "rx")?.unwrap_or(0.0) as f32)
+                            * Mat4::from_rotation_z(number_option(&opts, "rz")?.unwrap_or(0.0) as f32)
+                    }
+                };
                 let matrix = Mat4::from_translation(Vec3::new(x as f32, y as f32, z as f32))
                     * rotation
                     * Mat4::from_scale(Vec3::splat(scale));
@@ -2103,12 +2120,16 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             t.set("triangles", sh.host_stats.triangles)?;
             t.set("sprites", sh.host_stats.sprites)?;
             t.set("memory_kb", sh.lua_kb as f64)?;
+            // the last physics step (inside lua_ms, since the framework calls it) and how many bodies there are
+            t.set("physics_ms", sh.physics_ms as f64)?;
+            t.set("bodies", sh.physics.body_count())?;
             Ok(t)
         })?,
     )?;
 
     voxel_api::install(lua, shared, vfs, &nova)?;
     solid_api::install(lua, shared, vfs, &nova)?;
+    physics_api::install(lua, shared, vfs, &nova)?;
     walls_api::install(lua, shared, &nova)?;
     billboard_api::install(lua, shared, &nova)?;
 
@@ -3173,6 +3194,8 @@ impl Game {
             baked: Vec::new(),
             retained: Default::default(),
             solid: Default::default(),
+            physics: Default::default(),
+            physics_ms: 0.0,
             light_requests: Vec::new(),
             light_fader: Default::default(),
             cursor: PadCursor::default(),

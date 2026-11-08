@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "ball",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "shape": "sphere", "from": [-4, -4, -4], "size": [8, 8, 8], "segments": 16, "color": "#3b4a6b" },
+        { "from": [-4.2, -0.6, -0.6], "size": [8.4, 1.2, 1.2], "color": "#f2c14e" }
+      ],
+      "children": []
+    }
+  ]
+}

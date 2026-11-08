@@ -158,6 +158,11 @@ impl Walls {
         &self.walls
     }
 
+    /// The ramps, in the order they were added (for `nova.physics`, which makes them into solid wedges).
+    pub fn ramps(&self) -> &[Ramp] {
+        &self.ramps
+    }
+
     fn rebuild(&mut self) {
         if !self.dirty {
             return;

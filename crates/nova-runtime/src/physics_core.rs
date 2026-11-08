@@ -29,8 +29,10 @@ pub struct World {
 impl World {
     pub fn new(gravity: [f32; 3]) -> World {
         let (events_tx, events_rx) = mpsc::channel();
-        let mut pw = PhysicsWorld::default();
-        pw.gravity = vec(gravity);
+        let mut pw = PhysicsWorld {
+            gravity: vec(gravity),
+            ..Default::default()
+        };
         pw.integration_parameters.dt = 1.0 / 60.0;
         World {
             pw,
@@ -158,11 +160,10 @@ impl World {
     pub fn step(&mut self, dt: f32) {
         self.pw.integration_parameters.dt = dt.clamp(1e-4, 0.1);
         for slot in self.slots.iter_mut().flatten() {
-            if slot.kind == Kind::Dynamic {
-                if let Some(b) = self.pw.bodies.get(slot.body) {
+            if slot.kind == Kind::Dynamic
+                && let Some(b) = self.pw.bodies.get(slot.body) {
                     slot.before = b.linvel();
                 }
-            }
         }
         let (force_tx, _) = mpsc::channel();
         let (tear_tx, _) = mpsc::channel();
@@ -170,12 +171,11 @@ impl World {
         self.pw.step_with_events(&(), &collector);
         // forces last one step
         for slot in self.slots.iter().flatten() {
-            if slot.kind == Kind::Dynamic {
-                if let Some(b) = self.pw.bodies.get_mut(slot.body) {
+            if slot.kind == Kind::Dynamic
+                && let Some(b) = self.pw.bodies.get_mut(slot.body) {
                     b.reset_forces(false);
                     b.reset_torques(false);
                 }
-            }
         }
         while let Ok(ev) = self.events_rx.try_recv() {
             let (h1, h2, started, flags) = match ev {
@@ -204,16 +204,14 @@ impl World {
                 normal: [0.0; 3],
                 speed: rel.length(),
             };
-            if started && !sensor {
-                if let Some(pair) = self.pw.narrow_phase.contact_pair(h1, h2) {
-                    if let Some((m, c)) = pair.find_deepest_contact() {
+            if started && !sensor
+                && let Some(pair) = self.pw.narrow_phase.contact_pair(h1, h2)
+                    && let Some((m, c)) = pair.find_deepest_contact() {
                         let n = m.data.normal;
                         contact.normal = out(n);
                         contact.point = out(c1.position().transform_point(c.local_p1));
                         contact.speed = rel.dot(n).abs();
                     }
-                }
-            }
             self.contacts.push(contact);
         }
     }
@@ -228,8 +226,8 @@ impl World {
         Some((out(b.translation()), rot_out(b.rotation())))
     }
 
-    /// The bodies the simulation moved in the last step (dynamic and awake), each as id, x, y, z, and the four numbers of
-    /// its turn, appended to `into`: what the framework copies back to entities.
+    /// The bodies the simulation moved in the last step (dynamic and awake), each as id, x, y, z, the four numbers of its
+    /// turn and its velocity x, y, z (eleven numbers), appended to `into`: what the framework copies back to entities.
     pub fn moved(&self, into: &mut Vec<f32>) {
         for (i, slot) in self.slots.iter().enumerate() {
             let Some(slot) = slot else { continue };
@@ -242,7 +240,8 @@ impl World {
             }
             let p = out(b.translation());
             let r = rot_out(b.rotation());
-            into.extend_from_slice(&[i as f32, p[0], p[1], p[2], r[0], r[1], r[2], r[3]]);
+            let v = out(b.linvel());
+            into.extend_from_slice(&[i as f32, p[0], p[1], p[2], r[0], r[1], r[2], r[3], v[0], v[1], v[2]]);
         }
     }
 
@@ -329,7 +328,7 @@ impl World {
     pub fn ray(&self, origin: [f32; 3], dir: [f32; 3], max: f32, ignore: Option<u32>, sensors: bool) -> Option<RayHit> {
         let d = vec(dir);
         let len = d.length();
-        if !(len > 1e-9) || !(max > 0.0) {
+        if len.is_nan() || len <= 1e-9 || max.is_nan() || max <= 0.0 {
             return None;
         }
         let ray = Ray::new(vec(origin), d / len);
