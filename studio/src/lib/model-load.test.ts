@@ -31,7 +31,7 @@ const colours = (doc: NonNullable<Awaited<ReturnType<typeof loadModelDoc>>>) => 
 describe("a model the scene view can draw", () => {
   it("is read from a plain .glb when there is no .model.json, with the picture's colours when it is decoded", async () => {
     // (a kit model kept as the kit made it, picture and all: see src/tools/keep-original.txt)
-    const car = glb("fence");
+    const car = new Uint8Array(readFileSync(`${rally}../potion-panic/models/roof.glb`));
     const image = embeddedImage(car);
     expect(image?.mime).toBe("image/png");
     expect([...image!.bytes.subarray(1, 4)]).toEqual([0x50, 0x4e, 0x47]); // "PNG"

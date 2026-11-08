@@ -49,13 +49,13 @@ K "$RK" $P bannerTowerRed --as banner_red --fit y=8 --centre --collider 0:0:0.6
 K "$RK" $P bannerTowerGreen --as banner_green --fit y=8 --centre --collider 0:0:0.6
 K "$RK" $P billboard --as billboard --fit x=8 --centre --collider -2.5:0:0.6 --collider 2.5:0:0.6
 K "$RK" $P billboardLow --as billboard_low --fit x=6 --centre --collider 0:0:0.8
-K "$RK" $P flagCheckers --as flag_checkers --fit y=6 --centre --collider 0:0:0.3
+# (flag_checkers and fence came from the kit here too, flagCheckers and fenceStraight; since 2026-11-07 they are Nova models,
+# rebuilt by scripts/rally/props-models.mjs with their pictures made into faces: edit their .model.json in the studio)
 K "$RK" $P flagRed --as flag_red --fit y=6 --centre --collider 0:0:0.3
 K "$RK" $P flagGreen --as flag_green --fit y=6 --centre --collider 0:0:0.3
 K "$RK" $P barrierRed --as barrier_red --fit x=4 --centre --collider -1:0:0.7 --collider 1:0:0.7
 K "$RK" $P barrierWhite --as barrier_white --fit x=4 --centre --collider -1:0:0.7 --collider 1:0:0.7
 K "$RK" $P pylon --as pylon --fit y=1.1 --centre --collider 0:0:0.4
-K "$RK" $P fenceStraight --as fence --fit x=5 --centre --collider -1.7:0:0.4 --collider 0:0:0.4 --collider 1.7:0:0.4
 K "$RK" $P pitsGarage --as garage --fit x=12 --centre --collider -4:0:2 --collider 0:0:2 --collider 4:0:2
 
 # more road cars, from the Car Kit in the Kenney All-in-1 bundle (set CARKIT to its folder: ".../3D assets/Car Kit"): one scale (1.18, the sports sedan's) for all of the road cars, so that they keep the kit's sizes relative to each other; the same scale as the

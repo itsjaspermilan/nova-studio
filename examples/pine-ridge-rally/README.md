@@ -20,9 +20,10 @@ Like any Nova project it is plain files, and most of them are what the studio's 
 | `models/` | 37 models made in the model editor's format: four cars (a body, and four wheels that spin, steer and ride the bumps on their own), pines, rocks, cacti, mesas, barriers, the start arch, road pieces, mountains. Each is a `.model.json` and the `.glb` the game loads. |
 | `sprites/` | Pixel sprites: the flag, the medals, the menu cursor. |
 | `sounds/`, `music/` | 14 sound effects (the sound editor's synth; the engine, gravel and tyre squeal are loops the game steers while they play with `nova.sound.set`) and five songs (the music editor's sequencer, streamed as Ogg): menu, a theme for each circuit, and the results fanfare. |
-| `scenes/` | `pine_ridge`, `dust_valley`, `frost_pass`, `harbour_lights` (a circuit each), `title` and `results`: each is a layout (`.scene.json`: road pieces, scenery, waypoints, the start grid, a camera) and the code that runs it. |
+| `tracks/` | The eight courses as track files (control points, road, seed, scenery, roadside, crowd): what the studio's track editor opens and makes the scenes and roads from. |
+| `scenes/` | `pine_ridge`, `dust_valley`, `frost_pass`, `harbour_lights` (a circuit each), the four `stage_*` rally stages, `title` and `results`: each course is a layout (`.scene.json`: waypoints, the start grid, gates, scenery, roadside, crowd, and the `race` object with its settings) and a one-line script. |
 | `entities/` | One small file per kind of thing a layout can hold (`pine.lua`, `road_dirt.lua`, `waypoint.lua`...), and the cars. |
-| `lib/` | `race.lua` (countdown, laps, places, camera, HUD, pause), `track.lua`, `world.lua`, `ui.lua`, `audio.lua`, `state.lua` (options and best times, saved). |
+| `lib/` | `race.lua` (countdown, laps, places, camera, HUD, pause), `course.lua` (a course's settings from its race object), `track.lua`, `crowd.lua`, `foliage.lua`, `ui.lua`, `audio.lua`, `state.lua` (options and best times, saved). |
 
 Thousands of fixed things (road pieces, trees, barriers) would be slow as live entities, so each one hands itself to
 `lib/world.lua` when the scene is built; the world draws only what is near the camera and tells cars what they hit.
@@ -31,7 +32,7 @@ Thousands of fixed things (road pieces, trees, barriers) would be slow as live e
 
 The models, sounds, songs, sprites and layouts were made through the Nova MCP server (`docs/mcp.md`), the way an
 assistant (or a script) drives the studio's own code: see `scripts/rally/` (`models.mjs`, `audio.mjs`, `sprites.mjs`,
-`showroom.mjs`). Each script is a list of tool calls whose results are the files in this folder. Running
+`showroom.mjs`, `props-models.mjs`). Each script is a list of tool calls whose results are the files in this folder. Running
 `node scripts/rally/models.mjs` (and the others) writes them again; the Lua is hand-written.
 
 **Courses (2026-11-07).** Everything about a course is in its files, none of it in code: its scene, `scenes/<course>.scene.json`, holds the

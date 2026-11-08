@@ -1,6 +1,6 @@
 # Nova Studio: reset plan and TODO
 
-Last updated: 2026-11-06 (the roadmap entries below carry their own dates). This replaces the earlier C11/raylib/Qt plan (M0 has
+Last updated: 2026-11-07 (the roadmap entries below carry their own dates). This replaces the earlier C11/raylib/Qt plan (M0 has
 rewritten `AGENTS.md` and `README.md` to match). Nothing below is implemented
 unless it is ticked.
 
@@ -56,6 +56,17 @@ animation and simple lights; streamed music; the C audio core's synthesis for th
 
 Everything we know is missing or unverified, in one place. "Device" means it needs the Retroid (or
 another physical Android device) to settle; the emulator cannot.
+
+**Pine Ridge Rally's courses are files (2026-11-07).** The eight courses are track files (`tracks/<course>.track.json`, made into scenes and roads by the
+studio's track editor or the MCP tool `track_write`; `scripts/rally/tracks.mjs` is gone; the track format gained `rail`, `sky`, `far`, `landmarks`, `roadside`
+and `crowd`). The stands, tents, banners, flags, billboards, pylons and spectators are objects in the scenes (placed by the generator where `lib/roadside.lua`
+and `lib/crowd.lua` used to put them in code); each course's settings (surface, grip, dust, music, weather, sky and sun, terrain, wind, look, the menus'
+dressing) are the props of a `race` object in its scene and the grass's of a `foliage` object; every `scenes/<course>.lua` is one line. Generate keeps a scene's
+named objects. The scene editor's inspector edits list and table props as JSON. The checkered flag, the fence, the grass and the flowers are Nova models now
+(`scripts/rally/props-models.mjs`), so every rally model opens in the model editor. Checked: the computer drivers' times on all eight courses are the same to the
+hundredth before and after (`course_times` in `tests/rally.rs`), and race screenshots match. Not played on the Retroid since. Found: the renderer clamps texture
+coordinates although glTF asks for repeat, so the kit's checkered flag had always shown as a black cloth with two stripes and the fence's net as a white slab
+(the rebuilt models are faces, so they look as the kit meant; see Known gaps).
 
 **Nebula Swap (2026-11-07; `examples/nebula-swap`, `scripts/nebula/`):** a Panel de Pon-style game in Lua, sci-fi, with Kenney's UI, planets, skyboxes, sounds and music. Endless (three paces), Puzzle (16 puzzles made and checked by a solver, `scripts/nebula/puzzles.mjs`, each also replayed through the game's own rules by the self-test) and Garbage battle against a computer rival (`lib/ai.lua`). Blocks, cursor and sparkles are in the world layer so FXAA covers them. Tests: `tests/nebula.rs` and the F10 self-test (77 checks). Built, installed and run on the Retroid (59.7 fps, 2 ms GPU at 1080p); **not yet played by a person**: the feel of the cursor and rise speed, the sound balance (set from measured loudness only), the CPU's difficulty, and whether Lantern shows the cover (`/sdcard/Lantern/art/androidgames/com.nova.games.nebula_swap.png`). Not done: a hard-drop or stop-time rules like the original's exact numbers, a two-player mode, puzzle progress beyond "cleared".
 
@@ -564,6 +575,8 @@ Not done yet:
 - MSAA (blocked by the AO and outline passes reading depth; FXAA covers it for now) and a render-scale option in the studio.
 - Skinned instancing and a level of detail for skinned models (a crowd is drawn one character at a time).
 - Terrain from a heightmap (the hills are a sum of eight sine waves), and ground contact for particles; textured, soft particle sprites.
-- Studio screens (Svelte) for store-art export and the perf/hitch overlay: only the MCP tools exist so far. The track editor is done (`docs/track-editor.md`); not yet: dragging gates or the start line, a map of the scenery, making the entities the generated scene needs, hills.
+- Studio screens (Svelte) for store-art export and the perf/hitch overlay: only the MCP tools exist so far. The track editor is done (`docs/track-editor.md`; since 2026-11-07 it makes all of Pine Ridge Rally's courses, roadside and crowd included); not yet: dragging gates or the start line, a map of the scenery, making the entities the generated scene needs, hills, and keeping hand edits to generated scenery when a track is generated again (only named objects are kept).
+- Texture wrap: the renderer clamps texture coordinates outside 0 to 1 instead of following the glTF sampler (repeat is the default), so a kit model whose
+  picture repeats draws wrong (found 2026-11-07 on the rally's flag and fence, now rebuilt without pictures; Potion Panic's roofs and Hill Run's characters keep theirs).
 - A simulation test harness that is part of the studio (the `ai_balance` and `rally_pars` tests show the pattern).
 - Colliders that are capsules or boxes in the model editor (only circles are written to `extras.nova.colliders`).
