@@ -2,7 +2,9 @@
 //!
 //! Supported: triangle meshes in the default scene (node transforms applied),
 //! positions, normals (flat normals are generated when absent), one UV set,
-//! COLOR_0, base colour factor, and a single base colour texture. Everything else
+//! COLOR_0, base colour factor, and a single base colour texture with its sampler's wrap modes (repeat, mirrored
+//! repeat or clamp; glTF's default is repeat). A primitive without a texture in a model that has one is drawn in its
+//! own colours (its UVs are set to [`NO_TEXTURE_UV`]). Everything else
 //! is not silently dropped: it is listed in [`MeshData::notes`] so the studio and
 //! the log can say what was ignored.
 
@@ -21,6 +23,31 @@ pub struct MeshVertex {
     pub emissive: f32,
 }
 
+/// The UV the importer gives the vertices of a primitive whose material has no texture, in a model whose other
+/// primitives have one: the mesh shader draws such a vertex without the picture (white), as glTF says. Far outside any
+/// real texture coordinate.
+pub const NO_TEXTURE_UV: [f32; 2] = [1.0e7, 1.0e7];
+
+/// How a texture repeats outside 0 to 1, from the glTF sampler (`wrapS` and `wrapT`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Wrap {
+    /// glTF's default.
+    #[default]
+    Repeat,
+    MirroredRepeat,
+    ClampToEdge,
+}
+
+impl From<gltf::texture::WrappingMode> for Wrap {
+    fn from(m: gltf::texture::WrappingMode) -> Self {
+        match m {
+            gltf::texture::WrappingMode::Repeat => Wrap::Repeat,
+            gltf::texture::WrappingMode::MirroredRepeat => Wrap::MirroredRepeat,
+            gltf::texture::WrappingMode::ClampToEdge => Wrap::ClampToEdge,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Image {
     pub width: u32,
@@ -33,6 +60,8 @@ pub struct MeshData {
     pub vertices: Vec<MeshVertex>,
     pub indices: Vec<u32>,
     pub texture: Option<Image>,
+    /// How `texture` repeats across u and v (glTF's repeat unless the file says otherwise; meshes made in code clamp).
+    pub wrap: [Wrap; 2],
     /// Features present in the file that this importer does not support.
     pub notes: Vec<String>,
 }
@@ -119,7 +148,7 @@ fn append_mesh(
     mesh: &gltf::Mesh,
     world: Mat4,
     buffers: &[gltf::buffer::Data],
-    texture_index: &mut Option<usize>,
+    texture_index: &mut Option<(usize, [Wrap; 2])>,
 ) {
     let normal_matrix = Mat3::from_mat4(world).inverse().transpose();
     for primitive in mesh.primitives() {
@@ -149,11 +178,14 @@ fn append_mesh(
         };
         let pbr = primitive.material().pbr_metallic_roughness();
         let factor = pbr.base_color_factor();
+        let textured = pbr.base_color_texture().is_some();
         if let Some(info) = pbr.base_color_texture() {
             let index = info.texture().source().index();
+            let sampler = info.texture().sampler();
+            let wrap = [sampler.wrap_s().into(), sampler.wrap_t().into()];
             match *texture_index {
-                None => *texture_index = Some(index),
-                Some(first) if first != index => out
+                None => *texture_index = Some((index, wrap)),
+                Some((first, _)) if first != index => out
                     .notes
                     .push("more than one base colour texture: only the first is used".into()),
                 _ => {}
@@ -189,7 +221,11 @@ fn append_mesh(
                         mul(c[2], tint[2]),
                         mul(c[3], tint[3]),
                     ],
-                    uv: uvs.as_ref().map(|u| u[i]).unwrap_or([0.0, 0.0]),
+                    uv: if textured {
+                        uvs.as_ref().map(|u| u[i]).unwrap_or([0.0, 0.0])
+                    } else {
+                        NO_TEXTURE_UV
+                    },
                     emissive,
                 }
             })
@@ -582,11 +618,12 @@ pub fn import_parts(bytes: &[u8]) -> Result<ModelParts, String> {
         let mut skin_source = None;
         if let Some(source) = node.mesh() {
             let mut data = MeshData::default();
-            let mut texture: Option<usize> = None;
+            let mut texture: Option<(usize, [Wrap; 2])> = None;
             append_mesh(&mut data, &source, Mat4::IDENTITY, &buffers, &mut texture);
             if !data.vertices.is_empty() {
-                if let Some(index) = texture {
+                if let Some((index, wrap)) = texture {
                     let image = &images[index];
+                    data.wrap = wrap;
                     data.texture = Some(Image {
                         width: image.width,
                         height: image.height,
@@ -737,7 +774,7 @@ pub fn import_glb(bytes: &[u8]) -> Result<MeshData, String> {
         .default_scene()
         .or_else(|| document.scenes().next())
         .ok_or("glTF has no scene")?;
-    let mut texture_index: Option<usize> = None;
+    let mut texture_index: Option<(usize, [Wrap; 2])> = None;
     let mut stack: Vec<(gltf::Node, Mat4)> = scene.nodes().map(|n| (n, Mat4::IDENTITY)).collect();
     while let Some((node, parent)) = stack.pop() {
         let world = parent * Mat4::from_cols_array_2d(&node.transform().matrix());
@@ -750,8 +787,9 @@ pub fn import_glb(bytes: &[u8]) -> Result<MeshData, String> {
     if out.vertices.is_empty() {
         return Err("glTF contains no triangle geometry".into());
     }
-    if let Some(index) = texture_index {
+    if let Some((index, wrap)) = texture_index {
         let data = &images[index];
+        out.wrap = wrap;
         out.texture = Some(Image {
             width: data.width,
             height: data.height,
@@ -818,6 +856,42 @@ mod studio_model_tests {
     }
 
     use super::*;
+
+    /// Kenney's racing kit checkered flag (CC0): a cloth whose picture repeats (u from -19 to -18, v 0 to 3.2, a REPEAT
+    /// sampler) and a pole in three plain materials that have no picture.
+    #[test]
+    fn a_repeating_picture_keeps_its_wrap_and_parts_without_a_picture_are_marked() {
+        let mesh =
+            import_glb(include_bytes!("../tests/fixtures/kenney_flag_checkers.glb")).unwrap();
+        assert_eq!(mesh.wrap, [Wrap::Repeat, Wrap::Repeat]);
+        assert!(mesh.texture.is_some());
+        let plain = mesh
+            .vertices
+            .iter()
+            .filter(|v| v.uv == NO_TEXTURE_UV)
+            .count();
+        let cloth = mesh
+            .vertices
+            .iter()
+            .filter(|v| v.uv[0] < -17.9 && v.uv[0] > -19.1)
+            .count();
+        assert_eq!(
+            plain,
+            176 * 3,
+            "the pole's three primitives draw without the picture"
+        );
+        assert_eq!(
+            cloth, 100,
+            "the cloth keeps its texture coordinates, outside 0 to 1"
+        );
+        // the studio's own models clamp, as their exporter says
+        let studio = import_glb(include_bytes!(
+            "../tests/fixtures/studio_model_textured.glb"
+        ))
+        .unwrap();
+        assert_eq!(studio.wrap, [Wrap::ClampToEdge, Wrap::ClampToEdge]);
+        assert!(studio.vertices.iter().all(|v| v.uv != NO_TEXTURE_UV));
+    }
 
     /// `studio/src/lib/model-doc.test.ts` pins this file to what the studio's exporter writes for its
     /// sample model: a 16-unit body cube and a rotated, offset wheel cube, at 1/16 scale.

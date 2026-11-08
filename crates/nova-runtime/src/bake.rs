@@ -5,7 +5,7 @@
 //! Each corner carries the baked light as a colour (the hue of what lights it, at full strength) and an intensity (how much), which
 //! the mesh shader adds to the live light: the picture is the box's colour times (ambient + live lights + baked light).
 
-use crate::model::{MeshData, MeshVertex};
+use crate::model::{MeshData, MeshVertex, Wrap};
 use crate::walls::Walls;
 
 #[derive(Clone, Copy, Debug)]
@@ -167,6 +167,7 @@ pub fn bake(
         vertices,
         indices,
         texture: None,
+        wrap: [Wrap::ClampToEdge; 2],
         notes: Vec::new(),
     }
 }

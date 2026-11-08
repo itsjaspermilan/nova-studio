@@ -96,7 +96,9 @@ case-insensitive systems.
   decoded or uploaded per frame. JPEG, GIF and BMP are not supported yet and are warned
   about.
 - **Models:** static GLB/glTF: triangle meshes in the default scene, positions, normals,
-  UV set 0, COLOR_0, a base colour factor and one base colour texture. Skins (JOINTS_0 and
+  UV set 0, COLOR_0, a base colour factor and one base colour texture, which repeats, mirrors or clamps outside 0 to 1 as its
+  glTF sampler says (repeat when it says nothing; the studio's exporter writes clamp). A primitive whose material has no texture
+  is drawn in its own colours even when the rest of the model has one. Skins (JOINTS_0 and
   WEIGHTS_0, up to four joints per point) are read when a model is drawn with `parts` or a `clip`. Morph
   targets and extensions are reported as warnings in the log, not silently dropped.
 - **Scripts:** Lua 5.4.

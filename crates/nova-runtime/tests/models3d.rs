@@ -408,6 +408,57 @@ fn frame_pixels(script: &str) -> Option<Vec<u8>> {
     Some(gfx.capture((320, 180), &g.frame_input(0)))
 }
 
+/// A repeating picture repeats on the GPU: Kenney's checkered flag (its cloth's texture coordinates run from -19 to -18 across and
+/// 0 to 3.2 down, four squares to one) shows white and black squares all down the cloth. Clamped, as the renderer did until
+/// 2026-11-07, it was black below the first four squares, and the pole took the checker picture although its materials have none.
+#[test]
+fn a_repeating_picture_tiles_and_a_part_without_one_keeps_its_colour() {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        backends: wgpu::Backends::PRIMARY,
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
+    });
+    let mut gfx = match Gfx::new(&instance, None) {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("skipping GPU test: {e}");
+            return;
+        }
+    };
+    // the cloth spans x -0.86 to -0.04, y 3.05 to 5.66 near z -1.5; the camera looks straight at its lower half, the pole at its left
+    let script = "nova.camera(-0.45, 3.9, 0.6, -0.45, 3.9, -1.5, 40)\nfunction update(dt)\n  nova.light { dir = { 0, -0.3, -1 }, color = { 255, 255, 255 }, ambient = { 200, 200, 200 } }\n  nova.model(\"flag\", 0, 0, 0)\nend";
+    let vfs: Rc<dyn Vfs> = Rc::new(MemVfs::new(vec![
+        ("nova.json", br#"{"format":1,"name":"T"}"#.to_vec()),
+        (
+            "models/flag.glb",
+            include_bytes!("fixtures/kenney_flag_checkers.glb").to_vec(),
+        ),
+        ("main.lua", script.as_bytes().to_vec()),
+    ]));
+    let mut g = Game::load(vfs).expect("loads");
+    g.upload(&mut gfx);
+    g.update(1.0 / 60.0, 0.0, [320.0, 180.0], Actions::default(), false);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let p = gfx.capture((320, 180), &g.frame_input(0));
+    let (mut white, mut black, mut other) = (0, 0, 0);
+    for y in 30..150 {
+        for x in 130..250 {
+            let [r, gg, b] = pixel(&p, x, y);
+            let l = (r as u32 + gg as u32 + b as u32) / 3;
+            if l > 170 {
+                white += 1;
+            } else if l < 80 {
+                black += 1;
+            } else {
+                other += 1;
+            }
+        }
+    }
+    assert!(
+        white > 2000 && black > 2000,
+        "squares of both colours down the cloth: {white} white, {black} black, {other} other"
+    );
+}
+
 fn pixel(pixels: &[u8], x: usize, y: usize) -> [u8; 3] {
     let i = (y * 320 + x) * 4;
     [pixels[i], pixels[i + 1], pixels[i + 2]]
@@ -1024,6 +1075,7 @@ fn meshes_with_the_same_picture_share_one_texture() {
             height: 2,
             rgba: vec![colour; 16],
         }),
+        wrap: Default::default(),
         notes: Vec::new(),
     };
     gfx.upload_mesh(&mesh(10));

@@ -223,7 +223,10 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
             if (noise >= in.dissolve) { discard; }
         }
     }
-    let base = textureSample(base_texture, base_sampler, in.uv) * in.color;
+    // (a part of a textured model whose material has no picture has its UVs far out, model.rs NO_TEXTURE_UV: it is drawn white, in
+    // its own colours; sampled anyway, since a sample must be taken by every pixel alike)
+    let picture = textureSample(base_texture, base_sampler, in.uv);
+    let base = select(picture, vec4<f32>(1.0), in.uv.x > 1.0e6) * in.color;
     // cut-out textures (leaves, glass, plants): see-through texels are not drawn at all
     if (base.a < 0.3) {
         discard;

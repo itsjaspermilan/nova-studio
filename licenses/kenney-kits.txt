@@ -5,6 +5,9 @@ Kenney kits used by examples/stress (all Creative Commons Zero, CC0; credit is w
 - kenney_city-kit-suburban_20  https://kenney.nl/assets
 - kenney_car-kit  https://kenney.nl/assets
 
+crates/nova-runtime/tests/fixtures/kenney_flag_checkers.glb is the racing kit's flagCheckers (CC0), as scripts/kenney.mjs converted it, kept
+as a test of repeating textures.
+
 Also in the project folder but not unpacked into a game yet: kenney_blaster-kit_2.1, kenney_city-kit-industrial_2.0, kenney_mini-forest_1.0, kenney_prototype-kit, kenney_racing-kit (archives in examples/, not committed), kenney_animated-characters-protagonists (FBX only).
 
 The licence text each kit ships with:

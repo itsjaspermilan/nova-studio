@@ -8,7 +8,7 @@ use glam::Vec3;
 use std::collections::HashMap;
 use wgpu::util::DeviceExt;
 
-use crate::model::{Image, MeshData, MeshVertex};
+use crate::model::{Image, MeshData, MeshVertex, Wrap};
 
 pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
@@ -728,8 +728,6 @@ pub struct Gfx {
     lost: std::sync::Arc<std::sync::atomic::AtomicBool>,
     voxel_atlas: Option<wgpu::BindGroup>,
     sampler_voxel: wgpu::Sampler,
-    /// Trilinear, for the pictures of blended meshes (billboards: smoke, sparks, stickers), which are drawn at every size.
-    sampler_smooth: wgpu::Sampler,
     /// Buffers of meshes that were freed, kept for the next mesh that fits (a rebuilt chunk piece is about the same size).
     spare_vertices: Vec<wgpu::Buffer>,
     spare_indices: Vec<wgpu::Buffer>,
@@ -746,6 +744,8 @@ pub struct Gfx {
     /// Texture bind groups of model meshes by the picture's contents, so that models that carry the same picture (a kit's shared
     /// palette, embedded in every file) share one texture.
     texture_cache: HashMap<u64, wgpu::BindGroup>,
+    /// Model textures' samplers, by smooth filtering (a billboard's) or not and the wrap across u and v (from the glTF file).
+    mesh_samplers: HashMap<(bool, [Wrap; 2]), wgpu::Sampler>,
     /// GPU timing, where the adapter can do it.
     gpu_timer: Option<GpuTimer>,
     /// How many textures that sharing has saved (for the tests and the log).
@@ -992,13 +992,6 @@ impl Gfx {
             label: Some("voxel"),
             mag_filter: wgpu::FilterMode::Nearest,
             min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::MipmapFilterMode::Linear,
-            ..Default::default()
-        });
-        let sampler_smooth = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("smooth"),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
             mipmap_filter: wgpu::MipmapFilterMode::Linear,
             ..Default::default()
         });
@@ -1740,7 +1733,6 @@ impl Gfx {
             lost,
             voxel_atlas: None,
             sampler_voxel,
-            sampler_smooth,
             spare_vertices: Vec::new(),
             spare_indices: Vec::new(),
             mesh_buffers_created: 0,
@@ -1752,6 +1744,7 @@ impl Gfx {
             model_instances,
             view_instances,
             texture_cache: HashMap::new(),
+            mesh_samplers: HashMap::new(),
             gpu_timer,
             textures_shared: 0,
             depth: None,
@@ -1929,6 +1922,7 @@ impl Gfx {
                 vertices: mesh.vertices.clone(),
                 indices: mesh.indices.clone(),
                 texture: mesh.texture.clone(),
+                wrap: mesh.wrap,
                 notes: Vec::new(),
             },
             None,
@@ -1952,7 +1946,14 @@ impl Gfx {
             Some(image) => {
                 use std::hash::{Hash, Hasher};
                 let mut hasher = std::collections::hash_map::DefaultHasher::new();
-                (image.width, image.height, &image.rgba, translucent).hash(&mut hasher);
+                (
+                    image.width,
+                    image.height,
+                    &image.rgba,
+                    translucent,
+                    mesh.wrap,
+                )
+                    .hash(&mut hasher);
                 let key = hasher.finish();
                 if let Some(group) = self.texture_cache.get(&key) {
                     self.textures_shared += 1;
@@ -1961,6 +1962,35 @@ impl Gfx {
                     // a blended mesh's picture (a billboard) is filtered smoothly, with mipmaps when its sides are powers of two; a solid
                     // model's (usually a palette of flat colours) keeps sharp texels
                     let pow2 = image.width.is_power_of_two() && image.height.is_power_of_two();
+                    let device = &self.device;
+                    let sampler = self
+                        .mesh_samplers
+                        .entry((translucent, mesh.wrap))
+                        .or_insert_with(|| {
+                            let address = |w: Wrap| match w {
+                                Wrap::Repeat => wgpu::AddressMode::Repeat,
+                                Wrap::MirroredRepeat => wgpu::AddressMode::MirrorRepeat,
+                                Wrap::ClampToEdge => wgpu::AddressMode::ClampToEdge,
+                            };
+                            let filter = if translucent {
+                                wgpu::FilterMode::Linear
+                            } else {
+                                wgpu::FilterMode::Nearest
+                            };
+                            device.create_sampler(&wgpu::SamplerDescriptor {
+                                label: Some("mesh texture"),
+                                address_mode_u: address(mesh.wrap[0]),
+                                address_mode_v: address(mesh.wrap[1]),
+                                mag_filter: filter,
+                                min_filter: filter,
+                                mipmap_filter: if translucent {
+                                    wgpu::MipmapFilterMode::Linear
+                                } else {
+                                    wgpu::MipmapFilterMode::Nearest
+                                },
+                                ..Default::default()
+                            })
+                        });
                     let group = if translucent {
                         let levels = if pow2 {
                             32 - image.width.min(image.height).leading_zeros()
@@ -1971,7 +2001,7 @@ impl Gfx {
                             &self.device,
                             &self.queue,
                             &self.texture_layout,
-                            &self.sampler_smooth,
+                            sampler,
                             "billboard texture",
                             image,
                             levels,
@@ -1981,7 +2011,7 @@ impl Gfx {
                             &self.device,
                             &self.queue,
                             &self.texture_layout,
-                            &self.sampler_nearest,
+                            sampler,
                             "mesh texture",
                             image,
                         )

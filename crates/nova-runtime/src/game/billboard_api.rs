@@ -4,7 +4,7 @@
 //! unit quad with its own texture window, drawn blended (after the solid things, depth-tested, not writing depth) and unlit.
 
 use super::*;
-use crate::model::{Image, MeshData, MeshVertex};
+use crate::model::{Image, MeshData, MeshVertex, Wrap};
 
 /// Where the pictures a billboard can draw live: `sprites/fx/<name>.png`.
 pub(super) const FOLDER: &str = "sprites/fx/";
@@ -45,6 +45,7 @@ pub(super) fn quad_mesh(image: &Image, uv: [f32; 4]) -> MeshData {
         vertices,
         indices,
         texture: Some(image.clone()),
+        wrap: [Wrap::ClampToEdge; 2],
         notes: Vec::new(),
     }
 }

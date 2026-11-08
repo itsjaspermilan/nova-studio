@@ -1,7 +1,7 @@
 //! `nova.walls`, `nova.nav`, `nova.cuboid`, `nova.cuboid_at` and `nova.quad3`: indoor 3D from boxes (see [`crate::walls`]).
 
 use super::*;
-use crate::model::MeshData;
+use crate::model::{MeshData, Wrap};
 use crate::walls::{Nav, Walls};
 
 pub(super) const CUBE_MESH: &str = "__cube";
@@ -49,6 +49,7 @@ pub(super) fn cube_mesh(glow: bool) -> MeshData {
         vertices,
         indices,
         texture: None,
+        wrap: [Wrap::ClampToEdge; 2],
         notes: Vec::new(),
     }
 }

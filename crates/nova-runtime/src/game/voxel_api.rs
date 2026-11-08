@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::gfx::{DYN_MESH_BASE, MeshOp};
-use crate::model::MeshVertex;
+use crate::model::{MeshVertex, Wrap};
 use crate::voxel::{self, BlockDef, Carve, Shape};
 
 fn cell(v: f64) -> i32 {
@@ -147,6 +147,7 @@ pub(super) fn blob_mesh() -> crate::model::MeshData {
         vertices,
         indices,
         texture: None,
+        wrap: [Wrap::ClampToEdge; 2],
         notes: Vec::new(),
     }
 }
@@ -178,6 +179,7 @@ pub(super) fn line_mesh() -> crate::model::MeshData {
         vertices,
         indices: vec![0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6],
         texture: None,
+        wrap: [Wrap::ClampToEdge; 2],
         notes: Vec::new(),
     }
 }
