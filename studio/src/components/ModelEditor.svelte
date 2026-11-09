@@ -6,6 +6,7 @@
   import { applyNavigation, navHint } from "../lib/view-nav";
   import NavButtons from "./NavButtons.svelte";
   import { commands } from "../lib/commands";
+  import { axisKey, modalLabel, moveDelta, parseTyped, round2 as round2m, scaleBox, scaleFactor, typeKey, type Axis as ModalAxis } from "../lib/modal-transform";
   import { commandsRev } from "../lib/commands-rev.svelte";
   import { input } from "../lib/input-settings.svelte";
   import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
@@ -1854,6 +1855,10 @@
   function key(e: KeyboardEvent) {
     const t = e.target as HTMLElement;
     if (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA") return;
+    if (modal) {
+      modalKey(e);
+      return;
+    }
     // while a point is dragged: X, Y or Z keeps it to that axis (⇧ to the plane across it), the same key again frees it; Esc puts it back
     if (drag || gizmoMove) {
       if (e.key === "Escape") {
@@ -1892,20 +1897,111 @@
       }
     }
   }
+  // ---- Blender-style transforms: G moves, S resizes, with the mouse (lib/modal-transform.ts) ----------------------
+  let modal = $state<{ kind: "move" | "scale"; base: ModelDoc; x0: number; y0: number; axis: ModalAxis; typed: string; amount: string } | null>(null);
+  let pointerAt = { x: 0, y: 0 };
+
+  /// Every shape of the model, as paths.
+  const allShapes = $derived(rows.flatMap((r) => r.part.cubes.map((_, ci) => ({ parts: r.parts, cube: ci }) as Path)));
+  function selectShapes(what: "all" | "none" | "invert") {
+    const shapes = what === "invert" ? allShapes.filter((p) => !isPicked(p)) : what === "all" ? allShapes : [];
+    selected = shapes[0] ?? null;
+    also = shapes.slice(1);
+  }
+
+  function startModal(kind: "move" | "scale") {
+    if (!selected) return;
+    modal = { kind, base: doc, x0: pointerAt.x, y0: pointerAt.y, axis: null, typed: "", amount: "" };
+  }
+
+  /// Shows the transform for the mouse and keys now, without saving it (nothing goes into the undo history until it is kept).
+  function modalApply() {
+    const m = modal;
+    if (!m || !camera || !controls) return;
+    const typed = parseTyped(m.typed);
+    let next = m.base;
+    if (m.kind === "move") {
+      const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
+      const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+      const perPixel = (2 * camera.position.distanceTo(controls.target) * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) / Math.max(1, canvas?.clientHeight ?? 400);
+      const w = moveDelta([right.x, right.y, right.z], [up.x, up.y, up.z], pointerAt.x - m.x0, pointerAt.y - m.y0, perPixel, m.axis, typed);
+      m.amount = String(round2m(Math.hypot(w[0], w[1], w[2])));
+      const world = new THREE.Vector3(w[0], w[1], w[2]);
+      // the same movement in the world is a different one inside a part that is turned
+      const local = (parts: number[]) => {
+        const g = parts.length > 1 ? groupOf(parts.slice(0, -1)) : modelGroup;
+        const inv = new THREE.Matrix3().setFromMatrix4((g ?? new THREE.Object3D()).matrixWorld.clone().invert());
+        return world.clone().applyMatrix3(inv);
+      };
+      if (pickedShapes.length) {
+        for (const p of pickedShapes) {
+          const c = cubeAt(next, p);
+          if (!c) continue;
+          // (a shape moves inside its own part)
+          const g = groupOf(p.parts);
+          const inPart = g ? world.clone().applyMatrix3(new THREE.Matrix3().setFromMatrix4(g.matrixWorld.clone().invert())) : world;
+          next = updateCube(next, p, { from: [round2m(c.from[0] + inPart.x), round2m(c.from[1] + inPart.y), round2m(c.from[2] + inPart.z)] });
+        }
+      } else if (selected && part) {
+        const d = local(selected.parts);
+        next = updatePart(next, selected.parts, { origin: [round2m(part.origin[0] + d.x), round2m(part.origin[1] + d.y), round2m(part.origin[2] + d.z)] });
+      }
+    } else {
+      const f = scaleFactor(pointerAt.x - m.x0, typed);
+      m.amount = String(round2m(f));
+      for (const p of pickedShapes) {
+        const c = cubeAt(next, p);
+        if (!c || c.shape === "mesh") continue;
+        const b = scaleBox(c.from, [c.from[0] + c.size[0], c.from[1] + c.size[1], c.from[2] + c.size[2]], f, m.axis);
+        next = updateCube(next, p, { from: b.from.map(round2m) as Vec3, size: [b.to[0] - b.from[0], b.to[1] - b.from[1], b.to[2] - b.from[2]].map(round2m) as Vec3 });
+      }
+    }
+    doc = next;
+    tick++;
+  }
+
+  /// Keeps the transform (the document goes back to how it was, then the change is saved as one step in the history) or puts everything back.
+  function modalEnd(keep: boolean) {
+    const m = modal;
+    if (!m) return;
+    const shown = doc;
+    modal = null;
+    doc = m.base;
+    if (keep) commit(shown);
+    else tick++;
+  }
+  function modalKey(e: KeyboardEvent) {
+    const m = modal;
+    if (!m) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.key === "Escape") return modalEnd(false);
+    if (e.key === "Enter") return modalEnd(true);
+    const axis = axisKey(m.axis, e.key);
+    if (axis !== undefined) m.axis = axis;
+    else m.typed = typeKey(m.typed, e.key);
+    modalApply();
+  }
+
   // The model editor's commands. Each has a Blender key and a Nova key (Edit > Keyboard shortcuts changes them); a key typed into a text box is
   // text, not one of these. They are in the Model menu and the command palette while a model is open.
   $effect(() => {
-    const onShape = () => mode === "model" && !inEdit && !!selected;
+    const onShape = () => !modal && mode === "model" && !inEdit && !!selected;
     const offs = [
-      commands.register({ id: "model.move", title: "Move the shape", menu: "Model", keymaps: { blender: ["G"], nova: ["W"] }, help: "Shows the move handles", enabled: onShape, run: () => { gizmoMode = "translate"; } }),
-      commands.register({ id: "model.turn", title: "Turn the shape", menu: "Model", keymaps: { blender: ["R"], nova: ["E"] }, help: "Shows the turn handles", enabled: onShape, run: () => { gizmoMode = "rotate"; } }),
-      commands.register({ id: "model.resize", title: "Resize the shape", menu: "Model", keymaps: { blender: ["S"], nova: ["R"] }, help: "Shows the resize handles", enabled: onShape, run: () => { gizmoMode = "scale"; } }),
+      commands.register({ id: "model.grab", title: "Move with the mouse", menu: "Model", keymaps: { blender: ["G"], nova: [] }, help: "The shape follows the mouse: X, Y or Z keeps one axis, type a number for an exact amount, click or Enter keeps it, Esc cancels", enabled: () => !modal && mode === "model" && !inEdit && !!selected, run: () => startModal("move") }),
+      commands.register({ id: "model.scaleMouse", title: "Resize with the mouse", menu: "Model", keymaps: { blender: ["S"], nova: [] }, help: "Drag to make it bigger or smaller; X, Y or Z for one direction; type a factor", enabled: () => !modal && mode === "model" && !inEdit && pickedShapes.some((p) => cubeAt(doc, p)?.shape !== "mesh"), run: () => startModal("scale") }),
+      commands.register({ id: "model.selectAll", title: "Select all shapes", menu: "Model", keymaps: { blender: ["A"], nova: ["Mod+Shift+A"] }, enabled: () => !modal && mode === "model" && !inEdit, run: () => selectShapes("all") }),
+      commands.register({ id: "model.selectNone", title: "Select nothing", menu: "Model", keymaps: { blender: ["Alt+A"], nova: ["Mod+Shift+D"] }, enabled: () => !modal && mode === "model" && !inEdit, run: () => selectShapes("none") }),
+      commands.register({ id: "model.selectInvert", title: "Invert the selection", menu: "Model", keymaps: { blender: ["Mod+I"], nova: [] }, enabled: () => !modal && mode === "model" && !inEdit, run: () => selectShapes("invert") }),
+      commands.register({ id: "model.move", title: "Move handles", menu: "Model", keymaps: { blender: ["Shift+G"], nova: ["W"] }, help: "Shows the move handles", enabled: onShape, run: () => { gizmoMode = "translate"; } }),
+      commands.register({ id: "model.turn", title: "Turn handles", menu: "Model", keymaps: { blender: ["R"], nova: ["E"] }, help: "Shows the turn handles", enabled: onShape, run: () => { gizmoMode = "rotate"; } }),
+      commands.register({ id: "model.resize", title: "Resize handles", menu: "Model", keymaps: { blender: ["Shift+S"], nova: ["R"] }, help: "Shows the resize handles", enabled: onShape, run: () => { gizmoMode = "scale"; } }),
       commands.register({ id: "model.pivot", title: "Move the pivot", menu: "Model", keys: ["P"], help: "The point a part turns about", enabled: onShape, run: () => { gizmoMode = "pivot"; } }),
-      commands.register({ id: "model.editPoints", title: "Edit points", menu: "Model", keymaps: { blender: ["Tab"], nova: [] }, help: "Move points and pull faces of a shape", enabled: () => mode === "model" && !!cube, run: () => { if (inEdit) editPoints = false; else makeEditable(); } }),
-      commands.register({ id: "model.add", title: "Add a shape", menu: "Model", keymaps: { blender: ["Shift+A"], nova: [] }, enabled: () => mode === "model", run: () => newCube() }),
-      commands.register({ id: "model.duplicate", title: "Duplicate", menu: "Model", keymaps: { blender: ["Shift+D"], nova: ["Mod+D"] }, enabled: () => !!selected, run: () => duplicate() }),
-      commands.register({ id: "model.delete", title: "Delete", menu: "Model", keymaps: { blender: ["X", "Delete"], nova: ["Delete", "Backspace"] }, enabled: () => !!selected, run: () => remove() }),
-      commands.register({ id: "model.shading", title: "Cycle the shading", menu: "Model", keys: ["Z"], help: "Textured, plain colours, wireframe", run: () => { viewMode = viewMode === "textured" ? "solid" : viewMode === "solid" ? "wire" : "textured"; } }),
+      commands.register({ id: "model.editPoints", title: "Edit points", menu: "Model", keymaps: { blender: ["Tab"], nova: [] }, help: "Move points and pull faces of a shape", enabled: () => !modal && mode === "model" && !!cube, run: () => { if (inEdit) editPoints = false; else makeEditable(); } }),
+      commands.register({ id: "model.add", title: "Add a shape", menu: "Model", keymaps: { blender: ["Shift+A"], nova: [] }, enabled: () => !modal && mode === "model", run: () => newCube() }),
+      commands.register({ id: "model.duplicate", title: "Duplicate", menu: "Model", keymaps: { blender: ["Shift+D"], nova: ["Mod+D"] }, enabled: () => !modal && !!selected, run: () => duplicate() }),
+      commands.register({ id: "model.delete", title: "Delete", menu: "Model", keymaps: { blender: ["X", "Delete"], nova: ["Delete", "Backspace"] }, enabled: () => !modal && !!selected, run: () => remove() }),
+      commands.register({ id: "model.shading", title: "Cycle the shading", menu: "Model", keys: ["Z"], help: "Textured, plain colours, wireframe", enabled: () => !modal, run: () => { viewMode = viewMode === "textured" ? "solid" : viewMode === "solid" ? "wire" : "textured"; } }),
       commands.register({ id: "model.resetView", title: "Reset the view", menu: "Model", keymaps: { blender: ["Home"], nova: [] }, run: () => resetView() }),
     ];
     return () => offs.forEach((off) => off());
@@ -1926,7 +2022,7 @@
   const label = (f: Face) => ({ east: "East +x", west: "West −x", up: "Top +y", down: "Bottom −y", south: "South +z", north: "North −z" })[f];
 </script>
 
-<svelte:window onkeydown={key} />
+<svelte:window onkeydown={key} onpointermove={(e) => { pointerAt = { x: e.clientX, y: e.clientY }; if (modal) modalApply(); }} onpointerdowncapture={(e) => { if (modal) { e.preventDefault(); e.stopPropagation(); modalEnd(e.button === 0); } }} />
 
 {#if error}
   <div class="bad">
@@ -2000,6 +2096,7 @@
         {/if}
         <canvas bind:this={canvas} tabindex="0" aria-label="3D view" onpointerdown={pointerDown} onpointermove={pointerMove} onpointerup={pointerUp}></canvas>
         <NavButtons controls={() => controls} camera={() => camera} height={() => canvas?.clientHeight ?? 400} />
+        {#if modal}<div class="modalbar" role="status">{modalLabel(modal.kind, modal.axis, modal.typed, modal.amount)}</div>{/if}
         {#if moveHint}
           <div class="movehint" style:left="{moveHint.x + 16}px" style:top="{moveHint.y - 14}px" role="status">
             <strong>{moveHint.text}</strong>{#if moveHint.how}<span>{moveHint.how}</span>{/if}
@@ -2318,6 +2415,7 @@
   select { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 2px 4px; }
   .inspector { border-left: 1px solid var(--line); }
   .inspector > :global(*) { flex-shrink: 0; } /* a short window scrolls the panel instead of squashing the picture */
+  .modalbar { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--accent); border-radius: 8px; padding: 5px 12px; font-size: 12px; z-index: 6; pointer-events: none; }
   .stage { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
   .bar { display: flex; align-items: center; gap: 8px; padding: 4px 8px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   .check { display: flex; align-items: center; gap: 4px; } .check input { margin: 0; }
