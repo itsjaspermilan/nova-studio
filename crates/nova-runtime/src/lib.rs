@@ -20,6 +20,7 @@ pub mod heightmap;
 pub mod ik;
 pub mod input;
 pub mod inputscript;
+pub mod ktx2;
 pub mod lights;
 pub mod meshworld;
 pub mod mixer;

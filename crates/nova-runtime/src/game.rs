@@ -1717,6 +1717,45 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             Ok(())
         })?,
     )?;
+    // graphics { hdr = true, msaa = 4, shadow_cascades = 3, ibl = true, anisotropy = 16 }: quality settings of the world pass; all off by default
+    let s = shared.clone();
+    nova.set(
+        "graphics",
+        lua.create_function(move |_, opts: Option<Table>| {
+            let some = opts;
+            let flag = |key: &str| -> mlua::Result<bool> {
+                match &some {
+                    Some(t) => match t.get::<Value>(key)? {
+                        Value::Nil => Ok(false),
+                        Value::Boolean(b) => Ok(b),
+                        _ => Err(lua_err(format!("graphics {key} is true or false"))),
+                    },
+                    None => Ok(false),
+                }
+            };
+            let whole = |key: &str, default: f64, lo: f64, hi: f64| -> mlua::Result<u32> {
+                let v = number_option(&some, key)?.unwrap_or(default);
+                if !v.is_finite() || v.fract() != 0.0 || v < lo || v > hi {
+                    return Err(lua_err(format!(
+                        "graphics {key} is a whole number from {lo} to {hi}, not {v}"
+                    )));
+                }
+                Ok(v as u32)
+            };
+            let msaa = whole("msaa", 1.0, 1.0, 4.0)?;
+            if msaa != 1 && msaa != 4 {
+                return Err(lua_err("graphics msaa is 1 (off) or 4"));
+            }
+            s.borrow_mut().lighting.quality = crate::gfx::Quality {
+                hdr: flag("hdr")?,
+                msaa,
+                cascades: whole("shadow_cascades", 1.0, 1.0, crate::gfx::MAX_CASCADES as f64)?,
+                ibl: flag("ibl")?,
+                aniso: whole("anisotropy", 1.0, 1.0, 16.0)?,
+            };
+            Ok(())
+        })?,
+    )?;
     // wind { direction = 45, strength = 1 }: the way it blows (degrees on the ground, 0 towards +x, 90 towards +z) and how hard
     let s = shared.clone();
     nova.set(
@@ -3364,7 +3403,17 @@ impl Game {
         let mut model_scales: HashMap<String, f32> = HashMap::new();
         for asset in project.assets_of(AssetKind::Model) {
             let bytes = vfs.read(&asset.id)?;
-            let mesh = model::import_glb(&bytes).map_err(|e| format!("{}: {e}", asset.id))?;
+            let mut mesh = model::import_glb(&bytes).map_err(|e| format!("{}: {e}", asset.id))?;
+            // a compressed base colour picture beside the model (`models/car.ktx2` for `models/car.glb`)
+            if let Some(stem) = asset.id.strip_suffix(".glb") {
+                let side = format!("{stem}.ktx2");
+                if let Ok(file) = vfs.read(&side) {
+                    match crate::ktx2::parse(&file) {
+                        Ok(k) => mesh.compressed = Some(std::sync::Arc::new(k)),
+                        Err(e) => warnings.push(format!("{side}: {e}")),
+                    }
+                }
+            }
             // The same file as separate parts, used when a script turns parts or plays a clip. That importer handles skins and
             // animation clips, so the whole-model importer's notes that it ignores them do not apply when it succeeds.
             let as_parts = model::import_parts(&bytes);
@@ -3523,7 +3572,10 @@ impl Game {
             colliders: model_colliders,
             capsules: model_capsules,
             boxes: model_boxes,
-            lighting: Lighting::default(),
+            lighting: Lighting {
+                quality: project.manifest.graphics,
+                ..Lighting::default()
+            },
             world: Vec::new(),
             ui: Vec::new(),
             models: Vec::new(),

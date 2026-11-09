@@ -24,6 +24,7 @@ const USAGE: &str = "usage:
   nova run <project-folder> [options]    play a Nova project
   nova run --pak <file.npk> [options]    play a packed project
   nova pack <project-folder> <out.npk>   pack a project into one file
+  nova ktx2 [--linear] in.png out.ktx2   compress a picture for the GPU (ETC2; sides a multiple of 4)
   nova info <project-folder>             print the project's name, version and id (for build scripts)
   nova export desktop <project-folder> [--out <dir>]   check the game, then write <dir>/<id>/ that plays it on a computer
   nova export android <project-folder> [--out <dir>] [--rebuild] [--debug-build]
@@ -51,6 +52,12 @@ enum Command {
     Pack {
         folder: PathBuf,
         out: PathBuf,
+    },
+    /// `nova ktx2 in.png out.ktx2`: a picture compressed for the GPU (ETC2).
+    Ktx2 {
+        input: PathBuf,
+        out: PathBuf,
+        linear: bool,
     },
     Info {
         folder: PathBuf,
@@ -90,6 +97,24 @@ fn parse() -> Result<Command, String> {
         return Ok(Command::Pack {
             folder: folder.into(),
             out: out.into(),
+        });
+    }
+    if args.peek().map(String::as_str) == Some("ktx2") {
+        args.next();
+        let (mut files, mut linear) = (Vec::new(), false);
+        for arg in args.by_ref() {
+            match arg.as_str() {
+                "--linear" => linear = true,
+                _ => files.push(arg),
+            }
+        }
+        let [input, out] = <[String; 2]>::try_from(files).map_err(
+            |_| "`nova ktx2` needs a PNG and an output file: nova ktx2 [--linear] in.png out.ktx2",
+        )?;
+        return Ok(Command::Ktx2 {
+            input: input.into(),
+            out: out.into(),
+            linear,
         });
     }
     if args.peek().map(String::as_str) == Some("check") {
@@ -260,6 +285,23 @@ fn parse() -> Result<Command, String> {
         return Err("--script only applies to the benchmark scene, not `nova run`".into());
     }
     Ok(Command::Play(Box::new(opts)))
+}
+
+fn ktx2(input: PathBuf, out: PathBuf, linear: bool) -> Result<(), String> {
+    let bytes =
+        std::fs::read(&input).map_err(|e| format!("cannot read {}: {e}", input.display()))?;
+    let image = nova_runtime::assets::decode_png(&bytes)?;
+    let file = nova_runtime::ktx2::encode_etc2(&image, !linear)?;
+    std::fs::write(&out, &file).map_err(|e| format!("cannot write {}: {e}", out.display()))?;
+    println!(
+        "{} x {} ETC2 -> {}: {} bytes (the picture was {} in RGBA8)",
+        image.width,
+        image.height,
+        out.display(),
+        file.len(),
+        image.rgba.len()
+    );
+    Ok(())
 }
 
 fn pack(folder: PathBuf, out: PathBuf) -> Result<(), String> {
@@ -499,6 +541,7 @@ fn main() {
     };
     let result = match command {
         Command::Pack { folder, out } => pack(folder, out),
+        Command::Ktx2 { input, out, linear } => ktx2(input, out, linear),
         Command::Info { folder } => info(folder),
         Command::Export {
             target,

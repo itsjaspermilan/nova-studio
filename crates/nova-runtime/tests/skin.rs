@@ -286,6 +286,7 @@ end"
         .pose(&mesh.vertices, &world_at(&imported, 0.5));
     let id = gfx.upload_mesh(&MeshData {
         material: None,
+        compressed: None,
         vertices: posed,
         indices: mesh.indices.clone(),
         texture: mesh.texture.clone(),

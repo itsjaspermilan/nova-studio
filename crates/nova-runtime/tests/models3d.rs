@@ -1074,6 +1074,7 @@ fn meshes_with_the_same_picture_share_one_texture() {
     };
     let mesh = |colour: u8| MeshData {
         material: None,
+        compressed: None,
         vertices: vec![v; 3],
         indices: vec![0, 1, 2],
         texture: Some(Image {

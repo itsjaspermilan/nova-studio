@@ -61,6 +61,9 @@ pub struct Manifest {
     pub name: String,
     pub entry: String,
     pub world_height: u32,
+    /// `"graphics"`: opt-in quality settings of the world pass (HDR, MSAA, shadow cascades, image-based light, anisotropy); the
+    /// default is the plain engine. See `docs/switch-class-graphics.md`.
+    pub graphics: crate::gfx::Quality,
     /// `"sprite_filter": "smooth"`: pictures are drawn with bilinear filtering (for drawn, not pixel-art, interfaces).
     pub smooth_sprites: bool,
     pub version: Option<String>,
@@ -145,6 +148,15 @@ pub fn parse_manifest(text: &str, warnings: &mut Vec<String>) -> Result<Manifest
             }
         },
     };
+    let graphics = match object.get("graphics") {
+        None => crate::gfx::Quality::default(),
+        Some(Value::Object(g)) => parse_graphics(g).map_err(field_error)?,
+        Some(_) => {
+            return Err(field_error(
+                "\"graphics\" must be an object such as {\"hdr\": true, \"msaa\": 4}",
+            ));
+        }
+    };
     let smooth_sprites = match object.get("sprite_filter") {
         None => false,
         Some(Value::String(s)) if s == "pixel" => false,
@@ -194,6 +206,7 @@ pub fn parse_manifest(text: &str, warnings: &mut Vec<String>) -> Result<Manifest
             "name",
             "entry",
             "world_height",
+            "graphics",
             "sprite_filter",
             "version",
             "input",
@@ -212,12 +225,50 @@ pub fn parse_manifest(text: &str, warnings: &mut Vec<String>) -> Result<Manifest
         name,
         entry,
         world_height,
+        graphics,
         smooth_sprites,
         version,
         materials,
         input,
         local_network,
     })
+}
+
+/// The manifest's `graphics` object: `hdr` (true/false), `msaa` (1 or 4), `shadow_cascades` (1 to 3), `ibl` (true/false), `anisotropy`
+/// (1 to 16).
+fn parse_graphics(g: &serde_json::Map<String, Value>) -> Result<crate::gfx::Quality, String> {
+    let mut q = crate::gfx::Quality::default();
+    for (key, value) in g {
+        let flag = || {
+            value
+                .as_bool()
+                .ok_or_else(|| format!("\"graphics\".\"{key}\" must be true or false"))
+        };
+        let whole = |lo: u64, hi: u64| match value.as_u64() {
+            Some(n) if (lo..=hi).contains(&n) => Ok(n as u32),
+            _ => Err(format!(
+                "\"graphics\".\"{key}\" must be a whole number from {lo} to {hi}"
+            )),
+        };
+        match key.as_str() {
+            "hdr" => q.hdr = flag()?,
+            "ibl" => q.ibl = flag()?,
+            "msaa" => {
+                q.msaa = whole(1, 4)?;
+                if q.msaa != 1 && q.msaa != 4 {
+                    return Err("\"graphics\".\"msaa\" must be 1 (off) or 4".into());
+                }
+            }
+            "shadow_cascades" => q.cascades = whole(1, crate::gfx::MAX_CASCADES as u64)?,
+            "anisotropy" => q.aniso = whole(1, 16)?,
+            other => {
+                return Err(format!(
+                    "unknown \"graphics\" setting \"{other}\" (hdr, msaa, shadow_cascades, ibl, anisotropy)"
+                ));
+            }
+        }
+    }
+    Ok(q)
 }
 
 impl Manifest {

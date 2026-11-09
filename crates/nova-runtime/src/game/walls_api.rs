@@ -47,6 +47,7 @@ pub(super) fn cube_mesh(glow: bool) -> MeshData {
     }
     MeshData {
         material: None,
+        compressed: None,
         vertices,
         indices,
         texture: None,

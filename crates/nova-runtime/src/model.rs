@@ -70,6 +70,9 @@ pub struct MeshData {
     /// The file's surface (glTF metallic-roughness, normal map, emission), per vertex and as pictures. Read for every glTF model;
     /// a project draws it only where it opts in (`"materials"` in `nova.json`), so the game drops it otherwise.
     pub material: Option<Material>,
+    /// The base colour picture already compressed for the GPU (a `.ktx2` beside the model; `crate::ktx2`): used instead of `texture`
+    /// where the GPU has its format.
+    pub compressed: Option<std::sync::Arc<crate::ktx2::Ktx2>>,
 }
 
 /// What a glTF material says about a surface beyond its colour, for the lit-by-material look (see `docs/materials.md`). Every list
@@ -86,6 +89,9 @@ pub struct Material {
     /// the colour as it is; -1 is Nova's own glow, the surface's colour at the strength of the vertex's `emissive` (what the studio
     /// writes: a grey factor and no picture).
     pub emission: Vec<[f32; 4]>,
+    /// A clear coat over the surface (`KHR_materials_clearcoat`: car paint, lacquer): its strength (x, 0 to 1: how much of the light the
+    /// glossy layer takes) and roughness (y). Zero where there is none.
+    pub coat: Vec<[f32; 4]>,
     /// The tangent-space normal map (`normalTexture`, linear values).
     pub normal_map: Option<Image>,
     /// `metallicRoughnessTexture` (linear: green is roughness, blue is metallic).
@@ -467,11 +473,30 @@ fn append_mesh(
         } else {
             generate_tangents(&verts, &indices)
         };
+        // a clear coat: a glossy layer over the surface (its pictures are not read)
+        let mut coat = [0.0f32; 4];
+        if let Some(c) = material.extension_value("KHR_materials_clearcoat") {
+            let number = |key: &str| c.get(key).and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+            coat = [
+                number("clearcoatFactor").clamp(0.0, 1.0),
+                number("clearcoatRoughnessFactor").clamp(0.0, 1.0),
+                0.0,
+                0.0,
+            ];
+            if c.get("clearcoatTexture").is_some()
+                || c.get("clearcoatRoughnessTexture").is_some()
+                || c.get("clearcoatNormalTexture").is_some()
+            {
+                out.notes
+                    .push("clearcoat pictures are ignored (the factors are used)".into());
+            }
+        }
         let before = out.vertices.len();
         let m = out.material.get_or_insert_with(|| Material {
             tangents: vec![[0.0; 4]; before],
             surface: vec![[0.0, 1.0, 0.0, 0.0]; before],
             emission: vec![[0.0, 0.0, 0.0, -1.0]; before],
+            coat: vec![[0.0; 4]; before],
             ..Default::default()
         });
         m.tangents.extend(tangents);
@@ -481,6 +506,7 @@ fn append_mesh(
         ));
         m.emission
             .extend(std::iter::repeat_n(emission, verts.len()));
+        m.coat.extend(std::iter::repeat_n(coat, verts.len()));
         if !textured {
             textures
                 .plain

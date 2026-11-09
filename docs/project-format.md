@@ -78,6 +78,7 @@ Rally's are rendered by the game itself (`scripts/rally/art.sh`).
 | `name` | yes | Game title, 1 to 80 characters. |
 | `entry` | no | Entry script, default `main.lua`. Must be a project-relative `.lua` path that exists. |
 | `world_height` | no | Height in pixels of the world render target, default `540`; `0` means native screen resolution; at most 4320. The width follows the screen's aspect. UI always renders at native resolution. |
+| `graphics` | no | Opt-in quality settings of the world picture, all off by default: `{ "hdr": true, "msaa": 4, "shadow_cascades": 3, "ibl": true, "anisotropy": 16 }`. `nova.graphics{}` changes them while the game runs. What each does and costs: `docs/switch-class-graphics.md`. |
 | `sprite_filter` | no | `"pixel"` (default): pictures are drawn with sharp pixels, as pixel art wants. `"smooth"`: bilinear filtering, for drawn (not pixel-art) pictures shown larger or smaller than they are; each picture then gets a one-pixel border copied from its edge in the atlas so that edges do not bleed. Draw such pictures at about twice the size they are shown in the game's units, since a handheld's screen has about two pixels to each. |
 | `version` | no | Free-form version string. |
 | `local_network` | no | `true`: the game plays with other devices on the same wifi (`nova.net`, see `docs/local-coop.md`); an Android build then has network access. Default `false`: `nova.net` refuses and the APK asks for none. |
@@ -224,7 +225,8 @@ a crease or the foot of a wall (a slope or a flat floor does not darken). It can
 fog, and thin things such as grass blades make it grainy, so use a small `ao` (0.4 to 0.7) in a grassy scene or leave it for rooms and
 towns. On the Retroid, bloom costs about 1.3 ms and ao about 0.85 ms of GPU at 960 by 540 (`docs/performance.md`). `blur` (0 to 1) is a speed blur: the picture streaks toward its left and right edges, as if rushing past, and the middle third, the road ahead and
 the car, stays sharp; set it each frame from the speed (the rally does, from 30 to 46 m/s). It is six more reads of the picture a pixel.
-Not done: depth of field, a tone-mapping curve beyond the exposure shoulder, HDR bloom, and lights are not banded (only the sun's).
+With `nova.graphics{ hdr = true }` (or `"graphics": {"hdr": true}` in `nova.json`) the world is drawn to a 16-bit float picture: light above 1 is kept, `bloom` works on it (a lamp or the sun's glint glows, a white wall does not), and the finish is a filmic tone curve (ACES) in place of the exposure shoulder. See `docs/switch-class-graphics.md`.
+Not done: depth of field, and lights are not banded (only the sun's).
 
 **A 3D game on the ground.** Collisions, distances and neighbour queries use `x, y` by default, which is right for a flat game
 and wrong for a 3D one, where `y` is height. Say once (in `main.lua`) which plane the ground is:

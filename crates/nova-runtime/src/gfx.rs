@@ -294,6 +294,8 @@ pub struct Lighting {
     pub look: Look,
     pub wind: Wind,
     pub terrain: Terrain,
+    /// Opt-in quality settings; the world's pipelines are rebuilt when they change (`nova.graphics`, the manifest's `graphics`).
+    pub quality: Quality,
 }
 
 impl Default for Lighting {
@@ -317,6 +319,7 @@ impl Default for Lighting {
             look: Look::default(),
             wind: Wind::default(),
             terrain: Terrain::default(),
+            quality: Quality::default(),
         }
     }
 }
@@ -428,6 +431,147 @@ pub struct FrameInput<'a> {
     pub world_height: u32,
 }
 
+/// Opt-in quality settings of the world pass. The default draws as the engine always has (8-bit target, no multisampling, one
+/// shadow map); each setting costs GPU time, recorded in `docs/performance.md`. A setting the GPU cannot do is dropped (see
+/// [`Gfx::quality`] for what is in force). Changing one rebuilds the world's pipelines (a hitch; do it at a menu, not mid-race).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Quality {
+    /// The world is drawn to a 16-bit float target and put through a filmic tone-mapping curve, and bloom works on real
+    /// brightness (so a bright light blooms and a white wall does not).
+    pub hdr: bool,
+    /// Samples a pixel of the world pass: 1 (off) or 4. An alternative to FXAA that also smooths what shaders make.
+    pub msaa: u32,
+    /// Cascades of the sun's shadow map (1 is the single map; up to [`MAX_CASCADES`]); more than 1 also filters the edge softly.
+    pub cascades: u32,
+    /// Light and reflections from the sky on models lit by their material (an irradiance and a reflection cube made from `nova.sky`).
+    pub ibl: bool,
+    /// Anisotropic filtering of model textures: 1 (off) to 16.
+    pub aniso: u32,
+}
+
+pub const MAX_CASCADES: u32 = 3;
+
+/// The sky's cube map (`Quality::ibl`): a face's side in texels and how many levels (each half the size; the level is the roughness).
+const ENV_SIZE: u32 = 32;
+const ENV_LEVELS: u32 = 6;
+
+impl Quality {
+    /// Settings from a short text, as `hdr,msaa=4,cascades=3,ibl,aniso=8` (for testing and measuring without editing a game).
+    pub fn from_spec(spec: &str) -> Result<Self, String> {
+        let mut q = Quality::default();
+        for item in spec.split([',', ' ', '\n']).filter(|i| !i.is_empty()) {
+            let (key, value) = item.split_once('=').unwrap_or((item, ""));
+            let number = || {
+                value
+                    .parse::<u32>()
+                    .map_err(|_| format!("{key} needs a number, as {key}=4"))
+            };
+            match key {
+                "hdr" => q.hdr = true,
+                "ibl" => q.ibl = true,
+                "msaa" => q.msaa = number()?,
+                "cascades" => q.cascades = number()?,
+                "aniso" => q.aniso = number()?,
+                // (the world picture's height is not a quality setting: see `Quality::forced_world_height`)
+                "height" => {}
+                other => {
+                    return Err(format!(
+                        "unknown setting {other} (hdr, msaa=, cascades=, ibl, aniso=)"
+                    ));
+                }
+            }
+        }
+        Ok(q)
+    }
+
+    fn forced_spec() -> Option<String> {
+        std::env::var("NOVA_GRAPHICS").ok().or_else(|| {
+            // on a device: a file named for the app (its process name, the package), so that one game's test does not change another's
+            let process = std::fs::read("/proc/self/cmdline").ok()?;
+            let name = String::from_utf8_lossy(process.split(|b| *b == 0).next()?).into_owned();
+            std::fs::read_to_string(format!("/data/local/tmp/nova-graphics.{name}")).ok()
+        })
+    }
+
+    /// `height=720` in the same text: the world picture's height, in place of the manifest's.
+    pub fn forced_world_height() -> Option<u32> {
+        static FORCED: std::sync::OnceLock<Option<u32>> = std::sync::OnceLock::new();
+        *FORCED.get_or_init(|| {
+            Self::forced_spec()?
+                .split([',', ' ', '\n'])
+                .find_map(|i| i.strip_prefix("height=")?.parse().ok())
+        })
+    }
+
+    /// The settings forced by the environment variable `NOVA_GRAPHICS`, or on a device by the file `/data/local/tmp/nova-graphics.<package>`
+    /// (`adb push`), in place of the game's own: for measuring. None when neither exists.
+    pub fn forced() -> Option<Quality> {
+        static FORCED: std::sync::OnceLock<Option<Quality>> = std::sync::OnceLock::new();
+        *FORCED.get_or_init(|| {
+            let spec = Self::forced_spec()?;
+            match Quality::from_spec(&spec) {
+                Ok(q) => {
+                    log::info!(
+                        "graphics forced to {q:?} by NOVA_GRAPHICS or /data/local/tmp/nova-graphics.<package>"
+                    );
+                    Some(q)
+                }
+                Err(e) => {
+                    log::error!("NOVA_GRAPHICS: {e}");
+                    None
+                }
+            }
+        })
+    }
+}
+
+impl Default for Quality {
+    fn default() -> Self {
+        Self {
+            hdr: false,
+            msaa: 1,
+            cascades: 1,
+            ibl: false,
+            aniso: 1,
+        }
+    }
+}
+
+impl Quality {
+    /// What this adapter can really do of what was asked.
+    pub fn resolve(mut self, adapter: &wgpu::Adapter) -> Self {
+        let features = |format| adapter.get_texture_format_features(format);
+        if self.hdr
+            && !features(wgpu::TextureFormat::Rgba16Float)
+                .allowed_usages
+                .contains(
+                    wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+                )
+        {
+            self.hdr = false;
+        }
+        self.msaa = if self.msaa >= 4 { 4 } else { 1 };
+        if self.msaa > 1 {
+            // (the screen's format is not known here; every sRGB 8-bit format does 4x on the GPUs that do any)
+            let color = if self.hdr {
+                wgpu::TextureFormat::Rgba16Float
+            } else {
+                wgpu::TextureFormat::Rgba8UnormSrgb
+            };
+            let c = features(color).flags;
+            if !(c.sample_count_supported(4)
+                && c.contains(wgpu::TextureFormatFeatureFlags::MULTISAMPLE_RESOLVE)
+                && features(DEPTH_FORMAT).flags.sample_count_supported(4))
+            {
+                self.msaa = 1;
+            }
+        }
+        self.cascades = self.cascades.clamp(1, MAX_CASCADES);
+        self.aniso = self.aniso.clamp(1, 16);
+        self
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct FrameStats {
     /// How long the GPU took over a recent frame (the last one whose timing has come back), in milliseconds; 0 where the GPU
@@ -488,6 +632,23 @@ struct Globals {
     terrain: [[f32; 4]; MAX_TERRAIN_WAVES + 1],
     /// The heightmap: [0] is x0, z0, 1 / cell, 0; [1] is the samples across minus 1, the rows minus 1, 0, 0. (`terrain[0].y` is 1 when there is one.)
     terrain_map: [[f32; 4]; 2],
+    /// The sun's cascaded shadow maps (only with `Quality::cascades` above 1): each cascade's matrix; x: how far (view depth) it reaches, y: its
+    /// depth bias, z: a texel's size in metres; and x of the last: how many cascades.
+    cascade_vp: [[[f32; 4]; 4]; MAX_CASCADES as usize],
+    cascade_info: [[f32; 4]; MAX_CASCADES as usize],
+    cascade_count: [f32; 4],
+}
+
+/// One cascade of the sun's shadow: the matrix that draws the map and what the shader needs to read it.
+#[derive(Clone, Copy)]
+struct CascadePlan {
+    vp: glam::Mat4,
+    /// Where it stops, as distance along the view.
+    far: f32,
+    /// Depth bias in clip units.
+    bias: f32,
+    /// Metres a texel spans.
+    texel: f32,
 }
 
 /// Side of the (square) shadow map in texels.
@@ -538,6 +699,15 @@ struct WorldTarget {
     view: wgpu::TextureView,
     size: (u32, u32),
     group: wgpu::BindGroup,
+}
+
+struct MsaaTargets {
+    colour: wgpu::TextureView,
+    /// The multisampled depth, as a texture the depth resolve reads.
+    depth_samples: wgpu::BindGroup,
+    /// One sample, for the finishing pass.
+    resolved: wgpu::TextureView,
+    size: (u32, u32),
 }
 
 struct GpuMesh {
@@ -730,6 +900,12 @@ pub struct Gfx {
     pub queue: wgpu::Queue,
     pub format: wgpu::TextureFormat,
     pub adapter_info: wgpu::AdapterInfo,
+    /// The quality settings in force (what was asked, less what this GPU cannot do).
+    pub quality: Quality,
+    /// What was last asked for (before the GPU's limits), so that an unchanged ask costs nothing.
+    asked: Quality,
+    /// The world target's format: the screen's, or 16-bit float with `quality.hdr`.
+    world_format: wgpu::TextureFormat,
     sprite_pipeline: wgpu::RenderPipeline,
     sprite_ui_pipeline: wgpu::RenderPipeline,
     text_pipeline: wgpu::RenderPipeline,
@@ -759,8 +935,18 @@ pub struct Gfx {
     joint_group: wgpu::BindGroup,
     sky_pipeline: wgpu::RenderPipeline,
     shadow_pipeline: wgpu::RenderPipeline,
-    shadow_view: wgpu::TextureView,
+    /// One view of the shadow map per cascade, to draw into (the shaders read the whole array through the bind group).
+    shadow_layers: Vec<wgpu::TextureView>,
+    /// With cascades: a copy of the globals for each cascade's own pass (its light matrix), and the groups that bind them.
+    cascade_globals: Vec<(wgpu::Buffer, wgpu::BindGroup)>,
     shadow_group: wgpu::BindGroup,
+    /// The sky as light: one view of each (level, face) of the cube map to draw into, the pipeline and uniform that draw it, and what
+    /// sky it shows now (None: not drawn yet).
+    env_views: Vec<wgpu::TextureView>,
+    env_pipeline: wgpu::RenderPipeline,
+    env_uniform: wgpu::Buffer,
+    env_group: wgpu::BindGroup,
+    env_key: Option<u64>,
     globals: wgpu::Buffer,
     globals_group: wgpu::BindGroup,
     globals_layout: wgpu::BindGroupLayout,
@@ -796,6 +982,10 @@ pub struct Gfx {
     /// How many textures that sharing has saved (for the tests and the log).
     pub textures_shared: u32,
     depth: Option<(wgpu::TextureView, (u32, u32))>,
+    /// With MSAA: the world pass's colour samples, and the depth the finishing pass reads (one sample, made from the samples').
+    msaa: Option<MsaaTargets>,
+    depth_resolve_pipeline: wgpu::RenderPipeline,
+    depth_resolve_layout: wgpu::BindGroupLayout,
     /// Materials and custom shaders.
     extras: custom::Extras,
 }
@@ -912,6 +1102,80 @@ fn texture_group(
     texture_group_mips(device, queue, layout, sampler, label, image, 1)
 }
 
+/// The sampler of model pictures: sharp texels, or smooth with mipmaps (and anisotropic filtering of up to `aniso` samples along a
+/// slanted surface), with the wrap modes of the glTF file.
+fn mesh_sampler(device: &wgpu::Device, smooth: bool, wrap: [Wrap; 2], aniso: u16) -> wgpu::Sampler {
+    let address = |w: Wrap| match w {
+        Wrap::Repeat => wgpu::AddressMode::Repeat,
+        Wrap::MirroredRepeat => wgpu::AddressMode::MirrorRepeat,
+        Wrap::ClampToEdge => wgpu::AddressMode::ClampToEdge,
+    };
+    let filter = if smooth {
+        wgpu::FilterMode::Linear
+    } else {
+        wgpu::FilterMode::Nearest
+    };
+    device.create_sampler(&wgpu::SamplerDescriptor {
+        label: Some("mesh texture"),
+        address_mode_u: address(wrap[0]),
+        address_mode_v: address(wrap[1]),
+        mag_filter: filter,
+        min_filter: filter,
+        mipmap_filter: if smooth {
+            wgpu::MipmapFilterMode::Linear
+        } else {
+            wgpu::MipmapFilterMode::Nearest
+        },
+        anisotropy_clamp: if smooth { aniso.max(1) } else { 1 },
+        ..Default::default()
+    })
+}
+
+/// A texture bind group from a KTX2 picture's compressed blocks, every level as it is.
+fn compressed_group(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    layout: &wgpu::BindGroupLayout,
+    sampler: &wgpu::Sampler,
+    k: &crate::ktx2::Ktx2,
+) -> wgpu::BindGroup {
+    let data: Vec<u8> = k.levels.concat();
+    let texture = device.create_texture_with_data(
+        queue,
+        &wgpu::TextureDescriptor {
+            label: Some("compressed texture"),
+            size: wgpu::Extent3d {
+                width: k.width,
+                height: k.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: k.levels.len() as u32,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: k.format,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        },
+        wgpu::util::TextureDataOrder::LayerMajor,
+        &data,
+    );
+    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("compressed texture"),
+        layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::Sampler(sampler),
+            },
+        ],
+    })
+}
+
 fn texture_group_mips(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
@@ -967,6 +1231,15 @@ impl Gfx {
         instance: &wgpu::Instance,
         surface: Option<&wgpu::Surface<'_>>,
     ) -> Result<Self, String> {
+        Self::new_with(instance, surface, Quality::default())
+    }
+
+    /// [`Gfx::new`] built for a quality setting.
+    pub fn new_with(
+        instance: &wgpu::Instance,
+        surface: Option<&wgpu::Surface<'_>>,
+        quality: Quality,
+    ) -> Result<Self, String> {
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
             force_fallback_adapter: false,
@@ -984,7 +1257,11 @@ impl Gfx {
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("nova device"),
             // timestamp queries (the GPU's own frame time) where the adapter has them
-            required_features: adapter.features() & wgpu::Features::TIMESTAMP_QUERY,
+            required_features: adapter.features()
+                & (wgpu::Features::TIMESTAMP_QUERY
+                    | wgpu::Features::TEXTURE_COMPRESSION_ASTC
+                    | wgpu::Features::TEXTURE_COMPRESSION_ETC2
+                    | wgpu::Features::TEXTURE_COMPRESSION_BC),
             // The lowest common denominator (GLES 3.0 class), with the texture sizes the GPU offers.
             required_limits:
                 wgpu::Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits()),
@@ -1027,7 +1304,35 @@ impl Gfx {
                     .unwrap_or(formats[0])
             })
             .unwrap_or(wgpu::TextureFormat::Rgba8UnormSrgb);
+        Ok(Self::build(
+            adapter,
+            device,
+            queue,
+            lost,
+            adapter_info,
+            format,
+            quality,
+        ))
+    }
 
+    /// Makes everything on the GPU (pipelines, buffers, the empty atlases) for a device; `quality` is what the world pass is built for.
+    fn build(
+        adapter: wgpu::Adapter,
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+        lost: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        adapter_info: wgpu::AdapterInfo,
+        format: wgpu::TextureFormat,
+        quality: Quality,
+    ) -> Self {
+        let asked = quality;
+        let quality = quality.resolve(&adapter);
+        let world_format = if quality.hdr {
+            wgpu::TextureFormat::Rgba16Float
+        } else {
+            format
+        };
+        let samples = quality.msaa;
         let sampler_nearest = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("nearest"),
             mag_filter: wgpu::FilterMode::Nearest,
@@ -1156,48 +1461,56 @@ impl Gfx {
             0 => Float32x2, 1 => Float32x2, 2 => Float32x4, 3 => Unorm8x4, 4 => Float32
         ];
         let blend = wgpu::BlendState::ALPHA_BLENDING;
-        let make_sprite_pipeline =
-            |label: &'static str, shader: &wgpu::ShaderModule, depth: bool| {
-                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                    label: Some(label),
-                    layout: Some(&sprite_layout),
-                    vertex: wgpu::VertexState {
-                        module: shader,
-                        entry_point: Some("vs_main"),
-                        compilation_options: Default::default(),
-                        buffers: &[Some(wgpu::VertexBufferLayout {
-                            array_stride: std::mem::size_of::<SpriteInstance>() as u64,
-                            step_mode: wgpu::VertexStepMode::Instance,
-                            attributes: &sprite_attributes,
-                        })],
-                    },
-                    fragment: Some(wgpu::FragmentState {
-                        module: shader,
-                        entry_point: Some("fs_main"),
-                        compilation_options: Default::default(),
-                        targets: &[Some(wgpu::ColorTargetState {
-                            format,
-                            blend: Some(blend),
-                            write_mask: wgpu::ColorWrites::ALL,
-                        })],
-                    }),
-                    primitive: wgpu::PrimitiveState::default(),
-                    depth_stencil: depth.then_some(wgpu::DepthStencilState {
-                        format: DEPTH_FORMAT,
-                        depth_write_enabled: Some(false),
-                        depth_compare: Some(wgpu::CompareFunction::Always),
-                        stencil: Default::default(),
-                        bias: Default::default(),
-                    }),
-                    multisample: wgpu::MultisampleState::default(),
-                    multiview_mask: None,
-                    cache: None,
-                })
-            };
-        let sprite_pipeline = make_sprite_pipeline("sprites", &sprite_shader, true);
-        let sprite_ui_pipeline = make_sprite_pipeline("ui sprites", &sprite_shader, false);
+        let make_sprite_pipeline = |label: &'static str,
+                                    shader: &wgpu::ShaderModule,
+                                    depth: bool,
+                                    target: wgpu::TextureFormat,
+                                    count: u32| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some(label),
+                layout: Some(&sprite_layout),
+                vertex: wgpu::VertexState {
+                    module: shader,
+                    entry_point: Some("vs_main"),
+                    compilation_options: Default::default(),
+                    buffers: &[Some(wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<SpriteInstance>() as u64,
+                        step_mode: wgpu::VertexStepMode::Instance,
+                        attributes: &sprite_attributes,
+                    })],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: shader,
+                    entry_point: Some("fs_main"),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: target,
+                        blend: Some(blend),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: depth.then_some(wgpu::DepthStencilState {
+                    format: DEPTH_FORMAT,
+                    depth_write_enabled: Some(false),
+                    depth_compare: Some(wgpu::CompareFunction::Always),
+                    stencil: Default::default(),
+                    bias: Default::default(),
+                }),
+                multisample: wgpu::MultisampleState {
+                    count,
+                    ..Default::default()
+                },
+                multiview_mask: None,
+                cache: None,
+            })
+        };
+        let sprite_pipeline =
+            make_sprite_pipeline("sprites", &sprite_shader, true, world_format, samples);
+        let sprite_ui_pipeline =
+            make_sprite_pipeline("ui sprites", &sprite_shader, false, format, 1);
         let text_shader = device.create_shader_module(wgpu::include_wgsl!("shaders/text.wgsl"));
-        let text_pipeline = make_sprite_pipeline("text", &text_shader, false);
+        let text_pipeline = make_sprite_pipeline("text", &text_shader, false, format, 1);
         let glyph_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("glyph atlas"),
             size: wgpu::Extent3d {
@@ -1264,6 +1577,57 @@ impl Gfx {
                 count: None,
             }],
         });
+        let depth_resolve_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("depth resolve layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Depth,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: true,
+                    },
+                    count: None,
+                }],
+            });
+        // (made for any quality, used only with MSAA: cheap to have)
+        let depth_resolve_pipeline = {
+            let shader =
+                device.create_shader_module(wgpu::include_wgsl!("shaders/depth_resolve.wgsl"));
+            let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("depth resolve pipeline layout"),
+                bind_group_layouts: &[Some(&depth_resolve_layout)],
+                immediate_size: 0,
+            });
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("depth resolve"),
+                layout: Some(&layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("vs_main"),
+                    compilation_options: Default::default(),
+                    buffers: &[],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs_main"),
+                    compilation_options: Default::default(),
+                    targets: &[],
+                }),
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: DEPTH_FORMAT,
+                    depth_write_enabled: Some(true),
+                    depth_compare: Some(wgpu::CompareFunction::Always),
+                    stencil: Default::default(),
+                    bias: Default::default(),
+                }),
+                multisample: wgpu::MultisampleState::default(),
+                multiview_mask: None,
+                cache: None,
+            })
+        };
         let blit_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("blit pipeline layout"),
             bind_group_layouts: &[
@@ -1305,7 +1669,7 @@ impl Gfx {
             size: wgpu::Extent3d {
                 width: SHADOW_SIZE,
                 height: SHADOW_SIZE,
-                depth_or_array_layers: 1,
+                depth_or_array_layers: quality.cascades,
             },
             mip_level_count: 1,
             sample_count: 1,
@@ -1314,7 +1678,38 @@ impl Gfx {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
-        let shadow_view = shadow_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let shadow_view = shadow_texture.create_view(&wgpu::TextureViewDescriptor {
+            dimension: Some(wgpu::TextureViewDimension::D2Array),
+            ..Default::default()
+        });
+        let shadow_layers: Vec<wgpu::TextureView> = (0..quality.cascades)
+            .map(|layer| {
+                shadow_texture.create_view(&wgpu::TextureViewDescriptor {
+                    label: Some("shadow cascade"),
+                    dimension: Some(wgpu::TextureViewDimension::D2),
+                    base_array_layer: layer,
+                    array_layer_count: Some(1),
+                    ..Default::default()
+                })
+            })
+            .collect();
+        let cascade_globals: Vec<(wgpu::Buffer, wgpu::BindGroup)> = if quality.cascades > 1 {
+            (0..quality.cascades)
+                .map(|_| {
+                    let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                        label: Some("cascade globals"),
+                        size: std::mem::size_of::<Globals>() as u64,
+                        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                        mapped_at_creation: false,
+                    });
+                    let group =
+                        globals_bind_group(&device, &globals_layout, &buffer, &terrain_view);
+                    (buffer, group)
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
         let shadow_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("shadow sampler"),
             mag_filter: wgpu::FilterMode::Linear,
@@ -1330,7 +1725,7 @@ impl Gfx {
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Depth,
-                        view_dimension: wgpu::TextureViewDimension::D2,
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
                         multisampled: false,
                     },
                     count: None,
@@ -1341,8 +1736,134 @@ impl Gfx {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
                     count: None,
                 },
+                // the sky as light (see `env_texture`)
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::Cube,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
             ],
         });
+        // The sky as light: a small cube map (levels are roughness), drawn from `nova.sky` when the game asks for image-based light.
+        let env_format = if adapter
+            .get_texture_format_features(wgpu::TextureFormat::Rgba16Float)
+            .allowed_usages
+            .contains(wgpu::TextureUsages::RENDER_ATTACHMENT)
+        {
+            wgpu::TextureFormat::Rgba16Float
+        } else {
+            wgpu::TextureFormat::Rgba8UnormSrgb
+        };
+        let env_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("sky cube"),
+            size: wgpu::Extent3d {
+                width: ENV_SIZE,
+                height: ENV_SIZE,
+                depth_or_array_layers: 6,
+            },
+            mip_level_count: ENV_LEVELS,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: env_format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let env_cube = env_texture.create_view(&wgpu::TextureViewDescriptor {
+            dimension: Some(wgpu::TextureViewDimension::Cube),
+            ..Default::default()
+        });
+        let env_views: Vec<wgpu::TextureView> = (0..ENV_LEVELS)
+            .flat_map(|level| (0..6).map(move |face| (level, face)))
+            .map(|(level, face)| {
+                env_texture.create_view(&wgpu::TextureViewDescriptor {
+                    label: Some("sky cube face"),
+                    dimension: Some(wgpu::TextureViewDimension::D2),
+                    base_mip_level: level,
+                    mip_level_count: Some(1),
+                    base_array_layer: face,
+                    array_layer_count: Some(1),
+                    ..Default::default()
+                })
+            })
+            .collect();
+        let env_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("sky cube sampler"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
+            ..Default::default()
+        });
+        let env_uniform = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("sky cube uniform"),
+            size: 48,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let env_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("sky cube layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
+        let env_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("sky cube uniform"),
+            layout: &env_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: env_uniform.as_entire_binding(),
+            }],
+        });
+        let env_pipeline = {
+            let shader = device.create_shader_module(wgpu::include_wgsl!("shaders/env.wgsl"));
+            let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("sky cube pipeline layout"),
+                bind_group_layouts: &[Some(&env_layout)],
+                immediate_size: 0,
+            });
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("sky cube"),
+                layout: Some(&layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("vs_main"),
+                    compilation_options: Default::default(),
+                    buffers: &[],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs_main"),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: env_format,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview_mask: None,
+                cache: None,
+            })
+        };
         let shadow_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("shadow"),
             layout: &shadow_layout,
@@ -1354,6 +1875,14 @@ impl Gfx {
                 wgpu::BindGroupEntry {
                     binding: 1,
                     resource: wgpu::BindingResource::Sampler(&shadow_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&env_cube),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Sampler(&env_sampler),
                 },
             ],
         });
@@ -1399,7 +1928,7 @@ impl Gfx {
                         entry_point: Some("fs_main"),
                         compilation_options: Default::default(),
                         targets: &[Some(wgpu::ColorTargetState {
-                            format,
+                            format: world_format,
                             blend,
                             write_mask: wgpu::ColorWrites::ALL,
                         })],
@@ -1415,7 +1944,10 @@ impl Gfx {
                         stencil: Default::default(),
                         bias: Default::default(),
                     }),
-                    multisample: wgpu::MultisampleState::default(),
+                    multisample: wgpu::MultisampleState {
+                        count: samples,
+                        ..Default::default()
+                    },
                     multiview_mask: None,
                     cache: None,
                 })
@@ -1483,7 +2015,7 @@ impl Gfx {
                 entry_point: Some("fs_main"),
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
-                    format,
+                    format: world_format,
                     blend: None,
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
@@ -1496,7 +2028,10 @@ impl Gfx {
                 stencil: Default::default(),
                 bias: Default::default(),
             }),
-            multisample: wgpu::MultisampleState::default(),
+            multisample: wgpu::MultisampleState {
+                count: samples,
+                ..Default::default()
+            },
             multiview_mask: None,
             cache: None,
         });
@@ -1580,7 +2115,7 @@ impl Gfx {
                 entry_point: Some("fs_main"),
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
-                    format,
+                    format: world_format,
                     blend: None,
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
@@ -1596,7 +2131,10 @@ impl Gfx {
                 stencil: Default::default(),
                 bias: Default::default(),
             }),
-            multisample: wgpu::MultisampleState::default(),
+            multisample: wgpu::MultisampleState {
+                count: samples,
+                ..Default::default()
+            },
             multiview_mask: None,
             cache: None,
         });
@@ -1737,7 +2275,9 @@ impl Gfx {
         let extras = custom::Extras::new(
             &device,
             &queue,
+            world_format,
             format,
+            samples,
             &custom::Shared {
                 globals: &globals_layout,
                 texture: &texture_layout,
@@ -1746,12 +2286,15 @@ impl Gfx {
                 mesh_shader: &mesh_shader,
             },
         );
-        Ok(Self {
+        Self {
             adapter,
             device,
             queue,
             format,
             adapter_info,
+            quality,
+            asked,
+            world_format,
             sprite_pipeline,
             sprite_ui_pipeline,
             text_pipeline,
@@ -1780,8 +2323,14 @@ impl Gfx {
             joint_group,
             sky_pipeline,
             shadow_pipeline,
-            shadow_view,
+            shadow_layers,
+            cascade_globals,
             shadow_group,
+            env_views,
+            env_pipeline,
+            env_uniform,
+            env_group,
+            env_key: None,
             globals,
             globals_group,
             globals_layout,
@@ -1807,8 +2356,11 @@ impl Gfx {
             gpu_timer,
             textures_shared: 0,
             depth: None,
+            msaa: None,
+            depth_resolve_pipeline,
+            depth_resolve_layout,
             extras,
-        })
+        }
     }
 
     /// `smooth`: bilinear filtering (the atlas then has extruded borders, see `assets::build_atlas_with`).
@@ -1923,8 +2475,95 @@ impl Gfx {
         instance: &wgpu::Instance,
         surface: Option<&wgpu::Surface<'_>>,
     ) -> Result<(), String> {
-        let mut fresh = Gfx::new(instance, surface)?;
+        let mut fresh = Gfx::new_with(instance, surface, self.asked)?;
         let backup = std::mem::take(&mut self.backup);
+        Self::restore_into(&mut fresh, backup);
+        *self = fresh;
+        Ok(())
+    }
+
+    /// Draws the sky into the cube map when it changed (its colours or the sun), and returns how much to scale the light it gives so that
+    /// it averages the game's ambient light. One small pass a face and level (36 in all), only when the sky moves.
+    fn update_environment(&mut self, lit: &Lighting) -> f32 {
+        let (top, horizon, sun) = match lit.sky {
+            Some(k) => (
+                k.top,
+                k.horizon,
+                k.sun.map_or([0.0, 1.0, 0.0, 0.0], |s| {
+                    let d = Vec3::from(s).normalize_or(Vec3::Y);
+                    [d.x, d.y, d.z, 1.0]
+                }),
+            ),
+            None => (lit.ambient, lit.ambient, [0.0, 1.0, 0.0, 0.0]),
+        };
+        let numbers: [f32; 12] = [
+            top[0], top[1], top[2], 0.0, horizon[0], horizon[1], horizon[2], 0.0, sun[0], sun[1],
+            sun[2], sun[3],
+        ];
+        let key = numbers.iter().fold(0xcbf2_9ce4_8422_2325u64, |h, v| {
+            (h ^ u64::from(v.to_bits())).wrapping_mul(0x0100_0000_01b3)
+        });
+        if self.env_key != Some(key) {
+            self.queue
+                .write_buffer(&self.env_uniform, 0, bytemuck::cast_slice(&numbers));
+            let mut encoder = self
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("sky cube"),
+                });
+            for (job, view) in self.env_views.iter().enumerate() {
+                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("sky cube face"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view,
+                        depth_slice: None,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                    multiview_mask: None,
+                });
+                pass.set_pipeline(&self.env_pipeline);
+                pass.set_bind_group(0, &self.env_group, &[]);
+                // (the instance number says which level and face)
+                pass.draw(0..3, job as u32..job as u32 + 1);
+            }
+            self.queue.submit([encoder.finish()]);
+            self.env_key = Some(key);
+        }
+        // the light of the sky averaged over a sphere (the upper half is the sky's middle colour, the lower the ground), against the
+        // game's ambient, in brightness
+        let luma = |c: [f32; 3]| 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+        let mid = [0, 1, 2].map(|i| 0.5 * (top[i] + horizon[i]));
+        let average = 0.5 * luma(mid) + 0.5 * 0.45 * luma(horizon);
+        (luma(lit.ambient) / average.max(1e-3)).clamp(0.25, 4.0)
+    }
+
+    /// Changes the quality settings (see [`Quality`]); a change rebuilds the world's pipelines and puts everything back on the GPU.
+    pub fn set_quality(&mut self, wanted: Quality) {
+        if wanted == self.asked {
+            return;
+        }
+        let mut fresh = Self::build(
+            self.adapter.clone(),
+            self.device.clone(),
+            self.queue.clone(),
+            self.lost.clone(),
+            self.adapter_info.clone(),
+            self.format,
+            wanted,
+        );
+        log::info!("quality: {:?} (asked {:?})", fresh.quality, wanted);
+        Self::restore_into(&mut fresh, std::mem::take(&mut self.backup));
+        *self = fresh;
+    }
+
+    fn restore_into(fresh: &mut Gfx, backup: Backup) {
         if let Some(image) = &backup.sprite_atlas {
             fresh.set_sprite_atlas(image, backup.smooth_atlas);
         }
@@ -1957,8 +2596,6 @@ impl Gfx {
         for (id, image) in &backup.shader_textures {
             fresh.set_shader_texture(*id, image);
         }
-        *self = fresh;
-        Ok(())
     }
 
     /// Puts the game's heightmap on the GPU when it changed (one upload per map, by identity), and points both globals groups at it.
@@ -1979,6 +2616,9 @@ impl Gfx {
             globals_bind_group(&self.device, &self.globals_layout, &self.globals, &view);
         self.ui_globals_group =
             globals_bind_group(&self.device, &self.globals_layout, &self.ui_globals, &view);
+        for (buffer, group) in &mut self.cascade_globals {
+            *group = globals_bind_group(&self.device, &self.globals_layout, buffer, &view);
+        }
         self.terrain_loaded = wanted.cloned();
     }
 
@@ -1993,6 +2633,7 @@ impl Gfx {
                 wrap: mesh.wrap,
                 smooth: mesh.smooth,
                 notes: Vec::new(),
+                compressed: mesh.compressed.clone(),
             },
             None,
         ));
@@ -2013,78 +2654,90 @@ impl Gfx {
         let translucent = mesh.vertices.iter().any(|v| v.color[3] < 255);
         // (a blended mesh, or a model whose file asks for smooth filtering, is filtered smoothly, with mipmaps)
         let smooth = translucent || mesh.smooth;
-        let texture = match &mesh.texture {
-            Some(image) => {
-                use std::hash::{Hash, Hasher};
-                let mut hasher = std::collections::hash_map::DefaultHasher::new();
-                (image.width, image.height, &image.rgba, smooth, mesh.wrap).hash(&mut hasher);
-                let key = hasher.finish();
-                if let Some(group) = self.texture_cache.get(&key) {
-                    self.textures_shared += 1;
-                    group.clone()
-                } else {
-                    // a blended mesh's picture (a billboard) is filtered smoothly, with mipmaps when its sides are powers of two; a solid
-                    // model's (usually a palette of flat colours) keeps sharp texels
-                    let pow2 = image.width.is_power_of_two() && image.height.is_power_of_two();
-                    let device = &self.device;
-                    let sampler = self
-                        .mesh_samplers
-                        .entry((smooth, mesh.wrap))
-                        .or_insert_with(|| {
-                            let address = |w: Wrap| match w {
-                                Wrap::Repeat => wgpu::AddressMode::Repeat,
-                                Wrap::MirroredRepeat => wgpu::AddressMode::MirrorRepeat,
-                                Wrap::ClampToEdge => wgpu::AddressMode::ClampToEdge,
-                            };
-                            let filter = if smooth {
-                                wgpu::FilterMode::Linear
-                            } else {
-                                wgpu::FilterMode::Nearest
-                            };
-                            device.create_sampler(&wgpu::SamplerDescriptor {
-                                label: Some("mesh texture"),
-                                address_mode_u: address(mesh.wrap[0]),
-                                address_mode_v: address(mesh.wrap[1]),
-                                mag_filter: filter,
-                                min_filter: filter,
-                                mipmap_filter: if smooth {
-                                    wgpu::MipmapFilterMode::Linear
-                                } else {
-                                    wgpu::MipmapFilterMode::Nearest
-                                },
-                                ..Default::default()
-                            })
-                        });
-                    let group = if smooth {
-                        let levels = if pow2 {
-                            32 - image.width.min(image.height).leading_zeros()
-                        } else {
-                            1
-                        };
-                        texture_group_mips(
-                            &self.device,
-                            &self.queue,
-                            &self.texture_layout,
-                            sampler,
-                            "billboard texture",
-                            image,
-                            levels,
-                        )
-                    } else {
-                        texture_group(
-                            &self.device,
-                            &self.queue,
-                            &self.texture_layout,
-                            sampler,
-                            "mesh texture",
-                            image,
-                        )
-                    };
-                    self.texture_cache.insert(key, group.clone());
-                    group
-                }
+        // a compressed picture beside the model, when this GPU can read its format
+        let compressed = mesh.compressed.as_ref().filter(|k| {
+            crate::ktx2::feature_of(k.format).is_none_or(|f| self.device.features().contains(f))
+        });
+        let aniso = self.quality.aniso as u16;
+        let texture = if let Some(k) = compressed {
+            use std::hash::{Hash, Hasher};
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            (
+                k.width,
+                k.height,
+                format!("{:?}", k.format),
+                &k.levels,
+                mesh.wrap,
+            )
+                .hash(&mut hasher);
+            let key = hasher.finish();
+            if let Some(group) = self.texture_cache.get(&key) {
+                self.textures_shared += 1;
+                group.clone()
+            } else {
+                let device = &self.device;
+                let sampler = self
+                    .mesh_samplers
+                    .entry((true, mesh.wrap))
+                    .or_insert_with(|| mesh_sampler(device, true, mesh.wrap, aniso));
+                let group =
+                    compressed_group(&self.device, &self.queue, &self.texture_layout, sampler, k);
+                self.texture_cache.insert(key, group.clone());
+                group
             }
-            None => self.white_group(),
+        } else {
+            match &mesh.texture {
+                Some(image) => {
+                    use std::hash::{Hash, Hasher};
+                    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                    (image.width, image.height, &image.rgba, smooth, mesh.wrap).hash(&mut hasher);
+                    let key = hasher.finish();
+                    if let Some(group) = self.texture_cache.get(&key) {
+                        self.textures_shared += 1;
+                        group.clone()
+                    } else {
+                        // a blended mesh's picture (a billboard) is filtered smoothly, with mipmaps when its sides are powers of two; a solid
+                        // model's (usually a palette of flat colours) keeps sharp texels
+                        let pow2 = image.width.is_power_of_two() && image.height.is_power_of_two();
+                        let device = &self.device;
+                        let sampler = self
+                            .mesh_samplers
+                            .entry((smooth, mesh.wrap))
+                            .or_insert_with(|| mesh_sampler(device, smooth, mesh.wrap, aniso));
+                        let group = if smooth {
+                            // (with anisotropic filtering asked for, every size gets its whole chain of smaller copies)
+                            let levels = if aniso > 1 {
+                                32 - image.width.max(image.height).leading_zeros()
+                            } else if pow2 {
+                                32 - image.width.min(image.height).leading_zeros()
+                            } else {
+                                1
+                            };
+                            texture_group_mips(
+                                &self.device,
+                                &self.queue,
+                                &self.texture_layout,
+                                sampler,
+                                "billboard texture",
+                                image,
+                                levels,
+                            )
+                        } else {
+                            texture_group(
+                                &self.device,
+                                &self.queue,
+                                &self.texture_layout,
+                                sampler,
+                                "mesh texture",
+                                image,
+                            )
+                        };
+                        self.texture_cache.insert(key, group.clone());
+                        group
+                    }
+                }
+                None => self.white_group(),
+            }
         };
         let material = self.upload_material(mesh);
         self.meshes.push(GpuMesh {
@@ -2144,30 +2797,60 @@ impl Gfx {
     }
 
     fn ensure_depth(&mut self, size: (u32, u32)) {
-        if matches!(&self.depth, Some((_, s)) if *s == size) {
+        let samples = self.quality.msaa;
+        let have_msaa = self.msaa.as_ref().is_some_and(|m| m.size == size);
+        if matches!(&self.depth, Some((_, s)) if *s == size) && (samples == 1 || have_msaa) {
             return;
         }
-        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("depth"),
-            size: wgpu::Extent3d {
-                width: size.0,
-                height: size.1,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: DEPTH_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        });
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let make = |label: &'static str, format: wgpu::TextureFormat, count: u32| {
+            self.device
+                .create_texture(&wgpu::TextureDescriptor {
+                    label: Some(label),
+                    size: wgpu::Extent3d {
+                        width: size.0,
+                        height: size.1,
+                        depth_or_array_layers: 1,
+                    },
+                    mip_level_count: 1,
+                    sample_count: count,
+                    dimension: wgpu::TextureDimension::D2,
+                    format,
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                        | wgpu::TextureUsages::TEXTURE_BINDING,
+                    view_formats: &[],
+                })
+                .create_view(&wgpu::TextureViewDescriptor::default())
+        };
+        let view = make("depth", DEPTH_FORMAT, samples);
+        let depth_for_finishing = if samples > 1 {
+            // the world pass draws into samples; the finishing pass reads a one-sample depth made from them
+            let resolved = make("resolved depth", DEPTH_FORMAT, 1);
+            let colour = make("world samples", self.world_format, samples);
+            let depth_samples = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("depth samples"),
+                layout: &self.depth_resolve_layout,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                }],
+            });
+            self.msaa = Some(MsaaTargets {
+                colour,
+                depth_samples,
+                resolved: resolved.clone(),
+                size,
+            });
+            resolved
+        } else {
+            self.msaa = None;
+            view.clone()
+        };
         self.depth_group = Some(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("depth for the finishing pass"),
             layout: &self.depth_layout,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
-                resource: wgpu::BindingResource::TextureView(&view),
+                resource: wgpu::BindingResource::TextureView(&depth_for_finishing),
             }],
         }));
         self.depth = Some((view, size));
@@ -2187,7 +2870,7 @@ impl Gfx {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: self.format,
+            format: self.world_format,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
@@ -2308,11 +2991,13 @@ impl Gfx {
         size: (u32, u32),
         input: &FrameInput,
     ) -> FrameStats {
+        self.set_quality(Quality::forced().unwrap_or(input.lighting.quality));
         let aspect = size.0 as f32 / size.1 as f32;
-        let world_size = if input.world_height != 0 && input.world_height < size.1 {
+        let world_height = Quality::forced_world_height().unwrap_or(input.world_height);
+        let world_size = if world_height != 0 && world_height < size.1 {
             (
-                ((input.world_height as f32 * aspect).round() as u32).max(1),
-                input.world_height,
+                ((world_height as f32 * aspect).round() as u32).max(1),
+                world_height,
             )
         } else {
             size
@@ -2321,7 +3006,11 @@ impl Gfx {
         // always goes through the world target (at the screen's own size if no smaller one was asked for)
         let look = input.lighting.look;
         // (a post effect is drawn over the world picture, so it needs one too)
-        let separate = world_size != size || look.needs_post() || input.post.is_some();
+        let separate = world_size != size
+            || look.needs_post()
+            || input.post.is_some()
+            || self.quality.hdr
+            || self.quality.msaa > 1;
         self.ensure_depth(world_size);
         if separate {
             self.ensure_world(world_size);
@@ -2362,7 +3051,7 @@ impl Gfx {
                 world_size.1 as f32 / (2.0 * (input.camera.fov_y_degrees.to_radians() * 0.5).tan()),
                 look.blur.clamp(0.0, 1.0),
                 look.fxaa.clamp(0.0, 1.0),
-                0.0,
+                if self.quality.hdr { 1.0 } else { 0.0 },
             ];
             self.queue
                 .write_buffer(&self.blit_uniform, 0, bytemuck::cast_slice(&blit));
@@ -2420,31 +3109,98 @@ impl Gfx {
         let (sky, fog) = (lit.sky, lit.fog);
         // The sun's view of the ground around what the camera looks at: a square box seen along the light, moved in whole
         // texels so that shadows do not crawl as the camera moves.
-        let (light_view_proj, shadow) = match lit.shadows {
+        let cascade_count = self.quality.cascades.max(1) as usize;
+        let plans: Vec<CascadePlan> = match lit.shadows {
             Some(sh) => {
                 let dir = Vec3::from(lit.direction).normalize_or_zero();
                 let dir = if dir == Vec3::ZERO { -Vec3::Y } else { dir };
-                let r = sh.radius.max(0.5);
                 let up = if dir.y.abs() > 0.99 { Vec3::X } else { Vec3::Y };
                 let look = glam::camera::rh::view::look_to_mat4(Vec3::ZERO, dir, up);
-                let texel = 2.0 * r / SHADOW_SIZE as f32;
-                let mut centre = look.transform_point3(input.camera.target);
-                centre.x = (centre.x / texel).round() * texel;
-                centre.y = (centre.y / texel).round() * texel;
-                let proj = glam::camera::rh::proj::directx::orthographic(
-                    centre.x - r,
-                    centre.x + r,
-                    centre.y - r,
-                    centre.y + r,
-                    -centre.z - r * 4.0,
-                    -centre.z + r * 4.0,
-                );
-                (
-                    (proj * look).to_cols_array_2d(),
-                    [1.0, 1.0 / SHADOW_SIZE as f32, 0.0015, sh.strength],
-                )
+                let fit = |centre_world: Vec3, r: f32, extent: f32| {
+                    let texel = 2.0 * r / SHADOW_SIZE as f32;
+                    let mut centre = look.transform_point3(centre_world);
+                    centre.x = (centre.x / texel).round() * texel;
+                    centre.y = (centre.y / texel).round() * texel;
+                    let proj = glam::camera::rh::proj::directx::orthographic(
+                        centre.x - r,
+                        centre.x + r,
+                        centre.y - r,
+                        centre.y + r,
+                        -centre.z - extent,
+                        -centre.z + extent,
+                    );
+                    (proj * look, texel)
+                };
+                if cascade_count <= 1 {
+                    let r = sh.radius.max(0.5);
+                    let (vp, texel) = fit(input.camera.target, r, r * 4.0);
+                    vec![CascadePlan {
+                        vp,
+                        far: f32::MAX,
+                        bias: 0.0015,
+                        texel,
+                    }]
+                } else {
+                    // Cascades: the view's depth from the camera to `distance` cut into slices (a blend of equal and
+                    // geometric steps: fine near the camera, coarse far away), each slice's bounding sphere drawn into its
+                    // own map. A sphere does not change size as the camera turns, and its centre moves in whole texels, so
+                    // the shadows do not shimmer.
+                    let distance = (sh.radius.max(0.5) * 3.0).min(far);
+                    let near = 0.3f32;
+                    let forward = (input.camera.target - input.camera.eye).normalize_or(Vec3::Z);
+                    let tan_half = (input.camera.fov_y_degrees.to_radians() * 0.5).tan();
+                    let k = (1.0 + aspect * aspect).sqrt() * tan_half;
+                    let mut plans = Vec::with_capacity(cascade_count);
+                    let mut start = near;
+                    for i in 1..=cascade_count {
+                        let f = i as f32 / cascade_count as f32;
+                        let end = 0.7 * near * (distance / near).powf(f)
+                            + 0.3 * (near + (distance - near) * f);
+                        let (a, b) = (start, end);
+                        let (cdist, r) = if k * k >= (b - a) / (b + a) {
+                            (b, b * k)
+                        } else {
+                            (
+                                0.5 * (a + b) * (1.0 + k * k),
+                                0.5 * ((b - a).powi(2)
+                                    + 2.0 * (b * b + a * a) * k * k
+                                    + (b + a).powi(2) * k.powi(4))
+                                .sqrt(),
+                            )
+                        };
+                        let r = (r * 8.0).ceil() / 8.0;
+                        let extent = (r * 4.0).max(100.0);
+                        let (vp, texel) = fit(input.camera.eye + forward * cdist, r, extent);
+                        plans.push(CascadePlan {
+                            vp,
+                            far: end,
+                            bias: (texel * 2.5 + 0.02) / (2.0 * extent),
+                            texel,
+                        });
+                        start = end;
+                    }
+                    plans
+                }
             }
-            None => ([[0.0; 4]; 4], [0.0; 4]),
+            None => Vec::new(),
+        };
+        let light_view_proj = plans
+            .first()
+            .map_or([[0.0; 4]; 4], |p| p.vp.to_cols_array_2d());
+        let shadow = match (lit.shadows, plans.first()) {
+            (Some(sh), Some(p)) => [1.0, 1.0 / SHADOW_SIZE as f32, p.bias, sh.strength],
+            _ => [0.0; 4],
+        };
+        let mut cascade_vp = [[[0.0f32; 4]; 4]; MAX_CASCADES as usize];
+        let mut cascade_info = [[0.0f32; 4]; MAX_CASCADES as usize];
+        for (i, p) in plans.iter().enumerate().take(MAX_CASCADES as usize) {
+            cascade_vp[i] = p.vp.to_cols_array_2d();
+            cascade_info[i] = [p.far, p.bias, p.texel, 0.0];
+        }
+        let ibl_gain = if self.quality.ibl {
+            self.update_environment(lit)
+        } else {
+            0.0
         };
         let globals = Globals {
             view_proj: view_proj.to_cols_array_2d(),
@@ -2489,6 +3245,14 @@ impl Gfx {
             point_dir,
             terrain: terrain_uniform,
             terrain_map,
+            cascade_vp,
+            cascade_info,
+            cascade_count: [
+                plans.len() as f32,
+                if self.quality.ibl { 1.0 } else { 0.0 },
+                ibl_gain,
+                (ENV_LEVELS - 1) as f32,
+            ],
             sky_extra: sky.map_or([0.0; 4], |k| {
                 [
                     k.clouds,
@@ -2501,6 +3265,15 @@ impl Gfx {
         self.sync_heightmap(lit.terrain.map.as_ref());
         self.queue
             .write_buffer(&self.globals, 0, bytemuck::bytes_of(&globals));
+        if plans.len() > 1 {
+            // (each cascade's pass is drawn with its own light matrix: a copy of the globals with that one)
+            for ((buffer, _), plan) in self.cascade_globals.iter().zip(&plans) {
+                let mut copy = globals;
+                copy.light_view_proj = plan.vp.to_cols_array_2d();
+                self.queue
+                    .write_buffer(buffer, 0, bytemuck::bytes_of(&copy));
+            }
+        }
         if !input.ui_models.is_empty() {
             // an orthographic camera in the UI's units (y down), looking along -z: clip x = 2X/W - 1, clip y = 1 - 2Y/H,
             // depth from z (nearer is smaller; nothing is depth tested, but it must stay inside 0 to 1)
@@ -2534,6 +3307,9 @@ impl Gfx {
                 point_dir: [[0.0; 4]; MAX_POINT_LIGHTS],
                 terrain: [[0.0; 4]; MAX_TERRAIN_WAVES + 1],
                 terrain_map: [[0.0; 4]; 2],
+                cascade_vp: [[[0.0; 4]; 4]; MAX_CASCADES as usize],
+                cascade_info: [[0.0; 4]; MAX_CASCADES as usize],
+                cascade_count: [0.0; 4],
             };
             self.queue
                 .write_buffer(&self.ui_globals, 0, bytemuck::bytes_of(&ui_globals));
@@ -2666,10 +3442,11 @@ impl Gfx {
                     .map(|m| &m.draw),
             )
         };
-        let shadow_models: Vec<ModelDraw> = match lit.shadows {
-            Some(_) => {
-                let light_planes =
-                    frustum_planes(&glam::Mat4::from_cols_array_2d(&light_view_proj));
+        // one list of casters per cascade (each is culled against its own box)
+        let shadow_lists: Vec<Vec<ModelDraw>> = plans
+            .iter()
+            .map(|plan| {
+                let light_planes = frustum_planes(&plan.vp);
                 casters()
                     .filter(|m| match self.mesh(m.mesh) {
                         Some(mesh) => instance_visible(
@@ -2683,11 +3460,15 @@ impl Gfx {
                     })
                     .copied()
                     .collect()
-            }
-            None => Vec::new(),
-        };
+            })
+            .collect();
+        let mut shadow_starts = Vec::new();
         if lit.shadows.is_some() {
-            let instances: Vec<ModelInstance> = shadow_models.iter().map(|m| m.instance).collect();
+            let mut instances: Vec<ModelInstance> = Vec::new();
+            for list in &shadow_lists {
+                shadow_starts.push(instances.len());
+                instances.extend(list.iter().map(|m| m.instance));
+            }
             self.model_instances
                 .write(&self.device, &self.queue, bytemuck::cast_slice(&instances));
         }
@@ -2696,7 +3477,7 @@ impl Gfx {
             world_size,
             culled,
             shadow_culled: if lit.shadows.is_some() {
-                (casters().count() - shadow_models.len()) as u32
+                (casters().count() - shadow_lists.first().map_or(0, Vec::len)) as u32
             } else {
                 0
             },
@@ -2708,7 +3489,7 @@ impl Gfx {
         }
         // time this frame only if the last reading has come back (the timer is one set of two slots)
         let timing = self.gpu_timer.as_ref().is_some_and(GpuTimer::idle);
-        let shadow_pass = lit.shadows.is_some() && !shadow_models.is_empty();
+        let shadow_pass = lit.shadows.is_some() && shadow_lists.iter().any(|l| !l.is_empty());
         let stamps = |begin: bool, end: bool| {
             self.gpu_timer
                 .as_ref()
@@ -2724,24 +3505,28 @@ impl Gfx {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("frame"),
             });
-        if shadow_pass {
+        for (cascade, shadow_models) in shadow_lists.iter().enumerate().filter(|_| shadow_pass) {
+            let shadow_globals = match self.cascade_globals.get(cascade) {
+                Some((_, group)) if plans.len() > 1 => group,
+                _ => &self.globals_group,
+            };
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("shadow pass"),
                 color_attachments: &[],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.shadow_view,
+                    view: &self.shadow_layers[cascade],
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
                         store: wgpu::StoreOp::Store,
                     }),
                     stencil_ops: None,
                 }),
-                timestamp_writes: stamps(true, false),
+                timestamp_writes: stamps(cascade == 0, false),
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
             pass.set_pipeline(&self.shadow_pipeline);
-            pass.set_bind_group(0, &self.globals_group, &[]);
+            pass.set_bind_group(0, shadow_globals, &[]);
             let mut skinned_now = false;
             let stride = std::mem::size_of::<ModelInstance>() as u64;
             let mut start = 0usize;
@@ -2767,7 +3552,7 @@ impl Gfx {
                         } else {
                             pass.set_pipeline(&self.shadow_pipeline);
                         }
-                        pass.set_bind_group(0, &self.globals_group, &[]);
+                        pass.set_bind_group(0, shadow_globals, &[]);
                     }
                     if let Some(skin) = &mesh.skin {
                         pass.set_vertex_buffer(2, skin.slice(..));
@@ -2775,9 +3560,10 @@ impl Gfx {
                     pass.set_vertex_buffer(0, mesh.vertices.slice(..));
                     pass.set_vertex_buffer(
                         1,
-                        self.model_instances
-                            .buffer
-                            .slice(start as u64 * stride..end as u64 * stride),
+                        self.model_instances.buffer.slice(
+                            (shadow_starts[cascade] + start) as u64 * stride
+                                ..(shadow_starts[cascade] + end) as u64 * stride,
+                        ),
                     );
                     pass.set_index_buffer(mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
                     pass.draw_indexed(0..mesh.index_count, 0, 0..(end - start) as u32);
@@ -2791,13 +3577,17 @@ impl Gfx {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("world pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: if separate {
-                        &self.world.as_ref().expect("world target exists").view
-                    } else {
-                        target
+                    view: match (&self.msaa, separate) {
+                        (Some(m), true) => &m.colour,
+                        (_, true) => &self.world.as_ref().expect("world target exists").view,
+                        (_, false) => target,
                     },
                     depth_slice: None,
-                    resolve_target: None,
+                    resolve_target: self
+                        .msaa
+                        .as_ref()
+                        .filter(|_| separate)
+                        .map(|_| &self.world.as_ref().expect("world target exists").view),
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
                             r: input.clear[0],
@@ -2805,7 +3595,12 @@ impl Gfx {
                             b: input.clear[2],
                             a: input.clear[3],
                         }),
-                        store: wgpu::StoreOp::Store,
+                        // (the samples are only wanted for the resolve into the world target)
+                        store: if self.msaa.is_some() {
+                            wgpu::StoreOp::Discard
+                        } else {
+                            wgpu::StoreOp::Store
+                        },
                     },
                 })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
@@ -2950,6 +3745,27 @@ impl Gfx {
                     stats.triangles += triangles;
                 }
             }
+        }
+        if let (Some(m), true) = (&self.msaa, look.reads_depth()) {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("depth resolve"),
+                color_attachments: &[],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &m.resolved,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            pass.set_pipeline(&self.depth_resolve_pipeline);
+            pass.set_bind_group(0, &m.depth_samples, &[]);
+            pass.draw(0..3, 0..1);
+            stats.draw_calls += 1;
         }
         let post_drawn = match (&input.post, post_slot) {
             (Some(post), Some(slot)) if separate => {

@@ -11,7 +11,7 @@ struct Blit {
     outline_color: vec4<f32>, // rgb linear, w: width in world texels
     depth: vec4<f32>,         // x: near, y: far of the camera, z: fog starts, w: fog is complete (0: no fog)
     glow: vec4<f32>,          // x: bloom strength, y: ambient occlusion strength, z: its reach in metres, w: bloom threshold
-    lens: vec4<f32>,          // x: pixels of the world picture one metre spans at one metre away, y: speed blur (0: none), z: FXAA strength (0: none)
+    lens: vec4<f32>,          // x: pixels of the world picture one metre spans at one metre away, y: speed blur (0: none), z: FXAA strength (0: none), w: 1 when the world picture is HDR (16-bit float, unclamped light)
 };
 @group(0) @binding(0) var<uniform> blit: Blit;
 @group(1) @binding(0) var source: texture_2d<f32>;
@@ -78,7 +78,13 @@ fn occlusion(c: vec2<i32>, z: f32) -> f32 {
 // four extra reads and are left alone. (The world is drawn at a low resolution and scaled up, so the stairs on an edge are whole texels
 // wide: this smooths them before the scale-up; the colour taps are bilinear, so they land between texels.)
 fn perceptual_luma(c: vec3<f32>) -> f32 {
-    return dot(sqrt(max(c, vec3<f32>(0.0))), vec3<f32>(0.299, 0.587, 0.114));
+    return dot(sqrt(clamp(c, vec3<f32>(0.0), vec3<f32>(1.0))), vec3<f32>(0.299, 0.587, 0.114));
+}
+
+// ACES filmic curve (Narkowicz's fit): a toe that deepens the darks, a long straight middle, a shoulder that rolls bright light off
+// toward white instead of clipping it. Light of 1.0 comes out near 0.8; a bright lamp or the sun's glint keeps its detail up to about 8.
+fn aces(x: vec3<f32>) -> vec3<f32> {
+    return clamp((x * (2.51 * x + vec3<f32>(0.03))) / (x * (2.43 * x + vec3<f32>(0.59)) + vec3<f32>(0.14)), vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
 fn fxaa(uv: vec2<f32>, centre: vec3<f32>) -> vec3<f32> {
@@ -110,6 +116,7 @@ fn fxaa(uv: vec2<f32>, centre: vec3<f32>) -> vec3<f32> {
 
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
+    let hdr = blit.lens.w > 0.5;
     let texel = in.uv * blit.tex_size;
     let base = floor(texel);
     let within = fract(texel) - vec2<f32>(0.5, 0.5);
@@ -169,17 +176,24 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
             for (var k = 0; k < 6; k = k + 1) {
                 let a = (f32(k) + 0.5 * f32(ring)) * 1.0471976 + turn;
                 let uv = in.uv + vec2<f32>(cos(a), sin(a)) * radius / blit.tex_size;
-                let s = textureSample(source, source_sampler, uv).rgb;
+                var s = textureSample(source, source_sampler, uv).rgb;
+                if (hdr) {
+                    // (one very bright texel must not put a whole ring of fireflies on the picture)
+                    s = min(s, vec3<f32>(12.0));
+                }
                 let l = dot(s, vec3<f32>(0.2126, 0.7152, 0.0722));
-                glow = glow + s * (max(l - blit.glow.w, 0.0) / max(1.0 - blit.glow.w, 0.05)) * select(0.09, 0.07, ring == 1);
+                glow = glow + s * (max(l - blit.glow.w, 0.0) / select(max(1.0 - blit.glow.w, 0.05), max(l, 1e-3), hdr)) * select(0.09, 0.07, ring == 1);
             }
         }
         let own = dot(rgb, vec3<f32>(0.2126, 0.7152, 0.0722));
-        glow = glow + rgb * (max(own - blit.glow.w, 0.0) / max(1.0 - blit.glow.w, 0.05)) * 0.2;
+        glow = glow + min(rgb, vec3<f32>(12.0)) * (max(own - blit.glow.w, 0.0) / select(max(1.0 - blit.glow.w, 0.05), max(own, 1e-3), hdr)) * 0.2;
         rgb = rgb + glow * blit.glow.x;
     }
-    // exposure with a soft shoulder (a curve that is straight near black and bends toward white, so brights do not clip)
-    if (abs(blit.grade.x - 1.0) > 1e-4) {
+    // exposure with a soft shoulder (a curve that is straight near black and bends toward white, so brights do not clip); an HDR
+    // picture goes through the filmic curve instead, whatever the exposure
+    if (hdr) {
+        rgb = aces(rgb * blit.grade.x);
+    } else if (abs(blit.grade.x - 1.0) > 1e-4) {
         let e = rgb * blit.grade.x;
         rgb = e / (1.0 + max(e - vec3<f32>(1.0), vec3<f32>(0.0)));
     }

@@ -43,6 +43,7 @@ pub(super) fn quad_mesh(image: &Image, uv: [f32; 4]) -> MeshData {
     }
     MeshData {
         material: None,
+        compressed: None,
         vertices,
         indices,
         texture: Some(image.clone()),

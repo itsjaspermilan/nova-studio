@@ -165,6 +165,7 @@ pub fn bake(
     }
     MeshData {
         material: None,
+        compressed: None,
         vertices,
         indices,
         texture: None,

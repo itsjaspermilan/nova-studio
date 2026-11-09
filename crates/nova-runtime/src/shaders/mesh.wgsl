@@ -21,12 +21,15 @@ struct Globals {
     point_dir: array<vec4<f32>, 20>,   // xyz: the way a spot light points (zero: every way), w: cosine of half its cone
     terrain: array<vec4<f32>, 9>,      // [0].x: how many hill waves; then (kx, kz, amplitude, phase) each
     terrain_map: array<vec4<f32>, 2>,  // [0]: x0, z0, 1 / cell; [1]: samples across - 1, rows - 1
+    cascade_vp: array<mat4x4<f32>, 3>,  // the sun's cascaded shadow maps (more than one cascade only)
+    cascade_info: array<vec4<f32>, 3>,  // x: where the cascade ends (distance along the view), y: depth bias, z: metres a texel spans
+    cascade_count: vec4<f32>,           // x: how many cascades (1: the single map, which uses light_view_proj)
 };
 @group(0) @binding(0) var<uniform> globals: Globals;
 @group(0) @binding(1) var heightmap: texture_2d<f32>;  // the heightmap (R32Float, metres); 1 x 1 when there is none
 @group(1) @binding(0) var base_texture: texture_2d<f32>;
 @group(1) @binding(1) var base_sampler: sampler;
-@group(2) @binding(0) var shadow_map: texture_depth_2d;
+@group(2) @binding(0) var shadow_map: texture_depth_2d_array;
 @group(2) @binding(1) var shadow_sampler: sampler_comparison;
 
 struct Vertex {
@@ -193,27 +196,67 @@ fn mesh_vertex(v: Vertex, inst: Instance) -> VertexOut {
     return out;
 }
 
-// How much of the sun reaches a point: 1 in the open, less in a shadow (a soft edge from 3x3 samples).
-fn sun_visibility(world: vec3<f32>, normal: vec3<f32>) -> f32 {
-    if (globals.shadow.x < 0.5) {
-        return 1.0;
-    }
-    // push the point a little along its normal so that surfaces facing away from the sun do not shadow themselves
-    let p = world + normal * 0.03;
-    let clip = globals.light_view_proj * vec4<f32>(p, 1.0);
+// What one shadow map says about a clip-space point: how much light reaches it (3x3 taps of hardware-filtered comparisons, a soft
+// edge about four texels wide), or -1 when the point is outside the map or beyond the light's far plane. (The "level" sampling
+// has no derivatives, so it can sit in non-uniform control flow, as the choice of cascade is.)
+fn shadow_lookup(clip: vec4<f32>, layer: i32, bias: f32) -> f32 {
     let uv = vec2<f32>(clip.x * 0.5 + 0.5, 0.5 - clip.y * 0.5);
-    let depth = clip.z - globals.shadow.z;
+    let depth = clip.z - bias;
     var lit = 0.0;
     for (var x = -1; x <= 1; x = x + 1) {
         for (var y = -1; y <= 1; y = y + 1) {
             let o = vec2<f32>(f32(x), f32(y)) * globals.shadow.y;
-            lit = lit + textureSampleCompare(shadow_map, shadow_sampler, uv + o, depth);
+            lit = lit + textureSampleCompareLevel(shadow_map, shadow_sampler, uv + o, layer, depth);
         }
     }
     lit = lit / 9.0;
-    // outside the map, or beyond the light's far plane, there is no shadow
     let inside = uv.x > 0.0 && uv.x < 1.0 && uv.y > 0.0 && uv.y < 1.0 && clip.z > 0.0 && clip.z < 1.0;
-    return select(1.0, lit, inside);
+    return select(-1.0, lit, inside);
+}
+
+fn cascade_visibility(i: i32, world: vec3<f32>, normal: vec3<f32>) -> f32 {
+    let info = globals.cascade_info[i];
+    // push the point along its normal by about a texel and a half, as the texels grow with the cascade
+    let p = world + normal * max(0.03, info.z * 1.5);
+    let r = shadow_lookup(globals.cascade_vp[i] * vec4<f32>(p, 1.0), i, info.y);
+    return select(1.0, r, r >= 0.0);
+}
+
+// How much of the sun reaches a point: 1 in the open, less in a shadow. With cascades the nearest map that holds the point is used,
+// and the shadow is blended between two maps near where one ends, and fades out at the end of the last.
+fn sun_visibility(world: vec3<f32>, normal: vec3<f32>) -> f32 {
+    if (globals.shadow.x < 0.5) {
+        return 1.0;
+    }
+    let count = i32(globals.cascade_count.x);
+    if (count <= 1) {
+        // push the point a little along its normal so that surfaces facing away from the sun do not shadow themselves
+        let r = shadow_lookup(globals.light_view_proj * vec4<f32>(world + normal * 0.03, 1.0), 0, globals.shadow.z);
+        return select(1.0, r, r >= 0.0);
+    }
+    let depth = (globals.view_proj * vec4<f32>(world, 1.0)).w;
+    var i = 0;
+    for (var k = 0; k < count - 1; k = k + 1) {
+        if (depth > globals.cascade_info[k].x) {
+            i = k + 1;
+        }
+    }
+    let end = globals.cascade_info[i].x;
+    if (depth > end) {
+        return 1.0;
+    }
+    let start = select(0.0, globals.cascade_info[max(i - 1, 0)].x, i > 0);
+    let band = (end - start) * 0.15;
+    var visible = cascade_visibility(i, world, normal);
+    if (depth > end - band) {
+        let t = smoothstep(end - band, end, depth);
+        if (i < count - 1) {
+            visible = mix(visible, cascade_visibility(i + 1, world, normal), t);
+        } else {
+            visible = mix(visible, 1.0, t);
+        }
+    }
+    return visible;
 }
 
 @fragment
@@ -364,11 +407,15 @@ fn skinned_vertex(v: SkinVertex, inst: Instance) -> VertexOut {
 @group(3) @binding(2) var surface_map: texture_2d<f32>;
 @group(3) @binding(3) var emissive_map: texture_2d<f32>;
 @group(3) @binding(4) var map_sampler: sampler;
+// the sky as light (`Quality::ibl`; see env.wgsl): a small cube map whose levels are the sky blurred by roughness
+@group(2) @binding(2) var env_map: texture_cube<f32>;
+@group(2) @binding(3) var env_sampler: sampler;
 
 struct MaterialVertex {
     @location(12) tangent: vec4<f32>,
     @location(13) surface: vec4<f32>,
     @location(14) emission: vec4<f32>,
+    @location(15) coat: vec4<f32>,
 };
 
 struct MaterialOut {
@@ -382,6 +429,7 @@ struct MaterialOut {
     @location(6) tangent: vec4<f32>,
     @location(7) surface: vec4<f32>,
     @location(8) emission: vec4<f32>,
+    @location(9) coat: vec4<f32>,
 };
 
 // The tangent in the world, leaning with the hills like the normal does (the lift's forward shear).
@@ -402,6 +450,7 @@ fn material_out(o: VertexOut, tangent: vec3<f32>, m: MaterialVertex, ground: boo
     out.tangent = vec4<f32>(safe_normalize(t), m.tangent.w);
     out.surface = m.surface;
     out.emission = m.emission;
+    out.coat = m.coat;
     return out;
 }
 
@@ -433,6 +482,20 @@ fn highlight(n: vec3<f32>, v: vec3<f32>, l: vec3<f32>, rough: f32, f0: vec3<f32>
     let lobe = (shine + 8.0) / 25.132741 * pow(max(dot(n, h), 0.0), shine);
     let f = f0 + (vec3<f32>(1.0) - f0) * pow(1.0 - max(dot(v, h), 0.0), 5.0);
     return f * (lobe * nl);
+}
+
+// What the world reflects along a direction, for a surface this rough: the cube made from the sky when the game asks for it (`ibl`),
+// else the sky's two colours (the ground below the horizon is its horizon, darker), else the ambient light.
+fn environment(dir: vec3<f32>, rough: f32) -> vec3<f32> {
+    if (globals.cascade_count.y > 0.5) {
+        return textureSampleLevel(env_map, env_sampler, dir, rough * globals.cascade_count.w).rgb;
+    }
+    var around = globals.ambient.rgb;
+    if (globals.sky_top.w > 0.5) {
+        let up = mix(globals.sky_horizon.rgb, globals.sky_top.rgb, clamp(dir.y, 0.0, 1.0));
+        around = mix(globals.sky_horizon.rgb * 0.45, up, smoothstep(-0.25, 0.0, dir.y));
+    }
+    return around;
 }
 
 @fragment
@@ -478,8 +541,22 @@ fn fs_material(in: MaterialOut) -> @location(0) vec4<f32> {
         let w = fwidth(x) * 0.75 + 0.01;
         diffuse = (floor(x) + smoothstep(0.5 - w, 0.5 + w, fract(x))) / globals.voxel.y;
     }
-    var light = globals.ambient.rgb + globals.light_color.rgb * diffuse * (1.0 - globals.ambient.rgb);
+    // the light that falls from the sky on this side of the surface, in place of one ambient colour (made from the sky's own cube and
+    // scaled so that it averages the game's ambient light)
+    var ambient = globals.ambient.rgb;
+    if (globals.cascade_count.y > 0.5) {
+        ambient = textureSampleLevel(env_map, env_sampler, n, globals.cascade_count.w).rgb * globals.cascade_count.z;
+    }
+    var light = ambient + globals.light_color.rgb * diffuse * (1.0 - ambient);
     let f0 = mix(vec3<f32>(0.04), base.rgb, metallic);
+    // a clear coat: a smooth glossy layer over everything else, lit by the geometry's own normal (no bumps); it reflects a few percent
+    // of what it faces, more at a slant, and lets the rest through to the paint below
+    let coat = in.coat.x;
+    let coat_rough = max(in.coat.y, 0.03);
+    var coat_shine = vec3<f32>(0.0);
+    if (coat > 0.0) {
+        coat_shine = globals.light_color.rgb * highlight(geo, v, to_sun, coat_rough, vec3<f32>(0.04)) * visible;
+    }
     var shine = globals.light_color.rgb * highlight(n, v, to_sun, rough, f0) * visible;
     let count = i32(globals.light_dir.w);
     for (var i = 0; i < count; i = i + 1) {
@@ -495,19 +572,23 @@ fn fs_material(in: MaterialOut) -> @location(0) vec4<f32> {
         let reach = globals.point_color[i].rgb * (falloff * falloff * cone);
         light = light + reach * max(dot(n, towards), 0.0);
         shine = shine + reach * highlight(n, v, towards, rough, f0);
+        if (coat > 0.0) {
+            coat_shine = coat_shine + reach * highlight(geo, v, towards, coat_rough, vec3<f32>(0.04));
+        }
     }
     // what a shiny surface reflects: the sky along the reflection (the ground below the horizon is its horizon, darker), or the
     // ambient light with no sky; a rough one shows little of it (its blurred average is in the ambient already)
     let r = reflect(-v, n);
-    var around = globals.ambient.rgb;
-    if (globals.sky_top.w > 0.5) {
-        let up = mix(globals.sky_horizon.rgb, globals.sky_top.rgb, clamp(r.y, 0.0, 1.0));
-        around = mix(globals.sky_horizon.rgb * 0.45, up, smoothstep(-0.25, 0.0, r.y));
-    }
+    let around = environment(r, rough);
     let nv = max(dot(n, v), 0.0);
     let fresnel = f0 + (max(vec3<f32>(1.0 - rough), f0) - f0) * pow(1.0 - nv, 5.0);
     let mirror = around * fresnel * (1.0 - rough * 0.85);
     var rgb = base.rgb * (1.0 - metallic) * light + shine + mirror;
+    if (coat > 0.0) {
+        let nv_geo = max(dot(geo, v), 0.0);
+        let fresnel_coat = (0.04 + 0.96 * pow(1.0 - nv_geo, 5.0)) * coat;
+        rgb = rgb * (1.0 - fresnel_coat) + coat_shine * coat + environment(reflect(-v, geo), coat_rough) * fresnel_coat;
+    }
     if (in.emission.w < -0.5) {
         rgb = rgb + base.rgb * in.emissive;
     } else if (in.emission.w > 0.5) {

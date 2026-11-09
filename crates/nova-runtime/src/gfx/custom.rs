@@ -17,6 +17,8 @@ pub struct MaterialVertex {
     pub tangent: [f32; 4],
     pub surface: [f32; 4],
     pub emission: [f32; 4],
+    /// A clear coat: strength, roughness.
+    pub coat: [f32; 4],
 }
 
 #[repr(C)]
@@ -70,7 +72,10 @@ pub(super) struct Extras {
     pub shaded_instances: DynBuffer,
     /// What the post effect draws into (the world picture's size); the finishing pass reads it instead of the world target.
     pub post_target: Option<WorldTarget>,
+    /// The world pass's target format (a post effect draws to the same format) and its samples a pixel; the screen's format.
     format: wgpu::TextureFormat,
+    screen_format: wgpu::TextureFormat,
+    samples: u32,
 }
 
 /// Layouts made in `Gfx::new` that the extras' pipelines share.
@@ -88,8 +93,9 @@ const INSTANCE_ATTRIBUTES: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array!
 ];
 const SKIN_ATTRIBUTES: [wgpu::VertexAttribute; 2] =
     wgpu::vertex_attr_array![10 => Uint16x4, 11 => Float32x4];
-const MATERIAL_ATTRIBUTES: [wgpu::VertexAttribute; 3] =
-    wgpu::vertex_attr_array![12 => Float32x4, 13 => Float32x4, 14 => Float32x4];
+const MATERIAL_ATTRIBUTES: [wgpu::VertexAttribute; 4] = wgpu::vertex_attr_array![
+    12 => Float32x4, 13 => Float32x4, 14 => Float32x4, 15 => Float32x4
+];
 const SPRITE_ATTRIBUTES: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
     0 => Float32x2, 1 => Float32x2, 2 => Float32x4, 3 => Unorm8x4, 4 => Float32
 ];
@@ -169,10 +175,13 @@ fn map_view(
     queue: &wgpu::Queue,
     image: &Image,
     srgb: bool,
+    full_chain: bool,
     label: &str,
 ) -> wgpu::TextureView {
     let pow2 = image.width.is_power_of_two() && image.height.is_power_of_two();
-    let levels = if pow2 {
+    let levels = if full_chain {
+        32 - image.width.max(image.height).leading_zeros()
+    } else if pow2 {
         32 - image.width.min(image.height).leading_zeros()
     } else {
         1
@@ -225,6 +234,7 @@ fn pixel(
             rgba: rgba.to_vec(),
         },
         srgb,
+        false,
         label,
     )
 }
@@ -242,6 +252,8 @@ impl Extras {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         format: wgpu::TextureFormat,
+        screen_format: wgpu::TextureFormat,
+        samples: u32,
         shared: &Shared,
     ) -> Self {
         let both = wgpu::ShaderStages::VERTEX_FRAGMENT;
@@ -333,6 +345,7 @@ impl Extras {
                 "fs_material",
                 &buffers,
                 format,
+                samples,
                 blend,
             )
         };
@@ -391,6 +404,8 @@ impl Extras {
             ),
             post_target: None,
             format,
+            screen_format,
+            samples,
         }
     }
 
@@ -414,6 +429,7 @@ fn model_pipeline(
     fragment: &str,
     buffers: &[Option<wgpu::VertexBufferLayout>],
     format: wgpu::TextureFormat,
+    samples: u32,
     blend: bool,
 ) -> wgpu::RenderPipeline {
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -446,7 +462,10 @@ fn model_pipeline(
             stencil: Default::default(),
             bias: Default::default(),
         }),
-        multisample: wgpu::MultisampleState::default(),
+        multisample: wgpu::MultisampleState {
+            count: samples,
+            ..Default::default()
+        },
         multiview_mask: None,
         cache: None,
     })
@@ -478,6 +497,7 @@ impl Gfx {
                     .get(i)
                     .copied()
                     .unwrap_or([0.0, 0.0, 0.0, -1.0]),
+                coat: material.coat.get(i).copied().unwrap_or([0.0; 4]),
             })
             .collect();
         let buffer = self
@@ -489,10 +509,12 @@ impl Gfx {
             });
         let device = &self.device;
         let queue = &self.queue;
+        let aniso = self.quality.aniso;
+        let full_chain = aniso > 1;
         let view = |image: &Option<Image>, default: &wgpu::TextureView, srgb: bool, label: &str| {
             image.as_ref().map_or_else(
                 || default.clone(),
-                |i| map_view(device, queue, i, srgb, label),
+                |i| map_view(device, queue, i, srgb, full_chain, label),
             )
         };
         let d = &self.extras.map_defaults;
@@ -516,6 +538,7 @@ impl Gfx {
                     mag_filter: wgpu::FilterMode::Linear,
                     min_filter: wgpu::FilterMode::Linear,
                     mipmap_filter: wgpu::MipmapFilterMode::Linear,
+                    anisotropy_clamp: aniso as u16,
                     ..Default::default()
                 })
             })
@@ -597,6 +620,7 @@ impl Gfx {
             &self.queue,
             image,
             true,
+            self.quality.aniso > 1,
             "custom shader picture",
         );
         self.extras.textures.insert(id, view);
@@ -633,6 +657,7 @@ impl Gfx {
                 crate::shader::FRAGMENT,
                 &model_buffers(skinned, false),
                 x.format,
+                x.samples,
                 blend,
             ),
             Variant::SpriteWorld | Variant::SpriteUi => {
@@ -655,7 +680,11 @@ impl Gfx {
                         entry_point: Some(crate::shader::FRAGMENT),
                         compilation_options: Default::default(),
                         targets: &[Some(wgpu::ColorTargetState {
-                            format: x.format,
+                            format: if variant == Variant::SpriteWorld {
+                                x.format
+                            } else {
+                                x.screen_format
+                            },
                             blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                             write_mask: wgpu::ColorWrites::ALL,
                         })],
@@ -670,7 +699,14 @@ impl Gfx {
                             bias: Default::default(),
                         },
                     ),
-                    multisample: wgpu::MultisampleState::default(),
+                    multisample: wgpu::MultisampleState {
+                        count: if variant == Variant::SpriteWorld {
+                            x.samples
+                        } else {
+                            1
+                        },
+                        ..Default::default()
+                    },
                     multiview_mask: None,
                     cache: None,
                 })
@@ -866,7 +902,7 @@ impl Gfx {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: self.format,
+            format: self.world_format,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });

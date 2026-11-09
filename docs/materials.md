@@ -40,8 +40,7 @@ map, a gold sphere and a glowing lamp (and two custom shaders, see `docs/shaders
 | `emissiveFactor`, `emissiveTexture` | added light. A grey `emissiveFactor` with no picture keeps Nova's own meaning: the surface glows in its own colour at that strength (what the model editor's glow writes) |
 
 Each kind of picture is taken from the first part that has one (as the base colour picture is), and maps use the same texture
-coordinates (`TEXCOORD_0`) and repeat mode as the base colour. Not read: occlusion maps, `KHR_materials_*` extensions (clearcoat,
-transmission, emissive strength...), a second UV set; the model's notes in `nova check` list what was ignored. A part with a normal
+coordinates (`TEXCOORD_0`) and repeat mode as the base colour. Not read: occlusion maps, `KHR_materials_*` extensions other than clearcoat (transmission, emissive strength...), a second UV set; the model's notes in `nova check` list what was ignored. A part with a normal
 map but no base colour picture is drawn without its normal map.
 
 ## The light
@@ -54,7 +53,10 @@ It is a cheap stand-in for physically based light, chosen to sit with Nova's oth
   (non-metals reflect 4%, metals their own colour);
 - the reflection of the surroundings is the sky's two colours along the reflected view (or the ambient light when there is no
   sky), by a roughness-aware Fresnel term; there are no reflection probes or screen-space reflections;
+- a **clear coat** (`KHR_materials_clearcoat`: `clearcoatFactor` and `clearcoatRoughnessFactor`; Blender's "Coat Weight" exports it) is a smooth glossy layer over all of that, as on car paint: it takes a few percent of the light at a straight look and more at a slant, adds its own sharp sun and lamp highlights and reflects the sky (a mirror at its roughness), using the model's smooth normal, not the normal map. The layer's pictures are ignored (the factors are used; `nova check` says so);
 - emission is added, then fog.
+
+With `nova.graphics{ ibl = true }` the reflections and the ambient light of materials come from a small cube map made from `nova.sky` (see `docs/switch-class-graphics.md`) instead of the sky's two colours and one ambient colour.
 
 Skinned and animated models, scenery, level of detail fades and shadows work as before. See-through models stay see-through.
 
