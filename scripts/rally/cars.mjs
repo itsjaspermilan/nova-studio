@@ -1,4 +1,8 @@
-// The rally game's road cars, remade 2026-11-09 in a Switch-era style (think Horizon Chase 2, Breath of the Wild): smooth, chunky
+// A generator for classic road cars in the style of the reference models in examples/ (a boxy 1980s sedan as a painted GLB, and a Dodge
+// Challenger and a Ford Mustang as Blender files): realistic proportions and trim, as in a 1960s to 1980s car, not a toy. Two families
+// (`boxy` sedans, wagons and vans; `muscle` coupes), a shared detail library (`classicDetails`) and an open-wheel `formula` for the racers.
+// New cars are new entries in CARS (a spec: sizes, the line of the roof, the paint, the extras). The road cars were first made
+// 2026-11-09 in a smooth Switch-era style (think Horizon Chase 2, Breath of the Wild) (think Horizon Chase 2, Breath of the Wild): smooth, chunky
 // bodies lofted from a ring of points at each station along the car, soft shading across shared points, clean glass with a sky
 // gradient, a lighter top and a darker sill, dark wheel arches, spoked rims. Written through the Nova MCP server (models/<name>.model.json
 // and .glb), so the studio's model editor opens them as it does any model.
@@ -42,7 +46,7 @@ function body(s) {
   // the top line, smoothed a little along z so that the corners of the glasshouse are soft
   let top = zs.map((z) => along(s.top, z));
   for (let pass = 0; pass < (s.soft ?? 2); pass++) top = top.map((v, i) => (i === 0 || i === n - 1 ? v : (top[i - 1] + 2 * v + top[i + 1]) / 4));
-  const T = 3.6; // how far from an end the rounding of the nose and tail reaches
+  const T = s.endRound ?? 3.6; // how far from an end the rounding of the nose and tail reaches
   const half = zs.map((z, i) => {
     const dEnd = Math.min(z - zr, zf - z);
     const k = dEnd >= T ? 1 : Math.sqrt(1 - (1 - dEnd / T) ** 2);
@@ -60,7 +64,7 @@ function body(s) {
     const sw = s.stripe ? s.stripe.half : 1.6;
     const p = [
       [0, yb], [hb * 0.6, yb], [hb, yb + 1.0], [hw * 0.99, yb + (ysb - yb) * 0.38], [hw, yb + (ysb - yb) * 0.8], [hw * 0.995, ysb],
-      [lerp(hw, hwt, 0.45), ysb + (yt - ysb) * 0.45], [hwt, ysb + (yt - ysb) * 0.86], [hwt - Math.min(2.4, hwt * 0.22), yt - 0.55],
+      [lerp(hw, hwt, 0.45), ysb + (yt - ysb) * 0.45], [hwt, ysb + (yt - ysb) * 0.86], [hwt - Math.min(s.roofRound ?? 2.4, hwt * 0.22), yt - 0.55],
       [Math.min(sw, hwt * 0.4), yt - 0.05], [0, yt],
     ];
     return { z, p, k, hw, yb, ys: ysb, yt };
@@ -201,7 +205,7 @@ function body(s) {
     const lip = orient(tv, tp, (c, pl) => [c[0] - centres[pl.q][0], c[1] - centres[pl.q][1], c[2] - centres[pl.q][2]]).map((pl) => { const o = { ...pl }; delete o.q; return o; });
     cubes.push({ name: `wheel arch ${tag}`, shape: "mesh", color: lipColor, verts: tv.map((p) => p.map(r2)), polys: lip });
   }
-  return { cubes, half, at, Y, zs };
+  return { cubes, half, at, Y, zs, surf };
 }
 
 // ---- wheels ----------------------------------------------------------------------------------------------------------------------
@@ -213,9 +217,13 @@ function wheel(name, x, z, s) {
   const cubes = [
     t("tyre", R, tw, "#2b2c33", 24),
     t("sidewall", R * 0.86, tw + 0.5, "#3a3b44", 24),
-    t("rim", R * 0.62, tw + 0.9, s.rim, 20),
-    t("rim dish", R * 0.5, tw + 1.1, mul(s.rim, 0.4), 20),
   ];
+  if (s.wheelStyle === "steel") {
+    // a steel wheel with a chrome ring, a dark dish and a chrome dog-dish cap (the classics' hubcaps)
+    cubes.push(t("rim", R * 0.74, tw + 0.8, "#cfd3da", 24), t("rim dish", R * 0.6, tw + 1.1, s.dish ?? "#2a2c33", 24), t("hub cap", R * 0.34, tw + 1.6, "#e2e5ea", 18), t("hub cap top", R * 0.14, tw + 2.0, "#9aa0aa", 12));
+    return { name, origin: [x * s.track, R, z], rotation: [0, 0, 0], cubes, children: [] };
+  }
+  cubes.push(t("rim", R * 0.62, tw + 0.9, s.rim, 20), t("rim dish", R * 0.5, tw + 1.1, mul(s.rim, 0.4), 20));
   // five spokes: one star-shaped mesh, a face each side and a wall between
   const W = (tw + 1.5) / 2, tip = R * 0.52, valley = R * 0.2, N = 10;
   const verts = [], polys = [];
@@ -332,32 +340,91 @@ const wing = ({ box, s: sp }) => {
   box("wing", 0, sp.ys + 4.1, sp.zr + 2.8, [sp.hw * 1.7, 1.2, 6.4], "#2c2e36");
 };
 
+// The two classic families (from the reference models in examples/: a boxy 1980s sedan, a Challenger, a Mustang). A boxy 3-box sedan,
+// 4.7 m on a 2.85 m wheelbase, flat roof, upright screens, chrome and rubber; and a muscle coupe, 4.9 m, a long flat bonnet, a raked screen,
+// a high short tail, fat rear tyres.
+const classic = { classic: true, wheelStyle: "steel", endRound: 1.8, roofRound: 1.1, soft: 1, bumper: 3.4, trim: "#2b2d35" };
+const boxy = (o) => ({
+  ...classic, zr: -37.6, zf: 37.6, hw: 14.6, yb: 3.8, ys: 15.4, roof: 22.2, pivot: 5.8, R: 5.8, tw: 6.6, track: 11.8, wheelZ: [22.4, -23.2], tumble: 0.1,
+  top: [[-37.6, 14.8], [-26.5, 15.3], [-20, 22.0], [-17, 22.2], [6, 22.2], [13.5, 14.8], [24, 14.4], [37.6, 13.6]],
+  front: [6, 13.5], rear: [-26.5, -20], sideGlass: [[1.4, 11.6], [-24.2, -1.0]], seams: [12.4, 0.2, -25.4], rim: "#d7dde6", ...o,
+});
+const muscle = (o) => ({
+  ...classic, zr: -39.4, zf: 39.4, hw: 15.5, yb: 3.4, ys: 14.4, roof: 20.8, pivot: 5.4, R: 5.8, tw: 7.4, twr: 8.8, track: 12.2, wheelZ: [22.8, -21.8], tumble: 0.2, exhaust: true,
+  top: [[-39.4, 15.2], [-37, 15.8], [-28, 16.0], [-17, 20.2], [-12, 20.8], [-1, 20.8], [1, 20.4], [12, 14.6], [24, 14.4], [39.4, 13.6]],
+  front: [-1, 12], rear: [-28, -12], sideGlass: [[-1.5, 10.6], [-24, -3.4]], seams: [11.4, -2.6], handles: [-0.8], rim: "#d7dde6",
+  extras: [({ box, lamp, s: sp }) => {
+    // a bonnet scoop and a duck-tail spoiler
+    lamp("bonnet scoop", 0, sp.ys + 0.6, 20, [sp.hw * 0.7, 3.4, 14], sp.paint, 0);
+    box("scoop intake", 0, sp.ys + 1.2, 26.6, [sp.hw * 0.5, 1.4, 0.8], "#0e0f12");
+    box("duck tail", 0, 16.6, -36.6, [sp.hw * 1.6, 1.2, 5.0], sp.paint);
+  }], ...o,
+});
+
 const CARS = {
-  car_sedan: sedan({ paint: "#ec5a3c" }),
-  car_taxi: sedan({
-    paint: "#f6b91a", patch: [{ z: [-31, 31], segs: [4], color: "#202026" }],
-    extras: [({ box, s: sp }) => box("taxi sign", 0, sp.roof + 1.6, -4.5, [8, 2.8, 3.6], "#fff6d0", { emissive: 0.6 })],
+  car_sedan: boxy({ paint: "#d9482e" }),
+  car_taxi: boxy({
+    paint: "#f1b21a", patch: [{ z: [-30, 30], segs: [4], color: "#202026" }],
+    extras: [({ box, s: sp }) => box("taxi sign", 0, sp.roof + 1.6, -6, [8, 2.8, 3.6], "#fff6d0", { emissive: 0.6 })],
   }),
-  car_police: sedan({
-    paint: "#f3f5f8", patch: [{ z: [-26, 14], segs: [2, 3], color: "#1f2f66" }],
-    extras: [({ box, s: sp }) => { box("siren red", -3.2, sp.roof + 1.4, -4.5, [5, 2.2, 3.4], "#ff3340", { emissive: 0.9 }); box("siren blue", 3.2, sp.roof + 1.4, -4.5, [5, 2.2, 3.4], "#3d7bff", { emissive: 0.9 }); }],
+  car_police: boxy({
+    paint: "#f3f5f8", patch: [{ z: [-30, 14], segs: [2, 3], color: "#1f2f66" }],
+    extras: [({ box, s: sp }) => { box("siren red", -3.2, sp.roof + 1.4, -6, [5, 2.2, 3.4], "#ff3340", { emissive: 0.9 }); box("siren blue", 3.2, sp.roof + 1.4, -6, [5, 2.2, 3.4], "#3d7bff", { emissive: 0.9 }); }],
   }),
-  car_green: hatch({ paint: "#33b46c" }),
-  car_blue: hatch({
-    paint: "#2f7de1", stripe: { half: 2.6, color: "#f4f6fa", z: [[-32, 32]] },
-    extras: [wing], yb: 3.2, hw: 14.4, roof: 22.8, ys: 14.4,
-  }),
-  car_suv: suv({ paint: "#5b8f5a" }),
-  car_suvl: wagon({ paint: "#2e4396" }),
-  car_van: van({ paint: "#f1efe7", patch: [{ z: [-40, 40], segs: [3], color: "#2b5aa8" }] }),
-  car_pickup: pickup({ paint: "#e0842a" }),
-  car_yellow: sporty({ paint: "#ffd21f", stripe: { half: 2.2, color: "#26272e", z: [[-33, 39.5]] }, extras: [wing] }),
-  car: sporty({ paint: "#e5243b", stripe: { half: 2.2, color: "#f4f6fa", z: [[-33, 39.5]] }, extras: [wing] }),
+  car_green: hatch({ ...classic, paint: "#33b46c", rim: "#d7dde6", wheelStyle: "steel", endRound: 2.0, trim: "#2b2d35" }),
+  car_blue: muscle({ paint: "#2563c9", patch: [{ z: [-39.4, 39.4], segs: [3], color: "#f4f6fa" }], stripe: { half: 2.6, color: "#f4f6fa", z: [[-39.4, 39.4]] } }),
+  car_suv: suv({ ...classic, paint: "#5b8f5a", trim: "#2b2d35" }),
+  car_suvl: wagon({ ...classic, paint: "#2e4396", trim: "#2b2d35" }),
+  car_van: van({ ...classic, paint: "#f1efe7", patch: [{ z: [-40, 40], segs: [3], color: "#2b5aa8" }], trim: "#2b2d35" }),
+  car_pickup: pickup({ ...classic, paint: "#e0842a", trim: "#2b2d35" }),
+  car_yellow: muscle({ paint: "#ffc61a", stripe: { half: 2.4, color: "#1c1d22", z: [[-39.4, 39.4]] } }),
+  car: muscle({ paint: "#d91f35", stripe: { half: 2.4, color: "#f4f6fa", z: [[-39.4, 39.4]] } }),
   racecar_green: formula({ paint: "#17a05a", accent: "#f5f7fa", stripe: { half: 2.0, color: "#f5f7fa", z: [[-34, 41]] } }),
   racecar_orange: formula({ paint: "#ff7a1a", accent: "#1b1d24", stripe: { half: 2.0, color: "#1b1d24", z: [[-34, 41]] } }),
   racecar_red: formula({ paint: "#e1262e", accent: "#f5f7fa", stripe: { half: 2.0, color: "#f5f7fa", z: [[-34, 41]] } }),
   racecar_white: formula({ paint: "#f3f5f8", accent: "#2a64d6", stripe: { half: 2.0, color: "#2a64d6", z: [[-34, 41]] } }),
 };
+
+// ---- the classics' details --------------------------------------------------------------------------------------------------------
+// What the reference cars (a boxy 1980s sedan, a Challenger, a Mustang) have that a plain body does not: chrome bumpers with a black rubber
+// strip and overriders, a framed grille with bars, quad headlights with chrome bezels and amber indicators, a chrome side moulding between
+// the wheel arches, door handles, exhaust tips, and steel wheels with dog-dish caps (see `wheel`).
+function classicDetails({ box, lamp, b, s, front, rear }) {
+  const CH = "#d4d8df", CH2 = "#aeb4be", RUB = "#17181d";
+  for (const [z, e, dir, nm] of [[s.zf, front, 1, "front"], [s.zr, rear, -1, "rear"]]) {
+    const w = e.hw * 2 * 0.99;
+    box(`${nm} bumper`, 0, e.yb + 2.8, z + dir * 0.7, [w, 2.0, 1.8], CH);
+    box(`${nm} bumper rubber`, 0, e.yb + 1.3, z + dir * 0.6, [w * 0.96, 1.0, 1.6], RUB);
+    for (const x of [-1, 1]) box(`${nm} overrider`, x * w * 0.36, e.yb + 2.8, z + dir * 1.5, [1.5, 2.4, 0.9], CH2);
+  }
+  // the grille and the headlights
+  const gw = Math.min(front.hw * 1.1, 17), gy = front.yb + (front.yt - front.yb) * 0.46, fz = s.zf;
+  box("grille frame", 0, gy, fz + 0.2, [gw, 3.6, 0.8], CH);
+  box("grille", 0, gy, fz + 0.4, [gw - 1.0, 2.7, 0.8], "#0e0f12");
+  for (let k = -3; k <= 3; k++) box("grille bar", (k * (gw - 1.8)) / 7, gy, fz + 0.9, [0.32, 2.6, 0.4], CH);
+  for (const side of [-1, 1]) {
+    const x = side * (gw / 2 + 3.2);
+    box("headlight bezel", x, gy, fz + 0.15, [4.8, 3.4, 0.8], CH);
+    box("headlight", x, gy, fz + 0.55, [3.9, 2.6, 0.8], "#fff1c4", { emissive: 0.95 });
+    box("indicator", x, gy - 3.0, fz + 0.15, [3.2, 1.1, 0.7], "#ffb21e", { emissive: 0.45 });
+  }
+  // the side moulding between the arches (chrome over a black rubber strip), and the door handles
+  const z0 = s.wheelZ[1] + s.R * 1.35, z1 = s.wheelZ[0] - s.R * 1.35, ym = s.yb + (s.ys - s.yb) * 0.42;
+  let xs = 0;
+  for (let z = z0; z <= z1; z += 2) xs = Math.max(xs, b.surf(z, ym));
+  for (const side of [-1, 1]) {
+    box("side moulding", side * (xs + 0.25), ym + 0.5, (z0 + z1) / 2, [0.6, 0.7, z1 - z0], CH);
+    box("side rubber", side * (xs + 0.25), ym - 0.3, (z0 + z1) / 2, [0.6, 0.9, z1 - z0], RUB);
+    const hy = s.ys - 1.6;
+    for (const hz of s.handles ?? (s.seams && s.seams.length > 1 ? [s.seams[1] + 2.6, s.seams[1] - 2.6] : [])) {
+      let xh = 0;
+      for (let z = hz - 1.5; z <= hz + 1.5; z += 1) xh = Math.max(xh, b.surf(z, hy));
+      box("door handle", side * (xh + 0.3), hy, hz, [0.7, 0.8, 3.0], CH);
+    }
+  }
+  // exhaust tips under the tail (muscle cars: two big chrome ones)
+  if (s.exhaust) for (const x of [-1, 1]) lamp("exhaust tip", x * rear.hw * 0.5, rear.yb + 0.6, s.zr - 0.6, [2.6, 2.6, 3.6], CH, 0);
+}
 
 // ---- build ----------------------------------------------------------------------------------------------------------------------
 function build(name, s) {
@@ -367,13 +434,14 @@ function build(name, s) {
   const lamp = (nm, x, y, z, size, color, emissive) => lightsAndMore.push({ name: nm, shape: "sphere", from: [x - size[0] / 2, b.Y(y) - size[1] / 2, z - size[2] / 2], size, color, emissive, segments: 12 });
   const box = (nm, x, y, z, size, color, extra = {}) => lightsAndMore.push({ name: nm, shape: "box", from: [x - size[0] / 2, b.Y(y) - size[1] / 2, z - size[2] / 2], size, color, ...extra });
   const front = b.at(s.zf), rear = b.at(s.zr);
+  if (s.classic) classicDetails({ box, lamp, b, s, front, rear });
   // headlights and tail lights
   for (const side of s.open ? [] : [-1, 1]) {
     const fy = front.yb + (front.yt - front.yb) * 0.66, ry = rear.yb + (rear.yt - rear.yb) * 0.72;
-    box(`headlight ${side > 0 ? "left" : "right"}`, side * front.hw * 0.66, fy, s.zf + 0.05, [front.hw * 0.4, 1.9, 0.9], "#fff3cc", { emissive: 0.95 });
+    if (!s.classic) box(`headlight ${side > 0 ? "left" : "right"}`, side * front.hw * 0.66, fy, s.zf + 0.05, [front.hw * 0.4, 1.9, 0.9], "#fff3cc", { emissive: 0.95 });
     box(`tail light ${side > 0 ? "left" : "right"}`, side * rear.hw * 0.66, ry, s.zr - 0.05, [rear.hw * 0.42, 1.7, 0.9], "#e5202e", { emissive: 0.8 });
   }
-  if (!s.open) box("grille", 0, front.yb + (front.yt - front.yb) * 0.4, s.zf + 0.1, [front.hw * 0.62, 1.8, 0.9], "#17181d");
+  if (!s.open && !s.classic) box("grille", 0, front.yb + (front.yt - front.yb) * 0.4, s.zf + 0.1, [front.hw * 0.62, 1.8, 0.9], "#17181d");
   if (!s.open) box("plate", 0, rear.yb + (rear.yt - rear.yb) * 0.42, s.zr - 0.1, [5.6, 2.0, 0.7], "#f0f0ea");
   for (const side of s.open ? [] : [-1, 1]) box(`mirror ${side > 0 ? "left" : "right"}`, side * (b.at(s.front[0] - 1.2).hw + 1.1), b.at(s.front[0]).ys + 2.6, s.front[0] - 0.4, [1.4, 1.6, 2.6], "#1d1e24");
   (s.extras ?? []).forEach((f) => f({ box, lamp, b, s, hw }));

@@ -95,8 +95,8 @@ end
 local LENGTH = {
   kart = 2.0, ambulance = 4.1, firetruck = 4.4, garbage_truck = 4.7, delivery = 4.4, tractor = 2.6,
   -- the remade road cars (scripts/rally/cars.mjs), in metres
-  car_sedan = 4.6, car_taxi = 4.6, car_police = 4.6, car_green = 4.0, car_blue = 4.0, car_suv = 4.6, car_suvl = 4.8, car_van = 5.0,
-  car_pickup = 5.3, car_yellow = 4.5, car = 4.5, racecar_green = 4.6, racecar_orange = 4.6, racecar_red = 4.6, racecar_white = 4.6,
+  car_sedan = 4.7, car_taxi = 4.7, car_police = 4.7, car_green = 4.0, car_blue = 4.9, car_suv = 4.6, car_suvl = 4.8, car_van = 5.0,
+  car_pickup = 5.3, car_yellow = 4.9, car = 4.9, racecar_green = 4.6, racecar_orange = 4.6, racecar_red = 4.6, racecar_white = 4.6,
 }
 local GREY = { 70, 72, 80 }
 local SHOWN = { ry = 0, tint = nil, scale = 1, shadow = false }
