@@ -171,15 +171,18 @@ function Car:drive(dt)
     end
     if c.brake > 0 then
       if vf > 0.6 then vf = vf - self.brake_power * c.brake * (1 - 0.3 * lock) * dt
-      else vf = math.max(-10, vf - self.power * 0.5 * c.brake * dt) end
+      else vf = math.max(-10, vf - self.power * 0.9 * c.brake * dt) end -- (reverse: enough to back out of the grass, see below)
     end
   end
   -- hills: uphill takes speed away and downhill gives it (a little less than gravity: this is a game)
   local gx, gz = nova.terrain_slope(self.x, self.z)
   vf = vf - (gx * sinh + gz * cosh) * 7.5 * dt
   -- rolling resistance, engine braking, and the grass dragging at the wheels
+  -- (the grass drags hardest at speed; at a crawl it holds back only a little, so a car can always reverse out of it: with the
+  -- whole drag at every speed, reverse, which pulled half as hard as first gear, could not move a car on the grass at all)
   local sign = vf >= 0 and 1 or -1
-  vf = vf - sign * math.min(math.abs(vf), (1.1 + kind.drag + 0.055 * math.abs(vf)) * dt)
+  local drag = kind.drag * math.min(1, 0.25 + math.abs(vf) / 10)
+  vf = vf - sign * math.min(math.abs(vf), (1.1 + drag + 0.055 * math.abs(vf)) * dt)
   if vf > top then vf = vf - (vf - top) * 1.5 * dt end
 
   -- a drift: with power on in a bend the rear tyres let go by how much this car likes to (`oversteer`, the player's car only),

@@ -756,6 +756,58 @@ fn a_player_who_has_stopped_on_the_road_is_left_alone() {
     );
 }
 
+/// Off the road: a car stopped on the grass backs out of it with the brake (reverse once pulled less than the grass held, so it could
+/// not move at all), and a player who drives on, far from the road, is put back on it behind a fade to black.
+#[test]
+fn a_car_on_the_grass_reverses_and_one_far_from_the_road_is_put_back() {
+    let mut g = load();
+    start_race(&mut g, 0, false);
+    let mut log = Vec::new();
+    run_until(&mut g, &mut log, "the countdown ends", 60 * 8, |l| {
+        l.iter().any(|x| x == "go")
+    });
+    // full throttle and hard right until the car is on the grass, then stop on it
+    let mut on_grass = false;
+    for _ in 0..60 * 8 {
+        for _ in 0..10 {
+            frame_with(&mut g, &[("key:ArrowUp", 1.0), ("key:ArrowRight", 1.0)]);
+        }
+        if stat(&mut g)["rough"] > 0.5 {
+            on_grass = true;
+            break;
+        }
+    }
+    assert!(on_grass, "the car reached the grass");
+    for _ in 0..90 {
+        frame_with(&mut g, &[("key:ArrowDown", 1.0)]); // brake to a stop
+    }
+    for _ in 0..90 {
+        frame_with(&mut g, &[("key:ArrowDown", 1.0)]); // and on into reverse
+    }
+    let s = stat(&mut g);
+    assert!(s["speed"] < -2.0, "the car reverses on the grass: {s:?}");
+    // now drive away from the road until the game puts the car back
+    g.take_log();
+    let mut log = Vec::new();
+    for _ in 0..60 * 30 {
+        frame_with(&mut g, &[("key:ArrowUp", 1.0), ("key:ArrowRight", 0.3)]);
+        log.extend(g.take_log());
+        if log
+            .iter()
+            .any(|l| l.starts_with("You put back on the road (too far"))
+        {
+            break;
+        }
+    }
+    assert!(
+        log.iter()
+            .any(|l| l.starts_with("You put back on the road (too far")),
+        "{log:?}"
+    );
+    let s = stat(&mut g);
+    assert!(s["off"] < 10.0, "back on the road: {s:?}");
+}
+
 #[test]
 fn the_car_takes_a_few_seconds_to_reach_100_kmh() {
     let mut g = load();

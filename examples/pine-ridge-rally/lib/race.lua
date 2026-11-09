@@ -30,6 +30,8 @@ local MAP_COLORS = { { 96, 165, 250 }, { 74, 222, 128 }, { 244, 114, 182 } }
 local ROAD_EDGE = 0.2        -- metres from the edge of the road's surface (a waypoint's `w`, 6 on most of a course) to where the grass starts
 -- what a road kind is under the tyres: asphalt is a road, the rest is loose (gravel, sand, snow, dirt)
 local function surface_of(road) if road == "road_asphalt" then return "road", false end return "dirt", true end
+local RESCUE_FAR = 30         -- metres from the middle of the road at which the player is put back by itself
+local RESCUE_OUT, RESCUE_HOLD, RESCUE_IN = 0.45, 0.2, 0.45 -- the fade to black, the moment of black, and the fade back (seconds)
 local LOOK_FAR = 240         -- metres of scenery drawn around the camera (fog hides its edge)
 
 -- ---- driving: the player's controls and the other drivers ---------------------------------------------------------------
@@ -450,6 +452,35 @@ function race.scene()
     return order
   end
 
+  -- Putting the player back: the screen fades to black, the car is set on the road (the nearest waypoint, facing along it) while
+  -- it is dark, and the picture fades back in.
+  function Race:update_rescue(dt)
+    local r = self.rescue
+    if not r then return end
+    r.t = r.t + dt
+    local p = self.player
+    if not r.done and r.t >= RESCUE_OUT then
+      r.done = true
+      self:respawn(p)
+      self:update_camera(1) -- (the camera jumps behind the car while the screen is black)
+      if self.stage and r.asked then
+        self.clock = self.clock + 5 -- (a stage is timed: asking to be put back costs five seconds)
+        self:say("Back on the road   +5 s", 1.8)
+      else
+        self:say("Back on the road", 1.5)
+      end
+      nova.log(string.format("You put back on the road (%s)", r.asked and "asked" or "too far from it"))
+    end
+    if r.t >= RESCUE_OUT + RESCUE_HOLD + RESCUE_IN then self.rescue = nil end
+  end
+  function Race:rescue_dark()
+    local r = self.rescue
+    if not r then return 0 end
+    if r.t < RESCUE_OUT then return r.t / RESCUE_OUT end
+    if r.t < RESCUE_OUT + RESCUE_HOLD then return 1 end
+    return math.max(0, 1 - (r.t - RESCUE_OUT - RESCUE_HOLD) / RESCUE_IN)
+  end
+
   function Race:respawn(car)
     local p = track.point(car.waypoint or 1)
     car:teleport(p.x, p.z, p.heading)
@@ -567,7 +598,7 @@ function race.scene()
     end
     if nova.input.pressed("stats") then
       local c = self.player
-      nova.log(string.format("rally: speed=%.1f slip=%.2f heading=%.2f yaw=%.2f x=%.1f z=%.1f orbit=%.2f lift=%.2f", c.speed, c.slip, c.heading, c.yaw_rate or 0, c.x, c.z, self.orbit and self.orbit.yaw or 0, self.orbit and self.orbit.lift or 0))
+      nova.log(string.format("rally: speed=%.1f slip=%.2f heading=%.2f yaw=%.2f x=%.1f z=%.1f orbit=%.2f lift=%.2f off=%.1f rough=%d", c.speed, c.slip, c.heading, c.yaw_rate or 0, c.x, c.z, self.orbit and self.orbit.yaw or 0, self.orbit and self.orbit.lift or 0, c.off_middle or 0, c.surface == "rough" and 1 or 0))
     end
     if nova.input.pressed("view") then self.view_mode = self.view_mode % 3 + 1 end
     -- F9 lets the computer drive for you (for demos, and for testing the circuits without a controller)
@@ -645,7 +676,10 @@ function race.scene()
           if car.stuck > 1.0 and (car.reversing or 0) <= 0 then car.reversing = 1.4 end
           if (car.reversing or 0) > 0 then car.reversing = car.reversing - dt end
         end
-        if asked or car.off_middle > 60 or ((car ~= p or p.autopilot) and car.stuck > 4) then
+        if car == p and not p.autopilot and (asked or car.off_middle > RESCUE_FAR) then
+          -- the player is put back behind a fade to black (asked for, or far from the road), not in a jump
+          if not self.rescue then self.rescue = { t = 0, asked = asked } end
+        elseif asked or car.off_middle > 60 or ((car ~= p or p.autopilot) and car.stuck > 4) then
           self:respawn(car)
           if car == p and self.stage and asked then
             self.clock = self.clock + 5 -- (a stage is timed: being put back costs five seconds)
@@ -655,6 +689,8 @@ function race.scene()
         end
       end
     end
+
+    self:update_rescue(dt)
 
     -- the sound of every engine that is close enough to hear
     for _, car in ipairs(self.cars) do
@@ -961,6 +997,11 @@ function race.scene()
   function Race:draw_ui()
     -- (text is drawn over the wipe, so the HUD waits until the wipe has gone)
     if self.paused then self:draw_pause() elseif not transition.busy() then self:draw_hud() end
+    local dark = self:rescue_dark()
+    if dark > 0 and not self.paused then
+      local w = nova.view()
+      nova.ui.rect(0, 0, w, 540, { 0, 0, 0, math.floor(255 * dark) })
+    end
     transition.draw()
   end
 
@@ -1073,7 +1114,10 @@ function race.scene()
       if facing < -0.3 then hud_text(w / 2, MESSAGE_Y + 96, "WRONG WAY", F.title, 39, C.red, { align = "center" }) end
     end
     if p.surface == "rough" and self.phase == "racing" and p.off_middle > 14 then
-      hud_text(w / 2, 430, "Press R to get back on the road", F.semi, 18, C.hud, { align = "center" })
+      local words = "Back on the road"
+      local tw = nova.ui.text_width(words, { font = F.semi, size = 18 })
+      ui.pad("pad_y", w / 2 - (tw + 34) / 2, 426, 26)
+      hud_text(w / 2 - (tw + 34) / 2 + 34, 430, words, F.semi, 18, C.hud)
     end
   end
 
