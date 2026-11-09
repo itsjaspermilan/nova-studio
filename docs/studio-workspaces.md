@@ -18,9 +18,9 @@ What stays the same everywhere, so a person learns it once:
   A torn-off window shares the project, undo history per document, and the file watcher, so two windows on one project stay in step.
 - **Areas.** Every workspace is a set of resizable areas (Blender's idea: any area can be switched to another editor type, split,
   joined, maximised, full-screened). Layouts are saved per workspace and per user; each workspace ships 2 to 3 presets
-  (Beginner, Standard, Full). Areas always include: **main view**, **browser/outliner** (left), **properties** (right), **timeline or
+  (for example a modelling, an animation and a texturing layout). Areas always include: **main view**, **browser/outliner** (left), **properties** (right), **timeline or
   strip** (bottom). The Lua code editor can be an area in any workspace.
-- **Beginner mode** (a toggle): fewer tools, plain-word labels, the same file output. Experts turn on everything. Same data, two faces.
+- **One interface, no beginner mode** (decided 2026-11-09): everyone gets the full toolset. Learnability comes from templates, guided exercises, hints and the command palette (`docs/studio-ux.md` section 6).
 - **Command palette** (Cmd/Ctrl-K): search every command, setting and help page; shows the shortcut (Blender's F3 search).
 - **Keymaps:** defaults per workspace, an editable keymap, optional Blender and Pixelorama/Aseprite presets. Controller navigation remains
   for the device-side tools only.
@@ -213,8 +213,7 @@ This is the existing studio's hub plus the runtime. It is the glue: it never tri
 - **Lua editor**: syntax, completions and hover docs from `nova-api.json`, diagnostics, go-to definition, find references, snippets,
   rename, code folding, split view, minimap, formatter, **debugger** (breakpoints, step, watch, call stack), **profiler**
   (frame time, Lua time, draw calls, triangles, memory) over the existing `PerfStrip`/`DebugPanel`.
-- **Scene and UI layout editor** (the shared scene editor, see 2.6) and **visual logic** for beginners (events and actions that write
-  Lua a person could type).
+- **Scene and UI layout editor** (the shared scene editor, see 2.6).
 - **Input and actions editor**, controller mapping, a glyph set (Nintendo, per project decision), localisation tables, save-data
   inspector, a **Simulate** panel (exists) to try inputs.
 - **Play**: embedded desktop runtime window, device deploy, hot reload of code and assets, console, screenshots and capture, a
@@ -237,6 +236,6 @@ This is the existing studio's hub plus the runtime. It is the glue: it never tri
 
 ## Open questions for the owner
 1. Torn-off windows: share one undo history or one per window? (Recommended: per document, shared across windows.)
-2. Beginner mode on by default, or ask on first launch?
+2. (Settled: no beginner mode.)
 3. Should the Blender keymap be the default in Model, or Nova's own simpler one with Blender as a preset?
 4. Which workspace do you want first: Model (long, the biggest gap), Sound (mixer/piano roll) or Sprites?

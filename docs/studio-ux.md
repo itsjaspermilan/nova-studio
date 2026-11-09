@@ -12,7 +12,7 @@ people already know from their OS and from Blender, Pixelorama and LMMS, and spe
 1. **One undo history per document.** A document (a sprite, a model, a song, a scene, a Lua file) opens in **at most one place at a
    time**. Asking to open it again focuses the existing tab or window. A document can still be torn off to its own window; two
    *different* documents can sit in two windows.
-2. **Beginner mode is on by default** (asked once at first launch whether to keep it on).
+2. **No beginner mode: one full, advanced interface for everyone** (revised 2026-11-09: making a real game needs the whole toolset in front of you). Beginners are helped by learnability, not a reduced UI (section 6).
 3. **The Model workspace defaults to the Blender keymap** (with Nova's simplified labels in menus; Blender stays the reference).
 4. **Order of work (my call):** the common spine first (it is what every workspace needs), then Model, then Sound, then Sprites polish
    (closest to done). Reasons under "Order".
@@ -53,7 +53,7 @@ Rules for Nova:
 - **Icons: one family, one stroke weight**, drawn for 16, 20 and 24 px, with a **tooltip showing name, shortcut and a one-line what-it-does**
   after a short hover; a longer "?" page one click away. Tools with variants (select box, circle, lasso) show the active one with a small
   corner mark and open on long-press or right-click. No tool has two icons and no two tools share one.
-- **Labels on demand:** a toolbar setting "Icons / Icons and labels"; beginner mode shows labels.
+- **Labels on demand:** a toolbar setting "Icons / Icons and labels".
 - **Targets:** at least 24 px hit area (32 px default, 44 px on touch and the Retroid-sized layout), per WCAG 2.2 target size and Fitts's law.
 - **Colour is not the only signal** (selected = filled background plus an indicator line); contrast 4.5:1 for text and 3:1 for icons.
 - **Context menus** (right-click or Ctrl-click, two-finger tap on a trackpad) show the same commands, the likely ones first.
@@ -101,7 +101,7 @@ Rules:
   Tear off a workspace *or* a document into its own window via right-click, drag out of the strip, or Window menu. Because a document
   lives in one place at a time (decision 1), the document tab shows where it lives ("open in another window" with a Jump button).
 - **Areas are resizable, collapsible and swappable** (Blender): drag the border to resize, drag the corner to split or join, a header
-  menu switches the area type. Default presets keep this hidden until wanted (Beginner shows a fixed layout).
+  menu switches the area type. The default layout of each workspace is already the full one.
 - **Saved layouts** per workspace (Reset layout is always in the Window menu). Layout restores per project.
 - **Dialogs are rare.** Prefer inline panels, popovers and undo over confirmation boxes. Destructive actions use undo, not "Are you sure?",
   except deleting files from disk (move to Trash/Recycle Bin).
@@ -109,18 +109,21 @@ Rules:
 - **Search everywhere** (command palette) finds commands, documents, assets, Lua symbols, help pages and settings.
 - **Themes:** system, dark, light; one accent colour; a neutral grey palette that does not fight game art. No custom skins at first.
 
-## 6. Beginner mode (default on)
+## 6. Helping beginners without a second interface
 
-Same data, fewer and plainer controls. Examples: Model hides edit modes beyond the basics and shows labelled big buttons (Add Shape,
-Move, Turn, Resize, Paint, Save); Sprites shows pencil, eraser, fill, picker, select, move and a three-frame timeline; Sound shows
-instrument pads and a one-track "make a sound" panel; Engine shows "New game from a template", Run and Share. A *Show everything*
-switch sits in each header; toggling never changes the files. Every beginner screen offers a "what next?" hint and a guided first
-exercise per workspace (the `lib/tutorials` system). Plain words (see the voice rules above) and previews rather than numbers.
+There is one interface, the full one. What makes it learnable instead:
+- **Good defaults and templates:** a new project starts from a working template; every tool starts with sensible settings.
+- **Guided first exercise per workspace** (`lib/tutorials`), a short "make a first X" that runs inside the real workspace, with highlights on the real controls; it can be skipped and re-run from Help.
+- **Hints that go away:** the status bar shows what the active tool's mouse and keys do; tooltips show the shortcut and a one-line meaning; a "?" opens the page for a panel.
+- **Plain words** for every label and message (voice rules above), and previews rather than numbers where a picture will do.
+- **The command palette** finds anything by name, so a person need not know where a tool lives.
+- **Panels collapse and the layout resets** (Window > Reset layout) so a busy screen is one click from calm.
+- **Example project** (Pine Ridge Rally) to open, run, and take apart.
 
 ## 7. Testing the UX (needed before we claim it works)
 
 - **Mockup pass first** (screens before code): wireframes for each workspace's three presets and first-launch; reviewed by the owner
-  (the wireframe of Model's layout is in the chat reply for this document; every other workspace gets one before it is built).
+  (`docs/ux/studio-wireframes.html`).
 - **Task tests** with 3 to 5 people per workspace, scripted: "make a sprite with 4 frames", "draw a 40k-triangle car", "make a coin
   sound", "run a game on the Retroid". Measure time and stumbles, not opinions.
 - **Input matrix** on: a Mac trackpad, a Windows precision touchpad, a 3-button mouse, a 2-button mouse, a tablet pen. Windows chrome
@@ -132,7 +135,7 @@ exercise per workspace (the `lib/tutorials` system). Plain words (see the voice 
 
 1. **Spine:** command registry, native menus (macOS) and drawn menus (Windows), the command palette, keymap editor with Blender and
    default presets, area/layout system, tear-off windows with the one-document rule, autosave and recovery, first-launch screen
-   (navigation scheme, beginner mode), icon set and tooltips. It touches every workspace, so everything else rides on it.
+   (navigation scheme), icon set and tooltips. It touches every workspace, so everything else rides on it.
 2. **Model**: viewport navigation (mouse and trackpad), gizmos, selection modes and edit tools, snapping, proportional edit, outliner and
    properties panels. This is the biggest felt gap (the owner called the current modeller below standard) and the Pine Ridge cars are
    the proving project.

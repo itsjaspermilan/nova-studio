@@ -47,7 +47,7 @@ p.note{color:var(--mute);margin:0 0 12px;max-width:80ch}
 <body>
 <div class="wrap">
 <h1>Nova Studio wireframes</h1>
-<p class="note">Grey-box layouts for the one-studio plan (<code>docs/studio-workspaces.md</code>, <code>docs/studio-ux.md</code>). They show where things go, not final looks. Every workspace has the same four zones: a menu bar, workspace tabs with global actions, a context header and a tool shelf, a main view with side panels, and a bottom strip and status bar. Orange notes are decisions to check.</p>
+<p class="note">Grey-box layouts for the one-studio plan (<code>docs/studio-workspaces.md</code>, <code>docs/studio-ux.md</code>). They show where things go, not final looks. There is one interface (no simplified mode); every workspace has the same four zones: a menu bar, workspace tabs with global actions, a context header and a tool shelf, a main view with side panels, and a bottom strip and status bar. Orange notes are decisions to check.</p>
 
 <div id="out"></div>
 </div>
@@ -60,20 +60,15 @@ function win(title,note,html){document.getElementById('out').insertAdjacentHTML(
 const shelf=(icons,on=0)=>`<div class="shelf">${icons.map((n,i)=>I(n,i==on?'on':'')).join('')}</div>`;
 
 /* 0 first launch */
-document.getElementById('out').insertAdjacentHTML('beforeend',`<h2>0. First launch</h2><p class="note">Three short steps, each skippable, all changeable later in Settings. It detects a trackpad and suggests the matching choice.</p>
+document.getElementById('out').insertAdjacentHTML('beforeend',`<h2>0. First launch</h2><p class="note">Two short steps, each skippable, all changeable later in Settings. It detects a trackpad and suggests the matching choice.</p>
 <div class="grid g2">
-<div class="card"><b>1 of 3 · How do you move around?</b>
+<div class="card"><b>1 of 2 · How do you move around?</b>
 <div class="opt on">${I('hand-finger')}<div><b>Trackpad</b><br><span class="mute">Two fingers orbit and scroll, pinch zooms. Detected on this Mac.</span></div></div>
 <div class="opt">${I('mouse')}<div><b>Mouse with a middle button</b><br><span class="mute">Middle drag orbits, Shift pans, wheel zooms.</span></div></div>
 <div class="opt">${I('pencil')}<div><b>Pen tablet</b><br><span class="mute">Pen to draw and sculpt, buttons to orbit.</span></div></div>
 <p class="mute">Try it: a small cube to orbit, pan and zoom. <span class="ann">On-screen orbit, pan and zoom buttons always stay in the 3D view.</span></p>
 <span class="btn">Skip</span> <span class="btn p">Next</span></div>
-<div class="card"><b>2 of 3 · How much do you want to see?</b>
-<div class="opt on">${I('seeding')}<div><b>Keep it simple</b><br><span class="mute">Fewer tools, plain words, big buttons. Same files underneath. (Recommended)</span></div></div>
-<div class="opt">${I('adjustments')}<div><b>Show everything</b><br><span class="mute">All tools and panels, like Blender and Pixelorama.</span></div></div>
-<p class="mute">You can flip this with <span class="key">Show everything</span> in any workspace header.</p>
-<span class="btn">Back</span> <span class="btn p">Next</span></div>
-<div class="card"><b>3 of 3 · Start with</b>
+<div class="card"><b>2 of 2 · Start with</b>
 <div class="opt">${I('folder-plus')}<div><b>A new game from a template</b></div></div>
 <div class="opt">${I('folder-open')}<div><b>Open a project folder</b></div></div>
 <div class="opt on">${I('school')}<div><b>Make my first thing (ten minutes)</b><br><span class="mute">A guided sprite, model or sound.</span></div></div>
@@ -84,7 +79,7 @@ document.getElementById('out').insertAdjacentHTML('beforeend',`<h2>0. First laun
 <p class="ann">Windows: the same screens; menus sit in the title bar with Alt access.</p></div></div>`);
 
 /* 1 model beginner + standard */
-win('1. Model, Standard layout','Blender-like. Left: tool shelf. Right: outliner above properties (tabs for object, modifiers, material, bones). Bottom: timeline or UV editor (the area type can be switched).',
+win('1. Model','Blender-like. Left: tool shelf. Right: outliner above properties (tabs for object, modifiers, material, bones). Bottom: timeline or UV editor (the area type can be switched).',
 bar(['File','Edit','Add','Object','Select','Mesh','Window','Help'],'Model')+
 `<div class="hdr"><span class="chip">Edit mode ${I('chevron-down')}</span><span>Vertex · Edge · Face</span><span>Snap: Vertex</span><span>Pivot: Median</span><span>Proportional</span><span style="margin-left:auto">Solid · Material · Wire</span></div>
 <div class="row" style="grid-template-columns:40px 1fr 200px">${shelf(['pointer','arrows-move','rotate-clockwise','arrows-maximize','box-multiple','cut','ruler-2'])}
@@ -93,15 +88,10 @@ bar(['File','Edit','Add','Object','Select','Mesh','Window','Help'],'Model')+
 <div class="bot"><span class="mute">Timeline ${I('player-play')} ━━●━━━━━━━━━━━ 24 fps</span></div>
 <div class="status"><span>LMB select</span><span>Tab edit mode</span><span>G R S</span><span>38,412 of 40,000 triangles</span></div>`);
 
-win('1b. Model, Beginner layout','No modes, no outliner tree: big labelled buttons, a parts list, and a "what next?" card. Show everything is one click.',
-bar(['File','Edit','Add','View','Window','Help'],'Model')+
-`<div class="hdr"><span class="chip">${I('plus')} Add shape</span><span class="chip">${I('arrows-move')} Move</span><span class="chip">${I('rotate-clockwise')} Turn</span><span class="chip">${I('arrows-maximize')} Resize</span><span class="chip">${I('brush')} Paint</span><span style="margin-left:auto" class="chip">Show everything ${I('toggle-left')}</span></div>
-<div class="row" style="grid-template-columns:1fr 200px"><div class="main">3D viewport</div>
-<div class="side"><div class="box"><b>Parts</b><span class="mute">body<br>wheel front left<br>wheel front right</span></div><div class="box"><b>What next?</b><small>Add wheels, then paint the body. ${I('arrow-right')}</small></div></div></div>
-<div class="status"><span>Drag to turn the view</span><span>Scroll or pinch to zoom</span><span>Save is automatic</span></div>`);
+
 
 /* 2 sprites */
-win('2. Sprites, Standard layout','Pixelorama-like: two tool slots (left click, right click), canvas, layers and palette on the right, frames timeline below, a preview that plays the animation.',
+win('2. Sprites','Pixelorama-like: two tool slots (left click, right click), canvas, layers and palette on the right, frames timeline below, a preview that plays the animation.',
 bar(['File','Edit','Image','Layer','Frame','Select','Window','Help'],'Sprites')+
 `<div class="hdr"><span class="chip">Pencil ${I('chevron-down')}</span><span>Size 1</span><span>Pixel-perfect ✓</span><span>Symmetry: off</span><span>Tiled: off</span><span style="margin-left:auto">Zoom 800% · 32×32</span></div>
 <div class="row" style="grid-template-columns:76px 1fr 220px"><div class="shelf" style="gap:8px">${I('pencil','on')}${I('eraser')}${I('bucket')}${I('line')}${I('square')}${I('circle')}${I('select')}${I('arrows-move')}${I('color-picker')}<span class="mute" style="font-size:10px">L / R</span></div>
@@ -111,14 +101,10 @@ bar(['File','Edit','Image','Layer','Frame','Select','Window','Help'],'Sprites')+
 <div class="bot"><div style="display:flex;gap:16px;align-items:center"><span class="mute" style="width:70px">Frames</span><span>${[1,2,3,4,5,6,7,8].map(i=>`<span class="cel ${i==2?'f':''}"></span>`).join('')}</span><span class="mute">${I('player-play')} 12 fps · onion skin ✓</span></div></div>
 <div class="status"><span>L: pencil · R: eraser</span><span>Shift line</span><span>Alt pick colour</span><span>3 frames used by "run"</span></div>`);
 
-win('2b. Sprites, Beginner layout','Seven tools, a three-frame strip, no layer groups. The picture can be opened with Show everything.',
-bar(['File','Edit','Frame','Window','Help'],'Sprites')+
-`<div class="row" style="grid-template-columns:60px 1fr 170px"><div class="shelf">${I('pencil','on')}${I('eraser')}${I('bucket')}${I('color-picker')}${I('select')}${I('arrows-move')}${I('zoom-in')}</div><div class="main">Canvas</div>
-<div class="side"><div class="box"><b>Colours</b><span class="swatch" style="background:#222"></span><span class="swatch" style="background:#e24b4a"></span><span class="swatch" style="background:#2f6fd0"></span></div><div class="box"><b>Play it</b><small>${I('player-play')} Preview</small></div></div></div>
-<div class="bot">${[1,2,3].map(i=>`<span class="cel ${i==1?'f':''}"></span>`).join('')} <span class="chip">${I('plus')} New frame</span></div>`);
+
 
 /* 3 sound */
-win('3. Sound, Standard layout','LMMS-like: song editor with tracks (instrument, sample, pattern, automation), a piano roll or mixer below, instrument and effects panel on the right, the sample editor as another area type.',
+win('3. Sound','LMMS-like: song editor with tracks (instrument, sample, pattern, automation), a piano roll or mixer below, instrument and effects panel on the right, the sample editor as another area type.',
 bar(['File','Edit','Track','Clip','Mixer','Window','Help'],'Sound','♩ 120 · 4/4')+
 `<div class="hdr"><span>${I('player-play')} ${I('player-stop')} ${I('player-record')}</span><span class="chip">Loop 1–9</span><span>Snap 1/16</span><span style="margin-left:auto">Master −8 LUFS</span></div>
 <div class="row" style="grid-template-columns:40px 1fr 220px">${shelf(['pointer','pencil','cut','eraser','volume','wave-sine'])}
@@ -132,13 +118,10 @@ bar(['File','Edit','Track','Clip','Mixer','Window','Help'],'Sound','♩ 120 · 4
 <div class="bot"><span class="mute">Piano roll ${I('arrow-right')} notes, velocity and pan lanes, ghost notes from other tracks</span></div>
 <div class="status"><span>Double-click a clip to edit</span><span>Shift knife</span><span>Space play</span><span>Voices 14 of 32</span></div>`);
 
-win('3b. Sound, Beginner layout','Two ideas only: make a sound effect, make a tune. Pads and a one-track editor.',
-bar(['File','Edit','Window','Help'],'Sound')+
-`<div class="row" style="grid-template-columns:1fr 1fr;min-height:200px"><div class="main" style="display:block;text-align:left;padding:12px"><b>Make a sound</b><div class="pad"><div>Coin</div><div>Jump</div><div>Laser</div><div>Boom</div><div>Hit</div><div>Pickup</div><div>Engine</div><div>Random</div></div><p class="mute">Tap a pad, press ${I('wand')} Change it a little to try variations.</p></div>
-<div class="main" style="display:block;text-align:left;padding:12px;border-left:1px solid var(--line)"><b>Make a tune</b><div class="lane"><span class="nm">Melody</span><span class="clip" style="width:140px"></span></div><div class="lane"><span class="nm">Drums</span><span class="clip" style="width:200px"></span></div><p class="mute">Pick an instrument, click notes in the grid.</p></div></div>`);
+
 
 /* 4 engine */
-win('4. Engine, Standard layout','Code and putting it together: file tree and asset browser on the left, Lua editor in the middle, a scene or document view as another tab, console, problems and profiler below, device and run controls in the header.',
+win('4. Engine','Code and putting it together: file tree and asset browser on the left, Lua editor in the middle, a scene or document view as another tab, console, problems and profiler below, device and run controls in the header.',
 bar(['File','Edit','View','Project','Run','Device','Window','Help'],'Engine')+
 `<div class="hdr"><span class="chip">Retroid Pocket 6 ${I('chevron-down')}</span><span style="color:var(--ok)">● connected</span><span>${I('player-play')} Play · ${I('device-mobile')} On device</span><span style="margin-left:auto">Hot reload on</span></div>
 <div class="row" style="grid-template-columns:200px 1fr 200px"><div class="side" style="border-left:0;border-right:1px solid var(--line)"><div class="box"><b>Project</b><small>▾ scenes<br>▾ entities<br>▾ models<br>▾ sprites<br>▾ sounds<br>nova.json</small></div><div class="box"><b>Assets</b><small>thumbnails · search · tags</small></div></div>

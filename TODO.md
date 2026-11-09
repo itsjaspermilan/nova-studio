@@ -25,7 +25,7 @@ per-game notes and the device logs) was pruned on 2026-11-09; it is in git: `git
 
 Decided with the owner: **one Tauri app** (the four-app split in `docs/split-plan.md` was dropped). Four workspaces open as tabs or, on
 request, their own windows: **Model** (3D, modelled on Blender), **Sprites** (2D, Pixelorama), **Sound** (LMMS), **Engine** (Lua, scenes,
-play, export). One project folder. A document opens in one place at a time, one undo history per document. Beginner mode on by default.
+play, export). One project folder. A document opens in one place at a time, one undo history per document. One full interface, no beginner mode.
 Blender keymap in Model. Goal: a free, all-in-one studio for making games, no strings attached; nothing quirky.
 **Detail lives in the docs; this list is what must not be missed. Tick an item only when it is built and checked.**
 
@@ -35,7 +35,7 @@ Blender keymap in Model. Goal: a free, all-in-one studio for making games, no st
   SongEditor, TrackEditor, TimelineEditor, SceneEditor, Scene3D, Editor); items below say what is added.
 
 ### S0: Mockups and decisions (before code)
-- [ ] Wireframes for each workspace's presets (Beginner, Standard, Full) and the first-launch screen (Model's layout is drawn; Sprites, Sound, Engine, first-launch are not).
+- [ ] Wireframes for each workspace's presets and the first-launch screen: drawn in `docs/ux/studio-wireframes.html`; the owner reviews them.
 - [ ] Owner reviews the wireframes; icon set chosen (one family, 16/20/24 px) and licence checked (`licenses/`).
 - [ ] Evaluate the Windows snap-layout plugins; plan a Windows test (no Windows machine here).
 
@@ -45,11 +45,11 @@ Blender keymap in Model. Goal: a free, all-in-one studio for making games, no st
 - [ ] Window chrome: macOS overlay title bar with native traffic lights; Windows `decorations: false` with our own caption buttons (+ snap-layout flyout, unverified until run on Windows).
 - [ ] Command palette (Cmd/Ctrl-K) searching commands, documents, assets, Lua symbols, help, settings.
 - [ ] Keymap system: per-workspace defaults, Blender preset (default in Model), editable, conflict warnings, printable cheat sheet.
-- [ ] Areas: resizable, collapsible, split/join, switchable type, saved layouts per workspace and project, Reset layout; Beginner presets fixed.
+- [ ] Areas: resizable, collapsible, split/join, switchable type, saved layouts per workspace and project, Reset layout.
 - [ ] Tabs and tear-off windows (Tauri multi-window); a document is open in one place only (focus the existing one, "open in another window" + Jump); one undo history per document, shown as a history list.
 - [ ] Autosave and crash recovery for every document; version snapshots (named, restore).
-- [ ] First-launch screen: navigation scheme (mouse, trackpad, pen), beginner mode (default on), short practice area.
-- [ ] Beginner mode: "Show everything" switch per header, never changes the files; "what next?" hints; first guided exercise per workspace (`lib/tutorials`).
+- [ ] First-launch screen: navigation scheme (mouse, trackpad, pen), short practice area.
+- [ ] Learnability instead of a beginner mode: tool hints in the status bar, a guided first exercise per workspace (`lib/tutorials`), project templates.
 - [ ] Input layer: 3-button mouse, Mac trackpad gestures, Windows precision touchpad, pen pressure/tilt/barrel button, emulate-numpad, on-screen navigation gizmos; natural-scroll follows the OS.
 - [ ] Accessibility: keyboard focus order and rings, screen-reader names, UI scale 75 to 200 percent, reduced motion, high-contrast theme, colour-blind-safe graphs, no hover-only functions, 32 px targets.
 - [ ] Shared asset browser (thumbnails, tags, search, drag into any workspace, "Open in"); linked data, not copies; F5 Play from anywhere; status bar with tool hints, budgets, device.
@@ -81,7 +81,7 @@ Blender keymap in Model. Goal: a free, all-in-one studio for making games, no st
 ### S5: Engine workspace (section 5)
 - [ ] Hub, project settings, device manager, export (`.npk`, APK), asset import settings.
 - [ ] Lua editor: go to definition, references, rename, snippets, folding, formatter; debugger and profiler panels.
-- [ ] Scene and UI layout editor (shared with Model 2.6); visual logic for beginners that writes plain Lua; input and actions editor, localisation, save inspector.
+- [ ] Scene and UI layout editor (shared with Model 2.6); input and actions editor, localisation, save inspector.
 - [ ] Play: desktop window, device deploy, hot reload, console, capture, input replay.
 
 ### Cross-cutting
