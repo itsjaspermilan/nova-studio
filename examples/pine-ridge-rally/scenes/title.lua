@@ -426,8 +426,8 @@ function Title:track_menu()
   local best_label, best_value
   if item.km then best_label, best_value = "Best score", tostring(nova.save.get("rally_score_" .. item.id, "-"))
   else best_label, best_value = "Best lap", ui.time(state.best("lap", item.id)) end
-  local right = { "panel", anchor = "topright", y = 58, w = 507, h = 358, pad = 0, gap = 0,
-    { "box", h = 178, draw = function(r) if open then route(item.id, r, 22) else ui.lock(r.x + r.w / 2 - 24, r.y + r.h / 2 - 24, 48, C.dim) end end },
+  local right = { "panel", anchor = "topright", y = 86, w = 507, h = 352, pad = 0, gap = 0,
+    { "box", h = 172, draw = function(r) if open then route(item.id, r, 22) else ui.lock(r.x + r.w / 2 - 24, r.y + r.h / 2 - 24, 48, C.dim) end end },
     { "column", pad = { 18, 0 }, gap = 6, cells,
       open and line(best_label, best_value, C.gold) or { "text", "Locked: " .. why, font = F.semi, size = 18, color = C.gold, h = 27, wrap = true },
       line("Prize", prize_text(item), C.gold),
@@ -437,7 +437,7 @@ function Title:track_menu()
   local r = nova.ui.menu {
     id = "pick_track", kind = "stack", w = "100%", h = 450, margin = 36, wrap = false, enter = false,
     { "column", anchor = "topleft", y = -9, ui.header(kicker, item.name, 45) },
-    { "column", anchor = "topleft", y = 58, w = 352, list },
+    { "column", anchor = "topleft", y = 86, w = 352, list },
     right,
   }
   ui.hints({ { "pad_dpad", "Look" }, { "pad_a", "Select" }, { "pad_b", "Back" } })
