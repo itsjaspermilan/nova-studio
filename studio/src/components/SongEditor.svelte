@@ -8,6 +8,7 @@
   import { encodeWav, toBase64, frames, type Sound } from "../lib/wav";
   import { studio } from "../lib/store.svelte";
   import MixerPanel from "./MixerPanel.svelte";
+  import { dbfs } from "../lib/mixer";
   import { commands } from "../lib/commands";
   import { copyNotes, deleteNotes, moveNotes, noteKey, notesInBox, pasteNotes, quantizeTrack, repeatSong, setAllVelocities, stemName, stemSong, type ClipNote } from "../lib/song-edit";
 
@@ -84,6 +85,10 @@
   let audio: AudioContext | undefined;
   let source: AudioBufferSourceNode | undefined;
   let startedAt = 0; // audio time when step 0 of the current pass started
+  /// The loudest sample just now, in dB below full scale, for the mixer's live meter (-Infinity when nothing plays).
+  let liveDb = $state(-Infinity);
+  let analyser: AnalyserNode | undefined;
+  let analyserData: Float32Array<ArrayBuffer> | undefined;
   let raf = 0;
   let debounce: ReturnType<typeof setTimeout> | undefined;
 
@@ -101,7 +106,13 @@
     const node = audio.createBufferSource();
     node.buffer = buffer();
     node.loop = loop;
-    node.connect(audio.destination);
+    if (!analyser) {
+      analyser = audio.createAnalyser();
+      analyser.fftSize = 1024;
+      analyser.connect(audio.destination);
+      analyserData = new Float32Array(analyser.fftSize);
+    }
+    node.connect(analyser);
     node.onended = () => { if (source === node && !loop) stopPlayback(); };
     const offset = Math.max(0, Math.min(offsetSeconds, node.buffer.duration - 0.001));
     node.start(0, offset);
@@ -115,12 +126,21 @@
       let t = audio.currentTime - startedAt;
       t = loop ? t % seconds : Math.min(t, seconds);
       playhead = t / stepSeconds(song);
+      if (analyser && analyserData) {
+        analyser.getFloatTimeDomainData(analyserData);
+        let peak = 0;
+        for (const v of analyserData) peak = Math.max(peak, Math.abs(v));
+        // (falls away smoothly instead of flickering)
+        const db = dbfs(peak);
+        liveDb = Math.max(db, Number.isFinite(liveDb) ? liveDb - 1.2 : -Infinity);
+      }
       raf = requestAnimationFrame(frame);
     };
     frame();
   }
   function stopPlayback() {
     playing = false;
+    liveDb = -Infinity;
     cancelAnimationFrame(raf);
     clearTimeout(debounce);
     try { source?.stop(); } catch { /* already stopped */ }
@@ -557,6 +577,10 @@
         {#each SLIDERS.slice(4) as s (s.key)}
           <label class="slider"><span>{s.label}</span><input type="range" min={s.min} max={s.max} step={s.step} value={current[s.key]} oninput={(e) => setTrack({ [s.key]: Number(e.currentTarget.value) })} /><output>{current[s.key].toFixed(2)}</output></label>
         {/each}
+        <p class="dim small">Echo (repeats of the sound)</p>
+        <label class="slider"><span>Echo</span><input type="range" min="0" max="1" step="0.01" value={current.echo ?? 0} oninput={(e) => setTrack({ echo: Number(e.currentTarget.value) })} /><output>{Math.round((current.echo ?? 0) * 100)}%</output></label>
+        <label class="slider"><span>Gap</span><input type="range" min="1" max="16" step="1" value={current.echoTime ?? 2} oninput={(e) => setTrack({ echoTime: Number(e.currentTarget.value) })} /><output>{current.echoTime ?? 2}</output></label>
+        <label class="slider"><span>Repeats</span><input type="range" min="0" max="0.85" step="0.01" value={current.echoFeedback ?? 0.4} oninput={(e) => setTrack({ echoFeedback: Number(e.currentTarget.value) })} /><output>{Math.round((current.echoFeedback ?? 0.4) * 100)}%</output></label>
         {#if current.kind === "synth"}
           <p class="dim small">Fuller sound (0 or 1 leaves it off)</p>
           {#each VOICE as v (v.key)}
@@ -581,7 +605,7 @@
       </aside>
     </div>
     {#if lower === "mixer"}
-      <MixerPanel {song} {track} onchange={(next) => commit(next)} onselect={(i) => { track = i; selected = null; }} />
+      <MixerPanel {song} {track} {liveDb} onchange={(next) => commit(next)} onselect={(i) => { track = i; selected = null; }} />
     {/if}
   </div>
 {/if}

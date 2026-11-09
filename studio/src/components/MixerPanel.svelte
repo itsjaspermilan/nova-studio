@@ -4,7 +4,7 @@
   import { measureLevels, meterFraction, showDb, type Levels } from "../lib/mixer";
   import { MAX_MASTER, setMaster, updateTrack, type Song } from "../lib/song";
 
-  let { song, track, onchange, onselect }: { song: Song; track: number; onchange: (next: Song) => void; onselect: (i: number) => void } = $props();
+  let { song, track, liveDb = -Infinity, onchange, onselect }: { song: Song; track: number; liveDb?: number; onchange: (next: Song) => void; onselect: (i: number) => void } = $props();
   let levels: Levels | null = $state.raw(null);
   let measuring = $state(false);
 
@@ -40,6 +40,7 @@
       <output>{Math.round(t.volume * 100)}%</output>
       <label class="small">Pan<input type="range" min="-1" max="1" step="0.05" value={t.pan} oninput={(e) => set(i, { pan: Number(e.currentTarget.value) })} aria-label="{t.name} pan" /></label>
       <label class="small">Reverb<input type="range" min="0" max="1" step="0.01" value={t.reverb ?? 0} oninput={(e) => set(i, { reverb: Number(e.currentTarget.value) })} aria-label="{t.name} reverb" /></label>
+      <label class="small">Echo<input type="range" min="0" max="1" step="0.01" value={t.echo ?? 0} oninput={(e) => set(i, { echo: Number(e.currentTarget.value) })} aria-label="{t.name} echo" /></label>
       <div class="ms">
         <button class:on={t.mute} aria-pressed={t.mute} onclick={() => set(i, { mute: !t.mute })} title="Silence this track">M</button>
         <button class:on={!!t.solo} aria-pressed={!!t.solo} onclick={() => set(i, { solo: !t.solo })} title="Hear only the soloed tracks">S</button>
@@ -54,6 +55,7 @@
       {#if levels}
         <div class="meter" role="img" aria-label="Master peak {showDb(levels.master.peakDb)}"><i class:hot={hot(levels.master.peakDb)} style:height="{meterFraction(levels.master.peakDb) * 100}%"></i></div>
       {/if}
+      <div class="meter live" role="img" aria-label="Level now {showDb(liveDb)}" title="The level of what is playing now"><i class:hot={hot(liveDb)} style:height="{meterFraction(liveDb) * 100}%"></i></div>
     </div>
     <output>{Math.round((song.master?.volume ?? 1) * 100)}%</output>
     {#if levels}<span class="db dim">peak {showDb(levels.master.peakDb)}<br />average {showDb(levels.master.rmsDb)}</span>{/if}

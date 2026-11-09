@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addNote, addTrack, changeNote, drumHit, drumTrack, envelope, isAudible, setMaster, midiFreq, newSong, noteAt, noteName, parseSong, removeNote, removeTrack, renderSong, serializeSong, setLength, setTempo, songSeconds, stepSeconds, studioDrumHit, synthTrack, transpose, updateTrack, type Song } from "./song";
+import { addNote, addTrack, changeNote, drumHit, drumTrack, echoOf, envelope, isAudible, setMaster, midiFreq, newSong, noteAt, noteName, parseSong, removeNote, removeTrack, renderSong, serializeSong, setLength, setTempo, songSeconds, stepSeconds, studioDrumHit, synthTrack, transpose, updateTrack, type Song } from "./song";
 import { frames, peak } from "./wav";
 
 const empty = (over: Partial<Song> = {}): Song => ({ version: 1, bpm: 120, stepsPerBeat: 4, length: 16, tracks: [synthTrack("a")], ...over });
@@ -297,5 +297,42 @@ describe("solo and the master fader", () => {
     const bad = JSON.parse(serializeSong(s));
     bad.master = { volume: 5 };
     expect(parseSong(JSON.stringify(bad)).ok).toBe(false);
+  });
+});
+
+describe("echo", () => {
+  const dry = () => {
+    const s = empty({ length: 16 });
+    s.tracks = [{ ...synthTrack("a", "sine"), attack: 0, decay: 0, sustain: 1, release: 0, volume: 1, notes: [{ step: 0, len: 1, pitch: 69, vel: 1 }] }];
+    return s;
+  };
+
+  it("repeats a signal later and quieter, and carries on past the end for the wrap", () => {
+    const e = echoOf(Float32Array.from([1, 0, 0, 0]), 2, 0.5, 6);
+    expect(Array.from(e)).toEqual([0, 0, 1, 0, 0.5, 0, 0.25, 0, 0.125, 0]);
+    expect(e).toHaveLength(10);
+  });
+
+  it("adds sound after a note has ended, and leaves a song with no echo as it was", () => {
+    const plain = renderSong(dry(), 8000);
+    const withEcho = dry();
+    withEcho.tracks[0] = { ...withEcho.tracks[0]!, echo: 0.6, echoTime: 4, echoFeedback: 0.5 };
+    const e = renderSong(withEcho, 8000);
+    const stepSamples = Math.round(stepSeconds(dry()) * 8000);
+    // (one step long note: the second step onwards is silent without an echo)
+    expect(energy(plain.channels[0]!, stepSamples * 2, stepSamples * 3)).toBeLessThan(1e-6);
+    expect(energy(e.channels[0]!, stepSamples * 4, stepSamples * 5)).toBeGreaterThan(0.1);
+    expect(Array.from(renderSong(dry(), 8000).channels[0]!)).toEqual(Array.from(plain.channels[0]!));
+  });
+
+  it("is saved, read back and kept in range", () => {
+    const s = dry();
+    s.tracks[0] = { ...s.tracks[0]!, echo: 0.5, echoTime: 3, echoFeedback: 0.6 };
+    const again = parseSong(serializeSong(s));
+    expect(again.ok && again.song.tracks[0]!.echoTime).toBe(3);
+    const wild = JSON.parse(serializeSong(s));
+    wild.tracks[0].echoFeedback = 5;
+    const p = parseSong(JSON.stringify(wild));
+    expect(p.ok && p.song.tracks[0]!.echoFeedback).toBe(0.85);
   });
 });

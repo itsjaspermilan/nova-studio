@@ -54,6 +54,10 @@ export interface Track {
   vibrato?: number;
   /// How much of the track goes to the song's reverb (0 to 1).
   reverb?: number;
+  /// An echo on the track: how loud it is (0 to 1), how far apart the repeats are in steps (1 to 16), and how much of each repeat comes back (0 to 0.85).
+  echo?: number;
+  echoTime?: number;
+  echoFeedback?: number;
   /// Drum tracks: "chip" (the original) or "studio".
   kit?: "chip" | "studio";
 }
@@ -118,7 +122,7 @@ const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n
 
 /// The voice fields' names and ranges.
 const VOICE_RANGES: [keyof Track, number, number][] = [
-  ["unison", 1, 7], ["detune", 0, 60], ["cutoff", 0, 20000], ["resonance", 0, 0.9], ["sweep", 0, 1], ["sub", 0, 1], ["vibrato", 0, 0.5], ["reverb", 0, 1],
+  ["unison", 1, 7], ["detune", 0, 60], ["cutoff", 0, 20000], ["resonance", 0, 0.9], ["sweep", 0, 1], ["sub", 0, 1], ["vibrato", 0, 0.5], ["reverb", 0, 1], ["echo", 0, 1], ["echoTime", 1, 16], ["echoFeedback", 0, 0.85],
 ];
 
 export type Parsed = { ok: true; song: Song } | { ok: false; error: string };
@@ -623,6 +627,19 @@ function richNote(
 
 /// Plays the song offline into a stereo sound exactly `songSeconds` long. Note tails that run past the end
 /// wrap to the beginning so a loop is seamless.
+/// The echo of a signal: each repeat `delay` samples later and `feedback` as loud as the one before. The result is `total + tail` long; the part
+/// past the end belongs at the start (a looping song's echoes wrap round).
+export function echoOf(input: Float32Array, delay: number, feedback: number, tail: number): Float32Array {
+  const total = input.length;
+  const out = new Float32Array(total + tail);
+  const d = Math.max(1, Math.round(delay));
+  for (let i = d; i < out.length; i++) {
+    const heard = i - d < total ? input[i - d]! : 0;
+    out[i] = heard + feedback * out[i - d]!;
+  }
+  return out;
+}
+
 /// Whether a track is heard: not muted, and, when any track is soloed, soloed.
 export function isAudible(song: Song, track: Track): boolean {
   return !track.mute && (!song.tracks.some((t) => t.solo) || !!track.solo);
@@ -654,10 +671,17 @@ export function renderSong(song: Song, rate = RATE): Sound {
     const gl = Math.cos(((pan + 1) * Math.PI) / 4) * track.volume;
     const gr = Math.sin(((pan + 1) * Math.PI) / 4) * track.volume;
     const send = clamp(track.reverb ?? 0, 0, 1);
+    const echo = clamp(track.echo ?? 0, 0, 1);
+    const echoL = echo > 0 ? new Float32Array(total) : null;
+    const echoR = echo > 0 ? new Float32Array(total) : null;
     const mix = (index: number, v: number) => {
       const i = index % total; // wrap the tail onto the start
       left[i] = left[i]! + v * gl;
       right[i] = right[i]! + v * gr;
+      if (echoL && echoR) {
+        echoL[i] = echoL[i]! + v * gl;
+        echoR[i] = echoR[i]! + v * gr;
+      }
       if (send > 0) {
         sendL![i] = sendL![i]! + v * gl * send;
         sendR![i] = sendR![i]! + v * gr * send;
@@ -668,6 +692,10 @@ export function renderSong(song: Song, rate = RATE): Sound {
       const i = index % total;
       left[i] = left[i]! + l;
       right[i] = right[i]! + r;
+      if (echoL && echoR) {
+        echoL[i] = echoL[i]! + l;
+        echoR[i] = echoR[i]! + r;
+      }
       if (send > 0) {
         sendL![i] = sendL![i]! + l * send;
         sendR![i] = sendR![i]! + r * send;
@@ -694,6 +722,21 @@ export function renderSong(song: Song, rate = RATE): Sound {
       for (let k = 0; k < length; k++) {
         const e = envelope(k / rate, hold, track.attack, track.decay, track.sustain, track.release);
         if (e > 0) mix(startIndex + k, osc(freq, rate) * e * n.vel * 0.5);
+      }
+    }
+    if (echoL && echoR) {
+      const delay = clamp(track.echoTime ?? 2, 1, 16) * stepSec * rate;
+      const feedback = clamp(track.echoFeedback ?? 0.4, 0, 0.85);
+      // (enough tail for the repeats to fade to a thousandth)
+      const repeats = feedback > 0 ? Math.min(40, Math.ceil(Math.log(0.001) / Math.log(feedback))) : 1;
+      const tail = Math.round(delay * repeats);
+      const wl = echoOf(echoL, delay, feedback, tail);
+      const wr = echoOf(echoR, delay, feedback, tail);
+      // (the repeats of a looping song's last notes come round to its start)
+      for (let i = 0; i < wl.length; i++) {
+        const j = i % total;
+        left[j] = left[j]! + wl[i]! * echo;
+        right[j] = right[j]! + wr[i]! * echo;
       }
     }
   });
