@@ -329,13 +329,13 @@ end
 -- lamp in the middle, as on an open-wheel car or a kart). Measured from the red at the back of each model (2026-11-08); the road cars were
 -- remade 2026-11-09 by scripts/rally/cars.mjs, which prints their numbers.
 local TAIL = {
-  car = { z = -2.46, y = 0.74, x = 0.63 }, car_yellow = { z = -2.46, y = 0.74, x = 0.63 },
+  car = { z = -2.39, y = 0.79, x = 0.47 }, car_yellow = { z = -2.43, y = 0.74, x = 0.5 },
   racecar_green = { z = -2.12, y = 0.34, x = 0 }, racecar_orange = { z = -2.12, y = 0.34, x = 0 },
   racecar_red = { z = -2.12, y = 0.34, x = 0 }, racecar_white = { z = -2.12, y = 0.34, x = 0 },
-  car_blue = { z = -2.46, y = 0.74, x = 0.63 }, car_green = { z = -1.92, y = 0.7, x = 0.53 },
-  car_sedan = { z = -2.33, y = 0.78, x = 0.57 }, car_suv = { z = -2.08, y = 0.61, x = 0.52 },
-  car_suvl = { z = -2.33, y = 0.78, x = 0.57 }, car_taxi = { z = -2.6, y = 0.67, x = 0.63 },
-  car_police = { z = -2.6, y = 0.67, x = 0.63 }, car_van = { z = -2.3, y = 0.96, x = 0.61 },
+  car_blue = { z = -2.39, y = 0.79, x = 0.47 }, car_green = { z = -1.92, y = 0.71, x = 0.42 },
+  car_sedan = { z = -2.33, y = 0.78, x = 0.45 }, car_suv = { z = -2.08, y = 0.61, x = 0.42 },
+  car_suvl = { z = -2.33, y = 0.78, x = 0.45 }, car_taxi = { z = -2.6, y = 0.67, x = 0.5 },
+  car_police = { z = -2.6, y = 0.67, x = 0.5 }, car_van = { z = -2.3, y = 0.97, x = 0.48 },
   car_pickup = { z = -2.62, y = 0.9, x = 0.6 },
   ambulance = { z = -2.02, y = 0.6, x = 0.7 }, firetruck = { z = -2.19, y = 0.6, x = 0.8 },
   garbage_truck = { z = -2.37, y = 0.59, x = 0.5 }, delivery = { z = -2.19, y = 0.53, x = 0.7 },

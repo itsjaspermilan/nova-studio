@@ -54,10 +54,12 @@ function body(s) {
     const dEnd = Math.min(z - zr, zf - z);
     const k = dEnd >= T ? 1 : Math.sqrt(1 - (1 - dEnd / T) ** 2);
     const flare = s.wheelZ.reduce((m, wz) => m + (s.flare ?? -0.7) * Math.exp(-(((z - wz) / (s.R * 1.15)) ** 2)), 0);
-    const hw = ((s.hwProfile ? along(s.hwProfile, z) : s.hw) + (s.open ? 0 : flare)) * (0.9 + 0.1 * k);
+    const zn = (2 * (z - (zr + zf) / 2)) / (zf - zr);                          // -1 at the tail, 1 at the nose
+    const barrel = s.round ? 1 - (s.barrel ?? 0.06) * Math.abs(zn) ** 2.2 : 1;   // the sides curve in towards the ends in plan view
+    const hw = ((s.hwProfile ? along(s.hwProfile, z) : s.hw) * barrel + (s.open ? 0 : flare)) * (s.round ? 0.76 + 0.24 * k : 0.9 + 0.1 * k);
     const yb0 = s.yb, ys = along(s.belt ?? [[zr, s.ys], [zf, s.ys]], z);
     let yt = Math.max(top[i], s.screenInset ? s.yb + 4.5 : ys + 1.5);
-    const ym = (yb0 + yt) / 2, hs = 0.8 + 0.2 * k;
+    const ym = (yb0 + yt) / 2, hs = s.round ? 0.82 + 0.18 * k : 0.8 + 0.2 * k;
     const yb = ym + (yb0 - ym) * hs;
     yt = ym + (yt - ym) * hs;
     const ysb = Math.min(ys, yt - (s.screenInset ? 1.0 : 1.5));
@@ -67,7 +69,8 @@ function body(s) {
     const sw = s.stripe ? s.stripe.half : s.screenInset ? s.screenInset * hwt : 1.6;
     const p = [[0, yb], [hb * 0.6, yb], [hb, yb + 1.0], [hw * 0.99, yb + (ysb - yb) * 0.38], [hw, yb + (ysb - yb) * 0.8], [hw * 0.995, ysb]];
     for (let k = 1; k <= WR; k++) { const f = (0.86 * k) / WR; p.push([lerp(hw, hwt, Math.min(1, f / 0.86)), ysb + (yt - ysb) * f]); }   // the window rows
-    p.push([hwt - Math.min(s.roofRound ?? 2.4, hwt * 0.22), yt - 0.55], [Math.min(sw, hwt * (s.screenInset ? 0.9 : 0.4)), yt - 0.05], [0, yt]);
+    const crown = s.crown ?? 0;
+    p.push([hwt - Math.min(s.roofRound ?? 2.4, hwt * 0.22), yt - 0.55 - crown * 0.55], [Math.min(sw, hwt * (s.screenInset ? 0.9 : 0.4)), yt - 0.05 - crown * 0.3], [0, yt]);
     return { z, p, k, hw, yb, ys: ysb, yt };
   });
   // vertices: one per (station, point, side, smoothing group). Panels shade smoothly inside themselves and meet at crisp creases: the
@@ -76,7 +79,7 @@ function body(s) {
   const lift = s.pivot;
   const creaseZ = [...new Set([s.front, s.rear].filter(Boolean).flat())].sort((a, b) => a - b);
   const zoneOf = (i) => { const z = (zs[i] + zs[i + 1]) / 2; return creaseZ.filter((c) => c < z).length; };
-  const groupOf = (j) => (j <= 1 ? 0 : j <= 4 ? 1 : j <= 5 + WR ? 2 : 3);
+  const groupOf = (j) => (s.round ? (j <= 1 ? 0 : 1) : j <= 1 ? 0 : j <= 4 ? 1 : j <= 5 + WR ? 2 : 3);
   const made = new Map();
   const V = (i, m, side, g, zone) => {
     const key = `${i}|${m}|${m === 0 || m === NP - 1 ? "c" : side}|${g}|${zone}`;
@@ -262,36 +265,47 @@ function body(s) {
 // The wheel part sits at the axle, so it spins and steers about its own middle. `x` is which side (-1 or 1).
 function wheel(name, x, z, s) {
   const R = s.R, tw = s.tw;
+  const CH = "#cfd3da";
   // a cylinder is made standing up, from the box `from`/`size`; turned 90 degrees about z it lies along x (about the box's middle, which is on the axle)
   const t = (name2, r, w, color, seg) => ({ name: name2, shape: "cylinder", from: [-r, -w / 2, -r], size: [2 * r, w, 2 * r], rotation: [0, 0, 90], color, segments: seg, smooth: true });
-  const cubes = [
-    t("tyre", R, tw, "#2b2c33", 24),
-    t("sidewall", R * 0.86, tw + 0.5, "#3a3b44", 24),
-  ];
-  if (s.wheelStyle === "steel") {
-    // a steel wheel with a chrome ring, a dark dish and a chrome dog-dish cap (the classics' hubcaps)
-    cubes.push(t("rim", R * 0.74, tw + 0.8, "#cfd3da", 24), t("rim dish", R * 0.6, tw + 1.1, s.dish ?? "#2a2c33", 24), t("hub cap", R * 0.34, tw + 1.6, "#e2e5ea", 18), t("hub cap top", R * 0.14, tw + 2.0, "#9aa0aa", 12));
-    return { name, origin: [x * s.track, R, z], rotation: [0, 0, 0], cubes, children: [] };
+  // (the same, with its middle off the axle at height y and forward z: the bolts and the slots)
+  const tAt = (name2, r, w, color, y, zz, seg = 10) => ({ name: name2, shape: "cylinder", from: [-r, y - w / 2, zz - r], size: [2 * r, w, 2 * r], rotation: [0, 0, 90], color, segments: seg, smooth: true });
+  // a star-shaped mesh: `n` spokes, tips at `tip` and valleys at `valley` (a pinwheel when `swirl` is not 0): a face each side and a wall between
+  const star = (n, tip, valley, width, color, swirl = 0) => {
+    const W = width / 2, M = n * 2, verts = [], polys = [];
+    for (const sx of [1, -1]) for (let q = 0; q < M; q++) {
+      const a = (q / M) * Math.PI * 2 + (q % 2 ? swirl * (Math.PI / n) : 0), r = q % 2 === 0 ? tip : valley;
+      verts.push([sx * W, Math.cos(a) * r, Math.sin(a) * r]);
+    }
+    polys.push({ v: Array.from({ length: M }, (_, q) => q), color }, { v: Array.from({ length: M }, (_, q) => M + q).reverse(), color });
+    for (let q = 0; q < M; q++) polys.push({ v: [q, M + q, M + ((q + 1) % M), (q + 1) % M], color: mul(color, 0.85) });
+    const fixed = polys.map((pl) => {
+      const P = pl.v.map((v) => verts[v]);
+      const c = [0, 1, 2].map((a) => P.reduce((m, p) => m + p[a], 0) / P.length);
+      const nrm = [0, 1, 2].map((a) => { const b = (a + 1) % 3, d = (a + 2) % 3; let sum = 0; for (let t2 = 0; t2 < P.length; t2++) { const p = P[t2], r = P[(t2 + 1) % P.length]; sum += (p[b] - r[b]) * (p[d] + r[d]); } return sum; });
+      return nrm[0] * c[0] + nrm[1] * c[1] + nrm[2] * c[2] < 0 ? { ...pl, v: [...pl.v].reverse() } : pl;
+    });
+    return { name: `spokes ${n}`, shape: "mesh", color, verts: verts.map((v) => v.map(r2)), polys: fixed };
+  };
+  const cubes = [t("tyre", R, tw, "#2b2c33", 24), t("sidewall", R * 0.86, tw + 0.5, "#3a3b44", 24)];
+  const style = s.wheelStyle ?? "steel";
+  const rim = s.rim ?? CH;
+  if (style === "steel") {
+    cubes.push(t("rim", R * 0.74, tw + 0.8, CH, 24), t("rim dish", R * 0.6, tw + 1.1, s.dish ?? "#2a2c33", 24), t("hub cap", R * 0.34, tw + 1.6, "#e2e5ea", 18), t("hub cap top", R * 0.14, tw + 2.0, "#9aa0aa", 12));
+  } else if (style === "steelcap") {
+    cubes.push(t("rim", R * 0.78, tw + 0.8, CH, 24), t("groove", R * 0.66, tw + 0.95, "#6f757f", 24), t("cover", R * 0.62, tw + 1.1, CH, 24), t("ring", R * 0.42, tw + 1.25, "#3a3d46", 20), t("centre", R * 0.34, tw + 1.5, "#e9ecf0", 18), t("centre top", R * 0.12, tw + 1.9, "#9aa0aa", 10));
+  } else if (style === "slots") {
+    cubes.push(t("rim", R * 0.76, tw + 0.8, CH, 24), t("disc", R * 0.64, tw + 1.1, "#aab0ba", 24));
+    for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; cubes.push(tAt(`hole ${k + 1}`, R * 0.11, tw + 1.4, "#1d1e24", Math.cos(a) * R * 0.45, Math.sin(a) * R * 0.45, 10)); }
+    cubes.push(t("centre", R * 0.2, tw + 1.6, "#e2e5ea", 14));
+  } else if (style === "dish") {
+    cubes.push(t("lip", R * 0.8, tw + 1.4, CH, 24), t("dish", R * 0.62, tw + 1.1, "#24262d", 24));
+    for (let k = 0; k < 5; k++) { const a = (k / 5) * Math.PI * 2; cubes.push(tAt(`stud ${k + 1}`, R * 0.07, tw + 1.5, CH, Math.cos(a) * R * 0.3, Math.sin(a) * R * 0.3, 8)); }
+    cubes.push(t("centre", R * 0.16, tw + 1.7, "#e2e5ea", 12));
+  } else {
+    const spec = { mag5: [5, 0.62, 0.26, 0], multispoke: [10, 0.66, 0.42, 0], turbine: [12, 0.64, 0.3, 0.7] }[style] ?? [5, 0.62, 0.26, 0];
+    cubes.push(t("rim", R * 0.72, tw + 0.8, rim, 24), t("dish", R * 0.62, tw + 1.0, "#23252c", 24), star(spec[0], R * spec[1], R * spec[2], tw + 1.5, rim, spec[3]), t("hub", R * 0.16, tw + 1.9, mul(rim, 1.06), 12));
   }
-  cubes.push(t("rim", R * 0.62, tw + 0.9, s.rim, 20), t("rim dish", R * 0.5, tw + 1.1, mul(s.rim, 0.4), 20));
-  // five spokes: one star-shaped mesh, a face each side and a wall between
-  const W = (tw + 1.5) / 2, tip = R * 0.52, valley = R * 0.2, N = 10;
-  const verts = [], polys = [];
-  for (const sx of [1, -1]) for (let q = 0; q < N; q++) {
-    const a = (q / N) * Math.PI * 2, r = q % 2 === 0 ? tip : valley;
-    verts.push([sx * W, Math.cos(a) * r, Math.sin(a) * r]);
-  }
-  const front = Array.from({ length: N }, (_, q) => q), back = Array.from({ length: N }, (_, q) => N + q);
-  polys.push({ v: front, color: s.rim }, { v: [...back].reverse(), color: s.rim });
-  for (let q = 0; q < N; q++) polys.push({ v: [q, N + q, N + ((q + 1) % N), (q + 1) % N], color: mul(s.rim, 0.9) });
-  const fixed = polys.map((pl) => {
-    const P = pl.v.map((v) => verts[v]);
-    const c = [0, 1, 2].map((a) => P.reduce((m, p) => m + p[a], 0) / P.length);
-    const nrm = [0, 1, 2].map((a) => { const b = (a + 1) % 3, d = (a + 2) % 3; let sum = 0; for (let t2 = 0; t2 < P.length; t2++) { const p = P[t2], r = P[(t2 + 1) % P.length]; sum += (p[b] - r[b]) * (p[d] + r[d]); } return sum; });
-    return nrm[0] * c[0] + nrm[1] * c[1] + nrm[2] * c[2] < 0 ? { ...pl, v: [...pl.v].reverse() } : pl;
-  });
-  cubes.push({ name: "spokes", shape: "mesh", color: s.rim, verts: verts.map((v) => v.map(r2)), polys: fixed });
-  cubes.push(t("hub", 1.3, tw + 1.9, mul(s.rim, 1.06), 12));
   return { name, origin: [x * s.track, R, z], rotation: [0, 0, 0], cubes, children: [] };
 }
 
@@ -417,13 +431,17 @@ const muscle = (o) => ({
 // and real-world sizes: a length, a width, a height and the overhangs, in metres.
 const PSX = JSON.parse(readFileSync(new URL("./psx-profiles.json", import.meta.url)));
 const ARCH = {
-  sedan: { psx: "sedan", L: 4.65, W: 1.76, H: 1.43, fo: 0.21, ro: 0.23, R: 0.35, belt: 0.64, glass: [[0.36, 0.52], [0.54, 0.74], [0.757, 0.83]], seams: [0.34, 0.53, 0.76], pillarRear: 0.035, pillarFront: 0.02, doors: 4 },
-  wagon: { psx: "wagon", L: 4.15, W: 1.62, H: 1.45, fo: 0.15, ro: 0.26, R: 0.34, belt: 0.62, glass: [[0.3, 0.455], [0.47, 0.66], [0.722, 0.906]], seams: [0.3, 0.46, 0.69], pillarRear: 0.07, pillarFront: 0.02, doors: 4 },
-  hatch: { psx: "hatch", L: 3.85, W: 1.65, H: 1.42, fo: 0.19, ro: 0.17, R: 0.32, belt: 0.62, glass: [[0.355, 0.625], [0.645, 0.861]], seams: [0.325, 0.63], pillarRear: 0.075, pillarFront: 0.02, doors: 2 },
-  minivan: { psx: "minivan", L: 4.6, W: 1.88, H: 1.92, fo: 0.15, ro: 0.19, R: 0.375, belt: 0.64, glass: [[0.21, 0.45], [0.47, 0.72], [0.74, 0.93]], seams: [0.2, 0.46, 0.73], pillarRear: 0.0, pillarFront: 0.02, doors: 2, noRear: true },
-  bigsedan: { psx: "bigsedan", L: 5.2, W: 1.95, H: 1.4, fo: 0.2, ro: 0.25, R: 0.36, belt: 0.7, glass: [[0.385, 0.525], [0.545, 0.69], [0.725, 0.78]], seams: [0.33, 0.535, 0.71], pillarRear: 0.04, pillarFront: 0.02, doors: 4 },
-  vintage: { psx: "vintage", L: 3.5, W: 1.66, H: 1.75, fo: 0.11, ro: 0.13, R: 0.41, belt: 0.7, glass: [[0.41, 0.58], [0.63, 0.81]], seams: [0.4, 0.6], pillarRear: 0.0, pillarFront: 0.0, doors: 2, noRear: true },
-  stepvan: { psx: "stepvan", L: 5.2, W: 2.05, H: 2.35, fo: 0.17, ro: 0.26, R: 0.41, belt: 0.58, glass: [[0.15, 0.39]], seams: [0.26], pillarRear: 0.0, pillarFront: 0.02, doors: 2, noRear: true },
+  sedan: { psx: "sedan", L: 4.65, W: 1.76, H: 1.43, fo: 0.21, ro: 0.23, R: 0.35, belt: 0.64, glass: [[0.36, 0.52], [0.54, 0.74], [0.757, 0.83]], seams: [0.34, 0.53, 0.76], pillarRear: 0.035, pillarFront: 0.02, tumble: 0.3, doors: 4 },
+  wagon: { psx: "wagon", L: 4.15, W: 1.62, H: 1.45, fo: 0.15, ro: 0.26, R: 0.34, belt: 0.62, glass: [[0.3, 0.455], [0.47, 0.66], [0.722, 0.906]], seams: [0.3, 0.46, 0.69], pillarRear: 0.07, pillarFront: 0.02, tumble: 0.23, doors: 4 },
+  hatch: { psx: "hatch", L: 3.85, W: 1.65, H: 1.42, fo: 0.19, ro: 0.17, R: 0.32, belt: 0.62, glass: [[0.355, 0.625], [0.645, 0.861]], seams: [0.325, 0.63], pillarRear: 0.075, pillarFront: 0.02, tumble: 0.36, doors: 2 },
+  minivan: { psx: "minivan", L: 4.6, W: 1.88, H: 1.92, fo: 0.15, ro: 0.19, R: 0.375, belt: 0.64, glass: [[0.21, 0.45], [0.47, 0.72], [0.74, 0.93]], seams: [0.2, 0.46, 0.73], pillarRear: 0.0, pillarFront: 0.02, tumble: 0.26, doors: 2, noRear: true },
+  bigsedan: { psx: "bigsedan", L: 5.2, W: 1.95, H: 1.4, fo: 0.2, ro: 0.25, R: 0.36, belt: 0.7, glass: [[0.385, 0.525], [0.545, 0.69], [0.725, 0.78]], seams: [0.33, 0.535, 0.71], pillarRear: 0.04, pillarFront: 0.02, tumble: 0.31, doors: 4 },
+  vintage: { psx: "vintage", L: 3.5, W: 1.66, H: 1.75, fo: 0.11, ro: 0.13, R: 0.41, belt: 0.7, glass: [[0.41, 0.58], [0.63, 0.81]], seams: [0.4, 0.6], pillarRear: 0.0, pillarFront: 0.0, tumble: 0.12, doors: 2, noRear: true },
+  // the muscle coupes: a Ford Mustang fastback (its body mesh: window faces, door gap and roofline measured from the geometry) and a Dodge
+  // Challenger (its side silhouette). Both: a long bonnet sloping to the nose, a short roof, a long fastback slope to a high deck.
+  mustang: { psx: "mustang", L: 4.78, W: 1.82, H: 1.36, fo: 0.184, ro: 0.219, R: 0.355, belt: 0.684, glass: [[0.31, 0.886]], seams: [0.34, 0.629], tumble: 0.28, doors: 2, slope: 0.02, twMul: 0.9, twrMul: 1.15, pillarFront: 0.02, exhaust: true },
+  challenger: { psx: "challenger", L: 4.86, W: 1.94, H: 1.38, fo: 0.155, ro: 0.222, R: 0.405, belt: 0.69, glass: [[0.33, 0.85]], seams: [0.36, 0.63], tumble: 0.28, doors: 2, slope: 0.02, twMul: 0.85, twrMul: 1.1, pillarFront: 0.02, exhaust: true, roundLamps: true },
+  stepvan: { psx: "stepvan", L: 5.2, W: 2.05, H: 2.35, fo: 0.17, ro: 0.26, R: 0.41, belt: 0.58, glass: [[0.15, 0.39]], seams: [0.26], pillarRear: 0.0, pillarFront: 0.02, tumble: 0.11, doors: 2, noRear: true },
 };
 function fromArch(key, o) {
   const a = ARCH[key], u16 = 16, L = a.L * u16, W = a.W * u16, Ht = a.H * u16, R = a.R * u16;
@@ -438,9 +456,9 @@ function fromArch(key, o) {
   const first = roofIdx[0], last = roofIdx[roofIdx.length - 1];
   // (the screens are the steep parts of the roofline: more than 0.04 of the height in one of the 28 steps; the bonnet's own rise is gentler)
   let k0 = first;
-  while (k0 > 0 && prof[k0] - prof[k0 - 1] > 0.04) k0--;
+  while (k0 > 0 && prof[k0] - prof[k0 - 1] > (a.slope ?? 0.04)) k0--;
   let k1 = last;
-  while (k1 < N && prof[k1] - prof[k1 + 1] > 0.04) k1++;
+  while (k1 < N && prof[k1] - prof[k1 + 1] > (a.slope ?? 0.04)) k1++;
   const front = [z(first / N), z(k0 / N)].sort((p, q) => p - q);
   const rear = a.noRear ? undefined : [z(k1 / N), z(last / N)].sort((p, q) => p - q);
   // the rake of the A pillar and of the rear pillar (dz per dy along the steep parts of the roofline), for the straight edges of the side windows
@@ -463,30 +481,30 @@ function fromArch(key, o) {
   }
   const seams = a.seams.map(z);
   return {
-    ...classic, zr, zf, hw, yb: 3.0, ys, roof: r2(Ht), pivot: r2(R), R: r2(R), tw: r2(R * 0.82), track: r2(hw - R * 0.41 - 0.4),
-    wheelZ: [r2(zf - a.fo * L), r2(zr + a.ro * L)], tumble: 0.1, top, front, rear, sideGlass: glass, glassMin: 0.34, seams, rim: "#d7dde6", endRound: 2.0, roofRound: 1.0, soft: 1,
-    handles: seams.slice(0, 2).map((s2) => r2(s2 - 2.4)), screenInset: 0.74, winRows: 6, archScale: 1.2, pillarRear, pillarFront: a.pillarFront, rakeFront, rakeRear: a.noRear ? undefined : rakeRear, ...o,
+    ...classic, zr, zf, hw, yb: 3.0, ys, roof: r2(Ht), pivot: r2(R), R: r2(R), tw: r2(R * (a.twMul ?? 0.82)), twr: r2(R * (a.twrMul ?? a.twMul ?? 0.82)), track: r2(hw - R * 0.41 - 0.4),
+    wheelZ: [r2(zf - a.fo * L), r2(zr + a.ro * L)], tumble: a.tumble ?? 0.22, top, front, rear, sideGlass: glass, glassMin: 0.34, seams, rim: "#d7dde6", soft: 2,
+    handles: seams.slice(0, 2).map((s2) => r2(s2 - 2.4)), screenInset: 0.74, winRows: 6, archScale: 1.2, round: true, barrel: 0.06, crown: 0.5, endRound: 5, roofRound: 2.6, exhaust: a.exhaust, roundLamps: a.roundLamps, pillarRear, pillarFront: a.pillarFront, rakeFront, rakeRear: a.noRear ? undefined : rakeRear, ...o,
   };
 }
 
 const CARS = {
-  car_sedan: fromArch("sedan", { paint: "#d9482e" }),
-  car_taxi: fromArch("bigsedan", {
+  car_sedan: fromArch("sedan", { grille: "blackout", lamps: "rect", tails: "tall", wheelStyle: "turbine", paint: "#d9482e" }),
+  car_taxi: fromArch("bigsedan", { grille: "bars", lamps: "quad", tails: "row", wheelStyle: "steelcap",
     paint: "#f1b21a", patch: [{ z: [-30, 30], segs: [4], color: "#202026" }],
     extras: [({ box, s: sp }) => box("taxi sign", 0, sp.roof + 1.6, -6, [8, 2.8, 3.6], "#fff6d0", { emissive: 0.6 })],
   }),
-  car_police: fromArch("bigsedan", {
+  car_police: fromArch("bigsedan", { grille: "mesh", lamps: "quad", tails: "row", wheelStyle: "steel",
     paint: "#f3f5f8", patch: [{ z: [-36, 18], segs: [2, 3], color: "#1f2f66" }],
     extras: [({ box, s: sp }) => { box("siren red", -3.2, sp.roof + 1.4, -6, [5, 2.2, 3.4], "#ff3340", { emissive: 0.9 }); box("siren blue", 3.2, sp.roof + 1.4, -6, [5, 2.2, 3.4], "#3d7bff", { emissive: 0.9 }); }],
   }),
-  car_green: fromArch("hatch", { paint: "#33b46c" }),
-  car_blue: muscle({ paint: "#2563c9", patch: [{ z: [-39.4, 39.4], segs: [3], color: "#f4f6fa" }], stripe: { half: 2.6, color: "#f4f6fa", z: [[-39.4, 39.4]] } }),
-  car_suv: fromArch("wagon", { paint: "#5b8f5a", extras: [({ box, s: sp }) => { for (const x of [-1, 1]) box("roof rail", x * 8.2, sp.roof + 0.6, -4, [1.2, 1.0, 26], "#2c2e36"); }] }),
-  car_suvl: fromArch("sedan", { paint: "#2e4396" }),
-  car_van: fromArch("minivan", { paint: "#f1efe7", patch: [{ z: [-40, 40], segs: [3], color: "#2b5aa8" }] }),
+  car_green: fromArch("hatch", { grille: "blackout", lamps: "round1", tails: "tall", wheelStyle: "slots", paint: "#33b46c" }),
+  car_blue: fromArch("mustang", { grille: "pony", lamps: "round2", tails: "triple", wheelStyle: "mag5", paint: "#2563c9", stripe: { half: 2.6, color: "#f4f6fa", z: [[-39.4, 39.4]] }, extras: [({ box, s: sp }) => box("rear spoiler", 0, sp.ys + 3.0, sp.zr + 3.2, [sp.hw * 1.5, 1.0, 4.6], "#1d1f26")] }),
+  car_suv: fromArch("wagon", { grille: "bars", lamps: "round1", tails: "strip", wheelStyle: "steel", paint: "#5b8f5a", extras: [({ box, s: sp }) => { for (const x of [-1, 1]) box("roof rail", x * 8.2, sp.roof + 0.6, -4, [1.2, 1.0, 26], "#2c2e36"); }] }),
+  car_suvl: fromArch("sedan", { grille: "split", lamps: "slit", tails: "bar", wheelStyle: "mag5", paint: "#2e4396" }),
+  car_van: fromArch("minivan", { grille: "mesh", lamps: "rect", tails: "tall", wheelStyle: "dish", paint: "#f1efe7", patch: [{ z: [-40, 40], segs: [3], color: "#2b5aa8" }] }),
   car_pickup: pickup({ ...classic, paint: "#e0842a", trim: "#2b2d35" }),
-  car_yellow: muscle({ paint: "#ffc61a", stripe: { half: 2.4, color: "#1c1d22", z: [[-39.4, 39.4]] } }),
-  car: muscle({ paint: "#d91f35", stripe: { half: 2.4, color: "#f4f6fa", z: [[-39.4, 39.4]] } }),
+  car_yellow: fromArch("challenger", { grille: "split", lamps: "round2", tails: "bar", wheelStyle: "multispoke", paint: "#ffc61a", stripe: { half: 2.4, color: "#1c1d22", z: [[-39.4, 39.4]] } }),
+  car: fromArch("mustang", { grille: "pony", lamps: "round1", tails: "triple", wheelStyle: "turbine", paint: "#d91f35", stripe: { half: 2.2, color: "#f4f6fa", z: [[-39.4, 39.4]] } }),
   racecar_green: formula({ paint: "#17a05a", accent: "#f5f7fa", stripe: { half: 2.0, color: "#f5f7fa", z: [[-34, 41]] } }),
   racecar_orange: formula({ paint: "#ff7a1a", accent: "#1b1d24", stripe: { half: 2.0, color: "#1b1d24", z: [[-34, 41]] } }),
   racecar_red: formula({ paint: "#e1262e", accent: "#f5f7fa", stripe: { half: 2.0, color: "#f5f7fa", z: [[-34, 41]] } }),
@@ -508,15 +526,66 @@ function classicDetails({ box, lamp, b, s, front, rear }) {
   }
   // the grille and the headlights fill the band between the bumper and the bonnet's front edge (the references have no "forehead" above it)
   const fz = s.zf, bandLo = front.yb + 3.0, bandHi = front.yt - 0.5, gy = (bandLo + bandHi) / 2, gh = Math.min(3.4, (bandHi - bandLo) * 0.9);
-  const gw = Math.min(front.hw * 1.0, 16);
-  box("grille frame", 0, gy, fz + 0.2, [gw, gh, 0.7], CH);
-  box("grille", 0, gy, fz + 0.4, [gw - 0.9, gh - 0.7, 0.7], "#0e0f12");
-  for (let k = -3; k <= 3; k++) box("grille bar", (k * (gw - 1.6)) / 7, gy, fz + 0.8, [0.3, gh - 0.8, 0.35], CH);
+  const gw = Math.min(front.hw * (s.grille === "pony" ? 1.1 : 1.0), 16);
+  const grille = s.grille ?? "bars", lamps = s.lamps ?? "rect";
+  if (grille === "bars") {
+    box("grille frame", 0, gy, fz + 0.2, [gw, gh, 0.7], CH);
+    box("grille", 0, gy, fz + 0.4, [gw - 0.9, gh - 0.7, 0.7], "#0e0f12");
+    for (let k = -3; k <= 3; k++) box("grille bar", (k * (gw - 1.6)) / 7, gy, fz + 0.8, [0.3, gh - 0.8, 0.35], CH);
+  } else if (grille === "mesh") {
+    box("grille frame", 0, gy, fz + 0.2, [gw, gh, 0.7], CH);
+    box("grille", 0, gy, fz + 0.4, [gw - 0.9, gh - 0.7, 0.7], "#0e0f12");
+    for (let k = -2; k <= 2; k++) box("grille slat", 0, gy + k * ((gh - 1.2) / 5), fz + 0.8, [gw - 1.2, 0.22, 0.35], "#8a909a");
+  } else if (grille === "blackout") {
+    box("grille panel", 0, gy, fz + 0.3, [gw * 0.8, gh * 0.85, 0.6], "#121316");
+    box("grille trim", 0, gy - gh * 0.3, fz + 0.65, [gw * 0.8, 0.25, 0.35], CH);
+    box("badge", 0, gy + gh * 0.1, fz + 0.7, [1.5, 1.2, 0.3], CH);
+  } else if (grille === "split") {
+    for (const side of [-1, 1]) {
+      box("grille frame", side * gw * 0.27, gy, fz + 0.2, [gw * 0.44, gh, 0.7], CH);
+      box("grille", side * gw * 0.27, gy, fz + 0.4, [gw * 0.44 - 0.8, gh - 0.7, 0.7], "#0e0f12");
+      for (let k = -2; k <= 2; k++) box("grille bar", side * gw * 0.27 + (k * (gw * 0.44 - 1.4)) / 5, gy, fz + 0.8, [0.28, gh - 0.8, 0.35], CH);
+    }
+    box("grille divider", 0, gy, fz + 0.5, [1.0, gh + 0.4, 0.8], CH);
+  } else if (grille === "pony") {
+    box("grille frame", 0, gy, fz + 0.2, [gw, gh, 0.7], CH);
+    box("grille", 0, gy, fz + 0.4, [gw - 0.9, gh - 0.7, 0.7], "#0e0f12");
+    box("grille bar", 0, gy, fz + 0.8, [gw - 1.0, 0.45, 0.5], CH);
+    lamp("badge", 0, gy, fz + 0.9, [2.2, 2.2, 0.9], "#e9ecf0", 0);
+  }
+  const lampX = (dx) => gw / 2 + dx;
+  const roundLamp = (side, dx, size) => { lamp("headlamp ring", side * lampX(dx), gy, fz + 0.2, [size, size, 1.2], CH, 0); lamp("headlamp", side * lampX(dx), gy, fz + 0.65, [size * 0.78, size * 0.78, 1.0], "#fff1c4", 0.95); };
   for (const side of [-1, 1]) {
-    const x = side * (gw / 2 + 3.0);
-    box("headlight bezel", x, gy, fz + 0.15, [4.2, gh, 0.7], CH);
-    box("headlight", x, gy, fz + 0.5, [3.5, gh - 0.8, 0.7], "#fff1c4", { emissive: 0.95 });
-    box("indicator", x, gy - gh / 2 - 0.6, fz + 0.15, [2.6, 0.9, 0.6], "#ffb21e", { emissive: 0.45 });
+    if (lamps === "round1") roundLamp(side, 2.8, Math.max(gh + 0.8, 3.6));
+    else if (lamps === "round2") { roundLamp(side, 2.6, 3.4); roundLamp(side, 6.2, 3.4); }
+    else if (lamps === "quad") for (const dy of [-1, 1]) {
+      const x = side * lampX(3.2), y = gy + (dy * gh) / 4;
+      box("headlight bezel", x, y, fz + 0.15, [4.4, gh / 2 - 0.1, 0.7], CH);
+      box("headlight", x, y, fz + 0.5, [3.7, gh / 2 - 0.7, 0.7], "#fff1c4", { emissive: 0.95 });
+    }
+    else if (lamps === "slit") {
+      box("headlight bezel", side * lampX(4.2), gy + gh * 0.1, fz + 0.15, [7.4, gh * 0.6, 0.7], CH);
+      box("headlight", side * lampX(4.2), gy + gh * 0.1, fz + 0.5, [6.8, gh * 0.6 - 0.6, 0.7], "#fff1c4", { emissive: 0.95 });
+    } else {
+      const x = side * lampX(3.0);
+      box("headlight bezel", x, gy, fz + 0.15, [4.2, gh, 0.7], CH);
+      box("headlight", x, gy, fz + 0.5, [3.5, gh - 0.8, 0.7], "#fff1c4", { emissive: 0.95 });
+    }
+    box("indicator", side * lampX(lamps === "round2" ? 9.2 : 3.0), gy - gh / 2 - 0.6, fz + 0.15, [2.6, 0.9, 0.6], "#ffb21e", { emissive: 0.45 });
+  }
+  // the tail lights: a style each (a strip, a tall lamp, a row of squares, a round lamp, three bars, a bar across)
+  {
+    const ry = rear.yb + (rear.yt - rear.yb) * 0.72, rb = rear.yb + 3.2, rh = Math.max(2.4, rear.yt - rb - 0.8);
+    const RED = "#e5202e", rz = s.zr - 0.05;
+    const tails = s.tails ?? "strip";
+    for (const side of [-1, 1]) {
+      if (tails === "tall") box("tail light", side * (rear.hw - 2.4), rb + rh / 2, rz, [2.2, Math.min(rh, 5.2), 0.9], RED, { emissive: 0.8 });
+      else if (tails === "row") for (let k = 0; k < 4; k++) box("tail light", side * (rear.hw * 0.3 + k * 2.0), ry, rz, [1.6, 1.6, 0.9], RED, { emissive: 0.8 });
+      else if (tails === "round") lamp("tail light", side * rear.hw * 0.68, ry, rz, [3.4, 3.4, 1.0], RED, 0.8);
+      else if (tails === "triple") for (let k = 0; k < 3; k++) box("tail light", side * (rear.hw * 0.52 + k * 1.7), ry, rz, [1.2, 3.6, 0.9], RED, { emissive: 0.8 });
+      else if (tails === "bar") box("tail light", side * rear.hw * 0.5, ry, rz, [rear.hw * 0.86, 1.3, 0.9], RED, { emissive: 0.8 });
+      else box("tail light", side * rear.hw * 0.66, ry, rz, [rear.hw * 0.42, 1.7, 0.9], RED, { emissive: 0.8 });
+    }
   }
   // the side moulding between the arches (chrome over a black rubber strip), and the door handles
   const z0 = s.wheelZ[1] + s.R * 1.35, z1 = s.wheelZ[0] - s.R * 1.35, ym = s.yb + (s.ys - s.yb) * 0.42;
@@ -549,7 +618,7 @@ function build(name, s) {
   for (const side of s.open ? [] : [-1, 1]) {
     const fy = front.yb + (front.yt - front.yb) * 0.66, ry = rear.yb + (rear.yt - rear.yb) * 0.72;
     if (!s.classic) box(`headlight ${side > 0 ? "left" : "right"}`, side * front.hw * 0.66, fy, s.zf + 0.05, [front.hw * 0.4, 1.9, 0.9], "#fff3cc", { emissive: 0.95 });
-    box(`tail light ${side > 0 ? "left" : "right"}`, side * rear.hw * 0.66, ry, s.zr - 0.05, [rear.hw * 0.42, 1.7, 0.9], "#e5202e", { emissive: 0.8 });
+    if (!s.classic) box(`tail light ${side > 0 ? "left" : "right"}`, side * rear.hw * 0.66, ry, s.zr - 0.05, [rear.hw * 0.42, 1.7, 0.9], "#e5202e", { emissive: 0.8 });
   }
   if (!s.open && !s.classic) box("grille", 0, front.yb + (front.yt - front.yb) * 0.4, s.zf + 0.1, [front.hw * 0.62, 1.8, 0.9], "#17181d");
   if (!s.open) box("plate", 0, rear.yb + (rear.yt - rear.yb) * 0.42, s.zr - 0.1, [5.6, 2.0, 0.7], "#f0f0ea");
