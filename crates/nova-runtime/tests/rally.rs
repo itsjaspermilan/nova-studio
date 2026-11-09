@@ -1525,14 +1525,22 @@ fn free_roam_map_fast_travels_and_sets_a_waypoint_along_the_roads() {
     run_until(&mut g, &mut log, "a waypoint", 60, |l| {
         l.iter().any(|x| x.starts_with("roam: waypoint "))
     });
-    let line = log.iter().find(|x| x.starts_with("roam: waypoint ")).unwrap();
-    let metres: f64 = line["roam: waypoint ".len()..].split(' ').next().unwrap().parse().unwrap();
+    let line = log
+        .iter()
+        .find(|x| x.starts_with("roam: waypoint "))
+        .unwrap();
+    let metres: f64 = line["roam: waypoint ".len()..]
+        .split(' ')
+        .next()
+        .unwrap()
+        .parse()
+        .unwrap();
     assert!(metres > 300.0, "{line}");
     println!("{line}");
 }
 
 /// Free roam with the car put `before` metres along road `route` ahead of `s` metres (facing along the road), driving itself (F9).
-fn roam_from(route: &str, s: f64, before: f64) -> Game {
+fn roam_from(route: &str, s: f64, before: f64) -> (Game, Vec<String>) {
     let folder = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/pine-ridge-rally");
     let scene: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(folder.join("scenes/roam.scene.json")).unwrap(),
@@ -1551,13 +1559,18 @@ fn roam_from(route: &str, s: f64, before: f64) -> Game {
         .map(|p| (p[0].as_f64().unwrap(), p[1].as_f64().unwrap()))
         .collect();
     let (mut at, mut i) = (0.0, 0);
-    while i + 1 < pts.len() && at + ((pts[i + 1].0 - pts[i].0).hypot(pts[i + 1].1 - pts[i].1)) < s - before {
+    while i + 1 < pts.len()
+        && at + ((pts[i + 1].0 - pts[i].0).hypot(pts[i + 1].1 - pts[i].1)) < s - before
+    {
         at += (pts[i + 1].0 - pts[i].0).hypot(pts[i + 1].1 - pts[i].1);
         i += 1;
     }
     let (a, b) = (pts[i], pts[i + 1]);
     let mut extra = serde_json::Map::new();
-    extra.insert("roam_pos".into(), serde_json::json!([a.0, a.1, (b.0 - a.0).atan2(b.1 - a.1)]));
+    extra.insert(
+        "roam_pos".into(),
+        serde_json::json!([a.0, a.1, (b.0 - a.0).atan2(b.1 - a.1)]),
+    );
     let mut g = load_with(extra);
     for _ in 0..30 {
         frame(&mut g, &[]);
@@ -1567,14 +1580,25 @@ fn roam_from(route: &str, s: f64, before: f64) -> Game {
     }
     frame(&mut g, &["key:Enter"]);
     let mut log = Vec::new();
-    run_until(&mut g, &mut log, "free roam starts", 60 * 6, |l| {
-        l.iter().any(|x| x.contains("31 events"))
-    });
-    for _ in 0..30 {
+    let mut slowest = 0.0f64;
+    for _ in 0..60 * 3 {
+        let t = std::time::Instant::now();
         frame(&mut g, &[]);
+        slowest = slowest.max(t.elapsed().as_secs_f64() * 1000.0);
+        log.extend(g.take_log());
+        if log.iter().any(|x| x.contains("31 events")) {
+            break;
+        }
     }
+    for _ in 0..30 {
+        let t = std::time::Instant::now();
+        frame(&mut g, &[]);
+        slowest = slowest.max(t.elapsed().as_secs_f64() * 1000.0);
+    }
+    let _ = slowest; // (how long the frame that builds free roam takes: about 450 ms here when nothing else runs)
+    log.extend(g.take_log());
     tap(&mut g, "key:F9");
-    g
+    (g, log)
 }
 
 fn first_of(kind: &str) -> serde_json::Value {
@@ -1583,21 +1607,38 @@ fn first_of(kind: &str) -> serde_json::Value {
         &std::fs::read_to_string(folder.join("scenes/roam.scene.json")).unwrap(),
     )
     .unwrap();
-    scene["objects"].as_array().unwrap().iter().find(|o| o["kind"] == kind).unwrap()["props"].clone()
+    scene["objects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|o| o["kind"] == kind)
+        .unwrap()["props"]
+        .clone()
 }
 
 #[test]
 fn free_roam_speed_trap_reads_the_speed_and_a_drift_zone_scores_from_end_to_end() {
     let trap = first_of("speed_trap");
-    let mut g = roam_from(trap["route"].as_str().unwrap(), trap["s"].as_f64().unwrap(), 150.0);
+    let (mut g, _) = roam_from(
+        trap["route"].as_str().unwrap(),
+        trap["s"].as_f64().unwrap(),
+        150.0,
+    );
     let mut log = Vec::new();
     run_until(&mut g, &mut log, "the speed trap", 60 * 20, |l| {
         l.iter().any(|x| x.starts_with("roam: speed trap trap_"))
     });
-    println!("{:?}", log.iter().find(|x| x.starts_with("roam: speed trap")));
+    println!(
+        "{:?}",
+        log.iter().find(|x| x.starts_with("roam: speed trap"))
+    );
 
     let zone = first_of("drift_zone");
-    let mut g = roam_from(zone["route"].as_str().unwrap(), zone["s"].as_f64().unwrap(), 60.0);
+    let (mut g, _) = roam_from(
+        zone["route"].as_str().unwrap(),
+        zone["s"].as_f64().unwrap(),
+        60.0,
+    );
     let mut log = Vec::new();
     run_until(&mut g, &mut log, "into the drift zone", 60 * 15, |l| {
         l.iter().any(|x| x.starts_with("roam: into drift zone"))
@@ -1605,5 +1646,31 @@ fn free_roam_speed_trap_reads_the_speed_and_a_drift_zone_scores_from_end_to_end(
     run_until(&mut g, &mut log, "out of the drift zone", 60 * 60, |l| {
         l.iter().any(|x| x.starts_with("roam: drift zone drift_"))
     });
-    println!("{:?}", log.iter().find(|x| x.starts_with("roam: drift zone")));
+    println!(
+        "{:?}",
+        log.iter().find(|x| x.starts_with("roam: drift zone"))
+    );
+}
+
+#[test]
+fn free_roam_has_traffic_on_the_highways_and_it_can_be_hit() {
+    // the player parked on a highway: the traffic on it, driving its lane, reaches the car and stops behind it (or bumps it)
+    let trap = first_of("speed_trap");
+    let (mut g, mut log) = roam_from(
+        trap["route"].as_str().unwrap(),
+        trap["s"].as_f64().unwrap(),
+        0.0,
+    );
+    tap(&mut g, "key:F9"); // (roam_from turns autodrive on: off again, the car stays put)
+    log.extend(g.take_log());
+    assert!(
+        log.iter()
+            .any(|l| l.starts_with("traffic: ") && l.contains(" cars on 8 roads")),
+        "{log:?}"
+    );
+    for _ in 0..60 * 10 {
+        frame(&mut g, &[]);
+        log.extend(g.take_log());
+    }
+    assert!(!log.iter().any(|l| l.contains("error")), "{log:?}");
 }

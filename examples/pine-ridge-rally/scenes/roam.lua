@@ -17,6 +17,7 @@ local water = require("lib.water")
 local woods = require("lib.woods")
 local route = require("lib.route")
 local challenges = require("lib.challenges")
+local traffic = require("lib.traffic")
 local RoamFoliage = require("entities.roam_foliage")
 
 local Roam = nova.scene {}
@@ -121,6 +122,7 @@ function Roam:enter()
   car.engine = audio.engine(0.6, car.model_id)
   self:locate()
   woods.start(at.x, at.z)
+  traffic.start(at.x, at.z)
   -- the region it starts in, its look at once
   self.region = regions.at(at.x, at.z)
   if self.region then self:set_look(self.region, 1) end
@@ -140,7 +142,7 @@ function Roam:leave()
   if self.player and self.player.engine then self.player.engine:stop() end
   nova.music.volume(state.music_volume)
   nova.weather(); nova.sky(nil); nova.fog(nil); nova.shadows(nil); nova.terrain()
-  route.clear(); challenges.clear(); roads.clear(); course.clear(); fx.clear(); foliage.clear(); powerlines.clear(); regions.clear(); water.clear(); woods.clear()
+  route.clear(); challenges.clear(); traffic.clear(); roads.clear(); course.clear(); fx.clear(); foliage.clear(); powerlines.clear(); regions.clear(); water.clear(); woods.clear()
   nova.look(); nova.wind()
 end
 
@@ -299,6 +301,7 @@ function Roam:update(dt)
     end
   end
   p:drive(dt)
+  traffic.update(p, dt)
   challenges.update(p, self:locate(), dt)
   if self.way then
     self.way = route.follow(self.way, p.x, p.z)
@@ -411,6 +414,7 @@ function Roam:draw()
   powerlines.draw(cam.x, cam.z, LOOK_FAR)
   water.draw(cam.x, math.max(cam.y + here, there + 1.2), cam.z, self.config.sun and self.config.sun.dir and -self.config.sun.dir[2] or 0.5)
   fx.draw_skids(cam.x, cam.z, 90)
+  traffic.draw(cam.x, cam.z)
   -- the way to the waypoint: a ribbon along the middle of the road for the next stretch (the engine lays it on the hills)
   if self.way then
     local pts = self.way.pts
@@ -511,6 +515,13 @@ function Roam:draw_minimap()
     if m > R - 8 then x, y = cx + ex * (R - 8) / m, cy + ey * (R - 8) / m end
     nova.ui.rect(x - 7, y - 7, 14, 14, C.ink)
     nova.ui.rect(x - 5, y - 5, 10, 10, ROUTE)
+  end
+  -- the traffic, small grey dots
+  for _, c in ipairs(traffic.cars()) do
+    if (c.x - p.x) ^ 2 + (c.z - p.z) ^ 2 < reach2 then
+      local x, y = at(c.x, c.z)
+      if (x - cx) ^ 2 + (y - cy) ^ 2 < inside2 then nova.ui.rect(x - 2.5, y - 2.5, 5, 5, { 190, 196, 204 }) end
+    end
   end
   local far = {}
   for _, e in ipairs(nova.all("event")) do

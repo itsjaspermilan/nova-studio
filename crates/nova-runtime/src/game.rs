@@ -3115,6 +3115,19 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
         "real_time",
         lua.create_function(move |_, ()| Ok(s.borrow().real_time))?,
     )?;
+    // loading_scene(): the frame that builds a new scene (every object of a big scene file spawned at once, then its `enter`) gets the
+    // load allowance, LOAD_BUDGET, from now, not the frame's: going to a scene is a load, not a runaway loop
+    let s = shared.clone();
+    raw.set(
+        "loading_scene",
+        lua.create_function(move |_, ()| {
+            let sh = s.borrow();
+            if sh.deadline.get().is_some() {
+                sh.deadline.set(Some(Instant::now() + LOAD_BUDGET));
+            }
+            Ok(())
+        })?,
+    )?;
     // freeze_time(on): the engine's clock stops (nova.pause calls this) and carries on from the same moment when it is let go
     let s = shared.clone();
     raw.set(

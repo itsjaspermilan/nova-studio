@@ -2523,6 +2523,7 @@ local function leave_scene()
 end
 
 local function enter_scene(name, args)
+  raw.loading_scene() -- (building the scene is a load: it gets the longer allowance)
   leave_scene()
   local cls = finalize(resolve(name, "scene"))
   local scene = setmetatable({}, cls)
