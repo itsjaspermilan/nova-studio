@@ -13,7 +13,7 @@ function roads.clear()
   routes, order, grid, ready = {}, {}, nil, false
 end
 
-function roads.add(route, i, x, z, k, w, road, loop)
+function roads.add(route, i, x, z, k, w, road, loop, grip)
   route = route or "main"
   local r = routes[route]
   if not r then
@@ -22,7 +22,7 @@ function roads.add(route, i, x, z, k, w, road, loop)
     order[#order + 1] = route
   end
   if loop then r.loop = true end
-  r.pts[#r.pts + 1] = { i = i, x = x, z = z, k = k or 0, w = w or 6, road = road }
+  r.pts[#r.pts + 1] = { i = i, x = x, z = z, k = k or 0, w = w or 6, road = road, grip = grip }
   ready = false
 end
 
@@ -109,7 +109,7 @@ function roads.nearest(x, z)
   local l = math.max(math.sqrt(out.tx * out.tx + out.tz * out.tz), 1e-6)
   out.tx, out.tz = out.tx / l, out.tz / l
   out.heading = math.atan(out.tx, out.tz)
-  out.w, out.road = a.w, a.road
+  out.w, out.road, out.grip = a.w, a.road, a.grip
   out.dist = math.sqrt(best)
   out.left = (x - out.x) * out.tz - (z - out.z) * out.tx
   return out

@@ -88,6 +88,11 @@ const STAGES: [&str; 10] = [
 ];
 
 fn load() -> Game {
+    load_with(serde_json::Map::new())
+}
+
+/// `load`, with more entries in the save (an ordinary test's save; ignored for a new player's).
+fn load_with(extra: serde_json::Map<String, serde_json::Value>) -> Game {
     let folder = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/pine-ridge-rally");
     let vfs: Rc<dyn Vfs> = Rc::new(DirVfs::new(&folder).expect("the example folder exists"));
     let mut g = if FRESH.with(|f| f.get()) {
@@ -114,6 +119,7 @@ fn load() -> Game {
         save.insert("owned".into(), serde_json::json!(CARS));
         save.insert("coins".into(), serde_json::json!(1_000_000));
         save.insert("last_car".into(), serde_json::json!(CAR.with(|c| c.get())));
+        save.extend(extra);
         // (the save file's own shape: see crates/nova-runtime/src/save.rs)
         let file = serde_json::json!({ "format": 1, "data": serde_json::Value::Object(save) });
         std::fs::write(dir.join("save.json"), file.to_string()).unwrap();
@@ -1368,7 +1374,28 @@ fn a_stage_turns_from_gravel_to_tarmac() {
 /// race runs to its results, and Return goes back to free roam (not the main menu). Driving away from every road ends in a fade back to one.
 #[test]
 fn free_roam_starts_an_event_in_the_world_and_comes_back_to_it() {
-    let mut g = load();
+    // the save puts the car beside the Pine Ridge circuit race's marker (free roam starts where it was last left)
+    let folder = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/pine-ridge-rally");
+    let scene: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(folder.join("scenes/roam.scene.json")).unwrap(),
+    )
+    .unwrap();
+    let marker = scene["objects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|o| {
+            o["kind"] == "event"
+                && o["props"]["course"] == "pine_ridge"
+                && o["props"]["mode"] == "race"
+        })
+        .expect("the circuit race's marker");
+    let mut extra = serde_json::Map::new();
+    extra.insert(
+        "roam_pos".into(),
+        serde_json::json!([marker["x"], marker["z"], marker["props"]["ry"]]),
+    );
+    let mut g = load_with(extra);
     for _ in 0..30 {
         frame(&mut g, &[]);
     }
@@ -1379,7 +1406,7 @@ fn free_roam_starts_an_event_in_the_world_and_comes_back_to_it() {
     let mut log = Vec::new();
     run_until(&mut g, &mut log, "free roam starts", 60 * 6, |l| {
         l.iter()
-            .any(|x| x.starts_with("roam: ") && x.contains("3 events"))
+            .any(|x| x.starts_with("roam: ") && x.contains("30 events"))
     });
     for _ in 0..90 {
         frame(&mut g, &[]);
@@ -1414,7 +1441,7 @@ fn free_roam_starts_an_event_in_the_world_and_comes_back_to_it() {
     let mut log = Vec::new();
     run_until(&mut g, &mut log, "back in free roam", 60 * 4, |l| {
         l.iter()
-            .any(|x| x.starts_with("roam: ") && x.contains("3 events"))
+            .any(|x| x.starts_with("roam: ") && x.contains("30 events"))
     });
     // full throttle, turning gently right: off the circuit and across the grass until the game puts the car back on a road
     let mut log = Vec::new();

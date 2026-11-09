@@ -1,5 +1,5 @@
--- Free roam (2026-11-08): the Pine Ridge circuit and stage on one map with a gravel road between them (scenes/roam.scene.json, made by
--- scripts/rally/roam.ts). Drive anywhere; the road under the car comes from lib/roads.lua. Drive up to an event's marker and press Y to
+-- Free roam (2026-11-08): the open world, every course on one map round five region towns, joined by highways and a ring road
+-- (scenes/roam.scene.json, made by scripts/rally/roam.ts). Drive anywhere; the road under the car comes from lib/roads.lua. Drive up to an event's marker and press Y to
 -- see it, then start it: the race is the course's own scene, and coming back from it puts the car where it left.
 local state = require("lib.state")
 local roads = require("lib.roads")
@@ -12,6 +12,8 @@ local haptics = require("lib.haptics")
 local transition = require("lib.transition")
 local ui = require("lib.ui")
 local powerlines = require("lib.powerlines")
+local regions = require("lib.regions")
+local RoamFoliage = require("entities.roam_foliage")
 
 local Roam = nova.scene {}
 local C, F = ui.color, ui.font
@@ -88,12 +90,21 @@ function Roam:enter()
   state.apply_look(config)
   roads.ensure()
   nova.log(string.format("roam: %d road points on %d roads, %d events", roads.count(), #roads.names(), #nova.all("event")))
-  -- the grass beside every road
-  local pts = {}
-  roads.each(function(p) pts[#pts + 1] = p end)
-  foliage.start(state.effects and 0.8 or 0, { count = function() return #pts end, point = function(i) return pts[i] end })
-  -- the car: where it left for an event, or at the start of the map
-  local at = state.roam_at or { x = self.spawn.x, z = self.spawn.z, heading = self.spawn.ry or 0 }
+  -- the grass beside the roads: each course's own beside its roads (the scene's roam_foliage objects)
+  local sets = {}
+  for _, set in ipairs(RoamFoliage.sets) do
+    local pts = {}
+    for _, name in ipairs(set.routes) do
+      local rt = roads.route(name)
+      if rt then for _, p in ipairs(rt.pts) do pts[#pts + 1] = p end end
+    end
+    if #pts > 0 and #set.plants > 0 then sets[#sets + 1] = { points = pts, plants = set.plants } end
+  end
+  RoamFoliage.sets = {}
+  foliage.start_sets(state.effects and 1 or 0, sets)
+  -- the car: where it left for an event, or where it was when free roam was last left (the save keeps it), or at the start of the map
+  local saved = nova.save.get("roam_pos", nil)
+  local at = state.roam_at or (saved and { x = saved[1], z = saved[2], heading = saved[3] }) or { x = self.spawn.x, z = self.spawn.z, heading = self.spawn.ry or 0 }
   state.roam_at = nil
   local car = nova.spawn(state.current_car().id, at.x, 0, { z = at.z })
   car:teleport(at.x, at.z, at.heading)
@@ -103,6 +114,9 @@ function Roam:enter()
   self.player = car
   car.engine = audio.engine(0.6, car.model_id)
   self:locate()
+  -- the region it starts in, its look at once
+  self.region = regions.at(at.x, at.z)
+  if self.region then self:set_look(self.region, 1) end
   self.camera = { x = at.x, y = 4, z = at.z, heading = at.heading, tx = at.x, ty = 1, tz = at.z, fov = 62 }
   self.orbit = { yaw = 0, lift = 0 }
   self:update_camera(1)
@@ -113,11 +127,63 @@ function Roam:enter()
 end
 
 function Roam:leave()
+  -- (where the car is, for next time: on a road, facing along it)
+  local p, r = self.player, self.road_here
+  if r and p then nova.save.set("roam_pos", { math.floor(r.x * 10) / 10, math.floor(r.z * 10) / 10, math.floor(p.heading * 1000) / 1000 }) end
   if self.player and self.player.engine then self.player.engine:stop() end
   nova.music.volume(state.music_volume)
   nova.weather(); nova.sky(nil); nova.fog(nil); nova.shadows(nil); nova.terrain()
-  roads.clear(); course.clear(); fx.clear(); foliage.clear(); powerlines.clear()
+  roads.clear(); course.clear(); fx.clear(); foliage.clear(); powerlines.clear(); regions.clear()
   nova.look(); nova.wind()
+end
+
+-- ---- regions: the look of where the car is --------------------------------------------------------------------------------------
+-- Driving from one region into another, the sky, the fog, the sun and the ambient light blend over BLEND seconds; the ground and the
+-- mountains round the edge, the weather and the picture's finish change half way.
+local BLEND = 3
+local function mix(a, b, t)
+  if type(a) ~= "table" or type(b) ~= "table" then return t < 0.5 and a or b end
+  local out = {}
+  for i = 1, math.max(#a, #b) do out[i] = (a[i] or 0) + ((b[i] or 0) - (a[i] or 0)) * t end
+  return out
+end
+function Roam:set_look(region, t)
+  local to = course.of(region.look)
+  local from = self.look_now or to
+  t = math.max(0, math.min(1, t))
+  local sky = {}
+  for k, v in pairs(to.sky or {}) do sky[k] = v end
+  sky.top, sky.horizon = mix(from.sky.top, to.sky.top, t), mix(from.sky.horizon, to.sky.horizon, t)
+  nova.sky(sky)
+  nova.fog { color = sky.horizon, near = 80, far = 360 }
+  nova.light { dir = mix(from.sun.dir, to.sun.dir, t), color = mix(from.sun.color, to.sun.color, t), ambient = mix(from.sun.ambient, to.sun.ambient, t) }
+  if t >= 0.5 and self.look_half ~= region then
+    self.look_half = region
+    self.config.horizon = to.horizon
+    if to.weather then nova.weather(to.weather) else nova.weather() end
+    state.apply_look(to)
+    nova.log("roam: into " .. region.title)
+  end
+  if t >= 1 then self.look_now = to end
+end
+
+function Roam:update_region(dt)
+  local p = self.player
+  self.region_check = (self.region_check or 0) - dt
+  if self.region_check <= 0 then
+    self.region_check = 0.5
+    local r = regions.at(p.x, p.z)
+    if r and r ~= self.region then
+      self.region, self.blend = r, 0
+      self.title_time = 0
+    end
+  end
+  if self.blend then
+    self.blend = self.blend + dt / BLEND
+    self:set_look(self.region, self.blend)
+    if self.blend >= 1 then self.blend = nil end
+  end
+  self.title_time = (self.title_time or 0) + dt
 end
 
 -- The road under the car: its surface and grip, or the rough off it.
@@ -130,7 +196,7 @@ function Roam:locate()
     local kind = n.road or "road_asphalt"
     p.surface = kind == "road_asphalt" and "road" or "dirt"
     p.loose = kind ~= "road_asphalt"
-    p.grip_scale = GRIP[kind] or 1
+    p.grip_scale = n.grip or GRIP[kind] or 1
     if n.dist > n.w + ROAD_EDGE + 0.8 then p.surface = "rough" end
   else
     p.off_middle, p.surface = 999, "rough"
@@ -255,6 +321,7 @@ function Roam:update(dt)
   end
   haptics.drive(p, dt, not self.panel)
   if nova.input.pressed("view") then self.view_mode = ((self.view_mode or 2) % 3) + 1 end
+  self:update_region(dt)
   self:update_camera(dt)
 end
 
@@ -370,13 +437,24 @@ function Roam:draw_minimap()
       end
     end
   end
+  -- (every event in range; of those further off, only the nearest three, at the edge: thirty pins round the edge said nothing)
+  local far = {}
   for _, e in ipairs(nova.all("event")) do
     local x, y = at(e.x, e.z)
     local ex, ey = x - cx, y - cy
     local m = math.max(math.abs(ex), math.abs(ey))
-    if m > half - 6 then local s2 = (half - 6) / m; x, y = cx + ex * s2, cy + ey * s2 end
-    nova.ui.rect(x - 6, y - 6, 12, 12, C.ink)
-    nova.ui.rect(x - 4.5, y - 4.5, 9, 9, C.orange)
+    if m > half - 6 then
+      far[#far + 1] = { e = e, d = (e.x - p.x) ^ 2 + (e.z - p.z) ^ 2, x = cx + ex * (half - 6) / m, y = cy + ey * (half - 6) / m }
+    else
+      nova.ui.rect(x - 6, y - 6, 12, 12, C.ink)
+      nova.ui.rect(x - 4.5, y - 4.5, 9, 9, C.orange)
+    end
+  end
+  table.sort(far, function(a, b) return a.d < b.d end)
+  for i = 1, math.min(3, #far) do
+    local f = far[i]
+    nova.ui.rect(f.x - 5, f.y - 5, 10, 10, C.ink)
+    nova.ui.rect(f.x - 3.5, f.y - 3.5, 7, 7, { C.orange[1], C.orange[2], C.orange[3], 170 })
   end
   -- the car: an arrow pointing up
   nova.ui.line(cx - 6, cy + 7, cx, cy - 8, 4, C.green)
@@ -397,7 +475,7 @@ function Roam:draw_hud()
   hud_text(right - kw - 9 - sw, 467, tostring(kmh), F.heavy, 54, C.white, { valign = "baseline" })
   hud_text(sx - 9 - nova.ui.text_width(gear, { font = F.bold, size = 18 }), 467, gear, F.bold, 18, C.hud, { valign = "baseline" })
   hud_text(36, 36, "FREE ROAM", F.bold, 18, C.orange, { spacing = 0.2 })
-  hud_text(36, 58, "Pine Ridge", F.heavy, 27, C.white)
+  hud_text(36, 58, self.region and self.region.title or "Pine Ridge", F.heavy, 27, C.white)
   -- at a marker: what it is, and Y to see it
   local e = self.near
   if e then
@@ -470,7 +548,7 @@ function Roam:draw_pause()
   nova.ui.rect(0, 0, w, 540, { 8, 11, 15, 200 })
   if self.pause_screen == "map" then return self:draw_map() end
   ui.side_panel(420, 1)
-  nova.ui.layout { anchor = "topleft", margin = 0, x = 48, y = 42, ui.header("Free roam  ·  Pine Ridge", "Paused", 72) }
+  nova.ui.layout { anchor = "topleft", margin = 0, x = 48, y = 42, ui.header("Free roam  ·  " .. (self.region and self.region.title or "Pine Ridge"), "Paused", 72) }
   local r = nova.ui.menu {
     id = "roam_pause", anchor = "topleft", margin = 0, x = 48, y = 183, w = 315, enter = false,
     { "button", "RESUME", id = "resume", h = 51 }, { "button", "MAP", id = "map", h = 51 },
