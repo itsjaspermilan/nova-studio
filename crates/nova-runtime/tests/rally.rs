@@ -270,6 +270,25 @@ fn a_whole_race_on_pine_ridge_ends_on_the_results_screen() {
     let (tyres, body) = (number("tyres "), number("body "));
     assert!((0.2..0.995).contains(&tyres), "tyres wore: {wear}");
     assert!(body > 0.5, "the car is not wrecked: {wear}");
+    rivals_keep_to_the_road(&log);
+}
+
+/// Every rival spends under 3% of the race with its wheels off the road (they cut every bend across the grass until 2026-11-08).
+fn rivals_keep_to_the_road(log: &[String]) {
+    let line = log
+        .iter()
+        .find(|l| l.starts_with("results: off the road"))
+        .expect("the time off the road is logged");
+    for entry in line.trim_start_matches("results: off the road ").split(' ') {
+        let share: f32 = entry
+            .split_once('=')
+            .unwrap()
+            .1
+            .trim_end_matches('%')
+            .parse()
+            .unwrap();
+        assert!(share < 3.0, "a rival kept to the road: {line}");
+    }
 }
 
 #[test]
@@ -292,6 +311,7 @@ fn a_whole_race_on_dust_valley_ends_on_the_results_screen() {
         .find(|l| l.contains("a time for"))
         .expect("a results line");
     assert!(line.contains("a time for 4 of 4 cars"), "{line}");
+    rivals_keep_to_the_road(&log);
     assert!(
         log.iter().any(|l| l.contains("rally: slipstream")),
         "the player drafted behind a rival at some point: {log:?}"
@@ -1168,7 +1188,12 @@ fn course_times() {
             .iter()
             .filter(|l| l.contains("put back on the road"))
             .count();
-        println!("COURSE circuit {circuit} {id}: {times} | {laps:?} | put back {stuck}");
+        let off = log
+            .iter()
+            .find(|l| l.starts_with("results: off the road"))
+            .cloned()
+            .unwrap_or_default();
+        println!("COURSE circuit {circuit} {id}: {times} | {off} | {laps:?} | put back {stuck}");
     }
     for (stage, id) in STAGES.iter().enumerate() {
         if !wanted(id) {

@@ -53,41 +53,58 @@ end
 -- Steers a car along the waypoints. `car.skill` (0.8 to 1) is how hard it dares to go.
 local function drive_itself(car)
   local c = car.ctl
-  local look = 3 + math.floor(math.abs(car.speed) / 8)
-  local target = track.point((car.waypoint or 1) + look)
-  -- the car's own line (its lane) is for the straights: into a bend it comes to the middle, where there is room to slide
-  -- how sharp the bend ahead is: the sharpest of the next 14 waypoints, about 140 m (it also sets how fast the car takes it)
-  local bend = 0
-  for j = 1, 14 do bend = math.max(bend, math.abs(track.point((car.waypoint or 1) + j).k)) end
-  local lane = (car.lane or 0) * (1 - math.min(1, bend / 0.012))
-  if target.w < 6 then lane = lane * target.w / 6 end -- (a narrow stretch: the lanes close up)
-  local kmax = bend
-  local tx = target.x + target.tz * lane
-  local tz = target.z - target.tx * lane
-  local want = math.atan(tx - car.x, tz - car.z)
-  local err = track.wrap(want - car.heading)
-  -- what is in the way? (a barrier on the outside of a bend, a tree on a straight): steer away from it and ease off
-  local h = car.heading
-  local ahead = 9 + math.abs(car.speed) * 0.8
-  local dist, ox, oz = nova.scenery.ahead(car.x, car.z, math.sin(h), math.cos(h), ahead, 1.45)
-  local urgency = 0
-  if dist then
-    urgency = 1 - dist / ahead
-    local on_left = (ox - car.x) * math.cos(h) - (oz - car.z) * math.sin(h) >= 0
-    -- (the heading grows to the left, so turning away from something on the left lowers it)
-    err = err + (on_left and -1 or 1) * (0.25 + 0.9 * urgency)
-  end
-  c.steer = math.max(-1, math.min(1, -err * 2.4))
-  -- slow for the sharpest bend in the next stretch
-  -- how hard it dares to corner: what the tyres can hold on this surface, less a margin for the weaker drivers
-  local hold = ({ road = 21, dirt = 12, rough = 11 })[car.surface] or 21
+  local here = track.point(car.waypoint or 1)
+  local s_here = car.last_s or here.s or 0
+  -- The point it steers for: a little way along the road, further the faster it goes, blended between waypoints so that it glides
+  -- along instead of hopping ten metres at a time. (2026-11-08: it was 3 waypoints plus one for every 8 m/s, up to 80 m ahead at speed:
+  -- through a bend the line to a point that far on ran across the grass on the inside, and the hop from one waypoint to the next jerked
+  -- the wheel. The rivals spent a fifth to a third of a race with their wheels on the grass.)
+  local aim = 9 + math.abs(car.speed) * 0.45
+  local px, pz, _, ptx, ptz = track.at(s_here + aim)
+  -- how sharp the road gets ahead: for each of the next 200 m, the speed that bend allows, less what braking from here can take off
+  -- before it; the car drives at the lowest of them
+  local hold = ({ road = 12, dirt = 8, rough = 7 })[car.surface] or 12  -- (sideways grip the cars really have, m/s squared: they slide past it)
   local a_lat = hold * car:grip_now() * (car.skill or 0.9)
-  local want_speed = math.min(car.vmax or 40, math.sqrt(a_lat / math.max(kmax, 0.0008)))
-  want_speed = math.max(want_speed, 13)
-  if urgency > 0.45 then want_speed = math.max(13, want_speed * (1.3 - urgency)) end
+  local decel = 9 * (car.brake_power or 30) / 30
+  local want_speed = car.vmax or 40
+  local bend = 0
+  for j = 1, 20 do
+    local q = track.point((car.waypoint or 1) + j)
+    local k = math.abs(q.k)
+    if j <= 14 then bend = math.max(bend, k) end
+    local allowed = math.sqrt(a_lat / math.max(k, 0.0008))
+    local d = math.max(0, j * 10 - 10)
+    want_speed = math.min(want_speed, math.sqrt(allowed * allowed + 2 * decel * d))
+  end
+  -- the car's own line (its lane) is for the straights: into a bend it comes to the middle, where there is room to slide
+  local lane = (car.lane or 0) * (1 - math.min(1, bend / 0.012))
+  if here.w < 6 then lane = lane * here.w / 6 end -- (a narrow stretch: the lanes close up)
+  local tx, tz = px + ptz * lane, pz - ptx * lane
+  local err = track.wrap(math.atan(tx - car.x, tz - car.z) - car.heading)
+  -- off the road, what is in the way (a tree, a barrier) is steered round and eased past. (On the road there is nothing to dodge: the
+  -- scenery stands off it, and dodging the barrier on the outside of every bend made the wheel flick from side to side at the entry.)
+  local urgency = 0
+  if (car.off_middle or 0) > (here.w or 6) - 0.5 then
+    local h = car.heading
+    local ahead = 9 + math.abs(car.speed) * 0.8
+    local dist, ox, oz = nova.scenery.ahead(car.x, car.z, math.sin(h), math.cos(h), ahead, 1.45)
+    if dist then
+      urgency = 1 - dist / ahead
+      local on_left = (ox - car.x) * math.cos(h) - (oz - car.z) * math.sin(h) >= 0
+      -- (the heading grows to the left, so turning away from something on the left lowers it)
+      err = err + (on_left and -1 or 1) * (0.25 + 0.9 * urgency)
+    end
+  end
+  c.steer = -err * 3.4
+  -- near the edge of the road, steer back towards the lane, harder the further out (a car's `left` is how far left of the middle it is)
+  local out = math.abs(car.left or 0) - ((here.w or 6) - 1.6)
+  if out > 0 then c.steer = c.steer + (car.left > 0 and 1 or -1) * math.min(1, out * 0.5) end
+  c.steer = math.max(-1, math.min(1, c.steer))
+  want_speed = math.max(want_speed, 7)
+  if urgency > 0.45 then want_speed = math.max(7, want_speed * (1.3 - urgency)) end
   local diff = want_speed - car.speed
   c.throttle = diff > 0 and math.min(1, diff / 3) or 0
-  c.brake = diff < -2 and math.min(1, (-diff - 2) / 8) or 0
+  c.brake = diff < -1 and math.min(1, (-diff - 1) / 4) or 0
   c.handbrake = false
   if math.abs(err) > 1.0 then c.throttle = math.min(c.throttle, 0.4) end
   -- pinned against something (a barrier on the outside of a bend): back away from it, the wheel turned the other way, and try again
@@ -641,7 +658,16 @@ function race.scene()
       self:locate(car)
     end
     self:bump_cars()
-    if self.phase == "racing" then self:update_draft(dt) end
+    if self.phase == "racing" then
+      self:update_draft(dt)
+      -- (how long each car spends with its wheels off the road, for the results' log: the rivals should keep to the road)
+      for _, car in ipairs(self.cars) do
+        if not car.finish_time then
+          car.race_time = (car.race_time or 0) + dt
+          if car.surface == "rough" then car.rough_time = (car.rough_time or 0) + dt end
+        end
+      end
+    end
 
     if self.phase == "racing" then
       -- rivals try a little harder when behind the player, and a little less when far ahead: on the straights, and in the bends (where
@@ -1271,6 +1297,11 @@ function race.scene()
         times[#times + 1] = string.format("%s%s=%.1f", car.is_player and "*" or "", car.model_id, car.finish_time or 0)
       end
       nova.log("results: times " .. table.concat(times, " "))
+      local off = {}
+      for _, car in ipairs(order) do
+        if not car.is_player then off[#off + 1] = string.format("%s=%.1f%%", car.model_id, 100 * (car.rough_time or 0) / math.max(1, car.race_time or 1)) end
+      end
+      nova.log("results: off the road " .. table.concat(off, " "))
       nova.log(string.format("results: a time for %d of %d cars; rivals: %s", timed, #order, table.concat(ids, " ")))
     end
     nova.log(string.format("results: place %d of %d, time %s", me.place, #order, ui.time(me.finish_time)))

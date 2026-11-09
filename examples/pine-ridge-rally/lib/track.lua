@@ -81,6 +81,24 @@ function track.locate(x, z, hint)
   return bi, a.s + a.seg * bt, left, math.sqrt(best)
 end
 
+-- The point `s` metres along the route (from the first waypoint), blended between the two waypoints either side of it: x, z and the
+-- index of the waypoint before it. (A loop wraps round; a stage stops at its ends.)
+function track.at(s)
+  track.ensure()
+  local n = #pts
+  if track.open then s = math.max(0, math.min(track.length, s)) else s = s % track.length end
+  -- (a binary search on the distance along: the points are in order)
+  local lo, hi = 1, n
+  while lo < hi do
+    local mid = (lo + hi + 1) // 2
+    if pts[mid].s <= s then lo = mid else hi = mid - 1 end
+  end
+  local a = pts[lo]
+  local b = track.open and pts[math.min(lo + 1, n)] or pts[lo % n + 1]
+  local t = a.seg > 0 and math.max(0, math.min(1, (s - a.s) / a.seg)) or 0
+  return a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t, lo, a.tx + (b.tx - a.tx) * t, a.tz + (b.tz - a.tz) * t
+end
+
 -- Turns an angle into -pi..pi.
 function track.wrap(a)
   while a > math.pi do a = a - 2 * math.pi end
