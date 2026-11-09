@@ -62,11 +62,11 @@ function body(s) {
     const f = clamp((yt - ysb) / (s.roof - ysb), 0, 1);
     const hwt = hw * (0.94 - (s.tumble ?? 0.18) * f);
     const hb = hw * 0.9;
-    const sw = s.stripe ? s.stripe.half : 1.6;
+    const sw = s.stripe ? s.stripe.half : s.screenInset ? s.screenInset * hwt : 1.6;
     const p = [
       [0, yb], [hb * 0.6, yb], [hb, yb + 1.0], [hw * 0.99, yb + (ysb - yb) * 0.38], [hw, yb + (ysb - yb) * 0.8], [hw * 0.995, ysb],
       [lerp(hw, hwt, 0.45), ysb + (yt - ysb) * 0.45], [hwt, ysb + (yt - ysb) * 0.86], [hwt - Math.min(s.roofRound ?? 2.4, hwt * 0.22), yt - 0.55],
-      [Math.min(sw, hwt * 0.4), yt - 0.05], [0, yt],
+      [Math.min(sw, hwt * (s.screenInset ? 0.9 : 0.4)), yt - 0.05], [0, yt],
     ];
     return { z, p, k, hw, yb, ys: ysb, yt };
   });
@@ -109,7 +109,7 @@ function body(s) {
       c = win ? null : s.paint;
     } else if (j === 7) c = s.paint;
     else if (j === 8 || j === 9) {
-      if (inRange(z, s.front) || inRange(z, s.rear)) c = null;
+      if (inRange(z, s.front) || inRange(z, s.rear)) { if (!(s.screenInset && j === 8 && !s.stripe)) c = null; }
       else if (j === 9 && s.stripe && s.stripe.z.some((r) => inRange(z, r))) c = s.stripe.color;
     }
     for (const sm of s.seams ?? []) if ((j === 3 || j === 4 || j === 5) && Math.abs(z - sm) < 0.3 && c !== null) c = mul(c, 0.7);
@@ -171,7 +171,7 @@ function body(s) {
     const ref = centreOf(c, pl);
     return nrm[0] * ref[0] + nrm[1] * ref[1] + nrm[2] * ref[2] < 0 ? { ...pl, v: [...pl.v].reverse() } : pl;
   });
-  const ra = s.R * 1.13;
+  const ra = s.R * (s.archScale ?? 1.13);
   for (const side of [-1, 1]) for (const wz of s.open ? [] : s.wheelZ) {
     // the plane the arch lies in: just outside the body's side over the whole arch
     let xa = 0;
@@ -382,7 +382,8 @@ function fromArch(key, o) {
   const z = (u) => r2(zf - u * L);
   const prof = PSX[a.psx].top_from_nose;
   const N = prof.length - 1;
-  const top = prof.map((v, k) => [z(k / N), r2(v * Ht)]).sort((p, q) => p[0] - q[0]);
+  // (the first and last samples are the bumper's height, not the face of the nose or tail: use the next sample in)
+  const top = prof.map((v, k) => [z(k / N), r2((k === 0 ? prof[1] : k === N ? prof[N - 1] : v) * Ht)]).sort((p, q) => p[0] - q[0]);
   // the windscreen: from where the bonnet ends to where the roof starts; the rear glass: from the end of the roof to where the deck starts
   const roofIdx = prof.map((v, k) => (v >= 0.95 ? k : -1)).filter((k) => k >= 0);
   const first = roofIdx[0], last = roofIdx[roofIdx.length - 1];
@@ -400,7 +401,7 @@ function fromArch(key, o) {
   return {
     ...classic, zr, zf, hw, yb: 3.0, ys, roof: r2(Ht), pivot: r2(R), R: r2(R), tw: r2(R * 0.82), track: r2(hw - R * 0.41 - 0.4),
     wheelZ: [r2(zf - a.fo * L), r2(zr + a.ro * L)], tumble: 0.1, top, front, rear, sideGlass: glass, seams, rim: "#d7dde6", endRound: 2.0, roofRound: 1.0, soft: 1,
-    handles: seams.slice(0, 2).map((s2) => r2(s2 - 2.4)), ...o,
+    handles: seams.slice(0, 2).map((s2) => r2(s2 - 2.4)), screenInset: 0.74, archScale: 1.24, ...o,
   };
 }
 
@@ -434,22 +435,24 @@ const CARS = {
 // the wheel arches, door handles, exhaust tips, and steel wheels with dog-dish caps (see `wheel`).
 function classicDetails({ box, lamp, b, s, front, rear }) {
   const CH = "#d4d8df", CH2 = "#aeb4be", RUB = "#17181d";
+  const slim = s.slimBumpers !== false;
   for (const [z, e, dir, nm] of [[s.zf, front, 1, "front"], [s.zr, rear, -1, "rear"]]) {
-    const w = e.hw * 2 * 0.99;
-    box(`${nm} bumper`, 0, e.yb + 2.8, z + dir * 0.7, [w, 2.0, 1.8], CH);
-    box(`${nm} bumper rubber`, 0, e.yb + 1.3, z + dir * 0.6, [w * 0.96, 1.0, 1.6], RUB);
-    for (const x of [-1, 1]) box(`${nm} overrider`, x * w * 0.36, e.yb + 2.8, z + dir * 1.5, [1.5, 2.4, 0.9], CH2);
+    const w = e.hw * 2 * 0.99, bh = slim ? 1.3 : 2.0;
+    box(`${nm} bumper`, 0, e.yb + 2.2, z + dir * 0.55, [w, bh, 1.4], s.bumperColor ?? CH);
+    box(`${nm} bumper rubber`, 0, e.yb + 1.1, z + dir * 0.5, [w * 0.96, 0.9, 1.3], RUB);
+    if (!slim) for (const x of [-1, 1]) box(`${nm} overrider`, x * w * 0.36, e.yb + 2.8, z + dir * 1.5, [1.5, 2.4, 0.9], CH2);
   }
-  // the grille and the headlights
-  const gw = Math.min(front.hw * 1.1, 17), gy = front.yb + (front.yt - front.yb) * 0.46, fz = s.zf;
-  box("grille frame", 0, gy, fz + 0.2, [gw, 3.6, 0.8], CH);
-  box("grille", 0, gy, fz + 0.4, [gw - 1.0, 2.7, 0.8], "#0e0f12");
-  for (let k = -3; k <= 3; k++) box("grille bar", (k * (gw - 1.8)) / 7, gy, fz + 0.9, [0.32, 2.6, 0.4], CH);
+  // the grille and the headlights fill the band between the bumper and the bonnet's front edge (the references have no "forehead" above it)
+  const fz = s.zf, bandLo = front.yb + 3.0, bandHi = front.yt - 0.5, gy = (bandLo + bandHi) / 2, gh = Math.min(3.4, (bandHi - bandLo) * 0.9);
+  const gw = Math.min(front.hw * 1.0, 16);
+  box("grille frame", 0, gy, fz + 0.2, [gw, gh, 0.7], CH);
+  box("grille", 0, gy, fz + 0.4, [gw - 0.9, gh - 0.7, 0.7], "#0e0f12");
+  for (let k = -3; k <= 3; k++) box("grille bar", (k * (gw - 1.6)) / 7, gy, fz + 0.8, [0.3, gh - 0.8, 0.35], CH);
   for (const side of [-1, 1]) {
-    const x = side * (gw / 2 + 3.2);
-    box("headlight bezel", x, gy, fz + 0.15, [4.8, 3.4, 0.8], CH);
-    box("headlight", x, gy, fz + 0.55, [3.9, 2.6, 0.8], "#fff1c4", { emissive: 0.95 });
-    box("indicator", x, gy - 3.0, fz + 0.15, [3.2, 1.1, 0.7], "#ffb21e", { emissive: 0.45 });
+    const x = side * (gw / 2 + 3.0);
+    box("headlight bezel", x, gy, fz + 0.15, [4.2, gh, 0.7], CH);
+    box("headlight", x, gy, fz + 0.5, [3.5, gh - 0.8, 0.7], "#fff1c4", { emissive: 0.95 });
+    box("indicator", x, gy - gh / 2 - 0.6, fz + 0.15, [2.6, 0.9, 0.6], "#ffb21e", { emissive: 0.45 });
   }
   // the side moulding between the arches (chrome over a black rubber strip), and the door handles
   const z0 = s.wheelZ[1] + s.R * 1.35, z1 = s.wheelZ[0] - s.R * 1.35, ym = s.yb + (s.ys - s.yb) * 0.42;
