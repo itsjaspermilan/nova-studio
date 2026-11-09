@@ -290,13 +290,13 @@ function Title:main_menu()
   local u = rects.career
   nova.ui.rect(u.x, u.y, 6, u.h, C.orange)
   local r = nova.ui.menu {
-    id = "main", anchor = "topleft", margin = 0, x = 48, y = 160, w = 352, enter = self.entered,
-    { "button", "RALLY", id = "rally" },
-    { "button", "CIRCUIT", id = "race" },
-    { "button", "TIME TRIAL", id = "trial" },
-    { "button", "GARAGE", id = "garage" },
-    { "button", "HOW TO PLAY", id = "howto" },
-    { "button", "OPTIONS", id = "options" },
+    id = "main", anchor = "topleft", margin = 0, x = 48, y = 178, w = 352, enter = self.entered,
+    { "button", "RALLY", id = "rally", h = 46 },
+    { "button", "CIRCUIT", id = "race", h = 46 },
+    { "button", "TIME TRIAL", id = "trial", h = 46 },
+    { "button", "GARAGE", id = "garage", h = 46 },
+    { "button", "HOW TO PLAY", id = "howto", h = 46 },
+    { "button", "OPTIONS", id = "options", h = 46 },
   }
   ui.hints({ { "pad_a", "Select" } })
   if r.pressed then
@@ -322,15 +322,15 @@ end
 function Title:options_menu()
   page("Settings", "Options")
   local r = nova.ui.menu {
-    id = "options", anchor = "topleft", margin = 0, x = 48, y = 124, w = 440, enter = self.entered,
-    { "button", "MUSIC VOLUME", value = string.format("< %d%% >", math.floor(state.music_volume * 100 + 0.5)), id = "music", adjust = true, h = 40 },
-    { "button", "SOUND VOLUME", value = string.format("< %d%% >", math.floor(state.sfx_volume * 100 + 0.5)), id = "sound", adjust = true, h = 40 },
-    { "button", "MUSIC STYLE", value = state.music_style == "kenney" and "< Kenney loops >" or "< Nova Studio songs >", id = "style", adjust = true, h = 40 },
-    { "button", "SHADOWS", value = on_off(state.shadows), id = "shadows", adjust = true, h = 40 },
-    { "button", "EFFECTS", value = on_off(state.effects), id = "effects", adjust = true, h = 40 },
-    { "button", "SMOOTH EDGES", value = on_off(state.smooth), id = "smooth", adjust = true, h = 40 },
-    { "button", "VIBRATION", value = on_off(state.vibration), id = "vibration", adjust = true, h = 40 },
-    { "button", "CONTROLS", id = "controls", h = 40 },
+    id = "options", anchor = "topleft", margin = 0, x = 48, y = 142, w = 440, enter = self.entered,
+    { "button", "MUSIC VOLUME", value = string.format("< %d%% >", math.floor(state.music_volume * 100 + 0.5)), id = "music", adjust = true, h = 38 },
+    { "button", "SOUND VOLUME", value = string.format("< %d%% >", math.floor(state.sfx_volume * 100 + 0.5)), id = "sound", adjust = true, h = 38 },
+    { "button", "MUSIC STYLE", value = state.music_style == "kenney" and "< Kenney loops >" or "< Nova Studio songs >", id = "style", adjust = true, h = 38 },
+    { "button", "SHADOWS", value = on_off(state.shadows), id = "shadows", adjust = true, h = 38 },
+    { "button", "EFFECTS", value = on_off(state.effects), id = "effects", adjust = true, h = 38 },
+    { "button", "SMOOTH EDGES", value = on_off(state.smooth), id = "smooth", adjust = true, h = 38 },
+    { "button", "VIBRATION", value = on_off(state.vibration), id = "vibration", adjust = true, h = 38 },
+    { "button", "CONTROLS", id = "controls", h = 38 },
   }
   ui.hints({ { "pad_dpad", "Change" }, { "pad_a", "Select" }, { "pad_b", "Back" } })
   if r.back then self:go("menu") return end
@@ -353,14 +353,14 @@ end
 
 function Title:controls_menu()
   page("Options", "Controls", 640)
-  local root = { id = "controls", anchor = "topleft", margin = 0, x = 48, y = 124, w = 530, enter = self.entered, gap = 3,
+  local root = { id = "controls", anchor = "topleft", margin = 0, x = 48, y = 136, w = 530, enter = self.entered, gap = 3,
                  active = not self.listening and not self.just_listened }
   self.just_listened = false
   for i, row in ipairs(controls.rows) do
     local waiting = self.listening and self.listen_row == i
-    root[#root + 1] = { "button", string.upper(row.label), value = waiting and "Press a key or button..." or controls.describe(row), id = i, h = 36 }
+    root[#root + 1] = { "button", string.upper(row.label), value = waiting and "Press a key or button..." or controls.describe(row), id = i, h = 33 }
   end
-  root[#root + 1] = { "button", "BACK TO THE DEFAULTS", id = "defaults", h = 36 }
+  root[#root + 1] = { "button", "BACK TO THE DEFAULTS", id = "defaults", h = 33 }
   local r = nova.ui.menu(root)
   if self.note then ui.hint(self.note) else ui.hints({ { "pad_a", "Change" }, { "pad_b", "Back" } }) end
   if r.back then self:go("options")
@@ -383,7 +383,7 @@ function Title:howto_screen()
   for i, row in ipairs(CONTROLS) do
     local pads = { "row", w = 100, gap = 4 }
     for _, icon in ipairs(row[3] or {}) do pads[#pads + 1] = { "image", "ui/" .. icon, w = 30, h = 30 } end
-    panel[#panel + 1] = { "row", h = 32, gap = 0,
+    panel[#panel + 1] = { "row", h = 29, gap = 0,
       { "text", string.upper(row[1]), font = F.heavy, size = 21, color = C.orange, w = 230, spacing = 0.03 }, pads, { "space", w = 18 },
       { "text", row[2], font = F.medium, size = 18, color = C.dim, grow = 1 } }
     panel[#panel + 1] = { "box", h = 1.5, draw = function(r) nova.ui.rect(r.x, r.y, r.w, r.h, C.divider) end }
@@ -391,9 +391,9 @@ function Title:howto_screen()
   add(panel, {
     { "space", h = 4 },
     { "text", "Finish all the laps ahead of your rivals. The grass slows you down; the handbrake lets the back out.", style = "body", wrap = true },
-    { "text", "Every finish pays coins: spend them in the Garage on faster cars. Do well on a track to open the next one.", style = "body", wrap = true },
+    { "text", "Finishes pay coins for faster cars in the Garage; do well to open the next track.", style = "body", wrap = true },
   })
-  nova.ui.layout { anchor = "topleft", margin = 0, x = 48, y = 118, panel }
+  nova.ui.layout { anchor = "topleft", margin = 0, x = 48, y = 134, panel }
   ui.hints({ { "pad_b", "Back" } })
 end
 
@@ -576,7 +576,7 @@ function Title:laps_menu()
   self:course_panel({ line("Best " .. state.laps .. (state.laps == 1 and " lap" or " laps"), ui.time(state.best("race" .. state.laps, info.id)), C.gold),
     line("Prize", prize_text(info), C.gold) })
   local r = nova.ui.menu {
-    id = "laps", anchor = "topleft", margin = 0, x = 48, y = 124, w = 384, enter = self.entered,
+    id = "laps", anchor = "topleft", margin = 0, x = 48, y = 142, w = 384, enter = self.entered,
     { "button", "LAPS", value = "< " .. state.laps .. " >", id = "laps", adjust = true },
     { "button", "CONTINUE", id = "go" },
   }
@@ -603,10 +603,10 @@ function Title:confirm_menu()
   if state.mode == "race" then rows[#rows + 1] = line("Laps", tostring(state.laps)) end
   if state.mode ~= "trial" then rows[#rows + 1] = line("Difficulty", level_name(info.level), LEVEL_COLOR[info.level or 1]) end
   rows[#rows + 1] = line("Prize", prize_text(info), C.gold)
-  nova.ui.layout { anchor = "topleft", margin = 0, x = 48, y = 124, rows }
+  nova.ui.layout { anchor = "topleft", margin = 0, x = 48, y = 142, rows }
   self:course_panel({ { "text", MODE_BLURBS[state.mode], style = "muted", wrap = true } })
   local r = nova.ui.menu {
-    id = "confirm", anchor = "topleft", margin = 0, x = 48, y = 330, w = 384, enter = self.entered,
+    id = "confirm", anchor = "topleft", margin = 0, x = 48, y = 348, w = 384, enter = self.entered,
     { "button", "RACE", id = "race", h = 78, size = 48 },
   }
   ui.hints({ { "pad_a", "Race" }, { "pad_b", "Back" } })
