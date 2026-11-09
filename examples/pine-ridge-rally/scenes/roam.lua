@@ -331,9 +331,62 @@ function Roam:draw_ui()
   transition.draw()
 end
 
+-- The minimap, bottom left (Horizon-style): the roads within MINI_RANGE metres, turned with the car so that straight ahead is up, the
+-- events as orange pins (held at the edge when they are further off, so that you can head for them), and the car as an arrow in the middle.
+local MINI, MINI_RANGE = 156, 260
+local MINI_ROAD = { tarmac = C.white, gravel = { 222, 190, 140 } }
+function Roam:draw_minimap()
+  local p = self.player
+  local x0, y0 = 36, 540 - 54 - 24 - MINI
+  local cx, cy = x0 + MINI / 2, y0 + MINI / 2
+  local k = (MINI / 2) / MINI_RANGE
+  local fx, fz = math.sin(p.heading), math.cos(p.heading)
+  local lx, lz = fz, -fx -- (the car's left)
+  local function at(x, z)
+    local rx, rz = x - p.x, z - p.z
+    return cx - (rx * lx + rz * lz) * k, cy - (rx * fx + rz * fz) * k
+  end
+  nova.ui.rect(x0 - 3, y0 - 3, MINI + 6, MINI + 6, { 0, 0, 0, 120 })
+  nova.ui.rect(x0, y0, MINI, MINI, { 24, 40, 30, 200 })
+  local half = MINI / 2 - 2
+  local reach2 = (MINI_RANGE * 1.45) ^ 2
+  for pass = 1, 2 do
+    for _, name in ipairs(roads.names()) do
+      local rt = roads.route(name)
+      local pts = rt.pts
+      local colour = (pts[1] and pts[1].road == "road_asphalt") and MINI_ROAD.tarmac or MINI_ROAD.gravel
+      local last = #pts - (rt.loop and 0 or 1)
+      for i = 1, last do
+        local a, b = pts[i], pts[i % #pts + 1]
+        if (a.x - p.x) ^ 2 + (a.z - p.z) ^ 2 < reach2 then
+          local x1, y1 = at(a.x, a.z)
+          local x2, y2 = at(b.x, b.z)
+          -- (a piece of road is drawn when both its ends are inside the square: the edge stays tidy enough at this size)
+          if math.abs(x1 - cx) < half and math.abs(y1 - cy) < half and math.abs(x2 - cx) < half and math.abs(y2 - cy) < half then
+            if pass == 1 then nova.ui.line(x1, y1, x2, y2, 6, { 0, 0, 0, 140 })
+            else nova.ui.line(x1, y1, x2, y2, 3, colour) end
+          end
+        end
+      end
+    end
+  end
+  for _, e in ipairs(nova.all("event")) do
+    local x, y = at(e.x, e.z)
+    local ex, ey = x - cx, y - cy
+    local m = math.max(math.abs(ex), math.abs(ey))
+    if m > half - 6 then local s2 = (half - 6) / m; x, y = cx + ex * s2, cy + ey * s2 end
+    nova.ui.rect(x - 6, y - 6, 12, 12, C.ink)
+    nova.ui.rect(x - 4.5, y - 4.5, 9, 9, C.orange)
+  end
+  -- the car: an arrow pointing up
+  nova.ui.line(cx - 6, cy + 7, cx, cy - 8, 4, C.green)
+  nova.ui.line(cx + 6, cy + 7, cx, cy - 8, 4, C.green)
+end
+
 function Roam:draw_hud()
   local w = nova.view()
   local p = self.player
+  self:draw_minimap()
   local right = w - 36
   local kmh = math.floor(math.abs(p.speed) * 3.6 + 0.5)
   local gear = p.speed < -0.5 and "R" or ("G" .. (p.gear or 1))
