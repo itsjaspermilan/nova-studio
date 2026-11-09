@@ -15,7 +15,7 @@ export const MENU_LAYOUT: { title: string; lines: MenuLine[] }[] = [
   },
   { title: "View", lines: [{ id: "view.tree" }] },
   { title: "Run", lines: [{ id: "run.play" }, { id: "run.playDevice" }, "-", { id: "tool.simulate" }, { id: "tool.storeArt" }] },
-  { title: "Window", lines: [{ native: "minimize" }, { native: "maximize" }] },
+  { title: "Window", lines: [{ id: "workspace.model" }, { id: "workspace.sprites" }, { id: "workspace.sound" }, { id: "workspace.engine" }, "-", { native: "minimize" }, { native: "maximize" }] },
   { title: "Help", lines: [{ id: "help.toggle" }, { id: "palette.open" }] },
 ];
 

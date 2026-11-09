@@ -18,6 +18,9 @@
   import PlayButton from "./components/PlayButton.svelte";
   import CommandPalette from "./components/CommandPalette.svelte";
   import MenuBar from "./components/MenuBar.svelte";
+  import WorkspaceTabs from "./components/WorkspaceTabs.svelte";
+  import WorkspaceHome from "./components/WorkspaceHome.svelte";
+  import { WORKSPACES } from "./lib/workspaces";
   import { commands, sendChord } from "./lib/commands";
   import { resolveMenus } from "./lib/menus";
   import { commandsRev } from "./lib/commands-rev.svelte";
@@ -60,6 +63,7 @@
       commands.register({ id: "run.play", title: "Play or stop the game", menu: "Run", icon: "player-play", keys: ["Mod+Enter"], enabled: has, run: () => void (studio.running ? studio.stop() : studio.play()) }),
       commands.register({ id: "run.playDevice", title: "Play on the device used last", menu: "Run", keys: ["Mod+Shift+Enter"], enabled: has, run: () => void (studio.running ? studio.stop() : studio.playOnPreferredDevice()) }),
       commands.register({ id: "tool.simulate", title: "Simulate the game many times", menu: "Run", enabled: has, run: () => { studio.tool = "sim"; } }),
+      ...WORKSPACES.map((w, i) => commands.register({ id: `workspace.${w.id}`, title: `Go to ${w.title}`, menu: "Window", keys: [`Mod+${i + 1}`], help: w.blurb, enabled: has, run: () => studio.setWorkspace(w.id) })),
       // text editing is handled by the focused control itself; the menu only sends it the usual key press or edit command
       commands.register({ id: "edit.undo", title: "Undo", menu: "Edit", icon: "arrow-back-up", keys: ["Mod+Z"], forward: true, run: () => { if (!sendChord("Mod+Z", commands.platform)) document.execCommand("undo"); } }),
       commands.register({ id: "edit.redo", title: "Redo", menu: "Edit", icon: "arrow-forward-up", keys: ["Mod+Shift+Z"], forward: true, run: () => { if (!sendChord("Mod+Shift+Z", commands.platform)) document.execCommand("redo"); } }),
@@ -127,6 +131,7 @@
       </button>
       <button class="ghost" onclick={() => studio.closeProject()} title="Back to projects">‹ Projects</button>
       <strong data-tauri-drag-region>{studio.project.name}</strong>
+      <WorkspaceTabs />
       {#if studio.api?.kind === "mock"}<span class="pill">browser preview</span>{/if}
       <span class="spacer" data-tauri-drag-region></span>
       <button class="ghost" onclick={() => studio.openHelp()} title="Help and lessons (F1)">? Help</button>
@@ -142,7 +147,7 @@
 
     <main class="center">
       <div class="tabbar" role="tablist">
-        {#each studio.tabs as tab (tab.path)}
+        {#each studio.workspaceTabs as tab (tab.path)}
           <div class="tab" class:on={studio.active === tab.path} role="presentation">
             <button role="tab" aria-selected={studio.active === tab.path} onclick={() => (studio.active = tab.path)} title={tab.path}>
               {base(tab.path)}{#if isDirty(tab)}<span class="dot" aria-label="unsaved">●</span>{/if}
@@ -184,7 +189,7 @@
               <Editor path={studio.tab.path} text={studio.tab.text} />
             {/if}
           {:else}
-            <div class="placeholder dim">Open a file from the tree.</div>
+            <WorkspaceHome />
           {/if}
         {/key}
       </div>
@@ -252,6 +257,8 @@
   .bottom { grid-area: bottom; min-height: 0; }
   .status { grid-area: bottom; background: var(--panel); border-top: 1px solid var(--line); padding: 2px 8px; }
   .spacer { flex: 1; }
+  .top :global(button), .top strong { white-space: nowrap; }
+  .top { overflow: hidden; }
   .pill { font-size: 11px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 1px 8px; color: var(--warn); }
   .tabbar { display: flex; overflow-x: auto; background: var(--panel); border-bottom: 1px solid var(--line); min-height: 33px; }
   .tab { display: flex; align-items: center; border-right: 1px solid var(--line); }

@@ -46,7 +46,7 @@ Blender keymap in Model. Goal: a free, all-in-one studio for making games, no st
 - [~] Command palette (Cmd/Ctrl-K, `CommandPalette.svelte`, checked in the browser preview; searches commands only so far) searching commands, documents, assets, Lua symbols, help, settings.
 - [ ] Keymap system: per-workspace defaults, Blender preset (default in Model), editable, conflict warnings, printable cheat sheet.
 - [ ] Areas: resizable, collapsible, split/join, switchable type, saved layouts per workspace and project, Reset layout.
-- [ ] Tabs and tear-off windows (Tauri multi-window); a document is open in one place only (focus the existing one, "open in another window" + Jump); one undo history per document, shown as a history list.
+- [~] Workspace tabs (2026-11-09: Model, Sprites, Sound, Engine in the top bar, Cmd/Ctrl+1 to 4, in the Window menu; a file opens in the workspace that owns it, each workspace remembers its document and shows a home page when none is open; a document opens once; `lib/workspaces.ts`, store tests). Not yet: each workspace's own layout, toolbar and panels (they still share the old editor area), tear-off windows (Tauri multi-window) with "open in another window" + Jump, and the undo history list.
 - [ ] Autosave and crash recovery for every document; version snapshots (named, restore).
 - [ ] First-launch screen: navigation scheme (mouse, trackpad, pen), short practice area.
 - [ ] Learnability instead of a beginner mode: tool hints in the status bar, a guided first exercise per workspace (`lib/tutorials`), project templates.

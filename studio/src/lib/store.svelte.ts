@@ -19,6 +19,7 @@ import { projectSymbols, type ProjectSymbols } from "./completions";
 import { PerfTracker, type Hitch, type PerfSample } from "./perf";
 import { ACTIVITY_FILE, parseActivity, type Activity } from "./activity";
 import { debug } from "./debugger.svelte";
+import { inWorkspace, workspaceOf, type WorkspaceId } from "./workspaces";
 import { deviceHint, lastDevice, NO_DEVICE, preferredDevice, rememberDevice } from "./devices";
 import type { AndroidDevice, Api, Diagnostic, ExampleInfo, ExportReport, FileEntry, LogLine, ProjectInfo, RecentProject, TemplateInfo } from "./types";
 
@@ -65,6 +66,10 @@ class Studio {
   files: FileEntry[] = $state([]);
   tabs: Tab[] = $state([]);
   active: string | null = $state(null);
+  /// The workspace on show (lib/workspaces.ts); a document's tab only shows in its own workspace.
+  workspace: WorkspaceId = $state("engine");
+  /// The document each workspace had on show when it was left.
+  #lastActive: Partial<Record<WorkspaceId, string>> = {};
   diagnostics: Diagnostic[] = $state([]);
   checking = $state(false);
   checkedAt: number | null = $state(null);
@@ -108,6 +113,21 @@ class Studio {
   /// keep pictures, sounds or models (the scene canvas, the asset lists) watch `n` and reload what is in `paths`.
   fileChanges: { n: number; paths: string[] } = $state({ n: 0, paths: [] });
   #checkTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /// The tabs of the workspace on show.
+  get workspaceTabs(): Tab[] {
+    return inWorkspace(this.tabs, this.workspace);
+  }
+
+  /// Shows a workspace, with the document it had on show last (or its first open one, or none).
+  setWorkspace(id: WorkspaceId) {
+    if (id === this.workspace) return;
+    if (this.active && workspaceOf(this.active) === this.workspace) this.#lastActive[this.workspace] = this.active;
+    this.workspace = id;
+    const remembered = this.#lastActive[id];
+    const open = inWorkspace(this.tabs, id);
+    this.active = (remembered && open.some((t) => t.path === remembered) ? remembered : open[0]?.path) ?? null;
+  }
 
   get tab(): Tab | undefined {
     return this.tabs.find((t) => t.path === this.active);
@@ -321,6 +341,7 @@ class Studio {
       this.tabs.push({ path, text, saved: text, binary: content.binary, size: content.size });
     }
     this.active = path;
+    this.workspace = workspaceOf(path);
     if (line) this.jump = { path, line, nonce: Date.now() };
   }
 
@@ -330,9 +351,14 @@ class Studio {
     editorStates.forget(path);
     this.saveHooks.delete(path);
     this.sessions.delete(path);
-    const index = this.tabs.findIndex((t) => t.path === path);
+    // (the next tab to show is the neighbour in the same workspace)
+    const siblings = inWorkspace(this.tabs, workspaceOf(path));
+    const index = siblings.findIndex((t) => t.path === path);
     this.tabs = this.tabs.filter((t) => t.path !== path);
-    if (this.active === path) this.active = this.tabs[Math.min(index, this.tabs.length - 1)]?.path ?? null;
+    if (this.active === path) {
+      const same = siblings.filter((t) => t.path !== path);
+      this.active = same[Math.min(index, same.length - 1)]?.path ?? null;
+    }
   }
 
   /// An editor changed something that is not in the tab's text (pixels): mark the tab unsaved.

@@ -1,0 +1,58 @@
+<script lang="ts">
+  // What a workspace shows when none of its documents is open: the project's files of its kind to open, and a way to make a new one.
+  import { studio } from "../lib/store.svelte";
+  import { WORKSPACES, inWorkspace } from "../lib/workspaces";
+
+  const w = $derived(WORKSPACES.find((x) => x.id === studio.workspace)!);
+  const own = $derived(inWorkspace(studio.files.filter((f) => !f.dir), studio.workspace).filter((f) => !f.path.endsWith("nova.json")));
+  let name = $state("");
+  const base = (p: string) => p.slice(p.lastIndexOf("/") + 1);
+  const make = async (kind: "model" | "sprite" | "sfx" | "song") => {
+    const n = name.trim();
+    if (!n) return;
+    if (kind === "model") await studio.createModel(n);
+    else if (kind === "sprite") await studio.createSprite(n, 32);
+    else if (kind === "sfx") await studio.createSound(n);
+    else await studio.createSong(n);
+    name = "";
+  };
+</script>
+
+<div class="home">
+  <h2>{w.title}</h2>
+  <p class="dim">{w.blurb}</p>
+  {#if studio.workspace !== "engine"}
+    <form onsubmit={(e) => { e.preventDefault(); }}>
+      <input bind:value={name} placeholder="Name of a new {studio.workspace === 'sound' ? 'sound or song' : studio.workspace === 'model' ? 'model' : 'sprite'}" aria-label="Name" />
+      {#if studio.workspace === "model"}<button type="submit" onclick={() => make("model")} disabled={!name.trim()}>New model</button>{/if}
+      {#if studio.workspace === "sprites"}<button type="submit" onclick={() => make("sprite")} disabled={!name.trim()}>New sprite</button>{/if}
+      {#if studio.workspace === "sound"}
+        <button type="submit" onclick={() => make("sfx")} disabled={!name.trim()}>New sound effect</button>
+        <button type="button" onclick={() => make("song")} disabled={!name.trim()}>New song</button>
+      {/if}
+    </form>
+  {/if}
+  {#if own.length}
+    <h3>In this project</h3>
+    <ul>
+      {#each own as f (f.path)}
+        <li><button class="ghost" onclick={() => studio.openFile(f.path)} title={f.path}>{base(f.path)}</button> <span class="dim path">{f.path}</span></li>
+      {/each}
+    </ul>
+  {:else if studio.workspace !== "engine"}
+    <p class="dim">Nothing here yet.</p>
+  {:else}
+    <p class="dim">Open a file from the tree.</p>
+  {/if}
+</div>
+
+<style>
+  .home { height: 100%; overflow: auto; padding: 28px 32px; max-width: 760px; }
+  h2 { margin: 0 0 2px; font-size: 18px; }
+  h3 { font-size: 13px; margin: 22px 0 6px; color: var(--dim); }
+  form { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+  form input { min-width: 220px; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { display: flex; gap: 10px; align-items: baseline; padding: 1px 0; }
+  .path { font-size: 11px; }
+</style>

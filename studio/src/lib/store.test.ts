@@ -292,3 +292,40 @@ describe("pictures, sounds and models changed outside the studio", () => {
     expect(studio.tabs.find((t) => t.path === "entities/coin.lua")!.conflict).toBeFalsy();
   });
 });
+
+describe("workspaces", () => {
+  it("opening a file shows its workspace, and a tab only shows in its own workspace", async () => {
+    await openProject();
+    await studio.openFile("sprites/player.sprite.json");
+    expect(studio.workspace).toBe("sprites");
+    await studio.openFile("entities/player.lua");
+    expect(studio.workspace).toBe("engine");
+    expect(studio.workspaceTabs.map((t) => t.path)).not.toContain("sprites/player.sprite.json");
+    studio.setWorkspace("sprites");
+    expect(studio.active).toBe("sprites/player.sprite.json");
+    expect(studio.workspaceTabs.map((t) => t.path)).toEqual(["sprites/player.sprite.json"]);
+  });
+
+  it("remembers each workspace's document, and shows none for a workspace with nothing open", async () => {
+    await openProject();
+    await studio.openFile("entities/player.lua");
+    await studio.openFile("sprites/player.sprite.json");
+    studio.setWorkspace("engine");
+    expect(studio.active).toBe("entities/player.lua");
+    studio.setWorkspace("model");
+    expect(studio.active).toBeNull();
+    studio.setWorkspace("sprites");
+    expect(studio.active).toBe("sprites/player.sprite.json");
+  });
+
+  it("opens a document in one place only, and closing picks a neighbour in the same workspace", async () => {
+    await openProject();
+    await studio.openFile("entities/player.lua");
+    await studio.openFile("entities/player.lua");
+    await studio.openFile("sprites/player.sprite.json");
+    await studio.openFile("scenes/title.lua");
+    expect(studio.tabs.filter((t) => t.path === "entities/player.lua")).toHaveLength(1);
+    studio.closeTab("scenes/title.lua");
+    expect(studio.active).toBe("entities/player.lua"); // not the sprite on another workspace's tab
+  });
+});
