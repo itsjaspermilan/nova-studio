@@ -223,6 +223,31 @@ for (let i = 0; i < RING.length; i++) {
   const line = buildRoad(`roam_ring_${RING[i]}`, [...c1.slice(0, -1), ...c2.slice(1)], t.region, "road_asphalt", 1, true);
   corridor(line);
 }
+// connector roads: from the middle of each ring leg inwards to the nearest spoke highway (a T-junction at each end), so the ring and the
+// spokes make a web and not only a wheel
+for (const name of RING) {
+  const leg = routes.find((r) => r.name === `roam_ring_${name}`)!;
+  const t = towns.find((o) => o.region.id === name)!;
+  const m = Math.floor(leg.pts.length / 2);
+  const a = leg.pts[m]!, a2 = leg.pts[m + 1]!;
+  const tl = Math.hypot(a2.x - a.x, a2.z - a.z) || 1;
+  let n = { x: -(a2.z - a.z) / tl, z: (a2.x - a.x) / tl };
+  if ((hub.cx - a.x) * n.x + (hub.cz - a.z) * n.z < 0) n = { x: -n.x, z: -n.z }; // (towards the middle of the map)
+  let best: P | null = null, bd = Infinity;
+  for (const r of routes) {
+    if (!r.name.startsWith("roam_hw_")) continue;
+    for (const q of r.pts.filter((_, i) => i % 3 === 0)) {
+      const d = Math.hypot(q.x - a.x, q.z - a.z);
+      // (in front of the ring there, and not at the town the spoke ends in)
+      if (d > 400 && ((q.x - a.x) * n.x + (q.z - a.z) * n.z) / d > 0.35 && d < bd && Math.hypot(q.x - hub.cx, q.z - hub.cz) > 300) { bd = d; best = q; }
+    }
+  }
+  if (!best) { console.log(`  no connector from the ${name} leg`); continue; }
+  const dir = { x: (best.x - a.x) / bd, z: (best.z - a.z) / bd };
+  const line = buildRoad(`roam_cross_${name}`, controlFrom(a, n, best, dir, 100), t.region, "road_asphalt", 1, false);
+  corridor(line);
+  console.log(`  connector road from the ${name} ring leg, ${Math.round(bd)} m`);
+}
 towns.forEach(dressTown);
 
 // ---- the courses ----------------------------------------------------------------------------------------------------------------
@@ -307,45 +332,62 @@ for (const r of routes) if (placed.some((p) => p.id === r.name)) for (const q of
 for (const c of placed) {
   const track = trackOf(c.id);
   const own = routes.find((r) => r.name === c.id)!.pts;
-  const { end, into } = wayIn(c.id, own, c.dx, c.dz);
-  // the nearest point of the road network (a town's streets, a highway, another course's road in; never a course itself), from a little
-  // way out of its start
-  const from = { x: end.x - into.x * 200, z: end.z - into.z * 200 };
-  // candidates: the nearest points of the network (one per road, up to eight), each tried with a few different bends; the first road in
-  // that keeps 25 m from every other course's road wins, else the one that comes near the fewest of their points
-  const starts: { p: P; d: number }[] = [];
-  for (const r of routes) {
-    if (placed.some((p) => p.id === r.name)) continue;
-    let best: P | null = null, bd = Infinity;
-    for (const p of r.pts) { const d = (p.x - from.x) ** 2 + (p.z - from.z) ** 2; if (d < bd) { bd = d; best = p; } }
-    if (best) starts.push({ p: best, d: bd });
-  }
-  starts.sort((a, b) => a.d - b.d);
-  const clash = (line: P[]) => {
-    let n = 0;
-    for (const q of line) {
-      const gx = Math.floor(q.x / 20), gz = Math.floor(q.z / 20);
-      for (let i = gx - 2; i <= gx + 2; i++) for (let j = gz - 2; j <= gz + 2; j++)
-        for (const o of (courseGrid.get(`${i},${j}`) ?? [])) if (o.r !== c.id && (o.x - q.x) ** 2 + (o.z - q.z) ** 2 < 625) n++;
-    }
-    return n;
-  };
-  let chosen: [number, number][] | null = null, fewest = Infinity;
-  for (const st of starts.slice(0, 8)) {
-    const out = { x: from.x - st.p.x, z: from.z - st.p.z };
-    const ol = Math.hypot(out.x, out.z) || 1;
-    for (let tryN = 0; tryN < 4; tryN++) {
-      const control = controlFrom(st.p, { x: out.x / ol, z: out.z / ol }, end, into, tryN === 0 ? 0 : 140);
-      const n = clash(centreline(control, 5, true));
-      if (n < fewest) { fewest = n; chosen = control; }
-      if (n === 0) break;
-    }
-    if (fewest === 0) break;
-  }
-  if (fewest > 0) console.log(`  ${c.id}: its road in comes near another course (${fewest} points)`);
   const kind = c.region.road, grip = c.region.grip;
-  const line = buildRoad(`roam_to_${c.id}`, chosen!, c.region, kind, grip, false);
-  objects.push({ kind: "roam_foliage", x: line[0]!.x, y: 0, z: line[0]!.z, props: { routes: [`roam_to_${c.id}`], plants: [] } });
+  // a road from the nearest road of the network (never a course itself, nor `avoid`) to the point `end` of the course, arriving heading
+  // `into`: a little way out of the course the road starts from the nearest points of the network (one per road, up to eight), each
+  // tried with a few different bends; the first that keeps 25 m from every other course's road wins, else the one that comes near the
+  // fewest of their points. Gives the name of the road it joined.
+  const link = (name: string, end: P, into: P, avoid: string | null): string | null => {
+    const from = { x: end.x - into.x * 200, z: end.z - into.z * 200 };
+    const starts: { p: P; d: number; r: string }[] = [];
+    for (const r of routes) {
+      if (placed.some((p) => p.id === r.name) || r.name === avoid) continue;
+      let best: P | null = null, bd = Infinity;
+      for (const p of r.pts) { const d = (p.x - from.x) ** 2 + (p.z - from.z) ** 2; if (d < bd) { bd = d; best = p; } }
+      if (best) starts.push({ p: best, d: bd, r: r.name });
+    }
+    starts.sort((a, b) => a.d - b.d);
+    const clash = (line: P[]) => {
+      let n = 0;
+      for (const q of line) {
+        const gx = Math.floor(q.x / 20), gz = Math.floor(q.z / 20);
+        for (let i = gx - 2; i <= gx + 2; i++) for (let j = gz - 2; j <= gz + 2; j++)
+          for (const o of (courseGrid.get(`${i},${j}`) ?? [])) if (o.r !== c.id && (o.x - q.x) ** 2 + (o.z - q.z) ** 2 < 625) n++;
+      }
+      return n;
+    };
+    let chosen: [number, number][] | null = null, fewest = Infinity, joined = "";
+    for (const st of starts.slice(0, 8)) {
+      const out = { x: from.x - st.p.x, z: from.z - st.p.z };
+      const ol = Math.hypot(out.x, out.z) || 1;
+      for (let tryN = 0; tryN < 4; tryN++) {
+        const control = controlFrom(st.p, { x: out.x / ol, z: out.z / ol }, end, into, tryN === 0 ? 0 : 140);
+        const n = clash(centreline(control, 5, true));
+        if (n < fewest) { fewest = n; chosen = control; joined = st.r; }
+        if (n === 0) break;
+      }
+      if (fewest === 0) break;
+    }
+    if (!chosen) return null;
+    if (fewest > 0) console.log(`  ${name}: comes near another course (${fewest} points)`);
+    const line = buildRoad(name, chosen, c.region, kind, grip, false);
+    objects.push({ kind: "roam_foliage", x: line[0]!.x, y: 0, z: line[0]!.z, props: { routes: [name], plants: [] } });
+    return joined;
+  };
+  const { end, into } = wayIn(c.id, own, c.dx, c.dz);
+  const first = link(`roam_to_${c.id}`, end, into, null);
+  if (track.open) {
+    // a stage's finish: a road out of it too, so that a stage is a way through and not a dead end
+    const ctl = track.control as [number, number][];
+    const [pa, pb] = [ctl[ctl.length - 2]!, ctl[ctl.length - 1]!];
+    const len = Math.hypot(pb[0] - pa[0], pb[1] - pa[1]) || 1;
+    link(`roam_from_${c.id}`, { x: pb[0] + c.dx, z: pb[1] + c.dz }, { x: -(pb[0] - pa[0]) / len, z: -(pb[1] - pa[1]) / len }, first);
+  } else {
+    // a circuit's second way in: halfway round it, from the middle of the circuit outwards
+    const h = Math.floor(own.length / 2);
+    const w2 = wayIn(c.id, [...own.slice(h), ...own.slice(0, h)], c.dx, c.dz);
+    link(`roam_to2_${c.id}`, w2.end, w2.into, first);
+  }
   // the events: a circuit's race at its start and its time trial a little way round; a stage's rally at its start
   const at = (i: number, side: number) => {
     const p = own[i]!, q = own[i + 1]!;
