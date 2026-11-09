@@ -5,6 +5,8 @@
   import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
   import { applyNavigation, navHint } from "../lib/view-nav";
   import NavButtons from "./NavButtons.svelte";
+  import { commands } from "../lib/commands";
+  import { commandsRev } from "../lib/commands-rev.svelte";
   import { input } from "../lib/input-settings.svelte";
   import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
   import {
@@ -1870,11 +1872,8 @@
     }
     const mod = e.metaKey || e.ctrlKey;
     const step = e.shiftKey ? 4 : 1;
-    if (!mod && mode === "model" && !inEdit && selected && ["w", "e", "r", "p"].includes(e.key.toLowerCase())) {
-      gizmoMode = ({ w: "translate", e: "rotate", r: "scale", p: "pivot" } as const)[e.key.toLowerCase() as "w" | "e" | "r" | "p"];
-    } else if (e.key.toLowerCase() === "z" && !mod) {
-      viewMode = viewMode === "textured" ? "solid" : viewMode === "solid" ? "wire" : "textured";
-    } else if (e.key === "Escape" && editPoints) {
+    // (move, turn, resize, pivot, shading, duplicate and delete are commands with their own keys: see the model commands below)
+    if (e.key === "Escape" && editPoints) {
       editPoints = false;
     } else if (mod && e.key.toLowerCase() === "z") {
       e.preventDefault();
@@ -1884,12 +1883,6 @@
       e.preventDefault();
       if (mode === "texture") redoTexture();
       else redo();
-    } else if (mod && e.key.toLowerCase() === "d" && selected) {
-      e.preventDefault();
-      duplicate();
-    } else if ((e.key === "Delete" || e.key === "Backspace") && selected) {
-      e.preventDefault();
-      remove();
     } else if (selected && !mod) {
       const moves: Record<string, [number, number, number]> = { ArrowLeft: [-step, 0, 0], ArrowRight: [step, 0, 0], ArrowUp: [0, 0, -step], ArrowDown: [0, 0, step], PageUp: [0, step, 0], PageDown: [0, -step, 0] };
       const m = moves[e.key];
@@ -1899,6 +1892,30 @@
       }
     }
   }
+  // The model editor's commands. Each has a Blender key and a Nova key (Edit > Keyboard shortcuts changes them); a key typed into a text box is
+  // text, not one of these. They are in the Model menu and the command palette while a model is open.
+  $effect(() => {
+    const onShape = () => mode === "model" && !inEdit && !!selected;
+    const offs = [
+      commands.register({ id: "model.move", title: "Move the shape", menu: "Model", keymaps: { blender: ["G"], nova: ["W"] }, help: "Shows the move handles", enabled: onShape, run: () => { gizmoMode = "translate"; } }),
+      commands.register({ id: "model.turn", title: "Turn the shape", menu: "Model", keymaps: { blender: ["R"], nova: ["E"] }, help: "Shows the turn handles", enabled: onShape, run: () => { gizmoMode = "rotate"; } }),
+      commands.register({ id: "model.resize", title: "Resize the shape", menu: "Model", keymaps: { blender: ["S"], nova: ["R"] }, help: "Shows the resize handles", enabled: onShape, run: () => { gizmoMode = "scale"; } }),
+      commands.register({ id: "model.pivot", title: "Move the pivot", menu: "Model", keys: ["P"], help: "The point a part turns about", enabled: onShape, run: () => { gizmoMode = "pivot"; } }),
+      commands.register({ id: "model.editPoints", title: "Edit points", menu: "Model", keymaps: { blender: ["Tab"], nova: [] }, help: "Move points and pull faces of a shape", enabled: () => mode === "model" && !!cube, run: () => { if (inEdit) editPoints = false; else makeEditable(); } }),
+      commands.register({ id: "model.add", title: "Add a shape", menu: "Model", keymaps: { blender: ["Shift+A"], nova: [] }, enabled: () => mode === "model", run: () => newCube() }),
+      commands.register({ id: "model.duplicate", title: "Duplicate", menu: "Model", keymaps: { blender: ["Shift+D"], nova: ["Mod+D"] }, enabled: () => !!selected, run: () => duplicate() }),
+      commands.register({ id: "model.delete", title: "Delete", menu: "Model", keymaps: { blender: ["X", "Delete"], nova: ["Delete", "Backspace"] }, enabled: () => !!selected, run: () => remove() }),
+      commands.register({ id: "model.shading", title: "Cycle the shading", menu: "Model", keys: ["Z"], help: "Textured, plain colours, wireframe", run: () => { viewMode = viewMode === "textured" ? "solid" : viewMode === "solid" ? "wire" : "textured"; } }),
+      commands.register({ id: "model.resetView", title: "Reset the view", menu: "Model", keymaps: { blender: ["Home"], nova: [] }, run: () => resetView() }),
+    ];
+    return () => offs.forEach((off) => off());
+  });
+  // the shortcut a command has now (the keymap and the person's changes decide), for the hint line
+  const keyFor = (id: string) => {
+    void commandsRev.n;
+    const cmd = commands.get(id);
+    return cmd ? commands.shortcut(cmd) || "—" : "";
+  };
   const hexOf = (c: string) => c.slice(0, 7);
   const pickColour = (face: Face | "all", value: string) => {
     if (!selected) return;
@@ -2019,7 +2036,7 @@
       {:else if inEdit}
         <p class="hint dim">Points: click a face or an edge to pick it (⇧-click a dot adds it) · drag a handle's <b style="color:#ff6b6b">X</b> <b style="color:#7ad67a">Y</b> <b style="color:#6cb2ff">Z</b> arrow to move along one axis, or a square to move on that plane · drag a dot itself to move it on the grid plane you are looking at (X, Y or Z while dragging keeps it to one axis) · arrows and PageUp/PageDown nudge · Esc leaves point mode</p>
       {:else}
-        <p class="hint dim">{navHint(input.navigation)} · click a shape to select (⌘ or ⇧ adds more) · drag the handles, or W E R P for move, turn, resize, pivot · arrows and PageUp/PageDown nudge (⇧ for 4) · ⌘D duplicates · Delete removes · Z changes the view</p>
+        <p class="hint dim">{navHint(input.navigation)} · click a shape to select (⌘ or ⇧ adds more) · drag the handles, or {keyFor("model.move")}, {keyFor("model.turn")}, {keyFor("model.resize")}, {keyFor("model.pivot")} for move, turn, resize, pivot · arrows and PageUp/PageDown nudge (⇧ for 4) · {keyFor("model.duplicate")} duplicates · {keyFor("model.delete")} removes · {keyFor("model.shading")} changes the view</p>
       {/if}
     </div>
 

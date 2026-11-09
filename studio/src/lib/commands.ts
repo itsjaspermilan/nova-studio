@@ -3,6 +3,8 @@
 // (docs/studio-ux.md, section 1), so a feature is added once. Shortcuts are written "Mod+S": Mod is Cmd on a Mac and Ctrl elsewhere.
 
 export type Platform = "mac" | "win";
+/// The keymap presets: Blender's keys for the 3D work (the default), and Nova's own.
+export type Keymap = "blender" | "nova";
 
 export interface Command {
   id: string;
@@ -13,6 +15,8 @@ export interface Command {
   icon?: string;
   /// Shortcuts in the generic notation ("Mod+Shift+Enter", "F1"); the first is the one shown.
   keys?: string[];
+  /// Different shortcuts for a keymap preset ("blender", "nova"), used instead of `keys` while that preset is chosen.
+  keymaps?: Partial<Record<Keymap, string[]>>;
   /// One line for the tooltip and the help search.
   help?: string;
   enabled?: () => boolean;
@@ -69,7 +73,8 @@ const WIN_KEY_NAMES: Record<string, string> = { enter: "Enter", escape: "Esc", b
 export function formatChord(text: string, platform: Platform): string {
   const c = parseChord(text);
   const named = (platform === "mac" ? MAC_KEY_NAMES : WIN_KEY_NAMES)[c.key];
-  const key = named ?? (c.key.length === 1 ? c.key.toUpperCase() : c.key.toUpperCase());
+  // (a letter in capitals, F1 to F12 in capitals, other names such as Home or PageUp with a capital first letter)
+  const key = named ?? (c.key.length === 1 || /^f\d+$/.test(c.key) ? c.key.toUpperCase() : c.key.charAt(0).toUpperCase() + c.key.slice(1));
   if (platform === "mac") return `${c.ctrl ? "⌃" : ""}${c.alt ? "⌥" : ""}${c.shift ? "⇧" : ""}${c.mod ? "⌘" : ""}${key}`;
   return [c.mod || c.ctrl ? "Ctrl" : "", c.alt ? "Alt" : "", c.shift ? "Shift" : "", key].filter(Boolean).join("+");
 }
@@ -80,6 +85,19 @@ function canonical(text: string, platform: Platform): string {
   const meta = c.mod && platform === "mac";
   const ctrl = c.ctrl || (c.mod && platform !== "mac");
   return `${meta ? "M" : ""}${ctrl ? "C" : ""}${c.alt ? "A" : ""}${c.shift ? "S" : ""}-${c.key}`;
+}
+
+/// Whether a key press went to somewhere text is typed (a text box, a text area, a code editor, a drop-down).
+export function isTyping(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el || typeof el.tagName !== "string") return false;
+  return el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName);
+}
+
+/// A shortcut with no Ctrl, Cmd or Alt: a bare key or Shift and a key, which is text while typing. (Function keys and Escape are never text.)
+export function isPlainKey(chord: string): boolean {
+  const c = parseChord(chord);
+  return !c.mod && !c.ctrl && !c.alt && !/^(f\d+|escape)$/.test(c.key);
 }
 
 /// How well a query matches a title: lower is better, -1 for no match. Every query word must appear; earlier and word-start hits win.
@@ -107,6 +125,9 @@ export function sendChord(text: string, platform: Platform, target: EventTarget 
 export class CommandRegistry {
   private list = new Map<string, Command>();
   private listeners = new Set<() => void>();
+  /// The keymap preset in use, and the shortcuts the person changed (command id -> chords; an empty list means "none").
+  preset: Keymap = "blender";
+  private overrides: Record<string, string[]> = {};
   constructor(public platform: Platform = detectPlatform()) {}
 
   /// Calls `fn` whenever a command is added or removed (the menus rebuild themselves); returns a function that stops it.
@@ -114,13 +135,37 @@ export class CommandRegistry {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
   }
+  /// The shortcuts of a command now: the person's own, else the preset's, else the command's usual ones.
+  keysOf(cmd: Command): string[] {
+    return this.overrides[cmd.id] ?? cmd.keymaps?.[this.preset] ?? cmd.keys ?? [];
+  }
+
+  /// Chooses a keymap preset and the person's changes, and tells the listeners (the menus show the new shortcuts).
+  configure(preset: Keymap, overrides: Record<string, string[]>): void {
+    for (const chords of Object.values(overrides)) for (const k of chords) parseChord(k);
+    this.preset = preset;
+    this.overrides = { ...overrides };
+    this.changed();
+  }
+
+  /// Whether a shortcut is one of the person's own changes (shown differently, and can be reset).
+  isCustom(id: string): boolean {
+    return id in this.overrides;
+  }
+
+  /// Other commands that use one of these chords (not counting `id` itself), for a warning when a shortcut is changed.
+  takenBy(chord: string, id: string): Command[] {
+    const want = canonical(chord, this.platform);
+    return this.all().filter((c) => c.id !== id && this.keysOf(c).some((k) => canonical(k, this.platform) === want));
+  }
+
   private changed() {
     for (const fn of this.listeners) fn();
   }
 
   /// Adds a command (replacing one with the same id) and returns a function that removes it.
   register(cmd: Command): () => void {
-    for (const k of cmd.keys ?? []) parseChord(k); // fail early on a bad shortcut
+    for (const k of [...(cmd.keys ?? []), ...Object.values(cmd.keymaps ?? {}).flat()]) parseChord(k); // fail early on a bad shortcut
     this.list.set(cmd.id, cmd);
     this.changed();
     return () => {
@@ -153,16 +198,19 @@ export class CommandRegistry {
 
   /// The command a key press is for (an unavailable command does not take the key).
   forEvent(e: KeyboardEvent): Command | undefined {
+    // a plain letter typed into a text box is text, not a command
+    const typing = isTyping(e.target);
     for (const cmd of this.list.values()) {
       if (!this.isEnabled(cmd) || cmd.forward || !e.isTrusted) continue;
-      if (cmd.keys?.some((k) => matches(e, k, this.platform))) return cmd;
+      if (this.keysOf(cmd).some((k) => matches(e, k, this.platform) && !(typing && isPlainKey(k)))) return cmd;
     }
     return undefined;
   }
 
   /// The shortcut to show next to a command, in this platform's notation ("" if it has none).
   shortcut(cmd: Command): string {
-    return cmd.keys?.[0] ? formatChord(cmd.keys[0], this.platform) : "";
+    const first = this.keysOf(cmd)[0];
+    return first ? formatChord(first, this.platform) : "";
   }
 
   /// Tooltip text: the title, the shortcut and the help line.
@@ -187,7 +235,7 @@ export class CommandRegistry {
   conflicts(): { keys: string; ids: string[] }[] {
     const byKeys = new Map<string, string[]>();
     for (const cmd of this.list.values()) {
-      for (const k of cmd.keys ?? []) {
+      for (const k of this.keysOf(cmd)) {
         const c = canonical(k, this.platform);
         byKeys.set(c, [...(byKeys.get(c) ?? []), cmd.id]);
       }

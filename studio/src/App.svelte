@@ -11,11 +11,13 @@
   import PlayButton from "./components/PlayButton.svelte";
   import CommandPalette from "./components/CommandPalette.svelte";
   import MenuBar from "./components/MenuBar.svelte";
+  import KeymapEditor from "./components/KeymapEditor.svelte";
   import FirstLaunch from "./components/FirstLaunch.svelte";
   import { input } from "./lib/input-settings.svelte";
   import WorkspaceTabs from "./components/WorkspaceTabs.svelte";
   import { WORKSPACES } from "./lib/workspaces";
   import { commands, sendChord } from "./lib/commands";
+  import "./lib/keymap-instance";
   import { resolveMenus } from "./lib/menus";
   import { commandsRev } from "./lib/commands-rev.svelte";
   import { listenNativeMenu, syncNativeMenu } from "./lib/native-menu";
@@ -36,6 +38,7 @@
   // a window made for one document (a tear-off) is told which one before the page loads (src-tauri/src/windows.rs)
   const docPath = (window as unknown as { __NOVA_DOC__?: string }).__NOVA_DOC__ ?? null;
   let paletteOpen = $state(false);
+  let keysOpen = $state(false);
   // the system menu bar follows the commands (a command becoming available greys or enables its item)
   $effect(() => {
     void commandsRev.n; // (commands are added after the first run)
@@ -60,6 +63,7 @@
       commands.register({ id: "file.export", title: "Export the game", menu: "File", help: "Check the game and write it out for a computer or for Android", enabled: has, run: () => { studio.exportReport = null; studio.exportOpen = true; } }),
       commands.register({ id: "run.play", title: "Play or stop the game", menu: "Run", icon: "player-play", keys: ["Mod+Enter"], enabled: has, run: () => void (studio.running ? studio.stop() : studio.play()) }),
       commands.register({ id: "run.playDevice", title: "Play on the device used last", menu: "Run", keys: ["Mod+Shift+Enter"], enabled: has, run: () => void (studio.running ? studio.stop() : studio.playOnPreferredDevice()) }),
+      commands.register({ id: "settings.keys", title: "Keyboard shortcuts", menu: "Edit", help: "Choose the keymap and change any shortcut", run: () => { keysOpen = true; } }),
       commands.register({ id: "settings.input", title: "Input settings", menu: "Edit", help: "Mouse, trackpad or pen for moving around 3D views", run: () => { input.dialogOpen = true; } }),
       commands.register({ id: "tool.simulate", title: "Simulate the game many times", menu: "Run", enabled: has, run: () => { studio.tool = "sim"; } }),
       ...WORKSPACES.map((w, i) => commands.register({ id: `workspace.${w.id}`, title: `Go to ${w.title}`, menu: "Window", keys: [`Mod+${i + 1}`], help: w.blurb, enabled: has, run: () => studio.setWorkspace(w.id) })),
@@ -193,6 +197,7 @@
 
 <Help />
 <CommandPalette bind:open={paletteOpen} />
+{#if keysOpen}<KeymapEditor onclose={() => (keysOpen = false)} />{/if}
 {#if studio.ready && (!input.configured || input.dialogOpen)}
   <FirstLaunch first={!input.configured} onclose={() => (input.dialogOpen = false)} />
 {/if}

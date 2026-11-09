@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CommandRegistry, formatChord, matches, parseChord, score } from "./commands";
+import { CommandRegistry, formatChord, isPlainKey, isTyping, matches, parseChord, score } from "./commands";
 
 const press = (key: string, mods: Partial<{ metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean }> = {}) =>
   ({ key, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, isTrusted: true, ...mods }) as KeyboardEvent;
@@ -26,6 +26,8 @@ describe("shortcut notation", () => {
     expect(formatChord("Mod+Shift+Enter", "win")).toBe("Ctrl+Shift+Enter");
     expect(formatChord("Mod+K", "mac")).toBe("⌘K");
     expect(formatChord("F1", "win")).toBe("F1");
+    expect(formatChord("Home", "win")).toBe("Home");
+    expect(formatChord("Shift+PageUp", "win")).toBe("Shift+Pageup");
   });
 });
 
@@ -106,5 +108,54 @@ describe("palette scoring", () => {
     expect(score("play game", "Play the game")).toBeGreaterThanOrEqual(0);
     expect(score("xyz", "Play the game")).toBe(-1);
     expect(score("pl", "Play the game")).toBeLessThan(score("ame", "Play the game"));
+  });
+});
+
+describe("keymap presets and the person's own shortcuts", () => {
+  const make = () => {
+    const r = new CommandRegistry("win");
+    r.register({ id: "model.move", title: "Move", keys: ["W"], keymaps: { blender: ["G"], nova: ["W"] }, run: () => {} });
+    r.register({ id: "model.turn", title: "Turn", keymaps: { blender: ["R"], nova: ["E"] }, run: () => {} });
+    r.register({ id: "file.save", title: "Save", keys: ["Mod+S"], run: () => {} });
+    return r;
+  };
+
+  it("uses the preset's keys for a command that has them, and the usual keys for the rest", () => {
+    const r = make();
+    expect(r.keysOf(r.get("model.move")!)).toEqual(["G"]);
+    expect(r.keysOf(r.get("file.save")!)).toEqual(["Mod+S"]);
+    r.configure("nova", {});
+    expect(r.keysOf(r.get("model.move")!)).toEqual(["W"]);
+    expect(r.keysOf(r.get("model.turn")!)).toEqual(["E"]);
+  });
+
+  it("puts the person's own shortcut first, and can clear one", () => {
+    const r = make();
+    r.configure("blender", { "model.move": ["Alt+G"], "file.save": [] });
+    expect(r.keysOf(r.get("model.move")!)).toEqual(["Alt+G"]);
+    expect(r.isCustom("model.move")).toBe(true);
+    expect(r.shortcut(r.get("file.save")!)).toBe("");
+    expect(r.forEvent(press("g"))).toBeUndefined();
+    expect(r.forEvent(press("g", { altKey: true }))?.id).toBe("model.move");
+  });
+
+  it("names who has a shortcut already", () => {
+    const r = make();
+    expect(r.takenBy("R", "model.move").map((c) => c.id)).toEqual(["model.turn"]);
+    expect(r.takenBy("R", "model.turn")).toEqual([]);
+    expect(r.takenBy("Ctrl+S", "model.move").map((c) => c.id)).toEqual(["file.save"]);
+  });
+
+  it("leaves a plain letter alone while text is being typed, and keeps Ctrl shortcuts and function keys working", () => {
+    const r = make();
+    const typed = { ...press("g"), target: { tagName: "INPUT", isContentEditable: false } } as unknown as KeyboardEvent;
+    expect(r.forEvent(typed)).toBeUndefined();
+    expect(r.forEvent(press("g"))?.id).toBe("model.move");
+    const save = { ...press("s", { ctrlKey: true }), target: { tagName: "TEXTAREA", isContentEditable: false } } as unknown as KeyboardEvent;
+    expect(r.forEvent(save)?.id).toBe("file.save");
+    expect(isPlainKey("F1")).toBe(false);
+    expect(isPlainKey("Shift+A")).toBe(true);
+    expect(isTyping({ tagName: "SELECT", isContentEditable: false } as unknown as EventTarget)).toBe(true);
+    expect(isTyping(null)).toBe(false);
   });
 });

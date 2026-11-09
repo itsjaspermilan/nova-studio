@@ -11,9 +11,10 @@ export const MENU_LAYOUT: { title: string; lines: MenuLine[] }[] = [
   { title: "File", lines: [{ id: "file.save" }, { id: "file.saveAll" }, "-", { id: "file.export" }, "-", { id: "file.close" }] },
   {
     title: "Edit",
-    lines: [{ id: "edit.undo" }, { id: "edit.redo" }, "-", { id: "edit.cut", native: "cut" }, { id: "edit.copy", native: "copy" }, { id: "edit.paste", native: "paste" }, { id: "edit.selectAll", native: "selectAll" }, "-", { id: "settings.input" }],
+    lines: [{ id: "edit.undo" }, { id: "edit.redo" }, "-", { id: "edit.cut", native: "cut" }, { id: "edit.copy", native: "copy" }, { id: "edit.paste", native: "paste" }, { id: "edit.selectAll", native: "selectAll" }, "-", { id: "settings.keys" }, { id: "settings.input" }],
   },
   { title: "View", lines: [{ id: "view.tree" }, { id: "view.panel" }] },
+  { title: "Model", lines: [{ id: "model.add" }, { id: "model.duplicate" }, { id: "model.delete" }, "-", { id: "model.move" }, { id: "model.turn" }, { id: "model.resize" }, { id: "model.pivot" }, "-", { id: "model.editPoints" }, { id: "model.shading" }, { id: "model.resetView" }] },
   { title: "Run", lines: [{ id: "run.play" }, { id: "run.playDevice" }, "-", { id: "tool.simulate" }, { id: "tool.storeArt" }] },
   { title: "Window", lines: [{ id: "workspace.model" }, { id: "workspace.sprites" }, { id: "workspace.sound" }, { id: "workspace.engine" }, "-", { id: "window.tearOff" }, { id: "view.resetLayout" }, "-", { native: "minimize" }, { native: "maximize" }] },
   { title: "Help", lines: [{ id: "help.toggle" }, { id: "palette.open" }] },
@@ -51,7 +52,7 @@ export function resolveMenus(registry: CommandRegistry, layout = MENU_LAYOUT): R
       if ("id" in line) {
         const cmd = registry.get(line.id);
         if (!cmd) continue;
-        items.push({ id: cmd.id, title: cmd.title, shortcut: registry.shortcut(cmd), chord: cmd.keys?.[0], enabled: registry.isEnabled(cmd), native: line.native });
+        items.push({ id: cmd.id, title: cmd.title, shortcut: registry.shortcut(cmd), chord: registry.keysOf(cmd)[0], enabled: registry.isEnabled(cmd), native: line.native });
       } else {
         items.push({ native: line.native, shortcut: "", enabled: true });
       }
