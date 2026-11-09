@@ -13,6 +13,22 @@
   --ok: #6fcf8e;
   font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
 }
+:root[data-theme="dark"] { color-scheme: dark; }
+:root[data-theme="contrast"] {
+  color-scheme: dark;
+  --bg: #000000;
+  --panel: #0a0a0a;
+  --panel-2: #1a1a1a;
+  --line: #ffffff;
+  --text: #ffffff;
+  --dim: #d0d0d0;
+  --accent: #ffe14d;
+  --accent-2: #9a7b00;
+  --error: #ff8080;
+  --warn: #ffd34d;
+  --ok: #7dff9b;
+}
+:root[data-theme="contrast"] button, :root[data-theme="contrast"] input, :root[data-theme="contrast"] select { border-width: 2px; }
 :root[data-theme="light"] {
   color-scheme: light;
   --bg: #f4f5f8;
@@ -20,7 +36,7 @@
   --panel-2: #eceef3;
   --line: #d6d9e0;
   --text: #20242c;
-  --dim: #667085;
+  --dim: #566073;
   --accent: #1a6fd4;
   --accent-2: #1558a8;
 }
@@ -40,7 +56,8 @@ button.ghost { background: transparent; border-color: transparent; }
 input, select {
   background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px;
 }
-input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+input:focus-visible, select:focus-visible, button:focus-visible, [tabindex]:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+:root[data-motion="reduced"] *, :root[data-motion="reduced"] *::before, :root[data-motion="reduced"] *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 .dim { color: var(--dim); }
 .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
 

@@ -11,7 +11,7 @@ export const MENU_LAYOUT: { title: string; lines: MenuLine[] }[] = [
   { title: "File", lines: [{ id: "file.save" }, { id: "file.saveAll" }, "-", { id: "file.export" }, "-", { id: "file.close" }] },
   {
     title: "Edit",
-    lines: [{ id: "edit.undo" }, { id: "edit.redo" }, "-", { id: "edit.cut", native: "cut" }, { id: "edit.copy", native: "copy" }, { id: "edit.paste", native: "paste" }, { id: "edit.selectAll", native: "selectAll" }, "-", { id: "settings.keys" }, { id: "settings.input" }],
+    lines: [{ id: "edit.undo" }, { id: "edit.redo" }, "-", { id: "edit.cut", native: "cut" }, { id: "edit.copy", native: "copy" }, { id: "edit.paste", native: "paste" }, { id: "edit.selectAll", native: "selectAll" }, "-", { id: "settings.keys" }, { id: "settings.input" }, { id: "settings.appearance" }],
   },
   { title: "View", lines: [{ id: "view.tree" }, { id: "view.panel" }, { id: "view.assets" }] },
   { title: "Model", lines: [{ id: "model.add" }, { id: "model.duplicate" }, { id: "model.delete" }, "-", { id: "model.selectAll" }, { id: "model.selectNone" }, { id: "model.selectInvert" }, "-", { id: "model.grab" }, { id: "model.scaleMouse" }, "-", { id: "model.move" }, { id: "model.turn" }, { id: "model.resize" }, { id: "model.pivot" }, "-", { id: "model.editPoints" }, { id: "model.shading" }, { id: "model.resetView" }] },

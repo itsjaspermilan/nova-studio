@@ -36,7 +36,7 @@ Blender keymap in Model. Goal: a free, all-in-one studio for making games, no st
 
 ### S0: Mockups and decisions (before code)
 - [x] Wireframes for each workspace and the first-launch screen: `docs/ux/studio-wireframes.html` (owner approved 2026-11-09).
-- [ ] Icon set chosen (one family, 16/20/24 px) and licence checked (`licenses/`).
+- [x] Icon set (2026-11-09: `lib/icons.ts`, 42 icons drawn for this project on a 24 grid, so nothing to license; `Icon.svelte`; shown in the menus, the palette, the workspace tabs and the 3D view buttons; a test keeps every named icon drawn). Not yet: 16 and 20 px hand-tuned versions.
 - [ ] Evaluate the Windows snap-layout plugins; plan a Windows test (no Windows machine here).
 
 ### S1: The spine (every workspace needs it)
@@ -52,9 +52,9 @@ Blender keymap in Model. Goal: a free, all-in-one studio for making games, no st
 - [~] First-launch screen (2026-11-09: `FirstLaunch.svelte`: mouse, trackpad or pen, tried on a practice cube, a guess from the first scrolls, a reverse-scroll switch; Edit > Input settings reopens it; checked in the browser preview with a synthetic trackpad scroll). Not yet: the "start with" step, and a real trackpad or pen.
 - [ ] Learnability instead of a beginner mode: tool hints in the status bar, a guided first exercise per workspace (`lib/tutorials`), project templates.
 - [~] Input layer (2026-11-09: `lib/view-nav.ts`: the scene and model 3D views follow the chosen scheme: middle-drag orbit, Shift-drag pan, trackpad two-finger orbit, Shift pan, pinch zoom, ortho cameras too; 5 tests on the moves). On-screen turn/move/zoom buttons (`NavButtons.svelte`: drag, or arrow keys when focused) are in the model and scene views, and the model editor's hint line follows the scheme (a button drag checked in the browser preview). Not yet: pen pressure, tilt and barrel button, emulate-numpad, the sprite canvas's trackpad pan and zoom, a check with a real trackpad, a Windows touchpad or a pen.
-- [ ] Accessibility: keyboard focus order and rings, screen-reader names, UI scale 75 to 200 percent, reduced motion, high-contrast theme, colour-blind-safe graphs, no hover-only functions, 32 px targets.
-- [ ] Shared asset browser (thumbnails, tags, search, drag into any workspace, "Open in"); linked data, not copies; F5 Play from anywhere; status bar with tool hints, budgets, device.
-- [ ] Themes: system, dark, light; one accent colour.
+- [~] Accessibility (2026-11-09: focus rings on every control, UI size 75 to 200 percent, reduced motion, a high-contrast theme, screen-reader names on the icon buttons, dialogs marked as dialogs, 8 contrast tests of the three themes that found and fixed a faint grey; Edit > Appearance). Not yet: a full keyboard focus-order pass, a VoiceOver and keyboard-only audit, colour-blind-safe graphs, 32 px targets everywhere.
+- [~] Shared asset browser (2026-11-09: the Assets tab in the bottom panel, Cmd/Ctrl+Shift+A: a card per resource with the sprite's picture or an icon, search, kind filter, click opens it in the owning workspace, drag drops its short name into code; 4 tests). Not yet: tags, model thumbnails, dragging into a scene, import settings per asset.
+- [x] Themes: system, dark, light and high contrast, one accent colour (Edit > Appearance; remembered).
 
 ### S2: Model workspace (`docs/studio-workspaces.md` section 2)
 - [ ] 2.1 Layout: viewport (persp/ortho, view gizmo, grid, camera, local view, shading, X-ray, overlays), tool shelf, outliner, properties tabs, mode switch (Object, Edit, Sculpt, Weight Paint, Texture Paint, Pose).

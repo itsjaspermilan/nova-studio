@@ -11,6 +11,8 @@
   import PlayButton from "./components/PlayButton.svelte";
   import CommandPalette from "./components/CommandPalette.svelte";
   import MenuBar from "./components/MenuBar.svelte";
+  import AppearanceDialog from "./components/AppearanceDialog.svelte";
+  import { applyAppearance } from "./lib/appearance.svelte";
   import KeymapEditor from "./components/KeymapEditor.svelte";
   import FirstLaunch from "./components/FirstLaunch.svelte";
   import { input } from "./lib/input-settings.svelte";
@@ -39,6 +41,7 @@
   const docPath = (window as unknown as { __NOVA_DOC__?: string }).__NOVA_DOC__ ?? null;
   let paletteOpen = $state(false);
   let keysOpen = $state(false);
+  let appearanceOpen = $state(false);
   // the system menu bar follows the commands (a command becoming available greys or enables its item)
   $effect(() => {
     void commandsRev.n; // (commands are added after the first run)
@@ -47,6 +50,7 @@
   });
 
   onMount(() => {
+    const stopAppearance = applyAppearance();
     void studio.init().then(() => { if (docPath) return studio.joinProject(docPath); });
     // Every action is a command (lib/commands.ts); the keys, the palette and, later, the menus all read this list.
     const has = () => !!studio.project;
@@ -65,6 +69,7 @@
       commands.register({ id: "run.play", title: "Play or stop the game", menu: "Run", icon: "play", keys: ["Mod+Enter"], enabled: has, run: () => void (studio.running ? studio.stop() : studio.play()) }),
       commands.register({ id: "run.playDevice", title: "Play on the device used last", menu: "Run", icon: "play", keys: ["Mod+Shift+Enter"], enabled: has, run: () => void (studio.running ? studio.stop() : studio.playOnPreferredDevice()) }),
       commands.register({ id: "settings.keys", title: "Keyboard shortcuts", menu: "Edit", icon: "keyboard", help: "Choose the keymap and change any shortcut", run: () => { keysOpen = true; } }),
+      commands.register({ id: "settings.appearance", title: "Appearance", menu: "Edit", icon: "eye", help: "Theme, size of everything, reduced motion", run: () => { appearanceOpen = true; } }),
       commands.register({ id: "settings.input", title: "Input settings", menu: "Edit", icon: "settings", help: "Mouse, trackpad or pen for moving around 3D views", run: () => { input.dialogOpen = true; } }),
       commands.register({ id: "tool.simulate", title: "Simulate the game many times", menu: "Run", icon: "simulate", enabled: has, run: () => { studio.tool = "sim"; } }),
       ...WORKSPACES.map((w, i) => commands.register({ id: `workspace.${w.id}`, title: `Go to ${w.title}`, menu: "Window", icon: w.id === "model" ? "cube" : w.id === "sprites" ? "sprites" : w.id === "sound" ? "sound" : "engine", keys: [`Mod+${i + 1}`], help: w.blurb, enabled: has, run: () => studio.setWorkspace(w.id) })),
@@ -109,6 +114,7 @@
       window.removeEventListener("keydown", keys);
       for (const off of offs) off();
       stopMenu();
+      stopAppearance();
       window.removeEventListener("focus", refocus);
     };
   });
@@ -199,6 +205,7 @@
 <Help />
 <CommandPalette bind:open={paletteOpen} />
 {#if keysOpen}<KeymapEditor onclose={() => (keysOpen = false)} />{/if}
+{#if appearanceOpen}<AppearanceDialog onclose={() => (appearanceOpen = false)} />{/if}
 {#if studio.ready && (!input.configured || input.dialogOpen)}
   <FirstLaunch first={!input.configured} onclose={() => (input.dialogOpen = false)} />
 {/if}
