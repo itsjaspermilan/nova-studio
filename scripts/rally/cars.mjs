@@ -29,7 +29,7 @@ const along = (nodes, z) => {
 
 const GLASS = { 5: "#1b2a3b", 6: "#294460", 8: "#203550", 9: "#2d4b6b" }, FRAME = "#14161b";
 const DARK = "#26272e";
-const FR = 1.0; // the width of the black frame round a window, along z
+const FR = 0.7; // the width of the black frame round a window, along z
 
 // ---- the body: a loft ------------------------------------------------------------------------------------------------------------
 // `s` is the car's spec (see CARS). Returns the body part's cubes (one mesh, plus the small things on it).
@@ -54,11 +54,11 @@ function body(s) {
     const flare = s.wheelZ.reduce((m, wz) => m + (s.flare ?? -0.7) * Math.exp(-(((z - wz) / (s.R * 1.15)) ** 2)), 0);
     const hw = ((s.hwProfile ? along(s.hwProfile, z) : s.hw) + (s.open ? 0 : flare)) * (0.9 + 0.1 * k);
     const yb0 = s.yb, ys = along(s.belt ?? [[zr, s.ys], [zf, s.ys]], z);
-    let yt = Math.max(top[i], ys + 1.5);
+    let yt = Math.max(top[i], s.screenInset ? s.yb + 4.5 : ys + 1.5);
     const ym = (yb0 + yt) / 2, hs = 0.8 + 0.2 * k;
     const yb = ym + (yb0 - ym) * hs;
     yt = ym + (yt - ym) * hs;
-    const ysb = Math.min(ys, yt - 1.5);
+    const ysb = Math.min(ys, yt - (s.screenInset ? 1.0 : 1.5));
     const f = clamp((yt - ysb) / (s.roof - ysb), 0, 1);
     const hwt = hw * (0.94 - (s.tumble ?? 0.18) * f);
     const hb = hw * 0.9;
@@ -105,14 +105,15 @@ function body(s) {
     else if (j === 2) c = s.cladding || bumper ? trim : mul(s.paint, 0.86);
     else if (j === 3 || j === 4) c = (s.lower && inRange(z, s.lower.z) && j === 3 ? s.lower.color : s.paint);
     else if (j === 5 || j === 6) {
-      const win = (s.sideGlass ?? []).some((r) => inRange(z, r)) && !(s.noGlassEnds && dEnd < 3);
+      const gh = ((a.yt + b.yt) / 2 - (a.ys + b.ys) / 2) / (s.roof - s.ys);   // how tall the greenhouse is here, 0 to 1
+      const win = (s.sideGlass ?? []).some((r) => inRange(z, r)) && !(s.noGlassEnds && dEnd < 3) && gh >= (s.glassMin ?? 0);
       c = win ? null : s.paint;
     } else if (j === 7) c = s.paint;
     else if (j === 8 || j === 9) {
       if (inRange(z, s.front) || inRange(z, s.rear)) { if (!(s.screenInset && j === 8 && !s.stripe)) c = null; }
       else if (j === 9 && s.stripe && s.stripe.z.some((r) => inRange(z, r))) c = s.stripe.color;
     }
-    for (const sm of s.seams ?? []) if ((j === 3 || j === 4 || j === 5) && Math.abs(z - sm) < 0.3 && c !== null) c = mul(c, 0.7);
+    for (const sm of s.seams ?? []) if ((j >= 2 && j <= 5) && Math.abs(z - sm) < (s.screenInset ? 0.4 : 0.3) && c !== null) c = mul(c, s.screenInset ? 0.42 : 0.7);
     for (const pt of s.patch ?? []) if (pt.segs.includes(j) && inRange(z, pt.z) && c !== null) c = pt.color;
     if (c === null) {
       // glass: flat dark tints (the lower and the upper row a shade apart); a black frame at the ends of each side window (the pillars)
@@ -368,13 +369,13 @@ const muscle = (o) => ({
 // and real-world sizes: a length, a width, a height and the overhangs, in metres.
 const PSX = JSON.parse(readFileSync(new URL("./psx-profiles.json", import.meta.url)));
 const ARCH = {
-  sedan: { psx: "sedan", L: 4.65, W: 1.76, H: 1.43, fo: 0.21, ro: 0.23, R: 0.34, glass: [[0.36, 0.52], [0.54, 0.74]], seams: [0.34, 0.53, 0.76], doors: 4 },
-  wagon: { psx: "wagon", L: 4.15, W: 1.62, H: 1.45, fo: 0.15, ro: 0.26, R: 0.33, glass: [[0.3, 0.45], [0.47, 0.62], [0.64, 0.89]], seams: [0.3, 0.46, 0.63], doors: 4 },
-  hatch: { psx: "hatch", L: 3.85, W: 1.65, H: 1.42, fo: 0.19, ro: 0.17, R: 0.31, glass: [[0.355, 0.625], [0.645, 0.84]], seams: [0.325, 0.63], doors: 2 },
-  minivan: { psx: "minivan", L: 4.6, W: 1.88, H: 1.92, fo: 0.15, ro: 0.19, R: 0.36, glass: [[0.21, 0.45], [0.47, 0.72], [0.74, 0.93]], seams: [0.2, 0.46, 0.73], doors: 2, noRear: true },
-  bigsedan: { psx: "bigsedan", L: 5.2, W: 1.95, H: 1.4, fo: 0.2, ro: 0.25, R: 0.35, glass: [[0.385, 0.525], [0.545, 0.69], [0.71, 0.775]], seams: [0.33, 0.535, 0.71], doors: 4 },
-  vintage: { psx: "vintage", L: 3.5, W: 1.66, H: 1.75, fo: 0.11, ro: 0.13, R: 0.4, glass: [[0.41, 0.58], [0.63, 0.81]], seams: [0.4, 0.6], doors: 2, noRear: true },
-  stepvan: { psx: "stepvan", L: 5.2, W: 2.05, H: 2.35, fo: 0.17, ro: 0.26, R: 0.4, glass: [[0.15, 0.39]], seams: [0.26], doors: 2, noRear: true },
+  sedan: { psx: "sedan", L: 4.65, W: 1.76, H: 1.43, fo: 0.21, ro: 0.23, R: 0.35, belt: 0.64, glass: [[0.36, 0.52], [0.54, 0.74]], seams: [0.34, 0.53, 0.76], doors: 4 },
+  wagon: { psx: "wagon", L: 4.15, W: 1.62, H: 1.45, fo: 0.15, ro: 0.26, R: 0.34, belt: 0.62, glass: [[0.3, 0.45], [0.47, 0.62], [0.64, 0.89]], seams: [0.3, 0.46, 0.63], doors: 4 },
+  hatch: { psx: "hatch", L: 3.85, W: 1.65, H: 1.42, fo: 0.19, ro: 0.17, R: 0.32, belt: 0.62, glass: [[0.355, 0.625], [0.645, 0.84]], seams: [0.325, 0.63], doors: 2 },
+  minivan: { psx: "minivan", L: 4.6, W: 1.88, H: 1.92, fo: 0.15, ro: 0.19, R: 0.375, belt: 0.64, glass: [[0.21, 0.45], [0.47, 0.72], [0.74, 0.93]], seams: [0.2, 0.46, 0.73], doors: 2, noRear: true },
+  bigsedan: { psx: "bigsedan", L: 5.2, W: 1.95, H: 1.4, fo: 0.2, ro: 0.25, R: 0.36, belt: 0.7, glass: [[0.385, 0.525], [0.545, 0.69], [0.71, 0.775]], seams: [0.33, 0.535, 0.71], doors: 4 },
+  vintage: { psx: "vintage", L: 3.5, W: 1.66, H: 1.75, fo: 0.11, ro: 0.13, R: 0.41, belt: 0.7, glass: [[0.41, 0.58], [0.63, 0.81]], seams: [0.4, 0.6], doors: 2, noRear: true },
+  stepvan: { psx: "stepvan", L: 5.2, W: 2.05, H: 2.35, fo: 0.17, ro: 0.26, R: 0.41, belt: 0.58, glass: [[0.15, 0.39]], seams: [0.26], doors: 2, noRear: true },
 };
 function fromArch(key, o) {
   const a = ARCH[key], u16 = 16, L = a.L * u16, W = a.W * u16, Ht = a.H * u16, R = a.R * u16;
@@ -394,14 +395,18 @@ function fromArch(key, o) {
   while (k1 < N && prof[k1] - prof[k1 + 1] > 0.04) k1++;
   const front = [z(first / N), z(k0 / N)].sort((p, q) => p - q);
   const rear = a.noRear ? undefined : [z(k1 / N), z(last / N)].sort((p, q) => p - q);
-  const ys = r2(Ht * 0.66);
+  const ys = r2(Ht * (a.belt ?? 0.66));
   const hw = W / 2;
-  const glass = a.glass.map(([u0, u1]) => [z(u1), z(u0)]);
+  // (the first side window starts where the windscreen does and the last ends where the rear glass does: the rake of the pillars then shapes them)
+  const gl = a.glass.map(([u0, u1]) => [u0, u1]);
+  gl[0][0] = Math.min(gl[0][0], k0 / N);
+  if (!a.noRear) gl[gl.length - 1][1] = Math.max(gl[gl.length - 1][1], k1 / N);
+  const glass = gl.map(([u0, u1]) => [z(u1), z(u0)]);
   const seams = a.seams.map(z);
   return {
     ...classic, zr, zf, hw, yb: 3.0, ys, roof: r2(Ht), pivot: r2(R), R: r2(R), tw: r2(R * 0.82), track: r2(hw - R * 0.41 - 0.4),
-    wheelZ: [r2(zf - a.fo * L), r2(zr + a.ro * L)], tumble: 0.1, top, front, rear, sideGlass: glass, seams, rim: "#d7dde6", endRound: 2.0, roofRound: 1.0, soft: 1,
-    handles: seams.slice(0, 2).map((s2) => r2(s2 - 2.4)), screenInset: 0.74, archScale: 1.24, ...o,
+    wheelZ: [r2(zf - a.fo * L), r2(zr + a.ro * L)], tumble: 0.1, top, front, rear, sideGlass: glass, glassMin: 0.3, seams, rim: "#d7dde6", endRound: 2.0, roofRound: 1.0, soft: 1,
+    handles: seams.slice(0, 2).map((s2) => r2(s2 - 2.4)), screenInset: 0.74, archScale: 1.2, ...o,
   };
 }
 
