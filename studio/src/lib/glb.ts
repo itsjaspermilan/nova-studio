@@ -308,8 +308,8 @@ export function exportGlb(doc: ModelDoc, texture?: Raster): Uint8Array {
     ],
     ...(tex && image
       ? {
-          // nearest filtering keeps painted texels crisp; the picture is clamped, not tiled
-          samplers: [{ magFilter: 9728, minFilter: 9728, wrapS: 33071, wrapT: 33071 }],
+          // nearest filtering keeps painted texels crisp, linear (`texture.smooth`) blends them; the picture is clamped, not tiled
+          samplers: [doc.texture?.smooth ? { magFilter: 9729, minFilter: 9729, wrapS: 33071, wrapT: 33071 } : { magFilter: 9728, minFilter: 9728, wrapS: 33071, wrapT: 33071 }],
           textures: [{ sampler: 0, source: 0 }],
           images: [{ bufferView: addView(encodePng(image)), mimeType: "image/png" }],
         }

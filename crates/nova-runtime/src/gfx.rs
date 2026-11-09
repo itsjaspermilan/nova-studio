@@ -1991,6 +1991,7 @@ impl Gfx {
                 indices: mesh.indices.clone(),
                 texture: mesh.texture.clone(),
                 wrap: mesh.wrap,
+                smooth: mesh.smooth,
                 notes: Vec::new(),
             },
             None,
@@ -2010,18 +2011,13 @@ impl Gfx {
                 usage: wgpu::BufferUsages::INDEX,
             });
         let translucent = mesh.vertices.iter().any(|v| v.color[3] < 255);
+        // (a blended mesh, or a model whose file asks for smooth filtering, is filtered smoothly, with mipmaps)
+        let smooth = translucent || mesh.smooth;
         let texture = match &mesh.texture {
             Some(image) => {
                 use std::hash::{Hash, Hasher};
                 let mut hasher = std::collections::hash_map::DefaultHasher::new();
-                (
-                    image.width,
-                    image.height,
-                    &image.rgba,
-                    translucent,
-                    mesh.wrap,
-                )
-                    .hash(&mut hasher);
+                (image.width, image.height, &image.rgba, smooth, mesh.wrap).hash(&mut hasher);
                 let key = hasher.finish();
                 if let Some(group) = self.texture_cache.get(&key) {
                     self.textures_shared += 1;
@@ -2033,14 +2029,14 @@ impl Gfx {
                     let device = &self.device;
                     let sampler = self
                         .mesh_samplers
-                        .entry((translucent, mesh.wrap))
+                        .entry((smooth, mesh.wrap))
                         .or_insert_with(|| {
                             let address = |w: Wrap| match w {
                                 Wrap::Repeat => wgpu::AddressMode::Repeat,
                                 Wrap::MirroredRepeat => wgpu::AddressMode::MirrorRepeat,
                                 Wrap::ClampToEdge => wgpu::AddressMode::ClampToEdge,
                             };
-                            let filter = if translucent {
+                            let filter = if smooth {
                                 wgpu::FilterMode::Linear
                             } else {
                                 wgpu::FilterMode::Nearest
@@ -2051,7 +2047,7 @@ impl Gfx {
                                 address_mode_v: address(mesh.wrap[1]),
                                 mag_filter: filter,
                                 min_filter: filter,
-                                mipmap_filter: if translucent {
+                                mipmap_filter: if smooth {
                                     wgpu::MipmapFilterMode::Linear
                                 } else {
                                     wgpu::MipmapFilterMode::Nearest
@@ -2059,7 +2055,7 @@ impl Gfx {
                                 ..Default::default()
                             })
                         });
-                    let group = if translucent {
+                    let group = if smooth {
                         let levels = if pow2 {
                             32 - image.width.min(image.height).leading_zeros()
                         } else {

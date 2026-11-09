@@ -5,7 +5,7 @@
 
 import { newRaster, setPixel, type Raster } from "./pixels";
 import type { Cube, Face, ModelDoc, Vec3 } from "./model-doc";
-import { hexToRgba, MAX_TEXTURE, MIN_TEXTURE } from "./model-doc";
+import { hexToRgba, MAX_TEXTURE, MIN_TEXTURE, NEW_TEXEL_SCALE } from "./model-doc";
 import { hasVolume, polyColor, segmentsOf, solidOf, unitSolid } from "./model-mesh";
 import { walk } from "./model-doc";
 
@@ -20,6 +20,7 @@ export interface Unwrap {
 
 const texels = (units: number, scale: number) => Math.max(1, Math.ceil(units * scale - 1e-9));
 const GAP = 1;
+const ISLAND_GAP = 2; // (texels between a mesh's islands: room for the padding round each, see bakeColors)
 
 /// Corner of the unit box -> position inside a face's rectangle (0..1 each way), seen from outside with up as up.
 function faceUV(face: string, c: Vec3): UV {
@@ -104,40 +105,128 @@ export function unwrap(c: Cube): Unwrap {
     return { size: [Math.max(cw, shape === "cylinder" ? 2 * capW : capW), hh + capD], polys };
   }
 
-  // a free mesh: every polygon laid flat on its own plane, the flats packed side by side
-  const flats = solid.polys.map((p) => {
-    const pts = p.v.map((i) => solid.verts[i]!);
-    const n = polyNormalOf(pts);
-    const len = Math.hypot(...n);
-    if (len < 1e-12) return { w: 1, h: 1, pts: pts.map(() => [0, 0] as UV) };
-    const nn = n.map((x) => x / len) as Vec3;
-    let u: Vec3 = [pts[1]![0] - pts[0]![0], pts[1]![1] - pts[0]![1], pts[1]![2] - pts[0]![2]];
-    const dot = u[0] * nn[0] + u[1] * nn[1] + u[2] * nn[2];
-    u = [u[0] - dot * nn[0], u[1] - dot * nn[1], u[2] - dot * nn[2]];
-    const ul = Math.hypot(...u) || 1;
-    u = [u[0] / ul, u[1] / ul, u[2] / ul];
-    const down: Vec3 = [u[1] * nn[2] - u[2] * nn[1], u[2] * nn[0] - u[0] * nn[2], u[0] * nn[1] - u[1] * nn[0]]; // u x n
-    const flat = pts.map((p) => [(p[0] * u[0] + p[1] * u[1] + p[2] * u[2]) * s, (p[0] * down[0] + p[1] * down[1] + p[2] * down[2]) * s] as UV);
-    const lo: UV = [Math.min(...flat.map((q) => q[0])), Math.min(...flat.map((q) => q[1]))];
-    const hi: UV = [Math.max(...flat.map((q) => q[0])), Math.max(...flat.map((q) => q[1]))];
-    return { w: Math.max(1, Math.ceil(hi[0] - lo[0])), h: Math.max(1, Math.ceil(hi[1] - lo[1])), pts: flat.map((q) => [q[0] - lo[0], q[1] - lo[1]] as UV) };
+  // a free mesh (2026-11-08): its polygons are sorted by the way they face (up, down, and the four sides), and each group is
+  // laid flat as seen from that side, so polygons that touch on the model touch in the picture, the picture's rows run level
+  // with the model, and a stripe painted down a car's bonnet is a straight line. A group is split where its polygons are not
+  // joined, or where two of them would cover the same texels (a spoiler over the boot); each piece is an island, and the
+  // islands are packed side by side, tallest first. (Until then every polygon was its own island, turned along its first edge:
+  // the pixels slanted and no two neighbours lined up.)
+  return meshIslands(solid, s);
+}
+
+/// The way each group of a mesh is seen: the texel across (u) and down (v) for a point, seen from outside with up as up
+/// (the same views as a box's faces).
+const VIEWS: ((p: Vec3) => UV)[] = [
+  (p) => [-p[2], -p[1]], // facing +x (east): seen from that side
+  (p) => [p[2], -p[1]], // facing -x (west)
+  (p) => [p[0], p[2]], // facing up: seen from above
+  (p) => [p[0], -p[2]], // facing down: seen from below
+  (p) => [p[0], -p[1]], // facing +z (south)
+  (p) => [-p[0], -p[1]], // facing -z (north)
+];
+
+function viewOf(n: Vec3): number {
+  const [x, y, z] = [Math.abs(n[0]), Math.abs(n[1]), Math.abs(n[2])];
+  const axis = x >= y && x >= z ? 0 : y >= z ? 1 : 2;
+  return axis * 2 + (n[axis]! >= 0 ? 0 : 1);
+}
+
+/// The texel cells whose centres lie inside a flat polygon (texel units, any position).
+function cellsOf(pts: UV[]): string[] {
+  const out: string[] = [];
+  const minX = Math.floor(Math.min(...pts.map((q) => q[0]))), maxX = Math.ceil(Math.max(...pts.map((q) => q[0])));
+  const minY = Math.floor(Math.min(...pts.map((q) => q[1]))), maxY = Math.ceil(Math.max(...pts.map((q) => q[1])));
+  for (let y = minY; y < maxY; y++) for (let x = minX; x < maxX; x++) {
+    const px = x + 0.5, py = y + 0.5;
+    let inside = false;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const [xi, yi] = pts[i]!, [xj, yj] = pts[j]!;
+      if (yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    if (inside) out.push(x + "," + y);
+  }
+  return out;
+}
+
+function meshIslands(solid: { verts: Vec3[]; polys: { v: number[] }[] }, s: number): Unwrap {
+  const polys = solid.polys;
+  const views = polys.map((p) => {
+    const n = polyNormalOf(p.v.map((i) => solid.verts[i]!));
+    return Math.hypot(...n) < 1e-12 ? -1 : viewOf(n);
   });
-  const area = flats.reduce((a, f) => a + (f.w + GAP) * (f.h + GAP), 0);
-  const rowMax = Math.max(32, Math.ceil(Math.sqrt(area) * 1.4), ...flats.map((f) => f.w));
+  const flat = polys.map((p, pi) => (views[pi]! < 0 ? p.v.map(() => [0, 0] as UV) : p.v.map((i) => VIEWS[views[pi]!]!(solid.verts[i]!).map((x) => x * s) as UV)));
+  // polygons that share an edge, by the edge's two points
+  const byEdge = new Map<string, number[]>();
+  polys.forEach((p, pi) => p.v.forEach((a, k) => {
+    const b = p.v[(k + 1) % p.v.length]!;
+    const key = a < b ? a + "," + b : b + "," + a;
+    byEdge.set(key, [...(byEdge.get(key) ?? []), pi]);
+  }));
+  const neighbours = polys.map((p) => {
+    const out = new Set<number>();
+    p.v.forEach((a, k) => {
+      const b = p.v[(k + 1) % p.v.length]!;
+      for (const q of byEdge.get(a < b ? a + "," + b : b + "," + a) ?? []) out.add(q);
+    });
+    return out;
+  });
+  // the islands: grown from a polygon across shared edges, within one view, skipping a polygon that would cover texels the
+  // island already has (it starts or joins another island later)
+  const island = polys.map(() => -1);
+  const islands: number[][] = [];
+  for (let start = 0; start < polys.length; start++) {
+    if (island[start] !== -1) continue;
+    const id = islands.length;
+    const members: number[] = [];
+    const used = new Set<string>();
+    const queue = [start];
+    const tried = new Set<number>();
+    while (queue.length) {
+      const pi = queue.shift()!;
+      if (island[pi] !== -1 || tried.has(pi)) continue;
+      tried.add(pi);
+      const cells = cellsOf(flat[pi]!);
+      if (members.length && cells.some((c) => used.has(c))) continue;
+      cells.forEach((c) => used.add(c));
+      island[pi] = id;
+      members.push(pi);
+      for (const q of neighbours[pi]!) if (island[q] === -1 && views[q] === views[pi]) queue.push(q);
+    }
+    islands.push(members);
+  }
+  // each island's box, then shelves of islands, tallest first
+  const boxes = islands.map((members) => {
+    const pts = members.flatMap((pi) => flat[pi]!);
+    const lo: UV = [Math.floor(Math.min(...pts.map((q) => q[0]))), Math.floor(Math.min(...pts.map((q) => q[1])))];
+    const hi: UV = [Math.max(...pts.map((q) => q[0])), Math.max(...pts.map((q) => q[1]))];
+    return { lo, w: Math.max(1, Math.ceil(hi[0] - lo[0] - 1e-9)), h: Math.max(1, Math.ceil(hi[1] - lo[1] - 1e-9)) };
+  });
+  const area = boxes.reduce((a, f) => a + (f.w + ISLAND_GAP) * (f.h + ISLAND_GAP), 0);
+  const rowMax = Math.max(32, Math.ceil(Math.sqrt(area) * 1.3), ...boxes.map((f) => f.w));
+  const order = boxes.map((_, i) => i).sort((a, b) => boxes[b]!.h - boxes[a]!.h || a - b);
+  const placedAt: UV[] = [];
   let x = 0, y = 0, rowH = 0, width = 1;
-  const polys = flats.map((f) => {
-    if (x + f.w > rowMax) {
+  for (const i of order) {
+    const f = boxes[i]!;
+    if (x > 0 && x + f.w > rowMax) {
       x = 0;
-      y += rowH + GAP;
+      y += rowH + ISLAND_GAP;
       rowH = 0;
     }
-    const placed = f.pts.map((q) => [x + q[0], y + q[1]] as UV);
-    x += f.w + GAP;
+    placedAt[i] = [x, y];
+    x += f.w + ISLAND_GAP;
     rowH = Math.max(rowH, f.h);
-    width = Math.max(width, x - GAP);
-    return placed;
-  });
-  return { size: [width, y + rowH || 1], polys };
+    width = Math.max(width, x - ISLAND_GAP);
+  }
+  return {
+    size: [width, y + rowH || 1],
+    polys: flat.map((pts, pi) => {
+      const k = island[pi]!;
+      const [ox, oy] = placedAt[k]!;
+      const lo = boxes[k]!.lo;
+      return pts.map((q) => [ox + q[0] - lo[0], oy + q[1] - lo[1]] as UV);
+    }),
+  };
 }
 
 function polyNormalOf(pts: Vec3[]): Vec3 {
@@ -197,16 +286,18 @@ export function packModel(doc: ModelDoc): { doc: ModelDoc; fits: boolean } {
   if (!holders.length) return { doc: next, fits: true };
   const placed = packBlocks(holders.map((c) => unwrap(c).size), next.texture?.size ?? [64, 64]);
   holders.forEach((c, i) => (c.texture!.at = placed.at[i]!));
-  next.texture = { size: placed.size };
+  next.texture = { ...next.texture, size: placed.size };
   return { doc: next, fits: placed.fits };
 }
 
 /// Fills a triangle of texel coordinates with a colour (sampling at texel centres), clipped to the picture.
-function fillTriangle(r: Raster, a: UV, b: UV, c: UV, rgba: [number, number, number, number]) {
-  const minX = Math.max(0, Math.floor(Math.min(a[0], b[0], c[0])));
-  const maxX = Math.min(r.w - 1, Math.ceil(Math.max(a[0], b[0], c[0])));
-  const minY = Math.max(0, Math.floor(Math.min(a[1], b[1], c[1])));
-  const maxY = Math.min(r.h - 1, Math.ceil(Math.max(a[1], b[1], c[1])));
+/// `grow`: texels the triangle is made larger by on every side (for padding).
+function fillTriangle(r: Raster, a: UV, b: UV, c: UV, rgba: [number, number, number, number], grow = 0) {
+  const g = Math.ceil(grow);
+  const minX = Math.max(0, Math.floor(Math.min(a[0], b[0], c[0])) - g);
+  const maxX = Math.min(r.w - 1, Math.ceil(Math.max(a[0], b[0], c[0])) + g);
+  const minY = Math.max(0, Math.floor(Math.min(a[1], b[1], c[1])) - g);
+  const maxY = Math.min(r.h - 1, Math.ceil(Math.max(a[1], b[1], c[1])) + g);
   const area = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
   if (Math.abs(area) < 1e-9) return;
   for (let y = minY; y <= maxY; y++) for (let x = minX; x <= maxX; x++) {
@@ -214,6 +305,13 @@ function fillTriangle(r: Raster, a: UV, b: UV, c: UV, rgba: [number, number, num
     const w0 = ((b[0] - px) * (c[1] - py) - (b[1] - py) * (c[0] - px)) / area;
     const w1 = ((c[0] - px) * (a[1] - py) - (c[1] - py) * (a[0] - px)) / area;
     const w2 = 1 - w0 - w1;
+    if (grow > 0) {
+      // distance outside each edge, in texels: the weight times the edge's height over it
+      const len = (p: UV, q: UV) => Math.hypot(q[0] - p[0], q[1] - p[1]) || 1;
+      const h0 = Math.abs(area) / len(b, c), h1 = Math.abs(area) / len(c, a), h2 = Math.abs(area) / len(a, b);
+      if (w0 * h0 >= -grow && w1 * h1 >= -grow && w2 * h2 >= -grow) setPixel(r, x, y, rgba);
+      continue;
+    }
     const e = -1e-6;
     if (w0 >= e && w1 >= e && w2 >= e) setPixel(r, x, y, rgba);
   }
@@ -225,6 +323,13 @@ export function bakeColors(r: Raster, c: Cube) {
   const [ax, ay] = c.texture.at;
   const solid = solidOf(c);
   const un = unwrap(c);
+  solid.polys.forEach((p, pi) => {
+    const uv = un.polys[pi]!.map((q) => [ax + q[0], ay + q[1]] as UV);
+    const rgba = hexToRgba(polyColor(c, p));
+    for (let k = 1; k + 1 < uv.length; k++) fillTriangle(r, uv[0]!, uv[k]!, uv[k + 1]!, rgba, 0.75);
+  });
+  // then exactly, over the padding: each polygon is first filled a little larger than it is, so a texel the GPU samples at the
+  // very edge of a polygon (its centre just outside) has the polygon's colour and not the gap's
   solid.polys.forEach((p, pi) => {
     const uv = un.polys[pi]!.map((q) => [ax + q[0], ay + q[1]] as UV);
     const rgba = hexToRgba(polyColor(c, p));
@@ -275,21 +380,23 @@ export function resizeTexture(doc: ModelDoc, picture: Raster, w: number, h: numb
   const side = (n: number) => Math.min(MAX_TEXTURE, Math.max(MIN_TEXTURE, Math.round(n)));
   const [nw, nh] = [side(w), side(h)];
   const next: ModelDoc = JSON.parse(JSON.stringify(doc));
-  next.texture = { size: [nw, nh] };
+  next.texture = { ...next.texture, size: [nw, nh] };
   return { doc: next, picture: grown(picture, nw, nh) };
 }
 
 /// Turns on texturing for one shape: finds it a free block (growing the picture, top to bottom, if need be), paints its
 /// current colours there so nothing changes on screen, and leaves its own colour as a white tint.
-export function enableTexture(doc: ModelDoc, picture: Raster | null, parts: number[], index: number): { doc: ModelDoc; picture: Raster; fits: boolean } | null {
+/// (`firstScale`: the texels per unit a shape painted for the first time gets.)
+export function enableTexture(doc: ModelDoc, picture: Raster | null, parts: number[], index: number, firstScale = NEW_TEXEL_SCALE): { doc: ModelDoc; picture: Raster; fits: boolean } | null {
   let next: ModelDoc = JSON.parse(JSON.stringify(doc));
   const part = parts.reduce<{ children: ModelDoc["parts"]; part?: ModelDoc["parts"][number] }>((acc, i) => ({ children: acc.children[i]?.children ?? [], part: acc.children[i] }), { children: next.parts }).part;
   const cube = part?.cubes[index];
   if (!cube || !hasVolume(cube)) return null;
-  next.texture ??= { size: [64, 64] };
+  next.texture ??= { size: [64, 64], smooth: true }; // (a model's first painted shape: smooth, detailed paint)
   let pic = picture && picture.w === next.texture.size[0] && picture.h === next.texture.size[1] ? picture : grown(picture ?? newRaster(1, 1), next.texture.size[0], next.texture.size[1]);
   pic = { w: pic.w, h: pic.h, data: new Uint8ClampedArray(pic.data) };
-  const [bw, bh] = unwrap({ ...cube, texture: { at: [0, 0], scale: cube.texture?.scale } }).size;
+  const scale = cube.texture?.scale ?? firstScale;
+  const [bw, bh] = unwrap({ ...cube, texture: { at: [0, 0], scale } }).size;
   const taken = walk(next).flatMap(({ part: p }) => p.cubes).filter((c) => c.texture && c !== cube).map(blockOf);
   let spot = freeSpot(taken, bw, bh, next.texture.size);
   let fits = true;
@@ -301,11 +408,11 @@ export function enableTexture(doc: ModelDoc, picture: Raster | null, parts: numb
     }
     // too wide for the picture: widen it; otherwise grow it downward, and widen only once it is as tall as allowed
     const grownSize: [number, number] = bw > w || h >= MAX_TEXTURE ? [Math.min(MAX_TEXTURE, w * 2), h] : [w, Math.min(MAX_TEXTURE, h * 2)];
-    next.texture = { size: grownSize };
+    next.texture = { ...next.texture, size: grownSize };
     pic = grown(pic, grownSize[0], grownSize[1]);
     spot = freeSpot(taken, bw, bh, grownSize);
   }
-  cube.texture = { at: spot ?? [0, 0], ...(cube.texture?.scale ? { scale: cube.texture.scale } : {}) };
+  cube.texture = { at: spot ?? [0, 0], ...(scale !== 1 ? { scale } : {}) };
   bakeColors(pic, cube);
   cube.color = "#ffffff";
   delete cube.faces;

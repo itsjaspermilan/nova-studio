@@ -169,6 +169,7 @@ pub fn bake(
         indices,
         texture: None,
         wrap: [Wrap::ClampToEdge; 2],
+        smooth: false,
         notes: Vec::new(),
     }
 }

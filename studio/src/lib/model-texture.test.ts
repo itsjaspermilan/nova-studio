@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { exportGlb, textureForExport } from "./glb";
-import { addCube, newModel, type Cube, type ModelDoc } from "./model-doc";
+import { addCube, newModel, parseModel, serializeModel, type Cube, type ModelDoc } from "./model-doc";
 import { boxRects, bakeColors } from "./model-uv";
 import { getPixel, newRaster, type Raster } from "./pixels";
 
@@ -93,6 +93,18 @@ describe("exporting a textured model", () => {
     const up = boxRects(4, 4, 4).up!;
     expect(getPixel(t, up[0] + 1, up[1] + 1)).toEqual([255, 255, 255, 255]);
     expect(getPixel(t, 5, 32)).toEqual([255, 255, 255, 255]); // the white row
+  });
+
+  it("asks for smooth filtering only when the model says so", () => {
+    const sharp = parse(exportGlb(doc(), picture())).json.samplers[0];
+    expect([sharp.magFilter, sharp.minFilter]).toEqual([9728, 9728]);
+    const d = doc();
+    d.texture = { ...d.texture!, smooth: true };
+    const smooth = parse(exportGlb(d, picture())).json.samplers[0];
+    expect([smooth.magFilter, smooth.minFilter]).toEqual([9729, 9729]);
+    // and the model file keeps it
+    const back = parseModel(serializeModel(d));
+    expect(back.ok && back.doc.texture).toEqual({ size: [32, 32], smooth: true });
   });
 
   it("matches the committed fixture byte for byte (UPDATE_FIXTURES=1 rewrites it)", () => {

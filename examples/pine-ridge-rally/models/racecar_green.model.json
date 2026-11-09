@@ -1,6 +1,7 @@
 {
   "version": 1,
   "scale": 0.0625,
+  "texture": { "size": [512, 512], "smooth": true },
   "parts": [
     {
       "name": "body",
@@ -10,7 +11,8 @@
         {
           "name": "Mesh body 1",
           "shape": "mesh",
-          "color": "#8d8d8d",
+          "color": "#ffffff",
+          "texture": { "at": [0, 0], "scale": 4 },
           "verts": [
             [7.776, 10.217, -20.139],
             [10.26, 1.064, -16.477],
@@ -279,7 +281,8 @@
         {
           "name": "Mesh body 2",
           "shape": "mesh",
-          "color": "#95c5af",
+          "color": "#ffffff",
+          "texture": { "at": [0, 173], "scale": 4 },
           "verts": [
             [16.74, 10.217, -31.664],
             [19.548, 5.897, -53.824],
@@ -509,7 +512,8 @@
         {
           "name": "Mesh body 3",
           "shape": "mesh",
-          "color": "#94a5b6",
+          "color": "#ffffff",
+          "texture": { "at": [230, 0], "scale": 4 },
           "verts": [
             [16.74, 10.217, -31.664],
             [16.74, 14.062, -31.664],

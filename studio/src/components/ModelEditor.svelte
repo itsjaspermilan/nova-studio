@@ -92,6 +92,7 @@
   let texData: Uint8ClampedArray | undefined;
   let texImage: ImageData | undefined;
   let threeTex: THREE.CanvasTexture | undefined;
+  let texSmoothShown = false; // the filtering the 3D view's texture has now (the model's "smooth texels")
   type TexTool = "pencil" | "eraser" | "fill" | "picker" | "move" | "face" | "line" | "rect" | "ellipse" | "gradient";
   const BRUSH_TOOLS: TexTool[] = ["pencil", "eraser", "fill", "picker"]; // what works on the model itself; the shapes need the flat picture
   let texTool = $state<TexTool>("pencil");
@@ -132,11 +133,17 @@
       threeTex?.dispose();
       threeTex = new THREE.CanvasTexture(texCanvas);
       threeTex.colorSpace = THREE.SRGBColorSpace;
-      threeTex.magFilter = threeTex.minFilter = THREE.NearestFilter;
+      threeTex.magFilter = threeTex.minFilter = doc.texture?.smooth ? THREE.LinearFilter : THREE.NearestFilter;
+      texSmoothShown = !!doc.texture?.smooth;
       threeTex.generateMipmaps = false;
       threeTex.flipY = false;
       texImage = undefined;
       rect = undefined;
+    }
+    if (threeTex && texSmoothShown !== !!doc.texture.smooth) {
+      threeTex.magFilter = threeTex.minFilter = doc.texture.smooth ? THREE.LinearFilter : THREE.NearestFilter;
+      threeTex.needsUpdate = true;
+      texSmoothShown = !!doc.texture.smooth;
     }
     if (!texImage || texData !== picture.data) {
       texData = picture.data;
@@ -704,7 +711,8 @@
   }
 
   // ---- painting ----------------------------------------------------------------------------------------------
-  let stroke: { last: [number, number] | null; lastMirror: [number, number] | null } | null = null;
+  // (`screen`: where the pointer was, for a stroke on the 3D view: see paintAlong)
+  let stroke: { last: [number, number] | null; lastMirror: [number, number] | null; screen?: [number, number] } | null = null;
   function textureHit(e: PointerEvent): [number, number] | null {
     if (!camera || !canvas || !picture) return null;
     const ray = new THREE.Raycaster();
@@ -752,7 +760,34 @@
     studio.sessions.set(filePath, { doc, picture });
     studio.markPending(filePath);
   }
-  function paintTexel(x: number, y: number, mirrored = false) {
+  /// A stroke on the 3D view: the pointer's way across the screen since the last event, in steps of two pixels, each step
+  /// cast onto the model and stamped where it lands. (Joining the hits with a line in the picture, as a stroke on the
+  /// picture itself is joined, drew straight across the picture between pieces of the model that are not side by side in it.)
+  function paintAlong(e: PointerEvent) {
+    if (!stroke) return;
+    const from = stroke.screen ?? [e.clientX, e.clientY];
+    const [dx, dy] = [e.clientX - from[0], e.clientY - from[1]];
+    const steps = stroke.screen ? Math.max(1, Math.ceil(Math.hypot(dx, dy) / 2)) : 1;
+    let painted = false;
+    for (let i = 1; i <= steps; i++) {
+      const at = { clientX: from[0] + (dx * i) / steps, clientY: from[1] + (dy * i) / steps } as PointerEvent;
+      const t = textureHit(at);
+      if (t) {
+        stroke.last = null;
+        paintTexel(t[0], t[1], false, true);
+        painted = true;
+      }
+      const m = mirrorPaint ? mirrorHit(at) : null;
+      if (m) {
+        stroke.lastMirror = null;
+        paintTexel(m[0], m[1], true, true);
+        painted = true;
+      }
+    }
+    stroke.screen = [e.clientX, e.clientY];
+    if (painted) pictureChanged();
+  }
+  function paintTexel(x: number, y: number, mirrored = false, quiet = false) {
     if (!picture || !stroke) return;
     if (texTool === "picker") {
       if (mirrored) return;
@@ -775,7 +810,7 @@
     }
     if (mirrored) stroke.lastMirror = [x, y];
     else stroke.last = lastPaint = [x, y];
-    pictureChanged();
+    if (!quiet) pictureChanged();
   }
   /// A line, rectangle, ellipse or gradient from where the drag began to where it is now, redrawn from the picture as it was.
   let shapeStart: [number, number] | null = null;
@@ -1012,6 +1047,11 @@
     const size = r.doc.texture?.size;
     if (picture && size && (picture.w !== size[0] || picture.h !== size[1])) setTextureSize(size[0], size[1]);
     studio.say("info", r.fits ? "Every shape has a new block. Pixels you painted stay where they were: repaint or move them." : "The shapes do not all fit in the biggest texture (1024). Give some fewer texels.");
+  }
+  function setSmoothTexels(on: boolean) {
+    if (!doc.texture) return;
+    commit({ ...doc, texture: { ...doc.texture, smooth: on || undefined } });
+    syncTexture();
   }
   function setScale(raw: string) {
     const n = Number(raw);
@@ -1290,10 +1330,12 @@
     if (mode === "texture" && BRUSH_TOOLS.includes(texTool) && picture && e.button === 0 && !e.altKey && canvas) {
       const t = textureHit(e);
       if (t) {
-        beginStroke(e.shiftKey);
-        paintTexel(t[0], t[1]);
-        const m = mirrorPaint ? mirrorHit(e) : null;
-        if (m) paintTexel(m[0], m[1], true);
+        beginStroke(false);
+        if (texTool === "picker" || texTool === "fill") {
+          paintTexel(t[0], t[1]);
+          const m = mirrorPaint ? mirrorHit(e) : null;
+          if (m) paintTexel(m[0], m[1], true);
+        } else paintAlong(e);
         controls!.enabled = false;
         canvas.setPointerCapture(e.pointerId);
         return;
@@ -1360,12 +1402,7 @@
   }
   function pointerMove(e: PointerEvent) {
     if (stroke && mode === "texture") {
-      const t = textureHit(e);
-      if (t) paintTexel(t[0], t[1]);
-      else stroke.last = null;
-      const m = mirrorPaint ? mirrorHit(e) : null;
-      if (m) paintTexel(m[0], m[1], true);
-      else stroke.lastMirror = null;
+      if (texTool !== "picker" && texTool !== "fill") paintAlong(e);
       return;
     }
     if (pull && camera) {
@@ -1982,6 +2019,7 @@
               <p class="dim small">Click a face rectangle of a painted box in the picture, then drag it or type where it goes. Faces can share the same texels.</p>
             {/if}
           {/if}
+          <label class="check" title="Blend the texels in the game, as detailed painting wants (off: sharp square texels, for pixel art)"><input type="checkbox" checked={!!doc.texture?.smooth} onchange={(e) => setSmoothTexels(e.currentTarget.checked)} /> Smooth texels</label>
           {#if cube?.texture}
             <label class="inline">Texels per unit <input type="number" min="0.25" max="8" step="0.25" value={cube.texture.scale ?? 1} onchange={(e) => setScale(e.currentTarget.value)} /></label>
           {/if}

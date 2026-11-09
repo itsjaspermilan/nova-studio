@@ -47,6 +47,7 @@ pub(super) fn quad_mesh(image: &Image, uv: [f32; 4]) -> MeshData {
         indices,
         texture: Some(image.clone()),
         wrap: [Wrap::ClampToEdge; 2],
+        smooth: false,
         notes: Vec::new(),
     }
 }

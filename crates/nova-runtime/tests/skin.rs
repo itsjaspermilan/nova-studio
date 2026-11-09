@@ -290,6 +290,7 @@ end"
         indices: mesh.indices.clone(),
         texture: mesh.texture.clone(),
         wrap: mesh.wrap,
+        smooth: false,
         notes: Vec::new(),
     });
     let draw = [ModelDraw {

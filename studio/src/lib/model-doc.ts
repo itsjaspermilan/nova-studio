@@ -66,7 +66,12 @@ export interface Skin {
   weights: [number, number][][];
 }
 
-export type TextureInfo = { size: [number, number] };
+/// `smooth`: the picture is filtered smoothly in the game (glTF LINEAR), as a detailed painted texture wants; without it the
+/// texels stay sharp (NEAREST), as pixel art and flat-coloured palettes want.
+export type TextureInfo = { size: [number, number]; smooth?: boolean };
+/// Texels per model unit a shape gets when it is first painted (16 model units are a metre at the default scale, so 4 is 64 texels a
+/// metre: a handheld's screen shows a car's paint about as sharp as its edges).
+export const NEW_TEXEL_SCALE = 4;
 export const MIN_TEXTURE = 8;
 export const MAX_TEXTURE = 1024;
 
@@ -240,6 +245,8 @@ export function parseModel(text: string): Parsed {
     const size = (o.texture as Partial<TextureInfo> | null)?.size;
     const side = (n: unknown) => typeof n === "number" && Number.isInteger(n) && n >= MIN_TEXTURE && n <= MAX_TEXTURE;
     if (!Array.isArray(size) || size.length !== 2 || !size.every(side)) return { ok: false, error: `"texture.size" must be two whole numbers from ${MIN_TEXTURE} to ${MAX_TEXTURE}` };
+    const smooth = (o.texture as Partial<TextureInfo>).smooth;
+    if (smooth !== undefined && typeof smooth !== "boolean") return { ok: false, error: '"texture.smooth" must be true or false' };
   }
   if (o.colliders !== undefined) {
     const list = o.colliders as unknown;
@@ -343,7 +350,7 @@ export function parseModel(text: string): Parsed {
       }
     }
   }
-  return { ok: true, doc: { version: 1, scale: o.scale ?? DEFAULT_SCALE, ...(o.texture ? { texture: { size: [...o.texture.size] as [number, number] } } : {}), parts: o.parts as Part[], ...(clips && clips.length ? { clips: clips as Clip[] } : {}), ...(o.colliders?.length ? { colliders: o.colliders.map((c) => ({ x: c.x, z: c.z, r: c.r })) } : {}), ...(o.capsules?.length ? { capsules: o.capsules.map((c) => ({ ax: c.ax, az: c.az, bx: c.bx, bz: c.bz, r: c.r })) } : {}), ...(o.boxes?.length ? { boxes: o.boxes.map((c) => ({ x: c.x, z: c.z, hw: c.hw, hl: c.hl, turn: c.turn })) } : {}) } };
+  return { ok: true, doc: { version: 1, scale: o.scale ?? DEFAULT_SCALE, ...(o.texture ? { texture: { size: [...o.texture.size] as [number, number], ...(o.texture.smooth ? { smooth: true } : {}) } } : {}), parts: o.parts as Part[], ...(clips && clips.length ? { clips: clips as Clip[] } : {}), ...(o.colliders?.length ? { colliders: o.colliders.map((c) => ({ x: c.x, z: c.z, r: c.r })) } : {}), ...(o.capsules?.length ? { capsules: o.capsules.map((c) => ({ ax: c.ax, az: c.az, bx: c.bx, bz: c.bz, r: c.r })) } : {}), ...(o.boxes?.length ? { boxes: o.boxes.map((c) => ({ x: c.x, z: c.z, hw: c.hw, hl: c.hl, turn: c.turn })) } : {}) } };
 }
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
@@ -393,7 +400,7 @@ export function serializeModel(doc: ModelDoc): string {
     return `    {\n      "name": ${JSON.stringify(c.name)},\n      "duration": ${c.duration},\n      "loop": ${c.loop},\n      "tracks": ${tracks}\n    }`;
   };
   const clips = doc.clips?.length ? `,\n  "clips": [\n${doc.clips.map(clip).join(",\n")}\n  ]` : "";
-  const texture = doc.texture ? `,\n  "texture": { "size": ${vec2(doc.texture.size)} }` : "";
+  const texture = doc.texture ? `,\n  "texture": { "size": ${vec2(doc.texture.size)}${doc.texture.smooth ? `, "smooth": true` : ""} }` : "";
   const colliders = doc.colliders?.length ? `,\n  "colliders": [${doc.colliders.map((c) => `{ "x": ${c.x}, "z": ${c.z}, "r": ${c.r} }`).join(", ")}]` : "";
   const capsules = doc.capsules?.length ? `,\n  "capsules": [${doc.capsules.map((c) => `{ "ax": ${c.ax}, "az": ${c.az}, "bx": ${c.bx}, "bz": ${c.bz}, "r": ${c.r} }`).join(", ")}]` : "";
   const boxes = doc.boxes?.length ? `,\n  "boxes": [${doc.boxes.map((c) => `{ "x": ${c.x}, "z": ${c.z}, "hw": ${c.hw}, "hl": ${c.hl}, "turn": ${c.turn} }`).join(", ")}]` : "";

@@ -62,6 +62,9 @@ pub struct MeshData {
     pub texture: Option<Image>,
     /// How `texture` repeats across u and v (glTF's repeat unless the file says otherwise; meshes made in code clamp).
     pub wrap: [Wrap; 2],
+    /// `texture` is filtered smoothly (the glTF sampler's magFilter is LINEAR), with mipmaps when its sides are powers of two;
+    /// otherwise its texels stay sharp (nearest), as a palette of flat colours needs.
+    pub smooth: bool,
     /// Features present in the file that this importer does not support.
     pub notes: Vec<String>,
     /// The file's surface (glTF metallic-roughness, normal map, emission), per vertex and as pictures. Read for every glTF model;
@@ -94,7 +97,7 @@ pub struct Material {
 /// The pictures a mesh's primitives refer to (indices into the file's images): the first of each kind is the one used.
 #[derive(Default)]
 struct MeshTextures {
-    base: Option<(usize, [Wrap; 2])>,
+    base: Option<(usize, [Wrap; 2], bool)>,
     normal: Option<usize>,
     surface: Option<usize>,
     emissive: Option<usize>,
@@ -113,8 +116,9 @@ impl MeshTextures {
                 rgba: to_rgba(data)?,
             })
         };
-        if let Some((index, wrap)) = self.base {
+        if let Some((index, wrap, smooth)) = self.base {
             out.wrap = wrap;
+            out.smooth = smooth;
             out.texture = Some(image(index)?);
             for range in &self.plain {
                 for v in &mut out.vertices[range.clone()] {
@@ -320,9 +324,10 @@ fn append_mesh(
             let index = info.texture().source().index();
             let sampler = info.texture().sampler();
             let wrap = [sampler.wrap_s().into(), sampler.wrap_t().into()];
+            let smooth = sampler.mag_filter() == Some(gltf::texture::MagFilter::Linear);
             match textures.base {
-                None => textures.base = Some((index, wrap)),
-                Some((first, _)) if first != index => out
+                None => textures.base = Some((index, wrap, smooth)),
+                Some((first, _, _)) if first != index => out
                     .notes
                     .push("more than one base colour texture: only the first is used".into()),
                 _ => {}

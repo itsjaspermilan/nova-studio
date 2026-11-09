@@ -355,7 +355,13 @@ and embedded in the `.glb`. The model file says `"texture": { "size": [64, 64] }
 each shape painted with it has `"texture": { "at": [x, y], "scale": 1 }`: `at` is the top-left of its block of the
 picture and `scale` the texels per model unit (default 1). Inside its block a shape unwraps by itself: a box as the
 usual cross of six faces, a wedge or pyramid the same way, cylinders, cones and spheres as a strip round the middle
-plus caps, and a mesh as one flat patch per polygon. The layout follows the shape's size and points, never its
+plus caps, and a mesh by the way its polygons face: each polygon goes with the side it faces most (up, down or one of the four
+sides) and is laid flat as seen from that side, polygons that share an edge stay together, and a group is split where its
+polygons would cover the same texels (2026-11-08; until then every polygon was its own patch, turned along its first edge).
+The islands sit two texels apart, and baked colours are filled three quarters of a texel past each polygon's edges, so a
+texel sampled at an edge has the polygon's colour. A shape painted for the first time gets `scale` 4 (64 texels a metre at
+the default model scale). `"texture": { "size": [w, h], "smooth": true }` makes the game filter the picture smoothly (the
+glTF sampler's LINEAR; a model's first painted shape turns it on); without it the texels stay sharp (NEAREST). The layout follows the shape's size and points, never its
 position or turn, so resizing a shape changes its block (use "Pack blocks" in the editor to lay them out again;
 painted pixels do not move with it). A shape's `color` is a tint multiplied with its texels (white after texturing is
 turned on, which also paints the shape's old colours into its block). `"mirror"` on a mirrored box's texture

@@ -149,6 +149,7 @@ pub(super) fn blob_mesh() -> crate::model::MeshData {
         indices,
         texture: None,
         wrap: [Wrap::ClampToEdge; 2],
+        smooth: false,
         notes: Vec::new(),
     }
 }
@@ -182,6 +183,7 @@ pub(super) fn line_mesh() -> crate::model::MeshData {
         indices: vec![0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6],
         texture: None,
         wrap: [Wrap::ClampToEdge; 2],
+        smooth: false,
         notes: Vec::new(),
     }
 }

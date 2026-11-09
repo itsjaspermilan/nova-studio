@@ -87,6 +87,50 @@ describe("unwrapping", () => {
     expect(unwrap(freshMesh()).size[0]).toBeGreaterThan(0);
   });
 
+  it("lays a mesh out by the way its polygons face: a roof of many triangles is one level piece, seen from above", () => {
+    // a roof 24 units long and 16 wide, cut into a grid of triangles, a side panel joined to it, and a spoiler floating
+    // over its back (also facing up, so it would lie on the roof's texels if it were not a piece of its own)
+    const verts: [number, number, number][] = [];
+    const polys: { v: number[] }[] = [];
+    const at = (x: number, z: number) => x * 4 + z;
+    for (let x = 0; x < 4; x++) for (let z = 0; z < 4; z++) verts.push([x * 8 - 12, 10, z * (16 / 3) - 8]);
+    for (let x = 0; x < 3; x++) for (let z = 0; z < 3; z++) {
+      // (counter-clockwise from above: facing up)
+      polys.push({ v: [at(x, z), at(x, z + 1), at(x + 1, z + 1)] }, { v: [at(x, z), at(x + 1, z + 1), at(x + 1, z)] });
+    }
+    const roof = polys.length;
+    const s0 = verts.length;
+    verts.push([12, 0, -8], [12, 0, 8]); // the side under the roof's +x edge
+    polys.push({ v: [at(3, 0), at(3, 3), s0 + 1, s0] });
+    const sp = verts.length;
+    verts.push([4, 14, -8], [4, 14, 8], [12, 14, 8], [12, 14, -8]);
+    polys.push({ v: [sp, sp + 1, sp + 2, sp + 3] });
+    const c: Cube = { shape: "mesh", from: [0, 0, 0], size: [0, 0, 0], color: "#ffffff", verts, polys, texture: { at: [0, 0], scale: 2 } };
+    const un = unwrap(c);
+    const solid = solidOf(c);
+    // every roof point sits where the view from above puts it: across with x, down with z, two texels a unit, all in one piece
+    const ref = solid.polys[0]!.v[0]!;
+    const refUV = un.polys[0]![0]!;
+    for (let i = 0; i < roof; i++) solid.polys[i]!.v.forEach((k, j) => {
+      const q = un.polys[i]![j]!;
+      expect(q[0] - refUV[0]).toBeCloseTo((solid.verts[k]![0] - solid.verts[ref]![0]) * 2, 6);
+      expect(q[1] - refUV[1]).toBeCloseTo((solid.verts[k]![2] - solid.verts[ref]![2]) * 2, 6);
+    });
+    // no texel centre is inside two polygons (the spoiler has texels of its own)
+    const inside = (p: UV[], x: number, y: number) => {
+      let r = false;
+      for (let i = 0, j = p.length - 1; i < p.length; j = i++) {
+        if (p[i]![1] > y !== p[j]![1] > y && x < ((p[j]![0] - p[i]![0]) * (y - p[i]![1])) / (p[j]![1] - p[i]![1]) + p[i]![0]) r = !r;
+      }
+      return r;
+    };
+    for (let y = 0; y < un.size[1]; y++) for (let x = 0; x < un.size[0]; x++) {
+      expect(un.polys.filter((p) => inside(p, x + 0.5, y + 0.5)).length, `${x},${y}`).toBeLessThanOrEqual(1);
+    }
+    // and nothing is stretched or slanted: each polygon keeps its area as seen from its own side (the roof and spoiler are flat)
+    expect(Math.abs(area(un.polys[polys.length - 1]!))).toBeCloseTo(8 * 16 * 4, 6);
+  });
+
   it("gives one texel pair per emitted vertex, offset by where the block sits", () => {
     const c = shape("cylinder", { texture: { at: [10, 20] } });
     const uvs = uvsOf(c);
@@ -179,7 +223,7 @@ describe("giving a shape texels", () => {
   it("turns texturing on for a shape: a block of its own, its colours baked in, a white tint left", () => {
     let d: ModelDoc = newModel();
     d.parts[0]!.cubes = [{ from: [0, 0, 0], size: [4, 4, 4], color: "#0000ff", faces: { up: "#ff0000" } }];
-    const r = enableTexture(d, null, [0], 0)!;
+    const r = enableTexture(d, null, [0], 0, 1)!;
     expect(r.fits).toBe(true);
     expect(r.doc.texture!.size).toEqual([64, 64]);
     const cube = r.doc.parts[0]!.cubes[0]!;
@@ -193,23 +237,23 @@ describe("giving a shape texels", () => {
     // a second shape gets a block beside the first, and the painting of the first survives
     d = r.doc;
     d.parts[0]!.cubes.push({ from: [0, 0, 0], size: [4, 4, 4], color: "#00ff00" });
-    const second = enableTexture(d, r.picture, [0], 1)!;
+    const second = enableTexture(d, r.picture, [0], 1, 1)!;
     const [a, b] = second.doc.parts[0]!.cubes.map(blockOf);
     expect(b!.x).toBeGreaterThan(a!.x + a!.w - 1);
     expect(getPixel(second.picture, up[0] + 1, up[1] + 1)).toEqual([255, 0, 0, 255]);
-    expect(enableTexture(d, null, [0], 9)).toBeNull();
-    expect(enableTexture(d, null, [3], 0)).toBeNull();
+    expect(enableTexture(d, null, [0], 9, 1)).toBeNull();
+    expect(enableTexture(d, null, [3], 0, 1)).toBeNull();
   });
 
   it("grows the picture when a shape does not fit: wider if the block is wider, otherwise taller", () => {
     let d: ModelDoc = { ...newModel(), texture: { size: [16, 16] } };
     d.parts[0]!.cubes = [{ from: [0, 0, 0], size: [8, 8, 8], color: "#999999" }, { from: [0, 0, 0], size: [8, 8, 8], color: "#999999" }];
-    const first = enableTexture(d, null, [0], 0)!; // needs 32 x 16
+    const first = enableTexture(d, null, [0], 0, 1)!; // needs 32 x 16
     expect(blockOf(first.doc.parts[0]!.cubes[0]!)).toMatchObject({ w: 32, h: 16 });
     expect(first.fits).toBe(true);
     expect(first.doc.texture!.size).toEqual([32, 16]);
     expect([first.picture.w, first.picture.h]).toEqual([32, 16]);
-    const second = enableTexture(first.doc, first.picture, [0], 1)!; // no room beside or below: grows downward
+    const second = enableTexture(first.doc, first.picture, [0], 1, 1)!; // no room beside or below: grows downward
     expect(second.doc.texture!.size).toEqual([32, 64]);
     expect(blockOf(second.doc.parts[0]!.cubes[1]!).y).toBeGreaterThanOrEqual(17);
   });

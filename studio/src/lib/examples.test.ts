@@ -1,3 +1,5 @@
+import { inflateSync } from "node:zlib";
+import type { Raster } from "./pixels";
 // The studio's editors against real projects: everything in the shipped examples (some made by the MCP server, some by hand)
 // must open in the editor that owns it, save back the same, and, for models, export the same `.glb` that is committed.
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -24,6 +26,45 @@ function files(dir: string): string[] {
 }
 const text = (p: string) => readFileSync(p, "utf8");
 
+/// An 8-bit RGBA PNG as written by png-encode.ts (no interlacing), read back with Node's zlib.
+function readPng(path: string): Raster {
+  const b = readFileSync(path);
+  let w = 0, h = 0, at = 8;
+  const idat: Buffer[] = [];
+  while (at < b.length) {
+    const len = b.readUInt32BE(at);
+    const type = b.toString("latin1", at + 4, at + 8);
+    const body = b.subarray(at + 8, at + 8 + len);
+    if (type === "IHDR") {
+      [w, h] = [body.readUInt32BE(0), body.readUInt32BE(4)];
+      if (body[8] !== 8 || body[9] !== 6 || body[12] !== 0) throw new Error(`${path}: not an 8-bit RGBA PNG`);
+    } else if (type === "IDAT") idat.push(body);
+    at += 12 + len;
+  }
+  const raw = inflateSync(Buffer.concat(idat));
+  const out = new Uint8ClampedArray(w * h * 4);
+  const stride = w * 4;
+  for (let y = 0; y < h; y++) {
+    const filter = raw[y * (stride + 1)]!;
+    for (let x = 0; x < stride; x++) {
+      const v = raw[y * (stride + 1) + 1 + x]!;
+      const a = x >= 4 ? out[y * stride + x - 4]! : 0;
+      const up = y > 0 ? out[(y - 1) * stride + x]! : 0;
+      const ul = x >= 4 && y > 0 ? out[(y - 1) * stride + x - 4]! : 0;
+      let pred = 0;
+      if (filter === 1) pred = a;
+      else if (filter === 2) pred = up;
+      else if (filter === 3) pred = (a + up) >> 1;
+      else if (filter === 4) {
+        const p = a + up - ul, pa = Math.abs(p - a), pb = Math.abs(p - up), pc = Math.abs(p - ul);
+        pred = pa <= pb && pa <= pc ? a : pb <= pc ? up : ul;
+      }
+      out[y * stride + x] = (v + pred) & 255;
+    }
+  }
+  return { w, h, data: out };
+}
+
 describe.each(projects)("the editors on examples/%s", (name) => {
   const base = join(root, name);
   const all = files(base).map((p) => relative(base, p));
@@ -37,7 +78,9 @@ describe.each(projects)("the editors on examples/%s", (name) => {
       expect(serializeModel(parsed.doc), `${f} saves back as it was`).toBe(text(join(base, f)));
       const glbPath = join(base, f.replace(/\.model\.json$/, ".glb"));
       expect(existsSync(glbPath), `${f} has its glb`).toBe(true);
-      const image = parsed.doc.texture ? fitPicture(parsed.doc, bakeAll(parsed.doc)) : undefined;
+      // (a painted model exports its own picture; one with no picture yet, its colours baked fresh)
+      const png = join(base, f.replace(/\.model\.json$/, ".texture.png"));
+      const image = parsed.doc.texture ? fitPicture(parsed.doc, existsSync(png) ? readPng(png) : bakeAll(parsed.doc)) : undefined;
       expect(Buffer.compare(Buffer.from(exportGlb(parsed.doc, image)), readFileSync(glbPath)), `${f} exports the committed glb`).toBe(0);
     }
   });

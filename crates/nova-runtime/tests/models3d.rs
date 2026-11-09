@@ -1082,6 +1082,7 @@ fn meshes_with_the_same_picture_share_one_texture() {
             rgba: vec![colour; 16],
         }),
         wrap: Default::default(),
+        smooth: false,
         notes: Vec::new(),
     };
     gfx.upload_mesh(&mesh(10));
