@@ -26,7 +26,7 @@ local RESCUE_FAR = 40          -- metres from the nearest road at which the car 
 local RESCUE_OUT, RESCUE_HOLD, RESCUE_IN = 0.45, 0.2, 0.45
 local EVENT_REACH = 16         -- metres from a marker at which its prompt shows
 local GRIP = { road_asphalt = 1, road_gravel = 0.88, road_dirt = 0.88, road_snow = 0.75 }
-local MODE_NAMES = { race = "Circuit race", trial = "Time trial", rally = "Rally stage" }
+local MODE_NAMES = { race = "Circuit race", trial = "Time trial", rally = "Rally stage", garage = "Buy and change cars" }
 
 local function index_of(list, id) for i, c in ipairs(list) do if c.id == id then return i, c end end end
 local function course_info(id)
@@ -288,6 +288,16 @@ function Roam:update(dt)
   -- Y at a marker: its details (and from there, the start)
   local e = self:event_here()
   self.near = e
+  if e and e.mode == "garage" and not self.panel and not self.rescue and nova.input.pressed("event") then
+    -- the garage: straight in (the title scene's garage page; B drives back out here)
+    audio.sfx("menu_accept")
+    state.roam_at = { x = e.x, z = e.z, heading = e.ry or 0 }
+    state.from_roam = true
+    audio.stop_music(0.5)
+    transition.cover({ title = "GARAGE", sub = "", palette = "pine_ridge" }, function() nova.goto_scene("title", "hub_garage") end)
+    self.leaving = true
+    return
+  end
   if e and not self.panel and not self.rescue and nova.input.pressed("event") then
     audio.sfx("menu_accept")
     self.panel = e
@@ -498,8 +508,7 @@ function Roam:draw_hud()
   -- at a marker: what it is, and Y to see it
   local e = self.near
   if e then
-    local info = course_info(e.course)
-    local words = info.name .. "  ·  " .. MODE_NAMES[e.mode]
+    local words = e.mode == "garage" and "Garage  ·  Buy and change cars" or (course_info(e.course).name .. "  ·  " .. MODE_NAMES[e.mode])
     local tw = nova.ui.text_width(words, { font = F.heavy, size = 24 })
     local x = w / 2 - (tw + 40) / 2
     nova.ui.rect(x - 14, 404, tw + 68, 44, { C.ground[1], C.ground[2], C.ground[3], 210 })
@@ -593,7 +602,7 @@ end
 -- The map (pause > MAP): the whole world, north up. Highways bold and white, each course's road in its region's colour, the towns' names
 -- large, the events as symbols by kind (a key along the bottom). The stick moves a cursor; the event nearest it is named beside it. L and R
 -- zoom in and out (the view stays on the cursor).
-local MAP_EVENT = { race = { 255, 106, 43 }, trial = { 79, 209, 197 }, rally = { 255, 210, 63 } }
+local MAP_EVENT = { race = { 255, 106, 43 }, trial = { 79, 209, 197 }, rally = { 255, 210, 63 }, garage = { 244, 241, 234 } }
 local MAP_REGION = { pine_ridge = { 140, 210, 130 }, autumn_glen = { 235, 150, 70 }, dust_valley = { 232, 200, 120 }, frost_pass = { 215, 235, 255 }, harbour_lights = { 120, 170, 255 } }
 function Roam:draw_map()
   local w = nova.view()
@@ -674,8 +683,7 @@ function Roam:draw_map()
   if near then
     local ex, ey = at(near.x, near.z)
     if (ex - qx) ^ 2 + (ey - qy) ^ 2 < 40 * 40 then
-      local info = course_info(near.course)
-      local words = info.name .. "  ·  " .. MODE_NAMES[near.mode]
+      local words = near.mode == "garage" and "Garage  ·  Buy and change cars" or (course_info(near.course).name .. "  ·  " .. MODE_NAMES[near.mode])
       local tw = nova.ui.text_width(words, { font = F.heavy, size = 20 })
       nova.ui.rect(ex + 12, ey - 15, tw + 20, 30, { C.ground[1], C.ground[2], C.ground[3], 230 })
       nova.ui.rect(ex + 12, ey - 15, 4, 30, MAP_EVENT[near.mode] or C.orange)
@@ -685,7 +693,7 @@ function Roam:draw_map()
   nova.ui.layout { anchor = "topleft", margin = 0, x = 48, y = 18, ui.header("Free roam", "Map", 40) }
   -- the key
   local kx = 48
-  for _, kind in ipairs({ "race", "trial", "rally" }) do
+  for _, kind in ipairs({ "race", "trial", "rally", "garage" }) do
     nova.ui.rect(kx, 460, 12, 12, MAP_EVENT[kind])
     kx = kx + 18 + ui.say(kx + 18, 466, MODE_NAMES[kind], F.medium, 16.5, C.white, { valign = "middle" }) + 22
   end

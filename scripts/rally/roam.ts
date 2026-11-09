@@ -107,8 +107,14 @@ function dressTown(t: ReturnType<typeof makeTown>) {
   pts(`town_${region.id}_side`, sidePts);
   const HOUSES = "abcdefgh";
   let h = region.id.length; // (each town starts at another house, so no two look the same)
+  // the forest town (the hub) has the garage on its main street, in place of a house: Y at its marker opens the garage
+  const hasGarage = region.id === SPAWN_REGION;
+  if (hasGarage) {
+    put("garage", t.cx + 70, main.z - 21, Math.PI);
+    objects.push({ kind: "event", x: t.cx + 70, y: 0, z: main.z - 9, props: { mode: "garage", ry: r3(Q) } });
+  }
   for (const dx of [-84, -60, -36, 46, 70]) {
-    put(`ck_house_${HOUSES[h++ % 8]}`, t.cx + dx, main.z - 19, 0);
+    if (!(hasGarage && dx === 70)) put(`ck_house_${HOUSES[h++ % 8]}`, t.cx + dx, main.z - 19, 0);
     put(`ck_house_${HOUSES[h++ % 8]}`, t.cx + dx, main.z + 19, Math.PI);
   }
   for (const [dx, i] of [[-14, 0], [24, 1]] as [number, number][]) {

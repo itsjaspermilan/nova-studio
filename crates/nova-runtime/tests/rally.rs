@@ -1406,7 +1406,7 @@ fn free_roam_starts_an_event_in_the_world_and_comes_back_to_it() {
     let mut log = Vec::new();
     run_until(&mut g, &mut log, "free roam starts", 60 * 6, |l| {
         l.iter()
-            .any(|x| x.starts_with("roam: ") && x.contains("30 events"))
+            .any(|x| x.starts_with("roam: ") && x.contains("31 events"))
     });
     for _ in 0..90 {
         frame(&mut g, &[]);
@@ -1441,7 +1441,7 @@ fn free_roam_starts_an_event_in_the_world_and_comes_back_to_it() {
     let mut log = Vec::new();
     run_until(&mut g, &mut log, "back in free roam", 60 * 4, |l| {
         l.iter()
-            .any(|x| x.starts_with("roam: ") && x.contains("30 events"))
+            .any(|x| x.starts_with("roam: ") && x.contains("31 events"))
     });
     // full throttle, turning gently right: off the circuit and across the grass until the game puts the car back on a road
     let mut log = Vec::new();
