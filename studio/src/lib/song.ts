@@ -37,6 +37,8 @@ export interface Track {
   volume: number;
   pan: number;
   mute: boolean;
+  /// While any track is soloed only the soloed tracks are heard (a muted track stays silent).
+  solo?: boolean;
   notes: Note[];
   /// Voice fields (all optional; leave them out for the plain chip voice).
   /// Oscillators per note (1 to 7) and how far they are spread, in cents either way.
@@ -71,12 +73,15 @@ export interface Song {
   length: number;
   tracks: Track[];
   room?: Room;
+  /// The master fader: 1 is as the tracks add up, up to 1.5. A song with none renders as before.
+  master?: { volume: number };
 }
 
 export const MIN_BPM = 40;
 export const MAX_BPM = 240;
 export const MAX_STEPS = 1024;
 export const MAX_TRACKS = 16;
+export const MAX_MASTER = 1.5;
 export const MAX_NOTES = 4000;
 export const RATE = 44100;
 
@@ -160,7 +165,7 @@ export function parseSong(text: string): Parsed {
       if (t.kit !== "chip" && t.kit !== "studio") return { ok: false, error: `${at}.kit must be "chip" or "studio"` };
       voice.kit = t.kit;
     }
-    tracks.push({ ...base, ...t, ...voice, duty: clamp(t.duty ?? base.duty, 0.05, 0.95), volume: clamp(t.volume ?? base.volume, 0, 1), pan: clamp(t.pan ?? 0, -1, 1), mute: !!t.mute } as Track);
+    tracks.push({ ...base, ...t, ...voice, duty: clamp(t.duty ?? base.duty, 0.05, 0.95), volume: clamp(t.volume ?? base.volume, 0, 1), pan: clamp(t.pan ?? 0, -1, 1), mute: !!t.mute, ...(t.solo ? { solo: true } : {}) } as Track);
   }
   let room: Room | undefined;
   if (o.room !== undefined) {
@@ -168,7 +173,13 @@ export function parseSong(text: string): Parsed {
     if (!r || typeof r !== "object" || !num(r.size ?? 0.5, 0, 1) || !num(r.damping ?? 0.4, 0, 1) || !num(r.mix ?? 1, 0, 2)) return { ok: false, error: '"room" is { "size": 0 to 1, "damping": 0 to 1, "mix": 0 to 2 }' };
     room = { size: r.size ?? 0.5, damping: r.damping ?? 0.4, mix: r.mix ?? 1 };
   }
-  return { ok: true, song: { version: 1, bpm: o.bpm!, stepsPerBeat: o.stepsPerBeat!, length: o.length!, tracks, ...(room ? { room } : {}) } };
+  let master: { volume: number } | undefined;
+  if (o.master !== undefined) {
+    const m = o.master as { volume?: unknown };
+    if (!m || typeof m !== "object" || !num(m.volume ?? 1, 0, MAX_MASTER)) return { ok: false, error: `"master" is { "volume": 0 to ${MAX_MASTER} }` };
+    master = { volume: (m.volume as number | undefined) ?? 1 };
+  }
+  return { ok: true, song: { version: 1, bpm: o.bpm!, stepsPerBeat: o.stepsPerBeat!, length: o.length!, tracks, ...(room ? { room } : {}), ...(master ? { master } : {}) } };
 }
 
 export function serializeSong(song: Song): string {
@@ -179,13 +190,15 @@ export function serializeSong(song: Song): string {
       `"attack": ${t.attack}`, `"decay": ${t.decay}`, `"sustain": ${t.sustain}`, `"release": ${t.release}`,
       `"volume": ${t.volume}`, `"pan": ${t.pan}`, `"mute": ${t.mute}`,
     ];
+    if (t.solo) fields.push(`"solo": true`);
     for (const [key] of VOICE_RANGES) if (t[key] !== undefined) fields.push(`"${key}": ${t[key]}`);
     if (t.kit !== undefined) fields.push(`"kit": "${t.kit}"`);
     const notes = t.notes.length ? `[\n${t.notes.map((n) => `        ${note(n)}`).join(",\n")}\n      ]` : "[]";
     return `    {\n${fields.map((f) => `      ${f}`).join(",\n")},\n      "notes": ${notes}\n    }`;
   };
   const room = song.room ? `,\n  "room": { "size": ${song.room.size}, "damping": ${song.room.damping}, "mix": ${song.room.mix} }` : "";
-  return `{\n  "version": 1,\n  "bpm": ${song.bpm},\n  "stepsPerBeat": ${song.stepsPerBeat},\n  "length": ${song.length},\n  "tracks": [\n${song.tracks.map(track).join(",\n")}\n  ]${room}\n}\n`;
+  const master = song.master ? `,\n  "master": { "volume": ${song.master.volume} }` : "";
+  return `{\n  "version": 1,\n  "bpm": ${song.bpm},\n  "stepsPerBeat": ${song.stepsPerBeat},\n  "length": ${song.length},\n  "tracks": [\n${song.tracks.map(track).join(",\n")}\n  ]${room}${master}\n}\n`;
 }
 
 // ---- editing (every edit returns a new song) ----------------------------------------------------------
@@ -610,6 +623,20 @@ function richNote(
 
 /// Plays the song offline into a stereo sound exactly `songSeconds` long. Note tails that run past the end
 /// wrap to the beginning so a loop is seamless.
+/// Whether a track is heard: not muted, and, when any track is soloed, soloed.
+export function isAudible(song: Song, track: Track): boolean {
+  return !track.mute && (!song.tracks.some((t) => t.solo) || !!track.solo);
+}
+
+/// The song with the master volume set (1 is as the tracks add up).
+export function setMaster(song: Song, volume: number): Song {
+  const v = clamp(volume, 0, MAX_MASTER);
+  const next = { ...song };
+  if (v === 1) delete next.master;
+  else next.master = { volume: v };
+  return next;
+}
+
 export function renderSong(song: Song, rate = RATE): Sound {
   const stepSec = stepSeconds(song);
   const total = Math.round(song.length * stepSec * rate);
@@ -617,12 +644,12 @@ export function renderSong(song: Song, rate = RATE): Sound {
   const right = new Float32Array(total);
   const hitCache = new Map<number, Float32Array>();
   const studioCache = new Map<number, Float32Array>();
-  const anyRoom = song.tracks.some((t) => !t.mute && (t.reverb ?? 0) > 0);
+  const anyRoom = song.tracks.some((t) => isAudible(song, t) && (t.reverb ?? 0) > 0);
   const sendL = anyRoom ? new Float32Array(total) : null;
   const sendR = anyRoom ? new Float32Array(total) : null;
-  const richSong = song.tracks.some((t) => !t.mute && isRich(t));
+  const richSong = song.tracks.some((t) => isAudible(song, t) && isRich(t));
   song.tracks.forEach((track, ti) => {
-    if (track.mute) return;
+    if (!isAudible(song, track)) return;
     const pan = clamp(track.pan, -1, 1);
     const gl = Math.cos(((pan + 1) * Math.PI) / 4) * track.volume;
     const gr = Math.sin(((pan + 1) * Math.PI) / 4) * track.volume;
@@ -683,6 +710,14 @@ export function renderSong(song: Song, rate = RATE): Sound {
     for (let i = 0; i < total; i++) {
       left[i] = softClip(left[i]!, 1.1);
       right[i] = softClip(right[i]!, 1.1);
+    }
+  }
+  // The master fader.
+  const master = song.master?.volume ?? 1;
+  if (master !== 1) {
+    for (let i = 0; i < total; i++) {
+      left[i] = left[i]! * master;
+      right[i] = right[i]! * master;
     }
   }
   // Keep peaks under full scale without touching quiet songs.

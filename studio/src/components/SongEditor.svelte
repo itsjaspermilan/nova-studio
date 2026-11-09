@@ -7,6 +7,9 @@
   } from "../lib/song";
   import { encodeWav, toBase64, frames, type Sound } from "../lib/wav";
   import { studio } from "../lib/store.svelte";
+  import MixerPanel from "./MixerPanel.svelte";
+  import { commands } from "../lib/commands";
+  import { quantizeTrack, repeatSong, setAllVelocities } from "../lib/song-edit";
 
   let { path: filePath, text, onjson }: { path: string; text: string; onjson: () => void } = $props();
 
@@ -17,6 +20,8 @@
   let selected: number | null = $state(null); // index into the track's notes
   let noteLen = $state(1);
   let loop = $state(true);
+  /// The lower part shows the mixer, or the notes' loudness bars, or nothing.
+  let lower: "mixer" | "velocity" | "none" = $state("none");
   let playing = $state(false);
   let playhead = $state(0); // steps
   const oggPath = untrack(() => filePath).replace(/\.song\.json$/i, ".ogg");
@@ -300,6 +305,49 @@
     }
   }
 
+  // ---- loudness bars ---------------------------------------------------------------------------------------
+  let velDrag: { ni: number; before: Song; el: HTMLElement } | null = null;
+  function velSet(e: PointerEvent) {
+    if (!velDrag) return;
+    const r = velDrag.el.getBoundingClientRect();
+    const vel = Math.round(Math.min(1, Math.max(0.05, 1 - (e.clientY - r.top) / r.height)) * 100) / 100;
+    commit(changeNote(song, track, velDrag.ni, { vel }).song, true);
+  }
+  function velDown(e: PointerEvent, ni: number) {
+    e.preventDefault();
+    const el = e.currentTarget as HTMLElement;
+    el.setPointerCapture(e.pointerId);
+    velDrag = { ni, before: song, el };
+    selected = ni;
+    velSet(e);
+  }
+  const velMove = (e: PointerEvent) => velSet(e);
+  function velUp() {
+    if (velDrag && velDrag.before !== song) {
+      past.push(velDrag.before);
+      future = [];
+    }
+    velDrag = null;
+  }
+
+  // The song editor's commands, in the Sound menu and the palette while a song is open.
+  $effect(() => {
+    const live = () => !!song.tracks[track];
+    const offs = [
+      commands.register({ id: "song.play", title: "Play or stop the song", menu: "Sound", icon: "play", help: "Space plays and stops while the notes are focused", run: () => toggle() }),
+      commands.register({ id: "song.mixer", title: "Show the mixer", menu: "Sound", icon: "settings", keys: ["Mod+Alt+M"], help: "A strip for each track: volume, pan, reverb, mute, solo", run: () => { lower = lower === "mixer" ? "none" : "mixer"; } }),
+      commands.register({ id: "song.loudness", title: "Show the loudness of the notes", menu: "Sound", help: "Drag a bar to change how hard a note is played", run: () => { lower = lower === "velocity" ? "none" : "velocity"; } }),
+      commands.register({ id: "song.solo", title: "Solo this track", menu: "Sound", keymaps: { blender: [], nova: [] }, enabled: live, run: () => setTrack({ solo: !current.solo }) }),
+      commands.register({ id: "song.mute", title: "Mute this track", menu: "Sound", enabled: live, run: () => setTrack({ mute: !current.mute }) }),
+      commands.register({ id: "song.quantize", title: "Snap the notes to the beat", menu: "Sound", help: "Moves every note of this track to the nearest beat step", enabled: live, run: () => commit(quantizeTrack(song, track, song.stepsPerBeat)) }),
+      commands.register({ id: "song.repeat", title: "Repeat the song twice over", menu: "Sound", help: "Doubles the length and copies everything into the second half", run: () => { const r = repeatSong(song, 2); if (r) commit(r); else studio.say("info", "That would be longer than a song may be."); } }),
+      commands.register({ id: "song.addLead", title: "Add a lead track", menu: "Sound", run: () => { commit(addTrack(song, "synth", "square")); track = song.tracks.length - 1; } }),
+      commands.register({ id: "song.addBass", title: "Add a bass track", menu: "Sound", run: () => { commit(addTrack(song, "synth", "triangle")); track = song.tracks.length - 1; } }),
+      commands.register({ id: "song.addDrums", title: "Add a drum track", menu: "Sound", run: () => { commit(addTrack(song, "drums")); track = song.tracks.length - 1; } }),
+    ];
+    return () => offs.forEach((off) => off());
+  });
+
   // ---- controls ---------------------------------------------------------------------------------------------
   const setTrack = (change: Parameters<typeof updateTrack>[2]) => commit(updateTrack(song, track, change));
   const bars = $derived(Math.ceil(song.length / barSteps(song)));
@@ -328,6 +376,7 @@
       <span class="spacer"></span>
       <button class="ghost" onclick={undo} disabled={!canUndo} aria-label="Undo">↶</button>
       <button class="ghost" onclick={redo} disabled={!canRedo} aria-label="Redo">↷</button>
+      <span class="seg" role="group" aria-label="Lower part"><button class:on={lower === "none"} onclick={() => (lower = "none")}>Notes</button><button class:on={lower === "velocity"} onclick={() => (lower = "velocity")}>Loudness</button><button class:on={lower === "mixer"} onclick={() => (lower = "mixer")}>Mixer</button></span>
       <button class="ghost" onclick={onjson}>JSON</button>
     </div>
 
@@ -337,6 +386,7 @@
           <div class="trk" class:on={i === track}>
             <button class="pick" onclick={() => { track = i; selected = null; }}>{t.kind === "drums" ? "🥁" : "♪"} {t.name}</button>
             <button class="ghost" title={t.mute ? "Unmute" : "Mute"} aria-label={t.mute ? "Unmute" : "Mute"} onclick={() => { track = i; setTrack({ mute: !t.mute }); }}>{t.mute ? "🔇" : "🔈"}</button>
+            <button class="ghost solo" class:on={t.solo} aria-pressed={!!t.solo} title="Hear only the soloed tracks" aria-label="Solo {t.name}" onclick={() => { track = i; setTrack({ solo: !t.solo }); }}>S</button>
           </div>
         {/each}
         <div class="add">
@@ -346,8 +396,20 @@
         </div>
       </aside>
 
+      <div class="mid">
       <div class="roll" role="presentation" oncontextmenu={(e) => e.preventDefault()}>
         <canvas bind:this={canvas} style:width="{KEYS_W + song.length * STEP_W}px" style:height="{rows.length * ROW_H}px" aria-label="Piano roll" onpointerdown={down} onpointermove={move} onpointerup={up} onpointercancel={up}></canvas>
+      </div>
+      {#if lower === "velocity"}
+        <div class="vel" role="group" aria-label="Loudness of each note">
+          <span class="dim small">Loudness of the notes on this track: drag a bar. <button class="ghost" onclick={() => commit(setAllVelocities(song, track, 0.8))}>Set all to 80%</button></span>
+          <div class="velbars" style:width="{KEYS_W + song.length * STEP_W}px">
+            {#each current.notes as n, ni (ni)}
+              <button class="velbar" class:on={ni === selected} style:left="{KEYS_W + n.step * STEP_W}px" style:width="{Math.max(6, n.len * STEP_W - 2)}px" aria-label="Note {ni + 1} loudness {Math.round(n.vel * 100)} percent" onpointerdown={(e) => velDown(e, ni)} onpointermove={velMove} onpointerup={velUp} onpointercancel={velUp}><i style:height="{n.vel * 100}%"></i></button>
+            {/each}
+          </div>
+        </div>
+      {/if}
       </div>
 
       <aside class="inspector" use:resizable={{ key: "song.inspector", edge: "left", size: 210, min: 160, max: 520 }}>
@@ -390,6 +452,9 @@
         <p class="dim small">Click to add a note, drag it to move, drag its right end to resize, right-click or Delete to remove. Space plays. In a game: <code>nova.music.play("{songName}")</code>.</p>
       </aside>
     </div>
+    {#if lower === "mixer"}
+      <MixerPanel {song} {track} onchange={(next) => commit(next)} onselect={(i) => { track = i; selected = null; }} />
+    {/if}
   </div>
 {/if}
 
@@ -406,7 +471,16 @@
   .trk.on { background: color-mix(in srgb, var(--accent) 22%, transparent); }
   .pick { flex: 1; text-align: left; background: transparent; border-color: transparent; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .add { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
-  .roll { overflow: auto; background: #15171c; }
+  .mid { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .roll { overflow: auto; background: #15171c; flex: 1; min-height: 0; }
+  .vel { border-top: 1px solid var(--line); background: var(--panel); padding: 4px 0 0; overflow-x: auto; flex: none; }
+  .vel > span { padding: 0 8px; }
+  .velbars { position: relative; height: 84px; }
+  .velbar { position: absolute; bottom: 0; top: 0; padding: 0; border: none; background: transparent; display: flex; align-items: flex-end; cursor: ns-resize; touch-action: none; }
+  .velbar i { display: block; width: 100%; background: var(--accent); opacity: 0.8; border-radius: 2px 2px 0 0; }
+  .velbar.on i { background: #ffd166; }
+  .seg { display: inline-flex; } .seg button { border-radius: 0; } .seg button:first-child { border-radius: 6px 0 0 6px; } .seg button:last-child { border-radius: 0 6px 6px 0; } .seg button.on { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
+  .solo { padding: 0 6px; font-weight: 600; } .solo.on { background: var(--accent-2); color: #fff; }
   .roll canvas { display: block; cursor: crosshair; touch-action: none; }
   .inspector { background: var(--panel); border-left: 1px solid var(--line); padding: 8px; display: flex; flex-direction: column; gap: 6px; overflow: auto; }
   h3 { margin: 2px 0 4px; font-size: 13px; }

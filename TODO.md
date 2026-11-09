@@ -68,7 +68,7 @@ Blender keymap in Model. Goal: a free, all-in-one studio for making games, no st
 
 ### S3: Sound workspace (section 4)
 - [ ] Song editor (tracks, clips, split/knife/loop, tempo and time-signature track, markers, loop points), pattern editor, piano roll, automation editor.
-- [ ] Mixer (channels, sends, FX chains, meters, colours, master limiter, LUFS); sample editor (trim, fade, slice, stretch, record, spectrogram); SFX designer with mutate.
+- [~] Mixer (2026-11-09: `MixerPanel.svelte` and `lib/mixer.ts`: a strip per track with fader, pan, reverb send, mute and solo, a master fader up to 150 percent, and "Measure levels" (renders each track and the mix: peak and average in dB, meters; no live meters); solo and master are saved in the song file and honoured by the render; `lib/song-edit.ts`: snap to the beat, repeat twice over, set all loudness; a Loudness view with draggable bars under the notes; a Sound menu; 21 tests; checked in the browser preview). Not yet: live meters, sends other than the one reverb, FX chains, a master limiter setting, LUFS) and the rest of:  sample editor (trim, fade, slice, stretch, record, spectrogram); SFX designer with mutate.
 - [ ] Instruments (subtractive, FM/wavetable, drum machine, sampler/soundfont, pluck, organ) and effects (EQ, compressor, limiter, reverb, delay, chorus, distortion, filter, gate, pitch shift, analysers); controllers (LFO, envelope).
 - [ ] File I/O (WAV, OGG, MP3 import, MIDI, stems, loop-ready export); game audio (adaptive stems, random sound groups, 3D falloff presets, soundbank usage view, voice/memory budget).
 - [ ] A person listens to the songs (nobody has yet).

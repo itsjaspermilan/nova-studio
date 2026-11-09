@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addNote, addTrack, changeNote, drumHit, drumTrack, envelope, midiFreq, newSong, noteAt, noteName, parseSong, removeNote, removeTrack, renderSong, serializeSong, setLength, setTempo, songSeconds, stepSeconds, studioDrumHit, synthTrack, transpose, updateTrack, type Song } from "./song";
+import { addNote, addTrack, changeNote, drumHit, drumTrack, envelope, isAudible, setMaster, midiFreq, newSong, noteAt, noteName, parseSong, removeNote, removeTrack, renderSong, serializeSong, setLength, setTempo, songSeconds, stepSeconds, studioDrumHit, synthTrack, transpose, updateTrack, type Song } from "./song";
 import { frames, peak } from "./wav";
 
 const empty = (over: Partial<Song> = {}): Song => ({ version: 1, bpm: 120, stepsPerBeat: 4, length: 16, tracks: [synthTrack("a")], ...over });
@@ -252,5 +252,50 @@ describe("fuller voices", () => {
     expect(parseSong(JSON.stringify(kit))).toMatchObject({ ok: false });
     // updateTrack keeps the voice fields in range
     expect(updateTrack(s, 0, { unison: 40, cutoff: 99999 }).tracks[0]).toMatchObject({ unison: 7, cutoff: 20000 });
+  });
+});
+
+describe("solo and the master fader", () => {
+  it("plays only the soloed tracks, and a muted track stays silent even when soloed", () => {
+    const both = newSong();
+    expect(both.tracks.map((t) => isAudible(both, t))).toEqual([true, true]);
+    const solo = newSong();
+    solo.tracks[0] = { ...solo.tracks[0]!, solo: true };
+    expect(solo.tracks.map((t) => isAudible(solo, t))).toEqual([true, false]);
+    solo.tracks[0] = { ...solo.tracks[0]!, mute: true };
+    expect(isAudible(solo, solo.tracks[0]!)).toBe(false);
+    const onlyLead = newSong();
+    onlyLead.tracks[0] = { ...onlyLead.tracks[0]!, solo: true };
+    const drumsOnly = newSong();
+    drumsOnly.tracks[1] = { ...drumsOnly.tracks[1]!, solo: true };
+    const a = renderSong(onlyLead, 8000);
+    const b = renderSong(drumsOnly, 8000);
+    expect(Array.from(a.channels[0]!)).not.toEqual(Array.from(b.channels[0]!));
+    expect(peak(a)).toBeGreaterThan(0);
+  });
+
+  it("scales the mix by the master volume (below the limiter), and a song without one is unchanged", () => {
+    const plain = newSong();
+    plain.tracks = [{ ...plain.tracks[0]!, volume: 0.2 }];
+    const loud = renderSong(plain, 8000);
+    const quiet = renderSong(setMaster(plain, 0.5), 8000);
+    expect(peak(quiet)).toBeCloseTo(peak(loud) * 0.5, 3);
+    expect(setMaster(setMaster(plain, 0.5), 1).master).toBeUndefined();
+    expect(setMaster(plain, 9).master?.volume).toBe(1.5);
+  });
+
+  it("is saved and read back, and bad values are refused", () => {
+    const s = newSong();
+    s.tracks[0] = { ...s.tracks[0]!, solo: true };
+    const again = parseSong(serializeSong(setMaster(s, 0.8)));
+    expect(again.ok).toBe(true);
+    if (again.ok) {
+      expect(again.song.tracks[0]!.solo).toBe(true);
+      expect(again.song.tracks[1]!.solo).toBeUndefined();
+      expect(again.song.master?.volume).toBe(0.8);
+    }
+    const bad = JSON.parse(serializeSong(s));
+    bad.master = { volume: 5 };
+    expect(parseSong(JSON.stringify(bad)).ok).toBe(false);
   });
 });
