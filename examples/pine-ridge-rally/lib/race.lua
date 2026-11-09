@@ -1116,7 +1116,7 @@ function race.scene()
     if p.surface == "rough" and self.phase == "racing" and p.off_middle > 14 then
       local words = "Back on the road"
       local tw = nova.ui.text_width(words, { font = F.semi, size = 18 })
-      ui.pad("pad_y", w / 2 - (tw + 34) / 2, 426, 26)
+      ui.pad("pad_select", w / 2 - (tw + 34) / 2, 426, 26)
       hud_text(w / 2 - (tw + 34) / 2 + 34, 430, words, F.semi, 18, C.hud)
     end
   end
@@ -1194,7 +1194,8 @@ function race.scene()
         nova.restart_scene()
       else
         audio.stop_music(0.4)
-        nova.goto_scene("title", "menu")
+        -- (an event started in free roam goes back there, to where the car left)
+        if state.from_roam then nova.goto_scene("roam") else nova.goto_scene("title", "menu") end
       end
     end
   end

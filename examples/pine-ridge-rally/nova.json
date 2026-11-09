@@ -6,14 +6,12 @@
     "throttle": [
       "key:ArrowUp",
       "key:KeyW",
-      "axis:r2",
-      "pad:south"
+      "axis:r2"
     ],
     "brake": [
       "key:ArrowDown",
       "key:KeyS",
-      "axis:l2",
-      "pad:west"
+      "axis:l2"
     ],
     "handbrake": [
       "key:Space",
@@ -41,8 +39,9 @@
     ],
     "reset": [
       "key:KeyR",
-      "pad:north"
+      "pad:select"
     ],
+    "event": ["key:KeyY", "pad:north"],
     "view": [
       "key:KeyC",
       "pad:l1"

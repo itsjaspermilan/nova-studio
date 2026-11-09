@@ -411,8 +411,8 @@ fn the_controls_screen_remaps_a_key_and_can_put_the_defaults_back() {
         line.contains("R2") || line.contains('A'),
         "the gamepad entries stay: {line}"
     );
-    // down to "Back to the defaults" (after the eight rows) and choose it
-    for _ in 0..8 {
+    // down to "Back to the defaults" (after the nine rows) and choose it
+    for _ in 0..9 {
         tap(&mut g, "key:ArrowDown");
     }
     tap(&mut g, "key:Enter");
@@ -1335,6 +1335,73 @@ fn a_stage_turns_from_gravel_to_tarmac() {
     );
     assert!(
         !log.iter().any(|l| l.contains("put back on the road")),
+        "{log:?}"
+    );
+}
+
+/// Free roam: the main menu's FREE ROAM puts the car on the map beside the circuit race's marker; Y shows the race and A starts it; the
+/// race runs to its results, and Return goes back to free roam (not the main menu). Driving away from every road ends in a fade back to one.
+#[test]
+fn free_roam_starts_an_event_in_the_world_and_comes_back_to_it() {
+    let mut g = load();
+    for _ in 0..30 {
+        frame(&mut g, &[]);
+    }
+    for _ in 0..3 {
+        tap(&mut g, "key:ArrowDown"); // Rally, Circuit, Time trial -> Free roam
+    }
+    frame(&mut g, &["key:Enter"]);
+    let mut log = Vec::new();
+    run_until(&mut g, &mut log, "free roam starts", 60 * 6, |l| {
+        l.iter()
+            .any(|x| x.starts_with("roam: ") && x.contains("3 events"))
+    });
+    for _ in 0..90 {
+        frame(&mut g, &[]);
+    }
+    tap(&mut g, "key:KeyY"); // the race's details
+    for _ in 0..20 {
+        frame(&mut g, &[]); // (the card takes no press for its first moment, so that Y is not also taken as a choice)
+    }
+    tap(&mut g, "key:Enter"); // START
+    let mut log = Vec::new();
+    run_until(&mut g, &mut log, "the race starts", 60 * 8, |l| {
+        l.iter().any(|x| x == "go")
+    });
+    assert!(
+        log.iter()
+            .any(|l| l == "roam: start race on pine_ridge in car"),
+        "{log:?}"
+    );
+    assert!(
+        log.iter().any(|l| l == "rally: course pine_ridge"),
+        "{log:?}"
+    );
+    tap(&mut g, "key:F9");
+    run_until(&mut g, &mut log, "the results", 60 * 60 * 6, |l| {
+        l.iter().any(|x| x.starts_with("results: place"))
+    });
+    for _ in 0..120 {
+        frame(&mut g, &[]);
+    }
+    tap(&mut g, "key:ArrowDown"); // Return
+    frame(&mut g, &["key:Enter"]);
+    let mut log = Vec::new();
+    run_until(&mut g, &mut log, "back in free roam", 60 * 4, |l| {
+        l.iter()
+            .any(|x| x.starts_with("roam: ") && x.contains("3 events"))
+    });
+    // full throttle, turning gently right: off the circuit and across the grass until the game puts the car back on a road
+    let mut log = Vec::new();
+    for _ in 0..60 * 40 {
+        frame_with(&mut g, &[("key:ArrowUp", 1.0), ("key:ArrowRight", 0.25)]);
+        log.extend(g.take_log());
+        if log.iter().any(|l| l == "roam: put back on the road") {
+            break;
+        }
+    }
+    assert!(
+        log.iter().any(|l| l == "roam: put back on the road"),
         "{log:?}"
     );
 }

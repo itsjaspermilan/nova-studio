@@ -10,6 +10,7 @@ controls.rows = {
   { label = "Steer left", action = "steer", side = "negative" },
   { label = "Steer right", action = "steer", side = "positive" },
   { label = "Back on the road", action = "reset" },
+  { label = "Race details (free roam)", action = "event" },
   { label = "Change camera", action = "view" },
   { label = "Pause", action = "pause" },
 }

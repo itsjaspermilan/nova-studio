@@ -10,6 +10,8 @@ local CELL = 16
 local bins -- waypoints by 16 m square, to find the distance to the road cheaply
 local plan, planted, next_point
 local plants -- from the scene's foliage object
+-- the road points the grass is planted beside: the race's route, or (free roam) every road's points (`foliage.start`'s `source`)
+local src = { count = function() return track.count() end, point = function(i) return track.point(i) end }
 
 function foliage.set(list) plants = list end
 
@@ -17,8 +19,8 @@ local function key(cx, cz) return cx * 100003 + cz end
 
 local function build_bins()
   bins = {}
-  for i = 1, track.count() do
-    local p = track.point(i)
+  for i = 1, src.count() do
+    local p = src.point(i)
     local k = key(math.floor(p.x / CELL), math.floor(p.z / CELL))
     local list = bins[k]
     if not list then list = {}; bins[k] = list end
@@ -46,12 +48,14 @@ local function road_distance(x, z)
 end
 
 -- Starts planting the scene's plants; `density` (0 to 1) scales the counts.
-function foliage.start(density)
+-- (`source`: { count = function, point = function(i) } giving points with x, z, tx, tz; the race's route when left out)
+function foliage.start(density, source)
+  src = source or { count = function() return track.count() end, point = function(i) return track.point(i) end }
   plan, planted, next_point = nil, 0, 1
   if not plants or density <= 0 then return end
   build_bins()
   plan = {}
-  local n = track.count()
+  local n = src.count()
   for _, spec in ipairs(plants) do
     local sway = spec.sway or 0.5
     plan[#plan + 1] = { model = spec.model, per = (spec.count or 0) * density / n, tints = spec.tints or {}, carry = 0, opts = { ry = 0, scale = 1, sway = sway, max_distance = 55, shadow = false } }
@@ -62,9 +66,9 @@ end
 function foliage.plant_some()
   if not plan then return end
   local t0 = nova.clock()
-  local n = track.count()
+  local n = src.count()
   while next_point <= n do
-    local p = track.point(next_point)
+    local p = src.point(next_point)
     local nx, nz = p.tz, -p.tx
     for _, f in ipairs(plan) do
       f.carry = f.carry + f.per

@@ -178,6 +178,7 @@ function Results:choose(m)
   audio.stop_music(0.4)
   local choice = tonumber(m.pressed)
   if choice == 1 then transition.cover(transition.race_spec(), function() nova.goto_scene(state.current_track().id) end)
+  elseif state.from_roam then nova.goto_scene("roam") -- (an event started in free roam: back to the map, at its marker)
   else nova.goto_scene("title", "menu") end
 end
 

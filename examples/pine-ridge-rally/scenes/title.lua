@@ -18,10 +18,11 @@ local Title = nova.scene {}
 -- (the pictures are the handheld's buttons, as a Nintendo-style pad labels them)
 local CONTROLS = {
   { "Steer", "Left / Right  ·  A / D", { "pad_stick_l" } },
-  { "Accelerate", "Up  ·  W", { "pad_zr", "pad_a" } },
-  { "Brake / reverse", "Down  ·  S", { "pad_zl", "pad_x" } },
+  { "Accelerate", "Up  ·  W", { "pad_zr" } },
+  { "Brake / reverse", "Down  ·  S", { "pad_zl" } },
   { "Handbrake (slides)", "Space", { "pad_b", "pad_r" } },
-  { "Back on the road", "R", { "pad_y" } },
+  { "Back on the road", "R", { "pad_select" } },
+  { "Race details (free roam)", "Y", { "pad_y" } },
   { "Change camera", "C", { "pad_l" } },
   { "Look around", "Q / E  (press the stick: look back)", { "pad_stick_r" } },
   { "Pause", "Esc  ·  P", { "pad_start" } },
@@ -99,7 +100,17 @@ function Title:open_confirm()
   self:go("confirm")
 end
 
+function Title:start_roam()
+  state.save_options()
+  state.from_roam, state.roam_at = false, nil
+  audio.stop_music(0.6)
+  nova.log("menu: free roam in " .. state.current_car().id)
+  transition.cover(transition.race_spec(true), function() nova.goto_scene("roam") end)
+  self.screen = "starting"
+end
+
 function Title:start_race()
+  state.from_roam = false
   state.save_options()
   audio.stop_music(0.6)
   nova.log(string.format("menu: start %s on %s in %s", state.mode, state.current_track().id, state.current_car().id))
@@ -290,13 +301,14 @@ function Title:main_menu()
   local u = rects.career
   nova.ui.rect(u.x, u.y, 6, u.h, C.orange)
   local r = nova.ui.menu {
-    id = "main", anchor = "topleft", margin = 0, x = 48, y = 178, w = 352, enter = self.entered,
-    { "button", "RALLY", id = "rally", h = 46 },
-    { "button", "CIRCUIT", id = "race", h = 46 },
-    { "button", "TIME TRIAL", id = "trial", h = 46 },
-    { "button", "GARAGE", id = "garage", h = 46 },
-    { "button", "HOW TO PLAY", id = "howto", h = 46 },
-    { "button", "OPTIONS", id = "options", h = 46 },
+    id = "main", anchor = "topleft", margin = 0, x = 48, y = 172, w = 352, enter = self.entered,
+    { "button", "RALLY", id = "rally", h = 40 },
+    { "button", "CIRCUIT", id = "race", h = 40 },
+    { "button", "TIME TRIAL", id = "trial", h = 40 },
+    { "button", "FREE ROAM", id = "roam", h = 40 },
+    { "button", "GARAGE", id = "garage", h = 40 },
+    { "button", "HOW TO PLAY", id = "howto", h = 40 },
+    { "button", "OPTIONS", id = "options", h = 40 },
   }
   ui.hints({ { "pad_a", "Select" } })
   if r.pressed then
@@ -305,6 +317,9 @@ function Title:main_menu()
     if id == "race" or id == "trial" or id == "rally" then
       state.mode = id
       self:open_track()
+    elseif id == "roam" then
+      -- free roam needs a car of your own: a new player picks one first
+      if state.owns(state.current_car().id) then self:start_roam() else self:open_garage("roam") end
     elseif id == "garage" then
       self:open_garage("menu")
     else
@@ -353,14 +368,14 @@ end
 
 function Title:controls_menu()
   page("Options", "Controls", 640)
-  local root = { id = "controls", anchor = "topleft", margin = 0, x = 48, y = 136, w = 530, enter = self.entered, gap = 3,
+  local root = { id = "controls", anchor = "topleft", margin = 0, x = 48, y = 130, w = 530, enter = self.entered, gap = 2,
                  active = not self.listening and not self.just_listened }
   self.just_listened = false
   for i, row in ipairs(controls.rows) do
     local waiting = self.listening and self.listen_row == i
-    root[#root + 1] = { "button", string.upper(row.label), value = waiting and "Press a key or button..." or controls.describe(row), id = i, h = 33 }
+    root[#root + 1] = { "button", string.upper(row.label), value = waiting and "Press a key or button..." or controls.describe(row), id = i, h = 30 }
   end
-  root[#root + 1] = { "button", "BACK TO THE DEFAULTS", id = "defaults", h = 33 }
+  root[#root + 1] = { "button", "BACK TO THE DEFAULTS", id = "defaults", h = 30 }
   local r = nova.ui.menu(root)
   if self.note then ui.hint(self.note) else ui.hints({ { "pad_a", "Change" }, { "pad_b", "Back" } }) end
   if r.back then self:go("options")
@@ -383,7 +398,7 @@ function Title:howto_screen()
   for i, row in ipairs(CONTROLS) do
     local pads = { "row", w = 100, gap = 4 }
     for _, icon in ipairs(row[3] or {}) do pads[#pads + 1] = { "image", "ui/" .. icon, w = 30, h = 30 } end
-    panel[#panel + 1] = { "row", h = 29, gap = 0,
+    panel[#panel + 1] = { "row", h = 26, gap = 0,
       { "text", string.upper(row[1]), font = F.heavy, size = 21, color = C.orange, w = 230, spacing = 0.03 }, pads, { "space", w = 18 },
       { "text", row[2], font = F.medium, size = 18, color = C.dim, grow = 1 } }
     panel[#panel + 1] = { "box", h = 1.5, draw = function(r) nova.ui.rect(r.x, r.y, r.w, r.h, C.divider) end }
@@ -531,7 +546,7 @@ function Title:garage_menu()
       audio.sfx("menu_accept")
       self.chosen = state.car
       state.save_options()
-      if flow then self:after_car() end
+      if flow then self:after_car() elseif self.garage_from == "roam" then self:start_roam() end
     elseif self.buying == on then
       if state.buy(car) then
         audio.sfx("finish")
