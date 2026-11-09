@@ -3,6 +3,7 @@
   "background": [138, 182, 224],
   "camera": { "eye": [-5.9, 9, -108.5], "target": [0, 1.5, -76], "fov": 62 },
   "objects": [
+    { "kind": "road", "x": 0, "y": 0, "z": 0, "props": { "model": "road_pine_ridge" } },
     {
       "kind": "race",
       "name": "race",

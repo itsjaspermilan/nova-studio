@@ -15,6 +15,7 @@
   import type { Setting } from "../lib/entity-settings";
   import { parseSheetJson } from "../lib/sprite-doc";
   import { loadModelDoc } from "../lib/model-load";
+  import { gridFromPixels, terrainOf, type HeightGrid } from "../lib/scene-terrain";
 
   let { path, text, onjson }: { path: string; text: string; onjson: () => void } = $props();
 
@@ -183,6 +184,40 @@
   }
   $effect(() => {
     for (const o of scene.objects ?? []) if (typeof o.kind === "string") void learnKind(o.kind);
+    // an object can name its own model in its settings (a course's `road` names its road): drawn with that model in the 3D view
+    for (const o of scene.objects ?? []) {
+      const m = (o.props as Record<string, unknown> | undefined)?.model;
+      if (typeof m === "string" && m) void learnModel(m);
+    }
+  });
+
+  const askedModels = new Set<string>();
+  async function learnModel(name: string) {
+    if (askedModels.has(name) || !studio.api) return;
+    askedModels.add(name);
+    const doc = await loadModelDoc(studio.api, name);
+    if (doc) modelDocs = new Map(modelDocs).set(`model:${name}`, doc);
+  }
+
+  // the hills of a heightmap (the scene's `terrain` setting), read from its picture for the 3D view
+  let heightGrid: HeightGrid | null = $state(null);
+  let gridFor = "";
+  $effect(() => {
+    const spec = terrainOf(scene)?.heightmap;
+    const key = spec ? JSON.stringify(spec) : "";
+    if (key === gridFor) return;
+    gridFor = key;
+    if (!spec) { heightGrid = null; return; }
+    void loadPicture(spec.path).then((img) => {
+      if (!img || gridFor !== key) return;
+      const c = document.createElement("canvas");
+      c.width = img.naturalWidth;
+      c.height = img.naturalHeight;
+      const g = c.getContext("2d", { willReadFrequently: true })!;
+      g.drawImage(img, 0, 0);
+      const data = g.getImageData(0, 0, c.width, c.height).data;
+      heightGrid = gridFromPixels(data, c.width, c.height, spec);
+    });
   });
 
   $effect(() => {
@@ -741,6 +776,7 @@
           {scene}
           {selected}
           models={modelDocs}
+          {heightGrid}
           {gridSize}
           onselect={(r) => (selected = r)}
           onmove={(r, p) => edit(moveTo3(scene, r, p))}

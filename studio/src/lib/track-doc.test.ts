@@ -147,6 +147,9 @@ describe("generating", () => {
     expect([...written.keys()]).toEqual(["tracks/my_stage.track.json", "scenes/my_stage.scene.json", "models/road_my_stage.glb"]);
     expect(report).toMatch(/^my_stage: /);
     expect(parseTrack(written.get("tracks/my_stage.track.json")!).ok).toBe(true);
+    // the road is a placed object of the scene, naming its model
+    const objects = JSON.parse(written.get("scenes/my_stage.scene.json")!).objects;
+    expect(objects.filter((o: { kind: string }) => o.kind === "road")).toEqual([{ kind: "road", x: 0, y: 0, z: 0, props: { model: "road_my_stage" } }]);
     await expect(writeTrack({ readFile: async () => null, writeFile: async () => {}, writeModel: async () => {} }, "../x", stage())).rejects.toMatch(/Track names/);
   });
   it("keeps the named objects of the scene it replaces, and nothing else of it", () => {

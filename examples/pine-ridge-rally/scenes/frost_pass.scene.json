@@ -3,6 +3,7 @@
   "background": [196, 216, 236],
   "camera": { "eye": [15.6, 9, -99.8], "target": [0, 1.5, -66], "fov": 62 },
   "objects": [
+    { "kind": "road", "x": 0, "y": 0, "z": 0, "props": { "model": "road_frost_pass" } },
     {
       "kind": "race",
       "name": "race",

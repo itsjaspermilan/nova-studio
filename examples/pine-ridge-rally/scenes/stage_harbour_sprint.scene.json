@@ -3,6 +3,7 @@
   "background": [12, 18, 34],
   "camera": { "eye": [6, 9, -162], "target": [0, 1.5, -126], "fov": 62 },
   "objects": [
+    { "kind": "road", "x": 0, "y": 0, "z": 0, "props": { "model": "road_stage_harbour_sprint" } },
     {
       "kind": "race",
       "name": "race",

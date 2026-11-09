@@ -2,7 +2,7 @@
 // the courses' own scene files: the Pine Ridge circuit where it is, the Pine Ridge stage 1.2 km to the east, and a gravel road between
 // them laid by the track generator (scripts/lib/trackgen.mjs). Everything on the map is a scene object a person could place:
 //   roam_point   the roads' points (route, i, k, road, loop), from each course's waypoints
-//   road_*       each road's model, as one object at the course's offset
+//   road         each road's model (its `model`), as one object at the course's offset
 //   event        a race to start in the world (course, mode)
 //   roam_spawn   where free roam starts
 // and the courses' scenery and roadside, moved by their offset. Spectators, start grids and stage gates stay in the courses' own scenes.
@@ -28,7 +28,7 @@ const LINK = {
   id: "roam_link",
   control: [[428, 40], [520, 30], [640, 0], [780, -60], [920, -150], [1060, -210], [1160, -215], [1200, -185], [1200, -160]] as [number, number][],
 };
-const DROP = new Set(["race", "foliage", "waypoint", "grid_slot", "section_gate"]);
+const DROP = new Set(["race", "foliage", "waypoint", "grid_slot", "section_gate", "road"]);
 const isCrowd = (k: string) => k.startsWith("crowd_");
 
 const objects: Obj[] = [];
@@ -45,7 +45,7 @@ for (const c of COURSES) {
   const scene = read(`scenes/${c.id}.scene.json`);
   const way = (scene.objects as Obj[]).filter((o) => o.kind === "waypoint").sort((a, b) => (a.props!.i as number) - (b.props!.i as number));
   routes.push({ name: c.id, pts: way.map((o) => ({ x: o.x + c.dx, z: o.z + c.dz })) });
-  objects.push({ kind: `road_${c.id}`, x: c.dx, y: 0, z: c.dz });
+  objects.push({ kind: "road", x: c.dx, y: 0, z: c.dz, props: { model: `road_${c.id}` } });
   for (const o of way) {
     const p = o.props!;
     objects.push({ kind: "roam_point", x: r1(o.x + c.dx), y: 0, z: r1(o.z + c.dz), props: { route: c.id, i: p.i, k: p.k, road: (p.road as string) ?? c.road, ...(p.w ? { w: p.w } : {}), ...(c.loop ? { loop: true } : {}) } });
@@ -65,7 +65,7 @@ const made = layout({
 });
 const linkLine = centreline(LINK.control, 5, false);
 routes.push({ name: LINK.id, pts: linkLine.map((p: { x: number; z: number }) => ({ x: p.x, z: p.z })) });
-objects.push({ kind: `road_${LINK.id}`, x: 0, y: 0, z: 0 });
+objects.push({ kind: "road", x: 0, y: 0, z: 0, props: { model: `road_${LINK.id}` } });
 for (const o of made.scene.objects as Obj[]) {
   if (o.kind === "waypoint") {
     objects.push({ kind: "roam_point", x: o.x, y: 0, z: o.z, props: { route: LINK.id, i: o.props!.i, k: o.props!.k, road: "road_gravel" } });

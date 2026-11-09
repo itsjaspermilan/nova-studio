@@ -8,11 +8,13 @@
   import type { ModelDoc } from "../lib/model-doc";
   import { ModelShapes, instanceScene, moveObject, placement, type Instanced } from "../lib/scene-three";
   import { cameraOf, itemAt, positionOf, scatterPoints, snap, type Camera3, type Ref, type Scene } from "../lib/scene-model";
+  import { groundMesh, heightAt, liftMaterial, setLift, terrainOf, type HeightGrid } from "../lib/scene-terrain";
 
   let {
     scene,
     selected,
     models,
+    heightGrid = null,
     gridSize,
     onselect,
     onmove,
@@ -28,8 +30,10 @@
   }: {
     scene: Scene;
     selected: Ref | null;
-    /// The model of each entity kind that has one.
+    /// The model of each entity kind that has one (and `model:<name>` for a model an object names in its settings).
     models: ReadonlyMap<string, ModelDoc>;
+    /// The samples of the scene's heightmap, when its ground has one (read by the editor from the picture).
+    heightGrid?: HeightGrid | null;
     gridSize: number;
     onselect: (ref: Ref | null) => void;
     onmove: (ref: Ref, p: [number, number, number]) => void;
@@ -69,6 +73,10 @@
   let shapesFor: ReadonlyMap<string, unknown> | undefined;
   let instanced: Instanced | undefined;
   const markers = new Map<number, THREE.Group>();
+  // the flat grid, and (when the scene has hills) the ground drawn instead of it, over the area the grid covers and a margin
+  let grid: THREE.GridHelper | undefined;
+  let groundSpan = { x: 0, z: 0, half: 100 };
+  let ground: THREE.Mesh | undefined;
   /// What the move arrows hold on to: it stands where the picked object does, and the object follows it.
   const grip = new THREE.Group();
   // while placing: a ring on the ground where the next objects would land
@@ -95,6 +103,9 @@
     const target = bounds.getCenter(new THREE.Vector3());
     const reach = Math.max(6, bounds.getSize(new THREE.Vector3()).length());
     perspective.position.copy(target).add(new THREE.Vector3(0.5, 0.6, 1).normalize().multiplyScalar(reach * 1.2));
+    // (a big level, a free-roam map kilometres across, is seen from far away: the view reaches well past it)
+    perspective.far = Math.max(2000, reach * 4);
+    perspective.updateProjectionMatrix();
     mapSpan = Math.max(60, Math.max(bounds.max.x - bounds.min.x, bounds.max.z - bounds.min.z) * 1.15);
     // (plain listeners: the orbit and move controls hold on to the pointer, which a delegated handler can miss)
     canvas.addEventListener("pointerdown", pointerdown);
@@ -122,8 +133,9 @@
     // a ground grid that fits the scene: lines every ten units, as far as the objects reach
     const half = Math.min(2000, Math.ceil((Math.max(bounds.max.x - bounds.min.x, bounds.max.z - bounds.min.z, 40) * 0.75) / 10) * 10);
     const spacing = half > 300 ? 50 : 10;
-    const grid = new THREE.GridHelper(Math.ceil(half / spacing) * spacing * 2, Math.ceil(half / spacing) * 2, 0x4a5163, 0x363c4a);
+    grid = new THREE.GridHelper(Math.ceil(half / spacing) * spacing * 2, Math.ceil(half / spacing) * 2, 0x4a5163, 0x363c4a);
     grid.position.set(Math.round(target.x / 10) * 10, 0, Math.round(target.z / 10) * 10);
+    groundSpan = { x: grid.position.x, z: grid.position.z, half: Math.ceil(half / spacing) * spacing + 200 };
     three.add(grid);
     content = new THREE.Group();
     three.add(content);
@@ -199,7 +211,26 @@
     const bg = scene.background;
     three.background = Array.isArray(bg) && bg.length >= 3 ? new THREE.Color().setRGB(bg[0]! / 255, bg[1]! / 255, bg[2]! / 255, THREE.SRGBColorSpace) : new THREE.Color(0x5c96d6);
     instanced = instanceScene(scene, models, shapes);
-    for (const m of instanced.meshes) content.add(m);
+    // the hills: every model is lifted by the ground under each of its points, as in the game, and the ground is drawn
+    const terrain = terrainOf(scene);
+    const hills = terrain && (terrain.waves.length || heightGrid) ? terrain : null;
+    setLift(hills, hills ? heightGrid : null);
+    if (ground) {
+      three.remove(ground);
+      ground.geometry.dispose();
+      (ground.material as THREE.Material).dispose();
+      ground = undefined;
+    }
+    if (hills) {
+      const step = groundSpan.half > 600 ? 8 : 4;
+      ground = groundMesh(hills, heightGrid, groundSpan.x, groundSpan.z, groundSpan.half, step);
+      three.add(ground);
+    }
+    if (grid) grid.visible = !hills;
+    for (const m of instanced.meshes) {
+      for (const mat of Array.isArray(m.material) ? m.material : [m.material]) liftMaterial(mat);
+      content.add(m);
+    }
     for (const index of instanced.markers) {
       const g = new THREE.Group();
       g.applyMatrix4(placement(scene.objects![index]!));
@@ -210,6 +241,7 @@
       hit.userData.marker = true;
       g.add(edges, hit);
       g.userData.index = index;
+      if (hills) g.position.y += heightAt(hills, heightGrid, g.position.x, g.position.z);
       content.add(g);
       markers.set(index, g);
     }
@@ -363,7 +395,7 @@
   }
 
   $effect(() => {
-    scene; models; // redraw when the scene or a model changes
+    scene; models; heightGrid; // redraw when the scene, a model or the heightmap changes
     if (renderer) untrack(rebuild);
   });
   $effect(() => {

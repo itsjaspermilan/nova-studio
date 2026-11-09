@@ -3,6 +3,7 @@
   "background": [222, 196, 160],
   "camera": { "eye": [6, 9, -22], "target": [0, 1.5, 14], "fov": 62 },
   "objects": [
+    { "kind": "road", "x": 0, "y": 0, "z": 0, "props": { "model": "road_autumn_glen" } },
     {
       "kind": "race",
       "name": "race",

@@ -54,7 +54,7 @@
         ]
       }
     },
-    { "kind": "road_pine_ridge", "x": 0, "y": 0, "z": 0 },
+    { "kind": "road", "x": 0, "y": 0, "z": 0, "props": { "model": "road_pine_ridge" } },
     {
       "kind": "roam_point",
       "x": 0,
@@ -1490,7 +1490,7 @@
       "z": -99.1,
       "props": { "route": "pine_ridge", "i": 205, "k": -0.0231, "road": "road_asphalt", "loop": true }
     },
-    { "kind": "road_stage_pine_ridge", "x": 1200, "y": 0, "z": 0 },
+    { "kind": "road", "x": 1200, "y": 0, "z": 0, "props": { "model": "road_stage_pine_ridge" } },
     {
       "kind": "roam_point",
       "x": 1200,
@@ -3311,7 +3311,7 @@
       "z": 329.3,
       "props": { "route": "stage_pine_ridge", "i": 260, "k": -0.0015, "road": "road_gravel" }
     },
-    { "kind": "road_roam_link", "x": 0, "y": 0, "z": 0 },
+    { "kind": "road", "x": 0, "y": 0, "z": 0, "props": { "model": "road_roam_link" } },
     {
       "kind": "roam_point",
       "x": 428,

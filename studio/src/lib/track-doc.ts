@@ -302,8 +302,9 @@ export const trackName = (path: string) => path.slice(path.lastIndexOf("/") + 1)
 
 /// What the track becomes: the scene (start and finish, gates, waypoints, grid, scenery, roadside, crowd) and the road ribbon. `previous` is the
 /// scene being replaced, if there is one: its named objects (settings a person keeps in the scene, such as a game's `race` object; the
-/// generator names nothing it places) are kept, first in the new scene.
-export function buildTrack(doc: TrackDoc, previous?: string | null): TrackFiles {
+/// generator names nothing it places) are kept, first in the new scene. With the track's `name`, the scene also gets a `road` object
+/// naming the road model (`road_<name>`), so the road is a placed thing: the scene view shows it, and a game draws it by its entity.
+export function buildTrack(doc: TrackDoc, previous?: string | null, name?: string): TrackFiles {
   if (doc.control.length < MIN_POINTS) throw `a track needs at least ${MIN_POINTS} points`;
   const spec = {
     seed: doc.seed, control: doc.control, open: doc.open, road: doc.road, rail: doc.rail, sky: doc.sky,
@@ -313,6 +314,10 @@ export function buildTrack(doc: TrackDoc, previous?: string | null): TrackFiles 
     roadside: doc.roadside, crowd: doc.crowd, zones: doc.zones, keep: keptObjects(previous),
   };
   const { scene, stats } = layout(spec);
+  if (name) {
+    const kept = spec.keep.length;
+    scene.objects.splice(kept, 0, { kind: "road", x: 0, y: 0, z: 0, props: { model: roadOf(name).replace(/^models\/|\.glb$/g, "") } });
+  }
   const parsed = parseScene(JSON.stringify(scene));
   if (!parsed.ok) throw `the layout is not a valid scene: ${parsed.error}`;
   const glb: Uint8Array = roadGlb(doc.control, doc.road, doc.open, doc.zones);

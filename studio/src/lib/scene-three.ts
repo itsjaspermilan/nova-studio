@@ -63,7 +63,9 @@ export function instanceScene(scene: Scene, models: ReadonlyMap<string, ModelDoc
   const out: Instanced = { meshes: [], slots: new Map(), owners: new Map(), markers: [] };
   const byKind = new Map<string, number[]>();
   (scene.objects ?? []).forEach((o, i) => {
-    const kind = typeof o.kind === "string" ? o.kind : "";
+    // (an object that names its own model in its settings is drawn with it: `model:<name>` in `models`)
+    const own = (o.props as Record<string, unknown> | undefined)?.model;
+    const kind = typeof own === "string" && models.has(`model:${own}`) ? `model:${own}` : typeof o.kind === "string" ? o.kind : "";
     if (models.has(kind)) (byKind.get(kind) ?? byKind.set(kind, []).get(kind)!).push(i);
     else out.markers.push(i);
   });

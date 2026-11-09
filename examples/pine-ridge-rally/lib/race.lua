@@ -859,8 +859,10 @@ function race.scene()
     end
     if config.night then self:night_lights(cam) end
     horizon.draw(cam.x, cam.z, config.horizon)
-    -- the road: one ribbon along the whole circuit (made from tracks/<course>.track.json with the scene), drawn from here (it casts no shadow)
-    nova.model("road_" .. state.current_track().id, 0, 0, 0, ROAD_OPTS)
+    -- the road: one ribbon along the whole circuit (made from tracks/<course>.track.json with the scene). The scene's `road` object draws it
+    -- (entities/road.lua); a scene without one gets it drawn from here (it casts no shadow)
+    if not self.road_object then self.road_object = nova.first("road") or false end
+    if not self.road_object then nova.model("road_" .. state.current_track().id, 0, 0, 0, ROAD_OPTS) end
     fx.draw_skids(cam.x, cam.z, 90)
     crowd.draw(cam.x, cam.z, self.crowd_time or 0)
     local gx, gz, gh = self:ghost_pose()
