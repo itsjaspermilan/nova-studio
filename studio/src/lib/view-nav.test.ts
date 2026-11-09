@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
 import { looksLikeTrackpad } from "./input-settings.svelte";
-import { navHint, orbitBy, panBy, wheelAction, wheelMove, zoomBy } from "./view-nav";
+import { navHint, orbitBy, panBy, pinchFactor, wheelAction, wheelMove, zoomBy } from "./view-nav";
 
 const camera = () => {
   const c = new THREE.PerspectiveCamera(45, 1.5, 0.1, 1000);
@@ -94,5 +94,17 @@ describe("a trackpad scroll", () => {
     expect(pan.dx).toBeLessThan(0);
     expect(pan.dy).toBe(0);
     expect(wheelMove(e({ deltaY: -5, ctrlKey: true }), "trackpad", false).zoom).toBeLessThan(1);
+  });
+});
+
+describe("a pinch reported as a gesture", () => {
+  it("comes closer when the fingers spread and goes away when they pinch", () => {
+    expect(pinchFactor(1, 1.25)).toBeCloseTo(0.8);
+    expect(pinchFactor(1.25, 1)).toBeCloseTo(1.25);
+    expect(pinchFactor(1, 1)).toBe(1);
+  });
+  it("ignores a report with no scale", () => {
+    expect(pinchFactor(0, 1)).toBe(1);
+    expect(pinchFactor(1, NaN)).toBe(1);
   });
 });

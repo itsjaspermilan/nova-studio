@@ -2,15 +2,16 @@
   // On-screen buttons for moving a 3D view, so nothing depends on a gesture or a middle button (docs/studio-ux.md, section 4): drag the
   // first to turn the view, the second to move it, the third up and down to zoom. With the keyboard, the arrow keys do the same (Shift: bigger steps).
   import type { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+  import Icon from "./Icon.svelte";
   import { orbitBy, panBy, zoomBy, type ViewCamera } from "../lib/view-nav";
 
   let { controls, camera, height }: { controls: () => OrbitControls | undefined; camera: () => ViewCamera | undefined; height: () => number } = $props();
 
   type Tool = "orbit" | "pan" | "zoom";
   const TOOLS: { id: Tool; label: string; glyph: string; hint: string }[] = [
-    { id: "orbit", label: "Turn the view", glyph: "⟲", hint: "Drag to turn the view" },
-    { id: "pan", label: "Move the view", glyph: "✥", hint: "Drag to move the view" },
-    { id: "zoom", label: "Zoom the view", glyph: "⌕", hint: "Drag up and down to zoom" },
+    { id: "orbit", label: "Turn the view", glyph: "rotate", hint: "Drag to turn the view" },
+    { id: "pan", label: "Move the view", glyph: "move", hint: "Drag to move the view" },
+    { id: "zoom", label: "Zoom the view", glyph: "zoom", hint: "Drag up and down to zoom" },
   ];
 
   const move = (tool: Tool, dx: number, dy: number) => {
@@ -59,7 +60,7 @@
       onpointerup={up}
       onpointercancel={up}
       onkeydown={(e) => key(t.id, e)}
-    ><span aria-hidden="true">{t.glyph}</span></button>
+    ><Icon name={t.glyph} size={16} /></button>
   {/each}
 </div>
 

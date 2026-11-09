@@ -2,6 +2,7 @@
   // The command palette (Cmd/Ctrl-K): type to find any command by name, arrow keys and Enter to run it, Escape to close.
   import { tick } from "svelte";
   import { commands } from "../lib/commands";
+  import Icon from "./Icon.svelte";
 
   let { open = $bindable(false) }: { open: boolean } = $props();
   let query = $state("");
@@ -65,7 +66,7 @@
         {#each results as cmd, i (cmd.id)}
           <li id="cmd-{cmd.id}" role="option" aria-selected={i === index}>
             <button class:on={i === index} onmousemove={() => (index = i)} onclick={() => choose(i)} title={commands.tooltip(cmd)}>
-              <span class="name">{cmd.title}</span>
+              <span class="ic"><Icon name={cmd.icon} /></span><span class="name">{cmd.title}</span>
               {#if cmd.menu}<span class="menu">{cmd.menu}</span>{/if}
               <span class="keys">{commands.shortcut(cmd)}</span>
             </button>
@@ -85,6 +86,7 @@
   ul { list-style: none; margin: 0; padding: 4px; max-height: 340px; overflow-y: auto; }
   li button { width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; background: transparent; border: none; border-radius: 6px; padding: 6px 10px; color: var(--text); }
   li button.on { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+  .ic { width: 18px; display: inline-grid; place-items: center; color: var(--dim); }
   .name { flex: 1; }
   .menu { color: var(--dim); font-size: 11px; }
   .keys { color: var(--dim); font-size: 11px; min-width: 56px; text-align: right; font-variant-numeric: tabular-nums; }

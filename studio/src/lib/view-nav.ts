@@ -84,6 +84,13 @@ export function wheelMove(e: Pick<WheelEvent, "deltaX" | "deltaY" | "deltaMode" 
   return { action, dx, dy, zoom: Math.exp(e.deltaY * k * 0.01) };
 }
 
+/// A pinch as macOS WebKit (the studio's window) reports it: gesture events carrying the whole pinch's scale so far (1 at the start, above 1
+/// when the fingers spread). The step between two reports is a zoom: spreading comes closer, pinching goes away.
+export function pinchFactor(previousScale: number, scale: number): number {
+  if (!(previousScale > 0) || !(scale > 0)) return 1;
+  return previousScale / scale;
+}
+
 export interface NavOptions {
   /// Flips the direction of the scroll gestures (the opposite of the system's "natural scrolling").
   invert?: boolean;
@@ -105,8 +112,28 @@ export function applyNavigation(controls: OrbitControls, getCamera: () => ViewCa
     controls.update();
   };
   canvas.addEventListener("wheel", onWheel, { passive: false });
+  // a pinch on a Mac's trackpad in WebKit comes as gesture events, not as Ctrl and a scroll (which is how other browsers send it)
+  let pinchScale = 1;
+  const onGestureStart = (e: Event) => {
+    e.preventDefault();
+    pinchScale = (e as unknown as { scale: number }).scale || 1;
+  };
+  const onGestureChange = (e: Event) => {
+    e.preventDefault();
+    const scale = (e as unknown as { scale: number }).scale;
+    zoomBy(getCamera(), controls.target, pinchFactor(pinchScale, scale));
+    pinchScale = scale;
+    controls.update();
+  };
+  const onGestureEnd = (e: Event) => e.preventDefault();
+  canvas.addEventListener("gesturestart", onGestureStart);
+  canvas.addEventListener("gesturechange", onGestureChange);
+  canvas.addEventListener("gestureend", onGestureEnd);
   return () => {
     canvas.removeEventListener("wheel", onWheel);
+    canvas.removeEventListener("gesturestart", onGestureStart);
+    canvas.removeEventListener("gesturechange", onGestureChange);
+    canvas.removeEventListener("gestureend", onGestureEnd);
     controls.enableZoom = true;
   };
 }

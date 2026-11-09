@@ -39,7 +39,7 @@ export interface Tab {
 
 export const isDirty = (t: Tab) => t.text !== t.saved || !!t.pending;
 
-export type Panel = "problems" | "play" | "debug" | "objects" | "activity";
+export type Panel = "problems" | "play" | "debug" | "objects" | "activity" | "assets";
 
 const MAX_LOG = 2000;
 /// A new resource's name: letters, numbers, - and _, with / between folders (`levels/castle-1` is `castle-1` in the group's `levels` folder).

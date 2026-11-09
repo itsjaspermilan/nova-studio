@@ -1,6 +1,7 @@
 <script lang="ts">
   // The four workspaces as tabs across the top bar (Model, Sprites, Sound, Engine). Ctrl/Cmd+1 to 4 switches; every switch is also in the Window menu.
   import { commands } from "../lib/commands";
+  import Icon from "./Icon.svelte";
   import { WORKSPACES } from "../lib/workspaces";
   import { studio } from "../lib/store.svelte";
 </script>
@@ -15,7 +16,7 @@
       aria-selected={studio.workspace === w.id}
       title={cmd ? commands.tooltip(cmd) : w.title}
       onclick={() => studio.setWorkspace(w.id)}
-    >{w.title}<span class="n" aria-hidden="true">{i + 1}</span></button>
+    ><Icon name={cmd?.icon} size={15} /> {w.title}<span class="n" aria-hidden="true">{i + 1}</span></button>
   {/each}
 </div>
 

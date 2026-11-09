@@ -6,6 +6,7 @@
   import PerfStrip from "./PerfStrip.svelte";
   import DebugPanel from "./DebugPanel.svelte";
   import ObjectsPanel from "./ObjectsPanel.svelte";
+  import AssetBrowser from "./AssetBrowser.svelte";
   import { debug } from "../lib/debugger.svelte";
 
   // "5 s ago" moves on by itself
@@ -39,6 +40,9 @@
     <button role="tab" aria-selected={studio.panel === "objects"} class:on={studio.panel === "objects"} onclick={() => (studio.panel = "objects")} title="The running scene's objects, live">
       Objects
     </button>
+    <button role="tab" aria-selected={studio.panel === "assets"} class:on={studio.panel === "assets"} onclick={() => (studio.panel = "assets")} title="Every sprite, model, sound and scene as a card: search, open, drag into code">
+      Assets
+    </button>
     <button role="tab" aria-selected={studio.panel === "activity"} class:on={studio.panel === "activity"} onclick={() => ((studio.panel = "activity"), studio.markActivitySeen())} title="What an assistant using the Nova MCP server has done to this project">
       Activity {#if unseen > 0 && studio.panel !== "activity"}<span class="badge new">{unseen}</span>{/if}
     </button>
@@ -56,7 +60,9 @@
     <button class="ghost" aria-label="Hide panel" onclick={() => (studio.panelOpen = false)}>▾</button>
   </div>
 
-  {#if studio.panel === "problems"}
+  {#if studio.panel === "assets"}
+    <AssetBrowser />
+  {:else if studio.panel === "problems"}
     <ul class="list">
       {#each studio.diagnostics as d, i (i)}
         <li>

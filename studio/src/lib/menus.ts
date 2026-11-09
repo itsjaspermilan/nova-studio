@@ -13,7 +13,7 @@ export const MENU_LAYOUT: { title: string; lines: MenuLine[] }[] = [
     title: "Edit",
     lines: [{ id: "edit.undo" }, { id: "edit.redo" }, "-", { id: "edit.cut", native: "cut" }, { id: "edit.copy", native: "copy" }, { id: "edit.paste", native: "paste" }, { id: "edit.selectAll", native: "selectAll" }, "-", { id: "settings.keys" }, { id: "settings.input" }],
   },
-  { title: "View", lines: [{ id: "view.tree" }, { id: "view.panel" }] },
+  { title: "View", lines: [{ id: "view.tree" }, { id: "view.panel" }, { id: "view.assets" }] },
   { title: "Model", lines: [{ id: "model.add" }, { id: "model.duplicate" }, { id: "model.delete" }, "-", { id: "model.selectAll" }, { id: "model.selectNone" }, { id: "model.selectInvert" }, "-", { id: "model.grab" }, { id: "model.scaleMouse" }, "-", { id: "model.move" }, { id: "model.turn" }, { id: "model.resize" }, { id: "model.pivot" }, "-", { id: "model.editPoints" }, { id: "model.shading" }, { id: "model.resetView" }] },
   { title: "Run", lines: [{ id: "run.play" }, { id: "run.playDevice" }, "-", { id: "tool.simulate" }, { id: "tool.storeArt" }] },
   { title: "Window", lines: [{ id: "workspace.model" }, { id: "workspace.sprites" }, { id: "workspace.sound" }, { id: "workspace.engine" }, "-", { id: "window.tearOff" }, { id: "view.resetLayout" }, "-", { native: "minimize" }, { native: "maximize" }] },
@@ -30,6 +30,8 @@ export interface ResolvedItem {
   chord?: string;
   enabled: boolean;
   separator?: boolean;
+  /// The name of the command's icon (lib/icons.ts).
+  icon?: string;
   /// A system-provided item (macOS) such as "cut" or "minimize".
   native?: string;
 }
@@ -52,7 +54,7 @@ export function resolveMenus(registry: CommandRegistry, layout = MENU_LAYOUT): R
       if ("id" in line) {
         const cmd = registry.get(line.id);
         if (!cmd) continue;
-        items.push({ id: cmd.id, title: cmd.title, shortcut: registry.shortcut(cmd), chord: registry.keysOf(cmd)[0], enabled: registry.isEnabled(cmd), native: line.native });
+        items.push({ id: cmd.id, title: cmd.title, icon: cmd.icon, shortcut: registry.shortcut(cmd), chord: registry.keysOf(cmd)[0], enabled: registry.isEnabled(cmd), native: line.native });
       } else {
         items.push({ native: line.native, shortcut: "", enabled: true });
       }

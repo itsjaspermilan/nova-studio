@@ -3,6 +3,7 @@
   // system's own menu bar is used (lib/native-menu.ts). Built from the same command list: File Edit View Run Window Help.
   import { commands } from "../lib/commands";
   import { drawnMenus } from "../lib/menus";
+  import Icon from "./Icon.svelte";
   import { commandsRev } from "../lib/commands-rev.svelte";
 
   let open = $state<number | null>(null);
@@ -56,7 +57,7 @@
             {:else}
               <li role="none">
                 <button role="menuitem" disabled={!item.enabled} onmousedown={keepFocus} onclick={() => run(item.id!)}>
-                  <span>{item.title}</span><span class="keys">{item.shortcut}</span>
+                  <span class="ic"><Icon name={item.icon} size={14} /></span><span class="t">{item.title}</span><span class="keys">{item.shortcut}</span>
                 </button>
               </li>
             {/if}
@@ -73,9 +74,11 @@
   .title { padding: 3px 9px; border-radius: 5px; }
   .title.on { background: var(--panel-2); }
   .drop { position: absolute; top: 100%; left: 0; z-index: 80; min-width: 230px; margin: 2px 0 0; padding: 4px; list-style: none; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 30px #0007; }
-  .drop button { width: 100%; display: flex; justify-content: space-between; gap: 24px; text-align: left; background: transparent; border: none; border-radius: 5px; padding: 5px 10px; color: var(--text); }
+  .drop button { width: 100%; display: flex; align-items: center; gap: 8px; text-align: left; background: transparent; border: none; border-radius: 5px; padding: 5px 10px; color: var(--text); }
   .drop button:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 22%, transparent); }
   .drop button:disabled { color: var(--dim); opacity: 0.55; }
+  .ic { width: 16px; display: inline-grid; place-items: center; color: var(--dim); }
+  .t { flex: 1; text-align: left; }
   .keys { color: var(--dim); font-size: 11px; font-variant-numeric: tabular-nums; }
   .sep { height: 1px; margin: 4px 6px; background: var(--line); }
 </style>

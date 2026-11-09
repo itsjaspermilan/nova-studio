@@ -1,0 +1,53 @@
+// The studio's icons: one family, drawn for this project (so there is nothing to license or download), on a 24 by 24 grid with a round
+// 1.75 stroke. Commands name theirs in `icon` (lib/commands.ts); components/Icon.svelte draws them. Icons never stand alone:
+// every command with an icon is also in a menu or the palette, with its name and shortcut as the tooltip.
+
+export const ICONS = {
+  save: "M5 4h11l3 3v13H5z M8 4v5h7V4 M8 20v-6h8v6",
+  undo: "M9 14L4 9l5-5 M4 9h10.5a5.5 5.5 0 0 1 0 11H11",
+  redo: "M15 14l5-5-5-5 M20 9H9.5a5.5 5.5 0 0 0 0 11H13",
+  play: "M7 4l13 8-13 8z",
+  stop: "M6 6h12v12H6z",
+  search: "M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13z M20 20l-4.8-4.8",
+  help: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7 M12 17v.01",
+  plus: "M12 5v14 M5 12h14",
+  close: "M6 6l12 12 M18 6L6 18",
+  trash: "M5 7h14 M10 7V4h4v3 M7 7l1 13h8l1-13",
+  copy: "M8 8h11v12H8z M5 16V4h11",
+  cut: "M7 8.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z M7 20.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z M9 7l11 10 M9 17L20 7",
+  paste: "M9 4h6v3H9z M7 5H5v15h14V5h-2",
+  move: "M12 3v18 M3 12h18 M9 6l3-3 3 3 M9 18l3 3 3-3 M6 9l-3 3 3 3 M18 9l3 3-3 3",
+  scale: "M4 20v-7 M4 20h7 M4 20L20 4 M20 4v7 M20 4h-7",
+  rotate: "M20 12a8 8 0 1 1-3-6.2 M20 4v5h-5",
+  zoom: "M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13z M20 20l-4.8-4.8 M8 10.5h5 M10.5 8v5",
+  eye: "M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
+  settings: "M4 7h10 M18 7h2 M4 17h2 M10 17h10 M16 5v4 M8 15v4",
+  keyboard: "M3 7h18v10H3z M7 11h.01 M11 11h.01 M15 11h.01 M7 14h10",
+  folder: "M3 6h6l2 2h10v11H3z",
+  file: "M6 3h8l4 4v14H6z M14 3v4h4",
+  cube: "M12 3l8 4.5v9L12 21l-8-4.5v-9z M12 12l8-4.5 M12 12v9 M12 12L4 7.5",
+  addShape: "M12 3l8 4.5v9L12 21l-8-4.5v-9z M12 9v6 M9 12h6",
+  sprites: "M4 4h16v16H4z M9 4v16 M15 4v16 M4 9h16 M4 15h16",
+  sound: "M3 12h2 M7 8v8 M11 5v14 M15 8v8 M19 10v4",
+  engine: "M8 7l-5 5 5 5 M16 7l5 5-5 5 M14 4l-4 16",
+  window: "M3 5h18v14H3z M3 9h18",
+  export: "M12 3v12 M7 8l5-5 5 5 M5 15v5h14v-5",
+  resetLayout: "M4 4h16v16H4z M4 10h16 M10 10v10",
+  panel: "M3 4h18v16H3z M3 15h18",
+  tree: "M3 4h18v16H3z M9 4v16",
+  tearOff: "M14 4h6v6 M20 4l-9 9 M18 14v6H4V6h6",
+  select: "M5 3l14 8-6 2-2 6z",
+  selectAll: "M4 4h16v16H4z M8 12l3 3 5-6",
+  selectNone: "M4 4h16v16H4z M9 9l6 6 M15 9l-6 6",
+  selectInvert: "M4 4h16v16H4z M12 4a8 8 0 0 1 0 16z",
+  editPoints: "M5 19L19 5 M5 19h.01 M19 5h.01 M12 12h.01",
+  shading: "M12 3a9 9 0 1 0 0 18V3z",
+  home: "M4 11l8-7 8 7 M6 10v10h12V10",
+  pivot: "M12 12h.01 M12 4v4 M12 16v4 M4 12h4 M16 12h4 M12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12z",
+  simulate: "M4 4v16h16 M7 15l4-5 3 3 5-7",
+  storeArt: "M4 5h16v14H4z M4 15l5-5 4 4 3-3 4 4 M8.5 9.5h.01",
+} as const;
+
+export type IconName = keyof typeof ICONS;
+
+export const hasIcon = (name: string): name is IconName => name in ICONS;
