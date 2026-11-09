@@ -1,5 +1,7 @@
 # Splitting Nova into four apps (plan, 2026-11-09)
 
+> **Superseded 2026-11-09:** the owner kept one app. See `docs/studio-workspaces.md` (one studio, four workspaces as tabs or windows). Kept for the feature lists.
+
 Status: **proposal, nothing built.** Written after the owner asked to break Nova into four pieces and to make them browser based.
 Roadmap entries are not features; check the source before changing a contract.
 
