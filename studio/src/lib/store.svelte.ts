@@ -21,6 +21,7 @@ import { ACTIVITY_FILE, parseActivity, type Activity } from "./activity";
 import { debug } from "./debugger.svelte";
 import { inWorkspace, workspaceOf, type WorkspaceId } from "./workspaces";
 import { layout } from "./layout.svelte";
+import { RecoveryStore, type Recovered } from "./recovery";
 import { deviceHint, lastDevice, NO_DEVICE, preferredDevice, rememberDevice } from "./devices";
 import type { AndroidDevice, Api, Diagnostic, ExampleInfo, ExportReport, FileEntry, LogLine, ProjectInfo, RecentProject, TemplateInfo } from "./types";
 
@@ -121,6 +122,51 @@ class Studio {
   fileChanges: { n: number; paths: string[] } = $state({ n: 0, paths: [] });
   #checkTimer: ReturnType<typeof setTimeout> | undefined;
 
+  /// Unsaved text from a last session that ended without saving, offered back when the project opens.
+  recoverable: Recovered[] = $state([]);
+  #recovery: RecoveryStore | null = null;
+
+  /// Keeps a recovery copy of every document with unsaved text (and forgets the copies of those that are saved). Called every half minute,
+  /// and when the window is hidden or closing.
+  snapshot() {
+    const store = this.#recovery;
+    if (!store) return;
+    for (const tab of this.tabs) {
+      if (tab.binary) continue;
+      if (tab.text !== tab.saved) store.save(tab.path, tab.text);
+      else store.remove(tab.path);
+    }
+  }
+
+  /// Puts the recovered text back into tabs (as unsaved changes) and clears the offer.
+  async restoreRecovered() {
+    const items = this.recoverable;
+    this.recoverable = [];
+    for (const item of items) {
+      await this.openFile(item.path);
+      this.edit(item.path, item.text);
+    }
+    this.notice = { kind: "info", text: `Restored unsaved changes in ${items.length} file${items.length === 1 ? "" : "s"}. Save them when you are happy.` };
+  }
+
+  discardRecovered() {
+    for (const item of this.recoverable) this.#recovery?.remove(item.path);
+    this.recoverable = [];
+  }
+
+  /// Copies from the last session that still differ from the file on disk (the others are stale and are removed).
+  async #findRecoverable() {
+    const store = this.#recovery;
+    if (!store || !this.api) return;
+    const found: Recovered[] = [];
+    for (const item of store.list()) {
+      const onDisk = await this.api.readFile(item.path).then((c) => (c.binary ? null : (c.text ?? "")), () => null);
+      if (onDisk === null || onDisk === item.text) store.remove(item.path);
+      else found.push(item);
+    }
+    this.recoverable = found;
+  }
+
   /// The tabs of the workspace on show.
   get workspaceTabs(): Tab[] {
     return inWorkspace(this.tabs, this.workspace);
@@ -215,6 +261,8 @@ class Studio {
 
   async #enter(info: ProjectInfo) {
     this.project = info;
+    this.#recovery = new RecoveryStore(typeof localStorage === "undefined" ? { getItem: () => null, setItem: () => {}, removeItem: () => {} } : localStorage, info.root);
+    this.recoverable = [];
     debug.useProject(info.root);
     this.tabs = [];
     this.active = null;
@@ -234,6 +282,7 @@ class Studio {
         break;
       }
     }
+    await this.#findRecoverable();
     void this.check();
   }
 
@@ -356,6 +405,7 @@ class Studio {
     const tab = this.tabs.find((t) => t.path === path);
     if (tab && isDirty(tab) && !confirm(`Close ${path} without saving?`)) return;
     editorStates.forget(path);
+    this.#recovery?.remove(path);
     this.saveHooks.delete(path);
     this.sessions.delete(path);
     // (the next tab to show is the neighbour in the same workspace)
@@ -392,7 +442,10 @@ class Studio {
     });
     // what the save wrote (the text, a sprite's picture, a model's .glb) is the new baseline, and news for other views
     // (a scene showing the sprite); it is not a change to reload the saving editor for
-    if (ok) await this.refreshFiles();
+    if (ok) {
+      this.#recovery?.remove(tab.path);
+      await this.refreshFiles();
+    }
     this.#writing--;
     if (ok) {
       tab.saved = text;

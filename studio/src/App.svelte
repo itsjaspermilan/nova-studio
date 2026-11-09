@@ -93,10 +93,17 @@
       void studio.refreshActivity();
       if (document.visibilityState === "visible") void studio.checkExternal(true);
     }, 3000);
+    // a copy of every unsaved document every half minute, and when the window is hidden or closing (lib/recovery.ts)
+    const snapshot = setInterval(() => studio.snapshot(), 30_000);
+    const hidden = () => { if (document.visibilityState === "hidden") studio.snapshot(); };
+    document.addEventListener("visibilitychange", hidden);
+    window.addEventListener("beforeunload", () => studio.snapshot());
     window.addEventListener("keydown", keys);
     window.addEventListener("focus", refocus);
     return () => {
       clearInterval(watch);
+      clearInterval(snapshot);
+      document.removeEventListener("visibilitychange", hidden);
       window.removeEventListener("keydown", keys);
       for (const off of offs) off();
       stopMenu();
@@ -158,6 +165,13 @@
           </div>
         {/each}
       </div>
+      {#if studio.recoverable.length}
+        <div class="conflict" role="alert">
+          <span>Unsaved changes from last time were kept for {studio.recoverable.map((r) => base(r.path)).join(", ")}.</span>
+          <button onclick={() => studio.restoreRecovered()}>Restore</button>
+          <button class="danger" onclick={() => studio.discardRecovered()}>Discard</button>
+        </div>
+      {/if}
       {#if studio.tab?.conflict}
         <div class="conflict" role="alert">
           <span><strong>{base(studio.tab.path)}</strong> was changed outside the studio, and you have unsaved changes here.</span>

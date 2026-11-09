@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockApi } from "./mock";
-import { studio } from "./store.svelte";
+import { isDirty, studio } from "./store.svelte";
 
 async function openProject() {
   studio.api = createMockApi();
@@ -327,5 +327,54 @@ describe("workspaces", () => {
     expect(studio.tabs.filter((t) => t.path === "entities/player.lua")).toHaveLength(1);
     studio.closeTab("scenes/title.lua");
     expect(studio.active).toBe("entities/player.lua"); // not the sprite on another workspace's tab
+  });
+});
+
+describe("recovery of unsaved work", () => {
+  beforeEach(() => {
+    const m = new Map<string, string>();
+    vi.stubGlobal("localStorage", { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k), clear: () => m.clear() });
+  });
+  it("keeps unsaved text, offers it back at the next open, and restores it as unsaved changes", async () => {
+    localStorage.clear();
+    await openProject();
+    await studio.openFile("entities/player.lua");
+    const disk = studio.tabs.find((t) => t.path === "entities/player.lua")!.saved;
+    studio.edit("entities/player.lua", disk + "\n-- unsaved idea\n");
+    studio.snapshot();
+    // the studio closes without saving, and the project is opened again (the mock puts the same files back on disk)
+    await openProject();
+    expect(studio.recoverable.map((r) => r.path)).toEqual(["entities/player.lua"]);
+    await studio.restoreRecovered();
+    const tab = studio.tabs.find((t) => t.path === "entities/player.lua")!;
+    expect(tab.text).toContain("-- unsaved idea");
+    expect(isDirty(tab)).toBe(true);
+    expect(studio.recoverable).toEqual([]);
+  });
+
+  it("forgets a copy when the document is saved, and offers nothing that matches the file on disk", async () => {
+    localStorage.clear();
+    await openProject();
+    await studio.openFile("entities/player.lua");
+    const disk = studio.tabs.find((t) => t.path === "entities/player.lua")!.saved;
+    studio.edit("entities/player.lua", disk + "\n-- kept\n");
+    studio.snapshot();
+    await studio.save("entities/player.lua");
+    await openProject();
+    expect(studio.recoverable).toEqual([]);
+  });
+
+  it("can be discarded", async () => {
+    localStorage.clear();
+    await openProject();
+    await studio.openFile("entities/player.lua");
+    studio.edit("entities/player.lua", "-- nothing like the file\n");
+    studio.snapshot();
+    await openProject();
+    expect(studio.recoverable).toHaveLength(1);
+    studio.discardRecovered();
+    expect(studio.recoverable).toEqual([]);
+    await openProject();
+    expect(studio.recoverable).toEqual([]);
   });
 });
