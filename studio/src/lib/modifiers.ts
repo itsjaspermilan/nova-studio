@@ -1,0 +1,641 @@
+// A non-destructive modifier stack for mesh elements, the way Blender has it. The element keeps its
+// original points and polygons (the "cage") plus a list of modifiers; `evaluate` runs the list on
+// a copy and returns the finished mesh, which the viewport draws and the .glb exporter writes. The
+// .model.json never stores the result, so the cage stays editable.
+//
+// Every modifier is a pure function from a soup of points and polygons (counter-clockwise seen from
+// outside, like the rest of the editor) to a new soup. Polygon colour and `smooth` ride along.
+
+import { MAX_FACES, MAX_VERTS, type Cube, type MeshFace, type Vec3 } from "./model-doc";
+import { polyNormal } from "./model-mesh";
+import { fitBounds } from "./model-doc";
+import { toMesh } from "./mesh-edit";
+
+export type ModAxis = "x" | "y" | "z";
+export const MOD_AXES: ModAxis[] = ["x", "y", "z"];
+export const MAX_MODIFIERS = 16;
+
+interface Common {
+  /// Drawn in the editor's view (default true).
+  show?: boolean;
+  /// Baked into the .glb (default true).
+  render?: boolean;
+}
+/// Adds the mirror image across a plane through the part's origin.
+export interface MirrorMod extends Common {
+  type: "mirror";
+  axis: ModAxis;
+  /// Where the plane is along the axis (default 0).
+  center?: number;
+  /// Points this close to the plane, or to their own reflection, become one point (default 0.01 units).
+  merge?: number;
+  /// Points within `merge` of the plane are pulled exactly onto it, so the halves close without a gap (default true).
+  clip?: boolean;
+}
+/// Catmull-Clark subdivision: rounds the cage off.
+export interface SubsurfMod extends Common {
+  type: "subsurf";
+  /// Steps drawn in the editor (default 1).
+  levels?: number;
+  /// Steps written to the .glb (default 2).
+  renderLevels?: number;
+  /// Shade the result smoothly (default true).
+  smooth?: boolean;
+}
+/// Rounds off the sharp edges.
+export interface BevelMod extends Common {
+  type: "bevel";
+  /// How far the bevel reaches into each face, in units (default 1).
+  width?: number;
+  /// Steps across the rounding (default 2).
+  segments?: number;
+  /// Only edges where the faces meet at least this many degrees apart are bevelled (default 30).
+  angle?: number;
+}
+/// Gives a surface thickness.
+export interface SolidifyMod extends Common {
+  type: "solidify";
+  thickness?: number;
+  /// -1 grows inwards from the surface, 1 outwards, 0 straddles it (default -1).
+  offset?: number;
+  /// Keeps the wall the same thickness around corners (default true).
+  even?: boolean;
+}
+/// Repeats the mesh along a line.
+export interface ArrayMod extends Common {
+  type: "array";
+  count?: number;
+  /// Distance between copies, in units.
+  offset?: Vec3;
+  /// Extra distance between copies as a fraction of the mesh's own size.
+  relative?: Vec3;
+  /// Points of neighbouring copies closer than this are joined (default 0 = off).
+  merge?: number;
+}
+export type Modifier = MirrorMod | SubsurfMod | BevelMod | SolidifyMod | ArrayMod;
+export type ModifierType = Modifier["type"];
+export const MODIFIER_TYPES: ModifierType[] = ["mirror", "subsurf", "bevel", "solidify", "array"];
+export const MODIFIER_LABELS: Record<ModifierType, string> = { mirror: "Mirror", subsurf: "Subdivision", bevel: "Bevel", solidify: "Solidify", array: "Array" };
+
+export const MAX_SUBSURF = 4;
+export const MAX_BEVEL_SEGMENTS = 16;
+export const MAX_ARRAY = 64;
+
+export function newModifier(type: ModifierType): Modifier {
+  switch (type) {
+    case "mirror": return { type, axis: "x", merge: 0.01, clip: true };
+    case "subsurf": return { type, levels: 1, renderLevels: 2, smooth: true };
+    case "bevel": return { type, width: 1, segments: 2, angle: 30 };
+    case "solidify": return { type, thickness: 1, offset: -1, even: true };
+    case "array": return { type, count: 2, offset: [8, 0, 0] };
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The soup the modifiers work on
+
+export interface Soup {
+  verts: Vec3[];
+  polys: MeshFace[];
+}
+
+const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const mul = (a: Vec3, k: number): Vec3 => [a[0] * k, a[1] * k, a[2] * k];
+const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross = (a: Vec3, b: Vec3): Vec3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const len = (a: Vec3) => Math.hypot(a[0], a[1], a[2]);
+const norm = (a: Vec3): Vec3 => {
+  const l = len(a);
+  return l > 1e-12 ? mul(a, 1 / l) : [0, 0, 0];
+};
+const lerp = (a: Vec3, b: Vec3, t: number): Vec3 => add(mul(a, 1 - t), mul(b, t));
+const axisIndex = (a: ModAxis) => (a === "x" ? 0 : a === "y" ? 1 : 2);
+const copyPoly = (f: MeshFace, v: number[]): MeshFace => {
+  const out: MeshFace = { v };
+  if (f.color) out.color = f.color;
+  if (f.smooth) out.smooth = true;
+  return out;
+};
+const soupOf = (c: Cube): Soup => ({ verts: (c.verts ?? []).map((p) => [...p] as Vec3), polys: (c.polys ?? []).map((f) => copyPoly(f, [...f.v])) });
+
+const edgeKey = (a: number, b: number) => (a < b ? `${a},${b}` : `${b},${a}`);
+
+/// Drops points no polygon uses and renumbers.
+export function compactSoup(s: Soup): Soup {
+  const map = new Map<number, number>();
+  const verts: Vec3[] = [];
+  const polys = s.polys.map((f) => copyPoly(f, f.v.map((i) => {
+    let m = map.get(i);
+    if (m === undefined) {
+      m = verts.push(s.verts[i]!) - 1;
+      map.set(i, m);
+    }
+    return m;
+  })));
+  return { verts, polys };
+}
+
+/// Joins points closer than `distance` (grid lookup, so it is fast on big meshes) and drops polygons that collapse to fewer than three points.
+export function weldSoup(s: Soup, distance: number, only?: (a: number, b: number) => boolean): Soup {
+  if (!(distance > 0)) return s;
+  const cell = (p: Vec3) => p.map((x) => Math.floor(x / distance)) as Vec3;
+  const grid = new Map<string, number[]>();
+  const target = s.verts.map((_, i) => i);
+  s.verts.forEach((p, i) => {
+    const [cx, cy, cz] = cell(p);
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+      for (const j of grid.get(`${cx! + dx},${cy! + dy},${cz! + dz}`) ?? []) {
+        if (target[j] !== j || len(sub(s.verts[j]!, p)) > distance || (only && !only(j, i))) continue;
+        target[i] = j;
+        return;
+      }
+    }
+    const key = cell(p).join(",");
+    grid.set(key, [...(grid.get(key) ?? []), i]);
+  });
+  const polys: MeshFace[] = [];
+  for (const f of s.polys) {
+    const v: number[] = [];
+    for (const i of f.v) {
+      const t = target[i]!;
+      if (v[v.length - 1] !== t) v.push(t);
+    }
+    if (v.length > 1 && v[0] === v[v.length - 1]) v.pop();
+    if (new Set(v).size >= 3 && v.length === new Set(v).size) polys.push(copyPoly(f, v));
+  }
+  return compactSoup({ verts: s.verts, polys });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Mirror
+
+export function mirror(s: Soup, m: MirrorMod): Soup {
+  const a = axisIndex(m.axis);
+  const centre = m.center ?? 0;
+  const merge = Math.max(0, m.merge ?? 0.01);
+  const verts = s.verts.map((p) => [...p] as Vec3);
+  const on: boolean[] = verts.map((p) => Math.abs(p[a] - centre) <= merge / 2 + 1e-9);
+  if (m.clip !== false) verts.forEach((p, i) => { if (on[i]) p[a] = centre; });
+  const n = verts.length;
+  // A point on the plane is its own reflection; the rest get a new point.
+  const twin: number[] = verts.map((p, i) => {
+    if (on[i]) return i;
+    return -1;
+  });
+  const out: Vec3[] = [...verts];
+  for (let i = 0; i < n; i++) {
+    if (twin[i] !== -1) continue;
+    const p = [...verts[i]!] as Vec3;
+    p[a] = 2 * centre - p[a];
+    twin[i] = out.push(p) - 1;
+  }
+  const polys: MeshFace[] = [];
+  const flat = (f: MeshFace) => f.v.every((i) => on[i]);
+  for (const f of s.polys) {
+    // A polygon lying in the plane would be an inner wall once mirrored; both copies go.
+    if (flat(f)) continue;
+    polys.push(copyPoly(f, [...f.v]));
+  }
+  for (const f of s.polys) {
+    if (flat(f)) continue;
+    polys.push(copyPoly(f, f.v.map((i) => twin[i]!).reverse()));
+  }
+  return compactSoup({ verts: out, polys });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Subdivision surface (Catmull-Clark)
+
+export function subdivideOnce(s: Soup, smooth: boolean): Soup {
+  const nv = s.verts.length;
+  const faceEdges = new Map<string, number[]>();
+  s.polys.forEach((f, fi) => {
+    for (let k = 0; k < f.v.length; k++) {
+      const key = edgeKey(f.v[k]!, f.v[(k + 1) % f.v.length]!);
+      faceEdges.set(key, [...(faceEdges.get(key) ?? []), fi]);
+    }
+  });
+  const facePoint: Vec3[] = s.polys.map((f) => mul(f.v.reduce<Vec3>((acc, i) => add(acc, s.verts[i]!), [0, 0, 0]), 1 / f.v.length));
+  // Edge points are numbered after the points and before the face points.
+  const edgeIndex = new Map<string, number>();
+  const edgePoints: Vec3[] = [];
+  for (const [key, faces] of faceEdges) {
+    const [a, b] = key.split(",").map(Number) as [number, number];
+    const mid = mul(add(s.verts[a]!, s.verts[b]!), 0.5);
+    edgeIndex.set(key, nv + edgePoints.length);
+    edgePoints.push(faces.length === 2 ? mul(add(mid, mul(add(facePoint[faces[0]!]!, facePoint[faces[1]!]!), 0.5)), 0.5) : mid);
+  }
+  // New positions of the old points.
+  const vertFaces: number[][] = s.verts.map(() => []);
+  const vertEdges: number[][] = s.verts.map(() => []);
+  s.polys.forEach((f, fi) => f.v.forEach((i) => vertFaces[i]!.push(fi)));
+  for (const key of faceEdges.keys()) {
+    const [a, b] = key.split(",").map(Number) as [number, number];
+    vertEdges[a]!.push(b);
+    vertEdges[b]!.push(a);
+  }
+  const moved: Vec3[] = s.verts.map((p, i) => {
+    const faces = vertFaces[i]!;
+    const nbrs = vertEdges[i]!;
+    if (!faces.length) return p;
+    const open = nbrs.filter((j) => faceEdges.get(edgeKey(i, j))!.length === 1);
+    if (open.length === 2) return mul(add(add(s.verts[open[0]!]!, s.verts[open[1]!]!), mul(p, 6)), 1 / 8);
+    if (open.length > 0 || nbrs.some((j) => faceEdges.get(edgeKey(i, j))!.length > 2) || nbrs.length !== faces.length) return p;
+    const n = nbrs.length;
+    const f = mul(faces.reduce<Vec3>((acc, fi) => add(acc, facePoint[fi]!), [0, 0, 0]), 1 / n);
+    const r = mul(nbrs.reduce<Vec3>((acc, j) => add(acc, mul(add(p, s.verts[j]!), 0.5)), [0, 0, 0]), 1 / n);
+    return mul(add(add(f, mul(r, 2)), mul(p, n - 3)), 1 / n);
+  });
+  const verts = [...moved, ...edgePoints, ...facePoint];
+  const faceBase = nv + edgePoints.length;
+  const polys: MeshFace[] = [];
+  s.polys.forEach((f, fi) => {
+    const k = f.v.length;
+    for (let j = 0; j < k; j++) {
+      const piece = copyPoly(f, [
+        f.v[j]!,
+        edgeIndex.get(edgeKey(f.v[j]!, f.v[(j + 1) % k]!))!,
+        faceBase + fi,
+        edgeIndex.get(edgeKey(f.v[(j + k - 1) % k]!, f.v[j]!))!,
+      ]);
+      if (smooth) piece.smooth = true;
+      polys.push(piece);
+    }
+  });
+  return { verts, polys };
+}
+
+export function subsurf(s: Soup, levels: number, smooth = true): Soup {
+  let out = s;
+  const n = Math.max(0, Math.min(MAX_SUBSURF, Math.round(levels)));
+  for (let i = 0; i < n; i++) {
+    const quads = out.polys.reduce((sum, f) => sum + f.v.length, 0);
+    // Stop before the mesh outgrows the element limits.
+    if (quads > MAX_FACES || out.verts.length + out.polys.length * 2 + quads > MAX_VERTS) break;
+    out = subdivideOnce(out, smooth);
+  }
+  if (n === 0 && smooth) out = { verts: out.verts, polys: out.polys.map((f) => ({ ...f, smooth: true })) };
+  return out;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Bevel
+
+/// Rounds the edges where two faces meet at `angle` degrees or more. Each face is pulled in by `width` along a bevelled
+/// edge; a strip of `segments` quads (a circular arc in section) fills the gap; each point where bevelled edges meet gets a
+/// cap polygon. Edges at the open border of a mesh, and edges shared by more than two faces, are left alone.
+export function bevel(s: Soup, b: BevelMod): Soup {
+  const width = Math.max(0, b.width ?? 1);
+  const segs = Math.max(1, Math.min(MAX_BEVEL_SEGMENTS, Math.round(b.segments ?? 2)));
+  if (width <= 0 || !s.polys.length) return s;
+  const limit = Math.cos(((Math.max(0, Math.min(180, b.angle ?? 30))) * Math.PI) / 180);
+  const normals = s.polys.map((f) => norm(polyNormal(s.verts, f.v)));
+  const edgeFaces = new Map<string, number[]>();
+  s.polys.forEach((f, fi) => f.v.forEach((a, k) => {
+    const key = edgeKey(a, f.v[(k + 1) % f.v.length]!);
+    edgeFaces.set(key, [...(edgeFaces.get(key) ?? []), fi]);
+  }));
+  const sharp = new Set<string>();
+  for (const [key, faces] of edgeFaces) {
+    if (faces.length !== 2) continue;
+    const [fa, fb] = faces as [number, number];
+    if (dot(normals[fa]!, normals[fb]!) <= limit + 1e-9 && len(normals[fa]!) > 0 && len(normals[fb]!) > 0) sharp.add(key);
+  }
+  if (!sharp.size) return s;
+
+  const verts = s.verts.map((p) => [...p] as Vec3);
+  const point = (p: Vec3) => verts.push(p) - 1;
+  const edgeLen = (a: number, c: number) => len(sub(s.verts[a]!, s.verts[c]!));
+
+  // Which corners (face, position) each point has.
+  const cornersAt: { f: number; k: number }[][] = s.verts.map(() => []);
+  s.polys.forEach((f, fi) => f.v.forEach((i, k) => cornersAt[i]!.push({ f: fi, k })));
+  const touched = new Set<number>();
+  for (const key of sharp) for (const i of key.split(",").map(Number)) touched.add(i);
+
+  // The slide point on a plain edge at a point (key "v>nbr"), and the corner point where two bevelled edges meet in a face.
+  const slide = new Map<string, number>(); // best slide distance per (point, neighbour)
+  const slideAt = (v: number, nbr: number) => `${v}>${nbr}`;
+  const inward = (fi: number, a: number, c: number): Vec3 => norm(cross(normals[fi]!, norm(sub(s.verts[c]!, s.verts[a]!)))); // inwards from edge a->c, in face fi
+  const cornerInfo = (fi: number, k: number) => {
+    const f = s.polys[fi]!;
+    const m = f.v.length;
+    const v = f.v[k]!;
+    const p = f.v[(k + m - 1) % m]!;
+    const n = f.v[(k + 1) % m]!;
+    return { v, p, n, bp: sharp.has(edgeKey(p, v)), bn: sharp.has(edgeKey(v, n)) };
+  };
+  // First pass: how far each plain edge must slide at each touched point.
+  for (const v of touched) {
+    for (const { f, k } of cornersAt[v]!) {
+      const { p, n, bp, bn } = cornerInfo(f, k);
+      if (bp === bn) continue;
+      const [bevelled, plain] = bp ? [p, n] : [n, p];
+      const inw = bp ? inward(f, p, v) : inward(f, v, n);
+      const d = norm(sub(s.verts[plain]!, s.verts[v]!));
+      const along = dot(d, inw);
+      const t = Math.min(along > 0.05 ? width / along : width * 20, edgeLen(v, plain) * 0.49);
+      void bevelled;
+      const key = slideAt(v, plain);
+      slide.set(key, Math.max(slide.get(key) ?? 0, t));
+    }
+  }
+  // Points: T (on plain edges), Q (corner of two bevelled edges), arcs (along bevelled edges).
+  const tPoint = new Map<string, number>();
+  const T = (v: number, nbr: number) => {
+    const key = slideAt(v, nbr);
+    let i = tPoint.get(key);
+    if (i === undefined) {
+      const t = slide.get(key) ?? 0;
+      i = point(add(s.verts[v]!, mul(norm(sub(s.verts[nbr]!, s.verts[v]!)), t)));
+      tPoint.set(key, i);
+    }
+    return i;
+  };
+  const qPoint = new Map<string, number>();
+  const Q = (fi: number, k: number) => {
+    const key = `${fi}:${k}`;
+    let i = qPoint.get(key);
+    if (i === undefined) {
+      const { v, p, n } = cornerInfo(fi, k);
+      const ip = inward(fi, p, v);
+      const inn = inward(fi, v, n);
+      const c = dot(ip, inn);
+      const x = mul(add(ip, inn), width / Math.max(0.15, 1 + c));
+      i = point(add(s.verts[v]!, x));
+      qPoint.set(key, i);
+    }
+    return i;
+  };
+  /// The point where face `fi`'s corner `k` touches the edge towards `nbr` (a bevelled or plain edge).
+  const side = (fi: number, k: number, nbr: number): number => {
+    const { v, p, n, bp, bn } = cornerInfo(fi, k);
+    const other = nbr === p ? n : p;
+    const otherSharp = nbr === p ? bn : bp;
+    const thisSharp = nbr === p ? bp : bn;
+    if (thisSharp && otherSharp) return Q(fi, k);
+    void other;
+    // A plain edge, or a bevelled one whose partner at this corner is plain: the slide point of whichever is plain.
+    return T(v, thisSharp ? other : nbr);
+  };
+
+  // Arcs along each bevelled edge at each end: from the face before to the face after, counter-clockwise around the point.
+  const faceTraversing = (a: number, c: number) => (edgeFaces.get(edgeKey(a, c)) ?? []).find((fi) => {
+    const f = s.polys[fi]!;
+    return f.v.some((x, k) => x === a && f.v[(k + 1) % f.v.length] === c);
+  });
+  const cornerOf = (fi: number, v: number) => s.polys[fi]!.v.indexOf(v);
+  const arcs = new Map<string, number[]>();
+  const arc = (v: number, nbr: number): number[] => {
+    const key = `${v}>${nbr}`;
+    let pts = arcs.get(key);
+    if (pts) return pts;
+    const fa = faceTraversing(v, nbr); // after: the face going v -> nbr
+    const fb = faceTraversing(nbr, v); // before: the face going nbr -> v
+    if (fa === undefined || fb === undefined) return [];
+    const ka = cornerOf(fa, v);
+    const kb = cornerOf(fb, v);
+    const start = side(fb, kb, nbr);
+    const end = side(fa, ka, nbr);
+    const pS = verts[start]!;
+    const pE = verts[end]!;
+    // Control point: on the original edge line (the section's tangents meet there).
+    const cA = sub(pE, mul(inward(fa, v, nbr), width));
+    const cB = sub(pS, mul(inward(fb, nbr, v), width));
+    const ctl = mul(add(cA, cB), 0.5);
+    const wgt = Math.sqrt(Math.max(0, (1 + dot(normals[fa]!, normals[fb]!)) / 2));
+    pts = [start];
+    for (let j = 1; j < segs; j++) {
+      const t = j / segs;
+      const w0 = (1 - t) * (1 - t);
+      const w1 = 2 * t * (1 - t) * wgt;
+      const w2 = t * t;
+      const sum = w0 + w1 + w2;
+      pts.push(point(mul(add(add(mul(pS, w0), mul(ctl, w1)), mul(pE, w2)), 1 / sum)));
+    }
+    pts.push(end);
+    arcs.set(key, pts);
+    return pts;
+  };
+
+  const polys: MeshFace[] = [];
+  // Faces: each corner at a touched point is replaced by the points where its two edges meet it.
+  s.polys.forEach((f, fi) => {
+    const v: number[] = [];
+    f.v.forEach((i, k) => {
+      if (!touched.has(i)) return void v.push(i);
+      const { p, n, bp, bn } = cornerInfo(fi, k);
+      if (bp && bn) return void v.push(Q(fi, k));
+      const a = side(fi, k, p);
+      const c = side(fi, k, n);
+      v.push(a);
+      if (c !== a) v.push(c);
+    });
+    polys.push(copyPoly(f, v.filter((x, j) => x !== v[(j + 1) % v.length] || v.length < 2)));
+  });
+  // Strips along bevelled edges.
+  for (const key of sharp) {
+    const [a, c] = key.split(",").map(Number) as [number, number];
+    const pa = [...arc(a, c)].reverse(); // a's arc runs B -> A; the strip runs A -> B
+    const pc = arc(c, a);
+    if (pa.length !== pc.length || pa.length < 2) continue;
+    for (let j = 0; j + 1 < pa.length; j++) {
+      const strip: MeshFace = { v: [pc[j]!, pa[j]!, pa[j + 1]!, pc[j + 1]!] };
+      const owner = s.polys[faceTraversing(a, c)!]!;
+      if (owner.color) strip.color = owner.color;
+      if (segs > 1) strip.smooth = true;
+      polys.push(strip);
+    }
+  }
+  // Caps where bevelled edges meet: walk the faces around the point to get the ring in order.
+  for (const v of touched) {
+    const corners = cornersAt[v]!.map(({ f, k }) => ({ f, ...cornerInfo(f, k) }));
+    // A face's wedge runs from its next edge counter-clockwise to its previous edge, so the face after it has that previous edge as its next.
+    const byNext = new Map(corners.map((c) => [c.n, c]));
+    if (byNext.size !== corners.length) continue;
+    const ring: number[] = [];
+    let at = corners[0]!;
+    let closed = false;
+    for (let guard = 0; guard <= corners.length; guard++) {
+      // Points along this face's wedge: from the edge before it to the edge after it (counter-clockwise).
+      const edge = at.n; // the edge this wedge starts at; the arc or point of that edge comes first
+      if (sharp.has(edgeKey(v, edge))) ring.push(...arc(v, edge));
+      else ring.push(T(v, edge));
+      const nextCorner = byNext.get(at.p);
+      if (!nextCorner) break;
+      at = nextCorner;
+      if (at === corners[0]) {
+        closed = true;
+        break;
+      }
+    }
+    if (!closed) continue;
+    const clean = ring.filter((x, j) => x !== ring[(j + 1) % ring.length]);
+    if (new Set(clean).size >= 3) {
+      const owner = s.polys[corners[0]!.f]!;
+      const cap: MeshFace = { v: clean };
+      if (owner.color) cap.color = owner.color;
+      if (segs > 1 && corners.some((c) => c.bp || c.bn)) cap.smooth = true;
+      polys.push(cap);
+    }
+  }
+  return compactSoup({ verts, polys });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Solidify
+
+export function solidify(s: Soup, m: SolidifyMod): Soup {
+  const thickness = m.thickness ?? 1;
+  const offset = Math.max(-1, Math.min(1, m.offset ?? -1));
+  if (!thickness || !s.polys.length) return s;
+  const n = s.verts.length;
+  const faceN = s.polys.map((f) => norm(polyNormal(s.verts, f.v)));
+  const vn: Vec3[] = s.verts.map(() => [0, 0, 0]);
+  s.polys.forEach((f, fi) => {
+    const area = polyNormal(s.verts, f.v);
+    for (const i of f.v) vn[i] = add(vn[i]!, area);
+  });
+  const dirs: Vec3[] = vn.map((v, i) => {
+    const d = norm(v);
+    if (m.even === false) return d;
+    // Slanted walls: scale so the wall is `thickness` thick measured across the faces, not along the normal.
+    let worst = 1;
+    s.polys.forEach((f, fi) => { if (f.v.includes(i)) worst = Math.min(worst, dot(d, faceN[fi]!)); });
+    return mul(d, 1 / Math.max(0.25, worst));
+  });
+  const outer = (offset + 1) / 2;
+  const inner = (offset - 1) / 2;
+  const verts: Vec3[] = [];
+  for (let i = 0; i < n; i++) verts.push(add(s.verts[i]!, mul(dirs[i]!, thickness * outer)));
+  for (let i = 0; i < n; i++) verts.push(add(s.verts[i]!, mul(dirs[i]!, thickness * inner)));
+  const polys: MeshFace[] = s.polys.map((f) => copyPoly(f, [...f.v]));
+  for (const f of s.polys) polys.push(copyPoly(f, f.v.map((i) => i + n).reverse()));
+  // A wall along every open edge.
+  const count = new Map<string, number>();
+  for (const f of s.polys) f.v.forEach((a, k) => { const key = edgeKey(a, f.v[(k + 1) % f.v.length]!); count.set(key, (count.get(key) ?? 0) + 1); });
+  for (const f of s.polys) {
+    f.v.forEach((a, k) => {
+      const c = f.v[(k + 1) % f.v.length]!;
+      if (count.get(edgeKey(a, c)) !== 1) return;
+      polys.push(copyPoly(f, [a, a + n, c + n, c]));
+    });
+  }
+  // A negative thickness would turn everything inside out.
+  if (thickness < 0) polys.forEach((p) => p.v.reverse());
+  return { verts, polys };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Array
+
+export function array(s: Soup, m: ArrayMod): Soup {
+  const count = Math.max(1, Math.min(MAX_ARRAY, Math.round(m.count ?? 2)));
+  if (count < 2 || !s.verts.length) return s;
+  const lo: Vec3 = [Infinity, Infinity, Infinity];
+  const hi: Vec3 = [-Infinity, -Infinity, -Infinity];
+  for (const p of s.verts) for (let a = 0; a < 3; a++) { lo[a] = Math.min(lo[a]!, p[a]!); hi[a] = Math.max(hi[a]!, p[a]!); }
+  const step = add(m.offset ?? [0, 0, 0], [0, 1, 2].map((a) => (m.relative?.[a] ?? 0) * (hi[a]! - lo[a]!)) as Vec3);
+  // Respect the element limits.
+  const fit = Math.max(1, Math.min(count, Math.floor(MAX_VERTS / Math.max(1, s.verts.length)), Math.floor(MAX_FACES / Math.max(1, s.polys.length))));
+  const verts: Vec3[] = [];
+  const polys: MeshFace[] = [];
+  for (let c = 0; c < fit; c++) {
+    const base = verts.length;
+    for (const p of s.verts) verts.push(add(p, mul(step, c)));
+    for (const f of s.polys) polys.push(copyPoly(f, f.v.map((i) => i + base)));
+  }
+  const merge = m.merge ?? 0;
+  if (merge <= 0) return { verts, polys };
+  // Only points of different copies are joined.
+  const n = s.verts.length;
+  return weldSoup({ verts, polys }, merge, (a, b) => Math.floor(a / n) !== Math.floor(b / n));
+}
+
+// ---------------------------------------------------------------------------------------------
+// The stack
+
+export type Stage = "view" | "render";
+
+export function applyModifier(s: Soup, m: Modifier, stage: Stage): Soup {
+  switch (m.type) {
+    case "mirror": return mirror(s, m);
+    case "subsurf": return subsurf(s, stage === "render" ? m.renderLevels ?? 2 : m.levels ?? 1, m.smooth !== false);
+    case "bevel": return bevel(s, m);
+    case "solidify": return solidify(s, m);
+    case "array": return array(s, m);
+  }
+}
+
+export const isActive = (m: Modifier, stage: Stage) => (stage === "view" ? m.show !== false : m.render !== false);
+
+/// Whether the element has modifiers that would change what is drawn at that stage.
+export function hasModifiers(c: Cube, stage: Stage = "view"): boolean {
+  return !!c.modifiers?.some((m) => isActive(m, stage)) && !c.skin;
+}
+
+/// The finished mesh: the element's cage with the visible (or exported) modifiers applied in order.
+/// An element without modifiers comes back as it is. A skinned mesh ignores its modifiers (they would break its weights).
+/// The result is a plain mesh element with no modifiers and no texture placement (its polygons are new).
+export function evaluate(c: Cube, stage: Stage = "view"): Cube {
+  if (!hasModifiers(c, stage)) return c;
+  const base = toMesh(c);
+  let soup = soupOf(base);
+  for (const m of c.modifiers!) {
+    if (!isActive(m, stage)) continue;
+    soup = applyModifier(soup, m, stage);
+    if (soup.verts.length > MAX_VERTS || soup.polys.length > MAX_FACES) break;
+  }
+  const out: Cube = { ...(c.name ? { name: c.name } : {}), shape: "mesh", from: [0, 0, 0], size: [0, 0, 0], color: c.color, verts: soup.verts, polys: soup.polys };
+  if (c.emissive !== undefined) out.emissive = c.emissive;
+  fitBounds(out);
+  return out;
+}
+
+/// Bakes the modifiers into the cage itself (Blender's "Apply"): `upTo` is how many modifiers from the top of the stack to bake
+/// (the first one by default). What is baked uses the editor's own (view) settings. Keeps the rest of the stack.
+export function applyStack(c: Cube, upTo = 1): Cube {
+  const list = c.modifiers ?? [];
+  const take = list.slice(0, upTo);
+  const rest = list.slice(upTo);
+  const baked = evaluate({ ...toMesh(c), modifiers: take.filter((m) => m.show !== false) }, "view");
+  const out: Cube = { ...(baked === c ? toMesh(c) : baked) };
+  delete out.modifiers;
+  if (rest.length) out.modifiers = rest;
+  return out;
+}
+
+/// Checks a modifier read from a file; returns a message for the first problem.
+export function checkModifier(m: unknown, at: string): string | null {
+  if (!m || typeof m !== "object") return `${at} must be an object`;
+  const o = m as Record<string, unknown>;
+  if (!MODIFIER_TYPES.includes(o.type as ModifierType)) return `${at}.type must be one of ${MODIFIER_TYPES.join(", ")}`;
+  const num = (k: string, lo: number, hi: number, whole = false) => {
+    const v = o[k];
+    if (v === undefined) return null;
+    return typeof v === "number" && Number.isFinite(v) && v >= lo && v <= hi && (!whole || Number.isInteger(v)) ? null : `${at}.${k} must be ${whole ? "a whole " : "a "}number from ${lo} to ${hi}`;
+  };
+  const flag = (k: string) => (o[k] === undefined || typeof o[k] === "boolean" ? null : `${at}.${k} must be true or false`);
+  const vec = (k: string) => (o[k] === undefined || (Array.isArray(o[k]) && (o[k] as unknown[]).length === 3 && (o[k] as unknown[]).every((x) => typeof x === "number" && Number.isFinite(x))) ? null : `${at}.${k} must be three numbers`);
+  const problems = [flag("show"), flag("render")];
+  switch (o.type) {
+    case "mirror":
+      if (!MOD_AXES.includes(o.axis as ModAxis)) return `${at}.axis must be x, y or z`;
+      problems.push(num("center", -1e6, 1e6), num("merge", 0, 1e6), flag("clip"));
+      break;
+    case "subsurf":
+      problems.push(num("levels", 0, MAX_SUBSURF, true), num("renderLevels", 0, MAX_SUBSURF, true), flag("smooth"));
+      break;
+    case "bevel":
+      problems.push(num("width", 0, 1e6), num("segments", 1, MAX_BEVEL_SEGMENTS, true), num("angle", 0, 180));
+      break;
+    case "solidify":
+      problems.push(num("thickness", -1e6, 1e6), num("offset", -1, 1), flag("even"));
+      break;
+    case "array":
+      problems.push(num("count", 1, MAX_ARRAY, true), vec("offset"), vec("relative"), num("merge", 0, 1e6));
+      break;
+  }
+  return problems.find((p) => p) ?? null;
+}

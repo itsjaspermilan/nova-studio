@@ -342,6 +342,23 @@ is 1/16 of a world unit unless `scale` says otherwise):
 | `wedge`, `pyramid`, `cylinder`, `cone`, `sphere` | The same `from`/`size` box. A wedge is full height at its north side sloping to nothing at the south; the rest stand on y. `segments` (3 to 64, default 16) sets the sides of round shapes and `smooth: false` makes them faceted. Face colours: wedge up/down/north/east/west, pyramid down and the four sides, cylinder up/down, cone down; everything else takes `color`. |
 | `mesh` | `verts` (points in the part's space) and `polys` (each `{ "v": [point numbers], "color"?, "smooth"? }`, counter-clockwise seen from outside, three to 64 points). `from` and `size` are worked out from the points and are not written. Optional `skin`: `{ "bones": [part paths such as "body/arm"], "weights": [[[bone number, weight], ...] for each point] }`, at most four bones per point, weights adding up to one. The studio works the weights out from the parts around the shape and lets you set them by hand. A renamed part is followed; a removed part's weight is shared among the rest. |
 
+**Modifiers (2026-11-09).** A `mesh` may carry `"modifiers": [...]`, a stack run in order on its `verts` and `polys` (the "cage", which is what stays
+editable). The studio draws the result and the exported `.glb` holds it; the `.model.json` never stores the result, and files without `modifiers` load
+and save exactly as before. Every modifier has `type`, optional `show` (drawn in the editor, default true) and `render` (baked into the `.glb`,
+default true). Not for a skinned mesh (ignored: its weights belong to its points). A painted (`texture`) shape that has modifiers draws with its flat
+colours, since its polygons are new. Units are model units.
+
+| `type` | Settings (defaults) |
+|---|---|
+| `mirror` | `axis` `"x"`/`"y"`/`"z"` (required), `center` (0), `merge` (0.01: points this close to their reflection become one), `clip` (true: points within `merge` of the plane are put exactly on it). A polygon lying in the plane is dropped (no inner wall). |
+| `subsurf` | Catmull-Clark: `levels` (1, in the editor), `renderLevels` (2, in the `.glb`), 0 to 4, `smooth` (true: smooth shading). Open borders keep to their own curve; the result stops growing at 20,000 polygons. |
+| `bevel` | `width` (1), `segments` (2, 1 to 16, a circular section), `angle` (30: only edges whose faces meet at least this many degrees apart). Edges on an open border are left alone. |
+| `solidify` | `thickness` (1), `offset` (-1 inwards, 1 outwards, 0 both), `even` (true: same thickness round corners). A closed mesh becomes a hollow shell, an open one a slab with rim walls. |
+| `array` | `count` (2, up to 64), `offset` (`[x, y, z]` distance between copies), `relative` (`[x, y, z]` times the mesh's size, added), `merge` (0: points of neighbouring copies closer than this are joined). |
+
+"Apply" in the studio bakes a modifier (and those above it) into `verts`/`polys` and removes it from the list. Code: `studio/src/lib/modifiers.ts`
+(`evaluate`), tests in `modifiers.test.ts`.
+
 Animation keys (`clips[].tracks[].keys[]`: `t`, `value`) may carry `"ease"`: `step`, `in`, `out` or `inout` (straight when absent) for how the
 value blends into the next key. The exported `.glb` bakes an eased segment into extra keys (glTF samplers are straight), so the runtime
 needs nothing new.

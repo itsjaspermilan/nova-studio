@@ -17,6 +17,8 @@
   import { applyBrush, applyGradient } from "../lib/paint";
   import { loadRaster, rasterToDataUrl } from "../lib/png";
   import { exportGlb } from "../lib/glb";
+  import { applyStack, evaluate, hasModifiers, type Modifier } from "../lib/modifiers";
+  import ModifierStack from "./ModifierStack.svelte";
   import { addClip, easeAt, findTrack, pathKey, removeClip, removeKey, samplePose, setEase, setKey, snapTime, updateClip, KEY_STEP, type Pose } from "../lib/model-anim";
   import { toBase64 } from "../lib/wav";
   import { studio } from "../lib/store.svelte";
@@ -214,7 +216,8 @@
   let outline: THREE.Box3Helper | undefined;
   let frameId = 0;
   /// `skin` is set for a mesh that bends with the parts: where its vertices are at rest, and the mesh point each one shows.
-  const meshes: { mesh: THREE.Mesh; path: Path; polyOfTriangle: number[]; skin?: { rest: Float32Array; pointOf: number[] } }[] = [];
+  // `cage`: with modifiers on, the drawn mesh is the finished result, so picking faces in edit mode uses this hidden copy of the original polygons.
+  const meshes: { mesh: THREE.Mesh; path: Path; polyOfTriangle: number[]; skin?: { rest: Float32Array; pointOf: number[] }; cage?: { mesh: THREE.Mesh; polyOfTriangle: number[] } }[] = [];
   /// Part groups by name path, with how they are authored, so a clip can pose them and put them back.
   const groups = new Map<string, { group: THREE.Group; origin: Vec3; rotation: Vec3 }>();
 
@@ -318,7 +321,8 @@
         group.rotation.set(...(part.rotation.map((d) => (d * Math.PI) / 180) as Vec3), "XYZ");
         group.name = part.name;
         part.cubes.forEach((cube, ci) => {
-          const m = meshOf(cube);
+          const shown = evaluate(cube, "view"); // modifiers applied; the cage itself is untouched
+          const m = meshOf(shown);
           const geometry = new THREE.BufferGeometry();
           geometry.setAttribute("position", new THREE.Float32BufferAttribute(m.positions, 3));
           geometry.setAttribute("normal", new THREE.Float32BufferAttribute(m.normals, 3));
@@ -326,7 +330,7 @@
           geometry.setIndex(m.indices);
           if (useTexture) {
             // Painted shapes read their own texels; the others read the white row under the picture, so their colour shows as it is.
-            const own = uvsOf(cube);
+            const own = uvsOf(shown);
             const count = m.positions.length / 3;
             const uv = new Float32Array(count * 2);
             for (let i = 0; i < count; i++) {
@@ -341,7 +345,17 @@
           const mesh = new THREE.Mesh(geometry, material);
           group.add(mesh);
           const skin = cube.shape === "mesh" && cube.skin ? { rest: new Float32Array(m.positions), pointOf: solidOf(cube).polys.flatMap((p) => p.v) } : undefined;
-          meshes.push({ mesh, path: { parts, cube: ci }, polyOfTriangle: m.polyOfTriangle, skin });
+          let cage: { mesh: THREE.Mesh; polyOfTriangle: number[] } | undefined;
+          if (shown !== cube && cube.shape === "mesh") {
+            const c = meshOf(cube);
+            const g = new THREE.BufferGeometry();
+            g.setAttribute("position", new THREE.Float32BufferAttribute(c.positions, 3));
+            g.setIndex(c.indices);
+            const hidden = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide }));
+            group.add(hidden);
+            cage = { mesh: hidden, polyOfTriangle: c.polyOfTriangle };
+          }
+          meshes.push({ mesh, path: { parts, cube: ci }, polyOfTriangle: m.polyOfTriangle, skin, cage });
         });
         parent.add(group);
         build(part.children, group, parts);
@@ -1492,8 +1506,9 @@
       }
       selEdge = null;
       const mine = meshes.find((m) => samePath(m.path, selected));
-      const hit = mine ? ray.intersectObject(mine.mesh, false)[0] : undefined;
-      const face = hit?.faceIndex != null ? mine!.polyOfTriangle[hit.faceIndex] : undefined;
+      const pick = mine?.cage ?? mine;
+      const hit = pick ? ray.intersectObject(pick.mesh, false)[0] : undefined;
+      const face = hit?.faceIndex != null ? pick!.polyOfTriangle[hit.faceIndex] : undefined;
       selFace = face ?? null;
       selVerts = face !== undefined ? [...cube!.polys![face]!.v] : e.shiftKey ? selVerts : [];
       canvas.focus();
@@ -1638,6 +1653,20 @@
   }
   function weightsOf(i: number): string {
     return (cube?.skin?.weights[i] ?? []).map(([b, w]) => `${cube!.skin!.bones[b]!.split("/").at(-1)} ${Math.round(w * 100)}%`).join(", ");
+  }
+  /// Replaces the selected element's modifier list (turning a box or round shape into a mesh first, since modifiers work on points).
+  function setModifiers(list: Modifier[]) {
+    if (!selected || !cube) return;
+    const base = cube.shape === "mesh" ? cube : toMesh(cube);
+    const next: Cube = { ...base };
+    if (list.length) next.modifiers = list;
+    else delete next.modifiers;
+    change(next);
+  }
+  /// Bakes the modifiers up to and including number `index` into the points.
+  function applyModifierAt(index: number) {
+    if (!selected || !cube) return;
+    change(applyStack(cube, index + 1), true);
   }
   function makeEditable() {
     if (!selected || !cube) return;
@@ -2105,6 +2134,13 @@
             <div class="row"><button onclick={autoSkin} title="The shape bends where parts meet, like a sleeve at the elbow, instead of staying stiff">Bend with the parts around it</button></div>
           {/if}
           {#if skinNote}<p class="dim small">{skinNote}</p>{/if}
+        {/if}
+        <h4>Modifiers</h4>
+        {#if cube.skin}
+          <p class="dim small">A mesh that bends with parts cannot have modifiers: its weights belong to its points.</p>
+        {:else}
+          <ModifierStack mods={cube.modifiers ?? []} onchange={setModifiers} onapply={applyModifierAt} />
+          {#if hasModifiers(cube) && !inEdit}<p class="dim small">Showing the finished shape. Click "Edit points" to work on the cage underneath.</p>{/if}
         {/if}
         <div class="row mirror">
           <span class="dim small">Mirror copy</span>

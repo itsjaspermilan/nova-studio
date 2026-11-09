@@ -5,6 +5,7 @@
 import { glowOf, namesOf, walk, type Clip, type Cube, type Ease, type ModelDoc, type Part, type Track, type Vec3 } from "./model-doc";
 import { BAKE_STEPS, applyEase, lerp3, slerp } from "./model-ease";
 import { FACE_CORNERS, hasVolume, meshOf as solidMesh, solidOf, type Mesh } from "./model-mesh";
+import { evaluate } from "./modifiers";
 import { boneKey, invertAffine, transformDirection, transformPoint, worldMatrices } from "./model-skin";
 import { bakeAll, uvsOf } from "./model-uv";
 import { newRaster, type Raster } from "./pixels";
@@ -23,7 +24,8 @@ function meshOf(part: Part, scale: number, tex?: Texel): PartMesh {
   const m: PartMesh = { positions: [], normals: [], colors: [], indices: [], uvs: [] };
   for (const cube of part.cubes) {
     if (isSkinned(cube)) continue; // drawn as a skinned mesh of its own
-    const one = solidMesh(cube, scale);
+    const shown = evaluate(cube, "render"); // modifiers baked in
+    const one = solidMesh(shown, scale);
     const base = m.positions.length / 3;
     m.positions.push(...one.positions);
     m.normals.push(...one.normals);
@@ -31,7 +33,7 @@ function meshOf(part: Part, scale: number, tex?: Texel): PartMesh {
     for (const i of one.indices) m.indices.push(base + i);
     if (tex) {
       // Painted shapes use their texels; the rest all point at the white texel, so their colour shows as it is.
-      const own = uvsOf(cube);
+      const own = uvsOf(shown);
       const count = one.positions.length / 3;
       for (let i = 0; i < count; i++) m.uvs.push(...(own.length ? [own[i * 2]! / tex.w, own[i * 2 + 1]! / tex.rows] : [tex.whiteU, tex.whiteV]));
     }

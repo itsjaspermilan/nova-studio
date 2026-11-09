@@ -4,6 +4,7 @@
 import * as THREE from "three";
 import { glowOf, type ModelDoc, type Part, type Vec3 } from "./model-doc";
 import { meshOf } from "./model-mesh";
+import { evaluate } from "./modifiers";
 
 const linearCache = new Map<number, number>();
 const linear = (b: number) => {
@@ -27,7 +28,7 @@ export function buildModel(doc: ModelDoc): THREE.Group {
       group.rotation.set(...radians(part.rotation), "XYZ");
       group.name = part.name;
       for (const cube of part.cubes) {
-        const m = meshOf(cube);
+        const m = meshOf(evaluate(cube, "render"));
         if (!m.indices.length) continue;
         const geometry = new THREE.BufferGeometry();
         geometry.setAttribute("position", new THREE.Float32BufferAttribute(m.positions, 3));

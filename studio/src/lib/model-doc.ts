@@ -2,6 +2,8 @@
 // `models/<name>.model.json` and exported to the `.glb` the game loads. One unit is one
 // "pixel" of the model; `scale` converts units to the game's world units on export.
 
+import { MAX_MODIFIERS, checkModifier, type Modifier } from "./modifiers";
+
 export type Vec3 = [number, number, number];
 export type Face = "east" | "west" | "up" | "down" | "south" | "north";
 export const FACES: Face[] = ["east", "west", "up", "down", "south", "north"];
@@ -50,6 +52,9 @@ export interface Cube {
   polys?: MeshFace[];
   /// Mesh only: makes the mesh bend with the model's parts.
   skin?: Skin;
+  /// Non-destructive modifiers (mirror, subdivision...), run in order on the points and polygons above, which stay the editable cage.
+  /// The viewport draws the result and the .glb holds it; see `modifiers.ts`. Ignored on a skinned mesh.
+  modifiers?: Modifier[];
   /// Present when the shape is painted with the model's texture: where its unwrapped faces sit in the picture
   /// (the top-left of its block of texels) and how many texels one model unit gets (default 1).
   /// `mirror` (a box mirrored by "Mirror copy"): bits 1, 2 and 4 for x, y and z, showing the same texels reflected.
@@ -302,6 +307,14 @@ export function parseModel(text: string): Parsed {
         }
         if (!o.texture) return `${cat} has a texture but the model has none: add "texture": { "size": [64, 64] }`;
       }
+      if (c.modifiers !== undefined) {
+        if (shape !== "mesh") return `${cat}.modifiers is only for a mesh: use "Edit points" to turn the shape into one`;
+        if (!Array.isArray(c.modifiers) || c.modifiers.length > MAX_MODIFIERS) return `${cat}.modifiers must be a list of up to ${MAX_MODIFIERS}`;
+        for (const [mi, m] of c.modifiers.entries()) {
+          const bad = checkModifier(m, `${cat}.modifiers[${mi}]`);
+          if (bad) return bad;
+        }
+      }
       if (shape === "mesh") {
         if (c.rotation?.some((n) => n !== 0)) return `${cat}.rotation is not used on a mesh: turn its points instead`;
         const bad = checkMesh(c, cat);
@@ -378,6 +391,7 @@ export function serializeModel(doc: ModelDoc): string {
       const verts = (c.verts ?? []).map((p) => `${i2}  ${vec(p)}`).join(",\n");
       const polys = (c.polys ?? []).map((f) => `${i2}  ${JSON.stringify(f)}`).join(",\n");
       parts.push(`"verts": [${verts ? `\n${verts}\n${i2}` : ""}]`, `"polys": [${polys ? `\n${polys}\n${i2}` : ""}]`);
+      if (c.modifiers?.length) parts.push(`"modifiers": [${c.modifiers.map((m) => JSON.stringify(m)).join(", ")}]`);
       if (c.skin) {
         const rows = c.skin.weights.map((w) => `${i2}  ${JSON.stringify(w.map(([b, x]) => [b, Math.round(x * 10000) / 10000]))}`).join(",\n");
         parts.push(`"skin": { "bones": ${JSON.stringify(c.skin.bones)}, "weights": [${rows ? `\n${rows}\n${i2}` : ""}] }`);
