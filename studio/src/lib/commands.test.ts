@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { CommandRegistry, formatChord, matches, parseChord, score } from "./commands";
 
 const press = (key: string, mods: Partial<{ metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean }> = {}) =>
-  ({ key, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...mods }) as KeyboardEvent;
+  ({ key, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, isTrusted: true, ...mods }) as KeyboardEvent;
 
 describe("shortcut notation", () => {
   it("reads modifiers and a key, and rejects a chord with no key", () => {
@@ -81,6 +81,17 @@ describe("the registry", () => {
     expect(r.conflicts()).toEqual([{ keys: "M-s", ids: ["file.save", "x.save2"] }]);
     off();
     expect(r.conflicts()).toEqual([]);
+  });
+
+  it("tells listeners when a command is added or removed", () => {
+    const { r } = make();
+    let n = 0;
+    const stop = r.onChange(() => n++);
+    const off = r.register({ id: "z", title: "Z", run: () => {} });
+    off();
+    stop();
+    r.register({ id: "y", title: "Y", run: () => {} });
+    expect(n).toBe(2);
   });
 
   it("lists a menu in registration order and rejects a bad shortcut", () => {

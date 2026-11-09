@@ -17,7 +17,11 @@
   import WindowButtons from "./components/WindowButtons.svelte";
   import PlayButton from "./components/PlayButton.svelte";
   import CommandPalette from "./components/CommandPalette.svelte";
-  import { commands } from "./lib/commands";
+  import MenuBar from "./components/MenuBar.svelte";
+  import { commands, sendChord } from "./lib/commands";
+  import { resolveMenus } from "./lib/menus";
+  import { commandsRev } from "./lib/commands-rev.svelte";
+  import { listenNativeMenu, syncNativeMenu } from "./lib/native-menu";
   import { fileKind } from "./lib/tree";
   import { markChrome } from "./lib/chrome";
   import { resizable } from "./lib/resize";
@@ -34,6 +38,12 @@
   };
 
   let paletteOpen = $state(false);
+  // the system menu bar follows the commands (a command becoming available greys or enables its item)
+  $effect(() => {
+    void commandsRev.n; // (commands are added after the first run)
+    const menus = resolveMenus(commands);
+    if (chrome === "mac") void syncNativeMenu(menus);
+  });
 
   onMount(() => {
     void studio.init();
@@ -50,8 +60,17 @@
       commands.register({ id: "run.play", title: "Play or stop the game", menu: "Run", icon: "player-play", keys: ["Mod+Enter"], enabled: has, run: () => void (studio.running ? studio.stop() : studio.play()) }),
       commands.register({ id: "run.playDevice", title: "Play on the device used last", menu: "Run", keys: ["Mod+Shift+Enter"], enabled: has, run: () => void (studio.running ? studio.stop() : studio.playOnPreferredDevice()) }),
       commands.register({ id: "tool.simulate", title: "Simulate the game many times", menu: "Run", enabled: has, run: () => { studio.tool = "sim"; } }),
+      // text editing is handled by the focused control itself; the menu only sends it the usual key press or edit command
+      commands.register({ id: "edit.undo", title: "Undo", menu: "Edit", icon: "arrow-back-up", keys: ["Mod+Z"], forward: true, run: () => { if (!sendChord("Mod+Z", commands.platform)) document.execCommand("undo"); } }),
+      commands.register({ id: "edit.redo", title: "Redo", menu: "Edit", icon: "arrow-forward-up", keys: ["Mod+Shift+Z"], forward: true, run: () => { if (!sendChord("Mod+Shift+Z", commands.platform)) document.execCommand("redo"); } }),
+      commands.register({ id: "edit.cut", title: "Cut", menu: "Edit", keys: ["Mod+X"], forward: true, run: () => void document.execCommand("cut") }),
+      commands.register({ id: "edit.copy", title: "Copy", menu: "Edit", keys: ["Mod+C"], forward: true, run: () => void document.execCommand("copy") }),
+      commands.register({ id: "edit.paste", title: "Paste", menu: "Edit", keys: ["Mod+V"], forward: true, run: async () => { try { document.execCommand("insertText", false, await navigator.clipboard.readText()); } catch { /* the system paste item does this on a Mac */ } } }),
+      commands.register({ id: "edit.selectAll", title: "Select all", menu: "Edit", keys: ["Mod+A"], forward: true, run: () => void document.execCommand("selectAll") }),
       commands.register({ id: "tool.storeArt", title: "Make store art", menu: "Run", help: "The app icon and the cover picture", enabled: has, run: () => { studio.tool = "art"; } }),
     ];
+    let stopMenu = () => {};
+    if (chrome === "mac") void listenNativeMenu().then((off) => (stopMenu = off));
     const keys = (e: KeyboardEvent) => {
       const cmd = commands.forEvent(e);
       if (!cmd) return;
@@ -74,6 +93,7 @@
       clearInterval(watch);
       window.removeEventListener("keydown", keys);
       for (const off of offs) off();
+      stopMenu();
       window.removeEventListener("focus", refocus);
     };
   });
@@ -95,12 +115,13 @@
   <div class="boot dim">Starting…</div>
 {:else if !studio.project}
   <div class="hubwrap">
-    {#if chrome !== "none"}<div class="hubbar winbar-pad" data-tauri-drag-region><span class="spacer" data-tauri-drag-region></span><WindowButtons /></div>{/if}
+    {#if chrome !== "none"}<div class="hubbar winbar-pad" data-tauri-drag-region>{#if chrome !== "mac"}<MenuBar />{/if}<span class="spacer" data-tauri-drag-region></span><WindowButtons /></div>{:else}<div class="hubbar"><MenuBar /></div>{/if}
     <Hub />
   </div>
 {:else}
   <div class="shell" class:no-panel={!studio.panelOpen}>
     <header class="top winbar-pad" data-tauri-drag-region>
+      {#if chrome !== "mac"}<MenuBar />{/if}
       <button class="ghost treebtn" class:on={treeOpen} onclick={toggleTree} title={treeOpen ? "Hide the project tree (⌘B)" : "Show the project tree (⌘B)"} aria-label={treeOpen ? "Hide the project tree" : "Show the project tree"} aria-pressed={treeOpen}>
         <svg viewBox="0 0 16 14" aria-hidden="true"><rect x="0.75" y="0.75" width="14.5" height="12.5" rx="2" /><path d="M5.5 1v12" />{#if treeOpen}<path class="fill" d="M1.5 1.5h3.2v11h-3.2z" />{/if}</svg>
       </button>

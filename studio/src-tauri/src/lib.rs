@@ -6,6 +6,7 @@ pub mod audio_files;
 mod debug_link;
 mod device;
 mod headless;
+mod menu;
 mod paths;
 mod project_files;
 mod recent;
@@ -415,6 +416,10 @@ fn default_projects_dir(app: AppHandle) -> Result<String, String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .on_menu_event(|app, event| {
+            // a click in the system menu bar: the page runs the command it names (src/lib/native-menu.ts)
+            let _ = tauri::Emitter::emit(app, "menu-command", event.id().as_ref().to_string());
+        })
         .setup(|app| {
             let config = app.path().app_config_dir().map_err(|e| e.to_string())?;
             app.manage(AppState {
@@ -460,6 +465,7 @@ pub fn run() {
             check_project,
             export_game,
             run_headless,
+            menu::set_menu,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Nova Studio");

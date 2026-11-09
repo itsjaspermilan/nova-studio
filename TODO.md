@@ -41,7 +41,7 @@ Blender keymap in Model. Goal: a free, all-in-one studio for making games, no st
 
 ### S1: The spine (every workspace needs it)
 - [~] Command registry (2026-11-09: `studio/src/lib/commands.ts`, 10 tests; the studio's shortcuts and the Cmd/Ctrl-K palette use it; not yet: icons in a shared set, the shortcut editor, menus and toolbars reading it): id, plain name, icon, per-OS shortcut, enabled rule, help text; menus, toolbars, context menus, palette, tooltips, shortcut editor and help search all read it.
-- [ ] Native macOS menu bar (Nova, File, Edit, View, per-workspace menu, Window, Help with search) and drawn menus on Windows (Alt access); standard shortcuts.
+- [~] Menus (2026-11-09: one layout, `lib/menus.ts`, for both): the macOS system menu bar is built by `src-tauri/src/menu.rs` (checked by listing it through accessibility in `tauri dev`: File, Edit, View, Run, Window, Help; Run greyed with no project; a menu click reaching the command is not confirmed), and drawn menus (`MenuBar.svelte`, used on Windows and in the browser preview; Undo checked in a text field in the preview). Not yet: per-workspace menus, Alt-key access, Windows run, the Edit menu's Undo and Redo through the system menu in editors.
 - [ ] Window chrome: macOS overlay title bar with native traffic lights; Windows `decorations: false` with our own caption buttons (+ snap-layout flyout, unverified until run on Windows).
 - [~] Command palette (Cmd/Ctrl-K, `CommandPalette.svelte`, checked in the browser preview; searches commands only so far) searching commands, documents, assets, Lua symbols, help, settings.
 - [ ] Keymap system: per-workspace defaults, Blender preset (default in Model), editable, conflict warnings, printable cheat sheet.

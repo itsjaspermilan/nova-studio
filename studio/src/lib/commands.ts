@@ -16,6 +16,9 @@ export interface Command {
   /// One line for the tooltip and the help search.
   help?: string;
   enabled?: () => boolean;
+  /// For commands the page itself handles with its own keys (an editor's undo, copy): the key press is left alone when it comes from the
+  /// keyboard, and running the command from a menu sends that key press to the focused control.
+  forward?: boolean;
   run: () => void | Promise<void>;
 }
 
@@ -93,16 +96,38 @@ export function score(query: string, title: string): number {
   return total;
 }
 
+/// Sends a shortcut's key press to the focused control (or the page), as if it had been typed: how a menu runs "Undo" in whichever editor has focus. Returns whether a control handled it.
+export function sendChord(text: string, platform: Platform, target: EventTarget | null = typeof document === "undefined" ? null : document.activeElement ?? document.body): boolean {
+  const c = parseChord(text);
+  const key = c.key.length === 1 ? c.key : c.key.charAt(0).toUpperCase() + c.key.slice(1);
+  // (true when a control took the key press: it called preventDefault)
+  return !(target?.dispatchEvent(new KeyboardEvent("keydown", { key: c.shift ? key.toUpperCase() : key, bubbles: true, cancelable: true, metaKey: c.mod && platform === "mac", ctrlKey: c.ctrl || (c.mod && platform !== "mac"), altKey: c.alt, shiftKey: c.shift })) ?? true);
+}
+
 export class CommandRegistry {
   private list = new Map<string, Command>();
+  private listeners = new Set<() => void>();
   constructor(public platform: Platform = detectPlatform()) {}
+
+  /// Calls `fn` whenever a command is added or removed (the menus rebuild themselves); returns a function that stops it.
+  onChange(fn: () => void): () => void {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  }
+  private changed() {
+    for (const fn of this.listeners) fn();
+  }
 
   /// Adds a command (replacing one with the same id) and returns a function that removes it.
   register(cmd: Command): () => void {
     for (const k of cmd.keys ?? []) parseChord(k); // fail early on a bad shortcut
     this.list.set(cmd.id, cmd);
+    this.changed();
     return () => {
-      if (this.list.get(cmd.id) === cmd) this.list.delete(cmd.id);
+      if (this.list.get(cmd.id) === cmd) {
+        this.list.delete(cmd.id);
+        this.changed();
+      }
     };
   }
 
@@ -129,7 +154,7 @@ export class CommandRegistry {
   /// The command a key press is for (an unavailable command does not take the key).
   forEvent(e: KeyboardEvent): Command | undefined {
     for (const cmd of this.list.values()) {
-      if (!this.isEnabled(cmd)) continue;
+      if (!this.isEnabled(cmd) || cmd.forward || !e.isTrusted) continue;
       if (cmd.keys?.some((k) => matches(e, k, this.platform))) return cmd;
     }
     return undefined;
