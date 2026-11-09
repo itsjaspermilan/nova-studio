@@ -8,6 +8,9 @@ import fs from "node:fs";
 import path from "node:path";
 
 const project = process.argv[2] ?? "examples/pine-ridge-rally";
+// Built DROP metres down and drawn DROP metres up (lib/horizon.lua): a model drawn above the engine's lift line (y 30) is not lifted by the
+// hills vertex by vertex, which would make a ring that moves with the camera shimmer as its points slide over the ground.
+const DROP = 1000;
 
 function rng(seed) {
   let a = seed >>> 0;
@@ -97,7 +100,7 @@ function glb(tris) {
     const order = facesIn ? [0, 1, 2] : [0, 2, 1];
     const nIn = facesIn ? n : n.map((x) => -x);
     const base = positions.length / 3;
-    for (const j of order) { positions.push(...p[j]); normals.push(...nIn); colors.push(...c, 1); }
+    for (const j of order) { positions.push(p[j][0], p[j][1] - DROP, p[j][2]); normals.push(...nIn); colors.push(...c, 1); }
     indices.push(base, base + 1, base + 2);
   }
   const P = new Float32Array(positions), N = new Float32Array(normals), C = new Float32Array(colors), I = new Uint32Array(indices);

@@ -1457,3 +1457,76 @@ fn free_roam_starts_an_event_in_the_world_and_comes_back_to_it() {
         "{log:?}"
     );
 }
+
+#[test]
+fn free_roam_map_fast_travels_and_sets_a_waypoint_along_the_roads() {
+    // the car starts on the Frost Pass race's marker, so the map's cursor (on the car) starts on that pin
+    let folder = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/pine-ridge-rally");
+    let scene: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(folder.join("scenes/roam.scene.json")).unwrap(),
+    )
+    .unwrap();
+    let marker = scene["objects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|o| o["kind"] == "event" && o["props"]["mode"] == "race")
+        .expect("a race marker");
+    let mut extra = serde_json::Map::new();
+    extra.insert(
+        "roam_pos".into(),
+        serde_json::json!([marker["x"], marker["z"], marker["props"]["ry"]]),
+    );
+    let mut g = load_with(extra);
+    for _ in 0..30 {
+        frame(&mut g, &[]);
+    }
+    for _ in 0..3 {
+        tap(&mut g, "key:ArrowDown");
+    }
+    frame(&mut g, &["key:Enter"]);
+    let mut log = Vec::new();
+    run_until(&mut g, &mut log, "free roam starts", 60 * 6, |l| {
+        l.iter().any(|x| x.contains("31 events"))
+    });
+    for _ in 0..60 {
+        frame(&mut g, &[]);
+    }
+    let open_map = |g: &mut Game| {
+        tap(g, "key:Escape");
+        for _ in 0..20 {
+            frame(g, &[]); // (the pause menu takes a moment before it takes presses)
+        }
+        tap(g, "key:ArrowDown"); // Resume -> Map
+        tap(g, "key:Enter");
+        for _ in 0..10 {
+            frame(g, &[]);
+        }
+    };
+    open_map(&mut g);
+    tap(&mut g, "key:KeyZ"); // A on the pin: travel there
+    let mut log = Vec::new();
+    run_until(&mut g, &mut log, "fast travel", 60 * 2, |l| {
+        l.iter().any(|x| x.starts_with("roam: fast travel to"))
+    });
+    for _ in 0..60 {
+        frame(&mut g, &[]);
+    }
+    // the map again: the cursor moved well away, Y sets a waypoint, found along the roads
+    open_map(&mut g);
+    for _ in 0..40 {
+        frame(&mut g, &["key:ArrowLeft"]);
+    }
+    for _ in 0..5 {
+        frame(&mut g, &[]);
+    }
+    tap(&mut g, "key:KeyY");
+    let mut log = g.take_log();
+    run_until(&mut g, &mut log, "a waypoint", 60, |l| {
+        l.iter().any(|x| x.starts_with("roam: waypoint "))
+    });
+    let line = log.iter().find(|x| x.starts_with("roam: waypoint ")).unwrap();
+    let metres: f64 = line["roam: waypoint ".len()..].split(' ').next().unwrap().parse().unwrap();
+    assert!(metres > 300.0, "{line}");
+    println!("{line}");
+}

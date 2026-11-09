@@ -15,6 +15,7 @@ local powerlines = require("lib.powerlines")
 local regions = require("lib.regions")
 local water = require("lib.water")
 local woods = require("lib.woods")
+local route = require("lib.route")
 local RoamFoliage = require("entities.roam_foliage")
 
 local Roam = nova.scene {}
@@ -26,6 +27,8 @@ local RESCUE_FAR = 40          -- metres from the nearest road at which the car 
 local RESCUE_OUT, RESCUE_HOLD, RESCUE_IN = 0.45, 0.2, 0.45
 local EVENT_REACH = 16         -- metres from a marker at which its prompt shows
 local GRIP = { road_asphalt = 1, road_gravel = 0.88, road_dirt = 0.88, road_snow = 0.75 }
+local ROUTE = { 64, 196, 255 }   -- the way to the waypoint, on the road, the minimap and the map
+local WAY_LINE = { color = ROUTE, width = 0.7 }
 local MODE_NAMES = { race = "Circuit race", trial = "Time trial", rally = "Rally stage", garage = "Buy and change cars" }
 
 local function index_of(list, id) for i, c in ipairs(list) do if c.id == id then return i, c end end end
@@ -136,7 +139,7 @@ function Roam:leave()
   if self.player and self.player.engine then self.player.engine:stop() end
   nova.music.volume(state.music_volume)
   nova.weather(); nova.sky(nil); nova.fog(nil); nova.shadows(nil); nova.terrain()
-  roads.clear(); course.clear(); fx.clear(); foliage.clear(); powerlines.clear(); regions.clear(); water.clear(); woods.clear()
+  route.clear(); roads.clear(); course.clear(); fx.clear(); foliage.clear(); powerlines.clear(); regions.clear(); water.clear(); woods.clear()
   nova.look(); nova.wind()
 end
 
@@ -206,8 +209,18 @@ function Roam:locate()
   end
 end
 
-function Roam:respawn()
+function Roam:respawn(to)
   local p = self.player
+  if to then
+    p:teleport(to.x, to.z, to.heading)
+    self.camera.heading = to.heading
+    self.camera.x, self.camera.z = to.x - math.sin(to.heading) * 6, to.z - math.cos(to.heading) * 6
+    self:update_camera(1)
+    self:locate()
+    local region = regions.at(to.x, to.z)
+    if region then self.region, self.blend, self.title_time = region, nil, 0; self:set_look(region, 1) end
+    return
+  end
   local r = self.road_here or { x = self.spawn.x, z = self.spawn.z, heading = self.spawn.ry or 0 }
   local n = roads.nearest(r.x, r.z)
   if n then r = { x = n.x, z = n.z, heading = n.heading } end
@@ -254,6 +267,7 @@ function Roam:update(dt)
   if not self.panel and nova.input.pressed("pause") then
     self.paused = not self.paused
     self.pause_screen = "menu"
+    nova.ui.forget("roam_pause") -- (a fresh menu: the press that paused is not also taken as Back)
     nova.pause(self.paused)
     nova.music.volume(state.music_volume * (self.paused and 0.35 or 1))
     audio.sfx("pause")
@@ -284,6 +298,13 @@ function Roam:update(dt)
   end
   p:drive(dt)
   self:locate()
+  if self.way then
+    self.way = route.follow(self.way, p.x, p.z)
+    if not self.way then
+      audio.sfx("menu_accept")
+      nova.log("roam: at the waypoint")
+    end
+  end
 
   -- Y at a marker: its details (and from there, the start)
   local e = self:event_here()
@@ -315,8 +336,8 @@ function Roam:update(dt)
     r.t = r.t + dt
     if not r.done and r.t >= RESCUE_OUT then
       r.done = true
-      self:respawn()
-      nova.log("roam: put back on the road")
+      self:respawn(r.to)
+      nova.log(r.to and string.format("roam: fast travel to %.0f, %.0f", r.to.x, r.to.z) or "roam: put back on the road")
     end
     if r.t >= RESCUE_OUT + RESCUE_HOLD + RESCUE_IN then self.rescue = nil end
   end
@@ -388,6 +409,14 @@ function Roam:draw()
   powerlines.draw(cam.x, cam.z, LOOK_FAR)
   water.draw(cam.x, math.max(cam.y + here, there + 1.2), cam.z, self.config.sun and self.config.sun.dir and -self.config.sun.dir[2] or 0.5)
   fx.draw_skids(cam.x, cam.z, 90)
+  -- the way to the waypoint: a ribbon along the middle of the road for the next stretch (the engine lays it on the hills)
+  if self.way then
+    local pts = self.way.pts
+    for i = 1, math.min(#pts - 1, 14) do
+      local a, b = pts[i], pts[i + 1]
+      nova.line3(a.x, 0.12, a.z, b.x, 0.12, b.z, WAY_LINE)
+    end
+  end
 end
 
 -- ---- what is drawn over the picture --------------------------------------------------------------------------------------------
@@ -458,6 +487,28 @@ function Roam:draw_minimap()
         end
       end
     end
+  end
+  -- the way to the waypoint, over the roads, and the waypoint (held on the rim when it is further off)
+  if self.way then
+    local pts = self.way.pts
+    for pass = 1, 2 do
+      local x1, y1 = at(p.x, p.z)
+      for i = 1, #pts do
+        local q = pts[i]
+        if (q.x - p.x) ^ 2 + (q.z - p.z) ^ 2 > reach2 then break end
+        local x2, y2 = at(q.x, q.z)
+        if (x2 - cx) ^ 2 + (y2 - cy) ^ 2 < inside2 then
+          nova.ui.line(x1, y1, x2, y2, pass == 1 and 7 or 4, pass == 1 and { 0, 0, 0, 160 } or ROUTE)
+        end
+        x1, y1 = x2, y2
+      end
+    end
+    local x, y = at(self.way.tx, self.way.tz)
+    local ex, ey = x - cx, y - cy
+    local m = math.sqrt(ex * ex + ey * ey)
+    if m > R - 8 then x, y = cx + ex * (R - 8) / m, cy + ey * (R - 8) / m end
+    nova.ui.rect(x - 7, y - 7, 14, 14, C.ink)
+    nova.ui.rect(x - 5, y - 5, 10, 10, ROUTE)
   end
   local far = {}
   for _, e in ipairs(nova.all("event")) do
@@ -660,6 +711,22 @@ function Roam:draw_map()
     ui.say(x, y - 22, string.upper(r.title), F.heavy, 24, C.white, { align = "center", valign = "middle", spacing = 0.06 })
     nova.ui.rect(x - 7, y - 7, 14, 14, C.white)
   end
+  -- the way to the waypoint, and the waypoint
+  if self.way then
+    local pts = self.way.pts
+    local step = self.map_zoom > 1 and 1 or 2
+    for pass = 1, 2 do
+      local x1, y1 = at(p.x, p.z)
+      for i = 1, #pts, step do
+        local x2, y2 = at(pts[i].x, pts[i].z)
+        nova.ui.line(x1, y1, x2, y2, pass == 1 and 9 or 5, pass == 1 and { 0, 0, 0, 200 } or ROUTE)
+        x1, y1 = x2, y2
+      end
+    end
+    local wx, wy = at(self.way.tx, self.way.tz)
+    nova.ui.rect(wx - 9, wy - 9, 18, 18, C.ink)
+    nova.ui.rect(wx - 6, wy - 6, 12, 12, ROUTE)
+  end
   -- the events, and the one nearest the cursor named
   local near, nd = nil, math.huge
   for _, e in ipairs(nova.all("event")) do
@@ -680,9 +747,11 @@ function Roam:draw_map()
   local qx, qy = at(cur.x, cur.z)
   nova.ui.line(qx - 12, qy, qx + 12, qy, 2, C.white)
   nova.ui.line(qx, qy - 12, qx, qy + 12, 2, C.white)
+  local pin -- (the event under the cursor, if any)
   if near then
     local ex, ey = at(near.x, near.z)
     if (ex - qx) ^ 2 + (ey - qy) ^ 2 < 40 * 40 then
+      pin = near
       local words = near.mode == "garage" and "Garage  ·  Buy and change cars" or (course_info(near.course).name .. "  ·  " .. MODE_NAMES[near.mode])
       local tw = nova.ui.text_width(words, { font = F.heavy, size = 20 })
       nova.ui.rect(ex + 12, ey - 15, tw + 20, 30, { C.ground[1], C.ground[2], C.ground[3], 230 })
@@ -697,8 +766,35 @@ function Roam:draw_map()
     nova.ui.rect(kx, 460, 12, 12, MAP_EVENT[kind])
     kx = kx + 18 + ui.say(kx + 18, 466, MODE_NAMES[kind], F.medium, 16.5, C.white, { valign = "middle" }) + 22
   end
-  ui.hints({ { "pad_stick_l", "Look" }, { "pad_l", "" }, { "pad_r", "Zoom" }, { "pad_b", "Back" } })
-  if nova.input.pressed("b") or nova.input.pressed("menu_back") then audio.sfx("menu_back"); self.pause_screen = "menu" end
+  local hints = { { "pad_stick_l", "Look" }, { "pad_l", "" }, { "pad_r", "Zoom" } }
+  if pin then hints[#hints + 1] = { "pad_a", "Travel here" } end
+  local clear = self.way and ((self.way.tx - cur.x) ^ 2 + (self.way.tz - cur.z) ^ 2) * k * k < 30 * 30
+  hints[#hints + 1] = { "pad_y", clear and "Clear waypoint" or "Set waypoint" }
+  hints[#hints + 1] = { "pad_b", "Back" }
+  ui.hints(hints)
+  if nova.input.pressed("b") or nova.input.pressed("menu_back") then audio.sfx("menu_back"); self.pause_screen = "menu"
+  elseif pin and nova.input.pressed("a") then
+    -- fast travel: the screen goes dark, the car is put at the event's marker, facing its start, and the game goes on
+    audio.sfx("menu_accept")
+    self.paused, self.pause_screen = false, "menu"
+    nova.pause(false)
+    nova.music.volume(state.music_volume)
+    self.rescue = { t = RESCUE_OUT, to = { x = pin.x, z = pin.z, heading = pin.ry or 0 } }
+  elseif nova.input.pressed("event") then
+    if clear then
+      self.way = nil
+      audio.sfx("menu_back")
+      nova.log("roam: waypoint cleared")
+    else
+      local tx, tz = cur.x, cur.z
+      if pin then tx, tz = pin.x, pin.z end
+      local t0 = nova.clock()
+      self.way = route.find(p.x, p.z, tx, tz)
+      audio.sfx(self.way and "menu_accept" or "menu_back")
+      if self.way then nova.log(string.format("roam: waypoint %.0f m along the roads (%d points, found in %.1f ms)", self.way.length, #self.way.pts, (nova.clock() - t0) * 1000))
+      else nova.log(string.format("roam: no way by road to %.0f, %.0f", tx, tz)) end
+    end
+  end
 end
 
 return Roam

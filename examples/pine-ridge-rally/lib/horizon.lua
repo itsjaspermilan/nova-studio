@@ -23,7 +23,11 @@ function horizon.draw(cx, cz, kind)
   local sx, sz = math.floor(cx / 16 + 0.5) * 16, math.floor(cz / 16 + 0.5) * 16
   nova.model(ground, sx, 0, sz, ground_opts)
   -- the mountains: two rings of faceted ridges round the camera (scripts/rally/skyline.mjs), a different range for each country
-  nova.model("skyline_" .. (kind == "desert" and "desert" or kind == "snow" and "snow" or kind == "night" and "night" or "forest"), cx, -2, cz, ground_opts)
+  -- (built 1000 m down and drawn 1000 m up, above the engine's lift line, so the ring is not lifted point by point by the hills it slides
+  -- over as the camera moves, which made its faces shimmer; the whole ring sits on the ground under the camera instead, eased)
+  local ground_y = nova.terrain_height(cx, cz)
+  horizon.y = (horizon.y and math.abs(ground_y - horizon.y) < 40) and horizon.y + (ground_y - horizon.y) * 0.05 or ground_y
+  nova.model("skyline_" .. (kind == "desert" and "desert" or kind == "snow" and "snow" or kind == "night" and "night" or "forest"), cx, horizon.y - 2 + 1000, cz, ground_opts)
   local t = nova.time() * 0.012
   for i = 1, #clouds do
     local c = clouds[i]
