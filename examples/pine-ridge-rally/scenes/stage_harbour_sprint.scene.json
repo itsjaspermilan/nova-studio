@@ -919,7 +919,155 @@
       "z": 94.6,
       "props": { "ry": 5.294, "sx": 1.04, "tint": [233, 226.5, 220] }
     },
-    { "kind": "guardrail", "x": 6.2, "y": 0, "z": 100.1, "props": { "ry": -0.01 } },
+    { "kind": "guardrail", "x": 6.1, "y": 0, "z": 104.1, "props": { "ry": -0.032 } },
+    { "kind": "guardrail", "x": 5.7, "y": 0, "z": 109.6, "props": { "ry": -0.123 } },
+    { "kind": "guardrail", "x": 3.7, "y": 0, "z": 114.6, "props": { "ry": -0.642 } },
+    { "kind": "guardrail", "x": 0.1, "y": 0, "z": 118.9, "props": { "ry": -0.744 } },
+    { "kind": "guardrail", "x": -4.1, "y": 0, "z": 122.4, "props": { "ry": -1.01 } },
+    { "kind": "guardrail", "x": -9.1, "y": 0, "z": 124.9, "props": { "ry": -1.23 } },
+    { "kind": "guardrail", "x": -14.5, "y": 0, "z": 126, "props": { "ry": -1.497 } },
+    { "kind": "guardrail", "x": -72.6, "y": 0, "z": 113.8, "props": { "ry": -1.55 } },
+    { "kind": "guardrail", "x": -78.2, "y": 0, "z": 114.2, "props": { "ry": -1.447 } },
+    { "kind": "guardrail", "x": -83.3, "y": 0, "z": 115.9, "props": { "ry": -1.057 } },
+    { "kind": "guardrail", "x": -88, "y": 0, "z": 119.1, "props": { "ry": -0.895 } },
+    { "kind": "guardrail", "x": -91.8, "y": 0, "z": 123.1, "props": { "ry": -0.609 } },
+    { "kind": "guardrail", "x": -94.4, "y": 0, "z": 128, "props": { "ry": -0.405 } },
+    { "kind": "guardrail", "x": -95.9, "y": 0, "z": 133.3, "props": { "ry": -0.113 } },
+    { "kind": "guardrail", "x": -96.2, "y": 0, "z": 138.8, "props": { "ry": -0.017 } },
+    { "kind": "guardrail", "x": -96.2, "y": 0, "z": 241.9, "props": { "ry": 0.02 } },
+    { "kind": "guardrail", "x": -95.8, "y": 0, "z": 247.4, "props": { "ry": 0.116 } },
+    { "kind": "guardrail", "x": -94.3, "y": 0, "z": 252.7, "props": { "ry": 0.451 } },
+    { "kind": "guardrail", "x": -91.4, "y": 0, "z": 257.4, "props": { "ry": 0.653 } },
+    { "kind": "guardrail", "x": -87.4, "y": 0, "z": 261.3, "props": { "ry": 0.926 } },
+    { "kind": "guardrail", "x": -82.7, "y": 0, "z": 264.3, "props": { "ry": 1.105 } },
+    { "kind": "guardrail", "x": -77.5, "y": 0, "z": 265.8, "props": { "ry": 1.454 } },
+    { "kind": "guardrail", "x": -71.9, "y": 0, "z": 266.2, "props": { "ry": 1.552 } },
+    { "kind": "guardrail", "x": 40, "y": 0, "z": 251.8, "props": { "ry": 1.56 } },
+    { "kind": "guardrail", "x": 45.6, "y": 0, "z": 251.9, "props": { "ry": 1.536 } },
+    { "kind": "guardrail", "x": 51, "y": 0, "z": 252.9, "props": { "ry": 1.228 } },
+    { "kind": "guardrail", "x": 56, "y": 0, "z": 255.3, "props": { "ry": 1.014 } },
+    { "kind": "guardrail", "x": 60.4, "y": 0, "z": 258.8, "props": { "ry": 0.799 } },
+    { "kind": "guardrail", "x": 64, "y": 0, "z": 263, "props": { "ry": 0.606 } },
+    { "kind": "guardrail", "x": 66.7, "y": 0, "z": 267.8, "props": { "ry": 0.423 } },
+    { "kind": "guardrail", "x": 68, "y": 0, "z": 273.1, "props": { "ry": 0.061 } },
+    { "kind": "guardrail", "x": 68.2, "y": 0, "z": 278.7, "props": { "ry": 0.016 } },
+    { "kind": "guardrail", "x": 68.1, "y": 0, "z": 375.5, "props": { "ry": -0.051 } },
+    { "kind": "guardrail", "x": 67.2, "y": 0, "z": 381, "props": { "ry": -0.257 } },
+    { "kind": "guardrail", "x": 65.1, "y": 0, "z": 386.1, "props": { "ry": -0.526 } },
+    { "kind": "guardrail", "x": 62.1, "y": 0, "z": 390.8, "props": { "ry": -0.617 } },
+    { "kind": "guardrail", "x": 32.8, "y": 0, "z": 402.5, "props": { "ry": -0.619 } },
+    { "kind": "guardrail", "x": 29.8, "y": 0, "z": 407.2, "props": { "ry": -0.545 } },
+    { "kind": "guardrail", "x": 27.6, "y": 0, "z": 412.3, "props": { "ry": -0.249 } },
+    { "kind": "guardrail", "x": 26.7, "y": 0, "z": 417.7, "props": { "ry": -0.074 } },
+    { "kind": "guardrail", "x": 26.8, "y": 0, "z": 423.3, "props": { "ry": 0.114 } },
+    { "kind": "guardrail", "x": 28, "y": 0, "z": 428.7, "props": { "ry": 0.296 } },
+    { "kind": "guardrail", "x": 30.3, "y": 0, "z": 433.7, "props": { "ry": 0.573 } },
+    { "kind": "guardrail", "x": 33.5, "y": 0, "z": 438.4, "props": { "ry": 0.626 } },
+    { "kind": "guardrail", "x": 62.4, "y": 0, "z": 449.6, "props": { "ry": 0.621 } },
+    { "kind": "guardrail", "x": 65.3, "y": 0, "z": 454.3, "props": { "ry": 0.465 } },
+    { "kind": "guardrail", "x": 67.3, "y": 0, "z": 459.5, "props": { "ry": 0.283 } },
+    { "kind": "guardrail", "x": 68.1, "y": 0, "z": 465, "props": { "ry": 0.026 } },
+    { "kind": "guardrail", "x": 68.1, "y": 0, "z": 586.4, "props": { "ry": -0.029 } },
+    { "kind": "guardrail", "x": 67.4, "y": 0, "z": 591.9, "props": { "ry": -0.247 } },
+    { "kind": "guardrail", "x": 65.1, "y": 0, "z": 597, "props": { "ry": -0.591 } },
+    { "kind": "guardrail", "x": 61.6, "y": 0, "z": 601.2, "props": { "ry": -0.806 } },
+    { "kind": "guardrail", "x": 57.2, "y": 0, "z": 604.6, "props": { "ry": -1.012 } },
+    { "kind": "guardrail", "x": 52.3, "y": 0, "z": 607, "props": { "ry": -1.232 } },
+    { "kind": "guardrail", "x": 46.8, "y": 0, "z": 608.1, "props": { "ry": -1.517 } },
+    { "kind": "guardrail", "x": 41.2, "y": 0, "z": 608.3, "props": { "ry": -1.552 } },
+    { "kind": "guardrail", "x": 24.8, "y": 0, "z": 608.2, "props": { "ry": -1.604 } },
+    { "kind": "guardrail", "x": 19.2, "y": 0, "z": 607.8, "props": { "ry": -1.695 } },
+    { "kind": "guardrail", "x": 13.9, "y": 0, "z": 606.3, "props": { "ry": -2.015 } },
+    { "kind": "guardrail", "x": 9.2, "y": 0, "z": 603.4, "props": { "ry": -2.198 } },
+    { "kind": "guardrail", "x": 5.1, "y": 0, "z": 599.8, "props": { "ry": -2.405 } },
+    { "kind": "guardrail", "x": 2.1, "y": 0, "z": 595.2, "props": { "ry": -2.715 } },
+    { "kind": "guardrail", "x": 0.4, "y": 0, "z": 589.9, "props": { "ry": -2.977 } },
+    { "kind": "guardrail", "x": 0.6, "y": 0, "z": 467.5, "props": { "ry": -2.985 } },
+    { "kind": "guardrail", "x": -0.3, "y": 0, "z": 462, "props": { "ry": -2.944 } },
+    { "kind": "guardrail", "x": -2.3, "y": 0, "z": 456.9, "props": { "ry": -2.624 } },
+    { "kind": "guardrail", "x": -5.4, "y": 0, "z": 452.3, "props": { "ry": -2.47 } },
+    { "kind": "guardrail", "x": -9.2, "y": 0, "z": 448.2, "props": { "ry": -2.299 } },
+    { "kind": "guardrail", "x": -13.6, "y": 0, "z": 444.9, "props": { "ry": -2.123 } },
+    { "kind": "guardrail", "x": -18.6, "y": 0, "z": 442.5, "props": { "ry": -1.935 } },
+    { "kind": "guardrail", "x": -24, "y": 0, "z": 441.2, "props": { "ry": -1.678 } },
+    { "kind": "guardrail", "x": -29.6, "y": 0, "z": 440.7, "props": { "ry": -1.643 } },
+    { "kind": "guardrail", "x": -174.9, "y": 0, "z": 435.1, "props": { "ry": -1.602 } },
+    { "kind": "guardrail", "x": -180.2, "y": 0, "z": 435, "props": { "ry": -1.549 } },
+    { "kind": "guardrail", "x": -185.6, "y": 0, "z": 436, "props": { "ry": -1.24 } },
+    { "kind": "guardrail", "x": -190.7, "y": 0, "z": 438.2, "props": { "ry": -1.072 } },
+    { "kind": "guardrail", "x": -195.3, "y": 0, "z": 441.3, "props": { "ry": -0.894 } },
+    { "kind": "guardrail", "x": -199.3, "y": 0, "z": 445.2, "props": { "ry": -0.705 } },
+    { "kind": "guardrail", "x": -202.5, "y": 0, "z": 449.7, "props": { "ry": -0.524 } },
+    { "kind": "guardrail", "x": -204.9, "y": 0, "z": 454.7, "props": { "ry": -0.358 } },
+    { "kind": "guardrail", "x": -206, "y": 0, "z": 460.1, "props": { "ry": -0.065 } },
+    { "kind": "guardrail", "x": -206.2, "y": 0, "z": 465.4, "props": { "ry": -0.02 } },
+    { "kind": "guardrail", "x": -206.2, "y": 0, "z": 610.8, "props": { "ry": 0.01 } },
+    { "kind": "guardrail", "x": -206.1, "y": 0, "z": 616.4, "props": { "ry": 0.044 } },
+    { "kind": "guardrail", "x": -205, "y": 0, "z": 621.8, "props": { "ry": 0.349 } },
+    { "kind": "guardrail", "x": -202.5, "y": 0, "z": 626.8, "props": { "ry": 0.588 } },
+    { "kind": "guardrail", "x": -199.3, "y": 0, "z": 631.3, "props": { "ry": 0.639 } },
+    { "kind": "guardrail", "x": -174.2, "y": 0, "z": 644, "props": { "ry": 0.617 } },
+    { "kind": "guardrail", "x": -171.5, "y": 0, "z": 648.3, "props": { "ry": 0.512 } },
+    { "kind": "guardrail", "x": -169.5, "y": 0, "z": 653.4, "props": { "ry": 0.253 } },
+    { "kind": "guardrail", "x": -168.7, "y": 0, "z": 658.9, "props": { "ry": 0.034 } },
+    { "kind": "guardrail", "x": -169.1, "y": 0, "z": 664.4, "props": { "ry": -0.176 } },
+    { "kind": "guardrail", "x": -170.6, "y": 0, "z": 669.7, "props": { "ry": -0.395 } },
+    { "kind": "guardrail", "x": -173.3, "y": 0, "z": 674.6, "props": { "ry": -0.6 } },
+    { "kind": "guardrail", "x": -176.2, "y": 0, "z": 678.8, "props": { "ry": -0.638 } },
+    { "kind": "guardrail", "x": -201.1, "y": 0, "z": 691.1, "props": { "ry": -0.625 } },
+    { "kind": "guardrail", "x": -203.9, "y": 0, "z": 695.5, "props": { "ry": -0.551 } },
+    { "kind": "guardrail", "x": -205.8, "y": 0, "z": 700.6, "props": { "ry": -0.135 } },
+    { "kind": "guardrail", "x": -206.2, "y": 0, "z": 705.8, "props": { "ry": -0.013 } },
+    { "kind": "guardrail", "x": -208.2, "y": 0, "z": 842.4, "props": { "ry": 0.019 } },
+    { "kind": "guardrail", "x": -207.8, "y": 0, "z": 848, "props": { "ry": 0.108 } },
+    { "kind": "guardrail", "x": -206.3, "y": 0, "z": 853.2, "props": { "ry": 0.474 } },
+    { "kind": "guardrail", "x": -203.4, "y": 0, "z": 858, "props": { "ry": 0.607 } },
+    { "kind": "guardrail", "x": -199.7, "y": 0, "z": 862.1, "props": { "ry": 0.867 } },
+    { "kind": "guardrail", "x": -195.4, "y": 0, "z": 865.7, "props": { "ry": 0.855 } },
+    { "kind": "guardrail", "x": -190.5, "y": 0, "z": 867.8, "props": { "ry": 1.488 } },
+    { "kind": "guardrail", "x": -185, "y": 0, "z": 868.1, "props": { "ry": 1.536 } },
+    { "kind": "guardrail", "x": -38.3, "y": 0, "z": 851.8, "props": { "ry": 1.56 } },
+    { "kind": "guardrail", "x": -33, "y": 0, "z": 851.9, "props": { "ry": 1.526 } },
+    { "kind": "guardrail", "x": -27.7, "y": 0, "z": 853.2, "props": { "ry": 1.128 } },
+    { "kind": "guardrail", "x": -22.9, "y": 0, "z": 856, "props": { "ry": 0.976 } },
+    { "kind": "guardrail", "x": -18.7, "y": 0, "z": 859.6, "props": { "ry": 0.737 } },
+    { "kind": "guardrail", "x": -15.4, "y": 0, "z": 864, "props": { "ry": 0.545 } },
+    { "kind": "guardrail", "x": -13, "y": 0, "z": 869, "props": { "ry": 0.345 } },
+    { "kind": "guardrail", "x": -11.9, "y": 0, "z": 874.4, "props": { "ry": 0.053 } },
+    { "kind": "guardrail", "x": -11.7, "y": 0, "z": 879.7, "props": { "ry": 0.01 } },
+    { "kind": "guardrail", "x": -12, "y": 0, "z": 966.5, "props": { "ry": -0.065 } },
+    { "kind": "guardrail", "x": -12.9, "y": 0, "z": 971.9, "props": { "ry": -0.262 } },
+    { "kind": "guardrail", "x": -15.1, "y": 0, "z": 977, "props": { "ry": -0.57 } },
+    { "kind": "guardrail", "x": -18.6, "y": 0, "z": 981.3, "props": { "ry": -0.795 } },
+    { "kind": "guardrail", "x": -22.9, "y": 0, "z": 984.7, "props": { "ry": -1.003 } },
+    { "kind": "guardrail", "x": -27.9, "y": 0, "z": 987, "props": { "ry": -1.276 } },
+    { "kind": "guardrail", "x": -33.4, "y": 0, "z": 988, "props": { "ry": -1.504 } },
+    { "kind": "guardrail", "x": -55.8, "y": 0, "z": 971.8, "props": { "ry": -1.539 } },
+    { "kind": "guardrail", "x": -61.3, "y": 0, "z": 972.4, "props": { "ry": -1.393 } },
+    { "kind": "guardrail", "x": -66.5, "y": 0, "z": 974.1, "props": { "ry": -1.107 } },
+    { "kind": "guardrail", "x": -71.3, "y": 0, "z": 977, "props": { "ry": -0.945 } },
+    { "kind": "guardrail", "x": -75.3, "y": 0, "z": 980.7, "props": { "ry": -0.726 } },
+    { "kind": "guardrail", "x": -78, "y": 0, "z": 985.4, "props": { "ry": -0.319 } },
+    { "kind": "guardrail", "x": -79.3, "y": 0, "z": 990.8, "props": { "ry": -0.138 } },
+    { "kind": "guardrail", "x": -70.2, "y": 0, "z": 1063.3, "props": { "ry": -0.144 } },
+    { "kind": "guardrail", "x": -71.5, "y": 0, "z": 1068.7, "props": { "ry": -0.308 } },
+    { "kind": "guardrail", "x": -73.8, "y": 0, "z": 1073.7, "props": { "ry": -0.568 } },
+    { "kind": "guardrail", "x": -77.1, "y": 0, "z": 1078.1, "props": { "ry": -0.728 } },
+    { "kind": "guardrail", "x": -81.1, "y": 0, "z": 1082.1, "props": { "ry": -0.826 } },
+    { "kind": "guardrail", "x": -85.4, "y": 0, "z": 1085.6, "props": { "ry": -0.966 } },
+    { "kind": "guardrail", "x": -90.3, "y": 0, "z": 1088.3, "props": { "ry": -1.179 } },
+    { "kind": "guardrail", "x": -95.6, "y": 0, "z": 1089.8, "props": { "ry": -1.408 } },
+    { "kind": "guardrail", "x": -101.1, "y": 0, "z": 1090.6, "props": { "ry": -1.435 } },
+    { "kind": "guardrail", "x": -237.9, "y": 0, "z": 1089.3, "props": { "ry": -1.42 } },
+    { "kind": "guardrail", "x": -243.2, "y": 0, "z": 1090.3, "props": { "ry": -1.358 } },
+    { "kind": "guardrail", "x": -248.4, "y": 0, "z": 1092.2, "props": { "ry": -1.078 } },
+    { "kind": "guardrail", "x": -253.2, "y": 0, "z": 1095.1, "props": { "ry": -0.963 } },
+    { "kind": "guardrail", "x": -257.6, "y": 0, "z": 1098.6, "props": { "ry": -0.846 } },
+    { "kind": "guardrail", "x": -261.5, "y": 0, "z": 1102.5, "props": { "ry": -0.712 } },
+    { "kind": "guardrail", "x": -264.8, "y": 0, "z": 1107, "props": { "ry": -0.585 } },
+    { "kind": "guardrail", "x": -267.6, "y": 0, "z": 1111.8, "props": { "ry": -0.464 } },
+    { "kind": "guardrail", "x": -269.4, "y": 0, "z": 1117, "props": { "ry": -0.209 } },
+    { "kind": "guardrail", "x": -270.4, "y": 0, "z": 1122.4, "props": { "ry": -0.144 } },
     { "kind": "tires", "x": 7.6, "y": 0, "z": 100.1 },
     { "kind": "sign_chevron", "x": 6, "y": 0, "z": 100.1, "props": { "ry": 3.132 } },
     {
@@ -950,7 +1098,6 @@
       "z": 97.3,
       "props": { "ry": 2.221, "sx": 0.89, "tint": [226, 221.5, 217] }
     },
-    { "kind": "guardrail", "x": 5.7, "y": 0, "z": 112, "props": { "ry": -0.322 } },
     {
       "kind": "nk_night_pineround_e",
       "x": 20.2,
@@ -981,7 +1128,6 @@
       "z": 222.2,
       "props": { "ry": 1.141, "sx": 1.17, "tint": [254, 247, 240] }
     },
-    { "kind": "guardrail", "x": -2, "y": 0, "z": 121.2, "props": { "ry": -0.881 } },
     { "kind": "tires", "x": -1.1, "y": 0, "z": 122.3 },
     {
       "kind": "nk_rock_tallF",
@@ -997,7 +1143,6 @@
       "z": 97,
       "props": { "ry": 1.842, "sx": 0.95, "tint": [254, 248.5, 243] }
     },
-    { "kind": "guardrail", "x": -12.8, "y": 0, "z": 126.1, "props": { "ry": -1.444 } },
     {
       "kind": "pine_dark",
       "x": -24.4,
@@ -1097,7 +1242,6 @@
       "z": 92.9,
       "props": { "ry": 2.684, "sx": 0.97, "tint": [222, 220.5, 219] }
     },
-    { "kind": "guardrail", "x": -73.7, "y": 0, "z": 113.8, "props": { "ry": -1.553 } },
     { "kind": "sign_chevron", "x": -73.7, "y": 0, "z": 114, "props": { "ry": 1.589 } },
     { "kind": "lamp", "x": -80.4, "y": 0, "z": 112.9, "props": { "ry": 0.243 } },
     {
@@ -1128,7 +1272,6 @@
       "z": 28.7,
       "props": { "ry": 6.1, "sx": 1.07, "tint": [243, 241.5, 240] }
     },
-    { "kind": "guardrail", "x": -85.3, "y": 0, "z": 116.9, "props": { "ry": -0.96 } },
     { "kind": "tires", "x": -86.1, "y": 0, "z": 115.8 },
     {
       "kind": "nk_night_pinetall_a",
@@ -1165,7 +1308,6 @@
       "z": 123.2,
       "props": { "ry": 4.061, "sx": 0.84, "tint": [240, 233, 226] }
     },
-    { "kind": "guardrail", "x": -93.9, "y": 0, "z": 126.2, "props": { "ry": -0.499 } },
     {
       "kind": "nk_night_pinetall_c",
       "x": -74.9,
@@ -1194,7 +1336,6 @@
       "z": 136.5,
       "props": { "ry": 2.426, "sx": 1.29, "tint": [221, 217.5, 214] }
     },
-    { "kind": "guardrail", "x": -96.2, "y": 0, "z": 137.8, "props": { "ry": -0.015 } },
     { "kind": "tires", "x": -97.6, "y": 0, "z": 137.8 },
     {
       "kind": "nk_night_pinetall_a",
@@ -1438,7 +1579,6 @@
       "props": { "ry": 2.126, "sx": 0.82, "tint": [235, 227.5, 220] }
     },
     { "kind": "lamp", "x": -82.7, "y": 0, "z": 232.9, "props": { "ry": -1.569 } },
-    { "kind": "guardrail", "x": -96.3, "y": 0, "z": 237.9, "props": { "ry": 0.007 } },
     { "kind": "sign_chevron", "x": -96, "y": 0, "z": 243, "props": { "ry": 3.159 } },
     {
       "kind": "nk_rock_largeC",
@@ -1454,7 +1594,6 @@
       "z": 251.2,
       "props": { "ry": 2.723, "sx": 0.95, "tint": [237, 229.5, 222] }
     },
-    { "kind": "guardrail", "x": -96, "y": 0, "z": 249.2, "props": { "ry": 0.215 } },
     {
       "kind": "nk_rock_largeC",
       "x": -102.1,
@@ -1476,7 +1615,6 @@
       "z": 338.2,
       "props": { "ry": 2.359, "sx": 0.82, "tint": [245, 236.5, 228] }
     },
-    { "kind": "guardrail", "x": -89.5, "y": 0, "z": 259.9, "props": { "ry": 0.798 } },
     { "kind": "tires", "x": -90.4, "y": 0, "z": 260.9 },
     {
       "kind": "nk_rock_tallB",
@@ -1492,7 +1630,6 @@
       "z": 297.7,
       "props": { "ry": 3.157, "sx": 1.21, "tint": [233, 231, 229] }
     },
-    { "kind": "guardrail", "x": -79.2, "y": 0, "z": 266, "props": { "ry": 1.368 } },
     {
       "kind": "nk_night_pinetall_a",
       "x": -74.1,
@@ -1508,7 +1645,6 @@
       "z": 374.8,
       "props": { "ry": 3.521, "sx": 0.83, "tint": [236, 233.5, 231] }
     },
-    { "kind": "guardrail", "x": -68, "y": 0, "z": 266.3, "props": { "ry": 1.564 } },
     {
       "kind": "bush",
       "x": -62.9,
@@ -1715,7 +1851,6 @@
       "z": 282.6,
       "props": { "ry": 0.519, "sx": 1.24, "tint": [249, 244, 239] }
     },
-    { "kind": "guardrail", "x": 42.2, "y": 0, "z": 251.8, "props": { "ry": 1.557 } },
     {
       "kind": "pine_dark",
       "x": 64.3,
@@ -1739,7 +1874,6 @@
       "z": 274.7,
       "props": { "ry": 2.19, "sx": 1.23, "tint": [240, 234.5, 229] }
     },
-    { "kind": "guardrail", "x": 54.1, "y": 0, "z": 254, "props": { "ry": 1.089 } },
     { "kind": "tires", "x": 54.8, "y": 0, "z": 252.8 },
     {
       "kind": "nk_night_pinetall_c",
@@ -1762,7 +1896,6 @@
       "z": 263,
       "props": { "ry": 0.218, "sx": 1.29, "tint": [252, 250.5, 249] }
     },
-    { "kind": "guardrail", "x": 64.4, "y": 0, "z": 263.1, "props": { "ry": 0.607 } },
     {
       "kind": "bush",
       "x": 89,
@@ -1777,7 +1910,6 @@
       "z": 276.9,
       "props": { "ry": 4.012, "sx": 0.87, "tint": [239, 232.5, 226] }
     },
-    { "kind": "guardrail", "x": 68.2, "y": 0, "z": 276.5, "props": { "ry": 0.022 } },
     { "kind": "tires", "x": 69.6, "y": 0, "z": 276.5 },
     {
       "kind": "bush",
@@ -1980,7 +2112,6 @@
       "z": 391.9,
       "props": { "ry": 0.525, "sx": 0.98, "tint": [230, 225.5, 221] }
     },
-    { "kind": "guardrail", "x": 68.1, "y": 0, "z": 377.7, "props": { "ry": -0.123 } },
     { "kind": "tires", "x": 69.5, "y": 0, "z": 377.8 },
     {
       "kind": "pine_dark",
@@ -2003,7 +2134,6 @@
       "z": 310.3,
       "props": { "ry": 2.665, "sx": 1.14, "tint": [221, 216.5, 212] }
     },
-    { "kind": "guardrail", "x": 63.1, "y": 0, "z": 389.5, "props": { "ry": -0.596 } },
     { "kind": "sign_chevron", "x": 62.9, "y": 0, "z": 389.4, "props": { "ry": 2.546 } },
     {
       "kind": "bush",
@@ -2090,7 +2220,6 @@
       "z": 481,
       "props": { "ry": 1.825, "sx": 0.83, "tint": [245, 240.5, 236] }
     },
-    { "kind": "guardrail", "x": 31.5, "y": 0, "z": 404.3, "props": { "ry": -0.596 } },
     { "kind": "tires", "x": 30.3, "y": 0, "z": 403.5 },
     { "kind": "sign_chevron", "x": 31.7, "y": 0, "z": 404.4, "props": { "ry": 2.546 } },
     {
@@ -2114,7 +2243,6 @@
       "z": 419,
       "props": { "ry": 0.372, "sx": 1.3, "tint": [249, 245.5, 242] }
     },
-    { "kind": "guardrail", "x": 26.4, "y": 0, "z": 417.3, "props": { "ry": -0.088 } },
     {
       "kind": "nk_night_pineround_a",
       "x": 69.8,
@@ -2143,7 +2271,6 @@
       "z": 414.3,
       "props": { "ry": 4.756, "sx": 0.84, "tint": [228, 223, 218] }
     },
-    { "kind": "guardrail", "x": 28.7, "y": 0, "z": 431.2, "props": { "ry": 0.435 } },
     { "kind": "tires", "x": 27.4, "y": 0, "z": 431.8 },
     {
       "kind": "nk_night_pineround_a",
@@ -2194,7 +2321,6 @@
       "z": 382.5,
       "props": { "ry": 4.32, "sx": 0.88, "tint": [246, 241.5, 237] }
     },
-    { "kind": "guardrail", "x": 35.3, "y": 0, "z": 440.9, "props": { "ry": 0.64 } },
     { "kind": "lamp", "x": 37.4, "y": 0, "z": 445.6, "props": { "ry": 2.22 } },
     {
       "kind": "nk_night_pineround_e",
@@ -2217,7 +2343,6 @@
       "z": 462.6,
       "props": { "ry": 4.598, "sx": 1.01, "tint": [240, 235, 230] }
     },
-    { "kind": "guardrail", "x": 60.5, "y": 0, "z": 447, "props": { "ry": 0.641 } },
     {
       "kind": "nk_night_pineround_e",
       "x": 140.3,
@@ -2253,7 +2378,6 @@
       "z": 504.5,
       "props": { "ry": 0.053, "sx": 1.35, "tint": [226, 217.5, 209] }
     },
-    { "kind": "guardrail", "x": 66.7, "y": 0, "z": 457.2, "props": { "ry": 0.394 } },
     { "kind": "tires", "x": 68, "y": 0, "z": 456.6 },
     { "kind": "sign_chevron", "x": 66.5, "y": 0, "z": 457.2, "props": { "ry": 3.535 } },
     {
@@ -2270,7 +2394,6 @@
       "z": 466.8,
       "props": { "ry": 0.236, "sx": 1.21, "tint": [242, 235.5, 229] }
     },
-    { "kind": "guardrail", "x": 68.2, "y": 0, "z": 468.2, "props": { "ry": 0.01 } },
     {
       "kind": "nk_night_pinetall_a",
       "x": 99.5,
@@ -2612,7 +2735,6 @@
       "z": 587.1,
       "props": { "ry": 3.936, "sx": 0.89, "tint": [247, 246.5, 246] }
     },
-    { "kind": "guardrail", "x": 68.1, "y": 0, "z": 589, "props": { "ry": -0.095 } },
     {
       "kind": "nk_night_pineround_e",
       "x": 72,
@@ -2643,7 +2765,6 @@
       "z": 579.8,
       "props": { "ry": 5.042, "sx": 0.98, "tint": [224, 224, 224] }
     },
-    { "kind": "guardrail", "x": 62.6, "y": 0, "z": 600.8, "props": { "ry": -0.753 } },
     { "kind": "tires", "x": 63.6, "y": 0, "z": 601.7 },
     {
       "kind": "nk_night_pinetall_c",
@@ -2666,7 +2787,6 @@
       "z": 627.3,
       "props": { "ry": 5.753, "sx": 1.23, "tint": [246, 244, 242] }
     },
-    { "kind": "guardrail", "x": 49.6, "y": 0, "z": 608, "props": { "ry": -1.386 } },
     {
       "kind": "nk_night_pinesmall_a",
       "x": 44.5,
@@ -2674,7 +2794,6 @@
       "z": 582.9,
       "props": { "ry": 5.338, "sx": 1.04, "tint": [234, 233, 232] }
     },
-    { "kind": "guardrail", "x": 38.1, "y": 0, "z": 608.3, "props": { "ry": -1.562 } },
     {
       "kind": "nk_night_pinetall_a",
       "x": 26.5,
@@ -2682,7 +2801,6 @@
       "z": 744.2,
       "props": { "ry": 3.463, "sx": 0.89, "tint": [238, 230.5, 223] }
     },
-    { "kind": "guardrail", "x": 27.9, "y": 0, "z": 608.3, "props": { "ry": -1.584 } },
     {
       "kind": "nk_rock_largeC",
       "x": 22.2,
@@ -2698,7 +2816,6 @@
       "z": 572.7,
       "props": { "ry": 1.543, "sx": 1, "tint": [253, 246, 239] }
     },
-    { "kind": "guardrail", "x": 15.6, "y": 0, "z": 607.3, "props": { "ry": -1.879 } },
     { "kind": "tires", "x": 15.2, "y": 0, "z": 608.7 },
     {
       "kind": "nk_night_pinetall_a",
@@ -2728,7 +2845,6 @@
       "z": 604.5,
       "props": { "ry": 4.103, "sx": 1.13, "tint": [238, 235, 232] }
     },
-    { "kind": "guardrail", "x": 3.7, "y": 0, "z": 598.7, "props": { "ry": -2.499 } },
     {
       "kind": "pine_dark",
       "x": 22,
@@ -2736,7 +2852,6 @@
       "z": 580.6,
       "props": { "ry": 0.464, "sx": 0.94, "tint": [247, 240.5, 234] }
     },
-    { "kind": "guardrail", "x": -0.1, "y": 0, "z": 586.8, "props": { "ry": -2.992 } },
     { "kind": "tires", "x": -1.5, "y": 0, "z": 587 },
     {
       "kind": "pine_dark",
@@ -2988,7 +3103,6 @@
       "props": { "ry": 3.968, "sx": 0.99, "tint": [246, 245.5, 245] }
     },
     { "kind": "sign_chevron", "x": 0.9, "y": 0, "z": 470.4, "props": { "ry": 0.147 } },
-    { "kind": "guardrail", "x": 0.3, "y": 0, "z": 465.3, "props": { "ry": -2.978 } },
     { "kind": "tires", "x": 1.7, "y": 0, "z": 465 },
     {
       "kind": "nk_night_pineround_a",
@@ -2997,7 +3111,6 @@
       "z": 488.6,
       "props": { "ry": 3.648, "sx": 0.85, "tint": [240, 237.5, 235] }
     },
-    { "kind": "guardrail", "x": -4.6, "y": 0, "z": 452.9, "props": { "ry": -2.488 } },
     { "kind": "sign_chevron", "x": -4.8, "y": 0, "z": 453, "props": { "ry": 0.654 } },
     {
       "kind": "pine_dark",
@@ -3021,7 +3134,6 @@
       "z": 438.7,
       "props": { "ry": 6.031, "sx": 0.84, "tint": [223, 222.5, 222] }
     },
-    { "kind": "guardrail", "x": -14.6, "y": 0, "z": 444, "props": { "ry": -2.071 } },
     { "kind": "tires", "x": -13.9, "y": 0, "z": 442.8 },
     {
       "kind": "nk_night_pinesmall_a",
@@ -3030,7 +3142,6 @@
       "z": 495.8,
       "props": { "ry": 4.682, "sx": 1.34, "tint": [254, 251.5, 249] }
     },
-    { "kind": "guardrail", "x": -27.3, "y": 0, "z": 440.8, "props": { "ry": -1.653 } },
     {
       "kind": "pine_dark",
       "x": -42.4,
@@ -3360,7 +3471,6 @@
       "z": 314.7,
       "props": { "ry": 0.478, "sx": 1.3, "tint": [245, 238, 231] }
     },
-    { "kind": "guardrail", "x": -177.7, "y": 0, "z": 435, "props": { "ry": -1.584 } },
     { "kind": "tires", "x": -177.6, "y": 0, "z": 433.6 },
     {
       "kind": "nk_rock_largeC",
@@ -3383,7 +3493,6 @@
       "z": 456,
       "props": { "ry": 4.955, "sx": 1.3, "tint": [243, 238.5, 234] }
     },
-    { "kind": "guardrail", "x": -190.1, "y": 0, "z": 437.7, "props": { "ry": -1.087 } },
     { "kind": "sign_chevron", "x": -190, "y": 0, "z": 437.9, "props": { "ry": 2.055 } },
     {
       "kind": "bush",
@@ -3399,7 +3508,6 @@
       "z": 455.9,
       "props": { "ry": 5.639, "sx": 1, "tint": [247, 241.5, 236] }
     },
-    { "kind": "guardrail", "x": -199.8, "y": 0, "z": 445.4, "props": { "ry": -0.683 } },
     { "kind": "tires", "x": -200.9, "y": 0, "z": 444.5 },
     {
       "kind": "nk_night_pinesmall_a",
@@ -3436,7 +3544,6 @@
       "z": 460.9,
       "props": { "ry": 4.676, "sx": 1.11, "tint": [226, 221.5, 217] }
     },
-    { "kind": "guardrail", "x": -205.8, "y": 0, "z": 456.5, "props": { "ry": -0.235 } },
     { "kind": "lamp", "x": -207.4, "y": 0, "z": 462.7, "props": { "ry": 1.536 } },
     {
       "kind": "bush",
@@ -3445,7 +3552,6 @@
       "z": 465.8,
       "props": { "ry": 3.014, "sx": 0.99, "tint": [252, 249.5, 247] }
     },
-    { "kind": "guardrail", "x": -206.3, "y": 0, "z": 467.8, "props": { "ry": -0.014 } },
     {
       "kind": "bush",
       "x": -219.9,
@@ -3808,7 +3914,6 @@
       "z": 608.5,
       "props": { "ry": 2.209, "sx": 0.87, "tint": [251, 246.5, 242] }
     },
-    { "kind": "guardrail", "x": -206.3, "y": 0, "z": 608, "props": { "ry": 0.005 } },
     {
       "kind": "bush",
       "x": -225,
@@ -3844,7 +3949,6 @@
       "z": 642.5,
       "props": { "ry": 2.978, "sx": 0.83, "tint": [223, 216, 209] }
     },
-    { "kind": "guardrail", "x": -206, "y": 0, "z": 619, "props": { "ry": 0.172 } },
     { "kind": "sign_chevron", "x": -205.8, "y": 0, "z": 618.9, "props": { "ry": 3.314 } },
     {
       "kind": "nk_rock_largeA",
@@ -3854,7 +3958,6 @@
       "props": { "ry": 6.146, "sx": 1.07, "tint": [220, 215.5, 211] }
     },
     { "kind": "lamp", "x": -205, "y": 0, "z": 625.3, "props": { "ry": 2.065 } },
-    { "kind": "guardrail", "x": -200.7, "y": 0, "z": 629.5, "props": { "ry": 0.625 } },
     { "kind": "tires", "x": -201.8, "y": 0, "z": 630.3 },
     {
       "kind": "nk_night_pinetall_a",
@@ -3941,7 +4044,6 @@
       "z": 614,
       "props": { "ry": 4.896, "sx": 0.97, "tint": [249, 243.5, 238] }
     },
-    { "kind": "guardrail", "x": -172.4, "y": 0, "z": 646.6, "props": { "ry": 0.564 } },
     {
       "kind": "nk_night_pinetall_a",
       "x": -189.1,
@@ -3951,7 +4053,6 @@
     },
     { "kind": "sign_chevron", "x": -169.5, "y": 0, "z": 652.3, "props": { "ry": 3.466 } },
     { "kind": "lamp", "x": -168.2, "y": 0, "z": 651.9, "props": { "ry": -1.247 } },
-    { "kind": "guardrail", "x": -168.3, "y": 0, "z": 659, "props": { "ry": 0.025 } },
     { "kind": "tires", "x": -166.9, "y": 0, "z": 659 },
     {
       "kind": "nk_night_pinesmall_a",
@@ -3981,7 +4082,6 @@
       "z": 624.7,
       "props": { "ry": 0.47, "sx": 1.21, "tint": [242, 239.5, 237] }
     },
-    { "kind": "guardrail", "x": -171.2, "y": 0, "z": 671.6, "props": { "ry": -0.484 } },
     {
       "kind": "nk_night_pinetall_a",
       "x": -115,
@@ -4017,7 +4117,6 @@
       "z": 614.8,
       "props": { "ry": 1.024, "sx": 0.85, "tint": [224, 222, 220] }
     },
-    { "kind": "guardrail", "x": -177.6, "y": 0, "z": 680.6, "props": { "ry": -0.643 } },
     {
       "kind": "bush",
       "x": -180,
@@ -4033,7 +4132,6 @@
       "z": 716.8,
       "props": { "ry": 2.054, "sx": 1.19, "tint": [242, 241.5, 241] }
     },
-    { "kind": "guardrail", "x": -199.6, "y": 0, "z": 689.1, "props": { "ry": -0.636 } },
     { "kind": "tires", "x": -200.8, "y": 0, "z": 688.3 },
     {
       "kind": "nk_rock_tallF",
@@ -4077,7 +4175,6 @@
       "z": 694.4,
       "props": { "ry": 4.061, "sx": 1.15, "tint": [220, 213.5, 207] }
     },
-    { "kind": "guardrail", "x": -205.4, "y": 0, "z": 697.7, "props": { "ry": -0.355 } },
     {
       "kind": "pine_dark",
       "x": -107,
@@ -4093,7 +4190,6 @@
       "z": 706.6,
       "props": { "ry": 3.858, "sx": 0.83, "tint": [228, 221.5, 215] }
     },
-    { "kind": "guardrail", "x": -206.2, "y": 0, "z": 708.3, "props": { "ry": -0.009 } },
     { "kind": "tires", "x": -207.6, "y": 0, "z": 708.3 },
     {
       "kind": "nk_night_pinetall_a",
@@ -4386,7 +4482,6 @@
       "z": 838.1,
       "props": { "ry": 4.784, "sx": 1.32, "tint": [244, 236.5, 229] }
     },
-    { "kind": "guardrail", "x": -208.3, "y": 0, "z": 838.4, "props": { "ry": 0.007 } },
     { "kind": "lamp", "x": -209.4, "y": 0, "z": 843.5, "props": { "ry": 1.586 } },
     {
       "kind": "nk_night_pinetall_c",
@@ -4402,7 +4497,6 @@
       "z": 851.7,
       "props": { "ry": 1.481, "sx": 0.98, "tint": [221, 218.5, 216] }
     },
-    { "kind": "guardrail", "x": -208, "y": 0, "z": 849.8, "props": { "ry": 0.188 } },
     { "kind": "tires", "x": -209.3, "y": 0, "z": 850.1 },
     {
       "kind": "bush",
@@ -4419,7 +4513,6 @@
       "props": { "ry": 0.877, "sx": 1.36, "tint": [228, 220.5, 213] }
     },
     { "kind": "sign_chevron", "x": -205.4, "y": 0, "z": 854.7, "props": { "ry": 3.703 } },
-    { "kind": "guardrail", "x": -202.1, "y": 0, "z": 860.1, "props": { "ry": 0.728 } },
     {
       "kind": "nk_night_pineround_e",
       "x": -160.1,
@@ -4455,7 +4548,6 @@
       "z": 877.6,
       "props": { "ry": 3.759, "sx": 1.01, "tint": [230, 227.5, 225] }
     },
-    { "kind": "guardrail", "x": -193.5, "y": 0, "z": 867.5, "props": { "ry": 1.235 } },
     { "kind": "tires", "x": -194, "y": 0, "z": 868.9 },
     {
       "kind": "nk_night_pineround_e",
@@ -4471,7 +4563,6 @@
       "z": 842.7,
       "props": { "ry": 3.122, "sx": 1.32, "tint": [239, 239, 239] }
     },
-    { "kind": "guardrail", "x": -180.9, "y": 0, "z": 868.2, "props": { "ry": 1.561 } },
     {
       "kind": "nk_night_pineround_e",
       "x": -175.2,
@@ -4778,7 +4869,6 @@
       "z": 877.5,
       "props": { "ry": 3.234, "sx": 1.34, "tint": [237, 232, 227] }
     },
-    { "kind": "guardrail", "x": -40.8, "y": 0, "z": 851.8, "props": { "ry": 1.563 } },
     {
       "kind": "pine_dark",
       "x": -34,
@@ -4807,7 +4897,6 @@
       "z": 876.2,
       "props": { "ry": 0.366, "sx": 1.28, "tint": [245, 239, 233] }
     },
-    { "kind": "guardrail", "x": -29.1, "y": 0, "z": 852.1, "props": { "ry": 1.352 } },
     { "kind": "tires", "x": -28.8, "y": 0, "z": 850.7 },
     {
       "kind": "nk_night_pineround_e",
@@ -4838,7 +4927,6 @@
       "z": 930.2,
       "props": { "ry": 2.001, "sx": 1.26, "tint": [233, 225.5, 218] }
     },
-    { "kind": "guardrail", "x": -19.7, "y": 0, "z": 858.2, "props": { "ry": 0.828 } },
     { "kind": "lamp", "x": -14.1, "y": 0, "z": 863.1, "props": { "ry": -1.009 } },
     {
       "kind": "pine_dark",
@@ -4847,7 +4935,6 @@
       "z": 839.1,
       "props": { "ry": 4.267, "sx": 0.96, "tint": [240, 232, 224] }
     },
-    { "kind": "guardrail", "x": -12.1, "y": 0, "z": 870.4, "props": { "ry": 0.227 } },
     { "kind": "tires", "x": -10.8, "y": 0, "z": 870.1 },
     {
       "kind": "nk_night_pinesmall_a",
@@ -4856,7 +4943,6 @@
       "z": 884.6,
       "props": { "ry": 5.563, "sx": 1.08, "tint": [234, 225.5, 217] }
     },
-    { "kind": "guardrail", "x": -11.7, "y": 0, "z": 882.2, "props": { "ry": 0.006 } },
     {
       "kind": "pine_dark",
       "x": 57.5,
@@ -5013,7 +5099,6 @@
       "z": 958,
       "props": { "ry": 1.396, "sx": 1.21, "tint": [230, 224, 218] }
     },
-    { "kind": "guardrail", "x": -11.7, "y": 0, "z": 962.4, "props": { "ry": -0.011 } },
     { "kind": "sign_chevron", "x": -11.9, "y": 0, "z": 962.4, "props": { "ry": 3.131 } },
     {
       "kind": "bush",
@@ -5022,7 +5107,6 @@
       "z": 977,
       "props": { "ry": 1.395, "sx": 1.3, "tint": [244, 241.5, 239] }
     },
-    { "kind": "guardrail", "x": -13.6, "y": 0, "z": 974.8, "props": { "ry": -0.425 } },
     { "kind": "tires", "x": -12.4, "y": 0, "z": 975.4 },
     {
       "kind": "pine_dark",
@@ -5039,7 +5123,6 @@
       "z": 996.7,
       "props": { "ry": 4.621, "sx": 1.17, "tint": [246, 239, 232] }
     },
-    { "kind": "guardrail", "x": -24.1, "y": 0, "z": 985.9, "props": { "ry": -1.108 } },
     {
       "kind": "nk_rock_largeC",
       "x": -29.8,
@@ -5076,7 +5159,6 @@
       "z": 969.5,
       "props": { "ry": 1.078, "sx": 0.99, "tint": [223, 217, 211] }
     },
-    { "kind": "guardrail", "x": -37.4, "y": 0, "z": 988.2, "props": { "ry": -1.563 } },
     { "kind": "tires", "x": -37.4, "y": 0, "z": 989.6 },
     {
       "kind": "nk_night_pineround_a",
@@ -5113,7 +5195,6 @@
       "z": 1106.7,
       "props": { "ry": 2.095, "sx": 1.31, "tint": [219, 212, 205] }
     },
-    { "kind": "guardrail", "x": -58.2, "y": 0, "z": 971.8, "props": { "ry": -1.484 } },
     { "kind": "tires", "x": -58.3, "y": 0, "z": 970.4 },
     {
       "kind": "nk_rock_largeC",
@@ -5129,7 +5210,6 @@
       "z": 1040.3,
       "props": { "ry": 3.866, "sx": 1.23, "tint": [230, 230, 230] }
     },
-    { "kind": "guardrail", "x": -71.2, "y": 0, "z": 976.7, "props": { "ry": -0.976 } },
     { "kind": "sign_chevron", "x": -71.1, "y": 0, "z": 976.9, "props": { "ry": 2.165 } },
     {
       "kind": "nk_night_pineround_a",
@@ -5181,7 +5261,6 @@
       "z": 987,
       "props": { "ry": 0.651, "sx": 1.35, "tint": [252, 245, 238] }
     },
-    { "kind": "guardrail", "x": -79, "y": 0, "z": 988.4, "props": { "ry": -0.185 } },
     { "kind": "tires", "x": -80.4, "y": 0, "z": 988.1 },
     {
       "kind": "nk_rock_largeC",
@@ -5388,7 +5467,6 @@
       "z": 1057.4,
       "props": { "ry": 1.312, "sx": 0.88, "tint": [230, 229, 228] }
     },
-    { "kind": "guardrail", "x": -69.8, "y": 0, "z": 1060.6, "props": { "ry": -0.129 } },
     {
       "kind": "pine_dark",
       "x": 32.1,
@@ -5418,7 +5496,6 @@
       "z": 1029.1,
       "props": { "ry": 1.9, "sx": 0.91, "tint": [224, 219.5, 215] }
     },
-    { "kind": "guardrail", "x": -72.9, "y": 0, "z": 1073.2, "props": { "ry": -0.506 } },
     { "kind": "tires", "x": -71.7, "y": 0, "z": 1073.9 },
     { "kind": "sign_chevron", "x": -73.1, "y": 0, "z": 1073.1, "props": { "ry": 2.636 } },
     {
@@ -5435,7 +5512,6 @@
       "z": 1066.2,
       "props": { "ry": 1.905, "sx": 1.04, "tint": [221, 213.5, 206] }
     },
-    { "kind": "guardrail", "x": -81.2, "y": 0, "z": 1082.5, "props": { "ry": -0.827 } },
     {
       "kind": "nk_night_pinetall_c",
       "x": -79.7,
@@ -5471,7 +5547,6 @@
       "z": 1062.4,
       "props": { "ry": 4.781, "sx": 0.92, "tint": [238, 233, 228] }
     },
-    { "kind": "guardrail", "x": -92.8, "y": 0, "z": 1089.3, "props": { "ry": -1.303 } },
     { "kind": "tires", "x": -92.5, "y": 0, "z": 1090.7 },
     {
       "kind": "bush",
@@ -5494,7 +5569,6 @@
       "z": 957.9,
       "props": { "ry": 3.466, "sx": 0.87, "tint": [246, 245, 244] }
     },
-    { "kind": "guardrail", "x": -103.8, "y": 0, "z": 1091, "props": { "ry": -1.443 } },
     {
       "kind": "bush",
       "x": -111.1,
@@ -5717,7 +5791,6 @@
       "z": 1208.3,
       "props": { "ry": 0.998, "sx": 1.07, "tint": [252, 247, 242] }
     },
-    { "kind": "guardrail", "x": -235.3, "y": 0, "z": 1088.9, "props": { "ry": -1.431 } },
     {
       "kind": "nk_rock_tallB",
       "x": -237.4,
@@ -5761,7 +5834,6 @@
       "z": 985.5,
       "props": { "ry": 1.084, "sx": 1.35, "tint": [249, 247.5, 246] }
     },
-    { "kind": "guardrail", "x": -247, "y": 0, "z": 1091.1, "props": { "ry": -1.187 } },
     {
       "kind": "nk_night_pinetall_a",
       "x": -227.9,
@@ -5783,7 +5855,6 @@
       "z": 993.6,
       "props": { "ry": 0.4, "sx": 1.27, "tint": [224, 217, 210] }
     },
-    { "kind": "guardrail", "x": -257.4, "y": 0, "z": 1098.2, "props": { "ry": -0.858 } },
     { "kind": "tires", "x": -258.3, "y": 0, "z": 1097.1 },
     {
       "kind": "nk_stump",
@@ -5806,7 +5877,6 @@
       "z": 1099.8,
       "props": { "ry": 4.895, "sx": 1.03, "tint": [251, 247.5, 244] }
     },
-    { "kind": "guardrail", "x": -265.4, "y": 0, "z": 1107.5, "props": { "ry": -0.578 } },
     {
       "kind": "nk_night_pinetall_a",
       "x": -157.7,
@@ -5829,7 +5899,6 @@
       "z": 1098.6,
       "props": { "ry": 3.37, "sx": 0.95, "tint": [243, 242.5, 242] }
     },
-    { "kind": "guardrail", "x": -270, "y": 0, "z": 1119.8, "props": { "ry": -0.167 } },
     { "kind": "tires", "x": -271.4, "y": 0, "z": 1119.6 },
     {
       "kind": "nk_night_pineround_e",

@@ -11,6 +11,7 @@ local audio = require("lib.audio")
 local haptics = require("lib.haptics")
 local transition = require("lib.transition")
 local ui = require("lib.ui")
+local powerlines = require("lib.powerlines")
 
 local Roam = nova.scene {}
 local C, F = ui.color, ui.font
@@ -115,7 +116,7 @@ function Roam:leave()
   if self.player and self.player.engine then self.player.engine:stop() end
   nova.music.volume(state.music_volume)
   nova.weather(); nova.sky(nil); nova.fog(nil); nova.shadows(nil); nova.terrain()
-  roads.clear(); course.clear(); fx.clear(); foliage.clear()
+  roads.clear(); course.clear(); fx.clear(); foliage.clear(); powerlines.clear()
   nova.look(); nova.wind()
 end
 
@@ -303,6 +304,7 @@ function Roam:draw()
     nova.camera(cam.x, math.max(cam.y + here, there + 1.2), cam.z, cam.tx, cam.ty + there, cam.tz, cam.fov)
   end
   horizon.draw(cam.x, cam.z, self.config.horizon)
+  powerlines.draw(cam.x, cam.z, LOOK_FAR)
   fx.draw_skids(cam.x, cam.z, 90)
 end
 

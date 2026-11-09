@@ -297,6 +297,56 @@ function crowd(course, spec, out) {
   }
 }
 
+/// The barrier pieces on the outside of the bends (2026-11-08): for each stretch of bend (the curvature past 0.0075, turning the same way),
+/// the line 8.2 m out from the middle (more where the road is wider) is walked and a piece laid every `length` metres, each from one
+/// spot on the line to the next, so that the pieces meet end to end. (They were put at every other road point,
+/// 10 m apart along the middle: 6 m pieces with gaps of 4 m and more on the outside of a bend.) Returns { x, z, ry } for each piece.
+export function railPieces(line, curv, open, half, length = 5.6) { // (a 6 m piece every 5.6 m: they overlap a little, so a sharp bend shows no gap at its joins)
+  const n = line.length;
+  const bendAt = (i) => (Math.abs(curv[i]) > 0.0075 ? Math.sign(curv[i]) : 0);
+  // a loop is walked from a spot that is not in a bend, so that no stretch is cut in two where the list wraps round
+  let start = 0;
+  if (!open) { while (start < n && bendAt(start) !== 0) start++; if (start === n) start = 0; }
+  const out = [];
+  let run = [];
+  let runSide = 0;
+  const finish = () => {
+    if (run.length >= 2) {
+      const d = [0];
+      for (let k = 1; k < run.length; k++) d.push(d[k - 1] + Math.hypot(run[k].x - run[k - 1].x, run[k].z - run[k - 1].z));
+      const total = d[d.length - 1];
+      const at = (s) => {
+        let k = 1;
+        while (k < run.length - 1 && d[k] < s) k++;
+        const t = Math.max(0, Math.min(1, (s - d[k - 1]) / Math.max(1e-6, d[k] - d[k - 1])));
+        return { x: run[k - 1].x + (run[k].x - run[k - 1].x) * t, z: run[k - 1].z + (run[k].z - run[k - 1].z) * t };
+      };
+      // as many whole pieces as fit, centred on the stretch
+      const count = Math.max(1, Math.round(total / length));
+      const from = (total - count * length) / 2;
+      for (let m = 0; m < count; m++) {
+        const a = at(from + m * length), b = at(from + (m + 1) * length);
+        out.push({ x: (a.x + b.x) / 2, z: (a.z + b.z) / 2, ry: Math.atan2(b.x - a.x, b.z - a.z) });
+      }
+    }
+    run = [];
+    runSide = 0;
+  };
+  for (let j = 0; j < n; j++) {
+    const i = open ? j : (start + j) % n;
+    const side = bendAt(i);
+    if (side === 0 || (runSide !== 0 && side !== runSide)) finish();
+    if (side === 0) continue;
+    runSide = side;
+    const p = line[i];
+    const nx = -p.tz * side, nz = p.tx * side;
+    const off = 8.2 + (half(i) - ROAD_WIDTH / 2);
+    run.push({ x: p.x + nx * off, z: p.z + nz * off });
+  }
+  finish();
+  return out;
+}
+
 export function layout(spec) {
   const spacing = 5;
   const open = !!spec.open;
@@ -389,7 +439,6 @@ export function layout(spec) {
       const side = k > 0 ? 1 : -1; // a bend that turns towards +x (left, heading +z) has its outside on the right: (-tz, tx)
       const nx = -p.tz * side, nz = p.tx * side;
       const e = half(i) - ROAD_WIDTH / 2; // (how much wider than 12 m the road is here: negative where it is narrow)
-      objects.push(obj(spec.rail ?? "guardrail", p.x + nx * (8.2 + e), p.z + nz * (8.2 + e), p.ry));
       if (Math.abs(k) > 0.014 && i % 4 === 0) objects.push(obj("tires", p.x + nx * (9.6 + e), p.z + nz * (9.6 + e), 0));
     }
     if (Math.abs(k) > 0.011 && Math.abs(curv[(i + n - 4) % n]) < 0.008 && i % 3 === 0) {
@@ -397,6 +446,7 @@ export function layout(spec) {
       const e = half(i) - ROAD_WIDTH / 2;
       objects.push(obj("sign_chevron", p.x + -p.tz * side * (8 + e), p.z + p.tx * side * (8 + e), p.ry + (k > 0 ? Math.PI : Math.PI)));
     }
+    if (i === n - 1) for (const r of railPieces(line, curv, open, half)) objects.push(obj(spec.rail ?? "guardrail", r.x, r.z, r.ry));
     // street lamps along the outer edge every 40 m, turned to face the road (the lamp's arm points along its +z)
     if (spec.lamps && i % 8 === 3) {
       const side = i % 16 === 3 ? 1 : -1, nx = -p.tz * side, nz = p.tx * side, d = 9.4 + (half(i) - ROAD_WIDTH / 2);

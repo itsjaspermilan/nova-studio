@@ -82,13 +82,16 @@ for (const [n, LINK] of LINKS.entries()) {
     }
   }
   writeFileSync(join(GAME, `models/road_${LINK.id}.glb`), roadGlb(LINK.control, "road_gravel", true, []));
-  // power poles every 40 m, 11 m to the road's right, the wires running along it (a pole's arms lie across the line)
+  // a power line beside it: a pole every 40 m, 11 m to the road's right (lib/powerlines.lua turns the poles along the line and strings the
+  // wires); the poles in the town are left out
+  const poles: [number, number][] = [];
   for (let i = 4; i < linkLine.length - 4; i += 8) {
     const p = linkLine[i]!;
     const x = p.x + p.tz * -11, z = p.z - p.tx * -11;
-    if (x > TOWN_BOX.x0 && x < TOWN_BOX.x1 && z > TOWN_BOX.z0 && z < TOWN_BOX.z1) continue;
-    scenery.push({ o: { kind: "ck_electricity_pole", x: r1(x), y: 0, z: r1(z), props: { ry: Math.round(p.ry * 1000) / 1000 } }, own: LINK.id });
+    if (x > TOWN_BOX.x0 - 10 && x < TOWN_BOX.x1 + 10 && z > TOWN_BOX.z0 && z < TOWN_BOX.z1) continue;
+    poles.push([r1(x), r1(z)]);
   }
+  objects.push({ kind: "power_line", x: poles[0]![0], y: 0, z: poles[0]![1], props: { pts: poles } });
 }
 
 // ---- the town -------------------------------------------------------------------------------------------------------------------
