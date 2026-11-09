@@ -5,6 +5,7 @@
   import * as THREE from "three";
   import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
   import { applyNavigation } from "../lib/view-nav";
+  import NavButtons from "./NavButtons.svelte";
   import { input } from "../lib/input-settings.svelte";
   import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
   import type { ModelDoc } from "../lib/model-doc";
@@ -430,6 +431,7 @@
 
 <div class="view" bind:this={box}>
   <canvas bind:this={canvas} aria-label="3D scene view"></canvas>
+  <NavButtons controls={() => controls} camera={() => camera} height={() => canvas?.clientHeight ?? 400} />
 </div>
 
 <style>

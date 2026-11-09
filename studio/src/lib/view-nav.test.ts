@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
 import { looksLikeTrackpad } from "./input-settings.svelte";
-import { orbitBy, panBy, wheelAction, zoomBy } from "./view-nav";
+import { navHint, orbitBy, panBy, wheelAction, zoomBy } from "./view-nav";
 
 const camera = () => {
   const c = new THREE.PerspectiveCamera(45, 1.5, 0.1, 1000);
@@ -60,5 +60,13 @@ describe("telling a trackpad from a mouse wheel", () => {
     expect(looksLikeTrackpad([{ deltaX: 0, deltaY: 3, deltaMode: 1 }])).toBe(false);
     expect(looksLikeTrackpad([])).toBeNull();
     expect(looksLikeTrackpad([{ deltaX: 0, deltaY: 7, deltaMode: 0 }])).toBeNull();
+  });
+});
+
+describe("the hint under a 3D view", () => {
+  it("says how to move for the scheme in use", () => {
+    expect(navHint("trackpad")).toContain("Two fingers");
+    expect(navHint("mouse")).toContain("right-drag");
+    expect(navHint("pen")).toContain("side button");
   });
 });

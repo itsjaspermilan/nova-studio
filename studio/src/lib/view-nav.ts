@@ -89,3 +89,10 @@ export function applyNavigation(controls: OrbitControls, getCamera: () => ViewCa
     controls.enableZoom = true;
   };
 }
+
+/// The one-line reminder of how to move the view for a scheme (shown under the 3D views).
+export function navHint(scheme: NavScheme): string {
+  if (scheme === "trackpad") return "Two fingers turn the view · Shift and two fingers move it · pinch to zoom · or use the buttons at the top right";
+  if (scheme === "pen") return "Drag to turn · the pen's side button or Shift moves the view · scroll or pinch to zoom · or use the buttons at the top right";
+  return "Drag to turn · right-drag or Shift-drag to move · scroll to zoom · or use the buttons at the top right";
+}

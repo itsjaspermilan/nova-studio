@@ -3,7 +3,8 @@
   import { onMount, untrack } from "svelte";
   import * as THREE from "three";
   import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-  import { applyNavigation } from "../lib/view-nav";
+  import { applyNavigation, navHint } from "../lib/view-nav";
+  import NavButtons from "./NavButtons.svelte";
   import { input } from "../lib/input-settings.svelte";
   import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
   import {
@@ -1981,6 +1982,7 @@
           <p class="dim pad">3D drawing is not available in this window (WebGL could not start).</p>
         {/if}
         <canvas bind:this={canvas} tabindex="0" aria-label="3D view" onpointerdown={pointerDown} onpointermove={pointerMove} onpointerup={pointerUp}></canvas>
+        <NavButtons controls={() => controls} camera={() => camera} height={() => canvas?.clientHeight ?? 400} />
         {#if moveHint}
           <div class="movehint" style:left="{moveHint.x + 16}px" style:top="{moveHint.y - 14}px" role="status">
             <strong>{moveHint.text}</strong>{#if moveHint.how}<span>{moveHint.how}</span>{/if}
@@ -2017,7 +2019,7 @@
       {:else if inEdit}
         <p class="hint dim">Points: click a face or an edge to pick it (⇧-click a dot adds it) · drag a handle's <b style="color:#ff6b6b">X</b> <b style="color:#7ad67a">Y</b> <b style="color:#6cb2ff">Z</b> arrow to move along one axis, or a square to move on that plane · drag a dot itself to move it on the grid plane you are looking at (X, Y or Z while dragging keeps it to one axis) · arrows and PageUp/PageDown nudge · Esc leaves point mode</p>
       {:else}
-        <p class="hint dim">Drag to orbit · right-drag to pan · scroll to zoom · click a shape to select (⌘ or ⇧ adds more) · drag the handles, or W E R P for move, turn, resize, pivot · arrows and PageUp/PageDown nudge (⇧ for 4) · ⌘D duplicates · Delete removes · Z changes the view</p>
+        <p class="hint dim">{navHint(input.navigation)} · click a shape to select (⌘ or ⇧ adds more) · drag the handles, or W E R P for move, turn, resize, pivot · arrows and PageUp/PageDown nudge (⇧ for 4) · ⌘D duplicates · Delete removes · Z changes the view</p>
       {/if}
     </div>
 
