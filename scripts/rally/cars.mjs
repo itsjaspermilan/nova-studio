@@ -22,7 +22,7 @@ const along = (nodes, z) => {
   return nodes[nodes.length - 1][1];
 };
 
-const GLASS_LOW = "#141d29", GLASS_HIGH = "#4b7ba3", FRAME = "#15171c";
+const GLASS = { 5: "#1b2a3b", 6: "#294460", 8: "#203550", 9: "#2d4b6b" }, FRAME = "#14161b";
 const DARK = "#26272e";
 const FR = 1.0; // the width of the black frame round a window, along z
 
@@ -42,15 +42,15 @@ function body(s) {
   // the top line, smoothed a little along z so that the corners of the glasshouse are soft
   let top = zs.map((z) => along(s.top, z));
   for (let pass = 0; pass < (s.soft ?? 2); pass++) top = top.map((v, i) => (i === 0 || i === n - 1 ? v : (top[i - 1] + 2 * v + top[i + 1]) / 4));
-  const T = 5.2; // how far from an end the rounding of the nose and tail reaches
+  const T = 3.6; // how far from an end the rounding of the nose and tail reaches
   const half = zs.map((z, i) => {
     const dEnd = Math.min(z - zr, zf - z);
     const k = dEnd >= T ? 1 : Math.sqrt(1 - (1 - dEnd / T) ** 2);
     const flare = s.wheelZ.reduce((m, wz) => m + (s.flare ?? -0.7) * Math.exp(-(((z - wz) / (s.R * 1.15)) ** 2)), 0);
-    const hw = ((s.hwProfile ? along(s.hwProfile, z) : s.hw) + (s.open ? 0 : flare)) * (0.82 + 0.18 * k);
+    const hw = ((s.hwProfile ? along(s.hwProfile, z) : s.hw) + (s.open ? 0 : flare)) * (0.9 + 0.1 * k);
     const yb0 = s.yb, ys = along(s.belt ?? [[zr, s.ys], [zf, s.ys]], z);
     let yt = Math.max(top[i], ys + 1.5);
-    const ym = (yb0 + yt) / 2, hs = 0.66 + 0.34 * k;
+    const ym = (yb0 + yt) / 2, hs = 0.8 + 0.2 * k;
     const yb = ym + (yb0 - ym) * hs;
     yt = ym + (yt - ym) * hs;
     const ysb = Math.min(ys, yt - 1.5);
@@ -65,18 +65,28 @@ function body(s) {
     ];
     return { z, p, k, hw, yb, ys: ysb, yt };
   });
-  // vertices: per station the right side from the bottom middle up to the top middle (indices 0..10), then the left side back down (11..19)
-  const verts = [], PER = 20;
+  // vertices: one per (station, point, side, smoothing group). Panels shade smoothly inside themselves and meet at crisp creases: the
+  // belt line, the roof edge, the underside, and across the ends of the screens (a vertex on a crease is made once for each side of it).
+  const verts = [];
   const lift = s.pivot;
-  for (const st of half) {
-    for (let j = 0; j <= 10; j++) verts.push([st.p[j][0], st.p[j][1] - lift, st.z]);
-    for (let j = 9; j >= 1; j--) verts.push([-st.p[j][0], st.p[j][1] - lift, st.z]);
-  }
-  const vi = (i, j) => i * PER + j; // (right side, point j)
-  const L = (i, m) => (m === 0 || m === 10 ? i * PER + m : i * PER + 20 - m); // (left side, point m)
+  const creaseZ = [...new Set([s.front, s.rear].filter(Boolean).flat())].sort((a, b) => a - b);
+  const zoneOf = (i) => { const z = (zs[i] + zs[i + 1]) / 2; return creaseZ.filter((c) => c < z).length; };
+  const groupOf = (j) => (j <= 1 ? 0 : j <= 4 ? 1 : j <= 7 ? 2 : 3);
+  const made = new Map();
+  const V = (i, m, side, g, zone) => {
+    const key = `${i}|${m}|${m === 0 || m === 10 ? "c" : side}|${g}|${zone}`;
+    let at2 = made.get(key);
+    if (at2 === undefined) {
+      const pt = half[i].p[m];
+      at2 = verts.length;
+      verts.push([(side === "L" ? -1 : 1) * pt[0], pt[1] - lift, half[i].z]);
+      made.set(key, at2);
+    }
+    return at2;
+  };
   const polys = [];
   const inRange = (z, r) => r && z >= r[0] - 1e-6 && z <= r[1] + 1e-6;
-  const seg = (i, j, right) => {
+  const seg = (i, j) => {
     // the colour of the piece of the body between stations i and i+1 on segment j (j from 0 to 9)
     const z = (zs[i] + zs[i + 1]) / 2, a = half[i], b = half[i + 1];
     const yc = (a.p[j][1] + b.p[j][1] + a.p[j + 1][1] + b.p[j + 1][1]) / 4;
@@ -100,32 +110,26 @@ function body(s) {
     for (const sm of s.seams ?? []) if ((j === 3 || j === 4 || j === 5) && Math.abs(z - sm) < 0.3 && c !== null) c = mul(c, 0.7);
     for (const pt of s.patch ?? []) if (pt.segs.includes(j) && inRange(z, pt.z) && c !== null) c = pt.color;
     if (c === null) {
-      // the frame round the glass (the pillars, the screen's rubber): black, FR wide along z, and along the bottom edge of a side window
-      const rs = [...(s.sideGlass ?? []), s.front, s.rear].filter(Boolean).filter((r) => inRange(z, r));
-      const near = rs.some((r) => z - r[0] < FR || r[1] - z < FR);
-      if (near || (j === 5 && !(s.front && inRange(z, s.front)) && !(s.rear && inRange(z, s.rear)) && false)) return FRAME;
-      // glass: dark tint, a sky gradient lighter higher, and a bright diagonal streak of reflected sky
-      let t = clamp(0.1 + 0.5 * h, 0, 1);
-      // (one soft streak across each screen, not a pattern: a band of the screen's length)
-      for (const r of [s.front, s.rear]) if (r && inRange(z, r)) { const f = (z - r[0]) / (r[1] - r[0]); if (f > 0.3 && f < 0.5) t = Math.min(1, t + 0.28); }
-      return mix(GLASS_LOW, GLASS_HIGH, t);
+      // glass: flat dark tints (the lower and the upper row a shade apart); a black frame at the ends of each side window (the pillars)
+      if ((j === 5 || j === 6) && (s.sideGlass ?? []).some((r) => inRange(z, r) && (z - r[0] < FR || r[1] - z < FR))) return FRAME;
+      return GLASS[j];
     }
     // a gentle tone across the body: darker low down, lighter on top
-    return mul(c, j === 0 ? 1 : 0.84 + 0.3 * h);
+    return mul(c, j === 0 ? 1 : 0.88 + 0.2 * h);
   };
   for (let i = 0; i < n - 1; i++) {
+    const zone = zoneOf(i);
     for (let j = 0; j < 10; j++) {
-      const color = seg(i, j, true);
-      polys.push({ v: [vi(i, j), vi(i, j + 1), vi(i + 1, j + 1), vi(i + 1, j)], color, smooth: true });
-      polys.push({ v: [L(i, j), L(i + 1, j), L(i + 1, j + 1), L(i, j + 1)], color, smooth: true });
+      const color = seg(i, j), g = groupOf(j);
+      polys.push({ v: [V(i, j, "R", g, zone), V(i, j + 1, "R", g, zone), V(i + 1, j + 1, "R", g, zone), V(i + 1, j, "R", g, zone)], color, smooth: true });
+      polys.push({ v: [V(i, j, "L", g, zone), V(i + 1, j, "L", g, zone), V(i + 1, j + 1, "L", g, zone), V(i, j + 1, "L", g, zone)], color, smooth: true });
     }
   }
-  // the two ends: one flat face each (the nose and the tail), in the bumper colour
-  const ring = (i) => Array.from({ length: PER }, (_, q) => i * PER + q);
-  // (each end face in two: the bumper below the belt in the trim colour, the panel above it in the paint)
+  // the two ends: one flat face each; the bumper strip below in the trim colour, the panel above it in the paint
   for (const i of [0, n - 1]) {
-    const lower = [0, 1, 2, 3, 4, 5].map((m) => vi(i, m)).concat([5, 4, 3, 2, 1].map((m) => L(i, m)));
-    const upper = [5, 6, 7, 8, 9, 10].map((m) => vi(i, m)).concat([9, 8, 7, 6, 5].map((m) => L(i, m)));
+    const E = (m, side) => V(i, m, side, 9, 99 + i);
+    const lower = [0, 1, 2, 3].map((m) => E(m, "R")).concat([3, 2, 1].map((m) => E(m, "L")));
+    const upper = [3, 4, 5, 6, 7, 8, 9, 10].map((m) => E(m, "R")).concat([9, 8, 7, 6, 5, 4, 3].map((m) => E(m, "L")));
     polys.push({ v: lower, color: s.trim, smooth: false, end: i }, { v: upper, color: mul(s.paint, 0.95), smooth: false, end: i });
   }
   // make every polygon face outwards (the centre of the car at its height is the reference)
@@ -162,7 +166,7 @@ function body(s) {
     const ref = centreOf(c, pl);
     return nrm[0] * ref[0] + nrm[1] * ref[1] + nrm[2] * ref[2] < 0 ? { ...pl, v: [...pl.v].reverse() } : pl;
   });
-  const ra = s.R * 1.2;
+  const ra = s.R * 1.13;
   for (const side of [-1, 1]) for (const wz of s.open ? [] : s.wheelZ) {
     // the plane the arch lies in: just outside the body's side over the whole arch
     let xa = 0;
@@ -178,7 +182,7 @@ function body(s) {
     const disc = orient(dv, [{ v: Array.from({ length: N }, (_, q) => q), color: "#16171c" }], () => [side, 0, 0]);
     cubes.push({ name: `wheel well ${tag}`, shape: "mesh", color: "#16171c", verts: dv.map((p) => p.map(r2)), polys: disc });
     // the lip: a tube round the top of the arch, in the paint
-    const tv = [], tp = [], SEGS = 18, SIDES = 8, tr = 1.25, A0 = -0.22, A1 = Math.PI + 0.22;
+    const tv = [], tp = [], SEGS = 18, SIDES = 8, tr = 0.6, A0 = -0.22, A1 = Math.PI + 0.22;
     const centres = [];
     for (let q = 0; q <= SEGS; q++) {
       const a = lerp(A0, A1, q / SEGS), u = [Math.cos(a), Math.sin(a)];
@@ -186,10 +190,10 @@ function body(s) {
       centres.push([side * xa, Y(cy), cz]);
       for (let k = 0; k < SIDES; k++) {
         const f = (k / SIDES) * Math.PI * 2;
-        tv.push([side * xa + side * Math.sin(f) * tr * 0.8, Y(cy + u[1] * Math.cos(f) * tr), cz + u[0] * Math.cos(f) * tr]);
+        tv.push([side * (xa - 0.1) + side * Math.sin(f) * tr * 0.9, Y(cy + u[1] * Math.cos(f) * tr), cz + u[0] * Math.cos(f) * tr]);
       }
     }
-    const lipColor = mul(s.paint, 0.97);
+    const lipColor = mul(s.paint, 0.9);
     for (let q = 0; q < SEGS; q++) for (let k = 0; k < SIDES; k++) {
       const a = q * SIDES + k, b = q * SIDES + ((k + 1) % SIDES), c = (q + 1) * SIDES + ((k + 1) % SIDES), d = (q + 1) * SIDES + k;
       tp.push({ v: [a, b, c, d], color: lipColor, smooth: true, q });
@@ -365,11 +369,12 @@ function build(name, s) {
   const front = b.at(s.zf), rear = b.at(s.zr);
   // headlights and tail lights
   for (const side of s.open ? [] : [-1, 1]) {
-    lamp(`headlight ${side > 0 ? "left" : "right"}`, side * front.hw * 0.64, front.ys - 1.4, s.zf + 0.1, [5.2, 2.6, 2.0], "#fff0c0", 0.95);
-    lamp(`tail light ${side > 0 ? "left" : "right"}`, side * rear.hw * 0.66, rear.ys - 1.2, s.zr - 0.1, [5.0, 2.6, 2.0], "#e5202e", 0.8);
+    const fy = front.yb + (front.yt - front.yb) * 0.66, ry = rear.yb + (rear.yt - rear.yb) * 0.72;
+    box(`headlight ${side > 0 ? "left" : "right"}`, side * front.hw * 0.66, fy, s.zf + 0.05, [front.hw * 0.4, 1.9, 0.9], "#fff3cc", { emissive: 0.95 });
+    box(`tail light ${side > 0 ? "left" : "right"}`, side * rear.hw * 0.66, ry, s.zr - 0.05, [rear.hw * 0.42, 1.7, 0.9], "#e5202e", { emissive: 0.8 });
   }
-  if (!s.open) box("grille", 0, front.yb + 3.4, s.zf + 0.15, [front.hw * 0.7, 2.2, 0.9], "#17181d");
-  if (!s.open) box("plate", 0, rear.yb + 4.2, s.zr - 0.15, [5.2, 2.2, 0.7], "#f0f0ea");
+  if (!s.open) box("grille", 0, front.yb + (front.yt - front.yb) * 0.4, s.zf + 0.1, [front.hw * 0.62, 1.8, 0.9], "#17181d");
+  if (!s.open) box("plate", 0, rear.yb + (rear.yt - rear.yb) * 0.42, s.zr - 0.1, [5.6, 2.0, 0.7], "#f0f0ea");
   for (const side of s.open ? [] : [-1, 1]) box(`mirror ${side > 0 ? "left" : "right"}`, side * (b.at(s.front[0] - 1.2).hw + 1.1), b.at(s.front[0]).ys + 2.6, s.front[0] - 0.4, [1.4, 1.6, 2.6], "#1d1e24");
   (s.extras ?? []).forEach((f) => f({ box, lamp, b, s, hw }));
   const parts = [
@@ -378,7 +383,7 @@ function build(name, s) {
     wheel("wheel_rl", -1, s.wheelZ[1], { ...s, R: s.Rr ?? s.R, tw: s.twr ?? s.tw }), wheel("wheel_rr", 1, s.wheelZ[1], { ...s, R: s.Rr ?? s.R, tw: s.twr ?? s.tw }),
   ];
   // where the rear lamps are, in metres, for entities/car.lua's TAIL table (the glow and the brake lights are drawn there)
-  build.tail = { z: r2(s.zr / 16), y: r2((rear.ys - 1.2) / 16), x: r2((rear.hw * 0.66) / 16 / 0.92) };
+  build.tail = { z: r2(s.zr / 16), y: r2((rear.yb + (rear.yt - rear.yb) * 0.72) / 16), x: r2((rear.hw * 0.66) / 16 / 0.92) };
   return { version: 1, scale: 0.0625, parts };
 }
 
