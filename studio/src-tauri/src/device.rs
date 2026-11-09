@@ -787,13 +787,13 @@ mod tests {
     }
 
     /// The whole path against a real device: `NOVA_DEVICE=bc8565a3 cargo test -p nova-studio --lib device -- --ignored --nocapture`
-    /// builds examples/crate-dash, installs and starts it, waits for its log, then stops it.
+    /// builds examples/pine-ridge-rally, installs and starts it, waits for its log, then stops it.
     #[test]
     #[ignore = "needs a connected Android device (NOVA_DEVICE=<serial>)"]
     fn plays_on_a_real_device() {
         let serial = std::env::var("NOVA_DEVICE").expect("set NOVA_DEVICE to the device's serial");
         let game =
-            std::env::var("NOVA_DEVICE_GAME").unwrap_or_else(|_| "examples/crate-dash".into());
+            std::env::var("NOVA_DEVICE_GAME").unwrap_or_else(|_| "examples/pine-ridge-rally".into());
         let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
             .canonicalize()

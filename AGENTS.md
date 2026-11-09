@@ -52,7 +52,7 @@ confined to the open project (`paths.rs`). `src/lib/nova-api.json` must match th
 
 ```sh
 scripts/env.sh cargo build                         # desktop build
-scripts/env.sh cargo run --release -p nova-runtime --bin nova -- run examples/rally-demo --headless --frames 120 --capture build/demo.png
+scripts/env.sh cargo run --release -p nova-runtime --bin nova -- run examples/pine-ridge-rally --headless --frames 120 --capture build/demo.png
 scripts/env.sh cargo run --release -p nova-runtime --bin nova -- --headless --frames 300 --capture build/spike.png
 scripts/build-apk.sh [--project folder]           # Gradle-free debug APK -> build/android/ (wraps `nova export android`; docs/play-on-device.md)
 scripts/env.sh cargo test

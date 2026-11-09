@@ -172,7 +172,7 @@ fn warnings_do_not_fail_the_check() {
 
 #[test]
 fn the_shipped_examples_all_check_clean() {
-    for example in ["rally-demo", "crate-dash", "font-gallery"] {
+    for example in ["pine-ridge-rally", "font-gallery"] {
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../examples")
             .join(example);

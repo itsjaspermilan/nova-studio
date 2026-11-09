@@ -72,57 +72,6 @@ controller-first (Nintendo-style button labels), runs at 60 fps on a Retroid Poc
 **Controls:** left stick steer, ZR / A accelerate, ZL / X brake and reverse, B / R handbrake (slides), Y back on the road, L change
 camera, right stick look around, + pause (keyboard: arrows or WASD, Space, R, C, Q/E, Esc).
 
-## Nebula Swap
-
-`examples/nebula-swap` is a sci-fi block-swapping puzzle game in the spirit of Panel de Pon (Tetris Attack), made for the Retroid Pocket 6 with Kenney's CC0 UI, planets, skyboxes, sounds and music. Six blocks with six shapes
-rise from below; swap two neighbours to line up three or more; blocks fall, chains and combos score big. **Endless** (three paces), **Puzzle** (sixteen puzzles with a limited number of swaps, each checked by a solver)
-and **Garbage battle** against the computer (combos and chains send grey garbage to its board; a match beside garbage breaks it open). The blocks are drawn into the world layer, so the engine's FXAA covers them.
-
-| | |
-| --- | --- |
-| ![Menu](docs/images/nebula/menu.png) | ![Endless](docs/images/nebula/endless.png) |
-| ![Garbage battle](docs/images/nebula/versus.png) | ![Puzzles](docs/images/nebula/puzzles.png) |
-
-**Controls:** d-pad or stick moves the cursor, A / B swap, L / R raise the stack, + pause (keyboard: arrows, Space or Z, Shift, Esc).
-
-## Potion Panic
-
-`examples/potion-panic` is a rush-hour kitchen game, but with potions: one apprentice, a workshop in 3D (Kenney's Mini Dungeon, Food, Nature, Graveyard and Fantasy Town models), orders that run out, and a stack of things
-to do at once. Grind ingredients in the mortar, drop them in the cauldron (stir it to brew faster), bottle the brew before it burns, serve it at the hatch, and **throw** things across the room when walking is too slow.
-A **story campaign** is a potion book you flip through, a page for each of four biomes (a meadow, a frozen hollow with icy floors, lava caverns and a boggy mire with mud and belts), twelve levels with different layouts, each biome's cauldrons behaving differently, and a **Primer** that teaches every trick first. The music is original (`scripts/potion/music.mjs`).
-**Free Brew** lets you set your own rules (the clock, the pace of orders, which potions, burning, icy floors, hazards, potion value) on any level you have beaten. The look is parchment and wood (Kenney's UI Adventure Pack).
-
-| | |
-| --- | --- |
-| ![Title](docs/images/potion/title.png) | ![The potion book](docs/images/potion/book.png) |
-| ![The meadow](docs/images/potion/meadow.png) | ![The frozen hollow](docs/images/potion/frost.png) |
-| ![The lava caverns](docs/images/potion/ember.png) | ![Free Brew rules](docs/images/potion/free-rules.png) |
-
-**Controls:** stick or d-pad moves, A grabs and puts down, hold B to grind or stir, X dashes, Y throws (keyboard: arrows or WASD, Space, F, Shift, G).
-
-## Moving Day
-
-`examples/moving-day` is a cosy push-and-turn furniture puzzle in 3D (Kenney's Furniture Kit and Mini Characters). You are the mover; each client waits
-by the front door with a **wish card** in pictures: the sofa facing the TV, the plant by a window, the bed with its back to a wall, the coffee table on
-the rug, the stove next to the fridge, the desk in the bedroom. Walk into a piece to push it one cell, face it and press A or Y to turn it about the
-end you hold; wide pieces take two cells, walls and windows stop everything, doorways let furniture through if it fits. B undoes a move (as many as you
-like), holding X starts again. The flat is done when every wish holds; the stars count your moves against the fewest the solver found.
-Twenty-six flats on five streets, from one small room to whole flats of four rooms, a short tutorial on the first flats, a level select with each
-flat's floor plan, and original music (`scripts/moving-day/music.mjs`).
-
-Every level is a scene file (`scenes/levels/<n>.scene.json`): floors, walls, windows, doorways, rugs and furniture placed on the 1 m grid in the
-studio's 3D view, and a `level` object whose props are the wish card. `scripts/moving-day/solve.mjs` searches every level for the fewest moves (exhaustively on 24 of the 26; on the two biggest flats it keeps
-the best of searches steered towards the wishes), writes the par, the star limits and the solution into the level object, and the game's F10 self-test replays each solution through the game's own
-rules (`crates/nova-runtime/tests/moving_day.rs`).
-
-| | |
-| --- | --- |
-| ![Title](docs/images/moving-day/title.png) | ![The level select](docs/images/moving-day/streets.png) |
-| ![The first flat](docs/images/moving-day/tutorial.png) | ![A townhouse](docs/images/moving-day/play-townhouse.png) |
-| ![A whole flat](docs/images/moving-day/play-penthouse.png) | ![Flat finished](docs/images/moving-day/results.png) |
-
-**Controls:** d-pad or stick walks and pushes, A turns clockwise, Y anticlockwise, B undoes, hold X to start again, + pauses (keyboard: arrows, Space, Q, Backspace, R, Esc).
-
 ## Getting started
 
 ```sh
@@ -140,14 +89,13 @@ scripts/env.sh cargo test
 
 # play a game on your computer (F3 shows stats, Esc quits)
 scripts/env.sh cargo run --release -p nova-runtime --bin nova -- run examples/pine-ridge-rally
-scripts/env.sh cargo run --release -p nova-runtime --bin nova -- run examples/rally-demo
 
 # a headless run with a screenshot at the end (this is how the pictures in docs/images are made: scripts/screenshots.mjs)
 scripts/env.sh cargo run --release -p nova-runtime --bin nova -- run examples/pine-ridge-rally --headless --frames 120 --capture build/shot.png
 
 # a game as an Android APK (debug-signed) and as one packed file
 scripts/build-apk.sh --project examples/pine-ridge-rally
-scripts/env.sh cargo run --release -p nova-runtime --bin nova -- pack examples/crate-dash build/game.npk
+scripts/env.sh cargo run --release -p nova-runtime --bin nova -- pack examples/pine-ridge-rally build/game.npk
 ```
 
 The studio (run these from `studio/`):
@@ -182,50 +130,19 @@ end
 ```
 
 The format and the whole Lua API are in `docs/project-format.md`; the API is also listed with signatures in `studio/src/lib/nova-api.json`
-(a test keeps it in sync with the runtime). Start from `examples/crate-dash` (a small 2D game with scenes, entities, collisions and
-timers) or `examples/rally-demo` (sprites, 3D models, HUD).
-
-## Sunny Hop
-
-`examples/sunny-hop` is a bright run-and-jump platformer in the spirit of the classics, made with Kenney's **New Platformer Pack**: every picture is drawn
-from the pack's vectors at exactly the size the handheld shows it (`scripts/sunny/art.mjs`, a small SVG rasteriser), so tiles, characters and
-backgrounds stay sharp at 1080p. Sunny runs, jumps (higher the longer A is held, with coyote time, a jump buffer and a little float at the top),
-climbs ladders, bounces on springs, rides moving platforms and stomps slimes, snails, bees, frogs and fish. After a first level that teaches the moves come **four worlds**:
-Green Hills, Sunny Dunes, Frosty Peaks (icy ground) and the Purple Keep (crushers, saws and lava), six levels each with a **boss** at the end
-(King Slime, the Sand Snail, the Frost Block and the Fire King). Every level hides **three gems** (behind walls that are not there, up a spring,
-inside a ? block, on a ledge in a pit...), and has keys and locks, switches with gates and doors, checkpoints and a **stopwatch**: three stars per
-level for finishing, for every gem and for beating its star time, and a **time trial** (Y on the map) for any cleared level. The music is original (`scripts/sunny/music.mjs`).
-
-**Levels are scene files** (`scenes/levels/<world>-<n>.scene.json`), painted in the studio's scene editor: the tilemaps are layers named by what their
-tiles do (`ground`, `platforms`, `ladders`, `hazards`, `water`, `lava`, `back`, `front`, `secret`; one HD tileset at half size, a new `scale` of
-tilesets in the engine), and enemies, items, springs, checkpoints, the start and the goal are placed objects. A level's name, star time, music and sky are
-the props of its `level` object; the map is `scenes/map.scene.json`. The computer player (`lib/bot.lua`, F9 on the title) plays every level through the
-controls and finds every gem: that is the proof each level can be done, and the star times come from its times.
-
-| | |
-| --- | --- |
-| ![Title](docs/images/sunny-hop/title.png) | ![The map](docs/images/sunny-hop/map.png) |
-| ![Sunny Meadow](docs/images/sunny-hop/meadow.png) | ![Oasis Leap](docs/images/sunny-hop/dunes.png) |
-| ![Frozen Lake](docs/images/sunny-hop/frozen-lake.png) | ![Lava Moat](docs/images/sunny-hop/lava.png) |
-| ![King Slime](docs/images/sunny-hop/king-slime.png) | ![Results](docs/images/sunny-hop/results.png) |
-
-**Controls:** stick or d-pad moves (up and down climb; down and A drops through a platform), A or B jumps, + pauses, Y starts a time trial on
-the map, − restarts a time trial (keyboard: arrows or WASD, Space or Z, Escape, T, R).
+(a test keeps it in sync with the runtime). Look at `examples/pine-ridge-rally` for scenes, entities, 3D models, menus and a HUD; the smaller folders in `examples/` each show one feature.
 
 ## Examples
 
 | Folder | What |
 | --- | --- |
-| `pine-ridge-rally` | the 3D rally game above |
-| `nebula-swap` | the Panel de Pon-style puzzle game above |
-| `potion-panic` | the potion-brewing rush game above |
-| `moving-day` | the furniture puzzle above |
-| `sunny-hop` | the 2D platformer above |
-| `crate-dash`, `font-gallery`, `sound-check`, `input-test` | small 2D and tooling examples |
-| `rally-demo`, `stress` | the renderer's benchmark scenes: sprites, hundreds of models, lights and shadows |
-| `skin-demo`, `ik-demo` | skeletons, clips, animation layers and two-bone IK |
-| `hill-run`, `sky-garden`, `ember-swarm`, `bunker-run`, `lantern-keep` | 3D games and probes made to find what the engine lacked |
-| `blockfield` | a voxel world with day and night |
+| `pine-ridge-rally` | the 3D rally game above: the one game kept in the repository |
+| `font-gallery`, `sound-check`, `input-test`, `menus`, `coop-test` | small tooling examples (fonts, audio, input, menus, local co-op) |
+| `stress` | the renderer's benchmark scene: hundreds of models, lights and shadows |
+| `material-demo`, `physics-toybox`, `skin-demo`, `ik-demo` | materials, physics, skeletons and clips, two-bone IK |
+
+The other games (Nebula Swap, Potion Panic, Moving Day, Sunny Hop, Crate Dash, Rally Demo, Hill Run, Sky Garden, Ember Swarm, Bunker Run,
+Lantern Keep, Blockfield) were removed on 2026-11-09; they are in git tag `archive/examples-2026-11`.
 
 ## Repository layout
 

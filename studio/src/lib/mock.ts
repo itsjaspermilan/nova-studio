@@ -133,7 +133,7 @@ export function createMockApi(options: { devices?: AndroidDevice[] } = {}): Api 
       { id: "starter", name: "Starter", description: "A title scene, a player and a sprite sheet" },
       { id: "blank", name: "Blank", description: "Just nova.json and main.lua" },
     ],
-    examples: async () => [{ id: "crate-dash", name: "Crate Dash", path: "/examples/crate-dash" }],
+    examples: async () => [{ id: "pine-ridge-rally", name: "Pine Ridge Rally", path: "/examples/pine-ridge-rally" }],
     defaultProjectsDir: async () => "/mock",
     pickFolder: async () => "/mock",
     openProject: async (path) => {

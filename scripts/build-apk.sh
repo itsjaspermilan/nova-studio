@@ -4,7 +4,7 @@
 # -> apksigner. The debug keystore is generated locally under build/android/ and is never committed.
 #
 #   scripts/build-apk.sh                                 the M1 benchmark scene -> build/android/nova-spike-debug.apk
-#   scripts/build-apk.sh --project examples/crate-dash   a game                 -> build/android/<id>-debug.apk
+#   scripts/build-apk.sh --project examples/pine-ridge-rally   a game                 -> build/android/<id>-debug.apk
 #   add --debug-build for an unoptimised native library, --rebuild to build everything again
 # (it builds the game as it is: --no-check skips the check `nova export android` does first)
 set -euo pipefail
