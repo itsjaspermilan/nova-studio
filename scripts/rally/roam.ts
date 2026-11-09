@@ -545,6 +545,36 @@ for (const f of readdirSync(join(GAME, "models"))) {
   if (/^road_roam_.*\.glb$/.test(f) && !routes.some((r) => `road_${r.name}.glb` === f)) unlinkSync(join(GAME, "models", f));
 }
 
+// ---- speed traps and drift zones ------------------------------------------------------------------------------------------------
+// A speed trap on the straightest 300 m of each highway and ring road (its middle); a drift zone on the twistiest 300 m of each longer
+// road out to a course. Each names its road and how far along it (`s`, metres from the road's first point, as lib/roads.lua measures).
+{
+  const WINDOW = 30; // points: about 300 m
+  for (const [route, r] of roadData) {
+    const pts = [...r.pts].sort((a, b) => a.i - b.i).map((p) => ({ x: p.v[0] as number, z: p.v[1] as number, k: p.v[2] as number }));
+    const s: number[] = [0];
+    for (let i = 1; i < pts.length; i++) s.push(s[i - 1]! + Math.hypot(pts[i]!.x - pts[i - 1]!.x, pts[i]!.z - pts[i - 1]!.z));
+    const heading = (i: number) => { const a = pts[Math.max(0, i - 1)]!, b = pts[Math.min(pts.length - 1, i + 1)]!; return r3(Math.atan2(b.x - a.x, b.z - a.z)); };
+    const trap = /^roam_(hw|ring)_/.test(route), drift = /^roam_to_/.test(route) && pts.length >= 60;
+    if (!trap && !drift) continue;
+    const margin = trap ? 25 : 6; // (away from the junctions at each end)
+    let best = -1, bestScore = trap ? Infinity : -Infinity;
+    for (let i = margin; i + WINDOW < pts.length - margin; i++) {
+      let most = 0, sum = 0;
+      for (let j = i; j < i + WINDOW; j++) { most = Math.max(most, Math.abs(pts[j]!.k)); sum += Math.abs(pts[j]!.k); }
+      if (trap ? most < bestScore : sum > bestScore) { best = i; bestScore = trap ? most : sum; }
+    }
+    if (best < 0) continue;
+    if (trap) {
+      const m = best + WINDOW / 2, p = pts[m]!;
+      objects.push({ kind: "speed_trap", x: p.x, y: 0, z: p.z, props: { route, s: r1(s[m]!), ry: heading(m) } });
+    } else {
+      const a = pts[best]!, b = pts[best + WINDOW]!;
+      objects.push({ kind: "drift_zone", x: a.x, y: 0, z: a.z, props: { route, s: r1(s[best]!), s2: r1(s[best + WINDOW]!), ry: heading(best), x2: b.x, z2: b.z, ry2: heading(best + WINDOW) } });
+    }
+  }
+}
+
 for (const [route, r] of roadData) {
   r.pts.sort((a, b) => a.i - b.i);
   const first = r.pts[0]!.v;
@@ -556,4 +586,4 @@ if (!parsed.ok) throw new Error(parsed.error);
 writeFileSync(join(GAME, "scenes/roam.scene.json"), serializeScene(parsed.scene));
 writeFileSync(join(GAME, "../../build/roam-plan.json"), JSON.stringify({ routes, towns: towns.map((t) => ({ id: t.region.id, x: t.cx, z: t.cz })), placed }));
 const count = (k: string) => objects.filter((o) => o.kind === k).length;
-console.log(`roam: ${objects.length} objects, ${[...roadData.values()].reduce((n, r) => n + r.pts.length, 0)} road points on ${routes.length} roads, ${count("event")} events, ${towns.length} towns, ${dropped} pieces of scenery left off the roads and out of the towns`);
+console.log(`roam: ${objects.length} objects, ${[...roadData.values()].reduce((n, r) => n + r.pts.length, 0)} road points on ${routes.length} roads, ${count("event")} events, ${count("speed_trap")} speed traps, ${count("drift_zone")} drift zones, ${towns.length} towns, ${dropped} pieces of scenery left off the roads and out of the towns`);

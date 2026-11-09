@@ -81,7 +81,7 @@ end
 
 -- The road nearest to (x, z): { route, i (the point before), t (0 to 1 towards the next), x, z (the nearest spot on the road), tx, tz
 -- (the road's way there), heading, w (half the road's width), road (its kind), dist (metres from the middle of the road), left
--- (positive: left of the middle) }, or nil when no road is within about 50 metres.
+-- (positive: left of the middle), s (metres along the road from its first point) }, or nil when no road is within about 50 metres.
 local out = {}
 function roads.nearest(x, z)
   roads.ensure()
@@ -110,6 +110,7 @@ function roads.nearest(x, z)
   out.tx, out.tz = out.tx / l, out.tz / l
   out.heading = math.atan(out.tx, out.tz)
   out.w, out.road, out.grip = a.w, a.road, a.grip
+  out.s = a.s + bt * math.sqrt((b.x - a.x) ^ 2 + (b.z - a.z) ^ 2)
   out.dist = math.sqrt(best)
   out.left = (x - out.x) * out.tz - (z - out.z) * out.tx
   return out

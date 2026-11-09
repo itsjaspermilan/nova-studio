@@ -16,6 +16,7 @@ local regions = require("lib.regions")
 local water = require("lib.water")
 local woods = require("lib.woods")
 local route = require("lib.route")
+local challenges = require("lib.challenges")
 local RoamFoliage = require("entities.roam_foliage")
 
 local Roam = nova.scene {}
@@ -139,7 +140,7 @@ function Roam:leave()
   if self.player and self.player.engine then self.player.engine:stop() end
   nova.music.volume(state.music_volume)
   nova.weather(); nova.sky(nil); nova.fog(nil); nova.shadows(nil); nova.terrain()
-  route.clear(); roads.clear(); course.clear(); fx.clear(); foliage.clear(); powerlines.clear(); regions.clear(); water.clear(); woods.clear()
+  route.clear(); challenges.clear(); roads.clear(); course.clear(); fx.clear(); foliage.clear(); powerlines.clear(); regions.clear(); water.clear(); woods.clear()
   nova.look(); nova.wind()
 end
 
@@ -207,6 +208,7 @@ function Roam:locate()
   else
     p.off_middle, p.surface = 999, "rough"
   end
+  return n
 end
 
 function Roam:respawn(to)
@@ -297,7 +299,7 @@ function Roam:update(dt)
     end
   end
   p:drive(dt)
-  self:locate()
+  challenges.update(p, self:locate(), dt)
   if self.way then
     self.way = route.follow(self.way, p.x, p.z)
     if not self.way then
@@ -554,6 +556,7 @@ function Roam:draw_hud()
   local sx = right - kw - 9 - math.max(sw, nova.ui.text_width("888", { font = F.heavy, size = 54 }))
   hud_text(right - kw - 9 - sw, base, tostring(kmh), F.heavy, 54, C.white, { valign = "baseline" })
   hud_text(sx - 9 - nova.ui.text_width(gear, { font = F.bold, size = 18 }), base, gear, F.bold, 18, C.hud, { valign = "baseline" })
+  self:draw_challenge(w)
   hud_text(36, 36, "FREE ROAM", F.bold, 18, C.orange, { spacing = 0.2 })
   hud_text(36, 58, self.region and self.region.title or "Pine Ridge", F.heavy, 27, C.white)
   -- at a marker: what it is, and Y to see it
@@ -570,6 +573,37 @@ function Roam:draw_hud()
     local tw = nova.ui.text_width(words, { font = F.semi, size = 18 })
     ui.pad("pad_select", w / 2 - (tw + 34) / 2, 426, 26)
     hud_text(w / 2 - (tw + 34) / 2 + 34, 430, words, F.semi, 18, C.hud)
+  end
+end
+
+-- three stars as small squares, gold when won
+local function draw_stars(x, y, won, size)
+  for i = 1, 3 do
+    local sx = x + (i - 2) * (size + 6) - size / 2
+    nova.ui.rect(sx - 2, y - 2, size + 4, size + 4, C.ink)
+    nova.ui.rect(sx, y, size, size, i <= won and C.gold or { 90, 96, 110 })
+  end
+end
+
+-- top middle: the drift zone being driven (its score so far, and the stars it would win), or what a trap or zone just gave
+function Roam:draw_challenge(w)
+  local d, p = challenges.drift, challenges.popup
+  local cx = w / 2
+  if d then
+    nova.ui.rect(cx - 150, 26, 300, 92, { C.ground[1], C.ground[2], C.ground[3], 215 })
+    nova.ui.rect(cx - 150, 26, 300, 4, { 255, 92, 180 })
+    ui.say(cx, 46, "DRIFT ZONE", F.bold, 16.5, { 255, 140, 200 }, { align = "center", valign = "middle", spacing = 0.2 })
+    ui.say(cx, 78, string.format("%d", math.floor(d.score + 0.5)), F.heavy, 36, C.white, { align = "center", valign = "middle" })
+    draw_stars(cx, 102, challenges.stars_of(d.score, d.steps), 10)
+  elseif p then
+    local a = math.min(1, p.t * 4, (4.5 - p.t) * 3)
+    if a <= 0 then return end
+    nova.ui.rect(cx - 170, 26, 340, 116, { C.ground[1], C.ground[2], C.ground[3], math.floor(215 * a) })
+    nova.ui.rect(cx - 170, 26, 340, 4, p.title == "SPEED TRAP" and ROUTE or { 255, 92, 180 })
+    ui.say(cx, 46, p.title, F.bold, 16.5, C.hud, { align = "center", valign = "middle", spacing = 0.2 })
+    ui.say(cx, 78, p.big, F.heavy, 36, C.white, { align = "center", valign = "middle" })
+    draw_stars(cx, 102, p.stars, 10)
+    ui.say(cx, 130, p.line, F.semi, 16.5, C.hud, { align = "center", valign = "middle" })
   end
 end
 
@@ -727,6 +761,18 @@ function Roam:draw_map()
     nova.ui.rect(wx - 9, wy - 9, 18, 18, C.ink)
     nova.ui.rect(wx - 6, wy - 6, 12, 12, ROUTE)
   end
+  -- the speed traps (blue) and drift zones (pink), small, under the events
+  for _, t in ipairs(nova.all("speed_trap")) do
+    local x, y = at(t.x, t.z)
+    nova.ui.rect(x - 5, y - 5, 10, 10, C.ink)
+    nova.ui.rect(x - 3, y - 3, 6, 6, ROUTE)
+  end
+  for _, z in ipairs(nova.all("drift_zone")) do
+    local x1, y1 = at(z.x, z.z)
+    local x2, y2 = at(z.x2, z.z2)
+    nova.ui.line(x1, y1, x2, y2, 6, C.ink)
+    nova.ui.line(x1, y1, x2, y2, 3, { 255, 92, 180 })
+  end
   -- the events, and the one nearest the cursor named
   local near, nd = nil, math.huge
   for _, e in ipairs(nova.all("event")) do
@@ -765,6 +811,10 @@ function Roam:draw_map()
   for _, kind in ipairs({ "race", "trial", "rally", "garage" }) do
     nova.ui.rect(kx, 460, 12, 12, MAP_EVENT[kind])
     kx = kx + 18 + ui.say(kx + 18, 466, MODE_NAMES[kind], F.medium, 16.5, C.white, { valign = "middle" }) + 22
+  end
+  for _, k in ipairs({ { "Speed trap", ROUTE }, { "Drift zone", { 255, 92, 180 } } }) do
+    nova.ui.rect(kx, 462, 8, 8, k[2])
+    kx = kx + 14 + ui.say(kx + 14, 466, k[1], F.medium, 16.5, C.white, { valign = "middle" }) + 22
   end
   local hints = { { "pad_stick_l", "Look" }, { "pad_l", "" }, { "pad_r", "Zoom" } }
   if pin then hints[#hints + 1] = { "pad_a", "Travel here" } end

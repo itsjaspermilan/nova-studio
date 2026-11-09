@@ -356232,6 +356232,197 @@
     },
     { "kind": "roam_spawn", "name": "spawn", "x": -60, "y": 0, "z": 0, "props": { "ry": 1.571 } },
     {
+      "kind": "speed_trap",
+      "x": -85,
+      "y": 0,
+      "z": -2859.9,
+      "props": { "route": "roam_hw_autumn", "s": 2920, "ry": -3.137 }
+    },
+    {
+      "kind": "speed_trap",
+      "x": 524.5,
+      "y": 0,
+      "z": 3066.2,
+      "props": { "route": "roam_hw_desert", "s": 3679.5, "ry": 0.08 }
+    },
+    {
+      "kind": "speed_trap",
+      "x": -472.8,
+      "y": 0,
+      "z": -101.8,
+      "props": { "route": "roam_hw_snow", "s": 399.8, "ry": -2.003 }
+    },
+    {
+      "kind": "speed_trap",
+      "x": 2924.5,
+      "y": 0,
+      "z": -332.5,
+      "props": { "route": "roam_hw_harbour", "s": 3159.7, "ry": 1.818 }
+    },
+    {
+      "kind": "speed_trap",
+      "x": 2147.3,
+      "y": 0,
+      "z": -3360.1,
+      "props": { "route": "roam_ring_autumn", "s": 2529.8, "ry": 1.531 }
+    },
+    {
+      "kind": "speed_trap",
+      "x": 3893.9,
+      "y": 0,
+      "z": 139.6,
+      "props": { "route": "roam_ring_harbour", "s": 699.9, "ry": -0.03 }
+    },
+    {
+      "kind": "speed_trap",
+      "x": -3767.1,
+      "y": 0,
+      "z": -224.3,
+      "props": { "route": "roam_ring_desert", "s": 6629.2, "ry": -2.867 }
+    },
+    {
+      "kind": "speed_trap",
+      "x": -3334.9,
+      "y": 0,
+      "z": -3004,
+      "props": { "route": "roam_ring_snow", "s": 2269.9, "ry": 2.62 }
+    },
+    {
+      "kind": "drift_zone",
+      "x": -503.7,
+      "y": 0,
+      "z": -5524.2,
+      "props": {
+        "route": "roam_to_stage_autumn_glen",
+        "s": 1880.1,
+        "s2": 2172.4,
+        "ry": -3.031,
+        "x2": -527,
+        "z2": -5651,
+        "ry2": 0.015
+      }
+    },
+    {
+      "kind": "drift_zone",
+      "x": 954.3,
+      "y": 0,
+      "z": -3132.8,
+      "props": {
+        "route": "roam_to_autumn_glen",
+        "s": 379.9,
+        "s2": 679.4,
+        "ry": -0.176,
+        "x2": 835.5,
+        "z2": -2940.5,
+        "ry2": -1.831
+      }
+    },
+    {
+      "kind": "drift_zone",
+      "x": 720.7,
+      "y": 0,
+      "z": 2220,
+      "props": {
+        "route": "roam_to_stage_dust_valley",
+        "s": 310,
+        "s2": 609.6,
+        "ry": 1.611,
+        "x2": 926.9,
+        "z2": 2293.9,
+        "ry2": -0.336
+      }
+    },
+    {
+      "kind": "drift_zone",
+      "x": 2002,
+      "y": 0,
+      "z": 3736.7,
+      "props": {
+        "route": "roam_to_copper_canyon",
+        "s": 409.9,
+        "s2": 709,
+        "ry": 0.491,
+        "x2": 2003.1,
+        "z2": 3903,
+        "ry2": -1.703
+      }
+    },
+    {
+      "kind": "drift_zone",
+      "x": -1385.4,
+      "y": 0,
+      "z": 3591.1,
+      "props": {
+        "route": "roam_to_dust_valley",
+        "s": 330,
+        "s2": 629.1,
+        "ry": -0.506,
+        "x2": -1406.5,
+        "z2": 3753.1,
+        "ry2": 2.01
+      }
+    },
+    {
+      "kind": "drift_zone",
+      "x": -4513.5,
+      "y": 0,
+      "z": -1872,
+      "props": {
+        "route": "roam_to_stage_glacier_night",
+        "s": 650,
+        "s2": 949.5,
+        "ry": -1.855,
+        "x2": -4709.8,
+        "z2": -1844.4,
+        "ry2": 0.219
+      }
+    },
+    {
+      "kind": "drift_zone",
+      "x": -2668.7,
+      "y": 0,
+      "z": -1921.8,
+      "props": {
+        "route": "roam_to_glacier_ring",
+        "s": 930.1,
+        "s2": 1223.7,
+        "ry": 1.349,
+        "x2": -2544.6,
+        "z2": -1874.9,
+        "ry2": -1.611
+      }
+    },
+    {
+      "kind": "drift_zone",
+      "x": 4398.6,
+      "y": 0,
+      "z": -1441.1,
+      "props": {
+        "route": "roam_to_stage_harbour_sprint",
+        "s": 590,
+        "s2": 889.5,
+        "ry": 1.706,
+        "x2": 4602.6,
+        "z2": -1382.5,
+        "ry2": -0.199
+      }
+    },
+    {
+      "kind": "drift_zone",
+      "x": 2916.9,
+      "y": 0,
+      "z": -1980.9,
+      "props": {
+        "route": "roam_to_stage_harbour_lights",
+        "s": 350,
+        "s2": 649.6,
+        "ry": -1.257,
+        "x2": 2721.5,
+        "z2": -1837.3,
+        "ry2": 0.441
+      }
+    },
+    {
       "kind": "roam_road",
       "x": 7,
       "y": 0,
