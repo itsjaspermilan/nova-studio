@@ -6,6 +6,8 @@ unless it is ticked.
 
 ## Where things stand
 
+**Plan of 2026-11-09: one studio with four workspaces (Model, Sprites, Sound, Engine); the master checklist is the section "One studio, four workspaces" below, with its detail in `docs/studio-workspaces.md` and `docs/studio-ux.md`.**
+
 **Device, 2026-11-05: the Retroid Pocket 6 arrived and the stress benchmark has run on it** (`docs/performance.md`): all 13 phases hold 60 fps, the worst (1.15 M triangles, 200 skinned characters, 16 lights, shadows) takes 13.3 ms of GPU, Lua at most 2.7 ms. Not yet done on it: (the 120 Hz mode is not a target; the display is set to 60) rotation and the sound itself. **Audio, 2026-11-06:** the stream asks Android for 256-frame callbacks (it was about 980, 20 ms); on the Retroid 26,000 callbacks in a Sound Check session had a worst time of 0.9 ms, 0 underruns, 0 stream errors, and the owner listened to it (clicks, a metronome, music, twelve sounds at once, a trigger-driven tone) and was happy. Not measured: the real button-to-speaker delay. **Done on it, 2026-11-05: the rally played by hand (analogue triggers with brake lock-up, tyres, car size and HUD fixed from the owner's notes; a frame-pacing stutter found and fixed, `pacing.rs`), Bunker Run and Sky Garden played (fine, unpolished), the games listed under Android Games in Lantern (the manifest now says `isGame`), lifecycle over adb (Home, screen off, app switch, 15 quick cycles, kill and relaunch; it found and fixed a background busy loop and music that kept playing), an 11-minute heat run (8 benchmark runs: 59.7 fps throughout, GPU times flat, chip sensor 64 to 67 C; see `docs/performance.md`), the controller (all 16 buttons and 6 axes, see Known gaps) and the screen (full screen, no bars or band).**
 
 **Kenney bundle (2026-11-06).** The user bought the Kenney Game Assets All-in-1 bundle (the bundle's folder (set `KENNEY` / `CARKIT` / `NATURE` for the scripts in `scripts/rally/`): 2D, 3D, UI, audio, icons, fonts; CC0). Used so far: UI Pack, UI Pack - Adventure, Input Prompts (Nintendo Switch set), Interface and Impact Sounds in the rally via `scripts/rally/kenney-ui.sh`, and the engine gained `nova.ui.panel` (nine-slice), `nova.image_size` and a `src` sub-rectangle for sprites to draw them. Not yet: the UI packs' spritesheet XML (individual PNGs are enough for now), Kenney's fonts (Future), Foley and Sci-Fi sounds, the the cursor packs, and the 2D and 3D packs for new games.
@@ -166,6 +168,75 @@ white pole, like the rebuild. No shipped model had a repeating picture or such a
   native window (`tauri dev`) and reported that it works; only that one overall check was made, so individual
   native-only paths (folder picker, Play against a game, audio and WebGL in the real webview) were not
   separately recorded.
+
+## One studio, four workspaces (decided 2026-11-09): the master checklist
+
+Decided with the owner: **one Tauri app** (the four-app split in `docs/split-plan.md` was dropped). Four workspaces open as tabs or, on
+request, their own windows: **Model** (3D, modelled on Blender), **Sprites** (2D, Pixelorama), **Sound** (LMMS), **Engine** (Lua, scenes,
+play, export). One project folder. A document opens in one place at a time, one undo history per document. Beginner mode on by default.
+Blender keymap in Model. Goal: a free, all-in-one studio for making games, no strings attached; nothing quirky.
+**Detail lives in the docs; this list is what must not be missed. Tick an item only when it is built and checked.**
+
+- Features per workspace: `docs/studio-workspaces.md` (sections 2 to 5, with the Blender, Pixelorama and LMMS references).
+- UX, menus, toolbars, input, windows, test plan: `docs/studio-ux.md`. Order of work is in its section 8.
+- The studio already has first versions of most editors (`studio/src/components/`: ModelEditor, ModifierStack, SpriteEditor, SoundEditor,
+  SongEditor, TrackEditor, TimelineEditor, SceneEditor, Scene3D, Editor); items below say what is added.
+
+### S0: Mockups and decisions (before code)
+- [ ] Wireframes for each workspace's presets (Beginner, Standard, Full) and the first-launch screen (Model's layout is drawn; Sprites, Sound, Engine, first-launch are not).
+- [ ] Owner reviews the wireframes; icon set chosen (one family, 16/20/24 px) and licence checked (`licenses/`).
+- [ ] Evaluate the Windows snap-layout plugins; plan a Windows test (no Windows machine here).
+
+### S1: The spine (every workspace needs it)
+- [ ] Command registry: id, plain name, icon, per-OS shortcut, enabled rule, help text; menus, toolbars, context menus, palette, tooltips, shortcut editor and help search all read it.
+- [ ] Native macOS menu bar (Nova, File, Edit, View, per-workspace menu, Window, Help with search) and drawn menus on Windows (Alt access); standard shortcuts.
+- [ ] Window chrome: macOS overlay title bar with native traffic lights; Windows `decorations: false` with our own caption buttons (+ snap-layout flyout, unverified until run on Windows).
+- [ ] Command palette (Cmd/Ctrl-K) searching commands, documents, assets, Lua symbols, help, settings.
+- [ ] Keymap system: per-workspace defaults, Blender preset (default in Model), editable, conflict warnings, printable cheat sheet.
+- [ ] Areas: resizable, collapsible, split/join, switchable type, saved layouts per workspace and project, Reset layout; Beginner presets fixed.
+- [ ] Tabs and tear-off windows (Tauri multi-window); a document is open in one place only (focus the existing one, "open in another window" + Jump); one undo history per document, shown as a history list.
+- [ ] Autosave and crash recovery for every document; version snapshots (named, restore).
+- [ ] First-launch screen: navigation scheme (mouse, trackpad, pen), beginner mode (default on), short practice area.
+- [ ] Beginner mode: "Show everything" switch per header, never changes the files; "what next?" hints; first guided exercise per workspace (`lib/tutorials`).
+- [ ] Input layer: 3-button mouse, Mac trackpad gestures, Windows precision touchpad, pen pressure/tilt/barrel button, emulate-numpad, on-screen navigation gizmos; natural-scroll follows the OS.
+- [ ] Accessibility: keyboard focus order and rings, screen-reader names, UI scale 75 to 200 percent, reduced motion, high-contrast theme, colour-blind-safe graphs, no hover-only functions, 32 px targets.
+- [ ] Shared asset browser (thumbnails, tags, search, drag into any workspace, "Open in"); linked data, not copies; F5 Play from anywhere; status bar with tool hints, budgets, device.
+- [ ] Themes: system, dark, light; one accent colour.
+
+### S2: Model workspace (`docs/studio-workspaces.md` section 2)
+- [ ] 2.1 Layout: viewport (persp/ortho, view gizmo, grid, camera, local view, shading, X-ray, overlays), tool shelf, outliner, properties tabs, mode switch (Object, Edit, Sculpt, Weight Paint, Texture Paint, Pose).
+- [ ] 2.2 Modelling: primitives with redo panel; selection tools; extrude, inset, bevel, loop cut, knife, bridge, merge, dissolve, fill, spin, screw and the rest; proportional editing; snapping, pivot, orientation, mirror editing; more modifiers (Boolean, Weld, Decimate, Triangulate, Edge Split, Weighted Normal, Displace, Curve, Lattice, Shrinkwrap, Simple Deform, Smooth, Remesh, Screw, Wireframe, Armature); curves and text-to-mesh; reference images; mesh analysis with triangle-budget bar; LOD generation.
+- [ ] 2.3 Sculpt, texture paint (layers, projection, per-channel), weight paint, baking (AO, curvature, normal, lighting).
+- [ ] 2.4 UV editor (unwrap, seams, pin, pack, texel density, checker, stretch) and material editor (PBR, small node view baking to the runtime material); atlas packing, KTX2.
+- [ ] 2.5 Rigging and animation: bones, skinning, IK, constraints, pose library, dope sheet, graph editor, actions as clips, NLA-lite, shape keys, markers/events, retarget, rig templates, humanoid auto-rig.
+- [ ] 2.6 Scenes and landscape: instances, collections/prefabs, scatter, curve placement, surface snapping, terrain sculpt/paint/roads/water/foliage/biomes, camera and cutscene sequencer-lite, lightmap preview.
+- [ ] 2.7 Interop: glTF (done), OBJ, one-click `.blend` import (headless bpy), asset libraries, backups.
+- [ ] Proving project: the Pine Ridge cars made and edited in the workspace, not by script.
+
+### S3: Sound workspace (section 4)
+- [ ] Song editor (tracks, clips, split/knife/loop, tempo and time-signature track, markers, loop points), pattern editor, piano roll, automation editor.
+- [ ] Mixer (channels, sends, FX chains, meters, colours, master limiter, LUFS); sample editor (trim, fade, slice, stretch, record, spectrogram); SFX designer with mutate.
+- [ ] Instruments (subtractive, FM/wavetable, drum machine, sampler/soundfont, pluck, organ) and effects (EQ, compressor, limiter, reverb, delay, chorus, distortion, filter, gate, pitch shift, analysers); controllers (LFO, envelope).
+- [ ] File I/O (WAV, OGG, MP3 import, MIDI, stems, loop-ready export); game audio (adaptive stems, random sound groups, 3D falloff presets, soundbank usage view, voice/memory budget).
+- [ ] A person listens to the songs (nobody has yet).
+
+### S4: Sprites workspace (section 3)
+- [ ] Canvas (rulers, grids, tiled mode, symmetry, mini-map, preview window), two-slot tool bar, full drawing, selection and transform tool set, palettes (import/export, lock, indexed).
+- [ ] Layers (pixel, group, tilemap, audio), blend modes, clipping, cel linking, tags with direction, per-frame timing, onion skin, non-destructive effects, hitboxes, pivots, 9-slice, frame events.
+- [ ] Tilemaps and tilesets (draw/manual/auto, shapes, collision, terrain auto-tiling) feeding the scene editor.
+- [ ] Import `.pxo`, `.aseprite`, PNG, GIF, APNG; export sheet/GIF/APNG per tag/layer/frame; export profiles; `nova sprite export` command line.
+
+### S5: Engine workspace (section 5)
+- [ ] Hub, project settings, device manager, export (`.npk`, APK), asset import settings.
+- [ ] Lua editor: go to definition, references, rename, snippets, folding, formatter; debugger and profiler panels.
+- [ ] Scene and UI layout editor (shared with Model 2.6); visual logic for beginners that writes plain Lua; input and actions editor, localisation, save inspector.
+- [ ] Play: desktop window, device deploy, hot reload, console, capture, input replay.
+
+### Cross-cutting
+- [ ] UX tests with 3 to 5 people per workspace; input matrix (Mac trackpad, Windows touchpad, 3-button and 2-button mouse, pen); VoiceOver and keyboard-only audit; record results.
+- [ ] Palette bridge between Sprites and Model materials; drag assets into scenes and code; plugin/addon surface (later).
+- [ ] Licences checked for every dependency and asset; Blender and Blockbench code not copied; Pixelorama notices in `licenses/`.
+- [ ] Open questions: Chrome-only questions are void (no browser); which workspace's wireframes first.
 
 ## Goal
 
