@@ -28,15 +28,15 @@
   import { fileKind } from "./lib/tree";
   import { markChrome } from "./lib/chrome";
   import { resizable } from "./lib/resize";
+  import { layout, sizeKey } from "./lib/layout.svelte";
   import { isDirty, studio } from "./lib/store.svelte";
 
   // (the window's own buttons sit in the studio's top bar: see lib/chrome.ts)
   const chrome = markChrome();
-  // the project tree can be folded away for more room (the button at the left of the top bar, or ⌘B); remembered
-  let treeOpen = $state((() => { try { return localStorage.getItem("nova.treeOpen") !== "0"; } catch { return true; } })());
+  // the project tree can be folded away for more room (the button at the left of the top bar, or ⌘B); each workspace remembers its own
+  const treeOpen = $derived(layout.get(studio.workspace).treeOpen);
   const toggleTree = () => {
-    treeOpen = !treeOpen;
-    try { localStorage.setItem("nova.treeOpen", treeOpen ? "1" : "0"); } catch { /* not remembered */ }
+    layout.set(studio.workspace, { treeOpen: !treeOpen });
     window.dispatchEvent(new Event("resize"));
   };
 
@@ -56,6 +56,8 @@
       commands.register({ id: "help.toggle", title: "Show or hide help", menu: "Help", icon: "help", keys: ["F1"], help: "Lessons, the reference and the shortcuts", run: () => { if (studio.helpOpen) studio.helpOpen = false; else studio.openHelp(); } }),
       commands.register({ id: "palette.open", title: "Search commands", menu: "Help", icon: "search", keys: ["Mod+K"], help: "Find any command by name", run: () => { paletteOpen = true; } }),
       commands.register({ id: "view.tree", title: "Show or hide the project tree", menu: "View", keys: ["Mod+B"], enabled: has, run: toggleTree }),
+      commands.register({ id: "view.panel", title: "Show or hide the bottom panel", menu: "View", keys: ["Mod+J"], help: "Problems, play and the debugger", enabled: has, run: () => { studio.panelOpen = !studio.panelOpen; window.dispatchEvent(new Event("resize")); } }),
+      commands.register({ id: "view.resetLayout", title: "Reset this workspace's layout", menu: "Window", help: "Panels back to their usual places and sizes", enabled: has, run: () => { layout.reset(studio.workspace); window.dispatchEvent(new Event("resize")); } }),
       commands.register({ id: "file.save", title: "Save", menu: "File", icon: "device-floppy", keys: ["Mod+S"], run: () => void studio.save() }),
       commands.register({ id: "file.saveAll", title: "Save all", menu: "File", enabled: () => !!studio.project && studio.dirty, run: () => void studio.saveAll() }),
       commands.register({ id: "file.close", title: "Close the project", menu: "File", enabled: has, run: () => void studio.closeProject() }),
@@ -196,7 +198,7 @@
     </main>
 
     {#if studio.panelOpen}
-      <div class="bottom" use:resizable={{ key: "bottom", edge: "top", size: 220, min: 90, max: 640 }}><BottomPanel /></div>
+      <div class="bottom" use:resizable={{ key: sizeKey("bottom", studio.workspace), edge: "top", size: 220, min: 90, max: 640 }}><BottomPanel /></div>
     {:else}
       <footer class="status">
         <button class="ghost" onclick={() => (studio.panelOpen = true)}>▴ {errors ? `${errors} problem${errors === 1 ? "" : "s"}` : "Problems · Play"}</button>

@@ -31,6 +31,11 @@ function remember(key: string, v: number | null) {
   }
 }
 
+/// Puts a panel back to its usual size (what a double-click on its handle does, and "Reset layout").
+export function forgetSize(key: string): void {
+  remember(key, null);
+}
+
 /// The size a drag gives: from the size at the start, moved by the pointer (dx, dy) on the handle's edge, kept within min and max.
 export function draggedSize(o: ResizeOptions, start: number, dx: number, dy: number): number {
   const d = o.edge === "right" ? dx : o.edge === "left" ? -dx : -dy;

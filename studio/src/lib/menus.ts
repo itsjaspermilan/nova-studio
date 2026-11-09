@@ -13,9 +13,9 @@ export const MENU_LAYOUT: { title: string; lines: MenuLine[] }[] = [
     title: "Edit",
     lines: [{ id: "edit.undo" }, { id: "edit.redo" }, "-", { id: "edit.cut", native: "cut" }, { id: "edit.copy", native: "copy" }, { id: "edit.paste", native: "paste" }, { id: "edit.selectAll", native: "selectAll" }],
   },
-  { title: "View", lines: [{ id: "view.tree" }] },
+  { title: "View", lines: [{ id: "view.tree" }, { id: "view.panel" }] },
   { title: "Run", lines: [{ id: "run.play" }, { id: "run.playDevice" }, "-", { id: "tool.simulate" }, { id: "tool.storeArt" }] },
-  { title: "Window", lines: [{ id: "workspace.model" }, { id: "workspace.sprites" }, { id: "workspace.sound" }, { id: "workspace.engine" }, "-", { native: "minimize" }, { native: "maximize" }] },
+  { title: "Window", lines: [{ id: "workspace.model" }, { id: "workspace.sprites" }, { id: "workspace.sound" }, { id: "workspace.engine" }, "-", { id: "view.resetLayout" }, "-", { native: "minimize" }, { native: "maximize" }] },
   { title: "Help", lines: [{ id: "help.toggle" }, { id: "palette.open" }] },
 ];
 

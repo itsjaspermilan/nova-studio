@@ -2,6 +2,7 @@
   import { buildTree, fileKind, visibleRows } from "../lib/tree";
   import { groupResources, resourceRows, type Resource } from "../lib/resources";
   import { resizable } from "../lib/resize";
+  import { sizeKey } from "../lib/layout.svelte";
   import { studio } from "../lib/store.svelte";
 
   type Editing = { mode: "file" | "dir" | "rename"; base: string; value: string };
@@ -145,7 +146,7 @@
   }
 </script>
 
-<aside class="tree" use:resizable={{ key: "tree", edge: "right", size: 240, min: 160, max: 560 }}>
+<aside class="tree" use:resizable={{ key: sizeKey("tree", studio.workspace), edge: "right", size: 240, min: 160, max: 560 }}>
   <header>
     <span class="title">{studio.project?.name}</span>
     {#if view === "files"}

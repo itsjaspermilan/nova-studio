@@ -20,6 +20,7 @@ import { PerfTracker, type Hitch, type PerfSample } from "./perf";
 import { ACTIVITY_FILE, parseActivity, type Activity } from "./activity";
 import { debug } from "./debugger.svelte";
 import { inWorkspace, workspaceOf, type WorkspaceId } from "./workspaces";
+import { layout } from "./layout.svelte";
 import { deviceHint, lastDevice, NO_DEVICE, preferredDevice, rememberDevice } from "./devices";
 import type { AndroidDevice, Api, Diagnostic, ExampleInfo, ExportReport, FileEntry, LogLine, ProjectInfo, RecentProject, TemplateInfo } from "./types";
 
@@ -85,7 +86,13 @@ class Studio {
   deviceStep: string | null = $state(null);
   log: LogLine[] = $state([]);
   panel: Panel = $state("problems");
-  panelOpen = $state(true);
+  /// The bottom panel (problems, play, debugger) of the workspace on show; each workspace remembers its own (lib/layout.svelte.ts).
+  get panelOpen(): boolean {
+    return layout.get(this.workspace).panelOpen;
+  }
+  set panelOpen(open: boolean) {
+    layout.set(this.workspace, { panelOpen: open });
+  }
   helpOpen = $state(false);
   /// A tool that takes over the window: store art or the simulation harness.
   tool: "art" | "sim" | null = $state(null);
