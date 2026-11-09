@@ -35,15 +35,15 @@ Blender keymap in Model. Goal: a free, all-in-one studio for making games, no st
   SongEditor, TrackEditor, TimelineEditor, SceneEditor, Scene3D, Editor); items below say what is added.
 
 ### S0: Mockups and decisions (before code)
-- [ ] Wireframes for each workspace's presets and the first-launch screen: drawn in `docs/ux/studio-wireframes.html`; the owner reviews them.
-- [ ] Owner reviews the wireframes; icon set chosen (one family, 16/20/24 px) and licence checked (`licenses/`).
+- [x] Wireframes for each workspace and the first-launch screen: `docs/ux/studio-wireframes.html` (owner approved 2026-11-09).
+- [ ] Icon set chosen (one family, 16/20/24 px) and licence checked (`licenses/`).
 - [ ] Evaluate the Windows snap-layout plugins; plan a Windows test (no Windows machine here).
 
 ### S1: The spine (every workspace needs it)
-- [ ] Command registry: id, plain name, icon, per-OS shortcut, enabled rule, help text; menus, toolbars, context menus, palette, tooltips, shortcut editor and help search all read it.
+- [~] Command registry (2026-11-09: `studio/src/lib/commands.ts`, 10 tests; the studio's shortcuts and the Cmd/Ctrl-K palette use it; not yet: icons in a shared set, the shortcut editor, menus and toolbars reading it): id, plain name, icon, per-OS shortcut, enabled rule, help text; menus, toolbars, context menus, palette, tooltips, shortcut editor and help search all read it.
 - [ ] Native macOS menu bar (Nova, File, Edit, View, per-workspace menu, Window, Help with search) and drawn menus on Windows (Alt access); standard shortcuts.
 - [ ] Window chrome: macOS overlay title bar with native traffic lights; Windows `decorations: false` with our own caption buttons (+ snap-layout flyout, unverified until run on Windows).
-- [ ] Command palette (Cmd/Ctrl-K) searching commands, documents, assets, Lua symbols, help, settings.
+- [~] Command palette (Cmd/Ctrl-K, `CommandPalette.svelte`, checked in the browser preview; searches commands only so far) searching commands, documents, assets, Lua symbols, help, settings.
 - [ ] Keymap system: per-workspace defaults, Blender preset (default in Model), editable, conflict warnings, printable cheat sheet.
 - [ ] Areas: resizable, collapsible, split/join, switchable type, saved layouts per workspace and project, Reset layout.
 - [ ] Tabs and tear-off windows (Tauri multi-window); a document is open in one place only (focus the existing one, "open in another window" + Jump); one undo history per document, shown as a history list.

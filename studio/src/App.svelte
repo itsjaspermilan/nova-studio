@@ -16,6 +16,8 @@
   import Simulate from "./components/Simulate.svelte";
   import WindowButtons from "./components/WindowButtons.svelte";
   import PlayButton from "./components/PlayButton.svelte";
+  import CommandPalette from "./components/CommandPalette.svelte";
+  import { commands } from "./lib/commands";
   import { fileKind } from "./lib/tree";
   import { markChrome } from "./lib/chrome";
   import { resizable } from "./lib/resize";
@@ -31,23 +33,30 @@
     window.dispatchEvent(new Event("resize"));
   };
 
+  let paletteOpen = $state(false);
+
   onMount(() => {
     void studio.init();
+    // Every action is a command (lib/commands.ts); the keys, the palette and, later, the menus all read this list.
+    const has = () => !!studio.project;
+    const offs = [
+      commands.register({ id: "help.toggle", title: "Show or hide help", menu: "Help", icon: "help", keys: ["F1"], help: "Lessons, the reference and the shortcuts", run: () => { if (studio.helpOpen) studio.helpOpen = false; else studio.openHelp(); } }),
+      commands.register({ id: "palette.open", title: "Search commands", menu: "Help", icon: "search", keys: ["Mod+K"], help: "Find any command by name", run: () => { paletteOpen = true; } }),
+      commands.register({ id: "view.tree", title: "Show or hide the project tree", menu: "View", keys: ["Mod+B"], enabled: has, run: toggleTree }),
+      commands.register({ id: "file.save", title: "Save", menu: "File", icon: "device-floppy", keys: ["Mod+S"], run: () => void studio.save() }),
+      commands.register({ id: "file.saveAll", title: "Save all", menu: "File", enabled: () => !!studio.project && studio.dirty, run: () => void studio.saveAll() }),
+      commands.register({ id: "file.close", title: "Close the project", menu: "File", enabled: has, run: () => void studio.closeProject() }),
+      commands.register({ id: "file.export", title: "Export the game", menu: "File", help: "Check the game and write it out for a computer or for Android", enabled: has, run: () => { studio.exportReport = null; studio.exportOpen = true; } }),
+      commands.register({ id: "run.play", title: "Play or stop the game", menu: "Run", icon: "player-play", keys: ["Mod+Enter"], enabled: has, run: () => void (studio.running ? studio.stop() : studio.play()) }),
+      commands.register({ id: "run.playDevice", title: "Play on the device used last", menu: "Run", keys: ["Mod+Shift+Enter"], enabled: has, run: () => void (studio.running ? studio.stop() : studio.playOnPreferredDevice()) }),
+      commands.register({ id: "tool.simulate", title: "Simulate the game many times", menu: "Run", enabled: has, run: () => { studio.tool = "sim"; } }),
+      commands.register({ id: "tool.storeArt", title: "Make store art", menu: "Run", help: "The app icon and the cover picture", enabled: has, run: () => { studio.tool = "art"; } }),
+    ];
     const keys = (e: KeyboardEvent) => {
-      if (e.key === "F1") {
-        e.preventDefault();
-        studio.helpOpen ? (studio.helpOpen = false) : studio.openHelp();
-      } else if ((e.metaKey || e.ctrlKey) && e.key === "b" && studio.project) {
-        e.preventDefault();
-        toggleTree();
-      } else if ((e.metaKey || e.ctrlKey) && e.key === "s") {
-        e.preventDefault();
-        void studio.save();
-      } else if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && studio.project) {
-        e.preventDefault();
-        // ⌘⇧↩ plays on the device used last
-        void (studio.running ? studio.stop() : e.shiftKey ? studio.playOnPreferredDevice() : studio.play());
-      }
+      const cmd = commands.forEvent(e);
+      if (!cmd) return;
+      e.preventDefault();
+      void commands.run(cmd.id);
     };
     const refocus = () => {
       void studio.checkExternal();
@@ -64,6 +73,7 @@
     return () => {
       clearInterval(watch);
       window.removeEventListener("keydown", keys);
+      for (const off of offs) off();
       window.removeEventListener("focus", refocus);
     };
   });
@@ -170,6 +180,7 @@
 {/if}
 
 <Help />
+<CommandPalette bind:open={paletteOpen} />
 
 {#if studio.tool && studio.project}
   <div class="tool" role="dialog" aria-label={studio.tool === "art" ? "Store art" : "Simulate"}>
