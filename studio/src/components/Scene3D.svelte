@@ -4,6 +4,8 @@
   import { onMount, untrack } from "svelte";
   import * as THREE from "three";
   import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+  import { applyNavigation } from "../lib/view-nav";
+  import { input } from "../lib/input-settings.svelte";
   import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
   import type { ModelDoc } from "../lib/model-doc";
   import { ModelShapes, instanceScene, moveObject, placement, type Instanced } from "../lib/scene-three";
@@ -64,6 +66,7 @@
   let camera: THREE.PerspectiveCamera | THREE.OrthographicCamera | undefined;
   let mapSpan = 200; // metres across the map's shorter side at zoom 1
   let controls: OrbitControls | undefined;
+  let stopNav: (() => void) | undefined;
   let gizmo: TransformControls | undefined;
   let content: THREE.Group | undefined;
   let frameId = 0;
@@ -114,6 +117,14 @@
     window.addEventListener("keydown", keydown);
     controls = new OrbitControls(camera, canvas);
     controls.target.copy(target);
+    // how the person moves the view (a mouse, a trackpad or a pen: lib/view-nav.ts), kept up to date if they change it
+    const navEffect = $effect.root(() => {
+      $effect(() => {
+        const off = applyNavigation(controls!, () => camera!, canvas!, input.navigation, { invert: input.invert });
+        return off;
+      });
+    });
+    stopNav = navEffect;
     controls.update();
     gizmo = new TransformControls(camera, canvas);
     gizmo.setMode("translate");
@@ -176,6 +187,7 @@
       window.removeEventListener("keydown", keydown);
       observer?.disconnect();
       gizmo?.dispose();
+      stopNav?.();
       controls?.dispose();
       if (content) clear();
       shapes.dispose();

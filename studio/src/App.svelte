@@ -18,6 +18,8 @@
   import PlayButton from "./components/PlayButton.svelte";
   import CommandPalette from "./components/CommandPalette.svelte";
   import MenuBar from "./components/MenuBar.svelte";
+  import FirstLaunch from "./components/FirstLaunch.svelte";
+  import { input } from "./lib/input-settings.svelte";
   import WorkspaceTabs from "./components/WorkspaceTabs.svelte";
   import WorkspaceHome from "./components/WorkspaceHome.svelte";
   import { WORKSPACES } from "./lib/workspaces";
@@ -64,6 +66,7 @@
       commands.register({ id: "file.export", title: "Export the game", menu: "File", help: "Check the game and write it out for a computer or for Android", enabled: has, run: () => { studio.exportReport = null; studio.exportOpen = true; } }),
       commands.register({ id: "run.play", title: "Play or stop the game", menu: "Run", icon: "player-play", keys: ["Mod+Enter"], enabled: has, run: () => void (studio.running ? studio.stop() : studio.play()) }),
       commands.register({ id: "run.playDevice", title: "Play on the device used last", menu: "Run", keys: ["Mod+Shift+Enter"], enabled: has, run: () => void (studio.running ? studio.stop() : studio.playOnPreferredDevice()) }),
+      commands.register({ id: "settings.input", title: "Input settings", menu: "Edit", help: "Mouse, trackpad or pen for moving around 3D views", run: () => { input.dialogOpen = true; } }),
       commands.register({ id: "tool.simulate", title: "Simulate the game many times", menu: "Run", enabled: has, run: () => { studio.tool = "sim"; } }),
       ...WORKSPACES.map((w, i) => commands.register({ id: `workspace.${w.id}`, title: `Go to ${w.title}`, menu: "Window", keys: [`Mod+${i + 1}`], help: w.blurb, enabled: has, run: () => studio.setWorkspace(w.id) })),
       // text editing is handled by the focused control itself; the menu only sends it the usual key press or edit command
@@ -223,6 +226,9 @@
 
 <Help />
 <CommandPalette bind:open={paletteOpen} />
+{#if studio.ready && (!input.configured || input.dialogOpen)}
+  <FirstLaunch first={!input.configured} onclose={() => (input.dialogOpen = false)} />
+{/if}
 
 {#if studio.tool && studio.project}
   <div class="tool" role="dialog" aria-label={studio.tool === "art" ? "Store art" : "Simulate"}>

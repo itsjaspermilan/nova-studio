@@ -3,6 +3,8 @@
   import { onMount, untrack } from "svelte";
   import * as THREE from "three";
   import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+  import { applyNavigation } from "../lib/view-nav";
+  import { input } from "../lib/input-settings.svelte";
   import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
   import {
     FACES, History, MAX_COLLIDERS, SHAPES, addBox, addCapsule, addCollider, removeBox, removeCapsule, updateBox, updateCapsule, addCube, addPart, afterRemoval, countCubes, cubeAt, duplicateNode, faceColor, newModel, parseModel, partAt, removeNode, samePath, serializeModel,
@@ -211,6 +213,7 @@
   let scene: THREE.Scene | undefined;
   let camera: THREE.PerspectiveCamera | undefined;
   let controls: OrbitControls | undefined;
+  let stopNav: (() => void) | undefined;
   let modelGroup: THREE.Group | undefined;
   let grid: THREE.GridHelper | undefined;
   let outline: THREE.Box3Helper | undefined;
@@ -236,6 +239,10 @@
     controls = new OrbitControls(camera, canvas!);
     controls.target.set(0, 8, 0);
     controls.enableDamping = true;
+    // how the person moves the view (a mouse, a trackpad or a pen: lib/view-nav.ts), kept up to date if they change it
+    stopNav = $effect.root(() => {
+      $effect(() => applyNavigation(controls!, () => camera!, canvas!, input.navigation, { invert: input.invert }));
+    });
     gizmo = new TransformControls(camera, canvas!);
     gizmo.setSize(0.75);
     gizmo.addEventListener("dragging-changed", (e) => {
@@ -533,6 +540,7 @@
       gizmo = undefined;
       pointGizmo?.dispose();
       pointGizmo = undefined;
+      stopNav?.();
       controls?.dispose();
       disposeMeshes();
       clearHandles();

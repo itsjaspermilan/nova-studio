@@ -11,7 +11,7 @@ export const MENU_LAYOUT: { title: string; lines: MenuLine[] }[] = [
   { title: "File", lines: [{ id: "file.save" }, { id: "file.saveAll" }, "-", { id: "file.export" }, "-", { id: "file.close" }] },
   {
     title: "Edit",
-    lines: [{ id: "edit.undo" }, { id: "edit.redo" }, "-", { id: "edit.cut", native: "cut" }, { id: "edit.copy", native: "copy" }, { id: "edit.paste", native: "paste" }, { id: "edit.selectAll", native: "selectAll" }],
+    lines: [{ id: "edit.undo" }, { id: "edit.redo" }, "-", { id: "edit.cut", native: "cut" }, { id: "edit.copy", native: "copy" }, { id: "edit.paste", native: "paste" }, { id: "edit.selectAll", native: "selectAll" }, "-", { id: "settings.input" }],
   },
   { title: "View", lines: [{ id: "view.tree" }, { id: "view.panel" }] },
   { title: "Run", lines: [{ id: "run.play" }, { id: "run.playDevice" }, "-", { id: "tool.simulate" }, { id: "tool.storeArt" }] },
