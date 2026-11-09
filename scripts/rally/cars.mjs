@@ -39,6 +39,7 @@ function body(s) {
   for (let z = zr; z < zf; z += 2.1) keys.add(r2(z));
   keys.add(zf);
   for (const z of s.keys ?? []) keys.add(z);
+  if (s.screenInset) for (const r of [s.front, s.rear]) if (r) for (let z = r[0]; z <= r[1]; z += 0.7) keys.add(r2(z));
   for (const z of s.seams ?? []) { keys.add(r2(z - 0.25)); keys.add(r2(z + 0.25)); }
   for (const [a, b] of [...(s.sideGlass ?? []), s.front, s.rear].filter(Boolean)) { keys.add(a); keys.add(b); keys.add(r2(a + FR)); keys.add(r2(b - FR)); }
   for (const z of s.wheelZ) for (const d of [-s.R * 1.2, 0, s.R * 1.2]) keys.add(r2(z + d));
@@ -48,6 +49,7 @@ function body(s) {
   let top = zs.map((z) => along(s.top, z));
   for (let pass = 0; pass < (s.soft ?? 2); pass++) top = top.map((v, i) => (i === 0 || i === n - 1 ? v : (top[i - 1] + 2 * v + top[i + 1]) / 4));
   const T = s.endRound ?? 3.6; // how far from an end the rounding of the nose and tail reaches
+  const WR = s.winRows ?? 2, NP = 9 + WR; // rows of side window (more rows: a smoother raked edge), and so the points of a cross-section
   const half = zs.map((z, i) => {
     const dEnd = Math.min(z - zr, zf - z);
     const k = dEnd >= T ? 1 : Math.sqrt(1 - (1 - dEnd / T) ** 2);
@@ -63,11 +65,9 @@ function body(s) {
     const hwt = hw * (0.94 - (s.tumble ?? 0.18) * f);
     const hb = hw * 0.9;
     const sw = s.stripe ? s.stripe.half : s.screenInset ? s.screenInset * hwt : 1.6;
-    const p = [
-      [0, yb], [hb * 0.6, yb], [hb, yb + 1.0], [hw * 0.99, yb + (ysb - yb) * 0.38], [hw, yb + (ysb - yb) * 0.8], [hw * 0.995, ysb],
-      [lerp(hw, hwt, 0.45), ysb + (yt - ysb) * 0.45], [hwt, ysb + (yt - ysb) * 0.86], [hwt - Math.min(s.roofRound ?? 2.4, hwt * 0.22), yt - 0.55],
-      [Math.min(sw, hwt * (s.screenInset ? 0.9 : 0.4)), yt - 0.05], [0, yt],
-    ];
+    const p = [[0, yb], [hb * 0.6, yb], [hb, yb + 1.0], [hw * 0.99, yb + (ysb - yb) * 0.38], [hw, yb + (ysb - yb) * 0.8], [hw * 0.995, ysb]];
+    for (let k = 1; k <= WR; k++) { const f = (0.86 * k) / WR; p.push([lerp(hw, hwt, Math.min(1, f / 0.86)), ysb + (yt - ysb) * f]); }   // the window rows
+    p.push([hwt - Math.min(s.roofRound ?? 2.4, hwt * 0.22), yt - 0.55], [Math.min(sw, hwt * (s.screenInset ? 0.9 : 0.4)), yt - 0.05], [0, yt]);
     return { z, p, k, hw, yb, ys: ysb, yt };
   });
   // vertices: one per (station, point, side, smoothing group). Panels shade smoothly inside themselves and meet at crisp creases: the
@@ -76,10 +76,10 @@ function body(s) {
   const lift = s.pivot;
   const creaseZ = [...new Set([s.front, s.rear].filter(Boolean).flat())].sort((a, b) => a - b);
   const zoneOf = (i) => { const z = (zs[i] + zs[i + 1]) / 2; return creaseZ.filter((c) => c < z).length; };
-  const groupOf = (j) => (j <= 1 ? 0 : j <= 4 ? 1 : j <= 7 ? 2 : 3);
+  const groupOf = (j) => (j <= 1 ? 0 : j <= 4 ? 1 : j <= 5 + WR ? 2 : 3);
   const made = new Map();
   const V = (i, m, side, g, zone) => {
-    const key = `${i}|${m}|${m === 0 || m === 10 ? "c" : side}|${g}|${zone}`;
+    const key = `${i}|${m}|${m === 0 || m === NP - 1 ? "c" : side}|${g}|${zone}`;
     let at2 = made.get(key);
     if (at2 === undefined) {
       const pt = half[i].p[m];
@@ -104,28 +104,31 @@ function body(s) {
     else if (j === 1) c = trim;
     else if (j === 2) c = s.cladding || bumper ? trim : mul(s.paint, 0.86);
     else if (j === 3 || j === 4) c = (s.lower && inRange(z, s.lower.z) && j === 3 ? s.lower.color : s.paint);
-    else if (j === 5 || j === 6) {
-      const gh = ((a.yt + b.yt) / 2 - (a.ys + b.ys) / 2) / (s.roof - s.ys);   // how tall the greenhouse is here, 0 to 1
-      const win = (s.sideGlass ?? []).some((r) => inRange(z, r)) && !(s.noGlassEnds && dEnd < 3) && gh >= (s.glassMin ?? 0);
+    else if (j >= 5 && j <= 4 + WR) {
+      // the glass is what lies under the roofline shifted a pillar's width towards the end of the car: so its front and rear edges are
+      // raked like the pillars, with a thick band of body colour (the A, C and D pillars) between the glass and the silhouette
+      const inset = (z < (zr + zf) / 2 ? -(s.pillarRear ?? 0) : (s.pillarFront ?? 0)) * (zf - zr);
+      const edge = s.screenInset ? along(s.top, z + inset) - 0.6 : Infinity;
+      const win = !s.screenInset && (s.sideGlass ?? []).some((r) => inRange(z, r)) && !(s.noGlassEnds && dEnd < 3) && yc <= edge;
       c = win ? null : s.paint;
-    } else if (j === 7) c = s.paint;
-    else if (j === 8 || j === 9) {
-      if (inRange(z, s.front) || inRange(z, s.rear)) { if (!(s.screenInset && j === 8 && !s.stripe)) c = null; }
-      else if (j === 9 && s.stripe && s.stripe.z.some((r) => inRange(z, r))) c = s.stripe.color;
+    } else if (j === 5 + WR) c = s.paint;
+    else if (j >= 6 + WR) {
+      if (inRange(z, s.front) || inRange(z, s.rear)) { if (!(s.screenInset && j === 6 + WR && !s.stripe)) c = null; }
+      else if (j === 7 + WR && s.stripe && s.stripe.z.some((r) => inRange(z, r))) c = s.stripe.color;
     }
     for (const sm of s.seams ?? []) if ((j >= 2 && j <= 5) && Math.abs(z - sm) < (s.screenInset ? 0.4 : 0.3) && c !== null) c = mul(c, s.screenInset ? 0.42 : 0.7);
     for (const pt of s.patch ?? []) if (pt.segs.includes(j) && inRange(z, pt.z) && c !== null) c = pt.color;
     if (c === null) {
       // glass: flat dark tints (the lower and the upper row a shade apart); a black frame at the ends of each side window (the pillars)
-      if ((j === 5 || j === 6) && (s.sideGlass ?? []).some((r) => inRange(z, r) && (z - r[0] < FR || r[1] - z < FR))) return FRAME;
-      return GLASS[j];
+      if (j >= 5 && j <= 4 + WR && (s.sideGlass ?? []).some((r) => inRange(z, r) && (z - r[0] < FR || r[1] - z < FR))) return FRAME;
+      return j >= 6 + WR ? GLASS[j === 6 + WR ? 8 : 9] : mix(GLASS[5], GLASS[6], WR > 1 ? (j - 5) / (WR - 1) : 0.5);
     }
     // a gentle tone across the body: darker low down, lighter on top
     return mul(c, j === 0 ? 1 : 0.88 + 0.2 * h);
   };
   for (let i = 0; i < n - 1; i++) {
     const zone = zoneOf(i);
-    for (let j = 0; j < 10; j++) {
+    for (let j = 0; j < NP - 1; j++) {
       const color = seg(i, j), g = groupOf(j);
       polys.push({ v: [V(i, j, "R", g, zone), V(i, j + 1, "R", g, zone), V(i + 1, j + 1, "R", g, zone), V(i + 1, j, "R", g, zone)], color, smooth: true });
       polys.push({ v: [V(i, j, "L", g, zone), V(i + 1, j, "L", g, zone), V(i + 1, j + 1, "L", g, zone), V(i, j + 1, "L", g, zone)], color, smooth: true });
@@ -135,7 +138,7 @@ function body(s) {
   for (const i of [0, n - 1]) {
     const E = (m, side) => V(i, m, side, 9, 99 + i);
     const lower = [0, 1, 2, 3].map((m) => E(m, "R")).concat([3, 2, 1].map((m) => E(m, "L")));
-    const upper = [3, 4, 5, 6, 7, 8, 9, 10].map((m) => E(m, "R")).concat([9, 8, 7, 6, 5, 4, 3].map((m) => E(m, "L")));
+    const upper = Array.from({ length: NP - 3 }, (_, q) => E(3 + q, "R")).concat(Array.from({ length: NP - 4 }, (_, q) => E(NP - 2 - q, "L")));
     polys.push({ v: lower, color: s.trim, smooth: false, end: i }, { v: upper, color: mul(s.paint, 0.95), smooth: false, end: i });
   }
   // make every polygon face outwards (the centre of the car at its height is the reference)
@@ -160,11 +163,10 @@ function body(s) {
     while (i < n - 2 && half[i + 1].z < z) i++;
     const a = half[i], b = half[i + 1], t = clamp((z - a.z) / (b.z - a.z || 1), 0, 1);
     const P = a.p.map((pt, q) => [lerp(pt[0], b.p[q][0], t), lerp(pt[1], b.p[q][1], t)]);
-    for (let q = 1; q < 9; q++) if (y <= P[q + 1][1] || q === 8) return lerp(P[q][0], P[q + 1][0], clamp((y - P[q][1]) / (P[q + 1][1] - P[q][1] || 1), 0, 1));
-    return P[8][0];
+    const qMax = NP - 2;
+    for (let q = 1; q < qMax; q++) if (y <= P[q + 1][1] || q === qMax - 1) return lerp(P[q][0], P[q + 1][0], clamp((y - P[q][1]) / (P[q + 1][1] - P[q][1] || 1), 0, 1));
+    return P[qMax - 1][0];
   };
-  // wheel arches: a dark wheel-well disc on the side of the body at each wheel, ringed by a raised fender lip (a half-tube in the paint);
-  // the tyre stands a little proud of the disc, so the wheel looks to sit in an arch
   const orient = (verts2, polys2, centreOf) => polys2.map((pl) => {
     const P = pl.v.map((v) => verts2[v]);
     const c = [0, 1, 2].map((a) => P.reduce((m, p) => m + p[a], 0) / P.length);
@@ -172,6 +174,52 @@ function body(s) {
     const ref = centreOf(c, pl);
     return nrm[0] * ref[0] + nrm[1] * ref[1] + nrm[2] * ref[2] < 0 ? { ...pl, v: [...pl.v].reverse() } : pl;
   });
+  // side windows of the reference cars: each a mesh of its own with a true straight outline (the front and rear edges raked like the
+  // pillars, the others vertical), lying on the body's side, over a slightly larger dark frame
+  if (s.screenInset && s.sideGlass?.length) {
+    const wins = [...s.sideGlass].sort((p, q) => p[0] - q[0]);
+    const ysG = s.ys, border = 0.8;
+    const roofHere = (z) => along(s.top, z) - border;
+    const rr = s.rakeRear, rf = s.rakeFront;
+    const rows = 9, cols = 6;
+    const edges = (w, wi, y) => {
+      const rear = wi === 0 && rr ? w[0] + (y - ysG) * rr.dzdy : w[0];
+      const front = wi === wins.length - 1 && rf ? w[1] + (y - ysG) * rf.dzdy : w[1];
+      return [rear, front];
+    };
+    const topOf = (w) => { let m = 0; for (let z = w[0]; z <= w[1]; z += 0.5) m = Math.max(m, roofHere(z)); return m; };
+    for (const side of [-1, 1]) wins.forEach((w, wi) => {
+      for (const [name, margin, off, colour] of [["frame", 0.55, 0.07, FRAME], ["glass", 0, 0.14, null]]) {
+        const verts2 = [], polys2 = [], grid = [];
+        const yTop = topOf(w);
+        for (let k = 0; k <= rows; k++) {
+          const y = ysG + 0.2 + (yTop - ysG - 0.2) * (k / rows);
+          let [zl, zr2] = edges(w, wi, y);
+          // (the glass stays under the roofline; where the roof is lower than this row, the row has no width)
+          if (roofHere(Math.max(zl, w[0])) < y && roofHere(Math.min(zr2, w[1])) < y) { grid.push(null); continue; }
+          zl -= margin; zr2 += margin;
+          if (zl >= zr2) { grid.push(null); continue; }
+          const row = [];
+          for (let c = 0; c <= cols; c++) {
+            const z = lerp(zl, zr2, c / cols), yy = y + (k === 0 ? -margin * 0.6 : k === rows ? margin * 0.6 : 0);
+            verts2.push([side * (surf(clamp(z, zr + 0.5, zf - 0.5), yy) + off), Y(yy), z]);
+            row.push(verts2.length - 1);
+          }
+          grid.push(row);
+        }
+        for (let k = 0; k < rows; k++) {
+          if (!grid[k] || !grid[k + 1]) continue;
+          const tone = colour ?? mix(GLASS[5], GLASS[6], k / (rows - 1));
+          for (let c = 0; c < cols; c++) polys2.push({ v: [grid[k][c], grid[k][c + 1], grid[k + 1][c + 1], grid[k + 1][c]], color: tone });
+        }
+        if (!polys2.length) continue;
+        const fixed = orient(verts2, polys2, () => [side, 0, 0]);
+        cubes.push({ name: `side ${name} ${side > 0 ? "left" : "right"} ${wi + 1}`, shape: "mesh", color: colour ?? GLASS[6], verts: verts2.map((v) => v.map(r2)), polys: fixed });
+      }
+    });
+  }
+  // wheel arches: a dark wheel-well disc on the side of the body at each wheel, ringed by a raised fender lip (a half-tube in the paint);
+  // the tyre stands a little proud of the disc, so the wheel looks to sit in an arch
   const ra = s.R * (s.archScale ?? 1.13);
   for (const side of [-1, 1]) for (const wz of s.open ? [] : s.wheelZ) {
     // the plane the arch lies in: just outside the body's side over the whole arch
@@ -369,13 +417,13 @@ const muscle = (o) => ({
 // and real-world sizes: a length, a width, a height and the overhangs, in metres.
 const PSX = JSON.parse(readFileSync(new URL("./psx-profiles.json", import.meta.url)));
 const ARCH = {
-  sedan: { psx: "sedan", L: 4.65, W: 1.76, H: 1.43, fo: 0.21, ro: 0.23, R: 0.35, belt: 0.64, glass: [[0.36, 0.52], [0.54, 0.74]], seams: [0.34, 0.53, 0.76], doors: 4 },
-  wagon: { psx: "wagon", L: 4.15, W: 1.62, H: 1.45, fo: 0.15, ro: 0.26, R: 0.34, belt: 0.62, glass: [[0.3, 0.45], [0.47, 0.62], [0.64, 0.89]], seams: [0.3, 0.46, 0.63], doors: 4 },
-  hatch: { psx: "hatch", L: 3.85, W: 1.65, H: 1.42, fo: 0.19, ro: 0.17, R: 0.32, belt: 0.62, glass: [[0.355, 0.625], [0.645, 0.84]], seams: [0.325, 0.63], doors: 2 },
-  minivan: { psx: "minivan", L: 4.6, W: 1.88, H: 1.92, fo: 0.15, ro: 0.19, R: 0.375, belt: 0.64, glass: [[0.21, 0.45], [0.47, 0.72], [0.74, 0.93]], seams: [0.2, 0.46, 0.73], doors: 2, noRear: true },
-  bigsedan: { psx: "bigsedan", L: 5.2, W: 1.95, H: 1.4, fo: 0.2, ro: 0.25, R: 0.36, belt: 0.7, glass: [[0.385, 0.525], [0.545, 0.69], [0.71, 0.775]], seams: [0.33, 0.535, 0.71], doors: 4 },
-  vintage: { psx: "vintage", L: 3.5, W: 1.66, H: 1.75, fo: 0.11, ro: 0.13, R: 0.41, belt: 0.7, glass: [[0.41, 0.58], [0.63, 0.81]], seams: [0.4, 0.6], doors: 2, noRear: true },
-  stepvan: { psx: "stepvan", L: 5.2, W: 2.05, H: 2.35, fo: 0.17, ro: 0.26, R: 0.41, belt: 0.58, glass: [[0.15, 0.39]], seams: [0.26], doors: 2, noRear: true },
+  sedan: { psx: "sedan", L: 4.65, W: 1.76, H: 1.43, fo: 0.21, ro: 0.23, R: 0.35, belt: 0.64, glass: [[0.36, 0.52], [0.54, 0.74], [0.757, 0.83]], seams: [0.34, 0.53, 0.76], pillarRear: 0.035, pillarFront: 0.02, doors: 4 },
+  wagon: { psx: "wagon", L: 4.15, W: 1.62, H: 1.45, fo: 0.15, ro: 0.26, R: 0.34, belt: 0.62, glass: [[0.3, 0.455], [0.47, 0.66], [0.722, 0.906]], seams: [0.3, 0.46, 0.69], pillarRear: 0.07, pillarFront: 0.02, doors: 4 },
+  hatch: { psx: "hatch", L: 3.85, W: 1.65, H: 1.42, fo: 0.19, ro: 0.17, R: 0.32, belt: 0.62, glass: [[0.355, 0.625], [0.645, 0.861]], seams: [0.325, 0.63], pillarRear: 0.075, pillarFront: 0.02, doors: 2 },
+  minivan: { psx: "minivan", L: 4.6, W: 1.88, H: 1.92, fo: 0.15, ro: 0.19, R: 0.375, belt: 0.64, glass: [[0.21, 0.45], [0.47, 0.72], [0.74, 0.93]], seams: [0.2, 0.46, 0.73], pillarRear: 0.0, pillarFront: 0.02, doors: 2, noRear: true },
+  bigsedan: { psx: "bigsedan", L: 5.2, W: 1.95, H: 1.4, fo: 0.2, ro: 0.25, R: 0.36, belt: 0.7, glass: [[0.385, 0.525], [0.545, 0.69], [0.725, 0.78]], seams: [0.33, 0.535, 0.71], pillarRear: 0.04, pillarFront: 0.02, doors: 4 },
+  vintage: { psx: "vintage", L: 3.5, W: 1.66, H: 1.75, fo: 0.11, ro: 0.13, R: 0.41, belt: 0.7, glass: [[0.41, 0.58], [0.63, 0.81]], seams: [0.4, 0.6], pillarRear: 0.0, pillarFront: 0.0, doors: 2, noRear: true },
+  stepvan: { psx: "stepvan", L: 5.2, W: 2.05, H: 2.35, fo: 0.17, ro: 0.26, R: 0.41, belt: 0.58, glass: [[0.15, 0.39]], seams: [0.26], pillarRear: 0.0, pillarFront: 0.02, doors: 2, noRear: true },
 };
 function fromArch(key, o) {
   const a = ARCH[key], u16 = 16, L = a.L * u16, W = a.W * u16, Ht = a.H * u16, R = a.R * u16;
@@ -395,18 +443,29 @@ function fromArch(key, o) {
   while (k1 < N && prof[k1] - prof[k1 + 1] > 0.04) k1++;
   const front = [z(first / N), z(k0 / N)].sort((p, q) => p - q);
   const rear = a.noRear ? undefined : [z(k1 / N), z(last / N)].sort((p, q) => p - q);
+  // the rake of the A pillar and of the rear pillar (dz per dy along the steep parts of the roofline), for the straight edges of the side windows
+  const yAt = (k) => prof[k] * Ht;
+  const rakeFront = { dzdy: (z(first / N) - z(k0 / N)) / ((yAt(first) - yAt(k0)) || 1) };
+  const rakeRear = { dzdy: (z(last / N) - z(k1 / N)) / ((yAt(last) - yAt(k1)) || 1) };
   const ys = r2(Ht * (a.belt ?? 0.66));
   const hw = W / 2;
   // (the first side window starts where the windscreen does and the last ends where the rear glass does: the rake of the pillars then shapes them)
   const gl = a.glass.map(([u0, u1]) => [u0, u1]);
   gl[0][0] = Math.min(gl[0][0], k0 / N);
-  if (!a.noRear) gl[gl.length - 1][1] = Math.max(gl[gl.length - 1][1], k1 / N);
   const glass = gl.map(([u0, u1]) => [z(u1), z(u0)]);
+  // the rear pillar: the glass edge is the roofline's rake through the reference window's lower rear corner (u of the last window's end)
+  let pillarRear = 0;
+  if (!a.noRear) {
+    const zc = z(gl[gl.length - 1][1]);
+    let zb = zr;                                    // where the roofline comes down to the belt line, towards the tail
+    for (let k = last; k <= N; k++) if (prof[k] * Ht <= ys) { const k0b = Math.max(last, k - 1); const f = (prof[k0b] * Ht - ys) / ((prof[k0b] - prof[k]) * Ht || 1); zb = z((k0b + f * (k - k0b)) / N); break; }
+    pillarRear = Math.max(0, (zc - zb) / L);
+  }
   const seams = a.seams.map(z);
   return {
     ...classic, zr, zf, hw, yb: 3.0, ys, roof: r2(Ht), pivot: r2(R), R: r2(R), tw: r2(R * 0.82), track: r2(hw - R * 0.41 - 0.4),
-    wheelZ: [r2(zf - a.fo * L), r2(zr + a.ro * L)], tumble: 0.1, top, front, rear, sideGlass: glass, glassMin: 0.3, seams, rim: "#d7dde6", endRound: 2.0, roofRound: 1.0, soft: 1,
-    handles: seams.slice(0, 2).map((s2) => r2(s2 - 2.4)), screenInset: 0.74, archScale: 1.2, ...o,
+    wheelZ: [r2(zf - a.fo * L), r2(zr + a.ro * L)], tumble: 0.1, top, front, rear, sideGlass: glass, glassMin: 0.34, seams, rim: "#d7dde6", endRound: 2.0, roofRound: 1.0, soft: 1,
+    handles: seams.slice(0, 2).map((s2) => r2(s2 - 2.4)), screenInset: 0.74, winRows: 6, archScale: 1.2, pillarRear, pillarFront: a.pillarFront, rakeFront, rakeRear: a.noRear ? undefined : rakeRear, ...o,
   };
 }
 
