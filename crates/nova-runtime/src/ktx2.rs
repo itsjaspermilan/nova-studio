@@ -1,4 +1,4 @@
-//! KTX2 textures: a picture already compressed for the GPU (ETC2 or ASTC, which every phone GPU reads; BC, which desktops do),
+//! KTX2 textures: a picture already compressed for the GPU (ETC2 or ASTC, which every phone GPU reads),
 //! with its smaller copies, kept in the project and put on the GPU as it is. A compressed texture is a quarter to an eighth of the
 //! size of the same picture in RGBA8, in the APK and in memory, and the GPU reads it that way too.
 //!

@@ -406,6 +406,65 @@ mod tests {
     }
 
     #[test]
+    fn the_graphics_settings_are_read_and_bad_ones_refused() {
+        let q = open(&[
+            ("nova.json", r#"{"format":1,"name":"G","graphics":{"hdr":true,"msaa":4,"shadow_cascades":3,"ibl":true,"anisotropy":8}}"#),
+            ("main.lua", ""),
+        ])
+        .unwrap()
+        .manifest
+        .graphics;
+        assert_eq!(
+            q,
+            crate::gfx::Quality {
+                hdr: true,
+                msaa: 4,
+                cascades: 3,
+                ibl: true,
+                aniso: 8
+            }
+        );
+        // none given: the plain engine
+        let plain = open(&[
+            ("nova.json", r#"{"format":1,"name":"G"}"#),
+            ("main.lua", ""),
+        ])
+        .unwrap();
+        assert_eq!(plain.manifest.graphics, crate::gfx::Quality::default());
+        for bad in [
+            r#""graphics": true"#,
+            r#""graphics": {"msaa": 2}"#,
+            r#""graphics": {"shadow_cascades": 9}"#,
+            r#""graphics": {"hdr": "yes"}"#,
+            r#""graphics": {"fancy": true}"#,
+        ] {
+            let text = format!(r#"{{"format":1,"name":"G",{bad}}}"#);
+            assert!(
+                open(&[("nova.json", text.as_str()), ("main.lua", "")]).is_err(),
+                "{bad}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_forcing_text_is_parsed() {
+        let q =
+            crate::gfx::Quality::from_spec("hdr,msaa=4 cascades=2,ibl,aniso=8,height=720").unwrap();
+        assert_eq!(
+            q,
+            crate::gfx::Quality {
+                hdr: true,
+                msaa: 4,
+                cascades: 2,
+                ibl: true,
+                aniso: 8
+            }
+        );
+        assert!(crate::gfx::Quality::from_spec("bloomy").is_err());
+        assert!(crate::gfx::Quality::from_spec("msaa=four").is_err());
+    }
+
+    #[test]
     fn missing_manifest_explains_what_to_create() {
         let e = open(&[("main.lua", "")]).err().unwrap();
         assert!(

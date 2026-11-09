@@ -169,6 +169,49 @@ because it also includes the grass, the blur, and the picture being drawn to its
 needs the room can drop to `world_height = 405` or leave out the ambient occlusion first (the cheapest large saving). The Effects option is what a
 player on battery would turn off.
 
+## Switch-class settings on the Retroid (2026-11-09, `scripts/graphics-bench.sh`)
+
+What each opt-in setting of `nova.graphics` and `world_height` costs (`docs/switch-class-graphics.md`). Scene: Pine Ridge's free roam
+(`scenes/roam`, the town, the car standing still, about 470,000 triangles, 180 draws, one sun with shadows, the finish on: bloom and
+ambient occlusion), the debug APK, the display at 60 Hz, on USB power, 40 seconds after launch and the mean of the log's last 25 one-second
+readings. `gpu` is the GPU's own time from timestamp queries. Between settings the plain engine was measured nine times, **9.02 to 9.09
+ms** (one run said 8.90), so a difference under about 0.1 ms is noise. **Every row held 59.6 fps.** The frame budget is 16.7 ms.
+
+| Setting | GPU ms | Difference from plain (9.05) | CPU recording ms |
+| --- | --- | --- | --- |
+| plain | 9.05 | | 1.1 to 1.5 |
+| `hdr` | 9.22 | +0.17 | 1.2 |
+| `msaa = 4` | 9.62 | +0.57 | 1.4 |
+| `hdr` + `msaa = 4` | 9.95 | +0.90 | 1.4 |
+| `shadow_cascades = 2` | 9.19 | +0.14 | 1.5 |
+| `shadow_cascades = 3` | 9.34 | +0.29 | 1.9 |
+| `ibl` | 9.05 | 0.00 | 1.2 |
+| `anisotropy = 16` | 9.06 | 0.00 | 1.2 |
+| all five of the above | 10.27 | +1.22 | 1.9 |
+| `world_height` 720 | 9.93 | +0.88 | 1.2 |
+| `world_height` 1080 (native) | 13.76 | +4.71 | 1.2 |
+| all five of the above at 720 | 12.14 | +3.09 | 2.1 |
+
+What this says, and does not:
+
+- **The whole stack at the default 540 costs about 1.2 ms** (HDR 0.2, MSAA 0.6, cascades 0.3): on the Adreno the multisampled
+  colour stays in tile memory, and a 16-bit float target costs little here because the world is drawn at a low resolution. With the
+  stack on, the free roam is at 10.3 ms against a 16.7 ms budget.
+- **`world_height` is the expensive knob.** 720 costs 0.9 ms by itself, and 3.1 ms with the stack (MSAA and the float target both grow with
+  the pixels); native 1080 costs 4.7 ms by itself and held 60 fps with 3 ms to spare in this scene. I did not measure 1080 with the stack
+  on (it would be about 4 ms more again by these ratios, so a game that wants 1080 should choose between it and MSAA).
+- **`ibl` and `anisotropy` read zero because this scene cannot show them**: only the two cars use their glTF material (so there is almost
+  nothing for the sky cube to light), and the town's textures are nearest-filtered palettes, which anisotropic filtering leaves alone. A
+  game of textured, material-lit models will pay for both: the cube is one small texture read (two with a clear coat) and a few more ALU per
+  material pixel, and anisotropic sampling takes up to 16 taps on slanted ground. Measure that game, not this one.
+- The CPU side of three cascades is real (recording 1.3 to 1.9 ms, three shadow passes' draws), still small.
+- **Not measured**: heat over minutes with the stack on, the stack with a driving car and a moving camera (the car stood still, so the
+  tile traffic of a changing scene is not in these numbers), 1080 with the stack, battery use. The sky cube's cost when the sky changes
+  every frame (a day-night cycle redraws it: 36 small passes) was not measured either.
+- Pitfall found on the way: another game installed on the same device under the same package name replaces the one being measured and
+  makes a script read its menu (`tris 0`). The script now reads only the pid of the package it was given and refuses a run in which that
+  app is not in front; give a scratch build its own `name` in `nova.json`.
+
 ## To do on the device
 
 Done once (above), and an 11-minute heat run (no throttling seen). Still to do: a real game on the controller, a longer and heavier run on battery. The first line of advice stands: If `gpu` is 0, the

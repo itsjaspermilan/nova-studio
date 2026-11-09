@@ -1260,8 +1260,7 @@ impl Gfx {
             required_features: adapter.features()
                 & (wgpu::Features::TIMESTAMP_QUERY
                     | wgpu::Features::TEXTURE_COMPRESSION_ASTC
-                    | wgpu::Features::TEXTURE_COMPRESSION_ETC2
-                    | wgpu::Features::TEXTURE_COMPRESSION_BC),
+                    | wgpu::Features::TEXTURE_COMPRESSION_ETC2),
             // The lowest common denominator (GLES 3.0 class), with the texture sizes the GPU offers.
             required_limits:
                 wgpu::Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits()),
