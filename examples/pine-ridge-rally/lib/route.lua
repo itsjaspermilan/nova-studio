@@ -205,10 +205,13 @@ function route.follow(way, x, z)
     local d = (pts[i].x - x) ^ 2 + (pts[i].z - z) ^ 2
     if d < bd then best, bd = i, d end
   end
-  if bd > LEAVE * LEAVE then return route.find(x, z, way.tx, way.tz) or way end
-  if best > 1 then
+  if bd > LEAVE * LEAVE then way = route.find(x, z, way.tx, way.tz) or way; pts = way.pts; best = 1 end
+  -- (the way starts at the first point still ahead of the car along the way: not the nearest, which may be just behind it)
+  local first = best
+  while first < #pts and (pts[first].x - x) * (pts[first + 1].x - pts[first].x) + (pts[first].z - z) * (pts[first + 1].z - pts[first].z) <= 0 do first = first + 1 end
+  if first > 1 then
     local keep = {}
-    for i = best, #pts do keep[#keep + 1] = pts[i] end
+    for i = first, #pts do keep[#keep + 1] = pts[i] end
     way.pts = keep
   end
   return way

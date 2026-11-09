@@ -698,6 +698,7 @@ end
 -- The map (pause > MAP): the whole world, north up. Highways bold and white, each course's road in its region's colour, the towns' names
 -- large, the events as symbols by kind (a key along the bottom). The stick moves a cursor; the event nearest it is named beside it. L and R
 -- zoom in and out (the view stays on the cursor).
+local MAP_ZOOM_MAX = 6
 local MAP_EVENT = { race = { 255, 106, 43 }, trial = { 79, 209, 197 }, rally = { 255, 210, 63 }, garage = { 244, 241, 234 } }
 local MAP_REGION = { pine_ridge = { 140, 210, 130 }, autumn_glen = { 235, 150, 70 }, dust_valley = { 232, 200, 120 }, frost_pass = { 215, 235, 255 }, harbour_lights = { 120, 170, 255 } }
 function Roam:draw_map()
@@ -711,11 +712,15 @@ function Roam:draw_map()
     self.map_zoom = 1
   end
   local b, cur = self.map_box, self.map_cursor
-  -- the stick or the d-pad moves the cursor (faster when zoomed out); L and R zoom
+  -- the left stick (any direction) or the d-pad moves the cursor (faster when zoomed out); the triggers zoom smoothly, by how hard they are
+  -- pressed (R2 in, L2 out), and L1 / R1 step the zoom
   local dt = 1 / 60
-  local mx = nova.input.axis("steer") + (nova.input.down("right") and 1 or 0) - (nova.input.down("left") and 1 or 0)
-  local my = (nova.input.down("down") and 1 or 0) - (nova.input.down("up") and 1 or 0)
-  if nova.input.pressed("tab_next") then self.map_zoom = math.min(4, self.map_zoom * 2); audio.sfx("menu_move") end
+  local function dead(v) return math.abs(v) < 0.12 and 0 or v end
+  local mx = math.max(-1, math.min(1, dead(nova.input.axis("steer")) + (nova.input.down("right") and 1 or 0) - (nova.input.down("left") and 1 or 0)))
+  local my = math.max(-1, math.min(1, dead(nova.input.axis("map_y")) + (nova.input.down("down") and 1 or 0) - (nova.input.down("up") and 1 or 0)))
+  local zoom_rate = nova.input.axis("zoom_in") - nova.input.axis("zoom_out")
+  if math.abs(zoom_rate) > 0.05 then self.map_zoom = math.max(1, math.min(MAP_ZOOM_MAX, self.map_zoom * math.exp(zoom_rate * 2.2 * dt))) end
+  if nova.input.pressed("tab_next") then self.map_zoom = math.min(MAP_ZOOM_MAX, self.map_zoom * 2); audio.sfx("menu_move") end
   if nova.input.pressed("tab_prev") then self.map_zoom = math.max(1, self.map_zoom / 2); audio.sfx("menu_move") end
   local top, bottom = 80, 448
   local fit = math.min((w - 120) / (b.x1 - b.x0), (bottom - top) / (b.z1 - b.z0))
@@ -723,9 +728,10 @@ function Roam:draw_map()
   local speed = 900 / k -- (metres a second the cursor moves: a screen width in about a second)
   cur.x = math.max(b.x0, math.min(b.x1, cur.x - mx * speed * dt)) -- (x runs right to left on the map: see `at`)
   cur.z = math.max(b.z0, math.min(b.z1, cur.z - my * speed * dt))
-  -- the view: the whole map at zoom 1, else centred on the cursor
+  -- the view: the whole map at zoom 1, moving to the cursor as it zooms in
   local cx, cz = (b.x0 + b.x1) / 2, (b.z0 + b.z1) / 2
-  if self.map_zoom > 1 then cx, cz = cur.x, cur.z end
+  local f = math.max(0, math.min(1, (self.map_zoom - 1) / 0.6))
+  cx, cz = cx + (cur.x - cx) * f, cz + (cur.z - cz) * f
   local sx, sy = w / 2, (top + bottom) / 2
   -- (north, +z, is up; a car facing north has +x on its left, so x runs right to left)
   local function at(x, z) return sx + (cx - x) * k, sy + (cz - z) * k end
@@ -739,7 +745,7 @@ function Roam:draw_map()
       local region = regions.at(pts[1].x, pts[1].z)
       local colour = highway and C.white or link and { 150, 150, 150 } or (MAP_REGION[region and region.look or ""] or C.white)
       local width = highway and (pass == 1 and 7 or 4) or (pass == 1 and 5 or 2.5)
-      local step = self.map_zoom > 1 and 1 or 3
+      local step = self.map_zoom > 1.6 and 1 or 3
       for i = 1, #pts - (rt.loop and 0 or 1), step do
         local a, c = pts[i], pts[math.min(#pts, i + step)] or pts[1]
         if rt.loop and i + step > #pts then c = pts[1] end
@@ -759,7 +765,7 @@ function Roam:draw_map()
   -- the way to the waypoint, and the waypoint
   if self.way then
     local pts = self.way.pts
-    local step = self.map_zoom > 1 and 1 or 2
+    local step = self.map_zoom > 1.6 and 1 or 2
     for pass = 1, 2 do
       local x1, y1 = at(p.x, p.z)
       for i = 1, #pts, step do
@@ -827,7 +833,7 @@ function Roam:draw_map()
     nova.ui.rect(kx, 462, 8, 8, k[2])
     kx = kx + 14 + ui.say(kx + 14, 466, k[1], F.medium, 16.5, C.white, { valign = "middle" }) + 22
   end
-  local hints = { { "pad_stick_l", "Look" }, { "pad_l", "" }, { "pad_r", "Zoom" } }
+  local hints = { { "pad_stick_l", "Move" }, { "pad_zl", "" }, { "pad_zr", "Zoom" } }
   if pin then hints[#hints + 1] = { "pad_a", "Travel here" } end
   local clear = self.way and ((self.way.tx - cur.x) ^ 2 + (self.way.tz - cur.z) ^ 2) * k * k < 30 * 30
   hints[#hints + 1] = { "pad_y", clear and "Clear waypoint" or "Set waypoint" }
@@ -851,6 +857,7 @@ function Roam:draw_map()
       if pin then tx, tz = pin.x, pin.z end
       local t0 = nova.clock()
       self.way = route.find(p.x, p.z, tx, tz)
+      if self.way then self.way = route.follow(self.way, p.x, p.z) or self.way end
       audio.sfx(self.way and "menu_accept" or "menu_back")
       if self.way then nova.log(string.format("roam: waypoint %.0f m along the roads (%d points, found in %.1f ms)", self.way.length, #self.way.pts, (nova.clock() - t0) * 1000))
       else nova.log(string.format("roam: no way by road to %.0f, %.0f", tx, tz)) end

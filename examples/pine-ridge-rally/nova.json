@@ -61,6 +61,12 @@
     "look_back": ["pad:thumb_r", "key:KeyB"],
     "autodrive": [
       "key:F9"
-    ]
+    ],
+    "map_y": {
+      "negative": ["axis:left_y-"],
+      "positive": ["axis:left_y+"]
+    },
+    "zoom_in": ["axis:r2", "key:Equal"],
+    "zoom_out": ["axis:l2", "key:Minus"]
   }
 }
