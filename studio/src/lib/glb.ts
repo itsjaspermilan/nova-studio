@@ -2,7 +2,7 @@
 // (so a later bone animation can move them), one mesh per part with flat-coloured cubes baked in
 // as COLOR_0 vertex colours and per-face normals.
 
-import { glowOf, namesOf, walk, type Clip, type Cube, type Ease, type ModelDoc, type Part, type Track, type Vec3 } from "./model-doc";
+import { glowOf, metallicOf, namesOf, roughnessOf, walk, type Clip, type Cube, type Ease, type ModelDoc, type Part, type Track, type Vec3 } from "./model-doc";
 import { BAKE_STEPS, applyEase, lerp3, slerp } from "./model-ease";
 import { FACE_CORNERS, hasVolume, meshOf as solidMesh, solidOf, type Mesh } from "./model-mesh";
 import { evaluate } from "./modifiers";
@@ -127,11 +127,12 @@ export function exportGlb(doc: ModelDoc, texture?: Raster): Uint8Array {
   const tex: Texel | undefined = image ? { w: image.w, rows: image.h, whiteU: 0.5 / image.w, whiteV: (image.h - 0.5) / image.h } : undefined;
 
   // Material 0 is the plain one; a glowing shape's material adds an emissive factor (see `glowOf`).
-  const glows: number[] = [];
-  const materialFor = (glow: number) => {
-    if (glow === 0) return 0;
-    let at = glows.indexOf(glow);
-    if (at < 0) at = glows.push(glow) - 1;
+  const mats: { glow: number; metal: number; rough: number }[] = [];
+  const materialFor = (c: Cube) => {
+    const glow = glowOf(c), metal = metallicOf(c), rough = roughnessOf(c);
+    if (glow === 0 && metal === 0 && rough === 1) return 0;
+    let at = mats.findIndex((m) => m.glow === glow && m.metal === metal && m.rough === rough);
+    if (at < 0) at = mats.push({ glow, metal, rough }) - 1;
     return at + 1;
   };
   let drawn = 0;
@@ -145,11 +146,11 @@ export function exportGlb(doc: ModelDoc, texture?: Raster): Uint8Array {
     // Shapes that glow get a material of their own (one per strength), so a part may have several primitives.
     const groups = new Map<number, Cube[]>();
     for (const c of part.cubes) {
-      const glow = glowOf(c);
-      groups.set(glow, [...(groups.get(glow) ?? []), c]);
+      const key = materialFor(c);
+      groups.set(key, [...(groups.get(key) ?? []), c]);
     }
     const primitives: Record<string, unknown>[] = [];
-    for (const [glow, cubes] of groups) {
+    for (const [material, cubes] of groups) {
       const m = meshOf({ ...part, cubes }, scale, tex);
       if (!m.positions.length) continue;
       drawn += cubes.filter((c) => hasVolume(c) && !isSkinned(c)).length;
@@ -175,7 +176,7 @@ export function exportGlb(doc: ModelDoc, texture?: Raster): Uint8Array {
           ...(tex ? { TEXCOORD_0: accessor({ bufferView: addView(bytesOf(new Float32Array(m.uvs)), 34962), componentType: 5126, count: vertexCount, type: "VEC2" }) } : {}),
         },
         indices: accessor({ bufferView: idxView, componentType: wide ? 5125 : 5123, count: m.indices.length, type: "SCALAR" }),
-        material: materialFor(glow),
+        material,
       });
     }
     if (primitives.length) {
@@ -248,7 +249,7 @@ export function exportGlb(doc: ModelDoc, texture?: Raster): Uint8Array {
           WEIGHTS_0: accessor({ bufferView: addView(bytesOf(weights), 34962), componentType: 5126, count, type: "VEC4" }),
         },
         indices: accessor({ bufferView: addView(bytesOf(wide ? new Uint32Array(m.indices) : new Uint16Array(m.indices)), 34963), componentType: wide ? 5125 : 5123, count: m.indices.length, type: "SCALAR" }),
-        material: materialFor(glowOf(cube)),
+        material: materialFor(cube),
       };
       meshes.push({ name: cube.name ?? "skin", primitives: [primitive] });
       // the inverse of each joint's place at rest, in the exported (scaled) space
@@ -306,7 +307,7 @@ export function exportGlb(doc: ModelDoc, texture?: Raster): Uint8Array {
     ...(skins.length ? { skins } : {}),
     materials: [
       { name: tex ? "texture" : "vertex colours", pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], ...(tex ? { baseColorTexture: { index: 0 } } : {}), metallicFactor: 0, roughnessFactor: 1 } },
-      ...glows.map((g) => ({ name: `glow ${g}`, pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], ...(tex ? { baseColorTexture: { index: 0 } } : {}), metallicFactor: 0, roughnessFactor: 1 }, emissiveFactor: [g, g, g] })),
+      ...mats.map((m) => ({ name: [m.glow ? `glow ${m.glow}` : "", m.metal ? `metal ${m.metal}` : "", m.rough < 1 ? `rough ${m.rough}` : ""].filter(Boolean).join(" "), pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], ...(tex ? { baseColorTexture: { index: 0 } } : {}), metallicFactor: m.metal, roughnessFactor: m.rough }, ...(m.glow ? { emissiveFactor: [m.glow, m.glow, m.glow] } : {}) })),
     ],
     ...(tex && image
       ? {

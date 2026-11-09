@@ -9,7 +9,7 @@
     removeCollider, setCube, setFaceColor, updateCollider, updateCube, updatePart, walk, namesOf, PROPS, MAX_SEGMENTS, MIN_SEGMENTS, DEFAULT_SEGMENTS, type Cube, type Ease, type Face, type ModelDoc, type Path, type Prop, type Shape, type Vec3,
   } from "../lib/model-doc";
   import { AXIS_COLOURS, AXIS_CSS, AXIS_NAMES, centreOf, constrain, describeLock, describeMove, freePlane, lockForKey, type Lock } from "../lib/point-move";
-  import { addFace, bevelEdge, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsSymmetric, setFaceColors, setSmooth, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
+  import { addFace, bevelEdge, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, freshProfile, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsSymmetric, setFaceColors, setSmooth, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
   import { hasVolume, meshOf, segmentsOf, shapeFaces, solidOf } from "../lib/model-mesh";
   import { autoWeights, boneHeat, dominantBones, heatColor, invertAffine, reskin, setWeight, skinnedPoints, transformPoint, worldMatrices } from "../lib/model-skin";
   import { bakeAll, blockOf, faceRects, flippedRect, normRect, rectAt, enableTexture, fitPicture, packModel, resizeTexture, unwrap, uvsOf } from "../lib/model-uv";
@@ -68,7 +68,7 @@
   let shrinkBy = $state(0); // percent the new face is pulled towards its middle: a taper, or with no pull, an inset
   let cutAt = $state(50); // percent along each crossed edge
   let symmetry = $state<"off" | "0" | "1" | "2">("off"); // move points in mirrored pairs across the x, y or z plane
-  let newKind = $state<Shape | "square">("box");
+  let newKind = $state<Shape | "square" | "profile">("box");
   let pendingEdit = false;
   // animation
   let mode = $state<"model" | "texture" | "animate">("model");
@@ -1562,7 +1562,7 @@
     if (!target) return newPart([]);
     const kind = newKind;
     const square = kind === "square";
-    const r = addCube(doc, target, kind === "square" ? freshMesh() : { shape: kind });
+    const r = addCube(doc, target, kind === "square" ? freshMesh() : kind === "profile" ? freshProfile() : { shape: kind });
     commit(r.doc);
     pendingEdit = square; // a new sheet is for pulling into shape
     selected = r.path;
@@ -1667,6 +1667,19 @@
   function applyModifierAt(index: number) {
     if (!selected || !cube) return;
     change(applyStack(cube, index + 1), true);
+  }
+  const creaseOf = (c: Cube, a: number, b: number) => c.creases?.find((e) => (e[0] === a && e[1] === b) || (e[0] === b && e[1] === a))?.[2] ?? 0;
+  /// Sets the crease weight (0 to 1) of the picked edge.
+  function setCrease(w: number) {
+    if (!selected || !cube || !selEdge) return;
+    const [a, b] = selEdge;
+    const rest = (cube.creases ?? []).filter((e) => !((e[0] === a && e[1] === b) || (e[0] === b && e[1] === a)));
+    const weight = Math.max(0, Math.min(1, Number.isFinite(w) ? w : 0));
+    const next: Cube = { ...cube };
+    const list = weight > 0 ? [...rest, [a, b, weight] as [number, number, number]] : rest;
+    if (list.length) next.creases = list;
+    else delete next.creases;
+    change(next);
   }
   function makeEditable() {
     if (!selected || !cube) return;
@@ -1909,6 +1922,7 @@
             <option value="cone">Cone</option>
             <option value="sphere">Sphere</option>
             <option value="square">Flat square (to pull out)</option>
+            <option value="profile">Profile (spun into a wheel or tyre)</option>
           </select>
           <button onclick={newCube} title="New shape in the selected part">＋ Add</button>
         </div>
@@ -2097,6 +2111,8 @@
           <label class="check"><input type="checkbox" checked={cube.smooth !== false} onchange={(e) => commit(updateCube(doc, selected!, { smooth: e.currentTarget.checked }))} /> Smooth shading</label>
         {/if}
         <label title="0 is lit by the scene like anything else; 1 shines at full brightness even in the dark (lamps, windows, tail lights)">Glow <input type="range" min="0" max="1" step="0.05" value={cube.emissive ?? 0} aria-label="Glow" oninput={(e) => commit(updateCube(doc, selected!, { emissive: Number(e.currentTarget.value) }))} /><span class="dim small">{Math.round((cube.emissive ?? 0) * 100)}%</span></label>
+        <label title="0 is paint or plastic, 1 is bare metal (the game reads this when nova.json says materials: true)">Metal <input type="range" min="0" max="1" step="0.05" value={cube.metallic ?? 0} aria-label="Metallic" oninput={(e) => commit(updateCube(doc, selected!, { metallic: Number(e.currentTarget.value) }))} /><span class="dim small">{Math.round((cube.metallic ?? 0) * 100)}%</span></label>
+        <label title="0 is a mirror finish, 1 is matt">Roughness <input type="range" min="0" max="1" step="0.05" value={cube.roughness ?? 1} aria-label="Roughness" oninput={(e) => commit(updateCube(doc, selected!, { roughness: Number(e.currentTarget.value) }))} /><span class="dim small">{Math.round((cube.roughness ?? 1) * 100)}%</span></label>
         <h4>{cube.shape === "mesh" ? "Box around it: corner" : "Corner (from)"}</h4>
         <div class="vec">{#each cube.from as v, i (i)}<input type="number" value={v} aria-label={"xyz"[i] + " from"} onchange={(e) => setVec("from", i, e.currentTarget.value)} />{/each}</div>
         <h4>Size</h4>
@@ -2164,6 +2180,7 @@
           </div>
           {#if selEdge}
             <h4>Edge</h4>
+            <label class="inline" title="For the Subdivision modifier: 1 keeps this edge sharp however many times the shape is rounded, 0 lets it round off"><span>Crease</span> <input type="number" min="0" max="1" step="0.25" value={creaseOf(cube, selEdge[0], selEdge[1])} aria-label="Crease" onchange={(e) => setCrease(Number(e.currentTarget.value))} /></label>
             <div class="pair"><label class="inline">Width % <input type="number" min="2" max="50" step="5" bind:value={bevelBy} /></label><label class="inline">Pull by <input type="number" step="1" bind:value={edgeBy} /></label></div>
             <div class="row"><button onclick={bevel} title="Cuts the edge off with a narrow slanting face">Bevel</button><button onclick={extendEdge} title="Pulls an open edge away, widening the sheet">Extend</button></div>
           {/if}

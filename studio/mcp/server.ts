@@ -17,6 +17,7 @@ import { bakeAll, fitPicture } from "../src/lib/model-uv";
 import { countCubes, cubeAt, parseModel, serializeModel, setCube, walk } from "../src/lib/model-doc";
 import { autoWeights } from "../src/lib/model-skin";
 import { meshOf } from "../src/lib/model-mesh";
+import { evaluate } from "../src/lib/modifiers";
 import { encodePng } from "../src/lib/png-encode";
 import { newRaster } from "../src/lib/pixels";
 import { PRESETS, DEFAULTS, RANGES, WAVES, render, toJson, type SfxParams } from "../src/lib/sfx";
@@ -190,7 +191,7 @@ tool(
     put(root, `models/${name}.model.json`, serializeModel(doc));
     put(root, `models/${name}.glb`, glb);
     let triangles = 0;
-    for (const { part } of walk(doc)) for (const c of part.cubes) triangles += meshOf(c).indices.length / 3;
+    for (const { part } of walk(doc)) for (const c of part.cubes) triangles += meshOf(evaluate(c, "render")).indices.length / 3;
     return `models/${name}.model.json and models/${name}.glb: ${walk(doc).length} parts, ${countCubes(doc)} shapes, ${triangles} triangles${skinned ? `, ${skinned} bending` : ""}, ${glb.length} bytes. In Lua: nova.model("${name}", x, y, z)`;
   },
 );

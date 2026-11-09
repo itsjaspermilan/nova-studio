@@ -43,6 +43,11 @@ export interface Cube {
   smooth?: boolean;
   /// How much the shape lights itself, 0 (lit by the scene, the default) to 1 (as bright as its colour, in the dark too).
   emissive?: number;
+  /// PBR numbers for the exported material (the game reads them when nova.json says `"materials": true`): 0 to 1, default 0 (not metal) and 1 (rough).
+  metallic?: number;
+  roughness?: number;
+  /// Mesh only: sharp edges for a Subdivision modifier, `[point a, point b, weight]` with weight 0 (smooth) to 1 (sharp at every level).
+  creases?: [number, number, number][];
   /// Colour of all faces, `#rrggbb` or `#rrggbbaa`.
   color: string;
   /// Colours of individual faces, overriding `color`.
@@ -296,6 +301,7 @@ export function parseModel(text: string): Parsed {
       if (c.segments !== undefined && !(Number.isInteger(c.segments) && c.segments >= MIN_SEGMENTS && c.segments <= MAX_SEGMENTS)) return `${cat}.segments must be a whole number from ${MIN_SEGMENTS} to ${MAX_SEGMENTS}`;
       if (c.smooth !== undefined && typeof c.smooth !== "boolean") return `${cat}.smooth must be true or false`;
       if (c.emissive !== undefined && !(typeof c.emissive === "number" && c.emissive >= 0 && c.emissive <= 1)) return `${cat}.emissive must be a number from 0 to 1`;
+      for (const k of ["metallic", "roughness"] as const) if (c[k] !== undefined && !(typeof c[k] === "number" && c[k]! >= 0 && c[k]! <= 1)) return `${cat}.${k} must be a number from 0 to 1`;
       if (c.rotation !== undefined && !isVec3(c.rotation)) return `${cat}.rotation must be three numbers`;
       if (c.texture !== undefined) {
         const t = c.texture;
@@ -314,6 +320,10 @@ export function parseModel(text: string): Parsed {
           const bad = checkModifier(m, `${cat}.modifiers[${mi}]`);
           if (bad) return bad;
         }
+      }
+      if (c.creases !== undefined) {
+        if (shape !== "mesh") return `${cat}.creases is only for a mesh`;
+        if (!Array.isArray(c.creases) || c.creases.length > MAX_FACES * 4 || !c.creases.every((e) => Array.isArray(e) && e.length === 3 && Number.isInteger(e[0]) && Number.isInteger(e[1]) && e[0] >= 0 && e[1] >= 0 && e[0] < (c.verts?.length ?? 0) && e[1] < (c.verts?.length ?? 0) && typeof e[2] === "number" && e[2] >= 0 && e[2] <= 1)) return `${cat}.creases must be a list of [point, point, weight 0 to 1] for points that exist`;
       }
       if (shape === "mesh") {
         if (c.rotation?.some((n) => n !== 0)) return `${cat}.rotation is not used on a mesh: turn its points instead`;
@@ -369,6 +379,10 @@ export function parseModel(text: string): Parsed {
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 
 /// How much a shape lights itself, 0 to 1, to two decimals (what is written to the file and the glTF).
+/// The PBR numbers of a shape, to two decimals (metallic 0 and roughness 1 when not set).
+export const metallicOf = (c: Cube): number => Math.round(Math.max(0, Math.min(1, c.metallic ?? 0)) * 100) / 100;
+export const roughnessOf = (c: Cube): number => Math.round(Math.max(0, Math.min(1, c.roughness ?? 1)) * 100) / 100;
+
 export const glowOf = (c: Cube): number => Math.round(Math.max(0, Math.min(1, c.emissive ?? 0)) * 100) / 100;
 
 export function serializeModel(doc: ModelDoc): string {
@@ -383,6 +397,8 @@ export function serializeModel(doc: ModelDoc): string {
     if (c.segments !== undefined) parts.push(`"segments": ${c.segments}`);
     if (c.smooth === false) parts.push(`"smooth": false`);
     if (glowOf(c) > 0) parts.push(`"emissive": ${glowOf(c)}`);
+    if (metallicOf(c) > 0) parts.push(`"metallic": ${metallicOf(c)}`);
+    if (roughnessOf(c) < 1) parts.push(`"roughness": ${roughnessOf(c)}`);
     parts.push(`"color": "${c.color}"`);
     if (c.faces && Object.keys(c.faces).length) parts.push(`"faces": ${JSON.stringify(c.faces)}`);
     if (c.texture) parts.push(`"texture": { "at": ${vec2(c.texture.at)}${c.texture.scale !== undefined && c.texture.scale !== 1 ? `, "scale": ${c.texture.scale}` : ""}${c.texture.mirror ? `, "mirror": ${c.texture.mirror}` : ""}${c.texture.faces && Object.keys(c.texture.faces).length ? `, "faces": ${JSON.stringify(c.texture.faces)}` : ""} }`);
@@ -391,6 +407,7 @@ export function serializeModel(doc: ModelDoc): string {
       const verts = (c.verts ?? []).map((p) => `${i2}  ${vec(p)}`).join(",\n");
       const polys = (c.polys ?? []).map((f) => `${i2}  ${JSON.stringify(f)}`).join(",\n");
       parts.push(`"verts": [${verts ? `\n${verts}\n${i2}` : ""}]`, `"polys": [${polys ? `\n${polys}\n${i2}` : ""}]`);
+      if (c.creases?.length) parts.push(`"creases": ${JSON.stringify(c.creases)}`);
       if (c.modifiers?.length) parts.push(`"modifiers": [${c.modifiers.map((m) => JSON.stringify(m)).join(", ")}]`);
       if (c.skin) {
         const rows = c.skin.weights.map((w) => `${i2}  ${JSON.stringify(w.map(([b, x]) => [b, Math.round(x * 10000) / 10000]))}`).join(",\n");

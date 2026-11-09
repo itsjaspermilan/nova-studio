@@ -38,6 +38,12 @@ export function freshMesh(color = "#c9d1d9"): Cube {
   return finish({ shape: "mesh", from: [0, 0, 0], size: [0, 0, 0], color, verts: [[-4, 0, 4], [4, 0, 4], [4, 0, -4], [-4, 0, -4]], polys: [{ v: [0, 1, 2, 3] }] });
 }
 
+/// A profile for the Revolve modifier: a tyre's section (distance from the axis, height), drawn as one flat face you can reshape point by point.
+export function freshProfile(color = "#2b2b2f"): Cube {
+  const pts: [number, number][] = [[3, -4], [7, -4], [9, -2], [9, 2], [7, 4], [3, 4]];
+  return finish({ shape: "mesh", from: [0, 0, 0], size: [0, 0, 0], color, verts: pts.map(([r, h]) => [r, h, 0] as Vec3), polys: [{ v: pts.map((_, i) => i) }], modifiers: [{ type: "revolve", axis: "y", segments: 24, angle: 360, closed: true, sharp: 40 }] });
+}
+
 export function moveVerts(c: Cube, indices: number[], delta: Vec3): Cube {
   const out = clone(c);
   for (const i of new Set(indices)) if (out.verts?.[i]) out.verts[i] = add(out.verts[i]!, delta);
@@ -200,6 +206,10 @@ export function compactWithMap(c: Cube): { cube: Cube; map: number[] } {
   });
   out.verts = verts;
   for (const f of out.polys!) f.v = f.v.map((i) => map[i]!);
+  if (out.creases) {
+    out.creases = out.creases.filter((e) => map[e[0]]! >= 0 && map[e[1]]! >= 0).map((e) => [map[e[0]]!, map[e[1]]!, e[2]] as [number, number, number]);
+    if (!out.creases.length) delete out.creases;
+  }
   return { cube: finish(out), map };
 }
 

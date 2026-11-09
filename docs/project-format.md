@@ -354,7 +354,23 @@ colours, since its polygons are new. Units are model units.
 | `subsurf` | Catmull-Clark: `levels` (1, in the editor), `renderLevels` (2, in the `.glb`), 0 to 4, `smooth` (true: smooth shading). Open borders keep to their own curve; the result stops growing at 20,000 polygons. |
 | `bevel` | `width` (1), `segments` (2, 1 to 16, a circular section), `angle` (30: only edges whose faces meet at least this many degrees apart). Edges on an open border are left alone. |
 | `solidify` | `thickness` (1), `offset` (-1 inwards, 1 outwards, 0 both), `even` (true: same thickness round corners). A closed mesh becomes a hollow shell, an open one a slab with rim walls. |
+| `revolve` | A lathe: the mesh's points, **in order**, are a profile line (distance from the axis, position along it: for `axis` `"y"` that is `(x, y)`, for `"x"` `(y, x)`, for `"z"` `(x, z)`); the polygons are ignored. `segments` (24), `angle` (360), `closed` (false), `sharp` (40: profile corners sharper than this many degrees stay crisp, gentler ones shade smoothly), `flip`. A point on the axis is one point. Use it for wheels, tyres, rims, bottles; the studio's "Profile (spun into a wheel or tyre)" shape starts one. |
 | `array` | `count` (2, up to 64), `offset` (`[x, y, z]` distance between copies), `relative` (`[x, y, z]` times the mesh's size, added), `merge` (0: points of neighbouring copies closer than this are joined). |
+
+**Creases.** A mesh may also carry `"creases": [[point a, point b, weight], ...]` (weight 0 to 1): the Subdivision modifier keeps those edges sharp, a weight of 1
+through all four levels, smaller ones for fewer (semi-sharp, as in Blender). Open borders are always sharp. Mirror, Array and Solidify carry creases to their
+copies; Bevel and Revolve drop them; the editor renumbers them when points are deleted.
+
+**Materials.** Every shape may carry `"metallic"` and `"roughness"` (0 to 1; defaults 0 and 1) next to `"emissive"` and its `color`. The `.glb` gets one glTF material per combination
+(`metallicFactor`, `roughnessFactor`, `emissiveFactor`) with the colours as vertex colours; the game uses them when `nova.json` has `"materials": true` (docs/materials.md).
+
+**Arches and openings** (there is no Boolean modifier): model them into the cage. Give the cage an edge loop where the arch will be (Loop cut), pull the loop's faces inward
+(Extrude with a negative distance, or delete them and extrude the border with Extend) to make the wheel well, and crease the arch's rim (Crease 1 on its edges) so
+Subdivision keeps it crisp. A fully separate part (a wheel-arch lip, a window) is a second mesh on the same part, or a Solidify of a ring-shaped sheet.
+
+**From a script.** `nova_model_write` (and the same code behind it) takes the whole model document, so a generator can emit a cage and its stack: a mesh shape with
+`verts`, `polys`, `creases` and `modifiers`, one per shape, grouped into parts. The model is written editable (`.model.json` keeps the cage and the stack) and the `.glb`
+holds the finished mesh. For a half cage use the `mirror` modifier first, then `subsurf`; set `renderLevels` for the exported detail.
 
 "Apply" in the studio bakes a modifier (and those above it) into `verts`/`polys` and removes it from the list. Code: `studio/src/lib/modifiers.ts`
 (`evaluate`), tests in `modifiers.test.ts`.

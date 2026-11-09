@@ -65,6 +65,18 @@
           <label title="-1 grows inwards from the surface, 1 outwards, 0 both ways">Offset <input type="number" min="-1" max="1" step="0.5" value={m.offset ?? -1} onchange={(e) => set(i, { offset: Math.max(-1, Math.min(1, num(e.currentTarget.value, -1))) })} /></label>
           <label class="check" title="Keeps the wall the same thickness round corners"><input type="checkbox" checked={m.even !== false} onchange={(e) => set(i, { even: e.currentTarget.checked })} /> Even thickness</label>
         </div>
+      {:else if m.type === "revolve"}
+        <p class="dim small">Spins the mesh's points, in order, as a profile: distance from the axis, then position along it.</p>
+        <div class="grid">
+          <label>Axis
+            <select value={m.axis ?? "y"} onchange={(e) => set(i, { axis: e.currentTarget.value as ModAxis })}>{#each MOD_AXES as a (a)}<option value={a}>{a.toUpperCase()}</option>{/each}</select>
+          </label>
+          <label title="Steps round the turn">Segments <input type="number" min="2" max="128" step="1" value={m.segments ?? 24} onchange={(e) => set(i, { segments: Math.max(2, Math.min(128, Math.round(num(e.currentTarget.value, 24)))) })} /></label>
+          <label title="How far it turns, degrees; 360 is all the way round">Angle ° <input type="number" min="1" max="360" step="15" value={m.angle ?? 360} onchange={(e) => set(i, { angle: Math.max(1, Math.min(360, num(e.currentTarget.value, 360))) })} /></label>
+          <label title="Corners of the profile sharper than this stay crisp">Sharp ° <input type="number" min="0" max="180" step="5" value={m.sharp ?? 40} onchange={(e) => set(i, { sharp: Math.max(0, Math.min(180, num(e.currentTarget.value, 40))) })} /></label>
+          <label class="check" title="Join the last point back to the first"><input type="checkbox" checked={!!m.closed} onchange={(e) => set(i, { closed: e.currentTarget.checked })} /> Closed profile</label>
+          <label class="check" title="Turn the faces inside out"><input type="checkbox" checked={!!m.flip} onchange={(e) => set(i, { flip: e.currentTarget.checked })} /> Flip</label>
+        </div>
       {:else if m.type === "array"}
         <div class="grid">
           <label>Count <input type="number" min="1" max="64" step="1" value={m.count ?? 2} onchange={(e) => set(i, { count: Math.max(1, Math.min(64, Math.round(num(e.currentTarget.value, 2)))) })} /></label>

@@ -347,3 +347,130 @@ describe("saving", () => {
     expect(count(exportGlb(put(box()).doc))).toBe(24);
   });
 });
+
+describe("creases", () => {
+  const withCreases = (c: Cube, edges: [number, number, number][]): Cube => ({ ...c, creases: edges });
+  /// The cube's four edges round the top face (found from the polygons) at full weight.
+  const topEdges = (c: Cube): [number, number, number][] => {
+    const top = c.polys!.find((f) => f.v.every((i) => c.verts![i]![1] === 10))!;
+    return top.v.map((a, k) => [a, top.v[(k + 1) % 4]!, 1] as [number, number, number]);
+  };
+
+  it("a fully sharp edge stays straight where a smooth one rounds off", () => {
+    const plain = evaluate({ ...box(), modifiers: [{ type: "subsurf", levels: 2 }] });
+    const sharp = evaluate({ ...withCreases(box(), topEdges(box())), modifiers: [{ type: "subsurf", levels: 2 }] });
+    const top = (c: Cube) => Math.max(...c.verts!.map((p) => p[1]));
+    expect(top(sharp)).toBeCloseTo(10, 6); // the creased rim holds the top plane
+    expect(top(plain)).toBeLessThan(10);
+    expect(Math.max(...sharp.verts!.map((p) => p[0]))).toBeLessThan(10); // the uncreased sides still round
+  });
+
+  it("the crease carries through the levels: the rim of the top stays at height 10 after 3 steps", () => {
+    const c = evaluate({ ...withCreases(box(), topEdges(box())), modifiers: [{ type: "subsurf", levels: 3 }] });
+    const rim = c.verts!.filter((p) => Math.abs(p[1] - 10) < 1e-9);
+    expect(rim.length).toBeGreaterThan(8);
+  });
+
+  it("a half weight is between smooth and sharp", () => {
+    // the highest point near the corner at x = 0 (the face centres are flat and always at 10)
+    const top = (w: number) => Math.max(...evaluate({ ...withCreases(box(), topEdges(box()).map((e) => [e[0], e[1], w] as [number, number, number])), modifiers: [{ type: "subsurf", levels: 1 }] }).verts!.filter((p) => p[0] < 3 && p[2] < 3).map((p) => p[1]));
+    expect(top(0)).toBeLessThan(top(0.125));
+    expect(top(0.125)).toBeLessThan(top(1));
+  });
+
+  it("mirror carries creases to the copy, and apply keeps what is left", () => {
+    const half = toMesh({ from: [1, 0, 0], size: [5, 5, 5], color: "#fff" });
+    const edge = half.polys![0]!.v;
+    const c: Cube = { ...half, creases: [[edge[0]!, edge[1]!, 1]], modifiers: [{ type: "mirror", axis: "x" }] };
+    const out = evaluate(c);
+    expect(out.creases).toHaveLength(2);
+    expect(applyStack(c, 1).creases).toHaveLength(2);
+  });
+
+  it("is saved, checked and renumbered with the points", () => {
+    const c = withCreases(box(), [[0, 1, 0.5]]);
+    const doc = put(c).doc;
+    const back = parseModel(serializeModel(doc));
+    expect(back.ok && back.doc.parts[0]!.cubes[0]!.creases).toEqual([[0, 1, 0.5]]);
+    const bad = parseModel(serializeModel(put({ ...c, creases: [[0, 99, 1]] }).doc));
+    expect(bad.ok).toBe(false);
+  });
+});
+
+describe("revolve", () => {
+  const profile = (pts: [number, number][]): Cube => ({ shape: "mesh", from: [0, 0, 0], size: [0, 0, 0], color: "#222", verts: pts.map(([r, h]) => [r, h, 0] as [number, number, number]), polys: [{ v: pts.map((_, i) => i) }] });
+
+  it("spins a profile into a closed, outward-facing tube", () => {
+    // a ring: radius 4 to 5, height 0 to 2, closed profile
+    const c: Cube = { ...profile([[4, 0], [5, 0], [5, 2], [4, 2]]), modifiers: [{ type: "revolve", segments: 16, closed: true, sharp: 180 }] };
+    const out = evaluate(c);
+    const s = { verts: out.verts!, polys: out.polys! };
+    expect(closed(s)).toBe(true);
+    expect(volume(s)).toBeCloseTo(Math.PI * (25 - 16) * 2 * (1 - 0.0192), 0); // a 16-sided ring is a little under the true one
+    expect(volume(s)).toBeGreaterThan(0);
+  });
+
+  it("a point on the axis becomes one point and a cap triangle fan", () => {
+    const c: Cube = { ...profile([[0, 0], [3, 0], [3, 1], [0, 1]]), modifiers: [{ type: "revolve", segments: 8, closed: true, sharp: 180 }] };
+    const out = evaluate(c);
+    expect(out.verts!.filter((p) => p[0] === 0 && p[2] === 0)).toHaveLength(2); // one pole at each end
+    expect(closed({ verts: out.verts!, polys: out.polys! })).toBe(true);
+    expect(volume({ verts: out.verts!, polys: out.polys! })).toBeGreaterThan(0);
+  });
+
+  it("works about each axis and a partial turn is open", () => {
+    const base = profile([[2, 0], [2, 4]]);
+    // the profile is (distance, along): for x it is (y, x), for y (x, y), for z (x, z)
+    const placed = { x: [[0, 2, 0], [4, 2, 0]], y: [[2, 0, 0], [2, 4, 0]], z: [[2, 0, 0], [2, 0, 4]] } as const;
+    for (const axis of ["x", "y", "z"] as const) {
+      const out = evaluate({ ...base, verts: placed[axis].map((v) => [...v] as [number, number, number]), modifiers: [{ type: "revolve", axis, segments: 12 }] });
+      const hi = [0, 1, 2].map((a) => Math.max(...out.verts!.map((p) => p[a]!)));
+      const along = { x: 0, y: 1, z: 2 }[axis];
+      expect(hi[along]).toBeCloseTo(4, 9);
+    }
+    const open = evaluate({ ...base, modifiers: [{ type: "revolve", segments: 4, angle: 180 }] });
+    expect(open.polys).toHaveLength(4);
+    expect(open.verts).toHaveLength(10);
+  });
+
+  it("keeps a sharp profile corner crisp and a gentle one smooth", () => {
+    // an L: two segments at 90 degrees
+    const out = evaluate({ ...profile([[2, 0], [2, 2], [4, 2]]), modifiers: [{ type: "revolve", segments: 6, sharp: 40 }] });
+    expect(out.verts).toHaveLength(6 * 4); // the corner point has two rings
+    const smoothOut = evaluate({ ...profile([[2, 0], [2, 2], [4, 2]]), modifiers: [{ type: "revolve", segments: 6, sharp: 120 }] });
+    expect(smoothOut.verts).toHaveLength(6 * 3);
+  });
+
+  it("flip turns the faces inside out", () => {
+    const base: Cube = { ...profile([[4, 0], [5, 0], [5, 2], [4, 2]]), modifiers: [{ type: "revolve", segments: 12, closed: true, flip: true }] };
+    const out = evaluate(base);
+    expect(volume({ verts: out.verts!, polys: out.polys! })).toBeLessThan(0);
+  });
+});
+
+describe("materials", () => {
+  const glbJson = (doc: ReturnType<typeof put>["doc"]) => {
+    const g = exportGlb(doc);
+    return JSON.parse(new TextDecoder().decode(g.slice(20, 20 + new DataView(g.buffer, g.byteOffset).getUint32(12, true)))) as { materials: { pbrMetallicRoughness: { metallicFactor: number; roughnessFactor: number }; emissiveFactor?: number[] }[]; meshes: { primitives: { material: number }[] }[] };
+  };
+
+  it("writes metallic and roughness into the glb and one material per combination", () => {
+    const doc = put(box()).doc;
+    const part = doc.parts[0]!;
+    part.cubes.push({ ...box(), metallic: 1, roughness: 0.3 }, { ...box(), metallic: 1, roughness: 0.3 }, { ...box(), emissive: 0.5 });
+    const j = glbJson(doc);
+    const mats = j.meshes[0]!.primitives.map((p) => j.materials[p.material]!);
+    expect(mats).toHaveLength(3);
+    expect(mats.some((m) => m.pbrMetallicRoughness.metallicFactor === 1 && m.pbrMetallicRoughness.roughnessFactor === 0.3)).toBe(true);
+    expect(mats.some((m) => m.emissiveFactor?.[0] === 0.5)).toBe(true);
+    expect(j.materials[0]!.pbrMetallicRoughness).toEqual({ baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: 1 });
+  });
+
+  it("round-trips and rejects numbers outside 0 to 1", () => {
+    const doc = put({ ...box(), metallic: 0.8, roughness: 0.25 }).doc;
+    const back = parseModel(serializeModel(doc));
+    expect(back.ok && [back.doc.parts[0]!.cubes[0]!.metallic, back.doc.parts[0]!.cubes[0]!.roughness]).toEqual([0.8, 0.25]);
+    expect(serializeModel(put(box()).doc)).not.toContain("metallic");
+    expect(parseModel(serializeModel(put(box()).doc).replace('"color"', '"metallic": 2, "color"')).ok).toBe(false);
+  });
+});

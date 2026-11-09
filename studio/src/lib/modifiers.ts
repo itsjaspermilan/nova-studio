@@ -72,10 +72,30 @@ export interface ArrayMod extends Common {
   /// Points of neighbouring copies closer than this are joined (default 0 = off).
   merge?: number;
 }
-export type Modifier = MirrorMod | SubsurfMod | BevelMod | SolidifyMod | ArrayMod;
+/// Spins the mesh's points, taken in order as a profile line, about an axis: wheels, tyres, rims, bottles. It makes the shape from
+/// the points alone, so the polygons of the mesh it sits on do not matter. The profile is (distance from the axis, position along it):
+/// for the y axis that is (x, y), for x it is (y, x), for z it is (x, z). A point on the axis (distance 0) becomes one point.
+export interface RevolveMod extends Common {
+  type: "revolve";
+  axis?: ModAxis;
+  /// Steps round the turn (default 24).
+  segments?: number;
+  /// How far it turns, degrees; 360 is all the way round and closes up (default 360).
+  angle?: number;
+  /// Join the last profile point back to the first (default false).
+  closed?: boolean;
+  /// Corners of the profile sharper than this many degrees stay crisp; gentler ones shade smoothly (default 40).
+  sharp?: number;
+  /// Turn the faces inside out (use it if the profile runs the other way).
+  flip?: boolean;
+}
+export type Modifier = MirrorMod | SubsurfMod | BevelMod | SolidifyMod | ArrayMod | RevolveMod;
 export type ModifierType = Modifier["type"];
-export const MODIFIER_TYPES: ModifierType[] = ["mirror", "subsurf", "bevel", "solidify", "array"];
-export const MODIFIER_LABELS: Record<ModifierType, string> = { mirror: "Mirror", subsurf: "Subdivision", bevel: "Bevel", solidify: "Solidify", array: "Array" };
+export const MODIFIER_TYPES: ModifierType[] = ["mirror", "subsurf", "bevel", "solidify", "array", "revolve"];
+export const MODIFIER_LABELS: Record<ModifierType, string> = { mirror: "Mirror", subsurf: "Subdivision", bevel: "Bevel", solidify: "Solidify", array: "Array", revolve: "Revolve" };
+export const MAX_REVOLVE = 128;
+/// A crease weight of 1 stays sharp through this many subdivision levels (the most a modifier does).
+export const CREASE_LEVELS = 4;
 
 export const MAX_SUBSURF = 4;
 export const MAX_BEVEL_SEGMENTS = 16;
@@ -88,6 +108,7 @@ export function newModifier(type: ModifierType): Modifier {
     case "bevel": return { type, width: 1, segments: 2, angle: 30 };
     case "solidify": return { type, thickness: 1, offset: -1, even: true };
     case "array": return { type, count: 2, offset: [8, 0, 0] };
+    case "revolve": return { type, axis: "y", segments: 24, angle: 360, sharp: 40 };
   }
 }
 
@@ -97,6 +118,8 @@ export function newModifier(type: ModifierType): Modifier {
 export interface Soup {
   verts: Vec3[];
   polys: MeshFace[];
+  /// Sharpness of edges (key "a,b" with a < b) in subdivision levels: 0 smooth, 1 one level held sharp, ... Open borders count as infinitely sharp.
+  creases?: Map<string, number>;
 }
 
 const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
@@ -110,6 +133,20 @@ const norm = (a: Vec3): Vec3 => {
   return l > 1e-12 ? mul(a, 1 / l) : [0, 0, 0];
 };
 const lerp = (a: Vec3, b: Vec3, t: number): Vec3 => add(mul(a, 1 - t), mul(b, t));
+const edgeKey = (a: number, b: number) => (a < b ? `${a},${b}` : `${b},${a}`);
+/// Carries creases through a renumbering of points (`map[old]`, -1 for gone); `copies` adds a second set for `twin`.
+function mapCreases(c: Map<string, number> | undefined, map: (i: number) => number, extra?: (i: number) => number): Map<string, number> | undefined {
+  if (!c) return undefined;
+  const out = new Map<string, number>();
+  for (const [key, w] of c) {
+    const [a, b] = key.split(",").map(Number) as [number, number];
+    for (const f of extra ? [map, extra] : [map]) {
+      const x = f(a), y = f(b);
+      if (x >= 0 && y >= 0 && x !== y) out.set(edgeKey(x, y), Math.max(out.get(edgeKey(x, y)) ?? 0, w));
+    }
+  }
+  return out.size ? out : undefined;
+}
 const axisIndex = (a: ModAxis) => (a === "x" ? 0 : a === "y" ? 1 : 2);
 const copyPoly = (f: MeshFace, v: number[]): MeshFace => {
   const out: MeshFace = { v };
@@ -117,9 +154,12 @@ const copyPoly = (f: MeshFace, v: number[]): MeshFace => {
   if (f.smooth) out.smooth = true;
   return out;
 };
-const soupOf = (c: Cube): Soup => ({ verts: (c.verts ?? []).map((p) => [...p] as Vec3), polys: (c.polys ?? []).map((f) => copyPoly(f, [...f.v])) });
+const soupOf = (c: Cube): Soup => {
+  const creases = new Map<string, number>();
+  for (const [a, b, w] of c.creases ?? []) if (w > 0) creases.set(edgeKey(a, b), Math.max(creases.get(edgeKey(a, b)) ?? 0, w * CREASE_LEVELS));
+  return { verts: (c.verts ?? []).map((p) => [...p] as Vec3), polys: (c.polys ?? []).map((f) => copyPoly(f, [...f.v])), ...(creases.size ? { creases } : {}) };
+};
 
-const edgeKey = (a: number, b: number) => (a < b ? `${a},${b}` : `${b},${a}`);
 
 /// Drops points no polygon uses and renumbers.
 export function compactSoup(s: Soup): Soup {
@@ -133,7 +173,7 @@ export function compactSoup(s: Soup): Soup {
     }
     return m;
   })));
-  return { verts, polys };
+  return { verts, polys, ...(s.creases ? (() => { const c = mapCreases(s.creases, (i) => map.get(i) ?? -1); return c ? { creases: c } : {}; })() : {}) };
 }
 
 /// Joins points closer than `distance` (grid lookup, so it is fast on big meshes) and drops polygons that collapse to fewer than three points.
@@ -164,7 +204,7 @@ export function weldSoup(s: Soup, distance: number, only?: (a: number, b: number
     if (v.length > 1 && v[0] === v[v.length - 1]) v.pop();
     if (new Set(v).size >= 3 && v.length === new Set(v).size) polys.push(copyPoly(f, v));
   }
-  return compactSoup({ verts: s.verts, polys });
+  return compactSoup({ verts: s.verts, polys, creases: mapCreases(s.creases, (i) => target[i]!) });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -201,7 +241,7 @@ export function mirror(s: Soup, m: MirrorMod): Soup {
     if (flat(f)) continue;
     polys.push(copyPoly(f, f.v.map((i) => twin[i]!).reverse()));
   }
-  return compactSoup({ verts: out, polys });
+  return compactSoup({ verts: out, polys, creases: mapCreases(s.creases, (i) => i, (i) => twin[i]!) });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -216,6 +256,12 @@ export function subdivideOnce(s: Soup, smooth: boolean): Soup {
       faceEdges.set(key, [...(faceEdges.get(key) ?? []), fi]);
     }
   });
+  // How sharp each edge is: open borders and edges shared by more than two faces are infinitely sharp, the rest follow the creases.
+  const sharpness = (key: string) => {
+    const n = faceEdges.get(key)!.length;
+    return n !== 2 ? Infinity : s.creases?.get(key) ?? 0;
+  };
+  const blend = (smoothP: Vec3, sharpP: Vec3, sigma: number) => (sigma >= 1 ? sharpP : sigma <= 0 ? smoothP : lerp(smoothP, sharpP, sigma));
   const facePoint: Vec3[] = s.polys.map((f) => mul(f.v.reduce<Vec3>((acc, i) => add(acc, s.verts[i]!), [0, 0, 0]), 1 / f.v.length));
   // Edge points are numbered after the points and before the face points.
   const edgeIndex = new Map<string, number>();
@@ -224,7 +270,8 @@ export function subdivideOnce(s: Soup, smooth: boolean): Soup {
     const [a, b] = key.split(",").map(Number) as [number, number];
     const mid = mul(add(s.verts[a]!, s.verts[b]!), 0.5);
     edgeIndex.set(key, nv + edgePoints.length);
-    edgePoints.push(faces.length === 2 ? mul(add(mid, mul(add(facePoint[faces[0]!]!, facePoint[faces[1]!]!), 0.5)), 0.5) : mid);
+    const smoothP = faces.length === 2 ? mul(add(mid, mul(add(facePoint[faces[0]!]!, facePoint[faces[1]!]!), 0.5)), 0.5) : mid;
+    edgePoints.push(blend(smoothP, mid, sharpness(key)));
   }
   // New positions of the old points.
   const vertFaces: number[][] = s.verts.map(() => []);
@@ -239,13 +286,24 @@ export function subdivideOnce(s: Soup, smooth: boolean): Soup {
     const faces = vertFaces[i]!;
     const nbrs = vertEdges[i]!;
     if (!faces.length) return p;
-    const open = nbrs.filter((j) => faceEdges.get(edgeKey(i, j))!.length === 1);
-    if (open.length === 2) return mul(add(add(s.verts[open[0]!]!, s.verts[open[1]!]!), mul(p, 6)), 1 / 8);
-    if (open.length > 0 || nbrs.some((j) => faceEdges.get(edgeKey(i, j))!.length > 2) || nbrs.length !== faces.length) return p;
-    const n = nbrs.length;
-    const f = mul(faces.reduce<Vec3>((acc, fi) => add(acc, facePoint[fi]!), [0, 0, 0]), 1 / n);
-    const r = mul(nbrs.reduce<Vec3>((acc, j) => add(acc, mul(add(p, s.verts[j]!), 0.5)), [0, 0, 0]), 1 / n);
-    return mul(add(add(f, mul(r, 2)), mul(p, n - 3)), 1 / n);
+    const sharpNbrs = nbrs.map((j) => ({ j, w: sharpness(edgeKey(i, j)) })).filter((e) => e.w > 0);
+    const manifold = nbrs.length === faces.length && nbrs.every((j) => faceEdges.get(edgeKey(i, j))!.length === 2);
+    let smoothP = p;
+    if (manifold) {
+      const n = nbrs.length;
+      const f = mul(faces.reduce<Vec3>((acc, fi) => add(acc, facePoint[fi]!), [0, 0, 0]), 1 / n);
+      const r = mul(nbrs.reduce<Vec3>((acc, j) => add(acc, mul(add(p, s.verts[j]!), 0.5)), [0, 0, 0]), 1 / n);
+      smoothP = mul(add(add(f, mul(r, 2)), mul(p, n - 3)), 1 / n);
+    }
+    if (sharpNbrs.length < 2) return smoothP;
+    if (sharpNbrs.length === 2) {
+      const [e1, e2] = sharpNbrs as [{ j: number; w: number }, { j: number; w: number }];
+      const creaseP = mul(add(add(s.verts[e1.j]!, s.verts[e2.j]!), mul(p, 6)), 1 / 8);
+      return blend(smoothP, creaseP, (Math.min(e1.w, 1e9) + Math.min(e2.w, 1e9)) / 2);
+    }
+    // a corner: three or more sharp edges meet
+    const avg = sharpNbrs.reduce((sum, e) => sum + Math.min(e.w, 1e9), 0) / sharpNbrs.length;
+    return blend(smoothP, p, avg);
   });
   const verts = [...moved, ...edgePoints, ...facePoint];
   const faceBase = nv + edgePoints.length;
@@ -263,7 +321,20 @@ export function subdivideOnce(s: Soup, smooth: boolean): Soup {
       polys.push(piece);
     }
   });
-  return { verts, polys };
+  // Each half of a creased edge carries the crease on, one level softer.
+  let creases: Map<string, number> | undefined;
+  if (s.creases) {
+    creases = new Map();
+    for (const [key, w] of s.creases) {
+      const e = edgeIndex.get(key);
+      if (e === undefined || w <= 1) continue;
+      const [a, b] = key.split(",").map(Number) as [number, number];
+      creases.set(edgeKey(a, e), w - 1);
+      creases.set(edgeKey(b, e), w - 1);
+    }
+    if (!creases.size) creases = undefined;
+  }
+  return { verts, polys, ...(creases ? { creases } : {}) };
 }
 
 export function subsurf(s: Soup, levels: number, smooth = true): Soup {
@@ -524,7 +595,7 @@ export function solidify(s: Soup, m: SolidifyMod): Soup {
   }
   // A negative thickness would turn everything inside out.
   if (thickness < 0) polys.forEach((p) => p.v.reverse());
-  return { verts, polys };
+  return { verts, polys, ...(s.creases ? { creases: mapCreases(s.creases, (i) => i, (i) => i + n) } : {}) };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -546,11 +617,95 @@ export function array(s: Soup, m: ArrayMod): Soup {
     for (const p of s.verts) verts.push(add(p, mul(step, c)));
     for (const f of s.polys) polys.push(copyPoly(f, f.v.map((i) => i + base)));
   }
+  let creases: Map<string, number> | undefined;
+  if (s.creases) {
+    creases = new Map();
+    for (let c = 0; c < fit; c++) for (const [key, w] of s.creases) {
+      const [a, b] = key.split(",").map(Number) as [number, number];
+      creases.set(edgeKey(a + c * s.verts.length, b + c * s.verts.length), w);
+    }
+  }
   const merge = m.merge ?? 0;
-  if (merge <= 0) return { verts, polys };
+  if (merge <= 0) return { verts, polys, ...(creases ? { creases } : {}) };
   // Only points of different copies are joined.
   const n = s.verts.length;
-  return weldSoup({ verts, polys }, merge, (a, b) => Math.floor(a / n) !== Math.floor(b / n));
+  return weldSoup({ verts, polys, ...(creases ? { creases } : {}) }, merge, (a, b) => Math.floor(a / n) !== Math.floor(b / n));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Revolve (lathe)
+
+export function revolve(s: Soup, m: RevolveMod): Soup {
+  const profile = s.verts;
+  if (profile.length < 2) return { verts: [], polys: [] };
+  const axis = axisIndex(m.axis ?? "y");
+  const steps = Math.max(2, Math.min(MAX_REVOLVE, Math.round(m.segments ?? 24)));
+  const angle = Math.max(1, Math.min(360, m.angle ?? 360));
+  const full = angle >= 359.999;
+  const sharp = Math.max(0, Math.min(180, m.sharp ?? 40));
+  // Profile as (radius, height): the axis's own coordinate is the height, the next one round is the radius.
+  const radius = axis === 0 ? 1 : 0;
+  const pr = profile.map((p) => Math.abs(p[radius]!));
+  const ph = profile.map((p) => p[axis]!);
+  const segs: [number, number][] = [];
+  for (let i = 0; i + 1 < profile.length; i++) segs.push([i, i + 1]);
+  if (m.closed && profile.length > 2) segs.push([profile.length - 1, 0]);
+  const dir = (j: number): [number, number] => {
+    const [a, b] = segs[j]!;
+    const dx = pr[b]! - pr[a]!, dy = ph[b]! - ph[a]!, l = Math.hypot(dx, dy) || 1;
+    return [dx / l, dy / l];
+  };
+  const verts: Vec3[] = [];
+  const polys: MeshFace[] = [];
+  const at = (r: number, h: number, theta: number): Vec3 => {
+    // (x, y, z) = (r cos, h, r sin) turned so that `h` lies on the chosen axis (a cyclic move keeps the faces facing outwards)
+    const base: Vec3 = [r * Math.cos(theta), h, r * Math.sin(theta)];
+    return axis === 1 ? base : axis === 0 ? [base[1], base[2], base[0]] : [base[2], base[0], base[1]];
+  };
+  const poles = new Map<number, number[]>();
+  const ring = (point: number): number[] => {
+    const r = pr[point]!, h = ph[point]!;
+    if (r < 1e-9) {
+      // a point on the axis is one point, however many segments meet there
+      if (!poles.has(point)) poles.set(point, [verts.push(at(0, h, 0)) - 1]);
+      return poles.get(point)!;
+    }
+    const count = full ? steps : steps + 1;
+    return Array.from({ length: count }, (_, k) => verts.push(at(r, h, (((angle * Math.PI) / 180) * k) / steps)) - 1);
+  };
+  // One ring per segment end; a profile point shared by two gentle segments shares its ring.
+  const rings: [number[], number[]][] = [];
+  const shared = new Map<number, number[]>();
+  segs.forEach(([a, b], j) => {
+    const ends: number[][] = [];
+    for (const [point, other, side] of [[a, j - 1, 0], [b, j + 1, 1]] as const) {
+      const prev = side === 0 ? (j > 0 ? j - 1 : m.closed && segs.length > 1 ? segs.length - 1 : -1) : (j + 1 < segs.length ? j + 1 : m.closed && segs.length > 1 ? 0 : -1);
+      void other;
+      let turn = 180;
+      if (prev >= 0) {
+        const d1 = side === 0 ? dir(prev) : dir(j);
+        const d2 = side === 0 ? dir(j) : dir(prev);
+        turn = (Math.acos(Math.max(-1, Math.min(1, d1[0] * d2[0] + d1[1] * d2[1]))) * 180) / Math.PI;
+      }
+      if (turn <= sharp) {
+        let r = shared.get(point);
+        if (!r) shared.set(point, (r = ring(point)));
+        ends.push(r);
+      } else ends.push(ring(point));
+    }
+    rings.push([ends[0]!, ends[1]!]);
+  });
+  const wrap = (r: number[], k: number) => r[full ? k % r.length : k]!;
+  for (const [A, B] of rings) {
+    for (let k = 0; k < steps; k++) {
+      const quad = [wrap(A, k), wrap(B, k), wrap(B, k + 1), wrap(A, k + 1)].filter((v, i, all) => v !== all[(i + 1) % 4] || all.length < 2);
+      const unique = quad.filter((v, i) => quad.indexOf(v) === i);
+      if (unique.length < 3) continue;
+      polys.push({ v: unique, smooth: true });
+    }
+  }
+  if (m.flip) polys.forEach((p) => p.v.reverse());
+  return { verts, polys };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -565,6 +720,7 @@ export function applyModifier(s: Soup, m: Modifier, stage: Stage): Soup {
     case "bevel": return bevel(s, m);
     case "solidify": return solidify(s, m);
     case "array": return array(s, m);
+    case "revolve": return revolve(s, m);
   }
 }
 
@@ -589,6 +745,10 @@ export function evaluate(c: Cube, stage: Stage = "view"): Cube {
   }
   const out: Cube = { ...(c.name ? { name: c.name } : {}), shape: "mesh", from: [0, 0, 0], size: [0, 0, 0], color: c.color, verts: soup.verts, polys: soup.polys };
   if (c.emissive !== undefined) out.emissive = c.emissive;
+  if (c.metallic !== undefined) out.metallic = c.metallic;
+  if (c.roughness !== undefined) out.roughness = c.roughness;
+  const kept = [...(soup.creases ?? [])].filter(([, w]) => Number.isFinite(w) && w > 0);
+  if (kept.length) out.creases = kept.map(([k, w]) => { const [a, b] = k.split(",").map(Number) as [number, number]; return [a, b, Math.min(1, w / CREASE_LEVELS)] as [number, number, number]; });
   fitBounds(out);
   return out;
 }
@@ -632,6 +792,10 @@ export function checkModifier(m: unknown, at: string): string | null {
       break;
     case "solidify":
       problems.push(num("thickness", -1e6, 1e6), num("offset", -1, 1), flag("even"));
+      break;
+    case "revolve":
+      if (o.axis !== undefined && !MOD_AXES.includes(o.axis as ModAxis)) return `${at}.axis must be x, y or z`;
+      problems.push(num("segments", 2, MAX_REVOLVE, true), num("angle", 1, 360), num("sharp", 0, 180), flag("closed"), flag("flip"));
       break;
     case "array":
       problems.push(num("count", 1, MAX_ARRAY, true), vec("offset"), vec("relative"), num("merge", 0, 1e6));

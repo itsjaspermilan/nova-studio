@@ -224,6 +224,13 @@
   "group": "Drawing"
  },
  {
+  "name": "nova.graphics",
+  "kind": "function",
+  "signature": "nova.graphics{ hdr, msaa, shadow_cascades, ibl, anisotropy } | nova.graphics()",
+  "doc": "Opt-in quality settings of the world picture, all off by default (they can also be set in nova.json under \"graphics\"). `hdr = true` draws the world to a 16-bit float picture and puts it through a filmic tone curve, and bloom then works on real brightness; `msaa = 4` smooths edges with 4 samples a pixel (instead of `fxaa`); `shadow_cascades` (1 to 3) splits the sun's shadow into near and far maps with softly filtered edges; `ibl = true` lights models that use their material by the sky (`nova.sky`) and reflects it; `anisotropy` (1 to 16) keeps textures sharp on the ground at a slant. Changing a setting rebuilds the world's pipelines (a short hitch: do it from a menu), `nova.graphics()` turns everything off. Each costs GPU time; see docs/switch-class-graphics.md.",
+  "group": "Drawing"
+ },
+ {
   "name": "nova.look",
   "kind": "function",
   "signature": "nova.look{ toon, outline, exposure, saturation, vignette, bloom, bloom_threshold, ao, ao_radius, blur } | nova.look()",
