@@ -24,6 +24,27 @@ Each is a real, recognisable design, not a generic box. Wheel and body numbers b
 
 Real cars for comparison (Corolla sedan 4630 x 1780 x 1435, wheelbase 2700): width / L 0.38, height / L 0.31, wheelbase / L 0.58.
 
+## Windows and doors (measured from orthographic side renders; u runs from the nose, 0, to the tail, 1; v from the ground, 0, to the roof, 1)
+
+The glass is **30 to 40 percent of the car's height**: the belt line (the bottom of the side windows) sits at v 0.58 to 0.70, the roof at 1.0.
+That is the same share as on a real car (about a third); the PSX cars only look windowy because their glass is one flat dark panel with thin pillars.
+
+| Car | Belt line (v) | Glass height (of H) | Side windows, from the nose (u) | Door seams (u) |
+| --- | ---: | ---: | --- | --- |
+| wagon | 0.62 | 0.34 | one band 0.29-0.89: three panes, pillars near 0.46 and 0.63 | about 0.30, 0.46, 0.63 |
+| sedan (Saab-like) | 0.60 | 0.40 | 0.36-0.52 and 0.54-0.74 | about 0.34, 0.53 |
+| hatch (Golf) | 0.60 | 0.40 | front door 0.355-0.63, quarter 0.64-0.84 | 0.325 (front of the door), 0.63 (B pillar): a 3-door, the door 0.30 L long |
+| minivan | 0.65 | 0.35 | 0.21-0.45, 0.47-0.72, 0.74-0.93 (the cab 0.21-0.45 is the front door) | about 0.20, 0.46, 0.73 |
+| big sedan | 0.68 | 0.30 | front door 0.39-0.53, rear door 0.54-0.69, small quarter pane 0.71-0.78 | 0.33 (front door 0.20 L long), 0.535, 0.71 (rear door 0.18 L) |
+| sedan shell | 0.61 | 0.39 | 0.39-0.77 | (no doors) |
+| vintage | 0.70 | 0.30 | 0.41-0.58 and 0.63-0.81, one window each | |
+| step van | 0.58 | 0.42 | cab only, 0.15-0.39 (windscreen side and door glass) | |
+
+A door is about 0.18 to 0.20 of the length on a four-door and about 0.30 on a two- or three-door. The windshield rises from the bonnet at
+u 0.30 to 0.46 on the sedans and the hatch (a long raked glass), the roof is flat for about 0.3 L, and the rear glass falls over about 0.10 L.
+The full roofline of each car, sampled 29 times from the nose, is in `scripts/rally/psx-profiles.json` (v per sample); the car generator
+reads it so each model keeps its reference's silhouette.
+
 ## What makes them read as cars
 
 1. **A distinct silhouette per model.** The roofline, the rake of the pillars, the length of the bonnet and the cut of the tail differ
