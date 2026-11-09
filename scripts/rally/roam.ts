@@ -16,6 +16,7 @@
 // Spectators, start grids and stage gates stay in the courses' own scenes. Scenery that would stand on another road is left out.
 //   cd studio && ../scripts/env.sh npx vite-node ../scripts/rally/roam.ts
 import { readFileSync, writeFileSync, readdirSync, unlinkSync } from "node:fs";
+import { deflateSync } from "node:zlib";
 import { join } from "node:path";
 import { centreline, layout, roadGlb } from "../lib/trackgen.mjs";
 import { parseScene, serializeScene } from "../../studio/src/lib/scene-model";
@@ -29,12 +30,13 @@ type P = { x: number; z: number };
 type Box = { x0: number; x1: number; z0: number; z1: number };
 
 // the regions: where each town is, the course whose look (sky, sun, ground) the region has, its roads' surface and grip, and its courses
+// (the harbour's courses are night races; in free roam it is day there, with the look of Ridge Grand Prix, a day circuit by the coast)
 const REGIONS = [
   { id: "forest", name: "Pine Ridge", town: [0, 0], look: "pine_ridge", road: "road_gravel", grip: 0.88, courses: ["pine_ridge", "ridge_gp", "stage_pine_ridge", "stage_marathon"] },
   { id: "autumn", name: "Autumn Glen", town: [-300, -3600], look: "autumn_glen", road: "road_gravel", grip: 0.88, courses: ["autumn_glen", "autumn_summit", "stage_autumn_glen"] },
   { id: "desert", name: "Dust Valley", town: [400, 3800], look: "dust_valley", road: "road_sand", grip: 0.85, courses: ["dust_valley", "copper_canyon", "stage_dust_valley", "stage_canyon", "stage_mesa_run"] },
   { id: "snow", name: "Frost Pass", town: [-4000, -900], look: "frost_pass", road: "road_snow", grip: 0.72, courses: ["frost_pass", "glacier_ring", "stage_frost_pass", "stage_glacier_night"] },
-  { id: "harbour", name: "Harbour", town: [4000, -600], look: "harbour_lights", road: "road_asphalt", grip: 1, courses: ["harbour_lights", "neon_docks", "stage_harbour_lights", "stage_harbour_sprint"] },
+  { id: "harbour", name: "Harbour", town: [4000, -600], look: "ridge_gp", road: "road_asphalt", grip: 1, courses: ["harbour_lights", "neon_docks", "stage_harbour_lights", "stage_harbour_sprint"] },
 ];
 const SPAWN_REGION = "forest";
 const GRASS = 0.3; // the share of each course's grass planted in the open world (twenty courses of grass would be too much for a handheld)
@@ -42,6 +44,17 @@ const DROP = new Set(["race", "foliage", "waypoint", "grid_slot", "section_gate"
 const isCrowd = (k: string) => k.startsWith("crowd_");
 
 const objects: Obj[] = [];
+// each road's points, kept together and written as one `roam_road` object a road (ten thousand objects of one point each made the scene
+// too slow to build): [x, z, k] for each point, with its width (`w`, half the road) and its road kind when they are not the road's own
+const roadData = new Map<string, { road: string; grip: number; loop: boolean; pts: { i: number; v: (number | string)[] }[] }>();
+function addPoint(route: string, i: number, x: number, z: number, k: number, road: string, grip: number, w?: number, loop = false) {
+  let r = roadData.get(route);
+  if (!r) { r = { road, grip, loop, pts: [] }; roadData.set(route, r); }
+  const v: (number | string)[] = [r1(x), r1(z), Math.round(k * 10000) / 10000];
+  if (w || road !== r.road) v.push(w ?? 0);
+  if (road !== r.road) v.push(road);
+  r.pts.push({ i, v });
+}
 const routes: { name: string; pts: P[] }[] = [];
 const scenery: { o: Obj; own: string }[] = [];
 const blocked: Box[] = []; // land taken: towns, highways, placed courses
@@ -73,14 +86,18 @@ function makeTown(region: (typeof REGIONS)[number]) {
 function dressTown(t: ReturnType<typeof makeTown>) {
   const { main, side, ends, region } = t;
   const put = (kind: string, x: number, z: number, ry = 0) => objects.push({ kind, x: r1(x), y: 0, z: r1(z), ...(ry ? { props: { ry: r3(ry) } } : {}) });
-  for (let x = main.x0 + TILE / 2; x < main.x1; x += TILE) put(Math.abs(x - main.cross) < 1 ? "ck_road_crossroad" : "ck_road_straight", x, main.z);
-  for (let z = main.z - TILE; z > side.z0; z -= TILE) put("ck_road_straight", main.cross, z, Q);
-  for (let z = main.z + TILE; z < side.z1; z += TILE) put("ck_road_straight", main.cross, z, Q);
-  put(ends.n.used ? "ck_road_straight" : "ck_road_end_round", main.cross, side.z0, Q);
-  put(ends.s.used ? "ck_road_straight" : "ck_road_end_round", main.cross, side.z1, -Q);
+  // the streets are roads like the highways (the generator's ribbon, tarmac), so a road comes into town and goes on with no seam
+  // (2026-11-08: the kit's road tiles met the generated roads with a hard edge at every way in); the side street lies a hair under the
+  // main street where they cross, so the two do not flicker
+  const street = (id: string, control: [number, number][], y: number) => {
+    writeFileSync(join(GAME, `models/road_${id}.glb`), roadGlb(control, "road_asphalt", true, []));
+    objects.push({ kind: "road", x: 0, y, z: 0, props: { model: `road_${id}` } });
+  };
+  street(`town_${region.id}_main`, [[main.x0, main.z], [main.x0 + 60, main.z], [main.x1 - 60, main.z], [main.x1, main.z]], 0);
+  street(`town_${region.id}_side`, [[main.cross, side.z0], [main.cross, side.z0 + 40], [main.cross, side.z1 - 40], [main.cross, side.z1]], -0.02);
   const pts = (name: string, list: [number, number][]) => {
     routes.push({ name, pts: list.map(([x, z]) => ({ x, z })) });
-    list.forEach(([x, z], i) => objects.push({ kind: "roam_point", x, y: 0, z, props: { route: name, i: i + 1, k: 0, w: 5, road: "road_asphalt", grip: 1 } }));
+    list.forEach(([x, z], i) => addPoint(name, i + 1, x, z, 0, "road_asphalt", 1));
   };
   const mainPts: [number, number][] = [];
   for (let x = main.x0; x <= main.x1; x += 7) mainPts.push([x, main.z]);
@@ -126,19 +143,20 @@ function buildRoad(id: string, control: [number, number][], region: (typeof REGI
   });
   const line = centreline(control, 5, true); // (open: a road from one place to another, not a loop)
   routes.push({ name: id, pts: line.map((p: P) => ({ x: p.x, z: p.z })) });
-  objects.push({ kind: "road", x: 0, y: 0, z: 0, props: { model: `road_${id}` } });
+  // (a road in lies a hair under the road it joins, so the two do not flicker where they overlap)
+  objects.push({ kind: "road", x: 0, y: highway ? 0 : -0.02, z: 0, props: { model: `road_${id}` } });
   for (const o of made.scene.objects as Obj[]) {
-    if (o.kind === "waypoint") objects.push({ kind: "roam_point", x: o.x, y: 0, z: o.z, props: { route: id, i: o.props!.i, k: o.props!.k, road: kind, grip } });
+    if (o.kind === "waypoint") addPoint(id, o.props!.i as number, o.x, o.z, o.props!.k as number, kind, grip);
     else if (!DROP.has(o.kind) && !isCrowd(o.kind)) scenery.push({ o, own: id });
   }
   writeFileSync(join(GAME, `models/road_${id}.glb`), roadGlb(control, kind, true, []));
   if (highway) {
-    // a pole every 7 m (the kit's piece is two poles 7 m apart with the wire between: lib/powerlines.lua chains them), 11 m to one side
+    // a pole about every 40 m, 11 m to one side (lib/powerlines.lua turns each along the line and strings the wires between them)
     const all = line.map((p: P & { tx: number; tz: number }) => ({ x: p.x - p.tz * 11, z: p.z + p.tx * 11 }));
     // (only the first 450 m out of each town: a pole every 7 m the whole way, as the kit spaces them, was a forest of poles)
     for (const side of [all.slice(0, 90), all.slice(-90).reverse()]) {
     const poles: [number, number][] = [[side[7]!.x, side[7]!.z]];
-    let need = 7; // (metres to the next pole, walking along the line: each pole exactly 7 m from the last, measured straight)
+    const need = 40; // (metres to the next pole, walking along the line, measured straight from the last)
     for (let i = 8; i < side.length - 7; i++) {
       const a = side[i - 1]!, b = side[i]!;
       const last = poles[poles.length - 1]!;
@@ -202,6 +220,24 @@ for (let i = 0; i < RING.length; i++) {
 towns.forEach(dressTown);
 
 // ---- the courses ----------------------------------------------------------------------------------------------------------------
+// Where a course's road in arrives (`end`) and which way it is going there (`into`): behind a stage's start line, along its first stretch;
+// onto a circuit's start straight from outside it. `own` is the course's road points where it is placed.
+function wayIn(id: string, own: P[], dx: number, dz: number) {
+  const track = read(`tracks/${id}.track.json`);
+  if (track.open) {
+    const [a, b] = track.control as [number, number][];
+    const len = Math.hypot(b![0] - a![0], b![1] - a![1]);
+    return { end: { x: a![0] + dx, z: a![1] + dz }, into: { x: (b![0] - a![0]) / len, z: (b![1] - a![1]) / len } };
+  }
+  const p = own[0]!, q = own[1]!;
+  const mid = { x: own.reduce((s, o) => s + o.x, 0) / own.length, z: own.reduce((s, o) => s + o.z, 0) / own.length };
+  const len = Math.hypot(q.x - p.x, q.z - p.z);
+  let n = { x: (q.z - p.z) / len, z: -(q.x - p.x) / len };
+  if ((p.x - mid.x) * n.x + (p.z - mid.z) * n.z < 0) n = { x: -n.x, z: -n.z };
+  return { end: p, into: { x: -n.x, z: -n.z } };
+}
+const courseBoxes: Box[] = []; // the courses' land
+const lanes: Box[] = []; // the ways in from the courses' starts towards their towns, kept clear of the courses placed after
 const trackOf = (id: string) => read(`tracks/${id}.track.json`);
 const placed: { id: string; dx: number; dz: number; region: (typeof REGIONS)[number] }[] = [];
 for (const region of REGIONS) {
@@ -220,7 +256,22 @@ for (const region of REGIONS) {
         const tx = town.cx + Math.cos((a * Math.PI) / 180) * r, tz = town.cz + Math.sin((a * Math.PI) / 180) * r;
         const dx = Math.round(tx - mx), dz = Math.round(tz - mz);
         const b = { x0: c.box.x0 + dx, x1: c.box.x1 + dx, z0: c.box.z0 + dz, z1: c.box.z1 + dz };
-        if (!blocked.some((o) => overlaps(o, b))) { found = { dx, dz }; blocked.push(b); }
+        if (blocked.some((o) => overlaps(o, b)) || lanes.some((l) => overlaps(l, b))) continue;
+        // its own way in, from its start towards the town, must not run through a course already placed
+        const way = (c.scene.objects as Obj[]).filter((o) => o.kind === "waypoint").sort((a, b2) => (a.props!.i as number) - (b2.props!.i as number)).map((o) => ({ x: o.x + dx, z: o.z + dz }));
+        const w = wayIn(c.id, way, dx, dz);
+        const lane: Box[] = [];
+        const ax = w.end.x - w.into.x * 150, az = w.end.z - w.into.z * 150;
+        const tl = Math.hypot(town.cx - ax, town.cz - az);
+        for (let d = 0; d < tl - 250; d += 40) {
+          const x = ax + ((town.cx - ax) / tl) * d, z = az + ((town.cz - az) / tl) * d;
+          lane.push({ x0: x - 30, x1: x + 30, z0: z - 30, z1: z + 30 });
+        }
+        if (lane.some((l) => courseBoxes.some((o) => overlaps(o, l)))) continue;
+        found = { dx, dz };
+        blocked.push(b);
+        courseBoxes.push(b);
+        lanes.push(...lane);
       }
     }
     if (!found) throw new Error(`no room for ${c.id}`);
@@ -232,7 +283,7 @@ for (const region of REGIONS) {
     objects.push({ kind: "road", x: found.dx, y: 0, z: found.dz, props: { model: `road_${c.id}` } });
     for (const o of way) {
       const p = o.props!;
-      objects.push({ kind: "roam_point", x: r1(o.x + found.dx), y: 0, z: r1(o.z + found.dz), props: { route: c.id, i: p.i, k: p.k, road: (p.road as string) ?? track.road, grip, ...(p.w ? { w: p.w } : {}), ...(track.open ? {} : { loop: true }) } });
+      addPoint(c.id, p.i as number, r1(o.x + found.dx), r1(o.z + found.dz), p.k as number, (p.road as string) ?? track.road, grip, p.w as number | undefined, !track.open);
     }
     for (const o of c.scene.objects as Obj[]) {
       if (DROP.has(o.kind) || isCrowd(o.kind) || o.name) continue;
@@ -243,37 +294,51 @@ for (const region of REGIONS) {
   }
 }
 
+// every course's road points, by 20 m square (for the roads in to keep clear of them)
+const courseGrid = new Map<string, (P & { r: string })[]>();
+for (const r of routes) if (placed.some((p) => p.id === r.name)) for (const q of r.pts) { const k = `${Math.floor(q.x / 20)},${Math.floor(q.z / 20)}`; (courseGrid.get(k) ?? courseGrid.set(k, []).get(k)!).push({ ...q, r: r.name }); }
 // each course's road from the nearest road: behind a stage's start line, or onto a circuit's start straight from outside it
 for (const c of placed) {
   const track = trackOf(c.id);
   const own = routes.find((r) => r.name === c.id)!.pts;
-  let end: P, into: P;
-  if (track.open) {
-    const [a, b] = track.control as [number, number][];
-    const len = Math.hypot(b![0] - a![0], b![1] - a![1]);
-    into = { x: (b![0] - a![0]) / len, z: (b![1] - a![1]) / len };
-    end = { x: a![0] + c.dx, z: a![1] + c.dz };
-  } else {
-    const p = own[0]!, q = own[1]!;
-    const mid = { x: own.reduce((s, o) => s + o.x, 0) / own.length, z: own.reduce((s, o) => s + o.z, 0) / own.length };
-    const len = Math.hypot(q.x - p.x, q.z - p.z);
-    let n = { x: (q.z - p.z) / len, z: -(q.x - p.x) / len };
-    if ((p.x - mid.x) * n.x + (p.z - mid.z) * n.z < 0) n = { x: -n.x, z: -n.z };
-    into = { x: -n.x, z: -n.z };
-    end = p;
-  }
+  const { end, into } = wayIn(c.id, own, c.dx, c.dz);
   // the nearest point of the road network (a town's streets, a highway, another course's road in; never a course itself), from a little
   // way out of its start
   const from = { x: end.x - into.x * 200, z: end.z - into.z * 200 };
-  let best: P = towns[0]!.ends.w, bd = Infinity;
+  // candidates: the nearest points of the network (one per road, up to eight), each tried with a few different bends; the first road in
+  // that keeps 25 m from every other course's road wins, else the one that comes near the fewest of their points
+  const starts: { p: P; d: number }[] = [];
   for (const r of routes) {
     if (placed.some((p) => p.id === r.name)) continue;
+    let best: P | null = null, bd = Infinity;
     for (const p of r.pts) { const d = (p.x - from.x) ** 2 + (p.z - from.z) ** 2; if (d < bd) { bd = d; best = p; } }
+    if (best) starts.push({ p: best, d: bd });
   }
-  const out = { x: from.x - best.x, z: from.z - best.z };
-  const ol = Math.hypot(out.x, out.z) || 1;
+  starts.sort((a, b) => a.d - b.d);
+  const clash = (line: P[]) => {
+    let n = 0;
+    for (const q of line) {
+      const gx = Math.floor(q.x / 20), gz = Math.floor(q.z / 20);
+      for (let i = gx - 2; i <= gx + 2; i++) for (let j = gz - 2; j <= gz + 2; j++)
+        for (const o of (courseGrid.get(`${i},${j}`) ?? [])) if (o.r !== c.id && (o.x - q.x) ** 2 + (o.z - q.z) ** 2 < 625) n++;
+    }
+    return n;
+  };
+  let chosen: [number, number][] | null = null, fewest = Infinity;
+  for (const st of starts.slice(0, 8)) {
+    const out = { x: from.x - st.p.x, z: from.z - st.p.z };
+    const ol = Math.hypot(out.x, out.z) || 1;
+    for (let tryN = 0; tryN < 4; tryN++) {
+      const control = controlFrom(st.p, { x: out.x / ol, z: out.z / ol }, end, into, tryN === 0 ? 0 : 140);
+      const n = clash(centreline(control, 5, true));
+      if (n < fewest) { fewest = n; chosen = control; }
+      if (n === 0) break;
+    }
+    if (fewest === 0) break;
+  }
+  if (fewest > 0) console.log(`  ${c.id}: its road in comes near another course (${fewest} points)`);
   const kind = c.region.road, grip = c.region.grip;
-  const line = buildRoad(`roam_to_${c.id}`, controlFrom(best, { x: out.x / ol, z: out.z / ol }, end, into, 60), c.region, kind, grip, false);
+  const line = buildRoad(`roam_to_${c.id}`, chosen!, c.region, kind, grip, false);
   objects.push({ kind: "roam_foliage", x: line[0]!.x, y: 0, z: line[0]!.z, props: { routes: [`roam_to_${c.id}`], plants: [] } });
   // the events: a circuit's race at its start and its time trial a little way round; a stage's rally at its start
   const at = (i: number, side: number) => {
@@ -304,6 +369,168 @@ for (const { o, own } of scenery) {
   else objects.push(o);
 }
 
+// ---- the land: one heightmap for the whole world (terrain/world.png), and water ---------------------------------------------------
+// Within about 40 m of any road the ground keeps the gentle rolling the courses were made on (the forest's two hill waves), so every road
+// drives as it did; further off, each region's own land comes in: hills in the forest and autumn, mesas in the desert, mountains in the
+// snow, low ground by the harbour. Lakes lie in basins well away from the roads, and east of the harbour the land goes down into the sea.
+// Water stands at WATER metres. The picture keeps each height in two bytes (red the high, green the low), as the engine reads an 8-bit
+// RGB heightmap: exact, and the studio's scene view reads it the same way.
+const CELL = 20, BASE = 30, WATER = BASE - 9;
+const allPts = routes.flatMap((r) => r.pts);
+const minX = Math.min(...allPts.map((p) => p.x)) - 1600, maxX = Math.max(...allPts.map((p) => p.x)) + 1600;
+const minZ = Math.min(...allPts.map((p) => p.z)) - 1600, maxZ = Math.max(...allPts.map((p) => p.z)) + 1600;
+const W = Math.ceil((maxX - minX) / CELL) + 1, H = Math.ceil((maxZ - minZ) / CELL) + 1;
+// the distance from every cell to the nearest road, by a two-pass chamfer from the cells the roads cross
+const dist = new Float32Array(W * H).fill(1e9);
+for (const r of routes) for (let i = 0; i < r.pts.length; i++) {
+  const a = r.pts[i]!, b = r.pts[Math.min(i + 1, r.pts.length - 1)]!;
+  for (let t = 0; t <= 1; t += 0.25) {
+    const x = Math.round((a.x + (b.x - a.x) * t - minX) / CELL), z = Math.round((a.z + (b.z - a.z) * t - minZ) / CELL);
+    if (x >= 0 && x < W && z >= 0 && z < H) dist[z * W + x] = 0;
+  }
+}
+const D1 = CELL, D2 = CELL * Math.SQRT2;
+for (let z = 0; z < H; z++) for (let x = 0; x < W; x++) {
+  let d = dist[z * W + x]!;
+  if (x > 0) d = Math.min(d, dist[z * W + x - 1]! + D1);
+  if (z > 0) { d = Math.min(d, dist[(z - 1) * W + x]! + D1); if (x > 0) d = Math.min(d, dist[(z - 1) * W + x - 1]! + D2); if (x < W - 1) d = Math.min(d, dist[(z - 1) * W + x + 1]! + D2); }
+  dist[z * W + x] = d;
+}
+for (let z = H - 1; z >= 0; z--) for (let x = W - 1; x >= 0; x--) {
+  let d = dist[z * W + x]!;
+  if (x < W - 1) d = Math.min(d, dist[z * W + x + 1]! + D1);
+  if (z < H - 1) { d = Math.min(d, dist[(z + 1) * W + x]! + D1); if (x < W - 1) d = Math.min(d, dist[(z + 1) * W + x + 1]! + D2); if (x > 0) d = Math.min(d, dist[(z + 1) * W + x - 1]! + D2); }
+  dist[z * W + x] = d;
+}
+// smooth value noise, and its layers
+const hash = (i: number, j: number) => { let h = (i * 374761393 + j * 668265263) ^ 0x5bd1e995; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967295; };
+const smooth = (t: number) => t * t * (3 - 2 * t);
+const noise = (x: number, z: number) => {
+  const i = Math.floor(x), j = Math.floor(z), fx = smooth(x - i), fz = smooth(z - j);
+  const a = hash(i, j), b = hash(i + 1, j), c = hash(i, j + 1), d = hash(i + 1, j + 1);
+  return a + (b - a) * fx + (c - a) * fz + (a - b - c + d) * fx * fz;
+};
+const fbm = (x: number, z: number, oct = 4) => { let v = 0, amp = 0.5, f = 1; for (let o = 0; o < oct; o++) { v += noise(x * f, z * f) * amp; f *= 2.03; amp *= 0.5; } return v / 0.9375; };
+const smoothstep = (a: number, b: number, v: number) => smooth(Math.max(0, Math.min(1, (v - a) / (b - a))));
+const LAND: Record<string, (x: number, z: number) => number> = {
+  forest: (x, z) => 38 * fbm(x / 650, z / 650),
+  autumn: (x, z) => 60 * fbm(x / 520 + 17, z / 520),
+  desert: (x, z) => { const m = fbm(x / 720 + 40, z / 720); return 52 * smoothstep(0.52, 0.6, m) + 10 * fbm(x / 260, z / 260); },
+  snow: (x, z) => { const r = 1 - Math.abs(2 * fbm(x / 900 + 90, z / 900) - 1); return 190 * r * r + 25 * fbm(x / 300, z / 300); },
+  harbour: (x, z) => 8 * fbm(x / 400 + 60, z / 400),
+};
+const forestWaves = (forest.objects.find((o: Obj) => o.kind === "race").props.terrain.waves as { height: number; wavelength: number; direction: number; phase: number }[]);
+const rolling = (x: number, z: number) => forestWaves.reduce((h, w) => {
+  const k = (Math.PI * 2) / w.wavelength, a = (w.direction * Math.PI) / 180;
+  return h + w.height * Math.sin(k * Math.cos(a) * x + k * Math.sin(a) * z + w.phase);
+}, 0);
+// the lakes: a few places well away from any road (and not by the sea), at least 1.3 km apart
+const coastX = maxX - 1600 + 120; // (just east of the easternmost road: the sea in view from the harbour's roads)
+// (beside a road: their middles 170 to 300 m from the nearest, their shores stopping just short of it, in clear view through the fog;
+// tried in a shuffled order, so that they spread over the map)
+const lakes: { x: number; z: number; r: number }[] = [];
+const spots: { x: number; z: number; k: number; d: number }[] = [];
+for (let z = minZ + 800; z < maxZ - 800; z += 200) for (let x = minX + 800; x < coastX - 700; x += 200) {
+  const d = dist[Math.round((z - minZ) / CELL) * W + Math.round((x - minX) / CELL)]!;
+  if (d > 170 && d < 300) spots.push({ x, z, k: hash(Math.round(x), Math.round(z)), d });
+}
+spots.sort((a, b) => a.k - b.k);
+for (const sp of spots) {
+  if (lakes.length >= 14) break;
+  if (lakes.some((l) => Math.hypot(l.x - sp.x, l.z - sp.z) < 1300)) continue;
+  // (as big as it can be with its shore, 1.7 times its radius, stopping 25 m short of the road: a lake by the road)
+  lakes.push({ x: sp.x, z: sp.z, r: Math.min(150, (sp.d - 25) / 1.7) });
+}
+const heights = new Float32Array(W * H);
+let top = 0;
+for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
+  const x = minX + i * CELL, z = minZ + j * CELL;
+  const away = smoothstep(40, 260, dist[j * W + i]!);
+  // each region's land, weighted by how near its town is
+  let land = 0, wsum = 0;
+  for (const t of towns) { const w = Math.exp(-(((x - t.cx) ** 2 + (z - t.cz) ** 2) / 2600 ** 2)); land += w * LAND[t.region.id]!(x, z); wsum += w; }
+  land /= wsum || 1;
+  let h = BASE + rolling(x, z) * (1 - away) + land * away;
+  for (const l of lakes) {
+    const d = Math.hypot(x - l.x, z - l.z);
+    if (d < l.r * 1.7) {
+      const bed = WATER - 2 - 7 * Math.max(0, 1 - (d / l.r) ** 2);
+      h = d < l.r ? bed : WATER + 0.6 + (h - WATER - 0.6) * smoothstep(l.r, l.r * 1.7, d);
+    }
+  }
+  // the sea, east of the harbour, its coast wandering a little
+  const coast = coastX + 140 * (fbm(z / 900 + 5, 3) - 0.5);
+  // (the last 400 m before the coast slope gently down to a beach a few metres above the water, so the sea is in view from the
+  // harbour's roads; past the coast the bed drops away)
+  h = h + (WATER + 3 - h) * smoothstep(coast - 400, coast, x);
+  if (x > coast) h = h + (WATER - 14 - h) * smoothstep(coast, coast + 110, x);
+  heights[j * W + i] = h;
+  top = Math.max(top, h);
+}
+const HEIGHT = Math.ceil(top + 5);
+{
+  const raw = Buffer.alloc((W * 3 + 1) * H);
+  for (let j = 0; j < H; j++) {
+    raw[j * (W * 3 + 1)] = 0;
+    for (let i = 0; i < W; i++) {
+      const v = Math.max(0, Math.min(65535, Math.round((heights[j * W + i]! / HEIGHT) * 65535)));
+      const o = j * (W * 3 + 1) + 1 + i * 3;
+      raw[o] = v >> 8; raw[o + 1] = v & 255; raw[o + 2] = 0;
+    }
+  }
+  const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+  const crc = (b: Buffer) => { let c = 0xffffffff; for (const v of b) c = crcTable[(c ^ v) & 255]! ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+  const chunk = (type: string, data: Buffer) => { const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const td = Buffer.concat([Buffer.from(type, "latin1"), data]); const c = Buffer.alloc(4); c.writeUInt32BE(crc(td)); return Buffer.concat([len, td, c]); };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(W, 0); ihdr.writeUInt32BE(H, 4); ihdr[8] = 8; ihdr[9] = 2; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
+  writeFileSync(join(GAME, "terrain/world.png"), Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw, { level: 9 })), chunk("IEND", Buffer.alloc(0))]));
+}
+// the race object of the world carries the heightmap (the scene view shows it too)
+const worldRace = objects.find((o) => o.kind === "race")!;
+worldRace.props = { ...worldRace.props, terrain: { heightmap: "terrain/world.png", x: minX, z: minZ, size: (W - 1) * CELL, height: HEIGHT } };
+// the water: each lake a square of water over its basin, and the sea a few big squares (the land above the water hides what is under it)
+for (const l of lakes) objects.push({ kind: "water", x: r1(l.x), y: 0, z: r1(l.z), props: { size: Math.round(l.r * 2.6), level: WATER } });
+// (the sea in squares of 600 m: a square is drawn its size times 1000 m up and its model that far down, so a big one loses its height
+// to rounding; these are the size of the lakes)
+for (let z = minZ; z < maxZ; z += 600) for (let x = coastX; x < coastX + 3000; x += 600) objects.push({ kind: "water", x: r1(x + 300), y: 0, z: r1(z + 300), props: { size: 600, level: WATER } });
+// ---- the land's own scenery: woods in patches, and fields between them ----------------------------------------------------------
+// The courses' scenery is a scatter along their roads; between them the land gets woods: where a slow noise is high, a patch of trees of
+// one or two kinds (the nearest region's), dense in the middle and thinning at the edge, with rocks here and there; where it is low, open
+// ground. In the desert, cacti and red rocks in loose clumps instead. Nothing on a road, in a town or in water.
+let woods = 0;
+const townClear = towns.map((t) => ({ x0: t.main.x0 - 60, x1: t.main.x1 + 60, z0: t.side.z0 - 60, z1: t.side.z1 + 60 }));
+for (let z = minZ + 400; z < maxZ - 400; z += 90) for (let x = minX + 400; x < coastX - 150; x += 90) {
+  const gi = Math.round((z - minZ) / CELL) * W + Math.round((x - minX) / CELL);
+  const d = dist[gi]!;
+  if (d < 45 || d > 900) continue;
+  if (townClear.some((b) => x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1)) continue;
+  const patch = fbm(x / 700 + 11, z / 700 + 7, 3);
+  if (patch < 0.56) continue;
+  // the nearest region's kinds of tree: a patch keeps to one or two of them
+  let near = towns[0]!, nd = Infinity;
+  for (const t of towns) { const dd = (x - t.cx) ** 2 + (z - t.cz) ** 2; if (dd < nd) { nd = dd; near = t; } }
+  const look = lookOf(near.region);
+  const kinds = look.trees as string[];
+  const k1 = kinds[Math.floor(noise(x / 500, z / 500) * kinds.length) % kinds.length]!, k2 = kinds[Math.floor(noise(x / 500 + 3, z / 500) * kinds.length) % kinds.length]!;
+  const dense = Math.min(1, (patch - 0.56) / 0.12);
+  const n = near.region.id === "desert" ? 1 + Math.round(dense * 2) : 2 + Math.round(dense * 5);
+  // (one `woods` object a patch, listing its trees: [dx, dz, which kind, turn in hundredths of a radian, size in hundredths])
+  const rock = (look.rock as string[])[Math.floor(rand() * look.rock.length)]!;
+  const kindsHere = [k1, k2, rock];
+  const trees: number[][] = [];
+  for (let i = 0; i < n; i++) {
+    const tx = x + (rand() - 0.5) * 88, tz = z + (rand() - 0.5) * 88;
+    const ti = Math.round((tz - minZ) / CELL) * W + Math.round((tx - minX) / CELL);
+    if ((dist[ti] ?? 0) < 40 || (heights[ti] ?? 0) < WATER + 1.5) continue;
+    const which = rand() < 0.07 ? 2 : rand() < 0.5 ? 0 : 1;
+    trees.push([Math.round(tx - x), Math.round(tz - z), which, Math.round(rand() * 628), Math.round((0.8 + rand() * 0.6) * 100)]);
+    woods++;
+  }
+  if (trees.length) objects.push({ kind: "woods", x, y: 0, z, props: { kinds: kindsHere, trees } });
+}
+console.log(`woods: ${woods} trees and rocks in patches between the roads`);
+const heightAt = (x: number, z: number) => heights[Math.max(0, Math.min(H - 1, Math.round((z - minZ) / CELL))) * W + Math.max(0, Math.min(W - 1, Math.round((x - minX) / CELL)))]!;
+console.log(`land: ${W} x ${H} samples of ${CELL} m, heights to ${HEIGHT} m, ${lakes.length} lakes, the coast at x = ${Math.round(coastX)}; lowest road ${Math.round(Math.min(...allPts.map((p) => heightAt(p.x, p.z))))} m (water ${WATER} m)`);
+
 // free roam starts in the forest town, on its main street, heading east
 objects.push({ kind: "roam_spawn", name: "spawn", x: hub.cx - 60, y: 0, z: hub.cz, props: { ry: r3(Q) } });
 
@@ -312,10 +539,15 @@ for (const f of readdirSync(join(GAME, "models"))) {
   if (/^road_roam_.*\.glb$/.test(f) && !routes.some((r) => `road_${r.name}.glb` === f)) unlinkSync(join(GAME, "models", f));
 }
 
+for (const [route, r] of roadData) {
+  r.pts.sort((a, b) => a.i - b.i);
+  const first = r.pts[0]!.v;
+  objects.push({ kind: "roam_road", x: first[0] as number, y: 0, z: first[1] as number, props: { route, road: r.road, grip: r.grip, ...(r.loop ? { loop: true } : {}), pts: r.pts.map((p) => p.v) } });
+}
 const scene = { version: 1, background: forest.background, camera: { eye: [0, 3000, 2500], target: [0, 0, 0], fov: 55 }, objects };
 const parsed = parseScene(JSON.stringify(scene));
 if (!parsed.ok) throw new Error(parsed.error);
 writeFileSync(join(GAME, "scenes/roam.scene.json"), serializeScene(parsed.scene));
 writeFileSync(join(GAME, "../../build/roam-plan.json"), JSON.stringify({ routes, towns: towns.map((t) => ({ id: t.region.id, x: t.cx, z: t.cz })), placed }));
 const count = (k: string) => objects.filter((o) => o.kind === k).length;
-console.log(`roam: ${objects.length} objects, ${count("roam_point")} road points on ${routes.length} roads, ${count("event")} events, ${towns.length} towns, ${dropped} pieces of scenery left off the roads and out of the towns`);
+console.log(`roam: ${objects.length} objects, ${[...roadData.values()].reduce((n, r) => n + r.pts.length, 0)} road points on ${routes.length} roads, ${count("event")} events, ${towns.length} towns, ${dropped} pieces of scenery left off the roads and out of the towns`);

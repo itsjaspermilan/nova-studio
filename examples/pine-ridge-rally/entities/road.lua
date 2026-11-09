@@ -17,7 +17,7 @@ function Road:draw()
     self.night = ok and c.night and true or false
   end
   opts.tint = self.night and NIGHT or nil
-  nova.model(self.model, self.x, 0, self.z, opts)
+  nova.model(self.model, self.x, self.y or 0, self.z, opts) -- (a road that joins another lies a hair under it: its `y`)
 end
 
 return Road

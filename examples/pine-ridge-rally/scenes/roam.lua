@@ -13,6 +13,8 @@ local transition = require("lib.transition")
 local ui = require("lib.ui")
 local powerlines = require("lib.powerlines")
 local regions = require("lib.regions")
+local water = require("lib.water")
+local woods = require("lib.woods")
 local RoamFoliage = require("entities.roam_foliage")
 
 local Roam = nova.scene {}
@@ -86,7 +88,7 @@ function Roam:enter()
   nova.shadows(state.shadows and { radius = 42, strength = 0.55 } or nil)
   nova.terrain(config.terrain)
   nova.sky(config.sky)
-  if config.sky then nova.fog { color = config.sky.horizon, near = 80, far = 360 } end
+  if config.sky then nova.fog { color = config.sky.horizon, near = 110, far = 450 } end
   state.apply_look(config)
   roads.ensure()
   nova.log(string.format("roam: %d road points on %d roads, %d events", roads.count(), #roads.names(), #nova.all("event")))
@@ -114,6 +116,7 @@ function Roam:enter()
   self.player = car
   car.engine = audio.engine(0.6, car.model_id)
   self:locate()
+  woods.start(at.x, at.z)
   -- the region it starts in, its look at once
   self.region = regions.at(at.x, at.z)
   if self.region then self:set_look(self.region, 1) end
@@ -133,7 +136,7 @@ function Roam:leave()
   if self.player and self.player.engine then self.player.engine:stop() end
   nova.music.volume(state.music_volume)
   nova.weather(); nova.sky(nil); nova.fog(nil); nova.shadows(nil); nova.terrain()
-  roads.clear(); course.clear(); fx.clear(); foliage.clear(); powerlines.clear(); regions.clear()
+  roads.clear(); course.clear(); fx.clear(); foliage.clear(); powerlines.clear(); regions.clear(); water.clear(); woods.clear()
   nova.look(); nova.wind()
 end
 
@@ -155,7 +158,7 @@ function Roam:set_look(region, t)
   for k, v in pairs(to.sky or {}) do sky[k] = v end
   sky.top, sky.horizon = mix(from.sky.top, to.sky.top, t), mix(from.sky.horizon, to.sky.horizon, t)
   nova.sky(sky)
-  nova.fog { color = sky.horizon, near = 80, far = 360 }
+  nova.fog { color = sky.horizon, near = 110, far = 450 }
   nova.light { dir = mix(from.sun.dir, to.sun.dir, t), color = mix(from.sun.color, to.sun.color, t), ambient = mix(from.sun.ambient, to.sun.ambient, t) }
   if t >= 0.5 and self.look_half ~= region then
     self.look_half = region
@@ -257,6 +260,7 @@ function Roam:update(dt)
   end
   if self.paused then return end
   foliage.plant_some()
+  woods.plant_some()
 
   -- driving: the pad, unless the details of an event are up (the car rolls to a stop)
   if nova.input.pressed("autodrive") then
@@ -372,6 +376,7 @@ function Roam:draw()
   end
   horizon.draw(cam.x, cam.z, self.config.horizon)
   powerlines.draw(cam.x, cam.z, LOOK_FAR)
+  water.draw(cam.x, math.max(cam.y + here, there + 1.2), cam.z, self.config.sun and self.config.sun.dir and -self.config.sun.dir[2] or 0.5)
   fx.draw_skids(cam.x, cam.z, 90)
 end
 
@@ -398,38 +403,45 @@ function Roam:draw_ui()
   transition.draw()
 end
 
--- The minimap, bottom left (Horizon-style): the roads within MINI_RANGE metres, turned with the car so that straight ahead is up, the
--- events as orange pins (held at the edge when they are further off, so that you can head for them), and the car as an arrow in the middle.
-local MINI, MINI_RANGE = 156, 260
+-- The minimap, bottom left (Horizon-style): a disc showing the roads within MINI_RANGE metres, turned with the car so that straight ahead
+-- is up, an N on its rim where north is, the events as orange pins (the nearest three further off held at the rim), the car an arrow in
+-- the middle.
+local MINI_R, MINI_RANGE = 74, 260
 local MINI_ROAD = { tarmac = C.white, gravel = { 222, 190, 140 } }
+local MINI_GROUND = { 24, 40, 30, 205 }
 function Roam:draw_minimap()
   local p = self.player
-  local x0, y0 = 36, 540 - 54 - 24 - MINI
-  local cx, cy = x0 + MINI / 2, y0 + MINI / 2
-  local k = (MINI / 2) / MINI_RANGE
+  local cx, cy = 36 + MINI_R, 540 - 18 - MINI_R
+  local R = MINI_R
+  local k = R / MINI_RANGE
   local fx, fz = math.sin(p.heading), math.cos(p.heading)
   local lx, lz = fz, -fx -- (the car's left)
   local function at(x, z)
     local rx, rz = x - p.x, z - p.z
     return cx - (rx * lx + rz * lz) * k, cy - (rx * fx + rz * fz) * k
   end
-  nova.ui.rect(x0 - 3, y0 - 3, MINI + 6, MINI + 6, { 0, 0, 0, 120 })
-  nova.ui.rect(x0, y0, MINI, MINI, { 24, 40, 30, 200 })
-  local half = MINI / 2 - 2
-  local reach2 = (MINI_RANGE * 1.45) ^ 2
+  -- the disc: a rim, then the ground, a strip at a time
+  for y = -R - 3, R + 3, 2 do
+    local w = math.sqrt(math.max(0, (R + 3) ^ 2 - y * y))
+    nova.ui.rect(cx - w, cy + y, w * 2, 2, { 0, 0, 0, 130 })
+  end
+  for y = -R, R, 2 do
+    local w = math.sqrt(math.max(0, R * R - y * y))
+    nova.ui.rect(cx - w, cy + y, w * 2, 2, MINI_GROUND)
+  end
+  local inside2 = (R - 2) ^ 2
+  local reach2 = (MINI_RANGE * 1.1) ^ 2
   for pass = 1, 2 do
     for _, name in ipairs(roads.names()) do
       local rt = roads.route(name)
       local pts = rt.pts
       local colour = (pts[1] and pts[1].road == "road_asphalt") and MINI_ROAD.tarmac or MINI_ROAD.gravel
-      local last = #pts - (rt.loop and 0 or 1)
-      for i = 1, last do
+      for i = 1, #pts - (rt.loop and 0 or 1) do
         local a, b = pts[i], pts[i % #pts + 1]
         if (a.x - p.x) ^ 2 + (a.z - p.z) ^ 2 < reach2 then
           local x1, y1 = at(a.x, a.z)
           local x2, y2 = at(b.x, b.z)
-          -- (a piece of road is drawn when both its ends are inside the square: the edge stays tidy enough at this size)
-          if math.abs(x1 - cx) < half and math.abs(y1 - cy) < half and math.abs(x2 - cx) < half and math.abs(y2 - cy) < half then
+          if (x1 - cx) ^ 2 + (y1 - cy) ^ 2 < inside2 and (x2 - cx) ^ 2 + (y2 - cy) ^ 2 < inside2 then
             if pass == 1 then nova.ui.line(x1, y1, x2, y2, 6, { 0, 0, 0, 140 })
             else nova.ui.line(x1, y1, x2, y2, 3, colour) end
           end
@@ -437,14 +449,13 @@ function Roam:draw_minimap()
       end
     end
   end
-  -- (every event in range; of those further off, only the nearest three, at the edge: thirty pins round the edge said nothing)
   local far = {}
   for _, e in ipairs(nova.all("event")) do
     local x, y = at(e.x, e.z)
     local ex, ey = x - cx, y - cy
-    local m = math.max(math.abs(ex), math.abs(ey))
-    if m > half - 6 then
-      far[#far + 1] = { e = e, d = (e.x - p.x) ^ 2 + (e.z - p.z) ^ 2, x = cx + ex * (half - 6) / m, y = cy + ey * (half - 6) / m }
+    local m = math.sqrt(ex * ex + ey * ey)
+    if m > R - 8 then
+      far[#far + 1] = { d = (e.x - p.x) ^ 2 + (e.z - p.z) ^ 2, x = cx + ex * (R - 8) / m, y = cy + ey * (R - 8) / m }
     else
       nova.ui.rect(x - 6, y - 6, 12, 12, C.ink)
       nova.ui.rect(x - 4.5, y - 4.5, 9, 9, C.orange)
@@ -456,7 +467,14 @@ function Roam:draw_minimap()
     nova.ui.rect(f.x - 5, f.y - 5, 10, 10, C.ink)
     nova.ui.rect(f.x - 3.5, f.y - 3.5, 7, 7, { C.orange[1], C.orange[2], C.orange[3], 170 })
   end
-  -- the car: an arrow pointing up
+  -- north (+z, as on the big map) on the rim
+  local nx, ny = at(p.x, p.z + MINI_RANGE)
+  local dx, dy = nx - cx, ny - cy
+  local dl = math.sqrt(dx * dx + dy * dy)
+  local tx, ty = cx + dx / dl * (R + 1), cy + dy / dl * (R + 1)
+  nova.ui.rect(tx - 10, ty - 10, 20, 20, C.ink)
+  ui.say(tx, ty, "N", F.heavy, 16.5, C.white, { align = "center", valign = "middle" })
+  -- the car
   nova.ui.line(cx - 6, cy + 7, cx, cy - 8, 4, C.green)
   nova.ui.line(cx + 6, cy + 7, cx, cy - 8, 4, C.green)
 end
@@ -469,11 +487,12 @@ function Roam:draw_hud()
   local kmh = math.floor(math.abs(p.speed) * 3.6 + 0.5)
   local gear = p.speed < -0.5 and "R" or ("G" .. (p.gear or 1))
   local kw = nova.ui.text_width("km/h", { font = F.body, size = 16.5 })
-  hud_text(right - kw, 467, "km/h", F.body, 16.5, C.hud, { valign = "baseline" })
+  local base = 520 -- (the speed sits low, as the minimap does: the road ahead is in the middle of the screen)
+  hud_text(right - kw, base, "km/h", F.body, 16.5, C.hud, { valign = "baseline" })
   local sw = nova.ui.text_width(tostring(kmh), { font = F.heavy, size = 54 })
   local sx = right - kw - 9 - math.max(sw, nova.ui.text_width("888", { font = F.heavy, size = 54 }))
-  hud_text(right - kw - 9 - sw, 467, tostring(kmh), F.heavy, 54, C.white, { valign = "baseline" })
-  hud_text(sx - 9 - nova.ui.text_width(gear, { font = F.bold, size = 18 }), 467, gear, F.bold, 18, C.hud, { valign = "baseline" })
+  hud_text(right - kw - 9 - sw, base, tostring(kmh), F.heavy, 54, C.white, { valign = "baseline" })
+  hud_text(sx - 9 - nova.ui.text_width(gear, { font = F.bold, size = 18 }), base, gear, F.bold, 18, C.hud, { valign = "baseline" })
   hud_text(36, 36, "FREE ROAM", F.bold, 18, C.orange, { spacing = 0.2 })
   hud_text(36, 58, self.region and self.region.title or "Pine Ridge", F.heavy, 27, C.white)
   -- at a marker: what it is, and Y to see it
@@ -571,47 +590,106 @@ function Roam:draw_pause()
   end
 end
 
--- The map: every road, the events and where the car is, fitted to the screen.
+-- The map (pause > MAP): the whole world, north up. Highways bold and white, each course's road in its region's colour, the towns' names
+-- large, the events as symbols by kind (a key along the bottom). The stick moves a cursor; the event nearest it is named beside it. L and R
+-- zoom in and out (the view stays on the cursor).
+local MAP_EVENT = { race = { 255, 106, 43 }, trial = { 79, 209, 197 }, rally = { 255, 210, 63 } }
+local MAP_REGION = { pine_ridge = { 140, 210, 130 }, autumn_glen = { 235, 150, 70 }, dust_valley = { 232, 200, 120 }, frost_pass = { 215, 235, 255 }, harbour_lights = { 120, 170, 255 } }
 function Roam:draw_map()
   local w = nova.view()
+  local p = self.player
   if not self.map_box then
     local x0, z0, x1, z1 = 1e9, 1e9, -1e9, -1e9
-    roads.each(function(p) x0, z0, x1, z1 = math.min(x0, p.x), math.min(z0, p.z), math.max(x1, p.x), math.max(z1, p.z) end)
+    roads.each(function(q) x0, z0, x1, z1 = math.min(x0, q.x), math.min(z0, q.z), math.max(x1, q.x), math.max(z1, q.z) end)
     self.map_box = { x0 = x0, z0 = z0, x1 = x1, z1 = z1 }
+    self.map_cursor = { x = p.x, z = p.z }
+    self.map_zoom = 1
   end
-  local b = self.map_box
-  local top, bottom = 70, 470
-  local k = math.min((w - 120) / (b.x1 - b.x0), (bottom - top) / (b.z1 - b.z0))
-  local ox, oy = (w - (b.x1 - b.x0) * k) / 2, top + ((bottom - top) - (b.z1 - b.z0) * k) / 2
-  -- (the map is seen from above with north up: +x is to the left of a car facing +z, so x runs right to left)
-  local function at(x, z) return ox + (b.x1 - x) * k, oy + (b.z1 - z) * k end
-  nova.ui.layout { anchor = "topleft", margin = 0, x = 48, y = 24, ui.header("Free roam", "Map", 40) }
-  for _, name in ipairs(roads.names()) do
-    local rt = roads.route(name)
-    local pts = rt.pts
-    for pass = 1, 2 do
-      local width, colour = pass == 1 and 7 or 3, pass == 1 and { 0, 0, 0, 160 } or (name:match("^stage") or name:match("link")) and { 222, 190, 140 } or C.white
-      for i = 1, #pts - (rt.loop and 0 or 1) do
-        local a, c = pts[i], pts[i % #pts + 1]
+  local b, cur = self.map_box, self.map_cursor
+  -- the stick or the d-pad moves the cursor (faster when zoomed out); L and R zoom
+  local dt = 1 / 60
+  local mx = nova.input.axis("steer") + (nova.input.down("right") and 1 or 0) - (nova.input.down("left") and 1 or 0)
+  local my = (nova.input.down("down") and 1 or 0) - (nova.input.down("up") and 1 or 0)
+  if nova.input.pressed("tab_next") then self.map_zoom = math.min(4, self.map_zoom * 2); audio.sfx("menu_move") end
+  if nova.input.pressed("tab_prev") then self.map_zoom = math.max(1, self.map_zoom / 2); audio.sfx("menu_move") end
+  local top, bottom = 80, 448
+  local fit = math.min((w - 120) / (b.x1 - b.x0), (bottom - top) / (b.z1 - b.z0))
+  local k = fit * self.map_zoom
+  local speed = 900 / k -- (metres a second the cursor moves: a screen width in about a second)
+  cur.x = math.max(b.x0, math.min(b.x1, cur.x - mx * speed * dt)) -- (x runs right to left on the map: see `at`)
+  cur.z = math.max(b.z0, math.min(b.z1, cur.z - my * speed * dt))
+  -- the view: the whole map at zoom 1, else centred on the cursor
+  local cx, cz = (b.x0 + b.x1) / 2, (b.z0 + b.z1) / 2
+  if self.map_zoom > 1 then cx, cz = cur.x, cur.z end
+  local sx, sy = w / 2, (top + bottom) / 2
+  -- (north, +z, is up; a car facing north has +x on its left, so x runs right to left)
+  local function at(x, z) return sx + (cx - x) * k, sy + (cz - z) * k end
+  nova.ui.rect(0, 0, w, 540, { 16, 24, 20, 255 })
+  for pass = 1, 2 do
+    for _, name in ipairs(roads.names()) do
+      local rt = roads.route(name)
+      local pts = rt.pts
+      local highway = name:match("^roam_hw") or name:match("^roam_ring") or name:match("^town_")
+      local link = name:match("^roam_to_")
+      local region = regions.at(pts[1].x, pts[1].z)
+      local colour = highway and C.white or link and { 150, 150, 150 } or (MAP_REGION[region and region.look or ""] or C.white)
+      local width = highway and (pass == 1 and 7 or 4) or (pass == 1 and 5 or 2.5)
+      local step = self.map_zoom > 1 and 1 or 3
+      for i = 1, #pts - (rt.loop and 0 or 1), step do
+        local a, c = pts[i], pts[math.min(#pts, i + step)] or pts[1]
+        if rt.loop and i + step > #pts then c = pts[1] end
         local x1, y1 = at(a.x, a.z)
         local x2, y2 = at(c.x, c.z)
-        nova.ui.line(x1, y1, x2, y2, width, colour)
+        if not (math.max(x1, x2) < 0 or math.min(x1, x2) > w or math.max(y1, y2) < 0 or math.min(y1, y2) > 540) then
+          nova.ui.line(x1, y1, x2, y2, width, pass == 1 and { 0, 0, 0, 170 } or colour)
+        end
       end
     end
   end
+  for _, r in ipairs(regions.all()) do
+    local x, y = at(r.x, r.z)
+    ui.say(x, y - 22, string.upper(r.title), F.heavy, 24, C.white, { align = "center", valign = "middle", spacing = 0.06 })
+    nova.ui.rect(x - 7, y - 7, 14, 14, C.white)
+  end
+  -- the events, and the one nearest the cursor named
+  local near, nd = nil, math.huge
   for _, e in ipairs(nova.all("event")) do
     local x, y = at(e.x, e.z)
-    nova.ui.rect(x - 9, y - 9, 18, 18, C.orange)
-    local info = course_info(e.course)
-    ui.say(x + 14, y, info.name .. "  ·  " .. MODE_NAMES[e.mode], F.bold, 16.5, C.white, { valign = "middle" })
+    local c = MAP_EVENT[e.mode] or C.orange
+    nova.ui.rect(x - 7, y - 7, 14, 14, C.ink)
+    nova.ui.rect(x - 5, y - 5, 10, 10, c)
+    local d = (e.x - cur.x) ^ 2 + (e.z - cur.z) ^ 2
+    if d < nd then near, nd = e, d end
   end
-  local p = self.player
+  -- the car
   local x, y = at(p.x, p.z)
   local h = p.heading
   local fx_, fy = -math.sin(h), -math.cos(h)
-  nova.ui.line(x - fx_ * 8 - fy * 6, y - fy * 8 + fx_ * 6, x + fx_ * 10, y + fy * 10, 4, C.green)
-  nova.ui.line(x - fx_ * 8 + fy * 6, y - fy * 8 - fx_ * 6, x + fx_ * 10, y + fy * 10, 4, C.green)
-  ui.hints({ { "pad_b", "Back" } })
+  nova.ui.line(x - fx_ * 9 - fy * 7, y - fy * 9 + fx_ * 7, x + fx_ * 12, y + fy * 12, 5, C.green)
+  nova.ui.line(x - fx_ * 9 + fy * 7, y - fy * 9 - fx_ * 7, x + fx_ * 12, y + fy * 12, 5, C.green)
+  -- the cursor, and the nearest event's name beside it (when it is close to it on the screen)
+  local qx, qy = at(cur.x, cur.z)
+  nova.ui.line(qx - 12, qy, qx + 12, qy, 2, C.white)
+  nova.ui.line(qx, qy - 12, qx, qy + 12, 2, C.white)
+  if near then
+    local ex, ey = at(near.x, near.z)
+    if (ex - qx) ^ 2 + (ey - qy) ^ 2 < 40 * 40 then
+      local info = course_info(near.course)
+      local words = info.name .. "  ·  " .. MODE_NAMES[near.mode]
+      local tw = nova.ui.text_width(words, { font = F.heavy, size = 20 })
+      nova.ui.rect(ex + 12, ey - 15, tw + 20, 30, { C.ground[1], C.ground[2], C.ground[3], 230 })
+      nova.ui.rect(ex + 12, ey - 15, 4, 30, MAP_EVENT[near.mode] or C.orange)
+      ui.say(ex + 24, ey, words, F.heavy, 20, C.white, { valign = "middle" })
+    end
+  end
+  nova.ui.layout { anchor = "topleft", margin = 0, x = 48, y = 18, ui.header("Free roam", "Map", 40) }
+  -- the key
+  local kx = 48
+  for _, kind in ipairs({ "race", "trial", "rally" }) do
+    nova.ui.rect(kx, 460, 12, 12, MAP_EVENT[kind])
+    kx = kx + 18 + ui.say(kx + 18, 466, MODE_NAMES[kind], F.medium, 16.5, C.white, { valign = "middle" }) + 22
+  end
+  ui.hints({ { "pad_stick_l", "Look" }, { "pad_l", "" }, { "pad_r", "Zoom" }, { "pad_b", "Back" } })
   if nova.input.pressed("b") or nova.input.pressed("menu_back") then audio.sfx("menu_back"); self.pause_screen = "menu" end
 end
 
