@@ -9,6 +9,7 @@
 //   node scripts/rally/cars.mjs [name ...]      (no names: all of them)
 // Units are 1/16 of a metre; y is up and the nose points along +z. The body and the four wheels are separate parts, as the game moves
 // them on their own (lib/../entities/car.lua): the body leans and bounces on its suspension, each wheel spins, steers and follows the road.
+import { readFileSync } from "node:fs";
 import { withServer } from "./mcp.mjs";
 
 // ---- small helpers ----------------------------------------------------------------------------------------------------------------
@@ -361,21 +362,63 @@ const muscle = (o) => ({
   }], ...o,
 });
 
+// ---- the reference silhouettes (docs/car-proportions.md) --------------------------------------------------------------------------
+// Each archetype takes the roofline of one of the PSX reference cars (scripts/rally/psx-profiles.json: 29 samples of the roof height,
+// as a fraction of the car's height, from the nose to the tail), its window layout and door seams (fractions of the length from the nose),
+// and real-world sizes: a length, a width, a height and the overhangs, in metres.
+const PSX = JSON.parse(readFileSync(new URL("./psx-profiles.json", import.meta.url)));
+const ARCH = {
+  sedan: { psx: "sedan", L: 4.65, W: 1.76, H: 1.43, fo: 0.21, ro: 0.23, R: 0.34, glass: [[0.36, 0.52], [0.54, 0.74]], seams: [0.34, 0.53, 0.76], doors: 4 },
+  wagon: { psx: "wagon", L: 4.15, W: 1.62, H: 1.45, fo: 0.15, ro: 0.26, R: 0.33, glass: [[0.3, 0.45], [0.47, 0.62], [0.64, 0.89]], seams: [0.3, 0.46, 0.63], doors: 4 },
+  hatch: { psx: "hatch", L: 3.85, W: 1.65, H: 1.42, fo: 0.19, ro: 0.17, R: 0.31, glass: [[0.355, 0.625], [0.645, 0.84]], seams: [0.325, 0.63], doors: 2 },
+  minivan: { psx: "minivan", L: 4.6, W: 1.88, H: 1.92, fo: 0.15, ro: 0.19, R: 0.36, glass: [[0.21, 0.45], [0.47, 0.72], [0.74, 0.93]], seams: [0.2, 0.46, 0.73], doors: 2, noRear: true },
+  bigsedan: { psx: "bigsedan", L: 5.2, W: 1.95, H: 1.4, fo: 0.2, ro: 0.25, R: 0.35, glass: [[0.385, 0.525], [0.545, 0.69], [0.71, 0.775]], seams: [0.33, 0.535, 0.71], doors: 4 },
+  vintage: { psx: "vintage", L: 3.5, W: 1.66, H: 1.75, fo: 0.11, ro: 0.13, R: 0.4, glass: [[0.41, 0.58], [0.63, 0.81]], seams: [0.4, 0.6], doors: 2, noRear: true },
+  stepvan: { psx: "stepvan", L: 5.2, W: 2.05, H: 2.35, fo: 0.17, ro: 0.26, R: 0.4, glass: [[0.15, 0.39]], seams: [0.26], doors: 2, noRear: true },
+};
+function fromArch(key, o) {
+  const a = ARCH[key], u16 = 16, L = a.L * u16, W = a.W * u16, Ht = a.H * u16, R = a.R * u16;
+  const zf = L / 2, zr = -L / 2;
+  const z = (u) => r2(zf - u * L);
+  const prof = PSX[a.psx].top_from_nose;
+  const N = prof.length - 1;
+  const top = prof.map((v, k) => [z(k / N), r2(v * Ht)]).sort((p, q) => p[0] - q[0]);
+  // the windscreen: from where the bonnet ends to where the roof starts; the rear glass: from the end of the roof to where the deck starts
+  const roofIdx = prof.map((v, k) => (v >= 0.95 ? k : -1)).filter((k) => k >= 0);
+  const first = roofIdx[0], last = roofIdx[roofIdx.length - 1];
+  // (the screens are the steep parts of the roofline: more than 0.04 of the height in one of the 28 steps; the bonnet's own rise is gentler)
+  let k0 = first;
+  while (k0 > 0 && prof[k0] - prof[k0 - 1] > 0.04) k0--;
+  let k1 = last;
+  while (k1 < N && prof[k1] - prof[k1 + 1] > 0.04) k1++;
+  const front = [z(first / N), z(k0 / N)].sort((p, q) => p - q);
+  const rear = a.noRear ? undefined : [z(k1 / N), z(last / N)].sort((p, q) => p - q);
+  const ys = r2(Ht * 0.66);
+  const hw = W / 2;
+  const glass = a.glass.map(([u0, u1]) => [z(u1), z(u0)]);
+  const seams = a.seams.map(z);
+  return {
+    ...classic, zr, zf, hw, yb: 3.0, ys, roof: r2(Ht), pivot: r2(R), R: r2(R), tw: r2(R * 0.82), track: r2(hw - R * 0.41 - 0.4),
+    wheelZ: [r2(zf - a.fo * L), r2(zr + a.ro * L)], tumble: 0.1, top, front, rear, sideGlass: glass, seams, rim: "#d7dde6", endRound: 2.0, roofRound: 1.0, soft: 1,
+    handles: seams.slice(0, 2).map((s2) => r2(s2 - 2.4)), ...o,
+  };
+}
+
 const CARS = {
-  car_sedan: boxy({ paint: "#d9482e" }),
-  car_taxi: boxy({
+  car_sedan: fromArch("sedan", { paint: "#d9482e" }),
+  car_taxi: fromArch("bigsedan", {
     paint: "#f1b21a", patch: [{ z: [-30, 30], segs: [4], color: "#202026" }],
     extras: [({ box, s: sp }) => box("taxi sign", 0, sp.roof + 1.6, -6, [8, 2.8, 3.6], "#fff6d0", { emissive: 0.6 })],
   }),
-  car_police: boxy({
-    paint: "#f3f5f8", patch: [{ z: [-30, 14], segs: [2, 3], color: "#1f2f66" }],
+  car_police: fromArch("bigsedan", {
+    paint: "#f3f5f8", patch: [{ z: [-36, 18], segs: [2, 3], color: "#1f2f66" }],
     extras: [({ box, s: sp }) => { box("siren red", -3.2, sp.roof + 1.4, -6, [5, 2.2, 3.4], "#ff3340", { emissive: 0.9 }); box("siren blue", 3.2, sp.roof + 1.4, -6, [5, 2.2, 3.4], "#3d7bff", { emissive: 0.9 }); }],
   }),
-  car_green: hatch({ ...classic, paint: "#33b46c", rim: "#d7dde6", wheelStyle: "steel", endRound: 2.0, trim: "#2b2d35" }),
+  car_green: fromArch("hatch", { paint: "#33b46c" }),
   car_blue: muscle({ paint: "#2563c9", patch: [{ z: [-39.4, 39.4], segs: [3], color: "#f4f6fa" }], stripe: { half: 2.6, color: "#f4f6fa", z: [[-39.4, 39.4]] } }),
-  car_suv: suv({ ...classic, paint: "#5b8f5a", trim: "#2b2d35" }),
-  car_suvl: wagon({ ...classic, paint: "#2e4396", trim: "#2b2d35" }),
-  car_van: van({ ...classic, paint: "#f1efe7", patch: [{ z: [-40, 40], segs: [3], color: "#2b5aa8" }], trim: "#2b2d35" }),
+  car_suv: fromArch("wagon", { paint: "#5b8f5a", extras: [({ box, s: sp }) => { for (const x of [-1, 1]) box("roof rail", x * 8.2, sp.roof + 0.6, -4, [1.2, 1.0, 26], "#2c2e36"); }] }),
+  car_suvl: fromArch("sedan", { paint: "#2e4396" }),
+  car_van: fromArch("minivan", { paint: "#f1efe7", patch: [{ z: [-40, 40], segs: [3], color: "#2b5aa8" }] }),
   car_pickup: pickup({ ...classic, paint: "#e0842a", trim: "#2b2d35" }),
   car_yellow: muscle({ paint: "#ffc61a", stripe: { half: 2.4, color: "#1c1d22", z: [[-39.4, 39.4]] } }),
   car: muscle({ paint: "#d91f35", stripe: { half: 2.4, color: "#f4f6fa", z: [[-39.4, 39.4]] } }),
