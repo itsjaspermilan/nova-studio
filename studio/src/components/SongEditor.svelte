@@ -9,7 +9,7 @@
   import { studio } from "../lib/store.svelte";
   import MixerPanel from "./MixerPanel.svelte";
   import { commands } from "../lib/commands";
-  import { quantizeTrack, repeatSong, setAllVelocities, stemName, stemSong } from "../lib/song-edit";
+  import { copyNotes, deleteNotes, moveNotes, noteKey, notesInBox, pasteNotes, quantizeTrack, repeatSong, setAllVelocities, stemName, stemSong, type ClipNote } from "../lib/song-edit";
 
   let { path: filePath, text, onjson }: { path: string; text: string; onjson: () => void } = $props();
 
@@ -18,6 +18,15 @@
   let song: Song = $state.raw(parsed.ok ? parsed.song : newSong());
   let track = $state(0);
   let selected: number | null = $state(null); // index into the track's notes
+  /// Several notes picked together (Shift-click, or Shift and drag a rectangle, or Cmd/Ctrl+A): they move, copy and delete as one. By `noteKey`.
+  let group = $state.raw<Set<string>>(new Set());
+  let clipboard: ClipNote[] = [];
+  let band = $state.raw<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  let hoverStep = 0;
+  $effect(() => {
+    track; // (another track: the group belonged to the old one)
+    group = new Set();
+  });
   let noteLen = $state(1);
   let loop = $state(true);
   /// The lower part shows the mixer, or the notes' loudness bars, or nothing.
@@ -195,13 +204,20 @@
     current.notes.forEach((n, i) => {
       const r = rows.indexOf(n.pitch);
       if (r < 0) return;
-      ctx.fillStyle = i === selected ? "#ffd166" : current.mute ? "#5a6a85" : "#5aa9ff";
+      ctx.fillStyle = i === selected || group.has(noteKey(n)) ? "#ffd166" : current.mute ? "#5a6a85" : "#5aa9ff";
       ctx.globalAlpha = 0.5 + 0.5 * n.vel;
       ctx.fillRect(KEYS_W + n.step * STEP_W + 1, r * ROW_H + 1, n.len * STEP_W - 2, ROW_H - 2);
       ctx.globalAlpha = 1;
       ctx.fillStyle = "rgba(0,0,0,.35)";
       ctx.fillRect(KEYS_W + (n.step + n.len) * STEP_W - 4, r * ROW_H + 1, 3, ROW_H - 2);
     });
+    if (band) {
+      ctx.strokeStyle = "#ffd166";
+      ctx.fillStyle = "rgba(255,209,102,.12)";
+      const [bx, by] = [Math.min(band.x0, band.x1), Math.min(band.y0, band.y1)];
+      ctx.fillRect(bx, by, Math.abs(band.x1 - band.x0), Math.abs(band.y1 - band.y0));
+      ctx.strokeRect(bx + 0.5, by + 0.5, Math.abs(band.x1 - band.x0), Math.abs(band.y1 - band.y0));
+    }
     if (playing) {
       ctx.strokeStyle = "#6fcf8e";
       ctx.lineWidth = 2;
@@ -214,11 +230,11 @@
     }
   }
   $effect(() => {
-    song; track; selected; playing; playhead; canvas; rows;
+    song; track; selected; playing; playhead; canvas; rows; group; band;
     draw();
   });
 
-  let gesture: { kind: "move" | "resize"; before: Song; grabStep: number; origStep: number; origLen: number; moved: boolean } | null = null;
+  let gesture: { kind: "move" | "resize" | "group"; before: Song; grabStep: number; grabPitch?: number; keys?: Set<string>; origStep: number; origLen: number; moved: boolean } | null = null;
   function cellOf(e: PointerEvent) {
     const r = canvas!.getBoundingClientRect();
     const x = e.clientX - r.left - KEYS_W;
@@ -240,6 +256,29 @@
     }
     if (e.button !== 0) return;
     canvas!.setPointerCapture(e.pointerId);
+    // Shift and drag draws a rectangle that picks the notes in it; Shift-click on a note adds it to or takes it from the group
+    if (e.shiftKey) {
+      if (hit >= 0 && Math.abs(e.movementX) < 1) {
+        const key = noteKey(current.notes[hit]!);
+        const next = new Set(group);
+        if (selected !== null && next.size === 0) next.add(noteKey(current.notes[selected]!));
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        group = next;
+        selected = null;
+        gesture = null;
+        // (a drag that starts on a note is still a rectangle: it turns into one in move())
+      }
+      const r = canvas!.getBoundingClientRect();
+      band = { x0: e.clientX - r.left, y0: e.clientY - r.top, x1: e.clientX - r.left, y1: e.clientY - r.top };
+      return;
+    }
+    if (hit >= 0 && group.size > 1 && group.has(noteKey(current.notes[hit]!))) {
+      gesture = { kind: "group", before: song, grabStep: c.step, grabPitch: pitch, keys: group, origStep: 0, origLen: 0, moved: false };
+      ping(current.notes[hit]!.pitch);
+      return;
+    }
+    if (group.size) group = new Set();
     if (hit >= 0) {
       selected = hit;
       const n = current.notes[hit]!;
@@ -256,6 +295,33 @@
     }
   }
   function move(e: PointerEvent) {
+    const cell = cellOf(e);
+    hoverStep = Math.max(0, Math.min(song.length - 1, cell.step));
+    if (band && canvas) {
+      const r = canvas.getBoundingClientRect();
+      band = { ...band, x1: e.clientX - r.left, y1: e.clientY - r.top };
+      const s0 = Math.floor((band.x0 - KEYS_W) / STEP_W);
+      const s1 = Math.floor((band.x1 - KEYS_W) / STEP_W);
+      const r0 = Math.floor(band.y0 / ROW_H);
+      const r1 = Math.floor(band.y1 / ROW_H);
+      const pitches = [pitchOfRow(Math.max(0, Math.min(rows.length - 1, r0))), pitchOfRow(Math.max(0, Math.min(rows.length - 1, r1)))];
+      group = notesInBox(current, s0, s1, Math.min(...pitches), Math.max(...pitches));
+      return;
+    }
+    if (gesture?.kind === "group" && gesture.keys) {
+      const c = cellOf(e);
+      const row = Math.max(0, Math.min(rows.length - 1, c.row));
+      const moved = moveNotes(gesture.before, track, gesture.keys, c.step - gesture.grabStep, pitchOfRow(row) - gesture.grabPitch!);
+      if (moved.song !== song) {
+        gesture.moved = true;
+        song = moved.song;
+        group = moved.keys;
+        tick++;
+        studio.sessions.set(filePath, { song });
+        studio.edit(filePath, serializeSong(song));
+      }
+      return;
+    }
     if (!gesture || selected === null) return;
     const c = cellOf(e);
     const n = current.notes[selected];
@@ -277,6 +343,15 @@
     }
   }
   function up() {
+    if (band) {
+      band = null;
+      if (group.size === 1) {
+        // a single note picked by a rectangle is just that note
+        const only = current.notes.findIndex((n) => group.has(noteKey(n)));
+        selected = only >= 0 ? only : null;
+        group = new Set();
+      }
+    }
     if (gesture?.moved) {
       past.push(gesture.before);
       future = [];
@@ -295,6 +370,46 @@
     } else if (mod && e.key.toLowerCase() === "y") {
       e.preventDefault();
       redo();
+    } else if (mod && e.key.toLowerCase() === "a") {
+      e.preventDefault();
+      group = new Set(current.notes.map(noteKey));
+      selected = null;
+    } else if (mod && e.key.toLowerCase() === "c" && (group.size || selected !== null)) {
+      e.preventDefault();
+      clipboard = copyNotes(song, track, group.size ? group : new Set([noteKey(current.notes[selected!]!)]));
+    } else if (mod && e.key.toLowerCase() === "x" && (group.size || selected !== null)) {
+      e.preventDefault();
+      const keys = group.size ? group : new Set([noteKey(current.notes[selected!]!)]);
+      clipboard = copyNotes(song, track, keys);
+      commit(deleteNotes(song, track, keys));
+      group = new Set();
+      selected = null;
+    } else if (mod && e.key.toLowerCase() === "v" && clipboard.length) {
+      e.preventDefault();
+      const at = playing ? Math.floor(playhead) : hoverStep;
+      const r = pasteNotes(song, track, clipboard, at);
+      if (r) {
+        commit(r.song);
+        group = r.keys;
+        selected = null;
+      } else studio.say("info", "There is no room to paste that here.");
+    } else if (e.key === "Escape" && (group.size || selected !== null)) {
+      group = new Set();
+      selected = null;
+    } else if (group.size && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) {
+      e.preventDefault();
+      const big = e.shiftKey;
+      const ds = e.key === "ArrowLeft" ? -(big ? barSteps(song) : 1) : e.key === "ArrowRight" ? (big ? barSteps(song) : 1) : 0;
+      const dp = e.key === "ArrowUp" ? (big ? 12 : 1) : e.key === "ArrowDown" ? -(big ? 12 : 1) : 0;
+      const r = moveNotes(song, track, group, ds, dp);
+      if (r.song !== song) {
+        commit(r.song);
+        group = r.keys;
+      }
+    } else if ((e.key === "Delete" || e.key === "Backspace") && group.size) {
+      e.preventDefault();
+      commit(deleteNotes(song, track, group));
+      group = new Set();
     } else if ((e.key === "Delete" || e.key === "Backspace") && selected !== null) {
       e.preventDefault();
       commit(removeNote(song, track, selected));
