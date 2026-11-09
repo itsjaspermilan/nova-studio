@@ -1,15 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import Hub from "./components/Hub.svelte";
+  import EditorHost from "./components/EditorHost.svelte";
   import FileTree from "./components/FileTree.svelte";
-  import Editor from "./components/Editor.svelte";
-  import SceneEditor from "./components/SceneEditor.svelte";
-  import SpriteEditor from "./components/SpriteEditor.svelte";
-  import SoundEditor from "./components/SoundEditor.svelte";
-  import ModelEditor from "./components/ModelEditor.svelte";
-  import SongEditor from "./components/SongEditor.svelte";
-  import TrackEditor from "./components/TrackEditor.svelte";
-  import TimelineEditor from "./components/TimelineEditor.svelte";
   import Help from "./components/Help.svelte";
   import BottomPanel from "./components/BottomPanel.svelte";
   import StoreArt from "./components/StoreArt.svelte";
@@ -21,13 +14,11 @@
   import FirstLaunch from "./components/FirstLaunch.svelte";
   import { input } from "./lib/input-settings.svelte";
   import WorkspaceTabs from "./components/WorkspaceTabs.svelte";
-  import WorkspaceHome from "./components/WorkspaceHome.svelte";
   import { WORKSPACES } from "./lib/workspaces";
   import { commands, sendChord } from "./lib/commands";
   import { resolveMenus } from "./lib/menus";
   import { commandsRev } from "./lib/commands-rev.svelte";
   import { listenNativeMenu, syncNativeMenu } from "./lib/native-menu";
-  import { fileKind } from "./lib/tree";
   import { markChrome } from "./lib/chrome";
   import { resizable } from "./lib/resize";
   import { layout, sizeKey } from "./lib/layout.svelte";
@@ -42,6 +33,8 @@
     window.dispatchEvent(new Event("resize"));
   };
 
+  // a window made for one document (a tear-off) is told which one before the page loads (src-tauri/src/windows.rs)
+  const docPath = (window as unknown as { __NOVA_DOC__?: string }).__NOVA_DOC__ ?? null;
   let paletteOpen = $state(false);
   // the system menu bar follows the commands (a command becoming available greys or enables its item)
   $effect(() => {
@@ -51,7 +44,7 @@
   });
 
   onMount(() => {
-    void studio.init();
+    void studio.init().then(() => { if (docPath) return studio.joinProject(docPath); });
     // Every action is a command (lib/commands.ts); the keys, the palette and, later, the menus all read this list.
     const has = () => !!studio.project;
     const offs = [
@@ -60,6 +53,7 @@
       commands.register({ id: "view.tree", title: "Show or hide the project tree", menu: "View", keys: ["Mod+B"], enabled: has, run: toggleTree }),
       commands.register({ id: "view.panel", title: "Show or hide the bottom panel", menu: "View", keys: ["Mod+J"], help: "Problems, play and the debugger", enabled: has, run: () => { studio.panelOpen = !studio.panelOpen; window.dispatchEvent(new Event("resize")); } }),
       commands.register({ id: "view.resetLayout", title: "Reset this workspace's layout", menu: "Window", help: "Panels back to their usual places and sizes", enabled: has, run: () => { layout.reset(studio.workspace); window.dispatchEvent(new Event("resize")); } }),
+      commands.register({ id: "window.tearOff", title: "Move this document to its own window", menu: "Window", help: "A document is open in one window at a time", enabled: () => !!studio.tab && !studio.docWindow && studio.api?.kind === "tauri", run: () => studio.tearOff() }),
       commands.register({ id: "file.save", title: "Save", menu: "File", icon: "device-floppy", keys: ["Mod+S"], run: () => void studio.save() }),
       commands.register({ id: "file.saveAll", title: "Save all", menu: "File", enabled: () => !!studio.project && studio.dirty, run: () => void studio.saveAll() }),
       commands.register({ id: "file.close", title: "Close the project", menu: "File", enabled: has, run: () => void studio.closeProject() }),
@@ -114,25 +108,27 @@
     };
   });
 
-  // Scene files open visually unless the person asked for the JSON; remembered per file.
-  let jsonView = $state(new Set<string>());
-  const isScene = (p: string) => p.endsWith(".scene.json");
-  const toggleJson = (p: string, on: boolean) => {
-    const next = new Set(jsonView);
-    if (on) next.add(p);
-    else next.delete(p);
-    jsonView = next;
-  };
   const base = (p: string) => p.slice(p.lastIndexOf("/") + 1);
   const errors = $derived(studio.diagnostics.filter((d) => d.severity === "error").length);
 </script>
 
-{#if !studio.ready}
+{#if !studio.ready || (docPath && !studio.project)}
   <div class="boot dim">Starting…</div>
 {:else if !studio.project}
   <div class="hubwrap">
     {#if chrome !== "none"}<div class="hubbar winbar-pad" data-tauri-drag-region>{#if chrome !== "mac"}<MenuBar />{/if}<span class="spacer" data-tauri-drag-region></span><WindowButtons /></div>{:else}<div class="hubbar"><MenuBar /></div>{/if}
     <Hub />
+  </div>
+{:else if studio.docWindow}
+  <div class="docwin">
+    <header class="top winbar-pad" data-tauri-drag-region>
+      <strong data-tauri-drag-region>{base(studio.docWindow)}</strong>
+      <span class="dim small" data-tauri-drag-region>{studio.project.name}</span>
+      <span class="spacer" data-tauri-drag-region></span>
+      <button class="ghost" onclick={() => studio.saveAll()} disabled={!studio.dirty}>Save</button>
+      <WindowButtons />
+    </header>
+    <main class="center"><div class="editor-host"><EditorHost /></div></main>
   </div>
 {:else}
   <div class="shell" class:no-panel={!studio.panelOpen}>
@@ -182,36 +178,7 @@
           <button class="danger" onclick={() => studio.useDiskVersion(studio.tab!.path)}>Load from disk</button>
         </div>
       {/if}
-      <div class="editor-host">
-        {#key studio.active}
-          {#if studio.tab}
-            {#if studio.tab.path.toLowerCase().endsWith(".png") || (studio.tab.path.endsWith(".sprite.json") && !jsonView.has(studio.tab.path))}
-              <SpriteEditor path={studio.tab.path} text={studio.tab.text} />
-            {:else if /\.(wav|ogg)$/i.test(studio.tab.path) || (studio.tab.path.endsWith(".sfx.json") && !jsonView.has(studio.tab.path))}
-              <SoundEditor path={studio.tab.path} text={studio.tab.text} />
-            {:else if studio.tab.path.endsWith(".model.json") && !jsonView.has(studio.tab.path)}
-              <ModelEditor path={studio.tab.path} text={studio.tab.text} onjson={() => toggleJson(studio.tab!.path, true)} />
-            {:else if studio.tab.path.endsWith(".song.json") && !jsonView.has(studio.tab.path)}
-              <SongEditor path={studio.tab.path} text={studio.tab.text} onjson={() => toggleJson(studio.tab!.path, true)} />
-            {:else if studio.tab.path.endsWith(".track.json") && !jsonView.has(studio.tab.path)}
-              <TrackEditor path={studio.tab.path} text={studio.tab.text} onjson={() => toggleJson(studio.tab!.path, true)} />
-            {:else if studio.tab.path.endsWith(".anim.json") && !jsonView.has(studio.tab.path)}
-              <TimelineEditor path={studio.tab.path} text={studio.tab.text} onjson={() => toggleJson(studio.tab!.path, true)} />
-            {:else if studio.tab.binary}
-              <div class="placeholder dim">{base(studio.tab.path)} · {fileKind(studio.tab.path)} · {studio.tab.size.toLocaleString()} bytes<br />Binary files open in their own editors (coming later).</div>
-            {:else if isScene(studio.tab.path) && !jsonView.has(studio.tab.path)}
-              <SceneEditor path={studio.tab.path} text={studio.tab.text} onjson={() => toggleJson(studio.tab!.path, true)} />
-            {:else}
-              {#if isScene(studio.tab.path) || studio.tab.path.endsWith(".sprite.json") || studio.tab.path.endsWith(".sfx.json") || studio.tab.path.endsWith(".model.json") || studio.tab.path.endsWith(".song.json")}
-                <div class="viewbar"><button class="ghost" onclick={() => toggleJson(studio.tab!.path, false)}>◧ Visual editor</button></div>
-              {/if}
-              <Editor path={studio.tab.path} text={studio.tab.text} />
-            {/if}
-          {:else}
-            <WorkspaceHome />
-          {/if}
-        {/key}
-      </div>
+      <div class="editor-host"><EditorHost /></div>
     </main>
 
     {#if studio.panelOpen}
@@ -267,6 +234,9 @@
   .tool { position: fixed; inset: 0; z-index: 40; background: var(--bg); }
   .boot { height: 100%; display: grid; place-items: center; }
   .shell { height: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: "top top" "tree center" "bottom bottom"; }
+  .docwin { height: 100%; display: flex; flex-direction: column; }
+  .docwin .center { flex: 1; }
+  .small { font-size: 11px; }
   .hubwrap { height: 100%; display: flex; flex-direction: column; }
   .hubwrap > :global(.hub) { flex: 1; min-height: 0; }
   .hubbar { display: flex; align-items: center; min-height: 38px; padding: 6px 10px; flex: none; }
@@ -293,7 +263,6 @@
   .editor-host { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .editor-host > :global(*) { flex: 1; min-height: 0; }
   .editor-host > :global(.viewbar) { flex: none; padding: 2px 8px; background: var(--panel); border-bottom: 1px solid var(--line); }
-  .placeholder { height: 100%; display: grid; place-items: center; text-align: center; padding: 24px; }
   .toast { position: fixed; bottom: 16px; right: 16px; max-width: 460px; display: flex; gap: 8px; align-items: flex-start; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; box-shadow: 0 8px 24px #0006; z-index: 50; }
   .toast.error { border-color: var(--error); }
   .backdrop { position: fixed; inset: 0; background: #0009; display: grid; place-items: center; z-index: 60; padding: 16px; }

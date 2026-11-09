@@ -149,6 +149,12 @@ export function createMockApi(options: { devices?: AndroidDevice[] } = {}): Api 
       seed(name);
       return info(name);
     },
+    // (the browser preview has one window, so a document is never open elsewhere)
+    currentProject: async () => null,
+    claimDocument: async () => null,
+    releaseDocument: async () => {},
+    focusDocument: async () => false,
+    tearOffDocument: async () => {},
     closeProject: async () => {
       stop();
       root = null;

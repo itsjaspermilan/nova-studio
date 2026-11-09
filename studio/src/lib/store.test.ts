@@ -378,3 +378,48 @@ describe("recovery of unsaved work", () => {
     expect(studio.recoverable).toEqual([]);
   });
 });
+
+describe("one open copy of a document", () => {
+  it("does not open a document another window has, and brings that window forward instead", async () => {
+    await openProject();
+    const api = studio.api!;
+    const focused: string[] = [];
+    api.claimDocument = async (path) => (path === "entities/player.lua" ? "doc-1" : null);
+    api.focusDocument = async (path) => (focused.push(path), true);
+    await studio.openFile("entities/player.lua");
+    expect(studio.tabs.some((t) => t.path === "entities/player.lua")).toBe(false);
+    expect(focused).toEqual(["entities/player.lua"]);
+    expect(studio.notice?.text).toContain("another window");
+    await studio.openFile("scenes/title.lua");
+    expect(studio.tabs.some((t) => t.path === "scenes/title.lua")).toBe(true);
+  });
+
+  it("gives a document up when its tab closes, and tearing off saves it, closes the tab and asks for a window", async () => {
+    await openProject();
+    const api = studio.api!;
+    const released: string[] = [];
+    const torn: string[] = [];
+    api.releaseDocument = async (p) => void released.push(p);
+    api.tearOffDocument = async (p) => void torn.push(p);
+    await studio.openFile("entities/player.lua");
+    const disk = studio.tabs.find((t) => t.path === "entities/player.lua")!.saved;
+    studio.edit("entities/player.lua", disk + "\n-- moved\n");
+    await studio.tearOff("entities/player.lua");
+    expect(await read("entities/player.lua")).toContain("-- moved"); // saved first
+    expect(studio.tabs.some((t) => t.path === "entities/player.lua")).toBe(false);
+    expect(released).toContain("entities/player.lua");
+    expect(torn).toEqual(["entities/player.lua"]);
+  });
+
+  it("keeps the document here when the new window cannot be made", async () => {
+    await openProject();
+    const api = studio.api!;
+    api.tearOffDocument = async () => {
+      throw "no window";
+    };
+    await studio.openFile("entities/player.lua");
+    await studio.tearOff("entities/player.lua");
+    expect(studio.tabs.some((t) => t.path === "entities/player.lua")).toBe(true);
+    expect(studio.notice?.kind).toBe("error");
+  });
+});

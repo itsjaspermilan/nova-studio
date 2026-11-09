@@ -108,6 +108,15 @@ export interface Api {
   newProject(parent: string, name: string, template: string): Promise<ProjectInfo>;
   copyExample(example: string, parent: string, name: string): Promise<ProjectInfo>;
   closeProject(): Promise<void>;
+  /// The project that is already open in the app (every window shares it), or null; a window opened for one document joins it this way.
+  currentProject(): Promise<ProjectInfo | null>;
+  /// Takes a document for this window. Resolves with the label of another window that already has it open (nothing is taken then), or null.
+  claimDocument(path: string): Promise<string | null>;
+  releaseDocument(path: string): Promise<void>;
+  /// Brings the window that has the document to the front; false when no window has it.
+  focusDocument(path: string): Promise<boolean>;
+  /// Moves a document to a new window of its own (this window should have given it up and saved it first).
+  tearOffDocument(path: string): Promise<void>;
   listFiles(): Promise<FileEntry[]>;
   readFile(path: string): Promise<FileContent>;
   /// A project PNG as a data: URL.

@@ -167,6 +167,43 @@ class Studio {
     this.recoverable = found;
   }
 
+  /// Set in a window made for one document (a tear-off): the path of that document. The main window leaves it null.
+  docWindow: string | null = $state(null);
+
+  /// Moves a document to a window of its own: saves it, gives up its tab here, and opens the new window with it.
+  async tearOff(path = this.active) {
+    if (!path || !this.api) return;
+    const tab = this.tabs.find((t) => t.path === path);
+    if (!tab) return;
+    if (isDirty(tab) && !(await this.save(path))) return;
+    this.closeTab(path);
+    try {
+      await this.api.tearOffDocument(path);
+    } catch (e) {
+      this.say("error", message(e));
+      await this.openFile(path); // it stays here
+    }
+  }
+
+  /// A window made for one document joins the project that is already open and shows just that document.
+  async joinProject(path: string) {
+    const api = this.api;
+    if (!api) return;
+    const info = await api.currentProject().catch(() => null);
+    if (!info) {
+      this.say("error", "The project is not open any more.");
+      return;
+    }
+    this.docWindow = path;
+    this.project = info;
+    this.#recovery = new RecoveryStore(typeof localStorage === "undefined" ? { getItem: () => null, setItem: () => {}, removeItem: () => {} } : localStorage, info.root);
+    debug.useProject(info.root);
+    this.tabs = [];
+    this.active = null;
+    await this.refreshFiles();
+    await this.openFile(path); // (the new window was given the document already, so this claim succeeds)
+  }
+
   /// The tabs of the workspace on show.
   get workspaceTabs(): Tab[] {
     return inWorkspace(this.tabs, this.workspace);
@@ -391,8 +428,18 @@ class Studio {
 
   async openFile(path: string, line?: number) {
     if (!this.tabs.some((t) => t.path === path)) {
+      // a document is open in one window at a time: if another window has it, that one comes to the front instead
+      const other = await this.api!.claimDocument(path).catch(() => null);
+      if (other) {
+        await this.api!.focusDocument(path).catch(() => false);
+        this.say("info", `${path} is open in another window. It has been brought to the front.`);
+        return;
+      }
       const content = await this.#guard(() => this.api!.readFile(path));
-      if (!content) return;
+      if (!content) {
+        void this.api!.releaseDocument(path);
+        return;
+      }
       const text = content.text ?? "";
       this.tabs.push({ path, text, saved: text, binary: content.binary, size: content.size });
     }
@@ -406,6 +453,7 @@ class Studio {
     if (tab && isDirty(tab) && !confirm(`Close ${path} without saving?`)) return;
     editorStates.forget(path);
     this.#recovery?.remove(path);
+    void this.api?.releaseDocument(path);
     this.saveHooks.delete(path);
     this.sessions.delete(path);
     // (the next tab to show is the neighbour in the same workspace)
@@ -651,6 +699,7 @@ class Studio {
       const target = await this.api!.convertToOgg(path);
       if (tab) {
         editorStates.forget(path);
+        void this.api?.releaseDocument(path);
         this.saveHooks.delete(path);
         this.sessions.delete(path);
         this.tabs = this.tabs.filter((t) => t.path !== path);

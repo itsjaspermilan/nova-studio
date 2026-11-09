@@ -12,6 +12,7 @@ mod project_files;
 mod recent;
 mod runner;
 mod templates;
+mod windows;
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -133,6 +134,13 @@ fn examples(app: AppHandle) -> Vec<ExampleInfo> {
     examples_in(&app)
 }
 
+/// The project that is open (every window shares it), so a window opened later can join it.
+#[tauri::command]
+fn current_project(state: State<AppState>) -> Option<ProjectInfo> {
+    let root = state.root.lock().expect("state lock").clone()?;
+    read_info(&root).ok()
+}
+
 #[tauri::command]
 fn open_project(state: State<AppState>, path: String) -> Result<ProjectInfo, String> {
     open(&state, Path::new(&path))
@@ -167,7 +175,8 @@ fn copy_example(
 }
 
 #[tauri::command]
-fn close_project(state: State<AppState>) {
+fn close_project(state: State<AppState>, owners: State<windows::DocOwners>) {
+    owners.clear();
     state.runner.stop();
     *state.root.lock().expect("state lock") = None;
 }
@@ -416,12 +425,19 @@ fn default_projects_dir(app: AppHandle) -> Result<String, String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .on_window_event(|window, event| {
+            // a window that closes gives up the documents it had
+            if let tauri::WindowEvent::Destroyed = event {
+                tauri::Manager::state::<windows::DocOwners>(window).release_window(window.label());
+            }
+        })
         .on_menu_event(|app, event| {
             // a click in the system menu bar: the page runs the command it names (src/lib/native-menu.ts)
             let _ = tauri::Emitter::emit(app, "menu-command", event.id().as_ref().to_string());
         })
         .setup(|app| {
             let config = app.path().app_config_dir().map_err(|e| e.to_string())?;
+            app.manage(windows::DocOwners::default());
             app.manage(AppState {
                 root: Mutex::new(None),
                 runner: runner::Runner::default(),
@@ -466,6 +482,11 @@ pub fn run() {
             export_game,
             run_headless,
             menu::set_menu,
+            current_project,
+            windows::claim_document,
+            windows::release_document,
+            windows::focus_document,
+            windows::tear_off_document,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Nova Studio");
