@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
 import { looksLikeTrackpad } from "./input-settings.svelte";
-import { navHint, orbitBy, panBy, wheelAction, zoomBy } from "./view-nav";
+import { navHint, orbitBy, panBy, wheelAction, wheelMove, zoomBy } from "./view-nav";
 
 const camera = () => {
   const c = new THREE.PerspectiveCamera(45, 1.5, 0.1, 1000);
@@ -68,5 +68,31 @@ describe("the hint under a 3D view", () => {
     expect(navHint("trackpad")).toContain("Two fingers");
     expect(navHint("mouse")).toContain("right-drag");
     expect(navHint("pen")).toContain("side button");
+  });
+});
+
+describe("a trackpad scroll", () => {
+  const e = (o: Partial<{ deltaX: number; deltaY: number; ctrlKey: boolean; shiftKey: boolean }>) => ({ deltaX: 0, deltaY: 0, deltaMode: 0, ctrlKey: false, shiftKey: false, metaKey: false, ...o });
+
+  it("moves the scene with the fingers: fingers left and up give a movement left and up", () => {
+    // (with natural scrolling the system reports fingers left and up as positive deltas)
+    const m = wheelMove(e({ deltaX: 12, deltaY: 8 }), "trackpad", false);
+    expect(m.action).toBe("orbit");
+    expect(m.dx).toBeLessThan(0);
+    expect(m.dy).toBeLessThan(0);
+  });
+
+  it("goes the other way when the scroll is reversed", () => {
+    const m = wheelMove(e({ deltaX: 12, deltaY: 8 }), "trackpad", true);
+    expect(m.dx).toBeGreaterThan(0);
+    expect(m.dy).toBeGreaterThan(0);
+  });
+
+  it("pans sideways with Shift, and a pinch comes closer when the fingers spread", () => {
+    const pan = wheelMove(e({ deltaY: 10, shiftKey: true }), "trackpad", false);
+    expect(pan.action).toBe("pan");
+    expect(pan.dx).toBeLessThan(0);
+    expect(pan.dy).toBe(0);
+    expect(wheelMove(e({ deltaY: -5, ctrlKey: true }), "trackpad", false).zoom).toBeLessThan(1);
   });
 });

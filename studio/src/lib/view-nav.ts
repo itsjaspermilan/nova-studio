@@ -58,6 +58,32 @@ export function zoomBy(camera: ViewCamera, target: THREE.Vector3, factor: number
   camera.position.copy(target).add(offset.setLength(length));
 }
 
+export interface WheelMove {
+  action: NavAction;
+  /// The movement in pixels as the drag moves (a drag to the right is positive), already turned the way the fingers go.
+  dx: number;
+  dy: number;
+  /// The factor for a zoom (below 1 comes closer).
+  zoom: number;
+}
+
+/// What a scroll gesture asks of the view. A trackpad scroll is reported the way the system scrolls a page: with natural scrolling,
+/// fingers sliding left or up give positive deltas. The scene should follow the fingers (as if it were grabbed), which is the opposite sign of a
+/// drag's movement, so both axes are turned round here; `invert` turns them back for people whose system scrolls the other way.
+export function wheelMove(e: Pick<WheelEvent, "deltaX" | "deltaY" | "deltaMode" | "ctrlKey" | "shiftKey" | "metaKey">, scheme: NavScheme, invert: boolean): WheelMove {
+  const k = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1; // (lines or pages instead of pixels for some devices)
+  const sign = invert ? 1 : -1;
+  const action = wheelAction(e, scheme);
+  let dx = e.deltaX * k * sign;
+  let dy = e.deltaY * k * sign;
+  // (Shift with the vertical scroll of a mouse wheel moves sideways)
+  if (action === "pan" && e.deltaX === 0) {
+    dx = dy;
+    dy = 0;
+  }
+  return { action, dx, dy, zoom: Math.exp(e.deltaY * k * 0.01) };
+}
+
 export interface NavOptions {
   /// Flips the direction of the scroll gestures (the opposite of the system's "natural scrolling").
   invert?: boolean;
@@ -68,19 +94,14 @@ export function applyNavigation(controls: OrbitControls, getCamera: () => ViewCa
   controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: THREE.MOUSE.PAN };
   // (OrbitControls swaps rotate and pan while Shift, Ctrl or Cmd is held, so Shift with a drag pans in every scheme)
   controls.enableZoom = scheme !== "trackpad";
-  const sign = options.invert ? -1 : 1;
   const onWheel = (e: WheelEvent) => {
     if (scheme !== "trackpad") return;
     e.preventDefault();
     const camera = getCamera();
-    const action = wheelAction(e, scheme);
-    // (the browser reports lines instead of pixels for some devices)
-    const k = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
-    const dx = e.deltaX * k * sign;
-    const dy = e.deltaY * k * sign;
-    if (action === "zoom") zoomBy(camera, controls.target, Math.exp(e.deltaY * k * 0.01));
-    else if (action === "pan") panBy(camera, controls.target, e.shiftKey && dx === 0 ? dy : dx, e.shiftKey && dx === 0 ? 0 : dy, canvas.clientHeight);
-    else orbitBy(camera, controls.target, dx, dy);
+    const m = wheelMove(e, scheme, !!options.invert);
+    if (m.action === "zoom") zoomBy(camera, controls.target, m.zoom);
+    else if (m.action === "pan") panBy(camera, controls.target, m.dx, m.dy, canvas.clientHeight);
+    else orbitBy(camera, controls.target, m.dx, m.dy);
     controls.update();
   };
   canvas.addEventListener("wheel", onWheel, { passive: false });
