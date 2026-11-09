@@ -41,3 +41,16 @@ export function setAllVelocities(song: Song, track: number, vel: number): Song {
   const v = Math.min(1, Math.max(0, vel));
   return withTrack(song, track, (t) => ({ ...t, notes: t.notes.map((n) => ({ ...n, vel: v })) }));
 }
+
+/// The song with only one track heard, everything else as it was (the room and the master fader too): what a stem is rendered from.
+export function stemSong(song: Song, track: number): Song {
+  return { ...song, tracks: song.tracks.map((t, i) => ({ ...t, mute: i !== track, solo: false })) };
+}
+
+/// The file name for a stem: `<song>_<track>`, with anything but letters, numbers, - and _ in the track's name turned into _.
+export function stemName(songName: string, trackName: string, taken: string[] = []): string {
+  const clean = trackName.trim().replace(/[^A-Za-z0-9_-]+/g, "_").replace(/^_+|_+$/g, "") || "track";
+  let name = `${songName}_${clean}`;
+  for (let n = 2; taken.includes(name); n++) name = `${songName}_${clean}${n}`;
+  return name;
+}

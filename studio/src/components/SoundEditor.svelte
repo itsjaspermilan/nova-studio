@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
-  import { DEFAULTS, PRESETS, RANGES, WAVES, fromJson, mulberry32, mutate, randomFrom, render, toJson, type SfxParams, type Wave } from "../lib/sfx";
+  import { DEFAULTS, PRESETS, RANGES, WAVES, fromJson, mulberry32, mutate, randomFrom, render, toJson, variationNames, variations, type SfxParams, type Wave } from "../lib/sfx";
   import { decodeWav, duration, encodeWav, fade, frames, fromBase64, gain, normalize, peak, reverse, toBase64, trim, trimSilence, waveformPeaks, type Sound } from "../lib/wav";
   import { studio } from "../lib/store.svelte";
 
@@ -98,6 +98,21 @@
     if (!next) return;
     session!.past.push(sound);
     commitSound(next, true);
+  }
+
+  /// Four close variations written as new sounds beside this one (`<name>_1`...), each with its settings file and its .wav.
+  async function makeVariations() {
+    const dir = fromPath.slice(0, fromPath.lastIndexOf("/") + 1);
+    const base = fromPath.slice(fromPath.lastIndexOf("/") + 1).replace(/\.sfx\.json$/i, "");
+    const taken = studio.files.map((f) => f.path.slice(f.path.lastIndexOf("/") + 1).replace(/\.(sfx\.json|wav)$/i, ""));
+    const names = variationNames(base, 4, taken);
+    const list = variations(params, 4, 0.12, Math.floor(rng() * 1e9));
+    for (const [i, p] of list.entries()) {
+      await studio.api!.writeFile(`${dir}${names[i]}.sfx.json`, toJson(p));
+      await studio.api!.writeAudio(`${dir}${names[i]}.wav`, `data:audio/wav;base64,${toBase64(encodeWav(render(p)))}`);
+    }
+    await studio.refreshFiles();
+    studio.say("info", `Made ${names.join(", ")}. In a game: pick one at random, e.g. nova.sound.play("${base}_" .. math.random(1, 4)).`);
   }
 
   // ---- playback -----------------------------------------------------------------------------
@@ -269,6 +284,7 @@
           <button onclick={() => setParams(randomFrom(rng), true)}>🎲 Random</button>
           <button onclick={() => setParams(mutate(params, rng, 0.25), true)}>Mutate</button>
           <button onclick={() => setParams({ ...params, seed: Math.floor(rng() * 1e9) }, true)} title="New randomness for noise">New noise</button>
+          {#if generator}<button onclick={makeVariations} title="Four close copies of this sound as new files, for a game to pick from at random">Make 4 variations</button>{/if}
         </div>
         <div class="grid">
           <label>Wave

@@ -9,7 +9,7 @@
   import { studio } from "../lib/store.svelte";
   import MixerPanel from "./MixerPanel.svelte";
   import { commands } from "../lib/commands";
-  import { quantizeTrack, repeatSong, setAllVelocities } from "../lib/song-edit";
+  import { quantizeTrack, repeatSong, setAllVelocities, stemName, stemSong } from "../lib/song-edit";
 
   let { path: filePath, text, onjson }: { path: string; text: string; onjson: () => void } = $props();
 
@@ -330,6 +330,18 @@
     velDrag = null;
   }
 
+  /// Writes one Ogg for each track, music/<song>_<track>.ogg, all the song's length, so a game can layer them (add and remove stems as the action rises).
+  async function exportStems() {
+    const taken: string[] = [];
+    for (const [i, t] of song.tracks.entries()) {
+      const name = stemName(songName, t.name, taken);
+      taken.push(name);
+      const wav = encodeWav(renderSong(stemSong(song, i)));
+      await studio.writeMusicOgg(`${oggPath.slice(0, oggPath.lastIndexOf("/") + 1)}${name}.ogg`, `data:audio/wav;base64,${toBase64(wav)}`);
+    }
+    studio.say("info", `Wrote ${taken.length} stems: ${taken.map((n) => `${n}.ogg`).join(", ")}. Play them together in a game with nova.music.`);
+  }
+
   // The song editor's commands, in the Sound menu and the palette while a song is open.
   $effect(() => {
     const live = () => !!song.tracks[track];
@@ -341,6 +353,7 @@
       commands.register({ id: "song.mute", title: "Mute this track", menu: "Sound", enabled: live, run: () => setTrack({ mute: !current.mute }) }),
       commands.register({ id: "song.quantize", title: "Snap the notes to the beat", menu: "Sound", help: "Moves every note of this track to the nearest beat step", enabled: live, run: () => commit(quantizeTrack(song, track, song.stepsPerBeat)) }),
       commands.register({ id: "song.repeat", title: "Repeat the song twice over", menu: "Sound", help: "Doubles the length and copies everything into the second half", run: () => { const r = repeatSong(song, 2); if (r) commit(r); else studio.say("info", "That would be longer than a song may be."); } }),
+      commands.register({ id: "song.stems", title: "Export each track as its own file", menu: "Sound", icon: "export", help: "One Ogg per track, all the same length, to layer in a game", run: () => void exportStems() }),
       commands.register({ id: "song.addLead", title: "Add a lead track", menu: "Sound", run: () => { commit(addTrack(song, "synth", "square")); track = song.tracks.length - 1; } }),
       commands.register({ id: "song.addBass", title: "Add a bass track", menu: "Sound", run: () => { commit(addTrack(song, "synth", "triangle")); track = song.tracks.length - 1; } }),
       commands.register({ id: "song.addDrums", title: "Add a drum track", menu: "Sound", run: () => { commit(addTrack(song, "drums")); track = song.tracks.length - 1; } }),

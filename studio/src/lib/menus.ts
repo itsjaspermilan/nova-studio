@@ -15,7 +15,7 @@ export const MENU_LAYOUT: { title: string; lines: MenuLine[] }[] = [
   },
   { title: "View", lines: [{ id: "view.tree" }, { id: "view.panel" }, { id: "view.assets" }] },
   { title: "Model", lines: [{ id: "model.add" }, { id: "model.duplicate" }, { id: "model.delete" }, "-", { id: "model.selectAll" }, { id: "model.selectNone" }, { id: "model.selectInvert" }, "-", { id: "model.grab" }, { id: "model.scaleMouse" }, "-", { id: "model.move" }, { id: "model.turn" }, { id: "model.resize" }, { id: "model.pivot" }, "-", { id: "model.editPoints" }, { id: "model.shading" }, { id: "model.resetView" }] },
-  { title: "Sound", lines: [{ id: "song.play" }, "-", { id: "song.addLead" }, { id: "song.addBass" }, { id: "song.addDrums" }, "-", { id: "song.solo" }, { id: "song.mute" }, { id: "song.quantize" }, { id: "song.repeat" }, "-", { id: "song.mixer" }, { id: "song.loudness" }] },
+  { title: "Sound", lines: [{ id: "song.play" }, "-", { id: "song.addLead" }, { id: "song.addBass" }, { id: "song.addDrums" }, "-", { id: "song.solo" }, { id: "song.mute" }, { id: "song.quantize" }, { id: "song.repeat" }, "-", { id: "song.mixer" }, { id: "song.loudness" }, "-", { id: "song.stems" }] },
   { title: "Run", lines: [{ id: "run.play" }, { id: "run.playDevice" }, "-", { id: "tool.simulate" }, { id: "tool.storeArt" }] },
   { title: "Window", lines: [{ id: "workspace.model" }, { id: "workspace.sprites" }, { id: "workspace.sound" }, { id: "workspace.engine" }, "-", { id: "window.tearOff" }, { id: "view.resetLayout" }, "-", { native: "minimize" }, { native: "maximize" }] },
   { title: "Help", lines: [{ id: "help.toggle" }, { id: "palette.open" }] },

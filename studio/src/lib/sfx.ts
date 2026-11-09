@@ -190,3 +190,20 @@ export function fromJson(text: string): SfxParams | null {
     return null;
   }
 }
+
+/// A few close variations of a sound, so a game that plays the same effect over and over (footsteps, hits) can pick one at random and not
+/// sound like a machine. Deterministic for a seed: the same call gives the same variations.
+export function variations(params: SfxParams, count: number, amount = 0.12, seed = 1): SfxParams[] {
+  const rng = mulberry32(seed);
+  return Array.from({ length: Math.max(0, Math.min(16, count)) }, () => mutate(params, rng, amount));
+}
+
+/// Names for the variations of a sound: `<name>_1`, `<name>_2`..., skipping any that are taken.
+export function variationNames(name: string, count: number, taken: string[]): string[] {
+  const out: string[] = [];
+  for (let n = 1; out.length < count; n++) {
+    const candidate = `${name}_${n}`;
+    if (!taken.includes(candidate)) out.push(candidate);
+  }
+  return out;
+}

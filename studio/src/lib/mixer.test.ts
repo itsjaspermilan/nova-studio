@@ -61,3 +61,25 @@ describe("editing many notes", () => {
     expect(setAllVelocities(song(), 0, 4).tracks[0]!.notes.every((n) => n.vel === 1)).toBe(true);
   });
 });
+
+import { stemName, stemSong } from "./song-edit";
+import { renderSong } from "./song";
+
+describe("stems", () => {
+  it("hear one track only, and are the same length as the song so they line up when layered", () => {
+    const song = newSong();
+    const lead = renderSong(stemSong(song, 0), 8000);
+    const drums = renderSong(stemSong(song, 1), 8000);
+    expect(lead.channels[0]!.length).toBe(renderSong(song, 8000).channels[0]!.length);
+    expect(Array.from(lead.channels[0]!)).not.toEqual(Array.from(drums.channels[0]!));
+    const soloed = newSong();
+    soloed.tracks[1] = { ...soloed.tracks[1]!, solo: true };
+    expect(Math.max(...Array.from(renderSong(stemSong(soloed, 0), 8000).channels[0]!).map(Math.abs))).toBeGreaterThan(0); // a solo elsewhere does not silence it
+  });
+
+  it("are named after the song and the track, safely, and never twice", () => {
+    expect(stemName("theme", "Lead synth!")).toBe("theme_Lead_synth");
+    expect(stemName("theme", "  ")).toBe("theme_track");
+    expect(stemName("theme", "Bass", ["theme_Bass"])).toBe("theme_Bass2");
+  });
+});

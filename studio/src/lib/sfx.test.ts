@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULTS, PRESETS, RANGES, fromJson, mulberry32, mutate, randomFrom, render, toJson, type SfxParams } from "./sfx";
+import { DEFAULTS, PRESETS, RANGES, fromJson, mulberry32, mutate, randomFrom, render, toJson, variationNames, variations, type SfxParams } from "./sfx";
 import { decodeWav, duration, encodeWav, fade, frames, fromBase64, gain, normalize, peak, reverse, toBase64, trim, trimSilence, waveformPeaks, type Sound } from "./wav";
 
 const steady = (over: Partial<SfxParams> = {}): SfxParams => ({ ...DEFAULTS, wave: "sine", attack: 0, sustain: 1, decay: 0, punch: 0, volume: 1, ...over });
@@ -173,5 +173,24 @@ describe("edits", () => {
     expect(p).toHaveLength(4);
     expect(p[1]).toEqual({ min: 0, max: 1 });
     expect(p[2]).toEqual({ min: -1, max: 0.5 });
+  });
+});
+
+
+describe("variations", () => {
+  it("are close to the original, different from each other, and the same for the same seed", () => {
+    const v = variations(PRESETS.coin!, 4, 0.1, 7);
+    expect(v).toHaveLength(4);
+    expect(new Set(v.map((p) => p.seed)).size).toBe(4);
+    expect(v.every((p) => p.wave === PRESETS.coin!.wave)).toBe(true);
+    expect(variations(PRESETS.coin!, 4, 0.1, 7)).toEqual(v);
+    for (const p of v) expect(Math.abs(p.freq - PRESETS.coin!.freq) / PRESETS.coin!.freq).toBeLessThan(0.5);
+    expect(variations(PRESETS.coin!, 99).length).toBe(16);
+    expect(variations(PRESETS.coin!, -1)).toEqual([]);
+  });
+
+  it("are named after the sound, skipping names that are taken", () => {
+    expect(variationNames("hit", 3, [])).toEqual(["hit_1", "hit_2", "hit_3"]);
+    expect(variationNames("hit", 2, ["hit_1", "hit_3"])).toEqual(["hit_2", "hit_4"]);
   });
 });
