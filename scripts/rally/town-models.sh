@@ -19,6 +19,7 @@ K "$R" $P light-curved --as ck_light_curved --scale 14
 K "$R" $P traffic-light --as ck_traffic_light --scale 14
 K "$R" $P sign-highway --as ck_sign_highway --scale 14
 K "$R" $P electricity-pole --as ck_electricity_pole --scale 14 --collider 0:0:0.6
+K "$R" $P electricity-pole-single --as ck_electricity_pole_single --scale 14 --collider 0:0:0.6
 K "$SU" $P building-type-a --as ck_house_a --scale 14 --collider -2.3:0.0:6.8 --collider 2.3:0.0:6.8
 K "$SU" $P building-type-b --as ck_house_b --scale 14 --collider -5.2:0.0:7.6 --collider 5.2:0.0:7.6
 K "$SU" $P building-type-c --as ck_house_c --scale 14 --collider -2.2:0.0:6.8 --collider 2.2:0.0:6.8
