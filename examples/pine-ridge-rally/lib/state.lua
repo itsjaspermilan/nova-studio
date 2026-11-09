@@ -184,7 +184,17 @@ function state.car_open(car) return true end
 state.STARTING_COINS = 1000
 function state.coins() return nova.save.get("coins", state.STARTING_COINS) end
 function state.add_coins(n) nova.save.set("coins", state.coins() + math.floor(n + 0.5)) end
-function state.owned() return nova.save.get("owned", {}) end
+-- TESTING (2026-11-09): every vehicle is owned, so any of them can be driven at once. Set this to false to bring back buying cars with
+-- coins (progression comes back later); the tests for a new player (rally.rs) are ignored until then.
+state.UNLOCK_ALL_VEHICLES = true
+function state.owned()
+  if state.UNLOCK_ALL_VEHICLES then
+    local all = {}
+    for _, c in ipairs(state.cars) do all[#all + 1] = c.id end
+    return all
+  end
+  return nova.save.get("owned", {})
+end
 function state.owns(id)
   for _, o in ipairs(state.owned()) do if o == id then return true end end
   return false
@@ -194,7 +204,7 @@ function state.buy(car)
   if state.owns(car.id) then return true end
   if state.coins() < car.price then return false end
   nova.save.set("coins", state.coins() - car.price)
-  local list = state.owned()
+  local list = nova.save.get("owned", {})
   list[#list + 1] = car.id
   nova.save.set("owned", list)
   nova.log(string.format("garage: bought %s for %d coins, %d left", car.id, car.price, state.coins()))

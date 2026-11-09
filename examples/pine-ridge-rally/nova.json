@@ -1,6 +1,7 @@
 {
   "format": 1,
   "name": "Pine Ridge Rally",
+  "materials": ["car_sedan"],
   "version": "0.1.0",
   "input": {
     "throttle": [
