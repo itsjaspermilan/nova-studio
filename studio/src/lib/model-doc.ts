@@ -92,7 +92,8 @@ export type TexLayerInfo = { name: string; visible?: boolean; opacity?: number; 
 /// `surface`: a second picture, `<model>.texture.surface.png`, holds roughness (green) and metal (blue) per texel, in the same layout; the game reads it as glTF's
 /// metallic-roughness picture, multiplied by nothing (a painted shape's own metal and roughness numbers are not used while there is one).
 /// `bump`: how deep the bumps painted into the surface picture's red channel are (above 0 to 4): the game gets a normal map made from them (needs `surface`).
-export type TextureInfo = { size: [number, number]; smooth?: boolean; layers?: TexLayerInfo[]; surface?: boolean; bump?: number };
+/// `normals`: a normal map baked from the model's high-poly parts is kept in `<model>.texture.normal.png` (same layout) and written as the game's normal map.
+export type TextureInfo = { size: [number, number]; smooth?: boolean; layers?: TexLayerInfo[]; surface?: boolean; bump?: number; normals?: boolean };
 /// Texels per model unit a shape gets when it is first painted (16 model units are a metre at the default scale, so 4 is 64 texels a
 /// metre: a handheld's screen shows a car's paint about as sharp as its edges).
 export const NEW_TEXEL_SCALE = 4;
@@ -107,8 +108,10 @@ export interface Part {
   rotation: Vec3;
   cubes: Cube[];
   children: Part[];
-  /// Rules that adjust this part's pose while the model is shown or baked (lib/model-constraints.ts). Studio only: the game plays the baked keys.
+  /// Rules that adjust this part's pose (lib/model-constraints.ts): the studio shows them and can bake them into keys; the game applies them live too (`extras.nova.constraints`).
   constraints?: Constraint[];
+  /// A high-poly source for baking: the part and everything in it is used only to bake normals (and is left out of what is exported and of the other bakes).
+  bakeSource?: boolean;
 }
 
 /// A rule on a part. "limit" keeps its turn (degrees, X then Y then Z) between `min` and `max`; "copy" takes the turn of another part (a path of names joined by "/") on the axes
@@ -310,6 +313,8 @@ export function parseModel(text: string): Parsed {
     if (smooth !== undefined && typeof smooth !== "boolean") return { ok: false, error: '"texture.smooth" must be true or false' };
     const surface = (o.texture as Partial<TextureInfo>).surface;
     if (surface !== undefined && typeof surface !== "boolean") return { ok: false, error: '"texture.surface" must be true or false' };
+    const normals = (o.texture as Partial<TextureInfo>).normals;
+    if (normals !== undefined && typeof normals !== "boolean") return { ok: false, error: '"texture.normals" must be true or false' };
     const bump = (o.texture as Partial<TextureInfo>).bump;
     if (bump !== undefined && !(typeof bump === "number" && bump > 0 && bump <= 4)) return { ok: false, error: '"texture.bump" must be a number above 0 and at most 4' };
     const layers = (o.texture as Partial<TextureInfo>).layers;
@@ -352,6 +357,7 @@ export function parseModel(text: string): Parsed {
     if (!isVec3(part.origin)) return `${at}.origin must be three numbers`;
     if (!isVec3(part.rotation)) return `${at}.rotation must be three numbers`;
     if (!Array.isArray(part.cubes) || !Array.isArray(part.children)) return `${at} needs "cubes" and "children" lists`;
+    if (part.bakeSource !== undefined && typeof part.bakeSource !== "boolean") return `${at}.bakeSource must be true or false`;
     if (part.constraints !== undefined) {
       const bad = checkConstraints(part.constraints, at);
       if (bad) return bad;
@@ -473,7 +479,7 @@ export function parseModel(text: string): Parsed {
       }
     }
   }
-  return { ok: true, doc: { version: 1, scale: o.scale ?? DEFAULT_SCALE, ...(o.texture ? { texture: { size: [...o.texture.size] as [number, number], ...(o.texture.smooth ? { smooth: true } : {}), ...(o.texture.surface ? { surface: true } : {}), ...(o.texture.surface && o.texture.bump ? { bump: o.texture.bump } : {}), ...(o.texture.layers?.length ? { layers: o.texture.layers.map((l) => ({ name: l.name, ...(l.visible === false ? { visible: false } : {}), ...(l.opacity !== undefined && l.opacity < 1 ? { opacity: l.opacity } : {}), ...(l.blend && l.blend !== "normal" ? { blend: l.blend } : {}) })) } : {}) } } : {}), parts: o.parts as Part[], ...(clips && clips.length ? { clips: clips as Clip[] } : {}), ...(Array.isArray(poses) && poses.length ? { poses: (poses as SavedPose[]).map((q) => ({ name: q.name, parts: JSON.parse(JSON.stringify(q.parts)) })) } : {}), ...(o.colliders?.length ? { colliders: o.colliders.map((c) => ({ x: c.x, z: c.z, r: c.r })) } : {}), ...(o.capsules?.length ? { capsules: o.capsules.map((c) => ({ ax: c.ax, az: c.az, bx: c.bx, bz: c.bz, r: c.r })) } : {}), ...(o.boxes?.length ? { boxes: o.boxes.map((c) => ({ x: c.x, z: c.z, hw: c.hw, hl: c.hl, turn: c.turn })) } : {}) } };
+  return { ok: true, doc: { version: 1, scale: o.scale ?? DEFAULT_SCALE, ...(o.texture ? { texture: { size: [...o.texture.size] as [number, number], ...(o.texture.smooth ? { smooth: true } : {}), ...(o.texture.surface ? { surface: true } : {}), ...(o.texture.surface && o.texture.bump ? { bump: o.texture.bump } : {}), ...(o.texture.normals ? { normals: true } : {}), ...(o.texture.layers?.length ? { layers: o.texture.layers.map((l) => ({ name: l.name, ...(l.visible === false ? { visible: false } : {}), ...(l.opacity !== undefined && l.opacity < 1 ? { opacity: l.opacity } : {}), ...(l.blend && l.blend !== "normal" ? { blend: l.blend } : {}) })) } : {}) } } : {}), parts: o.parts as Part[], ...(clips && clips.length ? { clips: clips as Clip[] } : {}), ...(Array.isArray(poses) && poses.length ? { poses: (poses as SavedPose[]).map((q) => ({ name: q.name, parts: JSON.parse(JSON.stringify(q.parts)) })) } : {}), ...(o.colliders?.length ? { colliders: o.colliders.map((c) => ({ x: c.x, z: c.z, r: c.r })) } : {}), ...(o.capsules?.length ? { capsules: o.capsules.map((c) => ({ ax: c.ax, az: c.az, bx: c.bx, bz: c.bz, r: c.r })) } : {}), ...(o.boxes?.length ? { boxes: o.boxes.map((c) => ({ x: c.x, z: c.z, hw: c.hw, hl: c.hl, turn: c.turn })) } : {}) } };
 }
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
@@ -501,6 +507,14 @@ export function settleKeyEdits(doc: ModelDoc): ModelDoc {
     return out;
   };
   const go = (ps: Part[]): Part[] => ps.map((p) => ({ ...p, cubes: p.cubes.map(fix), children: go(p.children) }));
+  return { ...doc, parts: go(doc.parts) };
+}
+
+/// The model without its high-poly source parts (and what is in them): what the game gets.
+export function dropBakeSources(doc: ModelDoc): ModelDoc {
+  const any = (ps: Part[]): boolean => ps.some((p) => p.bakeSource || any(p.children));
+  if (!any(doc.parts)) return doc;
+  const go = (ps: Part[]): Part[] => ps.filter((p) => !p.bakeSource).map((p) => ({ ...p, children: go(p.children) }));
   return { ...doc, parts: go(doc.parts) };
 }
 
@@ -544,6 +558,7 @@ export function serializeModel(source: ModelDoc): string {
     const lines = [`${i2}"name": ${JSON.stringify(p.name)}`, `${i2}"origin": ${vec(p.origin)}`, `${i2}"rotation": ${vec(p.rotation)}`];
     lines.push(p.cubes.length ? `${i2}"cubes": [\n${p.cubes.map((c) => `${i2}  ${cube(c, `${i2}  `)}`).join(",\n")}\n${i2}]` : `${i2}"cubes": []`);
     if (p.constraints?.length) lines.push(`${i2}"constraints": ${JSON.stringify(p.constraints)}`);
+    if (p.bakeSource) lines.push(`${i2}"bakeSource": true`);
     lines.push(p.children.length ? `${i2}"children": [\n${p.children.map((c) => `${i2}  ${part(c, `${i2}  `)}`).join(",\n")}\n${i2}]` : `${i2}"children": []`);
     return `{\n${lines.join(",\n")}\n${indent}}`;
   };
@@ -555,7 +570,7 @@ export function serializeModel(source: ModelDoc): string {
   };
   const clips = doc.clips?.length ? `,\n  "clips": [\n${doc.clips.map(clip).join(",\n")}\n  ]` : "";
   const poses = doc.poses?.length ? `,\n  "poses": [\n${doc.poses.map((q) => `    ${JSON.stringify(q)}`).join(",\n")}\n  ]` : "";
-  const texture = doc.texture ? `,\n  "texture": { "size": ${vec2(doc.texture.size)}${doc.texture.smooth ? `, "smooth": true` : ""}${doc.texture.surface ? `, "surface": true` : ""}${doc.texture.surface && doc.texture.bump ? `, "bump": ${doc.texture.bump}` : ""}${doc.texture.layers?.length ? `, "layers": ${JSON.stringify(doc.texture.layers)}` : ""} }` : "";
+  const texture = doc.texture ? `,\n  "texture": { "size": ${vec2(doc.texture.size)}${doc.texture.smooth ? `, "smooth": true` : ""}${doc.texture.surface ? `, "surface": true` : ""}${doc.texture.surface && doc.texture.bump ? `, "bump": ${doc.texture.bump}` : ""}${doc.texture.normals ? `, "normals": true` : ""}${doc.texture.layers?.length ? `, "layers": ${JSON.stringify(doc.texture.layers)}` : ""} }` : "";
   const colliders = doc.colliders?.length ? `,\n  "colliders": [${doc.colliders.map((c) => `{ "x": ${c.x}, "z": ${c.z}, "r": ${c.r} }`).join(", ")}]` : "";
   const capsules = doc.capsules?.length ? `,\n  "capsules": [${doc.capsules.map((c) => `{ "ax": ${c.ax}, "az": ${c.az}, "bx": ${c.bx}, "bz": ${c.bz}, "r": ${c.r} }`).join(", ")}]` : "";
   const boxes = doc.boxes?.length ? `,\n  "boxes": [${doc.boxes.map((c) => `{ "x": ${c.x}, "z": ${c.z}, "hw": ${c.hw}, "hl": ${c.hl}, "turn": ${c.turn} }`).join(", ")}]` : "";
@@ -766,9 +781,13 @@ function dropBones(doc: ModelDoc, gone: string[]) {
   }
 }
 
-export function updatePart(doc: ModelDoc, parts: number[], change: Partial<Pick<Part, "name" | "origin" | "rotation">>): ModelDoc {
+export function updatePart(doc: ModelDoc, parts: number[], change: Partial<Pick<Part, "name" | "origin" | "rotation" | "bakeSource">>): ModelDoc {
   const before = namesOf(doc, parts);
   const out = edit(doc, parts, (p) => {
+    if (change.bakeSource !== undefined) {
+      if (change.bakeSource) p.bakeSource = true;
+      else delete p.bakeSource;
+    }
     if (change.name !== undefined && change.name.trim()) p.name = change.name.trim();
     if (change.origin) p.origin = [...change.origin];
     if (change.rotation) p.rotation = [...change.rotation];

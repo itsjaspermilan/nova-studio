@@ -29,6 +29,7 @@
   import { addFace, bevelEdge, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, freshProfile, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsProportional, moveVertsSymmetric, setFaceColors, setSmooth, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
   import { hasVolume, meshOf, segmentsOf, shapeFaces, solidOf } from "../lib/model-mesh";
   import { WEIGHT_MODES, autoSkinAll, gradientWeights, mirrorWeights, paintWeights, type WeightMode, autoWeights, boneHeat, dominantBones, heatColor, invertAffine, reskin, setWeight, skinnedPoints, transformPoint, worldMatrices } from "../lib/model-skin";
+  import { bakeNormals } from "../lib/model-bake";
   import { bakeAll, bakeSurface, channelToGrey, greyToChannel, blockOf, moveIsland, faceRects, flippedRect, normRect, rectAt, enableTexture, fitPicture, packModel, resizeTexture, unwrap, uvsOf } from "../lib/model-uv";
   import { CLEAR, cloneRaster, drawEllipse, drawLine, drawRect, floodFill, getPixel, newRaster, parseHex, stamp, toHex, type Raster, type Rgba } from "../lib/pixels";
   import { applyBrush, applyGradient } from "../lib/paint";
@@ -343,9 +344,38 @@
   let surface = $state.raw<Raster | null>(null);
   let channel = $state<"colour" | "roughness" | "metal" | "bump">("colour");
   let colourStash: Raster | null = null;
+  // A normal map baked from the model's high-poly parts, kept beside the texture (`texture.normals`).
+  let normalMap = $state.raw<Raster | null>(null);
+  let normalBusy = $state(false);
+  let normalCage = $state(4);
+  const normalPath = untrack(() => filePath).replace(/\.model\.json$/i, ".texture.normal.png");
+  const hasHigh = $derived(walk(doc).some(({ part }) => part.bakeSource));
+  async function bakeNormalsNow() {
+    if (!doc.texture || !picture) return void (bakeNote = "Paint a shape first.");
+    normalBusy = true;
+    bakeNote = "Baking normals…";
+    await new Promise((r) => setTimeout(r, 30)); // (let the note show before the work starts)
+    try {
+      const n = bakeNormals(doc, normalCage);
+      if (!n) return void (bakeNote = "Nothing to bake from: mark a part as the high-poly source (Part panel) and paint the shapes that should receive it.");
+      normalMap = n;
+      commit({ ...doc, texture: { ...doc.texture, normals: true } });
+      remember();
+      studio.markPending(filePath);
+      bakeNote = "Normals baked: they are written with the model and used by the game.";
+    } finally {
+      normalBusy = false;
+    }
+  }
+  function dropNormals() {
+    if (!doc.texture) return;
+    normalMap = null;
+    commit({ ...doc, texture: { ...doc.texture, normals: undefined } });
+    remember();
+  }
   const surfacePath = untrack(() => filePath).replace(/\.model\.json$/i, ".texture.surface.png");
-  const remember = () => studio.sessions.set(filePath, { doc, picture, others: otherLayers, active: activeLayer, surface, channel, stash: colourStash });
-  type Kept = { doc: ModelDoc; picture?: Raster | null; others?: (Raster | null)[]; active?: number; surface?: Raster | null; channel?: string; stash?: Raster | null };
+  const remember = () => studio.sessions.set(filePath, { doc, picture, others: otherLayers, active: activeLayer, surface, channel, stash: colourStash, normalMap });
+  type Kept = { doc: ModelDoc; picture?: Raster | null; others?: (Raster | null)[]; active?: number; surface?: Raster | null; channel?: string; stash?: Raster | null; normalMap?: Raster | null };
   /// The colour picture and the surface picture as they are now, whichever channel is being painted.
   function finalsOf(k: Kept | undefined): { colour: Raster | null; surface: Raster | null } {
     const ch = k?.channel ?? "colour";
@@ -465,6 +495,13 @@
         activeLayer = rasters.length - 1;
         picture = rasters[rasters.length - 1]!;
       } else picture = fitPicture(doc, await loadRaster(await studio.api!.readImage(texturePath)));
+      if (doc.texture?.normals) {
+        try {
+          normalMap = fitPicture(doc, await loadRaster(await studio.api!.readImage(normalPath)));
+        } catch {
+          normalMap = null;
+        }
+      }
       if (doc.texture?.surface) {
         try {
           surface = fitPicture(doc, await loadRaster(await studio.api!.readImage(surfacePath)));
@@ -491,9 +528,15 @@
       const d = kept?.doc ?? doc;
       let image: Raster | undefined;
       let surfaceImage: Raster | undefined;
+      let normalImage: Raster | undefined;
       if (d.texture) {
         const finals = finalsOf(kept);
         const live = finals.colour ?? picture ?? bakeAll(d);
+        if (d.texture.normals && kept?.normalMap) {
+          normalImage = fitPicture(d, kept.normalMap);
+          await studio.api!.writeImage(normalPath, rasterToDataUrl(normalImage));
+          if (!studio.files.some((f) => f.path === normalPath)) void studio.refreshFiles();
+        }
         if (d.texture.surface) {
           surfaceImage = fitPicture(d, finals.surface ?? bakeSurface(d));
           await studio.api!.writeImage(surfacePath, rasterToDataUrl(surfaceImage));
@@ -508,7 +551,7 @@
         await studio.api!.writeImage(texturePath, rasterToDataUrl(image));
         if (!studio.files.some((f) => f.path === texturePath)) void studio.refreshFiles();
       }
-      const bytes = exportGlb(d, image, surfaceImage);
+      const bytes = exportGlb(d, image, surfaceImage, normalImage);
       await studio.api!.writeModel(glbPath, `data:model/gltf-binary;base64,${toBase64(bytes)}`);
     });
     const kept = studio.sessions.get(filePath) as Kept | undefined;
@@ -519,6 +562,7 @@
       surface = kept.surface ?? null;
       channel = (kept.channel as typeof channel | undefined) ?? "colour";
       colourStash = kept.stash ?? null;
+      normalMap = kept.normalMap ?? null;
     }
     remember();
     if (!picture && doc.texture) void loadPicture();
@@ -1555,6 +1599,11 @@
     rememberPicture();
     otherLayers = otherLayers.map((o) => (o ? resizeTexture(doc, o, w, h).picture : null));
     if (surface) surface = resizeTexture(doc, surface, w, h).picture;
+    if (normalMap) {
+      // a baked normal map follows the layout: after a new size it has to be baked again
+      normalMap = null;
+      if (r.doc.texture) r.doc.texture.normals = undefined;
+    }
     if (colourStash) colourStash = resizeTexture(doc, colourStash, w, h).picture;
     picture = r.picture;
     commit(r.doc);
@@ -3373,6 +3422,11 @@
             <button onclick={() => toggleTexture(true)} disabled={!selected || selected.cube === undefined || !!cube?.texture} title="Give the selected shape a block of the picture">Paint selected</button>
           </div>
           <div class="row wrap">
+            <button onclick={bakeNormalsNow} disabled={normalBusy || !doc.texture || !hasHigh} title={hasHigh ? "Bake the high-poly part's surface detail into a normal map for the painted shapes (the game lights them with it)" : "Mark a part as the high-poly source first (Part panel)"}>Bake normals</button>
+            <label class="inline" title="How far out from the surface a ray starts, in model units: more than the high part rises above it">Cage <input type="number" min="0.5" max="64" step="0.5" bind:value={normalCage} class="narrow" aria-label="Cage distance" /></label>
+            {#if doc.texture?.normals}<button class="ghost danger" onclick={dropNormals} title="Remove the baked normal map">✕ Normals</button>{/if}
+          </div>
+          <div class="row wrap">
             <select bind:value={projectPath} aria-label="Picture to project" title="A picture from the project to throw onto the model"><option value="">Picture…</option>{#each projectable as p (p)}<option value={p}>{p.split("/").at(-1)}</option>{/each}</select>
             <button onclick={projectPicture} disabled={!projectPath} title="Throw the picture onto the model from where you are looking: faces that look at you and are not hidden take its colours (at the paint opacity), on the layer being painted">Project from view</button>
           </div>
@@ -3625,6 +3679,7 @@
           <span class="dim small">Mirror copy</span>
           {#each [0, 1, 2] as a (a)}<button onclick={() => mirrorPartCopy(a as Axis)} title={`A reflected copy of this part across its parent's ${"xyz"[a]} = 0 plane`}>{"XYZ"[a]}</button>{/each}
         </div>
+        <label class="check" title="The part and everything in it is used only to bake normals onto the painted shapes: it is not exported and does not show in other bakes"><input type="checkbox" checked={!!part.bakeSource} onchange={(e) => commit(updatePart(doc, selected!.parts, { bakeSource: e.currentTarget.checked }))} /> High-poly source for baking (not exported)</label>
         <p class="dim small">A part moves and turns about its pivot, with its shapes and child parts. Use parts for things that will move on their own later, like wheels. A mirror copy is a new part without the animation keys.</p>
         <div class="row"><button onclick={duplicate}>Duplicate</button><button class="danger" onclick={remove} disabled={doc.parts.length === 1 && selected.parts.length === 1}>Delete</button></div>
       {:else}

@@ -2,7 +2,7 @@
 // space above the surface, and the share that escapes without hitting another surface (within a distance) is how open the spot is. Crevices and the feet of
 // things come out dark, open faces bright. The same rays every time (no random numbers), so a bake is repeatable.
 
-import { walk, type ModelDoc, type Vec3 } from "./model-doc";
+import { namesOf, walk, type ModelDoc, type Vec3 } from "./model-doc";
 import { polyNormal, hasVolume, solidOf } from "./model-mesh";
 import { transformPoint, transformDirection, worldMatrices } from "./model-skin";
 import { unwrap, type UV } from "./model-uv";
@@ -98,8 +98,38 @@ function bakeTexels(doc: ModelDoc, shade: (at: V, n: V, tx: V, ty: V, tris: Tri[
 }
 
 /// The same walk over the covered texels, but `shade` returns the texel's whole colour (or null to leave it empty).
-function bakeTexelsRaw(doc: ModelDoc, shade: (at: V, n: V, tx: V, ty: V, tris: Tri[]) => [number, number, number, number] | null): Raster | null {
+/// The parts that are high-poly sources (a part with `bakeSource` and everything under it), as index paths joined by ".".
+function sourcePaths(doc: ModelDoc): Set<string> {
+  const out = new Set<string>();
+  const go = (list: ModelDoc["parts"], prefix: number[], inside: boolean) => list.forEach((p, i) => {
+    const path = [...prefix, i];
+    const on = inside || !!p.bakeSource;
+    if (on) out.add(path.join("."));
+    go(p.children, path, on);
+  });
+  go(doc.parts, [], false);
+  return out;
+}
+
+/// The tangent frame of a surface triangle from its texel coordinates: `t` along +u (right in the picture) and `b` up the picture (against v, which runs down), made
+/// square to the normal `n`: what a glTF normal map's red and green mean. Null for a triangle with no area in the picture.
+function tangentFrame(pa: V, pb: V, pc: V, ta: UV, tb: UV, tc: UV, n: V): { t: V; b: V } | null {
+  const e1 = sub(pb, pa), e2 = sub(pc, pa);
+  const du1 = tb[0] - ta[0], dv1 = tb[1] - ta[1], du2 = tc[0] - ta[0], dv2 = tc[1] - ta[1];
+  const det = du1 * dv2 - du2 * dv1;
+  if (Math.abs(det) < 1e-12) return null;
+  const r = 1 / det;
+  let t = unit(mul(sub(mul(e1, dv2), mul(e2, dv1)), r));
+  t = unit(sub(t, mul(n, dot(t, n))));
+  const dpdv = mul(sub(mul(e2, du1), mul(e1, du2)), r);
+  const b = unit(sub(mul(dpdv, -1), mul(n, dot(dpdv, n))));
+  if (dot(t, t) < 1e-12 || dot(b, b) < 1e-12) return null;
+  return { t, b };
+}
+
+function bakeTexelsRaw(doc: ModelDoc, shade: (at: V, n: V, tx: V, ty: V, tris: Tri[], frame: { t: V; b: V } | null) => [number, number, number, number] | null): Raster | null {
   if (!doc.texture) return null;
+  const sources = sourcePaths(doc);
   const [w, h] = doc.texture.size;
   const out = newRaster(w, h);
   const worlds = worldMatrices(doc);
@@ -116,7 +146,8 @@ function bakeTexelsRaw(doc: ModelDoc, shade: (at: V, n: V, tx: V, ty: V, tris: T
     }
     nameOf.set(part, names.join("/"));
   }
-  for (const { part } of walk(doc)) {
+  for (const { part, parts: at } of walk(doc)) {
+    if (sources.has(at.join("."))) continue; // a high-poly source is not part of the model
     const m = worlds.get(nameOf.get(part)!);
     if (!m) continue;
     for (const c of part.cubes) {
@@ -148,6 +179,7 @@ function bakeTexelsRaw(doc: ModelDoc, shade: (at: V, n: V, tx: V, ty: V, tris: T
       const minY = Math.max(0, Math.floor(Math.min(ta[1], tb[1], tc[1]))), maxY = Math.min(h - 1, Math.ceil(Math.max(ta[1], tb[1], tc[1])));
       const den = (tb[1] - tc[1]) * (ta[0] - tc[0]) + (tc[0] - tb[0]) * (ta[1] - tc[1]);
       if (Math.abs(den) < 1e-9) continue;
+      const frame = tangentFrame(pa, pb, pc, ta, tb, tc, n);
       for (let y = minY; y <= maxY; y++) {
         for (let x = minX; x <= maxX; x++) {
           const px = x + 0.5, py = y + 0.5;
@@ -156,7 +188,7 @@ function bakeTexelsRaw(doc: ModelDoc, shade: (at: V, n: V, tx: V, ty: V, tris: T
           const l3 = 1 - l1 - l2;
           if (l1 < -1e-6 || l2 < -1e-6 || l3 < -1e-6) continue;
           const at = add(add(mul(pa, l1), mul(pb, l2)), mul(pc, l3));
-          const rgba = shade(at, n, tx, ty, tris);
+          const rgba = shade(at, n, tx, ty, tris, frame);
           if (!rgba) continue;
           const i = (y * w + x) * 4;
           out.data[i] = rgba[0];
@@ -348,4 +380,68 @@ export function projectImage(doc: ModelDoc, image: Raster, modelToClip: number[]
     if (!image.data[i + 3]) return null;
     return [image.data[i]!, image.data[i + 1]!, image.data[i + 2]!, image.data[i + 3]!];
   });
+}
+
+/// The nearest triangle a ray meets within `max` (either side counts), with the distance.
+function nearestHit(o: V, d: V, tris: Tri[], max: number): { t: number; tri: Tri } | null {
+  let best: { t: number; tri: Tri } | null = null;
+  for (const tri of tris) {
+    const e1 = sub(tri.b, tri.a), e2 = sub(tri.c, tri.a);
+    const p = cross(d, e2);
+    const det = dot(e1, p);
+    if (Math.abs(det) < 1e-12) continue;
+    const inv = 1 / det;
+    const s = sub(o, tri.a);
+    const u = dot(s, p) * inv;
+    if (u < 0 || u > 1) continue;
+    const q = cross(s, e1);
+    const v = dot(d, q) * inv;
+    if (v < 0 || u + v > 1) continue;
+    const t = dot(e2, q) * inv;
+    if (t > 1e-9 && t <= max && (!best || t < best.t)) best = { t, tri };
+  }
+  return best;
+}
+
+/// A tangent-space normal map baked from the model's high-poly source parts onto its textured shapes: from each texel's point a ray goes in against the surface from `cage`
+/// model units out, and the face it meets first (within twice the cage) gives the normal, written in the surface's own frame (red along +u, green up the picture, blue out of
+/// the surface, as glTF wants it). Texels that meet nothing, and texels no shape covers, are flat (128, 128, 255). Null when the model has no texture or no high-poly part.
+export function bakeNormals(doc: ModelDoc, cage = 4): Raster | null {
+  if (!doc.texture) return null;
+  const sources = sourcePaths(doc);
+  const worlds = worldMatrices(doc);
+  const high: Tri[] = [];
+  for (const { part, parts } of walk(doc)) {
+    if (!sources.has(parts.join("."))) continue;
+    const m = worlds.get(namesOf(doc, parts).join("/"));
+    if (!m) continue;
+    for (const c of part.cubes) {
+      if (!hasVolume(c)) continue;
+      const solid = solidOf(c);
+      const world = solid.verts.map((p) => transformPoint(m, p));
+      for (const poly of solid.polys) for (let k = 1; k + 1 < poly.v.length; k++) high.push({ a: world[poly.v[0]!]!, b: world[poly.v[k]!]!, c: world[poly.v[k + 1]!]! });
+    }
+  }
+  if (!high.length) return null;
+  const raw = bakeTexelsRaw(doc, (at, n, _tx, _ty, _tris, frame) => {
+    if (!frame) return null;
+    const hit = nearestHit(add(at, mul(n, cage)), mul(n, -1), high, cage * 2);
+    let nh: V = n;
+    if (hit) {
+      nh = unit(cross(sub(hit.tri.b, hit.tri.a), sub(hit.tri.c, hit.tri.a)));
+      if (dot(nh, n) < 0) nh = mul(nh, -1);
+    }
+    const tn = unit([dot(nh, frame.t), dot(nh, frame.b), Math.max(0.1, dot(nh, n))]);
+    return [Math.round((tn[0] * 0.5 + 0.5) * 255), Math.round((tn[1] * 0.5 + 0.5) * 255), Math.round((tn[2] * 0.5 + 0.5) * 255), 255];
+  });
+  if (!raw) return null;
+  for (let i = 0; i < raw.data.length; i += 4) {
+    if (raw.data[i + 3] === 0) {
+      raw.data[i] = 128;
+      raw.data[i + 1] = 128;
+      raw.data[i + 2] = 255;
+      raw.data[i + 3] = 255;
+    }
+  }
+  return raw;
 }

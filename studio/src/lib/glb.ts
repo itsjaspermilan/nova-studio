@@ -2,7 +2,7 @@
 // (so a later bone animation can move them), one mesh per part with flat-coloured cubes baked in
 // as COLOR_0 vertex colours and per-face normals.
 
-import { settleKeyEdits, glowOf, metallicOf, namesOf, roughnessOf, walk, type Clip, type Cube, type Ease, type ModelDoc, type Part, type Track, type Vec3 } from "./model-doc";
+import { dropBakeSources, settleKeyEdits, glowOf, metallicOf, namesOf, roughnessOf, walk, type Clip, type Cube, type Ease, type ModelDoc, type Part, type Track, type Vec3 } from "./model-doc";
 import { BAKE_STEPS, applyEase, lerp3, slerp } from "./model-ease";
 import { FACE_CORNERS, hasVolume, meshOf as solidMesh, solidOf, type Mesh } from "./model-mesh";
 import { evaluate } from "./modifiers";
@@ -118,8 +118,8 @@ const LINEAR = Array.from({ length: 256 }, (_, v) => {
 const linearColours = (colors: number[]) => new Uint16Array(colors.map((v, i) => (i % 4 === 3 ? v * 257 : LINEAR[v]!)));
 /// `surface` is the roughness and metal picture (green and blue), written as glTF's metallic-roughness picture when the model's `texture.surface` is set: painted
 /// shapes then take their roughness and metal from it, whatever numbers they carry.
-export function exportGlb(source: ModelDoc, texture?: Raster, surface?: Raster): Uint8Array {
-  const doc = settleKeyEdits(source);
+export function exportGlb(source: ModelDoc, texture?: Raster, surface?: Raster, normalMap?: Raster): Uint8Array {
+  const doc = dropBakeSources(settleKeyEdits(source));
   const scale = doc.scale;
   const gltfNodes: Record<string, unknown>[] = [];
   const meshes: Record<string, unknown>[] = [];
@@ -143,7 +143,18 @@ export function exportGlb(source: ModelDoc, texture?: Raster, surface?: Raster):
   const surfaceImage = image && doc.texture?.surface ? textureForExport(doc, surface ?? bakeSurface(doc)) : undefined;
   // bumps painted in the surface picture's red channel: a normal map, flat in the white row that shapes with no texels read
   let normalImage: Raster | undefined;
-  if (surfaceImage && doc.texture?.bump) {
+  if (image && doc.texture?.normals && normalMap) {
+    // a normal map baked from the model's high-poly parts takes the place of painted bumps
+    const [w, h] = [image.w, image.h - 1];
+    normalImage = newRaster(w, h + 1);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      const sx = Math.min(x, normalMap.w - 1), sy = Math.min(y, normalMap.h - 1);
+      const j = (sy * normalMap.w + sx) * 4;
+      for (let k = 0; k < 4; k++) normalImage.data[i + k] = x < normalMap.w && y < normalMap.h ? normalMap.data[j + k]! : [128, 128, 255, 255][k]!;
+    }
+    for (let i = w * h * 4; i < normalImage.data.length; i += 4) { normalImage.data[i] = 128; normalImage.data[i + 1] = 128; normalImage.data[i + 2] = 255; normalImage.data[i + 3] = 255; }
+  } else if (surfaceImage && doc.texture?.bump) {
     const [w, h] = [surfaceImage.w, surfaceImage.h - 1];
     const grey = newRaster(w, h);
     grey.data.set(surfaceImage.data.subarray(0, w * h * 4));
@@ -354,14 +365,14 @@ export function exportGlb(source: ModelDoc, texture?: Raster, surface?: Raster):
     meshes,
     ...(skins.length ? { skins } : {}),
     materials: [
-      { name: tex ? "texture" : "vertex colours", pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], ...(tex ? { baseColorTexture: { index: 0 } } : {}), ...(surfaceImage ? { metallicRoughnessTexture: { index: 1 } } : {}), metallicFactor: 0, roughnessFactor: 1 }, ...(normalImage ? { normalTexture: { index: 2 } } : {}) },
-      ...mats.map((m) => ({ name: [m.glow ? `glow ${m.glow}` : "", m.metal ? `metal ${m.metal}` : "", m.rough < 1 ? `rough ${m.rough}` : ""].filter(Boolean).join(" "), pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], ...(tex ? { baseColorTexture: { index: 0 } } : {}), ...(surfaceImage ? { metallicRoughnessTexture: { index: 1 } } : {}), metallicFactor: m.metal, roughnessFactor: m.rough }, ...(normalImage ? { normalTexture: { index: 2 } } : {}), ...(m.glow ? { emissiveFactor: [m.glow, m.glow, m.glow] } : {}) })),
+      { name: tex ? "texture" : "vertex colours", pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], ...(tex ? { baseColorTexture: { index: 0 } } : {}), ...(surfaceImage ? { metallicRoughnessTexture: { index: 1 } } : {}), metallicFactor: 0, roughnessFactor: 1 }, ...(normalImage ? { normalTexture: { index: surfaceImage ? 2 : 1 } } : {}) },
+      ...mats.map((m) => ({ name: [m.glow ? `glow ${m.glow}` : "", m.metal ? `metal ${m.metal}` : "", m.rough < 1 ? `rough ${m.rough}` : ""].filter(Boolean).join(" "), pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], ...(tex ? { baseColorTexture: { index: 0 } } : {}), ...(surfaceImage ? { metallicRoughnessTexture: { index: 1 } } : {}), metallicFactor: m.metal, roughnessFactor: m.rough }, ...(normalImage ? { normalTexture: { index: surfaceImage ? 2 : 1 } } : {}), ...(m.glow ? { emissiveFactor: [m.glow, m.glow, m.glow] } : {}) })),
     ],
     ...(tex && image
       ? {
           // nearest filtering keeps painted texels crisp, linear (`texture.smooth`) blends them; the picture is clamped, not tiled
           samplers: [doc.texture?.smooth ? { magFilter: 9729, minFilter: 9729, wrapS: 33071, wrapT: 33071 } : { magFilter: 9728, minFilter: 9728, wrapS: 33071, wrapT: 33071 }],
-          textures: [{ sampler: 0, source: 0 }, ...(surfaceImage ? [{ sampler: 0, source: 1 }] : []), ...(normalImage ? [{ sampler: 0, source: 2 }] : [])],
+          textures: [{ sampler: 0, source: 0 }, ...(surfaceImage ? [{ sampler: 0, source: 1 }] : []), ...(normalImage ? [{ sampler: 0, source: surfaceImage ? 2 : 1 }] : [])],
           images: [{ bufferView: addView(encodePng(image)), mimeType: "image/png" }, ...(surfaceImage ? [{ bufferView: addView(encodePng(surfaceImage)), mimeType: "image/png" }] : []), ...(normalImage ? [{ bufferView: addView(encodePng(normalImage)), mimeType: "image/png" }] : [])],
         }
       : {}),
