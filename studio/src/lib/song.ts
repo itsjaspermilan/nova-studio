@@ -15,8 +15,11 @@ import { applyFx, cleanFx, type Fx } from "./fx";
 import { integratedLufs, limitPeaks } from "./loudness";
 import type { Sound } from "./wav";
 
-export type Wave = "square" | "saw" | "triangle" | "sine" | "noise";
-export const WAVES: Wave[] = ["square", "saw", "triangle", "sine", "noise"];
+export type Wave = "square" | "saw" | "triangle" | "sine" | "noise" | "fm" | "pluck" | "organ";
+export const WAVES: Wave[] = ["square", "saw", "triangle", "sine", "noise", "fm", "pluck", "organ"];
+/// The waves that are whole instruments (their own settings; the fuller voice's unison, filter and vibrato do not apply to them).
+export const INSTRUMENT_WAVES: Wave[] = ["fm", "pluck", "organ"];
+export const isInstrument = (w: Wave) => INSTRUMENT_WAVES.includes(w);
 
 export interface Note {
   /// First step (0-based) and length in steps.
@@ -63,6 +66,13 @@ export interface Track {
   echoFeedback?: number;
   /// Drum tracks: "chip" (the original) or "studio".
   kit?: "chip" | "studio";
+  /// The "fm" instrument: the modulator's pitch as a multiple of the note (0.25 to 8) and how strongly it bends the tone (0 to 12; it fades as the note rings).
+  fmRatio?: number;
+  fmIndex?: number;
+  /// The "pluck" instrument: how long the string rings (0 short to 1 long).
+  damping?: number;
+  /// The "pluck" and "organ" instruments: how bright it is (0 dull to 1 bright).
+  brightness?: number;
   /// A lane that changes how loud the notes are over the song: the gain (0 to 2) at each note's start follows these points (lib/song-tools.ts).
   automation?: Lane[];
   /// Effects on the track, run in order after its volume and pan (lib/fx.ts).
@@ -156,6 +166,7 @@ const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n
 /// The voice fields' names and ranges.
 const VOICE_RANGES: [keyof Track, number, number][] = [
   ["unison", 1, 7], ["detune", 0, 60], ["cutoff", 0, 20000], ["resonance", 0, 0.9], ["sweep", 0, 1], ["sub", 0, 1], ["vibrato", 0, 0.5], ["reverb", 0, 1], ["echo", 0, 1], ["echoTime", 1, 16], ["echoFeedback", 0, 0.85],
+  ["fmRatio", 0.25, 8], ["fmIndex", 0, 12], ["damping", 0, 1], ["brightness", 0, 1],
 ];
 
 export type Parsed = { ok: true; song: Song } | { ok: false; error: string };
@@ -446,6 +457,71 @@ function oscillator(wave: Wave, duty: number, rng: () => number) {
   };
 }
 
+/// The instruments that are more than one oscillator: FM (a sine bent by another sine), a plucked string (Karplus-Strong) and an organ (added harmonics).
+/// Each call makes a voice for one note; it gives one sample each time it is called with the note's pitch.
+function instrumentOscillator(t: Track, rng: () => number) {
+  if (t.wave === "fm") {
+    const ratio = t.fmRatio ?? 2;
+    const index = t.fmIndex ?? 3;
+    let carrier = 0, modulator = 0, n = 0;
+    return (freq: number, rate: number) => {
+      carrier = (carrier + freq / rate) % 1;
+      modulator = (modulator + (freq * ratio) / rate) % 1;
+      // the bend is strongest at the start and fades as the note rings: the bright attack of a bell or an electric piano
+      const bend = index * Math.exp(-(n++ / rate) * 2.5);
+      return Math.sin(2 * Math.PI * carrier + bend * Math.sin(2 * Math.PI * modulator));
+    };
+  }
+  if (t.wave === "pluck") {
+    const damping = 0.9 + 0.0995 * clamp(t.damping ?? 0.7, 0, 1);
+    const bright = clamp(t.brightness ?? 0.6, 0, 1);
+    let line: Float32Array | null = null;
+    let at = 0;
+    return (freq: number, rate: number) => {
+      if (!line) {
+        line = new Float32Array(Math.max(2, Math.round(rate / Math.max(20, freq))));
+        // a burst of noise, softened by how dull the string is
+        let prev = 0;
+        for (let i = 0; i < line.length; i++) {
+          const x = rng() * 2 - 1;
+          prev = prev + (x - prev) * (0.25 + 0.75 * bright);
+          line[i] = prev;
+        }
+      }
+      const next = (at + 1) % line.length;
+      const out = line[at]!;
+      line[at] = damping * 0.5 * (line[at]! + line[next]!);
+      at = next;
+      return out * 1.4;
+    };
+  }
+  // organ: the note and its harmonics, with a sub octave, brighter or duller by `brightness`
+  const b = clamp(t.brightness ?? 0.5, 0, 1);
+  const harmonics = [0.5, 1, 2, 3, 4, 5, 6, 8];
+  const weights = harmonics.map((h, i) => (i === 0 ? 0.6 : i === 1 ? 1 : Math.pow(0.35 + 0.6 * b, i)));
+  const total = weights.reduce((x, y) => x + y, 0);
+  const phases = harmonics.map(() => 0);
+  return (freq: number, rate: number) => {
+    let sum = 0;
+    for (let i = 0; i < harmonics.length; i++) {
+      phases[i] = (phases[i]! + (freq * harmonics[i]!) / rate) % 1;
+      sum += weights[i]! * Math.sin(2 * Math.PI * phases[i]!);
+    }
+    return sum / total * 1.6;
+  };
+}
+
+/// Starting points for a sound: a name and the track settings it sets (the instrument, its envelope and its character). Applying one changes only these fields.
+export const INSTRUMENT_PRESETS: { name: string; set: Partial<Track> }[] = [
+  { name: "Bass (monosynth)", set: { wave: "saw", duty: 0.5, attack: 0.005, decay: 0.2, sustain: 0.5, release: 0.08, cutoff: 700, resonance: 0.35, sweep: 0.55, sub: 0.5, unison: 1, vibrato: 0 } },
+  { name: "Soft pad", set: { wave: "saw", attack: 0.45, decay: 0.3, sustain: 0.8, release: 0.9, unison: 5, detune: 14, cutoff: 2600, resonance: 0.1, sweep: 0.1, sub: 0, reverb: 0.35 } },
+  { name: "Bright lead", set: { wave: "square", duty: 0.4, attack: 0.01, decay: 0.12, sustain: 0.7, release: 0.15, unison: 3, detune: 8, vibrato: 0.12, cutoff: 0 } },
+  { name: "Electric piano (FM)", set: { wave: "fm", fmRatio: 1, fmIndex: 2.2, attack: 0.005, decay: 0.6, sustain: 0.25, release: 0.3 } },
+  { name: "Bell (FM)", set: { wave: "fm", fmRatio: 3.5, fmIndex: 5, attack: 0.002, decay: 1.2, sustain: 0.1, release: 0.8 } },
+  { name: "Plucked string", set: { wave: "pluck", damping: 0.75, brightness: 0.55, attack: 0.001, decay: 0.05, sustain: 0.95, release: 0.25 } },
+  { name: "Organ", set: { wave: "organ", brightness: 0.55, attack: 0.01, decay: 0.05, sustain: 0.95, release: 0.08 } },
+];
+
 /// Level of an attack-decay-sustain-release envelope `t` seconds after the note starts, for a note held `hold` seconds.
 export function envelope(t: number, hold: number, a: number, d: number, s: number, r: number): number {
   const level = (x: number) => (x < a ? (a > 0 ? x / a : 1) : x < a + d ? 1 - (1 - s) * ((x - a) / Math.max(d, 1e-9)) : s);
@@ -458,6 +534,7 @@ export function envelope(t: number, hold: number, a: number, d: number, s: numbe
 
 /// Whether a track uses the fuller voice (anything beyond one plain oscillator or the chip drums).
 export function isRich(t: Track): boolean {
+  if (t.kind === "synth" && isInstrument(t.wave)) return false;
   if (t.kind === "drums") return t.kit === "studio" || (t.reverb ?? 0) > 0;
   return (t.unison ?? 1) > 1 || (t.cutoff ?? 0) > 0 || (t.sub ?? 0) > 0 || (t.vibrato ?? 0) > 0 || (t.reverb ?? 0) > 0;
 }
@@ -798,7 +875,7 @@ export function renderSong(source: Song, rate = RATE): Sound {
       }
       const hold = n.len * stepSec;
       const length = Math.round((hold + track.release) * rate);
-      const osc = oscillator(track.wave, track.duty, mulberry32(ti * 1000 + ni + 1));
+      const osc = isInstrument(track.wave) ? instrumentOscillator(track, mulberry32(ti * 1000 + ni + 1)) : oscillator(track.wave, track.duty, mulberry32(ti * 1000 + ni + 1));
       const freq = midiFreq(n.pitch);
       for (let k = 0; k < length; k++) {
         const e = envelope(k / rate, hold, track.attack, track.decay, track.sustain, track.release);

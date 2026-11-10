@@ -2,7 +2,7 @@
   import { resizable } from "../lib/resize";
   import { onMount, untrack } from "svelte";
   import {
-    DRUMS, WAVES, addNote, addTrack, barSteps, changeNote, isBlack, newSong, noteAt, noteName, parseSong, removeNote, removeTrack, renderSong, serializeSong, setLength,
+    DRUMS, INSTRUMENT_PRESETS, WAVES, isInstrument, addNote, addTrack, barSteps, changeNote, isBlack, newSong, noteAt, noteName, parseSong, removeNote, removeTrack, renderSong, serializeSong, setLength,
     setTempo, songSeconds, stepSeconds, transpose, updateTrack, synthTrack, type Song, type Wave,
   } from "../lib/song";
   import { encodeWav, toBase64, frames, type Sound } from "../lib/wav";
@@ -622,6 +622,20 @@
           <label>Sound
             <select value={current.wave} onchange={(e) => setTrack({ wave: e.currentTarget.value as Wave })}>{#each WAVES as w (w)}<option value={w}>{w}</option>{/each}</select>
           </label>
+          <label>Preset
+            <select aria-label="Preset sounds" value="" onchange={(e) => { const pr = INSTRUMENT_PRESETS.find((x) => x.name === e.currentTarget.value); if (pr) setTrack(pr.set); e.currentTarget.value = ""; }}>
+              <option value="" disabled>Start from…</option>{#each INSTRUMENT_PRESETS as pr (pr.name)}<option value={pr.name}>{pr.name}</option>{/each}
+            </select>
+          </label>
+          {#if current.wave === "fm"}
+            <label class="slider" title="The pitch of the bending wave as a multiple of the note: whole numbers sound smooth, others like a bell"><span>Ratio</span><input type="range" min="0.25" max="8" step="0.25" value={current.fmRatio ?? 2} oninput={(e) => setTrack({ fmRatio: Number(e.currentTarget.value) })} /><output>{(current.fmRatio ?? 2).toFixed(2)}</output></label>
+            <label class="slider" title="How strongly the tone is bent; it fades as the note rings"><span>Bend</span><input type="range" min="0" max="12" step="0.1" value={current.fmIndex ?? 3} oninput={(e) => setTrack({ fmIndex: Number(e.currentTarget.value) })} /><output>{(current.fmIndex ?? 3).toFixed(1)}</output></label>
+          {:else if current.wave === "pluck"}
+            <label class="slider" title="How long the string rings"><span>Rings</span><input type="range" min="0" max="1" step="0.01" value={current.damping ?? 0.7} oninput={(e) => setTrack({ damping: Number(e.currentTarget.value) })} /><output>{(current.damping ?? 0.7).toFixed(2)}</output></label>
+            <label class="slider"><span>Bright</span><input type="range" min="0" max="1" step="0.01" value={current.brightness ?? 0.6} oninput={(e) => setTrack({ brightness: Number(e.currentTarget.value) })} /><output>{(current.brightness ?? 0.6).toFixed(2)}</output></label>
+          {:else if current.wave === "organ"}
+            <label class="slider" title="More or fewer of the upper harmonics"><span>Bright</span><input type="range" min="0" max="1" step="0.01" value={current.brightness ?? 0.5} oninput={(e) => setTrack({ brightness: Number(e.currentTarget.value) })} /><output>{(current.brightness ?? 0.5).toFixed(2)}</output></label>
+          {/if}
           {#if current.wave === "square"}
             <label class="slider"><span>Width</span><input type="range" min="0.05" max="0.95" step="0.01" value={current.duty} oninput={(e) => setTrack({ duty: Number(e.currentTarget.value) })} /><output>{current.duty.toFixed(2)}</output></label>
           {/if}
@@ -637,10 +651,12 @@
         <label class="slider"><span>Gap</span><input type="range" min="1" max="16" step="1" value={current.echoTime ?? 2} oninput={(e) => setTrack({ echoTime: Number(e.currentTarget.value) })} /><output>{current.echoTime ?? 2}</output></label>
         <label class="slider"><span>Repeats</span><input type="range" min="0" max="0.85" step="0.01" value={current.echoFeedback ?? 0.4} oninput={(e) => setTrack({ echoFeedback: Number(e.currentTarget.value) })} /><output>{Math.round((current.echoFeedback ?? 0.4) * 100)}%</output></label>
         {#if current.kind === "synth"}
+          {#if !isInstrument(current.wave)}
           <p class="dim small">Fuller sound (0 or 1 leaves it off)</p>
           {#each VOICE as v (v.key)}
             <label class="slider"><span>{v.label}</span><input type="range" min={v.min} max={v.max} step={v.step} value={current[v.key] ?? v.off} oninput={(e) => setTrack({ [v.key]: Number(e.currentTarget.value) })} /><output>{(current[v.key] ?? v.off).toFixed(v.step >= 1 ? 0 : 2)}</output></label>
           {/each}
+          {/if}
         {:else}
           <label>Kit
             <select value={current.kit ?? "chip"} onchange={(e) => setTrack({ kit: e.currentTarget.value as "chip" | "studio" })}><option value="chip">chip</option><option value="studio">studio</option></select>

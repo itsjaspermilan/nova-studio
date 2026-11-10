@@ -199,3 +199,50 @@ describe("effects on a track", () => {
     expect(off.channels[0]).toEqual(dry.channels[0]);
   });
 });
+
+describe("the instruments: FM, plucked string, organ and the presets", () => {
+  const play = async (patch: Record<string, unknown>) => {
+    const { renderSong } = await import("./song");
+    const s = song([{ step: 0, len: 4, pitch: 57, vel: 1 }], 8);
+    s.tracks[0] = { ...s.tracks[0]!, ...patch } as typeof s.tracks[0];
+    return renderSong(s, 22050).channels[0]!;
+  };
+  const rms = (x: Float32Array, a = 0, b = x.length) => Math.sqrt(x.slice(a, b).reduce((s, v) => s + v * v, 0) / (b - a));
+  it("each makes sound, the same every time, and rings out", async () => {
+    for (const wave of ["fm", "pluck", "organ"] as const) {
+      const a = await play({ wave });
+      const b = await play({ wave });
+      expect(rms(a, 0, 4000), wave).toBeGreaterThan(0.01);
+      expect(a, wave).toEqual(b);
+      expect(Array.from(a).every(Number.isFinite), wave).toBe(true);
+    }
+  });
+  it("a plucked string fades, and a longer damping rings longer", async () => {
+    const short = await play({ wave: "pluck", damping: 0.1, sustain: 1, attack: 0.001, release: 0.5 });
+    const long = await play({ wave: "pluck", damping: 1, sustain: 1, attack: 0.001, release: 0.5 });
+    expect(rms(short, 400, 2400)).toBeGreaterThan(rms(short, 8000, 10000));
+    expect(rms(long, 8000, 10000)).toBeGreaterThan(rms(short, 8000, 10000));
+  });
+  it("FM with more bend has more high-frequency energy than a plain sine", async () => {
+    const roughness = (x: Float32Array) => { let s = 0; for (let i = 1; i < 6000; i++) s += Math.abs(x[i]! - x[i - 1]!); return s / 6000; };
+    const plain = await play({ wave: "fm", fmIndex: 0, fmRatio: 2 });
+    const bent = await play({ wave: "fm", fmIndex: 9, fmRatio: 3.5 });
+    expect(roughness(bent)).toBeGreaterThan(roughness(plain) * 1.3);
+  });
+  it("the settings are saved and checked, and a preset sets what it names", async () => {
+    const { INSTRUMENT_PRESETS } = await import("./song");
+    const s = song([], 8);
+    s.tracks[0] = { ...s.tracks[0]!, wave: "fm", fmRatio: 3, fmIndex: 4, damping: 0.5, brightness: 0.2 };
+    const back = parseSong(serializeSong(s));
+    if (!back.ok) throw new Error(back.error);
+    expect(back.song.tracks[0]).toMatchObject({ wave: "fm", fmRatio: 3, fmIndex: 4, damping: 0.5, brightness: 0.2 });
+    const bad = JSON.parse(serializeSong(s));
+    bad.tracks[0].fmRatio = 99;
+    const clamped = parseSong(JSON.stringify(bad));
+    expect(clamped.ok && clamped.song.tracks[0]!.fmRatio).toBe(8);
+    bad.tracks[0].wave = "theremin";
+    expect(parseSong(JSON.stringify(bad)).ok).toBe(false);
+    expect(INSTRUMENT_PRESETS.length).toBeGreaterThanOrEqual(6);
+    for (const p of INSTRUMENT_PRESETS) expect(Object.keys(p.set).length, p.name).toBeGreaterThan(2);
+  });
+});
