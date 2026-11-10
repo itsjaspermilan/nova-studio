@@ -37,6 +37,7 @@
   import { applyStack, evaluate, hasModifiers, type Modifier } from "../lib/modifiers";
   import ModifierStack from "./ModifierStack.svelte";
   import CurveEditor from "./CurveEditor.svelte";
+  import { modelStats } from "../lib/mesh-stats";
   import { knifeCut } from "../lib/mesh-cut";
   import { addLayer, duplicateLayer, flatten, layerPath, mergeDown, moveLayer, removeLayer, singleLayer, updateLayer, MAX_TEX_LAYERS, type LayerSet } from "../lib/texture-layers";
   import { BLEND_MODES } from "../lib/pixels";
@@ -658,6 +659,9 @@
 
   // The skeleton overlay: a line from every part's pivot to its children's pivots, and a dot at each pivot (the chosen part's in yellow), drawn over the model.
   let showBones = $state(false);
+  let showNormals = $state(false);
+  let showStats = $state(false);
+  const viewStats = $derived(showStats ? modelStats(doc) : null);
   let boneLines: THREE.Object3D | undefined;
   function drawBones() {
     if (boneLines && scene) {
@@ -669,7 +673,28 @@
       });
       boneLines = undefined;
     }
-    if (!showBones || !scene || !groups.size) return;
+    if (!(showBones || showNormals) || !scene || !groups.size) return;
+    const overlay = new THREE.Group();
+    if (showNormals && selected && cube) {
+      const g = groupOf(selected.parts);
+      const m = toMesh(cube);
+      if (g && m.polys) {
+        const seg: THREE.Vector3[] = [];
+        m.polys.forEach((_, i) => {
+          const c0 = faceCentre(m, i);
+          const n = faceNormal(m, i);
+          seg.push(new THREE.Vector3(...c0).applyMatrix4(g.matrixWorld), new THREE.Vector3(c0[0] + n[0] * 4, c0[1] + n[1] * 4, c0[2] + n[2] * 4).applyMatrix4(g.matrixWorld));
+        });
+        const l = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(seg), new THREE.LineBasicMaterial({ color: 0x6cb2ff, depthTest: false }));
+        l.renderOrder = 19;
+        overlay.add(l);
+      }
+    }
+    if (!showBones) {
+      scene.add(overlay);
+      boneLines = overlay;
+      return;
+    }
     const world = new Map<string, THREE.Vector3>();
     for (const [key, g] of groups) world.set(key, g.group.getWorldPosition(new THREE.Vector3()));
     const chosen = selected ? pathKey(namesOf(doc, selected.parts)) : "";
@@ -679,7 +704,6 @@
       const parent = slash > 0 ? world.get(key.slice(0, slash)) : undefined;
       if (parent) lines.push(parent, at);
     }
-    const overlay = new THREE.Group();
     if (lines.length) {
       const l = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(lines), new THREE.LineBasicMaterial({ color: 0x6fcf8e, depthTest: false }));
       l.renderOrder = 20;
@@ -694,7 +718,7 @@
     boneLines = overlay;
   }
   $effect(() => {
-    showBones; selected; doc; animTime; mode;
+    showBones; showNormals; selected; doc; animTime; mode;
     if (modelGroup) untrack(() => { modelGroup!.updateMatrixWorld(true); drawBones(); });
   });
 
@@ -2792,6 +2816,8 @@
           {#each UI_MODES as m (m.id)}<option value={m.id}>{m.title}</option>{/each}
         </select>
         <label class="check"><input type="checkbox" bind:checked={showGrid} /> Grid</label>
+        <label class="check" title="Draw a short line out of the middle of each face of the chosen shape, the way the face looks (blue): lines pointing into the shape mean the face is turned inside out"><input type="checkbox" bind:checked={showNormals} /> Normals</label>
+        <label class="check" title="Show the model's triangle and point count over the view"><input type="checkbox" bind:checked={showStats} /> Stats</label>
         <label class="check" title="Draw the skeleton: a line from each part's pivot to its children's, and a dot at each pivot"><input type="checkbox" bind:checked={showBones} /> Bones</label>
         <label class="check" title="Draw only the chosen part and what is inside it"><input type="checkbox" bind:checked={localView} /> Local</label>
         <select bind:value={viewMode} aria-label="View (Z)" title="How the model is drawn (Z)">
@@ -2864,6 +2890,7 @@
         {#if inEdit}<button class:on={boxArmed} onclick={() => (boxArmed = !boxArmed)} title="Box select: drag a rectangle over the points (B)"><Icon name="select" size={14} /> Box</button>{/if}
         </div>
         <canvas bind:this={canvas} tabindex="0" aria-label="3D view" onpointerdown={pointerDown} onpointermove={pointerMove} onpointerup={pointerUp}></canvas>
+        {#if viewStats}<div class="statsbadge" role="status">{viewStats.triangles.toLocaleString("en")} triangles · {viewStats.points.toLocaleString("en")} points · {viewStats.faces.toLocaleString("en")} faces · {viewStats.parts} part{viewStats.parts === 1 ? "" : "s"}</div>{/if}
         <NavButtons controls={() => controls} camera={() => camera} height={() => canvas?.clientHeight ?? 400} />
         {#if rubber}<div class="boxband" style:left="{Math.min(rubber.x0, rubber.x1)}px" style:top="{Math.min(rubber.y0, rubber.y1)}px" style:width="{Math.abs(rubber.x1 - rubber.x0)}px" style:height="{Math.abs(rubber.y1 - rubber.y0)}px"></div>{/if}
         {#if boxArmed && !rubber}<div class="modalbar" role="status">Box select: drag a rectangle over the points (Esc cancels)</div>{/if}
@@ -3305,6 +3332,7 @@
 {/if}
 
 <style>
+  .statsbadge { position: absolute; right: 52px; top: 8px; padding: 2px 8px; border-radius: 10px; font-size: 11px; background: color-mix(in srgb, var(--panel) 80%, transparent); border: 1px solid var(--line); pointer-events: none; }
   .layerrow { display: flex; align-items: center; gap: 4px; padding: 2px; border-radius: 4px; }
   .layerrow.on { background: color-mix(in srgb, var(--accent) 22%, transparent); }
   .layerrow .pick { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
