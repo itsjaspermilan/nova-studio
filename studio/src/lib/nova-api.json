@@ -826,6 +826,41 @@
   "group": "Scenes and entities"
  },
  {
+  "name": "nova.t",
+  "kind": "function",
+  "signature": "nova.t(key [, vars]) -> string",
+  "doc": "The text for a key in the chosen language (locales/<code>.json), else in the default language (en, or the first file), else the key itself. {name} in the text is replaced from vars; with vars.count the key can have .one and .other forms.",
+  "group": "Languages"
+ },
+ {
+  "name": "nova.locale",
+  "kind": "namespace",
+  "signature": "nova.locale",
+  "doc": "Languages: one locales/<code>.json file per language, edited in the studio's Languages table.",
+  "group": "Languages"
+ },
+ {
+  "name": "nova.locale.set",
+  "kind": "function",
+  "signature": "nova.locale.set(code)",
+  "doc": "Choose the language, for example \"fr\". An error when there is no locales/<code>.json.",
+  "group": "Languages"
+ },
+ {
+  "name": "nova.locale.get",
+  "kind": "function",
+  "signature": "nova.locale.get() -> code",
+  "doc": "The language in use (the default one until set).",
+  "group": "Languages"
+ },
+ {
+  "name": "nova.locale.available",
+  "kind": "function",
+  "signature": "nova.locale.available() -> list of codes",
+  "doc": "The language codes the project has files for, sorted.",
+  "group": "Languages"
+ },
+ {
   "name": "nova.goto_scene",
   "kind": "function",
   "signature": "nova.goto_scene(name, ...)",

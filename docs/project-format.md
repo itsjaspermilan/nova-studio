@@ -1064,6 +1064,21 @@ loud mix cannot distort harshly. Names resolve as the exact path, then `sounds/<
 Android emulator. Sound calls are queued and sent to the audio thread each frame; with no audio
 device (headless runs) they are discarded.
 
+## Languages (`locales/<code>.json`)
+
+Text for several languages lives in one flat JSON file per language, `locales/en.json`, `locales/fr.json`, ...: an object of key to text. The studio's
+Languages table (File > Languages) edits them side by side and marks what is missing.
+
+```json
+{ "menu.start": "Start", "coins.one": "one coin", "coins.other": "{count} coins", "hello": "Hello, {name}!" }
+```
+
+`nova.t(key [, vars])` gives the text in the chosen language, else in the default one (`en` when there is a file for it, else the first by name), else the
+key itself, so a line nobody wrote shows as its name. `{name}` in a text is replaced from `vars`; when `vars.count` is a number the key's `.one` (count is 1) or
+`.other` form is used when the file has it. `nova.locale.set("fr")` chooses the language (an error when there is no such file), `nova.locale.get()` says which is in use,
+`nova.locale.available()` lists the codes. A language file whose value is not text is refused by name (`locales/en.json: "a" must be text`). The language is not chosen
+from the device's settings: a game decides that (a menu, or `nova.save`).
+
 ## Save data
 
 ```lua

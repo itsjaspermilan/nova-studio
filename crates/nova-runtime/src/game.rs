@@ -3206,6 +3206,59 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             lua.to_value(&data)
         })?,
     )?;
+    // locale_data(code): `locales/<code>.json`, a flat object of text, as a Lua table; nil when there is no such file. locales(): the codes there are.
+    let locale_vfs = vfs.clone();
+    raw.set(
+        "locale_data",
+        lua.create_function(move |lua, code: String| {
+            if code.is_empty()
+                || !code
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+            {
+                return Err(lua_err(format!(
+                    "'{code}' is not a language code (letters, digits, - and _)"
+                )));
+            }
+            let path = format!("locales/{code}.json");
+            if !locale_vfs.exists(&path) {
+                return Ok(Value::Nil);
+            }
+            let bytes = locale_vfs.read(&path).map_err(lua_err)?;
+            let value: serde_json::Value = serde_json::from_slice(&bytes)
+                .map_err(|e| lua_err(format!("{path}: {e}")))?;
+            let object = value
+                .as_object()
+                .ok_or_else(|| lua_err(format!("{path} must be an object of text")))?;
+            let table = lua.create_table()?;
+            for (key, text) in object {
+                match text.as_str() {
+                    Some(t) => table.set(key.as_str(), t)?,
+                    None => return Err(lua_err(format!("{path}: \"{key}\" must be text"))),
+                }
+            }
+            Ok(Value::Table(table))
+        })?,
+    )?;
+    let list_vfs = vfs.clone();
+    raw.set(
+        "locales",
+        lua.create_function(move |_, ()| {
+            let files = list_vfs.list().map_err(lua_err)?;
+            let mut codes: Vec<String> = files
+                .iter()
+                .filter_map(|f| {
+                    f.path
+                        .strip_prefix("locales/")
+                        .and_then(|r| r.strip_suffix(".json"))
+                        .filter(|c| !c.contains('/'))
+                        .map(str::to_string)
+                })
+                .collect();
+            codes.sort();
+            Ok(codes)
+        })?,
+    )?;
     // menu_data(name): `menus/<name>.menu.json` (dots are folders) as plain Lua tables, for nova.ui.load; nil when there is none
     let menu_vfs = vfs.clone();
     raw.set(

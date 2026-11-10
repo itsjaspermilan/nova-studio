@@ -11,6 +11,7 @@
   import WorkspaceHome from "./WorkspaceHome.svelte";
   import TilesetEditor from "./TilesetEditor.svelte";
   import ProjectSettings from "./ProjectSettings.svelte";
+  import LocaleEditor from "./LocaleEditor.svelte";
   import { fileKind } from "../lib/tree";
   import { studio } from "../lib/store.svelte";
 
@@ -32,6 +33,8 @@
           <SpriteEditor path={studio.tab.path} text={studio.tab.text} />
         {:else if /\.(wav|ogg)$/i.test(studio.tab.path) || (studio.tab.path.endsWith(".sfx.json") && !jsonView.has(studio.tab.path))}
           <SoundEditor path={studio.tab.path} text={studio.tab.text} />
+        {:else if /^locales\/[^/]+\.json$/.test(studio.tab.path) && !jsonView.has(studio.tab.path)}
+          <LocaleEditor path={studio.tab.path} text={studio.tab.text} />
         {:else if studio.tab.path === "nova.json" && !jsonView.has(studio.tab.path)}
           <ProjectSettings path={studio.tab.path} text={studio.tab.text} onjson={() => toggleJson(studio.tab!.path, true)} />
         {:else if studio.tab.path.endsWith(".tileset.json") && !jsonView.has(studio.tab.path)}

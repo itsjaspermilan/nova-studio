@@ -2544,6 +2544,57 @@ function nova.scene_data(name)
   return raw.scene_data((name:gsub("^scenes%.", "")))
 end
 
+-- Text in several languages. locales/<code>.json is a flat object of text ({ "menu.start": "Start", "coins": "{count} coins" }, one file per
+-- language); the studio's Languages table edits them. nova.t(key, vars) gives the text in the chosen language, else in the default one (en, or the first
+-- file), else the key itself, so a missing line shows up as its name. {name} in a text is replaced from vars; with vars.count a key can have
+-- key.one and key.other forms.
+local locale = { code = nil, texts = {}, list = nil }
+local function locale_list()
+  if not locale.list then locale.list = raw.locales() end
+  return locale.list
+end
+local function locale_default()
+  local list = locale_list()
+  for _, c in ipairs(list) do if c == "en" then return c end end
+  return list[1]
+end
+local function locale_table(code)
+  local t = locale.texts[code]
+  if t == nil then
+    t = raw.locale_data(code) or false
+    locale.texts[code] = t
+  end
+  return t or nil
+end
+nova.locale = {}
+function nova.locale.available() return locale_list() end
+function nova.locale.set(code)
+  if type(code) ~= "string" then error("locale.set(code): the language code must be a string", 2) end
+  if not locale_table(code) then error("locale.set: there is no locales/" .. code .. ".json", 2) end
+  locale.code = code
+end
+function nova.locale.get() return locale.code or locale_default() end
+function nova.t(key, vars)
+  if type(key) ~= "string" then error("t(key [, vars]): the key must be a string", 2) end
+  local function find(code)
+    local t = code and locale_table(code)
+    if not t then return nil end
+    if vars and type(vars.count) == "number" then
+      local form = t[key .. (vars.count == 1 and ".one" or ".other")]
+      if form then return form end
+    end
+    return t[key]
+  end
+  local text = find(locale.code) or find(locale_default()) or key
+  if vars then
+    text = (text:gsub("{([%w_]+)}", function(name)
+      local v = vars[name]
+      if v ~= nil then return tostring(v) end
+    end))
+  end
+  return text
+end
+
 function nova.goto_scene(name, ...)
   if type(name) ~= "string" then error("goto_scene(name, ...): the scene name must be a string", 2) end
   W.pending = { name = name, args = table.pack(...) }

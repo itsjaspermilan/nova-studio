@@ -5,7 +5,7 @@
 
 import type { FileEntry } from "./types";
 
-export type ResourceKind = "sprite" | "tileset" | "model" | "scene" | "track" | "anim" | "entity" | "sound" | "song" | "script" | "image" | "font" | "project" | "file";
+export type ResourceKind = "sprite" | "tileset" | "model" | "scene" | "track" | "anim" | "entity" | "sound" | "song" | "script" | "language" | "image" | "font" | "project" | "file";
 
 export interface Resource {
   kind: ResourceKind;
@@ -39,6 +39,7 @@ const GROUPS: { id: string; title: string; icon: string; folder?: string; always
   { id: "sounds", title: "Sounds", icon: "♪", folder: "sounds", always: true },
   { id: "music", title: "Music", icon: "♫", folder: "music", always: true },
   { id: "scripts", title: "Scripts", icon: "☾", always: false },
+  { id: "languages", title: "Languages", icon: "☷", folder: "locales", always: false },
   { id: "images", title: "Images", icon: "▣", always: false },
   { id: "fonts", title: "Fonts", icon: "A", always: false },
   { id: "project", title: "Project", icon: "⚙", always: false },
@@ -107,6 +108,7 @@ export function groupResources(entries: FileEntry[], images: Map<string, string>
     const lower = path.toLowerCase();
     const ext = lower.includes(".") ? lower.slice(lower.lastIndexOf(".") + 1) : "";
     if (lower === "nova.json") add("project", { kind: "project", name: "Game settings", path, files: [path] });
+    else if (ext === "json" && /^locales\/[^/]+\.json$/.test(path)) add("languages", { kind: "language", name: within(stripExt(path, ".json"), "locales"), path, files: [path] });
     else if (ext === "lua" && path.startsWith("scenes/")) add("scenes", { kind: "scene", name: within(stripExt(path, ".lua"), "scenes"), path, files: [path] });
     else if (ext === "lua" && path.startsWith("entities/")) add("entities", { kind: "entity", name: within(stripExt(path, ".lua"), "entities"), path, files: [path] });
     else if (ext === "lua") add("scripts", { kind: "script", name: stripExt(path, ".lua"), path, files: [path] });
