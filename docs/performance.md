@@ -259,3 +259,11 @@ Retroid (2026-11-06, `scripts/bench.sh`, GPU ms of the city of 24 blocks, which 
 ambient occlusion with shadows 5.5 (shadows alone 3.4, so the two cost about 2.1 together). All held 59.6 to 59.7 fps. The
 post pass costs by the pixel, so the cheap way to cut any of it is a smaller `world_height` (540 is the default of the
 Retroid games; 405 takes about a quarter off).
+
+## Memory on the 8 GB Retroid Pocket 6 (2026-11-10)
+
+`scripts/mem-soak.sh 20` drove Pine Ridge Rally race after race on a Retroid Pocket 6 with 8 GB (Android reports 7,190 MB total; about 5.0 GB available when idle) and read
+`dumpsys meminfo` every 15 seconds. The races ran (a screenshot and the `rally: perf` line showed it: 59.9 fps, 87,315 triangles). **The app held 691 MB at the start and peaked at
+703 MB PSS (817 MB RSS); the native heap peaked at 477 MB and graphics at 204 MB; it grew about 12 MB in 20 minutes; there were no low-memory kills.** The system's available memory
+fell from about 5.0 GB at idle to about 3.4 GB while the game ran, so the whole cost (the GPU driver and kernel count outside the app's PSS) is nearer 1.5 GB than 0.7 GB.
+Limits: one game, a debug-signed build, driven by the auto-drive key; a bigger game needs its own soak. The 12 GB model has more room but nothing here needs it.
