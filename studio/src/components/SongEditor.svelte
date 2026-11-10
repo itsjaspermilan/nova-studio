@@ -11,6 +11,7 @@
   import { compileFormula } from "../lib/formula";
   import ArrangePanel from "./ArrangePanel.svelte";
   import SongTools from "./SongTools.svelte";
+  import LiveScope from "./LiveScope.svelte";
   import { midiToSong, songToMidi } from "../lib/midi";
   import { regionOf, tapTempo } from "../lib/song-tools";
   import { dbfs } from "../lib/mixer";
@@ -113,6 +114,9 @@
   let startedAt = 0; // audio time when step 0 of the current pass started
   /// The loudest sample just now, in dB below full scale, for the mixer's live meter (-Infinity when nothing plays).
   let liveDb = $state(-Infinity);
+  let liveBins = $state.raw<Float32Array | null>(null);
+  let liveWave = $state.raw<Float32Array | null>(null);
+  let liveRate = $state(44100);
   let analyser: AnalyserNode | undefined;
   let analyserData: Float32Array<ArrayBuffer> | undefined;
   let raf = 0;
@@ -127,6 +131,7 @@
   const buffer = () => toAudioBuffer(audio!, renderSong(song));
   function begin(offsetSeconds: number) {
     audio ??= new AudioContext();
+    liveRate = audio.sampleRate;
     void audio.resume();
     try { source?.stop(); } catch { /* already stopped */ }
     const node = audio.createBufferSource();
@@ -134,7 +139,8 @@
     node.loop = loop;
     if (!analyser) {
       analyser = audio.createAnalyser();
-      analyser.fftSize = 1024;
+      analyser.fftSize = 2048;
+      analyser.smoothingTimeConstant = 0.7;
       analyser.connect(audio.destination);
       analyserData = new Float32Array(analyser.fftSize);
     }
@@ -154,6 +160,12 @@
       playhead = stepAtTime(song, t);
       if (analyser && analyserData) {
         analyser.getFloatTimeDomainData(analyserData);
+        if (lower === "tools") {
+          const freq = new Float32Array(analyser.frequencyBinCount);
+          analyser.getFloatFrequencyData(freq);
+          liveBins = freq;
+          liveWave = new Float32Array(analyserData);
+        }
         let peak = 0;
         for (const v of analyserData) peak = Math.max(peak, Math.abs(v));
         // (falls away smoothly instead of flickering)
@@ -167,6 +179,8 @@
   function stopPlayback() {
     playing = false;
     liveDb = -Infinity;
+    liveBins = null;
+    liveWave = null;
     cancelAnimationFrame(raf);
     clearTimeout(debounce);
     try { source?.stop(); } catch { /* already stopped */ }
@@ -754,7 +768,7 @@
       </aside>
     </div>
     {#if lower === "tools"}
-      <div class="lowerpane"><SongTools {song} {track} {group} commit={(next) => commit(next)} pick={(keys) => (group = keys)} {exportLoop} {exportMidi} {importMidi} /></div>
+      <div class="lowerpane"><LiveScope bins={liveBins} wave={liveWave} rate={liveRate} /><SongTools {song} {track} {group} commit={(next) => commit(next)} pick={(keys) => (group = keys)} {exportLoop} {exportMidi} {importMidi} /></div>
     {:else if lower === "arrange"}
       <div class="lowerpane"><ArrangePanel {song} {track} step={Math.floor(playhead)} commit={(next) => commit(next)} onselect={(i) => { track = i; selected = null; }} /></div>
     {:else if lower === "mixer"}

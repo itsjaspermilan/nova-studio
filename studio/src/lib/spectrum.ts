@@ -82,3 +82,19 @@ export function spectrum(samples: Float32Array, rate: number, bands = 48, lowHz 
 
 /// Where the loudest band is.
 export const loudestBand = (bands: Band[]): Band | null => bands.reduce<Band | null>((m, b) => (!m || b.db > m.db ? b : m), null);
+
+export const BARS = 48;
+
+/// The bars of a live analyser: for each of 48 slices of a log scale from 40 Hz to 16 kHz, the loudest bin (dB, as the Web Audio analyser gives them) in the slice; -Infinity for a slice with no bin.
+export function liveBars(data: Float32Array, sampleRate: number): number[] {
+  const hz = (b: number) => (b * sampleRate) / 2 / data.length;
+  const out: number[] = [];
+  const lo = Math.log(40), hi = Math.log(Math.min(16000, sampleRate / 2));
+  for (let i = 0; i < BARS; i++) {
+    const a = Math.exp(lo + ((hi - lo) * i) / BARS), b = Math.exp(lo + ((hi - lo) * (i + 1)) / BARS);
+    let peak = -Infinity;
+    for (let k = 0; k < data.length; k++) if (hz(k) >= a && hz(k) < b) peak = Math.max(peak, data[k]!);
+    out.push(peak);
+  }
+  return out;
+}

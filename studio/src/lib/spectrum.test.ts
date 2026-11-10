@@ -55,3 +55,19 @@ describe("the spectrum", () => {
     for (let i = 1; i < b.length; i++) expect(b[i]!.hz).toBeGreaterThan(b[i - 1]!.hz);
   });
 });
+
+import { BARS, liveBars } from "./spectrum";
+describe("the live analyser's bars", () => {
+  it("puts a tone in the bar of its pitch and leaves the rest empty", () => {
+    const rate = 48000, bins = 1024;
+    const data = new Float32Array(bins).fill(-120);
+    const bin = Math.round((1000 * bins * 2) / rate); // 1 kHz
+    data[bin] = -10;
+    const bars = liveBars(data, rate);
+    expect(bars.length).toBe(BARS);
+    const loud = bars.map((v, i) => (v > -50 ? i : -1)).filter((i) => i >= 0);
+    expect(loud.length).toBe(1);
+    // the bar for 1 kHz sits where a log scale from 40 Hz to 16 kHz puts it
+    expect(loud[0]).toBe(Math.floor((Math.log(1000 / 40) / Math.log(16000 / 40)) * BARS));
+  });
+});
