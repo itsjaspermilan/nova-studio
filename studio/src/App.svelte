@@ -103,6 +103,7 @@
       commands.register({ id: "file.close", title: "Close the project", menu: "File", icon: "folder", enabled: has, run: () => void studio.closeProject() }),
       commands.register({ id: "file.export", title: "Export the game", menu: "File", icon: "export", help: "Check the game and write it out for a computer or for Android", enabled: has, run: () => { studio.exportReport = null; studio.exportOpen = true; } }),
       commands.register({ id: "run.play", title: "Play or stop the game", menu: "Run", icon: "play", keys: ["Mod+Enter"], enabled: has, run: () => void (studio.running ? studio.stop() : studio.play()) }),
+      commands.register({ id: "device.look", title: "Look for devices", menu: "Device", help: "Ask adb which Android devices are connected (the Device row in Engine shows them)", enabled: has, run: () => void studio.findDevices() }),
       commands.register({ id: "run.playDevice", title: "Play on the device used last", menu: "Run", icon: "play", keys: ["Mod+Shift+Enter"], enabled: has, run: () => void (studio.running ? studio.stop() : studio.playOnPreferredDevice()) }),
       commands.register({ id: "settings.keys", title: "Keyboard shortcuts", menu: "Edit", icon: "keyboard", help: "Choose the keymap and change any shortcut", run: () => { keysOpen = true; } }),
       commands.register({ id: "settings.appearance", title: "Appearance", menu: "Edit", icon: "eye", help: "Theme, size of everything, reduced motion", run: () => { appearanceOpen = true; } }),

@@ -76,3 +76,24 @@ describe("menus of a workspace", () => {
     expect(resolveMenus(r, spec).map((m) => m.title)).toEqual(["File", "Mesh", "Sprite"]);
   });
 });
+
+import { MENU_LAYOUT } from "./menus";
+describe("the menu layout follows the wireframes", () => {
+  const ofWorkspace = (w: string) => MENU_LAYOUT.filter((m) => !m.for || m.for.includes(w));
+  it("each workspace has the menus the wireframe names, once each", () => {
+    expect(ofWorkspace("sprites").map((m) => m.title)).toEqual(expect.arrayContaining(["File", "Edit", "Image", "Layer", "Frame", "Select", "Window", "Help"]));
+    expect(ofWorkspace("sound").map((m) => m.title)).toEqual(expect.arrayContaining(["File", "Edit", "Track", "Clip", "Mixer", "Window", "Help"]));
+    expect(ofWorkspace("engine").map((m) => m.title)).toEqual(expect.arrayContaining(["File", "Edit", "View", "Project", "Run", "Device", "Window", "Help"]));
+    expect(ofWorkspace("model").map((m) => m.title)).toEqual(expect.arrayContaining(["File", "Edit", "Add", "Object", "Select", "Mesh", "Window", "Help"]));
+    for (const w of ["model", "sprites", "sound", "engine"]) {
+      const titles = ofWorkspace(w).map((m) => m.title);
+      expect(new Set(titles).size, w).toBe(titles.length);
+    }
+  });
+  it("no command is in two menus of one workspace", () => {
+    for (const w of ["model", "sprites", "sound", "engine"]) {
+      const ids = ofWorkspace(w).flatMap((m) => m.lines.flatMap((l) => (typeof l === "object" && "id" in l ? [l.id] : [])));
+      expect(ids.filter((id, i) => ids.indexOf(id) !== i), w).toEqual([]);
+    }
+  });
+});

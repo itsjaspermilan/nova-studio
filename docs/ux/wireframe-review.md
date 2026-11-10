@@ -42,11 +42,11 @@ File, Edit, Code, View, Run, Window, Help (wireframe: Project, Device). The scen
 - **Sprites:** the options bar now starts with a tool list, and has Size, Pixel-perfect, Symmetry (off, left–right, up–down, both, diagonal) and Tiled (off, across, down, both) as in the wireframe's header, with zoom and size at the right. Still a long bar (onion skin, grid, rulers) and no floating Preview.
 - **Sound:** the toolbar shows the tempo and meter (`♩ 120 · 4/4`), the loop region in bars, Snap (it was "New note"), and the master peak while playing. The wireframe's "Master −8 LUFS" is a measured figure in Tools, not live.
 - **Sound layout:** the song editor (every track as a lane of clips) is now a band above the piano roll that folds away from its header ("Arrange" is no longer a tab in the lower part; the Show the arrangement command folds it). Seen in the browser preview. It is not resizable, and in a short window it takes a lot of height.
+- **Menus:** each workspace now has the wireframe's menu names. Sprites: File, Edit, View, Tools, Image, Layer, Frame, Select, Run, Window, Help (Layer and Frame are new commands: new, duplicate, delete, move, merge; next and previous frame). Sound: Track, Clip, Mixer. Engine: Project (project settings, snapshots, languages, menus, Simulate, Store art), Code, Run, Device (play on the device used last, look for devices). Seen in the browser preview for Sprites (Layer menu) and Engine; Sound's and Model's menus only appear with a document open. A test (`lib/menus.test.ts`) checks the names and that no command is in two menus of a workspace. Extra to the wireframe: View, Tools and Code stay.
 - **Engine:** a device row (device list, connected state, Look again, Play on device), and right-hand **Inspector** and **Outline** panels for the open file: an entity shows its sprite, model, pivot and settings; a scene its objects by kind; a script its problems; the outline lists the Lua file's functions and a click goes to the line (`lib/lua-outline.ts`, 2 tests; seen in the browser preview on the starter's player entity). The wireframe's "Hot reload on" is not shown: the studio has no such switch. No minimap.
 
 Checked in the browser preview for Engine; the Sprites and Sound changes are type-checked and the component tests pass, not looked at.
 
 ## Next, in order
 
-1. Menus split to the wireframe's names (Image, Layer, Frame; Track, Clip, Mixer; Project, Device) once each has the commands for it.
-2. Sprites: a shorter header and the floating Preview.
+1. Sprites: a shorter header and the floating Preview.
