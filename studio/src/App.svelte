@@ -32,6 +32,7 @@
   import PlayButton from "./components/PlayButton.svelte";
   import CommandPalette from "./components/CommandPalette.svelte";
   import MenuBar from "./components/MenuBar.svelte";
+  import DeviceRow from "./components/DeviceRow.svelte";
   import Icon from "./components/Icon.svelte";
   import AppearanceDialog from "./components/AppearanceDialog.svelte";
   import { applyAppearance } from "./lib/appearance.svelte";
@@ -205,6 +206,7 @@
     {#if treeOpen}<FileTree />{/if}
 
     <main class="center">
+      {#if studio.workspace === "engine"}<DeviceRow />{/if}
       <div class="tabbar" role="tablist" bind:this={tabbar}>
         {#each studio.workspaceTabs as tab (tab.path)}
           <div class="tab" class:on={studio.active === tab.path} role="presentation" draggable="true" title="Drag out of the tab strip to open it in its own window"

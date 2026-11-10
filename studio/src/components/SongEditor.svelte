@@ -638,8 +638,11 @@
       <label class="check"><input type="checkbox" bind:checked={loop} onchange={() => playing && begin(0)} /> Loop</label>
       <label>Tempo <input type="number" class="narrow" min="40" max="240" value={song.bpm} onchange={(e) => commit(setTempo(song, Number(e.currentTarget.value)))} /> bpm <button class="ghost" onclick={tap} title="Tap the beat: the tempo follows your taps (at least two)">Tap</button></label>
       <label>Bars <input type="number" class="narrow" min="1" max="64" value={bars} onchange={(e) => setBars(Number(e.currentTarget.value))} /></label>
-      <label>New note <select bind:value={noteLen}>{#each [1, 2, 4, 8, 16] as n (n)}<option value={n}>{n} step{n > 1 ? "s" : ""}</option>{/each}</select></label>
+      <span class="dim" title="Beats in a bar (the tempo track and bar changes are in Tools)">♩ {song.bpm} · {song.beatsPerBar ?? 4}/4</span>
+      {#if song.loop}<span class="dim" title="The loop region the game loops (Export the loop writes just this)">Loop bars {Math.floor(song.loop.from / barSteps(song)) + 1}–{Math.ceil(song.loop.to / barSteps(song))}</span>{/if}
+      <label title="How long a new note is, and where notes snap to">Snap <select bind:value={noteLen}>{#each [1, 2, 4, 8, 16] as n (n)}<option value={n}>{n} step{n > 1 ? "s" : ""}</option>{/each}</select></label>
       <span class="dim">{secs} s · saves {oggPath}</span>
+      {#if playing && Number.isFinite(liveDb)}<span class="dim" title="The loudest sample just now, in dB below full scale">Master peak {liveDb.toFixed(0)} dB</span>{/if}
       <span class="spacer"></span>
       <button class="ghost" onclick={undo} disabled={!canUndo} aria-label="Undo">↶</button>
       <button class="ghost" onclick={redo} disabled={!canRedo} aria-label="Redo">↷</button>

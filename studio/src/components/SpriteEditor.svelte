@@ -1629,6 +1629,9 @@
 
     <section class="work">
       <div class="options">
+        <select class="toolselect" value={tool} onchange={(e) => (tool = e.currentTarget.value as Tool)} aria-label="Tool" title="The tool in use (the column on the left has them all)">
+          {#each TOOLS as t (t.id)}<option value={t.id}>{t.label.replace(/ \(.*/, "")}</option>{/each}
+        </select>
         <label>Size <input type="number" min="1" max="16" bind:value={size} class="narrow" /></label>
         {#if tool === "pencil" || tool === "eraser" || tool === "shade"}
           <label title="The shape of the brush">Brush <select bind:value={brushShape}>{#each BRUSH_SHAPES as b (b)}<option value={b}>{b}</option>{/each}</select></label>
@@ -1675,6 +1678,16 @@
           <label class="check"><input type="checkbox" bind:checked={filled} /> Filled</label>
         {/if}
         {#if tool === "pencil"}<label class="check" title="One-pixel lines without double corners"><input type="checkbox" bind:checked={perfect} /> Pixel-perfect</label>{/if}
+        <label title="Draw every stroke mirrored: across the middle, up and down, both, or along the diagonal">Symmetry
+          <select value={symD ? "diagonal" : symX && symY ? "both" : symX ? "horizontal" : symY ? "vertical" : "off"} onchange={(e) => { const v = e.currentTarget.value; symX = v === "horizontal" || v === "both"; symY = v === "vertical" || v === "both"; symD = v === "diagonal"; }} aria-label="Symmetry">
+            <option value="off">off</option><option value="horizontal">left–right</option><option value="vertical">up–down</option><option value="both">both</option><option value="diagonal">diagonal</option>
+          </select>
+        </label>
+        <label title="Draw as if the picture were tiled: strokes wrap round the edges">Tiled
+          <select value={tileX && tileY ? "both" : tileX ? "x" : tileY ? "y" : "off"} onchange={(e) => { const v = e.currentTarget.value; tileX = v === "x" || v === "both"; tileY = v === "y" || v === "both"; }} aria-label="Tiled">
+            <option value="off">off</option><option value="x">across</option><option value="y">down</option><option value="both">both</option>
+          </select>
+        </label>
         <label class="check"><input type="checkbox" bind:checked={onion} /> Onion skin</label>
         {#if onion}
           <label title="Frames before this one shown faintly">before <select bind:value={onionPast}>{#each [0, 1, 2, 3] as n (n)}<option value={n}>{n}</option>{/each}</select></label>
@@ -2064,6 +2077,7 @@
 {/if}
 
 <style>
+  .toolselect { font-weight: 600; }
   .scrub { position: relative; height: 10px; margin-bottom: 2px; background: color-mix(in srgb, var(--line) 60%, transparent); border-radius: 4px; cursor: ew-resize; touch-action: none; }
   .scrub i { position: absolute; top: 0; bottom: 0; width: 3px; margin-left: -1px; background: var(--accent); border-radius: 2px; pointer-events: none; }
   .studio { height: 100%; display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; min-height: 0; }

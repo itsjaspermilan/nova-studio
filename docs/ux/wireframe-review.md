@@ -37,6 +37,14 @@ an Outline on the right; Console, Problems and Profiler below. The app has one R
 Objects, Assets, Sounds, Saves, Activity). Gaps: no device header row (the Play button has the device choice), no right-hand Inspector or Outline, no minimap, menus are
 File, Edit, Code, View, Run, Window, Help (wireframe: Project, Device). The scene editor (4b) is a document tab in Engine as drawn.
 
+## Header rows added later the same day
+
+- **Sprites:** the options bar now starts with a tool list, and has Size, Pixel-perfect, Symmetry (off, left–right, up–down, both, diagonal) and Tiled (off, across, down, both) as in the wireframe's header, with zoom and size at the right. Still a long bar (onion skin, grid, rulers) and no floating Preview.
+- **Sound:** the toolbar shows the tempo and meter (`♩ 120 · 4/4`), the loop region in bars, Snap (it was "New note"), and the master peak while playing. The wireframe's "Master −8 LUFS" is a measured figure in Tools, not live.
+- **Engine:** a device row (device list, connected state, Look again, Play on device). The wireframe's "Hot reload on" is not shown: the studio has no such switch.
+
+Checked in the browser preview for Engine; the Sprites and Sound changes are type-checked and the component tests pass, not looked at.
+
 ## Next, in order
 
 1. The same header-row treatment for Sprites and Sound (one context header, the tools in an icon column).
