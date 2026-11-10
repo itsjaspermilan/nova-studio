@@ -38,6 +38,7 @@
   import CurveEditor from "./CurveEditor.svelte";
   import { edgeLoop, edgeRing, edgeSlide, fillHole, pointsOfEdges, selectSimilarFaces } from "../lib/mesh-select";
   import { textToMesh } from "../lib/text-mesh";
+  import { parsePath, sweepTube } from "../lib/tube";
   import { checkerRaster, equalizeDensity, uvReport, type ShapeReport } from "../lib/uv-report";
   import ProjectSwatches from "./ProjectSwatches.svelte";
   import { applyCurvature, applyLighting, applyOcclusion, bakeCurvature, bakeLighting, bakeOcclusion } from "../lib/model-bake";
@@ -1971,6 +1972,22 @@
     selVerts = [...new Set(faces.flatMap((f) => cube!.polys![f]!.v))];
     selectNote = `${faces.length} face${faces.length === 1 ? "" : "s"} like it, ${selVerts.length} points picked.`;
   }
+  let tubePath = $state("0,0,0; 10,0,0; 10,10,0");
+  let tubeRadius = $state(1);
+  let tubeOpen = $state(false);
+  /// A tube swept along the typed path (points as x,y,z separated by semicolons), in the selected part.
+  function addTube() {
+    const path = parsePath(tubePath);
+    const mesh = path ? sweepTube(path, tubeRadius, 8) : null;
+    if (!mesh) return void (selectNote = "A tube needs 2 to 16 points like \"0,0,0; 10,0,0\" that go somewhere.");
+    const target = selected?.parts ?? (doc.parts.length ? [0] : null);
+    if (!target) return;
+    const r = addCube(doc, target, mesh);
+    commit(r.doc, false, "Add tube");
+    selected = r.path;
+    also = [];
+    tubeOpen = false;
+  }
   let textShape = $state("");
   /// A mesh shape that reads the typed words, in blocks of the pixel font, in the selected part.
   function addTextShape() {
@@ -2510,6 +2527,14 @@
           </select>
           <button onclick={newCube} title="New shape in the selected part">＋ Add</button>
           <input class="cname" bind:value={textShape} placeholder="words" aria-label="Text for a lettered shape" maxlength="40" onkeydown={(e) => { if (e.key === "Enter") addTextShape(); }} />
+          <button onclick={() => (tubeOpen = !tubeOpen)} aria-expanded={tubeOpen} title="A tube swept along a path of points">＋ Tube</button>
+          {#if tubeOpen}
+            <span class="row wrap small">
+              <input class="cname" bind:value={tubePath} aria-label="Tube path" title="Points as x,y,z separated by semicolons (2 to 16)" />
+              <label class="inline">radius <input type="number" min="0.1" step="0.25" bind:value={tubeRadius} class="narrow" aria-label="Tube radius" /></label>
+              <button onclick={addTube}>Make it</button>
+            </span>
+          {/if}
           <button onclick={addTextShape} disabled={!textShape.trim()} title="A shape made of the letters in blocks (one unit a pixel, two deep): for signs and titles">＋ Text</button>
         </div>
       </div>
