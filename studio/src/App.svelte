@@ -48,6 +48,8 @@
   import { resizable } from "./lib/resize";
   import { layout, sizeKey } from "./lib/layout.svelte";
   import { droppedOutside } from "./lib/tab-drag";
+  import { hintFor } from "./lib/hints";
+  let hint = $state("");
   let lastLayout: string | null = null;
   let tabbar: HTMLDivElement | undefined = $state();
   import { isDirty, studio } from "./lib/store.svelte";
@@ -235,6 +237,9 @@
   </div>
 {/if}
 
+<svelte:window onpointerover={(e) => { hint = hintFor(e.target as unknown as Parameters<typeof hintFor>[0]); }} onpointerleave={() => (hint = "")} />
+{#if hint}<div class="hintbar" role="status" aria-live="off">{hint}</div>{/if}
+
 <Help />
 <CommandPalette bind:open={paletteOpen} />
 {#if studio.snapshotsOpen && studio.project}<SnapshotsDialog onclose={() => (studio.snapshotsOpen = false)} />{/if}
@@ -278,6 +283,7 @@
 {/if}
 
 <style>
+  .hintbar { position: fixed; left: 8px; bottom: 6px; max-width: min(70vw, 760px); z-index: 50; padding: 3px 10px; font-size: 12px; color: var(--text); background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line); border-radius: 6px; pointer-events: none; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3); }
   .tool { position: fixed; inset: 0; z-index: 40; background: var(--bg); }
   .boot { height: 100%; display: grid; place-items: center; }
   .shell { height: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: "top top" "tree center" "bottom bottom"; }
