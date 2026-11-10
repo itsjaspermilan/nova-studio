@@ -44,6 +44,8 @@ export function songToMidi(song: Song): Uint8Array {
     { tick: 0, order: 0, bytes: [0xff, 0x58, 0x04, song.beatsPerBar ?? 4, 2, 24, 8] },
     { tick: 0, order: 0, bytes: [0xff, 0x03, ...vlq(5), ...text("Tempo")] },
   ];
+  for (const tc of song.tempos ?? []) tempo.push({ tick: Math.round(tc.step * tps), order: 0, bytes: [0xff, 0x51, 0x03, ...u32(Math.round(60_000_000 / tc.bpm)).slice(1)] });
+  for (const mc of song.meters ?? []) tempo.push({ tick: Math.round(mc.step * tps), order: 0, bytes: [0xff, 0x58, 0x04, mc.beats, 2, 24, 8] });
   for (const m of song.markers ?? []) tempo.push({ tick: Math.round(m.step * tps), order: 1, bytes: [0xff, 0x06, ...vlq(text(m.name).length), ...text(m.name)] });
   const tracks: number[][] = [trackBytes(tempo)];
   let melodic = 0;
@@ -122,6 +124,7 @@ export function midiToSong(bytes: Uint8Array, stepsPerBeat = 4): MidiImport {
   let bpmSeen = false;
   let beatsPerBar = 4;
   const markers: { step: number; name: string }[] = [];
+  const tempoChanges: { step: number; bpm: number }[] = [];
   const found: { name: string; drums: boolean; notes: Note[]; channel: number }[] = [];
   let rounded = 0;
   let endTick = 0;
@@ -142,10 +145,11 @@ export function midiToSong(bytes: Uint8Array, stepsPerBeat = 4): MidiImport {
         const n = r.vlq();
         if (type === 0x51 && n === 3) {
           const us = (r.u8() << 16) | (r.u8() << 8) | r.u8();
+          const here = Math.round(60_000_000 / us);
           if (!bpmSeen) {
-            bpm = Math.round(60_000_000 / us);
+            bpm = here;
             bpmSeen = true;
-          }
+          } else if (tick > 0) tempoChanges.push({ step: Math.round(tick / tps), bpm: here });
         } else if (type === 0x58 && n >= 2) {
           const num = r.u8();
           r.at += n - 1;
@@ -232,6 +236,14 @@ export function midiToSong(bytes: Uint8Array, stepsPerBeat = 4): MidiImport {
   if (rounded) warnings.push(`${rounded} note${rounded === 1 ? " was" : "s were"} moved to the song's grid of ${stepsPerBeat} steps a beat.`);
   const song: Song = { version: 1, bpm, stepsPerBeat, length, tracks };
   if (beatsPerBar !== 4) song.beatsPerBar = Math.min(16, Math.max(1, beatsPerBar));
+  // tempo changes inside the song, on the grid, inside the allowed range, one a step
+  const seenStep = new Set<number>([0]);
+  const tempos = tempoChanges
+    .filter((t) => t.step > 0 && t.step < length && t.bpm >= MIN_BPM && t.bpm <= MAX_BPM && !seenStep.has(t.step) && seenStep.add(t.step))
+    .sort((a, b) => a.step - b.step)
+    .slice(0, 64);
+  if (tempos.length) song.tempos = tempos;
+  if (tempoChanges.length > tempos.length) warnings.push(`${tempoChanges.length - tempos.length} tempo changes were left out (outside the song, outside ${MIN_BPM} to ${MAX_BPM}, or more than 64).`);
   const ms = markers.filter((m) => m.step >= 0 && m.step <= length).sort((a, b) => a.step - b.step).slice(0, 64);
   if (ms.length) song.markers = ms;
   return { song, warnings };

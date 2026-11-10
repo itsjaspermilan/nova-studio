@@ -2,7 +2,7 @@
 // takes a song and gives a new one; notes are named by `noteKey` (where they start and their pitch), like the rest of lib/song-edit.ts.
 
 import { mulberry32 } from "./sfx";
-import { MAX_NOTES, type Lane, type Marker, type Note, type Song, type Track } from "./song";
+import { MAX_METERS, MAX_NOTES, MAX_TEMPOS, MAX_BPM, MIN_BPM, bpmAt, type Lane, type Marker, type Note, type Song, type TempoChange, type Track } from "./song";
 import { noteKey } from "./song-edit";
 import { applyAutomation, laneValue } from "./song-lanes";
 
@@ -208,6 +208,47 @@ export function setBeatsPerBar(song: Song, beats: number): Song {
   return next;
 }
 
+/// Sets the tempo from a step on (step 0 is the song's own tempo; `null` takes a change away). A change that equals the tempo before it is not kept.
+export function setTempoAt(song: Song, step: number, bpm: number | null): Song {
+  const at = Math.round(step);
+  if (at < 0 || at >= song.length) return song;
+  if (at === 0) return bpm === null ? song : { ...song, bpm: clamp(Math.round(bpm), MIN_BPM, MAX_BPM) };
+  const rest = (song.tempos ?? []).filter((t) => t.step !== at);
+  if (bpm !== null) {
+    if (rest.length >= MAX_TEMPOS) return song;
+    rest.push({ step: at, bpm: clamp(Math.round(bpm), MIN_BPM, MAX_BPM) });
+  }
+  rest.sort((a, b) => a.step - b.step);
+  // drop changes that repeat the tempo before them
+  const out: TempoChange[] = [];
+  let before = song.bpm;
+  for (const t of rest) {
+    if (t.bpm === before) continue;
+    out.push(t);
+    before = t.bpm;
+  }
+  const next = { ...song };
+  if (out.length) next.tempos = out;
+  else delete next.tempos;
+  return next;
+}
+
+/// Sets the beats in a bar from a step on (a new bar starts there); `null` takes the change away.
+export function setMeterAt(song: Song, step: number, beats: number | null): Song {
+  const at = Math.round(step);
+  if (at <= 0 || at >= song.length) return song;
+  const rest = (song.meters ?? []).filter((m) => m.step !== at);
+  if (beats !== null) {
+    if (rest.length >= MAX_METERS) return song;
+    rest.push({ step: at, beats: clamp(Math.round(beats), 1, 16) });
+  }
+  rest.sort((a, b) => a.step - b.step);
+  const next = { ...song };
+  if (rest.length) next.meters = rest;
+  else delete next.meters;
+  return next;
+}
+
 /// Just the steps from `from` to `to` as a song of its own, for exporting a loop: notes that start inside are kept (clipped at the end), and notes that
 /// started earlier but are still sounding at `from` come in cut at the start. Markers inside come along; the loop region is dropped.
 export function regionOf(song: Song, from: number, to: number): Song {
@@ -226,6 +267,16 @@ export function regionOf(song: Song, from: number, to: number): Song {
   });
   const out: Song = { ...song, length: b - a, tracks };
   delete out.loop;
+  // the tempo track and the time signatures come along, shifted; the song starts at the tempo in force at `a`
+  out.bpm = bpmAt(song, a);
+  const tempos = (song.tempos ?? []).filter((t) => t.step > a && t.step < b).map((t) => ({ ...t, step: t.step - a }));
+  if (tempos.length) out.tempos = tempos;
+  else delete out.tempos;
+  const meterNow = [...(song.meters ?? [])].reverse().find((m) => m.step <= a);
+  if (meterNow && a > 0) out.beatsPerBar = meterNow.beats;
+  const meters = (song.meters ?? []).filter((m) => m.step > a && m.step < b).map((m) => ({ ...m, step: m.step - a }));
+  if (meters.length) out.meters = meters;
+  else delete out.meters;
   const markers = (song.markers ?? []).filter((m) => m.step >= a && m.step < b).map((m) => ({ ...m, step: m.step - a }));
   if (markers.length) out.markers = markers;
   else delete out.markers;

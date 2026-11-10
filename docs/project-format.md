@@ -1040,6 +1040,9 @@ track names the bus it plays into with `"bus": "name"` (none: straight to the ma
 `"sends": [{ "bus": "name", "level": 0.4 }]` (after its own volume, pan and effects). A name that is not a bus is an error. Buses do not feed each other.
 A note may carry `"pan"` (-1 to 1, added to its track's pan) and `"bend"` (a glide of -12 to 12 semitones over the note; not for drums or the plucked string).
 
+**Tempo track and meters.** `"tempos": [{ "step": 16, "bpm": 90 }]` changes the tempo from a step on (`bpm` holds until the first change; steps rise and lie inside the song; up to 64).
+`"meters": [{ "step": 16, "beats": 3 }]` changes the beats in a bar from a step on (a new bar starts there; it moves the bar lines only; up to 32).
+
 Saws and squares are band-limited (no hiss from folded harmonics) in a fuller voice. The reverb is a Freeverb-style room that is run
 twice over the song, so its tail wraps round and the loop has no seam. The music editor has sliders for all of it. Not done: samples as
 instruments, per-note filter automation, a compressor or EQ on the mix (a fuller song gets only a gentle soft clip).

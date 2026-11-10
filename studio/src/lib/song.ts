@@ -117,6 +117,16 @@ export interface Lane {
   points: { step: number; value: number }[];
 }
 
+export interface TempoChange {
+  step: number;
+  bpm: number;
+}
+
+export interface MeterChange {
+  step: number;
+  beats: number;
+}
+
 /// A named place in the song (a verse, a drop); the loop region is where the game's loop runs.
 export interface Marker {
   step: number;
@@ -144,6 +154,10 @@ export interface Song {
   beatsPerBar?: number;
   markers?: Marker[];
   buses?: Bus[];
+  /// The tempo track: from each step on the song plays at that tempo (`bpm` holds until the first). Steps are 1 or more, rising, inside the song.
+  tempos?: TempoChange[];
+  /// Time signature changes: from each step a bar is that many beats (`beatsPerBar` holds until the first); a new bar starts at the step. Drawing only.
+  meters?: MeterChange[];
   /// The part of the song that loops in the game: exporting "the loop" renders just these steps (from, up to but not including to).
   loop?: { from: number; to: number };
 }
@@ -153,6 +167,8 @@ export const MAX_BPM = 240;
 export const MAX_STEPS = 1024;
 export const MAX_TRACKS = 16;
 export const MAX_BUSES = 8;
+export const MAX_TEMPOS = 64;
+export const MAX_METERS = 32;
 export const MAX_SENDS = 4;
 export const MAX_MASTER = 1.5;
 export const MAX_NOTES = 4000;
@@ -182,7 +198,70 @@ export function newSong(): Song {
 }
 
 export const stepSeconds = (s: Song) => 60 / s.bpm / s.stepsPerBeat;
-export const songSeconds = (s: Song) => s.length * stepSeconds(s);
+/// The tempo in force at a step.
+export function bpmAt(song: Song, step: number): number {
+  let bpm = song.bpm;
+  for (const t of song.tempos ?? []) {
+    if (t.step > step) break;
+    bpm = t.bpm;
+  }
+  return bpm;
+}
+
+/// Seconds from the start of the song to a step (it may be fractional), following the tempo track.
+export function stepTime(song: Song, step: number): number {
+  if (!song.tempos?.length) return step * stepSeconds(song);
+  let sec = 0;
+  let at = 0;
+  let bpm = song.bpm;
+  for (const t of song.tempos) {
+    if (t.step >= step) break;
+    sec += ((t.step - at) * 60) / bpm / song.stepsPerBeat;
+    at = t.step;
+    bpm = t.bpm;
+  }
+  return sec + ((step - at) * 60) / bpm / song.stepsPerBeat;
+}
+
+/// The step that plays at a time in seconds (the inverse of `stepTime`).
+export function stepAtTime(song: Song, seconds: number): number {
+  if (!song.tempos?.length) return seconds / stepSeconds(song);
+  let at = 0;
+  let bpm = song.bpm;
+  let start = 0;
+  for (const t of song.tempos) {
+    const end = start + ((t.step - at) * 60) / bpm / song.stepsPerBeat;
+    if (seconds < end) break;
+    start = end;
+    at = t.step;
+    bpm = t.bpm;
+  }
+  return at + ((seconds - start) * bpm * song.stepsPerBeat) / 60;
+}
+
+export const songSeconds = (s: Song) => stepTime(s, s.length);
+
+/// The steps where a bar starts (0 first), following the time signature changes; the last bar may be cut by the end of the song.
+export function barStarts(song: Song): number[] {
+  const out: number[] = [];
+  const changes = [...(song.meters ?? [])];
+  let beats = song.beatsPerBar ?? 4;
+  let step = 0;
+  while (step < song.length) {
+    out.push(step);
+    const next = step + beats * song.stepsPerBeat;
+    const change = changes.find((c) => c.step > step && c.step < next);
+    if (change) {
+      step = change.step;
+      beats = change.beats;
+    } else {
+      step = next;
+      const here = changes.find((c) => c.step === step);
+      if (here) beats = here.beats;
+    }
+  }
+  return out;
+}
 export const barSteps = (s: Song) => s.stepsPerBeat * (s.beatsPerBar ?? 4);
 export const midiFreq = (pitch: number) => 440 * 2 ** ((pitch - 69) / 12);
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
@@ -311,6 +390,26 @@ export function parseSong(text: string): Parsed {
     if (t.bus !== undefined && !known(t.bus)) return { ok: false, error: `tracks[${i}].bus "${t.bus}" is not one of the song's buses` };
     for (const s of t.sends ?? []) if (!known(s.bus)) return { ok: false, error: `tracks[${i}].sends: "${s.bus}" is not one of the song's buses` };
   }
+  let tempos: TempoChange[] | undefined;
+  if (o.tempos !== undefined) {
+    if (!Array.isArray(o.tempos) || o.tempos.length > MAX_TEMPOS) return { ok: false, error: `"tempos" is a list of up to ${MAX_TEMPOS} { "step", "bpm" }` };
+    let last = 0;
+    for (const [i, tc] of (o.tempos as TempoChange[]).entries()) {
+      if (!tc || !Number.isInteger(tc.step) || tc.step <= last || tc.step >= o.length! || !num(tc.bpm, MIN_BPM, MAX_BPM)) return { ok: false, error: `tempos[${i}] needs a whole "step" after the one before it (and inside the song) and a "bpm" from ${MIN_BPM} to ${MAX_BPM}` };
+      last = tc.step;
+    }
+    tempos = (o.tempos as TempoChange[]).map((tc) => ({ step: tc.step, bpm: tc.bpm }));
+  }
+  let meters: MeterChange[] | undefined;
+  if (o.meters !== undefined) {
+    if (!Array.isArray(o.meters) || o.meters.length > MAX_METERS) return { ok: false, error: `"meters" is a list of up to ${MAX_METERS} { "step", "beats" }` };
+    let last = 0;
+    for (const [i, mc] of (o.meters as MeterChange[]).entries()) {
+      if (!mc || !Number.isInteger(mc.step) || mc.step <= last || mc.step >= o.length! || !Number.isInteger(mc.beats) || !num(mc.beats, 1, 16)) return { ok: false, error: `meters[${i}] needs a whole "step" after the one before it (and inside the song) and "beats" 1 to 16` };
+      last = mc.step;
+    }
+    meters = (o.meters as MeterChange[]).map((mc) => ({ step: mc.step, beats: mc.beats }));
+  }
   if (o.beatsPerBar !== undefined && (!Number.isInteger(o.beatsPerBar) || !num(o.beatsPerBar, 1, 16))) return { ok: false, error: '"beatsPerBar" must be a whole number from 1 to 16' };
   let markers: Marker[] | undefined;
   if (o.markers !== undefined) {
@@ -326,7 +425,7 @@ export function parseSong(text: string): Parsed {
     if (!l || !Number.isInteger(l.from) || !Number.isInteger(l.to) || (l.from as number) < 0 || (l.to as number) > o.length! || (l.from as number) >= (l.to as number)) return { ok: false, error: '"loop" is { "from", "to" } in steps, from before to and inside the song' };
     loop = { from: l.from as number, to: l.to as number };
   }
-  return { ok: true, song: { version: 1, bpm: o.bpm!, stepsPerBeat: o.stepsPerBeat!, length: o.length!, tracks, ...(room ? { room } : {}), ...(master ? { master } : {}), ...(o.beatsPerBar !== undefined && o.beatsPerBar !== 4 ? { beatsPerBar: o.beatsPerBar } : {}), ...(markers?.length ? { markers } : {}), ...(buses?.length ? { buses } : {}), ...(loop ? { loop } : {}) } };
+  return { ok: true, song: { version: 1, bpm: o.bpm!, stepsPerBeat: o.stepsPerBeat!, length: o.length!, tracks, ...(room ? { room } : {}), ...(master ? { master } : {}), ...(o.beatsPerBar !== undefined && o.beatsPerBar !== 4 ? { beatsPerBar: o.beatsPerBar } : {}), ...(markers?.length ? { markers } : {}), ...(buses?.length ? { buses } : {}), ...(tempos?.length ? { tempos } : {}), ...(meters?.length ? { meters } : {}), ...(loop ? { loop } : {}) } };
 }
 
 export function serializeSong(song: Song): string {
@@ -353,8 +452,10 @@ export function serializeSong(song: Song): string {
   const bar = song.beatsPerBar && song.beatsPerBar !== 4 ? `,\n  "beatsPerBar": ${song.beatsPerBar}` : "";
   const markers = song.markers?.length ? `,\n  "markers": ${JSON.stringify(song.markers)}` : "";
   const buses = song.buses?.length ? `,\n  "buses": [\n${song.buses.map((b) => `    ${JSON.stringify(b)}`).join(",\n")}\n  ]` : "";
+  const tempos = song.tempos?.length ? `,\n  "tempos": ${JSON.stringify(song.tempos)}` : "";
+  const meters = song.meters?.length ? `,\n  "meters": ${JSON.stringify(song.meters)}` : "";
   const loop = song.loop ? `,\n  "loop": { "from": ${song.loop.from}, "to": ${song.loop.to} }` : "";
-  return `{\n  "version": 1,\n  "bpm": ${song.bpm},\n  "stepsPerBeat": ${song.stepsPerBeat},\n  "length": ${song.length},\n  "tracks": [\n${song.tracks.map(track).join(",\n")}\n  ]${room}${master}${bar}${markers}${buses}${loop}\n}\n`;
+  return `{\n  "version": 1,\n  "bpm": ${song.bpm},\n  "stepsPerBeat": ${song.stepsPerBeat},\n  "length": ${song.length},\n  "tracks": [\n${song.tracks.map(track).join(",\n")}\n  ]${room}${master}${bar}${markers}${buses}${tempos}${meters}${loop}\n}\n`;
 }
 
 // ---- editing (every edit returns a new song) ----------------------------------------------------------
@@ -768,10 +869,9 @@ function reverb(sendL: Float32Array, sendR: Float32Array, room: Room, rate: numb
 /// One note of a fuller voice: `unison` detuned oscillators spread across the stereo field, a sub, vibrato, and a low-pass
 /// filter that the envelope opens. `out` takes the finished left and right values for sample `index`.
 function richNote(
-  track: Track, n: Note, seed: number, startIndex: number, stepSec: number, rate: number, volume: number, pan: number,
+  track: Track, n: Note, seed: number, startIndex: number, hold: number, rate: number, volume: number, pan: number,
   out: (index: number, l: number, r: number) => void,
 ): void {
-  const hold = n.len * stepSec;
   const length = Math.round((hold + track.release) * rate);
   const rng = mulberry32(seed);
   const voices = clamp(Math.round(track.unison ?? 1), 1, 7);
@@ -876,7 +976,9 @@ export function setMaster(song: Song, volume: number): Song {
 export function renderSong(source: Song, rate = RATE): Sound {
   const song = applyAutomation(source);
   const stepSec = stepSeconds(song);
-  const total = Math.round(song.length * stepSec * rate);
+  const total = Math.round(songSeconds(song) * rate);
+  // seconds a note holds, following the tempo track (a song without one keeps the single step length)
+  const holdOf = (n: Note) => (song.tempos?.length ? stepTime(song, n.step + n.len) - stepTime(song, n.step) : n.len * stepSec);
   const left = new Float32Array(total);
   const right = new Float32Array(total);
   const hitCache = new Map<number, Float32Array>();
@@ -936,7 +1038,7 @@ export function renderSong(source: Song, rate = RATE): Sound {
       }
     };
     for (const [ni, n] of track.notes.entries()) {
-      const startIndex = Math.round(n.step * stepSec * rate);
+      const startIndex = Math.round((song.tempos?.length ? stepTime(song, n.step) : n.step * stepSec) * rate);
       const notePan = clamp(pan + (n.pan ?? 0), -1, 1);
       const nl = n.pan ? Math.cos(((notePan + 1) * Math.PI) / 4) * track.volume : gl;
       const nr = n.pan ? Math.sin(((notePan + 1) * Math.PI) / 4) * track.volume : gr;
@@ -949,10 +1051,10 @@ export function renderSong(source: Song, rate = RATE): Sound {
         continue;
       }
       if (isRich(track)) {
-        richNote(track, n, ti * 1000 + ni + 1, startIndex, stepSec, rate, track.volume, notePan, mixStereo);
+        richNote(track, n, ti * 1000 + ni + 1, startIndex, holdOf(n), rate, track.volume, notePan, mixStereo);
         continue;
       }
-      const hold = n.len * stepSec;
+      const hold = holdOf(n);
       const length = Math.round((hold + track.release) * rate);
       const osc = isInstrument(track.wave) ? instrumentOscillator(track, mulberry32(ti * 1000 + ni + 1)) : oscillator(track.wave, track.duty, mulberry32(ti * 1000 + ni + 1));
       const freq = midiFreq(n.pitch);

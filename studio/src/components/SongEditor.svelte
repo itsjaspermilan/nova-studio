@@ -2,7 +2,7 @@
   import { resizable } from "../lib/resize";
   import { onMount, untrack } from "svelte";
   import {
-    DRUMS, INSTRUMENT_PRESETS, WAVES, isInstrument, addNote, addTrack, barSteps, changeNote, isBlack, newSong, noteAt, noteName, parseSong, removeNote, removeTrack, renderSong, serializeSong, setLength,
+    DRUMS, INSTRUMENT_PRESETS, WAVES, isInstrument, addNote, addTrack, barSteps, barStarts, stepAtTime, changeNote, isBlack, newSong, noteAt, noteName, parseSong, removeNote, removeTrack, renderSong, serializeSong, setLength,
     setTempo, songSeconds, stepSeconds, transpose, updateTrack, synthTrack, type Song, type Wave,
   } from "../lib/song";
   import { encodeWav, toBase64, frames, type Sound } from "../lib/wav";
@@ -128,7 +128,7 @@
       const seconds = songSeconds(song);
       let t = audio.currentTime - startedAt;
       t = loop ? t % seconds : Math.min(t, seconds);
-      playhead = t / stepSeconds(song);
+      playhead = stepAtTime(song, t);
       if (analyser && analyserData) {
         analyser.getFloatTimeDomainData(analyserData);
         let peak = 0;
@@ -207,9 +207,9 @@
         ctx.fillText(labelOf(pitch), 6, y + ROW_H / 2);
       }
     });
-    const bar = barSteps(song);
+    const bars = new Set([...barStarts(song), song.length]);
     for (let s = 0; s <= song.length; s++) {
-      ctx.strokeStyle = s % bar === 0 ? "#4a5163" : s % song.stepsPerBeat === 0 ? "#333948" : "#262a34";
+      ctx.strokeStyle = bars.has(s) ? "#4a5163" : s % song.stepsPerBeat === 0 ? "#333948" : "#262a34";
       ctx.beginPath();
       ctx.moveTo(KEYS_W + s * STEP_W + 0.5, 0);
       ctx.lineTo(KEYS_W + s * STEP_W + 0.5, h);

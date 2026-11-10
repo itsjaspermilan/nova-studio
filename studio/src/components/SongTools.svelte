@@ -2,8 +2,8 @@
   // The song's tools beyond the piano roll: edits of the picked notes (strum, glue, humanise, snap to a scale, chords, a finer grid), the bar length,
   // markers and the loop region, a gain lane per track (automation), the loudness target and the peak ceiling, and MIDI in and out.
   import { quantizeTrack, noteKey } from "../lib/song-edit";
-  import { CHORDS, SCALES, addChord, addMarker, glueNotes, humanizeTiming, humanizeVelocity, lfoLane, laneValue, removeMarker, setBeatsPerBar, setLane, setLoop, setNoteProps, snapToScale, strumNotes } from "../lib/song-tools";
-  import { NOTE_NAMES, barSteps, songSeconds, stepSeconds, type Song } from "../lib/song";
+  import { CHORDS, SCALES, addChord, addMarker, glueNotes, humanizeTiming, humanizeVelocity, lfoLane, laneValue, removeMarker, setBeatsPerBar, setLane, setLoop, setMeterAt, setTempoAt, setNoteProps, snapToScale, strumNotes } from "../lib/song-tools";
+  import { NOTE_NAMES, barSteps, bpmAt, songSeconds, stepSeconds, type Song } from "../lib/song";
   import { integratedLufs, peakDb } from "../lib/loudness";
   import { renderSong } from "../lib/song";
   import { FX_SPECS, FX_TYPES, MAX_FX, addFx, moveFx, param, removeFx, setFxParam, toggleFx, type FxType } from "../lib/fx";
@@ -56,6 +56,9 @@
 
   // ---- markers and the loop ----------------------------------------------------------------------------
   let markerStep = $state(0);
+  let changeStep = $state(16);
+  let changeBpm = $state(90);
+  let changeBeats = $state(3);
   let markerName = $state("");
   let loopFrom = $state(0);
   let loopTo = $state(16);
@@ -148,6 +151,22 @@
       <label>Beats in a bar <input type="number" min="1" max="16" value={song.beatsPerBar ?? 4} class="narrow" onchange={(e) => commit(setBeatsPerBar(song, Number(e.currentTarget.value)))} /></label>
       <span class="dim small">{(songSeconds(song)).toFixed(1)} s, {(stepSeconds(song) * 1000).toFixed(0)} ms a step</span>
     </div>
+    <div class="row" title="The tempo can change part-way: from this step on the song plays at the new tempo">
+      <label>Tempo from step <input type="number" min="1" max={song.length - 1} bind:value={changeStep} class="narrow" aria-label="Tempo change step" /></label>
+      <label><input type="number" min="40" max="240" bind:value={changeBpm} class="narrow" aria-label="Tempo change bpm" /> bpm</label>
+      <button onclick={() => commit(setTempoAt(song, changeStep, changeBpm))}>Change tempo</button>
+    </div>
+    {#each song.tempos ?? [] as tc (tc.step)}
+      <div class="row small"><span>From step {tc.step} (bar {Math.floor(tc.step / bar) + 1}): <strong>{tc.bpm} bpm</strong> (was {bpmAt(song, tc.step - 1)})</span><button class="ghost" aria-label="Remove the tempo change at step {tc.step}" onclick={() => commit(setTempoAt(song, tc.step, null))}>✕</button></div>
+    {/each}
+    <div class="row" title="A different number of beats in a bar from this step on; a new bar starts there">
+      <label>Bar length from step <input type="number" min="1" max={song.length - 1} bind:value={changeStep} class="narrow" aria-label="Bar change step" /></label>
+      <label><input type="number" min="1" max="16" bind:value={changeBeats} class="narrow" aria-label="Beats in the bar" /> beats</label>
+      <button onclick={() => commit(setMeterAt(song, changeStep, changeBeats))}>Change bar length</button>
+    </div>
+    {#each song.meters ?? [] as mc (mc.step)}
+      <div class="row small"><span>From step {mc.step}: <strong>{mc.beats} beats</strong> in a bar</span><button class="ghost" aria-label="Remove the bar change at step {mc.step}" onclick={() => commit(setMeterAt(song, mc.step, null))}>✕</button></div>
+    {/each}
     <form class="row" onsubmit={(e) => { e.preventDefault(); commit(addMarker(song, markerStep, markerName)); markerName = ""; }}>
       <label>Marker at step <input type="number" min="0" max={song.length} bind:value={markerStep} class="narrow" /></label>
       <input bind:value={markerName} placeholder="name, e.g. verse" aria-label="Marker name" />
