@@ -2999,11 +2999,17 @@
       {/if}
       <div class="viewrow">
         <div class="shelf" role="toolbar" aria-label="Tools for this mode">
-          {#if mode === "model" && selected && !inEdit}
-            <button class="tool" class:on={gizmoMode === "translate"} aria-label="Move (W)" title="Move (W)" onclick={() => (gizmoMode = "translate")} ><Icon name="move" size={18} /></button>
-            <button class="tool" class:on={gizmoMode === "rotate"} aria-label="Turn (E)" title="Turn (E)" onclick={() => (gizmoMode = "rotate")} ><Icon name="rotate" size={18} /></button>
-            <button class="tool" class:on={gizmoMode === "pivot"} disabled={selected.cube !== undefined} aria-label="Pivot (P)" onclick={() => (gizmoMode = "pivot")} title={selected.cube !== undefined ? "Select a part to move its pivot" : "Move the point this part turns about, leaving its shapes where they are (P)"}><Icon name="pivot" size={18} /></button>
-            <button class="tool" class:on={gizmoMode === "scale"} disabled={selected.cube === undefined} aria-label="Resize (R)" onclick={() => (gizmoMode = "scale")} title={selected.cube === undefined ? "Parts are resized in animations" : "Resize (R)"}><Icon name="scale" size={18} /></button>
+          {#if mode === "model" && !inEdit}
+            <button class="tool" class:on={gizmoMode === "translate"} disabled={!selected} aria-label="Move (W)" title="Move (W): select a shape first" onclick={() => (gizmoMode = "translate")}><Icon name="move" size={18} /></button>
+            <button class="tool" class:on={gizmoMode === "rotate"} disabled={!selected} aria-label="Turn (E)" title="Turn (E): select a shape first" onclick={() => (gizmoMode = "rotate")}><Icon name="rotate" size={18} /></button>
+            <button class="tool" class:on={gizmoMode === "scale"} disabled={!selected || selected.cube === undefined} aria-label="Resize (R)" onclick={() => (gizmoMode = "scale")} title={!selected ? "Resize (R): select a shape first" : selected.cube === undefined ? "Parts are resized in animations" : "Resize (R)"}><Icon name="scale" size={18} /></button>
+            <button class="tool" class:on={gizmoMode === "pivot"} disabled={!selected || selected.cube !== undefined} aria-label="Pivot (P)" onclick={() => (gizmoMode = "pivot")} title={!selected ? "Pivot (P): select a part first" : selected.cube !== undefined ? "Select a part to move its pivot" : "Move the point this part turns about, leaving its shapes where they are (P)"}><Icon name="pivot" size={18} /></button>
+            <hr />
+            <button class="tool" aria-label="Add a shape" title="Add a shape (the kind in the outliner) to the selected part" onclick={newCube}><Icon name="addShape" size={18} /></button>
+            <button class="tool" disabled={!selected} aria-label="Duplicate" title="Duplicate the selected shape or part" onclick={duplicate}><Icon name="copy" size={18} /></button>
+            <button class="tool" disabled={!selected} aria-label="Delete" title="Delete the selected shape or part" onclick={remove}><Icon name="trash" size={18} /></button>
+            <hr />
+            <button class="tool" disabled={!selected || selected.cube === undefined} aria-label="Edit points (Tab)" title={selected && selected.cube !== undefined ? "Edit the shape's points, edges and faces (Tab)" : "Edit points: select a shape first"} onclick={() => setUiMode("edit")}><Icon name="editPoints" size={18} /></button>
           {/if}
           {#if inEdit}
             <button class="tool" class:on={boxArmed} aria-label="Box select: drag a rectangle over the points (B)" title="Box select: drag a rectangle over the points (B)" onclick={() => (boxArmed = !boxArmed)} ><Icon name="boxSelect" size={18} /></button>
