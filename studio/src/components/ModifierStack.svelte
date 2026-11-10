@@ -1,6 +1,6 @@
 <script lang="ts">
   // The list of modifiers on a mesh: add, show/hide, reorder, remove, apply and edit each one's settings.
-  import { MAX_MODIFIERS, MODIFIER_LABELS, MODIFIER_TYPES, MOD_AXES, newModifier, type ModAxis, type Modifier, type ModifierType } from "../lib/modifiers";
+  import { DEFORMS, MAX_MODIFIERS, MODIFIER_LABELS, MODIFIER_TYPES, MOD_AXES, newModifier, type DeformKind, type ModAxis, type Modifier, type ModifierType } from "../lib/modifiers";
 
   let { mods, onchange, onapply }: { mods: Modifier[]; onchange: (next: Modifier[]) => void; onapply: (index: number) => void } = $props();
 
@@ -76,6 +76,37 @@
           <label title="Corners of the profile sharper than this stay crisp">Sharp ° <input type="number" min="0" max="180" step="5" value={m.sharp ?? 40} onchange={(e) => set(i, { sharp: Math.max(0, Math.min(180, num(e.currentTarget.value, 40))) })} /></label>
           <label class="check" title="Join the last point back to the first"><input type="checkbox" checked={!!m.closed} onchange={(e) => set(i, { closed: e.currentTarget.checked })} /> Closed profile</label>
           <label class="check" title="Turn the faces inside out"><input type="checkbox" checked={!!m.flip} onchange={(e) => set(i, { flip: e.currentTarget.checked })} /> Flip</label>
+        </div>
+      {:else if m.type === "weld"}
+        <div class="grid">
+          <label title="Points closer than this are joined">Distance <input type="number" min="0" step="0.01" value={m.distance ?? 0.01} onchange={(e) => set(i, { distance: Math.max(0, num(e.currentTarget.value, 0.01)) })} /></label>
+        </div>
+      {:else if m.type === "triangulate"}
+        <p class="dim small">Cuts every face into triangles, so the exported model has exactly what the game draws.</p>
+      {:else if m.type === "decimate"}
+        <div class="grid">
+          <label title="About the share of points kept">Keep <input type="number" min="0.05" max="1" step="0.05" value={m.ratio ?? 0.5} onchange={(e) => set(i, { ratio: Math.max(0.05, Math.min(1, num(e.currentTarget.value, 0.5))) })} /></label>
+        </div>
+      {:else if m.type === "displace"}
+        <div class="grid">
+          <label title="How far the surface moves in and out">Amount <input type="number" step="0.1" value={m.amount ?? 0.5} onchange={(e) => set(i, { amount: num(e.currentTarget.value, 0.5) })} /></label>
+          <label title="The size of the bumps, in units">Size <input type="number" min="0.1" step="0.5" value={m.scale ?? 4} onchange={(e) => set(i, { scale: Math.max(0.1, num(e.currentTarget.value, 4)) })} /></label>
+          <label title="A different number gives a different pattern">Seed <input type="number" min="1" step="1" value={m.seed ?? 1} onchange={(e) => set(i, { seed: Math.max(1, Math.round(num(e.currentTarget.value, 1))) })} /></label>
+        </div>
+      {:else if m.type === "deform"}
+        <div class="grid">
+          <label>Kind
+            <select value={m.kind ?? "bend"} onchange={(e) => set(i, { kind: e.currentTarget.value as DeformKind })}>{#each DEFORMS as d (d)}<option value={d}>{d}</option>{/each}</select>
+          </label>
+          <label>Along
+            <select value={m.axis ?? "y"} onchange={(e) => set(i, { axis: e.currentTarget.value as ModAxis })}>{#each MOD_AXES as a (a)}<option value={a}>{a.toUpperCase()}</option>{/each}</select>
+          </label>
+          <label title="Degrees for bend and twist; a fraction for taper (-1 to 1); units for stretch">Amount <input type="number" step="5" value={m.amount ?? 45} onchange={(e) => set(i, { amount: num(e.currentTarget.value, 45) })} /></label>
+        </div>
+      {:else if m.type === "smooth"}
+        <div class="grid">
+          <label title="How far each pass moves the points towards their neighbours">Factor <input type="number" min="0.1" max="1" step="0.1" value={m.factor ?? 0.5} onchange={(e) => set(i, { factor: Math.max(0.1, Math.min(1, num(e.currentTarget.value, 0.5))) })} /></label>
+          <label title="How many passes">Passes <input type="number" min="1" max="20" step="1" value={m.passes ?? 2} onchange={(e) => set(i, { passes: Math.max(1, Math.min(20, Math.round(num(e.currentTarget.value, 2)))) })} /></label>
         </div>
       {:else if m.type === "array"}
         <div class="grid">

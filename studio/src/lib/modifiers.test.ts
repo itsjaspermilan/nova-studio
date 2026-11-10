@@ -3,7 +3,7 @@ import { exportGlb } from "./glb";
 import { toMesh } from "./mesh-edit";
 import { addCube, newModel, parseModel, serializeModel, type Cube } from "./model-doc";
 import { signedVolume } from "./model-mesh";
-import { applyStack, array, bevel, evaluate, hasModifiers, mirror, newModifier, solidify, subdivideOnce, subsurf, type Soup } from "./modifiers";
+import { applyStack, array, bevel, checkModifier, evaluate, hasModifiers, mirror, newModifier, solidify, subdivideOnce, subsurf, type Modifier, type Soup } from "./modifiers";
 
 const box = (size = 10, at = 0): Cube => toMesh({ from: [at, at, at], size: [size, size, size], color: "#c9d1d9" });
 const soupOf = (c: Cube): Soup => ({ verts: c.verts!, polys: c.polys! });
@@ -472,5 +472,39 @@ describe("materials", () => {
     expect(back.ok && [back.doc.parts[0]!.cubes[0]!.metallic, back.doc.parts[0]!.cubes[0]!.roughness]).toEqual([0.8, 0.25]);
     expect(serializeModel(put(box()).doc)).not.toContain("metallic");
     expect(parseModel(serializeModel(put(box()).doc).replace('"color"', '"metallic": 2, "color"')).ok).toBe(false);
+  });
+});
+
+describe("modifiers that call the editor's mesh tools", () => {
+  const sphereish = (): Cube => toMesh({ shape: "box", from: [0, 0, 0], size: [2, 2, 2], color: "#888888" });
+  const withMod = (m: Modifier, stage: "view" | "render" = "view") => evaluate({ ...sphereish(), modifiers: [m] }, stage);
+  it("triangulate gives twelve triangles for a box", () => {
+    const r = withMod(newModifier("triangulate"));
+    expect(r.polys!.length).toBe(12);
+    expect(r.polys!.every((f) => f.v.length === 3)).toBe(true);
+  });
+  it("weld joins points that sit together", () => {
+    const c = sphereish();
+    const doubled: Cube = { ...c, verts: [...c.verts!, ...c.verts!.map((p) => [...p] as [number, number, number])], polys: [...c.polys!, ...c.polys!.map((f) => ({ ...f, v: f.v.map((i) => i + c.verts!.length) }))] };
+    const r = evaluate({ ...doubled, modifiers: [{ type: "weld", distance: 0.01 }] });
+    expect(r.verts!.length).toBe(8);
+  });
+  it("displace and smooth and deform keep the point count, and the same input gives the same result", () => {
+    for (const type of ["displace", "smooth", "deform"] as const) {
+      const a = withMod(newModifier(type));
+      const b = withMod(newModifier(type));
+      expect(a.verts!.length, type).toBe(8);
+      expect(JSON.stringify(a), type).toBe(JSON.stringify(b));
+    }
+  });
+  it("decimate keeps no more points than there were", () => {
+    expect(withMod(newModifier("decimate")).verts!.length).toBeLessThanOrEqual(8);
+  });
+  it("checks the new settings", () => {
+    expect(checkModifier({ type: "decimate", ratio: 0.01 }, "m")).toContain("ratio");
+    expect(checkModifier({ type: "deform", kind: "melt" }, "m")).toContain("kind");
+    expect(checkModifier({ type: "smooth", passes: 99 }, "m")).toContain("passes");
+    expect(checkModifier({ type: "weld", distance: 0.5 }, "m")).toBeNull();
+    expect(checkModifier({ type: "triangulate" }, "m")).toBeNull();
   });
 });

@@ -10,6 +10,8 @@ import { MAX_FACES, MAX_VERTS, type Cube, type MeshFace, type Vec3 } from "./mod
 import { polyNormal } from "./model-mesh";
 import { fitBounds } from "./model-doc";
 import { toMesh } from "./mesh-edit";
+import { DEFORMS, decimate as decimateCube, displace as displaceCube, simpleDeform, smoothVerts, triangulate as triangulateCube, type DeformKind } from "./mesh-ops";
+export { DEFORMS, type DeformKind };
 
 export type ModAxis = "x" | "y" | "z";
 export const MOD_AXES: ModAxis[] = ["x", "y", "z"];
@@ -89,10 +91,44 @@ export interface RevolveMod extends Common {
   /// Turn the faces inside out (use it if the profile runs the other way).
   flip?: boolean;
 }
-export type Modifier = MirrorMod | SubsurfMod | BevelMod | SolidifyMod | ArrayMod | RevolveMod;
+/// Joins points closer than `distance` (default 0.01).
+export interface WeldMod extends Common {
+  type: "weld";
+  distance?: number;
+}
+/// Cuts every face into triangles.
+export interface TriangulateMod extends Common {
+  type: "triangulate";
+}
+/// A cheaper mesh: groups of close points become one. `ratio` is about the share kept (default 0.5).
+export interface DecimateMod extends Common {
+  type: "decimate";
+  ratio?: number;
+}
+/// Pushes the surface in and out along its normals in a bumpy pattern.
+export interface DisplaceMod extends Common {
+  type: "displace";
+  amount?: number;
+  scale?: number;
+  seed?: number;
+}
+/// Bends, twists, tapers or stretches the mesh along an axis (degrees for bend and twist, a fraction for taper, units for stretch).
+export interface DeformMod extends Common {
+  type: "deform";
+  kind?: DeformKind;
+  axis?: ModAxis;
+  amount?: number;
+}
+/// Relaxes the points towards their neighbours.
+export interface SmoothMod extends Common {
+  type: "smooth";
+  factor?: number;
+  passes?: number;
+}
+export type Modifier = MirrorMod | SubsurfMod | BevelMod | SolidifyMod | ArrayMod | RevolveMod | WeldMod | TriangulateMod | DecimateMod | DisplaceMod | DeformMod | SmoothMod;
 export type ModifierType = Modifier["type"];
-export const MODIFIER_TYPES: ModifierType[] = ["mirror", "subsurf", "bevel", "solidify", "array", "revolve"];
-export const MODIFIER_LABELS: Record<ModifierType, string> = { mirror: "Mirror", subsurf: "Subdivision", bevel: "Bevel", solidify: "Solidify", array: "Array", revolve: "Revolve" };
+export const MODIFIER_TYPES: ModifierType[] = ["mirror", "subsurf", "bevel", "solidify", "array", "revolve", "weld", "triangulate", "decimate", "displace", "deform", "smooth"];
+export const MODIFIER_LABELS: Record<ModifierType, string> = { mirror: "Mirror", subsurf: "Subdivision", bevel: "Bevel", solidify: "Solidify", array: "Array", revolve: "Revolve", weld: "Weld", triangulate: "Triangulate", decimate: "Decimate", displace: "Displace", deform: "Simple deform", smooth: "Smooth" };
 export const MAX_REVOLVE = 128;
 /// A crease weight of 1 stays sharp through this many subdivision levels (the most a modifier does).
 export const CREASE_LEVELS = 4;
@@ -109,6 +145,12 @@ export function newModifier(type: ModifierType): Modifier {
     case "solidify": return { type, thickness: 1, offset: -1, even: true };
     case "array": return { type, count: 2, offset: [8, 0, 0] };
     case "revolve": return { type, axis: "y", segments: 24, angle: 360, sharp: 40 };
+    case "weld": return { type, distance: 0.01 };
+    case "triangulate": return { type };
+    case "decimate": return { type, ratio: 0.5 };
+    case "displace": return { type, amount: 0.5, scale: 4, seed: 1 };
+    case "deform": return { type, kind: "bend", axis: "y", amount: 45 };
+    case "smooth": return { type, factor: 0.5, passes: 2 };
   }
 }
 
@@ -711,6 +753,13 @@ export function revolve(s: Soup, m: RevolveMod): Soup {
 // ---------------------------------------------------------------------------------------------
 // The stack
 
+/// The modifiers that work on a whole mesh at once go through the editor's own mesh functions (lib/mesh-ops.ts) on a plain element made from the soup.
+function throughCube(s: Soup, fn: (c: Cube) => Cube, keepCreases: boolean): Soup {
+  const cube: Cube = { shape: "mesh", from: [0, 0, 0], size: [0, 0, 0], color: "#c9d1d9", verts: s.verts.map((p) => [...p] as Vec3), polys: s.polys.map((f) => copyPoly(f, [...f.v])) };
+  const out = fn(cube);
+  return { verts: out.verts ?? [], polys: (out.polys ?? []).map((f) => copyPoly(f, [...f.v])), ...(keepCreases && s.creases ? { creases: s.creases } : {}) };
+}
+
 export type Stage = "view" | "render";
 
 export function applyModifier(s: Soup, m: Modifier, stage: Stage): Soup {
@@ -721,6 +770,12 @@ export function applyModifier(s: Soup, m: Modifier, stage: Stage): Soup {
     case "solidify": return solidify(s, m);
     case "array": return array(s, m);
     case "revolve": return revolve(s, m);
+    case "weld": return weldSoup(s, Math.max(0, m.distance ?? 0.01));
+    case "triangulate": return throughCube(s, (c) => triangulateCube(c), true);
+    case "decimate": return throughCube(s, (c) => decimateCube(c, m.ratio ?? 0.5), false);
+    case "displace": return throughCube(s, (c) => displaceCube(c, m.amount ?? 0.5, m.scale ?? 4, m.seed ?? 1), true);
+    case "deform": return throughCube(s, (c) => simpleDeform(c, m.kind ?? "bend", axisIndex(m.axis ?? "y") as 0 | 1 | 2, m.amount ?? 45), true);
+    case "smooth": return throughCube(s, (c) => smoothVerts(c, undefined, m.factor ?? 0.5, m.passes ?? 2), true);
   }
 }
 
@@ -799,6 +854,25 @@ export function checkModifier(m: unknown, at: string): string | null {
       break;
     case "array":
       problems.push(num("count", 1, MAX_ARRAY, true), vec("offset"), vec("relative"), num("merge", 0, 1e6));
+      break;
+    case "weld":
+      problems.push(num("distance", 0, 1e6));
+      break;
+    case "triangulate":
+      break;
+    case "decimate":
+      problems.push(num("ratio", 0.05, 1));
+      break;
+    case "displace":
+      problems.push(num("amount", -1e6, 1e6), num("scale", 0.001, 1e6), num("seed", 1, 1e6, true));
+      break;
+    case "deform":
+      if (o.kind !== undefined && !(DEFORMS as string[]).includes(o.kind as string)) return `${at}.kind must be one of ${DEFORMS.join(", ")}`;
+      if (o.axis !== undefined && !MOD_AXES.includes(o.axis as ModAxis)) return `${at}.axis must be x, y or z`;
+      problems.push(num("amount", -1e6, 1e6));
+      break;
+    case "smooth":
+      problems.push(num("factor", 0.1, 1), num("passes", 1, 20, true));
       break;
   }
   return problems.find((p) => p) ?? null;
