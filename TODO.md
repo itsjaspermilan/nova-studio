@@ -1,10 +1,19 @@
 # Nova Studio: plan and TODO
 
-Last updated: 2026-11-09. Nothing below is implemented unless it is ticked. The long history (milestones M0 to M8, the probe games, the
+Last updated: 2026-11-10. Nothing below is implemented unless it is ticked. The long history (milestones M0 to M8, the probe games, the
 per-game notes and the device logs) was pruned on 2026-11-09; it is in git: `git show db3e9c5:TODO.md`. Detail on finished runtime work lives in
 `docs/` (`project-format.md`, `performance.md`, `spike-results.md`, `materials.md`, `switch-class-graphics.md`, `local-coop.md`, `debugger.md`, `play-on-device.md`).
 
 ## Where things stand
+
+- **Overnight session 2026-11-09 to 10** (see `git log` from `7a4ab34`): a long run through this list. Done and checked by unit tests and in the browser preview: Sprites (fill options, polygon,
+  zoom and pan, picture brushes, effects, palettes, APNG/GIF/Aseprite import, export dialog, layer lock and clipping, hitboxes/pivots/events/9-slice, rulers, reference), Engine (Lua code help, project settings
+  and input actions, languages, save-data inspector, menu editor, snapshots), Sound (song tools, loop and MIDI, LUFS and limiter, effects, instruments, sample tools, groups, soundbank), Model (mesh tools,
+  modifiers, budget, views, box select, reference pictures), Alt-key menus, licences, plans for Windows and for user tests. **Not everything on this list is done**, and a lot of what is done was not run in the real
+  Tauri app or listened to: every item says which. Big items still open: arrangement view and buses (Sound), sculpt, texture paint, weight paint, rigging, animation tools and terrain (Model),
+  adaptive music in the runtime, the real-app checks, anything that needs the device or people.
+- **A test that fails and is not from this session:** `examples.test.ts` ("open every model, save it back unchanged and export the glb that is committed") fails for `models/skyline_desert.model.json`; it fails the same
+  way at commit `7a4ab34`, before the overnight work. The committed `.glb` and what the editor exports differ by a byte or more; not investigated further. `nk_rock_largeE` in the working tree is modified and uncommitted: not touched.
 
 - **Plan (2026-11-09): one studio with four workspaces** (Model, Sprites, Sound, Engine). The master checklist is the next section;
   its detail is in `docs/studio-workspaces.md` (features) and `docs/studio-ux.md` (menus, toolbars, input, windows).
