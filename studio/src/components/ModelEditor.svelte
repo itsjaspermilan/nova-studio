@@ -15,6 +15,8 @@
     removeCollider, setCube, setFaceColor, updateCollider, updateCube, updatePart, walk, namesOf, PROPS, MAX_SEGMENTS, MIN_SEGMENTS, DEFAULT_SEGMENTS, type Cube, type Ease, type Face, type ModelDoc, type Path, type Prop, type Shape, type Vec3,
   } from "../lib/model-doc";
   import { AXIS_COLOURS, AXIS_CSS, AXIS_NAMES, centreOf, constrain, describeLock, describeMove, freePlane, lockForKey, type Lock } from "../lib/point-move";
+  import MeshTools from "./MeshTools.svelte";
+  import ModelStats from "./ModelStats.svelte";
   import { addFace, bevelEdge, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, freshProfile, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsSymmetric, setFaceColors, setSmooth, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
   import { hasVolume, meshOf, segmentsOf, shapeFaces, solidOf } from "../lib/model-mesh";
   import { autoWeights, boneHeat, dominantBones, heatColor, invertAffine, reskin, setWeight, skinnedPoints, transformPoint, worldMatrices } from "../lib/model-skin";
@@ -1640,6 +1642,15 @@
       selEdge = null;
     }
   }
+  /// Adds copies of the element at lower detail beside it, named with _lod1, _lod2 ... (the game picks them by distance).
+  function addLods(copies: Cube[]) {
+    if (!selected) return;
+    let next = doc;
+    copies.forEach((c, i) => {
+      next = addCube(next, selected!.parts, { ...c, name: `${cube?.name ?? "mesh"}_lod${i + 1}` }).doc;
+    });
+    commit(next);
+  }
   let skinNote = $state("");
   let skinBone = $state("");
   let heatBone: number | null = $state(null); // a part picked in the key: points show how strongly it holds them (blue to red)
@@ -2324,6 +2335,7 @@
           <div class="row"><button onclick={() => change(subdivide(cube), true)} title="Splits every face into four-sided pieces">Split all</button><button onclick={() => change(weld(cube), true)} disabled={!weldCount} title="Joins points that sit on top of each other">Weld{weldCount ? ` (${weldCount})` : ""}</button></div>
           <div class="row"><button onclick={() => change(setSmooth(cube, cube.polys!.map((_, i) => i), true))}>Smooth all</button><button onclick={() => change(setSmooth(cube, cube.polys!.map((_, i) => i), false))}>Flat all</button></div>
           <p class="dim small">{cube.verts?.length ?? 0} points · {cube.polys?.length ?? 0} faces</p>
+          <MeshTools {cube} {selVerts} {selFace} {selEdge} onchange={change} onlods={addLods} />
         {/if}
         <div class="row"><button onclick={duplicate}>Duplicate</button><button class="danger" onclick={remove}>Delete</button></div>
       {:else if selected && part}
@@ -2341,6 +2353,7 @@
         <div class="row"><button onclick={duplicate}>Duplicate</button><button class="danger" onclick={remove} disabled={doc.parts.length === 1 && selected.parts.length === 1}>Delete</button></div>
       {:else}
         <h3>Model</h3>
+        <ModelStats {doc} />
         <label>Export scale <input type="number" step="0.001" min="0.0001" value={doc.scale} onchange={(e) => commit({ ...doc, scale: Math.max(0.0001, num(e.currentTarget.value, doc.scale)) })} /></label>
         <p class="dim small">World units per model unit. 1/16 = 0.0625 makes a 16-unit cube one world unit.</p>
         <h4>Collision</h4>
