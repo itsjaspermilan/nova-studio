@@ -601,6 +601,15 @@
   const voice = (label: string, key: "unison" | "detune" | "cutoff" | "resonance" | "sweep" | "sub" | "vibrato" | "reverb", min: number, max: number, step: number, off: number) => ({ label, key, min, max, step, off });
   const VOICE = [voice("Unison", "unison", 1, 7, 1, 1), voice("Detune", "detune", 0, 60, 1, 0), voice("Cutoff", "cutoff", 0, 12000, 50, 0), voice("Resonance", "resonance", 0, 0.9, 0.01, 0), voice("Sweep", "sweep", 0, 1, 0.01, 0), voice("Sub", "sub", 0, 1, 0.01, 0), voice("Vibrato", "vibrato", 0, 0.5, 0.01, 0), voice("Reverb", "reverb", 0, 1, 0.01, 0)];
   const SLIDERS = [slider("Attack", "attack", 0, 1, 0.005), slider("Decay", "decay", 0, 1, 0.005), slider("Sustain", "sustain", 0, 1, 0.01), slider("Release", "release", 0, 2, 0.01), slider("Volume", "volume", 0, 1, 0.01), slider("Pan", "pan", -1, 1, 0.05)];
+  // the status bar
+  $effect(() => {
+    studio.statusHint = "Click the roll to put a note · drag to move it · Space plays · the Arrange tab lays clips out on a timeline";
+    studio.statusInfo = `♩ ${song.bpm} · ${bars} bar${bars === 1 ? "" : "s"} · ${secs} s · ${song.tracks.length} track${song.tracks.length === 1 ? "" : "s"}`;
+    return () => {
+      studio.statusHint = "";
+      studio.statusInfo = "";
+    };
+  });
 </script>
 
 <svelte:window onkeydown={key} />

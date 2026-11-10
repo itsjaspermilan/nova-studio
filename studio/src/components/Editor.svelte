@@ -15,7 +15,7 @@
   import { tags as t } from "@lezer/highlight";
   import { complete, identifierAt, lookup } from "../lib/completions";
   import { markersFor } from "../lib/diagnostics";
-  import { studio } from "../lib/store.svelte";
+  import { isDirty, studio } from "../lib/store.svelte";
   import { debug } from "../lib/debugger.svelte";
   import { breakpointGutter, breakpointLines, setBreakpoints, setPausedLine } from "../lib/breakpoints";
 
@@ -310,6 +310,15 @@
     const line = view.state.doc.line(Math.min(Math.max(jump.line, 1), view.state.doc.lines));
     view.dispatch({ selection: { anchor: line.from }, effects: EditorView.scrollIntoView(line.from, { y: "center" }) });
     view.focus();
+  });
+  // the status bar
+  $effect(() => {
+    studio.statusHint = path.endsWith(".lua") ? "⌘K command palette · ⌘-click goes to a definition · F5 plays the game" : "⌘K command palette · F5 plays the game";
+    studio.statusInfo = (() => { const t = studio.tabs.find((x) => x.path === path); return t && isDirty(t) ? "Unsaved changes" : "Saved"; })();
+    return () => {
+      studio.statusHint = "";
+      studio.statusInfo = "";
+    };
   });
 </script>
 

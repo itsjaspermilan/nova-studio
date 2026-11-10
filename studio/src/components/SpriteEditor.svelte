@@ -1545,6 +1545,15 @@
     const c = parseHex(h);
     if (c) color = c;
   }
+  // the status bar: what the buttons do on the canvas, and the picture's size
+  $effect(() => {
+    studio.statusHint = "Left click: the tool · right click: the second tool · ⇧-click draws a line from the last point · Alt picks a colour";
+    studio.statusInfo = `${doc.fw}×${doc.fh} · ${doc.frames.length} frame${doc.frames.length === 1 ? "" : "s"} · zoom ${zoom * 100}%`;
+    return () => {
+      studio.statusHint = "";
+      studio.statusInfo = "";
+    };
+  });
 </script>
 
 <svelte:window onkeydown={key} />
