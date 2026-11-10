@@ -34,7 +34,7 @@
 
   let { path, text }: { path: string; text: string } = $props();
 
-  type Tool = "select" | "ellipseSelect" | "lasso" | "wand" | "colorSelect" | "shade" | "gradient" | "pencil" | "eraser" | "fill" | "line" | "rect" | "ellipse" | "polygon" | "text" | "picker" | "zoom" | "pan";
+  type Tool = "select" | "ellipseSelect" | "lasso" | "wand" | "colorSelect" | "shade" | "gradient" | "pencil" | "eraser" | "fill" | "line" | "rect" | "ellipse" | "polygon" | "polySelect" | "text" | "picker" | "zoom" | "pan";
   interface Session {
     doc: SpriteDoc;
     past: SpriteDoc[];
@@ -50,6 +50,7 @@
     { id: "select", label: "Select and move", key: "M", icon: "⬚" },
     { id: "ellipseSelect", label: "Select an ellipse", key: "Shift+M", icon: "◌" },
     { id: "lasso", label: "Select free-hand", key: "Q", icon: "ʘ" },
+    { id: "polySelect", label: "Select a polygon (click the corners; click the first corner, double-click or Enter to finish; Shift adds, Alt takes away)", key: "Shift+Q", icon: "⬡" },
     { id: "wand", label: "Magic wand (joined colour)", key: "W", icon: "✦" },
     { id: "colorSelect", label: "Select a colour everywhere", key: "Shift+W", icon: "❖" },
     { id: "pencil", label: "Pencil", key: "B", icon: "✎" },
@@ -488,7 +489,26 @@
   /// The selection: its bounds, and (when it is not a plain rectangle) the cells it holds (lib/selection.ts).
   let selection: Rect | null = $state(null);
   let selMask = $state.raw<Mask | null>(null);
-  const SELECT_TOOLS: Tool[] = ["select", "ellipseSelect", "lasso", "wand", "colorSelect"];
+  const SELECT_TOOLS: Tool[] = ["select", "ellipseSelect", "lasso", "polySelect", "wand", "colorSelect"];
+  // A polygon selection being clicked out: its corners, how it combines with what was selected, and what was selected.
+  let selPoly = $state.raw<{ points: Point[]; how: Combine; base: Mask | null } | null>(null);
+  function selPolyShow(towards: Point | null) {
+    if (!selPoly) return;
+    const pts = towards ? [...selPoly.points, towards] : selPoly.points;
+    setSelection(combine(selPoly.base, maskFromPolygon(pts, doc.fw, doc.fh), selPoly.how));
+  }
+  function selPolyClick(p: Point, how: Combine, double: boolean) {
+    if (!selPoly) selPoly = { points: [], how, base: how === "replace" ? null : currentMask() };
+    const first = selPoly.points[0];
+    if (selPoly.points.length >= 3 && (double || (first && first.x === p.x && first.y === p.y))) return void selPolyFinish();
+    if (!double) selPoly = { ...selPoly, points: [...selPoly.points, p] };
+    selPolyShow(p);
+  }
+  function selPolyFinish() {
+    if (selPoly && selPoly.points.length >= 3) selPolyShow(null);
+    else if (selPoly) setSelection(selPoly.base);
+    selPoly = null;
+  }
   const isSelectTool = (t: Tool) => SELECT_TOOLS.includes(t);
   /// How close a colour must be to the clicked one for the wand (0 is exactly the same).
   let tolerance = $state(0);
@@ -579,6 +599,10 @@
       const mask = currentMask();
       // Shift adds to the selection, Alt takes from it, both keep only where they overlap
       const how: Combine = e.shiftKey && e.altKey ? "intersect" : e.shiftKey ? "add" : e.altKey ? "subtract" : "replace";
+      if (tool === "polySelect") {
+        selPolyClick(p, how, e.detail >= 2);
+        return;
+      }
       if (tool === "wand" || tool === "colorSelect") {
         setSelection(combine(mask, maskFromColor(r, p.x, p.y, tolerance, tool === "wand"), how));
       } else if (how === "replace" && mask && has(mask, p.x, p.y)) {
@@ -722,6 +746,9 @@
     rev++;
   }
   $effect(() => {
+    if (tool !== "polySelect" && untrack(() => selPoly)) untrack(selPolyFinish);
+  });
+  $effect(() => {
     if (tool !== "polygon" && untrack(() => poly.length)) untrack(cancelPolygon);
   });
 
@@ -790,6 +817,10 @@
     }
     if (tool === "polygon" && poly.length) {
       previewPolygon(p);
+      return;
+    }
+    if (tool === "polySelect" && selPoly) {
+      selPolyShow(p);
       return;
     }
     if (selecting) {
@@ -1246,6 +1277,12 @@
     } else if ((e.key === "Delete" || e.key === "Backspace") && selection) {
       e.preventDefault();
       clearSelection();
+    } else if (e.key === "Enter" && selPoly) {
+      e.preventDefault();
+      selPolyFinish();
+    } else if (e.key === "Escape" && selPoly) {
+      setSelection(selPoly.base);
+      selPoly = null;
     } else if (e.key === "Enter" && poly.length) {
       e.preventDefault();
       finishPolygon();
