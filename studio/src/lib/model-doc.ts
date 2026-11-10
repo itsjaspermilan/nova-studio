@@ -95,6 +95,13 @@ export interface Part {
   children: Part[];
 }
 
+/// A named pose: for each part (its names joined by "/") some of position, rotation (degrees) and scale.
+export interface SavedPose {
+  name: string;
+  parts: Record<string, { position?: Vec3; rotation?: Vec3; scale?: Vec3 }>;
+}
+export const MAX_POSES = 64;
+
 export type Prop = "position" | "rotation" | "scale";
 export const PROPS: Prop[] = ["position", "rotation", "scale"];
 
@@ -161,6 +168,8 @@ export interface ModelDoc {
   scale: number;
   parts: Part[];
   clips?: Clip[];
+  /// Saved poses (the pose library): a named set of how parts are turned, moved and sized, to put on any animation's time with one click.
+  poses?: SavedPose[];
   /// What the model blocks, as circles on the ground (the game reads them with `nova.model_colliders`).
   colliders?: Collider[];
   /// Capsules and boxes the model blocks too (the file keeps circles as `colliders` and the other shapes under their own keys).
@@ -373,7 +382,22 @@ export function parseModel(text: string): Parsed {
       }
     }
   }
-  return { ok: true, doc: { version: 1, scale: o.scale ?? DEFAULT_SCALE, ...(o.texture ? { texture: { size: [...o.texture.size] as [number, number], ...(o.texture.smooth ? { smooth: true } : {}) } } : {}), parts: o.parts as Part[], ...(clips && clips.length ? { clips: clips as Clip[] } : {}), ...(o.colliders?.length ? { colliders: o.colliders.map((c) => ({ x: c.x, z: c.z, r: c.r })) } : {}), ...(o.capsules?.length ? { capsules: o.capsules.map((c) => ({ ax: c.ax, az: c.az, bx: c.bx, bz: c.bz, r: c.r })) } : {}), ...(o.boxes?.length ? { boxes: o.boxes.map((c) => ({ x: c.x, z: c.z, hw: c.hw, hl: c.hl, turn: c.turn })) } : {}) } };
+  const poses = (o as { poses?: unknown }).poses;
+  if (poses !== undefined) {
+    if (!Array.isArray(poses) || poses.length > MAX_POSES) return { ok: false, error: `"poses" must be a list of up to ${MAX_POSES}` };
+    const seen = new Set<string>();
+    for (const [i, ps] of (poses as SavedPose[]).entries()) {
+      if (!ps || typeof ps.name !== "string" || !ps.name.trim() || seen.has(ps.name) || !ps.parts || typeof ps.parts !== "object") return { ok: false, error: `poses[${i}] needs its own name and a "parts" object` };
+      seen.add(ps.name);
+      for (const [key, v] of Object.entries(ps.parts)) {
+        for (const prop of ["position", "rotation", "scale"] as const) {
+          const x = v?.[prop];
+          if (x !== undefined && !(Array.isArray(x) && x.length === 3 && x.every((n) => typeof n === "number" && Number.isFinite(n)))) return { ok: false, error: `poses[${i}].parts["${key}"].${prop} must be three numbers` };
+        }
+      }
+    }
+  }
+  return { ok: true, doc: { version: 1, scale: o.scale ?? DEFAULT_SCALE, ...(o.texture ? { texture: { size: [...o.texture.size] as [number, number], ...(o.texture.smooth ? { smooth: true } : {}) } } : {}), parts: o.parts as Part[], ...(clips && clips.length ? { clips: clips as Clip[] } : {}), ...(Array.isArray(poses) && poses.length ? { poses: (poses as SavedPose[]).map((q) => ({ name: q.name, parts: JSON.parse(JSON.stringify(q.parts)) })) } : {}), ...(o.colliders?.length ? { colliders: o.colliders.map((c) => ({ x: c.x, z: c.z, r: c.r })) } : {}), ...(o.capsules?.length ? { capsules: o.capsules.map((c) => ({ ax: c.ax, az: c.az, bx: c.bx, bz: c.bz, r: c.r })) } : {}), ...(o.boxes?.length ? { boxes: o.boxes.map((c) => ({ x: c.x, z: c.z, hw: c.hw, hl: c.hl, turn: c.turn })) } : {}) } };
 }
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
@@ -431,11 +455,12 @@ export function serializeModel(doc: ModelDoc): string {
     return `    {\n      "name": ${JSON.stringify(c.name)},\n      "duration": ${c.duration},\n      "loop": ${c.loop},\n      "tracks": ${tracks}\n    }`;
   };
   const clips = doc.clips?.length ? `,\n  "clips": [\n${doc.clips.map(clip).join(",\n")}\n  ]` : "";
+  const poses = doc.poses?.length ? `,\n  "poses": [\n${doc.poses.map((q) => `    ${JSON.stringify(q)}`).join(",\n")}\n  ]` : "";
   const texture = doc.texture ? `,\n  "texture": { "size": ${vec2(doc.texture.size)}${doc.texture.smooth ? `, "smooth": true` : ""} }` : "";
   const colliders = doc.colliders?.length ? `,\n  "colliders": [${doc.colliders.map((c) => `{ "x": ${c.x}, "z": ${c.z}, "r": ${c.r} }`).join(", ")}]` : "";
   const capsules = doc.capsules?.length ? `,\n  "capsules": [${doc.capsules.map((c) => `{ "ax": ${c.ax}, "az": ${c.az}, "bx": ${c.bx}, "bz": ${c.bz}, "r": ${c.r} }`).join(", ")}]` : "";
   const boxes = doc.boxes?.length ? `,\n  "boxes": [${doc.boxes.map((c) => `{ "x": ${c.x}, "z": ${c.z}, "hw": ${c.hw}, "hl": ${c.hl}, "turn": ${c.turn} }`).join(", ")}]` : "";
-  return `{\n  "version": 1,\n  "scale": ${doc.scale}${texture},\n  "parts": ${body}${clips}${colliders}${capsules}${boxes}\n}\n`;
+  return `{\n  "version": 1,\n  "scale": ${doc.scale}${texture},\n  "parts": ${body}${clips}${poses}${colliders}${capsules}${boxes}\n}\n`;
 }
 
 // ---- collision circles ----

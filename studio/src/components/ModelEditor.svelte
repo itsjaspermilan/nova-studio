@@ -22,7 +22,7 @@
   import { ORTHO_FOV, PERSPECTIVE_FOV, VIEW_LABELS, VIEW_NAMES, distanceForFov, orbitStep, viewPlacement, type ViewName } from "../lib/view-presets";
   import ModelStats from "./ModelStats.svelte";
   import { solveLimb } from "../lib/model-ik";
-  import { copyKeys, mirrorClip, pasteKeys, reverseClip, shiftKeys, stretchKeys, type KeyClipboard } from "../lib/model-anim-tools";
+  import { applyPose as applySavedPose, capturePose, removePose, copyKeys, mirrorClip, pasteKeys, reverseClip, shiftKeys, stretchKeys, type KeyClipboard } from "../lib/model-anim-tools";
   import { SCULPT_HELP, SCULPT_MODES, sculptDab, type SculptMode } from "../lib/sculpt";
   import { addFace, bevelEdge, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, freshProfile, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsSymmetric, setFaceColors, setSmooth, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
   import { hasVolume, meshOf, segmentsOf, shapeFaces, solidOf } from "../lib/model-mesh";
@@ -91,6 +91,7 @@
   let animTime = $state(0);
   let keyBoard: KeyClipboard | null = $state(null);
   let animNote = $state("");
+  let poseName = $state("");
   // reaching: the chosen part is the top of a limb of three parts (shoulder, elbow, hand); the end is put on a target in model space
   let reachTarget = $state<[number, number, number]>([0, 0, 0]);
   let reachPole = $state<[number, number, number]>([0, 0, 1]);
@@ -2443,6 +2444,11 @@
             <button title="Twice as slow" onclick={() => commit(stretchKeys(doc, clipIndex, 2, partNames.length ? partNames : null))}>×2 time</button>
             <button title="Move the keys 0.1 s earlier" onclick={() => commit(shiftKeys(doc, clipIndex, -0.1, partNames.length ? partNames : null))}>−0.1 s</button>
             <button title="Move the keys 0.1 s later" onclick={() => commit(shiftKeys(doc, clipIndex, 0.1, partNames.length ? partNames : null))}>+0.1 s</button>
+            <input class="cname" bind:value={poseName} placeholder="pose name" aria-label="Pose name" />
+            <button title="Save how the parts are posed at the time marker, to use again on any animation" disabled={!poseName.trim()} onclick={() => { const next = capturePose(doc, clipIndex, animTime, poseName); if (next) { commit(next, false, "Save pose"); animNote = `Saved the pose “${poseName.trim()}”.`; poseName = ""; } else animNote = "Nothing to save: this animation has no keys at this time, or the pose library is full."; }}>Save pose</button>
+            {#each doc.poses ?? [] as ps (ps.name)}
+              <span class="chip"><button class="ghost" title="Put this pose on the animation at the time marker (a key for each part it holds)" onclick={() => commit(applySavedPose(doc, clipIndex, animTime, ps.name), false, `Pose: ${ps.name}`)}>{ps.name}</button><button class="ghost" aria-label="Delete the pose {ps.name}" onclick={() => commit(removePose(doc, ps.name), false, "Delete pose")}>✕</button></span>
+            {/each}
             {#if limbParts}
               <span class="dim small" title="The chosen part is the top of a limb: its end is put on a target (model units, from the model's origin)">Reach</span>
               {#each [0, 1, 2] as a (a)}<input type="number" class="narrow" step="0.5" aria-label={`reach target ${"xyz"[a]}`} value={reachTarget[a]} onchange={(e) => { const v = [...reachTarget] as [number, number, number]; v[a] = Number(e.currentTarget.value); reachTarget = v; }} />{/each}

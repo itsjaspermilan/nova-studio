@@ -1,7 +1,7 @@
 // Tools for editing a clip's keys as a whole: copy and paste a part's keys, shift or stretch time, reverse, and blend two poses. Every edit returns a new
 // document (the clip index must exist). Times snap to a hundredth of a second like the rest of the animation code.
 
-import { KEY_STEP, findTrack, pathKey, samplePose, snapTime, type Pose } from "./model-anim";
+import { KEY_STEP, findTrack, pathKey, samplePose, setKey, snapTime, type Pose } from "./model-anim";
 import { MAX_KEYS, type Clip, type Key, type ModelDoc, type Prop, type Track } from "./model-doc";
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
@@ -193,3 +193,59 @@ export function blendPoses(a: Map<string, Pose>, b: Map<string, Pose>, t: number
 export function blendClips(a: Clip, ta: number, b: Clip, tb: number, t: number): Map<string, Pose> {
   return blendPoses(samplePose(a, ta), samplePose(b, tb), t);
 }
+
+// ---- the pose library ----
+
+import { MAX_POSES, type SavedPose } from "./model-doc";
+import { quaternionToEuler } from "./model-ik";
+
+/// Saves how the clip poses the parts at time `t` under a name (a name already used is replaced): every keyed property of every keyed part. Null when the clip
+/// has no keys or the library is full.
+export function capturePose(doc: ModelDoc, clipIndex: number, t: number, name: string): ModelDoc | null {
+  const clip = doc.clips?.[clipIndex];
+  const wanted = name.trim();
+  if (!clip || !wanted) return null;
+  const pose = samplePose(clip, t, false);
+  if (!pose.size) return null;
+  const parts: SavedPose["parts"] = {};
+  for (const [key, p] of pose) {
+    const entry: SavedPose["parts"][string] = {};
+    if (p.position) entry.position = p.position.map(round) as [number, number, number];
+    if (p.rotation) entry.rotation = quaternionToEuler(p.rotation).map(round) as [number, number, number];
+    if (p.scale) entry.scale = p.scale.map(round) as [number, number, number];
+    if (Object.keys(entry).length) parts[key] = entry;
+  }
+  const list = (doc.poses ?? []).filter((q) => q.name !== wanted);
+  if (list.length >= MAX_POSES) return null;
+  return { ...doc, poses: [...list, { name: wanted, parts }] };
+}
+
+/// Puts a saved pose on the clip at time `t`: a key for every property the pose holds (parts the model no longer has are skipped).
+export function applyPose(doc: ModelDoc, clipIndex: number, t: number, name: string): ModelDoc {
+  const pose = doc.poses?.find((q) => q.name === name);
+  if (!pose || !doc.clips?.[clipIndex]) return doc;
+  const exists = (path: string[]) => {
+    let list = doc.parts;
+    for (const n of path) {
+      const p = list.find((x) => x.name === n);
+      if (!p) return false;
+      list = p.children;
+    }
+    return true;
+  };
+  let next = doc;
+  for (const [key, v] of Object.entries(pose.parts)) {
+    const path = key.split("/");
+    if (!exists(path)) continue;
+    for (const prop of ["position", "rotation", "scale"] as const) if (v[prop]) next = setKey(next, clipIndex, path, prop, t, v[prop]!);
+  }
+  return next;
+}
+
+export const removePose = (doc: ModelDoc, name: string): ModelDoc => {
+  const list = (doc.poses ?? []).filter((q) => q.name !== name);
+  const next = { ...doc };
+  if (list.length) next.poses = list;
+  else delete next.poses;
+  return next;
+};

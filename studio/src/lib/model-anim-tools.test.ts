@@ -102,3 +102,41 @@ describe("blending", () => {
     expect(mixed.position![0]).toBeCloseTo(5, 6);
   });
 });
+
+import { applyPose, capturePose, removePose } from "./model-anim-tools";
+import { parseModel, serializeModel } from "./model-doc";
+describe("the pose library", () => {
+  it("saves a pose from a time in a clip and puts it on another time, and it survives saving", () => {
+    let d = addClip(newModel(), "a").doc;
+    d = { ...d, parts: [{ name: "body", origin: [0, 0, 0], rotation: [0, 0, 0], cubes: [], children: [{ name: "arm", origin: [3, 0, 0], rotation: [0, 0, 0], cubes: [], children: [] }] }] };
+    d = setKey(d, 0, ["body"], "position", 0, [0, 0, 0]);
+    d = setKey(d, 0, ["body"], "position", 1, [0, 4, 0]);
+    d = setKey(d, 0, ["body", "arm"], "rotation", 1, [10, 20, 30]);
+    const saved = capturePose(d, 0, 1, "Hands up")!;
+    expect(saved.poses![0]!.name).toBe("Hands up");
+    expect(saved.poses![0]!.parts["body"]!.position).toEqual([0, 4, 0]);
+    const rot = saved.poses![0]!.parts["body/arm"]!.rotation!;
+    expect(rot[0]).toBeCloseTo(10, 3);
+    expect(rot[1]).toBeCloseTo(20, 3);
+    expect(rot[2]).toBeCloseTo(30, 3);
+    const placed = applyPose({ ...saved, clips: [{ ...saved.clips![0]!, tracks: [] }] }, 0, 0.5, "Hands up");
+    expect(findTrack(placed.clips![0]!, ["body", "arm"], "rotation")!.keys[0]).toMatchObject({ t: 0.5 });
+    expect(findTrack(placed.clips![0]!, ["body"], "position")!.keys[0]!.value).toEqual([0, 4, 0]);
+    const back = parseModel(serializeModel(saved));
+    expect(back.ok && back.doc.poses).toEqual(saved.poses);
+    expect(capturePose(saved, 0, 1, "Hands up")!.poses!.length).toBe(1); // the name is replaced, not doubled
+    expect(removePose(saved, "Hands up").poses).toBeUndefined();
+    expect(capturePose(d, 0, 1, "  ")).toBeNull();
+    expect(capturePose({ ...d, clips: [{ ...d.clips![0]!, tracks: [] }] }, 0, 0, "x")).toBeNull();
+  });
+  it("skips parts that are gone and refuses a bad file", () => {
+    let d = addClip(newModel(), "a").doc;
+    d = { ...d, poses: [{ name: "p", parts: { "ghost/limb": { rotation: [1, 2, 3] } } }] };
+    expect(applyPose(d, 0, 0, "p").clips![0]!.tracks.length).toBe(0);
+    const bad = JSON.parse(serializeModel(d));
+    bad.poses[0].parts["ghost/limb"].rotation = [1, 2];
+    expect(parseModel(JSON.stringify(bad)).ok).toBe(false);
+    bad.poses = [{ name: "p", parts: {} }, { name: "p", parts: {} }];
+    expect(parseModel(JSON.stringify(bad)).ok).toBe(false);
+  });
+});
