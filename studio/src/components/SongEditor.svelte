@@ -11,7 +11,7 @@
   import ArrangePanel from "./ArrangePanel.svelte";
   import SongTools from "./SongTools.svelte";
   import { midiToSong, songToMidi } from "../lib/midi";
-  import { regionOf } from "../lib/song-tools";
+  import { regionOf, tapTempo } from "../lib/song-tools";
   import { dbfs } from "../lib/mixer";
   import { commands } from "../lib/commands";
   import { copyNotes, deleteNotes, moveNotes, noteKey, notesInBox, pasteNotes, quantizeTrack, repeatSong, setAllVelocities, stemName, stemSong, type ClipNote } from "../lib/song-edit";
@@ -35,6 +35,12 @@
   let noteLen = $state(1);
   let loop = $state(true);
   /// The lower part shows the mixer, or the notes' loudness bars, or nothing.
+  let taps: number[] = [];
+  const tap = () => {
+    taps = [...taps.slice(-15), performance.now()];
+    const bpm = tapTempo(taps);
+    if (bpm) commit(setTempo(song, bpm));
+  };
   let lower: "mixer" | "velocity" | "tools" | "arrange" | "none" = $state("none");
   let playing = $state(false);
   let playhead = $state(0); // steps
@@ -277,7 +283,7 @@
     draw();
   });
 
-  let gesture: { kind: "move" | "resize" | "group"; before: Song; grabStep: number; grabPitch?: number; keys?: Set<string>; origStep: number; origLen: number; moved: boolean } | null = null;
+  let gesture: { kind: "move" | "resize" | "group"; before: Song; grabStep: number; grabPitch?: number; keys?: Set<string>; origStep: number; origLen: number; moved: boolean; copy?: boolean; copied?: boolean } | null = null;
   function cellOf(e: PointerEvent) {
     const r = canvas!.getBoundingClientRect();
     const x = e.clientX - r.left - KEYS_W;
@@ -326,7 +332,7 @@
       selected = hit;
       const n = current.notes[hit]!;
       const nearEnd = c.x > (n.step + n.len) * STEP_W - 7;
-      gesture = { kind: nearEnd ? "resize" : "move", before: song, grabStep: c.step, origStep: n.step, origLen: n.len, moved: false };
+      gesture = { kind: nearEnd ? "resize" : "move", before: song, grabStep: c.step, origStep: n.step, origLen: n.len, moved: false, copy: !nearEnd && (e.ctrlKey || e.metaKey || e.altKey) };
       ping(n.pitch);
     } else {
       const r = addNote(song, track, { step: c.step, len: noteLen, pitch, vel: 0.8 });
@@ -374,6 +380,22 @@
       result = changeNote(song, track, selected, { len: Math.max(1, c.step - n.step + 1) });
     } else {
       const row = Math.max(0, Math.min(rows.length - 1, c.row));
+      if (gesture.copy && !gesture.copied) {
+        // Ctrl, Cmd or Alt held: the first move leaves the note where it was and drags a copy of it
+        const step = Math.max(0, Math.min(song.length - 1, gesture.origStep + c.step - gesture.grabStep));
+        const pitch2 = pitchOfRow(row);
+        if (step === n.step && pitch2 === n.pitch) return;
+        const copy = addNote(song, track, { ...n, step, pitch: pitch2 });
+        if (copy.index < 0) return;
+        gesture.copied = true;
+        gesture.moved = true;
+        song = copy.song;
+        selected = copy.index;
+        tick++;
+        studio.sessions.set(filePath, { song });
+        studio.edit(filePath, serializeSong(song));
+        return;
+      }
       result = changeNote(song, track, selected, { step: Math.max(0, Math.min(song.length - 1, gesture.origStep + c.step - gesture.grabStep)), pitch: pitchOfRow(row) });
     }
     if (result.song !== song && result.index >= 0) {
@@ -574,7 +596,7 @@
     <div class="top">
       <button class="primary" onclick={toggle}>{playing ? "■ Stop" : "▶ Play"}</button>
       <label class="check"><input type="checkbox" bind:checked={loop} onchange={() => playing && begin(0)} /> Loop</label>
-      <label>Tempo <input type="number" class="narrow" min="40" max="240" value={song.bpm} onchange={(e) => commit(setTempo(song, Number(e.currentTarget.value)))} /> bpm</label>
+      <label>Tempo <input type="number" class="narrow" min="40" max="240" value={song.bpm} onchange={(e) => commit(setTempo(song, Number(e.currentTarget.value)))} /> bpm <button class="ghost" onclick={tap} title="Tap the beat: the tempo follows your taps (at least two)">Tap</button></label>
       <label>Bars <input type="number" class="narrow" min="1" max="64" value={bars} onchange={(e) => setBars(Number(e.currentTarget.value))} /></label>
       <label>New note <select bind:value={noteLen}>{#each [1, 2, 4, 8, 16] as n (n)}<option value={n}>{n} step{n > 1 ? "s" : ""}</option>{/each}</select></label>
       <span class="dim">{secs} s · saves {oggPath}</span>

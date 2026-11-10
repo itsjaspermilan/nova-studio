@@ -328,3 +328,17 @@ export function setNoteProps(song: Song, track: number, keys: Set<string>, props
     }),
   }));
 }
+
+/// The tempo a series of taps (times in milliseconds) beat out: the average gap of the last few taps, as beats per minute. A pause of over 2.5 seconds starts a new series.
+/// null with fewer than two taps in the series.
+export function tapTempo(taps: number[]): number | null {
+  const series: number[] = [];
+  for (const t of taps) {
+    if (series.length && t - series[series.length - 1]! > 2500) series.length = 0;
+    series.push(t);
+  }
+  const last = series.slice(-8);
+  if (last.length < 2) return null;
+  const bpm = 60000 / ((last[last.length - 1]! - last[0]!) / (last.length - 1));
+  return Number.isFinite(bpm) ? Math.min(MAX_BPM, Math.max(MIN_BPM, Math.round(bpm))) : null;
+}

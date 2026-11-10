@@ -271,3 +271,17 @@ describe("note pan and bend", () => {
     expect(b.tracks[0]!.notes[0]).toEqual({ step: 0, len: 2, pitch: 60, vel: 1 });
   });
 });
+
+describe("tap tempo", () => {
+  it("averages the gaps, keeps the last eight taps, and a long pause starts again", async () => {
+    const { tapTempo } = await import("./song-tools");
+    expect(tapTempo([])).toBeNull();
+    expect(tapTempo([100])).toBeNull();
+    expect(tapTempo([0, 500, 1000, 1500])).toBe(120);
+    expect(tapTempo([0, 600, 1200])).toBe(100);
+    expect(tapTempo([0, 1000, 2000, 10000, 10500, 11000])).toBe(120); // the pause cut the slow taps off
+    expect(tapTempo([0, 10])).toBe(240); // too fast: held to the top tempo
+    expect(tapTempo([0, 2400])).toBe(40);
+    expect(tapTempo([0, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4020])).toBeGreaterThan(100);
+  });
+});
