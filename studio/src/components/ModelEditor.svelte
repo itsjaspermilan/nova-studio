@@ -2437,6 +2437,17 @@
     selFace = null;
     selEdge = null;
   }
+  const isSeam = (e: [number, number] | null) => !!e && !!cube?.seams?.some(([a, b]) => (a === e[0] && b === e[1]) || (a === e[1] && b === e[0]));
+  /// Marks (or clears) the picked edge as a UV seam: the unwrap cuts along it, so the faces on its two sides become separate islands.
+  function toggleSeam() {
+    if (!cube || !selEdge) return void (selectNote = "Click an edge first.");
+    const e: [number, number] = [selEdge[0], selEdge[1]];
+    const was = isSeam(e);
+    const rest = (cube.seams ?? []).filter(([a, b]) => !((a === e[0] && b === e[1]) || (a === e[1] && b === e[0])));
+    const seams = was ? rest : [...rest, e];
+    change({ ...cube, seams: seams.length ? seams : undefined });
+    selectNote = was ? "Seam cleared." : cube.modifiers?.length ? "Seam marked (a shape with modifiers unwraps without seams)." : "Seam marked: the unwrap cuts along it.";
+  }
   function removeFacePicked() {
     if (cube && selFace !== null) change(deleteFaces(cube, [selFace]), true);
   }
@@ -2846,6 +2857,7 @@
           <button onclick={fillHoleAtPick} title="Close the open border that the picked point is on">Fill hole</button>
           <label class="inline" title="The most a surface may turn and still shade smooth, in degrees"><input type="number" min="1" max="180" step="5" bind:value={smoothAngle} class="narrow" aria-label="Smooth angle" /></label>
           <button onclick={autoSmoothNow} title="Smooth the faces where the surface turns by less than that angle and keep hard corners flat (the picked face, or the whole mesh)">Smooth by angle</button>
+          <button onclick={toggleSeam} class:on={isSeam(selEdge)} title="Mark the picked edge as a UV seam, or clear it: the texture unwrap cuts along seams">Seam{cube?.seams?.length ? ` (${cube.seams.length})` : ""}</button>
           <button onclick={slideEdge} title="Slide the picked edge along the surface (quad faces on the side asked for)">Slide edge</button>
           {#if selectNote}<span class="dim small" role="status">{selectNote}</span>{/if}
         {/if}

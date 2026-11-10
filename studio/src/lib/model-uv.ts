@@ -111,7 +111,7 @@ export function unwrap(c: Cube): Unwrap {
   // joined, or where two of them would cover the same texels (a spoiler over the boot); each piece is an island, and the
   // islands are packed side by side, tallest first. (Until then every polygon was its own island, turned along its first edge:
   // the pixels slanted and no two neighbours lined up.)
-  return meshIslands(solid, s);
+  return meshIslands(solid, s, c.modifiers?.length ? undefined : c.seams);
 }
 
 /// The way each group of a mesh is seen: the texel across (u) and down (v) for a point, seen from outside with up as up
@@ -148,7 +148,8 @@ function cellsOf(pts: UV[]): string[] {
   return out;
 }
 
-function meshIslands(solid: { verts: Vec3[]; polys: { v: number[] }[] }, s: number): Unwrap {
+function meshIslands(solid: { verts: Vec3[]; polys: { v: number[] }[] }, s: number, seams?: [number, number][]): Unwrap {
+  const seam = new Set((seams ?? []).map(([a, b]) => (a < b ? a + "," + b : b + "," + a)));
   const polys = solid.polys;
   const views = polys.map((p) => {
     const n = polyNormalOf(p.v.map((i) => solid.verts[i]!));
@@ -166,7 +167,8 @@ function meshIslands(solid: { verts: Vec3[]; polys: { v: number[] }[] }, s: numb
     const out = new Set<number>();
     p.v.forEach((a, k) => {
       const b = p.v[(k + 1) % p.v.length]!;
-      for (const q of byEdge.get(a < b ? a + "," + b : b + "," + a) ?? []) out.add(q);
+      const ek = a < b ? a + "," + b : b + "," + a;
+      if (!seam.has(ek)) for (const q of byEdge.get(ek) ?? []) out.add(q);
     });
     return out;
   });

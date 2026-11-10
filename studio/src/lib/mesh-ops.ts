@@ -68,6 +68,7 @@ function compactKeep(c: Cube): { cube: Cube; map: number[] } {
   out.verts = verts;
   out.polys = c.polys!.map((f) => ({ ...f, v: f.v.map((i) => map[i]!) }));
   delete out.creases;
+  delete out.seams;
   return { cube: finish(out), map };
 }
 
@@ -465,6 +466,7 @@ function cluster(c: Cube, min: Vec3, cell: number): Cube {
   }
   out.polys = polys;
   delete out.creases;
+  delete out.seams;
   return compact(finish(out));
 }
 

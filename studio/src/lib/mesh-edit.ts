@@ -210,6 +210,10 @@ export function compactWithMap(c: Cube): { cube: Cube; map: number[] } {
     out.creases = out.creases.filter((e) => map[e[0]]! >= 0 && map[e[1]]! >= 0).map((e) => [map[e[0]]!, map[e[1]]!, e[2]] as [number, number, number]);
     if (!out.creases.length) delete out.creases;
   }
+  if (out.seams) {
+    out.seams = out.seams.filter((e) => map[e[0]]! >= 0 && map[e[1]]! >= 0).map((e) => [map[e[0]]!, map[e[1]]!] as [number, number]);
+    if (!out.seams.length) delete out.seams;
+  }
   return { cube: finish(out), map };
 }
 

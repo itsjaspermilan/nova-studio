@@ -48,6 +48,8 @@ export interface Cube {
   roughness?: number;
   /// Mesh only: sharp edges for a Subdivision modifier, `[point a, point b, weight]` with weight 0 (smooth) to 1 (sharp at every level).
   creases?: [number, number, number][];
+  /// Mesh only: UV seams, `[point a, point b]`. The unwrap cuts along them, so the faces on either side become separate islands in the picture.
+  seams?: [number, number][];
   /// Colour of all faces, `#rrggbb` or `#rrggbbaa`.
   color: string;
   /// Colours of individual faces, overriding `color`.
@@ -378,6 +380,10 @@ export function parseModel(text: string): Parsed {
         if (shape !== "mesh") return `${cat}.creases is only for a mesh`;
         if (!Array.isArray(c.creases) || c.creases.length > MAX_FACES * 4 || !c.creases.every((e) => Array.isArray(e) && e.length === 3 && Number.isInteger(e[0]) && Number.isInteger(e[1]) && e[0] >= 0 && e[1] >= 0 && e[0] < (c.verts?.length ?? 0) && e[1] < (c.verts?.length ?? 0) && typeof e[2] === "number" && e[2] >= 0 && e[2] <= 1)) return `${cat}.creases must be a list of [point, point, weight 0 to 1] for points that exist`;
       }
+      if (c.seams !== undefined) {
+        if (shape !== "mesh") return `${cat}.seams is only for a mesh`;
+        if (!Array.isArray(c.seams) || c.seams.length > MAX_FACES * 4 || !c.seams.every((e) => Array.isArray(e) && e.length === 2 && Number.isInteger(e[0]) && Number.isInteger(e[1]) && e[0] >= 0 && e[1] >= 0 && e[0] < (c.verts?.length ?? 0) && e[1] < (c.verts?.length ?? 0))) return `${cat}.seams must be a list of [point, point] for points that exist`;
+      }
       if (shape === "mesh") {
         if (c.rotation?.some((n) => n !== 0)) return `${cat}.rotation is not used on a mesh: turn its points instead`;
         const bad = checkMesh(c, cat);
@@ -476,6 +482,7 @@ export function serializeModel(doc: ModelDoc): string {
       const polys = (c.polys ?? []).map((f) => `${i2}  ${JSON.stringify(f)}`).join(",\n");
       parts.push(`"verts": [${verts ? `\n${verts}\n${i2}` : ""}]`, `"polys": [${polys ? `\n${polys}\n${i2}` : ""}]`);
       if (c.creases?.length) parts.push(`"creases": ${JSON.stringify(c.creases)}`);
+      if (c.seams?.length) parts.push(`"seams": ${JSON.stringify(c.seams)}`);
       if (c.modifiers?.length) parts.push(`"modifiers": [${c.modifiers.map((m) => JSON.stringify(m)).join(", ")}]`);
       if (c.skin) {
         const rows = c.skin.weights.map((w) => `${i2}  ${JSON.stringify(w.map(([b, x]) => [b, Math.round(x * 10000) / 10000]))}`).join(",\n");
