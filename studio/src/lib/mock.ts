@@ -1,4 +1,5 @@
 import { createMockDebugger } from "./mock-debug";
+import { parseSave } from "./save-data";
 import type { AndroidDevice, Api, CheckReport, DebugMessage, Diagnostic, FileContent, FileEntry, HeadlessOptions, HeadlessReport, LogLine } from "./types";
 import starterTitleIn from "../../src-tauri/templates/starter/animations/title_in.anim.json?raw";
 
@@ -65,6 +66,9 @@ export const MOCK_DEVICES: AndroidDevice[] = [
   { serial: "bc8565a3", state: "device", name: "Retroid Pocket 6", emulator: false },
   { serial: "emulator-5554", state: "device", name: "retroid-sim (emulator)", emulator: true },
 ];
+
+let mockSave: string | null = '{\n  "format": 1,\n  "data": { "best": 120, "name": "Ana", "sound": true }\n}\n';
+const mockAside: string[] = [];
 
 export function createMockApi(options: { devices?: AndroidDevice[] } = {}): Api {
   const devices = options.devices ?? MOCK_DEVICES;
@@ -242,6 +246,19 @@ export function createMockApi(options: { devices?: AndroidDevice[] } = {}): Api 
       files.set(path, "");
       const parts = path.split("/");
       for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join("/"));
+    },
+    readSave: async () => ({ folder: "~/Library/Application Support/Nova/my-game (browser preview)", exists: mockSave !== null, text: mockSave ?? "", aside: mockAside }),
+    writeSave: async (text) => {
+      const v = parseSave(text);
+      if (!v.ok) throw new Error(v.error);
+      if (mockSave) mockAside.push(`save.json.reset-${mockAside.length + 1}`);
+      mockSave = text;
+    },
+    resetSave: async () => {
+      if (mockSave === null) return false;
+      mockAside.push(`save.json.reset-${mockAside.length + 1}`);
+      mockSave = null;
+      return true;
     },
     writeExport: async (path, dataUrl) => {
       need();

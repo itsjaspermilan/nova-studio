@@ -11,6 +11,7 @@ mod paths;
 mod project_files;
 mod recent;
 mod runner;
+mod save_data;
 mod templates;
 mod windows;
 
@@ -219,6 +220,21 @@ fn convert_to_ogg(state: State<AppState>, path: String) -> Result<String, String
 #[tauri::command]
 fn write_export(state: State<AppState>, path: String, data_url: String) -> Result<(), String> {
     project_files::write_export(&root_of(&state)?, &path, &data_url)
+}
+
+#[tauri::command]
+fn read_save(state: State<AppState>) -> Result<save_data::SaveInfo, String> {
+    save_data::read(&root_of(&state)?)
+}
+
+#[tauri::command]
+fn write_save(state: State<AppState>, text: String) -> Result<(), String> {
+    save_data::write(&root_of(&state)?, &text)
+}
+
+#[tauri::command]
+fn reset_save(state: State<AppState>) -> Result<bool, String> {
+    save_data::reset(&root_of(&state)?)
 }
 
 #[tauri::command]
@@ -468,6 +484,9 @@ pub fn run() {
             read_audio,
             write_audio,
             write_export,
+            read_save,
+            write_save,
+            reset_save,
             write_ogg,
             convert_to_ogg,
             write_model,

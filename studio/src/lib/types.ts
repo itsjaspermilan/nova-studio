@@ -153,6 +153,10 @@ export interface Api {
   checkProject(): Promise<CheckReport>;
   /// Checks the game and writes it out for a computer or for Android under `<project>/exports`.
   exportGame(target: "desktop" | "android"): Promise<ExportReport>;
+  /// The project's save data on this computer (`save.json` where `nova run` keeps it), written back after a check, and set aside (never deleted) to start fresh.
+  readSave(): Promise<SaveInfo>;
+  writeSave(text: string): Promise<void>;
+  resetSave(): Promise<boolean>;
   /// The Android devices adb can see: the handheld over USB, emulators.
   listDevices(): Promise<AndroidDevice[]>;
   /// Builds the game for Android, installs it on the device and starts it (the log arrives through `onPlayLog`, the
@@ -200,4 +204,11 @@ export interface ExportReport {
   /// What the exporter printed: problems found, the files written or why it stopped.
   text: string;
   folder: string;
+}
+
+export interface SaveInfo {
+  folder: string;
+  exists: boolean;
+  text: string;
+  aside: string[];
 }
