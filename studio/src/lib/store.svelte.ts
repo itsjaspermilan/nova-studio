@@ -6,11 +6,13 @@ import { exportGlb } from "./glb";
 import { importWithColours } from "./model-load";
 import { newModel, serializeModel } from "./model-doc";
 import { PRESETS, render, toJson } from "./sfx";
-import { newSong, renderSong, serializeSong } from "./song";
+import { fitForProject, freeName, kindFor, safeSoundName } from "./audio-import";
+import { templateById } from "./song-templates";
+import { renderSong, serializeSong } from "./song";
 import { newTrack, serializeTrack, trackOf } from "./track-doc";
 import { animOf, newAnim, serializeAnim } from "./anim-doc";
 import { newDoc, toSheetJson } from "./sprite-doc";
-import { encodeWav, fromBase64, toBase64 } from "./wav";
+import { encodeWav, fromBase64, toBase64, type Sound } from "./wav";
 import { moved, planRename } from "./refs";
 import { groupResources, renamePlan, resolveFrom, type Resource } from "./resources";
 import { diffFiles, stampsOf, type FileDiff } from "./file-changes";
@@ -666,7 +668,7 @@ class Studio {
   }
 
   /// A new song: `music/<name>.song.json` (what the editor edits) and the rendered `music/<name>.ogg` (small, and streamed by the game).
-  async createSong(name: string) {
+  async createSong(name: string, template = "blank") {
     const clean = name.trim().replace(/\.song\.json$|\.wav$/i, "");
     if (!RESOURCE_NAME.test(clean)) return this.say("error", "Song names use letters, numbers, - and _ (and / to put it in a folder, as in levels/castle-1).");
     await this.#guard(async () => {
@@ -674,11 +676,38 @@ class Studio {
       const ogg = `music/${clean}.ogg`;
       const wav = `music/${clean}.wav`;
       if (this.files.some((f) => f.path === json || f.path === ogg || f.path === wav)) throw `'${clean}' already exists in music/`;
-      const song = newSong();
+      const song = templateById(template).make();
       await this.api!.writeOgg(ogg, `data:audio/wav;base64,${toBase64(encodeWav(renderSong(song)))}`);
       await this.api!.createFile(json, serializeSong(song));
       await this.refreshFiles();
       await this.openFile(json);
+    });
+  }
+
+  /// Brings in a sound file from outside (WAV, Ogg or MP3: whatever the system can decode): a short one becomes a WAV in sounds/, a long one an Ogg in music/.
+  async importAudio(file: File) {
+    await this.#guard(async () => {
+      let decoded: AudioBuffer;
+      try {
+        const ctx = new AudioContext();
+        decoded = await ctx.decodeAudioData(await file.arrayBuffer());
+        void ctx.close();
+      } catch {
+        throw `${file.name} could not be read as sound (WAV, Ogg and MP3 usually can).`;
+      }
+      const raw: Sound = { rate: decoded.sampleRate, channels: Array.from({ length: decoded.numberOfChannels }, (_, i) => Float32Array.from(decoded.getChannelData(i))) };
+      const { sound, cut, mixedDown } = fitForProject(raw);
+      const kind = kindFor(sound);
+      const base = safeSoundName(file.name);
+      const taken = (n: string) => this.files.some((f) => new RegExp(`^(sounds|music)/${n}\\.(wav|ogg|sfx\\.json|song\\.json)$`).test(f.path));
+      const name = freeName(base, taken);
+      const dataUrl = `data:audio/wav;base64,${toBase64(encodeWav(sound))}`;
+      const target = kind === "music" ? `music/${name}.ogg` : `sounds/${name}.wav`;
+      if (kind === "music") await this.api!.writeOgg(target, dataUrl);
+      else await this.api!.writeAudio(target, dataUrl);
+      await this.refreshFiles();
+      this.say("info", `Imported ${file.name} as ${target}${cut ? " (cut to the first 10 minutes)" : ""}${mixedDown ? " (only the first two channels kept)" : ""}.`);
+      await this.openFile(target);
     });
   }
 

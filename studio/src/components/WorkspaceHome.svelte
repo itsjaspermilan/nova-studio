@@ -3,6 +3,9 @@
   import { studio } from "../lib/store.svelte";
   import { WORKSPACES, inWorkspace } from "../lib/workspaces";
   import { newTileset, serializeTileset, tilesetPathFor } from "../lib/tileset";
+  import { SONG_TEMPLATES } from "../lib/song-templates";
+  let songTemplate = $state("blank");
+  let audioFile: HTMLInputElement | undefined = $state();
 
   const w = $derived(WORKSPACES.find((x) => x.id === studio.workspace)!);
   const own = $derived(inWorkspace(studio.files.filter((f) => !f.dir), studio.workspace).filter((f) => !f.path.endsWith("nova.json")));
@@ -25,7 +28,7 @@
     if (kind === "model") await studio.createModel(n);
     else if (kind === "sprite") await studio.createSprite(n, 32);
     else if (kind === "sfx") await studio.createSound(n);
-    else await studio.createSong(n);
+    else await studio.createSong(n, songTemplate);
     name = "";
   };
 </script>
@@ -41,6 +44,9 @@
       {#if studio.workspace === "sound"}
         <button type="submit" onclick={() => make("sfx")} disabled={!name.trim()}>New sound effect</button>
         <button type="button" onclick={() => make("song")} disabled={!name.trim()}>New song</button>
+        <select bind:value={songTemplate} aria-label="Start the song from" title={SONG_TEMPLATES.find((t) => t.id === songTemplate)?.blurb}>{#each SONG_TEMPLATES as t (t.id)}<option value={t.id}>{t.name}</option>{/each}</select>
+        <button type="button" onclick={() => audioFile?.click()} title="Bring in a WAV, Ogg or MP3 file: a short one becomes a sound effect, a long one music">Import a sound file…</button>
+        <input bind:this={audioFile} type="file" accept=".wav,.ogg,.mp3,audio/*" hidden onchange={(e) => { const f = e.currentTarget.files?.[0]; e.currentTarget.value = ""; if (f) void studio.importAudio(f); }} />
       {/if}
     </form>
   {/if}
