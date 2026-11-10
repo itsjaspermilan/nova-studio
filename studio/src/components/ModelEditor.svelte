@@ -93,6 +93,7 @@
   let edgeBy = $state(4);
   let snap = $state(true);
   let overlaysOpen = $state(false);
+  let pivotMode = $state<"median" | "active">("median");
   let moreAdd = $state(false);
   // What a click picks in point mode (Vertex, Edge, Face): all three by default; a click on one alone picks only that kind, ⇧-click adds or removes one.
   let pickKinds = $state({ vertex: true, edge: true, face: true });
@@ -895,7 +896,7 @@
     untrack(drawOutline);
   });
   $effect(() => {
-    doc; selected; also; mode; inEdit; gizmoMode; snap;
+    doc; selected; also; mode; inEdit; gizmoMode; snap; pivotMode;
     untrack(attachGizmo);
   });
   $effect(() => {
@@ -1032,6 +1033,19 @@
     if (!c || !hasVolume(c)) return;
     proxy = new THREE.Object3D();
     proxy.position.set(c.from[0] + c.size[0] / 2, c.from[1] + c.size[1] / 2, c.from[2] + c.size[2] / 2);
+    if (also.length && pivotMode === "median") {
+      // several shapes turn and resize about the middle of their middles, not about the first one's
+      const sum = new THREE.Vector3();
+      let n = 0;
+      for (const p of pickedShapes) {
+        const pc = cubeAt(doc, p);
+        const pg = groupOf(p.parts);
+        if (!pc || !pg || !hasVolume(pc)) continue;
+        sum.add(new THREE.Vector3(pc.from[0] + pc.size[0] / 2, pc.from[1] + pc.size[1] / 2, pc.from[2] + pc.size[2] / 2).applyMatrix4(pg.matrixWorld));
+        n++;
+      }
+      if (n) proxy.position.copy(g.worldToLocal(sum.divideScalar(n)));
+    }
     if (!also.length && c.shape !== "mesh" && c.rotation) proxy.rotation.set(...(c.rotation.map((d) => (d * Math.PI) / 180) as Vec3), "XYZ");
     g.add(proxy);
     proxy.updateMatrix();
@@ -1294,7 +1308,7 @@
 
   // the 2D view of the picture, with every shape's unwrapped faces drawn over it
   let texView: HTMLCanvasElement | undefined = $state();
-  const texZoom = $derived(picture ? Math.max(1, Math.min(8, Math.floor(340 / picture.w))) : 1);
+  const texZoom = $derived(picture ? Math.max(1, Math.min(12, Math.floor(420 / picture.w))) : 1);
   const painted = $derived(walk(doc).flatMap(({ part, parts }) => part.cubes.map((c, ci) => ({ c, path: { parts, cube: ci } as Path })).filter((x) => x.c.texture && hasVolume(x.c))));
   function paintView() {
     const ctx = texView?.getContext("2d");
@@ -2996,6 +3010,11 @@
             <option value="off">Off</option><option value="grid">Grid</option><option value="points">Points</option><option value="both">Grid and points</option>
           </select>
         </label>
+        <label class="inline" title="What several picked shapes turn and resize about: the middle of all of them, or the first one picked">Pivot
+          <select bind:value={pivotMode} aria-label="Pivot">
+            <option value="median">Median</option><option value="active">Active</option>
+          </select>
+        </label>
         {#if inEdit}
           <button class:on={proportional} onclick={() => (proportional = !proportional)} title="Proportional editing: points near the moved ones follow, falling off with distance">Proportional</button>
           {#if proportional}<label class="inline" title="How far the pull reaches, in model units">radius <input type="number" min="0.5" step="0.5" bind:value={propRadius} class="narrow" aria-label="Proportional radius" /></label>{/if}
@@ -3118,6 +3137,9 @@
         <button role="tab" aria-selected={mode === "texture"} class:on={mode === "texture"} onclick={() => setUiMode("texture")} title="The UV editor: the texture picture and where each shape's block sits (Texture Paint mode)"><Icon name="sprites" size={13} /> UV editor</button>
         {#if mode !== "animate" && mode !== "texture"}<span class="dim small">Pick an area to work in it: the timeline opens Pose mode, the UV editor opens Texture Paint.</span>{/if}
       </div>
+      {#if mode === "texture" && picture}
+        <div class="uvarea"><div class="texbox"><canvas bind:this={texView} aria-label="The texture picture" onpointerdown={texDown} onpointermove={texMove} onpointerup={texUp} onpointercancel={texUp}></canvas></div></div>
+      {/if}
       {#if mode === "animate" && clip}
         <div class="timeline">
           <div class="clips">
@@ -3259,7 +3281,6 @@
               <p class="dim small">You paint on the highlighted layer. The game gets them flattened; layer changes are not on the undo list.</p>
             {/if}
           </div>
-          <div class="texbox"><canvas bind:this={texView} aria-label="The texture picture" onpointerdown={texDown} onpointermove={texMove} onpointerup={texUp} onpointercancel={texUp}></canvas></div>
           <p class="dim small">{picture.w}×{picture.h} texels · {painted.length} painted shape{painted.length === 1 ? "" : "s"}</p>
           <div class="pair">
             <label>Width <select value={picture.w} onchange={(e) => setTextureSize(Number(e.currentTarget.value), picture!.h)}>{#each [16, 32, 64, 128, 256, 512, 1024] as n (n)}<option value={n}>{n}</option>{/each}</select></label>
@@ -3628,6 +3649,8 @@
   .proptabs { display: flex; flex-wrap: wrap; gap: 2px; margin: 2px 0 8px; border-bottom: 1px solid var(--line); }
   .proptabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; padding: 4px 9px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
   .proptabs button.on { border-bottom-color: var(--accent); color: var(--text); font-weight: 600; }
+  .uvarea { background: var(--panel); border-top: 1px solid var(--line); padding: 6px; max-height: 42%; overflow: auto; display: flex; justify-content: center; }
+  .uvarea .texbox { max-height: none; }
   .areabar { display: flex; align-items: center; gap: 4px; padding: 2px 8px; background: var(--panel); border-top: 1px solid var(--line); min-height: 26px; }
   .areabar button { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; padding: 2px 8px; font-size: 12px; color: var(--dim); display: inline-flex; align-items: center; gap: 4px; }
   .areabar button.on { color: var(--text); border-bottom-color: var(--accent); }
