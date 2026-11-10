@@ -328,7 +328,7 @@ describe("a pan lane and drawing lanes", () => {
     expect(parseSong(JSON.stringify(bad)).ok).toBe(false);
     bad.tracks[0].automation = [{ param: "pan", curve: "linear", points: [] }, { param: "pan", curve: "linear", points: [] }];
     expect(parseSong(JSON.stringify(bad)).ok).toBe(false);
-    bad.tracks[0].automation = [{ param: "cutoff", curve: "linear", points: [] }];
+    bad.tracks[0].automation = [{ param: "reverb", curve: "linear", points: [] }];
     expect(parseSong(JSON.stringify(bad)).ok).toBe(false);
   });
 });
@@ -363,5 +363,23 @@ describe("a tempo that glides", () => {
     const s = setTempoGlide({ ...newS(), length: 64 }, 32, 60);
     expect(stepT(s, 32)).toBeCloseTo((32 * 60) / 120 / s.stepsPerBeat, 9);
     expect(stepT(s, 36)).toBeCloseTo((32 * 60) / 120 / s.stepsPerBeat + (4 * 60) / 60 / s.stepsPerBeat, 9);
+  });
+});
+
+import { renderSong as renderS } from "./song";
+import { setLanePoint as setLP } from "./song-tools";
+describe("a filter cutoff lane", () => {
+  it("closes the filter of a note it covers: the sound is smoother than without the lane", () => {
+    let s = { ...newS(), length: 8 };
+    s.tracks = [{ ...s.tracks[0]!, wave: "saw", cutoff: 6000, resonance: 0, sweep: 0, notes: [{ step: 0, len: 4, pitch: 60, vel: 0.8 }] } as never];
+    const rough = (song: typeof s) => {
+      const out = renderS(song).channels[0]!;
+      let sum = 0;
+      for (let i = 1; i < out.length; i++) sum += Math.abs(out[i]! - out[i - 1]!);
+      return sum;
+    };
+    const open = rough(s);
+    const closed = rough(setLP(s, 0, "cutoff", 0, 0.1));
+    expect(closed).toBeLessThan(open * 0.8);
   });
 });

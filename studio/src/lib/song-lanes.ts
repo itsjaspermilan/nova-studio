@@ -31,7 +31,8 @@ export function applyAutomation(song: Song): Song {
     tracks: song.tracks.map((t) => {
       const gains = (t.automation ?? []).filter((l) => l.param === "gain");
       const pans = (t.automation ?? []).filter((l) => l.param === "pan");
-      if (!gains.length && !pans.length) return t;
+      const cuts = (t.automation ?? []).filter((l) => l.param === "cutoff");
+      if (!gains.length && !pans.length && !cuts.length) return t;
       return {
         ...t,
         notes: t.notes.map((n) => {
@@ -39,6 +40,7 @@ export function applyAutomation(song: Song): Song {
           if (gains.length) out.vel = clamp(n.vel * gains.reduce((g, l) => g * laneValue(l, n.step), 1), 0, 1);
           // (an empty-lane default of 1 is for gain; a pan lane's points are the pan itself, added to the note's own)
           if (pans.length) out.pan = clamp((n.pan ?? 0) + pans.reduce((sum, l) => sum + laneValue(l, n.step), 0), -1, 1);
+          if (cuts.length) out.cut = clamp((n.cut ?? 1) * cuts.reduce((g, l) => g * laneValue(l, n.step), 1), 0.1, 4);
           return out;
         }),
       };

@@ -58,6 +58,8 @@ export interface Note {
   pan?: number;
   /// A pitch glide in semitones (-12 to 12): the note starts at its pitch and slides this far by its end. Not for drums or the plucked string.
   bend?: number;
+  /// Not saved: a multiple of the track's filter cutoff for this note, put in when the song is rendered (a "cutoff" lane).
+  cut?: number;
 }
 
 export interface Track {
@@ -167,8 +169,9 @@ export interface SongMaster {
 }
 
 /// One automation lane, read at each note's first step. "gain" (0 to 2) multiplies the note's loudness; "pan" (-1 to 1) is added to the note's place in the stereo field.
-export type LaneParam = "gain" | "pan";
-export const LANE_RANGE: Record<LaneParam, [number, number]> = { gain: [0, 2], pan: [-1, 1] };
+export type LaneParam = "gain" | "pan" | "cutoff";
+/// "cutoff": a multiple of the track's filter cutoff (0.1 to 4: a lane at 0.5 closes the filter to half its pitch), for tracks whose voice has a cutoff.
+export const LANE_RANGE: Record<LaneParam, [number, number]> = { gain: [0, 2], pan: [-1, 1], cutoff: [0.1, 4] };
 export interface Lane {
   param: LaneParam;
   curve: "linear" | "step" | "smooth";
@@ -472,7 +475,7 @@ export function parseSong(text: string): Parsed {
       const lanes: Lane[] = [];
       for (const [li, lane] of t.automation.entries()) {
         const where = `${at}.automation[${li}]`;
-        if (!lane || (lane.param !== "gain" && lane.param !== "pan")) return { ok: false, error: `${where}.param must be "gain" or "pan"` };
+        if (!lane || (lane.param !== "gain" && lane.param !== "pan" && lane.param !== "cutoff")) return { ok: false, error: `${where}.param must be "gain", "pan" or "cutoff"` };
         if (t.automation.slice(0, li).some((q) => q.param === lane.param)) return { ok: false, error: `${where}: there is already a "${lane.param}" lane on this track` };
         const [lowest, highest] = LANE_RANGE[lane.param];
         if (!["linear", "step", "smooth"].includes(lane.curve)) return { ok: false, error: `${where}.curve must be "linear", "step" or "smooth"` };
@@ -1082,7 +1085,7 @@ function richNote(
     gl.push(Math.cos(((p + 1) * Math.PI) / 4));
     gr.push(Math.sin(((p + 1) * Math.PI) / 4));
   }
-  const cutoff = track.cutoff ?? 0;
+  const cutoff = (track.cutoff ?? 0) * (n.cut ?? 1);
   const q = 0.5 + (track.resonance ?? 0) * 6;
   const sweep = track.sweep ?? 0;
   const sub = track.sub ?? 0;

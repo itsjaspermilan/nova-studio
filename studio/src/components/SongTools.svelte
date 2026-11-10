@@ -219,19 +219,19 @@
   <section>
     <h4>Automation over the song <span class="dim small">(this track)</span></h4>
     <div class="row">
-      <label>Lane <select bind:value={laneParam} onchange={() => (pointValue = laneParam === "gain" ? 1 : 0)} aria-label="Which lane"><option value="gain">loudness</option><option value="pan">pan</option></select></label>
+      <label>Lane <select bind:value={laneParam} onchange={() => (pointValue = laneParam === "pan" ? 0 : 1)} aria-label="Which lane"><option value="gain">loudness</option><option value="pan">pan</option><option value="cutoff">filter cutoff</option></select></label>
       <span class="dim small">Press and drag on the picture to draw it.</span>
     </div>
     <svg viewBox="0 0 400 60" class="lane" role="img" aria-label="The {laneParam} lane of this track" style="touch-action:none;cursor:crosshair"
       onpointerdown={(e) => { drawing = true; (e.currentTarget as SVGSVGElement).setPointerCapture(e.pointerId); drawAt(e); }} onpointermove={(e) => { if (drawing) drawAt(e); }} onpointerup={() => (drawing = false)} onpointercancel={() => (drawing = false)}>
-      <line x1="0" x2="400" y1={yOfValue(laneParam === "gain" ? 1 : 0)} y2={yOfValue(laneParam === "gain" ? 1 : 0)} class="mid" />
+      <line x1="0" x2="400" y1={yOfValue(laneParam === "pan" ? 0 : 1)} y2={yOfValue(laneParam === "pan" ? 0 : 1)} class="mid" />
       {#each lane?.points ?? [] as pt (pt.step)}<circle cx={(pt.step / Math.max(1, song.length)) * 400} cy={yOfValue(pt.value)} r="2.5" fill="#5aa9ff" />{/each}
       {#if lane}<polyline points={laneLine} />{/if}
     </svg>
     <div class="row">
       <label>Curve <select disabled={!lane} value={lane?.curve ?? "linear"} onchange={(e) => lane && commit(setLane(song, track, { ...lane, curve: e.currentTarget.value as "linear" | "step" | "smooth" }))}><option value="linear">straight</option><option value="smooth">smooth</option><option value="step">steps</option></select></label>
       <label>at step <input type="number" min="0" max={song.length} bind:value={pointStep} class="narrow" /></label>
-      <label>{laneParam === "gain" ? "gain" : "pan"} <input type="number" min={range[0]} max={range[1]} step="0.1" bind:value={pointValue} class="narrow" /></label>
+      <label>{laneParam === "gain" ? "gain" : laneParam === "pan" ? "pan" : "cutoff ×"} <input type="number" min={range[0]} max={range[1]} step="0.1" bind:value={pointValue} class="narrow" /></label>
       <button onclick={setPoint}>Set point</button>
       <button class="ghost" disabled={!lane} onclick={() => commit(setLane(song, track, null, laneParam))}>Clear</button>
     </div>
