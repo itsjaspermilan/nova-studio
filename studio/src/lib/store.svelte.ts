@@ -101,6 +101,7 @@ class Studio {
   perf: { latest: PerfSample | null; history: PerfSample[]; hitches: Hitch[]; worst: number } = $state({ latest: null, history: [], hitches: [], worst: 0 });
   #perf = new PerfTracker();
   exportOpen = $state(false);
+  snapshotsOpen = $state(false);
   exporting = $state(false);
   exportReport: ExportReport | null = $state(null);
   /// Which part of the help window to show: "start", "lessons", "reference" or "keys"; lesson opens a lesson.

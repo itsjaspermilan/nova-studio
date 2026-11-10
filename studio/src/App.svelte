@@ -19,6 +19,7 @@
     }
   }
   import { onMount } from "svelte";
+  import SnapshotsDialog from "./components/SnapshotsDialog.svelte";
   import { newMenu, serializeMenu } from "./lib/menu-doc";
   import Hub from "./components/Hub.svelte";
   import EditorHost from "./components/EditorHost.svelte";
@@ -86,6 +87,7 @@
       commands.register({ id: "project.settings", title: "Project settings", menu: "File", icon: "settings", help: "The game's name, picture size, graphics and controls", enabled: () => !!studio.project, run: () => void studio.openFile("nova.json") }),
       commands.register({ id: "project.languages", title: "Languages (translations)", menu: "File", icon: "file", help: "A table of the game's text in each language; nova.t(\"key\") in Lua reads it", enabled: () => !!studio.project, run: () => void openLanguages() }),
       commands.register({ id: "project.newMenu", title: "New menu or HUD…", menu: "File", icon: "file", help: "A menu or HUD file (menus/<name>.menu.json) to lay out in the menu editor", enabled: () => !!studio.project, run: () => void newMenuFile() }),
+      commands.register({ id: "project.snapshots", title: "Snapshots…", menu: "File", icon: "save", help: "Named copies of the whole project: make one before a bold change, go back to one later", enabled: () => !!studio.project, run: () => { studio.snapshotsOpen = true; } }),
       commands.register({ id: "file.saveAll", title: "Save all", menu: "File", icon: "save", enabled: () => !!studio.project && studio.dirty, run: () => void studio.saveAll() }),
       commands.register({ id: "file.close", title: "Close the project", menu: "File", icon: "folder", enabled: has, run: () => void studio.closeProject() }),
       commands.register({ id: "file.export", title: "Export the game", menu: "File", icon: "export", help: "Check the game and write it out for a computer or for Android", enabled: has, run: () => { studio.exportReport = null; studio.exportOpen = true; } }),
@@ -227,6 +229,7 @@
 
 <Help />
 <CommandPalette bind:open={paletteOpen} />
+{#if studio.snapshotsOpen && studio.project}<SnapshotsDialog onclose={() => (studio.snapshotsOpen = false)} />{/if}
 {#if keysOpen}<KeymapEditor onclose={() => (keysOpen = false)} />{/if}
 {#if appearanceOpen}<AppearanceDialog onclose={() => (appearanceOpen = false)} />{/if}
 {#if studio.ready && (!input.configured || input.dialogOpen)}

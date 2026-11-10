@@ -69,6 +69,7 @@ export const MOCK_DEVICES: AndroidDevice[] = [
 
 let mockSave: string | null = '{\n  "format": 1,\n  "data": { "best": 120, "name": "Ana", "sound": true }\n}\n';
 const mockAside: string[] = [];
+const mockSnaps: import("./types").Snapshot[] = [];
 
 export function createMockApi(options: { devices?: AndroidDevice[] } = {}): Api {
   const devices = options.devices ?? MOCK_DEVICES;
@@ -246,6 +247,23 @@ export function createMockApi(options: { devices?: AndroidDevice[] } = {}): Api 
       files.set(path, "");
       const parts = path.split("/");
       for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join("/"));
+    },
+    snapshotCreate: async (name) => {
+      const snap = { id: `${Date.now()}-${mockSnaps.length}`, name: name.trim() || "Snapshot", created: Math.floor(Date.now() / 1000), files: files.size, bytes: [...files.values()].reduce((n, t) => n + t.length, 0) };
+      mockSnaps.unshift(snap);
+      return snap;
+    },
+    snapshotList: async () => [...mockSnaps],
+    snapshotRestore: async (id) => {
+      const target = mockSnaps.find((x) => x.id === id);
+      if (!target) throw new Error("There is no such snapshot.");
+      const safety = { id: `${Date.now()}-safety`, name: `Before restoring ${target.name}`, created: Math.floor(Date.now() / 1000), files: files.size, bytes: 0 };
+      mockSnaps.unshift(safety);
+      return safety;
+    },
+    snapshotDelete: async (id) => {
+      const i = mockSnaps.findIndex((x) => x.id === id);
+      if (i >= 0) mockSnaps.splice(i, 1);
     },
     readSave: async () => ({ folder: "~/Library/Application Support/Nova/my-game (browser preview)", exists: mockSave !== null, text: mockSave ?? "", aside: mockAside }),
     writeSave: async (text) => {

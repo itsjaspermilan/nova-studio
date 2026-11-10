@@ -157,6 +157,11 @@ export interface Api {
   readSave(): Promise<SaveInfo>;
   writeSave(text: string): Promise<void>;
   resetSave(): Promise<boolean>;
+  /// Named snapshots of the whole project (kept in its hidden .nova folder); restoring takes a snapshot of the present first and returns it.
+  snapshotCreate(name: string): Promise<Snapshot>;
+  snapshotList(): Promise<Snapshot[]>;
+  snapshotRestore(id: string): Promise<Snapshot>;
+  snapshotDelete(id: string): Promise<void>;
   /// The Android devices adb can see: the handheld over USB, emulators.
   listDevices(): Promise<AndroidDevice[]>;
   /// Builds the game for Android, installs it on the device and starts it (the log arrives through `onPlayLog`, the
@@ -211,4 +216,13 @@ export interface SaveInfo {
   exists: boolean;
   text: string;
   aside: string[];
+}
+
+export interface Snapshot {
+  id: string;
+  name: string;
+  /// Seconds since 1970.
+  created: number;
+  files: number;
+  bytes: number;
 }

@@ -12,6 +12,7 @@ mod project_files;
 mod recent;
 mod runner;
 mod save_data;
+mod snapshots;
 mod templates;
 mod windows;
 
@@ -235,6 +236,26 @@ fn write_save(state: State<AppState>, text: String) -> Result<(), String> {
 #[tauri::command]
 fn reset_save(state: State<AppState>) -> Result<bool, String> {
     save_data::reset(&root_of(&state)?)
+}
+
+#[tauri::command]
+fn snapshot_create(state: State<AppState>, name: String) -> Result<snapshots::Snapshot, String> {
+    snapshots::create(&root_of(&state)?, &name)
+}
+
+#[tauri::command]
+fn snapshot_list(state: State<AppState>) -> Result<Vec<snapshots::Snapshot>, String> {
+    snapshots::list(&root_of(&state)?)
+}
+
+#[tauri::command]
+fn snapshot_restore(state: State<AppState>, id: String) -> Result<snapshots::Snapshot, String> {
+    snapshots::restore(&root_of(&state)?, &id)
+}
+
+#[tauri::command]
+fn snapshot_delete(state: State<AppState>, id: String) -> Result<(), String> {
+    snapshots::delete(&root_of(&state)?, &id)
 }
 
 #[tauri::command]
@@ -484,6 +505,10 @@ pub fn run() {
             read_audio,
             write_audio,
             write_export,
+            snapshot_create,
+            snapshot_list,
+            snapshot_restore,
+            snapshot_delete,
             read_save,
             write_save,
             reset_save,

@@ -8,7 +8,7 @@ import { sendChord } from "./commands";
 export type MenuLine = { id: string; native?: string } | { native: string } | "-";
 
 export const MENU_LAYOUT: { title: string; lines: MenuLine[] }[] = [
-  { title: "File", lines: [{ id: "file.save" }, { id: "file.saveAll" }, "-", { id: "project.settings" }, { id: "project.languages" }, { id: "project.newMenu" }, { id: "file.export" }, "-", { id: "file.close" }] },
+  { title: "File", lines: [{ id: "file.save" }, { id: "file.saveAll" }, "-", { id: "project.settings" }, { id: "project.snapshots" }, { id: "project.languages" }, { id: "project.newMenu" }, { id: "file.export" }, "-", { id: "file.close" }] },
   {
     title: "Edit",
     lines: [{ id: "edit.undo" }, { id: "edit.redo" }, "-", { id: "edit.cut", native: "cut" }, { id: "edit.copy", native: "copy" }, { id: "edit.paste", native: "paste" }, { id: "edit.selectAll", native: "selectAll" }, "-", { id: "settings.keys" }, { id: "settings.input" }, { id: "settings.appearance" }],
