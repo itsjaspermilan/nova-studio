@@ -30,6 +30,9 @@
     onplace = () => {},
     onerase = () => {},
     onstop = () => {},
+    sculpting = false,
+    onsculpt = () => {},
+    onsculptend = () => {},
   }: {
     scene: Scene;
     selected: Ref | null;
@@ -54,6 +57,10 @@
     /// The brush as an eraser: take away what stands within the brush at this ground point.
     erasing?: boolean;
     onerase?: (at: [number, number], first: boolean) => void;
+    /// Terrain sculpting: the left button brushes the ground (the ring is the brush); `onsculpt` gets each ground point [x, z] on the stroke, `onsculptend` the end of it.
+    sculpting?: boolean;
+    onsculpt?: (at: [number, number], first: boolean) => void;
+    onsculptend?: () => void;
     onstop?: () => void;
   } = $props();
 
@@ -332,7 +339,7 @@
   let down: { x: number; y: number } | null = null;
   function pointerdown(e: PointerEvent) {
     down = { x: e.clientX, y: e.clientY };
-    if ((placing || erasing) && e.button === 0) {
+    if ((placing || erasing || sculpting) && e.button === 0) {
       stroke = { last: null, first: true };
       paint(e);
     }
@@ -348,14 +355,22 @@
     const rect = canvas.getBoundingClientRect();
     const ray = new THREE.Raycaster();
     ray.setFromCamera(new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -(((e.clientY - rect.top) / rect.height) * 2 - 1)), camera);
-    const at = ray.ray.intersectPlane(plane, new THREE.Vector3());
+    // (over hills the pointer's ray is met by the ground mesh, so a brush lands where it is seen)
+    const onGround = ground ? ray.intersectObject(ground, false)[0]?.point : undefined;
+    const at = onGround ?? ray.ray.intersectPlane(plane, new THREE.Vector3());
     return at && Math.hypot(at.x, at.z) < 20000 ? [at.x, at.z] : null;
   }
 
   function paint(e: PointerEvent) {
-    if (!(placing || erasing) || !stroke) return;
+    if (!(placing || erasing || sculpting) || !stroke) return;
     const at = groundAt(e);
     if (!at) return;
+    if (sculpting) {
+      onsculpt(at, stroke.first);
+      stroke.last = at;
+      stroke.first = false;
+      return;
+    }
     // along a stroke a new batch goes down each time the pointer has moved about half a brush (or a metre, for a stamp)
     const spacing = Math.max(1, brushRadius * 0.6);
     if (stroke.last && Math.hypot(at[0] - stroke.last[0], at[1] - stroke.last[1]) < spacing) return;
@@ -366,15 +381,15 @@
   }
 
   function pointermove(e: PointerEvent) {
-    if (!placing && !erasing) {
+    if (!placing && !erasing && !sculpting) {
       ring.visible = false;
       return;
     }
-    (ring.material as THREE.MeshBasicMaterial).color.set(erasing ? 0xef4444 : 0xffd166);
+    (ring.material as THREE.MeshBasicMaterial).color.set(erasing ? 0xef4444 : sculpting ? 0x6fcf8e : 0xffd166);
     const at = groundAt(e);
     ring.visible = !!at;
     if (at) {
-      ring.position.set(at[0], 0.05, at[1]);
+      ring.position.set(at[0], (ground ? heightAt(terrainOf(scene), heightGrid, at[0], at[1]) : 0) + 0.05, at[1]);
       const r = Math.max(0.6, brushRadius);
       ring.scale.set(r, 1, r);
     }
@@ -382,13 +397,14 @@
   }
 
   function keydown(e: KeyboardEvent) {
-    if (e.key === "Escape" && (placing || erasing)) onstop();
+    if (e.key === "Escape" && (placing || erasing || sculpting)) onstop();
   }
   function pointerup(e: PointerEvent) {
     const start = down;
     down = null;
     if (stroke) {
       stroke = null; // the end of a stroke is not a click on an object
+      if (sculpting) onsculptend();
       return;
     }
     if (!start || e.button !== 0 || !camera || !canvas || gizmo?.dragging || !instanced) return;
@@ -421,7 +437,7 @@
   });
   // while an object is being placed the left button paints; the right button and the wheel still move the view
   $effect(() => {
-    const on = !!placing || erasing;
+    const on = !!placing || erasing || sculpting;
     if (controls) controls.mouseButtons.LEFT = on ? (null as unknown as THREE.MOUSE) : THREE.MOUSE.ROTATE;
     if (!on) ring.visible = false;
     if (on) gizmo?.detach();

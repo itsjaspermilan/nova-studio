@@ -18,6 +18,7 @@
   import { parseSheetJson } from "../lib/sprite-doc";
   import { loadModelDoc } from "../lib/model-load";
   import { gridFromPixels, terrainOf, type HeightGrid } from "../lib/scene-terrain";
+  import { TERRAIN_BRUSHES, gridToPixels, stroke as terrainStroke, type TerrainBrushMode } from "../lib/terrain-brush";
 
   let { path, text, onjson }: { path: string; text: string; onjson: () => void } = $props();
 
@@ -207,6 +208,37 @@
 
   // the hills of a heightmap (the scene's `terrain` setting), read from its picture for the 3D view
   let heightGrid: HeightGrid | null = $state(null);
+  // sculpting the heightmap: a brush on the ground in the 3D view; a stroke changes the picture in memory, and when it ends the heightmap's PNG is written
+  let sculpting = $state(false);
+  let sculptBrush = $state<TerrainBrushMode>("raise");
+  let sculptRadiusM = $state(20);
+  let sculptStrength = $state(0.5);
+  let sculptLast: [number, number] | null = null;
+  let sculptNote = $state("");
+  const heightmapSpec = $derived(terrainOf(scene)?.heightmap ?? null);
+  function sculptAt(at: [number, number], first: boolean) {
+    const spec = heightmapSpec;
+    if (!heightGrid || !spec) return;
+    const from = first || !sculptLast ? at : sculptLast;
+    heightGrid = terrainStroke(heightGrid, from, at, { mode: sculptBrush, radius: sculptRadiusM, strength: sculptStrength, seed: Math.floor(at[0] * 3 + at[1]) }, spec.height);
+    sculptLast = at;
+  }
+  async function sculptEnd() {
+    sculptLast = null;
+    const spec = heightmapSpec;
+    if (!heightGrid || !spec || !studio.api) return;
+    const c = document.createElement("canvas");
+    c.width = heightGrid.w;
+    c.height = heightGrid.rows;
+    const g = c.getContext("2d")!;
+    g.putImageData(new ImageData(gridToPixels(heightGrid, spec) as Uint8ClampedArray<ArrayBuffer>, c.width, c.height), 0, 0);
+    try {
+      await studio.api.writeImage(spec.path, c.toDataURL("image/png"));
+      sculptNote = `Saved ${spec.path}.`;
+    } catch (e) {
+      sculptNote = `Could not save ${spec.path}: ${e instanceof Error ? e.message : e}`;
+    }
+  }
   let gridFor = "";
   $effect(() => {
     const spec = terrainOf(scene)?.heightmap;
@@ -736,6 +768,19 @@
       <button onclick={addText}>＋ Text</button>
       <h4>Objects</h4>
       {#if view === "3d"}
+        {#if heightmapSpec}
+          <div class="brush">
+            <h4>Ground</h4>
+            <button class:on={sculpting} disabled={!heightGrid} onclick={() => { sculpting = !sculpting; if (sculpting) { placing = null; erasing = false; } }} title="Brush the heightmap: the picture is saved when each stroke ends">Sculpt the ground</button>
+            {#if sculpting}
+              <label>Brush <select bind:value={sculptBrush}>{#each TERRAIN_BRUSHES as b (b)}<option value={b}>{b}</option>{/each}</select></label>
+              <label>Radius <input type="range" min="2" max="100" step="1" bind:value={sculptRadiusM} /><span class="dim small">{sculptRadiusM} m</span></label>
+              <label>Strength <input type="range" min="0.05" max="1" step="0.05" bind:value={sculptStrength} /><span class="dim small">{Math.round(sculptStrength * 100)}%</span></label>
+              <p class="dim small">Drag over the ground. The heightmap {heightmapSpec.path} is rewritten as an 8-bit picture (height read from red and green) after each stroke. Esc stops.</p>
+            {/if}
+            {#if sculptNote}<p class="dim small" role="status">{sculptNote}</p>{/if}
+          </div>
+        {/if}
         <div class="brush">
           {#if placing}<p class="small"><strong>{placing}</strong>: click the ground to put one down, drag to paint. Esc stops.</p>
           {:else}<p class="dim small">Pick a kind, then click the ground in the 3D view.</p>{/if}
@@ -822,10 +867,13 @@
           {placing}
           {erasing}
           onerase={eraseAt}
-          {brushRadius}
+          brushRadius={sculpting ? sculptRadiusM : brushRadius}
           brushCount={brushRadius > 0 ? brushCount : 1}
           onplace={placeAt}
-          onstop={() => ((placing = null), (erasing = false))}
+          onstop={() => ((placing = null), (erasing = false), (sculpting = false))}
+          {sculpting}
+          onsculpt={sculptAt}
+          onsculptend={sculptEnd}
         />
         <p class="hint dim">Click an object to select it · drag the arrows to move it · drag to orbit, right-drag to pan, scroll to zoom · the box with lines is the game's camera</p>
       {:else}
