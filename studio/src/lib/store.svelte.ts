@@ -92,6 +92,9 @@ class Studio {
   log: LogLine[] = $state([]);
   panel: Panel = $state("problems");
   /// The bottom panel (problems, play, debugger) of the workspace on show; each workspace remembers its own (lib/layout.svelte.ts).
+  /// What the status bar says for the open editor: key hints on the left and a figure or two on the right (the model's triangles, a song's voices...). An editor sets them while it is shown.
+  statusHint = $state("");
+  statusInfo = $state("");
   get panelOpen(): boolean {
     return layout.get(this.workspace).panelOpen;
   }

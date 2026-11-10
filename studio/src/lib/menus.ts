@@ -7,17 +7,23 @@ import { sendChord } from "./commands";
 /// One line of a menu: a command (by id), a native-only item the system provides (macOS Window menu, text editing), or a separator.
 export type MenuLine = { id: string; native?: string } | { native: string } | "-";
 
-export const MENU_LAYOUT: { title: string; lines: MenuLine[] }[] = [
+/// `for`: the workspaces a menu belongs to (every workspace when absent): the bar shows the menus of the workspace you are in, as the wireframes do.
+export type MenuSpec = { title: string; lines: MenuLine[]; for?: string[] };
+
+export const MENU_LAYOUT: MenuSpec[] = [
   { title: "File", lines: [{ id: "file.save" }, { id: "file.saveAll" }, "-", { id: "project.settings" }, { id: "project.snapshots" }, { id: "project.languages" }, { id: "project.newMenu" }, { id: "file.export" }, "-", { id: "file.close" }] },
   {
     title: "Edit",
     lines: [{ id: "edit.undo" }, { id: "edit.redo" }, "-", { id: "edit.cut", native: "cut" }, { id: "edit.copy", native: "copy" }, { id: "edit.paste", native: "paste" }, { id: "edit.selectAll", native: "selectAll" }, "-", { id: "settings.keys" }, { id: "settings.input" }, { id: "settings.appearance" }],
   },
-  { title: "Code", lines: [{ id: "code.definition" }, { id: "code.references" }, { id: "code.rename" }, "-", { id: "code.format" }] },
-  { title: "View", lines: [{ id: "view.tree" }, { id: "view.panel" }, { id: "view.assets" }] },
-  { title: "Model", lines: [{ id: "model.add" }, { id: "model.duplicate" }, { id: "model.delete" }, "-", { id: "model.selectAll" }, { id: "model.selectNone" }, { id: "model.selectInvert" }, "-", { id: "model.grab" }, { id: "model.scaleMouse" }, "-", { id: "model.move" }, { id: "model.turn" }, { id: "model.resize" }, { id: "model.pivot" }, "-", { id: "model.editPoints" }, { id: "model.boxSelect" }, { id: "model.shading" }, "-", { id: "model.view.front" }, { id: "model.view.back" }, { id: "model.view.left" }, { id: "model.view.right" }, { id: "model.view.top" }, { id: "model.view.bottom" }, { id: "model.view.ortho" }, "-", { id: "model.view.orbitLeft" }, { id: "model.view.orbitRight" }, { id: "model.view.orbitUp" }, { id: "model.view.orbitDown" }, "-", { id: "model.exportObj" }, "-", { id: "model.resetView" }] },
-  { title: "Sprite", lines: [{ id: "sprite.tool.select" }, { id: "sprite.tool.ellipseSelect" }, { id: "sprite.tool.lasso" }, { id: "sprite.tool.wand" }, { id: "sprite.tool.colorSelect" }, { id: "sprite.tool.pencil" }, { id: "sprite.tool.eraser" }, { id: "sprite.tool.fill" }, { id: "sprite.tool.gradient" }, { id: "sprite.tool.shade" }, { id: "sprite.tool.line" }, { id: "sprite.tool.rect" }, { id: "sprite.tool.ellipse" }, { id: "sprite.tool.polygon" }, { id: "sprite.tool.picker" }, { id: "sprite.tool.zoom" }, { id: "sprite.tool.pan" }, "-", { id: "sprite.zoomIn" }, { id: "sprite.zoomOut" }, "-", { id: "sprite.import" }, { id: "sprite.export" }, { id: "sprite.exportGif" }, { id: "sprite.exportApng" }, "-", { id: "sprite.brushFromSelection" }, "-", { id: "sprite.swapColors" }, "-", { id: "sprite.selectAll" }, { id: "sprite.selectNone" }, { id: "sprite.selectInvert" }, { id: "sprite.selectGrow" }, { id: "sprite.selectShrink" }, { id: "sprite.cropToSelection" }, "-", { id: "sprite.flipH" }, { id: "sprite.flipV" }, { id: "sprite.turnRight" }, { id: "sprite.turnLeft" }, "-", { id: "sprite.invert" }, { id: "sprite.grayscale" }, { id: "sprite.hue" }, { id: "sprite.lighter" }, { id: "sprite.darker" }, "-", { id: "sprite.outline" }, { id: "sprite.shadow" }, "-", { id: "sprite.gradientMap" }, { id: "sprite.palettize" }, { id: "sprite.pixelate" }, { id: "sprite.replaceColor" }] },
-  { title: "Sound", lines: [{ id: "song.play" }, "-", { id: "song.addLead" }, { id: "song.addBass" }, { id: "song.addDrums" }, "-", { id: "song.solo" }, { id: "song.mute" }, { id: "song.quantize" }, { id: "song.repeat" }, "-", { id: "song.mixer" }, { id: "song.loudness" }, { id: "song.tools" }, { id: "song.arrange" }, "-", { id: "song.stems" }, { id: "song.exportLoop" }, { id: "song.exportMidi" }] },
+  { title: "Code", for: ["engine"], lines: [{ id: "code.definition" }, { id: "code.references" }, { id: "code.rename" }, "-", { id: "code.format" }] },
+  { title: "Add", for: ["model"], lines: [{ id: "model.add" }] },
+  { title: "Object", for: ["model"], lines: [{ id: "model.duplicate" }, { id: "model.delete" }, "-", { id: "model.grab" }, { id: "model.scaleMouse" }, "-", { id: "model.move" }, { id: "model.turn" }, { id: "model.resize" }, { id: "model.pivot" }, "-", { id: "model.exportObj" }] },
+  { title: "Select", for: ["model"], lines: [{ id: "model.selectAll" }, { id: "model.selectNone" }, { id: "model.selectInvert" }, "-", { id: "model.boxSelect" }] },
+  { title: "Mesh", for: ["model"], lines: [{ id: "model.editPoints" }] },
+  { title: "View", lines: [{ id: "view.tree" }, { id: "view.panel" }, { id: "view.assets" }, "-", { id: "model.shading" }, { id: "model.view.front" }, { id: "model.view.back" }, { id: "model.view.left" }, { id: "model.view.right" }, { id: "model.view.top" }, { id: "model.view.bottom" }, { id: "model.view.ortho" }, "-", { id: "model.view.orbitLeft" }, { id: "model.view.orbitRight" }, { id: "model.view.orbitUp" }, { id: "model.view.orbitDown" }, "-", { id: "model.resetView" }] },
+  { title: "Sprite", for: ["sprites"], lines: [{ id: "sprite.tool.select" }, { id: "sprite.tool.ellipseSelect" }, { id: "sprite.tool.lasso" }, { id: "sprite.tool.wand" }, { id: "sprite.tool.colorSelect" }, { id: "sprite.tool.pencil" }, { id: "sprite.tool.eraser" }, { id: "sprite.tool.fill" }, { id: "sprite.tool.gradient" }, { id: "sprite.tool.shade" }, { id: "sprite.tool.line" }, { id: "sprite.tool.rect" }, { id: "sprite.tool.ellipse" }, { id: "sprite.tool.polygon" }, { id: "sprite.tool.picker" }, { id: "sprite.tool.zoom" }, { id: "sprite.tool.pan" }, "-", { id: "sprite.zoomIn" }, { id: "sprite.zoomOut" }, "-", { id: "sprite.import" }, { id: "sprite.export" }, { id: "sprite.exportGif" }, { id: "sprite.exportApng" }, "-", { id: "sprite.brushFromSelection" }, "-", { id: "sprite.swapColors" }, "-", { id: "sprite.selectAll" }, { id: "sprite.selectNone" }, { id: "sprite.selectInvert" }, { id: "sprite.selectGrow" }, { id: "sprite.selectShrink" }, { id: "sprite.cropToSelection" }, "-", { id: "sprite.flipH" }, { id: "sprite.flipV" }, { id: "sprite.turnRight" }, { id: "sprite.turnLeft" }, "-", { id: "sprite.invert" }, { id: "sprite.grayscale" }, { id: "sprite.hue" }, { id: "sprite.lighter" }, { id: "sprite.darker" }, "-", { id: "sprite.outline" }, { id: "sprite.shadow" }, "-", { id: "sprite.gradientMap" }, { id: "sprite.palettize" }, { id: "sprite.pixelate" }, { id: "sprite.replaceColor" }] },
+  { title: "Sound", for: ["sound"], lines: [{ id: "song.play" }, "-", { id: "song.addLead" }, { id: "song.addBass" }, { id: "song.addDrums" }, "-", { id: "song.solo" }, { id: "song.mute" }, { id: "song.quantize" }, { id: "song.repeat" }, "-", { id: "song.mixer" }, { id: "song.loudness" }, { id: "song.tools" }, { id: "song.arrange" }, "-", { id: "song.stems" }, { id: "song.exportLoop" }, { id: "song.exportMidi" }] },
   { title: "Run", lines: [{ id: "run.play" }, { id: "run.playDevice" }, "-", { id: "tool.simulate" }, { id: "tool.storeArt" }] },
   { title: "Window", lines: [{ id: "workspace.model" }, { id: "workspace.sprites" }, { id: "workspace.sound" }, { id: "workspace.engine" }, "-", { id: "window.tearOff" }, { id: "view.resetLayout" }, { id: "view.saveLayout" }, { id: "view.nextLayout" }, { id: "view.deleteLayout" }, "-", { native: "minimize" }, { native: "maximize" }] },
   { title: "Help", lines: [{ id: "help.toggle" }, { id: "palette.open" }] },
@@ -45,9 +51,10 @@ export interface ResolvedMenu {
 
 /// The menus as they are right now: commands that are not registered are left out, a menu with nothing in it is left out, a separator
 /// never starts, ends or doubles a menu. Reads each command's availability, so calling it inside a Svelte effect follows the state.
-export function resolveMenus(registry: CommandRegistry, layout = MENU_LAYOUT): ResolvedMenu[] {
+export function resolveMenus(registry: CommandRegistry, layout: MenuSpec[] = MENU_LAYOUT, workspace?: string): ResolvedMenu[] {
   const out: ResolvedMenu[] = [];
   for (const menu of layout) {
+    if (workspace && menu.for && !menu.for.includes(workspace)) continue;
     const items: ResolvedItem[] = [];
     for (const line of menu.lines) {
       if (line === "-") {
@@ -69,8 +76,8 @@ export function resolveMenus(registry: CommandRegistry, layout = MENU_LAYOUT): R
 }
 
 /// The menus for the drawn menu bar: native-only items have nothing to run there and are dropped.
-export function drawnMenus(registry: CommandRegistry): ResolvedMenu[] {
-  return resolveMenus(registry)
+export function drawnMenus(registry: CommandRegistry, workspace?: string): ResolvedMenu[] {
+  return resolveMenus(registry, MENU_LAYOUT, workspace)
     .map((m) => {
       const items = m.items.filter((i) => i.separator || i.id);
       while (items.length && items[items.length - 1]!.separator) items.pop();

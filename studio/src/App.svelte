@@ -32,6 +32,7 @@
   import PlayButton from "./components/PlayButton.svelte";
   import CommandPalette from "./components/CommandPalette.svelte";
   import MenuBar from "./components/MenuBar.svelte";
+  import Icon from "./components/Icon.svelte";
   import AppearanceDialog from "./components/AppearanceDialog.svelte";
   import { applyAppearance } from "./lib/appearance.svelte";
   import KeymapEditor from "./components/KeymapEditor.svelte";
@@ -71,7 +72,7 @@
   // the system menu bar follows the commands (a command becoming available greys or enables its item)
   $effect(() => {
     void commandsRev.n; // (commands are added after the first run)
-    const menus = resolveMenus(commands);
+    const menus = resolveMenus(commands, undefined, studio.workspace);
     if (chrome === "mac") void syncNativeMenu(menus);
   });
 
@@ -177,23 +178,29 @@
 {:else}
   <div class="shell" class:no-panel={!studio.panelOpen}>
     <header class="top winbar-pad" data-tauri-drag-region>
+      <strong class="brand" data-tauri-drag-region>Nova</strong>
       {#if chrome !== "mac"}<MenuBar />{/if}
+      <span class="spacer" data-tauri-drag-region></span>
+      {#if studio.api?.kind === "mock"}<span class="pill">browser preview</span>{/if}
+      <button class="ghost" onclick={() => studio.closeProject()} title="Back to projects">‹ Projects</button>
+      <strong class="projname" data-tauri-drag-region>{studio.project.name}</strong>
+      <button class="ghost" onclick={() => studio.openHelp()} title="Help and lessons (F1)">? Help</button>
+      <WindowButtons />
+    </header>
+    <div class="wsrow">
       <button class="ghost treebtn" class:on={treeOpen} onclick={toggleTree} title={treeOpen ? "Hide the project tree (⌘B)" : "Show the project tree (⌘B)"} aria-label={treeOpen ? "Hide the project tree" : "Show the project tree"} aria-pressed={treeOpen}>
         <svg viewBox="0 0 16 14" aria-hidden="true"><rect x="0.75" y="0.75" width="14.5" height="12.5" rx="2" /><path d="M5.5 1v12" />{#if treeOpen}<path class="fill" d="M1.5 1.5h3.2v11h-3.2z" />{/if}</svg>
       </button>
-      <button class="ghost" onclick={() => studio.closeProject()} title="Back to projects">‹ Projects</button>
-      <strong data-tauri-drag-region>{studio.project.name}</strong>
       <WorkspaceTabs />
-      {#if studio.api?.kind === "mock"}<span class="pill">browser preview</span>{/if}
-      <span class="spacer" data-tauri-drag-region></span>
-      <button class="ghost" onclick={() => studio.openHelp()} title="Help and lessons (F1)">? Help</button>
-      <button class="ghost" onclick={() => (studio.tool = "sim")} title="Play the game many times with no window and collect numbers into a table">Simulate</button>
-      <button class="ghost" onclick={() => (studio.tool = "art")} title="Make the app icon and the cover picture from the game">Store art</button>
-      <button onclick={() => { studio.exportReport = null; studio.exportOpen = true; }} title="Check the game and write it out for a computer or for Android">Export…</button>
-      <button onclick={() => studio.saveAll()} disabled={!studio.dirty}>Save all</button>
+      <span class="spacer"></span>
+      {#each [["edit.undo", "Undo"], ["edit.redo", "Redo"], ["palette.open", "Search commands"]] as [id, label] (id)}
+        {@const cmd = commands.get(id!)}
+        <button class="ghost iconbtn" aria-label={label} title={cmd ? commands.tooltip(cmd) : label} onmousedown={(e) => e.preventDefault()} onclick={() => void commands.run(id!)}><Icon name={cmd?.icon} size={17} /></button>
+      {/each}
+      <button class="ghost iconbtn" aria-label="Export" onclick={() => { studio.exportReport = null; studio.exportOpen = true; }} title="Export: check the game and write it out for a computer or for Android"><Icon name="export" size={17} /></button>
+      <button class="ghost iconbtn" aria-label="Save all" onclick={() => studio.saveAll()} disabled={!studio.dirty} title="Save all changed files (⌘S saves this one)"><Icon name="save" size={17} /></button>
       <PlayButton />
-      <WindowButtons />
-    </header>
+    </div>
 
     {#if treeOpen}<FileTree />{/if}
 
@@ -229,11 +236,13 @@
 
     {#if studio.panelOpen}
       <div class="bottom" use:resizable={{ key: sizeKey("bottom", studio.workspace), edge: "top", size: 220, min: 90, max: 640 }}><BottomPanel /></div>
-    {:else}
-      <footer class="status">
-        <button class="ghost" onclick={() => (studio.panelOpen = true)}>▴ {errors ? `${errors} problem${errors === 1 ? "" : "s"}` : "Problems · Play"}</button>
-      </footer>
     {/if}
+    <footer class="status">
+      <button class="ghost" onclick={() => (studio.panelOpen = !studio.panelOpen)} title="Problems, the game's output and the debugger">{studio.panelOpen ? "▾" : "▴"} {errors ? `${errors} problem${errors === 1 ? "" : "s"}` : "Problems · Play"}</button>
+      <span class="hintline">{studio.statusHint}</span>
+      <span class="spacer"></span>
+      <span class="statusinfo">{studio.statusInfo}</span>
+    </footer>
   </div>
 {/if}
 
@@ -286,7 +295,7 @@
   .hintbar { position: fixed; left: 8px; bottom: 6px; max-width: min(70vw, 760px); z-index: 50; padding: 3px 10px; font-size: 12px; color: var(--text); background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line); border-radius: 6px; pointer-events: none; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3); }
   .tool { position: fixed; inset: 0; z-index: 40; background: var(--bg); }
   .boot { height: 100%; display: grid; place-items: center; }
-  .shell { height: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: "top top" "tree center" "bottom bottom"; }
+  .shell { height: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr) auto auto; grid-template-areas: "top top" "wsrow wsrow" "tree center" "bottom bottom" "status status"; }
   .docwin { height: 100%; display: flex; flex-direction: column; }
   .docwin .center { flex: 1; }
   .small { font-size: 11px; }
@@ -298,9 +307,18 @@
   .treebtn svg .fill { fill: currentColor; stroke: none; opacity: 0.55; }
   .top { grid-area: top; display: flex; align-items: center; gap: 10px; padding: 6px 10px; background: var(--panel); border-bottom: 1px solid var(--line); }
   .shell > :global(.tree) { grid-area: tree; }
+  .top { padding-bottom: 2px; border-bottom: none; }
+  .brand { font-size: 14px; letter-spacing: 0.02em; }
+  .projname { color: var(--dim); font-weight: 500; }
+  .wsrow { grid-area: wsrow; display: flex; align-items: center; gap: 6px; padding: 3px 10px 4px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  .wsrow :global(button) { white-space: nowrap; }
+  .iconbtn { padding: 4px 6px; display: grid; place-items: center; }
+  .hintline, .statusinfo { font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .status { display: flex; align-items: center; gap: 12px; }
+  .status :global(button) { font-size: 11px; padding: 1px 6px; }
   .center { grid-area: center; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
   .bottom { grid-area: bottom; min-height: 0; }
-  .status { grid-area: bottom; background: var(--panel); border-top: 1px solid var(--line); padding: 2px 8px; }
+  .status { grid-area: status; background: var(--panel); border-top: 1px solid var(--line); padding: 2px 8px; }
   .spacer { flex: 1; }
   .top :global(button), .top strong { white-space: nowrap; }
   .top { overflow: hidden; }

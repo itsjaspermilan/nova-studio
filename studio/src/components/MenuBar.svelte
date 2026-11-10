@@ -4,11 +4,12 @@
   import { commands } from "../lib/commands";
   import { drawnMenus, mnemonicsFor } from "../lib/menus";
   import Icon from "./Icon.svelte";
+  import { studio } from "../lib/store.svelte";
   import { commandsRev } from "../lib/commands-rev.svelte";
 
   let open = $state<number | null>(null);
   let bar: HTMLElement | undefined = $state();
-  const menus = $derived((void commandsRev.n, drawnMenus(commands)));
+  const menus = $derived((void commandsRev.n, drawnMenus(commands, studio.workspace)));
 
   /// Alt opens the menus from the keyboard (Windows habit): Alt then a letter opens that menu, the arrows move, Enter runs, Escape closes.
   let hot = $state(-1); // the highlighted item of the open menu

@@ -66,3 +66,13 @@ describe("Alt letters for the drawn menus", () => {
     expect(mnemonicsFor([])).toEqual([]);
   });
 });
+
+describe("menus of a workspace", () => {
+  it("shows the menus that belong to the workspace you are in, and the ones for every workspace", () => {
+    const { r } = make();
+    const spec = [{ title: "File", lines: [{ id: "a" } as MenuLine] }, { title: "Mesh", for: ["model"], lines: [{ id: "b" } as MenuLine] }, { title: "Sprite", for: ["sprites"], lines: [{ id: "a" } as MenuLine] }];
+    expect(resolveMenus(r, spec, "model").map((m) => m.title)).toEqual(["File", "Mesh"]);
+    expect(resolveMenus(r, spec, "sprites").map((m) => m.title)).toEqual(["File", "Sprite"]);
+    expect(resolveMenus(r, spec).map((m) => m.title)).toEqual(["File", "Mesh", "Sprite"]);
+  });
+});
