@@ -2,15 +2,16 @@
   import { resizable } from "../lib/resize";
   import { onMount, untrack } from "svelte";
   import { commands } from "../lib/commands";
+  import { boundsOf, combine, emptyMask, growMask, has, invertMask, isEmpty, isRect, liftMasked, maskFromColor, maskFromEllipse, maskFromPolygon, maskFromRect, outlineSegments, placeMask, type Combine, type Mask } from "../lib/selection";
   import { commandsRev } from "../lib/commands-rev.svelte";
   import { PaletteStore, normalizeHex, nearestColor, parsePalette, toGpl, type Palette } from "../lib/palette";
-  import { brighten, dropShadow, flipRaster, grayscale, hueShift, invertColors, outline, rotateQuarter, usedColors } from "../lib/sprite-fx";
+  import { type Area, brighten, dropShadow, flipRaster, grayscale, hueShift, invertColors, outline, rotateQuarter, usedColors } from "../lib/sprite-fx";
   import {
     BLEND_MODES, CLEAR, cloneRaster, crop, drawEllipse, drawLine, drawRect, floodFill, getPixel, inRect, inside, isClear, lift, linePoints, parseHex, pixelPerfect, place, rectBetween, stamp, toHex,
     type BlendMode, type Point, type Raster, type Rect, type Rgba,
   } from "../lib/pixels";
   import {
-    addAnimation, animationOf, cloneDoc, linkCels, unlinkCels, syncLinked, moveFramesWithin, scaleDurations, duplicateFrames, moveFramesTo, removeFrames, detectGrid, duplicateAnimation, frameAt, gridFromCounts, smartGrid, framesIn, fromImage, fromSheet, gridTiles, importTiles, insertFrame, moveAnimation, isPristine, moveFrame, newDoc, parseSheetJson,
+    addAnimation, animationOf, cloneDoc, cropDoc, linkCels, unlinkCels, syncLinked, moveFramesWithin, scaleDurations, duplicateFrames, moveFramesTo, removeFrames, detectGrid, duplicateAnimation, frameAt, gridFromCounts, smartGrid, framesIn, fromImage, fromSheet, gridTiles, importTiles, insertFrame, moveAnimation, isPristine, moveFrame, newDoc, parseSheetJson,
     removeAnimation, removeFrame, setAnimationDuration, tagProblems, tagSequence, resizeDoc, toSheet, toSheetJson, updateAnimation, type Direction, type SpriteDoc,
     addLayer, applyLayers, duplicateLayer, layerSheets, layersFileText, mergeDown, moveLayer, parseLayersFile, recompose, removeLayer, updateLayer, MAX_LAYERS,
   } from "../lib/sprite-doc";
@@ -19,7 +20,7 @@
 
   let { path, text }: { path: string; text: string } = $props();
 
-  type Tool = "select" | "pencil" | "eraser" | "fill" | "line" | "rect" | "ellipse" | "picker";
+  type Tool = "select" | "ellipseSelect" | "lasso" | "wand" | "colorSelect" | "pencil" | "eraser" | "fill" | "line" | "rect" | "ellipse" | "picker";
   interface Session {
     doc: SpriteDoc;
     past: SpriteDoc[];
@@ -33,6 +34,10 @@
 
   const TOOLS: { id: Tool; label: string; key: string; icon: string }[] = [
     { id: "select", label: "Select and move", key: "M", icon: "⬚" },
+    { id: "ellipseSelect", label: "Select an ellipse", key: "Shift+M", icon: "◌" },
+    { id: "lasso", label: "Select free-hand", key: "Q", icon: "ʘ" },
+    { id: "wand", label: "Magic wand (joined colour)", key: "W", icon: "✦" },
+    { id: "colorSelect", label: "Select a colour everywhere", key: "Shift+W", icon: "❖" },
     { id: "pencil", label: "Pencil", key: "B", icon: "✎" },
     { id: "eraser", label: "Eraser", key: "E", icon: "⌫" },
     { id: "fill", label: "Fill", key: "G", icon: "▨" },
@@ -268,11 +273,18 @@
       for (let y = 1; y < doc.fh; y++) { ctx.moveTo(0, y * zoom + 0.5); ctx.lineTo(w, y * zoom + 0.5); }
       ctx.stroke();
     }
-    if (selection && tool === "select") {
+    if (selection && isSelectTool(tool)) {
       ctx.strokeStyle = "#ffd166";
       ctx.lineWidth = 2;
       ctx.setLineDash([6, 4]);
-      ctx.strokeRect(selection.x * zoom + 1, selection.y * zoom + 1, selection.w * zoom - 2, selection.h * zoom - 2);
+      if (selMask) {
+        ctx.beginPath();
+        for (const [x1, y1, x2, y2] of outlineSegments(selMask)) {
+          ctx.moveTo(x1 * zoom, y1 * zoom);
+          ctx.lineTo(x2 * zoom, y2 * zoom);
+        }
+        ctx.stroke();
+      } else ctx.strokeRect(selection.x * zoom + 1, selection.y * zoom + 1, selection.w * zoom - 2, selection.h * zoom - 2);
       ctx.setLineDash([]);
       ctx.lineWidth = 1;
     }
@@ -293,7 +305,7 @@
 
   $effect(() => {
     // everything the picture depends on
-    doc; frame; rev; zoom; onion; onionPast; onionFuture; onionTint; showGrid; ready; hover; size; tool; playing; canvas; selection; symX; symY;
+    doc; frame; rev; zoom; onion; onionPast; onionFuture; onionTint; showGrid; ready; hover; size; tool; playing; canvas; selection; selMask; symX; symY;
     paint();
   });
 
@@ -342,9 +354,30 @@
   let symX = $state(false);
   let symY = $state(false);
   let perfect = $state(true);
+  /// The selection: its bounds, and (when it is not a plain rectangle) the cells it holds (lib/selection.ts).
   let selection: Rect | null = $state(null);
-  let selecting: Point | null = null;
-  let moving: { piece: Raster; rest: Raster; dx: number; dy: number } | null = null;
+  let selMask = $state.raw<Mask | null>(null);
+  const SELECT_TOOLS: Tool[] = ["select", "ellipseSelect", "lasso", "wand", "colorSelect"];
+  const isSelectTool = (t: Tool) => SELECT_TOOLS.includes(t);
+  /// How close a colour must be to the clicked one for the wand (0 is exactly the same).
+  let tolerance = $state(0);
+  const currentMask = (): Mask | null => (selection ? (selMask ?? maskFromRect(selection, doc.fw, doc.fh)) : null);
+  /// Makes a mask the selection (a rectangle is kept as just its bounds; nothing selected clears it).
+  function setSelection(m: Mask | null) {
+    if (!m || isEmpty(m)) {
+      selection = null;
+      selMask = null;
+      return;
+    }
+    selection = boundsOf(m);
+    selMask = isRect(m) ? null : m;
+  }
+  const setRect = (r: Rect | null) => {
+    selection = r;
+    selMask = null;
+  };
+  let selecting: { tool: Tool; a: Point; how: Combine; base: Mask | null; points: Point[] } | null = null;
+  let moving: { piece: Raster; pieceMask: Mask; rest: Raster; dx: number; dy: number } | null = null;
   let clipboard: Raster | null = null;
   let recent: string[] = $state([]);
 
@@ -377,15 +410,23 @@
     }
     const r = cel();
     canvas!.setPointerCapture(e.pointerId);
-    if (tool === "select") {
-      if (selection && inRect(selection, p.x, p.y)) {
-        before = cloneDoc(doc);
-        drawing = true;
-        const { piece, rest } = lift(r, selection);
-        moving = { piece, rest, dx: p.x - selection.x, dy: p.y - selection.y };
+    if (isSelectTool(tool)) {
+      const mask = currentMask();
+      // Shift adds to the selection, Alt takes from it, both keep only where they overlap
+      const how: Combine = e.shiftKey && e.altKey ? "intersect" : e.shiftKey ? "add" : e.altKey ? "subtract" : "replace";
+      if (tool === "wand" || tool === "colorSelect") {
+        setSelection(combine(mask, maskFromColor(r, p.x, p.y, tolerance, tool === "wand"), how));
+      } else if (how === "replace" && mask && has(mask, p.x, p.y)) {
+        // a drag that starts inside the selection carries those pixels along
+        const lifted = liftMasked(r, mask);
+        if (lifted) {
+          before = cloneDoc(doc);
+          drawing = true;
+          moving = { piece: lifted.piece, pieceMask: lifted.pieceMask, rest: lifted.rest, dx: p.x - lifted.bounds.x, dy: p.y - lifted.bounds.y };
+        }
       } else {
-        selection = null;
-        selecting = p;
+        if (how === "replace") setSelection(null);
+        selecting = { tool, a: p, how, base: how === "replace" ? null : mask, points: [p] };
       }
       return;
     }
@@ -435,7 +476,18 @@
     const p = cell(e);
     if (!hover || hover.x !== p.x || hover.y !== p.y) hover = p;
     if (selecting) {
-      selection = rectBetween(selecting, p, doc.fw, doc.fh);
+      const s = selecting;
+      let shape: Mask;
+      if (s.tool === "lasso") {
+        const last = s.points.at(-1)!;
+        if (last.x !== p.x || last.y !== p.y) s.points.push(...linePoints(last, p).slice(1));
+        shape = maskFromPolygon(s.points, doc.fw, doc.fh);
+      } else if (s.tool === "ellipseSelect") shape = maskFromEllipse(s.a, p, doc.fw, doc.fh);
+      else {
+        const rect = rectBetween(s.a, p, doc.fw, doc.fh);
+        shape = rect ? maskFromRect(rect, doc.fw, doc.fh) : emptyMask(doc.fw, doc.fh);
+      }
+      setSelection(combine(s.base, shape, s.how));
       return;
     }
     if (!drawing) return;
@@ -444,7 +496,7 @@
       const nx = p.x - moving.dx;
       const ny = p.y - moving.dy;
       r.data.set(place(moving.rest, moving.piece, nx, ny).data);
-      selection = { x: nx, y: ny, w: moving.piece.w, h: moving.piece.h };
+      setSelection(placeMask(moving.pieceMask, doc.fw, doc.fh, nx, ny));
     } else if (tool === "pencil" || tool === "eraser") {
       strokePoints.push(...linePoints(last, p).slice(1));
       last = p;
@@ -464,7 +516,7 @@
       session!.past.push(before!);
       if (session!.past.length > MAX_HISTORY) session!.past.shift();
       session!.future = [];
-      if (tool !== "select" && tool !== "eraser") rememberColor(color);
+      if (!isSelectTool(tool) && tool !== "eraser") rememberColor(color);
       changed();
     }
     before = base = null;
@@ -480,14 +532,18 @@
 
   // ---- selection commands ---------------------------------------------------------------------
   function clearSelection() {
-    if (!selection) return;
+    const mask = currentMask();
+    const lifted = mask ? liftMasked(cel(), mask) : null;
+    if (!lifted) return;
     const next = cloneDoc(doc);
-    next.layers[activeLayer]!.cels[frame] = lift(next.layers[activeLayer]!.cels[frame]!, selection).rest;
+    next.layers[activeLayer]!.cels[frame] = lifted.rest;
     structural(next);
   }
   function copySelection(cut = false) {
-    if (!selection) return;
-    clipboard = crop(cel(), selection.x, selection.y, selection.w, selection.h);
+    const mask = currentMask();
+    const lifted = mask ? liftMasked(cel(), mask) : null;
+    if (!lifted) return;
+    clipboard = lifted.piece; // (only the selected pixels: the rest of its box is transparent)
     if (cut) clearSelection();
   }
   function paste() {
@@ -497,7 +553,7 @@
     next.layers[activeLayer]!.cels[frame] = place(next.layers[activeLayer]!.cels[frame]!, clipboard, at.x, at.y);
     structural(next);
     tool = "select";
-    selection = { x: at.x, y: at.y, w: clipboard.w, h: clipboard.h };
+    setRect({ x: at.x, y: at.y, w: clipboard.w, h: clipboard.h });
   }
 
   // ---- canvas size ----------------------------------------------------------------------------------
@@ -513,7 +569,7 @@
   function applySize() {
     const [ax, ay] = anchor.split(",").map(Number) as [number, number];
     structural(resizeDoc(doc, newW, newH, ax, ay));
-    selection = null;
+    setSelection(null);
     sizing = false;
     zoom = Math.max(1, Math.min(32, Math.floor(420 / Math.max(doc.fw, doc.fh))));
   }
@@ -790,14 +846,14 @@
     } else if (mod && e.key.toLowerCase() === "a") {
       e.preventDefault();
       tool = "select";
-      selection = { x: 0, y: 0, w: doc.fw, h: doc.fh };
+      setRect({ x: 0, y: 0, w: doc.fw, h: doc.fh });
     } else if ((e.key === "Delete" || e.key === "Backspace") && selection) {
       e.preventDefault();
       clearSelection();
     } else if (e.key === "Escape" && importing) {
       importing = false;
     } else if (e.key === "Escape" && selection) {
-      selection = null;
+      setSelection(null);
     } else if (!mod) {
       // (the tool letters are commands now: see the Sprite menu and Edit > Keyboard shortcuts)
       if (e.key === "[") size = Math.max(1, size - 1);
@@ -858,20 +914,27 @@
 
   // ---- effects and the Sprite menu ---------------------------------------------------------------------------
   /// Applies an effect to the current cel, inside the selection when there is one (one undo step).
-  function applyFx(fx: (r: Raster, area: Rect | null) => Raster | null) {
+  function applyFx(fx: (r: Raster, area: Area) => Raster | null) {
     const next = cloneDoc(doc);
     const cel = next.layers[activeLayer]!.cels[frame]!;
-    const out = fx(cel, selection);
+    const out = fx(cel, selection ? (selMask ? { ...selection, has: (x: number, y: number) => has(selMask!, x, y) } : selection) : null);
     if (!out) return studio.say("info", "A quarter turn needs a square: select a square area, or use a square sprite.");
     cel.data.set(out.data);
     structural(next);
   }
   $effect(() => {
     const has = () => ready && !!doc.layers[activeLayer];
+    const has_ = has;
     const tool_ = (id: Tool, label: string, key: string, icon?: string) =>
       commands.register({ id: `sprite.tool.${id}`, title: label, menu: "Sprite", icon, keys: [key], enabled: () => ready, run: () => { tool = id; } });
     const offs = [
       ...TOOLS.map((t) => tool_(t.id, t.label, t.key, t.id === "select" ? "select" : t.id === "eraser" ? "trash" : t.id === "picker" ? "eye" : undefined)),
+      commands.register({ id: "sprite.selectAll", title: "Select all", menu: "Sprite", icon: "selectAll", keys: ["Mod+Shift+A"], enabled: has_, run: () => { tool = "select"; setRect({ x: 0, y: 0, w: doc.fw, h: doc.fh }); } }),
+      commands.register({ id: "sprite.selectNone", title: "Select nothing", menu: "Sprite", icon: "selectNone", keys: ["Mod+D"], enabled: () => has_() && !!selection, run: () => setSelection(null) }),
+      commands.register({ id: "sprite.selectInvert", title: "Invert the selection", menu: "Sprite", icon: "selectInvert", keys: ["Mod+I"], enabled: () => has_() && !!selection, run: () => { const m = currentMask(); if (m) setSelection(invertMask(m)); } }),
+      commands.register({ id: "sprite.selectGrow", title: "Grow the selection by one pixel", menu: "Sprite", enabled: () => has_() && !!selection, run: () => { const m = currentMask(); if (m) setSelection(growMask(m, 1)); } }),
+      commands.register({ id: "sprite.selectShrink", title: "Shrink the selection by one pixel", menu: "Sprite", enabled: () => has_() && !!selection, run: () => { const m = currentMask(); if (m) setSelection(growMask(m, -1)); } }),
+      commands.register({ id: "sprite.cropToSelection", title: "Crop the sprite to the selection", menu: "Sprite", help: "Every frame and layer is cut down to the selection's box", enabled: () => has_() && !!selection, run: () => { if (selection) { structural(cropDoc(doc, selection)); setSelection(null); zoom = Math.max(1, Math.min(32, Math.floor(420 / Math.max(doc.fw, doc.fh)))); } } }),
       commands.register({ id: "sprite.flipH", title: "Flip left to right", menu: "Sprite", enabled: has, run: () => applyFx((r, a) => flipRaster(r, false, a)) }),
       commands.register({ id: "sprite.flipV", title: "Flip top to bottom", menu: "Sprite", enabled: has, run: () => applyFx((r, a) => flipRaster(r, true, a)) }),
       commands.register({ id: "sprite.turnRight", title: "Turn a quarter clockwise", menu: "Sprite", icon: "rotate", enabled: has, run: () => applyFx((r, a) => rotateQuarter(r, false, a)) }),
@@ -923,6 +986,9 @@
     <section class="work">
       <div class="options">
         <label>Size <input type="number" min="1" max="16" bind:value={size} class="narrow" /></label>
+        {#if tool === "wand" || tool === "colorSelect"}
+          <label class="slider" title="How different a colour may be and still be picked (0 is exactly the same)"><span>Tolerance</span><input type="range" min="0" max="255" step="1" bind:value={tolerance} /><output>{tolerance}</output></label>
+        {/if}
         {#if tool === "rect" || tool === "ellipse"}
           <label class="check"><input type="checkbox" bind:checked={filled} /> Filled</label>
         {/if}

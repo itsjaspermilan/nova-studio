@@ -86,3 +86,15 @@ describe("shapes", () => {
     expect(Array.from(getPixel(s, 1, 1)!)).toEqual([255, 0, 0, 255]);
   });
 });
+
+describe("effects inside a selection that is not a rectangle", () => {
+  it("only touch the cells it holds", () => {
+    const r = newRaster(3, 1);
+    for (let x = 0; x < 3; x++) setPixel(r, x, 0, RED);
+    const area = { x: 0, y: 0, w: 3, h: 1, has: (x: number) => x !== 1 };
+    const out = invertColors(r, area);
+    expect(Array.from(getPixel(out, 0, 0)!)).toEqual([0, 255, 255, 255]);
+    expect(Array.from(getPixel(out, 1, 0)!)).toEqual([255, 0, 0, 255]);
+    expect(Array.from(getPixel(out, 2, 0)!)).toEqual([0, 255, 255, 255]);
+  });
+});

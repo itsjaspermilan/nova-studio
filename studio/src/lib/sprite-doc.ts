@@ -73,6 +73,21 @@ export function composeFrame(doc: SpriteDoc, i: number): Raster {
   return out;
 }
 
+/// Every frame and layer cut down to a rectangle (the sprite gets that size); null when the rectangle holds nothing of the picture.
+export function cropDoc(doc: SpriteDoc, rect: { x: number; y: number; w: number; h: number }): SpriteDoc {
+  const x = Math.max(0, rect.x);
+  const y = Math.max(0, rect.y);
+  const w = Math.min(doc.fw, rect.x + rect.w) - x;
+  const h = Math.min(doc.fh, rect.y + rect.h) - y;
+  if (w < 1 || h < 1) return doc;
+  const next = cloneDoc(doc);
+  next.fw = w;
+  next.fh = h;
+  next.frames = doc.frames.map((f) => crop(f, x, y, w, h));
+  next.layers = next.layers.map((l, i) => ({ ...l, cels: doc.layers[i]!.cels.map((c) => crop(c, x, y, w, h)) }));
+  return next;
+}
+
 /// Refreshes the stacked picture of one frame (after drawing on a cel), in place.
 export function recompose(doc: SpriteDoc, i: number) {
   const frame = doc.frames[i];

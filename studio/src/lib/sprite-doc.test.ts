@@ -651,3 +651,17 @@ describe("layer blend modes", () => {
     expect(Array.from(merged.layers[0]!.cels[0]!.data)).toEqual([100, 50, 25, 255]);
   });
 });
+
+describe("cropDoc", () => {
+  it("cuts every frame and layer to the box and gives the sprite that size", async () => {
+    const { cropDoc } = await import("./sprite-doc");
+    const doc = newDoc(4, 4, 2);
+    doc.layers[0]!.cels[1]!.data.set([1, 2, 3, 255], (1 * 4 + 2) * 4); // pixel (2, 1) of frame 1
+    const out = cropDoc(doc, { x: 1, y: 1, w: 3, h: 2 });
+    expect([out.fw, out.fh]).toEqual([3, 2]);
+    expect(out.frames).toHaveLength(2);
+    expect(Array.from(out.layers[0]!.cels[1]!.data.slice(1 * 4, 1 * 4 + 4))).toEqual([1, 2, 3, 255]); // (2,1) is now (1,0)
+    expect(cropDoc(doc, { x: 9, y: 9, w: 2, h: 2 })).toBe(doc);
+    expect(cropDoc(doc, { x: -2, y: 0, w: 4, h: 4 }).fw).toBe(2); // (clipped to the sprite)
+  });
+});

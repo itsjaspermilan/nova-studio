@@ -3,10 +3,12 @@
 
 import { cloneRaster, getPixel, inRect, newRaster, setPixel, type Raster, type Rect, type Rgba } from "./pixels";
 
-const inArea = (r: Rect | null, x: number, y: number) => !r || inRect(r, x, y);
+/// The part of a picture an effect works on: a rectangle, with `has` limiting it to the cells of a selection that is not a rectangle. null is all of it.
+export type Area = (Rect & { has?: (x: number, y: number) => boolean }) | null;
+const inArea = (r: Area, x: number, y: number) => !r || (inRect(r, x, y) && (!r.has || r.has(x, y)));
 
 /// Mirrors the picture left to right (or, with `vertical`, top to bottom), inside the area if given.
-export function flipRaster(r: Raster, vertical: boolean, area: Rect | null = null): Raster {
+export function flipRaster(r: Raster, vertical: boolean, area: Area = null): Raster {
   const out = cloneRaster(r);
   const a = area ?? { x: 0, y: 0, w: r.w, h: r.h };
   for (let y = a.y; y < a.y + a.h; y++) for (let x = a.x; x < a.x + a.w; x++) {
@@ -19,7 +21,7 @@ export function flipRaster(r: Raster, vertical: boolean, area: Rect | null = nul
 }
 
 /// Turns a square area a quarter turn (clockwise, or counter-clockwise with `back`); null when the area is not square.
-export function rotateQuarter(r: Raster, back = false, area: Rect | null = null): Raster | null {
+export function rotateQuarter(r: Raster, back = false, area: Area = null): Raster | null {
   const a = area ?? { x: 0, y: 0, w: r.w, h: r.h };
   if (a.w !== a.h) return null;
   const n = a.w;
@@ -34,7 +36,7 @@ export function rotateQuarter(r: Raster, back = false, area: Rect | null = null)
 }
 
 /// Maps every visible pixel's colour through a function (alpha is kept), inside the area.
-export function mapColors(r: Raster, fn: (c: Rgba) => Rgba, area: Rect | null = null): Raster {
+export function mapColors(r: Raster, fn: (c: Rgba) => Rgba, area: Area = null): Raster {
   const out = cloneRaster(r);
   for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) {
     if (!inArea(area, x, y)) continue;
@@ -46,15 +48,15 @@ export function mapColors(r: Raster, fn: (c: Rgba) => Rgba, area: Rect | null = 
   return out;
 }
 
-export const invertColors = (r: Raster, area: Rect | null = null) => mapColors(r, (c) => [255 - c[0], 255 - c[1], 255 - c[2], c[3]], area);
-export const grayscale = (r: Raster, area: Rect | null = null) =>
+export const invertColors = (r: Raster, area: Area = null) => mapColors(r, (c) => [255 - c[0], 255 - c[1], 255 - c[2], c[3]], area);
+export const grayscale = (r: Raster, area: Area = null) =>
   mapColors(r, (c) => {
     const g = Math.round(0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]);
     return [g, g, g, c[3]];
   }, area);
 
 /// Turns the hue of every colour round the colour wheel by some degrees.
-export function hueShift(r: Raster, degrees: number, area: Rect | null = null): Raster {
+export function hueShift(r: Raster, degrees: number, area: Area = null): Raster {
   return mapColors(r, (c) => {
     const [h, s, l] = rgbToHsl(c[0], c[1], c[2]);
     const [nr, ng, nb] = hslToRgb((((h + degrees / 360) % 1) + 1) % 1, s, l);
@@ -63,7 +65,7 @@ export function hueShift(r: Raster, degrees: number, area: Rect | null = null): 
 }
 
 /// Makes every colour lighter (amount above 0, up to 1) or darker (below 0, down to -1).
-export function brighten(r: Raster, amount: number, area: Rect | null = null): Raster {
+export function brighten(r: Raster, amount: number, area: Area = null): Raster {
   const k = Math.max(-1, Math.min(1, amount));
   return mapColors(r, (c) => {
     const f = (v: number) => Math.round(k >= 0 ? v + (255 - v) * k : v * (1 + k));
@@ -72,7 +74,7 @@ export function brighten(r: Raster, amount: number, area: Rect | null = null): R
 }
 
 /// Every pixel of one colour becomes another (the alpha of each pixel is kept).
-export function replaceColor(r: Raster, from: Rgba, to: Rgba, area: Rect | null = null): Raster {
+export function replaceColor(r: Raster, from: Rgba, to: Rgba, area: Area = null): Raster {
   return mapColors(r, (c) => (c[0] === from[0] && c[1] === from[1] && c[2] === from[2] ? [to[0], to[1], to[2], c[3]] : c), area);
 }
 

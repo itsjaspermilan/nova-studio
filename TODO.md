@@ -104,7 +104,8 @@ Still open (3.1 Canvas):
 - [ ] The two-slot tool bar (a tool on the left and one on the right button) and a per-tool options panel; reference images (side, overlay, onion).
 Still open (3.2 Tools):
 - [ ] Brush shapes and custom brushes from a selection, bucket variants (similar colour, inside the selection), polygon, gradient, a shading tool (lighten and darken by painting), dithering patterns, a text tool, zoom and pan tools.
-- [ ] Selections: ellipse, lasso, polygon, magic wand, select by colour, paint-select; transforms (scale, rotate with RotSprite, clean-edge), crop to the selection.
+- [x] Selections (2026-11-09: `lib/selection.ts`, 12 tests; the wand checked in the browser preview, the rest by unit tests only): rectangle, ellipse, free-hand lasso, magic wand (joined colour, with a tolerance) and select-a-colour-everywhere; Shift adds, Alt takes away, both together keep the overlap; select all, none, invert, grow and shrink by a pixel, crop the sprite to the selection; a selection that is not a rectangle moves, cuts, copies and takes effects as its exact cells, drawn as dashed outline.
+- [ ] Still open from selections: polygon-by-clicks and paint-select tools; transforms of a selection (scale, rotate with RotSprite, clean-edge); flip and quarter turns of a non-rectangular selection act on its box, not its exact cells; a selection that follows a frame to the next (it is per editor, not per cel).
 - [ ] Gradient map, palettize (a picture to a palette's colours), colour curves, pixelate, replace colour as a command (the function exists), offset as a command (exists).
 Still open (3.3 Layers, cels, frames):
 - [ ] Group layers, tilemap layers, audio layers, 3D layers; clipping masks, layer lock, cel properties; **non-destructive** effects on a cel or layer (today the effects change the pixels for good).
