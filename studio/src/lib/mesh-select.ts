@@ -194,3 +194,30 @@ export function fillHole(source: Cube, point: number): Cube {
   }
   return out;
 }
+
+/// Smooth by angle: a face is shaded smooth when every face it shares an edge with turns away from it by no more than `angle` degrees, and flat otherwise, so the
+/// round parts of a mesh shade smoothly and its hard corners stay crisp. Only the faces in `faces` (all by default) are decided. Returns a new mesh element.
+export function smoothByAngle(source: Cube, angle: number, faces?: number[]): Cube {
+  const c = toMesh(source);
+  const out: Cube = JSON.parse(JSON.stringify(c));
+  const polys = c.polys ?? [];
+  const verts = c.verts ?? [];
+  const normals = polys.map((p) => unit(polyNormal(verts, p.v)));
+  const { faces: onEdge } = topology(c);
+  const limit = Math.cos((Math.max(0, angle) * Math.PI) / 180) - 1e-9;
+  for (const i of faces ?? polys.map((_, k) => k)) {
+    const f = polys[i];
+    if (!f) continue;
+    let soft = true;
+    f.v.forEach((a, k) => {
+      for (const j of onEdge.get(key(a, f.v[(k + 1) % f.v.length]!)) ?? []) {
+        if (j === i) continue;
+        const d = normals[i]![0] * normals[j]![0] + normals[i]![1] * normals[j]![1] + normals[i]![2] * normals[j]![2];
+        if (d < limit) soft = false;
+      }
+    });
+    if (soft) out.polys![i]!.smooth = true;
+    else delete out.polys![i]!.smooth;
+  }
+  return out;
+}

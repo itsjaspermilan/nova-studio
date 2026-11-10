@@ -134,3 +134,23 @@ describe("filling holes", () => {
     expect(fillHole(box, 0).polys!.length).toBe(box.polys!.length);
   });
 });
+
+import { smoothByAngle } from "./mesh-select";
+describe("smooth by angle", () => {
+  it("keeps a box's faces flat at 30 degrees but smooths them all at 91", () => {
+    const box = toMesh({ from: [0, 0, 0], size: [10, 10, 10], color: "#fff" });
+    expect(smoothByAngle(box, 30).polys!.some((p) => p.smooth)).toBe(false);
+    expect(smoothByAngle(box, 91).polys!.every((p) => p.smooth)).toBe(true);
+  });
+  it("on a divided box every little face touches a cube edge, so none is smooth at 30 degrees", () => {
+    const c = smoothByAngle(grid(), 30);
+    expect(c.polys!.every((p) => !p.smooth)).toBe(true);
+  });
+  it("only decides the faces asked for", () => {
+    const box = setSmoothAll();
+    const c = smoothByAngle(box, 30, [0]);
+    expect(c.polys![0]!.smooth).toBeUndefined();
+    expect(c.polys![1]!.smooth).toBe(true);
+  });
+});
+function setSmoothAll(): Cube { const b = toMesh({ from: [0, 0, 0], size: [10, 10, 10], color: "#fff" }); b.polys!.forEach((p) => (p.smooth = true)); return b; }

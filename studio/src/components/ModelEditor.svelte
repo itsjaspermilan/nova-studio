@@ -37,7 +37,7 @@
   import { applyStack, evaluate, hasModifiers, type Modifier } from "../lib/modifiers";
   import ModifierStack from "./ModifierStack.svelte";
   import CurveEditor from "./CurveEditor.svelte";
-  import { edgeLoop, edgeRing, edgeSlide, fillHole, pointsOfEdges, selectSimilarFaces } from "../lib/mesh-select";
+  import { edgeLoop, edgeRing, edgeSlide, fillHole, pointsOfEdges, selectSimilarFaces, smoothByAngle } from "../lib/mesh-select";
   import { textToMesh } from "../lib/text-mesh";
   import { parsePath, sweepTube } from "../lib/tube";
   import { checkerRaster, equalizeDensity, uvReport, type ShapeReport } from "../lib/uv-report";
@@ -2078,6 +2078,13 @@
   });
   let selectNote = $state("");
   let slideAmount = $state(0.5);
+  let smoothAngle = $state(35);
+  /// Shades faces smooth where the surface turns by less than the angle, flat at hard corners (the picked faces, or all when none is picked).
+  function autoSmoothNow() {
+    if (!cube || !selected) return;
+    commit(setCube(doc, selected, smoothByAngle(cube, smoothAngle, selFace !== undefined && selFace !== null ? [selFace] : undefined)), false, "Smooth by angle");
+    selectNote = "Shading set by angle.";
+  }
   /// Closes the open border the first picked point is on, with quads meeting in a new middle point.
   function fillHoleAtPick() {
     if (!cube || !selected || !selVerts.length) return void (selectNote = "Pick a point on the edge of the hole first.");
@@ -2757,6 +2764,8 @@
           </span>
           <label class="inline" title="How far to slide the picked edge along the quads beside it: positive towards one side, negative the other, 1 is all the way to the next point"><input type="number" min="-1" max="1" step="0.1" bind:value={slideAmount} class="narrow" aria-label="Slide amount" /></label>
           <button onclick={fillHoleAtPick} title="Close the open border that the picked point is on">Fill hole</button>
+          <label class="inline" title="The most a surface may turn and still shade smooth, in degrees"><input type="number" min="1" max="180" step="5" bind:value={smoothAngle} class="narrow" aria-label="Smooth angle" /></label>
+          <button onclick={autoSmoothNow} title="Smooth the faces where the surface turns by less than that angle and keep hard corners flat (the picked face, or the whole mesh)">Smooth by angle</button>
           <button onclick={slideEdge} title="Slide the picked edge along the surface (quad faces on the side asked for)">Slide edge</button>
           {#if selectNote}<span class="dim small" role="status">{selectNote}</span>{/if}
         {/if}
