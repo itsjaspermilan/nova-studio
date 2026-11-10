@@ -23,6 +23,26 @@
 
   const parsed = untrack(() => parseSong(text));
   const error = parsed.ok ? "" : parsed.error;
+  // the height of the song editor band (pixels; dragged by the handle under it, remembered on this computer)
+  const BAND_MIN = 90;
+  const BAND_MAX = 600;
+  const storedBand = (): number => {
+    try { const v = Number(localStorage.getItem("nova.songBandHeight")); return Number.isFinite(v) && v >= BAND_MIN ? Math.min(BAND_MAX, v) : 0; } catch { return 0; }
+  };
+  let bandH = $state(storedBand());
+  const setBand = (h: number, save = false) => {
+    bandH = Math.max(BAND_MIN, Math.min(BAND_MAX, Math.round(h)));
+    if (save) try { localStorage.setItem("nova.songBandHeight", String(bandH)); } catch { /* not remembered */ }
+  };
+  let bandEl: HTMLDivElement | undefined = $state();
+  function dragBand(e: PointerEvent) {
+    const startY = e.clientY;
+    const start = bandEl?.getBoundingClientRect().height ?? BAND_MIN;
+    const move = (ev: PointerEvent) => setBand(start + ev.clientY - startY);
+    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); setBand(bandH, true); };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
   let fullSong: Song = $state.raw(parsed.ok ? parsed.song : newSong());
   // Editing one pattern's notes in the piano roll (from the song editor): `song` is then the pattern's view (see patternView); edits go back into the pattern.
   let editingPattern = $state<{ track: number; name: string } | null>(null);
@@ -701,7 +721,11 @@
 
     <section class="songband" aria-label="Song editor">
       <button class="bandhead" aria-expanded={arrangeOpen} onclick={() => (arrangeOpen = !arrangeOpen)} title="Fold the song editor away or show it (every track as a lane of clips)">{arrangeOpen ? "▾" : "▸"} Song editor <span class="dim small">clips on every track: drag to move, drag the right edge to resize</span></button>
-      {#if arrangeOpen}<div class="bandbody"><ArrangePanel song={fullSong} {track} step={Math.floor(playhead)} commit={(next) => commit(next, false, true)} onselect={(i) => { track = i; selected = null; }} onedit={editPattern} /></div>{/if}
+      {#if arrangeOpen}<div class="bandbody" bind:this={bandEl} style={bandH ? `height:${bandH}px;max-height:none` : ""}><ArrangePanel song={fullSong} {track} step={Math.floor(playhead)} commit={(next) => commit(next, false, true)} onselect={(i) => { track = i; selected = null; }} onedit={editPattern} /></div>
+        <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+        <div class="bandgrip" role="separator" aria-orientation="horizontal" aria-label="Song editor height (drag, or use the up and down arrow keys)" aria-valuenow={bandH || undefined} tabindex="0" title="Drag to make the song editor taller or shorter; double-click for the usual height"
+          onpointerdown={dragBand} ondblclick={() => { bandH = 0; try { localStorage.removeItem("nova.songBandHeight"); } catch { /* ignore */ } }}
+          onkeydown={(e) => { if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); setBand((bandEl?.getBoundingClientRect().height ?? BAND_MIN) + (e.key === "ArrowDown" ? 24 : -24), true); } }}></div>{/if}
     </section>
 
     {#if editingPattern}
@@ -847,6 +871,8 @@
   .songband { border-bottom: 1px solid var(--line); background: var(--panel); }
   .bandhead { display: flex; align-items: baseline; gap: 8px; width: 100%; border: none; border-radius: 0; background: transparent; text-align: left; padding: 3px 10px; font-weight: 600; font-size: 12px; }
   .bandbody { max-height: 34vh; min-height: 90px; overflow: auto; border-top: 1px solid var(--line); }
+  .bandgrip { height: 6px; cursor: row-resize; background: var(--line); opacity: .6; }
+  .bandgrip:hover, .bandgrip:focus-visible { opacity: 1; background: var(--accent); outline: none; }
   .lowerpane { max-height: 40%; min-height: 160px; overflow: auto; border-top: 1px solid var(--line); background: var(--panel); }
   .body { flex: 1; min-height: 0; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; }
   .tracks { background: var(--panel); border-right: 1px solid var(--line); padding: 6px; display: flex; flex-direction: column; gap: 4px; overflow: auto; }

@@ -50,6 +50,8 @@ Checked in the browser preview for Engine; the Sprites and Sound changes are typ
 
 - **Sprites header, shorter (2026-11-10):** onion skin, grid, rulers and Canvas size moved into a **View ▾** pop-over, so the options bar is two short rows plus the zoom row at 1000 px wide (seen working in the browser preview: the pop-over opened with all of them; before it was three long lines).
 
+- **Sound, song editor band resizable (2026-11-10):** a handle under the band (drag it, or Up and Down arrow keys when focused, double-click for the usual height); the height is remembered on this computer (not in the song). Seen in the browser preview: dragging it up took the band from about 218 px to 145 px and the roll took the room.
+
 ## Next
 
-Every item in the first review's list is done except what the notes above say is missing: a resizable song editor band, a minimap in Engine, a Hot reload switch (none exists), and everything that needs the real app or a person looking.
+Every item in the first review's list is done except what the notes above say is missing: a minimap in Engine, a Hot reload switch (none exists), and everything that needs the real app or a person looking.
