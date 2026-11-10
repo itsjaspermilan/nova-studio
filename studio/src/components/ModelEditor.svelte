@@ -22,7 +22,7 @@
   import { ORTHO_FOV, PERSPECTIVE_FOV, VIEW_LABELS, VIEW_NAMES, distanceForFov, orbitStep, viewPlacement, type ViewName } from "../lib/view-presets";
   import ModelStats from "./ModelStats.svelte";
   import { solveLimb } from "../lib/model-ik";
-  import { applyPose as applySavedPose, capturePose, removePose, copyKeys, mirrorClip, pasteKeys, reverseClip, shiftKeys, stretchKeys, type KeyClipboard } from "../lib/model-anim-tools";
+  import { retargetClip, applyPose as applySavedPose, capturePose, removePose, copyKeys, mirrorClip, pasteKeys, reverseClip, shiftKeys, stretchKeys, type KeyClipboard } from "../lib/model-anim-tools";
   import { SCULPT_HELP, SCULPT_MODES, sculptDab, type SculptMode } from "../lib/sculpt";
   import { addFace, bevelEdge, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, freshProfile, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsSymmetric, setFaceColors, setSmooth, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
   import { hasVolume, meshOf, segmentsOf, shapeFaces, solidOf } from "../lib/model-mesh";
@@ -95,6 +95,31 @@
   let keyBoard: KeyClipboard | null = $state(null);
   let animNote = $state("");
   let poseName = $state("");
+  const otherModels = $derived(studio.files.filter((f) => !f.dir && f.path.endsWith(".model.json") && f.path !== filePath).map((f) => f.path));
+  /// Copies every animation of another model of the project onto this one, parts matched by name (moves scaled by the models' heights).
+  async function copyAnimationsFrom(path: string) {
+    if (!path || !studio.api) return;
+    try {
+      const parsed = parseModel((await studio.api.readFile(path)).text ?? "");
+      if (!parsed.ok) return void (animNote = `${path}: ${parsed.error}`);
+      let next = doc;
+      let copied = 0;
+      const missing = new Set<string>();
+      for (let i = 0; i < (parsed.doc.clips?.length ?? 0); i++) {
+        const r = retargetClip(parsed.doc, i, next);
+        r.missing.forEach((m) => missing.add(m));
+        if (r.index >= 0) {
+          next = r.doc;
+          copied++;
+        }
+      }
+      if (!copied) return void (animNote = "No part of that model has the same name as a part here, so nothing was copied.");
+      commit(next, false, "Copy animations");
+      animNote = `Copied ${copied} animation${copied === 1 ? "" : "s"}.${missing.size ? ` Parts with no match here: ${[...missing].slice(0, 6).join(", ")}.` : ""}`;
+    } catch (e) {
+      animNote = String(e);
+    }
+  }
   let curvesOpen = $state(false);
   let bakeStrength = $state(0.7);
   let bakeSamples = $state(24);
@@ -2481,6 +2506,11 @@
             <button title="Move the keys 0.1 s earlier" onclick={() => commit(shiftKeys(doc, clipIndex, -0.1, partNames.length ? partNames : null))}>−0.1 s</button>
             <button title="Move the keys 0.1 s later" onclick={() => commit(shiftKeys(doc, clipIndex, 0.1, partNames.length ? partNames : null))}>+0.1 s</button>
             <button class:on={curvesOpen} aria-pressed={curvesOpen} onclick={() => (curvesOpen = !curvesOpen)} title="Show the values of the chosen part as curves over time, with the keys as dots to drag">Curves</button>
+            {#if otherModels.length}
+              <select aria-label="Copy the animations of another model" value="" onchange={(e) => { void copyAnimationsFrom(e.currentTarget.value); e.currentTarget.value = ""; }} title="Copy every animation of another model onto this one: parts are matched by name">
+                <option value="" disabled>Copy animations from…</option>{#each otherModels as m (m)}<option value={m}>{m.slice(m.lastIndexOf("/") + 1).replace(".model.json", "")}</option>{/each}
+              </select>
+            {/if}
             <input class="cname" bind:value={poseName} placeholder="pose name" aria-label="Pose name" />
             <button title="Save how the parts are posed at the time marker, to use again on any animation" disabled={!poseName.trim()} onclick={() => { const next = capturePose(doc, clipIndex, animTime, poseName); if (next) { commit(next, false, "Save pose"); animNote = `Saved the pose “${poseName.trim()}”.`; poseName = ""; } else animNote = "Nothing to save: this animation has no keys at this time, or the pose library is full."; }}>Save pose</button>
             {#each doc.poses ?? [] as ps (ps.name)}

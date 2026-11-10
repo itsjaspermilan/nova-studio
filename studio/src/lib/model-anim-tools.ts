@@ -2,7 +2,7 @@
 // document (the clip index must exist). Times snap to a hundredth of a second like the rest of the animation code.
 
 import { KEY_STEP, findTrack, pathKey, samplePose, setKey, snapTime, type Pose } from "./model-anim";
-import { MAX_KEYS, type Clip, type Key, type ModelDoc, type Prop, type Track } from "./model-doc";
+import { MAX_KEYS, type Clip, type Key, type ModelDoc, type Prop, type Track, type Vec3 } from "./model-doc";
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 const round = (n: number) => Math.round(n * 1e4) / 1e4;
@@ -249,3 +249,71 @@ export const removePose = (doc: ModelDoc, name: string): ModelDoc => {
   else delete next.poses;
   return next;
 };
+
+// ---- retargeting ----
+
+export interface RetargetResult {
+  doc: ModelDoc;
+  /// How many tracks found a part with the same name in the target, and the names of the parts that did not.
+  matched: number;
+  missing: string[];
+  /// The index of the new clip in the target model, or -1 when nothing matched.
+  index: number;
+}
+
+/// The model's height in its own units (the top of its tallest shape above the lowest), used to scale moves between rigs of different sizes.
+function heightOf(doc: ModelDoc): number {
+  let lo = Infinity;
+  let hi = -Infinity;
+  const visit = (parts: ModelDoc["parts"], base: number) => {
+    for (const p of parts) {
+      const y = base + p.origin[1];
+      for (const c of p.cubes) {
+        lo = Math.min(lo, y + c.from[1]);
+        hi = Math.max(hi, y + c.from[1] + c.size[1]);
+      }
+      visit(p.children, y);
+    }
+  };
+  visit(doc.parts, 0);
+  return Number.isFinite(lo) && hi > lo ? hi - lo : 1;
+}
+
+/// Copies an animation of one model onto another with a similar skeleton: a track goes to the part of the target with the same name (wherever it sits in the tree), rotations
+/// and sizes are kept, and moves are scaled by the ratio of the two models' heights so a tall rig's step is a short rig's step. Tracks whose part the target lacks are left
+/// out and reported. The new clip is added to the target (a clip name already there gets a number).
+export function retargetClip(source: ModelDoc, clipIndex: number, target: ModelDoc): RetargetResult {
+  const clip = source.clips?.[clipIndex];
+  if (!clip) return { doc: target, matched: 0, missing: [], index: -1 };
+  const byName = new Map<string, string[]>();
+  const visit = (parts: ModelDoc["parts"], path: string[]) => {
+    for (const p of parts) {
+      const here = [...path, p.name];
+      if (!byName.has(p.name)) byName.set(p.name, here);
+      visit(p.children, here);
+    }
+  };
+  visit(target.parts, []);
+  const ratio = heightOf(target) / heightOf(source);
+  const missing = new Set<string>();
+  const tracks: Track[] = [];
+  for (const t of clip.tracks) {
+    const name = t.part[t.part.length - 1]!;
+    const path = byName.get(name);
+    if (!path) {
+      missing.add(name);
+      continue;
+    }
+    const keys = t.keys.map((k) => ({ ...k, value: (t.prop === "position" ? k.value.map((v) => Math.round(v * ratio * 1e4) / 1e4) : [...k.value]) as Vec3 }));
+    const same = tracks.find((x) => x.prop === t.prop && pathKey(x.part) === pathKey(path));
+    if (same) same.keys = sortKeys([...same.keys, ...keys]);
+    else tracks.push({ part: [...path], prop: t.prop, keys });
+  }
+  if (!tracks.length) return { doc: target, matched: 0, missing: [...missing], index: -1 };
+  const next = clone(target);
+  const clips = next.clips ?? (next.clips = []);
+  let name = clip.name;
+  for (let n = 2; clips.some((c) => c.name === name); n++) name = `${clip.name} ${n}`;
+  clips.push({ name, duration: clip.duration, loop: clip.loop, tracks });
+  return { doc: next, matched: tracks.length, missing: [...missing], index: clips.length - 1 };
+}

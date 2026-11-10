@@ -140,3 +140,44 @@ describe("the pose library", () => {
     expect(parseModel(JSON.stringify(bad)).ok).toBe(false);
   });
 });
+
+import { retargetClip } from "./model-anim-tools";
+import { rigTemplate } from "./rig-templates";
+describe("retargeting", () => {
+  const tall = () => {
+    let d = addClip(rigTemplate("humanoid"), "walk").doc;
+    d = setKey(d, 0, ["hips"], "position", 0, [0, 14, 0]);
+    d = setKey(d, 0, ["hips"], "position", 1, [0, 16, 0]);
+    d = setKey(d, 0, ["hips", "spine", "left arm"], "rotation", 0.5, [0, 0, 60]);
+    d = setKey(d, 0, ["hips", "wing"], "rotation", 0.5, [10, 0, 0]);
+    return d;
+  };
+  it("puts each track on the target's part of the same name, however it is nested, scaling moves by height", () => {
+    const small = rigTemplate("humanoid");
+    // the target is half the size: squash its boxes
+    small.parts = JSON.parse(JSON.stringify(small.parts).replace(/"size":\[(\d+(?:\.\d+)?),(\d+(?:\.\d+)?),(\d+(?:\.\d+)?)\]/g, (_m, a, b, c) => `"size":[${a},${Number(b) / 2},${c}]`));
+    const r = retargetClip(tall(), 0, small);
+    expect(r.matched).toBe(2); // hips position, left arm rotation
+    expect(r.missing).toEqual(["wing"]);
+    expect(r.index).toBe(0);
+    const clip = r.doc.clips![0]!;
+    const pos = clip.tracks.find((t) => t.prop === "position")!;
+    expect(pos.part).toEqual(["hips"]);
+    expect(pos.keys[1]!.value[1]).toBeLessThan(16); // scaled down with the height
+    expect(clip.tracks.find((t) => t.prop === "rotation")!.keys[0]!.value).toEqual([0, 0, 60]); // rotations are kept
+    expect(clip.tracks.find((t) => t.prop === "rotation")!.part).toEqual(["hips", "spine", "left arm"]);
+  });
+  it("finds a part that sits elsewhere in the target's tree, numbers a clip name that is taken, and reports when nothing matches", () => {
+    const target = rigTemplate("humanoid");
+    const flat = { ...target, parts: [{ name: "root", origin: [0, 0, 0] as [number, number, number], rotation: [0, 0, 0] as [number, number, number], cubes: [], children: target.parts }] };
+    const r = retargetClip(tall(), 0, flat);
+    expect(r.doc.clips![0]!.tracks.find((t) => t.prop === "rotation")!.part[0]).toBe("root");
+    const again = retargetClip(tall(), 0, r.doc);
+    expect(again.doc.clips!.map((c) => c.name)).toEqual(["walk", "walk 2"]);
+    const nothing = retargetClip(tall(), 0, rigTemplate("car"));
+    expect(nothing.matched).toBe(0);
+    expect(nothing.index).toBe(-1);
+    expect(nothing.doc.clips).toBeUndefined();
+    expect(retargetClip(tall(), 5, target).index).toBe(-1);
+  });
+});
