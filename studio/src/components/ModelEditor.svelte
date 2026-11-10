@@ -674,8 +674,23 @@
       });
       boneLines = undefined;
     }
-    if (!(showBones || showNormals) || !scene || !groups.size) return;
+    const seamsHere = !!selected && !!cube?.seams?.length && (inEdit || mode === "texture");
+    if (!(showBones || showNormals || seamsHere) || !scene || !groups.size) return;
     const overlay = new THREE.Group();
+    if (seamsHere && selected && cube?.verts) {
+      const g = groupOf(selected.parts);
+      if (g) {
+        const seg: THREE.Vector3[] = [];
+        for (const [a, b] of cube.seams!) {
+          const p = cube.verts[a];
+          const q = cube.verts[b];
+          if (p && q) seg.push(new THREE.Vector3(...p).applyMatrix4(g.matrixWorld), new THREE.Vector3(...q).applyMatrix4(g.matrixWorld));
+        }
+        const l = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(seg), new THREE.LineBasicMaterial({ color: 0xff5555, depthTest: false }));
+        l.renderOrder = 18;
+        overlay.add(l);
+      }
+    }
     if (showNormals && selected && cube) {
       const g = groupOf(selected.parts);
       const m = toMesh(cube);
@@ -719,7 +734,7 @@
     boneLines = overlay;
   }
   $effect(() => {
-    showBones; showNormals; selected; doc; animTime; mode;
+    showBones; showNormals; selected; doc; animTime; mode; inEdit;
     if (modelGroup) untrack(() => { modelGroup!.updateMatrixWorld(true); drawBones(); });
   });
 
