@@ -7,7 +7,7 @@ import { BAKE_STEPS, applyEase, lerp3, slerp } from "./model-ease";
 import { FACE_CORNERS, hasVolume, meshOf as solidMesh, solidOf, type Mesh } from "./model-mesh";
 import { evaluate } from "./modifiers";
 import { boneKey, invertAffine, transformDirection, transformPoint, worldMatrices } from "./model-skin";
-import { bakeAll, uvsOf } from "./model-uv";
+import { bakeAll, bakeSurface, uvsOf } from "./model-uv";
 import { newRaster, type Raster } from "./pixels";
 import { encodePng } from "./png-encode";
 
@@ -108,7 +108,9 @@ const LINEAR = Array.from({ length: 256 }, (_, v) => {
   return Math.round(65535 * (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
 });
 const linearColours = (colors: number[]) => new Uint16Array(colors.map((v, i) => (i % 4 === 3 ? v * 257 : LINEAR[v]!)));
-export function exportGlb(doc: ModelDoc, texture?: Raster): Uint8Array {
+/// `surface` is the roughness and metal picture (green and blue), written as glTF's metallic-roughness picture when the model's `texture.surface` is set: painted
+/// shapes then take their roughness and metal from it, whatever numbers they carry.
+export function exportGlb(doc: ModelDoc, texture?: Raster, surface?: Raster): Uint8Array {
   const scale = doc.scale;
   const gltfNodes: Record<string, unknown>[] = [];
   const meshes: Record<string, unknown>[] = [];
@@ -129,12 +131,14 @@ export function exportGlb(doc: ModelDoc, texture?: Raster): Uint8Array {
 
   const textured = !!doc.texture && walk(doc).some(({ part }) => part.cubes.some((c) => c.texture && hasVolume(c)));
   const image = textured ? textureForExport(doc, texture) : undefined;
+  const surfaceImage = image && doc.texture?.surface ? textureForExport(doc, surface ?? bakeSurface(doc)) : undefined;
   const tex: Texel | undefined = image ? { w: image.w, rows: image.h, whiteU: 0.5 / image.w, whiteV: (image.h - 0.5) / image.h } : undefined;
 
   // Material 0 is the plain one; a glowing shape's material adds an emissive factor (see `glowOf`).
   const mats: { glow: number; metal: number; rough: number }[] = [];
   const materialFor = (c: Cube) => {
-    const glow = glowOf(c), metal = metallicOf(c), rough = roughnessOf(c);
+    const painted = !!surfaceImage && !!c.texture && hasVolume(c);
+    const glow = glowOf(c), metal = painted ? 1 : metallicOf(c), rough = painted ? 1 : roughnessOf(c);
     if (glow === 0 && metal === 0 && rough === 1) return 0;
     let at = mats.findIndex((m) => m.glow === glow && m.metal === metal && m.rough === rough);
     if (at < 0) at = mats.push({ glow, metal, rough }) - 1;
@@ -311,15 +315,15 @@ export function exportGlb(doc: ModelDoc, texture?: Raster): Uint8Array {
     meshes,
     ...(skins.length ? { skins } : {}),
     materials: [
-      { name: tex ? "texture" : "vertex colours", pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], ...(tex ? { baseColorTexture: { index: 0 } } : {}), metallicFactor: 0, roughnessFactor: 1 } },
-      ...mats.map((m) => ({ name: [m.glow ? `glow ${m.glow}` : "", m.metal ? `metal ${m.metal}` : "", m.rough < 1 ? `rough ${m.rough}` : ""].filter(Boolean).join(" "), pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], ...(tex ? { baseColorTexture: { index: 0 } } : {}), metallicFactor: m.metal, roughnessFactor: m.rough }, ...(m.glow ? { emissiveFactor: [m.glow, m.glow, m.glow] } : {}) })),
+      { name: tex ? "texture" : "vertex colours", pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], ...(tex ? { baseColorTexture: { index: 0 } } : {}), ...(surfaceImage ? { metallicRoughnessTexture: { index: 1 } } : {}), metallicFactor: 0, roughnessFactor: 1 } },
+      ...mats.map((m) => ({ name: [m.glow ? `glow ${m.glow}` : "", m.metal ? `metal ${m.metal}` : "", m.rough < 1 ? `rough ${m.rough}` : ""].filter(Boolean).join(" "), pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], ...(tex ? { baseColorTexture: { index: 0 } } : {}), ...(surfaceImage ? { metallicRoughnessTexture: { index: 1 } } : {}), metallicFactor: m.metal, roughnessFactor: m.rough }, ...(m.glow ? { emissiveFactor: [m.glow, m.glow, m.glow] } : {}) })),
     ],
     ...(tex && image
       ? {
           // nearest filtering keeps painted texels crisp, linear (`texture.smooth`) blends them; the picture is clamped, not tiled
           samplers: [doc.texture?.smooth ? { magFilter: 9729, minFilter: 9729, wrapS: 33071, wrapT: 33071 } : { magFilter: 9728, minFilter: 9728, wrapS: 33071, wrapT: 33071 }],
-          textures: [{ sampler: 0, source: 0 }],
-          images: [{ bufferView: addView(encodePng(image)), mimeType: "image/png" }],
+          textures: [{ sampler: 0, source: 0 }, ...(surfaceImage ? [{ sampler: 0, source: 1 }] : [])],
+          images: [{ bufferView: addView(encodePng(image)), mimeType: "image/png" }, ...(surfaceImage ? [{ bufferView: addView(encodePng(surfaceImage)), mimeType: "image/png" }] : [])],
         }
       : {}),
     ...(animations.length ? { animations } : {}),

@@ -3,9 +3,9 @@
 // The layout depends only on the shape's geometry, so it stays put while a shape is moved or turned; resizing a
 // shape changes its block, and "Pack" in the editor lays every block out again.
 
-import { newRaster, setPixel, type Raster } from "./pixels";
+import { newRaster, setPixel, type Raster, type Rgba } from "./pixels";
 import type { Cube, Face, ModelDoc, Vec3 } from "./model-doc";
-import { hexToRgba, MAX_TEXTURE, MIN_TEXTURE, NEW_TEXEL_SCALE } from "./model-doc";
+import { hexToRgba, MAX_TEXTURE, metallicOf, MIN_TEXTURE, NEW_TEXEL_SCALE, roughnessOf } from "./model-doc";
 import { hasVolume, polyColor, segmentsOf, solidOf, unitSolid } from "./model-mesh";
 import { walk } from "./model-doc";
 
@@ -320,21 +320,21 @@ function fillTriangle(r: Raster, a: UV, b: UV, c: UV, rgba: [number, number, num
 }
 
 /// Paints the shape's colours into its block of the texture, so turning texturing on changes nothing you can see.
-export function bakeColors(r: Raster, c: Cube) {
+export function bakeColors(r: Raster, c: Cube, colourOf: (c: Cube, p: { color?: string }) => Rgba = (cube, p) => hexToRgba(polyColor(cube, p as never))) {
   if (!c.texture || !hasVolume(c)) return;
   const [ax, ay] = c.texture.at;
   const solid = solidOf(c);
   const un = unwrap(c);
   solid.polys.forEach((p, pi) => {
     const uv = un.polys[pi]!.map((q) => [ax + q[0], ay + q[1]] as UV);
-    const rgba = hexToRgba(polyColor(c, p));
+    const rgba = colourOf(c, p);
     for (let k = 1; k + 1 < uv.length; k++) fillTriangle(r, uv[0]!, uv[k]!, uv[k + 1]!, rgba, 0.75);
   });
   // then exactly, over the padding: each polygon is first filled a little larger than it is, so a texel the GPU samples at the
   // very edge of a polygon (its centre just outside) has the polygon's colour and not the gap's
   solid.polys.forEach((p, pi) => {
     const uv = un.polys[pi]!.map((q) => [ax + q[0], ay + q[1]] as UV);
-    const rgba = hexToRgba(polyColor(c, p));
+    const rgba = colourOf(c, p);
     for (let k = 1; k + 1 < uv.length; k++) fillTriangle(r, uv[0]!, uv[k]!, uv[k + 1]!, rgba);
   });
 }
@@ -429,6 +429,34 @@ export function bakeAll(doc: ModelDoc): Raster {
   const r = newRaster(w, h);
   for (const { part } of walk(doc)) for (const c of part.cubes) bakeColors(r, c);
   return r;
+}
+
+/// The surface picture for a model: every painted shape's block holds its own roughness (green) and metal (blue) numbers, so nothing changes until it is painted.
+export function bakeSurface(doc: ModelDoc): Raster {
+  const [w, h] = doc.texture?.size ?? [MIN_TEXTURE, MIN_TEXTURE];
+  const r = newRaster(w, h);
+  for (let i = 0; i < r.data.length; i += 4) { r.data[i] = 255; r.data[i + 1] = 255; r.data[i + 3] = 255; }
+  for (const { part } of walk(doc)) for (const c of part.cubes) bakeColors(r, c, (cube) => [255, Math.round(roughnessOf(cube) * 255), Math.round(metallicOf(cube) * 255), 255]);
+  return r;
+}
+
+/// A channel of a surface picture as a grey picture to paint on, and a grey picture written back into a channel (green: roughness, blue: metal).
+export type SurfaceChannel = "roughness" | "metal";
+export function channelToGrey(surface: Raster, channel: SurfaceChannel): Raster {
+  const out = newRaster(surface.w, surface.h);
+  const k = channel === "roughness" ? 1 : 2;
+  for (let i = 0; i < out.data.length; i += 4) {
+    const v = surface.data[i + k]!;
+    out.data[i] = out.data[i + 1] = out.data[i + 2] = v;
+    out.data[i + 3] = 255;
+  }
+  return out;
+}
+export function greyToChannel(surface: Raster, grey: Raster, channel: SurfaceChannel): Raster {
+  const out: Raster = { w: surface.w, h: surface.h, data: new Uint8ClampedArray(surface.data) };
+  const k = channel === "roughness" ? 1 : 2;
+  for (let i = 0; i < out.data.length && i < grey.data.length; i += 4) out.data[i + k] = grey.data[i]!;
+  return out;
 }
 
 /// The picture cropped or padded (top-left kept) to the model's texture size.

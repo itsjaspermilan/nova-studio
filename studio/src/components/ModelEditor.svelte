@@ -29,7 +29,7 @@
   import { addFace, bevelEdge, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, freshProfile, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsProportional, moveVertsSymmetric, setFaceColors, setSmooth, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
   import { hasVolume, meshOf, segmentsOf, shapeFaces, solidOf } from "../lib/model-mesh";
   import { WEIGHT_MODES, autoSkinAll, gradientWeights, mirrorWeights, paintWeights, type WeightMode, autoWeights, boneHeat, dominantBones, heatColor, invertAffine, reskin, setWeight, skinnedPoints, transformPoint, worldMatrices } from "../lib/model-skin";
-  import { bakeAll, blockOf, faceRects, flippedRect, normRect, rectAt, enableTexture, fitPicture, packModel, resizeTexture, unwrap, uvsOf } from "../lib/model-uv";
+  import { bakeAll, bakeSurface, channelToGrey, greyToChannel, blockOf, faceRects, flippedRect, normRect, rectAt, enableTexture, fitPicture, packModel, resizeTexture, unwrap, uvsOf } from "../lib/model-uv";
   import { CLEAR, cloneRaster, drawEllipse, drawLine, drawRect, floodFill, getPixel, newRaster, parseHex, stamp, toHex, type Raster, type Rgba } from "../lib/pixels";
   import { applyBrush, applyGradient } from "../lib/paint";
   import { loadRaster, rasterToDataUrl } from "../lib/png";
@@ -312,7 +312,43 @@
   let activeLayer = $state(0);
   const layerInfos = $derived(doc.texture?.layers ?? []);
   const layered = $derived(layerInfos.length > 1);
-  const remember = () => studio.sessions.set(filePath, { doc, picture, others: otherLayers, active: activeLayer });
+  // The roughness and metal picture (green and blue): painted one channel at a time as a grey picture, which stands in for `picture` while a channel is chosen
+  // (the colour picture waits in `colourStash`).
+  let surface = $state.raw<Raster | null>(null);
+  let channel = $state<"colour" | "roughness" | "metal">("colour");
+  let colourStash: Raster | null = null;
+  const surfacePath = untrack(() => filePath).replace(/\.model\.json$/i, ".texture.surface.png");
+  const remember = () => studio.sessions.set(filePath, { doc, picture, others: otherLayers, active: activeLayer, surface, channel, stash: colourStash });
+  type Kept = { doc: ModelDoc; picture?: Raster | null; others?: (Raster | null)[]; active?: number; surface?: Raster | null; channel?: string; stash?: Raster | null };
+  /// The colour picture and the surface picture as they are now, whichever channel is being painted.
+  function finalsOf(k: Kept | undefined): { colour: Raster | null; surface: Raster | null } {
+    const ch = k?.channel ?? "colour";
+    if (ch === "colour") return { colour: k?.picture ?? null, surface: k?.surface ?? null };
+    return { colour: k?.stash ?? null, surface: k?.surface && k.picture ? greyToChannel(k.surface, k.picture, ch as "roughness" | "metal") : (k?.surface ?? null) };
+  }
+  function enableSurface() {
+    if (!doc.texture || !picture) return;
+    const next = { ...doc, texture: { ...doc.texture, surface: true } };
+    surface = bakeSurface(next);
+    commit(next);
+  }
+  function disableSurface() {
+    if (!doc.texture) return;
+    if (channel !== "colour") setChannel("colour");
+    surface = null;
+    commit({ ...doc, texture: { ...doc.texture, surface: undefined } });
+  }
+  function setChannel(next: "colour" | "roughness" | "metal") {
+    if (next === channel || !picture || !surface) return;
+    if (channel === "colour") colourStash = picture;
+    else surface = greyToChannel(surface, picture, channel);
+    picture = next === "colour" ? colourStash! : channelToGrey(surface, next);
+    channel = next;
+    texPast.length = 0;
+    texFuture = [];
+    texTick++;
+    pictureChanged();
+  }
   /// Every layer as a set (the live picture in its place).
   function layerSetNow(): LayerSet {
     if (!picture) return { info: [], rasters: [] };
@@ -342,7 +378,7 @@
     applyLayers(set, i);
   }
   const layerOp = (fn: (set: LayerSet) => LayerSet, nextActive: (set: LayerSet) => number) => {
-    if (!picture) return;
+    if (!picture || channel !== "colour") return;
     const set = layerSetNow();
     const next = fn(set);
     if (next === set) return;
@@ -402,6 +438,13 @@
         activeLayer = rasters.length - 1;
         picture = rasters[rasters.length - 1]!;
       } else picture = fitPicture(doc, await loadRaster(await studio.api!.readImage(texturePath)));
+      if (doc.texture?.surface) {
+        try {
+          surface = fitPicture(doc, await loadRaster(await studio.api!.readImage(surfacePath)));
+        } catch {
+          surface = bakeSurface(doc);
+        }
+      }
     } catch {
       otherLayers = [];
       activeLayer = 0;
@@ -417,11 +460,18 @@
   onMount(() => {
     if (error) return;
     studio.saveHooks.set(filePath, async () => {
-      const kept = studio.sessions.get(filePath) as { doc: ModelDoc; picture?: Raster | null; others?: (Raster | null)[]; active?: number } | undefined;
+      const kept = studio.sessions.get(filePath) as Kept | undefined;
       const d = kept?.doc ?? doc;
       let image: Raster | undefined;
+      let surfaceImage: Raster | undefined;
       if (d.texture) {
-        const live = kept?.picture ?? picture ?? bakeAll(d);
+        const finals = finalsOf(kept);
+        const live = finals.colour ?? picture ?? bakeAll(d);
+        if (d.texture.surface) {
+          surfaceImage = fitPicture(d, finals.surface ?? bakeSurface(d));
+          await studio.api!.writeImage(surfacePath, rasterToDataUrl(surfaceImage));
+          if (!studio.files.some((f) => f.path === surfacePath)) void studio.refreshFiles();
+        }
         const infos = d.texture.layers;
         if (infos && infos.length > 1) {
           const rasters = infos.map((_, i) => fitPicture(d, i === kept?.active || !kept?.others?.[i] ? live : kept.others[i]!));
@@ -431,14 +481,17 @@
         await studio.api!.writeImage(texturePath, rasterToDataUrl(image));
         if (!studio.files.some((f) => f.path === texturePath)) void studio.refreshFiles();
       }
-      const bytes = exportGlb(d, image);
+      const bytes = exportGlb(d, image, surfaceImage);
       await studio.api!.writeModel(glbPath, `data:model/gltf-binary;base64,${toBase64(bytes)}`);
     });
-    const kept = studio.sessions.get(filePath) as { doc: ModelDoc; picture?: Raster | null; others?: (Raster | null)[]; active?: number } | undefined;
+    const kept = studio.sessions.get(filePath) as Kept | undefined;
     if (kept?.picture) {
       picture = kept.picture;
       otherLayers = kept.others ?? [];
       activeLayer = kept.active ?? 0;
+      surface = kept.surface ?? null;
+      channel = (kept.channel as typeof channel | undefined) ?? "colour";
+      colourStash = kept.stash ?? null;
     }
     remember();
     if (!picture && doc.texture) void loadPicture();
@@ -1407,6 +1460,7 @@
   // turning texturing on for the selected shape, resizing and packing
   function toggleTexture(on: boolean) {
     if (!selected || selected.cube === undefined || !cube) return;
+    if (channel !== "colour") setChannel("colour");
     if (!on) {
       commit(setCube(doc, selected, { ...cube, texture: undefined }));
       return;
@@ -1425,6 +1479,8 @@
     const r = resizeTexture(doc, picture, w, h);
     rememberPicture();
     otherLayers = otherLayers.map((o) => (o ? resizeTexture(doc, o, w, h).picture : null));
+    if (surface) surface = resizeTexture(doc, surface, w, h).picture;
+    if (colourStash) colourStash = resizeTexture(doc, colourStash, w, h).picture;
     picture = r.picture;
     commit(r.doc);
     pictureChanged();
@@ -3164,6 +3220,22 @@
           </div>
           <div class="swatches">
             {#each TEX_PALETTE as c (c)}<button class="swatch" style:background={c} title={c} aria-label={c} onclick={() => pickTexHex(c)}></button>{/each}
+          </div>
+          <div class="layers" role="group" aria-label="Surface channels">
+            {#if doc.texture?.surface}
+              <div class="row wrap">
+                <strong class="small">Paint</strong>
+                <span class="seg" role="group" aria-label="Channel">
+                  {#each [["colour", "Colour", "The colours"], ["roughness", "Roughness", "How rough: white is rough, black is shiny"], ["metal", "Metal", "How metal: white is metal, black is not"]] as [id, t, tip] (id)}
+                    <button class:on={channel === id} disabled={layered && id !== "colour"} title={tip} onclick={() => setChannel(id as typeof channel)}>{t}</button>
+                  {/each}
+                </span>
+                <button class="ghost danger" onclick={disableSurface} title="Go back to one metal and roughness number per shape">✕</button>
+              </div>
+              {#if channel !== "colour"}<p class="dim small">Painting {channel}: grey picture, white = more. Colours are kept as they were.</p>{/if}
+            {:else}
+              <button class="ghost" onclick={enableSurface} disabled={layered} title="Paint where the surface is metal and how rough it is (a second picture, read by the game as glTF's metallic-roughness picture). Starts from each shape's own numbers.">Paint roughness and metal</button>
+            {/if}
           </div>
           <div class="layers" role="group" aria-label="Painting layers">
             <div class="row wrap">
