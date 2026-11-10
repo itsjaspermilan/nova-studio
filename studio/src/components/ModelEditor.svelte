@@ -36,6 +36,7 @@
   import { applyStack, evaluate, hasModifiers, type Modifier } from "../lib/modifiers";
   import ModifierStack from "./ModifierStack.svelte";
   import CurveEditor from "./CurveEditor.svelte";
+  import { edgeLoop, edgeRing, pointsOfEdges, selectSimilarFaces } from "../lib/mesh-select";
   import { textToMesh } from "../lib/text-mesh";
   import { checkerRaster, equalizeDensity, uvReport, type ShapeReport } from "../lib/uv-report";
   import ProjectSwatches from "./ProjectSwatches.svelte";
@@ -1941,6 +1942,21 @@
     selected = r.path;
     also = [];
   }
+  let selectNote = $state("");
+  /// Picks the points of the loop or the ring through the picked edge.
+  function pickLoop(kind: "loop" | "ring") {
+    if (!cube || !selEdge) return void (selectNote = "Click an edge first.");
+    const edges = kind === "loop" ? edgeLoop(cube, selEdge[0], selEdge[1]) : edgeRing(cube, selEdge[0], selEdge[1]);
+    selVerts = pointsOfEdges(edges);
+    selectNote = `${edges.length} edge${edges.length === 1 ? "" : "s"}, ${selVerts.length} points picked.`;
+  }
+  /// Picks the points of every face like the picked one.
+  function pickSimilar(by: "normal" | "area" | "sides") {
+    if (!cube || selFace === null) return void (selectNote = "Click a face first.");
+    const faces = selectSimilarFaces(cube, selFace, by);
+    selVerts = [...new Set(faces.flatMap((f) => cube!.polys![f]!.v))];
+    selectNote = `${faces.length} face${faces.length === 1 ? "" : "s"} like it, ${selVerts.length} points picked.`;
+  }
   let textShape = $state("");
   /// A mesh shape that reads the typed words, in blocks of the pixel font, in the selected part.
   function addTextShape() {
@@ -2528,6 +2544,15 @@
           <label class="check" title="Brush radius, in units">Size <input type="range" min="0.5" max="20" step="0.5" bind:value={sculptRadius} aria-label="Brush size" /></label>
           <label class="check" title="How strongly each dab works">Strength <input type="range" min="0.05" max="1" step="0.05" bind:value={sculptStrength} aria-label="Brush strength" /></label>
           {#if sculpting}<label class="check" title="Sculpt the mirror image across the middle (x = 0) too"><input type="checkbox" bind:checked={sculptSymmetry} /> Mirror</label>{/if}
+        {/if}
+        {#if inEdit}
+          <span class="seg" role="group" aria-label="Select by layout">
+            <button onclick={() => pickLoop("loop")} title="Pick the edge loop through the picked edge (quad meshes)">Loop</button>
+            <button onclick={() => pickLoop("ring")} title="Pick the edges parallel to the picked edge across the quads">Ring</button>
+            <button onclick={() => pickSimilar("normal")} title="Pick every face that faces the way the picked face does">Same way</button>
+            <button onclick={() => pickSimilar("area")} title="Pick every face of about the same size as the picked face">Same size</button>
+          </span>
+          {#if selectNote}<span class="dim small" role="status">{selectNote}</span>{/if}
         {/if}
         {#if inEdit}<button class:on={boxArmed} onclick={() => (boxArmed = !boxArmed)} title="Box select: drag a rectangle over the points (B)">Box</button>{/if}
         <label class="check" title="Flat view: parallel lines stay parallel (5)"><input type="checkbox" checked={ortho} onchange={(e) => setOrtho(e.currentTarget.checked)} /> Flat</label>
