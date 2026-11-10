@@ -97,3 +97,31 @@ describe("mirroring weights", () => {
     expect(heldBy(r.cube, 2)).toEqual(["body:1"]);
   });
 });
+
+import { gradientWeights } from "./model-skin";
+describe("weight gradients and picked points", () => {
+  it("blends two bones along an axis, whole at the ends and beyond them", () => {
+    const out = gradientWeights(strip(), "a", "b", 0, 1, 3);
+    expect(held(out, 0, 0)).toBe(1); // before the start: bone a
+    expect(held(out, 1, 0)).toBe(1);
+    expect(held(out, 2, 0)).toBeCloseTo(0.5, 3);
+    expect(held(out, 2, 1)).toBeCloseTo(0.5, 3);
+    expect(held(out, 3, 1)).toBe(1);
+    expect(held(out, 4, 1)).toBe(1); // beyond the end: bone b
+    expect(sums(out)).toBe(true);
+    expect(gradientWeights(strip(), "a", "b", 0, 2, 2).skin).toEqual(strip().skin); // no span: nothing
+  });
+  it("only touches the picked points when some are given", () => {
+    const out = gradientWeights(strip(), "a", "b", 0, 0, 4, [2]);
+    expect(held(out, 2, 1)).toBeCloseTo(0.5, 3);
+    expect(held(out, 3, 1)).toBe(0);
+    expect(held(out, 0, 0)).toBe(1);
+  });
+  it("the weight brush can be limited to picked points", () => {
+    const out = paintWeights(strip(), [2, 0, 0], { bone: "b", mode: "add", radius: 5, strength: 1, falloff: "constant", only: new Set([1, 2]) });
+    expect(held(out, 1, 1)).toBeCloseTo(1, 3);
+    expect(held(out, 2, 1)).toBeCloseTo(1, 3);
+    expect(held(out, 3, 1)).toBe(0);
+    expect(held(out, 0, 1)).toBe(0);
+  });
+});

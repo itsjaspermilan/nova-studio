@@ -252,7 +252,7 @@ export const WEIGHT_MODES: WeightMode[] = ["add", "subtract", "smooth"];
 /// One dab of the weight brush at `center` (in the mesh's own space): points within `radius` change by the falloff times `strength` (0 to 1).
 /// "add" raises how strongly `bone` holds them, "subtract" lowers it (the others share what is freed), "smooth" blends every bone's weight towards the
 /// average of the point's neighbours. Returns the mesh as it was when it has no skin or the bone is not one of its bones.
-export function paintWeights(cube: Cube, center: Vec3, brush: { bone: string; mode: WeightMode; radius: number; strength: number; falloff?: Falloff }): Cube {
+export function paintWeights(cube: Cube, center: Vec3, brush: { bone: string; mode: WeightMode; radius: number; strength: number; falloff?: Falloff; /** only these points change (the picked ones), when given */ only?: Set<number> }): Cube {
   if (!cube.skin || !cube.verts || cube.skin.weights.length !== cube.verts.length) return cube;
   const out: Cube = JSON.parse(JSON.stringify(cube));
   const skin = out.skin!;
@@ -268,7 +268,7 @@ export function paintWeights(cube: Cube, center: Vec3, brush: { bone: string; mo
   const near: { i: number; w: number }[] = [];
   for (let i = 0; i < verts.length; i++) {
     const d = Math.hypot(verts[i]![0] - center[0], verts[i]![1] - center[1], verts[i]![2] - center[2]);
-    if (d < r) near.push({ i, w: falloffWeight(brush.falloff ?? "smooth", d / r) * k });
+    if (d < r && (!brush.only || brush.only.has(i))) near.push({ i, w: falloffWeight(brush.falloff ?? "smooth", d / r) * k });
   }
   const before = cube.skin.weights;
   const held = (p: number, b: number) => before[p]!.reduce((n, [x, w]) => (x === b ? n + w : n), 0);
@@ -346,4 +346,31 @@ export function mirrorWeights(cube: Cube, from: "positive" | "negative" = "posit
     set++;
   }
   return { cube: out, set };
+}
+
+/// A gradient of weight along an axis: points at `from` (a coordinate on that axis, in the mesh's own space) are held entirely by bone `a`, points at `to` entirely by bone
+/// `b`, and points between by a blend of the two (beyond either end by that end's bone). Only `points` change when given. Other bones' weights on those points are replaced.
+export function gradientWeights(cube: Cube, a: string, b: string, axis: 0 | 1 | 2, from: number, to: number, points?: number[]): Cube {
+  if (!cube.skin || !cube.verts || cube.skin.weights.length !== cube.verts.length || from === to) return cube;
+  const out: Cube = JSON.parse(JSON.stringify(cube));
+  const skin = out.skin!;
+  const index = (name: string) => {
+    let i = skin.bones.indexOf(name);
+    if (i < 0 && skin.bones.length < 64) i = skin.bones.push(name) - 1;
+    return i;
+  };
+  const ia = index(a);
+  const ib = index(b);
+  if (ia < 0 || ib < 0) return cube;
+  const chosen = points ? new Set(points) : null;
+  cube.verts.forEach((p, i) => {
+    if (chosen && !chosen.has(i)) return;
+    const t = Math.min(1, Math.max(0, (p[axis]! - from) / (to - from)));
+    const wb = Math.round(t * 10000) / 10000;
+    const pairs: [number, number][] = [];
+    if (wb < 1) pairs.push([ia, Math.round((1 - wb) * 10000) / 10000]);
+    if (wb > 0) pairs.push([ib, wb]);
+    skin.weights[i] = pairs.length ? pairs : [[ia, 1]];
+  });
+  return out;
 }

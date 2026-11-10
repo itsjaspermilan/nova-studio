@@ -27,7 +27,7 @@
   import { SCULPT_HELP, SCULPT_MODES, sculptDab, type SculptMode } from "../lib/sculpt";
   import { addFace, bevelEdge, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, freshProfile, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsSymmetric, setFaceColors, setSmooth, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
   import { hasVolume, meshOf, segmentsOf, shapeFaces, solidOf } from "../lib/model-mesh";
-  import { WEIGHT_MODES, mirrorWeights, paintWeights, type WeightMode, autoWeights, boneHeat, dominantBones, heatColor, invertAffine, reskin, setWeight, skinnedPoints, transformPoint, worldMatrices } from "../lib/model-skin";
+  import { WEIGHT_MODES, gradientWeights, mirrorWeights, paintWeights, type WeightMode, autoWeights, boneHeat, dominantBones, heatColor, invertAffine, reskin, setWeight, skinnedPoints, transformPoint, worldMatrices } from "../lib/model-skin";
   import { bakeAll, blockOf, faceRects, flippedRect, normRect, rectAt, enableTexture, fitPicture, packModel, resizeTexture, unwrap, uvsOf } from "../lib/model-uv";
   import { CLEAR, cloneRaster, drawEllipse, drawLine, drawRect, floodFill, getPixel, newRaster, parseHex, stamp, toHex, type Raster, type Rgba } from "../lib/pixels";
   import { applyBrush, applyGradient } from "../lib/paint";
@@ -1618,7 +1618,7 @@
     if (weightPainting) {
       const bone = skinBone || c.skin?.bones[0] || "";
       if (!bone) return;
-      commit(setCube(doc, sculptStroke.path, paintWeights(c, at, { bone, mode: weightMode, radius: sculptRadius, strength: sculptStrength })), true);
+      commit(setCube(doc, sculptStroke.path, paintWeights(c, at, { bone, mode: weightMode, radius: sculptRadius, strength: sculptStrength, ...(paintOnlyPicked && selVerts.length ? { only: new Set(selVerts) } : {}) })), true);
       const painted = cubeAt(doc, sculptStroke.path)?.skin?.bones.indexOf(bone) ?? -1;
       if (painted >= 0) heatBone = painted;
       sculptStroke.last = at;
@@ -2015,6 +2015,19 @@
     commit(setCube(doc, selected, { ...cube, skin }));
   }
   /// Copies the weights of the +x side to the -x side (or the other way), swapping left bones for right ones.
+  let gradA = $state("");
+  let gradB = $state("");
+  let gradAxis = $state<0 | 1 | 2>(1);
+  let gradFrom = $state(0);
+  let gradTo = $state(10);
+  let paintOnlyPicked = $state(false);
+  function applyWeightGradient() {
+    if (!selected || !cube?.skin) return;
+    const a = gradA || cube.skin.bones[0];
+    const b = gradB || cube.skin.bones[1] || cube.skin.bones[0];
+    if (!a || !b) return;
+    commit(setCube(doc, selected, gradientWeights(cube, a, b, gradAxis, gradFrom, gradTo, selVerts.length ? selVerts : undefined)), false, "Weight gradient");
+  }
   function mirrorSkin(from: "positive" | "negative") {
     if (!selected || !cube?.skin) return;
     const r = mirrorWeights(cube, from);
@@ -2471,6 +2484,7 @@
         {#if inEdit && cube?.skin}<button class:on={weightPainting} onclick={() => { weightPainting = !weightPainting; sculpting = false; }} title="Paint weights: brush how strongly a part holds the points">Weights</button>{/if}
         {#if inEdit && weightPainting && cube?.skin}
           <select bind:value={skinBone} aria-label="Part to paint" title="The part whose hold you paint">{#each cube.skin.bones as b (b)}<option value={b}>{b.split("/").at(-1)}</option>{/each}</select>
+          <label class="check" title="Only the picked points take paint"><input type="checkbox" bind:checked={paintOnlyPicked} /> Only picked</label>
           <select bind:value={weightMode} aria-label="Weight brush">{#each WEIGHT_MODES as m (m)}<option value={m}>{m}</option>{/each}</select>
         {/if}
         {#if inEdit && (sculpting || weightPainting)}
@@ -2753,7 +2767,14 @@
               </div>
               <div class="row"><button onclick={applyWeight} disabled={!skinBone} title="The picked points follow that part this much, and the others share the rest">Set weight</button></div>
             {/if}
-            <div class="row"><button onclick={() => mirrorSkin("positive")} title="Copy the +x side's weights to the -x side, left bones becoming right ones">Mirror →</button><button onclick={() => mirrorSkin("negative")} title="Copy the -x side's weights to the +x side">← Mirror</button><button onclick={autoSkin} title="Works the weights out again from where the parts are (hand-set weights are lost)">Auto weights</button><button class="danger" onclick={unskin}>Stop bending</button></div>
+            <div class="row"><span class="row wrap small" title="Blend two parts along an axis: whole one at the start, whole other at the end (only the picked points when some are picked)">
+              Gradient
+              <select bind:value={gradA} aria-label="Part at the start">{#each cube.skin.bones as bn (bn)}<option value={bn}>{bn.split("/").at(-1)}</option>{/each}</select>→
+              <select bind:value={gradB} aria-label="Part at the end">{#each cube.skin.bones as bn (bn)}<option value={bn}>{bn.split("/").at(-1)}</option>{/each}</select>
+              <select bind:value={gradAxis} aria-label="Axis"><option value={0}>x</option><option value={1}>y</option><option value={2}>z</option></select>
+              <input type="number" class="narrow" bind:value={gradFrom} aria-label="Start coordinate" /> to <input type="number" class="narrow" bind:value={gradTo} aria-label="End coordinate" />
+              <button onclick={applyWeightGradient}>Apply</button>
+            </span><button onclick={() => mirrorSkin("positive")} title="Copy the +x side's weights to the -x side, left bones becoming right ones">Mirror →</button><button onclick={() => mirrorSkin("negative")} title="Copy the -x side's weights to the +x side">← Mirror</button><button onclick={autoSkin} title="Works the weights out again from where the parts are (hand-set weights are lost)">Auto weights</button><button class="danger" onclick={unskin}>Stop bending</button></div>
           {:else}
             <div class="row"><button onclick={autoSkin} title="The shape bends where parts meet, like a sleeve at the elbow, instead of staying stiff">Bend with the parts around it</button></div>
           {/if}
