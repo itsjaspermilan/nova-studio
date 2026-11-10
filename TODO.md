@@ -12,8 +12,7 @@ per-game notes and the device logs) was pruned on 2026-11-09; it is in git: `git
   modifiers, budget, views, box select, reference pictures), Alt-key menus, licences, plans for Windows and for user tests. **Not everything on this list is done**, and a lot of what is done was not run in the real
   Tauri app or listened to: every item says which. Big items still open: arrangement view and buses (Sound), sculpt, texture paint, weight paint, rigging, animation tools and terrain (Model),
   adaptive music in the runtime, the real-app checks, anything that needs the device or people.
-- **A test that fails and is not from this session:** `examples.test.ts` ("open every model, save it back unchanged and export the glb that is committed") fails for `models/skyline_desert.model.json`; it fails the same
-  way at commit `7a4ab34`, before the overnight work. The committed `.glb` and what the editor exports differ by a byte or more; not investigated further. `nk_rock_largeE` in the working tree is modified and uncommitted: not touched.
+- **`examples.test.ts` glb check (fixed 2026-11-10):** the four `skyline_*.glb` files were older than their `.model.json`; regenerated from the models, so the test passes again. It stays: it is the guard that every example model exports the glb that is committed.
 
 - **Plan (2026-11-09): one studio with four workspaces** (Model, Sprites, Sound, Engine). The master checklist is the next section;
   its detail is in `docs/studio-workspaces.md` (features) and `docs/studio-ux.md` (menus, toolbars, input, windows).
