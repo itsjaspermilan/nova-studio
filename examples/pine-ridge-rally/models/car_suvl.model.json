@@ -10,6 +10,8 @@
         {
           "name": "body",
           "shape": "mesh",
+          "metallic": 0.4,
+          "roughness": 0.28,
           "color": "#2e4396",
           "verts": [
             [0, -1.34, -37.2],
@@ -3767,6 +3769,7 @@
         {
           "name": "side frame right 1",
           "shape": "mesh",
+          "roughness": 0.85,
           "color": "#14161b",
           "verts": [
             [-13.33, 8.91, -24.82],
@@ -3861,6 +3864,8 @@
         {
           "name": "side glass right 1",
           "shape": "mesh",
+          "metallic": 0.55,
+          "roughness": 0.05,
           "color": "#294460",
           "verts": [
             [-13.23, 9.24, -24.27],
@@ -3942,6 +3947,7 @@
         {
           "name": "side frame right 2",
           "shape": "mesh",
+          "roughness": 0.85,
           "color": "#14161b",
           "verts": [
             [-13.26, 8.91, -18.41],
@@ -4075,6 +4081,8 @@
         {
           "name": "side glass right 2",
           "shape": "mesh",
+          "metallic": 0.55,
+          "roughness": 0.05,
           "color": "#294460",
           "verts": [
             [-13.24, 9.24, -17.86],
@@ -4208,6 +4216,7 @@
         {
           "name": "side frame right 3",
           "shape": "mesh",
+          "roughness": 0.85,
           "color": "#14161b",
           "verts": [
             [-14.08, 8.91, -2.04],
@@ -4341,6 +4350,8 @@
         {
           "name": "side glass right 3",
           "shape": "mesh",
+          "metallic": 0.55,
+          "roughness": 0.05,
           "color": "#294460",
           "verts": [
             [-14.02, 9.24, -1.49],
@@ -4474,6 +4485,7 @@
         {
           "name": "side frame left 1",
           "shape": "mesh",
+          "roughness": 0.85,
           "color": "#14161b",
           "verts": [
             [13.33, 8.91, -24.82],
@@ -4568,6 +4580,8 @@
         {
           "name": "side glass left 1",
           "shape": "mesh",
+          "metallic": 0.55,
+          "roughness": 0.05,
           "color": "#294460",
           "verts": [
             [13.23, 9.24, -24.27],
@@ -4649,6 +4663,7 @@
         {
           "name": "side frame left 2",
           "shape": "mesh",
+          "roughness": 0.85,
           "color": "#14161b",
           "verts": [
             [13.26, 8.91, -18.41],
@@ -4782,6 +4797,8 @@
         {
           "name": "side glass left 2",
           "shape": "mesh",
+          "metallic": 0.55,
+          "roughness": 0.05,
           "color": "#294460",
           "verts": [
             [13.24, 9.24, -17.86],
@@ -4915,6 +4932,7 @@
         {
           "name": "side frame left 3",
           "shape": "mesh",
+          "roughness": 0.85,
           "color": "#14161b",
           "verts": [
             [14.08, 8.91, -2.04],
@@ -5048,6 +5066,8 @@
         {
           "name": "side glass left 3",
           "shape": "mesh",
+          "metallic": 0.55,
+          "roughness": 0.05,
           "color": "#294460",
           "verts": [
             [14.02, 9.24, -1.49],
@@ -5181,6 +5201,7 @@
         {
           "name": "wheel well right front",
           "shape": "mesh",
+          "roughness": 0.85,
           "color": "#16171c",
           "verts": [
             [-13.94, 0, 28.1],
@@ -5219,6 +5240,8 @@
         {
           "name": "wheel arch right front",
           "shape": "mesh",
+          "metallic": 0.4,
+          "roughness": 0.28,
           "color": "#293c87",
           "verts": [
             [-13.84, -1.6, 28.72],
@@ -5524,6 +5547,7 @@
         {
           "name": "wheel well right rear",
           "shape": "mesh",
+          "roughness": 0.85,
           "color": "#16171c",
           "verts": [
             [-13.82, 0, -13.57],
@@ -5562,6 +5586,8 @@
         {
           "name": "wheel arch right rear",
           "shape": "mesh",
+          "metallic": 0.4,
+          "roughness": 0.28,
           "color": "#293c87",
           "verts": [
             [-13.72, -1.6, -12.95],
@@ -5867,6 +5893,7 @@
         {
           "name": "wheel well left front",
           "shape": "mesh",
+          "roughness": 0.85,
           "color": "#16171c",
           "verts": [
             [13.94, 0, 28.1],
@@ -5905,6 +5932,8 @@
         {
           "name": "wheel arch left front",
           "shape": "mesh",
+          "metallic": 0.4,
+          "roughness": 0.28,
           "color": "#293c87",
           "verts": [
             [13.84, -1.6, 28.72],
@@ -6210,6 +6239,7 @@
         {
           "name": "wheel well left rear",
           "shape": "mesh",
+          "roughness": 0.85,
           "color": "#16171c",
           "verts": [
             [13.82, 0, -13.57],
@@ -6248,6 +6278,8 @@
         {
           "name": "wheel arch left rear",
           "shape": "mesh",
+          "metallic": 0.4,
+          "roughness": 0.28,
           "color": "#293c87",
           "verts": [
             [13.72, -1.6, -12.95],
@@ -6550,44 +6582,44 @@
             {"v":[143,136,144,151],"color":"#293c87","smooth":true}
           ]
         },
-        { "name": "front bumper", "from": [-9.956696762284638, -0.17339999999999878, 37.05], "size": [19.913393524569276, 1.3, 1.4], "color": "#d4d8df" },
-        { "name": "front bumper rubber", "from": [-9.558428891793252, -1.0733999999999992, 37.050000000000004], "size": [19.116857783586504, 0.9, 1.3], "color": "#17181d" },
-        { "name": "rear bumper", "from": [-9.957711616583111, 0.21450000000000136, -38.45], "size": [19.915423233166223, 1.3, 1.4], "color": "#d4d8df" },
-        { "name": "rear bumper rubber", "from": [-9.559403151919787, -0.6854999999999982, -38.35], "size": [19.118806303839573, 0.9, 1.3], "color": "#17181d" },
-        { "name": "grille frame", "from": [-4.928062033858053, 1.8200000000000014, 37.050000000000004], "size": [4.425198561015395, 3.4, 0.7], "color": "#d4d8df" },
-        { "name": "grille", "from": [-4.5280620338580535, 2.1700000000000013, 37.25], "size": [3.625198561015395, 2.7, 0.7], "color": "#0e0f12" },
-        { "name": "grille bar", "from": [-4.065542177756514, 2.2200000000000015, 37.825], "size": [0.28, 2.5999999999999996, 0.35], "color": "#d4d8df" },
-        { "name": "grille bar", "from": [-3.4605024655534353, 2.2200000000000015, 37.825], "size": [0.28, 2.5999999999999996, 0.35], "color": "#d4d8df" },
-        { "name": "grille bar", "from": [-2.855462753350356, 2.2200000000000015, 37.825], "size": [0.28, 2.5999999999999996, 0.35], "color": "#d4d8df" },
-        { "name": "grille bar", "from": [-2.2504230411472768, 2.2200000000000015, 37.825], "size": [0.28, 2.5999999999999996, 0.35], "color": "#d4d8df" },
-        { "name": "grille bar", "from": [-1.645383328944198, 2.2200000000000015, 37.825], "size": [0.28, 2.5999999999999996, 0.35], "color": "#d4d8df" },
-        { "name": "grille frame", "from": [0.5028634728426584, 1.8200000000000014, 37.050000000000004], "size": [4.425198561015395, 3.4, 0.7], "color": "#d4d8df" },
-        { "name": "grille", "from": [0.9028634728426583, 2.1700000000000013, 37.25], "size": [3.625198561015395, 2.7, 0.7], "color": "#0e0f12" },
-        { "name": "grille bar", "from": [1.3653833289441977, 2.2200000000000015, 37.825], "size": [0.28, 2.5999999999999996, 0.35], "color": "#d4d8df" },
-        { "name": "grille bar", "from": [1.9704230411472765, 2.2200000000000015, 37.825], "size": [0.28, 2.5999999999999996, 0.35], "color": "#d4d8df" },
-        { "name": "grille bar", "from": [2.575462753350356, 2.2200000000000015, 37.825], "size": [0.28, 2.5999999999999996, 0.35], "color": "#d4d8df" },
-        { "name": "grille bar", "from": [3.180502465553435, 2.2200000000000015, 37.825], "size": [0.28, 2.5999999999999996, 0.35], "color": "#d4d8df" },
-        { "name": "grille bar", "from": [3.785542177756514, 2.2200000000000015, 37.825], "size": [0.28, 2.5999999999999996, 0.35], "color": "#d4d8df" },
-        { "name": "grille divider", "from": [-0.5, 1.6200000000000014, 37.300000000000004], "size": [1, 3.8, 0.8], "color": "#d4d8df" },
-        { "name": "headlight bezel", "from": [-12.928634728426584, 2.840000000000001, 37], "size": [7.4, 2.04, 0.7], "color": "#d4d8df" },
-        { "name": "headlight", "from": [-12.628634728426585, 3.1400000000000015, 37.35], "size": [6.8, 1.44, 0.7], "emissive": 0.95, "color": "#fff1c4" },
-        { "name": "indicator", "from": [-9.328634728426586, 0.7700000000000016, 37.050000000000004], "size": [2.6, 0.9, 0.6], "emissive": 0.45, "color": "#ffb21e" },
-        { "name": "headlight bezel", "from": [5.528634728426584, 2.840000000000001, 37], "size": [7.4, 2.04, 0.7], "color": "#d4d8df" },
-        { "name": "headlight", "from": [5.828634728426584, 3.1400000000000015, 37.35], "size": [6.8, 1.44, 0.7], "emissive": 0.95, "color": "#fff1c4" },
-        { "name": "indicator", "from": [6.728634728426585, 0.7700000000000016, 37.050000000000004], "size": [2.6, 0.9, 0.6], "emissive": 0.45, "color": "#ffb21e" },
-        { "name": "tail light", "from": [-9.354213942850802, 6.309619999999999, -37.7], "size": [8.650133323496439, 1.3, 0.9], "emissive": 0.8, "color": "#e5202e" },
-        { "name": "tail light", "from": [0.7040806193543618, 6.309619999999999, -37.7], "size": [8.650133323496439, 1.3, 0.9], "emissive": 0.8, "color": "#e5202e" },
-        { "name": "side moulding", "from": [-14.50236801841584, 2.4388, -12.530000000000001], "size": [0.6, 0.7, 26.55], "color": "#d4d8df" },
-        { "name": "side rubber", "from": [-14.50236801841584, 1.5388000000000004, -12.530000000000001], "size": [0.6, 0.9, 26.55], "color": "#17181d" },
-        { "name": "door handle", "from": [-14.67097640358525, 7.040000000000001, 8], "size": [0.7, 0.8, 3], "color": "#d4d8df" },
-        { "name": "door handle", "from": [-14.703605072881196, 7.040000000000001, -6.13], "size": [0.7, 0.8, 3], "color": "#d4d8df" },
-        { "name": "side moulding", "from": [13.902368018415839, 2.4388, -12.530000000000001], "size": [0.6, 0.7, 26.55], "color": "#d4d8df" },
-        { "name": "side rubber", "from": [13.902368018415839, 1.5388000000000004, -12.530000000000001], "size": [0.6, 0.9, 26.55], "color": "#17181d" },
-        { "name": "door handle", "from": [13.97097640358525, 7.040000000000001, 8], "size": [0.7, 0.8, 3], "color": "#d4d8df" },
-        { "name": "door handle", "from": [14.003605072881196, 7.040000000000001, -6.13], "size": [0.7, 0.8, 3], "color": "#d4d8df" },
-        { "name": "plate", "from": [-2.8, 2.5033200000000004, -37.650000000000006], "size": [5.6, 2, 0.7], "color": "#f0f0ea" },
-        { "name": "mirror right", "from": [-15.869872804205158, 10.840000000000002, 3.6099999999999994], "size": [1.4, 1.6, 2.6], "color": "#1d1e24" },
-        { "name": "mirror left", "from": [14.46987280420516, 10.840000000000002, 3.6099999999999994], "size": [1.4, 1.6, 2.6], "color": "#1d1e24" }
+        { "name": "front bumper", "from": [-9.956696762284638, -0.17339999999999878, 37.05], "size": [19.913393524569276, 1.3, 1.4], "metallic": 0.95, "roughness": 0.16, "color": "#d4d8df" },
+        { "name": "front bumper rubber", "from": [-9.558428891793252, -1.0733999999999992, 37.050000000000004], "size": [19.116857783586504, 0.9, 1.3], "roughness": 0.85, "color": "#17181d" },
+        { "name": "rear bumper", "from": [-9.957711616583111, 0.21450000000000136, -38.45], "size": [19.915423233166223, 1.3, 1.4], "metallic": 0.95, "roughness": 0.16, "color": "#d4d8df" },
+        { "name": "rear bumper rubber", "from": [-9.559403151919787, -0.6854999999999982, -38.35], "size": [19.118806303839573, 0.9, 1.3], "roughness": 0.85, "color": "#17181d" },
+        { "name": "grille frame", "from": [-4.928062033858053, 1.8200000000000014, 37.050000000000004], "size": [4.425198561015395, 3.4, 0.7], "metallic": 0.2, "roughness": 0.5, "color": "#d4d8df" },
+        { "name": "grille", "from": [-4.5280620338580535, 2.1700000000000013, 37.25], "size": [3.625198561015395, 2.7, 0.7], "metallic": 0.2, "roughness": 0.5, "color": "#0e0f12" },
+        { "name": "grille bar", "from": [-4.065542177756514, 2.2200000000000015, 37.825], "size": [0.28, 2.5999999999999996, 0.35], "metallic": 0.2, "roughness": 0.5, "color": "#d4d8df" },
+        { "name": "grille bar", "from": [-3.4605024655534353, 2.2200000000000015, 37.825], "size": [0.28, 2.5999999999999996, 0.35], "metallic": 0.2, "roughness": 0.5, "color": "#d4d8df" },
+        { "name": "grille bar", "from": [-2.855462753350356, 2.2200000000000015, 37.825], "size": [0.28, 2.5999999999999996, 0.35], "metallic": 0.2, "roughness": 0.5, "color": "#d4d8df" },
+        { "name": "grille bar", "from": [-2.2504230411472768, 2.2200000000000015, 37.825], "size": [0.28, 2.5999999999999996, 0.35], "metallic": 0.2, "roughness": 0.5, "color": "#d4d8df" },
+        { "name": "grille bar", "from": [-1.645383328944198, 2.2200000000000015, 37.825], "size": [0.28, 2.5999999999999996, 0.35], "metallic": 0.2, "roughness": 0.5, "color": "#d4d8df" },
+        { "name": "grille frame", "from": [0.5028634728426584, 1.8200000000000014, 37.050000000000004], "size": [4.425198561015395, 3.4, 0.7], "metallic": 0.2, "roughness": 0.5, "color": "#d4d8df" },
+        { "name": "grille", "from": [0.9028634728426583, 2.1700000000000013, 37.25], "size": [3.625198561015395, 2.7, 0.7], "metallic": 0.2, "roughness": 0.5, "color": "#0e0f12" },
+        { "name": "grille bar", "from": [1.3653833289441977, 2.2200000000000015, 37.825], "size": [0.28, 2.5999999999999996, 0.35], "metallic": 0.2, "roughness": 0.5, "color": "#d4d8df" },
+        { "name": "grille bar", "from": [1.9704230411472765, 2.2200000000000015, 37.825], "size": [0.28, 2.5999999999999996, 0.35], "metallic": 0.2, "roughness": 0.5, "color": "#d4d8df" },
+        { "name": "grille bar", "from": [2.575462753350356, 2.2200000000000015, 37.825], "size": [0.28, 2.5999999999999996, 0.35], "metallic": 0.2, "roughness": 0.5, "color": "#d4d8df" },
+        { "name": "grille bar", "from": [3.180502465553435, 2.2200000000000015, 37.825], "size": [0.28, 2.5999999999999996, 0.35], "metallic": 0.2, "roughness": 0.5, "color": "#d4d8df" },
+        { "name": "grille bar", "from": [3.785542177756514, 2.2200000000000015, 37.825], "size": [0.28, 2.5999999999999996, 0.35], "metallic": 0.2, "roughness": 0.5, "color": "#d4d8df" },
+        { "name": "grille divider", "from": [-0.5, 1.6200000000000014, 37.300000000000004], "size": [1, 3.8, 0.8], "metallic": 0.2, "roughness": 0.5, "color": "#d4d8df" },
+        { "name": "headlight bezel", "from": [-12.928634728426584, 2.840000000000001, 37], "size": [7.4, 2.04, 0.7], "metallic": 0.95, "roughness": 0.16, "color": "#d4d8df" },
+        { "name": "headlight", "from": [-12.628634728426585, 3.1400000000000015, 37.35], "size": [6.8, 1.44, 0.7], "emissive": 0.95, "roughness": 0.2, "color": "#fff1c4" },
+        { "name": "indicator", "from": [-9.328634728426586, 0.7700000000000016, 37.050000000000004], "size": [2.6, 0.9, 0.6], "emissive": 0.45, "roughness": 0.2, "color": "#ffb21e" },
+        { "name": "headlight bezel", "from": [5.528634728426584, 2.840000000000001, 37], "size": [7.4, 2.04, 0.7], "metallic": 0.95, "roughness": 0.16, "color": "#d4d8df" },
+        { "name": "headlight", "from": [5.828634728426584, 3.1400000000000015, 37.35], "size": [6.8, 1.44, 0.7], "emissive": 0.95, "roughness": 0.2, "color": "#fff1c4" },
+        { "name": "indicator", "from": [6.728634728426585, 0.7700000000000016, 37.050000000000004], "size": [2.6, 0.9, 0.6], "emissive": 0.45, "roughness": 0.2, "color": "#ffb21e" },
+        { "name": "tail light", "from": [-9.354213942850802, 6.309619999999999, -37.7], "size": [8.650133323496439, 1.3, 0.9], "emissive": 0.8, "roughness": 0.2, "color": "#e5202e" },
+        { "name": "tail light", "from": [0.7040806193543618, 6.309619999999999, -37.7], "size": [8.650133323496439, 1.3, 0.9], "emissive": 0.8, "roughness": 0.2, "color": "#e5202e" },
+        { "name": "side moulding", "from": [-14.50236801841584, 2.4388, -12.530000000000001], "size": [0.6, 0.7, 26.55], "metallic": 0.95, "roughness": 0.16, "color": "#d4d8df" },
+        { "name": "side rubber", "from": [-14.50236801841584, 1.5388000000000004, -12.530000000000001], "size": [0.6, 0.9, 26.55], "roughness": 0.85, "color": "#17181d" },
+        { "name": "door handle", "from": [-14.67097640358525, 7.040000000000001, 8], "size": [0.7, 0.8, 3], "metallic": 0.95, "roughness": 0.16, "color": "#d4d8df" },
+        { "name": "door handle", "from": [-14.703605072881196, 7.040000000000001, -6.13], "size": [0.7, 0.8, 3], "metallic": 0.95, "roughness": 0.16, "color": "#d4d8df" },
+        { "name": "side moulding", "from": [13.902368018415839, 2.4388, -12.530000000000001], "size": [0.6, 0.7, 26.55], "metallic": 0.95, "roughness": 0.16, "color": "#d4d8df" },
+        { "name": "side rubber", "from": [13.902368018415839, 1.5388000000000004, -12.530000000000001], "size": [0.6, 0.9, 26.55], "roughness": 0.85, "color": "#17181d" },
+        { "name": "door handle", "from": [13.97097640358525, 7.040000000000001, 8], "size": [0.7, 0.8, 3], "metallic": 0.95, "roughness": 0.16, "color": "#d4d8df" },
+        { "name": "door handle", "from": [14.003605072881196, 7.040000000000001, -6.13], "size": [0.7, 0.8, 3], "metallic": 0.95, "roughness": 0.16, "color": "#d4d8df" },
+        { "name": "plate", "from": [-2.8, 2.5033200000000004, -37.650000000000006], "size": [5.6, 2, 0.7], "roughness": 0.85, "color": "#f0f0ea" },
+        { "name": "mirror right", "from": [-15.869872804205158, 10.840000000000002, 3.6099999999999994], "size": [1.4, 1.6, 2.6], "roughness": 0.85, "color": "#1d1e24" },
+        { "name": "mirror left", "from": [14.46987280420516, 10.840000000000002, 3.6099999999999994], "size": [1.4, 1.6, 2.6], "roughness": 0.85, "color": "#1d1e24" }
       ],
       "children": []
     },
@@ -6596,13 +6628,15 @@
       "origin": [-11.38, 5.6, 21.58],
       "rotation": [0, 0, 0],
       "cubes": [
-        { "name": "tyre", "shape": "cylinder", "from": [-5.6, -2.295, -5.6], "size": [11.2, 4.59, 11.2], "rotation": [0, 0, 90], "segments": 24, "color": "#2b2c33" },
-        { "name": "sidewall", "shape": "cylinder", "from": [-4.816, -2.545, -4.816], "size": [9.632, 5.09, 9.632], "rotation": [0, 0, 90], "segments": 24, "color": "#3a3b44" },
-        { "name": "rim", "shape": "cylinder", "from": [-4.032, -2.695, -4.032], "size": [8.064, 5.39, 8.064], "rotation": [0, 0, 90], "segments": 24, "color": "#d7dde6" },
-        { "name": "dish", "shape": "cylinder", "from": [-3.472, -2.795, -3.472], "size": [6.944, 5.59, 6.944], "rotation": [0, 0, 90], "segments": 24, "color": "#23252c" },
+        { "name": "tyre", "shape": "cylinder", "from": [-5.6, -2.295, -5.6], "size": [11.2, 4.59, 11.2], "rotation": [0, 0, 90], "segments": 24, "roughness": 0.85, "color": "#2b2c33" },
+        { "name": "sidewall", "shape": "cylinder", "from": [-4.816, -2.545, -4.816], "size": [9.632, 5.09, 9.632], "rotation": [0, 0, 90], "segments": 24, "roughness": 0.85, "color": "#3a3b44" },
+        { "name": "rim", "shape": "cylinder", "from": [-4.032, -2.695, -4.032], "size": [8.064, 5.39, 8.064], "rotation": [0, 0, 90], "segments": 24, "metallic": 0.85, "roughness": 0.28, "color": "#d7dde6" },
+        { "name": "dish", "shape": "cylinder", "from": [-3.472, -2.795, -3.472], "size": [6.944, 5.59, 6.944], "rotation": [0, 0, 90], "segments": 24, "metallic": 0.85, "roughness": 0.28, "color": "#23252c" },
         {
           "name": "spokes 5",
           "shape": "mesh",
+          "metallic": 0.85,
+          "roughness": 0.28,
           "color": "#d7dde6",
           "verts": [
             [3.05, 3.47, 0],
@@ -6641,7 +6675,7 @@
             {"v":[9,19,10,0],"color":"#b7bcc4"}
           ]
         },
-        { "name": "hub", "shape": "cylinder", "from": [-0.8959999999999999, -3.245, -0.8959999999999999], "size": [1.7919999999999998, 6.49, 1.7919999999999998], "rotation": [0, 0, 90], "segments": 12, "color": "#e4eaf4" }
+        { "name": "hub", "shape": "cylinder", "from": [-0.8959999999999999, -3.245, -0.8959999999999999], "size": [1.7919999999999998, 6.49, 1.7919999999999998], "rotation": [0, 0, 90], "segments": 12, "metallic": 0.85, "roughness": 0.28, "color": "#e4eaf4" }
       ],
       "children": []
     },
@@ -6650,13 +6684,15 @@
       "origin": [11.38, 5.6, 21.58],
       "rotation": [0, 0, 0],
       "cubes": [
-        { "name": "tyre", "shape": "cylinder", "from": [-5.6, -2.295, -5.6], "size": [11.2, 4.59, 11.2], "rotation": [0, 0, 90], "segments": 24, "color": "#2b2c33" },
-        { "name": "sidewall", "shape": "cylinder", "from": [-4.816, -2.545, -4.816], "size": [9.632, 5.09, 9.632], "rotation": [0, 0, 90], "segments": 24, "color": "#3a3b44" },
-        { "name": "rim", "shape": "cylinder", "from": [-4.032, -2.695, -4.032], "size": [8.064, 5.39, 8.064], "rotation": [0, 0, 90], "segments": 24, "color": "#d7dde6" },
-        { "name": "dish", "shape": "cylinder", "from": [-3.472, -2.795, -3.472], "size": [6.944, 5.59, 6.944], "rotation": [0, 0, 90], "segments": 24, "color": "#23252c" },
+        { "name": "tyre", "shape": "cylinder", "from": [-5.6, -2.295, -5.6], "size": [11.2, 4.59, 11.2], "rotation": [0, 0, 90], "segments": 24, "roughness": 0.85, "color": "#2b2c33" },
+        { "name": "sidewall", "shape": "cylinder", "from": [-4.816, -2.545, -4.816], "size": [9.632, 5.09, 9.632], "rotation": [0, 0, 90], "segments": 24, "roughness": 0.85, "color": "#3a3b44" },
+        { "name": "rim", "shape": "cylinder", "from": [-4.032, -2.695, -4.032], "size": [8.064, 5.39, 8.064], "rotation": [0, 0, 90], "segments": 24, "metallic": 0.85, "roughness": 0.28, "color": "#d7dde6" },
+        { "name": "dish", "shape": "cylinder", "from": [-3.472, -2.795, -3.472], "size": [6.944, 5.59, 6.944], "rotation": [0, 0, 90], "segments": 24, "metallic": 0.85, "roughness": 0.28, "color": "#23252c" },
         {
           "name": "spokes 5",
           "shape": "mesh",
+          "metallic": 0.85,
+          "roughness": 0.28,
           "color": "#d7dde6",
           "verts": [
             [3.05, 3.47, 0],
@@ -6695,7 +6731,7 @@
             {"v":[9,19,10,0],"color":"#b7bcc4"}
           ]
         },
-        { "name": "hub", "shape": "cylinder", "from": [-0.8959999999999999, -3.245, -0.8959999999999999], "size": [1.7919999999999998, 6.49, 1.7919999999999998], "rotation": [0, 0, 90], "segments": 12, "color": "#e4eaf4" }
+        { "name": "hub", "shape": "cylinder", "from": [-0.8959999999999999, -3.245, -0.8959999999999999], "size": [1.7919999999999998, 6.49, 1.7919999999999998], "rotation": [0, 0, 90], "segments": 12, "metallic": 0.85, "roughness": 0.28, "color": "#e4eaf4" }
       ],
       "children": []
     },
@@ -6704,13 +6740,15 @@
       "origin": [-11.38, 5.6, -20.09],
       "rotation": [0, 0, 0],
       "cubes": [
-        { "name": "tyre", "shape": "cylinder", "from": [-5.6, -2.295, -5.6], "size": [11.2, 4.59, 11.2], "rotation": [0, 0, 90], "segments": 24, "color": "#2b2c33" },
-        { "name": "sidewall", "shape": "cylinder", "from": [-4.816, -2.545, -4.816], "size": [9.632, 5.09, 9.632], "rotation": [0, 0, 90], "segments": 24, "color": "#3a3b44" },
-        { "name": "rim", "shape": "cylinder", "from": [-4.032, -2.695, -4.032], "size": [8.064, 5.39, 8.064], "rotation": [0, 0, 90], "segments": 24, "color": "#d7dde6" },
-        { "name": "dish", "shape": "cylinder", "from": [-3.472, -2.795, -3.472], "size": [6.944, 5.59, 6.944], "rotation": [0, 0, 90], "segments": 24, "color": "#23252c" },
+        { "name": "tyre", "shape": "cylinder", "from": [-5.6, -2.295, -5.6], "size": [11.2, 4.59, 11.2], "rotation": [0, 0, 90], "segments": 24, "roughness": 0.85, "color": "#2b2c33" },
+        { "name": "sidewall", "shape": "cylinder", "from": [-4.816, -2.545, -4.816], "size": [9.632, 5.09, 9.632], "rotation": [0, 0, 90], "segments": 24, "roughness": 0.85, "color": "#3a3b44" },
+        { "name": "rim", "shape": "cylinder", "from": [-4.032, -2.695, -4.032], "size": [8.064, 5.39, 8.064], "rotation": [0, 0, 90], "segments": 24, "metallic": 0.85, "roughness": 0.28, "color": "#d7dde6" },
+        { "name": "dish", "shape": "cylinder", "from": [-3.472, -2.795, -3.472], "size": [6.944, 5.59, 6.944], "rotation": [0, 0, 90], "segments": 24, "metallic": 0.85, "roughness": 0.28, "color": "#23252c" },
         {
           "name": "spokes 5",
           "shape": "mesh",
+          "metallic": 0.85,
+          "roughness": 0.28,
           "color": "#d7dde6",
           "verts": [
             [3.05, 3.47, 0],
@@ -6749,7 +6787,7 @@
             {"v":[9,19,10,0],"color":"#b7bcc4"}
           ]
         },
-        { "name": "hub", "shape": "cylinder", "from": [-0.8959999999999999, -3.245, -0.8959999999999999], "size": [1.7919999999999998, 6.49, 1.7919999999999998], "rotation": [0, 0, 90], "segments": 12, "color": "#e4eaf4" }
+        { "name": "hub", "shape": "cylinder", "from": [-0.8959999999999999, -3.245, -0.8959999999999999], "size": [1.7919999999999998, 6.49, 1.7919999999999998], "rotation": [0, 0, 90], "segments": 12, "metallic": 0.85, "roughness": 0.28, "color": "#e4eaf4" }
       ],
       "children": []
     },
@@ -6758,13 +6796,15 @@
       "origin": [11.38, 5.6, -20.09],
       "rotation": [0, 0, 0],
       "cubes": [
-        { "name": "tyre", "shape": "cylinder", "from": [-5.6, -2.295, -5.6], "size": [11.2, 4.59, 11.2], "rotation": [0, 0, 90], "segments": 24, "color": "#2b2c33" },
-        { "name": "sidewall", "shape": "cylinder", "from": [-4.816, -2.545, -4.816], "size": [9.632, 5.09, 9.632], "rotation": [0, 0, 90], "segments": 24, "color": "#3a3b44" },
-        { "name": "rim", "shape": "cylinder", "from": [-4.032, -2.695, -4.032], "size": [8.064, 5.39, 8.064], "rotation": [0, 0, 90], "segments": 24, "color": "#d7dde6" },
-        { "name": "dish", "shape": "cylinder", "from": [-3.472, -2.795, -3.472], "size": [6.944, 5.59, 6.944], "rotation": [0, 0, 90], "segments": 24, "color": "#23252c" },
+        { "name": "tyre", "shape": "cylinder", "from": [-5.6, -2.295, -5.6], "size": [11.2, 4.59, 11.2], "rotation": [0, 0, 90], "segments": 24, "roughness": 0.85, "color": "#2b2c33" },
+        { "name": "sidewall", "shape": "cylinder", "from": [-4.816, -2.545, -4.816], "size": [9.632, 5.09, 9.632], "rotation": [0, 0, 90], "segments": 24, "roughness": 0.85, "color": "#3a3b44" },
+        { "name": "rim", "shape": "cylinder", "from": [-4.032, -2.695, -4.032], "size": [8.064, 5.39, 8.064], "rotation": [0, 0, 90], "segments": 24, "metallic": 0.85, "roughness": 0.28, "color": "#d7dde6" },
+        { "name": "dish", "shape": "cylinder", "from": [-3.472, -2.795, -3.472], "size": [6.944, 5.59, 6.944], "rotation": [0, 0, 90], "segments": 24, "metallic": 0.85, "roughness": 0.28, "color": "#23252c" },
         {
           "name": "spokes 5",
           "shape": "mesh",
+          "metallic": 0.85,
+          "roughness": 0.28,
           "color": "#d7dde6",
           "verts": [
             [3.05, 3.47, 0],
@@ -6803,7 +6843,7 @@
             {"v":[9,19,10,0],"color":"#b7bcc4"}
           ]
         },
-        { "name": "hub", "shape": "cylinder", "from": [-0.8959999999999999, -3.245, -0.8959999999999999], "size": [1.7919999999999998, 6.49, 1.7919999999999998], "rotation": [0, 0, 90], "segments": 12, "color": "#e4eaf4" }
+        { "name": "hub", "shape": "cylinder", "from": [-0.8959999999999999, -3.245, -0.8959999999999999], "size": [1.7919999999999998, 6.49, 1.7919999999999998], "rotation": [0, 0, 90], "segments": 12, "metallic": 0.85, "roughness": 0.28, "color": "#e4eaf4" }
       ],
       "children": []
     }

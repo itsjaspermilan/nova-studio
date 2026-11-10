@@ -10,6 +10,8 @@
         {
           "name": "body",
           "shape": "mesh",
+          "metallic": 0.4,
+          "roughness": 0.28,
           "color": "#33b46c",
           "verts": [
             [0, -1.02, -30.8],
@@ -3389,6 +3391,7 @@
         {
           "name": "side frame right 1",
           "shape": "mesh",
+          "roughness": 0.85,
           "color": "#14161b",
           "verts": [
             [-12.21, 8.84, -22.63],
@@ -3522,6 +3525,8 @@
         {
           "name": "side glass right 1",
           "shape": "mesh",
+          "metallic": 0.55,
+          "roughness": 0.05,
           "color": "#294460",
           "verts": [
             [-12.13, 9.17, -22.08],
@@ -3655,6 +3660,7 @@
         {
           "name": "side frame right 2",
           "shape": "mesh",
+          "roughness": 0.85,
           "color": "#14161b",
           "verts": [
             [-13.15, 8.84, -8.25],
@@ -3788,6 +3794,8 @@
         {
           "name": "side glass right 2",
           "shape": "mesh",
+          "metallic": 0.55,
+          "roughness": 0.05,
           "color": "#294460",
           "verts": [
             [-13.09, 9.17, -7.7],
@@ -3921,6 +3929,7 @@
         {
           "name": "side frame left 1",
           "shape": "mesh",
+          "roughness": 0.85,
           "color": "#14161b",
           "verts": [
             [12.21, 8.84, -22.63],
@@ -4054,6 +4063,8 @@
         {
           "name": "side glass left 1",
           "shape": "mesh",
+          "metallic": 0.55,
+          "roughness": 0.05,
           "color": "#294460",
           "verts": [
             [12.13, 9.17, -22.08],
@@ -4187,6 +4198,7 @@
         {
           "name": "side frame left 2",
           "shape": "mesh",
+          "roughness": 0.85,
           "color": "#14161b",
           "verts": [
             [13.15, 8.84, -8.25],
@@ -4320,6 +4332,8 @@
         {
           "name": "side glass left 2",
           "shape": "mesh",
+          "metallic": 0.55,
+          "roughness": 0.05,
           "color": "#294460",
           "verts": [
             [13.09, 9.17, -7.7],
@@ -4453,6 +4467,7 @@
         {
           "name": "wheel well right front",
           "shape": "mesh",
+          "roughness": 0.85,
           "color": "#16171c",
           "verts": [
             [-13.02, 0, 25.06],
@@ -4491,6 +4506,8 @@
         {
           "name": "wheel arch right front",
           "shape": "mesh",
+          "metallic": 0.4,
+          "roughness": 0.28,
           "color": "#2ea261",
           "verts": [
             [-12.92, -1.47, 25.68],
@@ -4796,6 +4813,7 @@
         {
           "name": "wheel well right rear",
           "shape": "mesh",
+          "roughness": 0.85,
           "color": "#16171c",
           "verts": [
             [-12.96, 0, -14.37],
@@ -4834,6 +4852,8 @@
         {
           "name": "wheel arch right rear",
           "shape": "mesh",
+          "metallic": 0.4,
+          "roughness": 0.28,
           "color": "#2ea261",
           "verts": [
             [-12.86, -1.47, -13.75],
@@ -5139,6 +5159,7 @@
         {
           "name": "wheel well left front",
           "shape": "mesh",
+          "roughness": 0.85,
           "color": "#16171c",
           "verts": [
             [13.02, 0, 25.06],
@@ -5177,6 +5198,8 @@
         {
           "name": "wheel arch left front",
           "shape": "mesh",
+          "metallic": 0.4,
+          "roughness": 0.28,
           "color": "#2ea261",
           "verts": [
             [12.92, -1.47, 25.68],
@@ -5482,6 +5505,7 @@
         {
           "name": "wheel well left rear",
           "shape": "mesh",
+          "roughness": 0.85,
           "color": "#16171c",
           "verts": [
             [12.96, 0, -14.37],
@@ -5520,6 +5544,8 @@
         {
           "name": "wheel arch left rear",
           "shape": "mesh",
+          "metallic": 0.4,
+          "roughness": 0.28,
           "color": "#2ea261",
           "verts": [
             [12.86, -1.47, -13.75],
@@ -5822,32 +5848,32 @@
             {"v":[143,136,144,151],"color":"#2ea261","smooth":true}
           ]
         },
-        { "name": "front bumper", "from": [-9.325623278017423, 0.36060000000000014, 30.650000000000002], "size": [18.651246556034845, 1.3, 1.4], "color": "#d4d8df" },
-        { "name": "front bumper rubber", "from": [-8.952598346896725, -0.5394000000000003, 30.650000000000002], "size": [17.90519669379345, 0.9, 1.3], "color": "#17181d" },
-        { "name": "rear bumper", "from": [-9.313478389119096, 0.5279999999999999, -32.050000000000004], "size": [18.626956778238192, 1.3, 1.4], "color": "#d4d8df" },
-        { "name": "rear bumper rubber", "from": [-8.940939253554332, -0.3719999999999997, -31.95], "size": [17.881878507108663, 0.9, 1.3], "color": "#17181d" },
-        { "name": "grille panel", "from": [-3.7679285971787566, 2.855, 30.8], "size": [7.535857194357513, 2.8899999999999997, 0.6], "color": "#121316" },
-        { "name": "grille trim", "from": [-3.7679285971787566, 3.1550000000000002, 31.275], "size": [7.535857194357513, 0.25, 0.35], "color": "#d4d8df" },
-        { "name": "badge", "from": [-0.75, 4.04, 31.35], "size": [1.5, 1.2, 0.3], "color": "#d4d8df" },
-        { "name": "headlamp ring", "shape": "sphere", "from": [-9.609910746473446, 2.1999999999999997, 30.4], "size": [4.2, 4.2, 1.2], "segments": 12, "color": "#d4d8df" },
-        { "name": "headlamp", "shape": "sphere", "from": [-9.147910746473446, 2.662, 30.95], "size": [3.2760000000000002, 3.2760000000000002, 1], "segments": 12, "emissive": 0.95, "color": "#fff1c4" },
-        { "name": "indicator", "from": [-9.009910746473446, 1.55, 30.65], "size": [2.6, 0.9, 0.6], "emissive": 0.45, "color": "#ffb21e" },
-        { "name": "headlamp ring", "shape": "sphere", "from": [5.409910746473445, 2.1999999999999997, 30.4], "size": [4.2, 4.2, 1.2], "segments": 12, "color": "#d4d8df" },
-        { "name": "headlamp", "shape": "sphere", "from": [5.8719107464734455, 2.662, 30.95], "size": [3.2760000000000002, 3.2760000000000002, 1], "segments": 12, "emissive": 0.95, "color": "#fff1c4" },
-        { "name": "indicator", "from": [6.409910746473446, 1.55, 30.65], "size": [2.6, 0.9, 0.6], "emissive": 0.45, "color": "#ffb21e" },
-        { "name": "tail light", "from": [-8.107553928403126, 2.5800000000000005, -31.3], "size": [2.2, 5.2, 0.9], "emissive": 0.8, "color": "#e5202e" },
-        { "name": "tail light", "from": [5.907553928403127, 2.5800000000000005, -31.3], "size": [2.2, 5.2, 0.9], "emissive": 0.8, "color": "#e5202e" },
-        { "name": "side moulding", "from": [-13.630301887894298, 2.6877999999999997, -13.417999999999997], "size": [0.6, 0.7, 25.605999999999998], "color": "#d4d8df" },
-        { "name": "side rubber", "from": [-13.630301887894298, 1.7878, -13.417999999999997], "size": [0.6, 0.9, 25.605999999999998], "color": "#17181d" },
-        { "name": "door handle", "from": [-13.792825822581442, 6.97, 6.880000000000001], "size": [0.7, 0.8, 3], "color": "#d4d8df" },
-        { "name": "door handle", "from": [-13.763670442765303, 6.97, -11.91], "size": [0.7, 0.8, 3], "color": "#d4d8df" },
-        { "name": "side moulding", "from": [13.030301887894296, 2.6877999999999997, -13.417999999999997], "size": [0.6, 0.7, 25.605999999999998], "color": "#d4d8df" },
-        { "name": "side rubber", "from": [13.030301887894296, 1.7878, -13.417999999999997], "size": [0.6, 0.9, 25.605999999999998], "color": "#17181d" },
-        { "name": "door handle", "from": [13.092825822581442, 6.97, 6.880000000000001], "size": [0.7, 0.8, 3], "color": "#d4d8df" },
-        { "name": "door handle", "from": [13.063670442765304, 6.97, -11.91], "size": [0.7, 0.8, 3], "color": "#d4d8df" },
-        { "name": "plate", "from": [-2.8, 2.1796800000000003, -31.250000000000004], "size": [5.6, 2, 0.7], "color": "#f0f0ea" },
-        { "name": "mirror right", "from": [-14.995619246790957, 10.77, 2.7], "size": [1.4, 1.6, 2.6], "color": "#1d1e24" },
-        { "name": "mirror left", "from": [13.595619246790958, 10.77, 2.7], "size": [1.4, 1.6, 2.6], "color": "#1d1e24" }
+        { "name": "front bumper", "from": [-9.325623278017423, 0.36060000000000014, 30.650000000000002], "size": [18.651246556034845, 1.3, 1.4], "metallic": 0.95, "roughness": 0.16, "color": "#d4d8df" },
+        { "name": "front bumper rubber", "from": [-8.952598346896725, -0.5394000000000003, 30.650000000000002], "size": [17.90519669379345, 0.9, 1.3], "roughness": 0.85, "color": "#17181d" },
+        { "name": "rear bumper", "from": [-9.313478389119096, 0.5279999999999999, -32.050000000000004], "size": [18.626956778238192, 1.3, 1.4], "metallic": 0.95, "roughness": 0.16, "color": "#d4d8df" },
+        { "name": "rear bumper rubber", "from": [-8.940939253554332, -0.3719999999999997, -31.95], "size": [17.881878507108663, 0.9, 1.3], "roughness": 0.85, "color": "#17181d" },
+        { "name": "grille panel", "from": [-3.7679285971787566, 2.855, 30.8], "size": [7.535857194357513, 2.8899999999999997, 0.6], "roughness": 0.85, "color": "#121316" },
+        { "name": "grille trim", "from": [-3.7679285971787566, 3.1550000000000002, 31.275], "size": [7.535857194357513, 0.25, 0.35], "metallic": 0.95, "roughness": 0.16, "color": "#d4d8df" },
+        { "name": "badge", "from": [-0.75, 4.04, 31.35], "size": [1.5, 1.2, 0.3], "metallic": 0.95, "roughness": 0.16, "color": "#d4d8df" },
+        { "name": "headlamp ring", "shape": "sphere", "from": [-9.609910746473446, 2.1999999999999997, 30.4], "size": [4.2, 4.2, 1.2], "segments": 12, "metallic": 0.2, "roughness": 0.5, "color": "#d4d8df" },
+        { "name": "headlamp", "shape": "sphere", "from": [-9.147910746473446, 2.662, 30.95], "size": [3.2760000000000002, 3.2760000000000002, 1], "segments": 12, "emissive": 0.95, "roughness": 0.2, "color": "#fff1c4" },
+        { "name": "indicator", "from": [-9.009910746473446, 1.55, 30.65], "size": [2.6, 0.9, 0.6], "emissive": 0.45, "roughness": 0.2, "color": "#ffb21e" },
+        { "name": "headlamp ring", "shape": "sphere", "from": [5.409910746473445, 2.1999999999999997, 30.4], "size": [4.2, 4.2, 1.2], "segments": 12, "metallic": 0.2, "roughness": 0.5, "color": "#d4d8df" },
+        { "name": "headlamp", "shape": "sphere", "from": [5.8719107464734455, 2.662, 30.95], "size": [3.2760000000000002, 3.2760000000000002, 1], "segments": 12, "emissive": 0.95, "roughness": 0.2, "color": "#fff1c4" },
+        { "name": "indicator", "from": [6.409910746473446, 1.55, 30.65], "size": [2.6, 0.9, 0.6], "emissive": 0.45, "roughness": 0.2, "color": "#ffb21e" },
+        { "name": "tail light", "from": [-8.107553928403126, 2.5800000000000005, -31.3], "size": [2.2, 5.2, 0.9], "emissive": 0.8, "roughness": 0.2, "color": "#e5202e" },
+        { "name": "tail light", "from": [5.907553928403127, 2.5800000000000005, -31.3], "size": [2.2, 5.2, 0.9], "emissive": 0.8, "roughness": 0.2, "color": "#e5202e" },
+        { "name": "side moulding", "from": [-13.630301887894298, 2.6877999999999997, -13.417999999999997], "size": [0.6, 0.7, 25.605999999999998], "metallic": 0.95, "roughness": 0.16, "color": "#d4d8df" },
+        { "name": "side rubber", "from": [-13.630301887894298, 1.7878, -13.417999999999997], "size": [0.6, 0.9, 25.605999999999998], "roughness": 0.85, "color": "#17181d" },
+        { "name": "door handle", "from": [-13.792825822581442, 6.97, 6.880000000000001], "size": [0.7, 0.8, 3], "metallic": 0.95, "roughness": 0.16, "color": "#d4d8df" },
+        { "name": "door handle", "from": [-13.763670442765303, 6.97, -11.91], "size": [0.7, 0.8, 3], "metallic": 0.95, "roughness": 0.16, "color": "#d4d8df" },
+        { "name": "side moulding", "from": [13.030301887894296, 2.6877999999999997, -13.417999999999997], "size": [0.6, 0.7, 25.605999999999998], "metallic": 0.95, "roughness": 0.16, "color": "#d4d8df" },
+        { "name": "side rubber", "from": [13.030301887894296, 1.7878, -13.417999999999997], "size": [0.6, 0.9, 25.605999999999998], "roughness": 0.85, "color": "#17181d" },
+        { "name": "door handle", "from": [13.092825822581442, 6.97, 6.880000000000001], "size": [0.7, 0.8, 3], "metallic": 0.95, "roughness": 0.16, "color": "#d4d8df" },
+        { "name": "door handle", "from": [13.063670442765304, 6.97, -11.91], "size": [0.7, 0.8, 3], "metallic": 0.95, "roughness": 0.16, "color": "#d4d8df" },
+        { "name": "plate", "from": [-2.8, 2.1796800000000003, -31.250000000000004], "size": [5.6, 2, 0.7], "roughness": 0.85, "color": "#f0f0ea" },
+        { "name": "mirror right", "from": [-14.995619246790957, 10.77, 2.7], "size": [1.4, 1.6, 2.6], "roughness": 0.85, "color": "#1d1e24" },
+        { "name": "mirror left", "from": [13.595619246790958, 10.77, 2.7], "size": [1.4, 1.6, 2.6], "roughness": 0.85, "color": "#1d1e24" }
       ],
       "children": []
     },
@@ -5856,17 +5882,17 @@
       "origin": [-10.7, 5.12, 19.1],
       "rotation": [0, 0, 0],
       "cubes": [
-        { "name": "tyre", "shape": "cylinder", "from": [-5.12, -2.1, -5.12], "size": [10.24, 4.2, 10.24], "rotation": [0, 0, 90], "segments": 24, "color": "#2b2c33" },
-        { "name": "sidewall", "shape": "cylinder", "from": [-4.4032, -2.35, -4.4032], "size": [8.8064, 4.7, 8.8064], "rotation": [0, 0, 90], "segments": 24, "color": "#3a3b44" },
-        { "name": "rim", "shape": "cylinder", "from": [-3.8912, -2.5, -3.8912], "size": [7.7824, 5, 7.7824], "rotation": [0, 0, 90], "segments": 24, "color": "#cfd3da" },
-        { "name": "disc", "shape": "cylinder", "from": [-3.2768, -2.6500000000000004, -3.2768], "size": [6.5536, 5.300000000000001, 6.5536], "rotation": [0, 0, 90], "segments": 24, "color": "#aab0ba" },
-        { "name": "hole 1", "shape": "cylinder", "from": [-0.5632, -0.49599999999999955, -0.5632], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "color": "#1d1e24" },
-        { "name": "hole 2", "shape": "cylinder", "from": [-0.5632, -1.6479999999999995, 1.4321225303193468], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "color": "#1d1e24" },
-        { "name": "hole 3", "shape": "cylinder", "from": [-0.5632, -3.951999999999999, 1.4321225303193468], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "color": "#1d1e24" },
-        { "name": "hole 4", "shape": "cylinder", "from": [-0.5632, -5.104, -0.5631999999999997], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "color": "#1d1e24" },
-        { "name": "hole 5", "shape": "cylinder", "from": [-0.5632, -3.952000000000001, -2.558522530319346], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "color": "#1d1e24" },
-        { "name": "hole 6", "shape": "cylinder", "from": [-0.5632, -1.6479999999999995, -2.5585225303193466], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "color": "#1d1e24" },
-        { "name": "centre", "shape": "cylinder", "from": [-1.024, -2.9000000000000004, -1.024], "size": [2.048, 5.800000000000001, 2.048], "rotation": [0, 0, 90], "segments": 14, "color": "#e2e5ea" }
+        { "name": "tyre", "shape": "cylinder", "from": [-5.12, -2.1, -5.12], "size": [10.24, 4.2, 10.24], "rotation": [0, 0, 90], "segments": 24, "roughness": 0.85, "color": "#2b2c33" },
+        { "name": "sidewall", "shape": "cylinder", "from": [-4.4032, -2.35, -4.4032], "size": [8.8064, 4.7, 8.8064], "rotation": [0, 0, 90], "segments": 24, "roughness": 0.85, "color": "#3a3b44" },
+        { "name": "rim", "shape": "cylinder", "from": [-3.8912, -2.5, -3.8912], "size": [7.7824, 5, 7.7824], "rotation": [0, 0, 90], "segments": 24, "metallic": 0.85, "roughness": 0.28, "color": "#cfd3da" },
+        { "name": "disc", "shape": "cylinder", "from": [-3.2768, -2.6500000000000004, -3.2768], "size": [6.5536, 5.300000000000001, 6.5536], "rotation": [0, 0, 90], "segments": 24, "metallic": 0.85, "roughness": 0.28, "color": "#aab0ba" },
+        { "name": "hole 1", "shape": "cylinder", "from": [-0.5632, -0.49599999999999955, -0.5632], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "metallic": 0.85, "roughness": 0.28, "color": "#1d1e24" },
+        { "name": "hole 2", "shape": "cylinder", "from": [-0.5632, -1.6479999999999995, 1.4321225303193468], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "metallic": 0.85, "roughness": 0.28, "color": "#1d1e24" },
+        { "name": "hole 3", "shape": "cylinder", "from": [-0.5632, -3.951999999999999, 1.4321225303193468], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "metallic": 0.85, "roughness": 0.28, "color": "#1d1e24" },
+        { "name": "hole 4", "shape": "cylinder", "from": [-0.5632, -5.104, -0.5631999999999997], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "metallic": 0.85, "roughness": 0.28, "color": "#1d1e24" },
+        { "name": "hole 5", "shape": "cylinder", "from": [-0.5632, -3.952000000000001, -2.558522530319346], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "metallic": 0.85, "roughness": 0.28, "color": "#1d1e24" },
+        { "name": "hole 6", "shape": "cylinder", "from": [-0.5632, -1.6479999999999995, -2.5585225303193466], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "metallic": 0.85, "roughness": 0.28, "color": "#1d1e24" },
+        { "name": "centre", "shape": "cylinder", "from": [-1.024, -2.9000000000000004, -1.024], "size": [2.048, 5.800000000000001, 2.048], "rotation": [0, 0, 90], "segments": 14, "metallic": 0.85, "roughness": 0.28, "color": "#e2e5ea" }
       ],
       "children": []
     },
@@ -5875,17 +5901,17 @@
       "origin": [10.7, 5.12, 19.1],
       "rotation": [0, 0, 0],
       "cubes": [
-        { "name": "tyre", "shape": "cylinder", "from": [-5.12, -2.1, -5.12], "size": [10.24, 4.2, 10.24], "rotation": [0, 0, 90], "segments": 24, "color": "#2b2c33" },
-        { "name": "sidewall", "shape": "cylinder", "from": [-4.4032, -2.35, -4.4032], "size": [8.8064, 4.7, 8.8064], "rotation": [0, 0, 90], "segments": 24, "color": "#3a3b44" },
-        { "name": "rim", "shape": "cylinder", "from": [-3.8912, -2.5, -3.8912], "size": [7.7824, 5, 7.7824], "rotation": [0, 0, 90], "segments": 24, "color": "#cfd3da" },
-        { "name": "disc", "shape": "cylinder", "from": [-3.2768, -2.6500000000000004, -3.2768], "size": [6.5536, 5.300000000000001, 6.5536], "rotation": [0, 0, 90], "segments": 24, "color": "#aab0ba" },
-        { "name": "hole 1", "shape": "cylinder", "from": [-0.5632, -0.49599999999999955, -0.5632], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "color": "#1d1e24" },
-        { "name": "hole 2", "shape": "cylinder", "from": [-0.5632, -1.6479999999999995, 1.4321225303193468], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "color": "#1d1e24" },
-        { "name": "hole 3", "shape": "cylinder", "from": [-0.5632, -3.951999999999999, 1.4321225303193468], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "color": "#1d1e24" },
-        { "name": "hole 4", "shape": "cylinder", "from": [-0.5632, -5.104, -0.5631999999999997], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "color": "#1d1e24" },
-        { "name": "hole 5", "shape": "cylinder", "from": [-0.5632, -3.952000000000001, -2.558522530319346], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "color": "#1d1e24" },
-        { "name": "hole 6", "shape": "cylinder", "from": [-0.5632, -1.6479999999999995, -2.5585225303193466], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "color": "#1d1e24" },
-        { "name": "centre", "shape": "cylinder", "from": [-1.024, -2.9000000000000004, -1.024], "size": [2.048, 5.800000000000001, 2.048], "rotation": [0, 0, 90], "segments": 14, "color": "#e2e5ea" }
+        { "name": "tyre", "shape": "cylinder", "from": [-5.12, -2.1, -5.12], "size": [10.24, 4.2, 10.24], "rotation": [0, 0, 90], "segments": 24, "roughness": 0.85, "color": "#2b2c33" },
+        { "name": "sidewall", "shape": "cylinder", "from": [-4.4032, -2.35, -4.4032], "size": [8.8064, 4.7, 8.8064], "rotation": [0, 0, 90], "segments": 24, "roughness": 0.85, "color": "#3a3b44" },
+        { "name": "rim", "shape": "cylinder", "from": [-3.8912, -2.5, -3.8912], "size": [7.7824, 5, 7.7824], "rotation": [0, 0, 90], "segments": 24, "metallic": 0.85, "roughness": 0.28, "color": "#cfd3da" },
+        { "name": "disc", "shape": "cylinder", "from": [-3.2768, -2.6500000000000004, -3.2768], "size": [6.5536, 5.300000000000001, 6.5536], "rotation": [0, 0, 90], "segments": 24, "metallic": 0.85, "roughness": 0.28, "color": "#aab0ba" },
+        { "name": "hole 1", "shape": "cylinder", "from": [-0.5632, -0.49599999999999955, -0.5632], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "metallic": 0.85, "roughness": 0.28, "color": "#1d1e24" },
+        { "name": "hole 2", "shape": "cylinder", "from": [-0.5632, -1.6479999999999995, 1.4321225303193468], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "metallic": 0.85, "roughness": 0.28, "color": "#1d1e24" },
+        { "name": "hole 3", "shape": "cylinder", "from": [-0.5632, -3.951999999999999, 1.4321225303193468], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "metallic": 0.85, "roughness": 0.28, "color": "#1d1e24" },
+        { "name": "hole 4", "shape": "cylinder", "from": [-0.5632, -5.104, -0.5631999999999997], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "metallic": 0.85, "roughness": 0.28, "color": "#1d1e24" },
+        { "name": "hole 5", "shape": "cylinder", "from": [-0.5632, -3.952000000000001, -2.558522530319346], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "metallic": 0.85, "roughness": 0.28, "color": "#1d1e24" },
+        { "name": "hole 6", "shape": "cylinder", "from": [-0.5632, -1.6479999999999995, -2.5585225303193466], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "metallic": 0.85, "roughness": 0.28, "color": "#1d1e24" },
+        { "name": "centre", "shape": "cylinder", "from": [-1.024, -2.9000000000000004, -1.024], "size": [2.048, 5.800000000000001, 2.048], "rotation": [0, 0, 90], "segments": 14, "metallic": 0.85, "roughness": 0.28, "color": "#e2e5ea" }
       ],
       "children": []
     },
@@ -5894,17 +5920,17 @@
       "origin": [-10.7, 5.12, -20.33],
       "rotation": [0, 0, 0],
       "cubes": [
-        { "name": "tyre", "shape": "cylinder", "from": [-5.12, -2.1, -5.12], "size": [10.24, 4.2, 10.24], "rotation": [0, 0, 90], "segments": 24, "color": "#2b2c33" },
-        { "name": "sidewall", "shape": "cylinder", "from": [-4.4032, -2.35, -4.4032], "size": [8.8064, 4.7, 8.8064], "rotation": [0, 0, 90], "segments": 24, "color": "#3a3b44" },
-        { "name": "rim", "shape": "cylinder", "from": [-3.8912, -2.5, -3.8912], "size": [7.7824, 5, 7.7824], "rotation": [0, 0, 90], "segments": 24, "color": "#cfd3da" },
-        { "name": "disc", "shape": "cylinder", "from": [-3.2768, -2.6500000000000004, -3.2768], "size": [6.5536, 5.300000000000001, 6.5536], "rotation": [0, 0, 90], "segments": 24, "color": "#aab0ba" },
-        { "name": "hole 1", "shape": "cylinder", "from": [-0.5632, -0.49599999999999955, -0.5632], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "color": "#1d1e24" },
-        { "name": "hole 2", "shape": "cylinder", "from": [-0.5632, -1.6479999999999995, 1.4321225303193468], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "color": "#1d1e24" },
-        { "name": "hole 3", "shape": "cylinder", "from": [-0.5632, -3.951999999999999, 1.4321225303193468], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "color": "#1d1e24" },
-        { "name": "hole 4", "shape": "cylinder", "from": [-0.5632, -5.104, -0.5631999999999997], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "color": "#1d1e24" },
-        { "name": "hole 5", "shape": "cylinder", "from": [-0.5632, -3.952000000000001, -2.558522530319346], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "color": "#1d1e24" },
-        { "name": "hole 6", "shape": "cylinder", "from": [-0.5632, -1.6479999999999995, -2.5585225303193466], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "color": "#1d1e24" },
-        { "name": "centre", "shape": "cylinder", "from": [-1.024, -2.9000000000000004, -1.024], "size": [2.048, 5.800000000000001, 2.048], "rotation": [0, 0, 90], "segments": 14, "color": "#e2e5ea" }
+        { "name": "tyre", "shape": "cylinder", "from": [-5.12, -2.1, -5.12], "size": [10.24, 4.2, 10.24], "rotation": [0, 0, 90], "segments": 24, "roughness": 0.85, "color": "#2b2c33" },
+        { "name": "sidewall", "shape": "cylinder", "from": [-4.4032, -2.35, -4.4032], "size": [8.8064, 4.7, 8.8064], "rotation": [0, 0, 90], "segments": 24, "roughness": 0.85, "color": "#3a3b44" },
+        { "name": "rim", "shape": "cylinder", "from": [-3.8912, -2.5, -3.8912], "size": [7.7824, 5, 7.7824], "rotation": [0, 0, 90], "segments": 24, "metallic": 0.85, "roughness": 0.28, "color": "#cfd3da" },
+        { "name": "disc", "shape": "cylinder", "from": [-3.2768, -2.6500000000000004, -3.2768], "size": [6.5536, 5.300000000000001, 6.5536], "rotation": [0, 0, 90], "segments": 24, "metallic": 0.85, "roughness": 0.28, "color": "#aab0ba" },
+        { "name": "hole 1", "shape": "cylinder", "from": [-0.5632, -0.49599999999999955, -0.5632], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "metallic": 0.85, "roughness": 0.28, "color": "#1d1e24" },
+        { "name": "hole 2", "shape": "cylinder", "from": [-0.5632, -1.6479999999999995, 1.4321225303193468], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "metallic": 0.85, "roughness": 0.28, "color": "#1d1e24" },
+        { "name": "hole 3", "shape": "cylinder", "from": [-0.5632, -3.951999999999999, 1.4321225303193468], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "metallic": 0.85, "roughness": 0.28, "color": "#1d1e24" },
+        { "name": "hole 4", "shape": "cylinder", "from": [-0.5632, -5.104, -0.5631999999999997], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "metallic": 0.85, "roughness": 0.28, "color": "#1d1e24" },
+        { "name": "hole 5", "shape": "cylinder", "from": [-0.5632, -3.952000000000001, -2.558522530319346], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "metallic": 0.85, "roughness": 0.28, "color": "#1d1e24" },
+        { "name": "hole 6", "shape": "cylinder", "from": [-0.5632, -1.6479999999999995, -2.5585225303193466], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "metallic": 0.85, "roughness": 0.28, "color": "#1d1e24" },
+        { "name": "centre", "shape": "cylinder", "from": [-1.024, -2.9000000000000004, -1.024], "size": [2.048, 5.800000000000001, 2.048], "rotation": [0, 0, 90], "segments": 14, "metallic": 0.85, "roughness": 0.28, "color": "#e2e5ea" }
       ],
       "children": []
     },
@@ -5913,17 +5939,17 @@
       "origin": [10.7, 5.12, -20.33],
       "rotation": [0, 0, 0],
       "cubes": [
-        { "name": "tyre", "shape": "cylinder", "from": [-5.12, -2.1, -5.12], "size": [10.24, 4.2, 10.24], "rotation": [0, 0, 90], "segments": 24, "color": "#2b2c33" },
-        { "name": "sidewall", "shape": "cylinder", "from": [-4.4032, -2.35, -4.4032], "size": [8.8064, 4.7, 8.8064], "rotation": [0, 0, 90], "segments": 24, "color": "#3a3b44" },
-        { "name": "rim", "shape": "cylinder", "from": [-3.8912, -2.5, -3.8912], "size": [7.7824, 5, 7.7824], "rotation": [0, 0, 90], "segments": 24, "color": "#cfd3da" },
-        { "name": "disc", "shape": "cylinder", "from": [-3.2768, -2.6500000000000004, -3.2768], "size": [6.5536, 5.300000000000001, 6.5536], "rotation": [0, 0, 90], "segments": 24, "color": "#aab0ba" },
-        { "name": "hole 1", "shape": "cylinder", "from": [-0.5632, -0.49599999999999955, -0.5632], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "color": "#1d1e24" },
-        { "name": "hole 2", "shape": "cylinder", "from": [-0.5632, -1.6479999999999995, 1.4321225303193468], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "color": "#1d1e24" },
-        { "name": "hole 3", "shape": "cylinder", "from": [-0.5632, -3.951999999999999, 1.4321225303193468], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "color": "#1d1e24" },
-        { "name": "hole 4", "shape": "cylinder", "from": [-0.5632, -5.104, -0.5631999999999997], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "color": "#1d1e24" },
-        { "name": "hole 5", "shape": "cylinder", "from": [-0.5632, -3.952000000000001, -2.558522530319346], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "color": "#1d1e24" },
-        { "name": "hole 6", "shape": "cylinder", "from": [-0.5632, -1.6479999999999995, -2.5585225303193466], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "color": "#1d1e24" },
-        { "name": "centre", "shape": "cylinder", "from": [-1.024, -2.9000000000000004, -1.024], "size": [2.048, 5.800000000000001, 2.048], "rotation": [0, 0, 90], "segments": 14, "color": "#e2e5ea" }
+        { "name": "tyre", "shape": "cylinder", "from": [-5.12, -2.1, -5.12], "size": [10.24, 4.2, 10.24], "rotation": [0, 0, 90], "segments": 24, "roughness": 0.85, "color": "#2b2c33" },
+        { "name": "sidewall", "shape": "cylinder", "from": [-4.4032, -2.35, -4.4032], "size": [8.8064, 4.7, 8.8064], "rotation": [0, 0, 90], "segments": 24, "roughness": 0.85, "color": "#3a3b44" },
+        { "name": "rim", "shape": "cylinder", "from": [-3.8912, -2.5, -3.8912], "size": [7.7824, 5, 7.7824], "rotation": [0, 0, 90], "segments": 24, "metallic": 0.85, "roughness": 0.28, "color": "#cfd3da" },
+        { "name": "disc", "shape": "cylinder", "from": [-3.2768, -2.6500000000000004, -3.2768], "size": [6.5536, 5.300000000000001, 6.5536], "rotation": [0, 0, 90], "segments": 24, "metallic": 0.85, "roughness": 0.28, "color": "#aab0ba" },
+        { "name": "hole 1", "shape": "cylinder", "from": [-0.5632, -0.49599999999999955, -0.5632], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "metallic": 0.85, "roughness": 0.28, "color": "#1d1e24" },
+        { "name": "hole 2", "shape": "cylinder", "from": [-0.5632, -1.6479999999999995, 1.4321225303193468], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "metallic": 0.85, "roughness": 0.28, "color": "#1d1e24" },
+        { "name": "hole 3", "shape": "cylinder", "from": [-0.5632, -3.951999999999999, 1.4321225303193468], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "metallic": 0.85, "roughness": 0.28, "color": "#1d1e24" },
+        { "name": "hole 4", "shape": "cylinder", "from": [-0.5632, -5.104, -0.5631999999999997], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "metallic": 0.85, "roughness": 0.28, "color": "#1d1e24" },
+        { "name": "hole 5", "shape": "cylinder", "from": [-0.5632, -3.952000000000001, -2.558522530319346], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "metallic": 0.85, "roughness": 0.28, "color": "#1d1e24" },
+        { "name": "hole 6", "shape": "cylinder", "from": [-0.5632, -1.6479999999999995, -2.5585225303193466], "size": [1.1264, 5.6, 1.1264], "rotation": [0, 0, 90], "segments": 10, "metallic": 0.85, "roughness": 0.28, "color": "#1d1e24" },
+        { "name": "centre", "shape": "cylinder", "from": [-1.024, -2.9000000000000004, -1.024], "size": [2.048, 5.800000000000001, 2.048], "rotation": [0, 0, 90], "segments": 14, "metallic": 0.85, "roughness": 0.28, "color": "#e2e5ea" }
       ],
       "children": []
     }

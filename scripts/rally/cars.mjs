@@ -605,6 +605,25 @@ function classicDetails({ box, lamp, b, s, front, rear }) {
   if (s.exhaust) for (const x of [-1, 1]) lamp("exhaust tip", x * rear.hw * 0.5, rear.yb + 0.6, s.zr - 0.6, [2.6, 2.6, 3.6], CH, 0);
 }
 
+// ---- materials --------------------------------------------------------------------------------------------------------------------
+// What each kind of shape is made of, for the games that light models by their material (nova.json "materials", docs/materials.md):
+// glossy metallic paint, nearly mirror glass, chrome, dull rubber. Shapes that glow keep the glow and get a smooth surface.
+const MATERIALS = [
+  [/^(side glass|windscreen|rear window)/, { metallic: 0.55, roughness: 0.05 }],
+  [/^(tyre|sidewall|.*rubber|side frame|wheel well|mirror|grille panel|plate)/, { metallic: 0, roughness: 0.85 }],
+  [/^(rim|dish|spokes|hub|lip|stud|centre|cover|ring|groove|hole|disc)/, { metallic: 0.85, roughness: 0.28 }],
+  [/(bumper|trim|moulding|handle|exhaust|badge|bezel|overrider)/, { metallic: 0.95, roughness: 0.16 }],
+  [/^(body|wheel arch|hood|bonnet|spoiler|wing|nose|rear spoiler|roof rail)/, { metallic: 0.4, roughness: 0.28 }],
+];
+function finish(part) {
+  for (const c of part.cubes) {
+    if (c.emissive) { c.metallic = 0; c.roughness = 0.2; continue; }
+    const m = MATERIALS.find(([re]) => re.test(c.name ?? ""));
+    Object.assign(c, m ? m[1] : { metallic: 0.2, roughness: 0.5 });
+  }
+  return part;
+}
+
 // ---- build ----------------------------------------------------------------------------------------------------------------------
 function build(name, s) {
   const b = body(s);
@@ -631,7 +650,7 @@ function build(name, s) {
   ];
   // where the rear lamps are, in metres, for entities/car.lua's TAIL table (the glow and the brake lights are drawn there)
   build.tail = { z: r2(s.zr / 16), y: r2((rear.yb + (rear.yt - rear.yb) * 0.72) / 16), x: r2((rear.hw * 0.66) / 16 / 0.92) };
-  return { version: 1, scale: 0.0625, parts };
+  return { version: 1, scale: 0.0625, parts: parts.map(finish) };
 }
 
 const want = process.argv.slice(2);

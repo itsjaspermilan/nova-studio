@@ -10,6 +10,8 @@
         {
           "name": "body",
           "shape": "mesh",
+          "metallic": 0.4,
+          "roughness": 0.28,
           "color": "#e1262e",
           "verts": [
             [0, -1.64, -34],
@@ -1972,33 +1974,33 @@
             {"v":[1115,1119,1120,1121,1122,1123,1124,1125,1126,1127,1128,1129,1130,1131,1116],"color":"#d6242c","smooth":false}
           ]
         },
-        { "name": "sidepod right", "shape": "sphere", "from": [-15.2, -2, -19], "size": [7.2, 6.4, 26], "segments": 12, "color": "#e1262e" },
-        { "name": "intake right", "shape": "sphere", "from": [-13.899999999999999, -0.5000000000000004, 4.800000000000001], "size": [4.6, 4.2, 3.2], "segments": 12, "color": "#15171c" },
-        { "name": "sidepod left", "shape": "sphere", "from": [8, -2, -19], "size": [7.2, 6.4, 26], "segments": 12, "color": "#e1262e" },
-        { "name": "intake left", "shape": "sphere", "from": [9.3, -0.5000000000000004, 4.800000000000001], "size": [4.6, 4.2, 3.2], "segments": 12, "color": "#15171c" },
-        { "name": "airbox", "shape": "sphere", "from": [-2.7, 2.3999999999999995, -15], "size": [5.4, 6.4, 12], "segments": 12, "color": "#e1262e" },
-        { "name": "helmet", "shape": "sphere", "from": [-2.5, 1.0999999999999996, -1.1999999999999997], "size": [5, 5, 5.6], "segments": 12, "color": "#f5f7fa" },
-        { "name": "visor", "shape": "sphere", "from": [-1.8, 3.0000000000000004, 3.2], "size": [3.6, 1.8, 1.6], "segments": 12, "color": "#0d0e12" },
-        { "name": "front wing", "from": [-15, -2.45, 35.199999999999996], "size": [30, 0.9, 6.4], "color": "#2b2d35" },
-        { "name": "front wing flap", "from": [-14, -1.35, 36], "size": [28, 0.7, 3.2], "color": "#e1262e" },
-        { "name": "front end plate", "from": [-15.45, -2.8, 35], "size": [0.9, 3.6, 6.8], "color": "#f5f7fa" },
-        { "name": "front end plate", "from": [14.55, -2.8, 35], "size": [0.9, 3.6, 6.8], "color": "#f5f7fa" },
-        { "name": "nose pylon", "from": [-1, -2.5, 33.1], "size": [2, 2.2, 5], "color": "#2b2d35" },
-        { "name": "rear wing", "from": [-12.5, 7.9, -36.2], "size": [25, 1, 6], "color": "#2b2d35" },
-        { "name": "rear wing flap", "from": [-12.5, 9.799999999999999, -34.2], "size": [25, 0.8, 3.2], "color": "#e1262e" },
-        { "name": "rear end plate", "from": [-13.049999999999999, 5.2, -37], "size": [0.9, 7.6, 8], "color": "#f5f7fa" },
-        { "name": "rear end plate", "from": [12.15, 5.2, -37], "size": [0.9, 7.6, 8], "color": "#f5f7fa" },
-        { "name": "rear wing pillar", "from": [-1.1, 2, -32.7], "size": [2.2, 6, 2.2], "color": "#2b2d35" },
-        { "name": "diffuser", "from": [-10, -2.2, -37.5], "size": [20, 2.4, 5], "color": "#2b2d35" },
-        { "name": "arm", "from": [-13.2, -0.4, 20.95], "size": [5, 0.8, 0.9], "color": "#3a3d48" },
-        { "name": "arm", "from": [-13.2, 1.1999999999999997, 26.150000000000002], "size": [5, 0.8, 0.9], "color": "#3a3d48" },
-        { "name": "arm", "from": [-13.2, -0.4, -26.05], "size": [5, 0.8, 0.9], "color": "#3a3d48" },
-        { "name": "arm", "from": [-13.2, 1.1999999999999997, -20.849999999999998], "size": [5, 0.8, 0.9], "color": "#3a3d48" },
-        { "name": "arm", "from": [8.2, -0.4, 20.95], "size": [5, 0.8, 0.9], "color": "#3a3d48" },
-        { "name": "arm", "from": [8.2, 1.1999999999999997, 26.150000000000002], "size": [5, 0.8, 0.9], "color": "#3a3d48" },
-        { "name": "arm", "from": [8.2, -0.4, -26.05], "size": [5, 0.8, 0.9], "color": "#3a3d48" },
-        { "name": "arm", "from": [8.2, 1.1999999999999997, -20.849999999999998], "size": [5, 0.8, 0.9], "color": "#3a3d48" },
-        { "name": "rain light", "from": [-1.6, 0.40000000000000036, -35.050000000000004], "size": [3.2, 2, 0.9], "emissive": 0.9, "color": "#ff2a36" }
+        { "name": "sidepod right", "shape": "sphere", "from": [-15.2, -2, -19], "size": [7.2, 6.4, 26], "segments": 12, "metallic": 0.2, "roughness": 0.5, "color": "#e1262e" },
+        { "name": "intake right", "shape": "sphere", "from": [-13.899999999999999, -0.5000000000000004, 4.800000000000001], "size": [4.6, 4.2, 3.2], "segments": 12, "metallic": 0.2, "roughness": 0.5, "color": "#15171c" },
+        { "name": "sidepod left", "shape": "sphere", "from": [8, -2, -19], "size": [7.2, 6.4, 26], "segments": 12, "metallic": 0.2, "roughness": 0.5, "color": "#e1262e" },
+        { "name": "intake left", "shape": "sphere", "from": [9.3, -0.5000000000000004, 4.800000000000001], "size": [4.6, 4.2, 3.2], "segments": 12, "metallic": 0.2, "roughness": 0.5, "color": "#15171c" },
+        { "name": "airbox", "shape": "sphere", "from": [-2.7, 2.3999999999999995, -15], "size": [5.4, 6.4, 12], "segments": 12, "metallic": 0.2, "roughness": 0.5, "color": "#e1262e" },
+        { "name": "helmet", "shape": "sphere", "from": [-2.5, 1.0999999999999996, -1.1999999999999997], "size": [5, 5, 5.6], "segments": 12, "metallic": 0.2, "roughness": 0.5, "color": "#f5f7fa" },
+        { "name": "visor", "shape": "sphere", "from": [-1.8, 3.0000000000000004, 3.2], "size": [3.6, 1.8, 1.6], "segments": 12, "metallic": 0.2, "roughness": 0.5, "color": "#0d0e12" },
+        { "name": "front wing", "from": [-15, -2.45, 35.199999999999996], "size": [30, 0.9, 6.4], "metallic": 0.2, "roughness": 0.5, "color": "#2b2d35" },
+        { "name": "front wing flap", "from": [-14, -1.35, 36], "size": [28, 0.7, 3.2], "metallic": 0.2, "roughness": 0.5, "color": "#e1262e" },
+        { "name": "front end plate", "from": [-15.45, -2.8, 35], "size": [0.9, 3.6, 6.8], "metallic": 0.2, "roughness": 0.5, "color": "#f5f7fa" },
+        { "name": "front end plate", "from": [14.55, -2.8, 35], "size": [0.9, 3.6, 6.8], "metallic": 0.2, "roughness": 0.5, "color": "#f5f7fa" },
+        { "name": "nose pylon", "from": [-1, -2.5, 33.1], "size": [2, 2.2, 5], "metallic": 0.4, "roughness": 0.28, "color": "#2b2d35" },
+        { "name": "rear wing", "from": [-12.5, 7.9, -36.2], "size": [25, 1, 6], "metallic": 0.2, "roughness": 0.5, "color": "#2b2d35" },
+        { "name": "rear wing flap", "from": [-12.5, 9.799999999999999, -34.2], "size": [25, 0.8, 3.2], "metallic": 0.2, "roughness": 0.5, "color": "#e1262e" },
+        { "name": "rear end plate", "from": [-13.049999999999999, 5.2, -37], "size": [0.9, 7.6, 8], "metallic": 0.2, "roughness": 0.5, "color": "#f5f7fa" },
+        { "name": "rear end plate", "from": [12.15, 5.2, -37], "size": [0.9, 7.6, 8], "metallic": 0.2, "roughness": 0.5, "color": "#f5f7fa" },
+        { "name": "rear wing pillar", "from": [-1.1, 2, -32.7], "size": [2.2, 6, 2.2], "metallic": 0.2, "roughness": 0.5, "color": "#2b2d35" },
+        { "name": "diffuser", "from": [-10, -2.2, -37.5], "size": [20, 2.4, 5], "metallic": 0.2, "roughness": 0.5, "color": "#2b2d35" },
+        { "name": "arm", "from": [-13.2, -0.4, 20.95], "size": [5, 0.8, 0.9], "metallic": 0.2, "roughness": 0.5, "color": "#3a3d48" },
+        { "name": "arm", "from": [-13.2, 1.1999999999999997, 26.150000000000002], "size": [5, 0.8, 0.9], "metallic": 0.2, "roughness": 0.5, "color": "#3a3d48" },
+        { "name": "arm", "from": [-13.2, -0.4, -26.05], "size": [5, 0.8, 0.9], "metallic": 0.2, "roughness": 0.5, "color": "#3a3d48" },
+        { "name": "arm", "from": [-13.2, 1.1999999999999997, -20.849999999999998], "size": [5, 0.8, 0.9], "metallic": 0.2, "roughness": 0.5, "color": "#3a3d48" },
+        { "name": "arm", "from": [8.2, -0.4, 20.95], "size": [5, 0.8, 0.9], "metallic": 0.2, "roughness": 0.5, "color": "#3a3d48" },
+        { "name": "arm", "from": [8.2, 1.1999999999999997, 26.150000000000002], "size": [5, 0.8, 0.9], "metallic": 0.2, "roughness": 0.5, "color": "#3a3d48" },
+        { "name": "arm", "from": [8.2, -0.4, -26.05], "size": [5, 0.8, 0.9], "metallic": 0.2, "roughness": 0.5, "color": "#3a3d48" },
+        { "name": "arm", "from": [8.2, 1.1999999999999997, -20.849999999999998], "size": [5, 0.8, 0.9], "metallic": 0.2, "roughness": 0.5, "color": "#3a3d48" },
+        { "name": "rain light", "from": [-1.6, 0.40000000000000036, -35.050000000000004], "size": [3.2, 2, 0.9], "emissive": 0.9, "roughness": 0.2, "color": "#ff2a36" }
       ],
       "children": []
     },
@@ -2007,12 +2009,12 @@
       "origin": [-13.4, 6, 24],
       "rotation": [0, 0, 0],
       "cubes": [
-        { "name": "tyre", "shape": "cylinder", "from": [-6, -4, -6], "size": [12, 8, 12], "rotation": [0, 0, 90], "segments": 24, "color": "#2b2c33" },
-        { "name": "sidewall", "shape": "cylinder", "from": [-5.16, -4.25, -5.16], "size": [10.32, 8.5, 10.32], "rotation": [0, 0, 90], "segments": 24, "color": "#3a3b44" },
-        { "name": "rim", "shape": "cylinder", "from": [-4.4399999999999995, -4.4, -4.4399999999999995], "size": [8.879999999999999, 8.8, 8.879999999999999], "rotation": [0, 0, 90], "segments": 24, "color": "#cfd3da" },
-        { "name": "rim dish", "shape": "cylinder", "from": [-3.5999999999999996, -4.55, -3.5999999999999996], "size": [7.199999999999999, 9.1, 7.199999999999999], "rotation": [0, 0, 90], "segments": 24, "color": "#2a2c33" },
-        { "name": "hub cap", "shape": "cylinder", "from": [-2.04, -4.8, -2.04], "size": [4.08, 9.6, 4.08], "rotation": [0, 0, 90], "segments": 18, "color": "#e2e5ea" },
-        { "name": "hub cap top", "shape": "cylinder", "from": [-0.8400000000000001, -5, -0.8400000000000001], "size": [1.6800000000000002, 10, 1.6800000000000002], "rotation": [0, 0, 90], "segments": 12, "color": "#9aa0aa" }
+        { "name": "tyre", "shape": "cylinder", "from": [-6, -4, -6], "size": [12, 8, 12], "rotation": [0, 0, 90], "segments": 24, "roughness": 0.85, "color": "#2b2c33" },
+        { "name": "sidewall", "shape": "cylinder", "from": [-5.16, -4.25, -5.16], "size": [10.32, 8.5, 10.32], "rotation": [0, 0, 90], "segments": 24, "roughness": 0.85, "color": "#3a3b44" },
+        { "name": "rim", "shape": "cylinder", "from": [-4.4399999999999995, -4.4, -4.4399999999999995], "size": [8.879999999999999, 8.8, 8.879999999999999], "rotation": [0, 0, 90], "segments": 24, "metallic": 0.85, "roughness": 0.28, "color": "#cfd3da" },
+        { "name": "rim dish", "shape": "cylinder", "from": [-3.5999999999999996, -4.55, -3.5999999999999996], "size": [7.199999999999999, 9.1, 7.199999999999999], "rotation": [0, 0, 90], "segments": 24, "metallic": 0.85, "roughness": 0.28, "color": "#2a2c33" },
+        { "name": "hub cap", "shape": "cylinder", "from": [-2.04, -4.8, -2.04], "size": [4.08, 9.6, 4.08], "rotation": [0, 0, 90], "segments": 18, "metallic": 0.85, "roughness": 0.28, "color": "#e2e5ea" },
+        { "name": "hub cap top", "shape": "cylinder", "from": [-0.8400000000000001, -5, -0.8400000000000001], "size": [1.6800000000000002, 10, 1.6800000000000002], "rotation": [0, 0, 90], "segments": 12, "metallic": 0.85, "roughness": 0.28, "color": "#9aa0aa" }
       ],
       "children": []
     },
@@ -2021,12 +2023,12 @@
       "origin": [13.4, 6, 24],
       "rotation": [0, 0, 0],
       "cubes": [
-        { "name": "tyre", "shape": "cylinder", "from": [-6, -4, -6], "size": [12, 8, 12], "rotation": [0, 0, 90], "segments": 24, "color": "#2b2c33" },
-        { "name": "sidewall", "shape": "cylinder", "from": [-5.16, -4.25, -5.16], "size": [10.32, 8.5, 10.32], "rotation": [0, 0, 90], "segments": 24, "color": "#3a3b44" },
-        { "name": "rim", "shape": "cylinder", "from": [-4.4399999999999995, -4.4, -4.4399999999999995], "size": [8.879999999999999, 8.8, 8.879999999999999], "rotation": [0, 0, 90], "segments": 24, "color": "#cfd3da" },
-        { "name": "rim dish", "shape": "cylinder", "from": [-3.5999999999999996, -4.55, -3.5999999999999996], "size": [7.199999999999999, 9.1, 7.199999999999999], "rotation": [0, 0, 90], "segments": 24, "color": "#2a2c33" },
-        { "name": "hub cap", "shape": "cylinder", "from": [-2.04, -4.8, -2.04], "size": [4.08, 9.6, 4.08], "rotation": [0, 0, 90], "segments": 18, "color": "#e2e5ea" },
-        { "name": "hub cap top", "shape": "cylinder", "from": [-0.8400000000000001, -5, -0.8400000000000001], "size": [1.6800000000000002, 10, 1.6800000000000002], "rotation": [0, 0, 90], "segments": 12, "color": "#9aa0aa" }
+        { "name": "tyre", "shape": "cylinder", "from": [-6, -4, -6], "size": [12, 8, 12], "rotation": [0, 0, 90], "segments": 24, "roughness": 0.85, "color": "#2b2c33" },
+        { "name": "sidewall", "shape": "cylinder", "from": [-5.16, -4.25, -5.16], "size": [10.32, 8.5, 10.32], "rotation": [0, 0, 90], "segments": 24, "roughness": 0.85, "color": "#3a3b44" },
+        { "name": "rim", "shape": "cylinder", "from": [-4.4399999999999995, -4.4, -4.4399999999999995], "size": [8.879999999999999, 8.8, 8.879999999999999], "rotation": [0, 0, 90], "segments": 24, "metallic": 0.85, "roughness": 0.28, "color": "#cfd3da" },
+        { "name": "rim dish", "shape": "cylinder", "from": [-3.5999999999999996, -4.55, -3.5999999999999996], "size": [7.199999999999999, 9.1, 7.199999999999999], "rotation": [0, 0, 90], "segments": 24, "metallic": 0.85, "roughness": 0.28, "color": "#2a2c33" },
+        { "name": "hub cap", "shape": "cylinder", "from": [-2.04, -4.8, -2.04], "size": [4.08, 9.6, 4.08], "rotation": [0, 0, 90], "segments": 18, "metallic": 0.85, "roughness": 0.28, "color": "#e2e5ea" },
+        { "name": "hub cap top", "shape": "cylinder", "from": [-0.8400000000000001, -5, -0.8400000000000001], "size": [1.6800000000000002, 10, 1.6800000000000002], "rotation": [0, 0, 90], "segments": 12, "metallic": 0.85, "roughness": 0.28, "color": "#9aa0aa" }
       ],
       "children": []
     },
@@ -2035,12 +2037,12 @@
       "origin": [-13.4, 6.5, -23],
       "rotation": [0, 0, 0],
       "cubes": [
-        { "name": "tyre", "shape": "cylinder", "from": [-6.5, -4.5, -6.5], "size": [13, 9, 13], "rotation": [0, 0, 90], "segments": 24, "color": "#2b2c33" },
-        { "name": "sidewall", "shape": "cylinder", "from": [-5.59, -4.75, -5.59], "size": [11.18, 9.5, 11.18], "rotation": [0, 0, 90], "segments": 24, "color": "#3a3b44" },
-        { "name": "rim", "shape": "cylinder", "from": [-4.81, -4.9, -4.81], "size": [9.62, 9.8, 9.62], "rotation": [0, 0, 90], "segments": 24, "color": "#cfd3da" },
-        { "name": "rim dish", "shape": "cylinder", "from": [-3.9, -5.05, -3.9], "size": [7.8, 10.1, 7.8], "rotation": [0, 0, 90], "segments": 24, "color": "#2a2c33" },
-        { "name": "hub cap", "shape": "cylinder", "from": [-2.21, -5.3, -2.21], "size": [4.42, 10.6, 4.42], "rotation": [0, 0, 90], "segments": 18, "color": "#e2e5ea" },
-        { "name": "hub cap top", "shape": "cylinder", "from": [-0.9100000000000001, -5.5, -0.9100000000000001], "size": [1.8200000000000003, 11, 1.8200000000000003], "rotation": [0, 0, 90], "segments": 12, "color": "#9aa0aa" }
+        { "name": "tyre", "shape": "cylinder", "from": [-6.5, -4.5, -6.5], "size": [13, 9, 13], "rotation": [0, 0, 90], "segments": 24, "roughness": 0.85, "color": "#2b2c33" },
+        { "name": "sidewall", "shape": "cylinder", "from": [-5.59, -4.75, -5.59], "size": [11.18, 9.5, 11.18], "rotation": [0, 0, 90], "segments": 24, "roughness": 0.85, "color": "#3a3b44" },
+        { "name": "rim", "shape": "cylinder", "from": [-4.81, -4.9, -4.81], "size": [9.62, 9.8, 9.62], "rotation": [0, 0, 90], "segments": 24, "metallic": 0.85, "roughness": 0.28, "color": "#cfd3da" },
+        { "name": "rim dish", "shape": "cylinder", "from": [-3.9, -5.05, -3.9], "size": [7.8, 10.1, 7.8], "rotation": [0, 0, 90], "segments": 24, "metallic": 0.85, "roughness": 0.28, "color": "#2a2c33" },
+        { "name": "hub cap", "shape": "cylinder", "from": [-2.21, -5.3, -2.21], "size": [4.42, 10.6, 4.42], "rotation": [0, 0, 90], "segments": 18, "metallic": 0.85, "roughness": 0.28, "color": "#e2e5ea" },
+        { "name": "hub cap top", "shape": "cylinder", "from": [-0.9100000000000001, -5.5, -0.9100000000000001], "size": [1.8200000000000003, 11, 1.8200000000000003], "rotation": [0, 0, 90], "segments": 12, "metallic": 0.85, "roughness": 0.28, "color": "#9aa0aa" }
       ],
       "children": []
     },
@@ -2049,12 +2051,12 @@
       "origin": [13.4, 6.5, -23],
       "rotation": [0, 0, 0],
       "cubes": [
-        { "name": "tyre", "shape": "cylinder", "from": [-6.5, -4.5, -6.5], "size": [13, 9, 13], "rotation": [0, 0, 90], "segments": 24, "color": "#2b2c33" },
-        { "name": "sidewall", "shape": "cylinder", "from": [-5.59, -4.75, -5.59], "size": [11.18, 9.5, 11.18], "rotation": [0, 0, 90], "segments": 24, "color": "#3a3b44" },
-        { "name": "rim", "shape": "cylinder", "from": [-4.81, -4.9, -4.81], "size": [9.62, 9.8, 9.62], "rotation": [0, 0, 90], "segments": 24, "color": "#cfd3da" },
-        { "name": "rim dish", "shape": "cylinder", "from": [-3.9, -5.05, -3.9], "size": [7.8, 10.1, 7.8], "rotation": [0, 0, 90], "segments": 24, "color": "#2a2c33" },
-        { "name": "hub cap", "shape": "cylinder", "from": [-2.21, -5.3, -2.21], "size": [4.42, 10.6, 4.42], "rotation": [0, 0, 90], "segments": 18, "color": "#e2e5ea" },
-        { "name": "hub cap top", "shape": "cylinder", "from": [-0.9100000000000001, -5.5, -0.9100000000000001], "size": [1.8200000000000003, 11, 1.8200000000000003], "rotation": [0, 0, 90], "segments": 12, "color": "#9aa0aa" }
+        { "name": "tyre", "shape": "cylinder", "from": [-6.5, -4.5, -6.5], "size": [13, 9, 13], "rotation": [0, 0, 90], "segments": 24, "roughness": 0.85, "color": "#2b2c33" },
+        { "name": "sidewall", "shape": "cylinder", "from": [-5.59, -4.75, -5.59], "size": [11.18, 9.5, 11.18], "rotation": [0, 0, 90], "segments": 24, "roughness": 0.85, "color": "#3a3b44" },
+        { "name": "rim", "shape": "cylinder", "from": [-4.81, -4.9, -4.81], "size": [9.62, 9.8, 9.62], "rotation": [0, 0, 90], "segments": 24, "metallic": 0.85, "roughness": 0.28, "color": "#cfd3da" },
+        { "name": "rim dish", "shape": "cylinder", "from": [-3.9, -5.05, -3.9], "size": [7.8, 10.1, 7.8], "rotation": [0, 0, 90], "segments": 24, "metallic": 0.85, "roughness": 0.28, "color": "#2a2c33" },
+        { "name": "hub cap", "shape": "cylinder", "from": [-2.21, -5.3, -2.21], "size": [4.42, 10.6, 4.42], "rotation": [0, 0, 90], "segments": 18, "metallic": 0.85, "roughness": 0.28, "color": "#e2e5ea" },
+        { "name": "hub cap top", "shape": "cylinder", "from": [-0.9100000000000001, -5.5, -0.9100000000000001], "size": [1.8200000000000003, 11, 1.8200000000000003], "rotation": [0, 0, 90], "segments": 12, "metallic": 0.85, "roughness": 0.28, "color": "#9aa0aa" }
       ],
       "children": []
     }
