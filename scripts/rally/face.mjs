@@ -2,7 +2,7 @@
 // a structured grid of quads (rows at the heights that matter, columns at the lamp edges) and then works it like a modeller works a face:
 // push the lamp pockets in, a shallower step round each for the housing, recess the grille, band the bumper, and crease the edges of
 // every pocket so the subdivision keeps them crisp. The lamp lenses are the pockets' own cells, copied into small meshes that glow.
-import { r2, add, sub, cross, dot, mul } from "./parts.mjs";
+import { r2, add, sub, cross, dot, mul, parse, hex } from "./parts.mjs";
 
 const EPS = 1e-6;
 
@@ -91,8 +91,8 @@ export function endFace({ ring, z0, dir, rake = 0, rules = [], paint, pivot }) {
     let d = 0;
     for (const r of rules) {
       if (r.kind === "band") continue;
-      if (inRule(r, x, y, 0)) d = Math.min(d, -(r.depth ?? 1));
-      else if (r.rim && inRule(r, x, y, r.rim)) d = Math.min(d, -(r.rimDepth ?? (r.depth ?? 1) * 0.45));
+      if (inRule(r, x, y, 0.22)) d = Math.min(d, -(r.depth ?? 1));
+      else if (r.rim && inRule(r, x, y, r.rim + 0.22)) d = Math.min(d, -(r.rimDepth ?? (r.depth ?? 1) * 0.45));
     }
     return d;
   };
@@ -110,7 +110,7 @@ export function endFace({ ring, z0, dir, rake = 0, rules = [], paint, pivot }) {
     for (let i = 0; i < rules.length; i++) {
       const r = rules[i];
       if (r.kind === "band") { if (mid[1] >= r.y[0] && mid[1] <= r.y[1]) continue; else continue; }
-      const allIn = !r.c && pts.every((p) => inRule(r, p[0], p[1], 0.02));
+      const allIn = !r.c && pts.every((p) => inRule(r, p[0], p[1], 0.22));
       // (the end column's x moves with the row: a cell reaching it is judged by its middle)
       const midIn = inRule(r, mid[0], mid[1], r.c ? -0.05 * r.r : 0);
       if (allIn || (r.c && midIn) || (c === C - 1 && midIn)) return { i, kind: r.kind, inside: true };
@@ -118,13 +118,17 @@ export function endFace({ ring, z0, dir, rake = 0, rules = [], paint, pivot }) {
     for (let i = 0; i < rules.length; i++) {
       const r = rules[i];
       if (r.kind === "band" || !r.rim) continue;
-      if (inRule(r, mid[0], mid[1], r.rim)) return { i, kind: "rim", inside: false };
+      if (inRule(r, mid[0], mid[1], r.rim + 0.1)) return { i, kind: "rim", inside: false };
     }
     for (const r of rules) if (r.kind === "band" && mid[1] >= r.y[0] && mid[1] <= r.y[1]) return { i: -1, kind: "band", inside: false, color: r.color };
     return { i: -1, kind: "body", inside: false };
   };
   const roles = Array.from({ length: K }, () => Array(C));
   for (let k = 0; k < K; k++) for (let c = 0; c < C; c++) roles[k][c] = roleOf(k, c);
+  if (process.env.FACE_DEBUG) {
+    console.error("ys", ys.join(" "), "\nxs", xs.join(" "));
+    for (let k = K - 1; k >= 0; k--) console.error(String(ys[k]).padStart(6), roles[k].map((r) => (r.kind === "lens" ? "L" : r.kind === "recess" ? "g" : r.kind === "rim" ? "r" : r.kind === "band" ? "b" : ".")).join(""));
+  }
   const lensVerts = new Map();
   for (let k = 0; k < K; k++) for (let c = 0; c < C; c++) {
     const role = roles[k][c];
@@ -230,9 +234,19 @@ export function loftFaces(name, stations, { colorOf, creaseOf, subsurf = [1, 1],
     for (let i = first; i < last; i++) for (let j = 0; j < M; j++) { const w = creaseOf(i, j, "across"); if (w > 0) creases.push([id(i, j), id(i + 1, j), w]); }
   }
   const body = { name, shape: "mesh", color: polys[0].color, verts, polys, ...(creases.length ? { creases } : {}), modifiers: [{ type: "mirror", axis: "x", merge: 0.02, clip: true }, { type: "subsurf", levels: subsurf[0], renderLevels: subsurf[1], smooth: true }], ...material };
+  // a lens is brighter at the top and a touch warmer at the bottom, so it reads as a curved glass, not a white square
+  const shade = (r, q, vs) => {
+    const base = r.lensColor ?? "#fff3cf";
+    if (!r.emissive) return base;
+    const ys = vs.map((v) => v[1]), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const cy = q.reduce((m, k) => m + vs[k][1], 0) / q.length;
+    const t = y1 > y0 ? (cy - y0) / (y1 - y0) : 0.5;
+    const hi = parse(base), lo = hi.map((c, i) => c * [0.96, 0.84, 0.62][i]);
+    return hex(hi.map((c, i) => lo[i] + (c - lo[i]) * t));
+  };
   const lenses = lensCubes.map((L, k) => {
     const r = L.rule;
-    return { name: r.name ?? `lamp ${k + 1}`, shape: "mesh", color: r.lensColor ?? "#fff3cf", verts: L.verts, polys: L.polys.map((v) => ({ v, color: r.lensColor ?? "#fff3cf", smooth: false })), modifiers: [{ type: "mirror", axis: "x", merge: 0.02, clip: true }], ...(r.emissive ? { emissive: r.emissive, metallic: 0, roughness: 0.2 } : { metallic: 0.1, roughness: 0.5 }) };
+    return { name: r.name ?? `lamp ${k + 1}`, shape: "mesh", color: r.lensColor ?? "#fff3cf", verts: L.verts, polys: L.polys.map((v) => ({ v, color: shade(r, v, L.verts), smooth: false })), modifiers: [{ type: "mirror", axis: "x", merge: 0.02, clip: true }], ...(r.emissive ? { emissive: r.emissive, metallic: 0, roughness: 0.2 } : { metallic: 0.1, roughness: 0.5 }) };
   });
   return { body, lenses, faces };
 }

@@ -41,23 +41,23 @@ function noseRules(s, ring) {
   const style = s.lamps ?? "rect", grille = s.grille ?? "bars";
   const rules = [];
   const clampY = (a, b) => [Math.max(a, yb + 1.5), Math.min(b, y7 - 1.1)];
-  const lens = (shape) => rules.push({ kind: "lens", name: "headlight", lensColor: "#fff3cf", emissive: 0.95, depth: 1.5, rim: 0.9, rimColor: "#1a1b21", floor: "#101116", ...shape });
+  const lens = (shape) => rules.push({ kind: "lens", name: "headlight", lensColor: "#fff3cf", emissive: 0.95, depth: 1.5, rim: 0.9, rimColor: "#2f323b", floor: "#4a4e5a", ...shape });
   let inner;
   if (style === "round") { lens({ x: [xo - 4.8, xo], y: clampY(lampY - 2.4, lampY + 2.4) }); inner = xo - 4.8 - 0.9; }
-  else if (style === "round2") { lens({ x: [xo - 3.0, xo], y: clampY(lampY - 1.5, lampY + 1.5) }); lens({ x: [xo - 3.0 - 1.8 - 3.0, xo - 3.0 - 1.8], y: clampY(lampY - 1.5, lampY + 1.5) }); inner = xo - 3.0 - 1.8 - 3.0 - 0.9; }
+  else if (style === "round2") { lens({ x: [xo - 2.4, xo], y: clampY(lampY - 1.3, lampY + 1.3), rim: 0.6 }); lens({ x: [xo - 2.4 - 1.2 - 2.4, xo - 2.4 - 1.2], y: clampY(lampY - 1.3, lampY + 1.3), rim: 0.6 }); inner = xo - 2.4 - 1.2 - 2.4 - 0.6; }
   else if (style === "slit") { lens({ x: [xo - 8.8, xo], y: clampY(lampY - 0.9, lampY + 0.9) }); inner = xo - 8.8 - 0.9; }
   else if (style === "tall") { lens({ x: [xo - 3.4, xo], y: clampY(lampY - 2.3, lampY + 2.3) }); inner = xo - 3.4 - 0.9; }
   else if (style === "quad") { lens({ x: [xo - 4.6, xo], y: clampY(lampY + 0.2, lampY + 1.5) }); lens({ x: [xo - 4.6, xo], y: clampY(lampY - 1.7, lampY - 0.4) }); inner = xo - 4.6 - 0.9; }
   else { lens({ x: [xo - 5.2, xo], y: clampY(lampY - 1.4, lampY + 1.4) }); inner = xo - 5.2 - 0.9; }
-  const recess = (o) => rules.push({ kind: "recess", depth: 1.0, rim: 0.5, rimColor: "#1a1b21", floor: "#101116", ...o });
+  const recess = (o) => rules.push({ kind: "recess", depth: 1.0, rim: 0.55, rimColor: "#6a707b", floor: "#14151a", ...o });
   const gy = clampY(lampY - 1.7, lampY + 1.5);
   if (grille === "mouth") recess({ x: [0, xo - 3.5], y: [yb + 1.0, yb + 3.2], depth: 1.3, bars: 1 });
   else if (grille === "kidney") recess({ x: [0.6, inner], y: gy });
   else if (grille === "blackout") recess({ x: [0, inner], y: gy });
   else if (grille === "mesh") recess({ x: [0, inner], y: gy, bars: 3 });
   else recess({ x: [0, inner], y: gy, bars: 2 });
-  if (!s.noFog && grille !== "mouth") rules.push({ kind: "lens", name: "fog lamp", lensColor: "#ffe07a", emissive: 0.6, depth: 0.9, rim: 0.5, rimColor: "#1a1b21", floor: "#101116", x: [xo - 3.0, xo - 0.8], y: [yb + 1.0, yb + 2.2] });
-  if (s.bumper) rules.push({ kind: "band", y: [yb, yb + 3.4], color: s.bumper });
+  if (s.fog && grille !== "mouth") rules.push({ kind: "lens", name: "fog lamp", lensColor: "#ffe07a", emissive: 0.6, depth: 0.9, rim: 0.5, rimColor: "#2f323b", floor: "#4a4e5a", x: [xo - 3.0, xo - 0.8], y: [yb + 1.0, yb + 2.2] });
+  if (s.bumper) rules.push({ kind: "band", y: [yb, side[2][1]], color: s.bumper });
   return { rules, rake: s.noseRake ?? 2.0 };
 }
 /// The same for the tail: brake lamps (in the place the game draws its glow: reported as lx, ly), a lamp bar, the plate, a bumper band.
@@ -68,7 +68,7 @@ function tailRules(s, ring) {
   const tails = s.tails ?? "bar";
   const rules = [];
   const clampY = (a, b) => [Math.max(a, yb + 1.5), Math.min(b, y7 - 1.1)];
-  const lamp = (shape, color, emissive) => rules.push({ kind: "lens", name: "brake light", lensColor: color, emissive, depth: 1.4, rim: 0.8, rimColor: "#1a1b21", floor: "#101116", ...shape });
+  const lamp = (shape, color, emissive) => rules.push({ kind: "lens", name: "brake light", lensColor: color, emissive, depth: 1.4, rim: 0.8, rimColor: "#2a2c33", floor: "#3a1a1d", ...shape });
   if (tails === "bar") {
     const yy = clampY(ly + 2.1, ly + 3.3);
     lamp({ x: [0, xAtY(side, yy[1]) - 1.4], y: yy }, "#e8202c", 0.9);
@@ -77,7 +77,7 @@ function tailRules(s, ring) {
   else if (tails === "round") lamp({ x: [lx - 2.3, lx + 2.3], y: clampY(ly - 2.3, ly + 2.3) }, "#e8202c", 0.85);
   else lamp({ x: [lx - 1.6, lx + 1.6], y: clampY(ly - 3.0, ly + 3.0) }, "#e8202c", 0.85);
   rules.push({ kind: "lens", name: "plate", lensColor: "#f0f0ea", emissive: 0, depth: 0.8, rim: 0.4, rimColor: "#1a1b21", floor: "#101116", x: [0, 3.2], y: [yb + 1.2, yb + 3.4] });
-  if (s.bumper) rules.push({ kind: "band", y: [yb, yb + 3.4], color: s.bumper });
+  if (s.bumper) rules.push({ kind: "band", y: [yb, side[2][1]], color: s.bumper });
   return { rules, rake: s.tailRake ?? 1.2, lx, ly, t: (ly - yb) / H };
 }
 
@@ -149,7 +149,7 @@ export function buildBody(s) {
   let body, lensCubes = [], tailInfo = null;
   if (faceMode) {
     const nose = noseRules(s, stations[stations.length - 1].pts);
-    tailInfo = s.bed ? null : tailRules(s, stations[0].pts);
+    tailInfo = tailRules(s, stations[0].pts);
     const r = loftFaces("body", stations, { colorOf, creaseOf, subsurf: [1, s.renderLevels ?? 1], material: PAINT, ends: { nose, ...(tailInfo ? { tail: tailInfo } : {}) }, paint: s.paint, pivot: pivot() });
     body = r.body; lensCubes = r.lenses;
   } else body = loft("body", stations, { colorOf, creaseOf, subsurf: [1, s.renderLevels ?? 1] });
