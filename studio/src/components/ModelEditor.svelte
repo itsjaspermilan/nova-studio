@@ -21,6 +21,7 @@
   import { loadReferences, placementOf, saveReferences, type Reference } from "../lib/model-reference";
   import { ORTHO_FOV, PERSPECTIVE_FOV, VIEW_LABELS, VIEW_NAMES, distanceForFov, orbitStep, viewPlacement, type ViewName } from "../lib/view-presets";
   import ModelStats from "./ModelStats.svelte";
+  import { copyKeys, mirrorClip, pasteKeys, reverseClip, shiftKeys, stretchKeys, type KeyClipboard } from "../lib/model-anim-tools";
   import { SCULPT_HELP, SCULPT_MODES, sculptDab, type SculptMode } from "../lib/sculpt";
   import { addFace, bevelEdge, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, freshProfile, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsSymmetric, setFaceColors, setSmooth, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
   import { hasVolume, meshOf, segmentsOf, shapeFaces, solidOf } from "../lib/model-mesh";
@@ -87,6 +88,8 @@
   let mode = $state<"model" | "texture" | "animate">("model");
   let clipIndex = $state(0);
   let animTime = $state(0);
+  let keyBoard: KeyClipboard | null = $state(null);
+  let animNote = $state("");
   let playingAnim = $state(false);
   const history = new History();
   let tick = $state(0);
@@ -2385,6 +2388,17 @@
             <label class="inline">Length <input type="number" min="0.1" max="600" step="0.1" value={clip.duration} onchange={(e) => commit(updateClip(doc, clipIndex, { duration: Number(e.currentTarget.value) }))} /> s</label>
             <label class="check"><input type="checkbox" checked={clip.loop} onchange={(e) => commit(updateClip(doc, clipIndex, { loop: e.currentTarget.checked }))} /> Loop</label>
             <button class="danger" onclick={dropClip}>Delete</button>
+          </div>
+          <div class="clips" role="group" aria-label="Animation tools">
+            <button title="Copy every key of the chosen part" disabled={!partNames.length} onclick={() => { keyBoard = copyKeys(clip, partNames); animNote = keyBoard ? "Keys copied." : "That part has no keys in this animation."; }}>Copy keys</button>
+            <button title="Paste the copied keys with the first at the time marker (onto the chosen part)" disabled={!keyBoard} onclick={() => { if (keyBoard) { commit(pasteKeys(doc, clipIndex, keyBoard, animTime, partNames.length ? partNames : undefined)); animNote = "Keys pasted."; } }}>Paste keys</button>
+            <button title="Play the animation backwards" onclick={() => commit(reverseClip(doc, clipIndex))}>Reverse</button>
+            <button title="Swap left and right: parts named left… and right… trade keys, and sideways moves and turns are mirrored" onclick={() => { const next = mirrorClip(doc, clipIndex); animNote = next === doc ? "Nothing to mirror." : "Mirrored."; if (next !== doc) commit(next); }}>Mirror left–right</button>
+            <button title="Twice as fast (all keys, or the chosen part's if one is chosen)" onclick={() => commit(stretchKeys(doc, clipIndex, 0.5, partNames.length ? partNames : null))}>×½ time</button>
+            <button title="Twice as slow" onclick={() => commit(stretchKeys(doc, clipIndex, 2, partNames.length ? partNames : null))}>×2 time</button>
+            <button title="Move the keys 0.1 s earlier" onclick={() => commit(shiftKeys(doc, clipIndex, -0.1, partNames.length ? partNames : null))}>−0.1 s</button>
+            <button title="Move the keys 0.1 s later" onclick={() => commit(shiftKeys(doc, clipIndex, 0.1, partNames.length ? partNames : null))}>+0.1 s</button>
+            {#if animNote}<span class="dim small" role="status">{animNote}</span>{/if}
           </div>
           <div class="scrub">
             <button class="primary" onclick={() => { if (animTime >= clip.duration) animTime = 0; playingAnim = !playingAnim; }}>{playingAnim ? "■" : "▶"}</button>

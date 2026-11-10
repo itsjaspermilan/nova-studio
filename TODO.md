@@ -255,7 +255,8 @@ Pixelorama, Blockbench, GameStudio, Game Maker 8 manual.
 - [ ] Streamed music resamples linearly; a sound sped up past about 1.5 times can alias.
 - [ ] glTF files that point at an external texture (`uri`) do not load: resolve relative `uri`s through the project's file view.
 - [ ] Paths and `in_rect` in the collision helpers.
-- [ ] Keyframe animations: a 3D preview, a curve (graph) editor, copy/paste and multi-select of keys, a "record" mode, blending and bone animation.
+- [x] (2026-11-10, `lib/model-anim-tools.ts`, 8 tests: copy a part's keys and paste them later, onto another part, replacing and clipping at the end; shift and stretch time; reverse a clip with its eases flipped; mirror left and right with the sideways moves and turns reversed; blend two poses with the short-way quaternion blend and blend two clips at chosen times; **the buttons in the Animate timeline (Copy keys, Paste keys, Reverse, Mirror, ×½, ×2, ±0.1 s) were only type-checked, not clicked**) Copy/paste, retime, reverse, mirror and blending of keys.
+- [ ] Still open in animation: a curve (graph) editor, multi-select of single keys by clicking, a "record" mode, a crossfade between clips in the game (the blend function exists, nothing plays it), a pose library, IK and constraints, shape keys, retargeting, rig templates.
 - [ ] Models from files cannot be drawn into the UI (only block cubes); a finger cannot drag a list to scroll it.
 - [ ] Renderer follow-ups: ASTC encoder, Basis Universal, ETC2 alpha, stripping the PNG out of the `.glb` (`docs/switch-class-graphics.md`).
 - [ ] The wish list toward Odyssey/BotW-style games (collision and character control, lighting, terrain, crowds) is in the old TODO: `git show db3e9c5:TODO.md`, "Toward games like".
