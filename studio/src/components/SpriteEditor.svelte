@@ -1590,7 +1590,7 @@
         {#if tool === "text"}
           <label>Text <input bind:value={textValue} class="wide" aria-label="Text to draw" placeholder="type here (Enter makes no new line: use \n)" /></label>
           <label>Scale <input type="number" min="1" max="8" bind:value={textScale} class="narrow" aria-label="Text scale" /></label>
-          <span class="dim">{textSize(textValue.replaceAll("\\n", "\n"), textScale).w} × {textSize(textValue.replaceAll("\\n", "\n"), textScale).h} px, capitals only</span>
+          <span class="dim">{textSize(textValue.replaceAll("\\n", "\n"), textScale).w} × {textSize(textValue.replaceAll("\\n", "\n"), textScale).h} px</span>
         {/if}
         {#if tool === "polygon"}
           <span class="dim">{polyShown ? `${polyShown} corner${polyShown === 1 ? "" : "s"}: click the first one, double-click or Enter to finish, Esc to drop` : "Click the corners of the shape"}</span>
