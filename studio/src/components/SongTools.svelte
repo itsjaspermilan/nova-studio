@@ -6,6 +6,8 @@
   import { NOTE_NAMES, barSteps, songSeconds, stepSeconds, type Song } from "../lib/song";
   import { integratedLufs, peakDb } from "../lib/loudness";
   import { renderSong } from "../lib/song";
+  import { FX_SPECS, FX_TYPES, MAX_FX, addFx, moveFx, param, removeFx, setFxParam, toggleFx, type FxType } from "../lib/fx";
+  import { updateTrack } from "../lib/song";
 
   let {
     song,
@@ -80,6 +82,11 @@
     const points = [...(lane?.points ?? []).filter((p) => p.step !== pointStep), { step: Math.max(0, Math.round(pointStep)), value: Math.min(2, Math.max(0, pointValue)) }];
     commit(setLane(song, track, { param: "gain", curve: lane?.curve ?? "linear", points }));
   };
+
+  // ---- effects -------------------------------------------------------------------------------------------
+  const chain = $derived(t?.fx ?? []);
+  let newFxType = $state<FxType>("eq");
+  const setChain = (next: typeof chain) => commit(updateTrack(song, track, { fx: next.length ? next : undefined }));
 
   // ---- loudness -------------------------------------------------------------------------------------------
   let measured = $state<{ lufs: number; peak: number } | null>(null);
@@ -179,6 +186,31 @@
   </section>
 
   <section>
+    <h4>Effects on this track <span class="dim small">(after its volume and pan, in this order)</span></h4>
+    {#each chain as fx, i (i)}
+      <div class="fx" class:off={fx.on === false}>
+        <div class="fxhead">
+          <label class="check" title={FX_SPECS[fx.type].help}><input type="checkbox" checked={fx.on !== false} onchange={() => setChain(toggleFx(chain, i))} aria-label="{FX_SPECS[fx.type].title} on" /> <strong>{FX_SPECS[fx.type].title}</strong></label>
+          <span class="spacer"></span>
+          <button class="ghost" aria-label="Move up" disabled={i === 0} onclick={() => setChain(moveFx(chain, i, -1))}>↑</button>
+          <button class="ghost" aria-label="Move down" disabled={i === chain.length - 1} onclick={() => setChain(moveFx(chain, i, 1))}>↓</button>
+          <button class="ghost danger" aria-label="Remove {FX_SPECS[fx.type].title}" onclick={() => setChain(removeFx(chain, i))}>✕</button>
+        </div>
+        {#each FX_SPECS[fx.type].params as p (p.key)}
+          <label class="slider"><span>{p.label}</span><input type="range" min={p.min} max={p.max} step={p.step} value={param(fx, p.key)} oninput={(e) => setChain(setFxParam(chain, i, p.key, Number(e.currentTarget.value)))} /><output>{param(fx, p.key)}{p.unit ? " " + p.unit : ""}</output></label>
+        {/each}
+      </div>
+    {:else}
+      <p class="dim small">No effects on this track.</p>
+    {/each}
+    <div class="row">
+      <select bind:value={newFxType} aria-label="Effect to add">{#each FX_TYPES as ft (ft)}<option value={ft}>{FX_SPECS[ft].title}</option>{/each}</select>
+      <button disabled={chain.length >= MAX_FX || !t} onclick={() => setChain(addFx(chain, newFxType))}>Add an effect</button>
+      <span class="dim small">{FX_SPECS[newFxType].help}</span>
+    </div>
+  </section>
+
+  <section>
     <h4>Master</h4>
     <div class="row">
       <label class="check"><input type="checkbox" checked={song.master?.lufs !== undefined} onchange={(e) => commit({ ...song, master: { volume: song.master?.volume ?? 1, ...(e.currentTarget.checked ? { lufs: -16 } : {}), ...(song.master?.limit !== undefined ? { limit: song.master.limit } : {}) } })} /> Bring to a loudness of</label>
@@ -205,6 +237,11 @@
   .lane { width: 100%; max-width: 400px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
   .lane polyline { fill: none; stroke: #5aa9ff; stroke-width: 1.5; }
   .lane .mid { stroke: var(--line); stroke-dasharray: 3 3; }
+  .fx { border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; display: flex; flex-direction: column; gap: 4px; }
+  .fx.off { opacity: 0.55; }
+  .fxhead { display: flex; align-items: center; gap: 4px; }
+  .spacer { flex: 1; }
+  .slider { display: grid; grid-template-columns: 74px 1fr 60px; align-items: center; gap: 6px; font-size: 11px; }
   .chip { display: inline-flex; gap: 4px; align-items: center; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 0 4px 0 8px; margin-right: 4px; }
   .chip button { border: none; background: transparent; color: var(--dim); padding: 0 4px; }
 </style>

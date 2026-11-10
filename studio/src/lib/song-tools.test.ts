@@ -175,3 +175,27 @@ describe("rendering with a loudness target and a ceiling", () => {
     expect(Math.max(...renderSong(s, 22050).channels[0]!.map(Math.abs))).toBeGreaterThan(0.01);
   });
 });
+
+describe("effects on a track", () => {
+  it("round-trip through the file, are refused when wrong, and change what is rendered", async () => {
+    const { renderSong } = await import("./song");
+    const { addFx, setFxParam } = await import("./fx");
+    const s = song([{ step: 0, len: 4, pitch: 60, vel: 1 }, { step: 4, len: 4, pitch: 67, vel: 1 }], 16);
+    let chain = addFx([], "distortion");
+    chain = setFxParam(chain, 0, "drive", 25);
+    s.tracks[0] = { ...s.tracks[0]!, fx: chain };
+    const back = parseSong(serializeSong(s));
+    if (!back.ok) throw new Error(back.error);
+    expect(back.song.tracks[0]!.fx![0]!.params.drive).toBe(25);
+    const bad = JSON.parse(serializeSong(s));
+    bad.tracks[0].fx = [{ type: "reverb", params: {} }];
+    expect(parseSong(JSON.stringify(bad)).ok).toBe(false);
+    const dry = renderSong({ ...s, tracks: [{ ...s.tracks[0]!, fx: undefined }] }, 22050);
+    const wet = renderSong(s, 22050);
+    expect(wet.channels[0]).not.toEqual(dry.channels[0]);
+    expect(Math.max(...wet.channels[0]!.map(Math.abs))).toBeGreaterThan(0.01);
+    // a bypassed effect renders exactly as no effect
+    const off = renderSong({ ...s, tracks: [{ ...s.tracks[0]!, fx: [{ ...chain[0]!, on: false }] }] }, 22050);
+    expect(off.channels[0]).toEqual(dry.channels[0]);
+  });
+});

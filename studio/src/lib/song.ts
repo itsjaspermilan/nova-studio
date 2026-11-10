@@ -11,6 +11,7 @@
 
 import { mulberry32 } from "./sfx";
 import { applyAutomation } from "./song-lanes";
+import { applyFx, cleanFx, type Fx } from "./fx";
 import { integratedLufs, limitPeaks } from "./loudness";
 import type { Sound } from "./wav";
 
@@ -64,6 +65,8 @@ export interface Track {
   kit?: "chip" | "studio";
   /// A lane that changes how loud the notes are over the song: the gain (0 to 2) at each note's start follows these points (lib/song-tools.ts).
   automation?: Lane[];
+  /// Effects on the track, run in order after its volume and pan (lib/fx.ts).
+  fx?: Fx[];
 }
 
 /// The master section: the fader, an optional loudness target in LUFS (-30 to -6: quiet songs are lifted, loud ones lowered) and an optional peak
@@ -199,6 +202,12 @@ export function parseSong(text: string): Parsed {
       if (t.kit !== "chip" && t.kit !== "studio") return { ok: false, error: `${at}.kit must be "chip" or "studio"` };
       voice.kit = t.kit;
     }
+    if (t.fx !== undefined) {
+      const c = cleanFx(t.fx);
+      if (!c.ok) return { ok: false, error: `${at}.${c.error}` };
+      if (c.chain.length) voice.fx = c.chain;
+      else delete (t as Partial<Track>).fx;
+    }
     if (t.automation !== undefined) {
       if (!Array.isArray(t.automation) || t.automation.length > 4) return { ok: false, error: `${at}.automation is a list of up to 4 lanes` };
       const lanes: Lane[] = [];
@@ -257,6 +266,7 @@ export function serializeSong(song: Song): string {
     if (t.solo) fields.push(`"solo": true`);
     for (const [key] of VOICE_RANGES) if (t[key] !== undefined) fields.push(`"${key}": ${t[key]}`);
     if (t.kit !== undefined) fields.push(`"kit": "${t.kit}"`);
+    if (t.fx?.length) fields.push(`"fx": ${JSON.stringify(t.fx)}`);
     if (t.automation?.length) fields.push(`"automation": ${JSON.stringify(t.automation)}`);
     const notes = t.notes.length ? `[\n${t.notes.map((n) => `        ${note(n)}`).join(",\n")}\n      ]` : "[]";
     return `    {\n${fields.map((f) => `      ${f}`).join(",\n")},\n      "notes": ${notes}\n    }`;
@@ -740,15 +750,20 @@ export function renderSong(source: Song, rate = RATE): Sound {
     const echo = clamp(track.echo ?? 0, 0, 1);
     const echoL = echo > 0 ? new Float32Array(total) : null;
     const echoR = echo > 0 ? new Float32Array(total) : null;
+    // a track with effects is mixed on its own first, run through the chain, then added to the song
+    const chain = (track.fx ?? []).filter((f) => f.on !== false);
+    const outL = chain.length ? new Float32Array(total) : left;
+    const outR = chain.length ? new Float32Array(total) : right;
+    const sendNow = send > 0 && !chain.length;
     const mix = (index: number, v: number) => {
       const i = index % total; // wrap the tail onto the start
-      left[i] = left[i]! + v * gl;
-      right[i] = right[i]! + v * gr;
+      outL[i] = outL[i]! + v * gl;
+      outR[i] = outR[i]! + v * gr;
       if (echoL && echoR) {
         echoL[i] = echoL[i]! + v * gl;
         echoR[i] = echoR[i]! + v * gr;
       }
-      if (send > 0) {
+      if (sendNow) {
         sendL![i] = sendL![i]! + v * gl * send;
         sendR![i] = sendR![i]! + v * gr * send;
       }
@@ -756,13 +771,13 @@ export function renderSong(source: Song, rate = RATE): Sound {
     // the same for a stereo pair of values already panned by the voice (a track's pan and volume are applied here)
     const mixStereo = (index: number, l: number, r: number) => {
       const i = index % total;
-      left[i] = left[i]! + l;
-      right[i] = right[i]! + r;
+      outL[i] = outL[i]! + l;
+      outR[i] = outR[i]! + r;
       if (echoL && echoR) {
         echoL[i] = echoL[i]! + l;
         echoR[i] = echoR[i]! + r;
       }
-      if (send > 0) {
+      if (sendNow) {
         sendL![i] = sendL![i]! + l * send;
         sendR![i] = sendR![i]! + r * send;
       }
@@ -801,8 +816,19 @@ export function renderSong(source: Song, rate = RATE): Sound {
       // (the repeats of a looping song's last notes come round to its start)
       for (let i = 0; i < wl.length; i++) {
         const j = i % total;
-        left[j] = left[j]! + wl[i]! * echo;
-        right[j] = right[j]! + wr[i]! * echo;
+        outL[j] = outL[j]! + wl[i]! * echo;
+        outR[j] = outR[j]! + wr[i]! * echo;
+      }
+    }
+    if (chain.length) {
+      const [pl, pr] = applyFx(chain, outL, outR, rate);
+      for (let i = 0; i < total; i++) {
+        left[i] = left[i]! + pl[i]!;
+        right[i] = right[i]! + pr[i]!;
+        if (send > 0) {
+          sendL![i] = sendL![i]! + pl[i]! * send;
+          sendR![i] = sendR![i]! + pr[i]! * send;
+        }
       }
     }
   });
