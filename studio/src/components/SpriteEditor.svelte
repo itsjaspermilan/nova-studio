@@ -15,7 +15,7 @@
   import SpriteExportDialog from "./SpriteExportDialog.svelte";
   import { importAnimation } from "../lib/sprite-import";
   import { toBase64 } from "../lib/wav";
-  import { boundsOf, combine, emptyMask, growMask, has, invertMask, isEmpty, isRect, liftMasked, maskFromColor, maskFromEllipse, maskFromPolygon, maskFromRect, outlineSegments, placeMask, type Combine, type Mask } from "../lib/selection";
+  import { boundsOf, combine, emptyMask, growMask, has, invertMask, isEmpty, isRect, liftMasked, maskFromColor, maskFromEllipse, maskFromPolygon, maskFromRect, maskFromStroke, outlineSegments, placeMask, type Combine, type Mask } from "../lib/selection";
   import { commandsRev } from "../lib/commands-rev.svelte";
   import { PaletteStore, normalizeHex, nearestColor, paletteFromImage, parsePalette, ramp, shadeRamp, sortColors, swapColors as swapSwatches, toGpl, toJascPal, type Palette, type SortBy } from "../lib/palette";
   import { type Area, brighten, colorCurve, dropShadow, flipRaster, gradientMap, grayscale, hueShift, invertColors, offsetWrap, outline, palettize, pixelate, replaceColor, rotateQuarter, usedColors } from "../lib/sprite-fx";
@@ -34,7 +34,7 @@
 
   let { path, text }: { path: string; text: string } = $props();
 
-  type Tool = "select" | "ellipseSelect" | "lasso" | "wand" | "colorSelect" | "shade" | "gradient" | "pencil" | "eraser" | "fill" | "line" | "rect" | "ellipse" | "polygon" | "polySelect" | "text" | "picker" | "zoom" | "pan";
+  type Tool = "select" | "ellipseSelect" | "lasso" | "wand" | "colorSelect" | "shade" | "gradient" | "pencil" | "eraser" | "fill" | "line" | "rect" | "ellipse" | "polygon" | "polySelect" | "paintSelect" | "text" | "picker" | "zoom" | "pan";
   interface Session {
     doc: SpriteDoc;
     past: SpriteDoc[];
@@ -51,6 +51,7 @@
     { id: "ellipseSelect", label: "Select an ellipse", key: "Shift+M", icon: "◌" },
     { id: "lasso", label: "Select free-hand", key: "Q", icon: "ʘ" },
     { id: "polySelect", label: "Select a polygon (click the corners; click the first corner, double-click or Enter to finish; Shift adds, Alt takes away)", key: "Shift+Q", icon: "⬡" },
+    { id: "paintSelect", label: "Paint a selection (drag with the brush size; Shift adds, Alt takes away)", key: "Alt+Q", icon: "🖌" },
     { id: "wand", label: "Magic wand (joined colour)", key: "W", icon: "✦" },
     { id: "colorSelect", label: "Select a colour everywhere", key: "Shift+W", icon: "❖" },
     { id: "pencil", label: "Pencil", key: "B", icon: "✎" },
@@ -489,7 +490,7 @@
   /// The selection: its bounds, and (when it is not a plain rectangle) the cells it holds (lib/selection.ts).
   let selection: Rect | null = $state(null);
   let selMask = $state.raw<Mask | null>(null);
-  const SELECT_TOOLS: Tool[] = ["select", "ellipseSelect", "lasso", "polySelect", "wand", "colorSelect"];
+  const SELECT_TOOLS: Tool[] = ["select", "ellipseSelect", "lasso", "polySelect", "paintSelect", "wand", "colorSelect"];
   // A polygon selection being clicked out: its corners, how it combines with what was selected, and what was selected.
   let selPoly = $state.raw<{ points: Point[]; how: Combine; base: Mask | null } | null>(null);
   function selPolyShow(towards: Point | null) {
@@ -605,7 +606,7 @@
       }
       if (tool === "wand" || tool === "colorSelect") {
         setSelection(combine(mask, maskFromColor(r, p.x, p.y, tolerance, tool === "wand"), how));
-      } else if (how === "replace" && mask && has(mask, p.x, p.y)) {
+      } else if (tool !== "paintSelect" && how === "replace" && mask && has(mask, p.x, p.y)) {
         // a drag that starts inside the selection carries those pixels along
         const lifted = liftMasked(r, mask);
         if (lifted) {
@@ -616,6 +617,7 @@
       } else {
         if (how === "replace") setSelection(null);
         selecting = { tool, a: p, how, base: how === "replace" ? null : mask, points: [p] };
+        if (tool === "paintSelect") setSelection(combine(selecting.base, maskFromStroke([p], size, doc.fw, doc.fh), how));
       }
       return;
     }
@@ -830,6 +832,9 @@
         const last = s.points.at(-1)!;
         if (last.x !== p.x || last.y !== p.y) s.points.push(...linePoints(last, p).slice(1));
         shape = maskFromPolygon(s.points, doc.fw, doc.fh);
+      } else if (s.tool === "paintSelect") {
+        s.points.push(p);
+        shape = maskFromStroke(s.points, size, doc.fw, doc.fh);
       } else if (s.tool === "ellipseSelect") shape = maskFromEllipse(s.a, p, doc.fw, doc.fh);
       else {
         const rect = rectBetween(s.a, p, doc.fw, doc.fh);

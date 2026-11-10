@@ -123,3 +123,18 @@ describe("moving what is selected", () => {
     expect(outlineSegments(maskFromRect({ x: 0, y: 0, w: 2, h: 1 }, 3, 3))).toHaveLength(6);
   });
 });
+
+import { maskFromStroke, countOf as countCells, has as hasCell } from "./selection";
+describe("a selection painted with a brush", () => {
+  it("covers the cells a stroke's stamps touch, joined with no gaps", () => {
+    const one = maskFromStroke([{ x: 4, y: 4 }], 3, 16, 16);
+    expect(countCells(one)).toBe(9);
+    expect(hasCell(one, 3, 3) && hasCell(one, 5, 5) && !hasCell(one, 6, 4)).toBe(true);
+    const line = maskFromStroke([{ x: 2, y: 2 }, { x: 12, y: 2 }], 1, 16, 16);
+    expect(countCells(line)).toBe(11);
+    for (let x = 2; x <= 12; x++) expect(hasCell(line, x, 2)).toBe(true);
+  });
+  it("stays inside the picture", () => {
+    expect(countCells(maskFromStroke([{ x: 0, y: 0 }], 3, 8, 8))).toBe(4);
+  });
+});

@@ -196,3 +196,22 @@ export function outlineSegments(m: Mask): [number, number, number, number][] {
   }
   return out;
 }
+
+/// A selection painted with a square brush `size` cells across: every cell a stamp along the points touches (the points are joined, so a quick drag leaves no gaps).
+export function maskFromStroke(points: Point[], size: number, w: number, h: number): Mask {
+  const m = emptyMask(w, h);
+  const s = Math.max(1, Math.round(size));
+  const stamp = (p: Point) => {
+    const x0 = p.x - Math.floor((s - 1) / 2);
+    const y0 = p.y - Math.floor((s - 1) / 2);
+    for (let y = y0; y < y0 + s; y++) for (let x = x0; x < x0 + s; x++) set(m, x, y);
+  };
+  points.forEach((p, i) => {
+    if (i === 0) return stamp(p);
+    const a = points[i - 1]!;
+    const steps = Math.max(Math.abs(p.x - a.x), Math.abs(p.y - a.y));
+    for (let k = 1; k <= steps; k++) stamp({ x: Math.round(a.x + ((p.x - a.x) * k) / steps), y: Math.round(a.y + ((p.y - a.y) * k) / steps) });
+  });
+  if (points.length === 1) stamp(points[0]!);
+  return m;
+}
