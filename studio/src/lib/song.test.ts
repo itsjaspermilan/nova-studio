@@ -336,3 +336,38 @@ describe("echo", () => {
     expect(p.ok && p.song.tracks[0]!.echoFeedback).toBe(0.85);
   });
 });
+
+describe("the wavetable and formula instruments", () => {
+  const cross = (c: Float32Array) => c.reduce((n, x, i) => (i > 0 && (c[i - 1]! < 0) !== (x < 0) ? n + 1 : n), 0);
+  const one = (extra: Partial<ReturnType<typeof synthTrack>>): Song => ({ version: 1, bpm: 120, stepsPerBeat: 4, length: 8, tracks: [{ ...synthTrack("w", "sine"), sustain: 1, attack: 0, release: 0.01, notes: [{ step: 0, len: 8, pitch: 69, vel: 1 }], ...extra }] });
+  it("the wavetable at 0 is a sine at the pitch, and moving along adds highs", () => {
+    const sine = renderSong(one({ wave: "wavetable", wtPos: 0 }), 22050).channels[0]!;
+    // 440 Hz for one second: about 880 zero crossings
+    expect(cross(sine)).toBeGreaterThan(860);
+    expect(cross(sine)).toBeLessThan(900);
+    const hf = (c: Float32Array) => { let e = 0; for (let i = 1; i < c.length; i++) e += (c[i]! - c[i - 1]!) ** 2; return e / c.reduce((s, x) => s + x * x, 1e-9); };
+    const square = renderSong(one({ wave: "wavetable", wtPos: 1 }), 22050).channels[0]!;
+    expect(hf(square)).toBeGreaterThan(hf(sine) * 2);
+    expect(Math.max(...square.map(Math.abs))).toBeGreaterThan(0.1);
+  });
+  it("a formula is played at the note's pitch, and a bad one is refused when the file is read", () => {
+    const f = renderSong(one({ wave: "formula", formula: "sin(2 * pi * p)" }), 22050).channels[0]!;
+    expect(cross(f)).toBeGreaterThan(860);
+    expect(cross(f)).toBeLessThan(900);
+    const fade = renderSong(one({ wave: "formula", formula: "sin(2 * pi * p) * (1 - t)" }), 22050).channels[0]!;
+    const rms = (c: Float32Array, a: number, b: number) => Math.sqrt(c.slice(a, b).reduce((s, x) => s + x * x, 0) / (b - a));
+    expect(rms(fade, 12000, 16000)).toBeLessThan(rms(fade, 500, 4500) * 0.7);
+    const s = one({ wave: "formula", formula: "sin(2 * pi * p)" });
+    expect(parseSong(serializeSong(s)).ok).toBe(true);
+    const bad = JSON.parse(serializeSong(s));
+    bad.tracks[0].formula = "sin(";
+    const r = parseSong(JSON.stringify(bad));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain("formula");
+  });
+  it("are the same every time", () => {
+    const a = renderSong(one({ wave: "formula", formula: "noise(p * 1000) * 0.3" }), 8000).channels[0]!;
+    const b = renderSong(one({ wave: "formula", formula: "noise(p * 1000) * 0.3" }), 8000).channels[0]!;
+    expect(Array.from(a)).toEqual(Array.from(b));
+  });
+});

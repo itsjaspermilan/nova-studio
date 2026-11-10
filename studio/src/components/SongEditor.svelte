@@ -8,6 +8,7 @@
   import { encodeWav, toBase64, frames, type Sound } from "../lib/wav";
   import { studio } from "../lib/store.svelte";
   import MixerPanel from "./MixerPanel.svelte";
+  import { compileFormula } from "../lib/formula";
   import ArrangePanel from "./ArrangePanel.svelte";
   import SongTools from "./SongTools.svelte";
   import { midiToSong, songToMidi } from "../lib/midi";
@@ -35,6 +36,7 @@
   let noteLen = $state(1);
   let loop = $state(true);
   /// The lower part shows the mixer, or the notes' loudness bars, or nothing.
+  let formulaError = $state("");
   let taps: number[] = [];
   const tap = () => {
     taps = [...taps.slice(-15), performance.now()];
@@ -663,6 +665,14 @@
           {:else if current.wave === "pluck"}
             <label class="slider" title="How long the string rings"><span>Rings</span><input type="range" min="0" max="1" step="0.01" value={current.damping ?? 0.7} oninput={(e) => setTrack({ damping: Number(e.currentTarget.value) })} /><output>{(current.damping ?? 0.7).toFixed(2)}</output></label>
             <label class="slider"><span>Bright</span><input type="range" min="0" max="1" step="0.01" value={current.brightness ?? 0.6} oninput={(e) => setTrack({ brightness: Number(e.currentTarget.value) })} /><output>{(current.brightness ?? 0.6).toFixed(2)}</output></label>
+          {:else if current.wave === "wavetable"}
+            <label class="slider" title="Where in the table of shapes: sine, triangle, saw, square"><span>Shape</span><input type="range" min="0" max="1" step="0.01" value={current.wtPos ?? 0.3} oninput={(e) => setTrack({ wtPos: Number(e.currentTarget.value) })} /><output>{(current.wtPos ?? 0.3).toFixed(2)}</output></label>
+          {:else if current.wave === "formula"}
+            <label>Formula
+              <input value={current.formula ?? "sin(2 * pi * p)"} aria-label="Formula" onchange={(e) => { const c = compileFormula(e.currentTarget.value); formulaError = c.ok ? "" : c.error; if (c.ok) setTrack({ formula: e.currentTarget.value }); }} />
+            </label>
+            {#if formulaError}<p class="bad small" role="alert">{formulaError}</p>{/if}
+            <p class="dim small">A function of <code>p</code> (the phase, which sets the pitch), <code>t</code> (seconds) and <code>f</code> (Hz). Try <code>sin(2*pi*p) * (1 - t)</code>.</p>
           {:else if current.wave === "organ"}
             <label class="slider" title="More or fewer of the upper harmonics"><span>Bright</span><input type="range" min="0" max="1" step="0.01" value={current.brightness ?? 0.5} oninput={(e) => setTrack({ brightness: Number(e.currentTarget.value) })} /><output>{(current.brightness ?? 0.5).toFixed(2)}</output></label>
           {/if}

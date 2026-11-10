@@ -10,15 +10,16 @@
 // the `chip` one. A song with none of these renders exactly as before.
 
 import { mulberry32 } from "./sfx";
+import { compileFormula } from "./formula";
 import { applyAutomation } from "./song-lanes";
 import { applyFx, cleanFx, type Fx } from "./fx";
 import { integratedLufs, limitPeaks } from "./loudness";
 import type { Sound } from "./wav";
 
-export type Wave = "square" | "saw" | "triangle" | "sine" | "noise" | "fm" | "pluck" | "organ";
-export const WAVES: Wave[] = ["square", "saw", "triangle", "sine", "noise", "fm", "pluck", "organ"];
+export type Wave = "square" | "saw" | "triangle" | "sine" | "noise" | "fm" | "pluck" | "organ" | "wavetable" | "formula";
+export const WAVES: Wave[] = ["square", "saw", "triangle", "sine", "noise", "fm", "pluck", "organ", "wavetable", "formula"];
 /// The waves that are whole instruments (their own settings; the fuller voice's unison, filter and vibrato do not apply to them).
-export const INSTRUMENT_WAVES: Wave[] = ["fm", "pluck", "organ"];
+export const INSTRUMENT_WAVES: Wave[] = ["fm", "pluck", "organ", "wavetable", "formula"];
 export const isInstrument = (w: Wave) => INSTRUMENT_WAVES.includes(w);
 
 export interface Note {
@@ -75,6 +76,10 @@ export interface Track {
   fmIndex?: number;
   /// The "pluck" instrument: how long the string rings (0 short to 1 long).
   damping?: number;
+  /// The "wavetable" instrument: where in the table of shapes it plays, 0 (sine) through triangle and saw (a third and two thirds) to 1 (square).
+  wtPos?: number;
+  /// The "formula" instrument: an expression of the phase `p`, the time `t` and the pitch `f` (lib/formula.ts).
+  formula?: string;
   /// The "pluck" and "organ" instruments: how bright it is (0 dull to 1 bright).
   brightness?: number;
   /// A lane that changes how loud the notes are over the song: the gain (0 to 2) at each note's start follows these points (lib/song-tools.ts).
@@ -295,7 +300,7 @@ const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n
 /// The voice fields' names and ranges.
 const VOICE_RANGES: [keyof Track, number, number][] = [
   ["unison", 1, 7], ["detune", 0, 60], ["cutoff", 0, 20000], ["resonance", 0, 0.9], ["sweep", 0, 1], ["sub", 0, 1], ["vibrato", 0, 0.5], ["reverb", 0, 1], ["echo", 0, 1], ["echoTime", 1, 16], ["echoFeedback", 0, 0.85],
-  ["fmRatio", 0.25, 8], ["fmIndex", 0, 12], ["damping", 0, 1], ["brightness", 0, 1],
+  ["fmRatio", 0.25, 8], ["fmIndex", 0, 12], ["damping", 0, 1], ["brightness", 0, 1], ["wtPos", 0, 1],
 ];
 
 export type Parsed = { ok: true; song: Song } | { ok: false; error: string };
@@ -376,6 +381,12 @@ export function parseSong(text: string): Parsed {
       else delete (t as Partial<Track>).patterns;
       if (cleanClips.length) voice.clips = cleanClips;
       else delete (t as Partial<Track>).clips;
+    }
+    if (t.formula !== undefined) {
+      if (typeof t.formula !== "string") return { ok: false, error: `${at}.formula must be text` };
+      const c = compileFormula(t.formula);
+      if (!c.ok) return { ok: false, error: `${at}.formula: ${c.error}` };
+      voice.formula = t.formula;
     }
     if (t.bus !== undefined && typeof t.bus !== "string") return { ok: false, error: `${at}.bus must be a bus name` };
     if (t.sends !== undefined) {
@@ -502,6 +513,7 @@ export function serializeSong(song: Song): string {
     if (t.color) fields.push(`"color": ${JSON.stringify(t.color)}`);
     if (t.patterns?.length) fields.push(`"patterns": ${JSON.stringify(t.patterns)}`);
     if (t.clips?.length) fields.push(`"clips": ${JSON.stringify(t.clips)}`);
+    if (t.formula) fields.push(`"formula": ${JSON.stringify(t.formula)}`);
     if (t.bus) fields.push(`"bus": ${JSON.stringify(t.bus)}`);
     if (t.sends?.length) fields.push(`"sends": ${JSON.stringify(t.sends)}`);
     if (t.fx?.length) fields.push(`"fx": ${JSON.stringify(t.fx)}`);
@@ -690,6 +702,36 @@ function oscillator(wave: Wave, duty: number, rng: () => number) {
 /// The instruments that are more than one oscillator: FM (a sine bent by another sine), a plucked string (Karplus-Strong) and an organ (added harmonics).
 /// Each call makes a voice for one note; it gives one sample each time it is called with the note's pitch.
 function instrumentOscillator(t: Track, rng: () => number) {
+  if (t.wave === "wavetable") {
+    // a table of four shapes, blended between neighbours: sine, triangle, saw, square (saw and square softened by PolyBLEP so that high notes do not hiss)
+    const pos = clamp(t.wtPos ?? 0.3, 0, 1) * 3;
+    const lo = Math.min(2, Math.floor(pos));
+    const k = pos - lo;
+    let phase = 0;
+    const shape = (i: number, ph: number, dt: number) => {
+      switch (i) {
+        case 0: return Math.sin(2 * Math.PI * ph);
+        case 1: return ph < 0.5 ? 4 * ph - 1 : 3 - 4 * ph;
+        case 2: return 2 * ph - 1 - polyblep(ph, dt);
+        default: return (ph < 0.5 ? 1 : -1) + polyblep(ph, dt) - polyblep((ph + 0.5) % 1, dt);
+      }
+    };
+    return (freq: number, rate: number) => {
+      const dt = freq / rate;
+      phase = (phase + dt) % 1;
+      return shape(lo, phase, dt) * (1 - k) + shape(lo + 1, phase, dt) * k;
+    };
+  }
+  if (t.wave === "formula") {
+    const c = compileFormula(t.formula ?? "sin(2 * pi * p)");
+    const run = c.ok ? c.run : () => 0;
+    let phase = 0;
+    let n = 0;
+    return (freq: number, rate: number) => {
+      phase = (phase + freq / rate) % 1;
+      return run({ p: phase, t: n++ / rate, f: freq });
+    };
+  }
   if (t.wave === "fm") {
     const ratio = t.fmRatio ?? 2;
     const index = t.fmIndex ?? 3;
@@ -749,6 +791,8 @@ export const INSTRUMENT_PRESETS: { name: string; set: Partial<Track> }[] = [
   { name: "Electric piano (FM)", set: { wave: "fm", fmRatio: 1, fmIndex: 2.2, attack: 0.005, decay: 0.6, sustain: 0.25, release: 0.3 } },
   { name: "Bell (FM)", set: { wave: "fm", fmRatio: 3.5, fmIndex: 5, attack: 0.002, decay: 1.2, sustain: 0.1, release: 0.8 } },
   { name: "Plucked string", set: { wave: "pluck", damping: 0.75, brightness: 0.55, attack: 0.001, decay: 0.05, sustain: 0.95, release: 0.25 } },
+  { name: "Wavetable sweep", set: { wave: "wavetable", wtPos: 0.55, attack: 0.02, decay: 0.2, sustain: 0.7, release: 0.2 } },
+  { name: "Formula: soft square", set: { wave: "formula", formula: "tri(p) * 0.6 + sq(p) * 0.2", attack: 0.01, decay: 0.1, sustain: 0.8, release: 0.1 } },
   { name: "Organ", set: { wave: "organ", brightness: 0.55, attack: 0.01, decay: 0.05, sustain: 0.95, release: 0.08 } },
 ];
 
