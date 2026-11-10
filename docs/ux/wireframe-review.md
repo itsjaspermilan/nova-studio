@@ -48,6 +48,8 @@ File, Edit, Code, View, Run, Window, Help (wireframe: Project, Device). The scen
 
 Checked in the browser preview for Engine; the Sprites and Sound changes are type-checked and the component tests pass, not looked at.
 
+- **Sprites header, shorter (2026-11-10):** onion skin, grid, rulers and Canvas size moved into a **View ▾** pop-over, so the options bar is two short rows plus the zoom row at 1000 px wide (seen working in the browser preview: the pop-over opened with all of them; before it was three long lines).
+
 ## Next
 
-Every item in the first review's list is done except what the notes above say is missing: a resizable song editor band, a minimap in Engine, a Hot reload switch (none exists), a shorter Sprites header at narrow widths, and everything that needs the real app or a person looking.
+Every item in the first review's list is done except what the notes above say is missing: a resizable song editor band, a minimap in Engine, a Hot reload switch (none exists), and everything that needs the real app or a person looking.

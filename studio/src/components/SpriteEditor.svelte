@@ -1715,6 +1715,8 @@
             <option value="off">off</option><option value="x">across</option><option value="y">down</option><option value="both">both</option>
           </select>
         </label>
+        <details class="viewopts"><summary title="Onion skin, grid, rulers and canvas size">View ▾</summary>
+        <div class="viewpop">
         <label class="check"><input type="checkbox" bind:checked={onion} /> Onion skin</label>
         {#if onion}
           <label title="Frames before this one shown faintly">before <select bind:value={onionPast}>{#each [0, 1, 2, 3] as n (n)}<option value={n}>{n}</option>{/each}</select></label>
@@ -1725,6 +1727,8 @@
         {#if showGrid}<label title="Draw a grid line every this many pixels">every <select bind:value={gridStep}>{#each [1, 2, 4, 8, 16, 32] as n (n)}<option value={n}>{n}</option>{/each}</select></label>{/if}
         <label class="check" title="Rulers along the top and left, in pixels"><input type="checkbox" bind:checked={rulers} /> Rulers</label>
         <button class="ghost" onclick={openSizing}>Canvas size…</button>
+        </div>
+        </details>
         <span class="spacer"></span>
         <button class="ghost" onclick={() => setZoom(zoom - (zoom > 8 ? 4 : 1))} aria-label="Zoom out">−</button>
         <span class="dim">{zoom * 100}%</span>
@@ -2132,6 +2136,9 @@
   .work { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
   .options { display: flex; align-items: center; gap: 10px; padding: 4px 10px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   .options label { display: flex; align-items: center; gap: 4px; }
+  .viewopts { position: relative; }
+  .viewopts summary { cursor: pointer; user-select: none; padding: 2px 6px; border: 1px solid var(--line); border-radius: 4px; }
+  .viewpop { position: absolute; z-index: 20; top: 100%; left: 0; margin-top: 4px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 8px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.35); white-space: nowrap; }
   .check input { margin: 0; }
   .spacer { flex: 1; }
   .narrow { width: 64px; padding: 2px 6px; }
