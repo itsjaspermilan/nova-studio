@@ -5,6 +5,7 @@
   import { placesOf, strokeMaps } from "../lib/symmetry";
   import { encodeGif, scaleRaster } from "../lib/gif";
   import { LAYER_FX, LAYER_FX_TYPES, MAX_LAYER_FX, addLayerEffect, moveLayerEffect, removeLayerEffect, setLayerEffectParam, toggleLayerEffect, type LayerFxType } from "../lib/layer-fx";
+  import { rotSprite, rotateNearest, scaleTo } from "../lib/sprite-transform";
   import { drawText, textSize } from "../lib/pixel-text";
   import { needsMap, scrollToCentre, visibleBox } from "../lib/minimap";
   import { BRUSH_SHAPES, DITHERS, brushFromRaster, brushOffsets, gradientFill, pressureSize, shadeColor, stampBrush, stampPicture, type BrushShape, type Dither, type PictureBrush } from "../lib/brush";
@@ -880,6 +881,27 @@
     setRect({ x: at.x, y: at.y, w: clipboard.w, h: clipboard.h });
   }
 
+  // ---- turning and resizing the selection ----
+  let turnDegrees = $state(15);
+  let cleanTurn = $state(true);
+  let scalePercent = $state(200);
+  /// Lifts the selected pixels, changes the piece, and puts it back with its middle where the old one's middle was; the result is the new selection.
+  function transformSelection(change: (piece: Raster) => Raster) {
+    if (lockedLayer()) return;
+    const mask = currentMask();
+    const lifted = mask ? liftMasked(cel(), mask) : null;
+    if (!lifted) return;
+    const piece = change(lifted.piece);
+    const nx = Math.round(lifted.bounds.x + lifted.bounds.w / 2 - piece.w / 2);
+    const ny = Math.round(lifted.bounds.y + lifted.bounds.h / 2 - piece.h / 2);
+    const next = cloneDoc(doc);
+    next.layers[activeLayer]!.cels[frame] = place(lifted.rest, piece, nx, ny);
+    structural(next);
+    setRect({ x: nx, y: ny, w: piece.w, h: piece.h });
+  }
+  const turnSelection = (sign: 1 | -1) => transformSelection((piece) => (cleanTurn ? rotSprite(piece, sign * turnDegrees) : rotateNearest(piece, sign * turnDegrees)));
+  const scaleSelection = () => transformSelection((piece) => scaleTo(piece, (piece.w * scalePercent) / 100, (piece.h * scalePercent) / 100));
+
   // ---- canvas size ----------------------------------------------------------------------------------
   let sizing = $state(false);
   let newW = $state(32);
@@ -1497,6 +1519,16 @@
           <label class="slider" title="How different a colour may be and still be filled (0 is exactly the same)"><span>Tolerance</span><input type="range" min="0" max="255" step="1" bind:value={fillTolerance} /><output>{fillTolerance}</output></label>
           <label title="Joined area, or every pixel of that colour in the picture">Fill <select bind:value={fillEverywhere}><option value={false}>joined area</option><option value={true}>same colour everywhere</option></select></label>
           {#if selection}<label class="check" title="Only change pixels inside the selection"><input type="checkbox" bind:checked={fillInSelection} /> Inside the selection</label>{/if}
+        {/if}
+        {#if selection && isSelectTool(tool)}
+          <span class="seltools" role="group" aria-label="Turn or resize the selection">
+            <label class="inline" title="Degrees">Turn <input type="number" min="1" max="359" step="1" bind:value={turnDegrees} class="narrow" aria-label="Degrees to turn" />°</label>
+            <button onclick={() => turnSelection(-1)} title="Turn the selected pixels anticlockwise" aria-label="Turn anticlockwise">↺</button>
+            <button onclick={() => turnSelection(1)} title="Turn the selected pixels clockwise" aria-label="Turn clockwise">↻</button>
+            <label class="check" title="RotSprite: enlarge, turn and shrink so that lines stay clean (off: the plain nearest-pixel turn)"><input type="checkbox" bind:checked={cleanTurn} /> Clean edges</label>
+            <label class="inline">Resize <input type="number" min="10" max="800" step="10" bind:value={scalePercent} class="narrow" aria-label="Resize percent" />%</label>
+            <button onclick={scaleSelection} title="Make the selected pixels this much bigger or smaller (nearest pixel)">Resize</button>
+          </span>
         {/if}
         {#if tool === "text"}
           <label>Text <input bind:value={textValue} class="wide" aria-label="Text to draw" placeholder="type here (Enter makes no new line: use \n)" /></label>
