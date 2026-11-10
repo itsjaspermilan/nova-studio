@@ -57,3 +57,12 @@ describe("commands the page handles itself", () => {
     expect(r.forEvent({ ...a, isTrusted: false } as KeyboardEvent)).toBeUndefined();
   });
 });
+
+describe("Alt letters for the drawn menus", () => {
+  it("takes the first free letter of each title", async () => {
+    const { mnemonicsFor } = await import("./menus");
+    expect(mnemonicsFor(["File", "Edit", "Code", "View", "Model", "Sprite", "Sound", "Run", "Window", "Help"])).toEqual(["f", "e", "c", "v", "m", "s", "o", "r", "w", "h"]);
+    expect(mnemonicsFor(["Aa", "Aa"])).toEqual(["a", ""]);
+    expect(mnemonicsFor([])).toEqual([]);
+  });
+});

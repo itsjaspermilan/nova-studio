@@ -89,3 +89,18 @@ export function accelerator(chord: string): string {
 
 export { sendChord };
 export type { Platform };
+
+/// The letter that opens each menu with Alt (Windows convention): the first letter of the title, or the next letter of it that no earlier menu took; "" when every
+/// letter is taken. Lower case, one per title, in order.
+export function mnemonicsFor(titles: string[]): string[] {
+  const used = new Set<string>();
+  return titles.map((t) => {
+    for (const ch of t.toLowerCase()) {
+      if (/[a-z0-9]/.test(ch) && !used.has(ch)) {
+        used.add(ch);
+        return ch;
+      }
+    }
+    return "";
+  });
+}
