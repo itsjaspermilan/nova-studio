@@ -635,6 +635,20 @@
     doc; viewMode; // redraw whenever the model changes or is shown another way
     if (modelGroup) untrack(rebuild);
   });
+  // Local view: only the chosen part (and what is inside it) is drawn, to work on it without the rest in the way.
+  let localView = $state(false);
+  function applyLocalView() {
+    const sel = selected;
+    for (const e of meshes) {
+      const inside = !!sel && sel.parts.length <= e.path.parts.length && sel.parts.every((v, i) => e.path.parts[i] === v);
+      e.mesh.visible = !localView || !sel || inside;
+      if (e.cage) e.cage.mesh.visible = e.mesh.visible;
+    }
+  }
+  $effect(() => {
+    doc; viewMode; localView; selected; // after a rebuild, or when the choice changes
+    if (modelGroup) untrack(applyLocalView);
+  });
   $effect(() => {
     selected; also;
     untrack(drawOutline);
@@ -2569,6 +2583,7 @@
           <label class="check" title="Snap to whole units and 15 degrees"><input type="checkbox" bind:checked={snap} /> Snap</label>
         {/if}
         <label class="check"><input type="checkbox" bind:checked={showGrid} /> Grid</label>
+        <label class="check" title="Draw only the chosen part and what is inside it"><input type="checkbox" bind:checked={localView} /> Local</label>
         <select bind:value={viewMode} aria-label="View (Z)" title="How the model is drawn (Z)">
           <option value="textured">Textured</option>
           <option value="solid">Colours only</option>
