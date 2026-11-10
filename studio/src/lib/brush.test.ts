@@ -92,3 +92,21 @@ describe("gradients", () => {
     expect(ditherThreshold("none", 0, 0)).toBe(-1);
   });
 });
+
+describe("brushes cut from a picture", () => {
+  it("keeps the visible cells around the middle and stamps them with their colours or one colour", async () => {
+    const { brushFromRaster, stampPicture } = await import("./brush");
+    const piece = newRaster(3, 3);
+    setPixel(piece, 1, 1, [255, 0, 0, 255]);
+    setPixel(piece, 2, 1, [0, 255, 0, 255]);
+    const b = brushFromRaster(piece)!;
+    expect(b.cells).toHaveLength(2);
+    const r = newRaster(6, 6);
+    stampPicture(r, 3, 3, b);
+    expect(getPixel(r, 3, 3)).toEqual([255, 0, 0, 255]);
+    expect(getPixel(r, 4, 3)).toEqual([0, 255, 0, 255]);
+    stampPicture(r, 1, 1, b, [9, 9, 9, 255]);
+    expect(getPixel(r, 2, 1)).toEqual([9, 9, 9, 255]);
+    expect(brushFromRaster(newRaster(2, 2))).toBeNull();
+  });
+});

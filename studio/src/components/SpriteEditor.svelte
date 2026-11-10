@@ -1,17 +1,18 @@
 <script lang="ts">
   import { resizable } from "../lib/resize";
-  import { onMount, untrack } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
   import { commands } from "../lib/commands";
   import { placesOf, strokeMaps } from "../lib/symmetry";
   import { encodeGif, scaleRaster } from "../lib/gif";
-  import { BRUSH_SHAPES, DITHERS, brushOffsets, gradientFill, shadeColor, stampBrush, type BrushShape, type Dither } from "../lib/brush";
+  import { BRUSH_SHAPES, DITHERS, brushFromRaster, brushOffsets, gradientFill, shadeColor, stampBrush, stampPicture, type BrushShape, type Dither, type PictureBrush } from "../lib/brush";
+  import { encodeApng } from "../lib/apng";
   import { toBase64 } from "../lib/wav";
   import { boundsOf, combine, emptyMask, growMask, has, invertMask, isEmpty, isRect, liftMasked, maskFromColor, maskFromEllipse, maskFromPolygon, maskFromRect, outlineSegments, placeMask, type Combine, type Mask } from "../lib/selection";
   import { commandsRev } from "../lib/commands-rev.svelte";
-  import { PaletteStore, normalizeHex, nearestColor, parsePalette, toGpl, type Palette } from "../lib/palette";
-  import { type Area, brighten, dropShadow, flipRaster, grayscale, hueShift, invertColors, outline, rotateQuarter, usedColors } from "../lib/sprite-fx";
+  import { PaletteStore, normalizeHex, nearestColor, paletteFromImage, parsePalette, ramp, shadeRamp, sortColors, swapColors as swapSwatches, toGpl, toJascPal, type Palette, type SortBy } from "../lib/palette";
+  import { type Area, brighten, colorCurve, dropShadow, flipRaster, gradientMap, grayscale, hueShift, invertColors, outline, palettize, pixelate, rotateQuarter, usedColors } from "../lib/sprite-fx";
   import {
-    BLEND_MODES, CLEAR, cloneRaster, crop, drawEllipse, drawLine, drawRect, floodFill, getPixel, inRect, inside, isClear, lift, linePoints, parseHex, pixelPerfect, place, rectBetween, stamp, toHex,
+    BLEND_MODES, CLEAR, cloneRaster, crop, drawEllipse, drawLine, drawPolygon, drawRect, fillWith, getPixel, inRect, inside, isClear, lift, linePoints, parseHex, pixelPerfect, place, rectBetween, stamp, toHex,
     type BlendMode, type Point, type Raster, type Rect, type Rgba,
   } from "../lib/pixels";
   import {
@@ -24,7 +25,7 @@
 
   let { path, text }: { path: string; text: string } = $props();
 
-  type Tool = "select" | "ellipseSelect" | "lasso" | "wand" | "colorSelect" | "shade" | "gradient" | "pencil" | "eraser" | "fill" | "line" | "rect" | "ellipse" | "picker";
+  type Tool = "select" | "ellipseSelect" | "lasso" | "wand" | "colorSelect" | "shade" | "gradient" | "pencil" | "eraser" | "fill" | "line" | "rect" | "ellipse" | "polygon" | "picker" | "zoom" | "pan";
   interface Session {
     doc: SpriteDoc;
     past: SpriteDoc[];
@@ -50,7 +51,10 @@
     { id: "line", label: "Line", key: "L", icon: "╱" },
     { id: "rect", label: "Rectangle", key: "R", icon: "▭" },
     { id: "ellipse", label: "Ellipse", key: "O", icon: "◯" },
+    { id: "polygon", label: "Polygon (click the corners; click the first corner, double-click or Enter to finish)", key: "P", icon: "⬠" },
     { id: "picker", label: "Colour picker", key: "I", icon: "✚" },
+    { id: "zoom", label: "Zoom (click to zoom in, Alt-click to zoom out)", key: "Z", icon: "⌕" },
+    { id: "pan", label: "Pan (drag the picture round)", key: "H", icon: "✋" },
   ];
 
   const fromPath = untrack(() => path);
@@ -228,6 +232,33 @@
     return doc.frames[frame]!;
   });
 
+  function drawReference(ctx: CanvasRenderingContext2D) {
+    if (!refPicture) return;
+    ctx.globalAlpha = refOpacity;
+    ctx.drawImage(refPicture, refX * zoom, refY * zoom, refSize.w * refScale * zoom, refSize.h * refScale * zoom);
+    ctx.globalAlpha = 1;
+  }
+  async function loadReference(path: string) {
+    refPath = path;
+    refPicture = null;
+    if (!path) return void refTick++;
+    try {
+      const r = await loadRaster(await studio.api!.readImage(path));
+      const c = document.createElement("canvas");
+      c.width = r.w;
+      c.height = r.h;
+      c.getContext("2d")!.putImageData(new ImageData(new Uint8ClampedArray(r.data), r.w, r.h), 0, 0);
+      refPicture = c;
+      refSize = { w: r.w, h: r.h };
+      refScale = Math.max(1, Math.min(doc.fw / r.w, doc.fh / r.h, 8));
+      refX = refY = 0;
+    } catch (e) {
+      studio.say("error", `Could not open the reference picture: ${e instanceof Error ? e.message : e}`);
+    }
+    refTick++;
+  }
+  const referenceCandidates = $derived(studio.files.filter((f) => !f.dir && /\.(png|jpe?g)$/i.test(f.path) && f.path !== session?.imagePath).map((f) => f.path));
+
   function paint() {
     const ctx = canvas?.getContext("2d");
     if (!ctx || !canvas || !ready) return;
@@ -242,6 +273,7 @@
       ctx.fillRect(x * cell, y * cell, cell, cell);
     }
     ctx.imageSmoothingEnabled = false;
+    if (refPicture && !refOver) drawReference(ctx);
     const blit = (r: Raster, alpha: number) => {
       const tmp = document.createElement("canvas");
       tmp.width = r.w;
@@ -272,11 +304,12 @@
       for (let k = onionFuture; k >= 1; k--) if (frame + k <= anim.to) ghost(doc.frames[frame + k]!, 0.4 / k, onionTint ? "rgba(255,80,80,.6)" : null);
     }
     blit(current, 1);
-    if (showGrid && zoom >= 8) {
+    if (refPicture && refOver) drawReference(ctx);
+    if (showGrid && (zoom >= 8 || (gridStep > 1 && zoom >= 3))) {
       ctx.strokeStyle = "rgba(255,255,255,.12)";
       ctx.beginPath();
-      for (let x = 1; x < doc.fw; x++) { ctx.moveTo(x * zoom + 0.5, 0); ctx.lineTo(x * zoom + 0.5, h); }
-      for (let y = 1; y < doc.fh; y++) { ctx.moveTo(0, y * zoom + 0.5); ctx.lineTo(w, y * zoom + 0.5); }
+      for (let x = gridStep; x < doc.fw; x += gridStep) { ctx.moveTo(x * zoom + 0.5, 0); ctx.lineTo(x * zoom + 0.5, h); }
+      for (let y = gridStep; y < doc.fh; y += gridStep) { ctx.moveTo(0, y * zoom + 0.5); ctx.lineTo(w, y * zoom + 0.5); }
       ctx.stroke();
     }
     if (selection && isSelectTool(tool)) {
@@ -311,7 +344,7 @@
 
   $effect(() => {
     // everything the picture depends on
-    doc; frame; rev; zoom; onion; onionPast; onionFuture; onionTint; showGrid; ready; hover; size; tool; playing; canvas; selection; selMask; symX; symY; symD; tileX; tileY;
+    doc; frame; rev; zoom; onion; onionPast; onionFuture; onionTint; showGrid; ready; hover; size; tool; playing; canvas; selection; selMask; symX; symY; symD; tileX; tileY; gridStep; refTick; refOpacity; refOver; refScale; refX; refY;
     paint();
   });
 
@@ -376,6 +409,37 @@
   let rightColor: Rgba = $state([255, 255, 255, 255]);
   let swapped: { tool: Tool; color: Rgba } | null = null;
   let perfect = $state(true);
+  let gridStep = $state(1);
+  let rulers = $state(false);
+  // a reference picture drawn under or over the canvas (never saved with the sprite)
+  let refPath = $state("");
+  let refPicture: HTMLCanvasElement | null = null;
+  let refSize = $state({ w: 0, h: 0 });
+  let refOpacity = $state(0.5);
+  let refOver = $state(false);
+  let refScale = $state(1);
+  let refX = $state(0);
+  let refY = $state(0);
+  let refTick = $state(0);
+  // fill options, a brush cut from the picture, the polygon being clicked out, and the colour lock
+  let fillTolerance = $state(0);
+  let fillEverywhere = $state(false);
+  let fillInSelection = $state(true);
+  let pictureBrush = $state.raw<PictureBrush | null>(null);
+  let brushKeepsColors = $state(true);
+  let lockPalette = $state(false);
+  let poly: Point[] = [];
+  let polyBase: Raster | null = null;
+  let polyBefore: SpriteDoc | null = null;
+  let polyShown = $state(0); // how many corners are placed (for the hint)
+  let panning: { x: number; y: number; left: number; top: number } | null = null;
+  let scroller: HTMLDivElement | undefined = $state();
+  /// The colour that is drawn: the chosen one, or the nearest palette colour when the palette is locked.
+  const ink = (): Rgba => {
+    if (!lockPalette || !palette.colors.length) return color;
+    const near = parseHex(nearestColor(palette.colors, hex(color)));
+    return near ? [near[0], near[1], near[2], color[3]] : color;
+  };
   /// The selection: its bounds, and (when it is not a plain rectangle) the cells it holds (lib/selection.ts).
   let selection: Rect | null = $state(null);
   let selMask = $state.raw<Mask | null>(null);
@@ -410,7 +474,7 @@
   }
 
   function down(e: PointerEvent) {
-    if ((e.button !== 0 && e.button !== 2) || !ready) return;
+    if ((e.button !== 0 && e.button !== 1 && e.button !== 2) || !ready) return;
     const p = cell(e);
     // the right button works with the right-hand tool and colour for as long as it is held down (finish() puts the left-hand ones back)
     if (e.button === 2) {
@@ -431,6 +495,16 @@
       }
       return;
     }
+    if (e.button === 1 || (tool === "pan" && e.button === 0)) {
+      if (!scroller) return;
+      panning = { x: e.clientX, y: e.clientY, left: scroller.scrollLeft, top: scroller.scrollTop };
+      canvas!.setPointerCapture(e.pointerId);
+      return;
+    }
+    if (tool === "zoom") {
+      setZoom(e.altKey ? (zoom > 8 ? zoom - 4 : zoom - 1) : zoom >= 8 ? zoom + 4 : zoom + 1, e);
+      return;
+    }
     const layer = doc.layers[activeLayer]!;
     if (!layer.visible) {
       studio.say("info", `"${layer.name}" is hidden. Show it (the eye) to draw on it.`);
@@ -443,6 +517,10 @@
     }
     const r = cel();
     canvas!.setPointerCapture(e.pointerId);
+    if (tool === "polygon") {
+      polygonClick(p, e.detail >= 2);
+      return;
+    }
     if (isSelectTool(tool)) {
       const mask = currentMask();
       // Shift adds to the selection, Alt takes from it, both keep only where they overlap
@@ -470,7 +548,8 @@
     strokePoints = [p];
     if (tool === "pencil" || tool === "eraser" || tool === "shade") drawStroke(r);
     else if (tool === "fill") {
-      for (const q of placesOf(p, fillMaps, doc.fw, doc.fh)) floodFill(r, q.x, q.y, color);
+      const inside_ = fillInSelection ? currentMask() : null;
+      for (const q of placesOf(p, fillMaps, doc.fw, doc.fh)) fillWith(r, q.x, q.y, ink(), { tolerance: fillTolerance, everywhere: fillEverywhere, within: inside_ ? (x, y) => has(inside_, x, y) : undefined });
       recompose(doc, frame);
       finish();
       return;
@@ -483,8 +562,9 @@
   /// take a corner pixel back as the line continues.
   function drawStroke(r: Raster) {
     r.data.set(base!.data);
-    const c = tool === "eraser" ? CLEAR : color;
-    const points = tool === "pencil" && perfect && size === 1 ? pixelPerfect(strokePoints) : strokePoints;
+    const c = tool === "eraser" ? CLEAR : ink();
+    const custom = pictureBrush && (tool === "pencil" || tool === "eraser");
+    const points = tool === "pencil" && perfect && size === 1 && !custom ? pixelPerfect(strokePoints) : strokePoints;
     if (tool === "shade") {
       // each cell the stroke covers is shaded once, however many times the brush passes over it
       const covered = new Set<string>();
@@ -500,6 +580,11 @@
       return;
     }
     // (a brush that hangs over the edge of a tiled sprite comes back in at the other side: places up to a brush's width outside count)
+    if (custom) {
+      const reach = Math.max(pictureBrush!.w, pictureBrush!.h);
+      for (const pt of points) for (const q of placesOf(pt, maps, doc.fw, doc.fh, reach)) stampPicture(r, q.x, q.y, pictureBrush!, tool === "eraser" ? CLEAR : brushKeepsColors ? undefined : c);
+      return;
+    }
     for (const pt of points) for (const q of placesOf(pt, maps, doc.fw, doc.fh, size + 1)) stampBrush(r, q.x, q.y, size, brushShape, c);
   }
 
@@ -508,21 +593,124 @@
     if (tool === "gradient") {
       // the left colour at the start of the drag to the right-hand colour at its end, inside the selection when there is one
       const area = selection ? (selMask ? { ...selection, has: (x: number, y: number) => has(selMask!, x, y) } : selection) : null;
-      r.data.set(gradientFill(base!, start, p, color, rightColor, dither, area).data);
+      r.data.set(gradientFill(base!, start, p, ink(), rightColor, dither, area).data);
       return;
     }
     for (const m of maps) {
       const a = m(start);
       const b = m(p);
-      if (tool === "line") drawLine(r, a, b, size, color);
-      else if (tool === "rect") drawRect(r, a, b, size, color, filled);
-      else if (tool === "ellipse") drawEllipse(r, a, b, size, color, filled);
+      if (tool === "line") drawLine(r, a, b, size, ink());
+      else if (tool === "rect") drawRect(r, a, b, size, ink(), filled);
+      else if (tool === "ellipse") drawEllipse(r, a, b, size, ink(), filled);
     }
   }
+
+  /// Polygon: each click places a corner; a click on the first corner, a double-click or Enter closes and draws it, Escape drops it.
+  function polygonClick(p: Point, double: boolean) {
+    const r = cel();
+    if (!poly.length) {
+      polyBefore = cloneDoc(doc);
+      polyBase = cloneRaster(r);
+    }
+    const first = poly[0];
+    if (poly.length >= 3 && (double || (first && first.x === p.x && first.y === p.y))) return void finishPolygon();
+    if (!double) poly.push(p);
+    polyShown = poly.length;
+    previewPolygon(p);
+  }
+  function previewPolygon(towards: Point | null) {
+    if (!polyBase) return;
+    const r = cel();
+    r.data.set(polyBase.data);
+    const pts = towards ? [...poly, towards] : poly;
+    for (const m of maps) for (let i = 1; i < pts.length; i++) drawLine(r, m(pts[i - 1]!), m(pts[i]!), size, ink());
+    recompose(doc, frame);
+    rev++;
+  }
+  function finishPolygon() {
+    if (!polyBase || !polyBefore) return;
+    const r = cel();
+    if (poly.length >= 2) {
+      r.data.set(polyBase.data);
+      for (const m of maps) drawPolygon(r, poly.map(m), size, ink(), filled);
+      recompose(doc, frame);
+      if (r.data.some((v, i) => v !== polyBase!.data[i])) {
+        session!.past.push(polyBefore);
+        if (session!.past.length > MAX_HISTORY) session!.past.shift();
+        session!.future = [];
+        rememberColor(color);
+        changed();
+      }
+    } else r.data.set(polyBase.data);
+    poly = [];
+    polyBase = polyBefore = null;
+    polyShown = 0;
+    recompose(doc, frame);
+    rev++;
+  }
+  function cancelPolygon() {
+    if (polyBase) {
+      cel().data.set(polyBase.data);
+      recompose(doc, frame);
+    }
+    poly = [];
+    polyBase = polyBefore = null;
+    polyShown = 0;
+    rev++;
+  }
+  $effect(() => {
+    if (tool !== "polygon" && untrack(() => poly.length)) untrack(cancelPolygon);
+  });
+
+  const MAX_ZOOM = 64;
+  /// Sets the zoom, keeping the cell under the pointer (or the middle of the view) where it was.
+  function setZoom(next: number, at?: { clientX: number; clientY: number }) {
+    const z = Math.max(1, Math.min(MAX_ZOOM, Math.round(next)));
+    if (z === zoom || !canvas || !scroller) return;
+    const rect = canvas.getBoundingClientRect();
+    const sr = scroller.getBoundingClientRect();
+    const px = at ? at.clientX : sr.left + sr.width / 2;
+    const py = at ? at.clientY : sr.top + sr.height / 2;
+    const cx = (px - rect.left) / zoom;
+    const cy = (py - rect.top) / zoom;
+    zoom = z;
+    void tick().then(() => {
+      if (!canvas || !scroller) return;
+      const r2 = canvas.getBoundingClientRect();
+      scroller.scrollLeft += r2.left + cx * zoom - px;
+      scroller.scrollTop += r2.top + cy * zoom - py;
+    });
+  }
+  /// A pinch on a trackpad (Ctrl with the wheel, or WebKit's gesture events) zooms the canvas; a plain two-finger scroll scrolls it.
+  function wheel(e: WheelEvent) {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    e.preventDefault();
+    setZoom(zoom * Math.exp(-e.deltaY * 0.01), e);
+  }
+  let scrollTick = $state(0);
+  /// Which pixel numbers the rulers label: far enough apart to read at the current zoom.
+  const tickStep = $derived(zoom >= 24 ? 1 : zoom >= 12 ? 2 : zoom >= 6 ? 5 : zoom >= 3 ? 10 : 20);
+  const ticks = (n: number) => Array.from({ length: Math.ceil(n / tickStep) }, (_, i) => i * tickStep);
+  let pinchStart = 1;
+  const gestureStart = (e: Event) => { e.preventDefault(); pinchStart = zoom; };
+  const gestureChange = (e: Event) => {
+    e.preventDefault();
+    const g = e as unknown as { scale: number; clientX?: number; clientY?: number };
+    setZoom(pinchStart * g.scale, g.clientX === undefined ? undefined : { clientX: g.clientX, clientY: g.clientY! });
+  };
 
   function move(e: PointerEvent) {
     const p = cell(e);
     if (!hover || hover.x !== p.x || hover.y !== p.y) hover = p;
+    if (panning && scroller) {
+      scroller.scrollLeft = panning.left - (e.clientX - panning.x);
+      scroller.scrollTop = panning.top - (e.clientY - panning.y);
+      return;
+    }
+    if (tool === "polygon" && poly.length) {
+      previewPolygon(p);
+      return;
+    }
     if (selecting) {
       const s = selecting;
       let shape: Mask;
@@ -556,6 +744,7 @@
 
   function finish() {
     selecting = null;
+    panning = null;
     if (swapped) {
       // (a right-button stroke that picked a colour keeps it for the right hand)
       tool = swapped.tool;
@@ -906,6 +1095,11 @@
     } else if ((e.key === "Delete" || e.key === "Backspace") && selection) {
       e.preventDefault();
       clearSelection();
+    } else if (e.key === "Enter" && poly.length) {
+      e.preventDefault();
+      finishPolygon();
+    } else if (e.key === "Escape" && poly.length) {
+      cancelPolygon();
     } else if (e.key === "Escape" && importing) {
       importing = false;
     } else if (e.key === "Escape" && selection) {
@@ -931,17 +1125,32 @@
   let paletteFile: HTMLInputElement | undefined = $state();
   const palette = $derived((void palRev, palettes.get()));
   const userPalette = $derived((void palRev, !palettes.isBuiltin(palettes.current)));
+  /// Changes the colours of the palette in use (a built-in palette is copied first, so it stays as it was).
+  function editPalette(colors: string[]) {
+    if (palettes.isBuiltin(palettes.current)) palettes.add({ name: `${palettes.current} copy`, colors });
+    else palettes.setColors(palettes.current, colors);
+    palRev++;
+  }
   function addToPalette() {
     const c = hex(color);
     if (palette.colors.includes(c)) return;
-    if (palettes.isBuiltin(palettes.current)) palettes.add({ name: `${palettes.current} copy`, colors: [...palette.colors, c] });
-    else palettes.setColors(palettes.current, [...palette.colors, c]);
-    palRev++;
+    editPalette([...palette.colors, c]);
   }
-  const takeOut = (c: string) => {
-    palettes.setColors(palettes.current, palette.colors.filter((x) => x !== c));
-    palRev++;
-  };
+  const takeOut = (c: string) => editPalette(palette.colors.filter((x) => x !== c));
+  /// The swatch picked for moving (Shift-click a swatch), and the ramp and shade options.
+  let selSwatch = $state(-1);
+  let rampSteps = $state(5);
+  const addColors = (more: string[]) => editPalette([...new Set([...palette.colors, ...more])].slice(0, 256));
+  const sortPalette = (by: SortBy) => editPalette(sortColors(palette.colors, by));
+  function moveSwatch(by: number) {
+    if (selSwatch < 0) return;
+    const to = selSwatch + by;
+    const next = swapSwatches(palette.colors, selSwatch, to);
+    if (next !== palette.colors) {
+      editPalette(next);
+      selSwatch = to;
+    }
+  }
   function paletteFromPicture() {
     const colors = usedColors(doc.frames[frame]!);
     if (!colors.length) return studio.say("info", "This picture has no colours yet.");
@@ -953,19 +1162,29 @@
     const file = input.files?.[0];
     input.value = "";
     if (!file) return;
-    const p = parsePalette(await file.text(), file.name);
-    if (!p) return studio.say("error", `${file.name} is not a palette the studio can read (.gpl, a list of hex colours, or JSON).`);
+    let p: Palette | null = null;
+    if (/\.png$/i.test(file.name)) {
+      const url = URL.createObjectURL(file);
+      try {
+        p = paletteFromImage((await loadRaster(url)).data, file.name.replace(/\.[^.]*$/, ""));
+      } catch {
+        p = null;
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    } else p = parsePalette(await file.text(), file.name);
+    if (!p) return studio.say("error", `${file.name} is not a palette the studio can read (.gpl, .pal, a PNG, a list of hex colours, or JSON).`);
     palettes.add(p);
     palRev++;
   }
   /// Writes the palette as a .gpl into the project's exports folder (the studio's window cannot be relied on to save a download).
-  async function exportPalette() {
+  async function exportPalette(format: "gpl" | "pal" = "gpl") {
     const p: Palette = palette;
-    const path = `exports/${p.name.replace(/[^A-Za-z0-9_-]+/g, "_")}.gpl`;
+    const path = `exports/${p.name.replace(/[^A-Za-z0-9_-]+/g, "_")}.${format}`;
     try {
-      await studio.api!.writeExport(path, `data:text/plain;base64,${toBase64(new TextEncoder().encode(toGpl(p)))}`);
+      await studio.api!.writeExport(path, `data:text/plain;base64,${toBase64(new TextEncoder().encode(format === "gpl" ? toGpl(p) : toJascPal(p)))}`);
       await studio.refreshFiles();
-      studio.say("info", `Saved ${path}. GIMP, Aseprite, Pixelorama and others read .gpl palettes.`);
+      studio.say("info", `Saved ${path}. ${format === "gpl" ? "GIMP, Aseprite, Pixelorama and others read .gpl palettes." : "Paint Shop Pro, Aseprite and others read .pal palettes."}`);
     } catch (e) {
       studio.say("error", String(e));
     }
@@ -988,6 +1207,38 @@
     }
   }
 
+  /// The current animation as an animated PNG in `exports/` (the same scale rule as the GIF; it keeps full colour and soft edges).
+  async function exportApng() {
+    const tag = doc.tags[animIndex];
+    if (!tag) return;
+    const sequence = tagSequence(tag);
+    const k = Math.max(1, Math.min(8, Math.floor(256 / Math.max(doc.fw, doc.fh))));
+    const png = encodeApng(sequence.map((i) => ({ picture: scaleRaster(doc.frames[i]!, k), ms: doc.durations[i] ?? 100 })), tag.loop ? 0 : 1);
+    const base = fromPath.slice(fromPath.lastIndexOf("/") + 1).replace(/\.(sprite\.json|png)$/i, "");
+    const path = `exports/${base}_${tag.name.replace(/[^A-Za-z0-9_-]+/g, "_")}_anim.png`;
+    try {
+      await studio.api!.writeExport(path, `data:image/png;base64,${toBase64(png)}`);
+      await studio.refreshFiles();
+      studio.say("info", `Saved ${path} (${sequence.length} frame${sequence.length === 1 ? "" : "s"}, ${k}x). Browsers and most image viewers play it.`);
+    } catch (e) {
+      studio.say("error", String(e));
+    }
+  }
+  /// Cuts the selection out as a brush for the pencil and eraser.
+  function brushFromSelection() {
+    const mask = currentMask();
+    const lifted = mask ? liftMasked(cel(), mask) : null;
+    const b = lifted ? brushFromRaster(lifted.piece) : null;
+    if (!b) return void studio.say("info", "Select some drawn pixels first, then use them as a brush.");
+    pictureBrush = b;
+    tool = "pencil";
+  }
+  let fxBlock = $state(2);
+  let fxBright = $state(0);
+  let fxContrast = $state(0);
+  let fxGamma = $state(1);
+  const paletteRgba = () => palette.colors.map((c) => parseHex(c)).filter((c): c is Rgba => !!c);
+
   // ---- effects and the Sprite menu ---------------------------------------------------------------------------
   /// Applies an effect to the current cel, inside the selection when there is one (one undo step).
   function applyFx(fx: (r: Raster, area: Area) => Raster | null) {
@@ -998,6 +1249,14 @@
     cel.data.set(out.data);
     structural(next);
   }
+  const applyGradientMap = () => applyFx((r, a) => gradientMap(r, [{ at: 0, color }, { at: 1, color: rightColor }], a));
+  const applyPalettize = () => applyFx((r, a) => palettize(r, paletteRgba(), a));
+  const applyPixelate = () => applyFx((r, a) => pixelate(r, fxBlock, a));
+  const applyCurves = () => {
+    applyFx((r, a) => colorCurve(r, fxBright, fxContrast, fxGamma, a));
+    fxBright = fxContrast = 0;
+    fxGamma = 1;
+  };
   $effect(() => {
     const has = () => ready && !!doc.layers[activeLayer];
     const has_ = has;
@@ -1012,6 +1271,13 @@
       commands.register({ id: "sprite.selectShrink", title: "Shrink the selection by one pixel", menu: "Sprite", enabled: () => has_() && !!selection, run: () => { const m = currentMask(); if (m) setSelection(growMask(m, -1)); } }),
       commands.register({ id: "sprite.cropToSelection", title: "Crop the sprite to the selection", menu: "Sprite", help: "Every frame and layer is cut down to the selection's box", enabled: () => has_() && !!selection, run: () => { if (selection) { structural(cropDoc(doc, selection)); setSelection(null); zoom = Math.max(1, Math.min(32, Math.floor(420 / Math.max(doc.fw, doc.fh)))); } } }),
       commands.register({ id: "sprite.exportGif", title: "Export this animation as a GIF", menu: "Sprite", icon: "export", help: "An animated GIF of the animation being worked on, in the exports folder", enabled: has, run: () => void exportGif() }),
+      commands.register({ id: "sprite.exportApng", title: "Export this animation as an animated PNG", menu: "Sprite", icon: "export", help: "Full colour, in the exports folder", enabled: has, run: () => void exportApng() }),
+      commands.register({ id: "sprite.brushFromSelection", title: "Use the selection as a brush", menu: "Sprite", help: "The pencil and eraser stamp the selected pixels", enabled: () => has_() && !!selection, run: brushFromSelection }),
+      commands.register({ id: "sprite.gradientMap", title: "Gradient map (current colour to the other colour)", menu: "Sprite", enabled: has, run: applyGradientMap }),
+      commands.register({ id: "sprite.palettize", title: "Change every colour to the nearest palette colour", menu: "Sprite", enabled: has, run: applyPalettize }),
+      commands.register({ id: "sprite.pixelate", title: "Pixelate (blocks as set in the Effects panel)", menu: "Sprite", enabled: has, run: applyPixelate }),
+      commands.register({ id: "sprite.zoomIn", title: "Zoom in", menu: "Sprite", keys: ["Mod+="], enabled: () => ready, run: () => setZoom(zoom + (zoom >= 8 ? 4 : 1)) }),
+      commands.register({ id: "sprite.zoomOut", title: "Zoom out", menu: "Sprite", keys: ["Mod+-"], enabled: () => ready, run: () => setZoom(zoom - (zoom > 8 ? 4 : 1)) }),
       commands.register({ id: "sprite.swapColors", title: "Swap the two colours", menu: "Sprite", keys: ["X"], enabled: () => ready, run: swapColors }),
       commands.register({ id: "sprite.flipH", title: "Flip left to right", menu: "Sprite", enabled: has, run: () => applyFx((r, a) => flipRaster(r, false, a)) }),
       commands.register({ id: "sprite.flipV", title: "Flip top to bottom", menu: "Sprite", enabled: has, run: () => applyFx((r, a) => flipRaster(r, true, a)) }),
@@ -1028,6 +1294,12 @@
     return () => offs.forEach((off) => off());
   });
 
+  /// WebKit sends a pinch as gesture events (not wheel events); other engines send Ctrl with the wheel.
+  function pinch(node: HTMLElement, h: { start: (e: Event) => void; change: (e: Event) => void }) {
+    node.addEventListener("gesturestart", h.start);
+    node.addEventListener("gesturechange", h.change);
+    return { destroy: () => { node.removeEventListener("gesturestart", h.start); node.removeEventListener("gesturechange", h.change); } };
+  }
   const hex = (c: Rgba) => toHex([c[0], c[1], c[2], 255]);
   const swapColors = () => {
     [color, rightColor] = [rightColor, color];
@@ -1070,6 +1342,19 @@
         {#if tool === "pencil" || tool === "eraser" || tool === "shade"}
           <label title="The shape of the brush">Brush <select bind:value={brushShape}>{#each BRUSH_SHAPES as b (b)}<option value={b}>{b}</option>{/each}</select></label>
         {/if}
+        {#if (tool === "pencil" || tool === "eraser") && pictureBrush}
+          <span class="dim" title="The pencil and eraser stamp a picture cut from the canvas">Picture brush ({pictureBrush.cells.length} pixels)</span>
+          {#if tool === "pencil"}<label class="check" title="Stamp with its own colours (off: stamp the shape in the current colour)"><input type="checkbox" bind:checked={brushKeepsColors} /> Its colours</label>{/if}
+          <button class="ghost" onclick={() => (pictureBrush = null)}>Back to the round brush</button>
+        {/if}
+        {#if tool === "fill"}
+          <label class="slider" title="How different a colour may be and still be filled (0 is exactly the same)"><span>Tolerance</span><input type="range" min="0" max="255" step="1" bind:value={fillTolerance} /><output>{fillTolerance}</output></label>
+          <label title="Joined area, or every pixel of that colour in the picture">Fill <select bind:value={fillEverywhere}><option value={false}>joined area</option><option value={true}>same colour everywhere</option></select></label>
+          {#if selection}<label class="check" title="Only change pixels inside the selection"><input type="checkbox" bind:checked={fillInSelection} /> Inside the selection</label>{/if}
+        {/if}
+        {#if tool === "polygon"}
+          <span class="dim">{polyShown ? `${polyShown} corner${polyShown === 1 ? "" : "s"}: click the first one, double-click or Enter to finish, Esc to drop` : "Click the corners of the shape"}</span>
+        {/if}
         {#if tool === "shade"}
           <label class="check" title="Paint darker instead of lighter"><input type="checkbox" bind:checked={shadeDarker} /> Darker</label>
         {/if}
@@ -1079,7 +1364,7 @@
         {#if tool === "wand" || tool === "colorSelect"}
           <label class="slider" title="How different a colour may be and still be picked (0 is exactly the same)"><span>Tolerance</span><input type="range" min="0" max="255" step="1" bind:value={tolerance} /><output>{tolerance}</output></label>
         {/if}
-        {#if tool === "rect" || tool === "ellipse"}
+        {#if tool === "rect" || tool === "ellipse" || tool === "polygon"}
           <label class="check"><input type="checkbox" bind:checked={filled} /> Filled</label>
         {/if}
         {#if tool === "pencil"}<label class="check" title="One-pixel lines without double corners"><input type="checkbox" bind:checked={perfect} /> Pixel-perfect</label>{/if}
@@ -1090,11 +1375,13 @@
           <label class="check" title="Blue for before, red for after"><input type="checkbox" bind:checked={onionTint} /> Tint</label>
         {/if}
         <label class="check"><input type="checkbox" bind:checked={showGrid} /> Grid</label>
+        {#if showGrid}<label title="Draw a grid line every this many pixels">every <select bind:value={gridStep}>{#each [1, 2, 4, 8, 16, 32] as n (n)}<option value={n}>{n}</option>{/each}</select></label>{/if}
+        <label class="check" title="Rulers along the top and left, in pixels"><input type="checkbox" bind:checked={rulers} /> Rulers</label>
         <button class="ghost" onclick={openSizing}>Canvas size…</button>
         <span class="spacer"></span>
-        <button class="ghost" onclick={() => (zoom = Math.max(1, zoom - 1))} aria-label="Zoom out">−</button>
+        <button class="ghost" onclick={() => setZoom(zoom - (zoom > 8 ? 4 : 1))} aria-label="Zoom out">−</button>
         <span class="dim">{zoom * 100}%</span>
-        <button class="ghost" onclick={() => (zoom = Math.min(48, zoom + 1))} aria-label="Zoom in">＋</button>
+        <button class="ghost" onclick={() => setZoom(zoom + (zoom >= 8 ? 4 : 1))} aria-label="Zoom in">＋</button>
         <span class="dim">{doc.fw}×{doc.fh}{hover && inside(current, hover.x, hover.y) ? ` · ${hover.x},${hover.y}` : ""}</span>
       </div>
       {#if sizing}
@@ -1112,8 +1399,20 @@
           <button type="button" class="ghost" onclick={() => (sizing = false)}>Cancel</button>
         </form>
       {/if}
-      <div class="scroller">
-        <canvas bind:this={canvas} aria-label="Sprite canvas" onpointerdown={down} onpointermove={move} onpointerup={up} onpointercancel={up} onpointerleave={leave} oncontextmenu={(e) => e.preventDefault()}></canvas>
+      <div class="scroller" bind:this={scroller} onscroll={() => scrollTick++} onwheel={wheel} use:pinch={{ start: gestureStart, change: gestureChange }}>
+        <div class="stage" class:ruled={rulers}>
+          {#if rulers}
+            <div class="ruler top" style:width="{doc.fw * zoom}px" aria-hidden="true">
+              {#each ticks(doc.fw) as t (t)}<span style:left="{t * zoom}px">{t}</span>{/each}
+              {#if hover}<i style:left="{hover.x * zoom + zoom / 2}px"></i>{/if}
+            </div>
+            <div class="ruler left" style:height="{doc.fh * zoom}px" aria-hidden="true">
+              {#each ticks(doc.fh) as t (t)}<span style:top="{t * zoom}px">{t}</span>{/each}
+              {#if hover}<i style:top="{hover.y * zoom + zoom / 2}px"></i>{/if}
+            </div>
+          {/if}
+          <canvas bind:this={canvas} aria-label="Sprite canvas" class:hand={tool === "pan"} class:zooming={tool === "zoom"} onpointerdown={down} onpointermove={move} onpointerup={up} onpointercancel={up} onpointerleave={leave} oncontextmenu={(e) => e.preventDefault()}></canvas>
+        </div>
       </div>
 
       <div class="timeline">
@@ -1157,7 +1456,7 @@
       </div>
       <div class="palette">
         {#each palette.colors as p (p)}
-          <button class="swatch" class:on={same(color, p)} style:background={p} title="{p}{userPalette ? ' (right-click to take out)' : ''}" aria-label={p} onclick={() => pickHex(p)} oncontextmenu={(e) => { e.preventDefault(); if (userPalette) takeOut(p); }}></button>
+          <button class="swatch" class:on={same(color, p)} class:marked={palette.colors.indexOf(p) === selSwatch} style:background={p} title="{p}{userPalette ? ' (right-click to take out)' : ''} · Shift-click to pick it for moving" aria-label={p} onclick={(e) => (e.shiftKey ? (selSwatch = palette.colors.indexOf(p)) : pickHex(p))} oncontextmenu={(e) => { e.preventDefault(); if (userPalette) takeOut(p); }}></button>
         {/each}
       </div>
       <div class="row wrap palbar">
@@ -1166,12 +1465,55 @@
         </select>
         <button title="Add the current colour to this palette (a copy is made if it is a built-in one)" onclick={addToPalette}>＋</button>
         <button title="A new palette from the colours this picture uses" onclick={paletteFromPicture}>From picture</button>
-        <button title="Read a palette file (.gpl, .hex, .json)" onclick={() => paletteFile?.click()}>Import</button>
-        <button title="Save this palette as a .gpl file (GIMP, Aseprite, Pixelorama and others read it)" onclick={exportPalette}>Export</button>
+        <button title="Read a palette file (.gpl, .pal, .hex, .json) or the colours of a PNG" onclick={() => paletteFile?.click()}>Import</button>
+        <button title="Save this palette as a .gpl file (GIMP, Aseprite, Pixelorama and others read it)" onclick={() => exportPalette("gpl")}>Export .gpl</button>
+        <button title="Save this palette as a .pal file (Paint Shop Pro, Aseprite and others read it)" onclick={() => exportPalette("pal")}>.pal</button>
         {#if userPalette}<button class="danger" title="Delete this palette" onclick={() => { palettes.remove(palettes.current); palRev++; }}>Delete</button>{/if}
         <label class="check" title="Colours you pick snap to the nearest colour of this palette"><input type="checkbox" bind:checked={snapToPalette} /> Stay in palette</label>
-        <input bind:this={paletteFile} type="file" accept=".gpl,.hex,.json,.txt" hidden onchange={importPalette} />
+        <label class="check" title="Everything you draw takes the nearest colour of this palette"><input type="checkbox" bind:checked={lockPalette} /> Lock to palette</label>
+        <input bind:this={paletteFile} type="file" accept=".gpl,.pal,.hex,.json,.txt,.png" hidden onchange={importPalette} />
       </div>
+      <div class="row wrap palbar">
+        <select aria-label="Sort the palette" value="" onchange={(e) => { if (e.currentTarget.value) sortPalette(e.currentTarget.value as SortBy); e.currentTarget.value = ""; }}>
+          <option value="" disabled>Sort by…</option>
+          {#each ["hue", "lightness", "saturation", "red", "green", "blue"] as by (by)}<option value={by}>{by}</option>{/each}
+        </select>
+        <button title="Move the picked swatch (Shift-click one) left" aria-label="Move swatch left" disabled={selSwatch <= 0} onclick={() => moveSwatch(-1)}>◀</button>
+        <button title="Move the picked swatch right" aria-label="Move swatch right" disabled={selSwatch < 0 || selSwatch >= palette.colors.length - 1} onclick={() => moveSwatch(1)}>▶</button>
+        <label class="inline" title="Colours in a ramp from the current colour to the right button's colour">ramp <input type="number" min="2" max="32" bind:value={rampSteps} class="narrow" /></label>
+        <button title="Add a ramp from the current colour to the other colour" onclick={() => addColors(ramp(hex(color), hex(rightColor), rampSteps))}>Add ramp</button>
+        <button title="Add two darker and two lighter shades of the current colour, shifted in hue the way pixel artists do" onclick={() => addColors(shadeRamp(hex(color), 2))}>Add shades</button>
+      </div>
+
+      <h3>Effects</h3>
+      <div class="row wrap fx">
+        <button title="Colour the picture by how light each part is: the current colour for dark, the right button's colour for light" onclick={applyGradientMap}>Gradient map</button>
+        <button title="Change every colour to the nearest colour of the palette" onclick={applyPalettize}>Palettize</button>
+        <label class="inline">block <input type="number" min="2" max="64" bind:value={fxBlock} class="narrow" /></label>
+        <button title="Make it blocky: every block takes its average colour" onclick={applyPixelate}>Pixelate</button>
+      </div>
+      <label class="slider"><span>Brightness</span><input type="range" min="-0.5" max="0.5" step="0.01" bind:value={fxBright} /><output>{fxBright.toFixed(2)}</output></label>
+      <label class="slider"><span>Contrast</span><input type="range" min="-0.9" max="0.9" step="0.01" bind:value={fxContrast} /><output>{fxContrast.toFixed(2)}</output></label>
+      <label class="slider"><span>Gamma</span><input type="range" min="0.3" max="3" step="0.05" bind:value={fxGamma} /><output>{fxGamma.toFixed(2)}</output></label>
+      <div class="row"><button onclick={applyCurves}>Apply brightness, contrast and gamma</button></div>
+
+      <h3>Reference</h3>
+      <div class="row wrap">
+        <select aria-label="Reference picture" value={refPath} onchange={(e) => void loadReference(e.currentTarget.value)}>
+          <option value="">None</option>
+          {#each referenceCandidates as f (f)}<option value={f}>{f}</option>{/each}
+        </select>
+      </div>
+      {#if refPicture}
+        <label class="slider"><span>Opacity</span><input type="range" min="0.05" max="1" step="0.05" bind:value={refOpacity} /><output>{Math.round(refOpacity * 100)}%</output></label>
+        <div class="row wrap">
+          <label class="check" title="Draw it on top of the sprite instead of behind"><input type="checkbox" bind:checked={refOver} /> On top</label>
+          <label class="inline">size <input type="number" min="0.1" max="32" step="0.25" bind:value={refScale} class="narrow" />×</label>
+          <label class="inline">x <input type="number" bind:value={refX} class="narrow" /></label>
+          <label class="inline">y <input type="number" bind:value={refY} class="narrow" /></label>
+        </div>
+        <p class="dim small">A reference is for looking at: it is not saved with the sprite.</p>
+      {/if}
 
       <h3>Drawing</h3>
       <div class="row wrap drawing">
@@ -1336,7 +1678,19 @@
   .spacer { flex: 1; }
   .narrow { width: 64px; padding: 2px 6px; }
   .scroller { flex: 1; min-height: 0; overflow: auto; display: grid; padding: 16px; background: var(--bg); }
-  .scroller canvas { margin: auto; image-rendering: pixelated; cursor: crosshair; box-shadow: 0 0 0 1px var(--line); touch-action: none; }
+  .stage { margin: auto; position: relative; }
+  .stage.ruled { padding: 18px 0 0 18px; }
+  .ruler { position: absolute; font-size: 9px; color: var(--dim); pointer-events: none; }
+  .ruler.top { top: 0; left: 18px; height: 16px; border-bottom: 1px solid var(--line); }
+  .ruler.left { left: 0; top: 18px; width: 16px; border-right: 1px solid var(--line); }
+  .ruler span { position: absolute; padding-left: 2px; border-left: 1px solid var(--line); line-height: 14px; }
+  .ruler.left span { padding: 0; border-left: none; border-top: 1px solid var(--line); writing-mode: vertical-rl; }
+  .ruler i { position: absolute; background: #ffd166; }
+  .ruler.top i { top: 0; width: 1px; height: 100%; }
+  .ruler.left i { left: 0; height: 1px; width: 100%; }
+  .scroller canvas.hand { cursor: grab; }
+  .scroller canvas.zooming { cursor: zoom-in; }
+  .scroller canvas { display: block; image-rendering: pixelated; cursor: crosshair; box-shadow: 0 0 0 1px var(--line); touch-action: none; }
   .timeline { background: var(--panel); border-top: 1px solid var(--line); padding: 6px 8px; display: flex; flex-direction: column; gap: 6px; }
   .frames { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
   .frame { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 3px; min-width: 52px; background: var(--bg); }
@@ -1357,6 +1711,7 @@
   .palette { display: grid; grid-template-columns: repeat(8, 1fr); gap: 3px; }
   .swatch { aspect-ratio: 1; padding: 0; border-radius: 3px; }
   .swatch.on { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .swatch.marked { box-shadow: 0 0 0 2px #ffd166; }
   .preview { display: grid; place-items: center; min-height: 120px; background: repeating-conic-gradient(#3a3d48 0 25%, #2e313b 0 50%) 0 0 / 12px 12px; border: 1px solid var(--line); border-radius: 6px; }
   .preview canvas { image-rendering: pixelated; }
   .sizing { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; padding: 6px 10px; background: var(--panel-2); border-bottom: 1px solid var(--line); }

@@ -29,10 +29,15 @@ function adler32(bytes: Uint8Array): number {
   return ((b << 16) | a) >>> 0;
 }
 
-export function encodePng(r: Raster): Uint8Array {
-  // one filter byte (0 = none) in front of each row
+/// One filter byte (0 = none) in front of each row.
+export function scanlines(r: Raster): Uint8Array {
   const raw = new Uint8Array(r.h * (r.w * 4 + 1));
   for (let y = 0; y < r.h; y++) raw.set(r.data.subarray(y * r.w * 4, (y + 1) * r.w * 4), y * (r.w * 4 + 1) + 1);
+  return raw;
+}
+
+/// zlib framing around "stored" (uncompressed) deflate blocks.
+export function zlibStored(raw: Uint8Array): Uint8Array {
   const blocks = Math.max(1, Math.ceil(raw.length / 65535));
   const z = new Uint8Array(2 + raw.length + blocks * 5 + 4);
   z[0] = 0x78;
@@ -49,23 +54,22 @@ export function encodePng(r: Raster): Uint8Array {
     at += chunk.length;
   }
   new DataView(z.buffer).setUint32(at, adler32(raw));
+  return z;
+}
 
-  const chunk = (type: string, body: Uint8Array) => {
-    const out = new Uint8Array(12 + body.length);
-    const v = new DataView(out.buffer);
-    v.setUint32(0, body.length);
-    for (let i = 0; i < 4; i++) out[4 + i] = type.charCodeAt(i);
-    out.set(body, 8);
-    v.setUint32(8 + body.length, crc32(out.subarray(4, 8 + body.length)));
-    return out;
-  };
-  const ihdr = new Uint8Array(13);
-  const v = new DataView(ihdr.buffer);
-  v.setUint32(0, r.w);
-  v.setUint32(4, r.h);
-  ihdr[8] = 8; // bits per channel
-  ihdr[9] = 6; // RGBA
-  const parts = [new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", z), chunk("IEND", new Uint8Array(0))];
+export function pngChunk(type: string, body: Uint8Array): Uint8Array {
+  const out = new Uint8Array(12 + body.length);
+  const v = new DataView(out.buffer);
+  v.setUint32(0, body.length);
+  for (let i = 0; i < 4; i++) out[4 + i] = type.charCodeAt(i);
+  out.set(body, 8);
+  v.setUint32(8 + body.length, crc32(out.subarray(4, 8 + body.length)));
+  return out;
+}
+
+export const PNG_SIGNATURE = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+
+export function joinBytes(parts: Uint8Array[]): Uint8Array {
   const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
   let o = 0;
   for (const p of parts) {
@@ -73,4 +77,18 @@ export function encodePng(r: Raster): Uint8Array {
     o += p.length;
   }
   return out;
+}
+
+export function ihdrFor(w: number, h: number): Uint8Array {
+  const ihdr = new Uint8Array(13);
+  const v = new DataView(ihdr.buffer);
+  v.setUint32(0, w);
+  v.setUint32(4, h);
+  ihdr[8] = 8; // bits per channel
+  ihdr[9] = 6; // RGBA
+  return ihdr;
+}
+
+export function encodePng(r: Raster): Uint8Array {
+  return joinBytes([PNG_SIGNATURE, pngChunk("IHDR", ihdrFor(r.w, r.h)), pngChunk("IDAT", zlibStored(scanlines(r))), pngChunk("IEND", new Uint8Array(0))]);
 }

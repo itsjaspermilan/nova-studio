@@ -1,6 +1,8 @@
 // Palettes: named lists of colours. Read and written in the formats other tools use (GIMP's .gpl, a plain list of hex colours as Lospec offers,
 // and a small JSON), and kept in the studio between runs. Colours are always "#rrggbb".
 
+import { hslToRgb, rgbToHsl } from "./sprite-fx";
+
 export interface Palette {
   name: string;
   colors: string[];
@@ -76,6 +78,7 @@ export function parsePalette(text: string, fileName = "Palette"): Palette | null
   const base = fileName.replace(/\.[^.]*$/, "") || "Palette";
   const body = text.trim();
   if (body.startsWith("GIMP Palette")) return parseGpl(text, base);
+  if (body.startsWith("JASC-PAL")) return parseJascPal(text, base);
   if (body.startsWith("{")) return parsePaletteJson(text, base);
   return parseHexList(text, base);
 }
@@ -174,4 +177,82 @@ export class PaletteStore {
       // not remembered
     }
   }
+}
+
+/// Paint Shop Pro's .pal: "JASC-PAL", "0100", a count, then "R G B" lines.
+export function parseJascPal(text: string, fallbackName = "Palette"): Palette | null {
+  const lines = text.split(/\r?\n/).map((l) => l.trim());
+  if (lines[0] !== "JASC-PAL") return null;
+  const colors: string[] = [];
+  for (const line of lines.slice(3)) {
+    const m = /^(\d{1,3})\s+(\d{1,3})\s+(\d{1,3})/.exec(line);
+    if (!m) continue;
+    colors.push(`#${[m[1], m[2], m[3]].map((v) => Math.min(255, Number(v)).toString(16).padStart(2, "0")).join("")}`);
+  }
+  return colors.length ? { name: fallbackName, colors: unique(colors) } : null;
+}
+
+export function toJascPal(p: Palette): string {
+  const rows = p.colors.map((c) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16)).join(" "));
+  return `JASC-PAL\r\n0100\r\n${rows.length}\r\n${rows.join("\r\n")}\r\n`;
+}
+
+/// A palette from a PNG's pixels: the colours in the order they first appear (reading left to right, top to bottom), without repeats. Clear pixels are skipped.
+export function paletteFromImage(data: ArrayLike<number>, name = "Palette"): Palette | null {
+  const colors: string[] = [];
+  for (let i = 0; i + 3 < data.length; i += 4) {
+    if (data[i + 3] === 0) continue;
+    colors.push(`#${[0, 1, 2].map((n) => data[i + n]!.toString(16).padStart(2, "0")).join("")}`);
+  }
+  const u = unique(colors);
+  return u.length ? { name, colors: u } : null;
+}
+
+export type SortBy = "hue" | "lightness" | "saturation" | "red" | "green" | "blue";
+const parts = (c: string) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16)) as [number, number, number];
+
+/// The colours in order of one property (greys first when sorting by hue). Returns a new list.
+export function sortColors(colors: string[], by: SortBy): string[] {
+  const key = (c: string) => {
+    const [r, g, b] = parts(c);
+    const [h, s, l] = rgbToHsl(r, g, b);
+    return by === "hue" ? (s < 0.05 ? -1 + l : h) : by === "lightness" ? l : by === "saturation" ? s : by === "red" ? r : by === "green" ? g : b;
+  };
+  return [...colors].sort((a, b) => key(a) - key(b) || a.localeCompare(b));
+}
+
+/// Swaps two swatches. Returns a new list (the same list when an index is out of range).
+export function swapColors(colors: string[], i: number, j: number): string[] {
+  if (i === j || i < 0 || j < 0 || i >= colors.length || j >= colors.length) return colors;
+  const out = [...colors];
+  [out[i], out[j]] = [out[j]!, out[i]!];
+  return out;
+}
+
+const toHex = (rgb: number[]) => `#${rgb.map((v) => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2, "0")).join("")}`;
+
+/// A ramp of `steps` colours from one colour to another, both ends included.
+export function ramp(from: string, to: string, steps: number): string[] {
+  const n = Math.max(1, Math.min(MAX_PALETTE, Math.round(steps)));
+  if (n === 1) return [from];
+  const a = parts(from);
+  const b = parts(to);
+  return Array.from({ length: n }, (_, k) => toHex(a.map((v, i) => v + (b[i]! - v) * (k / (n - 1)))));
+}
+
+/// A shade ramp around a colour, `steps` darker and `steps` lighter, with the middle the colour itself: darker steps lean to blue, lighter to yellow.
+export function shadeRamp(color: string, steps: number): string[] {
+  const [r, g, b] = parts(color);
+  const [h, s, l] = rgbToHsl(r, g, b);
+  const out: string[] = [];
+  for (let k = -steps; k <= steps; k++) {
+    if (k === 0) {
+      out.push(color);
+      continue;
+    }
+    const t = k / (steps + 1);
+    const hue = (h + (t < 0 ? 0.55 - h : 0.15 - h) * Math.abs(t) * 0.15 + 1) % 1;
+    out.push(toHex(hslToRgb(hue, Math.min(1, s * (1 + (t < 0 ? 0.1 : -0.1) * Math.abs(t))), Math.min(0.95, Math.max(0.05, l + t * 0.35)))));
+  }
+  return out;
 }

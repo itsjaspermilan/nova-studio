@@ -85,3 +85,31 @@ describe("the palette store", () => {
     expect(s.current).toBe("Starter");
   });
 });
+
+describe("more palette tools", () => {
+  it("reads and writes Paint Shop Pro's .pal", async () => {
+    const { parsePalette, toJascPal } = await import("./palette");
+    const p = { name: "x", colors: ["#ff0000", "#00ff80"] };
+    const text = toJascPal(p);
+    expect(text.startsWith("JASC-PAL")).toBe(true);
+    expect(parsePalette(text, "mine.pal")).toEqual({ name: "mine", colors: p.colors });
+  });
+  it("makes a palette from a picture's pixels in order of appearance", async () => {
+    const { paletteFromImage } = await import("./palette");
+    const data = [255, 0, 0, 255, 0, 0, 0, 0, 0, 255, 0, 255, 255, 0, 0, 255];
+    expect(paletteFromImage(data, "pic")).toEqual({ name: "pic", colors: ["#ff0000", "#00ff00"] });
+    expect(paletteFromImage([0, 0, 0, 0])).toBeNull();
+  });
+  it("sorts, swaps and builds ramps", async () => {
+    const { sortColors, swapColors, ramp, shadeRamp } = await import("./palette");
+    expect(sortColors(["#ffffff", "#000000", "#808080"], "lightness")).toEqual(["#000000", "#808080", "#ffffff"]);
+    expect(sortColors(["#0000ff", "#ff0000", "#00ff00"], "hue")).toEqual(["#ff0000", "#00ff00", "#0000ff"]);
+    expect(swapColors(["a", "b", "c"], 0, 2)).toEqual(["c", "b", "a"]);
+    expect(swapColors(["a"], 0, 5)).toEqual(["a"]);
+    expect(ramp("#000000", "#ffffff", 3)).toEqual(["#000000", "#808080", "#ffffff"]);
+    const shades = shadeRamp("#c27a3e", 2);
+    expect(shades).toHaveLength(5);
+    expect(shades[2]).toBe("#c27a3e");
+    expect(parseInt(shades[0]!.slice(1, 3), 16)).toBeLessThan(parseInt(shades[4]!.slice(1, 3), 16));
+  });
+});

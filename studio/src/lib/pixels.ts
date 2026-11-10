@@ -279,3 +279,72 @@ export function resizeCanvas(r: Raster, w: number, h: number, anchorX = 0, ancho
   }
   return out;
 }
+
+/// How far apart two colours are, 0 (the same) to 255 (the largest channel gap), alpha included.
+export function colorGap(a: Rgba, b: Rgba): number {
+  return Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Math.abs(a[2] - b[2]), Math.abs(a[3] - b[3]));
+}
+
+export interface FillOptions {
+  /// Colours within this gap of the clicked one count as the same (0 = exact).
+  tolerance?: number;
+  /// false: only the connected area (4-way); true: every pixel of a similar colour in the picture.
+  everywhere?: boolean;
+  /// Limits the fill to these cells (a selection).
+  within?: (x: number, y: number) => boolean;
+}
+
+/// A fill with the options a paint program has: a tolerance, "all pixels of this colour", and staying inside a selection.
+/// Returns how many pixels changed.
+export function fillWith(r: Raster, x: number, y: number, c: Rgba, o: FillOptions = {}): number {
+  const target = getPixel(r, x, y);
+  if (!target) return 0;
+  const tol = o.tolerance ?? 0;
+  const allowed = (px: number, py: number) => !o.within || o.within(px, py);
+  if (!allowed(x, y)) return 0;
+  const like = (px: number, py: number) => {
+    const p = getPixel(r, px, py);
+    return !!p && colorGap(p, target) <= tol && allowed(px, py);
+  };
+  const hits: number[] = [];
+  if (o.everywhere) {
+    for (let py = 0; py < r.h; py++) for (let px = 0; px < r.w; px++) if (like(px, py)) hits.push(px, py);
+  } else {
+    const seen = new Uint8Array(r.w * r.h);
+    const stack = [x, y];
+    while (stack.length) {
+      const py = stack.pop()!;
+      const px = stack.pop()!;
+      if (!inside(r, px, py) || seen[py * r.w + px] || !like(px, py)) continue;
+      seen[py * r.w + px] = 1;
+      hits.push(px, py);
+      stack.push(px + 1, py, px - 1, py, px, py + 1, px, py - 1);
+    }
+  }
+  let changed = 0;
+  for (let i = 0; i < hits.length; i += 2) {
+    const old = getPixel(r, hits[i]!, hits[i + 1]!)!;
+    if (!same(old, c)) changed++;
+    setPixel(r, hits[i]!, hits[i + 1]!, c);
+  }
+  return changed;
+}
+
+/// A closed polygon through the points: the outline, or filled (even-odd).
+export function drawPolygon(r: Raster, points: Point[], size: number, c: Rgba, filled: boolean) {
+  if (points.length === 0) return;
+  if (filled && points.length >= 3) {
+    for (let y = 0; y < r.h; y++) {
+      for (let x = 0; x < r.w; x++) {
+        let inPoly = false;
+        for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+          const a = points[i]!;
+          const b = points[j]!;
+          if (a.y > y !== b.y > y && x + 0.5 < ((b.x - a.x) * (y + 0.5 - a.y)) / (b.y - a.y) + a.x) inPoly = !inPoly;
+        }
+        if (inPoly) setPixel(r, x, y, c);
+      }
+    }
+  }
+  for (let i = 0; i < points.length; i++) drawLine(r, points[i]!, points[(i + 1) % points.length]!, size, c);
+}

@@ -98,3 +98,44 @@ describe("effects inside a selection that is not a rectangle", () => {
     expect(Array.from(getPixel(out, 2, 0)!)).toEqual([0, 255, 255, 255]);
   });
 });
+
+describe("gradient map, palettize, pixelate and curves", () => {
+  it("colours by lightness along the stops", async () => {
+    const { gradientMap } = await import("./sprite-fx");
+    const r = newRaster(3, 1);
+    setPixel(r, 0, 0, [0, 0, 0, 255]);
+    setPixel(r, 1, 0, [255, 255, 255, 255]);
+    setPixel(r, 2, 0, [128, 128, 128, 255]);
+    const out = gradientMap(r, [{ at: 0, color: [0, 0, 100, 255] }, { at: 1, color: [255, 200, 0, 255] }]);
+    expect(getPixel(out, 0, 0)).toEqual([0, 0, 100, 255]);
+    expect(getPixel(out, 1, 0)).toEqual([255, 200, 0, 255]);
+    expect(getPixel(out, 2, 0)![0]).toBeGreaterThan(100);
+    expect(getPixel(out, 2, 0)![0]).toBeLessThan(160);
+  });
+  it("snaps every colour to the nearest of a palette and keeps clear pixels clear", async () => {
+    const { palettize } = await import("./sprite-fx");
+    const r = newRaster(2, 1);
+    setPixel(r, 0, 0, [250, 10, 10, 255]);
+    const out = palettize(r, [[255, 0, 0, 255], [0, 0, 255, 255]]);
+    expect(getPixel(out, 0, 0)).toEqual([255, 0, 0, 255]);
+    expect(getPixel(out, 1, 0)![3]).toBe(0);
+  });
+  it("averages blocks", async () => {
+    const { pixelate } = await import("./sprite-fx");
+    const r = newRaster(2, 2);
+    setPixel(r, 0, 0, [0, 0, 0, 255]);
+    setPixel(r, 1, 0, [100, 100, 100, 255]);
+    setPixel(r, 0, 1, [100, 100, 100, 255]);
+    setPixel(r, 1, 1, [200, 200, 200, 255]);
+    const out = pixelate(r, 2);
+    for (const [x, y] of [[0, 0], [1, 0], [0, 1], [1, 1]] as const) expect(getPixel(out, x, y)).toEqual([100, 100, 100, 255]);
+  });
+  it("brightens with the curve, and a contrast of 0 and gamma 1 leaves the picture as it was", async () => {
+    const { colorCurve } = await import("./sprite-fx");
+    const r = newRaster(1, 1);
+    setPixel(r, 0, 0, [100, 120, 140, 255]);
+    expect(getPixel(colorCurve(r, 0, 0, 1), 0, 0)).toEqual([100, 120, 140, 255]);
+    expect(getPixel(colorCurve(r, 0.2, 0, 1), 0, 0)![0]).toBeGreaterThan(100);
+    expect(getPixel(colorCurve(r, 0, 0, 2), 0, 0)![0]).toBeGreaterThan(100);
+  });
+});

@@ -96,3 +96,29 @@ export function gradientFill(r: Raster, a: Point, b: Point, from: Rgba, to: Rgba
   }
   return out;
 }
+
+/// A brush cut from a picture: the visible pixels of a piece (its colours stay), stamped with its middle on the pointer.
+export interface PictureBrush {
+  w: number;
+  h: number;
+  cells: { dx: number; dy: number; color: Rgba }[];
+}
+
+export function brushFromRaster(piece: Raster, has?: (x: number, y: number) => boolean): PictureBrush | null {
+  const cells: PictureBrush["cells"] = [];
+  const cx = Math.floor(piece.w / 2);
+  const cy = Math.floor(piece.h / 2);
+  for (let y = 0; y < piece.h; y++) {
+    for (let x = 0; x < piece.w; x++) {
+      const i = (y * piece.w + x) * 4;
+      if (piece.data[i + 3] === 0 || (has && !has(x, y))) continue;
+      cells.push({ dx: x - cx, dy: y - cy, color: [piece.data[i]!, piece.data[i + 1]!, piece.data[i + 2]!, piece.data[i + 3]!] });
+    }
+  }
+  return cells.length ? { w: piece.w, h: piece.h, cells } : null;
+}
+
+/// Stamps a picture brush with its middle at (x, y); with `color` given every cell takes that colour instead (a shape brush).
+export function stampPicture(r: Raster, x: number, y: number, b: PictureBrush, color?: Rgba) {
+  for (const c of b.cells) setPixel(r, x + c.dx, y + c.dy, color ?? c.color);
+}

@@ -145,3 +145,76 @@ export function hslToRgb(h: number, s: number, l: number): [number, number, numb
   };
   return [Math.round(f(h + 1 / 3) * 255), Math.round(f(h) * 255), Math.round(f(h - 1 / 3) * 255)];
 }
+
+/// Colours a picture by how light each pixel is: a list of colour stops (position 0 to 1, colour) is laid over the light-to-dark scale.
+export function gradientMap(r: Raster, stops: { at: number; color: Rgba }[], area: Area = null): Raster {
+  const s = [...stops].sort((a, b) => a.at - b.at);
+  if (s.length === 0) return cloneRaster(r);
+  const at = (t: number): Rgba => {
+    if (t <= s[0]!.at) return s[0]!.color;
+    for (let i = 1; i < s.length; i++) {
+      const [a, b] = [s[i - 1]!, s[i]!];
+      if (t <= b.at) {
+        const k = b.at === a.at ? 0 : (t - a.at) / (b.at - a.at);
+        return [0, 1, 2, 3].map((n) => Math.round(a.color[n]! + (b.color[n]! - a.color[n]!) * k)) as Rgba;
+      }
+    }
+    return s[s.length - 1]!.color;
+  };
+  return mapColors(r, (c) => at((0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]) / 255), area);
+}
+
+/// Replaces every colour with the nearest colour of a palette (so a picture takes a palette's colours).
+export function palettize(r: Raster, colors: Rgba[], area: Area = null): Raster {
+  if (colors.length === 0) return cloneRaster(r);
+  return mapColors(r, (c) => {
+    let best = colors[0]!;
+    let bestD = Infinity;
+    for (const p of colors) {
+      const d = 0.3 * (p[0] - c[0]) ** 2 + 0.59 * (p[1] - c[1]) ** 2 + 0.11 * (p[2] - c[2]) ** 2;
+      if (d < bestD) {
+        bestD = d;
+        best = p;
+      }
+    }
+    return best;
+  }, area);
+}
+
+/// Makes the picture blocky: every block of `size` by `size` pixels takes the average colour of its visible pixels.
+export function pixelate(r: Raster, size: number, area: Area = null): Raster {
+  const out = cloneRaster(r);
+  const n = Math.max(1, Math.round(size));
+  for (let by = 0; by < r.h; by += n) {
+    for (let bx = 0; bx < r.w; bx += n) {
+      let [sr, sg, sb, sa, count] = [0, 0, 0, 0, 0];
+      for (let y = by; y < Math.min(r.h, by + n); y++) {
+        for (let x = bx; x < Math.min(r.w, bx + n); x++) {
+          const c = getPixel(r, x, y)!;
+          if (c[3] === 0) continue;
+          sr += c[0]; sg += c[1]; sb += c[2]; sa += c[3]; count++;
+        }
+      }
+      if (count === 0) continue;
+      const avg: Rgba = [Math.round(sr / count), Math.round(sg / count), Math.round(sb / count), Math.round(sa / count)];
+      for (let y = by; y < Math.min(r.h, by + n); y++) {
+        for (let x = bx; x < Math.min(r.w, bx + n); x++) {
+          if (inArea(area, x, y) && getPixel(r, x, y)![3] > 0) setPixel(out, x, y, avg);
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/// Brightness, contrast (-1 to 1 each) and gamma (1 = none; above 1 lightens the middle) as one curve over all three colour channels.
+export function colorCurve(r: Raster, brightness: number, contrast: number, gamma = 1, area: Area = null): Raster {
+  const k = (1 + contrast) / (1 - Math.min(0.99, contrast));
+  const curve = (v: number) => {
+    let t = v / 255;
+    t = Math.pow(Math.min(1, Math.max(0, t)), 1 / Math.max(0.05, gamma));
+    t = (t - 0.5) * k + 0.5 + brightness;
+    return Math.round(Math.min(1, Math.max(0, t)) * 255);
+  };
+  return mapColors(r, (c) => [curve(c[0]), curve(c[1]), curve(c[2]), c[3]], area);
+}

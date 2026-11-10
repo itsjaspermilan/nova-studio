@@ -212,3 +212,44 @@ describe("blend modes", () => {
     expect(BLEND_MODES).toHaveLength(7);
   });
 });
+
+describe("fills with options and polygons", () => {
+  const board = () => {
+    const r = newRaster(5, 1);
+    [[10, 10, 10], [14, 14, 14], [200, 0, 0], [12, 12, 12], [10, 10, 10]].forEach((c, x) => setPixel(r, x, 0, [c[0]!, c[1]!, c[2]!, 255]));
+    return r;
+  };
+  it("takes in colours within the tolerance and stops at a clearly different one", async () => {
+    const { fillWith } = await import("./pixels");
+    const r = board();
+    expect(fillWith(r, 0, 0, [0, 255, 0, 255], { tolerance: 5 })).toBe(2);
+    expect(getPixel(r, 1, 0)).toEqual([0, 255, 0, 255]);
+    expect(getPixel(r, 3, 0)).toEqual([12, 12, 12, 255]);
+  });
+  it("can fill every similar pixel, joined or not", async () => {
+    const { fillWith } = await import("./pixels");
+    const r = board();
+    fillWith(r, 0, 0, [0, 255, 0, 255], { tolerance: 5, everywhere: true });
+    expect(getPixel(r, 4, 0)).toEqual([0, 255, 0, 255]);
+    expect(getPixel(r, 2, 0)).toEqual([200, 0, 0, 255]);
+  });
+  it("stays inside a selection", async () => {
+    const { fillWith } = await import("./pixels");
+    const r = board();
+    fillWith(r, 0, 0, [0, 255, 0, 255], { tolerance: 5, everywhere: true, within: (x) => x < 2 });
+    expect(getPixel(r, 0, 0)).toEqual([0, 255, 0, 255]);
+    expect(getPixel(r, 4, 0)).toEqual([10, 10, 10, 255]);
+    expect(fillWith(r, 4, 0, [1, 1, 1, 255], { within: (x) => x < 2 })).toBe(0);
+  });
+  it("draws a filled and an outlined polygon", async () => {
+    const { drawPolygon } = await import("./pixels");
+    const filled = newRaster(8, 8);
+    drawPolygon(filled, [{ x: 1, y: 1 }, { x: 6, y: 1 }, { x: 6, y: 6 }, { x: 1, y: 6 }], 1, [1, 2, 3, 255], true);
+    expect(getPixel(filled, 3, 3)).toEqual([1, 2, 3, 255]);
+    expect(getPixel(filled, 7, 7)).toEqual([0, 0, 0, 0]);
+    const outline = newRaster(8, 8);
+    drawPolygon(outline, [{ x: 1, y: 1 }, { x: 6, y: 1 }, { x: 6, y: 6 }, { x: 1, y: 6 }], 1, [1, 2, 3, 255], false);
+    expect(getPixel(outline, 3, 3)).toEqual([0, 0, 0, 0]);
+    expect(getPixel(outline, 6, 3)).toEqual([1, 2, 3, 255]);
+  });
+});
