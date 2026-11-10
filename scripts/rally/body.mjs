@@ -105,20 +105,20 @@ export function buildBody(s) {
     return { model: { version: 1, scale: 0.0625, parts: parts0 }, tail: { z: r2(ZR / 16), y: r2((s.tailY ?? 6) / 16), x: 0 } }; }
   const lampY = s.lampY ?? ((along(s.belt, ZF) + along(s.yb, ZF)) / 2 + 1.5);
   // the lights, grille and plate, sunk into the end faces
-  const hw = endW(ZF);
-  const hl = s.headlight ?? { w: 6.6, h: 2.8, x: hw - 4.6 };
+  const hw = along(s.w, ZF - 3); // the width a little behind the tapering tip: the lamps sit out at the corners
+  const hl = s.headlight ?? { w: 6.2, h: 2.8, x: hw - 3.9 };
   for (const side of [-1, 1]) {
     const x0 = side * hl.x - hl.w / 2, x1 = side * hl.x + hl.w / 2;
-    cubes.push(box(`headlight ${side}`, Math.min(x0, x1), Math.max(x0, x1), lampY - hl.h / 2, lampY + hl.h / 2, ZF - 0.6, ZF + 0.25, "#fff3cf", { bevel: 0.5, segs: 2, emissive: 0.95 }));
-    cubes.push(box(`headlight rim ${side}`, Math.min(x0, x1) - 0.45, Math.max(x0, x1) + 0.45, lampY - hl.h / 2 - 0.45, lampY + hl.h / 2 + 0.45, ZF - 0.7, ZF + 0.05, "#20222a", { bevel: 0.35, segs: 1, material: RUBBER }));
-    cubes.push(box(`fog ${side}`, side * (hw - 4.5) - 1.3, side * (hw - 4.5) + 1.3, along(s.yb, ZF) + 2.2, along(s.yb, ZF) + 3.4, ZF - 0.6, ZF + 0.3, "#ffe07a", { bevel: 0.25, segs: 1, emissive: 0.6 }));
+    cubes.push(box(`headlight ${side}`, Math.min(x0, x1), Math.max(x0, x1), lampY - hl.h / 2, lampY + hl.h / 2, ZF - 2.4, ZF + 0.25, "#fff3cf", { bevel: 0.5, segs: 2, emissive: 0.95 }));
+    cubes.push(box(`headlight rim ${side}`, Math.min(x0, x1) - 0.45, Math.max(x0, x1) + 0.45, lampY - hl.h / 2 - 0.45, lampY + hl.h / 2 + 0.45, ZF - 2.5, ZF + 0.05, "#20222a", { bevel: 0.35, segs: 1, material: RUBBER }));
+    cubes.push(box(`fog ${side}`, side * (hw - 4.8) - 1.3, side * (hw - 4.8) + 1.3, along(s.yb, ZF) + 2.2, along(s.yb, ZF) + 3.4, ZF - 2.2, ZF + 0.3, "#ffe07a", { bevel: 0.25, segs: 1, emissive: 0.6 }));
   }
-  const gw = Math.max(hl.x - hl.w / 2 - 1.2, 2);
+  const gw = Math.max(hl.x - hl.w / 2 - 1.0, 2);
   cubes.push(box("grille", -gw, gw, lampY - 1.5, lampY + 1.4, ZF - 0.6, ZF + 0.2, "#101116", { bevel: 0.35, segs: 1, material: RUBBER }));
   cubes.push(box("grille bar", -gw + 0.6, gw - 0.6, lampY - 0.2, lampY + 0.2, ZF - 0.5, ZF + 0.3, "#9aa0aa", { material: CHROME }));
-  const tw0 = endW(ZR), ty = s.tailY ?? (along(s.belt, ZR) - 1.2);
-  cubes.push(box("tail light bar", -tw0 + 2.4, tw0 - 2.4, ty - 1.0, ty + 1.0, ZR - 0.25, ZR + 0.6, "#e8202c", { bevel: 0.4, segs: 2, emissive: 0.9 }));
-  for (const side of [-1, 1]) cubes.push(box(`brake light ${side}`, side * (tw0 - 3.8) - 2.2, side * (tw0 - 3.8) + 2.2, ty - 3.4, ty - 1.4, ZR - 0.25, ZR + 0.5, "#ff5a3a", { bevel: 0.3, segs: 1, emissive: 0.75 }));
+  const tw0 = along(s.w, ZR + 3), ty = s.tailY ?? (along(s.belt, ZR) - 1.2);
+  cubes.push(box("tail light bar", -tw0 + 2.4, tw0 - 2.4, ty - 1.0, ty + 1.0, ZR - 0.25, ZR + 2.4, "#e8202c", { bevel: 0.4, segs: 2, emissive: 0.9 }));
+  for (const side of [-1, 1]) cubes.push(box(`brake light ${side}`, side * (tw0 - 3.8) - 2.2, side * (tw0 - 3.8) + 2.2, ty - 3.4, ty - 1.4, ZR - 0.25, ZR + 2.2, "#ff5a3a", { bevel: 0.3, segs: 1, emissive: 0.75 }));
   cubes.push(box("plate", -3.2, 3.2, along(s.yb, ZR) + 2.4, along(s.yb, ZR) + 4.8, ZR - 0.5, ZR + 0.2, "#f0f0ea", { material: RUBBER }));
   // the dark wheel wells, sitting in the dents
   for (const side of [-1, 1]) for (const zc of s.wheelZ) {
