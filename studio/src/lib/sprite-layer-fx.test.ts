@@ -212,3 +212,37 @@ describe("opacity of one cel", () => {
     expect(parseLayersFile(JSON.stringify(bad))).toBeNull();
   });
 });
+
+import { moveCel } from "./sprite-doc";
+describe("moving a cel", () => {
+  const three = () => {
+    let d = insertFrame(insertFrame(newDoc(2, 1, 1), 1, 0), 2, 0);
+    d = addLayer(d, 0).doc;
+    setPixel(d.layers[0]!.cels[0]!, 0, 0, [255, 0, 0, 255]);
+    setPixel(d.layers[1]!.cels[0]!, 1, 0, [0, 0, 255, 255]);
+    d.frames.forEach((_, i) => recompose(d, i));
+    return d;
+  };
+  it("moves a layer's picture to another frame and empties where it was, leaving other layers", () => {
+    const d = moveCel(three(), 0, 0, 2);
+    expect(getPixel(d.layers[0]!.cels[2]!, 0, 0)).toEqual([255, 0, 0, 255]);
+    expect(getPixel(d.layers[0]!.cels[0]!, 0, 0)![3]).toBe(0);
+    expect(getPixel(d.layers[1]!.cels[0]!, 1, 0)).toEqual([0, 0, 255, 255]); // the other layer did not move
+    expect(getPixel(d.frames[2]!, 0, 0)).toEqual([255, 0, 0, 255]);
+    expect(getPixel(d.frames[0]!, 0, 0)![3]).toBe(0);
+  });
+  it("copies, keeps the original, and refuses a move onto itself or off the end", () => {
+    const d = moveCel(three(), 0, 0, 1, true);
+    expect(getPixel(d.layers[0]!.cels[0]!, 0, 0)).toEqual([255, 0, 0, 255]);
+    expect(getPixel(d.layers[0]!.cels[1]!, 0, 0)).toEqual([255, 0, 0, 255]);
+    const same = three();
+    expect(moveCel(same, 0, 1, 1)).toBe(same);
+    expect(moveCel(same, 0, 0, 9)).toBe(same);
+    expect(moveCel(same, 5, 0, 1)).toBe(same);
+  });
+  it("brings the cel's own opacity along", () => {
+    const d = moveCel(setCelOpacity(three(), 0, 0, 0.5), 0, 0, 2);
+    expect(d.layers[0]!.cels[2]!.celOpacity).toBe(0.5);
+    expect(d.layers[0]!.cels[0]!.celOpacity).toBeUndefined();
+  });
+});

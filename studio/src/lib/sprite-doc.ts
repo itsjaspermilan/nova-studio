@@ -1025,6 +1025,22 @@ export function setCelOpacity(doc: SpriteDoc, layerIndex: number, frame: number,
   return recomposed(next);
 }
 
+/// Moves one cel of a layer to another frame of the same layer (or, with `copy`, copies it): the target frame's picture on that layer is replaced, and a moved cel leaves
+/// its own frame empty. The picture, its opacity and its place in the stack are the layer's; other layers are not touched. A cel that is linked to others is not linked after.
+export function moveCel(doc: SpriteDoc, layerIndex: number, from: number, to: number, copy = false): SpriteDoc {
+  const layer = doc.layers[layerIndex];
+  if (!layer || layer.kind === "group" || from === to || !layer.cels[from] || !layer.cels[to]) return doc;
+  const next = cloneDoc(doc);
+  const l = next.layers[layerIndex]!;
+  l.cels[to] = cloneRaster(l.cels[from]!);
+  if (!copy) l.cels[from] = newRaster(next.fw, next.fh);
+  if (l.links) {
+    l.links[to] = 0;
+    if (!copy) l.links[from] = 0;
+  }
+  return recomposed(next);
+}
+
 /// Removes a layer (never the last drawing layer). Removing a group removes the layers in it.
 export function removeLayer(doc: SpriteDoc, index: number): SpriteDoc {
   const l = doc.layers[index];

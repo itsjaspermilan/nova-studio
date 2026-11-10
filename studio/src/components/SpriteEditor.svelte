@@ -26,7 +26,7 @@
     addAnimation, animationOf, cloneDoc, cropDoc, linkCels, unlinkCels, syncLinked, moveFramesWithin, scaleDurations, duplicateFrames, moveFramesTo, removeFrames, detectGrid, duplicateAnimation, frameAt, gridFromCounts, smartGrid, framesIn, fromImage, fromSheet, gridTiles, importTiles, insertFrame, moveAnimation, isPristine, moveFrame, newDoc, parseSheetJson,
     removeAnimation, removeFrame, setAnimationDuration, tagProblems, tagSequence, resizeDoc, toSheet, toSheetJson, updateAnimation, type Direction, type SpriteDoc,
     copyFrameDataTo, effectiveData, frameDataOf, setDefaults, setFrameData, setNineSlice,
-    addLayer, applyLayers, duplicateLayer, layerSheets, layersFileText, groupLayers, setCelOpacity, mergeDown, moveLayer, ungroup, parseLayersFile, recompose, removeLayer, updateLayer, MAX_LAYERS,
+    addLayer, applyLayers, duplicateLayer, layerSheets, layersFileText, groupLayers, moveCel, setCelOpacity, mergeDown, moveLayer, ungroup, parseLayersFile, recompose, removeLayer, updateLayer, MAX_LAYERS,
   } from "../lib/sprite-doc";
   import { loadRaster, rasterToDataUrl } from "../lib/png";
   import { studio } from "../lib/store.svelte";
@@ -1447,6 +1447,7 @@
   }
   const applyGradientMap = () => applyFx((r, a) => gradientMap(r, [{ at: 0, color }, { at: 1, color: rightColor }], a));
   const applyPalettize = () => applyFx((r, a) => palettize(r, paletteRgba(), a));
+  let celTarget = $state(2);
   let offsetX = $state(1);
   let offsetY = $state(0);
   const applyReplace = () => applyFx((r, a) => replaceColor(r, color, rightColor, a));
@@ -1797,6 +1798,14 @@
       <label class="slider"><span>Opacity</span><input type="range" min="0" max="1" step="0.05" value={doc.layers[activeLayer]?.opacity ?? 1} oninput={(e) => setLayer(activeLayer, { opacity: Number(e.currentTarget.value) })} /><output>{Math.round((doc.layers[activeLayer]?.opacity ?? 1) * 100)}%</output></label>
       {#if doc.layers[activeLayer] && doc.layers[activeLayer]!.kind !== "group"}
         <label class="slider" title="How much of this layer shows in this frame only, on top of the layer's opacity: fade something in or out over a few frames"><span>This frame</span><input type="range" min="0" max="1" step="0.05" value={doc.layers[activeLayer]!.cels[frame]?.celOpacity ?? 1} oninput={(e) => structural(setCelOpacity(doc, activeLayer, frame, Number(e.currentTarget.value)))} aria-label="Opacity of this frame's cel" /><output>{Math.round((doc.layers[activeLayer]!.cels[frame]?.celOpacity ?? 1) * 100)}%</output></label>
+      {/if}
+      {#if doc.layers[activeLayer] && doc.layers[activeLayer]!.kind !== "group"}
+        <div class="row wrap" title="Move or copy this layer's picture in this frame to another frame (the other layers stay)">
+          <span class="dim small">Cel to frame</span>
+          <input type="number" class="narrow" min="1" max={doc.frames.length} bind:value={celTarget} aria-label="Frame number to move the cel to" />
+          <button onclick={() => structural(moveCel(doc, activeLayer, frame, Math.max(0, Math.min(doc.frames.length - 1, celTarget - 1))))}>Move</button>
+          <button onclick={() => structural(moveCel(doc, activeLayer, frame, Math.max(0, Math.min(doc.frames.length - 1, celTarget - 1)), true))}>Copy</button>
+        </div>
       {/if}
       <div class="row wrap">
         <button onclick={newLayer} disabled={doc.layers.length >= MAX_LAYERS} title="New layer above">＋</button>
