@@ -990,9 +990,11 @@
   const animFrames = $derived(anim ? Array.from({ length: framesIn(anim) }, (_, i) => anim.from + i) : []);
   let dragFrame: number | null = null;
   /// Dropping a dragged frame on another: the whole picked set goes together if the dragged one is part of it.
-  function dropFrame(onto: number) {
+  function dropFrame(onto: number, byCel = false, copy = false) {
     const from = dragFrame;
     dragFrame = null;
+    // Alt held: only this layer's cel goes (Shift as well: a copy), not the whole frame
+    if (byCel && from !== null && from !== onto) return structural(moveCel(doc, activeLayer, from, onto, copy), onto);
     if (from === null || from === onto) return;
     if (chosen.length > 1 && chosen.includes(from)) {
       const r = moveFramesWithin(doc, chosen, onto);
@@ -1776,7 +1778,7 @@
         <div class="frames" role="listbox" aria-label="Frames">
           {#if anim}<span class="animlabel" title="The animation these frames belong to">{anim.name || "(unnamed)"}</span>{/if}
           {#each animFrames as i (i)}
-            <button class="frame" class:on={i === frame} role="option" aria-selected={i === frame} draggable="true" ondragstart={(e) => { dragFrame = i; e.dataTransfer?.setData("text/plain", String(i)); }} ondragover={(e) => e.preventDefault()} ondrop={(e) => { e.preventDefault(); dropFrame(i); }} onclick={(e) => pickFrame(i, e)} class:picked={others.includes(i)} title="Frame {i - (anim?.from ?? 0) + 1} · {doc.durations[i]} ms · drag to move · ⌘ or ⇧ picks more">
+            <button class="frame" class:on={i === frame} role="option" aria-selected={i === frame} draggable="true" ondragstart={(e) => { dragFrame = i; e.dataTransfer?.setData("text/plain", String(i)); }} ondragover={(e) => e.preventDefault()} ondrop={(e) => { e.preventDefault(); dropFrame(i, e.altKey, e.shiftKey); }} onclick={(e) => pickFrame(i, e)} class:picked={others.includes(i)} title="Frame {i - (anim?.from ?? 0) + 1} · {doc.durations[i]} ms · drag to move · hold Alt to move just this layer's cel (Alt and Shift: copy it) · ⌘ or ⇧ picks more">
               <canvas use:drawThumb={i}></canvas>
               <span>{i - (anim?.from ?? 0) + 1}</span>
               {#if (doc.layers[activeLayer]?.links?.[i] ?? 0) > 0}<i class="chain" title="Linked with other frames on this layer">⛓</i>{/if}
