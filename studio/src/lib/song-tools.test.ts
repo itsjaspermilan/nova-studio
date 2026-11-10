@@ -259,3 +259,15 @@ describe("a colour for a track", () => {
     expect(serializeSong(updateTrack(s, 0, { color: undefined }))).not.toContain("color");
   });
 });
+
+describe("note pan and bend", () => {
+  it("sets and clears them on the picked notes only", async () => {
+    const { setNoteProps } = await import("./song-tools");
+    const s: Song = { version: 1, bpm: 120, stepsPerBeat: 4, length: 16, tracks: [{ ...synthTrack("a"), notes: [{ step: 0, len: 2, pitch: 60, vel: 1 }, { step: 4, len: 2, pitch: 62, vel: 1 }] }] };
+    const a = setNoteProps(s, 0, new Set(["0:60"]), { pan: 2, bend: -3 });
+    expect(a.tracks[0]!.notes[0]).toMatchObject({ pan: 1, bend: -3 });
+    expect(a.tracks[0]!.notes[1]!.pan).toBeUndefined();
+    const b = setNoteProps(a, 0, new Set(["0:60"]), { pan: 0, bend: 0 });
+    expect(b.tracks[0]!.notes[0]).toEqual({ step: 0, len: 2, pitch: 60, vel: 1 });
+  });
+});

@@ -255,3 +255,25 @@ export function lfoLane(length: number, period: number, depth: number, shape: "s
   }
   return { param: "gain", curve: shape === "square" ? "step" : "linear", points: points.slice(0, 256) };
 }
+
+/// Sets the stereo position (-1 to 1, added to the track's pan) and/or the pitch glide (-12 to 12 semitones) of the notes; 0 clears it.
+export function setNoteProps(song: Song, track: number, keys: Set<string>, props: { pan?: number; bend?: number }): Song {
+  return withTrack(song, track, (t) => ({
+    ...t,
+    notes: t.notes.map((n) => {
+      if (!keys.has(noteKey(n))) return n;
+      const next = { ...n };
+      if (props.pan !== undefined) {
+        const v = +clamp(props.pan, -1, 1).toFixed(2);
+        if (v) next.pan = v;
+        else delete next.pan;
+      }
+      if (props.bend !== undefined && t.kind === "synth") {
+        const v = +clamp(props.bend, -12, 12).toFixed(2);
+        if (v) next.bend = v;
+        else delete next.bend;
+      }
+      return next;
+    }),
+  }));
+}

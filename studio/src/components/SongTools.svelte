@@ -2,7 +2,7 @@
   // The song's tools beyond the piano roll: edits of the picked notes (strum, glue, humanise, snap to a scale, chords, a finer grid), the bar length,
   // markers and the loop region, a gain lane per track (automation), the loudness target and the peak ceiling, and MIDI in and out.
   import { quantizeTrack, noteKey } from "../lib/song-edit";
-  import { CHORDS, SCALES, addChord, addMarker, glueNotes, humanizeTiming, humanizeVelocity, lfoLane, laneValue, removeMarker, setBeatsPerBar, setLane, setLoop, snapToScale, strumNotes } from "../lib/song-tools";
+  import { CHORDS, SCALES, addChord, addMarker, glueNotes, humanizeTiming, humanizeVelocity, lfoLane, laneValue, removeMarker, setBeatsPerBar, setLane, setLoop, setNoteProps, snapToScale, strumNotes } from "../lib/song-tools";
   import { NOTE_NAMES, barSteps, songSeconds, stepSeconds, type Song } from "../lib/song";
   import { integratedLufs, peakDb } from "../lib/loudness";
   import { renderSong } from "../lib/song";
@@ -44,6 +44,8 @@
   let inversion = $state(0);
   let grid = $state(1);
   let note = $state("");
+  let notePan = $state(0);
+  let noteBend = $state(0);
 
   const done = (r: { song: Song; keys: Set<string> } | null, said: string) => {
     if (!r) return void (note = "That would pass the limit on notes in a song.");
@@ -116,6 +118,14 @@
       <button onclick={() => { commit(humanizeVelocity(song, track, target, amount, Date.now() & 0xffff)); note = "Loudness varied."; }}>Loudness</button>
       <label>timing <input type="number" min="1" max="2" bind:value={timing} class="narrow" /></label>
       <button onclick={() => done(humanizeTiming(song, track, target, timing, Date.now() & 0xffff), "Timing loosened.")}>Timing</button>
+    </div>
+    <div class="row" title="Where each note sits in the stereo field (added to the track's pan), and a pitch glide over the note">
+      <label>Pan <input type="range" min="-1" max="1" step="0.05" bind:value={notePan} aria-label="Note pan" /></label>
+      <button onclick={() => { commit(setNoteProps(song, track, target, { pan: notePan })); note = "Note pan set."; }}>Set pan</button>
+      {#if t?.kind === "synth"}
+        <label>Bend <input type="number" min="-12" max="12" step="1" bind:value={noteBend} class="narrow" aria-label="Glide in semitones" /> semitones</label>
+        <button onclick={() => { commit(setNoteProps(song, track, target, { bend: noteBend })); note = "Glide set."; }}>Set glide</button>
+      {/if}
     </div>
     {#if t?.kind === "synth"}
       <div class="row">

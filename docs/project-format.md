@@ -1035,6 +1035,11 @@ optional fields, and a song can have a room; a song with none of them renders ex
 "room": { "size": 0.55, "damping": 0.4, "mix": 1 }   // song level: how long the reverb rings, how dull its tail is, how loud
 ```
 
+**Buses and note details.** A song can have up to 8 `buses`, each `{ "name", "volume" (0 to 1.5), "pan" (balance), "mute", "reverb", "fx", "color" }`; `fx` is a chain like a track's. A
+track names the bus it plays into with `"bus": "name"` (none: straight to the master) and may copy part of its sound to up to four more with
+`"sends": [{ "bus": "name", "level": 0.4 }]` (after its own volume, pan and effects). A name that is not a bus is an error. Buses do not feed each other.
+A note may carry `"pan"` (-1 to 1, added to its track's pan) and `"bend"` (a glide of -12 to 12 semitones over the note; not for drums or the plucked string).
+
 Saws and squares are band-limited (no hiss from folded harmonics) in a fuller voice. The reverb is a Freeverb-style room that is run
 twice over the song, so its tail wraps round and the loop has no seam. The music editor has sliders for all of it. Not done: samples as
 instruments, per-note filter automation, a compressor or EQ on the mix (a fuller song gets only a gentle soft clip).

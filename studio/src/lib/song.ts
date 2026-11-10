@@ -29,6 +29,10 @@ export interface Note {
   pitch: number;
   /// Loudness 0 to 1.
   vel: number;
+  /// Where this note sits in the stereo field, added to the track's pan (-1 to 1; none: the track's own).
+  pan?: number;
+  /// A pitch glide in semitones (-12 to 12): the note starts at its pitch and slides this far by its end. Not for drums or the plucked string.
+  bend?: number;
 }
 
 export interface Track {
@@ -79,6 +83,23 @@ export interface Track {
   fx?: Fx[];
   /// A colour for the track in the list and the mixer (`#rrggbb`); it does not change the sound.
   color?: string;
+  /// The bus this track plays into (a name from the song's `buses`); none: straight to the master.
+  bus?: string;
+  /// Extra copies of the track's sound sent to buses (after its volume, pan and effects): the bus's name and how much (0 to 1).
+  sends?: { bus: string; level: number }[];
+}
+
+/// A bus: tracks are routed (or sent) into it, it has its own effects, volume and pan, and it plays into the master. Buses do not feed each other.
+export interface Bus {
+  name: string;
+  volume: number;
+  /// Balance, -1 (left) to 1 (right).
+  pan: number;
+  mute: boolean;
+  /// How much of the bus goes to the song's reverb (0 to 1).
+  reverb?: number;
+  fx?: Fx[];
+  color?: string;
 }
 
 /// The master section: the fader, an optional loudness target in LUFS (-30 to -6: quiet songs are lifted, loud ones lowered) and an optional peak
@@ -122,6 +143,7 @@ export interface Song {
   /// Beats in a bar (1 to 16; 4 when missing), which sets where the bar lines fall; it does not change the sound.
   beatsPerBar?: number;
   markers?: Marker[];
+  buses?: Bus[];
   /// The part of the song that loops in the game: exporting "the loop" renders just these steps (from, up to but not including to).
   loop?: { from: number; to: number };
 }
@@ -130,6 +152,8 @@ export const MIN_BPM = 40;
 export const MAX_BPM = 240;
 export const MAX_STEPS = 1024;
 export const MAX_TRACKS = 16;
+export const MAX_BUSES = 8;
+export const MAX_SENDS = 4;
 export const MAX_MASTER = 1.5;
 export const MAX_NOTES = 4000;
 export const RATE = 44100;
@@ -202,6 +226,7 @@ export function parseSong(text: string): Parsed {
       if (!n || !Number.isInteger(n.step) || n.step < 0 || !Number.isInteger(n.len) || n.len < 1 || !num(n.pitch, 0, 127) || !num(n.vel, 0, 1)) {
         return { ok: false, error: `${at}.notes[${j}] needs whole "step" and "len" (1 or more), "pitch" 0 to 127 and "vel" 0 to 1` };
       }
+      if ((n.pan !== undefined && !num(n.pan, -1, 1)) || (n.bend !== undefined && !num(n.bend, -12, 12))) return { ok: false, error: `${at}.notes[${j}]: "pan" is -1 to 1 and "bend" is -12 to 12 semitones` };
     }
     const base = t.kind === "drums" ? drumTrack(t.name) : synthTrack(t.name);
     const voice: Partial<Track> = {};
@@ -218,6 +243,12 @@ export function parseSong(text: string): Parsed {
     if (t.color !== undefined) {
       if (typeof t.color !== "string" || !/^#[0-9a-fA-F]{6}$/.test(t.color)) return { ok: false, error: `${at}.color must be like "#5aa9ff"` };
       voice.color = t.color.toLowerCase();
+    }
+    if (t.bus !== undefined && typeof t.bus !== "string") return { ok: false, error: `${at}.bus must be a bus name` };
+    if (t.sends !== undefined) {
+      if (!Array.isArray(t.sends) || t.sends.length > MAX_SENDS || !t.sends.every((x) => x && typeof x.bus === "string" && num(x.level, 0, 1))) return { ok: false, error: `${at}.sends is up to ${MAX_SENDS} of { "bus": name, "level": 0 to 1 }` };
+      if (t.sends.length) voice.sends = t.sends.map((x) => ({ bus: x.bus, level: x.level }));
+      else delete (t as Partial<Track>).sends;
     }
     if (t.fx !== undefined) {
       const c = cleanFx(t.fx);
@@ -254,6 +285,32 @@ export function parseSong(text: string): Parsed {
     if (m.limit !== undefined && !num(m.limit, -12, 0)) return { ok: false, error: '"master.limit" must be from -12 to 0 (dB)' };
     master = { volume: (m.volume as number | undefined) ?? 1, ...(m.lufs !== undefined ? { lufs: m.lufs as number } : {}), ...(m.limit !== undefined ? { limit: m.limit as number } : {}) };
   }
+  let buses: Bus[] | undefined;
+  if (o.buses !== undefined) {
+    if (!Array.isArray(o.buses) || o.buses.length > MAX_BUSES) return { ok: false, error: `"buses" is a list of up to ${MAX_BUSES}` };
+    buses = [];
+    for (const [i, raw] of (o.buses as Partial<Bus>[]).entries()) {
+      const at = `buses[${i}]`;
+      if (!raw || typeof raw.name !== "string" || !raw.name.trim()) return { ok: false, error: `${at} needs a name` };
+      if (buses.some((b) => b.name === raw.name)) return { ok: false, error: `${at}: two buses are called "${raw.name}"` };
+      if (!num(raw.volume ?? 1, 0, MAX_MASTER) || !num(raw.pan ?? 0, -1, 1) || !num(raw.reverb ?? 0, 0, 1)) return { ok: false, error: `${at}: "volume" is 0 to ${MAX_MASTER}, "pan" -1 to 1, "reverb" 0 to 1` };
+      if (raw.color !== undefined && (typeof raw.color !== "string" || !/^#[0-9a-fA-F]{6}$/.test(raw.color))) return { ok: false, error: `${at}.color must be like "#5aa9ff"` };
+      const bus: Bus = { name: raw.name, volume: raw.volume ?? 1, pan: raw.pan ?? 0, mute: !!raw.mute };
+      if (raw.reverb) bus.reverb = raw.reverb;
+      if (raw.color) bus.color = raw.color.toLowerCase();
+      if (raw.fx !== undefined) {
+        const c = cleanFx(raw.fx);
+        if (!c.ok) return { ok: false, error: `${at}.${c.error}` };
+        if (c.chain.length) bus.fx = c.chain;
+      }
+      buses.push(bus);
+    }
+  }
+  for (const [i, t] of tracks.entries()) {
+    const known = (name: string) => !!buses?.some((b) => b.name === name);
+    if (t.bus !== undefined && !known(t.bus)) return { ok: false, error: `tracks[${i}].bus "${t.bus}" is not one of the song's buses` };
+    for (const s of t.sends ?? []) if (!known(s.bus)) return { ok: false, error: `tracks[${i}].sends: "${s.bus}" is not one of the song's buses` };
+  }
   if (o.beatsPerBar !== undefined && (!Number.isInteger(o.beatsPerBar) || !num(o.beatsPerBar, 1, 16))) return { ok: false, error: '"beatsPerBar" must be a whole number from 1 to 16' };
   let markers: Marker[] | undefined;
   if (o.markers !== undefined) {
@@ -269,11 +326,11 @@ export function parseSong(text: string): Parsed {
     if (!l || !Number.isInteger(l.from) || !Number.isInteger(l.to) || (l.from as number) < 0 || (l.to as number) > o.length! || (l.from as number) >= (l.to as number)) return { ok: false, error: '"loop" is { "from", "to" } in steps, from before to and inside the song' };
     loop = { from: l.from as number, to: l.to as number };
   }
-  return { ok: true, song: { version: 1, bpm: o.bpm!, stepsPerBeat: o.stepsPerBeat!, length: o.length!, tracks, ...(room ? { room } : {}), ...(master ? { master } : {}), ...(o.beatsPerBar !== undefined && o.beatsPerBar !== 4 ? { beatsPerBar: o.beatsPerBar } : {}), ...(markers?.length ? { markers } : {}), ...(loop ? { loop } : {}) } };
+  return { ok: true, song: { version: 1, bpm: o.bpm!, stepsPerBeat: o.stepsPerBeat!, length: o.length!, tracks, ...(room ? { room } : {}), ...(master ? { master } : {}), ...(o.beatsPerBar !== undefined && o.beatsPerBar !== 4 ? { beatsPerBar: o.beatsPerBar } : {}), ...(markers?.length ? { markers } : {}), ...(buses?.length ? { buses } : {}), ...(loop ? { loop } : {}) } };
 }
 
 export function serializeSong(song: Song): string {
-  const note = (n: Note) => `{ "step": ${n.step}, "len": ${n.len}, "pitch": ${n.pitch}, "vel": ${+n.vel.toFixed(2)} }`;
+  const note = (n: Note) => `{ "step": ${n.step}, "len": ${n.len}, "pitch": ${n.pitch}, "vel": ${+n.vel.toFixed(2)}${n.pan ? `, "pan": ${+n.pan.toFixed(2)}` : ""}${n.bend ? `, "bend": ${+n.bend.toFixed(2)}` : ""} }`;
   const track = (t: Track) => {
     const fields = [
       `"name": ${JSON.stringify(t.name)}`, `"kind": "${t.kind}"`, `"wave": "${t.wave}"`, `"duty": ${t.duty}`,
@@ -284,6 +341,8 @@ export function serializeSong(song: Song): string {
     for (const [key] of VOICE_RANGES) if (t[key] !== undefined) fields.push(`"${key}": ${t[key]}`);
     if (t.kit !== undefined) fields.push(`"kit": "${t.kit}"`);
     if (t.color) fields.push(`"color": ${JSON.stringify(t.color)}`);
+    if (t.bus) fields.push(`"bus": ${JSON.stringify(t.bus)}`);
+    if (t.sends?.length) fields.push(`"sends": ${JSON.stringify(t.sends)}`);
     if (t.fx?.length) fields.push(`"fx": ${JSON.stringify(t.fx)}`);
     if (t.automation?.length) fields.push(`"automation": ${JSON.stringify(t.automation)}`);
     const notes = t.notes.length ? `[\n${t.notes.map((n) => `        ${note(n)}`).join(",\n")}\n      ]` : "[]";
@@ -293,8 +352,9 @@ export function serializeSong(song: Song): string {
   const master = song.master ? `,\n  "master": { "volume": ${song.master.volume}${song.master.lufs !== undefined ? `, "lufs": ${song.master.lufs}` : ""}${song.master.limit !== undefined ? `, "limit": ${song.master.limit}` : ""} }` : "";
   const bar = song.beatsPerBar && song.beatsPerBar !== 4 ? `,\n  "beatsPerBar": ${song.beatsPerBar}` : "";
   const markers = song.markers?.length ? `,\n  "markers": ${JSON.stringify(song.markers)}` : "";
+  const buses = song.buses?.length ? `,\n  "buses": [\n${song.buses.map((b) => `    ${JSON.stringify(b)}`).join(",\n")}\n  ]` : "";
   const loop = song.loop ? `,\n  "loop": { "from": ${song.loop.from}, "to": ${song.loop.to} }` : "";
-  return `{\n  "version": 1,\n  "bpm": ${song.bpm},\n  "stepsPerBeat": ${song.stepsPerBeat},\n  "length": ${song.length},\n  "tracks": [\n${song.tracks.map(track).join(",\n")}\n  ]${room}${master}${bar}${markers}${loop}\n}\n`;
+  return `{\n  "version": 1,\n  "bpm": ${song.bpm},\n  "stepsPerBeat": ${song.stepsPerBeat},\n  "length": ${song.length},\n  "tracks": [\n${song.tracks.map(track).join(",\n")}\n  ]${room}${master}${bar}${markers}${buses}${loop}\n}\n`;
 }
 
 // ---- editing (every edit returns a new song) ----------------------------------------------------------
@@ -821,7 +881,10 @@ export function renderSong(source: Song, rate = RATE): Sound {
   const right = new Float32Array(total);
   const hitCache = new Map<number, Float32Array>();
   const studioCache = new Map<number, Float32Array>();
-  const anyRoom = song.tracks.some((t) => isAudible(song, t) && (t.reverb ?? 0) > 0);
+  const buses = song.buses ?? [];
+  const busBuf = buses.map((b) => (b.mute ? null : { l: new Float32Array(total), r: new Float32Array(total) }));
+  const busOf = (name: string | undefined) => (name === undefined ? -1 : buses.findIndex((b) => b.name === name));
+  const anyRoom = song.tracks.some((t) => isAudible(song, t) && (t.reverb ?? 0) > 0) || buses.some((b) => !b.mute && (b.reverb ?? 0) > 0);
   const sendL = anyRoom ? new Float32Array(total) : null;
   const sendR = anyRoom ? new Float32Array(total) : null;
   const richSong = song.tracks.some((t) => isAudible(song, t) && isRich(t));
@@ -836,20 +899,26 @@ export function renderSong(source: Song, rate = RATE): Sound {
     const echoR = echo > 0 ? new Float32Array(total) : null;
     // a track with effects is mixed on its own first, run through the chain, then added to the song
     const chain = (track.fx ?? []).filter((f) => f.on !== false);
-    const outL = chain.length ? new Float32Array(total) : left;
-    const outR = chain.length ? new Float32Array(total) : right;
-    const sendNow = send > 0 && !chain.length;
-    const mix = (index: number, v: number) => {
+    const route = busOf(track.bus);
+    const sends = (track.sends ?? []).map((s) => ({ at: busOf(s.bus), level: clamp(s.level, 0, 1) })).filter((s) => s.at >= 0 && s.level > 0 && busBuf[s.at]);
+    // a track that is routed to a muted bus is not heard (its sends still reach other buses)
+    const dest = route >= 0 ? busBuf[route] ?? null : { l: left, r: right };
+    const temp = chain.length > 0 || sends.length > 0 || !dest;
+    const outL = temp ? new Float32Array(total) : dest!.l;
+    const outR = temp ? new Float32Array(total) : dest!.r;
+    const sendNow = send > 0 && !chain.length && !!dest;
+    // (a note's own pan moves it within the track's: `gl`/`gr` are the track's gains, `pl`/`pr` the note's)
+    const mix = (index: number, v: number, pl = gl, pr = gr) => {
       const i = index % total; // wrap the tail onto the start
-      outL[i] = outL[i]! + v * gl;
-      outR[i] = outR[i]! + v * gr;
+      outL[i] = outL[i]! + v * pl;
+      outR[i] = outR[i]! + v * pr;
       if (echoL && echoR) {
-        echoL[i] = echoL[i]! + v * gl;
-        echoR[i] = echoR[i]! + v * gr;
+        echoL[i] = echoL[i]! + v * pl;
+        echoR[i] = echoR[i]! + v * pr;
       }
       if (sendNow) {
-        sendL![i] = sendL![i]! + v * gl * send;
-        sendR![i] = sendR![i]! + v * gr * send;
+        sendL![i] = sendL![i]! + v * pl * send;
+        sendR![i] = sendR![i]! + v * pr * send;
       }
     };
     // the same for a stereo pair of values already panned by the voice (a track's pan and volume are applied here)
@@ -868,25 +937,31 @@ export function renderSong(source: Song, rate = RATE): Sound {
     };
     for (const [ni, n] of track.notes.entries()) {
       const startIndex = Math.round(n.step * stepSec * rate);
+      const notePan = clamp(pan + (n.pan ?? 0), -1, 1);
+      const nl = n.pan ? Math.cos(((notePan + 1) * Math.PI) / 4) * track.volume : gl;
+      const nr = n.pan ? Math.sin(((notePan + 1) * Math.PI) / 4) * track.volume : gr;
       if (track.kind === "drums") {
         const studio = track.kit === "studio";
         const cache = studio ? studioCache : hitCache;
         let hit = cache.get(n.pitch);
         if (!hit) cache.set(n.pitch, (hit = studio ? studioDrumHit(n.pitch, rate) : drumHit(n.pitch, rate)));
-        for (let k = 0; k < hit.length; k++) mix(startIndex + k, hit[k]! * n.vel);
+        for (let k = 0; k < hit.length; k++) mix(startIndex + k, hit[k]! * n.vel, nl, nr);
         continue;
       }
       if (isRich(track)) {
-        richNote(track, n, ti * 1000 + ni + 1, startIndex, stepSec, rate, track.volume, pan, mixStereo);
+        richNote(track, n, ti * 1000 + ni + 1, startIndex, stepSec, rate, track.volume, notePan, mixStereo);
         continue;
       }
       const hold = n.len * stepSec;
       const length = Math.round((hold + track.release) * rate);
       const osc = isInstrument(track.wave) ? instrumentOscillator(track, mulberry32(ti * 1000 + ni + 1)) : oscillator(track.wave, track.duty, mulberry32(ti * 1000 + ni + 1));
       const freq = midiFreq(n.pitch);
+      const glide = n.bend ?? 0;
       for (let k = 0; k < length; k++) {
         const e = envelope(k / rate, hold, track.attack, track.decay, track.sustain, track.release);
-        if (e > 0) mix(startIndex + k, osc(freq, rate) * e * n.vel * 0.5);
+        // the glide runs over the note's held length, then stays where it got to
+        const f = glide ? freq * 2 ** ((glide * Math.min(1, k / rate / hold)) / 12) : freq;
+        if (e > 0) mix(startIndex + k, osc(f, rate) * e * n.vel * 0.5, nl, nr);
       }
     }
     if (echoL && echoR) {
@@ -904,15 +979,43 @@ export function renderSong(source: Song, rate = RATE): Sound {
         outR[j] = outR[j]! + wr[i]! * echo;
       }
     }
-    if (chain.length) {
-      const [pl, pr] = applyFx(chain, outL, outR, rate);
+    if (temp) {
+      const [pl, pr] = chain.length ? applyFx(chain, outL, outR, rate) : [outL, outR];
       for (let i = 0; i < total; i++) {
-        left[i] = left[i]! + pl[i]!;
-        right[i] = right[i]! + pr[i]!;
-        if (send > 0) {
+        if (dest) {
+          dest.l[i] = dest.l[i]! + pl[i]!;
+          dest.r[i] = dest.r[i]! + pr[i]!;
+        }
+        if (send > 0 && chain.length && dest) {
           sendL![i] = sendL![i]! + pl[i]! * send;
           sendR![i] = sendR![i]! + pr[i]! * send;
         }
+      }
+      for (const s of sends) {
+        const b = busBuf[s.at]!;
+        for (let i = 0; i < total; i++) {
+          b.l[i] = b.l[i]! + pl[i]! * s.level;
+          b.r[i] = b.r[i]! + pr[i]! * s.level;
+        }
+      }
+    }
+  });
+  // The buses: their effects, then volume and balance, into the master (and a share to the room).
+  buses.forEach((bus, bi) => {
+    const buf = busBuf[bi];
+    if (!buf) return;
+    const chain = (bus.fx ?? []).filter((f) => f.on !== false);
+    const [bl, br] = chain.length ? applyFx(chain, buf.l, buf.r, rate) : [buf.l, buf.r];
+    const bal = clamp(bus.pan, -1, 1);
+    const gl = bus.volume * (bal > 0 ? Math.cos((bal * Math.PI) / 2) : 1);
+    const gr = bus.volume * (bal < 0 ? Math.cos((-bal * Math.PI) / 2) : 1);
+    const share = clamp(bus.reverb ?? 0, 0, 1);
+    for (let i = 0; i < total; i++) {
+      left[i] = left[i]! + bl[i]! * gl;
+      right[i] = right[i]! + br[i]! * gr;
+      if (share > 0) {
+        sendL![i] = sendL![i]! + bl[i]! * gl * share;
+        sendR![i] = sendR![i]! + br[i]! * gr * share;
       }
     }
   });
