@@ -18,6 +18,15 @@ export interface Tag {
   loop: boolean;
 }
 /// One layer: a picture for every frame (`cels[frame]`). Layers stack bottom (index 0) to top.
+/// What a text layer says and where: the words (new lines allowed), the top left corner in the picture, the size (whole times the font) and the colour as "#rrggbb".
+export interface TextSource {
+  value: string;
+  x: number;
+  y: number;
+  scale: number;
+  color: string;
+}
+
 export interface Layer {
   name: string;
   visible: boolean;
@@ -36,6 +45,9 @@ export interface Layer {
   kind?: "group";
   /// How deep the layer sits in groups (0, or missing, at the top level).
   depth?: number;
+  /// A text layer: the words it shows. Its cels are drawn from this (every frame the same) whenever it changes, and it is locked so the tools leave it be until it is
+  /// turned into plain pixels (lib/sprite-text-layer.ts).
+  text?: TextSource;
   cels: Raster[];
   /// For each cel, 0 or a group number: cels of this layer with the same number are linked, and drawing on one draws on all.
   links?: number[];
@@ -97,6 +109,11 @@ export function newDoc(fw: number, fh: number, frames = 1): SpriteDoc {
     tags: [{ name: DEFAULT_ANIMATION, from: 0, to: frames - 1, direction: "forward", loop: true }], layers: [layerOf("Layer 1", blank())],
   };
 }
+
+export const recomposeAll = (doc: SpriteDoc): SpriteDoc => {
+  doc.frames.forEach((_, i) => recompose(doc, i));
+  return doc;
+};
 
 export function cloneDoc(d: SpriteDoc): SpriteDoc {
   return {
@@ -1164,7 +1181,7 @@ export interface LayersFile {
   sheet: string;
   frames: number;
   columns: number;
-  layers: { name: string; visible: boolean; opacity: number; blend?: BlendMode; locked?: boolean; clip?: boolean; effects?: LayerEffect[]; group?: boolean; depth?: number; image: string; /** link groups of the cels, when any are linked */ links?: number[]; /** each cel's own opacity, when any is not 1 */ celOpacity?: number[] }[];
+  layers: { name: string; visible: boolean; opacity: number; blend?: BlendMode; locked?: boolean; clip?: boolean; effects?: LayerEffect[]; group?: boolean; depth?: number; text?: TextSource; image: string; /** link groups of the cels, when any are linked */ links?: number[]; /** each cel's own opacity, when any is not 1 */ celOpacity?: number[] }[];
 }
 
 /// Each layer as a sheet laid out like the exported one.
@@ -1175,7 +1192,7 @@ export function layerSheets(doc: SpriteDoc): Raster[] {
 export function layersFileText(doc: SpriteDoc, images: string[]): string {
   const file: LayersFile = {
     version: 1, sheet: hashRaster(toSheet(doc)), frames: doc.frames.length, columns: sheetColumns(doc.frames.length),
-    layers: doc.layers.map((l, i) => ({ name: l.name, visible: l.visible, opacity: l.opacity, ...(l.blend ? { blend: l.blend } : {}), ...(l.locked ? { locked: true } : {}), ...(l.clip ? { clip: true } : {}), ...(l.effects?.length ? { effects: l.effects } : {}), ...(l.kind === "group" ? { group: true } : {}), ...(l.depth ? { depth: l.depth } : {}), image: images[i]!, ...(l.links?.some((n) => n > 0) ? { links: l.links } : {}), ...(l.cels.some((c) => c.celOpacity !== undefined) ? { celOpacity: l.cels.map((c) => c.celOpacity ?? 1) } : {}) })),
+    layers: doc.layers.map((l, i) => ({ name: l.name, visible: l.visible, opacity: l.opacity, ...(l.blend ? { blend: l.blend } : {}), ...(l.locked ? { locked: true } : {}), ...(l.clip ? { clip: true } : {}), ...(l.effects?.length ? { effects: l.effects } : {}), ...(l.kind === "group" ? { group: true } : {}), ...(l.depth ? { depth: l.depth } : {}), ...(l.text ? { text: l.text } : {}), image: images[i]!, ...(l.links?.some((n) => n > 0) ? { links: l.links } : {}), ...(l.cels.some((c) => c.celOpacity !== undefined) ? { celOpacity: l.cels.map((c) => c.celOpacity ?? 1) } : {}) })),
   };
   return `${JSON.stringify(file, null, 1)}\n`;
 }
@@ -1184,7 +1201,7 @@ export function parseLayersFile(text: string): LayersFile | null {
   try {
     const f = JSON.parse(text) as LayersFile;
     const good = f && f.version === 1 && typeof f.sheet === "string" && Number.isInteger(f.frames) && Number.isInteger(f.columns) && Array.isArray(f.layers) && f.layers.length > 0 && f.layers.length <= MAX_LAYERS
-      && f.layers.every((l) => typeof l.name === "string" && typeof l.visible === "boolean" && typeof l.opacity === "number" && typeof l.image === "string" && (l.blend === undefined || BLEND_MODES.includes(l.blend)) && (l.locked === undefined || typeof l.locked === "boolean") && (l.clip === undefined || typeof l.clip === "boolean") && (l.effects === undefined || cleanLayerEffects(l.effects) !== null) && (l.group === undefined || typeof l.group === "boolean") && (l.depth === undefined || (Number.isInteger(l.depth) && l.depth > 0 && l.depth < 8))
+      && f.layers.every((l) => typeof l.name === "string" && typeof l.visible === "boolean" && typeof l.opacity === "number" && typeof l.image === "string" && (l.blend === undefined || BLEND_MODES.includes(l.blend)) && (l.locked === undefined || typeof l.locked === "boolean") && (l.clip === undefined || typeof l.clip === "boolean") && (l.effects === undefined || cleanLayerEffects(l.effects) !== null) && (l.group === undefined || typeof l.group === "boolean") && (l.depth === undefined || (Number.isInteger(l.depth) && l.depth > 0 && l.depth < 8)) && (l.text === undefined || (!!l.text && typeof l.text.value === "string" && l.text.value.length <= 400 && Number.isFinite(l.text.x) && Number.isFinite(l.text.y) && Number.isInteger(l.text.scale) && l.text.scale >= 1 && l.text.scale <= 16 && /^#[0-9a-fA-F]{6}$/.test(l.text.color)))
         && (l.celOpacity === undefined || (Array.isArray(l.celOpacity) && l.celOpacity.length === f.frames && l.celOpacity.every((n) => typeof n === "number" && n >= 0 && n <= 1)))
         && (l.links === undefined || (Array.isArray(l.links) && l.links.length === f.frames && l.links.every((n) => Number.isInteger(n) && n >= 0))));
     return good ? f : null;
@@ -1201,7 +1218,7 @@ export function applyLayers(doc: SpriteDoc, file: LayersFile, sheets: Raster[]):
   const next = cloneDoc(doc);
   next.layers = file.layers.map((l, i) => ({
     name: l.name, visible: l.visible, opacity: clampOpacity(l.opacity), ...(l.blend && l.blend !== "normal" ? { blend: l.blend } : {}), ...(l.locked ? { locked: true } : {}), ...(l.clip ? { clip: true } : {}),
-    ...(l.effects?.length ? { effects: cleanLayerEffects(l.effects)! } : {}), ...(l.group ? { kind: "group" as const, locked: true } : {}), ...(l.depth ? { depth: l.depth } : {}),
+    ...(l.effects?.length ? { effects: cleanLayerEffects(l.effects)! } : {}), ...(l.group ? { kind: "group" as const, locked: true } : {}), ...(l.depth ? { depth: l.depth } : {}), ...(l.text ? { text: { ...l.text }, locked: true } : {}),
     cels: cutFrames(sheets[i]!, doc.fw, doc.fh, doc.frames.length, columns),
     ...(l.links?.some((n) => n > 0) ? { links: [...l.links] } : {}),
   }));

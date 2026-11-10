@@ -4,6 +4,7 @@
   import { commands } from "../lib/commands";
   import { placesOf, strokeMaps } from "../lib/symmetry";
   import { encodeGif, scaleRaster } from "../lib/gif";
+  import { addTextLayer, rasterizeText, setLayerText } from "../lib/sprite-text-layer";
   import { LAYER_FX, LAYER_FX_TYPES, MAX_LAYER_FX, addLayerEffect, moveLayerEffect, removeLayerEffect, setLayerEffectParam, toggleLayerEffect, type LayerFxType } from "../lib/layer-fx";
   import { encodeIndexedPng, paletteOfPicture, toIndexed } from "../lib/indexed";
   import { PROJECT_PALETTES_PATH, parseProjectPalettes, serializeProjectPalettes, withPalettes } from "../lib/project-palettes";
@@ -25,7 +26,7 @@
   } from "../lib/pixels";
   import {
     addAnimation, animationOf, cloneDoc, cropDoc, linkCels, unlinkCels, syncLinked, moveFramesWithin, scaleDurations, duplicateFrames, moveFramesTo, removeFrames, detectGrid, duplicateAnimation, frameAt, gridFromCounts, smartGrid, framesIn, fromImage, fromSheet, gridTiles, importTiles, insertFrame, moveAnimation, isPristine, moveFrame, newDoc, parseSheetJson,
-    removeAnimation, removeFrame, setAnimationDuration, tagProblems, tagSequence, resizeDoc, toSheet, toSheetJson, updateAnimation, type Direction, type SpriteDoc,
+    removeAnimation, removeFrame, setAnimationDuration, tagProblems, tagSequence, resizeDoc, toSheet, toSheetJson, updateAnimation, type Direction, type SpriteDoc, type TextSource,
     copyFrameDataTo, effectiveData, frameDataOf, setDefaults, setFrameData, setNineSlice,
     addLayer, applyLayers, duplicateLayer, layerSheets, layersFileText, groupLayers, moveCel, setCelOpacity, mergeDown, moveLayer, ungroup, parseLayersFile, recompose, removeLayer, updateLayer, MAX_LAYERS,
   } from "../lib/sprite-doc";
@@ -1224,6 +1225,9 @@
   const activeFx = $derived(doc.layers[activeLayer]?.effects);
   const setFx = (list: ReturnType<typeof addLayerEffect>) => setLayer(activeLayer, { effects: list });
   const mergeLayer = () => layerEdit(mergeDown(doc, activeLayer));
+  const newTextLayer = () => layerEdit(addTextLayer(doc, activeLayer, { color: hex(color).slice(0, 7), scale: 1 }));
+  const activeText = $derived(doc.layers[activeLayer]?.text);
+  const setText = (change: Partial<TextSource>) => structural(setLayerText(doc, activeLayer, change));
   const setLayer = (i: number, change: Parameters<typeof updateLayer>[2]) => structural(updateLayer(doc, i, change));
   /// Top layer first, as in most drawing programs.
   const layerRows = $derived(doc.layers.map((l, i) => ({ l, i })).reverse());
@@ -1936,6 +1940,7 @@
       {/if}
       <div class="row wrap">
         <button onclick={newLayer} disabled={doc.layers.length >= MAX_LAYERS} title="New layer above">＋</button>
+        <button onclick={newTextLayer} disabled={doc.layers.length >= MAX_LAYERS} title="A text layer above: words you can change later">＋ Text</button>
         <button onclick={copyLayer} disabled={doc.layers.length >= MAX_LAYERS} title="Duplicate layer">⧉</button>
         <button onclick={() => shiftLayer(1)} disabled={activeLayer >= doc.layers.length - 1} title="Move up" aria-label="Move layer up">↑</button>
         <button onclick={() => shiftLayer(-1)} disabled={activeLayer <= 0} title="Move down" aria-label="Move layer down">↓</button>
@@ -1947,6 +1952,18 @@
         {/if}
         <button class="danger" onclick={dropLayer} disabled={doc.layers.length <= 1} title="Delete layer" aria-label="Delete layer">✕</button>
       </div>
+      {#if activeText}
+        <div class="textlayer" role="group" aria-label="Text layer">
+          <label class="wide">Words <textarea rows="2" value={activeText.value} aria-label="Words of the text layer" onchange={(e) => setText({ value: e.currentTarget.value })}></textarea></label>
+          <div class="row wrap">
+            <label class="inline">x <input type="number" class="narrow" value={activeText.x} onchange={(e) => setText({ x: Number(e.currentTarget.value) })} /></label>
+            <label class="inline">y <input type="number" class="narrow" value={activeText.y} onchange={(e) => setText({ y: Number(e.currentTarget.value) })} /></label>
+            <label class="inline">size <input type="number" class="narrow" min="1" max="16" value={activeText.scale} onchange={(e) => setText({ scale: Number(e.currentTarget.value) })} /></label>
+            <input type="color" value={activeText.color} aria-label="Text colour" onchange={(e) => setText({ color: e.currentTarget.value })} />
+            <button onclick={() => structural(rasterizeText(doc, activeLayer))} title="Turn the words into plain pixels you can draw on (they can no longer be edited as text)">Rasterize</button>
+          </div>
+        </div>
+      {/if}
       <h4 class="fxhead">Effects on this layer <span class="dim small">(the drawing is not changed)</span></h4>
       {#each activeFx ?? [] as e, k (k)}
         <div class="fxrow">
@@ -2100,6 +2117,8 @@
 {/if}
 
 <style>
+  .textlayer { display: flex; flex-direction: column; gap: 4px; padding: 6px; margin: 4px 0; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); }
+  .textlayer textarea { width: 100%; resize: vertical; }
   .toolselect { font-weight: 600; }
   .scrub { position: relative; height: 10px; margin-bottom: 2px; background: color-mix(in srgb, var(--line) 60%, transparent); border-radius: 4px; cursor: ew-resize; touch-action: none; }
   .scrub i { position: absolute; top: 0; bottom: 0; width: 3px; margin-left: -1px; background: var(--accent); border-radius: 2px; pointer-events: none; }
