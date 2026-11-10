@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
   import { DEFAULTS, PRESETS, RANGES, WAVES, fromJson, mulberry32, mutate, randomFrom, render, toJson, variationNames, variations, type SfxParams, type Wave } from "../lib/sfx";
+  import { changeSpeed, findHits, makeLoopable, shiftPitch, slicePieces, spectrogram, stretchTime } from "../lib/sample-tools";
   import { decodeWav, duration, encodeWav, fade, frames, fromBase64, gain, normalize, peak, reverse, toBase64, trim, trimSilence, waveformPeaks, type Sound } from "../lib/wav";
   import { studio } from "../lib/store.svelte";
 
@@ -226,6 +227,45 @@
       return { rate: s.rate, channels: s.channels.map((c, i) => Float32Array.from([...c.subarray(0, a), ...part.channels[i]!, ...c.subarray(b)])) };
     });
   }
+  // slicing at the hits, and the spectrogram
+  let hitSense = $state(0.6);
+  let spectro = $state(false);
+  let spectroCanvas: HTMLCanvasElement | undefined = $state();
+  async function sliceAtHits() {
+    const hits = findHits(sound, hitSense);
+    const pieces = slicePieces(sound, hits);
+    if (pieces.length < 2) return void studio.say("info", "No separate hits found. Try a higher sensitivity.");
+    const base = fromPath.replace(/\.wav$/i, "");
+    let written = 0;
+    for (const [i, piece] of pieces.entries()) {
+      const target = `${base}_${i + 1}.wav`;
+      if (studio.files.some((f) => f.path === target)) continue; // never overwrite
+      await studio.api!.writeAudio(target, `data:audio/wav;base64,${toBase64(encodeWav(piece))}`);
+      written++;
+    }
+    await studio.refreshFiles();
+    studio.say("info", `Cut into ${pieces.length} pieces: ${written} written as ${base.slice(base.lastIndexOf("/") + 1)}_1.wav and on (existing files are left alone).`);
+  }
+  $effect(() => {
+    if (!spectro || !spectroCanvas) return;
+    const sp = spectrogram(sound, 480, 512);
+    const rows = sp.columns[0]!.length;
+    spectroCanvas.width = sp.columns.length;
+    spectroCanvas.height = rows;
+    const ctx = spectroCanvas.getContext("2d")!;
+    const img = ctx.createImageData(sp.columns.length, rows);
+    sp.columns.forEach((col, x) => {
+      for (let y = 0; y < rows; y++) {
+        const t = Math.max(0, Math.min(1, (col[y]! + 90) / 80)); // -90 dB (dark) to -10 dB (bright)
+        const o = ((rows - 1 - y) * sp.columns.length + x) * 4;
+        img.data[o] = Math.round(255 * Math.min(1, t * 2));
+        img.data[o + 1] = Math.round(255 * Math.max(0, t * 2 - 0.7));
+        img.data[o + 2] = Math.round(120 * (1 - t) + 80 * t * t);
+        img.data[o + 3] = 255;
+      }
+    });
+    ctx.putImageData(img, 0, 0);
+  });
   const seconds = (s: Sound) => `${duration(s).toFixed(2)} s`;
   const fmtParam = (key: keyof typeof RANGES) => `${Number(params[key].toFixed(3))}${RANGES[key].unit ? ` ${RANGES[key].unit}` : ""}`;
 
@@ -327,6 +367,21 @@
           <button onclick={() => apply((s) => gain(s, 1.25))}>Louder</button>
           <button onclick={() => apply(reverse)}>Reverse</button>
         </div>
+        <div class="presets">
+          <button onclick={() => apply((s) => stretchTime(s, 1.25))} title="Longer, same pitch">Slower</button>
+          <button onclick={() => apply((s) => stretchTime(s, 0.8))} title="Shorter, same pitch">Faster</button>
+          <button onclick={() => apply((s) => shiftPitch(s, 1))} title="One semitone up, same length">Pitch +1</button>
+          <button onclick={() => apply((s) => shiftPitch(s, -1))} title="One semitone down, same length">Pitch −1</button>
+          <button onclick={() => apply((s) => changeSpeed(s, 1.25))} title="Like a tape: shorter and higher together">Tape faster</button>
+          <button onclick={() => apply((s) => changeSpeed(s, 0.8))} title="Like a tape: longer and lower together">Tape slower</button>
+          <button onclick={() => apply((s) => makeLoopable(s, 0.05))} title="Fades the end into the start so it loops without a click (a little shorter)">Make it loop</button>
+        </div>
+        <div class="presets">
+          <label class="inline" title="Higher finds softer and closer hits">Hits <input type="range" min="0" max="1" step="0.05" bind:value={hitSense} /></label>
+          <button onclick={() => void sliceAtHits()} title="Cuts the sound at each hit into its own WAV beside this one">Slice at the hits</button>
+          <label class="check"><input type="checkbox" bind:checked={spectro} /> Spectrogram</label>
+        </div>
+        {#if spectro}<canvas bind:this={spectroCanvas} class="spectro" aria-label="Spectrogram: time across, pitch up"></canvas>{/if}
         <p class="dim small">Fades and edits apply to the selection, or the whole sound if nothing is selected. Saved as 16-bit WAV.</p>
       {/if}
     </div>
@@ -340,6 +395,7 @@
   .spacer { flex: 1; }
   .wave { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: #15171c; }
   canvas { display: block; touch-action: none; cursor: crosshair; }
+  .spectro { width: 100%; height: 160px; image-rendering: auto; border: 1px solid var(--line); border-radius: 6px; background: #000; }
   .presets { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
   .small { font-size: 12px; margin: 0; }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; }
