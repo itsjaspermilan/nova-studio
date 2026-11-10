@@ -108,6 +108,11 @@
           <label title="How far each pass moves the points towards their neighbours">Factor <input type="number" min="0.1" max="1" step="0.1" value={m.factor ?? 0.5} onchange={(e) => set(i, { factor: Math.max(0.1, Math.min(1, num(e.currentTarget.value, 0.5))) })} /></label>
           <label title="How many passes">Passes <input type="number" min="1" max="20" step="1" value={m.passes ?? 2} onchange={(e) => set(i, { passes: Math.max(1, Math.min(20, Math.round(num(e.currentTarget.value, 2)))) })} /></label>
         </div>
+      {:else if m.type === "edgesplit"}
+        <div class="grid">
+          <label title="Edges where two faces meet at more than this many degrees stay sharp; flatter ones are shaded smoothly">Sharp above ° <input type="number" min="0" max="180" step="5" value={m.angle ?? 30} onchange={(e) => set(i, { angle: Math.max(0, Math.min(180, num(e.currentTarget.value, 30))) })} /></label>
+        </div>
+        <p class="dim small">Shades the whole mesh smoothly except at sharp edges, which are split.</p>
       {:else if m.type === "curve"}
         <div class="grid">
           <label title="Which of the mesh's directions is laid along the curve">Along

@@ -249,3 +249,61 @@ export function curveDeform(s: Soup, points: Vec3[], axis: 0 | 1 | 2): Soup {
   return { ...s, verts };
 }
 const lerpV = (a: Vec3, b: Vec3, t: number): Vec3 => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+
+/// Edge Split: every face is shaded smoothly with its neighbours, except across edges whose faces meet at more than `angle` degrees: there the points are split in two, so
+/// the corner stays crisp. (A face shades smoothly across the points it shares, so splitting the points is what makes an edge sharp.) A flat mesh comes out unchanged;
+/// a box with a 30 degree limit gets 24 points, one set for each face.
+export function edgeSplit(s: Soup, angle: number): Soup {
+  const limit = Math.cos((Math.min(180, Math.max(0, angle)) * Math.PI) / 180);
+  const normals = s.polys.map((f) => unit(polyNormalOf(s.verts, f.v)));
+  // faces round each point
+  const around: number[][] = s.verts.map(() => []);
+  s.polys.forEach((f, fi) => f.v.forEach((v) => around[v]!.push(fi)));
+  const verts: Vec3[] = [];
+  const polys: MeshFace[] = s.polys.map((f) => ({ ...f, v: [...f.v], smooth: true }));
+  s.verts.forEach((p, vi) => {
+    const faces = around[vi]!;
+    if (!faces.length) return;
+    // clusters of faces joined by an edge at this point that is not sharp: two faces are joined when they share an edge through this point and their normals are close
+    const group = new Map<number, number>();
+    const find = (a: number): number => (group.get(a) === a ? a : find(group.get(a)!));
+    for (const f of faces) group.set(f, f);
+    const sharesEdge = (a: number, b: number) => {
+      const A = s.polys[a]!.v, B = s.polys[b]!.v;
+      const ai = A.indexOf(vi), bi = B.indexOf(vi);
+      const aN = [A[(ai + 1) % A.length], A[(ai + A.length - 1) % A.length]];
+      const bN = [B[(bi + 1) % B.length], B[(bi + B.length - 1) % B.length]];
+      return aN.some((x) => bN.includes(x));
+    };
+    for (let i = 0; i < faces.length; i++) {
+      for (let j = i + 1; j < faces.length; j++) {
+        const a = faces[i]!, b = faces[j]!;
+        if (sharesEdge(a, b) && dotV(normals[a]!, normals[b]!) >= limit - 1e-9) group.set(find(a), find(b));
+      }
+    }
+    const copyOf = new Map<number, number>();
+    for (const f of faces) {
+      const root = find(f);
+      let c = copyOf.get(root);
+      if (c === undefined) {
+        c = verts.push([...p] as Vec3) - 1;
+        copyOf.set(root, c);
+      }
+      const poly = polys[f]!;
+      poly.v[s.polys[f]!.v.indexOf(vi)] = c;
+    }
+  });
+  return { verts, polys };
+}
+const dotV = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+function polyNormalOf(verts: Vec3[], v: number[]): Vec3 {
+  let nx = 0, ny = 0, nz = 0;
+  for (let i = 0; i < v.length; i++) {
+    const a = verts[v[i]!]!;
+    const b = verts[v[(i + 1) % v.length]!]!;
+    nx += (a[1] - b[1]) * (a[2] + b[2]);
+    ny += (a[2] - b[2]) * (a[0] + b[0]);
+    nz += (a[0] - b[0]) * (a[1] + b[1]);
+  }
+  return [nx, ny, nz];
+}

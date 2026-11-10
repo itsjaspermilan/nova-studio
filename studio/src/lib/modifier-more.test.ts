@@ -169,3 +169,34 @@ describe("curve", () => {
     expect(Math.max(...out.verts!.map((p) => p[1]))).toBeGreaterThan(10);
   });
 });
+
+import { edgeSplit } from "./modifier-more";
+describe("edge split", () => {
+  it("a box with a 30 degree limit is split into its six faces (24 points) and every face is smooth", () => {
+    const out = edgeSplit(soupOf(box(10)), 30);
+    expect(out.verts.length).toBe(24);
+    expect(out.polys.length).toBe(6);
+    expect(out.polys.every((f) => f.smooth)).toBe(true);
+    expect(Math.abs(volume(out))).toBeCloseTo(1000, 3);
+  });
+  it("a box with a limit over 90 degrees keeps its shared points (nothing is that sharp)", () => {
+    expect(edgeSplit(soupOf(box(10)), 100).verts.length).toBe(8);
+  });
+  it("a flat grid is not split, and a fold in it is split only along the fold", () => {
+    const grid = (fold: boolean): Soup => {
+      const verts: [number, number, number][] = [];
+      for (let z = 0; z <= 2; z++) for (let x = 0; x <= 2; x++) verts.push([x, fold && x > 1 ? (x - 1) * 2 : 0, z]);
+      const polys = [];
+      for (let z = 0; z < 2; z++) for (let x = 0; x < 2; x++) { const a = z * 3 + x; polys.push({ v: [a, a + 3, a + 4, a + 1] }); }
+      return { verts, polys };
+    };
+    expect(edgeSplit(grid(false), 30).verts.length).toBe(9);
+    // folding the right column up by 2 over 1 unit: the fold edge (x = 1) is split, so its three points double
+    expect(edgeSplit(grid(true), 30).verts.length).toBe(9 + 3);
+  });
+  it("runs as a modifier and is checked", () => {
+    expect(checkModifier(newModifier("edgesplit"), "m")).toBeNull();
+    expect(checkModifier({ type: "edgesplit", angle: 200 }, "m")).toContain("angle");
+    expect(evaluate({ ...box(10), modifiers: [newModifier("edgesplit")] }).verts!.length).toBe(24);
+  });
+});
