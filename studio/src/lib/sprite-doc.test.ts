@@ -776,3 +776,29 @@ describe("locked and clipping layers", () => {
     expect(updateLayer(d, 1, { locked: false }).layers[1]!.locked).toBeUndefined();
   });
 });
+
+import { rippleCels, addLayer as addL } from "./sprite-doc";
+describe("ripple edit on one layer", () => {
+  const mark = (d: SpriteDoc, layer: number) => d.layers[layer]!.cels.map((c) => (getPixel(c, 0, 0)?.[3] ?? 0) > 0);
+  const base = () => {
+    const d = newDoc(4, 4, 4);
+    for (const c of d.layers[0]!.cels) setPixel(c, 0, 0, RED);
+    return d;
+  };
+  it("a gap pushes the later cels along and loses the last", () => {
+    const out = rippleCels(base(), 0, 1, 1);
+    expect(mark(out, 0)).toEqual([true, false, true, true]);
+    expect(out.frames).toHaveLength(4);
+  });
+  it("closing pulls them back and leaves empty cels at the end", () => {
+    const out = rippleCels(base(), 0, 1, -2);
+    expect(mark(out, 0)).toEqual([true, true, false, false]);
+  });
+  it("only that layer moves; bad input changes nothing", () => {
+    const d = addL(base(), 0).doc;
+    const before = JSON.stringify(d);
+    expect(rippleCels(d, 0, 9, 1)).toBe(d);
+    expect(rippleCels(d, 0, 1, 0)).toBe(d);
+    expect(JSON.stringify(d)).toBe(before);
+  });
+});

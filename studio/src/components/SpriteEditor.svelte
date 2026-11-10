@@ -28,7 +28,7 @@
     addAnimation, animationOf, cloneDoc, cropDoc, linkCels, unlinkCels, syncLinked, moveFramesWithin, scaleDurations, duplicateFrames, moveFramesTo, removeFrames, detectGrid, duplicateAnimation, frameAt, gridFromCounts, smartGrid, framesIn, fromImage, fromSheet, gridTiles, importTiles, insertFrame, moveAnimation, isPristine, moveFrame, newDoc, parseSheetJson,
     removeAnimation, removeFrame, setAnimationDuration, tagProblems, tagSequence, resizeDoc, toSheet, toSheetJson, updateAnimation, type Direction, type SpriteDoc, type TextSource,
     copyFrameDataTo, effectiveData, frameDataOf, setDefaults, setFrameData, setNineSlice,
-    addLayer, applyLayers, duplicateLayer, layerSheets, layersFileText, groupLayers, moveCel, setCelOpacity, mergeDown, moveLayer, ungroup, parseLayersFile, recompose, removeLayer, updateLayer, MAX_LAYERS,
+    addLayer, rippleCels, applyLayers, duplicateLayer, layerSheets, layersFileText, groupLayers, moveCel, setCelOpacity, mergeDown, moveLayer, ungroup, parseLayersFile, recompose, removeLayer, updateLayer, MAX_LAYERS,
   } from "../lib/sprite-doc";
   import { loadRaster, rasterToDataUrl } from "../lib/png";
   import { studio } from "../lib/store.svelte";
@@ -1936,6 +1936,8 @@
           <input type="number" class="narrow" min="1" max={doc.frames.length} bind:value={celTarget} aria-label="Frame number to move the cel to" />
           <button onclick={() => structural(moveCel(doc, activeLayer, frame, Math.max(0, Math.min(doc.frames.length - 1, celTarget - 1))))}>Move</button>
           <button onclick={() => structural(moveCel(doc, activeLayer, frame, Math.max(0, Math.min(doc.frames.length - 1, celTarget - 1)), true))}>Copy</button>
+          <button onclick={() => structural(rippleCels(doc, activeLayer, frame, 1))} title="Ripple: open an empty cel here on this layer and push the later cels along">Gap +</button>
+          <button onclick={() => structural(rippleCels(doc, activeLayer, frame, -1))} title="Ripple: delete this layer's cel here and pull the later cels back">Close −</button>
         </div>
       {/if}
       <div class="row wrap">

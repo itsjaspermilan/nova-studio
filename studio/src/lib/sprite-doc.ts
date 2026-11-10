@@ -1058,6 +1058,35 @@ export function moveCel(doc: SpriteDoc, layerIndex: number, from: number, to: nu
   return recomposed(next);
 }
 
+/// Ripple edit on one layer's timeline: `count` > 0 opens a gap of empty cels at frame `at` and pushes the later cels along (the ones pushed past the last frame are lost);
+/// `count` < 0 deletes that many cels from `at` and pulls the later ones back (the end is filled with empty cels). Only this layer moves: other layers, frame times and tags stay.
+export function rippleCels(doc: SpriteDoc, layerIndex: number, at: number, count: number): SpriteDoc {
+  const layer = doc.layers[layerIndex];
+  const n = doc.frames.length;
+  if (!layer || layer.kind === "group" || !Number.isInteger(count) || count === 0 || at < 0 || at >= n) return doc;
+  const next = cloneDoc(doc);
+  const l = next.layers[layerIndex]!;
+  const blank = () => newRaster(next.fw, next.fh);
+  if (count > 0) {
+    const k = Math.min(count, n - at);
+    l.cels.splice(at, 0, ...Array.from({ length: k }, blank));
+    l.cels.length = n;
+    if (l.links) {
+      l.links.splice(at, 0, ...Array(k).fill(0));
+      l.links.length = n;
+    }
+  } else {
+    const k = Math.min(-count, n - at);
+    l.cels.splice(at, k);
+    while (l.cels.length < n) l.cels.push(blank());
+    if (l.links) {
+      l.links.splice(at, k);
+      while (l.links.length < n) l.links.push(0);
+    }
+  }
+  return recomposed(next);
+}
+
 /// Removes a layer (never the last drawing layer). Removing a group removes the layers in it.
 export function removeLayer(doc: SpriteDoc, index: number): SpriteDoc {
   const l = doc.layers[index];
