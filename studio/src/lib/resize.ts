@@ -31,6 +31,9 @@ function remember(key: string, v: number | null) {
   }
 }
 
+/// Remembers a size for a panel (null: the usual one), as a drag would.
+export const rememberSize = remember;
+
 /// Puts a panel back to its usual size (what a double-click on its handle does, and "Reset layout").
 export function forgetSize(key: string): void {
   remember(key, null);

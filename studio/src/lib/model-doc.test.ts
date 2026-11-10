@@ -354,3 +354,31 @@ describe("collision capsules and boxes", () => {
     expect(Array.from(readFileSync(fixture))).toEqual(Array.from(glb));
   });
 });
+
+describe("the history list", () => {
+  const docAt = (n: number): ModelDoc => ({ ...newModel(), name: `v${n}` });
+  it("keeps what each step did, undoes and redoes many steps at once", async () => {
+    const { History } = await import("./model-doc");
+    const h = new History();
+    let doc = docAt(0);
+    for (const [i, label] of ["Move", "Sculpt (draw)", "Paste keys"].entries()) {
+      h.record(doc, label);
+      doc = docAt(i + 1);
+    }
+    expect(h.undoLabels).toEqual(["Paste keys", "Sculpt (draw)", "Move"]);
+    const back = h.undoMany(doc, 2)!;
+    expect(back.name).toBe("v1");
+    expect(h.undoLabels).toEqual(["Move"]);
+    expect(h.redoLabels).toEqual(["Sculpt (draw)", "Paste keys"]); // nearest first
+    expect(h.undoMany(back, 5)).toBeNull();
+    expect(h.redoMany(back, 2)!.name).toBe("v3");
+    expect(h.redoLabels).toEqual([]);
+    h.record(doc);
+    expect(h.undoLabels[0]).toBe("Change"); // no label given
+    h.undo(doc);
+    h.record(docAt(9), "New"); // a new change clears what could be redone
+    expect(h.redoLabels).toEqual([]);
+    h.drop();
+    expect(h.undoLabels.length).toBe(3);
+  });
+});

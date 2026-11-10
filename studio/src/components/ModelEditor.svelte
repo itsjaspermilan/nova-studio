@@ -206,12 +206,19 @@
     if (!picture && doc.texture) void loadPicture();
   });
 
-  function commit(next: ModelDoc, keep = false) {
-    if (!keep) history.record(doc);
+  function commit(next: ModelDoc, keep = false, label?: string) {
+    if (!keep) history.record(doc, label);
     doc = next;
     tick++;
     studio.sessions.set(filePath, { doc, picture });
     studio.edit(filePath, serializeModel(next));
+  }
+  let historyOpen = $state(false);
+  /// Jumps to a step of the history list: `n` steps back (n > 0) or forward (n < 0).
+  function jumpHistory(n: number) {
+    const target = n > 0 ? history.undoMany(doc, n) : history.redoMany(doc, -n);
+    if (target) commit(target, true);
+    historyOpen = false;
   }
   const undo = () => {
     const p = history.undo(doc);
@@ -1390,7 +1397,7 @@
     if (sculpting || weightPainting) {
       const at = sculptPoint(e);
       if (!at) return;
-      history.record(doc);
+      history.record(doc, weightPainting ? `Paint weights (${weightMode})` : `Sculpt (${sculptMode})`);
       sculptStroke = { path: selected, last: at, fresh: true };
       controls!.enabled = false;
       canvas.setPointerCapture(e.pointerId);
@@ -2356,6 +2363,16 @@
         {/if}
         {#if inEdit}<button class:on={boxArmed} onclick={() => (boxArmed = !boxArmed)} title="Box select: drag a rectangle over the points (B)">Box</button>{/if}
         <label class="check" title="Flat view: parallel lines stay parallel (5)"><input type="checkbox" checked={ortho} onchange={(e) => setOrtho(e.currentTarget.checked)} /> Flat</label>
+        <span class="histwrap">
+          <button class="ghost" aria-expanded={historyOpen} disabled={tick >= 0 && !history.canUndo && !history.canRedo} onclick={() => (historyOpen = !historyOpen)} title="The list of changes: pick one to go back (or forward) to it">History</button>
+          {#if historyOpen}
+            <div class="histlist" role="menu" aria-label="History">
+              {#each [...history.redoLabels].reverse() as l, k (k)}<button role="menuitem" class="redo" onclick={() => jumpHistory(-(history.redoLabels.length - k))}>↷ {l}</button>{/each}
+              <span class="now dim small">now</span>
+              {#each history.undoLabels as l, k (k)}<button role="menuitem" onclick={() => jumpHistory(k + 1)}>{k + 1 === 1 ? "↶ " : ""}{l}</button>{/each}
+            </div>
+          {/if}
+        </span>
         <button class="ghost" onclick={resetView}>Reset view</button>
         <span class="dim">{countCubes(doc)} shapes · saves {glbPath}</span>
         <span class="spacer"></span>
@@ -2391,9 +2408,9 @@
           </div>
           <div class="clips" role="group" aria-label="Animation tools">
             <button title="Copy every key of the chosen part" disabled={!partNames.length} onclick={() => { keyBoard = copyKeys(clip, partNames); animNote = keyBoard ? "Keys copied." : "That part has no keys in this animation."; }}>Copy keys</button>
-            <button title="Paste the copied keys with the first at the time marker (onto the chosen part)" disabled={!keyBoard} onclick={() => { if (keyBoard) { commit(pasteKeys(doc, clipIndex, keyBoard, animTime, partNames.length ? partNames : undefined)); animNote = "Keys pasted."; } }}>Paste keys</button>
-            <button title="Play the animation backwards" onclick={() => commit(reverseClip(doc, clipIndex))}>Reverse</button>
-            <button title="Swap left and right: parts named left… and right… trade keys, and sideways moves and turns are mirrored" onclick={() => { const next = mirrorClip(doc, clipIndex); animNote = next === doc ? "Nothing to mirror." : "Mirrored."; if (next !== doc) commit(next); }}>Mirror left–right</button>
+            <button title="Paste the copied keys with the first at the time marker (onto the chosen part)" disabled={!keyBoard} onclick={() => { if (keyBoard) { commit(pasteKeys(doc, clipIndex, keyBoard, animTime, partNames.length ? partNames : undefined), false, "Paste keys"); animNote = "Keys pasted."; } }}>Paste keys</button>
+            <button title="Play the animation backwards" onclick={() => commit(reverseClip(doc, clipIndex), false, "Reverse animation")}>Reverse</button>
+            <button title="Swap left and right: parts named left… and right… trade keys, and sideways moves and turns are mirrored" onclick={() => { const next = mirrorClip(doc, clipIndex); animNote = next === doc ? "Nothing to mirror." : "Mirrored."; if (next !== doc) commit(next, false, "Mirror animation"); }}>Mirror left–right</button>
             <button title="Twice as fast (all keys, or the chosen part's if one is chosen)" onclick={() => commit(stretchKeys(doc, clipIndex, 0.5, partNames.length ? partNames : null))}>×½ time</button>
             <button title="Twice as slow" onclick={() => commit(stretchKeys(doc, clipIndex, 2, partNames.length ? partNames : null))}>×2 time</button>
             <button title="Move the keys 0.1 s earlier" onclick={() => commit(shiftKeys(doc, clipIndex, -0.1, partNames.length ? partNames : null))}>−0.1 s</button>
@@ -2672,6 +2689,12 @@
 {/if}
 
 <style>
+  .histwrap { position: relative; display: inline-block; }
+  .histlist { position: absolute; top: 100%; left: 0; z-index: 20; min-width: 200px; max-height: 260px; overflow: auto; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4); padding: 4px; }
+  .histlist button { text-align: left; border: none; background: transparent; padding: 3px 8px; }
+  .histlist button:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+  .histlist .redo { opacity: 0.6; }
+  .histlist .now { padding: 2px 8px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); margin: 2px 0; }
   .editor3d { height: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; min-height: 0; }
   .outliner, .inspector { background: var(--panel); overflow: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
   .outliner { border-right: 1px solid var(--line); padding: 0; }

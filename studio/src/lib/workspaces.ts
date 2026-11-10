@@ -33,3 +33,5 @@ export function workspaceTitle(id: WorkspaceId): string {
 export function inWorkspace<T extends { path: string }>(items: T[], id: WorkspaceId): T[] {
   return items.filter((i) => workspaceOf(i.path) === id);
 }
+
+export const WORKSPACE_IDS: WorkspaceId[] = WORKSPACES.map((w) => w.id);

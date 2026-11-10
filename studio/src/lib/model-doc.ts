@@ -712,32 +712,65 @@ export function afterRemoval(doc: ModelDoc, path: Path): Path | null {
 export class History {
   #past: ModelDoc[] = [];
   #future: ModelDoc[] = [];
+  /// What each step did, in words (parallel to the lists above; "Change" when the caller did not say).
+  #pastLabels: string[] = [];
+  #futureLabels: string[] = [];
+  /// The label the next undone or redone step gets on the other side: undoing a step moves its label to the redo list.
   get canUndo() {
     return this.#past.length > 0;
   }
   get canRedo() {
     return this.#future.length > 0;
   }
-  record(before: ModelDoc) {
+  record(before: ModelDoc, label = "Change") {
     this.#past.push(before);
-    if (this.#past.length > 200) this.#past.shift();
+    this.#pastLabels.push(label);
+    if (this.#past.length > 200) {
+      this.#past.shift();
+      this.#pastLabels.shift();
+    }
     this.#future = [];
+    this.#futureLabels = [];
   }
   /// Forgets the last change recorded (a move that was put back with Esc leaves nothing to undo).
   drop() {
     this.#past.pop();
+    this.#pastLabels.pop();
   }
   undo(current: ModelDoc): ModelDoc | null {
     const p = this.#past.pop();
     if (!p) return null;
     this.#future.push(current);
+    this.#futureLabels.push(this.#pastLabels.pop() ?? "Change");
     return p;
   }
   redo(current: ModelDoc): ModelDoc | null {
     const n = this.#future.pop();
     if (!n) return null;
     this.#past.push(current);
+    this.#pastLabels.push(this.#futureLabels.pop() ?? "Change");
     return n;
+  }
+  /// The steps that can be undone, newest first, then those that can be redone, nearest first, as words.
+  get undoLabels(): string[] {
+    return [...this.#pastLabels].reverse();
+  }
+  get redoLabels(): string[] {
+    return [...this.#futureLabels].reverse();
+  }
+  /// Goes back `steps` steps at once (undo repeated); the document as it was then, or null when there are not that many.
+  undoMany(current: ModelDoc, steps: number): ModelDoc | null {
+    if (steps < 1 || steps > this.#past.length) return null;
+    let doc = current;
+    for (let i = 0; i < steps; i++) doc = this.undo(doc)!;
+    return doc;
+  }
+  /// Goes forward `steps` steps at once (redo repeated).
+  redoMany(current: ModelDoc, steps: number): ModelDoc | null {
+    if (steps < 1 || steps > this.#future.length) return null;
+    let doc = current;
+    for (let i = 0; i < steps; i++) doc = this.redo(doc)!;
+    return doc;
   }
 }
 

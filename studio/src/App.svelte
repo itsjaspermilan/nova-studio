@@ -47,6 +47,7 @@
   import { markChrome } from "./lib/chrome";
   import { resizable } from "./lib/resize";
   import { layout, sizeKey } from "./lib/layout.svelte";
+  let lastLayout: string | null = null;
   import { isDirty, studio } from "./lib/store.svelte";
 
   // (the window's own buttons sit in the studio's top bar: see lib/chrome.ts)
@@ -81,6 +82,9 @@
       commands.register({ id: "view.tree", title: "Show or hide the project tree", menu: "View", icon: "tree", keys: ["Mod+B"], enabled: has, run: toggleTree }),
       commands.register({ id: "view.assets", title: "Show the assets", menu: "View", icon: "folder", keys: ["Mod+Shift+A"], help: "Every sprite, model, sound and scene as a card: search, open, drag into code", enabled: has, run: () => { studio.panel = "assets"; studio.panelOpen = true; window.dispatchEvent(new Event("resize")); } }),
       commands.register({ id: "view.panel", title: "Show or hide the bottom panel", menu: "View", icon: "panel", keys: ["Mod+J"], help: "Problems, play and the debugger", enabled: has, run: () => { studio.panelOpen = !studio.panelOpen; window.dispatchEvent(new Event("resize")); } }),
+      commands.register({ id: "view.saveLayout", title: "Save this arrangement of panels", menu: "Window", help: "Keeps which panels are shown, and how big, in every workspace, under a name (Layout 1, Layout 2...); \"Next saved layout\" brings them back", run: () => { let n = layout.names.length + 1; while (layout.names.includes(`Layout ${n}`)) n++; if (layout.saveAs(`Layout ${n}`)) studio.say("info", `Saved as Layout ${n}.`); else studio.say("error", "There is no room for another saved layout: delete one first."); } }),
+      commands.register({ id: "view.nextLayout", title: "Next saved layout", menu: "Window", help: "Arrange the panels as the next saved arrangement says", enabled: () => layout.names.length > 0, run: () => { const names = layout.names; const at = names.indexOf(lastLayout ?? ""); lastLayout = names[(at + 1) % names.length]!; layout.apply(lastLayout); window.dispatchEvent(new Event("resize")); studio.say("info", `Layout: ${lastLayout}`); } }),
+      commands.register({ id: "view.deleteLayout", title: "Delete the saved layout last used", menu: "Window", help: "Forget the saved arrangement that \"Next saved layout\" last brought back", enabled: () => !!lastLayout && layout.names.includes(lastLayout), run: () => { if (lastLayout) { layout.removeNamed(lastLayout); studio.say("info", `Deleted ${lastLayout}.`); lastLayout = null; } } }),
       commands.register({ id: "view.resetLayout", title: "Reset this workspace's layout", menu: "Window", icon: "resetLayout", help: "Panels back to their usual places and sizes", enabled: has, run: () => { layout.reset(studio.workspace); window.dispatchEvent(new Event("resize")); } }),
       commands.register({ id: "window.tearOff", title: "Move this document to its own window", menu: "Window", icon: "tearOff", help: "A document is open in one window at a time", enabled: () => !!studio.tab && !studio.docWindow && studio.api?.kind === "tauri", run: () => studio.tearOff() }),
       commands.register({ id: "file.save", title: "Save", menu: "File", icon: "save", keys: ["Mod+S"], run: () => void studio.save() }),
