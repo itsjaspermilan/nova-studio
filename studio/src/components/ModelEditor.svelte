@@ -20,7 +20,7 @@
   import { modelToObj } from "../lib/obj";
   import ReferencePanel from "./ReferencePanel.svelte";
   import { loadReferences, placementOf, saveReferences, type Reference } from "../lib/model-reference";
-  import { ORTHO_FOV, PERSPECTIVE_FOV, VIEW_LABELS, VIEW_NAMES, distanceForFov, orbitStep, viewPlacement, type ViewName } from "../lib/view-presets";
+  import { ORTHO_FOV, PERSPECTIVE_FOV, VIEW_LABELS, VIEW_NAMES, distanceForFov, gizmoDots, type GizmoDot, orbitStep, viewPlacement, type ViewName } from "../lib/view-presets";
   import ModelStats from "./ModelStats.svelte";
   import { solveLimb } from "../lib/model-ik";
   import { bakeConstraints, constrainedPose, setConstraints } from "../lib/model-constraints";
@@ -506,6 +506,7 @@
       frameId = requestAnimationFrame(loop);
       controls!.update();
       renderer!.render(scene!, camera!);
+      updateGizmo();
     };
     loop();
   }
@@ -2040,6 +2041,18 @@
     camera.position.copy(controls.target).add(dir.multiplyScalar(next));
     ortho = on;
   }
+  // The axis gizmo in the corner of the view: the six ends of X, Y and Z as the camera sees them; click one for that view.
+  let axisDots = $state<GizmoDot[]>(gizmoDots([1, 0, 0], [0, 1, 0], [0, 0, 1]));
+  let dotsKey = "";
+  function updateGizmo() {
+    if (!camera) return;
+    const m = camera.matrixWorld.elements;
+    const next = gizmoDots([m[0]!, m[1]!, m[2]!], [m[4]!, m[5]!, m[6]!], [m[8]!, m[9]!, m[10]!]);
+    const key = next.map((d) => d.x.toFixed(2) + d.y.toFixed(2)).join();
+    if (key === dotsKey) return;
+    dotsKey = key;
+    axisDots = next;
+  }
   function showView(name: ViewName) {
     if (!camera || !controls) return;
     const d = camera.position.distanceTo(controls.target);
@@ -2891,6 +2904,17 @@
         </div>
         <canvas bind:this={canvas} tabindex="0" aria-label="3D view" onpointerdown={pointerDown} onpointermove={pointerMove} onpointerup={pointerUp}></canvas>
         {#if viewStats}<div class="statsbadge" role="status">{viewStats.triangles.toLocaleString("en")} triangles · {viewStats.points.toLocaleString("en")} points · {viewStats.faces.toLocaleString("en")} faces · {viewStats.parts} part{viewStats.parts === 1 ? "" : "s"}</div>{/if}
+        <svg class="gizmo" viewBox="-44 -44 88 88" width="72" height="72" role="group" aria-label="View axes: click an end to look along it">
+          {#each axisDots as d (d.view)}
+            {@const cx = d.x * 30}
+            {@const cy = d.y * 30}
+            <line x1="0" y1="0" x2={cx} y2={cy} stroke={d.label === "X" ? "#ff6b6b" : d.label === "Y" ? "#7ad67a" : "#6cb2ff"} stroke-width="2" opacity={d.positive ? 0.9 : 0.35} />
+            <g class="end" role="button" tabindex="-1" aria-label={VIEW_LABELS[d.view] + " view"} onclick={() => showView(d.view)} onkeydown={() => {}} opacity={d.depth < -0.2 ? 0.55 : 1}>
+              <circle {cx} {cy} r="9" fill={d.positive ? (d.label === "X" ? "#ff6b6b" : d.label === "Y" ? "#7ad67a" : "#6cb2ff") : "#2c313c"} stroke={d.label === "X" ? "#ff6b6b" : d.label === "Y" ? "#7ad67a" : "#6cb2ff"} stroke-width="1.5" />
+              {#if d.positive}<text x={cx} y={cy + 3.5} text-anchor="middle" font-size="10" font-weight="700" fill="#14161c">{d.label}</text>{/if}
+            </g>
+          {/each}
+        </svg>
         <NavButtons controls={() => controls} camera={() => camera} height={() => canvas?.clientHeight ?? 400} />
         {#if rubber}<div class="boxband" style:left="{Math.min(rubber.x0, rubber.x1)}px" style:top="{Math.min(rubber.y0, rubber.y1)}px" style:width="{Math.abs(rubber.x1 - rubber.x0)}px" style:height="{Math.abs(rubber.y1 - rubber.y0)}px"></div>{/if}
         {#if boxArmed && !rubber}<div class="modalbar" role="status">Box select: drag a rectangle over the points (Esc cancels)</div>{/if}
@@ -3332,6 +3356,8 @@
 {/if}
 
 <style>
+  .gizmo { position: absolute; right: 40px; bottom: 10px; z-index: 3; }
+  .gizmo .end { cursor: pointer; }
   .statsbadge { position: absolute; right: 52px; top: 8px; padding: 2px 8px; border-radius: 10px; font-size: 11px; background: color-mix(in srgb, var(--panel) 80%, transparent); border: 1px solid var(--line); pointer-events: none; }
   .layerrow { display: flex; align-items: center; gap: 4px; padding: 2px; border-radius: 4px; }
   .layerrow.on { background: color-mix(in srgb, var(--accent) 22%, transparent); }

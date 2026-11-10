@@ -60,3 +60,30 @@ export function nameOfView(position: Vec3, target: Vec3, toleranceDeg = 3): View
   }
   return null;
 }
+
+export interface GizmoDot {
+  /// The view this axis end takes you to when clicked.
+  view: ViewName;
+  /// Letter on the positive ends.
+  label: string;
+  positive: boolean;
+  /// Place in a square of side 2 centred on the gizmo (x right, y down), and how far towards the camera it points (1 near, -1 away).
+  x: number;
+  y: number;
+  depth: number;
+}
+
+/// The six axis ends of the view gizmo (a small X Y Z widget that shows how the view is turned) from the camera's own axes: `right`, `up` and `toward` (from the
+/// target to the camera), as unit vectors in the model's space. Ends furthest from the camera come first, so drawing in order puts the near ones on top.
+export function gizmoDots(right: Vec3, up: Vec3, toward: Vec3): GizmoDot[] {
+  const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const ends: { dir: Vec3; view: ViewName; label: string; positive: boolean }[] = [
+    { dir: [1, 0, 0], view: "right", label: "X", positive: true },
+    { dir: [-1, 0, 0], view: "left", label: "X", positive: false },
+    { dir: [0, 1, 0], view: "top", label: "Y", positive: true },
+    { dir: [0, -1, 0], view: "bottom", label: "Y", positive: false },
+    { dir: [0, 0, 1], view: "front", label: "Z", positive: true },
+    { dir: [0, 0, -1], view: "back", label: "Z", positive: false },
+  ];
+  return ends.map((e) => ({ view: e.view, label: e.label, positive: e.positive, x: dot(e.dir, right), y: 0 - dot(e.dir, up), depth: dot(e.dir, toward) })).sort((a, b) => a.depth - b.depth);
+}

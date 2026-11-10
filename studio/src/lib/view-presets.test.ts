@@ -57,3 +57,16 @@ describe("naming a view", () => {
     expect(nameOfView([34, 28, 46], [0, 8, 0])).toBeNull();
   });
 });
+
+import { gizmoDots } from "./view-presets";
+describe("view gizmo", () => {
+  it("from the front: +Z points at the camera, +X is to the right, +Y is up", () => {
+    const d = gizmoDots([1, 0, 0], [0, 1, 0], [0, 0, 1]);
+    const get = (v: string) => d.find((e) => e.view === v)!;
+    expect(get("front")).toMatchObject({ x: 0, y: 0, depth: 1 });
+    expect(get("right").x).toBe(1);
+    expect(get("top").y).toBe(-1); // up on screen is a negative y
+    expect(d[d.length - 1]!.view).toBe("front"); // nearest drawn last
+    expect(d.length).toBe(6);
+  });
+});
