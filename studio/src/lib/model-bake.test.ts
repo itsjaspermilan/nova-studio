@@ -145,3 +145,42 @@ describe("curvature", () => {
     expect(bakeCurvature(newModel())).toBeNull();
   });
 });
+
+import { applyLighting, bakeLighting } from "./model-bake";
+describe("lighting", () => {
+  /// The value of the covered texels in a block belonging to the cube found by `pick`.
+  const block = (doc: ModelDoc, light: Raster, pick: (c: ModelDoc["parts"][number]["cubes"][number]) => boolean) => {
+    const c = doc.parts[0]!.cubes.find(pick)!;
+    const [ax, ay] = c.texture!.at;
+    const vals: number[] = [];
+    for (let y = ay; y < ay + 70; y++) for (let x = ax; x < ax + 200; x++) { const p = getPixel(light, x, y); if (p && p[3]) vals.push(p[0]); }
+    return vals;
+  };
+  it("a lone box is lit on the faces that face the sun and dim on those that do not", () => {
+    const { doc } = scene([[[0, 0, 0], [8, 8, 8]]]);
+    const light = bakeLighting(doc, { toLight: [0, 1, 0], ambient: 0.2 })!;
+    const vals = block(doc, light, () => true);
+    expect(Math.max(...vals)).toBeGreaterThan(250); // the top, square to the light
+    expect(Math.min(...vals)).toBeLessThan(60); // sides and bottom: ambient only
+    expect(Math.min(...vals)).toBeGreaterThan(45); // ambient 0.2 of 255 is 51
+  });
+  it("a low sun puts the floor behind a wall in shadow, and a floor far from the wall is lit", () => {
+    const { doc } = scene([[[0, 0, 0], [60, 2, 10]], [[0, 2, 0], [2, 20, 10]]]);
+    // the sun is low and in front of +x, so the wall (at x 0..2) throws its shadow towards +x
+    const light = bakeLighting(doc, { toLight: [-1, 0.5, 0], ambient: 0.1 })!;
+    const floor = block(doc, light, (c) => c.size[0] === 60);
+    expect(Math.min(...floor)).toBeLessThan(40);
+    expect(Math.max(...floor)).toBeGreaterThan(40);
+  });
+  it("applying it darkens the picture by the light and a strength of 0 changes nothing", () => {
+    const pic = newRaster(2, 1);
+    pic.data.set([200, 100, 50, 255, 200, 100, 50, 255]);
+    const light = newRaster(2, 1);
+    light.data.set([128, 128, 128, 255, 255, 255, 255, 0]);
+    const out = applyLighting(pic, light, 1);
+    expect(out.data[0]).toBe(100);
+    expect(out.data[4]).toBe(200); // not covered
+    expect(Array.from(applyLighting(pic, light, 0).data)).toEqual(Array.from(pic.data));
+    expect(bakeLighting(newModel())).toBeNull();
+  });
+});

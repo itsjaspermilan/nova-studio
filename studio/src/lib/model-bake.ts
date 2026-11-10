@@ -72,16 +72,32 @@ export interface BakeOptions {
 /// The openness of every textured texel: a picture the size of the model's texture with grey = how open (255 fully open, dark = enclosed) and alpha 255 where a shape's
 /// polygon covers the texel (0 elsewhere). Null when the model has no texture.
 export function bakeOcclusion(doc: ModelDoc, options: BakeOptions = {}): Raster | null {
-  if (!doc.texture) return null;
   const samples = Math.max(4, Math.min(256, options.samples ?? 24));
   const distance = options.distance ?? 8;
+  const dirs = hemisphere(samples);
+  return bakeTexels(doc, (at, n, tx, ty, tris) => {
+    const origin = add(at, mul(n, 1e-3 + 1e-3 * distance));
+    let open = 0;
+    for (const d of dirs) {
+      const dir = unit(add(add(mul(tx, d[0]), mul(ty, d[1])), mul(n, d[2])));
+      let blocked = false;
+      for (const t of tris) if (hits(origin, dir, t, distance)) { blocked = true; break; }
+      if (!blocked) open++;
+    }
+    return open / dirs.length;
+  });
+}
+
+/// Calls `shade` for every texel a shape covers (with the point on the surface in model space, the surface's normal, two directions across the surface, and every triangle of
+/// the model) and writes what it returns (0 to 1) as grey. Null when the model has no texture.
+function bakeTexels(doc: ModelDoc, shade: (at: V, n: V, tx: V, ty: V, tris: Tri[]) => number): Raster | null {
+  if (!doc.texture) return null;
   const [w, h] = doc.texture.size;
   const out = newRaster(w, h);
   const worlds = worldMatrices(doc);
   // every triangle of every shape, in model space
   const tris: Tri[] = [];
   const surfaces: { uv: UV[]; pts: V[]; normal: V }[] = [];
-  const dirs = hemisphere(samples);
   const nameOf = new Map<unknown, string>();
   for (const { part, parts } of walk(doc)) {
     let list = doc.parts;
@@ -132,15 +148,7 @@ export function bakeOcclusion(doc: ModelDoc, options: BakeOptions = {}): Raster 
           const l3 = 1 - l1 - l2;
           if (l1 < -1e-6 || l2 < -1e-6 || l3 < -1e-6) continue;
           const at = add(add(mul(pa, l1), mul(pb, l2)), mul(pc, l3));
-          const origin = add(at, mul(n, 1e-3 + 1e-3 * distance));
-          let open = 0;
-          for (const d of dirs) {
-            const dir = unit(add(add(mul(tx, d[0]), mul(ty, d[1])), mul(n, d[2])));
-            let blocked = false;
-            for (const t of tris) if (hits(origin, dir, t, distance)) { blocked = true; break; }
-            if (!blocked) open++;
-          }
-          const grey = Math.round((open / dirs.length) * 255);
+          const grey = Math.round(Math.max(0, Math.min(1, shade(at, n, tx, ty, tris))) * 255);
           const i = (y * w + x) * 4;
           out.data[i] = out.data[i + 1] = out.data[i + 2] = grey;
           out.data[i + 3] = 255;
@@ -257,6 +265,41 @@ export function applyCurvature(picture: Raster, curvature: Raster, strength = 0.
       const v = out.data[i + a]!;
       out.data[i + a] = Math.round(c >= 0 ? v + (255 - v) * c * k : v * (1 + c * k));
     }
+  }
+  return out;
+}
+
+// ---- lighting ----
+
+export interface LightBake {
+  /// The way the light travels is FROM this direction: a vector pointing at the sun, in model space (it need not be a unit vector). Default: from above and a little to the side.
+  toLight?: V;
+  /// How much light reaches a surface that faces away or sits in shadow, 0 to 1.
+  ambient?: number;
+}
+
+/// Sunlight baked into a picture: how lit each textured texel is, 0 (dark) to 255, from one directional light: the surface's cosine to the light, zero where something is in the
+/// way (a shadow ray towards the light meets a triangle), plus the ambient floor. Null when the model has no texture.
+export function bakeLighting(doc: ModelDoc, options: LightBake = {}): Raster | null {
+  const dir = unit(options.toLight ?? [0.4, 1, 0.3]);
+  const ambient = Math.max(0, Math.min(1, options.ambient ?? 0.25));
+  return bakeTexels(doc, (at, n, _tx, _ty, tris) => {
+    const facing = Math.max(0, dot(n, dir));
+    if (facing <= 0) return ambient;
+    const origin = add(at, mul(n, 2e-3));
+    for (const t of tris) if (hits(origin, dir, t, 1e6)) return ambient;
+    return ambient + (1 - ambient) * facing;
+  });
+}
+
+/// The picture multiplied by the baked light (a texel the bake does not cover is left alone). `strength` 1 is the full effect, 0 none.
+export function applyLighting(picture: Raster, light: Raster, strength = 1): Raster {
+  const out = { w: picture.w, h: picture.h, data: new Uint8ClampedArray(picture.data) };
+  const k = Math.min(1, Math.max(0, strength));
+  for (let i = 0; i < out.data.length; i += 4) {
+    if (i + 3 >= light.data.length || !light.data[i + 3]) continue;
+    const f = 1 - k + (k * light.data[i]!) / 255;
+    for (let a = 0; a < 3; a++) out.data[i + a] = Math.round(out.data[i + a]! * f);
   }
   return out;
 }

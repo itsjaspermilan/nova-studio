@@ -36,7 +36,7 @@
   import ModifierStack from "./ModifierStack.svelte";
   import CurveEditor from "./CurveEditor.svelte";
   import ProjectSwatches from "./ProjectSwatches.svelte";
-  import { applyCurvature, applyOcclusion, bakeCurvature, bakeOcclusion } from "../lib/model-bake";
+  import { applyCurvature, applyLighting, applyOcclusion, bakeCurvature, bakeLighting, bakeOcclusion } from "../lib/model-bake";
   import { addClip, easeAt, findTrack, pathKey, removeClip, removeKey, samplePose, setEase, setKey, snapTime, updateClip, KEY_STEP, type Pose } from "../lib/model-anim";
   import { toBase64 } from "../lib/wav";
   import { studio } from "../lib/store.svelte";
@@ -128,6 +128,19 @@
   let baking = $state(false);
   /// Bakes ambient occlusion into the painted picture (one undo step): crevices darken. Runs on this thread, so a big model waits a moment.
   /// Edge wear: lightens the texture on convex edges and darkens it in creases (one undo step). Needs points along edges to read: a coarse box has curvature only at its corners.
+  let sunX = $state(0.4);
+  let sunY = $state(1);
+  let sunZ = $state(0.3);
+  /// Sunlight and shadow baked into the texture from one directional light (one undo step).
+  function bakeSun() {
+    if (!picture || !doc.texture) return void (bakeNote = "Paint a shape first: baking changes the texture.");
+    const light = bakeLighting(doc, { toLight: [sunX, sunY, sunZ], ambient: 0.3 });
+    if (!light) return void (bakeNote = "This model has no texture.");
+    rememberPicture();
+    picture = applyLighting(picture, light, bakeStrength);
+    pictureChanged();
+    bakeNote = "Sunlight and shadow baked into the texture. Undo takes it back.";
+  }
   function bakeWear() {
     if (!picture || !doc.texture) return void (bakeNote = "Paint a shape first: baking changes the texture.");
     const curve = bakeCurvature(doc);
@@ -2609,6 +2622,8 @@
             <button onclick={() => toggleTexture(true)} disabled={!selected || selected.cube === undefined || !!cube?.texture} title="Give the selected shape a block of the picture">Paint selected</button>
           </div>
           <div class="row wrap">
+            <button onclick={bakeSun} disabled={baking || !doc.texture} title="Light the texture from one direction, with shadows (the three numbers say where the sun is)">Sunlight</button>
+            <label class="inline" title="Where the sun is, as a direction from the model (x, y, z); y up">Sun <input type="number" step="0.1" bind:value={sunX} class="narrow" aria-label="Sun x" /> <input type="number" step="0.1" bind:value={sunY} class="narrow" aria-label="Sun y" /> <input type="number" step="0.1" bind:value={sunZ} class="narrow" aria-label="Sun z" /></label>
             <button onclick={bakeWear} disabled={baking || !doc.texture} title="Lighten the texture on convex edges and darken it in creases (curvature)">Edge wear</button>
             <button onclick={bakeAO} disabled={baking || !doc.texture} title="Darken the texture where shapes close in on each other (ambient occlusion): crevices and the feet of things">Bake occlusion</button>
             <label class="inline" title="How dark the most enclosed spots get">Strength <input type="number" min="0.1" max="1" step="0.1" bind:value={bakeStrength} class="narrow" /></label>
