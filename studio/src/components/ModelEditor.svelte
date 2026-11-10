@@ -2000,6 +2000,48 @@
     selected = r.path;
     also = [];
   }
+  // The mode switch (as in Blender's header): one choice that sets the editor's separate switches together.
+  type UiMode = "object" | "edit" | "sculpt" | "weights" | "texture" | "pose";
+  const UI_MODES: { id: UiMode; title: string }[] = [
+    { id: "object", title: "Object" }, { id: "edit", title: "Edit" }, { id: "sculpt", title: "Sculpt" },
+    { id: "weights", title: "Weight Paint" }, { id: "texture", title: "Texture Paint" }, { id: "pose", title: "Pose" },
+  ];
+  const uiMode = $derived<UiMode>(mode === "texture" ? "texture" : mode === "animate" ? "pose" : inEdit ? (sculpting ? "sculpt" : weightPainting ? "weights" : "edit") : "object");
+  function setUiMode(next: UiMode) {
+    playingAnim = false;
+    if (next === "texture") {
+      mode = "texture";
+      editPoints = false;
+      sculpting = weightPainting = false;
+      return;
+    }
+    if (next === "pose") {
+      mode = "animate";
+      editPoints = false;
+      sculpting = weightPainting = false;
+      if (!clips.length) newClip();
+      return;
+    }
+    mode = "model";
+    if (next === "object") {
+      editPoints = false;
+      sculpting = weightPainting = false;
+      return;
+    }
+    // the rest work on the points of a mesh: a shape is chosen, and made a mesh if it is a box
+    if (!selected || selected.cube === undefined || !cube) {
+      studio.say("info", "Choose a shape first: Edit, Sculpt and Weight Paint work on the points of one shape.");
+      editPoints = false;
+      return;
+    }
+    makeEditable();
+    sculpting = next === "sculpt";
+    weightPainting = next === "weights" && !!cube?.skin;
+    if (next === "weights" && !cube?.skin) {
+      studio.say("info", "This shape does not bend with the parts yet: use \"Bend with the parts\" in the edit panel (or Auto-skin) first.");
+      sculpting = false;
+    }
+  }
   let selectNote = $state("");
   let slideAmount = $state(0.5);
   /// Closes the open border the first picked point is on, with quads meeting in a new middle point.
@@ -2613,18 +2655,9 @@
       <div class="bar">
         <button class="ghost" onclick={undo} disabled={!canUndo} aria-label="Undo">↶</button>
         <button class="ghost" onclick={redo} disabled={!canRedo} aria-label="Redo">↷</button>
-        <button class:on={mode === "model"} onclick={() => { mode = "model"; playingAnim = false; }}>Model</button>
-        <button class:on={mode === "texture"} onclick={() => { mode = "texture"; playingAnim = false; editPoints = false; }} title="Paint the shapes with a texture">Texture</button>
-        <button class:on={mode === "animate"} onclick={() => { mode = "animate"; if (!clips.length) newClip(); }}>Animate</button>
-        {#if mode === "model" && selected && !inEdit}
-          <span class="seg" role="group" aria-label="Handles">
-            <button class:on={gizmoMode === "translate"} onclick={() => (gizmoMode = "translate")} title="Move (W)">Move</button>
-            <button class:on={gizmoMode === "rotate"} onclick={() => (gizmoMode = "rotate")} title="Turn (E)">Turn</button>
-            <button class:on={gizmoMode === "pivot"} disabled={selected.cube !== undefined} onclick={() => (gizmoMode = "pivot")} title={selected.cube !== undefined ? "Select a part to move its pivot" : "Move the point this part turns about, leaving its shapes where they are (P)"}>Pivot</button>
-            <button class:on={gizmoMode === "scale"} disabled={selected.cube === undefined} onclick={() => (gizmoMode = "scale")} title={selected.cube === undefined ? "Parts are resized in animations" : "Resize (R)"}>Resize</button>
-          </span>
-          <label class="check" title="Snap to whole units and 15 degrees"><input type="checkbox" bind:checked={snap} /> Snap</label>
-        {/if}
+        <select class="modeselect" value={uiMode} onchange={(e) => setUiMode(e.currentTarget.value as UiMode)} aria-label="Mode" title="What you are doing with the model (Tab switches between Object and Edit)">
+          {#each UI_MODES as m (m.id)}<option value={m.id}>{m.title}</option>{/each}
+        </select>
         <label class="check"><input type="checkbox" bind:checked={showGrid} /> Grid</label>
         <label class="check" title="Draw the skeleton: a line from each part's pivot to its children's, and a dot at each pivot"><input type="checkbox" bind:checked={showBones} /> Bones</label>
         <label class="check" title="Draw only the chosen part and what is inside it"><input type="checkbox" bind:checked={localView} /> Local</label>
@@ -2637,6 +2670,36 @@
         <span class="seg" role="group" aria-label="Standard views">
           {#each VIEW_NAMES as n (n)}<button class:on={viewName === n} onclick={() => showView(n)} title="{VIEW_LABELS[n]} view" aria-label="{VIEW_LABELS[n]} view">{VIEW_LABELS[n][0]}</button>{/each}
         </span>
+        <label class="check" title="Flat view: parallel lines stay parallel (5)"><input type="checkbox" checked={ortho} onchange={(e) => setOrtho(e.currentTarget.checked)} /> Flat</label>
+        <span class="histwrap">
+          <button class="ghost" aria-expanded={historyOpen} disabled={tick >= 0 && !history.canUndo && !history.canRedo} onclick={() => (historyOpen = !historyOpen)} title="The list of changes: pick one to go back (or forward) to it">History</button>
+          {#if historyOpen}
+            <div class="histlist" role="menu" aria-label="History">
+              {#each [...history.redoLabels].reverse() as l, k (k)}<button role="menuitem" class="redo" onclick={() => jumpHistory(-(history.redoLabels.length - k))}>↷ {l}</button>{/each}
+              <span class="now dim small">now</span>
+              {#each history.undoLabels as l, k (k)}<button role="menuitem" onclick={() => jumpHistory(k + 1)}>{k + 1 === 1 ? "↶ " : ""}{l}</button>{/each}
+            </div>
+          {/if}
+        </span>
+        <button class="ghost" onclick={resetView}>Reset view</button>
+        <span class="dim">{countCubes(doc)} shapes · saves {glbPath}</span>
+        <span class="spacer"></span>
+        <button class="ghost" onclick={onjson}>JSON</button>
+      </div>
+      <div class="view" bind:this={box}>
+        {#if webglFailed}
+          <p class="dim pad">3D drawing is not available in this window (WebGL could not start).</p>
+        {/if}
+        <div class="shelf" role="toolbar" aria-label="Tools for this mode">
+        {#if mode === "model" && selected && !inEdit}
+          <span class="seg" role="group" aria-label="Handles">
+            <button class:on={gizmoMode === "translate"} onclick={() => (gizmoMode = "translate")} title="Move (W)">Move</button>
+            <button class:on={gizmoMode === "rotate"} onclick={() => (gizmoMode = "rotate")} title="Turn (E)">Turn</button>
+            <button class:on={gizmoMode === "pivot"} disabled={selected.cube !== undefined} onclick={() => (gizmoMode = "pivot")} title={selected.cube !== undefined ? "Select a part to move its pivot" : "Move the point this part turns about, leaving its shapes where they are (P)"}>Pivot</button>
+            <button class:on={gizmoMode === "scale"} disabled={selected.cube === undefined} onclick={() => (gizmoMode = "scale")} title={selected.cube === undefined ? "Parts are resized in animations" : "Resize (R)"}>Resize</button>
+          </span>
+          <label class="check" title="Snap to whole units and 15 degrees"><input type="checkbox" bind:checked={snap} /> Snap</label>
+        {/if}
         {#if inEdit}<button class:on={sculpting} onclick={() => { sculpting = !sculpting; weightPainting = false; }} title="Sculpt: brush the surface (Ctrl reverses)">Sculpt</button>{/if}
         {#if inEdit && cube?.skin}<button class:on={weightPainting} onclick={() => { weightPainting = !weightPainting; sculpting = false; }} title="Paint weights: brush how strongly a part holds the points">Weights</button>{/if}
         {#if inEdit && weightPainting && cube?.skin}
@@ -2663,26 +2726,7 @@
           {#if selectNote}<span class="dim small" role="status">{selectNote}</span>{/if}
         {/if}
         {#if inEdit}<button class:on={boxArmed} onclick={() => (boxArmed = !boxArmed)} title="Box select: drag a rectangle over the points (B)">Box</button>{/if}
-        <label class="check" title="Flat view: parallel lines stay parallel (5)"><input type="checkbox" checked={ortho} onchange={(e) => setOrtho(e.currentTarget.checked)} /> Flat</label>
-        <span class="histwrap">
-          <button class="ghost" aria-expanded={historyOpen} disabled={tick >= 0 && !history.canUndo && !history.canRedo} onclick={() => (historyOpen = !historyOpen)} title="The list of changes: pick one to go back (or forward) to it">History</button>
-          {#if historyOpen}
-            <div class="histlist" role="menu" aria-label="History">
-              {#each [...history.redoLabels].reverse() as l, k (k)}<button role="menuitem" class="redo" onclick={() => jumpHistory(-(history.redoLabels.length - k))}>↷ {l}</button>{/each}
-              <span class="now dim small">now</span>
-              {#each history.undoLabels as l, k (k)}<button role="menuitem" onclick={() => jumpHistory(k + 1)}>{k + 1 === 1 ? "↶ " : ""}{l}</button>{/each}
-            </div>
-          {/if}
-        </span>
-        <button class="ghost" onclick={resetView}>Reset view</button>
-        <span class="dim">{countCubes(doc)} shapes · saves {glbPath}</span>
-        <span class="spacer"></span>
-        <button class="ghost" onclick={onjson}>JSON</button>
-      </div>
-      <div class="view" bind:this={box}>
-        {#if webglFailed}
-          <p class="dim pad">3D drawing is not available in this window (WebGL could not start).</p>
-        {/if}
+        </div>
         <canvas bind:this={canvas} tabindex="0" aria-label="3D view" onpointerdown={pointerDown} onpointermove={pointerMove} onpointerup={pointerUp}></canvas>
         <NavButtons controls={() => controls} camera={() => camera} height={() => canvas?.clientHeight ?? 400} />
         {#if rubber}<div class="boxband" style:left="{Math.min(rubber.x0, rubber.x1)}px" style:top="{Math.min(rubber.y0, rubber.y1)}px" style:width="{Math.abs(rubber.x1 - rubber.x0)}px" style:height="{Math.abs(rubber.y1 - rubber.y0)}px"></div>{/if}
@@ -3110,6 +3154,14 @@
   .inspector > :global(*) { flex-shrink: 0; } /* a short window scrolls the panel instead of squashing the picture */
   .modalbar { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--accent); border-radius: 8px; padding: 5px 12px; font-size: 12px; z-index: 6; pointer-events: none; }
   .stage { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .modeselect { font-weight: 600; }
+  .shelf { position: absolute; left: 8px; top: 8px; z-index: 5; display: flex; flex-direction: column; align-items: stretch; gap: 4px; max-width: 150px; padding: 6px; background: color-mix(in srgb, var(--panel) 90%, transparent); border: 1px solid var(--line); border-radius: 8px; max-height: calc(100% - 16px); overflow: auto; }
+  .shelf:empty, .shelf:not(:has(*)) { display: none; }
+  .shelf .seg { display: flex; flex-direction: column; }
+  .shelf .seg button { border-radius: 0; text-align: left; }
+  .shelf .seg button:first-child { border-radius: 6px 6px 0 0; } .shelf .seg button:last-child { border-radius: 0 0 6px 6px; }
+  .shelf input[type="range"] { width: 100%; }
+  .shelf label { font-size: 11px; }
   .bar { display: flex; align-items: center; gap: 8px; padding: 4px 8px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   .check { display: flex; align-items: center; gap: 4px; } .check input { margin: 0; }
   .spacer { flex: 1; }
