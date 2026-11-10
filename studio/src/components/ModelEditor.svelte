@@ -24,7 +24,7 @@
   import { SCULPT_HELP, SCULPT_MODES, sculptDab, type SculptMode } from "../lib/sculpt";
   import { addFace, bevelEdge, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, freshProfile, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsSymmetric, setFaceColors, setSmooth, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
   import { hasVolume, meshOf, segmentsOf, shapeFaces, solidOf } from "../lib/model-mesh";
-  import { autoWeights, boneHeat, dominantBones, heatColor, invertAffine, reskin, setWeight, skinnedPoints, transformPoint, worldMatrices } from "../lib/model-skin";
+  import { WEIGHT_MODES, paintWeights, type WeightMode, autoWeights, boneHeat, dominantBones, heatColor, invertAffine, reskin, setWeight, skinnedPoints, transformPoint, worldMatrices } from "../lib/model-skin";
   import { bakeAll, blockOf, faceRects, flippedRect, normRect, rectAt, enableTexture, fitPicture, packModel, resizeTexture, unwrap, uvsOf } from "../lib/model-uv";
   import { CLEAR, cloneRaster, drawEllipse, drawLine, drawRect, floodFill, getPixel, newRaster, parseHex, stamp, toHex, type Raster, type Rgba } from "../lib/pixels";
   import { applyBrush, applyGradient } from "../lib/paint";
@@ -1384,7 +1384,7 @@
       }
     }
     if (!inEdit || !camera || !canvas || !selected || !cube || e.button !== 0) return;
-    if (sculpting) {
+    if (sculpting || weightPainting) {
       const at = sculptPoint(e);
       if (!at) return;
       history.record(doc);
@@ -1468,6 +1468,9 @@
   let sculptRadius = $state(3);
   let sculptStrength = $state(0.5);
   let sculptSymmetry = $state(false);
+  // weight painting: the same brush, but it paints how strongly the chosen part holds the points (the colours show it)
+  let weightPainting = $state(false);
+  let weightMode = $state<WeightMode>("add");
   let sculptStroke: { path: Path; last: Vec3; fresh: boolean } | null = null;
   /// Where the pointer's ray meets the chosen shape, in that shape's own space.
   function sculptPoint(e: PointerEvent): Vec3 | null {
@@ -1492,6 +1495,15 @@
     const moved = Math.hypot(...delta);
     if (!sculptStroke.fresh && moved < sculptRadius / 3 && sculptMode !== "grab") return;
     sculptStroke.fresh = false;
+    if (weightPainting) {
+      const bone = skinBone || c.skin?.bones[0] || "";
+      if (!bone) return;
+      commit(setCube(doc, sculptStroke.path, paintWeights(c, at, { bone, mode: weightMode, radius: sculptRadius, strength: sculptStrength })), true);
+      const painted = cubeAt(doc, sculptStroke.path)?.skin?.bones.indexOf(bone) ?? -1;
+      if (painted >= 0) heatBone = painted;
+      sculptStroke.last = at;
+      return;
+    }
     const next = sculptDab(c, sculptMode === "grab" ? sculptStroke.last : at, { mode: sculptMode, radius: sculptRadius, strength: sculptStrength, invert: e.ctrlKey || e.metaKey, symmetryX: sculptSymmetry }, delta);
     commit(setCube(doc, sculptStroke.path, next), true);
     sculptStroke.last = at;
@@ -2327,12 +2339,17 @@
         <span class="seg" role="group" aria-label="Standard views">
           {#each VIEW_NAMES as n (n)}<button class:on={viewName === n} onclick={() => showView(n)} title="{VIEW_LABELS[n]} view" aria-label="{VIEW_LABELS[n]} view">{VIEW_LABELS[n][0]}</button>{/each}
         </span>
-        {#if inEdit}<button class:on={sculpting} onclick={() => (sculpting = !sculpting)} title="Sculpt: brush the surface (Ctrl reverses)">Sculpt</button>{/if}
-        {#if inEdit && sculpting}
-          <select bind:value={sculptMode} aria-label="Sculpt brush" title={SCULPT_HELP[sculptMode]}>{#each SCULPT_MODES as m (m)}<option value={m}>{m}</option>{/each}</select>
+        {#if inEdit}<button class:on={sculpting} onclick={() => { sculpting = !sculpting; weightPainting = false; }} title="Sculpt: brush the surface (Ctrl reverses)">Sculpt</button>{/if}
+        {#if inEdit && cube?.skin}<button class:on={weightPainting} onclick={() => { weightPainting = !weightPainting; sculpting = false; }} title="Paint weights: brush how strongly a part holds the points">Weights</button>{/if}
+        {#if inEdit && weightPainting && cube?.skin}
+          <select bind:value={skinBone} aria-label="Part to paint" title="The part whose hold you paint">{#each cube.skin.bones as b (b)}<option value={b}>{b.split("/").at(-1)}</option>{/each}</select>
+          <select bind:value={weightMode} aria-label="Weight brush">{#each WEIGHT_MODES as m (m)}<option value={m}>{m}</option>{/each}</select>
+        {/if}
+        {#if inEdit && (sculpting || weightPainting)}
+          {#if sculpting}<select bind:value={sculptMode} aria-label="Sculpt brush" title={SCULPT_HELP[sculptMode]}>{#each SCULPT_MODES as m (m)}<option value={m}>{m}</option>{/each}</select>{/if}
           <label class="check" title="Brush radius, in units">Size <input type="range" min="0.5" max="20" step="0.5" bind:value={sculptRadius} aria-label="Brush size" /></label>
           <label class="check" title="How strongly each dab works">Strength <input type="range" min="0.05" max="1" step="0.05" bind:value={sculptStrength} aria-label="Brush strength" /></label>
-          <label class="check" title="Sculpt the mirror image across the middle (x = 0) too"><input type="checkbox" bind:checked={sculptSymmetry} /> Mirror</label>
+          {#if sculpting}<label class="check" title="Sculpt the mirror image across the middle (x = 0) too"><input type="checkbox" bind:checked={sculptSymmetry} /> Mirror</label>{/if}
         {/if}
         {#if inEdit}<button class:on={boxArmed} onclick={() => (boxArmed = !boxArmed)} title="Box select: drag a rectangle over the points (B)">Box</button>{/if}
         <label class="check" title="Flat view: parallel lines stay parallel (5)"><input type="checkbox" checked={ortho} onchange={(e) => setOrtho(e.currentTarget.checked)} /> Flat</label>

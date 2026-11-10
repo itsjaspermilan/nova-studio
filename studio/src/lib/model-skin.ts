@@ -4,6 +4,7 @@
 // writes the same weights as a glTF skin.
 
 import { eulerToQuaternion, type Quat } from "./model-ease";
+import { falloffWeight, type Falloff } from "./mesh-ops";
 import { cubeAt, partAt, setCube, type Cube, type ModelDoc, type Part, type Path, type Skin, type Vec3 } from "./model-doc";
 
 /// A 4x4 matrix, column-major (the way three.js and glTF keep them).
@@ -184,6 +185,24 @@ export function skinnedPoints(doc: ModelDoc, path: Path, posed: Map<string, Mat>
   });
 }
 
+/// Sets how strongly bone `index` holds point `p` (0 to 1); the other bones share the rest in the proportions they had. At most four bones stay.
+function setOneWeight(skin: Skin, p: number, index: number, w: number) {
+  if (!skin.weights[p]) return;
+  const others = skin.weights[p]!.filter(([b]) => b !== index);
+  const sum = others.reduce((n, [, x]) => n + x, 0);
+  let next: [number, number][] = [];
+  if (w > 0) next.push([index, w]);
+  for (const [b, x] of others) if (sum > 0 && w < 1) next.push([b, (x / sum) * (1 - w)]);
+  if (!next.length) next = [[index, 1]];
+  next.sort((a, b) => b[1] - a[1]);
+  next = next.slice(0, 4);
+  const total = next.reduce((n, [, x]) => n + x, 0);
+  next = next.map(([b, x]) => [b, Math.round((x / total) * 10000) / 10000]);
+  const big = next.reduce((m, pair) => (pair[1] > m[1] ? pair : m), next[0]!);
+  big[1] = Math.round((big[1] + (1 - next.reduce((n, [, x]) => n + x, 0))) * 10000) / 10000;
+  skin.weights[p] = next;
+}
+
 /// A copy of the mesh with a weight changed for some points: `bone` gets `weight` and the other bones share the rest in the
 /// proportions they had. A new bone is added to the list when needed. At most four bones are kept per point (the smallest go).
 export function setWeight(cube: Cube, points: number[], bone: string, weight: number): Cube {
@@ -196,22 +215,7 @@ export function setWeight(cube: Cube, points: number[], bone: string, weight: nu
     index = skin.bones.push(bone) - 1;
   }
   const w = Math.min(1, Math.max(0, weight));
-  for (const p of new Set(points)) {
-    if (!skin.weights[p]) continue;
-    const others = skin.weights[p]!.filter(([b]) => b !== index);
-    const sum = others.reduce((n, [, x]) => n + x, 0);
-    let next: [number, number][] = [];
-    if (w > 0) next.push([index, w]);
-    for (const [b, x] of others) if (sum > 0 && w < 1) next.push([b, (x / sum) * (1 - w)]);
-    if (!next.length) next = [[index, 1]];
-    next.sort((a, b) => b[1] - a[1]);
-    next = next.slice(0, 4);
-    const total = next.reduce((n, [, x]) => n + x, 0);
-    next = next.map(([b, x]) => [b, Math.round((x / total) * 10000) / 10000]);
-    const big = next.reduce((m, pair) => (pair[1] > m[1] ? pair : m), next[0]!);
-    big[1] = Math.round((big[1] + (1 - next.reduce((n, [, x]) => n + x, 0))) * 10000) / 10000;
-    skin.weights[p] = next;
-  }
+  for (const p of new Set(points)) setOneWeight(skin, p, index, w);
   return out;
 }
 
@@ -239,4 +243,59 @@ export function reskin(doc: ModelDoc, path: Path): ModelDoc {
   const skin = autoWeights(doc, path);
   const { skin: _old, ...rest } = cube;
   return setCube(doc, path, skin ? { ...rest, skin } : rest);
+}
+
+export type WeightMode = "add" | "subtract" | "smooth";
+export const WEIGHT_MODES: WeightMode[] = ["add", "subtract", "smooth"];
+
+/// One dab of the weight brush at `center` (in the mesh's own space): points within `radius` change by the falloff times `strength` (0 to 1).
+/// "add" raises how strongly `bone` holds them, "subtract" lowers it (the others share what is freed), "smooth" blends every bone's weight towards the
+/// average of the point's neighbours. Returns the mesh as it was when it has no skin or the bone is not one of its bones.
+export function paintWeights(cube: Cube, center: Vec3, brush: { bone: string; mode: WeightMode; radius: number; strength: number; falloff?: Falloff }): Cube {
+  if (!cube.skin || !cube.verts || cube.skin.weights.length !== cube.verts.length) return cube;
+  const out: Cube = JSON.parse(JSON.stringify(cube));
+  const skin = out.skin!;
+  let index = skin.bones.indexOf(brush.bone);
+  if (index < 0) {
+    if (brush.mode === "smooth") index = -1;
+    else if (skin.bones.length >= 64) return cube;
+    else index = skin.bones.push(brush.bone) - 1;
+  }
+  const verts = cube.verts;
+  const r = Math.max(1e-6, brush.radius);
+  const k = Math.min(1, Math.max(0, brush.strength));
+  const near: { i: number; w: number }[] = [];
+  for (let i = 0; i < verts.length; i++) {
+    const d = Math.hypot(verts[i]![0] - center[0], verts[i]![1] - center[1], verts[i]![2] - center[2]);
+    if (d < r) near.push({ i, w: falloffWeight(brush.falloff ?? "smooth", d / r) * k });
+  }
+  const before = cube.skin.weights;
+  const held = (p: number, b: number) => before[p]!.reduce((n, [x, w]) => (x === b ? n + w : n), 0);
+  if (brush.mode === "smooth") {
+    const nb: Set<number>[] = verts.map(() => new Set());
+    for (const f of cube.polys ?? []) f.v.forEach((a, n) => {
+      const c = f.v[(n + 1) % f.v.length]!;
+      nb[a]!.add(c);
+      nb[c]!.add(a);
+    });
+    for (const { i, w } of near) {
+      const list = [...nb[i]!];
+      if (!list.length) continue;
+      const blend = new Map<number, number>();
+      for (const [b, x] of before[i]!) blend.set(b, (blend.get(b) ?? 0) + x * (1 - w));
+      for (const j of list) for (const [b, x] of before[j]!) blend.set(b, (blend.get(b) ?? 0) + (x / list.length) * w);
+      let pairs = [...blend].sort((a, b) => b[1] - a[1]).slice(0, 4);
+      const total = pairs.reduce((n, [, x]) => n + x, 0) || 1;
+      pairs = pairs.map(([b, x]) => [b, Math.round((x / total) * 10000) / 10000]);
+      const big = pairs.reduce((m, pair) => (pair[1] > m[1] ? pair : m), pairs[0]!);
+      big[1] = Math.round((big[1] + (1 - pairs.reduce((n, [, x]) => n + x, 0))) * 10000) / 10000;
+      skin.weights[i] = pairs;
+    }
+    return out;
+  }
+  for (const { i, w } of near) {
+    const cur = held(i, index);
+    setOneWeight(skin, i, index, brush.mode === "add" ? cur + (1 - cur) * w : cur * (1 - w));
+  }
+  return out;
 }
