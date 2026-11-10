@@ -22,6 +22,45 @@ pub const TEMPLATES: &[Template] = &[
         ],
     },
     Template {
+        id: "platformer",
+        name: "Platformer",
+        description: "A level of platforms, coins and a flag, made of a scene file and four small entities: run, jump, collect, win.",
+        files: &[
+            (
+                "nova.json",
+                include_bytes!("../templates/platformer/nova.json"),
+            ),
+            (
+                "main.lua",
+                include_bytes!("../templates/platformer/main.lua"),
+            ),
+            (
+                "scenes/level1.lua",
+                include_bytes!("../templates/platformer/scenes/level1.lua"),
+            ),
+            (
+                "scenes/level1.scene.json",
+                include_bytes!("../templates/platformer/scenes/level1.scene.json"),
+            ),
+            (
+                "entities/platform.lua",
+                include_bytes!("../templates/platformer/entities/platform.lua"),
+            ),
+            (
+                "entities/coin.lua",
+                include_bytes!("../templates/platformer/entities/coin.lua"),
+            ),
+            (
+                "entities/flag.lua",
+                include_bytes!("../templates/platformer/entities/flag.lua"),
+            ),
+            (
+                "entities/player.lua",
+                include_bytes!("../templates/platformer/entities/player.lua"),
+            ),
+        ],
+    },
+    Template {
         id: "model3d",
         name: "3D starter",
         description: "A modelled crate turning on screen: a model made in the Model workspace, a camera, a light and controls.",
