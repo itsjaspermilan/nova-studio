@@ -1,11 +1,13 @@
 <script lang="ts">
+  import { eraseTerrain, paintTerrain } from "../lib/autotile";
+  import { parseTileset, tilesetPathFor, type TilesetDoc } from "../lib/tileset";
   import { resizable } from "../lib/resize";
   import { untrack } from "svelte";
   import {
     History, addItem, afterRemoval, boundsOf, drawOrder, duplicateItem, hitTest, itemAt, moveTo, parseScene, removeItem, sameRef,
     serializeScene, setField, setSceneField, snap, uniqueName, worldSize, type Item, type ItemKind, type Ref, type Scene, type Sizes,
     addTilemap, cellAt, fillTiles, mapSize, tileSize, paintTile, parsePropValue, propsOf, removeTilemap, renameProp, resizeTilemap, setProp, showPropValue, type PropValue,
-    tilemapBox, tilemaps, toggleSolid, EMPTY_TILE, type Kinds, cameraOf, moveTo3, setCamera, positionOf, placeObjects, eraseNear, offRoad, snapToRoad, snapToGrid, type Camera3,
+    tilemapBox, tilemaps, toggleSolid, replaceTiles, EMPTY_TILE, type Kinds, cameraOf, moveTo3, setCamera, positionOf, placeObjects, eraseNear, offRoad, snapToRoad, snapToGrid, type Camera3,
   } from "../lib/scene-model";
   import Scene3D from "./Scene3D.svelte";
   import type { ModelDoc } from "../lib/model-doc";
@@ -31,6 +33,10 @@
   let mapIndex = $state(0);
   let tile = $state(0); // the tile to paint; -1 erases
   let tileTool: "paint" | "fill" = $state("paint");
+  /// The tileset's description (lib/tileset.ts) by picture, read when a map is shown: its terrains paint with auto-tiling and its solid tiles start a new map.
+  let tilesetDocs = $state<Record<string, TilesetDoc | null>>({});
+  /// The terrain being painted with (an index into the tileset's terrains), or null to paint single tiles.
+  let terrainIndex = $state<number | null>(null);
   let newSet = $state("");
   let newTile = $state(16);
   let newCols = $state(30);
@@ -460,6 +466,17 @@
   }
 
   function paintAt(cell: { col: number; row: number }) {
+    const terrain = terrainIndex !== null ? tilesetDocs[activeMap?.tileset.image ?? ""]?.terrains[terrainIndex] : undefined;
+    if (terrain && activeMap) {
+      // painting with a terrain: the tile of each cell follows its neighbours (lib/autotile.ts); the eraser takes the terrain away again
+      let s = scene;
+      const { cols, rows } = mapSize(activeMap);
+      if (cell.col >= cols || cell.row >= rows) s = resizeTilemap(s, mapIndex, Math.max(cols, cell.col + 1), Math.max(rows, cell.row + 1));
+      const grid = tilemaps(s)[mapIndex]!.tiles;
+      const out = tile === EMPTY_TILE ? eraseTerrain(grid, terrain, cell.col, cell.row) : paintTerrain(grid, terrain, cell.col, cell.row);
+      if (out !== grid) commit(replaceTiles(s, mapIndex, out), true);
+      return;
+    }
     const next = tileTool === "fill" ? fillTiles(scene, mapIndex, cell.col, cell.row, tile) : paintTile(scene, mapIndex, cell.col, cell.row, tile);
     if (next !== scene) commit(next, true);
   }
@@ -650,9 +667,29 @@
     const n = Math.floor(py / m.tileset.tile_height) * perRow + Math.floor(px / m.tileset.tile_width);
     if (n >= 0 && px < perRow * m.tileset.tile_width) tile = n;
   }
-  function createMap() {
+  // the description of each shown map's tileset, if it has one
+  $effect(() => {
+    for (const m of maps) {
+      const image = m.tileset.image;
+      if (!image || image in tilesetDocs) continue;
+      tilesetDocs[image] = null;
+      void studio.api?.readFile(tilesetPathFor(image)).then((c) => {
+        const parsed = parseTileset(c.text ?? "");
+        tilesetDocs[image] = parsed.ok ? parsed.doc : null;
+      }, () => undefined);
+    }
+  });
+  async function createMap() {
     if (!newSet) return;
-    const result = addTilemap(scene, newSet, Math.max(1, newTile), Math.max(1, newTile), newCols, newRows);
+    // a tileset with a description gives the new map its tile size and its solid tiles
+    const described = await studio.api?.readFile(tilesetPathFor(newSet)).then((c) => parseTileset(c.text ?? ""), () => null);
+    const d = described && described.ok ? described.doc : null;
+    let result = addTilemap(scene, newSet, d?.tile_width ?? Math.max(1, newTile), d?.tile_height ?? Math.max(1, newTile), newCols, newRows);
+    if (d?.solid.length) {
+      const withSolid = structuredCloneSafe(result.scene);
+      tilemaps(withSolid)[result.index]!.solid = [...d.solid];
+      result = { scene: withSolid, index: result.index };
+    }
     edit(result.scene);
     mapIndex = result.index;
     mode = "tiles";
@@ -829,6 +866,14 @@
           <button class:on={tileTool === "fill"} onclick={() => (tileTool = "fill")}>Fill</button>
           <button class:on={tile === EMPTY_TILE} onclick={() => (tile = EMPTY_TILE)} title="Paint with nothing">Erase</button>
         </div>
+        {#if (tilesetDocs[activeMap.tileset.image]?.terrains.length ?? 0) > 0}
+          <label>Paint with
+            <select value={terrainIndex ?? ""} onchange={(e) => { terrainIndex = e.currentTarget.value === "" ? null : Number(e.currentTarget.value); }} title="A terrain joins its edges and corners by itself (made in the tileset editor)">
+              <option value="">single tiles</option>
+              {#each tilesetDocs[activeMap.tileset.image]!.terrains as t, ti (ti)}<option value={ti}>terrain: {t.name}</option>{/each}
+            </select>
+          </label>
+        {/if}
         <div class="tileset"><canvas bind:this={tilesetCanvas} aria-label="Tileset" onclick={pickTile}></canvas></div>
         <p class="dim small">Tile {tile < 0 ? "none (erase)" : tile}{tileCell ? "" : ""}. Click a tile above, then the map. Painting past the edge grows the map.</p>
         <button disabled={tile < 0} onclick={() => edit(toggleSolid(scene, mapIndex, tile))}>

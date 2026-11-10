@@ -20,7 +20,7 @@ export const WORKSPACES: Workspace[] = [
 export function workspaceOf(path: string): WorkspaceId {
   const p = path.toLowerCase();
   if (p.endsWith(".model.json") || p.endsWith(".glb") || p.endsWith(".gltf")) return "model";
-  if (p.endsWith(".sprite.json") || p.endsWith(".png")) return "sprites";
+  if (p.endsWith(".sprite.json") || p.endsWith(".tileset.json") || p.endsWith(".png")) return "sprites";
   if (p.endsWith(".sfx.json") || p.endsWith(".song.json") || p.endsWith(".wav") || p.endsWith(".ogg")) return "sound";
   return "engine";
 }

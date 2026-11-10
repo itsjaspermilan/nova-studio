@@ -110,8 +110,15 @@ Still open (3.3 Layers, cels, frames):
 - [ ] Group layers, tilemap layers, audio layers, 3D layers; clipping masks, layer lock, cel properties; **non-destructive** effects on a cel or layer (today the effects change the pixels for good).
 - [ ] Per-frame hitboxes, anchor or pivot points, 9-slice, frame events: these need `*.sprite.json` support in the runtime (`crates/nova-runtime/src/sprite.rs`) and the Lua API first.
 - [ ] Timeline: scrubbing, ripple edit, FPS setting, "add many frames", cel drag.
-Still open (3.4 Tilemaps and tilesets), none started:
-- [ ] Tilemap layers with a tileset (draw, manual and auto modes), tile size and shape (square, isometric, hex), offsets and flipped placement, tile properties and collision shapes, terrain sets (auto-tiling), tileset import and export (PNG and Nova's JSON), feeding the scene editor's tilemaps.
+Tilemaps and tilesets (3.4), started 2026-11-09 (browser preview and unit tests, **not run in the real app**):
+- [x] Tileset descriptions: `<picture>.tileset.json` beside the PNG (`lib/tileset.ts`): tile size, which tiles are solid, names for tiles, terrains; a Tilesets group in the project tree; opened by the Sprites workspace (Sprites home: "Open or make its tileset"); the game never reads it.
+- [x] Tileset editor (`TilesetEditor.svelte`): the picture cut into numbered tiles, click a tile, name it, mark it solid, tile size, find tiles that look exactly alike, undo and redo; terrains: add one laid out from the selected tile, assign slots by clicking tiles in order, a little shape painted with it as a preview.
+- [x] Auto-tiling (`lib/autotile.ts`): "edges" terrains (16 tiles by which of the four sides touch) and "edges and corners" terrains (47 tiles); painting and erasing refresh the neighbours; retile a map. 10 tests.
+- [x] The scene editor's tile map: a new map takes its tile size and solid list from the tileset's description; "Paint with: terrain" paints with auto-tiling (the eraser takes it away); the scene file just holds tile numbers.
+Still open (3.4): none of the following exists yet:
+- [ ] Tilemap layers inside a sprite document, and a tile map editor in Sprites (today a map is made in the scene editor).
+- [ ] Manual mode (edit one tile's pixels and have its copies update), draw-all-copies, tile size and shape beyond square (isometric, hex), offsets, rotated or flipped placement, tile properties beyond solid (collision shapes, custom values), terrain priorities between terrains, animated tiles, tileset import and export as PNG plus Nova's JSON beyond today's plain PNG, a layout wizard for common autotile layouts (the standard 47-tile "blob" sheet order and Godot or Tiled terrain sets).
+- [ ] Re-tile a whole map from the scene editor after a terrain changes (the function exists), terrain painting with the fill tool, a map-wide solid overlay from the description.
 Still open (3.5 Palettes):
 - [ ] `.pal` and PNG palettes, Lospec download, sort and swap swatches, colour ramps, indexed-colour mode, project-wide palettes shared by Sprites and Model, a palette lock that stops drawing outside it.
 Still open (3.6 Files):

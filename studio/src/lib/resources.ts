@@ -5,7 +5,7 @@
 
 import type { FileEntry } from "./types";
 
-export type ResourceKind = "sprite" | "model" | "scene" | "track" | "anim" | "entity" | "sound" | "song" | "script" | "image" | "font" | "project" | "file";
+export type ResourceKind = "sprite" | "tileset" | "model" | "scene" | "track" | "anim" | "entity" | "sound" | "song" | "script" | "image" | "font" | "project" | "file";
 
 export interface Resource {
   kind: ResourceKind;
@@ -30,6 +30,7 @@ export interface ResourceGroup {
 
 const GROUPS: { id: string; title: string; icon: string; folder?: string; always: boolean }[] = [
   { id: "sprites", title: "Sprites", icon: "◫", folder: "sprites", always: true },
+  { id: "tilesets", title: "Tilesets", icon: "▦", folder: "sprites", always: false },
   { id: "models", title: "3D Models", icon: "◆", folder: "models", always: true },
   { id: "scenes", title: "Scenes", icon: "▦", folder: "scenes", always: true },
   { id: "tracks", title: "Tracks", icon: "⌇", folder: "tracks", always: true },
@@ -78,6 +79,9 @@ export function groupResources(entries: FileEntry[], images: Map<string, string>
       const stem = path.slice(0, -".sprite.json".length);
       const named = images.get(path);
       add("sprites", { kind: "sprite", name: within(stem, "sprites"), path, files: [path, ...existing(named ?? `${stem}.png`, `${stem}.layers.json`)] });
+    } else if (lower.endsWith(".tileset.json")) {
+      const stem = path.slice(0, -".tileset.json".length);
+      add("tilesets", { kind: "tileset", name: within(stem, "sprites"), path, files: [path, ...existing(`${stem}.png`)] });
     } else if (lower.endsWith(".model.json")) {
       const stem = path.slice(0, -".model.json".length);
       add("models", { kind: "model", name: within(stem, "models"), path, files: [path, ...existing(`${stem}.glb`, `${stem}.texture.png`)] });
@@ -124,7 +128,7 @@ export function groupResources(entries: FileEntry[], images: Map<string, string>
 /// after the item follow it; a picture with another name (a sprite's `hero_sheet.png`) keeps its name, which the
 /// sprite's JSON refers to.
 export function renamePlan(resource: Resource, name: string): [string, string][] {
-  const stem = (p: string) => p.slice(0, p.length - (p.toLowerCase().endsWith(".sprite.json") ? ".sprite.json".length : p.toLowerCase().endsWith(".model.json") ? ".model.json".length : p.toLowerCase().endsWith(".sfx.json") ? ".sfx.json".length : p.toLowerCase().endsWith(".song.json") ? ".song.json".length : p.toLowerCase().endsWith(".track.json") ? ".track.json".length : p.toLowerCase().endsWith(".anim.json") ? ".anim.json".length : p.toLowerCase().endsWith(".scene.json") ? ".scene.json".length : p.includes(".") ? p.length - p.lastIndexOf(".") : 0));
+  const stem = (p: string) => p.slice(0, p.length - (p.toLowerCase().endsWith(".sprite.json") ? ".sprite.json".length : p.toLowerCase().endsWith(".tileset.json") ? ".tileset.json".length : p.toLowerCase().endsWith(".model.json") ? ".model.json".length : p.toLowerCase().endsWith(".sfx.json") ? ".sfx.json".length : p.toLowerCase().endsWith(".song.json") ? ".song.json".length : p.toLowerCase().endsWith(".track.json") ? ".track.json".length : p.toLowerCase().endsWith(".anim.json") ? ".anim.json".length : p.toLowerCase().endsWith(".scene.json") ? ".scene.json".length : p.includes(".") ? p.length - p.lastIndexOf(".") : 0));
   const primaryStem = stem(resource.path);
   const dir = primaryStem.includes("/") ? primaryStem.slice(0, primaryStem.lastIndexOf("/") + 1) : "";
   const oldBase = primaryStem.slice(dir.length);

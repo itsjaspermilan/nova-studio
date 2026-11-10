@@ -38,6 +38,7 @@ export function dropText(card: AssetCard): string {
 export function iconFor(kind: ResourceKind): string {
   switch (kind) {
     case "sprite":
+    case "tileset":
     case "image":
       return "sprites";
     case "model":

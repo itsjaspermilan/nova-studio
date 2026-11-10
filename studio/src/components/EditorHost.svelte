@@ -9,6 +9,7 @@
   import TrackEditor from "./TrackEditor.svelte";
   import TimelineEditor from "./TimelineEditor.svelte";
   import WorkspaceHome from "./WorkspaceHome.svelte";
+  import TilesetEditor from "./TilesetEditor.svelte";
   import { fileKind } from "../lib/tree";
   import { studio } from "../lib/store.svelte";
 
@@ -30,6 +31,8 @@
           <SpriteEditor path={studio.tab.path} text={studio.tab.text} />
         {:else if /\.(wav|ogg)$/i.test(studio.tab.path) || (studio.tab.path.endsWith(".sfx.json") && !jsonView.has(studio.tab.path))}
           <SoundEditor path={studio.tab.path} text={studio.tab.text} />
+        {:else if studio.tab.path.endsWith(".tileset.json") && !jsonView.has(studio.tab.path)}
+          <TilesetEditor path={studio.tab.path} text={studio.tab.text} onjson={() => toggleJson(studio.tab!.path, true)} />
         {:else if studio.tab.path.endsWith(".model.json") && !jsonView.has(studio.tab.path)}
           <ModelEditor path={studio.tab.path} text={studio.tab.text} onjson={() => toggleJson(studio.tab!.path, true)} />
         {:else if studio.tab.path.endsWith(".song.json") && !jsonView.has(studio.tab.path)}
@@ -43,7 +46,7 @@
         {:else if isScene(studio.tab.path) && !jsonView.has(studio.tab.path)}
           <SceneEditor path={studio.tab.path} text={studio.tab.text} onjson={() => toggleJson(studio.tab!.path, true)} />
         {:else}
-          {#if isScene(studio.tab.path) || studio.tab.path.endsWith(".sprite.json") || studio.tab.path.endsWith(".sfx.json") || studio.tab.path.endsWith(".model.json") || studio.tab.path.endsWith(".song.json")}
+          {#if isScene(studio.tab.path) || studio.tab.path.endsWith(".sprite.json") || studio.tab.path.endsWith(".sfx.json") || studio.tab.path.endsWith(".tileset.json") || studio.tab.path.endsWith(".model.json") || studio.tab.path.endsWith(".song.json")}
             <div class="viewbar"><button class="ghost" onclick={() => toggleJson(studio.tab!.path, false)}>◧ Visual editor</button></div>
           {/if}
           <Editor path={studio.tab.path} text={studio.tab.text} />

@@ -374,3 +374,17 @@ describe("building on the grid", () => {
     expect(snapToGrid(scene, "floor", [[2.2, 0.9]], 1)).toEqual([[2, 1]]);
   });
 });
+
+describe("replaceTiles", () => {
+  it("puts a whole grid into a map, as a copy", async () => {
+    const { addTilemap, replaceTiles, tilemaps } = await import("./scene-model");
+    const { scene, index } = addTilemap({ version: 1 } as never, "sprites/t.png", 16, 16, 3, 2);
+    const grid = [[1, 2, 3], [4, 5, 6]];
+    const next = replaceTiles(scene, index, grid);
+    expect(tilemaps(next)[index]!.tiles).toEqual(grid);
+    grid[0]![0] = 99;
+    expect(tilemaps(next)[index]!.tiles[0]![0]).toBe(1);
+    expect(tilemaps(scene)[index]!.tiles[0]![0]).toBe(-1);
+    expect(replaceTiles(scene, 5, grid)).toBe(scene);
+  });
+});

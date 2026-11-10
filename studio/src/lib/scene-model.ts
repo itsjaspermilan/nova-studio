@@ -445,6 +445,14 @@ export function paintTile(scene: Scene, index: number, col: number, row: number,
   return next;
 }
 
+/// Puts a whole grid of tiles into a map (what painting with a terrain makes); the grid must be the map's size.
+export function replaceTiles(scene: Scene, index: number, tiles: number[][]): Scene {
+  if (!tilemaps(scene)[index]) return scene;
+  const next = clone(scene);
+  tilemaps(next)[index]!.tiles = tiles.map((row) => [...row]);
+  return next;
+}
+
 /// Replaces the connected run of the same tile (4-way) with `tile`.
 export function fillTiles(scene: Scene, index: number, col: number, row: number, tile: number): Scene {
   const current = tilemaps(scene)[index];
