@@ -1748,6 +1748,13 @@
           <canvas bind:this={canvas} aria-label="Sprite canvas" class:hand={tool === "pan"} class:zooming={tool === "zoom"} onpointerdown={down} onpointermove={move} onpointerup={up} onpointercancel={up} onpointerleave={leave} oncontextmenu={(e) => e.preventDefault()}></canvas>
         </div>
       </div>
+      <div class="floatprev" role="group" aria-label="Preview">
+        <div class="preview"><canvas bind:this={preview}></canvas></div>
+        <div class="row">
+          <button onclick={() => (playing = !playing)} title="Play the animation here, over the canvas">{playing ? "■ Stop" : "▶ Preview"}</button>
+          <span class="dim small grow">{anim?.name ?? ""}</span>
+        </div>
+      </div>
       {#if mapView}
         <div class="minimap" role="img" aria-label="Mini-map: click to move the view" style:width="{mapView.w}px" style:height="{mapView.h}px" onpointerdown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); mapClick(e); }} onpointermove={(e) => { if (e.buttons) mapClick(e); }}>
           <canvas use:drawThumb={frame}></canvas>
@@ -1985,13 +1992,6 @@
         {/each}
       </div>
 
-      <h3>Preview</h3>
-      <div class="preview"><canvas bind:this={preview}></canvas></div>
-      <div class="row">
-        <button onclick={() => (playing = !playing)}>{playing ? "■ Stop" : "▶ Play"}</button>
-        <span class="dim small grow">{anim?.name ?? ""}</span>
-      </div>
-
       {#if isSheet}
         <h3>Animations</h3>
         <div class="anims" role="listbox" aria-label="Animations">
@@ -2145,6 +2145,8 @@
   .dimmed { opacity: 0.4; }
   .swatch.marked { box-shadow: 0 0 0 2px #ffd166; }
   .preview { display: grid; place-items: center; min-height: 120px; background: repeating-conic-gradient(#3a3d48 0 25%, #2e313b 0 50%) 0 0 / 12px 12px; border: 1px solid var(--line); border-radius: 6px; }
+  .floatprev { position: absolute; top: 8px; right: 14px; z-index: 6; display: flex; flex-direction: column; gap: 4px; padding: 6px; background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35); max-width: 150px; }
+  .floatprev .preview { min-height: 64px; }
   .preview canvas { image-rendering: pixelated; }
   .sizing { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; padding: 6px 10px; background: var(--panel-2); border-bottom: 1px solid var(--line); }
   .sizing label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--dim); }
