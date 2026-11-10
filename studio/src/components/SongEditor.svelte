@@ -143,8 +143,12 @@
   let liveDb = $state(-Infinity);
   let liveBins = $state.raw<Float32Array | null>(null);
   let liveWave = $state.raw<Float32Array | null>(null);
+  let liveSides = $state.raw<{ l: Float32Array; r: Float32Array } | null>(null);
+  let sideL: AnalyserNode | undefined;
+  let sideR: AnalyserNode | undefined;
   let liveRate = $state(44100);
   let analyser: AnalyserNode | undefined;
+  let splitter: ChannelSplitterNode | undefined;
   let analyserData: Float32Array<ArrayBuffer> | undefined;
   let raf = 0;
   let debounce: ReturnType<typeof setTimeout> | undefined;
@@ -172,6 +176,17 @@
       analyserData = new Float32Array(analyser.fftSize);
     }
     node.connect(analyser);
+    if (!sideL || !sideR) {
+      // the left and right channels each get an analyser of their own, for the vectorscope
+      const split = audio.createChannelSplitter(2);
+      sideL = audio.createAnalyser();
+      sideR = audio.createAnalyser();
+      sideL.fftSize = sideR.fftSize = 1024;
+      split.connect(sideL, 0);
+      split.connect(sideR, 1);
+      splitter = split;
+    }
+    node.connect(splitter!);
     node.onended = () => { if (source === node && !loop) stopPlayback(); };
     const offset = Math.max(0, Math.min(offsetSeconds, node.buffer.duration - 0.001));
     node.start(0, offset);
@@ -192,6 +207,13 @@
           analyser.getFloatFrequencyData(freq);
           liveBins = freq;
           liveWave = new Float32Array(analyserData);
+          if (sideL && sideR) {
+            const l = new Float32Array(sideL.fftSize);
+            const r = new Float32Array(sideR.fftSize);
+            sideL.getFloatTimeDomainData(l);
+            sideR.getFloatTimeDomainData(r);
+            liveSides = { l, r };
+          }
         }
         let peak = 0;
         for (const v of analyserData) peak = Math.max(peak, Math.abs(v));
@@ -208,6 +230,7 @@
     liveDb = -Infinity;
     liveBins = null;
     liveWave = null;
+    liveSides = null;
     cancelAnimationFrame(raf);
     clearTimeout(debounce);
     try { source?.stop(); } catch { /* already stopped */ }
@@ -806,7 +829,7 @@
       </aside>
     </div>
     {#if lower === "tools"}
-      <div class="lowerpane"><LiveScope bins={liveBins} wave={liveWave} rate={liveRate} /><SongTools {song} {track} {group} commit={(next) => commit(next)} pick={(keys) => (group = keys)} {exportLoop} {exportMidi} {importMidi} /></div>
+      <div class="lowerpane"><LiveScope bins={liveBins} wave={liveWave} sides={liveSides} rate={liveRate} /><SongTools {song} {track} {group} commit={(next) => commit(next)} pick={(keys) => (group = keys)} {exportLoop} {exportMidi} {importMidi} /></div>
     {:else if lower === "mixer"}
       <MixerPanel {song} {track} {liveDb} onchange={(next) => commit(next)} onselect={(i) => { track = i; selected = null; }} />
     {/if}
