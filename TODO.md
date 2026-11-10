@@ -66,12 +66,31 @@ Blender keymap in Model. Goal: a free, all-in-one studio for making games, no st
 - [ ] 2.7 Interop: glTF (done), OBJ, one-click `.blend` import (headless bpy), asset libraries, backups.
 - [ ] Proving project: the Pine Ridge cars made and edited in the workspace, not by script.
 
-### S3: Sound workspace (section 4)
-- [ ] Song editor (tracks, clips, split/knife/loop, tempo and time-signature track, markers, loop points), pattern editor, piano roll, automation editor.
-- [~] Mixer (2026-11-09: `MixerPanel.svelte` and `lib/mixer.ts`: a strip per track with fader, pan, reverb send, mute and solo, a master fader up to 150 percent, and "Measure levels" (renders each track and the mix: peak and average in dB, meters; no live meters); solo and master are saved in the song file and honoured by the render; `lib/song-edit.ts`: snap to the beat, repeat twice over, set all loudness; a Loudness view with draggable bars under the notes; a Sound menu; 21 tests; checked in the browser preview). Added later the same day: per-track echo (level, gap in steps, repeats; wraps round for a looping song; `echoOf`; 3 tests), a live master meter while playing (the browser's analyser; the level is not checked against a real playback), and in the piano roll picking several notes (Shift-click, Shift-drag rectangle, Cmd/Ctrl+A) to move, cut, copy, paste and delete together (`lib/song-edit.ts`; 6 tests; a cut of all notes checked in the preview, drag and paste not). Not yet: sends other than the one reverb, FX chains beyond echo and reverb, a master limiter setting, LUFS) and the rest of:  sample editor (trim, fade, slice, stretch, record, spectrogram); SFX designer with mutate.
-- [ ] Instruments (subtractive, FM/wavetable, drum machine, sampler/soundfont, pluck, organ) and effects (EQ, compressor, limiter, reverb, delay, chorus, distortion, filter, gate, pitch shift, analysers); controllers (LFO, envelope).
-- [~] File I/O and game audio (2026-11-09: Sound > "Export each track as its own file" writes one Ogg per track, all the song's length, to layer in a game; the sound-effect editor's "Make 4 variations" writes four close copies (settings and .wav) for a game to pick at random; 4 tests; the Ogg writing is the studio's existing path and was not run in the real app). Not yet: MP3 import, MIDI import and export, loop-ready crossfaded export, adaptive music in the runtime (the stems are just files), 3D falloff presets, a soundbank usage view; the rest of: (WAV, OGG, MP3 import, MIDI, stems, loop-ready export); game audio (adaptive stems, random sound groups, 3D falloff presets, soundbank usage view, voice/memory budget).
-- [ ] A person listens to the songs (nobody has yet).
+### S3: Sound workspace (section 4; detail in `docs/studio-workspaces.md`). Done on 2026-11-09, then everything still open, one line each
+Done (checked in the browser preview and by unit tests; **none of it run in the real app, nothing listened to**):
+- [x] Mixer strip per track (fader, pan, reverb send, echo send, mute, solo), master fader to 150 percent, "Measure levels" in dB (`MixerPanel.svelte`, `lib/mixer.ts`), a live master meter while playing; solo and master saved in the song file.
+- [x] Piano roll: ghost notes of other tracks (already there), a Loudness view with draggable bars, snap to the beat, repeat twice over, set all loudness, pick several notes (Shift-click, Shift-drag, Cmd/Ctrl+A) and move, cut, copy, paste and delete them together.
+- [x] Per-track echo (level, gap in steps, repeats; wraps round for a loop).
+- [x] Stems: one Ogg per track, all the song's length (Sound menu). Four close variations of a sound effect (sound-effect editor).
+- [x] A Sound menu and palette commands for all of the above.
+
+Still open (4.1 Layout):
+- [ ] Song editor with an arrangement: clips on tracks, split, resize, knife, loop, colour, zoom and snap; a pattern editor apart from the piano roll (today one song is one looping pattern).
+- [ ] Tempo and time-signature track; markers; a loop region that gives the game its loop points.
+- [ ] Piano roll: strum, glue, humanise, scale and chord helpers, a pan lane, pitch bend, note properties, quantise to a chosen grid (today only the beat), Ctrl-drag to copy.
+- [ ] Automation editor: curves (linear, discrete, cubic Hermite with tangents) for any knob, an LFO or controller to drive a knob.
+- [ ] Mixer: send routing and buses, FX chains per channel (EQ, compressor and so on), colours per channel, a master limiter setting, a loudness meter in LUFS.
+- [ ] Instrument and effect panel for the selected track (a plugin-style UI) instead of the one long inspector.
+- [ ] Sample editor: loop points, slicing (auto-slice), pitch and time stretch, gain, record from the microphone (own consent step), spectrogram. (Trim, fade, normalise, reverse, waveform exist.)
+Still open (4.2 Instruments, effects, files):
+- [ ] Instruments: FM and wavetable synth, a sample-based drum machine, a sampler and keymap, soundfonts (SF2/SFZ), additive and organ, bass monosynth, formula ("expression") synth, Karplus-Strong pluck, vocoder-lite. (Today: chip waves, unison, filter, sub, vibrato, two drum kits.)
+- [ ] Effects: parametric EQ with analyser, compressor and multiband, limiter, chorus, flanger, phaser, distortion and bit crusher and waveshaper, gate, pitch shifter, stereo tools, transient shaper, spectrum analyser, oscilloscope, vectorscope. (Today: reverb and echo, a filter on a track.)
+- [ ] Controllers: LFO, envelope, peak follower, MIDI keyboard input for live play, tap tempo.
+- [ ] File I/O: MP3 import, MIDI import and export, project template songs, loop-ready crossfaded export, loudness normalisation on export; the audio core's synthesis connected to game audio.
+Still open (4.3 Game audio):
+- [ ] Adaptive music in the runtime (layers or stems mixed by game state, transitions on bar lines): the stems exist as files, the runtime does not mix them.
+- [ ] Random sound groups as a project feature (variations exist as files; no group object), 3D falloff presets, a soundbank view of which project files use each sound, an audio budget for the device (memory, voices).
+- [ ] A person listens to the songs and the sounds (nobody has yet); audio latency on the Retroid.
 
 ### S4: Sprites workspace (section 3)
 - [ ] Canvas (rulers, grids, tiled mode, symmetry, mini-map, preview window), two-slot tool bar, full drawing, selection and transform tool set, palettes (import/export, lock, indexed).
