@@ -78,7 +78,9 @@ export interface Skin {
 
 /// `smooth`: the picture is filtered smoothly in the game (glTF LINEAR), as a detailed painted texture wants; without it the
 /// texels stay sharp (NEAREST), as pixel art and flat-coloured palettes want.
-export type TextureInfo = { size: [number, number]; smooth?: boolean };
+/// One painting layer of the texture (bottom first). Kept in `<model>.texture.layerN.png`; the game reads the flattened `<model>.texture.png`.
+export type TexLayerInfo = { name: string; visible?: boolean; opacity?: number; blend?: string };
+export type TextureInfo = { size: [number, number]; smooth?: boolean; layers?: TexLayerInfo[] };
 /// Texels per model unit a shape gets when it is first painted (16 model units are a metre at the default scale, so 4 is 64 texels a
 /// metre: a handheld's screen shows a car's paint about as sharp as its edges).
 export const NEW_TEXEL_SCALE = 4;
@@ -294,6 +296,16 @@ export function parseModel(text: string): Parsed {
     if (!Array.isArray(size) || size.length !== 2 || !size.every(side)) return { ok: false, error: `"texture.size" must be two whole numbers from ${MIN_TEXTURE} to ${MAX_TEXTURE}` };
     const smooth = (o.texture as Partial<TextureInfo>).smooth;
     if (smooth !== undefined && typeof smooth !== "boolean") return { ok: false, error: '"texture.smooth" must be true or false' };
+    const layers = (o.texture as Partial<TextureInfo>).layers;
+    if (layers !== undefined) {
+      if (!Array.isArray(layers) || layers.length < 1 || layers.length > 8) return { ok: false, error: '"texture.layers" must be a list of 1 to 8 layers' };
+      for (const l of layers) {
+        if (!l || typeof l.name !== "string" || !l.name.trim()) return { ok: false, error: 'each texture layer needs a "name"' };
+        if (l.visible !== undefined && typeof l.visible !== "boolean") return { ok: false, error: "a texture layer's visible must be true or false" };
+        if (l.opacity !== undefined && !(typeof l.opacity === "number" && l.opacity >= 0 && l.opacity <= 1)) return { ok: false, error: "a texture layer's opacity must be a number from 0 to 1" };
+        if (l.blend !== undefined && typeof l.blend !== "string") return { ok: false, error: "a texture layer's blend must be a word" };
+      }
+    }
   }
   if (o.colliders !== undefined) {
     const list = o.colliders as unknown;
@@ -429,7 +441,7 @@ export function parseModel(text: string): Parsed {
       }
     }
   }
-  return { ok: true, doc: { version: 1, scale: o.scale ?? DEFAULT_SCALE, ...(o.texture ? { texture: { size: [...o.texture.size] as [number, number], ...(o.texture.smooth ? { smooth: true } : {}) } } : {}), parts: o.parts as Part[], ...(clips && clips.length ? { clips: clips as Clip[] } : {}), ...(Array.isArray(poses) && poses.length ? { poses: (poses as SavedPose[]).map((q) => ({ name: q.name, parts: JSON.parse(JSON.stringify(q.parts)) })) } : {}), ...(o.colliders?.length ? { colliders: o.colliders.map((c) => ({ x: c.x, z: c.z, r: c.r })) } : {}), ...(o.capsules?.length ? { capsules: o.capsules.map((c) => ({ ax: c.ax, az: c.az, bx: c.bx, bz: c.bz, r: c.r })) } : {}), ...(o.boxes?.length ? { boxes: o.boxes.map((c) => ({ x: c.x, z: c.z, hw: c.hw, hl: c.hl, turn: c.turn })) } : {}) } };
+  return { ok: true, doc: { version: 1, scale: o.scale ?? DEFAULT_SCALE, ...(o.texture ? { texture: { size: [...o.texture.size] as [number, number], ...(o.texture.smooth ? { smooth: true } : {}), ...(o.texture.layers?.length ? { layers: o.texture.layers.map((l) => ({ name: l.name, ...(l.visible === false ? { visible: false } : {}), ...(l.opacity !== undefined && l.opacity < 1 ? { opacity: l.opacity } : {}), ...(l.blend && l.blend !== "normal" ? { blend: l.blend } : {}) })) } : {}) } } : {}), parts: o.parts as Part[], ...(clips && clips.length ? { clips: clips as Clip[] } : {}), ...(Array.isArray(poses) && poses.length ? { poses: (poses as SavedPose[]).map((q) => ({ name: q.name, parts: JSON.parse(JSON.stringify(q.parts)) })) } : {}), ...(o.colliders?.length ? { colliders: o.colliders.map((c) => ({ x: c.x, z: c.z, r: c.r })) } : {}), ...(o.capsules?.length ? { capsules: o.capsules.map((c) => ({ ax: c.ax, az: c.az, bx: c.bx, bz: c.bz, r: c.r })) } : {}), ...(o.boxes?.length ? { boxes: o.boxes.map((c) => ({ x: c.x, z: c.z, hw: c.hw, hl: c.hl, turn: c.turn })) } : {}) } };
 }
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
@@ -489,7 +501,7 @@ export function serializeModel(doc: ModelDoc): string {
   };
   const clips = doc.clips?.length ? `,\n  "clips": [\n${doc.clips.map(clip).join(",\n")}\n  ]` : "";
   const poses = doc.poses?.length ? `,\n  "poses": [\n${doc.poses.map((q) => `    ${JSON.stringify(q)}`).join(",\n")}\n  ]` : "";
-  const texture = doc.texture ? `,\n  "texture": { "size": ${vec2(doc.texture.size)}${doc.texture.smooth ? `, "smooth": true` : ""} }` : "";
+  const texture = doc.texture ? `,\n  "texture": { "size": ${vec2(doc.texture.size)}${doc.texture.smooth ? `, "smooth": true` : ""}${doc.texture.layers?.length ? `, "layers": ${JSON.stringify(doc.texture.layers)}` : ""} }` : "";
   const colliders = doc.colliders?.length ? `,\n  "colliders": [${doc.colliders.map((c) => `{ "x": ${c.x}, "z": ${c.z}, "r": ${c.r} }`).join(", ")}]` : "";
   const capsules = doc.capsules?.length ? `,\n  "capsules": [${doc.capsules.map((c) => `{ "ax": ${c.ax}, "az": ${c.az}, "bx": ${c.bx}, "bz": ${c.bz}, "r": ${c.r} }`).join(", ")}]` : "";
   const boxes = doc.boxes?.length ? `,\n  "boxes": [${doc.boxes.map((c) => `{ "x": ${c.x}, "z": ${c.z}, "hw": ${c.hw}, "hl": ${c.hl}, "turn": ${c.turn} }`).join(", ")}]` : "";

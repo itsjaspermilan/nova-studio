@@ -37,6 +37,8 @@
   import { applyStack, evaluate, hasModifiers, type Modifier } from "../lib/modifiers";
   import ModifierStack from "./ModifierStack.svelte";
   import CurveEditor from "./CurveEditor.svelte";
+  import { addLayer, duplicateLayer, flatten, layerPath, mergeDown, moveLayer, removeLayer, singleLayer, updateLayer, MAX_TEX_LAYERS, type LayerSet } from "../lib/texture-layers";
+  import { BLEND_MODES } from "../lib/pixels";
   import { edgeLoop, edgeRing, edgeSlide, fillHole, pointsOfEdges, selectSimilarFaces, smoothByAngle } from "../lib/mesh-select";
   import { textToMesh } from "../lib/text-mesh";
   import { parsePath, sweepTube } from "../lib/tube";
@@ -265,6 +267,48 @@
   const canRedoTex = $derived(texTick >= 0 && texFuture.length > 0);
   const hasTexture = (d: ModelDoc) => !!d.texture && walk(d).some(({ part }) => part.cubes.some((c) => c.texture && hasVolume(c)));
 
+  // Painting layers: `picture` is always the layer being painted; the others wait here (null at the active one). One layer: no list in the model file.
+  let otherLayers = $state.raw<(Raster | null)[]>([]);
+  let activeLayer = $state(0);
+  const layerInfos = $derived(doc.texture?.layers ?? []);
+  const layered = $derived(layerInfos.length > 1);
+  const remember = () => studio.sessions.set(filePath, { doc, picture, others: otherLayers, active: activeLayer });
+  /// Every layer as a set (the live picture in its place).
+  function layerSetNow(): LayerSet {
+    if (!picture) return { info: [], rasters: [] };
+    const info = doc.texture?.layers?.length ? doc.texture.layers.map((l) => ({ ...l })) : [{ name: "Layer" }];
+    return { info, rasters: info.map((_, i) => (i === activeLayer || !otherLayers[i] ? picture! : otherLayers[i]!)) };
+  }
+  /// What the model and the saved texture show: the layers flattened (just the picture when there is one layer).
+  function flatPicture(): Raster | null {
+    return picture && layered ? flatten(layerSetNow()) : picture;
+  }
+  /// Puts a changed set of layers in place and shows it. Layer changes are not on the undo list; painting undo starts again after one.
+  function applyLayers(set: LayerSet, active: number) {
+    const a = Math.min(set.rasters.length - 1, Math.max(0, active));
+    otherLayers = set.rasters.map((r, i) => (i === a ? null : r));
+    activeLayer = a;
+    picture = set.rasters[a]!;
+    if (!doc.texture) return;
+    commit({ ...doc, texture: { ...doc.texture, layers: set.info.length > 1 ? set.info : undefined } }, true);
+    texPast.length = 0;
+    texFuture = [];
+    texTick++;
+    pictureChanged();
+  }
+  function pickLayer(i: number) {
+    if (!picture || i === activeLayer || !layered) return;
+    const set = layerSetNow();
+    applyLayers(set, i);
+  }
+  const layerOp = (fn: (set: LayerSet) => LayerSet, nextActive: (set: LayerSet) => number) => {
+    if (!picture) return;
+    const set = layerSetNow();
+    const next = fn(set);
+    if (next === set) return;
+    applyLayers(next, nextActive(next));
+  };
+
   /// Copies the picture to the canvas the 3D view reads: the picture with a row of white under it (what shapes without
   /// texels sample). `rect` limits the copy to what changed.
   function syncTexture(rect?: { x: number; y: number; w: number; h: number }) {
@@ -273,7 +317,8 @@
       threeTex = texCanvas = texData = texImage = undefined;
       return;
     }
-    const { w, h } = picture;
+    const src = flatPicture()!;
+    const { w, h } = src;
     if (!texCanvas || texCanvas.width !== w || texCanvas.height !== h + 1) {
       texCanvas = document.createElement("canvas");
       texCanvas.width = w;
@@ -296,9 +341,9 @@
       threeTex.needsUpdate = true;
       texSmoothShown = !!doc.texture.smooth;
     }
-    if (!texImage || texData !== picture.data) {
-      texData = picture.data;
-      texImage = new ImageData(picture.data as Uint8ClampedArray<ArrayBuffer>, w, h);
+    if (!texImage || texData !== src.data) {
+      texData = src.data;
+      texImage = new ImageData(src.data as Uint8ClampedArray<ArrayBuffer>, w, h);
       rect = undefined;
     }
     const ctx = texCanvas.getContext("2d")!;
@@ -309,11 +354,21 @@
 
   async function loadPicture() {
     try {
-      picture = fitPicture(doc, await loadRaster(await studio.api!.readImage(texturePath)));
+      const infos = doc.texture?.layers;
+      if (infos && infos.length > 1) {
+        const rasters: Raster[] = [];
+        for (let i = 0; i < infos.length; i++) rasters.push(fitPicture(doc, await loadRaster(await studio.api!.readImage(layerPath(texturePath, i)))));
+        otherLayers = rasters.map((r, i) => (i === rasters.length - 1 ? null : r));
+        activeLayer = rasters.length - 1;
+        picture = rasters[rasters.length - 1]!;
+      } else picture = fitPicture(doc, await loadRaster(await studio.api!.readImage(texturePath)));
     } catch {
+      otherLayers = [];
+      activeLayer = 0;
       picture = bakeAll(doc); // no picture on disk yet: start from the shapes' colours
+      if (doc.texture?.layers) doc = { ...doc, texture: { ...doc.texture, layers: undefined } };
     }
-    studio.sessions.set(filePath, { doc, picture });
+    remember();
     syncTexture();
     rebuild();
   }
@@ -322,20 +377,30 @@
   onMount(() => {
     if (error) return;
     studio.saveHooks.set(filePath, async () => {
-      const kept = studio.sessions.get(filePath) as { doc: ModelDoc; picture?: Raster | null } | undefined;
+      const kept = studio.sessions.get(filePath) as { doc: ModelDoc; picture?: Raster | null; others?: (Raster | null)[]; active?: number } | undefined;
       const d = kept?.doc ?? doc;
       let image: Raster | undefined;
       if (d.texture) {
-        image = fitPicture(d, kept?.picture ?? picture ?? bakeAll(d));
+        const live = kept?.picture ?? picture ?? bakeAll(d);
+        const infos = d.texture.layers;
+        if (infos && infos.length > 1) {
+          const rasters = infos.map((_, i) => fitPicture(d, i === kept?.active || !kept?.others?.[i] ? live : kept.others[i]!));
+          for (let i = 0; i < rasters.length; i++) await studio.api!.writeImage(layerPath(texturePath, i), rasterToDataUrl(rasters[i]!));
+          image = fitPicture(d, flatten({ info: infos, rasters }));
+        } else image = fitPicture(d, live);
         await studio.api!.writeImage(texturePath, rasterToDataUrl(image));
         if (!studio.files.some((f) => f.path === texturePath)) void studio.refreshFiles();
       }
       const bytes = exportGlb(d, image);
       await studio.api!.writeModel(glbPath, `data:model/gltf-binary;base64,${toBase64(bytes)}`);
     });
-    const kept = studio.sessions.get(filePath) as { doc: ModelDoc; picture?: Raster | null } | undefined;
-    if (kept?.picture) picture = kept.picture;
-    studio.sessions.set(filePath, { doc, picture });
+    const kept = studio.sessions.get(filePath) as { doc: ModelDoc; picture?: Raster | null; others?: (Raster | null)[]; active?: number } | undefined;
+    if (kept?.picture) {
+      picture = kept.picture;
+      otherLayers = kept.others ?? [];
+      activeLayer = kept.active ?? 0;
+    }
+    remember();
     if (!picture && doc.texture) void loadPicture();
   });
 
@@ -343,7 +408,7 @@
     if (!keep) history.record(doc, label);
     doc = next;
     tick++;
-    studio.sessions.set(filePath, { doc, picture });
+    remember();
     studio.edit(filePath, serializeModel(next));
   }
   let historyOpen = $state(false);
@@ -1000,7 +1065,7 @@
   function pictureChanged() {
     picRev++;
     syncTexture();
-    studio.sessions.set(filePath, { doc, picture });
+    remember();
     studio.markPending(filePath);
   }
   /// A stroke on the 3D view: the pointer's way across the screen since the last event, in steps of two pixels, each step
@@ -1280,6 +1345,7 @@
     if (!picture || !doc.texture) return;
     const r = resizeTexture(doc, picture, w, h);
     rememberPicture();
+    otherLayers = otherLayers.map((o) => (o ? resizeTexture(doc, o, w, h).picture : null));
     picture = r.picture;
     commit(r.doc);
     pictureChanged();
@@ -2884,6 +2950,28 @@
           <div class="swatches">
             {#each TEX_PALETTE as c (c)}<button class="swatch" style:background={c} title={c} aria-label={c} onclick={() => pickTexHex(c)}></button>{/each}
           </div>
+          <div class="layers" role="group" aria-label="Painting layers">
+            <div class="row wrap">
+              <strong class="small">Layers</strong>
+              <button class="ghost" disabled={(layerInfos.length || 1) >= MAX_TEX_LAYERS} onclick={() => layerOp((set) => addLayer(set, picture!.w, picture!.h, activeLayer), (set) => Math.min(set.rasters.length - 1, activeLayer + 1))} title="A new empty layer above this one">＋</button>
+              <button class="ghost" disabled={!layered} onclick={() => layerOp((set) => duplicateLayer(set, activeLayer), () => activeLayer + 1)} title="A copy of this layer">Copy</button>
+              <button class="ghost" disabled={!layered || activeLayer === 0} onclick={() => layerOp((set) => mergeDown(set, activeLayer), () => activeLayer - 1)} title="Join this layer into the one below">Merge ↓</button>
+              <button class="ghost danger" disabled={!layered} onclick={() => layerOp((set) => removeLayer(set, activeLayer), () => Math.max(0, activeLayer - 1))} title="Remove this layer and what is painted on it">✕</button>
+            </div>
+            {#if layered}
+              {#each [...layerInfos].map((l, i) => ({ l, i })).reverse() as { l, i } (i)}
+                <div class="layerrow" class:on={i === activeLayer}>
+                  <button class="ghost" aria-label={l.visible === false ? "Show layer" : "Hide layer"} title={l.visible === false ? "Show this layer" : "Hide this layer"} onclick={() => layerOp((set) => updateLayer(set, i, { visible: l.visible === false }), () => activeLayer)}>{l.visible === false ? "◌" : "●"}</button>
+                  <button class="pick" role="option" aria-selected={i === activeLayer} onclick={() => pickLayer(i)}>{l.name}</button>
+                  <input type="range" min="0" max="100" step="5" value={Math.round((l.opacity ?? 1) * 100)} aria-label="{l.name} opacity" title="Opacity" onchange={(e) => layerOp((set) => updateLayer(set, i, { opacity: Number(e.currentTarget.value) / 100 }), () => activeLayer)} />
+                  <select value={l.blend ?? "normal"} aria-label="{l.name} blend" onchange={(e) => layerOp((set) => updateLayer(set, i, { blend: e.currentTarget.value }), () => activeLayer)}>{#each BLEND_MODES as m (m)}<option value={m}>{m}</option>{/each}</select>
+                  <button class="ghost" aria-label="Move up" disabled={i === layerInfos.length - 1} onclick={() => layerOp((set) => moveLayer(set, i, 1), () => (i === activeLayer ? activeLayer + 1 : i + 1 === activeLayer ? activeLayer - 1 : activeLayer))}>▲</button>
+                  <button class="ghost" aria-label="Move down" disabled={i === 0} onclick={() => layerOp((set) => moveLayer(set, i, -1), () => (i === activeLayer ? activeLayer - 1 : i - 1 === activeLayer ? activeLayer + 1 : activeLayer))}>▼</button>
+                </div>
+              {/each}
+              <p class="dim small">You paint on the highlighted layer. The game gets them flattened; layer changes are not on the undo list.</p>
+            {/if}
+          </div>
           <div class="texbox"><canvas bind:this={texView} aria-label="The texture picture" onpointerdown={texDown} onpointermove={texMove} onpointerup={texUp} onpointercancel={texUp}></canvas></div>
           <p class="dim small">{picture.w}×{picture.h} texels · {painted.length} painted shape{painted.length === 1 ? "" : "s"}</p>
           <div class="pair">
@@ -3190,6 +3278,11 @@
 {/if}
 
 <style>
+  .layerrow { display: flex; align-items: center; gap: 4px; padding: 2px; border-radius: 4px; }
+  .layerrow.on { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+  .layerrow .pick { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .layerrow input[type="range"] { width: 56px; }
+  .layerrow select { max-width: 78px; }
   .histwrap { position: relative; display: inline-block; }
   .histlist { position: absolute; top: 100%; left: 0; z-index: 20; min-width: 200px; max-height: 260px; overflow: auto; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4); padding: 4px; }
   .histlist button { text-align: left; border: none; background: transparent; padding: 3px 8px; }
