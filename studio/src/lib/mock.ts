@@ -243,6 +243,14 @@ export function createMockApi(options: { devices?: AndroidDevice[] } = {}): Api 
       const parts = path.split("/");
       for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join("/"));
     },
+    writeExport: async (path, dataUrl) => {
+      need();
+      bad(path);
+      if (!path.startsWith("exports/") || !dataUrl.includes(";base64,")) throw "an export goes in the exports folder as a data URL";
+      files.set(path, dataUrl);
+      const parts = path.split("/");
+      for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join("/"));
+    },
     writeFile: async (path, text) => {
       need();
       bad(path);

@@ -217,6 +217,11 @@ fn convert_to_ogg(state: State<AppState>, path: String) -> Result<String, String
 }
 
 #[tauri::command]
+fn write_export(state: State<AppState>, path: String, data_url: String) -> Result<(), String> {
+    project_files::write_export(&root_of(&state)?, &path, &data_url)
+}
+
+#[tauri::command]
 fn write_audio(state: State<AppState>, path: String, data_url: String) -> Result<(), String> {
     project_files::write_audio(&root_of(&state)?, &path, &data_url)
 }
@@ -462,6 +467,7 @@ pub fn run() {
             read_image,
             read_audio,
             write_audio,
+            write_export,
             write_ogg,
             convert_to_ogg,
             write_model,

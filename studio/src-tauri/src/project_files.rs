@@ -381,6 +381,38 @@ pub fn write_image(root: &Path, rel: &str, data_url: &str) -> Result<(), String>
     write_bytes(root, rel, &bytes)
 }
 
+/// File types the studio writes for other programs to read (an animated GIF, a palette, a list of colours, a picture, text, JSON).
+const EXPORT_EXTENSIONS: [&str; 6] = ["gif", "gpl", "hex", "png", "txt", "json"];
+
+/// Saves an export sent as a `data:<type>;base64,...` URL into the project's `exports` folder. The path must be inside `exports/`, with one of
+/// the extensions above; a `.gif` must really be a GIF and a `.png` a PNG. The studio's webview cannot be trusted to save a download itself.
+pub fn write_export(root: &Path, rel: &str, data_url: &str) -> Result<(), String> {
+    let norm = normalize(rel)?;
+    let lower = norm.to_ascii_lowercase();
+    if !lower.starts_with("exports/") {
+        return Err(format!("'{rel}' is not inside the exports folder"));
+    }
+    let ext = lower.rsplit('.').next().unwrap_or("");
+    if !EXPORT_EXTENSIONS.contains(&ext) {
+        return Err(format!("'{rel}' is not a kind of file the studio exports"));
+    }
+    let (head, encoded) = data_url.split_once(";base64,").ok_or("expected a base64 data URL")?;
+    if !head.starts_with("data:") {
+        return Err("expected a data URL".into());
+    }
+    let bytes = unbase64(encoded)?;
+    if bytes.len() as u64 > MAX_ASSET_BYTES {
+        return Err(format!("'{rel}' would be bigger than {} MiB", MAX_ASSET_BYTES >> 20));
+    }
+    if ext == "gif" && !(bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a")) {
+        return Err("that is not GIF data".into());
+    }
+    if ext == "png" && !bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]) {
+        return Err("that is not PNG data".into());
+    }
+    write_bytes(root, &norm, &bytes)
+}
+
 pub fn create_file(root: &Path, rel: &str, contents: &str) -> Result<(), String> {
     let path = confine(root, rel)?;
     if path.exists() {
@@ -748,6 +780,21 @@ mod tests {
         );
         assert!(convert_wav_to_ogg(&root, "../x.wav").is_err());
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn exports_are_written_only_inside_the_exports_folder_and_checked() {
+        let root = project("exports");
+        // "GIF89a" in base64
+        let gif = "data:image/gif;base64,R0lGODlh";
+        write_export(&root, "exports/a.gif", gif).unwrap();
+        assert!(root.join("exports/a.gif").exists());
+        assert!(write_export(&root, "a.gif", gif).is_err());
+        assert!(write_export(&root, "exports/../a.gif", gif).is_err());
+        assert!(write_export(&root, "exports/a.exe", gif).is_err());
+        assert!(write_export(&root, "exports/b.gif", "data:image/gif;base64,AAAA").is_err());
+        write_export(&root, "exports/p.gpl", "data:text/plain;base64,R0lNUCBQYWxldHRl").unwrap();
+        assert_eq!(std::fs::read_to_string(root.join("exports/p.gpl")).unwrap(), "GIMP Palette");
     }
 
     #[test]

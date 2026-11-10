@@ -125,7 +125,8 @@ Still open (3.4): none of the following exists yet:
 Still open (3.5 Palettes):
 - [ ] `.pal` and PNG palettes, Lospec download, sort and swap swatches, colour ramps, indexed-colour mode, project-wide palettes shared by Sprites and Model, a palette lock that stops drawing outside it.
 Still open (3.6 Files):
-- [ ] Import `.pxo`, `.aseprite`, GIF, APNG; export GIF, APNG, per tag, per layer, per frame, scale on export, trimming and packing, export profiles, `nova sprite export` on the command line; auto-save and backups of sprites (text crash recovery exists, not for pixels).
+- [x] (2026-11-09) Export the current animation as an animated GIF (`lib/gif.ts`: our own writer with LZW, a colour table of up to 256 colours with transparency, looping or once, per-frame times; 7 tests including a reader written for the tests that decodes what the writer made) into the project's `exports/` folder, scaled by a whole number; a backend command `write_export` (Rust test; only inside `exports/`, a fixed list of file types, GIF and PNG checked by their first bytes); palette export now goes there too (a download link cannot be relied on in the studio's window). Checked in the browser preview; the real app's write was not run.
+- [ ] Still open (3.6): import `.pxo`, `.aseprite`, GIF, APNG; export APNG, per layer, per frame, trimmed or packed sheets, export profiles, `nova sprite export` on the command line; a dithered or palette-limited GIF option; auto-save and backups of sprites (text crash recovery exists, not for pixels).
 
 ### S5: Engine workspace (section 5)
 - [ ] Hub, project settings, device manager, export (`.npk`, APK), asset import settings.

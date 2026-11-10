@@ -138,6 +138,8 @@ export interface Api {
   readModel(path: string): Promise<string>;
   /// Saves a PNG given as a data: URL.
   writeImage(path: string, dataUrl: string): Promise<void>;
+  /// Saves something other programs read (a GIF, a palette, a PNG, text, JSON) into the project's `exports` folder; `dataUrl` is `data:<type>;base64,...`.
+  writeExport(path: string, dataUrl: string): Promise<void>;
   createFile(path: string, contents?: string): Promise<void>;
   createDir(path: string): Promise<void>;
   renameFile(from: string, to: string): Promise<void>;

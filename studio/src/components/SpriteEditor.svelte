@@ -3,6 +3,8 @@
   import { onMount, untrack } from "svelte";
   import { commands } from "../lib/commands";
   import { placesOf, strokeMaps } from "../lib/symmetry";
+  import { encodeGif, scaleRaster } from "../lib/gif";
+  import { toBase64 } from "../lib/wav";
   import { boundsOf, combine, emptyMask, growMask, has, invertMask, isEmpty, isRect, liftMasked, maskFromColor, maskFromEllipse, maskFromPolygon, maskFromRect, outlineSegments, placeMask, type Combine, type Mask } from "../lib/selection";
   import { commandsRev } from "../lib/commands-rev.svelte";
   import { PaletteStore, normalizeHex, nearestColor, parsePalette, toGpl, type Palette } from "../lib/palette";
@@ -929,14 +931,34 @@
     palettes.add(p);
     palRev++;
   }
-  function exportPalette() {
+  /// Writes the palette as a .gpl into the project's exports folder (the studio's window cannot be relied on to save a download).
+  async function exportPalette() {
     const p: Palette = palette;
-    const url = URL.createObjectURL(new Blob([toGpl(p)], { type: "text/plain" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${p.name.replace(/[^A-Za-z0-9_-]+/g, "_")}.gpl`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const path = `exports/${p.name.replace(/[^A-Za-z0-9_-]+/g, "_")}.gpl`;
+    try {
+      await studio.api!.writeExport(path, `data:text/plain;base64,${toBase64(new TextEncoder().encode(toGpl(p)))}`);
+      await studio.refreshFiles();
+      studio.say("info", `Saved ${path}. GIMP, Aseprite, Pixelorama and others read .gpl palettes.`);
+    } catch (e) {
+      studio.say("error", String(e));
+    }
+  }
+  /// The current animation as an animated GIF in `exports/`, scaled up by a whole number so a small sprite is big enough to share.
+  async function exportGif() {
+    const tag = doc.tags[animIndex];
+    if (!tag) return;
+    const sequence = tagSequence(tag);
+    const k = Math.max(1, Math.min(8, Math.floor(256 / Math.max(doc.fw, doc.fh))));
+    const gif = encodeGif(sequence.map((i) => ({ raster: scaleRaster(doc.frames[i]!, k), ms: doc.durations[i] ?? 100 })), tag.loop);
+    const base = fromPath.slice(fromPath.lastIndexOf("/") + 1).replace(/\.(sprite\.json|png)$/i, "");
+    const path = `exports/${base}_${tag.name.replace(/[^A-Za-z0-9_-]+/g, "_")}.gif`;
+    try {
+      await studio.api!.writeExport(path, `data:image/gif;base64,${toBase64(gif)}`);
+      await studio.refreshFiles();
+      studio.say("info", `Saved ${path} (${sequence.length} frame${sequence.length === 1 ? "" : "s"}, ${k}x).`);
+    } catch (e) {
+      studio.say("error", String(e));
+    }
   }
 
   // ---- effects and the Sprite menu ---------------------------------------------------------------------------
@@ -962,6 +984,7 @@
       commands.register({ id: "sprite.selectGrow", title: "Grow the selection by one pixel", menu: "Sprite", enabled: () => has_() && !!selection, run: () => { const m = currentMask(); if (m) setSelection(growMask(m, 1)); } }),
       commands.register({ id: "sprite.selectShrink", title: "Shrink the selection by one pixel", menu: "Sprite", enabled: () => has_() && !!selection, run: () => { const m = currentMask(); if (m) setSelection(growMask(m, -1)); } }),
       commands.register({ id: "sprite.cropToSelection", title: "Crop the sprite to the selection", menu: "Sprite", help: "Every frame and layer is cut down to the selection's box", enabled: () => has_() && !!selection, run: () => { if (selection) { structural(cropDoc(doc, selection)); setSelection(null); zoom = Math.max(1, Math.min(32, Math.floor(420 / Math.max(doc.fw, doc.fh)))); } } }),
+      commands.register({ id: "sprite.exportGif", title: "Export this animation as a GIF", menu: "Sprite", icon: "export", help: "An animated GIF of the animation being worked on, in the exports folder", enabled: has, run: () => void exportGif() }),
       commands.register({ id: "sprite.swapColors", title: "Swap the two colours", menu: "Sprite", keys: ["X"], enabled: () => ready, run: swapColors }),
       commands.register({ id: "sprite.flipH", title: "Flip left to right", menu: "Sprite", enabled: has, run: () => applyFx((r, a) => flipRaster(r, false, a)) }),
       commands.register({ id: "sprite.flipV", title: "Flip top to bottom", menu: "Sprite", enabled: has, run: () => applyFx((r, a) => flipRaster(r, true, a)) }),

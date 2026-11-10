@@ -38,6 +38,7 @@ async function tauriApi(): Promise<Api> {
     // (the layout is the shared JavaScript generator, run here; the backend only writes the files, inside the project)
     generateTrack: (name, track) => import("./track-write").then((m) => m.writeTrack({ readFile: (p) => invoke<FileContent>("read_file", { path: p }).then((c) => c.text, () => null), writeFile: (p, t) => invoke("write_file", { path: p, text: t }), writeModel: (p, u) => invoke("write_model", { path: p, dataUrl: u }) }, name, track)),
     writeImage: (path, dataUrl) => invoke("write_image", { path, dataUrl }),
+    writeExport: (path, dataUrl) => invoke("write_export", { path, dataUrl }),
     createFile: (path, contents) => invoke("create_file", { path, contents: contents ?? null }),
     createDir: (path) => invoke("create_dir", { path }),
     renameFile: (from, to) => invoke("rename_file", { from, to }),
