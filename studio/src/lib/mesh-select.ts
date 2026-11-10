@@ -221,3 +221,43 @@ export function smoothByAngle(source: Cube, angle: number, faces?: number[]): Cu
   }
   return out;
 }
+
+/// Grid fill: closes the open border a point is on with a grid of quads (an even border only). The border is taken as the four sides of a rectangle, `a` points along
+/// two of them and `b` along the other two (a + b = half the points), and the points inside are spread between the sides (a transfinite blend), so a hole in a divided
+/// surface fills with the same kind of quads round it. Returns the mesh as it was when the point is not on a border or the border has an odd number of points.
+export function gridFillHole(source: Cube, point: number): Cube {
+  const c = toMesh(source);
+  const loop = boundaryLoops(c).find((l) => l.includes(point));
+  if (!loop || loop.length % 2 !== 0 || loop.length < 4) return c;
+  const n = loop.length;
+  const start = loop.indexOf(point);
+  const ring = loop.map((_, k) => loop[(start + k) % n]!);
+  const a = Math.max(1, Math.floor(n / 4));
+  const b = n / 2 - a;
+  const out: Cube = JSON.parse(JSON.stringify(c));
+  const verts = out.verts!;
+  const at = (i: number) => c.verts![i]!;
+  // the grid's points: the border's own along the four sides, new ones inside
+  const grid: number[][] = Array.from({ length: a + 1 }, () => new Array<number>(b + 1).fill(-1));
+  for (let i = 0; i <= a; i++) grid[i]![0] = ring[i]!;
+  for (let j = 0; j <= b; j++) grid[a]![j] = ring[a + j]!;
+  for (let i = 0; i <= a; i++) grid[i]![b] = ring[(a + b + (a - i)) % n]!;
+  for (let j = 0; j <= b; j++) grid[0]![j] = ring[(n - j) % n]!;
+  const p00 = at(grid[0]![0]!), p10 = at(grid[a]![0]!), p01 = at(grid[0]![b]!), p11 = at(grid[a]![b]!);
+  for (let i = 1; i < a; i++) {
+    for (let j = 1; j < b; j++) {
+      const u = i / a, v = j / b;
+      const bottom = at(grid[i]![0]!), top = at(grid[i]![b]!), left = at(grid[0]![j]!), right = at(grid[a]![j]!);
+      const p: Vec3 = [0, 0, 0];
+      for (let k = 0; k < 3; k++) {
+        p[k] = (1 - v) * bottom[k]! + v * top[k]! + (1 - u) * left[k]! + u * right[k]! - ((1 - u) * (1 - v) * p00[k]! + u * (1 - v) * p10[k]! + (1 - u) * v * p01[k]! + u * v * p11[k]!);
+      }
+      grid[i]![j] = verts.push(p) - 1;
+    }
+  }
+  const colour = c.polys![0]?.color;
+  for (let i = 0; i < a; i++) {
+    for (let j = 0; j < b; j++) out.polys!.push({ v: [grid[i]![j]!, grid[i + 1]![j]!, grid[i + 1]![j + 1]!, grid[i]![j + 1]!], ...(colour ? { color: colour } : {}) });
+  }
+  return out;
+}

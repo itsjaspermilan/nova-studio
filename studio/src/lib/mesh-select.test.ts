@@ -154,3 +154,33 @@ describe("smooth by angle", () => {
   });
 });
 function setSmoothAll(): Cube { const b = toMesh({ from: [0, 0, 0], size: [10, 10, 10], color: "#fff" }); b.polys!.forEach((p) => (p.smooth = true)); return b; }
+
+import { gridFillHole } from "./mesh-select";
+describe("grid fill", () => {
+  const box = (): Cube => toMesh({ from: [0, 0, 0], size: [10, 10, 10], color: "#fff" });
+  it("fills a square border with one quad, and a divided top with a grid with a middle point", () => {
+    const sq = box();
+    const top = sq.polys!.findIndex((f) => f.v.every((i) => sq.verts![i]![1] === 10));
+    const open = { ...sq, polys: sq.polys!.filter((_, i) => i !== top) };
+    const one = gridFillHole(open, boundaryLoops(open)[0]![0]!);
+    expect(one.polys!.length).toBe(sq.polys!.length);
+    expect(boundaryLoops(one)).toEqual([]);
+    // a divided box with its four top pieces removed: an 8-point border
+    const g = subdivide(box());
+    const tops = g.polys!.map((f, i) => (f.v.every((k) => g.verts![k]![1] === 10) ? i : -1)).filter((i) => i >= 0);
+    expect(tops.length).toBe(4);
+    const hole = { ...g, polys: g.polys!.filter((_, i) => !tops.includes(i)) };
+    const loop = boundaryLoops(hole)[0]!;
+    expect(loop.length).toBe(8);
+    const filled = gridFillHole(hole, loop[0]!);
+    expect(filled.polys!.length).toBe(g.polys!.length);
+    expect(boundaryLoops(filled)).toEqual([]);
+    expect(filled.verts!.length).toBe(hole.verts!.length + 1);
+    const mid = filled.verts![filled.verts!.length - 1]!;
+    expect(mid[0]).toBeCloseTo(5, 6); expect(mid[1]).toBeCloseTo(10, 6); expect(mid[2]).toBeCloseTo(5, 6);
+  });
+  it("leaves an odd border or a point off any border alone", () => {
+    const b = box();
+    expect(gridFillHole(b, 0).polys!.length).toBe(b.polys!.length);
+  });
+});

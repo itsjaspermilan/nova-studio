@@ -42,7 +42,7 @@
   import { knifeCut } from "../lib/mesh-cut";
   import { addLayer, duplicateLayer, flatten, layerPath, mergeDown, moveLayer, removeLayer, singleLayer, updateLayer, MAX_TEX_LAYERS, type LayerSet } from "../lib/texture-layers";
   import { BLEND_MODES, composite } from "../lib/pixels";
-  import { edgeLoop, edgeRing, edgeSlide, fillHole, pointsOfEdges, selectSimilarFaces, smoothByAngle } from "../lib/mesh-select";
+  import { edgeLoop, edgeRing, edgeSlide, fillHole, gridFillHole, pointsOfEdges, selectSimilarFaces, smoothByAngle } from "../lib/mesh-select";
   import { textToMesh } from "../lib/text-mesh";
   import { parsePath, sweepTube } from "../lib/tube";
   import { checkerRaster, equalizeDensity, uvReport, type ShapeReport } from "../lib/uv-report";
@@ -2235,6 +2235,14 @@
     commit(setCube(doc, selected, next), false, "Fill hole");
     selectNote = "Hole filled.";
   }
+  /// Closes the open border the first picked point is on with a grid of quads (an even border).
+  function gridFillAtPick() {
+    if (!cube || !selected || !selVerts.length) return void (selectNote = "Pick a point on the edge of the hole first.");
+    const next = gridFillHole(cube, selVerts[0]!);
+    if (next.polys!.length === cube.polys?.length) return void (selectNote = "That point is not on an open border with an even number of points.");
+    commit(setCube(doc, selected, next), false, "Grid fill");
+    selectNote = "Hole filled with a grid.";
+  }
   /// Slides the picked edge along the quads beside it (positive towards the first face on it, negative towards the other).
   function slideEdge() {
     if (!cube || !selected || !selEdge) return void (selectNote = "Click an edge first.");
@@ -2935,6 +2943,7 @@
           <label class="inline" title="The most a surface may turn and still shade smooth, in degrees"><input type="number" min="1" max="180" step="5" bind:value={smoothAngle} class="narrow" aria-label="Smooth angle" /></label>
           <button onclick={autoSmoothNow} title="Smooth the faces where the surface turns by less than that angle and keep hard corners flat (the picked face, or the whole mesh)">Smooth by angle</button>
           <button onclick={toggleSeam} class:on={isSeam(selEdge)} title="Mark the picked edge as a UV seam, or clear it: the texture unwrap cuts along seams">Seam{cube?.seams?.length ? ` (${cube.seams.length})` : ""}</button>
+          <button onclick={gridFillAtPick} title="Close the open border that the picked point is on with a grid of quads (needs an even number of points round it)">Grid fill</button>
           <button onclick={slideEdge} title="Slide the picked edge along the surface (quad faces on the side asked for)">Slide edge</button>
           {#if selectNote}<span class="dim small" role="status">{selectNote}</span>{/if}
         {/if}
