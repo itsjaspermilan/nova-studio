@@ -22,6 +22,46 @@ pub const TEMPLATES: &[Template] = &[
         ],
     },
     Template {
+        id: "topdown",
+        name: "Top-down game",
+        description: "A room of walls, gems, wandering ghosts and an exit, seen from above: walk, collect, escape.",
+        files: &[
+            (
+                "nova.json",
+                include_bytes!("../templates/topdown/nova.json"),
+            ),
+            ("main.lua", include_bytes!("../templates/topdown/main.lua")),
+            (
+                "scenes/room.lua",
+                include_bytes!("../templates/topdown/scenes/room.lua"),
+            ),
+            (
+                "scenes/room.scene.json",
+                include_bytes!("../templates/topdown/scenes/room.scene.json"),
+            ),
+            (
+                "entities/wall.lua",
+                include_bytes!("../templates/topdown/entities/wall.lua"),
+            ),
+            (
+                "entities/gem.lua",
+                include_bytes!("../templates/topdown/entities/gem.lua"),
+            ),
+            (
+                "entities/exit.lua",
+                include_bytes!("../templates/topdown/entities/exit.lua"),
+            ),
+            (
+                "entities/ghost.lua",
+                include_bytes!("../templates/topdown/entities/ghost.lua"),
+            ),
+            (
+                "entities/player.lua",
+                include_bytes!("../templates/topdown/entities/player.lua"),
+            ),
+        ],
+    },
+    Template {
         id: "platformer",
         name: "Platformer",
         description: "A level of platforms, coins and a flag, made of a scene file and four small entities: run, jump, collect, win.",

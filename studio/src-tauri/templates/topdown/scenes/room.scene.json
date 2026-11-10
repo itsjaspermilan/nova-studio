@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "background": [38, 44, 58],
+  "objects": [
+    { "kind": "wall", "x": 0, "y": 0, "props": { "w": 960, "h": 20 } },
+    { "kind": "wall", "x": 0, "y": 520, "props": { "w": 960, "h": 20 } },
+    { "kind": "wall", "x": 0, "y": 0, "props": { "w": 20, "h": 540 } },
+    { "kind": "wall", "x": 940, "y": 0, "props": { "w": 20, "h": 540 } },
+    { "kind": "wall", "x": 220, "y": 120, "props": { "w": 20, "h": 280 } },
+    { "kind": "wall", "x": 480, "y": 140, "props": { "w": 20, "h": 380 } },
+    { "kind": "wall", "x": 700, "y": 20, "props": { "w": 20, "h": 300 } },
+    { "kind": "gem", "x": 120, "y": 160 },
+    { "kind": "gem", "x": 350, "y": 460 },
+    { "kind": "gem", "x": 590, "y": 90 },
+    { "kind": "gem", "x": 820, "y": 440 },
+    { "kind": "ghost", "x": 600, "y": 300 },
+    { "kind": "ghost", "x": 340, "y": 200 },
+    { "kind": "exit", "x": 880, "y": 80 },
+    { "kind": "player", "name": "hero", "x": 80, "y": 470 }
+  ],
+  "texts": [
+    { "text": "Move with WASD or the arrow keys. Collect every gem, avoid the ghosts, then reach the exit.", "x": 36, "y": 30, "scale": 2, "color": [200, 210, 230] }
+  ]
+}

@@ -136,6 +136,7 @@ export function createMockApi(options: { devices?: AndroidDevice[] } = {}): Api 
     forgetProject: async (path) => void recent.splice(0, recent.length, ...recent.filter((r) => r.path !== path)),
     templates: async () => [
       { id: "starter", name: "Starter", description: "A title scene, a player and a sprite sheet" },
+      { id: "topdown", name: "Top-down game", description: "A room of walls, gems and ghosts" },
       { id: "platformer", name: "Platformer", description: "Platforms, coins and a flag" },
       { id: "model3d", name: "3D starter", description: "A modelled crate turning on screen" },
       { id: "blank", name: "Blank", description: "Just nova.json and main.lua" },
