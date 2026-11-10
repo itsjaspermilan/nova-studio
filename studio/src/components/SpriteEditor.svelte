@@ -16,7 +16,7 @@
   import { boundsOf, combine, emptyMask, growMask, has, invertMask, isEmpty, isRect, liftMasked, maskFromColor, maskFromEllipse, maskFromPolygon, maskFromRect, outlineSegments, placeMask, type Combine, type Mask } from "../lib/selection";
   import { commandsRev } from "../lib/commands-rev.svelte";
   import { PaletteStore, normalizeHex, nearestColor, paletteFromImage, parsePalette, ramp, shadeRamp, sortColors, swapColors as swapSwatches, toGpl, toJascPal, type Palette, type SortBy } from "../lib/palette";
-  import { type Area, brighten, colorCurve, dropShadow, flipRaster, gradientMap, grayscale, hueShift, invertColors, outline, palettize, pixelate, rotateQuarter, usedColors } from "../lib/sprite-fx";
+  import { type Area, brighten, colorCurve, dropShadow, flipRaster, gradientMap, grayscale, hueShift, invertColors, offsetWrap, outline, palettize, pixelate, replaceColor, rotateQuarter, usedColors } from "../lib/sprite-fx";
   import {
     BLEND_MODES, CLEAR, cloneRaster, crop, drawEllipse, drawLine, drawPolygon, drawRect, fillWith, getPixel, inRect, inside, isClear, lift, linePoints, parseHex, pixelPerfect, place, rectBetween, stamp, toHex,
     type BlendMode, type Point, type Raster, type Rect, type Rgba,
@@ -1411,6 +1411,10 @@
   }
   const applyGradientMap = () => applyFx((r, a) => gradientMap(r, [{ at: 0, color }, { at: 1, color: rightColor }], a));
   const applyPalettize = () => applyFx((r, a) => palettize(r, paletteRgba(), a));
+  let offsetX = $state(1);
+  let offsetY = $state(0);
+  const applyReplace = () => applyFx((r, a) => replaceColor(r, color, rightColor, a));
+  const applyOffset = () => applyFx((r) => offsetWrap(r, Math.round(offsetX), Math.round(offsetY)));
   const applyPixelate = () => applyFx((r, a) => pixelate(r, fxBlock, a));
   const applyCurves = () => {
     applyFx((r, a) => colorCurve(r, fxBright, fxContrast, fxGamma, a));
@@ -1437,6 +1441,7 @@
       commands.register({ id: "sprite.brushFromSelection", title: "Use the selection as a brush", menu: "Sprite", help: "The pencil and eraser stamp the selected pixels", enabled: () => has_() && !!selection, run: brushFromSelection }),
       commands.register({ id: "sprite.gradientMap", title: "Gradient map (current colour to the other colour)", menu: "Sprite", enabled: has, run: applyGradientMap }),
       commands.register({ id: "sprite.palettize", title: "Change every colour to the nearest palette colour", menu: "Sprite", enabled: has, run: applyPalettize }),
+      commands.register({ id: "sprite.replaceColor", title: "Replace the left colour with the right one", menu: "Sprite", help: "Every pixel of the left button's colour (in the selection, or everywhere) becomes the right button's colour", enabled: has, run: applyReplace }),
       commands.register({ id: "sprite.pixelate", title: "Pixelate (blocks as set in the Effects panel)", menu: "Sprite", enabled: has, run: applyPixelate }),
       commands.register({ id: "sprite.zoomIn", title: "Zoom in", menu: "Sprite", keys: ["Mod+="], enabled: () => ready, run: () => setZoom(zoom + (zoom >= 8 ? 4 : 1)) }),
       commands.register({ id: "sprite.zoomOut", title: "Zoom out", menu: "Sprite", keys: ["Mod+-"], enabled: () => ready, run: () => setZoom(zoom - (zoom > 8 ? 4 : 1)) }),
@@ -1684,6 +1689,12 @@
         <button title="Change every colour to the nearest colour of the palette" onclick={applyPalettize}>Palettize</button>
         <label class="inline">block <input type="number" min="2" max="64" bind:value={fxBlock} class="narrow" /></label>
         <button title="Make it blocky: every block takes its average colour" onclick={applyPixelate}>Pixelate</button>
+      </div>
+      <div class="row wrap fx">
+        <button title="Every pixel of the left colour becomes the right button's colour (inside the selection if there is one)" onclick={applyReplace}>Replace colour</button>
+        <label class="inline" title="Pixels to slide across">X <input type="number" bind:value={offsetX} class="narrow" aria-label="Slide across" /></label>
+        <label class="inline" title="Pixels to slide down">Y <input type="number" bind:value={offsetY} class="narrow" aria-label="Slide down" /></label>
+        <button title="Slide the picture; what leaves one side comes in at the other" onclick={applyOffset}>Offset</button>
       </div>
       <label class="slider"><span>Brightness</span><input type="range" min="-0.5" max="0.5" step="0.01" bind:value={fxBright} /><output>{fxBright.toFixed(2)}</output></label>
       <label class="slider"><span>Contrast</span><input type="range" min="-0.9" max="0.9" step="0.01" bind:value={fxContrast} /><output>{fxContrast.toFixed(2)}</output></label>
