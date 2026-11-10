@@ -698,20 +698,20 @@
           "modifiers": [{"type":"mirror","axis":"x","merge":0.02,"clip":true}, {"type":"subsurf","levels":1,"renderLevels":1,"smooth":true}]
         },
         {
-          "name": "headlight -1",
+          "name": "headlight a-1",
           "shape": "mesh",
           "emissive": 0.95,
           "roughness": 0.2,
           "color": "#fff3cf",
           "verts": [
-            [-13, 7.2, 26.6],
-            [-6.8, 7.2, 26.6],
-            [-6.8, 10, 26.6],
-            [-13, 10, 26.6],
-            [-13, 7.2, 29.25],
-            [-6.8, 7.2, 29.25],
-            [-6.8, 10, 29.25],
-            [-13, 10, 29.25]
+            [-11.9, 9.05, 26.6],
+            [-7.3, 9.05, 26.6],
+            [-7.3, 10.55, 26.6],
+            [-11.9, 10.55, 26.6],
+            [-11.9, 9.05, 29.25],
+            [-7.3, 9.05, 29.25],
+            [-7.3, 10.55, 29.25],
+            [-11.9, 10.55, 29.25]
           ],
           "polys": [
             {"v":[3,2,1,0],"color":"#fff3cf","smooth":false},
@@ -724,19 +724,172 @@
           "modifiers": [{"type":"bevel","width":0.5,"segments":2,"angle":30}]
         },
         {
-          "name": "headlight rim -1",
+          "name": "headlight rim a-1",
           "shape": "mesh",
           "roughness": 0.85,
           "color": "#20222a",
           "verts": [
-            [-13.45, 6.75, 26.5],
-            [-6.35, 6.75, 26.5],
-            [-6.35, 10.45, 26.5],
-            [-13.45, 10.45, 26.5],
-            [-13.45, 6.75, 29.05],
-            [-6.35, 6.75, 29.05],
-            [-6.35, 10.45, 29.05],
-            [-13.45, 10.45, 29.05]
+            [-12.35, 8.6, 26.5],
+            [-6.85, 8.6, 26.5],
+            [-6.85, 11, 26.5],
+            [-12.35, 11, 26.5],
+            [-12.35, 8.6, 29.05],
+            [-6.85, 8.6, 29.05],
+            [-6.85, 11, 29.05],
+            [-12.35, 11, 29.05]
+          ],
+          "polys": [
+            {"v":[3,2,1,0],"color":"#20222a","smooth":false},
+            {"v":[4,5,6,7],"color":"#20222a","smooth":false},
+            {"v":[4,7,3,0],"color":"#20222a","smooth":false},
+            {"v":[1,2,6,5],"color":"#20222a","smooth":false},
+            {"v":[0,1,5,4],"color":"#20222a","smooth":false},
+            {"v":[7,6,2,3],"color":"#20222a","smooth":false}
+          ],
+          "modifiers": [{"type":"bevel","width":0.35,"segments":1,"angle":30}]
+        },
+        {
+          "name": "headlight b-1",
+          "shape": "mesh",
+          "emissive": 0.95,
+          "roughness": 0.2,
+          "color": "#fff3cf",
+          "verts": [
+            [-11.9, 6.85, 26.6],
+            [-7.3, 6.85, 26.6],
+            [-7.3, 8.35, 26.6],
+            [-11.9, 8.35, 26.6],
+            [-11.9, 6.85, 29.25],
+            [-7.3, 6.85, 29.25],
+            [-7.3, 8.35, 29.25],
+            [-11.9, 8.35, 29.25]
+          ],
+          "polys": [
+            {"v":[3,2,1,0],"color":"#fff3cf","smooth":false},
+            {"v":[4,5,6,7],"color":"#fff3cf","smooth":false},
+            {"v":[4,7,3,0],"color":"#fff3cf","smooth":false},
+            {"v":[1,2,6,5],"color":"#fff3cf","smooth":false},
+            {"v":[0,1,5,4],"color":"#fff3cf","smooth":false},
+            {"v":[7,6,2,3],"color":"#fff3cf","smooth":false}
+          ],
+          "modifiers": [{"type":"bevel","width":0.5,"segments":2,"angle":30}]
+        },
+        {
+          "name": "headlight rim b-1",
+          "shape": "mesh",
+          "roughness": 0.85,
+          "color": "#20222a",
+          "verts": [
+            [-12.35, 6.4, 26.5],
+            [-6.85, 6.4, 26.5],
+            [-6.85, 8.8, 26.5],
+            [-12.35, 8.8, 26.5],
+            [-12.35, 6.4, 29.05],
+            [-6.85, 6.4, 29.05],
+            [-6.85, 8.8, 29.05],
+            [-12.35, 8.8, 29.05]
+          ],
+          "polys": [
+            {"v":[3,2,1,0],"color":"#20222a","smooth":false},
+            {"v":[4,5,6,7],"color":"#20222a","smooth":false},
+            {"v":[4,7,3,0],"color":"#20222a","smooth":false},
+            {"v":[1,2,6,5],"color":"#20222a","smooth":false},
+            {"v":[0,1,5,4],"color":"#20222a","smooth":false},
+            {"v":[7,6,2,3],"color":"#20222a","smooth":false}
+          ],
+          "modifiers": [{"type":"bevel","width":0.35,"segments":1,"angle":30}]
+        },
+        {
+          "name": "headlight a1",
+          "shape": "mesh",
+          "emissive": 0.95,
+          "roughness": 0.2,
+          "color": "#fff3cf",
+          "verts": [
+            [7.3, 9.05, 26.6],
+            [11.9, 9.05, 26.6],
+            [11.9, 10.55, 26.6],
+            [7.3, 10.55, 26.6],
+            [7.3, 9.05, 29.25],
+            [11.9, 9.05, 29.25],
+            [11.9, 10.55, 29.25],
+            [7.3, 10.55, 29.25]
+          ],
+          "polys": [
+            {"v":[3,2,1,0],"color":"#fff3cf","smooth":false},
+            {"v":[4,5,6,7],"color":"#fff3cf","smooth":false},
+            {"v":[4,7,3,0],"color":"#fff3cf","smooth":false},
+            {"v":[1,2,6,5],"color":"#fff3cf","smooth":false},
+            {"v":[0,1,5,4],"color":"#fff3cf","smooth":false},
+            {"v":[7,6,2,3],"color":"#fff3cf","smooth":false}
+          ],
+          "modifiers": [{"type":"bevel","width":0.5,"segments":2,"angle":30}]
+        },
+        {
+          "name": "headlight rim a1",
+          "shape": "mesh",
+          "roughness": 0.85,
+          "color": "#20222a",
+          "verts": [
+            [6.85, 8.6, 26.5],
+            [12.35, 8.6, 26.5],
+            [12.35, 11, 26.5],
+            [6.85, 11, 26.5],
+            [6.85, 8.6, 29.05],
+            [12.35, 8.6, 29.05],
+            [12.35, 11, 29.05],
+            [6.85, 11, 29.05]
+          ],
+          "polys": [
+            {"v":[3,2,1,0],"color":"#20222a","smooth":false},
+            {"v":[4,5,6,7],"color":"#20222a","smooth":false},
+            {"v":[4,7,3,0],"color":"#20222a","smooth":false},
+            {"v":[1,2,6,5],"color":"#20222a","smooth":false},
+            {"v":[0,1,5,4],"color":"#20222a","smooth":false},
+            {"v":[7,6,2,3],"color":"#20222a","smooth":false}
+          ],
+          "modifiers": [{"type":"bevel","width":0.35,"segments":1,"angle":30}]
+        },
+        {
+          "name": "headlight b1",
+          "shape": "mesh",
+          "emissive": 0.95,
+          "roughness": 0.2,
+          "color": "#fff3cf",
+          "verts": [
+            [7.3, 6.85, 26.6],
+            [11.9, 6.85, 26.6],
+            [11.9, 8.35, 26.6],
+            [7.3, 8.35, 26.6],
+            [7.3, 6.85, 29.25],
+            [11.9, 6.85, 29.25],
+            [11.9, 8.35, 29.25],
+            [7.3, 8.35, 29.25]
+          ],
+          "polys": [
+            {"v":[3,2,1,0],"color":"#fff3cf","smooth":false},
+            {"v":[4,5,6,7],"color":"#fff3cf","smooth":false},
+            {"v":[4,7,3,0],"color":"#fff3cf","smooth":false},
+            {"v":[1,2,6,5],"color":"#fff3cf","smooth":false},
+            {"v":[0,1,5,4],"color":"#fff3cf","smooth":false},
+            {"v":[7,6,2,3],"color":"#fff3cf","smooth":false}
+          ],
+          "modifiers": [{"type":"bevel","width":0.5,"segments":2,"angle":30}]
+        },
+        {
+          "name": "headlight rim b1",
+          "shape": "mesh",
+          "roughness": 0.85,
+          "color": "#20222a",
+          "verts": [
+            [6.85, 6.4, 26.5],
+            [12.35, 6.4, 26.5],
+            [12.35, 8.8, 26.5],
+            [6.85, 8.8, 26.5],
+            [6.85, 6.4, 29.05],
+            [12.35, 6.4, 29.05],
+            [12.35, 8.8, 29.05],
+            [6.85, 8.8, 29.05]
           ],
           "polys": [
             {"v":[3,2,1,0],"color":"#20222a","smooth":false},
@@ -775,57 +928,6 @@
           "modifiers": [{"type":"bevel","width":0.25,"segments":1,"angle":30}]
         },
         {
-          "name": "headlight 1",
-          "shape": "mesh",
-          "emissive": 0.95,
-          "roughness": 0.2,
-          "color": "#fff3cf",
-          "verts": [
-            [6.8, 7.2, 26.6],
-            [13, 7.2, 26.6],
-            [13, 10, 26.6],
-            [6.8, 10, 26.6],
-            [6.8, 7.2, 29.25],
-            [13, 7.2, 29.25],
-            [13, 10, 29.25],
-            [6.8, 10, 29.25]
-          ],
-          "polys": [
-            {"v":[3,2,1,0],"color":"#fff3cf","smooth":false},
-            {"v":[4,5,6,7],"color":"#fff3cf","smooth":false},
-            {"v":[4,7,3,0],"color":"#fff3cf","smooth":false},
-            {"v":[1,2,6,5],"color":"#fff3cf","smooth":false},
-            {"v":[0,1,5,4],"color":"#fff3cf","smooth":false},
-            {"v":[7,6,2,3],"color":"#fff3cf","smooth":false}
-          ],
-          "modifiers": [{"type":"bevel","width":0.5,"segments":2,"angle":30}]
-        },
-        {
-          "name": "headlight rim 1",
-          "shape": "mesh",
-          "roughness": 0.85,
-          "color": "#20222a",
-          "verts": [
-            [6.35, 6.75, 26.5],
-            [13.45, 6.75, 26.5],
-            [13.45, 10.45, 26.5],
-            [6.35, 10.45, 26.5],
-            [6.35, 6.75, 29.05],
-            [13.45, 6.75, 29.05],
-            [13.45, 10.45, 29.05],
-            [6.35, 10.45, 29.05]
-          ],
-          "polys": [
-            {"v":[3,2,1,0],"color":"#20222a","smooth":false},
-            {"v":[4,5,6,7],"color":"#20222a","smooth":false},
-            {"v":[4,7,3,0],"color":"#20222a","smooth":false},
-            {"v":[1,2,6,5],"color":"#20222a","smooth":false},
-            {"v":[0,1,5,4],"color":"#20222a","smooth":false},
-            {"v":[7,6,2,3],"color":"#20222a","smooth":false}
-          ],
-          "modifiers": [{"type":"bevel","width":0.35,"segments":1,"angle":30}]
-        },
-        {
           "name": "fog 1",
           "shape": "mesh",
           "emissive": 0.6,
@@ -857,14 +959,14 @@
           "roughness": 0.85,
           "color": "#101116",
           "verts": [
-            [-5.8, 7.1, 28.4],
-            [5.8, 7.1, 28.4],
-            [5.8, 10, 28.4],
-            [-5.8, 10, 28.4],
-            [-5.8, 7.1, 29.2],
-            [5.8, 7.1, 29.2],
-            [5.8, 10, 29.2],
-            [-5.8, 10, 29.2]
+            [-5.95, 6.9, 28.4],
+            [5.95, 6.9, 28.4],
+            [5.95, 10.1, 28.4],
+            [-5.95, 10.1, 28.4],
+            [-5.95, 6.9, 29.2],
+            [5.95, 6.9, 29.2],
+            [5.95, 10.1, 29.2],
+            [-5.95, 10.1, 29.2]
           ],
           "polys": [
             {"v":[3,2,1,0],"color":"#101116","smooth":false},
@@ -883,14 +985,14 @@
           "roughness": 0.16,
           "color": "#9aa0aa",
           "verts": [
-            [-5.2, 8.4, 28.5],
-            [5.2, 8.4, 28.5],
-            [5.2, 8.8, 28.5],
-            [-5.2, 8.8, 28.5],
-            [-5.2, 8.4, 29.3],
-            [5.2, 8.4, 29.3],
-            [5.2, 8.8, 29.3],
-            [-5.2, 8.8, 29.3]
+            [-5.45, 7.56, 28.4],
+            [5.45, 7.56, 28.4],
+            [5.45, 7.84, 28.4],
+            [-5.45, 7.84, 28.4],
+            [-5.45, 7.56, 29.35],
+            [5.45, 7.56, 29.35],
+            [5.45, 7.84, 29.35],
+            [-5.45, 7.84, 29.35]
           ],
           "polys": [
             {"v":[3,2,1,0],"color":"#9aa0aa","smooth":false},
@@ -902,83 +1004,59 @@
           ]
         },
         {
-          "name": "tail light bar",
+          "name": "grille bar",
           "shape": "mesh",
-          "emissive": 0.9,
-          "roughness": 0.2,
-          "color": "#e8202c",
+          "metallic": 0.95,
+          "roughness": 0.16,
+          "color": "#9aa0aa",
           "verts": [
-            [-11.47, 9.2, -35.25],
-            [11.47, 9.2, -35.25],
-            [11.47, 11.2, -35.25],
-            [-11.47, 11.2, -35.25],
-            [-11.47, 9.2, -32.6],
-            [11.47, 9.2, -32.6],
-            [11.47, 11.2, -32.6],
-            [-11.47, 11.2, -32.6]
+            [-5.45, 8.46, 28.4],
+            [5.45, 8.46, 28.4],
+            [5.45, 8.74, 28.4],
+            [-5.45, 8.74, 28.4],
+            [-5.45, 8.46, 29.35],
+            [5.45, 8.46, 29.35],
+            [5.45, 8.74, 29.35],
+            [-5.45, 8.74, 29.35]
           ],
           "polys": [
-            {"v":[3,2,1,0],"color":"#e8202c","smooth":false},
-            {"v":[4,5,6,7],"color":"#e8202c","smooth":false},
-            {"v":[4,7,3,0],"color":"#e8202c","smooth":false},
-            {"v":[1,2,6,5],"color":"#e8202c","smooth":false},
-            {"v":[0,1,5,4],"color":"#e8202c","smooth":false},
-            {"v":[7,6,2,3],"color":"#e8202c","smooth":false}
-          ],
-          "modifiers": [{"type":"bevel","width":0.4,"segments":2,"angle":30}]
+            {"v":[3,2,1,0],"color":"#9aa0aa","smooth":false},
+            {"v":[4,5,6,7],"color":"#9aa0aa","smooth":false},
+            {"v":[4,7,3,0],"color":"#9aa0aa","smooth":false},
+            {"v":[1,2,6,5],"color":"#9aa0aa","smooth":false},
+            {"v":[0,1,5,4],"color":"#9aa0aa","smooth":false},
+            {"v":[7,6,2,3],"color":"#9aa0aa","smooth":false}
+          ]
         },
         {
-          "name": "brake light -1",
+          "name": "grille bar",
           "shape": "mesh",
-          "emissive": 0.75,
-          "roughness": 0.2,
-          "color": "#ff5a3a",
+          "metallic": 0.95,
+          "roughness": 0.16,
+          "color": "#9aa0aa",
           "verts": [
-            [-12.27, 6.8, -35.25],
-            [-7.87, 6.8, -35.25],
-            [-7.87, 8.8, -35.25],
-            [-12.27, 8.8, -35.25],
-            [-12.27, 6.8, -32.8],
-            [-7.87, 6.8, -32.8],
-            [-7.87, 8.8, -32.8],
-            [-12.27, 8.8, -32.8]
+            [-5.45, 9.36, 28.4],
+            [5.45, 9.36, 28.4],
+            [5.45, 9.64, 28.4],
+            [-5.45, 9.64, 28.4],
+            [-5.45, 9.36, 29.35],
+            [5.45, 9.36, 29.35],
+            [5.45, 9.64, 29.35],
+            [-5.45, 9.64, 29.35]
           ],
           "polys": [
-            {"v":[3,2,1,0],"color":"#ff5a3a","smooth":false},
-            {"v":[4,5,6,7],"color":"#ff5a3a","smooth":false},
-            {"v":[4,7,3,0],"color":"#ff5a3a","smooth":false},
-            {"v":[1,2,6,5],"color":"#ff5a3a","smooth":false},
-            {"v":[0,1,5,4],"color":"#ff5a3a","smooth":false},
-            {"v":[7,6,2,3],"color":"#ff5a3a","smooth":false}
-          ],
-          "modifiers": [{"type":"bevel","width":0.3,"segments":1,"angle":30}]
+            {"v":[3,2,1,0],"color":"#9aa0aa","smooth":false},
+            {"v":[4,5,6,7],"color":"#9aa0aa","smooth":false},
+            {"v":[4,7,3,0],"color":"#9aa0aa","smooth":false},
+            {"v":[1,2,6,5],"color":"#9aa0aa","smooth":false},
+            {"v":[0,1,5,4],"color":"#9aa0aa","smooth":false},
+            {"v":[7,6,2,3],"color":"#9aa0aa","smooth":false}
+          ]
         },
-        {
-          "name": "brake light 1",
-          "shape": "mesh",
-          "emissive": 0.75,
-          "roughness": 0.2,
-          "color": "#ff5a3a",
-          "verts": [
-            [7.87, 6.8, -35.25],
-            [12.27, 6.8, -35.25],
-            [12.27, 8.8, -35.25],
-            [7.87, 8.8, -35.25],
-            [7.87, 6.8, -32.8],
-            [12.27, 6.8, -32.8],
-            [12.27, 8.8, -32.8],
-            [7.87, 8.8, -32.8]
-          ],
-          "polys": [
-            {"v":[3,2,1,0],"color":"#ff5a3a","smooth":false},
-            {"v":[4,5,6,7],"color":"#ff5a3a","smooth":false},
-            {"v":[4,7,3,0],"color":"#ff5a3a","smooth":false},
-            {"v":[1,2,6,5],"color":"#ff5a3a","smooth":false},
-            {"v":[0,1,5,4],"color":"#ff5a3a","smooth":false},
-            {"v":[7,6,2,3],"color":"#ff5a3a","smooth":false}
-          ],
-          "modifiers": [{"type":"bevel","width":0.3,"segments":1,"angle":30}]
-        },
+        { "name": "brake light -1", "shape": "cylinder", "from": [-12.466666666666667, 6.8, -38.6], "size": [4.8, 2, 4.8], "rotation": [90, 0, 0], "segments": 16, "emissive": 0.85, "roughness": 0.2, "color": "#e8202c" },
+        { "name": "brake ring -1", "shape": "cylinder", "from": [-13.066666666666666, 7.1000000000000005, -38.8], "size": [6, 1.4, 6], "rotation": [90, 0, 0], "segments": 16, "roughness": 0.85, "color": "#20222a" },
+        { "name": "brake light 1", "shape": "cylinder", "from": [7.666666666666666, 6.8, -38.6], "size": [4.8, 2, 4.8], "rotation": [90, 0, 0], "segments": 16, "emissive": 0.85, "roughness": 0.2, "color": "#e8202c" },
+        { "name": "brake ring 1", "shape": "cylinder", "from": [7.066666666666666, 7.1000000000000005, -38.8], "size": [6, 1.4, 6], "rotation": [90, 0, 0], "segments": 16, "roughness": 0.85, "color": "#20222a" },
         {
           "name": "plate",
           "shape": "mesh",

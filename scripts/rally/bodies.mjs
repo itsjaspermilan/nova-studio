@@ -108,23 +108,23 @@ const truck = (o) => ({
 const roofBox = (name, w, d, h, color, z, emissive) => ({ cubes, box, s, along }) => { const top = along(s.top, z); cubes.push(box(name, -w / 2, w / 2, top - 0.3, top + h, z - d / 2, z + d / 2, color, { bevel: 0.5, segs: 2, emissive })); };
 
 const CARS = {
-  car_sedan: () => sedan({ paint: "#e0442c", roof: "#1b1d24", stripe: { color: "#f3f5f8", half: 2.4 } }),
-  car_taxi: () => stretch(sedan({ paint: "#f6b81c", roof: "#f6b81c", band: "#1b1d24", extras: [roofBox("taxi sign", 9, 3.6, 2.8, "#fff6d0", -5, 0.6)] }), 39 / 37),
-  car_police: () => stretch(sedan({ paint: "#f2f4f7", roof: "#1b1d24", band: "#1f3a8a", bumper: "#1f3a8a",
+  car_sedan: () => sedan({ lamps: "round2", grille: "kidney", tails: "bar", paint: "#e0442c", roof: "#1b1d24", stripe: { color: "#f3f5f8", half: 2.4 } }),
+  car_taxi: () => stretch(sedan({ lamps: "rect", grille: "bars", tails: "pair", paint: "#f6b81c", roof: "#f6b81c", band: "#1b1d24", extras: [roofBox("taxi sign", 9, 3.6, 2.8, "#fff6d0", -5, 0.6)] }), 39 / 37),
+  car_police: () => stretch(sedan({ lamps: "quad", grille: "mesh", tails: "bar", paint: "#f2f4f7", roof: "#1b1d24", band: "#1f3a8a", bumper: "#1f3a8a",
     extras: [({ cubes, box, s, along }) => { const top = along(s.top, -5); cubes.push(box("siren red", -6.4, -0.4, top - 0.3, top + 2.2, -9, -4, "#ff3340", { bevel: 0.5, segs: 2, emissive: 0.95 }), box("siren blue", 0.4, 6.4, top - 0.3, top + 2.2, -9, -4, "#3d7bff", { bevel: 0.5, segs: 2, emissive: 0.95 })); }] }), 39 / 37),
-  car: () => coupe({ paint: "#d91f35", roof: "#d91f35", stripe: { color: "#f4f6fa", half: 2.2 } }),
-  car_blue: () => coupe({ paint: "#2563c9", roof: "#2563c9", stripe: { color: "#f4f6fa", half: 2.6 } }),
-  car_yellow: () => coupe({ paint: "#ffc61a", roof: "#1c1d22", stripe: { color: "#1c1d22", half: 2.4 } }),
-  car_green: () => hatch({ paint: "#33b46c", roof: "#f3f5f8", stripe: { color: "#f3f5f8", half: 1.6 } }),
-  car_suv: () => suv({ paint: "#5b8f5a", roof: "#e9ecef" }),
-  car_suvl: () => stretch(suv({ paint: "#27324d", roof: "#27324d", stripe: { color: "#c9ced6", half: 1.4 } }), 39 / 37),
-  car_van: () => van({ paint: "#f1efe7", band: "#2b5aa8", bumper: "#2b5aa8", roof: "#f1efe7" }),
+  car: () => coupe({ lamps: "slit", grille: "mouth", tails: "round", paint: "#d91f35", roof: "#d91f35", stripe: { color: "#f4f6fa", half: 2.2 } }),
+  car_blue: () => coupe({ lamps: "round", grille: "mouth", tails: "bar", paint: "#2563c9", roof: "#2563c9", stripe: { color: "#f4f6fa", half: 2.6 } }),
+  car_yellow: () => coupe({ lamps: "slit", grille: "kidney", tails: "pair", paint: "#ffc61a", roof: "#1c1d22", stripe: { color: "#1c1d22", half: 2.4 } }),
+  car_green: () => hatch({ lamps: "round", grille: "blackout", tails: "tall", paint: "#33b46c", roof: "#f3f5f8", stripe: { color: "#f3f5f8", half: 1.6 } }),
+  car_suv: () => suv({ lamps: "rect", grille: "bars", tails: "pair", paint: "#5b8f5a", roof: "#e9ecef" }),
+  car_suvl: () => stretch(suv({ lamps: "slit", grille: "mesh", tails: "bar", paint: "#27324d", roof: "#27324d", stripe: { color: "#c9ced6", half: 1.4 } }), 39 / 37),
+  car_van: () => van({ lamps: "tall", grille: "mesh", tails: "tall", paint: "#f1efe7", band: "#2b5aa8", bumper: "#2b5aa8", roof: "#f1efe7" }),
   racecar_green: () => formula({ paint: "#17a05a", accent: "#f5f7fa", stripe: { color: "#f5f7fa", half: 2.0 } }),
   racecar_orange: () => formula({ paint: "#ff7a1a", accent: "#1b1d24", stripe: { color: "#1b1d24", half: 2.0 } }),
   racecar_red: () => formula({ paint: "#e1262e", accent: "#f5f7fa", stripe: { color: "#f5f7fa", half: 2.0 } }),
   racecar_white: () => formula({ paint: "#f3f5f8", accent: "#2a64d6", stripe: { color: "#2a64d6", half: 2.0 } }),
   firetruck: () => truck({
-    paint: "#d3262c", band: "#f1c40f", roof: "#d3262c",
+    lamps: "quad", grille: "bars", tails: "round", paint: "#d3262c", band: "#f1c40f", roof: "#d3262c",
     belt: [[-35, 24.2], [12, 24.2], [13.4, 17.8], [27, 17.8], [29, 15.4]],
     top: [[-35, 26.4], [-33.4, 27.4], [-30, 27.8], [12, 27.8], [13.4, 27.8], [24, 27.6], [28.2, 17.6], [29, 15.8]],
     roofW: [[-35, 8.5], [-33.4, 11.5], [-30, 12.6], [24, 12.8], [27, 12.6], [29, 11.8]],
@@ -138,7 +138,7 @@ const CARS = {
       for (let k = 0; k < 7; k++) cubes.push(box("chevron", -12.6 + k * 3.6, -9.6 + k * 3.6, 8.2, 12.4, -35.6, -35.1, k % 2 ? "#e8e8ee" : "#d3262c", {}));
     }] }),
   garbage_truck: () => truck({
-    zr: -35.5, track: 11.7, paint: "#2b9a58", band: "#f4f6f8", roof: "#2b9a58", sill: "#23252c", bumper: "#3a3e49",
+    lamps: "round", grille: "mesh", tails: "round", zr: -35.5, track: 11.7, paint: "#2b9a58", band: "#f4f6f8", roof: "#2b9a58", sill: "#23252c", bumper: "#3a3e49",
     belt: [[-35.5, 22.4], [12, 22.4], [13.4, 17.4], [27, 17.4], [29, 15.2]],
     top: [[-35.5, 24.6], [-33.4, 28.4], [-30, 29.0], [12, 29.0], [13.4, 26.6], [24, 26.4], [28.2, 17.4], [29, 15.6]],
     roofW: [[-35.5, 8.0], [-33.4, 9.6], [-30, 10.4], [11, 10.4], [13.4, 12.4], [24, 12.8], [27, 12.6], [29, 11.8]],
@@ -147,7 +147,7 @@ const CARS = {
       for (const s of [-1, 1]) cubes.push(box("lift bar", s * 9 - 0.9, s * 9 + 0.9, 11.4, 27, -38.4, -37.2, "#c7ccd3", { bevel: 0.35, material: { metallic: 0.95, roughness: 0.16 } }), box("lift ram", s * 12 - 0.7, s * 12 + 0.7, 14, 22, -38, -37, "#e8b822", { bevel: 0.25 }));
       cubes.push(box("beacon", -3.5, 3.5, 26.4, 28.4, 18.5, 21.5, "#ff9a1a", { bevel: 0.7, segs: 3, emissive: 0.85 }));
     }] }),
-  car_pickup: () => pickup({ paint: "#e0842a", roof: "#e0842a" }),
+  car_pickup: () => pickup({ lamps: "round", grille: "bars", tails: "pair", paint: "#e0842a", roof: "#e0842a" }),
 };
 void mul;
 

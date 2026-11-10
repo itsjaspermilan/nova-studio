@@ -102,23 +102,50 @@ export function buildBody(s) {
   const endW = (z) => along(s.w, z);
   if (s.bare) { for (const fn of s.extras ?? []) fn({ cubes, box, s, along });
     const parts0 = [{ name: "body", origin: [0, pivot(), 0], rotation: [0, 0, 0], cubes, children: [] }, wheel("wheel_fl", -1, s.wheelZ[0], s), wheel("wheel_fr", 1, s.wheelZ[0], s), wheel("wheel_rl", -1, s.wheelZ[1], { ...s, R: s.Rr ?? s.R, tw: s.twr ?? s.tw }), wheel("wheel_rr", 1, s.wheelZ[1], { ...s, R: s.Rr ?? s.R, tw: s.twr ?? s.tw })];
-    return { model: { version: 1, scale: 0.0625, parts: parts0 }, tail: { z: r2(ZR / 16), y: r2((s.tailY ?? 6) / 16), x: 0 } }; }
+    return { model: { version: 1, scale: 0.0625, parts: parts0 }, tail: { z: r2(ZR / 16), y: r2(7.5 / 16 - 0.06), x: 0 } }; }
   const lampY = s.lampY ?? ((along(s.belt, ZF) + along(s.yb, ZF)) / 2 + 1.5);
   // the lights, grille and plate, sunk into the end faces
   const hw = along(s.w, ZF - 3); // the width a little behind the tapering tip: the lamps sit out at the corners
-  const hl = s.headlight ?? { w: 6.2, h: 2.8, x: hw - 3.9 };
-  for (const side of [-1, 1]) {
-    const x0 = side * hl.x - hl.w / 2, x1 = side * hl.x + hl.w / 2;
-    cubes.push(box(`headlight ${side}`, Math.min(x0, x1), Math.max(x0, x1), lampY - hl.h / 2, lampY + hl.h / 2, ZF - 2.4, ZF + 0.25, "#fff3cf", { bevel: 0.5, segs: 2, emissive: 0.95 }));
-    cubes.push(box(`headlight rim ${side}`, Math.min(x0, x1) - 0.45, Math.max(x0, x1) + 0.45, lampY - hl.h / 2 - 0.45, lampY + hl.h / 2 + 0.45, ZF - 2.5, ZF + 0.05, "#20222a", { bevel: 0.35, segs: 1, material: RUBBER }));
-    cubes.push(box(`fog ${side}`, side * (hw - 4.8) - 1.3, side * (hw - 4.8) + 1.3, along(s.yb, ZF) + 2.2, along(s.yb, ZF) + 3.4, ZF - 2.2, ZF + 0.3, "#ffe07a", { bevel: 0.25, segs: 1, emissive: 0.6 }));
-  }
-  const gw = Math.max(hl.x - hl.w / 2 - 1.0, 2);
-  cubes.push(box("grille", -gw, gw, lampY - 1.5, lampY + 1.4, ZF - 0.6, ZF + 0.2, "#101116", { bevel: 0.35, segs: 1, material: RUBBER }));
-  cubes.push(box("grille bar", -gw + 0.6, gw - 0.6, lampY - 0.2, lampY + 0.2, ZF - 0.5, ZF + 0.3, "#9aa0aa", { material: CHROME }));
+  // ---- the front: headlights in one of several styles, a grille in another, so the families do not share a face ----
+  const style = s.lamps ?? "rect", grille = s.grille ?? "bars";
+  const LENS = "#fff3cf", RIM = "#20222a";
+  const lampBox = (side, cx, cy, w, h, tag) => {
+    const x0 = side * cx - w / 2, x1 = side * cx + w / 2;
+    cubes.push(box(`headlight ${tag}${side}`, Math.min(x0, x1), Math.max(x0, x1), cy - h / 2, cy + h / 2, ZF - 2.4, ZF + 0.25, LENS, { bevel: 0.5, segs: 2, emissive: 0.95 }));
+    cubes.push(box(`headlight rim ${tag}${side}`, Math.min(x0, x1) - 0.45, Math.max(x0, x1) + 0.45, cy - h / 2 - 0.45, cy + h / 2 + 0.45, ZF - 2.5, ZF + 0.05, RIM, { bevel: 0.35, segs: 1, material: RUBBER }));
+  };
+  const lampRound = (side, cx, cy, r, tag) => {
+    const disc = (name, rr, d, color, z, extra) => Object.assign({ name: `${name} ${tag}${side}`, shape: "cylinder", from: [side * cx - rr, cy - d / 2 - pivot(), z - rr], size: [2 * rr, d, 2 * rr], rotation: [90, 0, 0], color, segments: 18, smooth: true }, extra);
+    cubes.push(disc("headlight rim", r + 0.55, 2.2, RIM, ZF - 1.0, RUBBER), disc("headlight", r, 2.6, LENS, ZF - 0.9, { emissive: 0.95, metallic: 0, roughness: 0.2 }));
+  };
+  let inner; // the nearest a lamp's edge comes to the middle: the grille stops short of it
+  if (style === "round") { const x = hw - 3.4; for (const side of [-1, 1]) lampRound(side, x, lampY, 2.6, ""); inner = x - 3.2; }
+  else if (style === "round2") { for (const side of [-1, 1]) { lampRound(side, hw - 2.4, lampY, 1.7, "a"); lampRound(side, hw - 6.4, lampY, 1.7, "b"); } inner = hw - 6.4 - 2.3; }
+  else if (style === "slit") { const x = hw - 5.4; for (const side of [-1, 1]) lampBox(side, x, lampY + 0.4, 9.2, 1.7, ""); inner = x - 4.6 - 0.45; }
+  else if (style === "tall") { const x = hw - 2.8; for (const side of [-1, 1]) lampBox(side, x, lampY + 0.4, 3.6, 5.0, ""); inner = x - 1.8 - 0.45; }
+  else if (style === "quad") { const x = hw - 4.2; for (const side of [-1, 1]) { lampBox(side, x, lampY + 1.2, 4.6, 1.5, "a"); lampBox(side, x, lampY - 1.0, 4.6, 1.5, "b"); } inner = x - 2.3 - 0.45; }
+  else { const x = hw - 3.9; for (const side of [-1, 1]) lampBox(side, x, lampY, 6.2, 2.8, ""); inner = x - 3.1 - 0.45; }
+  if (!s.noFog) for (const side of [-1, 1]) cubes.push(box(`fog ${side}`, side * (hw - 4.8) - 1.3, side * (hw - 4.8) + 1.3, along(s.yb, ZF) + 2.2, along(s.yb, ZF) + 3.4, ZF - 2.2, ZF + 0.3, "#ffe07a", { bevel: 0.25, segs: 1, emissive: 0.6 }));
+  const gw = Math.max(inner - 0.9, 2), dk = "#101116", slat = "#9aa0aa";
+  const gz = [ZF - 0.6, ZF + 0.2];
+  if (grille === "kidney") for (const side of [-1, 1]) { const x0 = side * 0.7, x1 = side * (gw - 0.2); cubes.push(box(`grille ${side}`, Math.min(x0, x1), Math.max(x0, x1), lampY - 1.7, lampY + 1.5, gz[0], gz[1], dk, { bevel: 0.45, segs: 2, material: RUBBER }), box(`grille slat ${side}`, Math.min(x0, x1) + 0.4, Math.max(x0, x1) - 0.4, lampY - 0.1, lampY + 0.3, gz[0], gz[1] + 0.1, slat, { material: CHROME })); }
+  else if (grille === "mouth") { const yb0 = along(s.yb, ZF); cubes.push(box("grille mouth", -(hw - 5.2), hw - 5.2, yb0 + 1.4, yb0 + 4.4, ZF - 1.6, ZF + 0.1, dk, { bevel: 0.5, segs: 2, material: RUBBER }), box("grille mouth bar", -(hw - 5.6), hw - 5.6, yb0 + 2.7, yb0 + 3.1, ZF - 1.5, ZF + 0.2, slat, { material: CHROME })); }
+  else if (grille === "blackout") cubes.push(box("grille", -gw, gw, lampY - 1.4, lampY + 1.3, gz[0], gz[1], dk, { bevel: 0.35, segs: 1, material: RUBBER }));
+  else if (grille === "mesh") { cubes.push(box("grille", -gw, gw, lampY - 1.7, lampY + 1.5, gz[0], gz[1], dk, { bevel: 0.35, segs: 1, material: RUBBER })); for (let k = -2; k <= 2; k++) cubes.push(box("grille mesh", k * gw * 0.4 - 0.18, k * gw * 0.4 + 0.18, lampY - 1.6, lampY + 1.4, gz[0], gz[1] + 0.1, slat, { material: CHROME })); for (const y of [-0.6, 0.6]) cubes.push(box("grille mesh bar", -gw + 0.4, gw - 0.4, lampY + y - 0.15, lampY + y + 0.15, gz[0], gz[1] + 0.1, slat, { material: CHROME })); }
+  else { cubes.push(box("grille", -gw, gw, lampY - 1.7, lampY + 1.5, gz[0], gz[1], dk, { bevel: 0.35, segs: 1, material: RUBBER })); for (const y of [-0.9, 0, 0.9]) cubes.push(box("grille bar", -gw + 0.5, gw - 0.5, lampY + y - 0.14, lampY + y + 0.14, gz[0], gz[1] + 0.15, slat, { material: CHROME })); }
+  // ---- the rear: brake lamps in one of several styles at one place: the game draws the brake glow there (TAIL in entities/car.lua) ----
   const tw0 = along(s.w, ZR + 3), ty = s.tailY ?? (along(s.belt, ZR) - 1.2);
-  cubes.push(box("tail light bar", -tw0 + 2.4, tw0 - 2.4, ty - 1.0, ty + 1.0, ZR - 0.25, ZR + 2.4, "#e8202c", { bevel: 0.4, segs: 2, emissive: 0.9 }));
-  for (const side of [-1, 1]) cubes.push(box(`brake light ${side}`, side * (tw0 - 3.8) - 2.2, side * (tw0 - 3.8) + 2.2, ty - 3.4, ty - 1.4, ZR - 0.25, ZR + 2.2, "#ff5a3a", { bevel: 0.3, segs: 1, emissive: 0.75 }));
+  const lx = tw0 - 3.8, ly = ty - 2.4, tails = s.tails ?? "bar", RED = "#e8202c", BRAKE = "#ff5a3a";
+  if (tails === "bar") {
+    cubes.push(box("tail light bar", -tw0 + 2.4, tw0 - 2.4, ty - 1.0, ty + 1.0, ZR - 0.25, ZR + 2.4, RED, { bevel: 0.4, segs: 2, emissive: 0.9 }));
+    for (const side of [-1, 1]) cubes.push(box(`brake light ${side}`, side * lx - 2.2, side * lx + 2.2, ly - 1.0, ly + 1.0, ZR - 0.25, ZR + 2.2, BRAKE, { bevel: 0.3, segs: 1, emissive: 0.75 }));
+  } else if (tails === "pair") {
+    for (const side of [-1, 1]) cubes.push(box(`brake light ${side}`, side * lx - 3.0, side * lx + 3.0, ly - 1.7, ly + 1.7, ZR - 0.25, ZR + 2.2, RED, { bevel: 0.5, segs: 2, emissive: 0.85 }));
+  } else if (tails === "round") {
+    for (const side of [-1, 1]) cubes.push(Object.assign({ name: `brake light ${side}`, shape: "cylinder", from: [side * lx - 2.4, ly - 1.0 - pivot(), ZR - 1.2 - 2.4], size: [4.8, 2.0, 4.8], rotation: [90, 0, 0], color: RED, segments: 16, smooth: true, emissive: 0.85, metallic: 0, roughness: 0.2 }), Object.assign({ name: `brake ring ${side}`, shape: "cylinder", from: [side * lx - 3.0, ly - 0.7 - pivot(), ZR - 0.8 - 3.0], size: [6.0, 1.4, 6.0], rotation: [90, 0, 0], color: RIM, segments: 16, smooth: true }, RUBBER));
+  } else if (tails === "tall") {
+    for (const side of [-1, 1]) cubes.push(box(`brake light ${side}`, side * lx - 1.6, side * lx + 1.6, ly - 3.0, ly + 3.0, ZR - 0.25, ZR + 2.2, RED, { bevel: 0.5, segs: 2, emissive: 0.85 }));
+  }
   cubes.push(box("plate", -3.2, 3.2, along(s.yb, ZR) + 2.4, along(s.yb, ZR) + 4.8, ZR - 0.5, ZR + 0.2, "#f0f0ea", { material: RUBBER }));
   // the dark wheel wells, sitting in the dents
   for (const side of [-1, 1]) for (const zc of s.wheelZ) {
@@ -132,5 +159,5 @@ export function buildBody(s) {
   for (const fn of s.extras ?? []) fn({ cubes, box, s, along });
   const parts = [{ name: "body", origin: [0, pivot(), 0], rotation: [0, 0, 0], cubes, children: [] },
     wheel("wheel_fl", -1, s.wheelZ[0], s), wheel("wheel_fr", 1, s.wheelZ[0], s), wheel("wheel_rl", -1, s.wheelZ[1], s), wheel("wheel_rr", 1, s.wheelZ[1], s)];
-  return { model: { version: 1, scale: 0.0625, parts }, tail: { z: r2(ZR / 16), y: r2(ty / 16), x: r2((tw0 - 3.8) / 16) } };
+  return { model: { version: 1, scale: 0.0625, parts }, tail: { z: r2((ZR - 0.25) / 16), y: r2(ly / 16 - 0.06), x: r2(lx / 16 / 0.92) } };
 }

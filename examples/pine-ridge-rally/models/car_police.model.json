@@ -1021,20 +1021,20 @@
           "modifiers": [{"type":"mirror","axis":"x","merge":0.02,"clip":true}, {"type":"subsurf","levels":1,"renderLevels":1,"smooth":true}]
         },
         {
-          "name": "headlight -1",
+          "name": "headlight a-1",
           "shape": "mesh",
           "emissive": 0.95,
           "roughness": 0.2,
           "color": "#fff3cf",
           "verts": [
-            [-13.21, 4.5, 36.6],
-            [-7.01, 4.5, 36.6],
-            [-7.01, 7.3, 36.6],
-            [-13.21, 7.3, 36.6],
-            [-13.21, 4.5, 39.25],
-            [-7.01, 4.5, 39.25],
-            [-7.01, 7.3, 39.25],
-            [-13.21, 7.3, 39.25]
+            [-12.11, 6.35, 36.6],
+            [-7.51, 6.35, 36.6],
+            [-7.51, 7.85, 36.6],
+            [-12.11, 7.85, 36.6],
+            [-12.11, 6.35, 39.25],
+            [-7.51, 6.35, 39.25],
+            [-7.51, 7.85, 39.25],
+            [-12.11, 7.85, 39.25]
           ],
           "polys": [
             {"v":[3,2,1,0],"color":"#fff3cf","smooth":false},
@@ -1047,19 +1047,172 @@
           "modifiers": [{"type":"bevel","width":0.5,"segments":2,"angle":30}]
         },
         {
-          "name": "headlight rim -1",
+          "name": "headlight rim a-1",
           "shape": "mesh",
           "roughness": 0.85,
           "color": "#20222a",
           "verts": [
-            [-13.66, 4.05, 36.5],
-            [-6.56, 4.05, 36.5],
-            [-6.56, 7.75, 36.5],
-            [-13.66, 7.75, 36.5],
-            [-13.66, 4.05, 39.05],
-            [-6.56, 4.05, 39.05],
-            [-6.56, 7.75, 39.05],
-            [-13.66, 7.75, 39.05]
+            [-12.56, 5.9, 36.5],
+            [-7.06, 5.9, 36.5],
+            [-7.06, 8.3, 36.5],
+            [-12.56, 8.3, 36.5],
+            [-12.56, 5.9, 39.05],
+            [-7.06, 5.9, 39.05],
+            [-7.06, 8.3, 39.05],
+            [-12.56, 8.3, 39.05]
+          ],
+          "polys": [
+            {"v":[3,2,1,0],"color":"#20222a","smooth":false},
+            {"v":[4,5,6,7],"color":"#20222a","smooth":false},
+            {"v":[4,7,3,0],"color":"#20222a","smooth":false},
+            {"v":[1,2,6,5],"color":"#20222a","smooth":false},
+            {"v":[0,1,5,4],"color":"#20222a","smooth":false},
+            {"v":[7,6,2,3],"color":"#20222a","smooth":false}
+          ],
+          "modifiers": [{"type":"bevel","width":0.35,"segments":1,"angle":30}]
+        },
+        {
+          "name": "headlight b-1",
+          "shape": "mesh",
+          "emissive": 0.95,
+          "roughness": 0.2,
+          "color": "#fff3cf",
+          "verts": [
+            [-12.11, 4.15, 36.6],
+            [-7.51, 4.15, 36.6],
+            [-7.51, 5.65, 36.6],
+            [-12.11, 5.65, 36.6],
+            [-12.11, 4.15, 39.25],
+            [-7.51, 4.15, 39.25],
+            [-7.51, 5.65, 39.25],
+            [-12.11, 5.65, 39.25]
+          ],
+          "polys": [
+            {"v":[3,2,1,0],"color":"#fff3cf","smooth":false},
+            {"v":[4,5,6,7],"color":"#fff3cf","smooth":false},
+            {"v":[4,7,3,0],"color":"#fff3cf","smooth":false},
+            {"v":[1,2,6,5],"color":"#fff3cf","smooth":false},
+            {"v":[0,1,5,4],"color":"#fff3cf","smooth":false},
+            {"v":[7,6,2,3],"color":"#fff3cf","smooth":false}
+          ],
+          "modifiers": [{"type":"bevel","width":0.5,"segments":2,"angle":30}]
+        },
+        {
+          "name": "headlight rim b-1",
+          "shape": "mesh",
+          "roughness": 0.85,
+          "color": "#20222a",
+          "verts": [
+            [-12.56, 3.7, 36.5],
+            [-7.06, 3.7, 36.5],
+            [-7.06, 6.1, 36.5],
+            [-12.56, 6.1, 36.5],
+            [-12.56, 3.7, 39.05],
+            [-7.06, 3.7, 39.05],
+            [-7.06, 6.1, 39.05],
+            [-12.56, 6.1, 39.05]
+          ],
+          "polys": [
+            {"v":[3,2,1,0],"color":"#20222a","smooth":false},
+            {"v":[4,5,6,7],"color":"#20222a","smooth":false},
+            {"v":[4,7,3,0],"color":"#20222a","smooth":false},
+            {"v":[1,2,6,5],"color":"#20222a","smooth":false},
+            {"v":[0,1,5,4],"color":"#20222a","smooth":false},
+            {"v":[7,6,2,3],"color":"#20222a","smooth":false}
+          ],
+          "modifiers": [{"type":"bevel","width":0.35,"segments":1,"angle":30}]
+        },
+        {
+          "name": "headlight a1",
+          "shape": "mesh",
+          "emissive": 0.95,
+          "roughness": 0.2,
+          "color": "#fff3cf",
+          "verts": [
+            [7.51, 6.35, 36.6],
+            [12.11, 6.35, 36.6],
+            [12.11, 7.85, 36.6],
+            [7.51, 7.85, 36.6],
+            [7.51, 6.35, 39.25],
+            [12.11, 6.35, 39.25],
+            [12.11, 7.85, 39.25],
+            [7.51, 7.85, 39.25]
+          ],
+          "polys": [
+            {"v":[3,2,1,0],"color":"#fff3cf","smooth":false},
+            {"v":[4,5,6,7],"color":"#fff3cf","smooth":false},
+            {"v":[4,7,3,0],"color":"#fff3cf","smooth":false},
+            {"v":[1,2,6,5],"color":"#fff3cf","smooth":false},
+            {"v":[0,1,5,4],"color":"#fff3cf","smooth":false},
+            {"v":[7,6,2,3],"color":"#fff3cf","smooth":false}
+          ],
+          "modifiers": [{"type":"bevel","width":0.5,"segments":2,"angle":30}]
+        },
+        {
+          "name": "headlight rim a1",
+          "shape": "mesh",
+          "roughness": 0.85,
+          "color": "#20222a",
+          "verts": [
+            [7.06, 5.9, 36.5],
+            [12.56, 5.9, 36.5],
+            [12.56, 8.3, 36.5],
+            [7.06, 8.3, 36.5],
+            [7.06, 5.9, 39.05],
+            [12.56, 5.9, 39.05],
+            [12.56, 8.3, 39.05],
+            [7.06, 8.3, 39.05]
+          ],
+          "polys": [
+            {"v":[3,2,1,0],"color":"#20222a","smooth":false},
+            {"v":[4,5,6,7],"color":"#20222a","smooth":false},
+            {"v":[4,7,3,0],"color":"#20222a","smooth":false},
+            {"v":[1,2,6,5],"color":"#20222a","smooth":false},
+            {"v":[0,1,5,4],"color":"#20222a","smooth":false},
+            {"v":[7,6,2,3],"color":"#20222a","smooth":false}
+          ],
+          "modifiers": [{"type":"bevel","width":0.35,"segments":1,"angle":30}]
+        },
+        {
+          "name": "headlight b1",
+          "shape": "mesh",
+          "emissive": 0.95,
+          "roughness": 0.2,
+          "color": "#fff3cf",
+          "verts": [
+            [7.51, 4.15, 36.6],
+            [12.11, 4.15, 36.6],
+            [12.11, 5.65, 36.6],
+            [7.51, 5.65, 36.6],
+            [7.51, 4.15, 39.25],
+            [12.11, 4.15, 39.25],
+            [12.11, 5.65, 39.25],
+            [7.51, 5.65, 39.25]
+          ],
+          "polys": [
+            {"v":[3,2,1,0],"color":"#fff3cf","smooth":false},
+            {"v":[4,5,6,7],"color":"#fff3cf","smooth":false},
+            {"v":[4,7,3,0],"color":"#fff3cf","smooth":false},
+            {"v":[1,2,6,5],"color":"#fff3cf","smooth":false},
+            {"v":[0,1,5,4],"color":"#fff3cf","smooth":false},
+            {"v":[7,6,2,3],"color":"#fff3cf","smooth":false}
+          ],
+          "modifiers": [{"type":"bevel","width":0.5,"segments":2,"angle":30}]
+        },
+        {
+          "name": "headlight rim b1",
+          "shape": "mesh",
+          "roughness": 0.85,
+          "color": "#20222a",
+          "verts": [
+            [7.06, 3.7, 36.5],
+            [12.56, 3.7, 36.5],
+            [12.56, 6.1, 36.5],
+            [7.06, 6.1, 36.5],
+            [7.06, 3.7, 39.05],
+            [12.56, 3.7, 39.05],
+            [12.56, 6.1, 39.05],
+            [7.06, 6.1, 39.05]
           ],
           "polys": [
             {"v":[3,2,1,0],"color":"#20222a","smooth":false},
@@ -1098,57 +1251,6 @@
           "modifiers": [{"type":"bevel","width":0.25,"segments":1,"angle":30}]
         },
         {
-          "name": "headlight 1",
-          "shape": "mesh",
-          "emissive": 0.95,
-          "roughness": 0.2,
-          "color": "#fff3cf",
-          "verts": [
-            [7.01, 4.5, 36.6],
-            [13.21, 4.5, 36.6],
-            [13.21, 7.3, 36.6],
-            [7.01, 7.3, 36.6],
-            [7.01, 4.5, 39.25],
-            [13.21, 4.5, 39.25],
-            [13.21, 7.3, 39.25],
-            [7.01, 7.3, 39.25]
-          ],
-          "polys": [
-            {"v":[3,2,1,0],"color":"#fff3cf","smooth":false},
-            {"v":[4,5,6,7],"color":"#fff3cf","smooth":false},
-            {"v":[4,7,3,0],"color":"#fff3cf","smooth":false},
-            {"v":[1,2,6,5],"color":"#fff3cf","smooth":false},
-            {"v":[0,1,5,4],"color":"#fff3cf","smooth":false},
-            {"v":[7,6,2,3],"color":"#fff3cf","smooth":false}
-          ],
-          "modifiers": [{"type":"bevel","width":0.5,"segments":2,"angle":30}]
-        },
-        {
-          "name": "headlight rim 1",
-          "shape": "mesh",
-          "roughness": 0.85,
-          "color": "#20222a",
-          "verts": [
-            [6.56, 4.05, 36.5],
-            [13.66, 4.05, 36.5],
-            [13.66, 7.75, 36.5],
-            [6.56, 7.75, 36.5],
-            [6.56, 4.05, 39.05],
-            [13.66, 4.05, 39.05],
-            [13.66, 7.75, 39.05],
-            [6.56, 7.75, 39.05]
-          ],
-          "polys": [
-            {"v":[3,2,1,0],"color":"#20222a","smooth":false},
-            {"v":[4,5,6,7],"color":"#20222a","smooth":false},
-            {"v":[4,7,3,0],"color":"#20222a","smooth":false},
-            {"v":[1,2,6,5],"color":"#20222a","smooth":false},
-            {"v":[0,1,5,4],"color":"#20222a","smooth":false},
-            {"v":[7,6,2,3],"color":"#20222a","smooth":false}
-          ],
-          "modifiers": [{"type":"bevel","width":0.35,"segments":1,"angle":30}]
-        },
-        {
           "name": "fog 1",
           "shape": "mesh",
           "emissive": 0.6,
@@ -1180,14 +1282,14 @@
           "roughness": 0.85,
           "color": "#101116",
           "verts": [
-            [-6.01, 4.4, 38.4],
-            [6.01, 4.4, 38.4],
-            [6.01, 7.3, 38.4],
-            [-6.01, 7.3, 38.4],
-            [-6.01, 4.4, 39.2],
-            [6.01, 4.4, 39.2],
-            [6.01, 7.3, 39.2],
-            [-6.01, 7.3, 39.2]
+            [-6.16, 4.2, 38.4],
+            [6.16, 4.2, 38.4],
+            [6.16, 7.4, 38.4],
+            [-6.16, 7.4, 38.4],
+            [-6.16, 4.2, 39.2],
+            [6.16, 4.2, 39.2],
+            [6.16, 7.4, 39.2],
+            [-6.16, 7.4, 39.2]
           ],
           "polys": [
             {"v":[3,2,1,0],"color":"#101116","smooth":false},
@@ -1200,20 +1302,170 @@
           "modifiers": [{"type":"bevel","width":0.35,"segments":1,"angle":30}]
         },
         {
-          "name": "grille bar",
+          "name": "grille mesh",
           "shape": "mesh",
           "metallic": 0.95,
           "roughness": 0.16,
           "color": "#9aa0aa",
           "verts": [
-            [-5.41, 5.7, 38.5],
-            [5.41, 5.7, 38.5],
-            [5.41, 6.1, 38.5],
-            [-5.41, 6.1, 38.5],
-            [-5.41, 5.7, 39.3],
-            [5.41, 5.7, 39.3],
-            [5.41, 6.1, 39.3],
-            [-5.41, 6.1, 39.3]
+            [-5.11, 4.3, 38.4],
+            [-4.75, 4.3, 38.4],
+            [-4.75, 7.3, 38.4],
+            [-5.11, 7.3, 38.4],
+            [-5.11, 4.3, 39.3],
+            [-4.75, 4.3, 39.3],
+            [-4.75, 7.3, 39.3],
+            [-5.11, 7.3, 39.3]
+          ],
+          "polys": [
+            {"v":[3,2,1,0],"color":"#9aa0aa","smooth":false},
+            {"v":[4,5,6,7],"color":"#9aa0aa","smooth":false},
+            {"v":[4,7,3,0],"color":"#9aa0aa","smooth":false},
+            {"v":[1,2,6,5],"color":"#9aa0aa","smooth":false},
+            {"v":[0,1,5,4],"color":"#9aa0aa","smooth":false},
+            {"v":[7,6,2,3],"color":"#9aa0aa","smooth":false}
+          ]
+        },
+        {
+          "name": "grille mesh",
+          "shape": "mesh",
+          "metallic": 0.95,
+          "roughness": 0.16,
+          "color": "#9aa0aa",
+          "verts": [
+            [-2.64, 4.3, 38.4],
+            [-2.28, 4.3, 38.4],
+            [-2.28, 7.3, 38.4],
+            [-2.64, 7.3, 38.4],
+            [-2.64, 4.3, 39.3],
+            [-2.28, 4.3, 39.3],
+            [-2.28, 7.3, 39.3],
+            [-2.64, 7.3, 39.3]
+          ],
+          "polys": [
+            {"v":[3,2,1,0],"color":"#9aa0aa","smooth":false},
+            {"v":[4,5,6,7],"color":"#9aa0aa","smooth":false},
+            {"v":[4,7,3,0],"color":"#9aa0aa","smooth":false},
+            {"v":[1,2,6,5],"color":"#9aa0aa","smooth":false},
+            {"v":[0,1,5,4],"color":"#9aa0aa","smooth":false},
+            {"v":[7,6,2,3],"color":"#9aa0aa","smooth":false}
+          ]
+        },
+        {
+          "name": "grille mesh",
+          "shape": "mesh",
+          "metallic": 0.95,
+          "roughness": 0.16,
+          "color": "#9aa0aa",
+          "verts": [
+            [-0.18, 4.3, 38.4],
+            [0.18, 4.3, 38.4],
+            [0.18, 7.3, 38.4],
+            [-0.18, 7.3, 38.4],
+            [-0.18, 4.3, 39.3],
+            [0.18, 4.3, 39.3],
+            [0.18, 7.3, 39.3],
+            [-0.18, 7.3, 39.3]
+          ],
+          "polys": [
+            {"v":[3,2,1,0],"color":"#9aa0aa","smooth":false},
+            {"v":[4,5,6,7],"color":"#9aa0aa","smooth":false},
+            {"v":[4,7,3,0],"color":"#9aa0aa","smooth":false},
+            {"v":[1,2,6,5],"color":"#9aa0aa","smooth":false},
+            {"v":[0,1,5,4],"color":"#9aa0aa","smooth":false},
+            {"v":[7,6,2,3],"color":"#9aa0aa","smooth":false}
+          ]
+        },
+        {
+          "name": "grille mesh",
+          "shape": "mesh",
+          "metallic": 0.95,
+          "roughness": 0.16,
+          "color": "#9aa0aa",
+          "verts": [
+            [2.28, 4.3, 38.4],
+            [2.64, 4.3, 38.4],
+            [2.64, 7.3, 38.4],
+            [2.28, 7.3, 38.4],
+            [2.28, 4.3, 39.3],
+            [2.64, 4.3, 39.3],
+            [2.64, 7.3, 39.3],
+            [2.28, 7.3, 39.3]
+          ],
+          "polys": [
+            {"v":[3,2,1,0],"color":"#9aa0aa","smooth":false},
+            {"v":[4,5,6,7],"color":"#9aa0aa","smooth":false},
+            {"v":[4,7,3,0],"color":"#9aa0aa","smooth":false},
+            {"v":[1,2,6,5],"color":"#9aa0aa","smooth":false},
+            {"v":[0,1,5,4],"color":"#9aa0aa","smooth":false},
+            {"v":[7,6,2,3],"color":"#9aa0aa","smooth":false}
+          ]
+        },
+        {
+          "name": "grille mesh",
+          "shape": "mesh",
+          "metallic": 0.95,
+          "roughness": 0.16,
+          "color": "#9aa0aa",
+          "verts": [
+            [4.75, 4.3, 38.4],
+            [5.11, 4.3, 38.4],
+            [5.11, 7.3, 38.4],
+            [4.75, 7.3, 38.4],
+            [4.75, 4.3, 39.3],
+            [5.11, 4.3, 39.3],
+            [5.11, 7.3, 39.3],
+            [4.75, 7.3, 39.3]
+          ],
+          "polys": [
+            {"v":[3,2,1,0],"color":"#9aa0aa","smooth":false},
+            {"v":[4,5,6,7],"color":"#9aa0aa","smooth":false},
+            {"v":[4,7,3,0],"color":"#9aa0aa","smooth":false},
+            {"v":[1,2,6,5],"color":"#9aa0aa","smooth":false},
+            {"v":[0,1,5,4],"color":"#9aa0aa","smooth":false},
+            {"v":[7,6,2,3],"color":"#9aa0aa","smooth":false}
+          ]
+        },
+        {
+          "name": "grille mesh bar",
+          "shape": "mesh",
+          "metallic": 0.95,
+          "roughness": 0.16,
+          "color": "#9aa0aa",
+          "verts": [
+            [-5.76, 5.15, 38.4],
+            [5.76, 5.15, 38.4],
+            [5.76, 5.45, 38.4],
+            [-5.76, 5.45, 38.4],
+            [-5.76, 5.15, 39.3],
+            [5.76, 5.15, 39.3],
+            [5.76, 5.45, 39.3],
+            [-5.76, 5.45, 39.3]
+          ],
+          "polys": [
+            {"v":[3,2,1,0],"color":"#9aa0aa","smooth":false},
+            {"v":[4,5,6,7],"color":"#9aa0aa","smooth":false},
+            {"v":[4,7,3,0],"color":"#9aa0aa","smooth":false},
+            {"v":[1,2,6,5],"color":"#9aa0aa","smooth":false},
+            {"v":[0,1,5,4],"color":"#9aa0aa","smooth":false},
+            {"v":[7,6,2,3],"color":"#9aa0aa","smooth":false}
+          ]
+        },
+        {
+          "name": "grille mesh bar",
+          "shape": "mesh",
+          "metallic": 0.95,
+          "roughness": 0.16,
+          "color": "#9aa0aa",
+          "verts": [
+            [-5.76, 6.35, 38.4],
+            [5.76, 6.35, 38.4],
+            [5.76, 6.65, 38.4],
+            [-5.76, 6.65, 38.4],
+            [-5.76, 6.35, 39.3],
+            [5.76, 6.35, 39.3],
+            [5.76, 6.65, 39.3],
+            [-5.76, 6.65, 39.3]
           ],
           "polys": [
             {"v":[3,2,1,0],"color":"#9aa0aa","smooth":false},
