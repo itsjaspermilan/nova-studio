@@ -2,6 +2,7 @@
   import { resizable } from "../lib/resize";
   import { onMount, untrack } from "svelte";
   import { commands } from "../lib/commands";
+  import { placesOf, strokeMaps } from "../lib/symmetry";
   import { boundsOf, combine, emptyMask, growMask, has, invertMask, isEmpty, isRect, liftMasked, maskFromColor, maskFromEllipse, maskFromPolygon, maskFromRect, outlineSegments, placeMask, type Combine, type Mask } from "../lib/selection";
   import { commandsRev } from "../lib/commands-rev.svelte";
   import { PaletteStore, normalizeHex, nearestColor, parsePalette, toGpl, type Palette } from "../lib/palette";
@@ -305,7 +306,7 @@
 
   $effect(() => {
     // everything the picture depends on
-    doc; frame; rev; zoom; onion; onionPast; onionFuture; onionTint; showGrid; ready; hover; size; tool; playing; canvas; selection; selMask; symX; symY;
+    doc; frame; rev; zoom; onion; onionPast; onionFuture; onionTint; showGrid; ready; hover; size; tool; playing; canvas; selection; selMask; symX; symY; symD; tileX; tileY;
     paint();
   });
 
@@ -353,6 +354,18 @@
 
   let symX = $state(false);
   let symY = $state(false);
+  /// Mirror across the diagonal (a square sprite only), and draw tiled: strokes that run off one edge come back in at the other.
+  let symD = $state(false);
+  let tileX = $state(false);
+  let tileY = $state(false);
+  const square = $derived(doc.fw === doc.fh);
+  /// Every place a stroke is drawn (lib/symmetry.ts); the fill does not tile, a flood is the same however far it wraps.
+  const maps = $derived(strokeMaps(doc.fw, doc.fh, { x: symX, y: symY, diagonal: symD && square, tileX, tileY }));
+  const fillMaps = $derived(strokeMaps(doc.fw, doc.fh, { x: symX, y: symY, diagonal: symD && square }));
+  /// The right mouse button has a tool and a colour of its own (the pencil and eraser are the usual pair).
+  let rightTool: Tool = $state("eraser");
+  let rightColor: Rgba = $state([255, 255, 255, 255]);
+  let swapped: { tool: Tool; color: Rgba } | null = null;
   let perfect = $state(true);
   /// The selection: its bounds, and (when it is not a plain rectangle) the cells it holds (lib/selection.ts).
   let selection: Rect | null = $state(null);
@@ -381,14 +394,6 @@
   let clipboard: Raster | null = null;
   let recent: string[] = $state([]);
 
-  function variants(): [boolean, boolean][] {
-    const out: [boolean, boolean][] = [[false, false]];
-    if (symX) out.push([true, false]);
-    if (symY) out.push([false, true]);
-    if (symX && symY) out.push([true, true]);
-    return out;
-  }
-  const flipped = (p: Point, fx: boolean, fy: boolean): Point => ({ x: fx ? doc.fw - 1 - p.x : p.x, y: fy ? doc.fh - 1 - p.y : p.y });
 
   function cell(e: PointerEvent): Point {
     const r = canvas!.getBoundingClientRect();
@@ -396,16 +401,35 @@
   }
 
   function down(e: PointerEvent) {
-    if (e.button !== 0 || !ready) return;
+    if ((e.button !== 0 && e.button !== 2) || !ready) return;
     const p = cell(e);
+    // the right button works with the right-hand tool and colour for as long as it is held down (finish() puts the left-hand ones back)
+    if (e.button === 2) {
+      swapped = { tool, color };
+      tool = rightTool;
+      color = rightColor;
+    }
     if (tool === "picker") {
       const c = getPixel(doc.frames[frame]!, p.x, p.y);
-      if (c && c[3] > 0) color = c;
+      if (c && c[3] > 0) {
+        if (swapped) rightColor = c;
+        else color = c;
+      }
+      if (swapped) {
+        tool = swapped.tool;
+        color = swapped.color;
+        swapped = null;
+      }
       return;
     }
     const layer = doc.layers[activeLayer]!;
     if (!layer.visible) {
       studio.say("info", `"${layer.name}" is hidden. Show it (the eye) to draw on it.`);
+      if (swapped) {
+        tool = swapped.tool;
+        color = swapped.color;
+        swapped = null;
+      }
       return;
     }
     const r = cel();
@@ -437,10 +461,7 @@
     strokePoints = [p];
     if (tool === "pencil" || tool === "eraser") drawStroke(r);
     else if (tool === "fill") {
-      for (const [fx, fy] of variants()) {
-        const q = flipped(p, fx, fy);
-        floodFill(r, q.x, q.y, color);
-      }
+      for (const q of placesOf(p, fillMaps, doc.fw, doc.fh)) floodFill(r, q.x, q.y, color);
       recompose(doc, frame);
       finish();
       return;
@@ -455,17 +476,15 @@
     r.data.set(base!.data);
     const c = tool === "eraser" ? CLEAR : color;
     const points = tool === "pencil" && perfect && size === 1 ? pixelPerfect(strokePoints) : strokePoints;
-    for (const [fx, fy] of variants()) for (const pt of points) {
-      const q = flipped(pt, fx, fy);
-      stamp(r, q.x, q.y, size, c);
-    }
+    // (a brush that hangs over the edge of a tiled sprite comes back in at the other side: places up to a brush's width outside count)
+    for (const pt of points) for (const q of placesOf(pt, maps, doc.fw, doc.fh, size + 1)) stamp(r, q.x, q.y, size, c);
   }
 
   function shape(r: Raster, p: Point) {
     r.data.set(base!.data);
-    for (const [fx, fy] of variants()) {
-      const a = flipped(start, fx, fy);
-      const b = flipped(p, fx, fy);
+    for (const m of maps) {
+      const a = m(start);
+      const b = m(p);
       if (tool === "line") drawLine(r, a, b, size, color);
       else if (tool === "rect") drawRect(r, a, b, size, color, filled);
       else if (tool === "ellipse") drawEllipse(r, a, b, size, color, filled);
@@ -508,6 +527,12 @@
 
   function finish() {
     selecting = null;
+    if (swapped) {
+      // (a right-button stroke that picked a colour keeps it for the right hand)
+      tool = swapped.tool;
+      color = swapped.color;
+      swapped = null;
+    }
     if (!drawing) return;
     drawing = false;
     const r = cel();
@@ -811,15 +836,17 @@
     if (!ctx || !preview || !ready) return;
     const shown = playing ? previewFrame : frame;
     const r = doc.frames[Math.min(shown, doc.frames.length - 1)] ?? doc.frames[0]!;
-    const scale = Math.max(1, Math.floor(112 / Math.max(r.w, r.h)));
-    preview.width = r.w * scale;
-    preview.height = r.h * scale;
+    // a tiled sprite is shown repeated three times across and down, as a pattern
+    const [repX, repY] = [tileX ? 3 : 1, tileY ? 3 : 1];
+    const scale = Math.max(1, Math.floor(112 / Math.max(r.w * repX, r.h * repY)));
+    preview.width = r.w * repX * scale;
+    preview.height = r.h * repY * scale;
     ctx.imageSmoothingEnabled = false;
     const tmp = document.createElement("canvas");
     tmp.width = r.w;
     tmp.height = r.h;
     tmp.getContext("2d")!.putImageData(new ImageData(new Uint8ClampedArray(r.data), r.w, r.h), 0, 0);
-    ctx.drawImage(tmp, 0, 0, preview.width, preview.height);
+    for (let j = 0; j < repY; j++) for (let i = 0; i < repX; i++) ctx.drawImage(tmp, i * r.w * scale, j * r.h * scale, r.w * scale, r.h * scale);
     rev;
   });
 
@@ -935,6 +962,7 @@
       commands.register({ id: "sprite.selectGrow", title: "Grow the selection by one pixel", menu: "Sprite", enabled: () => has_() && !!selection, run: () => { const m = currentMask(); if (m) setSelection(growMask(m, 1)); } }),
       commands.register({ id: "sprite.selectShrink", title: "Shrink the selection by one pixel", menu: "Sprite", enabled: () => has_() && !!selection, run: () => { const m = currentMask(); if (m) setSelection(growMask(m, -1)); } }),
       commands.register({ id: "sprite.cropToSelection", title: "Crop the sprite to the selection", menu: "Sprite", help: "Every frame and layer is cut down to the selection's box", enabled: () => has_() && !!selection, run: () => { if (selection) { structural(cropDoc(doc, selection)); setSelection(null); zoom = Math.max(1, Math.min(32, Math.floor(420 / Math.max(doc.fw, doc.fh)))); } } }),
+      commands.register({ id: "sprite.swapColors", title: "Swap the two colours", menu: "Sprite", keys: ["X"], enabled: () => ready, run: swapColors }),
       commands.register({ id: "sprite.flipH", title: "Flip left to right", menu: "Sprite", enabled: has, run: () => applyFx((r, a) => flipRaster(r, false, a)) }),
       commands.register({ id: "sprite.flipV", title: "Flip top to bottom", menu: "Sprite", enabled: has, run: () => applyFx((r, a) => flipRaster(r, true, a)) }),
       commands.register({ id: "sprite.turnRight", title: "Turn a quarter clockwise", menu: "Sprite", icon: "rotate", enabled: has, run: () => applyFx((r, a) => rotateQuarter(r, false, a)) }),
@@ -951,6 +979,9 @@
   });
 
   const hex = (c: Rgba) => toHex([c[0], c[1], c[2], 255]);
+  const swapColors = () => {
+    [color, rightColor] = [rightColor, color];
+  };
   const same = (a: Rgba, b: string) => hex(a) === b;
   function pickHex(h: string) {
     if (snapToPalette) h = nearestColor(palette.colors, h);
@@ -992,8 +1023,6 @@
         {#if tool === "rect" || tool === "ellipse"}
           <label class="check"><input type="checkbox" bind:checked={filled} /> Filled</label>
         {/if}
-        <label class="check" title="Mirror strokes left-right"><input type="checkbox" bind:checked={symX} /> ↔</label>
-        <label class="check" title="Mirror strokes up-down"><input type="checkbox" bind:checked={symY} /> ↕</label>
         {#if tool === "pencil"}<label class="check" title="One-pixel lines without double corners"><input type="checkbox" bind:checked={perfect} /> Pixel-perfect</label>{/if}
         <label class="check"><input type="checkbox" bind:checked={onion} /> Onion skin</label>
         {#if onion}
@@ -1025,7 +1054,7 @@
         </form>
       {/if}
       <div class="scroller">
-        <canvas bind:this={canvas} aria-label="Sprite canvas" onpointerdown={down} onpointermove={move} onpointerup={up} onpointercancel={up} onpointerleave={leave}></canvas>
+        <canvas bind:this={canvas} aria-label="Sprite canvas" onpointerdown={down} onpointermove={move} onpointerup={up} onpointercancel={up} onpointerleave={leave} oncontextmenu={(e) => e.preventDefault()}></canvas>
       </div>
 
       <div class="timeline">
@@ -1085,6 +1114,19 @@
         <input bind:this={paletteFile} type="file" accept=".gpl,.hex,.json,.txt" hidden onchange={importPalette} />
       </div>
 
+      <h3>Drawing</h3>
+      <div class="row wrap drawing">
+        <label class="check" title="Mirror strokes left-right"><input type="checkbox" bind:checked={symX} /> ↔</label>
+        <label class="check" title="Mirror strokes up-down"><input type="checkbox" bind:checked={symY} /> ↕</label>
+        <label class="check" title={square ? "Mirror strokes across the diagonal" : "Diagonal mirroring needs a square sprite"}><input type="checkbox" bind:checked={symD} disabled={!square} /> ⤡</label>
+        <label class="check" title="Tiled: a stroke that runs off the left or right edge comes back in at the other side, and the preview repeats the sprite"><input type="checkbox" bind:checked={tileX} /> tile ↔</label>
+        <label class="check" title="Tiled: up and down"><input type="checkbox" bind:checked={tileY} /> tile ↕</label>
+        <label title="What the right mouse button does">Right button
+          <select value={rightTool} onchange={(e) => (rightTool = e.currentTarget.value as Tool)}>{#each TOOLS.filter((t) => !isSelectTool(t.id)) as t (t.id)}<option value={t.id}>{t.label}</option>{/each}</select>
+        </label>
+        <input type="color" value={hex(rightColor)} oninput={(e) => { const c = parseHex(e.currentTarget.value); if (c) rightColor = c; }} aria-label="Right button colour" title="The right button's colour" />
+        <button title="Swap the two colours (X)" aria-label="Swap the colours" onclick={swapColors}>⇄</button>
+      </div>
       {#if recent.length}
         <div class="palette recent">
           {#each recent as p (p)}
@@ -1251,6 +1293,7 @@
   .current { display: flex; gap: 6px; }
   .current input[type="color"] { width: 40px; height: 30px; padding: 0; }
   .hexbox { flex: 1; min-width: 0; }
+  .drawing { align-items: center; gap: 6px; } .drawing select { max-width: 120px; }
   .palbar { margin: 4px 0; align-items: center; } .palbar select { flex: 1; min-width: 0; }
   .palette { display: grid; grid-template-columns: repeat(8, 1fr); gap: 3px; }
   .swatch { aspect-ratio: 1; padding: 0; border-radius: 3px; }
