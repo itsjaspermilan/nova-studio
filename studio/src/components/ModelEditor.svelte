@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from "./Icon.svelte";
   import { rememberSize, savedSize } from "../lib/resize";
   import { onMount, untrack } from "svelte";
   import * as THREE from "three";
@@ -2069,6 +2070,7 @@
     { id: "mesh", title: "Mesh", help: "The picked points, edge and face, and tools for the whole mesh" },
   ];
   let propTab = $state<PropTab>("object");
+  let poseTab = $state<"pose" | "rules">("pose");
   $effect(() => {
     // entering Edit mode shows the mesh tab (unless another tab is being used, such as the bones); leaving it puts that tab away
     if (inEdit) untrack(() => { if (propTab === "object") propTab = "mesh"; });
@@ -2726,10 +2728,10 @@
         <div class="shelf" role="toolbar" aria-label="Tools for this mode">
         {#if mode === "model" && selected && !inEdit}
           <span class="seg" role="group" aria-label="Handles">
-            <button class:on={gizmoMode === "translate"} onclick={() => (gizmoMode = "translate")} title="Move (W)">Move</button>
-            <button class:on={gizmoMode === "rotate"} onclick={() => (gizmoMode = "rotate")} title="Turn (E)">Turn</button>
-            <button class:on={gizmoMode === "pivot"} disabled={selected.cube !== undefined} onclick={() => (gizmoMode = "pivot")} title={selected.cube !== undefined ? "Select a part to move its pivot" : "Move the point this part turns about, leaving its shapes where they are (P)"}>Pivot</button>
-            <button class:on={gizmoMode === "scale"} disabled={selected.cube === undefined} onclick={() => (gizmoMode = "scale")} title={selected.cube === undefined ? "Parts are resized in animations" : "Resize (R)"}>Resize</button>
+            <button class:on={gizmoMode === "translate"} onclick={() => (gizmoMode = "translate")} title="Move (W)"><Icon name="move" size={14} /> Move</button>
+            <button class:on={gizmoMode === "rotate"} onclick={() => (gizmoMode = "rotate")} title="Turn (E)"><Icon name="rotate" size={14} /> Turn</button>
+            <button class:on={gizmoMode === "pivot"} disabled={selected.cube !== undefined} onclick={() => (gizmoMode = "pivot")} title={selected.cube !== undefined ? "Select a part to move its pivot" : "Move the point this part turns about, leaving its shapes where they are (P)"}><Icon name="pivot" size={14} /> Pivot</button>
+            <button class:on={gizmoMode === "scale"} disabled={selected.cube === undefined} onclick={() => (gizmoMode = "scale")} title={selected.cube === undefined ? "Parts are resized in animations" : "Resize (R)"}><Icon name="scale" size={14} /> Resize</button>
           </span>
           <label class="check" title="Snap to whole units and 15 degrees"><input type="checkbox" bind:checked={snap} /> Snap</label>
         {/if}
@@ -2758,7 +2760,7 @@
           <button onclick={slideEdge} title="Slide the picked edge along the surface (quad faces on the side asked for)">Slide edge</button>
           {#if selectNote}<span class="dim small" role="status">{selectNote}</span>{/if}
         {/if}
-        {#if inEdit}<button class:on={boxArmed} onclick={() => (boxArmed = !boxArmed)} title="Box select: drag a rectangle over the points (B)">Box</button>{/if}
+        {#if inEdit}<button class:on={boxArmed} onclick={() => (boxArmed = !boxArmed)} title="Box select: drag a rectangle over the points (B)"><Icon name="select" size={14} /> Box</button>{/if}
         </div>
         <canvas bind:this={canvas} tabindex="0" aria-label="3D view" onpointerdown={pointerDown} onpointermove={pointerMove} onpointerup={pointerUp}></canvas>
         <NavButtons controls={() => controls} camera={() => camera} height={() => canvas?.clientHeight ?? 400} />
@@ -2924,11 +2926,18 @@
           <p class="dim small">Select a part (or one of its cubes) to pose it. Changing a value sets a key at {fmtTime(animTime)} s.</p>
         {:else}
           <p class="small"><strong>{partNames.join(" › ")}</strong></p>
+          <div class="proptabs" role="tablist" aria-label="Pose properties">
+            <button role="tab" aria-selected={poseTab === "pose"} class:on={poseTab === "pose"} onclick={() => (poseTab = "pose")} title="Position, turn and size of this part, and the keys">Pose</button>
+            <button role="tab" aria-selected={poseTab === "rules"} class:on={poseTab === "rules"} onclick={() => (poseTab = "rules")} title="Limits, copies and reach, and skinning">Rules</button>
+          </div>
+          {#if poseTab === "pose"}
           {#each [["position", "Position"], ["rotation", "Rotation (°)"], ["scale", "Scale"]] as [prop, label] (prop)}
             <h4>{label} {#if keyedHere(prop as Prop)}<span class="keyed" title="There is a key here">◆</span>{/if}</h4>
             <div class="vec">{#each poseValue(prop as Prop) as v, i (i)}<input type="number" step={prop === "scale" ? 0.1 : 1} value={v} aria-label={`${"xyz"[i]} ${prop}`} onchange={(e) => setPoseValue(prop as Prop, i, e.currentTarget.value)} />{/each}</div>
             <button class="ghost keybtn" onclick={() => keyProp(prop as Prop)}>◆ Key {prop}</button>
           {/each}
+          {/if}
+          {#if poseTab === "rules"}
           <div class="row wrap"><button onclick={skinEverything} title="Make every mesh of the model bend with the parts it sits among (weights worked out from where the parts are)">Auto-skin all meshes</button></div>
           <h4>Constraints <span class="dim small">(studio only: bake them into keys for the game)</span></h4>
           {#each myConstraints as c, ci (ci)}
@@ -2961,6 +2970,8 @@
               <label class="check"><input type="checkbox" bind:checked={bakeRemove} /> and remove the rules</label>
             </div>
           {/if}
+          {/if}
+          {#if poseTab === "pose"}
           {#if clip && partNames.length && easeAt(clip, partNames, animTime) !== undefined}
             <label>How this key blends into the next
               <select value={easeAt(clip, partNames, animTime)} aria-label="Easing" onchange={(e) => commit(setEase(doc, clipIndex, partNames, animTime, e.currentTarget.value as Ease))}>
@@ -2970,6 +2981,7 @@
           {/if}
           <div class="row"><button class="danger" onclick={deleteKeysHere} disabled={!keyTimes.some((t) => Math.abs(t - animTime) < KEY_STEP / 2)}>Delete keys here</button></div>
           <p class="dim small">Properties with no key stay as modelled. Keys blend smoothly; rotations take the short way round.</p>
+          {/if}
         {/if}
       {:else if selected && cube}
         <h3>{cube.shape === "mesh" ? "Mesh" : "Shape"}</h3>
