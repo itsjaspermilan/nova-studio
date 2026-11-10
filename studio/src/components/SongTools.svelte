@@ -219,7 +219,7 @@
   <section>
     <h4>Automation over the song <span class="dim small">(this track)</span></h4>
     <div class="row">
-      <label>Lane <select bind:value={laneParam} onchange={() => (pointValue = laneParam === "pan" ? 0 : 1)} aria-label="Which lane"><option value="gain">loudness</option><option value="pan">pan</option><option value="cutoff">filter cutoff</option></select></label>
+      <label>Lane <select bind:value={laneParam} onchange={() => (pointValue = laneParam === "pan" ? 0 : 1)} aria-label="Which lane"><option value="gain">loudness</option><option value="pan">pan</option><option value="cutoff">filter cutoff</option><option value="reverb">reverb send</option></select></label>
       <span class="dim small">Press and drag on the picture to draw it.</span>
     </div>
     <svg viewBox="0 0 400 60" class="lane" role="img" aria-label="The {laneParam} lane of this track" style="touch-action:none;cursor:crosshair"
@@ -231,7 +231,7 @@
     <div class="row">
       <label>Curve <select disabled={!lane} value={lane?.curve ?? "linear"} onchange={(e) => lane && commit(setLane(song, track, { ...lane, curve: e.currentTarget.value as "linear" | "step" | "smooth" }))}><option value="linear">straight</option><option value="smooth">smooth</option><option value="step">steps</option></select></label>
       <label>at step <input type="number" min="0" max={song.length} bind:value={pointStep} class="narrow" /></label>
-      <label>{laneParam === "gain" ? "gain" : laneParam === "pan" ? "pan" : "cutoff ×"} <input type="number" min={range[0]} max={range[1]} step="0.1" bind:value={pointValue} class="narrow" /></label>
+      <label>{laneParam === "gain" ? "gain" : laneParam === "pan" ? "pan" : laneParam === "reverb" ? "send ×" : "cutoff ×"} <input type="number" min={range[0]} max={range[1]} step="0.1" bind:value={pointValue} class="narrow" /></label>
       <button onclick={setPoint}>Set point</button>
       <button class="ghost" disabled={!lane} onclick={() => commit(setLane(song, track, null, laneParam))}>Clear</button>
     </div>

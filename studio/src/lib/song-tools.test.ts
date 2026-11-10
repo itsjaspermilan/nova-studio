@@ -328,7 +328,7 @@ describe("a pan lane and drawing lanes", () => {
     expect(parseSong(JSON.stringify(bad)).ok).toBe(false);
     bad.tracks[0].automation = [{ param: "pan", curve: "linear", points: [] }, { param: "pan", curve: "linear", points: [] }];
     expect(parseSong(JSON.stringify(bad)).ok).toBe(false);
-    bad.tracks[0].automation = [{ param: "reverb", curve: "linear", points: [] }];
+    bad.tracks[0].automation = [{ param: "echo", curve: "linear", points: [] }];
     expect(parseSong(JSON.stringify(bad)).ok).toBe(false);
   });
 });
@@ -381,5 +381,22 @@ describe("a filter cutoff lane", () => {
     const open = rough(s);
     const closed = rough(setLP(s, 0, "cutoff", 0, 0.1));
     expect(closed).toBeLessThan(open * 0.8);
+  });
+});
+
+describe("a reverb send lane", () => {
+  it("sends a note to the room only as far as the lane says", () => {
+    let s = { ...newS(), length: 8 };
+    s.tracks = [{ ...s.tracks[0]!, wave: "square", reverb: 0.8, notes: [{ step: 0, len: 1, pitch: 60, vel: 0.8 }] } as never];
+    const tail = (song: typeof s) => {
+      const out = renderS(song).channels[0]!;
+      let sum = 0;
+      for (let i = Math.floor(out.length * 0.6); i < out.length; i++) sum += Math.abs(out[i]!);
+      return sum;
+    };
+    const wet = tail(s);
+    const dry = tail(setLP(s, 0, "reverb", 0, 0));
+    expect(wet).toBeGreaterThan(0);
+    expect(dry).toBeLessThan(wet * 0.2);
   });
 });

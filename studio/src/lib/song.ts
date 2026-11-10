@@ -60,6 +60,8 @@ export interface Note {
   bend?: number;
   /// Not saved: a multiple of the track's filter cutoff for this note, put in when the song is rendered (a "cutoff" lane).
   cut?: number;
+  /// Not saved: a multiple of the track's reverb send for this note, put in when the song is rendered (a "reverb" lane).
+  room?: number;
 }
 
 export interface Track {
@@ -169,9 +171,9 @@ export interface SongMaster {
 }
 
 /// One automation lane, read at each note's first step. "gain" (0 to 2) multiplies the note's loudness; "pan" (-1 to 1) is added to the note's place in the stereo field.
-export type LaneParam = "gain" | "pan" | "cutoff";
+export type LaneParam = "gain" | "pan" | "cutoff" | "reverb";
 /// "cutoff": a multiple of the track's filter cutoff (0.1 to 4: a lane at 0.5 closes the filter to half its pitch), for tracks whose voice has a cutoff.
-export const LANE_RANGE: Record<LaneParam, [number, number]> = { gain: [0, 2], pan: [-1, 1], cutoff: [0.1, 4] };
+export const LANE_RANGE: Record<LaneParam, [number, number]> = { gain: [0, 2], pan: [-1, 1], cutoff: [0.1, 4], reverb: [0, 2] };
 export interface Lane {
   param: LaneParam;
   curve: "linear" | "step" | "smooth";
@@ -475,7 +477,7 @@ export function parseSong(text: string): Parsed {
       const lanes: Lane[] = [];
       for (const [li, lane] of t.automation.entries()) {
         const where = `${at}.automation[${li}]`;
-        if (!lane || (lane.param !== "gain" && lane.param !== "pan" && lane.param !== "cutoff")) return { ok: false, error: `${where}.param must be "gain", "pan" or "cutoff"` };
+        if (!lane || (lane.param !== "gain" && lane.param !== "pan" && lane.param !== "cutoff" && lane.param !== "reverb")) return { ok: false, error: `${where}.param must be "gain", "pan", "cutoff" or "reverb"` };
         if (t.automation.slice(0, li).some((q) => q.param === lane.param)) return { ok: false, error: `${where}: there is already a "${lane.param}" lane on this track` };
         const [lowest, highest] = LANE_RANGE[lane.param];
         if (!["linear", "step", "smooth"].includes(lane.curve)) return { ok: false, error: `${where}.curve must be "linear", "step" or "smooth"` };
@@ -1242,6 +1244,8 @@ export function renderSong(source: Song, rate = RATE): Sound {
     const outL = temp ? new Float32Array(total) : dest!.l;
     const outR = temp ? new Float32Array(total) : dest!.r;
     const sendNow = send > 0 && !chain.length && !!dest;
+    // (a note's share to the room: the track's send times the note's "reverb" lane value; with an effect chain the send is the track's alone)
+    let noteSend = send;
     // (a note's own pan moves it within the track's: `gl`/`gr` are the track's gains, `pl`/`pr` the note's)
     const mix = (index: number, v: number, pl = gl, pr = gr) => {
       const i = index % total; // wrap the tail onto the start
@@ -1252,8 +1256,8 @@ export function renderSong(source: Song, rate = RATE): Sound {
         echoR[i] = echoR[i]! + v * pr;
       }
       if (sendNow) {
-        sendL![i] = sendL![i]! + v * pl * send;
-        sendR![i] = sendR![i]! + v * pr * send;
+        sendL![i] = sendL![i]! + v * pl * noteSend;
+        sendR![i] = sendR![i]! + v * pr * noteSend;
       }
     };
     // the same for a stereo pair of values already panned by the voice (a track's pan and volume are applied here)
@@ -1266,13 +1270,14 @@ export function renderSong(source: Song, rate = RATE): Sound {
         echoR[i] = echoR[i]! + r;
       }
       if (sendNow) {
-        sendL![i] = sendL![i]! + l * send;
-        sendR![i] = sendR![i]! + r * send;
+        sendL![i] = sendL![i]! + l * noteSend;
+        sendR![i] = sendR![i]! + r * noteSend;
       }
     };
     for (const [ni, n] of track.notes.entries()) {
       const startIndex = Math.round((song.tempos?.length ? stepTime(song, n.step) : n.step * stepSec) * rate);
       const notePan = clamp(pan + (n.pan ?? 0), -1, 1);
+      noteSend = n.room === undefined ? send : clamp(send * n.room, 0, 1);
       const nl = n.pan ? Math.cos(((notePan + 1) * Math.PI) / 4) * track.volume : gl;
       const nr = n.pan ? Math.sin(((notePan + 1) * Math.PI) / 4) * track.volume : gr;
       if (track.kind === "drums" && track.kit === "samples") {
