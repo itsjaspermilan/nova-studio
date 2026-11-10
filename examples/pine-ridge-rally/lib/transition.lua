@@ -120,9 +120,7 @@ function transition.draw()
 end
 
 -- What the screen says going into the race that is chosen.
--- (`roam`: the wipe into free roam instead of a race)
-function transition.race_spec(roam)
-  if roam then return { title = "PINE RIDGE", sub = "FREE ROAM", palette = "pine_ridge" } end
+function transition.race_spec()
   local info = state.current_track()
   local sub = ({ race = state.laps .. (state.laps == 1 and " LAP" or " LAPS"), trial = "TIME TRIAL", rally = "RALLY STAGE  ·  5 SECTIONS" })[state.mode] or ""
   return { title = string.upper(info.name), sub = sub, palette = state.look_id() }

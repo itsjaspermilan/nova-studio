@@ -274,7 +274,7 @@ Pixelorama, Blockbench, GameStudio, Game Maker 8 manual.
 - Language server and typed-Lua (Luau) timing.
 - Studio on Windows/Linux: when, and how the runtime ships with it.
 - Licence for Nova, and acceptable licences for bundled dependencies.
-- Pine Ridge: merge the radio branch `claude/pine-ridge-radio-d72262`; whether the menu modes go (free roam only); bring progression back (`state.UNLOCK_ALL_VEHICLES`).
+- Pine Ridge: merge the radio branch `claude/pine-ridge-radio-d72262`; (2026-11-10: free roam and the Horizon-style map are removed, the menu keeps Rally, Circuit and Time Trial, every car stays unlocked for testing; old code in git tag `archive/free-roam-2026-11`); bring progression back (`state.UNLOCK_ALL_VEHICLES`).
 
 ## Risks
 

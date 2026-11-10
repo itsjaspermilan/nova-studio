@@ -1222,8 +1222,7 @@ function race.scene()
         nova.restart_scene()
       else
         audio.stop_music(0.4)
-        -- (an event started in free roam goes back there, to where the car left)
-        if state.from_roam then nova.goto_scene("roam") else nova.goto_scene("title", "menu") end
+        nova.goto_scene("title", "menu")
       end
     end
   end

@@ -22,7 +22,6 @@ local CONTROLS = {
   { "Brake / reverse", "Down  ·  S", { "pad_zl" } },
   { "Handbrake (slides)", "Space", { "pad_b", "pad_r" } },
   { "Back on the road", "R", { "pad_select" } },
-  { "Race details (free roam)", "Y", { "pad_y" } },
   { "Change camera", "C", { "pad_l" } },
   { "Look around", "Q / E  (press the stick: look back)", { "pad_stick_r" } },
   { "Pause", "Esc  ·  P", { "pad_start" } },
@@ -40,8 +39,6 @@ function Title:enter(screen)
   -- (2026-11-08: the game opens on the main menu; there is no PRESS START card before it)
   if screen == "select" or screen == "title" or screen == nil then screen = "menu" end
   self.screen = screen
-  -- (free roam's garage in the forest town opens the garage here, and B goes back out to the town: see Title:garage_menu)
-  if screen == "hub_garage" then self.screen = "menu"; self.hub = true end
   -- (the menus remember their focus while the title scene is up, going between its screens; coming back from a race they start again
   -- on their first row)
   for _, id in ipairs({ "main", "options", "controls", "pick_track", "garage", "laps", "confirm" }) do nova.ui.forget(id) end
@@ -51,7 +48,6 @@ function Title:enter(screen)
   self.cards_last = {}
   audio.music("menu", { volume = 0.95, fade = 0.8 })
   state.apply_volumes()
-  if self.hub then self:open_garage("hub") end
 end
 
 function Title:leave() menu_bg.leave(); backdrop.leave() end
@@ -103,17 +99,7 @@ function Title:open_confirm()
   self:go("confirm")
 end
 
-function Title:start_roam()
-  state.save_options()
-  state.from_roam, state.roam_at = false, nil
-  audio.stop_music(0.6)
-  nova.log("menu: free roam in " .. state.current_car().id)
-  transition.cover(transition.race_spec(true), function() nova.goto_scene("roam") end)
-  self.screen = "starting"
-end
-
 function Title:start_race()
-  state.from_roam = false
   state.save_options()
   audio.stop_music(0.6)
   nova.log(string.format("menu: start %s on %s in %s", state.mode, state.current_track().id, state.current_car().id))
@@ -308,7 +294,6 @@ function Title:main_menu()
     { "button", "RALLY", id = "rally", h = 40 },
     { "button", "CIRCUIT", id = "race", h = 40 },
     { "button", "TIME TRIAL", id = "trial", h = 40 },
-    { "button", "FREE ROAM", id = "roam", h = 40 },
     { "button", "GARAGE", id = "garage", h = 40 },
     { "button", "HOW TO PLAY", id = "howto", h = 40 },
     { "button", "OPTIONS", id = "options", h = 40 },
@@ -320,9 +305,6 @@ function Title:main_menu()
     if id == "race" or id == "trial" or id == "rally" then
       state.mode = id
       self:open_track()
-    elseif id == "roam" then
-      -- free roam needs a car of your own: a new player picks one first
-      if state.owns(state.current_car().id) then self:start_roam() else self:open_garage("roam") end
     elseif id == "garage" then
       self:open_garage("menu")
     else
@@ -489,7 +471,7 @@ function Title:garage_menu()
 
   -- the header over the grid, and the coins
   nova.ui.layout { anchor = "topleft", margin = 0, x = 36, y = 22, ui.header(flow and (MODE_NAMES[state.mode] .. "  ·  " .. state.current_track().name) or "Garage",
-    flow and "Choose your car" or (self.garage_from == "hub" and "The garage" or "Buy and choose cars"), 45) }
+    flow and "Choose your car" or "Buy and choose cars", 45) }
 
   local grid = { "grid", columns = COLS, gap = 8, visible = 3, flow = true, w = 540 }
   for i, c in ipairs(list) do
@@ -537,7 +519,7 @@ function Title:garage_menu()
     pane,
   }
   self.cards_last = ui.cards
-  ui.hints({ { "pad_dpad", "Look" }, { "pad_a", owned and (flow and "Race in it" or "Drive it") or "Buy" }, { "pad_b", self.garage_from == "hub" and "Drive out" or "Back" } })
+  ui.hints({ { "pad_dpad", "Look" }, { "pad_a", owned and (flow and "Race in it" or "Drive it") or "Buy" }, { "pad_b", "Back" } })
 
   if r.moved then
     self.buying, self.note = nil, nil
@@ -549,7 +531,7 @@ function Title:garage_menu()
       audio.sfx("menu_accept")
       self.chosen = state.car
       state.save_options()
-      if flow then self:after_car() elseif self.garage_from == "roam" then self:start_roam() end
+      if flow then self:after_car() end
     elseif self.buying == on then
       if state.buy(car) then
         audio.sfx("finish")
@@ -568,16 +550,6 @@ function Title:garage_menu()
     else
       state.car = self.chosen
       if flow then self:go("track")
-      elseif self.garage_from == "hub" then
-        -- back out of the garage into free roam, at its door, in the car chosen (if it is one of yours)
-        if not state.owns(state.current_car().id) then
-          for _, c in ipairs(state.garage()) do if state.owns(c.id) then state.car = state.index_of(c.id); break end end
-        end
-        state.save_options()
-        self.hub = false
-        audio.stop_music(0.5)
-        transition.cover(transition.race_spec(true), function() nova.goto_scene("roam") end)
-        self.screen = "starting"
       else self:go("menu") end
     end
   end
