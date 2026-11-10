@@ -5,6 +5,7 @@
   import { placesOf, strokeMaps } from "../lib/symmetry";
   import { encodeGif, scaleRaster } from "../lib/gif";
   import { LAYER_FX, LAYER_FX_TYPES, MAX_LAYER_FX, addLayerEffect, moveLayerEffect, removeLayerEffect, setLayerEffectParam, toggleLayerEffect, type LayerFxType } from "../lib/layer-fx";
+  import { encodeIndexedPng, paletteOfPicture, toIndexed } from "../lib/indexed";
   import { PROJECT_PALETTES_PATH, parseProjectPalettes, serializeProjectPalettes, withPalettes } from "../lib/project-palettes";
   import { rotSprite, rotateNearest, scaleTo } from "../lib/sprite-transform";
   import { drawText, textSize } from "../lib/pixel-text";
@@ -1346,6 +1347,20 @@
       studio.say("info", "This project has no palettes.json yet: use \"To project\" first.");
     }
   }
+  /// The whole sheet as an indexed PNG in exports/: every pixel a number into the palette in use (or, if that palette is empty, the picture's own colours).
+  async function exportIndexed() {
+    const sheet = toSheet(doc);
+    const colors = paletteRgba().length ? paletteRgba() : paletteOfPicture(sheet);
+    const x = toIndexed(sheet, colors);
+    const path = `exports/${(fromPath.slice(fromPath.lastIndexOf("/") + 1).replace(/\.(sprite\.json|png)$/i, "") || "sprite").replace(/[^A-Za-z0-9_-]+/g, "_")}_indexed.png`;
+    try {
+      await studio.api!.writeExport(path, `data:image/png;base64,${toBase64(encodeIndexedPng(x))}`);
+      await studio.refreshFiles();
+      studio.say("info", `Saved ${path}: ${x.palette.length - 1} palette colours + transparent. Pixels were matched to the nearest colour of the palette in use.`);
+    } catch (e) {
+      studio.say("error", String(e));
+    }
+  }
   /// Writes the palette as a .gpl into the project's exports folder (the studio's window cannot be relied on to save a download).
   async function exportPalette(format: "gpl" | "pal" = "gpl") {
     const p: Palette = palette;
@@ -1704,6 +1719,7 @@
         <button title="Bring the project's palettes into your list" onclick={palettesFromProject}>From project</button>
         <button title="Read a palette file (.gpl, .pal, .hex, .json) or the colours of a PNG" onclick={() => paletteFile?.click()}>Import</button>
         <button title="Save this palette as a .gpl file (GIMP, Aseprite, Pixelorama and others read it)" onclick={() => exportPalette("gpl")}>Export .gpl</button>
+        <button title="Save the whole sheet as an indexed PNG: every pixel a number into this palette (palette swaps in other tools)" onclick={exportIndexed}>Indexed PNG</button>
         <button title="Save this palette as a .pal file (Paint Shop Pro, Aseprite and others read it)" onclick={() => exportPalette("pal")}>.pal</button>
         {#if userPalette}<button class="danger" title="Delete this palette" onclick={() => { palettes.remove(palettes.current); palRev++; }}>Delete</button>{/if}
         <label class="check" title="Colours you pick snap to the nearest colour of this palette"><input type="checkbox" bind:checked={snapToPalette} /> Stay in palette</label>
