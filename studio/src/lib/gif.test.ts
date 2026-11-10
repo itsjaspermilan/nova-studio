@@ -168,3 +168,36 @@ describe("scaling up", () => {
     expect(scaleRaster(r, 1)).toBe(r);
   });
 });
+
+describe("limited colours and dither", () => {
+  const ramp = () => {
+    const r = newRaster(16, 4);
+    for (let x = 0; x < 16; x++) for (let y = 0; y < 4; y++) setPixel(r, x, y, [x * 16, x * 16, x * 16, 255]);
+    return r;
+  };
+  it("keeps to the number of colours asked for", () => {
+    expect(indexFrames([ramp()], { colors: 4 }).palette.length).toBeLessThanOrEqual(4);
+    expect(indexFrames([ramp()]).palette.length).toBe(16);
+  });
+  it("counts the transparent slot in the limit", () => {
+    const r = ramp();
+    setPixel(r, 0, 0, [0, 0, 0, 0]);
+    expect(indexFrames([r], { colors: 4 }).palette.length).toBeLessThanOrEqual(4);
+  });
+  it("dithering mixes neighbours where flat banding would not, and leaves an exact picture alone", () => {
+    const flat = indexFrames([ramp()], { colors: 3 });
+    const dith = indexFrames([ramp()], { colors: 3, dither: true });
+    const used = (a: Uint8Array) => new Set(a).size;
+    expect(used(dith.indices[0]!)).toBeGreaterThanOrEqual(used(flat.indices[0]!));
+    expect(Array.from(dith.indices[0]!)).not.toEqual(Array.from(flat.indices[0]!));
+    const two = newRaster(2, 1);
+    setPixel(two, 0, 0, RED);
+    setPixel(two, 1, 0, BLUE);
+    expect(indexFrames([two], { colors: 8, dither: true }).indices[0]).toEqual(indexFrames([two]).indices[0]);
+  });
+  it("still writes a valid file", () => {
+    const g = readGif(encodeGif([{ raster: ramp(), ms: 100 }], true, { colors: 4, dither: true }));
+    expect(g.w).toBe(16);
+    expect(g.frames).toHaveLength(1);
+  });
+});

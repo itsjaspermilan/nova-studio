@@ -1462,12 +1462,12 @@
     }
   }
   /// The current animation as an animated GIF in `exports/`, scaled up by a whole number so a small sprite is big enough to share.
-  async function exportGif() {
+  async function exportGif(opts: { colors?: number; dither?: boolean } = {}) {
     const tag = doc.tags[animIndex];
     if (!tag) return;
     const sequence = tagSequence(tag);
     const k = Math.max(1, Math.min(8, Math.floor(256 / Math.max(doc.fw, doc.fh))));
-    const gif = encodeGif(sequence.map((i) => ({ raster: scaleRaster(doc.frames[i]!, k), ms: doc.durations[i] ?? 100 })), tag.loop);
+    const gif = encodeGif(sequence.map((i) => ({ raster: scaleRaster(doc.frames[i]!, k), ms: doc.durations[i] ?? 100 })), tag.loop, opts);
     const base = fromPath.slice(fromPath.lastIndexOf("/") + 1).replace(/\.(sprite\.json|png)$/i, "");
     const path = `exports/${base}_${tag.name.replace(/[^A-Za-z0-9_-]+/g, "_")}.gif`;
     try {
@@ -1644,7 +1644,7 @@
 <svelte:window onkeydown={key} />
 
 {#if exporting}
-  <SpriteExportDialog {doc} base={fromPath.slice(fromPath.lastIndexOf("/") + 1).replace(/\.(sprite\.json|png)$/i, "")} storeKey={fromPath} ongif={() => void exportGif()} onapng={() => void exportApng()} onclose={() => (exporting = false)} />
+  <SpriteExportDialog {doc} base={fromPath.slice(fromPath.lastIndexOf("/") + 1).replace(/\.(sprite\.json|png)$/i, "")} storeKey={fromPath} ongif={(o) => void exportGif(o)} onapng={() => void exportApng()} onclose={() => (exporting = false)} />
 {/if}
 <input bind:this={importFile} type="file" accept=".gif,.png,.aseprite,.ase,image/gif,image/png" hidden onchange={importFromFile} />
 

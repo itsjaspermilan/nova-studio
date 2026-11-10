@@ -8,7 +8,7 @@
   import { toBase64 } from "../lib/wav";
   import { studio } from "../lib/store.svelte";
 
-  let { doc, base, storeKey, ongif, onapng, onclose }: { doc: SpriteDoc; base: string; storeKey: string; ongif: () => void; onapng: () => void; onclose: () => void } = $props();
+  let { doc, base, storeKey, ongif, onapng, onclose }: { doc: SpriteDoc; base: string; storeKey: string; ongif: (o: { colors: number; dither: boolean }) => void; onapng: () => void; onclose: () => void } = $props();
 
   const KEY = () => `nova.sprite.export.${storeKey}`;
   function loadProfiles(): ExportProfile[] {
@@ -21,6 +21,8 @@
   }
   let profiles = $state<ExportProfile[]>(loadProfiles());
   let p = $state<ExportProfile>({ ...(untrack(() => profiles)[0] ?? DEFAULT_PROFILE) });
+  let gifColors = $state(256);
+  let gifDither = $state(false);
   let working = $state(false);
   let report = $state("");
 
@@ -47,7 +49,7 @@
     report = "";
     try {
       const name = safeName(base);
-      if (p.what === "gif") return void (ongif(), onclose());
+      if (p.what === "gif") return void (ongif({ colors: gifColors, dither: gifDither }), onclose());
       if (p.what === "apng") return void (onapng(), onclose());
       if (p.what === "frames") {
         const n = await writePieces(framePieces(doc, base), name);
@@ -90,6 +92,10 @@
         <option value="apng">An animated PNG (the current animation)</option>
       </select>
     </label>
+    {#if p.what === "gif"}
+      <label title="A GIF can have up to 256 colours; fewer make a smaller file">Colours <input type="number" min="2" max="256" step="1" bind:value={gifColors} class="narrow" /></label>
+      <label class="check" title="Where colours had to be merged, mix the nearest ones in a fixed pattern instead of flat bands"><input type="checkbox" bind:checked={gifDither} /> Dither</label>
+    {/if}
     {#if p.what !== "gif" && p.what !== "apng"}
       <label>Bigger by <input type="number" min="1" max="16" step="1" bind:value={p.scale} class="narrow" />×</label>
     {/if}

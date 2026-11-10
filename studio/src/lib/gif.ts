@@ -11,7 +11,16 @@ export interface GifFrame {
 }
 
 /// The colour table and the index of every pixel of every frame. Index 0 is kept for transparent pixels when any frame has them.
-export function indexFrames(frames: Raster[]): { palette: number[][]; indices: Uint8Array[]; transparent: boolean } {
+export interface GifOptions {
+  /// The most colours in the table (2 to 256, transparent included). Fewer colours make a smaller file.
+  colors?: number;
+  /// Spread the error with an ordered pattern where colours had to be merged, instead of flat bands (the pattern is the same on every frame, so it does not shimmer).
+  dither?: boolean;
+}
+
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+
+export function indexFrames(frames: Raster[], opts: GifOptions = {}): { palette: number[][]; indices: Uint8Array[]; transparent: boolean } {
   const key = (r: number, g: number, b: number) => (r << 16) | (g << 8) | b;
   const counts = new Map<number, number>();
   let transparent = false;
@@ -19,7 +28,8 @@ export function indexFrames(frames: Raster[]): { palette: number[][]; indices: U
     if (f.data[i + 3]! < 128) transparent = true;
     else counts.set(key(f.data[i]!, f.data[i + 1]!, f.data[i + 2]!), (counts.get(key(f.data[i]!, f.data[i + 1]!, f.data[i + 2]!)) ?? 0) + 1);
   }
-  const room = transparent ? 255 : 256;
+  const limit = Math.max(2, Math.min(256, Math.round(opts.colors ?? 256)));
+  const room = limit - (transparent ? 1 : 0);
   let colors: number[];
   if (counts.size <= room) colors = [...counts.keys()].sort((a, b) => a - b);
   else {
@@ -43,6 +53,7 @@ export function indexFrames(frames: Raster[]): { palette: number[][]; indices: U
   const palette = [...(transparent ? [[0, 0, 0]] : []), ...colors.map((k) => [(k >> 16) & 255, (k >> 8) & 255, k & 255])];
   const exact = new Map<number, number>(colors.map((k, i) => [k, i + (transparent ? 1 : 0)]));
   const nearest = new Map<number, number>();
+  const dither = !!opts.dither && counts.size > room;
   const indices = frames.map((f) => {
     const out = new Uint8Array(f.w * f.h);
     for (let p = 0; p < out.length; p++) {
@@ -52,6 +63,20 @@ export function indexFrames(frames: Raster[]): { palette: number[][]; indices: U
         continue;
       }
       const k = key(f.data[i]!, f.data[i + 1]!, f.data[i + 2]!);
+      if (dither) {
+        // (a 4x4 pattern nudges each pixel before the nearest colour is looked for)
+        const t = (BAYER[(((p / f.w) | 0) % 4) * 4 + (p % f.w) % 4]! - 7.5) * 4;
+        const cr = f.data[i]! + t, cg = f.data[i + 1]! + t, cb = f.data[i + 2]! + t;
+        let best = Infinity;
+        let pick = transparent ? 1 : 0;
+        for (let c = transparent ? 1 : 0; c < palette.length; c++) {
+          const [r, g, b] = palette[c]!;
+          const d = (r! - cr) ** 2 + (g! - cg) ** 2 + (b! - cb) ** 2;
+          if (d < best) { best = d; pick = c; }
+        }
+        out[p] = pick;
+        continue;
+      }
       let idx = exact.get(k) ?? nearest.get(k);
       if (idx === undefined) {
         let best = Infinity;
@@ -124,11 +149,11 @@ const u16 = (n: number) => [n & 255, (n >> 8) & 255];
 const ascii = (s: string) => [...s].map((c) => c.charCodeAt(0));
 
 /// A GIF89a file: every frame the same size, looping for ever (or once, with `loop` false).
-export function encodeGif(frames: GifFrame[], loop = true): Uint8Array {
+export function encodeGif(frames: GifFrame[], loop = true, opts: GifOptions = {}): Uint8Array {
   if (frames.length === 0) throw new Error("a GIF needs at least one frame");
   const { w, h } = frames[0]!.raster;
   if (frames.some((f) => f.raster.w !== w || f.raster.h !== h)) throw new Error("every frame of a GIF must be the same size");
-  const { palette, indices, transparent } = indexFrames(frames.map((f) => f.raster));
+  const { palette, indices, transparent } = indexFrames(frames.map((f) => f.raster), opts);
   let size = 1;
   while (1 << size < Math.max(2, palette.length)) size++;
   const table: number[] = [];
