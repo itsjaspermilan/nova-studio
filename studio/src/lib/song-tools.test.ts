@@ -332,3 +332,36 @@ describe("a pan lane and drawing lanes", () => {
     expect(parseSong(JSON.stringify(bad)).ok).toBe(false);
   });
 });
+
+import { bpmAt as bpmAtTempo, stepAtTime as stepAtT, stepTime as stepT, newSong as newS } from "./song";
+import { setTempoAt as setTempoGlide } from "./song-tools";
+describe("a tempo that glides", () => {
+  const song = () => {
+    let s = { ...newS(), length: 64, bpm: 120 };
+    s = setTempoGlide(s, 32, 60, true); // from step 0 the tempo falls in a straight line to 60 at step 32
+    return s;
+  };
+  it("passes through the tempo between on the way, and holds the new tempo after", () => {
+    const s = song();
+    expect(s.tempos).toEqual([{ step: 32, bpm: 60, ramp: true }]);
+    expect(bpmAtTempo(s, 0)).toBe(120);
+    expect(bpmAtTempo(s, 16)).toBe(90);
+    expect(bpmAtTempo(s, 32)).toBe(60);
+    expect(bpmAtTempo(s, 50)).toBe(60);
+  });
+  it("takes longer than the fast tempo and less than the slow one, and time and step undo each other", () => {
+    const s = song();
+    const fast = (32 * 60) / 120 / s.stepsPerBeat, slow = (32 * 60) / 60 / s.stepsPerBeat;
+    const t = stepT(s, 32);
+    expect(t).toBeGreaterThan(fast);
+    expect(t).toBeLessThan(slow);
+    // the log mean: 60/spb * ln(120/60) / ((120-60)/32)
+    expect(t).toBeCloseTo(((60 / s.stepsPerBeat) * Math.log(2)) / (60 / 32), 6);
+    for (const step of [0, 5, 16, 31.5, 32, 40, 63]) expect(stepAtT(s, stepT(s, step))).toBeCloseTo(step, 6);
+  });
+  it("a plain tempo change is as before", () => {
+    const s = setTempoGlide({ ...newS(), length: 64 }, 32, 60);
+    expect(stepT(s, 32)).toBeCloseTo((32 * 60) / 120 / s.stepsPerBeat, 9);
+    expect(stepT(s, 36)).toBeCloseTo((32 * 60) / 120 / s.stepsPerBeat + (4 * 60) / 60 / s.stepsPerBeat, 9);
+  });
+});

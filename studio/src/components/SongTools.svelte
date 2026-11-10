@@ -3,7 +3,7 @@
   // markers and the loop region, a gain lane per track (automation), the loudness target and the peak ceiling, and MIDI in and out.
   import { quantizeTrack, noteKey } from "../lib/song-edit";
   import { CHORDS, SCALES, addChord, addMarker, glueNotes, humanizeTiming, humanizeVelocity, lfoLane, laneValue, removeMarker, setBeatsPerBar, setLane, setLanePoint, setLoop, setMeterAt, setTempoAt, setNoteProps, snapToScale, strumNotes } from "../lib/song-tools";
-  import { LANE_RANGE, type LaneParam, NOTE_NAMES, barSteps, bpmAt, songSeconds, stepSeconds, type Song } from "../lib/song";
+  import { LANE_RANGE, type LaneParam, NOTE_NAMES, barSteps, bpmAt, tempoSegments, songSeconds, stepSeconds, type Song } from "../lib/song";
   import { integratedLufs, peakDb } from "../lib/loudness";
   import { loudestBand, spectrum, type Band } from "../lib/spectrum";
   import { renderSong } from "../lib/song";
@@ -57,6 +57,7 @@
 
   // ---- markers and the loop ----------------------------------------------------------------------------
   let markerStep = $state(0);
+  let changeGlide = $state(false);
   let changeStep = $state(16);
   let changeBpm = $state(90);
   let changeBeats = $state(3);
@@ -179,10 +180,11 @@
     <div class="row" title="The tempo can change part-way: from this step on the song plays at the new tempo">
       <label>Tempo from step <input type="number" min="1" max={song.length - 1} bind:value={changeStep} class="narrow" aria-label="Tempo change step" /></label>
       <label><input type="number" min="40" max="240" bind:value={changeBpm} class="narrow" aria-label="Tempo change bpm" /> bpm</label>
-      <button onclick={() => commit(setTempoAt(song, changeStep, changeBpm))}>Change tempo</button>
+      <label class="check" title="Glide: the tempo moves in a straight line from the one before to this one, arriving at this step, instead of jumping"><input type="checkbox" bind:checked={changeGlide} /> glide</label>
+      <button onclick={() => commit(setTempoAt(song, changeStep, changeBpm, changeGlide))}>Change tempo</button>
     </div>
     {#each song.tempos ?? [] as tc (tc.step)}
-      <div class="row small"><span>From step {tc.step} (bar {Math.floor(tc.step / bar) + 1}): <strong>{tc.bpm} bpm</strong> (was {bpmAt(song, tc.step - 1)})</span><button class="ghost" aria-label="Remove the tempo change at step {tc.step}" onclick={() => commit(setTempoAt(song, tc.step, null))}>✕</button></div>
+      <div class="row small"><span>From step {tc.step} (bar {Math.floor(tc.step / bar) + 1}): <strong>{tc.bpm} bpm</strong> ({tc.ramp ? "glides there from" : "was"} {tempoSegments(song).find((g) => g.to === tc.step)?.b1 ?? song.bpm})</span><button class="ghost" aria-label="Remove the tempo change at step {tc.step}" onclick={() => commit(setTempoAt(song, tc.step, null))}>✕</button></div>
     {/each}
     <div class="row" title="A different number of beats in a bar from this step on; a new bar starts there">
       <label>Bar length from step <input type="number" min="1" max={song.length - 1} bind:value={changeStep} class="narrow" aria-label="Bar change step" /></label>

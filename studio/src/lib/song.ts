@@ -178,6 +178,8 @@ export interface Lane {
 export interface TempoChange {
   step: number;
   bpm: number;
+  /// Glide: the tempo moves in a straight line from the one before (at the previous change, or the song's start) to this `bpm`, arriving at `step`, instead of jumping there.
+  ramp?: boolean;
 }
 
 export interface MeterChange {
@@ -260,43 +262,67 @@ export function newSong(): Song {
 export const stepSeconds = (s: Song) => 60 / s.bpm / s.stepsPerBeat;
 /// The tempo in force at a step.
 export function bpmAt(song: Song, step: number): number {
+  const seg = tempoSegments(song).find((g) => step < g.to) ?? tempoSegments(song).at(-1)!;
+  if (!seg.glide || step <= seg.from) return step >= seg.to ? seg.b2 : seg.b1;
+  return seg.b1 + ((seg.b2 - seg.b1) * (step - seg.from)) / (seg.to - seg.from);
+}
+
+/// The tempo track as stretches of the song: each runs from a step to the next change; a stretch that glides goes from `b1` to `b2` in a straight line over it, the others
+/// hold `b1` (and the song's last stretch holds its tempo to the end).
+export interface TempoSegment {
+  from: number;
+  to: number;
+  b1: number;
+  b2: number;
+  glide: boolean;
+}
+export function tempoSegments(song: Song): TempoSegment[] {
+  const out: TempoSegment[] = [];
+  let from = 0;
   let bpm = song.bpm;
   for (const t of song.tempos ?? []) {
-    if (t.step > step) break;
+    out.push({ from, to: t.step, b1: bpm, b2: t.ramp ? t.bpm : bpm, glide: !!t.ramp && t.bpm !== bpm });
+    from = t.step;
     bpm = t.bpm;
   }
-  return bpm;
+  out.push({ from, to: Infinity, b1: bpm, b2: bpm, glide: false });
+  return out;
 }
 
 /// Seconds from the start of the song to a step (it may be fractional), following the tempo track.
 export function stepTime(song: Song, step: number): number {
   if (!song.tempos?.length) return step * stepSeconds(song);
+  const unit = 60 / song.stepsPerBeat; // seconds a step takes is unit / bpm
   let sec = 0;
-  let at = 0;
-  let bpm = song.bpm;
-  for (const t of song.tempos) {
-    if (t.step >= step) break;
-    sec += ((t.step - at) * 60) / bpm / song.stepsPerBeat;
-    at = t.step;
-    bpm = t.bpm;
+  for (const g of tempoSegments(song)) {
+    const x = Math.min(step, g.to);
+    if (x <= g.from) break;
+    if (!g.glide) sec += ((x - g.from) * unit) / g.b1;
+    else {
+      const k = (g.b2 - g.b1) / (g.to - g.from);
+      sec += (unit * Math.log((g.b1 + k * (x - g.from)) / g.b1)) / k;
+    }
+    if (step <= g.to) break;
   }
-  return sec + ((step - at) * 60) / bpm / song.stepsPerBeat;
+  return sec;
 }
 
 /// The step that plays at a time in seconds (the inverse of `stepTime`).
 export function stepAtTime(song: Song, seconds: number): number {
   if (!song.tempos?.length) return seconds / stepSeconds(song);
-  let at = 0;
-  let bpm = song.bpm;
+  const unit = 60 / song.stepsPerBeat;
   let start = 0;
-  for (const t of song.tempos) {
-    const end = start + ((t.step - at) * 60) / bpm / song.stepsPerBeat;
-    if (seconds < end) break;
-    start = end;
-    at = t.step;
-    bpm = t.bpm;
+  for (const g of tempoSegments(song)) {
+    const length = g.glide ? (unit * Math.log(g.b2 / g.b1)) / ((g.b2 - g.b1) / (g.to - g.from)) : ((g.to - g.from) * unit) / g.b1;
+    if (seconds < start + length || g.to === Infinity) {
+      const t = seconds - start;
+      if (!g.glide) return g.from + (t * g.b1) / unit;
+      const k = (g.b2 - g.b1) / (g.to - g.from);
+      return g.from + (g.b1 * (Math.exp((k * t) / unit) - 1)) / k;
+    }
+    start += length;
   }
-  return at + ((seconds - start) * bpm * song.stepsPerBeat) / 60;
+  return seconds / stepSeconds(song);
 }
 
 export const songSeconds = (s: Song) => stepTime(s, s.length);
@@ -512,7 +538,7 @@ export function parseSong(text: string): Parsed {
       if (!tc || !Number.isInteger(tc.step) || tc.step <= last || tc.step >= o.length! || !num(tc.bpm, MIN_BPM, MAX_BPM)) return { ok: false, error: `tempos[${i}] needs a whole "step" after the one before it (and inside the song) and a "bpm" from ${MIN_BPM} to ${MAX_BPM}` };
       last = tc.step;
     }
-    tempos = (o.tempos as TempoChange[]).map((tc) => ({ step: tc.step, bpm: tc.bpm }));
+    tempos = (o.tempos as TempoChange[]).map((tc) => ({ step: tc.step, bpm: tc.bpm, ...(tc.ramp === true ? { ramp: true } : {}) }));
   }
   let meters: MeterChange[] | undefined;
   if (o.meters !== undefined) {

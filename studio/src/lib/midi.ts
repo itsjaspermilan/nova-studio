@@ -1,7 +1,7 @@
 // Standard MIDI files: writing a song as a type 1 file (a tempo and time-signature track, then one track per song track, drums on channel 10) and
 // reading one back into a song. Notes are put on the song's step grid; a file with finer timing is rounded to it and the loss is reported.
 
-import { DRUMS, MAX_NOTES, expandClips, MAX_STEPS, MAX_TRACKS, MAX_BPM, MIN_BPM, drumTrack, synthTrack, type Note, type Song, type Track } from "./song";
+import { DRUMS, MAX_NOTES, bpmAt, tempoSegments, expandClips, MAX_STEPS, MAX_TRACKS, MAX_BPM, MIN_BPM, drumTrack, synthTrack, type Note, type Song, type Track } from "./song";
 
 const PPQ = 480;
 
@@ -45,6 +45,11 @@ export function songToMidi(source: Song): Uint8Array {
     { tick: 0, order: 0, bytes: [0xff, 0x58, 0x04, song.beatsPerBar ?? 4, 2, 24, 8] },
     { tick: 0, order: 0, bytes: [0xff, 0x03, ...vlq(5), ...text("Tempo")] },
   ];
+  // (a glide is written as a tempo change at every step along it: MIDI has no ramps)
+  for (const g of tempoSegments(song)) {
+    if (!g.glide) continue;
+    for (let s = g.from + 1; s < g.to; s++) tempo.push({ tick: Math.round(s * tps), order: 0, bytes: [0xff, 0x51, 0x03, ...u32(Math.round(60_000_000 / bpmAt(song, s))).slice(1)] });
+  }
   for (const tc of song.tempos ?? []) tempo.push({ tick: Math.round(tc.step * tps), order: 0, bytes: [0xff, 0x51, 0x03, ...u32(Math.round(60_000_000 / tc.bpm)).slice(1)] });
   for (const mc of song.meters ?? []) tempo.push({ tick: Math.round(mc.step * tps), order: 0, bytes: [0xff, 0x58, 0x04, mc.beats, 2, 24, 8] });
   for (const m of song.markers ?? []) tempo.push({ tick: Math.round(m.step * tps), order: 1, bytes: [0xff, 0x06, ...vlq(text(m.name).length), ...text(m.name)] });

@@ -209,14 +209,14 @@ export function setBeatsPerBar(song: Song, beats: number): Song {
 }
 
 /// Sets the tempo from a step on (step 0 is the song's own tempo; `null` takes a change away). A change that equals the tempo before it is not kept.
-export function setTempoAt(song: Song, step: number, bpm: number | null): Song {
+export function setTempoAt(song: Song, step: number, bpm: number | null, glide = false): Song {
   const at = Math.round(step);
   if (at < 0 || at >= song.length) return song;
   if (at === 0) return bpm === null ? song : { ...song, bpm: clamp(Math.round(bpm), MIN_BPM, MAX_BPM) };
   const rest = (song.tempos ?? []).filter((t) => t.step !== at);
   if (bpm !== null) {
     if (rest.length >= MAX_TEMPOS) return song;
-    rest.push({ step: at, bpm: clamp(Math.round(bpm), MIN_BPM, MAX_BPM) });
+    rest.push({ step: at, bpm: clamp(Math.round(bpm), MIN_BPM, MAX_BPM), ...(glide ? { ramp: true } : {}) });
   }
   rest.sort((a, b) => a.step - b.step);
   // drop changes that repeat the tempo before them
