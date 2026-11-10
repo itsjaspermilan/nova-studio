@@ -75,7 +75,7 @@
   const several = $derived(pickedShapes.length > 1);
   let showGrid = $state(true);
   // how the model is drawn: with its texture, flat colours only, or as a wireframe (Z cycles them)
-  let viewMode = $state<"textured" | "solid" | "wire">("textured");
+  let viewMode = $state<"textured" | "solid" | "wire" | "xray">("textured");
   // the move / turn / resize handles drawn on the selected part or shape
   let gizmoMode = $state<"translate" | "rotate" | "scale" | "pivot">("translate");
   // editing the points of a mesh
@@ -502,7 +502,7 @@
           }
           const translucent = m.colors.some((c, k) => k % 4 === 3 && c < 255);
           // A mesh can be a single sheet, so it shows from both sides while you build it.
-          const material = new THREE.MeshLambertMaterial({ vertexColors: true, map: useTexture ? threeTex : null, wireframe: viewMode === "wire", transparent: translucent, side: cube.shape === "mesh" ? THREE.DoubleSide : THREE.FrontSide });
+          const material = new THREE.MeshLambertMaterial({ vertexColors: true, map: useTexture ? threeTex : null, wireframe: viewMode === "wire", transparent: translucent || viewMode === "xray", opacity: viewMode === "xray" ? 0.35 : 1, depthWrite: viewMode !== "xray", side: cube.shape === "mesh" ? THREE.DoubleSide : THREE.FrontSide });
           const mesh = new THREE.Mesh(geometry, material);
           group.add(mesh);
           const skin = cube.shape === "mesh" && cube.skin ? { rest: new Float32Array(m.positions), pointOf: solidOf(cube).polys.flatMap((p) => p.v) } : undefined;
@@ -2472,7 +2472,7 @@
       commands.register({ id: "model.add", title: "Add a shape", menu: "Model", icon: "addShape", keymaps: { blender: ["Shift+A"], nova: [] }, enabled: () => !modal && mode === "model", run: () => newCube() }),
       commands.register({ id: "model.duplicate", title: "Duplicate", menu: "Model", icon: "copy", keymaps: { blender: ["Shift+D"], nova: ["Mod+D"] }, enabled: () => !modal && !!selected, run: () => duplicate() }),
       commands.register({ id: "model.delete", title: "Delete", menu: "Model", icon: "trash", keymaps: { blender: ["X", "Delete"], nova: ["Delete", "Backspace"] }, enabled: () => !modal && !!selected, run: () => remove() }),
-      commands.register({ id: "model.shading", title: "Cycle the shading", menu: "Model", icon: "shading", keys: ["Z"], help: "Textured, plain colours, wireframe", enabled: () => !modal, run: () => { viewMode = viewMode === "textured" ? "solid" : viewMode === "solid" ? "wire" : "textured"; } }),
+      commands.register({ id: "model.shading", title: "Cycle the shading", menu: "Model", icon: "shading", keys: ["Z"], help: "Textured, plain colours, wireframe, see-through", enabled: () => !modal, run: () => { viewMode = viewMode === "textured" ? "solid" : viewMode === "solid" ? "wire" : viewMode === "wire" ? "xray" : "textured"; } }),
       ...VIEW_NAMES.map((n) => commands.register({ id: `model.view.${n}`, title: `${VIEW_LABELS[n]} view`, menu: "Model", keymaps: { blender: n === "front" ? ["1"] : n === "right" ? ["3"] : n === "top" ? ["7"] : n === "back" ? ["2"] : n === "left" ? ["4"] : ["8"], nova: [] }, help: n === "front" || n === "right" || n === "top" ? "Blender's numpad 1, 3 and 7. Back, left and bottom are 2, 4 and 8 here (a laptop has no Ctrl-numpad)." : undefined, enabled: () => !modal, run: () => showView(n) })),
       commands.register({ id: "model.view.ortho", title: "Flat or deep view", menu: "Model", keymaps: { blender: ["5"], nova: [] }, help: "Switches between a view with perspective and a flat one where parallel lines stay parallel (Blender's numpad 5)", enabled: () => !modal, run: () => setOrtho(!ortho) }),
       commands.register({ id: "model.view.orbitLeft", title: "Turn the view left", menu: "Model", help: "15 degrees", run: () => orbit(-15, 0) }),
@@ -2573,6 +2573,7 @@
           <option value="textured">Textured</option>
           <option value="solid">Colours only</option>
           <option value="wire">Wireframe</option>
+          <option value="xray">See-through</option>
         </select>
         <span class="seg" role="group" aria-label="Standard views">
           {#each VIEW_NAMES as n (n)}<button class:on={viewName === n} onclick={() => showView(n)} title="{VIEW_LABELS[n]} view" aria-label="{VIEW_LABELS[n]} view">{VIEW_LABELS[n][0]}</button>{/each}
