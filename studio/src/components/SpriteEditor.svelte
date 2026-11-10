@@ -5,6 +5,7 @@
   import { placesOf, strokeMaps } from "../lib/symmetry";
   import { encodeGif, scaleRaster } from "../lib/gif";
   import { LAYER_FX, LAYER_FX_TYPES, MAX_LAYER_FX, addLayerEffect, moveLayerEffect, removeLayerEffect, setLayerEffectParam, toggleLayerEffect, type LayerFxType } from "../lib/layer-fx";
+  import { PROJECT_PALETTES_PATH, parseProjectPalettes, serializeProjectPalettes, withPalettes } from "../lib/project-palettes";
   import { rotSprite, rotateNearest, scaleTo } from "../lib/sprite-transform";
   import { drawText, textSize } from "../lib/pixel-text";
   import { needsMap, scrollToCentre, visibleBox } from "../lib/minimap";
@@ -1310,6 +1311,41 @@
     palettes.add(p);
     palRev++;
   }
+  /// Keeps the palettes of the person's own (and the one in use) in the project's palettes.json, where Model reads them too; palettes of the same name there are replaced.
+  async function palettesToProject() {
+    if (!studio.api) return;
+    try {
+      let existing: Palette[] = [];
+      try {
+        const parsed = parseProjectPalettes((await studio.api.readFile(PROJECT_PALETTES_PATH)).text ?? "");
+        if (parsed.ok) existing = parsed.palettes;
+      } catch {
+        // no file yet
+      }
+      const mine = [...palettes.user, ...(palettes.isBuiltin(palettes.current) ? [palettes.get()] : [])];
+      const text = serializeProjectPalettes(withPalettes(existing, mine));
+      if (studio.files.some((f) => f.path === PROJECT_PALETTES_PATH)) await studio.api.writeFile(PROJECT_PALETTES_PATH, text);
+      else await studio.api.createFile(PROJECT_PALETTES_PATH, text);
+      await studio.refreshFiles();
+      studio.say("info", `Saved ${mine.length} palette${mine.length === 1 ? "" : "s"} to ${PROJECT_PALETTES_PATH}: Sprites and Model can both use them.`);
+    } catch (e) {
+      studio.say("error", String(e));
+    }
+  }
+  /// Brings the project's palettes into this computer's list (a palette of the same name here is kept as it is).
+  async function palettesFromProject() {
+    if (!studio.api) return;
+    try {
+      const parsed = parseProjectPalettes((await studio.api.readFile(PROJECT_PALETTES_PATH)).text ?? "");
+      if (!parsed.ok) return studio.say("error", parsed.error);
+      let added = 0;
+      for (const p of parsed.palettes) if (!palettes.all().some((q) => q.name === p.name)) { palettes.add(p); added++; }
+      palRev++;
+      studio.say("info", added ? `Added ${added} palette${added === 1 ? "" : "s"} from the project.` : "Every palette in the project is already here.");
+    } catch {
+      studio.say("info", "This project has no palettes.json yet: use \"To project\" first.");
+    }
+  }
   /// Writes the palette as a .gpl into the project's exports folder (the studio's window cannot be relied on to save a download).
   async function exportPalette(format: "gpl" | "pal" = "gpl") {
     const p: Palette = palette;
@@ -1663,6 +1699,8 @@
         </select>
         <button title="Add the current colour to this palette (a copy is made if it is a built-in one)" onclick={addToPalette}>＋</button>
         <button title="A new palette from the colours this picture uses" onclick={paletteFromPicture}>From picture</button>
+        <button title="Keep your palettes in the project (palettes.json) so Model uses them too" onclick={palettesToProject}>To project</button>
+        <button title="Bring the project's palettes into your list" onclick={palettesFromProject}>From project</button>
         <button title="Read a palette file (.gpl, .pal, .hex, .json) or the colours of a PNG" onclick={() => paletteFile?.click()}>Import</button>
         <button title="Save this palette as a .gpl file (GIMP, Aseprite, Pixelorama and others read it)" onclick={() => exportPalette("gpl")}>Export .gpl</button>
         <button title="Save this palette as a .pal file (Paint Shop Pro, Aseprite and others read it)" onclick={() => exportPalette("pal")}>.pal</button>

@@ -158,7 +158,8 @@ Still open (3.4): none of the following exists yet:
 - [ ] Re-tile a whole map from the scene editor after a terrain changes (the function exists), terrain painting with the fill tool, a map-wide solid overlay from the description.
 Still open (3.5 Palettes):
 - [x] (2026-11-09, `lib/palette.ts`, unit tests) `.pal` (Paint Shop Pro) read and write, a palette from a PNG's colours, sort (hue, lightness, saturation, R, G, B), move a swatch, colour ramps and hue-shifted shade ramps, "Lock to palette" (drawing takes the nearest palette colour).
-- [ ] Still open: Lospec download (a network call: needs the owner's say-so), indexed-colour mode, project-wide palettes shared by Sprites and Model.
+- [x] (2026-11-10, `lib/project-palettes.ts` 3 tests: round trip, colours cleaned and bad files refused, merge by name; "To project" and "From project" next to the palette list in Sprites, and a swatch row in Model's shape colours (`ProjectSwatches.svelte`) reading the same `palettes.json`: **the buttons and swatches were not clicked**) **Project-wide palettes** shared by Sprites and Model.
+- [ ] Still open: Lospec download (a network call: needs the owner's say-so), indexed-colour mode.
 Still open (3.6 Files):
 - [x] (2026-11-09) Export the current animation as an animated GIF (`lib/gif.ts`: our own writer with LZW, a colour table of up to 256 colours with transparency, looping or once, per-frame times; 7 tests including a reader written for the tests that decodes what the writer made) into the project's `exports/` folder, scaled by a whole number; a backend command `write_export` (Rust test; only inside `exports/`, a fixed list of file types, GIF and PNG checked by their first bytes); palette export now goes there too (a download link cannot be relied on in the studio's window). Checked in the browser preview; the real app's write was not run.
 - [x] (2026-11-09, `lib/apng.ts`, 2 tests that check every chunk and the sequence numbers; the write was not run in the real app) Export the animation as an animated PNG (Sprite menu).
@@ -178,7 +179,7 @@ Still open (3.6 Files):
 
 ### Cross-cutting
 - [~] UX tests, the input matrix and the accessibility audit: the protocol, tasks, matrix and audit checklist are written (`docs/ux/test-plan.md`, 2026-11-10). **No person or device was tested**; they need people.
-- [ ] Palette bridge between Sprites and Model materials; drag assets into scenes and code; plugin/addon surface (later).
+- [ ] Palette bridge between Sprites and Model materials (**shape colours done via project palettes 2026-11-10**; materials' metal and roughness have no palette); drag assets into scenes and code; plugin/addon surface (later).
 - [~] Licences: dependencies checked by field (above); assets' licences are in `licenses/` (Kenney kits, fonts, Lua, three.js, Vorbis); no Blender or Blockbench code was copied (only ideas, recorded in `docs/studio-workspaces.md`); no Pixelorama code was copied either, so there is no Pixelorama notice to keep (add one the day code is). Not done: a human reading the actual licence texts, and the project's own licence (an owner decision).
 
 

@@ -35,6 +35,7 @@
   import { applyStack, evaluate, hasModifiers, type Modifier } from "../lib/modifiers";
   import ModifierStack from "./ModifierStack.svelte";
   import CurveEditor from "./CurveEditor.svelte";
+  import ProjectSwatches from "./ProjectSwatches.svelte";
   import { applyOcclusion, bakeOcclusion } from "../lib/model-bake";
   import { addClip, easeAt, findTrack, pathKey, removeClip, removeKey, samplePose, setEase, setKey, snapTime, updateClip, KEY_STEP, type Pose } from "../lib/model-anim";
   import { toBase64 } from "../lib/wav";
@@ -2626,6 +2627,7 @@
           <div class="vec">{#each cube.rotation ?? [0, 0, 0] as v, i (i)}<input type="number" value={v} aria-label={"xyz"[i] + " turn"} onchange={(e) => { const r = [...(cube.rotation ?? [0, 0, 0])] as Vec3; r[i] = num(e.currentTarget.value, v); commit(updateCube(doc, selected!, { rotation: r })); }} />{/each}</div>
         {/if}
         <h4>Colour</h4>
+        <ProjectSwatches onpick={(hex) => pickColour("all", hex)} />
         <label class="colour">{cube.texture ? "Tint" : cube.shape === "mesh" ? "Mesh" : "All faces"} <input type="color" value={hexOf(cube.color)} onchange={(e) => pickColour("all", e.currentTarget.value)} /></label>
         {#each paintFaces as f (f)}
           <label class="colour">{label(f)} <input type="color" value={hexOf(faceColor(cube, f))} onchange={(e) => pickColour(f, e.currentTarget.value)} /></label>
