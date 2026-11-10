@@ -2,8 +2,8 @@
   // The song's tools beyond the piano roll: edits of the picked notes (strum, glue, humanise, snap to a scale, chords, a finer grid), the bar length,
   // markers and the loop region, a gain lane per track (automation), the loudness target and the peak ceiling, and MIDI in and out.
   import { quantizeTrack, noteKey } from "../lib/song-edit";
-  import { CHORDS, SCALES, addChord, addMarker, glueNotes, humanizeTiming, humanizeVelocity, lfoLane, laneValue, removeMarker, setBeatsPerBar, setLane, setLoop, setMeterAt, setTempoAt, setNoteProps, snapToScale, strumNotes } from "../lib/song-tools";
-  import { NOTE_NAMES, barSteps, bpmAt, songSeconds, stepSeconds, type Song } from "../lib/song";
+  import { CHORDS, SCALES, addChord, addMarker, glueNotes, humanizeTiming, humanizeVelocity, lfoLane, laneValue, removeMarker, setBeatsPerBar, setLane, setLanePoint, setLoop, setMeterAt, setTempoAt, setNoteProps, snapToScale, strumNotes } from "../lib/song-tools";
+  import { LANE_RANGE, type LaneParam, NOTE_NAMES, barSteps, bpmAt, songSeconds, stepSeconds, type Song } from "../lib/song";
   import { integratedLufs, peakDb } from "../lib/loudness";
   import { renderSong } from "../lib/song";
   import { FX_SPECS, FX_TYPES, MAX_FX, addFx, moveFx, param, removeFx, setFxParam, toggleFx, type FxType } from "../lib/fx";
@@ -69,9 +69,21 @@
   const bar = $derived(barSteps(song));
 
   // ---- the gain lane -------------------------------------------------------------------------------------
-  const lane = $derived(t?.automation?.[0]);
+  let laneParam = $state<LaneParam>("gain");
+  const lane = $derived(t?.automation?.find((l) => l.param === laneParam));
+  const range = $derived(LANE_RANGE[laneParam]);
   let pointStep = $state(0);
   let pointValue = $state(1);
+  const yOfValue = (v: number) => 60 - ((Math.min(range[1], Math.max(range[0], v)) - range[0]) / (range[1] - range[0])) * 60;
+  const valueOfY = (y: number) => range[0] + ((60 - y) / 60) * (range[1] - range[0]);
+  let drawing = false;
+  /// Drawing with the mouse: press and drag across the picture to put a point at every step the pointer passes.
+  function drawAt(e: PointerEvent) {
+    const r = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
+    const step = ((e.clientX - r.left) / r.width) * song.length;
+    const value = valueOfY(((e.clientY - r.top) / r.height) * 60);
+    commit(setLanePoint(song, track, laneParam, step, value));
+  }
   let lfoPeriod = $state(8);
   let lfoDepth = $state(0.5);
   let lfoShape = $state<"sine" | "triangle" | "square">("sine");
@@ -80,12 +92,11 @@
     const W = 400;
     const H = 60;
     const pts: string[] = [];
-    for (let x = 0; x <= W; x += 4) pts.push(`${x},${H - (Math.min(2, laneValue(lane, (x / W) * song.length)) / 2) * H}`);
+    for (let x = 0; x <= W; x += 4) pts.push(`${x},${yOfValue(laneValue(lane, (x / W) * song.length))}`);
     return pts.join(" ");
   });
   const setPoint = () => {
-    const points = [...(lane?.points ?? []).filter((p) => p.step !== pointStep), { step: Math.max(0, Math.round(pointStep)), value: Math.min(2, Math.max(0, pointValue)) }];
-    commit(setLane(song, track, { param: "gain", curve: lane?.curve ?? "linear", points }));
+    commit(setLanePoint(song, track, laneParam, pointStep, pointValue));
   };
 
   // ---- effects -------------------------------------------------------------------------------------------
@@ -190,17 +201,23 @@
   </section>
 
   <section>
-    <h4>Loudness over the song <span class="dim small">(this track)</span></h4>
-    <svg viewBox="0 0 400 60" class="lane" role="img" aria-label="The gain lane of this track">
-      <line x1="0" x2="400" y1="30" y2="30" class="mid" />
+    <h4>Automation over the song <span class="dim small">(this track)</span></h4>
+    <div class="row">
+      <label>Lane <select bind:value={laneParam} onchange={() => (pointValue = laneParam === "gain" ? 1 : 0)} aria-label="Which lane"><option value="gain">loudness</option><option value="pan">pan</option></select></label>
+      <span class="dim small">Press and drag on the picture to draw it.</span>
+    </div>
+    <svg viewBox="0 0 400 60" class="lane" role="img" aria-label="The {laneParam} lane of this track" style="touch-action:none;cursor:crosshair"
+      onpointerdown={(e) => { drawing = true; (e.currentTarget as SVGSVGElement).setPointerCapture(e.pointerId); drawAt(e); }} onpointermove={(e) => { if (drawing) drawAt(e); }} onpointerup={() => (drawing = false)} onpointercancel={() => (drawing = false)}>
+      <line x1="0" x2="400" y1={yOfValue(laneParam === "gain" ? 1 : 0)} y2={yOfValue(laneParam === "gain" ? 1 : 0)} class="mid" />
+      {#each lane?.points ?? [] as pt (pt.step)}<circle cx={(pt.step / Math.max(1, song.length)) * 400} cy={yOfValue(pt.value)} r="2.5" fill="#5aa9ff" />{/each}
       {#if lane}<polyline points={laneLine} />{/if}
     </svg>
     <div class="row">
       <label>Curve <select disabled={!lane} value={lane?.curve ?? "linear"} onchange={(e) => lane && commit(setLane(song, track, { ...lane, curve: e.currentTarget.value as "linear" | "step" | "smooth" }))}><option value="linear">straight</option><option value="smooth">smooth</option><option value="step">steps</option></select></label>
       <label>at step <input type="number" min="0" max={song.length} bind:value={pointStep} class="narrow" /></label>
-      <label>gain <input type="number" min="0" max="2" step="0.1" bind:value={pointValue} class="narrow" /></label>
+      <label>{laneParam === "gain" ? "gain" : "pan"} <input type="number" min={range[0]} max={range[1]} step="0.1" bind:value={pointValue} class="narrow" /></label>
       <button onclick={setPoint}>Set point</button>
-      <button class="ghost" disabled={!lane} onclick={() => commit(setLane(song, track, null))}>Clear</button>
+      <button class="ghost" disabled={!lane} onclick={() => commit(setLane(song, track, null, laneParam))}>Clear</button>
     </div>
     {#each lane?.points ?? [] as p (p.step)}
       <span class="chip small">{p.step}: {p.value}<button aria-label="Remove point at {p.step}" onclick={() => lane && commit(setLane(song, track, { ...lane, points: lane.points.filter((q) => q.step !== p.step) }))}>✕</button></span>
@@ -209,9 +226,9 @@
       <label>LFO every <input type="number" min="2" max="64" bind:value={lfoPeriod} class="narrow" /> steps</label>
       <label>depth <input type="number" min="0.1" max="1" step="0.1" bind:value={lfoDepth} class="narrow" /></label>
       <select bind:value={lfoShape} aria-label="LFO shape"><option value="sine">sine</option><option value="triangle">triangle</option><option value="square">square</option></select>
-      <button onclick={() => commit(setLane(song, track, lfoLane(song.length, lfoPeriod, lfoDepth, lfoShape)))} title="Fill the lane with a wave: the notes swell and fade">Make an LFO</button>
+      <button disabled={laneParam !== "gain"} onclick={() => commit(setLane(song, track, lfoLane(song.length, lfoPeriod, lfoDepth, lfoShape)))} title="Fill the loudness lane with a wave: the notes swell and fade">Make an LFO</button>
     </div>
-    <p class="dim small">Each note is played at its loudness times the lane's value where it starts.</p>
+    <p class="dim small">{laneParam === "gain" ? "Each note is played at its loudness times the lane's value where it starts." : "Each note's place in the stereo field (-1 left, 1 right) is moved by the lane's value where it starts."}</p>
   </section>
 
   <section>

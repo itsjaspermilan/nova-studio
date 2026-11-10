@@ -2,7 +2,7 @@
 // takes a song and gives a new one; notes are named by `noteKey` (where they start and their pitch), like the rest of lib/song-edit.ts.
 
 import { mulberry32 } from "./sfx";
-import { MAX_METERS, MAX_NOTES, MAX_TEMPOS, MAX_BPM, MIN_BPM, bpmAt, type Lane, type Marker, type Note, type Song, type TempoChange, type Track } from "./song";
+import { LANE_RANGE, MAX_METERS, MAX_NOTES, MAX_TEMPOS, MAX_BPM, MIN_BPM, bpmAt, type Lane, type LaneParam, type Marker, type Note, type Song, type TempoChange, type Track } from "./song";
 import { noteKey } from "./song-edit";
 import { applyAutomation, laneValue } from "./song-lanes";
 
@@ -285,13 +285,29 @@ export function regionOf(song: Song, from: number, to: number): Song {
 
 // ---- automation ---------------------------------------------------------------------------------
 
-export function setLane(song: Song, track: number, lane: Lane | null): Song {
+/// Sets one lane of a track (a track has at most one lane of each parameter; the others stay). `null` (with the parameter to clear) or a lane without points takes it away.
+export function setLane(song: Song, track: number, lane: Lane | null, param: LaneParam = lane?.param ?? "gain"): Song {
   return withTrack(song, track, (t) => {
     const next = { ...t };
-    if (!lane || !lane.points.length) delete next.automation;
-    else next.automation = [{ ...lane, points: [...lane.points].sort((a, b) => a.step - b.step) }];
+    const others = (t.automation ?? []).filter((l) => l.param !== param);
+    const mine = lane && lane.points.length ? [{ ...lane, param, points: [...lane.points].sort((a, b) => a.step - b.step) }] : [];
+    const all = [...others, ...mine];
+    if (all.length) next.automation = all;
+    else delete next.automation;
     return next;
   });
+}
+
+/// Puts one point on a lane (replacing a point on the same step); the value is held to the parameter's range. Used when a lane is drawn with the mouse.
+export function setLanePoint(song: Song, track: number, param: LaneParam, step: number, value: number, curve: Lane["curve"] = "linear"): Song {
+  const t = song.tracks[track];
+  if (!t) return song;
+  const [lo, hi] = LANE_RANGE[param];
+  const old = t.automation?.find((l) => l.param === param);
+  const s = Math.max(0, Math.min(song.length, Math.round(step)));
+  const points = [...(old?.points ?? []).filter((p) => p.step !== s), { step: s, value: Math.round(Math.min(hi, Math.max(lo, value)) * 100) / 100 }];
+  if (points.length > 256) return song;
+  return setLane(song, track, { param, curve: old?.curve ?? curve, points });
 }
 
 /// A lane drawn by a low-frequency oscillator: `period` steps per cycle, swinging `depth` (0 to 1) around 1, with a point every step or two.

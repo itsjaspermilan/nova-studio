@@ -137,9 +137,11 @@ export interface SongMaster {
   limit?: number;
 }
 
-/// One automation lane. Only "gain" (a multiplier on each note's loudness, read at the note's first step) is rendered.
+/// One automation lane, read at each note's first step. "gain" (0 to 2) multiplies the note's loudness; "pan" (-1 to 1) is added to the note's place in the stereo field.
+export type LaneParam = "gain" | "pan";
+export const LANE_RANGE: Record<LaneParam, [number, number]> = { gain: [0, 2], pan: [-1, 1] };
 export interface Lane {
-  param: "gain";
+  param: LaneParam;
   curve: "linear" | "step" | "smooth";
   points: { step: number; value: number }[];
 }
@@ -405,10 +407,12 @@ export function parseSong(text: string): Parsed {
       const lanes: Lane[] = [];
       for (const [li, lane] of t.automation.entries()) {
         const where = `${at}.automation[${li}]`;
-        if (!lane || lane.param !== "gain") return { ok: false, error: `${where}.param must be "gain"` };
+        if (!lane || (lane.param !== "gain" && lane.param !== "pan")) return { ok: false, error: `${where}.param must be "gain" or "pan"` };
+        if (t.automation.slice(0, li).some((q) => q.param === lane.param)) return { ok: false, error: `${where}: there is already a "${lane.param}" lane on this track` };
+        const [lowest, highest] = LANE_RANGE[lane.param];
         if (!["linear", "step", "smooth"].includes(lane.curve)) return { ok: false, error: `${where}.curve must be "linear", "step" or "smooth"` };
-        if (!Array.isArray(lane.points) || lane.points.length > 256 || !lane.points.every((pt) => pt && Number.isInteger(pt.step) && pt.step >= 0 && num(pt.value, 0, 2))) return { ok: false, error: `${where}.points are up to 256 { "step": whole, "value": 0 to 2 }` };
-        lanes.push({ param: "gain", curve: lane.curve, points: [...lane.points].sort((a, b) => a.step - b.step).map((pt) => ({ step: pt.step, value: pt.value })) });
+        if (!Array.isArray(lane.points) || lane.points.length > 256 || !lane.points.every((pt) => pt && Number.isInteger(pt.step) && pt.step >= 0 && num(pt.value, lowest, highest))) return { ok: false, error: `${where}.points are up to 256 { "step": whole, "value": ${lowest} to ${highest} }` };
+        lanes.push({ param: lane.param, curve: lane.curve, points: [...lane.points].sort((a, b) => a.step - b.step).map((pt) => ({ step: pt.step, value: pt.value })) });
       }
       if (lanes.length) voice.automation = lanes;
       else delete (t as Partial<Track>).automation;

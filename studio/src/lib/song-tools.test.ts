@@ -285,3 +285,50 @@ describe("tap tempo", () => {
     expect(tapTempo([0, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4020])).toBeGreaterThan(100);
   });
 });
+
+describe("a pan lane and drawing lanes", () => {
+  const mk = (): Song => ({ version: 1, bpm: 120, stepsPerBeat: 4, length: 16, tracks: [{ ...synthTrack("a", "sine"), notes: [{ step: 0, len: 2, pitch: 69, vel: 1 }, { step: 8, len: 2, pitch: 69, vel: 1 }] }] });
+  it("a track has one lane of each kind and setting one leaves the other", async () => {
+    const { setLane, setLanePoint } = await import("./song-tools");
+    let s = setLanePoint(mk(), 0, "gain", 4, 0.5);
+    s = setLanePoint(s, 0, "pan", 4, -0.5);
+    expect(s.tracks[0]!.automation!.map((l) => l.param).sort()).toEqual(["gain", "pan"]);
+    s = setLane(s, 0, null, "gain");
+    expect(s.tracks[0]!.automation!.map((l) => l.param)).toEqual(["pan"]);
+    expect(setLane(s, 0, null, "pan").tracks[0]!.automation).toBeUndefined();
+  });
+  it("drawing puts points in order, replaces one on the same step and holds the value to the range", async () => {
+    const { setLanePoint } = await import("./song-tools");
+    let s = setLanePoint(mk(), 0, "pan", 8, 3);
+    s = setLanePoint(s, 0, "pan", 2, -3);
+    s = setLanePoint(s, 0, "pan", 8, 0.25);
+    const l = s.tracks[0]!.automation![0]!;
+    expect(l.points).toEqual([{ step: 2, value: -1 }, { step: 8, value: 0.25 }]);
+    expect(setLanePoint(s, 0, "gain", 99, 9).tracks[0]!.automation!.find((x) => x.param === "gain")!.points[0]).toEqual({ step: 16, value: 2 });
+  });
+  it("a pan lane moves each note to its side, added to its own pan, and the render follows", async () => {
+    const { setLanePoint } = await import("./song-tools");
+    const s = setLanePoint(setLanePoint(mk(), 0, "pan", 0, -1), 0, "pan", 8, 1);
+    const a = applyAutomation(s).tracks[0]!.notes;
+    expect(a[0]!.pan).toBe(-1);
+    expect(a[1]!.pan).toBe(1);
+    const { renderSong } = await import("./song");
+    const [l, r] = renderSong(s, 8000).channels;
+    const e = (c: Float32Array, from: number, to: number) => c.slice(from, to).reduce((x, v) => x + v * v, 0);
+    expect(e(l!, 0, 2000)).toBeGreaterThan(e(r!, 0, 2000) * 20); // the first note is left
+    expect(e(r!, 8 * 1000, 8 * 1000 + 2000)).toBeGreaterThan(e(l!, 8 * 1000, 8 * 1000 + 2000) * 20); // the second is right
+  });
+  it("is saved, and the range of each lane is checked", () => {
+    const s = mk();
+    s.tracks[0]!.automation = [{ param: "pan", curve: "linear", points: [{ step: 0, value: -0.5 }] }];
+    const back = parseSong(serializeSong(s));
+    expect(back.ok && back.song.tracks[0]!.automation).toEqual(s.tracks[0]!.automation);
+    const bad = JSON.parse(serializeSong(s));
+    bad.tracks[0].automation[0].points[0].value = 1.5;
+    expect(parseSong(JSON.stringify(bad)).ok).toBe(false);
+    bad.tracks[0].automation = [{ param: "pan", curve: "linear", points: [] }, { param: "pan", curve: "linear", points: [] }];
+    expect(parseSong(JSON.stringify(bad)).ok).toBe(false);
+    bad.tracks[0].automation = [{ param: "cutoff", curve: "linear", points: [] }];
+    expect(parseSong(JSON.stringify(bad)).ok).toBe(false);
+  });
+});

@@ -29,9 +29,19 @@ export function applyAutomation(song: Song): Song {
   return {
     ...song,
     tracks: song.tracks.map((t) => {
-      const lanes = (t.automation ?? []).filter((l) => l.param === "gain");
-      if (!lanes.length) return t;
-      return { ...t, notes: t.notes.map((n) => ({ ...n, vel: clamp(n.vel * lanes.reduce((g, l) => g * laneValue(l, n.step), 1), 0, 1) })) };
+      const gains = (t.automation ?? []).filter((l) => l.param === "gain");
+      const pans = (t.automation ?? []).filter((l) => l.param === "pan");
+      if (!gains.length && !pans.length) return t;
+      return {
+        ...t,
+        notes: t.notes.map((n) => {
+          const out = { ...n };
+          if (gains.length) out.vel = clamp(n.vel * gains.reduce((g, l) => g * laneValue(l, n.step), 1), 0, 1);
+          // (an empty-lane default of 1 is for gain; a pan lane's points are the pan itself, added to the note's own)
+          if (pans.length) out.pan = clamp((n.pan ?? 0) + pans.reduce((sum, l) => sum + laneValue(l, n.step), 0), -1, 1);
+          return out;
+        }),
+      };
     }),
   };
 }
