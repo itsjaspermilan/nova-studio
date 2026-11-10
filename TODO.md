@@ -155,7 +155,7 @@ Still open (3.6 Files):
 ### Cross-cutting
 - [ ] UX tests with 3 to 5 people per workspace; input matrix (Mac trackpad, Windows touchpad, 3-button and 2-button mouse, pen); VoiceOver and keyboard-only audit; record results.
 - [ ] Palette bridge between Sprites and Model materials; drag assets into scenes and code; plugin/addon surface (later).
-- [ ] Licences checked for every dependency and asset; Blender and Blockbench code not copied; Pixelorama notices in `licenses/`.
+- [~] Licences: dependencies checked by field (above); assets' licences are in `licenses/` (Kenney kits, fonts, Lua, three.js, Vorbis); no Blender or Blockbench code was copied (only ideas, recorded in `docs/studio-workspaces.md`); no Pixelorama code was copied either, so there is no Pixelorama notice to keep (add one the day code is). Not done: a human reading the actual licence texts, and the project's own licence (an owner decision).
 
 
 ## Goal
@@ -241,7 +241,7 @@ Pixelorama, Blockbench, GameStudio, Game Maker 8 manual.
 
 **Delivery and product**
 - [ ] Choose the project's own licence before public distribution; decide the product name (keeping "Nova Studio" is fine).
-- [ ] Third-party licence notices for Rust dependencies are not bundled into outputs (fonts' notices are in `licenses/fonts/`).
+- [x] Third-party licence notices (found on 2026-11-09 to be done already, the line here was stale): `licenses/rust-dependencies.txt` (made by `scripts/third-party.sh`) goes into a desktop export as `THIRD-PARTY.txt` (`export_desktop`) and into an APK's assets (`android.rs`); fonts' notices are in `licenses/fonts/`. Also `scripts/third-party-licenses.mjs` (2026-11-09) writes `licenses/third-party.md`: 636 Rust crates and the studio's 22 npm packages with their licence fields: all permissive (MIT, Apache-2.0, BSD, ISC, Unlicense, Zlib, MPL-2.0 and similar), none flagged. It reads licence *fields*; the texts are in the notice file.
 - [ ] Released builds: the native library is not stripped or size-optimised; 16 KB page-size alignment is unchecked.
 - [ ] APKs are debug-signed only; release signing, distribution and installing are the owner's to do.
 - [ ] macOS: Developer-ID signing, notarisation, a DMG, an app icon; Windows and Linux builds.
