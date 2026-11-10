@@ -36,6 +36,7 @@
   import { applyStack, evaluate, hasModifiers, type Modifier } from "../lib/modifiers";
   import ModifierStack from "./ModifierStack.svelte";
   import CurveEditor from "./CurveEditor.svelte";
+  import { textToMesh } from "../lib/text-mesh";
   import { checkerRaster, equalizeDensity, uvReport, type ShapeReport } from "../lib/uv-report";
   import ProjectSwatches from "./ProjectSwatches.svelte";
   import { applyCurvature, applyLighting, applyOcclusion, bakeCurvature, bakeLighting, bakeOcclusion } from "../lib/model-bake";
@@ -1940,6 +1941,19 @@
     selected = r.path;
     also = [];
   }
+  let textShape = $state("");
+  /// A mesh shape that reads the typed words, in blocks of the pixel font, in the selected part.
+  function addTextShape() {
+    const mesh = textToMesh(textShape, 1, 2);
+    if (!mesh) return;
+    const target = selected?.parts ?? (doc.parts.length ? [0] : null);
+    if (!target) return;
+    const r = addCube(doc, target, mesh);
+    commit(r.doc, false, "Add text");
+    selected = r.path;
+    also = [];
+    textShape = "";
+  }
   function newCube() {
     const target = selected?.parts ?? (doc.parts.length ? [0] : null);
     if (!target) return newPart([]);
@@ -2459,6 +2473,8 @@
             <option value="profile">Profile (spun into a wheel or tyre)</option>
           </select>
           <button onclick={newCube} title="New shape in the selected part">＋ Add</button>
+          <input class="cname" bind:value={textShape} placeholder="words" aria-label="Text for a lettered shape" maxlength="40" onkeydown={(e) => { if (e.key === "Enter") addTextShape(); }} />
+          <button onclick={addTextShape} disabled={!textShape.trim()} title="A shape made of the letters in blocks (one unit a pixel, two deep): for signs and titles">＋ Text</button>
         </div>
       </div>
       <ul>
