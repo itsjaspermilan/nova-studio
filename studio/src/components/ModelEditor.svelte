@@ -29,7 +29,7 @@
   import { addFace, bevelEdge, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, freshProfile, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsProportional, moveVertsSymmetric, setFaceColors, setSmooth, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
   import { hasVolume, meshOf, segmentsOf, shapeFaces, solidOf } from "../lib/model-mesh";
   import { WEIGHT_MODES, autoSkinAll, gradientWeights, mirrorWeights, paintWeights, type WeightMode, autoWeights, boneHeat, dominantBones, heatColor, invertAffine, reskin, setWeight, skinnedPoints, transformPoint, worldMatrices } from "../lib/model-skin";
-  import { bakeAll, bakeSurface, channelToGrey, greyToChannel, blockOf, faceRects, flippedRect, normRect, rectAt, enableTexture, fitPicture, packModel, resizeTexture, unwrap, uvsOf } from "../lib/model-uv";
+  import { bakeAll, bakeSurface, channelToGrey, greyToChannel, blockOf, moveIsland, faceRects, flippedRect, normRect, rectAt, enableTexture, fitPicture, packModel, resizeTexture, unwrap, uvsOf } from "../lib/model-uv";
   import { CLEAR, cloneRaster, drawEllipse, drawLine, drawRect, floodFill, getPixel, newRaster, parseHex, stamp, toHex, type Raster, type Rgba } from "../lib/pixels";
   import { applyBrush, applyGradient } from "../lib/paint";
   import { loadRaster, rasterToDataUrl } from "../lib/png";
@@ -1345,6 +1345,11 @@
         ctx.setLineDash([]);
         // with the face tool, every face of a box is a rectangle that can be picked
         const rects = texTool === "face" ? faceRects(c) : null;
+        if (texTool === "face" && c.shape === "mesh") {
+          ctx.strokeStyle = "rgba(120,220,255,.8)";
+          ctx.lineWidth = 1;
+          for (const i of unwrap(c).islands ?? []) ctx.strokeRect((ax + i.x) * z + 0.5, (ay + i.y) * z + 0.5, i.w * z - 1, i.h * z - 1);
+        }
         for (const [face, r] of Object.entries(rects ?? {})) {
           ctx.strokeStyle = face === faceSel ? "rgba(255,120,200,1)" : "rgba(120,220,255,.8)";
           ctx.lineWidth = face === faceSel ? 2 : 1;
@@ -1381,6 +1386,16 @@
         faceDrag = { path: t.path, base: doc, cube: t.c, face: hit[0] as Face, rect: [...hit[1]!] as [number, number, number, number], from: [x, y], moved: false };
         return;
       }
+      // a mesh: the island of its unwrap under the point
+      for (const t of [...painted].reverse()) {
+        if (t.c.shape !== "mesh") continue;
+        const [ax, ay] = t.c.texture!.at;
+        const isl = unwrap(t.c).islands?.find((i) => x >= ax + i.x && x < ax + i.x + i.w && y >= ay + i.y && y < ay + i.y + i.h);
+        if (!isl) continue;
+        selected = t.path;
+        islandDrag = { path: t.path, base: doc, cube: t.c, poly: isl.poly, from: [x, y], at: [isl.x, isl.y], moved: false };
+        return;
+      }
       texFace = null;
       return;
     }
@@ -1405,6 +1420,7 @@
     beginStroke(e.shiftKey);
     paintTexel(x, y);
   }
+  let islandDrag: { path: Path; base: ModelDoc; cube: Cube; poly: number; from: [number, number]; at: [number, number]; moved: boolean } | null = null;
   let faceDrag: { path: Path; base: ModelDoc; cube: Cube; face: Face; rect: [number, number, number, number]; from: [number, number]; moved: boolean } | null = null;
   /// Puts one face of a painted box at `rect` in the picture (or back to the automatic place with null).
   function placeFace(base: ModelDoc, path: Path, c: Cube, face: Face, rect: [number, number, number, number] | null): ModelDoc {
@@ -1417,6 +1433,14 @@
   function texMove(e: PointerEvent) {
     if (!picture || !texView) return;
     const [x, y] = texCell(e);
+    if (islandDrag) {
+      const at: [number, number] = [Math.max(0, islandDrag.at[0] + x - islandDrag.from[0]), Math.max(0, islandDrag.at[1] + y - islandDrag.from[1])];
+      if (!islandDrag.moved && at[0] === islandDrag.at[0] && at[1] === islandDrag.at[1]) return;
+      if (!islandDrag.moved) history.record(islandDrag.base);
+      islandDrag.moved = true;
+      commit(setCube(islandDrag.base, islandDrag.path, moveIsland(islandDrag.cube, islandDrag.poly, at)), true);
+      return;
+    }
     if (faceDrag) {
       const n = normRect(faceDrag.rect);
       const left = Math.max(0, Math.min(picture.w - n[2], n[0] + x - faceDrag.from[0]));
@@ -1446,6 +1470,7 @@
     shapeStart = null;
     blockDrag = null;
     faceDrag = null;
+    islandDrag = null;
   }
   const pickedRect = $derived.by(() => {
     const c = selected ? cubeAt(doc, selected) : undefined;
@@ -3286,6 +3311,10 @@
             <label>Width <select value={picture.w} onchange={(e) => setTextureSize(Number(e.currentTarget.value), picture!.h)}>{#each [16, 32, 64, 128, 256, 512, 1024] as n (n)}<option value={n}>{n}</option>{/each}</select></label>
             <label>Height <select value={picture.h} onchange={(e) => setTextureSize(picture!.w, Number(e.currentTarget.value))}>{#each [16, 32, 64, 128, 256, 512, 1024] as n (n)}<option value={n}>{n}</option>{/each}</select></label>
           </div>
+          {#if texTool === "face" && cube?.shape === "mesh"}
+            <p class="dim small">Drag an island of this mesh's unwrap (blue rectangles) to put it elsewhere in the block. Seams (Edit mode) cut the mesh into islands.</p>
+            <button class="ghost" disabled={!cube.texture?.islands?.length} onclick={() => commit(setCube(doc, selected!, { ...cube, texture: { ...cube.texture!, islands: undefined } }))}>Put the islands back</button>
+          {/if}
           {#if texTool === "face"}
             {#if pickedRect && faceSel}
               <h4>{faceSel} face</h4>

@@ -67,7 +67,9 @@ export interface Cube {
   /// `mirror` (a box mirrored by "Mirror copy"): bits 1, 2 and 4 for x, y and z, showing the same texels reflected.
   /// `faces` places single faces of a box, wedge or pyramid anywhere in the picture: `[x, y, width, height]` in texels, instead of
   /// the automatic layout inside the block. A negative width or height runs the other way from the corner, flipping the face.
-  texture?: { at: [number, number]; scale?: number; mirror?: number; faces?: Partial<Record<Face, [number, number, number, number]>> };
+  /// `islands` (a mesh): where an island of the unwrap sits in the block instead of the automatic place, `{ poly, at }` with `poly` the lowest polygon number in the island
+  /// and `at` its top-left in texels from the block's corner.
+  texture?: { at: [number, number]; scale?: number; mirror?: number; faces?: Partial<Record<Face, [number, number, number, number]>>; islands?: { poly: number; at: [number, number] }[] };
 }
 
 /// A mesh that bends with the parts it is attached to (the model's skeleton is its part tree): every point follows up to four parts,
@@ -367,6 +369,7 @@ export function parseModel(text: string): Parsed {
         if (!t || !Array.isArray(t.at) || t.at.length !== 2 || !t.at.every((n) => typeof n === "number" && Number.isFinite(n) && n >= 0)) return `${cat}.texture.at must be two numbers, 0 or more`;
         if (t.scale !== undefined && !(typeof t.scale === "number" && t.scale > 0 && t.scale <= 64)) return `${cat}.texture.scale must be a number above 0 and at most 64`;
         if (t.mirror !== undefined && !(Number.isInteger(t.mirror) && t.mirror >= 0 && t.mirror <= 7)) return `${cat}.texture.mirror must be a whole number from 0 to 7`;
+        if (t.islands !== undefined && (!Array.isArray(t.islands) || t.islands.length > MAX_FACES || !t.islands.every((i) => i && Number.isInteger(i.poly) && i.poly >= 0 && Array.isArray(i.at) && i.at.length === 2 && i.at.every((n) => typeof n === "number" && Number.isFinite(n) && n >= 0)))) return `${cat}.texture.islands must be a list of { "poly": whole number, "at": [x, y] }`;
         for (const [f, r] of Object.entries(t.faces ?? {})) {
           if (!FACES.includes(f as Face) || !Array.isArray(r) || r.length !== 4 || !r.every((n) => typeof n === "number" && Number.isFinite(n)) || r[2] === 0 || r[3] === 0 || Math.min(r[0]!, r[0]! + r[2]!) < 0 || Math.min(r[1]!, r[1]! + r[3]!) < 0) return `${cat}.texture.faces.${f} must be a face name with [x, y, width, height] in texels: a size of 0 is no use, and a negative one turns the face over`;
         }
@@ -479,7 +482,7 @@ export function serializeModel(doc: ModelDoc): string {
     if (roughnessOf(c) < 1) parts.push(`"roughness": ${roughnessOf(c)}`);
     parts.push(`"color": "${c.color}"`);
     if (c.faces && Object.keys(c.faces).length) parts.push(`"faces": ${JSON.stringify(c.faces)}`);
-    if (c.texture) parts.push(`"texture": { "at": ${vec2(c.texture.at)}${c.texture.scale !== undefined && c.texture.scale !== 1 ? `, "scale": ${c.texture.scale}` : ""}${c.texture.mirror ? `, "mirror": ${c.texture.mirror}` : ""}${c.texture.faces && Object.keys(c.texture.faces).length ? `, "faces": ${JSON.stringify(c.texture.faces)}` : ""} }`);
+    if (c.texture) parts.push(`"texture": { "at": ${vec2(c.texture.at)}${c.texture.scale !== undefined && c.texture.scale !== 1 ? `, "scale": ${c.texture.scale}` : ""}${c.texture.mirror ? `, "mirror": ${c.texture.mirror}` : ""}${c.texture.faces && Object.keys(c.texture.faces).length ? `, "faces": ${JSON.stringify(c.texture.faces)}` : ""}${c.texture.islands?.length ? `, "islands": ${JSON.stringify(c.texture.islands)}` : ""} }`);
     if (shape === "mesh") {
       const i2 = `${indent}  `;
       const verts = (c.verts ?? []).map((p) => `${i2}  ${vec(p)}`).join(",\n");

@@ -16,6 +16,8 @@ export interface Unwrap {
   size: [number, number];
   /// For each polygon of the shape, the texel (relative to the block) of each of its points.
   polys: UV[][];
+  /// A mesh: its islands, each as the lowest polygon in it and the rectangle it covers in the block.
+  islands?: { poly: number; x: number; y: number; w: number; h: number }[];
 }
 
 const texels = (units: number, scale: number) => Math.max(1, Math.ceil(units * scale - 1e-9));
@@ -111,7 +113,7 @@ export function unwrap(c: Cube): Unwrap {
   // joined, or where two of them would cover the same texels (a spoiler over the boot); each piece is an island, and the
   // islands are packed side by side, tallest first. (Until then every polygon was its own island, turned along its first edge:
   // the pixels slanted and no two neighbours lined up.)
-  return meshIslands(solid, s, c.modifiers?.length ? undefined : c.seams);
+  return meshIslands(solid, s, c.modifiers?.length ? undefined : c.seams, c.texture?.islands);
 }
 
 /// The way each group of a mesh is seen: the texel across (u) and down (v) for a point, seen from outside with up as up
@@ -148,7 +150,7 @@ function cellsOf(pts: UV[]): string[] {
   return out;
 }
 
-function meshIslands(solid: { verts: Vec3[]; polys: { v: number[] }[] }, s: number, seams?: [number, number][]): Unwrap {
+function meshIslands(solid: { verts: Vec3[]; polys: { v: number[] }[] }, s: number, seams?: [number, number][], placed?: { poly: number; at: [number, number] }[]): Unwrap {
   const seam = new Set((seams ?? []).map(([a, b]) => (a < b ? a + "," + b : b + "," + a)));
   const polys = solid.polys;
   const views = polys.map((p) => {
@@ -220,8 +222,16 @@ function meshIslands(solid: { verts: Vec3[]; polys: { v: number[] }[] }, s: numb
     rowH = Math.max(rowH, f.h);
     width = Math.max(width, x - ISLAND_GAP);
   }
+  // islands the person moved by hand
+  for (const o of placed ?? []) {
+    const k = island[o.poly];
+    if (k !== undefined && k >= 0) placedAt[k] = [Math.max(0, Math.round(o.at[0])), Math.max(0, Math.round(o.at[1]))];
+  }
+  width = Math.max(1, ...boxes.map((f, i) => placedAt[i]![0] + f.w));
+  const height = Math.max(1, ...boxes.map((f, i) => placedAt[i]![1] + f.h));
   return {
-    size: [width, y + rowH || 1],
+    size: [width, height],
+    islands: islands.map((members, k) => ({ poly: Math.min(...members), x: placedAt[k]![0], y: placedAt[k]![1], w: boxes[k]!.w, h: boxes[k]!.h })),
     polys: flat.map((pts, pi) => {
       const k = island[pi]!;
       const [ox, oy] = placedAt[k]!;
@@ -429,6 +439,14 @@ export function bakeAll(doc: ModelDoc): Raster {
   const r = newRaster(w, h);
   for (const { part } of walk(doc)) for (const c of part.cubes) bakeColors(r, c);
   return r;
+}
+
+/// Puts the mesh island that holds polygon `poly` at `at` (texels from the block's corner); null for `at` puts every island back where the unwrap placed it.
+export function moveIsland(c: Cube, poly: number, at: [number, number] | null): Cube {
+  if (!c.texture) return c;
+  const rest = (c.texture.islands ?? []).filter((i) => i.poly !== poly);
+  const islands = at ? [...rest, { poly, at: [Math.max(0, Math.round(at[0])), Math.max(0, Math.round(at[1]))] as [number, number] }] : rest;
+  return { ...c, texture: { ...c.texture, islands: islands.length ? islands : undefined } };
 }
 
 /// The surface picture for a model: every painted shape's block holds its own roughness (green) and metal (blue) numbers, so nothing changes until it is painted.
