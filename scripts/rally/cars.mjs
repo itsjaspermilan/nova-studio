@@ -352,6 +352,17 @@ const pickup = (o) => ({
     for (const x of [-1, 1]) box("bed side", x * (sp.hw - 0.9), 19.8, -25.6, [1.8, 6.8, 32], sp.paint);
     box("tailgate", 0, 19.6, -41.2, [sp.hw * 2 - 2, 7.0, 1.8], sp.paint);
     box("bed front", 0, 19.4, -9.8, [sp.hw * 2 - 2, 6.0, 1.4], sp.paint);
+    // the load bed: a ribbed floor, the wheel wells standing up inside it, chrome caps along the sides and the tailgate, a handle
+    for (let k = 0; k < 7; k++) box("bed rib", 0, 16.95, -38.6 + k * 4.9, [sp.hw * 2 - 4.4, 0.5, 1.3], "#454852");
+    for (const x of [-1, 1]) {
+      box("bed wheel well", x * (sp.hw - 3.9), 18.7, -24.7, [4.6, 4.4, 12.6], mul(sp.paint, 0.94));
+      box("bed rail", x * (sp.hw - 0.9), 23.45, -25.6, [2.3, 0.7, 32.4], "#cfd3da");
+      box("sport bar post", x * (sp.hw - 3.0), 23.0, -11.6, [1.0, 11.4, 1.0], "#cfd3da");
+    }
+    box("tailgate rail", 0, 23.15, -41.2, [sp.hw * 2 - 2, 0.7, 2.3], "#cfd3da");
+    box("sport bar", 0, 28.6, -11.6, [sp.hw * 2 - 6, 1.0, 1.0], "#cfd3da");
+    box("tailgate handle", 0, 21.4, -42.3, [5, 1.2, 0.7], "#cfd3da");
+    box("tow hitch", 0, 7.4, -43.6, [3.4, 2.2, 3.6], "#3a3d48");
   }], ...o,
 });
 const sporty = (o) => ({
@@ -501,7 +512,15 @@ const CARS = {
   car_blue: fromArch("mustang", { grille: "pony", lamps: "round2", tails: "triple", wheelStyle: "mag5", paint: "#2563c9", stripe: { half: 2.6, color: "#f4f6fa", z: [[-39.4, 39.4]] }, extras: [({ box, s: sp }) => box("rear spoiler", 0, sp.ys + 3.0, sp.zr + 3.2, [sp.hw * 1.5, 1.0, 4.6], "#1d1f26")] }),
   car_suv: fromArch("wagon", { grille: "bars", lamps: "round1", tails: "strip", wheelStyle: "steel", paint: "#5b8f5a", extras: [({ box, s: sp }) => { for (const x of [-1, 1]) box("roof rail", x * 8.2, sp.roof + 0.6, -4, [1.2, 1.0, 26], "#2c2e36"); }] }),
   car_suvl: fromArch("sedan", { grille: "split", lamps: "slit", tails: "bar", wheelStyle: "mag5", paint: "#2e4396" }),
-  car_van: fromArch("minivan", { grille: "mesh", lamps: "rect", tails: "tall", wheelStyle: "dish", paint: "#f1efe7", patch: [{ z: [-40, 40], segs: [3], color: "#2b5aa8" }] }),
+  car_van: fromArch("minivan", { grille: "mesh", lamps: "rect", tails: "tall", wheelStyle: "steelcap", paint: "#f1efe7", patch: [{ z: [-40, 40], segs: [3], color: "#2b5aa8" }],
+    extras: [({ box, s: sp }) => {
+      const top = sp.roof ?? 31;
+      for (const x of [-1, 1]) box("roof rail", x * (sp.hw - 5.8), top + 0.35, -8, [1.1, 1.0, 44], "#cfd3da");
+      for (const z of [-26, -14, -2, 10]) box("roof crossbar", 0, top + 1.0, z, [sp.hw * 2 - 10.4, 0.8, 1.4], "#cfd3da");
+      box("roof vent", 0, top + 0.5, -31, [7.6, 1.3, 6], "#dfe3e8");
+      box("rear step", 0, sp.yb + 1.3, sp.zr - 0.7, [sp.hw * 2 - 7, 2.6, 3.2], "#2b2d35");
+      for (const x of [-1, 1]) box("door step", x * (sp.hw + 0.3), sp.yb + 1.2, -3, [1.6, 0.9, 20], "#2b2d35");
+    }] }),
   car_pickup: pickup({ ...classic, paint: "#e0842a", trim: "#2b2d35" }),
   car_yellow: fromArch("challenger", { grille: "split", lamps: "round2", tails: "bar", wheelStyle: "multispoke", paint: "#ffc61a", stripe: { half: 2.4, color: "#1c1d22", z: [[-39.4, 39.4]] } }),
   car: fromArch("mustang", { grille: "pony", lamps: "round1", tails: "triple", wheelStyle: "turbine", paint: "#d91f35", stripe: { half: 2.2, color: "#f4f6fa", z: [[-39.4, 39.4]] } }),
