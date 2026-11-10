@@ -5,6 +5,7 @@
   import { CHORDS, SCALES, addChord, addMarker, glueNotes, humanizeTiming, humanizeVelocity, lfoLane, laneValue, removeMarker, setBeatsPerBar, setLane, setLanePoint, setLoop, setMeterAt, setTempoAt, setNoteProps, snapToScale, strumNotes } from "../lib/song-tools";
   import { LANE_RANGE, type LaneParam, NOTE_NAMES, barSteps, bpmAt, songSeconds, stepSeconds, type Song } from "../lib/song";
   import { integratedLufs, peakDb } from "../lib/loudness";
+  import { loudestBand, spectrum, type Band } from "../lib/spectrum";
   import { renderSong } from "../lib/song";
   import { FX_SPECS, FX_TYPES, MAX_FX, addFx, moveFx, param, removeFx, setFxParam, toggleFx, type FxType } from "../lib/fx";
   import { updateTrack } from "../lib/song";
@@ -109,6 +110,19 @@
   function measure() {
     const s = renderSong(song, 22050);
     measured = { lufs: integratedLufs(s.channels, s.rate), peak: peakDb(s.channels) };
+  }
+  // ---- the spectrum ----
+  let bands: Band[] | null = $state(null);
+  let spectrumNote = $state("");
+  /// Renders the song (or, with a track chosen, just that track) and averages its spectrum.
+  function analyse(whole: boolean) {
+    const target = whole ? song : { ...song, master: undefined, tracks: song.tracks.map((tr, i) => ({ ...tr, mute: i !== track, solo: false })) };
+    const sound = renderSong(target, 22050);
+    const mono = new Float32Array(sound.channels[0]!.length);
+    for (let i = 0; i < mono.length; i++) mono[i] = (sound.channels[0]![i]! + sound.channels[1]![i]!) / 2;
+    bands = spectrum(mono, sound.rate);
+    const top = loudestBand(bands);
+    spectrumNote = top && top.db > -100 ? `Loudest around ${Math.round(top.hz)} Hz` : "Silent";
   }
   const fmt = (n: number) => (Number.isFinite(n) ? n.toFixed(1) : "silent");
   let midiFile: HTMLInputElement | undefined = $state();
@@ -257,13 +271,31 @@
   </section>
 
   <section>
+    <h4>Spectrum <span class="dim small">(which pitches carry the energy)</span></h4>
+    <div class="row">
+      <button onclick={() => analyse(true)}>Analyse the song</button>
+      <button onclick={() => analyse(false)} disabled={!t}>Analyse this track</button>
+      {#if spectrumNote}<span class="dim small" role="status">{spectrumNote}</span>{/if}
+    </div>
+    {#if bands}
+      <svg viewBox="0 0 400 90" class="lane" role="img" aria-label="Spectrum: level of each pitch range, low pitches on the left">
+        {#each bands as b, i (i)}
+          {@const h = Math.max(0, ((b.db + 80) / 80) * 80)}
+          <rect x={(i / bands.length) * 400 + 1} y={90 - h} width={400 / bands.length - 2} height={h} fill="#5aa9ff"><title>{Math.round(b.hz)} Hz: {b.db.toFixed(0)} dB</title></rect>
+        {/each}
+      </svg>
+      <p class="dim small">Low pitches on the left, high on the right; taller is louder (the scale runs from -80 dB to 0).</p>
+    {/if}
+  </section>
+
+  <section>
     <h4>Master</h4>
     <div class="row">
-      <label class="check"><input type="checkbox" checked={song.master?.lufs !== undefined} onchange={(e) => commit({ ...song, master: { volume: song.master?.volume ?? 1, ...(e.currentTarget.checked ? { lufs: -16 } : {}), ...(song.master?.limit !== undefined ? { limit: song.master.limit } : {}) } })} /> Bring to a loudness of</label>
+      <label class="check"><input type="checkbox" checked={song.master?.lufs !== undefined} onchange={(e) => commit({ ...song, master: { volume: song.master?.volume ?? 1, ...(song.master?.fx ? { fx: song.master.fx } : {}), ...(e.currentTarget.checked ? { lufs: -16 } : {}), ...(song.master?.limit !== undefined ? { limit: song.master.limit } : {}) } })} /> Bring to a loudness of</label>
       <input type="number" class="narrow" min="-30" max="-6" step="1" disabled={song.master?.lufs === undefined} value={song.master?.lufs ?? -16} aria-label="Target loudness in LUFS" onchange={(e) => commit({ ...song, master: { ...song.master!, volume: song.master?.volume ?? 1, lufs: Number(e.currentTarget.value) } })} /> <span class="dim small">LUFS (-16 suits a game's music)</span>
     </div>
     <div class="row">
-      <label class="check"><input type="checkbox" checked={song.master?.limit !== undefined} onchange={(e) => commit({ ...song, master: { volume: song.master?.volume ?? 1, ...(song.master?.lufs !== undefined ? { lufs: song.master.lufs } : {}), ...(e.currentTarget.checked ? { limit: -1 } : {}) } })} /> Keep peaks under</label>
+      <label class="check"><input type="checkbox" checked={song.master?.limit !== undefined} onchange={(e) => commit({ ...song, master: { volume: song.master?.volume ?? 1, ...(song.master?.fx ? { fx: song.master.fx } : {}), ...(song.master?.lufs !== undefined ? { lufs: song.master.lufs } : {}), ...(e.currentTarget.checked ? { limit: -1 } : {}) } })} /> Keep peaks under</label>
       <input type="number" class="narrow" min="-12" max="0" step="0.5" disabled={song.master?.limit === undefined} value={song.master?.limit ?? -1} aria-label="Peak ceiling in dB" onchange={(e) => commit({ ...song, master: { ...song.master!, volume: song.master?.volume ?? 1, limit: Number(e.currentTarget.value) } })} /> <span class="dim small">dB</span>
     </div>
     <div class="row">
