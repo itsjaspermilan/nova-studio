@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { resizable } from "../lib/resize";
+  import { rememberSize, savedSize } from "../lib/resize";
   import { onMount, untrack } from "svelte";
   import * as THREE from "three";
   import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -2000,6 +2000,23 @@
     selected = r.path;
     also = [];
   }
+  // The right-hand column (outliner above properties) can be dragged wider or narrower; the width is remembered, one for painting and one for the rest.
+  const widthKey = $derived(mode === "texture" ? "model.right.texture" : "model.right");
+  let widthTick = $state(0);
+  const rightWidth = $derived(widthTick >= 0 ? (savedSize(widthKey) ?? (mode === "texture" ? 380 : 300)) : 300);
+  const setRightWidth = (w: number) => {
+    rememberSize(widthKey, Math.max(200, Math.min(700, w)));
+    widthTick++;
+  };
+  let split: { x: number; w: number } | null = null;
+  const splitDown = (e: PointerEvent) => {
+    split = { x: e.clientX, w: rightWidth };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const splitMove = (e: PointerEvent) => {
+    if (split) setRightWidth(split.w - (e.clientX - split.x));
+  };
+  const splitUp = () => (split = null);
   // The mode switch (as in Blender's header): one choice that sets the editor's separate switches together.
   type UiMode = "object" | "edit" | "sculpt" | "weights" | "texture" | "pose";
   const UI_MODES: { id: UiMode; title: string }[] = [
@@ -2624,7 +2641,8 @@
     <button onclick={onjson}>Edit as JSON</button>
   </div>
 {:else}
-  <div class="editor3d" style:grid-template-columns="minmax(0, 1fr) {mode === "texture" ? 380 : 300}px">
+  <div class="editor3d" style:grid-template-columns="minmax(0, 1fr) {rightWidth}px">
+    <div class="splitter" role="separator" aria-orientation="vertical" aria-label="Drag to resize the right-hand panels" title="Drag to resize · double-click for the usual size" style:right="{rightWidth - 3}px" onpointerdown={splitDown} onpointermove={splitMove} onpointerup={splitUp} onpointercancel={splitUp} ondblclick={() => setRightWidth(mode === "texture" ? 380 : 300)}></div>
     <aside class="outliner">
       <div class="adder">
         <button onclick={() => newPart(selected?.parts ?? [])} title={selected ? `A new part inside "${partAt(doc, selected.parts)?.name ?? "the selected part"}"` : "A new part at the top level (select a part first to put it inside that one)"}>＋ Part{selected ? "" : " (top)"}</button>
@@ -3195,6 +3213,9 @@
   .modalbar { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--accent); border-radius: 8px; padding: 5px 12px; font-size: 12px; z-index: 6; pointer-events: none; }
   .stage { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
   .modeselect { font-weight: 600; }
+  .editor3d { position: relative; }
+  .splitter { position: absolute; top: 0; bottom: 0; width: 6px; z-index: 6; cursor: ew-resize; touch-action: none; }
+  .splitter:hover { background: color-mix(in srgb, var(--accent) 40%, transparent); }
   .proptabs { display: flex; flex-wrap: wrap; gap: 2px; margin: 2px 0 8px; border-bottom: 1px solid var(--line); }
   .proptabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; padding: 3px 7px; font-size: 12px; }
   .proptabs button.on { border-bottom-color: var(--accent); color: var(--text); font-weight: 600; }
