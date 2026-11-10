@@ -130,3 +130,73 @@ export function lattice(s: Soup, corners: LatticeCorners): Soup {
   });
   return { ...s, verts };
 }
+
+/// Blocky remesh: the mesh (which must be a closed solid) is cut into cubes `voxel` on a side, and the surface of the cubes that are inside it becomes the new mesh,
+/// one square per exposed cube face, wound outwards. Point order inside the mesh is by crossing parity of a ray along +x, so thin gaps and open meshes give ragged results.
+/// At most `limit` cubes along the longest side (the voxel grows to fit).
+export function remeshBlocks(s: Soup, voxel: number, limit = 64): Soup {
+  if (!s.verts.length || !s.polys.length) return s;
+  const lo: Vec3 = [Infinity, Infinity, Infinity];
+  const hi: Vec3 = [-Infinity, -Infinity, -Infinity];
+  for (const v of s.verts) for (let i = 0; i < 3; i++) {
+    lo[i] = Math.min(lo[i]!, v[i]!);
+    hi[i] = Math.max(hi[i]!, v[i]!);
+  }
+  const longest = Math.max(hi[0]! - lo[0]!, hi[1]! - lo[1]!, hi[2]! - lo[2]!, 1e-6);
+  const size = Math.max(voxel, longest / limit, 1e-4);
+  const n: [number, number, number] = [Math.max(1, Math.ceil((hi[0]! - lo[0]!) / size)), Math.max(1, Math.ceil((hi[1]! - lo[1]!) / size)), Math.max(1, Math.ceil((hi[2]! - lo[2]!) / size))];
+  // triangles (fan of each polygon)
+  const tris: [Vec3, Vec3, Vec3][] = [];
+  for (const f of s.polys) for (let k = 1; k + 1 < f.v.length; k++) tris.push([s.verts[f.v[0]!]!, s.verts[f.v[k]!]!, s.verts[f.v[k + 1]!]!]);
+  const inside = new Uint8Array(n[0] * n[1] * n[2]);
+  const at = (x: number, y: number, z: number) => (x < 0 || y < 0 || z < 0 || x >= n[0] || y >= n[1] || z >= n[2] ? 0 : inside[(z * n[1] + y) * n[0] + x]!);
+  // for each row of cells (y, z) cast one ray along +x from far left and mark the cells between an odd and an even crossing
+  for (let z = 0; z < n[2]; z++) {
+    for (let y = 0; y < n[1]; y++) {
+      const py = lo[1]! + (y + 0.5) * size + 1e-7; // a hair off so the ray does not run along an edge
+      const pz = lo[2]! + (z + 0.5) * size + 1.3e-7;
+      const xs: number[] = [];
+      for (const [a, b, c] of tris) {
+        // the triangle's crossing of the line (any x, py, pz): barycentric in the (y, z) plane
+        const d = (b[1] - c[1]) * (a[2] - c[2]) + (c[2] - b[2]) * (a[1] - c[1]);
+        if (Math.abs(d) < 1e-12) continue;
+        const l1 = ((b[1] - c[1]) * (pz - c[2]) + (c[2] - b[2]) * (py - c[1])) / d;
+        const l2 = ((c[1] - a[1]) * (pz - c[2]) + (a[2] - c[2]) * (py - c[1])) / d;
+        const l3 = 1 - l1 - l2;
+        if (l1 < 0 || l2 < 0 || l3 < 0) continue;
+        xs.push(l1 * a[0] + l2 * b[0] + l3 * c[0]);
+      }
+      xs.sort((p, q) => p - q);
+      for (let i = 0; i + 1 < xs.length; i += 2) {
+        const from = Math.max(0, Math.ceil((xs[i]! - lo[0]!) / size - 0.5));
+        const to = Math.min(n[0] - 1, Math.floor((xs[i + 1]! - lo[0]!) / size - 0.5));
+        for (let x = from; x <= to; x++) inside[(z * n[1] + y) * n[0] + x] = 1;
+      }
+    }
+  }
+  const verts: Vec3[] = [];
+  const index = new Map<string, number>();
+  const corner = (x: number, y: number, z: number) => {
+    const key = `${x},${y},${z}`;
+    let i = index.get(key);
+    if (i === undefined) {
+      i = verts.push([lo[0]! + x * size, lo[1]! + y * size, lo[2]! + z * size]) - 1;
+      index.set(key, i);
+    }
+    return i;
+  };
+  const polys: MeshFace[] = [];
+  const color = s.polys[0]?.color;
+  const quad = (a: [number, number, number], b: [number, number, number], c: [number, number, number], d: [number, number, number]) =>
+    polys.push({ v: [corner(...a), corner(...b), corner(...c), corner(...d)], ...(color ? { color } : {}) });
+  for (let z = 0; z < n[2]; z++) for (let y = 0; y < n[1]; y++) for (let x = 0; x < n[0]; x++) {
+    if (!at(x, y, z)) continue;
+    if (!at(x - 1, y, z)) quad([x, y, z], [x, y, z + 1], [x, y + 1, z + 1], [x, y + 1, z]);
+    if (!at(x + 1, y, z)) quad([x + 1, y, z], [x + 1, y + 1, z], [x + 1, y + 1, z + 1], [x + 1, y, z + 1]);
+    if (!at(x, y - 1, z)) quad([x, y, z], [x + 1, y, z], [x + 1, y, z + 1], [x, y, z + 1]);
+    if (!at(x, y + 1, z)) quad([x, y + 1, z], [x, y + 1, z + 1], [x + 1, y + 1, z + 1], [x + 1, y + 1, z]);
+    if (!at(x, y, z - 1)) quad([x, y, z], [x, y + 1, z], [x + 1, y + 1, z], [x + 1, y, z]);
+    if (!at(x, y, z + 1)) quad([x, y, z + 1], [x + 1, y, z + 1], [x + 1, y + 1, z + 1], [x, y + 1, z + 1]);
+  }
+  return { verts, polys };
+}

@@ -106,3 +106,35 @@ describe("in the modifier stack", () => {
     for (const p of sphere.verts!) expect(Math.hypot(p[0] - 5, p[1] - 5, p[2] - 5)).toBeCloseTo(4, 5);
   });
 });
+
+import { remeshBlocks } from "./modifier-more";
+describe("remesh (blocks)", () => {
+  it("a box becomes the same box made of cubes: same volume, closed, wound outwards", () => {
+    const out = remeshBlocks(soupOf(box(10)), 2);
+    expect(Math.abs(volume(out))).toBeCloseTo(1000, 3);
+    expect(volume(out)).toBeGreaterThan(0);
+    expect(closed(out)).toBe(true);
+    expect(out.polys.length).toBe(6 * 25); // five cubes along each side, five by five squares on each face
+  });
+  it("a finer cube size gives more faces", () => {
+    const big = remeshBlocks(soupOf(box(10)), 5);
+    const small = remeshBlocks(soupOf(box(10)), 1);
+    expect(small.polys.length).toBeGreaterThan(big.polys.length);
+    expect(closed(big)).toBe(true);
+  });
+  it("a plus-shaped solid keeps its notches", () => {
+    // a Boolean difference gives a box with a hole; remeshed it should have more faces than a solid box and a smaller volume
+    const holed = evaluate({ ...box(10), modifiers: [{ type: "boolean", operation: "difference", shape: "box", at: [5, 5, 5], size: [4, 20, 4] }] });
+    const out = remeshBlocks(soupOf(holed), 1);
+    expect(Math.abs(volume(out))).toBeLessThan(1000 - 100);
+    expect(Math.abs(volume(out))).toBeGreaterThan(1000 - 200);
+    expect(closed(out)).toBe(true);
+  });
+  it("is limited in size, ignores an empty mesh, and runs as a modifier", () => {
+    expect(remeshBlocks(soupOf(box(10)), 0.001).polys.length).toBe(6 * 64 * 64);
+    expect(remeshBlocks({ verts: [], polys: [] }, 1).polys.length).toBe(0);
+    expect(checkModifier(newModifier("remesh"), "m")).toBeNull();
+    expect(checkModifier({ type: "remesh", voxel: 0 }, "m")).toContain("voxel");
+    expect(evaluate({ ...box(10), modifiers: [newModifier("remesh")] }).polys!.length).toBe(150);
+  });
+});

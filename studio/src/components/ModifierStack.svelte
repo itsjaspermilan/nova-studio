@@ -108,6 +108,11 @@
           <label title="How far each pass moves the points towards their neighbours">Factor <input type="number" min="0.1" max="1" step="0.1" value={m.factor ?? 0.5} onchange={(e) => set(i, { factor: Math.max(0.1, Math.min(1, num(e.currentTarget.value, 0.5))) })} /></label>
           <label title="How many passes">Passes <input type="number" min="1" max="20" step="1" value={m.passes ?? 2} onchange={(e) => set(i, { passes: Math.max(1, Math.min(20, Math.round(num(e.currentTarget.value, 2)))) })} /></label>
         </div>
+      {:else if m.type === "remesh"}
+        <div class="grid">
+          <label title="The side of each cube, in units: smaller is finer and has many more faces">Cube size <input type="number" min="0.1" step="0.5" value={m.voxel ?? 2} onchange={(e) => set(i, { voxel: Math.max(0.01, num(e.currentTarget.value, 2)) })} /></label>
+        </div>
+        <p class="dim small">Rebuilds a closed solid out of cubes (at most 64 across). Add a Smooth after it to round it.</p>
       {:else if m.type === "boolean"}
         <div class="grid">
           <label>Do
