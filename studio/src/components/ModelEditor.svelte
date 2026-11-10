@@ -2624,8 +2624,8 @@
     <button onclick={onjson}>Edit as JSON</button>
   </div>
 {:else}
-  <div class="editor3d" style:grid-template-columns="auto minmax(0, 1fr) auto">
-    <aside class="outliner" use:resizable={{ key: "model.outliner", edge: "right", size: 190, min: 140, max: 480 }}>
+  <div class="editor3d" style:grid-template-columns="minmax(0, 1fr) {mode === "texture" ? 380 : 300}px">
+    <aside class="outliner">
       <div class="adder">
         <button onclick={() => newPart(selected?.parts ?? [])} title={selected ? `A new part inside "${partAt(doc, selected.parts)?.name ?? "the selected part"}"` : "A new part at the top level (select a part first to put it inside that one)"}>＋ Part{selected ? "" : " (top)"}</button>
         <div class="row">
@@ -2821,7 +2821,7 @@
       {/if}
     </div>
 
-    <aside class="inspector" use:resizable={mode === "texture" ? { key: "model.inspector.texture", edge: "left", size: 380, min: 240, max: 900 } : { key: "model.inspector", edge: "left", size: 230, min: 180, max: 560 }}>
+    <aside class="inspector">
       {#if mode === "texture"}
         <h3>Texture</h3>
         {#if !doc.texture || !picture}
@@ -3157,7 +3157,11 @@
   .histlist button:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
   .histlist .redo { opacity: 0.6; }
   .histlist .now { padding: 2px 8px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); margin: 2px 0; }
-  .editor3d { height: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; min-height: 0; }
+  /* the viewport on the left; on the right the outliner (the part list) above the properties, as in Blender */
+  .editor3d { height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: minmax(120px, 38%) minmax(0, 1fr); min-height: 0; }
+  .editor3d > .outliner { grid-column: 2; grid-row: 1; border-left: 1px solid var(--line); border-bottom: 1px solid var(--line); min-width: 0; }
+  .editor3d > .stage { grid-column: 1; grid-row: 1 / 3; }
+  .editor3d > .inspector { grid-column: 2; grid-row: 2; }
   .outliner, .inspector { background: var(--panel); overflow: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
   .outliner { border-right: 1px solid var(--line); padding: 0; }
   .outliner ul { list-style: none; margin: 0; padding: 4px 0; overflow: auto; }
