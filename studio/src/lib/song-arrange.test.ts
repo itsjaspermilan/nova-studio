@@ -101,3 +101,47 @@ describe("patterns and clips", () => {
     expect(back.song.tracks[0]!.notes.map((n) => n.step)).toEqual([0, 4, 8, 12, 20]);
   });
 });
+
+import { applyPatternView, makePattern as makePat, patternView } from "./song-arrange";
+import { newSong as newS } from "./song";
+describe("editing a pattern in the piano roll", () => {
+  const base = (): Song => {
+    const s = { ...newS(), length: 32 };
+    s.tracks[0]!.notes = [{ step: 0, len: 2, pitch: 60, vel: 0.8 }, { step: 4, len: 2, pitch: 64, vel: 0.8 }, { step: 20, len: 2, pitch: 67, vel: 0.8 }];
+    return makePat(s, 0, 0, 8, "riff")!.song;
+  };
+  it("shows just the pattern's notes, as long as the pattern, with the other tracks quiet", () => {
+    const s = base();
+    const v = patternView(s, 0, "riff")!;
+    expect(v.length).toBe(8);
+    expect(v.tracks[0]!.notes.map((n) => n.step)).toEqual([0, 4]);
+    expect(v.tracks[0]!.clips).toBeUndefined();
+    expect(v.tracks[1]!.mute).toBe(true);
+    expect(patternView(s, 0, "none")).toBeNull();
+  });
+  it("puts edits back into the pattern, keeps the track's own notes and clips, and a longer view makes a longer pattern", () => {
+    const s = base();
+    const v = patternView(s, 0, "riff")!;
+    v.tracks[0]!.notes.push({ step: 6, len: 4, pitch: 71, vel: 1 });
+    v.tracks[0]!.volume = 0.3;
+    v.length = 16;
+    const back = applyPatternView(s, 0, "riff", v);
+    const p = back.tracks[0]!.patterns!.find((q) => q.name === "riff")!;
+    expect(p.length).toBe(16);
+    expect(p.notes.map((n) => [n.step, n.len])).toEqual([[0, 2], [4, 2], [6, 4]]);
+    expect(back.tracks[0]!.notes.map((n) => n.step)).toEqual(s.tracks[0]!.notes.map((n) => n.step));
+    expect(back.tracks[0]!.clips).toEqual(s.tracks[0]!.clips);
+    expect(back.tracks[0]!.volume).toBe(0.3);
+    expect(back.tracks[1]!.mute).toBeFalsy();
+    expect(back.length).toBe(32);
+  });
+  it("a shorter view cuts the pattern and its notes", () => {
+    const s = base();
+    const v = patternView(s, 0, "riff")!;
+    v.length = 4;
+    const back = applyPatternView(s, 0, "riff", v);
+    const p = back.tracks[0]!.patterns!.find((q) => q.name === "riff")!;
+    expect(p.length).toBe(4);
+    expect(p.notes.map((n) => n.step)).toEqual([0]);
+  });
+});

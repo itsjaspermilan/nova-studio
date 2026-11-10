@@ -170,3 +170,50 @@ export function setPatternNotes(song: Song, track: number, name: string, notes: 
     p.notes = notes.filter((n) => n.step >= 0 && n.step < p.length).map((n) => ({ ...n, len: Math.min(n.len, p.length - n.step) }));
   });
 }
+
+// ---- editing a pattern in the piano roll ---------------------------------------------------------------------
+
+/// The song as the piano roll shows it while one pattern is being edited: the track holds just that pattern's notes (as the track's own), the song is as long as the pattern,
+/// and everything else is quiet (the other tracks muted, no loop region), so the roll, the ruler and Play all work on the pattern alone. Null when the pattern is not there.
+export function patternView(song: Song, track: number, name: string): Song | null {
+  const t = song.tracks[track];
+  const p = t && patternOf(t, name);
+  if (!t || !p) return null;
+  const view = clone(song);
+  view.length = Math.max(1, p.length);
+  delete view.loop;
+  if (view.tempos) view.tempos = view.tempos.filter((x) => x.step < view.length);
+  if (!view.tempos?.length) delete view.tempos;
+  view.markers = (view.markers ?? []).filter((m) => m.step <= view.length);
+  if (!view.markers.length) delete view.markers;
+  view.tracks.forEach((x, i) => {
+    if (i !== track) x.mute = true;
+  });
+  const mine = view.tracks[track]!;
+  mine.notes = clone(p.notes);
+  delete mine.patterns;
+  delete mine.clips;
+  return view;
+}
+
+/// Puts an edited view back: the track's notes become the pattern's, a changed song length becomes the pattern's length, and the track's own settings (voice, volume, ...) carry
+/// over; nothing else of the view (muted other tracks, the loop) does.
+export function applyPatternView(song: Song, track: number, name: string, view: Song): Song {
+  const edited = view.tracks[track];
+  const t = song.tracks[track];
+  const p = t && patternOf(t, name);
+  if (!edited || !t || !p) return song;
+  const next = clone(song);
+  const nt = next.tracks[track]!;
+  const settings = clone(edited) as Partial<Track>;
+  delete settings.notes;
+  delete settings.patterns;
+  delete settings.clips;
+  Object.assign(nt, settings);
+  const np = patternOf(nt, name)!;
+  np.length = clamp(Math.round(view.length), 1, 4096);
+  np.notes = clone(edited.notes)
+    .filter((n) => n.step >= 0 && n.step < np.length)
+    .map((n) => ({ ...n, len: Math.min(n.len, np.length - n.step) }));
+  return next;
+}

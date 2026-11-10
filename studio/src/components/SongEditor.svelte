@@ -12,6 +12,7 @@
   import ArrangePanel from "./ArrangePanel.svelte";
   import SongTools from "./SongTools.svelte";
   import LiveScope from "./LiveScope.svelte";
+  import { applyPatternView, patternOf, patternView } from "../lib/song-arrange";
   import { midiToSong, songToMidi } from "../lib/midi";
   import { regionOf, tapTempo } from "../lib/song-tools";
   import { dbfs } from "../lib/mixer";
@@ -22,7 +23,29 @@
 
   const parsed = untrack(() => parseSong(text));
   const error = parsed.ok ? "" : parsed.error;
-  let song: Song = $state.raw(parsed.ok ? parsed.song : newSong());
+  let fullSong: Song = $state.raw(parsed.ok ? parsed.song : newSong());
+  // Editing one pattern's notes in the piano roll (from the song editor): `song` is then the pattern's view (see patternView); edits go back into the pattern.
+  let editingPattern = $state<{ track: number; name: string } | null>(null);
+  const song: Song = $derived((editingPattern && patternView(fullSong, editingPattern.track, editingPattern.name)) || fullSong);
+  const fullOf = (next: Song): Song => (editingPattern ? applyPatternView(fullSong, editingPattern.track, editingPattern.name, next) : next);
+  const setSong = (next: Song) => { fullSong = fullOf(next); };
+  function editPattern(t: number, name: string) {
+    stopPlayback();
+    track = t;
+    selected = null;
+    group = new Set();
+    editingPattern = { track: t, name };
+  }
+  function donePattern() {
+    stopPlayback();
+    editingPattern = null;
+    selected = null;
+    group = new Set();
+  }
+  $effect(() => {
+    const e = editingPattern;
+    if (e && (track !== e.track || !fullSong.tracks[e.track] || !patternOf(fullSong.tracks[e.track]!, e.name))) editingPattern = null;
+  });
   let track = $state(0);
   let selected: number | null = $state(null); // index into the track's notes
   /// Several notes picked together (Shift-click, or Shift and drag a rectangle, or Cmd/Ctrl+A): they move, copy and delete as one. By `noteKey`.
@@ -72,36 +95,37 @@
   let tick = $state(0);
   const canUndo = $derived(tick >= 0 && past.length > 0);
   const canRedo = $derived(tick >= 0 && future.length > 0);
-  function commit(next: Song, keep = false) {
+  function commit(next: Song, keep = false, isFull = false) {
+    const nextFull = isFull ? next : fullOf(next);
     if (!keep) {
-      past.push(song);
+      past.push(fullSong);
       if (past.length > 200) past.shift();
       future = [];
     }
-    song = next;
+    fullSong = nextFull;
     tick++;
-    studio.sessions.set(filePath, { song });
-    studio.edit(filePath, serializeSong(next));
+    studio.sessions.set(filePath, { song: fullSong });
+    studio.edit(filePath, serializeSong(fullSong));
     if (playing) schedule();
   }
   function undo() {
     const p = past.pop();
     if (!p) return;
-    future.push(song);
-    commit(p, true);
+    future.push(fullSong);
+    commit(p, true, true);
     track = Math.min(track, song.tracks.length - 1);
     selected = null;
   }
   function redo() {
     const n = future.pop();
     if (!n) return;
-    past.push(song);
-    commit(n, true);
+    past.push(fullSong);
+    commit(n, true, true);
   }
 
   onMount(() => {
     if (error) return;
-    studio.sessions.set(filePath, { song });
+    studio.sessions.set(filePath, { song: fullSong });
     studio.saveHooks.set(filePath, async () => {
       const current = (studio.sessions.get(filePath) as { song: Song } | undefined)?.song ?? song;
       const rendered = renderSong(current);
@@ -396,11 +420,11 @@
       const moved = moveNotes(gesture.before, track, gesture.keys, c.step - gesture.grabStep, pitchOfRow(row) - gesture.grabPitch!);
       if (moved.song !== song) {
         gesture.moved = true;
-        song = moved.song;
+        setSong(moved.song);
         group = moved.keys;
         tick++;
-        studio.sessions.set(filePath, { song });
-        studio.edit(filePath, serializeSong(song));
+        studio.sessions.set(filePath, { song: fullSong });
+        studio.edit(filePath, serializeSong(fullSong));
       }
       return;
     }
@@ -422,22 +446,22 @@
         if (copy.index < 0) return;
         gesture.copied = true;
         gesture.moved = true;
-        song = copy.song;
+        setSong(copy.song);
         selected = copy.index;
         tick++;
-        studio.sessions.set(filePath, { song });
-        studio.edit(filePath, serializeSong(song));
+        studio.sessions.set(filePath, { song: fullSong });
+        studio.edit(filePath, serializeSong(fullSong));
         return;
       }
       result = changeNote(song, track, selected, { step: Math.max(0, Math.min(song.length - 1, gesture.origStep + c.step - gesture.grabStep)), pitch: pitchOfRow(row) });
     }
     if (result.song !== song && result.index >= 0) {
       gesture.moved = true;
-      song = result.song;
+      setSong(result.song);
       selected = result.index;
       tick++;
-      studio.sessions.set(filePath, { song });
-      studio.edit(filePath, serializeSong(song));
+      studio.sessions.set(filePath, { song: fullSong });
+      studio.edit(filePath, serializeSong(fullSong));
     }
   }
   function up() {
@@ -654,9 +678,12 @@
 
     <section class="songband" aria-label="Song editor">
       <button class="bandhead" aria-expanded={arrangeOpen} onclick={() => (arrangeOpen = !arrangeOpen)} title="Fold the song editor away or show it (every track as a lane of clips)">{arrangeOpen ? "▾" : "▸"} Song editor <span class="dim small">clips on every track: drag to move, drag the right edge to resize</span></button>
-      {#if arrangeOpen}<div class="bandbody"><ArrangePanel {song} {track} step={Math.floor(playhead)} commit={(next) => commit(next)} onselect={(i) => { track = i; selected = null; }} /></div>{/if}
+      {#if arrangeOpen}<div class="bandbody"><ArrangePanel song={fullSong} {track} step={Math.floor(playhead)} commit={(next) => commit(next, false, true)} onselect={(i) => { track = i; selected = null; }} onedit={editPattern} /></div>{/if}
     </section>
 
+    {#if editingPattern}
+      <div class="patbanner" role="status">Editing the pattern <strong>“{editingPattern.name}”</strong> ({song.length} steps): the roll shows only its notes, Play hears only it, and every clip of it follows. <button onclick={donePattern}>Done</button></div>
+    {/if}
     <div class="body">
       <aside class="tracks" use:resizable={{ key: "song.tracks", edge: "right", size: 150, min: 110, max: 400 }}>
         {#each song.tracks as t, i (i)}
@@ -793,6 +820,7 @@
   .check input { margin: 0; }
   .narrow { width: 62px; padding: 2px 6px; }
   .spacer { flex: 1; }
+  .patbanner { display: flex; align-items: center; gap: 10px; padding: 3px 10px; background: color-mix(in srgb, var(--accent) 18%, var(--panel)); border-bottom: 1px solid var(--accent); font-size: 12px; }
   .songband { border-bottom: 1px solid var(--line); background: var(--panel); }
   .bandhead { display: flex; align-items: baseline; gap: 8px; width: 100%; border: none; border-radius: 0; background: transparent; text-align: left; padding: 3px 10px; font-weight: 600; font-size: 12px; }
   .bandbody { max-height: 34vh; min-height: 90px; overflow: auto; border-top: 1px solid var(--line); }

@@ -4,7 +4,7 @@
   import { barStarts, clipNotes, type Song } from "../lib/song";
   import { deleteClip, duplicateClip, flattenTrack, makePattern, moveClip, resizeClip, splitClip, unpackClip, updateClip, deletePattern } from "../lib/song-arrange";
 
-  let { song, track, step, commit, onselect }: { song: Song; track: number; step: number; commit: (next: Song) => void; onselect: (i: number) => void } = $props();
+  let { song, track, step, commit, onselect, onedit }: { song: Song; track: number; step: number; commit: (next: Song) => void; onselect: (i: number) => void; onedit?: (track: number, pattern: string) => void } = $props();
 
   let zoom = $state(10); // pixels a step
   let snap = $state(4);
@@ -96,6 +96,7 @@
         <button onclick={() => commit(duplicateClip(song, s.track, s.index))}>Duplicate</button>
         <button onclick={() => commit(updateClip(song, s.track, s.index, { mute: !chosen.mute }))} aria-pressed={!!chosen.mute}>{chosen.mute ? "Unmute" : "Mute"}</button>
         <label>Colour <input type="color" value={chosen.color ?? "#5aa9ff"} onchange={(e) => commit(updateClip(song, s.track, s.index, { color: e.currentTarget.value }))} /></label>
+        {#if onedit}<button onclick={() => onedit(sel!.track, chosen.pattern)} title="Edit the pattern's notes in the piano roll: every clip of it changes together">Edit in the piano roll</button>{/if}
         <button onclick={() => act(unpackClip(song, s.track, s.index), "The clip is notes on the track again: edit them in the piano roll.")} title="Turn the clip into notes in the piano roll">Unpack to notes</button>
         <button class="danger" onclick={() => { commit(deleteClip(song, s.track, s.index)); sel = null; }}>Delete clip</button>
       </div>
