@@ -2053,8 +2053,8 @@
   ];
   let propTab = $state<PropTab>("object");
   $effect(() => {
-    // entering Edit mode shows the mesh tab; leaving it puts that tab away
-    if (inEdit) untrack(() => { propTab = "mesh"; });
+    // entering Edit mode shows the mesh tab (unless another tab is being used, such as the bones); leaving it puts that tab away
+    if (inEdit) untrack(() => { if (propTab === "object") propTab = "mesh"; });
     else untrack(() => { if (propTab === "mesh") propTab = "object"; });
   });
   let selectNote = $state("");
