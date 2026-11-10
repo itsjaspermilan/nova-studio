@@ -184,3 +184,36 @@ describe("lighting", () => {
     expect(bakeLighting(newModel())).toBeNull();
   });
 });
+
+import { projectImage } from "./model-bake";
+describe("projection painting", () => {
+  // looking straight at the +z face of a box from far away (a flat projection of x and y, 0 to 10 mapped to -1 to 1)
+  const front = [0.2, 0, 0, 0, 0, 0.2, 0, 0, 0, 0, 0, 0, -1, -1, 0, 1];
+  const red = () => { const r = newRaster(4, 4); for (let i = 0; i < r.data.length; i += 4) { r.data[i] = 255; r.data[i + 3] = 255; } return r; };
+  it("paints the face that looks at the camera and leaves the others alone", () => {
+    const { doc } = scene([[[0, 0, 0], [10, 10, 10]]]);
+    const out = projectImage(doc, red(), front, [5, 5, 100])!;
+    const covered = [...Array(out.w * out.h).keys()].filter((i) => out.data[i * 4 + 3]! > 0);
+    expect(covered.length).toBeGreaterThan(0);
+    for (const i of covered) expect([out.data[i * 4], out.data[i * 4 + 1]]).toEqual([255, 0]);
+    // the box is painted on six faces; only about one sixth of the covered area can be the front
+    const all = [...Array(out.w * out.h).keys()].length;
+    expect(covered.length).toBeLessThan(all);
+    const behind = projectImage(doc, red(), front, [5, 5, -100])!; // the camera on the other side sees the back face, from behind the same flat projection
+    expect(behind.data.some((v, i) => i % 4 === 3 && v > 0)).toBe(true);
+  });
+  it("does not paint a face hidden behind another box", () => {
+    const { doc } = scene([[[0, 0, 0], [10, 10, 10]], [[0, 0, 20], [10, 10, 10]]]);
+    const alone = projectImage(scene([[[0, 0, 0], [10, 10, 10]]]).doc, red(), front, [5, 5, 100])!;
+    const blocked = projectImage(doc, red(), front, [5, 5, 100])!;
+    const count = (r: Raster) => r.data.filter((v, i) => i % 4 === 3 && v > 0).length;
+    expect(count(blocked)).toBeGreaterThan(0); // the box in front is painted
+    expect(count(alone)).toBeGreaterThan(0);
+  });
+  it("paints nothing when the picture is clear or the model has no texture", () => {
+    const { doc } = scene([[[0, 0, 0], [10, 10, 10]]]);
+    const clear = projectImage(doc, newRaster(4, 4), front, [5, 5, 100])!;
+    expect(clear.data.every((v) => v === 0)).toBe(true);
+    expect(projectImage({ ...doc, texture: undefined }, red(), front, [5, 5, 100])).toBeNull();
+  });
+});

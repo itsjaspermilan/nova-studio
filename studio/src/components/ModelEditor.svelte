@@ -37,10 +37,11 @@
   import { applyStack, evaluate, hasModifiers, type Modifier } from "../lib/modifiers";
   import ModifierStack from "./ModifierStack.svelte";
   import CurveEditor from "./CurveEditor.svelte";
+  import { projectImage } from "../lib/model-bake";
   import { modelStats } from "../lib/mesh-stats";
   import { knifeCut } from "../lib/mesh-cut";
   import { addLayer, duplicateLayer, flatten, layerPath, mergeDown, moveLayer, removeLayer, singleLayer, updateLayer, MAX_TEX_LAYERS, type LayerSet } from "../lib/texture-layers";
-  import { BLEND_MODES } from "../lib/pixels";
+  import { BLEND_MODES, composite } from "../lib/pixels";
   import { edgeLoop, edgeRing, edgeSlide, fillHole, pointsOfEdges, selectSimilarFaces, smoothByAngle } from "../lib/mesh-select";
   import { textToMesh } from "../lib/text-mesh";
   import { parsePath, sweepTube } from "../lib/tube";
@@ -166,6 +167,28 @@
   let sunY = $state(1);
   let sunZ = $state(0.3);
   /// Sunlight and shadow baked into the texture from one directional light (one undo step).
+  let projectPath = $state("");
+  const projectable = $derived(studio.files.filter((f) => !f.dir && /\.(png|jpe?g)$/i.test(f.path) && !f.path.includes(".texture")).map((f) => f.path));
+  /// Throws a project picture onto the model from the camera, as a slide projector would: every texel facing the camera and not hidden takes the picture's colour (at the paint opacity), on the layer being painted.
+  async function projectPicture() {
+    if (!picture || !doc.texture || !camera || !modelGroup || !canvas) return void (bakeNote = "Paint a shape first.");
+    if (!projectPath) return void (bakeNote = "Choose a picture to project first.");
+    try {
+      const img = await loadRaster(await studio.api!.readImage(projectPath));
+      camera.updateMatrixWorld();
+      modelGroup.updateMatrixWorld(true);
+      const m = new THREE.Matrix4().copy(camera.projectionMatrix).multiply(camera.matrixWorldInverse).multiply(modelGroup.matrixWorld);
+      const eye = modelGroup.worldToLocal(camera.position.clone());
+      const out = projectImage(doc, img, m.elements, [eye.x, eye.y, eye.z], canvas.clientWidth / Math.max(1, canvas.clientHeight));
+      if (!out) return;
+      rememberPicture();
+      picture = composite(picture, out, texOpacity / 100);
+      pictureChanged();
+      bakeNote = "Picture projected from this view.";
+    } catch (e) {
+      bakeNote = "Could not read that picture: " + (e instanceof Error ? e.message : String(e));
+    }
+  }
   function bakeSun() {
     if (!picture || !doc.texture) return void (bakeNote = "Paint a shape first: baking changes the texture.");
     const light = bakeLighting(doc, { toLight: [sunX, sunY, sunZ], ambient: 0.3 });
@@ -3086,6 +3109,10 @@
           <div class="row">
             <button onclick={packAll} title="Lays every shape's block out again (painted pixels stay where they are)">Pack blocks</button>
             <button onclick={() => toggleTexture(true)} disabled={!selected || selected.cube === undefined || !!cube?.texture} title="Give the selected shape a block of the picture">Paint selected</button>
+          </div>
+          <div class="row wrap">
+            <select bind:value={projectPath} aria-label="Picture to project" title="A picture from the project to throw onto the model"><option value="">Picture…</option>{#each projectable as p (p)}<option value={p}>{p.split("/").at(-1)}</option>{/each}</select>
+            <button onclick={projectPicture} disabled={!projectPath} title="Throw the picture onto the model from where you are looking: faces that look at you and are not hidden take its colours (at the paint opacity), on the layer being painted">Project from view</button>
           </div>
           <div class="row wrap">
             <button onclick={bakeSun} disabled={baking || !doc.texture} title="Light the texture from one direction, with shadows (the three numbers say where the sun is)">Sunlight</button>

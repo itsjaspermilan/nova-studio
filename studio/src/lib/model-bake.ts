@@ -91,6 +91,14 @@ export function bakeOcclusion(doc: ModelDoc, options: BakeOptions = {}): Raster 
 /// Calls `shade` for every texel a shape covers (with the point on the surface in model space, the surface's normal, two directions across the surface, and every triangle of
 /// the model) and writes what it returns (0 to 1) as grey. Null when the model has no texture.
 function bakeTexels(doc: ModelDoc, shade: (at: V, n: V, tx: V, ty: V, tris: Tri[]) => number): Raster | null {
+  return bakeTexelsRaw(doc, (at, n, tx, ty, tris) => {
+    const grey = Math.round(Math.max(0, Math.min(1, shade(at, n, tx, ty, tris))) * 255);
+    return [grey, grey, grey, 255];
+  });
+}
+
+/// The same walk over the covered texels, but `shade` returns the texel's whole colour (or null to leave it empty).
+function bakeTexelsRaw(doc: ModelDoc, shade: (at: V, n: V, tx: V, ty: V, tris: Tri[]) => [number, number, number, number] | null): Raster | null {
   if (!doc.texture) return null;
   const [w, h] = doc.texture.size;
   const out = newRaster(w, h);
@@ -148,10 +156,13 @@ function bakeTexels(doc: ModelDoc, shade: (at: V, n: V, tx: V, ty: V, tris: Tri[
           const l3 = 1 - l1 - l2;
           if (l1 < -1e-6 || l2 < -1e-6 || l3 < -1e-6) continue;
           const at = add(add(mul(pa, l1), mul(pb, l2)), mul(pc, l3));
-          const grey = Math.round(Math.max(0, Math.min(1, shade(at, n, tx, ty, tris))) * 255);
+          const rgba = shade(at, n, tx, ty, tris);
+          if (!rgba) continue;
           const i = (y * w + x) * 4;
-          out.data[i] = out.data[i + 1] = out.data[i + 2] = grey;
-          out.data[i + 3] = 255;
+          out.data[i] = rgba[0];
+          out.data[i + 1] = rgba[1];
+          out.data[i + 2] = rgba[2];
+          out.data[i + 3] = rgba[3];
         }
       }
     }
@@ -302,4 +313,39 @@ export function applyLighting(picture: Raster, light: Raster, strength = 1): Ras
     for (let a = 0; a < 3; a++) out.data[i + a] = Math.round(out.data[i + a]! * f);
   }
   return out;
+}
+
+/// Projection painting: a picture thrown onto the model from the camera, as a slide projector would. `modelToClip` is the camera's view and projection matrices times the
+/// model's own (column-major, 16 numbers, as three.js keeps them); `eye` is the camera's place in model space. Every texel whose surface faces the camera, is not hidden
+/// behind another surface and lands inside the picture takes the picture's colour there. Returns a picture the size of the texture with only those texels filled (alpha 0
+/// elsewhere), to lay over the painting. `viewAspect` is the view's width over its height; the picture is shown in the middle of the view at its own proportions. Null when the model has no texture.
+export function projectImage(doc: ModelDoc, image: Raster, modelToClip: number[], eye: Vec3, viewAspect = image.w / image.h): Raster | null {
+  const m = modelToClip;
+  // the picture sits in the middle of the view at its own proportions, as large as fits
+  const ia = image.w / image.h;
+  const shownW = ia >= viewAspect ? 1 : ia / viewAspect;
+  const shownH = ia >= viewAspect ? viewAspect / ia : 1;
+  return bakeTexelsRaw(doc, (at, n, _tx, _ty, tris) => {
+    const toEye = sub(eye, at);
+    const dist = Math.hypot(toEye[0], toEye[1], toEye[2]);
+    if (dist < 1e-9 || dot(n, toEye) <= 0) return null;
+    const cx = m[0]! * at[0] + m[4]! * at[1] + m[8]! * at[2] + m[12]!;
+    const cy = m[1]! * at[0] + m[5]! * at[1] + m[9]! * at[2] + m[13]!;
+    const cw = m[3]! * at[0] + m[7]! * at[1] + m[11]! * at[2] + m[15]!;
+    if (cw <= 1e-9) return null;
+    const nx = cx / cw;
+    const ny = cy / cw;
+    if (nx < -1 || nx > 1 || ny < -1 || ny > 1) return null;
+    const dir = mul(toEye, 1 / dist);
+    const origin = add(at, mul(n, 2e-3));
+    for (const t of tris) if (hits(origin, dir, t, dist - 4e-3)) return null;
+    const u = ((nx + 1) / 2 - (1 - shownW) / 2) / shownW;
+    const v = ((1 - ny) / 2 - (1 - shownH) / 2) / shownH;
+    if (u < 0 || u >= 1 || v < 0 || v >= 1) return null;
+    const px = Math.min(image.w - 1, Math.floor(u * image.w));
+    const py = Math.min(image.h - 1, Math.floor(v * image.h));
+    const i = (py * image.w + px) * 4;
+    if (!image.data[i + 3]) return null;
+    return [image.data[i]!, image.data[i + 1]!, image.data[i + 2]!, image.data[i + 3]!];
+  });
 }
