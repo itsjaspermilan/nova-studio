@@ -5,6 +5,7 @@
 // band, sills, bumpers and panel gaps are colours of that one surface. The wheel arches are dents and flares of the surface itself, with a
 // dark well in each dent. What is added on top is small: lamps, a grille, mirrors, a plate. See scripts/rally/parts.mjs for `loft`.
 import { PAINT, RUBBER, CHROME, GLASS_COLOR, along, lerp, loft, box, mul, r2, setPivot, pivot, wheel } from "./parts.mjs";
+import { loftFaces, xAtY } from "./face.mjs";
 
 /// The half section at one station, the points from the middle of the underside round to the middle of the roof (10 points, 9 quads):
 /// 0 underside, 1 sill, 2 lower band, 3 lower side, 4 belt, 5 window, 6 gutter, 7 roof, 8 stripe. `bed` (the floor height) makes the open
@@ -30,6 +31,54 @@ function ring(p) {
     [Math.min(sx, roofW * 0.8), top],
     [0, top],
   ];
+}
+
+/// The rules (see face.mjs) that model a car's nose: lamp pockets in one of several styles, a grille recess, a fog lamp, a bumper band.
+function noseRules(s, ring) {
+  const yb = ring[0][1], top = ring[9][1], y7 = ring[7][1], H = top - yb, side = ring.slice(1, 8);
+  const lampY = Math.min(yb + 0.6 * H, y7 - 2.3);
+  const xo = xAtY(side, lampY) - 1.9;
+  const style = s.lamps ?? "rect", grille = s.grille ?? "bars";
+  const rules = [];
+  const clampY = (a, b) => [Math.max(a, yb + 1.5), Math.min(b, y7 - 1.1)];
+  const lens = (shape) => rules.push({ kind: "lens", name: "headlight", lensColor: "#fff3cf", emissive: 0.95, depth: 1.5, rim: 0.9, rimColor: "#1a1b21", floor: "#101116", ...shape });
+  let inner;
+  if (style === "round") { lens({ x: [xo - 4.8, xo], y: clampY(lampY - 2.4, lampY + 2.4) }); inner = xo - 4.8 - 0.9; }
+  else if (style === "round2") { lens({ x: [xo - 3.0, xo], y: clampY(lampY - 1.5, lampY + 1.5) }); lens({ x: [xo - 3.0 - 1.8 - 3.0, xo - 3.0 - 1.8], y: clampY(lampY - 1.5, lampY + 1.5) }); inner = xo - 3.0 - 1.8 - 3.0 - 0.9; }
+  else if (style === "slit") { lens({ x: [xo - 8.8, xo], y: clampY(lampY - 0.9, lampY + 0.9) }); inner = xo - 8.8 - 0.9; }
+  else if (style === "tall") { lens({ x: [xo - 3.4, xo], y: clampY(lampY - 2.3, lampY + 2.3) }); inner = xo - 3.4 - 0.9; }
+  else if (style === "quad") { lens({ x: [xo - 4.6, xo], y: clampY(lampY + 0.2, lampY + 1.5) }); lens({ x: [xo - 4.6, xo], y: clampY(lampY - 1.7, lampY - 0.4) }); inner = xo - 4.6 - 0.9; }
+  else { lens({ x: [xo - 5.2, xo], y: clampY(lampY - 1.4, lampY + 1.4) }); inner = xo - 5.2 - 0.9; }
+  const recess = (o) => rules.push({ kind: "recess", depth: 1.0, rim: 0.5, rimColor: "#1a1b21", floor: "#101116", ...o });
+  const gy = clampY(lampY - 1.7, lampY + 1.5);
+  if (grille === "mouth") recess({ x: [0, xo - 3.5], y: [yb + 1.0, yb + 3.2], depth: 1.3, bars: 1 });
+  else if (grille === "kidney") recess({ x: [0.6, inner], y: gy });
+  else if (grille === "blackout") recess({ x: [0, inner], y: gy });
+  else if (grille === "mesh") recess({ x: [0, inner], y: gy, bars: 3 });
+  else recess({ x: [0, inner], y: gy, bars: 2 });
+  if (!s.noFog && grille !== "mouth") rules.push({ kind: "lens", name: "fog lamp", lensColor: "#ffe07a", emissive: 0.6, depth: 0.9, rim: 0.5, rimColor: "#1a1b21", floor: "#101116", x: [xo - 3.0, xo - 0.8], y: [yb + 1.0, yb + 2.2] });
+  if (s.bumper) rules.push({ kind: "band", y: [yb, yb + 3.4], color: s.bumper });
+  return { rules, rake: s.noseRake ?? 2.0 };
+}
+/// The same for the tail: brake lamps (in the place the game draws its glow: reported as lx, ly), a lamp bar, the plate, a bumper band.
+function tailRules(s, ring) {
+  const yb = ring[0][1], top = ring[9][1], y7 = ring[7][1], H = top - yb, side = ring.slice(1, 8);
+  const ly = Math.min(s.tailY ? s.tailY - 2.4 : yb + 0.45 * H, y7 - 3.6);
+  const lx = xAtY(side, ly) - 3.4;
+  const tails = s.tails ?? "bar";
+  const rules = [];
+  const clampY = (a, b) => [Math.max(a, yb + 1.5), Math.min(b, y7 - 1.1)];
+  const lamp = (shape, color, emissive) => rules.push({ kind: "lens", name: "brake light", lensColor: color, emissive, depth: 1.4, rim: 0.8, rimColor: "#1a1b21", floor: "#101116", ...shape });
+  if (tails === "bar") {
+    const yy = clampY(ly + 2.1, ly + 3.3);
+    lamp({ x: [0, xAtY(side, yy[1]) - 1.4], y: yy }, "#e8202c", 0.9);
+    lamp({ x: [lx - 2.1, lx + 2.1], y: clampY(ly - 0.9, ly + 0.9) }, "#ff5a3a", 0.75);
+  } else if (tails === "pair") lamp({ x: [lx - 3.0, lx + 3.0], y: clampY(ly - 1.6, ly + 1.6) }, "#e8202c", 0.85);
+  else if (tails === "round") lamp({ x: [lx - 2.3, lx + 2.3], y: clampY(ly - 2.3, ly + 2.3) }, "#e8202c", 0.85);
+  else lamp({ x: [lx - 1.6, lx + 1.6], y: clampY(ly - 3.0, ly + 3.0) }, "#e8202c", 0.85);
+  rules.push({ kind: "lens", name: "plate", lensColor: "#f0f0ea", emissive: 0, depth: 0.8, rim: 0.4, rimColor: "#1a1b21", floor: "#101116", x: [0, 3.2], y: [yb + 1.2, yb + 3.4] });
+  if (s.bumper) rules.push({ kind: "band", y: [yb, yb + 3.4], color: s.bumper });
+  return { rules, rake: s.tailRake ?? 1.2, lx, ly, t: (ly - yb) / H };
 }
 
 export function buildBody(s) {
@@ -96,13 +145,22 @@ export function buildBody(s) {
     if (kind === "across") return j === 2 ? 0.6 : j === 4 ? 0.45 : j === 5 ? 0.5 : j === 6 ? 0.4 : j === 1 ? 0.5 : 0;
     return 0;
   };
-  const body = loft("body", stations, { colorOf, creaseOf, subsurf: [1, s.renderLevels ?? 1] });
-  const cubes = [body];
+  const faceMode = !s.bare;
+  let body, lensCubes = [], tailInfo = null;
+  if (faceMode) {
+    const nose = noseRules(s, stations[stations.length - 1].pts);
+    tailInfo = s.bed ? null : tailRules(s, stations[0].pts);
+    const r = loftFaces("body", stations, { colorOf, creaseOf, subsurf: [1, s.renderLevels ?? 1], material: PAINT, ends: { nose, ...(tailInfo ? { tail: tailInfo } : {}) }, paint: s.paint, pivot: pivot() });
+    body = r.body; lensCubes = r.lenses;
+  } else body = loft("body", stations, { colorOf, creaseOf, subsurf: [1, s.renderLevels ?? 1] });
+  const cubes = [body, ...lensCubes];
   const { zr: ZR, zf: ZF } = s;
   const endW = (z) => along(s.w, z);
   if (s.bare) { for (const fn of s.extras ?? []) fn({ cubes, box, s, along });
     const parts0 = [{ name: "body", origin: [0, pivot(), 0], rotation: [0, 0, 0], cubes, children: [] }, wheel("wheel_fl", -1, s.wheelZ[0], s), wheel("wheel_fr", 1, s.wheelZ[0], s), wheel("wheel_rl", -1, s.wheelZ[1], { ...s, R: s.Rr ?? s.R, tw: s.twr ?? s.tw }), wheel("wheel_rr", 1, s.wheelZ[1], { ...s, R: s.Rr ?? s.R, tw: s.twr ?? s.tw })];
     return { model: { version: 1, scale: 0.0625, parts: parts0 }, tail: { z: r2(ZR / 16), y: r2(7.5 / 16 - 0.06), x: 0 } }; }
+  let lx, ly, tails = s.tails ?? "bar";
+  if (!faceMode) {
   const lampY = s.lampY ?? ((along(s.belt, ZF) + along(s.yb, ZF)) / 2 + 1.5);
   // the lights, grille and plate, sunk into the end faces
   const hw = along(s.w, ZF - 3); // the width a little behind the tapering tip: the lamps sit out at the corners
@@ -135,7 +193,7 @@ export function buildBody(s) {
   else { cubes.push(box("grille", -gw, gw, lampY - 1.7, lampY + 1.5, gz[0], gz[1], dk, { bevel: 0.35, segs: 1, material: RUBBER })); for (const y of [-0.9, 0, 0.9]) cubes.push(box("grille bar", -gw + 0.5, gw - 0.5, lampY + y - 0.14, lampY + y + 0.14, gz[0], gz[1] + 0.15, slat, { material: CHROME })); }
   // ---- the rear: brake lamps in one of several styles at one place: the game draws the brake glow there (TAIL in entities/car.lua) ----
   const tw0 = along(s.w, ZR + 3), ty = s.tailY ?? (along(s.belt, ZR) - 1.2);
-  const lx = tw0 - 3.8, ly = ty - 2.4, tails = s.tails ?? "bar", RED = "#e8202c", BRAKE = "#ff5a3a";
+  lx = tw0 - 3.8; ly = ty - 2.4; const RED = "#e8202c", BRAKE = "#ff5a3a";
   if (tails === "bar") {
     cubes.push(box("tail light bar", -tw0 + 2.4, tw0 - 2.4, ty - 1.0, ty + 1.0, ZR - 0.25, ZR + 2.4, RED, { bevel: 0.4, segs: 2, emissive: 0.9 }));
     for (const side of [-1, 1]) cubes.push(box(`brake light ${side}`, side * lx - 2.2, side * lx + 2.2, ly - 1.0, ly + 1.0, ZR - 0.25, ZR + 2.2, BRAKE, { bevel: 0.3, segs: 1, emissive: 0.75 }));
@@ -147,6 +205,7 @@ export function buildBody(s) {
     for (const side of [-1, 1]) cubes.push(box(`brake light ${side}`, side * lx - 1.6, side * lx + 1.6, ly - 3.0, ly + 3.0, ZR - 0.25, ZR + 2.2, RED, { bevel: 0.5, segs: 2, emissive: 0.85 }));
   }
   cubes.push(box("plate", -3.2, 3.2, along(s.yb, ZR) + 2.4, along(s.yb, ZR) + 4.8, ZR - 0.5, ZR + 0.2, "#f0f0ea", { material: RUBBER }));
+  }
   // the dark wheel wells, sitting in the dents
   for (const side of [-1, 1]) for (const zc of s.wheelZ) {
     cubes.push(Object.assign({ name: "wheel well", shape: "cylinder", from: [side * (along(s.w, zc) - (s.dent ?? 3.0) - 0.6) - s.R * 1.18, s.R - pivot() - 0.4, zc - s.R * 1.18], size: [s.R * 2.36, 0.8, s.R * 2.36], rotation: [0, 0, 90], color: "#0c0d11", segments: 24, smooth: true }, RUBBER));
@@ -159,5 +218,5 @@ export function buildBody(s) {
   for (const fn of s.extras ?? []) fn({ cubes, box, s, along });
   const parts = [{ name: "body", origin: [0, pivot(), 0], rotation: [0, 0, 0], cubes, children: [] },
     wheel("wheel_fl", -1, s.wheelZ[0], s), wheel("wheel_fr", 1, s.wheelZ[0], s), wheel("wheel_rl", -1, s.wheelZ[1], s), wheel("wheel_rr", 1, s.wheelZ[1], s)];
-  return { model: { version: 1, scale: 0.0625, parts }, tail: { z: r2((ZR - 0.25) / 16), y: r2(ly / 16 - 0.06), x: r2(lx / 16 / 0.92) } };
+  return { model: { version: 1, scale: 0.0625, parts }, tail: tailInfo ? { z: r2((ZR + 1.15 + 1.2 * tailInfo.t) / 16), y: r2(tailInfo.ly / 16 - 0.06), x: r2(tailInfo.lx / 16 / 0.92) } : { z: r2((ZR - 0.25) / 16), y: r2(ly / 16 - 0.06), x: r2(lx / 16 / 0.92) } };
 }

@@ -20,6 +20,11 @@ import { eulerToQuaternion } from "./model-ease";
 /// A mesh that bends with the model's parts.
 const isSkinned = (c: Cube) => c.shape === "mesh" && !!c.skin;
 
+/// Appends `from` to `to` (a spread into push() overflows the call stack for a shape of more than about a hundred thousand numbers).
+function append(to: number[], from: ArrayLike<number>) {
+  for (let i = 0; i < from.length; i++) to.push(from[i]!);
+}
+
 function meshOf(part: Part, scale: number, tex?: Texel): PartMesh {
   const m: PartMesh = { positions: [], normals: [], colors: [], indices: [], uvs: [] };
   for (const cube of part.cubes) {
@@ -27,9 +32,9 @@ function meshOf(part: Part, scale: number, tex?: Texel): PartMesh {
     const shown = evaluate(cube, "render"); // modifiers baked in
     const one = solidMesh(shown, scale);
     const base = m.positions.length / 3;
-    m.positions.push(...one.positions);
-    m.normals.push(...one.normals);
-    m.colors.push(...one.colors);
+    append(m.positions, one.positions);
+    append(m.normals, one.normals);
+    append(m.colors, one.colors);
     for (const i of one.indices) m.indices.push(base + i);
     if (tex) {
       // Painted shapes use their texels; the rest all point at the white texel, so their colour shows as it is.
