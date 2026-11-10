@@ -18,6 +18,23 @@ unsafe_op_in_unsafe_fn = "warn"
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
 
+# Debug builds (cargo test, cargo build) carry line tables, so backtraces still show file and line, but no per-variable debug info, and none at all
+# for dependencies: the full info made target/debug 34 GB. Set debug = true here when stepping through code in a debugger.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 [profile.release]
 lto = "thin"
 codegen-units = 1
+
+# For tools and quick iteration (scripts/build-apk.sh --fast, the host `nova` that packs APKs): the same optimisation level but no link-time
+# optimisation, many codegen units and incremental builds, so a one-file engine edit rebuilds in seconds, not a minute. A bit slower at run time:
+# use the release profile for any measurement on the device.
+[profile.fast]
+inherits = "release"
+lto = "off"
+codegen-units = 16
+incremental = true

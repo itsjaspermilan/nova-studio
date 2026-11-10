@@ -27,7 +27,7 @@ const USAGE: &str = "usage:
   nova ktx2 [--linear] in.png out.ktx2   compress a picture for the GPU (ETC2; sides a multiple of 4)
   nova info <project-folder>             print the project's name, version and id (for build scripts)
   nova export desktop <project-folder> [--out <dir>]   check the game, then write <dir>/<id>/ that plays it on a computer
-  nova export android <project-folder> [--out <dir>] [--rebuild] [--debug-build]
+  nova export android <project-folder> [--out <dir>] [--rebuild] [--debug-build] [--fast]
                                          check the game, then build a debug-signed APK (needs the Android SDK; the
                                          engine is built with cargo ndk in the Nova source tree when it changed)
   nova export android --benchmark [--out <dir>]   the built-in benchmark scene as an APK
@@ -74,6 +74,7 @@ enum Command {
 #[derive(Default)]
 struct AndroidFlags {
     debug_build: bool,
+    fast_build: bool,
     rebuild: bool,
     benchmark: bool,
     /// Skip `nova check` (scripts that test the engine on a device build games as they are).
@@ -156,6 +157,7 @@ fn parse() -> Result<Command, String> {
             match arg.as_str() {
                 "--out" => out = args.next().ok_or("--out needs a folder")?.into(),
                 "--debug-build" if target == "android" => android.debug_build = true,
+                "--fast" if target == "android" => android.fast_build = true,
                 "--rebuild" if target == "android" => android.rebuild = true,
                 "--benchmark" if target == "android" => android.benchmark = true,
                 "--no-check" if target == "android" => android.no_check = true,
@@ -502,6 +504,7 @@ fn export_android(
         repo,
         library,
         debug_build: flags.debug_build,
+        fast_build: flags.fast_build,
         rebuild: flags.rebuild,
     };
     let started = std::time::Instant::now();

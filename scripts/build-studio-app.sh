@@ -3,6 +3,7 @@
 #
 #   scripts/build-studio-app.sh            build target/release/bundle/macos/Nova Studio.app
 #   scripts/build-studio-app.sh --install  ...and copy it to /Applications (replacing an older copy)
+# The previous bundle is deleted before building.
 #
 # The app is signed ad hoc (no Apple developer identity): it runs on the Mac that built it, and on another Mac
 # macOS will ask for approval the first time. Notarisation and a developer signature are the project owner's to set up.
@@ -10,6 +11,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 triple="$(scripts/env.sh rustc -vV | sed -n 's/^host: //p')"
+# the previous build's app bundle and runtime copy go first, so an old build cannot be mistaken for the new one
+rm -rf target/release/bundle
+rm -f studio/src-tauri/binaries/nova-*
 mkdir -p studio/src-tauri/binaries
 scripts/env.sh cargo build --release -p nova-runtime --bin nova
 cp target/release/nova "studio/src-tauri/binaries/nova-$triple"

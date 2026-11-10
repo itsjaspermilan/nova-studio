@@ -64,6 +64,9 @@ pub struct AndroidBuild {
     pub library: Option<PathBuf>,
     /// An unoptimised native library (much slower game; quicker to build the first time).
     pub debug_build: bool,
+    /// The `fast` cargo profile (no link-time optimisation, incremental): a one-file engine change rebuilds in seconds instead of a minute. A bit slower
+    /// at run time than the release engine, so not for measuring on a device.
+    pub fast_build: bool,
     /// Rebuild the native library and the base APK even when nothing seems to have changed.
     pub rebuild: bool,
 }
@@ -378,6 +381,8 @@ fn native_library(
     )?;
     let profile = if build.debug_build {
         "debug"
+    } else if build.fast_build {
+        "fast"
     } else {
         "release"
     };
@@ -411,7 +416,9 @@ fn native_library(
         "nova-runtime",
         "--lib",
     ]);
-    if !build.debug_build {
+    if build.fast_build && !build.debug_build {
+        cargo.args(["--profile", "fast"]);
+    } else if !build.debug_build {
         cargo.arg("--release");
     }
     run(&mut cargo, "building the engine (cargo ndk)")?;

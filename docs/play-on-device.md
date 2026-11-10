@@ -39,7 +39,9 @@ scripts/build-apk.sh --project examples/crate-dash      # the same without the c
 scripts/build-apk.sh                                     # the benchmark scene (nova export android --benchmark)
 ```
 
-Flags: `--rebuild` (build everything again), `--debug-build` (unoptimised engine), `--no-check`, `--benchmark`.
+Flags: `--rebuild` (build everything again), `--debug-build` (unoptimised engine), `--fast` (engine built with the `fast` profile: no link-time
+optimisation, incremental, so an engine edit rebuilds in seconds instead of a minute; a little slower at run time, so measure on the device without it),
+`--no-check`, `--benchmark`.
 Each step is printed as `[step] ...` (the studio shows these); the end is `apk: <path>` and
 `package: <id>   label: <name>   version: <v>` (`scripts/device-smoke.sh` reads that line).
 
