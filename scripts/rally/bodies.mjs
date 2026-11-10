@@ -71,6 +71,40 @@ const pickup = (o) => ({
   extras: [({ cubes, box, s: sp }) => { cubes.push(box("tailgate", -12.2, 12.2, 16.2, 20.2, -41.3, -39.6, sp.paint, { bevel: 0.7, segs: 2, material: { metallic: 0.4, roughness: 0.28 } }), box("bed front lip", -12.2, 12.2, 16.2, 19.6, -17.8, -16.6, mul(sp.paint, 0.85), { bevel: 0.5, segs: 2 })); }], ...o,
 });
 
+const formula = (o) => ({
+  bare: true, noDent: true, zr: -34, zf: 41, R: 6.0, Rr: 6.5, tw: 8.0, twr: 9.0, track: 13.4, wheelZ: [24, -23], pivot: 5, wheel: 0.375, flare: 0, rim: "#cfd4dc",
+  w: [[-34, 3.6], [-30, 5.8], [-24, 8.2], [-14, 10.4], [-2, 11.2], [8, 10.2], [16, 7.2], [26, 4.0], [36, 2.4], [41, 2.0]],
+  yb: [[-34, 3.4], [-30, 3.0], [30, 3.0], [41, 3.4]],
+  belt: [[-34, 6.4], [-8, 8.8], [14, 6.2], [41, 4.4]],
+  top: [[-34, 7.2], [-26, 9.2], [-16, 10.4], [-8, 10.6], [-4, 9.4], [10, 9.0], [16, 7.6], [28, 5.6], [41, 4.8]],
+  roofW: [[-34, 2.4], [-26, 5.0], [-14, 8.0], [-2, 8.8], [8, 8.0], [16, 5.0], [26, 2.8], [41, 1.6]],
+  sideWin: [], cockpit: [-3, 11], sill: "#1a1c22", band: "#1a1c22", bumper: "#1a1c22", bumperLen: 0.1,
+  panels: [{ z: [3, 10], js: [3, 4], color: "#14151a" }],
+  extras: [({ cubes, box, s: sp }) => {
+    const acc = sp.accent;
+    // the airbox over the driver's shoulders and the helmet in the cockpit
+    cubes.push(box("airbox", -2.6, 2.6, 9.4, 15.6, -13, -4, sp.paint, { bevel: 1.2, segs: 3, material: { metallic: 0.4, roughness: 0.28 } }));
+    cubes.push({ name: "helmet", shape: "sphere", from: [-2.6, 7.6 - 5, -1.2], size: [5.2, 5.2, 6.0], color: acc, segments: 12, smooth: true, metallic: 0.2, roughness: 0.4 });
+    // the front wing: a main plane, two flaps and the end plates; the rear wing on its posts
+    cubes.push(box("front wing", -17, 17, 3.2, 4.2, 38, 44, "#1a1c22", { bevel: 0.35, segs: 1, material: { metallic: 0.3, roughness: 0.4 } }));
+    cubes.push(box("front flap", -15, 15, 4.6, 5.2, 39, 43, acc, { bevel: 0.25, segs: 1 }));
+    for (const x of [-1, 1]) cubes.push(box("front endplate", x * 17 - 0.5, x * 17 + 0.5, 2.4, 7.2, 37.5, 44.5, acc, { bevel: 0.3, segs: 1 }));
+    for (const x of [-1, 1]) cubes.push(box("rear post", x * 4 - 0.6, x * 4 + 0.6, 6.6, 15.4, -33, -31.4, "#1a1c22", {}));
+    cubes.push(box("rear wing", -11.5, 11.5, 15.0, 16.4, -36.5, -29.5, "#1a1c22", { bevel: 0.35, segs: 1 }));
+    cubes.push(box("rear flap", -11, 11, 16.8, 17.6, -36, -30.5, acc, { bevel: 0.25, segs: 1 }));
+    for (const x of [-1, 1]) cubes.push(box("rear endplate", x * 11.5 - 0.5, x * 11.5 + 0.5, 12.4, 19.2, -37, -29, acc, { bevel: 0.3, segs: 1 }));
+    // intakes and the engine glow
+    for (const x of [-1, 1]) cubes.push(box("intake", x * 9.6 - 1.8, x * 9.6 + 1.8, 6.4, 9.0, 4, 9, "#101116", { bevel: 0.4, segs: 1 }));
+    cubes.push(box("tail light", -1.8, 1.8, 6.6, 8.4, -34.4, -33.2, "#ff2a2a", { emissive: 0.9 }));
+  }],
+  ...o,
+});
+const truck = (o) => ({
+  zr: -35, zf: 29, R: 6.8, tw: 7.6, track: 10.8, wheelZ: [15.3, -15.3], pivot: 3.8, wheel: 0.425, dent: 2.4, flare: 0.4, archTrim: "#1d1e24", bumperLen: 2.6, tailY: 14, lowFrac: 0.2,
+  w: [[-35, 11.5], [-33.6, 13.6], [-30, 14.2], [24, 14.2], [27, 13.6], [29, 11.6]],
+  yb: [[-35, 6.2], [-33, 4.6], [-28, 4.6], [26, 4.6], [29, 6.4]],
+  sideWin: [[16.2, 24.2]], seams: [14.6], screen: [24.4, 28.2], bumper: "#d9dde3", sill: "#23252c", ...o,
+});
 const roofBox = (name, w, d, h, color, z, emissive) => ({ cubes, box, s, along }) => { const top = along(s.top, z); cubes.push(box(name, -w / 2, w / 2, top - 0.3, top + h, z - d / 2, z + d / 2, color, { bevel: 0.5, segs: 2, emissive })); };
 
 const CARS = {
@@ -85,6 +119,34 @@ const CARS = {
   car_suv: () => suv({ paint: "#5b8f5a", roof: "#e9ecef" }),
   car_suvl: () => stretch(suv({ paint: "#27324d", roof: "#27324d", stripe: { color: "#c9ced6", half: 1.4 } }), 39 / 37),
   car_van: () => van({ paint: "#f1efe7", band: "#2b5aa8", bumper: "#2b5aa8", roof: "#f1efe7" }),
+  racecar_green: () => formula({ paint: "#17a05a", accent: "#f5f7fa", stripe: { color: "#f5f7fa", half: 2.0 } }),
+  racecar_orange: () => formula({ paint: "#ff7a1a", accent: "#1b1d24", stripe: { color: "#1b1d24", half: 2.0 } }),
+  racecar_red: () => formula({ paint: "#e1262e", accent: "#f5f7fa", stripe: { color: "#f5f7fa", half: 2.0 } }),
+  racecar_white: () => formula({ paint: "#f3f5f8", accent: "#2a64d6", stripe: { color: "#2a64d6", half: 2.0 } }),
+  firetruck: () => truck({
+    paint: "#d3262c", band: "#f1c40f", roof: "#d3262c",
+    belt: [[-35, 24.2], [12, 24.2], [13.4, 17.8], [27, 17.8], [29, 15.4]],
+    top: [[-35, 26.4], [-33.4, 27.4], [-30, 27.8], [12, 27.8], [13.4, 27.8], [24, 27.6], [28.2, 17.6], [29, 15.8]],
+    roofW: [[-35, 8.5], [-33.4, 11.5], [-30, 12.6], [24, 12.8], [27, 12.6], [29, 11.8]],
+    panels: [{ z: [-32, -21], js: [3, 4], color: "#8c929d" }, { z: [-19.5, -9], js: [3, 4], color: "#8c929d" }, { z: [-7.5, 3], js: [3, 4], color: "#8c929d" }, { z: [4.6, 12], js: [3, 4], color: "#8c929d" }],
+    extras: [({ cubes, box }) => {
+      for (const s of [-1, 1]) cubes.push(box(`ladder rail ${s}`, s * 4.4 - 0.5, s * 4.4 + 0.5, 28.4, 29.6, -33, 9, "#d9dde3", { bevel: 0.25, material: { metallic: 0.95, roughness: 0.16 } }));
+      cubes.push(box("ladder rungs", -4.4, 4.4, 28.7, 29.3, -32, -31.3, "#c3c8cf", { material: { metallic: 0.95, roughness: 0.16 }, mods: [{ type: "array", count: 14, offset: [0, 0, 3.2] }] }));
+      cubes.push(box("light bar", -9, 9, 27.2, 28.2, 17, 20.5, "#2b2d35", { bevel: 0.4 }));
+      for (const [x, c] of [[-8.4, "#e5202e"], [8.4, "#2a6cf0"]]) cubes.push(box("beacon", x - 1.8, x + 1.8, 28.1, 29.8, 17.5, 20, c, { bevel: 0.5, emissive: 0.9 }));
+      cubes.push(box("hose reel", -5, 5, 15.5, 22, -36.2, -34.4, "#c0c5cd", { bevel: 0.9, segs: 3, material: { metallic: 0.95, roughness: 0.16 } }));
+      for (let k = 0; k < 7; k++) cubes.push(box("chevron", -12.6 + k * 3.6, -9.6 + k * 3.6, 8.2, 12.4, -35.6, -35.1, k % 2 ? "#e8e8ee" : "#d3262c", {}));
+    }] }),
+  garbage_truck: () => truck({
+    zr: -35.5, track: 11.7, paint: "#2b9a58", band: "#f4f6f8", roof: "#2b9a58", sill: "#23252c", bumper: "#3a3e49",
+    belt: [[-35.5, 22.4], [12, 22.4], [13.4, 17.4], [27, 17.4], [29, 15.2]],
+    top: [[-35.5, 24.6], [-33.4, 28.4], [-30, 29.0], [12, 29.0], [13.4, 26.6], [24, 26.4], [28.2, 17.4], [29, 15.6]],
+    roofW: [[-35.5, 8.0], [-33.4, 9.6], [-30, 10.4], [11, 10.4], [13.4, 12.4], [24, 12.8], [27, 12.6], [29, 11.8]],
+    extras: [({ cubes, box }) => {
+      cubes.push(box("hopper", -11, 11, 13.6, 22.5, -37.2, -32, "#17181d", { bevel: 0.6 }), box("hopper lip", -12, 12, 11.5, 14, -39, -34.4, "#3a3e49", { bevel: 0.9 }));
+      for (const s of [-1, 1]) cubes.push(box("lift bar", s * 9 - 0.9, s * 9 + 0.9, 11.4, 27, -38.4, -37.2, "#c7ccd3", { bevel: 0.35, material: { metallic: 0.95, roughness: 0.16 } }), box("lift ram", s * 12 - 0.7, s * 12 + 0.7, 14, 22, -38, -37, "#e8b822", { bevel: 0.25 }));
+      cubes.push(box("beacon", -3.5, 3.5, 26.4, 28.4, 18.5, 21.5, "#ff9a1a", { bevel: 0.7, segs: 3, emissive: 0.85 }));
+    }] }),
   car_pickup: () => pickup({ paint: "#e0842a", roof: "#e0842a" }),
 };
 void mul;

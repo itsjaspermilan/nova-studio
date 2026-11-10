@@ -14,7 +14,7 @@ function ring(p) {
   const sx = p.stripe ?? 1.4;
   if (p.bed !== undefined) {
     const fl = p.bed;
-    return [[0, yb], [Math.max(w - 3.8, 1), yb], [w - 1.5 + (p.sillX ?? 0), yb + 2.3], [w + (p.dentLo ?? 0), yb + (belt - yb) * 0.4], [w + (p.flare ?? 0), belt],
+    return [[0, yb], [Math.max(w - 3.8, 1), yb], [w - 1.5 + (p.sillX ?? 0), yb + 2.3], [w + (p.dentLo ?? 0), yb + (belt - yb) * (p.lowFrac ?? 0.4)], [w + (p.flare ?? 0), belt],
       [w - 1.9 + (p.flare ?? 0) * 0.5, belt + 0.1], [w - 2.5, fl + (belt - fl) * 0.5], [w - 3.1, fl], [sx, fl], [0, fl]];
   }
   const y5 = Math.min(belt + 0.9, top - 0.5), y6 = lerp(y5, top - 0.3, 0.78);
@@ -22,7 +22,7 @@ function ring(p) {
     [0, yb],
     [Math.max(w - 3.8, 1), yb],
     [w - 1.5 + (p.sillX ?? 0), yb + 2.3],
-    [w + (p.dentLo ?? 0), yb + (belt - yb) * 0.4],
+    [w + (p.dentLo ?? 0), yb + (belt - yb) * (p.lowFrac ?? 0.4)],
     [w + (p.flare ?? 0), belt],
     [Math.min(w - 0.6, lerp(w, roofW, 0.15)) + (p.flare ?? 0) * 0.5, y5],
     [lerp(w - 0.6, roofW, 0.62), y6],
@@ -51,13 +51,14 @@ export function buildBody(s) {
   if (s.bed) for (const z of [s.bed[1]]) { zs = zs.filter((k) => !near(k, z)); zs.push(r2(z - 0.1), r2(z + 0.1)); gap.add(r2(z - 0.1)); wall.add(r2(z - 0.1)); }
   zs.sort((a, b) => a - b);
   const wheelDip = (z) => {
+    if (s.noDent) return 0;
     let f = 0;
     for (const zc of s.wheelZ) { const d = Math.abs(z - zc) / (s.R * 1.32); if (d < 1) f = Math.max(f, Math.cos((d * Math.PI) / 2) ** 1.4); }
     return f;
   };
   const stations = zs.map((z) => {
     const f = wheelDip(z);
-    const p = { w: along(s.w, z), yb: along(s.yb, z), belt: along(s.belt, z), top: along(s.top, z), roofW: along(s.roofW, z), sillX: -2.4 * f, dentLo: -(s.dent ?? 3.0) * f, flare: (s.flare ?? 0.8) * f, stripe: s.stripe?.half };
+    const p = { w: along(s.w, z), yb: along(s.yb, z), belt: along(s.belt, z), top: along(s.top, z), roofW: along(s.roofW, z), sillX: -2.4 * f, dentLo: -(s.dent ?? 3.0) * f, flare: (s.flare ?? 0.8) * f, stripe: s.stripe?.half, lowFrac: s.lowFrac };
     if (s.bed && z >= s.bed[0] && z <= s.bed[1]) p.bed = s.bed[2];
     // the underside lifts over the wheels so the arch has room
     p.yb += 0;
@@ -72,6 +73,8 @@ export function buildBody(s) {
     if (inBed) return j === 7 || j === 8 ? s.bedFloor ?? "#2a2c33" : j === 6 ? mul(s.paint, 0.8) : j <= 1 ? dark : j === 2 ? band : s.paint;
     const g = gap.has(r2(st.z)) && j >= 2 && j <= 6;
     if (g) return mul(s.paint, 0.5);
+    for (const pn of s.panels ?? []) if (z >= pn.z[0] && z <= pn.z[1] && pn.js.includes(j)) return pn.color;
+    if (s.cockpit && z >= s.cockpit[0] && z <= s.cockpit[1] && (j === 7 || j === 8 || j === 6)) return s.cockpitColor ?? "#14151a";
     const endBumper = z < zr + (s.bumperLen ?? 3.2) || z > zf - (s.bumperLen ?? 3.2);
     if (j === 0) return dark;
     if (endBumper && j <= 2) return bumper;
@@ -97,6 +100,9 @@ export function buildBody(s) {
   const cubes = [body];
   const { zr: ZR, zf: ZF } = s;
   const endW = (z) => along(s.w, z);
+  if (s.bare) { for (const fn of s.extras ?? []) fn({ cubes, box, s, along });
+    const parts0 = [{ name: "body", origin: [0, pivot(), 0], rotation: [0, 0, 0], cubes, children: [] }, wheel("wheel_fl", -1, s.wheelZ[0], s), wheel("wheel_fr", 1, s.wheelZ[0], s), wheel("wheel_rl", -1, s.wheelZ[1], { ...s, R: s.Rr ?? s.R, tw: s.twr ?? s.tw }), wheel("wheel_rr", 1, s.wheelZ[1], { ...s, R: s.Rr ?? s.R, tw: s.twr ?? s.tw })];
+    return { model: { version: 1, scale: 0.0625, parts: parts0 }, tail: { z: r2(ZR / 16), y: r2((s.tailY ?? 6) / 16), x: 0 } }; }
   const lampY = s.lampY ?? ((along(s.belt, ZF) + along(s.yb, ZF)) / 2 + 1.5);
   // the lights, grille and plate, sunk into the end faces
   const hw = endW(ZF);

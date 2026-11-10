@@ -64,10 +64,10 @@ state.cars = {
   { id = "car_pickup", price = 2500, grip = 0.85, brake = 0.85, class = "everyday", name = "Hauler", oversteer = 0.45, wheel = 0.425, power = 8.5, top = 40, idle_rpm = 700, max_rpm = 5500 },
   -- (added 2026-11-07) the racing kit's four classic racers, five karts from the car kit (each with its own driver aboard) and, once the player has
   -- won three races, the car kit's service vehicles
-  { id = "racecar_green", price = 14000, grip = 1.18, brake = 1.2, class = "formula", name = "Verde GP", oversteer = 0.3, wheel = 0.31, power = 11, top = 48.5, idle_rpm = 3000, max_rpm = 11000 },
-  { id = "racecar_orange", price = 16000, grip = 1.12, brake = 1.15, class = "formula", name = "Tangerine", oversteer = 0.5, wheel = 0.31, power = 11.8, top = 49.5, idle_rpm = 3800, max_rpm = 13500 },
-  { id = "racecar_red", price = 20000, grip = 1.22, brake = 1.25, class = "formula", name = "Rosso", oversteer = 0.25, wheel = 0.31, power = 10.8, top = 47.5, idle_rpm = 3200, max_rpm = 12000 },
-  { id = "racecar_white", price = 18000, grip = 1.15, brake = 1.2, class = "formula", name = "Phantom", oversteer = 0.4, wheel = 0.31, power = 11.4, top = 50.5, idle_rpm = 3000, max_rpm = 11500 },
+  { id = "racecar_green", price = 14000, grip = 1.18, brake = 1.2, class = "formula", name = "Verde GP", oversteer = 0.3, wheel = 0.375, power = 11, top = 48.5, idle_rpm = 3000, max_rpm = 11000 },
+  { id = "racecar_orange", price = 16000, grip = 1.12, brake = 1.15, class = "formula", name = "Tangerine", oversteer = 0.5, wheel = 0.375, power = 11.8, top = 49.5, idle_rpm = 3800, max_rpm = 13500 },
+  { id = "racecar_red", price = 20000, grip = 1.22, brake = 1.25, class = "formula", name = "Rosso", oversteer = 0.25, wheel = 0.375, power = 10.8, top = 47.5, idle_rpm = 3200, max_rpm = 12000 },
+  { id = "racecar_white", price = 18000, grip = 1.15, brake = 1.2, class = "formula", name = "Phantom", oversteer = 0.4, wheel = 0.375, power = 11.4, top = 50.5, idle_rpm = 3000, max_rpm = 11500 },
   { id = "kart_oobi", price = 1000, starter = true, grip = 1.35, brake = 1.3, class = "kart", name = "Oobi", oversteer = 0.5, wheel = 0.27, power = 10, top = 33, idle_rpm = 2200, max_rpm = 13000 },
   { id = "kart_oodi", price = 4000, grip = 1.3, brake = 1.3, class = "kart", name = "Oodi", oversteer = 0.6, wheel = 0.27, power = 10.5, top = 34, idle_rpm = 2400, max_rpm = 13500 },
   { id = "kart_ooli", price = 3000, grip = 1.4, brake = 1.35, class = "kart", name = "Ooli", oversteer = 0.4, wheel = 0.27, power = 9.5, top = 32.5, idle_rpm = 2000, max_rpm = 12500 },

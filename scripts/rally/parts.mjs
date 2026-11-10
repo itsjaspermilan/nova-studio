@@ -41,6 +41,7 @@ export function cage(name, c8, color, o = {}) {
   });
   const cube = { name, shape: "mesh", color, verts, polys };
   if (o.bevel) cube.modifiers = [{ type: "bevel", width: o.bevel, segments: o.segs ?? 3, angle: 30 }];
+  if (o.mods) cube.modifiers = [...(cube.modifiers ?? []), ...o.mods];
   if (o.emissive) cube.emissive = o.emissive;
   Object.assign(cube, o.material ?? { metallic: 0.2, roughness: 0.5 });
   if (o.emissive) Object.assign(cube, { metallic: 0, roughness: 0.2 });
