@@ -93,3 +93,44 @@ describe("edge slide", () => {
     expect(edgeSlide(c, 1, 5, 9).verts![1]![0]).toBeCloseTo(0, 6); // held to a whole slide
   });
 });
+
+import { boundaryLoops, fillHole } from "./mesh-select";
+import { signedVolume } from "./model-mesh";
+describe("filling holes", () => {
+  const openBox = (): Cube => {
+    const c = toMesh({ from: [0, 0, 0], size: [10, 10, 10], color: "#fff" });
+    const top = c.polys!.findIndex((f) => f.v.every((i) => c.verts![i]![1] === 10));
+    return { ...c, polys: c.polys!.filter((_, i) => i !== top) };
+  };
+  const isClosed = (c: Cube) => {
+    const dir = new Map<string, number>();
+    for (const f of c.polys!) f.v.forEach((a, k) => { const key = `${a}>${f.v[(k + 1) % f.v.length]}`; dir.set(key, (dir.get(key) ?? 0) + 1); });
+    for (const [k, n] of dir) { const [a, b] = k.split(">"); if (n !== 1 || dir.get(`${b}>${a}`) !== 1) return false; }
+    return true;
+  };
+  it("finds the border of a box with no top", () => {
+    const loops = boundaryLoops(openBox());
+    expect(loops.length).toBe(1);
+    expect(loops[0]!.length).toBe(4);
+    expect(boundaryLoops(toMesh({ from: [0, 0, 0], size: [1, 1, 1], color: "#fff" }))).toEqual([]);
+  });
+  it("closes it with quads, outward wound, restoring the volume", () => {
+    const c = openBox();
+    const loop = boundaryLoops(c)[0]!;
+    const filled = fillHole(c, loop[0]!);
+    expect(isClosed(filled)).toBe(true);
+    expect(signedVolume(filled) / 6).toBeGreaterThan(0);
+    expect(filled.polys!.every((f) => f.v.length === 4)).toBe(true);
+    expect(filled.verts!.length).toBe(c.verts!.length + 1);
+  });
+  it("uses a triangle fan for an odd border, and leaves a mesh alone when the point is not on a border", () => {
+    // a strip of three triangles round a hole of five points (a pentagon pyramid with no base)
+    const v: [number, number, number][] = [[1, 0, 0], [0.31, 0, 0.95], [-0.81, 0, 0.59], [-0.81, 0, -0.59], [0.31, 0, -0.95], [0, 1, 0]];
+    const pyramid = { shape: "mesh", from: [-1, 0, -1], size: [2, 1, 2], color: "#fff", verts: v, polys: [0, 1, 2, 3, 4].map((i) => ({ v: [i, (i + 1) % 5, 5] })) } as Cube;
+    const f = fillHole(pyramid, 0);
+    expect(f.polys!.length).toBe(10);
+    expect(isClosed(f)).toBe(true);
+    const box = toMesh({ from: [0, 0, 0], size: [1, 1, 1], color: "#fff" });
+    expect(fillHole(box, 0).polys!.length).toBe(box.polys!.length);
+  });
+});

@@ -36,7 +36,7 @@
   import { applyStack, evaluate, hasModifiers, type Modifier } from "../lib/modifiers";
   import ModifierStack from "./ModifierStack.svelte";
   import CurveEditor from "./CurveEditor.svelte";
-  import { edgeLoop, edgeRing, edgeSlide, pointsOfEdges, selectSimilarFaces } from "../lib/mesh-select";
+  import { edgeLoop, edgeRing, edgeSlide, fillHole, pointsOfEdges, selectSimilarFaces } from "../lib/mesh-select";
   import { textToMesh } from "../lib/text-mesh";
   import { checkerRaster, equalizeDensity, uvReport, type ShapeReport } from "../lib/uv-report";
   import ProjectSwatches from "./ProjectSwatches.svelte";
@@ -1944,6 +1944,14 @@
   }
   let selectNote = $state("");
   let slideAmount = $state(0.5);
+  /// Closes the open border the first picked point is on, with quads meeting in a new middle point.
+  function fillHoleAtPick() {
+    if (!cube || !selected || !selVerts.length) return void (selectNote = "Pick a point on the edge of the hole first.");
+    const next = fillHole(cube, selVerts[0]!);
+    if (next.polys!.length === cube.polys?.length) return void (selectNote = "That point is not on an open border.");
+    commit(setCube(doc, selected, next), false, "Fill hole");
+    selectNote = "Hole filled.";
+  }
   /// Slides the picked edge along the quads beside it (positive towards the first face on it, negative towards the other).
   function slideEdge() {
     if (!cube || !selected || !selEdge) return void (selectNote = "Click an edge first.");
@@ -2559,6 +2567,7 @@
             <button onclick={() => pickSimilar("area")} title="Pick every face of about the same size as the picked face">Same size</button>
           </span>
           <label class="inline" title="How far to slide the picked edge along the quads beside it: positive towards one side, negative the other, 1 is all the way to the next point"><input type="number" min="-1" max="1" step="0.1" bind:value={slideAmount} class="narrow" aria-label="Slide amount" /></label>
+          <button onclick={fillHoleAtPick} title="Close the open border that the picked point is on">Fill hole</button>
           <button onclick={slideEdge} title="Slide the picked edge along the surface (quad faces on the side asked for)">Slide edge</button>
           {#if selectNote}<span class="dim small" role="status">{selectNote}</span>{/if}
         {/if}

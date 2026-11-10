@@ -142,3 +142,55 @@ export function edgeSlide(source: Cube, a: number, b: number, t: number): Cube {
   move(b, a);
   return out;
 }
+
+/// The open borders of a mesh: each is a closed ring of points, in order, along edges that only one face uses. Wound so that a face made from the ring in this order faces
+/// the way the surface around the hole does not (it closes the hole, matching the winding of its neighbours).
+export function boundaryLoops(source: Cube): number[][] {
+  const c = toMesh(source);
+  const next = new Map<number, number[]>();
+  const count = new Map<string, number>();
+  for (const f of c.polys ?? []) f.v.forEach((a, k) => {
+    const b = f.v[(k + 1) % f.v.length]!;
+    count.set(key(a, b), (count.get(key(a, b)) ?? 0) + 1);
+  });
+  // a border edge a->b of a face is walked the other way, b->a, by the face that would close the hole
+  for (const f of c.polys ?? []) f.v.forEach((a, k) => {
+    const b = f.v[(k + 1) % f.v.length]!;
+    if (count.get(key(a, b)) === 1) (next.get(b) ?? next.set(b, []).get(b)!).push(a);
+  });
+  const loops: number[][] = [];
+  const used = new Set<number>();
+  for (const start of next.keys()) {
+    if (used.has(start)) continue;
+    const loop = [start];
+    used.add(start);
+    let at = next.get(start)![0]!;
+    while (at !== start && !used.has(at) && next.has(at)) {
+      loop.push(at);
+      used.add(at);
+      at = next.get(at)![0]!;
+    }
+    if (at === start && loop.length >= 3) loops.push(loop);
+  }
+  return loops;
+}
+
+/// Closes the hole whose border passes through `point` with quads meeting at a new point in the middle (a triangle fan when the border has an odd number of points). Returns the
+/// mesh as it was when the point is not on a border.
+export function fillHole(source: Cube, point: number): Cube {
+  const c = toMesh(source);
+  const loop = boundaryLoops(c).find((l) => l.includes(point));
+  if (!loop) return c;
+  const out: Cube = JSON.parse(JSON.stringify(c));
+  const mid: Vec3 = [0, 0, 0];
+  for (const i of loop) for (let a = 0; a < 3; a++) mid[a]! += c.verts![i]![a]! / loop.length;
+  const centre = out.verts!.push(mid) - 1;
+  const n = loop.length;
+  const colour = c.polys![0]?.color;
+  if (n % 2 === 0) {
+    for (let k = 0; k < n; k += 2) out.polys!.push({ v: [loop[k]!, loop[(k + 1) % n]!, loop[(k + 2) % n]!, centre], ...(colour ? { color: colour } : {}) });
+  } else {
+    for (let k = 0; k < n; k++) out.polys!.push({ v: [loop[k]!, loop[(k + 1) % n]!, centre], ...(colour ? { color: colour } : {}) });
+  }
+  return out;
+}
