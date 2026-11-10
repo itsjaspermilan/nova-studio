@@ -4,6 +4,7 @@
   import { commands } from "../lib/commands";
   import { placesOf, strokeMaps } from "../lib/symmetry";
   import { encodeGif, scaleRaster } from "../lib/gif";
+  import { LAYER_FX, LAYER_FX_TYPES, MAX_LAYER_FX, addLayerEffect, moveLayerEffect, removeLayerEffect, setLayerEffectParam, toggleLayerEffect, type LayerFxType } from "../lib/layer-fx";
   import { drawText, textSize } from "../lib/pixel-text";
   import { needsMap, scrollToCentre, visibleBox } from "../lib/minimap";
   import { BRUSH_SHAPES, DITHERS, brushFromRaster, brushOffsets, gradientFill, pressureSize, shadeColor, stampBrush, stampPicture, type BrushShape, type Dither, type PictureBrush } from "../lib/brush";
@@ -23,7 +24,7 @@
     addAnimation, animationOf, cloneDoc, cropDoc, linkCels, unlinkCels, syncLinked, moveFramesWithin, scaleDurations, duplicateFrames, moveFramesTo, removeFrames, detectGrid, duplicateAnimation, frameAt, gridFromCounts, smartGrid, framesIn, fromImage, fromSheet, gridTiles, importTiles, insertFrame, moveAnimation, isPristine, moveFrame, newDoc, parseSheetJson,
     removeAnimation, removeFrame, setAnimationDuration, tagProblems, tagSequence, resizeDoc, toSheet, toSheetJson, updateAnimation, type Direction, type SpriteDoc,
     copyFrameDataTo, effectiveData, frameDataOf, setDefaults, setFrameData, setNineSlice,
-    addLayer, applyLayers, duplicateLayer, layerSheets, layersFileText, mergeDown, moveLayer, parseLayersFile, recompose, removeLayer, updateLayer, MAX_LAYERS,
+    addLayer, applyLayers, duplicateLayer, layerSheets, layersFileText, groupLayers, mergeDown, moveLayer, ungroup, parseLayersFile, recompose, removeLayer, updateLayer, MAX_LAYERS,
   } from "../lib/sprite-doc";
   import { loadRaster, rasterToDataUrl } from "../lib/png";
   import { studio } from "../lib/store.svelte";
@@ -1127,6 +1128,16 @@
     }
   };
   const shiftLayer = (by: number) => layerEdit(moveLayer(doc, activeLayer, by));
+  const groupThis = () => layerEdit(groupLayers(doc, activeLayer, activeLayer));
+  const ungroupThis = () => {
+    const next = ungroup(doc, activeLayer);
+    if (next !== doc) {
+      structural(next);
+      activeLayer = Math.max(0, Math.min(activeLayer, next.layers.length - 1));
+    }
+  };
+  const activeFx = $derived(doc.layers[activeLayer]?.effects);
+  const setFx = (list: ReturnType<typeof addLayerEffect>) => setLayer(activeLayer, { effects: list });
   const mergeLayer = () => layerEdit(mergeDown(doc, activeLayer));
   const setLayer = (i: number, change: Parameters<typeof updateLayer>[2]) => structural(updateLayer(doc, i, change));
   /// Top layer first, as in most drawing programs.
@@ -1689,14 +1700,14 @@
       <h3>Layers</h3>
       <div class="layers" role="listbox" aria-label="Layers">
         {#each layerRows as { l, i } (i)}
-          <div class="layer" class:on={i === activeLayer} role="option" aria-selected={i === activeLayer}>
+          <div class="layer" class:on={i === activeLayer} role="option" aria-selected={i === activeLayer} style:padding-left="{(l.depth ?? 0) * 14}px">
             <button class="ghost eye" class:dimmed={!l.locked} title={l.locked ? "Locked: click to unlock" : "Click to lock (the tools leave it alone)"} aria-label={l.locked ? `Unlock ${l.name}` : `Lock ${l.name}`} aria-pressed={!!l.locked} onclick={() => setLayer(i, { locked: !l.locked })}>{l.locked ? "🔒" : "🔓"}</button>
             <button class="ghost eye" class:dimmed={!l.clip} disabled={i === 0} title={l.clip ? "Clipped to the layer below: click to stop" : "Clip to the layer below: it shows only where that layer has something"} aria-label={l.clip ? `Stop clipping ${l.name}` : `Clip ${l.name} to the layer below`} aria-pressed={!!l.clip} onclick={() => setLayer(i, { clip: !l.clip })}>⤵</button>
             <button class="ghost eye" title={l.visible ? "Hide" : "Show"} aria-label={l.visible ? `Hide ${l.name}` : `Show ${l.name}`} onclick={() => setLayer(i, { visible: !l.visible })}>{l.visible ? "👁" : "·"}</button>
             <button class="lname" onclick={() => (activeLayer = i)} ondblclick={() => (renaming = i)}>
               {#if renaming === i}
                 <input value={l.name} aria-label="Layer name" use:focusNow onblur={(e) => { renaming = -1; setLayer(i, { name: e.currentTarget.value }); }} onkeydown={(e) => { if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur(); }} onclick={(e) => e.stopPropagation()} />
-              {:else}{l.name}{/if}
+              {:else}{#if l.kind === "group"}▾ {/if}{l.name}{#if l.effects?.length} <span class="dim" title="Has effects">fx</span>{/if}{/if}
             </button>
           </div>
         {/each}
@@ -1709,8 +1720,33 @@
         <button onclick={() => shiftLayer(1)} disabled={activeLayer >= doc.layers.length - 1} title="Move up" aria-label="Move layer up">↑</button>
         <button onclick={() => shiftLayer(-1)} disabled={activeLayer <= 0} title="Move down" aria-label="Move layer down">↓</button>
         <button onclick={mergeLayer} disabled={activeLayer <= 0} title="Merge into the layer below">⤓</button>
+        {#if doc.layers[activeLayer]?.kind === "group"}
+          <button onclick={ungroupThis} title="Take the group apart (its layers stay)">Ungroup</button>
+        {:else}
+          <button onclick={groupThis} disabled={doc.layers.length >= MAX_LAYERS} title="Put this layer in a new group (then more layers can be added to it with ＋ while one of its layers is chosen)">Group</button>
+        {/if}
         <button class="danger" onclick={dropLayer} disabled={doc.layers.length <= 1} title="Delete layer" aria-label="Delete layer">✕</button>
       </div>
+      <h4 class="fxhead">Effects on this layer <span class="dim small">(the drawing is not changed)</span></h4>
+      {#each activeFx ?? [] as e, k (k)}
+        <div class="fxrow">
+          <button class="ghost" aria-pressed={e.on !== false} title={e.on === false ? "Off: click to turn on" : "On: click to turn off"} onclick={() => setFx(toggleLayerEffect(activeFx, k))}>{e.on === false ? "○" : "●"}</button>
+          <strong>{LAYER_FX[e.type].title}</strong>
+          {#each LAYER_FX[e.type].params as pr (pr.key)}
+            {#if pr.kind === "color"}
+              <input type="color" aria-label={pr.label} value={String(e.params[pr.key] ?? pr.default)} onchange={(ev) => setFx(setLayerEffectParam(activeFx, k, pr.key, ev.currentTarget.value))} />
+            {:else}
+              <label class="inline">{pr.label} <input type="number" class="narrow" min={pr.min} max={pr.max} step={pr.step} value={e.params[pr.key] ?? pr.default} onchange={(ev) => setFx(setLayerEffectParam(activeFx, k, pr.key, Number(ev.currentTarget.value)))} /></label>
+            {/if}
+          {/each}
+          <button class="ghost" aria-label="Move effect up" onclick={() => setFx(moveLayerEffect(activeFx, k, -1))} disabled={k === 0}>↑</button>
+          <button class="ghost" aria-label="Move effect down" onclick={() => setFx(moveLayerEffect(activeFx, k, 1))} disabled={k >= (activeFx?.length ?? 0) - 1}>↓</button>
+          <button class="ghost" aria-label="Remove effect" onclick={() => setFx(removeLayerEffect(activeFx, k))}>✕</button>
+        </div>
+      {/each}
+      <select aria-label="Add an effect to this layer" value="" disabled={(activeFx?.length ?? 0) >= MAX_LAYER_FX} onchange={(ev) => { setFx(addLayerEffect(activeFx, ev.currentTarget.value as LayerFxType)); ev.currentTarget.value = ""; }}>
+        <option value="" disabled>＋ Add an effect…</option>{#each LAYER_FX_TYPES as t (t)}<option value={t}>{LAYER_FX[t].title}</option>{/each}
+      </select>
       {#if !isSheet && doc.layers.length > 1}<p class="warn small">This plain image is saved flat. Open a .sprite.json to keep layers.</p>{/if}
 
       <h3>Hitbox, pivot, events</h3>
@@ -1908,6 +1944,8 @@
   .sizing label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--dim); }
   .recent { margin-top: -2px; }
   .layers { flex: none; display: flex; flex-direction: column; gap: 2px; max-height: 150px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; padding: 2px; }
+  .fxhead { margin: 6px 0 2px; font-size: 12px; }
+  .fxrow { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 11px; border: 1px solid var(--line); border-radius: 6px; padding: 2px 4px; margin-bottom: 3px; }
   .layer { display: flex; align-items: center; border-radius: 4px; }
   .layer.on { background: color-mix(in srgb, var(--accent) 22%, transparent); }
   .eye { width: 26px; padding: 0; }

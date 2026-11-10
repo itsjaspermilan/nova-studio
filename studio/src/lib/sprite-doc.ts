@@ -6,6 +6,7 @@
 // touches one animation only, and the saved file's tags never overlap. Files from elsewhere whose tags
 // overlap or leave gaps are split into such blocks when they are opened (`normalizeAnimations`).
 
+import { applyLayerEffects, cleanLayerEffects, type LayerEffect } from "./layer-fx";
 import { BLEND_MODES, blit, cloneRaster, composite, crop, isClear, newRaster, resizeCanvas, type BlendMode, type Raster } from "./pixels";
 
 export type Direction = "forward" | "reverse" | "pingpong";
@@ -28,6 +29,13 @@ export interface Layer {
   locked?: boolean;
   /// A clipping layer shows only where the layer below it (the nearest one that is not clipping) has something: shading and highlights that stay inside a shape.
   clip?: boolean;
+  /// Effects that stay on the layer: run on each cel when the picture is stacked (lib/layer-fx.ts), so the drawing itself is never changed.
+  effects?: LayerEffect[];
+  /// A group layer holds the layers just below it that are one level deeper (`depth`): they are stacked together first and the result is what the group
+  /// shows, with the group's own opacity, blend mode, visibility and effects. A group has no drawing of its own (its cels are blank and locked).
+  kind?: "group";
+  /// How deep the layer sits in groups (0, or missing, at the top level).
+  depth?: number;
   cels: Raster[];
   /// For each cel, 0 or a group number: cels of this layer with the same number are linked, and drawing on one draws on all.
   links?: number[];
@@ -93,29 +101,43 @@ export function newDoc(fw: number, fh: number, frames = 1): SpriteDoc {
 export function cloneDoc(d: SpriteDoc): SpriteDoc {
   return {
     fw: d.fw, fh: d.fh, frames: d.frames.map(cloneRaster), durations: [...d.durations], tags: d.tags.map((t) => ({ ...t })),
-    layers: d.layers.map((l) => ({ ...l, cels: l.cels.map(cloneRaster), ...(l.links ? { links: [...l.links] } : {}) })),
+    layers: d.layers.map((l) => ({ ...l, cels: l.cels.map(cloneRaster), ...(l.links ? { links: [...l.links] } : {}), ...(l.effects ? { effects: JSON.parse(JSON.stringify(l.effects)) as LayerEffect[] } : {}) })),
     ...(d.data ? { data: d.data.map((x) => (x ? (JSON.parse(JSON.stringify(x)) as FrameData) : null)) } : {}),
     ...(d.defaults ? { defaults: JSON.parse(JSON.stringify(d.defaults)) as SpriteDoc["defaults"] } : {}),
     ...(d.nineSlice ? { nineSlice: { ...d.nineSlice } } : {}),
   };
 }
 
-/// Frame `i` with every visible layer stacked, bottom to top.
+/// Frame `i` with every visible layer stacked, bottom to top. A group's layers are stacked first and the result goes on as one layer.
 export function composeFrame(doc: SpriteDoc, i: number): Raster {
-  let out = newRaster(doc.fw, doc.fh);
-  // what the nearest layer below that is not clipping has in this frame (its own picture, whether or not it is shown), as 0 to 255 per pixel
-  let base: Uint8ClampedArray | null = null;
+  // what has been stacked so far at each depth of group
+  const acc: (Raster | undefined)[] = [];
+  // what the nearest layer below that is not clipping has in this frame (its own picture, whether or not it is shown), as 0 to 255 per pixel, at each depth
+  const bases: (Uint8ClampedArray | null)[] = [];
   for (const layer of doc.layers) {
+    const d = layer.depth ?? 0;
+    if (layer.kind === "group") {
+      const inner = acc[d + 1];
+      acc[d + 1] = undefined;
+      bases[d + 1] = null;
+      if (!inner || !(layer.visible && layer.opacity > 0)) continue;
+      acc[d] = composite(acc[d] ?? newRaster(doc.fw, doc.fh), applyLayerEffects(inner, layer.effects), layer.opacity, layer.blend);
+      continue;
+    }
     const cel = layer.cels[i];
-    if (!layer.clip && cel) base = cel.data;
+    if (!layer.clip && cel) bases[d] = cel.data;
     if (!(layer.visible && layer.opacity > 0 && cel)) continue;
-    let shown = cel;
+    let shown = layer.effects?.length ? applyLayerEffects(cel, layer.effects) : cel;
+    const base = bases[d];
     if (layer.clip && base) {
-      shown = { w: cel.w, h: cel.h, data: new Uint8ClampedArray(cel.data) };
+      shown = { w: shown.w, h: shown.h, data: new Uint8ClampedArray(shown.data) };
       for (let k = 3; k < shown.data.length; k += 4) shown.data[k] = Math.round((shown.data[k]! * base[k]!) / 255);
     } else if (layer.clip) continue; // nothing below to clip to
-    out = composite(out, shown, layer.opacity, layer.blend);
+    acc[d] = composite(acc[d] ?? newRaster(doc.fw, doc.fh), shown, layer.opacity, layer.blend);
   }
+  // (layers left deeper than any group, from a damaged file, still show)
+  let out = acc[0] ?? newRaster(doc.fw, doc.fh);
+  for (let d = 1; d < acc.length; d++) if (acc[d]) out = composite(out, acc[d]!, 1);
   return out;
 }
 
@@ -951,22 +973,84 @@ export function addLayer(doc: SpriteDoc, above: number): { doc: SpriteDoc; index
   const used = new Set(next.layers.map((l) => l.name));
   let n = next.layers.length + 1;
   while (used.has(`Layer ${n}`)) n++;
-  next.layers.splice(index, 0, layerOf(`Layer ${n}`, doc.frames.map(() => newRaster(doc.fw, doc.fh))));
+  const fresh = layerOf(`Layer ${n}`, doc.frames.map(() => newRaster(doc.fw, doc.fh)));
+  const depth = doc.layers[above]?.depth ?? 0;
+  if (depth) fresh.depth = depth;
+  next.layers.splice(index, 0, fresh);
   return { doc: recomposed(next), index };
 }
 
 export function duplicateLayer(doc: SpriteDoc, index: number): { doc: SpriteDoc; index: number } {
   const src = doc.layers[index];
-  if (!src || doc.layers.length >= MAX_LAYERS) return { doc, index };
+  if (!src || src.kind === "group" || doc.layers.length >= MAX_LAYERS) return { doc, index };
   const next = cloneDoc(doc);
-  next.layers.splice(index + 1, 0, { ...src, name: `${src.name} copy`, cels: src.cels.map(cloneRaster), ...(src.links ? { links: [...src.links] } : {}) });
+  next.layers.splice(index + 1, 0, { ...next.layers[index]!, name: `${src.name} copy` });
   return { doc: recomposed(next), index: index + 1 };
 }
 
-/// Removes a layer (never the last one).
+/// The layers inside a group (the ones just below its header that are deeper), as indices.
+export function groupMembers(doc: SpriteDoc, group: number): number[] {
+  const g = doc.layers[group];
+  if (!g || g.kind !== "group") return [];
+  const out: number[] = [];
+  for (let k = group - 1; k >= 0 && (doc.layers[k]!.depth ?? 0) > (g.depth ?? 0); k--) out.unshift(k);
+  return out;
+}
+
+/// Whether the groups are in order: every layer that is deeper than the top level has its group header after it (with only its own members between).
+export function groupsAreValid(layers: Layer[]): boolean {
+  const open = new Set<number>();
+  for (const l of layers) {
+    const d = l.depth ?? 0;
+    if (d < 0 || !Number.isInteger(d)) return false;
+    const isGroup = l.kind === "group";
+    // everything deeper than this layer's children must already be closed by its own group
+    for (const k of open) if (k > d + (isGroup ? 1 : 0)) return false;
+    if (isGroup) open.delete(d + 1);
+    if (d > 0) open.add(d);
+  }
+  return open.size === 0;
+}
+
+/// Removes a layer (never the last drawing layer). Removing a group removes the layers in it.
 export function removeLayer(doc: SpriteDoc, index: number): SpriteDoc {
-  if (doc.layers.length <= 1 || !doc.layers[index]) return doc;
+  const l = doc.layers[index];
+  if (doc.layers.length <= 1 || !l) return doc;
+  const gone = new Set([index, ...groupMembers(doc, index)]);
+  if (doc.layers.every((x, i) => gone.has(i) || x.kind === "group")) return doc;
   const next = cloneDoc(doc);
+  next.layers = next.layers.filter((_, i) => !gone.has(i));
+  return recomposed(next);
+}
+
+/// Puts the layers from `from` to `to` (whole groups included) into a new group, shown above them. Returns the new group's index.
+export function groupLayers(doc: SpriteDoc, from: number, to: number): { doc: SpriteDoc; index: number } {
+  const a = Math.min(from, to);
+  const b = Math.max(from, to);
+  if (!doc.layers[a] || !doc.layers[b] || doc.layers.length >= MAX_LAYERS) return { doc, index: b };
+  const top = Math.min(...doc.layers.slice(a, b + 1).map((l) => l.depth ?? 0));
+  const next = cloneDoc(doc);
+  for (let k = a; k <= b; k++) next.layers[k]!.depth = (next.layers[k]!.depth ?? 0) + 1;
+  let n = 1;
+  const used = new Set(next.layers.map((l) => l.name));
+  while (used.has(`Group ${n}`)) n++;
+  const group: Layer = { ...layerOf(`Group ${n}`, doc.frames.map(() => newRaster(doc.fw, doc.fh))), kind: "group", locked: true };
+  if (top) group.depth = top;
+  next.layers.splice(b + 1, 0, group);
+  if (!groupsAreValid(next.layers)) return { doc, index: b };
+  return { doc: recomposed(next), index: b + 1 };
+}
+
+/// Takes a group apart: its layers stay, one level shallower, and the group goes.
+export function ungroup(doc: SpriteDoc, index: number): SpriteDoc {
+  const members = groupMembers(doc, index);
+  if (doc.layers[index]?.kind !== "group") return doc;
+  const next = cloneDoc(doc);
+  for (const k of members) {
+    const l = next.layers[k]!;
+    if ((l.depth ?? 0) <= 1) delete l.depth;
+    else l.depth = l.depth! - 1;
+  }
   next.layers.splice(index, 1);
   return recomposed(next);
 }
@@ -978,13 +1062,25 @@ export function moveLayer(doc: SpriteDoc, index: number, delta: number): { doc: 
   const next = cloneDoc(doc);
   const [layer] = next.layers.splice(index, 1);
   next.layers.splice(to, 0, layer!);
+  // a move that would take a layer out of its group, or a group away from its layers, is refused
+  if (!groupsAreValid(next.layers) || layer!.kind === "group") return { doc, index };
   return { doc: recomposed(next), index: to };
 }
 
-export function updateLayer(doc: SpriteDoc, index: number, change: Partial<Pick<Layer, "name" | "visible" | "opacity" | "blend" | "locked" | "clip">>): SpriteDoc {
+export function updateLayer(doc: SpriteDoc, index: number, change: Partial<Pick<Layer, "name" | "visible" | "opacity" | "blend" | "locked" | "clip" | "effects">>): SpriteDoc {
   if (!doc.layers[index]) return doc;
   const next = cloneDoc(doc);
   const l = next.layers[index]!;
+  if (l.kind === "group") {
+    // (a group is always locked and does not clip)
+    change = { ...change };
+    delete change.locked;
+    delete change.clip;
+  }
+  if (change.effects !== undefined) {
+    if (change.effects.length) l.effects = change.effects;
+    else delete l.effects;
+  }
   if (change.name !== undefined && change.name.trim()) l.name = change.name.trim();
   if (change.visible !== undefined) l.visible = change.visible;
   if (change.opacity !== undefined) l.opacity = clampOpacity(change.opacity);
@@ -1006,9 +1102,14 @@ export function updateLayer(doc: SpriteDoc, index: number, change: Partial<Pick<
 /// Paints a layer onto the one below it (using its opacity) and removes it. Returns the index of the merged layer.
 export function mergeDown(doc: SpriteDoc, index: number): { doc: SpriteDoc; index: number } {
   if (index <= 0 || !doc.layers[index]) return { doc, index };
+  const upper = doc.layers[index]!;
+  const lower = doc.layers[index - 1]!;
+  if (upper.kind === "group" || lower.kind === "group" || (upper.depth ?? 0) !== (lower.depth ?? 0)) return { doc, index };
   const next = cloneDoc(doc);
   const top = next.layers[index]!;
   const below = next.layers[index - 1]!;
+  // (the upper layer's effects are part of what it shows)
+  top.cels = top.cels.map((c) => applyLayerEffects(c, top.effects));
   below.cels = below.cels.map((c, f) => composite(c, top.cels[f]!, top.visible ? top.opacity : 0, top.blend));
   next.layers.splice(index, 1);
   return { doc: recomposed(next), index: index - 1 };
@@ -1034,7 +1135,7 @@ export interface LayersFile {
   sheet: string;
   frames: number;
   columns: number;
-  layers: { name: string; visible: boolean; opacity: number; blend?: BlendMode; locked?: boolean; clip?: boolean; image: string; /** link groups of the cels, when any are linked */ links?: number[] }[];
+  layers: { name: string; visible: boolean; opacity: number; blend?: BlendMode; locked?: boolean; clip?: boolean; effects?: LayerEffect[]; group?: boolean; depth?: number; image: string; /** link groups of the cels, when any are linked */ links?: number[] }[];
 }
 
 /// Each layer as a sheet laid out like the exported one.
@@ -1045,7 +1146,7 @@ export function layerSheets(doc: SpriteDoc): Raster[] {
 export function layersFileText(doc: SpriteDoc, images: string[]): string {
   const file: LayersFile = {
     version: 1, sheet: hashRaster(toSheet(doc)), frames: doc.frames.length, columns: sheetColumns(doc.frames.length),
-    layers: doc.layers.map((l, i) => ({ name: l.name, visible: l.visible, opacity: l.opacity, ...(l.blend ? { blend: l.blend } : {}), ...(l.locked ? { locked: true } : {}), ...(l.clip ? { clip: true } : {}), image: images[i]!, ...(l.links?.some((n) => n > 0) ? { links: l.links } : {}) })),
+    layers: doc.layers.map((l, i) => ({ name: l.name, visible: l.visible, opacity: l.opacity, ...(l.blend ? { blend: l.blend } : {}), ...(l.locked ? { locked: true } : {}), ...(l.clip ? { clip: true } : {}), ...(l.effects?.length ? { effects: l.effects } : {}), ...(l.kind === "group" ? { group: true } : {}), ...(l.depth ? { depth: l.depth } : {}), image: images[i]!, ...(l.links?.some((n) => n > 0) ? { links: l.links } : {}) })),
   };
   return `${JSON.stringify(file, null, 1)}\n`;
 }
@@ -1054,7 +1155,7 @@ export function parseLayersFile(text: string): LayersFile | null {
   try {
     const f = JSON.parse(text) as LayersFile;
     const good = f && f.version === 1 && typeof f.sheet === "string" && Number.isInteger(f.frames) && Number.isInteger(f.columns) && Array.isArray(f.layers) && f.layers.length > 0 && f.layers.length <= MAX_LAYERS
-      && f.layers.every((l) => typeof l.name === "string" && typeof l.visible === "boolean" && typeof l.opacity === "number" && typeof l.image === "string" && (l.blend === undefined || BLEND_MODES.includes(l.blend)) && (l.locked === undefined || typeof l.locked === "boolean") && (l.clip === undefined || typeof l.clip === "boolean")
+      && f.layers.every((l) => typeof l.name === "string" && typeof l.visible === "boolean" && typeof l.opacity === "number" && typeof l.image === "string" && (l.blend === undefined || BLEND_MODES.includes(l.blend)) && (l.locked === undefined || typeof l.locked === "boolean") && (l.clip === undefined || typeof l.clip === "boolean") && (l.effects === undefined || cleanLayerEffects(l.effects) !== null) && (l.group === undefined || typeof l.group === "boolean") && (l.depth === undefined || (Number.isInteger(l.depth) && l.depth > 0 && l.depth < 8))
         && (l.links === undefined || (Array.isArray(l.links) && l.links.length === f.frames && l.links.every((n) => Number.isInteger(n) && n >= 0))));
     return good ? f : null;
   } catch {
@@ -1070,9 +1171,11 @@ export function applyLayers(doc: SpriteDoc, file: LayersFile, sheets: Raster[]):
   const next = cloneDoc(doc);
   next.layers = file.layers.map((l, i) => ({
     name: l.name, visible: l.visible, opacity: clampOpacity(l.opacity), ...(l.blend && l.blend !== "normal" ? { blend: l.blend } : {}), ...(l.locked ? { locked: true } : {}), ...(l.clip ? { clip: true } : {}),
+    ...(l.effects?.length ? { effects: cleanLayerEffects(l.effects)! } : {}), ...(l.group ? { kind: "group" as const, locked: true } : {}), ...(l.depth ? { depth: l.depth } : {}),
     cels: cutFrames(sheets[i]!, doc.fw, doc.fh, doc.frames.length, columns),
     ...(l.links?.some((n) => n > 0) ? { links: [...l.links] } : {}),
   }));
+  if (!groupsAreValid(next.layers)) return null;
   recomposed(next);
   return hashRaster(toSheet(next)) === file.sheet && hashRaster(toSheet(next)) === hashRaster(toSheet(doc)) ? next : null;
 }
