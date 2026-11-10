@@ -35,6 +35,7 @@
   import { applyStack, evaluate, hasModifiers, type Modifier } from "../lib/modifiers";
   import ModifierStack from "./ModifierStack.svelte";
   import CurveEditor from "./CurveEditor.svelte";
+  import { applyOcclusion, bakeOcclusion } from "../lib/model-bake";
   import { addClip, easeAt, findTrack, pathKey, removeClip, removeKey, samplePose, setEase, setKey, snapTime, updateClip, KEY_STEP, type Pose } from "../lib/model-anim";
   import { toBase64 } from "../lib/wav";
   import { studio } from "../lib/store.svelte";
@@ -94,6 +95,28 @@
   let animNote = $state("");
   let poseName = $state("");
   let curvesOpen = $state(false);
+  let bakeStrength = $state(0.7);
+  let bakeSamples = $state(24);
+  let bakeDistance = $state(8);
+  let bakeNote = $state("");
+  let baking = $state(false);
+  /// Bakes ambient occlusion into the painted picture (one undo step): crevices darken. Runs on this thread, so a big model waits a moment.
+  async function bakeAO() {
+    if (!picture || !doc.texture) return void (bakeNote = "Paint a shape first: baking darkens the texture.");
+    baking = true;
+    bakeNote = "Baking…";
+    await new Promise((r) => setTimeout(r, 20));
+    try {
+      const ao = bakeOcclusion(doc, { samples: bakeSamples, distance: bakeDistance });
+      if (!ao) return void (bakeNote = "This model has no texture.");
+      rememberPicture();
+      picture = applyOcclusion(picture, ao, bakeStrength);
+      pictureChanged();
+      bakeNote = "Occlusion baked into the texture. Undo takes it back.";
+    } finally {
+      baking = false;
+    }
+  }
   // reaching: the chosen part is the top of a limb of three parts (shoulder, elbow, hand); the end is put on a target in model space
   let reachTarget = $state<[number, number, number]>([0, 0, 0]);
   let reachPole = $state<[number, number, number]>([0, 0, 1]);
@@ -2544,6 +2567,13 @@
             <button onclick={packAll} title="Lays every shape's block out again (painted pixels stay where they are)">Pack blocks</button>
             <button onclick={() => toggleTexture(true)} disabled={!selected || selected.cube === undefined || !!cube?.texture} title="Give the selected shape a block of the picture">Paint selected</button>
           </div>
+          <div class="row wrap">
+            <button onclick={bakeAO} disabled={baking || !doc.texture} title="Darken the texture where shapes close in on each other (ambient occlusion): crevices and the feet of things">Bake occlusion</button>
+            <label class="inline" title="How dark the most enclosed spots get">Strength <input type="number" min="0.1" max="1" step="0.1" bind:value={bakeStrength} class="narrow" /></label>
+            <label class="inline" title="Rays per texel: more is smoother and slower">Rays <input type="number" min="8" max="128" step="8" bind:value={bakeSamples} class="narrow" /></label>
+            <label class="inline" title="How far a ray looks for something in the way, in model units">Reach <input type="number" min="1" max="64" step="1" bind:value={bakeDistance} class="narrow" /></label>
+          </div>
+          {#if bakeNote}<p class="dim small" role="status">{bakeNote}</p>{/if}
           <p class="dim small">Saving writes <code>{texturePath}</code> too. Shapes with no block keep their flat colours. A mesh's unwrap follows its faces, so paint meshes after you have shaped them.</p>
         {/if}
       {:else if mode === "animate"}
