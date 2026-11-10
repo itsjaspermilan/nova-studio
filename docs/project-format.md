@@ -1043,6 +1043,9 @@ A note may carry `"pan"` (-1 to 1, added to its track's pan) and `"bend"` (a gli
 **Tempo track and meters.** `"tempos": [{ "step": 16, "bpm": 90 }]` changes the tempo from a step on (`bpm` holds until the first change; steps rise and lie inside the song; up to 64).
 `"meters": [{ "step": 16, "beats": 3 }]` changes the beats in a bar from a step on (a new bar starts there; it moves the bar lines only; up to 32).
 
+**Arrangement.** A track may keep `"patterns": [{ "name", "length", "notes": [...] }]` (note steps count from the pattern's start, inside its length) and `"clips": [{ "pattern", "step", "len", "offset"?, "mute"?, "color"? }]`.
+A clip plays its pattern from `step`, repeating it to fill `len` steps (starting `offset` steps into the pattern), cut at its end and the song's; its notes play in addition to the track's own `notes`. A clip naming a pattern the track does not have is an error.
+
 Saws and squares are band-limited (no hiss from folded harmonics) in a fuller voice. The reverb is a Freeverb-style room that is run
 twice over the song, so its tail wraps round and the loop has no seam. The music editor has sliders for all of it. Not done: samples as
 instruments, per-note filter automation, a compressor or EQ on the mix (a fuller song gets only a gentle soft clip).

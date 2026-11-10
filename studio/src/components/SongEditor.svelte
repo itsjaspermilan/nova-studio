@@ -8,6 +8,7 @@
   import { encodeWav, toBase64, frames, type Sound } from "../lib/wav";
   import { studio } from "../lib/store.svelte";
   import MixerPanel from "./MixerPanel.svelte";
+  import ArrangePanel from "./ArrangePanel.svelte";
   import SongTools from "./SongTools.svelte";
   import { midiToSong, songToMidi } from "../lib/midi";
   import { regionOf } from "../lib/song-tools";
@@ -34,7 +35,7 @@
   let noteLen = $state(1);
   let loop = $state(true);
   /// The lower part shows the mixer, or the notes' loudness bars, or nothing.
-  let lower: "mixer" | "velocity" | "tools" | "none" = $state("none");
+  let lower: "mixer" | "velocity" | "tools" | "arrange" | "none" = $state("none");
   let playing = $state(false);
   let playhead = $state(0); // steps
   const oggPath = untrack(() => filePath).replace(/\.song\.json$/i, ".ogg");
@@ -535,6 +536,7 @@
     const offs = [
       commands.register({ id: "song.play", title: "Play or stop the song", menu: "Sound", icon: "play", help: "Space plays and stops while the notes are focused", run: () => toggle() }),
       commands.register({ id: "song.mixer", title: "Show the mixer", menu: "Sound", icon: "settings", keys: ["Mod+Alt+M"], help: "A strip for each track: volume, pan, reverb, mute, solo", run: () => { lower = lower === "mixer" ? "none" : "mixer"; } }),
+      commands.register({ id: "song.arrange", title: "Show the arrangement", menu: "Sound", help: "Clips of patterns on each track: move, resize, cut, repeat", run: () => { lower = lower === "arrange" ? "none" : "arrange"; } }),
       commands.register({ id: "song.tools", title: "Show the song tools", menu: "Sound", icon: "settings", help: "Strum, glue, humanise, scales and chords, markers and the loop, a loudness lane, the master", run: () => { lower = lower === "tools" ? "none" : "tools"; } }),
       commands.register({ id: "song.exportLoop", title: "Export the loop", menu: "Sound", icon: "export", help: "Just the loop region, ready to loop in the game", enabled: () => !!song.loop, run: () => void exportLoop() }),
       commands.register({ id: "song.exportMidi", title: "Export as a MIDI file", menu: "Sound", icon: "export", run: () => void exportMidi() }),
@@ -579,7 +581,7 @@
       <span class="spacer"></span>
       <button class="ghost" onclick={undo} disabled={!canUndo} aria-label="Undo">↶</button>
       <button class="ghost" onclick={redo} disabled={!canRedo} aria-label="Redo">↷</button>
-      <span class="seg" role="group" aria-label="Lower part"><button class:on={lower === "none"} onclick={() => (lower = "none")}>Notes</button><button class:on={lower === "velocity"} onclick={() => (lower = "velocity")}>Loudness</button><button class:on={lower === "mixer"} onclick={() => (lower = "mixer")}>Mixer</button><button class:on={lower === "tools"} onclick={() => (lower = "tools")}>Tools</button></span>
+      <span class="seg" role="group" aria-label="Lower part"><button class:on={lower === "none"} onclick={() => (lower = "none")}>Notes</button><button class:on={lower === "velocity"} onclick={() => (lower = "velocity")}>Loudness</button><button class:on={lower === "mixer"} onclick={() => (lower = "mixer")}>Mixer</button><button class:on={lower === "tools"} onclick={() => (lower = "tools")}>Tools</button><button class:on={lower === "arrange"} onclick={() => (lower = "arrange")}>Arrange</button></span>
       <button class="ghost" onclick={onjson}>JSON</button>
     </div>
 
@@ -683,6 +685,8 @@
     </div>
     {#if lower === "tools"}
       <div class="lowerpane"><SongTools {song} {track} {group} commit={(next) => commit(next)} pick={(keys) => (group = keys)} {exportLoop} {exportMidi} {importMidi} /></div>
+    {:else if lower === "arrange"}
+      <div class="lowerpane"><ArrangePanel {song} {track} step={Math.floor(playhead)} commit={(next) => commit(next)} onselect={(i) => { track = i; selected = null; }} /></div>
     {:else if lower === "mixer"}
       <MixerPanel {song} {track} {liveDb} onchange={(next) => commit(next)} onselect={(i) => { track = i; selected = null; }} />
     {/if}

@@ -1,7 +1,7 @@
 // Standard MIDI files: writing a song as a type 1 file (a tempo and time-signature track, then one track per song track, drums on channel 10) and
 // reading one back into a song. Notes are put on the song's step grid; a file with finer timing is rounded to it and the loss is reported.
 
-import { DRUMS, MAX_NOTES, MAX_STEPS, MAX_TRACKS, MAX_BPM, MIN_BPM, drumTrack, synthTrack, type Note, type Song, type Track } from "./song";
+import { DRUMS, MAX_NOTES, expandClips, MAX_STEPS, MAX_TRACKS, MAX_BPM, MIN_BPM, drumTrack, synthTrack, type Note, type Song, type Track } from "./song";
 
 const PPQ = 480;
 
@@ -36,7 +36,8 @@ function trackBytes(events: Ev[]): number[] {
   return chunk("MTrk", body);
 }
 
-export function songToMidi(song: Song): Uint8Array {
+export function songToMidi(source: Song): Uint8Array {
+  const song = expandClips(source);
   const tps = PPQ / song.stepsPerBeat; // ticks per step
   const tempo: Ev[] = [
     { tick: 0, order: 0, bytes: [0xff, 0x51, 0x03, ...u32(Math.round(60_000_000 / song.bpm)).slice(1)] },

@@ -87,6 +87,26 @@ export interface Track {
   bus?: string;
   /// Extra copies of the track's sound sent to buses (after its volume, pan and effects): the bus's name and how much (0 to 1).
   sends?: { bus: string; level: number }[];
+  /// The arrangement: named patterns of notes, and clips that place a pattern on the track's timeline. A clip's notes play in addition to `notes`.
+  patterns?: Pattern[];
+  clips?: Clip[];
+}
+
+/// A short run of notes kept under a name (`length` steps; note steps count from its start) so it can be placed again and again.
+export interface Pattern {
+  name: string;
+  length: number;
+  notes: Note[];
+}
+
+/// A pattern placed on a track from `step`, filling `len` steps (it repeats to fill them, starting `offset` steps into the pattern).
+export interface Clip {
+  pattern: string;
+  step: number;
+  len: number;
+  offset?: number;
+  mute?: boolean;
+  color?: string;
 }
 
 /// A bus: tracks are routed (or sent) into it, it has its own effects, volume and pan, and it plays into the master. Buses do not feed each other.
@@ -170,6 +190,8 @@ export const MAX_BUSES = 8;
 export const MAX_TEMPOS = 64;
 export const MAX_METERS = 32;
 export const MAX_SENDS = 4;
+export const MAX_PATTERNS = 32;
+export const MAX_CLIPS = 128;
 export const MAX_MASTER = 1.5;
 export const MAX_NOTES = 4000;
 export const RATE = 44100;
@@ -323,6 +345,36 @@ export function parseSong(text: string): Parsed {
       if (typeof t.color !== "string" || !/^#[0-9a-fA-F]{6}$/.test(t.color)) return { ok: false, error: `${at}.color must be like "#5aa9ff"` };
       voice.color = t.color.toLowerCase();
     }
+    if (t.patterns !== undefined || t.clips !== undefined) {
+      const pats = t.patterns ?? [];
+      const clips = t.clips ?? [];
+      if (!Array.isArray(pats) || pats.length > MAX_PATTERNS || !Array.isArray(clips) || clips.length > MAX_CLIPS) return { ok: false, error: `${at}: up to ${MAX_PATTERNS} "patterns" and ${MAX_CLIPS} "clips"` };
+      const cleanPats: Pattern[] = [];
+      for (const [pi, pat] of pats.entries()) {
+        const where = `${at}.patterns[${pi}]`;
+        if (!pat || typeof pat.name !== "string" || !pat.name.trim() || cleanPats.some((q) => q.name === pat.name)) return { ok: false, error: `${where} needs its own name` };
+        if (!Number.isInteger(pat.length) || !num(pat.length, 1, MAX_STEPS) || !Array.isArray(pat.notes)) return { ok: false, error: `${where} needs a whole "length" and a "notes" list` };
+        notes += pat.notes.length;
+        if (notes > MAX_NOTES) return { ok: false, error: `more than ${MAX_NOTES} notes` };
+        for (const [j, n] of pat.notes.entries()) {
+          if (!n || !Number.isInteger(n.step) || n.step < 0 || n.step >= pat.length || !Number.isInteger(n.len) || n.len < 1 || !num(n.pitch, 0, 127) || !num(n.vel, 0, 1)) return { ok: false, error: `${where}.notes[${j}] needs a "step" inside the pattern, "len", "pitch" and "vel"` };
+        }
+        cleanPats.push({ name: pat.name, length: pat.length, notes: pat.notes.map((n) => ({ ...n })) });
+      }
+      const cleanClips: Clip[] = [];
+      for (const [ci, c] of clips.entries()) {
+        const where = `${at}.clips[${ci}]`;
+        if (!c || !cleanPats.some((q) => q.name === c.pattern)) return { ok: false, error: `${where}.pattern must be one of the track's patterns` };
+        if (!Number.isInteger(c.step) || c.step < 0 || !Number.isInteger(c.len) || c.len < 1 || (c.offset !== undefined && (!Number.isInteger(c.offset) || c.offset < 0))) return { ok: false, error: `${where} needs whole "step" (0 or more) and "len" (1 or more)` };
+        if (c.color !== undefined && (typeof c.color !== "string" || !/^#[0-9a-fA-F]{6}$/.test(c.color))) return { ok: false, error: `${where}.color must be like "#5aa9ff"` };
+        cleanClips.push({ pattern: c.pattern, step: c.step, len: c.len, ...(c.offset ? { offset: c.offset } : {}), ...(c.mute ? { mute: true } : {}), ...(c.color ? { color: c.color.toLowerCase() } : {}) });
+      }
+      cleanClips.sort((a, b) => a.step - b.step);
+      if (cleanPats.length) voice.patterns = cleanPats;
+      else delete (t as Partial<Track>).patterns;
+      if (cleanClips.length) voice.clips = cleanClips;
+      else delete (t as Partial<Track>).clips;
+    }
     if (t.bus !== undefined && typeof t.bus !== "string") return { ok: false, error: `${at}.bus must be a bus name` };
     if (t.sends !== undefined) {
       if (!Array.isArray(t.sends) || t.sends.length > MAX_SENDS || !t.sends.every((x) => x && typeof x.bus === "string" && num(x.level, 0, 1))) return { ok: false, error: `${at}.sends is up to ${MAX_SENDS} of { "bus": name, "level": 0 to 1 }` };
@@ -440,6 +492,8 @@ export function serializeSong(song: Song): string {
     for (const [key] of VOICE_RANGES) if (t[key] !== undefined) fields.push(`"${key}": ${t[key]}`);
     if (t.kit !== undefined) fields.push(`"kit": "${t.kit}"`);
     if (t.color) fields.push(`"color": ${JSON.stringify(t.color)}`);
+    if (t.patterns?.length) fields.push(`"patterns": ${JSON.stringify(t.patterns)}`);
+    if (t.clips?.length) fields.push(`"clips": ${JSON.stringify(t.clips)}`);
     if (t.bus) fields.push(`"bus": ${JSON.stringify(t.bus)}`);
     if (t.sends?.length) fields.push(`"sends": ${JSON.stringify(t.sends)}`);
     if (t.fx?.length) fields.push(`"fx": ${JSON.stringify(t.fx)}`);
@@ -973,8 +1027,44 @@ export function setMaster(song: Song, volume: number): Song {
   return next;
 }
 
+/// The notes a clip plays, in song steps: its pattern repeated to fill the clip, starting `offset` steps in, cut at the clip's end and the song's.
+export function clipNotes(track: Track, clip: Clip, songLength: number): Note[] {
+  const pat = track.patterns?.find((p) => p.name === clip.pattern);
+  if (!pat || clip.mute) return [];
+  const out: Note[] = [];
+  const end = Math.min(clip.len, songLength - clip.step);
+  const phase = (clip.offset ?? 0) % pat.length;
+  for (let r = -phase; r < end; r += pat.length) {
+    for (const n of pat.notes) {
+      let s = r + n.step;
+      let len = n.len;
+      if (s + len <= 0 || s >= end) continue;
+      if (s < 0) {
+        len += s; // the part of a note that began before the clip starts
+        s = 0;
+      }
+      len = Math.min(len, end - s);
+      out.push({ ...n, step: clip.step + s, len });
+    }
+  }
+  return out;
+}
+
+/// The song with every clip turned into notes on its track (what the renderer and the exports play).
+export function expandClips(song: Song): Song {
+  if (!song.tracks.some((t) => t.clips?.length)) return song;
+  return {
+    ...song,
+    tracks: song.tracks.map((t) => {
+      if (!t.clips?.length) return t;
+      const extra = t.clips.flatMap((c) => clipNotes(t, c, song.length));
+      return { ...t, notes: [...t.notes, ...extra] };
+    }),
+  };
+}
+
 export function renderSong(source: Song, rate = RATE): Sound {
-  const song = applyAutomation(source);
+  const song = applyAutomation(expandClips(source));
   const stepSec = stepSeconds(song);
   const total = Math.round(songSeconds(song) * rate);
   // seconds a note holds, following the tempo track (a song without one keeps the single step length)
