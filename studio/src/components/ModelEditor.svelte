@@ -586,7 +586,50 @@
     modelGroup.updateMatrixWorld(true);
     bendSkins(clip ? pose : undefined);
     drawOutline();
+    drawBones();
   }
+
+  // The skeleton overlay: a line from every part's pivot to its children's pivots, and a dot at each pivot (the chosen part's in yellow), drawn over the model.
+  let showBones = $state(false);
+  let boneLines: THREE.Object3D | undefined;
+  function drawBones() {
+    if (boneLines && scene) {
+      scene.remove(boneLines);
+      boneLines.traverse((o) => {
+        const m = o as THREE.Mesh;
+        m.geometry?.dispose();
+        (m.material as THREE.Material | undefined)?.dispose();
+      });
+      boneLines = undefined;
+    }
+    if (!showBones || !scene || !groups.size) return;
+    const world = new Map<string, THREE.Vector3>();
+    for (const [key, g] of groups) world.set(key, g.group.getWorldPosition(new THREE.Vector3()));
+    const chosen = selected ? pathKey(namesOf(doc, selected.parts)) : "";
+    const lines: THREE.Vector3[] = [];
+    for (const [key, at] of world) {
+      const slash = key.lastIndexOf("/");
+      const parent = slash > 0 ? world.get(key.slice(0, slash)) : undefined;
+      if (parent) lines.push(parent, at);
+    }
+    const overlay = new THREE.Group();
+    if (lines.length) {
+      const l = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(lines), new THREE.LineBasicMaterial({ color: 0x6fcf8e, depthTest: false }));
+      l.renderOrder = 20;
+      overlay.add(l);
+    }
+    const dots = new THREE.BufferGeometry().setFromPoints([...world.values()]);
+    dots.setAttribute("color", new THREE.Float32BufferAttribute([...world.keys()].flatMap((k) => (k === chosen ? [1, 0.82, 0.4] : [0.8, 1, 0.85])), 3));
+    const pts = new THREE.Points(dots, new THREE.PointsMaterial({ size: 8, sizeAttenuation: false, vertexColors: true, depthTest: false }));
+    pts.renderOrder = 21;
+    overlay.add(pts);
+    scene.add(overlay);
+    boneLines = overlay;
+  }
+  $effect(() => {
+    showBones; selected; doc; animTime; mode;
+    if (modelGroup) untrack(() => { modelGroup!.updateMatrixWorld(true); drawBones(); });
+  });
 
   /// Shapes that bend with the parts follow the pose; without one they sit where they were built.
   function bendSkins(pose: Map<string, Pose> | undefined) {
@@ -2583,6 +2626,7 @@
           <label class="check" title="Snap to whole units and 15 degrees"><input type="checkbox" bind:checked={snap} /> Snap</label>
         {/if}
         <label class="check"><input type="checkbox" bind:checked={showGrid} /> Grid</label>
+        <label class="check" title="Draw the skeleton: a line from each part's pivot to its children's, and a dot at each pivot"><input type="checkbox" bind:checked={showBones} /> Bones</label>
         <label class="check" title="Draw only the chosen part and what is inside it"><input type="checkbox" bind:checked={localView} /> Local</label>
         <select bind:value={viewMode} aria-label="View (Z)" title="How the model is drawn (Z)">
           <option value="textured">Textured</option>
