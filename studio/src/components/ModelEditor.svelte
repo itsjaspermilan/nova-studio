@@ -26,7 +26,7 @@
   import { bakeConstraints, constrainedPose, setConstraints } from "../lib/model-constraints";
   import { retargetClip, applyPose as applySavedPose, capturePose, removePose, copyKeys, mirrorClip, pasteKeys, removeKeysAt, reverseClip, shiftKeys, shiftKeysAt, stretchKeys, type KeyClipboard } from "../lib/model-anim-tools";
   import { SCULPT_HELP, SCULPT_MODES, sculptDab, type SculptMode } from "../lib/sculpt";
-  import { addFace, bevelEdge, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, freshProfile, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsSymmetric, setFaceColors, setSmooth, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
+  import { addFace, bevelEdge, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, freshProfile, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsProportional, moveVertsSymmetric, setFaceColors, setSmooth, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
   import { hasVolume, meshOf, segmentsOf, shapeFaces, solidOf } from "../lib/model-mesh";
   import { WEIGHT_MODES, autoSkinAll, gradientWeights, mirrorWeights, paintWeights, type WeightMode, autoWeights, boneHeat, dominantBones, heatColor, invertAffine, reskin, setWeight, skinnedPoints, transformPoint, worldMatrices } from "../lib/model-skin";
   import { bakeAll, blockOf, faceRects, flippedRect, normRect, rectAt, enableTexture, fitPicture, packModel, resizeTexture, unwrap, uvsOf } from "../lib/model-uv";
@@ -92,7 +92,22 @@
   let bevelBy = $state(25); // percent of the next edge each neighbour gives up
   let edgeBy = $state(4);
   let snap = $state(true);
-  let snapPoints = $state(true); // a dragged point jumps onto another point of the mesh when it comes close
+  let overlaysOpen = $state(false);
+  let moreAdd = $state(false);
+  // What a click picks in point mode (Vertex, Edge, Face): all three by default; a click on one alone picks only that kind, ⇧-click adds or removes one.
+  let pickKinds = $state({ vertex: true, edge: true, face: true });
+  function setPickKind(k: "vertex" | "edge" | "face", add: boolean) {
+    const next = add ? { ...pickKinds, [k]: !pickKinds[k] } : { vertex: k === "vertex", edge: k === "edge", face: k === "face" };
+    if (next.vertex || next.edge || next.face) pickKinds = next;
+  }
+  let proportional = $state(false);
+  let propRadius = $state(6);
+  let snapPoints = $state(true);
+  const snapMode = $derived(snap && snapPoints ? "both" : snap ? "grid" : snapPoints ? "points" : "off");
+  function setSnapMode(v: string) {
+    snap = v === "grid" || v === "both";
+    snapPoints = v === "points" || v === "both";
+  } // a dragged point jumps onto another point of the mesh when it comes close
   let extrudeBy = $state(4);
   let shrinkBy = $state(0); // percent the new face is pulled towards its middle: a taper, or with no pull, an inset
   let cutAt = $state(50); // percent along each crossed edge
@@ -1564,7 +1579,7 @@
     if (!m.moved && delta.every((d) => d === 0)) return;
     if (!m.moved) history.record(m.base);
     m.moved = true;
-    commit(setCube(m.base, m.path, symmetry === "off" ? moveVerts(m.baseCube, selVerts, delta) : moveVertsSymmetric(m.baseCube, selVerts, delta, Number(symmetry) as Axis)), true);
+    commit(setCube(m.base, m.path, symmetry === "off" ? (proportional ? moveVertsProportional(m.baseCube, selVerts, delta, propRadius) : moveVerts(m.baseCube, selVerts, delta)) : moveVertsSymmetric(m.baseCube, selVerts, delta, Number(symmetry) as Axis)), true);
   }
   /// Where a point in the world is on the page.
   function screenOf(w: THREE.Vector3): { x: number; y: number } | null {
@@ -1964,7 +1979,7 @@
     const ray = new THREE.Raycaster();
     ray.setFromCamera(pointer(e), camera);
     if (inEdit && selected) {
-      const edge = pickEdge(e);
+      const edge = pickKinds.edge ? pickEdge(e) : null;
       if (edge) {
         selEdge = edge;
         selFace = null;
@@ -1976,7 +1991,7 @@
       const mine = meshes.find((m) => samePath(m.path, selected));
       const pick = mine?.cage ?? mine;
       const hit = pick ? ray.intersectObject(pick.mesh, false)[0] : undefined;
-      const face = hit?.faceIndex != null ? pick!.polyOfTriangle[hit.faceIndex] : undefined;
+      const face = pickKinds.face && hit?.faceIndex != null ? pick!.polyOfTriangle[hit.faceIndex] : undefined;
       selFace = face ?? null;
       selVerts = face !== undefined ? [...cube!.polys![face]!.v] : e.shiftKey ? selVerts : [];
       canvas.focus();
@@ -2204,12 +2219,12 @@
   }
   // The shape's properties in tabs, as Blender's properties editor has them.
   type PropTab = "object" | "material" | "modifiers" | "bones" | "mesh";
-  const PROP_TABS: { id: PropTab; title: string; help: string }[] = [
-    { id: "object", title: "Object", help: "Name, place, size and the shape's tools" },
-    { id: "material", title: "Material", help: "Colour, glow, metal and roughness" },
-    { id: "modifiers", title: "Modifiers", help: "Non-destructive changes: mirror, subdivision, boolean and more" },
-    { id: "bones", title: "Bones", help: "Make the mesh bend with the model's parts" },
-    { id: "mesh", title: "Mesh", help: "The picked points, edge and face, and tools for the whole mesh" },
+  const PROP_TABS: { id: PropTab; title: string; help: string; icon: string }[] = [
+    { id: "object", title: "Object", help: "Name, place, size and the shape's tools", icon: "cube" },
+    { id: "modifiers", title: "Modifiers", help: "Non-destructive changes: mirror, subdivision, boolean and more", icon: "wrench" },
+    { id: "material", title: "Material", help: "Colour, glow, metal and roughness", icon: "palette" },
+    { id: "bones", title: "Bones", help: "Make the mesh bend with the model's parts", icon: "bone" },
+    { id: "mesh", title: "Mesh", help: "The picked points, edge and face, and tools for the whole mesh", icon: "editPoints" },
   ];
   let propTab = $state<PropTab>("object");
   let poseTab = $state<"pose" | "rules">("pose");
@@ -2828,6 +2843,29 @@
     commit(next);
   };
   const label = (f: Face) => ({ east: "East +x", west: "West −x", up: "Top +y", down: "Bottom −y", south: "South +z", north: "North −z" })[f];
+  // the status bar (bottom of the window): what the keys do here, and the model's size
+  const hintText = $derived(
+    mode === "texture"
+      ? "Drag on the model to paint it · ⇧-click draws a straight line · ⌘Z undoes painting · Z changes the view"
+      : inEdit
+        ? "Click a face or an edge to pick it (⇧ adds) · drag the arrows to move · arrows and PageUp/PageDown nudge · Tab or Esc leaves point mode"
+        : `${navHint(input.navigation)} · click a shape to select (⇧ adds) · ${keyFor("model.move")} ${keyFor("model.turn")} ${keyFor("model.resize")} ${keyFor("model.pivot")} move, turn, resize, pivot · Tab point mode`,
+  );
+  const infoText = $derived(`${modelStats(doc).triangles.toLocaleString("en")} triangles · ${countCubes(doc)} shapes · saves ${glbPath}`);
+  $effect(() => {
+    studio.statusHint = hintText;
+    studio.statusInfo = infoText;
+    return () => {
+      studio.statusHint = "";
+      studio.statusInfo = "";
+    };
+  });
+  $effect(() => {
+    if (!overlaysOpen) return;
+    const close = () => (overlaysOpen = false);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  });
 </script>
 
 <svelte:window onkeydown={key} onpointermove={(e) => { pointerAt = { x: e.clientX, y: e.clientY }; if (modal) modalApply(); }} onpointerdowncapture={(e) => { if (modal) { e.preventDefault(); e.stopPropagation(); modalEnd(e.button === 0); } }} />
@@ -2843,6 +2881,7 @@
     <div class="splitter" role="separator" aria-orientation="vertical" aria-label="Drag to resize the right-hand panels" title="Drag to resize · double-click for the usual size" style:right="{rightWidth - 3}px" onpointerdown={splitDown} onpointermove={splitMove} onpointerup={splitUp} onpointercancel={splitUp} ondblclick={() => setRightWidth(mode === "texture" ? 380 : 300)}></div>
     <aside class="outliner">
       <div class="adder">
+        <div class="row"><strong>Outliner</strong><span class="spacer"></span><button class="ghost" aria-expanded={moreAdd} onclick={() => (moreAdd = !moreAdd)} title="Add text or a tube">{moreAdd ? "Less ▴" : "More ▾"}</button></div>
         <button onclick={() => newPart(selected?.parts ?? [])} title={selected ? `A new part inside "${partAt(doc, selected.parts)?.name ?? "the selected part"}"` : "A new part at the top level (select a part first to put it inside that one)"}>＋ Part{selected ? "" : " (top)"}</button>
         <div class="row">
           <select bind:value={newKind} aria-label="Kind of shape to add">
@@ -2856,6 +2895,7 @@
             <option value="profile">Profile (spun into a wheel or tyre)</option>
           </select>
           <button onclick={newCube} title="New shape in the selected part">＋ Add</button>
+          {#if moreAdd}
           <input class="cname" bind:value={textShape} placeholder="words" aria-label="Text for a lettered shape" maxlength="40" onkeydown={(e) => { if (e.key === "Enter") addTextShape(); }} />
           <button onclick={() => (tubeOpen = !tubeOpen)} aria-expanded={tubeOpen} title="A tube swept along a path of points">＋ Tube</button>
           {#if tubeOpen}
@@ -2866,6 +2906,7 @@
             </span>
           {/if}
           <button onclick={addTextShape} disabled={!textShape.trim()} title="A shape made of the letters in blocks (one unit a pixel, two deep): for signs and titles">＋ Text</button>
+          {/if}
         </div>
       </div>
       <ul>
@@ -2884,26 +2925,48 @@
 
     <div class="stage">
       <div class="bar">
-        <button class="ghost" onclick={undo} disabled={!canUndo} aria-label="Undo">↶</button>
-        <button class="ghost" onclick={redo} disabled={!canRedo} aria-label="Redo">↷</button>
         <select class="modeselect" value={uiMode} onchange={(e) => setUiMode(e.currentTarget.value as UiMode)} aria-label="Mode" title="What you are doing with the model (Tab switches between Object and Edit)">
           {#each UI_MODES as m (m.id)}<option value={m.id}>{m.title}</option>{/each}
         </select>
-        <label class="check"><input type="checkbox" bind:checked={showGrid} /> Grid</label>
-        <label class="check" title="Draw a short line out of the middle of each face of the chosen shape, the way the face looks (blue): lines pointing into the shape mean the face is turned inside out"><input type="checkbox" bind:checked={showNormals} /> Normals</label>
-        <label class="check" title="Show the model's triangle and point count over the view"><input type="checkbox" bind:checked={showStats} /> Stats</label>
-        <label class="check" title="Draw the skeleton: a line from each part's pivot to its children's, and a dot at each pivot"><input type="checkbox" bind:checked={showBones} /> Bones</label>
-        <label class="check" title="Draw only the chosen part and what is inside it"><input type="checkbox" bind:checked={localView} /> Local</label>
-        <select bind:value={viewMode} aria-label="View (Z)" title="How the model is drawn (Z)">
-          <option value="textured">Textured</option>
-          <option value="solid">Colours only</option>
-          <option value="wire">Wireframe</option>
-          <option value="xray">See-through</option>
-        </select>
-        <span class="seg" role="group" aria-label="Standard views">
-          {#each VIEW_NAMES as n (n)}<button class:on={viewName === n} onclick={() => showView(n)} title="{VIEW_LABELS[n]} view" aria-label="{VIEW_LABELS[n]} view">{VIEW_LABELS[n][0]}</button>{/each}
+        {#if inEdit}
+          <span class="seg" role="group" aria-label="What a click picks">
+            {#each [["vertex", "Vertex", "Pick points (click a dot)"], ["edge", "Edge", "Click near an edge to pick it"], ["face", "Face", "Click a face to pick it"]] as [id, title, tip] (id)}
+              <button class:on={pickKinds[id as "vertex"]} title="{tip} (⇧-click a name to add it)" onclick={(e) => setPickKind(id as "vertex" | "edge" | "face", e.shiftKey)}>{title}</button>
+            {/each}
+          </span>
+        {/if}
+        <label class="inline" title="What a dragged point or handle snaps to">Snap
+          <select value={snapMode} onchange={(e) => setSnapMode(e.currentTarget.value)} aria-label="Snap">
+            <option value="off">Off</option><option value="grid">Grid</option><option value="points">Points</option><option value="both">Grid and points</option>
+          </select>
+        </label>
+        {#if inEdit}
+          <button class:on={proportional} onclick={() => (proportional = !proportional)} title="Proportional editing: points near the moved ones follow, falling off with distance">Proportional</button>
+          {#if proportional}<label class="inline" title="How far the pull reaches, in model units">radius <input type="number" min="0.5" step="0.5" bind:value={propRadius} class="narrow" aria-label="Proportional radius" /></label>{/if}
+        {/if}
+        <span class="spacer"></span>
+        <span class="seg" role="group" aria-label="Shading (Z)">
+          {#each [["solid", "Solid", "Colours only"], ["textured", "Material", "With the painted texture"], ["wire", "Wire", "Wireframe"], ["xray", "See-through", "See-through"]] as [id, title, tip] (id)}
+            <button class:on={viewMode === id} title="{tip} (Z)" onclick={() => (viewMode = id as typeof viewMode)}>{title}</button>
+          {/each}
         </span>
-        <label class="check" title="Flat view: parallel lines stay parallel (5)"><input type="checkbox" checked={ortho} onchange={(e) => setOrtho(e.currentTarget.checked)} /> Flat</label>
+        <span class="histwrap">
+          <button class="ghost" aria-expanded={overlaysOpen} onclick={(e) => { e.stopPropagation(); overlaysOpen = !overlaysOpen; }} title="What is drawn in the view, and the standard views"><Icon name="overlays" size={15} /> Overlays ▾</button>
+          {#if overlaysOpen}
+            <div class="histlist overlays" role="menu" aria-label="Overlays and views" onclick={(e) => e.stopPropagation()} onkeydown={() => {}} tabindex="-1">
+              <label class="check"><input type="checkbox" bind:checked={showGrid} /> Grid</label>
+              <label class="check" title="A short line out of the middle of each face of the chosen shape, the way the face looks (blue): lines pointing into the shape mean the face is turned inside out"><input type="checkbox" bind:checked={showNormals} /> Face normals</label>
+              <label class="check" title="The model's triangle and point count over the view"><input type="checkbox" bind:checked={showStats} /> Statistics</label>
+              <label class="check" title="The skeleton: a line from each part's pivot to its children's, and a dot at each pivot"><input type="checkbox" bind:checked={showBones} /> Bones</label>
+              <label class="check" title="Draw only the chosen part and what is inside it"><input type="checkbox" bind:checked={localView} /> Local view</label>
+              <label class="check" title="Flat view: parallel lines stay parallel (5)"><input type="checkbox" checked={ortho} onchange={(e) => setOrtho(e.currentTarget.checked)} /> Flat (orthographic)</label>
+              <span class="seg" role="group" aria-label="Standard views">
+                {#each VIEW_NAMES as n (n)}<button class:on={viewName === n} onclick={() => showView(n)} title="{VIEW_LABELS[n]} view" aria-label="{VIEW_LABELS[n]} view">{VIEW_LABELS[n][0]}</button>{/each}
+              </span>
+              <button class="ghost" onclick={resetView}>Reset view</button>
+            </div>
+          {/if}
+        </span>
         <span class="histwrap">
           <button class="ghost" aria-expanded={historyOpen} disabled={tick >= 0 && !history.canUndo && !history.canRedo} onclick={() => (historyOpen = !historyOpen)} title="The list of changes: pick one to go back (or forward) to it">History</button>
           {#if historyOpen}
@@ -2914,56 +2977,55 @@
             </div>
           {/if}
         </span>
-        <button class="ghost" onclick={resetView}>Reset view</button>
-        <span class="dim">{countCubes(doc)} shapes · saves {glbPath}</span>
-        <span class="spacer"></span>
-        <button class="ghost" onclick={onjson}>JSON</button>
+        <button class="ghost" onclick={onjson} title="Edit the model's file as text">JSON</button>
       </div>
-      <div class="view" bind:this={box}>
+      {#if inEdit}
+        <div class="toolopts" role="group" aria-label="Tool options">
+          {#if weightPainting && cube?.skin}
+            <select bind:value={skinBone} aria-label="Part to paint" title="The part whose hold you paint">{#each cube.skin.bones as b (b)}<option value={b}>{b.split("/").at(-1)}</option>{/each}</select>
+            <label class="check" title="Only the picked points take paint"><input type="checkbox" bind:checked={paintOnlyPicked} /> Only picked</label>
+            <select bind:value={weightMode} aria-label="Weight brush">{#each WEIGHT_MODES as m (m)}<option value={m}>{m}</option>{/each}</select>
+          {/if}
+          {#if sculpting}<select bind:value={sculptMode} aria-label="Sculpt brush" title={SCULPT_HELP[sculptMode]}>{#each SCULPT_MODES as m (m)}<option value={m}>{m}</option>{/each}</select>{/if}
+          {#if sculpting || weightPainting}
+            <label class="check" title="Brush radius, in units">Size <input type="range" min="0.5" max="20" step="0.5" bind:value={sculptRadius} aria-label="Brush size" /></label>
+            <label class="check" title="How strongly each dab works">Strength <input type="range" min="0.05" max="1" step="0.05" bind:value={sculptStrength} aria-label="Brush strength" /></label>
+          {/if}
+          {#if sculpting}<label class="check" title="Sculpt the mirror image across the middle (x = 0) too"><input type="checkbox" bind:checked={sculptSymmetry} /> Mirror</label>{/if}
+          <label class="inline" title="How far to slide the picked edge along the quads beside it: positive towards one side, negative the other, 1 is all the way to the next point">Slide <input type="number" min="-1" max="1" step="0.1" bind:value={slideAmount} class="narrow" aria-label="Slide amount" /></label>
+          <label class="inline" title="The most a surface may turn and still shade smooth, in degrees">Smooth angle <input type="number" min="1" max="180" step="5" bind:value={smoothAngle} class="narrow" aria-label="Smooth angle" /></label>
+          {#if selectNote}<span class="dim small" role="status">{selectNote}</span>{/if}
+        </div>
+      {/if}
+      <div class="viewrow">
+        <div class="shelf" role="toolbar" aria-label="Tools for this mode">
+          {#if mode === "model" && selected && !inEdit}
+            <button class="tool" class:on={gizmoMode === "translate"} aria-label="Move (W)" title="Move (W)" onclick={() => (gizmoMode = "translate")} ><Icon name="move" size={18} /></button>
+            <button class="tool" class:on={gizmoMode === "rotate"} aria-label="Turn (E)" title="Turn (E)" onclick={() => (gizmoMode = "rotate")} ><Icon name="rotate" size={18} /></button>
+            <button class="tool" class:on={gizmoMode === "pivot"} disabled={selected.cube !== undefined} aria-label="Pivot (P)" onclick={() => (gizmoMode = "pivot")} title={selected.cube !== undefined ? "Select a part to move its pivot" : "Move the point this part turns about, leaving its shapes where they are (P)"}><Icon name="pivot" size={18} /></button>
+            <button class="tool" class:on={gizmoMode === "scale"} disabled={selected.cube === undefined} aria-label="Resize (R)" onclick={() => (gizmoMode = "scale")} title={selected.cube === undefined ? "Parts are resized in animations" : "Resize (R)"}><Icon name="scale" size={18} /></button>
+          {/if}
+          {#if inEdit}
+            <button class="tool" class:on={boxArmed} aria-label="Box select: drag a rectangle over the points (B)" title="Box select: drag a rectangle over the points (B)" onclick={() => (boxArmed = !boxArmed)} ><Icon name="boxSelect" size={18} /></button>
+            <button class="tool" class:on={sculpting} aria-label="Sculpt: brush the surface (Ctrl reverses)" title="Sculpt: brush the surface (Ctrl reverses)" onclick={() => { sculpting = !sculpting; weightPainting = false; }} ><Icon name="sculpt" size={18} /></button>
+            {#if cube?.skin}<button class="tool" class:on={weightPainting} aria-label="Paint weights: brush how strongly a part holds the points" title="Paint weights: brush how strongly a part holds the points" onclick={() => { weightPainting = !weightPainting; sculpting = false; }} ><Icon name="weights" size={18} /></button>{/if}
+            <hr />
+            <button class="tool" class:on={false} aria-label="Pick the edge loop through the picked edge (quad meshes)" title="Pick the edge loop through the picked edge (quad meshes)" onclick={() => pickLoop("loop")} ><Icon name="loop" size={18} /></button>
+            <button class="tool" class:on={false} aria-label="Pick the edges parallel to the picked edge across the quads" title="Pick the edges parallel to the picked edge across the quads" onclick={() => pickLoop("ring")} ><Icon name="ring" size={18} /></button>
+            <button class="tool" class:on={false} aria-label="Pick every face that faces the way the picked face does" title="Pick every face that faces the way the picked face does" onclick={() => pickSimilar("normal")} ><Icon name="sameWay" size={18} /></button>
+            <button class="tool" class:on={false} aria-label="Pick every face of about the same size as the picked face" title="Pick every face of about the same size as the picked face" onclick={() => pickSimilar("area")} ><Icon name="sameSize" size={18} /></button>
+            <hr />
+            <button class="tool" class:on={false} aria-label="Fill hole: close the open border that the picked point is on" title="Fill hole: close the open border that the picked point is on" onclick={fillHoleAtPick} ><Icon name="fillHole" size={18} /></button>
+            <button class="tool" class:on={false} aria-label="Grid fill: close the open border with a grid of quads (an even number of points)" title="Grid fill: close the open border with a grid of quads (an even number of points)" onclick={gridFillAtPick} ><Icon name="gridFill" size={18} /></button>
+            <button class="tool" class:on={isSeam(selEdge)} aria-label="Seam: mark the picked edge as a UV seam, or clear it" title="Seam: mark the picked edge as a UV seam, or clear it" onclick={toggleSeam} ><Icon name="seam" size={18} /></button>
+            <button class="tool" class:on={false} aria-label="Smooth by angle: smooth faces where the surface turns less than the Smooth angle, keep hard corners flat" title="Smooth by angle: smooth faces where the surface turns less than the Smooth angle, keep hard corners flat" onclick={autoSmoothNow} ><Icon name="smoothAngle" size={18} /></button>
+            <button class="tool" class:on={false} aria-label="Slide edge: slide the picked edge along the surface (quad faces on the side asked for)" title="Slide edge: slide the picked edge along the surface (quad faces on the side asked for)" onclick={slideEdge} ><Icon name="slideEdge" size={18} /></button>
+          {/if}
+        </div>
+        <div class="view" bind:this={box}>
         {#if webglFailed}
           <p class="dim pad">3D drawing is not available in this window (WebGL could not start).</p>
         {/if}
-        <div class="shelf" role="toolbar" aria-label="Tools for this mode">
-        {#if mode === "model" && selected && !inEdit}
-          <span class="seg" role="group" aria-label="Handles">
-            <button class:on={gizmoMode === "translate"} onclick={() => (gizmoMode = "translate")} title="Move (W)"><Icon name="move" size={14} /> Move</button>
-            <button class:on={gizmoMode === "rotate"} onclick={() => (gizmoMode = "rotate")} title="Turn (E)"><Icon name="rotate" size={14} /> Turn</button>
-            <button class:on={gizmoMode === "pivot"} disabled={selected.cube !== undefined} onclick={() => (gizmoMode = "pivot")} title={selected.cube !== undefined ? "Select a part to move its pivot" : "Move the point this part turns about, leaving its shapes where they are (P)"}><Icon name="pivot" size={14} /> Pivot</button>
-            <button class:on={gizmoMode === "scale"} disabled={selected.cube === undefined} onclick={() => (gizmoMode = "scale")} title={selected.cube === undefined ? "Parts are resized in animations" : "Resize (R)"}><Icon name="scale" size={14} /> Resize</button>
-          </span>
-          <label class="check" title="Snap to whole units and 15 degrees"><input type="checkbox" bind:checked={snap} /> Snap</label>
-        {/if}
-        {#if inEdit}<button class:on={sculpting} onclick={() => { sculpting = !sculpting; weightPainting = false; }} title="Sculpt: brush the surface (Ctrl reverses)">Sculpt</button>{/if}
-        {#if inEdit && cube?.skin}<button class:on={weightPainting} onclick={() => { weightPainting = !weightPainting; sculpting = false; }} title="Paint weights: brush how strongly a part holds the points">Weights</button>{/if}
-        {#if inEdit && weightPainting && cube?.skin}
-          <select bind:value={skinBone} aria-label="Part to paint" title="The part whose hold you paint">{#each cube.skin.bones as b (b)}<option value={b}>{b.split("/").at(-1)}</option>{/each}</select>
-          <label class="check" title="Only the picked points take paint"><input type="checkbox" bind:checked={paintOnlyPicked} /> Only picked</label>
-          <select bind:value={weightMode} aria-label="Weight brush">{#each WEIGHT_MODES as m (m)}<option value={m}>{m}</option>{/each}</select>
-        {/if}
-        {#if inEdit && (sculpting || weightPainting)}
-          {#if sculpting}<select bind:value={sculptMode} aria-label="Sculpt brush" title={SCULPT_HELP[sculptMode]}>{#each SCULPT_MODES as m (m)}<option value={m}>{m}</option>{/each}</select>{/if}
-          <label class="check" title="Brush radius, in units">Size <input type="range" min="0.5" max="20" step="0.5" bind:value={sculptRadius} aria-label="Brush size" /></label>
-          <label class="check" title="How strongly each dab works">Strength <input type="range" min="0.05" max="1" step="0.05" bind:value={sculptStrength} aria-label="Brush strength" /></label>
-          {#if sculpting}<label class="check" title="Sculpt the mirror image across the middle (x = 0) too"><input type="checkbox" bind:checked={sculptSymmetry} /> Mirror</label>{/if}
-        {/if}
-        {#if inEdit}
-          <span class="seg" role="group" aria-label="Select by layout">
-            <button onclick={() => pickLoop("loop")} title="Pick the edge loop through the picked edge (quad meshes)">Loop</button>
-            <button onclick={() => pickLoop("ring")} title="Pick the edges parallel to the picked edge across the quads">Ring</button>
-            <button onclick={() => pickSimilar("normal")} title="Pick every face that faces the way the picked face does">Same way</button>
-            <button onclick={() => pickSimilar("area")} title="Pick every face of about the same size as the picked face">Same size</button>
-          </span>
-          <label class="inline" title="How far to slide the picked edge along the quads beside it: positive towards one side, negative the other, 1 is all the way to the next point"><input type="number" min="-1" max="1" step="0.1" bind:value={slideAmount} class="narrow" aria-label="Slide amount" /></label>
-          <button onclick={fillHoleAtPick} title="Close the open border that the picked point is on">Fill hole</button>
-          <label class="inline" title="The most a surface may turn and still shade smooth, in degrees"><input type="number" min="1" max="180" step="5" bind:value={smoothAngle} class="narrow" aria-label="Smooth angle" /></label>
-          <button onclick={autoSmoothNow} title="Smooth the faces where the surface turns by less than that angle and keep hard corners flat (the picked face, or the whole mesh)">Smooth by angle</button>
-          <button onclick={toggleSeam} class:on={isSeam(selEdge)} title="Mark the picked edge as a UV seam, or clear it: the texture unwrap cuts along seams">Seam{cube?.seams?.length ? ` (${cube.seams.length})` : ""}</button>
-          <button onclick={gridFillAtPick} title="Close the open border that the picked point is on with a grid of quads (needs an even number of points round it)">Grid fill</button>
-          <button onclick={slideEdge} title="Slide the picked edge along the surface (quad faces on the side asked for)">Slide edge</button>
-          {#if selectNote}<span class="dim small" role="status">{selectNote}</span>{/if}
-        {/if}
-        {#if inEdit}<button class:on={boxArmed} onclick={() => (boxArmed = !boxArmed)} title="Box select: drag a rectangle over the points (B)"><Icon name="select" size={14} /> Box</button>{/if}
-        </div>
         <canvas bind:this={canvas} tabindex="0" aria-label="3D view" onpointerdown={pointerDown} onpointermove={pointerMove} onpointerup={pointerUp}></canvas>
         {#if viewStats}<div class="statsbadge" role="status">{viewStats.triangles.toLocaleString("en")} triangles · {viewStats.points.toLocaleString("en")} points · {viewStats.faces.toLocaleString("en")} faces · {viewStats.parts} part{viewStats.parts === 1 ? "" : "s"}</div>{/if}
         <svg class="gizmo" viewBox="-44 -44 88 88" width="72" height="72" role="group" aria-label="View axes: click an end to look along it">
@@ -2987,6 +3049,12 @@
           </div>
         {/if}
         {#if snapRing}<div class="snapring" style:left="{snapRing.x}px" style:top="{snapRing.y}px" title="Snaps onto this point"></div>{/if}
+        </div>
+      </div>
+      <div class="areabar" role="tablist" aria-label="Bottom area">
+        <button role="tab" aria-selected={mode === "animate"} class:on={mode === "animate"} onclick={() => setUiMode("pose")} title="The timeline: animations, keys and curves (Pose mode)"><Icon name="play" size={13} /> Timeline</button>
+        <button role="tab" aria-selected={mode === "texture"} class:on={mode === "texture"} onclick={() => setUiMode("texture")} title="The UV editor: the texture picture and where each shape's block sits (Texture Paint mode)"><Icon name="sprites" size={13} /> UV editor</button>
+        {#if mode !== "animate" && mode !== "texture"}<span class="dim small">Pick an area to work in it: the timeline opens Pose mode, the UV editor opens Texture Paint.</span>{/if}
       </div>
       {#if mode === "animate" && clip}
         <div class="timeline">
@@ -3054,13 +3122,6 @@
             {:else}<p class="dim small pad">Choose a part to see its curves.</p>{/if}
           {/if}
         </div>
-      {/if}
-      {#if mode === "texture"}
-        <p class="hint dim">Texture: drag on the model to paint it, or paint in the picture on the right · ⇧-click draws a straight line from the last point · ✥ moves a shape's block · ⌘Z undoes painting · Z changes the view · right-drag pans, scroll zooms (⌥-drag orbits)</p>
-      {:else if inEdit}
-        <p class="hint dim">Points: click a face or an edge to pick it (⇧-click a dot adds it) · drag a handle's <b style="color:#ff6b6b">X</b> <b style="color:#7ad67a">Y</b> <b style="color:#6cb2ff">Z</b> arrow to move along one axis, or a square to move on that plane · drag a dot itself to move it on the grid plane you are looking at (X, Y or Z while dragging keeps it to one axis) · arrows and PageUp/PageDown nudge · Esc leaves point mode</p>
-      {:else}
-        <p class="hint dim">{navHint(input.navigation)} · click a shape to select (⌘ or ⇧ adds more) · drag the handles, or {keyFor("model.move")}, {keyFor("model.turn")}, {keyFor("model.resize")}, {keyFor("model.pivot")} for move, turn, resize, pivot · arrows and PageUp/PageDown nudge (⇧ for 4) · {keyFor("model.duplicate")} duplicates · {keyFor("model.delete")} removes · {keyFor("model.shading")} changes the view</p>
       {/if}
     </div>
 
@@ -3236,7 +3297,7 @@
         <h3>{cube.shape === "mesh" ? "Mesh" : "Shape"}</h3>
         <div class="proptabs" role="tablist" aria-label="Properties">
           {#each PROP_TABS as t (t.id)}
-            {#if t.id !== "mesh" || inEdit}<button role="tab" aria-selected={propTab === t.id} class:on={propTab === t.id} onclick={() => (propTab = t.id)} title={t.help}>{t.title}</button>{/if}
+            {#if t.id !== "mesh" || inEdit}<button role="tab" aria-selected={propTab === t.id} class:on={propTab === t.id} onclick={() => (propTab = t.id)} aria-label={t.title} title="{t.title}: {t.help}"><Icon name={t.icon} size={16} />{#if propTab === t.id} {t.title}{/if}</button>{/if}
           {/each}
         </div>
         {#if pickedShapes.length > 1}<p class="note small">{pickedShapes.length} shapes picked. Moving, copying, deleting and colouring act on all of them{", and so do the turn and resize handles (about the first one's middle)"}; the fields below are for the first.</p>{/if}
@@ -3487,22 +3548,28 @@
   .splitter { position: absolute; top: 0; bottom: 0; width: 6px; z-index: 6; cursor: ew-resize; touch-action: none; }
   .splitter:hover { background: color-mix(in srgb, var(--accent) 40%, transparent); }
   .proptabs { display: flex; flex-wrap: wrap; gap: 2px; margin: 2px 0 8px; border-bottom: 1px solid var(--line); }
-  .proptabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; padding: 3px 7px; font-size: 12px; }
+  .proptabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; padding: 4px 9px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
   .proptabs button.on { border-bottom-color: var(--accent); color: var(--text); font-weight: 600; }
-  .shelf { position: absolute; left: 8px; top: 8px; z-index: 5; display: flex; flex-direction: column; align-items: stretch; gap: 4px; max-width: 150px; padding: 6px; background: color-mix(in srgb, var(--panel) 90%, transparent); border: 1px solid var(--line); border-radius: 8px; max-height: calc(100% - 16px); overflow: auto; }
-  .shelf:empty, .shelf:not(:has(*)) { display: none; }
-  .shelf .seg { display: flex; flex-direction: column; }
-  .shelf .seg button { border-radius: 0; text-align: left; }
-  .shelf .seg button:first-child { border-radius: 6px 6px 0 0; } .shelf .seg button:last-child { border-radius: 0 0 6px 6px; }
-  .shelf input[type="range"] { width: 100%; }
-  .shelf label { font-size: 11px; }
+  .areabar { display: flex; align-items: center; gap: 4px; padding: 2px 8px; background: var(--panel); border-top: 1px solid var(--line); min-height: 26px; }
+  .areabar button { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; padding: 2px 8px; font-size: 12px; color: var(--dim); display: inline-flex; align-items: center; gap: 4px; }
+  .areabar button.on { color: var(--text); border-bottom-color: var(--accent); }
+  .viewrow { flex: 1; min-height: 0; display: flex; }
+  .viewrow > .view { flex: 1; min-width: 0; }
+  .toolopts { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 3px 8px; background: color-mix(in srgb, var(--panel) 85%, var(--bg)); border-bottom: 1px solid var(--line); font-size: 12px; }
+  .toolopts input[type="range"] { width: 90px; }
+  .overlays { display: flex; flex-direction: column; gap: 6px; padding: 8px; min-width: 190px; right: 0; left: auto; }
+  .shelf { width: 42px; flex: none; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0; background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; }
+  .shelf:not(:has(button)) { display: none; }
+  .shelf hr { width: 24px; border: none; border-top: 1px solid var(--line); margin: 3px 0; }
+  .tool { width: 32px; height: 32px; padding: 0; display: grid; place-items: center; border-radius: 6px; background: transparent; border: 1px solid transparent; color: var(--dim); }
+  .tool:hover:not(:disabled) { color: var(--text); background: var(--panel-2); }
+  .tool.on { color: #fff; background: var(--accent-2); border-color: var(--accent-2); }
   .bar { display: flex; align-items: center; gap: 8px; padding: 4px 8px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   .check { display: flex; align-items: center; gap: 4px; } .check input { margin: 0; }
   .spacer { flex: 1; }
   .view { flex: 1; min-height: 0; position: relative; overflow: hidden; background: #15171c; }
   .view canvas { position: absolute; inset: 0; display: block; outline: none; touch-action: none; }
   .pad { padding: 24px; position: relative; z-index: 1; }
-  .hint { margin: 0; padding: 3px 10px; font-size: 11px; border-top: 1px solid var(--line); background: var(--panel); }
   h3 { margin: 2px 0 4px; font-size: 13px; }
   h4 { margin: 6px 0 0; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--dim); }
   label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--dim); }

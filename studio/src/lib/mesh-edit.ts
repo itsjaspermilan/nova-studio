@@ -50,6 +50,28 @@ export function moveVerts(c: Cube, indices: number[], delta: Vec3): Cube {
   return finish(out);
 }
 
+/// Proportional editing: moves the chosen points by `delta` and the points near them by a share of it, falling off smoothly to nothing at `radius` (model units) from
+/// the nearest chosen point, so a dent or a bump pulls the surface round it along. A radius of 0 or less moves just the chosen points.
+export function moveVertsProportional(c: Cube, indices: number[], delta: Vec3, radius: number): Cube {
+  if (!(radius > 0)) return moveVerts(c, indices, delta);
+  const out = clone(c);
+  const verts = out.verts ?? [];
+  const chosen = [...new Set(indices)].filter((i) => verts[i]);
+  const chosenSet = new Set(chosen);
+  const base = verts.map((p) => [...p] as Vec3);
+  for (const i of chosen) verts[i] = add(base[i]!, delta);
+  verts.forEach((p, i) => {
+    if (chosenSet.has(i)) return;
+    let near = Infinity;
+    for (const j of chosen) near = Math.min(near, Math.hypot(p[0] - base[j]![0], p[1] - base[j]![1], p[2] - base[j]![2]));
+    if (near >= radius) return;
+    const t = 1 - near / radius;
+    const w = t * t * (3 - 2 * t); // smoothstep
+    verts[i] = add(base[i]!, [delta[0] * w, delta[1] * w, delta[2] * w]);
+  });
+  return finish(out);
+}
+
 export function setVert(c: Cube, index: number, to: Vec3): Cube {
   const out = clone(c);
   if (out.verts?.[index]) out.verts[index] = [...to];

@@ -484,3 +484,20 @@ describe("the knife", () => {
     expect(cutFace(m, far[0], far[1])).toBeNull();
   });
 });
+
+import { moveVertsProportional } from "./mesh-edit";
+describe("proportional editing", () => {
+  const strip = () => ({ shape: "mesh", color: "#ffffff", from: [0, 0, 0], size: [0, 0, 0], verts: [[0, 0, 0], [2, 0, 0], [4, 0, 0], [10, 0, 0]], polys: [{ v: [0, 1, 2] }, { v: [1, 2, 3] }] }) as never;
+  it("moves the chosen point fully, near points by less and far points not at all", () => {
+    const c = moveVertsProportional(strip(), [0], [0, 5, 0], 5);
+    expect(c.verts![0]![1]).toBe(5);
+    expect(c.verts![1]![1]).toBeGreaterThan(0);
+    expect(c.verts![1]![1]).toBeLessThan(5);
+    expect(c.verts![1]![1]).toBeGreaterThan(c.verts![2]![1]);
+    expect(c.verts![3]![1]).toBe(0);
+  });
+  it("with no radius it is the plain move", () => {
+    const c = moveVertsProportional(strip(), [0], [0, 5, 0], 0);
+    expect(c.verts!.map((p) => p[1])).toEqual([5, 0, 0, 0]);
+  });
+});
