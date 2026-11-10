@@ -95,6 +95,8 @@
         <button onclick={() => act(splitClip(song, s.track, s.index, step), `Cut at step ${step}.`)} title="Cut the clip where the play position is" disabled={step <= chosen.step || step >= chosen.step + chosen.len}>✂ Cut at the play position</button>
         <button onclick={() => commit(duplicateClip(song, s.track, s.index))}>Duplicate</button>
         <button onclick={() => commit(updateClip(song, s.track, s.index, { mute: !chosen.mute }))} aria-pressed={!!chosen.mute}>{chosen.mute ? "Unmute" : "Mute"}</button>
+        <label title="Fade in over this many steps: the notes that start there are quieter the nearer the clip's start">Fade in <input type="number" class="narrow" min="0" max={chosen.len} value={chosen.fadeIn ?? 0} onchange={(e) => commit(updateClip(song, s.track, s.index, { fadeIn: Number(e.currentTarget.value) }))} /></label>
+        <label title="Fade out over this many steps">out <input type="number" class="narrow" min="0" max={chosen.len} value={chosen.fadeOut ?? 0} onchange={(e) => commit(updateClip(song, s.track, s.index, { fadeOut: Number(e.currentTarget.value) }))} /></label>
         <label>Colour <input type="color" value={chosen.color ?? "#5aa9ff"} onchange={(e) => commit(updateClip(song, s.track, s.index, { color: e.currentTarget.value }))} /></label>
         {#if onedit}<button onclick={() => onedit(sel!.track, chosen.pattern)} title="Edit the pattern's notes in the piano roll: every clip of it changes together">Edit in the piano roll</button>{/if}
         <button onclick={() => act(unpackClip(song, s.track, s.index), "The clip is notes on the track again: edit them in the piano roll.")} title="Turn the clip into notes in the piano roll">Unpack to notes</button>

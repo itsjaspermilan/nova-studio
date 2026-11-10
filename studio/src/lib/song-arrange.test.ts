@@ -145,3 +145,37 @@ describe("editing a pattern in the piano roll", () => {
     expect(p.notes.map((n) => n.step)).toEqual([0]);
   });
 });
+
+import { updateClip as updateClipF } from "./song-arrange";
+describe("clip fades", () => {
+  const withNotes = (): Song => {
+    const s = base();
+    s.tracks[0]!.notes = [0, 1, 2, 3, 4, 5, 6, 7].map((step) => ({ step, len: 1, pitch: 60, vel: 1 }));
+    return makePattern(s, 0, 0, 8, "riff")!.song;
+  };
+  it("lowers the loudness of notes near the start and end of the clip only", () => {
+    const s = updateClipF(withNotes(), 0, 0, { fadeIn: 2, fadeOut: 2 });
+    const vel = clipNotes(s.tracks[0]!, s.tracks[0]!.clips![0]!, 32).map((n) => n.vel);
+    expect(vel[0]).toBeCloseTo(1 / 3, 5);
+    expect(vel[1]).toBeCloseTo(2 / 3, 5);
+    expect(vel[2]).toBe(1);
+    expect(vel[5]).toBe(1);
+    expect(vel[6]).toBeCloseTo(2 / 3, 5);
+    expect(vel[7]).toBeCloseTo(1 / 3, 5);
+  });
+  it("is kept in the file, cleared at 0, kept within the clip, and bad values are refused", () => {
+    let s = updateClipF(withNotes(), 0, 0, { fadeIn: 3 });
+    expect(parseSong(serializeSong(s)).ok && (parseSong(serializeSong(s)) as { song: Song }).song.tracks[0]!.clips![0]!.fadeIn).toBe(3);
+    s = updateClipF(s, 0, 0, { fadeIn: 0, fadeOut: 99 });
+    expect(s.tracks[0]!.clips![0]).toEqual({ pattern: "riff", step: 0, len: 8, fadeOut: 8 });
+    const bad = JSON.parse(serializeSong(s));
+    bad.tracks[0].clips[0].fadeIn = -1;
+    expect(parseSong(JSON.stringify(bad)).ok).toBe(false);
+  });
+  it("makes the faded song quieter than the unfaded one", () => {
+    const plain = renderSong(withNotes(), 8000).channels[0]!;
+    const faded = renderSong(updateClipF(withNotes(), 0, 0, { fadeIn: 4 }), 8000).channels[0]!;
+    const sum = (a: Float32Array) => a.reduce((t, v) => t + Math.abs(v), 0);
+    expect(sum(faded)).toBeLessThan(sum(plain));
+  });
+});

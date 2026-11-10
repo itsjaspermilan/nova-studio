@@ -104,13 +104,17 @@ export function deleteClip(song: Song, track: number, index: number): Song {
   });
 }
 
-export function updateClip(song: Song, track: number, index: number, change: Partial<Pick<Clip, "mute" | "color" | "pattern">>): Song {
+export function updateClip(song: Song, track: number, index: number, change: Partial<Pick<Clip, "mute" | "color" | "pattern" | "fadeIn" | "fadeOut">>): Song {
   return edit(song, track, (t) => {
     const c = t.clips?.[index];
     if (!c || (change.pattern !== undefined && !patternOf(t, change.pattern))) return false;
     Object.assign(c, change);
     if (!c.mute) delete c.mute;
     if (!c.color) delete c.color;
+    for (const k of ["fadeIn", "fadeOut"] as const) {
+      if (c[k] !== undefined) c[k] = Math.max(0, Math.min(c.len, Math.round(c[k]!)));
+      if (!c[k]) delete c[k];
+    }
   });
 }
 

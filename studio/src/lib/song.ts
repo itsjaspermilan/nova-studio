@@ -145,6 +145,9 @@ export interface Clip {
   offset?: number;
   mute?: boolean;
   color?: string;
+  /// Fades over the clip's first and last steps (whole steps, 0 to its length): the loudness of each note that starts there is lowered the nearer the clip's edge it begins.
+  fadeIn?: number;
+  fadeOut?: number;
 }
 
 /// A bus: tracks are routed (or sent) into it, it has its own effects, volume and pan, and it plays into the master. Buses do not feed each other.
@@ -436,7 +439,8 @@ export function parseSong(text: string): Parsed {
         if (!c || !cleanPats.some((q) => q.name === c.pattern)) return { ok: false, error: `${where}.pattern must be one of the track's patterns` };
         if (!Number.isInteger(c.step) || c.step < 0 || !Number.isInteger(c.len) || c.len < 1 || (c.offset !== undefined && (!Number.isInteger(c.offset) || c.offset < 0))) return { ok: false, error: `${where} needs whole "step" (0 or more) and "len" (1 or more)` };
         if (c.color !== undefined && (typeof c.color !== "string" || !/^#[0-9a-fA-F]{6}$/.test(c.color))) return { ok: false, error: `${where}.color must be like "#5aa9ff"` };
-        cleanClips.push({ pattern: c.pattern, step: c.step, len: c.len, ...(c.offset ? { offset: c.offset } : {}), ...(c.mute ? { mute: true } : {}), ...(c.color ? { color: c.color.toLowerCase() } : {}) });
+        for (const k of ["fadeIn", "fadeOut"] as const) if (c[k] !== undefined && (!Number.isInteger(c[k]) || c[k]! < 0 || c[k]! > c.len)) return { ok: false, error: `${where}.${k} is a whole number of steps from 0 to the clip's length` };
+        cleanClips.push({ pattern: c.pattern, step: c.step, len: c.len, ...(c.fadeIn ? { fadeIn: c.fadeIn } : {}), ...(c.fadeOut ? { fadeOut: c.fadeOut } : {}), ...(c.offset ? { offset: c.offset } : {}), ...(c.mute ? { mute: true } : {}), ...(c.color ? { color: c.color.toLowerCase() } : {}) });
       }
       cleanClips.sort((a, b) => a.step - b.step);
       if (cleanPats.length) voice.patterns = cleanPats;
@@ -1188,7 +1192,10 @@ export function clipNotes(track: Track, clip: Clip, songLength: number): Note[] 
         s = 0;
       }
       len = Math.min(len, end - s);
-      out.push({ ...n, step: clip.step + s, len });
+      let vel = n.vel;
+      if (clip.fadeIn) vel *= Math.min(1, (s + 1) / (clip.fadeIn + 1));
+      if (clip.fadeOut) vel *= Math.min(1, (clip.len - s) / (clip.fadeOut + 1));
+      out.push({ ...n, step: clip.step + s, len, vel });
     }
   }
   return out;
