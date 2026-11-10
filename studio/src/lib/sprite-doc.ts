@@ -126,14 +126,15 @@ export function composeFrame(doc: SpriteDoc, i: number): Raster {
     }
     const cel = layer.cels[i];
     if (!layer.clip && cel) bases[d] = cel.data;
-    if (!(layer.visible && layer.opacity > 0 && cel)) continue;
+    const opacity = layer.opacity * (cel?.celOpacity ?? 1);
+    if (!(layer.visible && opacity > 0 && cel)) continue;
     let shown = layer.effects?.length ? applyLayerEffects(cel, layer.effects) : cel;
     const base = bases[d];
     if (layer.clip && base) {
       shown = { w: shown.w, h: shown.h, data: new Uint8ClampedArray(shown.data) };
       for (let k = 3; k < shown.data.length; k += 4) shown.data[k] = Math.round((shown.data[k]! * base[k]!) / 255);
     } else if (layer.clip) continue; // nothing below to clip to
-    acc[d] = composite(acc[d] ?? newRaster(doc.fw, doc.fh), shown, layer.opacity, layer.blend);
+    acc[d] = composite(acc[d] ?? newRaster(doc.fw, doc.fh), shown, opacity, layer.blend);
   }
   // (layers left deeper than any group, from a damaged file, still show)
   let out = acc[0] ?? newRaster(doc.fw, doc.fh);
@@ -1012,6 +1013,18 @@ export function groupsAreValid(layers: Layer[]): boolean {
   return open.size === 0;
 }
 
+/// How much of one cel (a layer's picture in one frame) shows, 0 to 1, on top of the layer's own opacity: a fade over a few frames without a layer for each.
+export function setCelOpacity(doc: SpriteDoc, layerIndex: number, frame: number, value: number): SpriteDoc {
+  const cel = doc.layers[layerIndex]?.cels[frame];
+  if (!cel || doc.layers[layerIndex]!.kind === "group") return doc;
+  const next = cloneDoc(doc);
+  const c = next.layers[layerIndex]!.cels[frame]!;
+  const v = clampOpacity(value);
+  if (v >= 1) delete c.celOpacity;
+  else c.celOpacity = Math.round(v * 1000) / 1000;
+  return recomposed(next);
+}
+
 /// Removes a layer (never the last drawing layer). Removing a group removes the layers in it.
 export function removeLayer(doc: SpriteDoc, index: number): SpriteDoc {
   const l = doc.layers[index];
@@ -1135,7 +1148,7 @@ export interface LayersFile {
   sheet: string;
   frames: number;
   columns: number;
-  layers: { name: string; visible: boolean; opacity: number; blend?: BlendMode; locked?: boolean; clip?: boolean; effects?: LayerEffect[]; group?: boolean; depth?: number; image: string; /** link groups of the cels, when any are linked */ links?: number[] }[];
+  layers: { name: string; visible: boolean; opacity: number; blend?: BlendMode; locked?: boolean; clip?: boolean; effects?: LayerEffect[]; group?: boolean; depth?: number; image: string; /** link groups of the cels, when any are linked */ links?: number[]; /** each cel's own opacity, when any is not 1 */ celOpacity?: number[] }[];
 }
 
 /// Each layer as a sheet laid out like the exported one.
@@ -1146,7 +1159,7 @@ export function layerSheets(doc: SpriteDoc): Raster[] {
 export function layersFileText(doc: SpriteDoc, images: string[]): string {
   const file: LayersFile = {
     version: 1, sheet: hashRaster(toSheet(doc)), frames: doc.frames.length, columns: sheetColumns(doc.frames.length),
-    layers: doc.layers.map((l, i) => ({ name: l.name, visible: l.visible, opacity: l.opacity, ...(l.blend ? { blend: l.blend } : {}), ...(l.locked ? { locked: true } : {}), ...(l.clip ? { clip: true } : {}), ...(l.effects?.length ? { effects: l.effects } : {}), ...(l.kind === "group" ? { group: true } : {}), ...(l.depth ? { depth: l.depth } : {}), image: images[i]!, ...(l.links?.some((n) => n > 0) ? { links: l.links } : {}) })),
+    layers: doc.layers.map((l, i) => ({ name: l.name, visible: l.visible, opacity: l.opacity, ...(l.blend ? { blend: l.blend } : {}), ...(l.locked ? { locked: true } : {}), ...(l.clip ? { clip: true } : {}), ...(l.effects?.length ? { effects: l.effects } : {}), ...(l.kind === "group" ? { group: true } : {}), ...(l.depth ? { depth: l.depth } : {}), image: images[i]!, ...(l.links?.some((n) => n > 0) ? { links: l.links } : {}), ...(l.cels.some((c) => c.celOpacity !== undefined) ? { celOpacity: l.cels.map((c) => c.celOpacity ?? 1) } : {}) })),
   };
   return `${JSON.stringify(file, null, 1)}\n`;
 }
@@ -1156,6 +1169,7 @@ export function parseLayersFile(text: string): LayersFile | null {
     const f = JSON.parse(text) as LayersFile;
     const good = f && f.version === 1 && typeof f.sheet === "string" && Number.isInteger(f.frames) && Number.isInteger(f.columns) && Array.isArray(f.layers) && f.layers.length > 0 && f.layers.length <= MAX_LAYERS
       && f.layers.every((l) => typeof l.name === "string" && typeof l.visible === "boolean" && typeof l.opacity === "number" && typeof l.image === "string" && (l.blend === undefined || BLEND_MODES.includes(l.blend)) && (l.locked === undefined || typeof l.locked === "boolean") && (l.clip === undefined || typeof l.clip === "boolean") && (l.effects === undefined || cleanLayerEffects(l.effects) !== null) && (l.group === undefined || typeof l.group === "boolean") && (l.depth === undefined || (Number.isInteger(l.depth) && l.depth > 0 && l.depth < 8))
+        && (l.celOpacity === undefined || (Array.isArray(l.celOpacity) && l.celOpacity.length === f.frames && l.celOpacity.every((n) => typeof n === "number" && n >= 0 && n <= 1)))
         && (l.links === undefined || (Array.isArray(l.links) && l.links.length === f.frames && l.links.every((n) => Number.isInteger(n) && n >= 0))));
     return good ? f : null;
   } catch {
@@ -1175,6 +1189,7 @@ export function applyLayers(doc: SpriteDoc, file: LayersFile, sheets: Raster[]):
     cels: cutFrames(sheets[i]!, doc.fw, doc.fh, doc.frames.length, columns),
     ...(l.links?.some((n) => n > 0) ? { links: [...l.links] } : {}),
   }));
+  next.layers.forEach((layer, i) => file.layers[i]!.celOpacity?.forEach((v, f) => { if (v < 1 && layer.cels[f]) layer.cels[f]!.celOpacity = v; }));
   if (!groupsAreValid(next.layers)) return null;
   recomposed(next);
   return hashRaster(toSheet(next)) === file.sheet && hashRaster(toSheet(next)) === hashRaster(toSheet(doc)) ? next : null;

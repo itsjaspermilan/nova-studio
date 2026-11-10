@@ -6,6 +6,8 @@ export interface Raster {
   h: number;
   /// RGBA, row by row, 4 bytes per pixel.
   data: Uint8ClampedArray;
+  /// Only on a cel of a sprite layer: how much of this one cel shows, 0 to 1 (missing: all of it), on top of the layer's own opacity.
+  celOpacity?: number;
 }
 export interface Point {
   x: number;
@@ -19,7 +21,7 @@ export function newRaster(w: number, h: number): Raster {
 }
 
 export function cloneRaster(r: Raster): Raster {
-  return { w: r.w, h: r.h, data: new Uint8ClampedArray(r.data) };
+  return { w: r.w, h: r.h, data: new Uint8ClampedArray(r.data), ...(r.celOpacity !== undefined ? { celOpacity: r.celOpacity } : {}) };
 }
 
 export const inside = (r: Raster, x: number, y: number) => x >= 0 && y >= 0 && x < r.w && y < r.h;

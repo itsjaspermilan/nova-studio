@@ -166,3 +166,49 @@ describe("editing the effect list", () => {
     expect(many.length).toBe(MAX_LAYER_FX);
   });
 });
+
+import { setCelOpacity, insertFrame, moveFrame, removeFrame } from "./sprite-doc";
+describe("opacity of one cel", () => {
+  const twoFrames = () => {
+    let d = insertFrame(newDoc(1, 1, 1), 1, 0);
+    d.layers[0]!.cels.forEach((c) => setPixel(c, 0, 0, [200, 0, 0, 255]));
+    recompose(d, 0);
+    recompose(d, 1);
+    return d;
+  };
+  it("fades one frame of a layer and not the others", () => {
+    const d = setCelOpacity(twoFrames(), 0, 1, 0.5);
+    const at = (f: number) => getPixel(composeFrame(d, f), 0, 0)![3];
+    expect(at(0)).toBe(255);
+    expect(at(1)).toBe(128);
+    expect(d.frames[1]!.data[3]).toBe(128);
+    expect(setCelOpacity(d, 0, 1, 1).layers[0]!.cels[1]!.celOpacity).toBeUndefined();
+    expect(setCelOpacity(d, 0, 9, 0.5)).toBe(d);
+  });
+  it("multiplies with the layer's own opacity", () => {
+    let d = updateLayer(twoFrames(), 0, { opacity: 0.5 });
+    d = setCelOpacity(d, 0, 0, 0.5);
+    expect(getPixel(composeFrame(d, 0), 0, 0)![3]).toBe(64);
+  });
+  it("travels with its frame when frames are moved, copied or removed", () => {
+    let d = setCelOpacity(twoFrames(), 0, 1, 0.25);
+    d = moveFrame(d, 1, 0);
+    expect(d.layers[0]!.cels[0]!.celOpacity).toBe(0.25);
+    expect(d.layers[0]!.cels[1]!.celOpacity).toBeUndefined();
+    const copied = insertFrame(d, 1, 0);
+    expect(copied.layers[0]!.cels[1]!.celOpacity).toBe(0.25); // a copy of the frame is a copy of the cel
+    expect(removeFrame(d, 0).layers[0]!.cels[0]!.celOpacity).toBeUndefined();
+  });
+  it("is saved in the layers file and put back", () => {
+    const d = setCelOpacity(twoFrames(), 0, 1, 0.5);
+    const file = parseLayersFile(layersFileText(d, ["l.png"]))!;
+    expect(file.layers[0]!.celOpacity).toEqual([1, 0.5]);
+    const flat = { ...d, layers: [{ ...d.layers[0]!, cels: d.frames.map((f) => ({ ...f, celOpacity: undefined })) }] };
+    const back = applyLayers(flat as typeof d, file, layerSheets({ ...d, layers: [{ ...d.layers[0]!, cels: d.layers[0]!.cels }] }));
+    expect(back).not.toBeNull();
+    expect(back!.layers[0]!.cels[1]!.celOpacity).toBe(0.5);
+    const bad = JSON.parse(layersFileText(d, ["l.png"]));
+    bad.layers[0].celOpacity = [1, 3];
+    expect(parseLayersFile(JSON.stringify(bad))).toBeNull();
+  });
+});

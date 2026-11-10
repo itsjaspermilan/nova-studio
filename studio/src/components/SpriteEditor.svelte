@@ -24,7 +24,7 @@
     addAnimation, animationOf, cloneDoc, cropDoc, linkCels, unlinkCels, syncLinked, moveFramesWithin, scaleDurations, duplicateFrames, moveFramesTo, removeFrames, detectGrid, duplicateAnimation, frameAt, gridFromCounts, smartGrid, framesIn, fromImage, fromSheet, gridTiles, importTiles, insertFrame, moveAnimation, isPristine, moveFrame, newDoc, parseSheetJson,
     removeAnimation, removeFrame, setAnimationDuration, tagProblems, tagSequence, resizeDoc, toSheet, toSheetJson, updateAnimation, type Direction, type SpriteDoc,
     copyFrameDataTo, effectiveData, frameDataOf, setDefaults, setFrameData, setNineSlice,
-    addLayer, applyLayers, duplicateLayer, layerSheets, layersFileText, groupLayers, mergeDown, moveLayer, ungroup, parseLayersFile, recompose, removeLayer, updateLayer, MAX_LAYERS,
+    addLayer, applyLayers, duplicateLayer, layerSheets, layersFileText, groupLayers, setCelOpacity, mergeDown, moveLayer, ungroup, parseLayersFile, recompose, removeLayer, updateLayer, MAX_LAYERS,
   } from "../lib/sprite-doc";
   import { loadRaster, rasterToDataUrl } from "../lib/png";
   import { studio } from "../lib/store.svelte";
@@ -1714,6 +1714,9 @@
       </div>
       <label class="slider"><span>Blend</span><select value={doc.layers[activeLayer]?.blend ?? "normal"} onchange={(e) => setLayer(activeLayer, { blend: e.currentTarget.value as BlendMode })} title="How this layer mixes with the ones under it">{#each BLEND_MODES as m (m)}<option value={m}>{m}</option>{/each}</select></label>
       <label class="slider"><span>Opacity</span><input type="range" min="0" max="1" step="0.05" value={doc.layers[activeLayer]?.opacity ?? 1} oninput={(e) => setLayer(activeLayer, { opacity: Number(e.currentTarget.value) })} /><output>{Math.round((doc.layers[activeLayer]?.opacity ?? 1) * 100)}%</output></label>
+      {#if doc.layers[activeLayer] && doc.layers[activeLayer]!.kind !== "group"}
+        <label class="slider" title="How much of this layer shows in this frame only, on top of the layer's opacity: fade something in or out over a few frames"><span>This frame</span><input type="range" min="0" max="1" step="0.05" value={doc.layers[activeLayer]!.cels[frame]?.celOpacity ?? 1} oninput={(e) => structural(setCelOpacity(doc, activeLayer, frame, Number(e.currentTarget.value)))} aria-label="Opacity of this frame's cel" /><output>{Math.round((doc.layers[activeLayer]!.cels[frame]?.celOpacity ?? 1) * 100)}%</output></label>
+      {/if}
       <div class="row wrap">
         <button onclick={newLayer} disabled={doc.layers.length >= MAX_LAYERS} title="New layer above">＋</button>
         <button onclick={copyLayer} disabled={doc.layers.length >= MAX_LAYERS} title="Duplicate layer">⧉</button>
