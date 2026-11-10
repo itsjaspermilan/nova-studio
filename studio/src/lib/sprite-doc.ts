@@ -24,6 +24,10 @@ export interface Layer {
   opacity: number;
   /// How the layer combines with the ones under it (missing means normal).
   blend?: BlendMode;
+  /// A locked layer cannot be drawn on or changed by the tools (hidden or not).
+  locked?: boolean;
+  /// A clipping layer shows only where the layer below it (the nearest one that is not clipping) has something: shading and highlights that stay inside a shape.
+  clip?: boolean;
   cels: Raster[];
   /// For each cel, 0 or a group number: cels of this layer with the same number are linked, and drawing on one draws on all.
   links?: number[];
@@ -99,9 +103,18 @@ export function cloneDoc(d: SpriteDoc): SpriteDoc {
 /// Frame `i` with every visible layer stacked, bottom to top.
 export function composeFrame(doc: SpriteDoc, i: number): Raster {
   let out = newRaster(doc.fw, doc.fh);
+  // what the nearest layer below that is not clipping has in this frame (its own picture, whether or not it is shown), as 0 to 255 per pixel
+  let base: Uint8ClampedArray | null = null;
   for (const layer of doc.layers) {
     const cel = layer.cels[i];
-    if (layer.visible && layer.opacity > 0 && cel) out = composite(out, cel, layer.opacity, layer.blend);
+    if (!layer.clip && cel) base = cel.data;
+    if (!(layer.visible && layer.opacity > 0 && cel)) continue;
+    let shown = cel;
+    if (layer.clip && base) {
+      shown = { w: cel.w, h: cel.h, data: new Uint8ClampedArray(cel.data) };
+      for (let k = 3; k < shown.data.length; k += 4) shown.data[k] = Math.round((shown.data[k]! * base[k]!) / 255);
+    } else if (layer.clip) continue; // nothing below to clip to
+    out = composite(out, shown, layer.opacity, layer.blend);
   }
   return out;
 }
@@ -968,13 +981,21 @@ export function moveLayer(doc: SpriteDoc, index: number, delta: number): { doc: 
   return { doc: recomposed(next), index: to };
 }
 
-export function updateLayer(doc: SpriteDoc, index: number, change: Partial<Pick<Layer, "name" | "visible" | "opacity" | "blend">>): SpriteDoc {
+export function updateLayer(doc: SpriteDoc, index: number, change: Partial<Pick<Layer, "name" | "visible" | "opacity" | "blend" | "locked" | "clip">>): SpriteDoc {
   if (!doc.layers[index]) return doc;
   const next = cloneDoc(doc);
   const l = next.layers[index]!;
   if (change.name !== undefined && change.name.trim()) l.name = change.name.trim();
   if (change.visible !== undefined) l.visible = change.visible;
   if (change.opacity !== undefined) l.opacity = clampOpacity(change.opacity);
+  if (change.locked !== undefined) {
+    if (change.locked) l.locked = true;
+    else delete l.locked;
+  }
+  if (change.clip !== undefined) {
+    if (change.clip && index > 0) l.clip = true;
+    else delete l.clip;
+  }
   if (change.blend !== undefined && BLEND_MODES.includes(change.blend)) {
     if (change.blend === "normal") delete l.blend;
     else l.blend = change.blend;
@@ -1013,7 +1034,7 @@ export interface LayersFile {
   sheet: string;
   frames: number;
   columns: number;
-  layers: { name: string; visible: boolean; opacity: number; blend?: BlendMode; image: string; /** link groups of the cels, when any are linked */ links?: number[] }[];
+  layers: { name: string; visible: boolean; opacity: number; blend?: BlendMode; locked?: boolean; clip?: boolean; image: string; /** link groups of the cels, when any are linked */ links?: number[] }[];
 }
 
 /// Each layer as a sheet laid out like the exported one.
@@ -1024,7 +1045,7 @@ export function layerSheets(doc: SpriteDoc): Raster[] {
 export function layersFileText(doc: SpriteDoc, images: string[]): string {
   const file: LayersFile = {
     version: 1, sheet: hashRaster(toSheet(doc)), frames: doc.frames.length, columns: sheetColumns(doc.frames.length),
-    layers: doc.layers.map((l, i) => ({ name: l.name, visible: l.visible, opacity: l.opacity, ...(l.blend ? { blend: l.blend } : {}), image: images[i]!, ...(l.links?.some((n) => n > 0) ? { links: l.links } : {}) })),
+    layers: doc.layers.map((l, i) => ({ name: l.name, visible: l.visible, opacity: l.opacity, ...(l.blend ? { blend: l.blend } : {}), ...(l.locked ? { locked: true } : {}), ...(l.clip ? { clip: true } : {}), image: images[i]!, ...(l.links?.some((n) => n > 0) ? { links: l.links } : {}) })),
   };
   return `${JSON.stringify(file, null, 1)}\n`;
 }
@@ -1033,7 +1054,7 @@ export function parseLayersFile(text: string): LayersFile | null {
   try {
     const f = JSON.parse(text) as LayersFile;
     const good = f && f.version === 1 && typeof f.sheet === "string" && Number.isInteger(f.frames) && Number.isInteger(f.columns) && Array.isArray(f.layers) && f.layers.length > 0 && f.layers.length <= MAX_LAYERS
-      && f.layers.every((l) => typeof l.name === "string" && typeof l.visible === "boolean" && typeof l.opacity === "number" && typeof l.image === "string" && (l.blend === undefined || BLEND_MODES.includes(l.blend))
+      && f.layers.every((l) => typeof l.name === "string" && typeof l.visible === "boolean" && typeof l.opacity === "number" && typeof l.image === "string" && (l.blend === undefined || BLEND_MODES.includes(l.blend)) && (l.locked === undefined || typeof l.locked === "boolean") && (l.clip === undefined || typeof l.clip === "boolean")
         && (l.links === undefined || (Array.isArray(l.links) && l.links.length === f.frames && l.links.every((n) => Number.isInteger(n) && n >= 0))));
     return good ? f : null;
   } catch {
@@ -1048,7 +1069,7 @@ export function applyLayers(doc: SpriteDoc, file: LayersFile, sheets: Raster[]):
   const columns = Math.max(1, file.columns);
   const next = cloneDoc(doc);
   next.layers = file.layers.map((l, i) => ({
-    name: l.name, visible: l.visible, opacity: clampOpacity(l.opacity), ...(l.blend && l.blend !== "normal" ? { blend: l.blend } : {}),
+    name: l.name, visible: l.visible, opacity: clampOpacity(l.opacity), ...(l.blend && l.blend !== "normal" ? { blend: l.blend } : {}), ...(l.locked ? { locked: true } : {}), ...(l.clip ? { clip: true } : {}),
     cels: cutFrames(sheets[i]!, doc.fw, doc.fh, doc.frames.length, columns),
     ...(l.links?.some((n) => n > 0) ? { links: [...l.links] } : {}),
   }));

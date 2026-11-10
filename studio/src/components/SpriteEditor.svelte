@@ -170,7 +170,7 @@
       const d = session!.doc;
       await studio.api!.writeImage(session!.imagePath, rasterToDataUrl(toSheet(d)));
       // Layers go in a file beside the sheet (only when there is more than one, or there was a file before).
-      if (session!.sheet && (d.layers.length > 1 || d.layers.some((l) => l.links?.some((n) => n > 0)) || studio.files.some((f) => f.path === layersPath))) {
+      if (session!.sheet && (d.layers.length > 1 || d.layers.some((l) => l.locked || l.clip || l.links?.some((n) => n > 0)) || studio.files.some((f) => f.path === layersPath))) {
         await studio.api!.writeFile(layersPath, layersFileText(d, layerSheets(d).map(rasterToDataUrl)));
         if (!studio.files.some((f) => f.path === layersPath)) void studio.refreshFiles();
       }
@@ -538,6 +538,15 @@
       return;
     }
     const layer = doc.layers[activeLayer]!;
+    if (layer.locked) {
+      studio.say("info", `"${layer.name}" is locked. Unlock it (the padlock) to draw on it.`);
+      if (swapped) {
+        tool = swapped.tool;
+        color = swapped.color;
+        swapped = null;
+      }
+      return;
+    }
     if (!layer.visible) {
       studio.say("info", `"${layer.name}" is hidden. Show it (the eye) to draw on it.`);
       if (swapped) {
@@ -807,6 +816,7 @@
 
   // ---- selection commands ---------------------------------------------------------------------
   function clearSelection() {
+    if (lockedLayer()) return;
     const mask = currentMask();
     const lifted = mask ? liftMasked(cel(), mask) : null;
     if (!lifted) return;
@@ -822,7 +832,7 @@
     if (cut) clearSelection();
   }
   function paste() {
-    if (!clipboard) return;
+    if (!clipboard || lockedLayer()) return;
     const at = selection ? { x: selection.x, y: selection.y } : { x: 0, y: 0 };
     const next = cloneDoc(doc);
     next.layers[activeLayer]!.cels[frame] = place(next.layers[activeLayer]!.cels[frame]!, clipboard, at.x, at.y);
@@ -850,11 +860,13 @@
   }
 
   function clearFrame() {
+    if (lockedLayer()) return;
     const next = cloneDoc(doc);
     next.layers[activeLayer]!.cels[frame]!.data.fill(0);
     structural(next);
   }
   function flip(horizontal: boolean) {
+    if (lockedLayer()) return;
     const next = cloneDoc(doc);
     const r = next.layers[activeLayer]!.cels[frame]!;
     const src = cloneRaster(r);
@@ -885,6 +897,24 @@
   }
   const rescale = (factor: number) => structural(scaleDurations(doc, chosen, factor));
   const addBlank = () => structural(insertFrame(doc, frame + 1), frame + 1);
+  /// Several blank frames after this one at once (up to the limit), and the animation's speed as frames a second.
+  let addCount = $state(4);
+  function addMany() {
+    let next = doc;
+    const want = Math.max(1, Math.min(64, Math.round(addCount)));
+    let at = frame;
+    for (let i = 0; i < want; i++) {
+      const grown = insertFrame(next, at + 1);
+      if (grown === next) break;
+      next = grown;
+      at++;
+    }
+    if (next !== doc) structural(next, frame + 1);
+  }
+  const fps = $derived(Math.round((1000 / Math.max(10, doc.durations[frame] ?? 100)) * 10) / 10);
+  const setFps = (v: number) => {
+    if (Number.isFinite(v) && v >= 0.5 && v <= 100) structural(setAnimationDuration(doc, animIndex, Math.round(1000 / v)));
+  };
   /// Frames picked with Ctrl, ⌘ or Shift besides the current one: copy, delete and move act on all of them.
   let others = $state<number[]>([]);
   const chosen = $derived([...new Set([frame, ...others])].sort((a, b) => a - b));
@@ -1293,7 +1323,14 @@
 
   // ---- effects and the Sprite menu ---------------------------------------------------------------------------
   /// Applies an effect to the current cel, inside the selection when there is one (one undo step).
+  /// True (and says so) when the layer being worked on is locked, so the commands that change its pixels leave it alone.
+  function lockedLayer(): boolean {
+    const l = doc.layers[activeLayer];
+    if (l?.locked) studio.say("info", `"${l.name}" is locked. Unlock it (the padlock) to change it.`);
+    return !!l?.locked;
+  }
   function applyFx(fx: (r: Raster, area: Area) => Raster | null) {
+    if (lockedLayer()) return;
     const next = cloneDoc(doc);
     const cel = next.layers[activeLayer]!.cels[frame]!;
     const out = fx(cel, selection ? (selMask ? { ...selection, has: (x: number, y: number) => has(selMask!, x, y) } : selection) : null);
@@ -1487,6 +1524,8 @@
         </div>
         <div class="frame-actions">
           <button onclick={addBlank} title="New blank frame after this one">＋ Frame</button>
+          <label class="inline" title="Add this many blank frames after the current one"><input type="number" min="1" max="64" bind:value={addCount} class="narrow" /> <button onclick={addMany}>＋ frames</button></label>
+          <label class="inline" title="How fast this animation plays, in frames a second (sets every frame of it to the same time)">Speed <input type="number" min="0.5" max="100" step="1" value={fps} class="narrow" onchange={(e) => setFps(Number(e.currentTarget.value))} /> fps</label>
           <button onclick={duplicate}>Duplicate{chosen.length > 1 ? ` ${chosen.length}` : ""}</button>
           <button onclick={() => shift(-1)} disabled={!anim || frame === anim.from} aria-label="Move frame left">◀</button>
           <button onclick={() => shift(1)} disabled={!anim || frame === anim.to} aria-label="Move frame right">▶</button>
@@ -1599,6 +1638,8 @@
       <div class="layers" role="listbox" aria-label="Layers">
         {#each layerRows as { l, i } (i)}
           <div class="layer" class:on={i === activeLayer} role="option" aria-selected={i === activeLayer}>
+            <button class="ghost eye" class:dimmed={!l.locked} title={l.locked ? "Locked: click to unlock" : "Click to lock (the tools leave it alone)"} aria-label={l.locked ? `Unlock ${l.name}` : `Lock ${l.name}`} aria-pressed={!!l.locked} onclick={() => setLayer(i, { locked: !l.locked })}>{l.locked ? "🔒" : "🔓"}</button>
+            <button class="ghost eye" class:dimmed={!l.clip} disabled={i === 0} title={l.clip ? "Clipped to the layer below: click to stop" : "Clip to the layer below: it shows only where that layer has something"} aria-label={l.clip ? `Stop clipping ${l.name}` : `Clip ${l.name} to the layer below`} aria-pressed={!!l.clip} onclick={() => setLayer(i, { clip: !l.clip })}>⤵</button>
             <button class="ghost eye" title={l.visible ? "Hide" : "Show"} aria-label={l.visible ? `Hide ${l.name}` : `Show ${l.name}`} onclick={() => setLayer(i, { visible: !l.visible })}>{l.visible ? "👁" : "·"}</button>
             <button class="lname" onclick={() => (activeLayer = i)} ondblclick={() => (renaming = i)}>
               {#if renaming === i}
@@ -1803,6 +1844,7 @@
   .palette { display: grid; grid-template-columns: repeat(8, 1fr); gap: 3px; }
   .swatch { aspect-ratio: 1; padding: 0; border-radius: 3px; }
   .swatch.on { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .dimmed { opacity: 0.4; }
   .swatch.marked { box-shadow: 0 0 0 2px #ffd166; }
   .preview { display: grid; place-items: center; min-height: 120px; background: repeating-conic-gradient(#3a3d48 0 25%, #2e313b 0 50%) 0 0 / 12px 12px; border: 1px solid var(--line); border-radius: 6px; }
   .preview canvas { image-rendering: pixelated; }

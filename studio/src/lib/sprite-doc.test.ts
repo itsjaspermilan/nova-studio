@@ -740,3 +740,39 @@ describe("frame data: hitboxes, pivots, events and the nine-slice", () => {
     expect(toSheetJson(base(), "x.png")).not.toContain("frame_data");
   });
 });
+
+describe("locked and clipping layers", () => {
+  it("a clipping layer shows only where the layer below has something, and not above nothing", async () => {
+    const { updateLayer, addLayer, composeFrame } = await import("./sprite-doc");
+    let d = newDoc(4, 1, 1);
+    setPixel(d.layers[0]!.cels[0]!, 1, 0, [255, 0, 0, 255]);
+    d = addLayer(d, 0).doc;
+    for (let x = 0; x < 4; x++) setPixel(d.layers[1]!.cels[0]!, x, 0, [0, 255, 0, 255]);
+    expect(getPixel(composeFrame(d, 0), 3, 0)).toEqual([0, 255, 0, 255]); // not clipped yet: green all along
+    d = updateLayer(d, 1, { clip: true });
+    const out = composeFrame(d, 0);
+    expect(getPixel(out, 1, 0)).toEqual([0, 255, 0, 255]);
+    expect(getPixel(out, 3, 0)![3]).toBe(0);
+    // the bottom layer cannot clip to nothing
+    expect(updateLayer(d, 0, { clip: true }).layers[0]!.clip).toBeUndefined();
+  });
+  it("clips to the layer below even when that layer is hidden", async () => {
+    const { updateLayer, addLayer, composeFrame } = await import("./sprite-doc");
+    let d = newDoc(2, 1, 1);
+    setPixel(d.layers[0]!.cels[0]!, 0, 0, [255, 0, 0, 255]);
+    d = addLayer(d, 0).doc;
+    for (let x = 0; x < 2; x++) setPixel(d.layers[1]!.cels[0]!, x, 0, [0, 0, 255, 255]);
+    d = updateLayer(updateLayer(d, 1, { clip: true }), 0, { visible: false });
+    const out = composeFrame(d, 0);
+    expect(getPixel(out, 0, 0)).toEqual([0, 0, 255, 255]);
+    expect(getPixel(out, 1, 0)![3]).toBe(0);
+  });
+  it("remembers the lock and the clip in the layers file", async () => {
+    const { updateLayer, addLayer, layersFileText, parseLayersFile } = await import("./sprite-doc");
+    let d = addLayer(newDoc(2, 2, 1), 0).doc;
+    d = updateLayer(updateLayer(d, 1, { locked: true }), 1, { clip: true });
+    const f = parseLayersFile(layersFileText(d, ["a", "b"]));
+    expect(f?.layers.map((l) => [l.locked ?? false, l.clip ?? false])).toEqual([[false, false], [true, true]]);
+    expect(updateLayer(d, 1, { locked: false }).layers[1]!.locked).toBeUndefined();
+  });
+});
