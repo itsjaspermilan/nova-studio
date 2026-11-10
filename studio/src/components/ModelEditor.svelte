@@ -37,6 +37,7 @@
   import { applyStack, evaluate, hasModifiers, type Modifier } from "../lib/modifiers";
   import ModifierStack from "./ModifierStack.svelte";
   import CurveEditor from "./CurveEditor.svelte";
+  import { knifeCut } from "../lib/mesh-cut";
   import { addLayer, duplicateLayer, flatten, layerPath, mergeDown, moveLayer, removeLayer, singleLayer, updateLayer, MAX_TEX_LAYERS, type LayerSet } from "../lib/texture-layers";
   import { BLEND_MODES } from "../lib/pixels";
   import { edgeLoop, edgeRing, edgeSlide, fillHole, pointsOfEdges, selectSimilarFaces, smoothByAngle } from "../lib/mesh-select";
@@ -2423,6 +2424,19 @@
     selFace = null;
     selEdge = null;
   }
+  /// A free knife cut: a plane through the two picked points and the way the camera looks cuts every face between them.
+  function knifeAcross() {
+    if (!cube || !selected || selVerts.length !== 2 || !camera) return;
+    const g = groupOf(selected.parts);
+    if (!g) return;
+    const v = camera.getWorldDirection(new THREE.Vector3()).applyMatrix3(new THREE.Matrix3().setFromMatrix4(g.matrixWorld.clone().invert())).normalize();
+    const r = knifeCut(cube, cube.verts![selVerts[0]!]!, cube.verts![selVerts[1]!]!, [v.x, v.y, v.z]);
+    if (!r.cut) return void studio.say("info", "Nothing to cut: pick two points that are on or beside the faces to cut, and look at the mesh from the side you want to cut across.");
+    change(r.cube);
+    selVerts = r.points;
+    selFace = null;
+    selEdge = null;
+  }
   function removeFacePicked() {
     if (cube && selFace !== null) change(deleteFaces(cube, [selFace]), true);
   }
@@ -3189,6 +3203,7 @@
           <label>Symmetry <select bind:value={symmetry} aria-label="Symmetry"><option value="off">Off</option><option value="0">Mirror left–right (x)</option><option value="1">Mirror up–down (y)</option><option value="2">Mirror front–back (z)</option></select></label>
           <div class="row">
             <button onclick={makeFace} disabled={selVerts.length < 3} title="Fills a face between the picked points">Make face</button>
+            <button onclick={knifeAcross} disabled={selVerts.length !== 2} title="Cuts every face between the two picked points along a plane through them and the way you are looking (look at the mesh from where you want the cut to go across)">Cut across</button>
             <button onclick={knife} disabled={selVerts.length !== 2} title="Cuts a face in two along a line between the two picked points">Knife</button>
             <button class="danger" onclick={removePointsPicked} disabled={!selVerts.length}>Delete points</button>
           </div>
