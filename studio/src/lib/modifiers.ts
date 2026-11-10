@@ -10,6 +10,7 @@ import { MAX_FACES, MAX_VERTS, type Cube, type MeshFace, type Vec3 } from "./mod
 import { polyNormal } from "./model-mesh";
 import { fitBounds } from "./model-doc";
 import { toMesh } from "./mesh-edit";
+import { BOOLEAN_OPS, CUTTER_SHAPES, booleanPieces, cutterPieces, meshOf, piecesOf, type BooleanOp, type CutterShape } from "./csg";
 import { ZERO_LATTICE, lattice, shrinkwrap, wireframe, type LatticeCorners, type WrapKind } from "./modifier-more";
 import { DEFORMS, decimate as decimateCube, displace as displaceCube, simpleDeform, smoothVerts, triangulate as triangulateCube, type DeformKind } from "./mesh-ops";
 export { DEFORMS, type DeformKind };
@@ -145,10 +146,19 @@ export interface LatticeMod extends Common {
   type: "lattice";
   corners?: LatticeCorners;
 }
-export type Modifier = WireframeMod | ShrinkwrapMod | LatticeMod | MirrorMod | SubsurfMod | BevelMod | SolidifyMod | ArrayMod | RevolveMod | WeldMod | TriangulateMod | DecimateMod | DisplaceMod | DeformMod | SmoothMod;
+/// Carves with a solid (a box, a cylinder along y or a sphere) placed at `at`: take it away from the mesh, add it, or keep only where both are. The mesh must be a closed
+/// solid; the cutter is not drawn as a shape of its own.
+export interface BooleanMod extends Common {
+  type: "boolean";
+  operation?: BooleanOp;
+  shape?: CutterShape;
+  at?: [number, number, number];
+  size?: [number, number, number];
+}
+export type Modifier = BooleanMod | WireframeMod | ShrinkwrapMod | LatticeMod | MirrorMod | SubsurfMod | BevelMod | SolidifyMod | ArrayMod | RevolveMod | WeldMod | TriangulateMod | DecimateMod | DisplaceMod | DeformMod | SmoothMod;
 export type ModifierType = Modifier["type"];
-export const MODIFIER_TYPES: ModifierType[] = ["mirror", "subsurf", "bevel", "solidify", "array", "revolve", "weld", "triangulate", "decimate", "displace", "deform", "smooth", "wireframe", "shrinkwrap", "lattice"];
-export const MODIFIER_LABELS: Record<ModifierType, string> = { mirror: "Mirror", subsurf: "Subdivision", bevel: "Bevel", solidify: "Solidify", array: "Array", revolve: "Revolve", weld: "Weld", triangulate: "Triangulate", decimate: "Decimate", displace: "Displace", deform: "Simple deform", smooth: "Smooth", wireframe: "Wireframe", shrinkwrap: "Shrinkwrap", lattice: "Lattice" };
+export const MODIFIER_TYPES: ModifierType[] = ["mirror", "subsurf", "bevel", "solidify", "array", "revolve", "weld", "triangulate", "decimate", "displace", "deform", "smooth", "wireframe", "shrinkwrap", "lattice", "boolean"];
+export const MODIFIER_LABELS: Record<ModifierType, string> = { mirror: "Mirror", subsurf: "Subdivision", bevel: "Bevel", solidify: "Solidify", array: "Array", revolve: "Revolve", weld: "Weld", triangulate: "Triangulate", decimate: "Decimate", displace: "Displace", deform: "Simple deform", smooth: "Smooth", wireframe: "Wireframe", shrinkwrap: "Shrinkwrap", lattice: "Lattice", boolean: "Boolean" };
 export const MAX_REVOLVE = 128;
 /// A crease weight of 1 stays sharp through this many subdivision levels (the most a modifier does).
 export const CREASE_LEVELS = 4;
@@ -174,6 +184,7 @@ export function newModifier(type: ModifierType): Modifier {
     case "wireframe": return { type, thickness: 0.5 };
     case "shrinkwrap": return { type, kind: "sphere", axis: "y", factor: 1, radius: 0 };
     case "lattice": return { type, corners: ZERO_LATTICE() };
+    case "boolean": return { type, operation: "difference", shape: "box", at: [0, 0, 0], size: [8, 8, 8] };
   }
 }
 
@@ -801,6 +812,11 @@ export function applyModifier(s: Soup, m: Modifier, stage: Stage): Soup {
     case "wireframe": return wireframe(s, m.thickness ?? 0.5);
     case "shrinkwrap": return shrinkwrap(s, m.kind ?? "sphere", axisIndex(m.axis ?? "y") as 0 | 1 | 2, m.factor ?? 1, m.radius ?? 0);
     case "lattice": return lattice(s, m.corners ?? ZERO_LATTICE());
+    case "boolean": {
+      const solid = booleanPieces(piecesOf(s.verts, s.polys), cutterPieces(m.shape ?? "box", m.at ?? [0, 0, 0], m.size ?? [8, 8, 8]), m.operation ?? "difference");
+      const out = meshOf(solid);
+      return { verts: out.verts, polys: out.polys };
+    }
     case "smooth": return throughCube(s, (c) => smoothVerts(c, undefined, m.factor ?? 0.5, m.passes ?? 2), true);
   }
 }
@@ -908,6 +924,12 @@ export function checkModifier(m: unknown, at: string): string | null {
       if (o.axis !== undefined && !MOD_AXES.includes(o.axis as ModAxis)) return `${at}.axis must be x, y or z`;
       problems.push(num("factor", 0, 1), num("radius", 0, 1e6));
       break;
+    case "boolean": {
+      if (o.operation !== undefined && !(BOOLEAN_OPS as string[]).includes(o.operation as string)) return `${at}.operation must be union, difference or intersect`;
+      if (o.shape !== undefined && !(CUTTER_SHAPES as string[]).includes(o.shape as string)) return `${at}.shape must be box, cylinder or sphere`;
+      problems.push(vec("at"), vec("size"));
+      break;
+    }
     case "lattice": {
       const c = o.corners;
       if (c !== undefined && !(Array.isArray(c) && c.length === 8 && c.every((v) => Array.isArray(v) && v.length === 3 && v.every((x) => typeof x === "number" && Number.isFinite(x))))) return `${at}.corners must be eight offsets of three numbers`;

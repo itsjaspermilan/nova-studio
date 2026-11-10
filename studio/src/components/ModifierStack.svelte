@@ -108,6 +108,22 @@
           <label title="How far each pass moves the points towards their neighbours">Factor <input type="number" min="0.1" max="1" step="0.1" value={m.factor ?? 0.5} onchange={(e) => set(i, { factor: Math.max(0.1, Math.min(1, num(e.currentTarget.value, 0.5))) })} /></label>
           <label title="How many passes">Passes <input type="number" min="1" max="20" step="1" value={m.passes ?? 2} onchange={(e) => set(i, { passes: Math.max(1, Math.min(20, Math.round(num(e.currentTarget.value, 2)))) })} /></label>
         </div>
+      {:else if m.type === "boolean"}
+        <div class="grid">
+          <label>Do
+            <select value={m.operation ?? "difference"} onchange={(e) => set(i, { operation: e.currentTarget.value as "union" | "difference" | "intersect" })}><option value="difference">cut it out</option><option value="union">add it</option><option value="intersect">keep only where both are</option></select>
+          </label>
+          <label>With a
+            <select value={m.shape ?? "box"} onchange={(e) => set(i, { shape: e.currentTarget.value as "box" | "cylinder" | "sphere" })}><option value="box">box</option><option value="cylinder">cylinder (along Y)</option><option value="sphere">sphere</option></select>
+          </label>
+        </div>
+        <div class="vecs">
+          <span class="dim small">Centre</span>
+          {#each [0, 1, 2] as a (a)}<input type="number" step="0.5" aria-label={`cutter centre ${"xyz"[a]}`} value={(m.at ?? [0, 0, 0])[a]} onchange={(e) => { const v = [...(m.at ?? [0, 0, 0])] as [number, number, number]; v[a] = num(e.currentTarget.value, 0); set(i, { at: v }); }} />{/each}
+          <span class="dim small">Size</span>
+          {#each [0, 1, 2] as a (a)}<input type="number" step="0.5" min="0.1" aria-label={`cutter size ${"xyz"[a]}`} value={(m.size ?? [8, 8, 8])[a]} onchange={(e) => { const v = [...(m.size ?? [8, 8, 8])] as [number, number, number]; v[a] = Math.max(0.1, num(e.currentTarget.value, 8)); set(i, { size: v }); }} />{/each}
+        </div>
+        <p class="dim small">The shape must be a closed solid. The cutter is only a shape to carve with: it is not drawn.</p>
       {:else if m.type === "wireframe"}
         <div class="grid">
           <label title="How thick each bar is, in units">Thickness <input type="number" min="0.05" step="0.1" value={m.thickness ?? 0.5} onchange={(e) => set(i, { thickness: Math.max(0.001, num(e.currentTarget.value, 0.5)) })} /></label>
