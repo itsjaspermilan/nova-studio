@@ -97,3 +97,51 @@ describe("ambient occlusion baking", () => {
     expect(bakeOcclusion(newModel())).toBeNull();
   });
 });
+
+import { applyCurvature, bakeCurvature, vertexCurvature } from "./model-bake";
+import { subdivide, toMesh } from "./mesh-edit";
+describe("curvature", () => {
+  it("a box's corners are convex, and turning the surface inside out makes them concave", () => {
+    const c = toMesh({ from: [0, 0, 0], size: [10, 10, 10], color: "#fff" });
+    const v = vertexCurvature(c.verts as [number, number, number][], c.polys!);
+    for (const x of v) expect(x).toBeGreaterThan(0.9);
+    const inside = c.polys!.map((f) => ({ v: [...f.v].reverse() }));
+    for (const x of vertexCurvature(c.verts as [number, number, number][], inside)) expect(x).toBeLessThan(-0.9);
+  });
+  it("a flat grid has no curvature, and the middle of a divided face is flatter than its corners", () => {
+    const grid = { verts: [[0, 0, 0], [1, 0, 0], [0, 0, 1], [1, 0, 1]] as [number, number, number][], polys: [{ v: [0, 2, 3, 1] }] };
+    expect(vertexCurvature(grid.verts, grid.polys)).toEqual([0, 0, 0, 0]);
+    const big = subdivide(toMesh({ from: [0, 0, 0], size: [10, 10, 10], color: "#fff" }));
+    const v = vertexCurvature(big.verts as [number, number, number][], big.polys!);
+    const centreOfFace = big.verts!.findIndex((p) => p[0] === 5 && p[1] === 5 && p[2] === 0);
+    expect(centreOfFace).toBeGreaterThanOrEqual(0);
+    expect(v[centreOfFace]!).toBeCloseTo(0, 6);
+    expect(Math.max(...v)).toBeGreaterThan(0.5);
+  });
+  it("bakes a picture that is lighter near edges than in the middle of a face, and wear follows it", () => {
+    let doc = newModel();
+    doc = { ...doc, parts: doc.parts.map((p, i) => (i === 0 ? { ...p, cubes: [] } : p)) };
+    const a = addCube(doc, [0], { from: [0, 0, 0], size: [8, 8, 8], color: "#c8c8c8" });
+    doc = a.doc;
+    const e = enableTexture(doc, newRaster(8, 8), a.path.parts, a.path.cube ?? 0, 4)!;
+    doc = e.doc;
+    const cube = doc.parts[0]!.cubes[0]!;
+    doc = { ...doc, parts: [{ ...doc.parts[0]!, cubes: [{ ...subdivide(toMesh(cube)), texture: cube.texture, color: cube.color }] }] };
+    const bake = bakeCurvature(doc)!;
+    const vals: number[] = [];
+    for (let i = 0; i < bake.data.length; i += 4) if (bake.data[i + 3]) vals.push(bake.data[i]!);
+    expect(vals.length).toBeGreaterThan(50);
+    expect(Math.max(...vals)).toBeGreaterThan(160);
+    expect(Math.min(...vals)).toBeLessThan(140);
+    const pic = newRaster(bake.w, bake.h);
+    pic.data.fill(100);
+    const worn = applyCurvature(pic, bake, 1);
+    let lighter = 0;
+    for (let i = 0; i < worn.data.length; i += 4) if (bake.data[i + 3] && worn.data[i]! > 100) lighter++;
+    expect(lighter).toBeGreaterThan(10);
+    expect(worn.data[3]).toBe(pic.data[3]);
+  });
+  it("a model without a texture has no curvature picture", () => {
+    expect(bakeCurvature(newModel())).toBeNull();
+  });
+});

@@ -165,3 +165,98 @@ export function applyOcclusion(picture: Raster, ao: Raster, strength = 1): Raste
   }
   return out;
 }
+
+// ---- curvature ----
+
+/// How strongly each point of a mesh bends: the average, over the edges at the point, of the turn between the two faces of the edge, in units of a right angle (so a box's
+/// corner is about +1, a flat spot 0, a groove -1). Positive is convex (an edge you could knock), negative concave (a crease dirt collects in). An edge on only one face counts
+/// as flat.
+export function vertexCurvature(verts: V[], polys: { v: number[] }[]): number[] {
+  const normals = polys.map((f) => unit(polyNormal(verts, f.v)));
+  const centres = polys.map((f) => {
+    const c: V = [0, 0, 0];
+    for (const i of f.v) for (let a = 0; a < 3; a++) c[a]! += verts[i]![a]! / f.v.length;
+    return c;
+  });
+  const edges = new Map<string, number[]>();
+  polys.forEach((f, fi) => f.v.forEach((a, k) => {
+    const b = f.v[(k + 1) % f.v.length]!;
+    const key = a < b ? `${a},${b}` : `${b},${a}`;
+    (edges.get(key) ?? edges.set(key, []).get(key)!).push(fi);
+  }));
+  const sum = verts.map(() => 0);
+  const count = verts.map(() => 0);
+  for (const [key, faces] of edges) {
+    const [a, b] = key.split(",").map(Number) as [number, number];
+    let turn = 0;
+    if (faces.length === 2) {
+      const [f, g] = faces as [number, number];
+      const angle = Math.acos(Math.max(-1, Math.min(1, dot(normals[f]!, normals[g]!))));
+      // convex when the other face's middle lies behind this face's plane
+      const behind = dot(sub(centres[g]!, centres[f]!), normals[f]!) < 0;
+      turn = (behind ? angle : -angle) / (Math.PI / 2);
+    }
+    for (const i of [a, b]) {
+      sum[i]! += turn;
+      count[i]!++;
+    }
+  }
+  return sum.map((v, i) => (count[i] ? v / count[i]! : 0));
+}
+
+/// The curvature of every textured texel: a picture the size of the texture, grey 128 where the surface is flat, lighter where it is convex and darker where it is concave
+/// (`range` is the curvature, in right angles, that reaches the ends of the scale), with alpha 255 where a shape covers the texel. Null when the model has no texture.
+export function bakeCurvature(doc: ModelDoc, range = 1): Raster | null {
+  if (!doc.texture) return null;
+  const [w, h] = doc.texture.size;
+  const out = newRaster(w, h);
+  for (const { part } of walk(doc)) {
+    for (const c of part.cubes) {
+      if (!c.texture || !hasVolume(c)) continue;
+      const solid = solidOf(c);
+      const curv = vertexCurvature(solid.verts, solid.polys);
+      const un = unwrap(c);
+      const [ax, ay] = c.texture.at;
+      solid.polys.forEach((poly, pi) => {
+        const uv = un.polys[pi]!.map((q) => [ax + q[0], ay + q[1]] as UV);
+        for (let k = 1; k + 1 < poly.v.length; k++) {
+          const ta = uv[0]!, tb = uv[k]!, tc = uv[k + 1]!;
+          const va = curv[poly.v[0]!]!, vb = curv[poly.v[k]!]!, vc = curv[poly.v[k + 1]!]!;
+          const den = (tb[1] - tc[1]) * (ta[0] - tc[0]) + (tc[0] - tb[0]) * (ta[1] - tc[1]);
+          if (Math.abs(den) < 1e-9) continue;
+          for (let y = Math.max(0, Math.floor(Math.min(ta[1], tb[1], tc[1]))); y <= Math.min(h - 1, Math.ceil(Math.max(ta[1], tb[1], tc[1]))); y++) {
+            for (let x = Math.max(0, Math.floor(Math.min(ta[0], tb[0], tc[0]))); x <= Math.min(w - 1, Math.ceil(Math.max(ta[0], tb[0], tc[0]))); x++) {
+              const px = x + 0.5, py = y + 0.5;
+              const l1 = ((tb[1] - tc[1]) * (px - tc[0]) + (tc[0] - tb[0]) * (py - tc[1])) / den;
+              const l2 = ((tc[1] - ta[1]) * (px - tc[0]) + (ta[0] - tc[0]) * (py - tc[1])) / den;
+              const l3 = 1 - l1 - l2;
+              if (l1 < -1e-6 || l2 < -1e-6 || l3 < -1e-6) continue;
+              const v = (l1 * va + l2 * vb + l3 * vc) / Math.max(1e-6, range);
+              const grey = Math.round(128 + Math.max(-1, Math.min(1, v)) * 127);
+              const i = (y * w + x) * 4;
+              out.data[i] = out.data[i + 1] = out.data[i + 2] = grey;
+              out.data[i + 3] = 255;
+            }
+          }
+        }
+      });
+    }
+  }
+  return out;
+}
+
+/// Edge wear: the picture lightened where the surface is convex (edges, which wear bright) and darkened where it is concave (creases, where dirt collects). `strength` is the
+/// most a texel is changed (0 to 1). Texels the bake does not cover are left alone.
+export function applyCurvature(picture: Raster, curvature: Raster, strength = 0.4): Raster {
+  const out = { w: picture.w, h: picture.h, data: new Uint8ClampedArray(picture.data) };
+  const k = Math.min(1, Math.max(0, strength));
+  for (let i = 0; i < out.data.length; i += 4) {
+    if (i + 3 >= curvature.data.length || !curvature.data[i + 3]) continue;
+    const c = (curvature.data[i]! - 128) / 127; // -1 concave .. 1 convex
+    for (let a = 0; a < 3; a++) {
+      const v = out.data[i + a]!;
+      out.data[i + a] = Math.round(c >= 0 ? v + (255 - v) * c * k : v * (1 + c * k));
+    }
+  }
+  return out;
+}

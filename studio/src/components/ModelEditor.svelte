@@ -36,7 +36,7 @@
   import ModifierStack from "./ModifierStack.svelte";
   import CurveEditor from "./CurveEditor.svelte";
   import ProjectSwatches from "./ProjectSwatches.svelte";
-  import { applyOcclusion, bakeOcclusion } from "../lib/model-bake";
+  import { applyCurvature, applyOcclusion, bakeCurvature, bakeOcclusion } from "../lib/model-bake";
   import { addClip, easeAt, findTrack, pathKey, removeClip, removeKey, samplePose, setEase, setKey, snapTime, updateClip, KEY_STEP, type Pose } from "../lib/model-anim";
   import { toBase64 } from "../lib/wav";
   import { studio } from "../lib/store.svelte";
@@ -102,6 +102,16 @@
   let bakeNote = $state("");
   let baking = $state(false);
   /// Bakes ambient occlusion into the painted picture (one undo step): crevices darken. Runs on this thread, so a big model waits a moment.
+  /// Edge wear: lightens the texture on convex edges and darkens it in creases (one undo step). Needs points along edges to read: a coarse box has curvature only at its corners.
+  function bakeWear() {
+    if (!picture || !doc.texture) return void (bakeNote = "Paint a shape first: baking changes the texture.");
+    const curve = bakeCurvature(doc);
+    if (!curve) return void (bakeNote = "This model has no texture.");
+    rememberPicture();
+    picture = applyCurvature(picture, curve, bakeStrength);
+    pictureChanged();
+    bakeNote = "Edge wear baked into the texture. Undo takes it back.";
+  }
   async function bakeAO() {
     if (!picture || !doc.texture) return void (bakeNote = "Paint a shape first: baking darkens the texture.");
     baking = true;
@@ -2569,6 +2579,7 @@
             <button onclick={() => toggleTexture(true)} disabled={!selected || selected.cube === undefined || !!cube?.texture} title="Give the selected shape a block of the picture">Paint selected</button>
           </div>
           <div class="row wrap">
+            <button onclick={bakeWear} disabled={baking || !doc.texture} title="Lighten the texture on convex edges and darken it in creases (curvature)">Edge wear</button>
             <button onclick={bakeAO} disabled={baking || !doc.texture} title="Darken the texture where shapes close in on each other (ambient occlusion): crevices and the feet of things">Bake occlusion</button>
             <label class="inline" title="How dark the most enclosed spots get">Strength <input type="number" min="0.1" max="1" step="0.1" bind:value={bakeStrength} class="narrow" /></label>
             <label class="inline" title="Rays per texel: more is smoother and slower">Rays <input type="number" min="8" max="128" step="8" bind:value={bakeSamples} class="narrow" /></label>
