@@ -58,7 +58,9 @@
     const bpm = tapTempo(taps);
     if (bpm) commit(setTempo(song, bpm));
   };
-  let lower: "mixer" | "velocity" | "tools" | "arrange" | "none" = $state("none");
+  let lower: "mixer" | "velocity" | "tools" | "none" = $state("none");
+  // The song editor (the arrangement of clips on every track) above the piano roll, as in the wireframe; its header folds it away.
+  let arrangeOpen = $state(true);
   let playing = $state(false);
   let playhead = $state(0); // steps
   const oggPath = untrack(() => filePath).replace(/\.song\.json$/i, ".ogg");
@@ -589,7 +591,7 @@
     const offs = [
       commands.register({ id: "song.play", title: "Play or stop the song", menu: "Sound", icon: "play", help: "Space plays and stops while the notes are focused", run: () => toggle() }),
       commands.register({ id: "song.mixer", title: "Show the mixer", menu: "Sound", icon: "settings", keys: ["Mod+Alt+M"], help: "A strip for each track: volume, pan, reverb, mute, solo", run: () => { lower = lower === "mixer" ? "none" : "mixer"; } }),
-      commands.register({ id: "song.arrange", title: "Show the arrangement", menu: "Sound", help: "Clips of patterns on each track: move, resize, cut, repeat", run: () => { lower = lower === "arrange" ? "none" : "arrange"; } }),
+      commands.register({ id: "song.arrange", title: "Show the arrangement", menu: "Sound", help: "Clips of patterns on each track: move, resize, cut, repeat", run: () => { arrangeOpen = !arrangeOpen; } }),
       commands.register({ id: "song.tools", title: "Show the song tools", menu: "Sound", icon: "settings", help: "Strum, glue, humanise, scales and chords, markers and the loop, a loudness lane, the master", run: () => { lower = lower === "tools" ? "none" : "tools"; } }),
       commands.register({ id: "song.exportLoop", title: "Export the loop", menu: "Sound", icon: "export", help: "Just the loop region, ready to loop in the game", enabled: () => !!song.loop, run: () => void exportLoop() }),
       commands.register({ id: "song.exportMidi", title: "Export as a MIDI file", menu: "Sound", icon: "export", run: () => void exportMidi() }),
@@ -618,7 +620,7 @@
   const SLIDERS = [slider("Attack", "attack", 0, 1, 0.005), slider("Decay", "decay", 0, 1, 0.005), slider("Sustain", "sustain", 0, 1, 0.01), slider("Release", "release", 0, 2, 0.01), slider("Volume", "volume", 0, 1, 0.01), slider("Pan", "pan", -1, 1, 0.05)];
   // the status bar
   $effect(() => {
-    studio.statusHint = "Click the roll to put a note · drag to move it · Space plays · the Arrange tab lays clips out on a timeline";
+    studio.statusHint = "Click the roll to put a note · drag to move it · Space plays · the song editor above lays clips out on every track";
     studio.statusInfo = `♩ ${song.bpm} · ${bars} bar${bars === 1 ? "" : "s"} · ${secs} s · ${song.tracks.length} track${song.tracks.length === 1 ? "" : "s"}`;
     return () => {
       studio.statusHint = "";
@@ -646,9 +648,14 @@
       <span class="spacer"></span>
       <button class="ghost" onclick={undo} disabled={!canUndo} aria-label="Undo">↶</button>
       <button class="ghost" onclick={redo} disabled={!canRedo} aria-label="Redo">↷</button>
-      <span class="seg" role="group" aria-label="Lower part"><button class:on={lower === "none"} onclick={() => (lower = "none")}>Notes</button><button class:on={lower === "velocity"} onclick={() => (lower = "velocity")}>Loudness</button><button class:on={lower === "mixer"} onclick={() => (lower = "mixer")}>Mixer</button><button class:on={lower === "tools"} onclick={() => (lower = "tools")}>Tools</button><button class:on={lower === "arrange"} onclick={() => (lower = "arrange")}>Arrange</button></span>
+      <span class="seg" role="group" aria-label="Lower part"><button class:on={lower === "none"} onclick={() => (lower = "none")}>Notes</button><button class:on={lower === "velocity"} onclick={() => (lower = "velocity")}>Loudness</button><button class:on={lower === "mixer"} onclick={() => (lower = "mixer")}>Mixer</button><button class:on={lower === "tools"} onclick={() => (lower = "tools")}>Tools</button></span>
       <button class="ghost" onclick={onjson}>JSON</button>
     </div>
+
+    <section class="songband" aria-label="Song editor">
+      <button class="bandhead" aria-expanded={arrangeOpen} onclick={() => (arrangeOpen = !arrangeOpen)} title="Fold the song editor away or show it (every track as a lane of clips)">{arrangeOpen ? "▾" : "▸"} Song editor <span class="dim small">clips on every track: drag to move, drag the right edge to resize</span></button>
+      {#if arrangeOpen}<div class="bandbody"><ArrangePanel {song} {track} step={Math.floor(playhead)} commit={(next) => commit(next)} onselect={(i) => { track = i; selected = null; }} /></div>{/if}
+    </section>
 
     <div class="body">
       <aside class="tracks" use:resizable={{ key: "song.tracks", edge: "right", size: 150, min: 110, max: 400 }}>
@@ -773,8 +780,6 @@
     </div>
     {#if lower === "tools"}
       <div class="lowerpane"><LiveScope bins={liveBins} wave={liveWave} rate={liveRate} /><SongTools {song} {track} {group} commit={(next) => commit(next)} pick={(keys) => (group = keys)} {exportLoop} {exportMidi} {importMidi} /></div>
-    {:else if lower === "arrange"}
-      <div class="lowerpane"><ArrangePanel {song} {track} step={Math.floor(playhead)} commit={(next) => commit(next)} onselect={(i) => { track = i; selected = null; }} /></div>
     {:else if lower === "mixer"}
       <MixerPanel {song} {track} {liveDb} onchange={(next) => commit(next)} onselect={(i) => { track = i; selected = null; }} />
     {/if}
@@ -788,6 +793,9 @@
   .check input { margin: 0; }
   .narrow { width: 62px; padding: 2px 6px; }
   .spacer { flex: 1; }
+  .songband { border-bottom: 1px solid var(--line); background: var(--panel); }
+  .bandhead { display: flex; align-items: baseline; gap: 8px; width: 100%; border: none; border-radius: 0; background: transparent; text-align: left; padding: 3px 10px; font-weight: 600; font-size: 12px; }
+  .bandbody { max-height: 34vh; min-height: 90px; overflow: auto; border-top: 1px solid var(--line); }
   .lowerpane { max-height: 40%; min-height: 160px; overflow: auto; border-top: 1px solid var(--line); background: var(--panel); }
   .body { flex: 1; min-height: 0; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; }
   .tracks { background: var(--panel); border-right: 1px solid var(--line); padding: 6px; display: flex; flex-direction: column; gap: 4px; overflow: auto; }
