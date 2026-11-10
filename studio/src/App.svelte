@@ -63,6 +63,7 @@
       commands.register({ id: "view.resetLayout", title: "Reset this workspace's layout", menu: "Window", icon: "resetLayout", help: "Panels back to their usual places and sizes", enabled: has, run: () => { layout.reset(studio.workspace); window.dispatchEvent(new Event("resize")); } }),
       commands.register({ id: "window.tearOff", title: "Move this document to its own window", menu: "Window", icon: "tearOff", help: "A document is open in one window at a time", enabled: () => !!studio.tab && !studio.docWindow && studio.api?.kind === "tauri", run: () => studio.tearOff() }),
       commands.register({ id: "file.save", title: "Save", menu: "File", icon: "save", keys: ["Mod+S"], run: () => void studio.save() }),
+      commands.register({ id: "project.settings", title: "Project settings", menu: "File", icon: "settings", help: "The game's name, picture size, graphics and controls", enabled: () => !!studio.project, run: () => void studio.openFile("nova.json") }),
       commands.register({ id: "file.saveAll", title: "Save all", menu: "File", icon: "save", enabled: () => !!studio.project && studio.dirty, run: () => void studio.saveAll() }),
       commands.register({ id: "file.close", title: "Close the project", menu: "File", icon: "folder", enabled: has, run: () => void studio.closeProject() }),
       commands.register({ id: "file.export", title: "Export the game", menu: "File", icon: "export", help: "Check the game and write it out for a computer or for Android", enabled: has, run: () => { studio.exportReport = null; studio.exportOpen = true; } }),
