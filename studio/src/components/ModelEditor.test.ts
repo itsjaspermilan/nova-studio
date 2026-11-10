@@ -64,6 +64,8 @@ describe("ModelEditor", () => {
     open(skinned());
     // the sleeve is the arm's only shape, listed in the tree as "mesh 1"
     click(host.querySelector("button.node.cube"));
+    // the bones are on the Bones tab of the properties
+    click([...host.querySelectorAll('.proptabs button[role="tab"]')].find((b) => b.textContent === "Bones"));
     const key = host.querySelectorAll("ul.bones button.bone");
     expect(key.length).toBe(3);
     click(key[1]);
