@@ -21,6 +21,7 @@
   import { loadReferences, placementOf, saveReferences, type Reference } from "../lib/model-reference";
   import { ORTHO_FOV, PERSPECTIVE_FOV, VIEW_LABELS, VIEW_NAMES, distanceForFov, orbitStep, viewPlacement, type ViewName } from "../lib/view-presets";
   import ModelStats from "./ModelStats.svelte";
+  import { SCULPT_HELP, SCULPT_MODES, sculptDab, type SculptMode } from "../lib/sculpt";
   import { addFace, bevelEdge, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, freshProfile, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsSymmetric, setFaceColors, setSmooth, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
   import { hasVolume, meshOf, segmentsOf, shapeFaces, solidOf } from "../lib/model-mesh";
   import { autoWeights, boneHeat, dominantBones, heatColor, invertAffine, reskin, setWeight, skinnedPoints, transformPoint, worldMatrices } from "../lib/model-skin";
@@ -1383,6 +1384,16 @@
       }
     }
     if (!inEdit || !camera || !canvas || !selected || !cube || e.button !== 0) return;
+    if (sculpting) {
+      const at = sculptPoint(e);
+      if (!at) return;
+      history.record(doc);
+      sculptStroke = { path: selected, last: at, fresh: true };
+      controls!.enabled = false;
+      canvas.setPointerCapture(e.pointerId);
+      sculptAt(e);
+      return;
+    }
     if (boxArmed) {
       // a rubber band: everything inside it is picked when the button comes up
       const r = canvas.getBoundingClientRect();
@@ -1451,6 +1462,40 @@
   }
   /// Box select (B): drag a rectangle over the view; the points inside it are picked (Shift adds to the ones already picked). Points behind others count too.
   let boxArmed = $state(false);
+  // sculpting: brushes that push, smooth and drag the points of the chosen mesh (one undo step a stroke)
+  let sculpting = $state(false);
+  let sculptMode = $state<SculptMode>("draw");
+  let sculptRadius = $state(3);
+  let sculptStrength = $state(0.5);
+  let sculptSymmetry = $state(false);
+  let sculptStroke: { path: Path; last: Vec3; fresh: boolean } | null = null;
+  /// Where the pointer's ray meets the chosen shape, in that shape's own space.
+  function sculptPoint(e: PointerEvent): Vec3 | null {
+    if (!camera || !canvas || !selected) return null;
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(pointer(e), camera);
+    const mine = meshes.filter((m) => m.path.cube === selected!.cube && m.path.parts.join(",") === selected!.parts.join(","));
+    const hit = ray.intersectObjects(mine.map((m) => m.mesh), false)[0];
+    const g = groupOf(selected.parts);
+    if (!hit || !g) return null;
+    const local = g.worldToLocal(hit.point.clone());
+    return [local.x, local.y, local.z];
+  }
+  function sculptAt(e: PointerEvent) {
+    if (!sculptStroke) return;
+    const at = sculptPoint(e);
+    if (!at) return;
+    const c = cubeAt(doc, sculptStroke.path);
+    if (!c) return;
+    const delta: Vec3 = [at[0] - sculptStroke.last[0], at[1] - sculptStroke.last[1], at[2] - sculptStroke.last[2]];
+    // a dab only when the pointer has moved a little (a third of the brush) or on the first touch
+    const moved = Math.hypot(...delta);
+    if (!sculptStroke.fresh && moved < sculptRadius / 3 && sculptMode !== "grab") return;
+    sculptStroke.fresh = false;
+    const next = sculptDab(c, sculptMode === "grab" ? sculptStroke.last : at, { mode: sculptMode, radius: sculptRadius, strength: sculptStrength, invert: e.ctrlKey || e.metaKey, symmetryX: sculptSymmetry }, delta);
+    commit(setCube(doc, sculptStroke.path, next), true);
+    sculptStroke.last = at;
+  }
   let rubber = $state<{ x0: number; y0: number; x1: number; y1: number; add: boolean } | null>(null);
   function finishBox() {
     const b = rubber;
@@ -1482,6 +1527,10 @@
     }
     if (stroke && mode === "texture") {
       if (texTool !== "picker" && texTool !== "fill") paintAlong(e);
+      return;
+    }
+    if (sculptStroke) {
+      sculptAt(e);
       return;
     }
     if (pull && camera) {
@@ -1543,6 +1592,12 @@
     }
     if (stroke) {
       stroke = null;
+      downAt = null;
+      if (controls) controls.enabled = true;
+      return;
+    }
+    if (sculptStroke) {
+      sculptStroke = null;
       downAt = null;
       if (controls) controls.enabled = true;
       return;
@@ -2272,6 +2327,13 @@
         <span class="seg" role="group" aria-label="Standard views">
           {#each VIEW_NAMES as n (n)}<button class:on={viewName === n} onclick={() => showView(n)} title="{VIEW_LABELS[n]} view" aria-label="{VIEW_LABELS[n]} view">{VIEW_LABELS[n][0]}</button>{/each}
         </span>
+        {#if inEdit}<button class:on={sculpting} onclick={() => (sculpting = !sculpting)} title="Sculpt: brush the surface (Ctrl reverses)">Sculpt</button>{/if}
+        {#if inEdit && sculpting}
+          <select bind:value={sculptMode} aria-label="Sculpt brush" title={SCULPT_HELP[sculptMode]}>{#each SCULPT_MODES as m (m)}<option value={m}>{m}</option>{/each}</select>
+          <label class="check" title="Brush radius, in units">Size <input type="range" min="0.5" max="20" step="0.5" bind:value={sculptRadius} aria-label="Brush size" /></label>
+          <label class="check" title="How strongly each dab works">Strength <input type="range" min="0.05" max="1" step="0.05" bind:value={sculptStrength} aria-label="Brush strength" /></label>
+          <label class="check" title="Sculpt the mirror image across the middle (x = 0) too"><input type="checkbox" bind:checked={sculptSymmetry} /> Mirror</label>
+        {/if}
         {#if inEdit}<button class:on={boxArmed} onclick={() => (boxArmed = !boxArmed)} title="Box select: drag a rectangle over the points (B)">Box</button>{/if}
         <label class="check" title="Flat view: parallel lines stay parallel (5)"><input type="checkbox" checked={ortho} onchange={(e) => setOrtho(e.currentTarget.checked)} /> Flat</label>
         <button class="ghost" onclick={resetView}>Reset view</button>
