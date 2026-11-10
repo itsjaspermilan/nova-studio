@@ -815,10 +815,10 @@ fn install_hook_with(
 /// How loud a sound at a place in the world is, and how far to the left or right, for a listener at the camera:
 /// the volume falls off to nothing at `range` metres (a square law, so it dies away gently), the pan is the sideways part
 /// of the way to it. Returns (gain, pan).
-fn spatial(camera: &Camera, at: [f32; 3], range: f32) -> (f32, f32) {
+fn spatial(camera: &Camera, at: [f32; 3], range: f32, falloff: Falloff) -> (f32, f32) {
     let to = Vec3::from(at) - camera.eye;
     let d = to.length();
-    let gain = (1.0 - d / range.max(0.1)).clamp(0.0, 1.0).powi(2);
+    let gain = falloff.gain(d, range);
     let forward = (camera.target - camera.eye).normalize_or_zero();
     let right = forward.cross(Vec3::Y).normalize_or_zero();
     // right under the listener a sound has no side
@@ -830,8 +830,52 @@ fn spatial(camera: &Camera, at: [f32; 3], range: f32) -> (f32, f32) {
     (gain, pan.clamp(-1.0, 1.0))
 }
 
-/// `at = {x, y, z}` and `range` from a table of options.
-fn spatial_options(opts: &Option<Table>) -> mlua::Result<Option<([f32; 3], f32)>> {
+/// How a positioned sound gets quieter with distance, to nothing at its range (`falloff = "..."` in the options).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+enum Falloff {
+    /// The square law (the default): dies away gently.
+    #[default]
+    Smooth,
+    /// Straight down to nothing.
+    Linear,
+    /// Like real air: loud close up, falling fast and then slowly, still reaching nothing at the range.
+    Natural,
+    /// Full volume until the range, then nothing (only the pan follows the place).
+    None,
+}
+
+impl Falloff {
+    fn parse(name: &str) -> mlua::Result<Self> {
+        match name {
+            "smooth" => Ok(Self::Smooth),
+            "linear" => Ok(Self::Linear),
+            "natural" => Ok(Self::Natural),
+            "none" => Ok(Self::None),
+            other => Err(lua_err(format!(
+                "unknown falloff '{other}' (use \"smooth\", \"linear\", \"natural\" or \"none\")"
+            ))),
+        }
+    }
+
+    /// The volume (0 to 1) of a sound `d` metres away that reaches nothing at `range`.
+    fn gain(self, d: f32, range: f32) -> f32 {
+        let r = range.max(0.1);
+        if d >= r {
+            return 0.0;
+        }
+        let x = (1.0 - d / r).clamp(0.0, 1.0);
+        match self {
+            Self::Smooth => x * x,
+            Self::Linear => x,
+            // inverse distance from a reference a tenth of the range out, faded to nothing at the range
+            Self::Natural => (r * 0.1 / d.max(r * 0.1)).min(1.0) * x,
+            Self::None => 1.0,
+        }
+    }
+}
+
+/// `at = {x, y, z}`, `range` and `falloff` from a table of options.
+fn spatial_options(opts: &Option<Table>) -> mlua::Result<Option<([f32; 3], f32, Falloff)>> {
     let Some(t) = opts else { return Ok(None) };
     let Some(at) = t.get::<Option<Table>>("at")? else {
         return Ok(None);
@@ -842,7 +886,11 @@ fn spatial_options(opts: &Option<Table>) -> mlua::Result<Option<([f32; 3], f32)>
             .ok_or_else(|| lua_err("at must be {x, y, z}: the place the sound comes from"))
     };
     let range = number_option(opts, "range")?.unwrap_or(32.0) as f32;
-    Ok(Some(([get(1)?, get(2)?, get(3)?], range)))
+    let falloff = match string_option(opts, "falloff")? {
+        Some(name) => Falloff::parse(&name)?,
+        None => Falloff::default(),
+    };
+    Ok(Some(([get(1)?, get(2)?, get(3)?], range, falloff)))
 }
 
 fn lua_err(message: impl Into<String>) -> mlua::Error {
@@ -2701,8 +2749,8 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     number_option(&opts, "volume")?.unwrap_or(1.0).clamp(0.0, 4.0) as f32,
                     number_option(&opts, "pan")?.unwrap_or(0.0).clamp(-1.0, 1.0) as f32,
                 );
-                if let Some((at, range)) = place {
-                    let (gain, side) = spatial(&sh.camera, at, range);
+                if let Some((at, range, falloff)) = place {
+                    let (gain, side) = spatial(&sh.camera, at, range, falloff);
                     if gain <= 0.001 && !looping {
                         return Ok(0); // too far to hear: not worth a voice
                     }
@@ -2785,9 +2833,9 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             );
             let reverb = read("reverb", 0.0, 1.0)?;
             // `at`: follow a place in the world (a moving sound: call it every frame)
-            if let Some((at, range)) = spatial_options(&Some(opts.clone()))? {
+            if let Some((at, range, falloff)) = spatial_options(&Some(opts.clone()))? {
                 known += 1;
-                let (gain, side) = spatial(&s.borrow().camera, at, range);
+                let (gain, side) = spatial(&s.borrow().camera, at, range, falloff);
                 volume = Some(volume.unwrap_or(1.0) * gain);
                 pan = Some(side);
             }
@@ -3238,6 +3286,45 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 }
             }
             Ok(Value::Table(table))
+        })?,
+    )?;
+    // sound_group(name): `sounds/<name>.group.json` as a table, checked; nil when there is no such file
+    let group_vfs = vfs.clone();
+    raw.set(
+        "sound_group",
+        lua.create_function(move |lua, name: String| {
+            let path = format!("sounds/{name}.group.json");
+            if !group_vfs.exists(&path) {
+                return Ok(Value::Nil);
+            }
+            let bytes = group_vfs.read(&path).map_err(lua_err)?;
+            let v: serde_json::Value = serde_json::from_slice(&bytes)
+                .map_err(|e| lua_err(format!("{path}: {e}")))?;
+            let obj = v
+                .as_object()
+                .ok_or_else(|| lua_err(format!("{path} must be an object")))?;
+            let sounds = obj
+                .get("sounds")
+                .and_then(|x| x.as_array())
+                .filter(|a| !a.is_empty() && a.len() <= 64 && a.iter().all(|e| e.is_string()))
+                .ok_or_else(|| lua_err(format!("{path}: \"sounds\" is a list of 1 to 64 sound names")))?;
+            for key in ["volume", "pitch", "pan"] {
+                if let Some(r) = obj.get(key) {
+                    let ok = r.as_array().is_some_and(|a| {
+                        a.len() == 2 && a.iter().all(|n| n.as_f64().is_some_and(f64::is_finite))
+                    });
+                    if !ok {
+                        return Err(lua_err(format!("{path}: \"{key}\" is [lowest, highest]")));
+                    }
+                }
+            }
+            if let Some(n) = obj.get("no_repeat")
+                && !n.is_boolean()
+            {
+                return Err(lua_err(format!("{path}: \"no_repeat\" is true or false")));
+            }
+            let _ = sounds;
+            lua.to_value(&v)
         })?,
     )?;
     let list_vfs = vfs.clone();
@@ -4221,6 +4308,28 @@ impl Game {
 mod tests {
     use super::*;
     use crate::vfs::MemVfs;
+
+    #[test]
+    fn falloff_presets_reach_nothing_at_the_range_and_differ_in_between() {
+        for f in [Falloff::Smooth, Falloff::Linear, Falloff::Natural] {
+            assert!((f.gain(0.0, 40.0) - 1.0).abs() < 1e-6, "{f:?} is full close up");
+            assert_eq!(f.gain(40.0, 40.0), 0.0, "{f:?} is silent at the range");
+            assert_eq!(f.gain(90.0, 40.0), 0.0, "{f:?} stays silent past it");
+        }
+        // halfway: linear 0.5, smooth 0.25, natural loud close up but quieter than linear far out
+        assert!((Falloff::Linear.gain(20.0, 40.0) - 0.5).abs() < 1e-6);
+        assert!((Falloff::Smooth.gain(20.0, 40.0) - 0.25).abs() < 1e-6);
+        assert!(Falloff::Natural.gain(8.0, 40.0) > Falloff::Linear.gain(8.0, 40.0) * 0.4);
+        assert!(Falloff::Natural.gain(8.0, 40.0) < Falloff::Natural.gain(4.0, 40.0));
+        assert_eq!(Falloff::None.gain(39.0, 40.0), 1.0);
+        assert_eq!(Falloff::None.gain(41.0, 40.0), 0.0);
+    }
+
+    #[test]
+    fn falloff_names_are_checked() {
+        assert_eq!(Falloff::parse("linear").unwrap(), Falloff::Linear);
+        assert!(Falloff::parse("steep").is_err());
+    }
 
     fn png_1x1() -> Vec<u8> {
         let mut out = Vec::new();

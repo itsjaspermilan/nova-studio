@@ -96,7 +96,7 @@ Still open (4.2 Instruments, effects, files):
 - [ ] Still open: MP3 import, project template songs, the audio core's synthesis connected to game audio.
 Still open (4.3 Game audio):
 - [ ] Adaptive music in the runtime (layers or stems mixed by game state, transitions on bar lines): the stems exist as files, the runtime does not mix them.
-- [ ] Random sound groups as a project feature (variations exist as files; no group object), 3D falloff presets, a soundbank view of which project files use each sound, an audio budget for the device (memory, voices).
+- [x] (2026-11-09; runtime: 6 tests in `tests/locale.rs` and 2 unit tests, docs in `project-format.md`; studio: `lib/soundbank.ts` 9 tests, the panel only built, not looked at) **Random sound groups**: `sounds/<name>.group.json` and `nova.sound.play("<name>")` (ranges for volume, pitch and pan, no repeats), `nova.sound.group`; **3D falloff presets** (`falloff = "smooth" | "linear" | "natural" | "none"` on positioned sounds); a **Sounds panel**: every sound with its size, estimated memory, the files that use it, unused ones, names the code asks for that do not exist, a memory budget for a handheld and the 32-voice limit, and "Make a group" from ticked sounds. Memory is an estimate (WAV as is; Ogg effects about 11 times the file; streamed music a small buffer), not measured on the device.
 - [ ] A person listens to the songs and the sounds (nobody has yet); audio latency on the Retroid.
 
 ### S4: Sprites workspace (section 3; detail in `docs/studio-workspaces.md`): what exists, what was added on 2026-11-09, everything still open

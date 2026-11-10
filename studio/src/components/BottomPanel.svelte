@@ -8,6 +8,7 @@
   import ObjectsPanel from "./ObjectsPanel.svelte";
   import AssetBrowser from "./AssetBrowser.svelte";
   import SavePanel from "./SavePanel.svelte";
+  import SoundbankPanel from "./SoundbankPanel.svelte";
   import { debug } from "../lib/debugger.svelte";
 
   // "5 s ago" moves on by itself
@@ -44,6 +45,9 @@
     <button role="tab" aria-selected={studio.panel === "assets"} class:on={studio.panel === "assets"} onclick={() => (studio.panel = "assets")} title="Every sprite, model, sound and scene as a card: search, open, drag into code">
       Assets
     </button>
+    <button role="tab" aria-selected={studio.panel === "soundbank"} class:on={studio.panel === "soundbank"} onclick={() => (studio.panel = "soundbank")} title="Every sound: where it is used, what is unused or missing, what it costs, and random groups">
+      Sounds
+    </button>
     <button role="tab" aria-selected={studio.panel === "saves"} class:on={studio.panel === "saves"} onclick={() => (studio.panel = "saves")} title="What the game has saved on this computer: look, change, start fresh">
       Saves
     </button>
@@ -64,7 +68,9 @@
     <button class="ghost" aria-label="Hide panel" onclick={() => (studio.panelOpen = false)}>▾</button>
   </div>
 
-  {#if studio.panel === "saves"}
+  {#if studio.panel === "soundbank"}
+    <SoundbankPanel />
+  {:else if studio.panel === "saves"}
     <SavePanel />
   {:else if studio.panel === "assets"}
     <AssetBrowser />

@@ -2544,6 +2544,45 @@ function nova.scene_data(name)
   return raw.scene_data((name:gsub("^scenes%.", "")))
 end
 
+-- Random sound groups: sounds/<name>.group.json ({ "sounds": ["step1", "step2"], "volume": [0.8, 1], "pitch": [0.95, 1.05], "pan": [-0.1, 0.1],
+-- "no_repeat": true }) makes nova.sound.play("<name>") pick one of its sounds each time, with the volume, pitch and pan varied inside the ranges. A group
+-- name wins over a sound file of the same name; options the caller gives are applied on top (volume and pitch multiply, a given pan is kept).
+do
+  local plain_play = nova.sound.play
+  local groups, last = {}, {}
+  local function group_of(name)
+    local g = groups[name]
+    if g == nil then
+      g = raw.sound_group(name) or false
+      groups[name] = g
+    end
+    return g or nil
+  end
+  local function between(range, default)
+    if not range then return default end
+    return range[1] + (range[2] - range[1]) * math.random()
+  end
+  function nova.sound.play(name, opts)
+    local g = type(name) == "string" and group_of(name) or nil
+    if not g then return plain_play(name, opts) end
+    local n = #g.sounds
+    local i = math.random(n)
+    if g.no_repeat and n > 1 and last[name] == i then i = i % n + 1 end
+    last[name] = i
+    local o = {}
+    if opts then for k, v in pairs(opts) do o[k] = v end end
+    o.volume = (opts and opts.volume or 1) * between(g.volume, 1)
+    o.pitch = (opts and opts.pitch or 1) * between(g.pitch, 1)
+    if not (opts and opts.pan) then o.pan = math.max(-1, math.min(1, between(g.pan, 0))) end
+    return plain_play(g.sounds[i], o)
+  end
+  function nova.sound.group(name)
+    local g = type(name) == "string" and group_of(name) or nil
+    if not g then return nil end
+    return { sounds = { table.unpack(g.sounds) }, no_repeat = g.no_repeat or false }
+  end
+end
+
 -- Text in several languages. locales/<code>.json is a flat object of text ({ "menu.start": "Start", "coins": "{count} coins" }, one file per
 -- language); the studio's Languages table edits them. nova.t(key, vars) gives the text in the chosen language, else in the default one (en, or the first
 -- file), else the key itself, so a missing line shows up as its name. {name} in a text is replaced from vars; with vars.count a key can have

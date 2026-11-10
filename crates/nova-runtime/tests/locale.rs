@@ -96,3 +96,77 @@ fn a_file_with_a_value_that_is_not_text_is_refused_by_name() {
     let log = game.take_log();
     assert!(log[0].contains("\"a\" must be text"), "{log:?}");
 }
+
+// ---- random sound groups ----
+
+fn wav() -> Vec<u8> {
+    // a tiny silent mono 8-bit 8 kHz file: 44-byte header and 8 samples
+    let mut v = Vec::new();
+    v.extend_from_slice(b"RIFF");
+    v.extend_from_slice(&(36u32 + 8).to_le_bytes());
+    v.extend_from_slice(b"WAVEfmt ");
+    v.extend_from_slice(&16u32.to_le_bytes());
+    v.extend_from_slice(&1u16.to_le_bytes());
+    v.extend_from_slice(&1u16.to_le_bytes());
+    v.extend_from_slice(&8000u32.to_le_bytes());
+    v.extend_from_slice(&8000u32.to_le_bytes());
+    v.extend_from_slice(&1u16.to_le_bytes());
+    v.extend_from_slice(&8u16.to_le_bytes());
+    v.extend_from_slice(b"data");
+    v.extend_from_slice(&8u32.to_le_bytes());
+    v.extend_from_slice(&[128u8; 8]);
+    v
+}
+
+fn run_with(files: Vec<(&str, Vec<u8>)>, main: &str) -> (Vec<String>, Option<String>) {
+    let mut all: Vec<(&str, Vec<u8>)> = vec![
+        ("nova.json", br#"{"format":1,"name":"T"}"#.to_vec()),
+        ("main.lua", main.as_bytes().to_vec()),
+    ];
+    all.extend(files);
+    let vfs: Rc<dyn Vfs> = Rc::new(MemVfs::new(all));
+    let mut game = Game::load(vfs).expect("loads");
+    game.upload(&mut NullUploader::default());
+    let error = game.error.clone().map(|e| format!("{e:?}"));
+    (game.take_log(), error)
+}
+
+#[test]
+fn a_group_is_played_like_a_sound_and_a_plain_sound_still_is() {
+    let (log, error) = run_with(
+        vec![
+            ("sounds/a.wav", wav()),
+            ("sounds/b.wav", wav()),
+            (
+                "sounds/steps.group.json",
+                br#"{"sounds":["a","b"],"volume":[0.5,1],"pitch":[0.9,1.1],"no_repeat":true}"#.to_vec(),
+            ),
+        ],
+        r#"
+math.randomseed(7)
+local g = nova.sound.group("steps")
+nova.log(#g.sounds .. " " .. tostring(g.no_repeat))
+nova.log(tostring(nova.sound.group("a")))
+for i = 1, 20 do nova.sound.play("steps") end
+nova.sound.play("a")
+nova.log("played")
+"#,
+        );
+    assert!(error.is_none(), "{error:?}");
+    assert_eq!(log, ["2 true", "nil", "played"]);
+}
+
+#[test]
+fn a_group_that_is_wrong_is_refused_by_name() {
+    let (log, _) = run_with(
+        vec![("sounds/bad.group.json", br#"{"sounds":[],"volume":[1]}"#.to_vec())],
+        r#"local ok, err = pcall(nova.sound.group, "bad") nova.log(tostring(ok)) nova.log(tostring(err))"#,
+    );
+    assert_eq!(log[0], "false");
+    assert!(log[1].contains("bad.group.json"), "{log:?}");
+    let (log, _) = run_with(
+        vec![("sounds/bad.group.json", br#"{"sounds":["a"],"volume":[1]}"#.to_vec())],
+        r#"local ok, err = pcall(nova.sound.group, "bad") nova.log(tostring(err))"#,
+    );
+    assert!(log[0].contains("\"volume\" is [lowest, highest]"), "{log:?}");
+}

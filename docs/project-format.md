@@ -1064,6 +1064,22 @@ loud mix cannot distort harshly. Names resolve as the exact path, then `sounds/<
 Android emulator. Sound calls are queued and sent to the audio thread each frame; with no audio
 device (headless runs) they are discarded.
 
+### Random sound groups and positioned sounds
+
+`sounds/<name>.group.json` makes `nova.sound.play("<name>")` pick one of several sounds each time, so footsteps and hits do not repeat exactly:
+
+```json
+{ "sounds": ["step1", "step2", "step3"], "volume": [0.85, 1], "pitch": [0.94, 1.06], "pan": [-0.1, 0.1], "no_repeat": true }
+```
+
+`sounds` (1 to 64 names) is required; `volume`, `pitch` and `pan` are `[lowest, highest]` ranges (a random value inside is used per play); `no_repeat` never picks the same sound twice in a row.
+The options you pass to `play` apply on top (volume and pitch multiply; a `pan` you give is kept). A group name wins over a sound file of the same name.
+`nova.sound.group(name)` returns `{ sounds, no_repeat }` or nil. A file that is wrong stops the call with its name and what is wrong. The studio's Sounds panel
+(bottom panel) lists every sound with where it is used, which are unused or asked for but missing, what each costs in memory, and makes a group from the sounds you tick.
+
+A sound at a place (`at = { x, y, z }`, see `nova.sound.play`) takes `falloff`: `"smooth"` (the default, a square law), `"linear"`, `"natural"` (loud close up, a long fade; it
+still reaches nothing at `range`) or `"none"` (full volume to the range; only the pan follows). `nova.sound.set(id, { at = ..., falloff = ... })` steers it.
+
 ## Languages (`locales/<code>.json`)
 
 Text for several languages lives in one flat JSON file per language, `locales/en.json`, `locales/fr.json`, ...: an object of key to text. The studio's

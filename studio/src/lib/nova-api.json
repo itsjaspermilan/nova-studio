@@ -675,7 +675,14 @@
   "name": "nova.sound.play",
   "kind": "function",
   "signature": "nova.sound.play(name [, opts]) -> id",
-  "doc": "Play a sound effect. Options: volume, pan, pitch, loop, `reverb` (0 to 1: how much of it goes to the room set with `nova.sound.room`), and limit (at most that many copies of this sound at once: one more makes the oldest copy give way, so a flood of hits cannot steal a voice from other sounds; there are 32 voices in all). `at = {x, y, z}` puts the sound at a place in the world: it is quieter the further the camera is from it (to nothing at `range` metres, 32 by default) and comes from the left or right of where the camera looks; beyond its range a one-shot sound is not played at all (it returns 0).",
+  "doc": "Play a sound effect (or a random sound group: the name of a sounds/<name>.group.json). Options: volume, pan, pitch, loop, `reverb` (0 to 1: how much of it goes to the room set with `nova.sound.room`), and limit (at most that many copies of this sound at once: one more makes the oldest copy give way, so a flood of hits cannot steal a voice from other sounds; there are 32 voices in all). `at = {x, y, z}` puts the sound at a place in the world: it is quieter the further the camera is from it (to nothing at `range` metres, 32 by default; `falloff` is \"smooth\" (the default, a square law), \"linear\", \"natural\" (loud close up, then a long fade) or \"none\" (full volume right to the range)) and comes from the left or right of where the camera looks; beyond its range a one-shot sound is not played at all (it returns 0).",
+  "group": "Sound"
+ },
+ {
+  "name": "nova.sound.group",
+  "kind": "function",
+  "signature": "nova.sound.group(name) -> { sounds, no_repeat } or nil",
+  "doc": "The random sound group of that name (sounds/<name>.group.json), or nil. A group is played like any sound: nova.sound.play(\"footsteps\") picks one of its sounds each time, with volume, pitch and pan varied inside the ranges the file gives ({ \"sounds\": [\"step1\", \"step2\"], \"volume\": [0.8, 1], \"pitch\": [0.95, 1.05], \"pan\": [-0.1, 0.1], \"no_repeat\": true }).",
   "group": "Sound"
  },
  {
