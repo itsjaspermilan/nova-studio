@@ -6,6 +6,7 @@
   import { SONG_TEMPLATES } from "../lib/song-templates";
   let songTemplate = $state("blank");
   let audioFile: HTMLInputElement | undefined = $state();
+  let objFile: HTMLInputElement | undefined = $state();
 
   const w = $derived(WORKSPACES.find((x) => x.id === studio.workspace)!);
   const own = $derived(inWorkspace(studio.files.filter((f) => !f.dir), studio.workspace).filter((f) => !f.path.endsWith("nova.json")));
@@ -39,7 +40,11 @@
   {#if studio.workspace !== "engine"}
     <form onsubmit={(e) => { e.preventDefault(); }}>
       <input bind:value={name} placeholder="Name of a new {studio.workspace === 'sound' ? 'sound or song' : studio.workspace === 'model' ? 'model' : 'sprite'}" aria-label="Name" />
-      {#if studio.workspace === "model"}<button type="submit" onclick={() => make("model")} disabled={!name.trim()}>New model</button>{/if}
+      {#if studio.workspace === "model"}
+        <button type="submit" onclick={() => make("model")} disabled={!name.trim()}>New model</button>
+        <button type="button" onclick={() => objFile?.click()} title="Open a Wavefront OBJ file from another program as a new model">Import an OBJ…</button>
+        <input bind:this={objFile} type="file" accept=".obj,text/plain" hidden onchange={(e) => { const f = e.currentTarget.files?.[0]; e.currentTarget.value = ""; if (f) void studio.importObj(f); }} />
+      {/if}
       {#if studio.workspace === "sprites"}<button type="submit" onclick={() => make("sprite")} disabled={!name.trim()}>New sprite</button>{/if}
       {#if studio.workspace === "sound"}
         <button type="submit" onclick={() => make("sfx")} disabled={!name.trim()}>New sound effect</button>

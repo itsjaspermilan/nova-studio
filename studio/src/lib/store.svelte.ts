@@ -6,6 +6,7 @@ import { exportGlb } from "./glb";
 import { importWithColours } from "./model-load";
 import { newModel, serializeModel } from "./model-doc";
 import { PRESETS, render, toJson } from "./sfx";
+import { parseObj } from "./obj";
 import { fitForProject, freeName, kindFor, safeSoundName } from "./audio-import";
 import { templateById } from "./song-templates";
 import { renderSong, serializeSong } from "./song";
@@ -613,6 +614,24 @@ class Studio {
       await this.api!.writeModel(glb, `data:model/gltf-binary;base64,${toBase64(exportGlb(doc))}`);
       await this.api!.createFile(json, serializeModel(doc));
       await this.refreshFiles();
+      await this.openFile(json);
+    });
+  }
+
+  /// Opens an OBJ file as a new model (each object a mesh shape; 1 OBJ unit is 16 model units, so a metre is one world unit).
+  async importObj(file: File) {
+    await this.#guard(async () => {
+      const base = file.name.replace(/\.obj$/i, "").replace(/[^A-Za-z0-9_-]+/g, "_").replace(/^_+|_+$/g, "") || "model";
+      let name = base;
+      let k = 2;
+      while (this.files.some((f) => f.path === `models/${name}.model.json` || f.path === `models/${name}.glb`)) name = `${base}_${k++}`;
+      const { doc, warnings } = parseObj(await file.text(), name);
+      const glb = `models/${name}.glb`;
+      const json = `models/${name}.model.json`;
+      await this.api!.writeModel(glb, `data:model/gltf-binary;base64,${toBase64(exportGlb(doc))}`);
+      await this.api!.createFile(json, serializeModel(doc));
+      await this.refreshFiles();
+      this.say(warnings.length ? "error" : "info", `Opened ${file.name} as ${json}.${warnings.length ? " " + warnings.join(" ") : ""}`);
       await this.openFile(json);
     });
   }

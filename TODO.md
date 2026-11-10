@@ -73,7 +73,7 @@ Blender keymap in Model. Goal: a free, all-in-one studio for making games, no st
 - [ ] 2.4 UV editor (unwrap, seams, pin, pack, texel density, checker, stretch) and material editor (PBR, small node view baking to the runtime material); atlas packing, KTX2.
 - [ ] 2.5 Rigging and animation: bones, skinning, IK, constraints, pose library, dope sheet, graph editor, actions as clips, NLA-lite, shape keys, markers/events, retarget, rig templates, humanoid auto-rig.
 - [ ] 2.6 Scenes and landscape: instances, collections/prefabs, scatter, curve placement, surface snapping, terrain sculpt/paint/roads/water/foliage/biomes, camera and cutscene sequencer-lite, lightmap preview.
-- [ ] 2.7 Interop: glTF (done), OBJ, one-click `.blend` import (headless bpy), asset libraries, backups.
+- [~] 2.7 Interop: glTF (done). **OBJ (2026-11-09, `lib/obj.ts`, 6 tests incl. a round trip; the buttons were only built):** import an OBJ as a new model (objects and groups become mesh shapes, polygons of any size kept, bad faces left out with a count; Model workspace home: "Import an OBJ…") and export the model as OBJ (Model menu: every shape in world space at the export scale, modifiers applied, into `exports/`). Not done: one-click `.blend` import (needs Blender run headless; it is installed here but this was not built), asset libraries, materials and UVs in OBJ (positions and faces only), backups (snapshots cover the project).
 - [ ] Proving project: the Pine Ridge cars made and edited in the workspace, not by script.
 
 ### S3: Sound workspace (section 4; detail in `docs/studio-workspaces.md`). Done on 2026-11-09, then everything still open, one line each

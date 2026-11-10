@@ -16,6 +16,7 @@
   } from "../lib/model-doc";
   import { AXIS_COLOURS, AXIS_CSS, AXIS_NAMES, centreOf, constrain, describeLock, describeMove, freePlane, lockForKey, type Lock } from "../lib/point-move";
   import MeshTools from "./MeshTools.svelte";
+  import { modelToObj } from "../lib/obj";
   import ReferencePanel from "./ReferencePanel.svelte";
   import { loadReferences, placementOf, saveReferences, type Reference } from "../lib/model-reference";
   import { ORTHO_FOV, PERSPECTIVE_FOV, VIEW_LABELS, VIEW_NAMES, distanceForFov, orbitStep, viewPlacement, type ViewName } from "../lib/view-presets";
@@ -1653,6 +1654,18 @@
     saveReferences(untrack(() => filePath), list);
   });
 
+  async function exportObj() {
+    const name = filePath.slice(filePath.lastIndexOf("/") + 1).replace(/\.model\.json$/i, "").replace(/[^A-Za-z0-9_-]+/g, "_");
+    const path = `exports/${name}.obj`;
+    try {
+      await studio.api!.writeExport(path, `data:text/plain;base64,${toBase64(new TextEncoder().encode(modelToObj(doc)))}`);
+      await studio.refreshFiles();
+      studio.say("info", `Saved ${path}.`);
+    } catch (e) {
+      studio.say("error", String(e));
+    }
+  }
+
   // ---- standard views (Blender's numpad views, with commands for a laptop) ----------------------------------
   /// A very narrow field of view from far away stands in for an orthographic camera, so the gizmos and picking, which belong to this camera, keep working.
   let ortho = $state(false);
@@ -2172,6 +2185,7 @@
       commands.register({ id: "model.view.orbitUp", title: "Turn the view up", menu: "Model", help: "15 degrees", run: () => orbit(0, 15) }),
       commands.register({ id: "model.view.orbitDown", title: "Turn the view down", menu: "Model", help: "15 degrees", run: () => orbit(0, -15) }),
       commands.register({ id: "model.boxSelect", title: "Box select points", menu: "Model", keymaps: { blender: ["B"], nova: [] }, help: "Drag a rectangle over the view to pick the points inside it (Shift adds)", enabled: () => !modal && inEdit, run: () => { boxArmed = !boxArmed; } }),
+      commands.register({ id: "model.exportObj", title: "Export as an OBJ file", menu: "Model", icon: "export", help: "Every shape as a mesh, in metres at the export scale, into the exports folder", run: () => void exportObj() }),
       commands.register({ id: "model.resetView", title: "Reset the view", menu: "Model", icon: "home", keymaps: { blender: ["Home"], nova: [] }, run: () => resetView() }),
     ];
     return () => offs.forEach((off) => off());

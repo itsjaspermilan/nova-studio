@@ -382,8 +382,8 @@ pub fn write_image(root: &Path, rel: &str, data_url: &str) -> Result<(), String>
 }
 
 /// File types the studio writes for other programs to read (an animated GIF, a palette, a list of colours, a picture, text, JSON).
-const EXPORT_EXTENSIONS: [&str; 9] = [
-    "gif", "gpl", "pal", "hex", "png", "txt", "json", "csv", "mid",
+const EXPORT_EXTENSIONS: [&str; 10] = [
+    "gif", "gpl", "pal", "hex", "png", "txt", "json", "csv", "mid", "obj",
 ];
 
 /// Saves an export sent as a `data:<type>;base64,...` URL into the project's `exports` folder. The path must be inside `exports/`, with one of
@@ -813,6 +813,7 @@ mod tests {
         )
         .unwrap();
         write_export(&root, "exports/t.csv", "data:text/csv;base64,a2V5LGVu").unwrap();
+        write_export(&root, "exports/m.obj", "data:text/plain;base64,byBhCg==").unwrap();
         assert_eq!(
             std::fs::read_to_string(root.join("exports/p.gpl")).unwrap(),
             "GIMP Palette"
