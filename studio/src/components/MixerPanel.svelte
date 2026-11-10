@@ -4,7 +4,7 @@
   import { measureLevels, meterFraction, showDb, type Levels } from "../lib/mixer";
   import { MAX_BUSES, MAX_MASTER, setMaster, updateTrack, type Song } from "../lib/song";
   import { addBus, removeBus, routeTrack, sendLevel, setSend, updateBus } from "../lib/song-bus";
-  import { FX_TYPES, FX_SPECS, MAX_FX, addFx, removeFx, setFxParam, toggleFx, type FxType } from "../lib/fx";
+  import { FX_TYPES, FX_SPECS, MAX_FX, addFx, removeFx, setFxParam, toggleFx, type Fx, type FxType } from "../lib/fx";
 
   let { song, track, liveDb = -Infinity, onchange, onselect }: { song: Song; track: number; liveDb?: number; onchange: (next: Song) => void; onselect: (i: number) => void } = $props();
   let levels: Levels | null = $state.raw(null);
@@ -26,6 +26,17 @@
   });
   const anySolo = $derived(song.tracks.some((t) => t.solo));
   let fxBus: string | null = $state(null);
+  let masterFxOpen = $state(false);
+  /// The song with the master's effect chain set (a master with nothing else to keep is removed).
+  const withMasterFx = (sg: Song, fx: Fx[]): Song => {
+    const next = { ...sg };
+    const m = { volume: 1, ...(sg.master ?? {}) } as NonNullable<Song["master"]>;
+    if (fx.length) m.fx = fx;
+    else delete m.fx;
+    if (m.volume === 1 && m.lufs === undefined && m.limit === undefined && !m.fx) delete next.master;
+    else next.master = m;
+    return next;
+  };
   const openBus = $derived(song.buses?.find((b) => b.name === fxBus));
   const hot = (db: number) => db > -0.5;
   const set = (i: number, change: Parameters<typeof updateTrack>[2]) => onchange(updateTrack(song, i, change));
@@ -84,26 +95,33 @@
     </div>
     <output>{Math.round((song.master?.volume ?? 1) * 100)}%</output>
     {#if levels}<span class="db dim">peak {showDb(levels.master.peakDb)}<br />average {showDb(levels.master.rmsDb)}</span>{/if}
+    <button onclick={() => (masterFxOpen = !masterFxOpen)} aria-expanded={masterFxOpen} title="Effects on the whole mix">fx{song.master?.fx?.length ? ` ${song.master.fx.length}` : ""}</button>
     <button onclick={measure} disabled={measuring}>{measuring ? "Measuring…" : "Measure levels"}</button>
   </div>
 </div>
 
-{#if openBus}
-  <div class="busfx" role="group" aria-label="Effects on {openBus.name}">
-    <strong>{openBus.name} effects</strong>
-    {#each openBus.fx ?? [] as f, i (i)}
+{#snippet fxPanel(title: string, list: Fx[] | undefined, apply: (next: Fx[]) => void)}
+  <div class="busfx" role="group" aria-label="Effects on {title}">
+    <strong>{title} effects</strong>
+    {#each list ?? [] as f, i (i)}
       <div class="fxrow">
-        <button class:on={f.on !== false} aria-pressed={f.on !== false} onclick={() => onchange(updateBus(song, openBus.name, { fx: toggleFx(openBus.fx!, i) }))}>{FX_SPECS[f.type].title}</button>
+        <button class:on={f.on !== false} aria-pressed={f.on !== false} onclick={() => apply(toggleFx(list!, i))}>{FX_SPECS[f.type].title}</button>
         {#each FX_SPECS[f.type].params as p (p.key)}
-          <label class="small">{p.label}<input type="range" min={p.min} max={p.max} step={p.step} value={f.params[p.key] ?? p.default} oninput={(e) => onchange(updateBus(song, openBus.name, { fx: setFxParam(openBus.fx!, i, p.key, Number(e.currentTarget.value)) }))} aria-label="{FX_SPECS[f.type].title} {p.label}" /></label>
+          <label class="small">{p.label}<input type="range" min={p.min} max={p.max} step={p.step} value={f.params[p.key] ?? p.default} oninput={(e) => apply(setFxParam(list!, i, p.key, Number(e.currentTarget.value)))} aria-label="{FX_SPECS[f.type].title} {p.label}" /></label>
         {/each}
-        <button class="ghost" aria-label="Remove effect" onclick={() => onchange(updateBus(song, openBus.name, { fx: removeFx(openBus.fx!, i) }))}>✕</button>
+        <button class="ghost" aria-label="Remove effect" onclick={() => apply(removeFx(list!, i))}>✕</button>
       </div>
     {/each}
-    <select aria-label="Add an effect to the bus" value="" disabled={(openBus.fx?.length ?? 0) >= MAX_FX} onchange={(e) => { onchange(updateBus(song, openBus.name, { fx: addFx(openBus.fx ?? [], e.currentTarget.value as FxType) })); e.currentTarget.value = ""; }}>
+    <select aria-label="Add an effect to {title}" value="" disabled={(list?.length ?? 0) >= MAX_FX} onchange={(e) => { apply(addFx(list ?? [], e.currentTarget.value as FxType)); e.currentTarget.value = ""; }}>
       <option value="" disabled>＋ Add an effect…</option>{#each FX_TYPES as ft (ft)}<option value={ft}>{FX_SPECS[ft].title}</option>{/each}
     </select>
   </div>
+{/snippet}
+{#if openBus}
+  {@render fxPanel(openBus.name, openBus.fx, (next) => onchange(updateBus(song, openBus.name, { fx: next })))}
+{/if}
+{#if masterFxOpen}
+  {@render fxPanel("master", song.master?.fx, (next) => onchange(withMasterFx(song, next)))}
 {/if}
 
 <style>

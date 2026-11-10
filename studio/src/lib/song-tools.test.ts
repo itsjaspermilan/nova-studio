@@ -188,7 +188,7 @@ describe("effects on a track", () => {
     if (!back.ok) throw new Error(back.error);
     expect(back.song.tracks[0]!.fx![0]!.params.drive).toBe(25);
     const bad = JSON.parse(serializeSong(s));
-    bad.tracks[0].fx = [{ type: "reverb", params: {} }];
+    bad.tracks[0].fx = [{ type: "vocoder", params: {} }];
     expect(parseSong(JSON.stringify(bad)).ok).toBe(false);
     const dry = renderSong({ ...s, tracks: [{ ...s.tracks[0]!, fx: undefined }] }, 22050);
     const wet = renderSong(s, 22050);

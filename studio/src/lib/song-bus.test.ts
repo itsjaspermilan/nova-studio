@@ -113,3 +113,21 @@ describe("per-note pan and bend", () => {
     expect(parseSong(JSON.stringify(bad)).ok).toBe(false);
   });
 });
+
+describe("effects on the master", () => {
+  it("change the whole mix, are saved, and a bypassed one does nothing", () => {
+    const s = base();
+    const plain = renderSong(s).channels[0]!;
+    const wide: Song = { ...s, master: { volume: 1, fx: [{ type: "echo", params: { time: 100, feedback: 0.5, mix: 1, pingpong: 0 } }] } };
+    const out = renderSong(wide).channels[0]!;
+    expect(out.length).toBe(plain.length);
+    expect(out.some((x, i) => Math.abs(x - plain[i]!) > 0.01)).toBe(true);
+    const back = parseSong(serializeSong(wide));
+    expect(back.ok && back.song.master?.fx?.[0]?.type).toBe("echo");
+    const off: Song = { ...s, master: { volume: 1, fx: [{ type: "echo", on: false, params: {} }] } };
+    expect(Array.from(renderSong(off).channels[0]!.slice(0, 500))).toEqual(Array.from(plain.slice(0, 500)));
+    const bad = JSON.parse(serializeSong(wide));
+    bad.master.fx[0].type = "zzz";
+    expect(parseSong(JSON.stringify(bad)).ok).toBe(false);
+  });
+});

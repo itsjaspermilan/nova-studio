@@ -1,7 +1,7 @@
 // Effects on a track: EQ, compressor, chorus, flanger, phaser, distortion, bit crusher and gate. A track has a chain of them, run in order on the
 // track's stereo signal after its volume and pan. Pure and deterministic (no random noise), so an export is the same every time.
 
-export type FxType = "eq" | "compressor" | "chorus" | "flanger" | "phaser" | "distortion" | "bitcrush" | "gate";
+export type FxType = "eq" | "parametric" | "compressor" | "chorus" | "flanger" | "phaser" | "distortion" | "bitcrush" | "gate" | "stereo" | "transient" | "echo" | "reverb" | "pitch";
 
 export interface Fx {
   type: FxType;
@@ -79,6 +79,64 @@ export const FX_SPECS: Record<FxType, { title: string; help: string; params: Par
       { key: "drive", label: "Drive", min: 1, max: 30, step: 0.5, default: 6 },
       { key: "tone", label: "Tone", min: 500, max: 12000, step: 100, default: 6000, unit: "Hz" },
       { key: "mix", label: "Mix", min: 0, max: 1, step: 0.01, default: 1 },
+    ],
+  },
+  parametric: {
+    title: "Parametric EQ",
+    help: "Three bands you place yourself: pick a pitch, boost or cut it, and how wide the change is",
+    params: [
+      { key: "f1", label: "Band 1 at", min: 30, max: 1000, step: 10, default: 120, unit: "Hz" },
+      { key: "g1", label: "Band 1", min: -15, max: 15, step: 0.5, default: 0, unit: "dB" },
+      { key: "q1", label: "Band 1 width", min: 0.3, max: 8, step: 0.1, default: 1 },
+      { key: "f2", label: "Band 2 at", min: 200, max: 6000, step: 50, default: 1000, unit: "Hz" },
+      { key: "g2", label: "Band 2", min: -15, max: 15, step: 0.5, default: 0, unit: "dB" },
+      { key: "q2", label: "Band 2 width", min: 0.3, max: 8, step: 0.1, default: 1 },
+      { key: "f3", label: "Band 3 at", min: 1000, max: 16000, step: 100, default: 5000, unit: "Hz" },
+      { key: "g3", label: "Band 3", min: -15, max: 15, step: 0.5, default: 0, unit: "dB" },
+      { key: "q3", label: "Band 3 width", min: 0.3, max: 8, step: 0.1, default: 1 },
+    ],
+  },
+  stereo: {
+    title: "Stereo width",
+    help: "Narrow the sound towards the middle (0) or spread it wide (up to 2); the lows can be kept in the middle",
+    params: [
+      { key: "width", label: "Width", min: 0, max: 2, step: 0.05, default: 1.3 },
+      { key: "monoBelow", label: "Keep lows central below", min: 0, max: 400, step: 10, default: 0, unit: "Hz" },
+    ],
+  },
+  transient: {
+    title: "Transient shaper",
+    help: "Make the start of each sound punchier or softer, and what rings after it longer or shorter",
+    params: [
+      { key: "attack", label: "Punch", min: -1, max: 1, step: 0.05, default: 0.4 },
+      { key: "sustain", label: "Ring", min: -1, max: 1, step: 0.05, default: 0 },
+    ],
+  },
+  echo: {
+    title: "Echo",
+    help: "Repeats of the sound, each quieter; ping-pong bounces them from side to side",
+    params: [
+      { key: "time", label: "Gap", min: 20, max: 1000, step: 10, default: 300, unit: "ms" },
+      { key: "feedback", label: "Repeats", min: 0, max: 0.9, step: 0.05, default: 0.4 },
+      { key: "pingpong", label: "Ping-pong", min: 0, max: 1, step: 1, default: 0 },
+      { key: "mix", label: "Mix", min: 0, max: 1, step: 0.01, default: 0.35 },
+    ],
+  },
+  reverb: {
+    title: "Reverb",
+    help: "A room's ring; bigger rooms ring longer, a damped room is duller",
+    params: [
+      { key: "size", label: "Room size", min: 0, max: 1, step: 0.05, default: 0.5 },
+      { key: "damping", label: "Damping", min: 0, max: 1, step: 0.05, default: 0.4 },
+      { key: "mix", label: "Mix", min: 0, max: 1, step: 0.01, default: 0.25 },
+    ],
+  },
+  pitch: {
+    title: "Pitch shifter",
+    help: "Move the pitch up or down by semitones, keeping the speed (a little graininess is normal)",
+    params: [
+      { key: "semitones", label: "Semitones", min: -12, max: 12, step: 1, default: 7 },
+      { key: "mix", label: "Mix", min: 0, max: 1, step: 0.01, default: 0.5 },
     ],
   },
   bitcrush: {
@@ -174,6 +232,156 @@ function eq(s: Stereo, fx: Fx, rate: number): Stereo {
     param(fx, "high") !== 0 ? biquad("highshelf", 4000, param(fx, "high"), 0.707, rate) : null,
   ].filter((c): c is Coeffs => !!c);
   return both(s, (x) => chain.reduce((y, c) => runBiquad(y, c), x));
+}
+
+function parametric(s: Stereo, fx: Fx, rate: number): Stereo {
+  const chain = [1, 2, 3]
+    .map((i) => (param(fx, `g${i}`) !== 0 ? biquad("peaking", param(fx, `f${i}`), param(fx, `g${i}`), param(fx, `q${i}`), rate) : null))
+    .filter((c): c is Coeffs => !!c);
+  return both(s, (x) => chain.reduce((y, c) => runBiquad(y, c), x));
+}
+
+/// Mid/side width: the sides are scaled by `width`; below `monoBelow` Hz the sides are removed (a one-pole low-pass picks the lows out).
+function stereoWidth(s: Stereo, fx: Fx, rate: number): Stereo {
+  const width = param(fx, "width");
+  const below = param(fx, "monoBelow");
+  const n = s[0].length;
+  const l = new Float32Array(n);
+  const r = new Float32Array(n);
+  const a = below > 0 ? 1 - Math.exp((-2 * Math.PI * below) / rate) : 1;
+  let lowSide = 0;
+  for (let i = 0; i < n; i++) {
+    const mid = (s[0][i]! + s[1][i]!) / 2;
+    let side = (s[0][i]! - s[1][i]!) / 2;
+    if (below > 0) {
+      lowSide += a * (side - lowSide);
+      side = (side - lowSide) * width; // only what is above the cut-off is widened; the lows of the side signal are dropped
+    } else side *= width;
+    l[i] = mid + side;
+    r[i] = mid - side;
+  }
+  return [l, r];
+}
+
+/// Punch and ring: a fast and a slow follower of the level; where the fast one is ahead (an attack) the gain follows `attack`, where it is behind (the tail) `sustain`.
+function transient(s: Stereo, fx: Fx, rate: number): Stereo {
+  const attack = param(fx, "attack");
+  const sustain = param(fx, "sustain");
+  const fast = Math.exp(-1 / (0.002 * rate));
+  const slow = Math.exp(-1 / (0.06 * rate));
+  const n = s[0].length;
+  const l = new Float32Array(n);
+  const r = new Float32Array(n);
+  let f = 0;
+  let sl = 0;
+  for (let i = 0; i < n; i++) {
+    const level = Math.max(Math.abs(s[0][i]!), Math.abs(s[1][i]!));
+    // the fast follower rises at once and falls at its own rate; the slow one rises slowly: the difference is the "attack"
+    f = level > f ? level : level + (f - level) * fast;
+    sl = level > sl ? sl + (level - sl) * (1 - slow) * 3 : level + (sl - level) * slow;
+    const ratio = f / (sl + 1e-6);
+    const g = ratio > 1 ? 1 + attack * Math.min(1, ratio - 1) * 2 : 1 + sustain * Math.min(1, 1 - ratio);
+    const gain = clamp(g, 0.1, 3);
+    l[i] = s[0][i]! * gain;
+    r[i] = s[1][i]! * gain;
+  }
+  return [l, r];
+}
+
+function echo(s: Stereo, fx: Fx, rate: number): Stereo {
+  const d = Math.max(1, Math.round((param(fx, "time") / 1000) * rate));
+  const fb = param(fx, "feedback");
+  const mix = param(fx, "mix");
+  const pingpong = param(fx, "pingpong") >= 1;
+  const n = s[0].length;
+  const tail = Math.min(n, Math.ceil(Math.log(0.001) / Math.log(Math.max(0.05, fb))) * d);
+  const outL = new Float32Array(n + tail);
+  const outR = new Float32Array(n + tail);
+  for (let i = 0; i < n + tail; i++) {
+    const inL = i < n ? s[0][i]! : 0;
+    const inR = i < n ? s[1][i]! : 0;
+    const eL = i >= d ? outL[i - d]! : 0;
+    const eR = i >= d ? outR[i - d]! : 0;
+    // ping-pong: each side's repeats come from the other side
+    outL[i] = inL + (pingpong ? eR : eL) * fb;
+    outR[i] = inR + (pingpong ? eL : eR) * fb;
+  }
+  // the dry sound and the repeats (what is not the dry sound), cut back to the length of the input: the tail past the end is dropped
+  const mk = (x: Float32Array, dry: Float32Array) => {
+    const out = new Float32Array(n);
+    for (let i = 0; i < n; i++) out[i] = dry[i]! + (x[i]! - dry[i]!) * mix;
+    return out;
+  };
+  return [mk(outL, s[0]), mk(outR, s[1])];
+}
+
+/// A Schroeder reverb: four comb filters and two all-passes a side (the right side slightly longer, for width).
+function reverbFx(s: Stereo, fx: Fx, rate: number): Stereo {
+  const size = param(fx, "size");
+  const damp = param(fx, "damping");
+  const mix = param(fx, "mix");
+  const feedback = 0.6 + size * 0.35;
+  const run = (x: Float32Array, spread: number) => {
+    const n = x.length;
+    const out = new Float32Array(n);
+    const scale = rate / 44100;
+    const combs = [1116, 1188, 1277, 1356].map((len) => ({ buf: new Float32Array(Math.max(1, Math.round((len + spread) * scale * (0.6 + size * 0.8)))), pos: 0, store: 0 }));
+    const aps = [556, 441].map((len) => ({ buf: new Float32Array(Math.max(1, Math.round((len + spread) * scale))), pos: 0 }));
+    for (let i = 0; i < n; i++) {
+      let y = 0;
+      for (const c of combs) {
+        const v = c.buf[c.pos]!;
+        c.store = v * (1 - damp) + c.store * damp;
+        c.buf[c.pos] = x[i]! * 0.25 + c.store * feedback;
+        if (++c.pos >= c.buf.length) c.pos = 0;
+        y += v;
+      }
+      for (const a of aps) {
+        const v = a.buf[a.pos]!;
+        a.buf[a.pos] = y + v * 0.5;
+        y = v - y;
+        if (++a.pos >= a.buf.length) a.pos = 0;
+      }
+      out[i] = y;
+    }
+    return out;
+  };
+  const wetL = run(s[0], 0);
+  const wetR = run(s[1], 23);
+  const mk = (dry: Float32Array, wet: Float32Array) => {
+    const out = new Float32Array(dry.length);
+    for (let i = 0; i < out.length; i++) out[i] = dry[i]! + wet[i]! * mix * 3;
+    return out;
+  };
+  return [mk(s[0], wetL), mk(s[1], wetR)];
+}
+
+/// Pitch shift by two read pointers moving through a delay line at the new rate, each fading in and out over a window (so the jump back is not heard).
+function pitchShift(s: Stereo, fx: Fx, rate: number): Stereo {
+  const ratio = 2 ** (param(fx, "semitones") / 12);
+  const mix = param(fx, "mix");
+  const win = Math.max(64, Math.round(0.05 * rate));
+  const shift = (x: Float32Array) => {
+    const n = x.length;
+    const out = new Float32Array(n);
+    // two taps half a window apart; each tap's delay sweeps from the window down to 0 (up-shift) or 0 up to the window (down-shift) and wraps
+    for (let i = 0; i < n; i++) {
+      let y = 0;
+      for (let k = 0; k < 2; k++) {
+        const phase = (((i * (1 - ratio)) / win + k / 2) % 1 + 1) % 1; // 0 to 1, repeating
+        const delay = phase * win;
+        const at = i - delay;
+        const fade = Math.sin(Math.PI * phase) ** 2; // 0 at the jump, 1 half way
+        if (at < 0) continue;
+        const i0 = Math.floor(at);
+        const f = at - i0;
+        y += (x[i0]! * (1 - f) + (x[Math.min(n - 1, i0 + 1)] ?? 0) * f) * fade;
+      }
+      out[i] = y;
+    }
+    return out;
+  };
+  return [mixDryWet(s[0], shift(s[0]), mix), mixDryWet(s[1], shift(s[1]), mix)];
 }
 
 function compressor(s: Stereo, fx: Fx, rate: number): Stereo {
@@ -319,6 +527,12 @@ export function applyFx(chain: Fx[], left: Float32Array, right: Float32Array, ra
     if (fx.on === false) continue;
     switch (fx.type) {
       case "eq": s = eq(s, fx, rate); break;
+      case "parametric": s = parametric(s, fx, rate); break;
+      case "stereo": s = stereoWidth(s, fx, rate); break;
+      case "transient": s = transient(s, fx, rate); break;
+      case "echo": s = echo(s, fx, rate); break;
+      case "reverb": s = reverbFx(s, fx, rate); break;
+      case "pitch": s = pitchShift(s, fx, rate); break;
       case "compressor": s = compressor(s, fx, rate); break;
       case "chorus": s = chorus(s, fx, rate); break;
       case "flanger": s = flanger(s, fx, rate); break;

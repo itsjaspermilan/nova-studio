@@ -107,7 +107,7 @@ describe("a chain", () => {
     const ok = cleanFx([{ type: "eq", params: { low: 50 } }, { type: "gate", on: false, params: {} }]);
     expect(ok.ok && ok.chain[0]!.params.low).toBe(12);
     expect(ok.ok && ok.chain[1]!.on).toBe(false);
-    expect(cleanFx([{ type: "reverb", params: {} }]).ok).toBe(false);
+    expect(cleanFx([{ type: "vocoder", params: {} }]).ok).toBe(false);
     expect(cleanFx("x").ok).toBe(false);
     expect(cleanFx(Array.from({ length: 9 }, () => ({ type: "eq", params: {} }))).ok).toBe(false);
     expect(cleanFx([{ type: "eq", params: { low: "loud" } }]).ok).toBe(false);
@@ -117,5 +117,77 @@ describe("a chain", () => {
       expect(FX_SPECS[type].title.length).toBeGreaterThan(0);
       for (const p of FX_SPECS[type].params) expect(p.default >= p.min && p.default <= p.max, `${type}.${p.key}`).toBe(true);
     }
+  });
+});
+
+import { applyFx as run2, newFx as make } from "./fx";
+describe("more effects", () => {
+  const R = 22050;
+  const sine = (hz: number, secs = 0.5, amp = 0.5) => Float32Array.from({ length: Math.round(R * secs) }, (_, i) => amp * Math.sin((2 * Math.PI * hz * i) / R));
+  const rms = (x: Float32Array, a = 0, b = x.length) => Math.sqrt(x.slice(a, b).reduce((s, v) => s + v * v, 0) / Math.max(1, b - a));
+  const cross = (x: Float32Array) => x.reduce((n, v, i) => (i > 0 && (x[i - 1]! < 0) !== (v < 0) ? n + 1 : n), 0);
+  it("the parametric EQ boosts the band it is placed on and leaves a far tone alone", () => {
+    const fx = { ...make("parametric"), params: { f2: 1000, g2: 12, q2: 2 } };
+    const hit = run2([fx], sine(1000), sine(1000), R)[0];
+    const miss = run2([fx], sine(100), sine(100), R)[0];
+    expect(rms(hit, 4000) / rms(sine(1000), 4000)).toBeGreaterThan(3);
+    expect(rms(miss, 4000) / rms(sine(100), 4000)).toBeCloseTo(1, 1);
+  });
+  it("stereo width 0 makes the sound mono, 1 leaves it, 2 spreads it", () => {
+    const l = sine(300);
+    const r = sine(500);
+    const mono = run2([{ ...make("stereo"), params: { width: 0 } }], l, r, R);
+    expect(Array.from(mono[0]!.slice(100, 120))).toEqual(Array.from(mono[1]!.slice(100, 120)));
+    const same = run2([{ ...make("stereo"), params: { width: 1 } }], l, r, R);
+    for (let i = 0; i < 200; i++) expect(same[0]![i]).toBeCloseTo(l[i]!, 5);
+    const wide = run2([{ ...make("stereo"), params: { width: 2 } }], l, r, R);
+    expect(rms(wide[0]!) ).toBeGreaterThan(rms(l) * 0.99);
+    const side = (x: [Float32Array, Float32Array]) => x[0].map((v, i) => Math.abs(v - x[1][i]!)).reduce((a, b) => a + b, 0);
+    expect(side(wide)).toBeGreaterThan(side(same) * 1.9);
+  });
+  it("the transient shaper boosts an onset and a negative punch softens it", () => {
+    const hit = new Float32Array(R);
+    for (let i = 0; i < 3000; i++) hit[i] = 0.5 * Math.sin((2 * Math.PI * 200 * i) / R) * Math.exp(-i / 800);
+    const peakOf = (x: Float32Array) => x.slice(0, 400).reduce((m, v) => Math.max(m, Math.abs(v)), 0);
+    const up = run2([{ ...make("transient"), params: { attack: 1, sustain: 0 } }], hit, hit, R)[0];
+    const down = run2([{ ...make("transient"), params: { attack: -1, sustain: 0 } }], hit, hit, R)[0];
+    expect(peakOf(up)).toBeGreaterThan(peakOf(hit) * 1.2);
+    expect(peakOf(down)).toBeLessThan(peakOf(hit) * 0.9);
+    const quiet = new Float32Array(1000);
+    expect(run2([make("transient")], quiet, quiet, R)[0].every((v) => v === 0)).toBe(true);
+  });
+  it("the echo repeats an impulse at the gap, quieter each time, and ping-pong swaps sides", () => {
+    const imp = new Float32Array(R);
+    imp[0] = 1;
+    const zero = new Float32Array(R);
+    const e = { ...make("echo"), params: { time: 100, feedback: 0.5, mix: 1, pingpong: 0 } };
+    const [l] = run2([e], imp, zero, R);
+    const d = Math.round(0.1 * R);
+    expect(l[d]).toBeCloseTo(0.5, 5);
+    expect(l[2 * d]).toBeCloseTo(0.25, 5);
+    const [pl, pr] = run2([{ ...e, params: { ...e.params, pingpong: 1 } }], imp, zero, R);
+    expect(pr[d]).toBeCloseTo(0.5, 5); // the first repeat arrives on the other side
+    expect(pl[d]).toBe(0);
+    expect(pl[2 * d]).toBeCloseTo(0.25, 5);
+    expect(l.length).toBe(R);
+  });
+  it("the reverb leaves a tail after a click, a bigger room a longer one, and mix 0 is dry", () => {
+    const imp = new Float32Array(R);
+    imp[0] = 1;
+    const tail = (size: number) => rms(run2([{ ...make("reverb"), params: { size, damping: 0.2, mix: 1 } }], imp, imp, R)[0], 8000, 16000);
+    expect(tail(0.2)).toBeGreaterThan(0);
+    expect(tail(0.9)).toBeGreaterThan(tail(0.2));
+    const dry = run2([{ ...make("reverb"), params: { mix: 0 } }], imp, imp, R)[0];
+    expect(Array.from(dry)).toEqual(Array.from(imp));
+  });
+  it("the pitch shifter moves a tone an octave up (twice the zero crossings) and 0 semitones keeps it", () => {
+    const x = sine(400, 1);
+    const up = run2([{ ...make("pitch"), params: { semitones: 12, mix: 1 } }], x, x, R)[0];
+    const ratio = cross(up.slice(2000, 18000)) / cross(x.slice(2000, 18000));
+    expect(ratio).toBeGreaterThan(1.8);
+    expect(ratio).toBeLessThan(2.2);
+    const down = run2([{ ...make("pitch"), params: { semitones: -12, mix: 1 } }], x, x, R)[0];
+    expect(cross(down.slice(2000, 18000)) / cross(x.slice(2000, 18000))).toBeLessThan(0.6);
+    expect(rms(up, 3000, 18000)).toBeGreaterThan(0.1);
   });
 });

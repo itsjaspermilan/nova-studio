@@ -126,6 +126,8 @@ export interface Bus {
 /// ceiling in dB (-12 to 0: a limiter keeps the loudest moments under it without clipping). A song with neither renders as before.
 export interface SongMaster {
   volume: number;
+  /// Effects on the whole mix, run after the buses and the room and before the master fader (lib/fx.ts).
+  fx?: Fx[];
   lufs?: number;
   limit?: number;
 }
@@ -410,11 +412,17 @@ export function parseSong(text: string): Parsed {
   }
   let master: SongMaster | undefined;
   if (o.master !== undefined) {
-    const m = o.master as { volume?: unknown; lufs?: unknown; limit?: unknown };
+    const m = o.master as { volume?: unknown; lufs?: unknown; limit?: unknown; fx?: unknown };
     if (!m || typeof m !== "object" || !num(m.volume ?? 1, 0, MAX_MASTER)) return { ok: false, error: `"master" is { "volume": 0 to ${MAX_MASTER} }` };
     if (m.lufs !== undefined && !num(m.lufs, -30, -6)) return { ok: false, error: '"master.lufs" must be from -30 to -6' };
     if (m.limit !== undefined && !num(m.limit, -12, 0)) return { ok: false, error: '"master.limit" must be from -12 to 0 (dB)' };
-    master = { volume: (m.volume as number | undefined) ?? 1, ...(m.lufs !== undefined ? { lufs: m.lufs as number } : {}), ...(m.limit !== undefined ? { limit: m.limit as number } : {}) };
+    let masterFx: Fx[] | undefined;
+    if (m.fx !== undefined) {
+      const c = cleanFx(m.fx);
+      if (!c.ok) return { ok: false, error: `master.${c.error}` };
+      if (c.chain.length) masterFx = c.chain;
+    }
+    master = { volume: (m.volume as number | undefined) ?? 1, ...(masterFx ? { fx: masterFx } : {}), ...(m.lufs !== undefined ? { lufs: m.lufs as number } : {}), ...(m.limit !== undefined ? { limit: m.limit as number } : {}) };
   }
   let buses: Bus[] | undefined;
   if (o.buses !== undefined) {
@@ -502,7 +510,7 @@ export function serializeSong(song: Song): string {
     return `    {\n${fields.map((f) => `      ${f}`).join(",\n")},\n      "notes": ${notes}\n    }`;
   };
   const room = song.room ? `,\n  "room": { "size": ${song.room.size}, "damping": ${song.room.damping}, "mix": ${song.room.mix} }` : "";
-  const master = song.master ? `,\n  "master": { "volume": ${song.master.volume}${song.master.lufs !== undefined ? `, "lufs": ${song.master.lufs}` : ""}${song.master.limit !== undefined ? `, "limit": ${song.master.limit}` : ""} }` : "";
+  const master = song.master ? `,\n  "master": { "volume": ${song.master.volume}${song.master.fx?.length ? `, "fx": ${JSON.stringify(song.master.fx)}` : ""}${song.master.lufs !== undefined ? `, "lufs": ${song.master.lufs}` : ""}${song.master.limit !== undefined ? `, "limit": ${song.master.limit}` : ""} }` : "";
   const bar = song.beatsPerBar && song.beatsPerBar !== 4 ? `,\n  "beatsPerBar": ${song.beatsPerBar}` : "";
   const markers = song.markers?.length ? `,\n  "markers": ${JSON.stringify(song.markers)}` : "";
   const buses = song.buses?.length ? `,\n  "buses": [\n${song.buses.map((b) => `    ${JSON.stringify(b)}`).join(",\n")}\n  ]` : "";
@@ -1021,7 +1029,7 @@ export function isAudible(song: Song, track: Track): boolean {
 export function setMaster(song: Song, volume: number): Song {
   const v = clamp(volume, 0, MAX_MASTER);
   const next = { ...song };
-  const keep = { ...(song.master?.lufs !== undefined ? { lufs: song.master.lufs } : {}), ...(song.master?.limit !== undefined ? { limit: song.master.limit } : {}) };
+  const keep = { ...(song.master?.fx?.length ? { fx: song.master.fx } : {}), ...(song.master?.lufs !== undefined ? { lufs: song.master.lufs } : {}), ...(song.master?.limit !== undefined ? { limit: song.master.limit } : {}) };
   if (v === 1 && !Object.keys(keep).length) delete next.master;
   else next.master = { volume: v, ...keep };
   return next;
@@ -1218,6 +1226,13 @@ export function renderSong(source: Song, rate = RATE): Sound {
       left[i] = left[i]! + wl[i]!;
       right[i] = right[i]! + wr[i]!;
     }
+  }
+  // Effects on the whole mix.
+  const masterChain = (song.master?.fx ?? []).filter((f) => f.on !== false);
+  if (masterChain.length) {
+    const [ml, mr] = applyFx(masterChain, left, right, rate);
+    left.set(ml.subarray(0, total));
+    right.set(mr.subarray(0, total));
   }
   // A fuller song gets a gentle soft clip so that the loudest moments round off instead of being scaled down as a whole.
   if (richSong) {
