@@ -22,6 +22,7 @@
   import { ORTHO_FOV, PERSPECTIVE_FOV, VIEW_LABELS, VIEW_NAMES, distanceForFov, orbitStep, viewPlacement, type ViewName } from "../lib/view-presets";
   import ModelStats from "./ModelStats.svelte";
   import { solveLimb } from "../lib/model-ik";
+  import { bakeConstraints, constrainedPose, setConstraints } from "../lib/model-constraints";
   import { retargetClip, applyPose as applySavedPose, capturePose, removePose, copyKeys, mirrorClip, pasteKeys, reverseClip, shiftKeys, stretchKeys, type KeyClipboard } from "../lib/model-anim-tools";
   import { SCULPT_HELP, SCULPT_MODES, sculptDab, type SculptMode } from "../lib/sculpt";
   import { addFace, bevelEdge, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, freshProfile, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsSymmetric, setFaceColors, setSmooth, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
@@ -95,6 +96,11 @@
   let keyBoard: KeyClipboard | null = $state(null);
   let animNote = $state("");
   let poseName = $state("");
+  let bakeRemove = $state(false);
+  const setMine = (list: import("../lib/model-doc").Constraint[]) => {
+    if (selected) commit(setConstraints(doc, selected.parts, list), false, "Constraints");
+  };
+  const allPartPaths = $derived(walk(doc).map((w) => namesOf(doc, w.parts).join("/")));
   const otherModels = $derived(studio.files.filter((f) => !f.dir && f.path.endsWith(".model.json") && f.path !== filePath).map((f) => f.path));
   /// Copies every animation of another model of the project onto this one, parts matched by name (moves scaled by the models' heights).
   async function copyAnimationsFrom(path: string) {
@@ -543,7 +549,8 @@
   function applyPose() {
     if (!modelGroup) return;
     const clip = mode === "animate" ? doc.clips?.[clipIndex] : undefined;
-    const pose: Map<string, Pose> = clip ? samplePose(clip, animTime, false) : new Map();
+    // (constraints show only while animating: in the model view the parts stay as they are authored)
+    const pose: Map<string, Pose> = clip ? constrainedPose(doc, samplePose(clip, animTime, false)) : new Map();
     for (const [key, g] of groups) {
       g.group.position.set(...g.origin);
       g.group.rotation.set(...(g.rotation.map((d) => (d * Math.PI) / 180) as Vec3), "XYZ");
@@ -1905,6 +1912,7 @@
     untrack(attachPointGizmo);
   });
   const part = $derived(selected && selected.cube === undefined ? partAt(doc, selected.parts) : selected ? partAt(doc, selected.parts) : undefined);
+  const myConstraints = $derived(part?.constraints ?? []);
 
   function newPart(parent: number[]) {
     const r = addPart(doc, parent);
@@ -2646,6 +2654,37 @@
             <div class="vec">{#each poseValue(prop as Prop) as v, i (i)}<input type="number" step={prop === "scale" ? 0.1 : 1} value={v} aria-label={`${"xyz"[i]} ${prop}`} onchange={(e) => setPoseValue(prop as Prop, i, e.currentTarget.value)} />{/each}</div>
             <button class="ghost keybtn" onclick={() => keyProp(prop as Prop)}>◆ Key {prop}</button>
           {/each}
+          <h4>Constraints <span class="dim small">(studio only: bake them into keys for the game)</span></h4>
+          {#each myConstraints as c, ci (ci)}
+            <div class="row wrap small">
+              {#if c.type === "limit"}
+                <strong>Limit turn</strong>
+                {#each [0, 1, 2] as a (a)}<input type="number" class="narrow" step="5" aria-label={`limit min ${"xyz"[a]}`} value={c.min[a]} onchange={(e) => { const min = [...c.min] as Vec3; min[a] = Number(e.currentTarget.value); setMine(myConstraints.map((x, k) => (k === ci ? { ...c, min } : x))); }} /> {/each}
+                <span class="dim">to</span>
+                {#each [0, 1, 2] as a (a)}<input type="number" class="narrow" step="5" aria-label={`limit max ${"xyz"[a]}`} value={c.max[a]} onchange={(e) => { const max = [...c.max] as Vec3; max[a] = Number(e.currentTarget.value); setMine(myConstraints.map((x, k) => (k === ci ? { ...c, max } : x))); }} /> {/each}
+              {:else if c.type === "copy"}
+                <strong>Copy turn of</strong>
+                <select value={c.from} aria-label="Part to copy" onchange={(e) => setMine(myConstraints.map((x, k) => (k === ci ? { ...c, from: e.currentTarget.value } : x)))}>{#each allPartPaths as pp (pp)}<option value={pp}>{pp}</option>{/each}</select>
+                {#each ["x", "y", "z"] as ax, a (ax)}<label class="check"><input type="checkbox" checked={c.axes[a]} onchange={(e) => { const axes = [...c.axes] as [boolean, boolean, boolean]; axes[a] = e.currentTarget.checked; setMine(myConstraints.map((x, k) => (k === ci ? { ...c, axes } : x))); }} />{ax}</label>{/each}
+                <label class="inline">mix <input type="number" class="narrow" min="0" max="1" step="0.1" value={c.mix} onchange={(e) => setMine(myConstraints.map((x, k) => (k === ci ? { ...c, mix: Math.max(0, Math.min(1, Number(e.currentTarget.value))) } : x)))} /></label>
+              {:else}
+                <strong>Reach</strong>
+                {#each [0, 1, 2] as a (a)}<input type="number" class="narrow" step="0.5" aria-label={`reach target ${"xyz"[a]}`} value={c.target[a]} onchange={(e) => { const target = [...c.target] as Vec3; target[a] = Number(e.currentTarget.value); setMine(myConstraints.map((x, k) => (k === ci ? { ...c, target } : x))); }} /> {/each}
+              {/if}
+              <button class="ghost" aria-label="Remove this constraint" onclick={() => setMine(myConstraints.filter((_, k) => k !== ci))}>✕</button>
+            </div>
+          {/each}
+          <div class="row wrap">
+            <button disabled={myConstraints.length >= 4} onclick={() => setMine([...myConstraints, { type: "limit", min: [-45, -45, -45], max: [45, 45, 45] }])}>＋ Limit</button>
+            <button disabled={myConstraints.length >= 4} onclick={() => setMine([...myConstraints, { type: "copy", from: allPartPaths[0] ?? "", axes: [true, true, true], mix: 1 }])}>＋ Copy</button>
+            <button disabled={myConstraints.length >= 4 || !part?.children[0]?.children[0]} title="Needs a part with a part below it and another below that (a shoulder, elbow, hand)" onclick={() => setMine([...myConstraints, { type: "reach", target: [...reachTarget] as [number, number, number] }])}>＋ Reach</button>
+          </div>
+          {#if clip}
+            <div class="row wrap">
+              <button onclick={() => { const r = bakeConstraints(doc, clipIndex, 30, bakeRemove); if (r.baked.length) { commit(r.doc, false, "Bake constraints"); animNote = `Baked ${r.baked.length} part${r.baked.length === 1 ? "" : "s"} into rotation keys.`; } else animNote = "No part has a constraint."; }} title="Write what the constraints do into rotation keys over this whole animation (the game plays keys)">Bake into keys</button>
+              <label class="check"><input type="checkbox" bind:checked={bakeRemove} /> and remove the rules</label>
+            </div>
+          {/if}
           {#if clip && partNames.length && easeAt(clip, partNames, animTime) !== undefined}
             <label>How this key blends into the next
               <select value={easeAt(clip, partNames, animTime)} aria-label="Easing" onchange={(e) => commit(setEase(doc, clipIndex, partNames, animTime, e.currentTarget.value as Ease))}>

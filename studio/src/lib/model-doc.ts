@@ -93,6 +93,34 @@ export interface Part {
   rotation: Vec3;
   cubes: Cube[];
   children: Part[];
+  /// Rules that adjust this part's pose while the model is shown or baked (lib/model-constraints.ts). Studio only: the game plays the baked keys.
+  constraints?: Constraint[];
+}
+
+/// A rule on a part. "limit" keeps its turn (degrees, X then Y then Z) between `min` and `max`; "copy" takes the turn of another part (a path of names joined by "/") on the axes
+/// that are true, blended by `mix` (0 to 1); "reach" makes this part the top of a three-part limb (it, its first child and that child's first child) and bends it so the end
+/// reaches `target` (model space), the joint bending towards `pole`.
+export type Constraint =
+  | { type: "limit"; min: Vec3; max: Vec3 }
+  | { type: "copy"; from: string; axes: [boolean, boolean, boolean]; mix: number }
+  | { type: "reach"; target: Vec3; pole?: Vec3 };
+export const MAX_CONSTRAINTS = 4;
+
+export function checkConstraints(list: unknown, at: string): string | null {
+  if (!Array.isArray(list) || list.length > MAX_CONSTRAINTS) return `${at}.constraints must be a list of up to ${MAX_CONSTRAINTS}`;
+  const vec3 = (v: unknown) => Array.isArray(v) && v.length === 3 && v.every((n) => typeof n === "number" && Number.isFinite(n));
+  for (const [i, c] of (list as Constraint[]).entries()) {
+    const w = `${at}.constraints[${i}]`;
+    if (!c || typeof c !== "object") return `${w} must be an object`;
+    if (c.type === "limit") {
+      if (!vec3(c.min) || !vec3(c.max)) return `${w} needs "min" and "max" as three numbers`;
+    } else if (c.type === "copy") {
+      if (typeof c.from !== "string" || !c.from || !Array.isArray(c.axes) || c.axes.length !== 3 || !c.axes.every((b) => typeof b === "boolean") || typeof c.mix !== "number" || !(c.mix >= 0 && c.mix <= 1)) return `${w} needs "from" (a part path), three true/false "axes" and a "mix" from 0 to 1`;
+    } else if (c.type === "reach") {
+      if (!vec3(c.target) || (c.pole !== undefined && !vec3(c.pole))) return `${w} needs a "target" of three numbers (and "pole" the same if given)`;
+    } else return `${w}.type must be "limit", "copy" or "reach"`;
+  }
+  return null;
 }
 
 /// A named pose: for each part (its names joined by "/") some of position, rotation (degrees) and scale.
@@ -296,6 +324,10 @@ export function parseModel(text: string): Parsed {
     if (!isVec3(part.origin)) return `${at}.origin must be three numbers`;
     if (!isVec3(part.rotation)) return `${at}.rotation must be three numbers`;
     if (!Array.isArray(part.cubes) || !Array.isArray(part.children)) return `${at} needs "cubes" and "children" lists`;
+    if (part.constraints !== undefined) {
+      const bad = checkConstraints(part.constraints, at);
+      if (bad) return bad;
+    }
     if (++parts > MAX_PARTS) return `more than ${MAX_PARTS} parts`;
     for (const [i, c] of part.cubes.entries()) {
       if (++cubes > MAX_CUBES) return `more than ${MAX_CUBES} cubes`;
@@ -445,6 +477,7 @@ export function serializeModel(doc: ModelDoc): string {
     const i2 = `${indent}  `;
     const lines = [`${i2}"name": ${JSON.stringify(p.name)}`, `${i2}"origin": ${vec(p.origin)}`, `${i2}"rotation": ${vec(p.rotation)}`];
     lines.push(p.cubes.length ? `${i2}"cubes": [\n${p.cubes.map((c) => `${i2}  ${cube(c, `${i2}  `)}`).join(",\n")}\n${i2}]` : `${i2}"cubes": []`);
+    if (p.constraints?.length) lines.push(`${i2}"constraints": ${JSON.stringify(p.constraints)}`);
     lines.push(p.children.length ? `${i2}"children": [\n${p.children.map((c) => `${i2}  ${part(c, `${i2}  `)}`).join(",\n")}\n${i2}]` : `${i2}"children": []`);
     return `{\n${lines.join(",\n")}\n${indent}}`;
   };
