@@ -10,6 +10,7 @@ import { MAX_FACES, MAX_VERTS, type Cube, type MeshFace, type Vec3 } from "./mod
 import { polyNormal } from "./model-mesh";
 import { fitBounds } from "./model-doc";
 import { toMesh } from "./mesh-edit";
+import { ZERO_LATTICE, lattice, shrinkwrap, wireframe, type LatticeCorners, type WrapKind } from "./modifier-more";
 import { DEFORMS, decimate as decimateCube, displace as displaceCube, simpleDeform, smoothVerts, triangulate as triangulateCube, type DeformKind } from "./mesh-ops";
 export { DEFORMS, type DeformKind };
 
@@ -125,10 +126,29 @@ export interface SmoothMod extends Common {
   factor?: number;
   passes?: number;
 }
-export type Modifier = MirrorMod | SubsurfMod | BevelMod | SolidifyMod | ArrayMod | RevolveMod | WeldMod | TriangulateMod | DecimateMod | DisplaceMod | DeformMod | SmoothMod;
+/// Replaces the edges with thin bars (a wire frame of the mesh).
+export interface WireframeMod extends Common {
+  type: "wireframe";
+  thickness?: number;
+}
+/// Pulls the points onto a sphere, a cylinder (round `axis`) or a plane (across `axis`).
+export interface ShrinkwrapMod extends Common {
+  type: "shrinkwrap";
+  kind?: WrapKind;
+  axis?: ModAxis;
+  factor?: number;
+  /// Sphere and cylinder: 0 (or missing) is the average distance now.
+  radius?: number;
+}
+/// Moves the eight corners of the box round the mesh and carries the points along (`corners[i]` is the offset of corner i: x = i & 1, y = (i >> 1) & 1, z = (i >> 2) & 1).
+export interface LatticeMod extends Common {
+  type: "lattice";
+  corners?: LatticeCorners;
+}
+export type Modifier = WireframeMod | ShrinkwrapMod | LatticeMod | MirrorMod | SubsurfMod | BevelMod | SolidifyMod | ArrayMod | RevolveMod | WeldMod | TriangulateMod | DecimateMod | DisplaceMod | DeformMod | SmoothMod;
 export type ModifierType = Modifier["type"];
-export const MODIFIER_TYPES: ModifierType[] = ["mirror", "subsurf", "bevel", "solidify", "array", "revolve", "weld", "triangulate", "decimate", "displace", "deform", "smooth"];
-export const MODIFIER_LABELS: Record<ModifierType, string> = { mirror: "Mirror", subsurf: "Subdivision", bevel: "Bevel", solidify: "Solidify", array: "Array", revolve: "Revolve", weld: "Weld", triangulate: "Triangulate", decimate: "Decimate", displace: "Displace", deform: "Simple deform", smooth: "Smooth" };
+export const MODIFIER_TYPES: ModifierType[] = ["mirror", "subsurf", "bevel", "solidify", "array", "revolve", "weld", "triangulate", "decimate", "displace", "deform", "smooth", "wireframe", "shrinkwrap", "lattice"];
+export const MODIFIER_LABELS: Record<ModifierType, string> = { mirror: "Mirror", subsurf: "Subdivision", bevel: "Bevel", solidify: "Solidify", array: "Array", revolve: "Revolve", weld: "Weld", triangulate: "Triangulate", decimate: "Decimate", displace: "Displace", deform: "Simple deform", smooth: "Smooth", wireframe: "Wireframe", shrinkwrap: "Shrinkwrap", lattice: "Lattice" };
 export const MAX_REVOLVE = 128;
 /// A crease weight of 1 stays sharp through this many subdivision levels (the most a modifier does).
 export const CREASE_LEVELS = 4;
@@ -151,6 +171,9 @@ export function newModifier(type: ModifierType): Modifier {
     case "displace": return { type, amount: 0.5, scale: 4, seed: 1 };
     case "deform": return { type, kind: "bend", axis: "y", amount: 45 };
     case "smooth": return { type, factor: 0.5, passes: 2 };
+    case "wireframe": return { type, thickness: 0.5 };
+    case "shrinkwrap": return { type, kind: "sphere", axis: "y", factor: 1, radius: 0 };
+    case "lattice": return { type, corners: ZERO_LATTICE() };
   }
 }
 
@@ -775,6 +798,9 @@ export function applyModifier(s: Soup, m: Modifier, stage: Stage): Soup {
     case "decimate": return throughCube(s, (c) => decimateCube(c, m.ratio ?? 0.5), false);
     case "displace": return throughCube(s, (c) => displaceCube(c, m.amount ?? 0.5, m.scale ?? 4, m.seed ?? 1), true);
     case "deform": return throughCube(s, (c) => simpleDeform(c, m.kind ?? "bend", axisIndex(m.axis ?? "y") as 0 | 1 | 2, m.amount ?? 45), true);
+    case "wireframe": return wireframe(s, m.thickness ?? 0.5);
+    case "shrinkwrap": return shrinkwrap(s, m.kind ?? "sphere", axisIndex(m.axis ?? "y") as 0 | 1 | 2, m.factor ?? 1, m.radius ?? 0);
+    case "lattice": return lattice(s, m.corners ?? ZERO_LATTICE());
     case "smooth": return throughCube(s, (c) => smoothVerts(c, undefined, m.factor ?? 0.5, m.passes ?? 2), true);
   }
 }
@@ -874,6 +900,19 @@ export function checkModifier(m: unknown, at: string): string | null {
     case "smooth":
       problems.push(num("factor", 0.1, 1), num("passes", 1, 20, true));
       break;
+    case "wireframe":
+      problems.push(num("thickness", 0.001, 1e6));
+      break;
+    case "shrinkwrap":
+      if (o.kind !== undefined && !["sphere", "cylinder", "plane"].includes(o.kind as string)) return `${at}.kind must be sphere, cylinder or plane`;
+      if (o.axis !== undefined && !MOD_AXES.includes(o.axis as ModAxis)) return `${at}.axis must be x, y or z`;
+      problems.push(num("factor", 0, 1), num("radius", 0, 1e6));
+      break;
+    case "lattice": {
+      const c = o.corners;
+      if (c !== undefined && !(Array.isArray(c) && c.length === 8 && c.every((v) => Array.isArray(v) && v.length === 3 && v.every((x) => typeof x === "number" && Number.isFinite(x))))) return `${at}.corners must be eight offsets of three numbers`;
+      break;
+    }
   }
   return problems.find((p) => p) ?? null;
 }

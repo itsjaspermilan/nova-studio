@@ -108,6 +108,30 @@
           <label title="How far each pass moves the points towards their neighbours">Factor <input type="number" min="0.1" max="1" step="0.1" value={m.factor ?? 0.5} onchange={(e) => set(i, { factor: Math.max(0.1, Math.min(1, num(e.currentTarget.value, 0.5))) })} /></label>
           <label title="How many passes">Passes <input type="number" min="1" max="20" step="1" value={m.passes ?? 2} onchange={(e) => set(i, { passes: Math.max(1, Math.min(20, Math.round(num(e.currentTarget.value, 2)))) })} /></label>
         </div>
+      {:else if m.type === "wireframe"}
+        <div class="grid">
+          <label title="How thick each bar is, in units">Thickness <input type="number" min="0.05" step="0.1" value={m.thickness ?? 0.5} onchange={(e) => set(i, { thickness: Math.max(0.001, num(e.currentTarget.value, 0.5)) })} /></label>
+        </div>
+        <p class="dim small">Every edge becomes a bar and the faces go: a frame of the mesh.</p>
+      {:else if m.type === "shrinkwrap"}
+        <div class="grid">
+          <label>Onto
+            <select value={m.kind ?? "sphere"} onchange={(e) => set(i, { kind: e.currentTarget.value as "sphere" | "cylinder" | "plane" })}><option value="sphere">a sphere</option><option value="cylinder">a cylinder</option><option value="plane">a plane</option></select>
+          </label>
+          <label title="The cylinder's axis, or the direction the plane faces">Axis
+            <select value={m.axis ?? "y"} onchange={(e) => set(i, { axis: e.currentTarget.value as ModAxis })}>{#each MOD_AXES as a (a)}<option value={a}>{a.toUpperCase()}</option>{/each}</select>
+          </label>
+          <label title="0 leaves the mesh as it is; 1 puts every point on the shape">Amount <input type="number" min="0" max="1" step="0.1" value={m.factor ?? 1} onchange={(e) => set(i, { factor: Math.max(0, Math.min(1, num(e.currentTarget.value, 1))) })} /></label>
+          {#if (m.kind ?? "sphere") !== "plane"}<label title="0 uses the average distance of the points">Radius <input type="number" min="0" step="0.5" value={m.radius ?? 0} onchange={(e) => set(i, { radius: Math.max(0, num(e.currentTarget.value, 0)) })} /></label>{/if}
+        </div>
+      {:else if m.type === "lattice"}
+        <p class="dim small">Move the corners of the box round the mesh; the points follow. Low is the small end of an axis, high the large end.</p>
+        <div class="vecs">
+          {#each [0, 1, 2, 3, 4, 5, 6, 7] as k (k)}
+            <span class="dim small" title="x {k & 1 ? 'high' : 'low'}, y {k & 2 ? 'high' : 'low'}, z {k & 4 ? 'high' : 'low'}">{k & 1 ? "X+" : "X−"}{k & 2 ? "Y+" : "Y−"}{k & 4 ? "Z+" : "Z−"}</span>
+            {#each [0, 1, 2] as a (a)}<input type="number" step="0.5" aria-label={`corner ${k} ${"xyz"[a]}`} value={(m.corners ?? [])[k]?.[a] ?? 0} onchange={(e) => { const c = Array.from({ length: 8 }, (_, j) => [...((m.corners ?? [])[j] ?? [0, 0, 0])]) as [number, number, number][]; c[k]![a] = num(e.currentTarget.value, 0); set(i, { corners: c as never }); }} />{/each}
+          {/each}
+        </div>
       {:else if m.type === "array"}
         <div class="grid">
           <label>Count <input type="number" min="1" max="64" step="1" value={m.count ?? 2} onchange={(e) => set(i, { count: Math.max(1, Math.min(64, Math.round(num(e.currentTarget.value, 2)))) })} /></label>
