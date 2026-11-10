@@ -76,17 +76,22 @@ Done (checked in the browser preview and by unit tests; **none of it run in the 
 
 Still open (4.1 Layout):
 - [ ] Song editor with an arrangement: clips on tracks, split, resize, knife, loop, colour, zoom and snap; a pattern editor apart from the piano roll (today one song is one looping pattern).
-- [ ] Tempo and time-signature track; markers; a loop region that gives the game its loop points.
-- [ ] Piano roll: strum, glue, humanise, scale and chord helpers, a pan lane, pitch bend, note properties, quantise to a chosen grid (today only the beat), Ctrl-drag to copy.
-- [ ] Automation editor: curves (linear, discrete, cubic Hermite with tangents) for any knob, an LFO or controller to drive a knob.
-- [ ] Mixer: send routing and buses, FX chains per channel (EQ, compressor and so on), colours per channel, a master limiter setting, a loudness meter in LUFS.
+- [x] (2026-11-09, `lib/song-tools.ts`, `lib/song.ts`, unit tests; the Tools panel checked in the browser preview, **nothing listened to**) Beats in a bar (the bar lines follow), markers (named, drawn on the roll), and a loop region (drawn on the roll; "Export the loop" writes `music/<song>_loop.ogg` of just those steps with the note tails wrapped onto its start, so it loops without a seam in the game).
+- [ ] Still open: a tempo *track* (the tempo changing within a song) and a different time signature part-way: the song has one tempo; loop points as metadata in the Ogg for the runtime to seek (the exported loop is its own file).
+- [x] (2026-11-09, unit tests; Tools panel) Piano roll helpers: strum (down or up, a gap), glue, humanise loudness and timing (seeded), snap to a scale (9 scales), build a chord on picked notes (10 chords, inversions), quantise to a chosen grid (1 step, 2, half a beat, a beat, a bar).
+- [ ] Still open: a pan lane, pitch bend, per-note properties, Ctrl-drag to copy.
+- [x] (2026-11-09, `lib/song-lanes.ts`, unit tests) A **gain lane** per track: points with a straight, smooth or stepped curve, an LFO generator (sine, triangle, square); each note plays at its loudness times the lane where it starts (rendered, so the exported file has it). Drawn as a small graph in the Tools panel; points are typed in.
+- [ ] Still open: automation of any other knob (pan, cutoff, reverb, effect settings) and a lane drawn with the mouse over the roll; tangent handles.
+- [x] (2026-11-09, `lib/loudness.ts`, 7 tests incl. BS.1770 reference levels) A LUFS meter (K-weighted, gated; "Measure the loudness" in Tools), a **loudness target** (the render is brought to e.g. -16 LUFS) and a **limiter** with a peak ceiling, both saved in the song's `master` and used by every export.
+- [ ] Still open: send routing and buses, FX chains per channel (see Effects), colours per channel.
 - [ ] Instrument and effect panel for the selected track (a plugin-style UI) instead of the one long inspector.
 - [ ] Sample editor: loop points, slicing (auto-slice), pitch and time stretch, gain, record from the microphone (own consent step), spectrogram. (Trim, fade, normalise, reverse, waveform exist.)
 Still open (4.2 Instruments, effects, files):
 - [ ] Instruments: FM and wavetable synth, a sample-based drum machine, a sampler and keymap, soundfonts (SF2/SFZ), additive and organ, bass monosynth, formula ("expression") synth, Karplus-Strong pluck, vocoder-lite. (Today: chip waves, unison, filter, sub, vibrato, two drum kits.)
 - [ ] Effects: parametric EQ with analyser, compressor and multiband, limiter, chorus, flanger, phaser, distortion and bit crusher and waveshaper, gate, pitch shifter, stereo tools, transient shaper, spectrum analyser, oscilloscope, vectorscope. (Today: reverb and echo, a filter on a track.)
 - [ ] Controllers: LFO, envelope, peak follower, MIDI keyboard input for live play, tap tempo.
-- [ ] File I/O: MP3 import, MIDI import and export, project template songs, loop-ready crossfaded export, loudness normalisation on export; the audio core's synthesis connected to game audio.
+- [x] (2026-11-09, `lib/midi.ts`, 8 tests: round trip, running status, GM drums, error messages; the write to `exports/` and the file picker not run in the real app) MIDI export (type 1, tempo, bar, markers, one track each, drums on channel 10) and import (type 0 and 1, notes put on the grid with a warning for what was rounded or left out); loop-ready export (see above); loudness on export (see Mixer).
+- [ ] Still open: MP3 import, project template songs, the audio core's synthesis connected to game audio.
 Still open (4.3 Game audio):
 - [ ] Adaptive music in the runtime (layers or stems mixed by game state, transitions on bar lines): the stems exist as files, the runtime does not mix them.
 - [ ] Random sound groups as a project feature (variations exist as files; no group object), 3D falloff presets, a soundbank view of which project files use each sound, an audio budget for the device (memory, voices).

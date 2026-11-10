@@ -8,6 +8,9 @@
   import { encodeWav, toBase64, frames, type Sound } from "../lib/wav";
   import { studio } from "../lib/store.svelte";
   import MixerPanel from "./MixerPanel.svelte";
+  import SongTools from "./SongTools.svelte";
+  import { midiToSong, songToMidi } from "../lib/midi";
+  import { regionOf } from "../lib/song-tools";
   import { dbfs } from "../lib/mixer";
   import { commands } from "../lib/commands";
   import { copyNotes, deleteNotes, moveNotes, noteKey, notesInBox, pasteNotes, quantizeTrack, repeatSong, setAllVelocities, stemName, stemSong, type ClipNote } from "../lib/song-edit";
@@ -31,7 +34,7 @@
   let noteLen = $state(1);
   let loop = $state(true);
   /// The lower part shows the mixer, or the notes' loudness bars, or nothing.
-  let lower: "mixer" | "velocity" | "none" = $state("none");
+  let lower: "mixer" | "velocity" | "tools" | "none" = $state("none");
   let playing = $state(false);
   let playhead = $state(0); // steps
   const oggPath = untrack(() => filePath).replace(/\.song\.json$/i, ".ogg");
@@ -211,6 +214,25 @@
       ctx.moveTo(KEYS_W + s * STEP_W + 0.5, 0);
       ctx.lineTo(KEYS_W + s * STEP_W + 0.5, h);
       ctx.stroke();
+    }
+    // the loop region (tinted) and the markers (a line and a name at the top)
+    if (song.loop) {
+      ctx.fillStyle = "rgba(111,207,142,.08)";
+      ctx.fillRect(KEYS_W + song.loop.from * STEP_W, 0, (song.loop.to - song.loop.from) * STEP_W, h);
+      ctx.fillStyle = "#6fcf8e";
+      ctx.fillRect(KEYS_W + song.loop.from * STEP_W, 0, 2, h);
+      ctx.fillRect(KEYS_W + song.loop.to * STEP_W - 2, 0, 2, h);
+    }
+    for (const m of song.markers ?? []) {
+      ctx.strokeStyle = "rgba(255,160,90,.8)";
+      ctx.beginPath();
+      ctx.moveTo(KEYS_W + m.step * STEP_W + 0.5, 0);
+      ctx.lineTo(KEYS_W + m.step * STEP_W + 0.5, h);
+      ctx.stroke();
+      ctx.fillStyle = "#ffa05a";
+      ctx.font = "10px system-ui";
+      ctx.textBaseline = "top";
+      ctx.fillText(m.name, KEYS_W + m.step * STEP_W + 3, 2);
     }
     // other tracks as faint ghosts (same rows only)
     song.tracks.forEach((t, ti) => {
@@ -477,12 +499,45 @@
     studio.say("info", `Wrote ${taken.length} stems: ${taken.map((n) => `${n}.ogg`).join(", ")}. Play them together in a game with nova.music.`);
   }
 
+  /// Just the loop region as music/<song>_loop.ogg, with the tails of its last notes wrapped onto its start, so it loops without a seam.
+  async function exportLoop() {
+    if (!song.loop) return;
+    const part = regionOf(song, song.loop.from, song.loop.to);
+    const path = `${oggPath.slice(0, oggPath.lastIndexOf("/") + 1)}${songName}_loop.ogg`;
+    await studio.writeMusicOgg(path, `data:audio/wav;base64,${toBase64(encodeWav(renderSong(part)))}`);
+    studio.say("info", `Wrote ${path}: steps ${song.loop.from} to ${song.loop.to}, ${songSeconds(part).toFixed(1)} s. Play it with nova.music.play and it loops without a gap.`);
+  }
+  async function exportMidi() {
+    const bytes = songToMidi(song);
+    const path = `exports/${songName.replace(/[^A-Za-z0-9_-]+/g, "_")}.mid`;
+    try {
+      await studio.api!.writeExport(path, `data:audio/midi;base64,${toBase64(bytes)}`);
+      await studio.refreshFiles();
+      studio.say("info", `Saved ${path}.`);
+    } catch (e) {
+      studio.say("error", String(e));
+    }
+  }
+  async function importMidi(file: File) {
+    try {
+      const r = midiToSong(new Uint8Array(await file.arrayBuffer()));
+      commit(r.song);
+      track = 0;
+      studio.say(r.warnings.length ? "error" : "info", `Read ${file.name}: ${r.song.tracks.length} tracks, ${r.song.length} steps.${r.warnings.length ? " " + r.warnings.join(" ") : ""} Undo brings the old song back.`);
+    } catch (e) {
+      studio.say("error", `${file.name}: ${e instanceof Error ? e.message : e}`);
+    }
+  }
+
   // The song editor's commands, in the Sound menu and the palette while a song is open.
   $effect(() => {
     const live = () => !!song.tracks[track];
     const offs = [
       commands.register({ id: "song.play", title: "Play or stop the song", menu: "Sound", icon: "play", help: "Space plays and stops while the notes are focused", run: () => toggle() }),
       commands.register({ id: "song.mixer", title: "Show the mixer", menu: "Sound", icon: "settings", keys: ["Mod+Alt+M"], help: "A strip for each track: volume, pan, reverb, mute, solo", run: () => { lower = lower === "mixer" ? "none" : "mixer"; } }),
+      commands.register({ id: "song.tools", title: "Show the song tools", menu: "Sound", icon: "settings", help: "Strum, glue, humanise, scales and chords, markers and the loop, a loudness lane, the master", run: () => { lower = lower === "tools" ? "none" : "tools"; } }),
+      commands.register({ id: "song.exportLoop", title: "Export the loop", menu: "Sound", icon: "export", help: "Just the loop region, ready to loop in the game", enabled: () => !!song.loop, run: () => void exportLoop() }),
+      commands.register({ id: "song.exportMidi", title: "Export as a MIDI file", menu: "Sound", icon: "export", run: () => void exportMidi() }),
       commands.register({ id: "song.loudness", title: "Show the loudness of the notes", menu: "Sound", help: "Drag a bar to change how hard a note is played", run: () => { lower = lower === "velocity" ? "none" : "velocity"; } }),
       commands.register({ id: "song.solo", title: "Solo this track", menu: "Sound", keymaps: { blender: [], nova: [] }, enabled: live, run: () => setTrack({ solo: !current.solo }) }),
       commands.register({ id: "song.mute", title: "Mute this track", menu: "Sound", enabled: live, run: () => setTrack({ mute: !current.mute }) }),
@@ -524,7 +579,7 @@
       <span class="spacer"></span>
       <button class="ghost" onclick={undo} disabled={!canUndo} aria-label="Undo">↶</button>
       <button class="ghost" onclick={redo} disabled={!canRedo} aria-label="Redo">↷</button>
-      <span class="seg" role="group" aria-label="Lower part"><button class:on={lower === "none"} onclick={() => (lower = "none")}>Notes</button><button class:on={lower === "velocity"} onclick={() => (lower = "velocity")}>Loudness</button><button class:on={lower === "mixer"} onclick={() => (lower = "mixer")}>Mixer</button></span>
+      <span class="seg" role="group" aria-label="Lower part"><button class:on={lower === "none"} onclick={() => (lower = "none")}>Notes</button><button class:on={lower === "velocity"} onclick={() => (lower = "velocity")}>Loudness</button><button class:on={lower === "mixer"} onclick={() => (lower = "mixer")}>Mixer</button><button class:on={lower === "tools"} onclick={() => (lower = "tools")}>Tools</button></span>
       <button class="ghost" onclick={onjson}>JSON</button>
     </div>
 
@@ -604,7 +659,9 @@
         <p class="dim small">Click to add a note, drag it to move, drag its right end to resize, right-click or Delete to remove. Space plays. In a game: <code>nova.music.play("{songName}")</code>.</p>
       </aside>
     </div>
-    {#if lower === "mixer"}
+    {#if lower === "tools"}
+      <div class="lowerpane"><SongTools {song} {track} {group} commit={(next) => commit(next)} pick={(keys) => (group = keys)} {exportLoop} {exportMidi} {importMidi} /></div>
+    {:else if lower === "mixer"}
       <MixerPanel {song} {track} {liveDb} onchange={(next) => commit(next)} onselect={(i) => { track = i; selected = null; }} />
     {/if}
   </div>
@@ -617,6 +674,7 @@
   .check input { margin: 0; }
   .narrow { width: 62px; padding: 2px 6px; }
   .spacer { flex: 1; }
+  .lowerpane { max-height: 40%; min-height: 160px; overflow: auto; border-top: 1px solid var(--line); background: var(--panel); }
   .body { flex: 1; min-height: 0; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; }
   .tracks { background: var(--panel); border-right: 1px solid var(--line); padding: 6px; display: flex; flex-direction: column; gap: 4px; overflow: auto; }
   .trk { display: flex; align-items: center; border-radius: 6px; }

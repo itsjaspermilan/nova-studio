@@ -382,7 +382,7 @@ pub fn write_image(root: &Path, rel: &str, data_url: &str) -> Result<(), String>
 }
 
 /// File types the studio writes for other programs to read (an animated GIF, a palette, a list of colours, a picture, text, JSON).
-const EXPORT_EXTENSIONS: [&str; 8] = ["gif", "gpl", "pal", "hex", "png", "txt", "json", "csv"];
+const EXPORT_EXTENSIONS: [&str; 9] = ["gif", "gpl", "pal", "hex", "png", "txt", "json", "csv", "mid"];
 
 /// Saves an export sent as a `data:<type>;base64,...` URL into the project's `exports` folder. The path must be inside `exports/`, with one of
 /// the extensions above; a `.gif` must really be a GIF and a `.png` a PNG. The studio's webview cannot be trusted to save a download itself.

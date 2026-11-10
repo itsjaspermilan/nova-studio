@@ -10,6 +10,8 @@
 // the `chip` one. A song with none of these renders exactly as before.
 
 import { mulberry32 } from "./sfx";
+import { applyAutomation } from "./song-lanes";
+import { integratedLufs, limitPeaks } from "./loudness";
 import type { Sound } from "./wav";
 
 export type Wave = "square" | "saw" | "triangle" | "sine" | "noise";
@@ -60,6 +62,29 @@ export interface Track {
   echoFeedback?: number;
   /// Drum tracks: "chip" (the original) or "studio".
   kit?: "chip" | "studio";
+  /// A lane that changes how loud the notes are over the song: the gain (0 to 2) at each note's start follows these points (lib/song-tools.ts).
+  automation?: Lane[];
+}
+
+/// The master section: the fader, an optional loudness target in LUFS (-30 to -6: quiet songs are lifted, loud ones lowered) and an optional peak
+/// ceiling in dB (-12 to 0: a limiter keeps the loudest moments under it without clipping). A song with neither renders as before.
+export interface SongMaster {
+  volume: number;
+  lufs?: number;
+  limit?: number;
+}
+
+/// One automation lane. Only "gain" (a multiplier on each note's loudness, read at the note's first step) is rendered.
+export interface Lane {
+  param: "gain";
+  curve: "linear" | "step" | "smooth";
+  points: { step: number; value: number }[];
+}
+
+/// A named place in the song (a verse, a drop); the loop region is where the game's loop runs.
+export interface Marker {
+  step: number;
+  name: string;
 }
 
 /// The song's room: how long it rings (0 to 1), how dull the tail is (0 to 1) and how loud the reverb is overall.
@@ -78,7 +103,12 @@ export interface Song {
   tracks: Track[];
   room?: Room;
   /// The master fader: 1 is as the tracks add up, up to 1.5. A song with none renders as before.
-  master?: { volume: number };
+  master?: SongMaster;
+  /// Beats in a bar (1 to 16; 4 when missing), which sets where the bar lines fall; it does not change the sound.
+  beatsPerBar?: number;
+  markers?: Marker[];
+  /// The part of the song that loops in the game: exporting "the loop" renders just these steps (from, up to but not including to).
+  loop?: { from: number; to: number };
 }
 
 export const MIN_BPM = 40;
@@ -114,7 +144,7 @@ export function newSong(): Song {
 
 export const stepSeconds = (s: Song) => 60 / s.bpm / s.stepsPerBeat;
 export const songSeconds = (s: Song) => s.length * stepSeconds(s);
-export const barSteps = (s: Song) => s.stepsPerBeat * 4;
+export const barSteps = (s: Song) => s.stepsPerBeat * (s.beatsPerBar ?? 4);
 export const midiFreq = (pitch: number) => 440 * 2 ** ((pitch - 69) / 12);
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 
@@ -169,6 +199,19 @@ export function parseSong(text: string): Parsed {
       if (t.kit !== "chip" && t.kit !== "studio") return { ok: false, error: `${at}.kit must be "chip" or "studio"` };
       voice.kit = t.kit;
     }
+    if (t.automation !== undefined) {
+      if (!Array.isArray(t.automation) || t.automation.length > 4) return { ok: false, error: `${at}.automation is a list of up to 4 lanes` };
+      const lanes: Lane[] = [];
+      for (const [li, lane] of t.automation.entries()) {
+        const where = `${at}.automation[${li}]`;
+        if (!lane || lane.param !== "gain") return { ok: false, error: `${where}.param must be "gain"` };
+        if (!["linear", "step", "smooth"].includes(lane.curve)) return { ok: false, error: `${where}.curve must be "linear", "step" or "smooth"` };
+        if (!Array.isArray(lane.points) || lane.points.length > 256 || !lane.points.every((pt) => pt && Number.isInteger(pt.step) && pt.step >= 0 && num(pt.value, 0, 2))) return { ok: false, error: `${where}.points are up to 256 { "step": whole, "value": 0 to 2 }` };
+        lanes.push({ param: "gain", curve: lane.curve, points: [...lane.points].sort((a, b) => a.step - b.step).map((pt) => ({ step: pt.step, value: pt.value })) });
+      }
+      if (lanes.length) voice.automation = lanes;
+      else delete (t as Partial<Track>).automation;
+    }
     tracks.push({ ...base, ...t, ...voice, duty: clamp(t.duty ?? base.duty, 0.05, 0.95), volume: clamp(t.volume ?? base.volume, 0, 1), pan: clamp(t.pan ?? 0, -1, 1), mute: !!t.mute, ...(t.solo ? { solo: true } : {}) } as Track);
   }
   let room: Room | undefined;
@@ -177,13 +220,30 @@ export function parseSong(text: string): Parsed {
     if (!r || typeof r !== "object" || !num(r.size ?? 0.5, 0, 1) || !num(r.damping ?? 0.4, 0, 1) || !num(r.mix ?? 1, 0, 2)) return { ok: false, error: '"room" is { "size": 0 to 1, "damping": 0 to 1, "mix": 0 to 2 }' };
     room = { size: r.size ?? 0.5, damping: r.damping ?? 0.4, mix: r.mix ?? 1 };
   }
-  let master: { volume: number } | undefined;
+  let master: SongMaster | undefined;
   if (o.master !== undefined) {
-    const m = o.master as { volume?: unknown };
+    const m = o.master as { volume?: unknown; lufs?: unknown; limit?: unknown };
     if (!m || typeof m !== "object" || !num(m.volume ?? 1, 0, MAX_MASTER)) return { ok: false, error: `"master" is { "volume": 0 to ${MAX_MASTER} }` };
-    master = { volume: (m.volume as number | undefined) ?? 1 };
+    if (m.lufs !== undefined && !num(m.lufs, -30, -6)) return { ok: false, error: '"master.lufs" must be from -30 to -6' };
+    if (m.limit !== undefined && !num(m.limit, -12, 0)) return { ok: false, error: '"master.limit" must be from -12 to 0 (dB)' };
+    master = { volume: (m.volume as number | undefined) ?? 1, ...(m.lufs !== undefined ? { lufs: m.lufs as number } : {}), ...(m.limit !== undefined ? { limit: m.limit as number } : {}) };
   }
-  return { ok: true, song: { version: 1, bpm: o.bpm!, stepsPerBeat: o.stepsPerBeat!, length: o.length!, tracks, ...(room ? { room } : {}), ...(master ? { master } : {}) } };
+  if (o.beatsPerBar !== undefined && (!Number.isInteger(o.beatsPerBar) || !num(o.beatsPerBar, 1, 16))) return { ok: false, error: '"beatsPerBar" must be a whole number from 1 to 16' };
+  let markers: Marker[] | undefined;
+  if (o.markers !== undefined) {
+    if (!Array.isArray(o.markers) || o.markers.length > 64) return { ok: false, error: '"markers" is a list of up to 64 { "step", "name" }' };
+    for (const [i, mk] of (o.markers as Marker[]).entries()) {
+      if (!mk || !Number.isInteger(mk.step) || mk.step < 0 || mk.step > o.length! || typeof mk.name !== "string") return { ok: false, error: `markers[${i}] needs a whole "step" inside the song and a "name"` };
+    }
+    markers = [...(o.markers as Marker[])].sort((a, b) => a.step - b.step).map((mk) => ({ step: mk.step, name: mk.name }));
+  }
+  let loop: Song["loop"];
+  if (o.loop !== undefined) {
+    const l = o.loop as { from?: unknown; to?: unknown };
+    if (!l || !Number.isInteger(l.from) || !Number.isInteger(l.to) || (l.from as number) < 0 || (l.to as number) > o.length! || (l.from as number) >= (l.to as number)) return { ok: false, error: '"loop" is { "from", "to" } in steps, from before to and inside the song' };
+    loop = { from: l.from as number, to: l.to as number };
+  }
+  return { ok: true, song: { version: 1, bpm: o.bpm!, stepsPerBeat: o.stepsPerBeat!, length: o.length!, tracks, ...(room ? { room } : {}), ...(master ? { master } : {}), ...(o.beatsPerBar !== undefined && o.beatsPerBar !== 4 ? { beatsPerBar: o.beatsPerBar } : {}), ...(markers?.length ? { markers } : {}), ...(loop ? { loop } : {}) } };
 }
 
 export function serializeSong(song: Song): string {
@@ -197,12 +257,16 @@ export function serializeSong(song: Song): string {
     if (t.solo) fields.push(`"solo": true`);
     for (const [key] of VOICE_RANGES) if (t[key] !== undefined) fields.push(`"${key}": ${t[key]}`);
     if (t.kit !== undefined) fields.push(`"kit": "${t.kit}"`);
+    if (t.automation?.length) fields.push(`"automation": ${JSON.stringify(t.automation)}`);
     const notes = t.notes.length ? `[\n${t.notes.map((n) => `        ${note(n)}`).join(",\n")}\n      ]` : "[]";
     return `    {\n${fields.map((f) => `      ${f}`).join(",\n")},\n      "notes": ${notes}\n    }`;
   };
   const room = song.room ? `,\n  "room": { "size": ${song.room.size}, "damping": ${song.room.damping}, "mix": ${song.room.mix} }` : "";
-  const master = song.master ? `,\n  "master": { "volume": ${song.master.volume} }` : "";
-  return `{\n  "version": 1,\n  "bpm": ${song.bpm},\n  "stepsPerBeat": ${song.stepsPerBeat},\n  "length": ${song.length},\n  "tracks": [\n${song.tracks.map(track).join(",\n")}\n  ]${room}${master}\n}\n`;
+  const master = song.master ? `,\n  "master": { "volume": ${song.master.volume}${song.master.lufs !== undefined ? `, "lufs": ${song.master.lufs}` : ""}${song.master.limit !== undefined ? `, "limit": ${song.master.limit}` : ""} }` : "";
+  const bar = song.beatsPerBar && song.beatsPerBar !== 4 ? `,\n  "beatsPerBar": ${song.beatsPerBar}` : "";
+  const markers = song.markers?.length ? `,\n  "markers": ${JSON.stringify(song.markers)}` : "";
+  const loop = song.loop ? `,\n  "loop": { "from": ${song.loop.from}, "to": ${song.loop.to} }` : "";
+  return `{\n  "version": 1,\n  "bpm": ${song.bpm},\n  "stepsPerBeat": ${song.stepsPerBeat},\n  "length": ${song.length},\n  "tracks": [\n${song.tracks.map(track).join(",\n")}\n  ]${room}${master}${bar}${markers}${loop}\n}\n`;
 }
 
 // ---- editing (every edit returns a new song) ----------------------------------------------------------
@@ -649,12 +713,14 @@ export function isAudible(song: Song, track: Track): boolean {
 export function setMaster(song: Song, volume: number): Song {
   const v = clamp(volume, 0, MAX_MASTER);
   const next = { ...song };
-  if (v === 1) delete next.master;
-  else next.master = { volume: v };
+  const keep = { ...(song.master?.lufs !== undefined ? { lufs: song.master.lufs } : {}), ...(song.master?.limit !== undefined ? { limit: song.master.limit } : {}) };
+  if (v === 1 && !Object.keys(keep).length) delete next.master;
+  else next.master = { volume: v, ...keep };
   return next;
 }
 
-export function renderSong(song: Song, rate = RATE): Sound {
+export function renderSong(source: Song, rate = RATE): Sound {
+  const song = applyAutomation(source);
   const stepSec = stepSeconds(song);
   const total = Math.round(song.length * stepSec * rate);
   const left = new Float32Array(total);
@@ -763,6 +829,18 @@ export function renderSong(song: Song, rate = RATE): Sound {
       right[i] = right[i]! * master;
     }
   }
+  // The loudness target and the peak ceiling, when the song asks for them.
+  if (song.master?.lufs !== undefined) {
+    const now = integratedLufs([left, right], rate);
+    if (Number.isFinite(now)) {
+      const g = 10 ** ((song.master.lufs - now) / 20);
+      for (let i = 0; i < total; i++) {
+        left[i] = left[i]! * g;
+        right[i] = right[i]! * g;
+      }
+    }
+  }
+  if (song.master?.limit !== undefined) limitPeaks([left, right], 10 ** (song.master.limit / 20), rate);
   // Keep peaks under full scale without touching quiet songs.
   let peak = 0;
   for (let i = 0; i < total; i++) peak = Math.max(peak, Math.abs(left[i]!), Math.abs(right[i]!));
