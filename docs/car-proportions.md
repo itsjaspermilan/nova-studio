@@ -3,8 +3,12 @@
 Written 2026-11-09 from the reference models the user added to `examples/` (not committed: `psx_style_cars_by_ggbot_august2023.zip`, eight
 PSX-era OBJ cars; `04dtwkw5.glb`, a painted 1980s sedan; `89-challenger.zip` and `26-mustang-13.04.2021-compressed.zip`, Blender muscle cars).
 The user's instruction: ignore the PSX resolution, study the shapes and proportions, aim for Switch 1-class graphics at 60 fps
-(see TODO.md, "Art direction"). The generators are `scripts/rally/cars.mjs` (Nova's own pipeline) and, as a benchmark only,
-`scripts/blender/classic_car.py`.
+(see TODO.md, "Art direction"). The first generator (`scripts/rally/cars.mjs`, lofted rings with no subdivision) is gone. Since 2026-11-10 every car, racer and truck is modelled
+from blueprints: `scripts/rally/bodies.mjs` holds each car's profiles along its length (this document's measurements are where they came from),
+`body.mjs` lofts them into a half cage of cross-section rings (edge loops at the belt, windows, pillars, door gaps and wheels) that is mirrored and
+subdivided with creases, and `face.mjs` models the nose and tail into that surface (lamp pockets with housings, recessed grilles, bumper bands,
+plate pockets, creased edges; the lenses are the pockets' own cells). `parts.mjs` has the shared shapes and the wheel. `scripts/blender/classic_car.py`
+remains a benchmark only.
 
 ## The eight PSX cars (measured from the OBJ geometry; length L = 1)
 
