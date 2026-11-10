@@ -379,20 +379,23 @@ ui.icons = {
 }
 
 -- Draws icon `name` `size` units across with its top left at x, y. `outline`: a dark band under it, so it reads on snow.
-function ui.icon(name, x, y, size, colour, outline)
+-- `outline` is a hard dark edge round the strokes; `shadow` a soft drop shadow (a colour: the strokes again, a little down and right).
+function ui.icon(name, x, y, size, colour, outline, shadow)
   local strokes = ui.icons[name]
   if not strokes then return end
   local k = size / 24
-  local function pass(c, width)
+  local function pass(c, width, dx, dy)
+    dx, dy = dx or 0, dy or 0
     for _, s in ipairs(strokes) do
       for i = 1, #s - 1 do
         local a, b = s[i], s[i + 1]
-        nova.ui.line(x + a[1] * k, y + a[2] * k, x + b[1] * k, y + b[2] * k, width, c)
+        nova.ui.line(x + dx + a[1] * k, y + dy + a[2] * k, x + dx + b[1] * k, y + dy + b[2] * k, width, c)
       end
       -- round-ish joins: a small square at every point
-      for _, p in ipairs(s) do nova.ui.rect(x + p[1] * k - width / 2, y + p[2] * k - width / 2, width, width, c) end
+      for _, p in ipairs(s) do nova.ui.rect(x + dx + p[1] * k - width / 2, y + dy + p[2] * k - width / 2, width, width, c) end
     end
   end
+  if shadow then pass(shadow, 2.4 * k + 0.6, 1.2, 1.5) end
   if outline then pass(outline, 2.4 * k + 3) end
   pass(colour, 2.4 * k)
 end

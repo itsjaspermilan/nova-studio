@@ -1002,21 +1002,21 @@ function race.scene()
         local hairpin = note.grade == 1
         local text = hairpin and "HAIRPIN" or ((note.left and "L" or "R") .. note.grade)
         local colour = { C.gold[1], C.gold[2], C.gold[3], math.floor(255 * a) }
-        local o = { outline = { color = { 0, 0, 0, math.floor(175 * a) }, width = math.max(1, size / 22) }, shadow = false }
+        local o = { outline = false, shadow = { 0, 0, 0, math.floor(130 * a) } }
         local tw = nova.ui.text_width(text, { font = F.heavy, size = size })
         local icon = size * 1.15
         local gap = size * 0.3
         local icon_name = hairpin and (note.left and "hairpin" or "hairpin_right") or (note.left and "left" or "right")
-        local edge = { 0, 0, 0, math.floor(170 * a) }
+        local shade = { 0, 0, 0, math.floor(110 * a) }
         -- the icon on the side the road turns to: before the words for a left, after them for a right
         if note.left then
           local x = right - tw - gap - icon
-          ui.icon(icon_name, x, f.y + (size - icon) / 2 + size * 0.08, icon, colour, edge)
+          ui.icon(icon_name, x, f.y + (size - icon) / 2 + size * 0.08, icon, colour, nil, shade)
           hud_text(right - tw, f.y, text, F.heavy, size, colour, o)
         else
           local x = right - icon
           hud_text(x - gap - tw, f.y, text, F.heavy, size, colour, o)
-          ui.icon(icon_name, x, f.y + (size - icon) / 2 + size * 0.08, icon, colour, edge)
+          ui.icon(icon_name, x, f.y + (size - icon) / 2 + size * 0.08, icon, colour, nil, shade)
         end
       end
     end
