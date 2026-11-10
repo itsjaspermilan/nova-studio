@@ -29,7 +29,7 @@
 
 <div class="mixer" role="group" aria-label="Mixer">
   {#each song.tracks as t, i (i)}
-    <div class="strip" class:on={i === track} class:quiet={t.mute || (anySolo && !t.solo)}>
+    <div class="strip" class:on={i === track} class:quiet={t.mute || (anySolo && !t.solo)} style:border-top="4px solid {t.color ?? 'transparent'}">
       <button class="name ghost" onclick={() => onselect(i)} title="Edit this track's notes and sound">{t.name}</button>
       <div class="meterwrap">
         <input class="fader" type="range" min="0" max="1" step="0.01" value={t.volume} oninput={(e) => set(i, { volume: Number(e.currentTarget.value) })} aria-label="{t.name} volume" aria-valuetext="{Math.round(t.volume * 100)} percent" />

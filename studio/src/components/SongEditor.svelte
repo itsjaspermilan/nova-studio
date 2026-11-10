@@ -586,7 +586,7 @@
     <div class="body">
       <aside class="tracks" use:resizable={{ key: "song.tracks", edge: "right", size: 150, min: 110, max: 400 }}>
         {#each song.tracks as t, i (i)}
-          <div class="trk" class:on={i === track}>
+          <div class="trk" class:on={i === track} style:border-left="4px solid {t.color ?? 'transparent'}">
             <button class="pick" onclick={() => { track = i; selected = null; }}>{t.kind === "drums" ? "🥁" : "♪"} {t.name}</button>
             <button class="ghost" title={t.mute ? "Unmute" : "Mute"} aria-label={t.mute ? "Unmute" : "Mute"} onclick={() => { track = i; setTrack({ mute: !t.mute }); }}>{t.mute ? "🔇" : "🔈"}</button>
             <button class="ghost solo" class:on={t.solo} aria-pressed={!!t.solo} title="Hear only the soloed tracks" aria-label="Solo {t.name}" onclick={() => { track = i; setTrack({ solo: !t.solo }); }}>S</button>
@@ -618,6 +618,12 @@
       <aside class="inspector" use:resizable={{ key: "song.inspector", edge: "left", size: 210, min: 160, max: 520 }}>
         <h3>Track</h3>
         <label>Name <input value={current.name} onchange={(e) => setTrack({ name: e.currentTarget.value })} /></label>
+        <label title="A colour for this track in the list and the mixer">Colour
+          <span class="colours">
+            {#each ["#5aa9ff", "#6fcf8e", "#ffd166", "#ff8a65", "#e57373", "#ba68c8", "#4dd0e1", "#aab4c3"] as c (c)}<button class="swatchbtn" class:picked={current.color === c} style:background={c} aria-label="Colour {c}" onclick={() => setTrack({ color: c })}></button>{/each}
+            <button class="ghost" disabled={!current.color} aria-label="No colour" onclick={() => setTrack({ color: undefined })}>✕</button>
+          </span>
+        </label>
         {#if current.kind === "synth"}
           <label>Sound
             <select value={current.wave} onchange={(e) => setTrack({ wave: e.currentTarget.value as Wave })}>{#each WAVES as w (w)}<option value={w}>{w}</option>{/each}</select>
@@ -693,6 +699,9 @@
   .lowerpane { max-height: 40%; min-height: 160px; overflow: auto; border-top: 1px solid var(--line); background: var(--panel); }
   .body { flex: 1; min-height: 0; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; }
   .tracks { background: var(--panel); border-right: 1px solid var(--line); padding: 6px; display: flex; flex-direction: column; gap: 4px; overflow: auto; }
+  .colours { display: inline-flex; gap: 3px; flex-wrap: wrap; justify-content: flex-end; }
+  .swatchbtn { width: 16px; height: 16px; padding: 0; border-radius: 50%; border: 1px solid var(--line); }
+  .swatchbtn.picked { outline: 2px solid var(--text); outline-offset: 1px; }
   .trk { display: flex; align-items: center; border-radius: 6px; }
   .trk.on { background: color-mix(in srgb, var(--accent) 22%, transparent); }
   .pick { flex: 1; text-align: left; background: transparent; border-color: transparent; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

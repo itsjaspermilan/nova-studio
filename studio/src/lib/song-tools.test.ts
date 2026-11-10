@@ -246,3 +246,16 @@ describe("the instruments: FM, plucked string, organ and the presets", () => {
     for (const p of INSTRUMENT_PRESETS) expect(Object.keys(p.set).length, p.name).toBeGreaterThan(2);
   });
 });
+
+describe("a colour for a track", () => {
+  it("is saved, read back lower case, and refused when it is not a colour", async () => {
+    const { updateTrack } = await import("./song");
+    const s = updateTrack(song([], 8), 0, { color: "#5AA9FF" });
+    const back = parseSong(serializeSong(s));
+    expect(back.ok && back.song.tracks[0]!.color).toBe("#5aa9ff");
+    const bad = JSON.parse(serializeSong(s));
+    bad.tracks[0].color = "blue";
+    expect(parseSong(JSON.stringify(bad)).ok).toBe(false);
+    expect(serializeSong(updateTrack(s, 0, { color: undefined }))).not.toContain("color");
+  });
+});

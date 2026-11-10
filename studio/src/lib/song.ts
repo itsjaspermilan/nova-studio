@@ -77,6 +77,8 @@ export interface Track {
   automation?: Lane[];
   /// Effects on the track, run in order after its volume and pan (lib/fx.ts).
   fx?: Fx[];
+  /// A colour for the track in the list and the mixer (`#rrggbb`); it does not change the sound.
+  color?: string;
 }
 
 /// The master section: the fader, an optional loudness target in LUFS (-30 to -6: quiet songs are lifted, loud ones lowered) and an optional peak
@@ -213,6 +215,10 @@ export function parseSong(text: string): Parsed {
       if (t.kit !== "chip" && t.kit !== "studio") return { ok: false, error: `${at}.kit must be "chip" or "studio"` };
       voice.kit = t.kit;
     }
+    if (t.color !== undefined) {
+      if (typeof t.color !== "string" || !/^#[0-9a-fA-F]{6}$/.test(t.color)) return { ok: false, error: `${at}.color must be like "#5aa9ff"` };
+      voice.color = t.color.toLowerCase();
+    }
     if (t.fx !== undefined) {
       const c = cleanFx(t.fx);
       if (!c.ok) return { ok: false, error: `${at}.${c.error}` };
@@ -277,6 +283,7 @@ export function serializeSong(song: Song): string {
     if (t.solo) fields.push(`"solo": true`);
     for (const [key] of VOICE_RANGES) if (t[key] !== undefined) fields.push(`"${key}": ${t[key]}`);
     if (t.kit !== undefined) fields.push(`"kit": "${t.kit}"`);
+    if (t.color) fields.push(`"color": ${JSON.stringify(t.color)}`);
     if (t.fx?.length) fields.push(`"fx": ${JSON.stringify(t.fx)}`);
     if (t.automation?.length) fields.push(`"automation": ${JSON.stringify(t.automation)}`);
     const notes = t.notes.length ? `[\n${t.notes.map((n) => `        ${note(n)}`).join(",\n")}\n      ]` : "[]";
