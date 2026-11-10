@@ -16,10 +16,17 @@ import { applyFx, cleanFx, type Fx } from "./fx";
 import { integratedLufs, limitPeaks } from "./loudness";
 import type { Sound } from "./wav";
 
-export type Wave = "square" | "saw" | "triangle" | "sine" | "noise" | "fm" | "pluck" | "organ" | "wavetable" | "formula";
-export const WAVES: Wave[] = ["square", "saw", "triangle", "sine", "noise", "fm", "pluck", "organ", "wavetable", "formula"];
+export type Wave = "square" | "saw" | "triangle" | "sine" | "noise" | "fm" | "pluck" | "organ" | "wavetable" | "formula" | "sample";
+export const WAVES: Wave[] = ["square", "saw", "triangle", "sine", "noise", "fm", "pluck", "organ", "wavetable", "formula", "sample"];
 /// The waves that are whole instruments (their own settings; the fuller voice's unison, filter and vibrato do not apply to them).
-export const INSTRUMENT_WAVES: Wave[] = ["fm", "pluck", "organ", "wavetable", "formula"];
+export const INSTRUMENT_WAVES: Wave[] = ["fm", "pluck", "organ", "wavetable", "formula", "sample"];
+
+// ---- the sampler ----
+/// The sound files the "sample" instrument can play, by project path (`sounds/kick.wav`). The editor loads the files a song names and puts them here before it renders;
+/// the renderer itself reads no files, so rendering stays pure and repeatable for a given bank.
+const sampleBank = new Map<string, Sound>();
+export const setSample = (path: string, sound: Sound | null) => (sound ? void sampleBank.set(path, sound) : void sampleBank.delete(path));
+export const hasSample = (path: string) => sampleBank.has(path);
 export const isInstrument = (w: Wave) => INSTRUMENT_WAVES.includes(w);
 
 export interface Note {
@@ -76,6 +83,9 @@ export interface Track {
   fmIndex?: number;
   /// The "pluck" instrument: how long the string rings (0 short to 1 long).
   damping?: number;
+  /// The "sample" instrument: a sound file of the project (`sounds/kick.wav`) played at the pitch of the note, taking `root` (a MIDI pitch, 60 by default) as the pitch the file has.
+  sample?: string;
+  root?: number;
   /// The "wavetable" instrument: where in the table of shapes it plays, 0 (sine) through triangle and saw (a third and two thirds) to 1 (square).
   wtPos?: number;
   /// The "formula" instrument: an expression of the phase `p`, the time `t` and the pitch `f` (lib/formula.ts).
@@ -302,7 +312,7 @@ const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n
 /// The voice fields' names and ranges.
 const VOICE_RANGES: [keyof Track, number, number][] = [
   ["unison", 1, 7], ["detune", 0, 60], ["cutoff", 0, 20000], ["resonance", 0, 0.9], ["sweep", 0, 1], ["sub", 0, 1], ["vibrato", 0, 0.5], ["reverb", 0, 1], ["echo", 0, 1], ["echoTime", 1, 16], ["echoFeedback", 0, 0.85],
-  ["fmRatio", 0.25, 8], ["fmIndex", 0, 12], ["damping", 0, 1], ["brightness", 0, 1], ["wtPos", 0, 1],
+  ["fmRatio", 0.25, 8], ["fmIndex", 0, 12], ["damping", 0, 1], ["brightness", 0, 1], ["wtPos", 0, 1], ["root", 0, 127],
 ];
 
 export type Parsed = { ok: true; song: Song } | { ok: false; error: string };
@@ -383,6 +393,10 @@ export function parseSong(text: string): Parsed {
       else delete (t as Partial<Track>).patterns;
       if (cleanClips.length) voice.clips = cleanClips;
       else delete (t as Partial<Track>).clips;
+    }
+    if (t.sample !== undefined) {
+      if (typeof t.sample !== "string" || !/^[\w\-./ ]{1,120}$/.test(t.sample) || t.sample.includes("..") || t.sample.startsWith("/")) return { ok: false, error: `${at}.sample must be a path inside the project, like "sounds/kick.wav"` };
+      voice.sample = t.sample;
     }
     if (t.formula !== undefined) {
       if (typeof t.formula !== "string") return { ok: false, error: `${at}.formula must be text` };
@@ -517,6 +531,7 @@ export function serializeSong(song: Song): string {
     if (t.color) fields.push(`"color": ${JSON.stringify(t.color)}`);
     if (t.patterns?.length) fields.push(`"patterns": ${JSON.stringify(t.patterns)}`);
     if (t.clips?.length) fields.push(`"clips": ${JSON.stringify(t.clips)}`);
+    if (t.sample) fields.push(`"sample": ${JSON.stringify(t.sample)}`);
     if (t.formula) fields.push(`"formula": ${JSON.stringify(t.formula)}`);
     if (t.bus) fields.push(`"bus": ${JSON.stringify(t.bus)}`);
     if (t.sends?.length) fields.push(`"sends": ${JSON.stringify(t.sends)}`);
@@ -706,6 +721,22 @@ function oscillator(wave: Wave, duty: number, rng: () => number) {
 /// The instruments that are more than one oscillator: FM (a sine bent by another sine), a plucked string (Karplus-Strong) and an organ (added harmonics).
 /// Each call makes a voice for one note; it gives one sample each time it is called with the note's pitch.
 function instrumentOscillator(t: Track, rng: () => number) {
+  if (t.wave === "sample") {
+    const snd = sampleBank.get(t.sample ?? "");
+    if (!snd || !snd.channels[0]) return () => 0;
+    // the file as one channel, the two added if it has two
+    const len = snd.channels[0].length;
+    const mono = new Float32Array(len);
+    for (let i = 0; i < len; i++) mono[i] = snd.channels.length > 1 ? (snd.channels[0]![i]! + (snd.channels[1]![i] ?? 0)) / 2 : snd.channels[0]![i]!;
+    const rootFreq = midiFreq(clamp(t.root ?? 60, 0, 127));
+    let at = 0;
+    return (freq: number, rate: number) => {
+      const i = Math.floor(at);
+      const out = i + 1 < len ? mono[i]! + (mono[i + 1]! - mono[i]!) * (at - i) : i < len ? mono[i]! : 0;
+      at += (freq / rootFreq) * (snd.rate / rate);
+      return out;
+    };
+  }
   if (t.wave === "wavetable") {
     // a table of four shapes, blended between neighbours: sine, triangle, saw, square (saw and square softened by PolyBLEP so that high notes do not hiss)
     const pos = clamp(t.wtPos ?? 0.3, 0, 1) * 3;

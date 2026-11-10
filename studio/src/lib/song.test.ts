@@ -371,3 +371,41 @@ describe("the wavetable and formula instruments", () => {
     expect(Array.from(a)).toEqual(Array.from(b));
   });
 });
+
+import { setSample } from "./song";
+describe("the sampler", () => {
+  const cross = (c: Float32Array) => c.reduce((n, x, i) => (i > 0 && (c[i - 1]! < 0) !== (x < 0) ? n + 1 : n), 0);
+  // a 100 Hz sine, one second, at 22050 Hz
+  const tone = { rate: 22050, channels: [Float32Array.from({ length: 22050 }, (_, i) => 0.8 * Math.sin((2 * Math.PI * 100 * i) / 22050))] };
+  const song = (pitch: number, extra = {}): Song => ({ version: 1, bpm: 120, stepsPerBeat: 4, length: 8, tracks: [{ ...synthTrack("s", "sine"), wave: "sample", sample: "sounds/tone.wav", sustain: 1, attack: 0, release: 0.01, notes: [{ step: 0, len: 8, pitch, vel: 1 }], ...extra }] });
+  it("plays a file at its own pitch on the root note, an octave up an octave higher", () => {
+    setSample("sounds/tone.wav", tone);
+    const same = renderSong(song(60), 22050).channels[0]!;
+    // one second of the 100 Hz file: about 200 crossings
+    expect(cross(same.slice(0, 20000))).toBeGreaterThan(170);
+    expect(cross(same.slice(0, 20000))).toBeLessThan(190);
+    const up = renderSong(song(72), 22050).channels[0]!;
+    expect(cross(up.slice(0, 10000))).toBeGreaterThan(cross(same.slice(0, 10000)) * 1.8);
+    const rooted = renderSong(song(72, { root: 72 }), 22050).channels[0]!;
+    expect(cross(rooted.slice(0, 20000))).toBeGreaterThan(170);
+    setSample("sounds/tone.wav", null);
+  });
+  it("is silent when the file is not loaded, ends when the file ends, and is checked when read", () => {
+    expect(Math.max(...renderSong(song(60), 8000).channels[0]!.map(Math.abs))).toBe(0);
+    setSample("sounds/tone.wav", tone);
+    const out = renderSong(song(60), 22050).channels[0]!;
+    expect(Math.max(...out.slice(0, 2000).map(Math.abs))).toBeGreaterThan(0.1);
+    const short = { rate: 22050, channels: [Float32Array.from({ length: 2205 }, (_, i) => Math.sin(i * 0.3))] };
+    setSample("sounds/tone.wav", short);
+    const cut = renderSong(song(60), 22050).channels[0]!;
+    expect(Math.max(...cut.slice(5000, 9000).map(Math.abs))).toBe(0);
+    setSample("sounds/tone.wav", null);
+    const s = song(60);
+    expect(parseSong(serializeSong(s)).ok).toBe(true);
+    for (const bad of ["../secret.wav", "/etc/passwd", "a$b"]) {
+      const j = JSON.parse(serializeSong(s));
+      j.tracks[0].sample = bad;
+      expect(parseSong(JSON.stringify(j)).ok, bad).toBe(false);
+    }
+  });
+});

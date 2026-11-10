@@ -2,10 +2,10 @@
   import { resizable } from "../lib/resize";
   import { onMount, untrack } from "svelte";
   import {
-    DRUMS, INSTRUMENT_PRESETS, WAVES, isInstrument, addNote, addTrack, barSteps, barStarts, stepAtTime, changeNote, isBlack, newSong, noteAt, noteName, parseSong, removeNote, removeTrack, renderSong, serializeSong, setLength,
+    DRUMS, INSTRUMENT_PRESETS, hasSample, setSample, WAVES, isInstrument, addNote, addTrack, barSteps, barStarts, stepAtTime, changeNote, isBlack, newSong, noteAt, noteName, parseSong, removeNote, removeTrack, renderSong, serializeSong, setLength,
     setTempo, songSeconds, stepSeconds, transpose, updateTrack, synthTrack, type Song, type Wave,
   } from "../lib/song";
-  import { encodeWav, toBase64, frames, type Sound } from "../lib/wav";
+  import { decodeWav, encodeWav, fromBase64, toBase64, frames, type Sound } from "../lib/wav";
   import { studio } from "../lib/store.svelte";
   import MixerPanel from "./MixerPanel.svelte";
   import { compileFormula } from "../lib/formula";
@@ -37,6 +37,20 @@
   let loop = $state(true);
   /// The lower part shows the mixer, or the notes' loudness bars, or nothing.
   let formulaError = $state("");
+  let sampleError = $state("");
+  const wavFiles = $derived(studio.files.filter((f) => !f.dir && /\.wav$/i.test(f.path)).map((f) => f.path));
+  // the sound files the song's sample tracks name are read into the sampler's bank, so that playing and exporting have them
+  $effect(() => {
+    const names = [...new Set(song.tracks.filter((t) => t.wave === "sample" && t.sample).map((t) => t.sample!))];
+    for (const name of names) {
+      if (hasSample(name) || !studio.api) continue;
+      void studio.api.readAudio(name).then((url) => {
+        setSample(name, decodeWav(fromBase64(url.slice(url.indexOf(",") + 1))));
+        sampleError = "";
+        tick++;
+      }, () => (sampleError = `Could not read ${name}: is it a WAV file in the project?`));
+    }
+  });
   let taps: number[] = [];
   const tap = () => {
     taps = [...taps.slice(-15), performance.now()];
@@ -667,6 +681,13 @@
             <label class="slider"><span>Bright</span><input type="range" min="0" max="1" step="0.01" value={current.brightness ?? 0.6} oninput={(e) => setTrack({ brightness: Number(e.currentTarget.value) })} /><output>{(current.brightness ?? 0.6).toFixed(2)}</output></label>
           {:else if current.wave === "wavetable"}
             <label class="slider" title="Where in the table of shapes: sine, triangle, saw, square"><span>Shape</span><input type="range" min="0" max="1" step="0.01" value={current.wtPos ?? 0.3} oninput={(e) => setTrack({ wtPos: Number(e.currentTarget.value) })} /><output>{(current.wtPos ?? 0.3).toFixed(2)}</output></label>
+          {:else if current.wave === "sample"}
+            <label>Sound file
+              <select value={current.sample ?? ""} onchange={(e) => setTrack({ sample: e.currentTarget.value || undefined })} aria-label="Sound file to play"><option value="">(choose a WAV)</option>{#each wavFiles as w (w)}<option value={w}>{w}</option>{/each}</select>
+            </label>
+            <label class="slider" title="The pitch the file has (60 is middle C); a note above it plays the file higher and faster"><span>Root</span><input type="number" min="0" max="127" value={current.root ?? 60} onchange={(e) => setTrack({ root: Number(e.currentTarget.value) })} /><output>{noteName(current.root ?? 60)}</output></label>
+            {#if sampleError}<p class="bad small" role="alert">{sampleError}</p>{/if}
+            <p class="dim small">The file plays once from the start of each note, at the note's pitch (WAV files only; two channels are mixed to one).</p>
           {:else if current.wave === "formula"}
             <label>Formula
               <input value={current.formula ?? "sin(2 * pi * p)"} aria-label="Formula" onchange={(e) => { const c = compileFormula(e.currentTarget.value); formulaError = c.ok ? "" : c.error; if (c.ok) setTrack({ formula: e.currentTarget.value }); }} />
