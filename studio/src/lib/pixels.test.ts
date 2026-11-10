@@ -181,3 +181,34 @@ describe("selections", () => {
     expect(lit(resizeCanvas(grown, 1, 1, 1, 1))).toEqual([]); // the kept corner is empty
   });
 });
+
+import { blendChannel, BLEND_MODES, composite as blendComposite } from "./pixels";
+
+describe("blend modes", () => {
+  const px = (r: number, g: number, b: number, a = 255) => ({ w: 1, h: 1, data: Uint8ClampedArray.from([r, g, b, a]) });
+
+  it("have the usual arithmetic per channel", () => {
+    expect(blendChannel("multiply", 0.5, 0.5)).toBe(0.25);
+    expect(blendChannel("screen", 0.5, 0.5)).toBe(0.75);
+    expect(blendChannel("add", 0.7, 0.7)).toBe(1);
+    expect(blendChannel("darken", 0.2, 0.9)).toBe(0.2);
+    expect(blendChannel("lighten", 0.2, 0.9)).toBe(0.9);
+    expect(blendChannel("overlay", 0.25, 0.5)).toBe(0.25);
+    expect(blendChannel("normal", 0.1, 0.8)).toBe(0.8);
+  });
+
+  it("multiply darkens what is underneath, normal covers it, and the mode does nothing over nothing", () => {
+    const under = px(200, 100, 50);
+    expect(Array.from(blendComposite(under, px(128, 128, 128), 1, "multiply").data)).toEqual([100, 50, 25, 255]);
+    expect(Array.from(blendComposite(under, px(128, 128, 128), 1, "normal").data)).toEqual([128, 128, 128, 255]);
+    expect(Array.from(blendComposite(px(0, 0, 0, 0), px(128, 64, 32), 1, "multiply").data)).toEqual([128, 64, 32, 255]);
+    expect(Array.from(blendComposite(under, px(1, 2, 3, 0), 1, "multiply").data)).toEqual([200, 100, 50, 255]);
+  });
+
+  it("keep normal exactly as before and know every mode", () => {
+    const under = px(10, 20, 30, 128);
+    const over = px(200, 100, 0, 200);
+    expect(Array.from(blendComposite(under, over, 0.5).data)).toEqual(Array.from(blendComposite(under, over, 0.5, "normal").data));
+    expect(BLEND_MODES).toHaveLength(7);
+  });
+});

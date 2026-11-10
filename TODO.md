@@ -92,11 +92,30 @@ Still open (4.3 Game audio):
 - [ ] Random sound groups as a project feature (variations exist as files; no group object), 3D falloff presets, a soundbank view of which project files use each sound, an audio budget for the device (memory, voices).
 - [ ] A person listens to the songs and the sounds (nobody has yet); audio latency on the Retroid.
 
-### S4: Sprites workspace (section 3)
-- [ ] Canvas (rulers, grids, tiled mode, symmetry, mini-map, preview window), two-slot tool bar, full drawing, selection and transform tool set, palettes (import/export, lock, indexed).
-- [ ] Layers (pixel, group, tilemap, audio), blend modes, clipping, cel linking, tags with direction, per-frame timing, onion skin, non-destructive effects, hitboxes, pivots, 9-slice, frame events.
-- [ ] Tilemaps and tilesets (draw/manual/auto, shapes, collision, terrain auto-tiling) feeding the scene editor.
-- [ ] Import `.pxo`, `.aseprite`, PNG, GIF, APNG; export sheet/GIF/APNG per tag/layer/frame; export profiles; `nova sprite export` command line.
+### S4: Sprites workspace (section 3; detail in `docs/studio-workspaces.md`): what exists, what was added on 2026-11-09, everything still open
+Already there before: layers with opacity, visibility, merge down and linked cels; frames, animations (tags with direction and loop) and per-frame time; onion skin (3 before, 3 after, tinted); mirror drawing; pixel-perfect pencil; pencil, eraser, fill, line, rectangle, ellipse, colour picker, rectangle select with move, copy, cut, paste; sheet import with grid detection and smart slice; layers saved beside the sheet.
+Added 2026-11-09 (browser preview and unit tests; **not run in the real app**):
+- [x] Layer blend modes (normal, multiply, screen, overlay, add, darken, lighten): stacked, merged and saved in the layers file (`pixels.ts`, `sprite-doc.ts`, 6 tests).
+- [x] Named palettes (`lib/palette.ts`): a palette list with the built-in Starter and Greys, the person's own, import of `.gpl`, hex lists and JSON, export as `.gpl`, a palette from the colours of the picture, add or take out colours, "Stay in palette" (snaps picked colours to the nearest); 14 tests.
+- [x] Image effects on the cel or the selection (`lib/sprite-fx.ts`): flip, quarter turns of a square, invert, grey, hue shift, lighter, darker, outline, drop shadow (destructive, one undo step); 9 tests.
+- [x] A Sprite menu; every tool is a command with its Pixelorama-style key (B, E, G, L, R, O, I, M), so the keys can be changed in Edit > Keyboard shortcuts.
+Still open (3.1 Canvas):
+- [ ] Rulers, a tiled-mode preview, symmetry on the diagonals and about a point, a mini-map for big pictures, a preview window that plays the animation at 1x, zoom above 32x, a pixel grid that can be set, symmetry guides.
+- [ ] The two-slot tool bar (a tool on the left and one on the right button) and a per-tool options panel; reference images (side, overlay, onion).
+Still open (3.2 Tools):
+- [ ] Brush shapes and custom brushes from a selection, bucket variants (similar colour, inside the selection), polygon, gradient, a shading tool (lighten and darken by painting), dithering patterns, a text tool, zoom and pan tools.
+- [ ] Selections: ellipse, lasso, polygon, magic wand, select by colour, paint-select; transforms (scale, rotate with RotSprite, clean-edge), crop to the selection.
+- [ ] Gradient map, palettize (a picture to a palette's colours), colour curves, pixelate, replace colour as a command (the function exists), offset as a command (exists).
+Still open (3.3 Layers, cels, frames):
+- [ ] Group layers, tilemap layers, audio layers, 3D layers; clipping masks, layer lock, cel properties; **non-destructive** effects on a cel or layer (today the effects change the pixels for good).
+- [ ] Per-frame hitboxes, anchor or pivot points, 9-slice, frame events: these need `*.sprite.json` support in the runtime (`crates/nova-runtime/src/sprite.rs`) and the Lua API first.
+- [ ] Timeline: scrubbing, ripple edit, FPS setting, "add many frames", cel drag.
+Still open (3.4 Tilemaps and tilesets), none started:
+- [ ] Tilemap layers with a tileset (draw, manual and auto modes), tile size and shape (square, isometric, hex), offsets and flipped placement, tile properties and collision shapes, terrain sets (auto-tiling), tileset import and export (PNG and Nova's JSON), feeding the scene editor's tilemaps.
+Still open (3.5 Palettes):
+- [ ] `.pal` and PNG palettes, Lospec download, sort and swap swatches, colour ramps, indexed-colour mode, project-wide palettes shared by Sprites and Model, a palette lock that stops drawing outside it.
+Still open (3.6 Files):
+- [ ] Import `.pxo`, `.aseprite`, GIF, APNG; export GIF, APNG, per tag, per layer, per frame, scale on export, trimming and packing, export profiles, `nova sprite export` on the command line; auto-save and backups of sprites (text crash recovery exists, not for pixels).
 
 ### S5: Engine workspace (section 5)
 - [ ] Hub, project settings, device manager, export (`.npk`, APK), asset import settings.

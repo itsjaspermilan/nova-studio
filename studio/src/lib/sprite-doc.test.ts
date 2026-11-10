@@ -621,3 +621,33 @@ describe("linked cels", () => {
     expect(parseLayersFile(JSON.stringify(bad))).toBeNull();
   });
 });
+
+describe("layer blend modes", () => {
+  it("change how the layers stack, are saved with the layers and read back", () => {
+    let doc = newDoc(2, 1, 1);
+    doc.layers[0]!.cels[0]!.data.set([200, 200, 200, 255, 200, 200, 200, 255]);
+    const top = addLayer(doc, 0);
+    doc = top.doc;
+    doc.layers[top.index]!.cels[0]!.data.set([128, 128, 128, 255, 128, 128, 128, 255]);
+    const normal = composeFrame(doc, 0);
+    expect(Array.from(normal.data.slice(0, 3))).toEqual([128, 128, 128]);
+    const mult = updateLayer(doc, top.index, { blend: "multiply" });
+    expect(Array.from(composeFrame(mult, 0).data.slice(0, 3))).toEqual([100, 100, 100]);
+    const file = parseLayersFile(layersFileText(mult, layerSheets(mult).map(() => "data:,x")));
+    expect(file?.layers[1]?.blend).toBe("multiply");
+    expect(file?.layers[0]?.blend).toBeUndefined();
+    expect(updateLayer(mult, top.index, { blend: "normal" }).layers[top.index]!.blend).toBeUndefined();
+    expect(updateLayer(mult, top.index, { blend: "nonsense" as never }).layers[top.index]!.blend).toBe("multiply");
+  });
+
+  it("merge down with the mode applied", () => {
+    let doc = newDoc(1, 1, 1);
+    doc.layers[0]!.cels[0]!.data.set([200, 100, 50, 255]);
+    const top = addLayer(doc, 0);
+    doc = top.doc;
+    doc.layers[top.index]!.cels[0]!.data.set([128, 128, 128, 255]);
+    doc = updateLayer(doc, top.index, { blend: "multiply" });
+    const merged = mergeDown(doc, top.index).doc;
+    expect(Array.from(merged.layers[0]!.cels[0]!.data)).toEqual([100, 50, 25, 255]);
+  });
+});

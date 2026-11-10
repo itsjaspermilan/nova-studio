@@ -6,7 +6,7 @@
 // touches one animation only, and the saved file's tags never overlap. Files from elsewhere whose tags
 // overlap or leave gaps are split into such blocks when they are opened (`normalizeAnimations`).
 
-import { blit, cloneRaster, composite, crop, isClear, newRaster, resizeCanvas, type Raster } from "./pixels";
+import { BLEND_MODES, blit, cloneRaster, composite, crop, isClear, newRaster, resizeCanvas, type BlendMode, type Raster } from "./pixels";
 
 export type Direction = "forward" | "reverse" | "pingpong";
 export interface Tag {
@@ -22,6 +22,8 @@ export interface Layer {
   visible: boolean;
   /// 0 to 1.
   opacity: number;
+  /// How the layer combines with the ones under it (missing means normal).
+  blend?: BlendMode;
   cels: Raster[];
   /// For each cel, 0 or a group number: cels of this layer with the same number are linked, and drawing on one draws on all.
   links?: number[];
@@ -66,7 +68,7 @@ export function composeFrame(doc: SpriteDoc, i: number): Raster {
   let out = newRaster(doc.fw, doc.fh);
   for (const layer of doc.layers) {
     const cel = layer.cels[i];
-    if (layer.visible && layer.opacity > 0 && cel) out = composite(out, cel, layer.opacity);
+    if (layer.visible && layer.opacity > 0 && cel) out = composite(out, cel, layer.opacity, layer.blend);
   }
   return out;
 }
@@ -751,13 +753,17 @@ export function moveLayer(doc: SpriteDoc, index: number, delta: number): { doc: 
   return { doc: recomposed(next), index: to };
 }
 
-export function updateLayer(doc: SpriteDoc, index: number, change: Partial<Pick<Layer, "name" | "visible" | "opacity">>): SpriteDoc {
+export function updateLayer(doc: SpriteDoc, index: number, change: Partial<Pick<Layer, "name" | "visible" | "opacity" | "blend">>): SpriteDoc {
   if (!doc.layers[index]) return doc;
   const next = cloneDoc(doc);
   const l = next.layers[index]!;
   if (change.name !== undefined && change.name.trim()) l.name = change.name.trim();
   if (change.visible !== undefined) l.visible = change.visible;
   if (change.opacity !== undefined) l.opacity = clampOpacity(change.opacity);
+  if (change.blend !== undefined && BLEND_MODES.includes(change.blend)) {
+    if (change.blend === "normal") delete l.blend;
+    else l.blend = change.blend;
+  }
   return recomposed(next);
 }
 
@@ -767,7 +773,7 @@ export function mergeDown(doc: SpriteDoc, index: number): { doc: SpriteDoc; inde
   const next = cloneDoc(doc);
   const top = next.layers[index]!;
   const below = next.layers[index - 1]!;
-  below.cels = below.cels.map((c, f) => composite(c, top.cels[f]!, top.visible ? top.opacity : 0));
+  below.cels = below.cels.map((c, f) => composite(c, top.cels[f]!, top.visible ? top.opacity : 0, top.blend));
   next.layers.splice(index, 1);
   return { doc: recomposed(next), index: index - 1 };
 }
@@ -792,7 +798,7 @@ export interface LayersFile {
   sheet: string;
   frames: number;
   columns: number;
-  layers: { name: string; visible: boolean; opacity: number; image: string; /** link groups of the cels, when any are linked */ links?: number[] }[];
+  layers: { name: string; visible: boolean; opacity: number; blend?: BlendMode; image: string; /** link groups of the cels, when any are linked */ links?: number[] }[];
 }
 
 /// Each layer as a sheet laid out like the exported one.
@@ -803,7 +809,7 @@ export function layerSheets(doc: SpriteDoc): Raster[] {
 export function layersFileText(doc: SpriteDoc, images: string[]): string {
   const file: LayersFile = {
     version: 1, sheet: hashRaster(toSheet(doc)), frames: doc.frames.length, columns: sheetColumns(doc.frames.length),
-    layers: doc.layers.map((l, i) => ({ name: l.name, visible: l.visible, opacity: l.opacity, image: images[i]!, ...(l.links?.some((n) => n > 0) ? { links: l.links } : {}) })),
+    layers: doc.layers.map((l, i) => ({ name: l.name, visible: l.visible, opacity: l.opacity, ...(l.blend ? { blend: l.blend } : {}), image: images[i]!, ...(l.links?.some((n) => n > 0) ? { links: l.links } : {}) })),
   };
   return `${JSON.stringify(file, null, 1)}\n`;
 }
@@ -812,7 +818,7 @@ export function parseLayersFile(text: string): LayersFile | null {
   try {
     const f = JSON.parse(text) as LayersFile;
     const good = f && f.version === 1 && typeof f.sheet === "string" && Number.isInteger(f.frames) && Number.isInteger(f.columns) && Array.isArray(f.layers) && f.layers.length > 0 && f.layers.length <= MAX_LAYERS
-      && f.layers.every((l) => typeof l.name === "string" && typeof l.visible === "boolean" && typeof l.opacity === "number" && typeof l.image === "string"
+      && f.layers.every((l) => typeof l.name === "string" && typeof l.visible === "boolean" && typeof l.opacity === "number" && typeof l.image === "string" && (l.blend === undefined || BLEND_MODES.includes(l.blend))
         && (l.links === undefined || (Array.isArray(l.links) && l.links.length === f.frames && l.links.every((n) => Number.isInteger(n) && n >= 0))));
     return good ? f : null;
   } catch {
@@ -827,7 +833,7 @@ export function applyLayers(doc: SpriteDoc, file: LayersFile, sheets: Raster[]):
   const columns = Math.max(1, file.columns);
   const next = cloneDoc(doc);
   next.layers = file.layers.map((l, i) => ({
-    name: l.name, visible: l.visible, opacity: clampOpacity(l.opacity),
+    name: l.name, visible: l.visible, opacity: clampOpacity(l.opacity), ...(l.blend && l.blend !== "normal" ? { blend: l.blend } : {}),
     cels: cutFrames(sheets[i]!, doc.fw, doc.fh, doc.frames.length, columns),
     ...(l.links?.some((n) => n > 0) ? { links: [...l.links] } : {}),
   }));

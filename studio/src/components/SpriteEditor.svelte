@@ -1,9 +1,13 @@
 <script lang="ts">
   import { resizable } from "../lib/resize";
   import { onMount, untrack } from "svelte";
+  import { commands } from "../lib/commands";
+  import { commandsRev } from "../lib/commands-rev.svelte";
+  import { PaletteStore, normalizeHex, nearestColor, parsePalette, toGpl, type Palette } from "../lib/palette";
+  import { brighten, dropShadow, flipRaster, grayscale, hueShift, invertColors, outline, rotateQuarter, usedColors } from "../lib/sprite-fx";
   import {
-    CLEAR, cloneRaster, crop, drawEllipse, drawLine, drawRect, floodFill, getPixel, inRect, inside, isClear, lift, linePoints, parseHex, pixelPerfect, place, rectBetween, stamp, toHex,
-    type Point, type Raster, type Rect, type Rgba,
+    BLEND_MODES, CLEAR, cloneRaster, crop, drawEllipse, drawLine, drawRect, floodFill, getPixel, inRect, inside, isClear, lift, linePoints, parseHex, pixelPerfect, place, rectBetween, stamp, toHex,
+    type BlendMode, type Point, type Raster, type Rect, type Rgba,
   } from "../lib/pixels";
   import {
     addAnimation, animationOf, cloneDoc, linkCels, unlinkCels, syncLinked, moveFramesWithin, scaleDurations, duplicateFrames, moveFramesTo, removeFrames, detectGrid, duplicateAnimation, frameAt, gridFromCounts, smartGrid, framesIn, fromImage, fromSheet, gridTiles, importTiles, insertFrame, moveAnimation, isPristine, moveFrame, newDoc, parseSheetJson,
@@ -36,13 +40,6 @@
     { id: "rect", label: "Rectangle", key: "R", icon: "▭" },
     { id: "ellipse", label: "Ellipse", key: "O", icon: "◯" },
     { id: "picker", label: "Colour picker", key: "I", icon: "✚" },
-  ];
-  // A hand-picked starter palette: greys, then warm to cool, light and dark rows.
-  const PALETTE = [
-    "#000000", "#2b2b3a", "#555566", "#8a8a99", "#c4c4d0", "#ffffff", "#5b2a1a", "#8b4a2b",
-    "#c27a3e", "#f2b66d", "#f7e3a1", "#7a1f2b", "#c1272d", "#ef5b4c", "#f79a8b", "#ffd0c4",
-    "#1f3d2b", "#2f7d46", "#6cc24a", "#b8e986", "#16335c", "#2a62c9", "#4fa3ff", "#a5d4ff",
-    "#3b1d63", "#7b3fc4", "#b78cf2", "#e0c8ff", "#0f5c5c", "#1fb5ad", "#ff7ab6", "#ffe14d",
   ];
 
   const fromPath = untrack(() => path);
@@ -802,9 +799,8 @@
     } else if (e.key === "Escape" && selection) {
       selection = null;
     } else if (!mod) {
-      const hit = TOOLS.find((t) => t.key.toLowerCase() === e.key.toLowerCase());
-      if (hit) tool = hit.id;
-      else if (e.key === "[") size = Math.max(1, size - 1);
+      // (the tool letters are commands now: see the Sprite menu and Edit > Keyboard shortcuts)
+      if (e.key === "[") size = Math.max(1, size - 1);
       else if (e.key === "]") size = Math.min(16, size + 1);
       else if (e.key === "ArrowLeft") frame = Math.max(anim?.from ?? 0, frame - 1);
       else if (e.key === "ArrowRight") frame = Math.min(anim?.to ?? doc.frames.length - 1, frame + 1);
@@ -816,9 +812,85 @@
     }
   }
 
+  // ---- palettes -----------------------------------------------------------------------------------------
+  const palettes = new PaletteStore();
+  let palRev = $state(0);
+  let snapToPalette = $state(false);
+  let paletteFile: HTMLInputElement | undefined = $state();
+  const palette = $derived((void palRev, palettes.get()));
+  const userPalette = $derived((void palRev, !palettes.isBuiltin(palettes.current)));
+  function addToPalette() {
+    const c = hex(color);
+    if (palette.colors.includes(c)) return;
+    if (palettes.isBuiltin(palettes.current)) palettes.add({ name: `${palettes.current} copy`, colors: [...palette.colors, c] });
+    else palettes.setColors(palettes.current, [...palette.colors, c]);
+    palRev++;
+  }
+  const takeOut = (c: string) => {
+    palettes.setColors(palettes.current, palette.colors.filter((x) => x !== c));
+    palRev++;
+  };
+  function paletteFromPicture() {
+    const colors = usedColors(doc.frames[frame]!);
+    if (!colors.length) return studio.say("info", "This picture has no colours yet.");
+    palettes.add({ name: "From picture", colors });
+    palRev++;
+  }
+  async function importPalette(e: Event) {
+    const input = e.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) return;
+    const p = parsePalette(await file.text(), file.name);
+    if (!p) return studio.say("error", `${file.name} is not a palette the studio can read (.gpl, a list of hex colours, or JSON).`);
+    palettes.add(p);
+    palRev++;
+  }
+  function exportPalette() {
+    const p: Palette = palette;
+    const url = URL.createObjectURL(new Blob([toGpl(p)], { type: "text/plain" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${p.name.replace(/[^A-Za-z0-9_-]+/g, "_")}.gpl`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // ---- effects and the Sprite menu ---------------------------------------------------------------------------
+  /// Applies an effect to the current cel, inside the selection when there is one (one undo step).
+  function applyFx(fx: (r: Raster, area: Rect | null) => Raster | null) {
+    const next = cloneDoc(doc);
+    const cel = next.layers[activeLayer]!.cels[frame]!;
+    const out = fx(cel, selection);
+    if (!out) return studio.say("info", "A quarter turn needs a square: select a square area, or use a square sprite.");
+    cel.data.set(out.data);
+    structural(next);
+  }
+  $effect(() => {
+    const has = () => ready && !!doc.layers[activeLayer];
+    const tool_ = (id: Tool, label: string, key: string, icon?: string) =>
+      commands.register({ id: `sprite.tool.${id}`, title: label, menu: "Sprite", icon, keys: [key], enabled: () => ready, run: () => { tool = id; } });
+    const offs = [
+      ...TOOLS.map((t) => tool_(t.id, t.label, t.key, t.id === "select" ? "select" : t.id === "eraser" ? "trash" : t.id === "picker" ? "eye" : undefined)),
+      commands.register({ id: "sprite.flipH", title: "Flip left to right", menu: "Sprite", enabled: has, run: () => applyFx((r, a) => flipRaster(r, false, a)) }),
+      commands.register({ id: "sprite.flipV", title: "Flip top to bottom", menu: "Sprite", enabled: has, run: () => applyFx((r, a) => flipRaster(r, true, a)) }),
+      commands.register({ id: "sprite.turnRight", title: "Turn a quarter clockwise", menu: "Sprite", icon: "rotate", enabled: has, run: () => applyFx((r, a) => rotateQuarter(r, false, a)) }),
+      commands.register({ id: "sprite.turnLeft", title: "Turn a quarter counter-clockwise", menu: "Sprite", enabled: has, run: () => applyFx((r, a) => rotateQuarter(r, true, a)) }),
+      commands.register({ id: "sprite.invert", title: "Invert the colours", menu: "Sprite", enabled: has, run: () => applyFx((r, a) => invertColors(r, a)) }),
+      commands.register({ id: "sprite.grayscale", title: "Make it grey", menu: "Sprite", enabled: has, run: () => applyFx((r, a) => grayscale(r, a)) }),
+      commands.register({ id: "sprite.hue", title: "Shift the hue by 30 degrees", menu: "Sprite", enabled: has, run: () => applyFx((r, a) => hueShift(r, 30, a)) }),
+      commands.register({ id: "sprite.lighter", title: "Make it lighter", menu: "Sprite", enabled: has, run: () => applyFx((r, a) => brighten(r, 0.15, a)) }),
+      commands.register({ id: "sprite.darker", title: "Make it darker", menu: "Sprite", enabled: has, run: () => applyFx((r, a) => brighten(r, -0.15, a)) }),
+      commands.register({ id: "sprite.outline", title: "Outline in the current colour", menu: "Sprite", help: "A line of the current colour round the shapes", enabled: has, run: () => applyFx((r) => outline(r, color)) }),
+      commands.register({ id: "sprite.shadow", title: "Drop shadow in the current colour", menu: "Sprite", help: "A copy of the shapes one pixel down and right, behind them", enabled: has, run: () => applyFx((r) => dropShadow(r, 1, 1, color)) }),
+    ];
+    return () => offs.forEach((off) => off());
+  });
+
   const hex = (c: Rgba) => toHex([c[0], c[1], c[2], 255]);
   const same = (a: Rgba, b: string) => hex(a) === b;
   function pickHex(h: string) {
+    if (snapToPalette) h = nearestColor(palette.colors, h);
     const c = parseHex(h);
     if (c) color = c;
   }
@@ -930,9 +1002,21 @@
         <input value={hex(color)} onchange={(e) => pickHex(e.currentTarget.value)} class="mono hexbox" aria-label="Hex colour" />
       </div>
       <div class="palette">
-        {#each PALETTE as p (p)}
-          <button class="swatch" class:on={same(color, p)} style:background={p} title={p} aria-label={p} onclick={() => pickHex(p)}></button>
+        {#each palette.colors as p (p)}
+          <button class="swatch" class:on={same(color, p)} style:background={p} title="{p}{userPalette ? ' (right-click to take out)' : ''}" aria-label={p} onclick={() => pickHex(p)} oncontextmenu={(e) => { e.preventDefault(); if (userPalette) takeOut(p); }}></button>
         {/each}
+      </div>
+      <div class="row wrap palbar">
+        <select value={palettes.current} onchange={(e) => { palettes.select(e.currentTarget.value); palRev++; }} aria-label="Palette">
+          {#each palettes.all() as p (p.name)}<option value={p.name}>{p.name}</option>{/each}
+        </select>
+        <button title="Add the current colour to this palette (a copy is made if it is a built-in one)" onclick={addToPalette}>＋</button>
+        <button title="A new palette from the colours this picture uses" onclick={paletteFromPicture}>From picture</button>
+        <button title="Read a palette file (.gpl, .hex, .json)" onclick={() => paletteFile?.click()}>Import</button>
+        <button title="Save this palette as a .gpl file (GIMP, Aseprite, Pixelorama and others read it)" onclick={exportPalette}>Export</button>
+        {#if userPalette}<button class="danger" title="Delete this palette" onclick={() => { palettes.remove(palettes.current); palRev++; }}>Delete</button>{/if}
+        <label class="check" title="Colours you pick snap to the nearest colour of this palette"><input type="checkbox" bind:checked={snapToPalette} /> Stay in palette</label>
+        <input bind:this={paletteFile} type="file" accept=".gpl,.hex,.json,.txt" hidden onchange={importPalette} />
       </div>
 
       {#if recent.length}
@@ -956,6 +1040,7 @@
           </div>
         {/each}
       </div>
+      <label class="slider"><span>Blend</span><select value={doc.layers[activeLayer]?.blend ?? "normal"} onchange={(e) => setLayer(activeLayer, { blend: e.currentTarget.value as BlendMode })} title="How this layer mixes with the ones under it">{#each BLEND_MODES as m (m)}<option value={m}>{m}</option>{/each}</select></label>
       <label class="slider"><span>Opacity</span><input type="range" min="0" max="1" step="0.05" value={doc.layers[activeLayer]?.opacity ?? 1} oninput={(e) => setLayer(activeLayer, { opacity: Number(e.currentTarget.value) })} /><output>{Math.round((doc.layers[activeLayer]?.opacity ?? 1) * 100)}%</output></label>
       <div class="row wrap">
         <button onclick={newLayer} disabled={doc.layers.length >= MAX_LAYERS} title="New layer above">＋</button>
@@ -1100,6 +1185,7 @@
   .current { display: flex; gap: 6px; }
   .current input[type="color"] { width: 40px; height: 30px; padding: 0; }
   .hexbox { flex: 1; min-width: 0; }
+  .palbar { margin: 4px 0; align-items: center; } .palbar select { flex: 1; min-width: 0; }
   .palette { display: grid; grid-template-columns: repeat(8, 1fr); gap: 3px; }
   .swatch { aspect-ratio: 1; padding: 0; border-radius: 3px; }
   .swatch.on { outline: 2px solid var(--accent); outline-offset: 1px; }

@@ -147,15 +147,44 @@ export function crop(r: Raster, x: number, y: number, w: number, h: number): Ras
   return out;
 }
 
-/// `over` drawn on top of `under` with normal alpha blending, into a new raster (for onion skins and previews).
-export function composite(under: Raster, over: Raster, overOpacity = 1): Raster {
+/// How a layer combines with what is under it (the same names as in most painting programs).
+export type BlendMode = "normal" | "multiply" | "screen" | "overlay" | "add" | "darken" | "lighten";
+export const BLEND_MODES: BlendMode[] = ["normal", "multiply", "screen", "overlay", "add", "darken", "lighten"];
+
+/// The colour channel (0 to 1) of `over` on `under` for a blend mode, before the alpha is mixed in.
+export function blendChannel(mode: BlendMode, under: number, over: number): number {
+  switch (mode) {
+    case "multiply":
+      return under * over;
+    case "screen":
+      return 1 - (1 - under) * (1 - over);
+    case "overlay":
+      return under < 0.5 ? 2 * under * over : 1 - 2 * (1 - under) * (1 - over);
+    case "add":
+      return Math.min(1, under + over);
+    case "darken":
+      return Math.min(under, over);
+    case "lighten":
+      return Math.max(under, over);
+    default:
+      return over;
+  }
+}
+
+/// `over` drawn on top of `under` with alpha blending in a blend mode, into a new raster (for layers, onion skins and previews).
+export function composite(under: Raster, over: Raster, overOpacity = 1, mode: BlendMode = "normal"): Raster {
   const out = cloneRaster(under);
   for (let i = 0; i < out.data.length; i += 4) {
     const sa = (over.data[i + 3]! / 255) * overOpacity;
     if (sa === 0) continue;
     const da = out.data[i + 3]! / 255;
     const oa = sa + da * (1 - sa);
-    for (let k = 0; k < 3; k++) out.data[i + k] = Math.round((over.data[i + k]! * sa + out.data[i + k]! * da * (1 - sa)) / oa);
+    for (let k = 0; k < 3; k++) {
+      // (where nothing is underneath the layer's own colour shows, as in every program; the mode works where there is something)
+      const own = over.data[i + k]! / 255;
+      const blended = mode === "normal" || da === 0 ? own : (1 - da) * own + da * blendChannel(mode, out.data[i + k]! / 255, own);
+      out.data[i + k] = Math.round(((blended * 255) * sa + out.data[i + k]! * da * (1 - sa)) / oa);
+    }
     out.data[i + 3] = Math.round(oa * 255);
   }
   return out;
