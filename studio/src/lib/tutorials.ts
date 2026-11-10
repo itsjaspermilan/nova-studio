@@ -394,6 +394,80 @@ If the shader has a mistake, the **Problems** panel shows it with its line, and 
       },
     ],
   },
+  {
+    id: "person",
+    title: "Pose and animate a person",
+    summary: "Start from a model with a skeleton, save poses, make an arm reach, and mirror an animation.",
+    minutes: 10,
+    needs: "Nothing: this makes a new model.",
+    steps: [
+      {
+        title: "Start from a person",
+        body: `
+On the Model page type a name, choose **Person with a skeleton** next to **New model**, and press **New model**. You get a person made of boxes: hips, spine, head, and an arm and a leg on each side, each in three parts (upper, lower, end).
+
+The parts are named so that "left" and "right" pair up. That is what makes **Mirror left–right** work later. Reshape the boxes however you like: the names and the nesting are what an animation needs.
+`,
+      },
+      {
+        title: "Make a pose and keep it",
+        body: `
+Press **Animate**. Click **left arm**, put the time bar at \`0\` and press **◆ Key rotation** after setting its Z rotation to about \`70\`: the arm goes out to the side.
+
+Type \`wave\` in the **pose name** box and press **Save pose**. The pose is now a button in the row. Go to another time, press the button, and the arm is out there again. A pose holds every part that has keys at that moment.
+
+> Poses are saved in the model file, so they are there every time you open it.
+`,
+      },
+      {
+        title: "Reach with an arm",
+        body: `
+Choose the **left arm** (the top of a three-part limb). A **Reach** group appears in the row. Press **from the end** to take where the hand is now, change a number or two, pick which way the elbow should **bend**, and press **Reach**.
+
+The studio works out the turns of the arm and the forearm so the hand lands on that spot, and sets keys for them at the time marker. It does this once: it is a helper for posing, not a live constraint.
+`,
+      },
+      {
+        title: "Copy it to the other side",
+        body: `
+Make a few keys on the left arm over a second. Press **Mirror left–right**: the left parts' keys go to the right parts, with sideways moves and turns reversed, so the right arm does the mirror image.
+
+**Reverse**, **×½ time** and **×2 time** change the speed and direction of the whole animation (or just the chosen part's keys), and **Curves** shows the values as lines you can drag.
+`,
+      },
+    ],
+  },
+  {
+    id: "arrange",
+    title: "Arrange a song and mix it",
+    summary: "Turn riffs into patterns, repeat them as clips, and mix tracks through a bus.",
+    minutes: 8,
+    needs: "Nothing: this makes a new song from a starter.",
+    steps: [
+      {
+        title: "Start from a starter song",
+        body: `
+On the Sound page type a name, choose **Chiptune adventure** beside **New song**, and press **New song**. Press **▶ Play** to hear it. Every track is a row of notes in the piano roll.
+`,
+      },
+      {
+        title: "Make a pattern and repeat it",
+        body: `
+Press **Arrange** under the piano roll. Each track is a lane. Under **Make a pattern from this track's notes** type the span (say step \`0\` up to \`16\`), a name, and press **Make pattern**. The notes become a clip you can see.
+
+Drag the clip's right edge to make it longer: it **repeats** the pattern. Drag the clip to move it. **✂ Cut at the play position** splits it so the second part carries on where the first stopped. **Unpack to notes** turns it back into notes you can edit in the roll.
+`,
+      },
+      {
+        title: "Mix with a bus",
+        body: `
+Press **Mixer**. **＋ Bus** adds a strip that several tracks can play into: pick it in a track's **To** box. A bus has one fader, a balance, its own **reverb** share and its own **fx**, so you can put one compressor on the whole drum kit. A track can also send a copy to a bus with the small sliders under **To**.
+
+The **Master** strip has **fx** too, for something that should act on the whole mix. **Measure levels** shows peaks in dB, and the loudness target in Tools brings a song to a steady level.
+`,
+      },
+    ],
+  },
 ];
 
 export interface Tip {
