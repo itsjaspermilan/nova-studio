@@ -4,6 +4,7 @@
   import { commands } from "../lib/commands";
   import { placesOf, strokeMaps } from "../lib/symmetry";
   import { encodeGif, scaleRaster } from "../lib/gif";
+  import { BRUSH_SHAPES, DITHERS, brushOffsets, gradientFill, shadeColor, stampBrush, type BrushShape, type Dither } from "../lib/brush";
   import { toBase64 } from "../lib/wav";
   import { boundsOf, combine, emptyMask, growMask, has, invertMask, isEmpty, isRect, liftMasked, maskFromColor, maskFromEllipse, maskFromPolygon, maskFromRect, outlineSegments, placeMask, type Combine, type Mask } from "../lib/selection";
   import { commandsRev } from "../lib/commands-rev.svelte";
@@ -23,7 +24,7 @@
 
   let { path, text }: { path: string; text: string } = $props();
 
-  type Tool = "select" | "ellipseSelect" | "lasso" | "wand" | "colorSelect" | "pencil" | "eraser" | "fill" | "line" | "rect" | "ellipse" | "picker";
+  type Tool = "select" | "ellipseSelect" | "lasso" | "wand" | "colorSelect" | "shade" | "gradient" | "pencil" | "eraser" | "fill" | "line" | "rect" | "ellipse" | "picker";
   interface Session {
     doc: SpriteDoc;
     past: SpriteDoc[];
@@ -44,6 +45,8 @@
     { id: "pencil", label: "Pencil", key: "B", icon: "✎" },
     { id: "eraser", label: "Eraser", key: "E", icon: "⌫" },
     { id: "fill", label: "Fill", key: "G", icon: "▨" },
+    { id: "gradient", label: "Gradient (drag; the left colour to the right one)", key: "D", icon: "◫" },
+    { id: "shade", label: "Shading (lighter or darker)", key: "U", icon: "◐" },
     { id: "line", label: "Line", key: "L", icon: "╱" },
     { id: "rect", label: "Rectangle", key: "R", icon: "▭" },
     { id: "ellipse", label: "Ellipse", key: "O", icon: "◯" },
@@ -365,6 +368,10 @@
   const maps = $derived(strokeMaps(doc.fw, doc.fh, { x: symX, y: symY, diagonal: symD && square, tileX, tileY }));
   const fillMaps = $derived(strokeMaps(doc.fw, doc.fh, { x: symX, y: symY, diagonal: symD && square }));
   /// The right mouse button has a tool and a colour of its own (the pencil and eraser are the usual pair).
+  /// The shape of the pencil, eraser and shading brushes, whether shading lightens or darkens, and the pattern a gradient is dithered with.
+  let brushShape: BrushShape = $state("square");
+  let shadeDarker = $state(false);
+  let dither: Dither = $state("none");
   let rightTool: Tool = $state("eraser");
   let rightColor: Rgba = $state([255, 255, 255, 255]);
   let swapped: { tool: Tool; color: Rgba } | null = null;
@@ -461,7 +468,7 @@
     start = last = p;
     base = cloneRaster(r);
     strokePoints = [p];
-    if (tool === "pencil" || tool === "eraser") drawStroke(r);
+    if (tool === "pencil" || tool === "eraser" || tool === "shade") drawStroke(r);
     else if (tool === "fill") {
       for (const q of placesOf(p, fillMaps, doc.fw, doc.fh)) floodFill(r, q.x, q.y, color);
       recompose(doc, frame);
@@ -478,12 +485,32 @@
     r.data.set(base!.data);
     const c = tool === "eraser" ? CLEAR : color;
     const points = tool === "pencil" && perfect && size === 1 ? pixelPerfect(strokePoints) : strokePoints;
+    if (tool === "shade") {
+      // each cell the stroke covers is shaded once, however many times the brush passes over it
+      const covered = new Set<string>();
+      for (const pt of strokePoints) for (const q of placesOf(pt, maps, doc.fw, doc.fh, size + 1)) for (const o of brushOffsets(size, brushShape)) covered.add(`${q.x + o.x},${q.y + o.y}`);
+      for (const key of covered) {
+        const [x, y] = key.split(",").map(Number) as [number, number];
+        const px = getPixel(r, x, y);
+        if (px && px[3] > 0) {
+          const [sr, sg, sb] = shadeColor(px, shadeDarker ? -0.5 : 0.5);
+          r.data.set([sr, sg, sb, px[3]], (y * r.w + x) * 4);
+        }
+      }
+      return;
+    }
     // (a brush that hangs over the edge of a tiled sprite comes back in at the other side: places up to a brush's width outside count)
-    for (const pt of points) for (const q of placesOf(pt, maps, doc.fw, doc.fh, size + 1)) stamp(r, q.x, q.y, size, c);
+    for (const pt of points) for (const q of placesOf(pt, maps, doc.fw, doc.fh, size + 1)) stampBrush(r, q.x, q.y, size, brushShape, c);
   }
 
   function shape(r: Raster, p: Point) {
     r.data.set(base!.data);
+    if (tool === "gradient") {
+      // the left colour at the start of the drag to the right-hand colour at its end, inside the selection when there is one
+      const area = selection ? (selMask ? { ...selection, has: (x: number, y: number) => has(selMask!, x, y) } : selection) : null;
+      r.data.set(gradientFill(base!, start, p, color, rightColor, dither, area).data);
+      return;
+    }
     for (const m of maps) {
       const a = m(start);
       const b = m(p);
@@ -518,7 +545,7 @@
       const ny = p.y - moving.dy;
       r.data.set(place(moving.rest, moving.piece, nx, ny).data);
       setSelection(placeMask(moving.pieceMask, doc.fw, doc.fh, nx, ny));
-    } else if (tool === "pencil" || tool === "eraser") {
+    } else if (tool === "pencil" || tool === "eraser" || tool === "shade") {
       strokePoints.push(...linePoints(last, p).slice(1));
       last = p;
       drawStroke(r);
@@ -1040,6 +1067,15 @@
     <section class="work">
       <div class="options">
         <label>Size <input type="number" min="1" max="16" bind:value={size} class="narrow" /></label>
+        {#if tool === "pencil" || tool === "eraser" || tool === "shade"}
+          <label title="The shape of the brush">Brush <select bind:value={brushShape}>{#each BRUSH_SHAPES as b (b)}<option value={b}>{b}</option>{/each}</select></label>
+        {/if}
+        {#if tool === "shade"}
+          <label class="check" title="Paint darker instead of lighter"><input type="checkbox" bind:checked={shadeDarker} /> Darker</label>
+        {/if}
+        {#if tool === "gradient"}
+          <label title="With a pattern the gradient uses only its two colours, like pixel art does">Dither <select bind:value={dither}>{#each DITHERS as d (d)}<option value={d}>{d}</option>{/each}</select></label>
+        {/if}
         {#if tool === "wand" || tool === "colorSelect"}
           <label class="slider" title="How different a colour may be and still be picked (0 is exactly the same)"><span>Tolerance</span><input type="range" min="0" max="255" step="1" bind:value={tolerance} /><output>{tolerance}</output></label>
         {/if}
