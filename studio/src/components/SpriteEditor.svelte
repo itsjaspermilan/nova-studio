@@ -987,6 +987,22 @@
     const kept = untrack(() => others).filter((f) => !!a && f >= a.from && f <= a.to);
     if (kept.length !== untrack(() => others).length) others = kept;
   });
+  /// Dragging along the strip above the frames shows the frame under the pointer (the frames themselves are dragged to reorder them).
+  function scrubTo(e: PointerEvent) {
+    const el = e.currentTarget as HTMLElement;
+    const r = el.getBoundingClientRect();
+    if (!animFrames.length || r.width <= 0) return;
+    const at = Math.max(0, Math.min(animFrames.length - 1, Math.floor(((e.clientX - r.left) / r.width) * animFrames.length)));
+    frame = animFrames[at]!;
+    others = [];
+  }
+  function scrubDown(e: PointerEvent) {
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    scrubTo(e);
+  }
+  function scrubMove(e: PointerEvent) {
+    if ((e.currentTarget as HTMLElement).hasPointerCapture?.(e.pointerId)) scrubTo(e);
+  }
   function pickFrame(i: number, e: MouseEvent) {
     if (e.shiftKey && anim) {
       const [lo, hi] = [Math.min(frame, i), Math.max(frame, i)];
@@ -1664,6 +1680,7 @@
       </div>
 
       <div class="timeline">
+        <div class="scrub" role="slider" tabindex="-1" aria-label="Scrub through the frames" aria-valuemin={1} aria-valuemax={animFrames.length} aria-valuenow={Math.max(0, animFrames.indexOf(frame)) + 1} title="Drag along here to scrub through the frames" onpointerdown={scrubDown} onpointermove={scrubMove}><i style:left="{animFrames.length ? ((Math.max(0, animFrames.indexOf(frame)) + 0.5) / animFrames.length) * 100 : 0}%"></i></div>
         <div class="frames" role="listbox" aria-label="Frames">
           {#if anim}<span class="animlabel" title="The animation these frames belong to">{anim.name || "(unnamed)"}</span>{/if}
           {#each animFrames as i (i)}
@@ -1996,6 +2013,8 @@
 {/if}
 
 <style>
+  .scrub { position: relative; height: 10px; margin-bottom: 2px; background: color-mix(in srgb, var(--line) 60%, transparent); border-radius: 4px; cursor: ew-resize; touch-action: none; }
+  .scrub i { position: absolute; top: 0; bottom: 0; width: 3px; margin-left: -1px; background: var(--accent); border-radius: 2px; pointer-events: none; }
   .studio { height: 100%; display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; min-height: 0; }
   .tools { background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; padding: 6px; align-items: center; }
   .tools button { width: 30px; height: 30px; padding: 0; font-size: 15px; }
