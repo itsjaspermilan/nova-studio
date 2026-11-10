@@ -129,3 +129,32 @@ export function pressureSize(size: number, pressure: number): number {
   const p = Math.min(1, Math.max(0, Number.isFinite(pressure) ? pressure : 1));
   return Math.max(1, Math.round(size * (0.2 + 0.8 * p)));
 }
+
+/// A stroke whose opacity follows the pressure: every cell a dab covers takes the strongest pressure that touched it (so crossing over itself does not build up), and is then
+/// blended once with `c` at that strength (`erase`: the cell's own opacity is lowered by that share instead). `dabs` are the places and the pressure (0 to 1) at each; `sizeAt`
+/// gives each dab's brush size. `base` is the picture before the stroke; the result is written into `out`.
+export function pressureOpacityStroke(out: Raster, base: Raster, dabs: { x: number; y: number; pressure: number; size: number }[], shape: BrushShape, c: Rgba, erase: boolean) {
+  const share = new Map<number, number>();
+  for (const d of dabs) {
+    const a = Math.max(0, Math.min(1, d.pressure));
+    for (const o of brushOffsets(d.size, shape)) {
+      const x = d.x + o.x, y = d.y + o.y;
+      if (x < 0 || y < 0 || x >= out.w || y >= out.h) continue;
+      const k = y * out.w + x;
+      if (a > (share.get(k) ?? 0)) share.set(k, a);
+    }
+  }
+  for (const [k, a] of share) {
+    const i = k * 4;
+    const under = [base.data[i]!, base.data[i + 1]!, base.data[i + 2]!, base.data[i + 3]!];
+    if (erase) {
+      out.data[i + 3] = Math.round(under[3]! * (1 - a));
+      continue;
+    }
+    const sa = (c[3] / 255) * a;
+    const da = under[3]! / 255;
+    const oa = sa + da * (1 - sa);
+    for (let ch = 0; ch < 3; ch++) out.data[i + ch] = oa > 0 ? Math.round((c[ch]! * sa + under[ch]! * da * (1 - sa)) / oa) : 0;
+    out.data[i + 3] = Math.round(oa * 255);
+  }
+}

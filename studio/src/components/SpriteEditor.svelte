@@ -10,7 +10,7 @@
   import { rotSprite, rotateNearest, scaleTo } from "../lib/sprite-transform";
   import { drawText, textSize } from "../lib/pixel-text";
   import { needsMap, scrollToCentre, visibleBox } from "../lib/minimap";
-  import { BRUSH_SHAPES, DITHERS, brushFromRaster, brushOffsets, gradientFill, pressureSize, shadeColor, stampBrush, stampPicture, type BrushShape, type Dither, type PictureBrush } from "../lib/brush";
+  import { BRUSH_SHAPES, DITHERS, brushFromRaster, brushOffsets, gradientFill, pressureOpacityStroke, pressureSize, shadeColor, stampBrush, stampPicture, type BrushShape, type Dither, type PictureBrush } from "../lib/brush";
   import { encodeApng } from "../lib/apng";
   import SpriteExportDialog from "./SpriteExportDialog.svelte";
   import { importAnimation } from "../lib/sprite-import";
@@ -433,6 +433,7 @@
   /// The pen's pressure at each stroke point (1 for a mouse), and whether it sets the brush size.
   let strokePressures: number[] = [];
   let usePressure = $state(true);
+  let pressureFor = $state<"size" | "opacity">("size"); // what a pen's pressure changes
   let textValue = $state("TEXT");
   let textScale = $state(1);
   const pressureOf = (e: PointerEvent) => (e.pointerType === "pen" ? e.pressure : 1);
@@ -669,6 +670,12 @@
     if (custom) {
       const reach = Math.max(pictureBrush!.w, pictureBrush!.h);
       for (const pt of points) for (const q of placesOf(pt, maps, doc.fw, doc.fh, reach)) stampPicture(r, q.x, q.y, pictureBrush!, tool === "eraser" ? CLEAR : brushKeepsColors ? undefined : c);
+      return;
+    }
+    if (usePressure && pressureFor === "opacity" && (tool === "pencil" || tool === "eraser")) {
+      const dabs: { x: number; y: number; pressure: number; size: number }[] = [];
+      for (const [i, pt] of points.entries()) for (const q of placesOf(pt, maps, doc.fw, doc.fh, size + 1)) dabs.push({ x: q.x, y: q.y, pressure: strokePressures[i] ?? 1, size });
+      pressureOpacityStroke(r, base!, dabs, brushShape, c, tool === "eraser");
       return;
     }
     for (const [i, pt] of points.entries()) {
@@ -1649,7 +1656,8 @@
         {#if tool === "pencil" || tool === "eraser" || tool === "shade"}
           <label title="The shape of the brush">Brush <select bind:value={brushShape}>{#each BRUSH_SHAPES as b (b)}<option value={b}>{b}</option>{/each}</select></label>
         {/if}
-        {#if tool === "pencil" || tool === "eraser"}<label class="check" title="With a pen, pressing harder makes the line thicker (a mouse is unaffected)"><input type="checkbox" bind:checked={usePressure} /> Pen pressure</label>{/if}
+        {#if tool === "pencil" || tool === "eraser"}<label class="check" title="With a pen, pressing harder makes the line thicker or stronger (a mouse is unaffected)"><input type="checkbox" bind:checked={usePressure} /> Pen pressure</label>
+          {#if usePressure}<select bind:value={pressureFor} aria-label="What pressure changes" title="What the pressure of a pen changes"><option value="size">thickness</option><option value="opacity">opacity</option></select>{/if}{/if}
         {#if (tool === "pencil" || tool === "eraser") && pictureBrush}
           <span class="dim" title="The pencil and eraser stamp a picture cut from the canvas">Picture brush ({pictureBrush.cells.length} pixels)</span>
           {#if tool === "pencil"}<label class="check" title="Stamp with its own colours (off: stamp the shape in the current colour)"><input type="checkbox" bind:checked={brushKeepsColors} /> Its colours</label>{/if}

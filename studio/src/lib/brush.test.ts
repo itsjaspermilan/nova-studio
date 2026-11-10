@@ -122,3 +122,22 @@ describe("pen pressure", () => {
     expect(pressureSize(8, NaN)).toBe(8);
   });
 });
+
+import { pressureOpacityStroke } from "./brush";
+import { newRaster as newR } from "./pixels";
+describe("a stroke whose opacity follows the pressure", () => {
+  it("blends the colour in by the pressure, takes the strongest where dabs overlap, and erases by the same share", () => {
+    const base = newR(4, 1);
+    for (let x = 0; x < 4; x++) base.data.set([0, 0, 0, 255], x * 4);
+    const out = newR(4, 1);
+    out.data.set(base.data);
+    pressureOpacityStroke(out, base, [{ x: 0, y: 0, pressure: 0.5, size: 1 }, { x: 1, y: 0, pressure: 1, size: 1 }, { x: 1, y: 0, pressure: 0.2, size: 1 }], "square", [200, 100, 0, 255], false);
+    expect([...out.data.slice(0, 4)]).toEqual([100, 50, 0, 255]);
+    expect([...out.data.slice(4, 8)]).toEqual([200, 100, 0, 255]);
+    expect([...out.data.slice(8, 12)]).toEqual([0, 0, 0, 255]);
+    const gone = newR(4, 1);
+    gone.data.set(base.data);
+    pressureOpacityStroke(gone, base, [{ x: 0, y: 0, pressure: 0.5, size: 1 }], "square", [0, 0, 0, 255], true);
+    expect(gone.data[3]).toBe(128);
+  });
+});
