@@ -33,6 +33,7 @@
   import CommandPalette from "./components/CommandPalette.svelte";
   import MenuBar from "./components/MenuBar.svelte";
   import DeviceRow from "./components/DeviceRow.svelte";
+  import EnginePanels from "./components/EnginePanels.svelte";
   import Icon from "./components/Icon.svelte";
   import AppearanceDialog from "./components/AppearanceDialog.svelte";
   import { applyAppearance } from "./lib/appearance.svelte";
@@ -235,6 +236,7 @@
       {/if}
       <div class="editor-host"><EditorHost /></div>
     </main>
+    {#if studio.workspace === "engine" && studio.tab}<div class="right"><EnginePanels /></div>{/if}
 
     {#if studio.panelOpen}
       <div class="bottom" use:resizable={{ key: sizeKey("bottom", studio.workspace), edge: "top", size: 220, min: 90, max: 640 }}><BottomPanel /></div>
@@ -297,7 +299,8 @@
   .hintbar { position: fixed; left: 8px; bottom: 6px; max-width: min(70vw, 760px); z-index: 50; padding: 3px 10px; font-size: 12px; color: var(--text); background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line); border-radius: 6px; pointer-events: none; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3); }
   .tool { position: fixed; inset: 0; z-index: 40; background: var(--bg); }
   .boot { height: 100%; display: grid; place-items: center; }
-  .shell { height: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr) auto auto; grid-template-areas: "top top" "wsrow wsrow" "tree center" "bottom bottom" "status status"; }
+  .shell { height: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: auto auto minmax(0, 1fr) auto auto; grid-template-areas: "top top top" "wsrow wsrow wsrow" "tree center right" "bottom bottom bottom" "status status status"; }
+  .right { grid-area: right; min-height: 0; display: flex; }
   .docwin { height: 100%; display: flex; flex-direction: column; }
   .docwin .center { flex: 1; }
   .small { font-size: 11px; }
