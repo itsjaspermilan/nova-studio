@@ -272,9 +272,21 @@
   }
   const referenceCandidates = $derived(studio.files.filter((f) => !f.dir && /\.(png|jpe?g)$/i.test(f.path) && f.path !== session?.imagePath).map((f) => f.path));
 
+  // with tiled drawing on, the picture repeated faintly round the canvas (one picture each way), so a seamless texture can be judged as it is drawn
+  let tileUrl = $state("");
+  function paintTiles() {
+    if (!tileX && !tileY) { tileUrl = ""; return; }
+    const tmp = document.createElement("canvas");
+    tmp.width = current.w;
+    tmp.height = current.h;
+    tmp.getContext("2d")!.putImageData(new ImageData(new Uint8ClampedArray(current.data), current.w, current.h), 0, 0);
+    tileUrl = tmp.toDataURL();
+  }
+
   function paint() {
     const ctx = canvas?.getContext("2d");
     if (!ctx || !canvas || !ready) return;
+    paintTiles();
     const w = doc.fw * zoom;
     const h = doc.fh * zoom;
     canvas.width = w;
@@ -1768,6 +1780,7 @@
               {#if hover}<i style:top="{hover.y * zoom + zoom / 2}px"></i>{/if}
             </div>
           {/if}
+          {#if tileUrl}<div class="tilebg" aria-hidden="true" style:left="{tileX ? -doc.fw * zoom : 0}px" style:top="{tileY ? -doc.fh * zoom : 0}px" style:width="{doc.fw * zoom * (tileX ? 3 : 1)}px" style:height="{doc.fh * zoom * (tileY ? 3 : 1)}px" style:background-image="url({tileUrl})" style:background-size="{doc.fw * zoom}px {doc.fh * zoom}px"></div>{/if}
           <canvas bind:this={canvas} aria-label="Sprite canvas" class:hand={tool === "pan"} class:zooming={tool === "zoom"} onpointerdown={down} onpointermove={move} onpointerup={up} onpointercancel={up} onpointerleave={leave} oncontextmenu={(e) => e.preventDefault()}></canvas>
         </div>
       </div>
@@ -2153,6 +2166,8 @@
   .minimap i { position: absolute; border: 1px solid #ffd166; background: rgba(255, 209, 102, 0.15); pointer-events: none; }
   .scroller { flex: 1; min-height: 0; overflow: auto; display: grid; padding: 16px; background: var(--bg); }
   .stage { margin: auto; position: relative; }
+  .tilebg { position: absolute; background-repeat: repeat; opacity: .35; image-rendering: pixelated; pointer-events: none; }
+  .stage canvas { position: relative; }
   .stage.ruled { padding: 18px 0 0 18px; }
   .ruler { position: absolute; font-size: 9px; color: var(--dim); pointer-events: none; }
   .ruler.top { top: 0; left: 18px; height: 16px; border-bottom: 1px solid var(--line); }
