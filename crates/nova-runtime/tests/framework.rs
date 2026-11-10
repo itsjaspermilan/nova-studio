@@ -603,6 +603,61 @@ fn tags_play_with_directions_durations_and_end_callbacks() {
     assert_eq!(l.len(), 6, "{l:?}");
 }
 
+const SHEET_WITH_DATA: &str = r#"{"version":1,"image":"sheet.png","frame_width":32,"frame_height":32,"frame_duration_ms":100,
+    "pivot":{"x":16,"y":30},
+    "nine_slice":{"left":4,"right":4,"top":5,"bottom":6},
+    "frame_data":[{"frame":1,"hitbox":{"x":2,"y":4,"w":20,"h":24},"events":["step","dust"]}],
+    "tags":[{"name":"walk","from":0,"to":2}]}"#;
+
+#[test]
+fn frame_events_fire_and_the_frames_hitbox_and_pivot_can_be_read() {
+    let mut g = project(vec![
+        ("sprites/sheet.png", png(128, 64)),
+        ("sprites/hero.sprite.json", lua(SHEET_WITH_DATA)),
+        (
+            "entities/h.lua",
+            lua(
+                "local H = nova.entity { sprite = 'hero' }\nfunction H:on_animation_event(name, frame) nova.log('event ' .. name .. ' on ' .. frame) end\nreturn H",
+            ),
+        ),
+        (
+            "scenes/s.lua",
+            lua(
+                "local S = nova.scene {}\nfunction S:enter()\n  self.h = nova.spawn('h', 0, 0)\n  self.h:play('walk')\n  local px, py = self.h:frame_pivot()\n  local b = self.h:frame_hitbox()\n  nova.log('start pivot ' .. px .. ',' .. py .. ' box ' .. tostring(b))\n  self.n = 0\nend\nfunction S:update(dt)\n  self.n = self.n + 1\n  if self.n == 8 then\n    local b = self.h:frame_hitbox()\n    nova.log('frame ' .. self.h.frame .. ' box ' .. b.x .. ',' .. b.y .. ',' .. b.w .. ',' .. b.h)\n  end\nend\nreturn S",
+            ),
+        ),
+        ("main.lua", lua("nova.start('s')")),
+    ]);
+    steps(&mut g, 14);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let l = logs(&g);
+    assert_eq!(l[0], "start pivot 16.0,30.0 box nil", "{l:?}");
+    // frame 1 comes up after 100 ms (6 steps): both its events fire, in order, once
+    assert_eq!(l[1], "event step on 1", "{l:?}");
+    assert_eq!(l[2], "event dust on 1", "{l:?}");
+    assert_eq!(l[3], "frame 1 box 2.0,4.0,20.0,24.0", "{l:?}");
+    assert_eq!(l.len(), 4, "{l:?}");
+}
+
+#[test]
+fn a_panel_uses_the_sheets_own_nine_slice_when_no_slice_is_given() {
+    let mut g = project(vec![
+        ("sprites/sheet.png", png(128, 64)),
+        ("sprites/hero.sprite.json", lua(SHEET_WITH_DATA)),
+        (
+            "main.lua",
+            lua("function update(dt) nova.ui.panel('hero', 0, 0, 100, 60) end"),
+        ),
+    ]);
+    steps(&mut g, 2);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    // nine pieces: the corners keep the sheet's own border sizes (4 wide, 5 or 6 tall)
+    let ui = g.frame_input(540).sprites_front.to_vec();
+    assert_eq!(ui.len(), 9, "{}", ui.len());
+    assert!(ui.iter().any(|s| (s.size[0] - 4.0).abs() < 1e-4 && (s.size[1] - 5.0).abs() < 1e-4), "top-left corner is 4 by 5");
+    assert!(ui.iter().any(|s| (s.size[0] - 4.0).abs() < 1e-4 && (s.size[1] - 6.0).abs() < 1e-4), "bottom corners are 4 by 6");
+}
+
 #[test]
 fn play_reports_unknown_tags_and_plain_images() {
     for (sprite, call, expected) in [

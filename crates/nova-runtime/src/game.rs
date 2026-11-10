@@ -3038,6 +3038,41 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 tags.set(tag.name.clone(), t)?;
             }
             info.set("tags", tags)?;
+            // per frame (index 1 is frame 0): hitbox { x, y, w, h }, pivot { x, y }, events { names }, when the sheet gives them
+            let data = lua.create_table()?;
+            for (i, f) in def.frame_data.iter().enumerate() {
+                if f.hitbox.is_none() && f.pivot.is_none() && f.events.is_empty() {
+                    continue;
+                }
+                let t = lua.create_table()?;
+                if let Some(b) = f.hitbox {
+                    let h = lua.create_table()?;
+                    h.set("x", b.x)?;
+                    h.set("y", b.y)?;
+                    h.set("w", b.w)?;
+                    h.set("h", b.h)?;
+                    t.set("hitbox", h)?;
+                }
+                if let Some(p) = f.pivot {
+                    let h = lua.create_table()?;
+                    h.set("x", p[0])?;
+                    h.set("y", p[1])?;
+                    t.set("pivot", h)?;
+                }
+                if !f.events.is_empty() {
+                    t.set("events", f.events.clone())?;
+                }
+                data.set(i + 1, t)?;
+            }
+            info.set("frame_data", data)?;
+            if let Some([l, r, t, b]) = def.nine_slice {
+                let n = lua.create_table()?;
+                n.set("left", l)?;
+                n.set("right", r)?;
+                n.set("top", t)?;
+                n.set("bottom", b)?;
+                info.set("nine_slice", n)?;
+            }
             Ok(Value::Table(info))
         })?,
     )?;

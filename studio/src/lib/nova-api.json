@@ -1323,6 +1323,20 @@
   "group": "Entity methods"
  },
  {
+  "name": "frame_hitbox",
+  "kind": "method",
+  "signature": "self:frame_hitbox() -> { x, y, w, h } or nil",
+  "doc": "The hitbox the sprite sheet gives the frame being shown (\"hitbox\" and \"frame_data\" in its .sprite.json), in pixels from the frame's top left; nil when the sheet gives none.",
+  "group": "Entity methods"
+ },
+ {
+  "name": "frame_pivot",
+  "kind": "method",
+  "signature": "self:frame_pivot() -> x, y or nil",
+  "doc": "The pivot (where the sprite stands) the sheet gives the frame being shown, in pixels from the frame's top left; nil when it gives none. Define on_animation_event(name, frame) to hear the events a sheet puts on frames.",
+  "group": "Entity methods"
+ },
+ {
   "name": "set_frame",
   "kind": "method",
   "signature": "self:set_frame(frame)",

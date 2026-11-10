@@ -492,6 +492,34 @@ local function sheet_info(name)
   return info
 end
 
+-- Events named in a sheet's frame_data run on_animation_event(name, frame) when that frame comes up (a footstep, a hit that lands).
+local function fire_events(e)
+  if not e.on_animation_event then return end
+  local name = rawget(e, "sprite") or getmetatable(e).__sprite
+  local info = name and sheet_info(name)
+  local fd = info and info.frame_data and info.frame_data[e.frame + 1]
+  local list = fd and fd.events
+  if list then for i = 1, #list do e:on_animation_event(list[i], e.frame) end end
+end
+
+-- The hitbox and the pivot the sheet gives the frame being shown, in pixels from the frame's top left (nil when it gives none): { x, y, w, h } and x, y.
+function Entity:frame_hitbox()
+  local name = rawget(self, "sprite") or getmetatable(self).__sprite
+  local info = name and sheet_info(name)
+  local fd = info and info.frame_data and info.frame_data[self.frame + 1]
+  local b = fd and fd.hitbox
+  if not b then return nil end
+  return { x = b.x, y = b.y, w = b.w, h = b.h }
+end
+function Entity:frame_pivot()
+  local name = rawget(self, "sprite") or getmetatable(self).__sprite
+  local info = name and sheet_info(name)
+  local fd = info and info.frame_data and info.frame_data[self.frame + 1]
+  local p = fd and fd.pivot
+  if not p then return nil end
+  return p.x, p.y
+end
+
 -- Play a tag of this entity's sprite sheet. Calling it again with the same tag keeps going
 -- (pass { restart = true } to start over); on_animation_end(tag) runs when a non-looping tag finishes.
 function Entity:play(tag, opts)
@@ -506,6 +534,7 @@ function Entity:play(tag, opts)
   if a and a.tag == tag and not a.done and not (opts and opts.restart) then return end
   self._anim = { tag = tag, seq = t.sequence, loop = t.loop, i = 1, t = 0, done = false }
   self.frame = t.sequence[1]
+  fire_events(self)
 end
 
 function Entity:stop_animation() self._anim = nil end
@@ -536,6 +565,7 @@ local function animate(e, dt)
       break
     end
     e.frame = a.seq[a.i]
+    fire_events(e)
     dur = info.durations[e.frame + 1] or 100
   end
 end
@@ -1187,7 +1217,9 @@ end
 function ui.panel(id, x, y, w, h, opts)
   opts = opts or {}
   local iw, ih = nova.image_size(id)
-  local sl = opts.slice or math.floor(math.min(iw, ih) / 3)
+  local sheet = not opts.slice and raw.sprite_info(id)
+  local given = sheet and sheet.nine_slice -- the borders the sprite sheet names for itself
+  local sl = opts.slice or (given and { given.left, given.top, given.right, given.bottom }) or math.floor(math.min(iw, ih) / 3)
   local l, t, r, b
   if type(sl) == "table" then l, t, r, b = sl.left or sl.l or sl[1], sl.top or sl.t or sl[2], sl.right or sl.r or sl[3], sl.bottom or sl.b or sl[4]
   else l, t, r, b = sl, sl, sl, sl end

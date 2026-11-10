@@ -866,6 +866,21 @@ self.anim_speed = 2                 -- playback speed multiplier (default 1)
 
 `self.frame` is the frame being shown. A default hitbox uses the frame size.
 
+**Hitboxes, pivots, events and a nine-slice in the sheet** (the sprite editor writes them; hand edits are fine). All in pixels of a frame, from its top left:
+
+```json
+"hitbox": { "x": 4, "y": 8, "w": 24, "h": 22 },
+"pivot": { "x": 16, "y": 30 },
+"nine_slice": { "left": 6, "right": 6, "top": 6, "bottom": 10 },
+"frame_data": [ { "frame": 3, "hitbox": { "x": 2, "y": 8, "w": 28, "h": 20 }, "events": ["step"] } ]
+```
+
+`hitbox` and `pivot` at the top are the defaults for every frame; an entry of `frame_data` replaces them for one frame and can name up to 8 `events`. A box or point outside
+the frame, a frame that does not exist, or borders bigger than the frame stop the project with the file and place. In Lua: `self:frame_hitbox()` gives the shown frame's hitbox
+as `{ x, y, w, h }` (or nil), `self:frame_pivot()` its pivot as `x, y`, and `function Hero:on_animation_event(name, frame)` runs when a frame with that event comes up while
+an animation plays (a footstep, a swing that lands). `nova.ui.panel(id, ...)` uses the sheet's `nine_slice`
+as its default `slice`. The game does not move the entity's collision box by itself: read `frame_hitbox()` where you want it.
+
 ## Keyframe animations (`animations/<name>.anim.json`)
 
 For anything that is not a sprite's frames or a model's clip: a door opening, a camera move, a menu
