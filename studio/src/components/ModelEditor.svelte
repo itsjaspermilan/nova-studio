@@ -153,6 +153,7 @@
     }
   }
   let curvesOpen = $state(false);
+  let autoKey = $state(true);
   let uvRows: ShapeReport[] = $state([]);
   function checkUv() {
     uvRows = uvReport(doc);
@@ -1108,6 +1109,16 @@
       const e = new THREE.Euler().setFromQuaternion(attachedPart.quaternion, "XYZ");
       const origin = attachedPart.position.toArray().map(round2) as Vec3;
       const rotation = [e.x, e.y, e.z].map((r) => round2((r * 180) / Math.PI)) as Vec3;
+      if (mode === "animate" && clip && autoKey) {
+        // recording: what the handle changed becomes a key at the time marker, and the model's own pose stays as it was
+        const names = namesOf(doc, selected.parts);
+        let next = doc;
+        const was = (prop: Prop) => poseValue(prop);
+        if (origin.some((v, i) => Math.abs(v - was("position")[i]!) > 0.005)) next = setKey(next, clipIndex, names, "position", animTime, origin);
+        if (rotation.some((v, i) => Math.abs(v - was("rotation")[i]!) > 0.05)) next = setKey(next, clipIndex, names, "rotation", animTime, rotation);
+        if (next !== doc) commit(next, false, "Key from handle");
+        return;
+      }
       const same = origin.every((v, i) => v === partBase!.origin[i]) && rotation.every((v, i) => Math.abs(v - partBase!.rotation[i]!) < 0.01);
       if (!same) commit(updatePart(doc, selected.parts, { origin, rotation }));
       return;
@@ -3187,6 +3198,7 @@
             <button title="Twice as slow" onclick={() => commit(stretchKeys(doc, clipIndex, 2, partNames.length ? partNames : null))}>×2 time</button>
             <button title="Move the keys 0.1 s earlier" onclick={() => commit(shiftKeys(doc, clipIndex, -0.1, partNames.length ? partNames : null))}>−0.1 s</button>
             <button title="Move the keys 0.1 s later" onclick={() => commit(shiftKeys(doc, clipIndex, 0.1, partNames.length ? partNames : null))}>+0.1 s</button>
+            <button class:on={autoKey} aria-pressed={autoKey} onclick={() => (autoKey = !autoKey)} title="Record: turning or moving a part with the handles sets keys at the time marker (off: the handles change the part's own pose)">● Record</button>
             <button class:on={curvesOpen} aria-pressed={curvesOpen} onclick={() => (curvesOpen = !curvesOpen)} title="Show the values of the chosen part as curves over time, with the keys as dots to drag">Curves</button>
             {#if otherModels.length}
               <select aria-label="Copy the animations of another model" value="" onchange={(e) => { void copyAnimationsFrom(e.currentTarget.value); e.currentTarget.value = ""; }} title="Copy every animation of another model onto this one: parts are matched by name">
