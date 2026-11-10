@@ -16,6 +16,7 @@
   } from "../lib/model-doc";
   import { AXIS_COLOURS, AXIS_CSS, AXIS_NAMES, centreOf, constrain, describeLock, describeMove, freePlane, lockForKey, type Lock } from "../lib/point-move";
   import MeshTools from "./MeshTools.svelte";
+  import { ORTHO_FOV, PERSPECTIVE_FOV, VIEW_LABELS, VIEW_NAMES, distanceForFov, orbitStep, viewPlacement, type ViewName } from "../lib/view-presets";
   import ModelStats from "./ModelStats.svelte";
   import { addFace, bevelEdge, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, freshProfile, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsSymmetric, setFaceColors, setSmooth, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
   import { hasVolume, meshOf, segmentsOf, shapeFaces, solidOf } from "../lib/model-mesh";
@@ -1534,8 +1535,47 @@
   }
 
   function resetView() {
+    ortho = false;
+    if (camera) {
+      camera.fov = PERSPECTIVE_FOV;
+      camera.up.set(0, 1, 0);
+      camera.updateProjectionMatrix();
+    }
     camera?.position.set(34, 28, 46);
     controls?.target.set(0, 8, 0);
+  }
+
+  // ---- standard views (Blender's numpad views, with commands for a laptop) ----------------------------------
+  /// A very narrow field of view from far away stands in for an orthographic camera, so the gizmos and picking, which belong to this camera, keep working.
+  let ortho = $state(false);
+  let viewName = $state<ViewName | null>(null);
+  function setOrtho(on: boolean) {
+    if (!camera || !controls || on === ortho) return;
+    const d = camera.position.distanceTo(controls.target);
+    const dir = camera.position.clone().sub(controls.target).normalize();
+    const next = distanceForFov(d, camera.fov, on ? ORTHO_FOV : PERSPECTIVE_FOV);
+    camera.fov = on ? ORTHO_FOV : PERSPECTIVE_FOV;
+    camera.far = Math.max(2000, next * 2);
+    camera.updateProjectionMatrix();
+    camera.position.copy(controls.target).add(dir.multiplyScalar(next));
+    ortho = on;
+  }
+  function showView(name: ViewName) {
+    if (!camera || !controls) return;
+    const d = camera.position.distanceTo(controls.target);
+    const v = viewPlacement(name, [controls.target.x, controls.target.y, controls.target.z], d);
+    camera.position.set(...v.position);
+    camera.up.set(...v.up);
+    camera.lookAt(controls.target);
+    viewName = name;
+  }
+  function orbit(dAz: number, dEl: number) {
+    if (!camera || !controls) return;
+    const p = orbitStep([camera.position.x, camera.position.y, camera.position.z], [controls.target.x, controls.target.y, controls.target.z], dAz, dEl);
+    camera.up.set(0, 1, 0);
+    camera.position.set(...p);
+    camera.lookAt(controls.target);
+    viewName = null;
   }
 
   // ---- editing ------------------------------------------------------------------------------------------
@@ -2013,6 +2053,12 @@
       commands.register({ id: "model.duplicate", title: "Duplicate", menu: "Model", icon: "copy", keymaps: { blender: ["Shift+D"], nova: ["Mod+D"] }, enabled: () => !modal && !!selected, run: () => duplicate() }),
       commands.register({ id: "model.delete", title: "Delete", menu: "Model", icon: "trash", keymaps: { blender: ["X", "Delete"], nova: ["Delete", "Backspace"] }, enabled: () => !modal && !!selected, run: () => remove() }),
       commands.register({ id: "model.shading", title: "Cycle the shading", menu: "Model", icon: "shading", keys: ["Z"], help: "Textured, plain colours, wireframe", enabled: () => !modal, run: () => { viewMode = viewMode === "textured" ? "solid" : viewMode === "solid" ? "wire" : "textured"; } }),
+      ...VIEW_NAMES.map((n) => commands.register({ id: `model.view.${n}`, title: `${VIEW_LABELS[n]} view`, menu: "Model", keymaps: { blender: n === "front" ? ["1"] : n === "right" ? ["3"] : n === "top" ? ["7"] : n === "back" ? ["2"] : n === "left" ? ["4"] : ["8"], nova: [] }, help: n === "front" || n === "right" || n === "top" ? "Blender's numpad 1, 3 and 7. Back, left and bottom are 2, 4 and 8 here (a laptop has no Ctrl-numpad)." : undefined, enabled: () => !modal, run: () => showView(n) })),
+      commands.register({ id: "model.view.ortho", title: "Flat or deep view", menu: "Model", keymaps: { blender: ["5"], nova: [] }, help: "Switches between a view with perspective and a flat one where parallel lines stay parallel (Blender's numpad 5)", enabled: () => !modal, run: () => setOrtho(!ortho) }),
+      commands.register({ id: "model.view.orbitLeft", title: "Turn the view left", menu: "Model", help: "15 degrees", run: () => orbit(-15, 0) }),
+      commands.register({ id: "model.view.orbitRight", title: "Turn the view right", menu: "Model", help: "15 degrees", run: () => orbit(15, 0) }),
+      commands.register({ id: "model.view.orbitUp", title: "Turn the view up", menu: "Model", help: "15 degrees", run: () => orbit(0, 15) }),
+      commands.register({ id: "model.view.orbitDown", title: "Turn the view down", menu: "Model", help: "15 degrees", run: () => orbit(0, -15) }),
       commands.register({ id: "model.resetView", title: "Reset the view", menu: "Model", icon: "home", keymaps: { blender: ["Home"], nova: [] }, run: () => resetView() }),
     ];
     return () => offs.forEach((off) => off());
@@ -2096,6 +2142,10 @@
           <option value="solid">Colours only</option>
           <option value="wire">Wireframe</option>
         </select>
+        <span class="seg" role="group" aria-label="Standard views">
+          {#each VIEW_NAMES as n (n)}<button class:on={viewName === n} onclick={() => showView(n)} title="{VIEW_LABELS[n]} view" aria-label="{VIEW_LABELS[n]} view">{VIEW_LABELS[n][0]}</button>{/each}
+        </span>
+        <label class="check" title="Flat view: parallel lines stay parallel (5)"><input type="checkbox" checked={ortho} onchange={(e) => setOrtho(e.currentTarget.checked)} /> Flat</label>
         <button class="ghost" onclick={resetView}>Reset view</button>
         <span class="dim">{countCubes(doc)} shapes · saves {glbPath}</span>
         <span class="spacer"></span>
