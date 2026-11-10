@@ -24,11 +24,7 @@ pub fn slug(game_name: &str) -> String {
         .collect::<String>()
         .trim_matches('-')
         .to_string();
-    if s.is_empty() {
-        "game".to_string()
-    } else {
-        s
-    }
+    if s.is_empty() { "game".to_string() } else { s }
 }
 
 fn data_home() -> Option<PathBuf> {
@@ -50,7 +46,8 @@ pub fn save_folder(game_name: &str) -> Option<PathBuf> {
 }
 
 fn game_name(root: &Path) -> Result<String, String> {
-    let text = std::fs::read_to_string(root.join("nova.json")).map_err(|e| format!("nova.json: {e}"))?;
+    let text =
+        std::fs::read_to_string(root.join("nova.json")).map_err(|e| format!("nova.json: {e}"))?;
     let v: Value = serde_json::from_str(&text).map_err(|e| format!("nova.json: {e}"))?;
     v.get("name")
         .and_then(Value::as_str)
@@ -86,7 +83,9 @@ fn info(folder: &Path) -> Result<SaveInfo, String> {
         .map(|rd| {
             rd.filter_map(|e| e.ok())
                 .filter_map(|e| e.file_name().into_string().ok())
-                .filter(|n| n.starts_with("save.json.corrupt-") || n.starts_with("save.json.reset-"))
+                .filter(|n| {
+                    n.starts_with("save.json.corrupt-") || n.starts_with("save.json.reset-")
+                })
                 .collect()
         })
         .unwrap_or_default();
@@ -100,8 +99,9 @@ fn info(folder: &Path) -> Result<SaveInfo, String> {
 }
 
 pub fn read(root: &Path) -> Result<SaveInfo, String> {
-    let folder = save_folder(&game_name(root)?).ok_or("this computer gives no folder for save data")?;
-    info(&folder)
+    let folder =
+        save_folder(&game_name(root)?).ok_or("this computer gives no folder for save data")?;
+    read_in(&folder)
 }
 
 pub fn read_in(folder: &Path) -> Result<SaveInfo, String> {
@@ -117,7 +117,12 @@ pub fn check(text: &str) -> Result<Value, String> {
     let obj = v.as_object().ok_or("A save is an object.")?;
     match obj.get("format").and_then(Value::as_u64) {
         Some(1) => {}
-        other => return Err(format!("\"format\" must be 1 (it is {}).", other.map_or("missing".to_string(), |n| n.to_string()))),
+        other => {
+            return Err(format!(
+                "\"format\" must be 1 (it is {}).",
+                other.map_or("missing".to_string(), |n| n.to_string())
+            ));
+        }
     }
     if !obj.get("data").is_some_and(Value::is_object) {
         return Err("\"data\" must be an object of values.".into());
@@ -131,15 +136,18 @@ pub fn write_in(folder: &Path, text: &str, stamp: u64) -> Result<(), String> {
     std::fs::create_dir_all(folder).map_err(|e| e.to_string())?;
     let file = folder.join("save.json");
     if file.exists() {
-        std::fs::copy(&file, folder.join(format!("save.json.reset-{stamp}"))).map_err(|e| e.to_string())?;
+        std::fs::copy(&file, folder.join(format!("save.json.reset-{stamp}")))
+            .map_err(|e| e.to_string())?;
     }
     let tmp = folder.join("save.json.tmp");
-    std::fs::write(&tmp, serde_json::to_string(&v).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    std::fs::write(&tmp, serde_json::to_string(&v).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
     std::fs::rename(&tmp, &file).map_err(|e| e.to_string())
 }
 
 pub fn write(root: &Path, text: &str) -> Result<(), String> {
-    let folder = save_folder(&game_name(root)?).ok_or("this computer gives no folder for save data")?;
+    let folder =
+        save_folder(&game_name(root)?).ok_or("this computer gives no folder for save data")?;
     write_in(&folder, text, now())
 }
 
@@ -149,12 +157,14 @@ pub fn reset_in(folder: &Path, stamp: u64) -> Result<bool, String> {
     if !file.exists() {
         return Ok(false);
     }
-    std::fs::rename(&file, folder.join(format!("save.json.reset-{stamp}"))).map_err(|e| e.to_string())?;
+    std::fs::rename(&file, folder.join(format!("save.json.reset-{stamp}")))
+        .map_err(|e| e.to_string())?;
     Ok(true)
 }
 
 pub fn reset(root: &Path) -> Result<bool, String> {
-    let folder = save_folder(&game_name(root)?).ok_or("this computer gives no folder for save data")?;
+    let folder =
+        save_folder(&game_name(root)?).ok_or("this computer gives no folder for save data")?;
     reset_in(&folder, now())
 }
 
@@ -188,10 +198,17 @@ mod tests {
         assert!(check(r#"{"format":1,"data":{"best":3}}"#).is_ok());
         assert!(check("{ nope").unwrap_err().contains("JSON"));
         assert!(check(r#"{"data":{}}"#).unwrap_err().contains("format"));
-        assert!(check(r#"{"format":2,"data":{}}"#).unwrap_err().contains("format"));
+        assert!(
+            check(r#"{"format":2,"data":{}}"#)
+                .unwrap_err()
+                .contains("format")
+        );
         assert!(check(r#"{"format":1}"#).unwrap_err().contains("data"));
         assert!(check(r#"[1]"#).is_err());
-        let big = format!(r#"{{"format":1,"data":{{"x":"{}"}}}}"#, "a".repeat(MAX_BYTES));
+        let big = format!(
+            r#"{{"format":1,"data":{{"x":"{}"}}}}"#,
+            "a".repeat(MAX_BYTES)
+        );
         assert!(check(&big).unwrap_err().contains("KiB"));
     }
 
@@ -202,12 +219,26 @@ mod tests {
         assert!(!none.exists && none.text.is_empty());
         write_in(&dir, r#"{"format":1,"data":{"best":3}}"#, 1).unwrap();
         let first = read_in(&dir).unwrap();
-        assert!(first.exists && first.text.contains("\"best\": 3"), "{}", first.text);
+        assert!(
+            first.exists && first.text.contains("\"best\": 3"),
+            "{}",
+            first.text
+        );
         write_in(&dir, r#"{"format":1,"data":{"best":9}}"#, 2).unwrap();
-        assert_eq!(read_in(&dir).unwrap().aside, vec!["save.json.reset-2".to_string()]);
-        assert!(std::fs::read_to_string(dir.join("save.json.reset-2")).unwrap().contains("3"));
+        assert_eq!(
+            read_in(&dir).unwrap().aside,
+            vec!["save.json.reset-2".to_string()]
+        );
+        assert!(
+            std::fs::read_to_string(dir.join("save.json.reset-2"))
+                .unwrap()
+                .contains("3")
+        );
         assert!(write_in(&dir, "{ nope", 3).is_err());
-        assert!(read_in(&dir).unwrap().text.contains("9"), "a refused write leaves the save alone");
+        assert!(
+            read_in(&dir).unwrap().text.contains("9"),
+            "a refused write leaves the save alone"
+        );
         assert!(reset_in(&dir, 4).unwrap());
         assert!(!read_in(&dir).unwrap().exists);
         assert!(!reset_in(&dir, 5).unwrap());

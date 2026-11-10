@@ -38,11 +38,21 @@ fn now() -> u64 {
 fn slug(name: &str) -> String {
     let s: String = name
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '-' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
         .collect::<String>()
         .trim_matches('-')
         .to_string();
-    if s.is_empty() { "snapshot".into() } else { s.chars().take(40).collect() }
+    if s.is_empty() {
+        "snapshot".into()
+    } else {
+        s.chars().take(40).collect()
+    }
 }
 
 pub fn clean_name(name: &str) -> Result<String, String> {
@@ -64,7 +74,11 @@ fn project_files(root: &Path) -> Result<Vec<(String, u64)>, String> {
                 continue;
             }
             let meta = entry.file_type().map_err(|e| e.to_string())?;
-            let here = if rel.is_empty() { name.clone() } else { format!("{rel}/{name}") };
+            let here = if rel.is_empty() {
+                name.clone()
+            } else {
+                format!("{rel}/{name}")
+            };
             if meta.is_symlink() {
                 continue;
             }
@@ -102,11 +116,18 @@ pub fn create(root: &Path, name: &str) -> Result<Snapshot, String> {
     let files = project_files(root)?;
     let bytes: u64 = files.iter().map(|f| f.1).sum();
     if files.len() > MAX_FILES || bytes > MAX_BYTES {
-        return Err(format!("The project is too big to snapshot ({} files, {} MB; the limit is {MAX_FILES} files and {} MB).", files.len(), bytes >> 20, MAX_BYTES >> 20));
+        return Err(format!(
+            "The project is too big to snapshot ({} files, {} MB; the limit is {MAX_FILES} files and {} MB).",
+            files.len(),
+            bytes >> 20,
+            MAX_BYTES >> 20
+        ));
     }
     let existing = list(root)?;
     if existing.len() >= MAX_SNAPSHOTS {
-        return Err(format!("There are {MAX_SNAPSHOTS} snapshots already; delete some first."));
+        return Err(format!(
+            "There are {MAX_SNAPSHOTS} snapshots already; delete some first."
+        ));
     }
     let created = now();
     let mut id = format!("{created}-{}", slug(&name));
@@ -122,15 +143,27 @@ pub fn create(root: &Path, name: &str) -> Result<Snapshot, String> {
         let _ = std::fs::remove_dir_all(base.join(&id));
         return Err(e);
     }
-    let info = Snapshot { id: id.clone(), name, created, files: files.len(), bytes };
-    std::fs::write(base.join(&id).join("snapshot.json"), serde_json::to_string_pretty(&info).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    let info = Snapshot {
+        id: id.clone(),
+        name,
+        created,
+        files: files.len(),
+        bytes,
+    };
+    std::fs::write(
+        base.join(&id).join("snapshot.json"),
+        serde_json::to_string_pretty(&info).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
     Ok(info)
 }
 
 /// Newest first.
 pub fn list(root: &Path) -> Result<Vec<Snapshot>, String> {
     let base = dir_of(root);
-    let Ok(rd) = std::fs::read_dir(&base) else { return Ok(Vec::new()) };
+    let Ok(rd) = std::fs::read_dir(&base) else {
+        return Ok(Vec::new());
+    };
     let mut out: Vec<Snapshot> = rd
         .filter_map(|e| e.ok())
         .filter_map(|e| std::fs::read_to_string(e.path().join("snapshot.json")).ok())
@@ -141,7 +174,12 @@ pub fn list(root: &Path) -> Result<Vec<Snapshot>, String> {
 }
 
 fn check_id(id: &str) -> Result<(), String> {
-    if id.is_empty() || id.contains('/') || id.contains('\\') || id.contains("..") || id.starts_with('.') {
+    if id.is_empty()
+        || id.contains('/')
+        || id.contains('\\')
+        || id.contains("..")
+        || id.starts_with('.')
+    {
         return Err(format!("'{id}' is not a snapshot"));
     }
     Ok(())
@@ -160,7 +198,10 @@ pub fn delete(root: &Path, id: &str) -> Result<(), String> {
 /// of the project as it is now is taken first (named "Before restoring <name>"), and returned so the person can say where it is.
 pub fn restore(root: &Path, id: &str) -> Result<Snapshot, String> {
     check_id(id)?;
-    let snap = list(root)?.into_iter().find(|s| s.id == id).ok_or_else(|| format!("There is no snapshot '{id}'."))?;
+    let snap = list(root)?
+        .into_iter()
+        .find(|s| s.id == id)
+        .ok_or_else(|| format!("There is no snapshot '{id}'."))?;
     let from = dir_of(root).join(id).join("files");
     let wanted = {
         let mut v = Vec::new();
@@ -168,7 +209,11 @@ pub fn restore(root: &Path, id: &str) -> Result<Snapshot, String> {
             for e in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
                 let e = e.map_err(|e| e.to_string())?;
                 let name = e.file_name().to_string_lossy().to_string();
-                let here = if rel.is_empty() { name } else { format!("{rel}/{name}") };
+                let here = if rel.is_empty() {
+                    name
+                } else {
+                    format!("{rel}/{name}")
+                };
                 if e.file_type().map_err(|e| e.to_string())?.is_dir() {
                     walk(&e.path(), &here, out)?;
                 } else {
@@ -195,13 +240,21 @@ pub fn restore(root: &Path, id: &str) -> Result<Snapshot, String> {
 /// Removes folders a restore emptied (not hidden ones, and not the project root).
 fn prune_empty_dirs(root: &Path) {
     fn walk(dir: &Path, top: bool) -> bool {
-        let Ok(rd) = std::fs::read_dir(dir) else { return false };
+        let Ok(rd) = std::fs::read_dir(dir) else {
+            return false;
+        };
         let mut empty = true;
         for e in rd.filter_map(|e| e.ok()) {
             let name = e.file_name().to_string_lossy().to_string();
             let p = e.path();
-            let is_dir = e.file_type().map(|t| t.is_dir() && !t.is_symlink()).unwrap_or(false);
-            if is_dir && !name.starts_with('.') && !(top && SKIPPED_TOP_LEVEL.contains(&name.as_str())) {
+            let is_dir = e
+                .file_type()
+                .map(|t| t.is_dir() && !t.is_symlink())
+                .unwrap_or(false);
+            if is_dir
+                && !name.starts_with('.')
+                && !(top && SKIPPED_TOP_LEVEL.contains(&name.as_str()))
+            {
                 if walk(&p, false) {
                     let _ = std::fs::remove_dir(&p);
                 } else {
@@ -240,9 +293,18 @@ mod tests {
         let s = create(&d, "  Before the big change ").unwrap();
         assert_eq!(s.name, "Before the big change");
         assert_eq!(s.files, 3);
-        assert!(d.join(format!(".nova/snapshots/{}/files/scenes/a.lua", s.id)).exists());
-        assert!(!d.join(format!(".nova/snapshots/{}/files/exports", s.id)).exists());
-        assert!(!d.join(format!(".nova/snapshots/{}/files/.nova", s.id)).exists());
+        assert!(
+            d.join(format!(".nova/snapshots/{}/files/scenes/a.lua", s.id))
+                .exists()
+        );
+        assert!(
+            !d.join(format!(".nova/snapshots/{}/files/exports", s.id))
+                .exists()
+        );
+        assert!(
+            !d.join(format!(".nova/snapshots/{}/files/.nova", s.id))
+                .exists()
+        );
         assert_eq!(list(&d).unwrap(), vec![s]);
     }
 
@@ -256,15 +318,27 @@ mod tests {
         std::fs::create_dir_all(d.join("sprites")).unwrap();
         std::fs::write(d.join("sprites/new.png"), "p").unwrap();
         let safety = restore(&d, &before.id).unwrap();
-        assert_eq!(std::fs::read_to_string(d.join("main.lua")).unwrap(), "-- one");
+        assert_eq!(
+            std::fs::read_to_string(d.join("main.lua")).unwrap(),
+            "-- one"
+        );
         assert!(d.join("scenes/a.lua").exists());
         assert!(!d.join("scenes/b.lua").exists());
-        assert!(!d.join("sprites").exists(), "a folder the restore emptied goes");
-        assert!(d.join("exports/out.gif").exists(), "exports are not touched");
+        assert!(
+            !d.join("sprites").exists(),
+            "a folder the restore emptied goes"
+        );
+        assert!(
+            d.join("exports/out.gif").exists(),
+            "exports are not touched"
+        );
         assert!(safety.name.starts_with("Before restoring start"));
         // and going back to what was there before the restore
         restore(&d, &safety.id).unwrap();
-        assert_eq!(std::fs::read_to_string(d.join("main.lua")).unwrap(), "-- two");
+        assert_eq!(
+            std::fs::read_to_string(d.join("main.lua")).unwrap(),
+            "-- two"
+        );
         assert!(d.join("scenes/b.lua").exists());
         assert!(d.join("sprites/new.png").exists());
     }
@@ -289,13 +363,17 @@ mod tests {
         #[cfg(unix)]
         {
             let d = project("link");
-            let outside = std::env::temp_dir().join(format!("nova-snap-outside-{}", std::process::id()));
+            let outside =
+                std::env::temp_dir().join(format!("nova-snap-outside-{}", std::process::id()));
             std::fs::create_dir_all(&outside).unwrap();
             std::fs::write(outside.join("secret.txt"), "s").unwrap();
             std::os::unix::fs::symlink(&outside, d.join("linked")).unwrap();
             let s = create(&d, "l").unwrap();
             assert_eq!(s.files, 3);
-            assert!(!d.join(format!(".nova/snapshots/{}/files/linked", s.id)).exists());
+            assert!(
+                !d.join(format!(".nova/snapshots/{}/files/linked", s.id))
+                    .exists()
+            );
         }
     }
 }

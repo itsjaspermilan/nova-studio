@@ -3,8 +3,8 @@
 //! This keeps the registry (which window has which document) and makes the windows; the front end of each window asks before it opens a document.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
@@ -35,7 +35,10 @@ impl DocOwners {
 
     /// A window closed: everything it had is free.
     pub fn release_window(&self, label: &str) {
-        self.0.lock().expect("owners lock").retain(|_, owner| owner != label);
+        self.0
+            .lock()
+            .expect("owners lock")
+            .retain(|_, owner| owner != label);
     }
 
     pub fn owner(&self, path: &str) -> Option<String> {
@@ -50,7 +53,11 @@ impl DocOwners {
 
 /// The label of another window that has the document, or `None` when it is free (and now this window's).
 #[tauri::command]
-pub fn claim_document(window: WebviewWindow, owners: State<DocOwners>, path: String) -> Option<String> {
+pub fn claim_document(
+    window: WebviewWindow,
+    owners: State<DocOwners>,
+    path: String,
+) -> Option<String> {
     owners.claim(&path, window.label())
 }
 
@@ -62,8 +69,12 @@ pub fn release_document(window: WebviewWindow, owners: State<DocOwners>, path: S
 /// Brings the window that has a document to the front. Returns whether there was one.
 #[tauri::command]
 pub fn focus_document(app: AppHandle, owners: State<DocOwners>, path: String) -> bool {
-    let Some(label) = owners.owner(&path) else { return false };
-    let Some(win) = app.get_webview_window(&label) else { return false };
+    let Some(label) = owners.owner(&path) else {
+        return false;
+    };
+    let Some(win) = app.get_webview_window(&label) else {
+        return false;
+    };
     let _ = win.unminimize();
     win.set_focus().is_ok()
 }
@@ -72,12 +83,20 @@ static NEXT: AtomicUsize = AtomicUsize::new(1);
 
 /// Moves a document to a new window of its own: this window gives it up, the new one starts with it open.
 #[tauri::command]
-pub fn tear_off_document(app: AppHandle, window: WebviewWindow, owners: State<DocOwners>, path: String) -> Result<(), String> {
+pub fn tear_off_document(
+    app: AppHandle,
+    window: WebviewWindow,
+    owners: State<DocOwners>,
+    path: String,
+) -> Result<(), String> {
     let label = format!("doc-{}", NEXT.fetch_add(1, Ordering::SeqCst));
     owners.release(&path, window.label());
     owners.claim(&path, &label);
     // (the page of the new window reads which document it is for from this variable)
-    let script = format!("window.__NOVA_DOC__ = {};", serde_json::to_string(&path).map_err(|e| e.to_string())?);
+    let script = format!(
+        "window.__NOVA_DOC__ = {};",
+        serde_json::to_string(&path).map_err(|e| e.to_string())?
+    );
     let title = path.rsplit('/').next().unwrap_or(&path).to_string();
     #[allow(unused_mut)]
     let mut builder = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("index.html".into()))
@@ -113,7 +132,11 @@ mod tests {
     fn a_document_has_one_window_at_a_time() {
         let o = DocOwners::default();
         assert_eq!(o.claim("a.lua", "main"), None);
-        assert_eq!(o.claim("a.lua", "main"), None, "claiming again from the same window is fine");
+        assert_eq!(
+            o.claim("a.lua", "main"),
+            None,
+            "claiming again from the same window is fine"
+        );
         assert_eq!(o.claim("a.lua", "doc-1"), Some("main".to_string()));
         assert_eq!(o.owner("a.lua").as_deref(), Some("main"));
     }

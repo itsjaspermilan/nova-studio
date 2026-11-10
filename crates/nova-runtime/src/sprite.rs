@@ -378,9 +378,25 @@ pub fn parse_sprite(
                 .map(|x| x as f32)
                 .ok_or_else(|| err(at, format!("\"{k}\" must be a number")))
         };
-        let b = PixelBox { x: n("x")?, y: n("y")?, w: n("w")?, h: n("h")? };
-        if b.w <= 0.0 || b.h <= 0.0 || b.x < 0.0 || b.y < 0.0 || b.x + b.w > frame_width as f32 || b.y + b.h > frame_height as f32 {
-            return Err(err(at, format!("the box must have a size and lie inside the {frame_width}x{frame_height} frame")));
+        let b = PixelBox {
+            x: n("x")?,
+            y: n("y")?,
+            w: n("w")?,
+            h: n("h")?,
+        };
+        if b.w <= 0.0
+            || b.h <= 0.0
+            || b.x < 0.0
+            || b.y < 0.0
+            || b.x + b.w > frame_width as f32
+            || b.y + b.h > frame_height as f32
+        {
+            return Err(err(
+                at,
+                format!(
+                    "the box must have a size and lie inside the {frame_width}x{frame_height} frame"
+                ),
+            ));
         }
         Ok(b)
     };
@@ -397,7 +413,10 @@ pub fn parse_sprite(
         };
         let p = [n("x")?, n("y")?];
         if p[0] < 0.0 || p[1] < 0.0 || p[0] > frame_width as f32 || p[1] > frame_height as f32 {
-            return Err(err(at, format!("the point must lie inside the {frame_width}x{frame_height} frame")));
+            return Err(err(
+                at,
+                format!("the point must lie inside the {frame_width}x{frame_height} frame"),
+            ));
         }
         Ok(p)
     };
@@ -432,7 +451,13 @@ pub fn parse_sprite(
                 }
                 let frame = whole(o, "frame", &at)?.ok_or_else(|| err(&at, "missing \"frame\""))?;
                 if frame >= frames {
-                    return Err(err(&at, format!("frame {frame} is not in a sheet with frames 0 to {}", frames - 1)));
+                    return Err(err(
+                        &at,
+                        format!(
+                            "frame {frame} is not in a sheet with frames 0 to {}",
+                            frames - 1
+                        ),
+                    ));
                 }
                 let slot = &mut frame_data[frame as usize];
                 if let Some(v) = o.get("hitbox") {
@@ -444,13 +469,32 @@ pub fn parse_sprite(
                 if let Some(v) = o.get("events") {
                     let list = v
                         .as_array()
-                        .filter(|a| a.len() <= 8 && a.iter().all(|e| e.as_str().is_some_and(|s| !s.is_empty() && s.chars().count() <= 32)))
-                        .ok_or_else(|| err(&format!("{at}.events"), "must be a list of up to 8 names of 1 to 32 characters"))?;
-                    slot.events = list.iter().filter_map(|e| e.as_str().map(str::to_string)).collect();
+                        .filter(|a| {
+                            a.len() <= 8
+                                && a.iter().all(|e| {
+                                    e.as_str()
+                                        .is_some_and(|s| !s.is_empty() && s.chars().count() <= 32)
+                                })
+                        })
+                        .ok_or_else(|| {
+                            err(
+                                &format!("{at}.events"),
+                                "must be a list of up to 8 names of 1 to 32 characters",
+                            )
+                        })?;
+                    slot.events = list
+                        .iter()
+                        .filter_map(|e| e.as_str().map(str::to_string))
+                        .collect();
                 }
             }
         }
-        Some(_) => return Err(err(&format!("{file}.frame_data"), "\"frame_data\" must be a list")),
+        Some(_) => {
+            return Err(err(
+                &format!("{file}.frame_data"),
+                "\"frame_data\" must be a list",
+            ));
+        }
     }
     let nine_slice = match root.get("nine_slice") {
         None => None,
@@ -467,7 +511,10 @@ pub fn parse_sprite(
             let edge = |k: &str| whole(o, k, &at).map(|v| v.unwrap_or(0));
             let slice = [edge("left")?, edge("right")?, edge("top")?, edge("bottom")?];
             if slice[0] + slice[1] > frame_width || slice[2] + slice[3] > frame_height {
-                return Err(err(&at, format!("the borders are bigger than the {frame_width}x{frame_height} frame")));
+                return Err(err(
+                    &at,
+                    format!("the borders are bigger than the {frame_width}x{frame_height} frame"),
+                ));
             }
             Some(slice)
         }
@@ -575,32 +622,73 @@ mod tests {
         .unwrap();
         assert_eq!(d.nine_slice, Some([6, 6, 6, 10]));
         assert_eq!(d.frame_data.len(), 4);
-        assert_eq!(d.frame_data[0].hitbox, Some(PixelBox { x: 4.0, y: 8.0, w: 24.0, h: 22.0 }));
+        assert_eq!(
+            d.frame_data[0].hitbox,
+            Some(PixelBox {
+                x: 4.0,
+                y: 8.0,
+                w: 24.0,
+                h: 22.0
+            })
+        );
         assert_eq!(d.frame_data[0].pivot, Some([16.0, 30.0]));
         assert!(d.frame_data[0].events.is_empty());
-        assert_eq!(d.frame_data[2].hitbox, Some(PixelBox { x: 2.0, y: 8.0, w: 28.0, h: 20.0 }));
-        assert_eq!(d.frame_data[2].pivot, Some([16.0, 30.0]), "a frame without its own pivot keeps the default");
+        assert_eq!(
+            d.frame_data[2].hitbox,
+            Some(PixelBox {
+                x: 2.0,
+                y: 8.0,
+                w: 28.0,
+                h: 20.0
+            })
+        );
+        assert_eq!(
+            d.frame_data[2].pivot,
+            Some([16.0, 30.0]),
+            "a frame without its own pivot keeps the default"
+        );
         assert_eq!(d.frame_data[2].events, ["step", "dust"]);
         // a sheet without any of it has empty data for every frame
-        let plain = parse(r#"{"version":1,"image":"sheet.png","frame_width":32,"frame_height":32}"#).unwrap();
-        assert!(plain.frame_data.iter().all(|f| f.hitbox.is_none() && f.pivot.is_none() && f.events.is_empty()));
+        let plain =
+            parse(r#"{"version":1,"image":"sheet.png","frame_width":32,"frame_height":32}"#)
+                .unwrap();
+        assert!(
+            plain
+                .frame_data
+                .iter()
+                .all(|f| f.hitbox.is_none() && f.pivot.is_none() && f.events.is_empty())
+        );
         assert_eq!(plain.nine_slice, None);
     }
 
     #[test]
     fn frame_data_that_does_not_fit_names_the_place() {
         let cases: &[(&str, &str)] = &[
-            (r#""hitbox":{"x":20,"y":0,"w":20,"h":5}"#, "inside the 32x32 frame"),
+            (
+                r#""hitbox":{"x":20,"y":0,"w":20,"h":5}"#,
+                "inside the 32x32 frame",
+            ),
             (r#""hitbox":{"x":0,"y":0,"w":0,"h":5}"#, "must have a size"),
             (r#""pivot":{"x":40,"y":1}"#, "inside the 32x32 frame"),
-            (r#""nine_slice":{"left":20,"right":20}"#, "bigger than the 32x32 frame"),
+            (
+                r#""nine_slice":{"left":20,"right":20}"#,
+                "bigger than the 32x32 frame",
+            ),
             (r#""nine_slice":{"middle":1}"#, "unknown key \"middle\""),
             (r#""frame_data":[{"frame":9}]"#, "frame 9 is not in a sheet"),
-            (r#""frame_data":[{"frame":0,"events":[""]}]"#, "names of 1 to 32 characters"),
-            (r#""frame_data":[{"frame":0,"bogus":1}]"#, "unknown key \"bogus\""),
+            (
+                r#""frame_data":[{"frame":0,"events":[""]}]"#,
+                "names of 1 to 32 characters",
+            ),
+            (
+                r#""frame_data":[{"frame":0,"bogus":1}]"#,
+                "unknown key \"bogus\"",
+            ),
         ];
         for (extra, want) in cases {
-            let text = format!(r#"{{"version":1,"image":"sheet.png","frame_width":32,"frame_height":32,"frames":4,{extra}}}"#);
+            let text = format!(
+                r#"{{"version":1,"image":"sheet.png","frame_width":32,"frame_height":32,"frames":4,{extra}}}"#
+            );
             let e = parse(&text).unwrap_err();
             assert!(e.contains(want), "{extra}: {e}");
         }

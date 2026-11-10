@@ -3308,8 +3308,8 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 return Ok(Value::Nil);
             }
             let bytes = locale_vfs.read(&path).map_err(lua_err)?;
-            let value: serde_json::Value = serde_json::from_slice(&bytes)
-                .map_err(|e| lua_err(format!("{path}: {e}")))?;
+            let value: serde_json::Value =
+                serde_json::from_slice(&bytes).map_err(|e| lua_err(format!("{path}: {e}")))?;
             let object = value
                 .as_object()
                 .ok_or_else(|| lua_err(format!("{path} must be an object of text")))?;
@@ -3333,8 +3333,8 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 return Ok(Value::Nil);
             }
             let bytes = group_vfs.read(&path).map_err(lua_err)?;
-            let v: serde_json::Value = serde_json::from_slice(&bytes)
-                .map_err(|e| lua_err(format!("{path}: {e}")))?;
+            let v: serde_json::Value =
+                serde_json::from_slice(&bytes).map_err(|e| lua_err(format!("{path}: {e}")))?;
             let obj = v
                 .as_object()
                 .ok_or_else(|| lua_err(format!("{path} must be an object")))?;
@@ -3342,7 +3342,11 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 .get("sounds")
                 .and_then(|x| x.as_array())
                 .filter(|a| !a.is_empty() && a.len() <= 64 && a.iter().all(|e| e.is_string()))
-                .ok_or_else(|| lua_err(format!("{path}: \"sounds\" is a list of 1 to 64 sound names")))?;
+                .ok_or_else(|| {
+                    lua_err(format!(
+                        "{path}: \"sounds\" is a list of 1 to 64 sound names"
+                    ))
+                })?;
             for key in ["volume", "pitch", "pan"] {
                 if let Some(r) = obj.get(key) {
                     let ok = r.as_array().is_some_and(|a| {
@@ -4347,7 +4351,10 @@ mod tests {
     #[test]
     fn falloff_presets_reach_nothing_at_the_range_and_differ_in_between() {
         for f in [Falloff::Smooth, Falloff::Linear, Falloff::Natural] {
-            assert!((f.gain(0.0, 40.0) - 1.0).abs() < 1e-6, "{f:?} is full close up");
+            assert!(
+                (f.gain(0.0, 40.0) - 1.0).abs() < 1e-6,
+                "{f:?} is full close up"
+            );
             assert_eq!(f.gain(40.0, 40.0), 0.0, "{f:?} is silent at the range");
             assert_eq!(f.gain(90.0, 40.0), 0.0, "{f:?} stays silent past it");
         }

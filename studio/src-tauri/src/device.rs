@@ -792,8 +792,8 @@ mod tests {
     #[ignore = "needs a connected Android device (NOVA_DEVICE=<serial>)"]
     fn plays_on_a_real_device() {
         let serial = std::env::var("NOVA_DEVICE").expect("set NOVA_DEVICE to the device's serial");
-        let game =
-            std::env::var("NOVA_DEVICE_GAME").unwrap_or_else(|_| "examples/pine-ridge-rally".into());
+        let game = std::env::var("NOVA_DEVICE_GAME")
+            .unwrap_or_else(|_| "examples/pine-ridge-rally".into());
         let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
             .canonicalize()

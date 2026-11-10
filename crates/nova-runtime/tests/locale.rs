@@ -39,7 +39,14 @@ nova.log(table.concat(nova.locale.available(), ","))
     );
     assert_eq!(
         log,
-        ["Start", "en", "Jouer", "English only", "never_written", "en,fr"]
+        [
+            "Start",
+            "en",
+            "Jouer",
+            "English only",
+            "never_written",
+            "en,fr"
+        ]
     );
 }
 
@@ -59,7 +66,14 @@ nova.log(nova.t("hello", { name = "Ana" }))
     );
     assert_eq!(
         log,
-        ["Hello, Ana!", "one coin", "3 coins", "une pièce", "3 pièces", "Bonjour, Ana !"]
+        [
+            "Hello, Ana!",
+            "one coin",
+            "3 coins",
+            "une pièce",
+            "3 pièces",
+            "Bonjour, Ana !"
+        ]
     );
 }
 
@@ -77,7 +91,10 @@ nova.log(nova.t("menu.start"))
     assert_eq!(log[0], "false");
     assert!(log[1].contains("locales/de.json"), "{}", log[1]);
     assert_eq!(log[2], "Start");
-    let bare = run(&[], "nova.log(nova.t(\"x\")) nova.log(tostring(nova.locale.get())) nova.log(#nova.locale.available())");
+    let bare = run(
+        &[],
+        "nova.log(nova.t(\"x\")) nova.log(tostring(nova.locale.get())) nova.log(#nova.locale.available())",
+    );
     assert_eq!(bare, ["x", "nil", "0"]);
 }
 
@@ -139,7 +156,8 @@ fn a_group_is_played_like_a_sound_and_a_plain_sound_still_is() {
             ("sounds/b.wav", wav()),
             (
                 "sounds/steps.group.json",
-                br#"{"sounds":["a","b"],"volume":[0.5,1],"pitch":[0.9,1.1],"no_repeat":true}"#.to_vec(),
+                br#"{"sounds":["a","b"],"volume":[0.5,1],"pitch":[0.9,1.1],"no_repeat":true}"#
+                    .to_vec(),
             ),
         ],
         r#"
@@ -151,7 +169,7 @@ for i = 1, 20 do nova.sound.play("steps") end
 nova.sound.play("a")
 nova.log("played")
 "#,
-        );
+    );
     assert!(error.is_none(), "{error:?}");
     assert_eq!(log, ["2 true", "nil", "played"]);
 }
@@ -159,14 +177,23 @@ nova.log("played")
 #[test]
 fn a_group_that_is_wrong_is_refused_by_name() {
     let (log, _) = run_with(
-        vec![("sounds/bad.group.json", br#"{"sounds":[],"volume":[1]}"#.to_vec())],
+        vec![(
+            "sounds/bad.group.json",
+            br#"{"sounds":[],"volume":[1]}"#.to_vec(),
+        )],
         r#"local ok, err = pcall(nova.sound.group, "bad") nova.log(tostring(ok)) nova.log(tostring(err))"#,
     );
     assert_eq!(log[0], "false");
     assert!(log[1].contains("bad.group.json"), "{log:?}");
     let (log, _) = run_with(
-        vec![("sounds/bad.group.json", br#"{"sounds":["a"],"volume":[1]}"#.to_vec())],
+        vec![(
+            "sounds/bad.group.json",
+            br#"{"sounds":["a"],"volume":[1]}"#.to_vec(),
+        )],
         r#"local ok, err = pcall(nova.sound.group, "bad") nova.log(tostring(err))"#,
     );
-    assert!(log[0].contains("\"volume\" is [lowest, highest]"), "{log:?}");
+    assert!(
+        log[0].contains("\"volume\" is [lowest, highest]"),
+        "{log:?}"
+    );
 }

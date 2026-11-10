@@ -654,8 +654,16 @@ fn a_panel_uses_the_sheets_own_nine_slice_when_no_slice_is_given() {
     // nine pieces: the corners keep the sheet's own border sizes (4 wide, 5 or 6 tall)
     let ui = g.frame_input(540).sprites_front.to_vec();
     assert_eq!(ui.len(), 9, "{}", ui.len());
-    assert!(ui.iter().any(|s| (s.size[0] - 4.0).abs() < 1e-4 && (s.size[1] - 5.0).abs() < 1e-4), "top-left corner is 4 by 5");
-    assert!(ui.iter().any(|s| (s.size[0] - 4.0).abs() < 1e-4 && (s.size[1] - 6.0).abs() < 1e-4), "bottom corners are 4 by 6");
+    assert!(
+        ui.iter()
+            .any(|s| (s.size[0] - 4.0).abs() < 1e-4 && (s.size[1] - 5.0).abs() < 1e-4),
+        "top-left corner is 4 by 5"
+    );
+    assert!(
+        ui.iter()
+            .any(|s| (s.size[0] - 4.0).abs() < 1e-4 && (s.size[1] - 6.0).abs() < 1e-4),
+        "bottom corners are 4 by 6"
+    );
 }
 
 #[test]

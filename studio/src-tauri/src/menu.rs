@@ -41,7 +41,11 @@ fn build(app: &AppHandle, menus: &[MenuSpec]) -> tauri::Result<()> {
     let root = Menu::new(app)?;
     let name = app.package_info().name.clone();
     let app_menu = Submenu::new(app, "Nova", true)?;
-    app_menu.append(&PredefinedMenuItem::about(app, Some(&format!("About {name}")), None)?)?;
+    app_menu.append(&PredefinedMenuItem::about(
+        app,
+        Some(&format!("About {name}")),
+        None,
+    )?)?;
     app_menu.append(&PredefinedMenuItem::separator(app)?)?;
     app_menu.append(&PredefinedMenuItem::services(app, None)?)?;
     app_menu.append(&PredefinedMenuItem::separator(app)?)?;
@@ -68,7 +72,9 @@ fn build(app: &AppHandle, menus: &[MenuSpec]) -> tauri::Result<()> {
                 Some("minimize") => sub.append(&PredefinedMenuItem::minimize(app, None)?)?,
                 Some("maximize") => sub.append(&PredefinedMenuItem::maximize(app, None)?)?,
                 _ => {
-                    let (Some(id), Some(title)) = (&item.id, &item.title) else { continue };
+                    let (Some(id), Some(title)) = (&item.id, &item.title) else {
+                        continue;
+                    };
                     let mut b = MenuItemBuilder::with_id(id.clone(), title).enabled(item.enabled);
                     if let Some(acc) = &item.accelerator {
                         b = b.accelerator(acc);
@@ -95,7 +101,10 @@ mod tests {
             {"id":null,"title":null,"accelerator":null,"enabled":true,"native":"minimize","separator":false}]}]"#;
         let menus: Vec<MenuSpec> = serde_json::from_str(json).unwrap();
         assert_eq!(menus[0].items.len(), 3);
-        assert_eq!(menus[0].items[0].accelerator.as_deref(), Some("CmdOrCtrl+S"));
+        assert_eq!(
+            menus[0].items[0].accelerator.as_deref(),
+            Some("CmdOrCtrl+S")
+        );
         assert!(menus[0].items[1].separator);
         assert_eq!(menus[0].items[2].native.as_deref(), Some("minimize"));
     }

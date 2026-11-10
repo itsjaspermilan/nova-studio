@@ -382,7 +382,9 @@ pub fn write_image(root: &Path, rel: &str, data_url: &str) -> Result<(), String>
 }
 
 /// File types the studio writes for other programs to read (an animated GIF, a palette, a list of colours, a picture, text, JSON).
-const EXPORT_EXTENSIONS: [&str; 9] = ["gif", "gpl", "pal", "hex", "png", "txt", "json", "csv", "mid"];
+const EXPORT_EXTENSIONS: [&str; 9] = [
+    "gif", "gpl", "pal", "hex", "png", "txt", "json", "csv", "mid",
+];
 
 /// Saves an export sent as a `data:<type>;base64,...` URL into the project's `exports` folder. The path must be inside `exports/`, with one of
 /// the extensions above; a `.gif` must really be a GIF and a `.png` a PNG. The studio's webview cannot be trusted to save a download itself.
@@ -396,13 +398,18 @@ pub fn write_export(root: &Path, rel: &str, data_url: &str) -> Result<(), String
     if !EXPORT_EXTENSIONS.contains(&ext) {
         return Err(format!("'{rel}' is not a kind of file the studio exports"));
     }
-    let (head, encoded) = data_url.split_once(";base64,").ok_or("expected a base64 data URL")?;
+    let (head, encoded) = data_url
+        .split_once(";base64,")
+        .ok_or("expected a base64 data URL")?;
     if !head.starts_with("data:") {
         return Err("expected a data URL".into());
     }
     let bytes = unbase64(encoded)?;
     if bytes.len() as u64 > MAX_ASSET_BYTES {
-        return Err(format!("'{rel}' would be bigger than {} MiB", MAX_ASSET_BYTES >> 20));
+        return Err(format!(
+            "'{rel}' would be bigger than {} MiB",
+            MAX_ASSET_BYTES >> 20
+        ));
     }
     if ext == "gif" && !(bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a")) {
         return Err("that is not GIF data".into());
@@ -793,10 +800,23 @@ mod tests {
         assert!(write_export(&root, "exports/../a.gif", gif).is_err());
         assert!(write_export(&root, "exports/a.exe", gif).is_err());
         assert!(write_export(&root, "exports/b.gif", "data:image/gif;base64,AAAA").is_err());
-        write_export(&root, "exports/p.gpl", "data:text/plain;base64,R0lNUCBQYWxldHRl").unwrap();
-        write_export(&root, "exports/p.pal", "data:text/plain;base64,SkFTQy1QQUw=").unwrap();
+        write_export(
+            &root,
+            "exports/p.gpl",
+            "data:text/plain;base64,R0lNUCBQYWxldHRl",
+        )
+        .unwrap();
+        write_export(
+            &root,
+            "exports/p.pal",
+            "data:text/plain;base64,SkFTQy1QQUw=",
+        )
+        .unwrap();
         write_export(&root, "exports/t.csv", "data:text/csv;base64,a2V5LGVu").unwrap();
-        assert_eq!(std::fs::read_to_string(root.join("exports/p.gpl")).unwrap(), "GIMP Palette");
+        assert_eq!(
+            std::fs::read_to_string(root.join("exports/p.gpl")).unwrap(),
+            "GIMP Palette"
+        );
     }
 
     #[test]

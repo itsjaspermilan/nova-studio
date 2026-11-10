@@ -16,6 +16,8 @@
   } from "../lib/model-doc";
   import { AXIS_COLOURS, AXIS_CSS, AXIS_NAMES, centreOf, constrain, describeLock, describeMove, freePlane, lockForKey, type Lock } from "../lib/point-move";
   import MeshTools from "./MeshTools.svelte";
+  import ReferencePanel from "./ReferencePanel.svelte";
+  import { loadReferences, placementOf, saveReferences, type Reference } from "../lib/model-reference";
   import { ORTHO_FOV, PERSPECTIVE_FOV, VIEW_LABELS, VIEW_NAMES, distanceForFov, orbitStep, viewPlacement, type ViewName } from "../lib/view-presets";
   import ModelStats from "./ModelStats.svelte";
   import { addFace, bevelEdge, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, freshProfile, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsSymmetric, setFaceColors, setSmooth, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
@@ -286,6 +288,7 @@
     scene.add(grid);
     modelGroup = new THREE.Group();
     scene.add(modelGroup);
+    scene.add(refGroup);
     rebuild();
     const loop = () => {
       frameId = requestAnimationFrame(loop);
@@ -550,6 +553,14 @@
       stopNav?.();
       controls?.dispose();
       disposeMeshes();
+      refRun++;
+      for (const old of [...refGroup.children]) {
+        refGroup.remove(old);
+        (old as THREE.Mesh).geometry.dispose();
+        ((old as THREE.Mesh).material as THREE.Material).dispose();
+      }
+      for (const t of refTextures.values()) t?.tex.dispose();
+      refTextures.clear();
       clearHandles();
       outline?.dispose();
       renderer?.dispose();
@@ -1588,6 +1599,60 @@
     controls?.target.set(0, 8, 0);
   }
 
+  // ---- reference pictures (blueprints to trace; kept per model on this computer, not in the file) -----------------
+  let references = $state.raw<Reference[]>(loadReferences(untrack(() => filePath)));
+  const refGroup = new THREE.Group();
+  const refTextures = new Map<string, { tex: THREE.Texture; aspect: number } | null>();
+  async function refTexture(path: string) {
+    if (refTextures.has(path)) return refTextures.get(path)!;
+    try {
+      const url = await studio.api!.readImage(path);
+      const tex = await new THREE.TextureLoader().loadAsync(url);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const img = tex.image as { width: number; height: number };
+      const entry = { tex, aspect: img.width / Math.max(1, img.height) };
+      refTextures.set(path, entry);
+      return entry;
+    } catch {
+      refTextures.set(path, null);
+      return null;
+    }
+  }
+  let refRun = 0;
+  async function syncReferences(list: Reference[]) {
+    const run = ++refRun;
+    const built: THREE.Mesh[] = [];
+    for (const r of list) {
+      if (!r.visible) continue;
+      const t = await refTexture(r.path);
+      if (!t) continue;
+      const pl = placementOf(r, t.aspect);
+      const mat = new THREE.MeshBasicMaterial({ map: t.tex, transparent: true, opacity: r.opacity, side: THREE.DoubleSide, depthWrite: false, depthTest: !r.front });
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
+      mesh.scale.set(pl.flip ? -pl.width : pl.width, pl.height, 1);
+      mesh.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3(...pl.axes.x), new THREE.Vector3(...pl.axes.y), new THREE.Vector3(...pl.axes.z)));
+      mesh.position.set(...pl.position);
+      mesh.renderOrder = r.front ? 10 : -10;
+      built.push(mesh);
+    }
+    if (run !== refRun) {
+      for (const m of built) (m.geometry.dispose(), (m.material as THREE.Material).dispose());
+      return;
+    }
+    for (const old of [...refGroup.children]) {
+      refGroup.remove(old);
+      const m = old as THREE.Mesh;
+      m.geometry.dispose();
+      (m.material as THREE.Material).dispose();
+    }
+    for (const m of built) refGroup.add(m);
+  }
+  $effect(() => {
+    const list = references;
+    void syncReferences(list);
+    saveReferences(untrack(() => filePath), list);
+  });
+
   // ---- standard views (Blender's numpad views, with commands for a laptop) ----------------------------------
   /// A very narrow field of view from far away stands in for an orthographic camera, so the gizmos and picking, which belong to this camera, keep working.
   let ortho = $state(false);
@@ -2455,6 +2520,7 @@
       {:else}
         <h3>Model</h3>
         <ModelStats {doc} />
+        <ReferencePanel refs={references} onchange={(next) => (references = next)} />
         <label>Export scale <input type="number" step="0.001" min="0.0001" value={doc.scale} onchange={(e) => commit({ ...doc, scale: Math.max(0.0001, num(e.currentTarget.value, doc.scale)) })} /></label>
         <p class="dim small">World units per model unit. 1/16 = 0.0625 makes a 16-unit cube one world unit.</p>
         <h4>Collision</h4>
