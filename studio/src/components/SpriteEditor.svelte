@@ -6,6 +6,8 @@
   import { encodeGif, scaleRaster } from "../lib/gif";
   import { BRUSH_SHAPES, DITHERS, brushFromRaster, brushOffsets, gradientFill, shadeColor, stampBrush, stampPicture, type BrushShape, type Dither, type PictureBrush } from "../lib/brush";
   import { encodeApng } from "../lib/apng";
+  import SpriteExportDialog from "./SpriteExportDialog.svelte";
+  import { importAnimation } from "../lib/sprite-import";
   import { toBase64 } from "../lib/wav";
   import { boundsOf, combine, emptyMask, growMask, has, invertMask, isEmpty, isRect, liftMasked, maskFromColor, maskFromEllipse, maskFromPolygon, maskFromRect, outlineSegments, placeMask, type Combine, type Mask } from "../lib/selection";
   import { commandsRev } from "../lib/commands-rev.svelte";
@@ -413,7 +415,7 @@
   let rulers = $state(false);
   // a reference picture drawn under or over the canvas (never saved with the sprite)
   let refPath = $state("");
-  let refPicture: HTMLCanvasElement | null = null;
+  let refPicture = $state.raw<HTMLCanvasElement | null>(null);
   let refSize = $state({ w: 0, h: 0 });
   let refOpacity = $state(0.5);
   let refOver = $state(false);
@@ -1233,6 +1235,24 @@
     pictureBrush = b;
     tool = "pencil";
   }
+  let exporting = $state(false);
+  let importFile: HTMLInputElement | undefined = $state();
+  /// Opens another program's animation (a GIF, an animated PNG or an Aseprite file) in place of this sprite; undo brings the old one back.
+  async function importFromFile(e: Event) {
+    const input = e.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) return;
+    try {
+      const r = await importAnimation(new Uint8Array(await file.arrayBuffer()));
+      structural(r.doc, 0);
+      setSelection(null);
+      zoom = Math.max(1, Math.min(32, Math.floor(420 / Math.max(doc.fw, doc.fh))));
+      studio.say(r.warnings.length ? "error" : "info", `Opened ${file.name}: ${r.what}.${r.warnings.length ? " " + r.warnings.join(" ") : ""} Undo brings the old sprite back.`);
+    } catch (err) {
+      studio.say("error", `${file.name}: ${err instanceof Error ? err.message : err}`);
+    }
+  }
   let fxBlock = $state(2);
   let fxBright = $state(0);
   let fxContrast = $state(0);
@@ -1271,6 +1291,8 @@
       commands.register({ id: "sprite.selectShrink", title: "Shrink the selection by one pixel", menu: "Sprite", enabled: () => has_() && !!selection, run: () => { const m = currentMask(); if (m) setSelection(growMask(m, -1)); } }),
       commands.register({ id: "sprite.cropToSelection", title: "Crop the sprite to the selection", menu: "Sprite", help: "Every frame and layer is cut down to the selection's box", enabled: () => has_() && !!selection, run: () => { if (selection) { structural(cropDoc(doc, selection)); setSelection(null); zoom = Math.max(1, Math.min(32, Math.floor(420 / Math.max(doc.fw, doc.fh)))); } } }),
       commands.register({ id: "sprite.exportGif", title: "Export this animation as a GIF", menu: "Sprite", icon: "export", help: "An animated GIF of the animation being worked on, in the exports folder", enabled: has, run: () => void exportGif() }),
+      commands.register({ id: "sprite.export", title: "Export…", menu: "Sprite", icon: "export", help: "Frames, layers, a packed sheet with an atlas, or an animation", enabled: has, run: () => { exporting = true; } }),
+      commands.register({ id: "sprite.import", title: "Open a GIF, animated PNG or Aseprite file…", menu: "Sprite", icon: "file", help: "Replaces this sprite with the file's frames (undo brings it back)", enabled: () => ready, run: () => importFile?.click() }),
       commands.register({ id: "sprite.exportApng", title: "Export this animation as an animated PNG", menu: "Sprite", icon: "export", help: "Full colour, in the exports folder", enabled: has, run: () => void exportApng() }),
       commands.register({ id: "sprite.brushFromSelection", title: "Use the selection as a brush", menu: "Sprite", help: "The pencil and eraser stamp the selected pixels", enabled: () => has_() && !!selection, run: brushFromSelection }),
       commands.register({ id: "sprite.gradientMap", title: "Gradient map (current colour to the other colour)", menu: "Sprite", enabled: has, run: applyGradientMap }),
@@ -1313,6 +1335,11 @@
 </script>
 
 <svelte:window onkeydown={key} />
+
+{#if exporting}
+  <SpriteExportDialog {doc} base={fromPath.slice(fromPath.lastIndexOf("/") + 1).replace(/\.(sprite\.json|png)$/i, "")} storeKey={fromPath} ongif={() => void exportGif()} onapng={() => void exportApng()} onclose={() => (exporting = false)} />
+{/if}
+<input bind:this={importFile} type="file" accept=".gif,.png,.aseprite,.ase,image/gif,image/png" hidden onchange={importFromFile} />
 
 {#if failure}
   <div class="fail">
