@@ -71,7 +71,26 @@ export function stretchKeys(doc: ModelDoc, clipIndex: number, factor: number, pa
   return retime(doc, clipIndex, part, (t) => t * factor);
 }
 
-function retime(doc: ModelDoc, clipIndex: number, part: string[] | null, fn: (t: number) => number): ModelDoc {
+/// Moves only the keys at the given times (picked in the timeline) by `delta` seconds, for the chosen part or every part; the others stay.
+export function shiftKeysAt(doc: ModelDoc, clipIndex: number, times: number[], delta: number, part: string[] | null = null): ModelDoc {
+  if (!times.length) return doc;
+  return retime(doc, clipIndex, part, (t) => t + delta, times);
+}
+
+/// Removes the keys at the given times (every property of the chosen part, or of every part).
+export function removeKeysAt(doc: ModelDoc, clipIndex: number, times: number[], part: string[] | null = null): ModelDoc {
+  if (!times.length || !doc.clips?.[clipIndex]) return doc;
+  const next = clone(doc);
+  const clip = next.clips![clipIndex]!;
+  for (const t of clip.tracks) {
+    if (part && pathKey(t.part) !== pathKey(part)) continue;
+    t.keys = t.keys.filter((k) => !times.some((x) => Math.abs(x - k.t) < KEY_STEP / 2));
+  }
+  clip.tracks = clip.tracks.filter((t) => t.keys.length > 0);
+  return next;
+}
+
+function retime(doc: ModelDoc, clipIndex: number, part: string[] | null, fn: (t: number) => number, only?: number[]): ModelDoc {
   if (!doc.clips?.[clipIndex]) return doc;
   const next = clone(doc);
   const clip = next.clips![clipIndex]!;
@@ -79,7 +98,7 @@ function retime(doc: ModelDoc, clipIndex: number, part: string[] | null, fn: (t:
     if (part && pathKey(t.part) !== pathKey(part)) continue;
     const moved: Key[] = [];
     for (const k of t.keys) {
-      const time = round(snapTime(fn(k.t)));
+      const time = round(snapTime(!only || only.some((x) => Math.abs(x - k.t) < KEY_STEP / 2) ? fn(k.t) : k.t));
       if (time < 0 || time > clip.duration + KEY_STEP / 2) continue;
       if (moved.some((m) => Math.abs(m.t - time) < KEY_STEP / 2)) continue; // two keys squeezed onto one time: the first stays
       moved.push({ ...k, t: time });

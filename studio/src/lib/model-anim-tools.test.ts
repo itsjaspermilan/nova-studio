@@ -181,3 +181,15 @@ describe("retargeting", () => {
     expect(retargetClip(tall(), 5, target).index).toBe(-1);
   });
 });
+
+import { removeKeysAt, shiftKeysAt } from "./model-anim-tools";
+describe("keys picked by time", () => {
+  it("moves only the picked keys and removes only the picked ones", () => {
+    const d = base();
+    expect(times(shiftKeysAt(d, 0, [1], 0.5, ["body"]), ["body"])).toEqual([0, 1.5, 2]);
+    expect(times(removeKeysAt(d, 0, [1], ["body"]), ["body"])).toEqual([0, 2]);
+    // with no part named, every part's key at that time goes
+    expect(times(removeKeysAt(d, 0, [1]), ["body", "arm"], "rotation")).toBeUndefined();
+    expect(shiftKeysAt(d, 0, [], 0.5)).toBe(d);
+  });
+});

@@ -24,7 +24,7 @@
   import ModelStats from "./ModelStats.svelte";
   import { solveLimb } from "../lib/model-ik";
   import { bakeConstraints, constrainedPose, setConstraints } from "../lib/model-constraints";
-  import { retargetClip, applyPose as applySavedPose, capturePose, removePose, copyKeys, mirrorClip, pasteKeys, reverseClip, shiftKeys, stretchKeys, type KeyClipboard } from "../lib/model-anim-tools";
+  import { retargetClip, applyPose as applySavedPose, capturePose, removePose, copyKeys, mirrorClip, pasteKeys, removeKeysAt, reverseClip, shiftKeys, shiftKeysAt, stretchKeys, type KeyClipboard } from "../lib/model-anim-tools";
   import { SCULPT_HELP, SCULPT_MODES, sculptDab, type SculptMode } from "../lib/sculpt";
   import { addFace, bevelEdge, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, freshProfile, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsSymmetric, setFaceColors, setSmooth, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
   import { hasVolume, meshOf, segmentsOf, shapeFaces, solidOf } from "../lib/model-mesh";
@@ -2612,6 +2612,21 @@
       ? [...new Set(PROPS.flatMap((prop) => findTrack(clip, partNames, prop)?.keys.map((k) => k.t) ?? []))].sort((a, b) => a - b)
       : [],
   );
+  // Keys picked in the timeline (⌘ or ⇧-click a diamond): moved or removed together.
+  let pickedKeys = $state<number[]>([]);
+  const keyIsPicked = (t: number) => pickedKeys.some((x) => Math.abs(x - t) < KEY_STEP / 2);
+  function clickKey(t: number, e: MouseEvent) {
+    playingAnim = false;
+    if (e.metaKey || e.ctrlKey || e.shiftKey) pickedKeys = keyIsPicked(t) ? pickedKeys.filter((x) => Math.abs(x - t) >= KEY_STEP / 2) : [...pickedKeys, t];
+    else {
+      pickedKeys = [];
+      animTime = t;
+    }
+  }
+  $effect(() => {
+    clipIndex; selected;
+    untrack(() => (pickedKeys = []));
+  });
   function newClip() {
     const r = addClip(doc);
     commit(r.doc);
@@ -3019,11 +3034,20 @@
             <div class="track">
               <input type="range" min="0" max={clip.duration} step={KEY_STEP} value={animTime} aria-label="Time" oninput={(e) => { playingAnim = false; animTime = snapTime(Number(e.currentTarget.value)); }} />
               {#each keyTimes as t (t)}
-                <button class="diamond" style:left="{(t / clip.duration) * 100}%" title="Key at {fmtTime(t)} s" aria-label="Jump to key at {fmtTime(t)} seconds" onclick={() => { playingAnim = false; animTime = t; }}>◆</button>
+                <button class="diamond" style:left="{(t / clip.duration) * 100}%" title="Key at {fmtTime(t)} s" aria-label="Jump to key at {fmtTime(t)} seconds" class:picked={keyIsPicked(t)} onclick={(e) => clickKey(t, e)}>◆</button>
               {/each}
             </div>
             <span class="dim time">{fmtTime(animTime)} / {fmtTime(clip.duration)} s</span>
           </div>
+          {#if pickedKeys.length}
+            <div class="row wrap small">
+              <span class="dim">{pickedKeys.length} key{pickedKeys.length === 1 ? "" : "s"} picked</span>
+              <button onclick={() => { commit(shiftKeysAt(doc, clipIndex, pickedKeys, -0.1, partNames.length ? partNames : null), false, "Move keys"); pickedKeys = pickedKeys.map((t) => Math.max(0, Math.round((t - 0.1) * 100) / 100)); }} title="Move the picked keys 0.1 s earlier">◀ 0.1 s</button>
+              <button onclick={() => { commit(shiftKeysAt(doc, clipIndex, pickedKeys, 0.1, partNames.length ? partNames : null), false, "Move keys"); pickedKeys = pickedKeys.map((t) => Math.round((t + 0.1) * 100) / 100); }} title="Move the picked keys 0.1 s later">0.1 s ▶</button>
+              <button class="danger" onclick={() => { commit(removeKeysAt(doc, clipIndex, pickedKeys, partNames.length ? partNames : null), false, "Delete keys"); pickedKeys = []; }} title="Delete the picked keys">Delete</button>
+              <button class="ghost" onclick={() => (pickedKeys = [])}>Clear</button>
+            </div>
+          {/if}
           {#if curvesOpen}
             {#if partNames.length}
               <CurveEditor {doc} {clipIndex} part={partNames} time={animTime} oncommit={(next, keep, label) => commit(next, keep, label)} ontime={(t) => { playingAnim = false; animTime = t; }} />
@@ -3498,6 +3522,7 @@
   .scrub { display: flex; gap: 10px; align-items: center; }
   .track { position: relative; flex: 1; height: 28px; }
   .track input[type="range"] { width: 100%; margin: 0; position: absolute; top: 0; accent-color: var(--accent); }
+  .diamond.picked { color: var(--accent); font-size: 15px; }
   .diamond { position: absolute; top: 14px; transform: translateX(-50%); padding: 0; border: none; background: transparent; color: var(--warn); font-size: 12px; line-height: 12px; cursor: pointer; }
   .time { width: 110px; text-align: right; font-variant-numeric: tabular-nums; }
   .keyed { color: var(--warn); }
