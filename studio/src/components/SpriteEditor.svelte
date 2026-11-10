@@ -20,6 +20,7 @@
   import {
     addAnimation, animationOf, cloneDoc, cropDoc, linkCels, unlinkCels, syncLinked, moveFramesWithin, scaleDurations, duplicateFrames, moveFramesTo, removeFrames, detectGrid, duplicateAnimation, frameAt, gridFromCounts, smartGrid, framesIn, fromImage, fromSheet, gridTiles, importTiles, insertFrame, moveAnimation, isPristine, moveFrame, newDoc, parseSheetJson,
     removeAnimation, removeFrame, setAnimationDuration, tagProblems, tagSequence, resizeDoc, toSheet, toSheetJson, updateAnimation, type Direction, type SpriteDoc,
+    copyFrameDataTo, effectiveData, frameDataOf, setDefaults, setFrameData, setNineSlice,
     addLayer, applyLayers, duplicateLayer, layerSheets, layersFileText, mergeDown, moveLayer, parseLayersFile, recompose, removeLayer, updateLayer, MAX_LAYERS,
   } from "../lib/sprite-doc";
   import { loadRaster, rasterToDataUrl } from "../lib/png";
@@ -307,6 +308,35 @@
     }
     blit(current, 1);
     if (refPicture && refOver) drawReference(ctx);
+    // the frame's hitbox (green), pivot (red cross) and the nine-slice guides (blue, dashed)
+    {
+      const eff = effectiveData(doc, frame);
+      if (eff.hitbox) {
+        ctx.strokeStyle = "rgba(111,207,142,.95)";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(eff.hitbox.x * zoom + 1, eff.hitbox.y * zoom + 1, eff.hitbox.w * zoom - 2, eff.hitbox.h * zoom - 2);
+        ctx.lineWidth = 1;
+      }
+      if (eff.pivot) {
+        ctx.strokeStyle = "rgba(255,90,90,.95)";
+        ctx.beginPath();
+        ctx.moveTo(eff.pivot.x * zoom - 7, eff.pivot.y * zoom);
+        ctx.lineTo(eff.pivot.x * zoom + 7, eff.pivot.y * zoom);
+        ctx.moveTo(eff.pivot.x * zoom, eff.pivot.y * zoom - 7);
+        ctx.lineTo(eff.pivot.x * zoom, eff.pivot.y * zoom + 7);
+        ctx.stroke();
+      }
+      const n = doc.nineSlice;
+      if (n) {
+        ctx.strokeStyle = "rgba(90,169,255,.9)";
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        for (const x of [n.left, doc.fw - n.right]) { ctx.moveTo(x * zoom, 0); ctx.lineTo(x * zoom, h); }
+        for (const y of [n.top, doc.fh - n.bottom]) { ctx.moveTo(0, y * zoom); ctx.lineTo(w, y * zoom); }
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
     if (showGrid && (zoom >= 8 || (gridStep > 1 && zoom >= 3))) {
       ctx.strokeStyle = "rgba(255,255,255,.12)";
       ctx.beginPath();
@@ -1235,6 +1265,8 @@
     pictureBrush = b;
     tool = "pencil";
   }
+  /// An object with one field changed, by the field's name (for the numeric inputs of boxes, points and borders).
+  const withKey = <T extends object>(base: T, key: string, value: number): T => ({ ...base, [key]: value }) as T;
   let exporting = $state(false);
   let importFile: HTMLInputElement | undefined = $state();
   /// Opens another program's animation (a GIF, an animated PNG or an Aseprite file) in place of this sprite; undo brings the old one back.
@@ -1587,6 +1619,39 @@
         <button class="danger" onclick={dropLayer} disabled={doc.layers.length <= 1} title="Delete layer" aria-label="Delete layer">✕</button>
       </div>
       {#if !isSheet && doc.layers.length > 1}<p class="warn small">This plain image is saved flat. Open a .sprite.json to keep layers.</p>{/if}
+
+      <h3>Hitbox, pivot, events</h3>
+      <p class="dim small">For this frame, in pixels from its top left. The game reads them with <code>self:frame_hitbox()</code>, <code>self:frame_pivot()</code> and <code>on_animation_event</code>.</p>
+      {#if true}
+        {@const eff = effectiveData(doc, frame)}
+        {@const own = frameDataOf(doc, frame)}
+        <div class="row wrap fd">
+          <span class="dim small" title={own.hitbox ? "This frame's own hitbox" : eff.hitbox ? "The sprite's default" : "None"}>Hitbox</span>
+          {#each ["x", "y", "w", "h"] as k (k)}
+            <input type="number" class="narrow" aria-label="hitbox {k}" value={eff.hitbox?.[k as "x"] ?? ""} placeholder={k} onchange={(e) => { const b = withKey({ x: 0, y: 0, w: doc.fw, h: doc.fh, ...(eff.hitbox ?? {}) }, k, Number(e.currentTarget.value)); structural(setFrameData(doc, frame, { hitbox: b })); }} />
+          {/each}
+          <button class="ghost" disabled={!own.hitbox} title="Back to the sprite's default" onclick={() => structural(setFrameData(doc, frame, { hitbox: null }))}>✕</button>
+        </div>
+        <div class="row wrap fd">
+          <span class="dim small" title={own.pivot ? "This frame's own pivot" : eff.pivot ? "The sprite's default" : "None"}>Pivot</span>
+          {#each ["x", "y"] as k (k)}
+            <input type="number" class="narrow" aria-label="pivot {k}" value={eff.pivot?.[k as "x"] ?? ""} placeholder={k} onchange={(e) => { const p = withKey({ x: Math.floor(doc.fw / 2), y: doc.fh, ...(eff.pivot ?? {}) }, k, Number(e.currentTarget.value)); structural(setFrameData(doc, frame, { pivot: p })); }} />
+          {/each}
+          <button class="ghost" disabled={!own.pivot} title="Back to the sprite's default" onclick={() => structural(setFrameData(doc, frame, { pivot: null }))}>✕</button>
+        </div>
+        <label class="slider"><span>Events</span><input aria-label="Events of this frame" placeholder="step, dust" value={(own.events ?? []).join(", ")} onchange={(e) => structural(setFrameData(doc, frame, { events: e.currentTarget.value.split(",") }))} /></label>
+        <div class="row wrap">
+          <button title="Give every frame of this animation this frame's hitbox and pivot" onclick={() => structural(copyFrameDataTo(doc, frame, animIndex, ["hitbox", "pivot"]))}>Same for the animation</button>
+          <button title="Make this frame's hitbox and pivot the defaults for every frame that has none of its own" disabled={!eff.hitbox && !eff.pivot} onclick={() => structural(setDefaults(doc, { hitbox: eff.hitbox ?? null, pivot: eff.pivot ?? null }))}>Make default</button>
+        </div>
+      {/if}
+      <h3>Nine-slice</h3>
+      <p class="dim small">Border sizes for stretching this picture as a panel: <code>nova.ui.panel("{fromPath.slice(fromPath.lastIndexOf("/") + 1).replace(/\.(sprite\.json|png)$/i, "")}", x, y, w, h)</code> then uses them.</p>
+      <div class="row wrap fd">
+        {#each [["left", "L"], ["right", "R"], ["top", "T"], ["bottom", "B"]] as [k, l] (k)}
+          <label class="inline" title={k}>{l} <input type="number" min="0" class="narrow" value={doc.nineSlice?.[k as "left"] ?? 0} onchange={(e) => structural(setNineSlice(doc, withKey({ left: 0, right: 0, top: 0, bottom: 0, ...(doc.nineSlice ?? {}) }, k!, Number(e.currentTarget.value))))} /></label>
+        {/each}
+      </div>
 
       <h3>Preview</h3>
       <div class="preview"><canvas bind:this={preview}></canvas></div>

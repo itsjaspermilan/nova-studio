@@ -28,9 +28,39 @@ export interface Layer {
   /// For each cel, 0 or a group number: cels of this layer with the same number are linked, and drawing on one draws on all.
   links?: number[];
 }
+/// A box in pixels of a frame, from its top left.
+export interface Box {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+export interface Point2 {
+  x: number;
+  y: number;
+}
+/// What one frame carries besides its picture: a hitbox, a pivot (where it stands) and the names of events that fire when it comes up (docs/project-format.md).
+export interface FrameData {
+  hitbox?: Box;
+  pivot?: Point2;
+  events?: string[];
+}
+/// Border sizes for stretching a picture as a panel.
+export interface NineSlice {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+export const MAX_EVENTS = 8;
+
 export interface SpriteDoc {
   fw: number;
   fh: number;
+  /// Per frame (same length as `frames` when present; null for a frame with nothing of its own), and the defaults every frame starts from.
+  data?: (FrameData | null)[];
+  defaults?: { hitbox?: Box; pivot?: Point2 };
+  nineSlice?: NineSlice;
   /// What the frames look like with every visible layer stacked: what is shown, previewed and exported.
   frames: Raster[];
   durations: number[];
@@ -60,6 +90,9 @@ export function cloneDoc(d: SpriteDoc): SpriteDoc {
   return {
     fw: d.fw, fh: d.fh, frames: d.frames.map(cloneRaster), durations: [...d.durations], tags: d.tags.map((t) => ({ ...t })),
     layers: d.layers.map((l) => ({ ...l, cels: l.cels.map(cloneRaster), ...(l.links ? { links: [...l.links] } : {}) })),
+    ...(d.data ? { data: d.data.map((x) => (x ? (JSON.parse(JSON.stringify(x)) as FrameData) : null)) } : {}),
+    ...(d.defaults ? { defaults: JSON.parse(JSON.stringify(d.defaults)) as SpriteDoc["defaults"] } : {}),
+    ...(d.nineSlice ? { nineSlice: { ...d.nineSlice } } : {}),
   };
 }
 
@@ -83,9 +116,118 @@ export function cropDoc(doc: SpriteDoc, rect: { x: number; y: number; w: number;
   const next = cloneDoc(doc);
   next.fw = w;
   next.fh = h;
+  shiftBoxes(next, -x, -y);
   next.frames = doc.frames.map((f) => crop(f, x, y, w, h));
   next.layers = next.layers.map((l, i) => ({ ...l, cels: doc.layers[i]!.cels.map((c) => crop(c, x, y, w, h)) }));
   return next;
+}
+
+/// Moves every hitbox and pivot by an offset (the picture moved under them), dropping what no longer lies inside the new frame (checked by the caller's size).
+function shiftBoxes(d: SpriteDoc, dx: number, dy: number) {
+  const mb = (b?: Box) => (b ? { ...b, x: b.x + dx, y: b.y + dy } : undefined);
+  const mp = (p?: Point2) => (p ? { x: p.x + dx, y: p.y + dy } : undefined);
+  if (d.defaults) {
+    const hb = mb(d.defaults.hitbox), pv = mp(d.defaults.pivot);
+    d.defaults = { ...(hb ? { hitbox: hb } : {}), ...(pv ? { pivot: pv } : {}) };
+  }
+  d.data = d.data?.map((f) => (f ? { ...f, ...(f.hitbox ? { hitbox: mb(f.hitbox)! } : {}), ...(f.pivot ? { pivot: mp(f.pivot)! } : {}) } : f));
+}
+
+// ---- frame data: hitboxes, pivots, events and the nine-slice ------------------------------------------------
+
+/// What frame `i` has of its own (an empty object when nothing).
+export const frameDataOf = (doc: SpriteDoc, i: number): FrameData => doc.data?.[i] ?? {};
+
+/// The hitbox and pivot a frame ends up with: its own, else the defaults.
+export function effectiveData(doc: SpriteDoc, i: number): { hitbox?: Box; pivot?: Point2; events: string[] } {
+  const f = frameDataOf(doc, i);
+  return { hitbox: f.hitbox ?? doc.defaults?.hitbox, pivot: f.pivot ?? doc.defaults?.pivot, events: f.events ?? [] };
+}
+
+const clampBox = (b: Box, w: number, h: number): Box | null => {
+  const x = Math.max(0, Math.min(w - 1, Math.round(b.x)));
+  const y = Math.max(0, Math.min(h - 1, Math.round(b.y)));
+  const bw = Math.min(w - x, Math.round(b.w));
+  const bh = Math.min(h - y, Math.round(b.h));
+  return bw >= 1 && bh >= 1 ? { x, y, w: bw, h: bh } : null;
+};
+const clampPoint = (p: Point2, w: number, h: number): Point2 => ({ x: Math.max(0, Math.min(w, Math.round(p.x))), y: Math.max(0, Math.min(h, Math.round(p.y))) });
+const cleanEvents = (list: string[]) => [...new Set(list.map((e) => e.trim().slice(0, 32)).filter(Boolean))].slice(0, MAX_EVENTS);
+
+/// Changes one frame's own data (a field set to null is removed; boxes and points are kept inside the frame). Returns the same doc when nothing changes.
+export function setFrameData(doc: SpriteDoc, i: number, change: { hitbox?: Box | null; pivot?: Point2 | null; events?: string[] | null }): SpriteDoc {
+  if (i < 0 || i >= doc.frames.length) return doc;
+  const next = cloneDoc(doc);
+  const data = next.data ?? doc.frames.map(() => null);
+  const cur: FrameData = { ...(data[i] ?? {}) };
+  if (change.hitbox !== undefined) {
+    const b = change.hitbox && clampBox(change.hitbox, doc.fw, doc.fh);
+    if (b) cur.hitbox = b;
+    else delete cur.hitbox;
+  }
+  if (change.pivot !== undefined) {
+    if (change.pivot) cur.pivot = clampPoint(change.pivot, doc.fw, doc.fh);
+    else delete cur.pivot;
+  }
+  if (change.events !== undefined) {
+    const e = change.events ? cleanEvents(change.events) : [];
+    if (e.length) cur.events = e;
+    else delete cur.events;
+  }
+  data[i] = Object.keys(cur).length ? cur : null;
+  if (JSON.stringify(data[i]) === JSON.stringify(doc.data?.[i] ?? null)) return doc;
+  next.data = data.some(Boolean) ? data : undefined;
+  if (!next.data) delete next.data;
+  return next;
+}
+
+/// The same hitbox or pivot or events on every frame of an animation.
+export function copyFrameDataTo(doc: SpriteDoc, from: number, tagIndex: number, which: ("hitbox" | "pivot" | "events")[]): SpriteDoc {
+  const tag = doc.tags[tagIndex];
+  const src = frameDataOf(doc, from);
+  if (!tag) return doc;
+  let next = doc;
+  for (let f = tag.from; f <= tag.to; f++) {
+    if (f === from) continue;
+    next = setFrameData(next, f, {
+      ...(which.includes("hitbox") ? { hitbox: src.hitbox ?? null } : {}),
+      ...(which.includes("pivot") ? { pivot: src.pivot ?? null } : {}),
+      ...(which.includes("events") ? { events: src.events ?? null } : {}),
+    });
+  }
+  return next;
+}
+
+/// The defaults every frame starts from (null removes one).
+export function setDefaults(doc: SpriteDoc, change: { hitbox?: Box | null; pivot?: Point2 | null }): SpriteDoc {
+  const next = cloneDoc(doc);
+  const d = { ...(next.defaults ?? {}) };
+  if (change.hitbox !== undefined) {
+    const b = change.hitbox && clampBox(change.hitbox, doc.fw, doc.fh);
+    if (b) d.hitbox = b;
+    else delete d.hitbox;
+  }
+  if (change.pivot !== undefined) {
+    if (change.pivot) d.pivot = clampPoint(change.pivot, doc.fw, doc.fh);
+    else delete d.pivot;
+  }
+  if (Object.keys(d).length) next.defaults = d;
+  else delete next.defaults;
+  return JSON.stringify(next.defaults) === JSON.stringify(doc.defaults) ? doc : next;
+}
+
+/// Sets the nine-slice borders (clamped so left + right fit the width and top + bottom the height); null removes it.
+export function setNineSlice(doc: SpriteDoc, n: NineSlice | null): SpriteDoc {
+  const next = cloneDoc(doc);
+  if (!n || (n.left | n.right | n.top | n.bottom) === 0) delete next.nineSlice;
+  else {
+    const c = (v: number) => Math.max(0, Math.round(v) || 0);
+    let [l, r, t, b] = [c(n.left), c(n.right), c(n.top), c(n.bottom)];
+    if (l + r > doc.fw) [l, r] = [Math.min(l, doc.fw), Math.max(0, doc.fw - Math.min(l, doc.fw))];
+    if (t + b > doc.fh) [t, b] = [Math.min(t, doc.fh), Math.max(0, doc.fh - Math.min(t, doc.fh))];
+    next.nineSlice = { left: l, right: r, top: t, bottom: b };
+  }
+  return JSON.stringify(next.nineSlice) === JSON.stringify(doc.nineSlice) ? doc : next;
 }
 
 /// Refreshes the stacked picture of one frame (after drawing on a cel), in place.
@@ -135,6 +277,7 @@ function assemble(doc: SpriteDoc, blocks: { tag: Tag; frames: number[] }[]): Spr
   const next = cloneDoc(doc);
   next.frames = order.map((i) => cloneRaster(doc.frames[i]!));
   next.durations = order.map((i) => doc.durations[i]!);
+  if (doc.data) next.data = order.map((i) => (doc.data![i] ? (JSON.parse(JSON.stringify(doc.data![i])) as FrameData) : null));
   // a frame that appears twice (a copy) keeps its link on the first appearance only
   next.layers = doc.layers.map((l) => {
     const seen = new Set<number>();
@@ -190,6 +333,7 @@ export function insertFrame(doc: SpriteDoc, index: number, copyOf?: number, anim
     l.links?.splice(at, 0, 0); // a copy is not linked to what it was copied from
   }
   next.durations.splice(at, 0, copyOf === undefined ? DEFAULT_DURATION : next.durations[copyOf]!);
+  next.data?.splice(at, 0, copyOf === undefined ? null : next.data[copyOf] ? (JSON.parse(JSON.stringify(next.data[copyOf])) as FrameData) : null);
   shiftFrom(next.tags, at, 1, owner);
   next.tags[owner]!.to++;
   return next;
@@ -206,6 +350,7 @@ export function removeFrame(doc: SpriteDoc, index: number): SpriteDoc {
     l.links?.splice(index, 1);
   }
   next.durations.splice(index, 1);
+  next.data?.splice(index, 1);
   next.tags[owner]!.to--;
   shiftFrom(next.tags, index + 1, -1, owner);
   return next;
@@ -228,6 +373,10 @@ export function moveFrame(doc: SpriteDoc, from: number, to: number): SpriteDoc {
     }
   }
   next.durations.splice(to, 0, duration!);
+  if (next.data) {
+    const [moved] = next.data.splice(from, 1);
+    next.data.splice(to, 0, moved ?? null);
+  }
   return next;
 }
 
@@ -627,6 +776,10 @@ export interface SheetJson {
   frame_duration_ms?: number;
   durations_ms?: number[];
   tags?: { name: string; from: number; to: number; direction?: Direction; loop?: boolean }[];
+  hitbox?: Box;
+  pivot?: Point2;
+  nine_slice?: Partial<NineSlice>;
+  frame_data?: { frame: number; hitbox?: Box; pivot?: Point2; events?: string[] }[];
 }
 
 export type ParsedSheet = { ok: true; json: SheetJson } | { ok: false; error: string };
@@ -660,7 +813,36 @@ export function fromSheet(sheet: Raster, json: SheetJson): SpriteDoc {
     .filter((t) => t && typeof t.name === "string" && Number.isInteger(t.from) && Number.isInteger(t.to))
     .map((t) => ({ name: t.name, from: t.from, to: t.to, direction: t.direction ?? "forward", loop: t.loop ?? true }))
     .filter((t) => t.from >= 0 && t.to >= t.from && t.to < count);
-  return normalizeAnimations({ fw, fh, frames, durations, tags, layers: [layerOf("Layer 1", frames.map(cloneRaster))] });
+  const doc: SpriteDoc = { fw, fh, frames, durations, tags, layers: [layerOf("Layer 1", frames.map(cloneRaster))] };
+  const num = (v: unknown) => typeof v === "number" && Number.isFinite(v);
+  const okBox = (b: unknown): b is Box => !!b && typeof b === "object" && num((b as Box).x) && num((b as Box).y) && num((b as Box).w) && num((b as Box).h);
+  const okPoint = (p: unknown): p is Point2 => !!p && typeof p === "object" && num((p as Point2).x) && num((p as Point2).y);
+  const def: SpriteDoc["defaults"] = {};
+  if (okBox(json.hitbox)) def.hitbox = json.hitbox;
+  if (okPoint(json.pivot)) def.pivot = json.pivot;
+  if (Object.keys(def).length) doc.defaults = def;
+  if (json.nine_slice && typeof json.nine_slice === "object") {
+    const n = json.nine_slice;
+    const c = (v: unknown) => (num(v) ? Math.max(0, Math.round(v as number)) : 0);
+    const slice = { left: c(n.left), right: c(n.right), top: c(n.top), bottom: c(n.bottom) };
+    if (slice.left + slice.right + slice.top + slice.bottom > 0) doc.nineSlice = slice;
+  }
+  if (Array.isArray(json.frame_data)) {
+    const data: (FrameData | null)[] = frames.map(() => null);
+    for (const e of json.frame_data) {
+      if (!e || !Number.isInteger(e.frame) || e.frame < 0 || e.frame >= count) continue;
+      const f: FrameData = {};
+      if (okBox(e.hitbox)) f.hitbox = e.hitbox;
+      if (okPoint(e.pivot)) f.pivot = e.pivot;
+      if (Array.isArray(e.events)) {
+        const list = cleanEvents(e.events.filter((x): x is string => typeof x === "string"));
+        if (list.length) f.events = list;
+      }
+      if (Object.keys(f).length) data[e.frame] = f;
+    }
+    if (data.some(Boolean)) doc.data = data;
+  }
+  return normalizeAnimations(doc);
 }
 
 /// Cuts `count` frames of fw x fh out of a sheet laid out `columns` wide.
@@ -695,6 +877,22 @@ export function toSheetJson(doc: SpriteDoc, image: string): string {
     });
     lines.push(`  "tags": [\n${tags.join(",\n")}\n  ]`);
   }
+  const box = (b: Box) => `{ "x": ${b.x}, "y": ${b.y}, "w": ${b.w}, "h": ${b.h} }`;
+  const pt = (p: Point2) => `{ "x": ${p.x}, "y": ${p.y} }`;
+  if (doc.defaults?.hitbox) lines.push(`  "hitbox": ${box(doc.defaults.hitbox)}`);
+  if (doc.defaults?.pivot) lines.push(`  "pivot": ${pt(doc.defaults.pivot)}`);
+  if (doc.nineSlice) lines.push(`  "nine_slice": { "left": ${doc.nineSlice.left}, "right": ${doc.nineSlice.right}, "top": ${doc.nineSlice.top}, "bottom": ${doc.nineSlice.bottom} }`);
+  const own = (doc.data ?? []).map((d, frame) => ({ d, frame })).filter((x) => x.d);
+  if (own.length) {
+    const rows = own.map(({ d, frame }) => {
+      const parts = [`"frame": ${frame}`];
+      if (d!.hitbox) parts.push(`"hitbox": ${box(d!.hitbox)}`);
+      if (d!.pivot) parts.push(`"pivot": ${pt(d!.pivot)}`);
+      if (d!.events?.length) parts.push(`"events": ${JSON.stringify(d!.events)}`);
+      return `    { ${parts.join(", ")} }`;
+    });
+    lines.push(`  "frame_data": [\n${rows.join(",\n")}\n  ]`);
+  }
   return `{\n${lines.join(",\n")}\n}\n`;
 }
 
@@ -718,6 +916,8 @@ export function resizeDoc(doc: SpriteDoc, w: number, h: number, anchorX = 0, anc
   const nh = side(h);
   if (nw === doc.fw && nh === doc.fh) return doc;
   const base = cloneDoc(doc);
+  // (an anchor of 0.5 puts the old picture half the growth in; the same shift carries the boxes and pivots)
+  shiftBoxes(base, Math.floor((nw - doc.fw) * anchorX), Math.floor((nh - doc.fh) * anchorY));
   return {
     ...base, fw: nw, fh: nh,
     frames: doc.frames.map((f) => resizeCanvas(f, nw, nh, anchorX, anchorY)),

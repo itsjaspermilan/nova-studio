@@ -665,3 +665,78 @@ describe("cropDoc", () => {
     expect(cropDoc(doc, { x: -2, y: 0, w: 4, h: 4 }).fw).toBe(2); // (clipped to the sprite)
   });
 });
+
+describe("frame data: hitboxes, pivots, events and the nine-slice", () => {
+  const base = () => {
+    const d = newDoc(16, 16, 3);
+    return d;
+  };
+  it("sets and clears a frame's own data, keeping boxes inside the frame", async () => {
+    const { setFrameData, frameDataOf, effectiveData, setDefaults } = await import("./sprite-doc");
+    let d = setFrameData(base(), 1, { hitbox: { x: 2, y: 3, w: 40, h: 5 }, pivot: { x: 99, y: -4 }, events: ["step", " ", "step", "dust"] });
+    expect(frameDataOf(d, 1)).toEqual({ hitbox: { x: 2, y: 3, w: 14, h: 5 }, pivot: { x: 16, y: 0 }, events: ["step", "dust"] });
+    expect(frameDataOf(d, 0)).toEqual({});
+    d = setDefaults(d, { hitbox: { x: 1, y: 1, w: 8, h: 8 }, pivot: { x: 8, y: 15 } });
+    expect(effectiveData(d, 0)).toEqual({ hitbox: { x: 1, y: 1, w: 8, h: 8 }, pivot: { x: 8, y: 15 }, events: [] });
+    expect(effectiveData(d, 1).hitbox).toEqual({ x: 2, y: 3, w: 14, h: 5 });
+    const cleared = setFrameData(d, 1, { hitbox: null, pivot: null, events: null });
+    expect(cleared.data).toBeUndefined();
+    expect(setFrameData(base(), 0, { events: [] })).toEqual(base());
+    expect(setFrameData(base(), 9, { events: ["x"] })).toEqual(base());
+  });
+  it("sets the same data on every frame of an animation", async () => {
+    const { setFrameData, copyFrameDataTo, frameDataOf } = await import("./sprite-doc");
+    const d = setFrameData(base(), 0, { hitbox: { x: 1, y: 1, w: 4, h: 4 }, events: ["a"] });
+    const all = copyFrameDataTo(d, 0, 0, ["hitbox"]);
+    expect(frameDataOf(all, 2).hitbox).toEqual({ x: 1, y: 1, w: 4, h: 4 });
+    expect(frameDataOf(all, 2).events).toBeUndefined();
+  });
+  it("sets a nine-slice that fits, and removes it", async () => {
+    const { setNineSlice } = await import("./sprite-doc");
+    expect(setNineSlice(base(), { left: 4, right: 4, top: 3, bottom: 5 }).nineSlice).toEqual({ left: 4, right: 4, top: 3, bottom: 5 });
+    const big = setNineSlice(base(), { left: 12, right: 12, top: 2, bottom: 2 }).nineSlice!;
+    expect(big.left + big.right).toBeLessThanOrEqual(16);
+    expect(setNineSlice(setNineSlice(base(), { left: 1, right: 1, top: 1, bottom: 1 }), null).nineSlice).toBeUndefined();
+  });
+  it("follows the frames when they are inserted, moved, removed and copied", async () => {
+    const { setFrameData, frameDataOf, insertFrame, moveFrame, removeFrame, duplicateFrames } = await import("./sprite-doc");
+    let d = setFrameData(base(), 1, { events: ["mid"] });
+    d = insertFrame(d, 0);
+    expect(frameDataOf(d, 2).events).toEqual(["mid"]);
+    expect(frameDataOf(d, 0)).toEqual({});
+    const moved = moveFrame(d, 2, 0);
+    expect(frameDataOf(moved, 0).events).toEqual(["mid"]);
+    const copy = insertFrame(d, 3, 2);
+    expect(frameDataOf(copy, 3).events).toEqual(["mid"]);
+    const removed = removeFrame(d, 0);
+    expect(frameDataOf(removed, 1).events).toEqual(["mid"]);
+    const dup = duplicateFrames(d, [2]);
+    expect(dup.doc.data!.filter((x) => x?.events?.[0] === "mid")).toHaveLength(2);
+  });
+  it("moves with the picture when it is cropped or the canvas grows", async () => {
+    const { setFrameData, frameDataOf, cropDoc, resizeDoc, setDefaults } = await import("./sprite-doc");
+    let d = setFrameData(base(), 0, { hitbox: { x: 4, y: 4, w: 4, h: 4 }, pivot: { x: 6, y: 6 } });
+    d = setDefaults(d, { pivot: { x: 8, y: 8 } });
+    const cropped = cropDoc(d, { x: 2, y: 2, w: 10, h: 10 });
+    expect(frameDataOf(cropped, 0).hitbox).toEqual({ x: 2, y: 2, w: 4, h: 4 });
+    expect(cropped.defaults!.pivot).toEqual({ x: 6, y: 6 });
+    const grown = resizeDoc(d, 24, 16, 0.5, 0);
+    expect(frameDataOf(grown, 0).hitbox).toEqual({ x: 8, y: 4, w: 4, h: 4 });
+  });
+  it("is written to the sheet file and read back", async () => {
+    const { setFrameData, setDefaults, setNineSlice, toSheetJson, parseSheetJson, fromSheet, toSheet } = await import("./sprite-doc");
+    let d = setFrameData(base(), 2, { hitbox: { x: 1, y: 2, w: 3, h: 4 }, pivot: { x: 5, y: 6 }, events: ["hit"] });
+    d = setDefaults(d, { hitbox: { x: 0, y: 0, w: 8, h: 8 } });
+    d = setNineSlice(d, { left: 2, right: 2, top: 3, bottom: 3 });
+    const text = toSheetJson(d, "hero.png");
+    const parsed = parseSheetJson(text);
+    if (!parsed.ok) throw new Error(parsed.error);
+    expect(parsed.json.frame_data).toEqual([{ frame: 2, hitbox: { x: 1, y: 2, w: 3, h: 4 }, pivot: { x: 5, y: 6 }, events: ["hit"] }]);
+    const back = fromSheet(toSheet(d), parsed.json);
+    expect(back.nineSlice).toEqual({ left: 2, right: 2, top: 3, bottom: 3 });
+    expect(back.defaults).toEqual({ hitbox: { x: 0, y: 0, w: 8, h: 8 } });
+    expect(back.data![2]).toEqual({ hitbox: { x: 1, y: 2, w: 3, h: 4 }, pivot: { x: 5, y: 6 }, events: ["hit"] });
+    // a plain sprite writes none of it
+    expect(toSheetJson(base(), "x.png")).not.toContain("frame_data");
+  });
+});
