@@ -7,10 +7,10 @@ use std::time::{Duration, Instant};
 
 /// Where a Blender might be: the `NOVA_BLENDER` variable, the usual install places on macOS, Windows and Linux, then the PATH.
 pub fn find_blender() -> Option<PathBuf> {
-    if let Some(p) = std::env::var_os("NOVA_BLENDER").map(PathBuf::from) {
-        if p.exists() {
-            return Some(p);
-        }
+    if let Some(p) = std::env::var_os("NOVA_BLENDER").map(PathBuf::from)
+        && p.exists()
+    {
+        return Some(p);
     }
     let mut candidates: Vec<PathBuf> = vec![
         "/Applications/Blender.app/Contents/MacOS/Blender".into(),
