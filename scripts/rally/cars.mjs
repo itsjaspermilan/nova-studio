@@ -1,4 +1,6 @@
 // A generator for classic road cars in the style of the reference models in examples/ (a boxy 1980s sedan as a painted GLB, and a Dodge
+// NOTE (2026-11-10): the road cars (every car_* model and `car`) are now made by scripts/rally/arcade.mjs in a chunkier arcade style; running this
+// script for them would put the old look back. It still makes the open-wheel racers (racecar_*).
 // Challenger and a Ford Mustang as Blender files): realistic proportions and trim, as in a 1960s to 1980s car, not a toy. Two families
 // (`boxy` sedans, wagons and vans; `muscle` coupes), a shared detail library (`classicDetails`) and an open-wheel `formula` for the racers.
 // New cars are new entries in CARS (a spec: sizes, the line of the roof, the paint, the extras). The road cars were first made

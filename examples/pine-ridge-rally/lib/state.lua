@@ -51,17 +51,17 @@ state.cars = {
   -- open-wheel cars have most of both, a van or a pickup the least. The rivals drive their cars up to what these allow.
   -- `idle_rpm` and `max_rpm` are the engine's range (the same numbers as in scripts/rally/engines.mjs, which makes its sound).
   -- `power` is the pull in first gear (m/s squared) and `top` the top speed (m/s): the open-wheel cars are the quick ones
-  { id = "car", price = 25000, grip = 1.2, brake = 1.25, class = "formula", name = "Redline", oversteer = 0.35, wheel = 0.30, power = 11.5, top = 50, idle_rpm = 3500, max_rpm = 12500 },
-  { id = "car_blue", price = 6000, grip = 1, brake = 1, class = "sport", name = "Blue Streak", oversteer = 0.6, wheel = 0.34, power = 8.5, top = 44, idle_rpm = 900, max_rpm = 7000 },
-  { id = "car_green", price = 1000, starter = true, grip = 0.98, brake = 0.95, class = "sport", name = "Green Machine", oversteer = 0.7, wheel = 0.33, power = 8, top = 42, idle_rpm = 1000, max_rpm = 6800 },
-  { id = "car_yellow", price = 12000, grip = 1.15, brake = 1.2, class = "formula", name = "Sunburst", oversteer = 0.45, wheel = 0.31, power = 11, top = 48, idle_rpm = 2500, max_rpm = 9800 },
-  { id = "car_sedan", price = 1000, starter = true, grip = 0.92, brake = 0.9, class = "everyday", name = "Commuter", oversteer = 0.5, wheel = 0.335, power = 8, top = 42, idle_rpm = 800, max_rpm = 6500 },
-  { id = "car_suv", price = 3000, grip = 0.88, brake = 0.9, class = "everyday", name = "Trailblazer", oversteer = 0.4, wheel = 0.395, power = 8.5, top = 42, idle_rpm = 700, max_rpm = 5800 },
-  { id = "car_suvl", price = 9000, grip = 0.95, brake = 0.95, class = "sport", name = "Grand Tourer", oversteer = 0.5, wheel = 0.4, power = 9.5, top = 46, idle_rpm = 600, max_rpm = 5500 },
-  { id = "car_taxi", price = 1500, grip = 0.9, brake = 0.9, class = "everyday", name = "Cab", oversteer = 0.6, wheel = 0.335, power = 7.5, top = 40, idle_rpm = 850, max_rpm = 6000 },
+  { id = "car", price = 25000, grip = 1.2, brake = 1.25, class = "formula", name = "Redline", oversteer = 0.35, wheel = 0.385, power = 11.5, top = 50, idle_rpm = 3500, max_rpm = 12500 },
+  { id = "car_blue", price = 6000, grip = 1, brake = 1, class = "sport", name = "Blue Streak", oversteer = 0.6, wheel = 0.385, power = 8.5, top = 44, idle_rpm = 900, max_rpm = 7000 },
+  { id = "car_green", price = 1000, starter = true, grip = 0.98, brake = 0.95, class = "sport", name = "Green Machine", oversteer = 0.7, wheel = 0.36, power = 8, top = 42, idle_rpm = 1000, max_rpm = 6800 },
+  { id = "car_yellow", price = 12000, grip = 1.15, brake = 1.2, class = "formula", name = "Sunburst", oversteer = 0.45, wheel = 0.385, power = 11, top = 48, idle_rpm = 2500, max_rpm = 9800 },
+  { id = "car_sedan", price = 1000, starter = true, grip = 0.92, brake = 0.9, class = "everyday", name = "Commuter", oversteer = 0.5, wheel = 0.375, power = 8, top = 42, idle_rpm = 800, max_rpm = 6500 },
+  { id = "car_suv", price = 3000, grip = 0.88, brake = 0.9, class = "everyday", name = "Trailblazer", oversteer = 0.4, wheel = 0.44, power = 8.5, top = 42, idle_rpm = 700, max_rpm = 5800 },
+  { id = "car_suvl", price = 9000, grip = 0.95, brake = 0.95, class = "sport", name = "Grand Tourer", oversteer = 0.5, wheel = 0.44, power = 9.5, top = 46, idle_rpm = 600, max_rpm = 5500 },
+  { id = "car_taxi", price = 1500, grip = 0.9, brake = 0.9, class = "everyday", name = "Cab", oversteer = 0.6, wheel = 0.375, power = 7.5, top = 40, idle_rpm = 850, max_rpm = 6000 },
   { id = "car_police", price = 7500, grip = 1, brake = 1.05, class = "sport", name = "Patrol", oversteer = 0.55, wheel = 0.375, power = 9.5, top = 46, idle_rpm = 700, max_rpm = 6800 },
-  { id = "car_van", price = 2000, grip = 0.8, brake = 0.8, class = "everyday", name = "Delivery Van", oversteer = 0.3, wheel = 0.355, power = 7, top = 38, idle_rpm = 800, max_rpm = 4800 },
-  { id = "car_pickup", price = 2500, grip = 0.85, brake = 0.85, class = "everyday", name = "Hauler", oversteer = 0.45, wheel = 0.33, power = 8.5, top = 40, idle_rpm = 700, max_rpm = 5500 },
+  { id = "car_van", price = 2000, grip = 0.8, brake = 0.8, class = "everyday", name = "Delivery Van", oversteer = 0.3, wheel = 0.4, power = 7, top = 38, idle_rpm = 800, max_rpm = 4800 },
+  { id = "car_pickup", price = 2500, grip = 0.85, brake = 0.85, class = "everyday", name = "Hauler", oversteer = 0.45, wheel = 0.425, power = 8.5, top = 40, idle_rpm = 700, max_rpm = 5500 },
   -- (added 2026-11-07) the racing kit's four classic racers, five karts from the car kit (each with its own driver aboard) and, once the player has
   -- won three races, the car kit's service vehicles
   { id = "racecar_green", price = 14000, grip = 1.18, brake = 1.2, class = "formula", name = "Verde GP", oversteer = 0.3, wheel = 0.31, power = 11, top = 48.5, idle_rpm = 3000, max_rpm = 11000 },
