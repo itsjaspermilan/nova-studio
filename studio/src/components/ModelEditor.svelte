@@ -36,6 +36,7 @@
   import { applyStack, evaluate, hasModifiers, type Modifier } from "../lib/modifiers";
   import ModifierStack from "./ModifierStack.svelte";
   import CurveEditor from "./CurveEditor.svelte";
+  import { checkerRaster, equalizeDensity, uvReport, type ShapeReport } from "../lib/uv-report";
   import ProjectSwatches from "./ProjectSwatches.svelte";
   import { applyCurvature, applyLighting, applyOcclusion, bakeCurvature, bakeLighting, bakeOcclusion } from "../lib/model-bake";
   import { addClip, easeAt, findTrack, pathKey, removeClip, removeKey, samplePose, setEase, setKey, snapTime, updateClip, KEY_STEP, type Pose } from "../lib/model-anim";
@@ -127,6 +128,25 @@
     }
   }
   let curvesOpen = $state(false);
+  let uvRows: ShapeReport[] = $state([]);
+  function checkUv() {
+    uvRows = uvReport(doc);
+    bakeNote = uvRows.length ? "" : "No shape is painted yet.";
+  }
+  function evenOut() {
+    if (!uvReport(doc).length) return void (bakeNote = "No shape is painted yet.");
+    commit(equalizeDensity(doc), false, "Even out texel density");
+    packAll();
+    uvRows = uvReport(doc);
+  }
+  /// Puts a checker pattern over the whole texture (one undo step) to see how the texture lies on the model: squares that are not square are stretched.
+  function showChecker() {
+    if (!picture || !doc.texture) return void (bakeNote = "Paint a shape first.");
+    rememberPicture();
+    picture = checkerRaster(picture.w, picture.h, Math.max(4, Math.round(picture.w / 16)));
+    pictureChanged();
+    bakeNote = "A checker is on the texture: look for squares that are stretched or turned. Undo takes your painting back.";
+  }
   let bakeStrength = $state(0.7);
   let bakeSamples = $state(24);
   let bakeDistance = $state(8);
@@ -2659,6 +2679,14 @@
             <label class="inline" title="Rays per texel: more is smoother and slower">Rays <input type="number" min="8" max="128" step="8" bind:value={bakeSamples} class="narrow" /></label>
             <label class="inline" title="How far a ray looks for something in the way, in model units">Reach <input type="number" min="1" max="64" step="1" bind:value={bakeDistance} class="narrow" /></label>
           </div>
+          <div class="row wrap">
+            <button onclick={checkUv} title="How many texels each shape has per unit, and how stretched its faces are">Check UVs</button>
+            <button onclick={evenOut} title="Give every painted shape the same texels per unit, then lay the blocks out again (painted pixels stay where they were)">Even out density</button>
+            <button onclick={showChecker} disabled={!doc.texture} title="Cover the texture with a checker pattern to see stretching on the model (undo brings your painting back)">Checker</button>
+          </div>
+          {#each uvRows as r (r.name + r.cube + r.parts.join())}
+            <p class="small" class:warn={r.stretch > 1.3 || r.densityMax > r.densityMin * 1.3}>{r.name}: {r.density.toFixed(1)} texels per unit{r.stretch > 1.3 ? `, stretched ${Number.isFinite(r.stretch) ? r.stretch.toFixed(1) : "badly"}×` : ""}{r.densityMax > r.densityMin * 1.3 ? `, uneven (${r.densityMin.toFixed(1)} to ${r.densityMax.toFixed(1)})` : ""}</p>
+          {/each}
           {#if bakeNote}<p class="dim small" role="status">{bakeNote}</p>{/if}
           <p class="dim small">Saving writes <code>{texturePath}</code> too. Shapes with no block keep their flat colours. A mesh's unwrap follows its faces, so paint meshes after you have shaped them.</p>
         {/if}
