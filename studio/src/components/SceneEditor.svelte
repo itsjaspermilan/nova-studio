@@ -18,7 +18,7 @@
   import { parseSheetJson } from "../lib/sprite-doc";
   import { loadModelDoc } from "../lib/model-load";
   import { gridFromPixels, terrainOf, type HeightGrid } from "../lib/scene-terrain";
-  import { TERRAIN_BRUSHES, gridToPixels, stroke as terrainStroke, type TerrainBrushMode } from "../lib/terrain-brush";
+  import { TERRAIN_BRUSHES, copyGrid, gridToPixels, stroke as terrainStroke, type TerrainBrushMode } from "../lib/terrain-brush";
 
   let { path, text, onjson }: { path: string; text: string; onjson: () => void } = $props();
 
@@ -215,16 +215,27 @@
   let sculptStrength = $state(0.5);
   let sculptLast: [number, number] | null = null;
   let sculptNote = $state("");
+  /// The ground before each stroke (up to 20), for "Undo stroke".
+  let groundPast: HeightGrid[] = $state.raw([]);
   const heightmapSpec = $derived(terrainOf(scene)?.heightmap ?? null);
   function sculptAt(at: [number, number], first: boolean) {
     const spec = heightmapSpec;
     if (!heightGrid || !spec) return;
+    if (first) groundPast = [...groundPast.slice(-19), copyGrid(heightGrid)];
     const from = first || !sculptLast ? at : sculptLast;
     heightGrid = terrainStroke(heightGrid, from, at, { mode: sculptBrush, radius: sculptRadiusM, strength: sculptStrength, seed: Math.floor(at[0] * 3 + at[1]) }, spec.height);
     sculptLast = at;
   }
-  async function sculptEnd() {
+  function undoGround() {
+    const last = groundPast.at(-1);
+    if (!last) return;
+    groundPast = groundPast.slice(0, -1);
+    heightGrid = last;
+    void sculptEnd(true);
+  }
+  async function sculptEnd(keepPast = false) {
     sculptLast = null;
+    void keepPast;
     const spec = heightmapSpec;
     if (!heightGrid || !spec || !studio.api) return;
     const c = document.createElement("canvas");
@@ -778,6 +789,7 @@
               <label>Strength <input type="range" min="0.05" max="1" step="0.05" bind:value={sculptStrength} /><span class="dim small">{Math.round(sculptStrength * 100)}%</span></label>
               <p class="dim small">Drag over the ground. The heightmap {heightmapSpec.path} is rewritten as an 8-bit picture (height read from red and green) after each stroke. Esc stops.</p>
             {/if}
+            <button class="ghost" disabled={!groundPast.length} onclick={undoGround} title="Put the ground back as it was before the last stroke (and save it)">Undo stroke ({groundPast.length})</button>
             {#if sculptNote}<p class="dim small" role="status">{sculptNote}</p>{/if}
           </div>
         {/if}
@@ -873,7 +885,7 @@
           onstop={() => ((placing = null), (erasing = false), (sculpting = false))}
           {sculpting}
           onsculpt={sculptAt}
-          onsculptend={sculptEnd}
+          onsculptend={() => sculptEnd()}
         />
         <p class="hint dim">Click an object to select it · drag the arrows to move it · drag to orbit, right-drag to pan, scroll to zoom · the box with lines is the game's camera</p>
       {:else}
