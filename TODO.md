@@ -302,3 +302,5 @@ Pixelorama, Blockbench, GameStudio, Game Maker 8 manual.
 
 Online networking (internet servers, accounts, matchmaking; local wifi co-op is in), WebView gameplay, a browser version of the studio,
 iOS, Glow/GameStudio compatibility, app-store publishing, personal signing, device installation without the user's go-ahead.
+
+> 2026-11-10, browser preview smoke test of the Model workspace (person template, torso made a mesh with Edit points): the modifiers Edge split, Boolean, Wireframe, Curve, Lattice and Remesh (blocks) were added to one mesh in a row with no console errors and their input panels drew (the Boolean cut the torso away, as a box cutter at the origin should); the edit row showed Loop, Ring, Same way, Same size, Fill hole, Slide edge; Reach, Curves, Local, Bones and See-through were used. Their results were not looked at closely and nothing was dragged.
