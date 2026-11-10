@@ -1,4 +1,11 @@
 <script lang="ts">
+  /// Starts a menu file (menus/menu.menu.json, or menu2…) with a small panel to build on, and opens it in the menu editor.
+  async function newMenuFile() {
+    let n = "menu";
+    let i = 2;
+    while (studio.files.some((f) => f.path === `menus/${n}.menu.json`)) n = `menu${i++}`;
+    await studio.createFile(`menus/${n}.menu.json`, serializeMenu(newMenu()));
+  }
   /// Opens the languages table, starting the project's first language file (English) when it has none.
   async function openLanguages() {
     const first = studio.files.find((f) => !f.dir && /^locales\/[^/]+\.json$/.test(f.path));
@@ -12,6 +19,7 @@
     }
   }
   import { onMount } from "svelte";
+  import { newMenu, serializeMenu } from "./lib/menu-doc";
   import Hub from "./components/Hub.svelte";
   import EditorHost from "./components/EditorHost.svelte";
   import FileTree from "./components/FileTree.svelte";
@@ -77,6 +85,7 @@
       commands.register({ id: "file.save", title: "Save", menu: "File", icon: "save", keys: ["Mod+S"], run: () => void studio.save() }),
       commands.register({ id: "project.settings", title: "Project settings", menu: "File", icon: "settings", help: "The game's name, picture size, graphics and controls", enabled: () => !!studio.project, run: () => void studio.openFile("nova.json") }),
       commands.register({ id: "project.languages", title: "Languages (translations)", menu: "File", icon: "file", help: "A table of the game's text in each language; nova.t(\"key\") in Lua reads it", enabled: () => !!studio.project, run: () => void openLanguages() }),
+      commands.register({ id: "project.newMenu", title: "New menu or HUD…", menu: "File", icon: "file", help: "A menu or HUD file (menus/<name>.menu.json) to lay out in the menu editor", enabled: () => !!studio.project, run: () => void newMenuFile() }),
       commands.register({ id: "file.saveAll", title: "Save all", menu: "File", icon: "save", enabled: () => !!studio.project && studio.dirty, run: () => void studio.saveAll() }),
       commands.register({ id: "file.close", title: "Close the project", menu: "File", icon: "folder", enabled: has, run: () => void studio.closeProject() }),
       commands.register({ id: "file.export", title: "Export the game", menu: "File", icon: "export", help: "Check the game and write it out for a computer or for Android", enabled: has, run: () => { studio.exportReport = null; studio.exportOpen = true; } }),

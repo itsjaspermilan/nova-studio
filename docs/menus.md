@@ -171,8 +171,11 @@ A menu can be a file, `menus/<name>.menu.json` (dots in the name are folders), w
 ```
 
 `nova.ui.load("pause")` gives a fresh copy of the tree (fill in values before drawing it), and `nova.ui.menu("pause")` loads and
-runs it in one go. The studio has no menu editor yet; the format is plain data (no functions: a `box` in a file draws nothing unless
-the game sets its `draw`), so one can be written later without changing it.
+runs it in one go. The studio's menu editor (File > New menu or HUD…, or open any `.menu.json`) edits the tree: an outline to add, move, duplicate, wrap and delete items,
+the settings of the chosen one (the kinds' own and a list of any others), checks in plain words (a button with no id, a name used twice, a
+size that is not a number, a percentage or "fill") and a rough picture. The picture is an approximation drawn by the studio, not the engine's layout:
+sizes, text fitting and the theme differ, so run the game to see the real thing. The format is plain data (no functions: a `box` in a file draws nothing
+unless the game sets its `draw`).
 
 ## HUDs
 

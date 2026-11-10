@@ -12,6 +12,7 @@
   import TilesetEditor from "./TilesetEditor.svelte";
   import ProjectSettings from "./ProjectSettings.svelte";
   import LocaleEditor from "./LocaleEditor.svelte";
+  import MenuEditor from "./MenuEditor.svelte";
   import { fileKind } from "../lib/tree";
   import { studio } from "../lib/store.svelte";
 
@@ -33,6 +34,8 @@
           <SpriteEditor path={studio.tab.path} text={studio.tab.text} />
         {:else if /\.(wav|ogg)$/i.test(studio.tab.path) || (studio.tab.path.endsWith(".sfx.json") && !jsonView.has(studio.tab.path))}
           <SoundEditor path={studio.tab.path} text={studio.tab.text} />
+        {:else if studio.tab.path.endsWith(".menu.json") && !jsonView.has(studio.tab.path)}
+          <MenuEditor path={studio.tab.path} text={studio.tab.text} onjson={() => toggleJson(studio.tab!.path, true)} />
         {:else if /^locales\/[^/]+\.json$/.test(studio.tab.path) && !jsonView.has(studio.tab.path)}
           <LocaleEditor path={studio.tab.path} text={studio.tab.text} />
         {:else if studio.tab.path === "nova.json" && !jsonView.has(studio.tab.path)}
@@ -52,7 +55,7 @@
         {:else if isScene(studio.tab.path) && !jsonView.has(studio.tab.path)}
           <SceneEditor path={studio.tab.path} text={studio.tab.text} onjson={() => toggleJson(studio.tab!.path, true)} />
         {:else}
-          {#if studio.tab.path === "nova.json" || isScene(studio.tab.path) || studio.tab.path.endsWith(".sprite.json") || studio.tab.path.endsWith(".sfx.json") || studio.tab.path.endsWith(".tileset.json") || studio.tab.path.endsWith(".model.json") || studio.tab.path.endsWith(".song.json")}
+          {#if studio.tab.path === "nova.json" || studio.tab.path.endsWith(".menu.json") || isScene(studio.tab.path) || studio.tab.path.endsWith(".sprite.json") || studio.tab.path.endsWith(".sfx.json") || studio.tab.path.endsWith(".tileset.json") || studio.tab.path.endsWith(".model.json") || studio.tab.path.endsWith(".song.json")}
             <div class="viewbar"><button class="ghost" onclick={() => toggleJson(studio.tab!.path, false)}>◧ Visual editor</button></div>
           {/if}
           <Editor path={studio.tab.path} text={studio.tab.text} />

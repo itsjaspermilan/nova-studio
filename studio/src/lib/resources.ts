@@ -5,7 +5,7 @@
 
 import type { FileEntry } from "./types";
 
-export type ResourceKind = "sprite" | "tileset" | "model" | "scene" | "track" | "anim" | "entity" | "sound" | "song" | "script" | "language" | "image" | "font" | "project" | "file";
+export type ResourceKind = "sprite" | "tileset" | "model" | "scene" | "track" | "anim" | "entity" | "sound" | "song" | "script" | "menu" | "language" | "image" | "font" | "project" | "file";
 
 export interface Resource {
   kind: ResourceKind;
@@ -38,6 +38,7 @@ const GROUPS: { id: string; title: string; icon: string; folder?: string; always
   { id: "entities", title: "Entities", icon: "☺", folder: "entities", always: true },
   { id: "sounds", title: "Sounds", icon: "♪", folder: "sounds", always: true },
   { id: "music", title: "Music", icon: "♫", folder: "music", always: true },
+  { id: "menus", title: "Menus", icon: "☰", folder: "menus", always: false },
   { id: "scripts", title: "Scripts", icon: "☾", always: false },
   { id: "languages", title: "Languages", icon: "☷", folder: "locales", always: false },
   { id: "images", title: "Images", icon: "▣", always: false },
@@ -96,6 +97,8 @@ export function groupResources(entries: FileEntry[], images: Map<string, string>
       add("animations", { kind: "anim", name: within(path.slice(0, -".anim.json".length), "animations"), path, files: [path] });
     } else if (lower.endsWith(".track.json")) {
       add("tracks", { kind: "track", name: within(path.slice(0, -".track.json".length), "tracks"), path, files: [path] });
+    } else if (lower.endsWith(".menu.json")) {
+      add("menus", { kind: "menu", name: within(path.slice(0, -".menu.json".length), "menus"), path, files: [path] });
     } else if (lower.endsWith(".scene.json")) {
       const stem = path.slice(0, -".scene.json".length);
       const lua = existing(`${stem}.lua`)[0];
