@@ -1,7 +1,7 @@
 // Effects on a track: EQ, compressor, chorus, flanger, phaser, distortion, bit crusher and gate. A track has a chain of them, run in order on the
 // track's stereo signal after its volume and pan. Pure and deterministic (no random noise), so an export is the same every time.
 
-export type FxType = "eq" | "parametric" | "compressor" | "chorus" | "flanger" | "phaser" | "distortion" | "bitcrush" | "gate" | "stereo" | "transient" | "echo" | "reverb" | "pitch";
+export type FxType = "eq" | "parametric" | "compressor" | "chorus" | "flanger" | "phaser" | "distortion" | "bitcrush" | "gate" | "stereo" | "transient" | "echo" | "reverb" | "pitch" | "multiband";
 
 export interface Fx {
   type: FxType;
@@ -79,6 +79,22 @@ export const FX_SPECS: Record<FxType, { title: string; help: string; params: Par
       { key: "drive", label: "Drive", min: 1, max: 30, step: 0.5, default: 6 },
       { key: "tone", label: "Tone", min: 500, max: 12000, step: 100, default: 6000, unit: "Hz" },
       { key: "mix", label: "Mix", min: 0, max: 1, step: 0.01, default: 1 },
+    ],
+  },
+  multiband: {
+    title: "Multiband compressor",
+    help: "Splits the sound into lows, mids and highs and squashes each on its own, so a loud bass does not pump the rest",
+    params: [
+      { key: "split1", label: "Lows end at", min: 60, max: 800, step: 10, default: 200, unit: "Hz" },
+      { key: "split2", label: "Highs start at", min: 1000, max: 8000, step: 100, default: 2500, unit: "Hz" },
+      { key: "lowThreshold", label: "Lows threshold", min: -60, max: 0, step: 1, default: -20, unit: "dB" },
+      { key: "lowRatio", label: "Lows ratio", min: 1, max: 20, step: 0.5, default: 3 },
+      { key: "midThreshold", label: "Mids threshold", min: -60, max: 0, step: 1, default: -20, unit: "dB" },
+      { key: "midRatio", label: "Mids ratio", min: 1, max: 20, step: 0.5, default: 2 },
+      { key: "highThreshold", label: "Highs threshold", min: -60, max: 0, step: 1, default: -20, unit: "dB" },
+      { key: "highRatio", label: "Highs ratio", min: 1, max: 20, step: 0.5, default: 2 },
+      { key: "attack", label: "Attack", min: 1, max: 100, step: 1, default: 10, unit: "ms" },
+      { key: "release", label: "Release", min: 20, max: 1000, step: 10, default: 150, unit: "ms" },
     ],
   },
   parametric: {
@@ -179,7 +195,7 @@ export const newFx = (type: FxType): Fx => ({ type, params: Object.fromEntries(F
 type Coeffs = { b0: number; b1: number; b2: number; a1: number; a2: number };
 
 /// RBJ cookbook biquads.
-function biquad(kind: "lowshelf" | "highshelf" | "peaking" | "lowpass", f0: number, gainDb: number, q: number, rate: number): Coeffs {
+function biquad(kind: "lowshelf" | "highshelf" | "peaking" | "lowpass" | "highpass", f0: number, gainDb: number, q: number, rate: number): Coeffs {
   const A = 10 ** (gainDb / 40);
   const w = (2 * Math.PI * clamp(f0, 20, rate * 0.45)) / rate;
   const cos = Math.cos(w);
@@ -188,6 +204,9 @@ function biquad(kind: "lowshelf" | "highshelf" | "peaking" | "lowpass", f0: numb
   if (kind === "peaking") {
     b0 = 1 + alpha * A; b1 = -2 * cos; b2 = 1 - alpha * A;
     a0 = 1 + alpha / A; a1 = -2 * cos; a2 = 1 - alpha / A;
+  } else if (kind === "highpass") {
+    b0 = (1 + cos) / 2; b1 = -(1 + cos); b2 = (1 + cos) / 2;
+    a0 = 1 + alpha; a1 = -2 * cos; a2 = 1 - alpha;
   } else if (kind === "lowpass") {
     b0 = (1 - cos) / 2; b1 = 1 - cos; b2 = (1 - cos) / 2;
     a0 = 1 + alpha; a1 = -2 * cos; a2 = 1 - alpha;
@@ -232,6 +251,24 @@ function eq(s: Stereo, fx: Fx, rate: number): Stereo {
     param(fx, "high") !== 0 ? biquad("highshelf", 4000, param(fx, "high"), 0.707, rate) : null,
   ].filter((c): c is Coeffs => !!c);
   return both(s, (x) => chain.reduce((y, c) => runBiquad(y, c), x));
+}
+
+/// Three bands split with Linkwitz-Riley crossovers (two Butterworth filters in a row: the bands add back up to a flat response, only shifted in phase), each compressed on its own.
+function multiband(s: Stereo, fx: Fx, rate: number): Stereo {
+  const lo1 = biquad("lowpass", param(fx, "split1"), 0, 0.707, rate);
+  const hi1 = biquad("highpass", param(fx, "split1"), 0, 0.707, rate);
+  const lo2 = biquad("lowpass", param(fx, "split2"), 0, 0.707, rate);
+  const hi2 = biquad("highpass", param(fx, "split2"), 0, 0.707, rate);
+  const twice = (x: Stereo, c: Coeffs): Stereo => both(x, (v) => runBiquad(runBiquad(v, c), c));
+  const squash = (x: Stereo, band: "low" | "mid" | "high"): Stereo =>
+    compressor(x, { type: "compressor", params: { threshold: param(fx, `${band}Threshold`), ratio: param(fx, `${band}Ratio`), attack: param(fx, "attack"), release: param(fx, "release"), makeup: 0 } }, rate);
+  const low = twice(s, lo1);
+  const rest = twice(s, hi1);
+  const mid = twice(rest, lo2);
+  const high = twice(rest, hi2);
+  const [l, m, h] = [squash(low, "low"), squash(mid, "mid"), squash(high, "high")];
+  const out = (c: 0 | 1) => l[c].map((v, i) => v + m[c][i]! + h[c][i]!);
+  return [out(0), out(1)];
 }
 
 function parametric(s: Stereo, fx: Fx, rate: number): Stereo {
@@ -528,6 +565,7 @@ export function applyFx(chain: Fx[], left: Float32Array, right: Float32Array, ra
     switch (fx.type) {
       case "eq": s = eq(s, fx, rate); break;
       case "parametric": s = parametric(s, fx, rate); break;
+      case "multiband": s = multiband(s, fx, rate); break;
       case "stereo": s = stereoWidth(s, fx, rate); break;
       case "transient": s = transient(s, fx, rate); break;
       case "echo": s = echo(s, fx, rate); break;

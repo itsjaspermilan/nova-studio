@@ -191,3 +191,23 @@ describe("more effects", () => {
     expect(rms(up, 3000, 18000)).toBeGreaterThan(0.1);
   });
 });
+
+describe("the multiband compressor", () => {
+  const R = 22050;
+  const sine = (hz: number, amp = 0.8) => Float32Array.from({ length: R }, (_, i) => amp * Math.sin((2 * Math.PI * hz * i) / R));
+  const rms = (x: Float32Array, a = 4000) => Math.sqrt(x.slice(a).reduce((s, v) => s + v * v, 0) / (x.length - a));
+  it("with every ratio at 1 the level comes out as it went in, at low, middle and high pitches", () => {
+    const flat = { ...newFx("multiband"), params: { lowRatio: 1, midRatio: 1, highRatio: 1 } };
+    for (const hz of [60, 400, 1500, 6000]) {
+      const x = sine(hz, 0.5);
+      expect(rms(applyFx([flat], x, x, R)[0]) / rms(x), `${hz} Hz`).toBeCloseTo(1, 1);
+    }
+  });
+  it("squashes the band a loud tone is in and leaves a tone in another band alone", () => {
+    const fx = { ...newFx("multiband"), params: { lowThreshold: -30, lowRatio: 10, midRatio: 1, highRatio: 1, split1: 200, split2: 2500 } };
+    const low = sine(80);
+    const high = sine(5000);
+    expect(rms(applyFx([fx], low, low, R)[0]) / rms(low)).toBeLessThan(0.6);
+    expect(rms(applyFx([fx], high, high, R)[0]) / rms(high)).toBeGreaterThan(0.95);
+  });
+});
