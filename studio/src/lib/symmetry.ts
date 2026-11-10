@@ -11,6 +11,10 @@ export interface SymmetryOptions {
   y?: boolean;
   /// Mirror across the main diagonal (and, with both x and y, the other one too): only for a square picture.
   diagonal?: boolean;
+  /// Mirror about the centre point (a half turn): every stroke is repeated turned round 180 degrees.
+  point?: boolean;
+  /// Turn about the centre in quarters (four copies, 90 degrees apart): only for a square picture.
+  quarter?: boolean;
   /// Draw the stroke again one picture further left and right, and up and down, so it wraps round the edges.
   tileX?: boolean;
   tileY?: boolean;
@@ -23,6 +27,12 @@ export function strokeMaps(w: number, h: number, o: SymmetryOptions): PointMap[]
   if (o.x) base.push((p) => ({ x: w - 1 - p.x, y: p.y }));
   if (o.y) base.push((p) => ({ x: p.x, y: h - 1 - p.y }));
   if (o.x && o.y) base.push((p) => ({ x: w - 1 - p.x, y: h - 1 - p.y }));
+  if (o.point && !(o.x && o.y)) base.push((p) => ({ x: w - 1 - p.x, y: h - 1 - p.y }));
+  if (o.quarter && w === h) {
+    base.push((p) => ({ x: w - 1 - p.y, y: p.x }));
+    if (!o.point && !(o.x && o.y)) base.push((p) => ({ x: w - 1 - p.x, y: h - 1 - p.y }));
+    base.push((p) => ({ x: p.y, y: h - 1 - p.x }));
+  }
   if (o.diagonal && w === h) {
     // (every map so far, then turned across the diagonal: this gives the transpose, and with x and y the full set of eight)
     const so_far = [...base];

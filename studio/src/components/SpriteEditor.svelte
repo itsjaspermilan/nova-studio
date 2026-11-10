@@ -369,11 +369,14 @@
       ctx.setLineDash([]);
       ctx.lineWidth = 1;
     }
-    if (symX || symY) {
+    if (symX || symY || symD || symP || symQ) {
       ctx.strokeStyle = "rgba(255,120,200,.7)";
       ctx.beginPath();
       if (symX) { ctx.moveTo(w / 2, 0); ctx.lineTo(w / 2, h); }
-      if (symY) { ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2); }
+      if (symY || symQ) { ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2); }
+      if (symQ) { ctx.moveTo(w / 2, 0); ctx.lineTo(w / 2, h); }
+      if (symD && square) { ctx.moveTo(0, 0); ctx.lineTo(w, h); if (symX && symY) { ctx.moveTo(w, 0); ctx.lineTo(0, h); } }
+      if (symP || symQ) { const c = 5; ctx.moveTo(w / 2 - c, h / 2); ctx.lineTo(w / 2 + c, h / 2); ctx.moveTo(w / 2, h / 2 - c); ctx.lineTo(w / 2, h / 2 + c); }
       ctx.stroke();
     }
     if (hover && inside(current, hover.x, hover.y) && !drawing) {
@@ -443,12 +446,14 @@
   let symY = $state(false);
   /// Mirror across the diagonal (a square sprite only), and draw tiled: strokes that run off one edge come back in at the other.
   let symD = $state(false);
+  let symP = $state(false);
+  let symQ = $state(false);
   let tileX = $state(false);
   let tileY = $state(false);
   const square = $derived(doc.fw === doc.fh);
   /// Every place a stroke is drawn (lib/symmetry.ts); the fill does not tile, a flood is the same however far it wraps.
-  const maps = $derived(strokeMaps(doc.fw, doc.fh, { x: symX, y: symY, diagonal: symD && square, tileX, tileY }));
-  const fillMaps = $derived(strokeMaps(doc.fw, doc.fh, { x: symX, y: symY, diagonal: symD && square }));
+  const maps = $derived(strokeMaps(doc.fw, doc.fh, { x: symX, y: symY, diagonal: symD && square, point: symP, quarter: symQ && square, tileX, tileY }));
+  const fillMaps = $derived(strokeMaps(doc.fw, doc.fh, { x: symX, y: symY, diagonal: symD && square, point: symP, quarter: symQ && square }));
   /// The right mouse button has a tool and a colour of its own (the pencil and eraser are the usual pair).
   /// The shape of the pencil, eraser and shading brushes, whether shading lightens or darkens, and the pattern a gradient is dithered with.
   let brushShape: BrushShape = $state("square");
@@ -1706,8 +1711,8 @@
         {/if}
         {#if tool === "pencil"}<label class="check" title="One-pixel lines without double corners"><input type="checkbox" bind:checked={perfect} /> Pixel-perfect</label>{/if}
         <label title="Draw every stroke mirrored: across the middle, up and down, both, or along the diagonal">Symmetry
-          <select value={symD ? "diagonal" : symX && symY ? "both" : symX ? "horizontal" : symY ? "vertical" : "off"} onchange={(e) => { const v = e.currentTarget.value; symX = v === "horizontal" || v === "both"; symY = v === "vertical" || v === "both"; symD = v === "diagonal"; }} aria-label="Symmetry">
-            <option value="off">off</option><option value="horizontal">left–right</option><option value="vertical">up–down</option><option value="both">both</option><option value="diagonal">diagonal</option>
+          <select value={symQ ? "quarter" : symP ? "point" : symD ? "diagonal" : symX && symY ? "both" : symX ? "horizontal" : symY ? "vertical" : "off"} onchange={(e) => { const v = e.currentTarget.value; symX = v === "horizontal" || v === "both"; symY = v === "vertical" || v === "both"; symD = v === "diagonal"; symP = v === "point"; symQ = v === "quarter"; }} aria-label="Symmetry">
+            <option value="off">off</option><option value="horizontal">left–right</option><option value="vertical">up–down</option><option value="both">both</option><option value="diagonal">diagonal</option><option value="point">about the middle</option><option value="quarter">four-way turn</option>
           </select>
         </label>
         <label title="Draw as if the picture were tiled: strokes wrap round the edges">Tiled

@@ -42,3 +42,17 @@ describe("tiled drawing", () => {
     expect(both).toEqual(["0,0", "7,0"]);
   });
 });
+
+describe("about the middle", () => {
+  it("a half turn repeats a stroke at the opposite corner, on any shape", () => {
+    expect(at(8, 8, { point: true })).toEqual(["1,0", "6,7"]);
+    expect(at(8, 4, { point: true })).toEqual(["1,0", "6,3"]);
+  });
+  it("a half turn with both mirrors adds nothing new", () => {
+    expect(at(8, 8, { point: true, x: true, y: true })).toEqual(at(8, 8, { x: true, y: true }));
+  });
+  it("a four-way turn gives the four corners' turns, and only on a square", () => {
+    expect(at(8, 8, { quarter: true })).toEqual(["0,6", "1,0", "6,7", "7,1"]);
+    expect(at(8, 4, { quarter: true })).toEqual(["1,0"]);
+  });
+});
