@@ -1371,6 +1371,14 @@
       }
     }
     if (!inEdit || !camera || !canvas || !selected || !cube || e.button !== 0) return;
+    if (boxArmed) {
+      // a rubber band: everything inside it is picked when the button comes up
+      const r = canvas.getBoundingClientRect();
+      rubber = { x0: e.clientX - r.left, y0: e.clientY - r.top, x1: e.clientX - r.left, y1: e.clientY - r.top, add: e.shiftKey };
+      controls!.enabled = false;
+      canvas.setPointerCapture(e.pointerId);
+      return;
+    }
     // (an arrow or square of the points' move handle is its own business, before the face's pull-out arrow)
     if (pointGizmo?.axis) return;
     const frame = faceFrame();
@@ -1429,7 +1437,37 @@
     });
     return best;
   }
+  /// Box select (B): drag a rectangle over the view; the points inside it are picked (Shift adds to the ones already picked). Points behind others count too.
+  let boxArmed = $state(false);
+  let rubber = $state<{ x0: number; y0: number; x1: number; y1: number; add: boolean } | null>(null);
+  function finishBox() {
+    const b = rubber;
+    rubber = null;
+    boxArmed = false;
+    if (controls) controls.enabled = true;
+    if (!b || !camera || !canvas || !cube?.verts) return;
+    const r = canvas.getBoundingClientRect();
+    const [x0, x1] = [Math.min(b.x0, b.x1), Math.max(b.x0, b.x1)];
+    const [y0, y1] = [Math.min(b.y0, b.y1), Math.max(b.y0, b.y1)];
+    const picked: number[] = [];
+    worldVerts().forEach((w, i) => {
+      const q = w.clone().project(camera!);
+      if (q.z > 1) return;
+      const x = ((q.x + 1) / 2) * r.width;
+      const y = ((1 - q.y) / 2) * r.height;
+      if (x >= x0 && x <= x1 && y >= y0 && y <= y1) picked.push(i);
+    });
+    selVerts = b.add ? [...new Set([...selVerts, ...picked])] : picked;
+    selFace = null;
+    selEdge = null;
+  }
+
   function pointerMove(e: PointerEvent) {
+    if (rubber && canvas) {
+      const r = canvas.getBoundingClientRect();
+      rubber = { ...rubber, x1: e.clientX - r.left, y1: e.clientY - r.top };
+      return;
+    }
     if (stroke && mode === "texture") {
       if (texTool !== "picker" && texTool !== "fill") paintAlong(e);
       return;
@@ -1481,6 +1519,11 @@
     movePointsBy(drag, delta, drag.lock, true);
   }
   function pointerUp(e: PointerEvent) {
+    if (rubber) {
+      finishBox();
+      downAt = null;
+      return;
+    }
     if (gizmoDown) {
       gizmoDown = false;
       downAt = null;
@@ -1929,7 +1972,11 @@
     const mod = e.metaKey || e.ctrlKey;
     const step = e.shiftKey ? 4 : 1;
     // (move, turn, resize, pivot, shading, duplicate and delete are commands with their own keys: see the model commands below)
-    if (e.key === "Escape" && editPoints) {
+    if (e.key === "Escape" && (boxArmed || rubber)) {
+      rubber = null;
+      boxArmed = false;
+      if (controls) controls.enabled = true;
+    } else if (e.key === "Escape" && editPoints) {
       editPoints = false;
     } else if (mod && e.key.toLowerCase() === "z") {
       e.preventDefault();
@@ -2059,6 +2106,7 @@
       commands.register({ id: "model.view.orbitRight", title: "Turn the view right", menu: "Model", help: "15 degrees", run: () => orbit(15, 0) }),
       commands.register({ id: "model.view.orbitUp", title: "Turn the view up", menu: "Model", help: "15 degrees", run: () => orbit(0, 15) }),
       commands.register({ id: "model.view.orbitDown", title: "Turn the view down", menu: "Model", help: "15 degrees", run: () => orbit(0, -15) }),
+      commands.register({ id: "model.boxSelect", title: "Box select points", menu: "Model", keymaps: { blender: ["B"], nova: [] }, help: "Drag a rectangle over the view to pick the points inside it (Shift adds)", enabled: () => !modal && inEdit, run: () => { boxArmed = !boxArmed; } }),
       commands.register({ id: "model.resetView", title: "Reset the view", menu: "Model", icon: "home", keymaps: { blender: ["Home"], nova: [] }, run: () => resetView() }),
     ];
     return () => offs.forEach((off) => off());
@@ -2145,6 +2193,7 @@
         <span class="seg" role="group" aria-label="Standard views">
           {#each VIEW_NAMES as n (n)}<button class:on={viewName === n} onclick={() => showView(n)} title="{VIEW_LABELS[n]} view" aria-label="{VIEW_LABELS[n]} view">{VIEW_LABELS[n][0]}</button>{/each}
         </span>
+        {#if inEdit}<button class:on={boxArmed} onclick={() => (boxArmed = !boxArmed)} title="Box select: drag a rectangle over the points (B)">Box</button>{/if}
         <label class="check" title="Flat view: parallel lines stay parallel (5)"><input type="checkbox" checked={ortho} onchange={(e) => setOrtho(e.currentTarget.checked)} /> Flat</label>
         <button class="ghost" onclick={resetView}>Reset view</button>
         <span class="dim">{countCubes(doc)} shapes · saves {glbPath}</span>
@@ -2157,6 +2206,8 @@
         {/if}
         <canvas bind:this={canvas} tabindex="0" aria-label="3D view" onpointerdown={pointerDown} onpointermove={pointerMove} onpointerup={pointerUp}></canvas>
         <NavButtons controls={() => controls} camera={() => camera} height={() => canvas?.clientHeight ?? 400} />
+        {#if rubber}<div class="boxband" style:left="{Math.min(rubber.x0, rubber.x1)}px" style:top="{Math.min(rubber.y0, rubber.y1)}px" style:width="{Math.abs(rubber.x1 - rubber.x0)}px" style:height="{Math.abs(rubber.y1 - rubber.y0)}px"></div>{/if}
+        {#if boxArmed && !rubber}<div class="modalbar" role="status">Box select: drag a rectangle over the points (Esc cancels)</div>{/if}
         {#if modal}<div class="modalbar" role="status">{modalLabel(modal.kind, modal.axis, modal.typed, modal.amount)}</div>{/if}
         {#if moveHint}
           <div class="movehint" style:left="{moveHint.x + 16}px" style:top="{moveHint.y - 14}px" role="status">
@@ -2465,6 +2516,7 @@
   .adder { padding: 8px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
   .adder .row { min-width: 0; } .adder select { min-width: 0; flex: 1; }
   .mirror { align-items: center; } .mirror button { padding: 0 8px; }
+  .boxband { position: absolute; border: 1px solid #ffd166; background: rgba(255, 209, 102, 0.12); pointer-events: none; z-index: 3; }
   .bar .seg { display: inline-flex; } .bar .seg button { border-radius: 0; padding: 2px 8px; } .bar .seg button:first-child { border-radius: 5px 0 0 5px; } .bar .seg button:last-child { border-radius: 0 5px 5px 0; margin-left: -1px; }
   .tools { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; } .tools button { width: 30px; height: 28px; padding: 0; } .tools button.on { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
   .tools .gap { flex: 1; }
