@@ -137,7 +137,8 @@ Still open (3.6 Files):
 
 ### S5: Engine workspace (section 5)
 - [ ] Hub, project settings, device manager, export (`.npk`, APK), asset import settings.
-- [ ] Lua editor: go to definition, references, rename, snippets, folding, formatter; debugger and profiler panels.
+- [x] Lua editor (2026-11-09, `lib/lua-tools.ts`, 15 tests; folding, tidy and go to definition checked in the browser preview): a small tokenizer, go to definition (F12 or Cmd/Ctrl-click), find uses (Shift+F12; a list over the editor), rename a name across the project (F2; names in strings and comments and fields of the same name stay; a clash is refused), tidy indentation (Shift+Alt+F), code snippets in completion (fn, if, for, forp, fork, while, repeat, entity), folding of blocks; a Code menu. Not a full language server: it follows names, not scopes or types.
+- [x] Debugger and profiler panels already exist (`docs/debugger.md`, the Debugger and Performance panels).
 - [ ] Scene and UI layout editor (shared with Model 2.6); input and actions editor, localisation, save inspector.
 - [ ] Play: desktop window, device deploy, hot reload, console, capture, input replay.
 
