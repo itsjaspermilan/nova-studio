@@ -41,7 +41,7 @@
   const wavFiles = $derived(studio.files.filter((f) => !f.dir && /\.wav$/i.test(f.path)).map((f) => f.path));
   // the sound files the song's sample tracks name are read into the sampler's bank, so that playing and exporting have them
   $effect(() => {
-    const names = [...new Set(song.tracks.filter((t) => t.wave === "sample" && t.sample).map((t) => t.sample!))];
+    const names = [...new Set(song.tracks.flatMap((t) => [...(t.kind === "synth" && t.wave === "sample" && t.sample ? [t.sample] : []), ...(t.kind === "drums" && t.kit === "samples" ? Object.values(t.pads ?? {}) : [])]))];
     for (const name of names) {
       if (hasSample(name) || !studio.api) continue;
       void studio.api.readAudio(name).then((url) => {
@@ -720,8 +720,16 @@
           {/if}
         {:else}
           <label>Kit
-            <select value={current.kit ?? "chip"} onchange={(e) => setTrack({ kit: e.currentTarget.value as "chip" | "studio" })}><option value="chip">chip</option><option value="studio">studio</option></select>
+            <select value={current.kit ?? "chip"} onchange={(e) => setTrack({ kit: e.currentTarget.value as "chip" | "studio" | "samples" })}><option value="chip">chip</option><option value="studio">studio</option><option value="samples">your sounds</option></select>
           </label>
+          {#if current.kit === "samples"}
+            <p class="dim small">Pick the sound file each drum plays (WAV files in the project). A drum with none is silent.</p>
+            {#each DRUMS as d (d.pitch)}
+              <label class="slider"><span>{d.name}</span>
+                <select value={current.pads?.[String(d.pitch)] ?? ""} aria-label="Sound for {d.name}" onchange={(e) => { const pads = { ...(current.pads ?? {}) }; if (e.currentTarget.value) pads[String(d.pitch)] = e.currentTarget.value; else delete pads[String(d.pitch)]; setTrack({ pads: Object.keys(pads).length ? pads : undefined }); }}><option value="">(none)</option>{#each wavFiles as w (w)}<option value={w}>{w}</option>{/each}</select>
+              </label>
+            {/each}
+          {/if}
           <label class="slider"><span>Reverb</span><input type="range" min="0" max="1" step="0.01" value={current.reverb ?? 0} oninput={(e) => setTrack({ reverb: Number(e.currentTarget.value) })} /><output>{(current.reverb ?? 0).toFixed(2)}</output></label>
         {/if}
         {#if current.kind === "synth"}

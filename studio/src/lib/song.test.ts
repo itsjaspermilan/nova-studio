@@ -409,3 +409,33 @@ describe("the sampler", () => {
     }
   });
 });
+
+describe("the sample drum kit", () => {
+  const hitSound = { rate: 11025, channels: [Float32Array.from({ length: 1100 }, (_, i) => 0.9 * Math.exp(-i / 300) * Math.sin(i * 0.8))] };
+  const kit = (pads: Record<string, string>): Song => ({ version: 1, bpm: 120, stepsPerBeat: 4, length: 8, tracks: [{ ...drumTrack("d"), kit: "samples", pads, notes: [{ step: 0, len: 1, pitch: 36, vel: 1 }, { step: 4, len: 1, pitch: 38, vel: 1 }] }] });
+  it("plays each drum's own file where its note is, and nothing for a drum with no file", () => {
+    setSample("sounds/kick.wav", hitSound);
+    const out = renderSong(kit({ "36": "sounds/kick.wav" }), 22050).channels[0]!;
+    const e = (a: number, b: number) => out.slice(a, b).reduce((s, v) => s + v * v, 0);
+    expect(e(0, 2000)).toBeGreaterThan(1);
+    expect(e(5 * 2756, 5 * 2756 + 2000)).toBe(0); // pitch 38 has no file
+    setSample("sounds/kick.wav", null);
+  });
+  it("resamples to the render rate, so the length follows", () => {
+    setSample("sounds/kick.wav", hitSound);
+    const out = renderSong(kit({ "36": "sounds/kick.wav" }), 22050).channels[0]!;
+    const last = out.reduce((m, v, i) => (Math.abs(v) > 0.001 && i < 3000 ? i : m), 0);
+    expect(last).toBeGreaterThan(1500); // 1100 samples at 11025 Hz is 2200 at 22050
+    setSample("sounds/kick.wav", null);
+  });
+  it("is saved and checked", () => {
+    const s = kit({ "36": "sounds/kick.wav" });
+    const back = parseSong(serializeSong(s));
+    expect(back.ok && back.song.tracks[0]!.pads).toEqual({ "36": "sounds/kick.wav" });
+    for (const bad of [{ x: "a.wav" }, { "36": "../a.wav" }, { "300": "a.wav" }]) {
+      const j = JSON.parse(serializeSong(s));
+      j.tracks[0].pads = bad;
+      expect(parseSong(JSON.stringify(j)).ok, JSON.stringify(bad)).toBe(false);
+    }
+  });
+});

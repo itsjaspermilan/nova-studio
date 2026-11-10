@@ -27,6 +27,23 @@ export const INSTRUMENT_WAVES: Wave[] = ["fm", "pluck", "organ", "wavetable", "f
 const sampleBank = new Map<string, Sound>();
 export const setSample = (path: string, sound: Sound | null) => (sound ? void sampleBank.set(path, sound) : void sampleBank.delete(path));
 export const hasSample = (path: string) => sampleBank.has(path);
+
+/// The file a "samples" kit plays for a drum pitch, as one channel at the render rate (an empty array when the drum has no file or it is not loaded).
+function padHit(track: Track, pitch: number, rate: number): Float32Array {
+  const snd = sampleBank.get(track.pads?.[String(pitch)] ?? "");
+  if (!snd || !snd.channels[0]) return new Float32Array(0);
+  const src = snd.channels[0].length;
+  const out = new Float32Array(Math.max(0, Math.floor((src * rate) / snd.rate)));
+  for (let i = 0; i < out.length; i++) {
+    const at = (i * snd.rate) / rate;
+    const j = Math.floor(at);
+    const f = at - j;
+    const a = snd.channels.length > 1 ? (snd.channels[0]![j]! + (snd.channels[1]![j] ?? 0)) / 2 : snd.channels[0]![j]!;
+    const b2 = j + 1 < src ? (snd.channels.length > 1 ? (snd.channels[0]![j + 1]! + (snd.channels[1]![j + 1] ?? 0)) / 2 : snd.channels[0]![j + 1]!) : a;
+    out[i] = a + (b2 - a) * f;
+  }
+  return out;
+}
 export const isInstrument = (w: Wave) => INSTRUMENT_WAVES.includes(w);
 
 export interface Note {
@@ -77,7 +94,9 @@ export interface Track {
   echoTime?: number;
   echoFeedback?: number;
   /// Drum tracks: "chip" (the original) or "studio".
-  kit?: "chip" | "studio";
+  kit?: "chip" | "studio" | "samples";
+  /// The "samples" kit: which sound file each drum plays, by the drum's pitch number as text (`"36": "sounds/kick.wav"`). A drum with no file is silent.
+  pads?: Record<string, string>;
   /// The "fm" instrument: the modulator's pitch as a multiple of the note (0.25 to 8) and how strongly it bends the tone (0 to 12; it fades as the note rings).
   fmRatio?: number;
   fmIndex?: number;
@@ -357,7 +376,7 @@ export function parseSong(text: string): Parsed {
       (voice as Record<string, number>)[key] = clamp(v, lo, hi);
     }
     if (t.kit !== undefined) {
-      if (t.kit !== "chip" && t.kit !== "studio") return { ok: false, error: `${at}.kit must be "chip" or "studio"` };
+      if (t.kit !== "chip" && t.kit !== "studio" && t.kit !== "samples") return { ok: false, error: `${at}.kit must be "chip", "studio" or "samples"` };
       voice.kit = t.kit;
     }
     if (t.color !== undefined) {
@@ -393,6 +412,12 @@ export function parseSong(text: string): Parsed {
       else delete (t as Partial<Track>).patterns;
       if (cleanClips.length) voice.clips = cleanClips;
       else delete (t as Partial<Track>).clips;
+    }
+    if (t.pads !== undefined) {
+      const ok = (x: unknown) => typeof x === "string" && /^[\w\-./ ]{1,120}$/.test(x) && !x.includes("..") && !x.startsWith("/");
+      const entries = t.pads && typeof t.pads === "object" && !Array.isArray(t.pads) ? Object.entries(t.pads) : null;
+      if (!entries || entries.length > 32 || !entries.every(([k, v]) => /^\d{1,3}$/.test(k) && Number(k) <= 127 && ok(v))) return { ok: false, error: `${at}.pads maps drum pitches to sound files inside the project, like { "36": "sounds/kick.wav" }` };
+      if (entries.length) voice.pads = Object.fromEntries(entries);
     }
     if (t.sample !== undefined) {
       if (typeof t.sample !== "string" || !/^[\w\-./ ]{1,120}$/.test(t.sample) || t.sample.includes("..") || t.sample.startsWith("/")) return { ok: false, error: `${at}.sample must be a path inside the project, like "sounds/kick.wav"` };
@@ -531,6 +556,7 @@ export function serializeSong(song: Song): string {
     if (t.color) fields.push(`"color": ${JSON.stringify(t.color)}`);
     if (t.patterns?.length) fields.push(`"patterns": ${JSON.stringify(t.patterns)}`);
     if (t.clips?.length) fields.push(`"clips": ${JSON.stringify(t.clips)}`);
+    if (t.pads && Object.keys(t.pads).length) fields.push(`"pads": ${JSON.stringify(t.pads)}`);
     if (t.sample) fields.push(`"sample": ${JSON.stringify(t.sample)}`);
     if (t.formula) fields.push(`"formula": ${JSON.stringify(t.formula)}`);
     if (t.bus) fields.push(`"bus": ${JSON.stringify(t.bus)}`);
@@ -1160,6 +1186,7 @@ export function renderSong(source: Song, rate = RATE): Sound {
   const right = new Float32Array(total);
   const hitCache = new Map<number, Float32Array>();
   const studioCache = new Map<number, Float32Array>();
+  const padCache = new Map<string, Float32Array>();
   const buses = song.buses ?? [];
   const busBuf = buses.map((b) => (b.mute ? null : { l: new Float32Array(total), r: new Float32Array(total) }));
   const busOf = (name: string | undefined) => (name === undefined ? -1 : buses.findIndex((b) => b.name === name));
@@ -1219,6 +1246,12 @@ export function renderSong(source: Song, rate = RATE): Sound {
       const notePan = clamp(pan + (n.pan ?? 0), -1, 1);
       const nl = n.pan ? Math.cos(((notePan + 1) * Math.PI) / 4) * track.volume : gl;
       const nr = n.pan ? Math.sin(((notePan + 1) * Math.PI) / 4) * track.volume : gr;
+      if (track.kind === "drums" && track.kit === "samples") {
+        let hit = padCache.get(`${ti}:${n.pitch}`);
+        if (!hit) padCache.set(`${ti}:${n.pitch}`, (hit = padHit(track, n.pitch, rate)));
+        for (let k = 0; k < hit.length; k++) mix(startIndex + k, hit[k]! * n.vel, nl, nr);
+        continue;
+      }
       if (track.kind === "drums") {
         const studio = track.kit === "studio";
         const cache = studio ? studioCache : hitCache;
