@@ -11,7 +11,7 @@ import { polyNormal } from "./model-mesh";
 import { fitBounds } from "./model-doc";
 import { toMesh } from "./mesh-edit";
 import { BOOLEAN_OPS, CUTTER_SHAPES, booleanPieces, cutterPieces, meshOf, piecesOf, type BooleanOp, type CutterShape } from "./csg";
-import { ZERO_LATTICE, lattice, remeshBlocks, shrinkwrap, wireframe, type LatticeCorners, type WrapKind } from "./modifier-more";
+import { ZERO_LATTICE, curveDeform, lattice, remeshBlocks, shrinkwrap, wireframe, type LatticeCorners, type WrapKind } from "./modifier-more";
 import { DEFORMS, decimate as decimateCube, displace as displaceCube, simpleDeform, smoothVerts, triangulate as triangulateCube, type DeformKind } from "./mesh-ops";
 export { DEFORMS, type DeformKind };
 
@@ -160,10 +160,16 @@ export interface RemeshMod extends Common {
   type: "remesh";
   voxel?: number;
 }
-export type Modifier = RemeshMod | BooleanMod | WireframeMod | ShrinkwrapMod | LatticeMod | MirrorMod | SubsurfMod | BevelMod | SolidifyMod | ArrayMod | RevolveMod | WeldMod | TriangulateMod | DecimateMod | DisplaceMod | DeformMod | SmoothMod;
+/// Lays the mesh along a smooth curve through `points` (the mesh's length along `axis` is spread along the path).
+export interface CurveMod extends Common {
+  type: "curve";
+  axis?: ModAxis;
+  points?: [number, number, number][];
+}
+export type Modifier = CurveMod | RemeshMod | BooleanMod | WireframeMod | ShrinkwrapMod | LatticeMod | MirrorMod | SubsurfMod | BevelMod | SolidifyMod | ArrayMod | RevolveMod | WeldMod | TriangulateMod | DecimateMod | DisplaceMod | DeformMod | SmoothMod;
 export type ModifierType = Modifier["type"];
-export const MODIFIER_TYPES: ModifierType[] = ["mirror", "subsurf", "bevel", "solidify", "array", "revolve", "weld", "triangulate", "decimate", "displace", "deform", "smooth", "wireframe", "shrinkwrap", "lattice", "boolean", "remesh"];
-export const MODIFIER_LABELS: Record<ModifierType, string> = { mirror: "Mirror", subsurf: "Subdivision", bevel: "Bevel", solidify: "Solidify", array: "Array", revolve: "Revolve", weld: "Weld", triangulate: "Triangulate", decimate: "Decimate", displace: "Displace", deform: "Simple deform", smooth: "Smooth", wireframe: "Wireframe", shrinkwrap: "Shrinkwrap", lattice: "Lattice", boolean: "Boolean", remesh: "Remesh (blocks)" };
+export const MODIFIER_TYPES: ModifierType[] = ["mirror", "subsurf", "bevel", "solidify", "array", "revolve", "weld", "triangulate", "decimate", "displace", "deform", "smooth", "wireframe", "shrinkwrap", "lattice", "boolean", "remesh", "curve"];
+export const MODIFIER_LABELS: Record<ModifierType, string> = { mirror: "Mirror", subsurf: "Subdivision", bevel: "Bevel", solidify: "Solidify", array: "Array", revolve: "Revolve", weld: "Weld", triangulate: "Triangulate", decimate: "Decimate", displace: "Displace", deform: "Simple deform", smooth: "Smooth", wireframe: "Wireframe", shrinkwrap: "Shrinkwrap", lattice: "Lattice", boolean: "Boolean", remesh: "Remesh (blocks)", curve: "Curve" };
 export const MAX_REVOLVE = 128;
 /// A crease weight of 1 stays sharp through this many subdivision levels (the most a modifier does).
 export const CREASE_LEVELS = 4;
@@ -190,6 +196,7 @@ export function newModifier(type: ModifierType): Modifier {
     case "shrinkwrap": return { type, kind: "sphere", axis: "y", factor: 1, radius: 0 };
     case "lattice": return { type, corners: ZERO_LATTICE() };
     case "remesh": return { type, voxel: 2 };
+    case "curve": return { type, axis: "x", points: [[0, 0, 0], [8, 0, 0], [16, 8, 0], [16, 16, 0]] };
     case "boolean": return { type, operation: "difference", shape: "box", at: [0, 0, 0], size: [8, 8, 8] };
   }
 }
@@ -819,6 +826,7 @@ export function applyModifier(s: Soup, m: Modifier, stage: Stage): Soup {
     case "shrinkwrap": return shrinkwrap(s, m.kind ?? "sphere", axisIndex(m.axis ?? "y") as 0 | 1 | 2, m.factor ?? 1, m.radius ?? 0);
     case "lattice": return lattice(s, m.corners ?? ZERO_LATTICE());
     case "remesh": return remeshBlocks(s, m.voxel ?? 2);
+    case "curve": return curveDeform(s, m.points ?? [], axisIndex(m.axis ?? "x") as 0 | 1 | 2);
     case "boolean": {
       const solid = booleanPieces(piecesOf(s.verts, s.polys), cutterPieces(m.shape ?? "box", m.at ?? [0, 0, 0], m.size ?? [8, 8, 8]), m.operation ?? "difference");
       const out = meshOf(solid);
@@ -934,6 +942,12 @@ export function checkModifier(m: unknown, at: string): string | null {
     case "remesh":
       problems.push(num("voxel", 0.01, 1e6));
       break;
+    case "curve": {
+      if (o.axis !== undefined && !MOD_AXES.includes(o.axis as ModAxis)) return `${at}.axis must be x, y or z`;
+      const pts = o.points;
+      if (pts !== undefined && !(Array.isArray(pts) && pts.length >= 2 && pts.length <= 16 && pts.every((v) => Array.isArray(v) && v.length === 3 && v.every((x) => typeof x === "number" && Number.isFinite(x))))) return `${at}.points must be 2 to 16 points of three numbers`;
+      break;
+    }
     case "boolean": {
       if (o.operation !== undefined && !(BOOLEAN_OPS as string[]).includes(o.operation as string)) return `${at}.operation must be union, difference or intersect`;
       if (o.shape !== undefined && !(CUTTER_SHAPES as string[]).includes(o.shape as string)) return `${at}.shape must be box, cylinder or sphere`;

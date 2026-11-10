@@ -108,6 +108,21 @@
           <label title="How far each pass moves the points towards their neighbours">Factor <input type="number" min="0.1" max="1" step="0.1" value={m.factor ?? 0.5} onchange={(e) => set(i, { factor: Math.max(0.1, Math.min(1, num(e.currentTarget.value, 0.5))) })} /></label>
           <label title="How many passes">Passes <input type="number" min="1" max="20" step="1" value={m.passes ?? 2} onchange={(e) => set(i, { passes: Math.max(1, Math.min(20, Math.round(num(e.currentTarget.value, 2)))) })} /></label>
         </div>
+      {:else if m.type === "curve"}
+        <div class="grid">
+          <label title="Which of the mesh's directions is laid along the curve">Along
+            <select value={m.axis ?? "x"} onchange={(e) => set(i, { axis: e.currentTarget.value as ModAxis })}>{#each MOD_AXES as a (a)}<option value={a}>{a.toUpperCase()}</option>{/each}</select>
+          </label>
+          <button onclick={() => set(i, { points: [...(m.points ?? []), [...((m.points ?? [])[(m.points ?? []).length - 1] ?? [0, 0, 0])] as [number, number, number]].slice(0, 16) })} disabled={(m.points?.length ?? 0) >= 16}>＋ Point</button>
+        </div>
+        {#each m.points ?? [] as pt, pi (pi)}
+          <div class="vecs">
+            <span class="dim small">{pi + 1}</span>
+            {#each [0, 1, 2] as a (a)}<input type="number" step="0.5" aria-label={`curve point ${pi + 1} ${"xyz"[a]}`} value={pt[a]} onchange={(e) => { const list = (m.points ?? []).map((q) => [...q]) as [number, number, number][]; list[pi]![a] = num(e.currentTarget.value, 0); set(i, { points: list }); }} />{/each}
+            <button class="ghost" aria-label="Remove curve point {pi + 1}" disabled={(m.points?.length ?? 0) <= 2} onclick={() => set(i, { points: (m.points ?? []).filter((_, k) => k !== pi) })}>✕</button>
+          </div>
+        {/each}
+        <p class="dim small">A smooth path through these points; the mesh is laid along it from the first point. Needs a mesh with some length along that direction.</p>
       {:else if m.type === "remesh"}
         <div class="grid">
           <label title="The side of each cube, in units: smaller is finer and has many more faces">Cube size <input type="number" min="0.1" step="0.5" value={m.voxel ?? 2} onchange={(e) => set(i, { voxel: Math.max(0.01, num(e.currentTarget.value, 2)) })} /></label>

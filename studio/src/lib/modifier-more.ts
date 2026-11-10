@@ -200,3 +200,52 @@ export function remeshBlocks(s: Soup, voxel: number, limit = 64): Soup {
   }
   return { verts, polys };
 }
+
+/// Bends the mesh along a curve: the mesh's extent along `axis` is laid along the path (a smooth Catmull-Rom curve through `points`, in the mesh's own units), and what
+/// is off the axis keeps its distance from it, measured across the path (the path's "up" is +y, or +z when the path runs along y). A path of fewer than two points
+/// leaves the mesh alone. The mesh starts at the first point and its length is spread along the path by arc length.
+export function curveDeform(s: Soup, points: Vec3[], axis: 0 | 1 | 2): Soup {
+  if (points.length < 2 || !s.verts.length) return s;
+  // sample the path into a fine polyline with cumulative lengths
+  const P = (i: number) => points[Math.max(0, Math.min(points.length - 1, i))]!;
+  const poly: Vec3[] = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    for (let k = 0; k < 24; k++) {
+      const t = k / 24;
+      const p0 = P(i - 1), p1 = P(i), p2 = P(i + 1), p3 = P(i + 2);
+      poly.push([0, 1, 2].map((a) => 0.5 * (2 * p1[a]! + (p2[a]! - p0[a]!) * t + (2 * p0[a]! - 5 * p1[a]! + 4 * p2[a]! - p3[a]!) * t * t + (3 * p1[a]! - p0[a]! - 3 * p2[a]! + p3[a]!) * t ** 3)) as Vec3);
+    }
+  }
+  poly.push([...points[points.length - 1]!] as Vec3);
+  const cum = [0];
+  for (let i = 1; i < poly.length; i++) cum.push(cum[i - 1]! + len(sub(poly[i]!, poly[i - 1]!)));
+  const total = cum[cum.length - 1]!;
+  if (total < 1e-9) return s;
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const v of s.verts) {
+    lo = Math.min(lo, v[axis]!);
+    hi = Math.max(hi, v[axis]!);
+  }
+  const span = Math.max(1e-9, hi - lo);
+  const others = ([0, 1, 2] as const).filter((a) => a !== axis) as [0 | 1 | 2, 0 | 1 | 2];
+  const at = (dist: number): { pos: Vec3; tangent: Vec3 } => {
+    const d = Math.min(total, Math.max(0, dist));
+    let i = 1;
+    while (i < cum.length - 1 && cum[i]! < d) i++;
+    const seg = Math.max(1e-12, cum[i]! - cum[i - 1]!);
+    const f = (d - cum[i - 1]!) / seg;
+    return { pos: lerpV(poly[i - 1]!, poly[i]!, f), tangent: unit(sub(poly[i]!, poly[i - 1]!)) };
+  };
+  const verts = s.verts.map((v) => {
+    const { pos, tangent } = at(((v[axis]! - lo) / span) * total);
+    // a frame across the path: `up` perpendicular to the tangent, `side` completing it
+    const ref: Vec3 = Math.abs(tangent[1]) < 0.95 ? [0, 1, 0] : [0, 0, 1];
+    const side = unit(cross(tangent, ref));
+    const up = cross(side, tangent);
+    // the first of the mesh's other axes lies along `up`, the second along `side` (so a mesh built along x with height y and depth z keeps its height as height)
+    return add(add(pos, mul(up, v[others[0]]!)), mul(side, v[others[1]]!));
+  });
+  return { ...s, verts };
+}
+const lerpV = (a: Vec3, b: Vec3, t: number): Vec3 => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];

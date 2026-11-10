@@ -138,3 +138,34 @@ describe("remesh (blocks)", () => {
     expect(evaluate({ ...box(10), modifiers: [newModifier("remesh")] }).polys!.length).toBe(150);
   });
 });
+
+import { curveDeform } from "./modifier-more";
+describe("curve", () => {
+  const bar = (): Soup => soupOf(toMesh({ from: [0, 0, 0], size: [16, 2, 2], color: "#c9d1d9" }));
+  it("a straight path along x leaves the bar as it is (the others axes keep their offsets)", () => {
+    const out = curveDeform(bar(), [[0, 0, 0], [8, 0, 0], [16, 0, 0]], 0);
+    for (const [i, p] of out.verts.entries()) {
+      const o = bar().verts[i]!;
+      expect(p[0]).toBeCloseTo(o[0], 3);
+      expect(Math.hypot(p[1] - o[1], p[2] - o[2])).toBeLessThan(2.9); // y and z come out as up and side: a swap of the two is allowed
+    }
+    expect(Math.max(...out.verts.map((p) => p[0]))).toBeCloseTo(16, 3);
+  });
+  it("a path that turns a corner carries the bar round it, its length spread along the path", () => {
+    const out = curveDeform(bar(), [[0, 0, 0], [10, 0, 0], [10, 10, 0]], 0);
+    const ends = out.verts.filter((_, i) => bar().verts[i]![0] === 16);
+    const centre = [0, 1, 2].map((a) => ends.reduce((s, p) => s + p[a]!, 0) / ends.length);
+    expect(Math.abs(centre[0]! - 10)).toBeLessThan(1.5); // the far end lies at the path's far end, give or take the bar's own width
+    expect(centre[1]).toBeGreaterThan(8);
+    const starts = out.verts.filter((_, i) => bar().verts[i]![0] === 0);
+    expect(starts.reduce((s, p) => s + p[0], 0) / starts.length).toBeCloseTo(0, 0);
+  });
+  it("leaves a mesh alone with fewer than two points, and runs as a modifier", () => {
+    expect(curveDeform(bar(), [[0, 0, 0]], 0).verts).toEqual(bar().verts);
+    expect(checkModifier(newModifier("curve"), "m")).toBeNull();
+    expect(checkModifier({ type: "curve", points: [[0, 0, 0]] }, "m")).toContain("2 to 16");
+    expect(checkModifier({ type: "curve", axis: "w" }, "m")).toContain("axis");
+    const out = evaluate({ ...toMesh({ from: [0, 0, 0], size: [16, 2, 2], color: "#fff" }), modifiers: [newModifier("curve")] });
+    expect(Math.max(...out.verts!.map((p) => p[1]))).toBeGreaterThan(10);
+  });
+});
