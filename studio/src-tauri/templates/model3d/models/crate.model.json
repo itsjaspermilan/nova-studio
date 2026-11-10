@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "crate",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "from": [-8, 0, -8], "size": [16, 16, 16], "color": "#b07a3c" },
+        { "from": [-9, 14, -9], "size": [18, 3, 18], "color": "#8a5a28" },
+        { "from": [-9, 0, -9], "size": [3, 16, 3], "color": "#8a5a28" },
+        { "from": [6, 0, -9], "size": [3, 16, 3], "color": "#8a5a28" },
+        { "from": [-9, 0, 6], "size": [3, 16, 3], "color": "#8a5a28" },
+        { "from": [6, 0, 6], "size": [3, 16, 3], "color": "#8a5a28" }
+      ],
+      "children": []
+    }
+  ]
+}

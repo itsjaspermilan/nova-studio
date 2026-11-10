@@ -22,6 +22,26 @@ pub const TEMPLATES: &[Template] = &[
         ],
     },
     Template {
+        id: "model3d",
+        name: "3D starter",
+        description: "A modelled crate turning on screen: a model made in the Model workspace, a camera, a light and controls.",
+        files: &[
+            (
+                "nova.json",
+                include_bytes!("../templates/model3d/nova.json"),
+            ),
+            ("main.lua", include_bytes!("../templates/model3d/main.lua")),
+            (
+                "models/crate.model.json",
+                include_bytes!("../templates/model3d/models/crate.model.json"),
+            ),
+            (
+                "models/crate.glb",
+                include_bytes!("../templates/model3d/models/crate.glb"),
+            ),
+        ],
+    },
+    Template {
         id: "starter",
         name: "Starter game",
         description: "A scene, an animated player entity with jumping, and the folders a real game uses.",
