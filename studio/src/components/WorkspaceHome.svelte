@@ -4,7 +4,9 @@
   import { WORKSPACES, inWorkspace } from "../lib/workspaces";
   import { newTileset, serializeTileset, tilesetPathFor } from "../lib/tileset";
   import { SONG_TEMPLATES } from "../lib/song-templates";
+  import { RIG_KINDS, type RigKind } from "../lib/rig-templates";
   let songTemplate = $state("blank");
+  let rig = $state<"" | RigKind>("");
   let audioFile: HTMLInputElement | undefined = $state();
   let objFile: HTMLInputElement | undefined = $state();
   let blender = $state(false);
@@ -30,7 +32,7 @@
   const make = async (kind: "model" | "sprite" | "sfx" | "song") => {
     const n = name.trim();
     if (!n) return;
-    if (kind === "model") await studio.createModel(n);
+    if (kind === "model") await studio.createModel(n, rig || undefined);
     else if (kind === "sprite") await studio.createSprite(n, 32);
     else if (kind === "sfx") await studio.createSound(n);
     else await studio.createSong(n, songTemplate);
@@ -46,6 +48,7 @@
       <input bind:value={name} placeholder="Name of a new {studio.workspace === 'sound' ? 'sound or song' : studio.workspace === 'model' ? 'model' : 'sprite'}" aria-label="Name" />
       {#if studio.workspace === "model"}
         <button type="submit" onclick={() => make("model")} disabled={!name.trim()}>New model</button>
+        <select bind:value={rig} aria-label="Start the model from" title={RIG_KINDS.find((k) => k.id === rig)?.blurb ?? "A single box"}><option value="">a single box</option>{#each RIG_KINDS as k (k.id)}<option value={k.id}>{k.name} with a skeleton</option>{/each}</select>
         <button type="button" onclick={() => void studio.importBlend()} disabled={!blender} title={blender ? "Blender writes the file as a model, in the background" : "Needs Blender installed (blender.org, free) and the desktop app"}>Open a Blender file…</button>
         <button type="button" onclick={() => objFile?.click()} title="Open a Wavefront OBJ file from another program as a new model">Import an OBJ…</button>
         <input bind:this={objFile} type="file" accept=".obj,text/plain" hidden onchange={(e) => { const f = e.currentTarget.files?.[0]; e.currentTarget.value = ""; if (f) void studio.importObj(f); }} />
