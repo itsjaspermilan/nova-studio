@@ -21,6 +21,7 @@
   import { loadReferences, placementOf, saveReferences, type Reference } from "../lib/model-reference";
   import { ORTHO_FOV, PERSPECTIVE_FOV, VIEW_LABELS, VIEW_NAMES, distanceForFov, orbitStep, viewPlacement, type ViewName } from "../lib/view-presets";
   import ModelStats from "./ModelStats.svelte";
+  import { solveLimb } from "../lib/model-ik";
   import { copyKeys, mirrorClip, pasteKeys, reverseClip, shiftKeys, stretchKeys, type KeyClipboard } from "../lib/model-anim-tools";
   import { SCULPT_HELP, SCULPT_MODES, sculptDab, type SculptMode } from "../lib/sculpt";
   import { addFace, bevelEdge, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, freshProfile, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsSymmetric, setFaceColors, setSmooth, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
@@ -90,6 +91,33 @@
   let animTime = $state(0);
   let keyBoard: KeyClipboard | null = $state(null);
   let animNote = $state("");
+  // reaching: the chosen part is the top of a limb of three parts (shoulder, elbow, hand); the end is put on a target in model space
+  let reachTarget = $state<[number, number, number]>([0, 0, 0]);
+  let reachPole = $state<[number, number, number]>([0, 0, 1]);
+  const limbParts = $derived.by(() => {
+    tick;
+    if (!selected) return null;
+    const top = partAt(doc, selected.parts);
+    const mid = top?.children[0];
+    const end = mid?.children[0];
+    return top && mid && end ? { top, mid, end } : null;
+  });
+  function reachFromHand() {
+    if (!selected || !limbParts) return;
+    const names = namesOf(doc, selected.parts);
+    const m = worldMatrices(doc).get([...names, limbParts.mid.name, limbParts.end.name].join("/"));
+    if (m) reachTarget = transformPoint(m, [0, 0, 0]).map((v) => Math.round(v * 100) / 100) as [number, number, number];
+  }
+  function reach() {
+    if (!selected || !limbParts) return;
+    const r = solveLimb(doc, selected.parts, reachTarget, reachPole);
+    if (!r) return void (animNote = "Choose a part that has a part below it with another part below that (a shoulder, an elbow, a hand).");
+    const names = namesOf(doc, selected.parts);
+    let next = setKey(doc, clipIndex, names, "rotation", animTime, r.upper);
+    next = setKey(next, clipIndex, [...names, limbParts.mid.name], "rotation", animTime, r.middle);
+    commit(next, false, "Reach with a limb");
+    animNote = r.reached ? "The end reaches the target: keys set on the top and middle parts." : "Too far to reach: the limb is stretched towards it.";
+  }
   let playingAnim = $state(false);
   const history = new History();
   let tick = $state(0);
@@ -2415,6 +2443,13 @@
             <button title="Twice as slow" onclick={() => commit(stretchKeys(doc, clipIndex, 2, partNames.length ? partNames : null))}>×2 time</button>
             <button title="Move the keys 0.1 s earlier" onclick={() => commit(shiftKeys(doc, clipIndex, -0.1, partNames.length ? partNames : null))}>−0.1 s</button>
             <button title="Move the keys 0.1 s later" onclick={() => commit(shiftKeys(doc, clipIndex, 0.1, partNames.length ? partNames : null))}>+0.1 s</button>
+            {#if limbParts}
+              <span class="dim small" title="The chosen part is the top of a limb: its end is put on a target (model units, from the model's origin)">Reach</span>
+              {#each [0, 1, 2] as a (a)}<input type="number" class="narrow" step="0.5" aria-label={`reach target ${"xyz"[a]}`} value={reachTarget[a]} onchange={(e) => { const v = [...reachTarget] as [number, number, number]; v[a] = Number(e.currentTarget.value); reachTarget = v; }} />{/each}
+              <button class="ghost" onclick={reachFromHand} title="Take the end's present place as the target">from the end</button>
+              <select aria-label="The joint bends towards" onchange={(e) => { reachPole = ({ front: [0, 0, 1], back: [0, 0, -1], up: [0, 1, 0], down: [0, -1, 0], left: [1, 0, 0], right: [-1, 0, 0] } as Record<string, [number, number, number]>)[e.currentTarget.value]!; }}>{#each ["front", "back", "up", "down", "left", "right"] as d (d)}<option value={d}>bends {d}</option>{/each}</select>
+              <button onclick={reach} title="Set keys at the time marker so that the end of the limb is on the target">Reach</button>
+            {/if}
             {#if animNote}<span class="dim small" role="status">{animNote}</span>{/if}
           </div>
           <div class="scrub">
