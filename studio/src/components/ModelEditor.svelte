@@ -34,6 +34,7 @@
   import { exportGlb } from "../lib/glb";
   import { applyStack, evaluate, hasModifiers, type Modifier } from "../lib/modifiers";
   import ModifierStack from "./ModifierStack.svelte";
+  import CurveEditor from "./CurveEditor.svelte";
   import { addClip, easeAt, findTrack, pathKey, removeClip, removeKey, samplePose, setEase, setKey, snapTime, updateClip, KEY_STEP, type Pose } from "../lib/model-anim";
   import { toBase64 } from "../lib/wav";
   import { studio } from "../lib/store.svelte";
@@ -92,6 +93,7 @@
   let keyBoard: KeyClipboard | null = $state(null);
   let animNote = $state("");
   let poseName = $state("");
+  let curvesOpen = $state(false);
   // reaching: the chosen part is the top of a limb of three parts (shoulder, elbow, hand); the end is put on a target in model space
   let reachTarget = $state<[number, number, number]>([0, 0, 0]);
   let reachPole = $state<[number, number, number]>([0, 0, 1]);
@@ -2444,6 +2446,7 @@
             <button title="Twice as slow" onclick={() => commit(stretchKeys(doc, clipIndex, 2, partNames.length ? partNames : null))}>×2 time</button>
             <button title="Move the keys 0.1 s earlier" onclick={() => commit(shiftKeys(doc, clipIndex, -0.1, partNames.length ? partNames : null))}>−0.1 s</button>
             <button title="Move the keys 0.1 s later" onclick={() => commit(shiftKeys(doc, clipIndex, 0.1, partNames.length ? partNames : null))}>+0.1 s</button>
+            <button class:on={curvesOpen} aria-pressed={curvesOpen} onclick={() => (curvesOpen = !curvesOpen)} title="Show the values of the chosen part as curves over time, with the keys as dots to drag">Curves</button>
             <input class="cname" bind:value={poseName} placeholder="pose name" aria-label="Pose name" />
             <button title="Save how the parts are posed at the time marker, to use again on any animation" disabled={!poseName.trim()} onclick={() => { const next = capturePose(doc, clipIndex, animTime, poseName); if (next) { commit(next, false, "Save pose"); animNote = `Saved the pose “${poseName.trim()}”.`; poseName = ""; } else animNote = "Nothing to save: this animation has no keys at this time, or the pose library is full."; }}>Save pose</button>
             {#each doc.poses ?? [] as ps (ps.name)}
@@ -2468,6 +2471,11 @@
             </div>
             <span class="dim time">{fmtTime(animTime)} / {fmtTime(clip.duration)} s</span>
           </div>
+          {#if curvesOpen}
+            {#if partNames.length}
+              <CurveEditor {doc} {clipIndex} part={partNames} time={animTime} oncommit={(next, keep, label) => commit(next, keep, label)} ontime={(t) => { playingAnim = false; animTime = t; }} />
+            {:else}<p class="dim small pad">Choose a part to see its curves.</p>{/if}
+          {/if}
         </div>
       {/if}
       {#if mode === "texture"}
