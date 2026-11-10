@@ -110,3 +110,35 @@ export function selectSimilarFaces(source: Cube, face: number, by: SimilarBy, to
   });
   return out;
 }
+
+/// Edge slide: moves the edge's two points along the edges that run from them across the quads beside it, towards the face on one side (`t` from 0 to 1) or the other (0 to -1),
+/// so the edge keeps its shape and its place in the loop but moves along the surface. The sides are the first and second face on the edge (in the mesh's own order). An edge with
+/// a face of fewer or more than four sides on the side asked for is left alone on that side. Returns a new mesh element.
+export function edgeSlide(source: Cube, a: number, b: number, t: number): Cube {
+  const c = toMesh(source);
+  const { faces } = topology(c);
+  const beside = faces.get(key(a, b));
+  const out: Cube = JSON.parse(JSON.stringify(c));
+  if (!beside || !beside.length || !Number.isFinite(t) || t === 0) return out;
+  const face = beside[t > 0 ? 0 : 1];
+  if (face === undefined) return out;
+  const v = c.polys![face]!.v;
+  if (v.length !== 4) return out;
+  const amount = Math.min(1, Math.abs(t));
+  // the point next to `p` in the face that is not the other end of the edge
+  const rail = (p: number, other: number) => {
+    const i = v.indexOf(p);
+    const n1 = v[(i + 1) % 4]!;
+    const n2 = v[(i + 3) % 4]!;
+    return n1 === other ? n2 : n1;
+  };
+  const move = (p: number, other: number) => {
+    const to = rail(p, other);
+    const from = c.verts![p]!;
+    const target = c.verts![to]!;
+    out.verts![p] = [from[0] + (target[0] - from[0]) * amount, from[1] + (target[1] - from[1]) * amount, from[2] + (target[2] - from[2]) * amount];
+  };
+  move(a, b);
+  move(b, a);
+  return out;
+}

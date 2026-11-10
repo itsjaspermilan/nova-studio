@@ -63,3 +63,33 @@ describe("select similar", () => {
     expect(selectSimilarFaces(box, big, "area", 5).length).toBe(4); // the four 10 by 20 sides
   });
 });
+
+import { edgeSlide } from "./mesh-select";
+describe("edge slide", () => {
+  /// A flat 3 by 1 strip of quads along x: points (0..3, 0, 0) and (0..3, 0, 1); the middle edges at x = 1 and x = 2 run along z.
+  const strip = (): Cube => ({
+    shape: "mesh", from: [0, 0, 0], size: [3, 0, 1], color: "#fff",
+    verts: [[0, 0, 0], [1, 0, 0], [2, 0, 0], [3, 0, 0], [0, 0, 1], [1, 0, 1], [2, 0, 1], [3, 0, 1]],
+    polys: [{ v: [0, 4, 5, 1] }, { v: [1, 5, 6, 2] }, { v: [2, 6, 7, 3] }],
+  } as Cube);
+  it("slides the edge along the quads beside it, both ways, and does nothing for 0", () => {
+    const c = strip();
+    // the edge between points 1 and 5 has the first quad (0 4 5 1) and the second (1 5 6 2) beside it
+    const toFirst = edgeSlide(c, 1, 5, 0.5);
+    expect(toFirst.verts![1]![0]).toBeCloseTo(0.5, 6);
+    expect(toFirst.verts![5]![0]).toBeCloseTo(0.5, 6);
+    const toSecond = edgeSlide(c, 1, 5, -0.5);
+    expect(toSecond.verts![1]![0]).toBeCloseTo(1.5, 6);
+    expect(toSecond.verts![5]![0]).toBeCloseTo(1.5, 6);
+    expect(edgeSlide(c, 1, 5, 0).verts).toEqual(c.verts);
+    expect(c.verts![1]![0]).toBe(1); // the source is untouched
+  });
+  it("a full slide lands on the neighbour, an edge on the border has only one side, and a bad edge changes nothing", () => {
+    const c = strip();
+    expect(edgeSlide(c, 1, 5, 1).verts![1]![0]).toBeCloseTo(0, 6);
+    const border = edgeSlide(c, 0, 4, -0.5); // a border edge has one face only: the second side is not there
+    expect(border.verts).toEqual(c.verts);
+    expect(edgeSlide(c, 0, 7, 0.5).verts).toEqual(c.verts);
+    expect(edgeSlide(c, 1, 5, 9).verts![1]![0]).toBeCloseTo(0, 6); // held to a whole slide
+  });
+});
