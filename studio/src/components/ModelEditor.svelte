@@ -2042,6 +2042,21 @@
       sculpting = false;
     }
   }
+  // The shape's properties in tabs, as Blender's properties editor has them.
+  type PropTab = "object" | "material" | "modifiers" | "bones" | "mesh";
+  const PROP_TABS: { id: PropTab; title: string; help: string }[] = [
+    { id: "object", title: "Object", help: "Name, place, size and the shape's tools" },
+    { id: "material", title: "Material", help: "Colour, glow, metal and roughness" },
+    { id: "modifiers", title: "Modifiers", help: "Non-destructive changes: mirror, subdivision, boolean and more" },
+    { id: "bones", title: "Bones", help: "Make the mesh bend with the model's parts" },
+    { id: "mesh", title: "Mesh", help: "The picked points, edge and face, and tools for the whole mesh" },
+  ];
+  let propTab = $state<PropTab>("object");
+  $effect(() => {
+    // entering Edit mode shows the mesh tab; leaving it puts that tab away
+    if (inEdit) untrack(() => { propTab = "mesh"; });
+    else untrack(() => { if (propTab === "mesh") propTab = "object"; });
+  });
   let selectNote = $state("");
   let slideAmount = $state(0.5);
   /// Closes the open border the first picked point is on, with quads meeting in a new middle point.
@@ -2940,6 +2955,11 @@
         {/if}
       {:else if selected && cube}
         <h3>{cube.shape === "mesh" ? "Mesh" : "Shape"}</h3>
+        <div class="proptabs" role="tablist" aria-label="Properties">
+          {#each PROP_TABS as t (t.id)}
+            {#if t.id !== "mesh" || inEdit}<button role="tab" aria-selected={propTab === t.id} class:on={propTab === t.id} onclick={() => (propTab = t.id)} title={t.help}>{t.title}</button>{/if}
+          {/each}
+        </div>
         {#if pickedShapes.length > 1}<p class="note small">{pickedShapes.length} shapes picked. Moving, copying, deleting and colouring act on all of them{", and so do the turn and resize handles (about the first one's middle)"}; the fields below are for the first.</p>{/if}
         <label>Name <input value={cube.name ?? ""} placeholder="optional" onchange={(e) => commit(updateCube(doc, selected!, { name: e.currentTarget.value.trim() || undefined }))} /></label>
         {#if cube.shape !== "mesh"}
@@ -2953,9 +2973,12 @@
           <label>Sides <input type="number" min={MIN_SEGMENTS} max={MAX_SEGMENTS} step="1" value={segmentsOf(cube)} onchange={(e) => commit(updateCube(doc, selected!, { segments: Math.min(MAX_SEGMENTS, Math.max(MIN_SEGMENTS, Math.round(num(e.currentTarget.value, DEFAULT_SEGMENTS)))) }))} /></label>
           <label class="check"><input type="checkbox" checked={cube.smooth !== false} onchange={(e) => commit(updateCube(doc, selected!, { smooth: e.currentTarget.checked }))} /> Smooth shading</label>
         {/if}
+        {#if propTab === "material"}
         <label title="0 is lit by the scene like anything else; 1 shines at full brightness even in the dark (lamps, windows, tail lights)">Glow <input type="range" min="0" max="1" step="0.05" value={cube.emissive ?? 0} aria-label="Glow" oninput={(e) => commit(updateCube(doc, selected!, { emissive: Number(e.currentTarget.value) }))} /><span class="dim small">{Math.round((cube.emissive ?? 0) * 100)}%</span></label>
         <label title="0 is paint or plastic, 1 is bare metal (the game reads this when nova.json says materials: true)">Metal <input type="range" min="0" max="1" step="0.05" value={cube.metallic ?? 0} aria-label="Metallic" oninput={(e) => commit(updateCube(doc, selected!, { metallic: Number(e.currentTarget.value) }))} /><span class="dim small">{Math.round((cube.metallic ?? 0) * 100)}%</span></label>
         <label title="0 is a mirror finish, 1 is matt">Roughness <input type="range" min="0" max="1" step="0.05" value={cube.roughness ?? 1} aria-label="Roughness" oninput={(e) => commit(updateCube(doc, selected!, { roughness: Number(e.currentTarget.value) }))} /><span class="dim small">{Math.round((cube.roughness ?? 1) * 100)}%</span></label>
+        {/if}
+        {#if propTab === "object"}
         <h4>{cube.shape === "mesh" ? "Box around it: corner" : "Corner (from)"}</h4>
         <div class="vec">{#each cube.from as v, i (i)}<input type="number" value={v} aria-label={"xyz"[i] + " from"} onchange={(e) => setVec("from", i, e.currentTarget.value)} />{/each}</div>
         <h4>Size</h4>
@@ -2964,6 +2987,8 @@
           <h4>Turn (degrees)</h4>
           <div class="vec">{#each cube.rotation ?? [0, 0, 0] as v, i (i)}<input type="number" value={v} aria-label={"xyz"[i] + " turn"} onchange={(e) => { const r = [...(cube.rotation ?? [0, 0, 0])] as Vec3; r[i] = num(e.currentTarget.value, v); commit(updateCube(doc, selected!, { rotation: r })); }} />{/each}</div>
         {/if}
+        {/if}
+        {#if propTab === "material"}
         <h4>Colour</h4>
         <ProjectSwatches onpick={(hex) => pickColour("all", hex)} />
         <label class="colour">{cube.texture ? "Tint" : cube.shape === "mesh" ? "Mesh" : "All faces"} <input type="color" value={hexOf(cube.color)} onchange={(e) => pickColour("all", e.currentTarget.value)} /></label>
@@ -2971,10 +2996,14 @@
           <label class="colour">{label(f)} <input type="color" value={hexOf(faceColor(cube, f))} onchange={(e) => pickColour(f, e.currentTarget.value)} /></label>
         {/each}
         <label class="check"><input type="checkbox" checked={!!cube.texture} disabled={!hasVolume(cube)} onchange={(e) => toggleTexture(e.currentTarget.checked)} /> Paint with the model's texture</label>
+        {/if}
+        {#if propTab === "object"}
         <h4>Shape tools</h4>
         <div class="row">
           <button class:on={inEdit} onclick={() => (inEdit ? (editPoints = false) : makeEditable())} title={cube.shape === "mesh" ? "Move points and pull faces" : "Turns this into a free mesh you can pull into shape (undo brings the shape back)"}>{inEdit ? "Done with points" : "Edit points"}</button>
         </div>
+        {/if}
+        {#if propTab === "bones"}
         {#if cube.shape === "mesh"}
           <h4>Bend with parts</h4>
           {#if cube.skin}
@@ -3001,7 +3030,11 @@
             <div class="row"><button onclick={autoSkin} title="The shape bends where parts meet, like a sleeve at the elbow, instead of staying stiff">Bend with the parts around it</button></div>
           {/if}
           {#if skinNote}<p class="dim small">{skinNote}</p>{/if}
+        {:else}
+          <p class="dim small">Only a mesh can bend with the parts: use Edit points to make this shape a mesh first.</p>
         {/if}
+        {/if}
+        {#if propTab === "modifiers"}
         <h4>Modifiers</h4>
         {#if cube.skin}
           <p class="dim small">A mesh that bends with parts cannot have modifiers: its weights belong to its points.</p>
@@ -3009,11 +3042,14 @@
           <ModifierStack mods={cube.modifiers ?? []} onchange={setModifiers} onapply={applyModifierAt} />
           {#if hasModifiers(cube) && !inEdit}<p class="dim small">Showing the finished shape. Click "Edit points" to work on the cage underneath.</p>{/if}
         {/if}
+        {/if}
+        {#if propTab === "object"}
         <div class="row mirror">
           <span class="dim small">Mirror copy</span>
           {#each [0, 1, 2] as a (a)}<button onclick={() => mirrorCopy(a as Axis)} title={`A reflected copy across the part's ${"xyz"[a]} = 0 plane`}>{"XYZ"[a]}</button>{/each}
         </div>
-        {#if inEdit}
+        {/if}
+        {#if inEdit && propTab === "mesh"}
           <h4>Points</h4>
           {#if selVerts.length}
             <p class="dim small">{selVerts.length === 1 ? "The picked point" : `The middle of ${selVerts.length} picked points`}: type a number, or drag the arrows (one axis) or squares (a flat plane) of its handle.</p>
@@ -3155,6 +3191,9 @@
   .modalbar { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--accent); border-radius: 8px; padding: 5px 12px; font-size: 12px; z-index: 6; pointer-events: none; }
   .stage { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
   .modeselect { font-weight: 600; }
+  .proptabs { display: flex; flex-wrap: wrap; gap: 2px; margin: 2px 0 8px; border-bottom: 1px solid var(--line); }
+  .proptabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; padding: 3px 7px; font-size: 12px; }
+  .proptabs button.on { border-bottom-color: var(--accent); color: var(--text); font-weight: 600; }
   .shelf { position: absolute; left: 8px; top: 8px; z-index: 5; display: flex; flex-direction: column; align-items: stretch; gap: 4px; max-width: 150px; padding: 6px; background: color-mix(in srgb, var(--panel) 90%, transparent); border: 1px solid var(--line); border-radius: 8px; max-height: calc(100% - 16px); overflow: auto; }
   .shelf:empty, .shelf:not(:has(*)) { display: none; }
   .shelf .seg { display: flex; flex-direction: column; }
