@@ -27,7 +27,7 @@
   import { SCULPT_HELP, SCULPT_MODES, sculptDab, type SculptMode } from "../lib/sculpt";
   import { addFace, bevelEdge, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, freshProfile, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsSymmetric, setFaceColors, setSmooth, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
   import { hasVolume, meshOf, segmentsOf, shapeFaces, solidOf } from "../lib/model-mesh";
-  import { WEIGHT_MODES, gradientWeights, mirrorWeights, paintWeights, type WeightMode, autoWeights, boneHeat, dominantBones, heatColor, invertAffine, reskin, setWeight, skinnedPoints, transformPoint, worldMatrices } from "../lib/model-skin";
+  import { WEIGHT_MODES, autoSkinAll, gradientWeights, mirrorWeights, paintWeights, type WeightMode, autoWeights, boneHeat, dominantBones, heatColor, invertAffine, reskin, setWeight, skinnedPoints, transformPoint, worldMatrices } from "../lib/model-skin";
   import { bakeAll, blockOf, faceRects, flippedRect, normRect, rectAt, enableTexture, fitPicture, packModel, resizeTexture, unwrap, uvsOf } from "../lib/model-uv";
   import { CLEAR, cloneRaster, drawEllipse, drawLine, drawRect, floodFill, getPixel, newRaster, parseHex, stamp, toHex, type Raster, type Rgba } from "../lib/pixels";
   import { applyBrush, applyGradient } from "../lib/paint";
@@ -2079,6 +2079,12 @@
     commit(setCube(doc, selected, { ...cube, skin }));
   }
   /// Copies the weights of the +x side to the -x side (or the other way), swapping left bones for right ones.
+  /// Makes every mesh that has no skin yet bend with the model's parts.
+  function skinEverything() {
+    const r = autoSkinAll(doc);
+    animNote = r.count ? `Skinned ${r.count} mesh${r.count === 1 ? "" : "es"}: they now bend with the parts.` : "No unskinned mesh sits on a part with a neighbour (boxes are not skinned: use Edit points to make a shape a mesh first).";
+    if (r.count) commit(r.doc, false, "Auto-skin all");
+  }
   let gradA = $state("");
   let gradB = $state("");
   let gradAxis = $state<0 | 1 | 2>(1);
@@ -2761,6 +2767,7 @@
             <div class="vec">{#each poseValue(prop as Prop) as v, i (i)}<input type="number" step={prop === "scale" ? 0.1 : 1} value={v} aria-label={`${"xyz"[i]} ${prop}`} onchange={(e) => setPoseValue(prop as Prop, i, e.currentTarget.value)} />{/each}</div>
             <button class="ghost keybtn" onclick={() => keyProp(prop as Prop)}>◆ Key {prop}</button>
           {/each}
+          <div class="row wrap"><button onclick={skinEverything} title="Make every mesh of the model bend with the parts it sits among (weights worked out from where the parts are)">Auto-skin all meshes</button></div>
           <h4>Constraints <span class="dim small">(studio only: bake them into keys for the game)</span></h4>
           {#each myConstraints as c, ci (ci)}
             <div class="row wrap small">

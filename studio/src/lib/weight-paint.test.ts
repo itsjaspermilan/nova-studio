@@ -125,3 +125,24 @@ describe("weight gradients and picked points", () => {
     expect(held(out, 0, 1)).toBe(0);
   });
 });
+
+import { autoSkinAll } from "./model-skin";
+import { rigTemplate } from "./rig-templates";
+import { toMesh } from "./mesh-edit";
+import { walk } from "./model-doc";
+describe("auto-skinning a whole model", () => {
+  it("skins every mesh that has a part to bend with, leaving boxes and skinned meshes alone", () => {
+    const doc = rigTemplate("humanoid");
+    // make the torso and the left upper arm meshes; leave the head a box
+    const meshed = JSON.parse(JSON.stringify(doc));
+    for (const w of walk(meshed)) if (["spine", "left arm"].includes(w.part.name)) w.part.cubes = w.part.cubes.map((c: Cube) => toMesh(c));
+    const r = autoSkinAll(meshed);
+    expect(r.count).toBe(2);
+    const skinned = walk(r.doc).flatMap((w) => w.part.cubes).filter((c) => c.skin);
+    expect(skinned.length).toBe(2);
+    for (const c of skinned) expect(c.skin!.weights.length).toBe(c.verts!.length);
+    expect(autoSkinAll(r.doc).count).toBe(0); // already skinned
+    expect(autoSkinAll(doc).count).toBe(0); // only boxes
+    expect(walk(meshed).flatMap((w) => w.part.cubes).some((c) => c.skin)).toBe(false); // the source is untouched
+  });
+});

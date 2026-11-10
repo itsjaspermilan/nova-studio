@@ -6,7 +6,7 @@
 import { eulerToQuaternion, type Quat } from "./model-ease";
 import { falloffWeight, type Falloff } from "./mesh-ops";
 import { flipSide } from "./side-names";
-import { cubeAt, partAt, setCube, type Cube, type ModelDoc, type Part, type Path, type Skin, type Vec3 } from "./model-doc";
+import { cubeAt, partAt, setCube, walk, type Cube, type ModelDoc, type Part, type Path, type Skin, type Vec3 } from "./model-doc";
 
 /// A 4x4 matrix, column-major (the way three.js and glTF keep them).
 export type Mat = number[];
@@ -373,4 +373,25 @@ export function gradientWeights(cube: Cube, a: string, b: string, axis: 0 | 1 | 
     skin.weights[i] = pairs.length ? pairs : [[ia, 1]];
   });
   return out;
+}
+
+/// Skins every mesh of the model that is not skinned yet and sits on a part with a parent or children (the model's part tree is the skeleton): the weights are made from where
+/// the parts are, as `autoWeights` does for one shape. Shapes that are not meshes, that are already skinned, or whose part has no neighbour to bend with are left alone.
+/// \`count\` is how many were skinned.
+export function autoSkinAll(doc: ModelDoc): { doc: ModelDoc; count: number } {
+  let next = doc;
+  let count = 0;
+  for (const { part, parts } of walk(doc)) {
+    part.cubes.forEach((c, ci) => {
+      if (c.shape !== "mesh" || c.skin) return;
+      const path: Path = { parts, cube: ci };
+      const skin = autoWeights(next, path);
+      if (!skin) return;
+      const current = cubeAt(next, path);
+      if (!current) return;
+      next = setCube(next, path, { ...current, skin });
+      count++;
+    });
+  }
+  return { doc: next, count };
 }
