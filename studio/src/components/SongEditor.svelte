@@ -3,7 +3,7 @@
   import { onMount, untrack } from "svelte";
   import {
     DRUMS, INSTRUMENT_PRESETS, hasSample, setSample, WAVES, isInstrument, addNote, addTrack, barSteps, barStarts, stepAtTime, changeNote, isBlack, newSong, noteAt, noteName, parseSong, removeNote, removeTrack, renderSong, serializeSong, setLength,
-    setTempo, songSeconds, stepSeconds, transpose, updateTrack, synthTrack, type Song, type Wave,
+    setTempo, songSeconds, stepSeconds, stepTime, transpose, updateTrack, synthTrack, type Song, type Wave,
   } from "../lib/song";
   import { decodeWav, encodeWav, fromBase64, toBase64, frames, type Sound } from "../lib/wav";
   import { studio } from "../lib/store.svelte";
@@ -102,7 +102,8 @@
     studio.sessions.set(filePath, { song });
     studio.saveHooks.set(filePath, async () => {
       const current = (studio.sessions.get(filePath) as { song: Song } | undefined)?.song ?? song;
-      const wav = encodeWav(renderSong(current));
+      const rendered = renderSong(current);
+      const wav = encodeWav(rendered, current.loop ? { start: stepTime(current, current.loop.from) * rendered.rate, end: stepTime(current, current.loop.to) * rendered.rate } : undefined);
       await studio.writeMusicOgg(oggPath, `data:audio/wav;base64,${toBase64(wav)}`);
     });
     return () => stopPlayback();

@@ -170,6 +170,9 @@ where
 pub struct StreamSource {
     bytes: Arc<[u8]>,
     pub rate: u32,
+    /// Where a looping play goes back to (start frame, end frame), from the file's `LOOPSTART` and `LOOPLENGTH` comments (frames): the music plays
+    /// from the beginning to the end frame, then loops between the two. None: the whole track loops.
+    pub loop_points: Option<(u64, u64)>,
 }
 
 fn open(
@@ -196,7 +199,24 @@ impl StreamSource {
                 "{rate} Hz is outside the supported 8000 to 192000 Hz"
             ));
         }
-        Ok(Self { bytes, rate })
+        let tag = |name: &str| -> Option<u64> {
+            reader
+                .comment_hdr
+                .comment_list
+                .iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case(name))
+                .and_then(|(_, v)| v.trim().parse().ok())
+        };
+        let loop_points = match (tag("LOOPSTART"), tag("LOOPLENGTH"), tag("LOOPEND")) {
+            (Some(start), Some(length), _) if length > 0 => Some((start, start + length)),
+            (Some(start), None, Some(end)) if end > start => Some((start, end)),
+            _ => None,
+        };
+        Ok(Self {
+            bytes,
+            rate,
+            loop_points,
+        })
     }
 
     /// Starts decoding from the beginning. A looping stream goes back to the start when it ends, without a gap.
@@ -208,14 +228,20 @@ impl StreamSource {
     /// decode a little before it; if that is not possible it falls back to decoding and dropping everything before.
     pub fn start_at(&self, looping: bool, start_frame: u64) -> StreamFeed {
         let bytes = self.bytes.clone();
+        let points = if looping { self.loop_points } else { None };
+        // a position counted across loops comes back inside the loop
+        let start_frame = match points {
+            Some((s, e)) if start_frame >= e => s + (start_frame - s) % (e - s),
+            _ => start_frame,
+        };
         spawn(self.rate, move |push, note_pass| {
             let mut skip = start_frame;
             let mut first_pass = true;
             loop {
                 let Ok(mut reader) = open(&bytes) else { return };
                 let channels = reader.ident_hdr.audio_channels as usize;
-                let mut measured = first_pass; // does this pass see the whole track, so its length can be reported?
-                if first_pass && start_frame > SEEK_GUARD_FRAMES {
+                let mut measured = first_pass && points.is_none(); // does this pass see the whole track, so its length can be reported?
+                if first_pass && start_frame > SEEK_GUARD_FRAMES && points.is_none() {
                     match seek_near(&mut reader, channels, start_frame) {
                         Some((frames, still_to_skip)) => {
                             skip = still_to_skip;
@@ -234,8 +260,12 @@ impl StreamSource {
                     }
                 }
                 let mut frames_this_pass = 0u64;
-                while let Ok(Some(packet)) = reader.read_dec_packet_itl() {
+                'pass: while let Ok(Some(packet)) = reader.read_dec_packet_itl() {
                     for frame in packet.chunks_exact(channels) {
+                        // a looping play with loop points goes round at the loop's end
+                        if points.is_some_and(|(_, e)| frames_this_pass >= e) {
+                            break 'pass;
+                        }
                         let f = to_stereo(frame);
                         frames_this_pass += 1;
                         if skip > 0 {
@@ -249,6 +279,10 @@ impl StreamSource {
                     note_pass(frames_this_pass);
                 }
                 first_pass = false;
+                // after the first pass the loop's start is where each pass picks up
+                if let Some((s, _)) = points {
+                    skip = s;
+                }
                 // A seek past the end of a non-looping track plays nothing; a looping one wraps.
                 if !looping || frames_this_pass == 0 {
                     return;

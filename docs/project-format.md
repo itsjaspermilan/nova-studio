@@ -1077,7 +1077,7 @@ decoded once when the project loads. **Ogg files in `music/` are streamed instea
 kept in memory (a minute of music is about a megabyte, not ten) and a background thread decodes a second or so
 ahead while `nova.music.play` runs, looping without a gap. Their header is checked at load, so a broken file still
 stops the project with an error naming it, but a streamed file cannot be played with `nova.sound.play`. WAV music,
-and Ogg in `sounds/`, is decoded at load as before, so ship long music as Ogg. The studio does this for you: songs save as `.ogg`, and a WAV in `music/` has a **Convert to Ogg** button. If the decoder ever falls behind
+and Ogg in `sounds/`, is decoded at load as before, so ship long music as Ogg. **Loop points:** an Ogg with the Vorbis comments `LOOPSTART` and `LOOPLENGTH` (frames; `LOOPEND` in place of the length also works) plays from the beginning to the loop's end and then loops between the two, so a song can have an intro that plays once; without them the whole file loops. A position given to `nova.music.seek` is brought back inside the loop. The studio writes them for a song that has a loop region set. The studio does this for you: songs save as `.ogg`, and a WAV in `music/` has a **Convert to Ogg** button. If the decoder ever falls behind
 (a very slow device) that moment is silence and playback carries on; the F3 overlay's audio line shows
 `underruns N` (frames of music that were silence for that reason; it should stay 0). `nova.music.seek` on a
 streamed track restarts its decoder at the new time: the spot is found through the file's page index, so it is

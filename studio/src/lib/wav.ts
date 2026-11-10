@@ -50,14 +50,16 @@ export function decodeWav(bytes: Uint8Array): Sound {
 }
 
 /// 16-bit PCM, interleaved. Values outside -1..1 are clipped.
-export function encodeWav(s: Sound): Uint8Array {
+/// 16-bit WAV bytes of a sound. With `loop` (start and end frames) a `smpl` chunk marks the loop, which the studio's Ogg encoder turns into the loop points the game reads.
+export function encodeWav(s: Sound, loop?: { start: number; end: number }): Uint8Array {
   const n = frames(s);
   const ch = s.channels.length;
-  const out = new Uint8Array(44 + n * ch * 2);
+  const extra = loop && loop.end > loop.start ? 68 : 0;
+  const out = new Uint8Array(44 + n * ch * 2 + extra);
   const v = new DataView(out.buffer);
   const put = (at: number, str: string) => [...str].forEach((c, i) => v.setUint8(at + i, c.charCodeAt(0)));
   put(0, "RIFF");
-  v.setUint32(4, 36 + n * ch * 2, true);
+  v.setUint32(4, 36 + n * ch * 2 + extra, true);
   put(8, "WAVE");
   put(12, "fmt ");
   v.setUint32(16, 16, true);
@@ -74,6 +76,16 @@ export function encodeWav(s: Sound): Uint8Array {
       const x = Math.max(-1, Math.min(1, s.channels[c]![i]!));
       v.setInt16(44 + (i * ch + c) * 2, Math.round(x < 0 ? x * 32768 : x * 32767), true);
     }
+  }
+  if (extra && loop) {
+    const at = 44 + n * ch * 2;
+    put(at, "smpl");
+    v.setUint32(at + 4, 60, true);
+    v.setUint32(at + 8 + 8, Math.round(1e9 / s.rate), true); // the sample period
+    v.setUint32(at + 8 + 12, 60, true); // the middle C
+    v.setUint32(at + 8 + 28, 1, true); // one loop
+    v.setUint32(at + 8 + 36 + 8, Math.max(0, Math.round(loop.start)), true);
+    v.setUint32(at + 8 + 36 + 12, Math.max(0, Math.round(loop.end)), true);
   }
   return out;
 }

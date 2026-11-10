@@ -68,14 +68,47 @@ fn read_wav(bytes: &[u8]) -> Result<Decoded, String> {
     })
 }
 
-/// Encodes WAV bytes (8, 16, 24 or 32-bit PCM or float; mono or stereo) as Ogg Vorbis at `quality` (-0.1 to 1).
+/// The loop of a WAV file's `smpl` chunk (start frame, end frame), if it has one: where the game should loop the music back to.
+pub fn wav_loop_points(wav: &[u8]) -> Option<(u32, u32)> {
+    if wav.len() < 12 || &wav[0..4] != b"RIFF" || &wav[8..12] != b"WAVE" {
+        return None;
+    }
+    let mut at = 12;
+    while at + 8 <= wav.len() {
+        let size = u32::from_le_bytes(wav[at + 4..at + 8].try_into().ok()?) as usize;
+        let body = at + 8;
+        if &wav[at..at + 4] == b"smpl" && size >= 36 + 24 && body + 36 + 24 <= wav.len() {
+            let loops = u32::from_le_bytes(wav[body + 28..body + 32].try_into().ok()?);
+            if loops >= 1 {
+                let l = body + 36;
+                let start = u32::from_le_bytes(wav[l + 8..l + 12].try_into().ok()?);
+                let end = u32::from_le_bytes(wav[l + 12..l + 16].try_into().ok()?);
+                return (end > start).then_some((start, end));
+            }
+        }
+        at = body + size + (size & 1);
+    }
+    None
+}
+
+/// Encodes WAV bytes (8, 16, 24 or 32-bit PCM or float; mono or stereo) as Ogg Vorbis at `quality` (-0.1 to 1). A loop in the WAV's `smpl` chunk is written as the
+/// Vorbis comments `LOOPSTART` and `LOOPLENGTH` (in frames), which the game reads to loop back to the loop's start instead of the beginning.
 pub fn wav_to_ogg(wav: &[u8], quality: f32) -> Result<Vec<u8>, String> {
     let audio = read_wav(wav)?;
     let mut out = Vec::new();
     let rate = NonZeroU32::new(audio.rate).ok_or("the sample rate is 0")?;
     let channels = NonZeroU8::new(audio.channels.len() as u8).ok_or("no channels")?;
-    let mut encoder = VorbisEncoderBuilder::new(rate, channels, &mut out)
-        .map_err(|e| format!("cannot start the Ogg encoder: {e}"))?
+    let mut builder = VorbisEncoderBuilder::new(rate, channels, &mut out)
+        .map_err(|e| format!("cannot start the Ogg encoder: {e}"))?;
+    if let Some((start, end)) = wav_loop_points(wav) {
+        builder
+            .comment_tag("LOOPSTART", start.to_string())
+            .map_err(|e| format!("cannot write the loop points: {e}"))?;
+        builder
+            .comment_tag("LOOPLENGTH", (end - start).to_string())
+            .map_err(|e| format!("cannot write the loop points: {e}"))?;
+    }
+    let mut encoder = builder
         .bitrate_management_strategy(VorbisBitrateManagementStrategy::QualityVbr {
             target_quality: quality.clamp(-0.1, 1.0),
         })
@@ -298,5 +331,56 @@ mod tests {
                 .unwrap_err()
                 .contains("no audio")
         );
+    }
+
+    /// Appends a `smpl` chunk with one loop (start and end frames) to WAV bytes.
+    fn with_loop(mut wav: Vec<u8>, start: u32, end: u32) -> Vec<u8> {
+        let mut chunk = Vec::new();
+        chunk.extend(b"smpl");
+        chunk.extend(60u32.to_le_bytes());
+        for v in [0u32, 0, 22_675, 60, 0, 0, 0, 1, 0] {
+            chunk.extend(v.to_le_bytes());
+        }
+        for v in [0u32, 0, start, end, 0, 0] {
+            chunk.extend(v.to_le_bytes());
+        }
+        wav.extend(chunk);
+        let riff = (wav.len() - 8) as u32;
+        wav[4..8].copy_from_slice(&riff.to_le_bytes());
+        wav
+    }
+
+    #[test]
+    fn a_wav_loop_is_read_and_written_as_vorbis_loop_comments() {
+        let plain = wav(1, 44_100, 0.5, 440.0, 16, false);
+        assert_eq!(wav_loop_points(&plain), None);
+        let looped = with_loop(plain, 11_025, 22_050);
+        assert_eq!(wav_loop_points(&looped), Some((11_025, 22_050)));
+        let ogg = wav_to_ogg(&looped, 0.3).unwrap();
+        let reader = lewton::inside_ogg::OggStreamReader::new(Cursor::new(&ogg)).unwrap();
+        let tags: std::collections::HashMap<String, String> =
+            reader.comment_hdr.comment_list.iter().cloned().collect();
+        assert_eq!(tags.get("LOOPSTART").map(String::as_str), Some("11025"));
+        assert_eq!(tags.get("LOOPLENGTH").map(String::as_str), Some("11025"));
+        // without a loop there are no such comments
+        let ogg = wav_to_ogg(&wav(1, 44_100, 0.2, 440.0, 16, false), 0.3).unwrap();
+        let reader = lewton::inside_ogg::OggStreamReader::new(Cursor::new(&ogg)).unwrap();
+        assert!(
+            reader
+                .comment_hdr
+                .comment_list
+                .iter()
+                .all(|(k, _)| k != "LOOPSTART")
+        );
+    }
+
+    /// Writes the fixture the game's tests use: a 3 second mono 8 kHz Ogg with a loop from frame 8000 to 16000 (`NOVA_WRITE_LOOP_FIXTURE=path`).
+    #[test]
+    fn writes_the_loop_fixture_when_asked() {
+        let Ok(path) = std::env::var("NOVA_WRITE_LOOP_FIXTURE") else {
+            return;
+        };
+        let looped = with_loop(wav(1, 8_000, 3.0, 440.0, 16, false), 8_000, 16_000);
+        std::fs::write(path, wav_to_ogg(&looped, 0.0).unwrap()).unwrap();
     }
 }
