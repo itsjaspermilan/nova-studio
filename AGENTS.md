@@ -55,6 +55,8 @@ scripts/env.sh cargo build                         # desktop build
 scripts/env.sh cargo run --release -p nova-runtime --bin nova -- run examples/pine-ridge-rally --headless --frames 120 --capture build/demo.png
 scripts/env.sh cargo run --release -p nova-runtime --bin nova -- --headless --frames 300 --capture build/spike.png
 scripts/build-apk.sh [--project folder]           # Gradle-free debug APK -> build/android/ (wraps `nova export android`; docs/play-on-device.md)
+scripts/build-apk.sh --fast [--project folder]  # same, engine built without link-time optimisation: an engine edit takes seconds, not a minute (measure on the device without --fast)
+scripts/tidy.sh [--apply] [--release]            # list or clear build caches (target/debug, incremental, old APKs); old builds are also cleared before each APK and studio-app build
 scripts/env.sh cargo test
 scripts/env.sh cargo clippy --all-targets
 scripts/env.sh cargo fmt --check
