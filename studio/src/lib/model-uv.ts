@@ -459,10 +459,10 @@ export function bakeSurface(doc: ModelDoc): Raster {
 }
 
 /// A channel of a surface picture as a grey picture to paint on, and a grey picture written back into a channel (green: roughness, blue: metal).
-export type SurfaceChannel = "roughness" | "metal";
+export type SurfaceChannel = "roughness" | "metal" | "bump";
 export function channelToGrey(surface: Raster, channel: SurfaceChannel): Raster {
   const out = newRaster(surface.w, surface.h);
-  const k = channel === "roughness" ? 1 : 2;
+  const k = channel === "roughness" ? 1 : channel === "metal" ? 2 : 0;
   for (let i = 0; i < out.data.length; i += 4) {
     const v = surface.data[i + k]!;
     out.data[i] = out.data[i + 1] = out.data[i + 2] = v;
@@ -472,7 +472,7 @@ export function channelToGrey(surface: Raster, channel: SurfaceChannel): Raster 
 }
 export function greyToChannel(surface: Raster, grey: Raster, channel: SurfaceChannel): Raster {
   const out: Raster = { w: surface.w, h: surface.h, data: new Uint8ClampedArray(surface.data) };
-  const k = channel === "roughness" ? 1 : 2;
+  const k = channel === "roughness" ? 1 : channel === "metal" ? 2 : 0;
   for (let i = 0; i < out.data.length && i < grey.data.length; i += 4) out.data[i + k] = grey.data[i]!;
   return out;
 }

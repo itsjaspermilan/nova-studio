@@ -8,6 +8,7 @@ import { FACE_CORNERS, hasVolume, meshOf as solidMesh, solidOf, type Mesh } from
 import { evaluate } from "./modifiers";
 import { boneKey, invertAffine, transformDirection, transformPoint, worldMatrices } from "./model-skin";
 import { bakeAll, bakeSurface, uvsOf } from "./model-uv";
+import { heightToNormal } from "./texture-bump";
 import { newRaster, type Raster } from "./pixels";
 import { encodePng } from "./png-encode";
 
@@ -132,6 +133,17 @@ export function exportGlb(doc: ModelDoc, texture?: Raster, surface?: Raster): Ui
   const textured = !!doc.texture && walk(doc).some(({ part }) => part.cubes.some((c) => c.texture && hasVolume(c)));
   const image = textured ? textureForExport(doc, texture) : undefined;
   const surfaceImage = image && doc.texture?.surface ? textureForExport(doc, surface ?? bakeSurface(doc)) : undefined;
+  // bumps painted in the surface picture's red channel: a normal map, flat in the white row that shapes with no texels read
+  let normalImage: Raster | undefined;
+  if (surfaceImage && doc.texture?.bump) {
+    const [w, h] = [surfaceImage.w, surfaceImage.h - 1];
+    const grey = newRaster(w, h);
+    grey.data.set(surfaceImage.data.subarray(0, w * h * 4));
+    const map = heightToNormal(grey, doc.texture.bump);
+    normalImage = newRaster(w, h + 1);
+    normalImage.data.set(map.data);
+    for (let i = w * h * 4; i < normalImage.data.length; i += 4) { normalImage.data[i] = 128; normalImage.data[i + 1] = 128; normalImage.data[i + 2] = 255; normalImage.data[i + 3] = 255; }
+  }
   const tex: Texel | undefined = image ? { w: image.w, rows: image.h, whiteU: 0.5 / image.w, whiteV: (image.h - 0.5) / image.h } : undefined;
 
   // Material 0 is the plain one; a glowing shape's material adds an emissive factor (see `glowOf`).
@@ -315,15 +327,15 @@ export function exportGlb(doc: ModelDoc, texture?: Raster, surface?: Raster): Ui
     meshes,
     ...(skins.length ? { skins } : {}),
     materials: [
-      { name: tex ? "texture" : "vertex colours", pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], ...(tex ? { baseColorTexture: { index: 0 } } : {}), ...(surfaceImage ? { metallicRoughnessTexture: { index: 1 } } : {}), metallicFactor: 0, roughnessFactor: 1 } },
-      ...mats.map((m) => ({ name: [m.glow ? `glow ${m.glow}` : "", m.metal ? `metal ${m.metal}` : "", m.rough < 1 ? `rough ${m.rough}` : ""].filter(Boolean).join(" "), pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], ...(tex ? { baseColorTexture: { index: 0 } } : {}), ...(surfaceImage ? { metallicRoughnessTexture: { index: 1 } } : {}), metallicFactor: m.metal, roughnessFactor: m.rough }, ...(m.glow ? { emissiveFactor: [m.glow, m.glow, m.glow] } : {}) })),
+      { name: tex ? "texture" : "vertex colours", pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], ...(tex ? { baseColorTexture: { index: 0 } } : {}), ...(surfaceImage ? { metallicRoughnessTexture: { index: 1 } } : {}), metallicFactor: 0, roughnessFactor: 1 }, ...(normalImage ? { normalTexture: { index: 2 } } : {}) },
+      ...mats.map((m) => ({ name: [m.glow ? `glow ${m.glow}` : "", m.metal ? `metal ${m.metal}` : "", m.rough < 1 ? `rough ${m.rough}` : ""].filter(Boolean).join(" "), pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], ...(tex ? { baseColorTexture: { index: 0 } } : {}), ...(surfaceImage ? { metallicRoughnessTexture: { index: 1 } } : {}), metallicFactor: m.metal, roughnessFactor: m.rough }, ...(normalImage ? { normalTexture: { index: 2 } } : {}), ...(m.glow ? { emissiveFactor: [m.glow, m.glow, m.glow] } : {}) })),
     ],
     ...(tex && image
       ? {
           // nearest filtering keeps painted texels crisp, linear (`texture.smooth`) blends them; the picture is clamped, not tiled
           samplers: [doc.texture?.smooth ? { magFilter: 9729, minFilter: 9729, wrapS: 33071, wrapT: 33071 } : { magFilter: 9728, minFilter: 9728, wrapS: 33071, wrapT: 33071 }],
-          textures: [{ sampler: 0, source: 0 }, ...(surfaceImage ? [{ sampler: 0, source: 1 }] : [])],
-          images: [{ bufferView: addView(encodePng(image)), mimeType: "image/png" }, ...(surfaceImage ? [{ bufferView: addView(encodePng(surfaceImage)), mimeType: "image/png" }] : [])],
+          textures: [{ sampler: 0, source: 0 }, ...(surfaceImage ? [{ sampler: 0, source: 1 }] : []), ...(normalImage ? [{ sampler: 0, source: 2 }] : [])],
+          images: [{ bufferView: addView(encodePng(image)), mimeType: "image/png" }, ...(surfaceImage ? [{ bufferView: addView(encodePng(surfaceImage)), mimeType: "image/png" }] : []), ...(normalImage ? [{ bufferView: addView(encodePng(normalImage)), mimeType: "image/png" }] : [])],
         }
       : {}),
     ...(animations.length ? { animations } : {}),

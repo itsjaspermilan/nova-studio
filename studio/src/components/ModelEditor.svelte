@@ -316,7 +316,7 @@
   // The roughness and metal picture (green and blue): painted one channel at a time as a grey picture, which stands in for `picture` while a channel is chosen
   // (the colour picture waits in `colourStash`).
   let surface = $state.raw<Raster | null>(null);
-  let channel = $state<"colour" | "roughness" | "metal">("colour");
+  let channel = $state<"colour" | "roughness" | "metal" | "bump">("colour");
   let colourStash: Raster | null = null;
   const surfacePath = untrack(() => filePath).replace(/\.model\.json$/i, ".texture.surface.png");
   const remember = () => studio.sessions.set(filePath, { doc, picture, others: otherLayers, active: activeLayer, surface, channel, stash: colourStash });
@@ -325,7 +325,7 @@
   function finalsOf(k: Kept | undefined): { colour: Raster | null; surface: Raster | null } {
     const ch = k?.channel ?? "colour";
     if (ch === "colour") return { colour: k?.picture ?? null, surface: k?.surface ?? null };
-    return { colour: k?.stash ?? null, surface: k?.surface && k.picture ? greyToChannel(k.surface, k.picture, ch as "roughness" | "metal") : (k?.surface ?? null) };
+    return { colour: k?.stash ?? null, surface: k?.surface && k.picture ? greyToChannel(k.surface, k.picture, ch as "roughness" | "metal" | "bump") : (k?.surface ?? null) };
   }
   function enableSurface() {
     if (!doc.texture || !picture) return;
@@ -339,7 +339,8 @@
     surface = null;
     commit({ ...doc, texture: { ...doc.texture, surface: undefined } });
   }
-  function setChannel(next: "colour" | "roughness" | "metal") {
+  function setChannel(next: "colour" | "roughness" | "metal" | "bump") {
+    if (next === "bump" && doc.texture && !doc.texture.bump) commit({ ...doc, texture: { ...doc.texture, bump: 1 } });
     if (next === channel || !picture || !surface) return;
     if (channel === "colour") colourStash = picture;
     else surface = greyToChannel(surface, picture, channel);
@@ -3273,13 +3274,16 @@
               <div class="row wrap">
                 <strong class="small">Paint</strong>
                 <span class="seg" role="group" aria-label="Channel">
-                  {#each [["colour", "Colour", "The colours"], ["roughness", "Roughness", "How rough: white is rough, black is shiny"], ["metal", "Metal", "How metal: white is metal, black is not"]] as [id, t, tip] (id)}
+                  {#each [["colour", "Colour", "The colours"], ["roughness", "Roughness", "How rough: white is rough, black is shiny"], ["metal", "Metal", "How metal: white is metal, black is not"], ["bump", "Bumps", "Bumps: white is high, black is low; the game gets a normal map made from them"]] as [id, t, tip] (id)}
                     <button class:on={channel === id} disabled={layered && id !== "colour"} title={tip} onclick={() => setChannel(id as typeof channel)}>{t}</button>
                   {/each}
                 </span>
                 <button class="ghost danger" onclick={disableSurface} title="Go back to one metal and roughness number per shape">✕</button>
               </div>
               {#if channel !== "colour"}<p class="dim small">Painting {channel}: grey picture, white = more. Colours are kept as they were.</p>{/if}
+              {#if doc.texture?.bump || channel === "bump"}
+                <label class="inline" title="How deep the painted bumps are in the game's lighting (0 turns them off)">Bump depth <input type="number" min="0" max="4" step="0.25" value={doc.texture?.bump ?? 1} class="narrow" aria-label="Bump depth" onchange={(e) => { const v = Math.max(0, Math.min(4, Number(e.currentTarget.value) || 0)); commit({ ...doc, texture: { ...doc.texture!, bump: v > 0 ? v : undefined } }); }} /></label>
+              {/if}
             {:else}
               <button class="ghost" onclick={enableSurface} disabled={layered} title="Paint where the surface is metal and how rough it is (a second picture, read by the game as glTF's metallic-roughness picture). Starts from each shape's own numbers.">Paint roughness and metal</button>
             {/if}

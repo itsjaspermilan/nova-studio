@@ -49,3 +49,21 @@ describe("the surface (roughness and metal) picture", () => {
     expect(again.ok && again.doc.texture!.surface).toBe(true);
   });
 });
+
+describe("bumps in the surface picture", () => {
+  it("become a normal map in the glb, flat for shapes with no texels, and only when the model asks", () => {
+    const { doc, picture } = painted();
+    const withBump = jsonOf(exportGlb({ ...doc, texture: { ...doc.texture!, surface: true, bump: 2 } }, picture));
+    expect(withBump.images.length).toBe(3);
+    expect(withBump.textures.length).toBe(3);
+    expect(JSON.stringify(withBump.materials)).toContain('"normalTexture":{"index":2}');
+    const without = jsonOf(exportGlb({ ...doc, texture: { ...doc.texture!, surface: true } }, picture));
+    expect(without.images.length).toBe(2);
+    expect(JSON.stringify(without.materials)).not.toContain("normalTexture");
+    // the field round-trips and needs the surface picture
+    const again = parseModel(serializeModel({ ...doc, texture: { ...doc.texture!, surface: true, bump: 2 } }));
+    expect(again.ok && again.doc.texture!.bump).toBe(2);
+    const lone = parseModel(serializeModel({ ...doc, texture: { ...doc.texture!, bump: 2 } }));
+    expect(lone.ok && lone.doc.texture!.bump).toBeUndefined();
+  });
+});
