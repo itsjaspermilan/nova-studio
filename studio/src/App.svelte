@@ -47,7 +47,9 @@
   import { markChrome } from "./lib/chrome";
   import { resizable } from "./lib/resize";
   import { layout, sizeKey } from "./lib/layout.svelte";
+  import { droppedOutside } from "./lib/tab-drag";
   let lastLayout: string | null = null;
+  let tabbar: HTMLDivElement | undefined = $state();
   import { isDirty, studio } from "./lib/store.svelte";
 
   // (the window's own buttons sit in the studio's top bar: see lib/chrome.ts)
@@ -194,9 +196,11 @@
     {#if treeOpen}<FileTree />{/if}
 
     <main class="center">
-      <div class="tabbar" role="tablist">
+      <div class="tabbar" role="tablist" bind:this={tabbar}>
         {#each studio.workspaceTabs as tab (tab.path)}
-          <div class="tab" class:on={studio.active === tab.path} role="presentation">
+          <div class="tab" class:on={studio.active === tab.path} role="presentation" draggable="true" title="Drag out of the tab strip to open it in its own window"
+            ondragstart={(e) => { e.dataTransfer?.setData("text/plain", tab.path); }}
+            ondragend={(e) => { if (tabbar && !studio.docWindow && droppedOutside(tabbar.getBoundingClientRect(), e.clientX, e.clientY)) { if (studio.api?.kind === "tauri") void studio.tearOff(tab.path); else studio.say("info", "Opening a document in its own window needs the desktop app."); } }}>
             <button role="tab" aria-selected={studio.active === tab.path} onclick={() => (studio.active = tab.path)} title={tab.path}>
               {base(tab.path)}{#if isDirty(tab)}<span class="dot" aria-label="unsaved">●</span>{/if}
             </button>
