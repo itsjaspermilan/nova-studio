@@ -1077,6 +1077,9 @@ nova.music.stop(0.5)                 -- optional fade-out
 nova.music.volume(0.5)               -- master volume for music (0 to 2)
 nova.sound.room { size = 0.5, damping = 0.4, mix = 1 }   -- one shared reverb room; nova.sound.room() takes it away
 nova.sound.play("hit", { reverb = 0.3 })                  -- how much of a sound goes to the room (0 to 1; nova.sound.set changes it)
+nova.music.layers({ "song_lead", "song_bass", "song_drums" }, { levels = { 1, 0, 0 }, bpm = 120, beats = 4, fade = 1 })
+                                     -- adaptive music: stems of one piece (the studio's Stems export) played in step, each at a level 0 to 1
+nova.music.layer("song_drums", 1, { fade = 2, at = "bar" })   -- fade one stem in; at = "bar" waits for the next bar line (needs bpm or bar)
 nova.music.position()                -- seconds into the track (nil when no music plays; wraps on loops)
 nova.music.seek(30)                  -- jump to 30 s; true, or false when nothing is playing
 ```

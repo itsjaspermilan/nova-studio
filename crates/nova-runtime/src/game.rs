@@ -106,6 +106,8 @@ struct Shared {
     streams: HashMap<String, StreamSource>,
     /// The music that is playing now, so `nova.music.seek` knows how to restart it.
     current_music: Option<(Option<StreamSource>, bool)>,
+    /// The stems of adaptive music that plays now: their names and voice ids (see `nova.music.layers`).
+    music_layers: Vec<(String, u64)>,
     /// Seconds into that track as last reported by the audio thread.
     music_position: Option<f64>,
     audio: Vec<mixer::Command>,
@@ -2891,6 +2893,121 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             Ok(())
         })?,
     )?;
+    // layers { "theme_drums", "theme_bass" } { levels = { 1, 0 }, bpm = 120, beats = 4, volume = 1 }: stems of one piece, played in step
+    let s = shared.clone();
+    music.set(
+        "layers",
+        lua.create_function(move |_, (names, opts): (Table, Option<Table>)| {
+            let mut sh = s.borrow_mut();
+            let count = names.raw_len();
+            if count == 0 || count > 8 {
+                return Err(lua_err(
+                    "nova.music.layers({ names }) takes from 1 to 8 stems (the names of music files)",
+                ));
+            }
+            let levels: Option<Table> = match &opts {
+                Some(t) => t.get("levels")?,
+                None => None,
+            };
+            let volume = number_option(&opts, "volume")?.unwrap_or(1.0).clamp(0.0, 4.0) as f32;
+            let fade = number_option(&opts, "fade")?.unwrap_or(0.0).clamp(0.0, 60.0) as f32;
+            // a bar is `bar` seconds, or `beats` (4) beats at `bpm`
+            let bar = match (number_option(&opts, "bar")?, number_option(&opts, "bpm")?) {
+                (Some(b), _) if b.is_finite() && b > 0.0 => b,
+                (Some(b), _) => return Err(lua_err(format!("bar must be a length in seconds above 0, not {b}"))),
+                (None, Some(bpm)) if bpm.is_finite() && (20.0..=400.0).contains(&bpm) => {
+                    number_option(&opts, "beats")?.unwrap_or(4.0).clamp(1.0, 32.0) * 60.0 / bpm
+                }
+                (None, Some(bpm)) => return Err(lua_err(format!("bpm must be from 20 to 400, not {bpm}"))),
+                (None, None) => 0.0,
+            };
+            let mut plays = Vec::new();
+            let mut ids = Vec::new();
+            let mut length: Option<f64> = None;
+            for i in 1..=count {
+                let name: String = names.get(i).map_err(|_| lua_err("nova.music.layers: every stem is a name (text)"))?;
+                let streamed = find_stream(&sh.streams, &name).cloned();
+                let sample = match &streamed {
+                    Some(src) => Arc::new(Sample { rate: src.rate, frames: Vec::new() }),
+                    None => find_sound(&sh.sounds, &name)
+                        .ok_or_else(|| lua_err(format!("unknown music '{name}' (looked for '{name}' and '{name}.wav' or '.ogg' in 'music/' and 'sounds/')")))?
+                        .clone(),
+                };
+                // (a streamed stem's length is only known once it has been decoded once, so only loaded ones are compared)
+                let seconds = match &streamed {
+                    Some(_) => None,
+                    None => Some(sample.seconds() as f64),
+                };
+                if let (Some(a), Some(b)) = (length, seconds)
+                    && (a - b).abs() > 0.02 {
+                        return Err(lua_err(format!(
+                            "the stems are not the same length ('{name}' is {b:.2} s, the first is {a:.2} s): export them from one song together so they stay in step"
+                        )));
+                    }
+                length = length.or(seconds);
+                let level = match &levels {
+                    Some(t) => t.get::<Option<f64>>(i)?.unwrap_or(1.0),
+                    None => 1.0,
+                };
+                if !level.is_finite() || !(0.0..=1.0).contains(&level) {
+                    return Err(lua_err(format!("a layer level is from 0 to 1, not {level}")));
+                }
+                let id = sh.next_sound;
+                sh.next_sound += 1;
+                ids.push((name, id));
+                plays.push((
+                    Box::new(mixer::Play {
+                        id,
+                        stream: streamed.map(|src| src.start(true)),
+                        sample,
+                        volume,
+                        pan: 0.0,
+                        pitch: 1.0,
+                        looping: true,
+                        music: true,
+                        fade_in: fade,
+                        limit: 0,
+                    }),
+                    level as f32,
+                ));
+            }
+            sh.current_music = None; // layered music cannot be seeked (the stems would fall out of step)
+            sh.music_position = None;
+            sh.music_layers = ids;
+            sh.audio.push(mixer::Command::PlayLayers { layers: plays, bar_seconds: bar });
+            Ok(())
+        })?,
+    )?;
+    // layer("theme_drums", 1, { fade = 1, at = "bar" }): fade one stem to a level, now or at the next bar line
+    let s = shared.clone();
+    music.set(
+        "layer",
+        lua.create_function(move |_, (name, level, opts): (String, f64, Option<Table>)| {
+            let mut sh = s.borrow_mut();
+            if !level.is_finite() || !(0.0..=1.0).contains(&level) {
+                return Err(lua_err(format!("a layer level is from 0 to 1, not {level}")));
+            }
+            let Some(&(_, id)) = sh.music_layers.iter().find(|(n, _)| *n == name || name == format!("music/{n}.ogg")) else {
+                let known: Vec<&str> = sh.music_layers.iter().map(|(n, _)| n.as_str()).collect();
+                return Err(lua_err(if known.is_empty() {
+                    format!("'{name}' is not a layer: start layered music first with nova.music.layers")
+                } else {
+                    format!("'{name}' is not a layer of the music that plays (its layers: {})", known.join(", "))
+                }));
+            };
+            let fade = number_option(&opts, "fade")?.unwrap_or(0.0).clamp(0.0, 60.0) as f32;
+            let at_bar = match &opts {
+                Some(t) => match t.get::<Option<String>>("at")?.as_deref() {
+                    None | Some("now") => false,
+                    Some("bar") => true,
+                    Some(other) => return Err(lua_err(format!("at is \"now\" or \"bar\", not \"{other}\""))),
+                },
+                None => false,
+            };
+            sh.audio.push(mixer::Command::LayerLevel { id, level: level as f32, fade, at_bar });
+            Ok(())
+        })?,
+    )?;
     let s = shared.clone();
     music.set(
         "position",
@@ -2919,6 +3036,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
         lua.create_function(move |_, fade: Option<f64>| {
             let mut sh = s.borrow_mut();
             sh.current_music = None;
+            sh.music_layers.clear();
             sh.music_position = None;
             sh.audio.push(mixer::Command::StopMusic {
                 fade: fade.unwrap_or(0.0).clamp(0.0, 60.0) as f32,
@@ -3730,6 +3848,7 @@ impl Game {
             sounds,
             streams,
             current_music: None,
+            music_layers: Vec::new(),
             music_position: None,
             audio: Vec::new(),
             rumble: Vec::new(),
@@ -3970,7 +4089,7 @@ impl Game {
     /// How far into the music track the audio thread is, for `nova.music.position()` (None when no music plays).
     pub fn set_music_position(&self, position: Option<f64>) {
         let mut sh = self.shared.borrow_mut();
-        if sh.current_music.is_some() {
+        if sh.current_music.is_some() || !sh.music_layers.is_empty() {
             sh.music_position = position;
         }
     }

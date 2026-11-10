@@ -756,6 +756,20 @@
   "group": "Sound"
  },
  {
+  "name": "nova.music.layers",
+  "kind": "function",
+  "signature": "nova.music.layers({ names }, { levels, bpm, beats, bar, volume, fade })",
+  "doc": "Adaptive music: play the stems of one piece (the files the studio's Stems export writes) together and in step, each at its own level from 0 to 1 (levels = {1, 0, 0}). Give bpm and beats (or bar, in seconds) so level changes can wait for a bar line. Replaces any music that plays; it cannot be seeked. Silent stems keep playing so they stay in step.",
+  "group": "Sound"
+ },
+ {
+  "name": "nova.music.layer",
+  "kind": "function",
+  "signature": "nova.music.layer(name, level, { fade, at })",
+  "doc": "Fade one stem of the layered music to a level from 0 to 1 over fade seconds. at = \"bar\" waits for the music's next bar line (needs bpm or bar in nova.music.layers); the default is now.",
+  "group": "Sound"
+ },
+ {
   "name": "nova.music.seek",
   "kind": "function",
   "signature": "nova.music.seek(seconds) -> true | false",

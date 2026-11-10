@@ -80,6 +80,20 @@ pub enum Command {
         seconds: f64,
         feed: Option<StreamFeed>,
     },
+    /// Adaptive music: start several tracks (stems of one piece) together, in step, each at its own level (0 to 1).
+    /// They replace any music that plays. `bar_seconds` is the length of a bar, for level changes that wait for a bar line
+    /// (0 when the piece has no bars).
+    PlayLayers {
+        layers: Vec<(Box<Play>, f32)>,
+        bar_seconds: f64,
+    },
+    /// Fade a layer to a level (0 to 1) over `fade` seconds, now or (`at_bar`) when the music next reaches a bar line.
+    LayerLevel {
+        id: u64,
+        level: f32,
+        fade: f32,
+        at_bar: bool,
+    },
 }
 
 /// The reverb room: how long it rings (0 to 1), how dull its tail is (0 to 1) and how loud it is (0 to 2).
@@ -205,6 +219,8 @@ struct Voice {
     stopping: bool,
     /// How much of this voice goes to the reverb (0 to 1).
     send: f32,
+    /// One stem of adaptive music: it is kept playing (even silent) so the stems stay in step.
+    layer: bool,
 }
 
 pub struct Mixer {
@@ -216,6 +232,9 @@ pub struct Mixer {
     device_rate: u32,
     sfx_volume: f32,
     music_volume: f32,
+    /// The bar length of the layered music that plays (0: none) and the level changes waiting for its next bar line: (voice id, level, fade seconds).
+    bar_seconds: f64,
+    pending: Vec<(u64, f32, f32)>,
     /// Output frames of streamed music that were silence because the decoder was behind.
     underruns: u64,
 }
@@ -416,6 +435,8 @@ impl Mixer {
             device_rate: device_rate.max(1),
             sfx_volume: 1.0,
             music_volume: 1.0,
+            bar_seconds: 0.0,
+            pending: Vec::with_capacity(MAX_VOICES),
             underruns: 0,
         }
     }
@@ -454,10 +475,87 @@ impl Mixer {
         self.voices.iter().map(|v| v.id).collect()
     }
 
+    /// Starts a voice from a `Play` (the old music is already dealt with). `level` is where its fade stands, 1 for ordinary sounds.
+    #[allow(clippy::boxed_local)]
+    fn push_voice(&mut self, mut p: Box<Play>, layer: bool, level: f32) {
+        let (gain_l, gain_r) = pan_gains(p.volume.max(0.0), p.pan);
+        let fading_in = p.fade_in > 0.0;
+        let source_rate = p.stream.as_ref().map_or(p.sample.rate, StreamFeed::rate);
+        let stream = p.stream.take().map(|feed| StreamState {
+            feed,
+            cur: None,
+            next: None,
+            frac: 0.0,
+            last: false,
+            consumed: 0.0,
+            started_at: 0.0,
+        });
+        self.voices.push(Voice {
+            id: p.id,
+            step: source_rate as f64 / self.device_rate as f64 * p.pitch.clamp(0.05, 16.0) as f64,
+            sample: p.sample,
+            stream,
+            pos: 0.0,
+            gain_l,
+            gain_r,
+            target: (
+                gain_l,
+                gain_r,
+                source_rate as f64 / self.device_rate as f64 * p.pitch.clamp(0.05, 16.0) as f64,
+            ),
+            volume: p.volume.max(0.0),
+            pan: p.pan,
+            pitch: p.pitch.clamp(0.05, 16.0),
+            source_rate,
+            looping: p.looping,
+            music: p.music,
+            fade: if fading_in { 0.0 } else { level },
+            fade_step: if fading_in {
+                1.0 / (p.fade_in * self.device_rate as f32)
+            } else {
+                0.0
+            },
+            fade_target: level,
+            stopping: false,
+            send: 0.0,
+            layer,
+        });
+    }
+
+    /// Fades one layer to a level (0 to 1) over `fade` seconds.
+    fn set_layer_level(&mut self, id: u64, level: f32, fade: f32) {
+        let level = level.clamp(0.0, 1.0);
+        let rate = self.device_rate as f32;
+        for v in self.voices.iter_mut().filter(|v| v.id == id && v.layer) {
+            v.fade_target = level;
+            if fade <= 0.0 {
+                v.fade = level;
+            } else {
+                v.fade_step = ((level - v.fade).abs() / (fade * rate)).max(1e-7);
+            }
+        }
+    }
+
+    /// How many frames from now the layered music reaches its next bar line, if that is inside this block of `frames`.
+    fn frames_to_bar(&self, frames: usize) -> Option<usize> {
+        let bar = self.bar_seconds;
+        if bar <= 0.0 {
+            return None;
+        }
+        let position = self.music_position()?;
+        let into = position % bar;
+        let wait = if into < 1e-6 || bar - into < 1e-6 {
+            0.0
+        } else {
+            bar - into
+        };
+        let k = (wait * self.device_rate as f64).round() as usize;
+        (k < frames).then_some(k)
+    }
+
     pub fn apply(&mut self, command: Command) {
         match command {
             Command::Play(p) => {
-                let mut p = p;
                 if p.stream.is_none() && p.sample.frames.is_empty() {
                     return;
                 }
@@ -490,49 +588,38 @@ impl Mixer {
                         self.voices.remove(i);
                     }
                 }
-                let (gain_l, gain_r) = pan_gains(p.volume.max(0.0), p.pan);
-                let fading_in = p.fade_in > 0.0;
-                let source_rate = p.stream.as_ref().map_or(p.sample.rate, StreamFeed::rate);
-                let stream = p.stream.take().map(|feed| StreamState {
-                    feed,
-                    cur: None,
-                    next: None,
-                    frac: 0.0,
-                    last: false,
-                    consumed: 0.0,
-                    started_at: 0.0,
-                });
-                self.voices.push(Voice {
-                    id: p.id,
-                    step: source_rate as f64 / self.device_rate as f64
-                        * p.pitch.clamp(0.05, 16.0) as f64,
-                    sample: p.sample,
-                    stream,
-                    pos: 0.0,
-                    gain_l,
-                    gain_r,
-                    target: (
-                        gain_l,
-                        gain_r,
-                        source_rate as f64 / self.device_rate as f64
-                            * p.pitch.clamp(0.05, 16.0) as f64,
-                    ),
-                    volume: p.volume.max(0.0),
-                    pan: p.pan,
-                    pitch: p.pitch.clamp(0.05, 16.0),
-                    source_rate,
-                    looping: p.looping,
-                    music: p.music,
-                    fade: if fading_in { 0.0 } else { 1.0 },
-                    fade_step: if fading_in {
-                        1.0 / (p.fade_in * self.device_rate as f32)
-                    } else {
-                        0.0
-                    },
-                    fade_target: 1.0,
-                    stopping: false,
-                    send: 0.0,
-                });
+                self.push_voice(p, false, 1.0);
+            }
+            Command::PlayLayers {
+                layers,
+                bar_seconds,
+            } => {
+                for v in self.voices.iter_mut().filter(|v| v.music) {
+                    v.stopping = true;
+                    v.fade_target = 0.0;
+                    v.fade_step = 1.0 / (0.3 * self.device_rate as f32);
+                }
+                self.pending.clear();
+                self.bar_seconds = bar_seconds.max(0.0);
+                for (p, level) in layers {
+                    if p.stream.is_none() && p.sample.frames.is_empty() {
+                        continue;
+                    }
+                    self.push_voice(p, true, level.clamp(0.0, 1.0));
+                }
+            }
+            Command::LayerLevel {
+                id,
+                level,
+                fade,
+                at_bar,
+            } => {
+                if at_bar && self.bar_seconds > 0.0 {
+                    self.pending.retain(|(i, _, _)| *i != id);
+                    self.pending.push((id, level, fade));
+                } else {
+                    self.set_layer_level(id, level, fade);
+                }
             }
             Command::Send { id, send } => {
                 for v in self.voices.iter_mut().filter(|v| v.id == id) {
@@ -575,6 +662,7 @@ impl Mixer {
             }
             Command::StopAll => self.voices.clear(),
             Command::StopMusic { fade } => {
+                self.pending.clear();
                 if fade <= 0.0 {
                     self.voices.retain(|v| !v.music);
                 } else {
@@ -616,8 +704,26 @@ impl Mixer {
         }
     }
 
-    /// Adds `out.len() / 2` stereo frames of sound to `out` (interleaved, overwritten).
+    /// Adds `out.len() / 2` stereo frames of sound to `out` (interleaved, overwritten). Level changes of layered music that wait
+    /// for a bar line are applied on the very frame the music reaches it.
     pub fn render(&mut self, out: &mut [f32]) {
+        if !self.pending.is_empty()
+            && let Some(k) = self.frames_to_bar(out.len() / 2)
+        {
+            let (before, after) = out.split_at_mut(k * 2);
+            if !before.is_empty() {
+                self.render_block(before);
+            }
+            for (id, level, fade) in std::mem::take(&mut self.pending) {
+                self.set_layer_level(id, level, fade);
+            }
+            self.render_block(after);
+            return;
+        }
+        self.render_block(out);
+    }
+
+    fn render_block(&mut self, out: &mut [f32]) {
         out.fill(0.0);
         let frames = out.len() / 2;
         let room = self.reverb.is_some();
@@ -911,6 +1017,140 @@ mod tests {
         assert!(
             (power - hard).abs() < 1e-3,
             "constant power across the pan: {power} vs {hard}"
+        );
+    }
+
+    /// A centred voice plays at cos(45 degrees) of its level in each ear.
+    const C: f32 = std::f32::consts::FRAC_1_SQRT_2;
+
+    fn layered(m: &mut Mixer, levels: [f32; 3], bar_seconds: f64) {
+        // three stems of one piece, each a different constant so that the mix says which are heard (rate 1000, so a frame is a millisecond)
+        let layers = [(1u64, 3277i16), (2, 6554), (3, 13107)]
+            .iter()
+            .zip(levels)
+            .map(|(&(id, v), level)| {
+                (
+                    Box::new(Play {
+                        music: true,
+                        looping: true,
+                        ..play(id, &constant(1000, v, 4000))
+                    }),
+                    level,
+                )
+            })
+            .collect();
+        m.apply(Command::PlayLayers {
+            layers,
+            bar_seconds,
+        });
+    }
+
+    #[test]
+    fn layers_start_together_at_their_own_levels_and_replace_the_music() {
+        let mut m = Mixer::new(1000);
+        m.apply(Command::Play(Box::new(Play {
+            music: true,
+            looping: true,
+            ..play(9, &constant(1000, 10000, 4000))
+        })));
+        layered(&mut m, [1.0, 0.0, 0.5], 0.0);
+        render(&mut m, 400); // the old track's 0.3 s fade ends
+        assert_eq!(m.active_voices(), 3, "the three stems, even the silent one");
+        let out = render(&mut m, 10);
+        // 0.1 + 0 + 0.2 of full scale
+        assert!((out[0] - 0.3 * C).abs() < 0.01, "{}", out[0]);
+        m.apply(Command::LayerLevel {
+            id: 2,
+            level: 1.0,
+            fade: 0.0,
+            at_bar: false,
+        });
+        let out = render(&mut m, 10);
+        assert!((out[0] - 0.5 * C).abs() < 0.02, "{}", out[0]);
+        m.apply(Command::StopMusic { fade: 0.0 });
+        assert_eq!(m.active_voices(), 0);
+    }
+
+    #[test]
+    fn a_layer_fades_over_the_time_asked() {
+        let mut m = Mixer::new(1000);
+        layered(&mut m, [1.0, 0.0, 0.0], 0.0);
+        render(&mut m, 5);
+        m.apply(Command::LayerLevel {
+            id: 3,
+            level: 1.0,
+            fade: 0.1,
+            at_bar: false,
+        });
+        let out = render(&mut m, 200);
+        let at = |f: usize| out[f * 2];
+        assert!(
+            (at(0) - 0.1 * C).abs() < 0.01,
+            "starts where it was: {}",
+            at(0)
+        );
+        assert!(
+            at(50) > (0.1 + 0.15) * C && at(50) < (0.1 + 0.3) * C,
+            "half way: {}",
+            at(50)
+        );
+        assert!((at(150) - 0.5 * C).abs() < 0.02, "done: {}", at(150));
+    }
+
+    #[test]
+    fn a_level_change_waits_for_the_bar_line_and_lands_on_its_frame() {
+        let mut m = Mixer::new(1000);
+        layered(&mut m, [1.0, 0.0, 0.0], 0.1); // a bar is 100 frames
+        render(&mut m, 30);
+        m.apply(Command::LayerLevel {
+            id: 3,
+            level: 1.0,
+            fade: 0.0,
+            at_bar: true,
+        });
+        // one block that holds the bar line at frame 70 of it: the new level starts exactly there
+        let out = render(&mut m, 120);
+        let at = |f: usize| out[f * 2];
+        assert!(
+            (at(69) - 0.1 * C).abs() < 0.005,
+            "before the bar line: {}",
+            at(69)
+        );
+        assert!(
+            (at(70) - 0.5 * C).abs() < 0.01,
+            "on the bar line: {}",
+            at(70)
+        );
+        // a change asked for while the music is exactly on a bar line is applied at once
+        let mut n = Mixer::new(1000);
+        layered(&mut n, [1.0, 0.0, 0.0], 0.1);
+        n.apply(Command::LayerLevel {
+            id: 2,
+            level: 1.0,
+            fade: 0.0,
+            at_bar: true,
+        });
+        let out = render(&mut n, 10);
+        assert!((out[0] - 0.3 * C).abs() < 0.01, "{}", out[0]);
+    }
+
+    #[test]
+    fn a_pending_change_is_dropped_when_the_music_stops() {
+        let mut m = Mixer::new(1000);
+        layered(&mut m, [1.0, 0.0, 0.0], 0.1);
+        render(&mut m, 30);
+        m.apply(Command::LayerLevel {
+            id: 3,
+            level: 1.0,
+            fade: 0.0,
+            at_bar: true,
+        });
+        m.apply(Command::StopMusic { fade: 0.0 });
+        layered(&mut m, [1.0, 0.0, 0.0], 0.1);
+        let out = render(&mut m, 300);
+        assert!(
+            out.iter().step_by(2).all(|v| (v - 0.1 * C).abs() < 0.005),
+            "the old request must not carry over"
         );
     }
 
