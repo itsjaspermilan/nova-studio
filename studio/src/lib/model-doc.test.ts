@@ -356,7 +356,7 @@ describe("collision capsules and boxes", () => {
 });
 
 describe("the history list", () => {
-  const docAt = (n: number): ModelDoc => ({ ...newModel(), name: `v${n}` });
+  const docAt = (n: number): ModelDoc => ({ ...newModel(), scale: n + 1 });
   it("keeps what each step did, undoes and redoes many steps at once", async () => {
     const { History } = await import("./model-doc");
     const h = new History();
@@ -367,11 +367,11 @@ describe("the history list", () => {
     }
     expect(h.undoLabels).toEqual(["Paste keys", "Sculpt (draw)", "Move"]);
     const back = h.undoMany(doc, 2)!;
-    expect(back.name).toBe("v1");
+    expect(back.scale).toBe(2);
     expect(h.undoLabels).toEqual(["Move"]);
     expect(h.redoLabels).toEqual(["Sculpt (draw)", "Paste keys"]); // nearest first
     expect(h.undoMany(back, 5)).toBeNull();
-    expect(h.redoMany(back, 2)!.name).toBe("v3");
+    expect(h.redoMany(back, 2)!.scale).toBe(4);
     expect(h.redoLabels).toEqual([]);
     h.record(doc);
     expect(h.undoLabels[0]).toBe("Change"); // no label given
