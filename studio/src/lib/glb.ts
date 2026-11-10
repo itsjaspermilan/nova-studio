@@ -2,12 +2,13 @@
 // (so a later bone animation can move them), one mesh per part with flat-coloured cubes baked in
 // as COLOR_0 vertex colours and per-face normals.
 
-import { glowOf, metallicOf, namesOf, roughnessOf, walk, type Clip, type Cube, type Ease, type ModelDoc, type Part, type Track, type Vec3 } from "./model-doc";
+import { settleKeyEdits, glowOf, metallicOf, namesOf, roughnessOf, walk, type Clip, type Cube, type Ease, type ModelDoc, type Part, type Track, type Vec3 } from "./model-doc";
 import { BAKE_STEPS, applyEase, lerp3, slerp } from "./model-ease";
 import { FACE_CORNERS, hasVolume, meshOf as solidMesh, solidOf, type Mesh } from "./model-mesh";
 import { evaluate } from "./modifiers";
 import { boneKey, invertAffine, transformDirection, transformPoint, worldMatrices } from "./model-skin";
 import { bakeAll, bakeSurface, uvsOf } from "./model-uv";
+import { partShapeNames, shapeDeltas } from "./shape-keys";
 import { heightToNormal } from "./texture-bump";
 import { newRaster, type Raster } from "./pixels";
 import { encodePng } from "./png-encode";
@@ -26,8 +27,8 @@ function append(to: number[], from: ArrayLike<number>) {
   for (let i = 0; i < from.length; i++) to.push(from[i]!);
 }
 
-function meshOf(part: Part, scale: number, tex?: Texel): PartMesh {
-  const m: PartMesh = { positions: [], normals: [], colors: [], indices: [], uvs: [] };
+function meshOf(part: Part, scale: number, tex?: Texel, keys: string[] = []): PartMesh {
+  const m: PartMesh = { positions: [], normals: [], colors: [], indices: [], uvs: [], morphs: keys.map(() => []) };
   for (const cube of part.cubes) {
     if (isSkinned(cube)) continue; // drawn as a skinned mesh of its own
     const shown = evaluate(cube, "render"); // modifiers baked in
@@ -37,6 +38,12 @@ function meshOf(part: Part, scale: number, tex?: Texel): PartMesh {
     append(m.normals, one.normals);
     append(m.colors, one.colors);
     for (const i of one.indices) m.indices.push(base + i);
+    // shape keys: where each vertex goes at weight 1 (zeros for a shape without that key, or with modifiers)
+    keys.forEach((name, k) => {
+      const d = shapeDeltas(cube, name, scale);
+      if (d && d.length === one.positions.length) append(m.morphs[k]!, d);
+      else append(m.morphs[k]!, new Array<number>(one.positions.length).fill(0));
+    });
     if (tex) {
       // Painted shapes use their texels; the rest all point at the white texel, so their colour shows as it is.
       const own = uvsOf(shown);
@@ -47,7 +54,7 @@ function meshOf(part: Part, scale: number, tex?: Texel): PartMesh {
   return m;
 }
 
-type PartMesh = Pick<Mesh, "positions" | "normals" | "colors" | "indices"> & { uvs: number[] };
+type PartMesh = Pick<Mesh, "positions" | "normals" | "colors" | "indices"> & { uvs: number[]; morphs: number[][] };
 
 /// The embedded picture is the texture plus one extra row of white at the bottom.
 interface Texel {
@@ -111,7 +118,8 @@ const LINEAR = Array.from({ length: 256 }, (_, v) => {
 const linearColours = (colors: number[]) => new Uint16Array(colors.map((v, i) => (i % 4 === 3 ? v * 257 : LINEAR[v]!)));
 /// `surface` is the roughness and metal picture (green and blue), written as glTF's metallic-roughness picture when the model's `texture.surface` is set: painted
 /// shapes then take their roughness and metal from it, whatever numbers they carry.
-export function exportGlb(doc: ModelDoc, texture?: Raster, surface?: Raster): Uint8Array {
+export function exportGlb(source: ModelDoc, texture?: Raster, surface?: Raster): Uint8Array {
+  const doc = settleKeyEdits(source);
   const scale = doc.scale;
   const gltfNodes: Record<string, unknown>[] = [];
   const meshes: Record<string, unknown>[] = [];
@@ -164,6 +172,10 @@ export function exportGlb(doc: ModelDoc, texture?: Raster, surface?: Raster): Ui
     const node: Record<string, unknown> = { name: part.name };
     if (part.origin.some((v) => v !== 0)) node.translation = part.origin.map((v) => v * scale);
     if (part.rotation.some((v) => v !== 0)) node.rotation = eulerToQuaternion(part.rotation);
+    // the part's constraints stay live in the game (a reach target is in model units: scaled to metres like the part positions)
+    if (part.constraints?.length) {
+      node.extras = { nova: { constraints: part.constraints.map((c) => (c.type === "reach" ? { ...c, target: c.target.map((v) => v * scale) } : c)) } };
+    }
     // Shapes that glow get a material of their own (one per strength), so a part may have several primitives.
     const groups = new Map<number, Cube[]>();
     for (const c of part.cubes) {
@@ -171,8 +183,10 @@ export function exportGlb(doc: ModelDoc, texture?: Raster, surface?: Raster): Ui
       groups.set(key, [...(groups.get(key) ?? []), c]);
     }
     const primitives: Record<string, unknown>[] = [];
+    // shape keys of this part's shapes become the mesh's morph targets (every primitive of a mesh has the same targets)
+    const keyNames = partShapeNames(part).filter((n) => part.cubes.some((c) => !isSkinned(c) && !c.modifiers?.length && c.shapes?.some((k) => k.name === n)));
     for (const [material, cubes] of groups) {
-      const m = meshOf({ ...part, cubes }, scale, tex);
+      const m = meshOf({ ...part, cubes }, scale, tex, keyNames);
       if (!m.positions.length) continue;
       drawn += cubes.filter((c) => hasVolume(c) && !isSkinned(c)).length;
       const pos = new Float32Array(m.positions);
@@ -198,10 +212,23 @@ export function exportGlb(doc: ModelDoc, texture?: Raster, surface?: Raster): Ui
         },
         indices: accessor({ bufferView: idxView, componentType: wide ? 5125 : 5123, count: m.indices.length, type: "SCALAR" }),
         material,
+        ...(keyNames.length
+          ? {
+              targets: m.morphs.map((d) => {
+                const lo = [Infinity, Infinity, Infinity];
+                const hi = [-Infinity, -Infinity, -Infinity];
+                for (let i = 0; i < d.length; i += 3) for (let a = 0; a < 3; a++) {
+                  lo[a] = Math.min(lo[a]!, d[i + a]!);
+                  hi[a] = Math.max(hi[a]!, d[i + a]!);
+                }
+                return { POSITION: accessor({ bufferView: addView(bytesOf(new Float32Array(d)), 34962), componentType: 5126, count: vertexCount, type: "VEC3", min: lo, max: hi }) };
+              }),
+            }
+          : {}),
       });
     }
     if (primitives.length) {
-      meshes.push({ name: part.name, primitives });
+      meshes.push({ name: part.name, primitives, ...(keyNames.length ? { extras: { targetNames: keyNames } } : {}) });
       node.mesh = meshes.length - 1;
     }
     const childNumbers = part.children.map((_, i) => nodeOf.get([...parts, i].join("."))!);

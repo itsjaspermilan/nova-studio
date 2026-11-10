@@ -46,6 +46,7 @@ pub(super) fn cube_mesh(glow: bool) -> MeshData {
         indices.extend([0, 1, 2, 0, 2, 3].map(|i| base + i));
     }
     MeshData {
+        morphs: Vec::new(),
         material: None,
         compressed: None,
         vertices,

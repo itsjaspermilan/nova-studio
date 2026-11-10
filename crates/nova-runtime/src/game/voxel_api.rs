@@ -144,6 +144,7 @@ pub(super) fn blob_mesh() -> crate::model::MeshData {
         }
     }
     crate::model::MeshData {
+        morphs: Vec::new(),
         material: None,
         compressed: None,
         vertices,
@@ -179,6 +180,7 @@ pub(super) fn line_mesh() -> crate::model::MeshData {
         }
     }
     crate::model::MeshData {
+        morphs: Vec::new(),
         material: None,
         compressed: None,
         vertices,

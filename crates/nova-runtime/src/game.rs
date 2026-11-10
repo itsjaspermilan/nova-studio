@@ -17,6 +17,7 @@ use mlua::{Function, HookTriggers, Lua, LuaSerdeExt, Table, Value, VmState};
 use crate::actions::{self, Binding, Bindings, InputFrame};
 use crate::anim;
 use crate::assets::{self, AtlasLayout};
+use crate::constraints;
 use crate::font;
 use crate::gfx::{
     Camera, Fog, FrameInput, Gfx, Lighting, Look, MeshOp, ModelDraw, ModelInstance, PointLight,
@@ -65,6 +66,7 @@ fn builtin_module(name: &str) -> Option<&'static str> {
 mod animated;
 mod billboard_api;
 mod debug_api;
+mod morph_api;
 mod physics_api;
 mod players_api;
 mod retained_api;
@@ -125,6 +127,8 @@ struct Shared {
     next_sound: u64,
     save: SaveStore,
     mesh_ids: HashMap<String, usize>,
+    /// Shape keys of the loaded models and the blended copies made of them (`game/morph_api.rs`).
+    morph: morph_api::Variants,
     /// Point lights asked for this frame, and what the last frames made of them (which are lit, how far each has faded in).
     light_requests: Vec<PointLight>,
     light_fader: crate::lights::LightFader,
@@ -299,6 +303,8 @@ struct PartRt {
     parent: Option<usize>,
     rest: Mat4,
     mesh_key: Option<String>,
+    /// The studio's rules for this part (limits, copies, reach), applied to every pose (`constraints = false` turns them off for a draw).
+    constraints: Vec<crate::constraints::Constraint>,
     /// A mesh that bends with other parts: drawn by the GPU from the joints' matrices.
     skinned: Option<Rc<SkinnedPart>>,
 }
@@ -477,6 +483,19 @@ fn part_worlds(
             poses = model::additive_poses(&rests, &poses, delta, mask.as_deref(), *amount);
         }
     }
+    // the studio's rules for the parts (limits, copies, reach) adjust what the animation said
+    if constraints_live(opts)? {
+        let infos: Vec<constraints::PartInfo> = parts
+            .iter()
+            .map(|p| constraints::PartInfo {
+                name: &p.name,
+                parent: p.parent,
+                rest: p.rest,
+                constraints: &p.constraints,
+            })
+            .collect();
+        constraints::apply(&infos, &mut poses);
+    }
     // ... then the script's own turns on top.
     let mut turn = vec![Mat4::IDENTITY; parts.len()];
     let named: Vec<(String, Table)> = match &overrides {
@@ -512,6 +531,14 @@ fn part_worlds(
         world[i] = p.parent.map_or(local, |parent| world[parent] * local);
     }
     Ok((parts, world))
+}
+
+/// Whether the studio's constraints apply to this draw (`constraints = false` turns them off).
+fn constraints_live(opts: &Option<Table>) -> mlua::Result<bool> {
+    match opts {
+        Some(o) => Ok(o.get::<Option<bool>>("constraints")?.unwrap_or(true)),
+        None => Ok(true),
+    }
 }
 
 /// A turn, shift and scale applied to one model part on top of its authored place.
@@ -1452,6 +1479,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     None => None,
                 };
                 let clip_name = string_option(&opts, "clip")?;
+                let morph = morph_api::weights_option(&opts)?;
                 // `layers = { { clip = "walk", time = t, weight = 0.7 }, ... }`: several clips mixed by weight (see `nova.animator`)
                 let layers = match &opts {
                     Some(o) => o.get::<Option<Table>>("layers")?,
@@ -1496,7 +1524,10 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 }
                 let Some(near_dissolve) = near_dissolve else { return Ok(()) };
                 let dissolve = |i: ModelInstance| if near_dissolve == 0.0 { i } else { i.dissolving(near_dissolve) };
-                if overrides.is_some() || clip_name.is_some() || layers.is_some() {
+                // (a model with rules of its own is posed part by part so they apply even at rest)
+                let constrained = constraints_live(&opts)?
+                    && sh.parts.get(&found).is_some_and(|p| p.iter().any(|x| !x.constraints.is_empty()));
+                if overrides.is_some() || clip_name.is_some() || layers.is_some() || morph.is_some() || constrained {
                     // Pieces that move on their own: each part is drawn separately at its turned place. A model that only plays a
                     // clip (no layers, no parts) is posed once for every draw of the same moment: `pose_step` (seconds, 0 = exact
                     // times) snaps the time, and the joint matrices of that pose go to the GPU once, whoever uses them.
@@ -1565,6 +1596,10 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                         }
                         let Some(key) = &p.mesh_key else { continue };
                         let Some(&mesh) = sh.mesh_ids.get(key) else { continue };
+                        let mesh = match &morph {
+                            Some(weights) => morph_api::mesh_for(sh, key, mesh, weights),
+                            None => mesh,
+                        };
                         shader_api::push_model(sh, ModelDraw {
                             casts,
                             mesh,
@@ -2008,6 +2043,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             Ok(list)
         })?,
     )?;
+    morph_api::register(lua, &nova, shared)?;
     // model_pose(id, opts) -> { [part] = { x, y, z } }: where each part's own origin (its joint) is, in the model's own space, in the pose
     // that `nova.model(id, ..., opts)` would draw (a clip, layers, parts)
     let s = shared.clone();
@@ -3698,6 +3734,7 @@ impl Game {
         let mut model_capsules: HashMap<String, Vec<[f32; 5]>> = HashMap::new();
         let mut model_boxes: HashMap<String, Vec<[f32; 5]>> = HashMap::new();
         let mut model_scales: HashMap<String, f32> = HashMap::new();
+        let mut morph_variants = morph_api::Variants::default();
         for asset in project.assets_of(AssetKind::Model) {
             let bytes = vfs.read(&asset.id)?;
             let mut mesh = model::import_glb(&bytes).map_err(|e| format!("{}: {e}", asset.id))?;
@@ -3751,6 +3788,27 @@ impl Game {
                         }
                         (Some(m), None) => {
                             let key = format!("{}#{}", asset.id, part.name);
+                            if !m.morphs.is_empty() {
+                                let names: Vec<String> =
+                                    m.morphs.iter().map(|t| t.name.clone()).collect();
+                                let listed = morph_variants
+                                    .model_names
+                                    .entry(asset.id.clone())
+                                    .or_default();
+                                for n in &names {
+                                    if !listed.contains(n) {
+                                        listed.push(n.clone());
+                                    }
+                                }
+                                morph_variants.sets.insert(
+                                    key.clone(),
+                                    Rc::new(morph_api::MorphSet {
+                                        base: m.vertices.clone(),
+                                        deltas: m.morphs.iter().map(|t| t.deltas.clone()).collect(),
+                                        names,
+                                    }),
+                                );
+                            }
                             meshes.push((key.clone(), m, None));
                             Some(key)
                         }
@@ -3760,6 +3818,7 @@ impl Game {
                         name: part.name,
                         parent: part.parent,
                         rest: part.rest,
+                        constraints: part.constraints,
                         mesh_key,
                         skinned,
                     });
@@ -3862,6 +3921,7 @@ impl Game {
             next_sound: 1,
             save: store,
             mesh_ids: HashMap::new(),
+            morph: morph_variants,
             known_models: model_ids,
             fx_sprites,
             model_scales,

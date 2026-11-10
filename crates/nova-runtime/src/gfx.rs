@@ -363,6 +363,12 @@ pub enum MeshOp {
         indices: Vec<u32>,
         plain: bool,
     },
+    /// A copy of the loaded mesh `base` with other vertices (its shape keys blended in): the same triangles, picture and material.
+    Variant {
+        id: usize,
+        base: usize,
+        vertices: Vec<MeshVertex>,
+    },
     Free(usize),
 }
 
@@ -889,6 +895,8 @@ struct Backup {
     meshes: Vec<(MeshData, Option<Vec<Influence>>)>,
     voxel_atlas: Option<Image>,
     dyn_meshes: HashMap<usize, (Vec<MeshVertex>, Vec<u32>, bool)>,
+    /// Shape-key variants of loaded meshes: the base mesh and the blended vertices.
+    variants: HashMap<usize, (usize, Vec<MeshVertex>)>,
     /// Custom shaders' sources in the order they were added (their ids), and their pictures.
     shaders: Vec<String>,
     shader_textures: HashMap<usize, Image>,
@@ -2587,6 +2595,9 @@ impl Gfx {
                 plain,
             });
         }
+        for (id, (base, vertices)) in backup.variants {
+            ops.push(MeshOp::Variant { id, base, vertices });
+        }
         fresh.apply_mesh_ops(&ops);
         for source in &backup.shaders {
             // (the same ids again; a shader that failed before fails again and keeps its place)
@@ -2625,6 +2636,7 @@ impl Gfx {
     pub fn upload_mesh(&mut self, mesh: &MeshData) -> usize {
         self.backup.meshes.push((
             MeshData {
+                morphs: Vec::new(),
                 material: mesh.material.clone(),
                 vertices: mesh.vertices.clone(),
                 indices: mesh.indices.clone(),
@@ -2969,13 +2981,46 @@ impl Gfx {
                         },
                     );
                 }
+                MeshOp::Variant { id, base, vertices } => {
+                    let Some(b) = self.mesh(*base) else { continue };
+                    let (indices, index_count, texture, translucent, material) = (
+                        b.indices.clone(),
+                        b.index_count,
+                        b.texture.clone(),
+                        b.translucent,
+                        b.material.clone(),
+                    );
+                    let buffer =
+                        self.device
+                            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                                label: Some("shape key vertices"),
+                                contents: bytemuck::cast_slice(vertices),
+                                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                            });
+                    self.backup.variants.insert(*id, (*base, vertices.clone()));
+                    self.dyn_meshes.insert(
+                        *id,
+                        GpuMesh {
+                            vertices: buffer,
+                            indices,
+                            index_count,
+                            texture,
+                            translucent,
+                            skin: None,
+                            bounds: bounding_sphere(vertices),
+                            material,
+                        },
+                    );
+                }
                 MeshOp::Free(id) => {
+                    // (a shape-key variant shares its base mesh's triangles: that index buffer is not ours to reuse)
+                    let variant = self.backup.variants.remove(id).is_some();
                     self.backup.dyn_meshes.remove(id);
                     if let Some(m) = self.dyn_meshes.remove(id) {
                         if self.spare_vertices.len() < 64 {
                             self.spare_vertices.push(m.vertices);
                         }
-                        if self.spare_indices.len() < 64 {
+                        if !variant && self.spare_indices.len() < 64 {
                             self.spare_indices.push(m.indices);
                         }
                     }

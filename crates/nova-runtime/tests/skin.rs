@@ -285,6 +285,7 @@ end"
         .unwrap()
         .pose(&mesh.vertices, &world_at(&imported, 0.5));
     let id = gfx.upload_mesh(&MeshData {
+        morphs: Vec::new(),
         material: None,
         compressed: None,
         vertices: posed,

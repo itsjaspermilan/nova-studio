@@ -1073,6 +1073,7 @@ fn meshes_with_the_same_picture_share_one_texture() {
         emissive: 0.0,
     };
     let mesh = |colour: u8| MeshData {
+        morphs: Vec::new(),
         material: None,
         compressed: None,
         vertices: vec![v; 3],

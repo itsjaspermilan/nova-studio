@@ -41,6 +41,7 @@ pub(super) enum Variant {
     Post,
 }
 
+#[derive(Clone)]
 pub(super) struct GpuMaterial {
     pub buffer: wgpu::Buffer,
     pub group: wgpu::BindGroup,

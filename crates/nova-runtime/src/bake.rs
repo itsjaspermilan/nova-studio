@@ -164,6 +164,7 @@ pub fn bake(
         }
     }
     MeshData {
+        morphs: Vec::new(),
         material: None,
         compressed: None,
         vertices,

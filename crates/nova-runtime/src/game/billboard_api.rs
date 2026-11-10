@@ -42,6 +42,7 @@ pub(super) fn quad_mesh(image: &Image, uv: [f32; 4]) -> MeshData {
         }
     }
     MeshData {
+        morphs: Vec::new(),
         material: None,
         compressed: None,
         vertices,

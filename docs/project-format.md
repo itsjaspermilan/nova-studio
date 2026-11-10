@@ -107,7 +107,8 @@ case-insensitive systems.
   glTF sampler says (repeat when it says nothing; the studio's exporter writes clamp). A primitive whose material has no texture
   is drawn in its own colours even when the rest of the model has one. Skins (JOINTS_0 and
   WEIGHTS_0, up to four joints per point) are read when a model is drawn with `parts` or a `clip`. Morph
-  targets and extensions are reported as warnings in the log, not silently dropped.
+  targets (shape keys: POSITION offsets, named by the mesh's `extras.targetNames`) are read and blended by name with the `morph`
+  option of `nova.model` (below); extensions are reported as warnings in the log, not silently dropped.
 - **Scripts:** Lua 5.4.
 - **Keyframe animations:** `animations/<name>.anim.json` (see [Keyframe animations](#keyframe-animations-animationsnameanimjson)), checked when the project loads.
 
@@ -422,6 +423,23 @@ A clip replaces whatever it keys (position, rotation or scale) of a part; everyt
 and `parts = {...}` turns still apply on top. Blending is linear, rotations blend as quaternions, and a clip
 holds its first and last values outside its keys. glTF cubic-spline keys are read as their values only.
 Playing a clip draws each part separately, like `parts`.
+
+**Constraints.** A part the studio gave rules (Pose mode, Rules tab) carries them in its glTF node's `extras.nova.constraints`, and the game applies them to every pose, after the animation and before the script's own `parts` turns, parents first:
+
+- `{ "type": "limit", "min": [x, y, z], "max": [x, y, z] }`: the part's turn, as degrees about x, y and z (three.js "XYZ"), is kept between the bounds.
+- `{ "type": "copy", "from": "body/arm", "axes": [true, false, false], "mix": 0.5 }`: the part follows the turn of the part at that path (names from the root, joined by `/`) on the chosen axes, that much of the way.
+- `{ "type": "reach", "target": [x, y, z], "pole": [0, 0, 1] }`: the part, its first child and that child's first child are bent so the last one's joint is at `target` (the model's space, metres; the studio scales it), the middle joint bending toward `pole`; a target out of reach stretches the limb toward it.
+
+A model with rules is drawn part by part, even with no clip. `constraints = false` in the options of `nova.model` (and of `nova.model_pose`) leaves them out. A model that had its rules baked into keys in the studio ("Bake into keys", ticking "and remove the rules") has none left to apply; baking and keeping them applies a copy twice.
+
+**Shape keys.** A model made with shape keys (the studio's Edit mode, Mesh tab: a named alternative place for every point of a mesh; `"shapes": [{ "name": "smile", "verts": [...] }]` in the model file, glTF morph targets in the `.glb`) is blended by name:
+
+```lua
+nova.model_morphs("face")                                   -- { "smile", "blink" }
+nova.model("face", x, y, z, { morph = { smile = 0.6, blink = 1 } })  -- 0 to 1 each; other options work as usual
+```
+
+The blend is made once for each set of weights (rounded to sixteenths) and kept on the GPU as a copy of the mesh (the 512 most recently used are kept), so a face that eases between expressions makes a copy for each step it passes through. Normals are not blended (they stay as at rest), a model drawn with `morph` is drawn part by part, and a part that bends with a skeleton ignores its shape keys. The studio does not write shape keys for a shape with modifiers.
 
 **Blending and the animator.** `layers` draws several clips at once, mixed by weight (weights are relative; a clip that does
 not key a part counts as that part's authored pose; rotations are mixed the short way round):

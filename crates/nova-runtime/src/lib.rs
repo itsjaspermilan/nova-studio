@@ -9,6 +9,7 @@ pub mod app;
 pub mod assets;
 pub mod audio;
 pub mod bake;
+pub mod constraints;
 pub mod content;
 pub mod debug;
 pub mod diagnostics;

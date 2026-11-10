@@ -13,6 +13,8 @@ const scale = (a: Vec3, k: number): Vec3 => [a[0] * k, a[1] * k, a[2] * k];
 export const isMesh = (c: Cube) => c.shape === "mesh";
 
 function finish(c: Cube): Cube {
+  // shape keys name a place for every point: an edit that changes how many points there are drops them
+  if (c.shapes && c.shapes.some((s) => s.verts.length !== (c.verts?.length ?? 0))) delete c.shapes;
   fitBounds(c);
   delete c.rotation;
   return c;

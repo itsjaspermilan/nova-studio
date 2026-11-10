@@ -55,8 +55,18 @@ pub struct Image {
     pub rgba: Vec<u8>,
 }
 
+/// A shape key (glTF morph target): where each vertex of the mesh moves to at weight 1, as an offset from where it is at rest.
+#[derive(Clone, Debug)]
+pub struct MorphTarget {
+    pub name: String,
+    /// One offset per vertex of the mesh (zeros where the file's primitive has none), in the mesh's own space.
+    pub deltas: Vec<[f32; 3]>,
+}
+
 #[derive(Default)]
 pub struct MeshData {
+    /// Shape keys, when the file has morph targets: `nova.model(..., { morph = { name = weight } })` blends them in.
+    pub morphs: Vec<MorphTarget>,
     pub vertices: Vec<MeshVertex>,
     pub indices: Vec<u32>,
     pub texture: Option<Image>,
@@ -306,9 +316,6 @@ fn append_mesh(
             ));
             continue;
         }
-        if primitive.morph_targets().count() > 0 {
-            out.notes.push("morph targets are ignored".into());
-        }
         let reader = primitive.reader(|b| Some(&buffers[b.index()]));
         let Some(positions) = reader.read_positions() else {
             out.notes.push("primitive without POSITION skipped".into());
@@ -418,6 +425,36 @@ fn append_mesh(
             None
         };
         let base = out.vertices.len() as u32;
+        // shape keys: their names (the mesh's `extras.targetNames`) and each one's offsets of this primitive's points
+        let target_names: Vec<String> = mesh
+            .extras()
+            .as_ref()
+            .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw.get()).ok())
+            .and_then(|v| {
+                v["targetNames"].as_array().map(|a| {
+                    a.iter()
+                        .map(|n| n.as_str().unwrap_or_default().to_string())
+                        .collect()
+                })
+            })
+            .unwrap_or_default();
+        let mut primitive_morphs: Vec<(String, Vec<[f32; 3]>)> = Vec::new();
+        for (i, (dp, _, _)) in reader.read_morph_targets().enumerate() {
+            let Some(dp) = dp else { continue };
+            let deltas: Vec<[f32; 3]> = dp
+                .map(|d| world.transform_vector3(Vec3::from(d)).to_array())
+                .collect();
+            if deltas.len() != positions.len() {
+                continue;
+            }
+            let name = target_names
+                .get(i)
+                .filter(|n| !n.is_empty())
+                .cloned()
+                .unwrap_or_else(|| format!("target{i}"));
+            primitive_morphs.push((name, deltas));
+        }
+        let source_indices = indices.clone();
         let mut verts: Vec<MeshVertex> = (0..positions.len())
             .map(|i| {
                 let p = world.transform_point3(Vec3::from(positions[i]));
@@ -458,6 +495,32 @@ fn append_mesh(
             }
             verts = flat;
             indices = (0..verts.len() as u32).collect();
+            // (the shape keys' offsets follow the points into their new copies)
+            for (_, d) in &mut primitive_morphs {
+                let mut expanded = Vec::with_capacity(verts.len());
+                for tri in source_indices.as_chunks::<3>().0.iter() {
+                    for &i in tri {
+                        expanded.push(d[i as usize]);
+                    }
+                }
+                *d = expanded;
+            }
+        }
+        // line the shape keys up with the mesh so far: zeros before this primitive, its offsets here, zeros for a key it lacks
+        for (name, d) in primitive_morphs {
+            if !out.morphs.iter().any(|m| m.name == name) {
+                out.morphs.push(MorphTarget {
+                    name: name.clone(),
+                    deltas: vec![[0.0; 3]; base as usize],
+                });
+            }
+            let target = out.morphs.iter_mut().find(|m| m.name == name).unwrap();
+            target.deltas.resize(base as usize, [0.0; 3]);
+            target.deltas.extend(d);
+        }
+        let reach = base as usize + verts.len();
+        for m in &mut out.morphs {
+            m.deltas.resize(reach, [0.0; 3]);
         }
         let tangents = if normal_scale == 0.0 {
             vec![[0.0; 4]; verts.len()]
@@ -528,6 +591,8 @@ pub struct Part {
     pub mesh: Option<MeshData>,
     /// Set when `mesh` bends with other parts: its triangles are in model space, as at rest.
     pub skin: Option<Skin>,
+    /// Rules the studio put on this part (`extras.nova.constraints` of its node), applied live to every pose.
+    pub constraints: Vec<crate::constraints::Constraint>,
 }
 
 /// One vertex's joints (numbers within the skin) and their weights.
@@ -915,6 +980,11 @@ pub fn import_parts(bytes: &[u8]) -> Result<ModelParts, String> {
             rest: Mat4::from_cols_array_2d(&node.transform().matrix()),
             mesh,
             skin: None,
+            constraints: node
+                .extras()
+                .as_ref()
+                .map(|raw| crate::constraints::parse(raw.get()))
+                .unwrap_or_default(),
         });
         let mut children: Vec<gltf::Node> = node.children().collect();
         children.reverse();

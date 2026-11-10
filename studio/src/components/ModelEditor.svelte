@@ -37,6 +37,7 @@
   import { applyStack, evaluate, hasModifiers, type Modifier } from "../lib/modifiers";
   import ModifierStack from "./ModifierStack.svelte";
   import CurveEditor from "./CurveEditor.svelte";
+  import { addShapeKey, beginKeyEdit, blendShapeKeys, endKeyEdit, MAX_SHAPE_KEYS, removeShapeKey, renameShapeKey, validKeyName } from "../lib/shape-keys";
   import { projectImage } from "../lib/model-bake";
   import { modelStats } from "../lib/mesh-stats";
   import { knifeCut } from "../lib/mesh-cut";
@@ -92,6 +93,29 @@
   let bevelBy = $state(25); // percent of the next edge each neighbour gives up
   let edgeBy = $state(4);
   let snap = $state(true);
+  // Shape keys: the weights of the preview (not saved: the game sets them by name), and the name for a new key.
+  let keyWeights = $state<Record<string, number>>({});
+  let newKeyName = $state("");
+  function addKey() {
+    if (!cube || !selected) return;
+    const name = newKeyName.trim();
+    if (!validKeyName(name)) return void (selectNote = "A key's name is letters, digits, spaces, _ or -, up to 24.");
+    const next = addShapeKey(cube, name);
+    if (next === cube) return void (selectNote = cube.shapes?.some((k) => k.name === name) ? "There is a key with that name." : `At most ${MAX_SHAPE_KEYS} keys.`);
+    commit(setCube(doc, selected, next), false, "Add shape key");
+    newKeyName = "";
+  }
+  function dropKey(name: string) {
+    if (!cube || !selected) return;
+    commit(setCube(doc, selected, removeShapeKey(cube.keyEdit === name ? endKeyEdit(cube) : cube, name)), false, "Remove shape key");
+    delete keyWeights[name];
+    keyWeights = { ...keyWeights };
+  }
+  function toggleKeyEdit(name: string) {
+    if (!cube || !selected) return;
+    const next = cube.keyEdit === name ? endKeyEdit(cube) : beginKeyEdit(cube.keyEdit !== undefined ? endKeyEdit(cube) : cube, name);
+    commit(setCube(doc, selected, next), false, cube.keyEdit === name ? "Done editing key" : `Edit key "${name}"`);
+  }
   let overlaysOpen = $state(false);
   let pivotMode = $state<"median" | "active">("median");
   let moreAdd = $state(false);
@@ -645,7 +669,7 @@
         group.rotation.set(...(part.rotation.map((d) => (d * Math.PI) / 180) as Vec3), "XYZ");
         group.name = part.name;
         part.cubes.forEach((cube, ci) => {
-          const shown = evaluate(cube, "view"); // modifiers applied; the cage itself is untouched
+          const shown = evaluate(!inEdit && cube.shapes?.length && cube.keyEdit === undefined ? blendShapeKeys(cube, keyWeights) : cube, "view"); // modifiers applied; the cage itself is untouched
           const m = meshOf(shown);
           const geometry = new THREE.BufferGeometry();
           geometry.setAttribute("position", new THREE.Float32BufferAttribute(m.positions, 3));
@@ -876,7 +900,7 @@
   }
 
   $effect(() => {
-    doc; viewMode; // redraw whenever the model changes or is shown another way
+    doc; viewMode; keyWeights; // redraw whenever the model changes or is shown another way
     if (modelGroup) untrack(rebuild);
   });
   // Local view: only the chosen part (and what is inside it) is drawn, to work on it without the rest in the way.
@@ -3534,6 +3558,21 @@
         </div>
         {/if}
         {#if inEdit && propTab === "mesh"}
+          <h4>Shape keys</h4>
+          {#if cube.keyEdit !== undefined}<p class="note small">Editing the key “{cube.keyEdit}”: what you move now is the key; the shape itself comes back when you press Done.</p>{/if}
+          {#each cube.shapes ?? [] as k (k.name)}
+            <div class="row wrap small">
+              <strong>{k.name}</strong>
+              <input type="range" min="0" max="1" step="0.05" value={keyWeights[k.name] ?? 0} aria-label="{k.name} weight" title="Preview this key" oninput={(e) => (keyWeights = { ...keyWeights, [k.name]: Number(e.currentTarget.value) })} />
+              <button class:on={cube.keyEdit === k.name} onclick={() => toggleKeyEdit(k.name)} title={cube.keyEdit === k.name ? "Go back to the shape" : "Move the points to make this key (the preview is off while you edit)"}>{cube.keyEdit === k.name ? "Done" : "Edit"}</button>
+              <button class="ghost danger" aria-label="Remove {k.name}" onclick={() => dropKey(k.name)}>✕</button>
+            </div>
+          {/each}
+          <div class="row wrap small">
+            <input class="cname" bind:value={newKeyName} placeholder="new key (smile)" aria-label="Name of a new shape key" maxlength="24" onkeydown={(e) => { if (e.key === "Enter") addKey(); }} />
+            <button onclick={addKey} disabled={!newKeyName.trim()} title="A new key that starts as a copy of the shape: press Edit and move the points to make it. The game blends keys by name, with the morph option of nova.model">＋ Key</button>
+          </div>
+          {#if (cube.shapes?.length ?? 0) > 0 && cube.modifiers?.length}<p class="note small">This shape has modifiers: its keys are not written to the game.</p>{/if}
           <h4>Points</h4>
           {#if selVerts.length}
             <p class="dim small">{selVerts.length === 1 ? "The picked point" : `The middle of ${selVerts.length} picked points`}: type a number, or drag the arrows (one axis) or squares (a flat plane) of its handle.</p>

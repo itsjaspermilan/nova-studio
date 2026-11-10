@@ -50,6 +50,11 @@ export interface Cube {
   creases?: [number, number, number][];
   /// Mesh only: UV seams, `[point a, point b]`. The unwrap cuts along them, so the faces on either side become separate islands in the picture.
   seams?: [number, number][];
+  /// Mesh only: shape keys, named alternative places for every point (`verts` of the same length as the shape's own). The file carries them as glTF morph targets;
+  /// the game blends them by name. A shape with modifiers does not export them.
+  shapes?: { name: string; verts: Vec3[] }[];
+  /// Editor only, never written: the name of the shape key being edited, while the shape's own points and that key's points are swapped (so the ordinary point tools edit the key).
+  keyEdit?: string;
   /// Colour of all faces, `#rrggbb` or `#rrggbbaa`.
   color: string;
   /// Colours of individual faces, overriding `color`.
@@ -390,6 +395,17 @@ export function parseModel(text: string): Parsed {
         if (shape !== "mesh") return `${cat}.creases is only for a mesh`;
         if (!Array.isArray(c.creases) || c.creases.length > MAX_FACES * 4 || !c.creases.every((e) => Array.isArray(e) && e.length === 3 && Number.isInteger(e[0]) && Number.isInteger(e[1]) && e[0] >= 0 && e[1] >= 0 && e[0] < (c.verts?.length ?? 0) && e[1] < (c.verts?.length ?? 0) && typeof e[2] === "number" && e[2] >= 0 && e[2] <= 1)) return `${cat}.creases must be a list of [point, point, weight 0 to 1] for points that exist`;
       }
+      if (c.shapes !== undefined) {
+        if (shape !== "mesh") return `${cat}.shapes is only for a mesh`;
+        if (!Array.isArray(c.shapes) || c.shapes.length > 8) return `${cat}.shapes must be a list of at most 8 shape keys`;
+        const seen = new Set<string>();
+        for (const k of c.shapes) {
+          if (!k || typeof k.name !== "string" || !/^[A-Za-z0-9_ -]{1,24}$/.test(k.name) || !k.name.trim()) return `${cat}.shapes: a key needs a "name" of letters, digits, spaces, _ or -, up to 24`;
+          if (seen.has(k.name)) return `${cat}.shapes: two keys are called "${k.name}"`;
+          seen.add(k.name);
+          if (!Array.isArray(k.verts) || k.verts.length !== (c.verts?.length ?? 0) || !k.verts.every(isVec3)) return `${cat}.shapes "${k.name}" needs a point (three numbers) for every point of the shape`;
+        }
+      }
       if (c.seams !== undefined) {
         if (shape !== "mesh") return `${cat}.seams is only for a mesh`;
         if (!Array.isArray(c.seams) || c.seams.length > MAX_FACES * 4 || !c.seams.every((e) => Array.isArray(e) && e.length === 2 && Number.isInteger(e[0]) && Number.isInteger(e[1]) && e[0] >= 0 && e[1] >= 0 && e[0] < (c.verts?.length ?? 0) && e[1] < (c.verts?.length ?? 0))) return `${cat}.seams must be a list of [point, point] for points that exist`;
@@ -469,7 +485,27 @@ export const roughnessOf = (c: Cube): number => Math.round(Math.max(0, Math.min(
 
 export const glowOf = (c: Cube): number => Math.round(Math.max(0, Math.min(1, c.emissive ?? 0)) * 100) / 100;
 
-export function serializeModel(doc: ModelDoc): string {
+/// The model with any shape key being edited put back (the points and the key swapped again, the marker removed): what is written to the file and exported.
+export function settleKeyEdits(doc: ModelDoc): ModelDoc {
+  const edited = (cs: Cube[]) => cs.some((c) => c.keyEdit !== undefined);
+  const any = (ps: Part[]): boolean => ps.some((p) => edited(p.cubes) || any(p.children));
+  if (!any(doc.parts)) return doc;
+  const fix = (c: Cube): Cube => {
+    if (c.keyEdit === undefined) return c;
+    const k = c.shapes?.find((s) => s.name === c.keyEdit);
+    const out: Cube = { ...c };
+    delete out.keyEdit;
+    if (!k || !c.verts) return out;
+    out.verts = k.verts.map((p) => [...p] as Vec3);
+    out.shapes = c.shapes!.map((s) => (s.name === k.name ? { ...s, verts: c.verts!.map((p) => [...p] as Vec3) } : s));
+    return out;
+  };
+  const go = (ps: Part[]): Part[] => ps.map((p) => ({ ...p, cubes: p.cubes.map(fix), children: go(p.children) }));
+  return { ...doc, parts: go(doc.parts) };
+}
+
+export function serializeModel(source: ModelDoc): string {
+  const doc = settleKeyEdits(source);
   const vec = (v: Vec3) => `[${v.join(", ")}]`;
   const vec2 = (v: number[]) => `[${v.join(", ")}]`;
   const cube = (c: Cube, indent: string) => {
@@ -493,6 +529,7 @@ export function serializeModel(doc: ModelDoc): string {
       parts.push(`"verts": [${verts ? `\n${verts}\n${i2}` : ""}]`, `"polys": [${polys ? `\n${polys}\n${i2}` : ""}]`);
       if (c.creases?.length) parts.push(`"creases": ${JSON.stringify(c.creases)}`);
       if (c.seams?.length) parts.push(`"seams": ${JSON.stringify(c.seams)}`);
+      if (c.shapes?.length) parts.push(`"shapes": ${JSON.stringify(c.shapes)}`);
       if (c.modifiers?.length) parts.push(`"modifiers": [${c.modifiers.map((m) => JSON.stringify(m)).join(", ")}]`);
       if (c.skin) {
         const rows = c.skin.weights.map((w) => `${i2}  ${JSON.stringify(w.map(([b, x]) => [b, Math.round(x * 10000) / 10000]))}`).join(",\n");

@@ -59,7 +59,7 @@
   "name": "nova.model",
   "kind": "function",
   "signature": "nova.model(id, x, y, z [, opts])",
-  "doc": "Draw a 3D model. Options: scale, rx, ry, rz (radians), quat = { x, y, z, w } (a turn as a quaternion, as a physics body gives it, in place of rx, ry, rz), tint, parts (turn pieces on their own: parts = { wheel = { ry = 1 } }, see nova.model_parts), layers (clips mixed by weight; a layer with `mask = { \"Spine\" }` is laid over the mix on those parts and their children only; `additive = true` adds how far the clip is from the rest pose instead), clip and time (pose it from an animation clip, see nova.model_clips; loop = false holds the last pose), layers = { { clip = \"walk\", time = t, weight = 0.7 }, { clip = \"run\", time = t2, weight = 0.3 } } (several clips mixed by weight; nova.animator does the bookkeeping), shadow = false (casts no shadow, see nova.shadows), sway = 0.3 (bends in the wind: see nova.wind), lod = \"cheaper_model\" with lod_distance (100) and lod_fade (15% of the distance) metres (draws that model instead past that distance on the ground from the camera, the two trading places by a screen-door so nothing pops; also with clip, layers or parts: the far model is then a plain model in its rest pose and no pose is made), max_distance = 80 (nothing is drawn beyond that many metres on the ground from the camera, a pose is not made either), pose_step = 0.0667 (with clip: seconds; snaps time down to a multiple, so characters at the same moment of a clip share one pose and one set of GPU joint matrices; 0 = exact times only. A crowd of 300 with random phases becomes a few dozen poses), shader = \"water\" (draw it with shaders/water.wgsl, with params = { up to 8 numbers }, textures = { up to 2 pictures } and blend = true for see-through; see nova.post and docs/shaders.md).",
+  "doc": "Draw a 3D model. Options: scale, rx, ry, rz (radians), quat = { x, y, z, w } (a turn as a quaternion, as a physics body gives it, in place of rx, ry, rz), tint, parts (turn pieces on their own: parts = { wheel = { ry = 1 } }, see nova.model_parts), layers (clips mixed by weight; a layer with `mask = { \"Spine\" }` is laid over the mix on those parts and their children only; `additive = true` adds how far the clip is from the rest pose instead), clip and time (pose it from an animation clip, see nova.model_clips; loop = false holds the last pose), layers = { { clip = \"walk\", time = t, weight = 0.7 }, { clip = \"run\", time = t2, weight = 0.3 } } (several clips mixed by weight; nova.animator does the bookkeeping), shadow = false (casts no shadow, see nova.shadows), sway = 0.3 (bends in the wind: see nova.wind), lod = \"cheaper_model\" with lod_distance (100) and lod_fade (15% of the distance) metres (draws that model instead past that distance on the ground from the camera, the two trading places by a screen-door so nothing pops; also with clip, layers or parts: the far model is then a plain model in its rest pose and no pose is made), max_distance = 80 (nothing is drawn beyond that many metres on the ground from the camera, a pose is not made either), pose_step = 0.0667 (with clip: seconds; snaps time down to a multiple, so characters at the same moment of a clip share one pose and one set of GPU joint matrices; 0 = exact times only. A crowd of 300 with random phases becomes a few dozen poses), constraints = false (leaves out the rules the studio put on the model's parts: limits, copies, reach; they apply by default), morph = { smile = 0.6 } (blends the model's shape keys by name, 0 to 1 each; see nova.model_morphs; a part that bends with a skeleton ignores them), shader = \"water\" (draw it with shaders/water.wgsl, with params = { up to 8 numbers }, textures = { up to 2 pictures } and blend = true for see-through; see nova.post and docs/shaders.md).",
   "group": "Drawing"
  },
  {
@@ -312,6 +312,13 @@
   "kind": "function",
   "signature": "nova.model_clips(id) -> { { name, duration }, ... }",
   "doc": "The animation clips a model has, with their length in seconds, for nova.model(..., { clip = name, time = seconds }).",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.model_morphs",
+  "kind": "function",
+  "signature": "nova.model_morphs(id) -> { name, ... }",
+  "doc": "The shape keys (morph targets) a model has, by name, for nova.model(..., { morph = { name = weight } }).",
   "group": "Drawing"
  },
  {
