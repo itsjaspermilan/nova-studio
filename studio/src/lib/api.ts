@@ -16,6 +16,12 @@ async function tauriApi(): Promise<Api> {
       const picked = await open({ directory: true, multiple: false, title });
       return typeof picked === "string" ? picked : null;
     },
+    pickFile: async (title, extensions) => {
+      const picked = await open({ directory: false, multiple: false, title, filters: [{ name: "Files", extensions }] });
+      return typeof picked === "string" ? picked : null;
+    },
+    blenderAvailable: () => invoke<boolean>("blender_available"),
+    importBlend: (blendPath) => invoke<string>("import_blend", { blendPath }),
     openProject: (path) => invoke<ProjectInfo>("open_project", { path }),
     newProject: (parent, name, template) => invoke<ProjectInfo>("new_project", { parent, name, template }),
     copyExample: (example, parent, name) => invoke<ProjectInfo>("copy_example", { example, parent, name }),

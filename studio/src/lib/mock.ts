@@ -141,6 +141,11 @@ export function createMockApi(options: { devices?: AndroidDevice[] } = {}): Api 
     examples: async () => [{ id: "pine-ridge-rally", name: "Pine Ridge Rally", path: "/examples/pine-ridge-rally" }],
     defaultProjectsDir: async () => "/mock",
     pickFolder: async () => "/mock",
+    pickFile: async () => null,
+    blenderAvailable: async () => false,
+    importBlend: async () => {
+      throw new Error("Opening a Blender file needs the desktop app (and Blender installed).");
+    },
     openProject: async (path) => {
       seed(path.split("/").pop() || "Project");
       return info(path.split("/").pop() || "Project");

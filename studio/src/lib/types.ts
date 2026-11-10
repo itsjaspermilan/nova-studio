@@ -157,6 +157,11 @@ export interface Api {
   readSave(): Promise<SaveInfo>;
   writeSave(text: string): Promise<void>;
   resetSave(): Promise<boolean>;
+  /// A file chosen in the system's open dialog (null when cancelled).
+  pickFile(title: string, extensions: string[]): Promise<string | null>;
+  /// Whether a Blender is installed on this computer, and opening one of its .blend files: Blender writes models/<name>-blend.glb into the project (returned).
+  blenderAvailable(): Promise<boolean>;
+  importBlend(blendPath: string): Promise<string>;
   /// Named snapshots of the whole project (kept in its hidden .nova folder); restoring takes a snapshot of the present first and returns it.
   snapshotCreate(name: string): Promise<Snapshot>;
   snapshotList(): Promise<Snapshot[]>;

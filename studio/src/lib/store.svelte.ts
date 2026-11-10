@@ -618,6 +618,18 @@ class Studio {
     });
   }
 
+  /// Opens a Blender file: Blender (if installed) turns it into a .glb in the project, which becomes an editable model.
+  async importBlend() {
+    const picked = await this.#guard(() => this.api!.pickFile("Open a Blender file", ["blend"]));
+    if (!picked) return;
+    this.say("info", "Asking Blender to open the file… this can take a little while.");
+    await this.#guard(async () => {
+      const glb = await this.api!.importBlend(picked);
+      await this.refreshFiles();
+      await this.makeModelEditable(glb);
+    });
+  }
+
   /// Opens an OBJ file as a new model (each object a mesh shape; 1 OBJ unit is 16 model units, so a metre is one world unit).
   async importObj(file: File) {
     await this.#guard(async () => {

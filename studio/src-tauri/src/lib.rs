@@ -3,6 +3,7 @@
 //! project root held in the app state and is confined to it (`paths`).
 
 pub mod audio_files;
+mod blend;
 mod debug_link;
 mod device;
 mod headless;
@@ -258,6 +259,40 @@ fn snapshot_delete(state: State<AppState>, id: String) -> Result<(), String> {
     snapshots::delete(&root_of(&state)?, &id)
 }
 
+/// Opens a Blender file: Blender (if installed) writes it as models/<name>-blend.glb in the project, whose path is returned.
+#[tauri::command]
+async fn import_blend(state: State<'_, AppState>, blend_path: String) -> Result<String, String> {
+    let root = root_of(&state)?;
+    let blend = PathBuf::from(&blend_path);
+    let stem: String = blend
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "model".into())
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let rel = format!("models/{stem}-blend.glb");
+    let out = paths::confine(&root, &rel)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        blend::convert(&blend, &out, std::time::Duration::from_secs(180))
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    Ok(rel)
+}
+
+/// Whether a Blender is installed here, for the "Open a Blender file" button to say what it needs.
+#[tauri::command]
+fn blender_available() -> bool {
+    blend::find_blender().is_some()
+}
+
 #[tauri::command]
 fn write_audio(state: State<AppState>, path: String, data_url: String) -> Result<(), String> {
     project_files::write_audio(&root_of(&state)?, &path, &data_url)
@@ -505,6 +540,8 @@ pub fn run() {
             read_audio,
             write_audio,
             write_export,
+            import_blend,
+            blender_available,
             snapshot_create,
             snapshot_list,
             snapshot_restore,

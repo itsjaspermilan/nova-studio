@@ -7,6 +7,10 @@
   let songTemplate = $state("blank");
   let audioFile: HTMLInputElement | undefined = $state();
   let objFile: HTMLInputElement | undefined = $state();
+  let blender = $state(false);
+  $effect(() => {
+    if (studio.workspace === "model") void studio.api?.blenderAvailable().then((v) => (blender = v)).catch(() => (blender = false));
+  });
 
   const w = $derived(WORKSPACES.find((x) => x.id === studio.workspace)!);
   const own = $derived(inWorkspace(studio.files.filter((f) => !f.dir), studio.workspace).filter((f) => !f.path.endsWith("nova.json")));
@@ -42,6 +46,7 @@
       <input bind:value={name} placeholder="Name of a new {studio.workspace === 'sound' ? 'sound or song' : studio.workspace === 'model' ? 'model' : 'sprite'}" aria-label="Name" />
       {#if studio.workspace === "model"}
         <button type="submit" onclick={() => make("model")} disabled={!name.trim()}>New model</button>
+        <button type="button" onclick={() => void studio.importBlend()} disabled={!blender} title={blender ? "Blender writes the file as a model, in the background" : "Needs Blender installed (blender.org, free) and the desktop app"}>Open a Blender file…</button>
         <button type="button" onclick={() => objFile?.click()} title="Open a Wavefront OBJ file from another program as a new model">Import an OBJ…</button>
         <input bind:this={objFile} type="file" accept=".obj,text/plain" hidden onchange={(e) => { const f = e.currentTarget.files?.[0]; e.currentTarget.value = ""; if (f) void studio.importObj(f); }} />
       {/if}
