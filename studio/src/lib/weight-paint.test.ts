@@ -60,3 +60,40 @@ describe("painting weights", () => {
     expect(sums(c)).toBe(true);
   });
 });
+
+import { mirrorWeights } from "./model-skin";
+describe("mirroring weights", () => {
+  /// Four points: two left (x +2 and +1, held by "left arm") and their mirrors (x -2, -1, painted other ways), and a point on the middle.
+  const mesh = (): Cube => ({
+    shape: "mesh", from: [-2, 0, 0], size: [4, 1, 1], color: "#fff",
+    verts: [[2, 0, 0], [1, 1, 0], [-2, 0, 0], [-1, 1, 0], [0, 0, 1]],
+    polys: [{ v: [0, 1, 3] }, { v: [0, 3, 2] }, { v: [1, 2, 4] }],
+    skin: { bones: ["body/left arm", "body/right arm", "body"], weights: [[[0, 1]], [[0, 0.6], [2, 0.4]], [[2, 1]], [[2, 1]], [[2, 1]]] },
+  } as Cube);
+  const heldBy = (c: Cube, p: number) => c.skin!.weights[p]!.map(([b, w]) => `${c.skin!.bones[b]}:${w}`);
+  it("gives each point's weights to its mirror, swapping left bones for right ones", () => {
+    const r = mirrorWeights(mesh(), "positive");
+    expect(r.set).toBe(2);
+    expect(heldBy(r.cube, 2)).toEqual(["body/right arm:1"]);
+    expect(heldBy(r.cube, 3)).toEqual(["body/right arm:0.6", "body:0.4"]);
+    expect(heldBy(r.cube, 4)).toEqual(["body:1"]); // on the middle plane: untouched
+    expect(heldBy(r.cube, 0)).toEqual(["body/left arm:1"]); // the source side is as it was
+  });
+  it("can go the other way, adds a bone the other side needs, and leaves an unskinned mesh alone", () => {
+    const m = mesh();
+    m.skin!.bones = ["body/left arm", "body", "x"];
+    m.skin!.weights = [[[0, 1]], [[0, 1]], [[1, 1]], [[1, 1]], [[1, 1]]];
+    const r = mirrorWeights(m, "positive");
+    expect(r.cube.skin!.bones).toContain("body/right arm");
+    const back = mirrorWeights(r.cube, "negative");
+    expect(heldBy(back.cube, 0)).toEqual(["body/left arm:1"]);
+    expect(mirrorWeights({ ...mesh(), skin: undefined }).set).toBe(0);
+  });
+  it("skips a point with no partner at the mirrored place", () => {
+    const m = mesh();
+    m.verts![2] = [-3, 0, 0];
+    const r = mirrorWeights(m, "positive");
+    expect(r.set).toBe(1);
+    expect(heldBy(r.cube, 2)).toEqual(["body:1"]);
+  });
+});

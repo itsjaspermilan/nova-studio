@@ -117,14 +117,7 @@ export function reverseClip(doc: ModelDoc, clipIndex: number): ModelDoc {
 export function mirrorClip(doc: ModelDoc, clipIndex: number): ModelDoc {
   const src = doc.clips?.[clipIndex];
   if (!src) return doc;
-  const sideOf = (name: string): "l" | "r" | null => (/left|(^|[_\- ])l($|[_\- ])/i.test(name) ? "l" : /right|(^|[_\- ])r($|[_\- ])/i.test(name) ? "r" : null);
-  const flip = (name: string): string => {
-    const s = sideOf(name);
-    if (!s) return name;
-    if (/left/i.test(name)) return name.replace(/left/i, (m) => (m[0] === "L" ? "Right" : "right"));
-    if (/right/i.test(name)) return name.replace(/right/i, (m) => (m[0] === "R" ? "Left" : "left"));
-    return name.replace(/(^|[_\- ])([lLrR])($|[_\- ])/, (_m, a: string, c: string, b: string) => a + (c === "l" ? "r" : c === "L" ? "R" : c === "r" ? "l" : "L") + b);
-  };
+  const flip = flipSide;
   const names = new Set(doc.clips![clipIndex]!.tracks.flatMap((t) => t.part));
   const hasPartner = [...names].some((n) => sideOf(n));
   const next = clone(doc);
@@ -198,6 +191,7 @@ export function blendClips(a: Clip, ta: number, b: Clip, tb: number, t: number):
 
 import { MAX_POSES, type SavedPose } from "./model-doc";
 import { quaternionToEuler } from "./model-ik";
+import { flipSide, sideOf } from "./side-names";
 
 /// Saves how the clip poses the parts at time `t` under a name (a name already used is replaced): every keyed property of every keyed part. Null when the clip
 /// has no keys or the library is full.

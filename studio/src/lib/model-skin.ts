@@ -5,6 +5,7 @@
 
 import { eulerToQuaternion, type Quat } from "./model-ease";
 import { falloffWeight, type Falloff } from "./mesh-ops";
+import { flipSide } from "./side-names";
 import { cubeAt, partAt, setCube, type Cube, type ModelDoc, type Part, type Path, type Skin, type Vec3 } from "./model-doc";
 
 /// A 4x4 matrix, column-major (the way three.js and glTF keep them).
@@ -298,4 +299,51 @@ export function paintWeights(cube: Cube, center: Vec3, brush: { bone: string; mo
     setOneWeight(skin, i, index, brush.mode === "add" ? cur + (1 - cur) * w : cur * (1 - w));
   }
   return out;
+}
+
+/// Copies the weights of one side of a symmetric mesh to the other: every point on the `from` side of the middle plane (x = 0 in the mesh's own space) gives its weights to the
+/// point that mirrors it (same place with x reversed, within `tolerance`), with each bone swapped for its opposite-side bone ("left arm" for "right arm"; a bone with no
+/// opposite stays). A new bone is added to the list when the other side needs it. Points on the plane, and points with no mirror partner, are left alone. Returns the mesh as it
+/// was when it has no skin, plus how many points were set.
+export function mirrorWeights(cube: Cube, from: "positive" | "negative" = "positive", tolerance = 0.01): { cube: Cube; set: number } {
+  if (!cube.skin || !cube.verts || cube.skin.weights.length !== cube.verts.length) return { cube, set: 0 };
+  const out: Cube = JSON.parse(JSON.stringify(cube));
+  const skin = out.skin!;
+  const verts = cube.verts;
+  const boneIndex = (name: string) => {
+    let i = skin.bones.indexOf(name);
+    if (i < 0 && skin.bones.length < 64) i = skin.bones.push(name) - 1;
+    return i;
+  };
+  // the bone each bone swaps with
+  const opposite = cube.skin.bones.map((b) => b.split("/").map(flipSide).join("/"));
+  let set = 0;
+  for (let i = 0; i < verts.length; i++) {
+    const p = verts[i]!;
+    if (from === "positive" ? p[0] <= tolerance : p[0] >= -tolerance) continue;
+    let partner = -1;
+    let best = tolerance * 4;
+    for (let j = 0; j < verts.length; j++) {
+      const q = verts[j]!;
+      const d = Math.hypot(q[0] + p[0], q[1] - p[1], q[2] - p[2]);
+      if (d < best) {
+        best = d;
+        partner = j;
+      }
+    }
+    if (partner < 0 || partner === i) continue;
+    const swapped: [number, number][] = [];
+    for (const [b, w] of cube.skin.weights[i]!) {
+      const to = boneIndex(opposite[b]!);
+      if (to >= 0) swapped.push([to, w]);
+    }
+    if (!swapped.length) continue;
+    const merged = new Map<number, number>();
+    for (const [b, w] of swapped) merged.set(b, (merged.get(b) ?? 0) + w);
+    skin.weights[partner] = [...merged].sort((x, y) => y[1] - x[1]).slice(0, 4).map(([b, w]) => [b, Math.round(w * 10000) / 10000] as [number, number]);
+    const sum = skin.weights[partner]!.reduce((n, [, w]) => n + w, 0) || 1;
+    skin.weights[partner] = skin.weights[partner]!.map(([b, w]) => [b, Math.round((w / sum) * 10000) / 10000] as [number, number]);
+    set++;
+  }
+  return { cube: out, set };
 }

@@ -27,7 +27,7 @@
   import { SCULPT_HELP, SCULPT_MODES, sculptDab, type SculptMode } from "../lib/sculpt";
   import { addFace, bevelEdge, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, freshProfile, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsSymmetric, setFaceColors, setSmooth, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
   import { hasVolume, meshOf, segmentsOf, shapeFaces, solidOf } from "../lib/model-mesh";
-  import { WEIGHT_MODES, paintWeights, type WeightMode, autoWeights, boneHeat, dominantBones, heatColor, invertAffine, reskin, setWeight, skinnedPoints, transformPoint, worldMatrices } from "../lib/model-skin";
+  import { WEIGHT_MODES, mirrorWeights, paintWeights, type WeightMode, autoWeights, boneHeat, dominantBones, heatColor, invertAffine, reskin, setWeight, skinnedPoints, transformPoint, worldMatrices } from "../lib/model-skin";
   import { bakeAll, blockOf, faceRects, flippedRect, normRect, rectAt, enableTexture, fitPicture, packModel, resizeTexture, unwrap, uvsOf } from "../lib/model-uv";
   import { CLEAR, cloneRaster, drawEllipse, drawLine, drawRect, floodFill, getPixel, newRaster, parseHex, stamp, toHex, type Raster, type Rgba } from "../lib/pixels";
   import { applyBrush, applyGradient } from "../lib/paint";
@@ -2014,6 +2014,13 @@
     skinNote = "";
     commit(setCube(doc, selected, { ...cube, skin }));
   }
+  /// Copies the weights of the +x side to the -x side (or the other way), swapping left bones for right ones.
+  function mirrorSkin(from: "positive" | "negative") {
+    if (!selected || !cube?.skin) return;
+    const r = mirrorWeights(cube, from);
+    skinNote = r.set ? `Mirrored the weights of ${r.set} point${r.set === 1 ? "" : "s"}.` : "No point had a mirror partner to copy to (the mesh must be symmetrical about x = 0).";
+    if (r.set) commit(setCube(doc, selected, r.cube), false, "Mirror weights");
+  }
   function unskin() {
     if (!selected || !cube?.skin) return;
     const { skin: _gone, ...rest } = cube;
@@ -2746,7 +2753,7 @@
               </div>
               <div class="row"><button onclick={applyWeight} disabled={!skinBone} title="The picked points follow that part this much, and the others share the rest">Set weight</button></div>
             {/if}
-            <div class="row"><button onclick={autoSkin} title="Works the weights out again from where the parts are (hand-set weights are lost)">Auto weights</button><button class="danger" onclick={unskin}>Stop bending</button></div>
+            <div class="row"><button onclick={() => mirrorSkin("positive")} title="Copy the +x side's weights to the -x side, left bones becoming right ones">Mirror →</button><button onclick={() => mirrorSkin("negative")} title="Copy the -x side's weights to the +x side">← Mirror</button><button onclick={autoSkin} title="Works the weights out again from where the parts are (hand-set weights are lost)">Auto weights</button><button class="danger" onclick={unskin}>Stop bending</button></div>
           {:else}
             <div class="row"><button onclick={autoSkin} title="The shape bends where parts meet, like a sleeve at the elbow, instead of staying stiff">Bend with the parts around it</button></div>
           {/if}
