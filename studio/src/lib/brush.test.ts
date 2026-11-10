@@ -110,3 +110,15 @@ describe("brushes cut from a picture", () => {
     expect(brushFromRaster(newRaster(2, 2))).toBeNull();
   });
 });
+
+import { pressureSize } from "./brush";
+describe("pen pressure", () => {
+  it("scales the brush from a fifth to the whole size, never under one pixel", () => {
+    expect(pressureSize(10, 1)).toBe(10);
+    expect(pressureSize(10, 0)).toBe(2);
+    expect(pressureSize(10, 0.5)).toBe(6);
+    expect(pressureSize(1, 0)).toBe(1);
+    expect(pressureSize(8, 7)).toBe(8); // out of range is clamped
+    expect(pressureSize(8, NaN)).toBe(8);
+  });
+});

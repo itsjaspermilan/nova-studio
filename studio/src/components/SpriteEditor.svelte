@@ -4,7 +4,9 @@
   import { commands } from "../lib/commands";
   import { placesOf, strokeMaps } from "../lib/symmetry";
   import { encodeGif, scaleRaster } from "../lib/gif";
-  import { BRUSH_SHAPES, DITHERS, brushFromRaster, brushOffsets, gradientFill, shadeColor, stampBrush, stampPicture, type BrushShape, type Dither, type PictureBrush } from "../lib/brush";
+  import { drawText, textSize } from "../lib/pixel-text";
+  import { needsMap, scrollToCentre, visibleBox } from "../lib/minimap";
+  import { BRUSH_SHAPES, DITHERS, brushFromRaster, brushOffsets, gradientFill, pressureSize, shadeColor, stampBrush, stampPicture, type BrushShape, type Dither, type PictureBrush } from "../lib/brush";
   import { encodeApng } from "../lib/apng";
   import SpriteExportDialog from "./SpriteExportDialog.svelte";
   import { importAnimation } from "../lib/sprite-import";
@@ -28,7 +30,7 @@
 
   let { path, text }: { path: string; text: string } = $props();
 
-  type Tool = "select" | "ellipseSelect" | "lasso" | "wand" | "colorSelect" | "shade" | "gradient" | "pencil" | "eraser" | "fill" | "line" | "rect" | "ellipse" | "polygon" | "picker" | "zoom" | "pan";
+  type Tool = "select" | "ellipseSelect" | "lasso" | "wand" | "colorSelect" | "shade" | "gradient" | "pencil" | "eraser" | "fill" | "line" | "rect" | "ellipse" | "polygon" | "text" | "picker" | "zoom" | "pan";
   interface Session {
     doc: SpriteDoc;
     past: SpriteDoc[];
@@ -55,6 +57,7 @@
     { id: "rect", label: "Rectangle", key: "R", icon: "▭" },
     { id: "ellipse", label: "Ellipse", key: "O", icon: "◯" },
     { id: "polygon", label: "Polygon (click the corners; click the first corner, double-click or Enter to finish)", key: "P", icon: "⬠" },
+    { id: "text", label: "Text (type it in the options, click where its top left corner goes)", key: "T", icon: "𝐀" },
     { id: "picker", label: "Colour picker", key: "I", icon: "✚" },
     { id: "zoom", label: "Zoom (click to zoom in, Alt-click to zoom out)", key: "Z", icon: "⌕" },
     { id: "pan", label: "Pan (drag the picture round)", key: "H", icon: "✋" },
@@ -421,6 +424,12 @@
   let base: Raster | null = null;
   let before: SpriteDoc | null = null;
   let strokePoints: Point[] = [];
+  /// The pen's pressure at each stroke point (1 for a mouse), and whether it sets the brush size.
+  let strokePressures: number[] = [];
+  let usePressure = $state(true);
+  let textValue = $state("TEXT");
+  let textScale = $state(1);
+  const pressureOf = (e: PointerEvent) => (e.pointerType === "pen" ? e.pressure : 1);
 
   let symX = $state(false);
   let symY = $state(false);
@@ -587,8 +596,14 @@
     start = last = p;
     base = cloneRaster(r);
     strokePoints = [p];
+    strokePressures = [pressureOf(e)];
     if (tool === "pencil" || tool === "eraser" || tool === "shade") drawStroke(r);
-    else if (tool === "fill") {
+    else if (tool === "text") {
+      if (textValue) for (const q of placesOf(p, fillMaps, doc.fw, doc.fh)) drawText(r, q.x, q.y, textValue.replaceAll("\\n", "\n"), ink(), textScale);
+      recompose(doc, frame);
+      finish();
+      return;
+    } else if (tool === "fill") {
       const inside_ = fillInSelection ? currentMask() : null;
       for (const q of placesOf(p, fillMaps, doc.fw, doc.fh)) fillWith(r, q.x, q.y, ink(), { tolerance: fillTolerance, everywhere: fillEverywhere, within: inside_ ? (x, y) => has(inside_, x, y) : undefined });
       recompose(doc, frame);
@@ -626,7 +641,10 @@
       for (const pt of points) for (const q of placesOf(pt, maps, doc.fw, doc.fh, reach)) stampPicture(r, q.x, q.y, pictureBrush!, tool === "eraser" ? CLEAR : brushKeepsColors ? undefined : c);
       return;
     }
-    for (const pt of points) for (const q of placesOf(pt, maps, doc.fw, doc.fh, size + 1)) stampBrush(r, q.x, q.y, size, brushShape, c);
+    for (const [i, pt] of points.entries()) {
+      const sz = usePressure && size > 1 ? pressureSize(size, strokePressures[i] ?? 1) : size;
+      for (const q of placesOf(pt, maps, doc.fw, doc.fh, sz + 1)) stampBrush(r, q.x, q.y, sz, brushShape, c);
+    }
   }
 
   function shape(r: Raster, p: Point) {
@@ -729,6 +747,24 @@
     setZoom(zoom * Math.exp(-e.deltaY * 0.01), e);
   }
   let scrollTick = $state(0);
+  let miniMap = $state(true);
+  let viewport = $state({ w: 0, h: 0 });
+  const MAP_SIDE = 140;
+  const mapView = $derived.by(() => {
+    scrollTick;
+    if (!scroller || !miniMap) return null;
+    const v = { left: scroller.scrollLeft, top: scroller.scrollTop, w: viewport.w || scroller.clientWidth, h: viewport.h || scroller.clientHeight };
+    if (!needsMap(v, zoom, doc.fw, doc.fh)) return null;
+    const k = MAP_SIDE / Math.max(doc.fw, doc.fh);
+    return { k, w: doc.fw * k, h: doc.fh * k, box: visibleBox(v, zoom, doc.fw, doc.fh) };
+  });
+  function mapClick(e: PointerEvent) {
+    if (!scroller || !mapView) return;
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const to = scrollToCentre((e.clientX - r.left) / mapView.k, (e.clientY - r.top) / mapView.k, { w: scroller.clientWidth, h: scroller.clientHeight }, zoom);
+    scroller.scrollLeft = to.left;
+    scroller.scrollTop = to.top;
+  }
   /// Which pixel numbers the rulers label: far enough apart to read at the current zoom.
   const tickStep = $derived(zoom >= 24 ? 1 : zoom >= 12 ? 2 : zoom >= 6 ? 5 : zoom >= 3 ? 10 : 20);
   const ticks = (n: number) => Array.from({ length: Math.ceil(n / tickStep) }, (_, i) => i * tickStep);
@@ -775,7 +811,9 @@
       r.data.set(place(moving.rest, moving.piece, nx, ny).data);
       setSelection(placeMask(moving.pieceMask, doc.fw, doc.fh, nx, ny));
     } else if (tool === "pencil" || tool === "eraser" || tool === "shade") {
-      strokePoints.push(...linePoints(last, p).slice(1));
+      const added = linePoints(last, p).slice(1);
+      strokePoints.push(...added);
+      for (let k = 0; k < added.length; k++) strokePressures.push(pressureOf(e));
       last = p;
       drawStroke(r);
     } else shape(r, p);
@@ -1438,6 +1476,7 @@
         {#if tool === "pencil" || tool === "eraser" || tool === "shade"}
           <label title="The shape of the brush">Brush <select bind:value={brushShape}>{#each BRUSH_SHAPES as b (b)}<option value={b}>{b}</option>{/each}</select></label>
         {/if}
+        {#if tool === "pencil" || tool === "eraser"}<label class="check" title="With a pen, pressing harder makes the line thicker (a mouse is unaffected)"><input type="checkbox" bind:checked={usePressure} /> Pen pressure</label>{/if}
         {#if (tool === "pencil" || tool === "eraser") && pictureBrush}
           <span class="dim" title="The pencil and eraser stamp a picture cut from the canvas">Picture brush ({pictureBrush.cells.length} pixels)</span>
           {#if tool === "pencil"}<label class="check" title="Stamp with its own colours (off: stamp the shape in the current colour)"><input type="checkbox" bind:checked={brushKeepsColors} /> Its colours</label>{/if}
@@ -1447,6 +1486,11 @@
           <label class="slider" title="How different a colour may be and still be filled (0 is exactly the same)"><span>Tolerance</span><input type="range" min="0" max="255" step="1" bind:value={fillTolerance} /><output>{fillTolerance}</output></label>
           <label title="Joined area, or every pixel of that colour in the picture">Fill <select bind:value={fillEverywhere}><option value={false}>joined area</option><option value={true}>same colour everywhere</option></select></label>
           {#if selection}<label class="check" title="Only change pixels inside the selection"><input type="checkbox" bind:checked={fillInSelection} /> Inside the selection</label>{/if}
+        {/if}
+        {#if tool === "text"}
+          <label>Text <input bind:value={textValue} class="wide" aria-label="Text to draw" placeholder="type here (Enter makes no new line: use \n)" /></label>
+          <label>Scale <input type="number" min="1" max="8" bind:value={textScale} class="narrow" aria-label="Text scale" /></label>
+          <span class="dim">{textSize(textValue.replaceAll("\\n", "\n"), textScale).w} × {textSize(textValue.replaceAll("\\n", "\n"), textScale).h} px, capitals only</span>
         {/if}
         {#if tool === "polygon"}
           <span class="dim">{polyShown ? `${polyShown} corner${polyShown === 1 ? "" : "s"}: click the first one, double-click or Enter to finish, Esc to drop` : "Click the corners of the shape"}</span>
@@ -1495,6 +1539,7 @@
           <button type="button" class="ghost" onclick={() => (sizing = false)}>Cancel</button>
         </form>
       {/if}
+      <div class="scrollwrap" bind:clientWidth={viewport.w} bind:clientHeight={viewport.h}>
       <div class="scroller" bind:this={scroller} onscroll={() => scrollTick++} onwheel={wheel} use:pinch={{ start: gestureStart, change: gestureChange }}>
         <div class="stage" class:ruled={rulers}>
           {#if rulers}
@@ -1509,6 +1554,13 @@
           {/if}
           <canvas bind:this={canvas} aria-label="Sprite canvas" class:hand={tool === "pan"} class:zooming={tool === "zoom"} onpointerdown={down} onpointermove={move} onpointerup={up} onpointercancel={up} onpointerleave={leave} oncontextmenu={(e) => e.preventDefault()}></canvas>
         </div>
+      </div>
+      {#if mapView}
+        <div class="minimap" role="img" aria-label="Mini-map: click to move the view" style:width="{mapView.w}px" style:height="{mapView.h}px" onpointerdown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); mapClick(e); }} onpointermove={(e) => { if (e.buttons) mapClick(e); }}>
+          <canvas use:drawThumb={frame}></canvas>
+          <i style:left="{mapView.box.x * mapView.k}px" style:top="{mapView.box.y * mapView.k}px" style:width="{mapView.box.w * mapView.k}px" style:height="{mapView.box.h * mapView.k}px"></i>
+        </div>
+      {/if}
       </div>
 
       <div class="timeline">
@@ -1810,6 +1862,10 @@
   .check input { margin: 0; }
   .spacer { flex: 1; }
   .narrow { width: 64px; padding: 2px 6px; }
+  .scrollwrap { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
+  .minimap { position: absolute; right: 18px; bottom: 18px; border: 1px solid var(--line); background: var(--panel); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4); cursor: crosshair; touch-action: none; }
+  .minimap canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+  .minimap i { position: absolute; border: 1px solid #ffd166; background: rgba(255, 209, 102, 0.15); pointer-events: none; }
   .scroller { flex: 1; min-height: 0; overflow: auto; display: grid; padding: 16px; background: var(--bg); }
   .stage { margin: auto; position: relative; }
   .stage.ruled { padding: 18px 0 0 18px; }

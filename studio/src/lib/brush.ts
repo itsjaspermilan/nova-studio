@@ -122,3 +122,10 @@ export function brushFromRaster(piece: Raster, has?: (x: number, y: number) => b
 export function stampPicture(r: Raster, x: number, y: number, b: PictureBrush, color?: Rgba) {
   for (const c of b.cells) setPixel(r, x + c.dx, y + c.dy, color ?? c.color);
 }
+
+/// The brush size for a pen pressed with `pressure` (0 to 1): a light touch draws a fifth of the size (at least 1 pixel), full pressure the whole size.
+/// A mouse reports no real pressure; the editor passes 1 for it.
+export function pressureSize(size: number, pressure: number): number {
+  const p = Math.min(1, Math.max(0, Number.isFinite(pressure) ? pressure : 1));
+  return Math.max(1, Math.round(size * (0.2 + 0.8 * p)));
+}
