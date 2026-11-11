@@ -1,4 +1,5 @@
--- A grunt: walks at the hero (round walls, by the path grid), hits it when close, and dies when shot enough.
+-- A grunt. By default it stands still and faces the hero, like a target on a range: it falls when shot enough and gets up again after a few seconds.
+-- With "chase" on it walks at the hero (round walls, by the path grid) and hits it when close.
 local sin, cos, sqrt, atan = math.sin, math.cos, math.sqrt, math.atan
 
 local Grunt = nova.entity {
@@ -9,6 +10,8 @@ local Grunt = nova.entity {
   settings = {
     hp = { 6, min = 1, max = 100, step = 1, help = "How many shots it takes" },
     speed = { 3.2, min = 0.5, max = 8, step = 0.1, help = "Walking speed (metres a second)" },
+    chase = { false, help = "Walks at the hero and hits it (off: stands still, a target)" },
+    respawn = { 3, min = 0, max = 60, step = 0.5, help = "Seconds before a shot down grunt stands up again (0: stays down)" },
     damage = { 1, min = 1, max = 10, step = 1, help = "How much a hit hurts the hero" },
   },
 }
@@ -19,22 +22,36 @@ function Grunt:create()
   self.hit_t, self.cool = 0, 0
   self.face = 0
   self.way = nil
+  self.down = false
+  self.max_hp = self.hp
+  self.down_t = 0
 end
 
 -- shot by a bullet (or anything): takes damage, is pushed a little, flashes, and dies at 0
 function Grunt:hurt(n, dx, dz)
   self.hp = self.hp - n
   self.hit_t = 0.09
-  self.x, self.z = nova.walls.move(self.x, self.z, (dx or 0) * 0.12, (dz or 0) * 0.12, self.radius)
+  if self.chase then self.x, self.z = nova.walls.move(self.x, self.z, (dx or 0) * 0.12, (dz or 0) * 0.12, self.radius) end
   if self.hp <= 0 then
     for _ = 1, 16 do
       nova.spawn("spark", self.x, self.y + 0.3 + math.random() * 1.2, { z = self.z, nx = 0, nz = 0, color = { 200, 60, 50 }, size = 0.16, fast = 2.2 })
     end
-    self:destroy()
+    local hero = nova.first("hero")
+    if hero then hero.hits = (hero.hits or 0) + 1 end
+    if self.respawn > 0 then
+      self.down, self.down_t = true, self.respawn
+    else
+      self:destroy()
+    end
   end
 end
 
 function Grunt:update(dt)
+  if self.down then
+    self.down_t = self.down_t - dt
+    if self.down_t <= 0 then self.down, self.hp = false, self.max_hp end
+    return
+  end
   self.t = self.t + dt
   self.hit_t = math.max(0, self.hit_t - dt)
   self.cool = math.max(0, self.cool - dt)
@@ -42,6 +59,11 @@ function Grunt:update(dt)
   if not hero or hero.dead then return end
   local tx, tz = hero.x - self.x, hero.z - self.z
   local dist = sqrt(tx * tx + tz * tz)
+  if not self.chase then
+    self.pace = 0
+    if dist > 0.01 then self.face = atan(tx, tz) end
+    return
+  end
 
   -- where to walk: straight at the hero when it can be seen, else by the path (looked for a few times a second)
   local gx, gz
@@ -94,6 +116,7 @@ local function part(self, ox, oy, oz, w, h, d, color)
 end
 
 function Grunt:draw()
+  if self.down then return end
   local walk = math.min(1, (self.pace or 0) / 2)
   local swing = sin(self.t * 9) * 0.14 * walk
   local bob = math.abs(sin(self.t * 9)) * 0.05 * walk

@@ -2,6 +2,7 @@
 -- R1 or R2 fires, L2 aims down the sights (zoom, slower), A jumps, B crouches (a toggle; you can still walk, slowly).
 local sin, cos, sqrt, atan = math.sin, math.cos, math.sqrt, math.atan
 local cam3 = nova.cam3
+local shot = require("lib.shot")
 
 local Hero = nova.entity {
   tags = { "hero" },
@@ -35,6 +36,7 @@ function Hero:create()
   self.jy = 0 -- upward speed
   self.crouching, self.cr, self.ads, self.grounded = false, 0, 0, true
   self.dead, self.hit_t, self.safe, self.max_hp, self.gone = false, 0, 0, self.hp, 0
+  self.hits = 0 -- targets shot down
   self.cam_d = self.cam_distance
   cam3.yaw = 0
 end
@@ -73,6 +75,20 @@ function Hero:hurt(n, dx, dz)
   self.safe, self.hit_t = 0.7, 0.3
   nova.input.rumble(0.8, 0.15)
   if self.hp <= 0 then self.dead, self.hp = true, 0 end
+end
+
+-- one shot, from the gun along a direction: found at once, with sparks where it lands and a streak
+function Hero:shoot(mx, my, mz, ax, ay, az)
+  local hit = shot.cast(mx, my, mz, ax, ay, az, 80)
+  if hit.kind == "enemy" then
+    for _ = 1, 4 do nova.spawn("spark", hit.x, hit.y, { z = hit.z, nx = -hit.hx, nz = -hit.hz, color = { 220, 70, 60 } }) end
+    hit.enemy:hurt(1, hit.hx, hit.hz)
+  elseif hit.kind == "wall" then
+    for _ = 1, 7 do nova.spawn("spark", hit.x, hit.y, { z = hit.z, nx = hit.nx, nz = hit.nz }) end
+  elseif hit.kind == "floor" then
+    for _ = 1, 6 do nova.spawn("spark", hit.x, 0.03, { z = hit.z, nx = 0, nz = 0 }) end
+  end
+  nova.spawn("tracer", mx, my, { z = mz, ex = hit.x, ey = hit.y, ez = hit.z })
 end
 
 function Hero:update(dt)
@@ -122,6 +138,8 @@ function Hero:update(dt)
   if nova.input.down("fire") and self.cool == 0 and not self.dead then
     self.cool = 1 / self.fire_rate
     local mxp, myp, mzp = self.x + fx * 0.8 + rx * 0.25, self.y + lerp(1.3, 0.8, self.cr), self.z + fz * 0.8 + rz * 0.25
+    -- the gun may be on the far side of a wall (standing close to it): then shoot from the hero's middle
+    if not nova.walls.line_clear(self.x, self.z, mxp, mzp, myp, myp) then mxp, mzp = self.x, self.z end
     local ax, ay, az = tx - mxp, ty - myp, tz - mzp
     local al = sqrt(ax * ax + ay * ay + az * az)
     if al < 1.5 then
@@ -130,7 +148,7 @@ function Hero:update(dt)
     else
       ax, ay, az = ax / al, ay / al, az / al
     end
-    nova.spawn("bullet", mxp, myp, { z = mzp, dx = ax, dy = ay, dz = az })
+    self:shoot(mxp, myp, mzp, ax, ay, az)
   end
 end
 

@@ -26,9 +26,8 @@ function Room:draw_ui()
   if hero then
     if hero.hit_t > 0 then nova.ui.rect(0, 0, w, h, { 220, 30, 30, math.floor(120 * hero.hit_t / 0.3) }) end
     nova.ui.text(24, 20, "HP " .. hero.hp .. " / " .. hero.max_hp, { size = 22, color = { 255, 200, 200 }, shadow = true })
-    nova.ui.text(24, 50, "Enemies " .. nova.count("enemy"), { size = 18, color = { 220, 220, 230 }, shadow = true })
+    nova.ui.text(24, 50, "Targets hit " .. (hero.hits or 0), { size = 18, color = { 220, 220, 230 }, shadow = true })
     if hero.dead then nova.ui.text(w / 2, h / 2 - 60, "You died", { size = 48, align = "center", shadow = true }) end
-    if nova.count("enemy") == 0 then nova.ui.text(w / 2, h / 2 - 60, "Room clear", { size = 48, align = "center", shadow = true }) end
   end
 end
 
