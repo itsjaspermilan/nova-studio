@@ -24,8 +24,8 @@ export function freePlane(view: Vec3): Lock {
   return (["yz", "xz", "xy"] as const)[facingAxis(view)];
 }
 
-/// A key pressed during a drag: X, Y or Z locks the move to that axis, Shift with one of them to the plane across it, and the same key
-/// again (or another) changes it; returns the new lock, or null if the key is not one of them.
+/// A key pressed during a drag: X, Y or Z locks the move to that axis, Shift with one of them to the plane across it (the editor keeps the lock only
+/// while the key is held); returns the lock, or undefined if the key is not one of them. With `current` the same lock, it returns null (the old tap-again toggle).
 export function lockForKey(key: string, shift: boolean, current: Lock | null): Lock | null | undefined {
   const k = key.toLowerCase();
   const i = AXIS_NAMES.indexOf(k as "x");

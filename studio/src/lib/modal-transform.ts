@@ -1,5 +1,5 @@
 // Blender's "press a key, then move the mouse" transforms (G grab, S scale): the shape follows the mouse until a click or Enter keeps it,
-// Esc or the right button puts it back, X, Y or Z holds it to one axis, and a typed number sets the amount exactly.
+// Esc or the right button puts it back, holding X, Y or Z keeps it to one axis (while the key is down), and a typed number sets the amount exactly.
 // This is the arithmetic, apart from the editor: what the mouse movement and the typed keys come to.
 
 export type Axis = "x" | "y" | "z" | null;

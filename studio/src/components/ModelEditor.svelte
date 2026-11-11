@@ -1793,7 +1793,7 @@
       guides[0]!.userData.lock = lock;
     }
     const at = screenOf(new THREE.Vector3(m.from[0] + delta[0], m.from[1] + delta[1], m.from[2] + delta[2]).applyMatrix4(g.matrixWorld));
-    const how = lock === "xyz" ? "" : `Moving ${describeLock(lock)}${free ? " · X, Y or Z keeps to one axis, ⇧ with it to a plane · Esc puts it back" : ""}`;
+    const how = lock === "xyz" ? "" : `Moving ${describeLock(lock)}${free ? " · hold X, Y or Z to keep to one axis, ⇧ with it to a plane · Esc puts it back" : ""}`;
     moveHint = at ? { x: at.x, y: at.y, text: describeMove(m.from, delta), how } : null;
   }
   function endPointMove() {
@@ -1883,7 +1883,7 @@
   }
   // a point dragged by itself: where it started (in the world, and in the part's units), the plane it is free on and the lock it keeps to now
   type PointMove = { base: ModelDoc; baseCube: Cube; path: Path; from: Vec3; moved: boolean };
-  let drag: (PointMove & { point: number; start: THREE.Vector3; free: Lock; lock: Lock; last: PointerEvent }) | null = null;
+  let drag: (PointMove & { point: number; start: THREE.Vector3; free: Lock; lock: Lock; last: PointerEvent; held?: string }) | null = null;
   function pointerDown(e: PointerEvent) {
     if (bevelModal) return void endBevel(true);
     if (pullModal) return void endPullModal(true);
@@ -3156,16 +3156,18 @@
       modalKey(e);
       return;
     }
-    // while a point is dragged: X, Y or Z keeps it to that axis (⇧ to the plane across it), the same key again frees it; Esc puts it back
+    // while a point is dragged: holding X, Y or Z keeps it to that axis (⇧ to the plane across it) for as long as the key is down; Esc puts it back
     if (drag || gizmoMove) {
       if (e.key === "Escape") {
         e.preventDefault();
         cancelPointMove();
         return;
       }
-      const lock = drag ? lockForKey(e.key, e.shiftKey, drag.lock === drag.free ? null : drag.lock) : undefined;
+      const lock = drag ? lockForKey(e.key, e.shiftKey, null) : undefined;
       if (drag && lock !== undefined) {
         e.preventDefault();
+        if (e.repeat) return;
+        drag.held = e.key.toLowerCase();
         drag.lock = lock ?? drag.free;
         clearGuides();
         freeDragTo(drag.last);
@@ -3208,7 +3210,7 @@
   // ---- Blender-style transforms: G moves, S resizes, with the mouse (lib/modal-transform.ts) ----------------------
   // (with points picked in point mode the transform is of those points about their middle; otherwise of the picked shapes)
   type ModalPoints = { path: Path; verts: number[]; pivotW: THREE.Vector3; pivotScreen: { x: number; y: number }; d0: number };
-  let modal = $state<{ kind: "move" | "scale" | "rotate"; base: ModelDoc; x0: number; y0: number; axis: ModalAxis; typed: string; amount: string; pts?: ModalPoints } | null>(null);
+  let modal = $state<{ kind: "move" | "scale" | "rotate"; base: ModelDoc; x0: number; y0: number; axis: ModalAxis; typed: string; amount: string; held?: string; pts?: ModalPoints } | null>(null);
   let pointerAt = { x: 0, y: 0 };
 
   /// Every shape of the model, as paths.
@@ -3374,6 +3376,21 @@
     if (keep) commit(shown);
     else tick++;
   }
+  /// A key let go: the axis that was held is let go too (unless an amount was typed, which then stays on that axis), and a held point-drag lock is freed.
+  function keyUp(e: KeyboardEvent) {
+    const k = e.key.toLowerCase();
+    if (modal && modal.held === k) {
+      modal.held = undefined;
+      if (!modal.typed) modal.axis = null;
+      modalApply();
+    }
+    if (drag && drag.held === k) {
+      drag.held = undefined;
+      drag.lock = drag.free;
+      clearGuides();
+      freeDragTo(drag.last);
+    }
+  }
   function modalKey(e: KeyboardEvent) {
     const m = modal;
     if (!m) return;
@@ -3381,9 +3398,14 @@
     e.stopPropagation();
     if (e.key === "Escape") return modalEnd(false);
     if (e.key === "Enter") return modalEnd(true);
-    const axis = axisKey(m.axis, e.key);
-    if (axis !== undefined) m.axis = axis;
-    else m.typed = typeKey(m.typed, e.key);
+    // an axis is held: it is kept while the key is down (and, if a number was typed meanwhile, until the transform ends)
+    const k = e.key.toLowerCase();
+    if (k === "x" || k === "y" || k === "z") {
+      if (!e.repeat) {
+        m.axis = k;
+        m.held = k;
+      }
+    } else m.typed = typeKey(m.typed, e.key);
     modalApply();
   }
 
@@ -3392,9 +3414,9 @@
   $effect(() => {
     const onShape = () => !modal && mode === "model" && !inEdit && !!selected;
     const offs = [
-      commands.register({ id: "model.grab", title: "Move with the mouse", menu: "Model", icon: "move", keymaps: { blender: ["G"], nova: [] }, help: "The shape follows the mouse: X, Y or Z keeps one axis, type a number for an exact amount, click or Enter keeps it, Esc cancels", enabled: () => !modal && mode === "model" && (inEdit ? selVerts.length > 0 : !!selected), run: () => startModal("move") }),
-      commands.register({ id: "model.scaleMouse", title: "Resize with the mouse", menu: "Model", icon: "scale", keymaps: { blender: ["S"], nova: [] }, help: "Drag to make it bigger or smaller; X, Y or Z for one direction; type a factor", enabled: () => !modal && mode === "model" && (inEdit ? selVerts.length > 0 : pickedShapes.some((p) => cubeAt(doc, p)?.shape !== "mesh")), run: () => startModal("scale") }),
-      commands.register({ id: "model.rotateMouse", title: "Turn with the mouse", menu: "Model", icon: "rotate", keymaps: { blender: ["R"], nova: [] }, help: "Turns the picked points (or shapes) about their middle, following the mouse round it: X, Y or Z turns about that axis, type degrees for an exact turn, click or Enter keeps it, Esc cancels", enabled: () => !modal && mode === "model" && (inEdit ? selVerts.length > 0 : pickedShapes.length > 0), run: () => startModal("rotate") }),
+      commands.register({ id: "model.grab", title: "Move with the mouse", menu: "Model", icon: "move", keymaps: { blender: ["G"], nova: [] }, help: "The shape follows the mouse: hold X, Y or Z to keep to one axis, type a number for an exact amount, click or Enter keeps it, Esc cancels", enabled: () => !modal && mode === "model" && (inEdit ? selVerts.length > 0 : !!selected), run: () => startModal("move") }),
+      commands.register({ id: "model.scaleMouse", title: "Resize with the mouse", menu: "Model", icon: "scale", keymaps: { blender: ["S"], nova: [] }, help: "Drag to make it bigger or smaller; hold X, Y or Z for one direction; type a factor", enabled: () => !modal && mode === "model" && (inEdit ? selVerts.length > 0 : pickedShapes.some((p) => cubeAt(doc, p)?.shape !== "mesh")), run: () => startModal("scale") }),
+      commands.register({ id: "model.rotateMouse", title: "Turn with the mouse", menu: "Model", icon: "rotate", keymaps: { blender: ["R"], nova: [] }, help: "Turns the picked points (or shapes) about their middle, following the mouse round it: hold X, Y or Z to turn about that axis, type degrees for an exact turn, click or Enter keeps it, Esc cancels", enabled: () => !modal && mode === "model" && (inEdit ? selVerts.length > 0 : pickedShapes.length > 0), run: () => startModal("rotate") }),
       commands.register({ id: "model.selectAll", title: "Select all shapes", menu: "Model", icon: "selectAll", keymaps: { blender: ["A"], nova: ["Mod+Shift+A"] }, enabled: () => !modal && mode === "model" && !inEdit, run: () => selectShapes("all") }),
       commands.register({ id: "model.selectNone", title: "Select nothing", menu: "Model", icon: "selectNone", keymaps: { blender: ["Alt+A"], nova: ["Mod+Shift+D"] }, enabled: () => !modal && mode === "model" && !inEdit, run: () => selectShapes("none") }),
       commands.register({ id: "model.selectInvert", title: "Invert the selection", menu: "Model", icon: "selectInvert", keymaps: { blender: ["Mod+I"], nova: [] }, enabled: () => !modal && mode === "model" && !inEdit, run: () => selectShapes("invert") }),
@@ -3464,7 +3486,7 @@
   });
 </script>
 
-<svelte:window onpointerdown={closeSculptMore} onkeydown={key} onpointermove={(e) => { pointerAt = { x: e.clientX, y: e.clientY }; if (modal) modalApply(); }} onpointerdowncapture={(e) => { if (modal) { e.preventDefault(); e.stopPropagation(); modalEnd(e.button === 0); } }} />
+<svelte:window onpointerdown={closeSculptMore} onkeydown={key} onkeyup={keyUp} onpointermove={(e) => { pointerAt = { x: e.clientX, y: e.clientY }; if (modal) modalApply(); }} onpointerdowncapture={(e) => { if (modal) { e.preventDefault(); e.stopPropagation(); modalEnd(e.button === 0); } }} />
 
 {#if error}
   <div class="bad">
