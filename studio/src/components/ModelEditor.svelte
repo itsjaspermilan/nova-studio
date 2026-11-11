@@ -2320,9 +2320,17 @@
     if (inEdit && selected) {
       const edge = pickKinds.edge ? pickEdge(e) : null;
       if (edge) {
+        const prior = selVerts;
         selEdge = edge;
         selFace = null;
         selVerts = [...edge];
+        // Alt-click picks the whole loop of edges through it (all the way round the shape, front and back); Alt and Shift add it to what is picked
+        if (e.altKey) {
+          const before = e.shiftKey ? prior : [];
+          const loop = pointsOfEdges(edgeLoop(cube!, edge[0], edge[1]));
+          selVerts = [...new Set([...before, ...loop])];
+          selectNote = `Loop: ${selVerts.length} points picked.`;
+        }
         canvas.focus();
         return;
       }
