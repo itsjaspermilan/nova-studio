@@ -1923,7 +1923,8 @@
     // (an arrow or square of the points' move handle is its own business)
     if (pointGizmo?.axis) return;
     const point = pickVert(e);
-    if (point < 0) return void startMarquee(e);
+    // (with the selection rectangle on the main button a drag that begins on a point is still a rectangle, as in Blender: a point is picked by a click, moved by its arrows or G)
+    if (point < 0 || input.navigation === "trackpad") return void startMarquee(e);
     if (e.shiftKey) selVerts = selVerts.includes(point) ? selVerts.filter((v) => v !== point) : [...selVerts, point];
     else if (!selVerts.includes(point)) selVerts = [point];
     selFace = null;
@@ -2318,6 +2319,16 @@
     const ray = new THREE.Raycaster();
     ray.setFromCamera(pointer(e), camera);
     if (inEdit && selected) {
+      if (input.navigation === "trackpad" && pickKinds.vertex) {
+        const v = pickVert(e);
+        if (v >= 0) {
+          selVerts = e.shiftKey ? (selVerts.includes(v) ? selVerts.filter((x) => x !== v) : [...selVerts, v]) : [v];
+          selFace = null;
+          selEdge = null;
+          canvas.focus();
+          return;
+        }
+      }
       const edge = pickKinds.edge ? pickEdge(e) : null;
       if (edge) {
         const prior = selVerts;
