@@ -199,7 +199,7 @@ A third-person roguelike shooter for the Retroid, made with what the studio alre
 4. [ ] Rooms and doors (a cleared room opens its door).
 5. [ ] A run picks rooms and pickups at random (rooms stay scene files).
 6. [ ] Health, death, restart, best run saved.
-7. [ ] Music, menu, HUD. The camera hangs over the right shoulder (`cam_shoulder`), shots go to the crosshair, and the camera comes closer when a wall is behind it (the hero hides when it is squeezed); seen in headless renders, not played. Still: no sound, bullets are flat (no up/down aim).
+7. [ ] Music, menu, HUD. The camera hangs over the right shoulder (`cam_shoulder`), shots go to the crosshair, and the camera comes closer when a wall is behind it (the hero hides when it is squeezed); seen in headless renders, not played. **Added the same day:** L2 aims down the sights (zoom, closer camera, slower), the right stick aims up and down (shots fly up and down and stop at the floor), A jumps (apex 1.2 m: a crate can be climbed) and B crouches (a toggle, walk slowly at 2.2 m/s). Checked by headless runs with scripted input (positions, pitch limits, jump arc) and renders; not played with a pad. Still: no sound.
 
 ## Goal
 

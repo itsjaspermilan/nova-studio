@@ -4,8 +4,10 @@
   "version": "0.1.0",
   "world_height": 1080,
   "input": {
-    "fire": ["key:Space", "mouse:left", "pad:r1", "axis:r2"],
-    "dash": ["key:ShiftLeft", "pad:south"],
+    "fire": ["key:KeyF", "mouse:left", "pad:r1", "axis:r2"],
+    "aim": ["key:KeyQ", "mouse:right", "pad:l2", "axis:l2"],
+    "jump": ["key:Space", "pad:south"],
+    "crouch": ["key:KeyC", "pad:east"],
     "start": ["key:Enter", "pad:start"]
   }
 }
