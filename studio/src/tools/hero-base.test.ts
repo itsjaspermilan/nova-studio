@@ -6,6 +6,8 @@ import { join } from "node:path";
 import { parseModel, serializeModel, type Cube, type Part } from "../lib/model-doc";
 import { exportGlb } from "../lib/glb";
 import { heroBase } from "./hero-base";
+import { extrudeFaceSym, mirrorResult, twinPoints } from "../lib/mesh-symmetry";
+import { edgesOf, faceCentre, faceNormal } from "../lib/mesh-edit";
 
 const cubesOf = (parts: Part[]): Cube[] => parts.flatMap((p) => [...p.cubes, ...cubesOf(p.children)]);
 const namesOf = (parts: Part[]): string[] => parts.flatMap((p) => [p.name, ...namesOf(p.children)]);
@@ -71,6 +73,30 @@ describe("the character base", () => {
     expect(topBone(furthest)).toBe("hero/hips/spine/left arm/left forearm/left hand");
     const top = mesh.verts!.reduce((m, p, i) => (p[1] > mesh.verts![m]![1]! ? i : m), 0);
     expect(topBone(top)).toBe("hero/hips/spine/head");
+  });
+
+  it("opens with Symmetry on (left-right), and the setting survives saving", () => {
+    expect(doc.symmetry).toBe("x");
+    const back = parseModel(serializeModel(doc));
+    expect(back.ok && back.doc.symmetry).toBe("x");
+  });
+
+  it("symmetrical editing works on it: every point has a twin, a pair of chest faces extrudes as one block, a hand point moves with its twin", () => {
+    expect(twinPoints(mesh, 0).every((t) => t >= 0)).toBe(true);
+    // the two front faces of the chest (one each side of the middle)
+    const front = mesh.polys!.map((_, i) => i).filter((i) => faceNormal(mesh, i)[2] > 0.9 && faceCentre(mesh, i)[1] > 16 && faceCentre(mesh, i)[1] < 20);
+    expect(front.length).toBeGreaterThanOrEqual(2);
+    const r = extrudeFaceSym(mesh, front[0]!, 1, 0, 0);
+    expect(r.cube.verts!.length).toBeGreaterThan(mesh.verts!.length);
+    expect(twinPoints(r.cube, 0).every((t) => t >= 0)).toBe(true);
+    // (a closed surface still: every edge has two faces)
+    expect(edgesOf(r.cube).every((e) => e.faces === 2)).toBe(true);
+    // a point of the left hand moved: its twin follows, mirrored
+    const hand = mesh.verts!.reduce((m, p, i) => (p[0] > mesh.verts![m]![0]! ? i : m), 0);
+    const moved = { ...mesh, verts: mesh.verts!.map((p, i) => (i === hand ? ([p[0] + 1, p[1] - 2, p[2] + 0.5] as [number, number, number]) : p)) };
+    const out = mirrorResult(mesh, moved, [hand], 0);
+    const twin = twinPoints(mesh, 0)[hand]!;
+    expect(out.verts![twin]).toEqual([-out.verts![hand]![0], out.verts![hand]![1], out.verts![hand]![2]]);
   });
 
   it("exports as a .glb", () => {

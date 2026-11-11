@@ -22,7 +22,7 @@ const root = new URL("../../../examples/", import.meta.url).pathname;
 const projects = readdirSync(root).filter((d) => existsSync(join(root, d, "nova.json")));
 
 function files(dir: string): string[] {
-  return readdirSync(dir).flatMap((n) => (statSync(join(dir, n)).isDirectory() ? files(join(dir, n)) : [join(dir, n)]));
+  return readdirSync(dir).filter((n) => !n.startsWith(".")).flatMap((n) => (statSync(join(dir, n)).isDirectory() ? files(join(dir, n)) : [join(dir, n)]));
 }
 const text = (p: string) => readFileSync(p, "utf8");
 

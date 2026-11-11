@@ -214,6 +214,8 @@ export interface ModelDoc {
   /// World units per model unit when exported (1/16 makes a 16-unit cube one world unit).
   scale: number;
   parts: Part[];
+  /// Mirror editing: when set, the editor makes an edit of picked points or faces on their mirror twins across this plane too (x: left and right). Editor only.
+  symmetry?: "x" | "y" | "z";
   clips?: Clip[];
   /// Saved poses (the pose library): a named set of how parts are turned, moved and sized, to put on any animation's time with one click.
   poses?: SavedPose[];
@@ -307,6 +309,7 @@ export function parseModel(text: string): Parsed {
   const o = v as Partial<ModelDoc>;
   if (!o || typeof o !== "object" || !Array.isArray(o.parts)) return { ok: false, error: 'a model file has a "parts" list' };
   if (o.scale !== undefined && !(typeof o.scale === "number" && o.scale > 0 && o.scale < 1000)) return { ok: false, error: '"scale" must be a positive number' };
+  if (o.symmetry !== undefined && o.symmetry !== "x" && o.symmetry !== "y" && o.symmetry !== "z") return { ok: false, error: '"symmetry" must be "x", "y" or "z"' };
   if (o.texture !== undefined) {
     const size = (o.texture as Partial<TextureInfo> | null)?.size;
     const side = (n: unknown) => typeof n === "number" && Number.isInteger(n) && n >= MIN_TEXTURE && n <= MAX_TEXTURE;
@@ -481,7 +484,7 @@ export function parseModel(text: string): Parsed {
       }
     }
   }
-  return { ok: true, doc: { version: 1, scale: o.scale ?? DEFAULT_SCALE, ...(o.texture ? { texture: { size: [...o.texture.size] as [number, number], ...(o.texture.smooth ? { smooth: true } : {}), ...(o.texture.surface ? { surface: true } : {}), ...(o.texture.surface && o.texture.bump ? { bump: o.texture.bump } : {}), ...(o.texture.normals ? { normals: true } : {}), ...(o.texture.layers?.length ? { layers: o.texture.layers.map((l) => ({ name: l.name, ...(l.visible === false ? { visible: false } : {}), ...(l.opacity !== undefined && l.opacity < 1 ? { opacity: l.opacity } : {}), ...(l.blend && l.blend !== "normal" ? { blend: l.blend } : {}) })) } : {}) } } : {}), parts: o.parts as Part[], ...(clips && clips.length ? { clips: clips as Clip[] } : {}), ...(Array.isArray(poses) && poses.length ? { poses: (poses as SavedPose[]).map((q) => ({ name: q.name, parts: JSON.parse(JSON.stringify(q.parts)) })) } : {}), ...(o.colliders?.length ? { colliders: o.colliders.map((c) => ({ x: c.x, z: c.z, r: c.r })) } : {}), ...(o.capsules?.length ? { capsules: o.capsules.map((c) => ({ ax: c.ax, az: c.az, bx: c.bx, bz: c.bz, r: c.r })) } : {}), ...(o.boxes?.length ? { boxes: o.boxes.map((c) => ({ x: c.x, z: c.z, hw: c.hw, hl: c.hl, turn: c.turn })) } : {}) } };
+  return { ok: true, doc: { version: 1, scale: o.scale ?? DEFAULT_SCALE, ...(o.symmetry ? { symmetry: o.symmetry } : {}), ...(o.texture ? { texture: { size: [...o.texture.size] as [number, number], ...(o.texture.smooth ? { smooth: true } : {}), ...(o.texture.surface ? { surface: true } : {}), ...(o.texture.surface && o.texture.bump ? { bump: o.texture.bump } : {}), ...(o.texture.normals ? { normals: true } : {}), ...(o.texture.layers?.length ? { layers: o.texture.layers.map((l) => ({ name: l.name, ...(l.visible === false ? { visible: false } : {}), ...(l.opacity !== undefined && l.opacity < 1 ? { opacity: l.opacity } : {}), ...(l.blend && l.blend !== "normal" ? { blend: l.blend } : {}) })) } : {}) } } : {}), parts: o.parts as Part[], ...(clips && clips.length ? { clips: clips as Clip[] } : {}), ...(Array.isArray(poses) && poses.length ? { poses: (poses as SavedPose[]).map((q) => ({ name: q.name, parts: JSON.parse(JSON.stringify(q.parts)) })) } : {}), ...(o.colliders?.length ? { colliders: o.colliders.map((c) => ({ x: c.x, z: c.z, r: c.r })) } : {}), ...(o.capsules?.length ? { capsules: o.capsules.map((c) => ({ ax: c.ax, az: c.az, bx: c.bx, bz: c.bz, r: c.r })) } : {}), ...(o.boxes?.length ? { boxes: o.boxes.map((c) => ({ x: c.x, z: c.z, hw: c.hw, hl: c.hl, turn: c.turn })) } : {}) } };
 }
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
@@ -576,7 +579,8 @@ export function serializeModel(source: ModelDoc): string {
   const colliders = doc.colliders?.length ? `,\n  "colliders": [${doc.colliders.map((c) => `{ "x": ${c.x}, "z": ${c.z}, "r": ${c.r} }`).join(", ")}]` : "";
   const capsules = doc.capsules?.length ? `,\n  "capsules": [${doc.capsules.map((c) => `{ "ax": ${c.ax}, "az": ${c.az}, "bx": ${c.bx}, "bz": ${c.bz}, "r": ${c.r} }`).join(", ")}]` : "";
   const boxes = doc.boxes?.length ? `,\n  "boxes": [${doc.boxes.map((c) => `{ "x": ${c.x}, "z": ${c.z}, "hw": ${c.hw}, "hl": ${c.hl}, "turn": ${c.turn} }`).join(", ")}]` : "";
-  return `{\n  "version": 1,\n  "scale": ${doc.scale}${texture},\n  "parts": ${body}${clips}${poses}${colliders}${capsules}${boxes}\n}\n`;
+  const symmetry = doc.symmetry ? `,\n  "symmetry": "${doc.symmetry}"` : "";
+  return `{\n  "version": 1,\n  "scale": ${doc.scale}${symmetry}${texture},\n  "parts": ${body}${clips}${poses}${colliders}${capsules}${boxes}\n}\n`;
 }
 
 // ---- collision circles ----

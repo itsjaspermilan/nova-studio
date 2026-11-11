@@ -29,6 +29,7 @@
   import { SCULPT_HELP, SCULPT_MODES, sculptDab, type SculptMode } from "../lib/sculpt";
   import { blurMask, clearMask, invertMask, maskDab, maskOf, maskPoints, refineUnder } from "../lib/sculpt-mask";
   import { addFace, bestChain, bevelChain, bevelEdge, chainOfPoints, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, freshProfile, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsProportional, moveVertsSymmetric, setFaceColors, setSmooth, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
+  import { bevelChainSym, extrudeFaceSym, loopCutThrough, mirrorResult } from "../lib/mesh-symmetry";
   import { hasVolume, meshOf, segmentsOf, shapeFaces, solidOf } from "../lib/model-mesh";
   import { WEIGHT_MODES, autoSkinAll, gradientWeights, mirrorWeights, paintWeights, type WeightMode, autoWeights, boneHeat, dominantBones, heatColor, invertAffine, reskin, setWeight, skinnedPoints, transformPoint, worldMatrices } from "../lib/model-skin";
   import { bakeNormals } from "../lib/model-bake";
@@ -141,7 +142,14 @@
   let extrudeBy = $state(4);
   let shrinkBy = $state(0); // percent the new face is pulled towards its middle: a taper, or with no pull, an inset
   let cutAt = $state(50); // percent along each crossed edge
-  let symmetry = $state<"off" | "0" | "1" | "2">("off"); // move points in mirrored pairs across the x, y or z plane
+  // Mirror editing is saved with the model: off, or the plane (x, y or z) that points and faces are mirrored across (see lib/mesh-symmetry.ts)
+  const symmetry = $derived<"off" | "0" | "1" | "2">(doc.symmetry === "x" ? "0" : doc.symmetry === "y" ? "1" : doc.symmetry === "z" ? "2" : "off");
+  const symAxis = $derived<Axis | null>(symmetry === "off" ? null : (Number(symmetry) as Axis));
+  function setSymmetry(v: string) {
+    const to = v === "0" ? "x" : v === "1" ? "y" : v === "2" ? "z" : undefined;
+    const { symmetry: _was, ...rest } = doc;
+    commit(to ? { ...rest, symmetry: to } : rest, false, "Symmetry");
+  }
   let newKind = $state<Shape | "square" | "profile">("box");
   let pendingEdit = false;
   // animation
@@ -2237,7 +2245,7 @@
       if (!pull.moved && dist === 0) return;
       if (!pull.moved) history.record(pull.base);
       pull.moved = true;
-      const r = extrudeFace(pull.baseCube, pull.face, dist, shrinkBy / 100);
+      const r = extrudeSym(pull.baseCube, pull.face, dist, shrinkBy / 100);
       commit(setCube(pull.base, pull.path, r.cube), true);
       selVerts = r.points;
       return;
@@ -2874,7 +2882,7 @@
   function showBevel() {
     const m = bevelModal;
     if (!m) return;
-    const r = bevelChain(m.baseCube, m.chain, m.fraction, m.segments);
+    const r = bevelSym(m.baseCube, m.chain, m.fraction, m.segments);
     if (!r) return;
     if (!m.recorded) {
       history.record(m.base);
@@ -2963,21 +2971,25 @@
       selFace = null;
     } else selectNote = "Pick points or a face to delete.";
   }
+  // (with Symmetry on, each of these also does the mirror twin: see lib/mesh-symmetry.ts)
+  const extrudeSym = (c: Cube, face: number, distance: number, shrink: number) => extrudeFaceSym(c, face, distance, shrink, symAxis);
+  const bevelSym = (c: Cube, chain: number[], fraction: number, segments: number) => bevelChainSym(c, chain, fraction, segments, symAxis);
+  const loopCutSym = (c: Cube, face: number, way: 0 | 1, at: number) => loopCutThrough(c, face, way, at, symAxis);
   function extrude() {
     if (!selected || !cube || selFace === null) return;
-    const r = extrudeFace(cube, selFace, extrudeBy, shrinkBy / 100);
+    const r = extrudeSym(cube, selFace, extrudeBy, shrinkBy / 100);
     change(r.cube);
     selVerts = r.points;
   }
   function inset() {
     if (!selected || !cube || selFace === null) return;
-    const r = extrudeFace(cube, selFace, 0, (shrinkBy || 25) / 100);
+    const r = extrudeSym(cube, selFace, 0, (shrinkBy || 25) / 100);
     change(r.cube);
     selVerts = r.points;
   }
   function bevel() {
     if (!selected || !cube || !selEdge) return;
-    const r = bevelEdge(cube, selEdge[0], selEdge[1], bevelBy / 100);
+    const r = bevelSym(cube, [selEdge[0], selEdge[1]], bevelBy / 100, 1);
     if (!r) return void (selectNote = "That edge cannot be bevelled: it needs a face on each side, and faces all round both ends.");
     change(r.cube);
     selEdge = null;
@@ -2994,7 +3006,7 @@
   }
   function cutLoop(way: 0 | 1) {
     if (!selected || !cube || selFace === null) return;
-    const r = loopCut(cube, selFace, way, cutAt / 100);
+    const r = loopCutSym(cube, selFace, way, cutAt / 100);
     if (!r.points.length) return void studio.say("info", "A loop cut needs four-sided faces all the way round.");
     change(r.cube);
     selFace = null;
@@ -3291,7 +3303,8 @@
       };
     }
     const next = mapVerts(base, pts.verts, fn);
-    return setCube(m.base, pts.path, next);
+    // (with Symmetry on, the points across the plane get the mirror image of what the picked points got)
+    return setCube(m.base, pts.path, symAxis === null ? next : mirrorResult(base, next, pts.verts, symAxis));
   }
   /// R with shapes picked: each turns about its own middle, about the view (or the world axis asked for). A box adds to its turn, a mesh moves its points.
   function turnShapes(m: NonNullable<typeof modal>, typed: number | null): ModelDoc {
@@ -4107,7 +4120,7 @@
           {/if}
           <label class="check"><input type="checkbox" bind:checked={snap} /> Snap to whole units</label>
           <label class="check" title="A dragged point jumps onto another point when it comes close"><input type="checkbox" bind:checked={snapPoints} /> Snap to other points</label>
-          <label>Symmetry <select bind:value={symmetry} aria-label="Symmetry"><option value="off">Off</option><option value="0">Mirror left–right (x)</option><option value="1">Mirror up–down (y)</option><option value="2">Mirror front–back (z)</option></select></label>
+          <label title="Edits of the picked points and faces are made on their mirror twins too: moving, scaling, turning, extruding, insetting, bevelling and loop cuts. Kept with the model.">Symmetry <select value={symmetry} onchange={(e) => setSymmetry(e.currentTarget.value)} aria-label="Symmetry"><option value="off">Off</option><option value="0">Mirror left–right (x)</option><option value="1">Mirror up–down (y)</option><option value="2">Mirror front–back (z)</option></select></label>
           <div class="row">
             <button onclick={makeFace} disabled={selVerts.length < 3} title="Fills a face between the picked points">Make face</button>
             <button onclick={knifeAcross} disabled={selVerts.length !== 2} title="Cuts every face between the two picked points along a plane through them and the way you are looking (look at the mesh from where you want the cut to go across)">Cut across</button>

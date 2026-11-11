@@ -185,5 +185,5 @@ export function heroBase(name = "hero"): ModelDoc {
     JOINTS.filter((j) => j.parent === parent).map((j) => part(j.name, at(j), tree(j.name)));
   const hips = tree(null)[0]!;
   const root: Part = part(name, [0, 0, 0], [part("hips", mul(JOINTS[0]!.at, K), hips.children), part("body", [0, 0, 0], [], [mesh])]);
-  return { version: 1, scale: 1 / 16, parts: [root] };
+  return { version: 1, scale: 1 / 16, symmetry: "x", parts: [root] };
 }

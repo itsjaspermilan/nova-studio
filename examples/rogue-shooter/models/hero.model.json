@@ -1,6 +1,7 @@
 {
   "version": 1,
   "scale": 0.0625,
+  "symmetry": "x",
   "parts": [
     {
       "name": "hero",
