@@ -484,7 +484,8 @@ const rotated = <T,>(list: T[], at: number): T[] => [...list.slice(at), ...list.
 /// Chamfers the edge between points `a` and `b`: it is replaced by a narrow face, each of its two neighbours losing `fraction`
 /// (0 to 0.5) of the length of their next edge. The edge must join two faces, and the faces at each end must be three in all,
 /// as at the corner of a box; otherwise the mesh is left alone and this returns null. The result says which points are new.
-export function bevelEdge(c: Cube, a: number, b: number, fraction = 0.25): { cube: Cube; points: number[] } | null {
+export function bevelEdge(c: Cube, a: number, b: number, fraction = 0.25, segments = 1): { cube: Cube; points: number[] } | null {
+  const n = Math.max(1, Math.min(16, Math.round(segments)));
   const out = clone(c);
   const polys = out.polys ?? [];
   const verts = out.verts ?? [];
@@ -511,26 +512,35 @@ export function bevelEdge(c: Cube, a: number, b: number, fraction = 0.25): { cub
   const b1 = push(lerp(verts[b]!, verts[nb]!, t));
   const b2 = push(lerp(verts[b]!, verts[pb]!, t));
   const a2 = push(lerp(verts[a]!, verts[na]!, t));
+  // with more than one segment the new strip is curved: each row of points follows a curve from one side to the other that bows towards the old corner
+  const bow = (p0: number, corner: number, p1: number, k: number): number => {
+    const s = k / n;
+    const [x, y, z] = [0, 1, 2].map((i) => (1 - s) * (1 - s) * verts[p0]![i]! + 2 * s * (1 - s) * verts[corner]![i]! + s * s * verts[p1]![i]!) as Vec3;
+    return push([x, y, z]);
+  };
+  const rowA = [a1, ...Array.from({ length: n - 1 }, (_, k) => bow(a1, a, a2, k + 1)), a2];
+  const rowB = [b1, ...Array.from({ length: n - 1 }, (_, k) => bow(b1, b, b2, k + 1)), b2];
   polys[i1]!.v = [a1, b1, ...f1.slice(2).filter((v) => v !== b)];
   polys[i2]!.v = [b2, a2, ...f2.slice(2).filter((v) => v !== a)];
-  const swap = (face: number, old: number, pair: [number, number], first: boolean) => {
+  // (the chain `row` runs a1 to a2, or b1 to b2; the first case of each is the order the old pair had)
+  const swap = (face: number, old: number, row: number[], forward: boolean, atA: boolean) => {
     const p = polys[face]!.v;
     const k = p.indexOf(old);
-    const [x, y] = first ? pair : [pair[1], pair[0]];
-    p.splice(k, 1, x, y);
+    // (for the side at a the pair was [a2, a1]: backwards; at b it was [b1, b2]: forwards)
+    p.splice(k, 1, ...(atA ? (forward ? [...row].reverse() : row) : forward ? row : [...row].reverse()));
   };
   {
     const p = polys[sa]!.v;
     const k = p.indexOf(a);
     // seen along the face, the corner at a is entered from na and left towards pa, or the other way round
-    swap(sa, a, [a2, a1], p[(k + 1) % p.length] === pa);
+    swap(sa, a, rowA, p[(k + 1) % p.length] === pa, true);
   }
   {
     const p = polys[sb]!.v;
     const k = p.indexOf(b);
-    swap(sb, b, [b1, b2], p[(k - 1 + p.length) % p.length] === nb);
+    swap(sb, b, rowB, p[(k - 1 + p.length) % p.length] === nb, false);
   }
-  polys.push({ v: [b1, a1, a2, b2], ...(polys[i1]!.color ? { color: polys[i1]!.color } : {}) });
+  for (let k = 0; k < n; k++) polys.push({ v: [rowB[k]!, rowA[k]!, rowA[k + 1]!, rowB[k + 1]!], ...(polys[i1]!.color ? { color: polys[i1]!.color } : {}), ...(n > 1 ? { smooth: true } : {}) });
   const { cube, map } = compactWithMap(out);
   return { cube, points: [a1, b1, b2, a2].map((i) => map[i]!) };
 }

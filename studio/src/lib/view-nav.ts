@@ -92,13 +92,15 @@ export function pinchFactor(previousScale: number, scale: number): number {
 }
 
 export interface NavOptions {
+  /// The editor has its own use for a drag with the main button (a selection rectangle), so a trackpad's drag does not turn the view: two fingers do that.
+  marquee?: boolean;
   /// Flips the direction of the scroll gestures (the opposite of the system's "natural scrolling").
   invert?: boolean;
 }
 
 /// Sets the controls' buttons for a scheme and, for a trackpad, takes over the scroll gestures. Returns a function that undoes it.
 export function applyNavigation(controls: OrbitControls, getCamera: () => ViewCamera, canvas: HTMLElement, scheme: NavScheme, options: NavOptions = {}): () => void {
-  controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: THREE.MOUSE.PAN };
+  controls.mouseButtons = { LEFT: scheme === "trackpad" && options.marquee ? (-1 as unknown as THREE.MOUSE) : THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: THREE.MOUSE.PAN };
   // (OrbitControls swaps rotate and pan while Shift, Ctrl or Cmd is held, so Shift with a drag pans in every scheme)
   controls.enableZoom = scheme !== "trackpad";
   const onWheel = (e: WheelEvent) => {
@@ -139,7 +141,8 @@ export function applyNavigation(controls: OrbitControls, getCamera: () => ViewCa
 }
 
 /// The one-line reminder of how to move the view for a scheme (shown under the 3D views).
-export function navHint(scheme: NavScheme): string {
+export function navHint(scheme: NavScheme, marquee = false): string {
+  if (scheme === "trackpad" && marquee) return "Drag to select a group · two fingers turn the view · Shift and two fingers move it · pinch to zoom · or use the buttons at the top right";
   if (scheme === "trackpad") return "Two fingers turn the view · Shift and two fingers move it · pinch to zoom · or use the buttons at the top right";
   if (scheme === "pen") return "Drag to turn · the pen's side button or Shift moves the view · scroll or pinch to zoom · or use the buttons at the top right";
   return "Drag to turn · right-drag or Shift-drag to move · scroll to zoom · or use the buttons at the top right";

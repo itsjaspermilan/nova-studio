@@ -625,7 +625,7 @@
     controls.enableDamping = true;
     // how the person moves the view (a mouse, a trackpad or a pen: lib/view-nav.ts), kept up to date if they change it
     stopNav = $effect.root(() => {
-      $effect(() => applyNavigation(controls!, () => camera!, canvas!, input.navigation, { invert: input.invert }));
+      $effect(() => applyNavigation(controls!, () => camera!, canvas!, input.navigation, { invert: input.invert, marquee: true }));
     });
     gizmo = new TransformControls(camera, canvas!);
     gizmo.setSize(0.75);
@@ -1897,6 +1897,7 @@
   type PointMove = { base: ModelDoc; baseCube: Cube; path: Path; from: Vec3; moved: boolean };
   let drag: (PointMove & { point: number; start: THREE.Vector3; free: Lock; lock: Lock; last: PointerEvent }) | null = null;
   function pointerDown(e: PointerEvent) {
+    if (bevelModal) return void endBevel(true);
     if (pullModal) return void endPullModal(true);
     downAt = [e.clientX, e.clientY];
     if (mode === "texture" && BRUSH_TOOLS.includes(texTool) && picture && e.button === 0 && !e.altKey && canvas) {
@@ -1913,7 +1914,7 @@
         return;
       }
     }
-    if (!inEdit || !camera || !canvas || !selected || !cube || e.button !== 0) return;
+    if (!inEdit || !camera || !canvas || !selected || !cube || e.button !== 0) return void startMarquee(e);
     if (sculpting || weightPainting) {
       const at = sculptPoint(e);
       if (!at) return;
@@ -1956,7 +1957,7 @@
       }
     }
     const point = pickVert(e);
-    if (point < 0) return;
+    if (point < 0) return void startMarquee(e);
     if (e.shiftKey) selVerts = selVerts.includes(point) ? selVerts.filter((v) => v !== point) : [...selVerts, point];
     else if (!selVerts.includes(point)) selVerts = [point];
     selFace = null;
@@ -2109,13 +2110,41 @@
     commit(setCube(doc, selected, beginKeyEdit(added, name)), false, `New sculpt layer "${name}"`);
   }
   let rubber = $state<{ x0: number; y0: number; x1: number; y1: number; add: boolean } | null>(null);
+  /// On a trackpad a drag on empty space is a selection rectangle (two fingers turn the view): points in point mode, shapes otherwise. A rectangle too small to
+  /// be a drag is a click and goes on to the ordinary click.
+  function startMarquee(e: PointerEvent) {
+    if (input.navigation !== "trackpad" || e.button !== 0 || !canvas || !camera || mode !== "model" || modal || rubber || pull || drag || gizmoDown || e.altKey) return;
+    if (pointGizmo?.axis || gizmo?.axis) return;
+    const r = canvas.getBoundingClientRect();
+    rubber = { x0: e.clientX - r.left, y0: e.clientY - r.top, x1: e.clientX - r.left, y1: e.clientY - r.top, add: e.shiftKey };
+    controls!.enabled = false;
+    canvas.setPointerCapture(e.pointerId);
+  }
   function finishBox() {
     const b = rubber;
     rubber = null;
     boxArmed = false;
     if (controls) controls.enabled = true;
-    if (!b || !camera || !canvas || !cube?.verts) return;
+    if (!b || !camera || !canvas) return;
+    if (Math.abs(b.x1 - b.x0) < 4 && Math.abs(b.y1 - b.y0) < 4) return;
     const r = canvas.getBoundingClientRect();
+    if (!inEdit) {
+      // shapes whose middle is inside the rectangle
+      const [x0, x1] = [Math.min(b.x0, b.x1), Math.max(b.x0, b.x1)];
+      const [y0, y1] = [Math.min(b.y0, b.y1), Math.max(b.y0, b.y1)];
+      const found: Path[] = [];
+      for (const m of meshes) {
+        const q = new THREE.Box3().setFromObject(m.mesh).getCenter(new THREE.Vector3()).project(camera);
+        const x = ((q.x + 1) / 2) * r.width;
+        const y = ((1 - q.y) / 2) * r.height;
+        if (q.z <= 1 && x >= x0 && x <= x1 && y >= y0 && y <= y1 && !found.some((p) => samePath(p, m.path))) found.push(m.path);
+      }
+      const all = b.add ? [...pickedShapes, ...found.filter((p) => !isPicked(p))] : found;
+      selected = all[0] ?? null;
+      also = all.slice(1);
+      return;
+    }
+    if (!cube?.verts) return;
     const [x0, x1] = [Math.min(b.x0, b.x1), Math.max(b.x0, b.x1)];
     const [y0, y1] = [Math.min(b.y0, b.y1), Math.max(b.y0, b.y1)];
     const picked: number[] = [];
@@ -2133,6 +2162,7 @@
 
   function pointerMove(e: PointerEvent) {
     updateRing(e);
+    if (bevelModal) return void moveBevel(e);
     if (rubber && canvas) {
       const r = canvas.getBoundingClientRect();
       rubber = { ...rubber, x1: e.clientX - r.left, y1: e.clientY - r.top };
@@ -2194,9 +2224,12 @@
   }
   function pointerUp(e: PointerEvent) {
     if (rubber) {
+      const small = Math.abs(rubber.x1 - rubber.x0) < 4 && Math.abs(rubber.y1 - rubber.y0) < 4;
       finishBox();
-      downAt = null;
-      return;
+      if (!small) {
+        downAt = null;
+        return;
+      }
     }
     if (gizmoDown) {
       gizmoDown = false;
@@ -2748,6 +2781,66 @@
     } else if (selEdge) extendEdge();
     else selectNote = "Pick a face to extrude it (or an open edge to pull it out).";
   }
+  // Ctrl+B or V with an edge picked: the mouse sets how wide the bevel is (how far it is from where you started), the scroll wheel how many segments (a rounder strip),
+  // a click keeps it and Esc puts everything back. The same bevel as the button, shown live.
+  let bevelModal: { base: ModelDoc; baseCube: Cube; path: Path; a: number; b: number; x0: number; y0: number; fraction: number; segments: number; points: number[]; recorded: boolean } | null = null;
+  function showBevel() {
+    const m = bevelModal;
+    if (!m) return;
+    const r = bevelEdge(m.baseCube, m.a, m.b, m.fraction, m.segments);
+    if (!r) return;
+    if (!m.recorded) {
+      history.record(m.base);
+      m.recorded = true;
+    }
+    m.points = r.points;
+    commit(setCube(m.base, m.path, r.cube), true);
+    selectNote = `Bevel: width ${Math.round(m.fraction * 100)}%, ${m.segments} segment${m.segments === 1 ? "" : "s"}. Move the mouse for the width, scroll for the segments, click to keep, Esc to cancel.`;
+  }
+  function bevelKey() {
+    if (!inEdit || !selected || !cube || !selEdge) return void (selectNote = "Pick an edge to bevel it.");
+    if (!bevelEdge(cube, selEdge[0], selEdge[1], 0.25)) return void studio.say("info", "A bevel needs an edge between two faces, at a corner where three faces meet (like a box's).");
+    bevelModal = { base: doc, baseCube: cube, path: selected, a: selEdge[0], b: selEdge[1], x0: pointerAt.x, y0: pointerAt.y, fraction: Math.min(0.5, Math.max(0.02, bevelBy / 100)), segments: 1, points: [], recorded: false };
+    if (controls) controls.enabled = false;
+    showBevel();
+  }
+  function moveBevel(e: PointerEvent) {
+    const m = bevelModal;
+    if (!m) return;
+    m.fraction = Math.min(0.5, Math.max(0.02, Math.round((Math.hypot(e.clientX - m.x0, e.clientY - m.y0) / 300) * 50) / 100));
+    showBevel();
+  }
+  function endBevel(keep: boolean) {
+    const m = bevelModal;
+    bevelModal = null;
+    selectNote = "";
+    if (controls) controls.enabled = true;
+    if (!m) return;
+    if (keep) {
+      bevelBy = Math.round(m.fraction * 100);
+      selEdge = null;
+      selFace = null;
+      selVerts = m.points;
+    } else if (m.recorded) undo();
+  }
+  let wheelAcc = 0;
+  $effect(() => {
+    const onWheel = (e: WheelEvent) => {
+      const m = bevelModal;
+      if (!m) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      // (a wheel notch is a step; a trackpad's small scrolls add up to one first)
+      wheelAcc += e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
+      const steps = Math.trunc(wheelAcc / 40);
+      if (!steps) return;
+      wheelAcc -= steps * 40;
+      m.segments = Math.min(16, Math.max(1, m.segments - steps));
+      showBevel();
+    };
+    window.addEventListener("wheel", onWheel, { capture: true, passive: false });
+    return () => window.removeEventListener("wheel", onWheel, { capture: true });
+  });
   /// X in point mode takes away what is picked (the points, or the face), not the whole shape.
   function deleteInEdit() {
     if (!cube) return;
@@ -2976,7 +3069,9 @@
     const mod = e.metaKey || e.ctrlKey;
     const step = e.shiftKey ? 4 : 1;
     // (move, turn, resize, pivot, shading, duplicate and delete are commands with their own keys: see the model commands below)
-    if (e.key === "Escape" && pullModal) {
+    if (e.key === "Escape" && bevelModal) {
+      endBevel(false);
+    } else if (e.key === "Escape" && pullModal) {
       endPullModal(false);
     } else if (e.key === "Escape" && (boxArmed || rubber)) {
       rubber = null;
@@ -3107,7 +3202,7 @@
       commands.register({ id: "model.delete", title: "Delete", menu: "Model", icon: "trash", keymaps: { blender: ["X", "Delete"], nova: ["Delete", "Backspace"] }, help: "Takes away the shape; in point mode, the picked points or face", enabled: () => !modal && !!selected, run: () => (inEdit && cube?.shape === "mesh" ? deleteInEdit() : remove()) }),
       commands.register({ id: "model.edit.extrude", title: "Extrude", menu: "Model", icon: "addShape", keymaps: { blender: ["E"], nova: ["Shift+E"] }, help: "Pulls the picked face out with the mouse (click to keep, Esc to cancel); an open edge is pulled out by the Edge number", enabled: () => !modal && mode === "model" && inEdit && !!cube, run: () => extrudeKey() }),
       commands.register({ id: "model.edit.inset", title: "Inset", menu: "Model", keymaps: { blender: ["I"], nova: ["Shift+I"] }, help: "A smaller face inside the picked one (Shrink % sets how much)", enabled: () => !modal && mode === "model" && inEdit && !!cube && selFace !== null, run: () => inset() }),
-      commands.register({ id: "model.edit.bevel", title: "Bevel", menu: "Model", keymaps: { blender: ["Mod+B", "V"], nova: ["Shift+V"] }, help: "Cuts the picked edge off with a narrow slanting face (Width % sets how wide)", enabled: () => !modal && mode === "model" && inEdit && !!cube, run: () => { if (selEdge) bevel(); else selectNote = "Pick an edge to bevel it."; } }),
+      commands.register({ id: "model.edit.bevel", title: "Bevel", menu: "Model", keymaps: { blender: ["Mod+B", "V"], nova: ["Shift+V"] }, help: "Bevels the picked edge: the mouse sets the width, the scroll wheel the number of segments, a click keeps it", enabled: () => !modal && mode === "model" && inEdit && !!cube, run: () => bevelKey() }),
       commands.register({ id: "model.edit.loopCut", title: "Loop cut", menu: "Model", keymaps: { blender: ["Mod+R"], nova: [] }, help: "Cuts the ring of four-sided faces round the shape in two, through the picked face", enabled: () => !modal && mode === "model" && inEdit && !!cube && selFace !== null, run: () => cutLoop(0) }),
       commands.register({ id: "model.edit.makeFace", title: "Make a face from the picked points", menu: "Model", keymaps: { blender: ["F"], nova: [] }, enabled: () => !modal && mode === "model" && inEdit && !!cube && selVerts.length >= 3, run: () => makeFace() }),
       commands.register({ id: "model.edit.knife", title: "Knife", menu: "Model", keymaps: { blender: ["K"], nova: [] }, help: "Cuts between the two picked points", enabled: () => !modal && mode === "model" && inEdit && !!cube && selVerts.length === 2, run: () => knife() }),
@@ -3144,7 +3239,7 @@
       ? "Drag on the model to paint it · ⇧-click draws a straight line · ⌘Z undoes painting · Z changes the view"
       : inEdit
         ? "Click a face or an edge to pick it (⇧ adds) · drag the arrows to move · arrows and PageUp/PageDown nudge · Tab or Esc leaves point mode"
-        : `${navHint(input.navigation)} · click a shape to select (⇧ adds) · ${keyFor("model.move")} ${keyFor("model.turn")} ${keyFor("model.resize")} ${keyFor("model.pivot")} move, turn, resize, pivot · Tab point mode`,
+        : `${navHint(input.navigation, true)} · click a shape to select (⇧ adds) · ${keyFor("model.move")} ${keyFor("model.turn")} ${keyFor("model.resize")} ${keyFor("model.pivot")} move, turn, resize, pivot · Tab point mode`,
   );
   const infoText = $derived(`${modelStats(doc).triangles.toLocaleString("en")} triangles · ${countCubes(doc)} shapes · saves ${glbPath}`);
   $effect(() => {

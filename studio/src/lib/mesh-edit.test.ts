@@ -501,3 +501,32 @@ describe("proportional editing", () => {
     expect(c.verts!.map((p) => p[1])).toEqual([5, 0, 0, 0]);
   });
 });
+
+describe("bevel with segments", () => {
+  it("more segments make a curved strip of more faces, still closed, with a volume between a chamfer and the sharp corner", () => {
+    const m = toMesh(box());
+    const e = edgesOf(m)[0]!;
+    const one = bevelEdge(m, e.a, e.b, 0.2, 1)!;
+    const four = bevelEdge(m, e.a, e.b, 0.2, 4)!;
+    expect(four.cube.polys).toHaveLength(6 + 4);
+    expect(four.points).toHaveLength(4);
+    // every edge is shared by exactly two faces: the shape is closed
+    const uses = new Map<string, number>();
+    for (const f of four.cube.polys!) f.v.forEach((a, k) => {
+      const b = f.v[(k + 1) % f.v.length]!;
+      const key = a < b ? `${a},${b}` : `${b},${a}`;
+      uses.set(key, (uses.get(key) ?? 0) + 1);
+    });
+    expect([...uses.values()].every((n) => n === 2)).toBe(true);
+    // the curve bows out towards the corner, so more material is kept than by the straight chamfer, and less than the sharp box
+    expect(vol(four.cube)).toBeGreaterThan(vol(one.cube));
+    expect(vol(four.cube)).toBeLessThan(1000);
+  });
+  it("one segment is the same as before, and the number is kept within 1 to 16", () => {
+    const m = toMesh(box());
+    const e = edgesOf(m)[0]!;
+    expect(JSON.stringify(bevelEdge(m, e.a, e.b, 0.2, 1))).toBe(JSON.stringify(bevelEdge(m, e.a, e.b, 0.2)));
+    expect(bevelEdge(m, e.a, e.b, 0.2, 99)!.cube.polys).toHaveLength(6 + 16);
+    expect(bevelEdge(m, e.a, e.b, 0.2, 0)!.cube.polys).toHaveLength(7);
+  });
+});
