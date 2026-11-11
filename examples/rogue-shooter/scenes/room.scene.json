@@ -5,6 +5,9 @@
   "fog": { "color": [60, 66, 88], "near": 25, "far": 60 },
   "objects": [
     { "kind": "hero", "name": "hero", "x": 0, "y": 0, "z": 5 },
+    { "kind": "grunt", "x": -9, "y": 0, "z": -9 },
+    { "kind": "grunt", "x": 9, "y": 0, "z": -9 },
+    { "kind": "grunt", "x": -9, "y": 0, "z": 8 },
     { "kind": "wall", "x": 0, "y": 0, "z": -12, "props": { "w": 24, "d": 0.6, "h": 4 } },
     { "kind": "wall", "x": 0, "y": 0, "z": 12, "props": { "w": 24, "d": 0.6, "h": 4 } },
     { "kind": "wall", "x": -12, "y": 0, "z": 0, "props": { "w": 0.6, "d": 24, "h": 4 } },

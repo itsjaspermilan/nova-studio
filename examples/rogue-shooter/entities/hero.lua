@@ -10,6 +10,7 @@ local Hero = nova.entity {
     speed = { 5, min = 1, max = 12, step = 0.5, help = "Walking speed (metres a second)" },
     crouch_speed = { 2.2, min = 0.5, max = 8, step = 0.1, help = "Walking speed while crouched" },
     jump = { 7.2, min = 3, max = 12, step = 0.2, help = "How hard a jump pushes up (7.2 clears a crate)" },
+    hp = { 5, min = 1, max = 50, step = 1, help = "How many hits the hero can take" },
     fire_rate = { 7, min = 1, max = 20, step = 1, help = "Shots a second" },
     turn_speed = { 2.6, min = 0.5, max = 6, step = 0.1, help = "How fast the right stick turns left and right (radians a second)" },
     pitch_speed = { 1.8, min = 0.5, max = 5, step = 0.1, help = "How fast the right stick aims up and down" },
@@ -30,6 +31,7 @@ function Hero:create()
   self.face, self.pitch = 0, 0
   self.jy = 0 -- upward speed
   self.crouching, self.cr, self.ads, self.grounded = false, 0, 0, true
+  self.dead, self.hit_t, self.safe, self.max_hp, self.gone = false, 0, 0, self.hp, 0
   self.cam_d = self.cam_distance
   cam3.yaw = 0
 end
@@ -61,9 +63,23 @@ function Hero:camera(dt, fx, fz, rx, rz)
   return ex + fx * cp * t, ey + sp * t, ez + fz * cp * t
 end
 
+-- an enemy hits: lose health (not again for a moment), flash the screen; at 0 the room starts over
+function Hero:hurt(n, dx, dz)
+  if self.dead or self.safe > 0 then return end
+  self.hp = self.hp - n
+  self.safe, self.hit_t = 0.7, 0.3
+  nova.input.rumble(0.8, 0.15)
+  if self.hp <= 0 then self.dead, self.hp = true, 0 end
+end
+
 function Hero:update(dt)
   self.t = self.t + dt
   self.cool = math.max(0, self.cool - dt)
+  self.safe, self.hit_t = math.max(0, self.safe - dt), math.max(0, self.hit_t - dt)
+  if self.dead then
+    self.gone = self.gone + dt
+    if self.gone > 2.2 then nova.restart_scene() end
+  end
   local aiming = nova.input.down("aim")
   self.ads = self.ads + ((aiming and 1 or 0) - self.ads) * math.min(1, 10 * dt)
   local slow = lerp(1, 0.5, self.ads) -- aiming down the sights turns and walks slower
@@ -100,7 +116,7 @@ function Hero:update(dt)
   self.face = atan(fx, fz) -- always faces where the camera looks
   local tx, ty, tz = self:camera(dt, fx, fz, rx, rz)
 
-  if nova.input.down("fire") and self.cool == 0 then
+  if nova.input.down("fire") and self.cool == 0 and not self.dead then
     self.cool = 1 / self.fire_rate
     local mxp, myp, mzp = self.x + fx * 0.8 + rx * 0.25, self.y + lerp(1.3, 0.8, self.cr), self.z + fz * 0.8 + rz * 0.25
     local ax, ay, az = tx - mxp, ty - myp, tz - mzp

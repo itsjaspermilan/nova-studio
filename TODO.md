@@ -195,7 +195,7 @@ Still open (3.6 Files):
 A third-person roguelike shooter for the Retroid, made with what the studio already has (no outside apps). Steps, each playable:
 1. [x] One room: hero (left stick walks, right stick turns the camera, faces where it looks), follow camera, walls from a scene file. **Seen in a headless render** (hero, walls, crates, sparks); not played with a real pad, not on the device.
 2. [x] Shooting: R2, R1 or Space fires; shots stop at walls and throw sparks (`nova.walls.raycast`). Seen in the same render; **no sound yet**.
-3. [ ] One enemy that chases (A*, `nova.nav`) and dies.
+3. [x] Enemies (grunts) that walk at you round the walls (`nova.nav` path grid, straight at you when they can see you), hit you when close, take 6 shots (shots hit by height too) and burst when they die. The hero has 5 HP, flashes red and rumbles when hit, and the room restarts 2 seconds after death; "Room clear" shows at 0 enemies. **Checked by headless runs (scripted auto-aim killed all three; unaimed they killed the hero), not played, not on the pad.** Three grunts are placed in `room.scene.json`.
 4. [ ] Rooms and doors (a cleared room opens its door).
 5. [ ] A run picks rooms and pickups at random (rooms stay scene files).
 6. [ ] Health, death, restart, best run saved.
