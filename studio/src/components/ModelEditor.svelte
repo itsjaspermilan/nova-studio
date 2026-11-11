@@ -2870,7 +2870,7 @@
   }
   // Ctrl+B or V with an edge picked: the mouse sets how wide the bevel is (how far it is from where you started), the scroll wheel how many segments (a rounder strip),
   // a click keeps it and Esc puts everything back. The same bevel as the button, shown live.
-  let bevelModal: { base: ModelDoc; baseCube: Cube; path: Path; chain: number[]; x0: number; y0: number; fraction: number; segments: number; points: number[]; recorded: boolean } | null = null;
+  let bevelModal: { base: ModelDoc; baseCube: Cube; path: Path; chain: number[]; was: number[]; x0: number; y0: number; fraction: number; segments: number; points: number[]; recorded: boolean } | null = null;
   function showBevel() {
     const m = bevelModal;
     if (!m) return;
@@ -2882,6 +2882,10 @@
     }
     m.points = r.points;
     commit(setCube(m.base, m.path, r.cube), true);
+    // (the bevel replaces the old points with new ones, so the picked points are the new ones while it is shown: the old numbers would light up other points)
+    selVerts = r.points;
+    selEdge = null;
+    selFace = null;
     selectNote = `Bevel: width ${Math.round(m.fraction * 100)}%, ${m.segments} segment${m.segments === 1 ? "" : "s"}. Move the mouse for the width, scroll for the segments, click to keep, Esc to cancel.`;
   }
   // a short message over the view for a key that could not do its job (it fades after a few seconds)
@@ -2906,7 +2910,7 @@
     }
     if (!chain) return void flashNote(`${selVerts.length} point${selVerts.length === 1 ? " is" : "s are"} picked, but they are not along one straight line of edges. Pick an edge (click along it), or the points along it: the two ends of a long edge are enough.`);
     if (!bevelChain(cube, chain, 0.25)) return void flashNote("That edge cannot be bevelled: it needs a face on each side and faces all round both ends (an edge on the open border of a sheet cannot), and where two edges meet in the middle, the faces beside them must be separate faces.");
-    bevelModal = { base: doc, baseCube: cube, path: selected, chain, x0: pointerAt.x, y0: pointerAt.y, fraction: Math.min(0.5, Math.max(0.02, bevelBy / 100)), segments: 1, points: [], recorded: false };
+    bevelModal = { base: doc, baseCube: cube, path: selected, chain, was: [...selVerts], x0: pointerAt.x, y0: pointerAt.y, fraction: Math.min(0.5, Math.max(0.02, bevelBy / 100)), segments: 1, points: [], recorded: false };
     if (controls) controls.enabled = false;
     showBevel();
   }
@@ -2927,7 +2931,10 @@
       selEdge = null;
       selFace = null;
       selVerts = m.points;
-    } else if (m.recorded) undo();
+    } else {
+      if (m.recorded) undo();
+      selVerts = m.was;
+    }
   }
   let wheelAcc = 0;
   $effect(() => {
