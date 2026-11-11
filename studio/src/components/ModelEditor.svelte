@@ -1633,7 +1633,6 @@
   let faceLine: THREE.LineLoop | undefined;
   let edgeLines: THREE.LineSegments | undefined;
   let edgeSel: THREE.Line | undefined;
-  let pullArrow: THREE.ArrowHelper | undefined;
   function clearHandles() {
     for (const o of [handles, faceLine, edgeLines, edgeSel]) {
       if (!o) continue;
@@ -1642,11 +1641,6 @@
       (o.material as THREE.Material).dispose();
     }
     handles = faceLine = edgeLines = edgeSel = undefined;
-    if (pullArrow) {
-      scene?.remove(pullArrow);
-      pullArrow.dispose();
-      pullArrow = undefined;
-    }
   }
   /// Where the picked face is in the world, and which way it faces.
   function faceFrame(): { at: THREE.Vector3; dir: THREE.Vector3 } | null {
@@ -1700,17 +1694,8 @@
       faceLine = new THREE.LineLoop(line, new THREE.LineBasicMaterial({ color: 0xffd166, depthTest: false }));
       faceLine.renderOrder = 9;
       scene.add(faceLine);
-      const frame = faceFrame();
-      if (frame) {
-        // the handle that pulls the face out: drag its tip along the way the face points
-        pullArrow = new THREE.ArrowHelper(frame.dir, frame.at, PULL_LENGTH, 0xffd166, 3, 2);
-        pullArrow.renderOrder = 11;
-        for (const part of [pullArrow.line, pullArrow.cone]) (part.material as THREE.Material).depthTest = false;
-        scene.add(pullArrow);
-      }
     }
   }
-  const PULL_LENGTH = 9;
 
   // ---- moving points: a move handle on the picked points, and what a move shows while it happens ------------------------------
   // The picked points carry a move handle like a shape's: drag an arrow to move along that axis only, a square to move on that flat plane.
@@ -1933,29 +1918,8 @@
       canvas.setPointerCapture(e.pointerId);
       return;
     }
-    // (an arrow or square of the points' move handle is its own business, before the face's pull-out arrow)
+    // (an arrow or square of the points' move handle is its own business)
     if (pointGizmo?.axis) return;
-    const frame = faceFrame();
-    if (frame && selFace !== null && camera) {
-      const r = canvas.getBoundingClientRect();
-      // grab anywhere on the outer part of the arrow, not only its very tip
-      const screen = (k: number) => {
-        const p = frame.at.clone().addScaledVector(frame.dir, PULL_LENGTH * k).project(camera!);
-        return [((p.x + 1) / 2) * r.width + r.left, ((1 - p.y) / 2) * r.height + r.top] as const;
-      };
-      const [a, b] = [screen(0.4), screen(1)];
-      const len2 = (b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2 || 1;
-      const u = Math.max(0, Math.min(1, ((e.clientX - a[0]) * (b[0] - a[0]) + (e.clientY - a[1]) * (b[1] - a[1])) / len2));
-      if (Math.hypot(a[0] + u * (b[0] - a[0]) - e.clientX, a[1] + u * (b[1] - a[1]) - e.clientY) < 16) {
-        const t0 = lineParameter(e, frame.at, frame.dir);
-        if (t0 !== null) {
-          pull = { base: doc, baseCube: cube, path: selected, face: selFace, origin: frame.at, dir: frame.dir, t0, moved: false };
-          controls!.enabled = false;
-          canvas.setPointerCapture(e.pointerId);
-          return;
-        }
-      }
-    }
     const point = pickVert(e);
     if (point < 0) return void startMarquee(e);
     if (e.shiftKey) selVerts = selVerts.includes(point) ? selVerts.filter((v) => v !== point) : [...selVerts, point];
@@ -2155,13 +2119,98 @@
       const y = ((1 - q.y) / 2) * r.height;
       if (x >= x0 && x <= x1 && y >= y0 && y <= y1) picked.push(i);
     });
-    selVerts = b.add ? [...new Set([...selVerts, ...picked])] : picked;
+    // with only edges on, an edge counts when both its ends are inside; with only faces on, a face counts when its middle is; otherwise it is the points
+    let found = picked;
+    const inside = new Set(picked);
+    const onlyEdges = pickKinds.edge && !pickKinds.vertex && !pickKinds.face;
+    const onlyFaces = pickKinds.face && !pickKinds.vertex && !pickKinds.edge;
+    if (onlyEdges) found = [...new Set(edgesOf(cube).filter((ed) => inside.has(ed.a) && inside.has(ed.b)).flatMap((ed) => [ed.a, ed.b]))];
+    else if (onlyFaces) {
+      const w = worldVerts().map((p) => p.clone().project(camera!));
+      const mids = (cube.polys ?? []).flatMap((pl) => {
+        const q = pl.v.reduce<[number, number]>((t, i) => [t[0] + w[i]!.x, t[1] + w[i]!.y], [0, 0]);
+        const [mx, my] = [((q[0] / pl.v.length + 1) / 2) * r.width, ((1 - q[1] / pl.v.length) / 2) * r.height];
+        return mx >= x0 && mx <= x1 && my >= y0 && my <= y1 ? [pl.v] : [];
+      });
+      found = [...new Set(mids.flat())];
+    }
+    selVerts = b.add ? [...new Set([...selVerts, ...found])] : found;
     selFace = null;
     selEdge = null;
   }
 
+  // a highlight on what a click would pick: the point, the edge or the face under the pointer (the kinds that are on, a point before an edge before a face)
+  let hoverObjs: THREE.Object3D[] = [];
+  let hoverKey = "";
+  function clearHover() {
+    for (const o of hoverObjs) {
+      scene?.remove(o);
+      const m = o as THREE.Mesh;
+      m.geometry?.dispose();
+      (m.material as THREE.Material | undefined)?.dispose();
+    }
+    hoverObjs = [];
+    hoverKey = "";
+  }
+  function updateHover(e: PointerEvent | null) {
+    const live = !!e && !!scene && !!camera && inEdit && !!cube?.verts && !sculpting && !weightPainting && !modal && !drag && !pull && !rubber && !boxArmed && !bevelModal && !pullModal && mode === "model";
+    if (!live || !e) return void (hoverObjs.length && clearHover());
+    let key = "";
+    let kind: "v" | "e" | "f" | null = null;
+    let vert = -1;
+    let edge: [number, number] | null = null;
+    let face = -1;
+    if (pickKinds.vertex && (vert = pickVert(e)) >= 0) {
+      kind = "v";
+      key = `v${vert}`;
+    } else if (pickKinds.edge && (edge = pickEdge(e))) {
+      kind = "e";
+      key = `e${edge[0]},${edge[1]}`;
+    } else if (pickKinds.face && selected && camera) {
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(pointer(e), camera);
+      const mine = meshes.find((m) => samePath(m.path, selected!));
+      const pk = mine?.cage ?? mine;
+      const hit = pk ? ray.intersectObject(pk.mesh, false)[0] : undefined;
+      const f = hit?.faceIndex != null ? pk!.polyOfTriangle[hit.faceIndex] : undefined;
+      if (f !== undefined) {
+        kind = "f";
+        face = f;
+        key = `f${f}`;
+      }
+    }
+    if (key === hoverKey) return;
+    clearHover();
+    hoverKey = key;
+    if (!kind || !scene || !cube?.verts) return;
+    const pts = worldVerts();
+    const colour = 0x7fd1ff;
+    if (kind === "v") {
+      const g = new THREE.BufferGeometry().setFromPoints([pts[vert]!]);
+      const o = new THREE.Points(g, new THREE.PointsMaterial({ color: colour, size: 16, sizeAttenuation: false, depthTest: false, transparent: true, opacity: 0.9 }));
+      o.renderOrder = 14;
+      hoverObjs.push(o);
+    } else if (kind === "e" && edge) {
+      const o = new THREE.Line(new THREE.BufferGeometry().setFromPoints([pts[edge[0]]!, pts[edge[1]]!]), new THREE.LineBasicMaterial({ color: colour, depthTest: false, transparent: true, opacity: 0.95 }));
+      o.renderOrder = 14;
+      hoverObjs.push(o);
+    } else if (kind === "f") {
+      const poly = cube.polys?.[face];
+      if (poly) {
+        const ring = poly.v.map((i) => pts[i]!);
+        const fill = new THREE.BufferGeometry().setFromPoints(ring.flatMap((p, i) => (i >= 1 && i < ring.length - 1 ? [ring[0]!, ring[i]!, ring[i + 1]!] : [])));
+        const area = new THREE.Mesh(fill, new THREE.MeshBasicMaterial({ color: colour, transparent: true, opacity: 0.28, depthTest: false, side: THREE.DoubleSide }));
+        area.renderOrder = 13;
+        const edgeLine = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(ring), new THREE.LineBasicMaterial({ color: colour, depthTest: false }));
+        edgeLine.renderOrder = 14;
+        hoverObjs.push(area, edgeLine);
+      }
+    }
+    for (const o of hoverObjs) scene.add(o);
+  }
   function pointerMove(e: PointerEvent) {
     updateRing(e);
+    updateHover(e);
     if (bevelModal) return void moveBevel(e);
     if (rubber && canvas) {
       const r = canvas.getBoundingClientRect();
@@ -2758,7 +2807,7 @@
     if (cube.shape !== "mesh") change(toMesh(cube));
     editPoints = true;
   }
-  // E with a face picked: the face follows the mouse along the way it points until a click keeps it (Esc puts it back); the same pull as the yellow arrow
+  // E with a face picked: the face follows the mouse along the way it points until a click keeps it (Esc puts it back)
   let pullModal = false;
   function endPullModal(keep: boolean) {
     const p = pull;
@@ -3888,7 +3937,7 @@
           {/if}
           <h4>Face</h4>
           {#if selFace !== null && cube.polys?.[selFace]}
-            <p class="dim small">Drag the yellow arrow to pull the face out.</p>
+            <p class="dim small">Press E to pull the face out with the mouse.</p>
             <div class="pair"><label class="inline">Pull by <input type="number" step="1" bind:value={extrudeBy} /></label><label class="inline">Shrink % <input type="number" min="0" max="95" step="5" bind:value={shrinkBy} title="Moves the new face's points towards its middle: a taper" /></label></div>
             <div class="row"><button onclick={extrude} title="Pushes the face out (a negative number digs in) and joins it to the rest">Extrude</button><button onclick={inset} title="A smaller face inside this one (uses Shrink %, 25 if empty)">Inset</button><button class="danger" onclick={removeFacePicked}>Delete</button></div>
             <div class="row"><button onclick={() => cutLoop(0)} title="Cuts the ring of four-sided faces round the shape in two">Loop cut 1</button><button onclick={() => cutLoop(1)} title="The same, the other way round">Loop cut 2</button><label class="inline">at % <input type="number" min="5" max="95" step="5" bind:value={cutAt} /></label></div>
