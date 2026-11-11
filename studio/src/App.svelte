@@ -31,6 +31,7 @@
   import WindowButtons from "./components/WindowButtons.svelte";
   import PlayButton from "./components/PlayButton.svelte";
   import CommandPalette from "./components/CommandPalette.svelte";
+  import QuickOpen from "./components/QuickOpen.svelte";
   import MenuBar from "./components/MenuBar.svelte";
   import DeviceRow from "./components/DeviceRow.svelte";
   import EnginePanels from "./components/EnginePanels.svelte";
@@ -69,6 +70,7 @@
   // a window made for one document (a tear-off) is told which one before the page loads (src-tauri/src/windows.rs)
   const docPath = (window as unknown as { __NOVA_DOC__?: string }).__NOVA_DOC__ ?? null;
   let paletteOpen = $state(false);
+  let quickOpen = $state(false);
   let keysOpen = $state(false);
   let appearanceOpen = $state(false);
   // the system menu bar follows the commands (a command becoming available greys or enables its item)
@@ -86,6 +88,7 @@
     const offs = [
       commands.register({ id: "help.toggle", title: "Show or hide help", menu: "Help", icon: "help", keys: ["F1"], help: "Lessons, the reference and the shortcuts", run: () => { if (studio.helpOpen) studio.helpOpen = false; else studio.openHelp(); } }),
       commands.register({ id: "palette.open", title: "Search commands", menu: "Help", icon: "search", keys: ["Mod+K"], help: "Find any command by name", run: () => { paletteOpen = true; } }),
+      commands.register({ id: "file.quickOpen", title: "Open a file by name", menu: "File", icon: "search", keys: ["Mod+P"], help: "Type a few letters of any file in the project to open it", enabled: has, run: () => { quickOpen = true; } }),
       commands.register({ id: "view.tree", title: "Show or hide the project tree", menu: "View", icon: "tree", keys: ["Mod+B"], enabled: has, run: toggleTree }),
       commands.register({ id: "view.assets", title: "Show the assets", menu: "View", icon: "folder", keys: ["Mod+Shift+A"], help: "Every sprite, model, sound and scene as a card: search, open, drag into code", enabled: has, run: () => { studio.panel = "assets"; studio.panelOpen = true; window.dispatchEvent(new Event("resize")); } }),
       commands.register({ id: "view.panel", title: "Show or hide the bottom panel", menu: "View", icon: "panel", keys: ["Mod+J"], help: "Problems, play and the debugger", enabled: has, run: () => { studio.panelOpen = !studio.panelOpen; window.dispatchEvent(new Event("resize")); } }),
@@ -256,6 +259,7 @@
 
 <Help />
 <CommandPalette bind:open={paletteOpen} />
+<QuickOpen bind:open={quickOpen} />
 {#if studio.snapshotsOpen && studio.project}<SnapshotsDialog onclose={() => (studio.snapshotsOpen = false)} />{/if}
 {#if keysOpen}<KeymapEditor onclose={() => (keysOpen = false)} />{/if}
 {#if appearanceOpen}<AppearanceDialog onclose={() => (appearanceOpen = false)} />{/if}

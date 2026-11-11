@@ -421,12 +421,12 @@ describe("edges", () => {
     expect(far).toBeDefined();
   });
 
-  it("refuses an edge whose ends are not simple corners, and an open edge", () => {
+  it("refuses an open edge, and one with no face beside it at an end", () => {
     const m = toMesh(box());
     const split = subdivide(m);
     const e = edgesOf(split).find((x) => x.faces === 2)!;
-    // after subdividing, the original corners are not valence three any more
-    expect(bevelEdge(split, e.a, e.b)).toBeNull();
+    // (corners where more than three faces meet are cut too: see "bevel where more than three faces meet")
+    expect(bevelEdge(split, e.a, e.b)).not.toBeNull();
     expect(bevelEdge(freshMesh(), 0, 1)).toBeNull();
     expect(bevelEdge(m, 0, 0)).toBeNull();
   });
@@ -528,5 +528,48 @@ describe("bevel with segments", () => {
     expect(JSON.stringify(bevelEdge(m, e.a, e.b, 0.2, 1))).toBe(JSON.stringify(bevelEdge(m, e.a, e.b, 0.2)));
     expect(bevelEdge(m, e.a, e.b, 0.2, 99)!.cube.polys).toHaveLength(6 + 16);
     expect(bevelEdge(m, e.a, e.b, 0.2, 0)!.cube.polys).toHaveLength(7);
+  });
+});
+
+describe("bevel where more than three faces meet", () => {
+  const directedUses = (c: Cube) => {
+    const uses = new Map<string, number>();
+    for (const f of c.polys!) f.v.forEach((a, k) => {
+      const key = `${a}>${f.v[(k + 1) % f.v.length]!}`;
+      uses.set(key, (uses.get(key) ?? 0) + 1);
+    });
+    return uses;
+  };
+  it("bevels an edge of a box that was split, and the shape stays closed and consistently wound", () => {
+    const split = subdivide(toMesh(box()));
+    let done = 0;
+    for (const e of edgesOf(split)) {
+      if (e.faces !== 2) continue;
+      const r = bevelEdge(split, e.a, e.b, 0.2);
+      if (!r) continue;
+      done++;
+      const u = directedUses(r.cube);
+      // every directed edge once, and its opposite once: a closed, outward-wound surface
+      for (const [k, n] of u) {
+        expect(n).toBe(1);
+        const [a, b] = k.split(">");
+        expect(u.get(`${b}>${a}`)).toBe(1);
+      }
+      if (done >= 6) break;
+    }
+    expect(done).toBeGreaterThan(0);
+  });
+  it("works with several segments there too, and still refuses an open edge", () => {
+    const split = subdivide(toMesh(box()));
+    const e = edgesOf(split).find((x) => x.faces === 2 && bevelEdge(split, x.a, x.b, 0.2))!;
+    const r = bevelEdge(split, e.a, e.b, 0.2, 3)!;
+    expect(r).not.toBeNull();
+    const u = directedUses(r.cube);
+    for (const [k, n] of u) {
+      expect(n).toBe(1);
+      const [a, b] = k.split(">");
+      expect(u.get(`${b}>${a}`)).toBe(1);
+    }
+    expect(bevelEdge(freshMesh(), 0, 1)).toBeNull();
   });
 });

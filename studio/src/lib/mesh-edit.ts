@@ -482,8 +482,9 @@ const lerp = (p: Vec3, q: Vec3, t: number): Vec3 => [p[0] + (q[0] - p[0]) * t, p
 const rotated = <T,>(list: T[], at: number): T[] => [...list.slice(at), ...list.slice(0, at)];
 
 /// Chamfers the edge between points `a` and `b`: it is replaced by a narrow face, each of its two neighbours losing `fraction`
-/// (0 to 0.5) of the length of their next edge. The edge must join two faces, and the faces at each end must be three in all,
-/// as at the corner of a box; otherwise the mesh is left alone and this returns null. The result says which points are new.
+/// (0 to 0.5) of the length of their next edge. The edge must join two faces and have a face on each side of it at both ends; at a corner where only three
+/// faces meet (a box's) the corner is cut clean, with more faces the old corner stays and a small cap joins it to the new points. Otherwise the mesh is left
+/// alone and this returns null. The result says which points are new.
 export function bevelEdge(c: Cube, a: number, b: number, fraction = 0.25, segments = 1): { cube: Cube; points: number[] } | null {
   const n = Math.max(1, Math.min(16, Math.round(segments)));
   const out = clone(c);
@@ -499,14 +500,19 @@ export function bevelEdge(c: Cube, a: number, b: number, fraction = 0.25, segmen
   if (i1 < 0 || i2 < 0 || i1 === i2) return null;
   const around = (v: number) => polys.map((p, i) => (p.v.includes(v) ? i : -1)).filter((i) => i >= 0);
   const [fa, fb] = [around(a), around(b)];
-  if (fa.length !== 3 || fb.length !== 3) return null;
-  const sa = fa.find((i) => i !== i1 && i !== i2)!;
-  const sb = fb.find((i) => i !== i1 && i !== i2)!;
   // F1 runs ... pa, a, b, nb ...; F2 runs ... pb, b, a, na ...
   const f1 = rotated(polys[i1]!.v, along(polys[i1]!, a, b));
   const f2 = rotated(polys[i2]!.v, along(polys[i2]!, b, a));
   const [pa, nb] = [f1.at(-1)!, f1[2]!];
   const [pb, na] = [f2.at(-1)!, f2[2]!];
+  // the faces beside the edge at each end: at a corner where three faces meet one face fills both sides; with more faces the two beside the ones being cut are different
+  const sharing = (v: number, w: number, not: number) => polys.findIndex((p, i) => i !== not && p.v.includes(v) && p.v.includes(w));
+  const [ca1, ca2, cb1, cb2] = [sharing(a, pa, i1), sharing(a, na, i2), sharing(b, nb, i1), sharing(b, pb, i2)];
+  if (ca1 < 0 || ca2 < 0 || cb1 < 0 || cb2 < 0) return null;
+  const simpleA = fa.length === 3 && ca1 === ca2;
+  const simpleB = fb.length === 3 && cb1 === cb2;
+  const sa = ca1;
+  const sb = cb1;
   const push = (p: Vec3) => verts.push(p) - 1;
   const a1 = push(lerp(verts[a]!, verts[pa]!, t));
   const b1 = push(lerp(verts[b]!, verts[nb]!, t));
@@ -529,16 +535,31 @@ export function bevelEdge(c: Cube, a: number, b: number, fraction = 0.25, segmen
     // (for the side at a the pair was [a2, a1]: backwards; at b it was [b1, b2]: forwards)
     p.splice(k, 1, ...(atA ? (forward ? [...row].reverse() : row) : forward ? row : [...row].reverse()));
   };
-  {
+  // a new point goes into a face on the edge between two of its points
+  const insertOn = (face: number, x: number, y: number, m: number) => {
+    const p = polys[face]!.v;
+    const k = p.findIndex((v, i) => (v === x && p[(i + 1) % p.length] === y) || (v === y && p[(i + 1) % p.length] === x));
+    p.splice(k + 1, 0, m);
+  };
+  if (simpleA) {
     const p = polys[sa]!.v;
     const k = p.indexOf(a);
     // seen along the face, the corner at a is entered from na and left towards pa, or the other way round
     swap(sa, a, rowA, p[(k + 1) % p.length] === pa, true);
+  } else {
+    // the old corner stays, joined to the new points by a small cap
+    insertOn(ca1, a, pa, a1);
+    insertOn(ca2, a, na, a2);
+    polys.push({ v: [...[...rowA].reverse(), a], ...(polys[ca1]!.color ? { color: polys[ca1]!.color } : {}) });
   }
-  {
+  if (simpleB) {
     const p = polys[sb]!.v;
     const k = p.indexOf(b);
     swap(sb, b, rowB, p[(k - 1 + p.length) % p.length] === nb, false);
+  } else {
+    insertOn(cb1, b, nb, b1);
+    insertOn(cb2, b, pb, b2);
+    polys.push({ v: [...rowB, b], ...(polys[cb1]!.color ? { color: polys[cb1]!.color } : {}) });
   }
   for (let k = 0; k < n; k++) polys.push({ v: [rowB[k]!, rowA[k]!, rowA[k + 1]!, rowB[k + 1]!], ...(polys[i1]!.color ? { color: polys[i1]!.color } : {}), ...(n > 1 ? { smooth: true } : {}) });
   const { cube, map } = compactWithMap(out);

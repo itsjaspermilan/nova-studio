@@ -2798,9 +2798,12 @@
     selectNote = `Bevel: width ${Math.round(m.fraction * 100)}%, ${m.segments} segment${m.segments === 1 ? "" : "s"}. Move the mouse for the width, scroll for the segments, click to keep, Esc to cancel.`;
   }
   function bevelKey() {
-    if (!inEdit || !selected || !cube || !selEdge) return void (selectNote = "Pick an edge to bevel it.");
-    if (!bevelEdge(cube, selEdge[0], selEdge[1], 0.25)) return void studio.say("info", "A bevel needs an edge between two faces, at a corner where three faces meet (like a box's).");
-    bevelModal = { base: doc, baseCube: cube, path: selected, a: selEdge[0], b: selEdge[1], x0: pointerAt.x, y0: pointerAt.y, fraction: Math.min(0.5, Math.max(0.02, bevelBy / 100)), segments: 1, points: [], recorded: false };
+    if (!inEdit || !selected || !cube) return void (selectNote = "Go into point mode (Tab) and pick an edge to bevel it.");
+    // (an edge clicked, or two picked points that are the ends of an edge)
+    const ends: [number, number] | null = selEdge ?? (selVerts.length === 2 && edgesOf(cube).some((e) => (e.a === selVerts[0] && e.b === selVerts[1]) || (e.a === selVerts[1] && e.b === selVerts[0])) ? [selVerts[0]!, selVerts[1]!] : null);
+    if (!ends) return void (selectNote = "Pick an edge to bevel it: click along an edge, or pick its two end points.");
+    if (!bevelEdge(cube, ends[0], ends[1], 0.25)) return void (selectNote = "That edge cannot be bevelled: it needs a face on each side, and faces all round both ends (an edge on the open border of a sheet cannot).");
+    bevelModal = { base: doc, baseCube: cube, path: selected, a: ends[0], b: ends[1], x0: pointerAt.x, y0: pointerAt.y, fraction: Math.min(0.5, Math.max(0.02, bevelBy / 100)), segments: 1, points: [], recorded: false };
     if (controls) controls.enabled = false;
     showBevel();
   }
@@ -2865,7 +2868,7 @@
   function bevel() {
     if (!selected || !cube || !selEdge) return;
     const r = bevelEdge(cube, selEdge[0], selEdge[1], bevelBy / 100);
-    if (!r) return void studio.say("info", "A bevel needs an edge between two faces, at a corner where three faces meet (like a box's).");
+    if (!r) return void (selectNote = "That edge cannot be bevelled: it needs a face on each side, and faces all round both ends.");
     change(r.cube);
     selEdge = null;
     selFace = null;
@@ -3202,7 +3205,7 @@
       commands.register({ id: "model.delete", title: "Delete", menu: "Model", icon: "trash", keymaps: { blender: ["X", "Delete"], nova: ["Delete", "Backspace"] }, help: "Takes away the shape; in point mode, the picked points or face", enabled: () => !modal && !!selected, run: () => (inEdit && cube?.shape === "mesh" ? deleteInEdit() : remove()) }),
       commands.register({ id: "model.edit.extrude", title: "Extrude", menu: "Model", icon: "addShape", keymaps: { blender: ["E"], nova: ["Shift+E"] }, help: "Pulls the picked face out with the mouse (click to keep, Esc to cancel); an open edge is pulled out by the Edge number", enabled: () => !modal && mode === "model" && inEdit && !!cube, run: () => extrudeKey() }),
       commands.register({ id: "model.edit.inset", title: "Inset", menu: "Model", keymaps: { blender: ["I"], nova: ["Shift+I"] }, help: "A smaller face inside the picked one (Shrink % sets how much)", enabled: () => !modal && mode === "model" && inEdit && !!cube && selFace !== null, run: () => inset() }),
-      commands.register({ id: "model.edit.bevel", title: "Bevel", menu: "Model", keymaps: { blender: ["Mod+B", "V"], nova: ["Shift+V"] }, help: "Bevels the picked edge: the mouse sets the width, the scroll wheel the number of segments, a click keeps it", enabled: () => !modal && mode === "model" && inEdit && !!cube, run: () => bevelKey() }),
+      commands.register({ id: "model.edit.bevel", title: "Bevel", menu: "Model", keymaps: { blender: ["B", "V"], nova: ["Shift+V"] }, help: "Bevels the picked edge: the mouse sets the width, the scroll wheel the number of segments, a click keeps it", enabled: () => !modal && mode === "model" && inEdit && !!cube, run: () => bevelKey() }),
       commands.register({ id: "model.edit.loopCut", title: "Loop cut", menu: "Model", keymaps: { blender: ["Mod+R"], nova: [] }, help: "Cuts the ring of four-sided faces round the shape in two, through the picked face", enabled: () => !modal && mode === "model" && inEdit && !!cube && selFace !== null, run: () => cutLoop(0) }),
       commands.register({ id: "model.edit.makeFace", title: "Make a face from the picked points", menu: "Model", keymaps: { blender: ["F"], nova: [] }, enabled: () => !modal && mode === "model" && inEdit && !!cube && selVerts.length >= 3, run: () => makeFace() }),
       commands.register({ id: "model.edit.knife", title: "Knife", menu: "Model", keymaps: { blender: ["K"], nova: [] }, help: "Cuts between the two picked points", enabled: () => !modal && mode === "model" && inEdit && !!cube && selVerts.length === 2, run: () => knife() }),
@@ -3213,7 +3216,7 @@
       commands.register({ id: "model.view.orbitRight", title: "Turn the view right", menu: "Model", help: "15 degrees", run: () => orbit(15, 0) }),
       commands.register({ id: "model.view.orbitUp", title: "Turn the view up", menu: "Model", help: "15 degrees", run: () => orbit(0, 15) }),
       commands.register({ id: "model.view.orbitDown", title: "Turn the view down", menu: "Model", help: "15 degrees", run: () => orbit(0, -15) }),
-      commands.register({ id: "model.boxSelect", title: "Box select points", menu: "Model", keymaps: { blender: ["B"], nova: [] }, help: "Drag a rectangle over the view to pick the points inside it (Shift adds)", enabled: () => !modal && inEdit, run: () => { boxArmed = !boxArmed; } }),
+      commands.register({ id: "model.boxSelect", title: "Box select points", menu: "Model", keymaps: { blender: ["Shift+B"], nova: [] }, help: "Drag a rectangle over the view to pick the points inside it (Shift adds)", enabled: () => !modal && inEdit, run: () => { boxArmed = !boxArmed; } }),
       commands.register({ id: "model.exportObj", title: "Export as an OBJ file", menu: "Model", icon: "export", help: "Every shape as a mesh, in metres at the export scale, into the exports folder", run: () => void exportObj() }),
       commands.register({ id: "model.resetView", title: "Reset the view", menu: "Model", icon: "home", keymaps: { blender: ["Home"], nova: [] }, run: () => resetView() }),
     ];
