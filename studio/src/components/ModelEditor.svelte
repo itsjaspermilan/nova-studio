@@ -26,6 +26,7 @@
   import { bakeConstraints, constrainedPose, setConstraints } from "../lib/model-constraints";
   import { retargetClip, applyPose as applySavedPose, capturePose, removePose, copyKeys, mirrorClip, pasteKeys, removeKeysAt, reverseClip, shiftKeys, shiftKeysAt, stretchKeys, type KeyClipboard } from "../lib/model-anim-tools";
   import { SCULPT_HELP, SCULPT_MODES, sculptDab, type SculptMode } from "../lib/sculpt";
+  import { blurMask, clearMask, invertMask, maskDab, maskOf, maskPoints, refineUnder } from "../lib/sculpt-mask";
   import { addFace, bevelEdge, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, freshProfile, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsProportional, moveVertsSymmetric, setFaceColors, setSmooth, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
   import { hasVolume, meshOf, segmentsOf, shapeFaces, solidOf } from "../lib/model-mesh";
   import { WEIGHT_MODES, autoSkinAll, gradientWeights, mirrorWeights, paintWeights, type WeightMode, autoWeights, boneHeat, dominantBones, heatColor, invertAffine, reskin, setWeight, skinnedPoints, transformPoint, worldMatrices } from "../lib/model-skin";
@@ -1677,7 +1678,9 @@
     const fits = !!cube.skin && cube.skin.weights.length === pts.length;
     const holder = fits ? dominantBones(cube.skin!) : null;
     const heat = fits && heatBone !== null ? boneHeat(cube.skin!, heatBone) : null;
-    geometry.setAttribute("color", new THREE.Float32BufferAttribute(pts.flatMap((_, i) => (chosen.has(i) ? [1, 0.82, 0.4] : heat ? heatColor(heat[i]!) : holder ? BONE_COLORS[holder[i]! % BONE_COLORS.length]! : [0.9, 0.93, 1])), 3));
+    const mask = cube.mask && cube.mask.length === pts.length ? cube.mask : null;
+    const shade = (c: number[], i: number) => (mask && mask[i]! > 0 && !chosen.has(i) ? c.map((v) => v * (1 - 0.85 * mask[i]!)) : c);
+    geometry.setAttribute("color", new THREE.Float32BufferAttribute(pts.flatMap((_, i) => shade(chosen.has(i) ? [1, 0.82, 0.4] : heat ? heatColor(heat[i]!) : holder ? BONE_COLORS[holder[i]! % BONE_COLORS.length]! : [0.9, 0.93, 1], i)), 3));
     handles = new THREE.Points(geometry, new THREE.PointsMaterial({ size: 9, sizeAttenuation: false, vertexColors: true, depthTest: false }));
     handles.renderOrder = 10;
     scene.add(handles);
@@ -1998,8 +2001,13 @@
   let weightPainting = $state(false);
   let weightMode = $state<WeightMode>("add");
   let sculptStroke: { path: Path; last: Vec3; fresh: boolean } | null = null;
-  /// Where the pointer's ray meets the chosen shape, in that shape's own space.
-  function sculptPoint(e: PointerEvent): Vec3 | null {
+  // a pen's pressure scales the strength; dynamic detail splits the polygons under the brush that are longer than the detail size (units) before each dab
+  let sculptPressure = $state(true);
+  let sculptDynamic = $state(false);
+  let sculptDetail = $state(1.5);
+  let sculptRing: THREE.Mesh | undefined;
+  /// Where the pointer's ray meets the chosen shape: the point in the shape's own space and the way the surface faces there in the world.
+  function sculptHit(e: PointerEvent): { local: Vec3; point: THREE.Vector3; normal: THREE.Vector3 } | null {
     if (!camera || !canvas || !selected) return null;
     const ray = new THREE.Raycaster();
     ray.setFromCamera(pointer(e), camera);
@@ -2008,14 +2016,37 @@
     const g = groupOf(selected.parts);
     if (!hit || !g) return null;
     const local = g.worldToLocal(hit.point.clone());
-    return [local.x, local.y, local.z];
+    const normal = hit.face ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld) : new THREE.Vector3(0, 1, 0);
+    return { local: [local.x, local.y, local.z], point: hit.point.clone(), normal };
   }
+  /// The ring that shows the brush's size on the surface under the pointer (hidden when the brush is not in use or nothing is under it).
+  function updateRing(e: PointerEvent | null) {
+    const hit = e && scene && inEdit && (sculpting || weightPainting) ? sculptHit(e) : null;
+    if (!hit || !scene) {
+      if (sculptRing) sculptRing.visible = false;
+      return;
+    }
+    if (!sculptRing) {
+      sculptRing = new THREE.Mesh(new THREE.RingGeometry(0.96, 1, 64), new THREE.MeshBasicMaterial({ color: 0xffd166, side: THREE.DoubleSide, transparent: true, opacity: 0.9, depthTest: false }));
+      sculptRing.renderOrder = 13;
+      scene.add(sculptRing);
+    }
+    const g = selected ? groupOf(selected.parts) : undefined;
+    const k = g ? g.getWorldScale(new THREE.Vector3()).x : 1;
+    sculptRing.visible = true;
+    sculptRing.position.copy(hit.point).addScaledVector(hit.normal, 0.05 * k);
+    sculptRing.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), hit.normal);
+    sculptRing.scale.setScalar(Math.max(1e-3, sculptRadius * k));
+  }
+  /// Where the pointer's ray meets the chosen shape, in that shape's own space.
+  const sculptPoint = (e: PointerEvent): Vec3 | null => sculptHit(e)?.local ?? null;
   function sculptAt(e: PointerEvent) {
     if (!sculptStroke) return;
     const at = sculptPoint(e);
     if (!at) return;
-    const c = cubeAt(doc, sculptStroke.path);
+    let c = cubeAt(doc, sculptStroke.path);
     if (!c) return;
+    const pressure = sculptPressure && e.pointerType === "pen" ? Math.max(0.1, e.pressure) : 1;
     const delta: Vec3 = [at[0] - sculptStroke.last[0], at[1] - sculptStroke.last[1], at[2] - sculptStroke.last[2]];
     // a dab only when the pointer has moved a little (a third of the brush) or on the first touch
     const moved = Math.hypot(...delta);
@@ -2024,15 +2055,57 @@
     if (weightPainting) {
       const bone = skinBone || c.skin?.bones[0] || "";
       if (!bone) return;
-      commit(setCube(doc, sculptStroke.path, paintWeights(c, at, { bone, mode: weightMode, radius: sculptRadius, strength: sculptStrength, ...(paintOnlyPicked && selVerts.length ? { only: new Set(selVerts) } : {}) })), true);
+      commit(setCube(doc, sculptStroke.path, paintWeights(c, at, { bone, mode: weightMode, radius: sculptRadius, strength: sculptStrength * pressure, ...(paintOnlyPicked && selVerts.length ? { only: new Set(selVerts) } : {}) })), true);
       const painted = cubeAt(doc, sculptStroke.path)?.skin?.bones.indexOf(bone) ?? -1;
       if (painted >= 0) heatBone = painted;
       sculptStroke.last = at;
       return;
     }
-    const next = sculptDab(c, sculptMode === "grab" ? sculptStroke.last : at, { mode: sculptMode, radius: sculptRadius, strength: sculptStrength, invert: e.ctrlKey || e.metaKey, symmetryX: sculptSymmetry }, delta);
+    if (sculptMode === "mask") {
+      commit(setCube(doc, sculptStroke.path, maskDab(c, at, { radius: sculptRadius, strength: sculptStrength * pressure, erase: e.ctrlKey || e.metaKey, symmetryX: sculptSymmetry })), true);
+      sculptStroke.last = at;
+      return;
+    }
+    if (sculptDynamic && sculptMode !== "smooth") {
+      if (c.shapes?.length) {
+        selectNote = "Dynamic detail changes the points, so it cannot be used on a shape with layers or shape keys: add the detail first, then the layers.";
+      } else {
+        c = refineUnder(c, at, sculptRadius, Math.max(0.05, sculptDetail));
+      }
+    }
+    const next = sculptDab(c, sculptMode === "grab" ? sculptStroke.last : at, { mode: sculptMode, radius: sculptRadius, strength: sculptStrength, pressure, invert: e.ctrlKey || e.metaKey, symmetryX: sculptSymmetry }, delta);
     commit(setCube(doc, sculptStroke.path, next), true);
     sculptStroke.last = at;
+  }
+  /// A click anywhere but the Detail · Mask · Layers pop-over closes it.
+  function closeSculptMore(e: PointerEvent) {
+    for (const d of document.querySelectorAll("details.sculptmore[open]")) if (!d.contains(e.target as Node)) d.removeAttribute("open");
+  }
+  function maskDo(change: (c: Cube) => Cube) {
+    if (!cube || !selected) return;
+    commit(setCube(doc, selected, change(cube)), false, "Sculpt mask");
+  }
+  function splitAll() {
+    if (!cube || !selected) return;
+    if (cube.shapes?.length) return void (selectNote = "Adding detail changes the points, so it cannot be done once the shape has layers or shape keys.");
+    const next = refineUnder(cube, [0, 0, 0], 1e9, 0);
+    if (next === cube) return void (selectNote = "The shape has too many points to split again.");
+    commit(setCube(doc, selected, next), false, "Add detail");
+  }
+  function setSculptLayer(name: string) {
+    if (!cube || !selected) return;
+    const base = cube.keyEdit !== undefined ? endKeyEdit(cube) : cube;
+    commit(setCube(doc, selected, name ? beginKeyEdit(base, name) : base), false, name ? `Sculpt layer "${name}"` : "Sculpt the base shape");
+  }
+  function newSculptLayer() {
+    if (!cube || !selected) return;
+    const base = cube.keyEdit !== undefined ? endKeyEdit(cube) : cube;
+    let n = 1;
+    while (base.shapes?.some((k) => k.name === `layer${n}`)) n++;
+    const name = `layer${n}`;
+    const added = addShapeKey(base, name);
+    if (added === base) return void (selectNote = `At most ${MAX_SHAPE_KEYS} layers.`);
+    commit(setCube(doc, selected, beginKeyEdit(added, name)), false, `New sculpt layer "${name}"`);
   }
   let rubber = $state<{ x0: number; y0: number; x1: number; y1: number; add: boolean } | null>(null);
   function finishBox() {
@@ -2058,6 +2131,7 @@
   }
 
   function pointerMove(e: PointerEvent) {
+    updateRing(e);
     if (rubber && canvas) {
       const r = canvas.getBoundingClientRect();
       rubber = { ...rubber, x1: e.clientX - r.left, y1: e.clientY - r.top };
@@ -3048,7 +3122,7 @@
   });
 </script>
 
-<svelte:window onkeydown={key} onpointermove={(e) => { pointerAt = { x: e.clientX, y: e.clientY }; if (modal) modalApply(); }} onpointerdowncapture={(e) => { if (modal) { e.preventDefault(); e.stopPropagation(); modalEnd(e.button === 0); } }} />
+<svelte:window onpointerdown={closeSculptMore} onkeydown={key} onpointermove={(e) => { pointerAt = { x: e.clientX, y: e.clientY }; if (modal) modalApply(); }} onpointerdowncapture={(e) => { if (modal) { e.preventDefault(); e.stopPropagation(); modalEnd(e.button === 0); } }} />
 
 {#if error}
   <div class="bad">
@@ -3177,6 +3251,30 @@
             <label class="check" title="How strongly each dab works">Strength <input type="range" min="0.05" max="1" step="0.05" bind:value={sculptStrength} aria-label="Brush strength" /></label>
           {/if}
           {#if sculpting}<label class="check" title="Sculpt the mirror image across the middle (x = 0) too"><input type="checkbox" bind:checked={sculptSymmetry} /> Mirror</label>{/if}
+          {#if sculpting}
+            <label class="check" title="With a pen, pressing harder makes each dab stronger (a mouse is unaffected)"><input type="checkbox" bind:checked={sculptPressure} /> Pen pressure</label>
+            <details class="sculptmore"><summary title="Dynamic detail, masks and sculpt layers">Detail · Mask · Layers ▾</summary><div class="sculptpop">
+            <label class="check" title="Split the polygons under the brush that are longer than the detail size before each dab, so a coarse shape gets fine where you sculpt (not with shape keys)"><input type="checkbox" bind:checked={sculptDynamic} /> Dynamic detail</label>
+            {#if sculptDynamic}<label class="inline" title="The longest edge, in units, that the brush leaves under it">Detail <input type="number" min="0.1" max="10" step="0.1" bind:value={sculptDetail} class="narrow" aria-label="Detail size" /></label>{/if}
+            <button onclick={splitAll} title="Split every polygon of the shape into four (not with shape keys)">Add detail</button>
+            <span class="group" role="group" aria-label="Mask">
+              <button onclick={() => maskDo((c) => invertMask(c))} title="Protect what is free and free what is protected">Invert mask</button>
+              <button onclick={() => maskDo((c) => blurMask(c, 1))} title="Soften the edge of the mask">Blur mask</button>
+              <button onclick={() => maskDo((c) => maskPoints(c, selVerts, true))} title="Protect the picked points">Mask picked</button>
+              <button onclick={() => maskDo((c) => clearMask(c))} disabled={!cube?.mask} title="Take the whole mask off">Clear mask</button>
+            </span>
+            <span class="group" role="group" aria-label="Sculpt layer">
+              <label class="inline" title="A sculpt layer is a shape key: the sculpt goes into the layer, not the base shape, and the game can blend it by name">Layer
+                <select value={cube?.keyEdit ?? ""} onchange={(e) => setSculptLayer(e.currentTarget.value)} aria-label="Sculpt layer">
+                  <option value="">base shape</option>
+                  {#each cube?.shapes ?? [] as k (k.name)}<option value={k.name}>{k.name}</option>{/each}
+                </select>
+              </label>
+              <button onclick={newSculptLayer} title="A new layer to sculpt into (a shape key)">＋ Layer</button>
+              {#if cube?.keyEdit}<label class="inline" title="How much of this layer shows (a preview; the game sets it by name)">Amount <input type="range" min="0" max="1" step="0.05" value={keyWeights[cube.keyEdit] ?? 1} oninput={(e) => (keyWeights = { ...keyWeights, [cube!.keyEdit!]: Number(e.currentTarget.value) })} aria-label="Layer amount" /></label>{/if}
+            </span>
+            </div></details>
+          {/if}
           <label class="inline" title="How far to slide the picked edge along the quads beside it: positive towards one side, negative the other, 1 is all the way to the next point">Slide <input type="number" min="-1" max="1" step="0.1" bind:value={slideAmount} class="narrow" aria-label="Slide amount" /></label>
           <label class="inline" title="The most a surface may turn and still shade smooth, in degrees">Smooth angle <input type="number" min="1" max="180" step="5" bind:value={smoothAngle} class="narrow" aria-label="Smooth angle" /></label>
           {#if selectNote}<span class="dim small" role="status">{selectNote}</span>{/if}
@@ -3837,4 +3935,8 @@
   .small { font-size: 11px; margin: 4px 0; }
   .note { color: var(--accent); }
   .bad { padding: 32px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+  .sculptmore { position: relative; }
+  .sculptmore summary { cursor: pointer; user-select: none; padding: 2px 8px; border: 1px solid var(--line); border-radius: 4px; }
+  .sculptpop { position: absolute; z-index: 30; top: 100%; left: 0; margin-top: 4px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 10px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.35); white-space: nowrap; }
+  .sculptpop .group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 </style>
