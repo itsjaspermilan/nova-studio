@@ -89,6 +89,8 @@
   let gizmoMode = $state<"translate" | "rotate" | "scale" | "pivot">("translate");
   // editing the points of a mesh
   let editPoints = $state(false);
+  // Edit, Sculpt or Weight Paint asked for while no shape was chosen: it starts as soon as one is clicked
+  let wantMode = $state<"edit" | "sculpt" | "weights" | null>(null);
   let selVerts = $state<number[]>([]);
   let selFace = $state<number | null>(null);
   let selEdge = $state<[number, number] | null>(null); // two points joined by an edge of the picked mesh
@@ -2518,9 +2520,18 @@
     { id: "object", title: "Object" }, { id: "edit", title: "Edit" }, { id: "sculpt", title: "Sculpt" },
     { id: "weights", title: "Weight Paint" }, { id: "texture", title: "Texture Paint" }, { id: "pose", title: "Pose" },
   ];
-  const uiMode = $derived<UiMode>(mode === "texture" ? "texture" : mode === "animate" ? "pose" : inEdit ? (sculpting ? "sculpt" : weightPainting ? "weights" : "edit") : "object");
+  const uiMode = $derived<UiMode>(wantMode && mode === "model" && !inEdit ? wantMode : mode === "texture" ? "texture" : mode === "animate" ? "pose" : inEdit ? (sculpting ? "sculpt" : weightPainting ? "weights" : "edit") : "object");
+  $effect(() => {
+    if (wantMode && mode === "model" && selected && selected.cube !== undefined && cube) {
+      const m = wantMode;
+      wantMode = null;
+      selectNote = "";
+      setUiMode(m);
+    }
+  });
   function setUiMode(next: UiMode) {
     playingAnim = false;
+    wantMode = null;
     if (next === "texture") {
       mode = "texture";
       editPoints = false;
@@ -2542,9 +2553,16 @@
     }
     // the rest work on the points of a mesh: a shape is chosen, and made a mesh if it is a box
     if (!selected || selected.cube === undefined || !cube) {
-      studio.say("info", "Choose a shape first: Edit, Sculpt and Weight Paint work on the points of one shape.");
-      editPoints = false;
-      return;
+      // a model with just one shape: that one; otherwise wait for a click on a shape
+      if (allShapes.length === 1) {
+        selected = allShapes[0]!;
+        also = [];
+      } else {
+        wantMode = next;
+        editPoints = false;
+        selectNote = "Click the shape whose points you want to work on.";
+        return;
+      }
     }
     makeEditable();
     sculpting = next === "sculpt";
@@ -3121,7 +3139,10 @@
     const mod = e.metaKey || e.ctrlKey;
     const step = e.shiftKey ? 4 : 1;
     // (move, turn, resize, pivot, shading, duplicate and delete are commands with their own keys: see the model commands below)
-    if (e.key === "Escape" && bevelModal) {
+    if (e.key === "Escape" && wantMode) {
+      wantMode = null;
+      selectNote = "";
+    } else if (e.key === "Escape" && bevelModal) {
       endBevel(false);
     } else if (e.key === "Escape" && pullModal) {
       endPullModal(false);
@@ -3518,6 +3539,7 @@
         </svg>
         <NavButtons controls={() => controls} camera={() => camera} height={() => canvas?.clientHeight ?? 400} />
         {#if rubber}<div class="boxband" style:left="{Math.min(rubber.x0, rubber.x1)}px" style:top="{Math.min(rubber.y0, rubber.y1)}px" style:width="{Math.abs(rubber.x1 - rubber.x0)}px" style:height="{Math.abs(rubber.y1 - rubber.y0)}px"></div>{/if}
+        {#if wantMode}<div class="modalbar" role="status">Click the shape whose points you want to work on (Esc cancels)</div>{/if}
         {#if boxArmed && !rubber}<div class="modalbar" role="status">Box select: drag a rectangle over the points (Esc cancels)</div>{/if}
         {#if modal}<div class="modalbar" role="status">{modalLabel(modal.kind, modal.axis, modal.typed, modal.amount)}</div>{/if}
         {#if moveHint}
