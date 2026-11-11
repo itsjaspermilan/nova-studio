@@ -573,3 +573,66 @@ describe("bevel where more than three faces meet", () => {
     expect(bevelEdge(freshMesh(), 0, 1)).toBeNull();
   });
 });
+
+import { bevelChain, chainOfPoints } from "./mesh-edit";
+describe("bevelling a chain of edges", () => {
+  const split = () => subdivide(toMesh(box()));
+  // the three points up one of the box's edges: the corner at each end and the point the split put in the middle
+  const upEdge = (m: Cube) => {
+    const es = edgesOf(m);
+    for (const mid of m.verts!.keys()) {
+      const adj = es.filter((e) => e.a === mid || e.b === mid).map((e) => (e.a === mid ? e.b : e.a));
+      if (adj.length !== 4) continue;
+      // two of its four neighbours are corners of the box (valence three), on opposite sides of it
+      const corners = adj.filter((v) => es.filter((e) => e.a === v || e.b === v).length === 3);
+      if (corners.length === 2) return [corners[0]!, mid, corners[1]!];
+    }
+    return null;
+  };
+  const directed = (c: Cube) => {
+    const u = new Map<string, number>();
+    for (const f of c.polys!) f.v.forEach((a, k) => u.set(`${a}>${f.v[(k + 1) % f.v.length]!}`, (u.get(`${a}>${f.v[(k + 1) % f.v.length]!}`) ?? 0) + 1));
+    return u;
+  };
+  it("finds the points as one chain, in order, and refuses a branch or a ring", () => {
+    const m = split();
+    const p = upEdge(m)!;
+    const chain = chainOfPoints(m, [p[2]!, p[0]!, p[1]!])!;
+    // (from either end: the middle point is in the middle)
+    expect(chain[1]).toBe(p[1]);
+    expect([chain[0], chain[2]].sort()).toEqual([p[0], p[2]].sort());
+    expect(chainOfPoints(m, p)).toHaveLength(3);
+    expect(chainOfPoints(m, [p[0]!])).toBeNull();
+    expect(chainOfPoints(m, [p[0]!, p[2]!])).toBeNull();
+  });
+  it("bevels both halves of a box's edge as one strip: closed, consistently wound, less volume than the sharp box", () => {
+    const m = split();
+    const p = upEdge(m);
+    expect(p).not.toBeNull();
+    const r = bevelChain(m, chainOfPoints(m, p!)!, 0.2);
+    expect(r).not.toBeNull();
+    const u = directed(r!.cube);
+    for (const [k, nn] of u) {
+      expect(nn).toBe(1);
+      const [a, b] = k.split(">");
+      expect(u.get(`${b}>${a}`)).toBe(1);
+    }
+    expect(vol(r!.cube)).toBeLessThan(1000);
+    expect(vol(r!.cube)).toBeGreaterThan(900);
+  });
+  it("also with several segments, and a chain of two points is the single bevel", () => {
+    const m = split();
+    const p = chainOfPoints(m, upEdge(m)!)!;
+    const r = bevelChain(m, p, 0.2, 3)!;
+    expect(r).not.toBeNull();
+    const u = directed(r.cube);
+    for (const [k, nn] of u) {
+      expect(nn).toBe(1);
+      const [a, b] = k.split(">");
+      expect(u.get(`${b}>${a}`)).toBe(1);
+    }
+    const e = edgesOf(m)[0]!;
+    expect(JSON.stringify(bevelChain(m, [e.a, e.b], 0.2))).toBe(JSON.stringify(bevelEdge(m, e.a, e.b, 0.2)));
+    expect(bevelChain(m, [p[0]!, p[0]!, p[1]!])).toBeNull();
+  });
+});

@@ -70,7 +70,8 @@ export function scaleBox(from: Vec3, to: Vec3, factor: number, axis: Axis): { fr
 export const round2 = (v: number) => Math.round(v * 100) / 100;
 
 /// The line shown while a transform is going: "Move · X · 2.5".
-export function modalLabel(kind: "move" | "scale", axis: Axis, typed: string, amount: string): string {
-  const name = kind === "move" ? "Move" : "Resize";
-  return [name, axis ? axis.toUpperCase() : "free", typed || amount, "click or Enter keeps · Esc cancels"].join(" · ");
+export function modalLabel(kind: "move" | "scale" | "rotate", axis: Axis, typed: string, amount: string): string {
+  const name = kind === "move" ? "Move" : kind === "scale" ? "Resize" : "Rotate";
+  const unit = kind === "rotate" && (typed || amount) ? "°" : "";
+  return [name, axis ? axis.toUpperCase() : kind === "rotate" ? "view" : "free", (typed || amount) + unit, "click or Enter keeps · Esc cancels"].join(" · ");
 }

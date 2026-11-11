@@ -622,3 +622,137 @@ export function cutFace(c: Cube, a: number, b: number): Cube | null {
   }
   return null;
 }
+
+/// Chamfers a whole chain of edges at once: `path` lists the points along them (three or more, each pair joined by an edge, such as the two halves of a box's edge
+/// that has a point in its middle). Each edge becomes a narrow strip, rounder with more `segments`. At a point inside the chain the faces on each side must be
+/// different (there has to be an edge going off to each side, as where a face was split); the ends are cut as `bevelEdge` cuts its ends. Null when it cannot be done.
+export function bevelChain(c: Cube, path: number[], fraction = 0.25, segments = 1): { cube: Cube; points: number[] } | null {
+  if (path.length === 2) return bevelEdge(c, path[0]!, path[1]!, fraction, segments);
+  if (path.length < 3 || new Set(path).size !== path.length) return null;
+  const n = Math.max(1, Math.min(16, Math.round(segments)));
+  const t = Math.min(0.5, Math.max(0.02, fraction));
+  const out = clone(c);
+  const polys = out.polys ?? [];
+  const verts = out.verts ?? [];
+  const E = path.length - 1;
+  const dirIndex = (p: { v: number[] }, x: number, y: number) => {
+    const i = p.v.indexOf(x);
+    return i >= 0 && p.v[(i + 1) % p.v.length] === y ? i : -1;
+  };
+  const f1: number[] = [];
+  const f2: number[] = [];
+  for (let k = 0; k < E; k++) {
+    const i1 = polys.findIndex((p) => dirIndex(p, path[k]!, path[k + 1]!) >= 0);
+    const i2 = polys.findIndex((p) => dirIndex(p, path[k + 1]!, path[k]!) >= 0);
+    if (i1 < 0 || i2 < 0 || i1 === i2) return null;
+    f1.push(i1);
+    f2.push(i2);
+  }
+  const succ = (face: number, v: number) => polys[face]!.v[(polys[face]!.v.indexOf(v) + 1) % polys[face]!.v.length]!;
+  const pred = (face: number, v: number) => polys[face]!.v[(polys[face]!.v.indexOf(v) - 1 + polys[face]!.v.length) % polys[face]!.v.length]!;
+  // the edge that goes off to each side at a point inside the chain
+  const xL: number[] = [];
+  const xR: number[] = [];
+  for (let k = 1; k < E; k++) {
+    if (f1[k - 1] === f1[k] || f2[k - 1] === f2[k]) return null;
+    const l = succ(f1[k - 1]!, path[k]!);
+    const r = pred(f2[k - 1]!, path[k]!);
+    if (pred(f1[k]!, path[k]!) !== l || succ(f2[k]!, path[k]!) !== r) return null;
+    xL[k] = l;
+    xR[k] = r;
+  }
+  const a = path[0]!;
+  const b = path[E]!;
+  const pa = pred(f1[0]!, a);
+  const na = succ(f2[0]!, a);
+  const nb = succ(f1[E - 1]!, b);
+  const pb = pred(f2[E - 1]!, b);
+  const around = (v: number) => polys.map((p, i) => (p.v.includes(v) ? i : -1)).filter((i) => i >= 0);
+  const sharing = (v: number, w: number, not: number) => polys.findIndex((p, i) => i !== not && p.v.includes(v) && p.v.includes(w));
+  const [ca1, ca2, cb1, cb2] = [sharing(a, pa, f1[0]!), sharing(a, na, f2[0]!), sharing(b, nb, f1[E - 1]!), sharing(b, pb, f2[E - 1]!)];
+  if (ca1 < 0 || ca2 < 0 || cb1 < 0 || cb2 < 0) return null;
+  const simpleA = around(a).length === 3 && ca1 === ca2;
+  const simpleB = around(b).length === 3 && cb1 === cb2;
+  const push = (p: Vec3) => verts.push(p) - 1;
+  // the points on each side of every point of the chain, and between them the curve of the new strip
+  const left: number[] = [];
+  const right: number[] = [];
+  const rows: number[][] = [];
+  const orig = path.map((v) => [...verts[v]!] as Vec3);
+  for (let k = 0; k <= E; k++) {
+    const [lTo, rTo] = k === 0 ? [pa, na] : k === E ? [nb, pb] : [xL[k]!, xR[k]!];
+    left.push(push(lerp(orig[k]!, verts[lTo]!, t)));
+    right.push(push(lerp(orig[k]!, verts[rTo]!, t)));
+    const L = verts[left[k]!]!;
+    const R = verts[right[k]!]!;
+    const row = [left[k]!];
+    for (let s = 1; s < n; s++) {
+      const u = s / n;
+      row.push(push([0, 1, 2].map((i) => (1 - u) * (1 - u) * L[i]! + 2 * u * (1 - u) * orig[k]![i]! + u * u * R[i]!) as Vec3));
+    }
+    row.push(right[k]!);
+    rows.push(row);
+  }
+  // the faces along the chain take the new points in place of the old ones
+  for (let k = 0; k < E; k++) {
+    for (const [face, side] of [[f1[k]!, left], [f2[k]!, right]] as const) {
+      const v = polys[face]!.v;
+      v[v.indexOf(path[k]!)] = side[k]!;
+      v[v.indexOf(path[k + 1]!)] = side[k + 1]!;
+    }
+  }
+  const insertOn = (face: number, x: number, y: number, m: number) => {
+    const p = polys[face]!.v;
+    const k = p.findIndex((v, i) => (v === x && p[(i + 1) % p.length] === y) || (v === y && p[(i + 1) % p.length] === x));
+    p.splice(k + 1, 0, m);
+  };
+  const swap = (face: number, old: number, row: number[], forward: boolean, atA: boolean) => {
+    const p = polys[face]!.v;
+    p.splice(p.indexOf(old), 1, ...(atA ? (forward ? [...row].reverse() : row) : forward ? row : [...row].reverse()));
+  };
+  const color = polys[f1[0]!]!.color;
+  if (simpleA) {
+    const p = polys[ca1]!.v;
+    swap(ca1, a, rows[0]!, p[(p.indexOf(a) + 1) % p.length] === pa, true);
+  } else {
+    insertOn(ca1, a, pa, left[0]!);
+    insertOn(ca2, a, na, right[0]!);
+    polys.push({ v: [...[...rows[0]!].reverse(), a], ...(color ? { color } : {}) });
+  }
+  if (simpleB) {
+    const p = polys[cb1]!.v;
+    swap(cb1, b, rows[E]!, p[(p.indexOf(b) - 1 + p.length) % p.length] === nb, false);
+  } else {
+    insertOn(cb1, b, nb, left[E]!);
+    insertOn(cb2, b, pb, right[E]!);
+    polys.push({ v: [...rows[E]!, b], ...(color ? { color } : {}) });
+  }
+  for (let k = 0; k < E; k++) {
+    for (let s = 0; s < n; s++) polys.push({ v: [rows[k + 1]![s]!, rows[k]![s]!, rows[k]![s + 1]!, rows[k + 1]![s + 1]!], ...(color ? { color } : {}), ...(n > 1 ? { smooth: true } : {}) });
+  }
+  const { cube, map } = compactWithMap(out);
+  return { cube, points: [...left, ...right].map((i) => map[i]!) };
+}
+
+/// The picked points as one open chain of edges, in order, if they form one (every point joined to the next, no branches, no ring); null otherwise.
+export function chainOfPoints(c: Cube, picked: number[]): number[] | null {
+  const set = new Set(picked);
+  if (set.size < 2) return null;
+  const adj = new Map<number, number[]>([...set].map((v) => [v, []]));
+  for (const e of edgesOf(c)) if (set.has(e.a) && set.has(e.b)) {
+    adj.get(e.a)!.push(e.b);
+    adj.get(e.b)!.push(e.a);
+  }
+  const ends = [...adj].filter(([, l]) => l.length === 1).map(([v]) => v);
+  if (ends.length !== 2 || [...adj.values()].some((l) => l.length === 0 || l.length > 2)) return null;
+  const order = [ends[0]!];
+  let prev = -1;
+  while (order.length < set.size) {
+    const here = order[order.length - 1]!;
+    const next = adj.get(here)!.find((v) => v !== prev);
+    if (next === undefined) return null;
+    prev = here;
+    order.push(next);
+  }
+  return order.length === set.size ? order : null;
+}

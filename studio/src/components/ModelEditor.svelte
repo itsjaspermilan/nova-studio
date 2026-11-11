@@ -7,6 +7,7 @@
   import { applyNavigation, navHint } from "../lib/view-nav";
   import NavButtons from "./NavButtons.svelte";
   import { commands } from "../lib/commands";
+  import { distanceFactor, mapVerts, medianOf, rotateAbout, scaleAbout, sweepAngle } from "../lib/point-transform";
   import { axisKey, modalLabel, moveDelta, parseTyped, round2 as round2m, scaleBox, scaleFactor, typeKey, type Axis as ModalAxis } from "../lib/modal-transform";
   import { commandsRev } from "../lib/commands-rev.svelte";
   import { input } from "../lib/input-settings.svelte";
@@ -27,7 +28,7 @@
   import { retargetClip, applyPose as applySavedPose, capturePose, removePose, copyKeys, mirrorClip, pasteKeys, removeKeysAt, reverseClip, shiftKeys, shiftKeysAt, stretchKeys, type KeyClipboard } from "../lib/model-anim-tools";
   import { SCULPT_HELP, SCULPT_MODES, sculptDab, type SculptMode } from "../lib/sculpt";
   import { blurMask, clearMask, invertMask, maskDab, maskOf, maskPoints, refineUnder } from "../lib/sculpt-mask";
-  import { addFace, bevelEdge, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, freshProfile, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsProportional, moveVertsSymmetric, setFaceColors, setSmooth, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
+  import { addFace, bevelChain, bevelEdge, chainOfPoints, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, freshProfile, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsProportional, moveVertsSymmetric, setFaceColors, setSmooth, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
   import { hasVolume, meshOf, segmentsOf, shapeFaces, solidOf } from "../lib/model-mesh";
   import { WEIGHT_MODES, autoSkinAll, gradientWeights, mirrorWeights, paintWeights, type WeightMode, autoWeights, boneHeat, dominantBones, heatColor, invertAffine, reskin, setWeight, skinnedPoints, transformPoint, worldMatrices } from "../lib/model-skin";
   import { bakeNormals } from "../lib/model-bake";
@@ -2869,11 +2870,11 @@
   }
   // Ctrl+B or V with an edge picked: the mouse sets how wide the bevel is (how far it is from where you started), the scroll wheel how many segments (a rounder strip),
   // a click keeps it and Esc puts everything back. The same bevel as the button, shown live.
-  let bevelModal: { base: ModelDoc; baseCube: Cube; path: Path; a: number; b: number; x0: number; y0: number; fraction: number; segments: number; points: number[]; recorded: boolean } | null = null;
+  let bevelModal: { base: ModelDoc; baseCube: Cube; path: Path; chain: number[]; x0: number; y0: number; fraction: number; segments: number; points: number[]; recorded: boolean } | null = null;
   function showBevel() {
     const m = bevelModal;
     if (!m) return;
-    const r = bevelEdge(m.baseCube, m.a, m.b, m.fraction, m.segments);
+    const r = bevelChain(m.baseCube, m.chain, m.fraction, m.segments);
     if (!r) return;
     if (!m.recorded) {
       history.record(m.base);
@@ -2885,11 +2886,11 @@
   }
   function bevelKey() {
     if (!inEdit || !selected || !cube) return void (selectNote = "Go into point mode (Tab) and pick an edge to bevel it.");
-    // (an edge clicked, or two picked points that are the ends of an edge)
-    const ends: [number, number] | null = selEdge ?? (selVerts.length === 2 && edgesOf(cube).some((e) => (e.a === selVerts[0] && e.b === selVerts[1]) || (e.a === selVerts[1] && e.b === selVerts[0])) ? [selVerts[0]!, selVerts[1]!] : null);
-    if (!ends) return void (selectNote = "Pick an edge to bevel it: click along an edge, or pick its two end points.");
-    if (!bevelEdge(cube, ends[0], ends[1], 0.25)) return void (selectNote = "That edge cannot be bevelled: it needs a face on each side, and faces all round both ends (an edge on the open border of a sheet cannot).");
-    bevelModal = { base: doc, baseCube: cube, path: selected, a: ends[0], b: ends[1], x0: pointerAt.x, y0: pointerAt.y, fraction: Math.min(0.5, Math.max(0.02, bevelBy / 100)), segments: 1, points: [], recorded: false };
+    // (an edge clicked, or picked points that run along a chain of edges: two end points of one edge, or a long edge with points in it)
+    const chain: number[] | null = selEdge && selVerts.length <= 2 ? [selEdge[0], selEdge[1]] : chainOfPoints(cube, selVerts);
+    if (!chain) return void (selectNote = "Pick an edge to bevel it: click along an edge, or pick the points along a line of edges (one after another, not a loop).");
+    if (!bevelChain(cube, chain, 0.25)) return void (selectNote = "That edge cannot be bevelled: it needs a face on each side, and faces all round both ends (an edge on the open border of a sheet cannot), and where two edges meet in the middle the faces beside them must be separate faces.");
+    bevelModal = { base: doc, baseCube: cube, path: selected, chain, x0: pointerAt.x, y0: pointerAt.y, fraction: Math.min(0.5, Math.max(0.02, bevelBy / 100)), segments: 1, points: [], recorded: false };
     if (controls) controls.enabled = false;
     showBevel();
   }
@@ -3189,7 +3190,9 @@
     }
   }
   // ---- Blender-style transforms: G moves, S resizes, with the mouse (lib/modal-transform.ts) ----------------------
-  let modal = $state<{ kind: "move" | "scale"; base: ModelDoc; x0: number; y0: number; axis: ModalAxis; typed: string; amount: string } | null>(null);
+  // (with points picked in point mode the transform is of those points about their middle; otherwise of the picked shapes)
+  type ModalPoints = { path: Path; verts: number[]; pivotW: THREE.Vector3; pivotScreen: { x: number; y: number }; d0: number };
+  let modal = $state<{ kind: "move" | "scale" | "rotate"; base: ModelDoc; x0: number; y0: number; axis: ModalAxis; typed: string; amount: string; pts?: ModalPoints } | null>(null);
   let pointerAt = { x: 0, y: 0 };
 
   /// Every shape of the model, as paths.
@@ -3200,9 +3203,101 @@
     also = shapes.slice(1);
   }
 
-  function startModal(kind: "move" | "scale") {
+  function startModal(kind: "move" | "scale" | "rotate") {
     if (!selected) return;
-    modal = { kind, base: doc, x0: pointerAt.x, y0: pointerAt.y, axis: null, typed: "", amount: "" };
+    let pts: ModalPoints | undefined;
+    if (inEdit && cube?.verts && selVerts.length) {
+      const w = worldVerts();
+      const mid = medianOf(selVerts.map((i) => [w[i]!.x, w[i]!.y, w[i]!.z] as Vec3));
+      const pivotW = new THREE.Vector3(...mid);
+      const pivotScreen = screenOf(pivotW);
+      if (!pivotScreen) return;
+      pts = { path: selected, verts: [...selVerts], pivotW, pivotScreen, d0: Math.hypot(pointerAt.x - pivotScreen.x, pointerAt.y - pivotScreen.y) };
+    } else if (inEdit) return;
+    modal = { kind, base: doc, x0: pointerAt.x, y0: pointerAt.y, axis: null, typed: "", amount: "", ...(pts ? { pts } : {}) };
+  }
+  /// The world direction an axis key means, and the way the camera looks (for turning about the view and for which way a turn appears).
+  const worldAxis = (a: "x" | "y" | "z") => new THREE.Vector3(a === "x" ? 1 : 0, a === "y" ? 1 : 0, a === "z" ? 1 : 0);
+  /// The picked points moved, scaled or turned about their middle, in the world (the part's own turn and place are taken off again for the result).
+  function transformPoints(m: NonNullable<typeof modal>, typed: number | null): ModelDoc {
+    const pts = m.pts!;
+    const g = groupOf(pts.path.parts);
+    const base = cubeAt(m.base, pts.path);
+    if (!g || !base || !camera || !controls) return m.base;
+    const M = g.matrixWorld;
+    const inv = M.clone().invert();
+    const look = camera.getWorldDirection(new THREE.Vector3());
+    const toWorld = (p: Vec3) => new THREE.Vector3(...p).applyMatrix4(M);
+    const toLocal = (v: THREE.Vector3): Vec3 => {
+      const q = v.clone().applyMatrix4(inv);
+      return [q.x, q.y, q.z];
+    };
+    const pivot: Vec3 = [pts.pivotW.x, pts.pivotW.y, pts.pivotW.z];
+    let fn: (p: Vec3) => Vec3;
+    if (m.kind === "move") {
+      const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
+      const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+      const perPixel = (2 * camera.position.distanceTo(controls.target) * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) / Math.max(1, canvas?.clientHeight ?? 400);
+      const w = moveDelta([right.x, right.y, right.z], [up.x, up.y, up.z], pointerAt.x - m.x0, pointerAt.y - m.y0, perPixel, m.axis, typed);
+      m.amount = String(round2m(Math.hypot(w[0], w[1], w[2])));
+      fn = (p) => {
+        const v = toWorld(p).add(new THREE.Vector3(w[0], w[1], w[2]));
+        return toLocal(v);
+      };
+    } else if (m.kind === "scale") {
+      const f = typed !== null ? Math.max(0.01, typed) : distanceFactor(pts.d0, Math.hypot(pointerAt.x - pts.pivotScreen.x, pointerAt.y - pts.pivotScreen.y));
+      m.amount = String(round2m(f));
+      const fs: Vec3 = m.axis ? [m.axis === "x" ? f : 1, m.axis === "y" ? f : 1, m.axis === "z" ? f : 1] : [f, f, f];
+      fn = (p) => {
+        const w = toWorld(p);
+        const s = scaleAbout([w.x, w.y, w.z], pivot, fs);
+        return toLocal(new THREE.Vector3(...s));
+      };
+    } else {
+      const axisW = m.axis ? worldAxis(m.axis) : look.clone();
+      let angle = typed !== null ? THREE.MathUtils.degToRad(typed) : sweepAngle(pts.pivotScreen, { x: m.x0, y: m.y0 }, pointerAt);
+      // (a turn about an axis that points at you looks the other way round)
+      if (typed === null && m.axis && axisW.dot(look) < 0) angle = -angle;
+      m.amount = String(round2m(THREE.MathUtils.radToDeg(angle)));
+      fn = (p) => {
+        const w = toWorld(p);
+        const r = rotateAbout([w.x, w.y, w.z], pivot, [axisW.x, axisW.y, axisW.z], angle);
+        return toLocal(new THREE.Vector3(...r));
+      };
+    }
+    const next = mapVerts(base, pts.verts, fn);
+    return setCube(m.base, pts.path, next);
+  }
+  /// R with shapes picked: each turns about its own middle, about the view (or the world axis asked for). A box adds to its turn, a mesh moves its points.
+  function turnShapes(m: NonNullable<typeof modal>, typed: number | null): ModelDoc {
+    if (!camera) return m.base;
+    let next = m.base;
+    const look = camera.getWorldDirection(new THREE.Vector3());
+    const axisW = m.axis ? worldAxis(m.axis) : look.clone();
+    const centres = pickedShapes.map((p) => {
+      const c = cubeAt(m.base, p);
+      const g = groupOf(p.parts);
+      return c && g ? new THREE.Vector3(c.from[0] + c.size[0] / 2, c.from[1] + c.size[1] / 2, c.from[2] + c.size[2] / 2).applyMatrix4(g.matrixWorld) : null;
+    });
+    const mids = centres.filter((c): c is THREE.Vector3 => !!c);
+    if (!mids.length) return m.base;
+    const centreW = new THREE.Vector3(...medianOf(mids.map((c) => [c.x, c.y, c.z] as Vec3)));
+    const screen = screenOf(centreW);
+    let angle = typed !== null ? THREE.MathUtils.degToRad(typed) : screen ? sweepAngle(screen, { x: m.x0, y: m.y0 }, pointerAt) : 0;
+    if (typed === null && m.axis && axisW.dot(look) < 0) angle = -angle;
+    m.amount = String(round2m(THREE.MathUtils.radToDeg(angle)));
+    for (const [i, p] of pickedShapes.entries()) {
+      const c = cubeAt(next, p);
+      const g = groupOf(p.parts);
+      const cw = centres[i];
+      if (!c || !g || !cw) continue;
+      const inv = g.matrixWorld.clone().invert();
+      const axisL = axisW.clone().transformDirection(inv).normalize();
+      const pivotL = cw.clone().applyMatrix4(inv);
+      const mesh = toMesh(c);
+      next = setCube(next, p, mapVerts(mesh, mesh.verts!.map((_, k) => k), (v) => rotateAbout(v, [pivotL.x, pivotL.y, pivotL.z], [axisL.x, axisL.y, axisL.z], angle)));
+    }
+    return next;
   }
 
   /// Shows the transform for the mouse and keys now, without saving it (nothing goes into the undo history until it is kept).
@@ -3211,7 +3306,9 @@
     if (!m || !camera || !controls) return;
     const typed = parseTyped(m.typed);
     let next = m.base;
-    if (m.kind === "move") {
+    if (m.pts) next = transformPoints(m, typed);
+    else if (m.kind === "rotate") next = turnShapes(m, typed);
+    else if (m.kind === "move") {
       const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
       const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
       const perPixel = (2 * camera.position.distanceTo(controls.target) * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) / Math.max(1, canvas?.clientHeight ?? 400);
@@ -3279,13 +3376,14 @@
   $effect(() => {
     const onShape = () => !modal && mode === "model" && !inEdit && !!selected;
     const offs = [
-      commands.register({ id: "model.grab", title: "Move with the mouse", menu: "Model", icon: "move", keymaps: { blender: ["G"], nova: [] }, help: "The shape follows the mouse: X, Y or Z keeps one axis, type a number for an exact amount, click or Enter keeps it, Esc cancels", enabled: () => !modal && mode === "model" && !inEdit && !!selected, run: () => startModal("move") }),
-      commands.register({ id: "model.scaleMouse", title: "Resize with the mouse", menu: "Model", icon: "scale", keymaps: { blender: ["S"], nova: [] }, help: "Drag to make it bigger or smaller; X, Y or Z for one direction; type a factor", enabled: () => !modal && mode === "model" && !inEdit && pickedShapes.some((p) => cubeAt(doc, p)?.shape !== "mesh"), run: () => startModal("scale") }),
+      commands.register({ id: "model.grab", title: "Move with the mouse", menu: "Model", icon: "move", keymaps: { blender: ["G"], nova: [] }, help: "The shape follows the mouse: X, Y or Z keeps one axis, type a number for an exact amount, click or Enter keeps it, Esc cancels", enabled: () => !modal && mode === "model" && (inEdit ? selVerts.length > 0 : !!selected), run: () => startModal("move") }),
+      commands.register({ id: "model.scaleMouse", title: "Resize with the mouse", menu: "Model", icon: "scale", keymaps: { blender: ["S"], nova: [] }, help: "Drag to make it bigger or smaller; X, Y or Z for one direction; type a factor", enabled: () => !modal && mode === "model" && (inEdit ? selVerts.length > 0 : pickedShapes.some((p) => cubeAt(doc, p)?.shape !== "mesh")), run: () => startModal("scale") }),
+      commands.register({ id: "model.rotateMouse", title: "Turn with the mouse", menu: "Model", icon: "rotate", keymaps: { blender: ["R"], nova: [] }, help: "Turns the picked points (or shapes) about their middle, following the mouse round it: X, Y or Z turns about that axis, type degrees for an exact turn, click or Enter keeps it, Esc cancels", enabled: () => !modal && mode === "model" && (inEdit ? selVerts.length > 0 : pickedShapes.length > 0), run: () => startModal("rotate") }),
       commands.register({ id: "model.selectAll", title: "Select all shapes", menu: "Model", icon: "selectAll", keymaps: { blender: ["A"], nova: ["Mod+Shift+A"] }, enabled: () => !modal && mode === "model" && !inEdit, run: () => selectShapes("all") }),
       commands.register({ id: "model.selectNone", title: "Select nothing", menu: "Model", icon: "selectNone", keymaps: { blender: ["Alt+A"], nova: ["Mod+Shift+D"] }, enabled: () => !modal && mode === "model" && !inEdit, run: () => selectShapes("none") }),
       commands.register({ id: "model.selectInvert", title: "Invert the selection", menu: "Model", icon: "selectInvert", keymaps: { blender: ["Mod+I"], nova: [] }, enabled: () => !modal && mode === "model" && !inEdit, run: () => selectShapes("invert") }),
       commands.register({ id: "model.move", title: "Move handles", menu: "Model", icon: "move", keymaps: { blender: ["Shift+G"], nova: ["W"] }, help: "Shows the move handles", enabled: onShape, run: () => { gizmoMode = "translate"; } }),
-      commands.register({ id: "model.turn", title: "Turn handles", menu: "Model", icon: "rotate", keymaps: { blender: ["R"], nova: ["E"] }, help: "Shows the turn handles", enabled: onShape, run: () => { gizmoMode = "rotate"; } }),
+      commands.register({ id: "model.turn", title: "Turn handles", menu: "Model", icon: "rotate", keymaps: { blender: ["Shift+R"], nova: ["E"] }, help: "Shows the turn handles", enabled: onShape, run: () => { gizmoMode = "rotate"; } }),
       commands.register({ id: "model.resize", title: "Resize handles", menu: "Model", icon: "scale", keymaps: { blender: ["Shift+S"], nova: ["R"] }, help: "Shows the resize handles", enabled: onShape, run: () => { gizmoMode = "scale"; } }),
       commands.register({ id: "model.pivot", title: "Move the pivot", menu: "Model", icon: "pivot", keys: ["P"], help: "The point a part turns about", enabled: onShape, run: () => { gizmoMode = "pivot"; } }),
       commands.register({ id: "model.editPoints", title: "Edit points", menu: "Model", icon: "editPoints", keymaps: { blender: ["Tab"], nova: [] }, help: "Move points and pull faces of a shape", enabled: () => !modal && mode === "model" && !!cube, run: () => { if (inEdit) editPoints = false; else makeEditable(); } }),
