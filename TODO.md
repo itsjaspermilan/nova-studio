@@ -199,7 +199,7 @@ A third-person roguelike shooter for the Retroid, made with what the studio alre
 4. [ ] Rooms and doors (a cleared room opens its door).
 5. [ ] A run picks rooms and pickups at random (rooms stay scene files).
 6. [ ] Health, death, restart, best run saved.
-7. [ ] Music, menu, HUD. Known: the hero hides the crosshair (no shoulder offset yet); the camera can end up inside a wall.
+7. [ ] Music, menu, HUD. The camera hangs over the right shoulder (`cam_shoulder`), shots go to the crosshair, and the camera comes closer when a wall is behind it (the hero hides when it is squeezed); seen in headless renders, not played. Still: no sound, bullets are flat (no up/down aim).
 
 ## Goal
 
