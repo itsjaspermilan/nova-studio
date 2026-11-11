@@ -28,7 +28,7 @@
   import { retargetClip, applyPose as applySavedPose, capturePose, removePose, copyKeys, mirrorClip, pasteKeys, removeKeysAt, reverseClip, shiftKeys, shiftKeysAt, stretchKeys, type KeyClipboard } from "../lib/model-anim-tools";
   import { SCULPT_HELP, SCULPT_MODES, sculptDab, type SculptMode } from "../lib/sculpt";
   import { blurMask, clearMask, invertMask, maskDab, maskOf, maskPoints, refineUnder } from "../lib/sculpt-mask";
-  import { addFace, bevelChain, bevelEdge, chainOfPoints, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, freshProfile, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsProportional, moveVertsSymmetric, setFaceColors, setSmooth, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
+  import { addFace, bestChain, bevelChain, bevelEdge, chainOfPoints, cutFace, edgesOf, extrudeEdge, faceCentre, faceNormal, deleteFaces, deleteVerts, extrudeFace, flipFaces, freshMesh, freshProfile, mirrorElement, mirrorPart, loopCut, movePivot, moveVerts, moveVertsProportional, moveVertsSymmetric, setFaceColors, setSmooth, subdivide, toMesh, transformMesh, weld, weldable, type Axis } from "../lib/mesh-edit";
   import { hasVolume, meshOf, segmentsOf, shapeFaces, solidOf } from "../lib/model-mesh";
   import { WEIGHT_MODES, autoSkinAll, gradientWeights, mirrorWeights, paintWeights, type WeightMode, autoWeights, boneHeat, dominantBones, heatColor, invertAffine, reskin, setWeight, skinnedPoints, transformPoint, worldMatrices } from "../lib/model-skin";
   import { bakeNormals } from "../lib/model-bake";
@@ -2895,8 +2895,16 @@
   function bevelKey() {
     if (!inEdit || !selected || !cube) return void flashNote("Go into point mode (Tab) and pick an edge to bevel it.");
     // (an edge clicked, or picked points that run along a chain of edges: two end points of one edge, or a long edge with points in it)
-    const chain: number[] | null = selEdge && selVerts.length <= 2 ? [selEdge[0], selEdge[1]] : chainOfPoints(cube, selVerts);
-    if (!chain) return void flashNote("Pick an edge to bevel it: click along an edge, or pick the points along one straight line of edges (the two ends of a long edge are enough).");
+    let chain: number[] | null = selEdge && selVerts.length <= 2 ? [selEdge[0], selEdge[1]] : chainOfPoints(cube, selVerts);
+    // a rectangle drawn round an edge also picks points that lie behind it: the one line most of them are on is the edge
+    if (!chain && selVerts.length > 2) {
+      const best = bestChain(cube, selVerts);
+      if (best) {
+        chain = best.chain;
+        if (best.ignored) flashNote(`Bevelling the line of ${best.chain.length} points; ${best.ignored} other picked point${best.ignored === 1 ? "" : "s"} left out.`);
+      }
+    }
+    if (!chain) return void flashNote(`${selVerts.length} point${selVerts.length === 1 ? " is" : "s are"} picked, but they are not along one straight line of edges. Pick an edge (click along it), or the points along it: the two ends of a long edge are enough.`);
     if (!bevelChain(cube, chain, 0.25)) return void flashNote("That edge cannot be bevelled: it needs a face on each side and faces all round both ends (an edge on the open border of a sheet cannot), and where two edges meet in the middle, the faces beside them must be separate faces.");
     bevelModal = { base: doc, baseCube: cube, path: selected, chain, x0: pointerAt.x, y0: pointerAt.y, fraction: Math.min(0.5, Math.max(0.02, bevelBy / 100)), segments: 1, points: [], recorded: false };
     if (controls) controls.enabled = false;

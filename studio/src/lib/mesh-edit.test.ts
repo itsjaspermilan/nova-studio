@@ -637,3 +637,24 @@ describe("bevelling a chain of edges", () => {
     expect(bevelChain(m, [p[0]!, p[0]!, p[1]!])).toBeNull();
   });
 });
+
+import { bestChain } from "./mesh-edit";
+describe("the line most picked points are along", () => {
+  it("finds the edge when stray points were picked too, and says how many it left out", () => {
+    const m = subdivide(toMesh(box()));
+    const es = edgesOf(m);
+    const valence = (v: number) => es.filter((e) => e.a === v || e.b === v).length;
+    const neighbours = (v: number) => es.filter((e) => e.a === v || e.b === v).map((e) => (e.a === v ? e.b : e.a));
+    // a point in the middle of a box's edge: valence four with two corners (valence three) beside it
+    const mid = [...m.verts!.keys()].find((v) => valence(v) === 4 && neighbours(v).filter((n) => valence(n) === 3).length === 2)!;
+    const adj = neighbours(mid);
+    const corners = adj.filter((v) => valence(v) === 3);
+    const line = [corners[0]!, mid, corners[1]!];
+    const stray = [...m.verts!.keys()].find((v) => !line.includes(v) && valence(v) === 3 && !adj.includes(v))!;
+    const r = bestChain(m, [...line, stray]);
+    expect(r).not.toBeNull();
+    expect(r!.chain).toHaveLength(3);
+    expect(r!.ignored).toBe(1);
+    expect(bestChain(m, [stray])).toBeNull();
+  });
+});

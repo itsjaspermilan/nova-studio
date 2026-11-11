@@ -756,13 +756,21 @@ function filledChain(c: Cube, picked: number[]): number[] | null {
       ends = [a, b];
     }
   }
+  const order = lineBetween(c, ends[0], ends[1]);
+  return order && set.every((v) => order.includes(v)) ? order : null;
+}
+
+/// The points along the straight line from point `a` to point `b` that edges join one to the next (the ends included), or null when the edges do not run along it.
+function lineBetween(c: Cube, a: number, b: number): number[] | null {
+  const verts = c.verts;
+  if (!verts?.[a] || !verts[b]) return null;
+  const far = Math.hypot(verts[a][0] - verts[b][0], verts[a][1] - verts[b][1], verts[a][2] - verts[b][2]);
   if (far <= 1e-9) return null;
-  const A = verts[ends[0]]!;
-  const dir = [verts[ends[1]]![0] - A[0], verts[ends[1]]![1] - A[1], verts[ends[1]]![2] - A[2]].map((v) => v / far);
+  const A = verts[a];
+  const dir = [verts[b][0] - A[0], verts[b][1] - A[1], verts[b][2] - A[2]].map((v) => v / far);
   const along = (p: Vec3) => (p[0] - A[0]) * dir[0]! + (p[1] - A[1]) * dir[1]! + (p[2] - A[2]) * dir[2]!;
   const off = (p: Vec3) => Math.hypot(p[0] - A[0] - dir[0]! * along(p), p[1] - A[1] - dir[1]! * along(p), p[2] - A[2] - dir[2]! * along(p));
   const tol = Math.max(1e-4, far * 0.01);
-  if (set.some((v) => off(verts[v]!) > tol)) return null;
   // every point on that line that edges can reach, in order along it: the chain is those joined to the next by an edge
   const onLine = verts.map((p, i) => ({ i, t: along(p) })).filter(({ i, t }) => off(verts[i]!) <= tol && t >= -tol && t <= far + tol).sort((x, y) => x.t - y.t);
   const joined = new Set(edgesOf(c).map((e) => (e.a < e.b ? `${e.a},${e.b}` : `${e.b},${e.a}`)));
@@ -773,9 +781,34 @@ function filledChain(c: Cube, picked: number[]): number[] | null {
     else if (verts[i]!.every((v, k) => Math.abs(v - verts[last]![k]!) < 1e-9)) continue;
     else return null;
   }
-  if (order[0] !== ends[0] && order[0] !== ends[1]) return null;
-  if (order[order.length - 1] !== ends[0] && order[order.length - 1] !== ends[1]) return null;
-  return set.every((v) => order.includes(v)) && order.length >= 2 ? order : null;
+  if ((order[0] !== a && order[0] !== b) || (order[order.length - 1] !== a && order[order.length - 1] !== b)) return null;
+  return order.length >= 2 ? order : null;
+}
+
+/// The one line of edges that most of the picked points lie along, when the picked points are more than a line (a rectangle also picked points behind the shape,
+/// say): the chain, and how many picked points it leaves out. Null when no line stands out (two lines with as many points each) or fewer than two points are on one.
+export function bestChain(c: Cube, picked: number[]): { chain: number[]; ignored: number } | null {
+  const set = [...new Set(picked)].filter((v) => c.verts?.[v]);
+  if (set.length < 2 || set.length > 60) return null;
+  let best: number[] | null = null;
+  let bestCount = 0;
+  let tie = false;
+  const seen = new Set<string>();
+  for (const a of set) for (const b of set) {
+    if (a >= b) continue;
+    const order = lineBetween(c, a, b);
+    if (!order) continue;
+    const key = [order[0]!, order[order.length - 1]!].sort((x, y) => x - y).join(",");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const count = order.filter((v) => set.includes(v)).length;
+    if (count > bestCount || (count === bestCount && best && order.length > best.length)) {
+      best = order;
+      bestCount = count;
+      tie = false;
+    } else if (count === bestCount && best && order.length === best.length) tie = true;
+  }
+  return best && bestCount >= 2 && !tie ? { chain: best, ignored: set.length - bestCount } : null;
 }
 
 function joinedChain(c: Cube, picked: number[]): number[] | null {
