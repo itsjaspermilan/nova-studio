@@ -190,6 +190,17 @@ Still open (3.6 Files):
 - [~] Licences: dependencies checked by field (above); assets' licences are in `licenses/` (Kenney kits, fonts, Lua, three.js, Vorbis); no Blender or Blockbench code was copied (only ideas, recorded in `docs/studio-workspaces.md`); no Pixelorama code was copied either, so there is no Pixelorama notice to keep (add one the day code is). Not done: a human reading the actual licence texts, and the project's own licence (an owner decision).
 
 
+## First game: Rogue Shooter (started 2026-11-11, `examples/rogue-shooter`)
+
+A third-person roguelike shooter for the Retroid, made with what the studio already has (no outside apps). Steps, each playable:
+1. [x] One room: hero (left stick walks, right stick turns the camera, faces where it looks), follow camera, walls from a scene file. **Seen in a headless render** (hero, walls, crates, sparks); not played with a real pad, not on the device.
+2. [x] Shooting: R2, R1 or Space fires; shots stop at walls and throw sparks (`nova.walls.raycast`). Seen in the same render; **no sound yet**.
+3. [ ] One enemy that chases (A*, `nova.nav`) and dies.
+4. [ ] Rooms and doors (a cleared room opens its door).
+5. [ ] A run picks rooms and pickups at random (rooms stay scene files).
+6. [ ] Health, death, restart, best run saved.
+7. [ ] Music, menu, HUD. Known: the hero hides the crosshair (no shoulder offset yet); the camera can end up inside a wall.
+
 ## Goal
 
 A Game Maker 8-style studio, simpler and original, that makes **native Android

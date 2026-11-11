@@ -1,0 +1,11 @@
+{
+  "format": 1,
+  "name": "Rogue Shooter",
+  "version": "0.1.0",
+  "world_height": 1080,
+  "input": {
+    "fire": ["key:Space", "mouse:left", "pad:r1", "axis:r2"],
+    "dash": ["key:ShiftLeft", "pad:south"],
+    "start": ["key:Enter", "pad:start"]
+  }
+}
