@@ -1,6 +1,6 @@
 -- A shot: flies straight (up and down too), stops at a wall or the floor and throws sparks.
 local sqrt = math.sqrt
-local Bullet = nova.entity { tags = { "bullet" }, velocity = false, speed = 38, life = 1.2, damage = 1, dx = 0, dy = 0, dz = 1 }
+local Bullet = nova.entity { tags = { "bullet" }, velocity = false, speed = 110, life = 1.0, damage = 1, dx = 0, dy = 0, dz = 1 }
 
 -- The first enemy along this step: how far along the ground (metres), and which. The step is a line over the ground; an enemy is
 -- a standing circle, so we look for the nearest point of the line to its middle and check the height there.
@@ -53,7 +53,7 @@ function Bullet:update(dt)
 end
 
 function Bullet:draw()
-  nova.cuboid_at(self.x, self.y, self.z, 0.07, 0.07, 0.6, { ry = math.atan(self.dx, self.dz), rx = -math.asin(self.dy), color = { 255, 235, 140 }, glow = true })
+  nova.cuboid_at(self.x, self.y, self.z, 0.06, 0.06, 1.8, { ry = math.atan(self.dx, self.dz), rx = -math.asin(self.dy), color = { 255, 235, 140 }, glow = true })
 end
 
 return Bullet
