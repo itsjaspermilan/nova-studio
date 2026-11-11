@@ -1897,6 +1897,7 @@
   type PointMove = { base: ModelDoc; baseCube: Cube; path: Path; from: Vec3; moved: boolean };
   let drag: (PointMove & { point: number; start: THREE.Vector3; free: Lock; lock: Lock; last: PointerEvent }) | null = null;
   function pointerDown(e: PointerEvent) {
+    if (pullModal) return void endPullModal(true);
     downAt = [e.clientX, e.clientY];
     if (mode === "texture" && BRUSH_TOOLS.includes(texTool) && picture && e.button === 0 && !e.altKey && canvas) {
       const t = textureHit(e);
@@ -2724,6 +2725,38 @@
     if (cube.shape !== "mesh") change(toMesh(cube));
     editPoints = true;
   }
+  // E with a face picked: the face follows the mouse along the way it points until a click keeps it (Esc puts it back); the same pull as the yellow arrow
+  let pullModal = false;
+  function endPullModal(keep: boolean) {
+    const p = pull;
+    pullModal = false;
+    pull = null;
+    selectNote = "";
+    if (controls) controls.enabled = true;
+    if (!keep && p?.moved) undo();
+  }
+  function extrudeKey() {
+    if (!inEdit || !selected || !cube || !camera || !canvas) return;
+    if (selFace !== null && cube.polys?.[selFace]) {
+      const frame = faceFrame();
+      const t0 = frame ? lineParameter({ clientX: pointerAt.x, clientY: pointerAt.y } as PointerEvent, frame.at, frame.dir) : null;
+      if (!frame || t0 === null) return void extrude();
+      pull = { base: doc, baseCube: cube, path: selected, face: selFace, origin: frame.at, dir: frame.dir, t0, moved: false };
+      pullModal = true;
+      if (controls) controls.enabled = false;
+      selectNote = "Move the mouse to pull the face out, click to keep it, Esc to cancel.";
+    } else if (selEdge) extendEdge();
+    else selectNote = "Pick a face to extrude it (or an open edge to pull it out).";
+  }
+  /// X in point mode takes away what is picked (the points, or the face), not the whole shape.
+  function deleteInEdit() {
+    if (!cube) return;
+    if (selVerts.length) removePointsPicked();
+    else if (selFace !== null && cube.polys?.[selFace]) {
+      change(deleteFaces(cube, [selFace]));
+      selFace = null;
+    } else selectNote = "Pick points or a face to delete.";
+  }
   function extrude() {
     if (!selected || !cube || selFace === null) return;
     const r = extrudeFace(cube, selFace, extrudeBy, shrinkBy / 100);
@@ -2943,7 +2976,9 @@
     const mod = e.metaKey || e.ctrlKey;
     const step = e.shiftKey ? 4 : 1;
     // (move, turn, resize, pivot, shading, duplicate and delete are commands with their own keys: see the model commands below)
-    if (e.key === "Escape" && (boxArmed || rubber)) {
+    if (e.key === "Escape" && pullModal) {
+      endPullModal(false);
+    } else if (e.key === "Escape" && (boxArmed || rubber)) {
       rubber = null;
       boxArmed = false;
       if (controls) controls.enabled = true;
@@ -3069,7 +3104,13 @@
       commands.register({ id: "model.editPoints", title: "Edit points", menu: "Model", icon: "editPoints", keymaps: { blender: ["Tab"], nova: [] }, help: "Move points and pull faces of a shape", enabled: () => !modal && mode === "model" && !!cube, run: () => { if (inEdit) editPoints = false; else makeEditable(); } }),
       commands.register({ id: "model.add", title: "Add a shape", menu: "Model", icon: "addShape", keymaps: { blender: ["Shift+A"], nova: [] }, enabled: () => !modal && mode === "model", run: () => newCube() }),
       commands.register({ id: "model.duplicate", title: "Duplicate", menu: "Model", icon: "copy", keymaps: { blender: ["Shift+D"], nova: ["Mod+D"] }, enabled: () => !modal && !!selected, run: () => duplicate() }),
-      commands.register({ id: "model.delete", title: "Delete", menu: "Model", icon: "trash", keymaps: { blender: ["X", "Delete"], nova: ["Delete", "Backspace"] }, enabled: () => !modal && !!selected, run: () => remove() }),
+      commands.register({ id: "model.delete", title: "Delete", menu: "Model", icon: "trash", keymaps: { blender: ["X", "Delete"], nova: ["Delete", "Backspace"] }, help: "Takes away the shape; in point mode, the picked points or face", enabled: () => !modal && !!selected, run: () => (inEdit && cube?.shape === "mesh" ? deleteInEdit() : remove()) }),
+      commands.register({ id: "model.edit.extrude", title: "Extrude", menu: "Model", icon: "addShape", keymaps: { blender: ["E"], nova: ["Shift+E"] }, help: "Pulls the picked face out with the mouse (click to keep, Esc to cancel); an open edge is pulled out by the Edge number", enabled: () => !modal && mode === "model" && inEdit && !!cube, run: () => extrudeKey() }),
+      commands.register({ id: "model.edit.inset", title: "Inset", menu: "Model", keymaps: { blender: ["I"], nova: ["Shift+I"] }, help: "A smaller face inside the picked one (Shrink % sets how much)", enabled: () => !modal && mode === "model" && inEdit && !!cube && selFace !== null, run: () => inset() }),
+      commands.register({ id: "model.edit.bevel", title: "Bevel", menu: "Model", keymaps: { blender: ["Mod+B", "V"], nova: ["Shift+V"] }, help: "Cuts the picked edge off with a narrow slanting face (Width % sets how wide)", enabled: () => !modal && mode === "model" && inEdit && !!cube, run: () => { if (selEdge) bevel(); else selectNote = "Pick an edge to bevel it."; } }),
+      commands.register({ id: "model.edit.loopCut", title: "Loop cut", menu: "Model", keymaps: { blender: ["Mod+R"], nova: [] }, help: "Cuts the ring of four-sided faces round the shape in two, through the picked face", enabled: () => !modal && mode === "model" && inEdit && !!cube && selFace !== null, run: () => cutLoop(0) }),
+      commands.register({ id: "model.edit.makeFace", title: "Make a face from the picked points", menu: "Model", keymaps: { blender: ["F"], nova: [] }, enabled: () => !modal && mode === "model" && inEdit && !!cube && selVerts.length >= 3, run: () => makeFace() }),
+      commands.register({ id: "model.edit.knife", title: "Knife", menu: "Model", keymaps: { blender: ["K"], nova: [] }, help: "Cuts between the two picked points", enabled: () => !modal && mode === "model" && inEdit && !!cube && selVerts.length === 2, run: () => knife() }),
       commands.register({ id: "model.shading", title: "Cycle the shading", menu: "Model", icon: "shading", keys: ["Z"], help: "Textured, plain colours, wireframe, see-through", enabled: () => !modal, run: () => { viewMode = viewMode === "textured" ? "solid" : viewMode === "solid" ? "wire" : viewMode === "wire" ? "xray" : "textured"; } }),
       ...VIEW_NAMES.map((n) => commands.register({ id: `model.view.${n}`, title: `${VIEW_LABELS[n]} view`, menu: "Model", keymaps: { blender: n === "front" ? ["1"] : n === "right" ? ["3"] : n === "top" ? ["7"] : n === "back" ? ["2"] : n === "left" ? ["4"] : ["8"], nova: [] }, help: n === "front" || n === "right" || n === "top" ? "Blender's numpad 1, 3 and 7. Back, left and bottom are 2, 4 and 8 here (a laptop has no Ctrl-numpad)." : undefined, enabled: () => !modal, run: () => showView(n) })),
       commands.register({ id: "model.view.ortho", title: "Flat or deep view", menu: "Model", keymaps: { blender: ["5"], nova: [] }, help: "Switches between a view with perspective and a flat one where parallel lines stay parallel (Blender's numpad 5)", enabled: () => !modal, run: () => setOrtho(!ortho) }),
