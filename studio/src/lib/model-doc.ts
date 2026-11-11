@@ -55,6 +55,8 @@ export interface Cube {
   shapes?: { name: string; verts: Vec3[] }[];
   /// Editor only, never written: the name of the shape key being edited, while the shape's own points and that key's points are swapped (so the ordinary point tools edit the key).
   keyEdit?: string;
+  /// Editor only, never written: a sculpt mask, 0 to 1 for each point (1 is protected from the sculpt brushes). Ignored if it does not have one entry per point.
+  mask?: number[];
   /// Colour of all faces, `#rrggbb` or `#rrggbbaa`.
   color: string;
   /// Colours of individual faces, overriding `color`.

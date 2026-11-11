@@ -6,8 +6,8 @@ import { toMesh } from "./mesh-edit";
 import { fitBounds, type Cube, type Vec3 } from "./model-doc";
 import { polyNormal } from "./model-mesh";
 
-export type SculptMode = "draw" | "inflate" | "smooth" | "pinch" | "flatten" | "grab";
-export const SCULPT_MODES: SculptMode[] = ["draw", "inflate", "smooth", "pinch", "flatten", "grab"];
+export type SculptMode = "draw" | "inflate" | "smooth" | "pinch" | "flatten" | "grab" | "mask";
+export const SCULPT_MODES: SculptMode[] = ["draw", "inflate", "smooth", "pinch", "flatten", "grab", "mask"];
 export const SCULPT_HELP: Record<SculptMode, string> = {
   draw: "Push the surface out (hold Ctrl to pull it in), along the way the spot faces",
   inflate: "Push every point out along its own normal, like blowing it up",
@@ -15,6 +15,7 @@ export const SCULPT_HELP: Record<SculptMode, string> = {
   pinch: "Pull the points towards the middle of the brush, to sharpen a crease",
   flatten: "Press the points onto the average plane under the brush",
   grab: "Drag the points under the brush along with the pointer",
+  mask: "Paint a mask: the points under it are protected from the other brushes (hold Ctrl to wipe it off)",
 };
 
 export interface SculptBrush {
@@ -26,6 +27,8 @@ export interface SculptBrush {
   falloff?: Falloff;
   /// Reverse the effect (draw pulls in, inflate shrinks, pinch pushes apart).
   invert?: boolean;
+  /// Scales the strength of the dab, for a pen's pressure (0 to 1, default 1).
+  pressure?: number;
   /// Also sculpt the mirror image across the plane x = 0 (the part's own centre line).
   symmetryX?: boolean;
 }
@@ -66,7 +69,8 @@ export function sculptDab(source: Cube, center: V, brush: SculptBrush, delta: V 
   const verts = (c.verts ?? []).map((p) => [...p] as V);
   const r = Math.max(1e-6, brush.radius);
   const falloff = brush.falloff ?? "smooth";
-  const strength = Math.min(1, Math.max(0, brush.strength));
+  const strength = Math.min(1, Math.max(0, brush.strength)) * Math.min(1, Math.max(0, brush.pressure ?? 1));
+  const mask = c.mask && c.mask.length === verts.length ? c.mask : null;
   const sign = brush.invert ? -1 : 1;
   const normals = vertexNormals(c);
   const nb = brush.mode === "smooth" ? neighbourLists(c) : null;
@@ -78,7 +82,7 @@ export function sculptDab(source: Cube, center: V, brush: SculptBrush, delta: V 
     const near: { i: number; w: number }[] = [];
     for (let i = 0; i < verts.length; i++) {
       const d = len(sub(verts[i]!, at));
-      if (d < r) near.push({ i, w: falloffWeight(falloff, d / r) * strength });
+      if (d < r) near.push({ i, w: falloffWeight(falloff, d / r) * strength * (mask ? 1 - mask[i]! : 1) });
     }
     if (!near.length) continue;
     // the average way the surface faces under the brush (weighted), and the average plane
@@ -117,6 +121,7 @@ export function sculptDab(source: Cube, center: V, brush: SculptBrush, delta: V 
           next[i] = add(p, mul(sub(avg, p), Math.min(1, w)));
           break;
         }
+        case "mask": break;
         case "grab": next[i] = add(p, mul(mirrored ? [-delta[0], delta[1], delta[2]] : delta, w)); break;
       }
     }

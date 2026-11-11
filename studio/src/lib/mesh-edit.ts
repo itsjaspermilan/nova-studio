@@ -15,6 +15,7 @@ export const isMesh = (c: Cube) => c.shape === "mesh";
 function finish(c: Cube): Cube {
   // shape keys name a place for every point: an edit that changes how many points there are drops them
   if (c.shapes && c.shapes.some((s) => s.verts.length !== (c.verts?.length ?? 0))) delete c.shapes;
+  if (c.mask && c.mask.length !== (c.verts?.length ?? 0)) delete c.mask;
   fitBounds(c);
   delete c.rotation;
   return c;
