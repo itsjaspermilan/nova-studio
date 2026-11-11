@@ -22,6 +22,8 @@ local Hero = nova.entity {
 local GRAVITY = 20
 local STAND_H, CROUCH_H = 1.8, 1.25
 local function lerp(a, b, k) return a + (b - a) * k end
+-- The camera is this much higher than the place the crosshair points at, 20 metres ahead: it looks a little downwards, so that the crosshair stays where it was.
+local RAISE = 0.15
 
 function Hero:create()
   self.cool, self.t, self.pace = 0, 0, 0
@@ -46,8 +48,11 @@ function Hero:camera(dt, fx, fz, rx, rz)
   if hit then want = math.max(0.5, (hit - 0.4) / cp) end
   if want < self.cam_d then self.cam_d = want else self.cam_d = self.cam_d + (want - self.cam_d) * math.min(1, 6 * dt) end
   local ex, ez = px - fx * cp * self.cam_d, pz - fz * cp * self.cam_d
-  local ey = math.max(0.15, py - sp * self.cam_d + 0.25 * (self.cam_d / dist))
-  nova.camera(ex, ey, ez, ex + fx * cp * 20, ey + sp * 20, ez + fz * cp * 20, lerp(60, self.ads_zoom, self.ads))
+  local ey = math.max(0.15, py - sp * self.cam_d + 0.25 * (self.cam_d / dist)) + RAISE
+  nova.camera(ex, ey, ez, ex + fx * cp * 20, ey + sp * 20 - RAISE, ez + fz * cp * 20, lerp(60, self.ads_zoom, self.ads))
+  -- the view's own turn up or down (a little under the pitch, because the camera looks down at that point 20 metres ahead)
+  local vl = sqrt((cp * 20) ^ 2 + (sp * 20 - RAISE) ^ 2)
+  cp, sp = cp * 20 / vl, (sp * 20 - RAISE) / vl
   -- where the crosshair points: the first wall or the floor along the view, 40 metres at most
   local t = 40
   local th = nova.walls.raycast(ex, ez, fx, fz, 40 * cp, ey, sp / cp)
