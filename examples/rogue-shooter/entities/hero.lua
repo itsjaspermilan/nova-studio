@@ -20,7 +20,7 @@ local Hero = nova.entity {
 }
 
 local GRAVITY = 20
-local STAND_H, CROUCH_H = 1.8, 1.5
+local STAND_H, CROUCH_H = 1.8, 1.25
 local function lerp(a, b, k) return a + (b - a) * k end
 
 function Hero:create()
@@ -38,7 +38,7 @@ function Hero:camera(dt, fx, fz, rx, rz)
   local cp, sp = cos(self.pitch), sin(self.pitch)
   local shoulder = lerp(self.cam_shoulder, 0.45, self.ads)
   local dist = lerp(self.cam_distance, 2.4, self.ads)
-  local py = self.y + lerp(1.55, 1.25, self.cr)
+  local py = self.y + lerp(1.35, 0.85, self.cr)
   local px, pz = self.x + rx * shoulder, self.z + rz * shoulder -- the point the camera hangs from
   -- a wall behind? (looking down the view backwards from that point)
   local want = dist
@@ -46,7 +46,7 @@ function Hero:camera(dt, fx, fz, rx, rz)
   if hit then want = math.max(0.5, (hit - 0.4) / cp) end
   if want < self.cam_d then self.cam_d = want else self.cam_d = self.cam_d + (want - self.cam_d) * math.min(1, 6 * dt) end
   local ex, ez = px - fx * cp * self.cam_d, pz - fz * cp * self.cam_d
-  local ey = math.max(0.15, py - sp * self.cam_d + 0.35 * (self.cam_d / dist))
+  local ey = math.max(0.15, py - sp * self.cam_d + 0.25 * (self.cam_d / dist))
   nova.camera(ex, ey, ez, ex + fx * cp * 20, ey + sp * 20, ez + fz * cp * 20, lerp(60, self.ads_zoom, self.ads))
   -- where the crosshair points: the first wall or the floor along the view, 40 metres at most
   local t = 40
@@ -97,7 +97,7 @@ function Hero:update(dt)
 
   if nova.input.down("fire") and self.cool == 0 then
     self.cool = 1 / self.fire_rate
-    local mxp, myp, mzp = self.x + fx * 0.8 + rx * 0.25, self.y + lerp(1.3, 1.0, self.cr), self.z + fz * 0.8 + rz * 0.25
+    local mxp, myp, mzp = self.x + fx * 0.8 + rx * 0.25, self.y + lerp(1.3, 0.8, self.cr), self.z + fz * 0.8 + rz * 0.25
     local ax, ay, az = tx - mxp, ty - myp, tz - mzp
     local al = sqrt(ax * ax + ay * ay + az * az)
     if al < 1.5 then
@@ -122,14 +122,14 @@ function Hero:draw()
   local walk = math.min(1, self.pace / 3) * (self.grounded and 1 or 0)
   local bob = sin(self.t * 11) * 0.04 * walk
   local swing = sin(self.t * 11) * 0.12 * walk
-  local leg = 0.8 - 0.3 * k
+  local leg = 0.8 - 0.35 * k
   local air = self.grounded and 0 or 0.12 -- legs apart in the air
   part(self, -0.13, leg / 2 + bob, swing + air, 0.2, leg, 0.22, { 50, 60, 90 }) -- legs
   part(self, 0.13, leg / 2 + bob, -swing - air, 0.2, leg, 0.22, { 50, 60, 90 })
-  part(self, 0, 1.15 - 0.3 * k + bob, 0, 0.55, 0.7, 0.3, { 220, 120, 60 }) -- body
-  part(self, 0, 1.68 - 0.3 * k + bob, 0, 0.3, 0.3, 0.3, { 240, 200, 160 }) -- head
+  part(self, 0, 1.15 - 0.5 * k + bob, 0, 0.55, 0.7, 0.3, { 220, 120, 60 }) -- body
+  part(self, 0, 1.68 - 0.5 * k + bob, 0, 0.3, 0.3, 0.3, { 240, 200, 160 }) -- head
   -- the gun points where the hero aims
-  local gy = 1.2 - 0.3 * k + bob
+  local gy = 1.2 - 0.5 * k + bob
   local c, s = cos(self.face), sin(self.face)
   local cp, sp = cos(self.pitch), sin(self.pitch)
   local gx, gz = self.x + 0.32 * c + 0.3 * cp * s, self.z - 0.32 * s + 0.3 * cp * c
