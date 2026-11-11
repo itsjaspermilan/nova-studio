@@ -734,8 +734,51 @@ export function bevelChain(c: Cube, path: number[], fraction = 0.25, segments = 
   return { cube, points: [...left, ...right].map((i) => map[i]!) };
 }
 
-/// The picked points as one open chain of edges, in order, if they form one (every point joined to the next, no branches, no ring); null otherwise.
+/// The picked points as one open chain of edges, in order: points joined edge to edge, or points along a straight line of edges with others between them that were
+/// not picked (picking just the two ends of a long edge that has points in it, or the corners and the points of one ring but not every one). Null when they
+/// do not make one line (a branch, a ring, points that are not along edges).
 export function chainOfPoints(c: Cube, picked: number[]): number[] | null {
+  return joinedChain(c, picked) ?? filledChain(c, picked);
+}
+
+/// Picked points with gaps along one straight line: the nearest ends are joined by the edges that run along the line between them.
+function filledChain(c: Cube, picked: number[]): number[] | null {
+  const set = [...new Set(picked)].filter((v) => c.verts?.[v]);
+  if (set.length < 2 || !c.verts) return null;
+  const verts = c.verts;
+  // the two picked points farthest apart give the line
+  let ends: [number, number] = [set[0]!, set[1]!];
+  let far = -1;
+  for (const a of set) for (const b of set) {
+    const d = Math.hypot(verts[a]![0] - verts[b]![0], verts[a]![1] - verts[b]![1], verts[a]![2] - verts[b]![2]);
+    if (d > far) {
+      far = d;
+      ends = [a, b];
+    }
+  }
+  if (far <= 1e-9) return null;
+  const A = verts[ends[0]]!;
+  const dir = [verts[ends[1]]![0] - A[0], verts[ends[1]]![1] - A[1], verts[ends[1]]![2] - A[2]].map((v) => v / far);
+  const along = (p: Vec3) => (p[0] - A[0]) * dir[0]! + (p[1] - A[1]) * dir[1]! + (p[2] - A[2]) * dir[2]!;
+  const off = (p: Vec3) => Math.hypot(p[0] - A[0] - dir[0]! * along(p), p[1] - A[1] - dir[1]! * along(p), p[2] - A[2] - dir[2]! * along(p));
+  const tol = Math.max(1e-4, far * 0.01);
+  if (set.some((v) => off(verts[v]!) > tol)) return null;
+  // every point on that line that edges can reach, in order along it: the chain is those joined to the next by an edge
+  const onLine = verts.map((p, i) => ({ i, t: along(p) })).filter(({ i, t }) => off(verts[i]!) <= tol && t >= -tol && t <= far + tol).sort((x, y) => x.t - y.t);
+  const joined = new Set(edgesOf(c).map((e) => (e.a < e.b ? `${e.a},${e.b}` : `${e.b},${e.a}`)));
+  const order: number[] = [onLine[0]!.i];
+  for (const { i } of onLine.slice(1)) {
+    const last = order[order.length - 1]!;
+    if (joined.has(last < i ? `${last},${i}` : `${i},${last}`)) order.push(i);
+    else if (verts[i]!.every((v, k) => Math.abs(v - verts[last]![k]!) < 1e-9)) continue;
+    else return null;
+  }
+  if (order[0] !== ends[0] && order[0] !== ends[1]) return null;
+  if (order[order.length - 1] !== ends[0] && order[order.length - 1] !== ends[1]) return null;
+  return set.every((v) => order.includes(v)) && order.length >= 2 ? order : null;
+}
+
+function joinedChain(c: Cube, picked: number[]): number[] | null {
   const set = new Set(picked);
   if (set.size < 2) return null;
   const adj = new Map<number, number[]>([...set].map((v) => [v, []]));

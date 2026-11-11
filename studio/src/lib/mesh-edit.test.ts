@@ -603,7 +603,8 @@ describe("bevelling a chain of edges", () => {
     expect([chain[0], chain[2]].sort()).toEqual([p[0], p[2]].sort());
     expect(chainOfPoints(m, p)).toHaveLength(3);
     expect(chainOfPoints(m, [p[0]!])).toBeNull();
-    expect(chainOfPoints(m, [p[0]!, p[2]!])).toBeNull();
+    // the two ends of the edge are enough: the point between them is found
+    expect(chainOfPoints(m, [p[0]!, p[2]!])).toEqual(expect.arrayContaining([p[0], p[1], p[2]]));
   });
   it("bevels both halves of a box's edge as one strip: closed, consistently wound, less volume than the sharp box", () => {
     const m = split();

@@ -2884,12 +2884,20 @@
     commit(setCube(m.base, m.path, r.cube), true);
     selectNote = `Bevel: width ${Math.round(m.fraction * 100)}%, ${m.segments} segment${m.segments === 1 ? "" : "s"}. Move the mouse for the width, scroll for the segments, click to keep, Esc to cancel.`;
   }
+  // a short message over the view for a key that could not do its job (it fades after a few seconds)
+  let flash = $state("");
+  let flashTimer: ReturnType<typeof setTimeout> | undefined;
+  function flashNote(text: string) {
+    flash = text;
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => (flash = ""), 5000);
+  }
   function bevelKey() {
-    if (!inEdit || !selected || !cube) return void (selectNote = "Go into point mode (Tab) and pick an edge to bevel it.");
+    if (!inEdit || !selected || !cube) return void flashNote("Go into point mode (Tab) and pick an edge to bevel it.");
     // (an edge clicked, or picked points that run along a chain of edges: two end points of one edge, or a long edge with points in it)
     const chain: number[] | null = selEdge && selVerts.length <= 2 ? [selEdge[0], selEdge[1]] : chainOfPoints(cube, selVerts);
-    if (!chain) return void (selectNote = "Pick an edge to bevel it: click along an edge, or pick the points along a line of edges (one after another, not a loop).");
-    if (!bevelChain(cube, chain, 0.25)) return void (selectNote = "That edge cannot be bevelled: it needs a face on each side, and faces all round both ends (an edge on the open border of a sheet cannot), and where two edges meet in the middle the faces beside them must be separate faces.");
+    if (!chain) return void flashNote("Pick an edge to bevel it: click along an edge, or pick the points along one straight line of edges (the two ends of a long edge are enough).");
+    if (!bevelChain(cube, chain, 0.25)) return void flashNote("That edge cannot be bevelled: it needs a face on each side and faces all round both ends (an edge on the open border of a sheet cannot), and where two edges meet in the middle, the faces beside them must be separate faces.");
     bevelModal = { base: doc, baseCube: cube, path: selected, chain, x0: pointerAt.x, y0: pointerAt.y, fraction: Math.min(0.5, Math.max(0.02, bevelBy / 100)), segments: 1, points: [], recorded: false };
     if (controls) controls.enabled = false;
     showBevel();
@@ -3656,6 +3664,7 @@
         </svg>
         <NavButtons controls={() => controls} camera={() => camera} height={() => canvas?.clientHeight ?? 400} />
         {#if rubber}<div class="boxband" style:left="{Math.min(rubber.x0, rubber.x1)}px" style:top="{Math.min(rubber.y0, rubber.y1)}px" style:width="{Math.abs(rubber.x1 - rubber.x0)}px" style:height="{Math.abs(rubber.y1 - rubber.y0)}px"></div>{/if}
+        {#if flash}<div class="modalbar" role="status">{flash}</div>{/if}
         {#if wantMode}<div class="modalbar" role="status">Click the shape whose points you want to work on (Esc cancels)</div>{/if}
         {#if boxArmed && !rubber}<div class="modalbar" role="status">Box select: drag a rectangle over the points (Esc cancels)</div>{/if}
         {#if modal}<div class="modalbar" role="status">{modalLabel(modal.kind, modal.axis, modal.typed, modal.amount)}</div>{/if}
