@@ -275,7 +275,7 @@ Pixelorama, Blockbench, GameStudio, Game Maker 8 manual.
 - [ ] Battery (the soak ran on USB power); rotation (the device's rotation lock is on and changing it is not ours to do); Back and Home keys.
 - [ ] Local co-op on the Retroid: the JNI controller list, vibration, the multicast lock and broadcast on its wifi, a desktop joining it, the
   APK's permissions; then two Retroids together (latency, a dropped wifi); more than one player on a joined device; the Retroid's button
-  labels (assumed Nintendo by position, south = B).
+  labels (**read off the Retroid Pocket 6 on 2026-11-12 with the Input Test app over wireless ADB: the button engraved A arrives as `pad:south`, B as `east`, X as `west`, Y as `north`; L1, R1, L2 and R2 are `pad:l1`, `r1`, `l2`, `r2` (the triggers also move `axis:l2`, `axis:r2`); the older "Nintendo by position" assumption was wrong and is fixed in `glyph`**).
 - [ ] A real GPU driver reset (the recovery path is tested with a destroyed device only).
 - [ ] Do not claim device-proven behaviour before it is recorded in `docs/performance.md`.
 

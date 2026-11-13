@@ -43,7 +43,7 @@ saved action the game no longer has is skipped with a warning. `nova.input.reset
 
 **Glyphs**: `nova.input.glyph("pad:south")` is `"B", "button_b"` and `nova.input.prompt("jump", player)` gives the label,
 icon and source to show for an action. Labels are by position on a Nintendo-style pad, as the Retroid prints them:
-south B, east A, north X, west Y, L/R, ZL/ZR, + and −. The icon names are Kenney's Input Prompts (Nintendo Switch set)
+south A, east B, west X, north Y (the letters engraved on the Retroid), L/R, ZL/ZR, + and −. The icon names are Kenney's Input Prompts (Nintendo Switch set)
 without the `switch_` prefix. Note that the built-in `a` action is `pad:south`, which a Nintendo-style pad labels B; a
 game that wants "A to confirm" binds its own action to `pad:east` (Coop Test does).
 

@@ -254,8 +254,10 @@ impl PlayerStates {
     }
 }
 
-/// A button's name as a Nintendo-style pad prints it, and a short icon name for a prompt picture: by position, `south`
-/// (the bottom button) is B, `east` A, `north` X and `west` Y, as on the Retroid Pocket and a Switch pad. The icon names
+/// A button's name as a Nintendo-style pad prints it, and a short icon name for a prompt picture. The names follow the letters
+/// engraved on the pad, which is what Android reports (`pad:south` is the button marked A, `east` B, `west` X, `north` Y: **read
+/// off a Retroid Pocket 6 with the Input Test app, 2026-11-12**; a Nintendo pad has the same letters in other places, which does not
+/// matter for a prompt). The icon names
 /// match Kenney's Input Prompts (Nintendo Switch set) without their `switch_` prefix, so `"switch_" .. icon` finds the
 /// picture. Keys are named as on the keyboard.
 pub fn glyph(source: &str) -> Option<(String, String)> {
@@ -264,10 +266,10 @@ pub fn glyph(source: &str) -> Option<(String, String)> {
     let pair = |label: &str, icon: &str| Some((label.to_string(), icon.to_string()));
     match kind {
         "pad" => match name {
-            "south" => pair("B", "button_b"),
-            "east" => pair("A", "button_a"),
-            "north" => pair("X", "button_x"),
-            "west" => pair("Y", "button_y"),
+            "south" => pair("A", "button_a"),
+            "east" => pair("B", "button_b"),
+            "west" => pair("X", "button_x"),
+            "north" => pair("Y", "button_y"),
             "l1" => pair("L", "button_l"),
             "r1" => pair("R", "button_r"),
             "l2" => pair("ZL", "button_zl"),
@@ -617,8 +619,10 @@ mod tests {
 
     #[test]
     fn glyphs_use_nintendo_labels_by_position() {
-        assert_eq!(glyph("pad:south").unwrap().0, "B");
-        assert_eq!(glyph("pad2:east").unwrap(), ("A".into(), "button_a".into()));
+        assert_eq!(glyph("pad:south").unwrap().0, "A");
+        assert_eq!(glyph("pad2:east").unwrap(), ("B".into(), "button_b".into()));
+        assert_eq!(glyph("pad:west").unwrap().0, "X");
+        assert_eq!(glyph("pad:north").unwrap().0, "Y");
         assert_eq!(glyph("pad:r2").unwrap().0, "ZR");
         assert_eq!(glyph("axis:left_x-").unwrap().0, "L stick left");
         assert_eq!(glyph("axis3:r2").unwrap().1, "button_zr");

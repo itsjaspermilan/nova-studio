@@ -3,9 +3,9 @@
   "name": "Run and Gun",
   "version": "0.1.0",
   "input": {
-    "jump": ["key:Space", "key:KeyZ", "pad:south"],
-    "fire": ["key:KeyX", "pad:west", "pad:r1", "axis:r2"],
-    "dash": ["key:KeyC", "pad:east"],
+    "jump": ["key:Space", "key:KeyZ", "pad:east"],
+    "fire": ["key:KeyX", "pad:north", "pad:r1", "axis:r2"],
+    "dash": ["key:KeyC", "pad:south"],
     "hold": ["key:ShiftLeft", "pad:l1", "axis:l2"],
     "start": ["key:Enter", "pad:start"]
   }

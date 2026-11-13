@@ -587,8 +587,8 @@ has the keyboard. `nova.input.down("jump", 2)` (and `pressed`, `released`, `axis
 `nova.input.bind(action, sources, player)` changes an action for one player; `nova.input.save_controls()` keeps the
 choices; `nova.input.next_source()` returns the source and the player who pressed it. `nova.input.rumble(strength,
 seconds, player)` shakes one player's pad (on Android, the handheld itself for its built-in controls). Button prompts:
-`nova.input.glyph("pad:south")` is `"B", "button_b"` (Nintendo-style labels by position: south B, east A, north X, west
-Y) and `nova.input.prompt("jump", player)` gives what to show for an action.
+`nova.input.glyph("pad:south")` is `"A", "button_a"` (the letters engraved on the pad, which is what Android reports: south A, east B, west X,
+north Y; read off a Retroid Pocket 6 on 2026-11-12) and `nova.input.prompt("jump", player)` gives what to show for an action.
 
 **Local co-op** (`nova.net`, needs `"local_network": true` in `nova.json`): one device hosts (`nova.net.host{ players
 = 2 }`), others on the same wifi find it (`nova.net.find()`) and join (`nova.net.join(id)`). The host runs the game and

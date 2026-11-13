@@ -204,14 +204,14 @@ fn a_dash_button_chosen_for_player_two_is_saved_and_read_back() {
     ] {
         key(&mut g, k);
     }
-    // player 2 presses Y (west): that is their dash now
+    // player 2 presses X (west, as the Retroid engraves it): that is their dash now
     let mut press = with_any(pads(still(), button("west")));
     press.last_source = Some("pad:west".into());
     press.last_pad = Some("two".into());
     let mut log = frame_with(&mut g, &press);
     log.extend(frame_with(&mut g, &with_any(pads(still(), still()))));
     assert!(
-        log.iter().any(|l| l == "coop: Player 2 dashes with Y"),
+        log.iter().any(|l| l == "coop: Player 2 dashes with X"),
         "{log:?}"
     );
     g.flush_save();

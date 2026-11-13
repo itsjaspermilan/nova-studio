@@ -6,8 +6,8 @@
   "input": {
     "fire": ["key:KeyF", "mouse:left", "pad:r1", "axis:r2"],
     "aim": ["key:KeyQ", "mouse:right", "pad:l2", "axis:l2"],
-    "jump": ["key:Space", "pad:south"],
-    "crouch": ["key:KeyC", "pad:east"],
+    "jump": ["key:Space", "pad:east"],
+    "crouch": ["key:KeyC", "pad:south"],
     "start": ["key:Enter", "pad:start"]
   }
 }
