@@ -24,6 +24,7 @@ local Player = nova.entity {
     wall_jump_push = { 240, min = 0, max = 500, step = 10, help = "How hard a wall jump pushes you away from the wall (0 turns the push off)" },
     climb_speed = { 110, min = 40, max = 300, step = 5, help = "How fast you climb a ladder" },
     dash_speed = { 520, min = 200, max = 900, step = 10, help = "How fast a dash is (pixels a second)" },
+    knockback = { 140, min = 0, max = 400, step = 10, help = "How hard a hit throws you back (0: not at all; 140 is about 35 pixels back and a small hop)" },
     hp_max = { 100, min = 10, max = 1000, step = 5, help = "Health (a soldier's shot takes 15, a turret's 20, touching a soldier 30)" },
     lives = { 3, min = 1, max = 30, step = 1, help = "Lives: you lose one when your health runs out or you fall" },
     fire_rate = { 13, min = 2, max = 25, step = 1, help = "The rifle: shots a second" },
@@ -83,9 +84,10 @@ function Player:hurt(damage, from_x)
     return self:die()
   end
   local away = (self.x >= (from_x or self.x)) and 1 or -1
-  self.hurt_t, self.inv, self.coyote = 0.3, 1.2, 0
+  self.hurt_t, self.inv, self.coyote = (self.knockback > 0) and 0.24 or 0.12, 1.2, 0
   self.ladder, self.sliding = nil, false
-  self.vx, self.vy, self.grounded, self.cut = away * 230, -300, false, true
+  self.vx, self.vy, self.cut = away * self.knockback, -self.knockback * 1.5, true
+  if self.knockback > 0 then self.grounded = false end
   for _ = 1, 8 do nova.spawn("spark", self.x, self.y - 20, { color = { 255, 255, 255 }, size = 4, speed = 160 }) end
   nova.input.rumble(0.6, 0.15)
 end
