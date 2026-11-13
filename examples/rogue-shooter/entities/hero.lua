@@ -22,6 +22,7 @@ local Hero = nova.entity {
 }
 
 local GRAVITY = 20
+local RUN_REF = 3.6 -- the speed (metres a second) at which the run clip's feet match the ground
 local STAND_H, CROUCH_H = 1.8, 1.25
 local function lerp(a, b, k) return a + (b - a) * k end
 -- The camera is this much higher than the place the crosshair points at, 20 metres ahead: it looks a little downwards, so that the crosshair stays where it was.
@@ -39,14 +40,49 @@ function Hero:create()
   self.hits = 0 -- targets shot down
   self.cam_d = self.cam_distance
   cam3.yaw = 0
+  -- the model (models/hero.model.json, made in the studio): which clip plays follows what the hero is doing; walking and running are mixed by the speed
+  self.anim = nova.animator("hero", {
+    start = "move",
+    fade = 0.15,
+    states = {
+      move = { blend = "speed", points = { { 0, "idle" }, { 1.6, "walk" }, { RUN_REF, "run" } } },
+      crouch = { blend = "speed", points = { { 0, "crouch" }, { 2.2, "crouch_walk" } } },
+      jump = { clip = "jump", fade = 0.1 },
+      fall = { clip = "fall", fade = 0.2 },
+    },
+  })
+  self.muzzle = { self.x, self.y + 1.3, self.z }
+  self:pose()
+end
+
+-- The pose for this frame: the animator's clips with the aim pose laid over the arms, the spine and head leaning with where the hero looks up or down; and from
+-- that, where the right hand is, which is where the gun is (and where shots start).
+function Hero:pose()
+  local layers = {}
+  for i, l in ipairs(self.anim:layers()) do layers[i] = l end
+  layers[#layers + 1] = { clip = "aim", time = 0, weight = 1, mask = { "left arm", "right arm" } }
+  local o = { layers = layers, parts = { spine = { rx = -self.pitch * 0.4 }, head = { rx = -self.pitch * 0.5 } } }
+  self.pose_opts = o
+  local joints = nova.model_pose("hero", o)
+  local hand = joints and joints["right hand"]
+  if not hand then return end
+  local c, s = cos(self.face), sin(self.face)
+  local cp, sp = cos(self.pitch), sin(self.pitch)
+  local fx, fz = sin(self.face), cos(self.face)
+  -- the hand in the world (the model is turned by the face)
+  local hx = self.x + hand.x * c + hand.z * s
+  local hz = self.z - hand.x * s + hand.z * c
+  local hy = self.y + hand.y
+  self.gun = { hx + fx * cp * 0.25, hy + sp * 0.25, hz + fz * cp * 0.25 }
+  self.muzzle = { hx + fx * cp * 0.6, hy + sp * 0.6, hz + fz * cp * 0.6 }
 end
 
 -- The camera stands behind and to the right of the hero, looks along the aim (turn and pitch) and comes closer when a wall is behind it.
 -- Returns the place the crosshair points at, so that shots go there.
 function Hero:camera(dt, fx, fz, rx, rz)
   local cp, sp = cos(self.pitch), sin(self.pitch)
-  local shoulder = lerp(self.cam_shoulder, 0.45, self.ads)
-  local dist = lerp(self.cam_distance, 2.4, self.ads)
+  local shoulder = lerp(self.cam_shoulder, 0.7, self.ads)
+  local dist = lerp(self.cam_distance, 3.4, self.ads)
   local py = self.y + lerp(1.35, 0.85, self.cr)
   local px, pz = self.x + rx * shoulder, self.z + rz * shoulder -- the point the camera hangs from
   -- a wall behind? (looking down the view backwards from that point)
@@ -133,11 +169,20 @@ function Hero:update(dt)
   if on_ground and self.jy < 0 then self.jy = 0 end
 
   self.face = atan(fx, fz) -- always faces where the camera looks
+
+  -- the animation: in the air, jumping or falling; crouched or not, walking by speed
+  local state = (not self.grounded) and (self.jy > 0 and "jump" or "fall") or (self.crouching and "crouch" or "move")
+  self.anim:play(state)
+  self.anim:set("speed", self.pace)
+  self.anim.speed = (state == "move" and self.pace > RUN_REF) and (self.pace / RUN_REF) or 1 -- faster than the run cycle: play it faster
+  self.anim:update(dt)
+  self:pose()
+
   local tx, ty, tz = self:camera(dt, fx, fz, rx, rz)
 
   if nova.input.down("fire") and self.cool == 0 and not self.dead then
     self.cool = 1 / self.fire_rate
-    local mxp, myp, mzp = self.x + fx * 0.8 + rx * 0.25, self.y + lerp(1.3, 0.8, self.cr), self.z + fz * 0.8 + rz * 0.25
+    local mxp, myp, mzp = self.muzzle[1], self.muzzle[2], self.muzzle[3]
     -- the gun may be on the far side of a wall (standing close to it): then shoot from the hero's middle
     if not nova.walls.line_clear(self.x, self.z, mxp, mzp, myp, myp) then mxp, mzp = self.x, self.z end
     local ax, ay, az = tx - mxp, ty - myp, tz - mzp
@@ -152,30 +197,17 @@ function Hero:update(dt)
   end
 end
 
--- a box in the hero's own space (right, up, forward), turned with the hero and placed in the world
-local function part(self, ox, oy, oz, w, h, d, color)
-  local c, s = cos(self.face), sin(self.face)
-  nova.cuboid_at(self.x + ox * c + oz * s, self.y + oy, self.z - ox * s + oz * c, w, h, d, { ry = self.face, color = color })
-end
-
 function Hero:draw()
   if self.cam_d < 1.4 then return end -- the camera is squeezed against a wall: do not fill the screen with the hero's back
-  local k = self.cr
-  local walk = math.min(1, self.pace / 3) * (self.grounded and 1 or 0)
-  local bob = sin(self.t * 11) * 0.04 * walk
-  local swing = sin(self.t * 11) * 0.12 * walk
-  local leg = 0.8 - 0.35 * k
-  local air = self.grounded and 0 or 0.12 -- legs apart in the air
-  part(self, -0.13, leg / 2 + bob, swing + air, 0.2, leg, 0.22, { 50, 60, 90 }) -- legs
-  part(self, 0.13, leg / 2 + bob, -swing - air, 0.2, leg, 0.22, { 50, 60, 90 })
-  part(self, 0, 1.15 - 0.5 * k + bob, 0, 0.55, 0.7, 0.3, { 220, 120, 60 }) -- body
-  part(self, 0, 1.68 - 0.5 * k + bob, 0, 0.3, 0.3, 0.3, { 240, 200, 160 }) -- head
-  -- the gun points where the hero aims
-  local gy = 1.2 - 0.5 * k + bob
-  local c, s = cos(self.face), sin(self.face)
-  local cp, sp = cos(self.pitch), sin(self.pitch)
-  local gx, gz = self.x + 0.32 * c + 0.3 * cp * s, self.z - 0.32 * s + 0.3 * cp * c
-  nova.cuboid_at(gx, self.y + gy + 0.3 * sp, gz, 0.12, 0.14, 0.6, { ry = self.face, rx = -self.pitch, color = { 60, 60, 70 } })
+  self.anim:draw(self.x, self.y, self.z, {
+    ry = self.face,
+    parts = self.pose_opts.parts,
+    extra = { { clip = "aim", time = 0, weight = 1, mask = { "left arm", "right arm" } } },
+  })
+  -- the gun, in the hands, pointing where the hero aims
+  if self.gun then
+    nova.cuboid_at(self.gun[1], self.gun[2], self.gun[3], 0.1, 0.13, 0.6, { ry = self.face, rx = -self.pitch, color = { 60, 60, 70 } })
+  end
   local near = 1 - math.min(1, self.y / 1.5) -- the shadow stays on the ground and shrinks as the hero jumps
   nova.quad3(self.x, 0.02, self.z, 0, 1, 0, 1.1 * (0.6 + 0.4 * near), { color = { 0, 0, 0, 90 }, round = true })
 end
