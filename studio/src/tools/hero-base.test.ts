@@ -106,7 +106,10 @@ describe("the character base", () => {
   it.runIf(!!process.env.NOVA_MAKE_HERO)("writes the files (NOVA_MAKE_HERO=<models folder>)", () => {
     const dir = process.env.NOVA_MAKE_HERO!;
     mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, "hero.model.json"), serializeModel(doc));
-    writeFileSync(join(dir, "hero.glb"), exportGlb(doc));
+    const text = serializeModel(doc);
+    const saved = parseModel(text);
+    if (!saved.ok) throw new Error(saved.error);
+    writeFileSync(join(dir, "hero.model.json"), text);
+    writeFileSync(join(dir, "hero.glb"), exportGlb(saved.doc));
   });
 });

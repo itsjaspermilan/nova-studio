@@ -104,8 +104,12 @@ describe("the character rig", () => {
   });
 
   it.runIf(!!dir)("writes the rigged model (NOVA_RIG_HERO=<models folder>)", () => {
-    writeFileSync(join(dir!, "hero.model.json"), serializeModel(doc));
-    writeFileSync(join(dir!, "hero.glb"), exportGlb(doc));
+    // (the .glb is made from the saved text, as the studio does, so that the two always agree)
+    const text = serializeModel(doc);
+    const saved = parseModel(text);
+    if (!saved.ok) throw new Error(saved.error);
+    writeFileSync(join(dir!, "hero.model.json"), text);
+    writeFileSync(join(dir!, "hero.glb"), exportGlb(saved.doc));
     console.log(notes.join("\n"));
   });
 });
