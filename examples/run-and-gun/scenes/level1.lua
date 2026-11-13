@@ -15,11 +15,11 @@ end
 -- looking a little ahead of the way the player faces (the look-ahead eases in slowly, so turning round does not swing the view). A jump of the player
 -- (starting again at a checkpoint) moves it at once.
 local DEAD = 34 -- pixels either side of the middle where the camera does not move
-local AHEAD = 55 -- how far ahead it looks
+local AHEAD = 150 -- how far ahead it looks (the player stands this far from the middle of the view, towards the side they come from)
 function Level:update(dt)
   local p = nova.first("player")
   if p and not p.dead then
-    self.lead = self.lead + (p.face * AHEAD - self.lead) * math.min(1, 1.4 * dt)
+    self.lead = self.lead + (p.face * AHEAD - self.lead) * math.min(1, 1.6 * dt)
     local target = p.x + self.lead
     local goal = self.camx
     if target > self.camx + DEAD then goal = target - DEAD elseif target < self.camx - DEAD then goal = target + DEAD end

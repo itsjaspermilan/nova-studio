@@ -79,8 +79,16 @@ function Player:die()
   nova.input.rumble(1, 0.25)
 end
 
+-- The gun: it is held at the shoulder and points along the aim; the shots start at its muzzle, which is also where the flash is drawn.
+local GUN_LEN = 26
+function Player:shoulder() return self.x, self.y - (self.prone and 9 or 22) end
+function Player:muzzle(ax, ay)
+  local sx, sy = self:shoulder()
+  return sx + ax * GUN_LEN, sy + ay * GUN_LEN
+end
+
 function Player:fire(ax, ay)
-  local gx, gy = self.x + ax * 14, self.y - (self.prone and 9 or 24) + ay * 14
+  local gx, gy = self:muzzle(ax, ay)
   local a = atan2(ay, ax)
   local shots = self.gun == "spread" and { -0.26, 0, 0.26 } or { 0 }
   for _, d in ipairs(shots) do
@@ -195,10 +203,13 @@ function Player:draw()
     box(x - 4, y - 38, 9, 10, skin) -- head
     box(x - 4, y - 38, 9, 3, { 150, 40, 40 }) -- headband
   end
-  -- the gun, along the aim
-  local gy = y - (self.prone and 9 or 22)
-  for i = 1, 3 do box(x + self.aim_x * (4 + i * 5) - 2, gy + self.aim_y * (4 + i * 5) - 2, 5, 5, { 40, 40, 50 }) end
-  if (self.flash or 0) > 0 then box(x + self.aim_x * 24 - 3, gy + self.aim_y * 24 - 3, 7, 7, { 255, 240, 160 }) end
+  -- the gun, along the aim, from the shoulder to the muzzle (a barrel of little squares close together, so that it is solid at every angle)
+  local sx, sy = self:shoulder()
+  local mx, my = self:muzzle(self.aim_x, self.aim_y)
+  for d = 5, GUN_LEN, 3 do box(sx + self.aim_x * d - 2, sy + self.aim_y * d - 2, 4, 4, { 40, 40, 50 }) end
+  box(sx + self.aim_x * 7 - 3, sy + self.aim_y * 7 - 3, 6, 6, { 70, 70, 85 }) -- the receiver
+  box(mx - 1, my - 1, 3, 3, { 90, 90, 105 }) -- the muzzle
+  if (self.flash or 0) > 0 then box(mx - 3, my - 3, 7, 7, { 255, 240, 160 }) end
 end
 
 return Player
