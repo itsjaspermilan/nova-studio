@@ -49,8 +49,7 @@
       "props": {
         "w": 40,
         "h": 540,
-        "kind": "rock",
-        "wall": true
+        "kind": "rock"
       }
     },
     {
@@ -60,8 +59,7 @@
       "props": {
         "w": 40,
         "h": 540,
-        "kind": "rock",
-        "wall": true
+        "kind": "rock"
       }
     },
     {
@@ -183,6 +181,50 @@
       }
     },
     {
+      "kind": "platform",
+      "x": 2700,
+      "y": 200,
+      "props": {
+        "w": 40,
+        "h": 240,
+        "kind": "rock"
+      }
+    },
+    {
+      "kind": "platform",
+      "x": 2800,
+      "y": 200,
+      "props": {
+        "w": 40,
+        "h": 240,
+        "kind": "rock"
+      }
+    },
+    {
+      "kind": "ladder",
+      "x": 690,
+      "y": 290,
+      "props": {
+        "h": 150
+      }
+    },
+    {
+      "kind": "ladder",
+      "x": 1500,
+      "y": 290,
+      "props": {
+        "h": 150
+      }
+    },
+    {
+      "kind": "ladder",
+      "x": 3170,
+      "y": 290,
+      "props": {
+        "h": 150
+      }
+    },
+    {
       "kind": "checkpoint",
       "x": 1030,
       "y": 440
@@ -268,7 +310,7 @@
     },
     {
       "kind": "soldier",
-      "x": 2800,
+      "x": 2960,
       "y": 440,
       "props": {
         "style": "gunner"
@@ -330,8 +372,13 @@
     },
     {
       "kind": "capsule",
-      "x": 2750,
+      "x": 2950,
       "y": 410
+    },
+    {
+      "kind": "capsule",
+      "x": 2820,
+      "y": 175
     },
     {
       "kind": "boss",

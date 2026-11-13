@@ -37,6 +37,21 @@ function phys.step(b, dt, gravity, fall_max)
   end
 end
 
+-- Which side a wall touches the body on: -1 (on its left), 1 (on its right) or 0. Only walls count (not ledges), and the body has to be beside the wall's side
+-- (not just above its top).
+function phys.wall_side(b)
+  local half = b.w / 2
+  for _, s in ipairs(nova.all("solid")) do
+    if not s.oneway and b.y - b.h < s.y + s.h and b.y - 8 > s.y then
+      local gap_r = s.x - (b.x + half) -- the wall to the right
+      local gap_l = b.x - half - (s.x + s.w) -- the wall to the left
+      if gap_r > -1 and gap_r < 2 then return 1 end
+      if gap_l > -1 and gap_l < 2 then return -1 end
+    end
+  end
+  return 0
+end
+
 -- Whether there is something to stand on at x, at or just below y (within `reach` pixels): a floor ahead, or a pit.
 function phys.floor_at(x, y, reach)
   for _, s in ipairs(nova.all("solid")) do

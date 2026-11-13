@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "image": "player.png",
+  "frame_width": 32,
+  "frame_height": 48,
+  "columns": 6,
+  "frames": 18,
+  "durations_ms": [
+    400,
+    400,
+    90,
+    90,
+    90,
+    90,
+    100,
+    100,
+    70,
+    70,
+    70,
+    100,
+    100,
+    130,
+    130,
+    100,
+    100,
+    100
+  ],
+  "tags": [
+    {
+      "name": "idle",
+      "from": 0,
+      "to": 1
+    },
+    {
+      "name": "run",
+      "from": 2,
+      "to": 5
+    },
+    {
+      "name": "jump",
+      "from": 6,
+      "to": 6
+    },
+    {
+      "name": "fall",
+      "from": 7,
+      "to": 7
+    },
+    {
+      "name": "double_jump",
+      "from": 8,
+      "to": 10,
+      "loop": false
+    },
+    {
+      "name": "wall_slide",
+      "from": 11,
+      "to": 11
+    },
+    {
+      "name": "wall_jump",
+      "from": 12,
+      "to": 12
+    },
+    {
+      "name": "climb",
+      "from": 13,
+      "to": 14
+    },
+    {
+      "name": "prone",
+      "from": 15,
+      "to": 15
+    },
+    {
+      "name": "dash",
+      "from": 16,
+      "to": 16
+    },
+    {
+      "name": "hurt",
+      "from": 17,
+      "to": 17
+    }
+  ],
+  "pivot": {
+    "x": 16,
+    "y": 48
+  }
+}
