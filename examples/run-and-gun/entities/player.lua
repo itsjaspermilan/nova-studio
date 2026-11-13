@@ -303,11 +303,11 @@ function Player:update(dt)
       self.vx = (self.prone or hold or self.won) and 0 or raw * self.speed
     end
 
-    if self.melee_t > 0 then self.vx = self.vx * 0.4 end -- a strike is half a step: you do not run flat out while swinging
+    if self.melee_t > 0 then self.vx = 0 end -- rooted while you swing: no running (a jump still gets you out)
 
     -- dashing: A. A short burst along the way you face; nothing can hit you in it; one in the air until you land.
     if self.grounded then self.air_dash = false end
-    if nova.input.pressed("dash") and self.dash_cd == 0 and not self.prone and not self.won and (self.grounded or not self.air_dash) then
+    if nova.input.pressed("dash") and self.dash_cd == 0 and self.melee_t == 0 and not self.prone and not self.won and (self.grounded or not self.air_dash) then
       self.dash_t, self.dash_cd, self.dash_dir = 0.18, 0.6, (raw ~= 0 and raw or self.face)
       if not self.grounded then self.air_dash = true end
     end
