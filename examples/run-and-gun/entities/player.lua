@@ -12,6 +12,7 @@ local Player = nova.entity {
   settings = {
     speed = { 190, min = 80, max = 400, step = 5, help = "Running speed (pixels a second)" },
     jump_speed = { 580, min = 300, max = 900, step = 10, help = "How hard a jump pushes up (580 is about 112 pixels high)" },
+    coyote_time = { 0.1, min = 0, max = 0.3, step = 0.01, help = "Coyote time: for this many seconds after you run off an edge you can still jump (0 turns it off)" },
     dash_speed = { 520, min = 200, max = 900, step = 10, help = "How fast a dash is (pixels a second)" },
     hp_max = { 100, min = 10, max = 1000, step = 5, help = "Health (a soldier's shot takes 15, a turret's 20, touching a soldier 30)" },
     lives = { 3, min = 1, max = 30, step = 1, help = "Lives: you lose one when your health runs out or you fall" },
@@ -34,6 +35,7 @@ function Player:create()
   self.aim_x, self.aim_y, self.flash = 1, 0, 0 -- (the first draw comes before the first update)
   self.dash_t, self.dash_cd, self.dash_dir, self.air_dash = 0, 0, 1, false
   self.hp, self.hurt_t = self.hp_max, 0
+  self.coyote = 0
 end
 
 -- Where the shots go: the eight directions from the stick or D-pad.
@@ -60,7 +62,7 @@ function Player:hurt(damage, from_x)
     return self:die()
   end
   local away = (self.x >= (from_x or self.x)) and 1 or -1
-  self.hurt_t, self.inv = 0.3, 1.2
+  self.hurt_t, self.inv, self.coyote = 0.3, 1.2, 0
   self.vx, self.vy, self.grounded, self.cut = away * 230, -300, false, true
   for _ = 1, 8 do nova.spawn("spark", self.x, self.y - 20, { color = { 255, 255, 255 }, size = 4, speed = 160 }) end
   nova.input.rumble(0.6, 0.15)
@@ -155,13 +157,17 @@ function Player:update(dt)
     nova.spawn("spark", self.x, self.y - 20, { color = { 150, 195, 255 }, size = 7, speed = 12 })
   end
 
-  -- jumping: A; down and A on a ledge drops through it. Let go early for a short hop.
-  if nova.input.pressed("jump") and self.grounded and not self.won then
-    if down then
+  -- coyote time: standing on something keeps the jump ready, and it stays ready for a moment after you run off the edge
+  if self.grounded then self.coyote = self.coyote_time else self.coyote = math.max(0, self.coyote - dt) end
+
+  -- jumping: B; down and B on a ledge drops through it. Let go early for a short hop.
+  if nova.input.pressed("jump") and (self.grounded or self.coyote > 0) and not self.won then
+    if down and self.grounded then
       self.drop_t, self.y = 0.25, self.y + 2
     else
       self.vy, self.cut = -self.jump_speed, false
     end
+    self.coyote = 0 -- (one jump for one stretch of ground)
   end
   if self.vy < -120 and not nova.input.down("jump") and not self.cut and self.dash_t == 0 then
     self.vy, self.cut = self.vy * 0.45, true
