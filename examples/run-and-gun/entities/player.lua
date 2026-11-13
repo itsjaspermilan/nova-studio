@@ -13,7 +13,8 @@ local Player = nova.entity {
     speed = { 190, min = 80, max = 400, step = 5, help = "Running speed (pixels a second)" },
     jump_speed = { 580, min = 300, max = 900, step = 10, help = "How hard a jump pushes up (580 is about 112 pixels high)" },
     dash_speed = { 520, min = 200, max = 900, step = 10, help = "How fast a dash is (pixels a second)" },
-    lives = { 3, min = 1, max = 30, step = 1, help = "Lives" },
+    hp_max = { 100, min = 10, max = 1000, step = 5, help = "Health (a soldier's shot takes 15, a turret's 20, touching a soldier 30)" },
+    lives = { 3, min = 1, max = 30, step = 1, help = "Lives: you lose one when your health runs out or you fall" },
     fire_rate = { 9, min = 2, max = 20, step = 1, help = "Shots a second" },
   },
 }
@@ -32,6 +33,7 @@ function Player:create()
   self.prone, self.drop_t, self.cut = false, 0, false
   self.aim_x, self.aim_y = 1, 0
   self.dash_t, self.dash_cd, self.dash_dir, self.air_dash = 0, 0, 1, false
+  self.hp, self.hurt_t = self.hp_max, 0
 end
 
 -- Where the shots go: the eight directions from the stick or D-pad.
@@ -48,9 +50,29 @@ local function aim_of(self, mx, my)
   return ax / l, ay / l, side, up, down
 end
 
--- hit: one hit and you are down
-function Player:kill()
+-- hit by something: lose some health, hop back, flash and cannot be hit again for a moment (like a roll in an action roguelite). At 0 you are down.
+-- `from_x` is where it came from, so that you are knocked away from it.
+function Player:hurt(damage, from_x)
   if self.dead or self.inv > 0 or self.won or self.dash_t > 0 then return end
+  self.hp = self.hp - damage
+  if self.hp <= 0 then
+    self.hp = 0
+    return self:die()
+  end
+  local away = (self.x >= (from_x or self.x)) and 1 or -1
+  self.hurt_t, self.inv = 0.3, 1.2
+  self.vx, self.vy, self.grounded, self.cut = away * 230, -300, false, true
+  for _ = 1, 8 do nova.spawn("spark", self.x, self.y - 20, { color = { 255, 255, 255 }, size = 4, speed = 160 }) end
+  nova.input.rumble(0.6, 0.15)
+end
+
+-- falling out of the world (and anything else that takes everything at once)
+function Player:kill()
+  if self.dead or self.won then return end
+  self:die()
+end
+
+function Player:die()
   self.dead, self.dead_t = true, 0
   self.lives = self.lives - 1
   for _ = 1, 22 do nova.spawn("spark", self.x, self.y - 18, { color = { 255, 120, 70 }, size = 5, speed = 240 }) end
@@ -73,6 +95,7 @@ function Player:update(dt)
   self.inv = math.max(0, self.inv - dt)
   self.drop_t = math.max(0, self.drop_t - dt)
   self.dash_t, self.dash_cd = math.max(0, self.dash_t - dt), math.max(0, self.dash_cd - dt)
+  self.hurt_t = math.max(0, self.hurt_t - dt)
   self.flash = math.max(0, (self.flash or 0) - dt)
 
   if self.over or self.won then
@@ -86,6 +109,7 @@ function Player:update(dt)
         return
       end
       self.dead, self.x, self.y, self.vx, self.vy, self.inv, self.gun = false, self.cx, self.cy - 120, 0, 0, 2.5, "rifle"
+      self.hp, self.hurt_t = self.hp_max, 0
     end
     return
   end
@@ -105,7 +129,11 @@ function Player:update(dt)
   self.h = self.prone and PRONE_H or STAND_H
 
   -- running
-  self.vx = (self.prone or hold or self.won) and 0 or side * self.speed
+  if self.hurt_t > 0 then
+    -- being knocked back: the push keeps going for a moment, whatever the stick says
+  else
+    self.vx = (self.prone or hold or self.won) and 0 or side * self.speed
+  end
 
   -- dashing: A. A short burst along the way you face; nothing can hit you in it; one in the air until you land.
   if self.grounded then self.air_dash = false end
@@ -143,10 +171,7 @@ function Player:update(dt)
 end
 
 function Player:kill_fall()
-  local was = self.inv
-  self.inv = 0
   self:kill()
-  self.inv = was
 end
 
 -- (a figure of boxes until there are sprites)
@@ -154,10 +179,11 @@ local function box(x, y, w, h, c) rect(floor(x), floor(y), w, h, c) end
 
 function Player:draw()
   if self.dead then return end
-  if self.inv > 0 and floor(self.t * 20) % 2 == 0 then return end
   local x, y, f = self.x, self.y, self.face
   local run = (self.vx ~= 0 and self.grounded) and floor(self.t * 12) % 2 or 0
   local skin, shirt, pants = { 240, 200, 160 }, { 70, 110, 220 }, { 60, 60, 90 }
+  -- while you cannot be hit you flash white (a quick blink)
+  if self.inv > 0 and floor(self.t * 16) % 2 == 0 then skin, shirt, pants = { 255, 255, 255 }, { 255, 255, 255 }, { 235, 235, 245 } end
   if self.prone then
     box(x - 18, y - 12, 34, 10, shirt)
     box(x - 18 * f - 3 + (f > 0 and 36 or 0), y - 14, 8, 8, skin)

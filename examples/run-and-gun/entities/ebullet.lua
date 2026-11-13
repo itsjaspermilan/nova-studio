@@ -1,7 +1,7 @@
--- A shot from an enemy: flies straight, stops at walls, kills the player.
+-- A shot from an enemy: flies straight, stops at walls, hurts the player (how much is its `damage`).
 local phys = require("lib.phys")
 local rect = require("lib.view").rect
-local EBullet = nova.entity { tags = { "ebullet" }, velocity = false, depth = -20, speed = 220, life = 3.5, dx = -1, dy = 0 }
+local EBullet = nova.entity { tags = { "ebullet" }, velocity = false, depth = -20, speed = 220, life = 3.5, dx = -1, dy = 0, damage = 15 }
 
 function EBullet:update(dt)
   self.life = self.life - dt
@@ -10,7 +10,7 @@ function EBullet:update(dt)
   if phys.in_wall(self.x, self.y) then return self:destroy() end
   local p = nova.first("player")
   if p and not p.dead and self.x > p.x - p.w / 2 - 2 and self.x < p.x + p.w / 2 + 2 and self.y > p.y - p.h and self.y < p.y then
-    p:kill()
+    p:hurt(self.damage, self.x - self.dx * 30)
     self:destroy()
   end
 end

@@ -44,7 +44,7 @@ function Turret:update(dt)
   self.ang = atan2(dy, dx)
   if self.t >= self.interval then
     self.t = 0
-    nova.spawn("ebullet", self.x + cos(self.ang) * 16, self.y - 14 + sin(self.ang) * 16, { dx = cos(self.ang), dy = sin(self.ang) })
+    nova.spawn("ebullet", self.x + cos(self.ang) * 16, self.y - 14 + sin(self.ang) * 16, { dx = cos(self.ang), dy = sin(self.ang), damage = 20 })
   end
 end
 

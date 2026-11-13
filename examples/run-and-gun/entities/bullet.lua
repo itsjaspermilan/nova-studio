@@ -1,7 +1,7 @@
 -- A shot from the player: flies straight, stops at walls, hurts what it hits.
 local phys = require("lib.phys")
 local rect = require("lib.view").rect
-local Bullet = nova.entity { tags = { "bullet" }, velocity = false, depth = -20, speed = 640, life = 0.85, dx = 1, dy = 0, damage = 1 }
+local Bullet = nova.entity { tags = { "bullet" }, velocity = false, depth = -20, speed = 880, life = 0.7, dx = 1, dy = 0, damage = 1 }
 
 function Bullet:update(dt)
   self.life = self.life - dt

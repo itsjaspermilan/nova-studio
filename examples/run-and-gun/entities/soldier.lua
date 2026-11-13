@@ -2,7 +2,7 @@ local rect = require("lib.view").rect
 -- A foot soldier. Two ways of fighting (the `style` setting):
 --   rusher: waits until you are close, then charges, hopping rocks and small gaps;
 --   gunner: keeps its distance (steps back if you come close, forward if you go far) and fires bursts of two, only while it is on the screen.
--- Neither walks off an edge it cannot cross. Touching either is fatal.
+-- Neither walks off an edge it cannot cross. Touching either hurts (30).
 local phys = require("lib.phys")
 local floor, abs, atan2, cos, sin = math.floor, math.abs, math.atan, math.cos, math.sin
 
@@ -48,7 +48,7 @@ function Soldier:update(dt)
   self.flash = math.max(0, self.flash - dt)
   local p = nova.first("player")
   local camx = nova.cam.position()
-  local near = abs(self.x - camx) < 720 -- asleep until the screen is nearly on it, and again when it is far behind
+  local near = abs(self.x - camx) < require("lib.view").half_w() + 260 -- asleep until the screen is nearly on it, and again when it is far behind
   local want = 0
   if near and p and not p.dead then
     local dx = p.x - self.x
@@ -78,7 +78,7 @@ function Soldier:update(dt)
       if dist < 320 then self.charging = true end
       if self.charging then want = dir end
     end
-    if abs(dx) < (self.w + p.w) / 2 and p.y > self.y - self.h and p.y - p.h < self.y then p:kill() end
+    if abs(dx) < (self.w + p.w) / 2 and p.y > self.y - self.h and p.y - p.h < self.y then p:hurt(30, self.x) end
   end
 
   -- walking: the way ahead is checked, so it does not walk off an edge it cannot cross

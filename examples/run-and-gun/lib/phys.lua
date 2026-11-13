@@ -48,9 +48,9 @@ end
 -- Whether a place is on the screen (`margin` more or less than its edge).
 function phys.in_view(x, y, margin)
   local cx, cy = nova.cam.position()
-  local vw, vh = nova.view()
+  local view = require("lib.view")
   margin = margin or 0
-  return math.abs(x - cx) < vw / 2 + margin and math.abs(y - cy) < vh / 2 + margin
+  return math.abs(x - cx) < view.half_w() + margin and math.abs(y - cy) < view.half_h() + margin
 end
 
 -- Whether a point is inside a wall (not a ledge: shots fly over those).

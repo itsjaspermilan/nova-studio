@@ -35,7 +35,7 @@ end
 function Boss:update(dt)
   local camx = nova.cam.position()
   if not self.awake then
-    if self.x < camx + 440 then self.awake = true end
+    if self.x < camx + require("lib.view").half_w() + 40 then self.awake = true end
     return
   end
   self.t = self.t + dt
@@ -50,11 +50,11 @@ function Boss:update(dt)
     local a = atan2((p.y - 20) - (self.y - 100), p.x - self.x)
     local fan = (self.n % 4 == 0) and { -0.5, -0.25, 0, 0.25, 0.5 } or { -0.2, 0, 0.2 }
     for _, d in ipairs(fan) do
-      nova.spawn("ebullet", self.x - 40, self.y - 100, { dx = cos(a + d), dy = sin(a + d), speed = 200 })
+      nova.spawn("ebullet", self.x - 40, self.y - 100, { dx = cos(a + d), dy = sin(a + d), speed = 200, damage = 25 })
     end
   end
   -- touching it is fatal
-  if math.abs(p.x - self.x) < (self.w + p.w) / 2 and p.y > self.y - self.h and p.y - p.h < self.y then p:kill() end
+  if math.abs(p.x - self.x) < (self.w + p.w) / 2 and p.y > self.y - self.h and p.y - p.h < self.y then p:hurt(40, self.x) end
 end
 
 function Boss:draw()
