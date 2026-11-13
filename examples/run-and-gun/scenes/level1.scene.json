@@ -1,0 +1,307 @@
+{
+  "version": 1,
+  "background": [
+    92,
+    148,
+    214
+  ],
+  "width": 4200,
+  "height": 540,
+  "objects": [
+    {
+      "kind": "platform",
+      "x": 0,
+      "y": 440,
+      "props": {
+        "w": 900,
+        "h": 100
+      }
+    },
+    {
+      "kind": "platform",
+      "x": 1010,
+      "y": 440,
+      "props": {
+        "w": 890,
+        "h": 100
+      }
+    },
+    {
+      "kind": "platform",
+      "x": 2010,
+      "y": 400,
+      "props": {
+        "w": 550,
+        "h": 140
+      }
+    },
+    {
+      "kind": "platform",
+      "x": 2670,
+      "y": 440,
+      "props": {
+        "w": 1530,
+        "h": 100
+      }
+    },
+    {
+      "kind": "platform",
+      "x": 4200,
+      "y": 0,
+      "props": {
+        "w": 40,
+        "h": 540,
+        "kind": "rock"
+      }
+    },
+    {
+      "kind": "platform",
+      "x": 430,
+      "y": 340,
+      "props": {
+        "w": 150,
+        "h": 12,
+        "oneway": true,
+        "kind": "metal"
+      }
+    },
+    {
+      "kind": "platform",
+      "x": 700,
+      "y": 290,
+      "props": {
+        "w": 130,
+        "h": 12,
+        "oneway": true,
+        "kind": "metal"
+      }
+    },
+    {
+      "kind": "platform",
+      "x": 1250,
+      "y": 340,
+      "props": {
+        "w": 140,
+        "h": 12,
+        "oneway": true,
+        "kind": "metal"
+      }
+    },
+    {
+      "kind": "platform",
+      "x": 1520,
+      "y": 280,
+      "props": {
+        "w": 120,
+        "h": 12,
+        "oneway": true,
+        "kind": "metal"
+      }
+    },
+    {
+      "kind": "platform",
+      "x": 2150,
+      "y": 300,
+      "props": {
+        "w": 140,
+        "h": 12,
+        "oneway": true,
+        "kind": "metal"
+      }
+    },
+    {
+      "kind": "platform",
+      "x": 2330,
+      "y": 250,
+      "props": {
+        "w": 100,
+        "h": 12,
+        "oneway": true,
+        "kind": "metal"
+      }
+    },
+    {
+      "kind": "platform",
+      "x": 2900,
+      "y": 330,
+      "props": {
+        "w": 160,
+        "h": 12,
+        "oneway": true,
+        "kind": "metal"
+      }
+    },
+    {
+      "kind": "platform",
+      "x": 3150,
+      "y": 270,
+      "props": {
+        "w": 130,
+        "h": 12,
+        "oneway": true,
+        "kind": "metal"
+      }
+    },
+    {
+      "kind": "platform",
+      "x": 1400,
+      "y": 400,
+      "props": {
+        "w": 60,
+        "h": 40,
+        "kind": "rock"
+      }
+    },
+    {
+      "kind": "platform",
+      "x": 1700,
+      "y": 410,
+      "props": {
+        "w": 50,
+        "h": 30,
+        "kind": "rock"
+      }
+    },
+    {
+      "kind": "platform",
+      "x": 3300,
+      "y": 380,
+      "props": {
+        "w": 80,
+        "h": 60,
+        "kind": "rock"
+      }
+    },
+    {
+      "kind": "checkpoint",
+      "x": 1030,
+      "y": 440
+    },
+    {
+      "kind": "checkpoint",
+      "x": 2030,
+      "y": 400
+    },
+    {
+      "kind": "checkpoint",
+      "x": 2690,
+      "y": 440
+    },
+    {
+      "kind": "checkpoint",
+      "x": 3520,
+      "y": 440
+    },
+    {
+      "kind": "soldier",
+      "x": 600,
+      "y": 440
+    },
+    {
+      "kind": "soldier",
+      "x": 780,
+      "y": 440
+    },
+    {
+      "kind": "soldier",
+      "x": 1150,
+      "y": 440
+    },
+    {
+      "kind": "soldier",
+      "x": 1300,
+      "y": 440
+    },
+    {
+      "kind": "soldier",
+      "x": 1600,
+      "y": 440
+    },
+    {
+      "kind": "soldier",
+      "x": 1650,
+      "y": 440
+    },
+    {
+      "kind": "soldier",
+      "x": 2200,
+      "y": 400
+    },
+    {
+      "kind": "soldier",
+      "x": 2300,
+      "y": 400
+    },
+    {
+      "kind": "soldier",
+      "x": 2800,
+      "y": 440
+    },
+    {
+      "kind": "soldier",
+      "x": 3000,
+      "y": 440
+    },
+    {
+      "kind": "soldier",
+      "x": 3050,
+      "y": 440
+    },
+    {
+      "kind": "soldier",
+      "x": 3400,
+      "y": 440
+    },
+    {
+      "kind": "turret",
+      "x": 760,
+      "y": 290
+    },
+    {
+      "kind": "turret",
+      "x": 1570,
+      "y": 280
+    },
+    {
+      "kind": "turret",
+      "x": 2380,
+      "y": 250
+    },
+    {
+      "kind": "turret",
+      "x": 3200,
+      "y": 270
+    },
+    {
+      "kind": "turret",
+      "x": 1850,
+      "y": 440
+    },
+    {
+      "kind": "capsule",
+      "x": 505,
+      "y": 300
+    },
+    {
+      "kind": "capsule",
+      "x": 2750,
+      "y": 380
+    },
+    {
+      "kind": "boss",
+      "x": 3950,
+      "y": 440
+    },
+    {
+      "kind": "backdrop",
+      "x": 0,
+      "y": 0
+    },
+    {
+      "kind": "player",
+      "name": "hero",
+      "x": 60,
+      "y": 440
+    }
+  ]
+}

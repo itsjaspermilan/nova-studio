@@ -190,6 +190,12 @@ Still open (3.6 Files):
 - [~] Licences: dependencies checked by field (above); assets' licences are in `licenses/` (Kenney kits, fonts, Lua, three.js, Vorbis); no Blender or Blockbench code was copied (only ideas, recorded in `docs/studio-workspaces.md`); no Pixelorama code was copied either, so there is no Pixelorama notice to keep (add one the day code is). Not done: a human reading the actual licence texts, and the project's own licence (an owner decision).
 
 
+## Second game: Run and Gun (started 2026-11-12, `examples/run-and-gun`)
+
+A 2D side-scrolling shooter in the arcade style (the user's first pick of the 2D games they want to make: a Contra-like, then a Mario-like, a Minish Cap-like, a Pokemon-like; Dead Cells is the north star). Made with what the studio has; characters are boxes until there are sprites.
+- [x] **First level done 2026-11-12:** a 4200-wide scrolling level in `scenes/level1.scene.json` (three small pits, ledges you jump up through and drop through, rocks, checkpoints, 12 foot soldiers, 5 turrets, 2 spread-gun capsules, a boss tower); player with eight-way aiming, prone, aim-lock (L1/L2), variable jump, one hit and you are down, 3 lives, respawn at the last checkpoint; spread gun; HUD (lives, score, boss health); "Stage clear" and "Game over". The camera only moves right. World drawing goes through `lib/view.lua` because `nova.rect` does not apply the 2D camera. **Seen in headless runs with scripted input (running, jumping, shooting, a scratch copy with an invulnerable player for aiming up, the spread gun, the boss and the stage clear) and a launch on the Retroid (60 fps, no errors); not played with the pad, so the feel (speed, jump, fire rate, enemy speed) is untested.**
+- [ ] Next: play it and tune; sprites (replace the boxes); sound; a second area; then rooms in random order for the Dead Cells-style run (see Rogue Shooter's room idea).
+
 ## First game: Rogue Shooter (started 2026-11-11, `examples/rogue-shooter`)
 
 A third-person roguelike shooter for the Retroid, made with what the studio already has (no outside apps). Steps, each playable:

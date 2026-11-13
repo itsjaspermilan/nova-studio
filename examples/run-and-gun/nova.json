@@ -1,0 +1,11 @@
+{
+  "format": 1,
+  "name": "Run and Gun",
+  "version": "0.1.0",
+  "input": {
+    "jump": ["key:Space", "key:KeyZ", "pad:south"],
+    "fire": ["key:KeyX", "pad:west", "pad:r1", "axis:r2"],
+    "hold": ["key:ShiftLeft", "pad:l1", "axis:l2"],
+    "start": ["key:Enter", "pad:start"]
+  }
+}
