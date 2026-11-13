@@ -61,14 +61,10 @@ add("run", (g) => person(g, { bob: 1, l: { dx: -3, up: 3 }, r: { dx: 3 } }), 90)
 add("run", (g) => person(g, { bob: 0, l: { dx: 0 }, r: { dx: 0, up: 3 } }), 90);
 add("jump", (g) => person(g, { l: { dx: 2, up: 5 }, r: { dx: -2 } }));
 add("fall", (g) => person(g, { bob: 0, l: { dx: 3 }, r: { dx: -3 }, hy: -1 }));
-// the double jump: a spinning tuck (three frames, played once)
-const ball = (g, head) => {
-  g.rect(9, 24, 14, 14, SHIRT); g.rect(9, 33, 14, 5, SHADE); g.rect(9, 36, 6, 4, PANTS);
-  g.rect(head[0], head[1], 9, 9, SKIN); g.rect(head[0], head[1], 9, 3, BAND);
-};
-add("double_jump", (g) => ball(g, [12, 14]), 70);
-add("double_jump", (g) => ball(g, [22, 25]), 70);
-add("double_jump", (g) => ball(g, [12, 38]), 70);
+// the double jump: the legs pump once in the air (three frames, played once): knees up, kicked out, then the ordinary jump pose
+add("double_jump", (g) => person(g, { hy: 1, l: { dx: 2, up: 7 }, r: { dx: -2, up: 7 } }), 70);
+add("double_jump", (g) => person(g, { hy: 0, l: { dx: 4, up: 3 }, r: { dx: -4, up: 3 } }), 70);
+add("double_jump", (g) => person(g, { hy: -1, l: { dx: 3 }, r: { dx: -3, up: 4 } }), 70);
 // on a wall (the wall is on the right): a hand up on it, one leg bent
 add("wall_slide", (g) => { person(g, { tdx: 3, hdx: 3, l: { dx: 3 }, r: { dx: 1, up: 4 } }); g.rect(25, 14, 3, 10, SKIN); });
 // leaving a wall (pushing off to the left)

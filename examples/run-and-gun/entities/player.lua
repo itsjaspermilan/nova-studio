@@ -1,6 +1,6 @@
 -- The player. D-pad or left stick runs and aims (up, the diagonals, down); B (bottom) jumps (down and B drops through a ledge; in the air B jumps again, once; against a wall B
 -- jumps off it); Y (left) or R1/R2 fires; A (right) dashes (a short burst nothing can hit; once in the air); L1 or L2 holds you still to aim. Down on the ground with no
--- direction lies prone. Push towards a wall in the air and you slide down it, still able to shoot out. Up at a ladder climbs it. A hit takes health, knocks you back and
+-- direction lies prone. Push towards a wall in the air and you slide down it, still able to shoot out. Up at a ladder climbs it (no gun on a ladder). A hit takes health, knocks you back and
 -- flashes you; at 0 health you lose a life and start again at the last checkpoint.
 -- The body is drawn from sprites/player.png (one animation for each thing the player does: its tags); the gun is drawn on top of it, from the shoulder.
 local phys = require("lib.phys")
@@ -53,7 +53,7 @@ function Player:create()
   self.tag_now = "idle"
 end
 
--- Where the shots go: the eight directions from the stick or D-pad. On a wall you face away from it and shoot out; on a ladder up and down climb, so you shoot sideways.
+-- Where the shots go: the eight directions from the stick or D-pad. On a wall you face away from it and shoot out. (On a ladder there is no gun: both hands are on it.)
 function Player:aim(raw, up, down)
   local side = raw
   if self.sliding then
@@ -278,8 +278,8 @@ function Player:update(dt)
 
   if self.y > 640 then self:kill() end
 
-  -- shooting (in any state: on the ground, in the air, on a wall or a ladder)
-  if not self.won and nova.input.down("fire") and self.cool == 0 then
+  -- shooting (on the ground, in the air, on a wall; not on a ladder: both hands are on it)
+  if not self.won and not self.ladder and nova.input.down("fire") and self.cool == 0 then
     self.cool = 1 / (self.gun == "spread" and self.fire_rate * 0.7 or self.fire_rate)
     self:fire(ax, ay)
   end
@@ -306,8 +306,8 @@ function Player:draw()
   -- while you cannot be hit the picture flashes (a quick blink)
   local blink = (self.inv > 0 and floor(self.t * 16) % 2 == 0) and { 255, 255, 255, 110 } or nil
   view.sprite("player", self.x, self.y - 24, self.frame or 0, flip, blink)
-  -- the gun, along the aim, from the shoulder to the muzzle (a barrel of little squares close together, so that it is solid at every angle); not in a tuck or when hurt
-  if tag ~= "hurt" and tag ~= "double_jump" then
+  -- the gun, along the aim, from the shoulder to the muzzle (a barrel of little squares close together, so that it is solid at every angle); not when hurt or on a ladder
+  if tag ~= "hurt" and tag ~= "climb" then
     local sx, sy = self:shoulder()
     local mx, my = self:muzzle(self.aim_x, self.aim_y)
     for d = 5, GUN_LEN, 3 do box(sx + self.aim_x * d - 2, sy + self.aim_y * d - 2, 4, 4, { 40, 40, 50 }) end
