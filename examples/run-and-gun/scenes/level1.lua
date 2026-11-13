@@ -7,16 +7,32 @@ local CAM_Y = 320 -- the camera's height: the ground and the ledges are in the l
 
 function Level:enter()
   self.camx = view.half_w()
+  self.camv, self.lead = 0, 0
   nova.cam.set(self.camx, CAM_Y)
 end
 
+-- The camera: it stays still while the player moves about near the middle (a dead zone), then follows with a speed that builds up and dies away smoothly,
+-- looking a little ahead of the way the player faces (the look-ahead eases in slowly, so turning round does not swing the view). A jump of the player
+-- (starting again at a checkpoint) moves it at once.
+local DEAD = 34 -- pixels either side of the middle where the camera does not move
+local AHEAD = 55 -- how far ahead it looks
 function Level:update(dt)
   local p = nova.first("player")
   if p and not p.dead then
-    local target = p.x + p.face * 70
-    -- (the camera stays inside the level: 0 to 4200)
-    self.camx = math.max(view.half_w(), math.min(4200 - view.half_w(), self.camx + (target - self.camx) * math.min(1, 7 * dt)))
+    self.lead = self.lead + (p.face * AHEAD - self.lead) * math.min(1, 1.4 * dt)
+    local target = p.x + self.lead
+    local goal = self.camx
+    if target > self.camx + DEAD then goal = target - DEAD elseif target < self.camx - DEAD then goal = target + DEAD end
+    if math.abs(target - self.camx) > 700 then
+      self.camx, self.camv = target, 0 -- a long way off: go there
+    else
+      local want = (goal - self.camx) * 5
+      self.camv = self.camv + (want - self.camv) * math.min(1, 8 * dt)
+      self.camx = self.camx + self.camv * dt
+    end
   end
+  -- (the camera stays inside the level: 0 to 4200)
+  self.camx = math.max(view.half_w(), math.min(4200 - view.half_w(), self.camx))
   nova.cam.set(self.camx, CAM_Y)
 end
 
