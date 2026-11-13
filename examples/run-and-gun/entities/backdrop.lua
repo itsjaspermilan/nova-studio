@@ -13,7 +13,8 @@ local function hill(x, base, w, h, c)
 end
 
 function Backdrop:draw()
-  local cx = nova.cam.position()
+  local cx, cy = nova.cam.position()
+  local lift = (cy - 320) * -0.25 -- the far hills move a little the other way when you climb or drop
   for layer = 1, 2 do
     local par = layer == 1 and 0.25 or 0.5
     local period = layer == 1 and 520 or 380
@@ -21,7 +22,7 @@ function Backdrop:draw()
     local off = (-(cx * par)) % period
     for i = -1, floor(960 / period) + 1 do
       local wx = i * period + off -- (screen places: the hills do not move with the ground)
-      hill(wx, 460, period * 0.9, layer == 1 and 220 or 150, c)
+      hill(wx, 460 + lift, period * 0.9, layer == 1 and 220 or 150, c)
     end
   end
 end

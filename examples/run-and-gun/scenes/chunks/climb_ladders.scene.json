@@ -1,0 +1,108 @@
+{
+  "version": 1,
+  "background": [
+    92,
+    148,
+    214
+  ],
+  "objects": [
+    {
+      "kind": "platform",
+      "x": 0,
+      "y": 440,
+      "props": {
+        "w": 360,
+        "h": 700,
+        "kind": "ground"
+      }
+    },
+    {
+      "kind": "platform",
+      "x": 360,
+      "y": 200,
+      "props": {
+        "w": 400,
+        "h": 700,
+        "kind": "ground"
+      }
+    },
+    {
+      "kind": "platform",
+      "x": 300,
+      "y": 200,
+      "props": {
+        "w": 60,
+        "h": 12,
+        "oneway": true,
+        "kind": "metal"
+      }
+    },
+    {
+      "kind": "ladder",
+      "x": 330,
+      "y": 200,
+      "props": {
+        "h": 240
+      }
+    },
+    {
+      "kind": "soldier",
+      "x": 200,
+      "y": 440,
+      "props": {
+        "style": "gunner",
+        "chance": 0.7
+      }
+    },
+    {
+      "kind": "soldier",
+      "x": 480,
+      "y": 200,
+      "props": {
+        "style": "rusher",
+        "chance": 0.8
+      }
+    },
+    {
+      "kind": "soldier",
+      "x": 620,
+      "y": 200,
+      "props": {
+        "style": "gunner",
+        "chance": 0.7
+      }
+    },
+    {
+      "kind": "turret",
+      "x": 700,
+      "y": 200,
+      "props": {
+        "chance": 0.7
+      }
+    },
+    {
+      "kind": "medkit",
+      "x": 420,
+      "y": 170,
+      "props": {
+        "chance": 0.5
+      }
+    },
+    {
+      "kind": "gate",
+      "x": 0,
+      "y": 440,
+      "props": {
+        "side": "in"
+      }
+    },
+    {
+      "kind": "gate",
+      "x": 760,
+      "y": 200,
+      "props": {
+        "side": "out"
+      }
+    }
+  ]
+}

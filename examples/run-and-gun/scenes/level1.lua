@@ -1,14 +1,21 @@
--- The level's pieces are placed in level1.scene.json (open it in the scene editor); this file is for what the level itself does:
--- the camera follows the player (a little ahead of the way they face), and the screen shows lives, the score and the boss's health.
+-- The level is BUILT when the scene starts (lib/gen.lua joins the chunks in scenes/chunks/ for a seed); level1.scene.json holds only the player and the backdrop.
+-- This file is for what the level does: the camera follows the player (a little ahead of the way they face, and up and down when they climb or drop), and the screen
+-- shows health, lives, the score, the guns, the boss's health, and which level this is (its seed).
 local Level = nova.scene {}
 
 local view = require("lib.view")
-local CAM_Y = 320 -- the camera's height: the ground and the ledges are in the lower part of the picture
+local world = require("lib.world")
+local run = require("lib.run")
+local gen = require("lib.gen")
+local DROP = 90 -- the player stands this far below the middle of the view, so that more of what is above shows
 
 function Level:enter()
-  self.camx = view.half_w()
-  self.camv, self.lead = 0, 0
-  nova.cam.set(self.camx, CAM_Y)
+  self.seed = run.begin()
+  gen.build(self.seed)
+  local p = nova.first("player")
+  self.camx, self.camy = view.half_w(), (p and p.y or 440) - DROP
+  self.camv, self.camvy, self.lead = 0, 0, 0
+  nova.cam.set(self.camx, self.camy)
 end
 
 -- The camera: it stays still while the player moves about near the middle (a dead zone), then follows with a speed that builds up and dies away smoothly,
@@ -31,9 +38,24 @@ function Level:update(dt)
       self.camx = self.camx + self.camv * dt
     end
   end
-  -- (the camera stays inside the level: 0 to 4200)
-  self.camx = math.max(view.half_w(), math.min(4200 - view.half_w(), self.camx))
-  nova.cam.set(self.camx, CAM_Y)
+  -- up and down: the same, with a dead zone of its own (a jump does not bob the view), and a snap if the player is somewhere else altogether (a checkpoint)
+  if p and not p.dead then
+    local ty = p.y - DROP
+    local goal = self.camy
+    if ty > self.camy + 70 then goal = ty - 70 elseif ty < self.camy - 70 then goal = ty + 70 end
+    if math.abs(ty - self.camy) > 600 then
+      self.camy, self.camvy = ty, 0
+    else
+      local want = (goal - self.camy) * 5
+      self.camvy = self.camvy + (want - self.camvy) * math.min(1, 8 * dt)
+      self.camy = self.camy + self.camvy * dt
+    end
+  end
+  -- (the camera stays inside the level)
+  self.camx = math.max(world.left + view.half_w(), math.min(world.right - view.half_w(), self.camx))
+  local lo, hi = world.top - 260 + view.half_h(), world.bottom + 120 - view.half_h()
+  self.camy = lo > hi and (lo + hi) / 2 or math.max(lo, math.min(hi, self.camy))
+  nova.cam.set(self.camx, self.camy)
 end
 
 function Level:draw_ui()
@@ -57,6 +79,9 @@ function Level:draw_ui()
   -- the two guns; the one you hold is bright
   nova.ui.text(20, 76, "RIFLE", { size = 18, color = p.gun == "rifle" and { 255, 230, 120 } or { 130, 140, 165 }, shadow = true })
   nova.ui.text(92, 76, "SHOTGUN", { size = 18, color = p.gun == "shotgun" and { 255, 230, 120 } or { 130, 140, 165 }, shadow = true })
+  -- which level this is, and how far along
+  local area, areas = gen.area_at(p.x)
+  nova.ui.text(20, h - 28, string.format("LEVEL %d     AREA %d / %d", world.seed, area, areas), { size = 14, color = { 210, 220, 240, 190 }, shadow = true })
   local boss = nova.first("boss")
   if boss and boss.awake then
     local f = math.max(0, boss.hp / boss.max_hp)
@@ -65,10 +90,10 @@ function Level:draw_ui()
   end
   if p.won then
     nova.ui.text(w / 2, h / 2 - 50, "STAGE CLEAR", { size = 64, align = "center", shadow = true })
-    nova.ui.text(w / 2, h / 2 + 30, "Press Start to play again", { size = 24, align = "center", shadow = true })
+    nova.ui.text(w / 2, h / 2 + 30, "Start: a new level.   L1 + Start: this level again", { size = 22, align = "center", shadow = true })
   elseif p.over then
     nova.ui.text(w / 2, h / 2 - 50, "GAME OVER", { size = 64, align = "center", shadow = true })
-    nova.ui.text(w / 2, h / 2 + 30, "Press Start to try again", { size = 24, align = "center", shadow = true })
+    nova.ui.text(w / 2, h / 2 + 30, "Start: a new level.   L1 + Start: this level again", { size = 22, align = "center", shadow = true })
   end
 end
 

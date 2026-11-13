@@ -6,6 +6,8 @@
 -- The body is drawn from sprites/player.png (one animation for each thing the player does: its tags); the gun is drawn on top of it, from the shoulder.
 local phys = require("lib.phys")
 local view = require("lib.view")
+local world = require("lib.world")
+local run = require("lib.run")
 local rect = view.rect
 local sin, cos, atan2, sqrt, floor, abs, max, min = math.sin, math.cos, math.atan, math.sqrt, math.floor, math.abs, math.max, math.min
 
@@ -224,7 +226,10 @@ function Player:update(dt)
   self.flash = max(0, (self.flash or 0) - dt)
 
   if self.over or self.won then
-    if nova.input.pressed("start") then nova.restart_scene() end
+    if nova.input.pressed("start") then
+      run.again(nova.input.down("hold")) -- L1 with Start: the same level again; Start alone: a new one
+      nova.restart_scene()
+    end
   end
   if self.dead then
     self.dead_t = self.dead_t + dt
@@ -356,7 +361,7 @@ function Player:update(dt)
     end
   end
 
-  if self.y > 640 then self:kill() end
+  if self.y > world.kill_y then self:kill() end
 
   -- the weapon: R1 switches between the long-range rifle and the short-range shotgun
   if nova.input.pressed("weapon") and not self.won then

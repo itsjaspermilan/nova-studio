@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "background": [
+    92,
+    148,
+    214
+  ],
+  "objects": [
+    {
+      "kind": "platform",
+      "x": 0,
+      "y": 440,
+      "props": {
+        "w": 640,
+        "h": 700,
+        "kind": "ground"
+      }
+    },
+    {
+      "kind": "gate",
+      "x": 0,
+      "y": 440,
+      "props": {
+        "side": "in"
+      }
+    },
+    {
+      "kind": "gate",
+      "x": 640,
+      "y": 440,
+      "props": {
+        "side": "out"
+      }
+    }
+  ]
+}

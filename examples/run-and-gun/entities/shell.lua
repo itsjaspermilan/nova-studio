@@ -24,7 +24,7 @@ function Shell:update(dt)
     end
   end
   if self.hit_wall then self.vx = -self.vx * 0.4 end
-  if self.y > 700 then self:destroy() end
+  if self.y > require("lib.world").kill_y then self:destroy() end
 end
 
 function Shell:draw()

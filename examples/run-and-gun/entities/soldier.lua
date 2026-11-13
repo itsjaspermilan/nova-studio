@@ -8,6 +8,7 @@ local rect = require("lib.view").rect
 local phys = require("lib.phys")
 local hpbar = require("lib.hpbar")
 local view = require("lib.view")
+local world = require("lib.world")
 local floor, abs, atan2, cos, sin, random = math.floor, math.abs, math.atan, math.cos, math.sin, math.random
 local sign = function(v) return v > 0 and 1 or (v < 0 and -1 or 0) end
 
@@ -74,8 +75,10 @@ function Soldier:update(dt)
   self.t = self.t + dt
   self.flash = math.max(0, self.flash - dt)
   local p = nova.first("player")
-  local camx = nova.cam.position()
-  local near = abs(self.x - camx) < view.half_w() + 260 -- asleep until the screen is nearly on it, and again when it is far behind
+  local camx, camy = nova.cam.position()
+  -- asleep until the screen is nearly on it (across or up and down), and again when it is far away; a sleeping soldier standing on something does nothing at all
+  local near = abs(self.x - camx) < view.half_w() + 260 and abs(self.y - camy) < view.half_h() + 220
+  if not near and self.grounded then return end
   local want, speed = 0, self.speed
 
   if near and p and not p.dead then
@@ -177,7 +180,7 @@ function Soldier:update(dt)
     end
   end
   phys.step(self, dt, 1500, 900)
-  if self.y > 700 then self:destroy() end
+  if self.y > world.kill_y + 100 then self:destroy() end
 end
 
 function Soldier:draw()

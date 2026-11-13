@@ -1,0 +1,1 @@
+Chunks for the level generator (lib/gen.lua). Each is a scene file: open it in the scene editor. A gate "in" on the ground at the left edge and a gate "out" at the right edge say where it joins its neighbours. A "chance" on a soldier, turret or health pack says how likely it is to be there. To add a chunk: make a new scene here and add its name to the list in lib/gen.lua.

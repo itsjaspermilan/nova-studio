@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "background": [
+    92,
+    148,
+    214
+  ],
+  "objects": [
+    {
+      "kind": "platform",
+      "x": 0,
+      "y": 440,
+      "props": {
+        "w": 900,
+        "h": 700,
+        "kind": "ground"
+      }
+    },
+    {
+      "kind": "platform",
+      "x": 250,
+      "y": 360,
+      "props": {
+        "w": 140,
+        "h": 12,
+        "oneway": true,
+        "kind": "metal"
+      }
+    },
+    {
+      "kind": "platform",
+      "x": 480,
+      "y": 330,
+      "props": {
+        "w": 130,
+        "h": 12,
+        "oneway": true,
+        "kind": "metal"
+      }
+    },
+    {
+      "kind": "soldier",
+      "x": 450,
+      "y": 440,
+      "props": {
+        "style": "gunner",
+        "chance": 0.6
+      }
+    },
+    {
+      "kind": "medkit",
+      "x": 120,
+      "y": 400,
+      "props": {
+        "chance": 0.8
+      }
+    },
+    {
+      "kind": "boss",
+      "x": 760,
+      "y": 440
+    },
+    {
+      "kind": "gate",
+      "x": 0,
+      "y": 440,
+      "props": {
+        "side": "in"
+      }
+    },
+    {
+      "kind": "gate",
+      "x": 900,
+      "y": 440,
+      "props": {
+        "side": "out"
+      }
+    }
+  ]
+}
