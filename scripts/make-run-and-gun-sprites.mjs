@@ -1,3 +1,5 @@
+// NOTE: the player sheet is now made from Kenney's art by make-run-and-gun-kenney.mjs. This script makes the older placeholder figure (plain boxes with an outline); running it
+// would REPLACE sprites/player.png and player.sprite.json with that placeholder (its tags are the same, apart from the sizes: 32 x 48 a frame, not 80 x 110).
 // Makes the placeholder player sheet for examples/run-and-gun: sprites/player.png and player.sprite.json (32 x 48 pixel frames, every pose facing right;
 // the game turns them round). They are plain boxes of colour with an outline, to be repainted in the studio's sprite editor: each animation is a tag.
 // Run:  scripts/env.sh node scripts/make-run-and-gun-sprites.mjs

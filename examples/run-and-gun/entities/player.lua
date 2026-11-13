@@ -37,6 +37,7 @@ local Player = nova.entity {
 }
 
 local STAND_H, PRONE_H = 38, 18
+local SPRITE_SCALE = 0.36 -- how big the character picture is drawn (its frames are 80 by 110)
 local GRAVITY = 1500
 
 function Player:create()
@@ -404,7 +405,8 @@ function Player:draw()
   elseif tag == "dash" then flip = self.dash_dir < 0 end
   -- while you cannot be hit the picture flashes (a quick blink)
   local blink = (self.inv > 0 and floor(self.t * 16) % 2 == 0) and { 255, 255, 255, 110 } or nil
-  view.sprite("player", self.x, self.y - 24, self.frame or 0, flip, blink)
+  -- (frames are 80 by 110 with the feet at the bottom; drawn 0.36 times their size)
+  view.sprite("player", self.x, self.y - 55 * SPRITE_SCALE + 1, self.frame or 0, flip, blink, SPRITE_SCALE)
   -- the swish of a strike: a bright crescent in front, there while the strike is live
   if self.melee_t > 0 then
     local k = 1 - self.melee_t / MELEE_T

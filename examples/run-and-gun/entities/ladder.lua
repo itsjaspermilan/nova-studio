@@ -12,9 +12,14 @@ local Ladder = nova.entity {
 }
 
 function Ladder:draw()
-  rect(self.x - 8, self.y, 3, self.h, { 150, 105, 60 })
-  rect(self.x + 5, self.y, 3, self.h, { 150, 105, 60 })
-  for y = 8, self.h - 4, 12 do rect(self.x - 8, self.y + y, 16, 3, { 190, 140, 80 }) end
+  -- the ladder tile (an orange ladder, 70 by 70 in the picture) repeated down, 24 wide
+  local view = require("lib.view")
+  local size, ty = 24, self.y
+  while ty < self.y + self.h do
+    local height = math.min(size, self.y + self.h - ty)
+    view.image("tiles/ladder", self.x - size / 2, ty, size, height, height < size and { x = 0, y = 0, w = 70, h = 70 * height / size } or nil)
+    ty = ty + size
+  end
 end
 
 return Ladder

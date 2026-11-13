@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "image": "zombie.png",
+  "frame_width": 80,
+  "frame_height": 110,
+  "columns": 6,
+  "frames": 8,
+  "durations_ms": [
+    500,
+    500,
+    160,
+    160,
+    100,
+    100,
+    100,
+    100
+  ],
+  "tags": [
+    {
+      "name": "idle",
+      "from": 0,
+      "to": 1
+    },
+    {
+      "name": "walk",
+      "from": 2,
+      "to": 3
+    },
+    {
+      "name": "windup",
+      "from": 4,
+      "to": 4
+    },
+    {
+      "name": "lunge",
+      "from": 5,
+      "to": 5
+    },
+    {
+      "name": "hurt",
+      "from": 6,
+      "to": 6
+    },
+    {
+      "name": "jump",
+      "from": 7,
+      "to": 7
+    }
+  ],
+  "pivot": {
+    "x": 40,
+    "y": 110
+  }
+}

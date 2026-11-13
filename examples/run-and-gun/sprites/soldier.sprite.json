@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "image": "soldier.png",
+  "frame_width": 80,
+  "frame_height": 110,
+  "columns": 6,
+  "frames": 9,
+  "durations_ms": [
+    500,
+    500,
+    160,
+    160,
+    100,
+    100,
+    100,
+    100,
+    100
+  ],
+  "tags": [
+    {
+      "name": "idle",
+      "from": 0,
+      "to": 1
+    },
+    {
+      "name": "walk",
+      "from": 2,
+      "to": 3
+    },
+    {
+      "name": "jump",
+      "from": 4,
+      "to": 4
+    },
+    {
+      "name": "hurt",
+      "from": 5,
+      "to": 5
+    },
+    {
+      "name": "aim",
+      "from": 6,
+      "to": 6
+    },
+    {
+      "name": "shoot",
+      "from": 7,
+      "to": 7
+    },
+    {
+      "name": "duck",
+      "from": 8,
+      "to": 8
+    }
+  ],
+  "pivot": {
+    "x": 40,
+    "y": 110
+  }
+}

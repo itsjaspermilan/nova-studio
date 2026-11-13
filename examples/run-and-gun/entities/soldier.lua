@@ -183,35 +183,44 @@ function Soldier:update(dt)
   if self.y > world.kill_y + 100 then self:destroy() end
 end
 
+-- Which picture and pose: a rusher is the zombie (walking, a raised arm as it winds up, a thrown arm as it lunges), a gunner the soldier (an arm out as it raises
+-- the gun, another pose as it fires). The frames are in lib/kenney_frames.lua; the pictures in sprites/ (open them in the sprite editor).
+local frames = require("lib.kenney_frames")
+local SCALE = 0.34
+
 function Soldier:draw()
   local x, y, f = floor(self.x), floor(self.y), self.face
   local gunner = self.style == "gunner"
-  local winding = self.state == "wind"
-  local c = self.flash > 0 and { 255, 255, 255 } or (gunner and { 200, 140, 60 } or { 200, 70, 60 })
-  if winding and floor(self.t * 20) % 2 == 0 then c = { 255, 235, 235 } end -- it flashes before it lunges
-  if self.state == "stun" then c = { 150, 150, 170 } end
-  local run = (self.vx ~= 0 and self.grounded) and floor(self.t * 10) % 2 or 0
-  rect(x - 6 - run * 2, y - 14, 5, 14, { 70, 40, 40 })
-  rect(x + 1 + run * 2, y - 14, 5, 14, { 70, 40, 40 })
-  rect(x - 7, y - 27, 14, 14, c)
-  rect(x - 4, y - 36, 9, 10, { 190, 150, 120 })
-  if gunner then
-    rect(x - 5, y - 38, 11, 4, { 90, 80, 50 }) -- a helmet
-    rect(x + f * 5 - 2, y - 24, 11, 3, { 40, 40, 50 }) -- a longer gun
-    -- the gun blinks as it is raised, and flashes as it fires
-    if self.wind > 0 and floor(self.t * 24) % 2 == 0 then rect(x + f * 15, y - 26, 5, 5, { 255, 120, 60 }) end
-    if self.burst > 0 and self.burst_t > 0.12 then rect(x + f * 15, y - 25, 4, 4, { 255, 240, 160 }) end
-  else
-    rect(x + f * 5 - 2, y - 24, 8, 3, { 40, 40, 50 })
+  local sheet = gunner and "soldier" or "zombie"
+  local fr = frames[sheet]
+  local walking = self.vx ~= 0 and self.grounded
+  local pose = fr.idle
+  if self.state == "stun" or self.flash > 0 then pose = fr.hurt
+  elseif not self.grounded then pose = fr.jump
+  elseif gunner and self.burst > 0 then pose = fr.shoot
+  elseif gunner and self.wind > 0 then pose = fr.aim
+  elseif self.state == "wind" then pose = fr.windup
+  elseif self.state == "lunge" then pose = fr.lunge
+  elseif walking then pose = (floor(self.t * 6) % 2 == 0) and fr.walk or fr.walk2
+  elseif floor(self.t * 1.5) % 2 == 1 then pose = fr.idle2 end
+  -- a tint: pale when it winds up (it flickers), grey when stunned
+  local tint = nil
+  if self.state == "wind" and floor(self.t * 20) % 2 == 0 then tint = { 255, 190, 190 } end
+  if self.state == "stun" then tint = { 170, 170, 195 } end
+  view.sprite(sheet, x, y - 55 * SCALE + 1, pose, f < 0, tint, SCALE)
+  if gunner and (self.burst > 0 or self.wind > 0) then
+    rect(x + f * 10, y - 24, 13, 3, { 40, 40, 50 }) -- the gun it holds out
+    if self.wind > 0 and floor(self.t * 24) % 2 == 0 then rect(x + f * 24, y - 26, 5, 5, { 255, 120, 60 }) end
+    if self.burst > 0 and self.burst_t > 0.12 then rect(x + f * 24, y - 25, 4, 4, { 255, 240, 160 }) end
   end
-  if winding then -- a mark over its head: a lunge is coming
+  if self.state == "wind" then -- a mark over its head: a lunge is coming
     rect(x - 2, y - 56, 4, 10, { 255, 70, 60 })
     rect(x - 2, y - 43, 4, 4, { 255, 70, 60 })
   elseif self.state == "stun" then
     rect(x - 8, y - 46, 4, 4, { 255, 230, 90 })
     rect(x + 4, y - 48, 4, 4, { 255, 230, 90 })
   end
-  hpbar.draw(self, y - 40)
+  hpbar.draw(self, y - 42)
 end
 
 return Soldier

@@ -1,0 +1,9 @@
+Kenney assets used by examples/run-and-gun (all Creative Commons Zero, CC0 1.0; credit is welcome, not required). From the "Kenney Game Assets All-in-1 3.8.0"
+bundle (https://kenney.nl/assets), owned by the project's owner:
+
+- Platformer Characters 1 (1.0): the poses of the Player (the hero; Adventurer and Female also work), the Soldier (the gunner enemy) and the Zombie (the rusher
+  enemy), cut and arranged into sprites/player.png, soldier.png and zombie.png (with their .sprite.json animations)
+- Platformer Pack Industrial (1.0): ground, rock, panel, ladder and girder tiles, cropped from its tilesheet into sprites/tiles/*.png
+
+Each pack's own License.txt (CC0, http://creativecommons.org/publicdomain/zero/1.0/) is in its folder of the bundle. The files are made by
+scripts/make-run-and-gun-kenney.mjs from the bundle (pass --kenney "<folder>" if it is not in ~/Developer; --hero Player|Adventurer|Female picks the hero).
