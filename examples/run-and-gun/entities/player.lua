@@ -31,7 +31,7 @@ function Player:create()
   self.score, self.won, self.over = 0, false, false
   self.cx, self.cy = self.x, self.y -- the last checkpoint
   self.prone, self.drop_t, self.cut = false, 0, false
-  self.aim_x, self.aim_y = 1, 0
+  self.aim_x, self.aim_y, self.flash = 1, 0, 0 -- (the first draw comes before the first update)
   self.dash_t, self.dash_cd, self.dash_dir, self.air_dash = 0, 0, 1, false
   self.hp, self.hurt_t = self.hp_max, 0
 end
@@ -198,7 +198,7 @@ function Player:draw()
   -- the gun, along the aim
   local gy = y - (self.prone and 9 or 22)
   for i = 1, 3 do box(x + self.aim_x * (4 + i * 5) - 2, gy + self.aim_y * (4 + i * 5) - 2, 5, 5, { 40, 40, 50 }) end
-  if self.flash > 0 then box(x + self.aim_x * 24 - 3, gy + self.aim_y * 24 - 3, 7, 7, { 255, 240, 160 }) end
+  if (self.flash or 0) > 0 then box(x + self.aim_x * 24 - 3, gy + self.aim_y * 24 - 3, 7, 7, { 255, 240, 160 }) end
 end
 
 return Player
