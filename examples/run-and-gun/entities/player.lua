@@ -111,14 +111,24 @@ function Player:muzzle(ax, ay)
   return sx + ax * GUN_LEN, sy + ay * GUN_LEN
 end
 
+local function wobble(range) return (math.random() * 2 - 1) * range end
+
+-- A shot. The rifle is a little loose: each shot goes a touch higher or lower (about two degrees) and at a touch different speed. The shotgun fires a load of pellets in a
+-- cone: each goes its own way, at its own speed, for a short way only, and each hurts a little, so it is strong up close and weak far away.
 function Player:fire(ax, ay)
   local gx, gy = self:muzzle(ax, ay)
   local a = atan2(ay, ax)
-  local shots = self.gun == "spread" and { -0.26, 0, 0.26 } or { 0 }
-  for _, d in ipairs(shots) do
-    nova.spawn("bullet", gx, gy, { dx = cos(a + d), dy = sin(a + d) })
+  if self.gun == "shotgun" then
+    for _ = 1, 7 do
+      local d = wobble(0.22)
+      nova.spawn("bullet", gx, gy + wobble(2), { dx = cos(a + d), dy = sin(a + d), speed = 880 * (0.8 + math.random() * 0.35), life = 0.3 + math.random() * 0.1, damage = 0.45, pellet = true })
+    end
+    self.flash = 0.09
+  else
+    local d = wobble(0.035)
+    nova.spawn("bullet", gx, gy + wobble(1), { dx = cos(a + d), dy = sin(a + d), speed = 880 * (0.96 + math.random() * 0.08) })
+    self.flash = 0.05
   end
-  self.flash = 0.05
 end
 
 -- which animation (a tag of sprites/player.sprite.json) fits what the player is doing
@@ -280,7 +290,7 @@ function Player:update(dt)
 
   -- shooting (on the ground, in the air, on a wall; not on a ladder: both hands are on it)
   if not self.won and not self.ladder and nova.input.down("fire") and self.cool == 0 then
-    self.cool = 1 / (self.gun == "spread" and self.fire_rate * 0.7 or self.fire_rate)
+    self.cool = 1 / (self.gun == "shotgun" and self.fire_rate * 0.45 or self.fire_rate)
     self:fire(ax, ay)
   end
 
@@ -313,7 +323,10 @@ function Player:draw()
     for d = 5, GUN_LEN, 3 do box(sx + self.aim_x * d - 2, sy + self.aim_y * d - 2, 4, 4, { 40, 40, 50 }) end
     box(sx + self.aim_x * 7 - 3, sy + self.aim_y * 7 - 3, 6, 6, { 70, 70, 85 }) -- the receiver
     box(mx - 1, my - 1, 3, 3, { 90, 90, 105 }) -- the muzzle
-    if (self.flash or 0) > 0 then box(mx - 3, my - 3, 7, 7, { 255, 240, 160 }) end
+    if (self.flash or 0) > 0 then
+      local big = self.gun == "shotgun" and 5 or 3
+      box(mx - big, my - big, big * 2 + 1, big * 2 + 1, { 255, 240, 160 })
+    end
   end
 end
 
