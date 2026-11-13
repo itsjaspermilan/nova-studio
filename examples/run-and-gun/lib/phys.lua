@@ -37,6 +37,22 @@ function phys.step(b, dt, gravity, fall_max)
   end
 end
 
+-- Whether there is something to stand on at x, at or just below y (within `reach` pixels): a floor ahead, or a pit.
+function phys.floor_at(x, y, reach)
+  for _, s in ipairs(nova.all("solid")) do
+    if x >= s.x and x <= s.x + s.w and s.y >= y - 4 and s.y <= y + (reach or 24) then return true end
+  end
+  return false
+end
+
+-- Whether a place is on the screen (`margin` more or less than its edge).
+function phys.in_view(x, y, margin)
+  local cx, cy = nova.cam.position()
+  local vw, vh = nova.view()
+  margin = margin or 0
+  return math.abs(x - cx) < vw / 2 + margin and math.abs(y - cy) < vh / 2 + margin
+end
+
 -- Whether a point is inside a wall (not a ledge: shots fly over those).
 function phys.in_wall(px, py)
   for _, s in ipairs(nova.all("solid")) do

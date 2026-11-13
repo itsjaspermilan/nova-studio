@@ -1,5 +1,5 @@
--- The player. D-pad or left stick runs and aims (up, the diagonals, down), A jumps (down and A drops through a ledge), the west button or R1/R2 fires,
--- L1 or L2 holds you still to aim. Down on the ground with no direction lies prone. One hit and you are down: you start again at the last checkpoint.
+-- The player. D-pad or left stick runs and aims (up, the diagonals, down), B (bottom) jumps (down and B drops through a ledge), Y (left) or R1/R2 fires,
+-- A (right) dashes (a short burst you cannot be hit in; once in the air), L1 or L2 holds you still to aim. Down on the ground with no direction lies prone. One hit and you are down: you start again at the last checkpoint.
 local phys = require("lib.phys")
 local rect = require("lib.view").rect
 local sin, cos, atan2, sqrt, floor, abs = math.sin, math.cos, math.atan, math.sqrt, math.floor, math.abs
@@ -11,7 +11,8 @@ local Player = nova.entity {
   w = 18,
   settings = {
     speed = { 190, min = 80, max = 400, step = 5, help = "Running speed (pixels a second)" },
-    jump_speed = { 540, min = 300, max = 900, step = 10, help = "How hard a jump pushes up" },
+    jump_speed = { 580, min = 300, max = 900, step = 10, help = "How hard a jump pushes up (580 is about 112 pixels high)" },
+    dash_speed = { 520, min = 200, max = 900, step = 10, help = "How fast a dash is (pixels a second)" },
     lives = { 3, min = 1, max = 30, step = 1, help = "Lives" },
     fire_rate = { 9, min = 2, max = 20, step = 1, help = "Shots a second" },
   },
@@ -30,6 +31,7 @@ function Player:create()
   self.cx, self.cy = self.x, self.y -- the last checkpoint
   self.prone, self.drop_t, self.cut = false, 0, false
   self.aim_x, self.aim_y = 1, 0
+  self.dash_t, self.dash_cd, self.dash_dir, self.air_dash = 0, 0, 1, false
 end
 
 -- Where the shots go: the eight directions from the stick or D-pad.
@@ -48,7 +50,7 @@ end
 
 -- hit: one hit and you are down
 function Player:kill()
-  if self.dead or self.inv > 0 or self.won then return end
+  if self.dead or self.inv > 0 or self.won or self.dash_t > 0 then return end
   self.dead, self.dead_t = true, 0
   self.lives = self.lives - 1
   for _ = 1, 22 do nova.spawn("spark", self.x, self.y - 18, { color = { 255, 120, 70 }, size = 5, speed = 240 }) end
@@ -70,6 +72,7 @@ function Player:update(dt)
   self.cool = math.max(0, self.cool - dt)
   self.inv = math.max(0, self.inv - dt)
   self.drop_t = math.max(0, self.drop_t - dt)
+  self.dash_t, self.dash_cd = math.max(0, self.dash_t - dt), math.max(0, self.dash_cd - dt)
   self.flash = math.max(0, (self.flash or 0) - dt)
 
   if self.over or self.won then
@@ -104,6 +107,18 @@ function Player:update(dt)
   -- running
   self.vx = (self.prone or hold or self.won) and 0 or side * self.speed
 
+  -- dashing: A. A short burst along the way you face; nothing can hit you in it; one in the air until you land.
+  if self.grounded then self.air_dash = false end
+  if nova.input.pressed("dash") and self.dash_cd == 0 and not self.prone and not self.won and (self.grounded or not self.air_dash) then
+    self.dash_t, self.dash_cd, self.dash_dir = 0.18, 0.6, (side ~= 0 and side or self.face)
+    if not self.grounded then self.air_dash = true end
+  end
+  if self.dash_t > 0 then
+    self.vx = self.dash_dir * self.dash_speed
+    self.vy = 0
+    nova.spawn("spark", self.x, self.y - 20, { color = { 150, 195, 255 }, size = 7, speed = 12 })
+  end
+
   -- jumping: A; down and A on a ledge drops through it. Let go early for a short hop.
   if nova.input.pressed("jump") and self.grounded and not self.won then
     if down then
@@ -112,16 +127,12 @@ function Player:update(dt)
       self.vy, self.cut = -self.jump_speed, false
     end
   end
-  if self.vy < -120 and not nova.input.down("jump") and not self.cut then
+  if self.vy < -120 and not nova.input.down("jump") and not self.cut and self.dash_t == 0 then
     self.vy, self.cut = self.vy * 0.45, true
   end
 
   phys.step(self, dt, GRAVITY, 900)
 
-  -- the left edge of the screen is a wall (you cannot go back)
-  local camx = nova.cam.position()
-  local left = camx - 480 + self.w / 2 + 2
-  if self.x < left then self.x = left end
   if self.y > 640 then self:kill_fall() end
 
   -- shooting

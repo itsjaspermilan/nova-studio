@@ -1,5 +1,6 @@
 -- A gun on a wall: stays put, turns to the player and fires a shot at it every couple of seconds while the player is near.
 local rect = require("lib.view").rect
+local phys = require("lib.phys")
 local atan2, cos, sin, floor = math.atan, math.cos, math.sin, math.floor
 
 local Turret = nova.entity {
@@ -35,7 +36,11 @@ function Turret:update(dt)
   local p = nova.first("player")
   if not p or p.dead then return end
   local dx, dy = p.x - self.x, (p.y - 20) - (self.y - 14)
-  if dx * dx + dy * dy > self.range * self.range then self.t = math.min(self.t, self.interval * 0.5) return end
+  -- it only wakes while it is on the screen (and the player is in its range)
+  if not phys.in_view(self.x, self.y - 12, -8) or dx * dx + dy * dy > self.range * self.range then
+    self.t = math.min(self.t, self.interval * 0.5)
+    return
+  end
   self.ang = atan2(dy, dx)
   if self.t >= self.interval then
     self.t = 0
@@ -49,7 +54,9 @@ function Turret:draw()
   rect(x - 13, y - 12, 26, 12, { 80, 90, 110 })
   rect(x - 9, y - 22, 18, 12, c)
   for i = 1, 3 do rect(floor(x + cos(self.ang) * i * 6 - 2), floor(y - 14 + sin(self.ang) * i * 6 - 2), 5, 5, { 40, 40, 50 }) end
-  rect(x - 2, y - 17, 4, 4, { 255, 90, 90 })
+  -- the light blinks just before it fires
+  local warn = self.t > self.interval - 0.35 and floor(self.t * 20) % 2 == 0
+  rect(x - 2, y - 17, 4, 4, warn and { 255, 255, 255 } or { 255, 90, 90 })
 end
 
 return Turret

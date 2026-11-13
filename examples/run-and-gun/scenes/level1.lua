@@ -1,5 +1,5 @@
 -- The level's pieces are placed in level1.scene.json (open it in the scene editor); this file is for what the level itself does:
--- the camera follows the player to the right and never goes back, and the screen shows lives, the score and the boss's health.
+-- the camera follows the player (a little ahead of the way they face), and the screen shows lives, the score and the boss's health.
 local Level = nova.scene {}
 
 function Level:enter()
@@ -10,7 +10,10 @@ end
 
 function Level:update(dt)
   local p = nova.first("player")
-  if p and not p.dead then self.camx = math.max(self.camx, p.x + 100) end
+  if p and not p.dead then
+    local target = p.x + p.face * 70
+    self.camx = math.max(480, math.min(3720, self.camx + (target - self.camx) * math.min(1, 7 * dt)))
+  end
   nova.cam.set(self.camx, 270)
 end
 

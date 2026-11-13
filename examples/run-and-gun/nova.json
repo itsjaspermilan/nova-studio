@@ -5,6 +5,7 @@
   "input": {
     "jump": ["key:Space", "key:KeyZ", "pad:south"],
     "fire": ["key:KeyX", "pad:west", "pad:r1", "axis:r2"],
+    "dash": ["key:KeyC", "pad:east"],
     "hold": ["key:ShiftLeft", "pad:l1", "axis:l2"],
     "start": ["key:Enter", "pad:start"]
   }

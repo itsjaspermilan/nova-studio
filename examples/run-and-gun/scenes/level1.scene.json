@@ -46,18 +46,30 @@
     },
     {
       "kind": "platform",
+      "x": -40,
+      "y": 0,
+      "props": {
+        "w": 40,
+        "h": 540,
+        "kind": "rock",
+        "wall": true
+      }
+    },
+    {
+      "kind": "platform",
       "x": 4200,
       "y": 0,
       "props": {
         "w": 40,
         "h": 540,
-        "kind": "rock"
+        "kind": "rock",
+        "wall": true
       }
     },
     {
       "kind": "platform",
       "x": 430,
-      "y": 340,
+      "y": 360,
       "props": {
         "w": 150,
         "h": 12,
@@ -67,7 +79,7 @@
     },
     {
       "kind": "platform",
-      "x": 700,
+      "x": 670,
       "y": 290,
       "props": {
         "w": 130,
@@ -79,7 +91,7 @@
     {
       "kind": "platform",
       "x": 1250,
-      "y": 340,
+      "y": 360,
       "props": {
         "w": 140,
         "h": 12,
@@ -89,8 +101,8 @@
     },
     {
       "kind": "platform",
-      "x": 1520,
-      "y": 280,
+      "x": 1480,
+      "y": 290,
       "props": {
         "w": 120,
         "h": 12,
@@ -101,7 +113,7 @@
     {
       "kind": "platform",
       "x": 2150,
-      "y": 300,
+      "y": 330,
       "props": {
         "w": 140,
         "h": 12,
@@ -112,7 +124,7 @@
     {
       "kind": "platform",
       "x": 2330,
-      "y": 250,
+      "y": 260,
       "props": {
         "w": 100,
         "h": 12,
@@ -123,7 +135,7 @@
     {
       "kind": "platform",
       "x": 2900,
-      "y": 330,
+      "y": 360,
       "props": {
         "w": 160,
         "h": 12,
@@ -134,7 +146,7 @@
     {
       "kind": "platform",
       "x": 3150,
-      "y": 270,
+      "y": 290,
       "props": {
         "w": 130,
         "h": 12,
@@ -195,82 +207,118 @@
     {
       "kind": "soldier",
       "x": 600,
-      "y": 440
+      "y": 440,
+      "props": {
+        "style": "rusher"
+      }
     },
     {
       "kind": "soldier",
       "x": 780,
-      "y": 440
+      "y": 440,
+      "props": {
+        "style": "gunner"
+      }
     },
     {
       "kind": "soldier",
       "x": 1150,
-      "y": 440
+      "y": 440,
+      "props": {
+        "style": "gunner"
+      }
     },
     {
       "kind": "soldier",
       "x": 1300,
-      "y": 440
+      "y": 440,
+      "props": {
+        "style": "rusher"
+      }
     },
     {
       "kind": "soldier",
       "x": 1600,
-      "y": 440
+      "y": 440,
+      "props": {
+        "style": "gunner"
+      }
     },
     {
       "kind": "soldier",
       "x": 1650,
-      "y": 440
+      "y": 440,
+      "props": {
+        "style": "rusher"
+      }
     },
     {
       "kind": "soldier",
       "x": 2200,
-      "y": 400
+      "y": 400,
+      "props": {
+        "style": "gunner"
+      }
     },
     {
       "kind": "soldier",
       "x": 2300,
-      "y": 400
+      "y": 400,
+      "props": {
+        "style": "rusher"
+      }
     },
     {
       "kind": "soldier",
       "x": 2800,
-      "y": 440
+      "y": 440,
+      "props": {
+        "style": "gunner"
+      }
     },
     {
       "kind": "soldier",
       "x": 3000,
-      "y": 440
+      "y": 440,
+      "props": {
+        "style": "rusher"
+      }
     },
     {
       "kind": "soldier",
       "x": 3050,
-      "y": 440
+      "y": 440,
+      "props": {
+        "style": "gunner"
+      }
     },
     {
       "kind": "soldier",
       "x": 3400,
-      "y": 440
+      "y": 440,
+      "props": {
+        "style": "gunner"
+      }
     },
     {
       "kind": "turret",
-      "x": 760,
+      "x": 730,
       "y": 290
     },
     {
       "kind": "turret",
-      "x": 1570,
-      "y": 280
+      "x": 1540,
+      "y": 290
     },
     {
       "kind": "turret",
       "x": 2380,
-      "y": 250
+      "y": 260
     },
     {
       "kind": "turret",
       "x": 3200,
-      "y": 270
+      "y": 290
     },
     {
       "kind": "turret",
@@ -280,12 +328,12 @@
     {
       "kind": "capsule",
       "x": 505,
-      "y": 300
+      "y": 320
     },
     {
       "kind": "capsule",
       "x": 2750,
-      "y": 380
+      "y": 410
     },
     {
       "kind": "boss",

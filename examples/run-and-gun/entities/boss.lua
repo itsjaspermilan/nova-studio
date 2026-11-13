@@ -1,5 +1,6 @@
 -- The end of the level: a big gun tower. Wakes when the screen reaches it and fires aimed fans of shots; a few seconds on, a burst. Beat it to clear the stage.
 local rect = require("lib.view").rect
+local phys = require("lib.phys")
 local atan2, cos, sin, floor = math.atan, math.cos, math.sin, math.floor
 
 local Boss = nova.entity {
@@ -41,7 +42,9 @@ function Boss:update(dt)
   self.flash = math.max(0, self.flash - dt)
   local p = nova.first("player")
   if not p or p.dead or p.won then return end
-  if self.t >= self.interval then
+  local seen = phys.in_view(self.x, self.y - 80, -10) -- it fires only while it is on the screen
+  if not seen then self.t = math.min(self.t, self.interval * 0.5) end
+  if seen and self.t >= self.interval then
     self.t = 0
     self.n = self.n + 1
     local a = atan2((p.y - 20) - (self.y - 100), p.x - self.x)
