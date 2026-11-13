@@ -26,7 +26,8 @@ local Player = nova.entity {
     dash_speed = { 520, min = 200, max = 900, step = 10, help = "How fast a dash is (pixels a second)" },
     hp_max = { 100, min = 10, max = 1000, step = 5, help = "Health (a soldier's shot takes 15, a turret's 20, touching a soldier 30)" },
     lives = { 3, min = 1, max = 30, step = 1, help = "Lives: you lose one when your health runs out or you fall" },
-    fire_rate = { 9, min = 2, max = 20, step = 1, help = "Shots a second" },
+    fire_rate = { 13, min = 2, max = 25, step = 1, help = "The rifle: shots a second" },
+    shotgun_interval = { 0.65, min = 0.2, max = 2, step = 0.05, help = "The shotgun: seconds between shots (it is pumped between them)" },
   },
 }
 
@@ -120,15 +121,32 @@ function Player:fire(ax, ay)
   local a = atan2(ay, ax)
   if self.gun == "shotgun" then
     for _ = 1, 7 do
-      local d = wobble(0.22)
-      nova.spawn("bullet", gx, gy + wobble(2), { dx = cos(a + d), dy = sin(a + d), speed = 880 * (0.8 + math.random() * 0.35), life = 0.3 + math.random() * 0.1, damage = 0.45, pellet = true })
+      local d = wobble(0.12)
+      nova.spawn("bullet", gx, gy + wobble(2), { dx = cos(a + d), dy = sin(a + d), speed = 880 * (0.8 + math.random() * 0.35), life = 0.3 + math.random() * 0.1, damage = 0.8, pellet = true })
     end
     self.flash = 0.09
+    -- the pump: the empty hull comes out a moment after the shot
+    self:after(0.3, function()
+      if not self.dead and not self.ladder then self:eject("shotgun") end
+    end)
   else
     local d = wobble(0.035)
     nova.spawn("bullet", gx, gy + wobble(1), { dx = cos(a + d), dy = sin(a + d), speed = 880 * (0.96 + math.random() * 0.08) })
     self.flash = 0.05
+    self:eject("rifle")
   end
+end
+
+-- A spent shell thrown out of the side of the gun: up and back, a little differently each time.
+function Player:eject(kind)
+  local shells = nova.all("shell")
+  if #shells > 30 then shells[1]:destroy() end -- (never more than about thirty on the floor)
+  local sx, sy = self:shoulder()
+  nova.spawn("shell", sx + self.aim_x * 7, sy + self.aim_y * 7 - 2, {
+    kind = kind,
+    vx = -self.face * (35 + math.random() * 70) + self.vx * 0.3,
+    vy = -(150 + math.random() * 110),
+  })
 end
 
 -- which animation (a tag of sprites/player.sprite.json) fits what the player is doing
@@ -147,7 +165,7 @@ end
 
 function Player:update(dt)
   self.t = self.t + dt
-  self.cool = max(0, self.cool - dt)
+  self.cool = max(-0.02, self.cool - dt) -- (it may go a little below 0: the rest of the step counts towards the next shot, so the rate is as set)
   self.inv = max(0, self.inv - dt)
   self.drop_t = max(0, self.drop_t - dt)
   self.dash_t, self.dash_cd = max(0, self.dash_t - dt), max(0, self.dash_cd - dt)
@@ -289,8 +307,8 @@ function Player:update(dt)
   if self.y > 640 then self:kill() end
 
   -- shooting (on the ground, in the air, on a wall; not on a ladder: both hands are on it)
-  if not self.won and not self.ladder and nova.input.down("fire") and self.cool == 0 then
-    self.cool = 1 / (self.gun == "shotgun" and self.fire_rate * 0.45 or self.fire_rate)
+  if not self.won and not self.ladder and nova.input.down("fire") and self.cool <= 0 then
+    self.cool = self.cool + (self.gun == "shotgun" and self.shotgun_interval or 1 / self.fire_rate)
     self:fire(ax, ay)
   end
 
