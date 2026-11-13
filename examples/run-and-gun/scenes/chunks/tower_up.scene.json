@@ -1,0 +1,215 @@
+{
+  "version": 1,
+  "background": [
+    92,
+    148,
+    214
+  ],
+  "objects": [
+    {
+      "kind": "platform",
+      "x": 0,
+      "y": 440,
+      "props": {
+        "w": 420,
+        "h": 700,
+        "kind": "ground"
+      }
+    },
+    {
+      "kind": "platform",
+      "x": 300,
+      "y": 320,
+      "props": {
+        "w": 440,
+        "h": 12,
+        "oneway": true,
+        "kind": "metal"
+      }
+    },
+    {
+      "kind": "platform",
+      "x": 300,
+      "y": 200,
+      "props": {
+        "w": 440,
+        "h": 12,
+        "oneway": true,
+        "kind": "metal"
+      }
+    },
+    {
+      "kind": "platform",
+      "x": 300,
+      "y": 80,
+      "props": {
+        "w": 440,
+        "h": 12,
+        "oneway": true,
+        "kind": "metal"
+      }
+    },
+    {
+      "kind": "platform",
+      "x": 300,
+      "y": -40,
+      "props": {
+        "w": 440,
+        "h": 12,
+        "oneway": true,
+        "kind": "metal"
+      }
+    },
+    {
+      "kind": "platform",
+      "x": 300,
+      "y": -160,
+      "props": {
+        "w": 500,
+        "h": 60,
+        "kind": "ground"
+      }
+    },
+    {
+      "kind": "ladder",
+      "x": 330,
+      "y": 320,
+      "props": {
+        "h": 120
+      }
+    },
+    {
+      "kind": "ladder",
+      "x": 690,
+      "y": 200,
+      "props": {
+        "h": 120
+      }
+    },
+    {
+      "kind": "ladder",
+      "x": 330,
+      "y": 80,
+      "props": {
+        "h": 120
+      }
+    },
+    {
+      "kind": "ladder",
+      "x": 690,
+      "y": -40,
+      "props": {
+        "h": 120
+      }
+    },
+    {
+      "kind": "ladder",
+      "x": 330,
+      "y": -160,
+      "props": {
+        "h": 120
+      }
+    },
+    {
+      "kind": "soldier",
+      "x": 150,
+      "y": 440,
+      "props": {
+        "style": "gunner",
+        "chance": 0.7
+      }
+    },
+    {
+      "kind": "soldier",
+      "x": 560,
+      "y": 320,
+      "props": {
+        "style": "rusher",
+        "chance": 0.7
+      }
+    },
+    {
+      "kind": "soldier",
+      "x": 450,
+      "y": 200,
+      "props": {
+        "style": "gunner",
+        "chance": 0.7
+      }
+    },
+    {
+      "kind": "soldier",
+      "x": 600,
+      "y": 80,
+      "props": {
+        "style": "rusher",
+        "chance": 0.7
+      }
+    },
+    {
+      "kind": "soldier",
+      "x": 480,
+      "y": -40,
+      "props": {
+        "style": "gunner",
+        "chance": 0.7
+      }
+    },
+    {
+      "kind": "turret",
+      "x": 720,
+      "y": 320,
+      "props": {
+        "chance": 0.6
+      }
+    },
+    {
+      "kind": "turret",
+      "x": 380,
+      "y": 200,
+      "props": {
+        "chance": 0.6
+      }
+    },
+    {
+      "kind": "turret",
+      "x": 700,
+      "y": 80,
+      "props": {
+        "chance": 0.6
+      }
+    },
+    {
+      "kind": "medkit",
+      "x": 520,
+      "y": 40,
+      "props": {
+        "chance": 0.6
+      }
+    },
+    {
+      "kind": "medkit",
+      "x": 600,
+      "y": -200,
+      "props": {
+        "chance": 0.5
+      }
+    },
+    {
+      "kind": "gate",
+      "x": 0,
+      "y": 440,
+      "props": {
+        "side": "in"
+      }
+    },
+    {
+      "kind": "gate",
+      "x": 800,
+      "y": -160,
+      "props": {
+        "side": "out"
+      }
+    }
+  ]
+}

@@ -6,9 +6,10 @@ local world = require("lib.world")
 local gen = {}
 
 -- the chunks to pick from for the middle of a level (the start and the boss are fixed): add the name of a new chunk here
-local MIDDLE = { "flat_a", "flat_pits", "bridge", "stairs_up", "climb_ladders", "climb_shaft", "drop_down", "gauntlet", "platforms" }
-local COUNT = 8 -- how many middle chunks a level has
-local MIN_Y, MAX_Y = -760, 1000 -- how high and how low the ground may wander (the start is at 440; smaller is higher)
+local MIDDLE = { "flat_a", "flat_pits", "bridge", "stairs_up", "climb_ladders", "climb_shaft", "drop_down", "gauntlet", "platforms",
+  "tower_up", "shaft_down", "two_floors", "three_layers", "jump_tower" }
+local COUNT = 9 -- how many middle chunks a level has
+local MIN_Y, MAX_Y = -1300, 1300 -- how high and how low the ground may wander (the start is at 440; smaller is higher)
 
 local cache = {}
 local function load(name)
@@ -83,8 +84,9 @@ function gen.build(seed)
       if name ~= prev and y + dy >= MIN_Y and y + dy <= MAX_Y then
         local w = 1
         if dy == 0 then w = 0.6 end -- flat ground is the least interesting
-        if dy < 0 and y < 0 then w = 0.4 elseif dy < 0 and y > 300 then w = 1.8 end -- climb more from low, less from high
-        if dy > 0 and y > 700 then w = 0.4 elseif dy > 0 and y < 200 then w = 2.2 end -- and drop more from high
+        if dy < 0 and y < -300 then w = 0.4 elseif dy < 0 and y > 300 then w = 1.8 end -- climb more from low, less from high
+        if dy > 0 and y > 900 then w = 0.4 elseif dy > 0 and y < 200 then w = 2.2 end -- and drop more from high
+        if math.abs(dy) > 300 then w = w * 1.3 end -- the tall ones are what make a level tall
         options[#options + 1], weights[#weights + 1] = c, w
         total = total + w
       end

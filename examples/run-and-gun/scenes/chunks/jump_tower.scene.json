@@ -1,0 +1,157 @@
+{
+  "version": 1,
+  "background": [
+    92,
+    148,
+    214
+  ],
+  "objects": [
+    {
+      "kind": "platform",
+      "x": 0,
+      "y": 440,
+      "props": {
+        "w": 900,
+        "h": 700,
+        "kind": "ground"
+      }
+    },
+    {
+      "kind": "platform",
+      "x": 780,
+      "y": -10,
+      "props": {
+        "w": 120,
+        "h": 700,
+        "kind": "ground"
+      }
+    },
+    {
+      "kind": "platform",
+      "x": 240,
+      "y": 365,
+      "props": {
+        "w": 110,
+        "h": 20,
+        "kind": "metal"
+      }
+    },
+    {
+      "kind": "platform",
+      "x": 390,
+      "y": 290,
+      "props": {
+        "w": 110,
+        "h": 20,
+        "kind": "metal"
+      }
+    },
+    {
+      "kind": "platform",
+      "x": 250,
+      "y": 215,
+      "props": {
+        "w": 110,
+        "h": 20,
+        "kind": "metal"
+      }
+    },
+    {
+      "kind": "platform",
+      "x": 420,
+      "y": 140,
+      "props": {
+        "w": 110,
+        "h": 20,
+        "kind": "metal"
+      }
+    },
+    {
+      "kind": "platform",
+      "x": 570,
+      "y": 65,
+      "props": {
+        "w": 110,
+        "h": 20,
+        "kind": "metal"
+      }
+    },
+    {
+      "kind": "platform",
+      "x": 690,
+      "y": -10,
+      "props": {
+        "w": 90,
+        "h": 20,
+        "kind": "metal"
+      }
+    },
+    {
+      "kind": "soldier",
+      "x": 450,
+      "y": 440,
+      "props": {
+        "style": "gunner",
+        "chance": 0.7
+      }
+    },
+    {
+      "kind": "soldier",
+      "x": 700,
+      "y": 440,
+      "props": {
+        "style": "rusher",
+        "chance": 0.7
+      }
+    },
+    {
+      "kind": "turret",
+      "x": 470,
+      "y": 290,
+      "props": {
+        "chance": 0.5
+      }
+    },
+    {
+      "kind": "turret",
+      "x": 300,
+      "y": 215,
+      "props": {
+        "chance": 0.6
+      }
+    },
+    {
+      "kind": "soldier",
+      "x": 620,
+      "y": 65,
+      "props": {
+        "style": "gunner",
+        "chance": 0.6
+      }
+    },
+    {
+      "kind": "medkit",
+      "x": 480,
+      "y": 100,
+      "props": {
+        "chance": 0.6
+      }
+    },
+    {
+      "kind": "gate",
+      "x": 0,
+      "y": 440,
+      "props": {
+        "side": "in"
+      }
+    },
+    {
+      "kind": "gate",
+      "x": 900,
+      "y": -10,
+      "props": {
+        "side": "out"
+      }
+    }
+  ]
+}

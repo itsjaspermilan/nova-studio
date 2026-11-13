@@ -12,7 +12,7 @@ function chunk(name, W, inY, outY, build) {
   const o = [], surfaces = [];
   const surf = (x0, x1, top, what, reach) => surfaces.push({ x0, x1, top, what, reach });
   const api = {
-    ground: (x0, x1, y, kind = "ground") => { o.push({ kind: "platform", x: x0, y, props: { w: x1 - x0, h: 700, kind } }); surf(x0, x1, y, "ground"); },
+    ground: (x0, x1, y, kind = "ground", reach, h = 700) => { o.push({ kind: "platform", x: x0, y, props: { w: x1 - x0, h, kind } }); surf(x0, x1, y, "ground", reach); },
     ledge: (x, y, w, reach) => { o.push({ kind: "platform", x, y, props: { w, h: 12, oneway: true, kind: "metal" } }); surf(x, x + w, y, "ledge", reach); },
     block: (x, y, w, h, kind = "rock", reach) => { o.push({ kind: "platform", x, y, props: { w, h, kind } }); surf(x, x + w, y, "block", reach); },
     ladder: (x, y, h) => o.push({ kind: "ladder", x, y, props: { h } }),
@@ -109,6 +109,55 @@ chunk("platforms", 1000, 440, 440, ({ ground, block, soldier, turret, medkit }) 
   ground(0, 140, 440); ground(910, 1000, 440);
   block(240, 400, 100, 20, "metal"); block(440, 360, 100, 20, "metal"); block(640, 410, 100, 20, "metal"); block(830, 370, 90, 20, "metal"); // over a pit
   soldier(470, 360, "gunner", 0.8); soldier(860, 370, "gunner", 0.7); turret(690, 410, 0.5); medkit(590, 330, 0.5);
+});
+
+// ---- tall chunks: several floors, joined by ladders, drops and jumps (levels in layers)
+
+// five floors climbing a tower, the ladders alternating left and right (580 up)
+chunk("tower_up", 800, 440, -160, ({ ground, ledge, ladder, soldier, turret, medkit }) => {
+  ground(0, 420, 440);
+  ledge(300, 320, 440, "ladder"); ledge(300, 200, 440, "ladder"); ledge(300, 80, 440, "ladder"); ledge(300, -40, 440, "ladder");
+  ground(300, 800, -160, "ground", "ladder", 60); // (thin: the tower is hollow below it)
+  ladder(330, 320, 120); ladder(690, 200, 120); ladder(330, 80, 120); ladder(690, -40, 120); ladder(330, -160, 120);
+  soldier(150, 440, "gunner", 0.7); soldier(560, 320, "rusher", 0.7); soldier(450, 200, "gunner", 0.7); soldier(600, 80, "rusher", 0.7); soldier(480, -40, "gunner", 0.7);
+  turret(720, 320, 0.6); turret(380, 200, 0.6); turret(700, 80, 0.6); medkit(520, 40, 0.6); medkit(600, -200, 0.5);
+});
+
+// a long drop through ledges to the floor far below (580 down)
+chunk("shaft_down", 800, 300, 880, ({ ground, ledge, ladder, soldier, turret, medkit }) => {
+  ground(0, 300, 300, "ground", undefined, 60); // (thin, so that the ledges under it are free)
+  ledge(330, 420, 200); ledge(80, 540, 260); ledge(420, 660, 260); ledge(100, 780, 260);
+  ground(0, 800, 880);
+  soldier(500, 880, "gunner", 0.8); soldier(650, 880, "rusher", 0.8); soldier(200, 880, "rusher", 0.6);
+  turret(480, 420, 0.7); turret(180, 540, 0.7); turret(560, 660, 0.7); medkit(250, 740, 0.6); medkit(400, 840, 0.5);
+});
+
+// the main way is along the bottom; above it a walkway with ladders at both ends: a harder way with health packs and turrets
+chunk("two_floors", 1200, 440, 440, ({ ground, ledge, ladder, soldier, turret, medkit, block }) => {
+  ground(0, 1200, 440);
+  ledge(250, 240, 700, "ladder"); ladder(270, 240, 200); ladder(930, 240, 200);
+  ledge(520, 340, 120);
+  turret(450, 240, 0.8); turret(750, 240, 0.8); medkit(600, 200, 0.8); soldier(380, 240, "gunner", 0.8); soldier(820, 240, "rusher", 0.7);
+  soldier(180, 440, "rusher", 0.8); soldier(560, 440, "gunner", 0.8); soldier(1000, 440, "rusher", 0.7); soldier(1100, 440, "gunner", 0.6);
+  block(700, 400, 50, 40);
+});
+
+// three layers of floor in one room, ladders between them (an arena)
+chunk("three_layers", 1100, 440, 440, ({ ground, ledge, ladder, soldier, turret, medkit }) => {
+  ground(0, 1100, 440);
+  ledge(150, 300, 400, "ladder"); ledge(620, 300, 330, "ladder"); ledge(330, 160, 440, "ladder");
+  ladder(170, 300, 140); ladder(900, 300, 140); ladder(360, 160, 140); ladder(740, 160, 140);
+  soldier(300, 440, "rusher", 0.8); soldier(700, 440, "gunner", 0.8); soldier(1000, 440, "rusher", 0.7);
+  soldier(280, 300, "gunner", 0.8); soldier(800, 300, "gunner", 0.7); soldier(450, 160, "rusher", 0.7); soldier(650, 160, "gunner", 0.8);
+  turret(520, 300, 0.7); turret(880, 300, 0.7); turret(560, 160, 0.8); medkit(540, 120, 0.8); medkit(350, 270, 0.5);
+});
+
+// a climb by jumping from block to block (450 up), with the floor below to fall back onto
+chunk("jump_tower", 900, 440, -10, ({ ground, block, soldier, turret, medkit }) => {
+  ground(0, 900, 440);
+  ground(780, 900, -10);
+  block(240, 365, 110, 20, "metal"); block(390, 290, 110, 20, "metal"); block(250, 215, 110, 20, "metal"); block(420, 140, 110, 20, "metal"); block(570, 65, 110, 20, "metal"); block(690, -10, 90, 20, "metal");
+  soldier(450, 440, "gunner", 0.7); soldier(700, 440, "rusher", 0.7); turret(470, 290, 0.5); turret(300, 215, 0.6); soldier(620, 65, "gunner", 0.6); medkit(480, 100, 0.6);
 });
 
 chunk("boss", 900, 440, 440, ({ ground, ledge, soldier, boss, medkit }) => {

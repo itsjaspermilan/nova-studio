@@ -7,7 +7,7 @@ local view = require("lib.view")
 local world = require("lib.world")
 local run = require("lib.run")
 local gen = require("lib.gen")
-local DROP = 90 -- the player stands this far below the middle of the view, so that more of what is above shows
+local DROP = 20 -- the camera looks at the middle of the player's body (their feet are 20 below it): the player is in the middle of the view, up and down
 
 function Level:enter()
   self.seed = run.begin()
@@ -42,7 +42,7 @@ function Level:update(dt)
   if p and not p.dead then
     local ty = p.y - DROP
     local goal = self.camy
-    if ty > self.camy + 70 then goal = ty - 70 elseif ty < self.camy - 70 then goal = ty + 70 end
+    if ty > self.camy + 26 then goal = ty - 26 elseif ty < self.camy - 26 then goal = ty + 26 end -- (a small dead zone, so that a jump does not bob the view)
     if math.abs(ty - self.camy) > 600 then
       self.camy, self.camvy = ty, 0
     else
@@ -53,7 +53,7 @@ function Level:update(dt)
   end
   -- (the camera stays inside the level)
   self.camx = math.max(world.left + view.half_w(), math.min(world.right - view.half_w(), self.camx))
-  local lo, hi = world.top - 260 + view.half_h(), world.bottom + 120 - view.half_h()
+  local lo, hi = world.top - 420 + view.half_h(), world.bottom + 330 - view.half_h() -- (room above the highest ground and below the lowest, so the player stays in the middle)
   self.camy = lo > hi and (lo + hi) / 2 or math.max(lo, math.min(hi, self.camy))
   nova.cam.set(self.camx, self.camy)
 end
