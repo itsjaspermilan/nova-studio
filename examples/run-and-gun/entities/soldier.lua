@@ -4,6 +4,7 @@ local rect = require("lib.view").rect
 --   gunner: keeps its distance (steps back if you come close, forward if you go far) and fires bursts of two, only while it is on the screen.
 -- Neither walks off an edge it cannot cross. Touching either hurts (30).
 local phys = require("lib.phys")
+local hpbar = require("lib.hpbar")
 local floor, abs, atan2, cos, sin = math.floor, math.abs, math.atan, math.cos, math.sin
 
 local Soldier = nova.entity {
@@ -22,10 +23,12 @@ local Soldier = nova.entity {
 function Soldier:create()
   self.vx, self.vy, self.t, self.face = 0, 0, math.random() * 4, -1
   self.flash, self.charging, self.shoot_t, self.burst, self.burst_t = 0, false, 0.6 + math.random(), 0, 0
+  self.max_hp, self.hit_seen = self.hp, false
 end
 
 function Soldier:hurt(n)
   self.hp = self.hp - n
+  self.hit_seen = true
   self.flash = 0.08
   self.charging = true -- being shot wakes it up
   if self.hp <= 0 then
@@ -113,6 +116,7 @@ function Soldier:draw()
   else
     rect(x + f * 5 - 2, y - 24, 8, 3, { 40, 40, 50 })
   end
+  hpbar.draw(self, y - 40)
 end
 
 return Soldier

@@ -1,6 +1,7 @@
 -- A gun on a wall: stays put, turns to the player and fires a shot at it every couple of seconds while the player is near.
 local rect = require("lib.view").rect
 local phys = require("lib.phys")
+local hpbar = require("lib.hpbar")
 local atan2, cos, sin, floor = math.atan, math.cos, math.sin, math.floor
 
 local Turret = nova.entity {
@@ -17,10 +18,12 @@ local Turret = nova.entity {
 
 function Turret:create()
   self.t, self.flash, self.ang = math.random() * 2, 0, math.pi
+  self.max_hp, self.hit_seen = self.hp, false
 end
 
 function Turret:hurt(n)
   self.hp = self.hp - n
+  self.hit_seen = true
   self.flash = 0.08
   if self.hp <= 0 then
     for _ = 1, 22 do nova.spawn("spark", self.x, self.y - 12, { color = { 255, 170, 60 }, size = 5, speed = 240 }) end
@@ -57,6 +60,7 @@ function Turret:draw()
   -- the light blinks just before it fires
   local warn = self.t > self.interval - 0.35 and floor(self.t * 20) % 2 == 0
   rect(x - 2, y - 17, 4, 4, warn and { 255, 255, 255 } or { 255, 90, 90 })
+  hpbar.draw(self, y - 24)
 end
 
 return Turret
