@@ -4,7 +4,7 @@
   "frame_width": 32,
   "frame_height": 48,
   "columns": 6,
-  "frames": 18,
+  "frames": 21,
   "durations_ms": [
     400,
     400,
@@ -23,7 +23,10 @@
     130,
     100,
     100,
-    100
+    100,
+    60,
+    70,
+    90
   ],
   "tags": [
     {
@@ -81,6 +84,11 @@
       "name": "hurt",
       "from": 17,
       "to": 17
+    },
+    {
+      "name": "melee",
+      "from": 18,
+      "to": 20
     }
   ],
   "pivot": {

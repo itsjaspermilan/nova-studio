@@ -366,17 +366,17 @@
       "y": 440
     },
     {
-      "kind": "capsule",
+      "kind": "medkit",
       "x": 505,
       "y": 320
     },
     {
-      "kind": "capsule",
+      "kind": "medkit",
       "x": 2950,
       "y": 410
     },
     {
-      "kind": "capsule",
+      "kind": "medkit",
       "x": 2820,
       "y": 175
     },

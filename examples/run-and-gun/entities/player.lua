@@ -1,5 +1,6 @@
 -- The player. D-pad or left stick runs and aims (up, the diagonals, down); B (bottom) jumps (down and B drops through a ledge; in the air B jumps again, once; against a wall B
--- jumps off it); Y (left) or R1/R2 fires; A (right) dashes (a short burst nothing can hit; once in the air); L1 or L2 holds you still to aim. Down on the ground with no
+-- jumps off it); Y (left) or R2 fires; R1 switches between the rifle (long range) and the shotgun (short range); X (the top button) strikes in melee, and a strike also
+-- parries: it sends enemy shots back and breaks a lunge; A (right) dashes (a short burst nothing can hit; once in the air); L1 or L2 holds you still to aim. Down on the ground with no
 -- direction lies prone. Push towards a wall in the air and you slide down it, still able to shoot out. Up at a ladder climbs it (no gun on a ladder). A hit takes health, knocks you back and
 -- flashes you; at 0 health you lose a life and start again at the last checkpoint.
 -- The body is drawn from sprites/player.png (one animation for each thing the player does: its tags); the gun is drawn on top of it, from the shoulder.
@@ -28,6 +29,7 @@ local Player = nova.entity {
     hp_max = { 100, min = 10, max = 1000, step = 5, help = "Health (a soldier's shot takes 15, a turret's 20, touching a soldier 30)" },
     lives = { 3, min = 1, max = 30, step = 1, help = "Lives: you lose one when your health runs out or you fall" },
     fire_rate = { 13, min = 2, max = 25, step = 1, help = "The rifle: shots a second" },
+    melee_damage = { 2, min = 0.5, max = 10, step = 0.5, help = "How much a melee strike hurts (a soldier has 1, a turret 4)" },
     shotgun_interval = { 0.65, min = 0.2, max = 2, step = 0.05, help = "The shotgun: seconds between shots (it is pumped between them)" },
   },
 }
@@ -53,6 +55,7 @@ function Player:create()
   self.lock_t, self.wj_t, self.wj_wall, self.dj_t = 0, 0, 1, 0 -- after a wall jump you cannot steer for a moment; times for the wall jump and double jump pictures
   self.ladder = nil
   self.tag_now = "idle"
+  self.melee_t, self.melee_cd, self.melee_hit = 0, 0, {} -- a strike lasts a moment (it is live all that time), then needs a short rest
 end
 
 -- Where the shots go: the eight directions from the stick or D-pad. On a wall you face away from it and shoot out. (On a ladder there is no gun: both hands are on it.)
@@ -151,9 +154,53 @@ function Player:eject(kind)
   })
 end
 
+local MELEE_T, MELEE_CD, REACH = 0.26, 0.45, 38
+
+-- The box in front of you that a strike covers: from your side out REACH pixels, the height of the body.
+function Player:melee_box()
+  local x0 = self.x + self.face * (self.w / 2 - 2)
+  local x1 = self.x + self.face * (self.w / 2 + REACH)
+  local top = self.y - (self.prone and PRONE_H or STAND_H) + 2
+  return min(x0, x1), top, abs(x1 - x0), (self.y - 2) - top
+end
+
+-- While a strike is live: it hurts every enemy in the box (each once), and it PARRIES: a shot in the box is sent back the way it came, faster and now hurting enemies;
+-- an enemy that is winding up a lunge or lunging is stunned (and a stunned enemy takes double damage).
+function Player:strike()
+  local bx, by, bw, bh = self:melee_box()
+  for _, e in ipairs(nova.all("enemy")) do
+    if not self.melee_hit[e] and not e.down and e.x + e.w / 2 > bx and e.x - e.w / 2 < bx + bw and e.y > by and e.y - e.h < by + bh then
+      self.melee_hit[e] = true
+      local lunging = e.state == "wind" or e.state == "lunge"
+      if lunging and e.stun then
+        e:stun(1.3, self.face) -- parried: it is stopped, and open for a moment
+        self.inv = max(self.inv, 0.3)
+        self.score = self.score + 50
+        for _ = 1, 10 do nova.spawn("spark", e.x, e.y - 20, { color = { 130, 230, 255 }, size = 5, speed = 200 }) end
+        nova.input.rumble(0.7, 0.12)
+      else
+        e:hurt(self.melee_damage)
+        for _ = 1, 5 do nova.spawn("spark", e.x, e.y - 20, { color = { 255, 255, 255 }, size = 4, speed = 160 }) end
+        nova.input.rumble(0.4, 0.08)
+      end
+    end
+  end
+  for _, b in ipairs(nova.all("ebullet")) do
+    if b.x >= bx - 4 and b.x <= bx + bw + 4 and b.y >= by - 4 and b.y <= by + bh + 4 then
+      nova.spawn("bullet", b.x, b.y, { dx = -b.dx, dy = -b.dy, speed = 780, damage = 2, reflected = true, life = 1.0 })
+      b:destroy()
+      self.inv = max(self.inv, 0.3)
+      self.score = self.score + 50
+      for _ = 1, 8 do nova.spawn("spark", b.x, b.y, { color = { 130, 230, 255 }, size = 4, speed = 180 }) end
+      nova.input.rumble(0.7, 0.12)
+    end
+  end
+end
+
 -- which animation (a tag of sprites/player.sprite.json) fits what the player is doing
 function Player:tag()
   if self.hurt_t > 0 then return "hurt" end
+  if self.melee_t > 0 then return "melee" end
   if self.ladder then return "climb" end
   if self.sliding then return "wall_slide" end
   if self.dash_t > 0 then return "dash" end
@@ -172,6 +219,7 @@ function Player:update(dt)
   self.drop_t = max(0, self.drop_t - dt)
   self.dash_t, self.dash_cd = max(0, self.dash_t - dt), max(0, self.dash_cd - dt)
   self.hurt_t, self.lock_t = max(0, self.hurt_t - dt), max(0, self.lock_t - dt)
+  self.melee_t, self.melee_cd = max(0, self.melee_t - dt), max(0, self.melee_cd - dt)
   self.wj_t, self.dj_t, self.wall_t = max(0, self.wj_t - dt), max(0, self.dj_t - dt), max(0, self.wall_t - dt)
   self.flash = max(0, (self.flash or 0) - dt)
 
@@ -255,6 +303,8 @@ function Player:update(dt)
       self.vx = (self.prone or hold or self.won) and 0 or raw * self.speed
     end
 
+    if self.melee_t > 0 then self.vx = self.vx * 0.4 end -- a strike is half a step: you do not run flat out while swinging
+
     -- dashing: A. A short burst along the way you face; nothing can hit you in it; one in the air until you land.
     if self.grounded then self.air_dash = false end
     if nova.input.pressed("dash") and self.dash_cd == 0 and not self.prone and not self.won and (self.grounded or not self.air_dash) then
@@ -308,8 +358,22 @@ function Player:update(dt)
 
   if self.y > 640 then self:kill() end
 
+  -- the weapon: R1 switches between the long-range rifle and the short-range shotgun
+  if nova.input.pressed("weapon") and not self.won then
+    self.gun = (self.gun == "rifle") and "shotgun" or "rifle"
+    self.cool = max(self.cool, 0.15) -- (a moment to bring it up)
+  end
+
+  -- melee, X: a strike in front of you (not on a ladder, not while knocked back or dashing). It faces the way you press.
+  if nova.input.pressed("melee") and self.melee_cd <= 0 and not self.ladder and self.hurt_t == 0 and self.dash_t == 0 and not self.won then
+    self.melee_t, self.melee_cd, self.melee_hit = MELEE_T, MELEE_CD, {}
+    if self.sliding then self.face = -self.wall elseif raw ~= 0 then self.face = raw end
+    self.cool = max(self.cool, MELEE_T)
+  end
+  if self.melee_t > 0 then self:strike() end
+
   -- shooting (on the ground, in the air, on a wall; not on a ladder: both hands are on it)
-  if not self.won and not self.ladder and nova.input.down("fire") and self.cool <= 0 then
+  if not self.won and not self.ladder and self.melee_t == 0 and nova.input.down("fire") and self.cool <= 0 then
     self.cool = self.cool + (self.gun == "shotgun" and self.shotgun_interval or 1 / self.fire_rate)
     self:fire(ax, ay)
   end
@@ -336,8 +400,18 @@ function Player:draw()
   -- while you cannot be hit the picture flashes (a quick blink)
   local blink = (self.inv > 0 and floor(self.t * 16) % 2 == 0) and { 255, 255, 255, 110 } or nil
   view.sprite("player", self.x, self.y - 24, self.frame or 0, flip, blink)
-  -- the gun, along the aim, from the shoulder to the muzzle (a barrel of little squares close together, so that it is solid at every angle); not when hurt or on a ladder
-  if tag ~= "hurt" and tag ~= "climb" then
+  -- the swish of a strike: a bright crescent in front, there while the strike is live
+  if self.melee_t > 0 then
+    local k = 1 - self.melee_t / MELEE_T
+    local f = self.face
+    local px = self.x + f * 12
+    local a = floor(230 * (1 - k * 0.7))
+    rect(px + f * 6 - (f < 0 and 3 or 0), self.y - 30, 3, 22, { 255, 255, 255, a })
+    rect(px + f * 12 - (f < 0 and 3 or 0), self.y - 27, 3, 16, { 200, 235, 255, a })
+    rect(px + f * 18 - (f < 0 and 3 or 0), self.y - 22, 3, 8, { 150, 220, 255, a })
+  end
+  -- the gun, along the aim, from the shoulder to the muzzle (a barrel of little squares close together, so that it is solid at every angle); not when hurt, on a ladder or in a strike
+  if tag ~= "hurt" and tag ~= "climb" and tag ~= "melee" then
     local sx, sy = self:shoulder()
     local mx, my = self:muzzle(self.aim_x, self.aim_y)
     for d = 5, GUN_LEN, 3 do box(sx + self.aim_x * d - 2, sy + self.aim_y * d - 2, 4, 4, { 40, 40, 50 }) end

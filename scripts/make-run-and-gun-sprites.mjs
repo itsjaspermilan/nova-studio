@@ -80,6 +80,11 @@ add("prone", ({ rect }) => {
 add("dash", (g) => { person(g, { tdx: 3, hdx: 4, bob: 2, l: { dx: -5, up: 3 }, r: { dx: 4 } }); for (const y of [22, 28, 34]) g.rect(0, y, 7, 1, WHITE); });
 add("hurt", (g) => { person(g, { tdx: -3, hdx: -4, hy: 1, l: { dx: -3 }, r: { dx: 4, up: 3 } }); g.rect(5, 18, 3, 7, SKIN); g.rect(25, 16, 3, 7, SKIN); });
 
+// the melee: the arm is drawn here (the gun is put away): drawn back, thrown forward, then held out; the swish itself is drawn by the game
+add("melee", (g) => { person(g, { tdx: -1, hdx: -1, l: { dx: -2 }, r: { dx: 2 } }); g.rect(4, 24, 7, 4, SKIN); g.rect(3, 23, 3, 6, SKIN); }, 60);
+add("melee", (g) => { person(g, { tdx: 2, hdx: 2, bob: 1, l: { dx: -3 }, r: { dx: 4 } }); g.rect(19, 23, 12, 4, SKIN); g.rect(28, 21, 4, 7, SKIN); }, 70);
+add("melee", (g) => { person(g, { tdx: 1, hdx: 1, l: { dx: -2 }, r: { dx: 3 } }); g.rect(19, 26, 9, 4, SKIN); g.rect(26, 25, 4, 6, SKIN); }, 90);
+
 // ---- the sheet: 6 frames across
 const COLS = 6, ROWS = Math.ceil(poses.length / COLS);
 const sheet = new Uint8Array(COLS * W * ROWS * H * 4);

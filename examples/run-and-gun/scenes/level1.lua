@@ -54,7 +54,9 @@ function Level:draw_ui()
   end
   if p.hurt_t > 0 then nova.ui.rect(0, 0, w, h, { 220, 30, 30, math.floor(45 * p.hurt_t / 0.3) }) end
   nova.ui.text(w - 20, 18, string.format("%06d", p.score), { size = 28, align = "right", shadow = true })
-  if p.gun == "shotgun" then nova.ui.text(20, 76, "SHOTGUN", { size = 18, color = { 120, 220, 255 }, shadow = true }) end
+  -- the two guns; the one you hold is bright
+  nova.ui.text(20, 76, "RIFLE", { size = 18, color = p.gun == "rifle" and { 255, 230, 120 } or { 130, 140, 165 }, shadow = true })
+  nova.ui.text(92, 76, "SHOTGUN", { size = 18, color = p.gun == "shotgun" and { 255, 230, 120 } or { 130, 140, 165 }, shadow = true })
   local boss = nova.first("boss")
   if boss and boss.awake then
     local f = math.max(0, boss.hp / boss.max_hp)

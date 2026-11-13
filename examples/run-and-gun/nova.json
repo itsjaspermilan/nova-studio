@@ -4,7 +4,9 @@
   "version": "0.1.0",
   "input": {
     "jump": ["key:Space", "key:KeyZ", "pad:east"],
-    "fire": ["key:KeyX", "pad:north", "pad:r1", "axis:r2"],
+    "fire": ["key:KeyX", "pad:north", "axis:r2"],
+    "melee": ["key:KeyV", "pad:west"],
+    "weapon": ["key:KeyQ", "pad:r1"],
     "dash": ["key:KeyC", "pad:south"],
     "hold": ["key:ShiftLeft", "pad:l1", "axis:l2"],
     "start": ["key:Enter", "pad:start"]
