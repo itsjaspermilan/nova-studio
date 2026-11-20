@@ -105,7 +105,7 @@ tiles to the made tileset with `append`. To change a painted map, take the rows 
    | --- | --- |
    | `{ "hold": ["right"], "frames": 6 }` | holds for a fixed time. A direction button also sets the axis that shares its keys and the other way round (`up` and `move_y` = -1), so it moves a hero whichever the code reads; a hold nothing read is reported |
    | `{ "walk_to": [300, 200], "who": "hero" }` | walks to a point (`[x, z]` in 3D) round what is solid: solid tiles and entities tagged `solid` in 2D; `nova.solid`, `nova.walls` and the scenery in 3D. The answer says whether it found a way or walked straight |
-   | `{ "walk_to": "chest" }` | walks into a thing (a name, a tag or a kind) until the hitboxes overlap (a door, a pickup) or it stands against it (a solid chest), and says how far apart they ended: do this before a press that needs the hero beside something |
+   | `{ "walk_to": "chest" }` | walks into a thing (a name, a tag or a kind) until the hitboxes overlap (a door, a pickup) or it stands against it (a solid chest), and says how far apart they ended: do this before a press that needs the hero beside something. A thing that changes the scene (a door) ends the step there, as a success, in the new scene |
    | `{ "fight": "enemy", "attack": "a", "max": 600 }` | goes to the nearest one with that tag, taps `attack` in `range`, then the next, until none is left; says how many were beaten and what it cost |
    | `{ "hold": ["right"], "tap": "a", "tap_every": 30, "until": "..." }` | walks and swings at once |
    | `{ "repeat": 5, "until": "...", "steps": [ ... ] }` | a group of steps again and again, until something holds |

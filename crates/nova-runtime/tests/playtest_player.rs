@@ -377,9 +377,32 @@ fn the_starter_is_walked_by_path_and_through_its_door() {
     let route = strings(&report["route"]);
     assert_eq!(route.len(), 3, "{route:?}");
     assert!(route[1].contains("stopped against it"), "{route:?}");
-    assert!(route[2].contains("it is gone now"), "{route:?}");
+    assert!(route[2].contains("the scene changed to 'house'"), "{route:?}");
     assert!(report["render"].is_null());
     assert_eq!(report["end"]["render"]["three_d"], false);
+}
+
+/// A walk to a tag ("door": both rooms have one) that goes through a door ends in the next room as a success, and does
+/// not walk on to the next room's door and out again.
+#[test]
+fn walk_to_a_tag_ends_when_the_scene_changes() {
+    let folder = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/starter-topdown");
+    let vfs: Rc<dyn Vfs> = Rc::new(nova_runtime::vfs::DirVfs::new(&folder).unwrap());
+    let mut g = Game::load(vfs).expect("the starter loads");
+    g.upload(&mut FakeGpu);
+    let plan = r#"{ "stop_on_fail": true, "steps": [ { "walk_to": "door" }, { "wait": 30 } ],
+        "print": ["nova.current_scene()"] }"#;
+    let (report, _) = play(&mut g, plan, "door-by-tag");
+    assert_eq!(report["stopped"], Value::Null, "{report}");
+    assert_eq!(strings(&report["warnings"]).len(), 0, "{report}");
+    assert_eq!(report["end"]["prints"][0]["value"], "house", "{report}");
+    let route = strings(&report["route"]);
+    assert!(
+        route[0].contains("the scene changed to 'house'") && route[0].contains("the step ends there"),
+        "{route:?}"
+    );
+    let through: Vec<String> = log(&report).into_iter().filter(|l| l.starts_with("through")).collect();
+    assert_eq!(through.len(), 1, "one door, not two: {through:?}");
 }
 
 #[test]

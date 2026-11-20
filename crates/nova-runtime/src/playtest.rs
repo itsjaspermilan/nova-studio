@@ -440,6 +440,8 @@ struct Walk {
     swing: u32,
     life_at_start: Option<String>,
     life: Option<String>,
+    /// The scene the step began in (its token): a `walk_to` a thing ends when the scene changes under it (a door).
+    scene: Option<String>,
 }
 
 const WALK_STUCK_FRAMES: u32 = 120;
@@ -834,6 +836,7 @@ impl Playtest {
         if !started {
             let walk = &mut self.at.as_mut().expect("a step is playing").walk;
             walk.started = true;
+            walk.scene = game.scene_now().map(|(token, _)| token);
             if let Some(g) = &thing {
                 walk.foes = Some(g.count);
                 walk.life_at_start = g.hp.clone();
@@ -1084,6 +1087,26 @@ impl Playtest {
         } else {
             ("units", ("x", "y"))
         };
+        // A walk into a thing that changed the scene (a door) went where it was going: it ends here, and does not walk on
+        // to the next thing of that name or tag in the new scene.
+        if let Aim::Entity(name) = &aim
+            && let Some(start) = self.at.as_ref().and_then(|a| a.walk.scene.clone())
+            && let Some((now, scene)) = game.scene_now()
+            && now != start
+        {
+            let walk = &mut self.at.as_mut().expect("a step is playing").walk;
+            walk.over = true;
+            let text = format!(
+                "{label}: walk_to '{name}': reached after {} frames, and the scene changed to '{scene}' (a door), so the step ends there; '{who}' is at {} {}, {} {} in '{scene}'",
+                walk.frames + 1,
+                names.0,
+                short(x),
+                names.1,
+                short(y)
+            );
+            self.results.push(text);
+            return true;
+        }
         let (goal, thing) = match &aim {
             Aim::Point(px, py) => ((*px, *py), None),
             Aim::Entity(name) | Aim::Fight(name) => {

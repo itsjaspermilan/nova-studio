@@ -637,6 +637,13 @@ function H.path(who, plane, tx, ty, name, avoid, reach)
   return { points = points, found = found, looked = looked }
 end
 
+-- The scene that runs now: a token that differs each time a scene is built (entered again too), and its name.
+function H.scene_now()
+  local W = nova.world
+  if not (W and W.started and W.scene) then return nil end
+  return tostring(W.scene), W.scene_name and (W.scene_name:gsub("^scenes%.", "")) or "?"
+end
+
 -- ---------------------------------------------------------------- a run in which the hero cannot die
 local PINS = { "hp", "health", "hearts", "lives", "life", "energy" }
 local god
@@ -951,6 +958,12 @@ impl Game {
             t.get::<String>("text").ok()?,
             t.get::<Option<bool>>("target").ok()?.unwrap_or(false),
         ))
+    }
+
+    /// The scene that runs now, as a token that changes whenever a scene is built (entered again too) and its name.
+    pub fn scene_now(&self) -> Option<(String, String)> {
+        let (token, name) = self.playtest_call::<(Option<String>, Option<String>)>("scene_now", ()).ok()?;
+        Some((token?, name.unwrap_or_default()))
     }
 
     /// Puts the hero's life back (a run with `invincible`): who it is, the fields pinned and how often they were lower.
