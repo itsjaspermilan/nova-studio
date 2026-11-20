@@ -20,7 +20,9 @@ import { meshOf } from "../src/lib/model-mesh";
 import { evaluate } from "../src/lib/modifiers";
 import { encodePng } from "../src/lib/png-encode";
 import { type Raster } from "../src/lib/pixels";
+import { searchApi } from "./api";
 import { pngOf } from "./draw";
+import { previewModel } from "./models";
 import { playGame, ROUTE_HELP } from "./play";
 import { previewSprite, writeSprite } from "./sprites";
 import { PRESETS, DEFAULTS, RANGES, WAVES, cleanArpNotes, fromJson as sfxFromJson, render, toJson, type SfxParams } from "../src/lib/sfx";
@@ -122,6 +124,14 @@ const tools: Tool[] = [];
 const tool = (name: string, description: string, properties: Record<string, unknown>, required: string[], handler: (a: Args) => Result) =>
   tools.push({ name, description, properties: { project, ...properties }, required, handler });
 
+tool(
+  "api",
+  "Look up the Lua API (nova.*) by word instead of reading the long reference: returns the signatures, option tables and descriptions of what matches, best first. `query` is one or more words, all of which must match: \"camera\", \"model clip\", \"tilemap solid\", \"sound volume\", \"walls\", \"nova.cam.follow\". With no query it lists the groups (Drawing, Scenes and entities, Entity methods, Input, Sound, 3D, Physics, ...) and the fields every entity has; `group` lists everything in one group. It reads the same file the studio's autocomplete does, which a test keeps in step with the real API. Start here; docs/agents.md says how the pieces fit, docs/project-format.md is the full reference.",
+  { query: { type: "string" }, group: { type: "string", description: 'Only this group, for example "Entity methods" or "Sound".' }, limit: { type: "number", description: "How many entries to show in full (12)." } },
+  [],
+  (a) => searchApi(String(a.query ?? ""), a.limit ?? 12, a.group ? String(a.group) : undefined),
+);
+
 tool("project_create", "Create a new Nova project folder with nova.json and an empty main.lua (nothing is overwritten).", { name: { type: "string", description: "The game's name." } }, ["name"], (a) => {
   const root = projectRoot(a);
   if (existsSync(join(root, "nova.json"))) throw new Error(`${root} already has a nova.json`);
@@ -209,36 +219,28 @@ tool(
 
 tool(
   "model_preview",
-  "Render a picture of a model of this project (headless, in the game's own renderer) and return it. Use it to look at what you made. Angles in degrees.",
-  { name: { type: "string" }, yaw: { type: "number", description: "Turn around the model (0 = from the front, +z)." }, pitch: { type: "number" }, distance: { type: "number", description: "World units from the model's middle." }, size: { type: "number", description: "Roughly the model's height in world units (for centring). Default 1.5." }, width: { type: "number" }, height: { type: "number" } },
-  ["name"],
-  (a) => {
-    const root = projectRoot(a);
-    const name = safeName(a.name, "Model");
-    const dir = mkdtempSync(join(tmpdir(), "nova-preview-"));
-    try {
-      mkdirSync(join(dir, "models"));
-      writeFileSync(join(dir, "models", `${name}.glb`), readFileSync(inside(root, `models/${name}.glb`)));
-      writeFileSync(join(dir, "nova.json"), '{"format":1,"name":"preview"}');
-      const yaw = ((a.yaw ?? 35) * Math.PI) / 180;
-      const pitch = ((a.pitch ?? 22) * Math.PI) / 180;
-      const d = a.distance ?? 4;
-      const mid = (a.size ?? 1.5) / 2;
-      const eye = [d * Math.sin(yaw) * Math.cos(pitch), mid + d * Math.sin(pitch), d * Math.cos(yaw) * Math.cos(pitch)];
-      writeFileSync(
-        join(dir, "main.lua"),
-        `function update(dt)\n  nova.clear(120, 150, 190)\n  nova.light { dir = { -0.5, -1, -0.4 }, ambient = { 110, 115, 130 } }\n  nova.camera(${eye.join(", ")}, 0, ${mid}, 0, 45)\n  nova.model("${name}", 0, 0, 0)\nend\n`,
-      );
-      const out = join(dir, "shot.png");
-      const r = run(novaBin, ["run", dir, "--headless", "--frames", "3", "--size", `${a.width ?? 640}x${a.height ?? 480}`, "--capture", out]);
-      if (!existsSync(out)) throw new Error(`no picture was made:\n${r.out}`);
-      const keep = join(tmpdir(), `nova-preview-${name}-${Date.now()}.png`);
-      writeFileSync(keep, readFileSync(out));
-      return { text: `preview of ${name} (saved at ${keep})`, images: [keep] };
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+  "Render a picture of a model of this project (headless, in the game's own renderer) and return it. Use it to look at what you made: at rest, posed by an animation clip, or as a strip of a clip. Angles in degrees. " +
+    "At rest: `yaw`, `pitch`, `distance` place the camera (the default looks from the front right, a little above). The answer lists the model's clips. " +
+    "Posed: `clip` and `time` (seconds) show the model as that clip poses it at that moment. " +
+    "A strip: `clip` and `strip: 8` return ONE picture with eight moments across the clip (2 to 16), a row from the front and a row from the side by default (`views`: front, side, left, back, top, quarter, or a yaw in degrees), the time under each, on a ground line at y = 0, so a walk can be read like a film strip and feet that float or sink can be seen. " +
+    "With a clip the text also gives the height of each part's joint above the ground at every moment (the lowest parts, the feet, first), so \"the feet meet the ground\" can be checked in numbers. " +
+    "Which way a turn goes (the model file's `rotation`, a clip's rotation keys, and rx, ry, rz in Lua; right-handed, y up, the model's front is +z): +x tips the top of a part towards the front (a leg hanging down swings back; an arm raised forward is a negative x turn); +y turns the part's front towards the model's +x side (to the viewer's right when seen from the front); +z tips the top of a part towards the model's -x side (a limb hanging down swings out towards +x).",
+  {
+    name: { type: "string" },
+    clip: { type: "string", description: "Pose the model by this animation clip." },
+    time: { type: "number", description: "Seconds into the clip (0 when left out). With `strip`, every moment is at this time." },
+    strip: { type: ["number", "boolean"], description: "Show this many moments across the clip in one picture (true is 8)." },
+    views: { type: "array", items: { type: ["string", "number"] }, description: 'The sides to look from, one row each: "front", "side" (the +x side), "left", "back", "top", "quarter", or a yaw in degrees. A strip shows front and side.' },
+    yaw: { type: "number", description: "Turn around the model (0 = from the front, +z). Used when no `views` are given." },
+    pitch: { type: "number" },
+    distance: { type: "number", description: "World units from the model's middle." },
+    size: { type: "number", description: "Roughly the model's height in world units (for framing). 1.5 for a plain picture; with a clip or views it is guessed from the joints." },
+    width: { type: "number", description: "Of each picture (640; 240 in a strip)." },
+    height: { type: "number", description: "Of each picture (480; 300 in a strip)." },
+    parts: { type: "string", description: '"all": list the joint height of every part, not just the eight lowest.' },
   },
+  ["name"],
+  (a) => previewModel(projectRoot(a), safeName(a.name, "Model"), a, (args, timeout) => run(novaBin, args, timeout), keepPicture),
 );
 
 tool(

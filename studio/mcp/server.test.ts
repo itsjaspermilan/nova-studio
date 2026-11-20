@@ -17,11 +17,25 @@ const crate = { version: 1, scale: 0.0625, parts: [{ name: "body", origin: [0, 0
 
 describe("the Nova MCP server", () => {
   it("offers its tools with names, descriptions and schemas", () => {
-    expect(tools.map((t) => t.name)).toEqual(expect.arrayContaining(["project_create", "model_write", "sfx_write", "song_write", "sprite_write", "scene_write", "check", "screenshot"]));
+    expect(tools.map((t) => t.name)).toEqual(expect.arrayContaining(["api", "project_create", "model_write", "model_preview", "sfx_write", "song_write", "sound_report", "sprite_write", "sprite_preview", "scene_write", "scene_preview", "check", "play", "screenshot"]));
     for (const t of tools) {
       expect(t.description.length).toBeGreaterThan(20);
       expect(t.properties.project).toBeDefined();
     }
+  });
+
+  it("looks the Lua API up by word", () => {
+    const follow = text(call("api", { query: "camera follow" }));
+    expect(follow).toContain("nova.cam.follow(entity [, lerp [, snap]])");
+    expect(follow).toContain("nova.cam3.follow(");
+    expect(text(call("api", { query: "nova.cam.to_screen" })).split("\n")[0]).toBe("nova.cam.to_screen(x, y) -> x, y");
+    expect(text(call("api", { query: "slide" }))).toMatch(/^self:slide\(/);
+    expect(text(call("api", { query: "model clip", limit: 2 }))).toMatch(/\.\.\. and \d+ more: /);
+    expect(text(call("api", {}))).toMatch(/Entity methods \(\d+\): self:destroy/);
+    expect(text(call("api", { group: "Sound" }))).toContain("nova.music.play");
+    expect(text(call("api", { query: "flip" }))).toContain("flip_x, flip_y (mirror the picture, not the hitbox)");
+    expect(text(call("api", { query: "depth" }))).toContain("depth (bigger is further back)");
+    expect(text(call("api", { query: "zebra crossing" }))).toMatch(/nothing in the Lua API matches all of "zebra crossing"/);
   });
 
   it("creates a project and lists what is in it", () => {
@@ -357,6 +371,33 @@ describe.skipIf(!built)("playing the game", () => {
     expect(r).toMatch(/ERROR: step 2 lua: .*nothing/);
     expect(() => use("play", { route: [{ walk: "right" }] })).toThrow(/route step 1 has "walk".*A route is a list of steps/);
     expect(() => use("play", { size: "big" })).toThrow(/WIDTHxHEIGHT/);
+  });
+
+  it("shows a model at rest, posed by a clip, and as a strip of a clip with the joint heights", () => {
+    // a post with an arm that lifts: the arm's joint rises from 0.5 to 1 over the clip
+    const model = {
+      version: 1, scale: 0.0625,
+      parts: [{ name: "post", origin: [0, 0, 0], rotation: [0, 0, 0], cubes: [{ from: [-2, 0, -2], size: [4, 24, 4], color: "#888888" }], children: [{ name: "arm", origin: [0, 8, 0], rotation: [0, 0, 0], cubes: [{ from: [0, -1, -1], size: [10, 2, 2], color: "#cc3333" }], children: [] }] }],
+      clips: [{ name: "lift", duration: 2, loop: false, tracks: [{ part: ["post", "arm"], prop: "position", keys: [{ t: 0, value: [0, 8, 0] }, { t: 2, value: [0, 16, 0] }] }] }],
+    };
+    use("model_write", { name: "post", model });
+    const rest = use("model_preview", { name: "post" });
+    expect(text(rest)).toMatch(/preview of post, at rest; .* each picture 640x480\nclips: lift 2\.00s/);
+    const one = decodePng(Buffer.from((rest.content[1] as { data: string }).data, "base64"));
+    expect([one.w, one.h]).toEqual([640, 480]);
+    const strip = use("model_preview", { name: "post", clip: "lift", strip: 3, size: 1.6 });
+    const said = text(strip);
+    expect(said).toContain("clip lift, 3 moments from 0 to 2.00 s");
+    expect(said).toMatch(/time\s+0\.00\s+1\.00\s+2\.00/);
+    expect(said).toMatch(/arm\s+0\.500\s+0\.750\s+1\.000/);
+    expect(said).toContain("the dark lines are the ground");
+    const sheet = decodePng(Buffer.from((strip.content[1] as { data: string }).data, "base64"));
+    expect(sheet.w).toBeGreaterThan(3 * 240); // three moments across, front over side
+    expect(sheet.h).toBeGreaterThan(2 * 300);
+    expect(text(use("model_preview", { name: "post", clip: "lift", time: 2, views: ["side"] }))).toContain("clip lift at 2.00 s");
+    expect(() => use("model_preview", { name: "post", clip: "wave", strip: 4 })).toThrow(/no clip 'wave' \(its clips: lift 2\.00s\)/);
+    expect(() => use("model_preview", { name: "post", strip: 4 })).toThrow(/give `clip` too/);
+    expect(() => use("model_preview", { name: "nothing" })).toThrow(/no models\/nothing\.glb/);
   });
 });
 
