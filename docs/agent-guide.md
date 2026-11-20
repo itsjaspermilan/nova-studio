@@ -26,9 +26,10 @@ Build once: `scripts/env.sh cargo build --release -p nova-runtime` (the tools th
 | You want to | Tool | It shows you |
 | --- | --- | --- |
 | know a Lua call's name, arguments, options | `api` (`{"query": "camera follow"}`, `{"group": "Entity methods"}`) | signatures and descriptions, one call or a whole group; ask it before reading `docs/project-format.md` |
-| start a game | `project_create` (`template: "topdown"` or `"platformer"` copies a working starter), then `project_info` | the files, grouped |
+| start a game | `project_create` (`template: "topdown"`, `"platformer"` or `"3d"` copies a working starter), then `project_info` | the files, grouped |
 | write Lua, `nova.json` | `write_file`, `read_file` | |
 | **get art fast: the makers** | `tileset_make`, `character_make`, `creature_make`, `items_make` (one `palette` for all) | the same picture as `sprite_preview`; ordinary sprites you can then change |
+| **get 3D art fast: the 3D makers** | `character3d_make` (a rigged person with seven clips), `prop3d_make` (trees, rocks, ruins, a house, gems: 26 kinds), `ground3d_make` (ground from a character map), `creature3d_make` | the same picture as `model_preview` (a clip strip for the animated ones); ordinary models and one-line entity files |
 | lay out a map from terrains | `scene_write` with `"paint"` | the map; edges and corners chosen for you |
 | get sound fast | `sfx_write { "purpose": "hit" }`, `song_make { "mood": "dungeon" }` | the `sound_report`, free of warnings |
 | draw or change a sprite by hand | `sprite_write` | the sheet magnified, frames numbered, a strip per animation |
@@ -38,8 +39,8 @@ Build once: `scripts/env.sh cargo build --release -p nova-runtime` (the tools th
 | make a sound effect | `sfx_write` | its `sound_report` |
 | make music | `song_write` | check it with `sound_report` |
 | "hear" a sound, a song, a mix, a run | `sound_report` | level, pitch, where the energy sits, warnings that say which setting to change, a spectrogram |
-| make a 3D model | `model_write` (`"shape": "tube"` and `"lathe"` for round limbs and turned shapes; a clip's `walk` or `ik` places the feet and says the speed at which they do not slide) | check it with `model_preview` |
-| look at a model, a pose, a clip | `model_preview` (`clip`, `strip: 8`; `names: [...]` for several at one scale) | the model whole (never cropped) with its size, a film strip of the clip on a ground line, or a contact sheet |
+| make a 3D model by hand | `model_write` (`"shape": "tube"` and `"lathe"` for round limbs and turned shapes; a clip's `walk` or `ik` places the feet and says the speed at which they do not slide; `bend: true` skins tubes and meshes, not lathes) | check it with `model_preview` |
+| look at a model, a pose, a clip | `model_preview` (`clip`, `strip: 8`; `names: [...]` for several at one scale, or `fit: "each"`) | the model whole (never cropped) with its size, a film strip of the clip on a ground line, or a contact sheet |
 | plan a 3D level | `scene_preview` on a scene with a `camera` | the scene from above: every object's footprint and name, what blocks in red, a grid in metres |
 | find mistakes | `check` | every problem with file and line; "no errors" means it loaded and ran. Also, as warnings: a `nova.<name>` that does not exist or a common call given the wrong kind of argument (`nova.music.stop({ fade = 1 })`) on a line that never ran, an entity moved twice, a room smaller than the screen |
 | play the game | `play` (a `route`) | a film strip, where everything is, the log, the sounds started; with `out`, each picture as a file |
@@ -135,6 +136,59 @@ tiles to the made tileset with `append`. To change a painted map, take the rows 
    clip. Fix every WARNING (clipping, a click at the start or end, energy below 80 Hz that a handheld cannot play): each ends
    with the setting to change, its value now and which way to move it. The presets of `sfx_write` pass the check as they are.
 
+## The shortest path to a checked 3D game
+
+`examples/starter-3d` is this path done once (`project_create { "name": "My Game", "template": "3d" }` copies it): a hero
+that walks, runs and jumps, a follow camera, a garden of ruins, four gems, footsteps, a song. Read `entities/hero.lua`
+(80 lines) and `scenes/garden.lua` (60) before writing your own; its `main.lua` lists the calls that made the rest.
+
+```json
+character3d_make { "name": "hero", "hair": "short", "outfit": "tunic", "outfit_color": "teal", "pack": "backpack", "entity": "hero" }
+prop3d_make      { "kinds": ["tree", "pine", "rock", "bush", "flowers", "grass", "arch", "pillar", "broken_wall", "crate", "lantern", "gem"], "palette": "bright meadow" }
+ground3d_make    { "name": "ground", "map": ["........", "..pppp..", "..psspp.", "...pp..."], "legend": { ".": "grass", "p": "path", "s": "paved" } }
+scene_write      { "name": "garden", "scene": { "version": 1, "camera": { "eye": [0, 3, 12], "target": [0, 1, 6], "fov": 55 }, "objects": [
+                   { "kind": "ground", "x": 0, "y": 0, "z": 0 }, { "kind": "hero", "name": "hero", "x": 0, "y": 0, "z": 6 },
+                   { "kind": "arch", "x": 0, "y": 0, "z": -6 }, { "kind": "tree", "x": -7, "y": 0, "z": -3, "props": { "ry": 1.2, "sx": 1.1 } },
+                   { "kind": "gem", "name": "gem1", "x": 0, "y": 0.85, "z": -8 } ] } }
+sfx_write        { "name": "step", "purpose": "step_grass" }
+song_make        { "name": "garden", "mood": "calm village" }
+```
+
+1. **Project.** `project_create` (`"template": "3d"` to start from the working game). The built-in actions are enough to
+   start: axes `move_x move_y look_x look_y`, buttons `a b x y l1 r1 ...`; input sources are `pad:south`, `pad:l1`, `key:Space`.
+2. **Character.** `character3d_make`: its answer gives the part names, the clips (idle, walk, run, jump, wave, attack,
+   hurt) with their lengths and events, **the speeds at which walk and run do not slide**, the capsule for the mover, and
+   the Lua for an animator. `"entity": "hero"` writes `entities/hero.lua`, a third-person walker to change.
+3. **Props.** `prop3d_make` with `kinds`: models and their entity files in one call, in the same palette as everything
+   else. The answer says how each blocks: scenery is `static = true`; what you bump into is `solid = true` as well (its
+   own shape blocks); a tree blocks with its trunk; `steps` and `dais` are walked up; a `lantern` says where its light goes.
+4. **Ground.** `ground3d_make` from rows of characters (each a square of `cell` metres, the first row furthest away). Its
+   middle is the origin; paths and paved places are at height 0, grass rolls up to `hills` around them.
+5. **Scene.** `scene_write` with a `camera` (that makes it a 3D scene) and objects by kind at `x`, `y` (up), `z`; turn
+   and size them with `"props": { "ry": radians, "sx": scale }`. `scene_preview` shows the plan from above with what
+   blocks in red. The scene's Lua (`scenes/<name>.lua`) sets the light in `enter`: copy the starter's six lines (sun in
+   front of or beside the first view, `nova.shadows { strength = 0.8 }`, sky, fog).
+6. **Mover and camera.** One call moves a body against everything the scene made solid:
+   `local m = nova.solid.move(x, y, z, radius, height, dx, dy, dz)` (the ground, every `solid = true` entity, tree
+   trunks); `m.ground` says it stands. The camera, in the scene's `update`:
+   `nova.cam3.follow(hero, { distance = 6, height = 2.9, look_height = 1.2, collide = true, min_distance = 1.7, hide = true, behind = 1.1, dt = dt })`:
+   `collide` keeps walls and tree crowns out of the view with no more code, `behind` swings it round behind the hero.
+   The stick as the camera sees it: `nova.cam3.forward()` and `nova.cam3.right()` (the starter's `hero.lua`).
+7. **Clips and events.** `nova.animator` with a blend state mixes idle, walk and run by speed so the feet keep step:
+   `move = { blend = "speed", points = { { 0, "idle" }, { 1.16, "walk" }, { 3.97, "run" } } }`, then `anim:set("speed", v)`.
+   Its `on_event` gets `"step"` as each foot lands: play the footstep there.
+8. **Sound.** As in 2D: `sfx_write` with a `purpose`, `song_make`, then `sound_report` on the mix.
+9. **Check, then play with `walk_to`.** `check`, then a route by names: `{ "walk_to": "gem1" }` finds its way round what
+   is solid, follows a camera that turns, and says what it is against if it cannot get there ("blocked by 'arch' (model
+   arch) at x 0, z -6"). `"size": "1280x720"` and `"out": "build/run1"` for pictures to look at closely.
+10. **Look.** The strip shows the route; `model_preview { "name": "hero", "clip": "walk", "strip": 8 }` shows a clip from
+    the front and side with the feet's heights; `"compare": "nova.shadows(nil)"` measures what a setting changes. More
+    than 24 pictures come back as several strips, none left out.
+
+What the makers do not have, make with `model_write` in the same style (flat faces, one palette), or read a made
+`.model.json`, change it and write it back. A walk for a model of your own: a clip with
+`"walk": { "legs": ["foot_l", "foot_r"], "stride": 10, "arms": ["arm_l", "arm_r"], "event": "step" }`.
+
 ## How to verify each kind of thing
 
 | Thing | Verified when |
@@ -143,7 +197,8 @@ tiles to the made tileset with `append`. To change a painted map, take the rows 
 | a level | `scene_preview`: tiles where you meant, every object on a sensible tile, no "NO entities/x.lua", solid tiles outlined |
 | movement, collisions | a `play` route with `until` reaches the place; a position you `print` stops where the wall is |
 | a fight, a pickup, a door | the `nova.log` line appears at a frame, and a count or a scene name you `print` changes; `walk_to` the thing and `fight` the tag get there without waypoints |
-| a walk clip | made with `walk`: move the entity at the speed the answer gives; the strip's standing foot reads 0.000 |
+| a walk clip | made with `walk` (or by `character3d_make`): move the entity at the speed the answer gives; the strip's standing foot reads 0.000, the hips rise over the standing leg |
+| a 3D level | `scene_preview` (the plan: what blocks is red), then a `play` route of `walk_to` steps by name ends with no warning |
 | an animation | `every: 5` over the action gives a strip in which the frames differ |
 | a sound effect | `sound_report`: no warnings, a level within about 10 dB of the others it plays beside |
 | music | `sound_report`: "loop seam: matches", and 6 to 10 dB under the effects in the mix table |
@@ -191,9 +246,12 @@ tiles to the made tileset with `append`. To change a painted map, take the rows 
   which way the sun travels against the camera, the ambient light, fog, the camera's eye and target. Shadows from a sun
   behind the camera hide behind what casts them, and a bright ambient with a strength under 0.8 makes them faint: put the
   sun in front of or beside the first view. `"compare": "nova.shadows(nil)"` measures what they change.
-- **3D, the things that cost a retry:** `nova.cam3.follow(target, { collide = true })` keeps walls and hills (what
-  `nova.solid.add` made solid) from coming between the camera and the hero; add `min_distance = 1.7, hide = true` so that
-  a camera squeezed under an arch shows the scene and not the back of a head. A model clip can carry `"events": [{ "t": 0,
+- **3D, the things that cost a retry:** `nova.cam3.follow(target, { collide = true })` keeps walls, hills, `solid = true`
+  entities and the crowns of scenery trees from coming between the camera and the hero, with nothing added by hand; add
+  `min_distance = 1.7, hide = true` so that a camera squeezed under an arch shows the scene and not the back of a head
+  (it first looks for room above). An entity is solid with `solid = true` beside its `model`; do not call
+  `nova.solid.clear()` in a scene's `enter` (the entities were added before it runs; the framework forgets them when the
+  scene ends). A base lower than the mover's `step` (0.35) is climbed: make plinths 0.4 high or more, steps 0.3 or less. A model clip can carry `"events": [{ "t": 0,
   "name": "step" }]`: the entity gets `on_clip_event(event, clip)` (the animator `on_event`), which is how footsteps keep time.
   `nova.scene_now()` is the running scene, for an entity that must tell it something. A clip's position keys are absolute (the
   part's origin in its parent), and a track's `part` is the chain of names from the top (`model_write`'s description has an

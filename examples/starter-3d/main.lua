@@ -1,0 +1,14 @@
+-- A tiny third-person starter: a walking, running, jumping hero, a camera that follows and keeps clear of things, a
+-- small garden of ruins, four gems to find, footsteps that keep time with the feet, one song.
+-- Read entities/hero.lua first, then scenes/garden.lua; docs/agent-guide.md ("The shortest path to a checked 3D game")
+-- says how each file was made and checked. Everything but the Lua came from these tool calls:
+--
+--   character3d_make { "name": "hero", "hair": "short", "hair_color": "brown", "outfit": "tunic", "outfit_color": "teal", "pack": "backpack" }
+--   prop3d_make      { "kinds": ["tree", "pine", "rock", "bush", "flowers", "grass", "arch", "pillar", "broken_wall", "crate", "lantern", "gem"] }
+--   ground3d_make    { "name": "ground", "map": ["............", ".....pp.....", "....sppss...", ...], "legend": { ".": "grass", "p": "path", "s": "paved" } }
+--   scene_write      { "name": "garden", "scene": { "version": 1, "camera": {...}, "objects": [ { "kind": "arch", "x": -1, "y": 0, "z": -8 }, ... ] } }
+--   sfx_write        { "name": "step", "purpose": "step_grass" }   (and "pickup", "jump")
+--   song_make        { "name": "garden", "mood": "calm village" }
+--
+-- prop3d_make and ground3d_make also wrote the one-line entity files (entities/tree.lua, arch.lua, ground.lua ...).
+nova.start("garden")

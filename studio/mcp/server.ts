@@ -142,13 +142,14 @@ tool(
 const TEMPLATES: Record<string, { folder: string; what: string }> = {
   topdown: { folder: "starter-topdown", what: "a walking hero seen from above, two rooms, solid tiles and things, a door each way" },
   platformer: { folder: "starter-platformer", what: "seen from the side: run and jump with coyote time, one-way platforms, a moving hazard, a pickup, a door to a second scene" },
+  "3d": { folder: "starter-3d", what: "third person in 3D: a rigged hero that walks, runs and jumps (clips blended by speed, footsteps from clip events), a follow camera that keeps clear of walls and tree crowns, a small garden of ruins on made ground, gems to collect, one song" },
 };
 
 tool(
   "project_create",
   "Create a new Nova project folder (nothing is overwritten). `template` starts it as a copy of a small working game to change, with its own name: " +
     `${Object.entries(TEMPLATES).map(([k, t]) => `"${k}" (${t.what})`).join("; ")}; "blank" (the default) is nova.json and an empty main.lua. ` +
-    "A copy is the fastest start: read its entities/hero.lua, play it, then replace its art with the makers (tileset_make, character_make) and its rooms with scene_write.",
+    "A copy is the fastest start: read its entities/hero.lua, play it, then replace its art with the makers (tileset_make, character_make; for \"3d\": character3d_make, prop3d_make, ground3d_make) and its rooms with scene_write.",
   { name: { type: "string", description: "The game's name." }, template: { type: "string", description: `"blank", ${Object.keys(TEMPLATES).map((k) => `"${k}"`).join(", ")}.` } },
   ["name"],
   (a) => {

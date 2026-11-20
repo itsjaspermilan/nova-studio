@@ -429,3 +429,108 @@ fn the_follow_camera_says_when_it_is_squeezed_and_can_hide_its_target() {
     g.run_lua("local h = nova.named(\"hero\") h.visible = false nova.cam3.follow(h, { distance = 6, smooth = 0, min_distance = 3, hide = true })", "t").unwrap();
     assert_eq!(g.lua_text("nova.named(\"hero\").visible").unwrap(), "false");
 }
+
+fn starter_3d() -> Game {
+    let folder = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/starter-3d");
+    let vfs: Rc<dyn Vfs> = Rc::new(nova_runtime::vfs::DirVfs::new(&folder).unwrap());
+    let mut g = Game::load(vfs).expect("the 3D starter loads");
+    g.upload(&mut FakeGpu);
+    g
+}
+
+/// The 3D starter (`project_create`'s "3d" template) is walked by the test player: to three gems by name, one of them
+/// through the arch, with a camera that swings behind the hero as it goes (the stick is relative to it), and up to a
+/// solid crate. Footsteps come from the walk and run clips' events.
+#[test]
+fn the_3d_starter_is_walked_gem_by_gem() {
+    let plan = r#"{
+      "steps": [
+        { "walk_to": "gem_court", "max": 600 },
+        { "walk_to": "gem_arch", "max": 900 },
+        { "walk_to": "gem_path", "max": 1200 },
+        { "walk_to": "crate", "max": 900 }
+      ],
+      "print": ["nova.scene_now().found", "nova.named('hero').steps", "nova.named('hero').y"]
+    }"#;
+    let (report, _) = play(&mut starter_3d(), plan, "starter3d");
+    assert_eq!(report["error"], Value::Null, "{report}");
+    assert_eq!(strings(&report["warnings"]).len(), 0, "{report}");
+    let route = strings(&report["route"]);
+    assert_eq!(route.len(), 4, "{route:?}");
+    for (i, gem) in ["gem_court", "gem_arch", "gem_path"].iter().enumerate() {
+        assert!(
+            route[i].contains(&format!("walk_to '{gem}': reached after")),
+            "{route:?}"
+        );
+    }
+    // the crate is solid: the walk ends against it, and that is being there
+    assert!(
+        route[3].contains("walk_to 'crate': stopped against it"),
+        "{route:?}"
+    );
+    let log = log(&report);
+    for n in 1..=3 {
+        assert!(
+            log.iter().any(|l| l.starts_with(&format!("gem {n} of 4"))),
+            "{log:?}"
+        );
+    }
+    let prints = &report["end"]["prints"];
+    assert_eq!(prints[0]["value"], "3");
+    let steps: f64 = prints[1]["value"].as_str().unwrap().parse().unwrap();
+    assert!(steps > 20.0, "footsteps from the clips' events: {steps}");
+    let sounds = report["sounds"].to_string();
+    assert!(
+        sounds.contains("step") && sounds.contains("pickup"),
+        "{sounds}"
+    );
+}
+
+/// A walk that cannot get there (a point inside the crate) says what it is against and what it tried, and the camera
+/// minds the scenery without the game adding it.
+#[test]
+fn a_stuck_3d_walk_names_what_blocks_and_the_camera_minds_tree_crowns() {
+    let plan = r#"{
+      "steps": [
+        { "walk_to": [1.4, -2.6], "radius": 0.2, "max": 900 }
+      ]
+    }"#;
+    let (report, _) = play(&mut starter_3d(), plan, "stuck3d");
+    let w = strings(&report["warnings"]);
+    assert!(
+        w.len() == 1
+            && w[0].contains("gave up")
+            && w[0].contains("blocked by 'crate' (model crate) at x 1.4, z -2.6")
+            && w[0].contains("no way round what is solid reaches that point")
+            && w[0].contains("It tried: 1 plan of a way round what is solid"),
+        "{w:?}"
+    );
+
+    // Under a tree (static scenery: only its trunk blocks a body), with the camera where its crown is: the follow
+    // camera's line of sight is stopped by the crown, though a body's ray along the same line is not.
+    let mut g = starter_3d();
+    g.update_input(1.0 / 60.0, 0.0, [960.0, 540.0], &InputFrame::default());
+    g.run_lua(
+        "nova.cam3.yaw = 0 local h = nova.named('hero') h.x, h.y, h.z = -8, 0, -11.5 nova.cam3.follow(h, { distance = 6, height = 2.9, look_height = 1.2, smooth = 0, collide = true })",
+        "t",
+    )
+    .unwrap();
+    let near: f64 = g.lua_text("nova.cam3.distance").unwrap().parse().unwrap();
+    assert!(near < 5.0, "the camera came in front of the crown: {near}");
+    assert_eq!(
+        g.lua_text("nova.solid.raycast(-8, 1.2, -11.5, 0, 1.7, 6, 6.3) == nil")
+            .unwrap(),
+        "true",
+        "a body's ray does not see the crown"
+    );
+    assert_eq!(
+        g.lua_text("nova.solid.sightline(-8, 1.2, -11.5, 0, 1.7, 6, 6.3) ~= nil")
+            .unwrap(),
+        "true"
+    );
+    // entering the scene again does not add its solid things a second time
+    let before = g.lua_text("nova.solid.count()").unwrap();
+    g.start_in_scene("garden").unwrap();
+    g.update_input(1.0 / 60.0, 0.1, [960.0, 540.0], &InputFrame::default());
+    assert_eq!(g.lua_text("nova.solid.count()").unwrap(), before);
+}

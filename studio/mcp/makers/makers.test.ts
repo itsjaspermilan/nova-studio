@@ -315,6 +315,11 @@ describe("project_create with a template", () => {
       for (const f of ["main.lua", "entities/hero.lua", "sprites/hero.png", "sprites/tiles.png"]) expect(existsSync(join(root, f)), `${template}/${f}`).toBe(true);
       expect(readdirSync(root)).not.toContain("build");
     }
+    // the 3D starter: its models, its scene and the entity files the makers wrote
+    const three = join(dir, "three");
+    expect(text(use("project_create", { name: "My 3D", template: "3d" }, three))).toContain("as a copy of examples/starter-3d");
+    for (const f of ["main.lua", "entities/hero.lua", "entities/ground.lua", "models/hero.glb", "models/ground.glb", "scenes/garden.scene.json", "music/garden.song.json"]) expect(existsSync(join(three, f)), `3d/${f}`).toBe(true);
+    expect(readdirSync(three)).not.toContain("build");
     // the platformer keeps its input action for jumping
     expect(JSON.parse(readFileSync(join(dir, "platformer/nova.json"), "utf8")).input.jump).toContain("key:KeyZ");
     use("project_create", { name: "Plain" }, join(dir, "plain"));

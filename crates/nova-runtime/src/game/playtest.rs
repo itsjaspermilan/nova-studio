@@ -568,6 +568,10 @@ function H.blocked(who, plane, name, avoid)
     for _, o in ipairs(W.list) do
       if o ~= e and not rawget(o, "_dead") and type(o.x) == "number" and math.abs(o.x - x) < 0.01 and math.abs((o.z or 0) - z) < 0.01 and model_of(o) == model then return o end
     end
+    -- (a piece of scenery the scene file named is not among the live entities, but the scene knows it by its name)
+    for _, o in pairs(W.scene or {}) do
+      if type(o) == "table" and o ~= e and type(rawget(o, "x")) == "number" and math.abs(o.x - x) < 0.01 and math.abs((rawget(o, "z") or 0) - z) < 0.01 and model_of(o) == model then return o end
+    end
   end
   if plane == "xz" then
     local r, h = mover3()

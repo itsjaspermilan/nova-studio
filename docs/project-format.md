@@ -345,7 +345,8 @@ frame (`nova.solid.sightline`) and knows only `nova.solid`: not `nova.walls`, th
 includes, without the game adding anything: every entity with `solid = true`, and every piece of static scenery whose model has
 collision shapes (a tree blocks the walker with its trunk only, but the camera with its whole shape, so a jump does not fill
 the screen with the inside of a crown; a piece that should not, says `solid = false`). `behind = 1.2` swings the camera round
-behind the way the target moves (radians a second; not while it walks straight at the camera). The follow camera eases in from
+behind the way the target moves (radians a second; not while it walks straight at the camera). With `min_distance`, a
+camera squeezed nearer than that first looks for room above (a steep view down over what is in the way). The follow camera eases in from
 wherever the camera was: for the first frames of a scene pass `smooth = 0` so that it starts behind the target.
 
 **Seeing how the game is doing.** `nova.stats()` returns the last frame's `fps`, `lua_ms`, `render_ms`, `draws`, `triangles`, `sprites`,
@@ -646,6 +647,10 @@ The body slides along walls of any angle, walks up slopes up to `slope` degrees 
 to `step` metres (0.35) and says how far (`stepped`, so a camera can ease over it), follows ground down to `snap` metres (0.3)
 so it does not launch off a slope, and bumps its head (`ceiling`). A move goes in steps of half the width at most, so a fast fall
 does not go through a floor; the triangles are kept in a grid (4 m cells), so a level of tens of thousands of triangles is fine.
+A body moved with `nova.solid.move` also stops at the static scenery that blocks (the collision circles of a tree's trunk or a
+post, which have no height: `nova.scenery.push` is applied for you; `scenery = false` in the options leaves it out), so one
+call moves a walker against everything a scene has made solid.
+
 **Solid scene objects in one line.** An entity with a model and `solid = true` (`nova.entity { model = "arch", solid = true }`,
 or `"props": { "solid": true }` on one scene object) has its model's triangles added where it is placed, turned and scaled as
 placed: bodies moved with `nova.solid.move` stop at it and climb it, the follow camera keeps it out of the view, and the test

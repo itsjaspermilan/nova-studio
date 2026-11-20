@@ -134,7 +134,7 @@ describe("character3d_make", () => {
 
   it.skipIf(!built)("stands on the ground in every clip, bends only its limbs, and writes a walker that walks", () => {
     const said = text(use("character3d_make", { name: "hero", hair: "long", outfit: "armor", item: "sword", entity: "hero" }));
-    expect(said).toMatch(/^models\/hero\.model\.json and models\/hero\.glb and entities\/hero\.lua: a average figure 1\.6\d* m high/);
+    expect(said).toMatch(/^models\/hero\.model\.json and models\/hero\.glb and entities\/hero\.lua: an average figure 1\.6\d* m high/);
     expect(said).toMatch(/speeds at which the feet do not slide: walk 1\.163 m\/s, run 3\.968 m\/s/);
     expect(said).toContain("clips: idle 2.4 s (loops); walk 0.86 s (loops) [step when each foot lands]; run 0.56 s (loops) [step when each foot lands]; jump 0.8 s; wave 1.6 s [wave at 0.3]; attack 0.5 s [hit at 0.22]; hurt 0.45 s");
     expect(said).toMatch(/capsule for nova\.solid\.move: radius 0\.3, height 1\.6/);

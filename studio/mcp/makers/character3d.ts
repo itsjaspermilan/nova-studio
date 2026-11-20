@@ -392,14 +392,14 @@ export function makeCharacter3d(a: Args): Character3d {
   const speeds = { walk: r3(walkStride / (0.6 * walkD)), run: r3(runStride / (0.36 * runD)) };
   const height = r3(hipsY + spineUp + neckUp + headC + headR[1] + (hat === "wizard" ? 0.3 : hair === "spiky" ? 0.1 : 0.02));
   const capsule = { radius: r3(Math.max(0.24, 0.3 * wide * (build === "child" ? 0.8 : 1))), height: r3(Math.max(1, hipsY + spineUp + neckUp + headC + headR[1])) };
-  const wears = [outfit === "armor" ? "armour" : `a ${outfit}`, hat !== "none" ? `a ${hat === "wizard" ? "wizard's hat" : hat === "straw" ? "straw hat" : hat}` : "", pack !== "none" ? `a ${pack}` : "", item !== "none" ? `a ${item} in the right hand` : ""].filter(Boolean).join(", ");
+  const wears = [outfit === "armor" ? "armour" : `a ${outfit}`, hat !== "none" ? `a ${hat === "wizard" ? "wizard's hat" : hat === "straw" ? "straw hat" : hat}` : "", pack !== "none" ? `a ${pack}` : "", item !== "none" ? `${item === "axe" ? "an" : "a"} ${item} in the right hand` : ""].filter(Boolean).join(", ");
   return {
     model,
     parts: ["hips", "spine", "head", "arm_l", "fore_l", "hand_l", "arm_r", "fore_r", "hand_r", "leg_l", "shin_l", "foot_l", "leg_r", "shin_r", "foot_r"],
     clips: clips.map((c) => ({ name: c.name, duration: c.duration, loop: !!c.loop, events: c.name === "walk" || c.name === "run" ? ["step when each foot lands"] : (c.events ?? []).map((e: Args) => `${e.name} at ${e.t}`) })),
     speeds,
     capsule,
-    says: `a ${build} figure ${height} m high with ${hair === "bald" ? "no hair" : `${hair} hair`}, wearing ${wears}; it faces +z and stands on y = 0`,
+    says: `${build === "average" ? "an" : "a"} ${build} figure ${height} m high with ${hair === "bald" ? "no hair" : `${hair} hair`}, wearing ${wears}; it faces +z and stands on y = 0`,
     lua: (name, sp) => `local Hero = nova.entity { model = "${name}", tags = { "hero" }, velocity = false }
 function Hero:create()
   self.anim = nova.animator("${name}", { start = "move", fade = 0.15, states = {

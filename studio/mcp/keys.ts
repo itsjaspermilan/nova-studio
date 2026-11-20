@@ -71,6 +71,10 @@ export const MOVED: Record<string, Moved> = {
   model_preview: { model: "name", zoom: "distance", angle: "yaw", frames: "strip" },
   sfx_write: { freq: "params.freq", wave: "params.wave", volume: "params.volume" },
   sound_report: { name: "sound", names: "sounds", path: "file" },
+  prop3d_make: { type: "kind", prop: "kind", names: "kinds", props: "kinds", scale: "`props.sx` on the scene object that places it", colour: "color" },
+  character3d_make: { color: "outfit_color", colour: "outfit_color", weapon: "item", held: "item", backpack: '`pack`: "backpack"', clips: "nothing: it always makes idle, walk, run, jump, wave, attack and hurt", height: "build" },
+  creature3d_make: { type: "kind", colour: "color", scale: "size" },
+  ground3d_make: { rows: "map", tiles: "map", paint: "legend", size: "cell", scale: "cell", height: "hills" },
 };
 
 // The structures the tools document, with the keys each has. These files are open (a scene may carry a game's own keys,

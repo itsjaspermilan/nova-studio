@@ -1278,6 +1278,7 @@ end
 --- its whole shape, crown and all) is in the way, the camera moves in along its line of sight to just in front of
 --- it (`margin`, 0.3, is how far in front; it never comes nearer than 0.5), and eases back out when the way is clear.
 --- behind = 1.2 swings the camera round behind the way the target walks (radians a second), unless the game turns it.
+--- With min_distance, a camera squeezed nearer than that first looks for room above (a steep view down over the wall).
 --- min_distance = 1.7 with hide = true stops drawing the target while the camera is squeezed nearer than that (see below);
 --- cam3.distance and cam3.squeezed say how near it is, for a game that would rather fade the target itself.
 local behind_last
@@ -1313,6 +1314,16 @@ function cam3.follow(target, opts)
       if hit then
         local d = math.max(math.min(0.5, len), hit - margin)
         if d < len then ex, ey, ez = lx + dx * d, ly + dy * d, lz + dz * d end
+        -- squeezed nearer than min_distance: before settling for that, look for room above (a steep view down over the
+        -- wall that is in the way); under a roof or an arch there is none, and the camera stays in close
+        if opts.min_distance and d < opts.min_distance then
+          local ux, uy, uz = dx * 0.35, 1, dz * 0.35
+          local ul = sqrt(ux * ux + uy * uy + uz * uz)
+          ux, uy, uz = ux / ul, uy / ul, uz / ul
+          local over = nova.solid.sightline(lx, ly, lz, ux, uy, uz, len + margin)
+          local d2 = over and math.max(math.min(0.5, len), over - margin) or len
+          if d2 > d and d2 >= opts.min_distance then ex, ey, ez = lx + ux * d2, ly + uy * d2, lz + uz * d2 end
+        end
       end
     end
   end
