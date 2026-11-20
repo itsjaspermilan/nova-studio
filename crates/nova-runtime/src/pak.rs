@@ -28,10 +28,17 @@ pub fn editor_only(path: &str) -> bool {
 /// Reads every project file the game uses through `source` and packs them (not the studio's sources: see `editor_only`). The
 /// manifest must be present.
 pub fn pack(source: &dyn Vfs) -> Result<Vec<u8>, String> {
+    // (what the manifest's "ignore" names is not part of the game: an assistant's screenshots, tools and notes)
+    let ignore = source
+        .read(crate::project::MANIFEST)
+        .ok()
+        .and_then(|bytes| String::from_utf8(bytes).ok())
+        .map(|text| crate::project::ignore_list(&text))
+        .unwrap_or_default();
     let entries: Vec<VfsEntry> = source
         .list()?
         .into_iter()
-        .filter(|e| !editor_only(&e.path))
+        .filter(|e| !editor_only(&e.path) && !crate::project::ignored(&ignore, &e.path))
         .collect();
     if !entries.iter().any(|e| e.path == crate::project::MANIFEST) {
         return Err(format!(

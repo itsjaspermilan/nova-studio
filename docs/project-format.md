@@ -4,7 +4,43 @@ Status: implemented in `crates/nova-runtime` (`vfs.rs`, `project.rs`, `assets.rs
 Run a project with `nova run <folder>`. The example is `examples/rally-demo/`.
 Two layers: an **immediate-mode API** (draw whatever you like from `update`/`draw`) and,
 on top of it, a **scene and entity framework** you opt into with `nova.start("scene")`.
-Tilemaps, sprite animation, audio and saves come later and will be added here as they land.
+This file is the reference and it is long: 3D comes first in several sections because it needs the most words. For a 2D
+game start with the quick reference below; an assistant making a game starts with `docs/agents.md`.
+
+## 2D quick reference
+
+The questions a first 2D game asks, answered in one place (the sections further down have the detail).
+
+- **Units and size.** The screen is always 540 units high (960 wide at 16:9), whatever the device. A 16-pixel sprite is 16
+  units: small. Draw pixel art bigger with the entity's `sx`, `sy` (say 4) and a tileset's `"scale"` (4), and keep
+  positions and hitboxes in units. `world_height` in `nova.json` is only how many pixels the world is rendered with.
+- **Where a sprite is.** An entity's sprite is centred on its `x, y`; `pivot = { 0.5, 1 }` puts its feet there. The camera is
+  applied for you. In your own `draw()`, `nova.sprite` and `nova.rect` take *screen* points: convert world points with
+  `nova.cam.to_screen(x, y)` first, or the thing is drawn in the wrong place (often off the screen).
+- **Facing left.** `self.flip_x = true` mirrors the picture only. A negative `sx` also mirrors the hitbox offsets.
+- **Hitboxes** are offsets from `x, y` in the sprite's own pixels: `hitbox = { x, y, w, h }` (or `{ r = 8 }`). They *are*
+  scaled by `sx`, `sy`, so a hitbox drawn for the art keeps fitting when the art is shown four times bigger. Without one the
+  whole sprite is the box.
+- **What draws over what.** Bigger `depth` is further back; equal depths draw in the order things were made. For a
+  top-down game where the lower thing must cover the upper, set `self.depth = -self.y` every step (the feet's y). A tile layer
+  is one entity with one depth: ground at `"depth": 90`, tree crowns and roofs in a second layer at a negative depth below
+  every character's (`"depth": -10000`).
+- **Solid things.** Tiles: list their numbers in the layer's `"solid"` and move with `self:slide(dx, dy)`, which stops at
+  them. Anything else (a bush, a sign, a chest): give its entity a hitbox and a tag (`tags = { "solid" }`), and after
+  `slide` step back when `self:touching("solid")` is not nil (try the x move, undo it if it touches, then the y move:
+  `examples/starter-topdown/entities/hero.lua` does this).
+- **The camera** is centred on `nova.cam.set(x, y)` or follows with `nova.cam.follow(entity, lerp, snap)`; a scene's `width`
+  and `height` keep the view inside the room, and a room smaller than the screen is centred. `set` after `follow` stops the
+  following.
+- **Names.** A scene object's `"name"` is a field of the scene (`self.hero`), is found with `nova.named("hero")`, and is the
+  entity's own `self.name`.
+- **Input.** `nova.input.down/pressed/released("a")`, `nova.input.axis("move_x")`; the built-in actions are `left right up
+  down a b x y l1 r1 l2 r2 start select` and the axes `move_x move_y look_x look_y`; add your own in `nova.json`'s `input`.
+  `nova.input.prompt("a")` gives the text and the glyph picture name to show for an action, and `nova.input.glyph(source)`
+  for one button.
+- **Text** is drawn in the UI layer, always over UI rectangles and sprites (a fade rectangle cannot cover text: fade the
+  text's own colour alpha with it). `line_spacing = 1.5` sets lines further apart; the pixel fonts need it.
+- **Sound** is not played in headless runs; `nova run --headless --audio-out run.wav` writes it to a file instead.
 
 ## A project is a folder
 
@@ -19,15 +55,19 @@ my-game/
   scenes/*.lua     one scene class per file, with an optional scenes/<name>.scene.json
   lib/util.lua     modules, loaded with require("lib.util")
   shaders/*.wgsl   custom shaders: one `fn shade(s: Surface) -> vec4<f32>` each (docs/shaders.md)
-  anything else    ignored for now (audio and fonts are recognised by extension but not used yet)
+  sounds/*.wav|ogg  sound effects; music/*.ogg streamed music; fonts/*.ttf; locales/*.json; animations/*.anim.json
+  anything else    ignored
 ```
 
 `nova.json` can also say `"materials": true` (or a list of model names) to light models by their glTF material: normal maps,
 metallic, roughness and emission (docs/materials.md). Without it every model keeps the plain look.
 
 Hidden files and folders (starting with `.`), symbolic links and the top-level folders
-`build`, `target`, `node_modules` and `dist` are never part of a project. At most 20,000
-files, 64 MiB per file and 1 GiB in total.
+`build`, `target`, `node_modules`, `dist` and `exports` are never part of a project. At most 20,000
+files, 64 MiB per file and 1 GiB in total. **Every PNG anywhere else in the folder is a sprite** and goes into the sprite
+atlas (except `icon.png`, `boxart.png` and `textures/`), so screenshots and reference pictures kept in the project can fill it
+or break it. Keep working files in `build/` or a dot-folder, or name them in `nova.json`: `"ignore": ["shots", "tools",
+"notes.md"]` (files, or folders with everything in them) are not loaded and not packed by `nova pack` and the exports.
 
 ### Hills
 
@@ -82,6 +122,8 @@ Rally's are rendered by the game itself (`scripts/rally/art.sh`).
 | `graphics` | no | Opt-in quality settings of the world picture, all off by default: `{ "hdr": true, "msaa": 4, "shadow_cascades": 3, "ibl": true, "anisotropy": 16 }`. `nova.graphics{}` changes them while the game runs. What each does and costs: `docs/switch-class-graphics.md`. |
 | `sprite_filter` | no | `"pixel"` (default): pictures are drawn with sharp pixels, as pixel art wants. `"smooth"`: bilinear filtering, for drawn (not pixel-art) pictures shown larger or smaller than they are; each picture then gets a one-pixel border copied from its edge in the atlas so that edges do not bleed. Draw such pictures at about twice the size they are shown in the game's units, since a handheld's screen has about two pixels to each. |
 | `version` | no | Free-form version string. |
+| `input` | no | The game's own input actions (see "Input, time, log"). |
+| `ignore` | no | Files and folders that are not part of the game: `["shots", "tools", "notes.md"]`. They are not loaded (their pictures stay out of the sprite atlas) and not packed. |
 | `local_network` | no | `true`: the game plays with other devices on the same wifi (`nova.net`, see `docs/local-coop.md`); an Android build then has network access. Default `false`: `nova.net` refuses and the APK asks for none. |
 
 Unknown keys produce a warning and are ignored. Malformed manifests are rejected with an
@@ -669,7 +711,9 @@ return nova.entity(require("entities.enemy"), { hp = 500, tags = { "boss" } })
   other field is a default value for new instances (tables are copied per instance).
 - Inherited methods, defaults and tags come from the parent; a child can override any of them.
 - Built-in fields: `x`, `y`, `z`, `vx`, `vy`, `vz` (velocity moves the entity each step), `sx`,
-  `sy` (scale), `angle` (radians), `alpha`, `visible`, `tint` (`{r,g,b}`), `depth`, `id`.
+  `sy` (scale), `flip_x`, `flip_y` (mirror the sprite's picture and nothing else: a character facing left;
+  a negative `sx` mirrors the hitbox's offsets too), `angle` (radians), `alpha`, `visible`, `tint` (`{r,g,b}`), `depth`, `id`,
+  and `name` when a scene file named the object.
   Do not keep your own velocity in `vx`/`vy`/`vz` if your code also moves the entity: the engine adds it again
   (use `velx`, `velz`...). A field with the same name as a method of the same class (`place = 3` and
   `function Car:place()`) is an error, because the field would hide the method.
@@ -682,7 +726,11 @@ return nova.entity(require("entities.enemy"), { hp = 500, tags = { "boss" } })
 - `on_collide_<tag>(self, other)` methods run once per overlapping pair per step. A broad phase
   keeps this fast with many entities. If either entity is destroyed in a handler, later handlers
   for it are skipped.
-- A custom `draw(self)` replaces the default drawing (call `nova.Entity.draw(self)` to keep it).
+  The offsets and the size are multiplied by `sx`, `sy`, so a hitbox given in the sprite's pixels fits at any scale.
+- A custom `draw(self)` replaces the default drawing (call `nova.Entity.draw(self)` to keep it). **The default drawing
+  applies the 2D camera; your own does not:** `nova.sprite` and `nova.rect` take screen points, so convert the entity's
+  world position first: `nova.sprite("sword", nova.cam.to_screen(self.x + 8, self.y))`. Without that the thing is drawn
+  at its world coordinates on the screen, usually out of sight.
 
 **Methods:** `destroy()`, `is_alive()`, `distance_to(x, y | entity)`, `angle_to(...)`,
 `move_toward(x, y, step | entity, step)` (true on arrival), `set_velocity(angle, speed)`,
@@ -783,7 +831,7 @@ the scene is built: a gradient behind the 3D view (`horizon` defaults to `top`),
 (default 40) and `far` (default 250) metres. `look` and `wind` (optional) do what `nova.look{...}` and `nova.wind{...}` do (the same
 options and ranges; they stay until changed, so a scene that wants none says `"look": {}`): bloom, ambient occlusion, colour, and the wind that bends
 the models drawn with a `sway`. In a 3D scene an object's `x` goes across, `y` up and `z` towards the
-viewer, and the props `ry`, `rx`, `rz` (radians) and `sx` (size) turn and scale a model entity. **A `name` becomes a field of the scene** (`self.hero`); names must be unique,
+viewer, and the props `ry`, `rx`, `rz` (radians) and `sx` (size) turn and scale a model entity. **A `name` becomes a field of the scene** (`self.hero`), is what `nova.named("hero")` finds, and is the entity's own `self.name` (from `create` on; an entity kind that has a `name` field of its own keeps that); names must be unique,
 start with a letter and not collide with the scene's own methods. Errors are reported with the file
 and the exact place, for example `scenes/play.scene.json.objects[2]: missing "kind"`.
 
@@ -853,8 +901,17 @@ All of it runs in game time. For longer, many-part motion, see keyframe animatio
 ### Camera (2D)
 
 World sprites and entities are drawn relative to a camera: `nova.cam.set(x, y)` (the centre),
-`nova.cam.follow(entity [, lerp])` (1 locks on, smaller trails), `nova.cam.limit(x0, y0, x1, y1)`,
+`nova.cam.follow(entity [, lerp [, snap]])` (1 locks on, smaller trails), `nova.cam.limit(x0, y0, x1, y1)`,
 `nova.cam.position()`. UI drawing ignores it. For 3D, call `nova.camera(...)` yourself.
+
+- `follow` starts on the entity when the camera has not been placed in this scene yet; otherwise it glides there at `lerp`.
+  `snap = true` jumps there now (through a door, after a respawn): `nova.cam.follow(self.hero, 0.15, true)`.
+- **`nova.cam.set` stops the following**: the camera then stays where it was put. Call `follow` again to resume.
+- A scene file's `width` and `height` are the limit. When the room is narrower or lower than the screen (960 x 540 units) the
+  camera sits on the room's middle on that axis, and the rest of the screen shows the background colour.
+- `nova.cam.to_screen(x, y)` gives the screen point of a world point, and `nova.cam.to_world(x, y)` the reverse (the world
+  point under the pointer). The framework does this for an entity's own sprite; drawing you do yourself in the world layer
+  (`nova.sprite`, `nova.rect` in a `draw` method) needs it.
 
 ### Timing
 
@@ -1048,6 +1105,7 @@ local w, h = nova.ui.text(x, y, "Hello", {
   align = "center",          -- "left" (default), "center" or "right": inside `width` when there is one; without it,
                              -- around x (x is the middle, or the right edge) so no box is needed to centre a title
   shadow = true,             -- or a colour such as { 0, 0, 0, 200 }
+  line_spacing = 1.5,        -- lines further apart: a multiple of the font's own line height (0.5 to 4); "pixel" needs it
 })                           -- returns the size it took
 local w, h = nova.ui.text_size("Hello", { font = "mono", size = 20, width = 200 })   -- measure only
 local w = nova.ui.text_width("Hello", 2)                                              -- older form
@@ -1234,14 +1292,57 @@ animation, collisions, tilemap) at 60 fps. Not verified: any physical device.
 
 ## Not yet
 
-World-space text, paths, streamed music (Ogg is decoded fully into memory), synthesised music and a sound editor (M6), input remapping and named actions, rigid-bone model animation, and the studio itself.
+World-space text (text is drawn in the UI layer; place it with `nova.cam.to_screen`), and text drawn under UI rectangles.
 
 ## Testing helpers
 
-`nova run <folder> --headless --frames N --capture out.png` renders without a window, and
-`--hold jump,move_x=0.5` holds actions down for the whole run, so a screenshot can show
+`nova run <folder> --headless --frames N --capture out.png` renders without a window (1280x720 unless `--size WxH` says
+otherwise), and `--hold jump,move_x=0.5` holds actions down for the whole run, so a screenshot can show
 real gameplay. `--press key:Enter@30,pad:south@120` taps sources (held for two frames from the frame given), to get
 past menus and into the game before the picture is taken.
+
+**Repeatable.** A headless run steps time by exactly a sixtieth of a second a frame and seeds `math.random` with 1
+(`--seed N` for another), so the same input gives the same run. Randomness used while `main.lua` loads is not covered:
+seed in a scene's `enter`, not at the top of a file, if it matters.
+
+**Starting somewhere.** `--start-scene cave` starts the framework in `scenes/cave.lua` instead of the scene `main.lua`
+names, and `--run-lua setup.lua` runs a Lua file once after the first frame, when the scene is built: place the player, give
+the key, set the health (`nova.named("hero").x = 200`).
+
+**Playing a route: `--play plan.json`.** One run that walks through the game and writes down what happened. The plan:
+
+```json
+{
+  "out": "build/run1",
+  "start_scene": "cave", "lua": "nova.named('hero').hp = 1", "seed": 7,
+  "steps": [
+    { "hold": ["right"], "frames": 40 },
+    { "press": "a" },
+    { "wait": 20, "capture": "after the swing" },
+    { "hold": ["move_x=-1"], "until": "nova.named('hero').x < 64", "max": 300 },
+    { "lua": "nova.log('at the door')" }
+  ],
+  "capture_at": [1, 30], "every": 60, "print": ["nova.named('hero').hp", "nova.count('enemy')"], "frames": 240
+}
+```
+
+Steps play in order. `hold` holds input actions by name for `frames` frames (`"move_x=-1"` sets an axis; a name with a colon
+such as `"key:Enter"` is a key or a button); `press` taps (held two frames; a step with only a press lasts three); `wait` lets
+time pass; `until` is a Lua expression checked after every frame, and the step ends when it holds or after `max` frames (600
+when left out; the report then has a warning); `lua` runs when its step starts; `capture` takes a picture when the step ends.
+`capture_at` and `every` take pictures by frame number, `print` lists Lua expressions to evaluate at every picture and at the
+end, `frames` is the least number of frames to run. Frames count from 1; frame 1 is the scene coming up, the plan's `lua` runs
+after it and the steps start at frame 2. The run writes into `out` (a folder beside the plan when left out): one PNG per
+picture and `report.json` with `frames`, `error`, `warnings` (an action name the game does not have, an `until` that never
+held), `captures` (each with its `frame`, `label`, `file`, the `prints` and the `state`: the scene's name, the camera and
+every living entity with its kind, the name the scene file gave it and its position), `log` (the `nova.log` lines with their
+frames), `sounds` (each sound and music started, with its frame) and `end` (prints and state after the last frame). A run
+that stops on a Lua error still writes the report. The MCP tool `play` writes such plans and returns the pictures as one film
+strip (`docs/agents.md`).
+
+**Hearing a run.** A headless run has no sound device and plays nothing. `--audio-out run.wav` mixes what the run would
+have sounded like (effects and streamed music, through the game's own mixer, in step with the frames) into a 48 kHz stereo
+WAV; the MCP tool `sound_report` describes such a file in words and as a spectrogram.
 
 **Recorded input.** `--input play.json` plays back what was held and where the pointer was, frame by frame, and
 `--record play.json` writes the input of a run (headless or in a window) in the same format, so a real session can be

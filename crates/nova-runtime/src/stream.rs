@@ -50,6 +50,8 @@ impl Ring {
 pub struct StreamFeed {
     rate: u32,
     ring: Arc<Ring>,
+    /// An offline render (`nova run --headless --audio-out`): `pop` waits for the decoder instead of giving silence.
+    patient: bool,
 }
 
 impl Drop for StreamFeed {
@@ -67,11 +69,29 @@ impl StreamFeed {
     pub fn pop(&self) -> Option<[i16; 2]> {
         let read = self.ring.read.load(Ordering::Relaxed);
         if read == self.ring.write.load(Ordering::Acquire) {
-            return None;
+            if !self.patient {
+                return None;
+            }
+            // an offline render runs faster than the decoder: wait for it (never on the audio thread)
+            let started = std::time::Instant::now();
+            while read == self.ring.write.load(Ordering::Acquire) {
+                if self.ring.done.load(Ordering::Acquire) || started.elapsed().as_secs() >= 5 {
+                    if read == self.ring.write.load(Ordering::Acquire) {
+                        return None;
+                    }
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(1));
+            }
         }
         let frame = unpack(self.ring.slots[read % RING_FRAMES].load(Ordering::Relaxed));
         self.ring.read.store(read + 1, Ordering::Release);
         Some(frame)
+    }
+
+    /// Makes `pop` wait for the decoder when nothing is ready, for rendering sound offline, faster than it plays.
+    pub fn wait_for_decoder(&mut self) {
+        self.patient = true;
     }
 
     /// True once everything has been read and no more will ever come.
@@ -162,7 +182,11 @@ where
             thread_ring.done.store(true, Ordering::Release);
         })
         .expect("a thread for the music decoder");
-    StreamFeed { rate, ring }
+    StreamFeed {
+        rate,
+        ring,
+        patient: false,
+    }
 }
 
 /// A compressed track that can be played any number of times, each play with its own decoder.

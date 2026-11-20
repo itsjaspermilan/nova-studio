@@ -408,6 +408,7 @@ Entity.sx, Entity.sy = 1, 1
 Entity.angle = 0
 Entity.frame = 0 -- the frame of a sprite sheet to show (play() animates it)
 Entity.alpha = 1
+Entity.flip_x, Entity.flip_y = false, false -- mirror the sprite's picture (not its hitbox): a character that faces left
 Entity.visible = true
 
 function Entity:bounds() return bounds(self) end
@@ -648,7 +649,11 @@ function Entity:draw()
   if sprite then
     local screen = self.screen
     if screen == nil then screen = cls.__screen end
-    draw_opts.sx, draw_opts.sy, draw_opts.rotation, draw_opts.frame = self.sx, self.sy, self.angle, self.frame
+    -- flip_x and flip_y mirror the picture only: the hitbox, the position and what sx and sy mean to other code stay as they are
+    local dsx, dsy = self.sx, self.sy
+    if self.flip_x then dsx = -dsx end
+    if self.flip_y then dsy = -dsy end
+    draw_opts.sx, draw_opts.sy, draw_opts.rotation, draw_opts.frame = dsx, dsy, self.angle, self.frame
     local c, tint = draw_opts.color, self.tint
     c[1], c[2], c[3] = tint and tint[1] or 255, tint and tint[2] or 255, tint and tint[3] or 255
     c[4] = floor(255 * self.alpha)
@@ -658,7 +663,7 @@ function Entity:draw()
     local pivot = rawget(self, "pivot") or cls.__pivot
     if pivot then
       local iw, ih = raw.image_size(id)
-      local dx, dy = pivot_shift(pivot, iw, ih, self.sx, self.sy, self.angle)
+      local dx, dy = pivot_shift(pivot, iw, ih, dsx, dsy, self.angle)
       x, y = x + dx, y + dy
     end
     if screen then
@@ -2298,21 +2303,37 @@ nova.anims_playing = anim.count
 
 -- ------------------------------------------------------------------ camera (2D)
 local cam = W.cam
+local clamp_camera
 nova.cam = {}
 -- Put the camera's centre at a world point.
 function nova.cam.set(x, y)
   cam.x, cam.y, cam.set, cam.follow = x, y, true, nil
 end
--- Follow an entity; lerp 1 locks on, smaller values trail behind (0.1 is smooth).
-function nova.cam.follow(entity, lerp)
+-- Follow an entity; lerp 1 locks on, smaller values trail behind (0.1 is smooth). The camera starts on the entity when it has
+-- not been placed yet in this scene; `snap` = true puts it there now whatever came before (a door into a new room).
+-- nova.cam.set(x, y) afterwards stops the following (the camera is then where you put it); call follow again to resume.
+function nova.cam.follow(entity, lerp, snap)
   cam.follow, cam.lerp = entity, lerp or 1
-  if entity and not cam.set then cam.x, cam.y, cam.set = entity.x, entity.y, true end
+  if entity and (snap or not cam.set) then
+    cam.x, cam.y, cam.set = entity.x, entity.y, true
+    clamp_camera()
+  end
+end
+-- Where a world point is on the screen, and back: what the framework does for an entity's sprite. Use it when you draw in the world
+-- yourself (nova.sprite, nova.rect in an entity's draw()): nova.sprite("sword", nova.cam.to_screen(self.x + 8, self.y)).
+function nova.cam.to_screen(x, y)
+  local w, h = nova.view()
+  return x - (cam.x - w * 0.5), y - (cam.y - h * 0.5)
+end
+function nova.cam.to_world(x, y)
+  local w, h = nova.view()
+  return x + (cam.x - w * 0.5), y + (cam.y - h * 0.5)
 end
 -- Keep the view inside this world rectangle.
 function nova.cam.limit(x0, y0, x1, y1) cam.limit = { x0, y0, x1, y1 } end
 function nova.cam.position() return cam.x, cam.y end
 
-local function clamp_camera()
+function clamp_camera()
   local l = cam.limit
   if not l then return end
   local vw, vh = nova.view()
@@ -2517,6 +2538,11 @@ local function build_scene(scene, data, file)
   for _, o in ipairs(data.objects) do
     local props = o.props or {}
     if o.z ~= 0 and props.z == nil then props.z = o.z end
+    -- the object's name is the entity's `name` too (self.name, from create on), unless its kind has a `name` of its own
+    if o.name and props.name == nil then
+      local cls = finalize(resolve(o.kind, "entity"))
+      if cls.__defaults.name == nil and cls.name == nil then props.name = o.name end
+    end
     named(o, spawn(o.kind, o.x, o.y, props))
   end
   for _, im in ipairs(data.images) do

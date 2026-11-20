@@ -69,6 +69,7 @@ mod debug_api;
 mod morph_api;
 mod physics_api;
 mod players_api;
+mod playtest;
 mod retained_api;
 mod shader_api;
 mod solid_api;
@@ -189,6 +190,8 @@ struct Shared {
     camera: Camera,
     clear: [f64; 4],
     log: Vec<String>,
+    /// The sounds and music started, by name, for scripted runs to report (`game/playtest.rs`); kept short.
+    sound_log: Vec<String>,
     /// Custom shaders: the project's, and this frame's draws that use them.
     shading: shader_api::ShaderState,
 }
@@ -1194,7 +1197,21 @@ fn draw_text(
     // `min_size` (8). The third result of nova.ui.text is the size it was drawn at.
     // `spacing`: room added after every letter, as a share of the size (0.2 is the "0.2em" tracking of a spaced-out label)
     let spacing = number_option(opts, "spacing")?.unwrap_or(0.0) as f32;
+    // `line_spacing`: how far apart lines are, as a multiple of the font's own line height (1.5 gives half a line of air;
+    // the pixel fonts set their lines nearly touching)
+    let line_spacing = number_option(opts, "line_spacing")?.unwrap_or(1.0) as f32;
+    if !line_spacing.is_finite() || !(0.5..=4.0).contains(&line_spacing) {
+        return Err(lua_err(format!(
+            "line_spacing must be from 0.5 to 4 (1 is the font's own), not {line_spacing}"
+        )));
+    }
     let spaced = |mut layout: vtext::Layout, px: f32| {
+        if line_spacing != 1.0 {
+            let own = layout.line_height;
+            layout.line_height = own * line_spacing;
+            // (the last line needs no air under it)
+            layout.height = own + layout.line_height * layout.lines.len().saturating_sub(1) as f32;
+        }
         if spacing != 0.0 {
             let extra = spacing * px;
             for line in &mut layout.lines {
@@ -2822,6 +2839,9 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     sh.current_music = Some((streamed.clone(), looping));
                     sh.music_position = None;
                 }
+                if sh.sound_log.len() < 4096 {
+                    sh.sound_log.push(format!("{} {name}", if is_music { "music" } else { "sound" }));
+                }
                 sh.audio.push(mixer::Command::Play(Box::new(mixer::Play {
                     id,
                     stream: streamed.map(|src| src.start(looping)),
@@ -3031,6 +3051,11 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             sh.current_music = None; // layered music cannot be seeked (the stems would fall out of step)
             sh.music_position = None;
             sh.music_layers = ids;
+            if sh.sound_log.len() < 4096 {
+                let stems: Vec<&str> = sh.music_layers.iter().map(|(n, _)| n.as_str()).collect();
+                let line = format!("music layers {}", stems.join(" + "));
+                sh.sound_log.push(line);
+            }
             sh.audio.push(mixer::Command::PlayLayers { layers: plays, bar_seconds: bar });
             Ok(())
         })?,
@@ -4018,6 +4043,7 @@ impl Game {
             camera: DEFAULT_CAMERA,
             clear: srgb_to_linear([0.36, 0.55, 0.78, 1.0]),
             log: Vec::new(),
+            sound_log: Vec::new(),
             shading: shading_state,
         }));
         let lua = new_lua();

@@ -38,6 +38,12 @@ options: [--headless] [--frames N] [--capture out.png] [--size WxH] [--world-hei
          [--uncapped] [--no-audio] [--hud] [--hold jump,move_x=1] [--press key:Enter@30,key:KeyD@45]
          [--profile]   (headless: list the script functions that took the most time)
          [--input play.json] [--record play.json]   (play back recorded input / write this run's input; see inputscript.rs)
+         headless runs of a project, for checking a game without a window (docs/agents.md):
+         [--play plan.json]      follow a route of steps, take pictures on the way, write report.json (see playtest.rs)
+         [--start-scene name]    start in this scene instead of the one main.lua names
+         [--run-lua file.lua]    run this Lua once after the first frame (place the player, set the health)
+         [--seed N]              the seed of math.random (headless runs use 1 unless told otherwise)
+         [--audio-out run.wav]   write what the run sounds like (headless runs have no sound device)
          [--save-dir folder]
          [--debug PORT [--debug-wait]]   (listen for the studio's debugger on 127.0.0.1; 0 = any port; see docs/debugger.md)
          [--script file.lua (benchmark scene only)]";
@@ -58,6 +64,11 @@ enum Command {
         input: PathBuf,
         out: PathBuf,
         linear: bool,
+    },
+    /// `nova wav in.ogg out.wav`: a sound decoded the way the game decodes it, as a 16-bit stereo WAV (for tools that measure it).
+    Wav {
+        input: PathBuf,
+        out: PathBuf,
     },
     Info {
         folder: PathBuf,
@@ -118,6 +129,16 @@ fn parse() -> Result<Command, String> {
             input: input.into(),
             out: out.into(),
             linear,
+        });
+    }
+    if args.peek().map(String::as_str) == Some("wav") {
+        args.next();
+        let files: Vec<String> = args.by_ref().collect();
+        let [input, out] = <[String; 2]>::try_from(files)
+            .map_err(|_| "`nova wav` needs a sound and an output file: nova wav in.ogg out.wav")?;
+        return Ok(Command::Wav {
+            input: input.into(),
+            out: out.into(),
         });
     }
     if args.peek().map(String::as_str) == Some("check") {
@@ -246,6 +267,17 @@ fn parse() -> Result<Command, String> {
                 )
             }
             "--debug-wait" => opts.debug_wait = true,
+            "--play" => opts.play = Some(PathBuf::from(value("--play")?)),
+            "--start-scene" => opts.start_scene = Some(value("--start-scene")?),
+            "--run-lua" => opts.run_lua = Some(PathBuf::from(value("--run-lua")?)),
+            "--audio-out" => opts.audio_out = Some(PathBuf::from(value("--audio-out")?)),
+            "--seed" => {
+                opts.seed = Some(
+                    value("--seed")?
+                        .parse()
+                        .map_err(|_| "--seed needs a whole number")?,
+                )
+            }
             "--input" => opts.input = Some(PathBuf::from(value("--input")?)),
             "--record" => opts.record = Some(PathBuf::from(value("--record")?)),
             "--hold" => {
@@ -307,6 +339,35 @@ fn ktx2(input: PathBuf, out: PathBuf, linear: bool) -> Result<(), String> {
         out.display(),
         file.len(),
         image.rgba.len()
+    );
+    Ok(())
+}
+
+fn wav(input: PathBuf, out: PathBuf) -> Result<(), String> {
+    let bytes =
+        std::fs::read(&input).map_err(|e| format!("cannot read {}: {e}", input.display()))?;
+    let sample = nova_runtime::assets::decode_sound(&input.to_string_lossy(), &bytes)
+        .map_err(|e| format!("{}: {e}", input.display()))?;
+    let spec = hound::WavSpec {
+        channels: 2,
+        sample_rate: sample.rate,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+    let mut writer = hound::WavWriter::create(&out, spec)
+        .map_err(|e| format!("cannot write {}: {e}", out.display()))?;
+    for frame in &sample.frames {
+        for s in frame {
+            writer.write_sample(*s).map_err(|e| e.to_string())?;
+        }
+    }
+    writer.finalize().map_err(|e| e.to_string())?;
+    println!(
+        "{}: {:.2} s at {} Hz -> {}",
+        input.display(),
+        sample.seconds(),
+        sample.rate,
+        out.display()
     );
     Ok(())
 }
@@ -566,6 +627,7 @@ fn main() {
     let result = match command {
         Command::Pack { folder, out } => pack(folder, out),
         Command::Ktx2 { input, out, linear } => ktx2(input, out, linear),
+        Command::Wav { input, out } => wav(input, out),
         Command::Info { folder } => info(folder),
         Command::Export {
             target,

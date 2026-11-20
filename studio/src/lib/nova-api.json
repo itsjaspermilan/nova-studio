@@ -409,7 +409,7 @@
   "name": "nova.ui.text",
   "kind": "function",
   "signature": "nova.ui.text(x, y, text [, opts]) -> width, height, size",
-  "doc": "Draw text. Options: font, size, color, width (wrap), align, shadow, valign (\"top\", the default: y is the top of the line; \"middle\": y is the middle of the capital letters, so a label in a button looks centred; \"baseline\"), fallback (a font name or a list of them: if the font lacks a character of the text, the first of these that has them all draws it, instead of a box), bold (true, or a number: 1 is the usual bold; the letters are thickened, not drawn twice), outline (a colour, or { color, width } with width in logical units, default an eleventh of the size: one band round every letter, behind it). With `width`, `align` (left, center, right) places the lines inside that width; without it, \"center\" puts the middle of the text at x and \"right\" puts its right edge there. fit: \"shrink\" makes one line smaller until it is no wider than `width` (and no taller than `height`); \"wrap\" wraps it at `width` and makes it smaller until it is no taller than `height`; never below `min_size` (8); the third result is the size it was drawn at. spacing: room after every letter as a share of the size (0.2 spaces a label out like CSS letter-spacing 0.2em). Fonts: sans, rounded, pixel, terminal, mono, serif, comic, display, script, or a project font.",
+  "doc": "Draw text. Options: font, size, color, width (wrap), align, shadow, valign (\"top\", the default: y is the top of the line; \"middle\": y is the middle of the capital letters, so a label in a button looks centred; \"baseline\"), fallback (a font name or a list of them: if the font lacks a character of the text, the first of these that has them all draws it, instead of a box), bold (true, or a number: 1 is the usual bold; the letters are thickened, not drawn twice), outline (a colour, or { color, width } with width in logical units, default an eleventh of the size: one band round every letter, behind it). With `width`, `align` (left, center, right) places the lines inside that width; without it, \"center\" puts the middle of the text at x and \"right\" puts its right edge there. fit: \"shrink\" makes one line smaller until it is no wider than `width` (and no taller than `height`); \"wrap\" wraps it at `width` and makes it smaller until it is no taller than `height`; never below `min_size` (8); the third result is the size it was drawn at. spacing: room after every letter as a share of the size (0.2 spaces a label out like CSS letter-spacing 0.2em). line_spacing: how far apart lines are, as a multiple of the font's own (0.5 to 4; 1.5 gives the pixel fonts air). Text is always drawn over UI rectangles and sprites, whatever the order of the calls. Fonts: sans, rounded, pixel, terminal, mono, serif, comic, display, script, or a project font.",
   "group": "Drawing"
  },
  {
@@ -1179,14 +1179,28 @@
   "name": "nova.cam.set",
   "kind": "function",
   "signature": "nova.cam.set(x, y)",
-  "doc": "Put the camera's centre at a world point.",
+  "doc": "Put the camera's centre at a world point. This also stops nova.cam.follow: the camera stays where you put it until you call follow again.",
   "group": "Scenes and entities"
  },
  {
   "name": "nova.cam.follow",
   "kind": "function",
-  "signature": "nova.cam.follow(entity [, lerp])",
-  "doc": "Follow an entity; lerp 1 locks on, smaller values trail behind.",
+  "signature": "nova.cam.follow(entity [, lerp [, snap]])",
+  "doc": "Follow an entity; lerp 1 locks on, smaller values trail behind (0.1 is smooth). The camera starts on the entity if it was not placed yet in this scene; snap = true jumps to it now (after a door, a respawn). A scene smaller than the screen is centred by its width and height limit.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.cam.to_screen",
+  "kind": "function",
+  "signature": "nova.cam.to_screen(x, y) -> x, y",
+  "doc": "Where a world point is on the screen. An entity's own sprite is placed for you; when you draw in the world yourself (nova.sprite, nova.rect in a draw method) convert first: nova.sprite(\"sword\", nova.cam.to_screen(self.x + 8, self.y)).",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.cam.to_world",
+  "kind": "function",
+  "signature": "nova.cam.to_world(x, y) -> x, y",
+  "doc": "The world point under a screen point (the pointer, say): the opposite of nova.cam.to_screen.",
   "group": "Scenes and entities"
  },
  {

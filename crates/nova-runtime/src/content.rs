@@ -245,6 +245,14 @@ impl Content {
         }
     }
 
+    /// The game, when a project is running (not the benchmark scene).
+    pub fn game(&self) -> Option<&Game> {
+        match self {
+            Content::Game { game, .. } => Some(game),
+            Content::Spike(_) => None,
+        }
+    }
+
     /// Gamepad rumbles queued by scripts this frame (none for the benchmark scene).
     pub fn take_rumble(&mut self) -> Vec<crate::game::Rumble> {
         match self {

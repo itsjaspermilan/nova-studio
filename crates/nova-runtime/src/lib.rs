@@ -31,6 +31,7 @@ pub mod pacing;
 pub mod pak;
 pub mod physics;
 pub mod players;
+pub mod playtest;
 pub mod project;
 pub mod save;
 pub mod scene;

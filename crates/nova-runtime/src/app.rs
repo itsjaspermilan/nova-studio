@@ -67,6 +67,16 @@ pub struct Options {
     pub debug: Option<u16>,
     /// With `debug`: wait a few seconds for the studio before the first script runs, so its breakpoints are in place.
     pub debug_wait: bool,
+    /// Headless: a play plan to follow (a route of steps, pictures to take, values to print): see `playtest.rs`.
+    pub play: Option<PathBuf>,
+    /// Headless: start the framework in this scene instead of the one `main.lua` names.
+    pub start_scene: Option<String>,
+    /// Headless: a Lua file run once after the first frame, when the scene is up (place the player, set the health).
+    pub run_lua: Option<PathBuf>,
+    /// Headless: the seed of `math.random` (1 when left out, so that two runs with the same input do the same).
+    pub seed: Option<u64>,
+    /// Headless: write what the run sounded like (sound effects and music, mixed as the game would) to this WAV file.
+    pub audio_out: Option<PathBuf>,
 }
 
 impl Default for Options {
@@ -91,6 +101,11 @@ impl Default for Options {
             profile: false,
             debug: None,
             debug_wait: false,
+            play: None,
+            start_scene: None,
+            run_lua: None,
+            seed: None,
+            audio_out: None,
         }
     }
 }
@@ -226,7 +241,68 @@ pub fn run_headless(opts: Options) -> Result<(), String> {
     println!("content: {}", content.title());
     // where each frame's time went, to show what part of a game is slow (Lua, the rest of the update, or drawing)
     let (mut lua_times, mut build_times, mut render_times) = (Vec::new(), Vec::new(), Vec::new());
-    for frame in 0..frames {
+    // a scripted run: a route to follow, pictures to take and values to print on the way (`playtest.rs`)
+    let mut playtest = match &opts.play {
+        Some(path) => {
+            let mut plan = crate::playtest::Plan::from_file(path)?;
+            if let Some(n) = opts.frames {
+                plan.frames = Some(plan.frames.unwrap_or(0).max(n));
+            }
+            let beside = path.with_extension("out");
+            Some(crate::playtest::Playtest::new(plan, &beside)?)
+        }
+        None => None,
+    };
+    let setup_lua = match &opts.run_lua {
+        Some(path) => Some(
+            std::fs::read_to_string(path)
+                .map_err(|e| format!("cannot read {}: {e}", path.display()))?,
+        ),
+        None => None,
+    };
+    if let Some(game) = content.game() {
+        // the same input gives the same run: `math.random` starts from a known seed (randomness used while loading is not affected)
+        game.reseed(
+            playtest
+                .as_ref()
+                .and_then(|p| p.seed())
+                .or(opts.seed)
+                .unwrap_or(1),
+        );
+        if let Some(scene) = playtest
+            .as_ref()
+            .and_then(|p| p.start_scene())
+            .or(opts.start_scene.as_deref())
+        {
+            game.start_in_scene(scene)
+                .map_err(|e| format!("--start-scene {scene}: {e}"))?;
+        }
+    } else if opts.play.is_some() || opts.start_scene.is_some() || opts.run_lua.is_some() {
+        return Err(
+            "--play, --start-scene and --run-lua need a project (`nova run <folder>`)".into(),
+        );
+    }
+    // what the run sounds like, mixed as the game would but as fast as the frames go
+    const AUDIO_RATE: u32 = 48_000;
+    let mut offline = opts
+        .audio_out
+        .as_ref()
+        .map(|_| (crate::mixer::Mixer::new(AUDIO_RATE), Vec::<f32>::new()));
+    let mut frame = 0u32;
+    let mut frames_run = 0u32;
+    loop {
+        match &playtest {
+            Some(p) => {
+                if p.finished(frame) {
+                    break;
+                }
+            }
+            None => {
+                if frame >= frames {
+                    break;
+                }
+            }
+        }
         let started = Instant::now();
         let mut input = InputFrame {
             overrides: held.clone(),
@@ -241,6 +317,9 @@ pub fn run_headless(opts: Options) -> Result<(), String> {
         if let Some(s) = &script {
             merge_input(&mut input, s.frame(frame));
         }
+        if let (Some(p), Some(game)) = (playtest.as_mut(), content.game()) {
+            p.before_frame(frame, game, &mut input);
+        }
         if let Some(r) = recorder.as_mut() {
             r.push(&input);
         }
@@ -253,8 +332,43 @@ pub fn run_headless(opts: Options) -> Result<(), String> {
             &perf,
             "off (headless)",
         );
-        content.take_audio(); // no audio device here; keep the queue from growing
+        // no audio device here: the sound commands are dropped, or mixed into a file when one was asked for
+        let commands = content.take_audio();
+        if let Some((mixer, samples)) = offline.as_mut() {
+            for mut command in commands {
+                use crate::mixer::Command;
+                match &mut command {
+                    Command::Play(p) => {
+                        if let Some(feed) = p.stream.as_mut() {
+                            feed.wait_for_decoder();
+                        }
+                    }
+                    Command::PlayLayers { layers, .. } => {
+                        for (p, _) in layers.iter_mut() {
+                            if let Some(feed) = p.stream.as_mut() {
+                                feed.wait_for_decoder();
+                            }
+                        }
+                    }
+                    Command::SeekMusic {
+                        feed: Some(feed), ..
+                    } => feed.wait_for_decoder(),
+                    _ => {}
+                }
+                mixer.apply(command);
+            }
+            let at = samples.len();
+            samples.resize(at + (AUDIO_RATE / 60) as usize * 2, 0.0);
+            mixer.render(&mut samples[at..]);
+            content.set_music_position(mixer.music_position());
+        }
         content.take_rumble(); // nor a gamepad
+        if frame == 0
+            && let (Some(lua), Some(game)) = (&setup_lua, content.game())
+        {
+            game.run_lua(lua, "--run-lua")
+                .map_err(|e| format!("--run-lua: {e}"))?;
+        }
         let render_started = Instant::now();
         perf.stats = gfx.render(&view, size, &content.frame_input(opts.world_height));
         content.frame_done();
@@ -268,6 +382,51 @@ pub fn run_headless(opts: Options) -> Result<(), String> {
         build_times.push(build_ms);
         render_times.push(perf.times.render_ms);
         perf.record(started.elapsed().as_secs_f32() * 1000.0);
+        if let (Some(p), Some(game)) = (playtest.as_mut(), content.game()) {
+            let captions = p.after_frame(frame, game);
+            if !captions.is_empty() {
+                let pixels = gfx.capture(size, &content.frame_input(opts.world_height));
+                for caption in captions {
+                    let file = p.picture(frame, &caption, game);
+                    save_png(&file, size, &pixels)?;
+                }
+            }
+        }
+        frame += 1;
+        frames_run = frame;
+    }
+    if let (Some((_, samples)), Some(path)) = (&offline, &opts.audio_out) {
+        let spec = hound::WavSpec {
+            channels: 2,
+            sample_rate: AUDIO_RATE,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        let mut writer = hound::WavWriter::create(path, spec)
+            .map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+        for s in samples {
+            writer
+                .write_sample((s.clamp(-1.0, 1.0) * 32767.0) as i16)
+                .map_err(|e| e.to_string())?;
+        }
+        writer.finalize().map_err(|e| e.to_string())?;
+        println!(
+            "sound: {:.2} s written to {}",
+            samples.len() as f32 / 2.0 / AUDIO_RATE as f32,
+            path.display()
+        );
+    }
+    if let (Some(p), Some(game)) = (playtest.as_mut(), content.game()) {
+        let report = p.finish(frames_run, game)?;
+        println!("play report: {}", report.display());
+        if let Some(e) = &p.error {
+            // (a run that stopped still shows where it got to: the picture has the error on it when a script failed)
+            if let Some(path) = &opts.capture {
+                let pixels = gfx.capture(size, &content.frame_input(opts.world_height));
+                save_png(path, size, &pixels)?;
+            }
+            return Err(format!("the run stopped: {e}"));
+        }
     }
     if let (Some(r), Some(path)) = (&recorder, &opts.record) {
         std::fs::write(path, r.to_json())

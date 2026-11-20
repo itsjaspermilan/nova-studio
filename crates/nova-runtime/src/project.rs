@@ -76,6 +76,9 @@ pub struct Manifest {
     /// `"local_network": true`: the game plays with other devices on the same wifi (`nova.net`); an Android build then
     /// asks for network access.
     pub local_network: bool,
+    /// `"ignore"`: files and folders of the project folder that are not part of the game (`["shots", "tools"]`): they are
+    /// not loaded (no picture of theirs goes into the sprite atlas) and not packed. `build/` and dot-folders never are.
+    pub ignore: Vec<String>,
 }
 
 pub struct Project {
@@ -199,8 +202,23 @@ pub fn parse_manifest(text: &str, warnings: &mut Vec<String>) -> Result<Manifest
             ));
         }
     };
+    let ignore = match object.get("ignore") {
+        None => Vec::new(),
+        Some(Value::Array(list)) if list.iter().all(Value::is_string) => list
+            .iter()
+            .filter_map(|v| v.as_str())
+            .map(|s| s.trim_matches('/').to_string())
+            .filter(|s| !s.is_empty())
+            .collect(),
+        Some(_) => {
+            return Err(field_error(
+                "\"ignore\" must be a list of files and folders that are not part of the game, such as [\"shots\", \"tools\", \"notes.md\"]",
+            ));
+        }
+    };
     for key in object.keys() {
         if ![
+            "ignore",
             "materials",
             "format",
             "name",
@@ -231,7 +249,28 @@ pub fn parse_manifest(text: &str, warnings: &mut Vec<String>) -> Result<Manifest
         materials,
         input,
         local_network,
+        ignore,
     })
+}
+
+/// Whether `path` is one of the manifest's `"ignore"` entries or inside one that is a folder: such files are not part
+/// of the game (an assistant's screenshots, tools, notes), so they are neither loaded nor packed.
+pub fn ignored(ignore: &[String], path: &str) -> bool {
+    ignore.iter().any(|entry| {
+        path == entry
+            || path
+                .strip_prefix(entry.as_str())
+                .is_some_and(|rest| rest.starts_with('/'))
+    })
+}
+
+/// The `"ignore"` list of a manifest's text, read leniently (an unreadable manifest ignores nothing; opening the
+/// project reports what is wrong with it).
+pub fn ignore_list(manifest_text: &str) -> Vec<String> {
+    let mut warnings = Vec::new();
+    parse_manifest(manifest_text, &mut warnings)
+        .map(|m| m.ignore)
+        .unwrap_or_default()
 }
 
 /// The manifest's `graphics` object: `hdr` (true/false), `msaa` (1 or 4), `shadow_cascades` (1 to 3), `ibl` (true/false), `anisotropy`
@@ -301,7 +340,7 @@ impl Project {
         let mut by_lowercase: BTreeMap<String, String> = BTreeMap::new();
         let mut total = 0u64;
         for VfsEntry { path, size } in entries {
-            if path == MANIFEST {
+            if path == MANIFEST || ignored(&manifest.ignore, &path) {
                 continue;
             }
             total += size;
