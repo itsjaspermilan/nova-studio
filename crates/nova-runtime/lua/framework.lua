@@ -571,9 +571,31 @@ local function animate(e, dt)
   end
 end
 
+-- The events of a clip (`{ t, name }`, in time order) that lie in the stretch of time just played: from `a` (not included,
+-- unless the clip has only now started) to `b` (included). A looping clip that wrapped played a..duration and 0..b.
+local function events_between(events, a, b, wrapped, started, each)
+  if not events or #events == 0 then return end
+  if wrapped then
+    for i = 1, #events do
+      local ev = events[i]
+      if ev.t > a or (started and ev.t == a) then each(ev.name) end
+    end
+    for i = 1, #events do
+      if events[i].t <= b then each(events[i].name) end
+    end
+  else
+    for i = 1, #events do
+      local ev = events[i]
+      if (ev.t > a or (started and ev.t >= a)) and ev.t <= b then each(ev.name) end
+    end
+  end
+end
+
 -- Play an animation clip of this entity's 3D model (the clips are made in the model editor or come with the
 -- .glb). Calling it again with the same clip keeps going ({ restart = true } starts over); `speed` scales time;
--- on_clip_end(name) runs when a non-looping clip finishes.
+-- on_clip_end(name) runs when a non-looping clip finishes, and on_clip_event(event, clip) when the clip passes one of
+-- its named events (a model file's clip can carry "events": [{ "t": 0.25, "name": "step" }]).
+--- `self:clip_events()` lists the events of the clip that is playing: { { t = seconds, name = "step" }, ... }.
 function Entity:play_clip(name, opts)
   local model = rawget(self, "model") or getmetatable(self).__model
   if not model then error("play_clip(): this entity has no model", 2) end
@@ -590,8 +612,13 @@ function Entity:play_clip(name, opts)
   local c = self._clip
   if c and c.name == name and not c.done and not (opts and opts.restart) then return end
   local loop = not (opts and opts.loop == false)
-  self._clip = { name = name, duration = found.duration, loop = loop, done = false }
+  self._clip = { name = name, duration = found.duration, loop = loop, done = false, events = found.events, fresh = true }
   self.clip, self.clip_time, self.clip_loop = name, 0, loop
+end
+
+function Entity:clip_events()
+  local c = self._clip
+  return c and c.events or {}
 end
 
 function Entity:stop_clip()
@@ -602,17 +629,25 @@ end
 local function advance_clip(e, dt)
   local c = e._clip
   if c.done then return end
-  local t = (e.clip_time or 0) + dt * (e.clip_speed or 1)
+  local before = e.clip_time or 0
+  local t = before + dt * (e.clip_speed or 1)
+  local wrapped, ended = false, false
   if c.loop then
-    if c.duration > 0 then t = t % c.duration end
+    if c.duration > 0 and t >= c.duration then t, wrapped = t % c.duration, true end
   elseif t >= c.duration then
-    t = c.duration
-    c.done = true
-    e.clip_time = t
-    if e.on_clip_end then e:on_clip_end(c.name) end
-    return
+    t, ended = c.duration, true
   end
   e.clip_time = t
+  local started = c.fresh
+  c.fresh = false
+  if e.on_clip_event then
+    local name = c.name
+    events_between(c.events, before, t, wrapped, started, function(event) e:on_clip_event(event, name) end)
+  end
+  if ended and e._clip == c then
+    c.done = true
+    if e.on_clip_end then e:on_clip_end(c.name) end
+  end
 end
 
 -- Where a sprite is drawn so that its pivot (fractions of its size, default centre) sits on the
@@ -732,9 +767,9 @@ function nova.animator(model, spec)
   if type(spec) ~= "table" or type(spec.states) ~= "table" then
     error("nova.animator(model, { start = \"idle\", states = { idle = { clip = \"idle\" } } })", 2)
   end
-  local durations = {}
-  for _, c in ipairs(nova.model_clips(model)) do durations[c.name] = c.duration end
-  local a = setmetatable({ model = model, spec = spec, durations = durations, fade = spec.fade or 0.2, params = {}, speed = 1, entries = {} }, Animator)
+  local durations, clip_events = {}, {}
+  for _, c in ipairs(nova.model_clips(model)) do durations[c.name], clip_events[c.name] = c.duration, c.events end
+  local a = setmetatable({ model = model, spec = spec, durations = durations, clip_events = clip_events, fade = spec.fade or 0.2, params = {}, speed = 1, entries = {}, on_event = spec.on_event, fired = {} }, Animator)
   for name, state in pairs(spec.states) do
     if state.clip then
       if not durations[state.clip] then error(("animator state '%s': model '%s' has no clip '%s'"):format(name, model, state.clip), 2) end
@@ -760,7 +795,7 @@ function Animator:play(name, opts)
   local current = self.entries[#self.entries]
   if current and current.name == name and not (opts and opts.restart) then return end
   local fade = (opts and opts.fade) or state.fade or self.fade
-  self.entries[#self.entries + 1] = { name = name, state = state, t = 0, phase = 0, w = (current and fade > 0) and 0 or 1, fade = fade }
+  self.entries[#self.entries + 1] = { name = name, state = state, t = 0, phase = 0, w = (current and fade > 0) and 0 or 1, fade = fade, fresh = true }
   if not current or fade <= 0 then
     for i = #self.entries - 1, 1, -1 do table.remove(self.entries, i) end
   end
@@ -778,7 +813,40 @@ function Animator:finished()
   return e.done == true
 end
 
-local function blend_pair(state, value)
+-- The clip that says where the newest state is in time: its own, or the nearer of the two a blend is between.
+local blend_pair
+local function lead_clip(self, e)
+  local state = e.state
+  if state.clip then return state.clip end
+  local a, b, f = blend_pair(state, self.params[state.blend] or 0)
+  return f < 0.5 and a.clip or b.clip
+end
+
+--- The clip the state it is in (or moving to) plays, and how far into it: `clip, seconds, phase` (phase runs 0 to 1 over the
+--- clip). For a blend it is the nearer of the two clips. Read this instead of the animator's own fields.
+function Animator:time()
+  local e = self.entries[#self.entries]
+  local clip = lead_clip(self, e)
+  local length = self.durations[clip]
+  if e.state.clip then
+    local t = e.t
+    if e.state.loop ~= false and length > 0 then t = t % length end
+    return clip, t, length > 0 and t / length or 0
+  end
+  return clip, e.phase * length, e.phase
+end
+
+--- How far the current state is through its clip, 0 to 1.
+function Animator:phase()
+  local _, _, phase = self:time()
+  return phase
+end
+
+--- The names of the clip events passed in the last `update` (a clip's "events" in the model file: a foot landing), in order.
+--- The same events call `anim.on_event(name, clip)` when that is set (or given as `on_event` to nova.animator).
+function Animator:events() return self.fired end
+
+function blend_pair(state, value)
   local pts = state._sorted
   if value <= pts[1].at then return pts[1], pts[1], 0 end
   if value >= pts[#pts].at then return pts[#pts], pts[#pts], 0 end
@@ -792,6 +860,11 @@ end
 
 --- Moves time on by `dt`: call it once a frame.
 function Animator:update(dt)
+  -- where the newest state is before time moves: the clip events between there and where it gets to are this frame's
+  local lead = self.entries[#self.entries]
+  local lead_name, before = self:time()
+  local started = lead.fresh
+  lead.fresh = false
   for _, e in ipairs(self.entries) do
     local state, rate = e.state, (e.state.speed or 1) * self.speed
     if state.clip then
@@ -814,6 +887,21 @@ function Animator:update(dt)
     local e = self.entries[i]
     e.w = others > 0 and e.w * remain / others or 0
     if e.w < 0.002 then table.remove(self.entries, i) end
+  end
+  -- the events its clip passed (only the state being moved to speaks: one that is fading out is silent)
+  local fired = {}
+  self.fired = fired
+  local events = self.clip_events[lead_name]
+  if events and #events > 0 and self.entries[#self.entries] == lead then
+    local clip, after = self:time()
+    if clip == lead_name then
+      local loops = not (lead.state.clip and lead.state.loop == false)
+      events_between(events, before, after, loops and after < before, started, function(event) fired[#fired + 1] = event end)
+      local on_event = self.on_event
+      if on_event then
+        for i = 1, #fired do on_event(fired[i], clip) end
+      end
+    end
   end
   -- a state that plays once and says where to go next goes there when it ends
   if newest.done and newest.state.next then self:play(newest.state.next) end
@@ -1130,6 +1218,9 @@ end
 --- A camera behind and above `target` (an entity or { x, y, z }), looking at it, easing after it as it moves.
 --- opts: distance (9), height (8: how far above the ground the camera is), look_height (1: what it looks at above the target),
 --- smooth (6: bigger follows more tightly; 0 stays rigidly behind), fov (60), dt (1/60). Turn it with cam3.yaw or cam3.look.
+--- collide = true keeps solid things from coming between the camera and what it looks at: when a triangle added with
+--- nova.solid.add (a wall, a hill, the level) is in the way, the camera moves in along its line of sight to just in front of
+--- it (`margin`, 0.3, is how far in front; it never comes nearer than 0.5), and eases back out when the way is clear.
 function cam3.follow(target, opts)
   opts = opts or {}
   local tx, ty, tz = point_of(target)
@@ -1137,8 +1228,23 @@ function cam3.follow(target, opts)
   local wx, wy, wz = tx + sin(cam3.yaw) * dist, ty + height, tz + cos(cam3.yaw) * dist
   local k = (opts.smooth or 6) <= 0 and 1 or math.min(1, (opts.dt or 1 / 60) * (opts.smooth or 6))
   local e = cam3.eye
-  aim({ x = e.x + (wx - e.x) * k, y = e.y + (wy - e.y) * k, z = e.z + (wz - e.z) * k },
-      { x = tx, y = ty + (opts.look_height or 1), z = tz }, opts.fov or 60)
+  local ex, ey, ez = e.x + (wx - e.x) * k, e.y + (wy - e.y) * k, e.z + (wz - e.z) * k
+  local lx, ly, lz = tx, ty + (opts.look_height or 1), tz
+  if opts.collide then
+    -- from what it looks at back to where it wants to be: the first solid thing on the way stops it
+    local dx, dy, dz = ex - lx, ey - ly, ez - lz
+    local len = sqrt(dx * dx + dy * dy + dz * dz)
+    if len > 1e-4 then
+      dx, dy, dz = dx / len, dy / len, dz / len
+      local margin = opts.margin or 0.3
+      local hit = nova.solid.raycast(lx, ly, lz, dx, dy, dz, len + margin)
+      if hit then
+        local d = math.max(math.min(0.5, len), hit - margin)
+        if d < len then ex, ey, ez = lx + dx * d, ly + dy * d, lz + dz * d end
+      end
+    end
+  end
+  aim({ x = ex, y = ey, z = ez }, { x = lx, y = ly, z = lz }, opts.fov or 60)
 end
 
 --- A camera at `target`'s head looking where cam3.yaw and cam3.pitch say.
@@ -2703,6 +2809,11 @@ function nova.restart_scene()
 end
 
 function nova.current_scene() return W.scene_name and (W.scene_name:gsub("^scenes%.", "")) end
+
+--- The scene that is running, the object itself (what `self` is in the scene's own functions): an entity reaches its
+--- scene with it, `nova.scene_now().score = nova.scene_now().score + 1`, or calls it, `nova.scene_now():gem_taken(self)`.
+--- Nil before the first scene starts. (nova.current_scene() is its name.)
+function nova.scene_now() return W.scene end
 
 -- The living entity a scene file named (its object's "name"), for settings of type "object": nova.named(self.follow). Nil when there is none
 -- (or it is gone). The running scene's names are set once its whole file is built, so ask in update, not in create.

@@ -310,11 +310,18 @@ There are still no floors, ramps or ledges: scenery is circles on the ground.
 ```lua
 nova.cam3.look(-stick_x * dt, -stick_y * dt)                       -- yaw and pitch in radians (a mouse: pointer.dx * 0.0025)
 nova.cam3.follow(player, { distance = 9, height = 8, smooth = 6, dt = dt })      -- behind and above, easing after it
+nova.cam3.follow(player, { distance = 9, height = 8, dt = dt, collide = true })   -- and never behind a wall or inside a hill
 nova.cam3.first_person(player, { height = 1.6 })                    -- at its head, looking where cam3.yaw / pitch say
 local fx, fz = nova.cam3.forward()                                  -- "forward" on a stick, relative to the camera
 local gx, gz = nova.cam3.ground_point(pointer.x, pointer.y, 1)      -- the ground under the mouse or a finger
 local ox, oy, oz, dx, dy, dz = nova.cam3.ray(x, y)                  -- or the whole ray, for your own tests
 ```
+
+`collide = true` makes the follow camera mind what is solid: when a triangle added with `nova.solid.add` (a wall, a hill, the
+level's mesh) lies between what it looks at and where it wants to be, it moves in along its line of sight to `margin` (0.3) in
+front of that surface, never nearer than 0.5, and eases back out when the way is clear. It costs one `nova.solid.raycast` a
+frame and knows only `nova.solid`: not `nova.walls`, the voxel world or the terrain's heightmap. The follow camera eases in from
+wherever the camera was: for the first frames of a scene pass `smooth = 0` so that it starts behind the target.
 
 **Seeing how the game is doing.** `nova.stats()` returns the last frame's `fps`, `lua_ms`, `render_ms`, `draws`, `triangles`, `sprites`,
 `memory_kb` (the scripts' memory), `entities` and `scenery`: enough for an on-screen profiler (Ember Swarm shows it on F3).
@@ -484,7 +491,31 @@ row at the bottom that unpainted shapes sample, so a model's flat-coloured shape
 sampler is nearest-neighbour and clamped. The runtime needs nothing new: it reads one base-colour texture with UVs.
 
 **Animation clips.** A `.glb` can carry named clips (the model editor's Animations panel makes them): keyframes
-for the position, rotation and scale of parts. `nova.model_clips("car")` lists `{ name, duration }`.
+for the position, rotation and scale of parts. `nova.model_clips("car")` lists `{ name, duration, events }`.
+
+In the model file (`models/<name>.model.json`) a clip is
+`{ "name": "walk", "duration": 0.8, "loop": true, "tracks": [ ... ], "events": [ { "t": 0, "name": "step" }, { "t": 0.4, "name": "step" } ] }`.
+A track is one property of one part: `{ "part": ["hips", "leg_l"], "prop": "rotation", "keys": [ { "t": 0, "value": [30, 0, 0] }, { "t": 0.4, "value": [-30, 0, 0], "ease": "inout" } ] }`,
+where `part` is the chain of part names from the top of the tree down to the part, `prop` is `rotation`, `position` or `scale`,
+and the keys are in time order (`ease`: `linear`, `step`, `in`, `out`, `inout`, for the way on to the next key). Key values are
+absolute, not offsets: a rotation key is the part's whole turn in degrees (x, then y, then z) in place of its `rotation`, a
+position key is where the part's origin is in its parent, in model units, in place of its `origin`, a scale key is a factor per
+axis. **Events** are named moments of a clip (a foot landing, a blade passing), up to 64, each with a time from 0 to the
+duration. They travel in the `.glb` as the animation's `extras.nova.events` and reach code as callbacks, so a sound keeps time
+with the motion and nothing has to read the animator's own state:
+
+```lua
+function Hero:on_clip_event(event, clip)          -- an entity playing a clip with self:play_clip
+  if event == "step" then nova.sound.play("step", { volume = 0.6 }) end
+end
+self.anim = nova.animator("hero", { states = { ... }, on_event = function(event, clip) ... end })   -- or the animator
+for _, event in ipairs(self.anim:events()) do ... end      -- the same, asked for after anim:update(dt)
+local clip, seconds, phase = self.anim:time()              -- where the state's clip is (phase 0 to 1)
+```
+
+An event is told once each time the clip passes it, also when the clip loops; an event at 0 is told when the clip starts and
+each time it comes round. With an animator only the state being moved to speaks (one that is fading out is silent), and a blend
+state tells the events of the nearer of its two clips.
 
 ```lua
 nova.model("car", x, y, z, { clip = "spin", time = t })            -- pose it at t seconds (loops by default)
@@ -525,7 +556,7 @@ not key a part counts as that part's authored pose; rotations are mixed the shor
 nova.model("hero", x, y, z, { layers = { { clip = "walk", time = t, weight = 0.7 }, { clip = "run", time = t2, weight = 0.3 } } })
 ```
 
-**Joints and inverse kinematics.** `nova.model_pose(id, opts)` says where each part's joint is in a pose (in the model's own space), and `nova.ik(id, opts, { "Thigh", "Shin", "Foot" }, target, pole)` solves a two-bone limb: it returns the `parts` turns (`quat`s) that put the end of the limb on `target`, bending the middle joint toward `pole`, and whether the target was within reach. A character's foot can stand on a stair or a slope, a hand can rest on a ledge:
+**Joints and inverse kinematics.** `nova.model_pose(id, opts)` says where each part's joint is in a pose (in the model's own space) and, as `low`, how low the part's own shapes reach (a foot's sole, where `y` is its ankle), and `nova.ik(id, opts, { "Thigh", "Shin", "Foot" }, target, pole)` solves a two-bone limb: it returns the `parts` turns (`quat`s) that put the end of the limb on `target`, bending the middle joint toward `pole`, and whether the target was within reach. A character's foot can stand on a stair or a slope, a hand can rest on a ledge:
 
 ```lua
 local opts = { clip = "run", time = t }                         -- the pose the legs would have
@@ -797,7 +828,7 @@ return Play
 
 `nova.scene_data("levels.3")` returns the data of `scenes/levels/3.scene.json` (checked as when a scene is built) without going to it, or `nil` when there is no such file: a game can keep each level as a scene file, painted and edited in the studio, and play them all in one scene. `nova.goto_scene("over", ...)` replaces the scene at the start of the next frame (every entity is
 destroyed and every timer cancelled); `nova.restart_scene()` rebuilds the current one from its
-file; `nova.current_scene()` names it. Scenes have `self:after/every/go/tween` too.
+file; `nova.current_scene()` names it, and `nova.scene_now()` is the running scene itself (the `self` of its functions), which is how an entity reaches its scene: `nova.scene_now():gem_taken(self)`. Scenes have `self:after/every/go/tween` too.
 
 ### `scenes/<name>.scene.json` (version 1)
 

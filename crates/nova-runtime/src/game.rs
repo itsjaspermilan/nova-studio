@@ -306,10 +306,38 @@ struct PartRt {
     parent: Option<usize>,
     rest: Mat4,
     mesh_key: Option<String>,
+    /// Points of the part's own shapes, in its own space (the corners of what it is made of; for a joint of a skinned
+    /// mesh, the points that follow it most): enough to say how low the part reaches in a pose (`nova.model_pose`'s `low`).
+    points: Rc<Vec<Vec3>>,
+    /// The part only carries a skinned mesh (its triangles follow other parts, which have the points).
+    carrier: bool,
     /// The studio's rules for this part (limits, copies, reach), applied to every pose (`constraints = false` turns them off for a draw).
     constraints: Vec<crate::constraints::Constraint>,
     /// A mesh that bends with other parts: drawn by the GPU from the joints' matrices.
     skinned: Option<Rc<SkinnedPart>>,
+}
+
+/// The points kept of a part's shapes: all of them when there are few, else the eight corners of their box (a part's
+/// lowest point is then that of its box, which is exact for the boxes most parts are).
+fn hull_points(mut points: Vec<Vec3>) -> Vec<Vec3> {
+    if points.len() <= 96 {
+        points.dedup();
+        return points;
+    }
+    let (mut lo, mut hi) = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));
+    for p in &points {
+        lo = lo.min(*p);
+        hi = hi.max(*p);
+    }
+    (0..8)
+        .map(|i| {
+            Vec3::new(
+                if i & 1 == 0 { lo.x } else { hi.x },
+                if i & 2 == 0 { lo.y } else { hi.y },
+                if i & 4 == 0 { lo.z } else { hi.z },
+            )
+        })
+        .collect()
 }
 
 /// A model in one pose: its parts, where each is, and where the joints of its skinned parts start in the frame's palette.
@@ -2078,6 +2106,15 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 let entry = lua.create_table()?;
                 entry.set("name", c.name.clone())?;
                 entry.set("duration", c.duration as f64)?;
+                // named moments of the clip (a foot landing): `{ t = seconds, name = "step" }`, in time order
+                let events = lua.create_table()?;
+                for (k, (t, name)) in c.events.iter().enumerate() {
+                    let e = lua.create_table()?;
+                    e.set("t", *t)?;
+                    e.set("name", name.clone())?;
+                    events.set(k + 1, e)?;
+                }
+                entry.set("events", events)?;
                 list.set(i + 1, entry)?;
             }
             Ok(list)
@@ -2120,6 +2157,18 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 entry.set("x", at.x as f64)?;
                 entry.set("y", at.y as f64)?;
                 entry.set("z", at.z as f64)?;
+                // how low the part's own shapes reach in this pose (a foot's sole), when it has any
+                if let Some(low) = p
+                    .points
+                    .iter()
+                    .map(|q| m.transform_point3(*q).y)
+                    .min_by(f32::total_cmp)
+                {
+                    entry.set("low", low as f64)?;
+                }
+                if p.carrier {
+                    entry.set("skin", true)?;
+                }
                 out.set(p.name.clone(), entry)?;
             }
             Ok(out)
@@ -3861,9 +3910,32 @@ impl Game {
                 if !imported.boxes.is_empty() {
                     model_boxes.insert(asset.id.clone(), imported.boxes);
                 }
-                let mut runtime = Vec::with_capacity(imported.parts.len());
+                let mut runtime: Vec<PartRt> = Vec::with_capacity(imported.parts.len());
+                // (points a skinned mesh gives to the parts it follows, by part index)
+                let mut followed: HashMap<usize, Vec<Vec3>> = HashMap::new();
                 for part in imported.parts {
                     let mut skinned = None;
+                    let mut points = Vec::new();
+                    let carrier = part.mesh.is_some() && part.skin.is_some();
+                    if let (Some(m), Some(skin)) = (&part.mesh, &part.skin) {
+                        // each point goes with the joint that pulls it hardest, in that joint's own space
+                        for (v, (joints, weights)) in m.vertices.iter().zip(&skin.influences) {
+                            let best = (0..4)
+                                .max_by(|a, b| weights[*a].total_cmp(&weights[*b]))
+                                .unwrap_or(0);
+                            let j = joints[best] as usize;
+                            if let (Some(&p), Some(ibm)) =
+                                (skin.joints.get(j), skin.inverse_bind.get(j))
+                            {
+                                followed
+                                    .entry(p)
+                                    .or_default()
+                                    .push(ibm.transform_point3(Vec3::from(v.position)));
+                            }
+                        }
+                    } else if let Some(m) = &part.mesh {
+                        points = m.vertices.iter().map(|v| Vec3::from(v.position)).collect();
+                    }
                     let mesh_key = match (part.mesh, part.skin) {
                         (Some(m), Some(mut skin)) => {
                             // One mesh, bent on the GPU: its joint weights go up with it.
@@ -3907,8 +3979,17 @@ impl Game {
                         rest: part.rest,
                         constraints: part.constraints,
                         mesh_key,
+                        points: Rc::new(hull_points(points)),
+                        carrier,
                         skinned,
                     });
+                }
+                for (index, extra) in followed {
+                    if let Some(p) = runtime.get_mut(index) {
+                        let mut all = (*p.points).clone();
+                        all.extend(extra);
+                        p.points = Rc::new(hull_points(all));
+                    }
                 }
                 model_parts.insert(asset.id.clone(), runtime);
             }

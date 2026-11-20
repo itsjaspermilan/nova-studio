@@ -811,6 +811,31 @@ pub struct Clip {
     pub name: String,
     pub duration: f32,
     pub channels: Vec<Channel>,
+    /// Named moments of the clip, in time order (a foot landing, a blade passing): the glTF animation's
+    /// `extras.nova.events`, `[{ "t": seconds, "name": "step" }]`. The framework calls back when a playing clip passes one.
+    pub events: Vec<(f64, String)>,
+}
+
+/// A glTF animation's events (`extras.nova.events`): entries that are not `{ "t": number >= 0, "name": text }` are left out.
+fn read_events(animation: &gltf::Animation) -> Vec<(f64, String)> {
+    let Some(raw) = animation.extras() else {
+        return Vec::new();
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(raw.get()) else {
+        return Vec::new();
+    };
+    let mut events: Vec<(f64, String)> = value["nova"]["events"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|e| {
+            let t = e["t"].as_f64()?;
+            let name = e["name"].as_str()?;
+            (t.is_finite() && t >= 0.0 && !name.is_empty()).then(|| (t, name.to_string()))
+        })
+        .collect();
+    events.sort_by(|a, b| a.0.total_cmp(&b.0));
+    events
 }
 
 /// What a clip says one part looks like at an instant; anything it does not animate stays as authored.
@@ -1219,6 +1244,7 @@ pub fn import_parts_with(bytes: &[u8], pictures: Pictures) -> Result<ModelParts,
             name,
             duration,
             channels,
+            events: read_events(&animation),
         });
     }
     let colliders = read_shapes(&scene, "colliders", |c: &[f32; 3]| c[2] > 0.0);

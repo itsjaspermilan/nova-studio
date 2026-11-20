@@ -495,3 +495,204 @@ fn an_additive_layer_adds_how_far_it_is_from_the_rest_pose() {
         assert!((none[3][i] - body0[3][i]).abs() < 1e-4);
     }
 }
+
+/// The car with named moments on its clip, as the studio's exporter writes them: `extras.nova.events` of the animation.
+fn car_with_events(events: &str) -> Vec<u8> {
+    let json_len = u32::from_le_bytes(CAR[12..16].try_into().unwrap()) as usize;
+    let mut doc: serde_json::Value = serde_json::from_slice(&CAR[20..20 + json_len]).unwrap();
+    doc["animations"][0]["extras"] =
+        serde_json::from_str(&format!(r#"{{ "nova": {{ "events": {events} }} }}"#)).unwrap();
+    let mut json = serde_json::to_vec(&doc).unwrap();
+    while json.len() % 4 != 0 {
+        json.push(b' ');
+    }
+    let rest = &CAR[20 + json_len..];
+    let mut out = Vec::new();
+    out.extend_from_slice(&CAR[0..8]);
+    out.extend_from_slice(&((12 + 8 + json.len() + rest.len()) as u32).to_le_bytes());
+    out.extend_from_slice(&(json.len() as u32).to_le_bytes());
+    out.extend_from_slice(&CAR[16..20]);
+    out.extend_from_slice(&json);
+    out.extend_from_slice(rest);
+    out
+}
+
+fn game_with_events(files: Vec<(&str, &str)>) -> Game {
+    let mut all = vec![
+        ("nova.json", br#"{"format":1,"name":"T"}"#.to_vec()),
+        (
+            "models/car.glb",
+            // (out of order and with two that are not events: they are sorted, and the bad ones left out)
+            car_with_events(
+                r#"[ { "t": 1.9, "name": "c" }, { "t": 0, "name": "a" }, { "t": 0.5, "name": "b" }, { "t": -1, "name": "x" }, { "t": 1 } ]"#,
+            ),
+        ),
+    ];
+    all.extend(files.into_iter().map(|(p, s)| (p, s.as_bytes().to_vec())));
+    let vfs: Rc<dyn Vfs> = Rc::new(MemVfs::new(all));
+    let mut g = Game::load(vfs).expect("project loads");
+    g.upload(&mut CountingGpu::default());
+    g
+}
+
+#[test]
+fn a_clip_carries_named_events_and_a_playing_entity_is_told_when_it_passes_one() {
+    let mut g = game_with_events(vec![
+        ("main.lua", "nova.start('s')"),
+        (
+            "entities/car.lua",
+            "local C = nova.entity { model = 'car' }\nlocal f = 0\nfunction C:update(dt) f = f + 1 end\nfunction C:on_clip_event(event, clip) nova.log(event .. ' ' .. clip .. ' ' .. f) end\nfunction C:on_clip_end(name) nova.log('end ' .. name) end\nreturn C",
+        ),
+        (
+            "scenes/s.lua",
+            "local S = nova.scene {}\nfunction S:enter()\n  self.car = nova.spawn('car', 0, 0)\n  self.car:play_clip('spin')\n  local e = nova.model_clips('car')[1].events\n  nova.log(#e .. ' ' .. e[1].name .. '@' .. e[1].t .. ' ' .. e[3].name .. '@' .. e[3].t .. ' ' .. #self.car:clip_events())\nend\nreturn S",
+        ),
+    ]);
+    for _ in 0..155 {
+        frame(&mut g); // a little over two and a half seconds: once round the two-second clip and half a second more
+    }
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let log = g.take_log();
+    assert_eq!(log[0], "3 a@0.0 c@1.9 3");
+    let names: Vec<&str> = log[1..]
+        .iter()
+        .map(|l| l.split(' ').next().unwrap())
+        .collect();
+    // the event at 0 on the first frame, each as time passes it, and again after the clip wraps
+    assert_eq!(names, ["a", "b", "c", "a", "b"], "{log:?}");
+    assert!(log[1].ends_with(" spin 0") || log[1].ends_with(" spin 1"), "{log:?}");
+    let frame_of = |l: &String| l.rsplit(' ').next().unwrap().parse::<i32>().unwrap();
+    assert!((frame_of(&log[2]) - 30).abs() <= 2, "{log:?}"); // 0.5 s
+    assert!((frame_of(&log[3]) - 114).abs() <= 2, "{log:?}"); // 1.9 s
+    assert!((frame_of(&log[4]) - 120).abs() <= 2, "{log:?}"); // round again
+    // a clip played once gives each event once, the one at its very end too, before on_clip_end
+    let mut g = game_with_events(vec![
+        ("main.lua", "nova.start('s')"),
+        (
+            "entities/car.lua",
+            "local C = nova.entity { model = 'car' }\nfunction C:on_clip_event(event) nova.log(event) end\nfunction C:on_clip_end(name) nova.log('end') end\nreturn C",
+        ),
+        (
+            "scenes/s.lua",
+            "local S = nova.scene {}\nfunction S:enter() self.car = nova.spawn('car', 0, 0) self.car.clip_speed = 4 self.car:play_clip('spin', { loop = false }) end\nreturn S",
+        ),
+    ]);
+    for _ in 0..60 {
+        frame(&mut g);
+    }
+    assert!(g.error.is_none(), "{:?}", g.error);
+    assert_eq!(g.take_log(), ["a", "b", "c", "end"]);
+}
+
+#[test]
+fn the_animator_tells_events_and_says_where_its_clip_is() {
+    let mut g = game_with_events(vec![(
+        "main.lua",
+        r#"
+local heard = {}
+local anim = nova.animator("car", { start = "go", states = { go = { clip = "spin" }, once = { clip = "spin", loop = false } },
+  on_event = function(event, clip) heard[#heard + 1] = event .. ":" .. clip end })
+local f = 0
+function update(dt)
+  f = f + 1
+  anim:update(dt)
+  for _, name in ipairs(anim:events()) do nova.log("f" .. f .. " " .. name) end
+  if f == 60 then
+    local clip, seconds, phase = anim:time()
+    nova.log(string.format("%s %.2f %.2f %.2f", clip, seconds, phase, anim:phase()))
+  end
+  if f == 150 then nova.log(table.concat(heard, " ")) end
+  anim:draw(0, 0, 0)
+end
+"#,
+    )]);
+    for _ in 0..150 {
+        frame(&mut g);
+    }
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let log = g.take_log();
+    assert_eq!(log[0], "f1 a");
+    assert!(log[1] == "f30 b" || log[1] == "f31 b", "{log:?}");
+    assert_eq!(log[2], "spin 1.00 0.50 0.50");
+    assert!(log[3].ends_with(" c") && log[4].ends_with(" a") && log[5].ends_with(" b"), "{log:?}");
+    assert_eq!(log[6], "a:spin b:spin c:spin a:spin b:spin");
+}
+
+#[test]
+fn a_pose_says_how_low_each_part_reaches() {
+    // the body is a 16-unit cube standing on the ground (1 world unit); the clip lifts it 4 units in its first second
+    let mut g = game(vec![(
+        "main.lua",
+        "local rest, up = nova.model_pose('car'), nova.model_pose('car', { clip = 'spin', time = 1 })\nnova.log(string.format('%.3f %.3f %.3f %.3f %s', rest.body.y, rest.body.low, up.body.y, up.body.low, tostring(rest.body.skin)))\nnova.log(string.format('%.3f', up.wheel.low - rest.wheel.low))",
+    )]);
+    frame(&mut g);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let log = g.take_log();
+    assert_eq!(log[0], "0.000 0.000 0.250 0.250 nil");
+    // the wheel is carried up with the body; turning a quarter about z changes how low it reaches by less than its size
+    let lift: f32 = log[1].parse().unwrap();
+    assert!((lift - 0.25).abs() < 0.3, "{log:?}");
+}
+
+#[test]
+fn the_follow_camera_stops_in_front_of_solid_things_when_asked_and_an_entity_reaches_its_scene() {
+    let mut g = game(vec![
+        ("main.lua", "nova.start('s')"),
+        (
+            "entities/car.lua",
+            "local C = nova.entity { model = 'car' }\nfunction C:create() nova.log('scene before enter ends: ' .. tostring(nova.scene_now() ~= nil)) end\nfunction C:update() nova.scene_now().seen = (nova.scene_now().seen or 0) + 1 end\nreturn C",
+        ),
+        (
+            "scenes/s.lua",
+            r#"
+local S = nova.scene {}
+function S:enter()
+  self.car = nova.spawn('car', 0, 0)
+  -- a wall of the car's own cube, ten times its size, standing between the target and where the camera wants to be
+  nova.solid.add('car', 0, 0, 9, { scale = 10 })
+  self.f = 0
+end
+function S:update(dt)
+  self.f = self.f + 1
+  local target = { x = 0, y = 0, z = 0 }
+  local opts = { distance = 9, height = 2, look_height = 1, smooth = 0 }
+  if self.f == 2 then
+    nova.cam3.follow(target, opts)
+    nova.log(string.format("free %.2f", nova.cam3.eye.z))
+    opts.collide = true
+    nova.cam3.follow(target, opts)
+    local e = nova.cam3.eye
+    local d = math.sqrt(e.x ^ 2 + (e.y - 1) ^ 2 + e.z ^ 2)
+    nova.log(string.format("stopped %.2f %.2f", e.z, d))
+    opts.margin = 1
+    nova.cam3.follow(target, opts)
+    nova.log(string.format("margin %.2f", nova.cam3.eye.z))
+    -- nothing in the way on the other side
+    nova.cam3.yaw = math.pi
+    nova.cam3.follow(target, opts)
+    nova.log(string.format("behind %.2f", nova.cam3.eye.z))
+    nova.log("scene " .. tostring(nova.scene_now() == self) .. " " .. tostring(self.seen))
+  end
+end
+return S
+"#,
+        ),
+    ]);
+    frame(&mut g);
+    frame(&mut g);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let log = g.take_log();
+    assert_eq!(log[1], "free 9.00");
+    // the wall's near face is at z = 4: the camera stops 0.3 short of it along its line of sight
+    let parts: Vec<f32> = log[2]
+        .split(' ')
+        .skip(1)
+        .map(|v| v.parse().unwrap())
+        .collect();
+    assert!(parts[0] > 3.4 && parts[0] < 4.0, "{log:?}");
+    let margin: f32 = log[3].split(' ').nth(1).unwrap().parse().unwrap();
+    assert!(margin < parts[0] - 0.5, "{log:?}");
+    assert_eq!(log[4], "behind -9.00");
+    assert!(log[5].starts_with("scene true "), "{log:?}");
+    assert!(log[0].starts_with("scene before enter ends: "), "{log:?}");
+}

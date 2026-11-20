@@ -51,8 +51,8 @@
  {
   "name": "nova.animator",
   "kind": "function",
-  "signature": "nova.animator(model, { start, fade, states }) -> animator",
-  "doc": "A small animation state machine for a skinned or animated model. A state is `{ clip = \"walk\" }` (with `loop = false` to play once, `next = \"idle\"` for where it goes when it ends, `speed` to play faster, `fade` for its own crossfade time) or `{ blend = \"speed\", points = { { 0, \"idle\" }, { 3, \"walk\" }, { 7, \"sprint\" } } }`: the two clips nearest the number set with `anim:set(\"speed\", v)` are mixed, their cycles kept in step. Methods: `anim:play(state [, { restart, fade }])` crossfades into a state (nothing if already in it), `anim:update(dt)` once a frame, `anim:draw(x, y, z [, options of nova.model])`, `anim:state()`, `anim:finished()` (a one-shot with nowhere to go has ended), `anim:layers()` (the `layers` for nova.model), `anim.speed` (a multiplier for all of it).",
+  "signature": "nova.animator(model, { start, fade, states, on_event }) -> animator",
+  "doc": "A small animation state machine for a skinned or animated model. A state is `{ clip = \"walk\" }` (with `loop = false` to play once, `next = \"idle\"` for where it goes when it ends, `speed` to play faster, `fade` for its own crossfade time) or `{ blend = \"speed\", points = { { 0, \"idle\" }, { 3, \"walk\" }, { 7, \"sprint\" } } }`: the two clips nearest the number set with `anim:set(\"speed\", v)` are mixed, their cycles kept in step. Methods: `anim:play(state [, { restart, fade }])` crossfades into a state (nothing if already in it), `anim:update(dt)` once a frame, `anim:draw(x, y, z [, options of nova.model])`, `anim:state()`, `anim:finished()` (a one-shot with nowhere to go has ended), `anim:layers()` (the `layers` for nova.model), `anim.speed` (a multiplier for all of it). Keeping time with the motion: `anim:time()` gives `clip, seconds, phase` for the state it is in (phase runs 0 to 1 over the clip; for a blend, the nearer clip), `anim:phase()` just the phase; `on_event = function(event, clip) ... end` (or `anim.on_event = ...`) is called from `update` when that clip passes one of its named events (the model file's clip \"events\"), and `anim:events()` lists the names passed in the last update. Use these for footsteps, not the animator's own fields.",
   "group": "Drawing"
  },
  {
@@ -108,7 +108,7 @@
   "name": "nova.solid.raycast",
   "kind": "function",
   "signature": "nova.solid.raycast(x, y, z, dx, dy, dz, max) -> distance, nx, ny, nz | nil",
-  "doc": "The first solid triangle a ray hits within `max` metres: the distance along it (the direction need not be unit length) and the surface's normal, facing the ray; nothing if it hits none.",
+  "doc": "The first solid triangle a ray hits within `max` metres: the distance to it in metres (whatever the length of the direction you give: it need not be unit length, and `max` is in metres too) and the surface's normal, facing the ray; nothing if it hits none.",
   "group": "3D"
  },
  {
@@ -296,8 +296,8 @@
  {
   "name": "nova.model_pose",
   "kind": "function",
-  "signature": "nova.model_pose(id [, opts]) -> { [part] = { x, y, z }, ... }",
-  "doc": "Where each part of a model is (the place of its own origin: its joint), in the model's own space (before the scale and turn you draw it with), in the pose `nova.model(id, ..., opts)` would draw: a `clip` and `time`, `layers`, and the `parts` turns. For aiming a hand, finding a foot's height, or feeding `nova.ik`.",
+  "signature": "nova.model_pose(id [, opts]) -> { [part] = { x, y, z, low }, ... }",
+  "doc": "Where each part of a model is (the place of its own origin: its joint), in the model's own space (before the scale and turn you draw it with), in the pose `nova.model(id, ..., opts)` would draw: a `clip` and `time`, `layers`, and the `parts` turns. `low` is the lowest point (y) of the part's own shapes in that pose, when it has any: a foot's sole, where `y` is its ankle (the points of a bending, skinned limb count with the part that pulls them hardest; the part that only carries such a mesh has `skin = true` and no `low`). For aiming a hand, finding a foot's height, or feeding `nova.ik`.",
   "group": "Drawing"
  },
  {
@@ -310,8 +310,8 @@
  {
   "name": "nova.model_clips",
   "kind": "function",
-  "signature": "nova.model_clips(id) -> { { name, duration }, ... }",
-  "doc": "The animation clips a model has, with their length in seconds, for nova.model(..., { clip = name, time = seconds }).",
+  "signature": "nova.model_clips(id) -> { { name, duration, events }, ... }",
+  "doc": "The animation clips a model has, with their length in seconds, for nova.model(..., { clip = name, time = seconds }). `events` lists the clip's named moments in time order, { { t = seconds, name = \"step\" }, ... } (empty when it has none): they are written in the model file's clip as \"events\": [{ \"t\": 0.25, \"name\": \"step\" }] and reach code through on_clip_event and the animator's on_event.",
   "group": "Drawing"
  },
  {
@@ -910,6 +910,13 @@
   "group": "Scenes and entities"
  },
  {
+  "name": "nova.scene_now",
+  "kind": "function",
+  "signature": "nova.scene_now() -> scene",
+  "doc": "The scene that is running, the object itself (what `self` is in the scene's own functions), so an entity can reach its scene: `nova.scene_now().score = nova.scene_now().score + 1`, or `nova.scene_now():gem_taken(self)`. Nil before the first scene starts. nova.current_scene() is its name.",
+  "group": "Scenes and entities"
+ },
+ {
   "name": "nova.named",
   "kind": "function",
   "signature": "nova.named(name) -> entity or nil",
@@ -1003,8 +1010,8 @@
  {
   "name": "nova.cam3.follow",
   "kind": "function",
-  "signature": "nova.cam3.follow(target [, { distance, height, look_height, smooth, fov, dt }])",
-  "doc": "A camera behind and above `target` (an entity or { x, y, z }), looking at it and easing after it as it moves. distance 9, height 8, look_height 1, smooth 6 (0 stays rigidly behind), fov 60. Turn it with cam3.yaw or cam3.look.",
+  "signature": "nova.cam3.follow(target [, { distance, height, look_height, smooth, fov, dt, collide, margin }])",
+  "doc": "A camera behind and above `target` (an entity or { x, y, z }), looking at it and easing after it as it moves. distance 9, height 8, look_height 1, smooth 6 (0 stays rigidly behind), fov 60. Turn it with cam3.yaw or cam3.look. `collide = true` keeps solid things from coming between the camera and what it looks at: when a triangle added with nova.solid.add (a wall, a hill, the level's mesh) is on the line of sight, the camera moves in along that line to `margin` (0.3) in front of it, never nearer than 0.5, and eases back out when the way is clear. It costs one nova.solid.raycast a frame. The camera eases in from where it was: pass smooth = 0 for the first frames of a scene to start behind the target.",
   "group": "3D"
  },
  {
@@ -1340,7 +1347,14 @@
   "name": "play_clip",
   "kind": "method",
   "signature": "self:play_clip(name [, { loop = true, restart = false }])",
-  "doc": "Play an animation clip of the entity's 3D model. on_clip_end(name) runs when a non-looping clip finishes; set self.clip_speed to scale time.",
+  "doc": "Play an animation clip of the entity's 3D model. on_clip_end(name) runs when a non-looping clip finishes; on_clip_event(event, clip) runs each time the clip passes one of its named events (the model file's clip \"events\": a foot landing, so `function Hero:on_clip_event(event) if event == \"step\" then nova.sound.play(\"step\") end end` keeps footsteps in time, also when the clip loops); set self.clip_speed to scale time.",
+  "group": "Entity methods"
+ },
+ {
+  "name": "clip_events",
+  "kind": "method",
+  "signature": "self:clip_events() -> { { t, name }, ... }",
+  "doc": "The named events of the clip the entity is playing, in time order (empty when it has none or nothing plays). The entity's on_clip_event(event, clip) is called as the clip passes each.",
   "group": "Entity methods"
  },
  {

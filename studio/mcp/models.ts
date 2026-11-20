@@ -74,7 +74,11 @@ local fov, close = ${fov}, ${close}
 local f, duration = 0, 0
 local clips = nova.model_clips(name)
 local listed = {}
-for _, c in ipairs(clips) do listed[#listed + 1] = string.format("%s %.2fs", c.name, c.duration) end
+for _, c in ipairs(clips) do
+  local events = {}
+  for _, e in ipairs(c.events or {}) do events[#events + 1] = string.format("%s at %.2f", e.name, e.t) end
+  listed[#listed + 1] = string.format("%s %.2fs%s", c.name, c.duration, #events > 0 and (" (events: " .. table.concat(events, "; ") .. ")") or "")
+end
 nova.log("CLIPS " .. table.concat(listed, ", "))
 if clip then
   local found
@@ -113,9 +117,13 @@ function update(dt)
   if f % 2 == 1 and m[1] == 1 then
     local pose = nova.model_pose(name, opts)
     local parts = {}
-    for part, p in pairs(pose) do parts[#parts + 1] = string.format("%s=%.3f", part, p.y) end
+    -- each part's joint height and, when it has shapes of its own, how low they reach (a part that only carries a skinned
+    -- mesh is left out: its triangles follow other parts, which are listed)
+    for part, p in pairs(pose) do
+      if not p.skin then parts[#parts + 1] = string.format("%s=%.3f/%s", part:gsub("[ =/|]", "_"), p.y, p.low and string.format("%.3f", p.low) or "-") end
+    end
     table.sort(parts)
-    nova.log(string.format("POSE %d %.3f %s", m[2], t, table.concat(parts, " ")))
+    nova.log(string.format("POSE|%d|%.3f|%s", m[2], t, table.concat(parts, "|")))
   end
 end
 `;
@@ -131,9 +139,16 @@ end
     const log: string[] = (report.log ?? []).map((l: Args) => String(l.text));
     const clips = log.find((l) => l.startsWith("CLIPS "))?.slice(6) || "";
     const size = Number(log.find((l) => l.startsWith("SIZE "))?.slice(5) ?? a.size ?? 1.5);
-    const poses = log.filter((l) => l.startsWith("POSE ")).map((l) => {
-      const [, i, t, ...parts] = l.split(" ");
-      return { i: Number(i), t: Number(t), parts: Object.fromEntries(parts.map((p) => [p.slice(0, p.lastIndexOf("=")), Number(p.slice(p.lastIndexOf("=") + 1))])) as Record<string, number> };
+    const poses = log.filter((l) => l.startsWith("POSE|")).map((l) => {
+      const [, i, t, ...parts] = l.split("|");
+      const joint: Record<string, number> = {}, low: Record<string, number> = {};
+      for (const p of parts) {
+        const name = p.slice(0, p.lastIndexOf("="));
+        const [j, lo] = p.slice(p.lastIndexOf("=") + 1).split("/");
+        joint[name] = Number(j);
+        if (lo !== undefined && lo !== "-") low[name] = Number(lo);
+      }
+      return { i: Number(i), t: Number(t), parts: joint, low };
     });
     const captures: Args[] = report.captures ?? [];
     const tiles = captures.map((c, k) => {
@@ -148,15 +163,25 @@ end
     lines.push(`clips: ${clips || "none"}`);
     for (const v of views) if (v.says) lines.push(`${v.name}: ${v.says}`);
     if (close) lines.push("the dark lines are the ground (y = 0): one across the picture, one from front to back. Feet that float or sink show against them.");
-    // how high each part's joint is, moment by moment: the lowest parts (feet) first
+    // how high each part is, moment by moment: the parts that come lowest (the feet) first
     if (posed && poses.length) {
       const names = Object.keys(poses[0]!.parts);
-      const lowest = (n: string) => Math.min(...poses.map((p) => p.parts[n] ?? 0));
+      // (a part with shapes is ranked by the lowest point of them, one without by its joint)
+      const reach = (p: (typeof poses)[number], n: string) => p.low[n] ?? p.parts[n] ?? 0;
+      const lowest = (n: string) => Math.min(...poses.map((p) => reach(p, n)));
       const shown = names.sort((x, y) => lowest(x) - lowest(y)).slice(0, a.parts === "all" ? 200 : 8);
-      const wide = Math.max(...shown.map((n) => n.length), 4);
-      lines.push(`height of each part's joint above the ground (world units; the ${shown.length} lowest${names.length > shown.length ? ` of ${names.length}: parts: "all" lists every one` : ""}). A joint is where the part turns (an ankle, not a sole):`);
-      lines.push(`  ${"time".padEnd(wide)}  ${poses.map((p) => p.t.toFixed(2).padStart(6)).join(" ")}`);
-      for (const n of shown) lines.push(`  ${n.padEnd(wide)}  ${poses.map((p) => (p.parts[n] ?? 0).toFixed(3).padStart(6)).join(" ")}`);
+      const wide = Math.max(...shown.map((n) => n.length), 11);
+      const row = (label: string, kind: string, values: (number | undefined)[]) => `  ${label.padEnd(wide)}  ${kind.padEnd(6)} ${values.map((v) => (v === undefined ? "-" : v.toFixed(3)).padStart(6)).join(" ")}`;
+      lines.push(`heights above the ground at each moment (world units, y up; the ${shown.length} parts that come lowest${names.length > shown.length ? ` of ${names.length}: parts: "all" lists every one` : ""}). What each row is:`);
+      lines.push("  whole model, lowest: the lowest point of anything in the model. 0.000 stands on the ground; above 0 the whole figure floats; below 0 something is sunk into the ground.");
+      lines.push("  <part>, lowest: the lowest point of that part's own shapes in the pose (for a foot, its sole). The foot that stands should read about 0.000, the one that swings above it.");
+      lines.push("  <part>, joint: the height of the point the part turns about (for a foot, the ankle; for a shin, the knee). It does not say where the part's shapes end.");
+      lines.push(row("time (s)", "", poses.map((p) => p.t)).replace(/(\d\.\d\d)\d/g, " $1"));
+      if (poses.some((p) => Object.keys(p.low).length)) lines.push(row("whole model", "lowest", poses.map((p) => (Object.keys(p.low).length ? Math.min(...Object.values(p.low)) : undefined))));
+      for (const n of shown) {
+        if (poses.some((p) => p.low[n] !== undefined)) lines.push(row(n, "lowest", poses.map((p) => p.low[n])));
+        lines.push(row(poses.some((p) => p.low[n] !== undefined) ? "" : n, "joint", poses.map((p) => p.parts[n])));
+      }
     }
     const picture = tiles.length === 1 ? tiles[0]!.picture : contactSheet(tiles, { columns: strip || tiles.length, maxWidth: 1920 });
     const file = keep(`preview-${name}`, picture);

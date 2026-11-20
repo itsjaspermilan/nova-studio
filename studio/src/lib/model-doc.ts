@@ -187,7 +187,17 @@ export interface Clip {
   duration: number;
   loop: boolean;
   tracks: Track[];
+  /// Named moments of the clip, in time order: a foot landing (`{ t: 0.25, name: "step" }`), a blade passing. The game is told
+  /// when a playing clip passes one (`on_clip_event`, the animator's `on_event`), so sounds and effects keep time with the motion.
+  events?: ClipEvent[];
 }
+
+export interface ClipEvent {
+  /// Seconds into the clip (0 to its duration).
+  t: number;
+  name: string;
+}
+export const MAX_EVENTS = 64;
 
 /// A capsule on the ground: the segment from (ax, az) to (bx, bz) made `r` thick (a car's length, a long fence).
 export interface Capsule {
@@ -476,6 +486,17 @@ export function parseModel(text: string): Parsed {
           last = key.t;
         }
       }
+      const events = (c as { events?: unknown }).events;
+      if (events !== undefined) {
+        if (!Array.isArray(events) || events.length > MAX_EVENTS) return { ok: false, error: `${at}.events must be a list of up to ${MAX_EVENTS} moments like { "t": 0.25, "name": "step" }` };
+        for (const [k, e] of (events as ClipEvent[]).entries()) {
+          if (!e || typeof e.t !== "number" || !(e.t >= 0 && e.t <= c.duration) || typeof e.name !== "string" || !e.name.trim()) return { ok: false, error: `${at}.events[${k}] needs "t" (seconds, from 0 to the clip's duration ${c.duration}) and a "name"` };
+        }
+        // kept in time order; a clip with none has no list
+        const sorted = (events as ClipEvent[]).map((e) => ({ t: e.t, name: e.name })).sort((x, y) => x.t - y.t);
+        if (sorted.length) c.events = sorted;
+        else delete c.events;
+      }
     }
   }
   const poses = (o as { poses?: unknown }).poses;
@@ -586,7 +607,8 @@ export function serializeModel(source: ModelDoc): string {
   const clip = (c: Clip) => {
     const track = (t: Track) => `        { "part": ${JSON.stringify(t.part)}, "prop": "${t.prop}", "keys": [${t.keys.map((k) => `{ "t": ${k.t}, "value": ${vec(k.value)}${k.ease && k.ease !== "linear" ? `, "ease": "${k.ease}"` : ""} }`).join(", ")}] }`;
     const tracks = c.tracks.length ? `[\n${c.tracks.map(track).join(",\n")}\n      ]` : "[]";
-    return `    {\n      "name": ${JSON.stringify(c.name)},\n      "duration": ${c.duration},\n      "loop": ${c.loop},\n      "tracks": ${tracks}\n    }`;
+    const events = c.events?.length ? `,\n      "events": [${c.events.map((e) => `{ "t": ${e.t}, "name": ${JSON.stringify(e.name)} }`).join(", ")}]` : "";
+    return `    {\n      "name": ${JSON.stringify(c.name)},\n      "duration": ${c.duration},\n      "loop": ${c.loop},\n      "tracks": ${tracks}${events}\n    }`;
   };
   const clips = doc.clips?.length ? `,\n  "clips": [\n${doc.clips.map(clip).join(",\n")}\n  ]` : "";
   const poses = doc.poses?.length ? `,\n  "poses": [\n${doc.poses.map((q) => `    ${JSON.stringify(q)}`).join(",\n")}\n  ]` : "";
