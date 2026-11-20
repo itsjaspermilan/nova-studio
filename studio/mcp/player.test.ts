@@ -126,8 +126,13 @@ describe.skipIf(!built)("the test player", () => {
     expect(said).toMatch(/STOPPED: the route stopped at step 1, which failed \(stop_on_fail\): 2 later steps were not played/);
     expect(said).toMatch(/warning: step 1: walk_to did not arrive in 70 frames: 'hero' is at x 1[\d.]+, y 100, [\d.]+ units from \[300, 100\]/);
     expect(said).not.toMatch(/f\d+ later/);
-    expect(said).toMatch(/the film strip shows 19 of the 36 pictures taken \(every 2nd, and the last\); all 36 are in .*nova-run-[\d-]+\/ as full-size files named by frame/);
-    const kept = /all 36 are in (\S+) as/.exec(said)![1]!;
+    // more pictures than one strip holds: a second strip, nothing left out, and the first lines say so
+    expect(said.split("\n").slice(0, 3).join("\n")).toMatch(/36 pictures in 2 film strips of up to 24 \(f2 to f48; f50 to f\d+\): 2 pictures come back, in order\. None is left out/);
+    expect(said).not.toContain("PICTURES LEFT OUT");
+    // past four strips pictures are left out, and that is the first thing said
+    const many = text(use("play", { every: 1, frames: 110, size: "64x64" }));
+    expect(many.split("\n")[0]).toMatch(/^WARNING: PICTURES LEFT OUT: the film strips show \d+ of the 110 pictures taken \(every 2nd, and the last\), because 96 is the most that are shown; all 110 are in .*nova-run-[\d-]+\/ as full-size files/);
+    const kept = /all 110 are in (\S+) as/.exec(many)![1]!;
     expect(existsSync(join(kept, "f00002.png"))).toBe(true);
     rmSync(kept, { recursive: true, force: true });
   });

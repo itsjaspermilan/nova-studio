@@ -96,7 +96,7 @@ describe("shapes that are written as meshes", () => {
 
 describe("feet instead of angles", () => {
   it("makes a walk whose standing foot stays on the ground and moves back evenly, and says the speed it fits", () => {
-    const { model, notes } = expandModel(biped([{ name: "walk", duration: 0.6, loop: true, tracks: [], walk: { legs: ["foot_l", "foot_r"], stride: 10, lift: 2.5, event: "step" } }]));
+    const { model, notes } = expandModel(biped([{ name: "walk", duration: 0.6, loop: true, tracks: [], walk: { legs: ["foot_l", "foot_r"], stride: 10, lift: 2.5, event: "step", roll: false, bob: 0, samples: 16 } }]));
     const clip = model.clips[0];
     expect(clip.walk).toBeUndefined();
     const track = (part: string, prop = "rotation") => clip.tracks.find((t: any) => t.prop === prop && t.part[t.part.length - 1] === part);
@@ -120,8 +120,67 @@ describe("feet instead of angles", () => {
     expect(thigh[16].value[0]).toBeCloseTo(thigh[0].value[0], 3);
     // the other foot is half a cycle behind: it lands at 0.3
     expect(clip.events).toEqual([{ t: 0, name: "step" }, { t: 0.3, name: "step" }]);
-    expect(notes.join("\n")).toContain('clip "walk": a walk of 2 legs (leg_l > shin_l > foot_l; leg_r > shin_r > foot_r), 17 keys each. A standing foot moves back 10 units in 0.36 s, so the feet do not slide when the entity moves 1.736 world units a second');
-    expect(notes.join("\n")).toMatch(/The hips \("hips"\) are keyed [\d.]+ units lower/);
+    expect(notes.join("\n")).toContain('clip "walk": a walk of 2 legs (leg_l > shin_l > foot_l; leg_r > shin_r > foot_r), 17 keys each; foot_l lands at 0 s, foot_r lands at 0.3 s (it is in front then). A standing foot moves back 10 units in 0.36 s, so the feet do not slide when the entity moves 1.736 world units a second');
+    expect(notes.join("\n")).toMatch(/The hips \("hips"\) are keyed: [\d.]+ units lower/);
+  });
+
+  it("walks with hips that rise over the standing leg, feet that roll from heel to toe above the ground, and arms that swing against the legs", () => {
+    const withArms = biped([{ name: "walk", duration: 0.6, loop: true, tracks: [], walk: { legs: ["foot_l", "foot_r"], stride: 10, lift: 2.5, arms: ["arm_l", "arm_r"] } }]) as any;
+    const arm = (side: string, x: number) => ({ name: `arm_${side}`, origin: [x, 7, 0], rotation: [0, 0, x > 0 ? 4 : -4], cubes: [], children: [{ name: `fore_${side}`, origin: [0, -5, 0], rotation: [0, 0, 0], cubes: [], children: [] }] });
+    withArms.parts[0].children.push(arm("l", 3.5), arm("r", -3.5));
+    const { model, notes, speeds } = expandModel(withArms);
+    const clip = model.clips[0];
+    const track = (part: string, prop = "rotation") => clip.tracks.find((t: any) => t.prop === prop && t.part[t.part.length - 1] === part);
+    const hips = track("hips", "position").keys, thigh = track("leg_l").keys, shin = track("shin_l").keys, foot = track("foot_l").keys;
+    expect(foot.length).toBe(25);
+    // the hips: lowest as the feet change over (t = 0), highest as the body passes over the standing leg; and a little
+    // towards the standing (left, +x) foot in the middle of its stance
+    const ys = hips.map((k: any) => k.value[1]);
+    expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(0.3);
+    expect(ys[0]).toBeLessThan(ys[4]);
+    expect(hips[4].value[0]).toBeGreaterThan(0.2);
+    expect(hips[16].value[0]).toBeLessThan(-0.2);
+    // the standing leg is nearly straight in the middle of its stance (not the bent knee of a creep)
+    expect(Math.abs(shin[4].value[0])).toBeLessThan(25);
+    // the foot (a box from 1 behind the ankle to 3 in front, its sole 1 below): toes up as the heel lands, level in the
+    // middle, toes down as it leaves; and no corner of the sole ever under the ground
+    const pitch = (i: number) => thigh[i].value[0] + shin[i].value[0] + foot[i].value[0];
+    expect(pitch(0)).toBeLessThan(-5);
+    expect(pitch(5)).toBeCloseTo(0, 1);
+    expect(pitch(14)).toBeGreaterThan(10);
+    for (let i = 0; i < 25; i++) {
+      const [y, z] = ankle(hips[i].value[1], thigh[i].value[0], shin[i].value[0]);
+      const a = (pitch(i) * Math.PI) / 180;
+      for (const [py, pz] of [[-1, -1], [-1, 3]] as const) {
+        const low = y + py * Math.cos(a) - pz * Math.sin(a);
+        expect(low).toBeGreaterThan(-0.03);
+        // while it stands, the point of the sole that is down goes back at the one steady speed
+        if (thigh[i].t <= 0.36 && low < 0.02) expect(z + py * Math.sin(a) + pz * Math.cos(a)).toBeCloseTo(5 - (10 * thigh[i].t) / 0.36 + pz, 1);
+      }
+    }
+    // the leg leans from the hip against the sway, so the foot does not go sideways with the hips
+    expect(thigh[4].value[2]).toBeLessThan(-0.5);
+    expect(foot[4].value[2]).toBeCloseTo(-thigh[4].value[2], 3);
+    // the left arm is back (a positive turn about x) as the left foot lands in front, and keeps its own turn about z
+    const armL = track("arm_l").keys, armR = track("arm_r").keys;
+    expect(armL[0].value[0]).toBeGreaterThan(20);
+    expect(armR[0].value[0]).toBeLessThan(-20);
+    expect(armL[0].value[2]).toBe(4);
+    expect(track("fore_l").keys[12].value[0]).toBeLessThan(track("fore_l").keys[0].value[0]);
+    expect(speeds).toEqual({ walk: 1.736 });
+    expect(notes.join("\n")).toMatch(/rising [\d.]+ over the standing leg \("bob": 0\.8; 0 keeps them level\), and [\d.]+ towards the standing foot/);
+    expect(notes.join("\n")).toContain("The feet roll from heel (toes 10 degrees up as it lands) to toe (24 degrees down as it leaves), the sole never under the ground");
+    expect(notes.join("\n")).toContain("The arms arm_l, arm_r swing against the legs");
+  });
+
+  it("bends only what is meant to bend: tubes and meshes, not lathes, and each shape may say for itself", () => {
+    const { bend } = expandModel({ version: 1, parts: [{ name: "torso", origin: [0, 0, 0], rotation: [0, 0, 0], cubes: [
+      { shape: "lathe", profile: [[0, 0], [3, 0], [2, 6], [0, 8]] },
+      { shape: "tube", points: [[0, 0, 0], [0, -5, 0]], radius: 1 },
+      { shape: "tube", points: [[0, 0, 0], [0, -5, 0]], radius: 1, bend: false },
+      { shape: "lathe", profile: [[0, 0], [3, 0], [0, 8]], bend: true },
+    ], children: [] }] });
+    expect(bend).toEqual({ "0#0": false, "0#2": false, "0#3": true });
   });
 
   it("puts an ankle where ik says, straight between the places", () => {

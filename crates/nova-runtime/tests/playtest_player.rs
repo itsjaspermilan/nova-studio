@@ -173,7 +173,10 @@ fn walk_to_goes_round_a_wall_and_straight_stops_at_it() {
     );
     let w = strings(&report["warnings"]);
     assert!(
-        w.len() == 1 && w[0].contains("gave up") && w[0].contains("it walked straight"),
+        w.len() == 1
+            && w[0].contains("gave up")
+            && w[0].contains("blocked by 'block' (tagged solid) at x 200, y 100")
+            && w[0].contains("It tried walking straight at the place"),
         "{w:?}"
     );
     assert!(hero_x(&report) < 180.0);

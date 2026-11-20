@@ -401,6 +401,13 @@ fn flatten(
 #[derive(Default)]
 struct Walk {
     theta: f64,
+    /// A stick that is relative to the 3D camera turns with it: the estimate is `theta + turn_k * (yaw - yaw0)`, where
+    /// `turn_k` is 0 (the stick is fixed to the ground), -1 (it follows `nova.cam3.yaw`, as cam3.forward and cam3.right
+    /// make it) or 1, whichever has fitted the measured movement best (`turn_err`, a running mean per choice).
+    yaw0: f64,
+    yaw: f64,
+    turn_k: f64,
+    turn_err: [f64; 3],
     mirror: bool,
     /// Where the walker was before the frame, and the stick it was given (before mirroring).
     before: Option<((f64, f64), (f64, f64))>,
@@ -436,6 +443,34 @@ struct Walk {
 }
 
 const WALK_STUCK_FRAMES: u32 = 120;
+
+/// What a walk that failed tried, in words: how often it looked for a way and the corners of the last one.
+fn tried(walk: &Walk, names: (&str, &str)) -> String {
+    if walk.plans == 0 || walk.path.is_empty() {
+        return "It tried walking straight at the place (no way round was planned); go round with a walk_to a point beside what is in the way".to_string();
+    }
+    let corners: Vec<String> = walk
+        .path
+        .iter()
+        .take(8)
+        .map(|p| format!("[{}, {}]", short(p.0), short(p.1)))
+        .collect();
+    format!(
+        "It tried: {} plan{} of a way round what is solid; the last one goes through {}{} ({}, {}), and it was on its way to corner {}{}",
+        walk.plans,
+        if walk.plans == 1 { "" } else { "s" },
+        corners.join(" "),
+        if walk.path.len() > 8 { " ..." } else { "" },
+        names.0,
+        names.1,
+        (walk.leg + 1).min(walk.path.len()),
+        if walk.reaches {
+            ""
+        } else {
+            "; none of them reaches the place"
+        }
+    )
+}
 const WALK_REPLAN_FRAMES: u32 = 45;
 const WALK_DEADBAND: f64 = 0.35;
 
@@ -760,7 +795,7 @@ impl Playtest {
             return;
         }
         let (who_arg, plane_arg) = (step.who.as_deref(), step.plane.as_deref());
-        let (x, y, plane, who) = match game.walker(who_arg, plane_arg) {
+        let (x, y, plane, who, yaw) = match game.walker(who_arg, plane_arg) {
             Ok(w) => w,
             Err(e) => {
                 self.at.as_mut().expect("a step is playing").walk.over = true;
@@ -915,6 +950,7 @@ impl Playtest {
             }
         }
         let walk = &mut self.at.as_mut().expect("a step is playing").walk;
+        walk.yaw = yaw;
         let tolerance = f64::max(if three { 0.2 } else { 3.0 }, walk.top_speed * 1.1);
         while walk.leg < walk.path.len() && far((x, y), walk.path[walk.leg]) <= tolerance {
             walk.leg += 1;
@@ -964,7 +1000,8 @@ impl Playtest {
             return;
         }
         let (ux, uy) = (dx / dist, dy / dist);
-        let (c, s) = (walk.theta.cos(), walk.theta.sin());
+        let now = walk.theta + walk.turn_k * (walk.yaw - walk.yaw0);
+        let (c, s) = (now.cos(), now.sin());
         let stick = (ux * c + uy * s, -ux * s + uy * c);
         walk.before = Some(((x, y), stick));
         let (sx, sy) = if walk.mirror {
@@ -1025,7 +1062,7 @@ impl Playtest {
         }
         let verb = step.verb();
         let (who_arg, plane_arg) = (step.who.as_deref(), step.plane.as_deref());
-        let Ok((x, y, plane, who)) = game.walker(who_arg, plane_arg) else {
+        let Ok((x, y, plane, who, _)) = game.walker(who_arg, plane_arg) else {
             let walk = &mut self.at.as_mut().expect("a step is playing").walk;
             walk.over = true;
             let (foes, attacks, frames) = (walk.foes, walk.attacks, walk.frames);
@@ -1164,7 +1201,12 @@ impl Playtest {
             walk.top_speed = walk.top_speed.max(speed);
             if speed > 1e-6 && speed >= walk.top_speed * 0.5 {
                 let measured = wrap(vy.atan2(vx) - sy.atan2(sx));
-                if wrap(measured - walk.theta).abs() > WALK_DEADBAND {
+                let turned = walk.yaw - walk.yaw0;
+                for (i, k) in [0.0, -1.0, 1.0].into_iter().enumerate() {
+                    let e = wrap(measured - (walk.theta + k * turned)).abs();
+                    walk.turn_err[i] = walk.turn_err[i] * 0.9 + e * 0.1;
+                }
+                if wrap(measured - (walk.theta + walk.turn_k * turned)).abs() > WALK_DEADBAND {
                     walk.off += 1;
                     if walk.off >= 3 {
                         walk.off = 0;
@@ -1175,7 +1217,16 @@ impl Playtest {
                             walk.mirror = !walk.mirror;
                             walk.theta = 0.0;
                         } else {
+                            // (once the camera has turned enough to tell: the choice that has fitted best)
+                            if turned.abs() > 0.15 {
+                                let best = (0..3)
+                                    .min_by(|a, b| walk.turn_err[*a].total_cmp(&walk.turn_err[*b]))
+                                    .unwrap_or(0);
+                                walk.turn_k = [0.0, -1.0, 1.0][best];
+                            }
                             walk.theta = measured;
+                            walk.yaw0 = walk.yaw;
+                            walk.turn_err = [0.0; 3];
                         }
                     }
                 } else {
@@ -1225,8 +1276,26 @@ impl Playtest {
             && at_the_end
             && walk.since_best >= 20
         {
-            // walked into it as far as it goes: next to it when the hitboxes are near
-            let near = if three { 4.0 } else { g.size.max(24.0) };
+            // walked into it as far as it goes: next to it when the hitboxes are near, or when it is the thing itself
+            // that stops the walker (a house is solid a long way from its middle)
+            let near = if three {
+                reach.max(1.2)
+            } else {
+                g.size.max(24.0)
+            };
+            let name = match &aim {
+                Aim::Entity(n) | Aim::Fight(n) => Some(n.as_str()),
+                Aim::Point(..) => None,
+            };
+            let against = game.blocked(who_arg, plane_arg, name, step.avoid.as_deref());
+            let is_it = against.as_ref().is_some_and(|b| b.1);
+            if g.gap > near && !is_it && !step.straight && walk.plans < 4 {
+                // against something else: look for another way from here
+                walk.planned = false;
+                walk.since_best = 0;
+                walk.best = 0.0;
+                return false;
+            }
             walk.over = true;
             let text = format!(
                 "{label}: walk_to '{}': stopped against it after {} frames ({})",
@@ -1234,12 +1303,19 @@ impl Playtest {
                 walk.frames,
                 place(walk)
             );
-            if g.gap <= near || step.may_time_out {
+            if g.gap <= near || is_it || step.may_time_out {
                 self.results.push(text);
             } else {
+                let tried = tried(walk, names);
                 self.fail(
                     &label,
-                    format!("{text}: that is not next to it, so something solid is between them"),
+                    format!(
+                        "{text}: that is not next to it: {}. {tried}",
+                        match against {
+                            Some((what, _)) => format!("blocked by {what}"),
+                            None => "nothing the path finder knows touches the walker there (its own code stops it: a clamp at the edge of the level, a state that does not move)".to_string(),
+                        }
+                    ),
                 );
             }
             return true;
@@ -1255,18 +1331,24 @@ impl Playtest {
         }
         if walk.since_best >= WALK_STUCK_FRAMES {
             walk.over = true;
+            let name = match &aim {
+                Aim::Entity(n) | Aim::Fight(n) => Some(n.as_str()),
+                Aim::Point(..) => None,
+            };
+            let against = game.blocked(who_arg, plane_arg, name, step.avoid.as_deref());
             let text = format!(
-                "{label}: walk_to stopped getting nearer for {WALK_STUCK_FRAMES} frames and gave up: {} ({})",
+                "{label}: walk_to stopped getting nearer for {WALK_STUCK_FRAMES} frames and gave up: {}: {}. {}",
                 place(walk),
-                if walk.path.is_empty() {
-                    format!(
-                        "it walked straight, and something solid is in the way or the actions it drives do not move '{who}': go round with two walk_to steps"
-                    )
-                } else {
-                    format!(
-                        "something the path finder does not know of is in the way (it knows solid tiles and entities tagged solid in 2D; nova.solid, nova.walls and the scenery in 3D), or the actions it drives do not move '{who}'"
-                    )
-                }
+                match against {
+                    Some((what, _)) => format!("blocked by {what}"),
+                    None if walk.path.is_empty() => format!(
+                        "nothing the path finder knows touches it there, so the actions it drives do not move '{who}' or the game's own code stops it"
+                    ),
+                    None => format!(
+                        "nothing the path finder knows touches it there (it knows solid tiles and entities tagged solid in 2D; nova.solid, entities with solid = true, nova.walls and the scenery in 3D), so the game's own code stops '{who}' or the actions it drives do not move it"
+                    ),
+                },
+                tried(walk, names)
             );
             if step.may_time_out {
                 self.results.push(text);

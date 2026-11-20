@@ -22,12 +22,28 @@ struct Tri {
     c: Vec3,
     /// Unit normal, by the winding a, b, c (counter-clockwise seen from the front).
     n: Vec3,
+    /// Which `add` it came from (an index into `owners`).
+    owner: u32,
+    /// Only a camera's line of sight minds it (a tree's crown): bodies pass through.
+    sight: bool,
+}
+
+/// What one `add` put in: the name it was given (a model) and where.
+#[derive(Clone, Debug)]
+pub struct Owner {
+    pub name: String,
+    pub pos: Vec3,
+    /// Its triangles only stop lines of sight.
+    pub sight: bool,
+    /// Put there by the running scene: forgotten when the scene ends.
+    pub scene: bool,
 }
 
 #[derive(Default)]
 pub struct MeshWorld {
     tris: Vec<Tri>,
     cells: HashMap<(i32, i32, i32), Vec<u32>>,
+    owners: Vec<Owner>,
 }
 
 /// How a body moves: the steepest slope it can stand on (degrees), the highest step it climbs, how far down it follows ground.
@@ -76,6 +92,41 @@ impl MeshWorld {
     pub fn clear(&mut self) {
         self.tris.clear();
         self.cells.clear();
+        self.owners.clear();
+    }
+
+    /// Forgets what the scene put in (see [`Owner::scene`]); the rest stays.
+    pub fn clear_scene(&mut self) {
+        if !self.owners.iter().any(|o| o.scene) {
+            return;
+        }
+        let kept: Vec<Tri> = self
+            .tris
+            .iter()
+            .filter(|t| !self.owners[t.owner as usize].scene)
+            .copied()
+            .collect();
+        self.tris.clear();
+        self.cells.clear();
+        for t in kept {
+            self.insert(t);
+        }
+    }
+
+    fn insert(&mut self, tri: Tri) {
+        let id = self.tris.len() as u32;
+        let (lo, hi) = (
+            cell_of(tri.a.min(tri.b).min(tri.c)),
+            cell_of(tri.a.max(tri.b).max(tri.c)),
+        );
+        for x in lo.0..=hi.0 {
+            for y in lo.1..=hi.1 {
+                for z in lo.2..=hi.2 {
+                    self.cells.entry((x, y, z)).or_default().push(id);
+                }
+            }
+        }
+        self.tris.push(tri);
     }
 
     /// How many triangles there are.
@@ -87,6 +138,7 @@ impl MeshWorld {
     pub fn triangles(&self) -> impl Iterator<Item = [[f32; 3]; 3]> + '_ {
         self.tris
             .iter()
+            .filter(|t| !t.sight)
             .map(|t| [t.a.to_array(), t.b.to_array(), t.c.to_array()])
     }
 
@@ -97,6 +149,30 @@ impl MeshWorld {
     /// Adds a mesh (positions and triangle indices) placed by `place`. Returns how many triangles it added (degenerate ones are
     /// left out).
     pub fn add(&mut self, positions: &[[f32; 3]], indices: &[u32], place: Mat4) -> usize {
+        self.add_as(
+            positions,
+            indices,
+            place,
+            Owner {
+                name: String::new(),
+                pos: place.transform_point3(Vec3::ZERO),
+                sight: false,
+                scene: false,
+            },
+        )
+    }
+
+    /// As [`MeshWorld::add`], saying what the mesh is (so that what blocks a body can be named) and what it is for.
+    pub fn add_as(
+        &mut self,
+        positions: &[[f32; 3]],
+        indices: &[u32],
+        place: Mat4,
+        owner: Owner,
+    ) -> usize {
+        let sight = owner.sight;
+        let owner_id = self.owners.len() as u32;
+        self.owners.push(owner);
         let mut added = 0;
         for t in indices.as_chunks::<3>().0 {
             let get = |i: u32| {
@@ -111,22 +187,14 @@ impl MeshWorld {
             if n.length() < 1e-9 {
                 continue;
             }
-            let tri = Tri {
+            self.insert(Tri {
                 a,
                 b,
                 c,
                 n: n.normalize(),
-            };
-            let id = self.tris.len() as u32;
-            let (lo, hi) = (cell_of(a.min(b).min(c)), cell_of(a.max(b).max(c)));
-            for x in lo.0..=hi.0 {
-                for y in lo.1..=hi.1 {
-                    for z in lo.2..=hi.2 {
-                        self.cells.entry((x, y, z)).or_default().push(id);
-                    }
-                }
-            }
-            self.tris.push(tri);
+                owner: owner_id,
+                sight,
+            });
             added += 1;
         }
         added
@@ -151,6 +219,48 @@ impl MeshWorld {
 
     /// The first thing a ray hits within `max` metres: the distance and the surface's normal (facing the ray).
     pub fn raycast(&self, origin: Vec3, dir: Vec3, max: f32) -> Option<(f32, Vec3)> {
+        self.raycast_with(origin, dir, max, false)
+    }
+
+    /// A line of sight: as [`MeshWorld::raycast`], and what only stops sight (a tree's crown) stops it too.
+    pub fn sightline(&self, origin: Vec3, dir: Vec3, max: f32) -> Option<(f32, Vec3)> {
+        self.raycast_with(origin, dir, max, true)
+    }
+
+    /// What stands in a body's way: the nearest thing that is not ground within `grow` of a capsule (feet at `feet`),
+    /// as what it was added as and the point of it that is nearest.
+    pub fn touching(&self, feet: Vec3, r: f32, h: f32, grow: f32) -> Option<(&Owner, Vec3)> {
+        let (p0, p1) = capsule_segment(feet, r, h.max(2.0 * r));
+        let reach = r + grow;
+        let mut ids = Vec::new();
+        self.near(
+            p0.min(p1) - Vec3::splat(reach + 0.01),
+            p0.max(p1) + Vec3::splat(reach + 0.01),
+            &mut ids,
+        );
+        let mut best: Option<(f32, u32, Vec3)> = None;
+        for &i in &ids {
+            let t = &self.tris[i as usize];
+            if t.sight {
+                continue;
+            }
+            let (dist, on_seg, on_tri) = segment_triangle(p0, p1, t);
+            if dist >= reach {
+                continue;
+            }
+            // (what it stands on is not in its way)
+            let away = (on_seg - on_tri).normalize_or_zero();
+            if away.y > 0.6 || (dist < EPS && t.n.y.abs() > 0.6) {
+                continue;
+            }
+            if best.is_none_or(|(d, _, _)| dist < d) {
+                best = Some((dist, t.owner, on_tri));
+            }
+        }
+        best.map(|(_, o, p)| (&self.owners[o as usize], p))
+    }
+
+    fn raycast_with(&self, origin: Vec3, dir: Vec3, max: f32, sight: bool) -> Option<(f32, Vec3)> {
         let dir = dir.try_normalize()?;
         if self.tris.is_empty() || !max.is_finite() || max <= 0.0 {
             return None;
@@ -186,6 +296,9 @@ impl MeshWorld {
             if let Some(list) = self.cells.get(&cell) {
                 for &i in list {
                     let t = &self.tris[i as usize];
+                    if t.sight && !sight {
+                        continue;
+                    }
                     if let Some(d) = ray_triangle(origin, dir, t)
                         && d <= max
                         && best.is_none_or(|(b, _)| d < b)
@@ -242,6 +355,9 @@ impl MeshWorld {
             let mut pass = Vec::new();
             for &i in &ids {
                 let t = &self.tris[i as usize];
+                if t.sight {
+                    continue;
+                }
                 let (p0, p1) = capsule_segment(feet, r, h);
                 if let Some((n, depth)) = push_out(p0, p1, r, t)
                     && depth > 1e-4
@@ -445,6 +561,9 @@ impl MeshWorld {
         );
         let mut best: Option<(Vec3, f32)> = None;
         for &i in &ids {
+            if self.tris[i as usize].sight {
+                continue;
+            }
             if let Some((n, depth)) = push_out(p0, p1, r, &self.tris[i as usize])
                 && n.y >= walkable
                 && depth > 0.0
@@ -938,6 +1057,86 @@ mod tests {
         }
         w.add(&positions, &indices, Mat4::IDENTITY);
         height
+    }
+
+    /// A box from lo to hi, all six faces outward.
+    fn block(w: &mut MeshWorld, lo: [f32; 3], hi: [f32; 3]) {
+        let (a, b) = (lo, hi);
+        quad(
+            w,
+            [a[0], b[1], b[2]],
+            [b[0], b[1], b[2]],
+            [b[0], b[1], a[2]],
+            [a[0], b[1], a[2]],
+        ); // top
+        quad(
+            w,
+            [a[0], a[1], b[2]],
+            [b[0], a[1], b[2]],
+            [b[0], b[1], b[2]],
+            [a[0], b[1], b[2]],
+        ); // +z
+        quad(
+            w,
+            [b[0], a[1], a[2]],
+            [a[0], a[1], a[2]],
+            [a[0], b[1], a[2]],
+            [b[0], b[1], a[2]],
+        ); // -z
+        quad(
+            w,
+            [b[0], a[1], b[2]],
+            [b[0], a[1], a[2]],
+            [b[0], b[1], a[2]],
+            [b[0], b[1], b[2]],
+        ); // +x
+        quad(
+            w,
+            [a[0], a[1], a[2]],
+            [a[0], a[1], b[2]],
+            [a[0], b[1], b[2]],
+            [a[0], b[1], a[2]],
+        ); // -x
+    }
+
+    #[test]
+    fn a_low_plinth_under_a_pillar_is_slid_round_not_stuck_on() {
+        for base in [0.12f32, 0.24, 0.3, 0.38] {
+            let mut w = MeshWorld::default();
+            floor(&mut w, 30.0, 0.0);
+            block(&mut w, [-0.7, 0.0, -0.7], [0.7, base, 0.7]);
+            block(&mut w, [-0.4, base, -0.4], [0.4, 3.0, 0.4]);
+            // walking at it at a slant, as a hero does at 2.9 m/s with gravity
+            let o = CapsuleOpts {
+                step: 0.3,
+                ..CapsuleOpts::default()
+            };
+            let mut m = w.move_capsule(Vec3::new(-1.6, 0.0, -3.0), 0.3, 1.75, Vec3::ZERO, &o);
+            let mut vy = 0.0f32;
+            let mut top = 0.0f32;
+            for k in 0..240 {
+                vy -= 18.0 / 60.0;
+                m = w.move_capsule(
+                    m.pos,
+                    0.3,
+                    1.75,
+                    Vec3::new(1.3 / 60.0, vy / 60.0, 2.6 / 60.0),
+                    &o,
+                );
+                if m.on_ground {
+                    vy = 0.0;
+                }
+                top = top.max(m.pos.y);
+                if k % 20 == 0 {
+                    eprintln!("base {base} f{k}: {:?} ground {}", m.pos, m.on_ground);
+                }
+            }
+            assert!(
+                m.pos.z > 1.5,
+                "base {base}: went round the pillar: {:?} (highest y {top})",
+                m.pos
+            );
+        }
     }
 
     #[test]

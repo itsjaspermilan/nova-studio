@@ -1035,7 +1035,7 @@ function scenery.add(model, x, y, z, opts)
       local sk = key(cell(wx), cell(wz))
       local sl = solid_bins[sk]
       if not sl then sl = {}; solid_bins[sk] = sl end
-      sl[#sl + 1] = { wx, wz, circle.r * scale }
+      sl[#sl + 1] = { wx, wz, circle.r * scale, model, x, z }
     end
   end
 end
@@ -1149,6 +1149,25 @@ function scenery.push(x, z, r)
   if hit then return px, pz end
 end
 
+--- The piece of scenery a circle of radius `r` at (x, z) touches, or comes within `margin` (0.1) of: its model and where the
+--- piece stands (model, x, z), or nothing. For saying what is in the way.
+function scenery.touching(x, z, r, margin)
+  local best, bm, bx, bz
+  for gx = cell(x - 4), cell(x + 4) do
+    for gz = cell(z - 4), cell(z + 4) do
+      local list = solid_bins[key(gx, gz)]
+      if list then
+        for i = 1, #list do
+          local s = list[i]
+          local d = sqrt((x - s[1]) ^ 2 + (z - s[2]) ^ 2) - s[3] - r
+          if d <= (margin or 0.1) and (not best or d < best) then best, bm, bx, bz = d, s[4], s[5], s[6] end
+        end
+      end
+    end
+  end
+  if best then return bm, bx, bz end
+end
+
 --- Looks along a line from (x, z) in the direction (dx, dz) for `length` metres, as wide as a circle of `radius`: the nearest
 --- solid circle in the way. Returns how far away it is (0 if already touching), and the circle's x, z and radius; or nothing.
 --- It is how a car or a character sees what is coming, to steer round it.
@@ -1242,14 +1261,29 @@ end
 --- opts: distance (9), height (8: how far above the ground the camera is), look_height (1: what it looks at above the target),
 --- smooth (6: bigger follows more tightly; 0 stays rigidly behind), fov (60), dt (1/60). Turn it with cam3.yaw or cam3.look.
 --- collide = true keeps solid things from coming between the camera and what it looks at: when a triangle added with
---- nova.solid.add (a wall, a hill, the level) is in the way, the camera moves in along its line of sight to just in front of
+--- nova.solid.add (a wall, a hill, the level), an entity with solid = true, or a piece of static scenery that blocks (a tree:
+--- its whole shape, crown and all) is in the way, the camera moves in along its line of sight to just in front of
 --- it (`margin`, 0.3, is how far in front; it never comes nearer than 0.5), and eases back out when the way is clear.
+--- behind = 1.2 swings the camera round behind the way the target walks (radians a second), unless the game turns it.
 --- min_distance = 1.7 with hide = true stops drawing the target while the camera is squeezed nearer than that (see below);
 --- cam3.distance and cam3.squeezed say how near it is, for a game that would rather fade the target itself.
+local behind_last
 function cam3.follow(target, opts)
   opts = opts or {}
   local tx, ty, tz = point_of(target)
   local dist, height = opts.distance or 9, opts.height or 8
+  -- behind = 1.2: left alone, the camera swings round behind the way the target moves, that many radians a second at most
+  -- (not when it walks straight at the camera, so that turning back does not spin the view)
+  if opts.behind and opts.behind > 0 then
+    local dt, last = opts.dt or 1 / 60, behind_last
+    if last and last.target == target and dt > 0 then
+      local mx, mz = tx - last.x, tz - last.z
+      if sqrt(mx * mx + mz * mz) / dt > 0.5 then
+        cam3.yaw = cam3.yaw + sin(math.atan(-mx, -mz) - cam3.yaw) * opts.behind * dt
+      end
+    end
+    behind_last = { target = target, x = tx, z = tz }
+  end
   local wx, wy, wz = tx + sin(cam3.yaw) * dist, ty + height, tz + cos(cam3.yaw) * dist
   local k = (opts.smooth or 6) <= 0 and 1 or math.min(1, (opts.dt or 1 / 60) * (opts.smooth or 6))
   local e = cam3.eye
@@ -1262,7 +1296,7 @@ function cam3.follow(target, opts)
     if len > 1e-4 then
       dx, dy, dz = dx / len, dy / len, dz / len
       local margin = opts.margin or 0.3
-      local hit = nova.solid.raycast(lx, ly, lz, dx, dy, dz, len + margin)
+      local hit = nova.solid.sightline(lx, ly, lz, dx, dy, dz, len + margin)
       if hit then
         local d = math.max(math.min(0.5, len), hit - margin)
         if d < len then ex, ey, ez = lx + dx * d, ly + dy * d, lz + dz * d end
@@ -1851,7 +1885,15 @@ local function spawn(what, x, y, props)
     -- a piece of scenery: it goes into the static scenery, not into the list of live entities
     if not cls.__model then error("a static entity needs a model (nova.entity { model = \"pine\", static = true })", 2) end
     local scale = rawget(e, "sx") or 1
-    scenery.add(cls.__model, e.x, e.y, rawget(e, "z") or 0, { ry = rawget(e, "ry") or 0, scale = scale, tint = rawget(e, "tint"), lod = cls.__lod, lod_distance = cls.__lod_distance, sway = cls.__sway, max_distance = cls.__max_distance })
+    local ez, ery = rawget(e, "z") or 0, rawget(e, "ry") or 0
+    scenery.add(cls.__model, e.x, e.y, ez, { ry = ery, scale = scale, tint = rawget(e, "tint"), lod = cls.__lod, lod_distance = cls.__lod_distance, sway = cls.__sway, max_distance = cls.__max_distance })
+    -- solid = true: the whole model blocks bodies and the camera (nova.solid). Otherwise a piece that blocks at all (its model
+    -- has collision shapes: a tree's trunk) stops the follow camera's line of sight with its whole shape, crown and all.
+    if e.solid == true then
+      nova.solid.add(cls.__model, e.x, e.y, ez, { ry = ery, scale = scale, scene = true })
+    elseif e.solid ~= false and #(circles_of[cls.__model] or {}) > 0 then
+      nova.solid.add(cls.__model, e.x, e.y, ez, { ry = ery, scale = scale, scene = true, camera_only = true })
+    end
     -- (scenery that things bump into: a static body, never moved)
     if e.body then e.body = "static"; make_body(e) end
     return e
@@ -1873,6 +1915,11 @@ local function spawn(what, x, y, props)
   if e.anim then e:play(e.anim) end
   -- the body is made before create, so that create can join it to others or push it (a place create gives it moves it there)
   if e.body and not e._body then make_body(e) end
+  -- solid = true (in the entity or the scene object's props): the model's triangles block bodies and the camera, where it stands
+  if e.solid == true then
+    local model = rawget(e, "model") or cls.__model
+    if model then nova.solid.add(model, e.x, e.y, e.z or 0, { ry = e.ry or e.angle or 0, rx = e.rx or 0, rz = e.rz or 0, scale = e.sx or 1, scene = true }) end
+  end
   if e.create then e:create() end
   -- a tilemap made after the first 2D body is solid to bodies too
   if tiles_ready and rawget(e, "map") and cls.__tags.nova_tilemap then tile_body(e) end
@@ -2735,6 +2782,7 @@ local function leave_scene()
   for i = 1, #W.list do W.list[i]._dead = true end
   W.list, W.tags, W.counts = {}, {}, {}
   scenery.clear()
+  nova.solid.clear_scene() -- (what entities with solid = true and the scenery put there; a game's own nova.solid.add stays)
   physics_clear()
   W.dirty, W.background, W.paused = false, nil, false
   raw.freeze_time(false)

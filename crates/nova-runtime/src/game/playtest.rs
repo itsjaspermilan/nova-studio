@@ -175,7 +175,9 @@ function H.walker(who, plane)
   plane = plane or (three_d(e) and "xz" or "xy")
   local a, b = ground(e, plane)
   if type(a) ~= "number" or type(b) ~= "number" then error("'" .. label .. "' has no position", 0) end
-  return a, b, plane, label
+  -- (the turn of the 3D camera: a stick that is relative to it turns with it)
+  local yaw = plane == "xz" and nova.cam3 and nova.cam3.yaw or 0
+  return a, b, plane, label, type(yaw) == "number" and yaw or 0
 end
 
 -- The living entity with this name, or the nearest one with this tag (and how many there are).
@@ -437,19 +439,33 @@ local function plan2(e, tx, ty, target, avoid, reach)
 end
 
 -- A 3D game: a grid of half metres over the ground around the walker, each step of it tried with the level's own
--- movers (nova.solid.move, nova.walls.move) and the scenery's circles.
-local function plan3(e, tx, tz, target, reach)
+-- movers (nova.solid.move with the body the game itself last moved, nova.walls.move) and the scenery's circles. The way
+-- is first looked for with a body a hand wider than the walker's, so that it keeps clear of corners and plinths a real
+-- walk would catch on; only if there is none that wide is the walker's own width tried. Going up or down costs extra, so
+-- a way round a low base is preferred to one over it.
+local function model_of(o) return rawget(o, "model") or (getmetatable(o) or {}).__model end
+
+local function mover3()
+  local r, h, step, slope = nil, nil, nil, nil
+  if nova.solid then r, h, step, slope = nova.solid.mover() end
+  return r or 0.3, h or 1.6, { step = step, slope = slope, probe = true }
+end
+
+local function plan3_with(e, tx, tz, target, reach, grow)
   local solid = nova.solid and nova.solid.count() > 0
   local walls = nova.walls and nova.walls.count() > 0
   local scen = nova.scenery and nova.scenery.count() > 0
   if not (solid or walls or scen) then return nil, "nothing solid is known here (nova.solid, nova.walls and nova.scenery are empty)" end
-  local s, r = 0.5, 0.3
+  local s = 0.5
+  local r0, height, mopts = mover3()
+  local r = r0 + grow
+  height = math.max(height, 2 * r + 0.01)
   local ox, oz = e.x, e.z
   local heights = { [key(0, 0)] = e.y }
-  local function pass(ax, ay, az, bx, bz)
+  local function hop(ax, ay, az, bx, bz)
     local y = ay
     if solid then
-      local m = nova.solid.move(ax, ay, az, r, 1.6, bx - ax, 0, bz - az)
+      local m = nova.solid.move(ax, ay, az, r, height, bx - ax, 0, bz - az, mopts)
       if math.abs(m.x - bx) + math.abs(m.z - bz) > 0.1 then return false end
       y = m.y
     end
@@ -458,6 +474,18 @@ local function plan3(e, tx, tz, target, reach)
       if math.abs(nx - bx) + math.abs(nz - bz) > 0.1 then return false end
     end
     if scen and not nova.scenery.line_clear(ax, az, bx, bz, r) then return false end
+    return true, y
+  end
+  -- (a long stretch is tried a grid step at a time: one long move slides round things and skips thin ones)
+  local function pass(ax, ay, az, bx, bz)
+    local dx, dz = bx - ax, bz - az
+    local n = math.max(1, math.ceil(math.sqrt(dx * dx + dz * dz) / s - 1e-6))
+    local y = ay
+    for i = 1, n do
+      local ok, ny = hop(ax + dx * (i - 1) / n, y, az + dz * (i - 1) / n, ax + dx * i / n, az + dz * i / n)
+      if not ok then return false end
+      y = ny
+    end
     return true, y
   end
   local span = 40
@@ -472,11 +500,15 @@ local function plan3(e, tx, tz, target, reach)
   local function is_goal(k)
     local d = h(k)
     if d <= near then return true end
-    -- a thing that is solid itself is never that near: beside it is where the step towards it is stopped
-    if target and d <= 4 then
+    -- A thing that is solid itself is never that near: beside it is where the step towards it is stopped, and what stops
+    -- it is the thing (not a pillar that happens to stand between).
+    if target and solid and d <= 12 then
       local i, j = unkey(k)
       local ax, az = ox + i * s, oz + j * s
-      return not pass(ax, heights[k], az, ax + (tx - ax) / d * s, az + (tz - az) / d * s)
+      if not hop(ax, heights[k], az, ax + (tx - ax) / d * s, az + (tz - az) / d * s) then
+        local model, mx, _, mz = nova.solid.touching(ax, heights[k], az, r, height, s)
+        return model ~= nil and model == model_of(target) and math.abs(mx - target.x) < 0.01 and math.abs(mz - (target.z or 0)) < 0.01
+      end
     end
     return false
   end
@@ -486,11 +518,11 @@ local function plan3(e, tx, tz, target, reach)
     for d = 1, 8 do
       local ni, nj = i + DIRS[d][1], j + DIRS[d][2]
       if ni >= i_lo and ni <= i_hi and nj >= j_lo and nj <= j_hi then
-        local ok, y = pass(ax, ay, az, ox + ni * s, oz + nj * s)
+        local ok, y = hop(ax, ay, az, ox + ni * s, oz + nj * s)
         if ok then
           local nk = key(ni, nj)
           if heights[nk] == nil then heights[nk] = y end
-          emit(nk, d <= 4 and s or s * 1.41421)
+          emit(nk, (d <= 4 and s or s * 1.41421) + math.abs(y - ay) * 6)
         end
       end
     end
@@ -501,15 +533,91 @@ local function plan3(e, tx, tz, target, reach)
     local i, j = unkey(nodes[n])
     pts[#pts + 1] = { ox + i * s, oz + j * s, heights[nodes[n]] }
   end
-  local function clear(a, b) return (pass(a[1], a[3], a[2], b[1], b[2])) end
+  -- (a short cut is only taken over level ground: one over a step would undo the choice to go round it)
+  local function clear(a, b)
+    local ok, y = pass(a[1], a[3], a[2], b[1], b[2])
+    return ok and math.abs(y - a[3]) < 0.05 and math.abs((b[3] or y) - a[3]) < 0.05
+  end
   if found and not target then
     local last = pts[#pts]
-    if clear(last, { tx, tz }) then pts[#pts + 1] = { tx, tz, last[3] } end
+    if pass(last[1], last[3], last[2], tx, tz) then pts[#pts + 1] = { tx, tz, last[3] } end
   end
   pts = shorten(pts, clear)
   local out = {}
   for n = 2, #pts do out[#out + 1] = pts[n][1]; out[#out + 1] = pts[n][2] end
   return out, nil, found, looked
+end
+
+local function plan3(e, tx, tz, target, reach)
+  local points, why, found, looked = plan3_with(e, tx, tz, target, reach, 0.15)
+  if points and not found then
+    -- (also when the wide body could not even leave where the walker stands, pressed against something)
+    local p2, w2, f2, l2 = plan3_with(e, tx, tz, target, reach, 0.02)
+    if p2 and (f2 or (l2 or 0) > (looked or 0)) then return p2, w2, f2, l2 end
+  end
+  return points, why, found, looked
+end
+
+-- What stands in the walker's way, in words ("'arch' (model arch) at x 0, z -13"), and whether that is the thing it
+-- walks to (`name`). Nothing when nothing known touches it.
+function H.blocked(who, plane, name, avoid)
+  local e = find_walker(who)
+  plane = plane or (three_d(e) and "xz" or "xy")
+  local target = name and (find_target(name, e, plane)) or nil
+  local function entity_at(x, z, model)
+    for _, o in ipairs(W.list) do
+      if o ~= e and not rawget(o, "_dead") and type(o.x) == "number" and math.abs(o.x - x) < 0.01 and math.abs((o.z or 0) - z) < 0.01 and model_of(o) == model then return o end
+    end
+  end
+  if plane == "xz" then
+    local r, h = mover3()
+    if nova.solid and nova.solid.count() > 0 then
+      local model, mx, _, mz, px, _, pz = nova.solid.touching(e.x, e.y, e.z, r, h, 0.3)
+      if model then
+        local o = entity_at(mx, mz, model)
+        local what = o and ("'" .. label_of(o) .. "'" .. (model ~= "" and (" (model " .. model .. ")") or "")) or (model ~= "" and ("the model '" .. model .. "'") or "something solid")
+        return { text = what .. " at x " .. num(mx) .. ", z " .. num(mz) .. " (it touches at x " .. num(px) .. ", z " .. num(pz) .. ")", target = o ~= nil and o == target }
+      end
+    end
+    if nova.scenery and nova.scenery.count() > 0 then
+      local model, sx, sz = nova.scenery.touching(e.x, e.z, r, 0.3)
+      if model then return { text = "the scenery '" .. model .. "' at x " .. num(sx) .. ", z " .. num(sz), target = false } end
+    end
+    if nova.walls and nova.walls.count() > 0 then
+      for _, d in ipairs(DIRS) do
+        local nx, nz = nova.walls.move(e.x, e.z, d[1] * 0.3, d[2] * 0.3, r)
+        if math.abs(nx - e.x - d[1] * 0.3) + math.abs(nz - e.z - d[2] * 0.3) > 0.05 then
+          return { text = "a wall of nova.walls beside x " .. num(e.x) .. ", z " .. num(e.z), target = false }
+        end
+      end
+    end
+    return nil
+  end
+  local x0, y0, x1, y1 = box(e, "xy")
+  for _, tag in ipairs(avoid or { "solid" }) do
+    for _, o in ipairs(W.tags[tag] or {}) do
+      if o ~= e and not rawget(o, "_dead") then
+        local a, b, c, d = box(o, "xy")
+        if gap_of(x0, y0, x1, y1, a, b, c, d) <= 3 then
+          return { text = "'" .. label_of(o) .. "' (tagged " .. tag .. ") at x " .. num(o.x) .. ", y " .. num(o.y), target = o == target }
+        end
+      end
+    end
+  end
+  for _, tm in ipairs(W.tags.nova_tilemap or {}) do
+    if not rawget(tm, "_dead") and next(tm.solid) then
+      local cols, rows, tw, th = tm:size()
+      for r = math.max(0, math.floor((y0 - 3 - tm.y) / th)), math.min(rows - 1, math.floor((y1 + 3 - tm.y) / th)) do
+        for c = math.max(0, math.floor((x0 - 3 - tm.x) / tw)), math.min(cols - 1, math.floor((x1 + 3 - tm.x) / tw)) do
+          local t = tm:get(c, r)
+          if t >= 0 and tm.solid[t] then
+            return { text = "the solid tile at column " .. c .. ", row " .. r .. " (x " .. num(tm.x + c * tw) .. ", y " .. num(tm.y + r * th) .. ")", target = false }
+          end
+        end
+      end
+    end
+  end
+  return nil
 end
 
 -- The way from the walker to a point (or to an entity, `name`): the corners to walk through in order, as { x, y, ... }.
@@ -741,7 +849,7 @@ impl Game {
         &self,
         who: Option<&str>,
         plane: Option<&str>,
-    ) -> Result<(f64, f64, String, String), String> {
+    ) -> Result<(f64, f64, String, String, f64), String> {
         self.playtest_call("walker", (who, plane))
     }
 
@@ -813,6 +921,32 @@ impl Game {
             looked: t.get::<Option<u32>>("looked").map_err(get)?.unwrap_or(0),
             why: None,
         })
+    }
+
+    /// What stands against the walker (see the helpers' `blocked`): it in words, and whether it is the thing walked to.
+    pub fn blocked(
+        &self,
+        who: Option<&str>,
+        plane: Option<&str>,
+        name: Option<&str>,
+        avoid: Option<&[String]>,
+    ) -> Option<(String, bool)> {
+        let avoid = match avoid {
+            Some(list) => {
+                LuaValue::Table(self.lua.create_sequence_from(list.iter().cloned()).ok()?)
+            }
+            None => LuaValue::Nil,
+        };
+        let v: LuaValue = self
+            .playtest_call("blocked", (who, plane, name, avoid))
+            .ok()?;
+        let LuaValue::Table(t) = v else {
+            return None;
+        };
+        Some((
+            t.get::<String>("text").ok()?,
+            t.get::<Option<bool>>("target").ok()?.unwrap_or(false),
+        ))
     }
 
     /// Puts the hero's life back (a run with `invincible`): who it is, the fields pinned and how often they were lower.

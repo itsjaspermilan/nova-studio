@@ -341,7 +341,11 @@ local ox, oy, oz, dx, dy, dz = nova.cam3.ray(x, y)                  -- or the wh
 `collide = true` makes the follow camera mind what is solid: when a triangle added with `nova.solid.add` (a wall, a hill, the
 level's mesh) lies between what it looks at and where it wants to be, it moves in along its line of sight to `margin` (0.3) in
 front of that surface, never nearer than 0.5, and eases back out when the way is clear. It costs one `nova.solid.raycast` a
-frame and knows only `nova.solid`: not `nova.walls`, the voxel world or the terrain's heightmap. The follow camera eases in from
+frame (`nova.solid.sightline`) and knows only `nova.solid`: not `nova.walls`, the voxel world or the terrain's heightmap. That
+includes, without the game adding anything: every entity with `solid = true`, and every piece of static scenery whose model has
+collision shapes (a tree blocks the walker with its trunk only, but the camera with its whole shape, so a jump does not fill
+the screen with the inside of a crown; a piece that should not, says `solid = false`). `behind = 1.2` swings the camera round
+behind the way the target moves (radians a second; not while it walks straight at the camera). The follow camera eases in from
 wherever the camera was: for the first frames of a scene pass `smooth = 0` so that it starts behind the target.
 
 **Seeing how the game is doing.** `nova.stats()` returns the last frame's `fps`, `lua_ms`, `render_ms`, `draws`, `triangles`, `sprites`,
@@ -642,6 +646,15 @@ The body slides along walls of any angle, walks up slopes up to `slope` degrees 
 to `step` metres (0.35) and says how far (`stepped`, so a camera can ease over it), follows ground down to `snap` metres (0.3)
 so it does not launch off a slope, and bumps its head (`ceiling`). A move goes in steps of half the width at most, so a fast fall
 does not go through a floor; the triangles are kept in a grid (4 m cells), so a level of tens of thousands of triangles is fine.
+**Solid scene objects in one line.** An entity with a model and `solid = true` (`nova.entity { model = "arch", solid = true }`,
+or `"props": { "solid": true }` on one scene object) has its model's triangles added where it is placed, turned and scaled as
+placed: bodies moved with `nova.solid.move` stop at it and climb it, the follow camera keeps it out of the view, and the test
+player's `walk_to` goes round it. With `static = true` as well it is scenery that is also solid (a ruin wall by the hundred).
+These triangles, and the scenery's camera-only ones, are forgotten when the scene ends (`nova.solid.clear_scene()`); what the
+game adds itself with `nova.solid.add` stays until `nova.solid.clear()`. `nova.solid.add(..., { camera_only = true })` adds
+triangles that only stop lines of sight. `nova.solid.touching(x, y, z, radius, height, margin)` names what stands against a
+body (the model and where it was placed), and `nova.scenery.touching(x, z, radius, margin)` the piece of scenery.
+
 Triangles are solid from both sides. Not done: moving solids (an elevator is `nova.walls`' `set_box`), the player being pushed
 by one, climbing and gliding (those are rules a game writes on top of `wall` and `normal`), a mesh simplified for collision
 (use the model itself or a plainer one made for it), and nothing here has run in a game yet or on a device.
@@ -1429,13 +1442,20 @@ outright). Each frame the step drives the axes `move_x`, `move_y` and the button
 (whichever the game has; `"axes": [x, y]` and `"dirs": [left, right, up, down]` name other actions), because it cannot know
 which of them the game's code reads. It does not assume that the stick's right is +x: after every frame it measures which way
 the walker really went and corrects the turn between stick and ground when that is off by more than 20 degrees (and tries the
-mirror image if turning keeps failing), so it works with a stick that is relative to a turned camera. It finds a way round what is solid when the step starts (and
+mirror image if turning keeps failing), so it works with a stick that is relative to a turned camera; in a 3D game it also
+learns whether the stick turns with `nova.cam3.yaw` and then follows the camera as it swings (a camera that drifts behind the
+hero no longer walks it in a circle). It finds a way round what is solid when the step starts (and
 again when it stops getting nearer): in a flat game, A* over a grid of half tiles with the walker's own hitbox, against the
 solid tiles of every tile layer and the hitboxes of entities tagged `solid` (`"avoid": ["solid", "water"]` names other tags);
-in a 3D game, a grid of half metres round the walker, each step of it tried with `nova.solid.move`, `nova.walls.move` and
-the scenery's circles. When nothing solid is known, or with `"straight": true`, it walks straight; the report's `notes` say
+in a 3D game, a grid of half metres round the walker, each step of it tried with `nova.solid.move` (for the body the game
+itself last moved: its radius, height and `step`), `nova.walls.move` and the scenery's circles; first with a body a hand wider
+than the walker's, so the way keeps clear of corners and plinths, and with a cost for going up and down, so it goes round a
+low base rather than over it. A thing walked to counts as reached when the walker is next to it or it is the thing itself that
+stops it (a house is solid a long way from its middle); stopped by something else, it looks for another way. When nothing solid is known, or with `"straight": true`, it walks straight; the report's `notes` say
 which. When it has not come nearer for 120 frames, or after `max` frames
-(600), it ends with a warning that says where the walker is. The report's `notes` say once who it steered and with which
+(600), it ends with a warning that says where the walker is, what it is against ("blocked by 'arch' (model arch) at x 0, z
+-13", the scenery's model, the solid tile or the entity tagged solid; or that nothing known touches it, so the game's own code
+stops it) and what it tried (how many ways it planned and the corners of the last). The report's `notes` say once who it steered and with which
 actions.
 
 **When a step's own Lua fails** (`lua`, `until`, the plan's `lua`), the report's `step_errors` gets a line with the step's

@@ -1,7 +1,7 @@
 // The play tool: one headless run of the game along a route, returned as a film strip and a report in words.
 // It writes a play plan (crates/nova-runtime/src/playtest.rs) and reads back the pictures and report.json the run made.
 
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import type { Raster } from "../src/lib/pixels";
@@ -259,6 +259,8 @@ export function playGame(root: string, a: Args, run: Run, keep: (label: string, 
     if (outDir) {
       // every picture of the run as its own full-size file, where the caller said
       mkdirSync(outDir, { recursive: true });
+      // (this run only: an earlier run's pictures in the same folder, with other frame numbers, would read as this one's)
+      for (const old of readdirSync(outDir)) if (/^(f\d{5}[^/]*|strip(-\d+|-compare)?)\.png$/.test(old)) rmSync(join(outDir, old));
       for (const s of singles) {
         copyFileSync(s.file, join(outDir, fileName(s)));
         wrote.push(rel(join(outDir, fileName(s))));
@@ -270,11 +272,14 @@ export function playGame(root: string, a: Args, run: Run, keep: (label: string, 
         writeFileSync(join(outDir, "report.json"), `${JSON.stringify(kept, null, 2)}\n`);
       }
     }
-    const max = 24;
+    // Never dropped in silence: a run with more pictures than one strip holds gets several strips (pages), every picture in
+    // one of them; only past PAGES strips are pictures left out, and then the first line of the answer says so.
+    const PER = 24, PAGES = 4;
     const all = tiles;
-    if (tiles.length > max) {
-      // never dropped in silence: the strip shows some, the answer says which, and every picture is kept as a file
-      const stride = Math.ceil(tiles.length / max);
+    const images: string[] = [];
+    let leftOut = "";
+    if (tiles.length > PER * PAGES) {
+      const stride = Math.ceil(tiles.length / (PER * PAGES));
       let where = outDir ? `${rel(outDir)}/` : "";
       if (!outDir) {
         const keepDir = join(tmpdir(), `nova-run-${Date.now()}-${Math.floor(Math.random() * 1e6)}`);
@@ -283,16 +288,27 @@ export function playGame(root: string, a: Args, run: Run, keep: (label: string, 
         where = `${keepDir}/`;
       }
       tiles = tiles.filter((_, i) => i % stride === 0 || i === tiles.length - 1);
-      lines.push(`the film strip shows ${tiles.length} of the ${all.length} pictures taken (every ${stride}${stride === 2 ? "nd" : stride === 3 ? "rd" : "th"}, and the last); all ${all.length} are in ${where} as full-size files named by frame (fewer pictures: \`capture_at\`, a bigger \`every\`)`);
+      leftOut = (`WARNING: PICTURES LEFT OUT: the film strips show ${tiles.length} of the ${all.length} pictures taken (every ${stride}${stride === 2 ? "nd" : stride === 3 ? "rd" : "th"}, and the last), because ${PER * PAGES} is the most that are shown; all ${all.length} are in ${where} as full-size files named by frame. Take fewer (\`capture_at\`, a bigger \`every\`) or play the run in parts`);
     }
-    const images: string[] = [];
     if (tiles.length === 1) images.push(keep("shot", tiles[0]!.picture));
     else if (tiles.length > 1) {
-      const strip = contactSheet(tiles, { columns: a.columns });
-      images.push(keep("strip", strip));
-      if (outDir) writeFileSync(join(outDir, "strip.png"), pngOf(strip));
-      lines.push(`the picture is a film strip of ${tiles.length} moments, left to right, top to bottom, the frame number under each`);
+      const pages: (typeof tiles)[] = [];
+      for (let i = 0; i < tiles.length; i += PER) pages.push(tiles.slice(i, i + PER));
+      pages.forEach((page, i) => {
+        const strip = page.length === 1 ? page[0]!.picture : contactSheet(page, { columns: a.columns });
+        images.push(keep(i ? `strip-${i + 1}` : "strip", strip));
+        if (outDir) {
+          const name = i ? `strip-${i + 1}.png` : "strip.png";
+          writeFileSync(join(outDir, name), pngOf(strip));
+          if (i) wrote.push(rel(join(outDir, name)));
+        }
+      });
+      if (pages.length > 1) {
+        lines.unshift(`${tiles.length} pictures in ${pages.length} film strips of up to ${PER} (${pages.map((p) => `${p[0]!.caption.split(" ")[0]} to ${p[p.length - 1]!.caption.split(" ")[0]}`).join("; ")}): ${pages.length} pictures come back, in order${outDir ? `, saved as strip.png, ${pages.slice(1).map((_, i) => `strip-${i + 2}.png`).join(", ")}` : ""}.${leftOut ? "" : " None is left out"}`);
+        lines.push(`the pictures are ${pages.length} film strips of ${tiles.length} moments in all, left to right, top to bottom, the frame number under each`);
+      } else lines.push(`the picture is a film strip of ${tiles.length} moments, left to right, top to bottom, the frame number under each`);
     }
+    if (leftOut) lines.unshift(leftOut);
     if (a.crop || a.zoom) lines.push(`each picture is ${a.crop ? `the part [${a.crop.join(", ")}]` : "the whole frame"}${a.zoom ? ` enlarged x${a.zoom}` : ""}`);
 
     if (compare) {
@@ -318,8 +334,8 @@ export function playGame(root: string, a: Args, run: Run, keep: (label: string, 
       const renderB = renderLine(second.report?.end?.render);
       if (renderB && renderB !== render) lines.push(`  second run, ${renderB}`);
       let shownB = other.tiles;
-      if (shownB.length > max) {
-        const stride = Math.ceil(shownB.length / max);
+      if (shownB.length > PER) {
+        const stride = Math.ceil(shownB.length / PER);
         shownB = shownB.filter((_, i) => i % stride === 0 || i === shownB.length - 1);
       }
       if (shownB.length) {

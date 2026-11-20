@@ -229,38 +229,79 @@ function writeLeg(clip: Args, leg: Leg, times: number[], target: (t: number) => 
   const paths = [names.slice(0, -2), names.slice(0, -1), names];
   const keys: Args[][] = [[], [], []];
   let short = 0, shortAt = 0;
+  const restX = ankleAtRest(leg)[0] - hipAt({ tracks: [] }, leg, 0)[0];
   for (const t of times) {
     const g = target(t);
-    const s = solve(leg, hipAt(clip, leg, t), g.at, g.pitch);
+    const hip = hipAt(clip, leg, t);
+    const s = solve(leg, hip, g.at, g.pitch);
     if (s.short > short) [short, shortAt] = [s.short, t];
-    s.turns.forEach((v, i) => keys[i]!.push({ t: r3(t), value: [r3(v), 0, 0] }));
+    // sideways: when the hips have moved across (a sway), the whole leg leans from the hip so the foot stays where it is
+    // put, and the foot leans back so its sole stays level (+z swings a hanging limb out towards +x)
+    const dx = g.at[0] - (hip[0] + restX);
+    const lean = Math.abs(dx) > 1e-6 ? deg(Math.atan2(dx, Math.max(1e-6, hip[1] - g.at[1]))) : 0;
+    s.turns.forEach((v, i) => keys[i]!.push({ t: r3(t), value: [r3(v), 0, i === 0 ? r3(lean) : i === 2 ? r3(-lean) : 0] }));
   }
   clip.tracks = (clip.tracks ?? []).filter((tr: Args) => !(tr.prop === "rotation" && Array.isArray(tr.part) && paths.some((p) => samePath(p, tr.part))));
   paths.forEach((part, i) => clip.tracks.push({ part, prop: "rotation", keys: keys[i] }));
   if (short > 0.01) notes.push(`${what}: the leg ${names.slice(-3).join(" > ")} is ${r3(short)} units too short to reach its foot's place at ${r3(shortAt)} s (thigh ${r3(leg.l1)} + shin ${r3(leg.l2)}): the foot stops short there. Lower the hips, shorten the stride or bring the place nearer`);
 }
 
+/// How far a foot part's own shapes reach from its ankle: down to the sole, forward to the toe, back to the heel (model units).
+function footShape(foot: Args): { sole: number; toe: number; heel: number } | null {
+  let sole = Infinity, toe = -Infinity, heel = Infinity;
+  for (const c of Array.isArray(foot.cubes) ? foot.cubes : []) {
+    if (!c || typeof c !== "object") continue;
+    const pts: number[][] = Array.isArray(c.verts) && c.verts.length ? c.verts : Array.isArray(c.from) && Array.isArray(c.size) ? [c.from, [c.from[0] + c.size[0], c.from[1] + c.size[1], c.from[2] + c.size[2]]] : [];
+    for (const p of pts) {
+      sole = Math.min(sole, p[1]!);
+      toe = Math.max(toe, p[2]!);
+      heel = Math.min(heel, p[2]!);
+    }
+  }
+  return Number.isFinite(sole) ? { sole, toe, heel } : null;
+}
+
+/// A point [y, z] of a foot turned about its ankle by `degrees` about x (positive: toes down).
+const pitched = (p: [number, number], degrees: number): [number, number] => {
+  const a = (degrees * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
+  return [p[0] * c - p[1] * s, p[0] * s + p[1] * c];
+};
+
 /// Turns `shape: "tube"` and `"lathe"` into meshes and a clip's `ik` and `walk` into rotation keys, in place of them.
 /// Returns the model as the editor's format has it, and what was done in words.
-export function expandModel(given: Args): { model: Args; notes: string[] } {
+/// `bend` says, for each shape by its place ("0.1#2": part 1 of part 0, shape 2), whether it is to bend with the parts around
+/// it: true or false where the shape says so itself (`"bend": false`), and false for a lathe that does not (a turned shape
+/// is a body, not a limb). A shape that is not listed follows model_write's own `bend`. `speeds` is, for each clip made by
+/// `walk`, the speed in world units a second at which its feet do not slide.
+export function expandModel(given: Args): { model: Args; notes: string[]; bend: Record<string, boolean>; speeds: Record<string, number> } {
   const model: Args = JSON.parse(JSON.stringify(given));
   const notes: string[] = [];
+  const bend: Record<string, boolean> = {};
+  const speeds: Record<string, number> = {};
   let tubes = 0, lathes = 0;
-  const visit = (parts: Args[], path: string) => {
-    for (const p of Array.isArray(parts) ? parts : []) {
-      if (!p || typeof p !== "object") continue;
+  const visit = (parts: Args[], path: string, index: number[]) => {
+    (Array.isArray(parts) ? parts : []).forEach((p, n) => {
+      if (!p || typeof p !== "object") return;
       const here = `${path}${p.name ?? "?"}`;
+      const at = [...index, n];
       if (Array.isArray(p.cubes)) {
         p.cubes = p.cubes.map((c: Args, i: number) => {
-          if (c?.shape === "tube") return tubes++, tube(c, `${here}, shape ${i}`);
-          if (c?.shape === "lathe") return lathes++, lathe(c, `${here}, shape ${i}`);
-          return c;
+          if (!c || typeof c !== "object") return c;
+          const key = `${at.join(".")}#${i}`;
+          if (c.bend !== undefined) {
+            if (typeof c.bend !== "boolean") throw new Error(`${here}, shape ${i}: "bend" is true or false (whether this shape bends with the parts around it)`);
+            bend[key] = c.bend;
+          } else if (c.shape === "lathe") bend[key] = false;
+          const { bend: _own, ...rest } = c;
+          if (rest.shape === "tube") return tubes++, tube(rest, `${here}, shape ${i}`);
+          if (rest.shape === "lathe") return lathes++, lathe(rest, `${here}, shape ${i}`);
+          return rest;
         });
       }
-      visit(p.children, `${here} > `);
-    }
+      visit(p.children, `${here} > `, at);
+    });
   };
-  visit(model.parts, "");
+  visit(model.parts, "", []);
   if (tubes || lathes) notes.push(`${[tubes ? `${tubes} tube${tubes > 1 ? "s" : ""}` : "", lathes ? `${lathes} lathe${lathes > 1 ? "s" : ""}` : ""].filter(Boolean).join(" and ")} written as free meshes (the file holds their points and faces)`);
 
   const scale = typeof model.scale === "number" ? model.scale : 0.0625;
@@ -272,7 +313,7 @@ export function expandModel(given: Args): { model: Args; notes: string[] } {
     clip.tracks = Array.isArray(clip.tracks) ? clip.tracks : [];
     if (clip.walk !== undefined) {
       const w: Args = clip.walk;
-      const allowed = ["legs", "stride", "lift", "stance", "samples", "event", "hips", "bob"];
+      const allowed = ["legs", "stride", "lift", "stance", "samples", "event", "hips", "bob", "sway", "roll", "heel", "toe", "arms", "arm_swing", "elbow"];
       const bad = Object.keys(w ?? {}).filter((k) => !allowed.includes(k));
       if (!w || typeof w !== "object" || bad.length) throw new Error(`${at}: walk is { "legs": ["foot_l", "foot_r"], "stride": 12, "lift": 2, "stance": 0.6 }${bad.length ? ` (it has no "${bad.join('", "')}"; it takes ${allowed.join(", ")})` : ""}`);
       if (!Array.isArray(w.legs) || !w.legs.length) throw new Error(`${at}: walk needs "legs": the names of the foot parts, like ["foot_l", "foot_r"] (or { "ankle": "foot_l", "phase": 0 } entries)`);
@@ -280,47 +321,138 @@ export function expandModel(given: Args): { model: Args; notes: string[] } {
       const stance = w.stance ?? 0.6;
       if (!(stance > 0.05 && stance < 0.95)) throw new Error(`${at}: walk's "stance" is the share of the cycle a foot is on the ground, between 0.05 and 0.95 (0.6 walks, 0.35 runs)`);
       const lift = w.lift ?? w.stride * 0.15;
-      const N = Math.round(w.samples ?? 16);
+      const N = Math.round(w.samples ?? 24);
       if (!(N >= 4 && N <= 64)) throw new Error(`${at}: walk's "samples" is how many keys a cycle gets, from 4 to 64`);
+      const bob = w.bob ?? 0.8;
+      if (!(typeof bob === "number" && bob >= 0 && bob <= 1.5)) throw new Error(`${at}: walk's "bob" is how much the hips rise over the standing leg, from 0 (hips level: a creep) to 1 (the leg nearly straight as the body passes over it); 0.8 when left out`);
       const legs = w.legs.map((l: unknown, i: number) => {
         const name = typeof l === "string" ? l : (l as Args)?.ankle;
         if (typeof name !== "string") throw new Error(`${at}: a leg is the name of its foot part, or { "ankle": name, "phase": 0 to 1 }`);
-        return { leg: legOf(model, name, at), phase: typeof l === "object" && typeof (l as Args).phase === "number" ? (l as Args).phase : i / w.legs.length };
+        const leg = legOf(model, name, at);
+        const shape = footShape(leg.ankle.part);
+        // the roll from heel to toe needs to know where the sole is: a foot without shapes of its own is kept level
+        const rolls = w.roll !== false && !!shape && shape.toe - shape.heel > 1e-3 && shape.sole < 0;
+        return { leg, phase: typeof l === "object" && typeof (l as Args).phase === "number" ? (l as Args).phase : i / w.legs.length, shape: shape ?? { sole: 0, toe: 0, heel: 0 }, rolls };
       });
+      type LegOf = (typeof legs)[number];
+      const heelUp = typeof w.heel === "number" ? w.heel : 10, toeDown = typeof w.toe === "number" ? w.toe : 24;
       const times = Array.from({ length: N + 1 }, (_, i) => (D * i) / N);
-      // the hips come down until the straightest leg of the stride still has a little bend left
+      const phaseOf = (l: LegOf, t: number) => (((t / D + l.phase) % 1) + 1) % 1;
+      // Where a leg's ankle is at a point u of its own cycle, and how its foot is tipped. It stands for `stance` of the cycle,
+      // the place it touches the ground moving back at one steady speed all that time (so nothing slides): first the heel
+      // (toes up), then the whole sole, then, as the heel lifts, the toe. Then it swings forward, never lower than the ground.
+      const HEEL = 0.15, TOE = 0.68;
+      const footAt = (l: LegOf, u: number): { at: Vec3; pitch: number } => {
+        const rest = ankleAtRest(l.leg), f = l.shape;
+        const up = l.rolls ? heelUp : 0, down = l.rolls ? toeDown : 0;
+        // the ankle that keeps the point p of the foot on the ground at nz + p's own place, with the foot tipped
+        const about = (nz: number, p: [number, number], pitch: number): Vec3 => {
+          const r = pitched(p, pitch);
+          return [rest[0], rest[1] + f.sole - r[0], nz + p[1] - r[1]];
+        };
+        const standing = (st: number): { at: Vec3; pitch: number } => {
+          const nz = rest[2] + w.stride * (0.5 - st);
+          if (st < HEEL && up) {
+            const pitch = -up * (1 - st / HEEL);
+            return { at: about(nz, [f.sole, f.heel], pitch), pitch };
+          }
+          if (st > TOE && down) {
+            const k = (st - TOE) / (1 - TOE);
+            const pitch = down * k * k;
+            return { at: about(nz, [f.sole, f.toe], pitch), pitch };
+          }
+          return { at: [rest[0], rest[1], nz], pitch: 0 };
+        };
+        if (u < stance) return standing(u / stance);
+        const sw = (u - stance) / (1 - stance), e = (1 - Math.cos(Math.PI * sw)) / 2;
+        const a = standing(1), b = standing(0);
+        // (the toes come up early in the swing, so they clear the ground as the foot passes under the body)
+        const pe = Math.min(1, sw / 0.6), pitch = a.pitch + (b.pitch - a.pitch) * ((1 - Math.cos(Math.PI * pe)) / 2);
+        let y = a.at[1] + (b.at[1] - a.at[1]) * e + lift * Math.sin(Math.PI * sw);
+        const low = Math.min(y + pitched([f.sole, f.toe], pitch)[0], y + pitched([f.sole, f.heel], pitch)[0]);
+        const floor = rest[1] + f.sole + lift * 0.12 * Math.sin(Math.PI * sw);
+        if (low < floor) y += floor - low;
+        return { at: [rest[0], y, a.at[2] + (b.at[2] - a.at[2]) * e], pitch };
+      };
       const hipsPath: string[] = typeof w.hips === "string" ? (findPart(model.parts, w.hips)[0]?.names ?? []) : legs[0]!.leg.ankle.names.slice(0, -3);
       if (typeof w.hips === "string" && !hipsPath.length) throw new Error(`${at}: walk's "hips" names no part ("${w.hips}")`);
-      let drop = 0;
       for (const { leg } of legs) {
         const rest = ankleAtRest(leg), hip = hipAt({ tracks: [] }, leg, 0);
-        const h = hip[1] - rest[1], reach = (leg.l1 + leg.l2) * 0.985, half = w.stride / 2 + Math.abs(rest[2] - hip[2]);
+        const reach = (leg.l1 + leg.l2) * 0.985, half = w.stride / 2 + Math.abs(rest[2] - hip[2]);
         if (half >= reach) throw new Error(`${at}: a stride of ${w.stride} is longer than the leg ${leg.ankle.names.slice(-3).join(" > ")} can make (thigh ${r3(leg.l1)} + shin ${r3(leg.l2)}): at most about ${r3((reach - Math.abs(rest[2] - hip[2])) * 1.6)}`);
-        drop = Math.max(drop, h - Math.sqrt(reach * reach - half * half));
       }
-      const bob = w.bob ?? 0;
-      if (hipsPath.length && (drop > 1e-3 || bob)) {
+      // The hips: as high as the legs allow at each moment (the body vaults over the standing leg and is lowest when both
+      // feet are down), which is what makes a walk read as a walk and not a creep; `bob` scales that rise. They also lean
+      // a little towards the standing foot (`sway`).
+      const highest = (t: number): number => {
+        let y = Infinity;
+        for (const l of legs) {
+          const hip = hipAt({ tracks: [] }, l.leg, 0), rest = ankleAtRest(l.leg);
+          const foot = footAt(l, phaseOf(l, t)).at;
+          const reach = (l.leg.l1 + l.leg.l2) * 0.99, dz = foot[2] - hip[2];
+          // (how far the hips part itself may be above its place at rest for this leg)
+          y = Math.min(y, foot[1] + Math.sqrt(Math.max(0, reach * reach - dz * dz)) - (hip[1] - rest[1]) - rest[1]);
+        }
+        return y;
+      };
+      const rise = times.map(highest);
+      const lowest = Math.min(...rise);
+      let lifted = rise.map((y) => lowest + (y - lowest) * Math.min(bob, 1));
+      // (rounded off where the two legs change over, and never above what the legs reach)
+      lifted = lifted.map((_, i) => {
+        const n = lifted.length - 1, at = (k: number) => lifted[((k % n) + n) % n]!;
+        return Math.min(rise[i]!, (at(i - 1) + 2 * at(i) + at(i + 1)) / 4);
+      });
+      lifted[lifted.length - 1] = lifted[0]!;
+      const pair = legs.length === 2 && Math.abs(((((legs[0]!.phase - legs[1]!.phase) % 1) + 1) % 1) - 0.5) < 0.05;
+      const apart = pair ? ankleAtRest(legs[0]!.leg)[0] - ankleAtRest(legs[1]!.leg)[0] : 0;
+      const sway = typeof w.sway === "number" ? w.sway * Math.sign(apart || 1) : apart * 0.14;
+      let drop = 0;
+      if (hipsPath.length) {
         const hips = hipsPath.reduce<Args | undefined>((p, n) => (p ? (p.children ?? []).find((c: Args) => c.name === n) : undefined), { children: model.parts });
         const o: Vec3 = hips!.origin;
+        drop = -lowest;
         clip.tracks = clip.tracks.filter((tr: Args) => !(tr.prop === "position" && samePath(tr.part, hipsPath)));
-        // (highest as one leg passes under the body, lowest when both feet are down: twice a cycle)
-        clip.tracks.push({ part: hipsPath, prop: "position", keys: times.map((t) => ({ t: r3(t), value: [o[0], r3(o[1] - drop - bob * 0.5 * (1 + Math.cos((4 * Math.PI * t) / D))), o[2]] })) });
-      } else if (drop > 1e-3) notes.push(`${at}: the legs hang from the top of the model, so the hips cannot be lowered ${r3(drop)} units for the stride: the feet stop short at its ends. Put the legs under a hips part`);
-      for (const { leg, phase } of legs) {
-        const rest = ankleAtRest(leg);
-        writeLeg(clip, leg, times, (t) => {
-          const u = (((t / D + phase) % 1) + 1) % 1;
-          if (u < stance) return { at: [rest[0], rest[1], rest[2] + w.stride * (0.5 - u / stance)], pitch: 0 };
-          const s = (u - stance) / (1 - stance);
-          return { at: [rest[0], rest[1] + lift * Math.sin(Math.PI * s), rest[2] - w.stride / 2 + (w.stride * (1 - Math.cos(Math.PI * s))) / 2], pitch: 0 };
-        }, notes, at);
+        clip.tracks.push({
+          part: hipsPath,
+          prop: "position",
+          keys: times.map((t, i) => ({ t: r3(t), value: [r3(o[0] + (pair ? sway * Math.cos(2 * Math.PI * (phaseOf(legs[0]!, t) - stance / 2)) : 0)), r3(o[1] + lifted[i]!), o[2]] })),
+        });
+      } else if (lowest < -1e-3) notes.push(`${at}: the legs hang from the top of the model, so the hips cannot be lowered ${r3(-lowest)} units for the stride: the feet stop short at its ends. Put the legs under a hips part`);
+      for (const l of legs) writeLeg(clip, l.leg, times, (t) => footAt(l, phaseOf(l, t)), notes, at);
+      // arms that swing against the legs: each arm goes back as the leg on its side comes forward
+      if (w.arms !== undefined) {
+        if (!Array.isArray(w.arms) || w.arms.length !== legs.length || !w.arms.every((n: unknown) => typeof n === "string")) throw new Error(`${at}: walk's "arms" names the upper-arm parts in the order of "legs" (the arm on the same side as each leg), like ["arm_l", "arm_r"]`);
+        const swing = typeof w.arm_swing === "number" ? w.arm_swing : 26, elbow = typeof w.elbow === "number" ? w.elbow : 14;
+        w.arms.forEach((name: string, i: number) => {
+          const found = findPart(model.parts, name);
+          if (found.length !== 1) throw new Error(`${at}: walk's "arms": ${found.length ? "more than one part is" : "no part is"} called "${name}"`);
+          const arm = found[0]!;
+          const base: Vec3 = isVec3(arm.part.rotation) ? arm.part.rotation : [0, 0, 0];
+          // how far forward the leg of this side is, from -1 to 1 (a smooth wave that is 1 as its heel lands)
+          const fore = (t: number) => Math.cos(2 * Math.PI * (phaseOf(legs[i]!, t) - 0.02));
+          const drop_ = (path: string[]) => (clip.tracks = clip.tracks.filter((tr: Args) => !(tr.prop === "rotation" && samePath(tr.part, path))));
+          drop_(arm.names);
+          clip.tracks.push({ part: arm.names, prop: "rotation", keys: times.map((t) => ({ t: r3(t), value: [r3(base[0] + swing * fore(t)), base[1], base[2]] })) });
+          const fore_arm = (arm.part.children ?? [])[0];
+          if (fore_arm && elbow) {
+            const fb: Vec3 = isVec3(fore_arm.rotation) ? fore_arm.rotation : [0, 0, 0];
+            const path = [...arm.names, String(fore_arm.name)];
+            drop_(path);
+            // (the elbow bends more as the arm comes forward: a negative turn about x lifts the forearm to the front)
+            clip.tracks.push({ part: path, prop: "rotation", keys: times.map((t) => ({ t: r3(t), value: [r3(fb[0] - elbow * (1.2 - fore(t))), fb[1], fb[2]] })) });
+          }
+        });
       }
       if (typeof w.event === "string" && w.event) {
         const lands = legs.map(({ phase }: { phase: number }) => r3((((1 - phase) % 1) + 1) % 1 * D)).sort((a: number, b: number) => a - b);
         clip.events = [...(Array.isArray(clip.events) ? clip.events : []), ...lands.map((t: number) => ({ t, name: w.event }))].sort((a, b) => a.t - b.t);
       }
       const speed = w.stride / (stance * D);
-      notes.push(`${at}: a walk of ${legs.length} legs (${legs.map(({ leg }: { leg: Leg }) => leg.ankle.names.slice(-3).join(" > ")).join("; ")}), ${N + 1} keys each. A standing foot moves back ${r3(w.stride)} units in ${r3(stance * D)} s, so the feet do not slide when the entity moves ${r3(speed * scale)} world units a second (${r3(speed)} model units a second at scale ${scale}); play the clip faster or slower in step with the speed${drop > 1e-3 && hipsPath.length ? `. The hips ("${hipsPath[hipsPath.length - 1]}") are keyed ${r3(drop)} units lower so the legs reach the ends of the stride` : ""}${typeof w.event === "string" && w.event ? `. Events "${w.event}" where each foot lands` : ""}`);
+      speeds[String(clip.name)] = r3(speed * scale);
+      const span = Math.max(...lifted) - Math.min(...lifted);
+      const leads = legs.map((l: LegOf) => `${l.leg.ankle.names[l.leg.ankle.names.length - 1]} lands at ${r3((((1 - l.phase) % 1) + 1) % 1 * D)} s`).join(", ");
+      notes.push(`${at}: a walk of ${legs.length} legs (${legs.map(({ leg }: { leg: Leg }) => leg.ankle.names.slice(-3).join(" > ")).join("; ")}), ${N + 1} keys each; ${leads} (it is in front then). A standing foot moves back ${r3(w.stride)} units in ${r3(stance * D)} s, so the feet do not slide when the entity moves ${r3(speed * scale)} world units a second (${r3(speed)} model units a second at scale ${scale}); play the clip faster or slower in step with the speed${hipsPath.length ? `. The hips ("${hipsPath[hipsPath.length - 1]}") are keyed: ${r3(Math.max(0, drop))} units lower where both feet are down, rising ${r3(span)} over the standing leg ("bob": ${bob}; 0 keeps them level)${pair && Math.abs(sway) > 1e-3 ? `, and ${r3(Math.abs(sway))} towards the standing foot ("sway")` : ""}` : ""}${legs.some((l: LegOf) => l.rolls) ? `. The feet roll from heel (toes ${heelUp} degrees up as it lands) to toe (${toeDown} degrees down as it leaves), the sole never under the ground ("roll": false keeps them level)` : ""}${w.arms ? `. The arms ${w.arms.join(", ")} swing against the legs` : ""}${typeof w.event === "string" && w.event ? `. Events "${w.event}" where each foot lands` : ""}`);
       delete clip.walk;
     }
     if (clip.ik !== undefined) {
@@ -353,7 +485,7 @@ export function expandModel(given: Args): { model: Args; notes: string[] } {
     }
     clip.tracks.forEach((tr: Args) => tr.keys?.sort((a: Args, b: Args) => a.t - b.t));
   }
-  return { model, notes };
+  return { model, notes, bend, speeds };
 }
 
 export const SHAPES_HELP =
@@ -363,5 +495,5 @@ export const SHAPES_HELP =
 
 export const FEET_HELP =
   'Feet instead of angles: a clip may say where the feet go and the leg\'s turns are worked out and written as ordinary rotation keys. A foot is named by its part; the part above it is the shin and the one above that the thigh (hips > leg_l > shin_l > foot_l), all three unturned at rest. ' +
-  '"walk": { "legs": ["foot_l", "foot_r"], "stride": 12, "lift": 2, "stance": 0.6, "event": "step" } makes a whole walk cycle over the clip\'s duration: each foot stands for `stance` of the cycle while it travels `stride` model units back, then swings forward `lift` high; the hips part is keyed lower as far as the stride needs. The answer says the speed at which the feet do not slide (stride / (stance x duration), in world units a second): move the entity at that speed. ' +
-  '"ik": { "foot_l": [[t, x, y, z], [0.25, -2, 1, -4], ...] } places an ankle at points in the model\'s space over time (a fifth number tips the foot, degrees); it goes straight between them. Position keys of the parts above the leg in the same clip (hips that bob) are taken into account. `walk` and `ik` are not kept in the file. ';
+  '"walk": { "legs": ["foot_l", "foot_r"], "stride": 12, "lift": 2, "stance": 0.6, "event": "step", "arms": ["arm_l", "arm_r"] } makes a whole walk cycle over the clip\'s duration: each foot stands for `stance` of the cycle (0.6 walks, 0.35 runs) while it travels `stride` model units back, then swings forward `lift` high. It lands on its heel and leaves from its toe (the foot part\'s own shapes say where the sole, heel and toe are; the ankle is lifted so the sole never goes under the ground; "roll": false keeps the feet level, "heel" and "toe" are the degrees). The hips rise over the standing leg and sink when both feet are down (`bob`: 0.8; 0 keeps them level, which reads as a creep) and lean towards the standing foot (`sway`, model units). `arms` names the upper-arm parts in the order of the legs: each swings back as the leg on its side comes forward (`arm_swing` degrees, 26; `elbow`, 14, bends the part below it). The answer says which foot lands when and the speed at which the feet do not slide (stride / (stance x duration), in world units a second): move the entity at that speed. ' +
+  '"ik": { "foot_l": [[t, x, y, z], [0.25, -2, 1, -4], ...] } places an ankle at points in the model\'s space over time (a fifth number tips the foot about its ankle, degrees: positive points the toes down, and the toes or the heel then reach below the ankle\'s sole height, so lift the ankle as well); it goes straight between them. Position keys of the parts above the leg in the same clip (hips that bob) are taken into account. `walk` and `ik` are not kept in the file. ';

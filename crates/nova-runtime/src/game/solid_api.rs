@@ -1,7 +1,7 @@
 //! `nova.solid`: collision against the triangles of models (see [`crate::meshworld`]).
 
 use super::*;
-use crate::meshworld::CapsuleOpts;
+use crate::meshworld::{CapsuleOpts, Owner};
 
 /// A model's triangles, in its own space.
 type Triangles = Rc<(Vec<[f32; 3]>, Vec<u32>)>;
@@ -24,7 +24,10 @@ pub(super) fn install(
     // read from the model files when first asked for, so that a game that does not use this pays nothing
     let cache: Rc<RefCell<HashMap<String, Triangles>>> = Rc::default();
 
-    // add(model, x, y, z [, { ry, rx, rz, scale }]) -> triangles added
+    // The body the game last moved (radius, height, step, slope): what a test player plans its paths for.
+    let mover: Rc<RefCell<Option<(f64, f64, CapsuleOpts)>>> = Rc::default();
+
+    // add(model, x, y, z [, { ry, rx, rz, scale, camera_only, scene }]) -> triangles added
     let (s, v, c) = (shared.clone(), vfs.clone(), cache.clone());
     solid.set(
         "add",
@@ -55,7 +58,19 @@ pub(super) fn install(
                     * Mat4::from_rotation_x(number_option(&opts, "rx")?.unwrap_or(0.0) as f32)
                     * Mat4::from_rotation_z(number_option(&opts, "rz")?.unwrap_or(0.0) as f32)
                     * Mat4::from_scale(Vec3::splat(scale));
-                Ok(sh.solid.add(&tris.0, &tris.1, place))
+                let flag = |key: &str| -> mlua::Result<bool> {
+                    Ok(match &opts {
+                        Some(t) => t.get::<Option<bool>>(key)?.unwrap_or(false),
+                        None => false,
+                    })
+                };
+                let owner = Owner {
+                    name: id.clone(),
+                    pos: Vec3::new(x as f32, y as f32, z as f32),
+                    sight: flag("camera_only")?,
+                    scene: flag("scene")?,
+                };
+                Ok(sh.solid.add_as(&tris.0, &tris.1, place, owner))
             },
         )?,
     )?;
@@ -67,6 +82,82 @@ pub(super) fn install(
             Ok(())
         })?,
     )?;
+    // clear_scene(): what was added with scene = true (the framework does this when a scene ends)
+    let s = shared.clone();
+    solid.set(
+        "clear_scene",
+        lua.create_function(move |_, ()| {
+            s.borrow_mut().solid.clear_scene();
+            Ok(())
+        })?,
+    )?;
+    // mover() -> radius, height, step, slope of the last nova.solid.move the game made | nil
+    let mv = mover.clone();
+    solid.set(
+        "mover",
+        lua.create_function(move |_, ()| {
+            Ok(match *mv.borrow() {
+                Some((r, h, o)) => mlua::MultiValue::from_iter([
+                    Value::Number(r),
+                    Value::Number(h),
+                    Value::Number(o.step as f64),
+                    Value::Number(o.max_slope_degrees as f64),
+                ]),
+                None => mlua::MultiValue::new(),
+            })
+        })?,
+    )?;
+    // touching(x, y, z, radius, height [, margin = 0.1]) -> model, model x, y, z, point x, y, z | nil
+    let s = shared.clone();
+    solid.set(
+        "touching",
+        lua.create_function(
+            move |lua, (x, y, z, radius, height, margin): (f64, f64, f64, f64, f64, Option<f64>)| {
+                let sh = s.borrow();
+                let hit = sh.solid.touching(
+                    Vec3::new(x as f32, y as f32, z as f32),
+                    radius as f32,
+                    height as f32,
+                    margin.unwrap_or(0.1) as f32,
+                );
+                Ok(match hit {
+                    Some((o, p)) => mlua::MultiValue::from_iter([
+                        Value::String(lua.create_string(&o.name)?),
+                        Value::Number(o.pos.x as f64),
+                        Value::Number(o.pos.y as f64),
+                        Value::Number(o.pos.z as f64),
+                        Value::Number(p.x as f64),
+                        Value::Number(p.y as f64),
+                        Value::Number(p.z as f64),
+                    ]),
+                    None => mlua::MultiValue::new(),
+                })
+            },
+        )?,
+    )?;
+    // sightline(x, y, z, dx, dy, dz, max) -> distance, nx, ny, nz | nil: a ray that camera_only triangles stop too
+    let s = shared.clone();
+    solid.set(
+        "sightline",
+        lua.create_function(
+            move |_, (x, y, z, dx, dy, dz, max): (f64, f64, f64, f64, f64, f64, f64)| {
+                let hit = s.borrow().solid.sightline(
+                    Vec3::new(x as f32, y as f32, z as f32),
+                    Vec3::new(dx as f32, dy as f32, dz as f32),
+                    max as f32,
+                );
+                Ok(match hit {
+                    Some((d, n)) => mlua::MultiValue::from_iter([
+                        Value::Number(d as f64),
+                        Value::Number(n.x as f64),
+                        Value::Number(n.y as f64),
+                        Value::Number(n.z as f64),
+                    ]),
+                    None => mlua::MultiValue::new(),
+                })
+            },
+        )?,
+    )?;
     let s = shared.clone();
     solid.set(
         "count",
@@ -75,6 +166,7 @@ pub(super) fn install(
     // move(x, y, z, radius, height, dx, dy, dz [, { slope, step, snap }]) -> { x, y, z, ground, normal, wall, wall_normal,
     // ceiling, stepped }
     let s = shared.clone();
+    let mv = mover.clone();
     solid.set(
         "move",
         lua.create_function(
@@ -114,6 +206,14 @@ pub(super) fn install(
                         .map_or(defaults.snap, |v| v as f32)
                         .max(0.0),
                 };
+                // (a test player's own trial moves say `probe`, and are not the game's)
+                let probe = match &opts {
+                    Some(t) => t.get::<Option<bool>>("probe")?.unwrap_or(false),
+                    None => false,
+                };
+                if !probe {
+                    *mv.borrow_mut() = Some((radius, height, o));
+                }
                 let m = s.borrow().solid.move_capsule(
                     Vec3::new(x as f32, y as f32, z as f32),
                     radius as f32,

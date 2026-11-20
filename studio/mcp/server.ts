@@ -230,7 +230,7 @@ tool(
   {
     name: { type: "string" },
     model: { type: ["object", "string"], description: "The model document (an object, or its JSON as text)." },
-    bend: { type: "boolean", description: 'Give every free-mesh shape that has no skin automatic weights, as the editor\'s "Bend with the parts around it" button does: the shape then bends with its part, the part above it and the parts below it when they are posed or animated (a sleeve at the elbow). Make such limbs as meshes with several rings of points across the joint.' },
+    bend: { type: "boolean", description: 'Give the limbs automatic weights, as the editor\'s "Bend with the parts around it" button does: every free mesh and tube that has no skin then bends with its part, the part above it and the parts below it when they are posed or animated (a sleeve at the elbow). Lathes are left rigid (a turned shape is a body: a torso, a head), and so is any shape that says "bend": false; a shape that says "bend": true bends whatever this is. The answer names the parts whose meshes bend. Make such limbs with several rings of points across the joint.' },
   },
   ["name", "model"],
   (a) => {
@@ -243,22 +243,29 @@ tool(
       throw new Error(`the model is not valid: not valid JSON: ${e instanceof Error ? e.message : e}`);
     }
     // tubes and lathes become meshes, and feet placed by `ik` or `walk` become rotation keys, before the editor's own check
-    const expanded = given && typeof given === "object" && !Array.isArray(given) ? expandModel(given as Args) : { model: given, notes: [] as string[] };
+    const expanded = given && typeof given === "object" && !Array.isArray(given) ? expandModel(given as Args) : { model: given, notes: [] as string[], bend: {} as Record<string, boolean>, speeds: {} as Record<string, number> };
     const parsed = parseModel(JSON.stringify(expanded.model));
     if (!parsed.ok) throw new Error(`the model is not valid: ${parsed.error}`);
     let doc = parsed.doc;
+    // Which shapes bend: those that say so themselves ("bend": true), and with the call's own bend: true every free mesh
+    // that does not say "bend": false, except lathes (a turned shape is a body, not a limb).
     let skinned = 0;
-    if (a.bend) {
-      for (const { part, parts } of walk(doc)) {
-        for (let i = 0; i < part.cubes.length; i++) {
-          const path = { parts, cube: i };
-          const cube = cubeAt(doc, path);
-          if (!cube || cube.shape !== "mesh" || cube.skin) continue;
-          const skin = autoWeights(doc, path);
-          if (skin) {
-            doc = setCube(doc, path, { ...cube, skin });
-            skinned++;
-          }
+    const bent: string[] = [], rigid: string[] = [];
+    for (const { part, parts } of walk(doc)) {
+      for (let i = 0; i < part.cubes.length; i++) {
+        const path = { parts, cube: i };
+        const cube = cubeAt(doc, path);
+        if (!cube || cube.shape !== "mesh" || cube.skin) continue;
+        const own = expanded.bend[`${parts.join(".")}#${i}`];
+        if (!(own ?? !!a.bend)) {
+          if (a.bend) rigid.push(part.name);
+          continue;
+        }
+        const skin = autoWeights(doc, path);
+        if (skin) {
+          doc = setCube(doc, path, { ...cube, skin });
+          skinned++;
+          bent.push(part.name);
         }
       }
     }
@@ -270,7 +277,7 @@ tool(
     put(root, `models/${name}.glb`, glb);
     let triangles = 0;
     for (const { part } of walk(doc)) for (const c of part.cubes) triangles += meshOf(evaluate(c, "render")).indices.length / 3;
-    return `models/${name}.model.json and models/${name}.glb: ${walk(doc).length} parts, ${countCubes(doc)} shapes, ${triangles} triangles${skinned ? `, ${skinned} bending` : ""}, ${glb.length} bytes. In Lua: nova.model("${name}", x, y, z)${expanded.notes.map((n) => `\n${n}`).join("")}`;
+    return `models/${name}.model.json and models/${name}.glb: ${walk(doc).length} parts, ${countCubes(doc)} shapes, ${triangles} triangles${skinned ? `, ${skinned} bending (the meshes of ${[...new Set(bent)].join(", ")}${rigid.length ? `; not those of ${[...new Set(rigid)].join(", ")}: a lathe, or "bend": false` : ""})` : ""}, ${glb.length} bytes. In Lua: nova.model("${name}", x, y, z)${expanded.notes.map((n) => `\n${n}`).join("")}`;
   },
 );
 
