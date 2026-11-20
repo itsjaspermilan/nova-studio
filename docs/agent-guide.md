@@ -239,7 +239,18 @@ What the makers do not have, make with `model_write` in the same style (flat fac
   (`out`, `image_out`) before judging draw order from a small strip tile.
 - **Every PNG in the project is a sprite** and goes into the atlas. Keep screenshots and scratch files in `build/`, a
   dot-folder, or list them in `nova.json`: `"ignore": ["shots", "tools"]` (also kept out of `nova pack`).
-- **Text** is always drawn over UI rectangles; fade the text itself. `line_spacing = 1.5` for the pixel fonts.
+- **Text** is always drawn over UI rectangles; fade the text itself. `line_spacing = 1.5` for the pixel fonts. The
+  `pixel` font is monospaced: every letter is `size` units wide (16 by default, so 10 letters are 160 units); other fonts
+  vary. Measure before placing: `nova.ui.text_width(text, { font = "pixel", size = 24 })` (`nova.ui.text_size` gives width and height).
+- **Colours** are `{ r, g, b [, a] }` from 0 to 255, never 0 to 1 (`{ 255, 255, 255, 128 }` is half-transparent white).
+- **`nova.ui.sprite` is centred on x, y; `nova.ui.rect` (like `nova.rect`) starts at its top-left corner.** A frame round
+  an icon at `x, y` is `nova.ui.rect(x - w / 2, y - h / 2, w, h, ...)`.
+- **A scene is built again every time it is entered.** Leaving and coming back puts every enemy, chest and pickup back as
+  the scene file has them; only what the game keeps in its own state survives. For "stays beaten" or "stays taken" keep a
+  table in a module (`lib/state.lua`: `return { taken = {} }`), and in the entity:
+  `local state = require("lib.state")`, in `create()`: `if state.taken[self.name] then self:destroy() end`, and where it
+  is taken or beaten: `state.taken[self.name] = true` (give each such object a `name` in the scene; prefix it with
+  `nova.current_scene()` if two scenes reuse a name).
 - **Songs:** a drums track needs only `name`, `kind`, `notes` (pitch picks the drum: 36 kick, 38 snare, 42 hat).
 - **Sound effects:** one effect has one envelope; `arpNotes` gives it a short tune. For the `noise` wave `freq` is the
   colour, and under about 200 it is a rumble a handheld cannot play.
