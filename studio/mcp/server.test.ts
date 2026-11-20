@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { PRESETS } from "../src/lib/sfx";
 import { encodeWav } from "../src/lib/wav";
 import { decodePng } from "./draw";
 import { call, tools } from "./server";
@@ -319,6 +320,96 @@ describe("hearing without ears", () => {
     expect(step).toMatch(/WARNING: almost all of its energy \(\d\d %\) is below 80 Hz/);
     expect(() => use("sfx_write", { name: "x", params: { pitch: 400 } })).toThrow(/params has "pitch", which the synth does not have/);
     expect(() => use("sfx_write", { name: "x", params: { arpNotes: "up" } })).toThrow(/arpNotes is a list of semitones/);
+  });
+
+  it("ships presets that pass its own check", () => {
+    const said: string[] = [];
+    for (const name of Object.keys(PRESETS)) {
+      const r = text(use("sfx_write", { name: `p_${name}`, preset: name }));
+      for (const line of r.split("\n")) if (line.includes("WARNING")) said.push(`${name}: ${line.trim()}`);
+    }
+    expect(said).toEqual([]);
+  });
+
+  it("says in every warning which setting to change and which way", () => {
+    const thin = text(use("sfx_write", { name: "thin", params: { wave: "square", freq: 600, duty: 0.2, attack: 0, sustain: 0.1, decay: 0.1, volume: 0.5 } }));
+    expect(thin).toContain("a DC offset of");
+    expect(thin).toContain("It comes from the square wave's `duty` (it is 0.2): set `duty` to 0.5, or keep the thin sound and add `highpass` 150 or more.");
+    expect(thin).toContain("a click at the start. Raise `attack` to about 0.004 (it is 0).");
+    const rumble = text(use("sfx_write", { name: "rumble", params: { wave: "noise", freq: 60, attack: 0.01, sustain: 0.3, decay: 0.3, volume: 0.3 } }));
+    expect(rumble).toMatch(/below 80 Hz.*Raise `freq` \(it is 60; for noise it sets the colour: 1500 to 3000 is a crunch\) or add `highpass` 200 or more\./);
+    const loud = text(use("sfx_write", { name: "loud", params: { wave: "sine", freq: 300, attack: 0.01, sustain: 0.2, decay: 0.2, punch: 0.8, volume: 0.9 } }));
+    expect(loud).toMatch(/it clips \(distortion\)\. Lower `volume` \(it is 0\.9\) or `punch` \(it is 0\.8, which adds up to 160 % at the start\)\./);
+    const cut = text(use("sfx_write", { name: "cut", params: { wave: "square", freq: 800, slide: -2, freqLimit: 500, attack: 0.01, sustain: 0.5, decay: 0.5, volume: 0.5 } }));
+    expect(cut).toMatch(/a click at the end\. `freqLimit` \(500\) cuts it off while it still sounds: lower `freqLimit`/);
+    // the same advice when the sound is looked at again later (its settings are read from the .sfx.json beside it)
+    expect(text(use("sound_report", { sound: "thin", picture: false }))).toContain("Raise `attack` to about 0.004 (it is 0).");
+    // every warning the tool can give ends with advice: none stops at the finding
+    for (const said of [thin, rumble, loud, cut]) {
+      for (const line of said.split("\n").filter((l) => l.includes("WARNING"))) expect(line).toMatch(/(Raise|Lower|Set|set|Soften|lower|It comes from|Add|add) /);
+    }
+    // a song: the track that is too low is named
+    const song = { version: 1, bpm: 120, stepsPerBeat: 4, length: 16, tracks: [{ name: "bass", kind: "synth", wave: "triangle", volume: 0.9, notes: [{ step: 0, len: 15, pitch: 30 }] }] };
+    use("song_write", { name: "low", song });
+    expect(text(use("sound_report", { sound: "music/low.song.json", picture: false }))).toMatch(/below 80 Hz.*the track "bass" goes down to pitch 30 \(F#1, 46 Hz\): raise its notes by 12 \(an octave\) or lower its `volume` \(it is 0\.9\)/);
+  });
+
+  it("compares a mix at the volumes the game plays at, and says where the music sits", () => {
+    use("sfx_write", { name: "hit", preset: "hit" });
+    use("sfx_write", { name: "tone", params: { wave: "square", freq: 440, attack: 0.01, sustain: 0.6, decay: 0.2, volume: 0.5 } });
+    const song = { version: 1, bpm: 120, stepsPerBeat: 4, length: 16, tracks: [{ name: "lead", kind: "synth", wave: "square", volume: 0.6, notes: [0, 4, 8, 12].map((step) => ({ step, len: 3, pitch: 72 })) }] };
+    use("song_write", { name: "tune", song });
+    const plain = text(use("sound_report", { sounds: ["hit", "tone", "music/tune.song.json"], picture: false }));
+    expect(plain).toContain("every file at volume 1: give { name, volume } pairs to see it as the game plays it");
+    expect(plain).toMatch(/sounds\/hit\.wav\s+-\d+\.\d~/); // a short sound: the level of the part that sounds
+    expect(plain).toContain("(~ a sound shorter than 0.45 s");
+    const level = (said: string, name: string) => Number(new RegExp(`${name.replace(/[./]/g, "\\$&")}\\s+(?:\\d\\.\\d\\d\\s+)?(-\\d+\\.\\d)`).exec(said.slice(said.indexOf("the mix")))![1]);
+    const mixed = text(use("sound_report", { sounds: [{ name: "hit", volume: 0.5 }, "tone", { name: "music/tune.song.json", volume: 0.25 }], picture: false }));
+    expect(mixed).toContain("at the volumes given");
+    expect(mixed).toMatch(/sound\s+volume\s+LUFS/);
+    expect(level(mixed, "sounds/hit.wav")).toBeCloseTo(level(plain, "sounds/hit.wav") - 6, 0); // half the volume is 6 dB
+    expect(level(mixed, "music/tune.song.json")).toBeCloseTo(level(plain, "music/tune.song.json") - 12, 0);
+    expect(mixed).toMatch(/music\/tune\.song\.json is \d+\.\d dB under the loudest effect, (which is where music usually sits|music usually sits 6 to 10 dB under: play it at volume \d\.\d\d for 8 dB)/);
+    // the same with a volumes table, and its mistakes
+    const table = text(use("sound_report", { sounds: ["hit", "tone"], volumes: { hit: 0.5 }, picture: false }));
+    expect(level(table, "sounds/hit.wav")).toBe(level(mixed, "sounds/hit.wav"));
+    expect(() => use("sound_report", { sounds: ["hit"], volumes: { hat: 0.5 } })).toThrow(/volumes names "hat", which is not among the sounds asked for \(hit\)/);
+    expect(() => use("sound_report", { sounds: [{ name: "hit", volume: "loud" }] })).toThrow(/the volume of 'hit' is a number from 0 to 4/);
+  });
+
+  it("names the frame and the sounds that started at a click or a clip in a run's recording", () => {
+    // a run of one second: a quiet tone, and at half a second something starts at full level and clips
+    const rate = 48000;
+    const samples = Float32Array.from({ length: rate }, (_, i) => 0.1 * Math.sin((2 * Math.PI * 220 * i) / rate) + (i >= rate / 2 && i < rate / 2 + 6000 ? 0.95 : 0));
+    mkdirSync(join(dir, "build"), { recursive: true });
+    writeFileSync(join(dir, "build/run.wav"), encodeWav({ rate, channels: [samples] }));
+    const bare = text(use("sound_report", { file: "build/run.wav", picture: false }));
+    expect(bare).toMatch(/sudden jumps \(clicks\) at 0\.500 s, 0\.625 s\. Fade in whatever starts there/);
+    writeFileSync(join(dir, "build/run.sounds.json"), JSON.stringify({ frames: 60, fps: 60, sounds: [{ frame: 2, text: "music town at volume 0.3" }, { frame: 30, text: "sound swing" }, { frame: 31, text: "sound hit" }, { frame: 31, text: "sound hit" }] }));
+    const named = text(use("sound_report", { file: "build/run.wav", picture: false }));
+    expect(named).toContain("sudden jumps (clicks) at 0.500 s (frame 31; started just then: f30 sound swing, f31 sound hit x2), 0.625 s (frame 38: no sound started within 3 frames of it, so something already playing jumped");
+    expect(named).toContain("give those a longer `attack` (0.01 to 0.03) with sfx_write, or play them quieter (`volume`)");
+    expect(named).toMatch(/it clips \(distortion\)\. First at 0\.50\d s \(frame 31; started in the half second before: f2 music town at volume 0\.3, f30 sound swing, f31 sound hit x2\)\. Too much plays at once/);
+  });
+
+  it("says what sounds at a loop's seam, and lets a drum hit on the first beat be a drum hit", () => {
+    const drums = { name: "drums", kind: "drums", kit: "studio", volume: 0.9, notes: [{ step: 0, pitch: 36, vel: 1 }, { step: 8, pitch: 38 }] };
+    const pad = { name: "pad", kind: "synth", wave: "sine", attack: 0.2, release: 0.3, volume: 0.3, notes: [{ step: 2, len: 14, pitch: 60 }] };
+    use("song_write", { name: "beat", song: { version: 1, bpm: 120, stepsPerBeat: 4, length: 16, tracks: [drums, pad] } });
+    const beat = text(use("sound_report", { sound: "music/beat.song.json", picture: false }));
+    expect(beat).toContain("loop seam: matches");
+    expect(beat).toContain("at the seam: starting on the first step: drums (kick); still held at the end: pad (C4)");
+    expect(beat).not.toMatch(/WARNING: the loop's seam/);
+    // a plain file that ends in silence and starts with a bang is the same case
+    const rate = 8000;
+    const bang = Float32Array.from({ length: rate }, (_, i) => (i < 2000 ? 0.8 * Math.cos((2 * Math.PI * 100 * i) / rate) * (1 - i / 2000) : 0));
+    mkdirSync(join(dir, "music"), { recursive: true });
+    writeFileSync(join(dir, "music/bang.wav"), encodeWav({ rate, channels: [bang] }));
+    expect(text(use("sound_report", { sound: "music/bang.wav", picture: false }))).toMatch(/loop seam: matches \(.*the end is silent, so the step across it is the attack of what starts the loop\)/);
+    // and one that is cut off in full flow still does not match, with what to do
+    const cutOff = Float32Array.from({ length: rate }, (_, i) => 0.6 * Math.sin((2 * Math.PI * 100.3 * i) / rate + 1));
+    writeFileSync(join(dir, "music/cut.wav"), encodeWav({ rate, channels: [cutOff] }));
+    expect(text(use("sound_report", { sound: "music/cut.wav", picture: false }))).toMatch(/WARNING: the loop's seam does not match.*Make the loop end where the wave crosses zero/);
   });
 
   it("reports existing sounds with a spectrogram, compares a mix, and checks a loop's seam", () => {

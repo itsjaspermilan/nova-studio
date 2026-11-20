@@ -144,15 +144,18 @@ export function render(params: SfxParams, rate = SAMPLE_RATE): Sound {
 
 const P = (over: Partial<SfxParams>): SfxParams => ({ ...DEFAULTS, ...over });
 
+// Every preset passes the sound report's own check (studio/mcp/server.test.ts): a few milliseconds of attack so that it
+// does not start with a click, a high-pass under the narrow square waves so that they carry no DC offset, noise bright
+// enough for a handheld's speaker, and room under full scale for the punch.
 export const PRESETS: Record<string, SfxParams> = {
-  coin: P({ wave: "square", freq: 988, arpSemitones: 5, arpTime: 0.07, attack: 0, sustain: 0.08, decay: 0.25, duty: 0.35, volume: 0.5 }),
-  jump: P({ wave: "square", freq: 280, slide: 1.6, attack: 0, sustain: 0.08, decay: 0.18, duty: 0.4 }),
-  laser: P({ wave: "saw", freq: 1400, slide: -2.8, freqLimit: 160, attack: 0, sustain: 0.1, decay: 0.15, volume: 0.45 }),
-  explosion: P({ wave: "noise", freq: 90, slide: -0.6, attack: 0.002, sustain: 0.15, decay: 0.7, punch: 0.6, lowpass: 2500, volume: 0.8 }),
-  hit: P({ wave: "noise", freq: 260, slide: -1.2, attack: 0, sustain: 0.02, decay: 0.12, punch: 0.5, lowpass: 6000 }),
-  powerup: P({ wave: "square", freq: 330, slide: 1.2, vibratoDepth: 0.15, vibratoSpeed: 14, attack: 0, sustain: 0.25, decay: 0.2, duty: 0.3 }),
-  blip: P({ wave: "square", freq: 700, attack: 0, sustain: 0.03, decay: 0.05, duty: 0.5, volume: 0.45 }),
-  bounce: P({ wave: "sine", freq: 520, slide: -3, attack: 0, sustain: 0.02, decay: 0.2, punch: 0.3 }),
+  coin: P({ wave: "square", freq: 988, arpSemitones: 5, arpTime: 0.07, attack: 0.004, sustain: 0.08, decay: 0.25, duty: 0.35, highpass: 150, volume: 0.5 }),
+  jump: P({ wave: "square", freq: 280, slide: 1.6, attack: 0.004, sustain: 0.08, decay: 0.18, duty: 0.4, highpass: 150, volume: 0.45 }),
+  laser: P({ wave: "saw", freq: 1400, slide: -2.8, freqLimit: 160, attack: 0.004, sustain: 0.1, decay: 0.15, volume: 0.45 }),
+  explosion: P({ wave: "noise", freq: 1400, slide: -1.4, attack: 0.004, sustain: 0.15, decay: 0.7, punch: 0.3, lowpass: 2500, highpass: 60, volume: 0.5 }),
+  hit: P({ wave: "noise", freq: 2200, slide: -1.2, attack: 0.004, sustain: 0.02, decay: 0.12, punch: 0.3, lowpass: 6000, volume: 0.5 }),
+  powerup: P({ wave: "square", freq: 330, slide: 1.2, vibratoDepth: 0.15, vibratoSpeed: 14, attack: 0.004, sustain: 0.25, decay: 0.2, duty: 0.3, highpass: 150, volume: 0.4 }),
+  blip: P({ wave: "square", freq: 700, attack: 0.004, sustain: 0.03, decay: 0.05, duty: 0.5, volume: 0.45 }),
+  bounce: P({ wave: "sine", freq: 520, slide: -3, attack: 0.004, sustain: 0.02, decay: 0.2, punch: 0.3 }),
 };
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));

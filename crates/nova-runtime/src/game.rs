@@ -2827,6 +2827,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     number_option(&opts, "volume")?.unwrap_or(1.0).clamp(0.0, 4.0) as f32,
                     number_option(&opts, "pan")?.unwrap_or(0.0).clamp(-1.0, 1.0) as f32,
                 );
+                let asked = volume; // (what the script said, before distance changes it: what a run's report shows)
                 if let Some((at, range, falloff)) = place {
                     let (gain, side) = spatial(&sh.camera, at, range, falloff);
                     if gain <= 0.001 && !looping {
@@ -2842,7 +2843,13 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     sh.music_position = None;
                 }
                 if sh.sound_log.len() < 4096 {
-                    sh.sound_log.push(format!("{} {name}", if is_music { "music" } else { "sound" }));
+                    let kind = if is_music { "music" } else { "sound" };
+                    sh.sound_log.push(if (asked - 1.0).abs() < 0.005 {
+                        format!("{kind} {name}")
+                    } else {
+                        let v = format!("{asked:.2}");
+                        format!("{kind} {name} at volume {}", v.trim_end_matches('0').trim_end_matches('.'))
+                    });
                 }
                 sh.audio.push(mixer::Command::Play(Box::new(mixer::Play {
                     id,

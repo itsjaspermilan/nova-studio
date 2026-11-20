@@ -28,7 +28,7 @@ import { previewSprite, writeSprite } from "./sprites";
 import { PRESETS, DEFAULTS, RANGES, WAVES, cleanArpNotes, fromJson as sfxFromJson, render, toJson, type SfxParams } from "../src/lib/sfx";
 import { decodeWav, encodeWav, type Sound } from "../src/lib/wav";
 import { drumTrack, parseSong, renderSong, serializeSong, songSeconds, synthTrack } from "../src/lib/song";
-import { analyse, describe, mixTable, spectrogram, stack } from "./sound";
+import { analyse, describe, mixTable, spectrogram, stack, type Source } from "./sound";
 import { parseScene, serializeScene, tilemaps } from "../src/lib/scene-model";
 import { drawScene, expandTileLayers, previewScene } from "./scenes";
 // @ts-ignore (plain JavaScript, shared with Pine Ridge Rally's track script)
@@ -277,7 +277,7 @@ tool(
     const bytes = encodeWav(sound);
     put(root, `sounds/${name}.sfx.json`, toJson(p));
     put(root, `sounds/${name}.wav`, bytes);
-    const report = describe(analyse(`sounds/${name}.wav`, sound));
+    const report = describe(analyse(`sounds/${name}.wav`, sound, { source: { sfx: p } }));
     return `sounds/${name}.wav: ${(sound.channels[0]!.length / sound.rate).toFixed(2)} s\n${report}`;
   },
 );
@@ -333,30 +333,73 @@ function loadSound(root: string, given: string): { name: string; sound: Sound; m
   return { name, sound: decodeWav(readFileSync(file)), music, file };
 }
 
+/// What is known about where a sound file came from: the settings it was made from (the `.sfx.json` or `.song.json`
+/// beside it) or, for the recording of a run, the sounds the run started (the `.sounds.json` the play tool writes).
+function sourceOf(file: string, run: boolean): Source {
+  const base = file.replace(/\.(wav|ogg|sfx\.json|song\.json)$/i, "");
+  try {
+    if (run) {
+      const side = `${base}.sounds.json`;
+      if (existsSync(side)) {
+        const v = JSON.parse(readFileSync(side, "utf8"));
+        if (Array.isArray(v.sounds)) return { events: v.sounds, fps: Number(v.fps) || 60 };
+      }
+      return {};
+    }
+    if (existsSync(`${base}.sfx.json`)) {
+      const p = sfxFromJson(readFileSync(`${base}.sfx.json`, "utf8"));
+      if (p) return { sfx: p };
+    }
+    if (existsSync(`${base}.song.json`)) {
+      const p = parseSong(readFileSync(`${base}.song.json`, "utf8"));
+      if (p.ok) return { song: p.song };
+    }
+  } catch {
+    // (a file beside the sound that cannot be read only means plainer advice)
+  }
+  return {};
+}
+
 tool(
   "sound_report",
   "Hear a sound without ears: what a sound of the project is, in numbers and plain words, and a picture (its waveform over its spectrogram: time left to right, pitch upward from 40 Hz to 16 kHz, brighter is louder). " +
     "For each sound: length; peak, RMS and loudness (LUFS); how the loudness moves over time; the spectral centroid and how the energy divides between sub-bass, bass, mids, presence and air; the strongest spectral lines with their note names and share of the energy; the strongest pitch over time (a rising chirp, a tune); a reading in words (\"nearly a pure tone at 3.6 kHz\", \"mostly noise\", \"bass-heavy\", \"loudest at the start, then dying away\"); and warnings: clipping, clicks, a start or end that is not silent, silence before the sound, a piercing steady tone, energy that small speakers cannot play (below 80 Hz). " +
-    "`sound` is a name or path (\"hit\", \"music/town.ogg\", \"sounds/hit.sfx.json\"); `sounds` is a list, which also gives the mix: which is loudest and by how much, so effects and music can be balanced with the `volume` option of nova.sound.play. `loop: true` also checks that the end meets the start without a click (music and .song.json files are checked as loops unless `loop` is false). " +
-    "`file` is a WAV written by the play tool's `audio: true`: what a whole run sounded like. Headless runs play no sound, so this is how sound is checked.",
+    "Every warning ends with what to change: for a sound made with sfx_write or song_write it names the setting, its value now and which way to move it (\"raise `attack` to about 0.004 (it is 0)\"). " +
+    "`sound` is a name or path (\"hit\", \"music/town.ogg\", \"sounds/hit.sfx.json\"); `sounds` is a list, which also gives the mix: which is loudest and by how much. Give the volumes the game plays them at, as { \"name\": \"hit\", \"volume\": 0.7 } entries (or `volumes`: { \"hit\": 0.7, \"music/town\": 0.3 }), and the table is of what is heard: it then says how far the music sits under the effects and the volume that would put it 8 dB under. " +
+    "`loop: true` also checks that the end meets the start without a click (music and .song.json files are checked as loops unless `loop` is false); for a song it says which tracks sound at the seam, and a note that simply starts on the first step (a kick on beat one) is not a fault. " +
+    "`file` is a recording: the WAV the play tool's `audio: true` wrote (what a whole run sounded like), or any .wav or .ogg given by its whole path. For a run's recording a click or clipping is named with its frame and the sounds the game started within a few frames of it. Headless runs play no sound, so this is how sound is checked.",
   {
     sound: { type: "string", description: 'A sound by name or project path: "hit", "music/town", "sounds/step.wav".' },
-    sounds: { type: "array", items: { type: "string" }, description: "Several sounds: each is reported, then compared as a mix." },
-    file: { type: "string", description: "A WAV file the play tool wrote (audio: true)." },
+    sounds: { type: "array", items: { type: ["string", "object"] }, description: 'Several sounds: each is reported, then compared as a mix. An entry is a name, or { "name": "hit", "volume": 0.7 } with the volume the game plays it at.' },
+    volumes: { type: "object", description: 'The volumes the game plays the sounds at, by the name given: { "hit": 0.7, "music/town": 0.3 }.' },
+    file: { type: "string", description: "A recording: the WAV the play tool wrote (audio: true), or any .wav or .ogg by its whole path (it need not be in the project)." },
     loop: { type: "boolean", description: "Check the seam of a loop (default: yes for music, no for effects)." },
     picture: { type: "boolean", description: "false: words only." },
   },
   [],
   (a) => {
     const root = projectRoot(a);
-    const names: string[] = [...(a.sound ? [String(a.sound)] : []), ...(Array.isArray(a.sounds) ? a.sounds.map(String) : []), ...(a.file ? [String(a.file)] : [])];
-    if (!names.length) throw new Error('say which sound: "sound": "hit", or "sounds": ["hit", "step", "music/town"], or "file": a WAV from the play tool');
-    const list = names.map((n) => {
-      const s = loadSound(root, n);
-      const run = a.file !== undefined && n === String(a.file); // (a recording of a run starts and stops anywhere)
-      return analyse(s.name, s.sound, { loop: a.loop ?? (s.music && !run), run });
-    });
-    const text = [...list.map(describe), ...(list.length > 1 ? [mixTable(list)] : [])].join("\n\n");
+    const wanted: { name: string; volume?: number; run: boolean }[] = [];
+    const volumeOf = (v: unknown, name: string): number | undefined => {
+      if (v === undefined || v === null) return undefined;
+      if (typeof v !== "number" || !(v >= 0 && v <= 4)) throw new Error(`the volume of '${name}' is a number from 0 to 4, as nova.sound.play takes it (got ${JSON.stringify(v)})`);
+      return v;
+    };
+    const given = a.volumes && typeof a.volumes === "object" ? (a.volumes as Record<string, unknown>) : {};
+    if (a.sound) wanted.push({ name: String(a.sound), volume: volumeOf(given[String(a.sound)], String(a.sound)), run: false });
+    for (const s of Array.isArray(a.sounds) ? a.sounds : []) {
+      if (s && typeof s === "object") {
+        if (typeof s.name !== "string") throw new Error(`an entry of sounds is a name or { "name": "hit", "volume": 0.7 } (got ${JSON.stringify(s)})`);
+        wanted.push({ name: s.name, volume: volumeOf(s.volume ?? given[s.name], s.name), run: false });
+      } else wanted.push({ name: String(s), volume: volumeOf(given[String(s)], String(s)), run: false });
+    }
+    if (a.file) wanted.push({ name: String(a.file), volume: undefined, run: true });
+    if (!wanted.length) throw new Error('say which sound: "sound": "hit", or "sounds": ["hit", { "name": "music/town", "volume": 0.3 }], or "file": a WAV from the play tool');
+    const unknown = Object.keys(given).filter((k) => !wanted.some((w) => w.name === k));
+    if (unknown.length) throw new Error(`volumes names "${unknown.join('", "')}", which ${unknown.length > 1 ? "are" : "is"} not among the sounds asked for (${wanted.map((w) => w.name).join(", ")})`);
+    const loaded = wanted.map((w) => ({ ...w, ...loadSound(root, w.name) }));
+    const list = loaded.map((s) => analyse(s.name, s.sound, { loop: a.loop ?? (s.music && !s.run), run: s.run, source: sourceOf(s.file, s.run) }));
+    const text = [...list.map(describe), ...(list.length > 1 ? [mixTable(list, loaded.map((s) => s.volume), loaded.map((s) => s.music))] : [])].join("\n\n");
     if (a.picture === false) return text;
     return { text, images: [keepPicture("sound", stack(list.slice(0, 4).map((s) => spectrogram(s))))] };
   },
