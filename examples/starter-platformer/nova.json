@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "name": "Starter: Platformer",
+  "version": "0.1.0",
+  "input": {
+    "jump": ["key:KeyZ", "key:Space", "pad:south"]
+  }
+}

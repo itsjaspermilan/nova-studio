@@ -135,9 +135,44 @@ tool(
   (a) => searchApi(String(a.query ?? ""), a.limit ?? 12, a.group ? String(a.group) : undefined),
 );
 
-tool("project_create", "Create a new Nova project folder with nova.json and an empty main.lua (nothing is overwritten).", { name: { type: "string", description: "The game's name." } }, ["name"], (a) => {
+/// The starter games a new project can be a copy of: small, whole, working games made with these tools (examples/).
+const TEMPLATES: Record<string, { folder: string; what: string }> = {
+  topdown: { folder: "starter-topdown", what: "a walking hero seen from above, two rooms, solid tiles and things, a door each way" },
+  platformer: { folder: "starter-platformer", what: "seen from the side: run and jump with coyote time, one-way platforms, a moving hazard, a pickup, a door to a second scene" },
+};
+
+tool(
+  "project_create",
+  "Create a new Nova project folder (nothing is overwritten). `template` starts it as a copy of a small working game to change, with its own name: " +
+    `${Object.entries(TEMPLATES).map(([k, t]) => `"${k}" (${t.what})`).join("; ")}; "blank" (the default) is nova.json and an empty main.lua. ` +
+    "A copy is the fastest start: read its entities/hero.lua, play it, then replace its art with the makers (tileset_make, character_make) and its rooms with scene_write.",
+  { name: { type: "string", description: "The game's name." }, template: { type: "string", description: `"blank", ${Object.keys(TEMPLATES).map((k) => `"${k}"`).join(", ")}.` } },
+  ["name"],
+  (a) => {
   const root = projectRoot(a);
   if (existsSync(join(root, "nova.json"))) throw new Error(`${root} already has a nova.json`);
+  const wanted = String(a.template ?? "blank").trim().toLowerCase();
+  if (wanted !== "blank") {
+    const t = TEMPLATES[wanted];
+    if (!t) throw new Error(`there is no template '${a.template}': "blank", ${Object.entries(TEMPLATES).map(([k, v]) => `"${k}" (${v.what})`).join(", ")}`);
+    const from = join(repo, "examples", t.folder);
+    if (!existsSync(join(from, "nova.json"))) throw new Error(`the starter ${from} is missing (the templates are copied from this repository's examples/ folder)`);
+    let count = 0;
+    const copy = (rel: string) => {
+      for (const e of readdirSync(join(from, rel), { withFileTypes: true })) {
+        if (e.name.startsWith(".") || e.name === "build") continue;
+        const child = rel ? `${rel}/${e.name}` : e.name;
+        if (e.isDirectory()) copy(child);
+        else if (child === "nova.json") put(root, child, `${JSON.stringify({ ...JSON.parse(readFileSync(join(from, child), "utf8")), name: String(a.name) }, null, 2)}\n`);
+        else if (!existsSync(join(root, child))) {
+          put(root, child, readFileSync(join(from, child)));
+          count++;
+        }
+      }
+    };
+    copy("");
+    return `created ${root} as a copy of examples/${t.folder} (${count} files), named "${a.name}": ${t.what}. Look at it with project_info and play; its main.lua says where to start reading.`;
+  }
   put(root, "nova.json", `${JSON.stringify({ format: 1, name: String(a.name) }, null, 2)}\n`);
   if (!existsSync(join(root, "main.lua"))) put(root, "main.lua", "-- Entry point: start the first scene.\nnova.start(\"title\")\n");
   return `created ${root}`;

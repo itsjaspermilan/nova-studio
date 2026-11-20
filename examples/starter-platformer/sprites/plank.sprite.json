@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "image": "plank.png",
+  "frame_width": 48,
+  "frame_height": 8,
+  "columns": 1,
+  "frames": 1,
+  "frame_duration_ms": 100
+}

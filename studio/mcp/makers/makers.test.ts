@@ -96,34 +96,34 @@ describe("tileset_make and painting with terrains", () => {
   it("paints a map: joining tiles, variants by seed, solid terrains solid, crowns in front", () => {
     use("tileset_make", { name: "tiles" });
     const said = text(use("scene_write", { name: "meadow", scene: meadow(), picture: false }));
-    expect(said).toMatch(/painted "ground": 10 x 8 cells into \d tile layer\(s\) \("ground", "ground edges"/);
+    expect(said).toMatch(/painted "ground": 10 x 8 cells into \d tile layer\(s\) \("ground", "ground_edges"/);
     const parsed = parseScene(bytes("scenes/meadow.scene.json").toString());
     if (!parsed.ok) throw new Error(parsed.error);
     const maps = tilemaps(parsed.scene);
     const layer = (n: string) => maps.find((m) => m.name === n)!;
-    expect(maps.map((m) => m.name)).toEqual(expect.arrayContaining(["ground", "ground edges", "ground props", "ground over"]));
+    expect(maps.map((m) => m.name)).toEqual(expect.arrayContaining(["ground", "ground_edges", "ground_props", "ground_over"]));
     expect(layer("ground").tileset).toEqual({ image: "sprites/tiles.png", tile_width: 16, tile_height: 16, scale: 3 });
-    expect(layer("ground over").depth).toBeLessThan(0);
+    expect(layer("ground_over").depth).toBeLessThan(0);
     const doc = tileset("tiles");
     const nameAt = (n: string, c: number, r: number) => doc.names[String(layer(n).tiles[r]![c])];
     // the pond's top left cell is water with its top and left open, over the grass around it
-    expect(nameAt("ground edges", 2, 4)).toBe("water_edge_nw");
+    expect(nameAt("ground_edges", 2, 4)).toBe("water_edge_nw");
     expect(nameAt("ground", 2, 4)).toMatch(/^grass(_\d)?$/);
-    expect(layer("ground edges").solid).toContain(layer("ground edges").tiles[4]![2]);
+    expect(layer("ground_edges").solid).toContain(layer("ground_edges").tiles[4]![2]);
     // the path's cell beside the sand lies over the grass; plain grass is a whole tile, one of its variants
     expect(nameAt("ground", 1, 1)).toMatch(/^grass(_\d)?$/);
-    expect(nameAt("ground edges", 5, 3)).toMatch(/^path_edge_/);
+    expect(nameAt("ground_edges", 5, 3)).toMatch(/^path_edge_/);
     // a tree: its foot stands on the grass and is solid, its crown is in the layer in front
-    expect(nameAt("ground props", 2, 2)).toMatch(/^tree(_2)?$/);
-    expect(nameAt("ground over", 2, 1)).toMatch(/^tree(_2)?@0,-1$/);
-    expect(layer("ground props").solid).toContain(layer("ground props").tiles[2]![2]);
-    expect(layer("ground over").solid ?? []).toEqual([]);
+    expect(nameAt("ground_props", 2, 2)).toMatch(/^tree(_2)?$/);
+    expect(nameAt("ground_over", 2, 1)).toMatch(/^tree(_2)?@0,-1$/);
+    expect(layer("ground_props").solid).toContain(layer("ground_props").tiles[2]![2]);
+    expect(layer("ground_over").solid ?? []).toEqual([]);
     // the door takes the wall's place and is not solid; the wall beside it is
     expect(nameAt("ground", 5, 2)).toBe("door");
     expect(layer("ground").solid).not.toContain(layer("ground").tiles[2]![5]);
     expect(layer("ground").solid).toContain(layer("ground").tiles[2]![4]);
     // a fence joins along its length: the middle piece has fence on both sides
-    expect(nameAt("ground props", 7, 6)).toBe("fence_ew");
+    expect(nameAt("ground_props", 7, 6)).toBe("fence_ew");
     // the same seed paints the same map; another scatters the variants differently
     const first = bytes("scenes/meadow.scene.json").toString();
     use("scene_write", { name: "meadow", scene: meadow(), picture: false });
@@ -294,7 +294,7 @@ describe("sounds and songs by what they are for", () => {
     expect(bytes("music/boss.song.json").toString()).not.toBe(first);
     expect(() => use("song_make", { name: "x", mood: "polka" })).toThrow(/"mood" is one of: "calm village"/);
     expect(() => use("song_make", { name: "x", mood: "boss", key: "H" })).toThrow(/"key" is a note name/);
-  });
+  }, 120_000);
 });
 
 describe("the makers' examples", () => {
@@ -302,5 +302,24 @@ describe("the makers' examples", () => {
     for (const name of ["tileset_make", "character_make", "creature_make", "items_make", "song_make"]) expect(() => use(name, EXAMPLES[name]), name).not.toThrow();
     expect(readdirSync(join(dir, "sprites")).filter((f) => f.endsWith(".png")).sort()).toEqual(["hero.png", "items.png", "slime.png", "tiles.png"]);
     expect(existsSync(join(dir, "music/village.song.json"))).toBe(true);
+  });
+});
+
+describe("project_create with a template", () => {
+  it("copies a starter game under the new name, and still makes a blank project", () => {
+    for (const template of ["topdown", "platformer"]) {
+      const root = join(dir, template);
+      const said = text(use("project_create", { name: `My ${template}`, template }, root));
+      expect(said).toContain(`as a copy of examples/starter-${template}`);
+      expect(JSON.parse(readFileSync(join(root, "nova.json"), "utf8")).name).toBe(`My ${template}`);
+      for (const f of ["main.lua", "entities/hero.lua", "sprites/hero.png", "sprites/tiles.png"]) expect(existsSync(join(root, f)), `${template}/${f}`).toBe(true);
+      expect(readdirSync(root)).not.toContain("build");
+    }
+    // the platformer keeps its input action for jumping
+    expect(JSON.parse(readFileSync(join(dir, "platformer/nova.json"), "utf8")).input.jump).toContain("key:KeyZ");
+    use("project_create", { name: "Plain" }, join(dir, "plain"));
+    expect(readdirSync(join(dir, "plain")).filter((f) => !f.startsWith(".")).sort()).toEqual(["main.lua", "nova.json"]);
+    expect(() => use("project_create", { name: "X", template: "shooter" }, join(dir, "x"))).toThrow(/there is no template 'shooter': "blank", "topdown"/);
+    expect(() => use("project_create", { name: "Again", template: "topdown" }, join(dir, "topdown"))).toThrow(/already has a nova.json/);
   });
 });

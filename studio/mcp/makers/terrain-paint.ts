@@ -6,9 +6,9 @@
 //
 // What comes out, for a layer called "ground":
 //   "ground"        the ground itself: whole tiles (and under every edge tile, what lies beside it)
-//   "ground edges"  the joining tiles, see-through where the terrain beside shows
-//   "ground props"  things standing on the ground at the walkers' feet: trunks, bushes, rocks, fences, flowers
-//   "ground over"   what is drawn in front of the walkers: tree crowns
+//   "ground_edges"  the joining tiles, see-through where the terrain beside shows
+//   "ground_props"  things standing on the ground at the walkers' feet: trunks, bushes, rocks, fences, flowers
+//   "ground_over"   what is drawn in front of the walkers: tree crowns
 // The scene file holds only tile numbers; scene_preview shows the layers again as the painted map.
 
 import { existsSync, readFileSync } from "node:fs";
@@ -191,7 +191,7 @@ export function expandPaint(root: string, scene: Args): string[] {
     cells.forEach((row, r) => row.forEach((cell, c) => (cell.kind === "standing" || cell.kind === "prop") && needs.push([c, r, cell.on])));
     // First along the row: when the nearest painted ground to the left and to the right are the same, that is it (a window
     // between two pieces of wall, a fence across a lawn). Otherwise the commonest ground one can walk on around the cell
-    // (a tree beside a hedge stands on the grass, not on the hedge), else any ground; cells in the middle of a wood have no
+    // (a tree beside a hedge stands on the grass, not on the hedge; with none, as in a side view, nothing is laid under it); cells in the middle of a wood have no
     // ground beside them at first, so it spreads in from the edge.
     const walkable = (g: number) => !cat.doc.solid.includes(cat.ground[g]!.full[0]!);
     const along = (c: number, r: number, step: number): number => {
@@ -216,7 +216,7 @@ export function expandPaint(root: string, scene: Args): string[] {
         const votes = new Map<number, number>();
         for (const [dc, dr] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]]) {
           const g = base[r + dr!]?.[c + dc!];
-          if (g !== undefined && g >= 0) votes.set(g, (votes.get(g) ?? 0) + (dc === 0 || dr === 0 ? 2 : 1) + (walkable(g) ? 100 : 0));
+          if (g !== undefined && g >= 0 && walkable(g)) votes.set(g, (votes.get(g) ?? 0) + (dc === 0 || dr === 0 ? 2 : 1));
         }
         const best = [...votes].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0];
         if (best) found.push([c, r, best[0]]);
@@ -328,14 +328,14 @@ export function expandPaint(root: string, scene: Args): string[] {
     const depth = typeof tm.depth === "number" ? tm.depth : 100;
     const solidSet = new Set(cat.doc.solid);
     let blocked = 0;
-    for (let r = 0; r < nrows; r++) for (let c = 0; c < cols; c++) if ([ground, edges, edges2, props].some((l) => solidSet.has(l[r]![c]!))) blocked++;
+    for (let r = 0; r < nrows; r++) for (let c = 0; c < cols; c++) if ([ground, edges, edges2, ...(tm.solid_props === false ? [] : [props])].some((l) => solidSet.has(l[r]![c]!))) blocked++;
     const layer = (suffix: string, tiles: number[][], d: number): Args | null => {
       const used = new Set(tiles.flat().filter((t) => t >= 0));
       if (!used.size) return null;
-      const solid = suffix === " over" ? [] : [...used].filter((t) => solidSet.has(t)).sort((a, b) => a - b);
+      const solid = suffix === "_over" || (suffix === "_props" && tm.solid_props === false) ? [] : [...used].filter((t) => solidSet.has(t)).sort((a, b) => a - b);
       return { name: `${name}${suffix}`, depth: d, tileset: { ...ts }, ...(tm.x ? { x: tm.x } : {}), ...(tm.y ? { y: tm.y } : {}), ...(solid.length ? { solid } : {}), tiles };
     };
-    const made = [layer("", ground, depth), layer(" edges", edges, depth - 1), layer(" edges 2", edges2, depth - 2), layer(" props", props, depth - 3), layer(" over", over, typeof tm.over_depth === "number" ? tm.over_depth : -10000)].filter((l): l is Args => !!l);
+    const made = [layer("", ground, depth), layer("_edges", edges, depth - 1), layer("_edges_2", edges2, depth - 2), layer("_props", props, depth - 3), layer("_over", over, typeof tm.over_depth === "number" ? tm.over_depth : -10000)].filter((l): l is Args => !!l);
     out.push(...made);
     notes.push(`painted "${name}": ${cols} x ${nrows} cells into ${made.length} tile layer(s) (${made.map((l) => `"${l.name}"`).join(", ")}), ${blocked} cells solid${strewn ? `, ${strewn} props scattered` : ""}, seed ${seed}`);
   });

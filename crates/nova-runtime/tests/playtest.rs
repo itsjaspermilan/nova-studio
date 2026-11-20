@@ -661,3 +661,51 @@ fn the_top_down_starter_plays_through() {
     );
     assert_eq!(report["end"]["state"]["scene"], "meadow");
 }
+
+/// The platformer starter (`project_create`'s "platformer" template) plays from its first screen to its second: up the
+/// steps, over the gap by the planks, over the slime, and through the door. It keeps the example and what it shows
+/// (coyote time, one-way planks, a pickup, a hazard, a door) true.
+#[test]
+fn the_platformer_starter_plays_through() {
+    let folder = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/starter-platformer");
+    let vfs: Rc<dyn Vfs> = Rc::new(nova_runtime::vfs::DirVfs::new(&folder).unwrap());
+    let mut g = Game::load(vfs).expect("the starter loads");
+    g.upload(&mut FakeGpu);
+    let plan = r#"{
+      "steps": [
+        { "repeat": 12, "until": "nova.named('hero').x > 600 and nova.named('hero').on_ground", "steps": [{ "hold": ["right", "jump"], "frames": 22 }, { "hold": ["right"], "frames": 14 }] },
+        { "hold": ["right"], "until": "nova.named('hero').x > 650", "max": 100 },
+        { "hold": ["right", "jump"], "until": "nova.named('hero').x > 760 and nova.named('hero').on_ground", "max": 200, "capture": "first plank" },
+        { "hold": ["right"], "until": "nova.named('hero').x > 800", "max": 100 },
+        { "hold": ["right", "jump"], "until": "nova.named('hero').x > 900 and nova.named('hero').on_ground", "max": 200, "capture": "second plank" },
+        { "hold": ["right"], "until": "nova.named('hero').x > 1100", "max": 200 },
+        { "hold": ["right"], "until": "math.abs(nova.named('slime').x - nova.named('hero').x) < 100", "max": 300 },
+        { "hold": ["right", "jump"], "frames": 45 },
+        { "repeat": 20, "until": "nova.named('hero').x > 1800", "steps": [{ "hold": ["right", "jump"], "frames": 22 }, { "hold": ["right"], "frames": 14 }] },
+        { "wait": 12 },
+        { "press": "up" },
+        { "wait": 20, "capture": "in the cave" }
+      ],
+      "print": ["nova.named('hero').y", "require('lib.level').gems"]
+    }"#;
+    let (report, pictures) = play(&mut g, plan, "platformer");
+    assert_eq!(report["error"], Value::Null, "{report}");
+    assert_eq!(report["warnings"].as_array().unwrap().len(), 0, "{report}");
+    assert_eq!(pictures.len(), 3);
+    // he stands on the planks (their tops are at y = 384 and 336), having come up onto them from below
+    assert_eq!(report["captures"][0]["prints"][0]["value"], "384");
+    assert_eq!(report["captures"][1]["prints"][0]["value"], "336");
+    let log = texts(&report["log"]);
+    assert!(log.iter().any(|l| l.ends_with("gem 2")), "{log:?}");
+    assert!(!log.iter().any(|l| l.contains("hurt")), "{log:?}");
+    assert!(
+        log.iter()
+            .any(|l| l.ends_with("through cave_door to cave")),
+        "{log:?}"
+    );
+    let sounds = texts(&report["sounds"]);
+    for wanted in ["sound jump", "sound land", "sound pickup", "sound door", "music field"] {
+        assert!(sounds.iter().any(|s| s.contains(wanted)), "{wanted}: {sounds:?}");
+    }
+    assert_eq!(report["end"]["state"]["scene"], "cave");
+}

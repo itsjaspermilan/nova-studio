@@ -335,6 +335,39 @@ const TERRAINS: TerrainKind[] = [
       return tex;
     },
   },
+  {
+    name: "earth", what: "ground seen from the side, for a platformer: earth with turf wherever its top is open", solid: true, shape: { inset: 0, round: 2, wobble: 0 }, variants: 3,
+    texture: (c, v) => {
+      const e = c.P.mat.path.map((p, i) => mix(p, c.P.mat.trunk[i]!, 0.5)) as Ramp;
+      return speckle(c, "earth", v, e[2], (img, _rng, at) => {
+        times(5 * c.k * c.k, () => img.set(...at(), e[1]));
+        times(3 * c.k * c.k, () => img.set(...at(), e[3]));
+        if (v >= 1) pebble(img, ...at(), c.P.mat.rock);
+        if (v === 2) {
+          const [x, y] = at();
+          img.line(x, y, Math.min(c.t - 2, x + 3), y + 1, e[0]);
+        }
+      });
+    },
+    edge: (c, p, mask, x, y) => {
+      const e = c.P.mat.path.map((q, i) => mix(q, c.P.mat.trunk[i]!, 0.5)) as Ramp, g = c.P.mat.grass;
+      const tex = hash2(x, y, c.seed + 41) < 0.08 ? e[1] : e[2];
+      if (p.d < 0) return null;
+      if (p.d === 0) return c.P.outline;
+      if (!(mask & N)) {
+        // turf: a lit top, blades hanging over the earth unevenly
+        const depth = Math.floor(y / c.k);
+        const hang = 3 + (hash2(Math.floor(x / c.k) >> 1, 2, c.seed + 40) < 0.4 ? 1 : 0) + (Math.floor(x / c.k) % 5 === 2 ? 1 : 0);
+        if (depth === 1) return g[4];
+        if (depth === 2) return g[3];
+        if (depth <= hang) return depth === hang ? g[1] : g[2];
+        if (depth === hang + 1) return e[0];
+      }
+      if (p.d === 1) return lightSide(p) ? e[3] : e[0];
+      if (p.d === 2 && !lightSide(p)) return e[1];
+      return tex;
+    },
+  },
   wall("brick_wall", "a brick wall seen from above: a light top and, where it faces us, its bricks", "brick", 4),
   wall("stone_wall", "a wall of cut stone: the same, for castles and dungeons", "stone", 5),
   {

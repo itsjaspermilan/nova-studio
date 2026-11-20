@@ -42,8 +42,8 @@ export function writeSheet(name: string, s: Sheet, put: Put): { text: string; pi
     frame_height: fh,
     columns,
     frames: s.frames.length,
-    frame_duration_ms: s.frame_ms ?? 100,
-    ...(s.durations ? { durations_ms: s.durations } : {}),
+    // (the game takes one or the other, not both)
+    ...(s.durations ? { durations_ms: s.durations } : { frame_duration_ms: s.frame_ms ?? 100 }),
     ...(s.tags?.length ? { tags: s.tags } : {}),
     ...(s.hitbox ? { hitbox: s.hitbox } : {}),
     ...(s.pivot ? { pivot: s.pivot } : {}),
