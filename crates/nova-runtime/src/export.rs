@@ -92,7 +92,92 @@ fn code_only(source: &str) -> String {
     out
 }
 
+/// Common calls whose first argument has one kind (`n` a number, `s` text, `t` a table), with the call as it is meant.
+const FIRST_ARGUMENT: &[(&str, char, &str)] = &[
+    (
+        "music.stop",
+        'n',
+        "nova.music.stop(0.5): the seconds to fade over",
+    ),
+    (
+        "music.play",
+        's',
+        "nova.music.play(\"town\", { volume = 0.5 })",
+    ),
+    (
+        "sound.play",
+        's',
+        "nova.sound.play(\"hit\", { volume = 0.8 })",
+    ),
+    ("goto_scene", 's', "nova.goto_scene(\"cave\")"),
+    ("start", 's', "nova.start(\"title\")"),
+    ("named", 's', "nova.named(\"hero\")"),
+    ("first", 's', "nova.first(\"enemy\"): a tag"),
+    ("all", 's', "nova.all(\"enemy\"): a tag"),
+    ("count", 's', "nova.count(\"enemy\"): a tag"),
+    ("scene_data", 's', "nova.scene_data(\"cave\")"),
+    ("clear", 'n', "nova.clear(r, g, b)"),
+    ("camera", 'n', "nova.camera(ex, ey, ez, tx, ty, tz)"),
+    ("cam.set", 'n', "nova.cam.set(x, y)"),
+    (
+        "shadows",
+        't',
+        "nova.shadows{ radius = 30, strength = 0.8 } (or nil for none)",
+    ),
+    (
+        "fog",
+        't',
+        "nova.fog{ color = { r, g, b }, near = 40, far = 250 } (or nil for none)",
+    ),
+    (
+        "light",
+        't',
+        "nova.light{ dir = { x, y, z }, ambient = { r, g, b } }",
+    ),
+    (
+        "collision",
+        't',
+        "nova.collision{ plane = \"xz\", cell = 4 }",
+    ),
+];
+
+/// Says so when one of the calls in [`FIRST_ARGUMENT`] is given a literal of the wrong kind (`rest` is the line from
+/// just after the call's name): `nova.music.stop({ fade = 1 })` takes a number. Only what can be read off the line is
+/// judged; a variable or an expression is not.
+fn wrong_first_argument(name: &str, rest: &str) -> Option<String> {
+    let (_, wanted, example) = FIRST_ARGUMENT.iter().find(|(n, _, _)| *n == name)?;
+    let rest = rest.trim_start();
+    // (`nova.fog{ ... }` and `nova.start "title"` are calls too)
+    let argument = match rest.strip_prefix('(') {
+        Some(inside) => inside.trim_start(),
+        None if rest.starts_with(['{', '"', '\'']) => rest,
+        None => return None,
+    };
+    let first = argument.chars().next()?;
+    let given = match first {
+        '{' => 't',
+        '"' | '\'' => 's',
+        c if c.is_ascii_digit() => 'n',
+        _ => return None,
+    };
+    if given == *wanted {
+        return None;
+    }
+    // (a text that is joined to something, or a number in a sum, is still what it is; a table is never a number)
+    let word = |k: char| match k {
+        't' => "a table",
+        's' => "a text",
+        _ => "a number",
+    };
+    Some(format!(
+        "nova.{name} is given {} and takes {} there ({example})",
+        word(given),
+        word(*wanted)
+    ))
+}
+
 /// Mistakes that can be read off the scripts without running the line they are on:
+/// - a common call given a literal of the wrong kind (`nova.music.stop({ fade = 1 })` takes a number);
 /// - a `nova.<name>` that the API does not have (a call such as `nova.scene_nowx()` in a pickup's code only fails when
 ///   something is picked up, long after `check`'s few frames);
 /// - `self.y = self.y + self.vy * dt`: the engine itself adds `vx`, `vy`, `vz` to the position every step, so an entity
@@ -146,6 +231,13 @@ fn source_warnings(game: &Game) -> Vec<String> {
                     rest.trim_start().starts_with('=') && !rest.trim_start().starts_with("==");
                 if parts.is_empty() || assigned {
                     continue;
+                }
+                if let Some(text) = wrong_first_argument(&parts.join("."), rest) {
+                    out.push(format!(
+                        "{}:{}: {text}, so this line will fail when it runs",
+                        entry.path,
+                        n + 1
+                    ));
                 }
                 if let Some(missing) = game.api_missing(&parts)
                     && seen.insert((entry.path.clone(), missing.clone()))
