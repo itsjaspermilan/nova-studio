@@ -1226,7 +1226,7 @@ impl Playtest {
             && walk.since_best >= 20
         {
             // walked into it as far as it goes: next to it when the hitboxes are near
-            let near = if three { 1.5 } else { g.size.max(24.0) };
+            let near = if three { 4.0 } else { g.size.max(24.0) };
             walk.over = true;
             let text = format!(
                 "{label}: walk_to '{}': stopped against it after {} frames ({})",

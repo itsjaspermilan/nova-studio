@@ -406,3 +406,23 @@ fn mistakes_in_the_new_options_are_said() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn the_follow_camera_says_when_it_is_squeezed_and_can_hide_its_target() {
+    let g = game();
+    let mut frame = InputFrame::default();
+    frame.overrides.clear();
+    let mut g = g;
+    g.update_input(1.0 / 60.0, 0.0, [960.0, 540.0], &frame);
+    // two units behind and level: nearer than 3, so it is squeezed and the hero is not drawn; then far enough again
+    g.run_lua("local h = nova.named(\"hero\") nova.cam3.follow(h, { distance = 2, height = 1, look_height = 1, smooth = 0, min_distance = 3, hide = true })", "t").unwrap();
+    assert_eq!(g.lua_text("nova.cam3.squeezed").unwrap(), "true");
+    assert_eq!(g.lua_text("nova.cam3.distance").unwrap(), "2");
+    assert_eq!(g.lua_text("nova.named(\"hero\").visible").unwrap(), "false");
+    g.run_lua("local h = nova.named(\"hero\") nova.cam3.follow(h, { distance = 6, height = 1, look_height = 1, smooth = 0, min_distance = 3, hide = true })", "t").unwrap();
+    assert_eq!(g.lua_text("nova.cam3.squeezed").unwrap(), "false");
+    assert_eq!(g.lua_text("nova.named(\"hero\").visible").unwrap(), "true");
+    // a target the game hid itself is left alone
+    g.run_lua("local h = nova.named(\"hero\") h.visible = false nova.cam3.follow(h, { distance = 6, smooth = 0, min_distance = 3, hide = true })", "t").unwrap();
+    assert_eq!(g.lua_text("nova.named(\"hero\").visible").unwrap(), "false");
+}

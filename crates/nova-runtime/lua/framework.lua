@@ -1244,6 +1244,8 @@ end
 --- collide = true keeps solid things from coming between the camera and what it looks at: when a triangle added with
 --- nova.solid.add (a wall, a hill, the level) is in the way, the camera moves in along its line of sight to just in front of
 --- it (`margin`, 0.3, is how far in front; it never comes nearer than 0.5), and eases back out when the way is clear.
+--- min_distance = 1.7 with hide = true stops drawing the target while the camera is squeezed nearer than that (see below);
+--- cam3.distance and cam3.squeezed say how near it is, for a game that would rather fade the target itself.
 function cam3.follow(target, opts)
   opts = opts or {}
   local tx, ty, tz = point_of(target)
@@ -1265,6 +1267,19 @@ function cam3.follow(target, opts)
         local d = math.max(math.min(0.5, len), hit - margin)
         if d < len then ex, ey, ez = lx + dx * d, ly + dy * d, lz + dz * d end
       end
+    end
+  end
+  -- How near the camera ended up: under an arch or against a wall it is pushed in until the picture is the back of a head.
+  -- `min_distance` says how near is too near; the camera still comes in (so that no wall hides the scene), `cam3.squeezed`
+  -- is true while it is nearer than that, and `hide = true` stops drawing the target for as long (a hat is not a view).
+  local ddx, ddy, ddz = ex - lx, ey - ly, ez - lz
+  cam3.distance = sqrt(ddx * ddx + ddy * ddy + ddz * ddz)
+  cam3.squeezed = opts.min_distance ~= nil and cam3.distance < opts.min_distance
+  if opts.hide and type(target) == "table" then
+    if cam3.squeezed then
+      if target.visible ~= false then target.visible = false; rawset(target, "_cam_hid", true) end
+    elseif rawget(target, "_cam_hid") then
+      target.visible = true; rawset(target, "_cam_hid", nil)
     end
   end
   aim({ x = ex, y = ey, z = ez }, { x = lx, y = ly, z = lz }, opts.fov or 60)

@@ -469,7 +469,17 @@ local function plan3(e, tx, tz, target, reach)
     return math.sqrt(dx * dx + dz * dz)
   end
   local near = target and math.max(reach, 0.75) or s * 0.75
-  local function is_goal(k) return h(k) <= near end
+  local function is_goal(k)
+    local d = h(k)
+    if d <= near then return true end
+    -- a thing that is solid itself is never that near: beside it is where the step towards it is stopped
+    if target and d <= 4 then
+      local i, j = unkey(k)
+      local ax, az = ox + i * s, oz + j * s
+      return not pass(ax, heights[k], az, ax + (tx - ax) / d * s, az + (tz - az) / d * s)
+    end
+    return false
+  end
   local function neighbours(k, emit)
     local i, j = unkey(k)
     local ax, az, ay = ox + i * s, oz + j * s, heights[k]
@@ -485,7 +495,7 @@ local function plan3(e, tx, tz, target, reach)
       end
     end
   end
-  local nodes, found, looked = astar(key(0, 0), neighbours, h, is_goal, 4000)
+  local nodes, found, looked = astar(key(0, 0), neighbours, h, is_goal, 20000)
   local pts = {}
   for n = 1, #nodes do
     local i, j = unkey(nodes[n])
