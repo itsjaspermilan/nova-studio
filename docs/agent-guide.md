@@ -280,6 +280,11 @@ What the makers do not have, make with `model_write` in the same style (flat fac
   | about y | turns the part's front towards the model's +x side | seen from the front, towards the viewer's right |
   | about z | tips the top of the part towards the model's -x side | a limb hanging down swings out towards +x |
 
+  **Sides:** the model's own left is +x. A part named `_l` (`arm_l`, `leg_l`, `foot_l`, as `character3d_make` makes them)
+  sits at +x, `_r` at -x; seen from the front (the camera at +z) the `_l` side is on the viewer's right (checked in the
+  renderer with `model_preview`). So lifting `arm_l` out sideways is a positive turn about z and `arm_r` a negative one
+  (the made figure's arms rest at 7 and -7 degrees about z).
+
 ## Without the MCP server
 
 The runtime does the same from a shell (`docs/project-format.md`, "Testing helpers"):

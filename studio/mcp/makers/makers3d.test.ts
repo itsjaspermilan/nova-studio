@@ -147,6 +147,17 @@ describe("character3d_make", () => {
     });
     visit(model.parts);
     expect(skinned.sort()).toEqual(["arm_l", "arm_r", "leg_l", "leg_r"]);
+    // `_l` is the figure's own left, +x (facing +z; seen from the front, on the viewer's right): the guide's turn table says so
+    const origin = (name: string): number[] => {
+      let found: number[] = [];
+      const find = (parts: any[]) => parts.forEach((p) => { if (p.name === name) found = p.origin; find(p.children ?? []); });
+      find(model.parts);
+      return found;
+    };
+    for (const s of ["arm", "leg"]) {
+      expect(origin(`${s}_l`)[0], s).toBeGreaterThan(0);
+      expect(origin(`${s}_r`)[0], s).toBeLessThan(0);
+    }
     // feet on the ground: the lowest point of the figure at eight moments of each clip that stands
     for (const clip of ["idle", "walk", "run", "wave", "attack", "hurt"]) {
       const low = lowest(text(use("model_preview", { name: "hero", clip, strip: 8, width: 64, height: 64 })));

@@ -168,6 +168,8 @@ describe("feet instead of angles", () => {
     expect(armL[0].value[2]).toBe(4);
     expect(track("fore_l").keys[12].value[0]).toBeLessThan(track("fore_l").keys[0].value[0]);
     expect(speeds).toEqual({ walk: 1.736 });
+    // the speed for other playback rates, worked out: speed = no-slide speed x rate
+    expect(notes.join("\n")).toContain("at playback rate r the speed is 1.736 x r (rate 0.5: 0.868, rate 0.75: 1.302, rate 1.25: 2.17, rate 1.5: 2.604, rate 2: 3.472 world units a second), and to move at v play it at rate v / 1.736");
     expect(notes.join("\n")).toMatch(/rising [\d.]+ over the standing leg \("bob": 0\.8; 0 keeps them level\), and [\d.]+ towards the standing foot/);
     expect(notes.join("\n")).toContain("The feet roll from heel (toes 10 degrees up as it lands) to toe (24 degrees down as it leaves), the sole never under the ground");
     expect(notes.join("\n")).toContain("The arms arm_l, arm_r swing against the legs");
@@ -199,6 +201,23 @@ describe("feet instead of angles", () => {
     // too far to reach: said, with how far short
     const far = expandModel(biped([{ name: "reach", duration: 0.2, loop: false, tracks: [], ik: { foot_l: [[0, 1.6, 1, 0], [0.2, 1.6, 1, 30]] } }]));
     expect(far.notes.join("\n")).toMatch(/the leg leg_l > shin_l > foot_l is [\d.]+ units too short to reach its foot's place at 0\.2 s/);
+    // with the leg's reach, the hip's height and the rule for a planted foot, so the fix needs no sums
+    const said = far.notes.join("\n");
+    expect(said).toMatch(/^WARNING clip "reach"/m);
+    expect(said).toContain("it reaches 13 from the hip (thigh 7 + shin 6), the hip is at height 14 (z 0) then");
+    expect(said).toContain("A foot on the ground keeps its x and z in the world");
+  });
+
+  it("says when an ik foot slides while it is down: its x moves, or it goes back unevenly", () => {
+    // down (y 1) from 0 to 0.3 s: x wanders from 1.6 to 2.6, and z goes 0.5 back in the first 0.1 s and 7.5 in the next 0.2
+    const sliding = expandModel(biped([{ name: "step", duration: 0.6, loop: true, tracks: [], ik: { foot_l: [[0, 1.6, 1, 4], [0.1, 1.6, 1, 3.5], [0.3, 2.6, 1, -4], [0.45, 1.6, 4, 0], [0.6, 1.6, 1, 4]] } }]));
+    const said = sliding.notes.join("\n");
+    expect(said).toMatch(/^WARNING clip "step": foot_l slides while it is down \(0 s to 0\.3 s\): its x moves 1 units, and it moves back unevenly \(from 5 to 37\.5 units a second, 26\.667 on average\)/m);
+    expect(said).toContain("A planted foot keeps its x and z in the world: in the model keep its x the same and move its z back at one steady speed");
+    expect(said).toContain("here 4 to -4 in 0.3 s is 1.667 world units a second");
+    // the same step with x kept and z going back steadily: no warning
+    const steady = expandModel(biped([{ name: "step", duration: 0.6, loop: true, tracks: [], ik: { foot_l: [[0, 1.6, 1, 4], [0.3, 1.6, 1, -4], [0.45, 1.6, 4, 0], [0.6, 1.6, 1, 4]] } }]));
+    expect(steady.notes.join("\n")).not.toContain("slides");
   });
 
   it("says what is wrong with a foot's name, a leg or a stride", () => {

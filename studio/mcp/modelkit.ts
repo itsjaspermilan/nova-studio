@@ -228,13 +228,13 @@ function writeLeg(clip: Args, leg: Leg, times: number[], target: (t: number) => 
   const names = leg.ankle.names;
   const paths = [names.slice(0, -2), names.slice(0, -1), names];
   const keys: Args[][] = [[], [], []];
-  let short = 0, shortAt = 0;
+  let short = 0, shortAt = 0, shortHip: Vec3 = [0, 0, 0], shortFoot: Vec3 = [0, 0, 0];
   const restX = ankleAtRest(leg)[0] - hipAt({ tracks: [] }, leg, 0)[0];
   for (const t of times) {
     const g = target(t);
     const hip = hipAt(clip, leg, t);
     const s = solve(leg, hip, g.at, g.pitch);
-    if (s.short > short) [short, shortAt] = [s.short, t];
+    if (s.short > short) [short, shortAt, shortHip, shortFoot] = [s.short, t, hip, g.at];
     // sideways: when the hips have moved across (a sway), the whole leg leans from the hip so the foot stays where it is
     // put, and the foot leans back so its sole stays level (+z swings a hanging limb out towards +x)
     const dx = g.at[0] - (hip[0] + restX);
@@ -243,7 +243,14 @@ function writeLeg(clip: Args, leg: Leg, times: number[], target: (t: number) => 
   }
   clip.tracks = (clip.tracks ?? []).filter((tr: Args) => !(tr.prop === "rotation" && Array.isArray(tr.part) && paths.some((p) => samePath(p, tr.part))));
   paths.forEach((part, i) => clip.tracks.push({ part, prop: "rotation", keys: keys[i] }));
-  if (short > 0.01) notes.push(`${what}: the leg ${names.slice(-3).join(" > ")} is ${r3(short)} units too short to reach its foot's place at ${r3(shortAt)} s (thigh ${r3(leg.l1)} + shin ${r3(leg.l2)}): the foot stops short there. Lower the hips, shorten the stride or bring the place nearer`);
+  if (short > 0.01) {
+    const reach = leg.l1 + leg.l2;
+    const across = Math.hypot(shortFoot[1] - shortHip[1], shortFoot[2] - shortHip[2]);
+    notes.push(
+      `WARNING ${what}: the leg ${names.slice(-3).join(" > ")} is ${r3(short)} units too short to reach its foot's place at ${r3(shortAt)} s: it reaches ${r3(reach)} from the hip (thigh ${r3(leg.l1)} + shin ${r3(leg.l2)}), the hip is at height ${r3(shortHip[1])} (z ${r3(shortHip[2])}) then, and the place [${shortFoot.map(r3).join(", ")}] is ${r3(across)} from it. The foot stops short there. ` +
+        `Lower the hips (a hips position key, or less "bob"), shorten the stride or bring the place nearer: a planted foot can be at most ${r3(Math.sqrt(Math.max(0, reach * reach - (shortHip[1] - shortFoot[1]) ** 2)))} in front of or behind the hip at that height. A foot on the ground keeps its x and z in the world: in the model it keeps its x and moves back at one steady speed while it is down`,
+    );
+  }
 }
 
 /// How far a foot part's own shapes reach from its ankle: down to the sole, forward to the toe, back to the heel (model units).
@@ -452,7 +459,7 @@ export function expandModel(given: Args): { model: Args; notes: string[]; bend: 
       speeds[String(clip.name)] = r3(speed * scale);
       const span = Math.max(...lifted) - Math.min(...lifted);
       const leads = legs.map((l: LegOf) => `${l.leg.ankle.names[l.leg.ankle.names.length - 1]} lands at ${r3((((1 - l.phase) % 1) + 1) % 1 * D)} s`).join(", ");
-      notes.push(`${at}: a walk of ${legs.length} legs (${legs.map(({ leg }: { leg: Leg }) => leg.ankle.names.slice(-3).join(" > ")).join("; ")}), ${N + 1} keys each; ${leads} (it is in front then). A standing foot moves back ${r3(w.stride)} units in ${r3(stance * D)} s, so the feet do not slide when the entity moves ${r3(speed * scale)} world units a second (${r3(speed)} model units a second at scale ${scale}); play the clip faster or slower in step with the speed${hipsPath.length ? `. The hips ("${hipsPath[hipsPath.length - 1]}") are keyed: ${r3(Math.max(0, drop))} units lower where both feet are down, rising ${r3(span)} over the standing leg ("bob": ${bob}; 0 keeps them level)${pair && Math.abs(sway) > 1e-3 ? `, and ${r3(Math.abs(sway))} towards the standing foot ("sway")` : ""}` : ""}${legs.some((l: LegOf) => l.rolls) ? `. The feet roll from heel (toes ${heelUp} degrees up as it lands) to toe (${toeDown} degrees down as it leaves), the sole never under the ground ("roll": false keeps them level)` : ""}${w.arms ? `. The arms ${w.arms.join(", ")} swing against the legs` : ""}${typeof w.event === "string" && w.event ? `. Events "${w.event}" where each foot lands` : ""}`);
+      notes.push(`${at}: a walk of ${legs.length} legs (${legs.map(({ leg }: { leg: Leg }) => leg.ankle.names.slice(-3).join(" > ")).join("; ")}), ${N + 1} keys each; ${leads} (it is in front then). A standing foot moves back ${r3(w.stride)} units in ${r3(stance * D)} s, so the feet do not slide when the entity moves ${r3(speed * scale)} world units a second (${r3(speed)} model units a second at scale ${scale}); play the clip faster or slower in step with the speed: at playback rate r the speed is ${r3(speed * scale)} x r (${[0.5, 0.75, 1.25, 1.5, 2].map((r) => `rate ${r}: ${r3(speed * scale * r)}`).join(", ")} world units a second), and to move at v play it at rate v / ${r3(speed * scale)}${hipsPath.length ? `. The hips ("${hipsPath[hipsPath.length - 1]}") are keyed: ${r3(Math.max(0, drop))} units lower where both feet are down, rising ${r3(span)} over the standing leg ("bob": ${bob}; 0 keeps them level)${pair && Math.abs(sway) > 1e-3 ? `, and ${r3(Math.abs(sway))} towards the standing foot ("sway")` : ""}` : ""}${legs.some((l: LegOf) => l.rolls) ? `. The feet roll from heel (toes ${heelUp} degrees up as it lands) to toe (${toeDown} degrees down as it leaves), the sole never under the ground ("roll": false keeps them level)` : ""}${w.arms ? `. The arms ${w.arms.join(", ")} swing against the legs` : ""}${typeof w.event === "string" && w.event ? `. Events "${w.event}" where each foot lands` : ""}`);
       delete clip.walk;
     }
     if (clip.ik !== undefined) {
@@ -472,11 +479,35 @@ export function expandModel(given: Args): { model: Args; notes: string[]; bend: 
         // when it stands (as low as it gets) and how fast it moves back then
         const low = Math.min(...keys.map((k) => k.value[1]));
         let span = 0, back = 0;
+        // the stretches it is down for, each as its moments: a foot that slides there is said
+        const runs: { t: number; at: Vec3 }[][] = [];
+        let open = false;
         for (let i = 0; i < times.length - 1; i++) {
           const a = valueAt(keys, times[i]!), b = valueAt(keys, times[i + 1]!);
           if (a[1] <= low + 0.02 * (leg.l1 + leg.l2) && b[1] <= low + 0.02 * (leg.l1 + leg.l2)) {
             span += times[i + 1]! - times[i]!;
             back += a[2] - b[2];
+            if (!open) runs.push([{ t: times[i]!, at: a }]);
+            runs[runs.length - 1]!.push({ t: times[i + 1]!, at: b });
+            open = true;
+          } else open = false;
+        }
+        const tol = 0.02 * (leg.l1 + leg.l2);
+        for (const run of runs) {
+          if (run.length < 3) continue;
+          const first = run[0]!, last = run[run.length - 1]!;
+          const drift = Math.max(...run.map((p) => Math.abs(p.at[0] - first.at[0])));
+          const speeds = run.slice(1).map((p, i) => (run[i]!.at[2] - p.at[2]) / Math.max(1e-6, p.t - run[i]!.t));
+          const mean = (first.at[2] - last.at[2]) / Math.max(1e-6, last.t - first.t);
+          const uneven = Math.max(...speeds.map((v) => Math.abs(v - mean)));
+          const faults = [
+            drift > tol ? `its x moves ${r3(drift)} units` : "",
+            uneven * (last.t - first.t) > tol ? `it moves back unevenly (from ${r3(Math.min(...speeds))} to ${r3(Math.max(...speeds))} units a second, ${r3(mean)} on average)` : "",
+          ].filter(Boolean);
+          if (faults.length) {
+            notes.push(
+              `WARNING ${at}: ${leg.ankle.names[leg.ankle.names.length - 1]} slides while it is down (${r3(first.t)} s to ${r3(last.t)} s): ${faults.join(", and ")}. A planted foot keeps its x and z in the world: in the model keep its x the same and move its z back at one steady speed (the same distance in each equal time), the entity's own speed; here ${r3(first.at[2])} to ${r3(last.at[2])} in ${r3(last.t - first.t)} s is ${r3(mean * scale)} world units a second`,
+            );
           }
         }
         notes.push(`${at}: ${leg.ankle.names.slice(-3).join(" > ")} solved from ${keys.length} places into ${times.length} keys${span > 0 && Math.abs(back) > 1e-3 ? `; the foot is down for ${r3(span)} s and moves back ${r3(back)} units in that time, so it does not slide when the entity moves ${r3((back / span) * scale)} world units a second` : ""}`);
@@ -495,5 +526,5 @@ export const SHAPES_HELP =
 
 export const FEET_HELP =
   'Feet instead of angles: a clip may say where the feet go and the leg\'s turns are worked out and written as ordinary rotation keys. A foot is named by its part; the part above it is the shin and the one above that the thigh (hips > leg_l > shin_l > foot_l), all three unturned at rest. ' +
-  '"walk": { "legs": ["foot_l", "foot_r"], "stride": 12, "lift": 2, "stance": 0.6, "event": "step", "arms": ["arm_l", "arm_r"] } makes a whole walk cycle over the clip\'s duration: each foot stands for `stance` of the cycle (0.6 walks, 0.35 runs) while it travels `stride` model units back, then swings forward `lift` high. It lands on its heel and leaves from its toe (the foot part\'s own shapes say where the sole, heel and toe are; the ankle is lifted so the sole never goes under the ground; "roll": false keeps the feet level, "heel" and "toe" are the degrees). The hips rise over the standing leg and sink when both feet are down (`bob`: 0.8; 0 keeps them level, which reads as a creep) and lean towards the standing foot (`sway`, model units). `arms` names the upper-arm parts in the order of the legs: each swings back as the leg on its side comes forward (`arm_swing` degrees, 26; `elbow`, 14, bends the part below it). The answer says which foot lands when and the speed at which the feet do not slide (stride / (stance x duration), in world units a second): move the entity at that speed. ' +
-  '"ik": { "foot_l": [[t, x, y, z], [0.25, -2, 1, -4], ...] } places an ankle at points in the model\'s space over time (a fifth number tips the foot about its ankle, degrees: positive points the toes down, and the toes or the heel then reach below the ankle\'s sole height, so lift the ankle as well); it goes straight between them. Position keys of the parts above the leg in the same clip (hips that bob) are taken into account. `walk` and `ik` are not kept in the file. ';
+  '"walk": { "legs": ["foot_l", "foot_r"], "stride": 12, "lift": 2, "stance": 0.6, "event": "step", "arms": ["arm_l", "arm_r"] } makes a whole walk cycle over the clip\'s duration: each foot stands for `stance` of the cycle (0.6 walks, 0.35 runs) while it travels `stride` model units back, then swings forward `lift` high. It lands on its heel and leaves from its toe (the foot part\'s own shapes say where the sole, heel and toe are; the ankle is lifted so the sole never goes under the ground; "roll": false keeps the feet level, "heel" and "toe" are the degrees). The hips rise over the standing leg and sink when both feet are down (`bob`: 0.8; 0 keeps them level, which reads as a creep) and lean towards the standing foot (`sway`, model units). `arms` names the upper-arm parts in the order of the legs: each swings back as the leg on its side comes forward (`arm_swing` degrees, 26; `elbow`, 14, bends the part below it). The answer says which foot lands when and the speed at which the feet do not slide (stride / (stance x duration), in world units a second): move the entity at that speed (at another playback rate r it is that speed x r: the answer lists a few rates). ' +
+  '"ik": { "foot_l": [[t, x, y, z], [0.25, -2, 1, -4], ...] } places an ankle at points in the model\'s space over time (a fifth number tips the foot about its ankle, degrees: positive points the toes down, and the toes or the heel then reach below the ankle\'s sole height, so lift the ankle as well); it goes straight between them. A foot that stands keeps its x and z in the world: while it is down give it the same x and a z that goes back at one steady speed (the speed the entity moves at), or the answer warns that it slides. Position keys of the parts above the leg in the same clip (hips that bob) are taken into account. `walk` and `ik` are not kept in the file. ';
