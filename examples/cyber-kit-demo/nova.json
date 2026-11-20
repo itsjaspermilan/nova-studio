@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "name": "Cyber Kit Demo",
+  "version": "0.1.0",
+  "ignore": ["tools"],
+  "input": {
+    "attack": ["key:KeyJ", "key:KeyZ", "pad:north"]
+  }
+}

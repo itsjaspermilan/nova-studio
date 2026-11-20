@@ -71,7 +71,7 @@ export const HD_TERRAINS: Record<string, HdTerrain> = {
     edge: (c, p, _m, _x, _y, tex) => (p.d === 0 ? c.P.outline : p.d < 3 && lightSide(p) ? mix(tex, c.P.outline, 0.5) : tex),
   },
   asphalt: {
-    variants: 12,
+    variants: 16,
     texture: (c, v) => canvas(c, "asphalt", v, (img, rng) => {
       const a = c.P.mat.asphalt;
       img.rect(0, 0, 32, 32, a[2]);
@@ -192,7 +192,7 @@ export const HD_TERRAINS: Record<string, HdTerrain> = {
     edge: (c, p, _m, _x, _y, tex) => (p.d === 0 ? (lightSide(p) ? c.P.mat.plate[3] : c.P.mat.plate[0]) : p.d === 1 ? c.P.mat.plate[1] : tex),
   },
   lab_tile: {
-    variants: 6,
+    variants: 10,
     texture: (c, v) => canvas(c, "lab_tile", v, (img, rng) => {
       const T = c.P.mat.tile;
       for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
@@ -431,8 +431,8 @@ const P = (sdf: Sdf, at: V3, size: number, look: Part["look"], group?: number): 
 function sign(c: Ctx, shape: (x: number, y: number) => boolean, acc: Ramp): Img {
   const img = new Img(32, 64), M = mats(c);
   // a dark board on two brackets, the tubes lit on it; below, on the wet street, its light and its reflection
-  spill(img, 16, 48, 16, 9, acc[1], 0.1);
-  reflection(img, 16, 36, 26, 3, acc[2], 0.3);
+  spill(img, 16, 40, 12, 6, acc[1], 0.05);
+  reflection(img, 16, 34, 28, 2, acc[2], 0.22);
   const board = new Img(32, 32);
   board.rect(3, 0, 2, 4, M.metal[1]);
   board.rect(27, 0, 2, 4, M.metal[1]);
