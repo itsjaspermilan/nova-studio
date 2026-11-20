@@ -5,7 +5,7 @@ Run a project with `nova run <folder>`. The example is `examples/rally-demo/`.
 Two layers: an **immediate-mode API** (draw whatever you like from `update`/`draw`) and,
 on top of it, a **scene and entity framework** you opt into with `nova.start("scene")`.
 This file is the reference and it is long: 3D comes first in several sections because it needs the most words. For a 2D
-game start with the quick reference below; an assistant making a game starts with `docs/agents.md`.
+game start with the quick reference below; an assistant making a game starts with `docs/agent-guide.md`.
 
 ## 2D quick reference
 
@@ -1338,7 +1338,7 @@ held), `captures` (each with its `frame`, `label`, `file`, the `prints` and the 
 every living entity with its kind, the name the scene file gave it and its position), `log` (the `nova.log` lines with their
 frames), `sounds` (each sound and music started, with its frame) and `end` (prints and state after the last frame). A run
 that stops on a Lua error still writes the report. The MCP tool `play` writes such plans and returns the pictures as one film
-strip (`docs/agents.md`).
+strip (`docs/agent-guide.md`).
 
 **Hearing a run.** A headless run has no sound device and plays nothing. `--audio-out run.wav` mixes what the run would
 have sounded like (effects and streamed music, through the game's own mixer, in step with the frames) into a 48 kHz stereo

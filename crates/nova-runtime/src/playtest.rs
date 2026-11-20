@@ -3,7 +3,7 @@
 //! the moments to take pictures of, and Lua expressions to print at each of them. The run writes the pictures and a
 //! `report.json` (what was on screen at each picture, the game's log lines and the sounds it started, each with its
 //! frame) into the plan's `out` folder. It exists so that a person or an assistant can check a game without eyes on a
-//! window: see `docs/agents.md`, and the MCP tool `play` which writes these plans.
+//! window: see `docs/agent-guide.md`, and the MCP tool `play` which writes these plans.
 //!
 //! ```json
 //! {

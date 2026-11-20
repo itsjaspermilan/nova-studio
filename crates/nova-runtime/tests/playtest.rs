@@ -342,7 +342,7 @@ fn the_command_line_plays_a_plan_takes_pictures_and_writes_the_sound() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// The starter that `docs/agents.md` points at can be played from end to end by a plan: up the path, into the house,
+/// The starter that `docs/agent-guide.md` points at can be played from end to end by a plan: up the path, into the house,
 /// stopped by a rock, and out again. It keeps the example and what the docs say about it (solid things, doors, names) true.
 #[test]
 fn the_top_down_starter_plays_through() {

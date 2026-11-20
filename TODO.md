@@ -29,6 +29,28 @@ per-game notes and the device logs) was pruned on 2026-11-09; it is in git: `git
 - **Not verified by a person or on the device:** the radio songs and engine sounds have not been listened to; drift feel, stiffness and
   camera are first guesses; the new cars are not played on the Retroid; the studio's native-only paths were checked once overall.
 
+## Nova for agents (decided 2026-11-20): the next assignment
+
+The aim: someone points their AI agent at Nova and it builds a good-looking game. Agent-friendly comes before human-friendly here. The
+formats are already easy for an agent (plain Lua, JSON, PNG; a tool server that writes models, scenes, tracks, sounds, sprites and checks a
+game); what holds agents back is that they cannot easily see, hear or reach what they made. Seen on 2026-11-20 with about twenty helper
+agents: race pictures needed guessed key presses and frame counts, nobody could hear a whistle that passed every measurement, wrong cuts
+gave wrong pictures instead of errors, and how to make a car, a tree, a road or an engine sound lives in Pine Ridge's scripts, not in Nova.
+In this order:
+
+- [x] **A1. Cold-agent trial (baseline 2026-11-20).** All three agents finished a working, decent-looking game from the repository alone (13 to 26 minutes, 70 to 92 tool calls); results and the ranked costs are in `docs/agent-trial.md`. A fresh agent gets only the repository and a one-line brief (a small 2D game), builds in
+  `build/agent-trial/<name>/`, and logs every place it stalls or guesses (`FRICTION.md`). Run on two models. A second brief covers what the 2D one cannot: a rigged 3D character with four clips in a small 3D level
+  (`fable3d`). Between them the trial exercises every kind of making: sprites, 2D animation, scenes and maps, sound effects, music, 3D
+  models, rigs and 3D animation. Keep the briefs and the
+  scoring in `docs/agent-trial.md` so the trial can be re-run after each improvement.
+- [~] **A2. Eyes and ears (batch 1 merged 2026-11-20; re-run of the trial under way).** Done: `sprite_preview`, `scene_preview`, tile rows with a legend and named tiles, `play` (a route with `until`, any start scene and state, a film strip, entities, log and sounds started, a fixed seed, the run's sound as a file), `sound_report`, `model_preview` with `clip` and `strip`, `api`, the 2D traps (`flip_x`, `cam.to_screen`, follow snap, `self.name`, `line_spacing`, `"ignore"`), `docs/agent-guide.md` and `examples/starter-topdown`. Tried by hand on Pine Ridge: `play` started straight in a circuit (never reached before by key presses) and `sound_report` read the run's sound. Still open: leg placement when making clips, solid scenery and a third-person camera for 3D (batch 2), soles rather than ankles in the clip strip, a `play` script that is Lua, `song_write` to .ogg checked end to end. The plan as first written: Tools that jump straight to a named state (scene, entity, camera, time, input held) and return a picture;
+  a standard set of views for each kind of thing made: a model from six sides, a sprite sheet with every frame labelled, an animation
+  (2D or 3D) as a strip of frames across its length with the moving parts marked, a scene from above with every object named; a sound summary an agent can read (spectrogram picture plus plain words: loudest
+  lines, "pure tone at 3.6 kHz", clicks, loop seam); checks that turn the known silent faults into messages. Then re-run A1 and compare.
+- [ ] **A3. The makers move into Nova.** The car kit, scenery, ground and road textures and the engine-sound model leave
+  `scripts/rally` for a general library the tool server offers, 2D makers first (the games are 2D first), plus two or three starter games
+  by genre. Guided by what A1 still shows after A2.
+
 ## One studio, four workspaces (decided 2026-11-09): the master checklist
 
 Decided with the owner: **one Tauri app** (the four-app split in `docs/split-plan.md` was dropped). Four workspaces open as tabs or, on

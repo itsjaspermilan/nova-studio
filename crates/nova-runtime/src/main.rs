@@ -38,7 +38,7 @@ options: [--headless] [--frames N] [--capture out.png] [--size WxH] [--world-hei
          [--uncapped] [--no-audio] [--hud] [--hold jump,move_x=1] [--press key:Enter@30,key:KeyD@45]
          [--profile]   (headless: list the script functions that took the most time)
          [--input play.json] [--record play.json]   (play back recorded input / write this run's input; see inputscript.rs)
-         headless runs of a project, for checking a game without a window (docs/agents.md):
+         headless runs of a project, for checking a game without a window (docs/agent-guide.md):
          [--play plan.json]      follow a route of steps, take pictures on the way, write report.json (see playtest.rs)
          [--start-scene name]    start in this scene instead of the one main.lua names
          [--run-lua file.lua]    run this Lua once after the first frame (place the player, set the health)

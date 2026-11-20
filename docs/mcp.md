@@ -13,7 +13,7 @@ NOVA_PROJECT=/path/to/game scripts/nova-mcp.sh                          # serves
 `.mcp.json` at the repo root registers it for Claude Code. `scripts/nova-mcp-call.mjs <tool> '<json>'` calls one tool over
 the real protocol (`--list` shows them), which is how this repository's own games were made.
 
-**Making a game with these tools, step by step, and how to check each step: `docs/agents.md`.**
+**Making a game with these tools, step by step, and how to check each step: `docs/agent-guide.md`.**
 
 | Tool | Makes or shows |
 | --- | --- |
