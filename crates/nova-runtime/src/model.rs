@@ -176,7 +176,8 @@ pub struct Material {
     /// writes: a grey factor and no picture).
     pub emission: Vec<[f32; 4]>,
     /// A clear coat over the surface (`KHR_materials_clearcoat`: car paint, lacquer): its strength (x, 0 to 1: how much of the light the
-    /// glossy layer takes) and roughness (y). Zero where there is none.
+    /// glossy layer takes) and roughness (y). Zero where there is none. And glass (z, 0 to 1: `KHR_materials_transmission`'s factor):
+    /// a pane drawn as dark tinted glass that mirrors the sky, with nothing seen through it.
     pub coat: Vec<[f32; 4]>,
     /// The tangent-space normal map (`normalTexture`, linear values).
     pub normal_map: Option<Image>,
@@ -685,6 +686,18 @@ fn append_mesh(
             {
                 out.notes
                     .push("clearcoat pictures are ignored (the factors are used)".into());
+            }
+        }
+        // glass: how much of the light goes through (its picture is not read; nothing is drawn behind it, see mesh.wgsl)
+        if let Some(t) = material.extension_value("KHR_materials_transmission") {
+            coat[2] = t
+                .get("transmissionFactor")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0)
+                .clamp(0.0, 1.0) as f32;
+            if t.get("transmissionTexture").is_some() {
+                out.notes
+                    .push("the transmission picture is ignored (the factor is used)".into());
             }
         }
         let before = out.vertices.len();
@@ -1237,8 +1250,8 @@ pub fn import_glb_with(bytes: &[u8], pictures: Pictures) -> Result<MeshData, Str
         out.notes.push("skins/bones are ignored".into());
     }
     for name in document.extensions_used() {
-        // (the clear coat is read with each material, above)
-        if name != "KHR_materials_clearcoat" {
+        // (the clear coat and glass are read with each material, above)
+        if name != "KHR_materials_clearcoat" && name != "KHR_materials_transmission" {
             out.notes.push(format!("extension {name} is ignored"));
         }
     }

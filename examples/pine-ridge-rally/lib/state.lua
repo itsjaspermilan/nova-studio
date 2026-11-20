@@ -21,8 +21,8 @@ state.tracks = {
 }
 -- The classes: you race the other cars of your own class (the grid on the car page is split by them)
 state.classes = {
-  { id = "sport", name = "Sport", blurb = "A fast road car: quick, low, and it slides under power." },
-  { id = "everyday", name = "4x4", blurb = "A workhorse: slower on the road, at home on gravel, sand and snow." },
+  { id = "sport", name = "Road", blurb = "Cars for the tarmac: coupes, hatchbacks, a rally car and a racer." },
+  { id = "everyday", name = "4x4", blurb = "Workhorses: slower on the road, at home on gravel, sand and snow." },
 }
 -- The rally stages: point to point, each in the country of one of the circuits (`look`), five sections each (see lib/race.lua). The scene of
 -- a stage is the stage's id.
@@ -40,34 +40,125 @@ state.stages = {
   -- made by scripts/rally/random-stage.mjs from a seed (the studio's "New random route"); `open`: always playable, whatever else has been won
   { id = "stage_random_1", look = "stage_random_1", name = "Random Stage", blurb = "A stage made up from a seed: forest roads nobody has driven before.", laps = 1, km = 3.1, sections = 7, level = 1, open = true },
 }
--- The two cars, each modelled from its blueprint (scripts/rally/blueprint-cars.mjs) and each its own machine. What the numbers mean:
+-- The cars, each modelled from its blueprint (scripts/rally/blueprint-cars.mjs and scripts/rally/cars/) and each its own machine. What the numbers mean:
 -- `power` is the pull in first gear (m/s squared) and `top` the top speed on the flat (m/s). `gears` is the gearbox: for each gear the
 --   speed it runs out at (m/s) and how hard it pulls (a share of `power`); `shift` is how long a change takes (seconds with no pull).
+--   The last gear is an overdrive: it runs out well above the top speed, so flat out the engine sits at about 85% of its revs, not on the limiter.
 -- `idle_rpm` and `max_rpm` are the engine's range (the same numbers as in scripts/rally/engines.mjs, which makes its sound).
 -- `grip` is how much the tyres hold in a bend on the road (1 is an ordinary road car), `brake` how hard the brakes bite, `turn` how
 --   eagerly it changes direction, `oversteer` how readily the rear lets go under power in a bend (0 never, 1 a lot).
 -- `loose` is what loose ground does to it: `dirt` scales its grip on gravel, sand and snow roads; off the road (`rough`) its top speed
 --   falls to `rough_top` of normal, the drag is scaled by `rough_drag` and the grip by `rough_grip`.
 -- `spring` and `damper` are the suspension (stiff and flat, or soft and wallowing), `lean` how much the body rolls and nods.
--- `wheel` is the wheels' radius in metres. `paints` are its models: the first is the player's, the rest are what rivals wear.
+-- `wheel` is the wheels' radius in metres, `length` the car's length (for the size it is shown at in the garage), `tail` where its
+--   rear lamps are (the TAIL line scripts/rally/blueprint-cars.mjs prints), `six` true for a six-wheeler. `paints` are its models: the first is the player's, the rest are what rivals wear.
 -- `price`: both are starters (a new player can afford either).
 state.cars = {
   { id = "car_gt", name = "Apex GT", class = "sport", price = 1000, starter = true,
     blurb = "3.0 litre turbo straight-six, eight gears. Fast and sharp on tarmac; hates leaving it.",
     power = 10.6, top = 54, idle_rpm = 750, max_rpm = 7000, shift = 0.11,
-    gears = { { top = 9.5, pull = 1.5 }, { top = 15.5, pull = 1.3 }, { top = 21.5, pull = 1.15 }, { top = 28, pull = 1.03 }, { top = 35, pull = 0.94 }, { top = 42, pull = 0.86 }, { top = 49, pull = 0.8 }, { top = 56, pull = 0.74 } },
+    gears = { { top = 9.5, pull = 1.5 }, { top = 15.5, pull = 1.3 }, { top = 21.5, pull = 1.15 }, { top = 28, pull = 1.03 }, { top = 35, pull = 0.94 }, { top = 42, pull = 0.86 }, { top = 49, pull = 0.8 }, { top = 63.5, pull = 0.74 } },
     grip = 1.14, brake = 1.2, turn = 1.08, oversteer = 0.55,
     loose = { dirt = 0.86, rough_top = 0.42, rough_drag = 1.3, rough_grip = 0.85 },
-    spring = 660, damper = 51, lean = 0.75, wheel = 0.338,
+    spring = 660, damper = 51, lean = 0.75, wheel = 0.338, length = 4.77, tail = { z = -2.31, y = 0.8, x = 0.65 },
     paints = { "car_gt", "car_gt_red", "car_gt_white", "car_gt_grey" } },
   { id = "car_offroad", name = "Outback", class = "everyday", price = 1000, starter = true,
     blurb = "4.2 litre diesel straight-six, five gears, four-wheel drive. Slow to wind up, unbothered by gravel, sand or snow.",
     power = 7.8, top = 38, idle_rpm = 650, max_rpm = 4200, shift = 0.27,
-    gears = { { top = 8, pull = 1.6 }, { top = 14, pull = 1.28 }, { top = 21, pull = 1.02 }, { top = 29.5, pull = 0.84 }, { top = 39, pull = 0.7 } },
+    gears = { { top = 8, pull = 1.6 }, { top = 14, pull = 1.28 }, { top = 21, pull = 1.02 }, { top = 29.5, pull = 0.84 }, { top = 45, pull = 0.7 } },
     grip = 0.9, brake = 0.88, turn = 0.9, oversteer = 0.22,
     loose = { dirt = 1.22, rough_top = 0.85, rough_drag = 0.4, rough_grip = 1.3 },
-    spring = 360, damper = 29, lean = 1.6, wheel = 0.406,
+    spring = 360, damper = 29, lean = 1.6, wheel = 0.406, length = 4.15, tail = { z = -1.84, y = 0.81, x = 0.84 },
     paints = { "car_offroad", "car_offroad_green", "car_offroad_white", "car_offroad_red" } },
+  -- the eleven modelled from the second set of blueprints (scripts/rally/cars/*.mjs, 2026-11-20); their numbers are first guesses
+  { id = "car_s15", name = "Kaze RS", class = "sport", price = 2600,
+    blurb = "2.0 litre turbo four, six gears, rear-wheel drive. Light and eager; the tail steps out whenever you ask.",
+    power = 9.6, top = 50, idle_rpm = 850, max_rpm = 7200, shift = 0.16,
+    gears = { { top = 9, pull = 1.5 }, { top = 15, pull = 1.28 }, { top = 21.5, pull = 1.1 }, { top = 29, pull = 0.96 }, { top = 38, pull = 0.84 }, { top = 59, pull = 0.72 } },
+    grip = 1.08, brake = 1.1, turn = 1.15, oversteer = 0.75,
+    loose = { dirt = 0.84, rough_top = 0.42, rough_drag = 1.3, rough_grip = 0.85 },
+    spring = 600, damper = 47, lean = 0.85, wheel = 0.331, length = 4.44, tail = { z = -2.14, y = 0.72, x = 0.63 },
+    paints = { "car_s15", "car_s15_white", "car_s15_black", "car_s15_red" } },
+  { id = "car_s14", name = "Kaze", class = "sport", price = 1800,
+    blurb = "2.0 litre turbo four, five long gears. Softer and slower than the RS, and just as happy sideways.",
+    power = 8.8, top = 47, idle_rpm = 800, max_rpm = 6800, shift = 0.2,
+    gears = { { top = 9.5, pull = 1.5 }, { top = 16.5, pull = 1.25 }, { top = 24.5, pull = 1.05 }, { top = 34, pull = 0.88 }, { top = 55.5, pull = 0.72 } },
+    grip = 1.04, brake = 1.02, turn = 1.1, oversteer = 0.7,
+    loose = { dirt = 0.84, rough_top = 0.42, rough_drag = 1.3, rough_grip = 0.85 },
+    spring = 540, damper = 43, lean = 0.95, wheel = 0.3125, length = 4.56, tail = { z = -2.31, y = 0.73, x = 0.54 },
+    paints = { "car_s14", "car_s14_white", "car_s14_blue", "car_s14_black" } },
+  { id = "car_hatch_r", name = "Tarn R", class = "sport", price = 3200,
+    blurb = "2.0 litre turbo four, six close gears, front-wheel drive. Enormous grip and brakes; it pushes wide rather than slides.",
+    power = 10, top = 52, idle_rpm = 800, max_rpm = 7000, shift = 0.13,
+    gears = { { top = 9, pull = 1.5 }, { top = 15, pull = 1.3 }, { top = 21.5, pull = 1.14 }, { top = 29, pull = 1 }, { top = 38, pull = 0.88 }, { top = 61.5, pull = 0.76 } },
+    grip = 1.16, brake = 1.22, turn = 1.12, oversteer = 0.12,
+    loose = { dirt = 0.88, rough_top = 0.44, rough_drag = 1.25, rough_grip = 0.88 },
+    spring = 680, damper = 52, lean = 0.7, wheel = 0.322, length = 4.56, tail = { z = -2.21, y = 0.9, x = 0.71 },
+    paints = { "car_hatch_r", "car_hatch_r_red", "car_hatch_r_blue", "car_hatch_r_grey" } },
+  { id = "car_gt2", name = "Kestrel GT2", class = "sport", price = 9000,
+    blurb = "2.5 litre turbo five, seven-speed racing gearbox, slick tyres and a wing. Stay on the tarmac.",
+    power = 12.5, top = 60, idle_rpm = 1100, max_rpm = 7200, shift = 0.07,
+    gears = { { top = 10.5, pull = 1.5 }, { top = 17, pull = 1.32 }, { top = 23.5, pull = 1.17 }, { top = 30.5, pull = 1.05 }, { top = 38.5, pull = 0.95 }, { top = 48, pull = 0.85 }, { top = 71, pull = 0.76 } },
+    grip = 1.38, brake = 1.5, turn = 1.2, oversteer = 0.35,
+    loose = { dirt = 0.7, rough_top = 0.3, rough_drag = 1.6, rough_grip = 0.75 },
+    spring = 900, damper = 68, lean = 0.4, wheel = 0.344, length = 4.64, tail = { z = -2.27, y = 0.43, x = 0 },
+    paints = { "car_gt2", "car_gt2_orange", "car_gt2_blue", "car_gt2_black" } },
+  { id = "car_city", name = "Pip", class = "sport", price = 600,
+    blurb = "0.8 litre three-cylinder, five gears. Slow, narrow and nimble: it darts where bigger cars have to brake.",
+    power = 5.6, top = 34, idle_rpm = 900, max_rpm = 6200, shift = 0.26,
+    gears = { { top = 7, pull = 1.6 }, { top = 12.5, pull = 1.25 }, { top = 18.5, pull = 1 }, { top = 26, pull = 0.82 }, { top = 40, pull = 0.66 } },
+    grip = 0.92, brake = 0.9, turn = 1.18, oversteer = 0.08,
+    loose = { dirt = 0.95, rough_top = 0.5, rough_drag = 1.1, rough_grip = 0.95 },
+    spring = 380, damper = 30, lean = 1.5, wheel = 0.272, length = 3.5, tail = { z = -1.66, y = 0.78, x = 0.61 },
+    paints = { "car_city", "car_city_blue", "car_city_red", "car_city_white" } },
+  { id = "car_hatch", name = "Sora", class = "sport", price = 1400,
+    blurb = "2.0 litre four, six gears, front-wheel drive. Smooth, steady and forgiving: the sensible choice.",
+    power = 7.6, top = 45, idle_rpm = 750, max_rpm = 6500, shift = 0.2,
+    gears = { { top = 8.5, pull = 1.55 }, { top = 14.5, pull = 1.28 }, { top = 21, pull = 1.08 }, { top = 28, pull = 0.94 }, { top = 36, pull = 0.82 }, { top = 53, pull = 0.7 } },
+    grip = 1.04, brake = 1.05, turn = 1.02, oversteer = 0.1,
+    loose = { dirt = 0.9, rough_top = 0.45, rough_drag = 1.2, rough_grip = 0.9 },
+    spring = 500, damper = 40, lean = 1, wheel = 0.353, length = 4.46, tail = { z = -2.14, y = 0.95, x = 0.57 },
+    paints = { "car_hatch", "car_hatch_white", "car_hatch_blue", "car_hatch_grey" } },
+  { id = "car_rally", name = "Sprint 400", class = "sport", price = 3600,
+    blurb = "2.4 litre four on twin carburettors, five gears, rear-wheel drive. Built for loose roads, and always a little sideways.",
+    power = 9.8, top = 48, idle_rpm = 1000, max_rpm = 7600, shift = 0.15,
+    gears = { { top = 10, pull = 1.5 }, { top = 17, pull = 1.26 }, { top = 25, pull = 1.06 }, { top = 35, pull = 0.9 }, { top = 56.5, pull = 0.76 } },
+    grip = 1.06, brake = 1.15, turn = 1.16, oversteer = 0.8,
+    loose = { dirt = 1.12, rough_top = 0.6, rough_drag = 0.8, rough_grip = 1.1 },
+    spring = 520, damper = 44, lean = 0.9, wheel = 0.2875, length = 4.42, tail = { z = -2.16, y = 0.53, x = 0.59 },
+    paints = { "car_rally", "car_rally_blue", "car_rally_yellow", "car_rally_green" } },
+  { id = "car_muscle", name = "Brute 340", class = "sport", price = 2400,
+    blurb = "5.6 litre V8, four gears. Huge shove in a straight line; soft springs, weak brakes and a restless tail.",
+    power = 10.2, top = 49, idle_rpm = 700, max_rpm = 5600, shift = 0.3,
+    gears = { { top = 14, pull = 1.5 }, { top = 24, pull = 1.18 }, { top = 36, pull = 0.92 }, { top = 58, pull = 0.72 } },
+    grip = 0.9, brake = 0.8, turn = 0.86, oversteer = 0.9,
+    loose = { dirt = 0.8, rough_top = 0.45, rough_drag = 1.2, rough_grip = 0.85 },
+    spring = 400, damper = 30, lean = 1.5, wheel = 0.334, length = 4.92, tail = { z = -2.4, y = 0.75, x = 0.65 },
+    paints = { "car_muscle", "car_muscle_blue", "car_muscle_green", "car_muscle_white" } },
+  { id = "car_suv", name = "Trailhead", class = "everyday", price = 2000,
+    blurb = "2.8 litre turbo diesel, six gears, four-wheel drive. Tall and comfortable; quicker than the Outback on the road, nearly as sure off it.",
+    power = 7.4, top = 42, idle_rpm = 700, max_rpm = 4400, shift = 0.22,
+    gears = { { top = 7.5, pull = 1.6 }, { top = 13, pull = 1.3 }, { top = 19, pull = 1.08 }, { top = 26, pull = 0.92 }, { top = 34, pull = 0.8 }, { top = 49.5, pull = 0.68 } },
+    grip = 0.94, brake = 0.95, turn = 0.92, oversteer = 0.15,
+    loose = { dirt = 1.15, rough_top = 0.78, rough_drag = 0.5, rough_grip = 1.2 },
+    spring = 400, damper = 33, lean = 1.4, wheel = 0.3875, length = 4.8, tail = { z = -2.34, y = 1.13, x = 0.68 },
+    paints = { "car_suv", "car_suv_white", "car_suv_black", "car_suv_red" } },
+  { id = "car_pickup", name = "Ridgeback", class = "everyday", price = 3400,
+    blurb = "3.4 litre twin-turbo V6, ten short gears, four-wheel drive. Big, strong and always in the right gear; needs room to turn.",
+    power = 9, top = 46, idle_rpm = 650, max_rpm = 5800, shift = 0.14,
+    gears = { { top = 5, pull = 1.7 }, { top = 8.5, pull = 1.5 }, { top = 12, pull = 1.34 }, { top = 15.5, pull = 1.2 }, { top = 19.5, pull = 1.08 }, { top = 24, pull = 0.98 }, { top = 29, pull = 0.9 }, { top = 35, pull = 0.82 }, { top = 41, pull = 0.75 }, { top = 54.5, pull = 0.68 } },
+    grip = 0.92, brake = 0.9, turn = 0.8, oversteer = 0.3,
+    loose = { dirt = 1.18, rough_top = 0.82, rough_drag = 0.45, rough_grip = 1.25 },
+    spring = 380, damper = 32, lean = 1.5, wheel = 0.425, length = 5.93, tail = { z = -2.87, y = 1.05, x = 0.96 },
+    paints = { "car_pickup", "car_pickup_white", "car_pickup_black", "car_pickup_blue" } },
+  { id = "car_truck", name = "Mammut 6x6", class = "everyday", price = 5000,
+    blurb = "7.2 litre diesel six, eight gears, six-wheel drive. Barely notices grass, sand or snow, and takes a whole road to turn.",
+    power = 5.4, top = 27, idle_rpm = 600, max_rpm = 2500, shift = 0.4,
+    gears = { { top = 3.5, pull = 1.7 }, { top = 6, pull = 1.5 }, { top = 9, pull = 1.3 }, { top = 12.5, pull = 1.12 }, { top = 16, pull = 0.98 }, { top = 20, pull = 0.86 }, { top = 23.5, pull = 0.76 }, { top = 32, pull = 0.66 } },
+    grip = 0.78, brake = 0.7, turn = 0.62, oversteer = 0.05,
+    loose = { dirt = 1.3, rough_top = 0.95, rough_drag = 0.3, rough_grip = 1.4 },
+    spring = 300, damper = 30, lean = 1.3, wheel = 0.609, length = 8.47, tail = { z = -4.2, y = 0.95, x = 1 }, six = true,
+    paints = { "car_truck", "car_truck_sand", "car_truck_green", "car_truck_white" } },
 }
 -- The car a model belongs to (a paint is a model of its own): "car_gt_red" -> the Apex GT's entry.
 local by_model = {}

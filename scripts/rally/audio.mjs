@@ -1,6 +1,6 @@
 // The rally game's sound effects and music.
 //   - the beeps and the music: through the Nova MCP server's `sfx_write` and `song_write` tools (the studio's own editors)
-//   - the sounds of driving (tyres on each surface, wind, the turbo, the gear whine, bumps, knocks, scrapes, gear changes): made
+//   - the sounds of driving (tyres on each surface, wind, the turbo, the gear whine, bumps, knocks, scrapes, gear changes, the blow-off, the pops): made
 //     here, sample by sample (`driving()` below), with the tools of scripts/rally/engines.mjs, which makes the engines themselves
 //
 //   node scripts/rally/audio.mjs            everything
@@ -160,21 +160,29 @@ function driving() {
     [noiseLoop(LONG, rand, (f) => (f < 40 ? 0 : 1 / (1 + (f / 350) ** 1.1))), 1],
     [noiseLoop(LONG, rand, (f) => bump(f, 900, 0.8)), 0.35]), swell(LONG, rand, 0.2, 1.6, 0.22)));
 
-  // -- the GT's turbo: the compressor's whistle (a steady high note that wavers a little) in a rush of air --
-  loop("turbo_loop", mix(SHORT,
-    [level(times(tone(SHORT, rand, 3600, 0.004, [1, 0.2]), swell(SHORT, rand, 0.5, 9, 0.1)), 1, Infinity), 1],
-    [noiseLoop(SHORT, rand, (f) => bump(f, 2800, 0.8)), 0.4]), 0.14);
-
-  // -- the 4x4's gearbox: the whine of straight teeth meshing (a note with two harmonics), beating once a turn of the shaft (19 teeth) --
+  // -- a turbo (every turbocharged car plays this one, at its own level and pitch: lib/audio.lua): mostly the breath of the air
+  // it moves, a broad rush round 1 kHz that swells a little, and far under it the compressor's note, low (1.7 kHz, where it was
+  // 3.6) and unsteady, so that it is heard as air under pressure and not as a whistle. (Its own random numbers: the loops after it
+  // do not change when it does.) --
   {
-    const turns = 55, mesh = turns * 19; // cycles in the loop: the shaft at 37 Hz, the teeth at 703 Hz
+    const r = new Rand(20261121);
+    const air = times(noiseLoop(SHORT, r, (f) => bump(f, 950, 0.8) + 0.2 * bump(f, 2000, 0.6)), swell(SHORT, r, 0.5, 7, 0.18));
+    const note = times(tone(SHORT, r, 1700, 0.012, [1, 0.1]), swell(SHORT, r, 0.5, 9, 0.3));
+    loop("turbo_loop", mix(SHORT, [air, 1], [level(note, 1, Infinity), 0.2]), 0.14);
+  }
+
+  // -- an old 4x4's or a lorry's gearbox: the whine of straight teeth meshing, beating once a turn of the shaft. A low note
+  // (the teeth at 310 Hz in the loop, where they were at 703) with soft harmonics, in a little noise: a hum that follows the road
+  // speed, not a whistle --
+  {
+    const turns = 42, mesh = turns * 11; // cycles in the loop: the shaft at 28 Hz, the teeth at 311 Hz
     const d = drift(SHORT, rand, 0.3, 5), out = new Float64Array(SHORT);
     let phase = 0;
     for (let i = 0; i < SHORT; i++) {
       phase += ((2 * Math.PI * mesh) / SHORT) * (1 + 0.003 * d[i]);
-      out[i] = (Math.sin(phase) + 0.45 * Math.sin(2 * phase) + 0.2 * Math.sin(3 * phase)) * (1 + 0.14 * Math.sin(phase / 19));
+      out[i] = (Math.sin(phase) + 0.3 * Math.sin(2 * phase) + 0.08 * Math.sin(3 * phase)) * (1 + 0.14 * Math.sin(phase / 11));
     }
-    loop("whine_loop", mix(SHORT, [level(out, 1, Infinity), 1], [noiseLoop(SHORT, rand, (f) => bump(f, 1400, 1.0)), 0.12]), 0.14);
+    loop("whine_loop", mix(SHORT, [level(out, 1, Infinity), 1], [noiseLoop(SHORT, rand, (f) => bump(f, 600, 1.0)), 0.2]), 0.14);
   }
 
   // -- the body dragging along a barrier: grit (in chattering bursts, as it catches and slips) ringing the panel --
@@ -213,37 +221,46 @@ function driving() {
   }
   group("impact", impacts);
 
-  // -- gear changes --
-  // the GT's twin-clutch box: a small click, then three quick beats of the exhaust as the next gear takes up
+  // -- gear changes: three, and each car plays the one its gearbox would make (lib/audio.lua) --
+  // quick (a twin-clutch, sequential or modern automatic box): a small click, then three quick beats of the exhaust as the next gear takes up
   {
     const n = secs(0.26), r = new Rand(500);
     const parts = [burst(n, r, 0, 3200, 2, 0.004, 0.45)];
     for (const [at, g] of [[0.035, 1], [0.049, 0.7], [0.063, 0.45]]) parts.push(thud(n, at, 150, 90, 0.01, 0.014, g), burst(n, r, at, 900, 1, 0.008, 0.5 * g));
-    shot("shift_car_gt", n, parts);
+    shot("shift_quick", n, parts);
   }
-  // the 4x4's long lever: a clack out of one gear, a rattle across the gate, a heavy clunk into the next
+  // stick (an ordinary manual box): the lever clicks out of one gear, slides across, and knocks home in the next, a third of a second
+  {
+    const n = secs(0.34), r = new Rand(503);
+    const parts = [burst(n, r, 0, 1700, 3, 0.005, 0.55), thud(n, 0, 260, 240, 0.02, 0.016, 0.45)];
+    parts.push(burst(n, r, 0.07, 1300, 2, 0.02, 0.1, 0.01)); // (the slide across the gate)
+    parts.push(thud(n, 0.15, 200, 150, 0.015, 0.03, 1), burst(n, r, 0.15, 800, 3, 0.011, 0.55), burst(n, r, 0.153, 2100, 3, 0.003, 0.15));
+    shot("shift_stick", n, parts);
+  }
+  // clunk (an old or heavy box with a long lever): a clack out of one gear, a rattle across the gate, a heavy clunk into the next
   {
     const n = secs(0.5), r = new Rand(501);
     const parts = [burst(n, r, 0, 1100, 4, 0.009, 0.6), thud(n, 0, 230, 215, 0.02, 0.028, 0.8)];
     for (let k = 0; k < 5; k++) parts.push(burst(n, r, r.range(0.06, 0.19), 1800, 3, 0.003, 0.12));
     parts.push(thud(n, 0.24, 170, 120, 0.02, 0.045, 1), burst(n, r, 0.24, 650, 3, 0.016, 0.6), burst(n, r, 0.243, 2400, 3, 0.003, 0.2));
-    shot("shift_car_offroad", n, parts);
+    shot("shift_clunk", n, parts);
   }
-  // the GT lifting off under boost: the charge air let go past the valve, a rush that falls in pitch and flutters as it dies
+  // a turbocharged petrol car lifting off under boost: the charge air let go past the valve, a rush that falls in pitch and
+  // flutters as it dies (lower than it was: it starts at 2.5 kHz, not 4.8)
   {
     const n = secs(0.5), r = new Rand(502);
-    const rush = burst(n, r, 0, (t) => 1700 + 3100 * Math.exp(-t / 0.12), 1.5, 0.13, 1, 0.006);
+    const rush = burst(n, r, 0, (t) => 900 + 1600 * Math.exp(-t / 0.12), 1.2, 0.13, 1, 0.006);
     for (let i = 0; i < n; i++) { const t = i / RATE; rush[i] *= 1 - 0.35 * Math.exp(-t / 0.15) * (0.5 + 0.5 * Math.sin(2 * Math.PI * 34 * t)); }
-    shot("bov_car_gt", n, [rush, burst(n, r, 0, 300, 0.8, 0.06, 0.3, 0.004)], 0.7);
+    shot("bov", n, [rush, burst(n, r, 0, 300, 0.8, 0.06, 0.35, 0.004)], 0.7);
   }
-  // the GT's exhaust popping on the overrun: one bang down the pipe (three takes)
+  // an exhaust popping on the overrun (the cars that do: lib/audio.lua): one bang down the pipe (three takes)
   const pops = [];
   for (const [k, tune] of [0.88, 1, 1.13].entries()) {
     const n = secs(0.22), r = new Rand(600 + k);
     shot(`pop${k + 1}`, n, [thud(n, 0, 170 * tune, 80 * tune, 0.012, 0.022, 1), burst(n, r, 0, 1000 * tune, 0.8, 0.009, 1.3), thud(n, 0.003, 290 * tune, 285 * tune, 0.03, 0.035, 0.3)]);
     pops.push(`pop${k + 1}`);
   }
-  group("pop_car_gt", pops, [0.9, 1.1]);
+  group("pop", pops, [0.9, 1.1]);
   // another car going by close: air pushed aside, rising and falling
   {
     const n = secs(0.5), r = new Rand(700);
@@ -252,7 +269,8 @@ function driving() {
     shot("whoosh", n, [air], 0.6);
   }
   // the sound editor's files for the sounds that are made here now
-  for (const old of ["gravel_loop.wav", "gravel_loop.sfx.json", "skid_loop.wav", "skid_loop.sfx.json", "shift.wav", "shift.sfx.json", "whoosh.sfx.json"]) fs.rmSync(path.join(SOUNDS, old), { force: true });
+  for (const old of ["gravel_loop.wav", "gravel_loop.sfx.json", "skid_loop.wav", "skid_loop.sfx.json", "shift.wav", "shift.sfx.json", "whoosh.sfx.json",
+    "shift_car_gt.wav", "shift_car_offroad.wav", "bov_car_gt.wav", "pop_car_gt.group.json"]) fs.rmSync(path.join(SOUNDS, old), { force: true });
 }
 
 // ---- music -----------------------------------------------------------------------------------------------------------

@@ -132,7 +132,7 @@ fn terrain_slope(p: vec2<f32>) -> vec2<f32> {
 
 @vertex
 fn vs_main(v: Vertex, inst: Instance) -> @builtin(position) vec4<f32> {
-    let model = mat4x4<f32>(inst.m0, vec4<f32>(inst.m1.xyz, 0.0), vec4<f32>(inst.m2.xyz, 0.0), inst.m3);
+    let model = mat4x4<f32>(vec4<f32>(inst.m0.xyz, 0.0), vec4<f32>(inst.m1.xyz, 0.0), vec4<f32>(inst.m2.xyz, 0.0), vec4<f32>(inst.m3.xyz, 1.0));
     var world = model * vec4<f32>(v.position, 1.0);
     world = vec4<f32>(world.xyz + wind_offset(inst.m3.xyz, world.xyz, inst.m2.w), 1.0);
     if (terrain_active() && inst.m3.y < 30.0) {
@@ -166,7 +166,7 @@ struct SkinVertex {
 @vertex
 fn vs_skinned(v: SkinVertex, inst: Instance) -> @builtin(position) vec4<f32> {
     let base = u32(inst.m0.w + 0.5);
-    let model = mat4x4<f32>(vec4<f32>(inst.m0.xyz, 0.0), vec4<f32>(inst.m1.xyz, 0.0), vec4<f32>(inst.m2.xyz, 0.0), inst.m3);
+    let model = mat4x4<f32>(vec4<f32>(inst.m0.xyz, 0.0), vec4<f32>(inst.m1.xyz, 0.0), vec4<f32>(inst.m2.xyz, 0.0), vec4<f32>(inst.m3.xyz, 1.0));
     var skin = mat4x4<f32>(vec4<f32>(0.0), vec4<f32>(0.0), vec4<f32>(0.0), vec4<f32>(0.0));
     for (var k = 0; k < 4; k = k + 1) {
         if (v.weights[k] > 0.0) {

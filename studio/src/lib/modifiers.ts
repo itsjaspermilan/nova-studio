@@ -882,6 +882,7 @@ export function evaluate(c: Cube, stage: Stage = "view"): Cube {
   if (c.metallic !== undefined) out.metallic = c.metallic;
   if (c.roughness !== undefined) out.roughness = c.roughness;
   if (c.coat !== undefined) out.coat = c.coat;
+  if (c.glass !== undefined) out.glass = c.glass;
   const kept = [...(soup.creases ?? [])].filter(([, w]) => Number.isFinite(w) && w > 0);
   if (kept.length) out.creases = kept.map(([k, w]) => { const [a, b] = k.split(",").map(Number) as [number, number]; return [a, b, Math.min(1, w / CREASE_LEVELS)] as [number, number, number]; });
   fitBounds(out);
@@ -895,7 +896,7 @@ export function evaluateSurfaces(c: Cube, stage: Stage = "render"): Cube[] {
   if (!done.polys?.some((f) => f.mat)) return [done];
   const groups = new Map<string, { mat: MeshFace["mat"]; polys: MeshFace[] }>();
   for (const f of done.polys) {
-    const k = f.mat ? `${f.mat.metallic ?? ""}/${f.mat.roughness ?? ""}/${f.mat.emissive ?? ""}/${f.mat.coat ?? ""}` : "";
+    const k = f.mat ? `${f.mat.metallic ?? ""}/${f.mat.roughness ?? ""}/${f.mat.emissive ?? ""}/${f.mat.coat ?? ""}/${f.mat.glass ?? ""}` : "";
     const g = groups.get(k) ?? { mat: f.mat, polys: [] };
     const { mat: _mat, ...plain } = f;
     g.polys.push(plain);
@@ -909,6 +910,7 @@ export function evaluateSurfaces(c: Cube, stage: Stage = "render"): Cube[] {
     if (mat?.roughness !== undefined) out.roughness = mat.roughness;
     if (mat?.emissive !== undefined) out.emissive = mat.emissive;
     if (mat) { if (mat.coat !== undefined) out.coat = mat.coat; else delete out.coat; } // (a surface of its own is not lacquered unless it says so)
+    if (mat) { if (mat.glass !== undefined) out.glass = mat.glass; else delete out.glass; } // (nor glass)
     fitBounds(out);
     return out;
   });

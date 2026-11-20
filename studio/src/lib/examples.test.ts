@@ -83,7 +83,7 @@ describe.each(projects)("the editors on examples/%s", (name) => {
       const image = parsed.doc.texture ? fitPicture(parsed.doc, existsSync(png) ? readPng(png) : bakeAll(parsed.doc)) : undefined;
       expect(Buffer.compare(Buffer.from(exportGlb(parsed.doc, image)), readFileSync(glbPath)), `${f} exports the committed glb`).toBe(0);
     }
-  });
+  }, 300_000); // (a game with dozens of 30,000-triangle cars takes most of a minute to export)
 
   it("open every scene layout and save it back unchanged", () => {
     for (const f of ending(".scene.json")) {

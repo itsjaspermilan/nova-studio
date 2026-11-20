@@ -416,3 +416,74 @@ end",
     let after = gfx.capture((320, 180), &g.frame_input(0));
     assert_eq!(before, after, "the same picture from the new device");
 }
+
+/// The studio writes a pane of glass as `KHR_materials_transmission`; the importer keeps its factor beside the clear coat, per vertex
+/// (a Pine Ridge car: lacquered paint, and windows cut into it that are glass and not lacquered).
+#[test]
+fn the_importer_reads_glass_and_clear_coat() {
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/pine-ridge-rally/models/car_gt.glb");
+    let mesh = import_glb(&std::fs::read(path).expect("the car's model")).expect("imports");
+    let material = mesh.material.expect("a material");
+    let glass = material.coat.iter().filter(|c| c[2] == 1.0).count();
+    let paint = material.coat.iter().filter(|c| c[0] == 1.0).count();
+    assert!(glass > 100 && paint > 100, "glass {glass}, paint {paint}");
+    assert!(
+        material.coat.iter().all(|c| c[0] == 0.0 || c[2] == 0.0),
+        "no pane is lacquered"
+    );
+    assert!(
+        !mesh.notes.iter().any(|n| n.contains("KHR_materials")),
+        "{:?}",
+        mesh.notes
+    );
+}
+
+/// Dirt on a draw and the land's colour under the sky change the picture; a clean draw with no `ground` is as it was, and so is
+/// `dirt = 0`. (Skipped without a GPU.)
+#[test]
+fn dirt_and_the_ground_colour_change_the_pixels_only_when_asked_for() {
+    let Some((_, mut gfx)) = gpu() else { return };
+    let scene = |sky: &str, opts: &str| {
+        format!(
+            "function update()
+  nova.camera(0, 0.5, 4, 0, 0.5, 0, 50)
+  nova.sky {{ top = {{ 40, 90, 200 }}, horizon = {{ 220, 230, 240 }}{sky} }}
+  nova.light {{ dir = {{ 0, -0.5, -1 }}, color = {{ 255, 255, 255 }}, ambient = {{ 40, 40, 40 }} }}
+  nova.model('quad', 0, 0, 0{opts})
+end"
+        )
+    };
+    let mut shot = |manifest: &str, sky: &str, opts: &str| {
+        capture(&mut gfx, project(manifest, &scene(sky, opts), vec![]))
+    };
+    for manifest in [PLAIN, LIT] {
+        let clean = shot(manifest, "", "");
+        assert_eq!(
+            clean,
+            shot(manifest, "", ", { dirt = 0, dirt_color = { 120, 90, 60 } }")
+        );
+        let dirty = shot(manifest, "", ", { dirt = 1, dirt_color = { 120, 90, 60 } }");
+        assert_ne!(clean, dirty, "dirt shows ({manifest})");
+        // the foot of the quad (y = -1 to 1 about its origin: below the origin is under the dirt) is the dirt's brown, not the quad's grey
+        let low = at(&dirty, 160, 150);
+        assert!(low[0] > low[2] + 10, "brown at the foot: {low:?}");
+        let snow = shot(
+            manifest,
+            "",
+            ", { dirt = 1, dirt_color = { 120, 90, 60 }, dirt_on_top = true }",
+        );
+        assert_eq!(dirty, snow, "nothing faces up on an upright quad");
+    }
+    let (plain, lit) = (shot(PLAIN, "", ""), shot(LIT, "", ""));
+    assert_eq!(
+        plain,
+        shot(PLAIN, ", ground = { 200, 60, 20 }", ""),
+        "the plain look has no ground light"
+    );
+    assert_ne!(
+        lit,
+        shot(LIT, ", ground = { 200, 60, 20 }", ""),
+        "materials are lit by the land"
+    );
+}

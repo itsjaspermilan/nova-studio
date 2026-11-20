@@ -50,6 +50,9 @@ local SPRING, DAMPER = 560, 47   -- stiff and critically damped (2 x the square 
 local function ground(x, z, size)
   return size * (math.sin(x * 0.9 + 1.3) * math.sin(z * 0.7 + 0.4) + 0.5 * math.sin(x * 1.9 - z * 1.1) + 0.3 * math.sin(z * 2.7 + x * 0.5))
 end
+-- Dirt on the body (nova.model's `dirt`): a loose road or the rough throws it up, as much as it gets after about 50 seconds at 30 m/s (sooner
+-- sliding, or off the road); tarmac wears it off again in about 25 seconds of driving.
+local DIRT_GAIN, DIRT_CLEAN = 1 / (50 * 30), 1 / 25
 local SURFACE = {
   road = { grip = 8.5, lateral = 24, drag = 0 },
   dirt = { grip = 5.2, lateral = 18, drag = 0 },
@@ -94,6 +97,9 @@ function Car:create()
     wheel_fl = { rx = 0, ry = 0, y = 0 }, wheel_fr = { rx = 0, ry = 0, y = 0 },
     wheel_rl = { rx = 0, y = 0 }, wheel_rr = { rx = 0, y = 0 },
   }
+  -- (a six-wheeler's middle axle: two more wheel parts, which turn and ride with the rear ones)
+  if c.six then self.parts_table.wheel_ml, self.parts_table.wheel_mr = { rx = 0, y = 0 }, { rx = 0, y = 0 } end
+  self.tail = c.tail
   -- suspension: where each corner of the body is (b) and how fast it is moving (bv), and the ground under each wheel (h)
   self.susp = { b = { 0, 0, 0, 0 }, bv = { 0, 0, 0, 0 }, h = { 0, 0, 0, 0 }, w = { 0, 0, 0, 0 } }
   self.last_vf, self.last_yaw = 0, 0
@@ -107,6 +113,30 @@ function Car:create()
   self.tyres = 1               -- the tyres, 1 (new) to 0 (bald): sliding and the rough wear them
   self.pull = 0                -- which way a damaged car drifts: -1, 0 or 1
   self.smoke_carry = 0
+  self.dirt = 0                -- how dirty the body is, 0 (clean) to 1
+  self.dirt_rgb = { 0, 0, 0 }
+end
+
+-- The body picks up what the wheels throw up (the course's dust; snow lies on the roof and bonnet too) and sheds it on tarmac.
+function Car:gather_dirt(dt, vf)
+  local speed = math.abs(vf)
+  if self.loose or self.surface ~= "road" then
+    if speed > 2 then
+      local hard = (self.surface == "rough" and 1.6 or 1) * (1 + self.slip)
+      self.dirt = math.min(1, self.dirt + speed * DIRT_GAIN * hard * dt)
+    end
+  elseif speed > 3 then
+    self.dirt = math.max(0, self.dirt - DIRT_CLEAN * dt)
+  end
+  if self.dirt <= 0.01 then
+    self.draw_opts.dirt = nil
+    return
+  end
+  if self.snowy == nil then self.snowy = require("lib.course").current().horizon == "snow" end
+  -- (what sticks is damper and a little darker than the dust in the air; snow is snow)
+  local c, k = self.dust_color or { 200, 190, 160 }, self.snowy and 1 or 0.85
+  self.dirt_rgb[1], self.dirt_rgb[2], self.dirt_rgb[3] = c[1] * k, c[2] * k, c[3] * k
+  self.draw_opts.dirt, self.draw_opts.dirt_color, self.draw_opts.dirt_on_top = self.dirt, self.dirt_rgb, self.snowy
 end
 
 -- How much the tyres hold: the circuit's grip, less what the wear has taken (a bald set holds 30% less).
@@ -270,6 +300,8 @@ function Car:drive(dt)
   self.spin = self.spin + vf / self.wheel_radius * dt
   self.bump_cooldown = math.max(0, self.bump_cooldown - dt)
 
+  if live then self:gather_dirt(dt, vf) end
+
   -- the tyres wear: a little all the time, a lot when sliding or on the rough
   if live then
     local wear = 0.0008 + 0.012 * math.max(0, self.slip - 0.3) + (self.surface == "rough" and 0.006 or 0) + ((c.handbrake and math.abs(vf) > 5) and 0.01 or 0)
@@ -351,6 +383,7 @@ function Car:draw()
   local sv = -self.steer_visual * 0.45
   pt.wheel_fl.ry, pt.wheel_fr.ry = sv, sv
   pt.wheel_fl.rx, pt.wheel_fr.rx, pt.wheel_rl.rx, pt.wheel_rr.rx = self.spin, self.spin, self.spin, self.spin
+  if pt.wheel_ml then pt.wheel_ml.rx, pt.wheel_mr.rx, pt.wheel_ml.y, pt.wheel_mr.y = self.spin, self.spin, h[3], h[4] end
   self.draw_opts.ry = self.heading
   local dim = 255 - math.floor(110 * self.damage)
   self.draw_opts.tint = self.damage > 0.02 and { dim, dim, dim } or nil
@@ -363,9 +396,7 @@ end
 -- Where each model's rear lamps are, in its own metres: `z` the back of the body, `y` the height, `x` how far out to each side (0: one
 -- lamp in the middle, as on an open-wheel car or a kart). Measured from the red at the back of each model (2026-11-08); the road cars were
 -- remade 2026-11-09 by scripts/rally/cars.mjs, which prints their numbers.
-local TAIL = {
-  car_offroad = { z = -1.84, y = 0.81, x = 0.84 }, car_gt = { z = -2.31, y = 0.8, x = 0.65 },
-}
+local TAIL = { z = -2.2, y = 0.8, x = 0.65 } -- (when a car's entry in lib/state.lua has no `tail`)
 local LENS = { color = { 255, 40, 30, 255 } }
 local GLOW = { color = { 255, 30, 20, 110 } }
 
@@ -375,7 +406,7 @@ function Car:draw_tail_lights()
   if self.night == nil then self.night = require("lib.course").current().night and true or false end
   local braking = self.enabled and (self.ctl.brake or 0) > 0.1
   if not braking and not self.night then return end
-  local t = TAIL[self.car_id] or TAIL.car_gt
+  local t = self.tail or TAIL
   local k = braking and 1 or 0.35
   local sinh, cosh = math.sin(self.heading), math.cos(self.heading)
   local y = t.y + 0.06 + (self.lift or 0) - (self.pitch or 0) * t.z

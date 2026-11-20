@@ -27,7 +27,7 @@ export interface MeshFace {
   /// Shade smoothly across its shared points instead of flat.
   smooth?: boolean;
   /// Never in a file: a surface of its own (glass, a glowing lamp) given by a Cut-out modifier. The exporter writes such faces as their own material.
-  mat?: { metallic?: number; roughness?: number; emissive?: number; coat?: number };
+  mat?: { metallic?: number; roughness?: number; emissive?: number; coat?: number; glass?: number };
 }
 
 /// One solid in a part. (Named "cube" for the first shape it had; the file key is still `cubes`.)
@@ -51,6 +51,10 @@ export interface Cube {
   /// A clear coat over the surface, 0 (none, the default) to 1: the glossy lacquer of car paint, with its own sharp highlights and reflection of the sky over the
   /// colour underneath. Written to the .glb as `KHR_materials_clearcoat` (the game draws it when nova.json says `"materials": true`).
   coat?: number;
+  /// Glass, 0 (none, the default) to 1: the surface is a pane, not a solid. The game draws it without looking through it: a dark tinted pane of the shape's
+  /// colour that mirrors the sky and the land (faintly straight on, brightly at a slant) with the sun's sharp glint. Written to the .glb as
+  /// `KHR_materials_transmission` (the game draws it when nova.json says `"materials": true`).
+  glass?: number;
   /// Mesh only: sharp edges for a Subdivision modifier, `[point a, point b, weight]` with weight 0 (smooth) to 1 (sharp at every level).
   creases?: [number, number, number][];
   /// Mesh only: UV seams, `[point a, point b]`. The unwrap cuts along them, so the faces on either side become separate islands in the picture.
@@ -386,7 +390,7 @@ export function parseModel(text: string): Parsed {
       if (c.segments !== undefined && !(Number.isInteger(c.segments) && c.segments >= MIN_SEGMENTS && c.segments <= MAX_SEGMENTS)) return `${cat}.segments must be a whole number from ${MIN_SEGMENTS} to ${MAX_SEGMENTS}`;
       if (c.smooth !== undefined && typeof c.smooth !== "boolean") return `${cat}.smooth must be true or false`;
       if (c.emissive !== undefined && !(typeof c.emissive === "number" && c.emissive >= 0 && c.emissive <= 1)) return `${cat}.emissive must be a number from 0 to 1`;
-      for (const k of ["metallic", "roughness", "coat"] as const) if (c[k] !== undefined && !(typeof c[k] === "number" && c[k]! >= 0 && c[k]! <= 1)) return `${cat}.${k} must be a number from 0 to 1`;
+      for (const k of ["metallic", "roughness", "coat", "glass"] as const) if (c[k] !== undefined && !(typeof c[k] === "number" && c[k]! >= 0 && c[k]! <= 1)) return `${cat}.${k} must be a number from 0 to 1`;
       if (c.rotation !== undefined && !isVec3(c.rotation)) return `${cat}.rotation must be three numbers`;
       if (c.texture !== undefined) {
         const t = c.texture;
@@ -500,6 +504,8 @@ export const metallicOf = (c: Cube): number => Math.round(Math.max(0, Math.min(1
 export const roughnessOf = (c: Cube): number => Math.round(Math.max(0, Math.min(1, c.roughness ?? 1)) * 100) / 100;
 /// The clear coat of a shape, to two decimals (0 when not set).
 export const coatOf = (c: Cube): number => Math.round(Math.max(0, Math.min(1, c.coat ?? 0)) * 100) / 100;
+/// How much of a shape is glass, to two decimals (0 when not set).
+export const glassOf = (c: Cube): number => Math.round(Math.max(0, Math.min(1, c.glass ?? 0)) * 100) / 100;
 
 export const glowOf = (c: Cube): number => Math.round(Math.max(0, Math.min(1, c.emissive ?? 0)) * 100) / 100;
 
@@ -546,6 +552,7 @@ export function serializeModel(source: ModelDoc): string {
     if (metallicOf(c) > 0) parts.push(`"metallic": ${metallicOf(c)}`);
     if (roughnessOf(c) < 1) parts.push(`"roughness": ${roughnessOf(c)}`);
     if (coatOf(c) > 0) parts.push(`"coat": ${coatOf(c)}`);
+    if (glassOf(c) > 0) parts.push(`"glass": ${glassOf(c)}`);
     parts.push(`"color": "${c.color}"`);
     if (c.faces && Object.keys(c.faces).length) parts.push(`"faces": ${JSON.stringify(c.faces)}`);
     if (c.texture) parts.push(`"texture": { "at": ${vec2(c.texture.at)}${c.texture.scale !== undefined && c.texture.scale !== 1 ? `, "scale": ${c.texture.scale}` : ""}${c.texture.mirror ? `, "mirror": ${c.texture.mirror}` : ""}${c.texture.faces && Object.keys(c.texture.faces).length ? `, "faces": ${JSON.stringify(c.texture.faces)}` : ""}${c.texture.islands?.length ? `, "islands": ${JSON.stringify(c.texture.islands)}` : ""} }`);

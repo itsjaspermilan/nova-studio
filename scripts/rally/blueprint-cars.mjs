@@ -1,14 +1,10 @@
 // The cars modelled from the owner's blueprints with carkit.mjs (2026-11-19): `car_gt`, a modern coupe (4768 x 1852 x 1383 mm, wheelbase 2851), and
 // `car_offroad`, a short 4x4 wagon (4060 x 1690 x 1885 mm, wheelbase 2310). Every number below was read off the drawings (side, plan, front and rear views,
 // each calibrated to its own dimension lines). No badges or lettering. Run:  scripts/env.sh node scripts/rally/blueprint-cars.mjs [car_gt] [car_offroad]
+import { readdirSync } from "node:fs";
 import { withServer } from "./mcp.mjs";
-import { CHROME, GLASS, PAINT, PLASTIC, RUBBER, STEEL, archLiner, assemble, bar, box, buildBody, cyl, ellipse, fillet, hexa, inset, lattice, lerp, mesh, mix, path, pebble, r2, rect, rounded, rrect, shade, spokeWindows, stroke, wheel } from "./carkit.mjs";
+import { DARK, GLASS_COL, TRIM, archOutline, flare, glassOf, mirrorX, CHROME, GLASS, PAINT, PLASTIC, RUBBER, STEEL, archLiner, assemble, bar, box, buildBody, cyl, ellipse, fillet, hexa, inset, lattice, lerp, mesh, mix, path, pebble, r2, rect, rounded, rrect, shade, spokeWindows, stroke, wheel } from "./carkit.mjs";
 
-const DARK = "#131418", GLASS_COL = "#1a2633", TRIM = "#0e0f12";
-const glassOf = (o) => ({ color: GLASS_COL, ...GLASS, depth: 0.07, wall: TRIM, ...o });
-/// The upper part of a circle as an outline for a wheel opening, carried down below the sill.
-const archOutline = (zc, yc, r, n = 22, y0 = -1, a0 = -0.2, a1 = Math.PI + 0.2) => [[r2(zc + r * Math.cos(a0)), y0], ...Array.from({ length: n + 1 }, (_, i) => { const a = a0 + ((a1 - a0) * i) / n; return [r2(zc + r * Math.cos(a)), r2(yc + r * Math.sin(a))]; }), [r2(zc + r * Math.cos(a1)), y0]];
-const mirrorX = (pts) => [...pts, ...[...pts].reverse().filter(([x]) => x > 1e-6).map(([x, y]) => [-x, y])];
 
 // ================================ the coupe ================================================================================================
 function gt(paint = "#1f57b8") {
@@ -110,25 +106,6 @@ function gt(paint = "#1f57b8") {
 }
 
 // ================================ the 4x4 ==================================================================================================
-/// A flare standing proud round a wheel opening: `outline` runs over the opening from its front foot to its rear foot.
-function flare(name, outline, at, sx, out, proud, color) {
-  const n = outline.length, cz = (outline[0][0] + outline[n - 1][0]) / 2, cy = outline[0][1], verts = [], loops = [];
-  for (const [z, y] of outline) {
-    const dz = z - cz, dy = Math.max(y - cy, 0), l = Math.hypot(dz, dy) || 1, qz = z + (dz / l) * out, qy = y + (dy / l) * out, x0 = at.side(z, Math.max(y, cy + 1.2)), x1 = at.side(qz, Math.max(qy, cy + 1.2));
-    verts.push([sx * (x0 - 0.3), y, z], [sx * (x0 + proud), y, z], [sx * (x1 + proud * 0.55), qy, qz], [sx * (x1 - 0.15), qy, qz]);
-  }
-  for (let i = 0; i < n - 1; i++) { const a = i * 4, b = a + 4; loops.push({ v: [a, a + 1, b + 1, b], want: [0, -1, 0] }, { v: [a + 1, a + 2, b + 2, b + 1], want: [sx, 0, 0] }, { v: [a + 2, a + 3, b + 3, b + 2], want: [0, 1, 0] }); }
-  const m = mesh(name, verts, loops, color, { material: PLASTIC, smooth: true });
-  // (the inner return looks at the wheel, the outer chamfer away from it)
-  m.polys = loops.map((l, k) => {
-    const P = l.v.map((i) => verts[i]), c = P.reduce((s, v) => s.map((x, j) => x + v[j] / 4), [0, 0, 0]);
-    const ref = k % 3 === 1 ? [sx, 0, 0] : k % 3 === 0 ? [0, cy - c[1], cz - c[2]] : [0, c[1] - cy, c[2] - cz];
-    const nn = [0, 0, 0];
-    for (let i = 0; i < 4; i++) { const p = P[i], q = P[(i + 1) % 4]; nn[0] += (p[1] - q[1]) * (p[2] + q[2]); nn[1] += (p[2] - q[2]) * (p[0] + q[0]); nn[2] += (p[0] - q[0]) * (p[1] + q[1]); }
-    return { v: nn[0] * ref[0] + nn[1] * ref[1] + nn[2] * ref[2] >= 0 ? l.v : [...l.v].reverse(), smooth: true };
-  });
-  return m;
-}
 
 function offroad(paint = "#d2bb8c") {
   const gap = shade(paint, 0.3), R = 6.5, track = 11.3, wheelZ = [20.0, -17.0];
@@ -257,6 +234,10 @@ export const CARS = {
   car_gt: () => gt(), car_gt_red: () => gt("#a81f2a"), car_gt_white: () => gt("#dfe2e6"), car_gt_grey: () => gt("#41454d"),
   car_offroad: () => offroad(), car_offroad_green: () => offroad("#5d6b48"), car_offroad_white: () => offroad("#e2dfd3"), car_offroad_red: () => offroad("#9c3229"),
 };
+// Every other car has a file of its own in cars/ that exports its `CARS` (name -> maker), so cars can be worked on side by side.
+for (const f of readdirSync(new URL("./cars/", import.meta.url)).filter((f) => f.endsWith(".mjs")).sort()) {
+  try { Object.assign(CARS, (await import(`./cars/${f}`)).CARS); } catch (e) { console.error(`cars/${f} does not load: ${e.message}`); }
+}
 const want = process.argv.slice(2).filter((a) => !a.startsWith("-"));
 if (process.argv[1] && process.argv[1].endsWith("blueprint-cars.mjs")) await withServer(async (nova) => {
   for (const [name, make] of Object.entries(CARS)) {
@@ -266,4 +247,4 @@ if (process.argv[1] && process.argv[1].endsWith("blueprint-cars.mjs")) await wit
     console.log(`TAIL ${name} = { z = ${tail.z}, y = ${tail.y}, x = ${tail.x} }`);
   }
 });
-void [STEEL, PLASTIC, lerp, mesh, mix, cyl];
+void [STEEL, PLASTIC, lerp, mesh, mix, cyl, GLASS_COL];

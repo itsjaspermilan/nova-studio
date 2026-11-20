@@ -92,7 +92,6 @@ function bg.wheels(t)
 end
 
 -- How long each model is, for the size it is shown at (the back of its body, from lib's car table, doubled; trucks and karts differ).
-local LENGTH = { car_offroad = 4.15, car_gt = 4.77 } -- metres
 local GREY = { 70, 72, 80 }
 local SHOWN = { ry = 0, tint = nil, scale = 1, shadow = false }
 local POOL = { color = { 255, 214, 160, 70 } }
@@ -106,7 +105,7 @@ function bg.cars(list, cards, on, angles, dt)
       local focused = i == on
       local picture_h = r.h - 24 -- (the name band along the bottom of the card)
       local x, y, z, unit = bg.unproject(r.x + r.w / 2, r.y + picture_h * 0.62, 34)
-      local length = LENGTH[car.id] or 4.5
+      local length = car.length or 4.5
       local scale = math.min(r.w * unit * 0.78 / length, picture_h * unit * 0.5 / 1.6)
       angles[i] = angles[i] or -0.75
       if focused then angles[i] = angles[i] + dt * 0.9 end

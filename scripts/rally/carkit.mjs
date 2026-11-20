@@ -107,7 +107,7 @@ function clipSeg(o, a, b, steps = 40) {
 }
 
 // ---- shapes ------------------------------------------------------------------------------------------------------------------------------
-export const PAINT = { metallic: 0.45, roughness: 0.32, coat: 1 }, GLASS = { metallic: 0.7, roughness: 0.06 }, RUBBER = { metallic: 0, roughness: 0.85 }, STEEL = { metallic: 0.9, roughness: 0.3 }, CHROME = { metallic: 1, roughness: 0.12 }, PLASTIC = { metallic: 0, roughness: 0.6 };
+export const PAINT = { metallic: 0.45, roughness: 0.32, coat: 1 }, GLASS = { metallic: 0.7, roughness: 0.06, glass: 1 }, RUBBER = { metallic: 0, roughness: 0.85 }, STEEL = { metallic: 0.9, roughness: 0.3 }, CHROME = { metallic: 1, roughness: 0.12 }, PLASTIC = { metallic: 0, roughness: 0.6 };
 const sub = (a, b) => a.map((v, i) => v - b[i]);
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 function newell(P) {
@@ -357,7 +357,170 @@ export function archLiner(name, outline, xOut, xIn, sx, color = "#0c0d10") {
 /// Puts the pieces together: the body part (its shapes are written with the ground at y = 0 and moved to the part's pivot here) and four wheels.
 export function assemble({ cubes, pivot, wheelZ, track, wheelOf, R }) {
   for (const c of cubes) { if (c.verts) { if (!c.modifiers?.some((m) => m.type === "revolve")) for (const v of c.verts) v[1] = r2(v[1] - pivot); } else if (c.from) c.from[1] = r2(c.from[1] - pivot); }
-  for (const c of cubes) for (const m of c.modifiers ?? []) if (m.type === "cutout") for (const cut of m.cuts) if (cut.view !== "top" && cut.view !== "bottom") cut.points = cut.points.map(([a, b]) => [a, r2(b - pivot)]);
+  for (const c of cubes) for (const m of c.modifiers ?? []) if (m.type === "cutout") for (const cut of m.cuts) {
+    if (cut.view !== "top" && cut.view !== "bottom") cut.points = cut.points.map(([a, b]) => [a, r2(b - pivot)]);
+    else for (const lim of ["near", "far"]) if (typeof cut[lim] === "number") cut[lim] = r2(cut[lim] - pivot); // (a top or bottom cut's limits are heights)
+  }
   const wr = (name, sx, z) => ({ name, origin: [sx * track, R, z], rotation: [0, 0, 0], cubes: wheelOf(sx), children: [] });
   return { version: 1, scale: 0.0625, parts: [{ name: "body", origin: [0, pivot, 0], rotation: [0, 0, 0], cubes, children: [] }, wr("wheel_fl", -1, wheelZ[0]), wr("wheel_fr", 1, wheelZ[0]), wr("wheel_rl", -1, wheelZ[1]), wr("wheel_rr", 1, wheelZ[1])] };
+}
+
+// ---- shared by the car files (blueprint-cars.mjs, cars/*.mjs)
+export const DARK = "#131418", GLASS_COL = "#1a2633", TRIM = "#0e0f12";
+export const glassOf = (o) => ({ color: GLASS_COL, ...GLASS, depth: 0.07, wall: TRIM, ...o });
+/// The upper part of a circle as an outline for a wheel opening, carried down below the sill.
+export const archOutline = (zc, yc, r, n = 22, y0 = -1, a0 = -0.2, a1 = Math.PI + 0.2) => [[r2(zc + r * Math.cos(a0)), y0], ...Array.from({ length: n + 1 }, (_, i) => { const a = a0 + ((a1 - a0) * i) / n; return [r2(zc + r * Math.cos(a)), r2(yc + r * Math.sin(a))]; }), [r2(zc + r * Math.cos(a1)), y0]];
+export const mirrorX = (pts) => [...pts, ...[...pts].reverse().filter(([x]) => x > 1e-6).map(([x, y]) => [-x, y])];
+/// A flare standing proud round a wheel opening: `outline` runs over the opening from its front foot to its rear foot.
+export function flare(name, outline, at, sx, out, proud, color) {
+  const n = outline.length, cz = (outline[0][0] + outline[n - 1][0]) / 2, cy = outline[0][1], verts = [], loops = [];
+  for (const [z, y] of outline) {
+    const dz = z - cz, dy = Math.max(y - cy, 0), l = Math.hypot(dz, dy) || 1, qz = z + (dz / l) * out, qy = y + (dy / l) * out, x0 = at.side(z, Math.max(y, cy + 1.2)), x1 = at.side(qz, Math.max(qy, cy + 1.2));
+    verts.push([sx * (x0 - 0.3), y, z], [sx * (x0 + proud), y, z], [sx * (x1 + proud * 0.55), qy, qz], [sx * (x1 - 0.15), qy, qz]);
+  }
+  for (let i = 0; i < n - 1; i++) { const a = i * 4, b = a + 4; loops.push({ v: [a, a + 1, b + 1, b], want: [0, -1, 0] }, { v: [a + 1, a + 2, b + 2, b + 1], want: [sx, 0, 0] }, { v: [a + 2, a + 3, b + 3, b + 2], want: [0, 1, 0] }); }
+  const m = mesh(name, verts, loops, color, { material: PLASTIC, smooth: true });
+  // (the inner return looks at the wheel, the outer chamfer away from it)
+  m.polys = loops.map((l, k) => {
+    const P = l.v.map((i) => verts[i]), c = P.reduce((s, v) => s.map((x, j) => x + v[j] / 4), [0, 0, 0]);
+    const ref = k % 3 === 1 ? [sx, 0, 0] : k % 3 === 0 ? [0, cy - c[1], cz - c[2]] : [0, c[1] - cy, c[2] - cz];
+    const nn = [0, 0, 0];
+    for (let i = 0; i < 4; i++) { const p = P[i], q = P[(i + 1) % 4]; nn[0] += (p[1] - q[1]) * (p[2] + q[2]); nn[1] += (p[2] - q[2]) * (p[0] + q[0]); nn[2] += (p[0] - q[0]) * (p[1] + q[1]); }
+    return { v: nn[0] * ref[0] + nn[1] * ref[1] + nn[2] * ref[2] >= 0 ? l.v : [...l.v].reverse(), smooth: true };
+  });
+  return m;
+}
+
+// ---- helpers the second set of cars needed (2026-11-20), moved here from their car files
+/// A round tube along a line of points (a snorkel, a pipe, a mirror arm): `n` sides, closed at both ends.
+export function tube(name, pts, r, color, o = {}, n = 10) {
+  const verts = [], loops = [], m = pts.length, nrm = (v) => { const l = Math.hypot(...v) || 1; return v.map((x) => x / l); }, cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  for (let i = 0; i < m; i++) {
+    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(m - 1, i + 1)], t = nrm(b.map((v, k) => v - a[k])), ref = Math.abs(t[2]) > 0.9 ? [1, 0, 0] : [0, 0, 1], u = nrm(cross(t, ref)), v = cross(t, u), rr = Array.isArray(r) ? r[i] : r;
+    for (let k = 0; k < n; k++) { const an = (k / n) * 2 * Math.PI, c = Math.cos(an) * rr, s = Math.sin(an) * rr; verts.push(pts[i].map((p, j) => p + u[j] * c + v[j] * s)); }
+  }
+  for (let i = 0; i < m - 1; i++) for (let k = 0; k < n; k++) {
+    const q = [i * n + k, i * n + ((k + 1) % n), (i + 1) * n + ((k + 1) % n), (i + 1) * n + k], c = q.reduce((s, j) => s.map((x, a) => x + verts[j][a] / 4), [0, 0, 0]), mid = pts[i].map((p, j) => (p + pts[i + 1][j]) / 2);
+    loops.push({ v: q, want: c.map((x, j) => x - mid[j]) });
+  }
+  loops.push({ v: Array.from({ length: n }, (_, k) => k), want: pts[0].map((p, j) => p - pts[1][j]) }, { v: Array.from({ length: n }, (_, k) => (m - 1) * n + k), want: pts[m - 1].map((p, j) => p - pts[m - 2][j]) });
+  return mesh(name, verts, loops, color, { material: o.material ?? PLASTIC, smooth: true });
+}
+/// A wing blade: the section [[z, y], ...] (a closed aerofoil outline) carried from x0 to x1.
+export function loft(name, section, x0, x1, color, o = {}) {
+  const n = section.length, verts = [], loops = [];
+  for (const x of [x0, x1]) for (const [z, y] of section) verts.push([x, y, z]);
+  for (let i = 0; i < n; i++) loops.push([i, (i + 1) % n, n + ((i + 1) % n), n + i]);
+  loops.push(Array.from({ length: n }, (_, i) => i), Array.from({ length: n }, (_, i) => n + i));
+  return mesh(name, verts, loops, color, o);
+}
+/// A flat slab: the outline [[x, z], ...] between two heights (a splitter, a wing's end plate laid flat).
+export function slab(name, outline, y0, y1, color, o = {}) {
+  const n = outline.length, verts = [...outline.map(([x, z]) => [x, y0, z]), ...outline.map(([x, z]) => [x, y1, z])], loops = [];
+  loops.push({ v: Array.from({ length: n }, (_, i) => i), want: [0, -1, 0] }, { v: Array.from({ length: n }, (_, i) => n + i), want: [0, 1, 0] });
+  for (let i = 0; i < n; i++) { const j = (i + 1) % n; loops.push([i, j, n + j, n + i]); }
+  return mesh(name, verts, loops, color, o);
+}
+/// A wing blade across the car: `sections` are [x, zLead, yLead, zTrail, yTrail] from one tip to the other; a thin aerofoil (rounded nose, sharp tail).
+export function blade(name, sections, thick, color, o = {}) {
+  const verts = [], loops = [], K = 6;
+  for (const [x, z0, y0, z1, y1] of sections) {
+    const at = (t, up) => [x, y0 + (y1 - y0) * t + up, z0 + (z1 - z0) * t];
+    verts.push(at(0, 0), at(0.12, thick * 0.6), at(0.45, thick * 0.75), at(1, thick * 0.12), at(1, -thick * 0.12), at(0.35, -thick * 0.35));
+  }
+  for (let s = 0; s < sections.length - 1; s++) for (let k = 0; k < K; k++) loops.push([s * K + k, s * K + ((k + 1) % K), (s + 1) * K + ((k + 1) % K), (s + 1) * K + k]);
+  loops.push(Array.from({ length: K }, (_, k) => k), Array.from({ length: K }, (_, k) => (sections.length - 1) * K + k));
+  return mesh(name, verts, loops, color, o);
+}
+/// A wheel opening that is a little taller than wide (a helper of this file): the upper part of an ellipse carried down below the sill.
+export const archE = (zc, yc, rx, ry, n = 24, y0 = -1, a0 = -0.15, a1 = Math.PI + 0.15) => [[r2(zc + rx * Math.cos(a0)), y0], ...Array.from({ length: n + 1 }, (_, i) => { const a = a0 + ((a1 - a0) * i) / n; return [r2(zc + rx * Math.cos(a)), r2(yc + ry * Math.sin(a))]; }), [r2(zc + rx * Math.cos(a1)), y0]];
+/// Hexagon bars for a grille: rows of bars that pinch together and part again, so the gaps between them are long hexagons. Thin strips `back` behind the skin.
+/// Whether (x, y) lies inside an outline.
+export const inPoly = (o, x, y) => { let c = false; for (let i = 0, j = o.length - 1; i < o.length; j = i++) { const [xi, yi] = o[i], [xj, yj] = o[j]; if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c; } return c; };
+export function hexBars(name, outline, at, back, o) {
+  const { y0, y1, pitch, amp, period, wid, color } = o, verts = [], loops = [];
+  let x0 = Infinity, x1 = -Infinity;
+  for (const [x] of outline) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); }
+  const wave = (x) => { const u = (((x / period) % 1) + 1) % 1, t = u < 0.3 ? 1 : u < 0.5 ? 1 - (u - 0.3) * 10 : u < 0.8 ? -1 : -1 + (u - 0.8) * 10; return t; };
+  const step = period / 20;
+  let k = 0;
+  for (let y = y0; y <= y1 + 1e-6; y += pitch, k++) {
+    const yy = (x) => y + (k % 2 ? -1 : 1) * amp * wave(x + period * 0.15);
+    for (let x = x0; x < x1; x += step) {
+      const a = [x, yy(x)], b = [x + step, yy(x + step)];
+      if (!inPoly(outline, a[0], a[1]) || !inPoly(outline, b[0], b[1])) continue;
+      const base = verts.length;
+      for (const [px, py] of [a, b]) { const z = at(px, py) - back; verts.push([px, py - wid / 2, z], [px, py + wid / 2, z + 0.06]); }
+      loops.push({ v: [base, base + 1, base + 3, base + 2], want: [0, 0, 1] });
+    }
+  }
+  return mesh(name, verts, loops, color, { material: o.material ?? PLASTIC });
+}
+/// Where a ray from `c` at angle `a` leaves a closed outline (z, y).
+export function rayHit(outline, c, a) {
+  const d = [Math.cos(a), Math.sin(a)];
+  let best = null;
+  for (let i = 0; i < outline.length; i++) {
+    const p = outline[i], q = outline[(i + 1) % outline.length], e = [q[0] - p[0], q[1] - p[1]], den = d[0] * e[1] - d[1] * e[0];
+    if (Math.abs(den) < 1e-9) continue;
+    const t = ((p[0] - c[0]) * e[1] - (p[1] - c[1]) * e[0]) / den, u = ((p[0] - c[0]) * d[1] - (p[1] - c[1]) * d[0]) / den;
+    if (t > 0 && u >= -1e-6 && u <= 1 + 1e-6 && (best === null || t < best)) best = t;
+  }
+  return [c[0] + d[0] * (best ?? 1), c[1] + d[1] * (best ?? 1)];
+}
+/// A boxy bolted-on wheel-arch extension: a flat face standing off the flank at x = xf(z), from the wheel opening (circle `c`, `r`, angles a0..a1) out to
+/// `outline` (z, y), with a chamfer `ch` wide back to the skin, a lip turned in round the opening, and rivets along the chamfer. Returns shapes.
+export function boxArch(name, o, at, sx, color, cuts) {
+  const n = o.n ?? 30, [cz, cy] = o.c, xf = curve(o.xf), verts = [], loops = [], out = [];
+  const skin = (p) => at.side(p[0], Math.max(p[1], o.skinY ?? 5.5)), faceX = (p) => Math.max(xf(p[0]), skin(p) + 0.12);
+  const row = [];
+  for (let i = 0; i <= n; i++) {
+    const a = o.a0 + ((o.a1 - o.a0) * i) / n, I = [cz + o.r * Math.cos(a), cy + o.r * Math.sin(a)], O = rayHit(o.outline, o.c, a);
+    const d = Math.hypot(O[0] - I[0], O[1] - I[1]), k = Math.min(o.ch ?? 0.9, d * 0.5) / (d || 1), F = [O[0] + (I[0] - O[0]) * k, O[1] + (I[1] - O[1]) * k];
+    row.push({ I, F, O, xi: Math.max(faceX(I), faceX(F) - 0.05), xo: faceX(F), xs: skin(O) - 0.15, xl: skin(I) - 0.5 });
+  }
+  const P = (x, p) => verts.push([sx * x, p[1], p[0]]) - 1;
+  // three strips with their own points, so the edges between them stay crisp
+  const strips = [
+    (s) => [P(s.xl, s.I), P(s.xi, s.I)], // the lip, looking at the wheel
+    (s) => [P(s.xi, s.I), P(s.xo, s.F)], // the face
+    (s) => [P(s.xo, s.F), P(s.xs, s.O)], // the chamfer
+  ];
+  strips.forEach((mk, k) => {
+    const ids = row.map(mk);
+    for (let i = 0; i < n; i++) {
+      const m = row[i], dz = m.F[0] - cz, dy = m.F[1] - cy, l = Math.hypot(dz, dy) || 1;
+      loops.push({ v: [ids[i][0], ids[i][1], ids[i + 1][1], ids[i + 1][0]], want: k === 0 ? [0, -dy, -dz] : k === 1 ? [sx, 0, 0] : [sx * 0.7, dy / l, dz / l] });
+    }
+  });
+  for (const s of [row[0], row[n]]) loops.push({ v: [P(s.xl, s.I), P(s.xi, s.I), P(s.xo, s.F), P(s.xs, s.O)], want: [0, -1, 0] });
+  const m = mesh(name, verts, loops, color, { material: PAINT, smooth: true });
+  if (cuts?.length) m.modifiers = [{ type: "cutout", cuts }];
+  out.push(m);
+  for (let i = 2; i < n - 1; i += o.rivetEvery ?? 3) {
+    const s = row[i], k = 0.45, p = [s.F[0] + (s.I[0] - s.F[0]) * k * 0.3, s.F[1] + (s.I[1] - s.F[1]) * k * 0.3];
+    out.push(cyl(`${name} rivet ${i}`, sx * (faceX(p) + 0.02), p[1], p[0], 0.12, 0.1, "x", "#9a9fa8", { segments: 6, material: STEEL }));
+  }
+  return out;
+}
+/// A bar swept along a line in plan (x, z): a bumper that follows the nose and wraps the corners. `y0`..`y1` its height, `deep` its thickness inwards.
+export function sweptBar(name, line, y0, y1, deep, color, o = {}) {
+  const c = o.chamfer ?? 0.3, n = line.length, verts = [], loops = [], mid = line.reduce((m, p) => [m[0] + p[0] / n, m[1] + p[1] / n], [0, 0]);
+  const sec = [];
+  for (let i = 0; i < n; i++) {
+    const a = line[Math.max(0, i - 1)], b = line[Math.min(n - 1, i + 1)], p = line[i], tx = b[0] - a[0], tz = b[1] - a[1], l = Math.hypot(tx, tz) || 1;
+    let nx = -tz / l, nz = tx / l; // inwards: towards the middle of the line
+    if (nx * (mid[0] - p[0]) + nz * (mid[1] - p[1]) < 0) { nx = -nx; nz = -nz; }
+    const at = (d, y) => verts.push([p[0] + nx * d, y, p[1] + nz * d]) - 1;
+    sec.push([at(0, y0 + c), at(0, y1 - c), at(c, y1), at(deep, y1), at(deep, y0), at(c, y0)]);
+  }
+  for (let i = 0; i < n - 1; i++) for (let k = 0; k < 6; k++) {
+    const q = [sec[i][k], sec[i][(k + 1) % 6], sec[i + 1][(k + 1) % 6], sec[i + 1][k]];
+    const cen = [...sec[i], ...sec[i + 1]].reduce((m, v) => m.map((x, j) => x + verts[v][j] / 12), [0, 0, 0]), fc = q.reduce((m, v) => m.map((x, j) => x + verts[v][j] / 4), [0, 0, 0]);
+    loops.push({ v: q, want: fc.map((x, j) => x - cen[j]) });
+  }
+  loops.push({ v: sec[0], want: [line[0][0] - line[1][0], 0, line[0][1] - line[1][1]] }, { v: sec[n - 1], want: [line[n - 1][0] - line[n - 2][0], 0, line[n - 1][1] - line[n - 2][1]] });
+  const m = mesh(name, verts, loops, color, { material: o.material ?? PAINT });
+  if (o.cuts) m.modifiers = [{ type: "cutout", cuts: o.cuts }];
+  return m;
 }

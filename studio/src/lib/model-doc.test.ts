@@ -20,6 +20,21 @@ describe("parsing and saving", () => {
     expect(text.endsWith("}\n")).toBe(true);
   });
 
+  it("keeps glass, and exports it as KHR_materials_transmission", () => {
+    let d = newModel();
+    d = addCube(d, [0], { from: [-2, 0, -1], size: [4, 2, 0.2], color: "#1a2633", metallic: 0.7, roughness: 0.06, glass: 1 }).doc;
+    const text = serializeModel(d);
+    expect(text).toContain('"glass": 1');
+    expect(parseModel(text)).toEqual({ ok: true, doc: d });
+    const bytes = exportGlb(d);
+    const json = JSON.parse(new TextDecoder().decode(bytes.subarray(20, 20 + new DataView(bytes.buffer, bytes.byteOffset).getUint32(12, true))));
+    expect(json.extensionsUsed).toEqual(["KHR_materials_transmission"]);
+    expect(json.materials.some((m: { extensions?: { KHR_materials_transmission?: { transmissionFactor: number } } }) => m.extensions?.KHR_materials_transmission?.transmissionFactor === 1)).toBe(true);
+    const bad = JSON.parse(text);
+    bad.parts[0].cubes.at(-1).glass = 3;
+    expect(parseModel(JSON.stringify(bad))).toMatchObject({ ok: false });
+  });
+
   it("explains what is wrong with a bad file", () => {
     expect(parseModel("{ no")).toMatchObject({ ok: false });
     expect(parseModel("{}")).toMatchObject({ ok: false, error: 'a model file has a "parts" list' });

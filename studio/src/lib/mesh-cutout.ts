@@ -33,6 +33,7 @@ export interface Cut {
   roughness?: number;
   emissive?: number;
   coat?: number;
+  glass?: number;
   /// How squarely a face must look at the view to be cut, 0 (edge on) to 1 (facing it exactly); default 0.2. Below 0 (to -1) faces that look away are cut too
   /// (a wheel opening goes through the sill's underside as well).
   facing?: number;
@@ -204,8 +205,8 @@ export function applyCut(vertsIn: Vec3[], polysIn: MeshFace[], cut: Cut, fallbac
       const g: MeshFace = { ...f };
       if (cut.color) g.color = cut.color;
       if (cut.flat) delete g.smooth;
-      if (cut.metallic !== undefined || cut.roughness !== undefined || cut.emissive !== undefined || cut.coat !== undefined) {
-        g.mat = { ...(cut.metallic !== undefined ? { metallic: cut.metallic } : {}), ...(cut.roughness !== undefined ? { roughness: cut.roughness } : {}), ...(cut.emissive !== undefined ? { emissive: cut.emissive } : {}), ...(cut.coat !== undefined ? { coat: cut.coat } : {}) };
+      if (cut.metallic !== undefined || cut.roughness !== undefined || cut.emissive !== undefined || cut.coat !== undefined || cut.glass !== undefined) {
+        g.mat = { ...(cut.metallic !== undefined ? { metallic: cut.metallic } : {}), ...(cut.roughness !== undefined ? { roughness: cut.roughness } : {}), ...(cut.emissive !== undefined ? { emissive: cut.emissive } : {}), ...(cut.coat !== undefined ? { coat: cut.coat } : {}), ...(cut.glass !== undefined ? { glass: cut.glass } : {}) };
       }
       return g;
     };
@@ -255,7 +256,7 @@ export function checkCuts(cuts: unknown, at: string): string | null {
     if (!Array.isArray(pts) || pts.length < 3 || pts.length > MAX_CUT_POINTS || !pts.every((p) => Array.isArray(p) && p.length === 2 && p.every((n) => typeof n === "number" && Number.isFinite(n)))) return `${w}.points must be 3 to ${MAX_CUT_POINTS} pairs of numbers`;
     for (const k of ["color", "wall"]) if (c[k] !== undefined && !isColor(c[k])) return `${w}.${k} must be like #c9d1d9`;
     for (const k of ["mirror", "remove", "flat"]) if (c[k] !== undefined && typeof c[k] !== "boolean") return `${w}.${k} must be true or false`;
-    for (const [k, lo, hi] of [["depth", 0, 1e6], ["metallic", 0, 1], ["roughness", 0, 1], ["emissive", 0, 1], ["coat", 0, 1], ["facing", -1, 1], ["near", -1e6, 1e6], ["far", -1e6, 1e6]] as const) {
+    for (const [k, lo, hi] of [["depth", 0, 1e6], ["metallic", 0, 1], ["roughness", 0, 1], ["emissive", 0, 1], ["coat", 0, 1], ["glass", 0, 1], ["facing", -1, 1], ["near", -1e6, 1e6], ["far", -1e6, 1e6]] as const) {
       const v = c[k];
       if (v !== undefined && !(typeof v === "number" && Number.isFinite(v) && v >= lo && v <= hi)) return `${w}.${k} must be a number from ${lo} to ${hi}`;
     }

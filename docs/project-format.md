@@ -326,6 +326,24 @@ the ground, far mountains and clouds); a model with see-through colours never ca
 shadows; they cost an extra drawing pass, so let players switch them off. A model shape can glow by itself in the dark
 (`emissive`, see the model format). Scene files can set `sky` and `fog` too.
 
+**The land under the sky** (added 2026-11-20). `nova.sky { ..., ground = { 110, 120, 80 } }` says what colour the land around is. Models
+lit by their materials (`"materials"` in nova.json) then take on the place they are in: they are lit from below by that colour (as the
+sun and the ambient light leave it) instead of by one ambient colour all round, their paint, metal and glass mirror it under the
+horizon (with a darker line just below the horizon, the far land seen edge on), and within about 0.6 m of a model's own base that
+light is dimmed, because a thing standing on the ground shades the ground at its foot. Without `ground` nothing changes. It costs
+no picture read. (With `ibl` the sky cube is used instead and `ground` is not.)
+
+**Dirt** (added 2026-11-20). `nova.model("car", x, y, z, { dirt = 0.6, dirt_color = { 140, 115, 85 } })` draws the model with dirt
+on it: `dirt` is how much, 0 (clean, the default) to 1, and `dirt_color` its colour (a dull brown when left out). The shader draws
+it with no picture: it is thrown up from the ground, so it lies thick at the foot of the model and its ragged edge climbs as the
+amount grows (as its square root: quickly at first), to about 0.6 m at most and 0.9 m at the tail (the model's -z end), with
+spatter above the edge (close to only) and a thin film of dust over the rest; where it lies there is no metal, gloss, clear coat
+or glass, and lamps are dimmed. `dirt_on_top = true` is for what also settles from above (snow, ash): it lies on the surfaces
+that face up too. Heights are metres above the model's own origin (its base), also for parts drawn turned on their own (wheels).
+It works on every model, with or without materials, and costs a clean model nothing but one comparison a pixel. A game changes
+`dirt` over time (Pine Ridge Rally's `entities/car.lua`: it builds up on gravel, sand and snow and wears off on tarmac). The
+amount is kept in 127 steps and the colour in 5 bits a channel.
+
 **Parts.** A model is a tree of named parts (the nodes of its `.glb`; the studio's model editor makes
 one per part). `nova.model_parts("car")` lists their names. To move pieces on their own, give `parts`
 a table of changes; each turns about the part's own pivot, inside its parent, so a wheel stays on its axle
@@ -375,13 +393,13 @@ colours, since its polygons are new. Units are model units.
 | `solidify` | `thickness` (1), `offset` (-1 inwards, 1 outwards, 0 both), `even` (true: same thickness round corners). A closed mesh becomes a hollow shell, an open one a slab with rim walls. |
 | `revolve` | A lathe: the mesh's points, **in order**, are a profile line (distance from the axis, position along it: for `axis` `"y"` that is `(x, y)`, for `"x"` `(y, x)`, for `"z"` `(x, z)`); the polygons are ignored. `segments` (24), `angle` (360), `closed` (false), `sharp` (40: profile corners sharper than this many degrees stay crisp, gentler ones shade smoothly), `flip`. A point on the axis is one point. Use it for wheels, tyres, rims, bottles; the studio's "Profile (spun into a wheel or tyre)" shape starts one. |
 | `array` | `count` (2, up to 64), `offset` (`[x, y, z]` distance between copies), `relative` (`[x, y, z]` times the mesh's size, added), `merge` (0: points of neighbouring copies closer than this are joined). |
-| `cutout` | Cut-outs (Blender's knife project, added 2026-11-19): `cuts`, up to 96 outlines, each pressed onto the surface that faces its view and cut into it, so the area inside becomes faces of its own. An outline: `view` (`"side"`: points are (z, y), both flanks unless `only` is `"+x"` or `"-x"`; `"front"`, `"back"`: (x, y); `"top"`, `"bottom"`: (x, z)), `points` (3 to 96 pairs, closed, either way round), `mirror` (also its mirror image across x = 0; not for the side view), `color` (the inside's colour), `depth` (sink the inside this far along the line of sight, with matt walls round it coloured `wall`: a grille, a recessed lamp, a panel gap), `remove` (take the inside away: a wheel opening; with `depth` it gets a rolled-in lip), `metallic`, `roughness`, `emissive`, `coat` (the inside's own surface: glass, a lamp that glows; the `.glb` gets a material for each), `facing` (0.2: how squarely a face must look at the view, 1 exactly, 0 edge on, below 0 also faces that look away), `near` and `far` (only faces between these distances along the line of sight), `flat`, `name`. Put it after Mirror and Subdivision: it cuts the finished surface, whatever its polygons. Code: `studio/src/lib/mesh-cutout.ts`. |
+| `cutout` | Cut-outs (Blender's knife project, added 2026-11-19): `cuts`, up to 96 outlines, each pressed onto the surface that faces its view and cut into it, so the area inside becomes faces of its own. An outline: `view` (`"side"`: points are (z, y), both flanks unless `only` is `"+x"` or `"-x"`; `"front"`, `"back"`: (x, y); `"top"`, `"bottom"`: (x, z)), `points` (3 to 96 pairs, closed, either way round), `mirror` (also its mirror image across x = 0; not for the side view), `color` (the inside's colour), `depth` (sink the inside this far along the line of sight, with matt walls round it coloured `wall`: a grille, a recessed lamp, a panel gap), `remove` (take the inside away: a wheel opening; with `depth` it gets a rolled-in lip), `metallic`, `roughness`, `emissive`, `coat`, `glass` (the inside's own surface: glass, a lamp that glows; the `.glb` gets a material for each), `facing` (0.2: how squarely a face must look at the view, 1 exactly, 0 edge on, below 0 also faces that look away), `near` and `far` (only faces between these distances along the line of sight), `flat`, `name`. Put it after Mirror and Subdivision: it cuts the finished surface, whatever its polygons. Code: `studio/src/lib/mesh-cutout.ts`. |
 
 **Creases.** A mesh may also carry `"creases": [[point a, point b, weight], ...]` (weight 0 to 1): the Subdivision modifier keeps those edges sharp, a weight of 1
 through all four levels, smaller ones for fewer (semi-sharp, as in Blender). Open borders are always sharp. Mirror, Array and Solidify carry creases to their
 copies; Bevel and Revolve drop them; the editor renumbers them when points are deleted.
 
-**Materials.** Every shape may carry `"metallic"` and `"roughness"` (0 to 1; defaults 0 and 1) and `"coat"` (0 to 1, default 0: a clear coat, the glossy lacquer of car paint, written as `KHR_materials_clearcoat`; added 2026-11-19) next to `"emissive"` and its `color`. The `.glb` gets one glTF material per combination
+**Materials.** Every shape may carry `"metallic"` and `"roughness"` (0 to 1; defaults 0 and 1) and `"coat"` (0 to 1, default 0: a clear coat, the glossy lacquer of car paint, written as `KHR_materials_clearcoat`; added 2026-11-19) and `"glass"` (0 to 1, default 0: a pane of glass, written as `KHR_materials_transmission`; the game draws it as dark tinted glass of the shape's colour that mirrors the sky and the land, with nothing seen through it; added 2026-11-20) next to `"emissive"` and its `color`. The `.glb` gets one glTF material per combination
 (`metallicFactor`, `roughnessFactor`, `emissiveFactor`) with the colours as vertex colours; the game uses them when `nova.json` has `"materials": true` (docs/materials.md).
 
 **Arches and openings**: cut them with a `cutout` outline (`remove`, with `depth` for the lip), or model them into the cage. Give the cage an edge loop where the arch will be (Loop cut), pull the loop's faces inward

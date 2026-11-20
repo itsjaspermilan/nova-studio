@@ -24,6 +24,7 @@ struct Globals {
     cascade_vp: array<mat4x4<f32>, 3>,  // the sun's cascaded shadow maps (more than one cascade only)
     cascade_info: array<vec4<f32>, 3>,  // x: where the cascade ends (distance along the view), y: depth bias, z: metres a texel spans
     cascade_count: vec4<f32>,           // x: how many cascades (1: the single map, which uses light_view_proj)
+    ground: vec4<f32>,                  // rgb: the land around as the light leaves it (its colour under the sun and the ambient light); w: 1 when the sky gave one
 };
 @group(0) @binding(0) var<uniform> globals: Globals;
 @group(0) @binding(1) var heightmap: texture_2d<f32>;  // the heightmap (R32Float, metres); 1 x 1 when there is none
@@ -164,7 +165,50 @@ struct VertexOut {
     @location(4) emissive: f32,
     // 0: solid; otherwise a screen-door fade (see `ModelInstance::dissolving`)
     @location(5) @interpolate(flat) dissolve: f32,
+    // dirt on this draw, as the instance carries it (see `ModelInstance::dirty` and `dirt_of`): below 1.5 there is none
+    @location(6) @interpolate(flat) dirt: f32,
+    // xyz: the vertex in its piece's own space (dirt's blotches are fixed to it); w: metres above the model's base (its own origin)
+    @location(7) local: vec4<f32>,
 };
+
+// The dirt an instance carries in the w slot of its matrix's fourth column (1 in a clean one): 2 + a whole number of 23 bits, which
+// are how much (7), whether it lies on top (1) and its colour (5 each, sRGB). Unpacked by the pixels that have some: rgb the colour
+// (linear), w how much (to 1), plus 2 when it lies on top too (snow).
+fn dirt_of(w: f32) -> vec4<f32> {
+    let c = u32(w - 1.5);
+    let rgb = vec3<f32>(f32((c >> 8u) & 31u), f32((c >> 13u) & 31u), f32((c >> 18u) & 31u)) / 31.0;
+    return vec4<f32>(srgb_to_linear(rgb), f32(c & 127u) / 127.0 + 2.0 * f32((c >> 7u) & 1u));
+}
+
+// How much of a pixel is under the dirt of its draw (0 to 1), with no picture: it is thrown up from the ground, so it is thick at the
+// foot of the model and its edge climbs as it builds up (further at the tail, -z), broken by soft blotches fixed to the model, with
+// spatter above the edge and a thin film of dust over the rest; dirt that lies on top (snow) also settles on what faces up.
+fn dirt_cover(local: vec4<f32>, n: vec3<f32>, d: f32, far: f32) -> f32 {
+    let top = step(1.5, d);
+    let amount = d - 2.0 * top;
+    let p = local.xyz;
+    let blot = 0.6 * sin(p.z * 5.3 + p.y * 3.1) * sin(p.x * 4.7 - p.y * 6.3 + 1.7) + 0.4 * sin(p.z * 13.1 - p.x * 9.7 + p.y * 11.3);
+    // (at its most the edge is about 0.6 m up, 0.9 m at the tail: the sills, the arches and the rear, not the roof; it climbs fast at
+    // first and slower after, as the square root of the amount)
+    let reach = sqrt(amount) * (0.62 + 0.3 * smoothstep(0.0, -1.8, p.z));
+    let ragged = blot + 0.5 * sin(p.z * 31.0 + p.y * 23.0 + blot * 4.0) * sin(p.x * 27.0 - p.y * 37.0);
+    let level = (reach - local.w) * 2.6 + ragged * 0.6 * amount;
+    var cover = 0.92 * smoothstep(0.0, 1.0, level);
+    // spatter: a round dot of a few centimetres in some of the cells of a 5 cm grid, each where and as big as its cell's own random
+    // number says; more of them near the edge (none far away, where they would be smaller than a pixel and flicker)
+    let g = p * 21.0;
+    let cell = floor(g);
+    let r1 = fract(sin(dot(cell, vec3<f32>(12.9898, 78.233, 37.719))) * 43758.5453);
+    let r2 = fract(r1 * 57.31);
+    let r3 = fract(r1 * 113.7);
+    let off = length(g - cell - vec3<f32>(0.3) - 0.4 * vec3<f32>(r2, r3, fract(r1 * 271.9)));
+    let size = 0.1 + 0.2 * r3;
+    let chance = amount * smoothstep(-2.6, 0.3, level) * (1.0 - far);
+    cover = max(cover, 0.8 * step(r1, 0.75 * chance) * (1.0 - smoothstep(size * 0.6, size, off)));
+    cover = max(cover, 0.2 * amount * smoothstep(1.5, 0.3, local.w));
+    let lie = top * smoothstep(0.35, 0.8, n.y + blot * 0.12) * smoothstep(0.1, 0.9, amount + ragged * 0.12);
+    return clamp(max(cover, lie), 0.0, 1.0);
+}
 
 @vertex
 fn vs_main(v: Vertex, inst: Instance) -> VertexOut {
@@ -173,10 +217,14 @@ fn vs_main(v: Vertex, inst: Instance) -> VertexOut {
 
 // (vs_main's work, shared with the material and custom-shader entry points)
 fn mesh_vertex(v: Vertex, inst: Instance) -> VertexOut {
-    let model = mat4x4<f32>(inst.m0, vec4<f32>(inst.m1.xyz, 0.0), vec4<f32>(inst.m2.xyz, 0.0), inst.m3);
+    // (an instance's matrix is affine; the slots that are always 0 or 1 carry other things: see `ModelInstance`)
+    let model = mat4x4<f32>(vec4<f32>(inst.m0.xyz, 0.0), vec4<f32>(inst.m1.xyz, 0.0), vec4<f32>(inst.m2.xyz, 0.0), vec4<f32>(inst.m3.xyz, 1.0));
     var out: VertexOut;
     out.dissolve = inst.m1.w;
+    out.dirt = inst.m3.w;
     var world = model * vec4<f32>(v.position, 1.0);
+    // how high the vertex is above the model's base: a piece drawn on its own (a wheel) says how far below its origin that is (m0.w)
+    out.local = vec4<f32>(v.position, (world.y - inst.m3.y - inst.m0.w) / max(length(inst.m1.xyz), 1e-6));
     world = vec4<f32>(world.xyz + wind_offset(inst.m3.xyz, world.xyz, inst.m2.w), 1.0);
     var normal = select(safe_normalize((model * vec4<f32>(v.normal, 0.0)).xyz), v.normal, v.emissive < 0.0);
     if (terrain_active() && inst.m3.y < 30.0) {
@@ -329,6 +377,14 @@ fn plain_light(in: VertexOut, base: vec4<f32>) -> vec4<f32> {
         return vec4<f32>(vrgb, base.a);
     }
     let n = safe_normalize(in.normal);
+    var surface = base.rgb;
+    var glow = in.emissive;
+    if (in.dirt > 1.5) {
+        let dirt = dirt_of(in.dirt);
+        let cover = dirt_cover(in.local, n, dirt.w, smoothstep(10.0, 25.0, distance(in.world, globals.eye.xyz)));
+        surface = mix(surface, dirt.rgb, cover);
+        glow = glow * (1.0 - 0.7 * cover);
+    }
     // the sun's share is dimmed in a shadow, down to `1 - strength` of it
     let visible = mix(1.0 - globals.shadow.w, 1.0, sun_visibility(in.world, n));
     var diffuse = max(dot(n, -globals.light_dir.xyz), 0.0) * visible;
@@ -356,7 +412,7 @@ fn plain_light(in: VertexOut, base: vec4<f32>) -> vec4<f32> {
         light = light + globals.point_color[i].rgb * (falloff * falloff * lambert * cone);
     }
     // a glowing surface shows its colour at full brightness however dark the scene is
-    var rgb = base.rgb * (light + vec3<f32>(in.emissive));
+    var rgb = surface * (light + vec3<f32>(glow));
     if (globals.fog_color.w > 0.5) {
         let d = distance(in.world, globals.eye.xyz);
         let f = clamp((d - globals.fog_range.x) / (globals.fog_range.y - globals.fog_range.x), 0.0, 1.0);
@@ -414,12 +470,14 @@ fn skin_matrix(v: SkinVertex, base: u32) -> mat4x4<f32> {
 // (vs_skinned's work, shared with the material and custom-shader entry points)
 fn skinned_vertex(v: SkinVertex, inst: Instance) -> VertexOut {
     let base = u32(inst.m0.w + 0.5);
-    let model = mat4x4<f32>(vec4<f32>(inst.m0.xyz, 0.0), vec4<f32>(inst.m1.xyz, 0.0), vec4<f32>(inst.m2.xyz, 0.0), inst.m3);
+    let model = mat4x4<f32>(vec4<f32>(inst.m0.xyz, 0.0), vec4<f32>(inst.m1.xyz, 0.0), vec4<f32>(inst.m2.xyz, 0.0), vec4<f32>(inst.m3.xyz, 1.0));
     let skin = skin_matrix(v, base);
     let posed = skin * vec4<f32>(v.position, 1.0);
     let normal = (skin * vec4<f32>(v.normal, 0.0)).xyz;
     var out: VertexOut;
     var world = model * posed;
+    out.dirt = inst.m3.w;
+    out.local = vec4<f32>(v.position, (world.y - inst.m3.y) / max(length(inst.m1.xyz), 1e-6));
     var world_normal = safe_normalize((model * vec4<f32>(normal, 0.0)).xyz);
     if (terrain_active() && inst.m3.y < 30.0) {
         if (inst.m2.w < 0.0) {
@@ -472,6 +530,8 @@ struct MaterialOut {
     @location(7) surface: vec4<f32>,
     @location(8) emission: vec4<f32>,
     @location(9) coat: vec4<f32>,
+    @location(10) @interpolate(flat) dirt: f32,
+    @location(11) local: vec4<f32>,
 };
 
 // The tangent in the world, leaning with the hills like the normal does (the lift's forward shear).
@@ -484,6 +544,8 @@ fn material_out(o: VertexOut, tangent: vec3<f32>, m: MaterialVertex, ground: boo
     out.world = o.world;
     out.emissive = o.emissive;
     out.dissolve = o.dissolve;
+    out.dirt = o.dirt;
+    out.local = o.local;
     var t = tangent;
     if (ground && terrain_active()) {
         let g = terrain_slope(o.world.xz);
@@ -527,15 +589,25 @@ fn highlight(n: vec3<f32>, v: vec3<f32>, l: vec3<f32>, rough: f32, f0: vec3<f32>
 }
 
 // What the world reflects along a direction, for a surface this rough: the cube made from the sky when the game asks for it (`ibl`),
-// else the sky's two colours (the ground below the horizon is its horizon, darker), else the ambient light.
-fn environment(dir: vec3<f32>, rough: f32) -> vec3<f32> {
+// else the sky's two colours over the land's (`nova.sky`'s `ground`, as the sun and the ambient light leave it; dimmed by `shade`,
+// the model's own shade on the ground at its foot), meeting at the horizon in a line that is sharper the smoother the surface; with no
+// ground colour the land is the horizon, darker; with no sky, the ambient light.
+fn environment(dir: vec3<f32>, rough: f32, shade: f32) -> vec3<f32> {
     if (globals.cascade_count.y > 0.5) {
         return textureSampleLevel(env_map, env_sampler, dir, rough * globals.cascade_count.w).rgb;
     }
     var around = globals.ambient.rgb;
     if (globals.sky_top.w > 0.5) {
         let up = mix(globals.sky_horizon.rgb, globals.sky_top.rgb, clamp(dir.y, 0.0, 1.0));
-        around = mix(globals.sky_horizon.rgb * 0.45, up, smoothstep(-0.25, 0.0, dir.y));
+        if (globals.ground.w > 0.5) {
+            // (the far land, just under the horizon, is seen edge on and is mostly its own shade: trees, hillsides. That dark line under
+            // the bright horizon is what a car's flank and its windows show of the world)
+            let blur = 0.03 + rough * 0.5;
+            let land = globals.ground.rgb * mix(shade, 0.42, smoothstep(-0.22 - blur, -0.03, dir.y));
+            around = mix(land, up, smoothstep(-blur, blur, dir.y));
+        } else {
+            around = mix(globals.sky_horizon.rgb * 0.45, up, smoothstep(-0.25, 0.0, dir.y));
+        }
     }
     return around;
 }
@@ -573,6 +645,22 @@ fn fs_material(in: MaterialOut) -> @location(0) vec4<f32> {
         rough = rough * packed.g;
         metallic = metallic * packed.b;
     }
+    var albedo = base.rgb;
+    var coat = in.coat.x;
+    var glass = in.coat.z;
+    var lamp = 1.0;
+    let away = distance(in.world, globals.eye.xyz);
+    // dirt lies over the surface: its own dull colour, and no metal, gloss, lacquer or glass shows through it
+    if (in.dirt > 1.5) {
+        let dirt = dirt_of(in.dirt);
+        let cover = dirt_cover(in.local, geo, dirt.w, smoothstep(10.0, 25.0, away)) * (1.0 - 0.5 * glass);
+        albedo = mix(albedo, dirt.rgb, cover);
+        metallic = metallic * (1.0 - cover);
+        rough = mix(rough, 0.95, cover);
+        coat = coat * (1.0 - cover);
+        glass = glass * (1.0 - cover);
+        lamp = 1.0 - 0.7 * cover;
+    }
     rough = clamp(rough, 0.045, 1.0);
     let v = safe_normalize(globals.eye.xyz - in.world);
     let to_sun = -globals.light_dir.xyz;
@@ -583,23 +671,41 @@ fn fs_material(in: MaterialOut) -> @location(0) vec4<f32> {
         let w = fwidth(x) * 0.75 + 0.01;
         diffuse = (floor(x) + smoothstep(0.5 - w, 0.5 + w, fract(x))) / globals.voxel.y;
     }
-    // the light that falls from the sky on this side of the surface, in place of one ambient colour (made from the sky's own cube and
-    // scaled so that it averages the game's ambient light)
+    // the light that falls from the sky on this side of the surface, in place of one ambient colour: made from the sky's own cube and
+    // scaled so that it averages the game's ambient light; or, when the sky has a ground colour, the ambient light from above and the
+    // land's own light from below, less of both near the model's foot (it stands in its own shade: `shade`)
     var ambient = globals.ambient.rgb;
+    var shade = 1.0;
     if (globals.cascade_count.y > 0.5) {
         ambient = textureSampleLevel(env_map, env_sampler, n, globals.cascade_count.w).rgb * globals.cascade_count.z;
+    } else if (globals.ground.w > 0.5) {
+        shade = 0.4 + 0.6 * smoothstep(0.0, 0.6, in.local.w);
+        ambient = mix(globals.ground.rgb * shade, globals.ambient.rgb * (0.6 + 0.4 * shade), smoothstep(-0.9, 0.9, n.y));
     }
     var light = ambient + globals.light_color.rgb * diffuse * (1.0 - ambient);
-    let f0 = mix(vec3<f32>(0.04), base.rgb, metallic);
+    var f0 = mix(vec3<f32>(0.04), albedo, metallic);
+    // metal flake under a lacquer: grains of about 6 mm, each a little brighter or darker and a few catching the sun (only close to:
+    // further off they are smaller than a pixel)
+    var sparkle = 0.0;
+    if (coat > 0.0 && metallic > 0.05) {
+        let near = (1.0 - smoothstep(2.5, 7.0, away)) * coat;
+        let grain = fract(sin(dot(floor(in.local.xyz * 160.0), vec3<f32>(127.1, 311.7, 74.7))) * 43758.5453);
+        f0 = f0 * (1.0 + (grain - 0.5) * 0.5 * near);
+        sparkle = grain * grain * grain * near;
+    }
     // a clear coat: a smooth glossy layer over everything else, lit by the geometry's own normal (no bumps); it reflects a few percent
-    // of what it faces, more at a slant, and lets the rest through to the paint below
-    let coat = in.coat.x;
-    let coat_rough = max(in.coat.y, 0.03);
+    // of what it faces, more at a slant, and lets the rest through to the paint below. Glass shines the same way, sharper.
+    let coat_rough = mix(max(in.coat.y, 0.03), 0.04, glass);
+    let glossy = coat > 0.0 || glass > 0.0;
     var coat_shine = vec3<f32>(0.0);
-    if (coat > 0.0) {
+    if (glossy) {
         coat_shine = globals.light_color.rgb * highlight(geo, v, to_sun, coat_rough, vec3<f32>(0.04)) * visible;
     }
     var shine = globals.light_color.rgb * highlight(n, v, to_sun, rough, f0) * visible;
+    if (sparkle > 0.0) {
+        let h = safe_normalize(v + to_sun);
+        shine = shine + globals.light_color.rgb * f0 * (sparkle * 1.6 * pow(max(dot(n, h), 0.0), 12.0) * max(dot(n, to_sun), 0.0) * visible);
+    }
     let count = i32(globals.light_dir.w);
     for (var i = 0; i < count; i = i + 1) {
         let to_light = globals.point_pos[i].xyz - in.world;
@@ -614,33 +720,44 @@ fn fs_material(in: MaterialOut) -> @location(0) vec4<f32> {
         let reach = globals.point_color[i].rgb * (falloff * falloff * cone);
         light = light + reach * max(dot(n, towards), 0.0);
         shine = shine + reach * highlight(n, v, towards, rough, f0);
-        if (coat > 0.0) {
+        if (glossy) {
             coat_shine = coat_shine + reach * highlight(geo, v, towards, coat_rough, vec3<f32>(0.04));
         }
     }
-    // what a shiny surface reflects: the sky along the reflection (the ground below the horizon is its horizon, darker), or the
+    // what a shiny surface reflects: the sky along the reflection (below the horizon the land, or the horizon darker), or the
     // ambient light with no sky; a rough one shows little of it (its blurred average is in the ambient already)
     let r = reflect(-v, n);
-    let around = environment(r, rough);
+    let around = environment(r, rough, shade);
     let nv = max(dot(n, v), 0.0);
     let fresnel = f0 + (max(vec3<f32>(1.0 - rough), f0) - f0) * pow(1.0 - nv, 5.0);
     let mirror = around * fresnel * (1.0 - rough * 0.85);
-    var rgb = base.rgb * (1.0 - metallic) * light + shine + mirror;
-    if (coat > 0.0) {
+    var rgb = albedo * (1.0 - metallic) * light + shine + mirror;
+    if (glossy) {
         let nv_geo = max(dot(geo, v), 0.0);
-        let fresnel_coat = (0.04 + 0.96 * pow(1.0 - nv_geo, 5.0)) * coat;
-        rgb = rgb * (1.0 - fresnel_coat) + coat_shine * coat + environment(reflect(-v, geo), coat_rough) * fresnel_coat;
+        let sheen = environment(reflect(-v, geo), coat_rough, shade);
+        if (coat > 0.0) {
+            let fresnel_coat = (0.04 + 0.96 * pow(1.0 - nv_geo, 5.0)) * coat;
+            rgb = rgb * (1.0 - fresnel_coat) + coat_shine * coat + sheen * fresnel_coat;
+        }
+        // glass (`KHR_materials_transmission`), with nothing drawn behind it: a dark tinted pane that mirrors the sky and the land,
+        // faintly looking straight in and brightly at a slant, with the sun's sharp glint; and a hint of what is inside: dark looking
+        // down into it, lighter looking level, through to the light of the far side
+        if (glass > 0.0) {
+            let mirrored = 0.09 + 0.91 * pow(1.0 - nv_geo, 5.0);
+            let through = environment(-v, 0.5, 1.0) * (0.05 * smoothstep(-0.5, 0.1, -v.y));
+            let pane = (albedo * light + through) * (1.0 - mirrored) + sheen * (1.25 * mirrored) + coat_shine * 2.0;
+            rgb = mix(rgb, pane, glass);
+        }
     }
     if (in.emission.w < -0.5) {
-        rgb = rgb + base.rgb * in.emissive;
+        rgb = rgb + albedo * (in.emissive * lamp);
     } else if (in.emission.w > 0.5) {
-        rgb = rgb + in.emission.rgb * glow_map;
+        rgb = rgb + in.emission.rgb * glow_map * lamp;
     } else {
-        rgb = rgb + in.emission.rgb;
+        rgb = rgb + in.emission.rgb * lamp;
     }
     if (globals.fog_color.w > 0.5) {
-        let d = distance(in.world, globals.eye.xyz);
-        let f = clamp((d - globals.fog_range.x) / (globals.fog_range.y - globals.fog_range.x), 0.0, 1.0);
+        let f = clamp((away - globals.fog_range.x) / (globals.fog_range.y - globals.fog_range.x), 0.0, 1.0);
         rgb = mix(rgb, globals.fog_color.rgb, f);
     }
     return vec4<f32>(rgb, base.a);

@@ -167,7 +167,7 @@ function race.scene()
       local p = self.player
       return string.format("speed %.0f steer %.2f slip %.2f %s view %d", p.speed, p.ctl.steer, p.slip, tostring(p.surface), self.view_mode)
     end)
-    self.view_mode = 2 -- the far chase view (C changes it)
+    self.view_mode = 1 -- the near chase view (C changes it)
     self.message, self.message_time = "", 0
     self.cars = {}
     self.lap_times = {}
@@ -793,14 +793,15 @@ function race.scene()
     else
       local near = self.view_mode == 1
       local back = (near and 6.4 or 9.5) + speed * 0.03
-      local height = (near and 2.6 or 4.2) + orbit.lift * (near and 2.5 or 3.5)
+      local height = (near and 3.1 or 4.2) + orbit.lift * (near and 2.5 or 3.5)
       -- the camera's place on a circle round the car: behind it when the angle is 0
       local a = cam.heading + orbit.yaw
       local ox, oz = math.sin(a), math.cos(a)
       cam.x, cam.y, cam.z = p.x - ox * back, height, p.z - oz * back
       -- looking ahead of the car when behind it, at the car itself as it swings away
-      local ahead = 5 * math.max(0, 1 - oy / 0.9)
-      cam.tx, cam.ty, cam.tz = p.x + sh * ahead, 1.1, p.z + ch * ahead
+      -- (the near view sits a little higher and looks further up the road, so the car is low in the picture and the road ahead fills it)
+      local ahead = (near and 8 or 5) * math.max(0, 1 - oy / 0.9)
+      cam.tx, cam.ty, cam.tz = p.x + sh * ahead, near and 1.7 or 1.1, p.z + ch * ahead
       cam.fov = 62 + speed * 0.2
       cam.bonnet = false
     end

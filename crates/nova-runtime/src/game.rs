@@ -1517,14 +1517,29 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 };
                 // what the near (full) model is drawn with: `None` when only the far one is
                 let near_dissolve = lod.map_or(Some(0.0), |(_, d)| d.near);
+                // `dirt = 0..1`: dirt on the model, drawn by the shaders with no picture (thick at its foot, climbing as it builds up);
+                // `dirt_color = {r, g, b}`, and `dirt_on_top = true` when it lies on what faces up too (snow)
+                let dirt = match number_option(&opts, "dirt")? {
+                    Some(amount) if amount > 0.0 => {
+                        let c = color_option(&opts, "dirt_color", [122, 100, 76, 255])?;
+                        let on_top = opts.as_ref().map_or(Ok(false), |o| o.get::<Option<bool>>("dirt_on_top").map(|b| b.unwrap_or(false)))?;
+                        Some((amount as f32, [c[0], c[1], c[2]].map(|v| f32::from(v) / 255.0), on_top))
+                    }
+                    _ => None,
+                };
+                let dirtied = |i: ModelInstance| match dirt {
+                    Some((amount, color, on_top)) => i.dirty(amount, color, on_top),
+                    None => i,
+                };
                 if let Some((far_mesh, animated::LodDissolve { far: Some(far), .. })) = lod {
-                        let instance = ModelInstance { matrix: matrix.to_cols_array_2d(), tint };
+                        let instance = dirtied(ModelInstance { matrix: matrix.to_cols_array_2d(), tint });
                         let instance = if far == 0.0 { instance } else { instance.dissolving(far) };
                         shader_api::push_model(&mut sh, ModelDraw { casts, mesh: far_mesh, instance }, shading);
                 }
                 let Some(near_dissolve) = near_dissolve else { return Ok(()) };
                 let rigid = opts.as_ref().map_or(Ok(false), |o| o.get::<Option<bool>>("rigid").map(|b| b.unwrap_or(false)))?;
                 let dissolve = |i: ModelInstance| {
+                    let i = dirtied(i);
                     let i = if near_dissolve == 0.0 { i } else { i.dissolving(near_dissolve) };
                     if rigid { i.rigid() } else { i }
                 };
@@ -1607,10 +1622,11 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                         shader_api::push_model(sh, ModelDraw {
                             casts,
                             mesh,
-                            instance: dissolve(ModelInstance {
-                                matrix: (matrix * posed.world[i]).to_cols_array_2d(),
-                                tint,
-                            }),
+                            // (a piece knows how far its own origin is above the model's: see `ModelInstance::based`)
+                            instance: {
+                                let m = matrix * posed.world[i];
+                                dissolve(ModelInstance { matrix: m.to_cols_array_2d(), tint }.based(m.w_axis.y - y as f32))
+                            },
                         }, shading);
                     }
                     return Ok(());
@@ -1724,7 +1740,8 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             let opts = Some(opts);
             let stars = number_option(&opts, "stars")?.unwrap_or(0.0).clamp(0.0, 1.0) as f32;
             let clouds = number_option(&opts, "clouds")?.unwrap_or(0.0).clamp(0.0, 1.0) as f32;
-            s.borrow_mut().lighting.sky = Some(Sky { top, horizon, sun, stars, clouds, time: 0.0 });
+            let ground = picture_color(opts.as_ref().unwrap(), "ground")?;
+            s.borrow_mut().lighting.sky = Some(Sky { top, horizon, sun, stars, clouds, time: 0.0, ground });
             Ok(())
         })?,
     )?;

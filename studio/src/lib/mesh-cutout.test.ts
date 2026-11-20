@@ -86,6 +86,16 @@ describe("cut-outs", () => {
     expect(shapes.map((s) => s.roughness).sort()).toEqual([0.1, 0.4]);
     expect(shapes.reduce((n, s) => n + s.polys!.length, 0)).toBe(done.polys!.length);
   });
+  it("gives a pane of glass a surface of its own, without the body's lacquer", () => {
+    const w = walls(2);
+    const cube: Cube = { shape: "mesh", from: [0, 0, 0], size: [0, 0, 0], color: "#aa0000", metallic: 0.4, roughness: 0.3, coat: 1, verts: w.verts, polys: w.polys, modifiers: [{ type: "cutout", cuts: [{ view: "side", points: [[-1, 3], [1, 3], [1, 5], [-1, 5]], color: "#1a2633", metallic: 0.7, roughness: 0.06, glass: 1 }] }] };
+    const shapes = evaluateSurfaces(cube, "render");
+    expect(shapes.length).toBe(2);
+    const pane = shapes.find((s) => s.glass === 1)!, body = shapes.find((s) => s.glass === undefined)!;
+    expect(pane.coat).toBeUndefined();
+    expect(body.coat).toBe(1);
+    expect(checkModifier({ type: "cutout", cuts: [{ view: "side", points: [[-1, 3], [1, 3], [1, 5]], glass: 2 }] }, "m")).toContain("glass");
+  });
   it("checks what a file says", () => {
     expect(checkModifier({ type: "cutout", cuts: [{ view: "side", points: square, color: "#112233", depth: 0.2 }] }, "m")).toBeNull();
     expect(checkCuts([{ view: "up", points: square }], "m")).toMatch(/view/);

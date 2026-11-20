@@ -40,7 +40,7 @@ map, a gold sphere and a glowing lamp (and two custom shaders, see `docs/shaders
 | `emissiveFactor`, `emissiveTexture` | added light. A grey `emissiveFactor` with no picture keeps Nova's own meaning: the surface glows in its own colour at that strength (what the model editor's glow writes) |
 
 Each kind of picture is taken from the first part that has one (as the base colour picture is), and maps use the same texture
-coordinates (`TEXCOORD_0`) and repeat mode as the base colour. Not read: occlusion maps, `KHR_materials_*` extensions other than clearcoat (transmission, emissive strength...), a second UV set; the model's notes in `nova check` list what was ignored. A part with a normal
+coordinates (`TEXCOORD_0`) and repeat mode as the base colour. Not read: occlusion maps, `KHR_materials_*` extensions other than clearcoat and transmission's factor (emissive strength, sheen...), a second UV set; the model's notes in `nova check` list what was ignored. A part with a normal
 map but no base colour picture is drawn without its normal map.
 
 ## The light
@@ -54,6 +54,10 @@ It is a cheap stand-in for physically based light, chosen to sit with Nova's oth
 - the reflection of the surroundings is the sky's two colours along the reflected view (or the ambient light when there is no
   sky), by a roughness-aware Fresnel term; there are no reflection probes or screen-space reflections;
 - a **clear coat** (`KHR_materials_clearcoat`: `clearcoatFactor` and `clearcoatRoughnessFactor`; Blender's "Coat Weight" exports it) is a smooth glossy layer over all of that, as on car paint: it takes a few percent of the light at a straight look and more at a slant, adds its own sharp sun and lamp highlights and reflects the sky (a mirror at its roughness), using the model's smooth normal, not the normal map. The layer's pictures are ignored (the factors are used; `nova check` says so);
+- **glass** (`KHR_materials_transmission`'s `transmissionFactor`; the model editor's Glass) is not looked through (nothing is sorted or drawn twice): the surface is a dark pane of its own colour that mirrors the surroundings by a strong Fresnel term (9% looking straight in, everything at a slant), has the sun's sharp glint, and is a little lighter looking level through it than looking down into it. The transmission picture is ignored;
+- under a lacquer, metal (metallic above 0.05) has a fine flake: grains of about 6 mm, each a little brighter or darker, some catching the sun; only within about 7 m of the camera (further off a grain is smaller than a pixel);
+- with `nova.sky`'s `ground` (the colour of the land), the ambient light comes from the sky above and the land below, the reflections show the land under the horizon, and both are dimmed near the model's own base (`docs/project-format.md`, "The land under the sky");
+- dirt (`nova.model`'s `dirt`) covers all of it where it lies: its own colour, rough, no metal, coat or glass;
 - emission is added, then fog.
 
 With `nova.graphics{ ibl = true }` the reflections and the ambient light of materials come from a small cube map made from `nova.sky` (see `docs/switch-class-graphics.md`) instead of the sky's two colours and one ambient colour.

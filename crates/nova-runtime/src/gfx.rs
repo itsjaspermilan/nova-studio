@@ -63,6 +63,30 @@ impl ModelInstance {
         self.matrix[2][3] = amount;
         self
     }
+
+    /// The same instance with dirt on it (`nova.model`'s `dirt`): `amount` 0 (clean) to 1, `color` sRGB 0 to 1, and `on_top` when it
+    /// also lies on what faces up (snow). The shaders draw it with no picture: thick at the foot of the model, climbing as it builds
+    /// up. Rides in the w slot of the matrix's fourth column (1 in an affine matrix; the shaders read it and put the 1 back) as 2 plus
+    /// a whole number of 23 bits: the amount (7), on top (1), the colour (5 each).
+    pub fn dirty(mut self, amount: f32, color: [f32; 3], on_top: bool) -> Self {
+        let steps = (amount.clamp(0.0, 1.0) * 127.0).round() as u32;
+        if steps == 0 {
+            self.matrix[3][3] = 1.0;
+            return self;
+        }
+        let c = color.map(|v| (v.clamp(0.0, 1.0) * 31.0).round() as u32);
+        let code = steps | (u32::from(on_top) << 7) | (c[0] << 8) | (c[1] << 13) | (c[2] << 18);
+        self.matrix[3][3] = 2.0 + code as f32;
+        self
+    }
+
+    /// The same instance (not a skinned one) as a piece of a model whose own origin is `below` world units under this piece's: dirt and
+    /// the model's shade at its foot are measured from the model's base, not the piece's (a wheel's hub). Rides in the w slot of the
+    /// matrix's first column, where a skinned instance has its joints.
+    pub fn based(mut self, below: f32) -> Self {
+        self.matrix[0][3] = -below;
+        self
+    }
 }
 
 /// Per vertex of a skinned mesh: which joints pull it (numbers within the skin) and how hard.
@@ -108,6 +132,9 @@ pub struct Sky {
     pub clouds: f32,
     /// Seconds, for twinkling and drifting; set by the game each frame.
     pub time: f32,
+    /// The colour of the land under the sky (linear), when the game gives one: surfaces lit by their material are lit by it from
+    /// below and mirror it under the horizon.
+    pub ground: Option<[f32; 3]>,
 }
 
 /// The sun's shadows, in a square of ground `radius` metres either side of what the camera looks at (more is blurrier).
@@ -651,6 +678,8 @@ struct Globals {
     cascade_vp: [[[f32; 4]; 4]; MAX_CASCADES as usize],
     cascade_info: [[f32; 4]; MAX_CASCADES as usize],
     cascade_count: [f32; 4],
+    /// rgb: the land around as the light leaves it (its colour under the sun and the ambient light); w: 1 when the sky has a ground colour.
+    ground: [f32; 4],
 }
 
 /// One cascade of the sun's shadow: the matrix that draws the map and what the shader needs to read it.
@@ -3340,6 +3369,14 @@ impl Gfx {
                     0.0,
                 ]
             }),
+            // the land lit as a flat piece of ground is (mesh.wgsl's plain light on a surface that faces up)
+            ground: sky.and_then(|k| k.ground).map_or([0.0; 4], |g| {
+                let sun = (-lit.direction[1]).max(0.0);
+                let l = |i: usize| {
+                    g[i] * (lit.ambient[i] + lit.color[i] * sun * (1.0 - lit.ambient[i]))
+                };
+                [l(0), l(1), l(2), 1.0]
+            }),
         };
         self.sync_heightmap(lit.terrain.map.as_ref());
         self.queue
@@ -3389,6 +3426,7 @@ impl Gfx {
                 cascade_vp: [[[0.0; 4]; 4]; MAX_CASCADES as usize],
                 cascade_info: [[0.0; 4]; MAX_CASCADES as usize],
                 cascade_count: [0.0; 4],
+                ground: [0.0; 4],
             };
             self.queue
                 .write_buffer(&self.ui_globals, 0, bytemuck::bytes_of(&ui_globals));
@@ -4058,6 +4096,26 @@ mod tests {
     #[test]
     fn things_outside_the_view_are_culled_and_big_or_scaled_ones_that_reach_in_are_not() {
         use super::{frustum_planes, instance_visible};
+        // (dirt rides in the matrix's last slot: a clean instance keeps its 1, and the number is whole, so a float carries it exactly)
+        let clean = super::ModelInstance {
+            matrix: glam::Mat4::IDENTITY.to_cols_array_2d(),
+            tint: [1.0; 4],
+        };
+        assert_eq!(clean.dirty(0.0, [1.0; 3], true).matrix[3][3], 1.0);
+        let w = clean.dirty(1.0, [1.0, 0.0, 1.0], true).matrix[3][3];
+        let code = (w - 2.0) as u32;
+        assert_eq!(code as f32 + 2.0, w);
+        assert_eq!(
+            (
+                code & 127,
+                (code >> 7) & 1,
+                (code >> 8) & 31,
+                (code >> 13) & 31,
+                (code >> 18) & 31
+            ),
+            (127, 1, 31, 0, 31)
+        );
+        assert_eq!(clean.dirty(0.5, [0.0; 3], false).matrix[3][3], 2.0 + 64.0);
         // a camera at z = 5 looking down -z, 60 degrees tall, square
         let view_proj =
             glam::camera::rh::proj::directx::perspective(60f32.to_radians(), 1.0, 0.1, 400.0)

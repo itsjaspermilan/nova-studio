@@ -17,7 +17,7 @@ pub struct MaterialVertex {
     pub tangent: [f32; 4],
     pub surface: [f32; 4],
     pub emission: [f32; 4],
-    /// A clear coat: strength, roughness.
+    /// A clear coat: strength, roughness; and how much the surface is glass (z).
     pub coat: [f32; 4],
 }
 

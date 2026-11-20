@@ -20,6 +20,12 @@ local LIGHT = {
   { 1.00, { 235, 230, 214 }, 1.0 },
 }
 
+-- the land of each country (a course's `horizon`), about the colour of its ground picture: what the cars' paint and glass mirror below
+-- the horizon and are lit by from underneath (nova.sky's `ground`), so that a car takes on the colours of the place it is in
+local GROUND = {
+  forest = { 84, 112, 58 }, autumn = { 118, 104, 62 }, desert = { 190, 146, 100 }, snow = { 226, 232, 240 }, night = { 70, 84, 70 },
+}
+
 local function mix(a, b, t) return a + (b - a) * t end
 local function mix3(a, b, t) return { mix(a[1], b[1], t), mix(a[2], b[2], t), mix(a[3], b[3], t) } end
 
@@ -45,6 +51,12 @@ end
 
 local function scaled(c, k) return { math.min(255, c[1] * (k[1] or 1)), math.min(255, c[2] * (k[2] or 1)), math.min(255, c[3] * (k[3] or 1)) } end
 
+-- The colour of the land around a course: its country's ground, half and half with the road's own dust (the car stands on the road).
+function sky.ground(look)
+  local land = GROUND[look.horizon or "forest"] or GROUND.forest
+  return look.dust and mix3(land, look.dust, 0.5) or land
+end
+
 -- Fills in a look's `sky` (for nova.sky and the fog) and, in the day, its `sun` (for nova.light) from its `sun_to`. A look's `tint`
 -- ({ top = {r, g, b}, horizon = {r, g, b} }, multipliers) gives a place its own air: red desert dust, the blue of snow.
 function sky.make(look)
@@ -56,7 +68,7 @@ function sky.make(look)
   local tint = look.tint or {}
   if tint.top then top = scaled(top, tint.top) end
   if tint.horizon then horizon = scaled(horizon, tint.horizon) end
-  look.sky = { top = top, horizon = horizon, sun = to, clouds = look.clouds or 0.35, stars = e < 0.1 and 1 or 0 }
+  look.sky = { top = top, horizon = horizon, sun = to, clouds = look.clouds or 0.35, stars = e < 0.1 and 1 or 0, ground = sky.ground(look) }
   if e > 0 then
     local colour, strength = sky.sunlight(e)
     local ambient = mix3(top, horizon, 0.5)
@@ -82,7 +94,7 @@ function sky.menu(look)
   if tint.horizon then horizon = scaled(horizon, tint.horizon) end
   local colour, strength = sky.sunlight(e)
   local ambient = mix3(top, horizon, 0.5)
-  return { top = top, horizon = horizon, sun = flat, clouds = look.clouds or 0.35, stars = 0 },
+  return { top = top, horizon = horizon, sun = flat, clouds = look.clouds or 0.35, stars = 0, ground = sky.ground(look) },
     {
       dir = { -flat[1], -flat[2], -flat[3] },
       color = scaled(colour, { strength * 1.35, strength * 1.3, strength * 1.2 }),
