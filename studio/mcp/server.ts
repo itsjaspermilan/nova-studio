@@ -19,12 +19,14 @@ import { autoWeights } from "../src/lib/model-skin";
 import { meshOf } from "../src/lib/model-mesh";
 import { evaluate } from "../src/lib/modifiers";
 import { encodePng } from "../src/lib/png-encode";
-import { newRaster } from "../src/lib/pixels";
+import { type Raster } from "../src/lib/pixels";
+import { pngOf } from "./draw";
+import { previewSprite, writeSprite } from "./sprites";
 import { PRESETS, DEFAULTS, RANGES, WAVES, render, toJson, type SfxParams } from "../src/lib/sfx";
 import { encodeWav } from "../src/lib/wav";
 import { parseSong, renderSong, serializeSong, songSeconds } from "../src/lib/song";
-import { parseScene, serializeScene } from "../src/lib/scene-model";
-import { parseSheetJson } from "../src/lib/sprite-doc";
+import { parseScene, serializeScene, tilemaps } from "../src/lib/scene-model";
+import { drawScene, expandTileLayers, previewScene } from "./scenes";
 // @ts-ignore (plain JavaScript, shared with Pine Ridge Rally's track script)
 import { heightmapFromTrack } from "../../scripts/lib/heightmap.mjs";
 import { ascii as trackMap } from "../../scripts/lib/trackgen.mjs";
@@ -82,6 +84,13 @@ function logActivity(args: Args, tool: string, note: string, error: boolean) {
   } catch {
     // keeping a log must never stop a tool from working
   }
+}
+
+/// Saves a picture a tool made in the temporary folder and returns where (tool results name their pictures by file).
+function keepPicture(label: string, picture: Raster): string {
+  const file = join(tmpdir(), `nova-${label}-${Date.now()}-${Math.floor(Math.random() * 1e6)}.png`);
+  writeFileSync(file, pngOf(picture));
+  return file;
 }
 
 const safeName = (name: unknown, what: string): string => {
@@ -289,71 +298,81 @@ tool(
 
 tool(
   "sprite_write",
-  "Write a pixel-art sprite: `sprites/<name>.png` (a sheet of frames) and `sprites/<name>.sprite.json` (frame size and named animations). Draw it with text: `palette` maps one character to a colour (\"#rrggbb\" or \"#rrggbbaa\"); '.' and ' ' are always transparent. `frames` is a list of frames, each a list of equal-length rows of characters. `animations`: [{ name, from, to, direction?, loop? }] by frame number. In Lua: nova.sprite(\"<name>\", x, y, { frame = n }), or an entity with sprite = \"<name>\" and anim = \"idle\".",
+  "Write a pixel-art sprite or tileset: `sprites/<name>.png` (a sheet of frames) and `sprites/<name>.sprite.json` (frame size and named animations). Draw it with text: `palette` maps one character to a colour (\"#rrggbb\" or \"#rrggbbaa\"); '.' and ' ' are always transparent. `frames` is a list of frames, each a list of equal-length rows of characters (one character per pixel). " +
+    "A frame may also be { rows: [...], name } or a copy of a frame that exists: { copy: <frame number or name>, flip: \"x\"|\"y\", rotate: 90|180|270, recolor: { \"#from\": \"#to\" }, name }. " +
+    "Sheet layout: frames are packed left to right, 16 to a row, so with up to 16 frames the sheet is one row; frame n is tile n of a tilemap that uses the sheet (column n % 16, row floor(n / 16)). " +
+    "Big sheets in several calls: `append: true` adds the frames to the end of the sheet that is there, `at: n` writes them from frame n (replacing those frames); the frame size, animations and names of the sheet are kept. " +
+    "`names` (a list, one per frame given, or { frame number: name }) names frames; they are kept in `sprites/<name>.tileset.json` (with `solid`: the frames that block movement), and scene_write's tile `legend` can use the names. " +
+    "`animations`: [{ name, from, to, direction?: \"forward\"|\"reverse\"|\"pingpong\", loop? }] by frame number. Mistakes are listed all at once, each with its frame, row and column. Returns a magnified picture of the sheet (see sprite_preview). " +
+    "In Lua: nova.sprite(\"<name>\", x, y, { frame = n }), or an entity with sprite = \"<name>\" and anim = \"idle\".",
   {
     name: { type: "string" },
-    palette: { type: "object" },
-    frames: { type: "array", items: { type: "array", items: { type: "string" } } },
+    palette: { type: "object", description: 'One character to one colour: { "r": "#ff0000", "s": "#00000080" }.' },
+    frames: { type: "array", items: { type: ["array", "object", "string"] }, description: "Frames: each a list of rows (strings), or { rows, name }, or { copy, flip, rotate, recolor, name }." },
     animations: { type: "array", items: { type: "object" } },
-    frame_ms: { type: "number" },
+    frame_ms: { type: "number", description: "How long each frame shows, milliseconds (100)." },
+    append: { type: "boolean", description: "Add the frames to the end of the existing sheet." },
+    at: { type: "number", description: "Write the frames into the existing sheet from this frame number." },
+    names: { type: ["array", "object"], description: "Names for frames (tiles)." },
+    solid: { type: "array", description: "Frames (numbers or names) that block movement, for a tileset." },
   },
-  ["name", "palette", "frames"],
+  ["name", "frames"],
   (a) => {
     const root = projectRoot(a);
     const name = safeName(a.name, "Sprite");
-    const frames: string[][] = a.frames;
-    if (!Array.isArray(frames) || !frames.length) throw new Error("frames needs at least one frame (a list of rows)");
-    const fh = frames[0]!.length;
-    const fw = frames[0]![0]?.length ?? 0;
-    if (!fw || !fh) throw new Error("a frame needs rows of at least one character");
-    const columns = Math.min(frames.length, 16);
-    const rows = Math.ceil(frames.length / columns);
-    const sheet = newRaster(columns * fw, rows * fh);
-    const colour = (ch: string): [number, number, number, number] => {
-      if (ch === "." || ch === " ") return [0, 0, 0, 0];
-      const hex = String((a.palette as Record<string, string>)[ch] ?? "");
-      const m = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(hex);
-      if (!m) throw new Error(`'${ch}' is not in the palette (or its colour is not #rrggbb)`);
-      const n = parseInt(m[1]!, 16);
-      return [(n >> 16) & 255, (n >> 8) & 255, n & 255, m[2] ? parseInt(m[2], 16) : 255];
-    };
-    frames.forEach((frame, f) => {
-      if (frame.length !== fh || frame.some((row) => row.length !== fw)) throw new Error(`frame ${f} is not ${fw}x${fh} characters`);
-      const [ox, oy] = [(f % columns) * fw, Math.floor(f / columns) * fh];
-      frame.forEach((row, y) => [...row].forEach((ch, x) => sheet.data.set(colour(ch), ((oy + y) * sheet.w + ox + x) * 4)));
-    });
-    const json = {
-      version: 1,
-      image: `${name}.png`,
-      frame_width: fw,
-      frame_height: fh,
-      columns,
-      frames: frames.length,
-      frame_duration_ms: a.frame_ms ?? 100,
-      ...(a.animations?.length ? { tags: a.animations } : {}),
-    };
-    const text = `${JSON.stringify(json, null, 2)}\n`;
-    const ok = parseSheetJson(text);
-    if (!ok.ok) throw new Error(ok.error);
-    put(root, `sprites/${name}.png`, encodePng(sheet));
-    put(root, `sprites/${name}.sprite.json`, text);
-    return `sprites/${name}.png: ${frames.length} frame(s) of ${fw}x${fh}`;
+    const r = writeSprite(root, name, a, (rel, data) => put(root, rel, data));
+    return { text: r.text, images: [keepPicture(`sprite-${name}`, r.picture)] };
+  },
+);
+
+tool(
+  "sprite_preview",
+  "Look at a sprite of the project: returns a picture of `sprites/<name>.png` magnified on a checker background, every frame outlined with its number (and name) under it, and one strip per animation with its frames in the order they play and how long each shows. The text says the sheet's size, how many frames are across, the animations and the frame names.",
+  { name: { type: "string" } },
+  ["name"],
+  (a) => {
+    const r = previewSprite(projectRoot(a), String(a.name));
+    return { text: r.text, images: [keepPicture(`sprite-${String(a.name).replace(/[^A-Za-z0-9_-]/g, "_")}`, r.picture)] };
   },
 );
 
 tool(
   "scene_write",
   "Write a scene layout: `scenes/<name>.scene.json` (what the studio's scene editor edits; validated and tidied). `scene` is { version: 1, background?, width?, height?, camera?: { eye, target, fov }, objects: [ { kind, name?, x, y, z?, props? } ], images?, texts?, tilemaps? }. " +
-    "`kind` is an entity in entities/. In 3D, x goes across, y up, z towards the viewer; the props `ry`, `rx`, `rz` (radians) and `sx` turn and size a model entity. The scene's code goes in scenes/<name>.lua (write_file).",
-  { name: { type: "string" }, scene: { type: ["object", "string"] } },
+    "`kind` is an entity in entities/ (a `name` makes the entity a field of the scene, `self.<name>`, findable with nova.named(\"<name>\"), and the entity's own `self.name`). " +
+    "A tile layer (`tilemaps`) is { name?, tileset: { image: \"sprites/tiles.png\", tile_width, tile_height }, x?, y?, depth? (bigger is further back; a layer with a negative depth draws in front of the characters), solid?: [tiles], tiles: rows } where the rows may be typed as strings with a `legend`: { \"legend\": { \".\": -1, \"g\": 0, \"W\": \"wall\" }, \"solid\": [\"W\"], \"tiles\": [\"WWWW\", \"W.gW\", \"WWWW\"] } (one character per tile, top row first; a legend value is a tile number of the tileset, -1 for empty, or a tile name given with sprite_write's `names`; '.' and ' ' are empty unless the legend says otherwise; rows of numbers are accepted too). Mistakes are listed all at once with their layer, row and column. The file keeps numbers; scene_preview shows them as characters again. " +
+    "For a 2D scene it returns the same picture as scene_preview (`picture: false` to skip it). In 3D, x goes across, y up, z towards the viewer; the props `ry`, `rx`, `rz` (radians) and `sx` turn and size a model entity. The scene's code goes in scenes/<name>.lua (write_file).",
+  { name: { type: "string" }, scene: { type: ["object", "string"] }, picture: { type: "boolean", description: "false: do not return the map picture." } },
   ["name", "scene"],
   (a) => {
     const root = projectRoot(a);
     const name = safeName(a.name, "Scene");
-    const parsed = parseScene(typeof a.scene === "string" ? a.scene : JSON.stringify(a.scene));
-    if (!parsed.ok) throw new Error(`the scene is not valid: ${parsed.error}`);
+    let given: unknown;
+    try {
+      given = asJson(a.scene);
+    } catch (e) {
+      throw new Error(`the scene is not valid: not valid JSON: ${e instanceof Error ? e.message : e}`);
+    }
+    if (given && typeof given === "object" && !Array.isArray(given)) expandTileLayers(root, given as Args);
+    const parsed = parseScene(JSON.stringify(given));
+    if (!parsed.ok) throw new Error(`the scene is not valid: ${parsed.error}. A scene is { "version": 1, "objects": [ { "kind": "player", "name": "hero", "x": 100, "y": 80 } ], "tilemaps": [...] }`);
     put(root, `scenes/${name}.scene.json`, serializeScene(parsed.scene));
-    return `scenes/${name}.scene.json: ${parsed.scene.objects?.length ?? 0} objects`;
+    const said = `scenes/${name}.scene.json: ${parsed.scene.objects?.length ?? 0} objects${tilemaps(parsed.scene).length ? `, ${tilemaps(parsed.scene).length} tile layer(s)` : ""}`;
+    if (a.picture === false) return said;
+    const view = drawScene(root, name, parsed.scene);
+    return view.picture ? { text: `${said}\n${view.text}`, images: [keepPicture(`scene-${name}`, view.picture)] } : said;
+  },
+);
+
+tool(
+  "scene_preview",
+  "Look at a scene file without playing the game: a picture of `scenes/<name>.scene.json` as a map. Tile layers are drawn from their tilesets (solid tiles outlined red), every object is drawn where it is placed (its entity's sprite if it has one, else an orange box) with a pink cross on its x, y, its hitbox in green and its name:kind above it; the grid is the tile grid, world coordinates run along the top and left edges, and a dashed box shows the size of one screen. " +
+    "The text lists each tile layer as rows of characters with a legend (ready to edit and give back to scene_write) and every object with its position, tile and props, and says which kinds have no entity file. `area`: [x, y, w, h] in world units shows a part; `zoom` sets the magnification; `grid: false` and `labels: false` give a cleaner picture.",
+  { name: { type: "string" }, area: { type: "array", items: { type: "number" } }, zoom: { type: "number" }, grid: { type: "boolean" }, labels: { type: "boolean" } },
+  ["name"],
+  (a) => {
+    const r = previewScene(projectRoot(a), String(a.name), { area: a.area, zoom: a.zoom, grid: a.grid, labels: a.labels });
+    return r.picture ? { text: r.text, images: [keepPicture(`scene-${String(a.name).replace(/[^A-Za-z0-9_-]/g, "_")}`, r.picture)] } : r.text;
   },
 );
 

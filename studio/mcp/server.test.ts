@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { decodePng } from "./draw";
 import { call, tools } from "./server";
 
 let dir = "";
@@ -99,8 +100,109 @@ describe("the Nova MCP server", () => {
     const json = JSON.parse(readFileSync(join(dir, "sprites/dot.sprite.json"), "utf8"));
     expect(json).toMatchObject({ frame_width: 2, frame_height: 2, frames: 2, image: "dot.png" });
     expect(readFileSync(join(dir, "sprites/dot.png")).subarray(1, 4).toString()).toBe("PNG");
-    expect(() => use("sprite_write", { name: "r", palette: { a: "#fff000" }, frames: [["aa", "a"]] })).toThrow(/not 2x2/);
+    expect(() => use("sprite_write", { name: "r", palette: { a: "#fff000" }, frames: [["aa", "a"]] })).toThrow(/frame 0 row 1 has 1 characters, wanted 2: "a"/);
     expect(() => use("sprite_write", { name: "r", palette: {}, frames: [["z"]] })).toThrow(/palette/);
+  });
+
+  it("says every mistake in a sprite at once, with its frame, row and column, and what shape it wanted", () => {
+    let said = "";
+    try {
+      use("sprite_write", { name: "bad", palette: { k: "#101010" }, frames: [["kkkk", "kk k", "kkkk"], ["kkkk", "kkk", "kkkkk"], ["kkzk", "kkkk"]] });
+    } catch (e) {
+      said = (e as Error).message;
+    }
+    expect(said).toContain('frame 1 row 1 has 3 characters, wanted 4: "kkk"');
+    expect(said).toContain('frame 1 row 2 has 5 characters, wanted 4: "kkkkk"');
+    expect(said).toContain("frame 2 has 2 rows, wanted 3");
+    expect(said).toContain("frame 2 row 0 column 2: 'z' is not in the palette");
+    expect(existsSync(join(dir, "sprites/bad.png"))).toBe(false);
+    expect(() => use("sprite_write", { name: "bad", frames: "x" })).toThrow(/A tiny example: \{ "name": "dot"/);
+    expect(() => use("sprite_write", { name: "bad", palette: { k: "#101010" }, frames: [{ nope: 1 }] })).toThrow(/needs "rows".*or "copy"/);
+  });
+
+  it("returns a picture of the sprite it wrote, and sprite_preview shows any sprite", () => {
+    const r = use("sprite_write", { name: "dot", palette: { a: "#ff0000" }, frames: [["aa", "a."], ["a.", "aa"]], animations: [{ name: "spin", from: 0, to: 1 }] });
+    expect(text(r)).toMatch(/2 frame\(s\) of 2x2/);
+    const image = r.content[1] as { type: string; data: string; mimeType: string };
+    expect(image).toMatchObject({ type: "image", mimeType: "image/png" });
+    const png = Buffer.from(image.data, "base64");
+    expect(png.subarray(1, 4).toString()).toBe("PNG");
+    expect(png.readUInt32BE(16)).toBeGreaterThan(100); // magnified
+    const p = use("sprite_preview", { name: "dot" });
+    expect(text(p)).toMatch(/2 frame\(s\) of 2x2, 2 across; animations: spin 0-1/);
+    expect((p.content[1] as { type: string }).type).toBe("image");
+    expect(() => use("sprite_preview", { name: "nothing" })).toThrow(/no sprites\/nothing\.png/);
+  });
+
+  it("builds a sheet in several calls: appended frames, replaced frames, copies turned and recoloured, and names", () => {
+    const pal = { a: "#ff0000", b: "#0000ff" };
+    use("sprite_write", { name: "tiles", palette: pal, frames: [["ab", ".."]], names: ["grass"], animations: [{ name: "one", from: 0, to: 0 }] });
+    const r = text(use("sprite_write", { name: "tiles", palette: pal, append: true, frames: [{ rows: ["bb", "bb"], name: "wall" }, { copy: "grass", flip: "x", name: "grass_left" }, { copy: 0, rotate: 90 }, { copy: 0, recolor: { "#ff0000": "#00ff00" } }] }));
+    expect(r).toMatch(/5 frame\(s\) of 2x2 \(frames 1 to 4 written\)/);
+    const json = JSON.parse(readFileSync(join(dir, "sprites/tiles.sprite.json"), "utf8"));
+    expect(json).toMatchObject({ frames: 5, columns: 5, tags: [{ name: "one", from: 0, to: 0 }] }); // the animations are kept
+    expect(JSON.parse(readFileSync(join(dir, "sprites/tiles.tileset.json"), "utf8")).names).toEqual({ "0": "grass", "1": "wall", "2": "grass_left" });
+    const sheet = decodePng(readFileSync(join(dir, "sprites/tiles.png")));
+    const px = (frame: number, x: number, y: number) => [...sheet.data.subarray((y * sheet.w + frame * 2 + x) * 4, (y * sheet.w + frame * 2 + x) * 4 + 4)];
+    expect(px(0, 0, 0)).toEqual([255, 0, 0, 255]);
+    expect(px(2, 0, 0)).toEqual([0, 0, 255, 255]); // mirrored
+    expect(px(2, 1, 0)).toEqual([255, 0, 0, 255]);
+    expect(px(3, 1, 0)).toEqual([255, 0, 0, 255]); // turned a quarter clockwise: the top row is now the right column
+    expect(px(3, 1, 1)).toEqual([0, 0, 255, 255]);
+    expect(px(4, 0, 0)).toEqual([0, 255, 0, 255]); // recoloured
+    use("sprite_write", { name: "tiles", palette: pal, at: 1, frames: [["aa", "aa"]] });
+    expect(px(1, 0, 0)).toEqual([0, 0, 255, 255]); // (the old read)
+    const again = decodePng(readFileSync(join(dir, "sprites/tiles.png")));
+    expect([...again.data.subarray(2 * 4, 2 * 4 + 4)]).toEqual([255, 0, 0, 255]);
+    expect(JSON.parse(readFileSync(join(dir, "sprites/tiles.sprite.json"), "utf8")).frames).toBe(5);
+    expect(() => use("sprite_write", { name: "fresh", palette: pal, append: true, frames: [["a"]] })).toThrow(/no sprites\/fresh\.sprite\.json to add frames to/);
+    expect(() => use("sprite_write", { name: "tiles", palette: pal, append: true, frames: [{ copy: "nope" }] })).toThrow(/not a frame that exists yet.*grass/);
+  });
+
+  it("takes tile layers as rows of characters with a legend, by number or tile name, and names the row and column of a mistake", () => {
+    use("sprite_write", { name: "tiles", palette: { a: "#ff0000" }, frames: [["a"], ["."], ["a"]], names: ["grass", "wall"] });
+    const layer = { name: "ground", tileset: { image: "sprites/tiles.png", tile_width: 1, tile_height: 1 }, legend: { g: 0, W: "wall", x: 2 }, solid: ["W"], tiles: ["WWW", "Wg.", "WxW"] };
+    const r = use("scene_write", { name: "room", scene: { version: 1, objects: [{ kind: "hero", name: "hero", x: 1, y: 1 }], tilemaps: [layer] } });
+    const saved = JSON.parse(readFileSync(join(dir, "scenes/room.scene.json"), "utf8"));
+    expect(saved.tilemaps[0].tiles).toEqual([[1, 1, 1], [1, 0, -1], [1, 2, 1]]);
+    expect(saved.tilemaps[0].solid).toEqual([1]);
+    expect(saved.tilemaps[0].legend).toBeUndefined();
+    expect(text(r)).toContain("1 tile layer(s)");
+    expect((r.content[1] as { type: string }).type).toBe("image");
+    // numbers stay accepted
+    use("scene_write", { name: "plain", scene: { version: 1, objects: [], tilemaps: [{ ...layer, legend: undefined, solid: [1], tiles: [[1, 0], [-1, 2]] }] }, picture: false });
+    let said = "";
+    try {
+      use("scene_write", { name: "bad", scene: { version: 1, tilemaps: [{ ...layer, legend: { g: 0, W: "wal", q: 9 }, tiles: ["gg", "g?g", "qg"] }] } });
+    } catch (e) {
+      said = (e as Error).message;
+    }
+    expect(said).toContain('tilemaps[0] ("ground") legend "W": "wal" is not a tile number (-1 is empty) or a tile name (the tileset\'s names: grass, wall)');
+    expect(said).toContain("row 1 column 1: '?' is not in the legend");
+    expect(said).toContain('row 1 has 3 tiles, wanted 2 (the length of row 0): "g?g"');
+    expect(said).toContain("row 2 column 0: tile 9 is outside the tileset (sprites/tiles.png has 3 tiles, 0 to 2)");
+    expect(existsSync(join(dir, "scenes/bad.scene.json"))).toBe(false);
+  });
+
+  it("draws a scene file as a map and says what is in it", () => {
+    use("sprite_write", { name: "tiles", palette: { a: "#ff0000", b: "#00ff00" }, frames: [["aa", "aa"], ["bb", "bb"]], names: ["grass", "wall"] });
+    use("sprite_write", { name: "hero", palette: { a: "#ffffff" }, frames: [["aa", "aa"]] });
+    use("write_file", { path: "entities/hero.lua", text: 'return nova.entity { sprite = "hero", hitbox = { -1, 0, 2, 1 } }\n' });
+    use("scene_write", { name: "room", picture: false, scene: { version: 1, objects: [{ kind: "hero", name: "hero", x: 3, y: 3 }, { kind: "chest", x: 5, y: 1, props: { holds: "key" } }], tilemaps: [{ name: "ground", tileset: { image: "sprites/tiles.png", tile_width: 2, tile_height: 2 }, legend: { g: "grass", W: "wall" }, solid: ["W"], tiles: ["WWWW", "WggW", "WWWW"] }] } });
+    const r = use("scene_preview", { name: "room" });
+    const said = text(r);
+    expect(said).toContain('tile layer "ground": 4 x 3 tiles of 2 x 2');
+    expect(said).toContain("legend: . empty, G 0 grass, W 1 wall (solid)");
+    expect(said).toContain("  1 WGGW");
+    expect(said).toContain("hero:hero at 3, 3 (tile 1, 1)");
+    expect(said).toContain('chest at 5, 1 (tile 2, 0) [NO entities/chest.lua] {"holds":"key"}');
+    const picture = decodePng(Buffer.from((r.content[1] as { data: string }).data, "base64"));
+    expect(picture.w).toBeGreaterThan(40);
+    // the wall tile's green and the hero's white are both in the picture
+    const has = (c: number[]) => { for (let i = 0; i < picture.data.length; i += 4) if (picture.data[i] === c[0] && picture.data[i + 1] === c[1] && picture.data[i + 2] === c[2]) return true; return false; };
+    expect(has([255, 255, 255])).toBe(true);
+    expect(has([255, 0, 0])).toBe(true);
+    expect(() => use("scene_preview", { name: "nothing" })).toThrow(/no scenes\/nothing\.scene\.json/);
   });
 
   it("writes a scene layout, tidied, and refuses one that is not a scene", () => {
