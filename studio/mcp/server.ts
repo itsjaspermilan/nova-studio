@@ -795,6 +795,9 @@ const playProperties = {
   seed: { type: "number", description: "The seed of math.random. Runs are repeatable: the same seed and input give the same run (1 when left out)." },
   size: { type: "string", description: 'The picture size, "WIDTHxHEIGHT". Default "960x540" (the CLI\'s own default is 1280x720). The game always sees a screen 540 units high.' },
   crop: { type: "array", items: { type: "number" }, description: "[x, y, w, h] in picture pixels: return this part of every picture." },
+  crop_to: { type: "string", description: 'Crop every picture to an entity (a scene object\'s name, a tag or a kind: "hero"), in 2D and 3D, with `crop_margin` pixels round it: one size for the whole run (round the largest box it had), moved with it, so no pixel rectangle is guessed. The answer gives each picture\'s part; `out` keeps the full frames.' },
+  crop_margin: { type: "number", description: "With `crop_to`: the room round the entity, in picture pixels (half its size, at least 24, when left out; in 2D the box is its hitbox, so leave room for the rest of the sprite)." },
+  view: { type: "object", description: 'The pictures of a 3D game from beside an entity instead of from the game\'s camera (the game plays on with its own): { "follow": "hero", "from": "side", "distance": 4 }. `from`: "side" (from +x), "left" (-x), "front" (+z), "back" (-z), "top" or "quarter"; `distance` in metres (4); `height` above its middle (0.3). A side view of a walk shows the legs; with `every` it is a film strip that follows.' },
   zoom: { type: "number", description: "Enlarge every picture (or its crop) this many times, without blur: small pixel art read closely." },
   state: { type: "string", enum: ["end", "all", "none"], description: "The list of entities with positions: at the end (default), at every picture, or not at all." },
   audio: { type: ["boolean", "string"], description: 'true: also write what the run sounded like to a WAV file (its path is in the answer; give it to sound_report). With `out` it is <out>/run.wav; a path such as "build/run1.wav" (in the project, in a folder the game ignores) says where yourself.' },
@@ -970,7 +973,9 @@ function call(name: string, args: Args) {
   r = LATE[name]?.(args, r) ?? r;
   const images = typeof r === "string" ? [] : (r.images ?? []);
   const saved = saveImages(args, images);
-  const text = [...(saved.length ? [`picture saved: ${saved.join(", ")}`] : []), ...warnings, typeof r === "string" ? r : r.text].join("\n");
+  // The picture's path is always the first line, so an answer that is filtered or cut short still says where it is.
+  const where = saved.length ? `picture saved: ${saved.join(", ")}` : images.length ? `picture: ${images.join(", ")}` : null;
+  const text = [...(where ? [where] : []), ...warnings, typeof r === "string" ? r : r.text].join("\n");
   logActivity(args, name, typeof r === "string" ? r : r.text, false);
   const content: unknown[] = [{ type: "text", text }];
   for (const file of images) content.push({ type: "image", data: readFileSync(file).toString("base64"), mimeType: "image/png" });

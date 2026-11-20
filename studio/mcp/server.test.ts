@@ -11,7 +11,8 @@ import { call, EXAMPLES, tools } from "./server";
 let dir = "";
 beforeEach(() => (dir = mkdtempSync(join(tmpdir(), "nova-mcp-test-"))));
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
-const text = (r: ReturnType<typeof call>) => (r.content[0] as { text: string }).text;
+// (the first line of an answer with a picture is its path: the tests read what follows it; one test checks the line)
+const text = (r: ReturnType<typeof call>) => (r.content[0] as { text: string }).text.replace(/^picture: [^\n]*\n/, "");
 const use = (name: string, args: Record<string, unknown> = {}) => call(name, { project: dir, ...args });
 
 const crate = { version: 1, scale: 0.0625, parts: [{ name: "body", origin: [0, 0, 0], rotation: [0, 0, 0], cubes: [{ from: [-8, 0, -8], size: [16, 16, 16], color: "#aa7744" }], children: [] }] };

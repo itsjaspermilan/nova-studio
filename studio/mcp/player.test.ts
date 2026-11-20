@@ -15,7 +15,8 @@ import { call } from "./server";
 let dir = "";
 beforeEach(() => (dir = mkdtempSync(join(tmpdir(), "nova-mcp-player-"))));
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
-const text = (r: ReturnType<typeof call>) => (r.content[0] as { text: string }).text;
+// (the first line of an answer with a picture is its path: the tests read what follows it; one test checks the line)
+const text = (r: ReturnType<typeof call>) => (r.content[0] as { text: string }).text.replace(/^picture: [^\n]*\n/, "");
 const use = (name: string, args: Record<string, unknown> = {}) => call(name, { project: dir, ...args });
 const picture = (r: ReturnType<typeof call>, n = 1) => decodePng(Buffer.from((r.content[n] as { data: string }).data, "base64"));
 const built = existsSync(resolve(dirname(fileURLToPath(import.meta.url)), "../../target/release/nova"));
@@ -66,6 +67,86 @@ describe("nothing is ignored in silence", () => {
     expect(text(use("sprite_preview", { name: "dot", image_out: whole })).split("\n")[0]).toBe(`picture saved: ${whole}`);
     expect(() => use("sprite_preview", { name: "dot", image_out: "shots/dot.png" })).toThrow(/is in a folder the game loads/);
     expect(() => use("sprite_preview", { name: "dot", image_out: "build/dot.jpg" })).toThrow(/must end in \.png/);
+  });
+});
+
+describe("the picture's path comes first", () => {
+  it("puts the path of the picture on the first line of every answer that has one", () => {
+    const first = (r: ReturnType<typeof call>) => (r.content[0] as { text: string }).text.split("\n")[0]!;
+    const answers: [string, ReturnType<typeof call>][] = [
+      ["sprite_write", use("sprite_write", { name: "dot", palette: { a: "#ff0000" }, frames: [["aa", "aa"]] })],
+      ["sprite_preview", use("sprite_preview", { name: "dot" })],
+      ["scene_write", use("scene_write", { name: "room", scene: { version: 1, objects: [{ kind: "hero", x: 8, y: 8 }] } })],
+      ["scene_preview", use("scene_preview", { name: "room" })],
+      ["sfx_write", use("sfx_write", { name: "hit", purpose: "hit" })],
+      ["items_make", use("items_make", { name: "items" })],
+    ];
+    if (built) {
+      use("write_file", { path: "nova.json", text: '{"format":1,"name":"T"}' });
+      use("write_file", { path: "main.lua", text: "function draw() nova.rect(0, 0, 10, 10) end\n" });
+      answers.push(["screenshot", use("screenshot", { frames: 2, size: "128x72" })]);
+      answers.push(["play", use("play", { frames: 3, every: 1, size: "128x72" })]);
+      answers.push(["model_preview", (use("model_write", { name: "box", model: { version: 1, scale: 0.0625, parts: [{ name: "b", origin: [0, 0, 0], rotation: [0, 0, 0], cubes: [{ from: [-4, 0, -4], size: [8, 8, 8], color: "#888888" }], children: [] }] } }), use("model_preview", { name: "box", width: 64, height: 64 }))]);
+    }
+    for (const [tool, r] of answers) {
+      const images = r.content.filter((c) => (c as { type: string }).type === "image").length;
+      if (!images) continue;
+      const line = first(r);
+      expect(line, tool).toMatch(/^picture: \/\S+\.png/);
+      for (const file of line.slice("picture: ".length).split(", ")) expect(existsSync(file), `${tool}: ${file}`).toBe(true);
+    }
+    const pictured = answers.filter(([, r]) => r.content.length > 1).map(([t]) => t);
+    for (const t of ["sprite_write", "sprite_preview", "items_make", ...(built ? ["screenshot", "play", "model_preview"] : [])]) expect(pictured).toContain(t);
+  });
+});
+
+describe.skipIf(!built)("pictures that follow a thing", () => {
+  it("crops every picture of a top-down run to the hero, moved with him", () => {
+    const root = join(dir, "td");
+    call("project_create", { project: root, name: "Td", template: "topdown" });
+    const at = (args: Record<string, unknown>) => call("play", { project: root, ...args });
+    const r = at({ route: [{ hold: ["right"], frames: 40, capture: "a" }, { hold: ["down"], frames: 30, capture: "b" }], crop_to: "hero", crop_margin: 20 });
+    const said = text(r);
+    const m = /each picture is the part round 'hero' \((\d+)x(\d+) pixels, 20 round the largest box it had\), moved with it: f(\d+) \[(\d+), (\d+), \d+, \d+\], f(\d+) \[(\d+), (\d+), \d+, \d+\]/.exec(said);
+    expect(m, said).not.toBeNull();
+    const [cw, ch] = [Number(m![1]), Number(m![2])];
+    expect(cw).toBeLessThan(200);
+    expect(ch).toBeLessThan(200);
+    // the hero walked right, then down: the second part is to the right of or below the first
+    expect(Number(m![7]) + Number(m![8])).toBeGreaterThan(Number(m![4]) + Number(m![5]));
+    // the strip's tiles are that size (each tile a crop, not the whole 960x540 frame)
+    const strip = picture(r);
+    expect(strip.w).toBeLessThan(960);
+    expect(said).not.toContain("warning:");
+    expect(() => at({ crop_to: "hero", crop: [0, 0, 10, 10] })).toThrow(/crop and crop_to/);
+  });
+
+  it("takes a 3D run's pictures from beside the hero: a side view of the walk, the hero in every one", () => {
+    const root = join(dir, "three");
+    call("project_create", { project: root, name: "Three", template: "3d" });
+    const at = (args: Record<string, unknown>) => call("play", { project: root, ...args });
+    const r = at({ route: [{ hold: ["move_y=-1"], frames: 48 }], every: 8, view: { follow: "hero", from: "side", distance: 4 }, crop_to: "hero", size: "640x360" });
+    const said = text(r);
+    expect(said).toMatch(/the pictures are from beside 'hero' \(from side, 4 m away\), not from the game's camera; the first from [-\d.]+, [-\d.]+, [-\d.]+ looking at/);
+    expect(said).not.toMatch(/warning: '?hero'? is not on the picture/);
+    expect(said).not.toContain("crop_to 'hero' was on none");
+    // every picture has the hero on it, and a walk seen from the side changes from tile to tile
+    const report = /each picture is the part round 'hero' \((\d+)x(\d+) pixels/.exec(said);
+    expect(report, said).not.toBeNull();
+    const strip = picture(r);
+    const [tw, th] = [Number(report![1]), Number(report![2])];
+    expect(tw).toBeLessThan(640);
+    // the tiles of the strip: cut them out and compare neighbours
+    const cols = Math.round(strip.w / tw) || 1;
+    const tile = (i: number) => {
+      const out = { w: tw, h: th, data: new Uint8ClampedArray(tw * th * 4) };
+      const ox = (i % cols) * Math.floor(strip.w / cols), oy = Math.floor(i / cols) * Math.floor(strip.h / Math.ceil(7 / cols));
+      for (let y = 0; y < th; y++) for (let x = 0; x < tw; x++) for (let k = 0; k < 4; k++) out.data[(y * tw + x) * 4 + k] = strip.data[((oy + y) * strip.w + ox + x) * 4 + k] ?? 0;
+      return out;
+    };
+    expect(pictureDifference(tile(1), tile(2)).share).toBeGreaterThan(0.01);
+    expect(() => at({ view: { follow: "hero", from: "under" } })).toThrow(/"from": "under"; it takes side, right, left, front, back, top, quarter|from/);
+    expect(() => at({ view: { folow: "hero" } })).toThrow(/view is \{ "follow": "hero"/);
   });
 });
 

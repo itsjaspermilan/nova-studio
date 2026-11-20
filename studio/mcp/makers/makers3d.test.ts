@@ -17,7 +17,8 @@ const built = existsSync(resolve(dirname(fileURLToPath(import.meta.url)), "../..
 let dir = "";
 beforeEach(() => (dir = mkdtempSync(join(tmpdir(), "nova-makers3d-test-"))));
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
-const text = (r: ReturnType<typeof call>) => (r.content[0] as { text: string }).text;
+// (the first line of an answer with a picture is its path: the tests read what follows it; one test checks the line)
+const text = (r: ReturnType<typeof call>) => (r.content[0] as { text: string }).text.replace(/^picture: [^\n]*\n/, "");
 const use = (name: string, args: Record<string, unknown> = {}, project = dir) => call(name, { project, ...args });
 const bytes = (rel: string, project = dir) => readFileSync(join(project, rel));
 

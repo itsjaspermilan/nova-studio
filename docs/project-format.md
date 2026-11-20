@@ -1440,7 +1440,11 @@ For the whole plan (beside `steps`): `"invincible": true` (alias `god`) puts the
 `"stop_on_fail": true` ends the route at the first step that fails (an `until`, `walk_to` or `fight` that ran out without
 `may_time_out`, Lua that failed), with a picture captioned `stopped: step N failed`; the report's `stopped` says so.
 `"overlay": ["hitboxes", "solids", "names"]` draws those over the game on every frame (2D entities; solid tiles shaded red).
-`"lua_each_frame"` is Lua run before every frame. The report also has `route` (how each walk and fight went, in words), `read`
+`"lua_each_frame"` is Lua run before every frame. `"view": { "follow": "hero", "from": "side", "distance": 4, "height": 0.3 }`
+takes the pictures of a 3D game from beside an entity (from `side`/`right` +x, `left`, `front` +z, `back`, `top` or
+`quarter`; the game plays on with its own camera), and each capture says the `view`'s eye and target. `"crop_to": "hero"`
+gives each capture (and the report's `end_box`) the entity's `box` on the picture, `[x0, y0, x1, y1]` in pixels, which
+the MCP `play` tool crops to. The report also has `route` (how each walk and fight went, in words), `read`
 (the input actions the game asked about) and, in each capture and at the end, `render` (for a 3D frame: the camera, the sun,
 whether shadows and fog are on and how many models cast a shadow).
 

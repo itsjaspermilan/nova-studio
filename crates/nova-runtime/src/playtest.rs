@@ -193,6 +193,48 @@ pub struct Plan {
     pub overlay: Vec<String>,
     /// Lua run before every frame after the first (a setting the scene's own code would otherwise set back).
     pub lua_each_frame: Option<String>,
+    /// The run's pictures of a 3D game from beside an entity instead of from the game's own camera (see [`View`]).
+    pub view: Option<View>,
+    /// Every picture's report carries the box of this entity (a name, a tag or a kind) on it, in pixels: what the tools
+    /// crop the pictures to.
+    pub crop_to: Option<String>,
+}
+
+/// A camera for the pictures only (the game plays on with its own): `{ "follow": "hero", "from": "side", "distance": 4 }`
+/// looks at the middle of the entity from `distance` metres away, `height` above its middle. `from` is a side of the
+/// world: "side" or "right" (from +x), "left" (from -x), "front" (from +z), "back" (from -z), "top" (from above), or
+/// "quarter" (from +x and +z, a little above).
+#[derive(Deserialize, Clone, Debug, Default)]
+#[serde(deny_unknown_fields)]
+pub struct View {
+    pub follow: String,
+    pub from: Option<String>,
+    pub distance: Option<f64>,
+    pub height: Option<f64>,
+}
+
+/// The sides a `view` looks from.
+pub const VIEW_SIDES: [&str; 7] = ["side", "right", "left", "front", "back", "top", "quarter"];
+
+/// Where a picture of a 3D world puts a point, in pixels from the top left, as the renderer projects it (right-handed,
+/// y up, a vertical field of view); `None` behind the camera.
+fn project(cam: &crate::gfx::Camera, size: (u32, u32), p: [f64; 3]) -> Option<(f64, f64)> {
+    let eye = cam.eye.as_dvec3();
+    let f = (cam.target.as_dvec3() - eye).normalize_or_zero();
+    let r = f.cross(glam::DVec3::Y).normalize_or_zero();
+    let u = r.cross(f);
+    let d = glam::DVec3::from_array(p) - eye;
+    let z = d.dot(f);
+    if z < 0.05 {
+        return None;
+    }
+    let t = ((cam.fov_y_degrees as f64).to_radians() * 0.5).tan();
+    let aspect = size.0 as f64 / size.1 as f64;
+    let (nx, ny) = (d.dot(r) / (z * t * aspect), d.dot(u) / (z * t));
+    Some((
+        (nx + 1.0) * 0.5 * size.0 as f64,
+        (1.0 - ny) * 0.5 * size.1 as f64,
+    ))
 }
 
 impl Plan {
@@ -582,6 +624,13 @@ pub struct Playtest {
     god: Option<Value>,
     all_reads: std::collections::BTreeSet<String>,
     render: Value,
+    /// The size of the pictures, in pixels (for `crop_to`).
+    size: (u32, u32),
+    /// The camera of the picture being taken, when `view` gives one.
+    view_cam: Option<crate::gfx::Camera>,
+    /// Whether a `view` or `crop_to` that could not be followed has been said.
+    view_said: bool,
+    crop_said: bool,
 }
 
 impl Playtest {
@@ -596,6 +645,18 @@ impl Playtest {
                     "\"overlay\" has \"{o}\"; it takes {}",
                     OVERLAYS.join(", ")
                 ));
+            }
+        }
+        if let Some(v) = &plan.view {
+            let from = v.from.as_deref().unwrap_or("side");
+            if !VIEW_SIDES.contains(&from) {
+                return Err(format!(
+                    "\"view\" has \"from\": \"{from}\"; it takes {}",
+                    VIEW_SIDES.join(", ")
+                ));
+            }
+            if v.distance.is_some_and(|d| !(d > 0.1 && d < 500.0)) {
+                return Err("\"view\" has a \"distance\" in metres, above 0.1".into());
             }
         }
         Ok(Self {
@@ -622,11 +683,116 @@ impl Playtest {
             god: None,
             all_reads: Default::default(),
             render: Value::Null,
+            size: (960, 540),
+            view_cam: None,
+            view_said: false,
+            crop_said: false,
         })
     }
 
     pub fn seed(&self) -> Option<u64> {
         self.plan.seed
+    }
+
+    /// The size of the pictures in pixels (960x540 when not said), for the boxes `crop_to` gives.
+    pub fn set_size(&mut self, width: u32, height: u32) {
+        self.size = (width.max(1), height.max(1));
+    }
+
+    /// The camera the next picture is taken with: the `view`'s, beside the entity it follows as it is now, or `None` for
+    /// the game's own. Call it just before taking the picture.
+    pub fn view_camera(&mut self, game: &Game) -> Option<crate::gfx::Camera> {
+        self.view_cam = None;
+        let view = self.plan.view.clone()?;
+        let b = match game.extent(&view.follow) {
+            Ok((true, b)) if b.len() >= 6 => b,
+            Ok(_) => {
+                if !std::mem::replace(&mut self.view_said, true) {
+                    self.warnings.push(format!("\"view\" is for a 3D game, and '{}' is in a flat one: the pictures are the game's own (use \"crop_to\")", view.follow));
+                }
+                return None;
+            }
+            Err(e) => {
+                if !std::mem::replace(&mut self.view_said, true) {
+                    self.warnings.push(format!(
+                        "\"view\" follows '{}': {e}; those pictures are from the game's own camera",
+                        view.follow
+                    ));
+                }
+                return None;
+            }
+        };
+        let mid = glam::DVec3::new(
+            (b[0] + b[3]) / 2.0,
+            (b[1] + b[4]) / 2.0,
+            (b[2] + b[5]) / 2.0,
+        );
+        let distance = view.distance.unwrap_or(4.0);
+        let height = view.height.unwrap_or(0.3);
+        let dir = match view.from.as_deref().unwrap_or("side") {
+            "left" => glam::DVec3::NEG_X,
+            "front" => glam::DVec3::Z,
+            "back" => glam::DVec3::NEG_Z,
+            "top" => glam::DVec3::new(0.0, 1.0, 0.02).normalize(),
+            "quarter" => glam::DVec3::new(0.7, 0.35, 0.7).normalize(),
+            _ => glam::DVec3::X,
+        };
+        let eye = mid + dir * distance + glam::DVec3::Y * height;
+        let cam = crate::gfx::Camera {
+            eye: eye.as_vec3(),
+            target: mid.as_vec3(),
+            fov_y_degrees: game.camera3().fov_y_degrees.clamp(20.0, 90.0),
+        };
+        self.view_cam = Some(cam);
+        Some(cam)
+    }
+
+    /// The box of the `crop_to` entity on the picture being taken, in pixels [x0, y0, x1, y1] (it may reach past the
+    /// edges), or null when there is no `crop_to` or it is not on the picture.
+    fn crop_box(&mut self, game: &Game) -> Value {
+        let Some(name) = self.plan.crop_to.clone() else {
+            return Value::Null;
+        };
+        let (w, h) = (self.size.0 as f64, self.size.1 as f64);
+        let found = game.extent(&name).and_then(|(three, b)| {
+            if !three && b.len() >= 6 {
+                let s = h / b[5].max(1.0);
+                return Ok([b[0] * s, b[1] * s, b[2] * s, b[3] * s]);
+            }
+            if b.len() < 6 {
+                return Err("it has no place".into());
+            }
+            let cam = self.view_cam.unwrap_or_else(|| game.camera3());
+            let (mut x0, mut y0, mut x1, mut y1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+            for i in 0..8 {
+                let p = [
+                    b[if i & 1 == 0 { 0 } else { 3 }],
+                    b[if i & 2 == 0 { 1 } else { 4 }],
+                    b[if i & 4 == 0 { 2 } else { 5 }],
+                ];
+                if let Some((x, y)) = project(&cam, self.size, p) {
+                    (x0, y0, x1, y1) = (x0.min(x), y0.min(y), x1.max(x), y1.max(y));
+                }
+            }
+            if x0 > x1 {
+                return Err("it is behind the camera".into());
+            }
+            Ok([x0, y0, x1, y1])
+        });
+        match found {
+            Ok(b) if b[2] > 0.0 && b[3] > 0.0 && b[0] < w && b[1] < h => {
+                json!(b.map(|v| (v * 10.0).round() / 10.0))
+            }
+            Ok(_) => Value::Null,
+            Err(e) => {
+                if !std::mem::replace(&mut self.crop_said, true) {
+                    self.warnings.push(format!(
+                        "\"crop_to\" '{name}': {e}; a picture without it is not cropped"
+                    ));
+                }
+                Value::Null
+            }
+        }
     }
 
     pub fn start_scene(&self) -> Option<&str> {
@@ -1720,14 +1886,24 @@ impl Playtest {
         let file = self
             .out
             .join(format!("frame-{number:05}-{}.png", self.captures.len()));
-        self.captures.push(json!({
+        let crop_box = self.crop_box(game);
+        let mut capture = json!({
             "frame": number,
             "label": caption,
             "file": file,
             "prints": self.prints(game),
             "state": game.snapshot(),
             "render": self.render,
-        }));
+        });
+        if self.plan.crop_to.is_some() {
+            capture["box"] = crop_box;
+        }
+        if let Some(c) = self.view_cam {
+            let r = |v: f32| (v as f64 * 1000.0).round() / 1000.0;
+            capture["view"] =
+                json!({ "eye": c.eye.to_array().map(r), "target": c.target.to_array().map(r) });
+        }
+        self.captures.push(capture);
         file
     }
 
@@ -1762,6 +1938,9 @@ impl Playtest {
                 self.plan.overlay.join(", ")
             ));
         }
+        // (the last frame's picture: framed and cropped as the others)
+        self.view_camera(game);
+        let end_box = self.crop_box(game);
         let report = json!({
             "frames": frames,
             "error": self.error,
@@ -1776,6 +1955,7 @@ impl Playtest {
             "log": self.log,
             "sounds": self.sounds,
             "end": { "prints": self.prints(game), "state": game.snapshot(), "render": game.render_facts() },
+            "end_box": end_box,
         });
         let path = self.out.join("report.json");
         std::fs::write(

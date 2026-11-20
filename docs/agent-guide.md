@@ -117,7 +117,11 @@ tiles to the made tileset with `append`. To change a painted map, take the rows 
    the wrong place), `"overlay": ["hitboxes", "solids", "names"]` (drawn on the pictures: why a press beside a chest did
    nothing), `"compare": "nova.shadows(nil)"` (the run again with that one difference: the share of pixels that changed
    in each picture, and where: is an effect drawn at all?), `"image_out": "build/look.png"` (the picture also saved there;
-   every picture tool takes it).
+   every picture tool takes it), `"crop_to": "hero"` (every picture cut to the hero with `crop_margin` pixels round it,
+   moved with it, 2D and 3D: no pixel rectangles to guess) and, in 3D, `"view": { "follow": "hero", "from": "side",
+   "distance": 4 }` (the pictures from beside the hero, the game playing on with its own camera: with `every`, a side view
+   of a walk). The first line of every answer with a picture is its path (`picture: /tmp/...png`, or `picture saved:`
+   with `image_out`), so filtering a long answer never loses it.
 
    A `lua` or `until` that fails is reported as `ERROR in step 3 ...` and the run goes on. The picture of a step that ends
    on a condition is of the frame after, when the game has drawn the change. `"out": "build/run1"` also saves

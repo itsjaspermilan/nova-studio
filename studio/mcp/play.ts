@@ -23,10 +23,10 @@ export const ROUTE_HELP =
   '`who` is a scene object\'s name or a tag (left out: the one named or tagged hero or player, or what the 2D camera follows). ' +
   'Fighting: { "fight": "enemy", "attack": "a", "max": 600 } goes to the nearest entity with that tag, taps `attack` (every `attack_every` frames, 20) while its hitbox is within `range` (the walker\'s own size; 1.5 in 3D), then the next, until none is left or `max` frames have passed; the answer says how many were beaten, with how many attacks, and what it cost the hero. ' +
   "walk_to and fight drive the axes move_x, move_y and the buttons left, right, up, down together (\"axes\": [x, y] and \"dirs\": [left, right, up, down] name other actions) and measure each frame which way the walker really went, so they also work when the stick is relative to a turned camera. A walk gives up with a warning that says where the walker is when it stops getting nearer for two seconds, or after `max` frames (600). \"plane\": \"xy\" or \"xz\" says which fields the point is in when the guess (xz for an entity with a model) is wrong. " +
-  "`crop`, `zoom`, `every`, `capture_at`, `print`, `invincible`, `stop_on_fail` and `overlay` are options of the whole call, not of a step.";
+  "`crop`, `crop_to`, `view`, `zoom`, `every`, `capture_at`, `print`, `invincible`, `stop_on_fail` and `overlay` are options of the whole call, not of a step.";
 
 export const STEP_KEYS = ["hold", "press", "tap", "tap_every", "frames", "wait", "until", "max", "may_time_out", "quiet", "capture", "lua", "repeat", "steps", "walk_to", "who", "radius", "reach", "straight", "avoid", "plane", "axes", "dirs", "fight", "attack", "attack_every", "range"];
-const CALL_KEYS = ["crop", "zoom", "every", "capture_at", "print", "seed", "size", "state", "invincible", "god", "stop_on_fail", "overlay", "compare", "out", "audio", "start_scene"];
+const CALL_KEYS = ["crop", "crop_to", "crop_margin", "view", "zoom", "every", "capture_at", "print", "seed", "size", "state", "invincible", "god", "stop_on_fail", "overlay", "compare", "out", "audio", "start_scene"];
 
 function checkSteps(steps: unknown, where: string) {
   if (!Array.isArray(steps)) throw new Error(`${where || "route"} must be a list of steps. ${ROUTE_HELP}`);
@@ -176,6 +176,15 @@ export function playGame(root: string, a: Args, run: Run, keep: (label: string, 
     const unknown = unknownKeys(a.compare, ["lua", "each_frame", "every_frame", "label"], "compare");
     if (unknown.length) throw new Error(unknown.join("; "));
   }
+  const VIEW_HELP = 'view is { "follow": "hero", "from": "side", "distance": 4 }: the pictures of a 3D game from beside an entity (a name, tag or kind); from "side" (+x), "left" (-x), "front" (+z), "back" (-z), "top" or "quarter"; distance in metres (4); height above its middle (0.3)';
+  if (a.view !== undefined && a.view !== null) {
+    if (typeof a.view !== "object" || Array.isArray(a.view) || typeof a.view.follow !== "string" || !a.view.follow) throw new Error(`${VIEW_HELP} (got ${JSON.stringify(a.view)})`);
+    const unknown = unknownKeys(a.view, ["follow", "from", "distance", "height"], "view");
+    if (unknown.length) throw new Error(`${unknown.join("; ")}. ${VIEW_HELP}`);
+  }
+  if (a.crop_to !== undefined && !(typeof a.crop_to === "string" && a.crop_to)) throw new Error(`crop_to is the name, tag or kind of the entity to crop every picture to, like "hero" (got ${JSON.stringify(a.crop_to)})`);
+  if (a.crop_to && a.crop) throw new Error("crop and crop_to both say what part of the pictures to keep: give one of them");
+  if (a.crop_margin !== undefined && !(typeof a.crop_margin === "number" && a.crop_margin >= 0)) throw new Error("crop_margin is the room round the crop_to entity, in picture pixels (0 or more)");
   const dir = mkdtempSync(join(tmpdir(), "nova-play-"));
   try {
     const route: Args[] = a.route ?? a.steps ?? [];
@@ -198,6 +207,8 @@ export function playGame(root: string, a: Args, run: Run, keep: (label: string, 
         ...(a.who ? { who: String(a.who) } : {}),
         ...(a.stop_on_fail ? { stop_on_fail: true } : {}),
         ...(overlay.length ? { overlay } : {}),
+        ...(a.view ? { view: a.view } : {}),
+        ...(a.crop_to ? { crop_to: String(a.crop_to) } : {}),
         ...extra,
       };
       const last = join(dir, `${name}-last.png`);
@@ -230,7 +241,27 @@ export function playGame(root: string, a: Args, run: Run, keep: (label: string, 
     if (render) lines.push(render);
 
     // the pictures: every capture, then the last frame unless a capture already shows it
-    const crop = (p: Raster) => (a.crop || a.zoom ? cropZoom(p, a.crop, a.zoom ?? 1) : p);
+    // `crop_to`: one size of crop for the whole run (the biggest box the entity had, with the margin round it), moved to
+    // where the entity is in each picture, so the strip's tiles line up
+    const boxes = (run: Ran): (number[] | null)[] => [...run.captures.map((c) => c.box ?? null), run.report?.end_box ?? null];
+    let cropSize: [number, number] | null = null;
+    let margin = 0;
+    if (a.crop_to) {
+      const found = boxes({ r, report, captures, last, ran }).filter((b): b is number[] => Array.isArray(b));
+      if (found.length) {
+        const bw = Math.max(...found.map((b) => b[2]! - b[0]!)), bh = Math.max(...found.map((b) => b[3]! - b[1]!));
+        margin = a.crop_margin ?? Math.max(24, Math.round(Math.max(bw, bh) * 0.5));
+        cropSize = [Math.min(w, Math.ceil(bw + 2 * margin)), Math.min(h, Math.ceil(bh + 2 * margin))];
+      } else lines.push(`warning: crop_to '${a.crop_to}' was on none of the pictures, so they are not cropped`);
+    }
+    const cropFor = (box: number[] | null | undefined): number[] | undefined => {
+      if (a.crop) return a.crop;
+      if (!cropSize) return undefined;
+      const [cw, ch] = cropSize;
+      const cx = box ? (box[0]! + box[2]!) / 2 : w / 2, cy = box ? (box[1]! + box[3]!) / 2 : h / 2;
+      return [Math.round(Math.max(0, Math.min(w - cw, cx - cw / 2))), Math.round(Math.max(0, Math.min(h - ch, cy - ch / 2))), cw, ch];
+    };
+    const crop = (p: Raster, box?: number[] | null) => (a.crop || a.zoom || cropSize ? cropZoom(p, cropFor(box), a.zoom ?? 1) : p);
     const gather = (run: Ran) => {
       const tiles: { picture: Raster; caption: string; frame: number }[] = [];
       const singles: { file: string; frame: number; label: string }[] = [];
@@ -243,11 +274,11 @@ export function playGame(root: string, a: Args, run: Run, keep: (label: string, 
           continue;
         }
         shown = c.frame;
-        tiles.push({ picture: crop(readPng(c.file)), caption: `f${c.frame}${c.label ? ` ${c.label}` : ""}`, frame: c.frame });
+        tiles.push({ picture: crop(readPng(c.file), c.box), caption: `f${c.frame}${c.label ? ` ${c.label}` : ""}`, frame: c.frame });
         singles.push({ file: c.file, frame: c.frame, label: c.label ?? "" });
       }
       if (existsSync(run.last) && !run.captures.some((c) => c.frame === run.ran)) {
-        tiles.push({ picture: crop(readPng(run.last)), caption: run.captures.length ? `f${run.ran} end` : `f${run.ran}`, frame: run.ran });
+        tiles.push({ picture: crop(readPng(run.last), run.report?.end_box), caption: run.captures.length ? `f${run.ran} end` : `f${run.ran}`, frame: run.ran });
         singles.push({ file: run.last, frame: run.ran, label: run.captures.length ? "end" : "" });
       }
       return { tiles, singles };
@@ -309,7 +340,17 @@ export function playGame(root: string, a: Args, run: Run, keep: (label: string, 
       } else lines.push(`the picture is a film strip of ${tiles.length} moments, left to right, top to bottom, the frame number under each`);
     }
     if (leftOut) lines.unshift(leftOut);
-    if (a.crop || a.zoom) lines.push(`each picture is ${a.crop ? `the part [${a.crop.join(", ")}]` : "the whole frame"}${a.zoom ? ` enlarged x${a.zoom}` : ""}`);
+    if (cropSize) {
+      const where = captures.filter((c) => c.box).map((c) => `f${c.frame} [${cropFor(c.box)!.join(", ")}]`);
+      lines.push(`each picture is the part round '${a.crop_to}' (${cropSize[0]}x${cropSize[1]} pixels, ${margin} round the largest box it had${a.zoom ? `, enlarged x${a.zoom}` : ""}), moved with it: ${where.slice(0, 12).join(", ")}${where.length > 12 ? ", ..." : ""}`);
+      const missing = captures.filter((c) => !c.box).map((c) => `f${c.frame}`);
+      if (missing.length) lines.push(`warning: '${a.crop_to}' is not on the picture${missing.length > 1 ? "s" : ""} ${missing.join(", ")}: ${missing.length > 1 ? "they show" : "it shows"} the middle`);
+    } else if (a.crop || a.zoom) lines.push(`each picture is ${a.crop ? `the part [${a.crop.join(", ")}]` : "the whole frame"}${a.zoom ? ` enlarged x${a.zoom}` : ""}`);
+    const views = captures.filter((c) => c.view);
+    if (a.view && views.length) {
+      const v = views[0]!.view;
+      lines.push(`the pictures are from beside '${a.view.follow}' (from ${a.view.from ?? "side"}, ${a.view.distance ?? 4} m away), not from the game's camera; the first from ${v.eye.join(", ")} looking at ${v.target.join(", ")}`);
+    }
 
     if (compare) {
       // the same run again with one difference, and how much of each picture it changed

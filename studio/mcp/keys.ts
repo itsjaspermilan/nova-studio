@@ -67,7 +67,7 @@ const object = (v: unknown): Args | null => {
 export const MOVED: Record<string, Moved> = {
   sprite_write: { outline: "`outline` inside a frame object ({ \"rows\": [...], \"outline\": \"k\" }): each frame has its own", mirror: "`mirror` inside a frame object", shapes: "`shapes` inside a frame object", scale: "`sx`, `sy` in the entity, or `tileset.scale` in a scene's tile layer" },
   scene_write: { objects: "scene.objects", tilemaps: "scene.tilemaps", background: "scene.background" },
-  play: { steps: "route", hold_frames: "frames", scene: "start_scene", captures: "capture_at", walk_to: "`walk_to` inside a step of `route`", fight: "`fight` inside a step of `route`", until: "`until` inside a step of `route`", capture: "`capture` inside a step of `route`", hitboxes: "overlay" },
+  play: { steps: "route", hold_frames: "frames", scene: "start_scene", captures: "capture_at", walk_to: "`walk_to` inside a step of `route`", fight: "`fight` inside a step of `route`", until: "`until` inside a step of `route`", capture: "`capture` inside a step of `route`", hitboxes: "overlay", follow: "`view`: { \"follow\": \"hero\", \"from\": \"side\" }", camera: "`view`", margin: "crop_margin" },
   model_preview: { model: "name", zoom: "distance", angle: "yaw", frames: "strip" },
   sfx_write: { freq: "params.freq", wave: "params.wave", volume: "params.volume" },
   sound_report: { name: "sound", names: "sounds", path: "file" },

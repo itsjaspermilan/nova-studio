@@ -637,6 +637,49 @@ function H.path(who, plane, tx, ty, name, avoid, reach)
   return { points = points, found = found, looked = looked }
 end
 
+-- What a picture is framed on (`crop_to`, `view`): the living entity with this name, tag or kind. In a flat game its box
+-- on the screen (units of nova.view(), from the top left) and the view's size; in a 3D one a box round its model in the
+-- world (the model's parts at rest, scaled by sx: a person 1.6 high when it has no model).
+function H.extent(name)
+  if not (W and W.started) then error("this project does not call nova.start, so it has no entities", 0) end
+  local e = nova.named(name)
+  if not e or rawget(e, "_dead") then e = nova.first(name) end
+  if not e then
+    for _, o in ipairs(W.list) do
+      if not rawget(o, "_dead") and class_name(getmetatable(o)) == name then e = o; break end
+    end
+  end
+  if not e then error("there is no entity with the name, tag or kind '" .. tostring(name) .. "' in this scene (" .. names_here() .. ")", 0) end
+  if three_d(e) then
+    local model = rawget(e, "model") or (getmetatable(e) or {}).__model
+    local s = math.abs(type(e.sx) == "number" and e.sx or 1)
+    local x0, y0, z0, x1, y1, z1 = -0.3, 0, -0.3, 0.3, 1.6, 0.3
+    if model then
+      local ok, pose = pcall(nova.model_pose, model)
+      if ok and type(pose) == "table" then
+        local lo, hi, r = math.huge, -math.huge, 0
+        for _, p in pairs(pose) do
+          lo = math.min(lo, p.low or p.y, p.y)
+          hi = math.max(hi, p.y)
+          r = math.max(r, math.abs(p.x), math.abs(p.z))
+        end
+        if lo < hi then
+          local h = hi - lo
+          -- (a part's place is its joint: the head and the hands reach past theirs)
+          x0, y0, z0, x1, y1, z1 = -(r + h * 0.12), lo, -(r + h * 0.12), r + h * 0.12, hi + h * 0.15, r + h * 0.12
+        end
+      end
+    end
+    local ex, ey, ez = e.x, e.y or 0, e.z or 0
+    return "3d", ex + x0 * s, ey + y0 * s, ez + z0 * s, ex + x1 * s, ey + y1 * s, ez + z1 * s
+  end
+  local x0, y0, x1, y1 = e:bounds()
+  local ax, ay = nova.cam.to_screen(x0, y0)
+  local bx, by = nova.cam.to_screen(x1, y1)
+  local vw, vh = nova.view()
+  return "2d", math.min(ax, bx), math.min(ay, by), math.max(ax, bx), math.max(ay, by), vw, vh
+end
+
 -- The scene that runs now: a token that differs each time a scene is built (entered again too), and its name.
 function H.scene_now()
   local W = nova.world
@@ -958,6 +1001,30 @@ impl Game {
             t.get::<String>("text").ok()?,
             t.get::<Option<bool>>("target").ok()?.unwrap_or(false),
         ))
+    }
+
+    /// What a picture is framed on (see the helpers' `extent`): `Ok((false, [x0, y0, x1, y1, view_w, view_h]))` on the
+    /// screen of a flat game, `Ok((true, [x0, y0, z0, x1, y1, z1]))` a box in the world of a 3D one.
+    pub fn extent(&self, name: &str) -> Result<(bool, Vec<f64>), String> {
+        let v: mlua::MultiValue = self.playtest_call("extent", name)?;
+        let mut it = v.into_iter();
+        let kind = match it.next() {
+            Some(LuaValue::String(s)) => s.to_string_lossy(),
+            _ => return Err("no extent".into()),
+        };
+        let nums: Vec<f64> = it
+            .filter_map(|x| match x {
+                LuaValue::Number(n) => Some(n),
+                LuaValue::Integer(n) => Some(n as f64),
+                _ => None,
+            })
+            .collect();
+        Ok((kind == "3d", nums))
+    }
+
+    /// The 3D camera the game drew its last frame with.
+    pub fn camera3(&self) -> crate::gfx::Camera {
+        self.camera
     }
 
     /// The scene that runs now, as a token that changes whenever a scene is built (entered again too) and its name.

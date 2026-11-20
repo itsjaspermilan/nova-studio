@@ -249,7 +249,9 @@ pub fn run_headless(opts: Options) -> Result<(), String> {
                 plan.frames = Some(plan.frames.unwrap_or(0).max(n));
             }
             let beside = path.with_extension("out");
-            Some(crate::playtest::Playtest::new(plan, &beside)?)
+            let mut run = crate::playtest::Playtest::new(plan, &beside)?;
+            run.set_size(size.0, size.1);
+            Some(run)
         }
         None => None,
     };
@@ -388,7 +390,12 @@ pub fn run_headless(opts: Options) -> Result<(), String> {
         if let (Some(p), Some(game)) = (playtest.as_mut(), content.game()) {
             let captions = p.after_frame(frame, game);
             if !captions.is_empty() {
-                let pixels = gfx.capture(size, &content.frame_input(opts.world_height));
+                // (a `view` takes the pictures from beside an entity; the game plays on with its own camera)
+                let mut input = content.frame_input(opts.world_height);
+                if let Some(camera) = p.view_camera(game) {
+                    input.camera = camera;
+                }
+                let pixels = gfx.capture(size, &input);
                 for caption in captions {
                     let file = p.picture(frame, &caption, game);
                     save_png(&file, size, &pixels)?;
@@ -476,7 +483,13 @@ pub fn run_headless(opts: Options) -> Result<(), String> {
         return Err(format!("script error: {error}"));
     }
     if let Some(path) = &opts.capture {
-        let pixels = gfx.capture(size, &content.frame_input(opts.world_height));
+        let mut input = content.frame_input(opts.world_height);
+        if let (Some(p), Some(game)) = (playtest.as_mut(), content.game())
+            && let Some(camera) = p.view_camera(game)
+        {
+            input.camera = camera;
+        }
+        let pixels = gfx.capture(size, &input);
         save_png(path, size, &pixels)?;
         println!("captured {}", path.display());
     }
