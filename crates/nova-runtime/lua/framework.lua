@@ -1025,7 +1025,8 @@ function scenery.add(model, x, y, z, opts)
   piece_count = piece_count + 1
   local circles = circles_of[model]
   if circles == nil then circles = shape_circles(model); circles_of[model] = circles end
-  if #circles > 0 then
+  -- (shapes = false: this piece blocks some other way, as its own triangles in nova.solid do)
+  if #circles > 0 and opts.shapes ~= false then
     local ry, scale = opts.ry or 0, opts.scale or 1
     local s, c = sin(ry), cos(ry)
     for _, circle in ipairs(circles) do
@@ -1166,6 +1167,18 @@ function scenery.touching(x, z, r, margin)
     end
   end
   if best then return bm, bx, bz end
+end
+
+-- A body moved with nova.solid.move also stops at the scenery that blocks (a tree is its trunk: a circle of any height),
+-- so one call moves a walker against everything a scene has made solid. opts.scenery = false leaves the scenery out.
+local solid_move = nova.solid.move
+function nova.solid.move(x, y, z, radius, height, dx, dy, dz, opts)
+  local m = solid_move(x, y, z, radius, height, dx, dy, dz, opts)
+  if piece_count > 0 and not (opts and opts.scenery == false) then
+    local px, pz = scenery.push(m.x, m.z, radius)
+    if px then m.x, m.z, m.wall = m.x + px, m.z + pz, true end
+  end
+  return m
 end
 
 --- Looks along a line from (x, z) in the direction (dx, dz) for `length` metres, as wide as a circle of `radius`: the nearest
@@ -1886,7 +1899,7 @@ local function spawn(what, x, y, props)
     if not cls.__model then error("a static entity needs a model (nova.entity { model = \"pine\", static = true })", 2) end
     local scale = rawget(e, "sx") or 1
     local ez, ery = rawget(e, "z") or 0, rawget(e, "ry") or 0
-    scenery.add(cls.__model, e.x, e.y, ez, { ry = ery, scale = scale, tint = rawget(e, "tint"), lod = cls.__lod, lod_distance = cls.__lod_distance, sway = cls.__sway, max_distance = cls.__max_distance })
+    scenery.add(cls.__model, e.x, e.y, ez, { ry = ery, scale = scale, tint = rawget(e, "tint"), lod = cls.__lod, lod_distance = cls.__lod_distance, sway = cls.__sway, max_distance = cls.__max_distance, shapes = e.solid ~= true })
     -- solid = true: the whole model blocks bodies and the camera (nova.solid). Otherwise a piece that blocks at all (its model
     -- has collision shapes: a tree's trunk) stops the follow camera's line of sight with its whole shape, crown and all.
     if e.solid == true then

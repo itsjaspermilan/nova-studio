@@ -98,6 +98,8 @@ export function previewModels(root: string, names: string[], a: Args, run: Run, 
   // one scale: the camera as far from each as the largest needs
   const radius = Math.max(...bounds.map((b) => (b ? Math.hypot(b.max[0] - b.min[0], b.max[1] - b.min[1], b.max[2] - b.min[2]) / 2 : 1)), 0.05);
   const tw = Number(a.width ?? 320), th = Number(a.height ?? 240);
+  const each = a.fit === "each";
+  if (a.fit !== undefined && a.fit !== "one" && !each) throw new Error(`fit is "one" (one scale for all) or "each" (every model fills its tile), not ${JSON.stringify(a.fit)}`);
   const tiles: { picture: Raster; caption: string }[] = [];
   const lines: string[] = [];
   let scratch: string[] = [];
@@ -106,7 +108,7 @@ export function previewModels(root: string, names: string[], a: Args, run: Run, 
     return "";
   };
   names.forEach((n, i) => {
-    const r = previewModel(root, n, { ...a, names: undefined, width: tw, height: th, fit_radius: radius }, run, hold);
+    const r = previewModel(root, n, { ...a, names: undefined, fit: undefined, width: tw, height: th, fit_radius: each ? undefined : radius }, run, hold);
     tiles[tiles.length - 1]!.caption = n;
     scratch = r.text.split("\n");
     lines.push(`  ${n}: ${bounds[i] ? sizeText(bounds[i]!) : "size unknown"}; ${scratch.find((l) => l.startsWith("clips: ")) ?? "clips: none"}`);
@@ -114,7 +116,7 @@ export function previewModels(root: string, names: string[], a: Args, run: Run, 
   const sheet = contactSheet(tiles, { columns: a.columns, maxWidth: 1920 });
   const file = keep("models", sheet);
   return {
-    text: [`${names.length} models at one scale (the largest, ${(radius * 2).toFixed(2)} world units corner to corner, fills its picture), each ${tw}x${th}, from yaw ${Number(a.yaw ?? 35)}, pitch ${Number(a.pitch ?? 22)}; sizes in world units:`, ...lines, `saved at ${file}`].join("\n"),
+    text: [`${names.length} models ${each ? "each filling its own picture (not at one scale: see the sizes)" : `at one scale (the largest, ${(radius * 2).toFixed(2)} world units corner to corner, fills its picture)`}, each ${tw}x${th}, from yaw ${Number(a.yaw ?? 35)}, pitch ${Number(a.pitch ?? 22)}; sizes in world units:`, ...lines, `saved at ${file}`].join("\n"),
     images: [file],
   };
 }

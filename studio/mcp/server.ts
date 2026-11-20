@@ -292,6 +292,7 @@ tool(
   {
     name: { type: "string" },
     names: { type: "array", items: { type: "string" }, description: 'Several models in ONE picture instead (a contact sheet): ["tree", "rock", "arch"], up to 24, all at one scale (the largest fills its tile, so sizes can be compared), each with its name under it and its size in the text. `yaw`, `pitch`, `width`, `height` (of each tile; 320x240) and `columns` apply.' },
+    fit: { type: "string", description: 'With `names`: "one" (when left out: one scale for all, the largest filling its tile) or "each" (every model fills its own tile: for looking at each closely; sizes are in the text).' },
     columns: { type: "number", description: "How many models across a sheet of `names`." },
     clip: { type: "string", description: "Pose the model by this animation clip." },
     time: { type: "number", description: "Seconds into the clip (0 when left out). With `strip`, every moment is at this time." },
@@ -888,7 +889,7 @@ export const EXAMPLES: Record<string, Args> = {
 // ---- MCP over stdio ------------------------------------------------------------------------------------------------
 const send = (m: unknown) => process.stdout.write(`${JSON.stringify(m)}\n`);
 
-const PICTURES = new Set(["play", "screenshot", "model_preview", "sprite_write", "sprite_preview", "scene_write", "scene_preview", "sound_report", "store_art"]);
+const PICTURES = new Set(["play", "screenshot", "model_preview", "sprite_write", "sprite_preview", "scene_write", "scene_preview", "sound_report", "store_art", "prop3d_make", "character3d_make", "creature3d_make", "ground3d_make", "tileset_make", "character_make", "creature_make", "items_make", "song_make"]);
 
 /// What answers a call before the tool's own handler does. A 3D scene (one with a "camera") has no flat map: scene_preview
 /// gives its plan from above instead (plan3d.ts): every object's footprint and name, the solid ones marked, a grid in metres.

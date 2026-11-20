@@ -12,6 +12,7 @@ import { DYES } from "./paint";
 import { makeSong, MOOD_NAMES, MOODS } from "./song";
 import { MATERIALS, PALETTE_NAMES } from "./palettes";
 import { makeTileset, PROP_NAMES, TERRAIN_NAMES, TILE_SIZES } from "./tileset";
+import { register3d } from "./index3d";
 
 type Args = Record<string, any>;
 type Result = string | { text: string; images?: string[] };
@@ -148,7 +149,10 @@ export function registerMakers(h: Host): Record<string, Args> {
     },
   );
 
+  const three = register3d(h, PALETTE, SEED);
+
   return {
+    ...three,
     song_make: { name: "village", mood: "calm village" },
     tileset_make: { name: "tiles", palette: "bright meadow" },
     character_make: { name: "hero", hair: "short", hair_color: "brown", outfit: "tunic", outfit_color: "green", item: "sword" },

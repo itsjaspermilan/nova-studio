@@ -101,7 +101,7 @@
   "name": "nova.solid.move",
   "kind": "function",
   "signature": "nova.solid.move(x, y, z, radius, height, dx, dy, dz [, { slope = 50, step = 0.35, snap = 0.3 }]) -> { x, y, z, ground, normal, wall, wall_normal, ceiling, stepped }",
-  "doc": "Moves a capsule standing with its feet at (x, y, z), `radius` wide and `height` tall (at least twice the radius), by (dx, dy, dz), and says where it ended up. `ground` is true when it stands on something walkable (`normal` is that surface's up); `wall` when it touched a wall or a slope too steep for `slope` degrees (`wall_normal`, with a y above 0 for a steep slope: slide down it); `ceiling` when it hit its head; `stepped` is how far it hopped up a ledge of at most `step` metres. It follows ground down by up to `snap` metres so that it does not leave a slope. Give it the move for one frame (speed times dt, gravity included) and set your vertical speed to 0 when `ground` or `ceiling`; the move goes in short steps so nothing tunnels through a floor.",
+  "doc": "Moves a capsule standing with its feet at (x, y, z), `radius` wide and `height` tall (at least twice the radius), by (dx, dy, dz), and says where it ended up. `ground` is true when it stands on something walkable (`normal` is that surface's up); `wall` when it touched a wall or a slope too steep for `slope` degrees (`wall_normal`, with a y above 0 for a steep slope: slide down it); `ceiling` when it hit its head; `stepped` is how far it hopped up a ledge of at most `step` metres. It follows ground down by up to `snap` metres so that it does not leave a slope. Give it the move for one frame (speed times dt, gravity included) and set your vertical speed to 0 when `ground` or `ceiling`; the move goes in short steps so nothing tunnels through a floor. The body also stops at static scenery that blocks (the collision circles of a tree or a post, which have no height: `nova.scenery.push`), so one call moves a walker against everything a scene has made solid; `scenery = false` in the options leaves the scenery out.",
   "group": "3D"
  },
  {
@@ -185,7 +185,7 @@
   "name": "nova.scenery.add",
   "kind": "function",
   "signature": "nova.scenery.add(model, x, y, z [, { ry, scale, tint, shadow, sway, max_distance, lod, lod_distance }])",
-  "doc": "Puts a model into the static scenery: pieces that never move. `max_distance` stops it being drawn beyond that many metres (it fades out over the last 12%); `sway` bends it in the wind (nova.wind). `lod` names a cheaper model drawn instead beyond `lod_distance` metres (100 by default); the two trade places over `lod_fade` metres (15% of the distance by default), each fading by a screen-door, so nothing pops. It is drawn only near the camera and its collision circles block `nova.scenery.push`. A scene file's objects whose entity class has `static = true` do this for you.",
+  "doc": "Puts a model into the static scenery: pieces that never move. `max_distance` stops it being drawn beyond that many metres (it fades out over the last 12%); `sway` bends it in the wind (nova.wind). `lod` names a cheaper model drawn instead beyond `lod_distance` metres (100 by default); the two trade places over `lod_fade` metres (15% of the distance by default), each fading by a screen-door, so nothing pops. It is drawn only near the camera and its collision circles block `nova.scenery.push`. A scene file's objects whose entity class has `static = true` do this for you. `shapes = false` leaves the model's collision shapes out (for a piece whose own triangles are solid).",
   "group": "3D"
  },
  {
