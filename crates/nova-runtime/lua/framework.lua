@@ -46,6 +46,9 @@ local W = {
   cam = { x = 480, y = 270, follow = nil, lerp = 1, limit = nil, set = false },
 }
 nova.world = W
+-- What a scripted run (the `play` tool, `nova run --play`) asks of the game. `invincible` is true in a run with
+-- "invincible": true, for a game whose damage code wants to know: `if nova.testing.invincible then return end`.
+nova.testing = { invincible = false }
 
 -- ------------------------------------------------------------------ names and files
 local function image_id(name, what)
@@ -2402,6 +2405,7 @@ function nova.collision(opts)
   if opts.plane ~= nil then
     if opts.plane ~= "xy" and opts.plane ~= "xz" then error("nova.collision: plane is \"xy\" (a flat game) or \"xz\" (a 3D game on the ground), not " .. tostring(opts.plane), 2) end
     XZ = opts.plane == "xz"
+    W.xz = XZ -- (for the scripted runs of `game/playtest.rs`, which measure hitboxes in the same plane)
   end
   if opts.cell ~= nil then
     if type(opts.cell) ~= "number" or opts.cell <= 0 then error("nova.collision: cell must be a number above 0 (the size of a square of the broad phase)", 2) end
