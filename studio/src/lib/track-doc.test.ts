@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  ROADSIDE, addPoint, analyse, buildTrack, callOut, movePoint, newTrack, parseTrack, pointAt, removePoint, serializeTrack, setField, trackName, drawable, type Point, type TrackDoc,
+  ROADSIDE, addPoint, analyse, buildTrack, withRandomRoute, withTheme, callOut, movePoint, newTrack, parseTrack, pointAt, removePoint, serializeTrack, setField, trackName, drawable, type Point, type TrackDoc,
 } from "./track-doc";
 import { writeTrack } from "./track-write";
 import { parseScene } from "./scene-model";
@@ -205,5 +205,42 @@ describe("generating", () => {
     const plain = JSON.parse(buildTrack(loop).scene).objects;
     expect(objects.slice(0, plain.length)).toEqual(plain);
     expect(JSON.parse(buildTrack({ ...d, roadside: null, crowd: { kind: [], size: 1 } }).scene).objects).toEqual(plain);
+  });
+});
+
+describe("a made-up route", () => {
+  const base = newTrack();
+  it("is the same for the same seed and different for another", () => {
+    const a = withRandomRoute(base, { length: 2000, curviness: 0.5, seed: 9 });
+    const b = withRandomRoute(base, { length: 2000, curviness: 0.5, seed: 9 });
+    const c = withRandomRoute(base, { length: 2000, curviness: 0.5, seed: 10 });
+    expect(a.doc.control).toEqual(b.doc.control);
+    expect(a.doc.control).not.toEqual(c.doc.control);
+  });
+  it("passes the editor's own checks, as a circuit and as a stage, for many seeds", () => {
+    for (const open of [false, true]) {
+      for (let seed = 1; seed <= 25; seed++) {
+        const { doc, ok } = withRandomRoute({ ...base, open }, { length: open ? 3000 : 2000, curviness: 0.6, seed });
+        const s = analyse(doc)!;
+        expect(ok, `seed ${seed}`).toBe(true);
+        expect(s.warnings, `seed ${seed}`).toEqual([]);
+        expect(s.minRadius).toBeGreaterThanOrEqual(15);
+        expect(Math.abs(s.length - (open ? 3000 : 2000))).toBeLessThan((open ? 3000 : 2000) * 0.15);
+      }
+    }
+  });
+  it("starts at the origin heading along +z, and drops the zones of the old route", () => {
+    const { doc } = withRandomRoute({ ...base, zones: [{ from: 10, to: 50, width: 9 }] }, { length: 1500, curviness: 0.3, seed: 3 });
+    expect(doc.control[0]).toEqual([0, 0]);
+    expect(Math.abs(doc.control[1]![0])).toBeLessThan(0.2);
+    expect(doc.control[1]![1]).toBeGreaterThan(10);
+    expect(doc.zones).toEqual([]);
+  });
+  it("builds a scene and a road like any other track", () => {
+    const { doc } = withRandomRoute(withTheme(base, "desert"), { length: 1800, curviness: 0.7, seed: 4 });
+    expect(doc.road).toBe("road_sand");
+    const files = buildTrack(doc, null, "made");
+    expect(files.glb.byteLength).toBeGreaterThan(1000);
+    expect(JSON.parse(files.scene).objects.length).toBeGreaterThan(50);
   });
 });

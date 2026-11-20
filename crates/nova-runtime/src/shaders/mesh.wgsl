@@ -53,7 +53,7 @@ struct Instance {
 // Up in a tree (more than a metre above the origin and away from the trunk's axis) the leaves also flutter on their own: a small
 // shaking of each vertex by where it is, so that a crown shimmers instead of leaning like a post.
 fn wind_offset(origin: vec3<f32>, world: vec3<f32>, sway: f32) -> vec3<f32> {
-    if (sway == 0.0 || globals.wind.z == 0.0) {
+    if (sway <= 0.0 || globals.wind.z == 0.0) {
         return vec3<f32>(0.0);
     }
     let h = max(world.y - origin.y, 0.0);
@@ -180,11 +180,16 @@ fn mesh_vertex(v: Vertex, inst: Instance) -> VertexOut {
     world = vec4<f32>(world.xyz + wind_offset(inst.m3.xyz, world.xyz, inst.m2.w), 1.0);
     var normal = select(safe_normalize((model * vec4<f32>(v.normal, 0.0)).xyz), v.normal, v.emissive < 0.0);
     if (terrain_active() && inst.m3.y < 30.0) {
-        // on the hills: lifted by the ground's height, and the normal leans with its slope (the shear's inverse transpose)
-        world = vec4<f32>(world.x, world.y + terrain_height(world.xz), world.z, 1.0);
-        if (v.emissive >= 0.0) {
-            let g = terrain_slope(world.xz);
-            normal = safe_normalize(vec3<f32>(normal.x - g.x * normal.y, normal.y, normal.z - g.y * normal.y));
+        if (inst.m2.w < 0.0) {
+            // rigid (see `ModelInstance::rigid`): one height for the whole model, no shear, the normal is left as the game turned it
+            world = vec4<f32>(world.x, world.y + terrain_height(inst.m3.xz), world.z, 1.0);
+        } else {
+            // on the hills: lifted by the ground's height, and the normal leans with its slope (the shear's inverse transpose)
+            world = vec4<f32>(world.x, world.y + terrain_height(world.xz), world.z, 1.0);
+            if (v.emissive >= 0.0) {
+                let g = terrain_slope(world.xz);
+                normal = safe_normalize(vec3<f32>(normal.x - g.x * normal.y, normal.y, normal.z - g.y * normal.y));
+            }
         }
     }
     out.world = world.xyz;
@@ -384,9 +389,13 @@ fn skinned_vertex(v: SkinVertex, inst: Instance) -> VertexOut {
     var world = model * posed;
     var world_normal = safe_normalize((model * vec4<f32>(normal, 0.0)).xyz);
     if (terrain_active() && inst.m3.y < 30.0) {
-        world = vec4<f32>(world.x, world.y + terrain_height(world.xz), world.z, 1.0);
-        let g = terrain_slope(world.xz);
-        world_normal = safe_normalize(vec3<f32>(world_normal.x - g.x * world_normal.y, world_normal.y, world_normal.z - g.y * world_normal.y));
+        if (inst.m2.w < 0.0) {
+            world = vec4<f32>(world.x, world.y + terrain_height(inst.m3.xz), world.z, 1.0); // rigid
+        } else {
+            world = vec4<f32>(world.x, world.y + terrain_height(world.xz), world.z, 1.0);
+            let g = terrain_slope(world.xz);
+            world_normal = safe_normalize(vec3<f32>(world_normal.x - g.x * world_normal.y, world_normal.y, world_normal.z - g.y * world_normal.y));
+        }
     }
     out.world = world.xyz;
     out.position = globals.view_proj * world;

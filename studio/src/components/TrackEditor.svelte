@@ -3,7 +3,7 @@
   import { untrack } from "svelte";
   import {
     ROADS, ROADSIDE, ROAD_WIDTH, WARN_CLOSE, WARN_RADIUS, MIN_POINTS, addPoint, analyse, callOut, curvatureColour, movePoint, newTrack, parseTrack, pointAt, removePoint,
-    SPACING, roadOf, sceneOf, serializeTrack, setField, trackName, type Roadside, type TrackDoc, type Zone,
+    SPACING, THEMES, roadOf, sceneOf, serializeTrack, setField, trackName, withRandomRoute, withTheme, type Roadside, type ThemeId, type TrackDoc, type Zone,
   } from "../lib/track-doc";
   import { studio } from "../lib/store.svelte";
 
@@ -215,6 +215,21 @@
   const number = (e: Event) => Number((e.currentTarget as HTMLInputElement).value);
   const set = <K extends keyof TrackDoc>(key: K, value: TrackDoc[K]) => commit(setField(doc, key, value));
 
+  // ---- a made-up route (seed, length, how twisty) and a look ------------------------------------------------
+  let routeSeed = $state(Math.floor(Math.random() * 100000));
+  let routeLength = $state(2000);
+  let curviness = $state(0.5);
+  let routeNote = $state("");
+  function newRoute(reroll: boolean) {
+    if (reroll) routeSeed = Math.floor(Math.random() * 100000);
+    const made = withRandomRoute(doc, { length: routeLength, curviness, seed: routeSeed });
+    commit(made.doc);
+    selected = null;
+    fit();
+    routeNote = made.ok ? "" : "No route passed every check with this seed: try another one (the road may be tight or close to itself).";
+  }
+  let themeId = $state<ThemeId>("forest");
+
   // ---- making the scene ------------------------------------------------------------------------------------
   let busy = $state(false);
   let result = $state("");
@@ -314,6 +329,32 @@
     </div>
 
     <aside class="side" use:resizable={{ key: "track.side", edge: "left", size: 300, min: 220, max: 640 }}>
+      <section>
+        <h3>Generate</h3>
+        <label>Length
+          <span class="unit"><input type="number" min="600" max="12000" step="100" value={routeLength} onchange={(e) => (routeLength = Math.max(600, Math.min(12000, Math.round(number(e)) || 2000)))} /> m</span>
+        </label>
+        <label>Curves (gentle to twisty)
+          <input type="range" min="0" max="1" step="0.05" value={curviness} oninput={(e) => (curviness = number(e))} />
+        </label>
+        <label>Route seed
+          <span class="unit">
+            <input type="number" min="0" value={routeSeed} onchange={(e) => (routeSeed = Math.max(0, Math.round(number(e))))} />
+          </span>
+        </label>
+        <div class="buttons">
+          <button class="primary" onclick={() => newRoute(true)} title="A different {doc.open ? 'stage' : 'circuit'}, from a new random seed (undo brings the old one back)">New random route</button>
+          <button class="ghost" onclick={() => newRoute(false)} title="Make the route again from this seed, length and curves">Redo this seed</button>
+        </div>
+        {#if routeNote}<p class="warning">⚠ {routeNote}</p>{/if}
+        <label>Look
+          <select value={themeId} onchange={(e) => (themeId = e.currentTarget.value as ThemeId)}>
+            {#each THEMES as t (t.id)}<option value={t.id}>{t.name}</option>{/each}
+          </select>
+        </label>
+        <button class="ghost" onclick={() => commit(withTheme(doc, themeId))} title="Sets the road, sky and scenery (the route stays). Fine-tune them below.">Apply look</button>
+        <p class="dim small">Then press <em>Generate scene and road</em> at the bottom.</p>
+      </section>
       <section>
         <h3>Route</h3>
         <div class="seg" role="group" aria-label="Kind of route">
@@ -520,6 +561,8 @@
   .unit input { width: 80px; }
   .find { width: 100%; }
   input[type="range"] { width: 130px; }
+  .buttons { display: flex; gap: 6px; }
+  .buttons button { flex: 1; }
   .seg { display: flex; }
   .seg button { flex: 1; border-radius: 0; padding: 3px 4px; }
   .seg button.on { background: var(--accent-2); color: #fff; }

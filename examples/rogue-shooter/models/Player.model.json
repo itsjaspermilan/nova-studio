@@ -1,0 +1,151 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "hips",
+      "origin": [0, 14, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "from": [-4, -2, -2], "size": [8, 4, 4], "color": "#3d4660" }
+      ],
+      "children": [
+        {
+          "name": "spine",
+          "origin": [0, 2, 0],
+          "rotation": [0, 0, 0],
+          "cubes": [
+            { "from": [-4, 0, -2], "size": [8, 8, 4], "color": "#4f7fd1" }
+          ],
+          "children": [
+            {
+              "name": "head",
+              "origin": [0, 8, 0],
+              "rotation": [0, 0, 0],
+              "cubes": [
+                { "from": [-4, 0, -4], "size": [8, 8, 8], "color": "#e0b08a" }
+              ],
+              "children": []
+            },
+            {
+              "name": "left arm",
+              "origin": [5.5, 7, 0],
+              "rotation": [0, 0, 0],
+              "cubes": [
+                { "from": [-1.5, -6, -1.5], "size": [3, 6, 3], "color": "#4f7fd1" }
+              ],
+              "children": [
+                {
+                  "name": "left forearm",
+                  "origin": [0, -6, 0],
+                  "rotation": [0, 0, 0],
+                  "cubes": [
+                    { "from": [-1.5, -6, -1.5], "size": [3, 6, 3], "color": "#4f7fd1" }
+                  ],
+                  "children": [
+                    {
+                      "name": "left hand",
+                      "origin": [0, -6, 0],
+                      "rotation": [0, 0, 0],
+                      "cubes": [
+                        { "from": [-1.5, -2, -1.5], "size": [3, 2, 3], "color": "#e0b08a" }
+                      ],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "right arm",
+              "origin": [-5.5, 7, 0],
+              "rotation": [0, 0, 0],
+              "cubes": [
+                { "from": [-1.5, -6, -1.5], "size": [3, 6, 3], "color": "#4f7fd1" }
+              ],
+              "children": [
+                {
+                  "name": "right forearm",
+                  "origin": [0, -6, 0],
+                  "rotation": [0, 0, 0],
+                  "cubes": [
+                    { "from": [-1.5, -6, -1.5], "size": [3, 6, 3], "color": "#4f7fd1" }
+                  ],
+                  "children": [
+                    {
+                      "name": "right hand",
+                      "origin": [0, -6, 0],
+                      "rotation": [0, 0, 0],
+                      "cubes": [
+                        { "from": [-1.5, -2, -1.5], "size": [3, 2, 3], "color": "#e0b08a" }
+                      ],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "left thigh",
+          "origin": [2, -2, 0],
+          "rotation": [0, 0, 0],
+          "cubes": [
+            { "from": [-2, -7, -2], "size": [4, 7, 4], "color": "#3d4660" }
+          ],
+          "children": [
+            {
+              "name": "left shin",
+              "origin": [0, -7, 0],
+              "rotation": [0, 0, 0],
+              "cubes": [
+                { "from": [-2, -7, -2], "size": [4, 7, 4], "color": "#3d4660" }
+              ],
+              "children": [
+                {
+                  "name": "left foot",
+                  "origin": [0, -7, 0],
+                  "rotation": [0, 0, 0],
+                  "cubes": [
+                    { "from": [-2, -2, -3], "size": [4, 2, 6], "color": "#3a3a44" }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "right thigh",
+          "origin": [-2, -2, 0],
+          "rotation": [0, 0, 0],
+          "cubes": [
+            { "from": [-2, -7, -2], "size": [4, 7, 4], "color": "#3d4660" }
+          ],
+          "children": [
+            {
+              "name": "right shin",
+              "origin": [0, -7, 0],
+              "rotation": [0, 0, 0],
+              "cubes": [
+                { "from": [-2, -7, -2], "size": [4, 7, 4], "color": "#3d4660" }
+              ],
+              "children": [
+                {
+                  "name": "right foot",
+                  "origin": [0, -7, 0],
+                  "rotation": [0, 0, 0],
+                  "cubes": [
+                    { "from": [-2, -2, -3], "size": [4, 2, 6], "color": "#3a3a44" }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

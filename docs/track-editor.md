@@ -5,6 +5,13 @@ A screen in the studio for laying out a racing circuit or a rally stage without 
 
 ## What you do
 
+- **Generate** (top of the side panel): **New random route** makes a whole route for you, a circuit or a stage as set under Route, from a
+  random seed, a length (metres) and a Curves slider (gentle to twisty); undo brings the old route back. **Redo this seed** makes it again
+  after you change the length or curves; the same seed, length and curves always give the same route. Every route passes the editor's own
+  checks (no bend tighter than 28 m, no two parts of the road closer than 60 m), starts on a straight heading along +z, and drops any zones
+  (they were metres along the old route). **Look** sets the road, sky and scenery to a ready-made set (forest, desert or snow: the sets of
+  Pine Ridge Rally's courses); **Apply look** keeps the route. Then press *Generate scene and road*. The route is only a starting point:
+  drag its points like any other.
 - **Click the ground** to add a point. Near the route the point goes in between its neighbours; elsewhere it goes on the end.
   **Drag** a point to move it; select it and press **Delete** (or **Delete point**) to remove it. A route keeps at least two points
   (four to generate). Scroll zooms, dragging the ground pans, **Fit** frames the route, **Undo/Redo** step through the edits (⌘Z, ⇧⌘Z).
@@ -51,6 +58,9 @@ The generator names nothing it places. The scene refers to entity kinds the game
 ## How it is built
 
 - The MCP tool `track_write` writes the same three files; given only a `name` it makes the scene and road again from the saved track file.
+- `scripts/lib/trackrandom.mjs` proposes the control points (`randomRoute({ open, length, curviness, seed })`): a circuit is a wobbly ring
+  (it cannot cross itself), a stage a walk whose heading drifts and swings into hairpins; up to 300 candidates are checked with the same
+  measures as the editor's warnings. `withRandomRoute` and `withTheme` in `track-doc.ts` wrap it for the editor. Tracks are flat: no hills yet.
 - `scripts/lib/trackgen.mjs` is the one generator (route, curvature, scene layout, road mesh, pace notes). The studio imports it from there;
   so does the MCP server's `track_write` tool. Nothing is copied.
 - `studio/src/lib/track-doc.ts` is the editor's model (editing, statistics, the `.track.json` file, `buildTrack`); `track-write.ts`

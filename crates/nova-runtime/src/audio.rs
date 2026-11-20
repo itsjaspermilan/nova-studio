@@ -244,21 +244,63 @@ where
         .map_err(|e| format!("cannot open audio stream: {e}"))
 }
 
-/// Frames the audio callback asks for on Android (see `start`).
+/// Frames the audio callback asks for (see `start`). Linux: ALSA's default buffer behind PipeWire was about 4 seconds long (a
+/// callback every few seconds, music starved); 1024 frames is PipeWire's own quantum at 48 kHz (21 ms).
 #[cfg(target_os = "android")]
-const ANDROID_CALLBACK_FRAMES: u32 = 256;
+const CALLBACK_FRAMES: u32 = 256;
+#[cfg(target_os = "linux")]
+const CALLBACK_FRAMES: u32 = 1024;
+
+/// The output device. `NOVA_AUDIO_DEVICE=<part of a name>` picks one by name (all names are logged). On Linux the default is the
+/// "pipewire" ALSA device when there is one: ALSA's own "default" behind PipeWire reports no format and a buffer of seconds.
+fn pick_device(host: &cpal::Host) -> Result<cpal::Device, String> {
+    let names: Vec<(cpal::Device, String)> = host
+        .output_devices()
+        .map(|list| {
+            list.map(|d| {
+                let label = format!(
+                    "{} [{:?}]",
+                    d.description().map(|n| n.name().to_string()).unwrap_or_default(),
+                    d.id().ok()
+                );
+                (d, label)
+            })
+            .collect()
+        })
+        .unwrap_or_default();
+    log::info!(
+        "audio devices: {}",
+        names.iter().map(|(_, n)| n.as_str()).collect::<Vec<_>>().join(" | ")
+    );
+    let wanted = std::env::var("NOVA_AUDIO_DEVICE").ok().or_else(|| {
+        cfg!(target_os = "linux").then(|| "pipewire".to_string())
+    });
+    if let Some(want) = wanted {
+        let want = want.to_lowercase();
+        if let Some((d, _)) = names.into_iter().find(|(_, n)| n.to_lowercase().contains(&want)) {
+            return Ok(d);
+        }
+    }
+    host.default_output_device()
+        .ok_or_else(|| "no audio output device".to_string())
+}
 
 /// `game` selects the mixer for project games; otherwise the benchmark's demo score plays.
 pub fn start(game: bool) -> Result<AudioOut, String> {
     let host = cpal::default_host();
-    let device = host
-        .default_output_device()
-        .ok_or("no audio output device")?;
+    let device = pick_device(&host)?;
     let supported = device
         .default_output_config()
         .map_err(|e| format!("no output config: {e}"))?;
     let format = supported.sample_format();
-    let config = supported.config();
+    let mut config = supported.config();
+    // ALSA's "default" device (PipeWire on Armada and Zaviya) can report no channels and no rate: ask for 48 kHz stereo.
+    if config.channels == 0 {
+        config.channels = 2;
+    }
+    if config.sample_rate == 0 {
+        config.sample_rate = 48000;
+    }
     let rate: u32 = config.sample_rate;
     let stats = Arc::new(AudioStats::default());
     stats.sample_rate.store(rate, Ordering::Relaxed);
@@ -278,9 +320,9 @@ pub fn start(game: bool) -> Result<AudioOut, String> {
     };
     // On Android the default callback was about 980 frames (20 ms) and the device buffers a few of those on top; asking for a small
     // one (256 frames, 5 ms at 48 kHz) brings a sound closer to the button that made it.
-    #[cfg(target_os = "android")]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     let config = cpal::StreamConfig {
-        buffer_size: cpal::BufferSize::Fixed(ANDROID_CALLBACK_FRAMES),
+        buffer_size: cpal::BufferSize::Fixed(CALLBACK_FRAMES),
         ..config
     };
     let stream = match format {

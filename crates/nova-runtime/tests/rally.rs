@@ -31,7 +31,7 @@ thread_local! {
 }
 
 /// The cars of `state.cars`, in its order (lib/state.lua): the save of an ordinary test owns them all.
-const CARS: [&str; 25] = [
+const CARS: [&str; 28] = [
     "car",
     "car_blue",
     "car_green",
@@ -43,6 +43,9 @@ const CARS: [&str; 25] = [
     "car_police",
     "car_van",
     "car_pickup",
+    "car_coupe",
+    "car_offroad",
+    "car_gt",
     "racecar_green",
     "racecar_orange",
     "racecar_red",
@@ -74,7 +77,7 @@ const CIRCUITS: [&str; 10] = [
     "neon_docks",
     "autumn_summit",
 ];
-const STAGES: [&str; 10] = [
+const STAGES: [&str; 11] = [
     "stage_pine_ridge",
     "stage_dust_valley",
     "stage_frost_pass",
@@ -85,6 +88,7 @@ const STAGES: [&str; 10] = [
     "stage_glacier_night",
     "stage_harbour_sprint",
     "stage_marathon",
+    "stage_random_1",
 ];
 
 fn load() -> Game {

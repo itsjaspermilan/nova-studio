@@ -49,6 +49,14 @@ impl ModelInstance {
         self
     }
 
+    /// The same instance lifted by the hills as one rigid piece: the whole model rises by the ground's height under its origin, instead of
+    /// every vertex by the height under that vertex (which shears a car on a slope). Its turn is the game's to set (a car tilts by its
+    /// own pitch and roll). Rides in the sway slot as a negative number, which a swaying model never has.
+    pub fn rigid(mut self) -> Self {
+        self.matrix[2][3] = -1.0;
+        self
+    }
+
     /// The same instance swaying in the wind: `amount` is how far the top of a thing one metre tall is pushed at full wind (the
     /// shaders bend a vertex in proportion to its height above the instance's origin). Rides in the w slot of the third column.
     pub fn swaying(mut self, amount: f32) -> Self {

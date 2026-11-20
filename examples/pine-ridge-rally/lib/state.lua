@@ -40,6 +40,8 @@ state.stages = {
   { id = "stage_glacier_night", look = "stage_glacier_night", name = "Glacier by Night", blurb = "Snow in the dark: long slippery sweeps and three hairpins under the lamps.", laps = 1, km = 3.1, sections = 7, level = 3 },
   { id = "stage_harbour_sprint", look = "stage_harbour_sprint", name = "Harbour Sprint", blurb = "Square turns, chicanes and narrow walled alleys along the quays at night.", laps = 1, km = 2.6, sections = 7, level = 4 },
   { id = "stage_marathon", look = "stage_marathon", name = "Forest Marathon", blurb = "The long one: gravel, a tarmac middle, gravel again. Eight sections.", laps = 1, km = 4.6, sections = 8, level = 4 },
+  -- made by scripts/rally/random-stage.mjs from a seed (the studio's "New random route"); `open`: always playable, whatever else has been won
+  { id = "stage_random_1", look = "stage_random_1", name = "Random Stage", blurb = "A stage made up from a seed: forest roads nobody has driven before.", laps = 1, km = 3.1, sections = 7, level = 1, open = true },
 }
 -- `price` is what a car costs in the garage, in coins; a new player has STARTING_COINS, enough for one of the three `starter` cars (one
 -- each of Sport, Everyday and Kart), and earns more by racing (state.reward).
@@ -62,6 +64,7 @@ state.cars = {
   { id = "car_police", price = 7500, grip = 1, brake = 1.05, class = "sport", name = "Patrol", oversteer = 0.55, wheel = 0.375, power = 9.5, top = 46, idle_rpm = 700, max_rpm = 6800 },
   { id = "car_van", price = 2000, grip = 0.8, brake = 0.8, class = "everyday", name = "Delivery Van", oversteer = 0.3, wheel = 0.4, power = 7, top = 38, idle_rpm = 800, max_rpm = 4800 },
   { id = "car_pickup", price = 2500, grip = 0.85, brake = 0.85, class = "everyday", name = "Hauler", oversteer = 0.45, wheel = 0.425, power = 8.5, top = 40, idle_rpm = 700, max_rpm = 5500 },
+  { id = "car_coupe", price = 8000, grip = 1.05, brake = 1.05, class = "sport", name = "Nightrunner", oversteer = 0.65, wheel = 0.316, power = 9.2, top = 46, idle_rpm = 900, max_rpm = 7200 },
   { id = "car_offroad", price = 4500, grip = 0.9, brake = 0.9, class = "everyday", name = "Outback", oversteer = 0.35, wheel = 0.406, power = 8.6, top = 40, idle_rpm = 650, max_rpm = 4800 },
   { id = "car_gt", price = 18000, grip = 1.12, brake = 1.15, class = "sport", name = "Apex GT", oversteer = 0.5, wheel = 0.338, power = 10.2, top = 49, idle_rpm = 800, max_rpm = 7600 },
   -- (added 2026-11-07) the racing kit's four classic racers, five karts from the car kit (each with its own driver aboard) and, once the player has
@@ -270,6 +273,7 @@ local function passed(list, c)
 end
 -- Whether a course of a list (state.tracks or state.stages) can be picked, and if not, what it takes.
 function state.course_open(list, course)
+  if course.open then return true end
   local at
   for i, c in ipairs(list) do if c == course or c.id == course.id then at = i end end
   if not at or at == 1 then return true end

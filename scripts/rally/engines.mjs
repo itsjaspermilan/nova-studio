@@ -62,7 +62,7 @@ const CARS = {
   },
   // (added 2026-11-07, after the others so that their loops come out as before: the seed runs on through the list)
   racecar_green: { // Verde GP: a classic V8 racer, a hard bark
-    idle: 3000, max: 11000, cylinders: 8, unevenness: 0.04, noise: 0.3, pattern: [1],
+    idle: 3000, max: 11000, cylinders: 8, unevenness: 0.04, noise: 0.3, pattern: [1], tone: 1000,
     resonators: [{ f: 160, tau: 0.03, g: 0.5 }, { f: 448, tau: 0.02, g: 1 }, { f: 1040, tau: 0.012, g: 0.85 }, { f: 2080, tau: 0.008, g: 0.7 }, { f: 3520, tau: 0.004, g: 0.5 }],
   },
   racecar_orange: { // Tangerine: a V12, smooth and very high
@@ -117,6 +117,19 @@ const CARS = {
     idle: 500, max: 2600, cylinders: 2, unevenness: 0.22, noise: 0.5, pattern: [1, 0.85, 0.95, 0.8],
     resonators: [{ f: 60, tau: 0.045, g: 1 }, { f: 138, tau: 0.025, g: 0.85 }, { f: 360, tau: 0.014, g: 0.6 }, { f: 900, tau: 0.007, g: 0.4 }, { f: 1800, tau: 0.003, g: 0.25 }],
   },
+  // (added 2026-11-19, after the others so that their loops come out as before)
+  car_coupe: { // Nightrunner: a turbocharged four, crisp and a little raspy
+    idle: 900, max: 7200, cylinders: 4, unevenness: 0.06, noise: 0.25, pattern: [1, 0.95, 0.98, 0.92], tone: 1300,
+    resonators: [{ f: 110, tau: 0.03, g: 1 }, { f: 280, tau: 0.018, g: 0.85 }, { f: 760, tau: 0.01, g: 0.75 }, { f: 1700, tau: 0.006, g: 0.5 }],
+  },
+  car_offroad: { // Outback: a big diesel six, low and chugging
+    idle: 650, max: 4800, cylinders: 6, unevenness: 0.14, noise: 0.4, pattern: [1, 0.9],
+    resonators: [{ f: 80, tau: 0.045, g: 1 }, { f: 190, tau: 0.026, g: 0.9 }, { f: 480, tau: 0.014, g: 0.7 }, { f: 1100, tau: 0.008, g: 0.45 }],
+  },
+  car_gt: { // Apex GT: a smooth turbocharged six, a rising hum and a little whistle
+    idle: 800, max: 7600, cylinders: 6, unevenness: 0.04, noise: 0.2, pattern: [1], tone: 1400, whine: 10,
+    resonators: [{ f: 100, tau: 0.032, g: 1 }, { f: 260, tau: 0.02, g: 0.85 }, { f: 700, tau: 0.011, g: 0.75 }, { f: 1600, tau: 0.007, g: 0.5 }],
+  },
 };
 
 function rng(seed) { let s = seed >>> 0; return () => ((s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296); }
@@ -147,11 +160,19 @@ function loop(car, rpm, seed) {
   }
   if (car.whine) { // a whistle at a multiple of the revs, a whole number of cycles in the loop
     const cycles = Math.round(((rpm / 60) * car.whine * N) / RATE);
-    const level = 0.35 * Math.min(1, rpm / car.max);
+    const level = 0.18 * Math.min(1, rpm / car.max);
     for (let i = 0; i < N; i++) out[i] += level * Math.sin((2 * Math.PI * cycles * i) / N) * (0.7 + 0.3 * Math.sin((2 * Math.PI * 2 * i) / N));
   }
-  // high-pass at 120 Hz (a small speaker cannot play lower; round the circle so that there is no seam) and an even loudness
-  const a = Math.exp((-2 * Math.PI * 120) / RATE);
+  // Tone: two one-pole low-passes (12 dB an octave) take the thin, whining top off (the resonators ring at fixed pitches, and above
+  // about 2 kHz an engine is mostly hiss). `tone` is the cut-off in Hz; the loops are filtered round the circle, so there is no seam.
+  const tone = car.tone ?? (car.cylinders >= 8 || car.max > 9000 ? 1500 : 1300);
+  const lpa = 1 - Math.exp((-2 * Math.PI * tone) / RATE);
+  for (let stage = 0; stage < 2; stage++) {
+    let s = out[N - 1];
+    for (let turn = 0; turn < 3; turn++) for (let i = 0; i < N; i++) { s += lpa * (out[i] - s); if (turn === 2) out[i] = s; }
+  }
+  // high-pass at 70 Hz (a small speaker cannot play much lower; round the circle so that there is no seam) and an even loudness
+  const a = Math.exp((-2 * Math.PI * 70) / RATE);
   let x1 = 0, y1 = 0;
   for (let turn = 0; turn < 3; turn++) for (let i = 0; i < N; i++) { const y = a * (y1 + out[i] - x1); x1 = out[i]; y1 = y; if (turn === 2) out[i] = y; }
   let e = 0;

@@ -3,7 +3,7 @@
 //!   nova run <project-folder>        play a Nova project (F3 toggles the stats, Esc quits)
 //!   nova run --pak game.npk          play a packed project
 //!   nova pack <project-folder> out.npk    pack a project into one file (what the APK carries)
-//!   nova export desktop <project-folder> [--out dir]   a folder that plays the game on a computer
+//!   nova export desktop <project-folder> [--out dir] [--exe program]   a folder that plays the game on a computer (--exe: package another build, e.g. ARM Linux)
 //!   nova export android <project-folder> [--out dir]   a debug-signed APK (needs the Android SDK: see android.rs)
 //!   nova                             the built-in M1 benchmark scene
 //!   nova --world-height 0            render the world at native resolution (default: project, or 540)
@@ -26,7 +26,7 @@ const USAGE: &str = "usage:
   nova pack <project-folder> <out.npk>   pack a project into one file
   nova ktx2 [--linear] in.png out.ktx2   compress a picture for the GPU (ETC2; sides a multiple of 4)
   nova info <project-folder>             print the project's name, version and id (for build scripts)
-  nova export desktop <project-folder> [--out <dir>]   check the game, then write <dir>/<id>/ that plays it on a computer
+  nova export desktop <project-folder> [--out <dir>] [--exe <program>]   check the game, then write <dir>/<id>/ that plays it on a computer
   nova export android <project-folder> [--out <dir>] [--rebuild] [--debug-build] [--fast]
                                          check the game, then build a debug-signed APK (needs the Android SDK; the
                                          engine is built with cargo ndk in the Nova source tree when it changed)
@@ -79,6 +79,8 @@ struct AndroidFlags {
     benchmark: bool,
     /// Skip `nova check` (scripts that test the engine on a device build games as they are).
     no_check: bool,
+    /// `export desktop --exe <program>`: package this program (for example the ARM Linux build) instead of the one running.
+    exe: Option<PathBuf>,
 }
 
 fn parse() -> Result<Command, String> {
@@ -161,6 +163,9 @@ fn parse() -> Result<Command, String> {
                 "--rebuild" if target == "android" => android.rebuild = true,
                 "--benchmark" if target == "android" => android.benchmark = true,
                 "--no-check" if target == "android" => android.no_check = true,
+                "--exe" if target == "desktop" => {
+                    android.exe = Some(args.next().ok_or("--exe needs a program")?.into())
+                }
                 other if folder.is_none() && !other.starts_with("--") => {
                     folder = Some(PathBuf::from(other))
                 }
@@ -434,7 +439,10 @@ fn export_game(
             );
         }
     }
-    let exe = std::env::current_exe().map_err(|e| format!("cannot find this program: {e}"))?;
+    let exe = match &android.exe {
+        Some(exe) => exe.clone(),
+        None => std::env::current_exe().map_err(|e| format!("cannot find this program: {e}"))?,
+    };
     if target == "desktop" {
         let folder = folder.ok_or("`nova export desktop` needs a project folder")?;
         let notices = std::fs::read_to_string(
@@ -531,6 +539,14 @@ fn export_android(
 }
 
 fn main() {
+    // Linux with PipeWire (Armada, Zaviya, SteamOS): the ALSA plugin's default period is 262144 frames (5.5 s per audio callback, so
+    // sound arrives seconds late and the music stream starves). Ask for 256-frame periods in a 1024-frame buffer (2048 and 8192 bytes of 32-bit stereo; ALSA fills the whole buffer ahead, so its default size is seconds of delay) unless the person
+    // set their own. Done first, while the program is still single-threaded (set_var is unsafe for that reason).
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("PIPEWIRE_ALSA").is_none() {
+        // SAFETY: nothing else runs yet.
+        unsafe { std::env::set_var("PIPEWIRE_ALSA", "{ alsa.period-bytes=2048 alsa.buffer-bytes=8192 node.latency=256/48000 }") };
+    }
     env_logger::Builder::from_env(
         env_logger::Env::default().default_filter_or("nova_runtime=info,warn"),
     )

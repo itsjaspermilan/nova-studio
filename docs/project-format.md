@@ -35,7 +35,8 @@ files, 64 MiB per file and 1 GiB in total.
 up to eight sine waves over the ground. The shaders lift every vertex of a model that stands near the ground (an instance whose origin is under
 30 m) by the height under it, shadows included, so a game keeps drawing on flat ground (roads, cars, trees, the particles) and the hills follow;
 only a camera, a light or anything else placed by hand adds `nova.terrain_height(x, z)`, and `nova.terrain_slope(x, z)` gives the slope
-(a car's weight on a hill). Because the lifting is by vertex, a flat model must have vertices where the ground bends: a road piece every
+(a car's weight on a hill). A model that must stay rigid (a vehicle) is drawn with `rigid = true`: it is lifted by the height under its origin only, and the game tilts it
+(Pine Ridge's `entities/car.lua` takes the ground under each wheel with `nova.terrain_height`); otherwise a car on a slope is sheared, not tilted. Because the lifting is by vertex, a flat model must have vertices where the ground bends: a road piece every
 few metres, and a ground made of a grid of squares (`scripts/rally/land.mjs`) rather than one big quad. The slope of a wave is up to
 2 pi x height / wavelength: Pine Ridge Rally's roads keep to about 10% (the `terrain` of each course's `race` object), which a handheld game feels as a real hill.
 Pine Ridge Rally lays each course's road as one ribbon mesh along the curve (made with its scene from `tracks/<course>.track.json` by the studio's

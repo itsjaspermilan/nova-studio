@@ -41,7 +41,7 @@ struct Instance {
 // Up in a tree (more than a metre above the origin and away from the trunk's axis) the leaves also flutter on their own: a small
 // shaking of each vertex by where it is, so that a crown shimmers instead of leaning like a post.
 fn wind_offset(origin: vec3<f32>, world: vec3<f32>, sway: f32) -> vec3<f32> {
-    if (sway == 0.0 || globals.wind.z == 0.0) {
+    if (sway <= 0.0 || globals.wind.z == 0.0) {
         return vec3<f32>(0.0);
     }
     let h = max(world.y - origin.y, 0.0);
@@ -136,7 +136,8 @@ fn vs_main(v: Vertex, inst: Instance) -> @builtin(position) vec4<f32> {
     var world = model * vec4<f32>(v.position, 1.0);
     world = vec4<f32>(world.xyz + wind_offset(inst.m3.xyz, world.xyz, inst.m2.w), 1.0);
     if (terrain_active() && inst.m3.y < 30.0) {
-        world = vec4<f32>(world.x, world.y + terrain_height(world.xz), world.z, 1.0);
+        let at = select(world.xz, inst.m3.xz, inst.m2.w < 0.0); // rigid models rise by the height under their origin
+        world = vec4<f32>(world.x, world.y + terrain_height(at), world.z, 1.0);
     }
     return globals.light_view_proj * world;
 }
@@ -178,7 +179,8 @@ fn vs_skinned(v: SkinVertex, inst: Instance) -> @builtin(position) vec4<f32> {
     }
     var world = model * (skin * vec4<f32>(v.position, 1.0));
     if (terrain_active() && inst.m3.y < 30.0) {
-        world = vec4<f32>(world.x, world.y + terrain_height(world.xz), world.z, 1.0);
+        let at = select(world.xz, inst.m3.xz, inst.m2.w < 0.0); // rigid models rise by the height under their origin
+        world = vec4<f32>(world.x, world.y + terrain_height(at), world.z, 1.0);
     }
     return globals.light_view_proj * world;
 }

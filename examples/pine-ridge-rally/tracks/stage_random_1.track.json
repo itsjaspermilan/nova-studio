@@ -1,0 +1,297 @@
+{
+  "version": 1,
+  "open": true,
+  "road": "road_gravel",
+  "sections": 7,
+  "leadIn": 40,
+  "runout": 90,
+  "seed": 4242,
+  "trees": [
+    "nk_pinetall_a",
+    "nk_pinetall_b",
+    "nk_pinetall_c",
+    "nk_pinetall_d",
+    "nk_pineround_a",
+    "nk_pineround_c",
+    "nk_pineround_e",
+    "nk_pinesmall_a",
+    "nk_pinesmall_c",
+    "nk_oak",
+    "nk_default",
+    "nk_tall",
+    "nk_fat",
+    "nk_thin",
+    "nk_oak_fall",
+    "pine",
+    "pine_dark",
+    "birch"
+  ],
+  "small": [
+    "nk_bush_large",
+    "nk_bush_detailed",
+    "nk_bush_tri",
+    "bush",
+    "nk_stump",
+    "nk_log",
+    "nk_rock_largeC"
+  ],
+  "rock": [
+    "nk_rock_largeA",
+    "nk_rock_largeC",
+    "nk_rock_largeE",
+    "nk_rock_tallB",
+    "nk_rock_tallF",
+    "nk_rock_tallH"
+  ],
+  "density": 0.5,
+  "rocks": 0.08,
+  "lamps": false,
+  "rail": "guardrail",
+  "sky": [
+    138,
+    182,
+    224
+  ],
+  "far": {
+    "kind": [
+      "nk_pinetall_a",
+      "nk_pinetall_d",
+      "nk_pineround_e",
+      "pine_dark"
+    ],
+    "density": 0.5
+  },
+  "landmarks": {
+    "kind": [
+      "pine_dark"
+    ],
+    "count": 0,
+    "radius": 0
+  },
+  "roadside": {
+    "stand": "grandstand",
+    "tent": "tent_long",
+    "banner": "banner_green",
+    "flag": "flag_green",
+    "boards": [
+      "billboard",
+      "billboard_low"
+    ],
+    "pylon": "pylon"
+  },
+  "crowd": {
+    "kind": [
+      "crowd_fa",
+      "crowd_fb",
+      "crowd_fc",
+      "crowd_fd",
+      "crowd_ma",
+      "crowd_mb",
+      "crowd_mc",
+      "crowd_md"
+    ],
+    "size": 2
+  },
+  "control": [
+    [
+      0,
+      0
+    ],
+    [
+      0,
+      72.5
+    ],
+    [
+      1,
+      127.5
+    ],
+    [
+      10.9,
+      191.1
+    ],
+    [
+      13.4,
+      244.5
+    ],
+    [
+      -7.6,
+      302.7
+    ],
+    [
+      -62.2,
+      342.8
+    ],
+    [
+      -101.1,
+      376.3
+    ],
+    [
+      -159.6,
+      407
+    ],
+    [
+      -218.3,
+      391
+    ],
+    [
+      -256.2,
+      329.9
+    ],
+    [
+      -242.4,
+      260.4
+    ],
+    [
+      -218.6,
+      192.6
+    ],
+    [
+      -188.4,
+      141.6
+    ],
+    [
+      -142.2,
+      85.3
+    ],
+    [
+      -101.5,
+      46.7
+    ],
+    [
+      -76.5,
+      1
+    ],
+    [
+      -55,
+      -64.2
+    ],
+    [
+      -30,
+      -110.2
+    ],
+    [
+      10.3,
+      -142.2
+    ],
+    [
+      73.6,
+      -181.4
+    ],
+    [
+      124.8,
+      -224.4
+    ],
+    [
+      152.1,
+      -272.9
+    ],
+    [
+      189.5,
+      -324.1
+    ],
+    [
+      220.3,
+      -390.9
+    ],
+    [
+      215,
+      -462.7
+    ],
+    [
+      215.4,
+      -521.5
+    ],
+    [
+      189.9,
+      -586.8
+    ],
+    [
+      163.7,
+      -639.5
+    ],
+    [
+      143.9,
+      -699.5
+    ],
+    [
+      122.4,
+      -754.6
+    ],
+    [
+      71.1,
+      -779.3
+    ],
+    [
+      13.5,
+      -761.3
+    ],
+    [
+      -13.5,
+      -714.1
+    ],
+    [
+      -29.9,
+      -649
+    ],
+    [
+      -66.6,
+      -588.7
+    ],
+    [
+      -115.5,
+      -536.3
+    ],
+    [
+      -150,
+      -474.2
+    ],
+    [
+      -171.2,
+      -419.8
+    ],
+    [
+      -161.5,
+      -357.1
+    ],
+    [
+      -148,
+      -306.6
+    ],
+    [
+      -144.2,
+      -243.3
+    ],
+    [
+      -177,
+      -203.7
+    ],
+    [
+      -247.9,
+      -194.5
+    ],
+    [
+      -293.5,
+      -227.1
+    ],
+    [
+      -348.6,
+      -253.8
+    ],
+    [
+      -399.9,
+      -238.1
+    ],
+    [
+      -437.7,
+      -172.5
+    ],
+    [
+      -425.7,
+      -120.3
+    ],
+    [
+      -366.1,
+      -73.5
+    ]
+  ]
+}

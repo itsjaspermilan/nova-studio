@@ -3,6 +3,8 @@
 // JavaScript that the MCP server's `track_write` tool and Pine Ridge Rally's script use too): nothing here repeats its algorithm.
 // @ts-ignore (plain JavaScript)
 import { centreline, curvature, gateIndices, layout, paceNotes, roadGlb, stageMarks, tightest, ROAD_COLOURS } from "../../../scripts/lib/trackgen.mjs";
+// @ts-ignore (plain JavaScript)
+import { randomRoute } from "../../../scripts/lib/trackrandom.mjs";
 
 import { parseScene, serializeScene } from "./scene-model";
 
@@ -333,3 +335,69 @@ export function keptObjects(scene: string | null | undefined): unknown[] {
 }
 
 export { ROAD_COLOURS };
+
+// ---- a made-up route and a look for it ---------------------------------------------------------------------------------------------
+// "Generate route" proposes control points from a seed (scripts/lib/trackrandom.mjs) and keeps everything else; a theme sets the scenery,
+// the road and the sky (the sets Pine Ridge Rally's courses use). Both are plain edits of the document: the result is an ordinary track.
+
+export interface RouteOptions { length: number; curviness: number; seed: number }
+
+/// A new route for the document (a circuit or a stage as it is set), from the seed. `ok` is false when no candidate passed the editor's own
+/// checks (a bend tighter than 28 m, road parts closer than 60 m): the best one is used anyway, and a different seed will likely do better.
+export function withRandomRoute(doc: TrackDoc, o: RouteOptions): { doc: TrackDoc; ok: boolean } {
+  const r = randomRoute({ open: doc.open, length: o.length, curviness: o.curviness, seed: o.seed });
+  // (the zones are metres along the old route and mean nothing on the new one)
+  return { doc: { ...doc, control: r.control as Point[], zones: [] }, ok: r.ok };
+}
+
+const CROWD = ["crowd_fa", "crowd_fb", "crowd_fc", "crowd_fd", "crowd_ma", "crowd_mb", "crowd_mc", "crowd_md"];
+const SIDE = { boards: ["billboard", "billboard_low"], pylon: "pylon", tent: "tent_long" };
+
+export type ThemeId = "forest" | "desert" | "snow";
+export const THEMES: { id: ThemeId; name: string; set: Partial<TrackDoc> }[] = [
+  {
+    id: "forest", name: "Forest (pines and oaks, asphalt)",
+    set: {
+      road: "road_asphalt", sky: [138, 182, 224], density: 0.5, rocks: 0.08, lamps: false,
+      trees: ["nk_pinetall_a", "nk_pinetall_b", "nk_pinetall_c", "nk_pinetall_d", "nk_pineround_a", "nk_pineround_c", "nk_pineround_e", "nk_pinesmall_a", "nk_pinesmall_c", "nk_oak", "nk_default", "nk_tall", "nk_fat", "nk_thin", "nk_oak_fall", "pine", "pine_dark", "birch"],
+      small: ["nk_bush_large", "nk_bush_detailed", "nk_bush_tri", "bush", "nk_stump", "nk_log", "nk_rock_largeC"],
+      rock: ["nk_rock_largeA", "nk_rock_largeC", "nk_rock_largeE", "nk_rock_tallB", "nk_rock_tallF", "nk_rock_tallH"],
+      far: { kind: ["nk_pinetall_a", "nk_pinetall_d", "nk_pineround_e", "pine_dark"], density: 0.5 },
+      landmarks: { kind: ["pine_dark"], count: 0, radius: 150 },
+      roadside: { ...SIDE, stand: "grandstand", banner: "banner_green", flag: "flag_green" },
+      crowd: { kind: CROWD, size: 2 },
+    },
+  },
+  {
+    id: "desert", name: "Desert (cacti and mesas, sand)",
+    set: {
+      road: "road_sand", sky: [230, 160, 120], density: 0.32, rocks: 0.14, lamps: false,
+      trees: ["nk_cactus_tall", "nk_cactus_tall", "nk_cactus_short", "nk_cactus_short", "cactus", "nk_dead_thin", "nk_dead_tall", "dry_bush"],
+      small: ["dry_bush", "nk_rockred_largeC", "dry_bush", "nk_stump", "nk_rockred_tallF"],
+      rock: ["nk_rockred_largeA", "nk_rockred_largeC", "nk_rockred_largeE", "nk_rockred_tallB", "nk_rockred_tallF", "nk_rockred_tallH"],
+      far: { kind: ["mesa"], density: 0.22 },
+      landmarks: { kind: ["mesa"], count: 14, radius: 220 },
+      roadside: { ...SIDE, stand: "grandstand_covered", banner: "banner_red", flag: "flag_red" },
+      crowd: { kind: CROWD, size: 2 },
+    },
+  },
+  {
+    id: "snow", name: "Snow (frosted pines, snowy road)",
+    set: {
+      road: "road_snow", sky: [196, 216, 236], density: 0.55, rocks: 0.1, lamps: false,
+      trees: ["nk_snow_pinetall_a", "nk_snow_pinetall_c", "nk_snow_pinetall_d", "nk_snow_pineround_a", "nk_snow_pineround_e", "nk_snow_pinesmall_a", "pine_snow", "pine_snow", "nk_pinetall_a", "nk_pineround_c"],
+      small: ["bush_snow", "nk_rockice_largeC", "bush_snow", "nk_stump"],
+      rock: ["nk_rockice_largeA", "nk_rockice_largeC", "nk_rockice_largeE", "nk_rockice_tallB", "nk_rockice_tallF", "nk_rockice_tallH"],
+      far: { kind: ["pine_snow", "nk_snow_pinetall_d", "nk_snow_pineround_e"], density: 0.6 },
+      landmarks: { kind: ["pine_snow"], count: 0, radius: 150 },
+      roadside: { ...SIDE, stand: "grandstand_covered", banner: "banner_red", flag: "flag_checkers" },
+      crowd: { kind: CROWD, size: 2 },
+    },
+  },
+];
+
+/// The document with a theme's scenery, road and sky (the route, sections and seed stay).
+export function withTheme(doc: TrackDoc, id: ThemeId): TrackDoc {
+  const t = THEMES.find((x) => x.id === id);
+  return t ? { ...doc, ...t.set } : doc;
+}

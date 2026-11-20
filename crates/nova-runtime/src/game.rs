@@ -1523,7 +1523,11 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                         shader_api::push_model(&mut sh, ModelDraw { casts, mesh: far_mesh, instance }, shading);
                 }
                 let Some(near_dissolve) = near_dissolve else { return Ok(()) };
-                let dissolve = |i: ModelInstance| if near_dissolve == 0.0 { i } else { i.dissolving(near_dissolve) };
+                let rigid = opts.as_ref().map_or(Ok(false), |o| o.get::<Option<bool>>("rigid").map(|b| b.unwrap_or(false)))?;
+                let dissolve = |i: ModelInstance| {
+                    let i = if near_dissolve == 0.0 { i } else { i.dissolving(near_dissolve) };
+                    if rigid { i.rigid() } else { i }
+                };
                 // (a model with rules of its own is posed part by part so they apply even at rest)
                 let constrained = constraints_live(&opts)?
                     && sh.parts.get(&found).is_some_and(|p| p.iter().any(|x| !x.constraints.is_empty()));

@@ -21,6 +21,27 @@ local WHEELS = {
 }
 local WHEEL_NAMES = { "wheel_fl", "wheel_fr", "wheel_rl", "wheel_rr" }
 local WHEELBASE, TRACK = 2.2, 1.45
+-- Where a model's wheels really are (from the parts' own origins), so that the ground is sampled under each tyre and the body tips by the
+-- car's own wheelbase and track: a long coupe on a slope has its front wheel well ahead of the middle, a short 4x4 close to it.
+local LAYOUTS = {}
+local function wheel_layout(model)
+  if LAYOUTS[model] then return LAYOUTS[model] end
+  local layout = { wheels = WHEELS, wheelbase = WHEELBASE, track = TRACK }
+  local ok, pose = pcall(nova.model_pose, model)
+  if ok and type(pose) == "table" and pose.wheel_fl and pose.wheel_fr and pose.wheel_rl and pose.wheel_rr then
+    local fl, fr, rl, rr = pose.wheel_fl, pose.wheel_fr, pose.wheel_rl, pose.wheel_rr
+    local wb = (fl.z + fr.z) / 2 - (rl.z + rr.z) / 2
+    local tr = (math.abs(fl.x - fr.x) + math.abs(rl.x - rr.x)) / 2
+    if wb > 0.5 and tr > 0.5 then
+      layout = {
+        wheels = { wheel_fl = { fwd = fl.z, left = fl.x }, wheel_fr = { fwd = fr.z, left = fr.x }, wheel_rl = { fwd = rl.z, left = rl.x }, wheel_rr = { fwd = rr.z, left = rr.x } },
+        wheelbase = wb, track = (math.abs(fl.x - fr.x) + math.abs(rl.x - rr.x)) / 2,
+      }
+    end
+  end
+  LAYOUTS[model] = layout
+  return layout
+end
 -- How bumpy each surface is (metres of ground height), and the body's suspension (a springy, damped mass).
 local BUMPS = { road = 0.004, dirt = 0.03, rough = 0.08 }
 local WHEEL_FOLLOW = 14     -- how fast a wheel follows the ground (1 / seconds): the bumps come faster than a wheel can rise and fall, and at 40 m/s a 60 fps frame samples them so coarsely that the wheels hopped at random
@@ -56,6 +77,8 @@ function Car:create()
   self.progress = 0
   self.waypoint = nil
   self.model_id = getmetatable(self).__model
+  local layout = wheel_layout(self.model_id)
+  self.wheels, self.wheelbase, self.track = layout.wheels, layout.wheelbase, layout.track
   self.wheel_radius = WHEEL_RADIUS
   for _, c in ipairs(state.cars) do
     if c.id == self.model_id then
@@ -72,7 +95,9 @@ function Car:create()
   -- suspension: where each corner of the body is (b) and how fast it is moving (bv), and the ground under each wheel (h)
   self.susp = { b = { 0, 0, 0, 0 }, bv = { 0, 0, 0, 0 }, h = { 0, 0, 0, 0 }, w = { 0, 0, 0, 0 } }
   self.last_vf, self.last_yaw = 0, 0
-  self.draw_opts = { ry = 0, parts = self.parts_table }
+  -- rigid: the hills lift the whole car by the height under its middle (not every vertex by the height under it, which shears a car on a
+  -- slope); the car tilts by its own pitch and roll, which come from the ground under each wheel (see `suspension`)
+  self.draw_opts = { ry = 0, parts = self.parts_table, rigid = true }
   self.shadow_opts = { ry = 0 }
   self.bump_cooldown = 0
   self.y = 0
@@ -287,11 +312,12 @@ function Car:suspension(dt, vf, accel, lateral_accel)
   local sinh, cosh = math.sin(self.heading), math.cos(self.heading)
   local long_shift = math.max(-0.07, math.min(0.07, accel * 0.0026))    -- braking (negative) drops the nose
   local side_shift = math.max(-0.07, math.min(0.07, lateral_accel * 0.002))   -- turning left (positive) loads the left side
+  local h0 = nova.terrain_height(self.x, self.z) -- (the model is lifted by this; each wheel is as far above or below it as the hill is under it)
   for i, name in ipairs(WHEEL_NAMES) do
-    local w = WHEELS[name]
+    local w = self.wheels[name]
     local wx = self.x + sinh * w.fwd + cosh * w.left
     local wz = self.z + cosh * w.fwd - sinh * w.left
-    local h = ground(wx, wz, size)
+    local h = ground(wx, wz, size) + nova.terrain_height(wx, wz) - h0
     sp.h[i] = h
     sp.w[i] = sp.w[i] + (h - sp.w[i]) * math.min(1, dt * WHEEL_FOLLOW)
     h = sp.w[i]
@@ -304,8 +330,8 @@ function Car:suspension(dt, vf, accel, lateral_accel)
   local b = sp.b
   self.lift = (b[1] + b[2] + b[3] + b[4]) / 4
   -- (body pitch is about x and tips the nose down for a positive angle; roll is about z and lifts the left side)
-  self.pitch = -((b[1] + b[2]) - (b[3] + b[4])) / 2 / WHEELBASE
-  self.roll = ((b[2] + b[4]) - (b[1] + b[3])) / 2 / TRACK
+  self.pitch = -((b[1] + b[2]) - (b[3] + b[4])) / 2 / self.wheelbase
+  self.roll = ((b[2] + b[4]) - (b[1] + b[3])) / 2 / self.track
 end
 
 function Car:draw()
@@ -337,7 +363,7 @@ local TAIL = {
   car_suvl = { z = -2.33, y = 0.86, x = 0.64 }, car_taxi = { z = -2.33, y = 0.56, x = 0.61 },
   car_police = { z = -2.33, y = 0.56, x = 0.61 }, car_van = { z = -2.39, y = 0.84, x = 0.6 },
   car_pickup = { z = -2.46, y = 0.8, x = 0.61 },
-  car_offroad = { z = -1.84, y = 0.81, x = 0.84 }, car_gt = { z = -2.31, y = 0.8, x = 0.65 },
+  car_coupe = { z = -2.21, y = 0.58, x = 0.56 }, car_offroad = { z = -1.84, y = 0.81, x = 0.84 }, car_gt = { z = -2.31, y = 0.8, x = 0.65 },
   ambulance = { z = -2.02, y = 0.6, x = 0.7 }, firetruck = { z = -2.09, y = 0.67, x = 0.61 },
   garbage_truck = { z = -2.12, y = 0.67, x = 0.61 }, delivery = { z = -2.19, y = 0.53, x = 0.7 },
   tractor = { z = -1.14, y = 0.8, x = 0.4 },
@@ -361,8 +387,9 @@ function Car:draw_tail_lights()
   for _, side in ipairs(t.x > 0 and { -t.x * 0.92, t.x * 0.92 } or { 0 }) do
     local x = self.x + sinh * t.z + cosh * side
     local z = self.z + cosh * t.z - sinh * side
-    nova.billboard("puff", x, y, z, 0.2 * (0.7 + 0.3 * k), LENS)
-    nova.billboard("puff", x, y, z, 0.75 * k + 0.25, GLOW)
+    local yy = y + nova.terrain_height(self.x, self.z) - nova.terrain_height(x, z) -- (a billboard is lifted by the hill under itself)
+    nova.billboard("puff", x, yy, z, 0.2 * (0.7 + 0.3 * k), LENS)
+    nova.billboard("puff", x, yy, z, 0.75 * k + 0.25, GLOW)
   end
 end
 
