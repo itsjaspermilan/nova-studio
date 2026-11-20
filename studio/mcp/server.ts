@@ -8,7 +8,7 @@
 // Every file operation stays inside the project folder.
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -283,15 +283,15 @@ tool(
 );
 
 /// Finds a sound of the project by name or path and decodes it: the file the game plays when there is one, else the editor's
-/// settings rendered (`.sfx.json`, `.song.json`). `file` may also be a WAV the play tool wrote (in the temporary folder).
-function loadSound(root: string, given: string): { name: string; sound: Sound; music: boolean } {
+/// settings rendered (`.sfx.json`, `.song.json`). A path given whole (starting with /) may be any sound file that can be read.
+function loadSound(root: string, given: string): { name: string; sound: Sound; music: boolean; file: string } {
   const tries: string[] = [];
   const absolute = given.startsWith("/");
   if (absolute) {
+    // any sound file the caller can read: one the command line wrote (`--audio-out`), a recording, another project's
     const full = resolve(given);
-    const tmp = resolve(tmpdir());
-    const realTmp = existsSync(tmp) ? realpathSync(tmp) : tmp;
-    if (!(full.startsWith(root + sep) || full.startsWith(tmp + sep) || full.startsWith(realTmp + sep))) throw new Error(`'${given}' is outside the project folder (a sound is named by its path in the project, or is a file the play tool wrote)`);
+    if (!/\.(wav|ogg|sfx\.json|song\.json)$/i.test(full)) throw new Error(`'${given}' is not a sound file: a path given whole must end in .wav or .ogg (or .sfx.json, .song.json)`);
+    if (!existsSync(full)) throw new Error(`there is no file '${given}'`);
     tries.push(full);
   } else {
     const base = given.replace(/\.(wav|ogg|sfx\.json|song\.json)$/i, "");
@@ -311,12 +311,12 @@ function loadSound(root: string, given: string): { name: string; sound: Sound; m
   if (/\.sfx\.json$/i.test(file)) {
     const p = sfxFromJson(readFileSync(file, "utf8"));
     if (!p) throw new Error(`${name} is not a sound effect file`);
-    return { name, sound: render(p), music };
+    return { name, sound: render(p), music, file };
   }
   if (/\.song\.json$/i.test(file)) {
     const parsed = parseSong(readFileSync(file, "utf8"));
     if (!parsed.ok) throw new Error(`${name}: ${parsed.error}`);
-    return { name, sound: renderSong(parsed.song), music };
+    return { name, sound: renderSong(parsed.song), music, file };
   }
   if (/\.ogg$/i.test(file)) {
     // decoded by the game's own decoder
@@ -325,12 +325,12 @@ function loadSound(root: string, given: string): { name: string; sound: Sound; m
       const out = join(dir, "sound.wav");
       const r = run(novaBin, ["wav", file, out]);
       if (!existsSync(out)) throw new Error(`${name} could not be decoded: ${r.out}`);
-      return { name, sound: decodeWav(readFileSync(out)), music };
+      return { name, sound: decodeWav(readFileSync(out)), music, file };
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   }
-  return { name, sound: decodeWav(readFileSync(file)), music };
+  return { name, sound: decodeWav(readFileSync(file)), music, file };
 }
 
 tool(
@@ -632,20 +632,25 @@ const playProperties = {
   crop: { type: "array", items: { type: "number" }, description: "[x, y, w, h] in picture pixels: return this part of every picture." },
   zoom: { type: "number", description: "Enlarge every picture (or its crop) this many times, without blur: small pixel art read closely." },
   state: { type: "string", enum: ["end", "all", "none"], description: "The list of entities with positions: at the end (default), at every picture, or not at all." },
-  audio: { type: "boolean", description: "Also write what the run sounded like to a WAV file (its path is in the answer; give it to sound_report)." },
+  audio: { type: ["boolean", "string"], description: 'true: also write what the run sounded like to a WAV file (its path is in the answer; give it to sound_report). With `out` it is <out>/run.wav; a path such as "build/run1.wav" (in the project, in a folder the game ignores) says where yourself.' },
+  out: { type: "string", description: 'A folder in the project for the run\'s files: every picture taken (each `capture`, `capture_at` frame, `every` frame and the last) as its own full-size PNG named by its frame and caption (f00031-at-the-door.png), the film strip (strip.png), report.json and, with `audio: true`, run.wav. It must be a place the game does not load: under "build/", a dot-folder, or a folder listed in nova.json\'s "ignore" ("shots/run1" with { "ignore": ["shots"] }). The answer lists what was written. A run never reloads the game when files change, so writing there is safe.' },
   columns: { type: "number", description: "How many pictures across the film strip." },
   press: { type: "array", items: { type: "string" }, description: 'Taps by frame, each "source@frame", for example "key:Enter@30": the key is held for two frames from that frame. (A route is easier.)' },
   hold: { type: "array", items: { type: "string" }, description: 'Actions held every frame of the run, for example ["throttle", "steer=0.3"].' },
   width: { type: "number" },
   height: { type: "number" },
 };
-const playHandler = (a: Args): Result => playGame(projectRoot(a), a, (args, timeout) => run(novaBin, args, timeout), keepPicture);
+const playHandler = (a: Args): Result => {
+  const r = playGame(projectRoot(a), a, (args, timeout) => run(novaBin, args, timeout), keepPicture);
+  for (const f of r.wrote ?? []) if (!written.includes(f)) written.push(f);
+  return r;
+};
 
 tool(
   "play",
   "Play the game headless along a route and see what happened: one call returns a film strip (one picture with a tile per moment, the frame number under each) and a report in words: the scene and every entity with its position at the end, the values of the Lua expressions you asked for at each picture, the game's log lines (nova.log) and the sounds it started, each with its frame, and any Lua error. " +
-    "Use it to check that a level can be played: walk to the key, fight, open the chest, and read the strip. `route` drives the game with its input action names (nova.json's `input`, or the built-in left right up down a b x y start select and the axes move_x move_y). `start_scene` and `lua` begin somewhere else in some state, so a late room needs no walk. " +
-    "Pictures: each step's `capture`, `capture_at` frames, `every` N frames, and always the last frame; `crop` and `zoom` look closely. Runs are repeatable (math.random is seeded). A headless run has no sound device: `audio: true` writes the run's sound to a file for sound_report. With no options it is a picture after 90 frames.",
+    "Use it to check that a level can be played: walk to the key, fight, open the chest, and read the strip. `route` drives the game with its input action names (nova.json's `input`, or the built-in left right up down a b x y start select and the axes move_x move_y). `start_scene` and `lua` begin somewhere else in some state, so a late room needs no walk. A step can walk and tap at once (`tap_every`), repeat a group of steps (`repeat`, `steps`), and steer to a point in 2D or 3D (`walk_to`). " +
+    "Pictures: each step's `capture`, `capture_at` frames, `every` N frames, and always the last frame; `crop` and `zoom` look closely. Runs are repeatable (math.random is seeded). A headless run has no sound device: `audio: true` writes the run's sound to a file for sound_report. `out: \"build/run1\"` also saves every picture as its own full-size file in the project (with the strip, the report and the sound). With no options it is a picture after 90 frames.",
   playProperties,
   [],
   playHandler,

@@ -675,6 +675,8 @@ pub struct Game {
     pub last_update: Duration,
     stamp: Option<SystemTime>,
     checked: Instant,
+    /// Whether changed files reload the game (a window does; a headless run plays what it started with).
+    watching: std::cell::Cell<bool>,
     last_flush: Instant,
     save_dir: Option<std::path::PathBuf>,
     /// The debugger connection (`nova run --debug`); the host hands the same one to a restarted game.
@@ -4062,6 +4064,7 @@ impl Game {
         let mut game = Game {
             deadline,
             stamp: vfs.stamp(),
+            watching: std::cell::Cell::new(true),
             vfs: vfs.clone(),
             lua,
             shared: shared.clone(),
@@ -4306,16 +4309,23 @@ impl Game {
         self.error_detail = Some(message);
     }
 
-    /// True when files changed on disk since the last check (at most every 400 ms).
+    /// Whether files that change on disk reload the game. A window watches; a headless run does not, so that a run
+    /// which writes its pictures into the project (or an editor saving meanwhile) cannot restart the game under it.
+    pub fn watch_files(&self, on: bool) {
+        self.watching.set(on);
+    }
+
+    /// True when files of the game changed on disk since the last check (at most every 400 ms). Files the manifest's
+    /// `"ignore"` lists are not part of the game and do not count.
     pub fn changed_on_disk(&mut self) -> bool {
-        if self.checked.elapsed() < Duration::from_millis(400) {
+        if !self.watching.get() || self.checked.elapsed() < Duration::from_millis(400) {
             return false;
         }
         self.checked = Instant::now();
         let stamp = self.vfs.stamp();
         if stamp.is_some() && stamp != self.stamp {
             self.stamp = stamp;
-            return true;
+            return !self.changed_files().is_empty();
         }
         false
     }

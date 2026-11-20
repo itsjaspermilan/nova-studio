@@ -1285,7 +1285,7 @@ animation, collisions, tilemap) at 60 fps. Not verified: any physical device.
 - A Lua error, in the entry script or at runtime, shows a red banner with the message and
   stops script updates until the file is fixed; the last frame's drawing is replaced by
   the banner. Saving the file reloads the project.
-- With `nova run`, saving any file in the folder reloads the whole project (a restart of
+- With `nova run` in a window, saving any file of the game (not one that `"ignore"` lists; a headless run never reloads) reloads the whole project (a restart of
   the Lua state, not state-preserving hot reload). If the reload fails, the previous game
   keeps running with the error banner.
 - `F3` toggles a stats overlay (frame time, draw calls, sprites, triangles, audio).
@@ -1335,10 +1335,38 @@ end, `frames` is the least number of frames to run. Frames count from 1; frame 1
 after it and the steps start at frame 2. The run writes into `out` (a folder beside the plan when left out): one PNG per
 picture and `report.json` with `frames`, `error`, `warnings` (an action name the game does not have, an `until` that never
 held), `captures` (each with its `frame`, `label`, `file`, the `prints` and the `state`: the scene's name, the camera and
-every living entity with its kind, the name the scene file gave it and its position), `log` (the `nova.log` lines with their
+every living entity with its kind, the name the scene file gave it and its position: `x`, `y`, and `z` for an entity that has a model or is off the z = 0 plane), `log` (the `nova.log` lines with their
 frames), `sounds` (each sound and music started, with its frame) and `end` (prints and state after the last frame). A run
 that stops on a Lua error still writes the report. The MCP tool `play` writes such plans and returns the pictures as one film
 strip (`docs/agent-guide.md`).
+
+More steps:
+
+| Step | Does |
+| --- | --- |
+| `{ "hold": ["right"], "tap": "a", "tap_every": 30, "until": "..." }` | walks and acts at once: `tap` (the same as `press`) is tapped again every `tap_every` frames (3 or more) for as long as the step lasts |
+| `{ "repeat": 5, "steps": [ ... ] }` | plays a group of steps five times. With `"until"` the group stops as soon as the expression holds, in the middle of a step too (up to 100 rounds when `repeat` is left out); a `capture` is taken when the group ends. `repeat` on a plain step plays that step again. Messages name such steps `step 3.2 (round 4 of 5)` |
+| `{ "walk_to": [x, y], "who": "hero", "radius": 12, "max": 600 }` | steers an entity to a point and ends within `radius` of it (12 units; `[x, z]` on the ground and 0.5 in a 3D game) |
+| `"may_time_out": true` | on an `until`, a `walk_to` or a group: running out of time is expected, so no warning |
+
+**`walk_to`.** `who` is a scene object's name or a tag; left out, it is the entity named or tagged `hero` or `player`, or what
+the 2D camera follows. The point is in x and y, or in x and z when the walker has a model (`"plane": "xy"` or `"xz"` says so
+outright). Each frame the step drives the axes `move_x`, `move_y` and the buttons `left`, `right`, `up`, `down` together
+(whichever the game has; `"axes": [x, y]` and `"dirs": [left, right, up, down]` name other actions), because it cannot know
+which of them the game's code reads. It does not assume that the stick's right is +x: after every frame it measures which way
+the walker really went and corrects the turn between stick and ground when that is off by more than 20 degrees (and tries the
+mirror image if turning keeps failing), so it works with a stick that is relative to a turned camera. It walks straight,
+without path finding: going round a wall takes two steps. When it has not come nearer for 120 frames, or after `max` frames
+(600), it ends with a warning that says where the walker is. The report's `notes` say once who it steered and with which
+actions.
+
+**When a step's own Lua fails** (`lua`, `until`, the plan's `lua`), the report's `step_errors` gets a line with the step's
+number and the run goes on with the next step, so every picture and value is still there; `nova run` then ends with a non-zero
+status after writing everything. Only an error of the game itself (`error`) stops a run.
+
+**A headless run never reloads.** It plays the files it started with: a run may write its pictures into the project (into a
+folder the game ignores), and saving a file meanwhile does not restart it. In a window, files that `"ignore"` lists, `build/`
+and dot-folders do not cause a reload either.
 
 **Hearing a run.** A headless run has no sound device and plays nothing. `--audio-out run.wav` mixes what the run would
 have sounded like (effects and streamed music, through the game's own mixer, in step with the frames) into a 48 kHz stereo

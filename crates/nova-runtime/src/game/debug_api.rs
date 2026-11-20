@@ -548,6 +548,34 @@ impl Game {
     /// Call when `changed_on_disk` says files changed. When only the code of modules (files loaded with `require`)
     /// changed, their new functions are swapped into the running game and its state (entities, the scene, timers,
     /// module-level tables) carries on; anything else gives `Reload::Restart` and the host starts the game again.
+    /// The files of the game that are not as they were when it loaded (changed, added or removed), leaving out what
+    /// the manifest's `"ignore"` lists: screenshots and notes are not part of the game.
+    pub(super) fn changed_since_load(
+        &self,
+        now: &HashMap<String, Option<SystemTime>>,
+    ) -> Vec<String> {
+        let ignore = &self.project.manifest.ignore;
+        let mut changed: Vec<String> = now
+            .iter()
+            .filter(|(path, t)| self.files.get(*path) != Some(*t))
+            .map(|(path, _)| path.clone())
+            .collect();
+        changed.extend(self.files.keys().filter(|p| !now.contains_key(*p)).cloned());
+        changed.retain(|p| !crate::project::ignored(ignore, p));
+        changed.sort();
+        changed.dedup();
+        changed
+    }
+
+    /// What `changed_since_load` says right now. A project that cannot tell which file changed says "something".
+    pub(super) fn changed_files(&self) -> Vec<String> {
+        let now = file_times(self.vfs.as_ref());
+        if now.is_empty() {
+            return vec!["?".into()];
+        }
+        self.changed_since_load(&now)
+    }
+
     pub fn hot_reload(&mut self) -> Reload {
         let now = file_times(self.vfs.as_ref());
         if now.is_empty() {
@@ -555,14 +583,7 @@ impl Game {
                 reason: "this project cannot tell which file changed".into(),
             };
         }
-        let mut changed: Vec<String> = now
-            .iter()
-            .filter(|(path, t)| self.files.get(*path) != Some(*t))
-            .map(|(path, _)| path.clone())
-            .collect();
-        changed.extend(self.files.keys().filter(|p| !now.contains_key(*p)).cloned());
-        changed.sort();
-        changed.dedup();
+        let changed = self.changed_since_load(&now);
         if changed.is_empty() {
             return Reload::Nothing;
         }

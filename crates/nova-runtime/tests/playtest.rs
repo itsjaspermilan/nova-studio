@@ -45,6 +45,26 @@ function Hero:on_collide_coin(coin) coin:destroy(); nova.log("coin") end
 return Hero
 "#;
 
+/// Something that walks where the stick says, as seen by a camera turned `turn` radians (and mirrored when `mirror`):
+/// with the stick or with the four buttons, on x and y or (ground = "z") on x and z.
+const ROVER: &str = r#"
+local Rover = nova.entity { tags = { "rover" }, speed = 120, turn = 0, mirror = false, ground = "y", buttons = false, wall = false }
+function Rover:update(dt)
+  local sx, sy = nova.input.axis("move_x"), nova.input.axis("move_y")
+  if self.buttons then
+    sx = (nova.input.down("right") and 1 or 0) - (nova.input.down("left") and 1 or 0)
+    sy = (nova.input.down("down") and 1 or 0) - (nova.input.down("up") and 1 or 0)
+  end
+  if self.mirror then sy = -sy end
+  local c, s = math.cos(self.turn), math.sin(self.turn)
+  local dx, dy = sx * c - sy * s, sx * s + sy * c
+  local nx = self.x + dx * self.speed * dt
+  if not (self.wall and nx > self.wall) then self.x = nx end
+  self[self.ground] = self[self.ground] + dy * self.speed * dt
+end
+return Rover
+"#;
+
 fn files() -> Vec<(&'static str, Vec<u8>)> {
     vec![
         ("nova.json", br#"{"format":1,"name":"T","ignore":["shots","notes.md"]}"#.to_vec()),
@@ -57,6 +77,12 @@ fn files() -> Vec<(&'static str, Vec<u8>)> {
         ),
         ("entities/hero.lua", HERO.as_bytes().to_vec()),
         ("entities/coin.lua", b"return nova.entity { tags = { \"coin\" }, hitbox = { -4, -4, 8, 8 } }".to_vec()),
+        ("entities/rover.lua", ROVER.as_bytes().to_vec()),
+        ("scenes/yard.lua", b"return nova.scene {}".to_vec()),
+        (
+            "scenes/yard.scene.json",
+            br#"{"version":1,"objects":[{"kind":"rover","name":"rover","x":100,"y":100},{"kind":"rover","name":"walker","x":0,"y":1,"z":0,"props":{"ground":"z","speed":4}}]}"#.to_vec(),
+        ),
         // (not part of the game: a screenshot far too big for the sprite atlas, and a note)
         ("shots/big.png", b"not even a picture".to_vec()),
         ("notes.md", b"todo".to_vec()),
@@ -194,19 +220,53 @@ fn mistakes_in_a_plan_are_said_plainly() {
         warnings[1].contains("step 2: `nova.count('coin') == 0` never held in 5 frames"),
         "{warnings:?}"
     );
-    // Lua that fails stops the run and says which step
-    let (report, _) = play(
+    // a step whose Lua fails is written down with its number, and the run goes on: what came before and after is kept
+    let (report, pictures) = play(
         &mut game(),
-        r#"{ "start_scene": "room", "steps": [ { "wait": 2 }, { "lua": "nothing.here = 1" } ] }"#,
+        r#"{ "start_scene": "room", "lua": "nope.x = 1", "steps": [ { "wait": 2, "capture": "before" }, { "lua": "nothing.here = 1" },
+            { "hold": ["right"], "until": "nothing.here", "max": 50 }, { "hold": ["right"], "frames": 10, "capture": "after" } ],
+            "print": ["nova.named('hero').x"] }"#,
         "lua-error",
     );
+    assert_eq!(report["error"], Value::Null, "{report}");
+    let errors: Vec<&str> = report["step_errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|w| w.as_str().unwrap())
+        .collect();
+    assert!(errors[0].starts_with("the plan's lua: "), "{errors:?}");
+    assert!(errors[1].starts_with("step 2 lua: "), "{errors:?}");
     assert!(
-        report["error"]
-            .as_str()
-            .unwrap()
-            .starts_with("step 2 lua: "),
-        "{report}"
+        errors[2].starts_with("step 3 until `nothing.here`: "),
+        "{errors:?}"
     );
+    assert_eq!(errors.len(), 3, "{errors:?}");
+    assert_eq!(
+        pictures.iter().map(|p| p.1.as_str()).collect::<Vec<_>>(),
+        ["before", "after"]
+    );
+    assert_eq!(report["captures"][1]["prints"][0]["value"], "111"); // (one frame of the failed until, ten of the last step)
+    // a group must not also be a step, a tap_every needs a length, and a plane is one of two
+    for (plan, wanted) in [
+        (
+            r#"{ "steps": [ { "repeat": 2, "hold": ["a"], "steps": [ { "wait": 1 } ] } ] }"#,
+            "step 1 is a group",
+        ),
+        (
+            r#"{ "steps": [ { "wait": 1 }, { "tap": "a", "tap_every": 10 } ] }"#,
+            "step 2 has \"tap_every\" but no length",
+        ),
+        (
+            r#"{ "steps": [ { "walk_to": [1, 2], "plane": "yz" } ] }"#,
+            "\"plane\" is \"xy\"",
+        ),
+    ] {
+        let dir = scratch("bad-step");
+        std::fs::write(dir.join("plan.json"), plan).unwrap();
+        let e = Plan::from_file(&dir.join("plan.json")).unwrap_err();
+        assert!(e.contains(wanted), "{e}");
+    }
     // a scene that does not exist is the game's own error
     let (report, _) = play(
         &mut game(),
@@ -226,6 +286,211 @@ fn mistakes_in_a_plan_are_said_plainly() {
     .unwrap();
     let e = Plan::from_file(&dir.join("plan.json")).unwrap_err();
     assert!(e.contains("hodl") && e.contains("a plan is"), "{e}");
+}
+
+fn warnings(report: &Value) -> Vec<String> {
+    report["warnings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|w| w.as_str().unwrap().to_string())
+        .collect()
+}
+
+#[test]
+fn a_route_walks_and_acts_at_once_and_repeats_groups() {
+    // tapping while holding: 30 frames of walking with a swing every ten
+    let plan = r#"{ "start_scene": "room", "steps": [ { "hold": ["move_x=1"], "tap": "a", "tap_every": 10, "frames": 30 } ] }"#;
+    let (report, _) = play(&mut game(), plan, "tap");
+    let log = texts(&report["log"]);
+    let swings: Vec<&String> = log.iter().filter(|l| l.contains("swing")).collect();
+    assert_eq!(
+        swings,
+        ["2 swing at 101", "12 swing at 111", "22 swing at 121"],
+        "{log:?}"
+    );
+    // a group played until something holds: it stops in the middle of a round, the rest is passed over, and the
+    // step after the group plays
+    let plan = r#"{ "start_scene": "room", "steps": [
+        { "repeat": 20, "until": "nova.named('hero').x >= 130", "capture": "there", "steps": [ { "hold": ["right"], "frames": 8 }, { "press": "a" } ] },
+        { "lua": "nova.log('after the group')" } ] }"#;
+    let (report, pictures) = play(&mut game(), plan, "group");
+    assert_eq!(warnings(&report), Vec::<String>::new());
+    let log = texts(&report["log"]);
+    assert_eq!(
+        log.iter().filter(|l| l.contains("swing")).count(),
+        3,
+        "{log:?}"
+    );
+    assert!(log.last().unwrap().ends_with("after the group"), "{log:?}");
+    assert_eq!(pictures.len(), 1);
+    assert_eq!(pictures[0].1, "there");
+    assert_eq!(report["end"]["state"]["entities"][0]["x"], 130.0);
+    // a group that runs out says so with its rounds; a step repeated by itself is named by its round
+    let plan = r#"{ "start_scene": "room", "steps": [
+        { "repeat": 2, "until": "false", "steps": [ { "wait": 1 } ] },
+        { "repeat": 3, "hold": ["right"], "until": "false", "max": 2 },
+        { "hold": ["right"], "until": "false", "max": 2, "may_time_out": true },
+        { "repeat": 2, "until": "false", "quiet": true, "steps": [ { "wait": 1 } ] } ] }"#;
+    let (report, _) = play(&mut game(), plan, "rounds");
+    let w = warnings(&report);
+    assert_eq!(w.len(), 4, "{w:?}");
+    assert!(
+        w[0].starts_with("step 1: `false` never held in 2 rounds"),
+        "{w:?}"
+    );
+    assert!(
+        w[1].starts_with("step 2 (round 1 of 3): `false` never held in 2 frames"),
+        "{w:?}"
+    );
+    assert!(w[1].contains("may_time_out"), "{w:?}");
+    assert!(w[3].starts_with("step 2 (round 3 of 3)"), "{w:?}");
+}
+
+#[test]
+fn walk_to_steers_to_a_point_whatever_way_the_stick_points() {
+    let there = |report: &Value, name: &str, x: f64, other: (&str, f64), radius: f64| {
+        let e = report["end"]["state"]["entities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["name"] == name)
+            .unwrap()
+            .clone();
+        let d = ((e["x"].as_f64().unwrap() - x).powi(2)
+            + (e[other.0].as_f64().unwrap() - other.1).powi(2))
+        .sqrt();
+        assert!(d <= radius, "{name} ended {d} away: {e}");
+    };
+    // straight, with the stick: no warning, a note that says what it drives
+    let plan = r#"{ "start_scene": "yard", "steps": [ { "walk_to": [400, 300], "who": "rover", "capture": "there" }, { "lua": "nova.log('next')" } ] }"#;
+    let (report, pictures) = play(&mut game(), plan, "walk");
+    assert_eq!(warnings(&report), Vec::<String>::new());
+    assert_eq!(
+        report["step_errors"].as_array().unwrap().len(),
+        0,
+        "{report}"
+    );
+    there(&report, "rover", 400.0, ("y", 300.0), 12.0);
+    assert!(pictures[0].0 < 200, "{pictures:?}"); // (360 units at 2 a frame)
+    let note = report["notes"][0].as_str().unwrap();
+    assert!(
+        note.contains("'rover'")
+            && note.contains("move_x, move_y, left, right, up, down")
+            && note.contains("x, y plane"),
+        "{note}"
+    );
+    // a stick relative to a camera turned any way, mirrored or not, and a game that reads only the four buttons
+    for setup in [
+        "r.turn = 2.4",
+        "r.turn = -1.57",
+        "r.turn = 3.14",
+        "r.mirror = true",
+        "r.turn = 1.0 r.mirror = true",
+        "r.buttons = true",
+        "r.buttons = true r.turn = 2.0",
+    ] {
+        let plan = format!(
+            r#"{{ "start_scene": "yard", "lua": "local r = nova.named('rover') {setup}", "steps": [ {{ "walk_to": [400, 300], "who": "rover", "max": 900 }} ] }}"#
+        );
+        let (report, _) = play(&mut game(), &plan, "walk-turned");
+        assert_eq!(warnings(&report), Vec::<String>::new(), "{setup}");
+        there(&report, "rover", 400.0, ("y", 300.0), 12.0);
+        assert!(
+            report["frames"].as_u64().unwrap() < 500,
+            "{setup}: {}",
+            report["frames"]
+        );
+    }
+    // on the ground of a 3D game: [x, z], to within half a unit, and the list of entities gives z
+    let plan = r#"{ "start_scene": "yard", "lua": "nova.named('walker').turn = 0.8", "steps": [ { "walk_to": [6, -9], "who": "walker", "plane": "xz" } ], "print": ["nova.named('walker')"] }"#;
+    let (report, _) = play(&mut game(), plan, "walk-3d");
+    assert_eq!(warnings(&report), Vec::<String>::new());
+    there(&report, "walker", 6.0, ("z", -9.0), 0.5);
+    let shown = report["end"]["prints"][0]["value"].as_str().unwrap();
+    assert!(shown.starts_with("<rover at "), "{shown}");
+    assert_eq!(shown.matches(", ").count(), 2, "{shown}");
+    assert!(report["notes"][0].as_str().unwrap().contains("x, z plane"));
+    // something in the way: it gives up long before its max and says where it is; told that this may happen, it is quiet
+    for (extra, count) in [("", 1), (r#", "may_time_out": true"#, 0)] {
+        let plan = format!(
+            r#"{{ "start_scene": "yard", "lua": "nova.named('rover').wall = 200", "steps": [ {{ "walk_to": [400, 100], "who": "rover", "max": 2000{extra} }} ] }}"#
+        );
+        let (report, _) = play(&mut game(), &plan, "walk-wall");
+        let w = warnings(&report);
+        assert_eq!(w.len(), count, "{w:?}");
+        assert!(
+            report["frames"].as_u64().unwrap() < 400,
+            "{}",
+            report["frames"]
+        );
+        if count == 1 {
+            assert!(
+                w[0].starts_with("step 1: walk_to stopped getting nearer")
+                    && w[0].contains("'rover' is at 20"),
+                "{w:?}"
+            );
+        }
+    }
+    // nobody to walk: said with the step, and the run goes on
+    let plan = r#"{ "start_scene": "yard", "steps": [ { "walk_to": [1, 1], "who": "ghost" }, { "walk_to": [1, 1] } ] }"#;
+    let (report, _) = play(&mut game(), plan, "walk-nobody");
+    let e = report["step_errors"].as_array().unwrap();
+    assert!(
+        e[0].as_str()
+            .unwrap()
+            .starts_with("step 1 walk_to: there is no entity named or tagged 'ghost'"),
+        "{e:?}"
+    );
+    assert!(
+        e[1].as_str()
+            .unwrap()
+            .starts_with("step 2 walk_to: say who walks"),
+        "{e:?}"
+    );
+}
+
+/// A window reloads the game when its files change; files the manifest ignores are not the game's, and a headless run
+/// does not watch at all (a run that wrote its pictures into the project used to restart itself).
+#[test]
+fn only_the_games_own_files_reload_it_and_a_headless_run_never_does() {
+    let dir = scratch("watch");
+    for (path, bytes) in files() {
+        if !path.starts_with("shots/") {
+            write(&dir, path, &bytes);
+        }
+    }
+    let vfs: Rc<dyn Vfs> = Rc::new(nova_runtime::vfs::DirVfs::new(&dir).unwrap());
+    let mut g = Game::load(vfs).expect("project loads");
+    g.upload(&mut FakeGpu);
+    let wait = || std::thread::sleep(std::time::Duration::from_millis(450));
+    wait();
+    assert!(!g.changed_on_disk());
+    write(&dir, "shots/run1/frame-00001-0.png", &png(4, 4));
+    write(&dir, "notes.md", b"more");
+    wait();
+    assert!(
+        !g.changed_on_disk(),
+        "ignored files changed, the game did not"
+    );
+    g.watch_files(false);
+    write(
+        &dir,
+        "entities/coin.lua",
+        b"return nova.entity { tags = { \"coin\" } }",
+    );
+    wait();
+    assert!(!g.changed_on_disk(), "a headless run does not watch");
+    g.watch_files(true);
+    wait();
+    write(
+        &dir,
+        "entities/coin.lua",
+        b"return nova.entity { tags = { \"coin\", \"shiny\" } }",
+    );
+    wait();
+    assert!(g.changed_on_disk());
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]

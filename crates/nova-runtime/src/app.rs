@@ -261,6 +261,9 @@ pub fn run_headless(opts: Options) -> Result<(), String> {
         None => None,
     };
     if let Some(game) = content.game() {
+        // a headless run plays the files it started with: one that writes its pictures into the project, or an editor
+        // saving meanwhile, must not restart the game under it
+        game.watch_files(false);
         // the same input gives the same run: `math.random` starts from a known seed (randomness used while loading is not affected)
         game.reseed(
             playtest
@@ -426,6 +429,18 @@ pub fn run_headless(opts: Options) -> Result<(), String> {
                 save_png(path, size, &pixels)?;
             }
             return Err(format!("the run stopped: {e}"));
+        }
+        if !p.step_errors.is_empty() {
+            // (the run went on past them: the pictures and the report are complete)
+            if let Some(path) = &opts.capture {
+                let pixels = gfx.capture(size, &content.frame_input(opts.world_height));
+                save_png(path, size, &pixels)?;
+            }
+            return Err(format!(
+                "the run finished, but {} of its steps failed: {}",
+                p.step_errors.len(),
+                p.step_errors.join("; ")
+            ));
         }
     }
     if let (Some(r), Some(path)) = (&recorder, &opts.record) {

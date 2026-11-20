@@ -291,7 +291,13 @@ describe("hearing without ears", () => {
     const oneShot = text(use("sound_report", { sound: "drone", picture: false }));
     expect(oneShot).toMatch(/it starts at 30 % of full scale instead of from silence: a click at the start/);
     expect(() => use("sound_report", { sound: "nothing" })).toThrow(/there is no sound 'nothing'.*sounds\/loud\.wav/);
-    expect(() => use("sound_report", { file: "/etc/hosts" })).toThrow(/outside the project/);
+    // any sound file that can be read may be given by its whole path (one the command line wrote, another folder's)
+    const outside = mkdtempSync(join(tmpdir(), "nova-elsewhere-"));
+    writeFileSync(join(outside, "run.wav"), wav);
+    expect(text(use("sound_report", { file: join(outside, "run.wav"), picture: false }))).toContain(`${join(outside, "run.wav")}: 0.50 s`);
+    expect(() => use("sound_report", { file: join(outside, "gone.wav") })).toThrow(/there is no file/);
+    rmSync(outside, { recursive: true, force: true });
+    expect(() => use("sound_report", { file: "/etc/hosts" })).toThrow(/is not a sound file/);
     expect(() => use("sound_report", {})).toThrow(/say which sound/);
   });
 
@@ -364,13 +370,66 @@ describe.skipIf(!built)("playing the game", () => {
     expect(text(close)).toContain("the part [0, 0, 100, 50] enlarged x4");
   });
 
-  it("reports a Lua error, an unknown action and a step that is not one", () => {
+  it("reports a Lua error with its step and goes on, an unknown action and a step that is not one", () => {
     game();
-    const r = text(use("play", { start_scene: "room", route: [{ hold: ["jump"], frames: 2 }, { lua: "nothing.x = 1" }], size: "320x180" }));
+    const r = text(use("play", { start_scene: "room", route: [{ hold: ["jump"], frames: 2 }, { lua: "nothing.x = 1" }, { hold: ["right"], frames: 30, capture: "after" }], print: ["nova.named('hero').x"], size: "320x180" }));
     expect(r).toContain("warning: 'jump' is not an input action of this game");
-    expect(r).toMatch(/ERROR: step 2 lua: .*nothing/);
+    expect(r).toMatch(/ERROR in step 2 lua: .*nothing.*the run went on/);
+    expect(r).toContain("f33 \"after\": nova.named('hero').x = 130"); // (what came after the failed step is still there)
     expect(() => use("play", { route: [{ walk: "right" }] })).toThrow(/route step 1 has "walk".*A route is a list of steps/);
+    expect(() => use("play", { route: [{ wait: 1 }, { hold: ["right"], frames: 2, zoom: 3 }] })).toThrow(/route step 2 has "zoom".*"zoom" is an option of the whole play call/);
+    expect(() => use("play", { route: [{ repeat: 2, steps: [{ wait: 1 }, { jump: 1 }] }] })).toThrow(/route step 1\.2 has "jump"/);
+    expect(() => use("play", { route: [{ walk_to: "door" }] })).toThrow(/walk_to is a point, \[x, y\]/);
     expect(() => use("play", { size: "big" })).toThrow(/WIDTHxHEIGHT/);
+  });
+
+  it("walks and taps at once, repeats a group, walks to a point, and is quiet about an until that may time out", () => {
+    game();
+    use("write_file", { path: "entities/hero.lua", text: "local H = nova.entity { sprite = 'hero' }\nfunction H:update(dt)\n  self.x = self.x + nova.input.axis('move_x') * 120 * dt\n  self.y = self.y + nova.input.axis('move_y') * 120 * dt\n  if nova.input.pressed('a') then nova.log('swing') end\nend\nreturn H\n" });
+    const r = text(use("play", {
+      start_scene: "room",
+      route: [
+        { hold: ["move_x=1"], tap: "a", tap_every: 10, frames: 30 },
+        { repeat: 3, steps: [{ press: "a" }, { wait: 2 }] },
+        { hold: ["move_x=1"], until: "false", max: 3, may_time_out: true },
+        { walk_to: [300, 260], capture: "there" },
+      ],
+      print: ["nova.named('hero')"],
+      size: "320x180",
+    }));
+    expect(r.match(/f\d+ swing/g)!.length).toBe(6);
+    expect(r).not.toContain("warning:");
+    expect(r).toMatch(/note: walk_to steers 'hero' in the x, y plane by driving move_x, move_y, left, right, up, down/);
+    const at = /"there": nova\.named\('hero'\) = <hero at ([\d.]+), ([\d.]+)>/.exec(r)!;
+    expect(Math.hypot(Number(at[1]) - 300, Number(at[2]) - 260)).toBeLessThanOrEqual(12);
+  });
+
+  it("saves the single pictures and the run's sound where the caller says, inside a folder the game ignores", () => {
+    game();
+    use("sfx_write", { name: "blip", params: { freq: 880, attack: 0.005 } });
+    use("write_file", { path: "scenes/room.lua", text: "local R = nova.scene {}\nfunction R:enter() nova.sound.play('blip') end\nreturn R\n" });
+    expect(() => use("play", { start_scene: "room", out: "shots/run1" })).toThrow(/"shots\/run1" is in a folder the game loads.*add "shots" to nova\.json's "ignore"/);
+    expect(() => use("play", { start_scene: "room", out: "../elsewhere" })).toThrow(/inside the project folder/);
+    use("write_file", { path: "nova.json", text: JSON.stringify({ format: 1, name: "Walk", ignore: ["shots"] }) });
+    const r = text(use("play", { start_scene: "room", route: [{ hold: ["right"], frames: 20, capture: "At the door!" }, { wait: 30 }], capture_at: [5], out: "shots/run1", audio: true, size: "320x180" }));
+    expect(r).toContain("3 full-size pictures in shots/run1/: f00005.png, f00021-at-the-door.png, f00051-end.png; the film strip is strip.png; the whole report is report.json");
+    expect(r).toContain("what the run sounded like: shots/run1/run.wav");
+    // the pictures were written while the game ran from the same folder: the run was not restarted by them
+    expect(r).toMatch(/hero:hero at 120(\.\d)?, 100/);
+    const single = decodePng(readFileSync(join(dir, "shots/run1/f00021-at-the-door.png")));
+    expect([single.w, single.h]).toEqual([320, 180]);
+    const report = JSON.parse(readFileSync(join(dir, "shots/run1/report.json"), "utf8"));
+    expect(report.captures.map((c: { file: string }) => c.file)).toEqual(["shots/run1/f00005.png", "shots/run1/f00021-at-the-door.png"]);
+    expect(JSON.parse(readFileSync(join(dir, "shots/run1/run.sounds.json"), "utf8")).sounds[0]).toEqual({ frame: 1, text: "sound blip" });
+    expect(text(use("sound_report", { file: "shots/run1/run.wav", picture: false }))).toContain("shots/run1/run.wav: 0.85 s");
+    // the sound alone, at a path of the caller's
+    const alone = text(use("play", { start_scene: "room", frames: 6, audio: "build/sound/short.wav", size: "320x180" }));
+    expect(alone).toContain("what the run sounded like: build/sound/short.wav");
+    expect(existsSync(join(dir, "build/sound/short.wav"))).toBe(true);
+    expect(() => use("play", { start_scene: "room", audio: "build/short.mp3" })).toThrow(/must end in \.wav/);
+    // and the activity log names the files
+    const lines = readFileSync(join(dir, ".nova/activity.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+    expect(lines[lines.length - 2].files).toEqual(["build/sound/short.wav"]);
   });
 
   it("shows a model at rest, posed by a clip, and as a strip of a clip with the joint heights", () => {

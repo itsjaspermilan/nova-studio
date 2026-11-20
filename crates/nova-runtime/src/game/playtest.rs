@@ -29,13 +29,19 @@ local function num(v)
   return (string.format("%.3f", v):gsub("0+$", ""):gsub("%.$", ""))
 end
 
+-- An entity of a 3D game: it draws a model, or stands somewhere off the z = 0 plane.
+local function three_d(e)
+  local z = e.z
+  return (rawget(e, "model") or (getmetatable(e) or {}).__model) ~= nil or (type(z) == "number" and z ~= 0)
+end
+
 local function show(v, depth)
   local t = type(v)
   if t == "number" then return num(v) end
   if t == "string" then return depth > 0 and string.format("%q", v) or v end
   if t ~= "table" then return tostring(v) end
   if rawget(getmetatable(v) or {}, "__kind") == "entity" then
-    return "<" .. (class_name(getmetatable(v)) or "entity") .. " at " .. num(v.x or 0) .. ", " .. num(v.y or 0) .. (rawget(v, "_dead") and " (destroyed)" or "") .. ">"
+    return "<" .. (class_name(getmetatable(v)) or "entity") .. " at " .. num(v.x or 0) .. ", " .. num(v.y or 0) .. (three_d(v) and (", " .. num(v.z or 0)) or "") .. (rawget(v, "_dead") and " (destroyed)" or "") .. ">"
   end
   if depth >= 2 then return "{...}" end
   local parts, n = {}, 0
@@ -104,8 +110,7 @@ function H.snapshot()
       local kind = class_name(cls) or (cls == nova.Picture and "picture") or (cls == nova.Text and "text") or (rawget(e, "map") and "tilemap") or "entity"
       if kind ~= "tilemap" and kind ~= "picture" and kind ~= "text" or labels[e] then
         local item = { kind = kind, name = labels[e], id = rawget(e, "id"), x = e.x, y = e.y }
-        local z = rawget(e, "z")
-        if type(z) == "number" and z ~= 0 then item.z = z end
+        if three_d(e) then item.z = e.z or 0 end
         local a = rawget(e, "_anim")
         if a then item.anim = a.tag end
         if type(e.frame) == "number" and e.frame ~= 0 then item.frame = e.frame end
@@ -116,6 +121,26 @@ function H.snapshot()
     end
   end
   return out
+end
+
+-- Who a walk_to step steers and where it is: x and the other ground coordinate (y in a flat game, z in a 3D one).
+function H.walker(who, plane)
+  local W = nova.world
+  if not (W and W.started) then error("this project does not call nova.start, so it has no entities to walk", 0) end
+  local e
+  if who then
+    e = nova.named(who) or nova.first(who)
+    if not e then error("there is no entity named or tagged '" .. tostring(who) .. "' in this scene (\"who\" is a scene object's name or a tag)", 0) end
+  else
+    e = nova.named("hero") or nova.named("player") or nova.first("hero") or nova.first("player") or W.cam.follow
+    who = e and (rawget(e, "name") or class_name(getmetatable(e)) or "the camera's target")
+    if not e then error("say who walks: \"who\" is a scene object's name or a tag (nothing here is named or tagged hero or player, and the 2D camera follows nothing)", 0) end
+  end
+  if rawget(e, "_dead") then error("'" .. tostring(who) .. "' has been destroyed", 0) end
+  plane = plane or (three_d(e) and "xz" or "xy")
+  local a, b = e.x, plane == "xz" and e.z or e.y
+  if type(a) ~= "number" or type(b) ~= "number" then error("'" .. tostring(who) .. "' has no position", 0) end
+  return a, b, plane, tostring(who)
 end
 
 return H
@@ -193,6 +218,16 @@ impl Game {
             Ok(v) => debug_api::to_json(&v, 0),
             Err(e) => serde_json::json!({ "error": e, "entities": [] }),
         }
+    }
+
+    /// Where the entity a `walk_to` step steers is: its two ground coordinates, the plane they are in (`xy` or `xz`) and
+    /// what it is called. `who` is a scene object's name or a tag; left out, the hero or player.
+    pub fn walker(
+        &self,
+        who: Option<&str>,
+        plane: Option<&str>,
+    ) -> Result<(f64, f64, String, String), String> {
+        self.playtest_call("walker", (who, plane))
     }
 
     /// Every input action the game knows (`nova.input.actions()`).
